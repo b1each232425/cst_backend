@@ -1,0 +1,104 @@
+stages: # List of stages for jobs, and their order of execution
+  - deploy
+
+deploy-dns-update:
+  stage: deploy
+  tags:
+    - nodejs-build
+  when: manual
+  environment: production
+  script:
+    - 'echo "deploy utils/cent-gen: w2w.io dnsUpd"'
+    - cd utils/cert-gen
+    - ./deploy.sh w2w.io
+    - ./deploy.sh w2w.me
+
+deploy-i3l-fe:
+  stage: deploy
+  tags:
+    - nodejs-build
+  when: manual
+  environment: production
+  script:
+    - 'echo "deploy fe course"'
+    - cd frontend/repo
+    - chmod +x deploy.sh
+    - ./deploy.sh
+
+deploy-i3l-fe-p:
+  stage: deploy
+  tags:
+    - nodejs-build
+  when: manual
+  environment: production
+  script:
+    - 'echo "deploy fe course"'
+    - cd frontend/repo
+    - chmod +x deploy_p.sh
+    - ./deploy_p.sh
+
+deploy-i3l-be:
+  stage: deploy
+  tags:
+    - nodejs-build
+  when: manual
+  environment: production
+  script:
+    - 'echo "deploy backend: i3l_r serve"'
+    - cd backend
+    - chmod +x deploy.sh
+    - ./deploy.sh
+
+deploy-i3l-be-p:
+  stage: deploy
+  tags:
+    - nodejs-build
+  when: manual
+  environment: production
+  script:
+    - 'echo "deploy backend: i3l_r serve"'
+    - cd backend
+    - chmod +x deploy_p.sh
+    - ./deploy_p.sh
+
+deploy-utils-grpc-for-git:
+  stage: deploy
+  tags:
+    - nodejs-build
+
+  allow_failure: false
+  when: manual
+  environment: production
+  script:
+    - 'echo "deploy utils gRPC-git"'
+    - cd utils/repo
+    - chmod +x build_linux.sh
+    - ./build_linux.sh
+
+deploy-utils-grpc-for-git-p:
+  stage: deploy
+  tags:
+    - nodejs-build
+
+  allow_failure: false
+  when: manual
+  environment: production
+  script:
+    - 'echo "deploy utils gRPC-git"'
+    - cd utils/repo
+    - chmod +x build_linux_p.sh
+    - ./build_linux_p.sh
+
+deploy-utils-gg-deps:
+  stage: deploy
+  tags:
+    - nodejs-build
+
+  allow_failure: false
+  when: manual
+  environment: production
+  script:
+    - 'echo "build/deploy gRPC-git deps"'
+    - cd utils/deps/_build_install
+    - chmod +x build_all_linux.sh
+    - ./build_all_linux.sh

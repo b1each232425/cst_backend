@@ -1,0 +1,87 @@
+{
+  "aa": {
+    "desc": "authentication & authorization",
+    "init": false
+  },
+  "repo": {
+    "base": "/tmp/repo"
+  },
+  "dbms": {
+    "bbolt": {
+      "enable": false
+    },
+    "mysql": {
+      "db": "QNearDB",
+      "enable": false,
+      "port": 3306,
+      "pwd": "ak47-Ever",
+      "user": "qNearUser"
+    },
+    "postgresql": {
+      "addr": "127.0.0.1",
+      "db": "kdb",
+      "enable": true,
+      "port": 16900,
+      "pwd": "ak47-Ever",
+      "user": "kuser"
+    },
+    "redis": {
+      "addr": "127.0.0.1",
+      "init": false,
+      "port": 16910,
+      "cert": "QDD2S23SDVasdfQWFAS5E262A29282628295E_7B7Ddasdfasdflc2Cvsdffffdfdazzxcvnm3Fasdf21235E262A2829_2B7C7D7BPOIUYTREWQ3ALKJHGFDSA3F3E3CMNBVCXZqwertyuiopasdfghjklzxcvbnm2C2F5B5D5C1234567890_3DadfdsdfWDFSwfdFSFA4023235E2628372A2829JHKljkL3ANM3C3EVBNMaEFesvrgwRTHDFGNBasdfWSVSDFSV8XCVXGDFGDFGSFWVF"
+    }
+  },
+  "debug": {
+    "disableCacheVerifyOrClean": true,
+    "enable": false,
+    "peep": true,
+    "disableRepayUrge": true,
+    "serializationReq": false
+  },
+  "fastHttpReq": {
+    "maxRetryCount": 3,
+    "retryBaseDelaySeconds": 3
+  },
+  "msg": {
+    "enable": false,
+    "port": 10100,
+    "srv": "kzz.io"
+  },
+  "webServe": {
+    "attackDefence": false,
+    "multiFilesUpload": false,
+    "arenaRoot": "/Users/kzz/kUser/w2w-module-fe/frontend/vite-vue-antdv/dist",
+    "home": "/Users/kzz/kUser/w2w-module-fe/frontend/vite-vue-antdv/dist",
+    "feDocRoot": "/Users/kzz/kUser/w2w.io/backend/tusd/f/dist",
+    "fileStorePath": "/Users/kzz/kUser/w2w.io_be/backend/upload",
+    "autoCert": false,
+    "hostVerifyRoot": "/Users/kzz/KUser/goUser/src/kzz.io/f/hostVerifyRoot/",
+    "hostWhiteList": "qnear.cn,www.qnear.cn,api.qnear.cn,ci.qnear.cn,f.qnear.cn,m.qnear.cn",
+    "httpListenPort": 6616,
+    "httpsListenPort": 6443,
+    "index": "/Users/kzz/kUser/jsUser/abilityIdx/dist/index.html",
+    "maxUploadFileSize": 2097152,
+    "serverName": "qnear.cn",
+    "trialDocRoot": "/Users/kzz/KUser/goUser/src/kzz.io/trialFileServe/dist/",
+    "adminDocRoot": "/Users/kzz/kUser/jsUser/admin-fe/public/",
+    "xkbPic": "/Users/kzz/KUser/goUser/src/kzz.io/xkbStatic/",
+    "xkbDocRoot": "/Users/kzz/KUser/goUser/src/kzz.io/f/xkb/",
+    "static": {
+      "docRoot": "/Users/kzz/kUser/w2w.io/frontend/vite-vue-antdv/dist",
+      "document": "/Users/kzz/Documents"
+    }
+  },
+  "zLogger": {
+    "zLogLevel": -1,
+    "bblot": {
+      "enable": false
+    },
+    "console": {
+      "enable": true
+    },
+    "postgresql": {
+      "enable": true
+    }
+  }
+}

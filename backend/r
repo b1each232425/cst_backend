@@ -1,0 +1,2 @@
+go build -o w2w.io
+./w2w.io $@

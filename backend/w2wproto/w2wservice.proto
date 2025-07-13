@@ -1,0 +1,47 @@
+syntax = "proto3";
+
+option go_package = "w2w.io/w2wproto";
+
+option java_multiple_files = true;
+option java_package = "io.w2w.w2wsvc";
+option java_outer_classname = "w2w";
+option objc_class_prefix = "W2W";
+
+package w2wproto;
+
+import "google/protobuf/any.proto";
+import "google/protobuf/struct.proto";
+
+message Task {
+    string name = 1;
+    string repo_id = 2;
+    optional uint32 page = 3;
+    optional uint32 page_ize = 4;
+    optional string sets = 5;
+    optional string order_by = 6;
+
+    optional google.protobuf.Struct filter = 7;
+    optional bytes data = 8;
+    map<string, google.protobuf.Any> param = 9;
+}
+
+message Reply {
+    int32 status = 1;
+    optional string msg = 2;
+    optional uint32 rowCount = 3;
+    optional bytes data = 4;
+    optional string task = 5;
+
+    optional string method = 6;
+    optional uint32 SN = 7;
+    map<string, google.protobuf.Any> param = 8;
+}
+
+message Params{
+    string cmd=1;
+}
+
+service W2W {
+    rpc Do (Task) returns (stream Reply) {}
+    rpc Shell (stream Params) returns (stream Reply) {}
+}
