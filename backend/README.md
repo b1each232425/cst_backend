@@ -1,70 +1,118 @@
-# 1 how to integration
+# 1 后端代码结构说明
 
 ## 1.1 backend
 
-```shell
-git clone https://git.xkb66.com/dawnfire/w2w-module.git
-cd w2w-module
-git switch backend
+## 1.1.1 创建配置文件
 
-## update to latest
-git pull
+请根据自己的操作系统创建对应的配置文件
+macOS: ```.config_darwin.json```
+linux: ```.config_linux.json```
+windows: ```.config_windows.json```
 
-## "open" directory w2w-module/backend in your goland/vscode 
-## take "w2w-module/backend" as __PROJECT_ROOT__
-cd backend
+内容请根据相应的样例.config_${OS}_sample.json创建
 
-## add new backend api to __PROJECT_ROOT__/serve/your_new_api
-## !!! DON'T add files directly to __PROJECT_ROOT__/serve/ !!!
-## your api should keep in a single directory your_new_api/
+## 1.1.2 修改pg与redis连接配置
 
-# after your_new_api added/tested
-git add .
-git commit -m "change describe message"
-git push
-
-# waiting ci to building complete
-
-# access https://a.qnear.cn/api/your_new_api to verify your code function
-
-# attention
-# DON'T alter anything other then __PROJECT_ROOT__/serve/, else ci will ignore it. 
-
-```
-
-## 1.2 frontend
-
-### 1.2.1 从命令行执行命令，获得源代码
-```shell
-git clone https://git.xkb66.com/dawnfire/w2w-module.git
-cd w2w-module
-git switch frontend
-## update to latest
-git pull
-
-## "open" directory w2w-module/frontend/vite-vue-antdv in your vscode 
-## take "w2w-module/frontend/vite-vue-antdv" as __PROJECT_ROOT__
-cd frontend/vite-vue-antdv
-
-## add new frontend component to __PROJECT_ROOT__/src/modules/your_new_component
-## !!! DON'T add files directly to __PROJECT_ROOT__/src/modules/ !!!
-## your components should keep in a single directory __PROJECT_ROOT__/src/modules/your_new_component/
-
-# after your_new_component added/tested
-git add .
-git commit -m "change describe message"
-git push
-
-# waiting ci to building complete
-
-# access https://a.qnear.cn/your_new_component to verify your code function
-
-# attention
-# DON'T alter anything other then __PROJECT_ROOT__/src/modules/, else ci will ignore it. 
+```json
+{
+  "dbms": {
+    "postgresql": {
+      "addr": "localhost",
+      "db": "kdb",
+      "enable": true,
+      "port": 6900,
+      "pwd": "your pg db pwd",
+      "user": "your pg db user"
+    },
+    "redis": {
+      "addr": "localhost",
+      "init": false,
+      "port": 6910,
+      "cert": "your redis requirepass"
+    }
+  }
+}
 
 ```
 
-## 1.3 backend api structure
+## 1.2 添加API接口sample 
+
+### 1.2.1 创建原代码
+复制
+    ```backend/serve/serve_template```
+为
+    ```backend/serve/sample```
+
+### 1.2.2 修改样例代码
+
+1）把template.go改为sample.go
+
+2）把第一行
+   ```package serve_template```
+      改为
+   ```package sample```
+
+3）把下述内容
+```golang
+//annotation:template-service
+//author:{"name":"tom sawyer","tel":"13580452503", "email":"KManager@GMail.com"}
+```
+中的
+tempalte-service改为sample-service
+tom sawyer改为你的名称
+13580452503改为你的电话
+KManager@GMail.com改为你的邮箱
+
+当相应API出故障时可以用上述信息找到你来维护
+
+4）修改以内部分为适合你需要的内容
+```golang
+		Fn: 你定义的接口函数,
+
+		Path: "/API接口名称",
+		Name: "API接口名称",
+
+		WhiteList: 该接口是否可以匿名访问,true: 可以，false: 授权、鉴权后才可访问
+
+
+```
+## 1.3 在代码中使用日志、数据连接、redis、获取登录用户信息
+
+
+要求
+1）请在出错处立即使用Z.Error报告出错；
+2）请把原错误对象保存到q.Err中；
+3）请使用q.RespErr()向前端报送错误；
+4）立即结束处理。
+
+
+返回给前端的数据封装在q.Msg中，通过q.Resp()返回给前端，其结构说明如下
+```golang
+type ReplyProto struct {
+	//Status, 0: success, others: fault
+	Status int `json:"status"`
+
+	//Msg, Action result describe by literal
+	Msg string `json:"msg,omitempty"`
+
+	//Data, operand
+	Data types.JSONText `json:"data,omitempty"`
+
+	// RowCount, just row count
+	RowCount int64 `json:"rowCount,omitempty"`
+
+	//API, call target
+	API string `json:"API,omitempty"`
+
+	//Method, using http method
+	Method string `json:"method,omitempty"`
+
+	//SN, call order
+	SN int `json:"SN,omitempty"`
+}
+```
+
+细节请参考样例代码
 
 ### 1.3.1 源代码相关功能解释
 use serve/user.go as example
@@ -186,96 +234,6 @@ func user(ctx context.Context) {
 
 
 ```
-
-## 1.4 frontend structure
-
-前端代码结构说明
-
-use /src/modules/user as example
-
-### 1.4.1 directory structure
-```
-user
-├───router
-│       user.route.ts
-│
-└───views
-        user-mgr.vue
-```
-
-### 1.4.2 user.route.ts
-```javascript
-import { createRouter, createWebHistory } from 'vue-router';
-
-const router = createRouter({
-  history: createWebHistory(import.meta.env.BASE_URL),
-  routes: [
-    {
-      path: '/user',// 路由路径， 通过 https://a.qnear.cn/user 来访问
-      name: 'user', 
-      component: () => import('../views/user-mgr.vue'), // 对应的 component
-    },
-  ],
-});
-
-export default router;
-```
-### 1.4.3 user-mgr.vue
-
-样例```component```没什么特殊的地方。
-
-```javascript
-<template>
-  hello user jjj pqr
-  <a-button type="primary">aaa</a-button>
-  mgr
-</template>
-
-```
-
-# 2 build protobuf from source
-
-```bash
-export ALL_PROXY=socks5://127.0.0.1:9980
-
-git clone https://github.com/protocolbuffers/protobuf.git
-
-cd /Users/kzz/kUser/cUser/protobuf
-
-git submodule update --init --recursive
-
-mkdir build && cd build
-
-cmake .. \
-	-DCMAKE_CXX_STANDARD=14 \
-	-DCMAKE_INSTALL_PREFIX=$GOPATH \
-	-DCMAKE_OSX_ARCHITECTURES="arm64" 
-
-
-cmake --build . --target install
-
-```
-
-# 3 build grpc from source
-
-```bash
-export ALL_PROXY=socks5://127.0.0.1:9980
-
-git clone https://github.com/grpc/grpc.git
-
-cd /Users/kzz/kUser/cUser/grpc
-
-git submodule update --init --recursive
-
-mkdir b && cd b
-
-cmake .. -DCMAKE_CXX_STANDARD=14 -DCMAKE_INSTALL_PREFIX=$GOPATH 
-
-cmake --build . -j8 --target install
-
-```
-
-
 
 
 
