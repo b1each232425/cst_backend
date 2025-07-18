@@ -4,13 +4,14 @@ import (
 	"context"
 	"database/sql"
 	"regexp"
+	"time"
 
 	"github.com/jmoiron/sqlx/types"
 	"github.com/pkg/errors"
 	"w2w.io/null"
 )
 
-/*TAccountOprLog 用户关键信息变更日志，谁，在什么时间变更了数据，变更前数据是什么样子 represents kuser.t_account_opr_log */
+/*TAccountOprLog 用户关键信息变更日志，谁，在什么时间变更了数据，变更前数据是什么样子 represents assessuser.t_account_opr_log */
 type TAccountOprLog struct {
 	ID         null.Int       `json:"ID,omitempty" db:"id,true,integer"`                    /* id 操作编号 */
 	UserID     null.Int       `json:"UserID,omitempty" db:"user_id,false,bigint"`           /* user_id 被变更用户编号 */
@@ -74,7 +75,7 @@ func GetTAccountOprLogByPk(db Queryer, pk0 null.Int) (*TAccountOprLog, error) {
 	return &r, nil
 }
 
-/*TAge 年龄表 represents kuser.t_age */
+/*TAge 年龄表 represents assessuser.t_age */
 type TAge struct {
 	ID              null.Int       `json:"ID,omitempty" db:"id,true,integer"`                             /* id 条目编号 */
 	InsuranceTypeID null.Int       `json:"InsuranceTypeID,omitempty" db:"insurance_type_id,false,bigint"` /* insurance_type_id 保险类型 */
@@ -160,7 +161,7 @@ func GetTAgeByPk(db Queryer, pk0 null.Int) (*TAge, error) {
 	return &r, nil
 }
 
-/*TAPI 接口信息表 represents kuser.t_api */
+/*TAPI 接口信息表 represents assessuser.t_api */
 type TAPI struct {
 	ID                 null.Int    `json:"ID,omitempty" db:"id,true,integer"`                                              /* id 编码 */
 	Name               string      `json:"Name,omitempty" db:"name,false,character varying"`                               /* name 接口名称 */
@@ -238,7 +239,7 @@ func GetTAPIByPk(db Queryer, pk0 null.Int) (*TAPI, error) {
 	return &r, nil
 }
 
-/*TArticle 消息：包含新闻，私信，广告，通知等 represents kuser.t_article */
+/*TArticle 消息：包含新闻，私信，广告，通知等 represents assessuser.t_article */
 type TArticle struct {
 	ID         null.Int       `json:"ID,omitempty" db:"id,true,integer"`                        /* id 参数编号 */
 	Author     null.String    `json:"Author,omitempty" db:"author,false,character varying"`     /* author 作者 */
@@ -342,7 +343,7 @@ func GetTArticleByPk(db Queryer, pk0 null.Int) (*TArticle, error) {
 	return &r, nil
 }
 
-/*TBlacklist 黑名单表 represents kuser.t_blacklist */
+/*TBlacklist 黑名单表 represents assessuser.t_blacklist */
 type TBlacklist struct {
 	ID         null.Int       `json:"ID,omitempty" db:"id,true,integer"`                      /* id 拒保黑名单编号 */
 	OrderID    null.Int       `json:"OrderID,omitempty" db:"order_id,false,bigint"`           /* order_id 来源订单号 */
@@ -412,7 +413,77 @@ func GetTBlacklistByPk(db Queryer, pk0 null.Int) (*TBlacklist, error) {
 	return &r, nil
 }
 
-/*TCourse course table represents kuser.t_course */
+/*TCorrection t_correction represents assessuser.t_correction */
+type TCorrection struct {
+	ID               null.Int       `json:"ID,omitempty" db:"id,true,integer"`                                       /* id id */
+	ExamSessionID    null.Int       `json:"ExamSessionID,omitempty" db:"exam_session_id,false,bigint"`               /* exam_session_id 考试场次id */
+	MarkTeacherID    null.Int       `json:"MarkTeacherID,omitempty" db:"mark_teacher_id,false,bigint"`               /* mark_teacher_id 批改员id */
+	MarkCount        null.Int       `json:"MarkCount,omitempty" db:"mark_count,false,integer"`                       /* mark_count 批改份数 */
+	MarkQuestionGrou types.JSONText `json:"MarkQuestionGrou,omitempty" db:"mark_question_grou,false,jsonb"`          /* mark_question_grou 批改题组 */
+	MarkPaper        types.JSONText `json:"MarkPaper,omitempty" db:"mark_paper,false,jsonb"`                         /* mark_paper 批改的学生数组 */
+	Creator          null.Int       `json:"Creator,omitempty" db:"creator,false,bigint"`                             /* creator 创建者 */
+	CreateTime       null.Int       `json:"CreateTime,omitempty" db:"create_time,false,timestamp without time zone"` /* create_time 创建时间 */
+	UpdatedBy        null.Int       `json:"UpdatedBy,omitempty" db:"updated_by,false,bigint"`                        /* updated_by 更新者 */
+	UpdateTime       null.Int       `json:"UpdateTime,omitempty" db:"update_time,false,timestamp without time zone"` /* update_time 更新时间 */
+	Addi             types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                                    /* addi 附加信息 */
+	Filter                          // build DML where clause
+}
+
+// TCorrectionFields full field list for default query
+var TCorrectionFields = []string{
+	"ID",
+	"ExamSessionID",
+	"MarkTeacherID",
+	"MarkCount",
+	"MarkQuestionGrou",
+	"MarkPaper",
+	"Creator",
+	"CreateTime",
+	"UpdatedBy",
+	"UpdateTime",
+	"Addi",
+}
+
+// Fields return all fields of struct.
+func (r *TCorrection) Fields() []string {
+	return TCorrectionFields
+}
+
+// GetTableName return the associated db table name.
+func (r *TCorrection) GetTableName() string {
+	var viewNamePattern = regexp.MustCompile(`(?i)^t_v_[a-z0-9_]+$`)
+	tableName := "t_correction"
+	if viewNamePattern.MatchString(tableName) {
+		return tableName[2:]
+	}
+	return tableName
+}
+
+// Create inserts the TCorrection to the database.
+func (r *TCorrection) Create(db Queryer) error {
+	err := db.QueryRow(
+		`INSERT INTO t_correction (exam_session_id, mark_teacher_id, mark_count, mark_question_grou, mark_paper, creator, create_time, updated_by, update_time, addi) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id`,
+		&r.ExamSessionID, &r.MarkTeacherID, &r.MarkCount, &r.MarkQuestionGrou, &r.MarkPaper, &r.Creator, &r.CreateTime, &r.UpdatedBy, &r.UpdateTime, &r.Addi).Scan(&r.ID)
+	if err != nil {
+		return errors.Wrap(err, "failed to insert t_correction")
+	}
+	return nil
+}
+
+// GetTCorrectionByPk select the TCorrection from the database.
+func GetTCorrectionByPk(db Queryer, pk0 null.Int) (*TCorrection, error) {
+
+	var r TCorrection
+	err := db.QueryRow(
+		`SELECT id, exam_session_id, mark_teacher_id, mark_count, mark_question_grou, mark_paper, creator, create_time, updated_by, update_time, addi FROM t_correction WHERE id = $1`,
+		pk0).Scan(&r.ID, &r.ExamSessionID, &r.MarkTeacherID, &r.MarkCount, &r.MarkQuestionGrou, &r.MarkPaper, &r.Creator, &r.CreateTime, &r.UpdatedBy, &r.UpdateTime, &r.Addi)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to select t_correction")
+	}
+	return &r, nil
+}
+
+/*TCourse course table represents assessuser.t_course */
 type TCourse struct {
 	ID          null.Int       `json:"ID,omitempty" db:"id,true,integer"`                               /* id 编码 */
 	Type        null.String    `json:"Type,omitempty" db:"type,false,character varying"`                /* type 类型 */
@@ -503,7 +574,7 @@ func GetTCourseByPk(db Queryer, pk0 null.Int) (*TCourse, error) {
 	return &r, nil
 }
 
-/*TDegree 知识能力领域等级表 represents kuser.t_degree */
+/*TDegree 知识能力领域等级表 represents assessuser.t_degree */
 type TDegree struct {
 	ID     null.Int    `json:"ID,omitempty" db:"id,true,integer"`                    /* id 编号 */
 	Level  null.Int    `json:"Level,omitempty" db:"level,false,integer"`             /* level 等级 */
@@ -561,7 +632,7 @@ func GetTDegreeByPk(db Queryer, pk0 null.Int) (*TDegree, error) {
 	return &r, nil
 }
 
-/*TDomain 用户组织结构定义，格式为：机构[部门.科室.组]#角色 represents kuser.t_domain */
+/*TDomain 用户组织结构定义，格式为：机构[部门.科室.组]#角色 represents assessuser.t_domain */
 type TDomain struct {
 	ID         null.Int       `json:"ID,omitempty" db:"id,true,integer"`                    /* id 编码 */
 	Name       string         `json:"Name,omitempty" db:"name,false,character varying"`     /* name 域名称 */
@@ -633,7 +704,7 @@ func GetTDomainByPk(db Queryer, pk0 null.Int) (*TDomain, error) {
 	return &r, nil
 }
 
-/*TDomainAPI 用户、接口、数据访问控制表 represents kuser.t_domain_api */
+/*TDomainAPI 用户、接口、数据访问控制表 represents assessuser.t_domain_api */
 type TDomainAPI struct {
 	ID          null.Int    `json:"ID,omitempty" db:"id,true,integer"`                               /* id 权限编码 */
 	API         null.Int    `json:"API,omitempty" db:"api,false,bigint"`                             /* api 接口/功能编码 */
@@ -722,11 +793,13 @@ func GetTDomainAPIByPk(db Queryer, pk0 null.Int) (*TDomainAPI, error) {
 	return &r, nil
 }
 
-/*TDomainAsset define
+/*
+TDomainAsset define
 
 user domain relation
 domain api relation
-other relation represents kuser.t_domain_asset */
+other relation represents assessuser.t_domain_asset
+*/
 type TDomainAsset struct {
 	ID          null.Int    `json:"ID,omitempty" db:"id,true,integer"`                               /* id id */
 	RType       string      `json:"RType,omitempty" db:"r_type,false,character varying"`             /* r_type 关系类型, ud: user of domain, da: API of domain */
@@ -817,7 +890,732 @@ func GetTDomainAssetByPk(db Queryer, pk0 null.Int) (*TDomainAsset, error) {
 	return &r, nil
 }
 
-/*TExpertise 知识能力领域表 represents kuser.t_expertise */
+/*TExamAttachmentTransfer t_exam_attachment_transfer represents assessuser.t_exam_attachment_transfer */
+type TExamAttachmentTransfer struct {
+	ID                     null.Int       `json:"ID,omitempty" db:"id,true,integer"`                                                      /* id id */
+	ExamID                 null.Int       `json:"ExamID,omitempty" db:"exam_id,false,bigint"`                                             /* exam_id 考试ID */
+	ExamSite               null.Int       `json:"ExamSite,omitempty" db:"exam_site,false,bigint"`                                         /* exam_site 考点ID */
+	QuestionTransferStatus null.String    `json:"QuestionTransferStatus,omitempty" db:"question_transfer_status,false,character varying"` /* question_transfer_status 题目附件传输状态：00 待传输 02 传输中 04 传输完成 06 传输失败 08 传输超时 */
+	Creator                null.Int       `json:"Creator,omitempty" db:"creator,false,bigint"`                                            /* creator 创建者 */
+	CreateTime             null.Int       `json:"CreateTime,omitempty" db:"create_time,false,timestamp without time zone"`                /* create_time 创建时间 */
+	UpdatedBy              null.Int       `json:"UpdatedBy,omitempty" db:"updated_by,false,bigint"`                                       /* updated_by 更新者 */
+	UpdateTime             null.Int       `json:"UpdateTime,omitempty" db:"update_time,false,timestamp without time zone"`                /* update_time 更新时间 */
+	Status                 null.String    `json:"Status,omitempty" db:"status,false,character varying"`                                   /* status 状态 */
+	Addi                   types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                                                   /* addi 额外信息 */
+	AnswerTransferStatus   null.String    `json:"AnswerTransferStatus,omitempty" db:"answer_transfer_status,false,character varying"`     /* answer_transfer_status 答案附件传输状态：00 待传输 02 传输中 04 传输完成 06 传输失败 */
+	Filter                                // build DML where clause
+}
+
+// TExamAttachmentTransferFields full field list for default query
+var TExamAttachmentTransferFields = []string{
+	"ID",
+	"ExamID",
+	"ExamSite",
+	"QuestionTransferStatus",
+	"Creator",
+	"CreateTime",
+	"UpdatedBy",
+	"UpdateTime",
+	"Status",
+	"Addi",
+	"AnswerTransferStatus",
+}
+
+// Fields return all fields of struct.
+func (r *TExamAttachmentTransfer) Fields() []string {
+	return TExamAttachmentTransferFields
+}
+
+// GetTableName return the associated db table name.
+func (r *TExamAttachmentTransfer) GetTableName() string {
+	var viewNamePattern = regexp.MustCompile(`(?i)^t_v_[a-z0-9_]+$`)
+	tableName := "t_exam_attachment_transfer"
+	if viewNamePattern.MatchString(tableName) {
+		return tableName[2:]
+	}
+	return tableName
+}
+
+// Create inserts the TExamAttachmentTransfer to the database.
+func (r *TExamAttachmentTransfer) Create(db Queryer) error {
+	err := db.QueryRow(
+		`INSERT INTO t_exam_attachment_transfer (exam_id, exam_site, question_transfer_status, creator, create_time, updated_by, update_time, status, addi, answer_transfer_status) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id`,
+		&r.ExamID, &r.ExamSite, &r.QuestionTransferStatus, &r.Creator, &r.CreateTime, &r.UpdatedBy, &r.UpdateTime, &r.Status, &r.Addi, &r.AnswerTransferStatus).Scan(&r.ID)
+	if err != nil {
+		return errors.Wrap(err, "failed to insert t_exam_attachment_transfer")
+	}
+	return nil
+}
+
+// GetTExamAttachmentTransferByPk select the TExamAttachmentTransfer from the database.
+func GetTExamAttachmentTransferByPk(db Queryer, pk0 null.Int) (*TExamAttachmentTransfer, error) {
+
+	var r TExamAttachmentTransfer
+	err := db.QueryRow(
+		`SELECT id, exam_id, exam_site, question_transfer_status, creator, create_time, updated_by, update_time, status, addi, answer_transfer_status FROM t_exam_attachment_transfer WHERE id = $1`,
+		pk0).Scan(&r.ID, &r.ExamID, &r.ExamSite, &r.QuestionTransferStatus, &r.Creator, &r.CreateTime, &r.UpdatedBy, &r.UpdateTime, &r.Status, &r.Addi, &r.AnswerTransferStatus)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to select t_exam_attachment_transfer")
+	}
+	return &r, nil
+}
+
+/*TExamInfo t_exam_info represents assessuser.t_exam_info */
+type TExamInfo struct {
+	ID                 null.Int       `json:"ID,omitempty" db:"id,true,integer"`                                              /* id 考试编号 */
+	Name               null.String    `json:"Name,omitempty" db:"name,false,character varying"`                               /* name 考试名称 */
+	Rules              null.String    `json:"Rules,omitempty" db:"rules,false,text"`                                          /* rules 考试规则 */
+	Type               null.String    `json:"Type,omitempty" db:"type,false,character varying"`                               /* type 考试类型 00：平时考试 02：期末成绩考试  04：资格证考试 */
+	Mode               null.String    `json:"Mode,omitempty" db:"mode,false,character varying"`                               /* mode 考试方式 00：线上考试  02：线下考试 */
+	Files              types.JSONText `json:"Files,omitempty" db:"files,false,jsonb"`                                         /* files 考试附件资料 */
+	Submitted          null.Bool      `json:"Submitted,omitempty" db:"submitted,false,boolean"`                               /* submitted 考试成绩是否已提交 */
+	Creator            null.Int       `json:"Creator,omitempty" db:"creator,false,bigint"`                                    /* creator 创建者 */
+	UpdatedBy          null.Int       `json:"UpdatedBy,omitempty" db:"updated_by,false,bigint"`                               /* updated_by 更新者 */
+	Status             null.String    `json:"Status,omitempty" db:"status,false,character varying"`                           /* status 状态  00：未发布 02：待开始  04：进行中 08：已结束 10：已归档 12：考试异常 14：已删除 */
+	Addi               types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                                           /* addi 附加信息 */
+	ExamRoomIds        interface{}    `json:"ExamRoomIds,omitempty" db:"exam_room_ids,false,bigint[]"`                        /* exam_room_ids 考场id数组 */
+	ExamDeliveryStatus null.String    `json:"ExamDeliveryStatus,omitempty" db:"exam_delivery_status,false,character varying"` /* exam_delivery_status 考试的考卷下发状态：
+	中心服务器使用：00：待下发  02：下发中  04：下发完成   06：下发失败  08：待更新（教师在下发完考卷后又更新了考试）10：待同步（需要等待考点服务器将数据发回） 12：已同步 （所有数据都成功发回)
+	考点服务器使用：14:待发送 16:发送中 */
+	ExamRoomInvigilatorCount types.JSONText `json:"ExamRoomInvigilatorCount,omitempty" db:"exam_room_invigilator_count,false,jsonb"` /* exam_room_invigilator_count 记录当前每个考场的所需监考员数量，例：[{exam_room_id:1,invigilator_count:1}] */
+	ExamDeliveryError        null.String    `json:"ExamDeliveryError,omitempty" db:"exam_delivery_error,false,character varying"`    /* exam_delivery_error 下发考卷失败的报错信息 */
+	CreateTime               null.Int       `json:"CreateTime,omitempty" db:"create_time,false,bigint"`                              /* create_time 创建时间 */
+	EndTime                  null.Int       `json:"EndTime,omitempty" db:"end_time,false,bigint"`                                    /* end_time end_time */
+	Filter                                  // build DML where clause
+}
+
+// TExamInfoFields full field list for default query
+var TExamInfoFields = []string{
+	"ID",
+	"Name",
+	"Rules",
+	"Type",
+	"Mode",
+	"Files",
+	"Submitted",
+	"Creator",
+	"UpdatedBy",
+	"Status",
+	"Addi",
+	"ExamRoomIds",
+	"ExamDeliveryStatus",
+	"ExamRoomInvigilatorCount",
+	"ExamDeliveryError",
+	"CreateTime",
+	"EndTime",
+}
+
+// Fields return all fields of struct.
+func (r *TExamInfo) Fields() []string {
+	return TExamInfoFields
+}
+
+// GetTableName return the associated db table name.
+func (r *TExamInfo) GetTableName() string {
+	var viewNamePattern = regexp.MustCompile(`(?i)^t_v_[a-z0-9_]+$`)
+	tableName := "t_exam_info"
+	if viewNamePattern.MatchString(tableName) {
+		return tableName[2:]
+	}
+	return tableName
+}
+
+// Create inserts the TExamInfo to the database.
+func (r *TExamInfo) Create(db Queryer) error {
+	err := db.QueryRow(
+		`INSERT INTO t_exam_info (name, rules, type, mode, files, submitted, creator, updated_by, status, addi, exam_room_ids, exam_delivery_status, exam_room_invigilator_count, exam_delivery_error, create_time, end_time) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16) RETURNING id`,
+		&r.Name, &r.Rules, &r.Type, &r.Mode, &r.Files, &r.Submitted, &r.Creator, &r.UpdatedBy, &r.Status, &r.Addi, &r.ExamRoomIds, &r.ExamDeliveryStatus, &r.ExamRoomInvigilatorCount, &r.ExamDeliveryError, &r.CreateTime, &r.EndTime).Scan(&r.ID)
+	if err != nil {
+		return errors.Wrap(err, "failed to insert t_exam_info")
+	}
+	return nil
+}
+
+// GetTExamInfoByPk select the TExamInfo from the database.
+func GetTExamInfoByPk(db Queryer, pk0 null.Int) (*TExamInfo, error) {
+
+	var r TExamInfo
+	err := db.QueryRow(
+		`SELECT id, name, rules, type, mode, files, submitted, creator, updated_by, status, addi, exam_room_ids, exam_delivery_status, exam_room_invigilator_count, exam_delivery_error, create_time, end_time FROM t_exam_info WHERE id = $1`,
+		pk0).Scan(&r.ID, &r.Name, &r.Rules, &r.Type, &r.Mode, &r.Files, &r.Submitted, &r.Creator, &r.UpdatedBy, &r.Status, &r.Addi, &r.ExamRoomIds, &r.ExamDeliveryStatus, &r.ExamRoomInvigilatorCount, &r.ExamDeliveryError, &r.CreateTime, &r.EndTime)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to select t_exam_info")
+	}
+	return &r, nil
+}
+
+/*TExamPaper t_exam_paper represents assessuser.t_exam_paper */
+type TExamPaper struct {
+	ID             null.Int       `json:"ID,omitempty" db:"id,true,integer"`                            /* id 考卷ID */
+	ExamSessionID  null.Int       `json:"ExamSessionID,omitempty" db:"exam_session_id,false,bigint"`    /* exam_session_id 考试场次ID，标识考卷用于哪一场考试场次 */
+	PracticeID     null.Int       `json:"PracticeID,omitempty" db:"practice_id,false,bigint"`           /* practice_id 练习ID，标识考卷用于哪一个练习 */
+	Name           null.String    `json:"Name,omitempty" db:"name,false,character varying"`             /* name 考卷名称 */
+	TotalScore     null.Float     `json:"TotalScore,omitempty" db:"total_score,false,double precision"` /* total_score 考卷总分 */
+	QuestionGroups types.JSONText `json:"QuestionGroups,omitempty" db:"question_groups,false,jsonb"`    /* question_groups 存储题组名称
+	{
+	   "question_group":[
+	       {   "id":"1",    "name":"一、单选题"},
+	       {"id":"2",    "name":"二、多选题"},
+	       {"id":"3",    "name":"三、判断题"},
+	       {"id":"4",    "name":"四、填空题"}
+	       {"id":"5",    "name":"五、简答题"},
+	     ]
+	} */
+	Creator       null.Int       `json:"Creator,omitempty" db:"creator,false,bigint"`               /* creator 创建者 */
+	CreateTime    null.Int       `json:"CreateTime,omitempty" db:"create_time,false,bigint"`        /* create_time 创建时间 */
+	UpdatedBy     null.Int       `json:"UpdatedBy,omitempty" db:"updated_by,false,bigint"`          /* updated_by 更新者 */
+	UpdateTime    null.Int       `json:"UpdateTime,omitempty" db:"update_time,false,bigint"`        /* update_time 更新时间 */
+	Addi          types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                      /* addi 附加信息 */
+	Status        null.String    `json:"Status,omitempty" db:"status,false,character varying"`      /* status 状态 00：使用中，02：归档，04：废弃 */
+	QuestionCount null.Int       `json:"QuestionCount,omitempty" db:"question_count,false,integer"` /* question_count question_count */
+	Filter                       // build DML where clause
+}
+
+// TExamPaperFields full field list for default query
+var TExamPaperFields = []string{
+	"ID",
+	"ExamSessionID",
+	"PracticeID",
+	"Name",
+	"TotalScore",
+	"QuestionGroups",
+	"Creator",
+	"CreateTime",
+	"UpdatedBy",
+	"UpdateTime",
+	"Addi",
+	"Status",
+	"QuestionCount",
+}
+
+// Fields return all fields of struct.
+func (r *TExamPaper) Fields() []string {
+	return TExamPaperFields
+}
+
+// GetTableName return the associated db table name.
+func (r *TExamPaper) GetTableName() string {
+	var viewNamePattern = regexp.MustCompile(`(?i)^t_v_[a-z0-9_]+$`)
+	tableName := "t_exam_paper"
+	if viewNamePattern.MatchString(tableName) {
+		return tableName[2:]
+	}
+	return tableName
+}
+
+// Create inserts the TExamPaper to the database.
+func (r *TExamPaper) Create(db Queryer) error {
+	err := db.QueryRow(
+		`INSERT INTO t_exam_paper (exam_session_id, practice_id, name, total_score, question_groups, creator, create_time, updated_by, update_time, addi, status, question_count) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING id`,
+		&r.ExamSessionID, &r.PracticeID, &r.Name, &r.TotalScore, &r.QuestionGroups, &r.Creator, &r.CreateTime, &r.UpdatedBy, &r.UpdateTime, &r.Addi, &r.Status, &r.QuestionCount).Scan(&r.ID)
+	if err != nil {
+		return errors.Wrap(err, "failed to insert t_exam_paper")
+	}
+	return nil
+}
+
+// GetTExamPaperByPk select the TExamPaper from the database.
+func GetTExamPaperByPk(db Queryer, pk0 null.Int) (*TExamPaper, error) {
+
+	var r TExamPaper
+	err := db.QueryRow(
+		`SELECT id, exam_session_id, practice_id, name, total_score, question_groups, creator, create_time, updated_by, update_time, addi, status, question_count FROM t_exam_paper WHERE id = $1`,
+		pk0).Scan(&r.ID, &r.ExamSessionID, &r.PracticeID, &r.Name, &r.TotalScore, &r.QuestionGroups, &r.Creator, &r.CreateTime, &r.UpdatedBy, &r.UpdateTime, &r.Addi, &r.Status, &r.QuestionCount)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to select t_exam_paper")
+	}
+	return &r, nil
+}
+
+/*TExamPaperQuestion t_exam_paper_question represents assessuser.t_exam_paper_question */
+type TExamPaperQuestion struct {
+	ID                      null.Int       `json:"ID,omitempty" db:"id,true,integer"`                                            /* id 考卷题目ID */
+	ExamPaperID             null.Int       `json:"ExamPaperID,omitempty" db:"exam_paper_id,false,bigint"`                        /* exam_paper_id 所属考卷ID */
+	Score                   null.Float     `json:"Score,omitempty" db:"score,false,double precision"`                            /* score 题目分值 */
+	Type                    null.String    `json:"Type,omitempty" db:"type,false,character varying"`                             /* type 类型  00:单选题  02:多选题 04:判断题 06:填空题 08:简答题 10:编程题 */
+	Content                 null.String    `json:"Content,omitempty" db:"content,false,text"`                                    /* content 理论题目内容 */
+	Options                 types.JSONText `json:"Options,omitempty" db:"options,false,jsonb"`                                   /* options 理论题目选项填空项 */
+	Answers                 types.JSONText `json:"Answers,omitempty" db:"answers,false,jsonb"`                                   /* answers 理论题目答案 */
+	Analysis                null.String    `json:"Analysis,omitempty" db:"analysis,false,text"`                                  /* analysis 理论题目解析 */
+	Title                   null.String    `json:"Title,omitempty" db:"title,false,text"`                                        /* title 编程题目题干 */
+	AnswerPath              types.JSONText `json:"AnswerPath,omitempty" db:"answer_path,false,jsonb"`                            /* answer_path 编程题目答案文件路径 */
+	TestPath                types.JSONText `json:"TestPath,omitempty" db:"test_path,false,jsonb"`                                /* test_path 编程题目测试文件路径 */
+	Input                   null.String    `json:"Input,omitempty" db:"input,false,character varying"`                           /* input 编程题目输入 */
+	Output                  null.String    `json:"Output,omitempty" db:"output,false,character varying"`                         /* output 编程题目输出 */
+	Example                 types.JSONText `json:"Example,omitempty" db:"example,false,jsonb"`                                   /* example 编程题目示例 */
+	Repo                    types.JSONText `json:"Repo,omitempty" db:"repo,false,jsonb"`                                         /* repo 仓库 */
+	CommitID                types.JSONText `json:"CommitID,omitempty" db:"commit_id,false,jsonb"`                                /* commit_id 编程题提交ID，用来当版本号 */
+	Creator                 null.Int       `json:"Creator,omitempty" db:"creator,false,bigint"`                                  /* creator 创建者 */
+	CreateTime              null.Int       `json:"CreateTime,omitempty" db:"create_time,false,bigint"`                           /* create_time 创建时间 */
+	UpdatedBy               null.Int       `json:"UpdatedBy,omitempty" db:"updated_by,false,bigint"`                             /* updated_by 更新者 */
+	UpdateTime              null.Int       `json:"UpdateTime,omitempty" db:"update_time,false,bigint"`                           /* update_time 更新时间 */
+	Addi                    types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                                         /* addi 附加信息 */
+	Status                  null.String    `json:"Status,omitempty" db:"status,false,character varying"`                         /* status 状态 ：00：使用中，02：归档，04：废弃 */
+	Order                   null.Int       `json:"Order,omitempty" db:"order,false,integer"`                                     /* order 原始考卷的题目顺序 */
+	GroupID                 null.Int       `json:"GroupID,omitempty" db:"group_id,false,bigint"`                                 /* group_id 题目所属题组ID */
+	QuestionAttachmentsPath types.JSONText `json:"QuestionAttachmentsPath,omitempty" db:"question_attachments_path,false,jsonb"` /* question_attachments_path 题目附件url数组 */
+	Filter                                 // build DML where clause
+}
+
+// TExamPaperQuestionFields full field list for default query
+var TExamPaperQuestionFields = []string{
+	"ID",
+	"ExamPaperID",
+	"Score",
+	"Type",
+	"Content",
+	"Options",
+	"Answers",
+	"Analysis",
+	"Title",
+	"AnswerPath",
+	"TestPath",
+	"Input",
+	"Output",
+	"Example",
+	"Repo",
+	"CommitID",
+	"Creator",
+	"CreateTime",
+	"UpdatedBy",
+	"UpdateTime",
+	"Addi",
+	"Status",
+	"Order",
+	"GroupID",
+	"QuestionAttachmentsPath",
+}
+
+// Fields return all fields of struct.
+func (r *TExamPaperQuestion) Fields() []string {
+	return TExamPaperQuestionFields
+}
+
+// GetTableName return the associated db table name.
+func (r *TExamPaperQuestion) GetTableName() string {
+	var viewNamePattern = regexp.MustCompile(`(?i)^t_v_[a-z0-9_]+$`)
+	tableName := "t_exam_paper_question"
+	if viewNamePattern.MatchString(tableName) {
+		return tableName[2:]
+	}
+	return tableName
+}
+
+// Create inserts the TExamPaperQuestion to the database.
+func (r *TExamPaperQuestion) Create(db Queryer) error {
+	err := db.QueryRow(
+		`INSERT INTO t_exam_paper_question (exam_paper_id, score, type, content, options, answers, analysis, title, answer_path, test_path, input, output, example, repo, commit_id, creator, create_time, updated_by, update_time, addi, status, order, group_id, question_attachments_path) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24) RETURNING id`,
+		&r.ExamPaperID, &r.Score, &r.Type, &r.Content, &r.Options, &r.Answers, &r.Analysis, &r.Title, &r.AnswerPath, &r.TestPath, &r.Input, &r.Output, &r.Example, &r.Repo, &r.CommitID, &r.Creator, &r.CreateTime, &r.UpdatedBy, &r.UpdateTime, &r.Addi, &r.Status, &r.Order, &r.GroupID, &r.QuestionAttachmentsPath).Scan(&r.ID)
+	if err != nil {
+		return errors.Wrap(err, "failed to insert t_exam_paper_question")
+	}
+	return nil
+}
+
+// GetTExamPaperQuestionByPk select the TExamPaperQuestion from the database.
+func GetTExamPaperQuestionByPk(db Queryer, pk0 null.Int) (*TExamPaperQuestion, error) {
+
+	var r TExamPaperQuestion
+	err := db.QueryRow(
+		`SELECT id, exam_paper_id, score, type, content, options, answers, analysis, title, answer_path, test_path, input, output, example, repo, commit_id, creator, create_time, updated_by, update_time, addi, status, order, group_id, question_attachments_path FROM t_exam_paper_question WHERE id = $1`,
+		pk0).Scan(&r.ID, &r.ExamPaperID, &r.Score, &r.Type, &r.Content, &r.Options, &r.Answers, &r.Analysis, &r.Title, &r.AnswerPath, &r.TestPath, &r.Input, &r.Output, &r.Example, &r.Repo, &r.CommitID, &r.Creator, &r.CreateTime, &r.UpdatedBy, &r.UpdateTime, &r.Addi, &r.Status, &r.Order, &r.GroupID, &r.QuestionAttachmentsPath)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to select t_exam_paper_question")
+	}
+	return &r, nil
+}
+
+/*TExamRecord t_exam_record represents assessuser.t_exam_record */
+type TExamRecord struct {
+	ID          null.Int       `json:"ID,omitempty" db:"id,true,integer"`                                       /* id 记录ID */
+	ExamRoom    null.Int       `json:"ExamRoom,omitempty" db:"exam_room,false,bigint"`                          /* exam_room 考场ID */
+	ExamSession null.Int       `json:"ExamSession,omitempty" db:"exam_session,false,bigint"`                    /* exam_session 考试场次ID */
+	Content     null.String    `json:"Content,omitempty" db:"content,false,character varying"`                  /* content 记录内容 */
+	BasicEval   null.String    `json:"BasicEval,omitempty" db:"basic_eval,false,character varying"`             /* basic_eval 基本情况评估 00: 良好 02: 一般 04: 较差 */
+	Creator     null.Int       `json:"Creator,omitempty" db:"creator,false,bigint"`                             /* creator 创建者 */
+	CreateTime  null.Int       `json:"CreateTime,omitempty" db:"create_time,false,timestamp without time zone"` /* create_time 创建时间 */
+	UpdatedBy   null.Int       `json:"UpdatedBy,omitempty" db:"updated_by,false,bigint"`                        /* updated_by 最近一次的更新者 */
+	UpdateTime  null.Int       `json:"UpdateTime,omitempty" db:"update_time,false,timestamp without time zone"` /* update_time 最近一次更新的时间 */
+	Addi        types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                                    /* addi 附加信息 */
+	Status      null.String    `json:"Status,omitempty" db:"status,false,character varying"`                    /* status 状态码 00:正常 02:失效(删除) */
+	Filter                     // build DML where clause
+}
+
+// TExamRecordFields full field list for default query
+var TExamRecordFields = []string{
+	"ID",
+	"ExamRoom",
+	"ExamSession",
+	"Content",
+	"BasicEval",
+	"Creator",
+	"CreateTime",
+	"UpdatedBy",
+	"UpdateTime",
+	"Addi",
+	"Status",
+}
+
+// Fields return all fields of struct.
+func (r *TExamRecord) Fields() []string {
+	return TExamRecordFields
+}
+
+// GetTableName return the associated db table name.
+func (r *TExamRecord) GetTableName() string {
+	var viewNamePattern = regexp.MustCompile(`(?i)^t_v_[a-z0-9_]+$`)
+	tableName := "t_exam_record"
+	if viewNamePattern.MatchString(tableName) {
+		return tableName[2:]
+	}
+	return tableName
+}
+
+// Create inserts the TExamRecord to the database.
+func (r *TExamRecord) Create(db Queryer) error {
+	err := db.QueryRow(
+		`INSERT INTO t_exam_record (exam_room, exam_session, content, basic_eval, creator, create_time, updated_by, update_time, addi, status) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id`,
+		&r.ExamRoom, &r.ExamSession, &r.Content, &r.BasicEval, &r.Creator, &r.CreateTime, &r.UpdatedBy, &r.UpdateTime, &r.Addi, &r.Status).Scan(&r.ID)
+	if err != nil {
+		return errors.Wrap(err, "failed to insert t_exam_record")
+	}
+	return nil
+}
+
+// GetTExamRecordByPk select the TExamRecord from the database.
+func GetTExamRecordByPk(db Queryer, pk0 null.Int) (*TExamRecord, error) {
+
+	var r TExamRecord
+	err := db.QueryRow(
+		`SELECT id, exam_room, exam_session, content, basic_eval, creator, create_time, updated_by, update_time, addi, status FROM t_exam_record WHERE id = $1`,
+		pk0).Scan(&r.ID, &r.ExamRoom, &r.ExamSession, &r.Content, &r.BasicEval, &r.Creator, &r.CreateTime, &r.UpdatedBy, &r.UpdateTime, &r.Addi, &r.Status)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to select t_exam_record")
+	}
+	return &r, nil
+}
+
+/*TExamRoom t_exam_room represents assessuser.t_exam_room */
+type TExamRoom struct {
+	ID         null.Int       `json:"ID,omitempty" db:"id,true,integer"`                                       /* id 考场编号 */
+	ExamSite   null.Int       `json:"ExamSite,omitempty" db:"exam_site,false,bigint"`                          /* exam_site 考点编号 */
+	Name       null.String    `json:"Name,omitempty" db:"name,false,character varying"`                        /* name 考场名字 */
+	Capacity   null.Int       `json:"Capacity,omitempty" db:"capacity,false,integer"`                          /* capacity 考场容量 */
+	Creator    null.Int       `json:"Creator,omitempty" db:"creator,false,bigint"`                             /* creator 创建者 */
+	CreateTime null.Int       `json:"CreateTime,omitempty" db:"create_time,false,timestamp without time zone"` /* create_time 创建时间 */
+	UpdatedBy  null.Int       `json:"UpdatedBy,omitempty" db:"updated_by,false,bigint"`                        /* updated_by 更新者 */
+	UpdateTime null.Int       `json:"UpdateTime,omitempty" db:"update_time,false,timestamp without time zone"` /* update_time 更新时间 */
+	Status     null.String    `json:"Status,omitempty" db:"status,false,character varying"`                    /* status 考场状态 00：正常 02：故障 04：占用 06：已删除 */
+	Addi       types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                                    /* addi 附加信息 */
+	Filter                    // build DML where clause
+}
+
+// TExamRoomFields full field list for default query
+var TExamRoomFields = []string{
+	"ID",
+	"ExamSite",
+	"Name",
+	"Capacity",
+	"Creator",
+	"CreateTime",
+	"UpdatedBy",
+	"UpdateTime",
+	"Status",
+	"Addi",
+}
+
+// Fields return all fields of struct.
+func (r *TExamRoom) Fields() []string {
+	return TExamRoomFields
+}
+
+// GetTableName return the associated db table name.
+func (r *TExamRoom) GetTableName() string {
+	var viewNamePattern = regexp.MustCompile(`(?i)^t_v_[a-z0-9_]+$`)
+	tableName := "t_exam_room"
+	if viewNamePattern.MatchString(tableName) {
+		return tableName[2:]
+	}
+	return tableName
+}
+
+// Create inserts the TExamRoom to the database.
+func (r *TExamRoom) Create(db Queryer) error {
+	err := db.QueryRow(
+		`INSERT INTO t_exam_room (exam_site, name, capacity, creator, create_time, updated_by, update_time, status, addi) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
+		&r.ExamSite, &r.Name, &r.Capacity, &r.Creator, &r.CreateTime, &r.UpdatedBy, &r.UpdateTime, &r.Status, &r.Addi).Scan(&r.ID)
+	if err != nil {
+		return errors.Wrap(err, "failed to insert t_exam_room")
+	}
+	return nil
+}
+
+// GetTExamRoomByPk select the TExamRoom from the database.
+func GetTExamRoomByPk(db Queryer, pk0 null.Int) (*TExamRoom, error) {
+
+	var r TExamRoom
+	err := db.QueryRow(
+		`SELECT id, exam_site, name, capacity, creator, create_time, updated_by, update_time, status, addi FROM t_exam_room WHERE id = $1`,
+		pk0).Scan(&r.ID, &r.ExamSite, &r.Name, &r.Capacity, &r.Creator, &r.CreateTime, &r.UpdatedBy, &r.UpdateTime, &r.Status, &r.Addi)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to select t_exam_room")
+	}
+	return &r, nil
+}
+
+/*TExamSession t_exam_session represents assessuser.t_exam_session */
+type TExamSession struct {
+	ID                   null.Int       `json:"ID,omitempty" db:"id,true,integer"`                                                  /* id 编号 */
+	ExamID               null.Int       `json:"ExamID,omitempty" db:"exam_id,false,bigint"`                                         /* exam_id 考试编号 */
+	PaperID              null.Int       `json:"PaperID,omitempty" db:"paper_id,false,bigint"`                                       /* paper_id 试卷编号 */
+	MarkMethod           string         `json:"MarkMethod,omitempty" db:"mark_method,false,character varying"`                      /* mark_method 批卷方式 00：人工批卷 02：自动批卷 */
+	PeriodMode           null.String    `json:"PeriodMode,omitempty" db:"period_mode,false,character varying"`                      /* period_mode 考试时段模式 00：固定时段考试 02：灵活时段考试 */
+	Duration             null.Int       `json:"Duration,omitempty" db:"duration,false,integer"`                                     /* duration 考试时长 */
+	QuestionShuffledMode null.String    `json:"QuestionShuffledMode,omitempty" db:"question_shuffled_mode,false,character varying"` /* question_shuffled_mode 乱序方式 00：既有试题乱序也有选项乱序 02：选项乱序 04：试题乱序 06：都不选择 */
+	MarkMode             null.String    `json:"MarkMode,omitempty" db:"mark_mode,false,character varying"`                          /* mark_mode 批改配置，包括批卷模式 00：不需要手动批改  02：全卷多评 04：试卷分配 06：题组专评 08：题目分配 10：单人批改 */
+	NameVisibilityIn     null.Bool      `json:"NameVisibilityIn,omitempty" db:"name_visibility_in,false,boolean"`                   /* name_visibility_in 当需要人工批卷时，是否需要在批改中显示学生姓名 */
+	Creator              null.Int       `json:"Creator,omitempty" db:"creator,false,bigint"`                                        /* creator 创建者 */
+	UpdatedBy            null.Int       `json:"UpdatedBy,omitempty" db:"updated_by,false,bigint"`                                   /* updated_by 更新者 */
+	Status               null.String    `json:"Status,omitempty" db:"status,false,character varying"`                               /* status 状态 00：未发布 01：待开始  02：进行中 04：已结束 06：已删除 08：批改中 10：已批改 12：已提交 14：待同步 */
+	Addi                 types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                                               /* addi 附加信息 */
+	SessionNum           null.Int       `json:"SessionNum,omitempty" db:"session_num,false,bigint"`                                 /* session_num session_num */
+	LateEntryTime        null.Int       `json:"LateEntryTime,omitempty" db:"late_entry_time,false,bigint"`                          /* late_entry_time 考试开始后最晚能进入考场的时间，如考试开始后30分钟内可进入考场 */
+	EarlySubmissionTime  null.Int       `json:"EarlySubmissionTime,omitempty" db:"early_submission_time,false,bigint"`              /* early_submission_time 考试结束前x分钟可交卷 */
+	ReviewerIds          interface{}    `json:"ReviewerIds,omitempty" db:"reviewer_ids,false,bigint[]"`                             /* reviewer_ids 批阅员ID数组 */
+	BasicEval            null.String    `json:"BasicEval,omitempty" db:"basic_eval,false,character varying"`                        /* basic_eval 基本情况评估 00: 良好 02: 一般 04: 较差 */
+	Record               null.String    `json:"Record,omitempty" db:"record,false,character varying"`                               /* record 考试场次记录，可用于保存本考试场次中的异常情况记录 */
+	PaperName            null.String    `json:"PaperName,omitempty" db:"paper_name,false,character varying"`                        /* paper_name 试卷名，实际不做存储 */
+	PaperCategory        null.String    `json:"PaperCategory,omitempty" db:"paper_category,false,character varying"`                /* paper_category 试卷类型，实际不做存储 */
+	CreateTime           null.Int       `json:"CreateTime,omitempty" db:"create_time,false,bigint"`                                 /* create_time 创建时间 */
+	UpdateTime           null.Int       `json:"UpdateTime,omitempty" db:"update_time,false,bigint"`                                 /* update_time 更新时间 */
+	StartTime            null.Int       `json:"StartTime,omitempty" db:"start_time,false,bigint"`                                   /* start_time 考试开始时间 */
+	EndTime              null.Int       `json:"EndTime,omitempty" db:"end_time,false,bigint"`                                       /* end_time 考试结束时间 */
+	Filter                              // build DML where clause
+}
+
+// TExamSessionFields full field list for default query
+var TExamSessionFields = []string{
+	"ID",
+	"ExamID",
+	"PaperID",
+	"MarkMethod",
+	"PeriodMode",
+	"Duration",
+	"QuestionShuffledMode",
+	"MarkMode",
+	"NameVisibilityIn",
+	"Creator",
+	"UpdatedBy",
+	"Status",
+	"Addi",
+	"SessionNum",
+	"LateEntryTime",
+	"EarlySubmissionTime",
+	"ReviewerIds",
+	"BasicEval",
+	"Record",
+	"PaperName",
+	"PaperCategory",
+	"CreateTime",
+	"UpdateTime",
+	"StartTime",
+	"EndTime",
+}
+
+// Fields return all fields of struct.
+func (r *TExamSession) Fields() []string {
+	return TExamSessionFields
+}
+
+// GetTableName return the associated db table name.
+func (r *TExamSession) GetTableName() string {
+	var viewNamePattern = regexp.MustCompile(`(?i)^t_v_[a-z0-9_]+$`)
+	tableName := "t_exam_session"
+	if viewNamePattern.MatchString(tableName) {
+		return tableName[2:]
+	}
+	return tableName
+}
+
+// Create inserts the TExamSession to the database.
+func (r *TExamSession) Create(db Queryer) error {
+	err := db.QueryRow(
+		`INSERT INTO t_exam_session (exam_id, paper_id, mark_method, period_mode, duration, question_shuffled_mode, mark_mode, name_visibility_in, creator, updated_by, status, addi, session_num, late_entry_time, early_submission_time, reviewer_ids, basic_eval, record, paper_name, paper_category, create_time, update_time, start_time, end_time) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24) RETURNING id`,
+		&r.ExamID, &r.PaperID, &r.MarkMethod, &r.PeriodMode, &r.Duration, &r.QuestionShuffledMode, &r.MarkMode, &r.NameVisibilityIn, &r.Creator, &r.UpdatedBy, &r.Status, &r.Addi, &r.SessionNum, &r.LateEntryTime, &r.EarlySubmissionTime, &r.ReviewerIds, &r.BasicEval, &r.Record, &r.PaperName, &r.PaperCategory, &r.CreateTime, &r.UpdateTime, &r.StartTime, &r.EndTime).Scan(&r.ID)
+	if err != nil {
+		return errors.Wrap(err, "failed to insert t_exam_session")
+	}
+	return nil
+}
+
+// GetTExamSessionByPk select the TExamSession from the database.
+func GetTExamSessionByPk(db Queryer, pk0 null.Int) (*TExamSession, error) {
+
+	var r TExamSession
+	err := db.QueryRow(
+		`SELECT id, exam_id, paper_id, mark_method, period_mode, duration, question_shuffled_mode, mark_mode, name_visibility_in, creator, updated_by, status, addi, session_num, late_entry_time, early_submission_time, reviewer_ids, basic_eval, record, paper_name, paper_category, create_time, update_time, start_time, end_time FROM t_exam_session WHERE id = $1`,
+		pk0).Scan(&r.ID, &r.ExamID, &r.PaperID, &r.MarkMethod, &r.PeriodMode, &r.Duration, &r.QuestionShuffledMode, &r.MarkMode, &r.NameVisibilityIn, &r.Creator, &r.UpdatedBy, &r.Status, &r.Addi, &r.SessionNum, &r.LateEntryTime, &r.EarlySubmissionTime, &r.ReviewerIds, &r.BasicEval, &r.Record, &r.PaperName, &r.PaperCategory, &r.CreateTime, &r.UpdateTime, &r.StartTime, &r.EndTime)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to select t_exam_session")
+	}
+	return &r, nil
+}
+
+/*TExamSite t_exam_site represents assessuser.t_exam_site */
+type TExamSite struct {
+	ID         null.Int       `json:"ID,omitempty" db:"id,true,integer"`                                       /* id 考点编号 */
+	Name       null.String    `json:"Name,omitempty" db:"name,false,character varying"`                        /* name 考点名字 */
+	Address    null.String    `json:"Address,omitempty" db:"address,false,character varying"`                  /* address 考点地址 */
+	ServerHost null.String    `json:"ServerHost,omitempty" db:"server_host,false,character varying"`           /* server_host 考点服务器地址(包含端口) */
+	Creator    null.Int       `json:"Creator,omitempty" db:"creator,false,bigint"`                             /* creator 创建者 */
+	CreateTime null.Int       `json:"CreateTime,omitempty" db:"create_time,false,timestamp without time zone"` /* create_time 创建时间 */
+	UpdatedBy  null.Int       `json:"UpdatedBy,omitempty" db:"updated_by,false,bigint"`                        /* updated_by 更新者 */
+	UpdateTime null.Int       `json:"UpdateTime,omitempty" db:"update_time,false,timestamp without time zone"` /* update_time 更新时间 */
+	Status     null.String    `json:"Status,omitempty" db:"status,false,character varying"`                    /* status 考点状态 00：空闲 02：故障 04：删除 */
+	Addi       types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                                    /* addi 附加信息 */
+	Admin      null.Int       `json:"Admin,omitempty" db:"admin,false,bigint"`                                 /* admin 考点负责人 */
+	Filter                    // build DML where clause
+}
+
+// TExamSiteFields full field list for default query
+var TExamSiteFields = []string{
+	"ID",
+	"Name",
+	"Address",
+	"ServerHost",
+	"Creator",
+	"CreateTime",
+	"UpdatedBy",
+	"UpdateTime",
+	"Status",
+	"Addi",
+	"Admin",
+}
+
+// Fields return all fields of struct.
+func (r *TExamSite) Fields() []string {
+	return TExamSiteFields
+}
+
+// GetTableName return the associated db table name.
+func (r *TExamSite) GetTableName() string {
+	var viewNamePattern = regexp.MustCompile(`(?i)^t_v_[a-z0-9_]+$`)
+	tableName := "t_exam_site"
+	if viewNamePattern.MatchString(tableName) {
+		return tableName[2:]
+	}
+	return tableName
+}
+
+// Create inserts the TExamSite to the database.
+func (r *TExamSite) Create(db Queryer) error {
+	err := db.QueryRow(
+		`INSERT INTO t_exam_site (name, address, server_host, creator, create_time, updated_by, update_time, status, addi, admin) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id`,
+		&r.Name, &r.Address, &r.ServerHost, &r.Creator, &r.CreateTime, &r.UpdatedBy, &r.UpdateTime, &r.Status, &r.Addi, &r.Admin).Scan(&r.ID)
+	if err != nil {
+		return errors.Wrap(err, "failed to insert t_exam_site")
+	}
+	return nil
+}
+
+// GetTExamSiteByPk select the TExamSite from the database.
+func GetTExamSiteByPk(db Queryer, pk0 null.Int) (*TExamSite, error) {
+
+	var r TExamSite
+	err := db.QueryRow(
+		`SELECT id, name, address, server_host, creator, create_time, updated_by, update_time, status, addi, admin FROM t_exam_site WHERE id = $1`,
+		pk0).Scan(&r.ID, &r.Name, &r.Address, &r.ServerHost, &r.Creator, &r.CreateTime, &r.UpdatedBy, &r.UpdateTime, &r.Status, &r.Addi, &r.Admin)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to select t_exam_site")
+	}
+	return &r, nil
+}
+
+/*TExaminee t_examinee represents assessuser.t_examinee */
+type TExaminee struct {
+	ID             null.Int       `json:"ID,omitempty" db:"id,true,integer"`                                     /* id id */
+	StudentID      null.Int       `json:"StudentID,omitempty" db:"student_id,false,bigint"`                      /* student_id 学生编号 */
+	ExamRoom       null.Int       `json:"ExamRoom,omitempty" db:"exam_room,false,bigint"`                        /* exam_room 考场信息 */
+	ExamSessionID  null.Int       `json:"ExamSessionID,omitempty" db:"exam_session_id,false,bigint"`             /* exam_session_id 考试场次编号 */
+	ExamPaperID    null.Int       `json:"ExamPaperID,omitempty" db:"exam_paper_id,false,bigint"`                 /* exam_paper_id 考卷ID */
+	Remark         null.String    `json:"Remark,omitempty" db:"remark,false,character varying"`                  /* remark 备注 */
+	Creator        null.Int       `json:"Creator,omitempty" db:"creator,false,bigint"`                           /* creator 创建者 */
+	UpdatedBy      null.Int       `json:"UpdatedBy,omitempty" db:"updated_by,false,bigint"`                      /* updated_by 更新者 */
+	Status         null.String    `json:"Status,omitempty" db:"status,false,character varying"`                  /* status 状态 00：正常考 02：缺考 04：补考 06：作弊 08：已删除 10：已交卷 12：待同步 14：考试异常 */
+	Addi           types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                                  /* addi 附加信息(备注),可以保存考试异常的原因等 */
+	SerialNumber   null.Int       `json:"SerialNumber,omitempty" db:"serial_number,false,integer"`               /* serial_number serial_number */
+	ExamineeNumber null.String    `json:"ExamineeNumber,omitempty" db:"examinee_number,false,character varying"` /* examinee_number 考生准考证号 */
+	ExtraTime      *time.Duration `json:"ExtraTime,omitempty" db:"extra_time,false,interval"`                    /* extra_time 考试延长时间,单位为分钟,考试实际结束时间=当前考试结束时间+延长时间 */
+	ExitCnt        null.Int       `json:"ExitCnt,omitempty" db:"exit_cnt,false,integer"`                         /* exit_cnt 学生退出考试页面的次数 */
+	CreateTime     null.Int       `json:"CreateTime,omitempty" db:"create_time,false,bigint"`                    /* create_time 创建时间 */
+	UpdateTime     null.Int       `json:"UpdateTime,omitempty" db:"update_time,false,bigint"`                    /* update_time 更新时间 */
+	StartTime      null.Int       `json:"StartTime,omitempty" db:"start_time,false,bigint"`                      /* start_time 学生考试开始时间 */
+	EndTime        null.Int       `json:"EndTime,omitempty" db:"end_time,false,bigint"`                          /* end_time 学生结束考试的时间 */
+	Filter                        // build DML where clause
+}
+
+// TExamineeFields full field list for default query
+var TExamineeFields = []string{
+	"ID",
+	"StudentID",
+	"ExamRoom",
+	"ExamSessionID",
+	"ExamPaperID",
+	"Remark",
+	"Creator",
+	"UpdatedBy",
+	"Status",
+	"Addi",
+	"SerialNumber",
+	"ExamineeNumber",
+	"ExtraTime",
+	"ExitCnt",
+	"CreateTime",
+	"UpdateTime",
+	"StartTime",
+	"EndTime",
+}
+
+// Fields return all fields of struct.
+func (r *TExaminee) Fields() []string {
+	return TExamineeFields
+}
+
+// GetTableName return the associated db table name.
+func (r *TExaminee) GetTableName() string {
+	var viewNamePattern = regexp.MustCompile(`(?i)^t_v_[a-z0-9_]+$`)
+	tableName := "t_examinee"
+	if viewNamePattern.MatchString(tableName) {
+		return tableName[2:]
+	}
+	return tableName
+}
+
+// Create inserts the TExaminee to the database.
+func (r *TExaminee) Create(db Queryer) error {
+	err := db.QueryRow(
+		`INSERT INTO t_examinee (student_id, exam_room, exam_session_id, exam_paper_id, remark, creator, updated_by, status, addi, serial_number, examinee_number, extra_time, exit_cnt, create_time, update_time, start_time, end_time) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17) RETURNING id`,
+		&r.StudentID, &r.ExamRoom, &r.ExamSessionID, &r.ExamPaperID, &r.Remark, &r.Creator, &r.UpdatedBy, &r.Status, &r.Addi, &r.SerialNumber, &r.ExamineeNumber, &r.ExtraTime, &r.ExitCnt, &r.CreateTime, &r.UpdateTime, &r.StartTime, &r.EndTime).Scan(&r.ID)
+	if err != nil {
+		return errors.Wrap(err, "failed to insert t_examinee")
+	}
+	return nil
+}
+
+// GetTExamineeByPk select the TExaminee from the database.
+func GetTExamineeByPk(db Queryer, pk0 null.Int) (*TExaminee, error) {
+
+	var r TExaminee
+	err := db.QueryRow(
+		`SELECT id, student_id, exam_room, exam_session_id, exam_paper_id, remark, creator, updated_by, status, addi, serial_number, examinee_number, extra_time, exit_cnt, create_time, update_time, start_time, end_time FROM t_examinee WHERE id = $1`,
+		pk0).Scan(&r.ID, &r.StudentID, &r.ExamRoom, &r.ExamSessionID, &r.ExamPaperID, &r.Remark, &r.Creator, &r.UpdatedBy, &r.Status, &r.Addi, &r.SerialNumber, &r.ExamineeNumber, &r.ExtraTime, &r.ExitCnt, &r.CreateTime, &r.UpdateTime, &r.StartTime, &r.EndTime)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to select t_examinee")
+	}
+	return &r, nil
+}
+
+/*TExpertise 知识能力领域表 represents assessuser.t_expertise */
 type TExpertise struct {
 	ID         null.Int    `json:"ID,omitempty" db:"id,true,integer"`                    /* id 编号 */
 	Belongto   null.Int    `json:"Belongto,omitempty" db:"belongto,false,bigint"`        /* belongto 上级expertise */
@@ -881,7 +1679,7 @@ func GetTExpertiseByPk(db Queryer, pk0 null.Int) (*TExpertise, error) {
 	return &r, nil
 }
 
-/*TExternalDomainConf 外部系统访问标识 represents kuser.t_external_domain_conf */
+/*TExternalDomainConf 外部系统访问标识 represents assessuser.t_external_domain_conf */
 type TExternalDomainConf struct {
 	ID      null.Int       `json:"ID,omitempty" db:"id,true,integer"`                       /* id 编号 */
 	AppID   string         `json:"AppID,omitempty" db:"app_id,false,character varying"`     /* app_id 外部应用标识，如微信公众号appID */
@@ -958,7 +1756,7 @@ func GetTExternalDomainConfByPk(db Queryer, pk0 null.Int) (*TExternalDomainConf,
 	return &r, nil
 }
 
-/*TExternalDomainUser 第三方平台用户标识 represents kuser.t_external_domain_user */
+/*TExternalDomainUser 第三方平台用户标识 represents assessuser.t_external_domain_user */
 type TExternalDomainUser struct {
 	ID                null.Int       `json:"ID,omitempty" db:"id,true,integer"`                                             /* id 编号 */
 	UserID            null.Int       `json:"UserID,omitempty" db:"user_id,false,bigint"`                                    /* user_id 系统用户编号 */
@@ -1030,7 +1828,7 @@ func GetTExternalDomainUserByPk(db Queryer, pk0 null.Int) (*TExternalDomainUser,
 	return &r, nil
 }
 
-/*TFile 文件描述表 represents kuser.t_file */
+/*TFile 文件描述表 represents assessuser.t_file */
 type TFile struct {
 	ID           null.Int       `json:"ID,omitempty" db:"id,true,integer"`                                 /* id 编号 */
 	FileOid      null.Int       `json:"FileOid,omitempty" db:"file_oid,false,oid"`                         /* file_oid 文件数据库对象编号 */
@@ -1112,7 +1910,7 @@ func GetTFileByPk(db Queryer, pk0 null.Int) (*TFile, error) {
 	return &r, nil
 }
 
-/*TGroup 聊天群，设计参考微信群 represents kuser.t_group */
+/*TGroup 聊天群，设计参考微信群 represents assessuser.t_group */
 type TGroup struct {
 	ID             null.Int       `json:"ID,omitempty" db:"id,true,integer"`                           /* id 编号 */
 	Name           string         `json:"Name,omitempty" db:"name,false,character varying"`            /* name 名称 */
@@ -1192,7 +1990,7 @@ func GetTGroupByPk(db Queryer, pk0 null.Int) (*TGroup, error) {
 	return &r, nil
 }
 
-/*TImportData excel导入表 represents kuser.t_import_data */
+/*TImportData excel导入表 represents assessuser.t_import_data */
 type TImportData struct {
 	ID         null.Int       `json:"ID,omitempty" db:"id,true,integer"`                             /* id 参数编号 */
 	Name       null.String    `json:"Name,omitempty" db:"name,false,character varying"`              /* name 导入数据名称 */
@@ -1276,7 +2074,7 @@ func GetTImportDataByPk(db Queryer, pk0 null.Int) (*TImportData, error) {
 	return &r, nil
 }
 
-/*TInsurancePolicy 保险单 represents kuser.t_insurance_policy */
+/*TInsurancePolicy 保险单 represents assessuser.t_insurance_policy */
 type TInsurancePolicy struct {
 	ID                      null.Int       `json:"ID,omitempty" db:"id,true,integer"`                                              /* id 编号 */
 	Sn                      null.String    `json:"Sn,omitempty" db:"sn,false,character varying"`                                   /* sn 保单号 */
@@ -1517,7 +2315,7 @@ func GetTInsurancePolicyByPk(db Queryer, pk0 null.Int) (*TInsurancePolicy, error
 	return &r, nil
 }
 
-/*TInsuranceTypes 保险类型表 represents kuser.t_insurance_types */
+/*TInsuranceTypes 保险类型表 represents assessuser.t_insurance_types */
 type TInsuranceTypes struct {
 	ID                      null.Int       `json:"ID,omitempty" db:"id,true,integer"`                                                /* id 保险产品id */
 	RefID                   null.Int       `json:"RefID,omitempty" db:"ref_id,false,bigint"`                                         /* ref_id 机构引用的保险方案编码，即本表 org_id=0 and data_type="4" and parent_id=各险种ID的数据 */
@@ -1697,7 +2495,7 @@ func GetTInsuranceTypesByPk(db Queryer, pk0 null.Int) (*TInsuranceTypes, error) 
 	return &r, nil
 }
 
-/*TInsureAttach 保单附件 represents kuser.t_insure_attach */
+/*TInsureAttach 保单附件 represents assessuser.t_insure_attach */
 type TInsureAttach struct {
 	ID             null.Int       `json:"ID,omitempty" db:"id,true,integer"`                           /* id 编号 */
 	TUID           null.Int       `json:"TUID,omitempty" db:"t_u_id,false,bigint"`                     /* t_u_id 用户内部编号 */
@@ -1781,7 +2579,7 @@ func GetTInsureAttachByPk(db Queryer, pk0 null.Int) (*TInsureAttach, error) {
 	return &r, nil
 }
 
-/*TInsuredDetail 清单表，校车的校车信息 校车承运人存在同一行，但前端分开显示 represents kuser.t_insured_detail */
+/*TInsuredDetail 清单表，校车的校车信息 校车承运人存在同一行，但前端分开显示 represents assessuser.t_insured_detail */
 type TInsuredDetail struct {
 	ID                    null.Int       `json:"ID,omitempty" db:"id,true,integer"`                                           /* id 主键 */
 	Type                  null.String    `json:"Type,omitempty" db:"type,false,character varying"`                            /* type 清单类别 */
@@ -1907,7 +2705,7 @@ func GetTInsuredDetailByPk(db Queryer, pk0 null.Int) (*TInsuredDetail, error) {
 	return &r, nil
 }
 
-/*TInsuredTerms 保险条款 represents kuser.t_insured_terms */
+/*TInsuredTerms 保险条款 represents assessuser.t_insured_terms */
 type TInsuredTerms struct {
 	ID              null.Int       `json:"ID,omitempty" db:"id,true,integer"`                             /* id 编号 */
 	InsuranceTypeID null.Int       `json:"InsuranceTypeID,omitempty" db:"insurance_type_id,false,bigint"` /* insurance_type_id 保险类型 */
@@ -1983,7 +2781,73 @@ func GetTInsuredTermsByPk(db Queryer, pk0 null.Int) (*TInsuredTerms, error) {
 	return &r, nil
 }
 
-/*TJudge 鉴定邀请表 represents kuser.t_judge */
+/*TInvigilation t_invigilation represents assessuser.t_invigilation */
+type TInvigilation struct {
+	ID            null.Int       `json:"ID,omitempty" db:"id,true,integer"`                                       /* id 编号 */
+	ExamSessionID null.Int       `json:"ExamSessionID,omitempty" db:"exam_session_id,true,bigint"`                /* exam_session_id 考试场次id */
+	Creator       null.Int       `json:"Creator,omitempty" db:"creator,false,bigint"`                             /* creator 创建者 */
+	CreateTime    null.Int       `json:"CreateTime,omitempty" db:"create_time,false,timestamp without time zone"` /* create_time 创建时间 */
+	UpdatedBy     null.Int       `json:"UpdatedBy,omitempty" db:"updated_by,false,bigint"`                        /* updated_by 更新者 */
+	UpdateTime    null.Int       `json:"UpdateTime,omitempty" db:"update_time,false,timestamp without time zone"` /* update_time 更新时间 */
+	Addi          types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                                    /* addi 附加信息 */
+	Invigilator   null.Int       `json:"Invigilator,omitempty" db:"invigilator,true,bigint"`                      /* invigilator 监考员ID */
+	ExamRoom      null.Int       `json:"ExamRoom,omitempty" db:"exam_room,true,bigint"`                           /* exam_room exam_room */
+	Filter                       // build DML where clause
+}
+
+// TInvigilationFields full field list for default query
+var TInvigilationFields = []string{
+	"ID",
+	"ExamSessionID",
+	"Creator",
+	"CreateTime",
+	"UpdatedBy",
+	"UpdateTime",
+	"Addi",
+	"Invigilator",
+	"ExamRoom",
+}
+
+// Fields return all fields of struct.
+func (r *TInvigilation) Fields() []string {
+	return TInvigilationFields
+}
+
+// GetTableName return the associated db table name.
+func (r *TInvigilation) GetTableName() string {
+	var viewNamePattern = regexp.MustCompile(`(?i)^t_v_[a-z0-9_]+$`)
+	tableName := "t_invigilation"
+	if viewNamePattern.MatchString(tableName) {
+		return tableName[2:]
+	}
+	return tableName
+}
+
+// Create inserts the TInvigilation to the database.
+func (r *TInvigilation) Create(db Queryer) error {
+	err := db.QueryRow(
+		`INSERT INTO t_invigilation (creator, create_time, updated_by, update_time, addi) VALUES ($1, $2, $3, $4, $5) RETURNING id, exam_session_id, invigilator, exam_room`,
+		&r.Creator, &r.CreateTime, &r.UpdatedBy, &r.UpdateTime, &r.Addi).Scan(&r.ID, &r.ExamSessionID, &r.Invigilator, &r.ExamRoom)
+	if err != nil {
+		return errors.Wrap(err, "failed to insert t_invigilation")
+	}
+	return nil
+}
+
+// GetTInvigilationByPk select the TInvigilation from the database.
+func GetTInvigilationByPk(db Queryer, pk0 null.Int, pk1 null.Int, pk7 null.Int, pk8 null.Int) (*TInvigilation, error) {
+
+	var r TInvigilation
+	err := db.QueryRow(
+		`SELECT id, exam_session_id, creator, create_time, updated_by, update_time, addi, invigilator, exam_room FROM t_invigilation WHERE id = $1 AND exam_session_id = $2 AND invigilator = $3 AND exam_room = $4`,
+		pk0, pk1, pk7, pk8).Scan(&r.ID, &r.ExamSessionID, &r.Creator, &r.CreateTime, &r.UpdatedBy, &r.UpdateTime, &r.Addi, &r.Invigilator, &r.ExamRoom)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to select t_invigilation")
+	}
+	return &r, nil
+}
+
+/*TJudge 鉴定邀请表 represents assessuser.t_judge */
 type TJudge struct {
 	ID          null.Int    `json:"ID,omitempty" db:"id,true,integer"`                    /* id 评价编号 */
 	DeveloperID null.Int    `json:"DeveloperID,omitempty" db:"developer_id,false,bigint"` /* developer_id 被鉴定人 */
@@ -2048,7 +2912,7 @@ func GetTJudgeByPk(db Queryer, pk0 null.Int) (*TJudge, error) {
 	return &r, nil
 }
 
-/*TLog t_log represents kuser.t_log */
+/*TLog t_log represents assessuser.t_log */
 type TLog struct {
 	ID            null.Int    `json:"ID,omitempty" db:"id,true,integer"`                                    /* id 编号 */
 	Grade         null.String `json:"Grade,omitempty" db:"grade,false,character varying"`                   /* grade 等级 */
@@ -2118,7 +2982,161 @@ func GetTLogByPk(db Queryer, pk0 null.Int) (*TLog, error) {
 	return &r, nil
 }
 
-/*TMistakeCorrect 报错 represents kuser.t_mistake_correct */
+/*TMark t_mark represents assessuser.t_mark */
+type TMark struct {
+	ID                   null.Int       `json:"ID,omitempty" db:"id,true,integer"`                                       /* id id */
+	TeacherID            null.Int       `json:"TeacherID,omitempty" db:"teacher_id,false,bigint"`                        /* teacher_id 批阅教师id */
+	ExamineeID           null.Int       `json:"ExamineeID,omitempty" db:"examinee_id,false,bigint"`                      /* examinee_id 批改的考生id */
+	QuestionID           null.Int       `json:"QuestionID,omitempty" db:"question_id,false,bigint"`                      /* question_id 题目id */
+	ExamSessionID        null.Int       `json:"ExamSessionID,omitempty" db:"exam_session_id,false,bigint"`               /* exam_session_id 考试场次id */
+	MarkDetails          types.JSONText `json:"MarkDetails,omitempty" db:"mark_details,false,jsonb"`                     /* mark_details 批改结果 */
+	Status               null.String    `json:"Status,omitempty" db:"status,false,character varying"`                    /* status 状态 00:正常 02 */
+	Addi                 types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                                    /* addi 附加信息 */
+	Creator              null.Int       `json:"Creator,omitempty" db:"creator,false,bigint"`                             /* creator 创建者 */
+	CreateTime           null.Int       `json:"CreateTime,omitempty" db:"create_time,false,timestamp without time zone"` /* create_time 创建时间 */
+	UpdatedBy            null.Int       `json:"UpdatedBy,omitempty" db:"updated_by,false,bigint"`                        /* updated_by 更新者 */
+	UpdateTime           null.Int       `json:"UpdateTime,omitempty" db:"update_time,false,timestamp without time zone"` /* update_time 更新时间 */
+	Score                null.Float     `json:"Score,omitempty" db:"score,false,double precision"`                       /* score score */
+	PracticeSubmissionID null.Int       `json:"PracticeSubmissionID,omitempty" db:"practice_submission_id,false,bigint"` /* practice_submission_id 练习提交id */
+	PracticeID           null.Int       `json:"PracticeID,omitempty" db:"practice_id,false,bigint"`                      /* practice_id 练习id */
+	Filter                              // build DML where clause
+}
+
+// TMarkFields full field list for default query
+var TMarkFields = []string{
+	"ID",
+	"TeacherID",
+	"ExamineeID",
+	"QuestionID",
+	"ExamSessionID",
+	"MarkDetails",
+	"Status",
+	"Addi",
+	"Creator",
+	"CreateTime",
+	"UpdatedBy",
+	"UpdateTime",
+	"Score",
+	"PracticeSubmissionID",
+	"PracticeID",
+}
+
+// Fields return all fields of struct.
+func (r *TMark) Fields() []string {
+	return TMarkFields
+}
+
+// GetTableName return the associated db table name.
+func (r *TMark) GetTableName() string {
+	var viewNamePattern = regexp.MustCompile(`(?i)^t_v_[a-z0-9_]+$`)
+	tableName := "t_mark"
+	if viewNamePattern.MatchString(tableName) {
+		return tableName[2:]
+	}
+	return tableName
+}
+
+// Create inserts the TMark to the database.
+func (r *TMark) Create(db Queryer) error {
+	err := db.QueryRow(
+		`INSERT INTO t_mark (teacher_id, examinee_id, question_id, exam_session_id, mark_details, status, addi, creator, create_time, updated_by, update_time, score, practice_submission_id, practice_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) RETURNING id`,
+		&r.TeacherID, &r.ExamineeID, &r.QuestionID, &r.ExamSessionID, &r.MarkDetails, &r.Status, &r.Addi, &r.Creator, &r.CreateTime, &r.UpdatedBy, &r.UpdateTime, &r.Score, &r.PracticeSubmissionID, &r.PracticeID).Scan(&r.ID)
+	if err != nil {
+		return errors.Wrap(err, "failed to insert t_mark")
+	}
+	return nil
+}
+
+// GetTMarkByPk select the TMark from the database.
+func GetTMarkByPk(db Queryer, pk0 null.Int) (*TMark, error) {
+
+	var r TMark
+	err := db.QueryRow(
+		`SELECT id, teacher_id, examinee_id, question_id, exam_session_id, mark_details, status, addi, creator, create_time, updated_by, update_time, score, practice_submission_id, practice_id FROM t_mark WHERE id = $1`,
+		pk0).Scan(&r.ID, &r.TeacherID, &r.ExamineeID, &r.QuestionID, &r.ExamSessionID, &r.MarkDetails, &r.Status, &r.Addi, &r.Creator, &r.CreateTime, &r.UpdatedBy, &r.UpdateTime, &r.Score, &r.PracticeSubmissionID, &r.PracticeID)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to select t_mark")
+	}
+	return &r, nil
+}
+
+/*TMarkInfo t_mark_info represents assessuser.t_mark_info */
+type TMarkInfo struct {
+	ID                 null.Int       `json:"ID,omitempty" db:"id,true,integer"`                                       /* id id */
+	ExamSessionID      null.Int       `json:"ExamSessionID,omitempty" db:"exam_session_id,false,bigint"`               /* exam_session_id 考试场次id */
+	MarkTeacherID      null.Int       `json:"MarkTeacherID,omitempty" db:"mark_teacher_id,false,bigint"`               /* mark_teacher_id 批改员id */
+	MarkCount          null.Int       `json:"MarkCount,omitempty" db:"mark_count,false,integer"`                       /* mark_count 批改份数 */
+	MarkQuestionGroups types.JSONText `json:"MarkQuestionGroups,omitempty" db:"mark_question_groups,false,jsonb"`      /* mark_question_groups 批改题组 */
+	MarkExamineeIds    types.JSONText `json:"MarkExamineeIds,omitempty" db:"mark_examinee_ids,false,jsonb"`            /* mark_examinee_ids 批改的学生数组 */
+	Creator            null.Int       `json:"Creator,omitempty" db:"creator,false,bigint"`                             /* creator 创建者 */
+	CreateTime         null.Int       `json:"CreateTime,omitempty" db:"create_time,false,timestamp without time zone"` /* create_time 创建时间 */
+	UpdatedBy          null.Int       `json:"UpdatedBy,omitempty" db:"updated_by,false,bigint"`                        /* updated_by 更新者 */
+	UpdateTime         null.Int       `json:"UpdateTime,omitempty" db:"update_time,false,timestamp without time zone"` /* update_time 更新时间 */
+	Addi               types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                                    /* addi 附加信息 */
+	Status             null.String    `json:"Status,omitempty" db:"status,false,character varying"`                    /* status 00:正常 02: 已改完 04: 已删除 */
+	QuestionIds        types.JSONText `json:"QuestionIds,omitempty" db:"question_ids,false,jsonb"`                     /* question_ids 批改的题目集 */
+	PracticeID         null.Int       `json:"PracticeID,omitempty" db:"practice_id,false,bigint"`                      /* practice_id 练习id */
+	Filter                            // build DML where clause
+}
+
+// TMarkInfoFields full field list for default query
+var TMarkInfoFields = []string{
+	"ID",
+	"ExamSessionID",
+	"MarkTeacherID",
+	"MarkCount",
+	"MarkQuestionGroups",
+	"MarkExamineeIds",
+	"Creator",
+	"CreateTime",
+	"UpdatedBy",
+	"UpdateTime",
+	"Addi",
+	"Status",
+	"QuestionIds",
+	"PracticeID",
+}
+
+// Fields return all fields of struct.
+func (r *TMarkInfo) Fields() []string {
+	return TMarkInfoFields
+}
+
+// GetTableName return the associated db table name.
+func (r *TMarkInfo) GetTableName() string {
+	var viewNamePattern = regexp.MustCompile(`(?i)^t_v_[a-z0-9_]+$`)
+	tableName := "t_mark_info"
+	if viewNamePattern.MatchString(tableName) {
+		return tableName[2:]
+	}
+	return tableName
+}
+
+// Create inserts the TMarkInfo to the database.
+func (r *TMarkInfo) Create(db Queryer) error {
+	err := db.QueryRow(
+		`INSERT INTO t_mark_info (exam_session_id, mark_teacher_id, mark_count, mark_question_groups, mark_examinee_ids, creator, create_time, updated_by, update_time, addi, status, question_ids, practice_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) RETURNING id`,
+		&r.ExamSessionID, &r.MarkTeacherID, &r.MarkCount, &r.MarkQuestionGroups, &r.MarkExamineeIds, &r.Creator, &r.CreateTime, &r.UpdatedBy, &r.UpdateTime, &r.Addi, &r.Status, &r.QuestionIds, &r.PracticeID).Scan(&r.ID)
+	if err != nil {
+		return errors.Wrap(err, "failed to insert t_mark_info")
+	}
+	return nil
+}
+
+// GetTMarkInfoByPk select the TMarkInfo from the database.
+func GetTMarkInfoByPk(db Queryer, pk0 null.Int) (*TMarkInfo, error) {
+
+	var r TMarkInfo
+	err := db.QueryRow(
+		`SELECT id, exam_session_id, mark_teacher_id, mark_count, mark_question_groups, mark_examinee_ids, creator, create_time, updated_by, update_time, addi, status, question_ids, practice_id FROM t_mark_info WHERE id = $1`,
+		pk0).Scan(&r.ID, &r.ExamSessionID, &r.MarkTeacherID, &r.MarkCount, &r.MarkQuestionGroups, &r.MarkExamineeIds, &r.Creator, &r.CreateTime, &r.UpdatedBy, &r.UpdateTime, &r.Addi, &r.Status, &r.QuestionIds, &r.PracticeID)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to select t_mark_info")
+	}
+	return &r, nil
+}
+
+/*TMistakeCorrect 报错 represents assessuser.t_mistake_correct */
 type TMistakeCorrect struct {
 	ID                       null.Int       `json:"ID,omitempty" db:"id,true,integer"`                                                /* id id */
 	OrderID                  null.Int       `json:"OrderID,omitempty" db:"order_id,false,bigint"`                                     /* order_id order_id */
@@ -2330,8 +3348,10 @@ func GetTMistakeCorrectByPk(db Queryer, pk0 null.Int) (*TMistakeCorrect, error) 
 	return &r, nil
 }
 
-/*TMsg 即时通信消息表
-represents kuser.t_msg */
+/*
+TMsg 即时通信消息表
+represents assessuser.t_msg
+*/
 type TMsg struct {
 	ID     null.Int       `json:"ID,omitempty" db:"id,true,integer"`         /* id 参数编号 */
 	Sender null.Int       `json:"Sender,omitempty" db:"sender,false,bigint"` /* sender 消息发送者ID */
@@ -2420,7 +3440,7 @@ func GetTMsgByPk(db Queryer, pk0 null.Int) (*TMsg, error) {
 	return &r, nil
 }
 
-/*TMsgStatus 消息状态 represents kuser.t_msg_status */
+/*TMsgStatus 消息状态 represents assessuser.t_msg_status */
 type TMsgStatus struct {
 	ID           null.Int       `json:"ID,omitempty" db:"id,true,integer"`                      /* id 参数编号 */
 	MsgID        null.Int       `json:"MsgID,omitempty" db:"msg_id,false,bigint"`               /* msg_id 消息编号 */
@@ -2490,7 +3510,7 @@ func GetTMsgStatusByPk(db Queryer, pk0 null.Int) (*TMsgStatus, error) {
 	return &r, nil
 }
 
-/*TMyContact 聊天联系人， 可能是组或用户，参考微信通讯录设计 represents kuser.t_my_contact */
+/*TMyContact 聊天联系人， 可能是组或用户，参考微信通讯录设计 represents assessuser.t_my_contact */
 type TMyContact struct {
 	ID          null.Int       `json:"ID,omitempty" db:"id,true,integer"`                               /* id 参数编号 */
 	MyID        null.Int       `json:"MyID,omitempty" db:"my_id,false,bigint"`                          /* my_id 联系人拥有者 */
@@ -2564,7 +3584,7 @@ func GetTMyContactByPk(db Queryer, pk0 null.Int) (*TMyContact, error) {
 	return &r, nil
 }
 
-/*TNegotiatedPrice 协议价表 represents kuser.t_negotiated_price */
+/*TNegotiatedPrice 协议价表 represents assessuser.t_negotiated_price */
 type TNegotiatedPrice struct {
 	ID              null.Int       `json:"ID,omitempty" db:"id,true,integer"`                             /* id 议价表设置编号 */
 	Keyword         null.String    `json:"Keyword,omitempty" db:"keyword,false,character varying"`        /* keyword 关键词 */
@@ -2652,7 +3672,75 @@ func GetTNegotiatedPriceByPk(db Queryer, pk0 null.Int) (*TNegotiatedPrice, error
 	return &r, nil
 }
 
-/*TOrder 订单 represents kuser.t_order */
+/*TOperationLogs t_operation_logs represents assessuser.t_operation_logs */
+type TOperationLogs struct {
+	ID            null.Int       `json:"ID,omitempty" db:"id,true,integer"`                                       /* id 日志ID */
+	Module        string         `json:"Module,omitempty" db:"module,false,character varying"`                    /* module 模块标识 00：题库管理、02：试卷管理、04:考试管理、06：练习管理 */
+	EntityID      null.Int       `json:"EntityID,omitempty" db:"entity_id,false,bigint"`                          /* entity_id 操作业务ID（如试卷ID、题库ID） */
+	ChangeContent types.JSONText `json:"ChangeContent,omitempty" db:"change_content,false,jsonb"`                 /* change_content 修改内容 */
+	Creator       null.Int       `json:"Creator,omitempty" db:"creator,false,bigint"`                             /* creator 操作人ID */
+	CreateTime    null.Int       `json:"CreateTime,omitempty" db:"create_time,false,timestamp without time zone"` /* create_time 操作时间 */
+	UpdatedBy     null.Int       `json:"UpdatedBy,omitempty" db:"updated_by,false,bigint"`                        /* updated_by 更新者 */
+	UpdateTime    null.Int       `json:"UpdateTime,omitempty" db:"update_time,false,timestamp without time zone"` /* update_time 更新时间 */
+	Status        null.String    `json:"Status,omitempty" db:"status,false,character varying"`                    /* status 状态 00: 正常 02：已删除 */
+	Addi          types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                                    /* addi 附加信息 */
+	Filter                       // build DML where clause
+}
+
+// TOperationLogsFields full field list for default query
+var TOperationLogsFields = []string{
+	"ID",
+	"Module",
+	"EntityID",
+	"ChangeContent",
+	"Creator",
+	"CreateTime",
+	"UpdatedBy",
+	"UpdateTime",
+	"Status",
+	"Addi",
+}
+
+// Fields return all fields of struct.
+func (r *TOperationLogs) Fields() []string {
+	return TOperationLogsFields
+}
+
+// GetTableName return the associated db table name.
+func (r *TOperationLogs) GetTableName() string {
+	var viewNamePattern = regexp.MustCompile(`(?i)^t_v_[a-z0-9_]+$`)
+	tableName := "t_operation_logs"
+	if viewNamePattern.MatchString(tableName) {
+		return tableName[2:]
+	}
+	return tableName
+}
+
+// Create inserts the TOperationLogs to the database.
+func (r *TOperationLogs) Create(db Queryer) error {
+	err := db.QueryRow(
+		`INSERT INTO t_operation_logs (module, entity_id, change_content, creator, create_time, updated_by, update_time, status, addi) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
+		&r.Module, &r.EntityID, &r.ChangeContent, &r.Creator, &r.CreateTime, &r.UpdatedBy, &r.UpdateTime, &r.Status, &r.Addi).Scan(&r.ID)
+	if err != nil {
+		return errors.Wrap(err, "failed to insert t_operation_logs")
+	}
+	return nil
+}
+
+// GetTOperationLogsByPk select the TOperationLogs from the database.
+func GetTOperationLogsByPk(db Queryer, pk0 null.Int) (*TOperationLogs, error) {
+
+	var r TOperationLogs
+	err := db.QueryRow(
+		`SELECT id, module, entity_id, change_content, creator, create_time, updated_by, update_time, status, addi FROM t_operation_logs WHERE id = $1`,
+		pk0).Scan(&r.ID, &r.Module, &r.EntityID, &r.ChangeContent, &r.Creator, &r.CreateTime, &r.UpdatedBy, &r.UpdateTime, &r.Status, &r.Addi)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to select t_operation_logs")
+	}
+	return &r, nil
+}
+
+/*TOrder 订单 represents assessuser.t_order */
 type TOrder struct {
 	ID                      null.Int       `json:"ID,omitempty" db:"id,true,integer"`                                              /* id 订单编号 */
 	TradeNo                 null.String    `json:"TradeNo,omitempty" db:"trade_no,false,character varying"`                        /* trade_no 外部订单号 */
@@ -2969,7 +4057,292 @@ func GetTOrderByPk(db Queryer, pk0 null.Int) (*TOrder, error) {
 	return &r, nil
 }
 
-/*TParam 提供用户设置参数
+/*TPaper t_paper represents assessuser.t_paper */
+type TPaper struct {
+	ID                null.Int       `json:"ID,omitempty" db:"id,true,integer"`                                 /* id 试卷ID */
+	Name              null.String    `json:"Name,omitempty" db:"name,false,character varying"`                  /* name 试卷名称 */
+	AssemblyType      null.String    `json:"AssemblyType,omitempty" db:"assembly_type,false,character varying"` /* assembly_type 组卷方式 00：自定义组卷 02：随机组卷 04：智能刷题 */
+	Category          null.String    `json:"Category,omitempty" db:"category,false,character varying"`          /* category 试卷用途 00：考试 02：练习 */
+	Level             null.String    `json:"Level,omitempty" db:"level,false,character varying"`                /* level 试卷难度 00：简单 02：中等 04：困难 */
+	SuggestedDuration null.Int       `json:"SuggestedDuration,omitempty" db:"suggested_duration,false,integer"` /* suggested_duration 建议时长，单位为分钟 */
+	Description       null.String    `json:"Description,omitempty" db:"description,false,text"`                 /* description 试卷说明，介绍整张试卷 */
+	Tags              types.JSONText `json:"Tags,omitempty" db:"tags,false,jsonb"`                              /* tags 试卷标签 */
+	Config            types.JSONText `json:"Config,omitempty" db:"config,false,jsonb"`                          /* config 随机组卷或智能刷题配置 */
+	Creator           null.Int       `json:"Creator,omitempty" db:"creator,false,bigint"`                       /* creator 创建者 */
+	CreateTime        null.Int       `json:"CreateTime,omitempty" db:"create_time,false,bigint"`                /* create_time 创建时间 */
+	UpdatedBy         null.Int       `json:"UpdatedBy,omitempty" db:"updated_by,false,bigint"`                  /* updated_by 更新者 */
+	UpdateTime        null.Int       `json:"UpdateTime,omitempty" db:"update_time,false,bigint"`                /* update_time 更新时间 */
+	Addi              types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                              /* addi 附加信息 */
+	Status            null.String    `json:"Status,omitempty" db:"status,false,character varying"`              /* status 状态 00：正常， 02：异常 */
+	AccessMode        null.String    `json:"AccessMode,omitempty" db:"access_mode,false,character varying"`     /* access_mode 试卷访问权限，00私有 02共享 04公开 */
+	Filter                           // build DML where clause
+}
+
+// TPaperFields full field list for default query
+var TPaperFields = []string{
+	"ID",
+	"Name",
+	"AssemblyType",
+	"Category",
+	"Level",
+	"SuggestedDuration",
+	"Description",
+	"Tags",
+	"Config",
+	"Creator",
+	"CreateTime",
+	"UpdatedBy",
+	"UpdateTime",
+	"Addi",
+	"Status",
+	"AccessMode",
+}
+
+// Fields return all fields of struct.
+func (r *TPaper) Fields() []string {
+	return TPaperFields
+}
+
+// GetTableName return the associated db table name.
+func (r *TPaper) GetTableName() string {
+	var viewNamePattern = regexp.MustCompile(`(?i)^t_v_[a-z0-9_]+$`)
+	tableName := "t_paper"
+	if viewNamePattern.MatchString(tableName) {
+		return tableName[2:]
+	}
+	return tableName
+}
+
+// Create inserts the TPaper to the database.
+func (r *TPaper) Create(db Queryer) error {
+	err := db.QueryRow(
+		`INSERT INTO t_paper (name, assembly_type, category, level, suggested_duration, description, tags, config, creator, create_time, updated_by, update_time, addi, status, access_mode) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15) RETURNING id`,
+		&r.Name, &r.AssemblyType, &r.Category, &r.Level, &r.SuggestedDuration, &r.Description, &r.Tags, &r.Config, &r.Creator, &r.CreateTime, &r.UpdatedBy, &r.UpdateTime, &r.Addi, &r.Status, &r.AccessMode).Scan(&r.ID)
+	if err != nil {
+		return errors.Wrap(err, "failed to insert t_paper")
+	}
+	return nil
+}
+
+// GetTPaperByPk select the TPaper from the database.
+func GetTPaperByPk(db Queryer, pk0 null.Int) (*TPaper, error) {
+
+	var r TPaper
+	err := db.QueryRow(
+		`SELECT id, name, assembly_type, category, level, suggested_duration, description, tags, config, creator, create_time, updated_by, update_time, addi, status, access_mode FROM t_paper WHERE id = $1`,
+		pk0).Scan(&r.ID, &r.Name, &r.AssemblyType, &r.Category, &r.Level, &r.SuggestedDuration, &r.Description, &r.Tags, &r.Config, &r.Creator, &r.CreateTime, &r.UpdatedBy, &r.UpdateTime, &r.Addi, &r.Status, &r.AccessMode)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to select t_paper")
+	}
+	return &r, nil
+}
+
+/*TPaperGroup t_paper_group represents assessuser.t_paper_group */
+type TPaperGroup struct {
+	ID         null.Int       `json:"ID,omitempty" db:"id,true,integer"`                    /* id 题组ID */
+	PaperID    null.Int       `json:"PaperID,omitempty" db:"paper_id,false,bigint"`         /* paper_id 试卷ID */
+	Name       null.String    `json:"Name,omitempty" db:"name,false,text"`                  /* name 题组名称 */
+	Order      null.Int       `json:"Order,omitempty" db:"order,false,integer"`             /* order 题组排序 */
+	Creator    null.Int       `json:"Creator,omitempty" db:"creator,false,bigint"`          /* creator 创建者 */
+	CreateTime null.Int       `json:"CreateTime,omitempty" db:"create_time,false,bigint"`   /* create_time 创建时间 */
+	UpdatedBy  null.Int       `json:"UpdatedBy,omitempty" db:"updated_by,false,bigint"`     /* updated_by 更新者 */
+	UpdateTime null.Int       `json:"UpdateTime,omitempty" db:"update_time,false,bigint"`   /* update_time 更新时间 */
+	Addi       types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                 /* addi 附加信息 */
+	Status     null.String    `json:"Status,omitempty" db:"status,false,character varying"` /* status 状态 00：正常， 02：异常 */
+	Filter                    // build DML where clause
+}
+
+// TPaperGroupFields full field list for default query
+var TPaperGroupFields = []string{
+	"ID",
+	"PaperID",
+	"Name",
+	"Order",
+	"Creator",
+	"CreateTime",
+	"UpdatedBy",
+	"UpdateTime",
+	"Addi",
+	"Status",
+}
+
+// Fields return all fields of struct.
+func (r *TPaperGroup) Fields() []string {
+	return TPaperGroupFields
+}
+
+// GetTableName return the associated db table name.
+func (r *TPaperGroup) GetTableName() string {
+	var viewNamePattern = regexp.MustCompile(`(?i)^t_v_[a-z0-9_]+$`)
+	tableName := "t_paper_group"
+	if viewNamePattern.MatchString(tableName) {
+		return tableName[2:]
+	}
+	return tableName
+}
+
+// Create inserts the TPaperGroup to the database.
+func (r *TPaperGroup) Create(db Queryer) error {
+	err := db.QueryRow(
+		`INSERT INTO t_paper_group (paper_id, name, order, creator, create_time, updated_by, update_time, addi, status) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
+		&r.PaperID, &r.Name, &r.Order, &r.Creator, &r.CreateTime, &r.UpdatedBy, &r.UpdateTime, &r.Addi, &r.Status).Scan(&r.ID)
+	if err != nil {
+		return errors.Wrap(err, "failed to insert t_paper_group")
+	}
+	return nil
+}
+
+// GetTPaperGroupByPk select the TPaperGroup from the database.
+func GetTPaperGroupByPk(db Queryer, pk0 null.Int) (*TPaperGroup, error) {
+
+	var r TPaperGroup
+	err := db.QueryRow(
+		`SELECT id, paper_id, name, order, creator, create_time, updated_by, update_time, addi, status FROM t_paper_group WHERE id = $1`,
+		pk0).Scan(&r.ID, &r.PaperID, &r.Name, &r.Order, &r.Creator, &r.CreateTime, &r.UpdatedBy, &r.UpdateTime, &r.Addi, &r.Status)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to select t_paper_group")
+	}
+	return &r, nil
+}
+
+/*TPaperQuestion t_paper_question represents assessuser.t_paper_question */
+type TPaperQuestion struct {
+	ID             null.Int       `json:"ID,omitempty" db:"id,true,integer"`                           /* id 试卷题目ID */
+	BankQuestionID null.Int       `json:"BankQuestionID,omitempty" db:"bank_question_id,false,bigint"` /* bank_question_id 题库题目ID */
+	Order          null.Int       `json:"Order,omitempty" db:"order,false,integer"`                    /* order 题目序号 */
+	GroupID        null.Int       `json:"GroupID,omitempty" db:"group_id,false,bigint"`                /* group_id 所在题组ID */
+	Score          null.Float     `json:"Score,omitempty" db:"score,false,double precision"`           /* score 在试卷中的分值 */
+	SubScore       types.JSONText `json:"SubScore,omitempty" db:"sub_score,false,jsonb"`               /* sub_score 主观题小题分 [1,2,3] 分别存储主观题每小题分数 */
+	Creator        null.Int       `json:"Creator,omitempty" db:"creator,false,bigint"`                 /* creator 创建者 */
+	CreateTime     null.Int       `json:"CreateTime,omitempty" db:"create_time,false,bigint"`          /* create_time 创建时间 */
+	UpdatedBy      null.Int       `json:"UpdatedBy,omitempty" db:"updated_by,false,bigint"`            /* updated_by 更新者 */
+	UpdateTime     null.Int       `json:"UpdateTime,omitempty" db:"update_time,false,bigint"`          /* update_time 更新时间 */
+	Addi           types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                        /* addi 附加信息 */
+	Status         null.String    `json:"Status,omitempty" db:"status,false,character varying"`        /* status 状态 00：正常 02：异常 */
+	Filter                        // build DML where clause
+}
+
+// TPaperQuestionFields full field list for default query
+var TPaperQuestionFields = []string{
+	"ID",
+	"BankQuestionID",
+	"Order",
+	"GroupID",
+	"Score",
+	"SubScore",
+	"Creator",
+	"CreateTime",
+	"UpdatedBy",
+	"UpdateTime",
+	"Addi",
+	"Status",
+}
+
+// Fields return all fields of struct.
+func (r *TPaperQuestion) Fields() []string {
+	return TPaperQuestionFields
+}
+
+// GetTableName return the associated db table name.
+func (r *TPaperQuestion) GetTableName() string {
+	var viewNamePattern = regexp.MustCompile(`(?i)^t_v_[a-z0-9_]+$`)
+	tableName := "t_paper_question"
+	if viewNamePattern.MatchString(tableName) {
+		return tableName[2:]
+	}
+	return tableName
+}
+
+// Create inserts the TPaperQuestion to the database.
+func (r *TPaperQuestion) Create(db Queryer) error {
+	err := db.QueryRow(
+		`INSERT INTO t_paper_question (bank_question_id, order, group_id, score, sub_score, creator, create_time, updated_by, update_time, addi, status) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING id`,
+		&r.BankQuestionID, &r.Order, &r.GroupID, &r.Score, &r.SubScore, &r.Creator, &r.CreateTime, &r.UpdatedBy, &r.UpdateTime, &r.Addi, &r.Status).Scan(&r.ID)
+	if err != nil {
+		return errors.Wrap(err, "failed to insert t_paper_question")
+	}
+	return nil
+}
+
+// GetTPaperQuestionByPk select the TPaperQuestion from the database.
+func GetTPaperQuestionByPk(db Queryer, pk0 null.Int) (*TPaperQuestion, error) {
+
+	var r TPaperQuestion
+	err := db.QueryRow(
+		`SELECT id, bank_question_id, order, group_id, score, sub_score, creator, create_time, updated_by, update_time, addi, status FROM t_paper_question WHERE id = $1`,
+		pk0).Scan(&r.ID, &r.BankQuestionID, &r.Order, &r.GroupID, &r.Score, &r.SubScore, &r.Creator, &r.CreateTime, &r.UpdatedBy, &r.UpdateTime, &r.Addi, &r.Status)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to select t_paper_question")
+	}
+	return &r, nil
+}
+
+/*TPaperShare t_paper_share represents assessuser.t_paper_share */
+type TPaperShare struct {
+	ID         null.Int `json:"ID,omitempty" db:"id,true,integer"`                                       /* id id */
+	PaperID    null.Int `json:"PaperID,omitempty" db:"paper_id,false,bigint"`                            /* paper_id 被分享试卷 */
+	UserID     null.Int `json:"UserID,omitempty" db:"user_id,false,bigint"`                              /* user_id 被分享者 */
+	Creator    null.Int `json:"Creator,omitempty" db:"creator,false,bigint"`                             /* creator 创建者 */
+	CreateTime null.Int `json:"CreateTime,omitempty" db:"create_time,false,timestamp without time zone"` /* create_time 创建时间 */
+	UpdatedBy  null.Int `json:"UpdatedBy,omitempty" db:"updated_by,false,bigint"`                        /* updated_by 更新者 */
+	UpdateTime null.Int `json:"UpdateTime,omitempty" db:"update_time,false,timestamp without time zone"` /* update_time 更新时间 */
+	Status     string   `json:"Status,omitempty" db:"status,false,character varying"`                    /* status 状态：00正常 02废除 */
+	Filter              // build DML where clause
+}
+
+// TPaperShareFields full field list for default query
+var TPaperShareFields = []string{
+	"ID",
+	"PaperID",
+	"UserID",
+	"Creator",
+	"CreateTime",
+	"UpdatedBy",
+	"UpdateTime",
+	"Status",
+}
+
+// Fields return all fields of struct.
+func (r *TPaperShare) Fields() []string {
+	return TPaperShareFields
+}
+
+// GetTableName return the associated db table name.
+func (r *TPaperShare) GetTableName() string {
+	var viewNamePattern = regexp.MustCompile(`(?i)^t_v_[a-z0-9_]+$`)
+	tableName := "t_paper_share"
+	if viewNamePattern.MatchString(tableName) {
+		return tableName[2:]
+	}
+	return tableName
+}
+
+// Create inserts the TPaperShare to the database.
+func (r *TPaperShare) Create(db Queryer) error {
+	err := db.QueryRow(
+		`INSERT INTO t_paper_share (paper_id, user_id, creator, create_time, updated_by, update_time, status) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
+		&r.PaperID, &r.UserID, &r.Creator, &r.CreateTime, &r.UpdatedBy, &r.UpdateTime, &r.Status).Scan(&r.ID)
+	if err != nil {
+		return errors.Wrap(err, "failed to insert t_paper_share")
+	}
+	return nil
+}
+
+// GetTPaperShareByPk select the TPaperShare from the database.
+func GetTPaperShareByPk(db Queryer, pk0 null.Int) (*TPaperShare, error) {
+
+	var r TPaperShare
+	err := db.QueryRow(
+		`SELECT id, paper_id, user_id, creator, create_time, updated_by, update_time, status FROM t_paper_share WHERE id = $1`,
+		pk0).Scan(&r.ID, &r.PaperID, &r.UserID, &r.Creator, &r.CreateTime, &r.UpdatedBy, &r.UpdateTime, &r.Status)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to select t_paper_share")
+	}
+	return &r, nil
+}
+
+/*
+TParam 提供用户设置参数
 belongTo value scope
 系统一级:1000-1990
 系统二级:2000-2990
@@ -2980,7 +4353,8 @@ belongTo value scope
 应用系统二级:12000-12990
 应用系统三级:13000-13990
 应用系统四级:14000-14990
-预置参数ID只使用偶数 represents kuser.t_param */
+预置参数ID只使用偶数 represents assessuser.t_param
+*/
 type TParam struct {
 	ID         null.Int       `json:"ID,omitempty" db:"id,true,integer"`                         /* id 参数编号 */
 	Belongto   null.Int       `json:"Belongto,omitempty" db:"belongto,false,bigint"`             /* belongto 类属 */
@@ -3050,7 +4424,7 @@ func GetTParamByPk(db Queryer, pk0 null.Int) (*TParam, error) {
 	return &r, nil
 }
 
-/*TPayAccount 支付账号信息 represents kuser.t_pay_account */
+/*TPayAccount 支付账号信息 represents assessuser.t_pay_account */
 type TPayAccount struct {
 	ID         null.Int       `json:"ID,omitempty" db:"id,true,integer"`                      /* id 编号 */
 	Type       null.String    `json:"Type,omitempty" db:"type,false,character varying"`       /* type wx_mp: 微信公众号, wx_open: 微信开放平台, ali: 阿里, ui: 联保 */
@@ -3130,7 +4504,7 @@ func GetTPayAccountByPk(db Queryer, pk0 null.Int) (*TPayAccount, error) {
 	return &r, nil
 }
 
-/*TPayment 缴费表(用于对公转账自动化) represents kuser.t_payment */
+/*TPayment 缴费表(用于对公转账自动化) represents assessuser.t_payment */
 type TPayment struct {
 	ID             null.Int       `json:"ID,omitempty" db:"id,true,integer"`                                    /* id 编码 */
 	Batch          null.String    `json:"Batch,omitempty" db:"batch,false,character varying"`                   /* batch 批次 */
@@ -3204,8 +4578,297 @@ func GetTPaymentByPk(db Queryer, pk0 null.Int) (*TPayment, error) {
 	return &r, nil
 }
 
-/*TPrice 价格设置表
-represents kuser.t_price */
+/*TPermission t_permission represents assessuser.t_permission */
+type TPermission struct {
+	ID          null.Int       `json:"ID,omitempty" db:"id,true,integer"`                    /* id 权限ID */
+	Name        string         `json:"Name,omitempty" db:"name,false,character varying"`     /* name 权限名 */
+	Type        string         `json:"Type,omitempty" db:"type,false,character varying"`     /* type 权限类型 00: menu 02: api 04: data */
+	Path        null.String    `json:"Path,omitempty" db:"path,false,text"`                  /* path 页面路由路径 或 请求路径 */
+	Method      null.String    `json:"Method,omitempty" db:"method,false,character varying"` /* method 请求方法 */
+	CreateTime  null.Int       `json:"CreateTime,omitempty" db:"create_time,false,bigint"`   /* create_time 创建时间 */
+	UpdateTime  null.Int       `json:"UpdateTime,omitempty" db:"update_time,false,bigint"`   /* update_time 更新时间 */
+	Addi        types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                 /* addi 扩展 */
+	Status      null.String    `json:"Status,omitempty" db:"status,false,character varying"` /* status 状态 00: 启用 02: 禁用 */
+	Description null.String    `json:"Description,omitempty" db:"description,false,text"`    /* description description */
+	Filter                     // build DML where clause
+}
+
+// TPermissionFields full field list for default query
+var TPermissionFields = []string{
+	"ID",
+	"Name",
+	"Type",
+	"Path",
+	"Method",
+	"CreateTime",
+	"UpdateTime",
+	"Addi",
+	"Status",
+	"Description",
+}
+
+// Fields return all fields of struct.
+func (r *TPermission) Fields() []string {
+	return TPermissionFields
+}
+
+// GetTableName return the associated db table name.
+func (r *TPermission) GetTableName() string {
+	var viewNamePattern = regexp.MustCompile(`(?i)^t_v_[a-z0-9_]+$`)
+	tableName := "t_permission"
+	if viewNamePattern.MatchString(tableName) {
+		return tableName[2:]
+	}
+	return tableName
+}
+
+// Create inserts the TPermission to the database.
+func (r *TPermission) Create(db Queryer) error {
+	err := db.QueryRow(
+		`INSERT INTO t_permission (name, type, path, method, create_time, update_time, addi, status, description) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
+		&r.Name, &r.Type, &r.Path, &r.Method, &r.CreateTime, &r.UpdateTime, &r.Addi, &r.Status, &r.Description).Scan(&r.ID)
+	if err != nil {
+		return errors.Wrap(err, "failed to insert t_permission")
+	}
+	return nil
+}
+
+// GetTPermissionByPk select the TPermission from the database.
+func GetTPermissionByPk(db Queryer, pk0 null.Int) (*TPermission, error) {
+
+	var r TPermission
+	err := db.QueryRow(
+		`SELECT id, name, type, path, method, create_time, update_time, addi, status, description FROM t_permission WHERE id = $1`,
+		pk0).Scan(&r.ID, &r.Name, &r.Type, &r.Path, &r.Method, &r.CreateTime, &r.UpdateTime, &r.Addi, &r.Status, &r.Description)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to select t_permission")
+	}
+	return &r, nil
+}
+
+/*TPractice t_practice represents assessuser.t_practice */
+type TPractice struct {
+	ID              null.Int       `json:"ID,omitempty" db:"id,true,integer"`                                       /* id 练习ID */
+	Name            null.String    `json:"Name,omitempty" db:"name,false,character varying"`                        /* name 练习名称 */
+	CorrectMode     null.String    `json:"CorrectMode,omitempty" db:"correct_mode,false,character varying"`         /* correct_mode 批改方式，00：手动  02：AI */
+	Type            null.String    `json:"Type,omitempty" db:"type,false,character varying"`                        /* type 练习类型，00：经典  02：常练  04：智能 */
+	Creator         null.Int       `json:"Creator,omitempty" db:"creator,false,bigint"`                             /* creator 创建者 */
+	CreateTime      null.Int       `json:"CreateTime,omitempty" db:"create_time,false,timestamp without time zone"` /* create_time 创建时间 */
+	UpdatedBy       null.Int       `json:"UpdatedBy,omitempty" db:"updated_by,false,bigint"`                        /* updated_by 更新者 */
+	UpdateTime      null.Int       `json:"UpdateTime,omitempty" db:"update_time,false,timestamp without time zone"` /* update_time 更新时间 */
+	Addi            types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                                    /* addi 附加信息 */
+	Status          null.String    `json:"Status,omitempty" db:"status,false,character varying"`                    /* status 状态， 00：未发布  02：发布  04：已删除 */
+	AllowedAttempts null.Int       `json:"AllowedAttempts,omitempty" db:"allowed_attempts,false,integer"`           /* allowed_attempts 可作答的次数；
+	如果为0，则说明是无限次数 */
+	PaperID     null.Int `json:"PaperID,omitempty" db:"paper_id,false,integer"`          /* paper_id 试卷编号 */
+	ExamPaperID null.Int `json:"ExamPaperID,omitempty" db:"exam_paper_id,false,integer"` /* exam_paper_id 生成的考卷快照的id，避免重复生成考卷快照 */
+	Filter               // build DML where clause
+}
+
+// TPracticeFields full field list for default query
+var TPracticeFields = []string{
+	"ID",
+	"Name",
+	"CorrectMode",
+	"Type",
+	"Creator",
+	"CreateTime",
+	"UpdatedBy",
+	"UpdateTime",
+	"Addi",
+	"Status",
+	"AllowedAttempts",
+	"PaperID",
+	"ExamPaperID",
+}
+
+// Fields return all fields of struct.
+func (r *TPractice) Fields() []string {
+	return TPracticeFields
+}
+
+// GetTableName return the associated db table name.
+func (r *TPractice) GetTableName() string {
+	var viewNamePattern = regexp.MustCompile(`(?i)^t_v_[a-z0-9_]+$`)
+	tableName := "t_practice"
+	if viewNamePattern.MatchString(tableName) {
+		return tableName[2:]
+	}
+	return tableName
+}
+
+// Create inserts the TPractice to the database.
+func (r *TPractice) Create(db Queryer) error {
+	err := db.QueryRow(
+		`INSERT INTO t_practice (name, correct_mode, type, creator, create_time, updated_by, update_time, addi, status, allowed_attempts, paper_id, exam_paper_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING id`,
+		&r.Name, &r.CorrectMode, &r.Type, &r.Creator, &r.CreateTime, &r.UpdatedBy, &r.UpdateTime, &r.Addi, &r.Status, &r.AllowedAttempts, &r.PaperID, &r.ExamPaperID).Scan(&r.ID)
+	if err != nil {
+		return errors.Wrap(err, "failed to insert t_practice")
+	}
+	return nil
+}
+
+// GetTPracticeByPk select the TPractice from the database.
+func GetTPracticeByPk(db Queryer, pk0 null.Int) (*TPractice, error) {
+
+	var r TPractice
+	err := db.QueryRow(
+		`SELECT id, name, correct_mode, type, creator, create_time, updated_by, update_time, addi, status, allowed_attempts, paper_id, exam_paper_id FROM t_practice WHERE id = $1`,
+		pk0).Scan(&r.ID, &r.Name, &r.CorrectMode, &r.Type, &r.Creator, &r.CreateTime, &r.UpdatedBy, &r.UpdateTime, &r.Addi, &r.Status, &r.AllowedAttempts, &r.PaperID, &r.ExamPaperID)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to select t_practice")
+	}
+	return &r, nil
+}
+
+/*TPracticeStudent t_practice_student represents assessuser.t_practice_student */
+type TPracticeStudent struct {
+	ID         null.Int       `json:"ID,omitempty" db:"id,true,integer"`                                       /* id id */
+	PracticeID null.Int       `json:"PracticeID,omitempty" db:"practice_id,false,integer"`                     /* practice_id practice_id */
+	StudentID  null.Int       `json:"StudentID,omitempty" db:"student_id,false,integer"`                       /* student_id student_id */
+	Addi       types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                                    /* addi addi */
+	Creator    null.Int       `json:"Creator,omitempty" db:"creator,false,integer"`                            /* creator creator */
+	UpdatedBy  null.Int       `json:"UpdatedBy,omitempty" db:"updated_by,false,integer"`                       /* updated_by updated_by */
+	CreateTime null.Int       `json:"CreateTime,omitempty" db:"create_time,false,timestamp without time zone"` /* create_time create_time */
+	UpdateTime null.Int       `json:"UpdateTime,omitempty" db:"update_time,false,timestamp without time zone"` /* update_time update_time */
+	Status     null.String    `json:"Status,omitempty" db:"status,false,character varying"`                    /* status 00:正常 02:被删除 */
+	Filter                    // build DML where clause
+}
+
+// TPracticeStudentFields full field list for default query
+var TPracticeStudentFields = []string{
+	"ID",
+	"PracticeID",
+	"StudentID",
+	"Addi",
+	"Creator",
+	"UpdatedBy",
+	"CreateTime",
+	"UpdateTime",
+	"Status",
+}
+
+// Fields return all fields of struct.
+func (r *TPracticeStudent) Fields() []string {
+	return TPracticeStudentFields
+}
+
+// GetTableName return the associated db table name.
+func (r *TPracticeStudent) GetTableName() string {
+	var viewNamePattern = regexp.MustCompile(`(?i)^t_v_[a-z0-9_]+$`)
+	tableName := "t_practice_student"
+	if viewNamePattern.MatchString(tableName) {
+		return tableName[2:]
+	}
+	return tableName
+}
+
+// Create inserts the TPracticeStudent to the database.
+func (r *TPracticeStudent) Create(db Queryer) error {
+	err := db.QueryRow(
+		`INSERT INTO t_practice_student (practice_id, student_id, addi, creator, updated_by, create_time, update_time, status) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
+		&r.PracticeID, &r.StudentID, &r.Addi, &r.Creator, &r.UpdatedBy, &r.CreateTime, &r.UpdateTime, &r.Status).Scan(&r.ID)
+	if err != nil {
+		return errors.Wrap(err, "failed to insert t_practice_student")
+	}
+	return nil
+}
+
+// GetTPracticeStudentByPk select the TPracticeStudent from the database.
+func GetTPracticeStudentByPk(db Queryer, pk0 null.Int) (*TPracticeStudent, error) {
+
+	var r TPracticeStudent
+	err := db.QueryRow(
+		`SELECT id, practice_id, student_id, addi, creator, updated_by, create_time, update_time, status FROM t_practice_student WHERE id = $1`,
+		pk0).Scan(&r.ID, &r.PracticeID, &r.StudentID, &r.Addi, &r.Creator, &r.UpdatedBy, &r.CreateTime, &r.UpdateTime, &r.Status)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to select t_practice_student")
+	}
+	return &r, nil
+}
+
+/*TPracticeSubmissions t_student_practice represents assessuser.t_practice_submissions */
+type TPracticeSubmissions struct {
+	ID          null.Int       `json:"ID,omitempty" db:"id,true,integer"`                                       /* id 学生练习ID */
+	PracticeID  null.Int       `json:"PracticeID,omitempty" db:"practice_id,false,bigint"`                      /* practice_id 练习ID */
+	StudentID   null.Int       `json:"StudentID,omitempty" db:"student_id,false,bigint"`                        /* student_id 学生ID */
+	ExamPaperID null.Int       `json:"ExamPaperID,omitempty" db:"exam_paper_id,false,bigint"`                   /* exam_paper_id 考卷ID */
+	StartTime   null.Int       `json:"StartTime,omitempty" db:"start_time,false,timestamp without time zone"`   /* start_time 开始答题时间 */
+	EndTime     null.Int       `json:"EndTime,omitempty" db:"end_time,false,timestamp without time zone"`       /* end_time 结束答题时间 */
+	Remark      null.String    `json:"Remark,omitempty" db:"remark,false,character varying"`                    /* remark 备注 */
+	Creator     null.Int       `json:"Creator,omitempty" db:"creator,false,bigint"`                             /* creator 创建者 */
+	CreateTime  null.Int       `json:"CreateTime,omitempty" db:"create_time,false,timestamp without time zone"` /* create_time 创建时间 */
+	UpdatedBy   null.Int       `json:"UpdatedBy,omitempty" db:"updated_by,false,bigint"`                        /* updated_by 更新者 */
+	UpdateTime  null.Int       `json:"UpdateTime,omitempty" db:"update_time,false,timestamp without time zone"` /* update_time 更新时间 */
+	Status      null.String    `json:"Status,omitempty" db:"status,false,character varying"`                    /* status 状态 00：允许作答 02 ：不允许作答 04：删除 */
+	Addi        types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                                    /* addi 附加信息 */
+	ExitTimes   types.JSONText `json:"ExitTimes,omitempty" db:"exit_times,false,jsonb"`                         /* exit_times 存储学生此次练习退出的时间 */
+	Attempt     null.Int       `json:"Attempt,omitempty" db:"attempt,false,integer"`                            /* attempt 当前是第几次练习 */
+	Filter                     // build DML where clause
+}
+
+// TPracticeSubmissionsFields full field list for default query
+var TPracticeSubmissionsFields = []string{
+	"ID",
+	"PracticeID",
+	"StudentID",
+	"ExamPaperID",
+	"StartTime",
+	"EndTime",
+	"Remark",
+	"Creator",
+	"CreateTime",
+	"UpdatedBy",
+	"UpdateTime",
+	"Status",
+	"Addi",
+	"ExitTimes",
+	"Attempt",
+}
+
+// Fields return all fields of struct.
+func (r *TPracticeSubmissions) Fields() []string {
+	return TPracticeSubmissionsFields
+}
+
+// GetTableName return the associated db table name.
+func (r *TPracticeSubmissions) GetTableName() string {
+	var viewNamePattern = regexp.MustCompile(`(?i)^t_v_[a-z0-9_]+$`)
+	tableName := "t_practice_submissions"
+	if viewNamePattern.MatchString(tableName) {
+		return tableName[2:]
+	}
+	return tableName
+}
+
+// Create inserts the TPracticeSubmissions to the database.
+func (r *TPracticeSubmissions) Create(db Queryer) error {
+	err := db.QueryRow(
+		`INSERT INTO t_practice_submissions (practice_id, student_id, exam_paper_id, start_time, end_time, remark, creator, create_time, updated_by, update_time, status, addi, exit_times, attempt) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) RETURNING id`,
+		&r.PracticeID, &r.StudentID, &r.ExamPaperID, &r.StartTime, &r.EndTime, &r.Remark, &r.Creator, &r.CreateTime, &r.UpdatedBy, &r.UpdateTime, &r.Status, &r.Addi, &r.ExitTimes, &r.Attempt).Scan(&r.ID)
+	if err != nil {
+		return errors.Wrap(err, "failed to insert t_practice_submissions")
+	}
+	return nil
+}
+
+// GetTPracticeSubmissionsByPk select the TPracticeSubmissions from the database.
+func GetTPracticeSubmissionsByPk(db Queryer, pk0 null.Int) (*TPracticeSubmissions, error) {
+
+	var r TPracticeSubmissions
+	err := db.QueryRow(
+		`SELECT id, practice_id, student_id, exam_paper_id, start_time, end_time, remark, creator, create_time, updated_by, update_time, status, addi, exit_times, attempt FROM t_practice_submissions WHERE id = $1`,
+		pk0).Scan(&r.ID, &r.PracticeID, &r.StudentID, &r.ExamPaperID, &r.StartTime, &r.EndTime, &r.Remark, &r.Creator, &r.CreateTime, &r.UpdatedBy, &r.UpdateTime, &r.Status, &r.Addi, &r.ExitTimes, &r.Attempt)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to select t_practice_submissions")
+	}
+	return &r, nil
+}
+
+/*
+TPrice 价格设置表
+represents assessuser.t_price
+*/
 type TPrice struct {
 	ID                 null.Int       `json:"ID,omitempty" db:"id,true,integer"`                                 /* id 价格id */
 	Title              null.String    `json:"Title,omitempty" db:"title,false,character varying"`                /* title 标题 */
@@ -3295,7 +4958,7 @@ func GetTPriceByPk(db Queryer, pk0 null.Int) (*TPrice, error) {
 	return &r, nil
 }
 
-/*TPrj 项目信息表 represents kuser.t_prj */
+/*TPrj 项目信息表 represents assessuser.t_prj */
 type TPrj struct {
 	ID         null.Int    `json:"ID,omitempty" db:"id,true,integer"`                    /* id 编号 */
 	Name       null.String `json:"Name,omitempty" db:"name,false,character varying"`     /* name 项目名称 */
@@ -3370,7 +5033,7 @@ func GetTPrjByPk(db Queryer, pk0 null.Int) (*TPrj, error) {
 	return &r, nil
 }
 
-/*TProof 人才知识能力领域说明表 represents kuser.t_proof */
+/*TProof 人才知识能力领域说明表 represents assessuser.t_proof */
 type TProof struct {
 	ID          null.Int    `json:"ID,omitempty" db:"id,true,integer"`                    /* id 编号 */
 	UserID      null.Int    `json:"UserID,omitempty" db:"user_id,false,bigint"`           /* user_id 用户编号 */
@@ -3430,7 +5093,7 @@ func GetTProofByPk(db Queryer, pk0 null.Int) (*TProof, error) {
 	return &r, nil
 }
 
-/*TProve 知识能力领域鉴定、证明表 represents kuser.t_prove */
+/*TProve 知识能力领域鉴定、证明表 represents assessuser.t_prove */
 type TProve struct {
 	ID         null.Int    `json:"ID,omitempty" db:"id,true,integer"`                          /* id 编号 */
 	ProofID    null.Int    `json:"ProofID,omitempty" db:"proof_id,false,bigint"`               /* proof_id 被鉴定材料编号 */
@@ -3490,7 +5153,7 @@ func GetTProveByPk(db Queryer, pk0 null.Int) (*TProve, error) {
 	return &r, nil
 }
 
-/*TQualification 人才资质表 represents kuser.t_qualification */
+/*TQualification 人才资质表 represents assessuser.t_qualification */
 type TQualification struct {
 	ID          null.Int `json:"ID,omitempty" db:"id,true,integer"`                    /* id 资质证明编号 */
 	UserID      null.Int `json:"UserID,omitempty" db:"user_id,false,bigint"`           /* user_id 用户编号 */
@@ -3546,7 +5209,247 @@ func GetTQualificationByPk(db Queryer, pk0 null.Int) (*TQualification, error) {
 	return &r, nil
 }
 
-/*TRegion 区域列表 represents kuser.t_region */
+/*TQuestion t_question represents assessuser.t_question */
+type TQuestion struct {
+	ID                      null.Int       `json:"ID,omitempty" db:"id,true,integer"`                                            /* id 编号 */
+	Type                    string         `json:"Type,omitempty" db:"type,false,character varying"`                             /* type 类型  00:单选题  02:多选题 04:判断题 06:填空题 08:简答题 10:编程题 */
+	Content                 null.String    `json:"Content,omitempty" db:"content,false,text"`                                    /* content 题目内容 */
+	Options                 types.JSONText `json:"Options,omitempty" db:"options,false,jsonb"`                                   /* options 题目选项 */
+	Answers                 types.JSONText `json:"Answers,omitempty" db:"answers,false,jsonb"`                                   /* answers 题目答案 */
+	Score                   null.Float     `json:"Score,omitempty" db:"score,false,double precision"`                            /* score 题目分值 */
+	Difficulty              null.Int       `json:"Difficulty,omitempty" db:"difficulty,false,integer"`                           /* difficulty 题目难度 1:简单  2:中等 3:困难 */
+	Tags                    types.JSONText `json:"Tags,omitempty" db:"tags,false,jsonb"`                                         /* tags 题目标签 */
+	Analysis                null.String    `json:"Analysis,omitempty" db:"analysis,false,text"`                                  /* analysis 题目解析 */
+	Title                   null.String    `json:"Title,omitempty" db:"title,false,text"`                                        /* title 编程题目题干 */
+	AnswerFilePath          types.JSONText `json:"AnswerFilePath,omitempty" db:"answer_file_path,false,jsonb"`                   /* answer_file_path 答案文件路径 */
+	TestFilePath            types.JSONText `json:"TestFilePath,omitempty" db:"test_file_path,false,jsonb"`                       /* test_file_path 测试文件路径 */
+	Input                   null.String    `json:"Input,omitempty" db:"input,false,character varying"`                           /* input 输入 */
+	Output                  null.String    `json:"Output,omitempty" db:"output,false,character varying"`                         /* output 输出 */
+	Example                 types.JSONText `json:"Example,omitempty" db:"example,false,jsonb"`                                   /* example 示例 */
+	Repo                    types.JSONText `json:"Repo,omitempty" db:"repo,false,jsonb"`                                         /* repo 仓库 */
+	Order                   null.Int       `json:"Order,omitempty" db:"order,false,bigint"`                                      /* order 顺序 */
+	Creator                 null.Int       `json:"Creator,omitempty" db:"creator,false,bigint"`                                  /* creator 创建者 */
+	CreateTime              null.Int       `json:"CreateTime,omitempty" db:"create_time,false,timestamp without time zone"`      /* create_time 创建时间 */
+	UpdatedBy               null.Int       `json:"UpdatedBy,omitempty" db:"updated_by,false,bigint"`                             /* updated_by 更新者 */
+	UpdateTime              null.Int       `json:"UpdateTime,omitempty" db:"update_time,false,timestamp without time zone"`      /* update_time 更新时间 */
+	Addi                    types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                                         /* addi 附加信息 */
+	Status                  string         `json:"Status,omitempty" db:"status,false,character varying"`                         /* status 状态，00:正常 02:作废 04:异常 */
+	QuestionAttachmentsPath types.JSONText `json:"QuestionAttachmentsPath,omitempty" db:"question_attachments_path,false,jsonb"` /* question_attachments_path question_attachments_path */
+	AccessMode              string         `json:"AccessMode,omitempty" db:"access_mode,false,character varying"`                /* access_mode access_mode */
+	BelongTo                null.Int       `json:"BelongTo,omitempty" db:"belong_to,false,bigint"`                               /* belong_to belong_to */
+	Filter                                 // build DML where clause
+}
+
+// TQuestionFields full field list for default query
+var TQuestionFields = []string{
+	"ID",
+	"Type",
+	"Content",
+	"Options",
+	"Answers",
+	"Score",
+	"Difficulty",
+	"Tags",
+	"Analysis",
+	"Title",
+	"AnswerFilePath",
+	"TestFilePath",
+	"Input",
+	"Output",
+	"Example",
+	"Repo",
+	"Order",
+	"Creator",
+	"CreateTime",
+	"UpdatedBy",
+	"UpdateTime",
+	"Addi",
+	"Status",
+	"QuestionAttachmentsPath",
+	"AccessMode",
+	"BelongTo",
+}
+
+// Fields return all fields of struct.
+func (r *TQuestion) Fields() []string {
+	return TQuestionFields
+}
+
+// GetTableName return the associated db table name.
+func (r *TQuestion) GetTableName() string {
+	var viewNamePattern = regexp.MustCompile(`(?i)^t_v_[a-z0-9_]+$`)
+	tableName := "t_question"
+	if viewNamePattern.MatchString(tableName) {
+		return tableName[2:]
+	}
+	return tableName
+}
+
+// Create inserts the TQuestion to the database.
+func (r *TQuestion) Create(db Queryer) error {
+	err := db.QueryRow(
+		`INSERT INTO t_question (type, content, options, answers, score, difficulty, tags, analysis, title, answer_file_path, test_file_path, input, output, example, repo, order, creator, create_time, updated_by, update_time, addi, status, question_attachments_path, access_mode, belong_to) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25) RETURNING id`,
+		&r.Type, &r.Content, &r.Options, &r.Answers, &r.Score, &r.Difficulty, &r.Tags, &r.Analysis, &r.Title, &r.AnswerFilePath, &r.TestFilePath, &r.Input, &r.Output, &r.Example, &r.Repo, &r.Order, &r.Creator, &r.CreateTime, &r.UpdatedBy, &r.UpdateTime, &r.Addi, &r.Status, &r.QuestionAttachmentsPath, &r.AccessMode, &r.BelongTo).Scan(&r.ID)
+	if err != nil {
+		return errors.Wrap(err, "failed to insert t_question")
+	}
+	return nil
+}
+
+// GetTQuestionByPk select the TQuestion from the database.
+func GetTQuestionByPk(db Queryer, pk0 null.Int) (*TQuestion, error) {
+
+	var r TQuestion
+	err := db.QueryRow(
+		`SELECT id, type, content, options, answers, score, difficulty, tags, analysis, title, answer_file_path, test_file_path, input, output, example, repo, order, creator, create_time, updated_by, update_time, addi, status, question_attachments_path, access_mode, belong_to FROM t_question WHERE id = $1`,
+		pk0).Scan(&r.ID, &r.Type, &r.Content, &r.Options, &r.Answers, &r.Score, &r.Difficulty, &r.Tags, &r.Analysis, &r.Title, &r.AnswerFilePath, &r.TestFilePath, &r.Input, &r.Output, &r.Example, &r.Repo, &r.Order, &r.Creator, &r.CreateTime, &r.UpdatedBy, &r.UpdateTime, &r.Addi, &r.Status, &r.QuestionAttachmentsPath, &r.AccessMode, &r.BelongTo)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to select t_question")
+	}
+	return &r, nil
+}
+
+/*TQuestionBank t_question_bank represents assessuser.t_question_bank */
+type TQuestionBank struct {
+	ID            null.Int       `json:"ID,omitempty" db:"id,true,integer"`                               /* id 编号 */
+	Type          null.String    `json:"Type,omitempty" db:"type,false,character varying"`                /* type 类型： 00:理论题库，02:编程题库 */
+	Name          null.String    `json:"Name,omitempty" db:"name,false,character varying"`                /* name 名字 */
+	Tags          types.JSONText `json:"Tags,omitempty" db:"tags,false,jsonb"`                            /* tags 标签 */
+	Repos         types.JSONText `json:"Repos,omitempty" db:"repos,false,jsonb"`                          /* repos 仓库 */
+	DefaultRepo   null.String    `json:"DefaultRepo,omitempty" db:"default_repo,false,character varying"` /* default_repo 题库git repo */
+	Creator       null.Int       `json:"Creator,omitempty" db:"creator,false,bigint"`                     /* creator 创建者 */
+	CreateTime    null.Int       `json:"CreateTime,omitempty" db:"create_time,false,bigint"`              /* create_time 创建时间 */
+	UpdatedBy     null.Int       `json:"UpdatedBy,omitempty" db:"updated_by,false,bigint"`                /* updated_by 更新者 */
+	UpdateTime    null.Int       `json:"UpdateTime,omitempty" db:"update_time,false,bigint"`              /* update_time 更新时间 */
+	Remark        null.String    `json:"Remark,omitempty" db:"remark,false,character varying"`            /* remark 备注 */
+	Addi          types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                            /* addi 附加信息 */
+	Status        null.String    `json:"Status,omitempty" db:"status,false,character varying"`            /* status 状态，00:正常 02:作废 04:异常 */
+	QuestionCount null.Int       `json:"QuestionCount,omitempty" db:"question_count,false,bigint"`        /* question_count question_count */
+	AccessMode    string         `json:"AccessMode,omitempty" db:"access_mode,false,character varying"`   /* access_mode access_mode */
+	Filter                       // build DML where clause
+}
+
+// TQuestionBankFields full field list for default query
+var TQuestionBankFields = []string{
+	"ID",
+	"Type",
+	"Name",
+	"Tags",
+	"Repos",
+	"DefaultRepo",
+	"Creator",
+	"CreateTime",
+	"UpdatedBy",
+	"UpdateTime",
+	"Remark",
+	"Addi",
+	"Status",
+	"QuestionCount",
+	"AccessMode",
+}
+
+// Fields return all fields of struct.
+func (r *TQuestionBank) Fields() []string {
+	return TQuestionBankFields
+}
+
+// GetTableName return the associated db table name.
+func (r *TQuestionBank) GetTableName() string {
+	var viewNamePattern = regexp.MustCompile(`(?i)^t_v_[a-z0-9_]+$`)
+	tableName := "t_question_bank"
+	if viewNamePattern.MatchString(tableName) {
+		return tableName[2:]
+	}
+	return tableName
+}
+
+// Create inserts the TQuestionBank to the database.
+func (r *TQuestionBank) Create(db Queryer) error {
+	err := db.QueryRow(
+		`INSERT INTO t_question_bank (type, name, tags, repos, default_repo, creator, create_time, updated_by, update_time, remark, addi, status, question_count, access_mode) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) RETURNING id`,
+		&r.Type, &r.Name, &r.Tags, &r.Repos, &r.DefaultRepo, &r.Creator, &r.CreateTime, &r.UpdatedBy, &r.UpdateTime, &r.Remark, &r.Addi, &r.Status, &r.QuestionCount, &r.AccessMode).Scan(&r.ID)
+	if err != nil {
+		return errors.Wrap(err, "failed to insert t_question_bank")
+	}
+	return nil
+}
+
+// GetTQuestionBankByPk select the TQuestionBank from the database.
+func GetTQuestionBankByPk(db Queryer, pk0 null.Int) (*TQuestionBank, error) {
+
+	var r TQuestionBank
+	err := db.QueryRow(
+		`SELECT id, type, name, tags, repos, default_repo, creator, create_time, updated_by, update_time, remark, addi, status, question_count, access_mode FROM t_question_bank WHERE id = $1`,
+		pk0).Scan(&r.ID, &r.Type, &r.Name, &r.Tags, &r.Repos, &r.DefaultRepo, &r.Creator, &r.CreateTime, &r.UpdatedBy, &r.UpdateTime, &r.Remark, &r.Addi, &r.Status, &r.QuestionCount, &r.AccessMode)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to select t_question_bank")
+	}
+	return &r, nil
+}
+
+/*TQuestionBankShare t_question_bank_share represents assessuser.t_question_bank_share */
+type TQuestionBankShare struct {
+	BankID     null.Int `json:"BankID,omitempty" db:"bank_id,true,bigint"`                               /* bank_id 被分享题库 */
+	UserID     null.Int `json:"UserID,omitempty" db:"user_id,true,bigint"`                               /* user_id 被分享者 */
+	Creator    null.Int `json:"Creator,omitempty" db:"creator,false,bigint"`                             /* creator 创建者 */
+	CreateTime null.Int `json:"CreateTime,omitempty" db:"create_time,false,timestamp without time zone"` /* create_time 创建时间 */
+	UpdatedBy  null.Int `json:"UpdatedBy,omitempty" db:"updated_by,false,bigint"`                        /* updated_by 更新者 */
+	UpdateTime null.Int `json:"UpdateTime,omitempty" db:"update_time,false,timestamp without time zone"` /* update_time 更新时间 */
+	Status     string   `json:"Status,omitempty" db:"status,false,character varying"`                    /* status 状态：00正常 02废除 */
+	Filter              // build DML where clause
+}
+
+// TQuestionBankShareFields full field list for default query
+var TQuestionBankShareFields = []string{
+	"BankID",
+	"UserID",
+	"Creator",
+	"CreateTime",
+	"UpdatedBy",
+	"UpdateTime",
+	"Status",
+}
+
+// Fields return all fields of struct.
+func (r *TQuestionBankShare) Fields() []string {
+	return TQuestionBankShareFields
+}
+
+// GetTableName return the associated db table name.
+func (r *TQuestionBankShare) GetTableName() string {
+	var viewNamePattern = regexp.MustCompile(`(?i)^t_v_[a-z0-9_]+$`)
+	tableName := "t_question_bank_share"
+	if viewNamePattern.MatchString(tableName) {
+		return tableName[2:]
+	}
+	return tableName
+}
+
+// Create inserts the TQuestionBankShare to the database.
+func (r *TQuestionBankShare) Create(db Queryer) error {
+	_, err := db.Exec(
+		`INSERT INTO t_question_bank_share (bank_id, user_id, creator, create_time, updated_by, update_time, status) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+		&r.BankID, &r.UserID, &r.Creator, &r.CreateTime, &r.UpdatedBy, &r.UpdateTime, &r.Status)
+	if err != nil {
+		return errors.Wrap(err, "failed to insert t_question_bank_share")
+	}
+	return nil
+}
+
+// GetTQuestionBankShareByPk select the TQuestionBankShare from the database.
+func GetTQuestionBankShareByPk(db Queryer, pk0 null.Int, pk1 null.Int) (*TQuestionBankShare, error) {
+
+	var r TQuestionBankShare
+	err := db.QueryRow(
+		`SELECT bank_id, user_id, creator, create_time, updated_by, update_time, status FROM t_question_bank_share WHERE bank_id = $1 AND user_id = $2`,
+		pk0, pk1).Scan(&r.BankID, &r.UserID, &r.Creator, &r.CreateTime, &r.UpdatedBy, &r.UpdateTime, &r.Status)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to select t_question_bank_share")
+	}
+	return &r, nil
+}
+
+/*TRegion 区域列表 represents assessuser.t_region */
 type TRegion struct {
 	ID              null.Int       `json:"ID,omitempty" db:"id,true,integer"`                                        /* id 区域编号 */
 	RegionName      null.String    `json:"RegionName,omitempty" db:"region_name,false,character varying"`            /* region_name 区域名称 */
@@ -3618,9 +5521,8 @@ func GetTRegionByPk(db Queryer, pk0 null.Int) (*TRegion, error) {
 	return &r, nil
 }
 
-/*TRelation 描述两个实体间的隶属关系，类似于master:detail，校快保，描述销售/学校管理员/学校统计员与学校间的对应关系
-
-
+/*
+TRelation 描述两个实体间的隶属关系，类似于master:detail，校快保，描述销售/学校管理员/学校统计员与学校间的对应关系
 
 left_key_type -- 左识别标识类型，帐号: account, 邮箱: email, 手机: tel, 微信公众号openID: mp_open_id, 微信开放平台openID: wx_open_id
 +{left_id,left_key} --左键(表中的主键,如果主键类型是int，则为left_id, 否则是left_key)
@@ -3633,7 +5535,8 @@ left_type          left_id kind         right_type     right_id
 't_user.id',       1000,   '学校:管理员', 't_school.id', 2273
 
 left_type          left_key kind         right_type     right_key
-'t_user.account',  'ax992', '保安:门岗',  't_gate.name', '南门'   represents kuser.t_relation */
+'t_user.account',  'ax992', '保安:门岗',  't_gate.name', '南门'   represents assessuser.t_relation
+*/
 type TRelation struct {
 	ID             null.Int       `json:"ID,omitempty" db:"id,true,integer"`                                      /* id 编号 */
 	LeftID         null.Int       `json:"LeftID,omitempty" db:"left_id,false,bigint"`                             /* left_id 左编号 */
@@ -3721,7 +5624,7 @@ func GetTRelationByPk(db Queryer, pk0 null.Int) (*TRelation, error) {
 	return &r, nil
 }
 
-/*TRelationHistory 关系变更历史 represents kuser.t_relation_history */
+/*TRelationHistory 关系变更历史 represents assessuser.t_relation_history */
 type TRelationHistory struct {
 	ID             null.Int       `json:"ID,omitempty" db:"id,false,bigint"`                                      /* id 编号 */
 	LeftID         null.Int       `json:"LeftID,omitempty" db:"left_id,false,bigint"`                             /* left_id 左编号 */
@@ -3811,7 +5714,7 @@ func GetTRelationHistoryByPk(db Queryer, pk20 null.Int) (*TRelationHistory, erro
 	return &r, nil
 }
 
-/*TReportClaims 报案理赔 represents kuser.t_report_claims */
+/*TReportClaims 报案理赔 represents assessuser.t_report_claims */
 type TReportClaims struct {
 	ID                     null.Int       `json:"ID,omitempty" db:"id,true,integer"`                                            /* id 编号 */
 	InformantID            null.Int       `json:"InformantID,omitempty" db:"informant_id,false,bigint"`                         /* informant_id 报案人编号 */
@@ -4002,7 +5905,7 @@ func GetTReportClaimsByPk(db Queryer, pk0 null.Int) (*TReportClaims, error) {
 	return &r, nil
 }
 
-/*TResource 资源列表 represents kuser.t_resource */
+/*TResource 资源列表 represents assessuser.t_resource */
 type TResource struct {
 	ID              null.Int       `json:"ID,omitempty" db:"id,true,integer"`                             /* id 资源编号 */
 	InsuranceTypeID null.Int       `json:"InsuranceTypeID,omitempty" db:"insurance_type_id,false,bigint"` /* insurance_type_id 保险类型ID */
@@ -4084,7 +5987,73 @@ func GetTResourceByPk(db Queryer, pk0 null.Int) (*TResource, error) {
 	return &r, nil
 }
 
-/*TScanTdc 请求二维码记录 represents kuser.t_scan_tdc */
+/*TRole t_role represents assessuser.t_role */
+type TRole struct {
+	ID          null.Int       `json:"ID,omitempty" db:"id,true,integer"`                    /* id 角色ID */
+	Name        string         `json:"Name,omitempty" db:"name,false,character varying"`     /* name 角色名 */
+	Permission  types.JSONText `json:"Permission,omitempty" db:"permission,false,jsonb"`     /* permission 拥有权限 */
+	Description null.String    `json:"Description,omitempty" db:"description,false,text"`    /* description 角色描述 */
+	Level       string         `json:"Level,omitempty" db:"level,false,character varying"`   /* level 角色权限等级 00: 全局权限 02: 普通权限 */
+	CreateTime  null.Int       `json:"CreateTime,omitempty" db:"create_time,false,bigint"`   /* create_time 创建时间 */
+	UpdateTime  null.Int       `json:"UpdateTime,omitempty" db:"update_time,false,bigint"`   /* update_time 更新时间 */
+	Addi        types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                 /* addi 扩展 */
+	Status      null.String    `json:"Status,omitempty" db:"status,false,character varying"` /* status 状态 00: 启用 02: 禁用 */
+	Filter                     // build DML where clause
+}
+
+// TRoleFields full field list for default query
+var TRoleFields = []string{
+	"ID",
+	"Name",
+	"Permission",
+	"Description",
+	"Level",
+	"CreateTime",
+	"UpdateTime",
+	"Addi",
+	"Status",
+}
+
+// Fields return all fields of struct.
+func (r *TRole) Fields() []string {
+	return TRoleFields
+}
+
+// GetTableName return the associated db table name.
+func (r *TRole) GetTableName() string {
+	var viewNamePattern = regexp.MustCompile(`(?i)^t_v_[a-z0-9_]+$`)
+	tableName := "t_role"
+	if viewNamePattern.MatchString(tableName) {
+		return tableName[2:]
+	}
+	return tableName
+}
+
+// Create inserts the TRole to the database.
+func (r *TRole) Create(db Queryer) error {
+	err := db.QueryRow(
+		`INSERT INTO t_role (name, permission, description, level, create_time, update_time, addi, status) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
+		&r.Name, &r.Permission, &r.Description, &r.Level, &r.CreateTime, &r.UpdateTime, &r.Addi, &r.Status).Scan(&r.ID)
+	if err != nil {
+		return errors.Wrap(err, "failed to insert t_role")
+	}
+	return nil
+}
+
+// GetTRoleByPk select the TRole from the database.
+func GetTRoleByPk(db Queryer, pk0 null.Int) (*TRole, error) {
+
+	var r TRole
+	err := db.QueryRow(
+		`SELECT id, name, permission, description, level, create_time, update_time, addi, status FROM t_role WHERE id = $1`,
+		pk0).Scan(&r.ID, &r.Name, &r.Permission, &r.Description, &r.Level, &r.CreateTime, &r.UpdateTime, &r.Addi, &r.Status)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to select t_role")
+	}
+	return &r, nil
+}
+
+/*TScanTdc 请求二维码记录 represents assessuser.t_scan_tdc */
 type TScanTdc struct {
 	ID         null.Int    `json:"ID,omitempty" db:"id,true,integer"`                             /* id 二维码编号 */
 	TdcID      null.Int    `json:"TdcID,omitempty" db:"tdc_id,false,bigint"`                      /* tdc_id 二维码编号 */
@@ -4142,7 +6111,7 @@ func GetTScanTdcByPk(db Queryer, pk0 null.Int) (*TScanTdc, error) {
 	return &r, nil
 }
 
-/*TSchool 学校信息表，包含了销售经理，学校管理员，投保规则 represents kuser.t_school */
+/*TSchool 学校信息表，包含了销售经理，学校管理员，投保规则 represents assessuser.t_school */
 type TSchool struct {
 	ID                      null.Int       `json:"ID,omitempty" db:"id,true,integer"`                                              /* id 学校编号 */
 	Name                    string         `json:"Name,omitempty" db:"name,false,character varying"`                               /* name 名称 */
@@ -4276,7 +6245,7 @@ func GetTSchoolByPk(db Queryer, pk0 null.Int) (*TSchool, error) {
 	return &r, nil
 }
 
-/*TSection the section/chapter of course represents kuser.t_section */
+/*TSection the section/chapter of course represents assessuser.t_section */
 type TSection struct {
 	ID         null.Int       `json:"ID,omitempty" db:"id,true,integer"`                        /* id 编码 */
 	Name       string         `json:"Name,omitempty" db:"name,false,character varying"`         /* name 名称 */
@@ -4364,7 +6333,7 @@ func GetTSectionByPk(db Queryer, pk0 null.Int) (*TSection, error) {
 	return &r, nil
 }
 
-/*TSpecialOrder t_special_order represents kuser.t_special_order */
+/*TSpecialOrder t_special_order represents assessuser.t_special_order */
 type TSpecialOrder struct {
 	ID            null.Int       `json:"ID,omitempty" db:"id,true,integer"`                                   /* id 订单编号 */
 	IDCardNo      string         `json:"IDCardNo,omitempty" db:"id_card_no,false,character varying"`          /* id_card_no 身份证号码 */
@@ -4454,14 +6423,104 @@ func GetTSpecialOrderByPk(db Queryer, pk0 null.Int) (*TSpecialOrder, error) {
 	return &r, nil
 }
 
-/*TSysVer 应用版本包含业务模型、前端、后端、配置文件等
+/*TStudentAnswers t_student_answers represents assessuser.t_student_answers */
+type TStudentAnswers struct {
+	ID                    null.Int       `json:"ID,omitempty" db:"id,true,integer"`                                        /* id 编号 */
+	Type                  null.String    `json:"Type,omitempty" db:"type,false,character varying"`                         /* type 类型, 00:考试  02:练习 */
+	ExamineeID            null.Int       `json:"ExamineeID,omitempty" db:"examinee_id,false,bigint"`                       /* examinee_id 学生考试ID */
+	PracticeSubmissionID  null.Int       `json:"PracticeSubmissionID,omitempty" db:"practice_submission_id,false,bigint"`  /* practice_submission_id 学生练习记录ID(标识是哪一次练习) */
+	QuestionID            null.Int       `json:"QuestionID,omitempty" db:"question_id,false,bigint"`                       /* question_id 考卷题目ID */
+	Answer                types.JSONText `json:"Answer,omitempty" db:"answer,false,jsonb"`                                 /* answer 学生答案 */
+	AnswerScore           null.Float     `json:"AnswerScore,omitempty" db:"answer_score,false,double precision"`           /* answer_score 学生答案得分 */
+	Marker                types.JSONText `json:"Marker,omitempty" db:"marker,false,jsonb"`                                 /* marker 题目批阅信息 */
+	Creator               null.Int       `json:"Creator,omitempty" db:"creator,false,bigint"`                              /* creator 创建者 */
+	UpdatedBy             null.Int       `json:"UpdatedBy,omitempty" db:"updated_by,false,bigint"`                         /* updated_by 更新者 */
+	Addi                  types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                                     /* addi 附加信息 */
+	Status                null.String    `json:"Status,omitempty" db:"status,false,character varying"`                     /* status 数据状态 00:正常状态 02:不可修改答案 04:记录已经被删除 */
+	Order                 null.Int       `json:"Order,omitempty" db:"order,false,integer"`                                 /* order 题目排序 */
+	GroupID               null.Int       `json:"GroupID,omitempty" db:"group_id,false,bigint"`                             /* group_id group_id */
+	ActualOptions         types.JSONText `json:"ActualOptions,omitempty" db:"actual_options,false,jsonb"`                  /* actual_options 实际题目的选项 */
+	ActualAnswers         types.JSONText `json:"ActualAnswers,omitempty" db:"actual_answers,false,jsonb"`                  /* actual_answers 实际题目客观题答案 */
+	Attempt               null.Int       `json:"Attempt,omitempty" db:"attempt,false,integer"`                             /* attempt 标识当前是第几次练习 */
+	AnswerAttachmentsPath types.JSONText `json:"AnswerAttachmentsPath,omitempty" db:"answer_attachments_path,false,jsonb"` /* answer_attachments_path 保存作答中提交的文件附件、图片等的文件路径 */
+	CreateTime            null.Int       `json:"CreateTime,omitempty" db:"create_time,false,bigint"`                       /* create_time 记录创建时间 */
+	UpdateTime            null.Int       `json:"UpdateTime,omitempty" db:"update_time,false,bigint"`                       /* update_time 记录更新记录时间 */
+	Filter                               // build DML where clause
+}
+
+// TStudentAnswersFields full field list for default query
+var TStudentAnswersFields = []string{
+	"ID",
+	"Type",
+	"ExamineeID",
+	"PracticeSubmissionID",
+	"QuestionID",
+	"Answer",
+	"AnswerScore",
+	"Marker",
+	"Creator",
+	"UpdatedBy",
+	"Addi",
+	"Status",
+	"Order",
+	"GroupID",
+	"ActualOptions",
+	"ActualAnswers",
+	"Attempt",
+	"AnswerAttachmentsPath",
+	"CreateTime",
+	"UpdateTime",
+}
+
+// Fields return all fields of struct.
+func (r *TStudentAnswers) Fields() []string {
+	return TStudentAnswersFields
+}
+
+// GetTableName return the associated db table name.
+func (r *TStudentAnswers) GetTableName() string {
+	var viewNamePattern = regexp.MustCompile(`(?i)^t_v_[a-z0-9_]+$`)
+	tableName := "t_student_answers"
+	if viewNamePattern.MatchString(tableName) {
+		return tableName[2:]
+	}
+	return tableName
+}
+
+// Create inserts the TStudentAnswers to the database.
+func (r *TStudentAnswers) Create(db Queryer) error {
+	err := db.QueryRow(
+		`INSERT INTO t_student_answers (type, examinee_id, practice_submission_id, question_id, answer, answer_score, marker, creator, updated_by, addi, status, order, group_id, actual_options, actual_answers, attempt, answer_attachments_path, create_time, update_time) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19) RETURNING id`,
+		&r.Type, &r.ExamineeID, &r.PracticeSubmissionID, &r.QuestionID, &r.Answer, &r.AnswerScore, &r.Marker, &r.Creator, &r.UpdatedBy, &r.Addi, &r.Status, &r.Order, &r.GroupID, &r.ActualOptions, &r.ActualAnswers, &r.Attempt, &r.AnswerAttachmentsPath, &r.CreateTime, &r.UpdateTime).Scan(&r.ID)
+	if err != nil {
+		return errors.Wrap(err, "failed to insert t_student_answers")
+	}
+	return nil
+}
+
+// GetTStudentAnswersByPk select the TStudentAnswers from the database.
+func GetTStudentAnswersByPk(db Queryer, pk0 null.Int) (*TStudentAnswers, error) {
+
+	var r TStudentAnswers
+	err := db.QueryRow(
+		`SELECT id, type, examinee_id, practice_submission_id, question_id, answer, answer_score, marker, creator, updated_by, addi, status, order, group_id, actual_options, actual_answers, attempt, answer_attachments_path, create_time, update_time FROM t_student_answers WHERE id = $1`,
+		pk0).Scan(&r.ID, &r.Type, &r.ExamineeID, &r.PracticeSubmissionID, &r.QuestionID, &r.Answer, &r.AnswerScore, &r.Marker, &r.Creator, &r.UpdatedBy, &r.Addi, &r.Status, &r.Order, &r.GroupID, &r.ActualOptions, &r.ActualAnswers, &r.Attempt, &r.AnswerAttachmentsPath, &r.CreateTime, &r.UpdateTime)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to select t_student_answers")
+	}
+	return &r, nil
+}
+
+/*
+TSysVer 应用版本包含业务模型、前端、后端、配置文件等
 
 1、业务模型版本在模型生成时建立；
 2、后端模型版本在每次后端启动时建立或更新；
 3、配置文件版本在每次后端启动时建立或更新；
 4、前端版本在每次后端启动时建立或更新；
 
- represents kuser.t_sys_ver */
+	represents assessuser.t_sys_ver
+*/
 type TSysVer struct {
 	ID         null.Int       `json:"ID,omitempty" db:"id,true,integer"`                             /* id 编码 */
 	Tag        null.String    `json:"Tag,omitempty" db:"tag,false,character varying"`                /* tag 标识 */
@@ -4527,7 +6586,7 @@ func GetTSysVerByPk(db Queryer, pk0 null.Int) (*TSysVer, error) {
 	return &r, nil
 }
 
-/*TTdc two-dimension-code represents kuser.t_tdc */
+/*TTdc two-dimension-code represents assessuser.t_tdc */
 type TTdc struct {
 	ID         null.Int       `json:"ID,omitempty" db:"id,true,integer"`                         /* id 编码 */
 	TdcID      null.String    `json:"TdcID,omitempty" db:"tdc_id,false,character varying"`       /* tdc_id 二维码标识 */
@@ -4605,7 +6664,73 @@ func GetTTdcByPk(db Queryer, pk0 null.Int) (*TTdc, error) {
 	return &r, nil
 }
 
-/*TUndertaker 项目承接表 represents kuser.t_undertaker */
+/*TTeacherStudent t_teacher_student represents assessuser.t_teacher_student */
+type TTeacherStudent struct {
+	ID         null.Int       `json:"ID,omitempty" db:"id,true,integer"`                                       /* id 表主键ID */
+	TeacherID  null.Int       `json:"TeacherID,omitempty" db:"teacher_id,false,bigint"`                        /* teacher_id 教师编号 */
+	StudentID  null.Int       `json:"StudentID,omitempty" db:"student_id,false,bigint"`                        /* student_id 学生编号 */
+	Creator    null.Int       `json:"Creator,omitempty" db:"creator,false,bigint"`                             /* creator 创建者 */
+	CreateTime null.Int       `json:"CreateTime,omitempty" db:"create_time,false,timestamp without time zone"` /* create_time 创建时间 */
+	UpdatedBy  null.Int       `json:"UpdatedBy,omitempty" db:"updated_by,false,bigint"`                        /* updated_by 更新者 */
+	UpdateTime null.Int       `json:"UpdateTime,omitempty" db:"update_time,false,timestamp without time zone"` /* update_time 更新时间 */
+	Status     null.String    `json:"Status,omitempty" db:"status,false,character varying"`                    /* status 状态 00：正常  02：异常 */
+	Addi       types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                                    /* addi 附加信息 */
+	Filter                    // build DML where clause
+}
+
+// TTeacherStudentFields full field list for default query
+var TTeacherStudentFields = []string{
+	"ID",
+	"TeacherID",
+	"StudentID",
+	"Creator",
+	"CreateTime",
+	"UpdatedBy",
+	"UpdateTime",
+	"Status",
+	"Addi",
+}
+
+// Fields return all fields of struct.
+func (r *TTeacherStudent) Fields() []string {
+	return TTeacherStudentFields
+}
+
+// GetTableName return the associated db table name.
+func (r *TTeacherStudent) GetTableName() string {
+	var viewNamePattern = regexp.MustCompile(`(?i)^t_v_[a-z0-9_]+$`)
+	tableName := "t_teacher_student"
+	if viewNamePattern.MatchString(tableName) {
+		return tableName[2:]
+	}
+	return tableName
+}
+
+// Create inserts the TTeacherStudent to the database.
+func (r *TTeacherStudent) Create(db Queryer) error {
+	err := db.QueryRow(
+		`INSERT INTO t_teacher_student (teacher_id, student_id, creator, create_time, updated_by, update_time, status, addi) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
+		&r.TeacherID, &r.StudentID, &r.Creator, &r.CreateTime, &r.UpdatedBy, &r.UpdateTime, &r.Status, &r.Addi).Scan(&r.ID)
+	if err != nil {
+		return errors.Wrap(err, "failed to insert t_teacher_student")
+	}
+	return nil
+}
+
+// GetTTeacherStudentByPk select the TTeacherStudent from the database.
+func GetTTeacherStudentByPk(db Queryer, pk0 null.Int) (*TTeacherStudent, error) {
+
+	var r TTeacherStudent
+	err := db.QueryRow(
+		`SELECT id, teacher_id, student_id, creator, create_time, updated_by, update_time, status, addi FROM t_teacher_student WHERE id = $1`,
+		pk0).Scan(&r.ID, &r.TeacherID, &r.StudentID, &r.Creator, &r.CreateTime, &r.UpdatedBy, &r.UpdateTime, &r.Status, &r.Addi)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to select t_teacher_student")
+	}
+	return &r, nil
+}
+
+/*TUndertaker 项目承接表 represents assessuser.t_undertaker */
 type TUndertaker struct {
 	ID            null.Int    `json:"ID,omitempty" db:"id,true,integer"`                                   /* id 承接编号 */
 	PrjID         null.Int    `json:"PrjID,omitempty" db:"prj_id,false,bigint"`                            /* prj_id 项目编号 */
@@ -4676,7 +6801,7 @@ func GetTUndertakerByPk(db Queryer, pk0 null.Int) (*TUndertaker, error) {
 	return &r, nil
 }
 
-/*TUser t_user represents kuser.t_user */
+/*TUser t_user represents assessuser.t_user */
 type TUser struct {
 	ID             null.Int    `json:"ID,omitempty" db:"id,true,integer"`                                      /* id 用户内部编号 */
 	ExternalIDType null.String `json:"ExternalIDType,omitempty" db:"external_id_type,false,character varying"` /* external_id_type 用户外部标识类型 */
@@ -4826,7 +6951,7 @@ func GetTUserByPk(db Queryer, pk0 null.Int) (*TUser, error) {
 	return &r, nil
 }
 
-/*TUserAssessment 学生评价管理 represents kuser.t_user_assessment */
+/*TUserAssessment 学生评价管理 represents assessuser.t_user_assessment */
 type TUserAssessment struct {
 	ID          null.Int       `json:"ID,omitempty" db:"id,true,integer"`                             /* id 作答id */
 	UserID      null.Int       `json:"UserID,omitempty" db:"user_id,false,bigint"`                    /* user_id 考生编号 */
@@ -4916,7 +7041,7 @@ func GetTUserAssessmentByPk(db Queryer, pk0 null.Int) (*TUserAssessment, error) 
 	return &r, nil
 }
 
-/*TUserCourse 用户课程表 represents kuser.t_user_course */
+/*TUserCourse 用户课程表 represents assessuser.t_user_course */
 type TUserCourse struct {
 	ID                null.Int       `json:"ID,omitempty" db:"id,true,integer"`                                            /* id 关系编号 */
 	UID               null.Int       `json:"UID,omitempty" db:"u_id,false,bigint"`                                         /* u_id 用户编号 */
@@ -5006,7 +7131,7 @@ func GetTUserCourseByPk(db Queryer, pk0 null.Int) (*TUserCourse, error) {
 	return &r, nil
 }
 
-/*TUserDegree 用户等级表 represents kuser.t_user_degree */
+/*TUserDegree 用户等级表 represents assessuser.t_user_degree */
 type TUserDegree struct {
 	ID       null.Int `json:"ID,omitempty" db:"id,true,integer"`              /* id 用户能力等级编号 */
 	UserID   null.Int `json:"UserID,omitempty" db:"user_id,false,bigint"`     /* user_id 用户编号 */
@@ -5060,7 +7185,7 @@ func GetTUserDegreeByPk(db Queryer, pk0 null.Int) (*TUserDegree, error) {
 	return &r, nil
 }
 
-/*TUserDomain 用户，组，角色配置表 represents kuser.t_user_domain */
+/*TUserDomain 用户，组，角色配置表 represents assessuser.t_user_domain */
 type TUserDomain struct {
 	ID          null.Int    `json:"ID,omitempty" db:"id,true,integer"`                               /* id 编码 */
 	SysUser     null.Int    `json:"SysUser,omitempty" db:"sys_user,false,bigint"`                    /* sys_user 系统用户编码 */
@@ -5151,7 +7276,7 @@ func GetTUserDomainByPk(db Queryer, pk0 null.Int) (*TUserDomain, error) {
 	return &r, nil
 }
 
-/*TUserGroup user belong to group represents kuser.t_user_group */
+/*TUserGroup user belong to group represents assessuser.t_user_group */
 type TUserGroup struct {
 	ID         null.Int       `json:"ID,omitempty" db:"id,true,integer"`                    /* id 关系编号 */
 	UserID     null.Int       `json:"UserID,omitempty" db:"user_id,false,bigint"`           /* user_id 用户 */
@@ -5221,71 +7346,71 @@ func GetTUserGroupByPk(db Queryer, pk0 null.Int) (*TUserGroup, error) {
 	return &r, nil
 }
 
-/*TUserTrial t_user_trial represents kuser.t_user_trial */
-type TUserTrial struct {
-	ID     null.Int    `json:"ID,omitempty" db:"id,true,integer"`                    /* id id */
-	Name   null.String `json:"Name,omitempty" db:"name,false,character varying"`     /* name name */
-	Gender null.String `json:"Gender,omitempty" db:"gender,false,character varying"` /* gender gender */
-	Avatar []byte      `json:"Avatar,omitempty" db:"avatar,false,bytea"`             /* avatar avatar */
-	Email  null.String `json:"Email,omitempty" db:"email,false,character varying"`   /* email email */
-	Phone  null.String `json:"Phone,omitempty" db:"phone,false,character varying"`   /* phone phone */
-	Remark null.String `json:"Remark,omitempty" db:"remark,false,character varying"` /* remark remark */
-	Status null.String `json:"Status,omitempty" db:"status,false,character varying"` /* status status */
-	Filter             // build DML where clause
+/*TUserPermissionOverride t_user_permission_override represents assessuser.t_user_permission_override */
+type TUserPermissionOverride struct {
+	ID           null.Int       `json:"ID,omitempty" db:"id,true,integer"`                      /* id 记录ID */
+	UserID       null.Int       `json:"UserID,omitempty" db:"user_id,false,bigint"`             /* user_id 用户ID */
+	RoleID       null.Int       `json:"RoleID,omitempty" db:"role_id,false,bigint"`             /* role_id 角色ID */
+	PermissionID null.Int       `json:"PermissionID,omitempty" db:"permission_id,false,bigint"` /* permission_id 权限ID */
+	Allow        null.Bool      `json:"Allow,omitempty" db:"allow,false,boolean"`               /* allow 是否允许 */
+	Addi         types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                   /* addi 扩展内容 */
+	CreateTime   null.Int       `json:"CreateTime,omitempty" db:"create_time,false,bigint"`     /* create_time 创建时间 */
+	Status       null.String    `json:"Status,omitempty" db:"status,false,character varying"`   /* status 状态 00：启用 02：禁用 */
+	Filter                      // build DML where clause
 }
 
-// TUserTrialFields full field list for default query
-var TUserTrialFields = []string{
+// TUserPermissionOverrideFields full field list for default query
+var TUserPermissionOverrideFields = []string{
 	"ID",
-	"Name",
-	"Gender",
-	"Avatar",
-	"Email",
-	"Phone",
-	"Remark",
+	"UserID",
+	"RoleID",
+	"PermissionID",
+	"Allow",
+	"Addi",
+	"CreateTime",
 	"Status",
 }
 
 // Fields return all fields of struct.
-func (r *TUserTrial) Fields() []string {
-	return TUserTrialFields
+func (r *TUserPermissionOverride) Fields() []string {
+	return TUserPermissionOverrideFields
 }
 
 // GetTableName return the associated db table name.
-func (r *TUserTrial) GetTableName() string {
+func (r *TUserPermissionOverride) GetTableName() string {
 	var viewNamePattern = regexp.MustCompile(`(?i)^t_v_[a-z0-9_]+$`)
-	tableName := "t_user_trial"
+	tableName := "t_user_permission_override"
 	if viewNamePattern.MatchString(tableName) {
 		return tableName[2:]
 	}
 	return tableName
 }
 
-// Create inserts the TUserTrial to the database.
-func (r *TUserTrial) Create(db Queryer) error {
+// Create inserts the TUserPermissionOverride to the database.
+func (r *TUserPermissionOverride) Create(db Queryer) error {
 	err := db.QueryRow(
-		`INSERT INTO t_user_trial (name, gender, avatar, email, phone, remark, status) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
-		&r.Name, &r.Gender, &r.Avatar, &r.Email, &r.Phone, &r.Remark, &r.Status).Scan(&r.ID)
+		`INSERT INTO t_user_permission_override (user_id, role_id, permission_id, allow, addi, create_time, status) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
+		&r.UserID, &r.RoleID, &r.PermissionID, &r.Allow, &r.Addi, &r.CreateTime, &r.Status).Scan(&r.ID)
 	if err != nil {
-		return errors.Wrap(err, "failed to insert t_user_trial")
+		return errors.Wrap(err, "failed to insert t_user_permission_override")
 	}
 	return nil
 }
 
-// GetTUserTrialByPk select the TUserTrial from the database.
-func GetTUserTrialByPk(db Queryer, pk0 null.Int) (*TUserTrial, error) {
+// GetTUserPermissionOverrideByPk select the TUserPermissionOverride from the database.
+func GetTUserPermissionOverrideByPk(db Queryer, pk0 null.Int) (*TUserPermissionOverride, error) {
 
-	var r TUserTrial
+	var r TUserPermissionOverride
 	err := db.QueryRow(
-		`SELECT id, name, gender, avatar, email, phone, remark, status FROM t_user_trial WHERE id = $1`,
-		pk0).Scan(&r.ID, &r.Name, &r.Gender, &r.Avatar, &r.Email, &r.Phone, &r.Remark, &r.Status)
+		`SELECT id, user_id, role_id, permission_id, allow, addi, create_time, status FROM t_user_permission_override WHERE id = $1`,
+		pk0).Scan(&r.ID, &r.UserID, &r.RoleID, &r.PermissionID, &r.Allow, &r.Addi, &r.CreateTime, &r.Status)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to select t_user_trial")
+		return nil, errors.Wrap(err, "failed to select t_user_permission_override")
 	}
 	return &r, nil
 }
 
-/*TVAa t_v_aa represents kuser.t_v_aa */
+/*TVAa t_v_aa represents assessuser.t_v_aa */
 type TVAa struct {
 	DomainAPIID      null.Int    `json:"DomainAPIID,omitempty" db:"domain_api_id,false,integer"`                      /* domain_api_id domain_api_id */
 	DaGrantData      null.String `json:"DaGrantData,omitempty" db:"da_grant_data,false,text"`                         /* da_grant_data da_grant_data */
@@ -5374,7 +7499,7 @@ func GetTVAaByPk(db Queryer) (*TVAa, error) {
 	return &r, nil
 }
 
-/*TVAPIDomain t_v_api_domain represents kuser.t_v_api_domain */
+/*TVAPIDomain t_v_api_domain represents assessuser.t_v_api_domain */
 type TVAPIDomain struct {
 	ID             null.Int       `json:"ID,omitempty" db:"id,false,integer"`                                     /* id id */
 	APIID          null.Int       `json:"APIID,omitempty" db:"api_id,false,integer"`                              /* api_id api_id */
@@ -5443,7 +7568,7 @@ func GetTVAPIDomainByPk(db Queryer) (*TVAPIDomain, error) {
 	return &r, nil
 }
 
-/*TVAuthenticate t_v_authenticate represents kuser.t_v_authenticate */
+/*TVAuthenticate t_v_authenticate represents assessuser.t_v_authenticate */
 type TVAuthenticate struct {
 	GrantID        null.Int    `json:"GrantID,omitempty" db:"grant_id,false,integer"`                          /* grant_id grant_id */
 	GrantData      null.String `json:"GrantData,omitempty" db:"grant_data,false,text"`                         /* grant_data grant_data */
@@ -5522,7 +7647,7 @@ func GetTVAuthenticateByPk(db Queryer) (*TVAuthenticate, error) {
 	return &r, nil
 }
 
-/*TVDomainAPI t_v_domain_api represents kuser.t_v_domain_api */
+/*TVDomainAPI t_v_domain_api represents assessuser.t_v_domain_api */
 type TVDomainAPI struct {
 	ID                 null.Int       `json:"ID,omitempty" db:"id,false,integer"`                                             /* id id */
 	AuthDomainID       null.Int       `json:"AuthDomainID,omitempty" db:"auth_domain_id,false,integer"`                       /* auth_domain_id auth_domain_id */
@@ -5607,7 +7732,7 @@ func GetTVDomainAPIByPk(db Queryer) (*TVDomainAPI, error) {
 	return &r, nil
 }
 
-/*TVDomainAsset t_v_domain_asset represents kuser.t_v_domain_asset */
+/*TVDomainAsset t_v_domain_asset represents assessuser.t_v_domain_asset */
 type TVDomainAsset struct {
 	ID            null.Int    `json:"ID,omitempty" db:"id,false,integer"`                                /* id id */
 	DomainName    null.String `json:"DomainName,omitempty" db:"domain_name,false,character varying"`     /* domain_name domain_name */
@@ -5692,7 +7817,7 @@ func GetTVDomainAssetByPk(db Queryer) (*TVDomainAsset, error) {
 	return &r, nil
 }
 
-/*TVDomainUser t_v_domain_user represents kuser.t_v_domain_user */
+/*TVDomainUser t_v_domain_user represents assessuser.t_v_domain_user */
 type TVDomainUser struct {
 	ID         null.Int    `json:"ID,omitempty" db:"id,false,integer"`                            /* id id */
 	DomainID   null.Int    `json:"DomainID,omitempty" db:"domain_id,false,integer"`               /* domain_id domain_id */
@@ -5753,7 +7878,7 @@ func GetTVDomainUserByPk(db Queryer) (*TVDomainUser, error) {
 	return &r, nil
 }
 
-/*TVInsurancePolicy t_v_insurance_policy represents kuser.t_v_insurance_policy */
+/*TVInsurancePolicy t_v_insurance_policy represents assessuser.t_v_insurance_policy */
 type TVInsurancePolicy struct {
 	ID                    null.Int       `json:"ID,omitempty" db:"id,false,integer"`                                         /* id id */
 	OrderID               null.Int       `json:"OrderID,omitempty" db:"order_id,false,bigint"`                               /* order_id order_id */
@@ -5972,7 +8097,7 @@ func GetTVInsurancePolicyByPk(db Queryer) (*TVInsurancePolicy, error) {
 	return &r, nil
 }
 
-/*TVInsurancePolicy2 t_v_insurance_policy2 represents kuser.t_v_insurance_policy2 */
+/*TVInsurancePolicy2 t_v_insurance_policy2 represents assessuser.t_v_insurance_policy2 */
 type TVInsurancePolicy2 struct {
 	ID                      null.Int       `json:"ID,omitempty" db:"id,false,integer"`                                                       /* id id */
 	Sn                      null.String    `json:"Sn,omitempty" db:"sn,false,character varying"`                                             /* sn sn */
@@ -6273,7 +8398,7 @@ func GetTVInsurancePolicy2ByPk(db Queryer) (*TVInsurancePolicy2, error) {
 	return &r, nil
 }
 
-/*TVInsuranceType t_v_insurance_type represents kuser.t_v_insurance_type */
+/*TVInsuranceType t_v_insurance_type represents assessuser.t_v_insurance_type */
 type TVInsuranceType struct {
 	ID                      null.Int       `json:"ID,omitempty" db:"id,false,integer"`                                               /* id id */
 	ParentID                null.Int       `json:"ParentID,omitempty" db:"parent_id,false,bigint"`                                   /* parent_id parent_id */
@@ -6448,7 +8573,7 @@ func GetTVInsuranceTypeByPk(db Queryer) (*TVInsuranceType, error) {
 	return &r, nil
 }
 
-/*TVInsureAttach t_v_insure_attach represents kuser.t_v_insure_attach */
+/*TVInsureAttach t_v_insure_attach represents assessuser.t_v_insure_attach */
 type TVInsureAttach struct {
 	ID                  null.Int       `json:"ID,omitempty" db:"id,false,integer"`                                  /* id id */
 	OrgID               null.Int       `json:"OrgID,omitempty" db:"org_id,false,bigint"`                            /* org_id org_id */
@@ -6533,7 +8658,7 @@ func GetTVInsureAttachByPk(db Queryer) (*TVInsureAttach, error) {
 	return &r, nil
 }
 
-/*TVInsuredSchool t_v_insured_school represents kuser.t_v_insured_school */
+/*TVInsuredSchool t_v_insured_school represents assessuser.t_v_insured_school */
 type TVInsuredSchool struct {
 	ID        null.Int       `json:"ID,omitempty" db:"id,false,integer"`                          /* id id */
 	Name      null.String    `json:"Name,omitempty" db:"name,false,character varying"`            /* name name */
@@ -6602,7 +8727,7 @@ func GetTVInsuredSchoolByPk(db Queryer) (*TVInsuredSchool, error) {
 	return &r, nil
 }
 
-/*TVInsurer t_v_insurer represents kuser.t_v_insurer */
+/*TVInsurer t_v_insurer represents assessuser.t_v_insurer */
 type TVInsurer struct {
 	ID       null.Int    `json:"ID,omitempty" db:"id,false,integer"`                     /* id id */
 	Name     null.String `json:"Name,omitempty" db:"name,false,character varying"`       /* name name */
@@ -6661,7 +8786,7 @@ func GetTVInsurerByPk(db Queryer) (*TVInsurer, error) {
 	return &r, nil
 }
 
-/*TVManagerSchool t_v_manager_school represents kuser.t_v_manager_school */
+/*TVManagerSchool t_v_manager_school represents assessuser.t_v_manager_school */
 type TVManagerSchool struct {
 	UserID     null.Int       `json:"UserID,omitempty" db:"user_id,false,bigint"`                    /* user_id user_id */
 	Name       null.String    `json:"Name,omitempty" db:"name,false,character varying"`              /* name name */
@@ -6726,7 +8851,7 @@ func GetTVManagerSchoolByPk(db Queryer) (*TVManagerSchool, error) {
 	return &r, nil
 }
 
-/*TVMistakeCorrect t_v_mistake_correct represents kuser.t_v_mistake_correct */
+/*TVMistakeCorrect t_v_mistake_correct represents assessuser.t_v_mistake_correct */
 type TVMistakeCorrect struct {
 	ID                    null.Int       `json:"ID,omitempty" db:"id,false,integer"`                                                    /* id id */
 	OrderID               null.Int       `json:"OrderID,omitempty" db:"order_id,false,bigint"`                                          /* order_id order_id */
@@ -6849,7 +8974,7 @@ func GetTVMistakeCorrectByPk(db Queryer) (*TVMistakeCorrect, error) {
 	return &r, nil
 }
 
-/*TVMistakeCorrect2 t_v_mistake_correct2 represents kuser.t_v_mistake_correct2 */
+/*TVMistakeCorrect2 t_v_mistake_correct2 represents assessuser.t_v_mistake_correct2 */
 type TVMistakeCorrect2 struct {
 	ID                              null.Int       `json:"ID,omitempty" db:"id,false,integer"`                                                              /* id id */
 	OrderID                         null.Int       `json:"OrderID,omitempty" db:"order_id,false,bigint"`                                                    /* order_id order_id */
@@ -7228,7 +9353,7 @@ func GetTVMistakeCorrect2ByPk(db Queryer) (*TVMistakeCorrect2, error) {
 	return &r, nil
 }
 
-/*TVMistakeCorrectShow t_v_mistake_correct_show represents kuser.t_v_mistake_correct_show */
+/*TVMistakeCorrectShow t_v_mistake_correct_show represents assessuser.t_v_mistake_correct_show */
 type TVMistakeCorrectShow struct {
 	ID                       null.Int       `json:"ID,omitempty" db:"id,false,integer"`                                              /* id id */
 	OrderID                  null.Int       `json:"OrderID,omitempty" db:"order_id,false,bigint"`                                    /* order_id order_id */
@@ -7477,7 +9602,7 @@ func GetTVMistakeCorrectShowByPk(db Queryer) (*TVMistakeCorrectShow, error) {
 	return &r, nil
 }
 
-/*TVOrder t_v_order represents kuser.t_v_order */
+/*TVOrder t_v_order represents assessuser.t_v_order */
 type TVOrder struct {
 	ID             null.Int       `json:"ID,omitempty" db:"id,false,integer"`                                     /* id id */
 	TradeNo        null.String    `json:"TradeNo,omitempty" db:"trade_no,false,character varying"`                /* trade_no trade_no */
@@ -7644,7 +9769,7 @@ func GetTVOrderByPk(db Queryer) (*TVOrder, error) {
 	return &r, nil
 }
 
-/*TVOrder2 t_v_order2 represents kuser.t_v_order2 */
+/*TVOrder2 t_v_order2 represents assessuser.t_v_order2 */
 type TVOrder2 struct {
 	ID                         null.Int       `json:"ID,omitempty" db:"id,false,integer"`                                                       /* id id */
 	TradeNo                    null.String    `json:"TradeNo,omitempty" db:"trade_no,false,character varying"`                                  /* trade_no trade_no */
@@ -8073,7 +10198,7 @@ func GetTVOrder2ByPk(db Queryer) (*TVOrder2, error) {
 	return &r, nil
 }
 
-/*TVOrderSum t_v_order_sum represents kuser.t_v_order_sum */
+/*TVOrderSum t_v_order_sum represents assessuser.t_v_order_sum */
 type TVOrderSum struct {
 	School       null.String `json:"School,omitempty" db:"school,false,character varying"`             /* school school */
 	OrgID        null.Int    `json:"OrgID,omitempty" db:"org_id,false,bigint"`                         /* org_id org_id */
@@ -8136,7 +10261,7 @@ func GetTVOrderSumByPk(db Queryer) (*TVOrderSum, error) {
 	return &r, nil
 }
 
-/*TVParam t_v_param represents kuser.t_v_param */
+/*TVParam t_v_param represents assessuser.t_v_param */
 type TVParam struct {
 	ParentID   null.Int    `json:"ParentID,omitempty" db:"parent_id,false,bigint"`                /* parent_id parent_id */
 	ParentName null.String `json:"ParentName,omitempty" db:"parent_name,false,character varying"` /* parent_name parent_name */
@@ -8201,7 +10326,7 @@ func GetTVParamByPk(db Queryer) (*TVParam, error) {
 	return &r, nil
 }
 
-/*TVPayment t_v_payment represents kuser.t_v_payment */
+/*TVPayment t_v_payment represents assessuser.t_v_payment */
 type TVPayment struct {
 	ID                null.Int       `json:"ID,omitempty" db:"id,false,integer"`                                          /* id id */
 	Batch             null.String    `json:"Batch,omitempty" db:"batch,false,character varying"`                          /* batch batch */
@@ -8284,7 +10409,7 @@ func GetTVPaymentByPk(db Queryer) (*TVPayment, error) {
 	return &r, nil
 }
 
-/*TVRegion t_v_region represents kuser.t_v_region */
+/*TVRegion t_v_region represents assessuser.t_v_region */
 type TVRegion struct {
 	Province null.String `json:"Province,omitempty" db:"province,false,character varying"` /* province province */
 	City     null.String `json:"City,omitempty" db:"city,false,character varying"`         /* city city */
@@ -8341,7 +10466,7 @@ func GetTVRegionByPk(db Queryer) (*TVRegion, error) {
 	return &r, nil
 }
 
-/*TVReportClaims t_v_report_claims represents kuser.t_v_report_claims */
+/*TVReportClaims t_v_report_claims represents assessuser.t_v_report_claims */
 type TVReportClaims struct {
 	ID                       null.Int       `json:"ID,omitempty" db:"id,false,integer"`                                             /* id id */
 	InformantID              null.Int       `json:"InformantID,omitempty" db:"informant_id,false,bigint"`                           /* informant_id informant_id */
@@ -8578,7 +10703,7 @@ func GetTVReportClaimsByPk(db Queryer) (*TVReportClaims, error) {
 	return &r, nil
 }
 
-/*TVUser t_v_user represents kuser.t_v_user */
+/*TVUser t_v_user represents assessuser.t_v_user */
 type TVUser struct {
 	ID              null.Int       `json:"ID,omitempty" db:"id,false,integer"`                                     /* id id */
 	ExternalIDType  null.String    `json:"ExternalIDType,omitempty" db:"external_id_type,false,character varying"` /* external_id_type external_id_type */
@@ -8731,7 +10856,7 @@ func GetTVUserByPk(db Queryer) (*TVUser, error) {
 	return &r, nil
 }
 
-/*TVUserDomain t_v_user_domain represents kuser.t_v_user_domain */
+/*TVUserDomain t_v_user_domain represents assessuser.t_v_user_domain */
 type TVUserDomain struct {
 	ID             null.Int       `json:"ID,omitempty" db:"id,false,integer"`                                     /* id id */
 	UserID         null.Int       `json:"UserID,omitempty" db:"user_id,false,integer"`                            /* user_id user_id */
@@ -8824,7 +10949,7 @@ func GetTVUserDomainByPk(db Queryer) (*TVUserDomain, error) {
 	return &r, nil
 }
 
-/*TVUserDomainAPI t_v_user_domain_api represents kuser.t_v_user_domain_api */
+/*TVUserDomainAPI t_v_user_domain_api represents assessuser.t_v_user_domain_api */
 type TVUserDomainAPI struct {
 	UserID                   null.Int       `json:"UserID,omitempty" db:"user_id,false,integer"`                                                  /* user_id user_id */
 	OfficialName             null.String    `json:"OfficialName,omitempty" db:"official_name,false,character varying"`                            /* official_name official_name */
@@ -8927,7 +11052,7 @@ func GetTVUserDomainAPIByPk(db Queryer) (*TVUserDomainAPI, error) {
 	return &r, nil
 }
 
-/*TVXkbSchoolLayout t_v_xkb_school_layout represents kuser.t_v_xkb_school_layout */
+/*TVXkbSchoolLayout t_v_xkb_school_layout represents assessuser.t_v_xkb_school_layout */
 type TVXkbSchoolLayout struct {
 	School     null.String    `json:"School,omitempty" db:"school,false,character varying"` /* school school */
 	Schoolid   null.Int       `json:"Schoolid,omitempty" db:"schoolid,false,integer"`       /* schoolid schoolid */
@@ -8994,7 +11119,7 @@ func GetTVXkbSchoolLayoutByPk(db Queryer) (*TVXkbSchoolLayout, error) {
 	return &r, nil
 }
 
-/*TVXkbUser t_v_xkb_user represents kuser.t_v_xkb_user */
+/*TVXkbUser t_v_xkb_user represents assessuser.t_v_xkb_user */
 type TVXkbUser struct {
 	ID             null.Int       `json:"ID,omitempty" db:"id,false,integer"`                                     /* id id */
 	Account        null.String    `json:"Account,omitempty" db:"account,false,character varying"`                 /* account account */
@@ -9125,7 +11250,7 @@ func GetTVXkbUserByPk(db Queryer) (*TVXkbUser, error) {
 	return &r, nil
 }
 
-/*TWxUser 微信开放接口用户信息 represents kuser.t_wx_user */
+/*TWxUser 微信开放接口用户信息 represents assessuser.t_wx_user */
 type TWxUser struct {
 	ID             null.Int       `json:"ID,omitempty" db:"id,true,bigint"`                                      /* id 编号 */
 	Subscribe      null.Int       `json:"Subscribe,omitempty" db:"subscribe,false,integer"`                      /* subscribe 是否订阅 */
@@ -9235,7 +11360,7 @@ func GetTWxUserByPk(db Queryer, pk0 null.Int) (*TWxUser, error) {
 	return &r, nil
 }
 
-/*TXkbUser 校快保补充用户信息 represents kuser.t_xkb_user */
+/*TXkbUser 校快保补充用户信息 represents assessuser.t_xkb_user */
 type TXkbUser struct {
 	ID          null.Int       `json:"ID,omitempty" db:"id,true,bigint"`                               /* id 编号 */
 	SchoolID    null.Int       `json:"SchoolID,omitempty" db:"school_id,false,bigint"`                 /* school_id 学校 */
