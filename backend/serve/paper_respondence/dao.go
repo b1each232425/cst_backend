@@ -15,7 +15,7 @@ import (
 const (
 	ExamOverStatus       = "10"
 	QuestionCanNotAnswer = "02"
-	Normalstatus         = "00"
+	NormalStatus         = "00"
 	CanBeEnterStatus     = "16"
 	ExamineeDeleteStatus = " 08"
 
@@ -243,7 +243,7 @@ func checkPracticeIfSubmitted(ctx context.Context, tx *sql.Tx, req SubmitReq) er
 
 func submitPractice(ctx context.Context, tx *sql.Tx, req SubmitReq) error {
 	submitSql := `update t_practice_submissions set end_time = $1,status=$2 where id = $3 AND status=$4`
-	result, err := tx.ExecContext(ctx, submitSql, time.Now().UTC(), practiceSubmitted, req.PracticeSubmissionID, Normalstatus)
+	result, err := tx.ExecContext(ctx, submitSql, time.Now().UTC(), practiceSubmitted, req.PracticeSubmissionID, NormalStatus)
 	if err != nil {
 		z.Error("submitPractice error", zap.Error(err))
 		return err
