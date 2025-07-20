@@ -111,6 +111,12 @@ func InitDbByParams(db, dbHost, dbPort, dbUser, dbPwd string) {
 	//"postgres://pgx_md5:secret@localhost:5432/pgx_test")
 	connInfo := fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=require",
 		dbUser, dbPwd, dbHost, dbPort, db)
+
+	if viper.IsSet("dbms.postgresql.sslmode") {
+		connInfo = fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=%s",
+			dbUser, dbPwd, dbHost, dbPort, db, viper.GetString("dbms.postgresql.sslmode"))
+	}
+
 	var err error
 
 	sqlxDB, err = sqlx.Open("pgx", connInfo)

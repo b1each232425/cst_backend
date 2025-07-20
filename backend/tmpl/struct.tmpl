@@ -6,6 +6,7 @@ type {{ .Struct.Name }} struct {
   Filter  // build DML where clause
 }
 
+
 //{{.Struct.Name}}Fields full field list for default query
 var {{.Struct.Name}}Fields = []string {
 {{- range .Struct.Fields }}
@@ -13,12 +14,42 @@ var {{.Struct.Name}}Fields = []string {
 {{- end }}
 }
 
+//{{.Struct.Name}}Columns full column list for default query
+var {{.Struct.Name}}Columns = []string {
+{{- range .Struct.Fields }}
+    "{{.Column.Name}}",
+{{- end }}
+}
+
+//{{.Struct.Name}}ColumnsDataTypes full column data types for default query
+var {{.Struct.Name}}ColumnsDataTypes = map[string]string {
+{{- range .Struct.Fields }}
+    "{{.Column.Name}}": "{{.Column.DataType}}",
+{{- end }}
+}
+
+//GetFieldsMap returns a map of field names to their values.
+func (r *{{ .Struct.Name }})GetFieldsMap() map[string]any {
+    return map[string]any{
+{{- range .Struct.Fields }}
+        "{{.Name}}": r.{{.Name}},
+{{- end }}
+    }
+}
+
+//GetColumnsMap returns a map of column names to their values.
+func (r *{{ .Struct.Name }})GetColumnsMap() map[string]any {
+    return map[string]any{
+{{- range .Struct.Fields }}
+        "{{.Column.Name}}": r.{{.Name}},
+{{- end }}
+    }
+}
+
 //Fields return all fields of struct.
 func (r *{{ .Struct.Name }})Fields() []string{
 	return {{.Struct.Name}}Fields
 }
-
-
 
 
 //GetTableName return the associated db table name.
