@@ -13,3 +13,4 @@ data/
 .config_windows.json
 .vscode/
 .idea/
+.config_darwin_template.json
