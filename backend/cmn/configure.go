@@ -448,7 +448,7 @@ func Configure() {
 	gob.Register(null.QNearTime{})
 
 	var err error
-	AppLaunchPath, err = filepath.Abs(filepath.Dir(os.Args[0]))
+	AppLaunchPath, err = os.Getwd()
 	if err != nil {
 		fmt.Println(err.Error())
 		Terminate(-1)

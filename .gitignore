@@ -22,6 +22,10 @@ utils/**/cmake-build-relwithdebinfo/
 utils/**/cmake-build-debug/
 utils/**/cmake-build-release/
 
+.idea
+.vscode
+logs/
+
 
 
 
