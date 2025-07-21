@@ -38,8 +38,8 @@ if [ -z "$(which mockgen)" ]; then
   echo "mockgen installed"
 fi
 
-export backEndFileName=i3l
-export deployDst=$DEPLOY_PATH/i3l
+export backEndFileName=devmentor
+export deployDst=$DEPLOY_PATH/devmentor
 export workspace=$PWD
 # correct go build syntax
 # go build -o kzz.io -ldflags \
@@ -73,9 +73,9 @@ go build \
 
 echo "  build complete"
 
-echo "stop i3l container"
-d stop i3l > /dev/null 2> /dev/null || :
-echo "  i3l stoped"
+echo "stop devmentor container"
+d stop devmentor > /dev/null 2> /dev/null || :
+echo "  devmentor stoped"
 
 echo "publishing artifact for remote"
 
@@ -101,15 +101,15 @@ rsync -cruzEL run.sh \
 
 echo "  artifact published"
 
-echo "drop old i3l container"
-d container rm i3l > /dev/null 2> /dev/null || :
+echo "drop old devmentor container"
+d container rm devmentor > /dev/null 2> /dev/null || :
 
 appName="$backEndFileName"_r
-echo "start new i3l container"
+echo "start new devmentor container"
 
-d run --name=i3l \
+d run --name=devmentor \
  -d --restart=always \
- -p 6612:6612 \
+ -p 6610:6610 \
  -v data:/var/data \
  -v deploy:/var/deploy \
  -e KAPP_NAME="$deployDst/$appName" \

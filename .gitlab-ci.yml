@@ -102,3 +102,19 @@ deploy-utils-gg-deps:
     - cd utils/deps/_build_install
     - chmod +x build_all_linux.sh
     - ./build_all_linux.sh
+
+deploy-devmentor-be:
+  stage: deploy
+  only:
+    refs:
+      - main
+      - master
+
+  tags:
+    - nodejs-build
+  environment: production
+  script:
+    - 'echo "deploy backend: devmentor serve"'
+    - cd backend
+    - chmod +x ./deploy.sh
+    - ./deploy.sh

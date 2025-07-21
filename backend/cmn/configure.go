@@ -111,6 +111,12 @@ func InitDbByParams(db, dbHost, dbPort, dbUser, dbPwd string) {
 	//"postgres://pgx_md5:secret@localhost:5432/pgx_test")
 	connInfo := fmt.Sprintf("postgres://%s:%s@%s:%s/%s?search_path=assessuser",
 		dbUser, dbPwd, dbHost, dbPort, db)
+
+	if viper.IsSet("dbms.postgresql.sslmode") {
+		connInfo = fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=%s",
+			dbUser, dbPwd, dbHost, dbPort, db, viper.GetString("dbms.postgresql.sslmode"))
+	}
+
 	var err error
 
 	sqlxDB, err = sqlx.Open("pgx", connInfo)
@@ -449,6 +455,158 @@ func Configure() {
 
 	var err error
 	AppLaunchPath, err = filepath.Abs(filepath.Dir(os.Args[0]))
+	if err != nil {
+		fmt.Println(err.Error())
+		Terminate(-1)
+	}
+
+	logDir := AppLaunchPath + "/logs"
+	if _, err := os.Stat(logDir); os.IsNotExist(err) {
+		_ = os.Mkdir(logDir, os.ModePerm)
+	}
+
+	bootLogFN := logDir + "/bootlog.txt"
+	fd, err := os.OpenFile(bootLogFN, os.O_WRONLY|os.O_CREATE|os.O_APPEND, os.ModePerm)
+	if err != nil {
+		log.Fatal("open " + bootLogFN + " failed by " + err.Error())
+	}
+	log.SetFlags(log.Lmicroseconds | log.Lshortfile)
+	mf := io.MultiWriter(os.Stdout, fd)
+	log.SetOutput(mf)
+	D.fd = fd
+	D.Info("=========================")
+	D.Info("== boot logger started ==")
+
+	// adding application startup directory as first search path.
+	viper.AddConfigPath(AppLaunchPath)
+
+	userHomeDir, err := os.UserHomeDir()
+	if err != nil {
+		D.Fatal(err.Error())
+	}
+
+	viper.AddConfigPath(userHomeDir)
+
+	userConfigDir, err := os.UserConfigDir()
+	if err != nil {
+		D.Fatal(err.Error())
+	}
+
+	viper.AddConfigPath(userConfigDir)
+
+	wd, err := os.Getwd()
+	if err != nil {
+		D.Fatal(err.Error())
+	}
+
+	viper.AddConfigPath(wd)
+
+	cfgFileName := ".config_" + runtime.GOOS
+	switch runtime.GOOS {
+	case "darwin", "windows", "linux":
+		break
+
+	default:
+		D.Fatal("unsupported os: " + runtime.GOOS)
+
+	}
+
+	configureFileName := AppLaunchPath + string(os.PathSeparator) + cfgFileName + ".json"
+	if _, err := os.Stat(configureFileName); err != nil {
+		templateFileName := AppLaunchPath + string(os.PathSeparator) +
+			".config_" + runtime.GOOS + "_template.json"
+		if _, err := os.Stat(templateFileName); err != nil {
+			D.Fatal("can not find " + templateFileName + ", " +
+				err.Error())
+		}
+
+		src, err := os.Open(templateFileName)
+		if err != nil {
+			D.Fatal("can not open " + templateFileName)
+		}
+
+		defer func() { _ = src.Close() }()
+
+		dst, err := os.Create(configureFileName)
+		if err != nil {
+			D.Fatal("can not create " + configureFileName)
+		}
+		defer func() { _ = dst.Close() }()
+
+		if _, err = io.Copy(dst, src); err != nil {
+			D.Fatal(err.Error())
+		}
+
+		D.Info(fmt.Sprintf("can not find %s, recreate it by %s\n",
+			configureFileName, templateFileName))
+	}
+	viper.SetConfigName(cfgFileName)
+
+	viper.AutomaticEnv() // read in environment variables that match
+
+	err = viper.ReadInConfig()
+	if err != nil {
+		D.Fatal(err.Error())
+	}
+
+	D.Info("configured with " + viper.ConfigFileUsed())
+
+	configureDb()
+
+	InitLogger()
+
+	if viper.IsSet("debug.aa") {
+		zjTEL := viper.GetInt64("debug.aa")
+		if zjTEL == 13450464791 {
+			DisableAA = true
+		}
+	}
+
+	if viper.IsSet("debug.enable") {
+		InDebugMode = viper.GetBool("debug.enable")
+	}
+
+	if InDebugMode {
+		if viper.IsSet("debug.serializationReq") {
+			SerializationReq = viper.GetBool("debug.serializationReq")
+		}
+	}
+
+	if viper.IsSet("webServe.attackDefence") {
+		AttackDefence = viper.GetBool("webServe.attackDefence")
+	}
+
+	if viper.IsSet("w2w.grpc.addr") {
+		GRPCAddr = viper.GetString("w2w.grpc.addr")
+	}
+
+	if viper.IsSet("repo.base") {
+		BaseRepo = viper.GetString("repo.base")
+	}
+
+	if viper.IsSet("w2w.grpc.port") {
+		GRPCPort = viper.GetInt("w2w.grpc.port")
+	}
+
+	if viper.IsSet("webServe.attackDefence") {
+		AttackDefence = viper.GetBool("webServe.attackDefence")
+	}
+	nonCmnPackageSetup()
+}
+
+// ConfigureForTest 用于本地的单元测试初始化
+func ConfigureForTest() {
+	gob.Register(map[string]string{})
+
+	gob.Register(null.String{})
+	gob.Register(null.Int{})
+	gob.Register(null.Float{})
+	gob.Register(null.Time{})
+	gob.Register(null.Bool{})
+	gob.Register(null.QNearTime{})
+
+	var err error
+	AppLaunchPath, err = os.Getwd()
 	if err != nil {
 		fmt.Println(err.Error())
 		Terminate(-1)
