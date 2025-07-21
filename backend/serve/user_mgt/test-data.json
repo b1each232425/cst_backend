@@ -46,7 +46,7 @@
         },
         "tags": ["vip", "active"]
       },
-      "Remark": "正常活跃用户",
+      "Remark": "test",
       "Status": "00"
     },
     {
@@ -92,7 +92,7 @@
         "trial_expires": 1706737200000,
         "features_used": ["premium_search", "export"]
       },
-      "Remark": "试用用户",
+      "Remark": "test",
       "Status": "00"
     },
     {
@@ -136,7 +136,7 @@
         "permissions": ["all"],
         "last_backup": 1703145600000
       },
-      "Remark": "系统超级管理员",
+      "Remark": "test",
       "Status": "00"
     },
     {
@@ -163,7 +163,7 @@
         "session_id": "anon_session_004",
         "referrer": "google.com"
       },
-      "Remark": "匿名访客",
+      "Remark": "test",
       "Status": "00"
     },
     {
@@ -208,7 +208,7 @@
           "q2": "出生地"
         }
       },
-      "Remark": "账户被临时锁定",
+      "Remark": "test",
       "Status": "04"
     },
     {
@@ -252,7 +252,7 @@
         "department": "IT部门",
         "employee_id": "EMP006"
       },
-      "Remark": "企业机构管理员",
+      "Remark": "test",
       "Status": "00"
     },
     {
@@ -294,7 +294,7 @@
         "test_scenarios": ["login", "payment", "search"],
         "automation": true
       },
-      "Remark": "自动化测试专用账户",
+      "Remark": "test",
       "Status": "00"
     },
     {
@@ -337,7 +337,7 @@
         "timezone": "America/Toronto",
         "currency": "CAD"
       },
-      "Remark": "国际用户",
+      "Remark": "test",
       "Status": "00"
     },
     {
@@ -377,7 +377,7 @@
         "migrated_from": "legacy_system_v1",
         "migration_date": 1703000000000
       },
-      "Remark": "从旧系统迁移的用户",
+      "Remark": "test",
       "Status": "00"
     },
     {
@@ -414,7 +414,7 @@
         "attack_patterns": ["brute_force", "sql_injection"],
         "risk_score": 95
       },
-      "Remark": "检测到攻击行为，已锁定",
+      "Remark": "test",
       "Status": "06"
     },
     {
@@ -454,7 +454,7 @@
         "trial_ended": 1702592000000,
         "renewal_attempts": 3
       },
-      "Remark": "试用期已过期",
+      "Remark": "test",
       "Status": "08"
     },
     {
@@ -491,7 +491,7 @@
         "disable_reason": "违反用户协议",
         "disable_date": 1703100000000
       },
-      "Remark": "因违规被禁用",
+      "Remark": "test",
       "Status": "02"
     }
   ],

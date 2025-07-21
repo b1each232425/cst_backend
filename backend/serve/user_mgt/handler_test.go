@@ -4,31 +4,17 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/jackc/pgx/v5"
 	"net/http/httptest"
 	"net/url"
 	"os"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 	"w2w.io/cmn"
 	"w2w.io/null"
 	"w2w.io/service"
 )
-
-// MockRepo 模拟Repo接口
-type MockRepo struct {
-	users     []cmn.TUser
-	totalRows int64
-	err       error
-}
-
-func (m *MockRepo) QueryUsers(ctx context.Context, tx pgx.Tx, page, pageSize int64, filter QueryUsersFilter) ([]cmn.TUser, int64, error) {
-	if m.err != nil {
-		return nil, 0, m.err
-	}
-	return m.users, m.totalRows, nil
-}
 
 // createMockContext 创建符合GetCtxValue要求的mock context
 func createMockContext(method, path string, queryParams url.Values, forceError string) context.Context {
@@ -49,6 +35,39 @@ func createMockContext(method, path string, queryParams url.Values, forceError s
 		},
 		BeginTime: time.Now(),
 		Tag:       make(map[string]interface{}),
+		SysUser: &cmn.TUser{
+			ID: null.NewInt(54242, true), // 请求用户ID
+		},
+	}
+
+	ctx := context.WithValue(context.Background(), cmn.QNearKey, serviceCtx)
+
+	// 使用QNearKey将ServiceCtx设置到context中
+	return context.WithValue(ctx, "force-error", forceError)
+}
+
+// createMockContextWithBody 创建带请求体的mock context
+func createMockContextWithBody(method, path string, body string, forceError string) context.Context {
+	// 创建mock HTTP请求
+	req := httptest.NewRequest(method, path, strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+
+	// 创建mock HTTP响应
+	w := httptest.NewRecorder()
+
+	// 创建ServiceCtx
+	serviceCtx := &cmn.ServiceCtx{
+		R: req,
+		W: w,
+		Msg: &cmn.ReplyProto{
+			API:    path,
+			Method: method,
+		},
+		BeginTime: time.Now(),
+		Tag:       make(map[string]interface{}),
+		SysUser: &cmn.TUser{
+			ID: null.NewInt(54242, true), // 请求用户ID
+		},
 	}
 
 	ctx := context.WithValue(context.Background(), cmn.QNearKey, serviceCtx)
@@ -97,8 +116,13 @@ func TestMain(m *testing.M) {
 	code := m.Run()
 
 	// 清理测试数据
-	// TODO: 清理插入的测试数据
-	// 可以通过删除测试用户来清理
+	clearSql := "DELETE FROM t_user WHERE remark = 'test'"
+	pgxConn := cmn.GetPgxConn()
+	_, err = pgxConn.Exec(context.Background(), clearSql)
+	if err != nil {
+		e := fmt.Sprintf("Failed to clear test data: %v", err)
+		z.Warn(e)
+	}
 
 	os.Exit(code)
 }
@@ -440,7 +464,7 @@ func Test_handler_HandleUser(t *testing.T) {
 				repo: &MockRepo{},
 			},
 			args: args{
-				ctx: createMockContext("POST", "/api/user", url.Values{}, ""),
+				ctx: createMockContext("PUT", "/api/user", url.Values{}, ""),
 			},
 			wantErr: true,
 		},
@@ -540,6 +564,157 @@ func Test_handler_HandleUser(t *testing.T) {
 					"status":      {"00"},
 					"create_time": {strconv.FormatInt(time.Now().Unix()-86400, 10)},
 				}, "json.Marshal"),
+			},
+			wantErr: true,
+		},
+
+		// POST方法测试用例
+		{
+			name: "成功创建单个用户",
+			fields: fields{
+				repo: &MockRepo{},
+			},
+			args: args{
+				ctx: createMockContextWithBody("POST", "/api/user", `[{
+					"account": "new_user_001",
+					"category": "normal",
+					"official_name": "新用户001",
+					"creator": 1
+				}]`, ""),
+			},
+			wantErr: false,
+		},
+		{
+			name: "成功创建多个用户",
+			fields: fields{
+				repo: &MockRepo{},
+			},
+			args: args{
+				ctx: createMockContextWithBody("POST", "/api/user", `[{
+					"account": "user_001",
+					"category": "normal",
+					"official_name": "用户001",
+					"creator": 1
+				}, {
+					"account": "user_002",
+					"category": "vip",
+					"official_name": "用户002",
+					"creator": 1
+				}]`, ""),
+			},
+			wantErr: false,
+		},
+		{
+			name: "请求体为空",
+			fields: fields{
+				repo: &MockRepo{},
+			},
+			args: args{
+				ctx: createMockContextWithBody("POST", "/api/user", "", ""),
+			},
+			wantErr: true,
+		},
+		{
+			name: "无效的JSON格式",
+			fields: fields{
+				repo: &MockRepo{},
+			},
+			args: args{
+				ctx: createMockContextWithBody("POST", "/api/user", `{"invalid": json}`, ""),
+			},
+			wantErr: true,
+		},
+		{
+			name: "JSON格式正确但不是数组",
+			fields: fields{
+				repo: &MockRepo{},
+			},
+			args: args{
+				ctx: createMockContextWithBody("POST", "/api/user", `{"account": "test"}`, ""),
+			},
+			wantErr: true,
+		},
+		{
+			name: "空的用户数组",
+			fields: fields{
+				repo: &MockRepo{},
+			},
+			args: args{
+				ctx: createMockContextWithBody("POST", "/api/user", `[]`, ""),
+			},
+			wantErr: true,
+		},
+		{
+			name: "数据库插入失败",
+			fields: fields{
+				repo: &MockRepo{
+					err: fmt.Errorf("数据库连接失败"),
+				},
+			},
+			args: args{
+				ctx: createMockContextWithBody("POST", "/api/user", `[{
+					"account": "test_user",
+					"category": "normal",
+					"creator": 1
+				}]`, ""),
+			},
+			wantErr: true,
+		},
+		{
+			name: "包含特殊字符的用户数据",
+			fields: fields{
+				repo: &MockRepo{},
+			},
+			args: args{
+				ctx: createMockContextWithBody("POST", "/api/user", `[{
+					"account": "test@user#001",
+					"category": "normal",
+					"official_name": "测试用户@#$%",
+					"creator": 1
+				}]`, ""),
+			},
+			wantErr: false,
+		},
+		{
+			name: "包含Unicode字符的用户数据",
+			fields: fields{
+				repo: &MockRepo{},
+			},
+			args: args{
+				ctx: createMockContextWithBody("POST", "/api/user", `[{
+					"account": "用户账号",
+					"category": "normal",
+					"official_name": "张三李四王五",
+					"creator": 1
+				}]`, ""),
+			},
+			wantErr: false,
+		},
+		{
+			name: "io.ReadAll错误",
+			fields: fields{
+				repo: &MockRepo{},
+			},
+			args: args{
+				ctx: createMockContextWithBody("POST", "/api/user", `[{
+					"account": "test_user",
+					"category": "normal",
+					"creator": 1
+				}]`, "io.ReadAll"),
+			},
+			wantErr: true,
+		},
+		{
+			name: "io.Close错误",
+			fields: fields{
+				repo: &MockRepo{},
+			},
+			args: args{
+				ctx: createMockContextWithBody("POST", "/api/user", `[{
+					"account": "test_user",
+					"category": "normal",
+					"creator": 1
+				}]`, "io.Close"),
 			},
 			wantErr: true,
 		},

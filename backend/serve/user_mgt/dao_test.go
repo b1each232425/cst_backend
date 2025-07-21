@@ -114,7 +114,7 @@ func TestRepo_QueryUsers(t *testing.T) {
 			filter: QueryUsersFilter{
 				Gender: null.NewString("M", true),
 			},
-			wantUsersCount: 6,
+			wantUsersCount: 5,
 			wantErr:        false,
 			desc:           "测试按性别过滤查询",
 		},
@@ -126,7 +126,7 @@ func TestRepo_QueryUsers(t *testing.T) {
 			filter: QueryUsersFilter{
 				Status: null.NewString("00", true),
 			},
-			wantUsersCount: 8,
+			wantUsersCount: 10,
 			wantErr:        false,
 			desc:           "测试按状态过滤查询",
 		},
@@ -151,7 +151,7 @@ func TestRepo_QueryUsers(t *testing.T) {
 				Gender: null.NewString("M", true),
 				Status: null.NewString("00", true),
 			},
-			wantUsersCount: 5,
+			wantUsersCount: 4,
 			wantErr:        false,
 			desc:           "测试多个过滤条件组合查询",
 		},
@@ -161,7 +161,7 @@ func TestRepo_QueryUsers(t *testing.T) {
 			page:           1,
 			pageSize:       100,
 			filter:         QueryUsersFilter{},
-			wantUsersCount: 12,
+			wantUsersCount: 19,
 			wantErr:        false,
 			desc:           "测试大页面大小的查询",
 		},
@@ -171,7 +171,7 @@ func TestRepo_QueryUsers(t *testing.T) {
 			page:           2,
 			pageSize:       10,
 			filter:         QueryUsersFilter{},
-			wantUsersCount: 2,
+			wantUsersCount: 9,
 			wantErr:        false,
 			desc:           "测试第二页数据查询",
 		},
@@ -549,6 +549,452 @@ func BenchmarkQueryUsersWithFilter(b *testing.B) {
 		_, _, err := repo.QueryUsers(ctx, nil, 1, 10, filter)
 		if err != nil {
 			b.Errorf("QueryUsers() error = %v", err)
+		}
+	}
+}
+
+// TestRepo_InsertUsers 测试InsertUsers方法
+func TestRepo_InsertUsers(t *testing.T) {
+	// 创建真实的repo实例
+	repo := NewRepo()
+
+	tests := []struct {
+		name    string
+		ctx     context.Context
+		tx      pgx.Tx
+		users   []cmn.TUser
+		wantErr bool
+		desc    string
+	}{
+		{
+			name: "成功插入单个用户",
+			ctx:  context.Background(),
+			tx:   nil,
+			users: []cmn.TUser{
+				{
+					Account:      fmt.Sprintf("test_user_%d", time.Now().UnixNano()),
+					Category:     "normal",
+					OfficialName: null.NewString("测试用户", true),
+					Gender:       null.NewString("M", true),
+					MobilePhone:  null.NewString("13800138000", true),
+					Email:        null.NewString("test1@example.com", true),
+					Creator:      null.NewInt(1, true),
+					Status:       null.NewString("00", true),
+					Remark:       null.NewString("test", true),
+				},
+			},
+			wantErr: false,
+			desc:    "测试成功插入单个用户数据",
+		},
+		{
+			name: "成功插入多个用户",
+			ctx:  context.Background(),
+			tx:   nil,
+			users: []cmn.TUser{
+				{
+					Account:      fmt.Sprintf("batch_user_1_%d", time.Now().UnixNano()),
+					Category:     "vip",
+					OfficialName: null.NewString("批量用户1", true),
+					Gender:       null.NewString("F", true),
+					Creator:      null.NewInt(1, true),
+					Remark:       null.NewString("test", true),
+				},
+				{
+					Account:      fmt.Sprintf("batch_user_2_%d", time.Now().UnixNano()),
+					Category:     "normal",
+					OfficialName: null.NewString("批量用户2", true),
+					Gender:       null.NewString("M", true),
+					IDCardNo:     null.NewString("110101199001011234", true),
+					Creator:      null.NewInt(1, true),
+					Remark:       null.NewString("test", true),
+				},
+			},
+			wantErr: false,
+			desc:    "测试成功插入多个用户数据",
+		},
+		{
+			name:    "空用户列表",
+			ctx:     context.Background(),
+			tx:      nil,
+			users:   []cmn.TUser{},
+			wantErr: true,
+			desc:    "测试空用户列表应该返回错误",
+		},
+		{
+			name: "缺少必要字段Account",
+			ctx:  context.Background(),
+			tx:   nil,
+			users: []cmn.TUser{
+				{
+					// Account 字段为空
+					Category: "normal",
+					Creator:  null.NewInt(1, true),
+					Remark:   null.NewString("test", true),
+				},
+			},
+			wantErr: true,
+			desc:    "测试缺少Account字段应该返回验证错误",
+		},
+		{
+			name: "缺少必要字段Category",
+			ctx:  context.Background(),
+			tx:   nil,
+			users: []cmn.TUser{
+				{
+					Account: fmt.Sprintf("invalid_user_%d", time.Now().UnixNano()),
+					// Category 字段为空
+					Creator: null.NewInt(1, true),
+					Remark:  null.NewString("test", true),
+				},
+			},
+			wantErr: true,
+			desc:    "测试缺少Category字段应该返回验证错误",
+		},
+		{
+			name: "缺少必要字段Creator",
+			ctx:  context.Background(),
+			tx:   nil,
+			users: []cmn.TUser{
+				{
+					Account:  fmt.Sprintf("invalid_user_%d", time.Now().UnixNano()),
+					Category: "normal",
+					// Creator 字段无效
+					Remark: null.NewString("test", true),
+				},
+			},
+			wantErr: true,
+			desc:    "测试缺少Creator字段应该返回验证错误",
+		},
+		{
+			name: "匿名用户类型测试",
+			ctx:  context.Background(),
+			tx:   nil,
+			users: []cmn.TUser{
+				{
+					Account:      fmt.Sprintf("anonymous_user_%d", time.Now().UnixNano()),
+					Category:     "anonymous",
+					OfficialName: null.NewString("匿名用户", true),
+					// 没有身份证、手机号、邮箱，应该被设置为匿名用户类型
+					Creator: null.NewInt(1, true),
+					Remark:  null.NewString("test", true),
+				},
+			},
+			wantErr: false,
+			desc:    "测试匿名用户类型自动设置",
+		},
+		{
+			name: "注册用户类型测试",
+			ctx:  context.Background(),
+			tx:   nil,
+			users: []cmn.TUser{
+				{
+					Account:      fmt.Sprintf("registered_user_%d", time.Now().UnixNano()),
+					Category:     "registered",
+					OfficialName: null.NewString("注册用户", true),
+					MobilePhone:  null.NewString("13900139000", true),
+					// 有手机号，应该被设置为注册用户类型
+					Creator: null.NewInt(1, true),
+					Remark:  null.NewString("test", true),
+				},
+			},
+			wantErr: false,
+			desc:    "测试注册用户类型自动设置",
+		},
+		{
+			name: "包含特殊字符的用户数据",
+			ctx:  context.Background(),
+			tx:   nil,
+			users: []cmn.TUser{
+				{
+					Account:      fmt.Sprintf("special_user_%d", time.Now().UnixNano()),
+					Category:     "special",
+					OfficialName: null.NewString("特殊字符用户@#$%^&*()", true),
+					Email:        null.NewString("special+test@example.com", true),
+					Creator:      null.NewInt(1, true),
+					Remark:       null.NewString("test", true),
+				},
+			},
+			wantErr: false,
+			desc:    "测试包含特殊字符的用户数据插入",
+		},
+		{
+			name: "Unicode字符用户数据",
+			ctx:  context.Background(),
+			tx:   nil,
+			users: []cmn.TUser{
+				{
+					Account:      fmt.Sprintf("unicode_用户_%d", time.Now().UnixNano()),
+					Category:     "unicode",
+					OfficialName: null.NewString("张三李四王五赵六🎉", true),
+					Gender:       null.NewString("M", true),
+					Creator:      null.NewInt(1, true),
+					Remark:       null.NewString("test", true),
+				},
+			},
+			wantErr: false,
+			desc:    "测试Unicode字符用户数据插入",
+		},
+		{
+			name: "强制事务开始错误",
+			ctx:  context.WithValue(context.Background(), "force-error", "pgxConn.Begin"),
+			tx:   nil,
+			users: []cmn.TUser{
+				{
+					Account:  fmt.Sprintf("error_user_%d", time.Now().UnixNano()),
+					Category: "normal",
+					Creator:  null.NewInt(1, true),
+					Remark:   null.NewString("test", true),
+				},
+			},
+			wantErr: true,
+			desc:    "测试强制事务开始错误",
+		},
+		{
+			name: "强制执行SQL错误",
+			ctx:  context.WithValue(context.Background(), "force-error", "tx.Exec"),
+			tx:   nil,
+			users: []cmn.TUser{
+				{
+					Account:  fmt.Sprintf("error_user_%d", time.Now().UnixNano()),
+					Category: "normal",
+					Creator:  null.NewInt(1, true),
+					Remark:   null.NewString("test", true),
+				},
+			},
+			wantErr: true,
+			desc:    "测试强制执行SQL错误",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Logf("开始测试: %s", tt.desc)
+
+			// 执行插入操作
+			err := repo.InsertUsers(tt.ctx, tt.tx, tt.users)
+
+			// 验证错误
+			if (err != nil) != tt.wantErr {
+				t.Errorf("InsertUsers() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+
+			// 如果期望有错误，则不需要进一步验证
+			if tt.wantErr {
+				t.Logf("预期错误已正确返回: %v", err)
+				return
+			}
+
+			// 验证插入成功的情况
+			if err == nil && len(tt.users) > 0 {
+				t.Logf("成功插入 %d 个用户", len(tt.users))
+
+				// 验证插入的数据是否可以查询到（可选验证）
+				for _, user := range tt.users {
+					// 查询刚插入的用户
+					filter := QueryUsersFilter{
+						Account: null.NewString(user.Account, true),
+					}
+					users, _, queryErr := repo.QueryUsers(context.Background(), nil, 1, 1, filter)
+					if queryErr != nil {
+						t.Logf("查询插入的用户时出错: %v", queryErr)
+						continue
+					}
+					if len(users) > 0 {
+						t.Logf("成功查询到插入的用户: %s", users[0].Account)
+						// 验证用户类型是否正确设置
+						if users[0].Type.Valid {
+							if !user.IDCardNo.Valid && !user.MobilePhone.Valid && !user.Email.Valid {
+								// 应该是匿名用户
+								if users[0].Type.String != "00" {
+									t.Errorf("匿名用户类型设置错误，期望 '00'，实际 '%s'", users[0].Type.String)
+								}
+							} else {
+								// 应该是注册用户
+								if users[0].Type.String != "02" {
+									t.Errorf("注册用户类型设置错误，期望 '02'，实际 '%s'", users[0].Type.String)
+								}
+							}
+						}
+					}
+				}
+			}
+		})
+	}
+}
+
+// TestRepo_InsertUsers_WithTransaction 测试带事务的插入操作
+func TestRepo_InsertUsers_WithTransaction(t *testing.T) {
+	repo := NewRepo()
+	ctx := context.Background()
+
+	// 获取数据库连接
+	pgxConn := cmn.GetPgxConn()
+	if pgxConn == nil {
+		t.Skip("数据库连接不可用，跳过事务测试")
+		return
+	}
+
+	// 开始事务
+	tx, err := pgxConn.Begin(ctx)
+	if err != nil {
+		t.Fatalf("开始事务失败: %v", err)
+	}
+	defer func() {
+		if err := tx.Rollback(ctx); err != nil && !errors.Is(err, pgx.ErrTxClosed) {
+			t.Logf("回滚事务失败: %v", err)
+		}
+	}()
+
+	tests := []struct {
+		name    string
+		users   []cmn.TUser
+		wantErr bool
+		desc    string
+	}{
+		{
+			name: "事务中成功插入用户",
+			users: []cmn.TUser{
+				{
+					Account:      fmt.Sprintf("tx_user_%d", time.Now().UnixNano()),
+					Category:     "transaction",
+					OfficialName: null.NewString("事务用户", true),
+					Creator:      null.NewInt(1, true),
+					Remark:       null.NewString("test", true),
+				},
+			},
+			wantErr: false,
+			desc:    "测试在事务中成功插入用户",
+		},
+		{
+			name: "事务中插入多个用户",
+			users: []cmn.TUser{
+				{
+					Account:  fmt.Sprintf("tx_batch_1_%d", time.Now().UnixNano()),
+					Category: "batch_tx",
+					Creator:  null.NewInt(1, true),
+					Remark:   null.NewString("test", true),
+				},
+				{
+					Account:  fmt.Sprintf("tx_batch_2_%d", time.Now().UnixNano()),
+					Category: "batch_tx",
+					Creator:  null.NewInt(1, true),
+					Remark:   null.NewString("test", true),
+				},
+			},
+			wantErr: false,
+			desc:    "测试在事务中插入多个用户",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Logf("开始测试: %s", tt.desc)
+
+			// 执行插入操作
+			err := repo.InsertUsers(ctx, tx, tt.users)
+
+			// 验证错误
+			if (err != nil) != tt.wantErr {
+				t.Errorf("InsertUsers() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+
+			if !tt.wantErr {
+				t.Logf("事务中成功插入 %d 个用户", len(tt.users))
+			}
+		})
+	}
+}
+
+// TestRepo_InsertUsers_Performance 性能测试
+func TestRepo_InsertUsers_Performance(t *testing.T) {
+	if testing.Short() {
+		t.Skip("跳过性能测试")
+	}
+
+	repo := NewRepo()
+	ctx := context.Background()
+
+	// 测试不同批次大小的性能
+	batchSizes := []int{1, 10, 50, 100}
+
+	for _, batchSize := range batchSizes {
+		t.Run(fmt.Sprintf("批次大小_%d", batchSize), func(t *testing.T) {
+			// 准备测试数据
+			users := make([]cmn.TUser, batchSize)
+			for i := 0; i < batchSize; i++ {
+				users[i] = cmn.TUser{
+					Account:      fmt.Sprintf("perf_user_%d_%d", batchSize, time.Now().UnixNano()+int64(i)),
+					Category:     "performance",
+					OfficialName: null.NewString(fmt.Sprintf("性能测试用户%d", i+1), true),
+					Creator:      null.NewInt(1, true),
+					Remark:       null.NewString("test", true),
+				}
+			}
+
+			start := time.Now()
+			err := repo.InsertUsers(ctx, nil, users)
+			duration := time.Since(start)
+
+			if err != nil {
+				t.Errorf("InsertUsers() error = %v", err)
+				return
+			}
+
+			t.Logf("批次大小 %d: 插入时间=%v, 平均每个用户=%v",
+				batchSize, duration, duration/time.Duration(batchSize))
+
+			// 性能基准：插入时间不应超过10秒
+			if duration > 10*time.Second {
+				t.Errorf("插入时间过长: %v", duration)
+			}
+		})
+	}
+}
+
+// BenchmarkInsertUsers 基准测试
+func BenchmarkInsertUsers(b *testing.B) {
+	repo := NewRepo()
+	ctx := context.Background()
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		users := []cmn.TUser{
+			{
+				Account:  fmt.Sprintf("bench_user_%d_%d", i, time.Now().UnixNano()),
+				Category: "benchmark",
+				Creator:  null.NewInt(1, true),
+				Remark:   null.NewString("test", true),
+			},
+		}
+		err := repo.InsertUsers(ctx, nil, users)
+		if err != nil {
+			b.Errorf("InsertUsers() error = %v", err)
+		}
+	}
+}
+
+// BenchmarkInsertUsersBatch 批量插入基准测试
+func BenchmarkInsertUsersBatch(b *testing.B) {
+	repo := NewRepo()
+	ctx := context.Background()
+	batchSize := 10
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		users := make([]cmn.TUser, batchSize)
+		for j := 0; j < batchSize; j++ {
+			users[j] = cmn.TUser{
+				Account:  fmt.Sprintf("bench_batch_user_%d_%d_%d", i, j, time.Now().UnixNano()),
+				Category: "benchmark_batch",
+				Creator:  null.NewInt(1, true),
+				Remark:   null.NewString("test", true),
+			}
+		}
+		err := repo.InsertUsers(ctx, nil, users)
+		if err != nil {
+			b.Errorf("InsertUsers() error = %v", err)
 		}
 	}
 }

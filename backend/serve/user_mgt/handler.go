@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"strconv"
 	"strings"
 	"w2w.io/cmn"
@@ -28,7 +29,8 @@ func (h *handler) HandleUser(ctx context.Context) {
 	q := cmn.GetCtxValue(ctx)
 	z.Info("---->" + cmn.FncName())
 
-	forceErr, _ := ctx.Value("force-error").(string)
+	forceErr, _ := ctx.Value("force-error").(string) // 用于强制执行错误处理代码
+	var err error
 
 	method := strings.ToLower(q.R.Method)
 
@@ -82,6 +84,65 @@ func (h *handler) HandleUser(ctx context.Context) {
 		q.Msg.Msg = "success"
 		q.Msg.RowCount = totalRows
 		q.Msg.Data = usersJson
+		q.Resp()
+		return
+
+	case "post": // 创建新用户
+		var buf []byte
+		buf, err = io.ReadAll(q.R.Body)
+		if err != nil || forceErr == "io.ReadAll" {
+			q.Err = fmt.Errorf("failed to read request body: %w", err)
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+		defer func() {
+			err := q.R.Body.Close()
+			if err != nil || forceErr == "io.Close" {
+				q.Err = fmt.Errorf("failed to close request body: %w", err)
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+		}()
+
+		if len(buf) == 0 {
+			q.Err = fmt.Errorf("call /api/user request body cannot be empty")
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		var users []cmn.TUser
+		err = json.Unmarshal(buf, &users)
+		if err != nil {
+			q.Err = fmt.Errorf("failed to unmarshal request body: %w", err)
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		if len(users) == 0 {
+			q.Err = fmt.Errorf("no users provided in request body")
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		for _, user := range users {
+			user.Category = "sys^user"
+			user.Creator = q.SysUser.ID
+		}
+
+		err = h.repo.InsertUsers(ctx, nil, users)
+		if err != nil {
+			q.Err = fmt.Errorf("failed to insert users: %w", err)
+			q.RespErr()
+			return
+		}
+
+		q.Msg.Status = 0
+		q.Msg.Msg = "success"
 		q.Resp()
 		return
 

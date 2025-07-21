@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"time"
+	"w2w.io/null"
 
 	"strings"
 	"w2w.io/cmn"
@@ -12,6 +14,7 @@ import (
 
 type Repo interface {
 	QueryUsers(ctx context.Context, tx pgx.Tx, page, pageSize int64, filter QueryUsersFilter) ([]cmn.TUser, int64, error)
+	InsertUsers(ctx context.Context, tx pgx.Tx, users []cmn.TUser) error
 }
 
 type repo struct {
@@ -169,4 +172,118 @@ func (r *repo) QueryUsers(ctx context.Context, tx pgx.Tx, page, pageSize int64, 
 	}
 
 	return users, rowCount, nil
+}
+
+// InsertUsers 批量插入用户数据
+// 必要字段: account, category, creator
+func (r *repo) InsertUsers(ctx context.Context, tx pgx.Tx, users []cmn.TUser) error {
+	z.Info("---->" + cmn.FncName())
+
+	forceErr, _ := ctx.Value("force-error").(string)
+
+	var err error
+
+	if len(users) == 0 {
+		e := fmt.Errorf("no users to insert")
+		z.Error(e.Error())
+		return e
+	}
+
+	// 是否是内部开启的事务
+	if tx == nil {
+		var newTx pgx.Tx
+		newTx, err = r.pgxConn.Begin(ctx)
+		if err != nil || forceErr == "pgxConn.Begin" {
+			e := fmt.Errorf("failed to begin transaction: %w", err)
+			z.Error(e.Error())
+			return e
+		}
+		tx = newTx
+
+		defer func() {
+			if err != nil {
+				_ = tx.Rollback(ctx)
+			} else {
+				err = tx.Commit(ctx)
+			}
+		}()
+	}
+
+	for _, user := range users {
+		if err = r.validateUser(user); err != nil {
+			return err
+		}
+
+		if !user.IDCardNo.Valid && !user.MobilePhone.Valid && !user.Email.Valid {
+			user.Type = null.StringFrom("00") // 匿名用户
+		} else {
+			user.Type = null.StringFrom("02") // 注册用户
+		}
+
+		// 插入用户数据
+		insertSQL := `INSERT INTO t_user (
+			category,
+			type,
+			official_name,
+			id_card_type,
+			id_card_no,
+			account,
+			mobile_phone,
+			email,
+			gender,
+			birthday,
+			creator,
+			status,
+			remark,
+			create_time,
+			update_time
+		) VALUES (
+			$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15
+		)`
+
+		_, err = tx.Exec(ctx, insertSQL,
+			user.Category,
+			user.Type.String,
+			user.OfficialName,
+			r.orDefault(user.IDCardType, "居民身份证"),
+			user.IDCardNo,
+			user.Account,
+			user.MobilePhone,
+			user.Email,
+			user.Gender,
+			user.Birthday,
+			user.Creator.Int64,
+			r.orDefault(user.Status, "00"),
+			user.Remark,
+			time.Now().UnixMilli(),
+			time.Now().UnixMilli(),
+		)
+		if err != nil || forceErr == "tx.Exec" {
+			e := fmt.Errorf("failed to insert user %s: %w", user.Account, err)
+			z.Error(e.Error())
+			return e
+		}
+	}
+
+	return nil
+}
+
+func (r *repo) validateUser(user cmn.TUser) error {
+	if user.Account == "" {
+		return fmt.Errorf("user account is required")
+	}
+	if user.Category == "" {
+		return fmt.Errorf("user category is required")
+	}
+	if !user.Creator.Valid {
+		return fmt.Errorf("user creator is required")
+	}
+	return nil
+}
+
+func (r *repo) orDefault(s null.String, def string) string {
+	if s.Valid {
+		return s.String
+	}
+	return def
 }
