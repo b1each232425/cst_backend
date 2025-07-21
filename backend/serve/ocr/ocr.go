@@ -132,8 +132,7 @@ func ocr(ctx context.Context) {
 	}
 
 	var result map[string]interface{}
-
-	result, q.Err = sendHttpRequest(ctx, fileHeader, url)
+	result, q.Err = sendHttpRequest(ctx, fileHeader, url, TIMEOUT)
 	if q.Err != nil {
 		q.RespErr()
 		return
@@ -152,7 +151,7 @@ func ocr(ctx context.Context) {
 	q.Resp()
 }
 
-func sendHttpRequest(ctx context.Context, fileHeader *multipart.FileHeader, url string) (map[string]interface{}, error) {
+func sendHttpRequest(ctx context.Context, fileHeader *multipart.FileHeader, url string, timeout time.Duration) (map[string]interface{}, error) {
 
 	//查看是否需要返回mock的数据
 	test, ok := ctx.Value(TEST).(string)
@@ -176,6 +175,7 @@ func sendHttpRequest(ctx context.Context, fileHeader *multipart.FileHeader, url 
 	if url == "" {
 		url = "http://127.0.0.1:6268/api/idCardRecognition"
 	}
+
 	file, err := fileHeader.Open()
 	if err != nil {
 		z.Error("open file error", zap.Error(err))
@@ -217,9 +217,13 @@ func sendHttpRequest(ctx context.Context, fileHeader *multipart.FileHeader, url 
 	req.Header.SetContentType(writer.FormDataContentType()) // 设置 multipart/form-data 和 boundary
 	req.SetBody(body.Bytes())
 
+	if timeout <= 0 {
+		timeout = TIMEOUT
+	}
+
 	// 创建客户端并发送请求
 	client := &fasthttp.Client{}
-	if err := client.DoTimeout(req, resp, TIMEOUT); err != nil {
+	if err := client.DoTimeout(req, resp, timeout); err != nil {
 		z.Error("do request error", zap.Error(err))
 		return nil, err
 	}

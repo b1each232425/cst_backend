@@ -8,9 +8,11 @@ import (
 	"io"
 	"mime/multipart"
 	"net/http"
+	"net/textproto"
 	"os"
 	"reflect"
 	"testing"
+	"time"
 
 	"w2w.io/cmn"
 )
@@ -269,6 +271,7 @@ func Test_sendHttpRequest(t *testing.T) {
 		ctx        context.Context
 		fileHeader *multipart.FileHeader
 		url        string
+		Timeout    time.Duration
 	}
 	tests := []struct {
 		name    string
@@ -354,10 +357,36 @@ func Test_sendHttpRequest(t *testing.T) {
 			want:    nil,
 			wantErr: true,
 		},
+		{
+			name: "error fileHeader open",
+			args: args{
+				ctx: context.Background(),
+				fileHeader: &multipart.FileHeader{
+					Filename: "fake.txt",
+					Size:     1234,
+					Header:   textproto.MIMEHeader{},
+				},
+				url: "http://127.0.0.1:6268/api/error",
+			},
+			want:    nil,
+			wantErr: true,
+		},
+		{
+			name: "empty url test",
+			args: args{
+				ctx:        context.Background(),
+				fileHeader: fileHeader,
+				url:        "",
+				Timeout:    1 * time.Millisecond,
+			},
+			want:    nil,
+			wantErr: true,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := sendHttpRequest(tt.args.ctx, tt.args.fileHeader, tt.args.url)
+
+			got, err := sendHttpRequest(tt.args.ctx, tt.args.fileHeader, tt.args.url, tt.args.Timeout)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("sendHttpRequest() error = %v, wantErr %v", err, tt.wantErr)
 				return
