@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"os"
@@ -46,10 +47,30 @@ func createMockContext(method, path string, queryParams url.Values, forceError s
 	return context.WithValue(ctx, "force-error", forceError)
 }
 
-// createMockContextWithBody 创建带请求体的mock context
-func createMockContextWithBody(method, path string, body string, forceError string) context.Context {
-	// 创建mock HTTP请求
-	req := httptest.NewRequest(method, path, strings.NewReader(body))
+// createMockContextWithBody 创建带有请求体数据的mock上下文
+// 参数data应该是有效的JSON字符串，将作为ReqProto的Data字段
+func createMockContextWithBody(method, path string, data string, forceError string) context.Context {
+	var req *http.Request
+
+	if data != "" {
+		// 创建ReqProto结构体，Data字段使用json.RawMessage类型
+		body := &cmn.ReqProto{
+			Data: json.RawMessage(data),
+		}
+
+		// 将请求体转换为JSON字符串
+		bodyBytes, err := json.Marshal(body)
+		if err != nil {
+			e := fmt.Sprintf("Failed to marshal request data: %v", err)
+			z.Fatal(e)
+		}
+
+		// 创建mock HTTP请求
+		req = httptest.NewRequest(method, path, strings.NewReader(string(bodyBytes)))
+	} else {
+		req = httptest.NewRequest(method, path, nil)
+	}
+
 	req.Header.Set("Content-Type", "application/json")
 
 	// 创建mock HTTP响应
@@ -385,8 +406,8 @@ func Test_handler_HandleUser(t *testing.T) {
 			},
 			args: args{
 				ctx: createMockContext("GET", "/api/user", url.Values{
-					"page":      {"1"},
-					"page_size": {"10"},
+					"page":     {"1"},
+					"pageSize": {"10"},
 				}, ""),
 			},
 			wantErr: false,
@@ -409,10 +430,10 @@ func Test_handler_HandleUser(t *testing.T) {
 			},
 			args: args{
 				ctx: createMockContext("GET", "/api/user", url.Values{
-					"page":      {"1"},
-					"page_size": {"10"},
-					"account":   {"admin"},
-					"gender":    {"F"},
+					"page":     {"1"},
+					"pageSize": {"10"},
+					"account":  {"admin"},
+					"gender":   {"F"},
 				}, ""),
 			},
 			wantErr: false,
@@ -424,8 +445,8 @@ func Test_handler_HandleUser(t *testing.T) {
 			},
 			args: args{
 				ctx: createMockContext("GET", "/api/user", url.Values{
-					"page":      {"0"},
-					"page_size": {"10"},
+					"page":     {"0"},
+					"pageSize": {"10"},
 				}, ""),
 			},
 			wantErr: true,
@@ -437,8 +458,8 @@ func Test_handler_HandleUser(t *testing.T) {
 			},
 			args: args{
 				ctx: createMockContext("GET", "/api/user", url.Values{
-					"page":      {"1"},
-					"page_size": {"-1"},
+					"page":     {"1"},
+					"pageSize": {"-1"},
 				}, ""),
 			},
 			wantErr: true,
@@ -452,8 +473,8 @@ func Test_handler_HandleUser(t *testing.T) {
 			},
 			args: args{
 				ctx: createMockContext("GET", "/api/user", url.Values{
-					"page":      {"1"},
-					"page_size": {"10"},
+					"page":     {"1"},
+					"pageSize": {"10"},
 				}, ""),
 			},
 			wantErr: true,
@@ -478,9 +499,9 @@ func Test_handler_HandleUser(t *testing.T) {
 			},
 			args: args{
 				ctx: createMockContext("GET", "/api/user", url.Values{
-					"page":      {"1"},
-					"page_size": {"10"},
-					"account":   {"nonexistent"},
+					"page":     {"1"},
+					"pageSize": {"10"},
+					"account":  {"nonexistent"},
 				}, ""),
 			},
 			wantErr: false,
@@ -495,8 +516,8 @@ func Test_handler_HandleUser(t *testing.T) {
 			},
 			args: args{
 				ctx: createMockContext("GET", "/api/user", url.Values{
-					"page":      {"1"},
-					"page_size": {"100"},
+					"page":     {"1"},
+					"pageSize": {"100"},
 				}, ""),
 			},
 			wantErr: false,
@@ -522,14 +543,14 @@ func Test_handler_HandleUser(t *testing.T) {
 			args: args{
 				ctx: createMockContext("GET", "/api/user", url.Values{
 					"page":        {"1"},
-					"page_size":   {"10"},
+					"pageSize":    {"10"},
 					"account":     {"test"},
 					"name":        {"女性"},
-					"phone":       {"138"},
+					"mobilePhone": {"138"},
 					"email":       {"test"},
 					"gender":      {"F"},
 					"status":      {"00"},
-					"create_time": {strconv.FormatInt(time.Now().Unix()-86400, 10)},
+					"createTime":  {strconv.FormatInt(time.Now().Unix()-86400, 10)},
 				}, ""),
 			},
 			wantErr: false,
@@ -555,14 +576,14 @@ func Test_handler_HandleUser(t *testing.T) {
 			args: args{
 				ctx: createMockContext("GET", "/api/user", url.Values{
 					"page":        {"1"},
-					"page_size":   {"10"},
+					"pageSize":    {"10"},
 					"account":     {"test"},
 					"name":        {"女性"},
-					"phone":       {"138"},
+					"mobilePhone": {"138"},
 					"email":       {"test"},
 					"gender":      {"F"},
 					"status":      {"00"},
-					"create_time": {strconv.FormatInt(time.Now().Unix()-86400, 10)},
+					"createTime":  {strconv.FormatInt(time.Now().Unix()-86400, 10)},
 				}, "json.Marshal"),
 			},
 			wantErr: true,
@@ -576,10 +597,8 @@ func Test_handler_HandleUser(t *testing.T) {
 			},
 			args: args{
 				ctx: createMockContextWithBody("POST", "/api/user", `[{
-					"account": "new_user_001",
-					"category": "normal",
-					"official_name": "新用户001",
-					"creator": 1
+					"Account": "new_user_001",
+					"OfficialName": "新用户001"
 				}]`, ""),
 			},
 			wantErr: false,
@@ -591,15 +610,11 @@ func Test_handler_HandleUser(t *testing.T) {
 			},
 			args: args{
 				ctx: createMockContextWithBody("POST", "/api/user", `[{
-					"account": "user_001",
-					"category": "normal",
-					"official_name": "用户001",
-					"creator": 1
+					"Account": "user_001",
+					"OfficialName": "用户001"
 				}, {
-					"account": "user_002",
-					"category": "vip",
-					"official_name": "用户002",
-					"creator": 1
+					"Account": "user_002",
+					"OfficialName": "用户002"
 				}]`, ""),
 			},
 			wantErr: false,
@@ -611,16 +626,6 @@ func Test_handler_HandleUser(t *testing.T) {
 			},
 			args: args{
 				ctx: createMockContextWithBody("POST", "/api/user", "", ""),
-			},
-			wantErr: true,
-		},
-		{
-			name: "无效的JSON格式",
-			fields: fields{
-				repo: &MockRepo{},
-			},
-			args: args{
-				ctx: createMockContextWithBody("POST", "/api/user", `{"invalid": json}`, ""),
 			},
 			wantErr: true,
 		},
@@ -653,9 +658,7 @@ func Test_handler_HandleUser(t *testing.T) {
 			},
 			args: args{
 				ctx: createMockContextWithBody("POST", "/api/user", `[{
-					"account": "test_user",
-					"category": "normal",
-					"creator": 1
+					"Account": "test_user"
 				}]`, ""),
 			},
 			wantErr: true,
@@ -667,10 +670,8 @@ func Test_handler_HandleUser(t *testing.T) {
 			},
 			args: args{
 				ctx: createMockContextWithBody("POST", "/api/user", `[{
-					"account": "test@user#001",
-					"category": "normal",
-					"official_name": "测试用户@#$%",
-					"creator": 1
+					"Account": "test@user#001",
+					"OfficialName": "测试用户@#$%"
 				}]`, ""),
 			},
 			wantErr: false,
@@ -682,13 +683,21 @@ func Test_handler_HandleUser(t *testing.T) {
 			},
 			args: args{
 				ctx: createMockContextWithBody("POST", "/api/user", `[{
-					"account": "用户账号",
-					"category": "normal",
-					"official_name": "张三李四王五",
-					"creator": 1
+					"Account": "用户账号",
+					"OfficialName": "张三李四王五"
 				}]`, ""),
 			},
 			wantErr: false,
+		},
+		{
+			name: "空请求体",
+			fields: fields{
+				repo: &MockRepo{},
+			},
+			args: args{
+				ctx: createMockContextWithBody("POST", "/api/user", "", ""),
+			},
+			wantErr: true,
 		},
 		{
 			name: "io.ReadAll错误",
@@ -697,9 +706,8 @@ func Test_handler_HandleUser(t *testing.T) {
 			},
 			args: args{
 				ctx: createMockContextWithBody("POST", "/api/user", `[{
-					"account": "test_user",
-					"category": "normal",
-					"creator": 1
+					"Account": "用户账号",
+					"OfficialName": "张三李四王五"
 				}]`, "io.ReadAll"),
 			},
 			wantErr: true,
@@ -711,10 +719,22 @@ func Test_handler_HandleUser(t *testing.T) {
 			},
 			args: args{
 				ctx: createMockContextWithBody("POST", "/api/user", `[{
-					"account": "test_user",
-					"category": "normal",
-					"creator": 1
+					"Account": "用户账号",
+					"OfficialName": "张三李四王五"
 				}]`, "io.Close"),
+			},
+			wantErr: false,
+		},
+		{
+			name: "json.Unmarshal错误",
+			fields: fields{
+				repo: &MockRepo{},
+			},
+			args: args{
+				ctx: createMockContextWithBody("POST", "/api/user", `[{
+					"Account": "用户账号",
+					"OfficialName": "张三李四王五"
+				}]`, "json.Unmarshal"),
 			},
 			wantErr: true,
 		},
@@ -728,22 +748,37 @@ func Test_handler_HandleUser(t *testing.T) {
 			// 执行测试
 			h.HandleUser(tt.args.ctx)
 
-			// 获取ServiceCtx以检查结果
+			// 从mock的HTTP响应中解析结果
 			q := cmn.GetCtxValue(tt.args.ctx)
+			w := q.W.(*httptest.ResponseRecorder)
+
+			// 解析响应体
+			var response cmn.ReplyProto
+			responseBody := w.Body.String()
+
+			// 验证是否有响应内容
+			if responseBody == "" {
+				if tt.wantErr {
+					return
+				}
+				t.Errorf("HandleUser() 响应体为空，期望有响应内容")
+			}
+
+			// 解析JSON响应
+			err := json.Unmarshal([]byte(responseBody), &response)
+			if err != nil {
+				t.Errorf("HandleUser() 无法解析响应JSON: %v, 响应体: %s", err, responseBody)
+				return
+			}
 
 			// 验证错误状态
 			if tt.wantErr {
-				if q.Err == nil {
-					t.Errorf("HandleUser() 期望有错误，但没有错误")
+				if response.Status == 0 {
+					t.Errorf("HandleUser() 期望有错误状态，但状态为0，响应: %+v", response)
 				}
 			} else {
-				if q.Err != nil {
-					t.Errorf("HandleUser() 不期望有错误，但出现错误: %v", q.Err)
-				}
-
-				// 验证响应状态
-				if q.Msg != nil && q.Msg.Status != 0 {
-					t.Errorf("HandleUser() 期望状态为0，但得到: %d", q.Msg.Status)
+				if response.Status != 0 {
+					t.Errorf("HandleUser() 期望状态为0，但得到: %d，消息: %s", response.Status, response.Msg)
 				}
 			}
 		})

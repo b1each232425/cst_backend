@@ -46,9 +46,9 @@ func (h *handler) HandleUser(ctx context.Context) {
 			return
 		}
 
-		pageSize, err := strconv.ParseInt(query.Get("page_size"), 10, 64)
+		pageSize, err := strconv.ParseInt(query.Get("pageSize"), 10, 64)
 		if err != nil || pageSize <= 0 {
-			q.Err = fmt.Errorf("invalid page_size parameter, must be a positive integer")
+			q.Err = fmt.Errorf("invalid pageSize parameter, must be a positive integer")
 			z.Error(q.Err.Error())
 			q.RespErr()
 			return
@@ -57,12 +57,12 @@ func (h *handler) HandleUser(ctx context.Context) {
 		// 构造过滤条件
 		filter := QueryUsersFilter{
 			Account:    NullableString(query.Get("account")),
-			Name:       NullableString(query.Get("name")),
-			Phone:      NullableString(query.Get("phone")),
+			Name:       NullableString(query.Get("officialName")),
+			Phone:      NullableString(query.Get("mobilePhone")),
 			Email:      NullableString(query.Get("email")),
 			Gender:     NullableString(query.Get("gender")),
 			Status:     NullableString(query.Get("status")),
-			CreateTime: NullableIntFromStr(query.Get("create_time")),
+			CreateTime: NullableIntFromStr(query.Get("createTime")),
 		}
 
 		users, totalRows, err := h.repo.QueryUsers(ctx, nil, page, pageSize, filter)
@@ -91,47 +91,57 @@ func (h *handler) HandleUser(ctx context.Context) {
 		var buf []byte
 		buf, err = io.ReadAll(q.R.Body)
 		if err != nil || forceErr == "io.ReadAll" {
-			q.Err = fmt.Errorf("failed to read request body: %w", err)
+			q.Err = fmt.Errorf("failed to read body: %w", err)
 			z.Error(q.Err.Error())
 			q.RespErr()
 			return
 		}
 		defer func() {
-			err := q.R.Body.Close()
+			err = q.R.Body.Close()
 			if err != nil || forceErr == "io.Close" {
-				q.Err = fmt.Errorf("failed to close request body: %w", err)
-				z.Error(q.Err.Error())
-				q.RespErr()
+				e := fmt.Errorf("failed to close request body: %w", err)
+				z.Error(e.Error())
 				return
 			}
 		}()
 
 		if len(buf) == 0 {
-			q.Err = fmt.Errorf("call /api/user request body cannot be empty")
+			q.Err = fmt.Errorf("request body cannot be empty")
 			z.Error(q.Err.Error())
 			q.RespErr()
 			return
 		}
 
-		var users []cmn.TUser
-		err = json.Unmarshal(buf, &users)
-		if err != nil {
+		var body cmn.ReqProto
+		err = json.Unmarshal(buf, &body)
+		if err != nil || forceErr == "json.Unmarshal" {
 			q.Err = fmt.Errorf("failed to unmarshal request body: %w", err)
 			z.Error(q.Err.Error())
 			q.RespErr()
 			return
 		}
 
-		if len(users) == 0 {
-			q.Err = fmt.Errorf("no users provided in request body")
+		var users []cmn.TUser
+		err = json.Unmarshal(body.Data, &users)
+		if err != nil {
+			q.Err = fmt.Errorf("failed to unmarshal request json data: %w", err)
 			z.Error(q.Err.Error())
 			q.RespErr()
 			return
 		}
 
-		for _, user := range users {
-			user.Category = "sys^user"
-			user.Creator = q.SysUser.ID
+		if len(users) == 0 {
+			q.Err = fmt.Errorf("no users provided in request json data")
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		for i := range users {
+			users[i].Category = "sys^user"
+			if q.SysUser != nil && q.SysUser.ID.Valid {
+				users[i].Creator = q.SysUser.ID
+			}
 		}
 
 		err = h.repo.InsertUsers(ctx, nil, users)

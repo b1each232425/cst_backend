@@ -115,6 +115,7 @@ func (r *repo) QueryUsers(ctx context.Context, tx pgx.Tx, page, pageSize int64, 
 		       u.email,
 		       u.category,
 		       u.status,
+		       u.type,
 		       u.id_card_no,
 		       u.logon_time,
 			   u.create_time,
@@ -150,6 +151,7 @@ func (r *repo) QueryUsers(ctx context.Context, tx pgx.Tx, page, pageSize int64, 
 			&user.Email,
 			&user.Category,
 			&user.Status,
+			&user.Type,
 			&user.IDCardNo,
 			&user.LogonTime,
 			&user.CreateTime,
@@ -209,15 +211,15 @@ func (r *repo) InsertUsers(ctx context.Context, tx pgx.Tx, users []cmn.TUser) er
 		}()
 	}
 
-	for _, user := range users {
-		if err = r.validateUser(user); err != nil {
+	for i := range users {
+		if err = r.validateUser(users[i]); err != nil {
 			return err
 		}
 
-		if !user.IDCardNo.Valid && !user.MobilePhone.Valid && !user.Email.Valid {
-			user.Type = null.StringFrom("00") // 匿名用户
+		if !users[i].IDCardNo.Valid && !users[i].MobilePhone.Valid && !users[i].Email.Valid {
+			users[i].Type = null.StringFrom("00") // 匿名用户
 		} else {
-			user.Type = null.StringFrom("02") // 注册用户
+			users[i].Type = null.StringFrom("02") // 注册用户
 		}
 
 		// 插入用户数据
@@ -242,24 +244,24 @@ func (r *repo) InsertUsers(ctx context.Context, tx pgx.Tx, users []cmn.TUser) er
 		)`
 
 		_, err = tx.Exec(ctx, insertSQL,
-			user.Category,
-			user.Type.String,
-			user.OfficialName,
-			r.orDefault(user.IDCardType, "居民身份证"),
-			user.IDCardNo,
-			user.Account,
-			user.MobilePhone,
-			user.Email,
-			user.Gender,
-			user.Birthday,
-			user.Creator.Int64,
-			r.orDefault(user.Status, "00"),
-			user.Remark,
+			users[i].Category,
+			users[i].Type.String,
+			users[i].OfficialName,
+			r.orDefault(users[i].IDCardType, "居民身份证"),
+			users[i].IDCardNo,
+			users[i].Account,
+			users[i].MobilePhone,
+			users[i].Email,
+			users[i].Gender,
+			users[i].Birthday,
+			users[i].Creator.Int64,
+			r.orDefault(users[i].Status, "00"),
+			users[i].Remark,
 			time.Now().UnixMilli(),
 			time.Now().UnixMilli(),
 		)
 		if err != nil || forceErr == "tx.Exec" {
-			e := fmt.Errorf("failed to insert user %s: %w", user.Account, err)
+			e := fmt.Errorf("failed to insert user %s: %w", users[i].Account, err)
 			z.Error(e.Error())
 			return e
 		}
@@ -274,9 +276,6 @@ func (r *repo) validateUser(user cmn.TUser) error {
 	}
 	if user.Category == "" {
 		return fmt.Errorf("user category is required")
-	}
-	if !user.Creator.Valid {
-		return fmt.Errorf("user creator is required")
 	}
 	return nil
 }

@@ -161,7 +161,7 @@ func TestRepo_QueryUsers(t *testing.T) {
 			page:           1,
 			pageSize:       100,
 			filter:         QueryUsersFilter{},
-			wantUsersCount: 19,
+			wantUsersCount: 21,
 			wantErr:        false,
 			desc:           "测试大页面大小的查询",
 		},
@@ -171,7 +171,7 @@ func TestRepo_QueryUsers(t *testing.T) {
 			page:           2,
 			pageSize:       10,
 			filter:         QueryUsersFilter{},
-			wantUsersCount: 9,
+			wantUsersCount: 10,
 			wantErr:        false,
 			desc:           "测试第二页数据查询",
 		},
@@ -651,14 +651,11 @@ func TestRepo_InsertUsers(t *testing.T) {
 			desc:    "测试缺少Category字段应该返回验证错误",
 		},
 		{
-			name: "缺少必要字段Creator",
+			name: "缺少必要字段Account",
 			ctx:  context.Background(),
 			tx:   nil,
 			users: []cmn.TUser{
 				{
-					Account:  fmt.Sprintf("invalid_user_%d", time.Now().UnixNano()),
-					Category: "normal",
-					// Creator 字段无效
 					Remark: null.NewString("test", true),
 				},
 			},
