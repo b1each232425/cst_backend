@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"regexp"
-	"time"
 
 	"github.com/jmoiron/sqlx/types"
 	"github.com/pkg/errors"
@@ -1879,7 +1878,7 @@ type TExamInfo struct {
 	Submitted          null.Bool      `json:"Submitted,omitempty" db:"submitted,false,boolean"`                               /* submitted 考试成绩是否已提交 */
 	Creator            null.Int       `json:"Creator,omitempty" db:"creator,false,bigint"`                                    /* creator 创建者 */
 	UpdatedBy          null.Int       `json:"UpdatedBy,omitempty" db:"updated_by,false,bigint"`                               /* updated_by 更新者 */
-	Status             null.String    `json:"Status,omitempty" db:"status,false,character varying"`                           /* status 状态  00：未发布 02：待开始  04：进行中 08：已结束 10：已归档 12：考试异常 14：已删除 */
+	Status             null.String    `json:"Status,omitempty" db:"status,false,character varying"`                           /* status 状态  00：未发布 02：待开始  04：进行中 06：已结束 08：已归档 10：考试异常 12：已删除 */
 	Addi               types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                                           /* addi 附加信息 */
 	ExamRoomIds        interface{}    `json:"ExamRoomIds,omitempty" db:"exam_room_ids,false,bigint[]"`                        /* exam_room_ids 考场id数组 */
 	ExamDeliveryStatus null.String    `json:"ExamDeliveryStatus,omitempty" db:"exam_delivery_status,false,character varying"` /* exam_delivery_status 考试的考卷下发状态：
@@ -2306,8 +2305,8 @@ type TExamPaperQuestion struct {
 	Answers                 types.JSONText `json:"Answers,omitempty" db:"answers,false,jsonb"`                                   /* answers 理论题目答案 */
 	Analysis                null.String    `json:"Analysis,omitempty" db:"analysis,false,text"`                                  /* analysis 理论题目解析 */
 	Title                   null.String    `json:"Title,omitempty" db:"title,false,text"`                                        /* title 编程题目题干 */
-	AnswerPath              types.JSONText `json:"AnswerPath,omitempty" db:"answer_path,false,jsonb"`                            /* answer_path 编程题目答案文件路径 */
-	TestPath                types.JSONText `json:"TestPath,omitempty" db:"test_path,false,jsonb"`                                /* test_path 编程题目测试文件路径 */
+	AnswerFilePath          types.JSONText `json:"AnswerFilePath,omitempty" db:"answer_file_path,false,jsonb"`                   /* answer_file_path 编程题目答案文件路径 */
+	TestFilePath            types.JSONText `json:"TestFilePath,omitempty" db:"test_file_path,false,jsonb"`                       /* test_file_path 编程题目测试文件路径 */
 	Input                   null.String    `json:"Input,omitempty" db:"input,false,character varying"`                           /* input 编程题目输入 */
 	Output                  null.String    `json:"Output,omitempty" db:"output,false,character varying"`                         /* output 编程题目输出 */
 	Example                 types.JSONText `json:"Example,omitempty" db:"example,false,jsonb"`                                   /* example 编程题目示例 */
@@ -2335,8 +2334,8 @@ var TExamPaperQuestionFields = []string{
 	"Answers",
 	"Analysis",
 	"Title",
-	"AnswerPath",
-	"TestPath",
+	"AnswerFilePath",
+	"TestFilePath",
 	"Input",
 	"Output",
 	"Example",
@@ -2363,8 +2362,8 @@ var TExamPaperQuestionColumns = []string{
 	"answers",
 	"analysis",
 	"title",
-	"answer_path",
-	"test_path",
+	"answer_file_path",
+	"test_file_path",
 	"input",
 	"output",
 	"example",
@@ -2391,8 +2390,8 @@ var TExamPaperQuestionColumnsDataTypes = map[string]string{
 	"answers":                   "jsonb",
 	"analysis":                  "text",
 	"title":                     "text",
-	"answer_path":               "jsonb",
-	"test_path":                 "jsonb",
+	"answer_file_path":          "jsonb",
+	"test_file_path":            "jsonb",
 	"input":                     "character varying",
 	"output":                    "character varying",
 	"example":                   "jsonb",
@@ -2420,8 +2419,8 @@ func (r *TExamPaperQuestion) GetFieldsMap() map[string]any {
 		"Answers":                 r.Answers,
 		"Analysis":                r.Analysis,
 		"Title":                   r.Title,
-		"AnswerPath":              r.AnswerPath,
-		"TestPath":                r.TestPath,
+		"AnswerFilePath":          r.AnswerFilePath,
+		"TestFilePath":            r.TestFilePath,
 		"Input":                   r.Input,
 		"Output":                  r.Output,
 		"Example":                 r.Example,
@@ -2450,8 +2449,8 @@ func (r *TExamPaperQuestion) GetColumnsMap() map[string]any {
 		"answers":                   r.Answers,
 		"analysis":                  r.Analysis,
 		"title":                     r.Title,
-		"answer_path":               r.AnswerPath,
-		"test_path":                 r.TestPath,
+		"answer_file_path":          r.AnswerFilePath,
+		"test_file_path":            r.TestFilePath,
 		"input":                     r.Input,
 		"output":                    r.Output,
 		"example":                   r.Example,
@@ -2487,8 +2486,8 @@ func (r *TExamPaperQuestion) GetTableName() string {
 // Create inserts the TExamPaperQuestion to the database.
 func (r *TExamPaperQuestion) Create(db Queryer) error {
 	err := db.QueryRow(
-		`INSERT INTO t_exam_paper_question (score, type, content, options, answers, analysis, title, answer_path, test_path, input, output, example, repo, commit_id, creator, create_time, updated_by, update_time, addi, status, order, group_id, question_attachments_path) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23) RETURNING id`,
-		&r.Score, &r.Type, &r.Content, &r.Options, &r.Answers, &r.Analysis, &r.Title, &r.AnswerPath, &r.TestPath, &r.Input, &r.Output, &r.Example, &r.Repo, &r.CommitID, &r.Creator, &r.CreateTime, &r.UpdatedBy, &r.UpdateTime, &r.Addi, &r.Status, &r.Order, &r.GroupID, &r.QuestionAttachmentsPath).Scan(&r.ID)
+		`INSERT INTO t_exam_paper_question (score, type, content, options, answers, analysis, title, answer_file_path, test_file_path, input, output, example, repo, commit_id, creator, create_time, updated_by, update_time, addi, status, order, group_id, question_attachments_path) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23) RETURNING id`,
+		&r.Score, &r.Type, &r.Content, &r.Options, &r.Answers, &r.Analysis, &r.Title, &r.AnswerFilePath, &r.TestFilePath, &r.Input, &r.Output, &r.Example, &r.Repo, &r.CommitID, &r.Creator, &r.CreateTime, &r.UpdatedBy, &r.UpdateTime, &r.Addi, &r.Status, &r.Order, &r.GroupID, &r.QuestionAttachmentsPath).Scan(&r.ID)
 	if err != nil {
 		return errors.Wrap(err, "failed to insert t_exam_paper_question")
 	}
@@ -2500,8 +2499,8 @@ func GetTExamPaperQuestionByPk(db Queryer, pk0 null.Int) (*TExamPaperQuestion, e
 
 	var r TExamPaperQuestion
 	err := db.QueryRow(
-		`SELECT id, score, type, content, options, answers, analysis, title, answer_path, test_path, input, output, example, repo, commit_id, creator, create_time, updated_by, update_time, addi, status, order, group_id, question_attachments_path FROM t_exam_paper_question WHERE id = $1`,
-		pk0).Scan(&r.ID, &r.Score, &r.Type, &r.Content, &r.Options, &r.Answers, &r.Analysis, &r.Title, &r.AnswerPath, &r.TestPath, &r.Input, &r.Output, &r.Example, &r.Repo, &r.CommitID, &r.Creator, &r.CreateTime, &r.UpdatedBy, &r.UpdateTime, &r.Addi, &r.Status, &r.Order, &r.GroupID, &r.QuestionAttachmentsPath)
+		`SELECT id, score, type, content, options, answers, analysis, title, answer_file_path, test_file_path, input, output, example, repo, commit_id, creator, create_time, updated_by, update_time, addi, status, order, group_id, question_attachments_path FROM t_exam_paper_question WHERE id = $1`,
+		pk0).Scan(&r.ID, &r.Score, &r.Type, &r.Content, &r.Options, &r.Answers, &r.Analysis, &r.Title, &r.AnswerFilePath, &r.TestFilePath, &r.Input, &r.Output, &r.Example, &r.Repo, &r.CommitID, &r.Creator, &r.CreateTime, &r.UpdatedBy, &r.UpdateTime, &r.Addi, &r.Status, &r.Order, &r.GroupID, &r.QuestionAttachmentsPath)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to select t_exam_paper_question")
 	}
@@ -2510,17 +2509,17 @@ func GetTExamPaperQuestionByPk(db Queryer, pk0 null.Int) (*TExamPaperQuestion, e
 
 /*TExamRecord t_exam_record represents assessuser.t_exam_record */
 type TExamRecord struct {
-	ID          null.Int       `json:"ID,omitempty" db:"id,true,integer"`                                       /* id 记录ID */
-	ExamRoom    null.Int       `json:"ExamRoom,omitempty" db:"exam_room,false,bigint"`                          /* exam_room 考场ID */
-	ExamSession null.Int       `json:"ExamSession,omitempty" db:"exam_session,false,bigint"`                    /* exam_session 考试场次ID */
-	Content     null.String    `json:"Content,omitempty" db:"content,false,character varying"`                  /* content 记录内容 */
-	BasicEval   null.String    `json:"BasicEval,omitempty" db:"basic_eval,false,character varying"`             /* basic_eval 基本情况评估 00: 良好 02: 一般 04: 较差 */
-	Creator     null.Int       `json:"Creator,omitempty" db:"creator,false,bigint"`                             /* creator 创建者 */
-	CreateTime  null.Int       `json:"CreateTime,omitempty" db:"create_time,false,timestamp without time zone"` /* create_time 创建时间 */
-	UpdatedBy   null.Int       `json:"UpdatedBy,omitempty" db:"updated_by,false,bigint"`                        /* updated_by 最近一次的更新者 */
-	UpdateTime  null.Int       `json:"UpdateTime,omitempty" db:"update_time,false,timestamp without time zone"` /* update_time 最近一次更新的时间 */
-	Addi        types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                                    /* addi 附加信息 */
-	Status      null.String    `json:"Status,omitempty" db:"status,false,character varying"`                    /* status 状态码 00:正常 02:失效(删除) */
+	ID          null.Int       `json:"ID,omitempty" db:"id,true,integer"`                           /* id 记录ID */
+	ExamRoom    null.Int       `json:"ExamRoom,omitempty" db:"exam_room,false,bigint"`              /* exam_room 考场ID */
+	ExamSession null.Int       `json:"ExamSession,omitempty" db:"exam_session,false,bigint"`        /* exam_session 考试场次ID */
+	Content     null.String    `json:"Content,omitempty" db:"content,false,character varying"`      /* content 记录内容 */
+	BasicEval   null.String    `json:"BasicEval,omitempty" db:"basic_eval,false,character varying"` /* basic_eval 基本情况评估 00: 良好 02: 一般 04: 较差 */
+	Creator     null.Int       `json:"Creator,omitempty" db:"creator,false,bigint"`                 /* creator 创建者 */
+	UpdatedBy   null.Int       `json:"UpdatedBy,omitempty" db:"updated_by,false,bigint"`            /* updated_by 最近一次的更新者 */
+	Addi        types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                        /* addi 附加信息 */
+	Status      null.String    `json:"Status,omitempty" db:"status,false,character varying"`        /* status 状态码 00:正常 02:失效(删除) */
+	CreateTime  null.Int       `json:"CreateTime,omitempty" db:"create_time,false,bigint"`          /* create_time create_time */
+	UpdateTime  null.Int       `json:"UpdateTime,omitempty" db:"update_time,false,bigint"`          /* update_time update_time */
 	Filter                     // build DML where clause
 }
 
@@ -2532,11 +2531,11 @@ var TExamRecordFields = []string{
 	"Content",
 	"BasicEval",
 	"Creator",
-	"CreateTime",
 	"UpdatedBy",
-	"UpdateTime",
 	"Addi",
 	"Status",
+	"CreateTime",
+	"UpdateTime",
 }
 
 // TExamRecordColumns full column list for default query
@@ -2547,11 +2546,11 @@ var TExamRecordColumns = []string{
 	"content",
 	"basic_eval",
 	"creator",
-	"create_time",
 	"updated_by",
-	"update_time",
 	"addi",
 	"status",
+	"create_time",
+	"update_time",
 }
 
 // TExamRecordColumnsDataTypes full column data types for default query
@@ -2562,11 +2561,11 @@ var TExamRecordColumnsDataTypes = map[string]string{
 	"content":      "character varying",
 	"basic_eval":   "character varying",
 	"creator":      "bigint",
-	"create_time":  "timestamp without time zone",
 	"updated_by":   "bigint",
-	"update_time":  "timestamp without time zone",
 	"addi":         "jsonb",
 	"status":       "character varying",
+	"create_time":  "bigint",
+	"update_time":  "bigint",
 }
 
 // GetFieldsMap returns a map of field names to their values.
@@ -2578,11 +2577,11 @@ func (r *TExamRecord) GetFieldsMap() map[string]any {
 		"Content":     r.Content,
 		"BasicEval":   r.BasicEval,
 		"Creator":     r.Creator,
-		"CreateTime":  r.CreateTime,
 		"UpdatedBy":   r.UpdatedBy,
-		"UpdateTime":  r.UpdateTime,
 		"Addi":        r.Addi,
 		"Status":      r.Status,
+		"CreateTime":  r.CreateTime,
+		"UpdateTime":  r.UpdateTime,
 	}
 }
 
@@ -2595,11 +2594,11 @@ func (r *TExamRecord) GetColumnsMap() map[string]any {
 		"content":      r.Content,
 		"basic_eval":   r.BasicEval,
 		"creator":      r.Creator,
-		"create_time":  r.CreateTime,
 		"updated_by":   r.UpdatedBy,
-		"update_time":  r.UpdateTime,
 		"addi":         r.Addi,
 		"status":       r.Status,
+		"create_time":  r.CreateTime,
+		"update_time":  r.UpdateTime,
 	}
 }
 
@@ -2621,8 +2620,8 @@ func (r *TExamRecord) GetTableName() string {
 // Create inserts the TExamRecord to the database.
 func (r *TExamRecord) Create(db Queryer) error {
 	err := db.QueryRow(
-		`INSERT INTO t_exam_record (exam_room, exam_session, content, basic_eval, creator, create_time, updated_by, update_time, addi, status) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id`,
-		&r.ExamRoom, &r.ExamSession, &r.Content, &r.BasicEval, &r.Creator, &r.CreateTime, &r.UpdatedBy, &r.UpdateTime, &r.Addi, &r.Status).Scan(&r.ID)
+		`INSERT INTO t_exam_record (exam_room, exam_session, content, basic_eval, creator, updated_by, addi, status, create_time, update_time) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id`,
+		&r.ExamRoom, &r.ExamSession, &r.Content, &r.BasicEval, &r.Creator, &r.UpdatedBy, &r.Addi, &r.Status, &r.CreateTime, &r.UpdateTime).Scan(&r.ID)
 	if err != nil {
 		return errors.Wrap(err, "failed to insert t_exam_record")
 	}
@@ -2634,8 +2633,8 @@ func GetTExamRecordByPk(db Queryer, pk0 null.Int) (*TExamRecord, error) {
 
 	var r TExamRecord
 	err := db.QueryRow(
-		`SELECT id, exam_room, exam_session, content, basic_eval, creator, create_time, updated_by, update_time, addi, status FROM t_exam_record WHERE id = $1`,
-		pk0).Scan(&r.ID, &r.ExamRoom, &r.ExamSession, &r.Content, &r.BasicEval, &r.Creator, &r.CreateTime, &r.UpdatedBy, &r.UpdateTime, &r.Addi, &r.Status)
+		`SELECT id, exam_room, exam_session, content, basic_eval, creator, updated_by, addi, status, create_time, update_time FROM t_exam_record WHERE id = $1`,
+		pk0).Scan(&r.ID, &r.ExamRoom, &r.ExamSession, &r.Content, &r.BasicEval, &r.Creator, &r.UpdatedBy, &r.Addi, &r.Status, &r.CreateTime, &r.UpdateTime)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to select t_exam_record")
 	}
@@ -2644,16 +2643,16 @@ func GetTExamRecordByPk(db Queryer, pk0 null.Int) (*TExamRecord, error) {
 
 /*TExamRoom t_exam_room represents assessuser.t_exam_room */
 type TExamRoom struct {
-	ID         null.Int       `json:"ID,omitempty" db:"id,true,integer"`                                       /* id 考场编号 */
-	ExamSite   null.Int       `json:"ExamSite,omitempty" db:"exam_site,false,bigint"`                          /* exam_site 考点编号 */
-	Name       null.String    `json:"Name,omitempty" db:"name,false,character varying"`                        /* name 考场名字 */
-	Capacity   null.Int       `json:"Capacity,omitempty" db:"capacity,false,integer"`                          /* capacity 考场容量 */
-	Creator    null.Int       `json:"Creator,omitempty" db:"creator,false,bigint"`                             /* creator 创建者 */
-	CreateTime null.Int       `json:"CreateTime,omitempty" db:"create_time,false,timestamp without time zone"` /* create_time 创建时间 */
-	UpdatedBy  null.Int       `json:"UpdatedBy,omitempty" db:"updated_by,false,bigint"`                        /* updated_by 更新者 */
-	UpdateTime null.Int       `json:"UpdateTime,omitempty" db:"update_time,false,timestamp without time zone"` /* update_time 更新时间 */
-	Status     null.String    `json:"Status,omitempty" db:"status,false,character varying"`                    /* status 考场状态 00：正常 02：故障 04：占用 06：已删除 */
-	Addi       types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                                    /* addi 附加信息 */
+	ID         null.Int       `json:"ID,omitempty" db:"id,true,integer"`                    /* id 考场编号 */
+	ExamSite   null.Int       `json:"ExamSite,omitempty" db:"exam_site,false,bigint"`       /* exam_site 考点编号 */
+	Name       null.String    `json:"Name,omitempty" db:"name,false,character varying"`     /* name 考场名字 */
+	Capacity   null.Int       `json:"Capacity,omitempty" db:"capacity,false,integer"`       /* capacity 考场容量 */
+	Creator    null.Int       `json:"Creator,omitempty" db:"creator,false,bigint"`          /* creator 创建者 */
+	UpdatedBy  null.Int       `json:"UpdatedBy,omitempty" db:"updated_by,false,bigint"`     /* updated_by 更新者 */
+	Status     null.String    `json:"Status,omitempty" db:"status,false,character varying"` /* status 考场状态 00：正常 02：故障 04：占用 06：已删除 */
+	Addi       types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                 /* addi 附加信息 */
+	CreateTime null.Int       `json:"CreateTime,omitempty" db:"create_time,false,bigint"`   /* create_time create_time */
+	UpdateTime null.Int       `json:"UpdateTime,omitempty" db:"update_time,false,bigint"`   /* update_time update_time */
 	Filter                    // build DML where clause
 }
 
@@ -2664,11 +2663,11 @@ var TExamRoomFields = []string{
 	"Name",
 	"Capacity",
 	"Creator",
-	"CreateTime",
 	"UpdatedBy",
-	"UpdateTime",
 	"Status",
 	"Addi",
+	"CreateTime",
+	"UpdateTime",
 }
 
 // TExamRoomColumns full column list for default query
@@ -2678,11 +2677,11 @@ var TExamRoomColumns = []string{
 	"name",
 	"capacity",
 	"creator",
-	"create_time",
 	"updated_by",
-	"update_time",
 	"status",
 	"addi",
+	"create_time",
+	"update_time",
 }
 
 // TExamRoomColumnsDataTypes full column data types for default query
@@ -2692,11 +2691,11 @@ var TExamRoomColumnsDataTypes = map[string]string{
 	"name":        "character varying",
 	"capacity":    "integer",
 	"creator":     "bigint",
-	"create_time": "timestamp without time zone",
 	"updated_by":  "bigint",
-	"update_time": "timestamp without time zone",
 	"status":      "character varying",
 	"addi":        "jsonb",
+	"create_time": "bigint",
+	"update_time": "bigint",
 }
 
 // GetFieldsMap returns a map of field names to their values.
@@ -2707,11 +2706,11 @@ func (r *TExamRoom) GetFieldsMap() map[string]any {
 		"Name":       r.Name,
 		"Capacity":   r.Capacity,
 		"Creator":    r.Creator,
-		"CreateTime": r.CreateTime,
 		"UpdatedBy":  r.UpdatedBy,
-		"UpdateTime": r.UpdateTime,
 		"Status":     r.Status,
 		"Addi":       r.Addi,
+		"CreateTime": r.CreateTime,
+		"UpdateTime": r.UpdateTime,
 	}
 }
 
@@ -2723,11 +2722,11 @@ func (r *TExamRoom) GetColumnsMap() map[string]any {
 		"name":        r.Name,
 		"capacity":    r.Capacity,
 		"creator":     r.Creator,
-		"create_time": r.CreateTime,
 		"updated_by":  r.UpdatedBy,
-		"update_time": r.UpdateTime,
 		"status":      r.Status,
 		"addi":        r.Addi,
+		"create_time": r.CreateTime,
+		"update_time": r.UpdateTime,
 	}
 }
 
@@ -2749,8 +2748,8 @@ func (r *TExamRoom) GetTableName() string {
 // Create inserts the TExamRoom to the database.
 func (r *TExamRoom) Create(db Queryer) error {
 	err := db.QueryRow(
-		`INSERT INTO t_exam_room (exam_site, name, capacity, creator, create_time, updated_by, update_time, status, addi) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
-		&r.ExamSite, &r.Name, &r.Capacity, &r.Creator, &r.CreateTime, &r.UpdatedBy, &r.UpdateTime, &r.Status, &r.Addi).Scan(&r.ID)
+		`INSERT INTO t_exam_room (exam_site, name, capacity, creator, updated_by, status, addi, create_time, update_time) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
+		&r.ExamSite, &r.Name, &r.Capacity, &r.Creator, &r.UpdatedBy, &r.Status, &r.Addi, &r.CreateTime, &r.UpdateTime).Scan(&r.ID)
 	if err != nil {
 		return errors.Wrap(err, "failed to insert t_exam_room")
 	}
@@ -2762,8 +2761,8 @@ func GetTExamRoomByPk(db Queryer, pk0 null.Int) (*TExamRoom, error) {
 
 	var r TExamRoom
 	err := db.QueryRow(
-		`SELECT id, exam_site, name, capacity, creator, create_time, updated_by, update_time, status, addi FROM t_exam_room WHERE id = $1`,
-		pk0).Scan(&r.ID, &r.ExamSite, &r.Name, &r.Capacity, &r.Creator, &r.CreateTime, &r.UpdatedBy, &r.UpdateTime, &r.Status, &r.Addi)
+		`SELECT id, exam_site, name, capacity, creator, updated_by, status, addi, create_time, update_time FROM t_exam_room WHERE id = $1`,
+		pk0).Scan(&r.ID, &r.ExamSite, &r.Name, &r.Capacity, &r.Creator, &r.UpdatedBy, &r.Status, &r.Addi, &r.CreateTime, &r.UpdateTime)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to select t_exam_room")
 	}
@@ -2783,7 +2782,7 @@ type TExamSession struct {
 	NameVisibilityIn     null.Bool      `json:"NameVisibilityIn,omitempty" db:"name_visibility_in,false,boolean"`                   /* name_visibility_in 当需要人工批卷时，是否需要在批改中显示学生姓名 */
 	Creator              null.Int       `json:"Creator,omitempty" db:"creator,false,bigint"`                                        /* creator 创建者 */
 	UpdatedBy            null.Int       `json:"UpdatedBy,omitempty" db:"updated_by,false,bigint"`                                   /* updated_by 更新者 */
-	Status               null.String    `json:"Status,omitempty" db:"status,false,character varying"`                               /* status 状态 00：未发布 01：待开始  02：进行中 04：已结束 06：已删除 08：批改中 10：已批改 12：已提交 14：待同步 */
+	Status               null.String    `json:"Status,omitempty" db:"status,false,character varying"`                               /* status 状态 00：未发布 02：待开始  04：进行中 06：已结束  08：批改中 10：已批改 12：已提交 14：已删除 */
 	Addi                 types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                                               /* addi 附加信息 */
 	SessionNum           null.Int       `json:"SessionNum,omitempty" db:"session_num,false,bigint"`                                 /* session_num session_num */
 	LateEntryTime        null.Int       `json:"LateEntryTime,omitempty" db:"late_entry_time,false,bigint"`                          /* late_entry_time 考试开始后最晚能进入考场的时间，如考试开始后30分钟内可进入考场 */
@@ -2990,17 +2989,17 @@ func GetTExamSessionByPk(db Queryer, pk0 null.Int) (*TExamSession, error) {
 
 /*TExamSite t_exam_site represents assessuser.t_exam_site */
 type TExamSite struct {
-	ID         null.Int       `json:"ID,omitempty" db:"id,true,integer"`                                       /* id 考点编号 */
-	Name       null.String    `json:"Name,omitempty" db:"name,false,character varying"`                        /* name 考点名字 */
-	Address    null.String    `json:"Address,omitempty" db:"address,false,character varying"`                  /* address 考点地址 */
-	ServerHost null.String    `json:"ServerHost,omitempty" db:"server_host,false,character varying"`           /* server_host 考点服务器地址(包含端口) */
-	Creator    null.Int       `json:"Creator,omitempty" db:"creator,false,bigint"`                             /* creator 创建者 */
-	CreateTime null.Int       `json:"CreateTime,omitempty" db:"create_time,false,timestamp without time zone"` /* create_time 创建时间 */
-	UpdatedBy  null.Int       `json:"UpdatedBy,omitempty" db:"updated_by,false,bigint"`                        /* updated_by 更新者 */
-	UpdateTime null.Int       `json:"UpdateTime,omitempty" db:"update_time,false,timestamp without time zone"` /* update_time 更新时间 */
-	Status     null.String    `json:"Status,omitempty" db:"status,false,character varying"`                    /* status 考点状态 00：空闲 02：故障 04：删除 */
-	Addi       types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                                    /* addi 附加信息 */
-	Admin      null.Int       `json:"Admin,omitempty" db:"admin,false,bigint"`                                 /* admin 考点负责人 */
+	ID         null.Int       `json:"ID,omitempty" db:"id,true,integer"`                             /* id 考点编号 */
+	Name       null.String    `json:"Name,omitempty" db:"name,false,character varying"`              /* name 考点名字 */
+	Address    null.String    `json:"Address,omitempty" db:"address,false,character varying"`        /* address 考点地址 */
+	ServerHost null.String    `json:"ServerHost,omitempty" db:"server_host,false,character varying"` /* server_host 考点服务器地址(包含端口) */
+	Creator    null.Int       `json:"Creator,omitempty" db:"creator,false,bigint"`                   /* creator 创建者 */
+	UpdatedBy  null.Int       `json:"UpdatedBy,omitempty" db:"updated_by,false,bigint"`              /* updated_by 更新者 */
+	Status     null.String    `json:"Status,omitempty" db:"status,false,character varying"`          /* status 考点状态 00：空闲 02：故障 04：删除 */
+	Addi       types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                          /* addi 附加信息 */
+	Admin      null.Int       `json:"Admin,omitempty" db:"admin,false,bigint"`                       /* admin 考点负责人 */
+	CreateTime null.Int       `json:"CreateTime,omitempty" db:"create_time,false,bigint"`            /* create_time create_time */
+	UpdateTime null.Int       `json:"UpdateTime,omitempty" db:"update_time,false,bigint"`            /* update_time update_time */
 	Filter                    // build DML where clause
 }
 
@@ -3011,12 +3010,12 @@ var TExamSiteFields = []string{
 	"Address",
 	"ServerHost",
 	"Creator",
-	"CreateTime",
 	"UpdatedBy",
-	"UpdateTime",
 	"Status",
 	"Addi",
 	"Admin",
+	"CreateTime",
+	"UpdateTime",
 }
 
 // TExamSiteColumns full column list for default query
@@ -3026,12 +3025,12 @@ var TExamSiteColumns = []string{
 	"address",
 	"server_host",
 	"creator",
-	"create_time",
 	"updated_by",
-	"update_time",
 	"status",
 	"addi",
 	"admin",
+	"create_time",
+	"update_time",
 }
 
 // TExamSiteColumnsDataTypes full column data types for default query
@@ -3041,12 +3040,12 @@ var TExamSiteColumnsDataTypes = map[string]string{
 	"address":     "character varying",
 	"server_host": "character varying",
 	"creator":     "bigint",
-	"create_time": "timestamp without time zone",
 	"updated_by":  "bigint",
-	"update_time": "timestamp without time zone",
 	"status":      "character varying",
 	"addi":        "jsonb",
 	"admin":       "bigint",
+	"create_time": "bigint",
+	"update_time": "bigint",
 }
 
 // GetFieldsMap returns a map of field names to their values.
@@ -3057,12 +3056,12 @@ func (r *TExamSite) GetFieldsMap() map[string]any {
 		"Address":    r.Address,
 		"ServerHost": r.ServerHost,
 		"Creator":    r.Creator,
-		"CreateTime": r.CreateTime,
 		"UpdatedBy":  r.UpdatedBy,
-		"UpdateTime": r.UpdateTime,
 		"Status":     r.Status,
 		"Addi":       r.Addi,
 		"Admin":      r.Admin,
+		"CreateTime": r.CreateTime,
+		"UpdateTime": r.UpdateTime,
 	}
 }
 
@@ -3074,12 +3073,12 @@ func (r *TExamSite) GetColumnsMap() map[string]any {
 		"address":     r.Address,
 		"server_host": r.ServerHost,
 		"creator":     r.Creator,
-		"create_time": r.CreateTime,
 		"updated_by":  r.UpdatedBy,
-		"update_time": r.UpdateTime,
 		"status":      r.Status,
 		"addi":        r.Addi,
 		"admin":       r.Admin,
+		"create_time": r.CreateTime,
+		"update_time": r.UpdateTime,
 	}
 }
 
@@ -3101,8 +3100,8 @@ func (r *TExamSite) GetTableName() string {
 // Create inserts the TExamSite to the database.
 func (r *TExamSite) Create(db Queryer) error {
 	err := db.QueryRow(
-		`INSERT INTO t_exam_site (name, address, server_host, creator, create_time, updated_by, update_time, status, addi, admin) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id`,
-		&r.Name, &r.Address, &r.ServerHost, &r.Creator, &r.CreateTime, &r.UpdatedBy, &r.UpdateTime, &r.Status, &r.Addi, &r.Admin).Scan(&r.ID)
+		`INSERT INTO t_exam_site (name, address, server_host, creator, updated_by, status, addi, admin, create_time, update_time) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id`,
+		&r.Name, &r.Address, &r.ServerHost, &r.Creator, &r.UpdatedBy, &r.Status, &r.Addi, &r.Admin, &r.CreateTime, &r.UpdateTime).Scan(&r.ID)
 	if err != nil {
 		return errors.Wrap(err, "failed to insert t_exam_site")
 	}
@@ -3114,8 +3113,8 @@ func GetTExamSiteByPk(db Queryer, pk0 null.Int) (*TExamSite, error) {
 
 	var r TExamSite
 	err := db.QueryRow(
-		`SELECT id, name, address, server_host, creator, create_time, updated_by, update_time, status, addi, admin FROM t_exam_site WHERE id = $1`,
-		pk0).Scan(&r.ID, &r.Name, &r.Address, &r.ServerHost, &r.Creator, &r.CreateTime, &r.UpdatedBy, &r.UpdateTime, &r.Status, &r.Addi, &r.Admin)
+		`SELECT id, name, address, server_host, creator, updated_by, status, addi, admin, create_time, update_time FROM t_exam_site WHERE id = $1`,
+		pk0).Scan(&r.ID, &r.Name, &r.Address, &r.ServerHost, &r.Creator, &r.UpdatedBy, &r.Status, &r.Addi, &r.Admin, &r.CreateTime, &r.UpdateTime)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to select t_exam_site")
 	}
@@ -3136,12 +3135,12 @@ type TExaminee struct {
 	Addi           types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                                  /* addi 附加信息(备注),可以保存考试异常的原因等 */
 	SerialNumber   null.Int       `json:"SerialNumber,omitempty" db:"serial_number,false,integer"`               /* serial_number serial_number */
 	ExamineeNumber null.String    `json:"ExamineeNumber,omitempty" db:"examinee_number,false,character varying"` /* examinee_number 考生准考证号 */
-	ExtraTime      *time.Duration `json:"ExtraTime,omitempty" db:"extra_time,false,interval"`                    /* extra_time 考试延长时间,单位为分钟,考试实际结束时间=当前考试结束时间+延长时间 */
 	ExitCnt        null.Int       `json:"ExitCnt,omitempty" db:"exit_cnt,false,integer"`                         /* exit_cnt 学生退出考试页面的次数 */
 	CreateTime     null.Int       `json:"CreateTime,omitempty" db:"create_time,false,bigint"`                    /* create_time 创建时间 */
 	UpdateTime     null.Int       `json:"UpdateTime,omitempty" db:"update_time,false,bigint"`                    /* update_time 更新时间 */
 	StartTime      null.Int       `json:"StartTime,omitempty" db:"start_time,false,bigint"`                      /* start_time 学生考试开始时间 */
 	EndTime        null.Int       `json:"EndTime,omitempty" db:"end_time,false,bigint"`                          /* end_time 学生结束考试的时间 */
+	ExtraTime      null.Int       `json:"ExtraTime,omitempty" db:"extra_time,false,bigint"`                      /* extra_time 延长时间(毫秒) */
 	Filter                        // build DML where clause
 }
 
@@ -3159,12 +3158,12 @@ var TExamineeFields = []string{
 	"Addi",
 	"SerialNumber",
 	"ExamineeNumber",
-	"ExtraTime",
 	"ExitCnt",
 	"CreateTime",
 	"UpdateTime",
 	"StartTime",
 	"EndTime",
+	"ExtraTime",
 }
 
 // TExamineeColumns full column list for default query
@@ -3181,12 +3180,12 @@ var TExamineeColumns = []string{
 	"addi",
 	"serial_number",
 	"examinee_number",
-	"extra_time",
 	"exit_cnt",
 	"create_time",
 	"update_time",
 	"start_time",
 	"end_time",
+	"extra_time",
 }
 
 // TExamineeColumnsDataTypes full column data types for default query
@@ -3203,12 +3202,12 @@ var TExamineeColumnsDataTypes = map[string]string{
 	"addi":            "jsonb",
 	"serial_number":   "integer",
 	"examinee_number": "character varying",
-	"extra_time":      "interval",
 	"exit_cnt":        "integer",
 	"create_time":     "bigint",
 	"update_time":     "bigint",
 	"start_time":      "bigint",
 	"end_time":        "bigint",
+	"extra_time":      "bigint",
 }
 
 // GetFieldsMap returns a map of field names to their values.
@@ -3226,12 +3225,12 @@ func (r *TExaminee) GetFieldsMap() map[string]any {
 		"Addi":           r.Addi,
 		"SerialNumber":   r.SerialNumber,
 		"ExamineeNumber": r.ExamineeNumber,
-		"ExtraTime":      r.ExtraTime,
 		"ExitCnt":        r.ExitCnt,
 		"CreateTime":     r.CreateTime,
 		"UpdateTime":     r.UpdateTime,
 		"StartTime":      r.StartTime,
 		"EndTime":        r.EndTime,
+		"ExtraTime":      r.ExtraTime,
 	}
 }
 
@@ -3250,12 +3249,12 @@ func (r *TExaminee) GetColumnsMap() map[string]any {
 		"addi":            r.Addi,
 		"serial_number":   r.SerialNumber,
 		"examinee_number": r.ExamineeNumber,
-		"extra_time":      r.ExtraTime,
 		"exit_cnt":        r.ExitCnt,
 		"create_time":     r.CreateTime,
 		"update_time":     r.UpdateTime,
 		"start_time":      r.StartTime,
 		"end_time":        r.EndTime,
+		"extra_time":      r.ExtraTime,
 	}
 }
 
@@ -3277,8 +3276,8 @@ func (r *TExaminee) GetTableName() string {
 // Create inserts the TExaminee to the database.
 func (r *TExaminee) Create(db Queryer) error {
 	err := db.QueryRow(
-		`INSERT INTO t_examinee (student_id, exam_room, exam_session_id, exam_paper_id, remark, creator, updated_by, status, addi, serial_number, examinee_number, extra_time, exit_cnt, create_time, update_time, start_time, end_time) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17) RETURNING id`,
-		&r.StudentID, &r.ExamRoom, &r.ExamSessionID, &r.ExamPaperID, &r.Remark, &r.Creator, &r.UpdatedBy, &r.Status, &r.Addi, &r.SerialNumber, &r.ExamineeNumber, &r.ExtraTime, &r.ExitCnt, &r.CreateTime, &r.UpdateTime, &r.StartTime, &r.EndTime).Scan(&r.ID)
+		`INSERT INTO t_examinee (student_id, exam_room, exam_session_id, exam_paper_id, remark, creator, updated_by, status, addi, serial_number, examinee_number, exit_cnt, create_time, update_time, start_time, end_time, extra_time) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17) RETURNING id`,
+		&r.StudentID, &r.ExamRoom, &r.ExamSessionID, &r.ExamPaperID, &r.Remark, &r.Creator, &r.UpdatedBy, &r.Status, &r.Addi, &r.SerialNumber, &r.ExamineeNumber, &r.ExitCnt, &r.CreateTime, &r.UpdateTime, &r.StartTime, &r.EndTime, &r.ExtraTime).Scan(&r.ID)
 	if err != nil {
 		return errors.Wrap(err, "failed to insert t_examinee")
 	}
@@ -3290,8 +3289,8 @@ func GetTExamineeByPk(db Queryer, pk0 null.Int) (*TExaminee, error) {
 
 	var r TExaminee
 	err := db.QueryRow(
-		`SELECT id, student_id, exam_room, exam_session_id, exam_paper_id, remark, creator, updated_by, status, addi, serial_number, examinee_number, extra_time, exit_cnt, create_time, update_time, start_time, end_time FROM t_examinee WHERE id = $1`,
-		pk0).Scan(&r.ID, &r.StudentID, &r.ExamRoom, &r.ExamSessionID, &r.ExamPaperID, &r.Remark, &r.Creator, &r.UpdatedBy, &r.Status, &r.Addi, &r.SerialNumber, &r.ExamineeNumber, &r.ExtraTime, &r.ExitCnt, &r.CreateTime, &r.UpdateTime, &r.StartTime, &r.EndTime)
+		`SELECT id, student_id, exam_room, exam_session_id, exam_paper_id, remark, creator, updated_by, status, addi, serial_number, examinee_number, exit_cnt, create_time, update_time, start_time, end_time, extra_time FROM t_examinee WHERE id = $1`,
+		pk0).Scan(&r.ID, &r.StudentID, &r.ExamRoom, &r.ExamSessionID, &r.ExamPaperID, &r.Remark, &r.Creator, &r.UpdatedBy, &r.Status, &r.Addi, &r.SerialNumber, &r.ExamineeNumber, &r.ExitCnt, &r.CreateTime, &r.UpdateTime, &r.StartTime, &r.EndTime, &r.ExtraTime)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to select t_examinee")
 	}
@@ -5934,15 +5933,15 @@ func GetTInsuredTermsByPk(db Queryer, pk0 null.Int) (*TInsuredTerms, error) {
 
 /*TInvigilation t_invigilation represents assessuser.t_invigilation */
 type TInvigilation struct {
-	ID            null.Int       `json:"ID,omitempty" db:"id,true,integer"`                                       /* id 编号 */
-	ExamSessionID null.Int       `json:"ExamSessionID,omitempty" db:"exam_session_id,true,bigint"`                /* exam_session_id 考试场次id */
-	Creator       null.Int       `json:"Creator,omitempty" db:"creator,false,bigint"`                             /* creator 创建者 */
-	CreateTime    null.Int       `json:"CreateTime,omitempty" db:"create_time,false,timestamp without time zone"` /* create_time 创建时间 */
-	UpdatedBy     null.Int       `json:"UpdatedBy,omitempty" db:"updated_by,false,bigint"`                        /* updated_by 更新者 */
-	UpdateTime    null.Int       `json:"UpdateTime,omitempty" db:"update_time,false,timestamp without time zone"` /* update_time 更新时间 */
-	Addi          types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                                    /* addi 附加信息 */
-	Invigilator   null.Int       `json:"Invigilator,omitempty" db:"invigilator,true,bigint"`                      /* invigilator 监考员ID */
-	ExamRoom      null.Int       `json:"ExamRoom,omitempty" db:"exam_room,true,bigint"`                           /* exam_room exam_room */
+	ID            null.Int       `json:"ID,omitempty" db:"id,true,integer"`                        /* id 编号 */
+	ExamSessionID null.Int       `json:"ExamSessionID,omitempty" db:"exam_session_id,true,bigint"` /* exam_session_id 考试场次id */
+	Creator       null.Int       `json:"Creator,omitempty" db:"creator,false,bigint"`              /* creator 创建者 */
+	UpdatedBy     null.Int       `json:"UpdatedBy,omitempty" db:"updated_by,false,bigint"`         /* updated_by 更新者 */
+	Addi          types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                     /* addi 附加信息 */
+	Invigilator   null.Int       `json:"Invigilator,omitempty" db:"invigilator,true,bigint"`       /* invigilator 监考员ID */
+	ExamRoom      null.Int       `json:"ExamRoom,omitempty" db:"exam_room,true,bigint"`            /* exam_room exam_room */
+	CreateTime    null.Int       `json:"CreateTime,omitempty" db:"create_time,false,bigint"`       /* create_time create_time */
+	UpdateTime    null.Int       `json:"UpdateTime,omitempty" db:"update_time,false,bigint"`       /* update_time update_time */
 	Filter                       // build DML where clause
 }
 
@@ -5951,12 +5950,12 @@ var TInvigilationFields = []string{
 	"ID",
 	"ExamSessionID",
 	"Creator",
-	"CreateTime",
 	"UpdatedBy",
-	"UpdateTime",
 	"Addi",
 	"Invigilator",
 	"ExamRoom",
+	"CreateTime",
+	"UpdateTime",
 }
 
 // TInvigilationColumns full column list for default query
@@ -5964,12 +5963,12 @@ var TInvigilationColumns = []string{
 	"id",
 	"exam_session_id",
 	"creator",
-	"create_time",
 	"updated_by",
-	"update_time",
 	"addi",
 	"invigilator",
 	"exam_room",
+	"create_time",
+	"update_time",
 }
 
 // TInvigilationColumnsDataTypes full column data types for default query
@@ -5977,12 +5976,12 @@ var TInvigilationColumnsDataTypes = map[string]string{
 	"id":              "integer",
 	"exam_session_id": "bigint",
 	"creator":         "bigint",
-	"create_time":     "timestamp without time zone",
 	"updated_by":      "bigint",
-	"update_time":     "timestamp without time zone",
 	"addi":            "jsonb",
 	"invigilator":     "bigint",
 	"exam_room":       "bigint",
+	"create_time":     "bigint",
+	"update_time":     "bigint",
 }
 
 // GetFieldsMap returns a map of field names to their values.
@@ -5991,12 +5990,12 @@ func (r *TInvigilation) GetFieldsMap() map[string]any {
 		"ID":            r.ID,
 		"ExamSessionID": r.ExamSessionID,
 		"Creator":       r.Creator,
-		"CreateTime":    r.CreateTime,
 		"UpdatedBy":     r.UpdatedBy,
-		"UpdateTime":    r.UpdateTime,
 		"Addi":          r.Addi,
 		"Invigilator":   r.Invigilator,
 		"ExamRoom":      r.ExamRoom,
+		"CreateTime":    r.CreateTime,
+		"UpdateTime":    r.UpdateTime,
 	}
 }
 
@@ -6006,12 +6005,12 @@ func (r *TInvigilation) GetColumnsMap() map[string]any {
 		"id":              r.ID,
 		"exam_session_id": r.ExamSessionID,
 		"creator":         r.Creator,
-		"create_time":     r.CreateTime,
 		"updated_by":      r.UpdatedBy,
-		"update_time":     r.UpdateTime,
 		"addi":            r.Addi,
 		"invigilator":     r.Invigilator,
 		"exam_room":       r.ExamRoom,
+		"create_time":     r.CreateTime,
+		"update_time":     r.UpdateTime,
 	}
 }
 
@@ -6033,8 +6032,8 @@ func (r *TInvigilation) GetTableName() string {
 // Create inserts the TInvigilation to the database.
 func (r *TInvigilation) Create(db Queryer) error {
 	err := db.QueryRow(
-		`INSERT INTO t_invigilation (creator, create_time, updated_by, update_time, addi) VALUES ($1, $2, $3, $4, $5) RETURNING id, exam_session_id, invigilator, exam_room`,
-		&r.Creator, &r.CreateTime, &r.UpdatedBy, &r.UpdateTime, &r.Addi).Scan(&r.ID, &r.ExamSessionID, &r.Invigilator, &r.ExamRoom)
+		`INSERT INTO t_invigilation (creator, updated_by, addi, create_time, update_time) VALUES ($1, $2, $3, $4, $5) RETURNING id, exam_session_id, invigilator, exam_room`,
+		&r.Creator, &r.UpdatedBy, &r.Addi, &r.CreateTime, &r.UpdateTime).Scan(&r.ID, &r.ExamSessionID, &r.Invigilator, &r.ExamRoom)
 	if err != nil {
 		return errors.Wrap(err, "failed to insert t_invigilation")
 	}
@@ -6042,12 +6041,12 @@ func (r *TInvigilation) Create(db Queryer) error {
 }
 
 // GetTInvigilationByPk select the TInvigilation from the database.
-func GetTInvigilationByPk(db Queryer, pk0 null.Int, pk1 null.Int, pk7 null.Int, pk8 null.Int) (*TInvigilation, error) {
+func GetTInvigilationByPk(db Queryer, pk0 null.Int, pk1 null.Int, pk5 null.Int, pk6 null.Int) (*TInvigilation, error) {
 
 	var r TInvigilation
 	err := db.QueryRow(
-		`SELECT id, exam_session_id, creator, create_time, updated_by, update_time, addi, invigilator, exam_room FROM t_invigilation WHERE id = $1 AND exam_session_id = $2 AND invigilator = $3 AND exam_room = $4`,
-		pk0, pk1, pk7, pk8).Scan(&r.ID, &r.ExamSessionID, &r.Creator, &r.CreateTime, &r.UpdatedBy, &r.UpdateTime, &r.Addi, &r.Invigilator, &r.ExamRoom)
+		`SELECT id, exam_session_id, creator, updated_by, addi, invigilator, exam_room, create_time, update_time FROM t_invigilation WHERE id = $1 AND exam_session_id = $2 AND invigilator = $3 AND exam_room = $4`,
+		pk0, pk1, pk5, pk6).Scan(&r.ID, &r.ExamSessionID, &r.Creator, &r.UpdatedBy, &r.Addi, &r.Invigilator, &r.ExamRoom, &r.CreateTime, &r.UpdateTime)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to select t_invigilation")
 	}
@@ -12573,7 +12572,7 @@ func GetTResourceByPk(db Queryer, pk0 null.Int) (*TResource, error) {
 /*TResourceShare t_resource_share represents assessuser.t_resource_share */
 type TResourceShare struct {
 	ID         null.Int       `json:"ID,omitempty" db:"id,true,integer"`                    /* id 表ID */
-	Type       string         `json:"Type,omitempty" db:"type,false,character varying"`     /* type 资源类型 00:试卷 */
+	Type       string         `json:"Type,omitempty" db:"type,false,character varying"`     /* type 资源类型 12:试卷 */
 	ResourceID null.Int       `json:"ResourceID,omitempty" db:"resource_id,false,bigint"`   /* resource_id 资源ID */
 	UserID     null.Int       `json:"UserID,omitempty" db:"user_id,false,bigint"`           /* user_id 被分享者 */
 	Creator    null.Int       `json:"Creator,omitempty" db:"creator,false,bigint"`          /* creator 创建者 */
@@ -16516,6 +16515,8 @@ func GetTVDomainUserByPk(db Queryer) (*TVDomainUser, error) {
 /*TVExamPaper t_v_exam_paper represents assessuser.t_v_exam_paper */
 type TVExamPaper struct {
 	ID            null.Int       `json:"ID,omitempty" db:"id,false,integer"`                           /* id id */
+	ExamSessionID null.Int       `json:"ExamSessionID,omitempty" db:"exam_session_id,false,bigint"`    /* exam_session_id exam_session_id */
+	PracticeID    null.Int       `json:"PracticeID,omitempty" db:"practice_id,false,bigint"`           /* practice_id practice_id */
 	Name          null.String    `json:"Name,omitempty" db:"name,false,character varying"`             /* name name */
 	Creator       null.Int       `json:"Creator,omitempty" db:"creator,false,bigint"`                  /* creator creator */
 	CreateTime    null.Int       `json:"CreateTime,omitempty" db:"create_time,false,bigint"`           /* create_time create_time */
@@ -16532,6 +16533,8 @@ type TVExamPaper struct {
 // TVExamPaperFields full field list for default query
 var TVExamPaperFields = []string{
 	"ID",
+	"ExamSessionID",
+	"PracticeID",
 	"Name",
 	"Creator",
 	"CreateTime",
@@ -16547,6 +16550,8 @@ var TVExamPaperFields = []string{
 // TVExamPaperColumns full column list for default query
 var TVExamPaperColumns = []string{
 	"id",
+	"exam_session_id",
+	"practice_id",
 	"name",
 	"creator",
 	"create_time",
@@ -16561,23 +16566,27 @@ var TVExamPaperColumns = []string{
 
 // TVExamPaperColumnsDataTypes full column data types for default query
 var TVExamPaperColumnsDataTypes = map[string]string{
-	"id":             "integer",
-	"name":           "character varying",
-	"creator":        "bigint",
-	"create_time":    "bigint",
-	"updated_by":     "bigint",
-	"update_time":    "bigint",
-	"status":         "character varying",
-	"total_score":    "double precision",
-	"question_count": "bigint",
-	"group_count":    "bigint",
-	"groups_data":    "json",
+	"id":              "integer",
+	"exam_session_id": "bigint",
+	"practice_id":     "bigint",
+	"name":            "character varying",
+	"creator":         "bigint",
+	"create_time":     "bigint",
+	"updated_by":      "bigint",
+	"update_time":     "bigint",
+	"status":          "character varying",
+	"total_score":     "double precision",
+	"question_count":  "bigint",
+	"group_count":     "bigint",
+	"groups_data":     "json",
 }
 
 // GetFieldsMap returns a map of field names to their values.
 func (r *TVExamPaper) GetFieldsMap() map[string]any {
 	return map[string]any{
 		"ID":            r.ID,
+		"ExamSessionID": r.ExamSessionID,
+		"PracticeID":    r.PracticeID,
 		"Name":          r.Name,
 		"Creator":       r.Creator,
 		"CreateTime":    r.CreateTime,
@@ -16594,17 +16603,19 @@ func (r *TVExamPaper) GetFieldsMap() map[string]any {
 // GetColumnsMap returns a map of column names to their values.
 func (r *TVExamPaper) GetColumnsMap() map[string]any {
 	return map[string]any{
-		"id":             r.ID,
-		"name":           r.Name,
-		"creator":        r.Creator,
-		"create_time":    r.CreateTime,
-		"updated_by":     r.UpdatedBy,
-		"update_time":    r.UpdateTime,
-		"status":         r.Status,
-		"total_score":    r.TotalScore,
-		"question_count": r.QuestionCount,
-		"group_count":    r.GroupCount,
-		"groups_data":    r.GroupsData,
+		"id":              r.ID,
+		"exam_session_id": r.ExamSessionID,
+		"practice_id":     r.PracticeID,
+		"name":            r.Name,
+		"creator":         r.Creator,
+		"create_time":     r.CreateTime,
+		"updated_by":      r.UpdatedBy,
+		"update_time":     r.UpdateTime,
+		"status":          r.Status,
+		"total_score":     r.TotalScore,
+		"question_count":  r.QuestionCount,
+		"group_count":     r.GroupCount,
+		"groups_data":     r.GroupsData,
 	}
 }
 
@@ -16626,8 +16637,8 @@ func (r *TVExamPaper) GetTableName() string {
 // Create inserts the TVExamPaper to the database.
 func (r *TVExamPaper) Create(db Queryer) error {
 	_, err := db.Exec(
-		`INSERT INTO t_v_exam_paper (id, name, creator, create_time, updated_by, update_time, status, total_score, question_count, group_count, groups_data) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
-		&r.ID, &r.Name, &r.Creator, &r.CreateTime, &r.UpdatedBy, &r.UpdateTime, &r.Status, &r.TotalScore, &r.QuestionCount, &r.GroupCount, &r.GroupsData)
+		`INSERT INTO t_v_exam_paper (id, exam_session_id, practice_id, name, creator, create_time, updated_by, update_time, status, total_score, question_count, group_count, groups_data) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
+		&r.ID, &r.ExamSessionID, &r.PracticeID, &r.Name, &r.Creator, &r.CreateTime, &r.UpdatedBy, &r.UpdateTime, &r.Status, &r.TotalScore, &r.QuestionCount, &r.GroupCount, &r.GroupsData)
 	if err != nil {
 		return errors.Wrap(err, "failed to insert t_v_exam_paper")
 	}
@@ -16640,8 +16651,8 @@ func GetTVExamPaperByPk(db Queryer) (*TVExamPaper, error) {
 
 	var r TVExamPaper
 	err := db.QueryRow(
-		`SELECT id, name, creator, create_time, updated_by, update_time, status, total_score, question_count, group_count, groups_data FROM t_v_exam_paper`,
-	).Scan(&r.ID, &r.Name, &r.Creator, &r.CreateTime, &r.UpdatedBy, &r.UpdateTime, &r.Status, &r.TotalScore, &r.QuestionCount, &r.GroupCount, &r.GroupsData)
+		`SELECT id, exam_session_id, practice_id, name, creator, create_time, updated_by, update_time, status, total_score, question_count, group_count, groups_data FROM t_v_exam_paper`,
+	).Scan(&r.ID, &r.ExamSessionID, &r.PracticeID, &r.Name, &r.Creator, &r.CreateTime, &r.UpdatedBy, &r.UpdateTime, &r.Status, &r.TotalScore, &r.QuestionCount, &r.GroupCount, &r.GroupsData)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to select t_v_exam_paper")
 	}
@@ -16806,6 +16817,207 @@ func GetTVExamUnmarkedStudentCountByPk(db Queryer) (*TVExamUnmarkedStudentCount,
 	).Scan(&r.ExamSessionID, &r.UnmarkedStudentCount)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to select t_v_exam_unmarked_student_count")
+	}
+	return &r, nil
+}
+
+/*TVExamineeInfo t_v_examinee_info represents assessuser.t_v_examinee_info */
+type TVExamineeInfo struct {
+	ID             null.Int    `json:"ID,omitempty" db:"id,false,integer"`                                    /* id id */
+	StudentID      null.Int    `json:"StudentID,omitempty" db:"student_id,false,bigint"`                      /* student_id student_id */
+	Account        null.String `json:"Account,omitempty" db:"account,false,character varying"`                /* account account */
+	MobilePhone    null.String `json:"MobilePhone,omitempty" db:"mobile_phone,false,character varying"`       /* mobile_phone mobile_phone */
+	UserToken      null.String `json:"UserToken,omitempty" db:"user_token,false,character varying"`           /* user_token user_token */
+	OfficialName   null.String `json:"OfficialName,omitempty" db:"official_name,false,character varying"`     /* official_name official_name */
+	IDCardNo       null.String `json:"IDCardNo,omitempty" db:"id_card_no,false,character varying"`            /* id_card_no id_card_no */
+	ExamineeNumber null.String `json:"ExamineeNumber,omitempty" db:"examinee_number,false,character varying"` /* examinee_number examinee_number */
+	ExamID         null.Int    `json:"ExamID,omitempty" db:"exam_id,false,integer"`                           /* exam_id exam_id */
+	ExamName       null.String `json:"ExamName,omitempty" db:"exam_name,false,character varying"`             /* exam_name exam_name */
+	ExamSessionID  null.Int    `json:"ExamSessionID,omitempty" db:"exam_session_id,false,integer"`            /* exam_session_id exam_session_id */
+	ExamPaperID    null.Int    `json:"ExamPaperID,omitempty" db:"exam_paper_id,false,integer"`                /* exam_paper_id exam_paper_id */
+	ExamPaperName  null.String `json:"ExamPaperName,omitempty" db:"exam_paper_name,false,character varying"`  /* exam_paper_name exam_paper_name */
+	ExamRoomID     null.Int    `json:"ExamRoomID,omitempty" db:"exam_room_id,false,bigint"`                   /* exam_room_id exam_room_id */
+	ExamRoomName   null.String `json:"ExamRoomName,omitempty" db:"exam_room_name,false,character varying"`    /* exam_room_name exam_room_name */
+	ExtraTime      null.Int    `json:"ExtraTime,omitempty" db:"extra_time,false,bigint"`                      /* extra_time extra_time */
+	ExtendableTime null.Int    `json:"ExtendableTime,omitempty" db:"extendable_time,false,bigint"`            /* extendable_time extendable_time */
+	StartTime      null.Int    `json:"StartTime,omitempty" db:"start_time,false,bigint"`                      /* start_time start_time */
+	EndTime        null.Int    `json:"EndTime,omitempty" db:"end_time,false,bigint"`                          /* end_time end_time */
+	ActualEndTime  null.Int    `json:"ActualEndTime,omitempty" db:"actual_end_time,false,bigint"`             /* actual_end_time actual_end_time */
+	Status         null.String `json:"Status,omitempty" db:"status,false,character varying"`                  /* status status */
+	Remark         null.String `json:"Remark,omitempty" db:"remark,false,character varying"`                  /* remark remark */
+	Filter                     // build DML where clause
+}
+
+// TVExamineeInfoFields full field list for default query
+var TVExamineeInfoFields = []string{
+	"ID",
+	"StudentID",
+	"Account",
+	"MobilePhone",
+	"UserToken",
+	"OfficialName",
+	"IDCardNo",
+	"ExamineeNumber",
+	"ExamID",
+	"ExamName",
+	"ExamSessionID",
+	"ExamPaperID",
+	"ExamPaperName",
+	"ExamRoomID",
+	"ExamRoomName",
+	"ExtraTime",
+	"ExtendableTime",
+	"StartTime",
+	"EndTime",
+	"ActualEndTime",
+	"Status",
+	"Remark",
+}
+
+// TVExamineeInfoColumns full column list for default query
+var TVExamineeInfoColumns = []string{
+	"id",
+	"student_id",
+	"account",
+	"mobile_phone",
+	"user_token",
+	"official_name",
+	"id_card_no",
+	"examinee_number",
+	"exam_id",
+	"exam_name",
+	"exam_session_id",
+	"exam_paper_id",
+	"exam_paper_name",
+	"exam_room_id",
+	"exam_room_name",
+	"extra_time",
+	"extendable_time",
+	"start_time",
+	"end_time",
+	"actual_end_time",
+	"status",
+	"remark",
+}
+
+// TVExamineeInfoColumnsDataTypes full column data types for default query
+var TVExamineeInfoColumnsDataTypes = map[string]string{
+	"id":              "integer",
+	"student_id":      "bigint",
+	"account":         "character varying",
+	"mobile_phone":    "character varying",
+	"user_token":      "character varying",
+	"official_name":   "character varying",
+	"id_card_no":      "character varying",
+	"examinee_number": "character varying",
+	"exam_id":         "integer",
+	"exam_name":       "character varying",
+	"exam_session_id": "integer",
+	"exam_paper_id":   "integer",
+	"exam_paper_name": "character varying",
+	"exam_room_id":    "bigint",
+	"exam_room_name":  "character varying",
+	"extra_time":      "bigint",
+	"extendable_time": "bigint",
+	"start_time":      "bigint",
+	"end_time":        "bigint",
+	"actual_end_time": "bigint",
+	"status":          "character varying",
+	"remark":          "character varying",
+}
+
+// GetFieldsMap returns a map of field names to their values.
+func (r *TVExamineeInfo) GetFieldsMap() map[string]any {
+	return map[string]any{
+		"ID":             r.ID,
+		"StudentID":      r.StudentID,
+		"Account":        r.Account,
+		"MobilePhone":    r.MobilePhone,
+		"UserToken":      r.UserToken,
+		"OfficialName":   r.OfficialName,
+		"IDCardNo":       r.IDCardNo,
+		"ExamineeNumber": r.ExamineeNumber,
+		"ExamID":         r.ExamID,
+		"ExamName":       r.ExamName,
+		"ExamSessionID":  r.ExamSessionID,
+		"ExamPaperID":    r.ExamPaperID,
+		"ExamPaperName":  r.ExamPaperName,
+		"ExamRoomID":     r.ExamRoomID,
+		"ExamRoomName":   r.ExamRoomName,
+		"ExtraTime":      r.ExtraTime,
+		"ExtendableTime": r.ExtendableTime,
+		"StartTime":      r.StartTime,
+		"EndTime":        r.EndTime,
+		"ActualEndTime":  r.ActualEndTime,
+		"Status":         r.Status,
+		"Remark":         r.Remark,
+	}
+}
+
+// GetColumnsMap returns a map of column names to their values.
+func (r *TVExamineeInfo) GetColumnsMap() map[string]any {
+	return map[string]any{
+		"id":              r.ID,
+		"student_id":      r.StudentID,
+		"account":         r.Account,
+		"mobile_phone":    r.MobilePhone,
+		"user_token":      r.UserToken,
+		"official_name":   r.OfficialName,
+		"id_card_no":      r.IDCardNo,
+		"examinee_number": r.ExamineeNumber,
+		"exam_id":         r.ExamID,
+		"exam_name":       r.ExamName,
+		"exam_session_id": r.ExamSessionID,
+		"exam_paper_id":   r.ExamPaperID,
+		"exam_paper_name": r.ExamPaperName,
+		"exam_room_id":    r.ExamRoomID,
+		"exam_room_name":  r.ExamRoomName,
+		"extra_time":      r.ExtraTime,
+		"extendable_time": r.ExtendableTime,
+		"start_time":      r.StartTime,
+		"end_time":        r.EndTime,
+		"actual_end_time": r.ActualEndTime,
+		"status":          r.Status,
+		"remark":          r.Remark,
+	}
+}
+
+// Fields return all fields of struct.
+func (r *TVExamineeInfo) Fields() []string {
+	return TVExamineeInfoFields
+}
+
+// GetTableName return the associated db table name.
+func (r *TVExamineeInfo) GetTableName() string {
+	var viewNamePattern = regexp.MustCompile(`(?i)^t_v_[a-z0-9_]+$`)
+	tableName := "t_v_examinee_info"
+	if viewNamePattern.MatchString(tableName) {
+		return tableName[2:]
+	}
+	return tableName
+}
+
+// Create inserts the TVExamineeInfo to the database.
+func (r *TVExamineeInfo) Create(db Queryer) error {
+	_, err := db.Exec(
+		`INSERT INTO t_v_examinee_info (id, student_id, account, mobile_phone, user_token, official_name, id_card_no, examinee_number, exam_id, exam_name, exam_session_id, exam_paper_id, exam_paper_name, exam_room_id, exam_room_name, extra_time, extendable_time, start_time, end_time, actual_end_time, status, remark) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)`,
+		&r.ID, &r.StudentID, &r.Account, &r.MobilePhone, &r.UserToken, &r.OfficialName, &r.IDCardNo, &r.ExamineeNumber, &r.ExamID, &r.ExamName, &r.ExamSessionID, &r.ExamPaperID, &r.ExamPaperName, &r.ExamRoomID, &r.ExamRoomName, &r.ExtraTime, &r.ExtendableTime, &r.StartTime, &r.EndTime, &r.ActualEndTime, &r.Status, &r.Remark)
+	if err != nil {
+		return errors.Wrap(err, "failed to insert t_v_examinee_info")
+	}
+	return nil
+}
+
+// GetTVExamineeInfoByPk select the TVExamineeInfo from the database.
+func GetTVExamineeInfoByPk(db Queryer) (*TVExamineeInfo, error) {
+	// Don't call this function, it is a view and doesn't have a primary key.
+
+	var r TVExamineeInfo
+	err := db.QueryRow(
+		`SELECT id, student_id, account, mobile_phone, user_token, official_name, id_card_no, examinee_number, exam_id, exam_name, exam_session_id, exam_paper_id, exam_paper_name, exam_room_id, exam_room_name, extra_time, extendable_time, start_time, end_time, actual_end_time, status, remark FROM t_v_examinee_info`,
+	).Scan(&r.ID, &r.StudentID, &r.Account, &r.MobilePhone, &r.UserToken, &r.OfficialName, &r.IDCardNo, &r.ExamineeNumber, &r.ExamID, &r.ExamName, &r.ExamSessionID, &r.ExamPaperID, &r.ExamPaperName, &r.ExamRoomID, &r.ExamRoomName, &r.ExtraTime, &r.ExtendableTime, &r.StartTime, &r.EndTime, &r.ActualEndTime, &r.Status, &r.Remark)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to select t_v_examinee_info")
 	}
 	return &r, nil
 }
@@ -19191,6 +19403,213 @@ func GetTVInsurerByPk(db Queryer) (*TVInsurer, error) {
 	).Scan(&r.ID, &r.Name, &r.RefID, &r.ParentID, &r.Insurer)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to select t_v_insurer")
+	}
+	return &r, nil
+}
+
+/*TVInvigilationInfo t_v_invigilation_info represents assessuser.t_v_invigilation_info */
+type TVInvigilationInfo struct {
+	InvigilatorIds      interface{} `json:"InvigilatorIds,omitempty" db:"invigilator_ids,false,integer[]"`               /* invigilator_ids invigilator_ids */
+	InvigilatorNames    interface{} `json:"InvigilatorNames,omitempty" db:"invigilator_names,false,character varying[]"` /* invigilator_names invigilator_names */
+	InvigilatorNum      null.Int    `json:"InvigilatorNum,omitempty" db:"invigilator_num,false,bigint"`                  /* invigilator_num invigilator_num */
+	ExamID              null.Int    `json:"ExamID,omitempty" db:"exam_id,false,integer"`                                 /* exam_id exam_id */
+	ExamType            null.String `json:"ExamType,omitempty" db:"exam_type,false,character varying"`                   /* exam_type exam_type */
+	ExamMode            null.String `json:"ExamMode,omitempty" db:"exam_mode,false,character varying"`                   /* exam_mode exam_mode */
+	ExamSessionID       null.Int    `json:"ExamSessionID,omitempty" db:"exam_session_id,false,integer"`                  /* exam_session_id exam_session_id */
+	StartTime           null.Int    `json:"StartTime,omitempty" db:"start_time,false,bigint"`                            /* start_time start_time */
+	EndTime             null.Int    `json:"EndTime,omitempty" db:"end_time,false,bigint"`                                /* end_time end_time */
+	Status              null.String `json:"Status,omitempty" db:"status,false,character varying"`                        /* status status */
+	ExamSiteID          null.Int    `json:"ExamSiteID,omitempty" db:"exam_site_id,false,integer"`                        /* exam_site_id exam_site_id */
+	ExamSiteName        null.String `json:"ExamSiteName,omitempty" db:"exam_site_name,false,character varying"`          /* exam_site_name exam_site_name */
+	ExamRoomID          null.Int    `json:"ExamRoomID,omitempty" db:"exam_room_id,false,integer"`                        /* exam_room_id exam_room_id */
+	ExamRoomName        null.String `json:"ExamRoomName,omitempty" db:"exam_room_name,false,character varying"`          /* exam_room_name exam_room_name */
+	ExamRoomCapacity    null.Int    `json:"ExamRoomCapacity,omitempty" db:"exam_room_capacity,false,integer"`            /* exam_room_capacity exam_room_capacity */
+	ExamSessionName     null.String `json:"ExamSessionName,omitempty" db:"exam_session_name,false,character varying"`    /* exam_session_name exam_session_name */
+	Record              null.String `json:"Record,omitempty" db:"record,false,character varying"`                        /* record record */
+	BasicEval           null.String `json:"BasicEval,omitempty" db:"basic_eval,false,character varying"`                 /* basic_eval basic_eval */
+	ExamineeNum         null.Int    `json:"ExamineeNum,omitempty" db:"examinee_num,false,bigint"`                        /* examinee_num examinee_num */
+	AbsenteeNum         null.Int    `json:"AbsenteeNum,omitempty" db:"absentee_num,false,bigint"`                        /* absentee_num absentee_num */
+	CheaterNum          null.Int    `json:"CheaterNum,omitempty" db:"cheater_num,false,bigint"`                          /* cheater_num cheater_num */
+	AbnormalExamineeNum null.Int    `json:"AbnormalExamineeNum,omitempty" db:"abnormal_examinee_num,false,bigint"`       /* abnormal_examinee_num abnormal_examinee_num */
+	ExtendedTimeNum     null.Int    `json:"ExtendedTimeNum,omitempty" db:"extended_time_num,false,bigint"`               /* extended_time_num extended_time_num */
+	Filter                          // build DML where clause
+}
+
+// TVInvigilationInfoFields full field list for default query
+var TVInvigilationInfoFields = []string{
+	"InvigilatorIds",
+	"InvigilatorNames",
+	"InvigilatorNum",
+	"ExamID",
+	"ExamType",
+	"ExamMode",
+	"ExamSessionID",
+	"StartTime",
+	"EndTime",
+	"Status",
+	"ExamSiteID",
+	"ExamSiteName",
+	"ExamRoomID",
+	"ExamRoomName",
+	"ExamRoomCapacity",
+	"ExamSessionName",
+	"Record",
+	"BasicEval",
+	"ExamineeNum",
+	"AbsenteeNum",
+	"CheaterNum",
+	"AbnormalExamineeNum",
+	"ExtendedTimeNum",
+}
+
+// TVInvigilationInfoColumns full column list for default query
+var TVInvigilationInfoColumns = []string{
+	"invigilator_ids",
+	"invigilator_names",
+	"invigilator_num",
+	"exam_id",
+	"exam_type",
+	"exam_mode",
+	"exam_session_id",
+	"start_time",
+	"end_time",
+	"status",
+	"exam_site_id",
+	"exam_site_name",
+	"exam_room_id",
+	"exam_room_name",
+	"exam_room_capacity",
+	"exam_session_name",
+	"record",
+	"basic_eval",
+	"examinee_num",
+	"absentee_num",
+	"cheater_num",
+	"abnormal_examinee_num",
+	"extended_time_num",
+}
+
+// TVInvigilationInfoColumnsDataTypes full column data types for default query
+var TVInvigilationInfoColumnsDataTypes = map[string]string{
+	"invigilator_ids":       "integer[]",
+	"invigilator_names":     "character varying[]",
+	"invigilator_num":       "bigint",
+	"exam_id":               "integer",
+	"exam_type":             "character varying",
+	"exam_mode":             "character varying",
+	"exam_session_id":       "integer",
+	"start_time":            "bigint",
+	"end_time":              "bigint",
+	"status":                "character varying",
+	"exam_site_id":          "integer",
+	"exam_site_name":        "character varying",
+	"exam_room_id":          "integer",
+	"exam_room_name":        "character varying",
+	"exam_room_capacity":    "integer",
+	"exam_session_name":     "character varying",
+	"record":                "character varying",
+	"basic_eval":            "character varying",
+	"examinee_num":          "bigint",
+	"absentee_num":          "bigint",
+	"cheater_num":           "bigint",
+	"abnormal_examinee_num": "bigint",
+	"extended_time_num":     "bigint",
+}
+
+// GetFieldsMap returns a map of field names to their values.
+func (r *TVInvigilationInfo) GetFieldsMap() map[string]any {
+	return map[string]any{
+		"InvigilatorIds":      r.InvigilatorIds,
+		"InvigilatorNames":    r.InvigilatorNames,
+		"InvigilatorNum":      r.InvigilatorNum,
+		"ExamID":              r.ExamID,
+		"ExamType":            r.ExamType,
+		"ExamMode":            r.ExamMode,
+		"ExamSessionID":       r.ExamSessionID,
+		"StartTime":           r.StartTime,
+		"EndTime":             r.EndTime,
+		"Status":              r.Status,
+		"ExamSiteID":          r.ExamSiteID,
+		"ExamSiteName":        r.ExamSiteName,
+		"ExamRoomID":          r.ExamRoomID,
+		"ExamRoomName":        r.ExamRoomName,
+		"ExamRoomCapacity":    r.ExamRoomCapacity,
+		"ExamSessionName":     r.ExamSessionName,
+		"Record":              r.Record,
+		"BasicEval":           r.BasicEval,
+		"ExamineeNum":         r.ExamineeNum,
+		"AbsenteeNum":         r.AbsenteeNum,
+		"CheaterNum":          r.CheaterNum,
+		"AbnormalExamineeNum": r.AbnormalExamineeNum,
+		"ExtendedTimeNum":     r.ExtendedTimeNum,
+	}
+}
+
+// GetColumnsMap returns a map of column names to their values.
+func (r *TVInvigilationInfo) GetColumnsMap() map[string]any {
+	return map[string]any{
+		"invigilator_ids":       r.InvigilatorIds,
+		"invigilator_names":     r.InvigilatorNames,
+		"invigilator_num":       r.InvigilatorNum,
+		"exam_id":               r.ExamID,
+		"exam_type":             r.ExamType,
+		"exam_mode":             r.ExamMode,
+		"exam_session_id":       r.ExamSessionID,
+		"start_time":            r.StartTime,
+		"end_time":              r.EndTime,
+		"status":                r.Status,
+		"exam_site_id":          r.ExamSiteID,
+		"exam_site_name":        r.ExamSiteName,
+		"exam_room_id":          r.ExamRoomID,
+		"exam_room_name":        r.ExamRoomName,
+		"exam_room_capacity":    r.ExamRoomCapacity,
+		"exam_session_name":     r.ExamSessionName,
+		"record":                r.Record,
+		"basic_eval":            r.BasicEval,
+		"examinee_num":          r.ExamineeNum,
+		"absentee_num":          r.AbsenteeNum,
+		"cheater_num":           r.CheaterNum,
+		"abnormal_examinee_num": r.AbnormalExamineeNum,
+		"extended_time_num":     r.ExtendedTimeNum,
+	}
+}
+
+// Fields return all fields of struct.
+func (r *TVInvigilationInfo) Fields() []string {
+	return TVInvigilationInfoFields
+}
+
+// GetTableName return the associated db table name.
+func (r *TVInvigilationInfo) GetTableName() string {
+	var viewNamePattern = regexp.MustCompile(`(?i)^t_v_[a-z0-9_]+$`)
+	tableName := "t_v_invigilation_info"
+	if viewNamePattern.MatchString(tableName) {
+		return tableName[2:]
+	}
+	return tableName
+}
+
+// Create inserts the TVInvigilationInfo to the database.
+func (r *TVInvigilationInfo) Create(db Queryer) error {
+	_, err := db.Exec(
+		`INSERT INTO t_v_invigilation_info (invigilator_ids, invigilator_names, invigilator_num, exam_id, exam_type, exam_mode, exam_session_id, start_time, end_time, status, exam_site_id, exam_site_name, exam_room_id, exam_room_name, exam_room_capacity, exam_session_name, record, basic_eval, examinee_num, absentee_num, cheater_num, abnormal_examinee_num, extended_time_num) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23)`,
+		&r.InvigilatorIds, &r.InvigilatorNames, &r.InvigilatorNum, &r.ExamID, &r.ExamType, &r.ExamMode, &r.ExamSessionID, &r.StartTime, &r.EndTime, &r.Status, &r.ExamSiteID, &r.ExamSiteName, &r.ExamRoomID, &r.ExamRoomName, &r.ExamRoomCapacity, &r.ExamSessionName, &r.Record, &r.BasicEval, &r.ExamineeNum, &r.AbsenteeNum, &r.CheaterNum, &r.AbnormalExamineeNum, &r.ExtendedTimeNum)
+	if err != nil {
+		return errors.Wrap(err, "failed to insert t_v_invigilation_info")
+	}
+	return nil
+}
+
+// GetTVInvigilationInfoByPk select the TVInvigilationInfo from the database.
+func GetTVInvigilationInfoByPk(db Queryer) (*TVInvigilationInfo, error) {
+	// Don't call this function, it is a view and doesn't have a primary key.
+
+	var r TVInvigilationInfo
+	err := db.QueryRow(
+		`SELECT invigilator_ids, invigilator_names, invigilator_num, exam_id, exam_type, exam_mode, exam_session_id, start_time, end_time, status, exam_site_id, exam_site_name, exam_room_id, exam_room_name, exam_room_capacity, exam_session_name, record, basic_eval, examinee_num, absentee_num, cheater_num, abnormal_examinee_num, extended_time_num FROM t_v_invigilation_info`,
+	).Scan(&r.InvigilatorIds, &r.InvigilatorNames, &r.InvigilatorNum, &r.ExamID, &r.ExamType, &r.ExamMode, &r.ExamSessionID, &r.StartTime, &r.EndTime, &r.Status, &r.ExamSiteID, &r.ExamSiteName, &r.ExamRoomID, &r.ExamRoomName, &r.ExamRoomCapacity, &r.ExamSessionName, &r.Record, &r.BasicEval, &r.ExamineeNum, &r.AbsenteeNum, &r.CheaterNum, &r.AbnormalExamineeNum, &r.ExtendedTimeNum)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to select t_v_invigilation_info")
 	}
 	return &r, nil
 }
@@ -23272,10 +23691,12 @@ type TVPaper struct {
 	Tags              types.JSONText `json:"Tags,omitempty" db:"tags,false,jsonb"`                              /* tags tags */
 	Config            types.JSONText `json:"Config,omitempty" db:"config,false,jsonb"`                          /* config config */
 	Creator           null.Int       `json:"Creator,omitempty" db:"creator,false,bigint"`                       /* creator creator */
+	CreatorInfo       types.JSONText `json:"CreatorInfo,omitempty" db:"creator_info,false,jsonb"`               /* creator_info creator_info */
 	CreateTime        null.Int       `json:"CreateTime,omitempty" db:"create_time,false,bigint"`                /* create_time create_time */
 	UpdatedBy         null.Int       `json:"UpdatedBy,omitempty" db:"updated_by,false,bigint"`                  /* updated_by updated_by */
 	UpdateTime        null.Int       `json:"UpdateTime,omitempty" db:"update_time,false,bigint"`                /* update_time update_time */
 	Status            null.String    `json:"Status,omitempty" db:"status,false,character varying"`              /* status status */
+	AccessMode        null.String    `json:"AccessMode,omitempty" db:"access_mode,false,character varying"`     /* access_mode access_mode */
 	TotalScore        null.Float     `json:"TotalScore,omitempty" db:"total_score,false,double precision"`      /* total_score total_score */
 	QuestionCount     null.Int       `json:"QuestionCount,omitempty" db:"question_count,false,bigint"`          /* question_count question_count */
 	GroupCount        null.Int       `json:"GroupCount,omitempty" db:"group_count,false,bigint"`                /* group_count group_count */
@@ -23295,10 +23716,12 @@ var TVPaperFields = []string{
 	"Tags",
 	"Config",
 	"Creator",
+	"CreatorInfo",
 	"CreateTime",
 	"UpdatedBy",
 	"UpdateTime",
 	"Status",
+	"AccessMode",
 	"TotalScore",
 	"QuestionCount",
 	"GroupCount",
@@ -23317,10 +23740,12 @@ var TVPaperColumns = []string{
 	"tags",
 	"config",
 	"creator",
+	"creator_info",
 	"create_time",
 	"updated_by",
 	"update_time",
 	"status",
+	"access_mode",
 	"total_score",
 	"question_count",
 	"group_count",
@@ -23339,10 +23764,12 @@ var TVPaperColumnsDataTypes = map[string]string{
 	"tags":               "jsonb",
 	"config":             "jsonb",
 	"creator":            "bigint",
+	"creator_info":       "jsonb",
 	"create_time":        "bigint",
 	"updated_by":         "bigint",
 	"update_time":        "bigint",
 	"status":             "character varying",
+	"access_mode":        "character varying",
 	"total_score":        "double precision",
 	"question_count":     "bigint",
 	"group_count":        "bigint",
@@ -23362,10 +23789,12 @@ func (r *TVPaper) GetFieldsMap() map[string]any {
 		"Tags":              r.Tags,
 		"Config":            r.Config,
 		"Creator":           r.Creator,
+		"CreatorInfo":       r.CreatorInfo,
 		"CreateTime":        r.CreateTime,
 		"UpdatedBy":         r.UpdatedBy,
 		"UpdateTime":        r.UpdateTime,
 		"Status":            r.Status,
+		"AccessMode":        r.AccessMode,
 		"TotalScore":        r.TotalScore,
 		"QuestionCount":     r.QuestionCount,
 		"GroupCount":        r.GroupCount,
@@ -23386,10 +23815,12 @@ func (r *TVPaper) GetColumnsMap() map[string]any {
 		"tags":               r.Tags,
 		"config":             r.Config,
 		"creator":            r.Creator,
+		"creator_info":       r.CreatorInfo,
 		"create_time":        r.CreateTime,
 		"updated_by":         r.UpdatedBy,
 		"update_time":        r.UpdateTime,
 		"status":             r.Status,
+		"access_mode":        r.AccessMode,
 		"total_score":        r.TotalScore,
 		"question_count":     r.QuestionCount,
 		"group_count":        r.GroupCount,
@@ -23415,8 +23846,8 @@ func (r *TVPaper) GetTableName() string {
 // Create inserts the TVPaper to the database.
 func (r *TVPaper) Create(db Queryer) error {
 	_, err := db.Exec(
-		`INSERT INTO t_v_paper (id, name, assembly_type, category, level, suggested_duration, description, tags, config, creator, create_time, updated_by, update_time, status, total_score, question_count, group_count, groups_data) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)`,
-		&r.ID, &r.Name, &r.AssemblyType, &r.Category, &r.Level, &r.SuggestedDuration, &r.Description, &r.Tags, &r.Config, &r.Creator, &r.CreateTime, &r.UpdatedBy, &r.UpdateTime, &r.Status, &r.TotalScore, &r.QuestionCount, &r.GroupCount, &r.GroupsData)
+		`INSERT INTO t_v_paper (id, name, assembly_type, category, level, suggested_duration, description, tags, config, creator, creator_info, create_time, updated_by, update_time, status, access_mode, total_score, question_count, group_count, groups_data) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)`,
+		&r.ID, &r.Name, &r.AssemblyType, &r.Category, &r.Level, &r.SuggestedDuration, &r.Description, &r.Tags, &r.Config, &r.Creator, &r.CreatorInfo, &r.CreateTime, &r.UpdatedBy, &r.UpdateTime, &r.Status, &r.AccessMode, &r.TotalScore, &r.QuestionCount, &r.GroupCount, &r.GroupsData)
 	if err != nil {
 		return errors.Wrap(err, "failed to insert t_v_paper")
 	}
@@ -23429,10 +23860,115 @@ func GetTVPaperByPk(db Queryer) (*TVPaper, error) {
 
 	var r TVPaper
 	err := db.QueryRow(
-		`SELECT id, name, assembly_type, category, level, suggested_duration, description, tags, config, creator, create_time, updated_by, update_time, status, total_score, question_count, group_count, groups_data FROM t_v_paper`,
-	).Scan(&r.ID, &r.Name, &r.AssemblyType, &r.Category, &r.Level, &r.SuggestedDuration, &r.Description, &r.Tags, &r.Config, &r.Creator, &r.CreateTime, &r.UpdatedBy, &r.UpdateTime, &r.Status, &r.TotalScore, &r.QuestionCount, &r.GroupCount, &r.GroupsData)
+		`SELECT id, name, assembly_type, category, level, suggested_duration, description, tags, config, creator, creator_info, create_time, updated_by, update_time, status, access_mode, total_score, question_count, group_count, groups_data FROM t_v_paper`,
+	).Scan(&r.ID, &r.Name, &r.AssemblyType, &r.Category, &r.Level, &r.SuggestedDuration, &r.Description, &r.Tags, &r.Config, &r.Creator, &r.CreatorInfo, &r.CreateTime, &r.UpdatedBy, &r.UpdateTime, &r.Status, &r.AccessMode, &r.TotalScore, &r.QuestionCount, &r.GroupCount, &r.GroupsData)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to select t_v_paper")
+	}
+	return &r, nil
+}
+
+/*TVPaperShare t_v_paper_share represents assessuser.t_v_paper_share */
+type TVPaperShare struct {
+	PaperID      null.Int    `json:"PaperID,omitempty" db:"paper_id,false,bigint"`                      /* paper_id paper_id */
+	UserID       null.Int    `json:"UserID,omitempty" db:"user_id,false,bigint"`                        /* user_id user_id */
+	OfficialName null.String `json:"OfficialName,omitempty" db:"official_name,false,character varying"` /* official_name official_name */
+	Account      null.String `json:"Account,omitempty" db:"account,false,character varying"`            /* account account */
+	MobilePhone  null.String `json:"MobilePhone,omitempty" db:"mobile_phone,false,character varying"`   /* mobile_phone mobile_phone */
+	SharedTime   null.Int    `json:"SharedTime,omitempty" db:"shared_time,false,bigint"`                /* shared_time shared_time */
+	Filter                   // build DML where clause
+}
+
+// TVPaperShareFields full field list for default query
+var TVPaperShareFields = []string{
+	"PaperID",
+	"UserID",
+	"OfficialName",
+	"Account",
+	"MobilePhone",
+	"SharedTime",
+}
+
+// TVPaperShareColumns full column list for default query
+var TVPaperShareColumns = []string{
+	"paper_id",
+	"user_id",
+	"official_name",
+	"account",
+	"mobile_phone",
+	"shared_time",
+}
+
+// TVPaperShareColumnsDataTypes full column data types for default query
+var TVPaperShareColumnsDataTypes = map[string]string{
+	"paper_id":      "bigint",
+	"user_id":       "bigint",
+	"official_name": "character varying",
+	"account":       "character varying",
+	"mobile_phone":  "character varying",
+	"shared_time":   "bigint",
+}
+
+// GetFieldsMap returns a map of field names to their values.
+func (r *TVPaperShare) GetFieldsMap() map[string]any {
+	return map[string]any{
+		"PaperID":      r.PaperID,
+		"UserID":       r.UserID,
+		"OfficialName": r.OfficialName,
+		"Account":      r.Account,
+		"MobilePhone":  r.MobilePhone,
+		"SharedTime":   r.SharedTime,
+	}
+}
+
+// GetColumnsMap returns a map of column names to their values.
+func (r *TVPaperShare) GetColumnsMap() map[string]any {
+	return map[string]any{
+		"paper_id":      r.PaperID,
+		"user_id":       r.UserID,
+		"official_name": r.OfficialName,
+		"account":       r.Account,
+		"mobile_phone":  r.MobilePhone,
+		"shared_time":   r.SharedTime,
+	}
+}
+
+// Fields return all fields of struct.
+func (r *TVPaperShare) Fields() []string {
+	return TVPaperShareFields
+}
+
+// GetTableName return the associated db table name.
+func (r *TVPaperShare) GetTableName() string {
+	var viewNamePattern = regexp.MustCompile(`(?i)^t_v_[a-z0-9_]+$`)
+	tableName := "t_v_paper_share"
+	if viewNamePattern.MatchString(tableName) {
+		return tableName[2:]
+	}
+	return tableName
+}
+
+// Create inserts the TVPaperShare to the database.
+func (r *TVPaperShare) Create(db Queryer) error {
+	_, err := db.Exec(
+		`INSERT INTO t_v_paper_share (paper_id, user_id, official_name, account, mobile_phone, shared_time) VALUES ($1, $2, $3, $4, $5, $6)`,
+		&r.PaperID, &r.UserID, &r.OfficialName, &r.Account, &r.MobilePhone, &r.SharedTime)
+	if err != nil {
+		return errors.Wrap(err, "failed to insert t_v_paper_share")
+	}
+	return nil
+}
+
+// GetTVPaperShareByPk select the TVPaperShare from the database.
+func GetTVPaperShareByPk(db Queryer) (*TVPaperShare, error) {
+	// Don't call this function, it is a view and doesn't have a primary key.
+
+	var r TVPaperShare
+	err := db.QueryRow(
+		`SELECT paper_id, user_id, official_name, account, mobile_phone, shared_time FROM t_v_paper_share`,
+	).Scan(&r.PaperID, &r.UserID, &r.OfficialName, &r.Account, &r.MobilePhone, &r.SharedTime)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to select t_v_paper_share")
 	}
 	return &r, nil
 }
