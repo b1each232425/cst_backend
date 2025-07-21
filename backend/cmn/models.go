@@ -3,11 +3,13 @@ package cmn
 import (
 	"context"
 	"database/sql"
+	"github.com/pkg/errors"
+	"reflect"
 	"regexp"
+	"strings"
 	"time"
 
 	"github.com/jmoiron/sqlx/types"
-	"github.com/pkg/errors"
 	"w2w.io/null"
 )
 
@@ -21,7 +23,7 @@ type TAccountOprLog struct {
 	DomainID   null.Int       `json:"DomainID,omitempty" db:"domain_id,false,bigint"`       /* domain_id 数据隶属 */
 	Addi       types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                 /* addi 附加信息 */
 	Remark     null.String    `json:"Remark,omitempty" db:"remark,false,character varying"` /* remark 备注 */
-	Filter                    // build DML where clause
+	Filter                                                                                  // build DML where clause
 }
 
 // TAccountOprLogFields full field list for default query
@@ -34,6 +36,58 @@ var TAccountOprLogFields = []string{
 	"DomainID",
 	"Addi",
 	"Remark",
+}
+
+// TAccountOprLogColumns full column list for default query
+var TAccountOprLogColumns = []string{
+	"id",
+	"user_id",
+	"original",
+	"create_time",
+	"creator",
+	"domain_id",
+	"addi",
+	"remark",
+}
+
+// TAccountOprLogColumnsDataTypes full column data types for default query
+var TAccountOprLogColumnsDataTypes = map[string]string{
+	"id":          "integer",
+	"user_id":     "bigint",
+	"original":    "jsonb",
+	"create_time": "bigint",
+	"creator":     "bigint",
+	"domain_id":   "bigint",
+	"addi":        "jsonb",
+	"remark":      "character varying",
+}
+
+// GetFieldsMap returns a map of field names to their values.
+func (r *TAccountOprLog) GetFieldsMap() map[string]any {
+	return map[string]any{
+		"ID":         r.ID,
+		"UserID":     r.UserID,
+		"Original":   r.Original,
+		"CreateTime": r.CreateTime,
+		"Creator":    r.Creator,
+		"DomainID":   r.DomainID,
+		"Addi":       r.Addi,
+		"Remark":     r.Remark,
+	}
+}
+
+// GetColumnsMap returns a map of column names to their values.
+func (r *TAccountOprLog) GetColumnsMap() map[string]any {
+	return map[string]any{
+		"id":          r.ID,
+		"user_id":     r.UserID,
+		"original":    r.Original,
+		"create_time": r.CreateTime,
+		"creator":     r.Creator,
+		"domain_id":   r.DomainID,
+		"addi":        r.Addi,
+		"remark":      r.Remark,
+	}
 }
 
 // Fields return all fields of struct.
@@ -75,6 +129,42 @@ func GetTAccountOprLogByPk(db Queryer, pk0 null.Int) (*TAccountOprLog, error) {
 	return &r, nil
 }
 
+// GetTAccountOprLogReflectValuesMap returns a map of field names to their values.
+//
+// key is the tag name, value is the field value.
+// This is useful for reflection and dynamic queries.
+func (r *TAccountOprLog) GetTAccountOprLogReflectValuesMap() (map[string]any, error) {
+
+	values := make(map[string]any)
+	v := reflect.ValueOf(r).Elem()
+	t := v.Type()
+	for i := range v.NumField() {
+		field := t.Field(i)
+		tag := field.Tag.Get("db")
+		if tag == "" {
+			return nil, errors.Errorf("missing db tag for field %s in table t_account_opr_log", field.Name)
+		}
+
+		columnName := strings.Split(tag, ",")[0]
+		if columnName == "" {
+			return nil, errors.Errorf("missing column name for field %s in table t_account_opr_log", field.Name)
+		}
+
+		fieldValue := reflect.ValueOf(r).Elem().Field(i)
+		if !fieldValue.IsValid() {
+			return nil, errors.Errorf("invalid field value for field %s in table t_account_opr_log", field.Name)
+		}
+
+		if !fieldValue.CanAddr() {
+			return nil, errors.Errorf("cannot read field value for field %s in table t_account_opr_log", field.Name)
+		}
+
+		values[columnName] = fieldValue.Addr().Interface()
+	}
+
+	return values, nil
+}
+
 /*TAge 年龄表 represents assessuser.t_age */
 type TAge struct {
 	ID              null.Int       `json:"ID,omitempty" db:"id,true,integer"`                             /* id 条目编号 */
@@ -96,7 +186,7 @@ type TAge struct {
 	UpdatedBy       null.Int       `json:"UpdatedBy,omitempty" db:"updated_by,false,bigint"`              /* updated_by 更新人 */
 	Remark          null.String    `json:"Remark,omitempty" db:"remark,false,character varying"`          /* remark 备注 */
 	Status          null.String    `json:"Status,omitempty" db:"status,false,character varying"`          /* status 0:有效, 2: 删除 */
-	Filter                         // build DML where clause
+	Filter                                                                                                // build DML where clause
 }
 
 // TAgeFields full field list for default query
@@ -120,6 +210,102 @@ var TAgeFields = []string{
 	"UpdatedBy",
 	"Remark",
 	"Status",
+}
+
+// TAgeColumns full column list for default query
+var TAgeColumns = []string{
+	"id",
+	"insurance_type_id",
+	"school_type",
+	"province",
+	"city",
+	"district",
+	"enabled",
+	"male_max",
+	"male_min",
+	"female_min",
+	"female_max",
+	"domain_id",
+	"addi",
+	"creator",
+	"create_time",
+	"update_time",
+	"updated_by",
+	"remark",
+	"status",
+}
+
+// TAgeColumnsDataTypes full column data types for default query
+var TAgeColumnsDataTypes = map[string]string{
+	"id":                "integer",
+	"insurance_type_id": "bigint",
+	"school_type":       "character varying",
+	"province":          "character varying",
+	"city":              "character varying",
+	"district":          "character varying",
+	"enabled":           "boolean",
+	"male_max":          "smallint",
+	"male_min":          "smallint",
+	"female_min":        "smallint",
+	"female_max":        "smallint",
+	"domain_id":         "bigint",
+	"addi":              "jsonb",
+	"creator":           "bigint",
+	"create_time":       "bigint",
+	"update_time":       "bigint",
+	"updated_by":        "bigint",
+	"remark":            "character varying",
+	"status":            "character varying",
+}
+
+// GetFieldsMap returns a map of field names to their values.
+func (r *TAge) GetFieldsMap() map[string]any {
+	return map[string]any{
+		"ID":              r.ID,
+		"InsuranceTypeID": r.InsuranceTypeID,
+		"SchoolType":      r.SchoolType,
+		"Province":        r.Province,
+		"City":            r.City,
+		"District":        r.District,
+		"Enabled":         r.Enabled,
+		"MaleMax":         r.MaleMax,
+		"MaleMin":         r.MaleMin,
+		"FemaleMin":       r.FemaleMin,
+		"FemaleMax":       r.FemaleMax,
+		"DomainID":        r.DomainID,
+		"Addi":            r.Addi,
+		"Creator":         r.Creator,
+		"CreateTime":      r.CreateTime,
+		"UpdateTime":      r.UpdateTime,
+		"UpdatedBy":       r.UpdatedBy,
+		"Remark":          r.Remark,
+		"Status":          r.Status,
+	}
+}
+
+// GetColumnsMap returns a map of column names to their values.
+func (r *TAge) GetColumnsMap() map[string]any {
+	return map[string]any{
+		"id":                r.ID,
+		"insurance_type_id": r.InsuranceTypeID,
+		"school_type":       r.SchoolType,
+		"province":          r.Province,
+		"city":              r.City,
+		"district":          r.District,
+		"enabled":           r.Enabled,
+		"male_max":          r.MaleMax,
+		"male_min":          r.MaleMin,
+		"female_min":        r.FemaleMin,
+		"female_max":        r.FemaleMax,
+		"domain_id":         r.DomainID,
+		"addi":              r.Addi,
+		"creator":           r.Creator,
+		"create_time":       r.CreateTime,
+		"update_time":       r.UpdateTime,
+		"updated_by":        r.UpdatedBy,
+		"remark":            r.Remark,
+		"status":            r.Status,
+	}
 }
 
 // Fields return all fields of struct.
@@ -161,6 +347,42 @@ func GetTAgeByPk(db Queryer, pk0 null.Int) (*TAge, error) {
 	return &r, nil
 }
 
+// GetTAgeReflectValuesMap returns a map of field names to their values.
+//
+// key is the tag name, value is the field value.
+// This is useful for reflection and dynamic queries.
+func (r *TAge) GetTAgeReflectValuesMap() (map[string]any, error) {
+
+	values := make(map[string]any)
+	v := reflect.ValueOf(r).Elem()
+	t := v.Type()
+	for i := range v.NumField() {
+		field := t.Field(i)
+		tag := field.Tag.Get("db")
+		if tag == "" {
+			return nil, errors.Errorf("missing db tag for field %s in table t_age", field.Name)
+		}
+
+		columnName := strings.Split(tag, ",")[0]
+		if columnName == "" {
+			return nil, errors.Errorf("missing column name for field %s in table t_age", field.Name)
+		}
+
+		fieldValue := reflect.ValueOf(r).Elem().Field(i)
+		if !fieldValue.IsValid() {
+			return nil, errors.Errorf("invalid field value for field %s in table t_age", field.Name)
+		}
+
+		if !fieldValue.CanAddr() {
+			return nil, errors.Errorf("cannot read field value for field %s in table t_age", field.Name)
+		}
+
+		values[columnName] = fieldValue.Addr().Interface()
+	}
+
+	return values, nil
+}
+
 /*TAPI 接口信息表 represents assessuser.t_api */
 type TAPI struct {
 	ID                 null.Int    `json:"ID,omitempty" db:"id,true,integer"`                                              /* id 编码 */
@@ -180,7 +402,7 @@ type TAPI struct {
 	Addi       types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                 /* addi 附加信息 */
 	Remark     null.String    `json:"Remark,omitempty" db:"remark,false,character varying"` /* remark 备注 */
 	Status     null.String    `json:"Status,omitempty" db:"status,false,character varying"` /* status 状态，00：草稿，01：有效，02：作废 */
-	Filter                    // build DML where clause
+	Filter                                                                                  // build DML where clause
 }
 
 // TAPIFields full field list for default query
@@ -198,6 +420,78 @@ var TAPIFields = []string{
 	"Addi",
 	"Remark",
 	"Status",
+}
+
+// TAPIColumns full column list for default query
+var TAPIColumns = []string{
+	"id",
+	"name",
+	"expose_path",
+	"maintainer",
+	"access_control_level",
+	"updated_by",
+	"update_time",
+	"creator",
+	"create_time",
+	"domain_id",
+	"addi",
+	"remark",
+	"status",
+}
+
+// TAPIColumnsDataTypes full column data types for default query
+var TAPIColumnsDataTypes = map[string]string{
+	"id":                   "integer",
+	"name":                 "character varying",
+	"expose_path":          "character varying",
+	"maintainer":           "bigint",
+	"access_control_level": "character varying",
+	"updated_by":           "bigint",
+	"update_time":          "bigint",
+	"creator":              "bigint",
+	"create_time":          "bigint",
+	"domain_id":            "bigint",
+	"addi":                 "jsonb",
+	"remark":               "character varying",
+	"status":               "character varying",
+}
+
+// GetFieldsMap returns a map of field names to their values.
+func (r *TAPI) GetFieldsMap() map[string]any {
+	return map[string]any{
+		"ID":                 r.ID,
+		"Name":               r.Name,
+		"ExposePath":         r.ExposePath,
+		"Maintainer":         r.Maintainer,
+		"AccessControlLevel": r.AccessControlLevel,
+		"UpdatedBy":          r.UpdatedBy,
+		"UpdateTime":         r.UpdateTime,
+		"Creator":            r.Creator,
+		"CreateTime":         r.CreateTime,
+		"DomainID":           r.DomainID,
+		"Addi":               r.Addi,
+		"Remark":             r.Remark,
+		"Status":             r.Status,
+	}
+}
+
+// GetColumnsMap returns a map of column names to their values.
+func (r *TAPI) GetColumnsMap() map[string]any {
+	return map[string]any{
+		"id":                   r.ID,
+		"name":                 r.Name,
+		"expose_path":          r.ExposePath,
+		"maintainer":           r.Maintainer,
+		"access_control_level": r.AccessControlLevel,
+		"updated_by":           r.UpdatedBy,
+		"update_time":          r.UpdateTime,
+		"creator":              r.Creator,
+		"create_time":          r.CreateTime,
+		"domain_id":            r.DomainID,
+		"addi":                 r.Addi,
+		"remark":               r.Remark,
+		"status":               r.Status,
+	}
 }
 
 // Fields return all fields of struct.
@@ -239,6 +533,42 @@ func GetTAPIByPk(db Queryer, pk0 null.Int) (*TAPI, error) {
 	return &r, nil
 }
 
+// GetTAPIReflectValuesMap returns a map of field names to their values.
+//
+// key is the tag name, value is the field value.
+// This is useful for reflection and dynamic queries.
+func (r *TAPI) GetTAPIReflectValuesMap() (map[string]any, error) {
+
+	values := make(map[string]any)
+	v := reflect.ValueOf(r).Elem()
+	t := v.Type()
+	for i := range v.NumField() {
+		field := t.Field(i)
+		tag := field.Tag.Get("db")
+		if tag == "" {
+			return nil, errors.Errorf("missing db tag for field %s in table t_api", field.Name)
+		}
+
+		columnName := strings.Split(tag, ",")[0]
+		if columnName == "" {
+			return nil, errors.Errorf("missing column name for field %s in table t_api", field.Name)
+		}
+
+		fieldValue := reflect.ValueOf(r).Elem().Field(i)
+		if !fieldValue.IsValid() {
+			return nil, errors.Errorf("invalid field value for field %s in table t_api", field.Name)
+		}
+
+		if !fieldValue.CanAddr() {
+			return nil, errors.Errorf("cannot read field value for field %s in table t_api", field.Name)
+		}
+
+		values[columnName] = fieldValue.Addr().Interface()
+	}
+
+	return values, nil
+}
+
 /*TArticle 消息：包含新闻，私信，广告，通知等 represents assessuser.t_article */
 type TArticle struct {
 	ID         null.Int       `json:"ID,omitempty" db:"id,true,integer"`                        /* id 参数编号 */
@@ -269,7 +599,7 @@ type TArticle struct {
 	Addi       types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                     /* addi 附加信息 */
 	Remark     null.String    `json:"Remark,omitempty" db:"remark,false,character varying"`     /* remark 备注 */
 	Status     null.String    `json:"Status,omitempty" db:"status,false,character varying"`     /* status 状态，00：草稿，01：有效，02：作废 */
-	Filter                    // build DML where clause
+	Filter                                                                                      // build DML where clause
 }
 
 // TArticleFields full field list for default query
@@ -302,6 +632,138 @@ var TArticleFields = []string{
 	"Addi",
 	"Remark",
 	"Status",
+}
+
+// TArticleColumns full column list for default query
+var TArticleColumns = []string{
+	"id",
+	"author",
+	"title",
+	"subtitle",
+	"keyword",
+	"belong",
+	"channel",
+	"type",
+	"domain",
+	"quality",
+	"viewed",
+	"score",
+	"prosecute",
+	"assent_num",
+	"oppose_num",
+	"source",
+	"tags",
+	"face_pic_num",
+	"content",
+	"files",
+	"creator",
+	"create_time",
+	"updated_by",
+	"update_time",
+	"domain_id",
+	"addi",
+	"remark",
+	"status",
+}
+
+// TArticleColumnsDataTypes full column data types for default query
+var TArticleColumnsDataTypes = map[string]string{
+	"id":           "integer",
+	"author":       "character varying",
+	"title":        "character varying",
+	"subtitle":     "character varying",
+	"keyword":      "character varying",
+	"belong":       "bigint",
+	"channel":      "jsonb",
+	"type":         "jsonb",
+	"domain":       "jsonb",
+	"quality":      "integer",
+	"viewed":       "integer",
+	"score":        "jsonb",
+	"prosecute":    "jsonb",
+	"assent_num":   "integer",
+	"oppose_num":   "integer",
+	"source":       "character varying",
+	"tags":         "character varying",
+	"face_pic_num": "smallint",
+	"content":      "jsonb",
+	"files":        "jsonb",
+	"creator":      "bigint",
+	"create_time":  "bigint",
+	"updated_by":   "bigint",
+	"update_time":  "bigint",
+	"domain_id":    "bigint",
+	"addi":         "jsonb",
+	"remark":       "character varying",
+	"status":       "character varying",
+}
+
+// GetFieldsMap returns a map of field names to their values.
+func (r *TArticle) GetFieldsMap() map[string]any {
+	return map[string]any{
+		"ID":         r.ID,
+		"Author":     r.Author,
+		"Title":      r.Title,
+		"Subtitle":   r.Subtitle,
+		"Keyword":    r.Keyword,
+		"Belong":     r.Belong,
+		"Channel":    r.Channel,
+		"Type":       r.Type,
+		"Domain":     r.Domain,
+		"Quality":    r.Quality,
+		"Viewed":     r.Viewed,
+		"Score":      r.Score,
+		"Prosecute":  r.Prosecute,
+		"AssentNum":  r.AssentNum,
+		"OpposeNum":  r.OpposeNum,
+		"Source":     r.Source,
+		"Tags":       r.Tags,
+		"FacePicNum": r.FacePicNum,
+		"Content":    r.Content,
+		"Files":      r.Files,
+		"Creator":    r.Creator,
+		"CreateTime": r.CreateTime,
+		"UpdatedBy":  r.UpdatedBy,
+		"UpdateTime": r.UpdateTime,
+		"DomainID":   r.DomainID,
+		"Addi":       r.Addi,
+		"Remark":     r.Remark,
+		"Status":     r.Status,
+	}
+}
+
+// GetColumnsMap returns a map of column names to their values.
+func (r *TArticle) GetColumnsMap() map[string]any {
+	return map[string]any{
+		"id":           r.ID,
+		"author":       r.Author,
+		"title":        r.Title,
+		"subtitle":     r.Subtitle,
+		"keyword":      r.Keyword,
+		"belong":       r.Belong,
+		"channel":      r.Channel,
+		"type":         r.Type,
+		"domain":       r.Domain,
+		"quality":      r.Quality,
+		"viewed":       r.Viewed,
+		"score":        r.Score,
+		"prosecute":    r.Prosecute,
+		"assent_num":   r.AssentNum,
+		"oppose_num":   r.OpposeNum,
+		"source":       r.Source,
+		"tags":         r.Tags,
+		"face_pic_num": r.FacePicNum,
+		"content":      r.Content,
+		"files":        r.Files,
+		"creator":      r.Creator,
+		"create_time":  r.CreateTime,
+		"updated_by":   r.UpdatedBy,
+		"update_time":  r.UpdateTime,
+		"domain_id":    r.DomainID,
+		"addi":         r.Addi,
+		"remark":       r.Remark,
+		"status":       r.Status,
+	}
 }
 
 // Fields return all fields of struct.
@@ -343,6 +805,42 @@ func GetTArticleByPk(db Queryer, pk0 null.Int) (*TArticle, error) {
 	return &r, nil
 }
 
+// GetTArticleReflectValuesMap returns a map of field names to their values.
+//
+// key is the tag name, value is the field value.
+// This is useful for reflection and dynamic queries.
+func (r *TArticle) GetTArticleReflectValuesMap() (map[string]any, error) {
+
+	values := make(map[string]any)
+	v := reflect.ValueOf(r).Elem()
+	t := v.Type()
+	for i := range v.NumField() {
+		field := t.Field(i)
+		tag := field.Tag.Get("db")
+		if tag == "" {
+			return nil, errors.Errorf("missing db tag for field %s in table t_article", field.Name)
+		}
+
+		columnName := strings.Split(tag, ",")[0]
+		if columnName == "" {
+			return nil, errors.Errorf("missing column name for field %s in table t_article", field.Name)
+		}
+
+		fieldValue := reflect.ValueOf(r).Elem().Field(i)
+		if !fieldValue.IsValid() {
+			return nil, errors.Errorf("invalid field value for field %s in table t_article", field.Name)
+		}
+
+		if !fieldValue.CanAddr() {
+			return nil, errors.Errorf("cannot read field value for field %s in table t_article", field.Name)
+		}
+
+		values[columnName] = fieldValue.Addr().Interface()
+	}
+
+	return values, nil
+}
+
 /*TBlacklist 黑名单表 represents assessuser.t_blacklist */
 type TBlacklist struct {
 	ID         null.Int       `json:"ID,omitempty" db:"id,true,integer"`                      /* id 拒保黑名单编号 */
@@ -356,7 +854,7 @@ type TBlacklist struct {
 	DomainID   null.Int       `json:"DomainID,omitempty" db:"domain_id,false,bigint"`         /* domain_id 数据属主 */
 	Addi       types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                   /* addi 附加数据 */
 	Status     null.String    `json:"Status,omitempty" db:"status,false,character varying"`   /* status 状态 0:有效, 2: 无效 */
-	Filter                    // build DML where clause
+	Filter                                                                                    // build DML where clause
 }
 
 // TBlacklistFields full field list for default query
@@ -372,6 +870,70 @@ var TBlacklistFields = []string{
 	"DomainID",
 	"Addi",
 	"Status",
+}
+
+// TBlacklistColumns full column list for default query
+var TBlacklistColumns = []string{
+	"id",
+	"order_id",
+	"type",
+	"content",
+	"updated_by",
+	"update_time",
+	"creator",
+	"create_time",
+	"domain_id",
+	"addi",
+	"status",
+}
+
+// TBlacklistColumnsDataTypes full column data types for default query
+var TBlacklistColumnsDataTypes = map[string]string{
+	"id":          "integer",
+	"order_id":    "bigint",
+	"type":        "character varying",
+	"content":     "character varying",
+	"updated_by":  "bigint",
+	"update_time": "bigint",
+	"creator":     "bigint",
+	"create_time": "bigint",
+	"domain_id":   "bigint",
+	"addi":        "jsonb",
+	"status":      "character varying",
+}
+
+// GetFieldsMap returns a map of field names to their values.
+func (r *TBlacklist) GetFieldsMap() map[string]any {
+	return map[string]any{
+		"ID":         r.ID,
+		"OrderID":    r.OrderID,
+		"Type":       r.Type,
+		"Content":    r.Content,
+		"UpdatedBy":  r.UpdatedBy,
+		"UpdateTime": r.UpdateTime,
+		"Creator":    r.Creator,
+		"CreateTime": r.CreateTime,
+		"DomainID":   r.DomainID,
+		"Addi":       r.Addi,
+		"Status":     r.Status,
+	}
+}
+
+// GetColumnsMap returns a map of column names to their values.
+func (r *TBlacklist) GetColumnsMap() map[string]any {
+	return map[string]any{
+		"id":          r.ID,
+		"order_id":    r.OrderID,
+		"type":        r.Type,
+		"content":     r.Content,
+		"updated_by":  r.UpdatedBy,
+		"update_time": r.UpdateTime,
+		"creator":     r.Creator,
+		"create_time": r.CreateTime,
+		"domain_id":   r.DomainID,
+		"addi":        r.Addi,
+		"status":      r.Status,
+	}
 }
 
 // Fields return all fields of struct.
@@ -413,6 +975,42 @@ func GetTBlacklistByPk(db Queryer, pk0 null.Int) (*TBlacklist, error) {
 	return &r, nil
 }
 
+// GetTBlacklistReflectValuesMap returns a map of field names to their values.
+//
+// key is the tag name, value is the field value.
+// This is useful for reflection and dynamic queries.
+func (r *TBlacklist) GetTBlacklistReflectValuesMap() (map[string]any, error) {
+
+	values := make(map[string]any)
+	v := reflect.ValueOf(r).Elem()
+	t := v.Type()
+	for i := range v.NumField() {
+		field := t.Field(i)
+		tag := field.Tag.Get("db")
+		if tag == "" {
+			return nil, errors.Errorf("missing db tag for field %s in table t_blacklist", field.Name)
+		}
+
+		columnName := strings.Split(tag, ",")[0]
+		if columnName == "" {
+			return nil, errors.Errorf("missing column name for field %s in table t_blacklist", field.Name)
+		}
+
+		fieldValue := reflect.ValueOf(r).Elem().Field(i)
+		if !fieldValue.IsValid() {
+			return nil, errors.Errorf("invalid field value for field %s in table t_blacklist", field.Name)
+		}
+
+		if !fieldValue.CanAddr() {
+			return nil, errors.Errorf("cannot read field value for field %s in table t_blacklist", field.Name)
+		}
+
+		values[columnName] = fieldValue.Addr().Interface()
+	}
+
+	return values, nil
+}
+
 /*TCorrection t_correction represents assessuser.t_correction */
 type TCorrection struct {
 	ID               null.Int       `json:"ID,omitempty" db:"id,true,integer"`                                       /* id id */
@@ -426,7 +1024,7 @@ type TCorrection struct {
 	UpdatedBy        null.Int       `json:"UpdatedBy,omitempty" db:"updated_by,false,bigint"`                        /* updated_by 更新者 */
 	UpdateTime       null.Int       `json:"UpdateTime,omitempty" db:"update_time,false,timestamp without time zone"` /* update_time 更新时间 */
 	Addi             types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                                    /* addi 附加信息 */
-	Filter                          // build DML where clause
+	Filter                                                                                                           // build DML where clause
 }
 
 // TCorrectionFields full field list for default query
@@ -442,6 +1040,70 @@ var TCorrectionFields = []string{
 	"UpdatedBy",
 	"UpdateTime",
 	"Addi",
+}
+
+// TCorrectionColumns full column list for default query
+var TCorrectionColumns = []string{
+	"id",
+	"exam_session_id",
+	"mark_teacher_id",
+	"mark_count",
+	"mark_question_grou",
+	"mark_paper",
+	"creator",
+	"create_time",
+	"updated_by",
+	"update_time",
+	"addi",
+}
+
+// TCorrectionColumnsDataTypes full column data types for default query
+var TCorrectionColumnsDataTypes = map[string]string{
+	"id":                 "integer",
+	"exam_session_id":    "bigint",
+	"mark_teacher_id":    "bigint",
+	"mark_count":         "integer",
+	"mark_question_grou": "jsonb",
+	"mark_paper":         "jsonb",
+	"creator":            "bigint",
+	"create_time":        "timestamp without time zone",
+	"updated_by":         "bigint",
+	"update_time":        "timestamp without time zone",
+	"addi":               "jsonb",
+}
+
+// GetFieldsMap returns a map of field names to their values.
+func (r *TCorrection) GetFieldsMap() map[string]any {
+	return map[string]any{
+		"ID":               r.ID,
+		"ExamSessionID":    r.ExamSessionID,
+		"MarkTeacherID":    r.MarkTeacherID,
+		"MarkCount":        r.MarkCount,
+		"MarkQuestionGrou": r.MarkQuestionGrou,
+		"MarkPaper":        r.MarkPaper,
+		"Creator":          r.Creator,
+		"CreateTime":       r.CreateTime,
+		"UpdatedBy":        r.UpdatedBy,
+		"UpdateTime":       r.UpdateTime,
+		"Addi":             r.Addi,
+	}
+}
+
+// GetColumnsMap returns a map of column names to their values.
+func (r *TCorrection) GetColumnsMap() map[string]any {
+	return map[string]any{
+		"id":                 r.ID,
+		"exam_session_id":    r.ExamSessionID,
+		"mark_teacher_id":    r.MarkTeacherID,
+		"mark_count":         r.MarkCount,
+		"mark_question_grou": r.MarkQuestionGrou,
+		"mark_paper":         r.MarkPaper,
+		"creator":            r.Creator,
+		"create_time":        r.CreateTime,
+		"updated_by":         r.UpdatedBy,
+		"update_time":        r.UpdateTime,
+		"addi":               r.Addi,
+	}
 }
 
 // Fields return all fields of struct.
@@ -481,6 +1143,42 @@ func GetTCorrectionByPk(db Queryer, pk0 null.Int) (*TCorrection, error) {
 		return nil, errors.Wrap(err, "failed to select t_correction")
 	}
 	return &r, nil
+}
+
+// GetTCorrectionReflectValuesMap returns a map of field names to their values.
+//
+// key is the tag name, value is the field value.
+// This is useful for reflection and dynamic queries.
+func (r *TCorrection) GetTCorrectionReflectValuesMap() (map[string]any, error) {
+
+	values := make(map[string]any)
+	v := reflect.ValueOf(r).Elem()
+	t := v.Type()
+	for i := range v.NumField() {
+		field := t.Field(i)
+		tag := field.Tag.Get("db")
+		if tag == "" {
+			return nil, errors.Errorf("missing db tag for field %s in table t_correction", field.Name)
+		}
+
+		columnName := strings.Split(tag, ",")[0]
+		if columnName == "" {
+			return nil, errors.Errorf("missing column name for field %s in table t_correction", field.Name)
+		}
+
+		fieldValue := reflect.ValueOf(r).Elem().Field(i)
+		if !fieldValue.IsValid() {
+			return nil, errors.Errorf("invalid field value for field %s in table t_correction", field.Name)
+		}
+
+		if !fieldValue.CanAddr() {
+			return nil, errors.Errorf("cannot read field value for field %s in table t_correction", field.Name)
+		}
+
+		values[columnName] = fieldValue.Addr().Interface()
+	}
+
+	return values, nil
 }
 
 /*TCourse course table represents assessuser.t_course */
@@ -535,6 +1233,106 @@ var TCourseFields = []string{
 	"Status",
 }
 
+// TCourseColumns full column list for default query
+var TCourseColumns = []string{
+	"id",
+	"type",
+	"category",
+	"name",
+	"issuer",
+	"issue_time",
+	"cover",
+	"repos",
+	"sections",
+	"tags",
+	"data",
+	"default_repo",
+	"creator",
+	"create_time",
+	"updated_by",
+	"update_time",
+	"domain_id",
+	"addi",
+	"remark",
+	"status",
+}
+
+// TCourseColumnsDataTypes full column data types for default query
+var TCourseColumnsDataTypes = map[string]string{
+	"id":           "integer",
+	"type":         "character varying",
+	"category":     "character varying",
+	"name":         "character varying",
+	"issuer":       "character varying",
+	"issue_time":   "bigint",
+	"cover":        "jsonb",
+	"repos":        "jsonb",
+	"sections":     "jsonb",
+	"tags":         "jsonb",
+	"data":         "jsonb",
+	"default_repo": "character varying",
+	"creator":      "bigint",
+	"create_time":  "bigint",
+	"updated_by":   "bigint",
+	"update_time":  "bigint",
+	"domain_id":    "bigint",
+	"addi":         "jsonb",
+	"remark":       "character varying",
+	"status":       "character varying",
+}
+
+// GetFieldsMap returns a map of field names to their values.
+func (r *TCourse) GetFieldsMap() map[string]any {
+	return map[string]any{
+		"ID":          r.ID,
+		"Type":        r.Type,
+		"Category":    r.Category,
+		"Name":        r.Name,
+		"Issuer":      r.Issuer,
+		"IssueTime":   r.IssueTime,
+		"Cover":       r.Cover,
+		"Repos":       r.Repos,
+		"Sections":    r.Sections,
+		"Tags":        r.Tags,
+		"Data":        r.Data,
+		"DefaultRepo": r.DefaultRepo,
+		"Creator":     r.Creator,
+		"CreateTime":  r.CreateTime,
+		"UpdatedBy":   r.UpdatedBy,
+		"UpdateTime":  r.UpdateTime,
+		"DomainID":    r.DomainID,
+		"Addi":        r.Addi,
+		"Remark":      r.Remark,
+		"Status":      r.Status,
+	}
+}
+
+// GetColumnsMap returns a map of column names to their values.
+func (r *TCourse) GetColumnsMap() map[string]any {
+	return map[string]any{
+		"id":           r.ID,
+		"type":         r.Type,
+		"category":     r.Category,
+		"name":         r.Name,
+		"issuer":       r.Issuer,
+		"issue_time":   r.IssueTime,
+		"cover":        r.Cover,
+		"repos":        r.Repos,
+		"sections":     r.Sections,
+		"tags":         r.Tags,
+		"data":         r.Data,
+		"default_repo": r.DefaultRepo,
+		"creator":      r.Creator,
+		"create_time":  r.CreateTime,
+		"updated_by":   r.UpdatedBy,
+		"update_time":  r.UpdateTime,
+		"domain_id":    r.DomainID,
+		"addi":         r.Addi,
+		"remark":       r.Remark,
+		"status":       r.Status,
+	}
+}
+
 // Fields return all fields of struct.
 func (r *TCourse) Fields() []string {
 	return TCourseFields
@@ -574,6 +1372,42 @@ func GetTCourseByPk(db Queryer, pk0 null.Int) (*TCourse, error) {
 	return &r, nil
 }
 
+// GetTCourseReflectValuesMap returns a map of field names to their values.
+//
+// key is the tag name, value is the field value.
+// This is useful for reflection and dynamic queries.
+func (r *TCourse) GetTCourseReflectValuesMap() (map[string]any, error) {
+
+	values := make(map[string]any)
+	v := reflect.ValueOf(r).Elem()
+	t := v.Type()
+	for i := range v.NumField() {
+		field := t.Field(i)
+		tag := field.Tag.Get("db")
+		if tag == "" {
+			return nil, errors.Errorf("missing db tag for field %s in table t_course", field.Name)
+		}
+
+		columnName := strings.Split(tag, ",")[0]
+		if columnName == "" {
+			return nil, errors.Errorf("missing column name for field %s in table t_course", field.Name)
+		}
+
+		fieldValue := reflect.ValueOf(r).Elem().Field(i)
+		if !fieldValue.IsValid() {
+			return nil, errors.Errorf("invalid field value for field %s in table t_course", field.Name)
+		}
+
+		if !fieldValue.CanAddr() {
+			return nil, errors.Errorf("cannot read field value for field %s in table t_course", field.Name)
+		}
+
+		values[columnName] = fieldValue.Addr().Interface()
+	}
+
+	return values, nil
+}
+
 /*TDegree 知识能力领域等级表 represents assessuser.t_degree */
 type TDegree struct {
 	ID     null.Int    `json:"ID,omitempty" db:"id,true,integer"`                    /* id 编号 */
@@ -581,7 +1415,7 @@ type TDegree struct {
 	Name   null.String `json:"Name,omitempty" db:"name,false,character varying"`     /* name 等级名称 */
 	Limn   null.String `json:"Limn,omitempty" db:"limn,false,character varying"`     /* limn 等级描述 */
 	Status null.String `json:"Status,omitempty" db:"status,false,character varying"` /* status 可用，禁用 */
-	Filter             // build DML where clause
+	Filter                                                                           // build DML where clause
 }
 
 // TDegreeFields full field list for default query
@@ -591,6 +1425,46 @@ var TDegreeFields = []string{
 	"Name",
 	"Limn",
 	"Status",
+}
+
+// TDegreeColumns full column list for default query
+var TDegreeColumns = []string{
+	"id",
+	"level",
+	"name",
+	"limn",
+	"status",
+}
+
+// TDegreeColumnsDataTypes full column data types for default query
+var TDegreeColumnsDataTypes = map[string]string{
+	"id":     "integer",
+	"level":  "integer",
+	"name":   "character varying",
+	"limn":   "character varying",
+	"status": "character varying",
+}
+
+// GetFieldsMap returns a map of field names to their values.
+func (r *TDegree) GetFieldsMap() map[string]any {
+	return map[string]any{
+		"ID":     r.ID,
+		"Level":  r.Level,
+		"Name":   r.Name,
+		"Limn":   r.Limn,
+		"Status": r.Status,
+	}
+}
+
+// GetColumnsMap returns a map of column names to their values.
+func (r *TDegree) GetColumnsMap() map[string]any {
+	return map[string]any{
+		"id":     r.ID,
+		"level":  r.Level,
+		"name":   r.Name,
+		"limn":   r.Limn,
+		"status": r.Status,
+	}
 }
 
 // Fields return all fields of struct.
@@ -632,6 +1506,42 @@ func GetTDegreeByPk(db Queryer, pk0 null.Int) (*TDegree, error) {
 	return &r, nil
 }
 
+// GetTDegreeReflectValuesMap returns a map of field names to their values.
+//
+// key is the tag name, value is the field value.
+// This is useful for reflection and dynamic queries.
+func (r *TDegree) GetTDegreeReflectValuesMap() (map[string]any, error) {
+
+	values := make(map[string]any)
+	v := reflect.ValueOf(r).Elem()
+	t := v.Type()
+	for i := range v.NumField() {
+		field := t.Field(i)
+		tag := field.Tag.Get("db")
+		if tag == "" {
+			return nil, errors.Errorf("missing db tag for field %s in table t_degree", field.Name)
+		}
+
+		columnName := strings.Split(tag, ",")[0]
+		if columnName == "" {
+			return nil, errors.Errorf("missing column name for field %s in table t_degree", field.Name)
+		}
+
+		fieldValue := reflect.ValueOf(r).Elem().Field(i)
+		if !fieldValue.IsValid() {
+			return nil, errors.Errorf("invalid field value for field %s in table t_degree", field.Name)
+		}
+
+		if !fieldValue.CanAddr() {
+			return nil, errors.Errorf("cannot read field value for field %s in table t_degree", field.Name)
+		}
+
+		values[columnName] = fieldValue.Addr().Interface()
+	}
+
+	return values, nil
+}
+
 /*TDomain 用户组织结构定义，格式为：机构[部门.科室.组]#角色 represents assessuser.t_domain */
 type TDomain struct {
 	ID         null.Int       `json:"ID,omitempty" db:"id,true,integer"`                    /* id 编码 */
@@ -646,7 +1556,7 @@ type TDomain struct {
 	Addi       types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                 /* addi 附加信息 */
 	Remark     null.String    `json:"Remark,omitempty" db:"remark,false,character varying"` /* remark 备注 */
 	Status     null.String    `json:"Status,omitempty" db:"status,false,character varying"` /* status 状态，00：草稿，01：有效，02：作废 */
-	Filter                    // build DML where clause
+	Filter                                                                                  // build DML where clause
 }
 
 // TDomainFields full field list for default query
@@ -663,6 +1573,74 @@ var TDomainFields = []string{
 	"Addi",
 	"Remark",
 	"Status",
+}
+
+// TDomainColumns full column list for default query
+var TDomainColumns = []string{
+	"id",
+	"name",
+	"domain",
+	"priority",
+	"domain_id",
+	"updated_by",
+	"update_time",
+	"creator",
+	"create_time",
+	"addi",
+	"remark",
+	"status",
+}
+
+// TDomainColumnsDataTypes full column data types for default query
+var TDomainColumnsDataTypes = map[string]string{
+	"id":          "integer",
+	"name":        "character varying",
+	"domain":      "character varying",
+	"priority":    "smallint",
+	"domain_id":   "bigint",
+	"updated_by":  "bigint",
+	"update_time": "bigint",
+	"creator":     "bigint",
+	"create_time": "bigint",
+	"addi":        "jsonb",
+	"remark":      "character varying",
+	"status":      "character varying",
+}
+
+// GetFieldsMap returns a map of field names to their values.
+func (r *TDomain) GetFieldsMap() map[string]any {
+	return map[string]any{
+		"ID":         r.ID,
+		"Name":       r.Name,
+		"Domain":     r.Domain,
+		"Priority":   r.Priority,
+		"DomainID":   r.DomainID,
+		"UpdatedBy":  r.UpdatedBy,
+		"UpdateTime": r.UpdateTime,
+		"Creator":    r.Creator,
+		"CreateTime": r.CreateTime,
+		"Addi":       r.Addi,
+		"Remark":     r.Remark,
+		"Status":     r.Status,
+	}
+}
+
+// GetColumnsMap returns a map of column names to their values.
+func (r *TDomain) GetColumnsMap() map[string]any {
+	return map[string]any{
+		"id":          r.ID,
+		"name":        r.Name,
+		"domain":      r.Domain,
+		"priority":    r.Priority,
+		"domain_id":   r.DomainID,
+		"updated_by":  r.UpdatedBy,
+		"update_time": r.UpdateTime,
+		"creator":     r.Creator,
+		"create_time": r.CreateTime,
+		"addi":        r.Addi,
+		"remark":      r.Remark,
+		"status":      r.Status,
+	}
 }
 
 // Fields return all fields of struct.
@@ -704,6 +1682,42 @@ func GetTDomainByPk(db Queryer, pk0 null.Int) (*TDomain, error) {
 	return &r, nil
 }
 
+// GetTDomainReflectValuesMap returns a map of field names to their values.
+//
+// key is the tag name, value is the field value.
+// This is useful for reflection and dynamic queries.
+func (r *TDomain) GetTDomainReflectValuesMap() (map[string]any, error) {
+
+	values := make(map[string]any)
+	v := reflect.ValueOf(r).Elem()
+	t := v.Type()
+	for i := range v.NumField() {
+		field := t.Field(i)
+		tag := field.Tag.Get("db")
+		if tag == "" {
+			return nil, errors.Errorf("missing db tag for field %s in table t_domain", field.Name)
+		}
+
+		columnName := strings.Split(tag, ",")[0]
+		if columnName == "" {
+			return nil, errors.Errorf("missing column name for field %s in table t_domain", field.Name)
+		}
+
+		fieldValue := reflect.ValueOf(r).Elem().Field(i)
+		if !fieldValue.IsValid() {
+			return nil, errors.Errorf("invalid field value for field %s in table t_domain", field.Name)
+		}
+
+		if !fieldValue.CanAddr() {
+			return nil, errors.Errorf("cannot read field value for field %s in table t_domain", field.Name)
+		}
+
+		values[columnName] = fieldValue.Addr().Interface()
+	}
+
+	return values, nil
+}
+
 /*TDomainAPI 用户、接口、数据访问控制表 represents assessuser.t_domain_api */
 type TDomainAPI struct {
 	ID          null.Int    `json:"ID,omitempty" db:"id,true,integer"`                               /* id 权限编码 */
@@ -733,7 +1747,7 @@ type TDomainAPI struct {
 	Addi       types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                 /* addi 附加信息 */
 	Remark     null.String    `json:"Remark,omitempty" db:"remark,false,character varying"` /* remark 备注 */
 	Status     null.String    `json:"Status,omitempty" db:"status,false,character varying"` /* status 状态，00：草稿，01：有效，02：作废 */
-	Filter                    // build DML where clause
+	Filter                                                                                  // build DML where clause
 }
 
 // TDomainAPIFields full field list for default query
@@ -752,6 +1766,82 @@ var TDomainAPIFields = []string{
 	"Addi",
 	"Remark",
 	"Status",
+}
+
+// TDomainAPIColumns full column list for default query
+var TDomainAPIColumns = []string{
+	"id",
+	"api",
+	"domain",
+	"grant_source",
+	"data_access_mode",
+	"data_scope",
+	"domain_id",
+	"updated_by",
+	"update_time",
+	"creator",
+	"create_time",
+	"addi",
+	"remark",
+	"status",
+}
+
+// TDomainAPIColumnsDataTypes full column data types for default query
+var TDomainAPIColumnsDataTypes = map[string]string{
+	"id":               "integer",
+	"api":              "bigint",
+	"domain":           "bigint",
+	"grant_source":     "character varying",
+	"data_access_mode": "character varying",
+	"data_scope":       "jsonb",
+	"domain_id":        "bigint",
+	"updated_by":       "bigint",
+	"update_time":      "bigint",
+	"creator":          "bigint",
+	"create_time":      "bigint",
+	"addi":             "jsonb",
+	"remark":           "character varying",
+	"status":           "character varying",
+}
+
+// GetFieldsMap returns a map of field names to their values.
+func (r *TDomainAPI) GetFieldsMap() map[string]any {
+	return map[string]any{
+		"ID":             r.ID,
+		"API":            r.API,
+		"Domain":         r.Domain,
+		"GrantSource":    r.GrantSource,
+		"DataAccessMode": r.DataAccessMode,
+		"DataScope":      r.DataScope,
+		"DomainID":       r.DomainID,
+		"UpdatedBy":      r.UpdatedBy,
+		"UpdateTime":     r.UpdateTime,
+		"Creator":        r.Creator,
+		"CreateTime":     r.CreateTime,
+		"Addi":           r.Addi,
+		"Remark":         r.Remark,
+		"Status":         r.Status,
+	}
+}
+
+// GetColumnsMap returns a map of column names to their values.
+func (r *TDomainAPI) GetColumnsMap() map[string]any {
+	return map[string]any{
+		"id":               r.ID,
+		"api":              r.API,
+		"domain":           r.Domain,
+		"grant_source":     r.GrantSource,
+		"data_access_mode": r.DataAccessMode,
+		"data_scope":       r.DataScope,
+		"domain_id":        r.DomainID,
+		"updated_by":       r.UpdatedBy,
+		"update_time":      r.UpdateTime,
+		"creator":          r.Creator,
+		"create_time":      r.CreateTime,
+		"addi":             r.Addi,
+		"remark":           r.Remark,
+		"status":           r.Status,
+	}
 }
 
 // Fields return all fields of struct.
@@ -793,6 +1883,42 @@ func GetTDomainAPIByPk(db Queryer, pk0 null.Int) (*TDomainAPI, error) {
 	return &r, nil
 }
 
+// GetTDomainAPIReflectValuesMap returns a map of field names to their values.
+//
+// key is the tag name, value is the field value.
+// This is useful for reflection and dynamic queries.
+func (r *TDomainAPI) GetTDomainAPIReflectValuesMap() (map[string]any, error) {
+
+	values := make(map[string]any)
+	v := reflect.ValueOf(r).Elem()
+	t := v.Type()
+	for i := range v.NumField() {
+		field := t.Field(i)
+		tag := field.Tag.Get("db")
+		if tag == "" {
+			return nil, errors.Errorf("missing db tag for field %s in table t_domain_api", field.Name)
+		}
+
+		columnName := strings.Split(tag, ",")[0]
+		if columnName == "" {
+			return nil, errors.Errorf("missing column name for field %s in table t_domain_api", field.Name)
+		}
+
+		fieldValue := reflect.ValueOf(r).Elem().Field(i)
+		if !fieldValue.IsValid() {
+			return nil, errors.Errorf("invalid field value for field %s in table t_domain_api", field.Name)
+		}
+
+		if !fieldValue.CanAddr() {
+			return nil, errors.Errorf("cannot read field value for field %s in table t_domain_api", field.Name)
+		}
+
+		values[columnName] = fieldValue.Addr().Interface()
+	}
+
+	return values, nil
+}
+
 /*
 TDomainAsset define
 
@@ -829,7 +1955,7 @@ type TDomainAsset struct {
 	Addi       types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                 /* addi 附加信息 */
 	Remark     null.String    `json:"Remark,omitempty" db:"remark,false,character varying"` /* remark 备注 */
 	Status     null.String    `json:"Status,omitempty" db:"status,false,character varying"` /* status 状态，00：草稿，01：有效，02：作废 */
-	Filter                    // build DML where clause
+	Filter                                                                                  // build DML where clause
 }
 
 // TDomainAssetFields full field list for default query
@@ -849,6 +1975,86 @@ var TDomainAssetFields = []string{
 	"Addi",
 	"Remark",
 	"Status",
+}
+
+// TDomainAssetColumns full column list for default query
+var TDomainAssetColumns = []string{
+	"id",
+	"r_type",
+	"domain_id",
+	"asset_id",
+	"id_on_domain",
+	"grant_source",
+	"data_access_mode",
+	"data_scope",
+	"updated_by",
+	"update_time",
+	"creator",
+	"create_time",
+	"addi",
+	"remark",
+	"status",
+}
+
+// TDomainAssetColumnsDataTypes full column data types for default query
+var TDomainAssetColumnsDataTypes = map[string]string{
+	"id":               "integer",
+	"r_type":           "character varying",
+	"domain_id":        "bigint",
+	"asset_id":         "bigint",
+	"id_on_domain":     "character varying",
+	"grant_source":     "character varying",
+	"data_access_mode": "character varying",
+	"data_scope":       "jsonb",
+	"updated_by":       "bigint",
+	"update_time":      "bigint",
+	"creator":          "bigint",
+	"create_time":      "bigint",
+	"addi":             "jsonb",
+	"remark":           "character varying",
+	"status":           "character varying",
+}
+
+// GetFieldsMap returns a map of field names to their values.
+func (r *TDomainAsset) GetFieldsMap() map[string]any {
+	return map[string]any{
+		"ID":             r.ID,
+		"RType":          r.RType,
+		"DomainID":       r.DomainID,
+		"AssetID":        r.AssetID,
+		"IDOnDomain":     r.IDOnDomain,
+		"GrantSource":    r.GrantSource,
+		"DataAccessMode": r.DataAccessMode,
+		"DataScope":      r.DataScope,
+		"UpdatedBy":      r.UpdatedBy,
+		"UpdateTime":     r.UpdateTime,
+		"Creator":        r.Creator,
+		"CreateTime":     r.CreateTime,
+		"Addi":           r.Addi,
+		"Remark":         r.Remark,
+		"Status":         r.Status,
+	}
+}
+
+// GetColumnsMap returns a map of column names to their values.
+func (r *TDomainAsset) GetColumnsMap() map[string]any {
+	return map[string]any{
+		"id":               r.ID,
+		"r_type":           r.RType,
+		"domain_id":        r.DomainID,
+		"asset_id":         r.AssetID,
+		"id_on_domain":     r.IDOnDomain,
+		"grant_source":     r.GrantSource,
+		"data_access_mode": r.DataAccessMode,
+		"data_scope":       r.DataScope,
+		"updated_by":       r.UpdatedBy,
+		"update_time":      r.UpdateTime,
+		"creator":          r.Creator,
+		"create_time":      r.CreateTime,
+		"addi":             r.Addi,
+		"remark":           r.Remark,
+		"status":           r.Status,
+	}
 }
 
 // Fields return all fields of struct.
@@ -890,6 +2096,42 @@ func GetTDomainAssetByPk(db Queryer, pk0 null.Int) (*TDomainAsset, error) {
 	return &r, nil
 }
 
+// GetTDomainAssetReflectValuesMap returns a map of field names to their values.
+//
+// key is the tag name, value is the field value.
+// This is useful for reflection and dynamic queries.
+func (r *TDomainAsset) GetTDomainAssetReflectValuesMap() (map[string]any, error) {
+
+	values := make(map[string]any)
+	v := reflect.ValueOf(r).Elem()
+	t := v.Type()
+	for i := range v.NumField() {
+		field := t.Field(i)
+		tag := field.Tag.Get("db")
+		if tag == "" {
+			return nil, errors.Errorf("missing db tag for field %s in table t_domain_asset", field.Name)
+		}
+
+		columnName := strings.Split(tag, ",")[0]
+		if columnName == "" {
+			return nil, errors.Errorf("missing column name for field %s in table t_domain_asset", field.Name)
+		}
+
+		fieldValue := reflect.ValueOf(r).Elem().Field(i)
+		if !fieldValue.IsValid() {
+			return nil, errors.Errorf("invalid field value for field %s in table t_domain_asset", field.Name)
+		}
+
+		if !fieldValue.CanAddr() {
+			return nil, errors.Errorf("cannot read field value for field %s in table t_domain_asset", field.Name)
+		}
+
+		values[columnName] = fieldValue.Addr().Interface()
+	}
+
+	return values, nil
+}
+
 /*TExamAttachmentTransfer t_exam_attachment_transfer represents assessuser.t_exam_attachment_transfer */
 type TExamAttachmentTransfer struct {
 	ID                     null.Int       `json:"ID,omitempty" db:"id,true,integer"`                                                      /* id id */
@@ -903,7 +2145,7 @@ type TExamAttachmentTransfer struct {
 	Status                 null.String    `json:"Status,omitempty" db:"status,false,character varying"`                                   /* status 状态 */
 	Addi                   types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                                                   /* addi 额外信息 */
 	AnswerTransferStatus   null.String    `json:"AnswerTransferStatus,omitempty" db:"answer_transfer_status,false,character varying"`     /* answer_transfer_status 答案附件传输状态：00 待传输 02 传输中 04 传输完成 06 传输失败 */
-	Filter                                // build DML where clause
+	Filter                                                                                                                                // build DML where clause
 }
 
 // TExamAttachmentTransferFields full field list for default query
@@ -919,6 +2161,70 @@ var TExamAttachmentTransferFields = []string{
 	"Status",
 	"Addi",
 	"AnswerTransferStatus",
+}
+
+// TExamAttachmentTransferColumns full column list for default query
+var TExamAttachmentTransferColumns = []string{
+	"id",
+	"exam_id",
+	"exam_site",
+	"question_transfer_status",
+	"creator",
+	"create_time",
+	"updated_by",
+	"update_time",
+	"status",
+	"addi",
+	"answer_transfer_status",
+}
+
+// TExamAttachmentTransferColumnsDataTypes full column data types for default query
+var TExamAttachmentTransferColumnsDataTypes = map[string]string{
+	"id":                       "integer",
+	"exam_id":                  "bigint",
+	"exam_site":                "bigint",
+	"question_transfer_status": "character varying",
+	"creator":                  "bigint",
+	"create_time":              "timestamp without time zone",
+	"updated_by":               "bigint",
+	"update_time":              "timestamp without time zone",
+	"status":                   "character varying",
+	"addi":                     "jsonb",
+	"answer_transfer_status":   "character varying",
+}
+
+// GetFieldsMap returns a map of field names to their values.
+func (r *TExamAttachmentTransfer) GetFieldsMap() map[string]any {
+	return map[string]any{
+		"ID":                     r.ID,
+		"ExamID":                 r.ExamID,
+		"ExamSite":               r.ExamSite,
+		"QuestionTransferStatus": r.QuestionTransferStatus,
+		"Creator":                r.Creator,
+		"CreateTime":             r.CreateTime,
+		"UpdatedBy":              r.UpdatedBy,
+		"UpdateTime":             r.UpdateTime,
+		"Status":                 r.Status,
+		"Addi":                   r.Addi,
+		"AnswerTransferStatus":   r.AnswerTransferStatus,
+	}
+}
+
+// GetColumnsMap returns a map of column names to their values.
+func (r *TExamAttachmentTransfer) GetColumnsMap() map[string]any {
+	return map[string]any{
+		"id":                       r.ID,
+		"exam_id":                  r.ExamID,
+		"exam_site":                r.ExamSite,
+		"question_transfer_status": r.QuestionTransferStatus,
+		"creator":                  r.Creator,
+		"create_time":              r.CreateTime,
+		"updated_by":               r.UpdatedBy,
+		"update_time":              r.UpdateTime,
+		"status":                   r.Status,
+		"addi":                     r.Addi,
+		"answer_transfer_status":   r.AnswerTransferStatus,
+	}
 }
 
 // Fields return all fields of struct.
@@ -960,6 +2266,42 @@ func GetTExamAttachmentTransferByPk(db Queryer, pk0 null.Int) (*TExamAttachmentT
 	return &r, nil
 }
 
+// GetTExamAttachmentTransferReflectValuesMap returns a map of field names to their values.
+//
+// key is the tag name, value is the field value.
+// This is useful for reflection and dynamic queries.
+func (r *TExamAttachmentTransfer) GetTExamAttachmentTransferReflectValuesMap() (map[string]any, error) {
+
+	values := make(map[string]any)
+	v := reflect.ValueOf(r).Elem()
+	t := v.Type()
+	for i := range v.NumField() {
+		field := t.Field(i)
+		tag := field.Tag.Get("db")
+		if tag == "" {
+			return nil, errors.Errorf("missing db tag for field %s in table t_exam_attachment_transfer", field.Name)
+		}
+
+		columnName := strings.Split(tag, ",")[0]
+		if columnName == "" {
+			return nil, errors.Errorf("missing column name for field %s in table t_exam_attachment_transfer", field.Name)
+		}
+
+		fieldValue := reflect.ValueOf(r).Elem().Field(i)
+		if !fieldValue.IsValid() {
+			return nil, errors.Errorf("invalid field value for field %s in table t_exam_attachment_transfer", field.Name)
+		}
+
+		if !fieldValue.CanAddr() {
+			return nil, errors.Errorf("cannot read field value for field %s in table t_exam_attachment_transfer", field.Name)
+		}
+
+		values[columnName] = fieldValue.Addr().Interface()
+	}
+
+	return values, nil
+}
+
 /*TExamInfo t_exam_info represents assessuser.t_exam_info */
 type TExamInfo struct {
 	ID                 null.Int       `json:"ID,omitempty" db:"id,true,integer"`                                              /* id 考试编号 */
@@ -971,7 +2313,7 @@ type TExamInfo struct {
 	Submitted          null.Bool      `json:"Submitted,omitempty" db:"submitted,false,boolean"`                               /* submitted 考试成绩是否已提交 */
 	Creator            null.Int       `json:"Creator,omitempty" db:"creator,false,bigint"`                                    /* creator 创建者 */
 	UpdatedBy          null.Int       `json:"UpdatedBy,omitempty" db:"updated_by,false,bigint"`                               /* updated_by 更新者 */
-	Status             null.String    `json:"Status,omitempty" db:"status,false,character varying"`                           /* status 状态  00：未发布 02：待开始  04：进行中 08：已结束 10：已归档 12：考试异常 14：已删除 */
+	Status             null.String    `json:"Status,omitempty" db:"status,false,character varying"`                           /* status 状态  00：未发布 02：待开始  04：进行中 06：已结束 08：已归档 10：考试异常 12：已删除 */
 	Addi               types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                                           /* addi 附加信息 */
 	ExamRoomIds        interface{}    `json:"ExamRoomIds,omitempty" db:"exam_room_ids,false,bigint[]"`                        /* exam_room_ids 考场id数组 */
 	ExamDeliveryStatus null.String    `json:"ExamDeliveryStatus,omitempty" db:"exam_delivery_status,false,character varying"` /* exam_delivery_status 考试的考卷下发状态：
@@ -980,8 +2322,8 @@ type TExamInfo struct {
 	ExamRoomInvigilatorCount types.JSONText `json:"ExamRoomInvigilatorCount,omitempty" db:"exam_room_invigilator_count,false,jsonb"` /* exam_room_invigilator_count 记录当前每个考场的所需监考员数量，例：[{exam_room_id:1,invigilator_count:1}] */
 	ExamDeliveryError        null.String    `json:"ExamDeliveryError,omitempty" db:"exam_delivery_error,false,character varying"`    /* exam_delivery_error 下发考卷失败的报错信息 */
 	CreateTime               null.Int       `json:"CreateTime,omitempty" db:"create_time,false,bigint"`                              /* create_time 创建时间 */
-	EndTime                  null.Int       `json:"EndTime,omitempty" db:"end_time,false,bigint"`                                    /* end_time end_time */
-	Filter                                  // build DML where clause
+	UpdateTime               null.Int       `json:"UpdateTime,omitempty" db:"update_time,false,bigint"`                              /* update_time update_time */
+	Filter                                                                                                                           // build DML where clause
 }
 
 // TExamInfoFields full field list for default query
@@ -1002,7 +2344,95 @@ var TExamInfoFields = []string{
 	"ExamRoomInvigilatorCount",
 	"ExamDeliveryError",
 	"CreateTime",
-	"EndTime",
+	"UpdateTime",
+}
+
+// TExamInfoColumns full column list for default query
+var TExamInfoColumns = []string{
+	"id",
+	"name",
+	"rules",
+	"type",
+	"mode",
+	"files",
+	"submitted",
+	"creator",
+	"updated_by",
+	"status",
+	"addi",
+	"exam_room_ids",
+	"exam_delivery_status",
+	"exam_room_invigilator_count",
+	"exam_delivery_error",
+	"create_time",
+	"update_time",
+}
+
+// TExamInfoColumnsDataTypes full column data types for default query
+var TExamInfoColumnsDataTypes = map[string]string{
+	"id":                          "integer",
+	"name":                        "character varying",
+	"rules":                       "text",
+	"type":                        "character varying",
+	"mode":                        "character varying",
+	"files":                       "jsonb",
+	"submitted":                   "boolean",
+	"creator":                     "bigint",
+	"updated_by":                  "bigint",
+	"status":                      "character varying",
+	"addi":                        "jsonb",
+	"exam_room_ids":               "bigint[]",
+	"exam_delivery_status":        "character varying",
+	"exam_room_invigilator_count": "jsonb",
+	"exam_delivery_error":         "character varying",
+	"create_time":                 "bigint",
+	"update_time":                 "bigint",
+}
+
+// GetFieldsMap returns a map of field names to their values.
+func (r *TExamInfo) GetFieldsMap() map[string]any {
+	return map[string]any{
+		"ID":                       r.ID,
+		"Name":                     r.Name,
+		"Rules":                    r.Rules,
+		"Type":                     r.Type,
+		"Mode":                     r.Mode,
+		"Files":                    r.Files,
+		"Submitted":                r.Submitted,
+		"Creator":                  r.Creator,
+		"UpdatedBy":                r.UpdatedBy,
+		"Status":                   r.Status,
+		"Addi":                     r.Addi,
+		"ExamRoomIds":              r.ExamRoomIds,
+		"ExamDeliveryStatus":       r.ExamDeliveryStatus,
+		"ExamRoomInvigilatorCount": r.ExamRoomInvigilatorCount,
+		"ExamDeliveryError":        r.ExamDeliveryError,
+		"CreateTime":               r.CreateTime,
+		"UpdateTime":               r.UpdateTime,
+	}
+}
+
+// GetColumnsMap returns a map of column names to their values.
+func (r *TExamInfo) GetColumnsMap() map[string]any {
+	return map[string]any{
+		"id":                          r.ID,
+		"name":                        r.Name,
+		"rules":                       r.Rules,
+		"type":                        r.Type,
+		"mode":                        r.Mode,
+		"files":                       r.Files,
+		"submitted":                   r.Submitted,
+		"creator":                     r.Creator,
+		"updated_by":                  r.UpdatedBy,
+		"status":                      r.Status,
+		"addi":                        r.Addi,
+		"exam_room_ids":               r.ExamRoomIds,
+		"exam_delivery_status":        r.ExamDeliveryStatus,
+		"exam_room_invigilator_count": r.ExamRoomInvigilatorCount,
+		"exam_delivery_error":         r.ExamDeliveryError,
+		"create_time":                 r.CreateTime,
+		"update_time":                 r.UpdateTime,
+	}
 }
 
 // Fields return all fields of struct.
@@ -1023,8 +2453,8 @@ func (r *TExamInfo) GetTableName() string {
 // Create inserts the TExamInfo to the database.
 func (r *TExamInfo) Create(db Queryer) error {
 	err := db.QueryRow(
-		`INSERT INTO t_exam_info (name, rules, type, mode, files, submitted, creator, updated_by, status, addi, exam_room_ids, exam_delivery_status, exam_room_invigilator_count, exam_delivery_error, create_time, end_time) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16) RETURNING id`,
-		&r.Name, &r.Rules, &r.Type, &r.Mode, &r.Files, &r.Submitted, &r.Creator, &r.UpdatedBy, &r.Status, &r.Addi, &r.ExamRoomIds, &r.ExamDeliveryStatus, &r.ExamRoomInvigilatorCount, &r.ExamDeliveryError, &r.CreateTime, &r.EndTime).Scan(&r.ID)
+		`INSERT INTO t_exam_info (name, rules, type, mode, files, submitted, creator, updated_by, status, addi, exam_room_ids, exam_delivery_status, exam_room_invigilator_count, exam_delivery_error, create_time, update_time) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16) RETURNING id`,
+		&r.Name, &r.Rules, &r.Type, &r.Mode, &r.Files, &r.Submitted, &r.Creator, &r.UpdatedBy, &r.Status, &r.Addi, &r.ExamRoomIds, &r.ExamDeliveryStatus, &r.ExamRoomInvigilatorCount, &r.ExamDeliveryError, &r.CreateTime, &r.UpdateTime).Scan(&r.ID)
 	if err != nil {
 		return errors.Wrap(err, "failed to insert t_exam_info")
 	}
@@ -1036,39 +2466,63 @@ func GetTExamInfoByPk(db Queryer, pk0 null.Int) (*TExamInfo, error) {
 
 	var r TExamInfo
 	err := db.QueryRow(
-		`SELECT id, name, rules, type, mode, files, submitted, creator, updated_by, status, addi, exam_room_ids, exam_delivery_status, exam_room_invigilator_count, exam_delivery_error, create_time, end_time FROM t_exam_info WHERE id = $1`,
-		pk0).Scan(&r.ID, &r.Name, &r.Rules, &r.Type, &r.Mode, &r.Files, &r.Submitted, &r.Creator, &r.UpdatedBy, &r.Status, &r.Addi, &r.ExamRoomIds, &r.ExamDeliveryStatus, &r.ExamRoomInvigilatorCount, &r.ExamDeliveryError, &r.CreateTime, &r.EndTime)
+		`SELECT id, name, rules, type, mode, files, submitted, creator, updated_by, status, addi, exam_room_ids, exam_delivery_status, exam_room_invigilator_count, exam_delivery_error, create_time, update_time FROM t_exam_info WHERE id = $1`,
+		pk0).Scan(&r.ID, &r.Name, &r.Rules, &r.Type, &r.Mode, &r.Files, &r.Submitted, &r.Creator, &r.UpdatedBy, &r.Status, &r.Addi, &r.ExamRoomIds, &r.ExamDeliveryStatus, &r.ExamRoomInvigilatorCount, &r.ExamDeliveryError, &r.CreateTime, &r.UpdateTime)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to select t_exam_info")
 	}
 	return &r, nil
 }
 
+// GetTExamInfoReflectValuesMap returns a map of field names to their values.
+//
+// key is the tag name, value is the field value.
+// This is useful for reflection and dynamic queries.
+func (r *TExamInfo) GetTExamInfoReflectValuesMap() (map[string]any, error) {
+
+	values := make(map[string]any)
+	v := reflect.ValueOf(r).Elem()
+	t := v.Type()
+	for i := range v.NumField() {
+		field := t.Field(i)
+		tag := field.Tag.Get("db")
+		if tag == "" {
+			return nil, errors.Errorf("missing db tag for field %s in table t_exam_info", field.Name)
+		}
+
+		columnName := strings.Split(tag, ",")[0]
+		if columnName == "" {
+			return nil, errors.Errorf("missing column name for field %s in table t_exam_info", field.Name)
+		}
+
+		fieldValue := reflect.ValueOf(r).Elem().Field(i)
+		if !fieldValue.IsValid() {
+			return nil, errors.Errorf("invalid field value for field %s in table t_exam_info", field.Name)
+		}
+
+		if !fieldValue.CanAddr() {
+			return nil, errors.Errorf("cannot read field value for field %s in table t_exam_info", field.Name)
+		}
+
+		values[columnName] = fieldValue.Addr().Interface()
+	}
+
+	return values, nil
+}
+
 /*TExamPaper t_exam_paper represents assessuser.t_exam_paper */
 type TExamPaper struct {
-	ID             null.Int       `json:"ID,omitempty" db:"id,true,integer"`                            /* id 考卷ID */
-	ExamSessionID  null.Int       `json:"ExamSessionID,omitempty" db:"exam_session_id,false,bigint"`    /* exam_session_id 考试场次ID，标识考卷用于哪一场考试场次 */
-	PracticeID     null.Int       `json:"PracticeID,omitempty" db:"practice_id,false,bigint"`           /* practice_id 练习ID，标识考卷用于哪一个练习 */
-	Name           null.String    `json:"Name,omitempty" db:"name,false,character varying"`             /* name 考卷名称 */
-	TotalScore     null.Float     `json:"TotalScore,omitempty" db:"total_score,false,double precision"` /* total_score 考卷总分 */
-	QuestionGroups types.JSONText `json:"QuestionGroups,omitempty" db:"question_groups,false,jsonb"`    /* question_groups 存储题组名称
-	{
-	   "question_group":[
-	       {   "id":"1",    "name":"一、单选题"},
-	       {"id":"2",    "name":"二、多选题"},
-	       {"id":"3",    "name":"三、判断题"},
-	       {"id":"4",    "name":"四、填空题"}
-	       {"id":"5",    "name":"五、简答题"},
-	     ]
-	} */
+	ID            null.Int       `json:"ID,omitempty" db:"id,true,integer"`                         /* id 考卷ID */
+	ExamSessionID null.Int       `json:"ExamSessionID,omitempty" db:"exam_session_id,false,bigint"` /* exam_session_id 考试场次ID，标识考卷用于哪一场考试场次 */
+	PracticeID    null.Int       `json:"PracticeID,omitempty" db:"practice_id,false,bigint"`        /* practice_id 练习ID，标识考卷用于哪一个练习 */
+	Name          null.String    `json:"Name,omitempty" db:"name,false,character varying"`          /* name 考卷名称 */
 	Creator       null.Int       `json:"Creator,omitempty" db:"creator,false,bigint"`               /* creator 创建者 */
 	CreateTime    null.Int       `json:"CreateTime,omitempty" db:"create_time,false,bigint"`        /* create_time 创建时间 */
 	UpdatedBy     null.Int       `json:"UpdatedBy,omitempty" db:"updated_by,false,bigint"`          /* updated_by 更新者 */
 	UpdateTime    null.Int       `json:"UpdateTime,omitempty" db:"update_time,false,bigint"`        /* update_time 更新时间 */
 	Addi          types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                      /* addi 附加信息 */
 	Status        null.String    `json:"Status,omitempty" db:"status,false,character varying"`      /* status 状态 00：使用中，02：归档，04：废弃 */
-	QuestionCount null.Int       `json:"QuestionCount,omitempty" db:"question_count,false,integer"` /* question_count question_count */
-	Filter                       // build DML where clause
+	Filter                                                                                          // build DML where clause
 }
 
 // TExamPaperFields full field list for default query
@@ -1077,15 +2531,72 @@ var TExamPaperFields = []string{
 	"ExamSessionID",
 	"PracticeID",
 	"Name",
-	"TotalScore",
-	"QuestionGroups",
 	"Creator",
 	"CreateTime",
 	"UpdatedBy",
 	"UpdateTime",
 	"Addi",
 	"Status",
-	"QuestionCount",
+}
+
+// TExamPaperColumns full column list for default query
+var TExamPaperColumns = []string{
+	"id",
+	"exam_session_id",
+	"practice_id",
+	"name",
+	"creator",
+	"create_time",
+	"updated_by",
+	"update_time",
+	"addi",
+	"status",
+}
+
+// TExamPaperColumnsDataTypes full column data types for default query
+var TExamPaperColumnsDataTypes = map[string]string{
+	"id":              "integer",
+	"exam_session_id": "bigint",
+	"practice_id":     "bigint",
+	"name":            "character varying",
+	"creator":         "bigint",
+	"create_time":     "bigint",
+	"updated_by":      "bigint",
+	"update_time":     "bigint",
+	"addi":            "jsonb",
+	"status":          "character varying",
+}
+
+// GetFieldsMap returns a map of field names to their values.
+func (r *TExamPaper) GetFieldsMap() map[string]any {
+	return map[string]any{
+		"ID":            r.ID,
+		"ExamSessionID": r.ExamSessionID,
+		"PracticeID":    r.PracticeID,
+		"Name":          r.Name,
+		"Creator":       r.Creator,
+		"CreateTime":    r.CreateTime,
+		"UpdatedBy":     r.UpdatedBy,
+		"UpdateTime":    r.UpdateTime,
+		"Addi":          r.Addi,
+		"Status":        r.Status,
+	}
+}
+
+// GetColumnsMap returns a map of column names to their values.
+func (r *TExamPaper) GetColumnsMap() map[string]any {
+	return map[string]any{
+		"id":              r.ID,
+		"exam_session_id": r.ExamSessionID,
+		"practice_id":     r.PracticeID,
+		"name":            r.Name,
+		"creator":         r.Creator,
+		"create_time":     r.CreateTime,
+		"updated_by":      r.UpdatedBy,
+		"update_time":     r.UpdateTime,
+		"addi":            r.Addi,
+		"status":          r.Status,
+	}
 }
 
 // Fields return all fields of struct.
@@ -1106,8 +2617,8 @@ func (r *TExamPaper) GetTableName() string {
 // Create inserts the TExamPaper to the database.
 func (r *TExamPaper) Create(db Queryer) error {
 	err := db.QueryRow(
-		`INSERT INTO t_exam_paper (exam_session_id, practice_id, name, total_score, question_groups, creator, create_time, updated_by, update_time, addi, status, question_count) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING id`,
-		&r.ExamSessionID, &r.PracticeID, &r.Name, &r.TotalScore, &r.QuestionGroups, &r.Creator, &r.CreateTime, &r.UpdatedBy, &r.UpdateTime, &r.Addi, &r.Status, &r.QuestionCount).Scan(&r.ID)
+		`INSERT INTO t_exam_paper (exam_session_id, practice_id, name, creator, create_time, updated_by, update_time, addi, status) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
+		&r.ExamSessionID, &r.PracticeID, &r.Name, &r.Creator, &r.CreateTime, &r.UpdatedBy, &r.UpdateTime, &r.Addi, &r.Status).Scan(&r.ID)
 	if err != nil {
 		return errors.Wrap(err, "failed to insert t_exam_paper")
 	}
@@ -1119,18 +2630,217 @@ func GetTExamPaperByPk(db Queryer, pk0 null.Int) (*TExamPaper, error) {
 
 	var r TExamPaper
 	err := db.QueryRow(
-		`SELECT id, exam_session_id, practice_id, name, total_score, question_groups, creator, create_time, updated_by, update_time, addi, status, question_count FROM t_exam_paper WHERE id = $1`,
-		pk0).Scan(&r.ID, &r.ExamSessionID, &r.PracticeID, &r.Name, &r.TotalScore, &r.QuestionGroups, &r.Creator, &r.CreateTime, &r.UpdatedBy, &r.UpdateTime, &r.Addi, &r.Status, &r.QuestionCount)
+		`SELECT id, exam_session_id, practice_id, name, creator, create_time, updated_by, update_time, addi, status FROM t_exam_paper WHERE id = $1`,
+		pk0).Scan(&r.ID, &r.ExamSessionID, &r.PracticeID, &r.Name, &r.Creator, &r.CreateTime, &r.UpdatedBy, &r.UpdateTime, &r.Addi, &r.Status)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to select t_exam_paper")
 	}
 	return &r, nil
 }
 
+// GetTExamPaperReflectValuesMap returns a map of field names to their values.
+//
+// key is the tag name, value is the field value.
+// This is useful for reflection and dynamic queries.
+func (r *TExamPaper) GetTExamPaperReflectValuesMap() (map[string]any, error) {
+
+	values := make(map[string]any)
+	v := reflect.ValueOf(r).Elem()
+	t := v.Type()
+	for i := range v.NumField() {
+		field := t.Field(i)
+		tag := field.Tag.Get("db")
+		if tag == "" {
+			return nil, errors.Errorf("missing db tag for field %s in table t_exam_paper", field.Name)
+		}
+
+		columnName := strings.Split(tag, ",")[0]
+		if columnName == "" {
+			return nil, errors.Errorf("missing column name for field %s in table t_exam_paper", field.Name)
+		}
+
+		fieldValue := reflect.ValueOf(r).Elem().Field(i)
+		if !fieldValue.IsValid() {
+			return nil, errors.Errorf("invalid field value for field %s in table t_exam_paper", field.Name)
+		}
+
+		if !fieldValue.CanAddr() {
+			return nil, errors.Errorf("cannot read field value for field %s in table t_exam_paper", field.Name)
+		}
+
+		values[columnName] = fieldValue.Addr().Interface()
+	}
+
+	return values, nil
+}
+
+/*TExamPaperGroup 学生考卷题组 represents assessuser.t_exam_paper_group */
+type TExamPaperGroup struct {
+	ID          null.Int       `json:"ID,omitempty" db:"id,true,integer"`                     /* id 答卷题组id */
+	ExamPaperID null.Int       `json:"ExamPaperID,omitempty" db:"exam_paper_id,false,bigint"` /* exam_paper_id 学生答卷ID */
+	Name        null.String    `json:"Name,omitempty" db:"name,false,text"`                   /* name 题组名称 */
+	Order       null.Int       `json:"Order,omitempty" db:"order,false,integer"`              /* order 题组排序 */
+	Creator     null.Int       `json:"Creator,omitempty" db:"creator,false,bigint"`           /* creator 创建者 */
+	CreateTime  null.Int       `json:"CreateTime,omitempty" db:"create_time,false,bigint"`    /* create_time 创建时间 */
+	UpdatedBy   null.Int       `json:"UpdatedBy,omitempty" db:"updated_by,false,bigint"`      /* updated_by 更新者 */
+	UpdateTime  null.Int       `json:"UpdateTime,omitempty" db:"update_time,false,bigint"`    /* update_time 更新时间 */
+	Addi        types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                  /* addi 附加信息 */
+	Status      null.String    `json:"Status,omitempty" db:"status,false,character varying"`  /* status 状态 00：正常， 02：异常 */
+	Filter                                                                                    // build DML where clause
+}
+
+// TExamPaperGroupFields full field list for default query
+var TExamPaperGroupFields = []string{
+	"ID",
+	"ExamPaperID",
+	"Name",
+	"Order",
+	"Creator",
+	"CreateTime",
+	"UpdatedBy",
+	"UpdateTime",
+	"Addi",
+	"Status",
+}
+
+// TExamPaperGroupColumns full column list for default query
+var TExamPaperGroupColumns = []string{
+	"id",
+	"exam_paper_id",
+	"name",
+	"order",
+	"creator",
+	"create_time",
+	"updated_by",
+	"update_time",
+	"addi",
+	"status",
+}
+
+// TExamPaperGroupColumnsDataTypes full column data types for default query
+var TExamPaperGroupColumnsDataTypes = map[string]string{
+	"id":            "integer",
+	"exam_paper_id": "bigint",
+	"name":          "text",
+	"order":         "integer",
+	"creator":       "bigint",
+	"create_time":   "bigint",
+	"updated_by":    "bigint",
+	"update_time":   "bigint",
+	"addi":          "jsonb",
+	"status":        "character varying",
+}
+
+// GetFieldsMap returns a map of field names to their values.
+func (r *TExamPaperGroup) GetFieldsMap() map[string]any {
+	return map[string]any{
+		"ID":          r.ID,
+		"ExamPaperID": r.ExamPaperID,
+		"Name":        r.Name,
+		"Order":       r.Order,
+		"Creator":     r.Creator,
+		"CreateTime":  r.CreateTime,
+		"UpdatedBy":   r.UpdatedBy,
+		"UpdateTime":  r.UpdateTime,
+		"Addi":        r.Addi,
+		"Status":      r.Status,
+	}
+}
+
+// GetColumnsMap returns a map of column names to their values.
+func (r *TExamPaperGroup) GetColumnsMap() map[string]any {
+	return map[string]any{
+		"id":            r.ID,
+		"exam_paper_id": r.ExamPaperID,
+		"name":          r.Name,
+		"order":         r.Order,
+		"creator":       r.Creator,
+		"create_time":   r.CreateTime,
+		"updated_by":    r.UpdatedBy,
+		"update_time":   r.UpdateTime,
+		"addi":          r.Addi,
+		"status":        r.Status,
+	}
+}
+
+// Fields return all fields of struct.
+func (r *TExamPaperGroup) Fields() []string {
+	return TExamPaperGroupFields
+}
+
+// GetTableName return the associated db table name.
+func (r *TExamPaperGroup) GetTableName() string {
+	var viewNamePattern = regexp.MustCompile(`(?i)^t_v_[a-z0-9_]+$`)
+	tableName := "t_exam_paper_group"
+	if viewNamePattern.MatchString(tableName) {
+		return tableName[2:]
+	}
+	return tableName
+}
+
+// Create inserts the TExamPaperGroup to the database.
+func (r *TExamPaperGroup) Create(db Queryer) error {
+	err := db.QueryRow(
+		`INSERT INTO t_exam_paper_group (exam_paper_id, name, order, creator, create_time, updated_by, update_time, addi, status) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
+		&r.ExamPaperID, &r.Name, &r.Order, &r.Creator, &r.CreateTime, &r.UpdatedBy, &r.UpdateTime, &r.Addi, &r.Status).Scan(&r.ID)
+	if err != nil {
+		return errors.Wrap(err, "failed to insert t_exam_paper_group")
+	}
+	return nil
+}
+
+// GetTExamPaperGroupByPk select the TExamPaperGroup from the database.
+func GetTExamPaperGroupByPk(db Queryer, pk0 null.Int) (*TExamPaperGroup, error) {
+
+	var r TExamPaperGroup
+	err := db.QueryRow(
+		`SELECT id, exam_paper_id, name, order, creator, create_time, updated_by, update_time, addi, status FROM t_exam_paper_group WHERE id = $1`,
+		pk0).Scan(&r.ID, &r.ExamPaperID, &r.Name, &r.Order, &r.Creator, &r.CreateTime, &r.UpdatedBy, &r.UpdateTime, &r.Addi, &r.Status)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to select t_exam_paper_group")
+	}
+	return &r, nil
+}
+
+// GetTExamPaperGroupReflectValuesMap returns a map of field names to their values.
+//
+// key is the tag name, value is the field value.
+// This is useful for reflection and dynamic queries.
+func (r *TExamPaperGroup) GetTExamPaperGroupReflectValuesMap() (map[string]any, error) {
+
+	values := make(map[string]any)
+	v := reflect.ValueOf(r).Elem()
+	t := v.Type()
+	for i := range v.NumField() {
+		field := t.Field(i)
+		tag := field.Tag.Get("db")
+		if tag == "" {
+			return nil, errors.Errorf("missing db tag for field %s in table t_exam_paper_group", field.Name)
+		}
+
+		columnName := strings.Split(tag, ",")[0]
+		if columnName == "" {
+			return nil, errors.Errorf("missing column name for field %s in table t_exam_paper_group", field.Name)
+		}
+
+		fieldValue := reflect.ValueOf(r).Elem().Field(i)
+		if !fieldValue.IsValid() {
+			return nil, errors.Errorf("invalid field value for field %s in table t_exam_paper_group", field.Name)
+		}
+
+		if !fieldValue.CanAddr() {
+			return nil, errors.Errorf("cannot read field value for field %s in table t_exam_paper_group", field.Name)
+		}
+
+		values[columnName] = fieldValue.Addr().Interface()
+	}
+
+	return values, nil
+}
+
 /*TExamPaperQuestion t_exam_paper_question represents assessuser.t_exam_paper_question */
 type TExamPaperQuestion struct {
 	ID                      null.Int       `json:"ID,omitempty" db:"id,true,integer"`                                            /* id 考卷题目ID */
-	ExamPaperID             null.Int       `json:"ExamPaperID,omitempty" db:"exam_paper_id,false,bigint"`                        /* exam_paper_id 所属考卷ID */
 	Score                   null.Float     `json:"Score,omitempty" db:"score,false,double precision"`                            /* score 题目分值 */
 	Type                    null.String    `json:"Type,omitempty" db:"type,false,character varying"`                             /* type 类型  00:单选题  02:多选题 04:判断题 06:填空题 08:简答题 10:编程题 */
 	Content                 null.String    `json:"Content,omitempty" db:"content,false,text"`                                    /* content 理论题目内容 */
@@ -1138,8 +2848,8 @@ type TExamPaperQuestion struct {
 	Answers                 types.JSONText `json:"Answers,omitempty" db:"answers,false,jsonb"`                                   /* answers 理论题目答案 */
 	Analysis                null.String    `json:"Analysis,omitempty" db:"analysis,false,text"`                                  /* analysis 理论题目解析 */
 	Title                   null.String    `json:"Title,omitempty" db:"title,false,text"`                                        /* title 编程题目题干 */
-	AnswerPath              types.JSONText `json:"AnswerPath,omitempty" db:"answer_path,false,jsonb"`                            /* answer_path 编程题目答案文件路径 */
-	TestPath                types.JSONText `json:"TestPath,omitempty" db:"test_path,false,jsonb"`                                /* test_path 编程题目测试文件路径 */
+	AnswerFilePath          types.JSONText `json:"AnswerFilePath,omitempty" db:"answer_file_path,false,jsonb"`                   /* answer_file_path 编程题目答案文件路径 */
+	TestFilePath            types.JSONText `json:"TestFilePath,omitempty" db:"test_file_path,false,jsonb"`                       /* test_file_path 编程题目测试文件路径 */
 	Input                   null.String    `json:"Input,omitempty" db:"input,false,character varying"`                           /* input 编程题目输入 */
 	Output                  null.String    `json:"Output,omitempty" db:"output,false,character varying"`                         /* output 编程题目输出 */
 	Example                 types.JSONText `json:"Example,omitempty" db:"example,false,jsonb"`                                   /* example 编程题目示例 */
@@ -1154,13 +2864,12 @@ type TExamPaperQuestion struct {
 	Order                   null.Int       `json:"Order,omitempty" db:"order,false,integer"`                                     /* order 原始考卷的题目顺序 */
 	GroupID                 null.Int       `json:"GroupID,omitempty" db:"group_id,false,bigint"`                                 /* group_id 题目所属题组ID */
 	QuestionAttachmentsPath types.JSONText `json:"QuestionAttachmentsPath,omitempty" db:"question_attachments_path,false,jsonb"` /* question_attachments_path 题目附件url数组 */
-	Filter                                 // build DML where clause
+	Filter                                                                                                                       // build DML where clause
 }
 
 // TExamPaperQuestionFields full field list for default query
 var TExamPaperQuestionFields = []string{
 	"ID",
-	"ExamPaperID",
 	"Score",
 	"Type",
 	"Content",
@@ -1168,8 +2877,8 @@ var TExamPaperQuestionFields = []string{
 	"Answers",
 	"Analysis",
 	"Title",
-	"AnswerPath",
-	"TestPath",
+	"AnswerFilePath",
+	"TestFilePath",
 	"Input",
 	"Output",
 	"Example",
@@ -1184,6 +2893,122 @@ var TExamPaperQuestionFields = []string{
 	"Order",
 	"GroupID",
 	"QuestionAttachmentsPath",
+}
+
+// TExamPaperQuestionColumns full column list for default query
+var TExamPaperQuestionColumns = []string{
+	"id",
+	"score",
+	"type",
+	"content",
+	"options",
+	"answers",
+	"analysis",
+	"title",
+	"answer_file_path",
+	"test_file_path",
+	"input",
+	"output",
+	"example",
+	"repo",
+	"commit_id",
+	"creator",
+	"create_time",
+	"updated_by",
+	"update_time",
+	"addi",
+	"status",
+	"order",
+	"group_id",
+	"question_attachments_path",
+}
+
+// TExamPaperQuestionColumnsDataTypes full column data types for default query
+var TExamPaperQuestionColumnsDataTypes = map[string]string{
+	"id":                        "integer",
+	"score":                     "double precision",
+	"type":                      "character varying",
+	"content":                   "text",
+	"options":                   "jsonb",
+	"answers":                   "jsonb",
+	"analysis":                  "text",
+	"title":                     "text",
+	"answer_file_path":          "jsonb",
+	"test_file_path":            "jsonb",
+	"input":                     "character varying",
+	"output":                    "character varying",
+	"example":                   "jsonb",
+	"repo":                      "jsonb",
+	"commit_id":                 "jsonb",
+	"creator":                   "bigint",
+	"create_time":               "bigint",
+	"updated_by":                "bigint",
+	"update_time":               "bigint",
+	"addi":                      "jsonb",
+	"status":                    "character varying",
+	"order":                     "integer",
+	"group_id":                  "bigint",
+	"question_attachments_path": "jsonb",
+}
+
+// GetFieldsMap returns a map of field names to their values.
+func (r *TExamPaperQuestion) GetFieldsMap() map[string]any {
+	return map[string]any{
+		"ID":                      r.ID,
+		"Score":                   r.Score,
+		"Type":                    r.Type,
+		"Content":                 r.Content,
+		"Options":                 r.Options,
+		"Answers":                 r.Answers,
+		"Analysis":                r.Analysis,
+		"Title":                   r.Title,
+		"AnswerFilePath":          r.AnswerFilePath,
+		"TestFilePath":            r.TestFilePath,
+		"Input":                   r.Input,
+		"Output":                  r.Output,
+		"Example":                 r.Example,
+		"Repo":                    r.Repo,
+		"CommitID":                r.CommitID,
+		"Creator":                 r.Creator,
+		"CreateTime":              r.CreateTime,
+		"UpdatedBy":               r.UpdatedBy,
+		"UpdateTime":              r.UpdateTime,
+		"Addi":                    r.Addi,
+		"Status":                  r.Status,
+		"Order":                   r.Order,
+		"GroupID":                 r.GroupID,
+		"QuestionAttachmentsPath": r.QuestionAttachmentsPath,
+	}
+}
+
+// GetColumnsMap returns a map of column names to their values.
+func (r *TExamPaperQuestion) GetColumnsMap() map[string]any {
+	return map[string]any{
+		"id":                        r.ID,
+		"score":                     r.Score,
+		"type":                      r.Type,
+		"content":                   r.Content,
+		"options":                   r.Options,
+		"answers":                   r.Answers,
+		"analysis":                  r.Analysis,
+		"title":                     r.Title,
+		"answer_file_path":          r.AnswerFilePath,
+		"test_file_path":            r.TestFilePath,
+		"input":                     r.Input,
+		"output":                    r.Output,
+		"example":                   r.Example,
+		"repo":                      r.Repo,
+		"commit_id":                 r.CommitID,
+		"creator":                   r.Creator,
+		"create_time":               r.CreateTime,
+		"updated_by":                r.UpdatedBy,
+		"update_time":               r.UpdateTime,
+		"addi":                      r.Addi,
+		"status":                    r.Status,
+		"order":                     r.Order,
+		"group_id":                  r.GroupID,
+		"question_attachments_path": r.QuestionAttachmentsPath,
+	}
 }
 
 // Fields return all fields of struct.
@@ -1204,8 +3029,8 @@ func (r *TExamPaperQuestion) GetTableName() string {
 // Create inserts the TExamPaperQuestion to the database.
 func (r *TExamPaperQuestion) Create(db Queryer) error {
 	err := db.QueryRow(
-		`INSERT INTO t_exam_paper_question (exam_paper_id, score, type, content, options, answers, analysis, title, answer_path, test_path, input, output, example, repo, commit_id, creator, create_time, updated_by, update_time, addi, status, order, group_id, question_attachments_path) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24) RETURNING id`,
-		&r.ExamPaperID, &r.Score, &r.Type, &r.Content, &r.Options, &r.Answers, &r.Analysis, &r.Title, &r.AnswerPath, &r.TestPath, &r.Input, &r.Output, &r.Example, &r.Repo, &r.CommitID, &r.Creator, &r.CreateTime, &r.UpdatedBy, &r.UpdateTime, &r.Addi, &r.Status, &r.Order, &r.GroupID, &r.QuestionAttachmentsPath).Scan(&r.ID)
+		`INSERT INTO t_exam_paper_question (score, type, content, options, answers, analysis, title, answer_file_path, test_file_path, input, output, example, repo, commit_id, creator, create_time, updated_by, update_time, addi, status, order, group_id, question_attachments_path) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23) RETURNING id`,
+		&r.Score, &r.Type, &r.Content, &r.Options, &r.Answers, &r.Analysis, &r.Title, &r.AnswerFilePath, &r.TestFilePath, &r.Input, &r.Output, &r.Example, &r.Repo, &r.CommitID, &r.Creator, &r.CreateTime, &r.UpdatedBy, &r.UpdateTime, &r.Addi, &r.Status, &r.Order, &r.GroupID, &r.QuestionAttachmentsPath).Scan(&r.ID)
 	if err != nil {
 		return errors.Wrap(err, "failed to insert t_exam_paper_question")
 	}
@@ -1217,12 +3042,48 @@ func GetTExamPaperQuestionByPk(db Queryer, pk0 null.Int) (*TExamPaperQuestion, e
 
 	var r TExamPaperQuestion
 	err := db.QueryRow(
-		`SELECT id, exam_paper_id, score, type, content, options, answers, analysis, title, answer_path, test_path, input, output, example, repo, commit_id, creator, create_time, updated_by, update_time, addi, status, order, group_id, question_attachments_path FROM t_exam_paper_question WHERE id = $1`,
-		pk0).Scan(&r.ID, &r.ExamPaperID, &r.Score, &r.Type, &r.Content, &r.Options, &r.Answers, &r.Analysis, &r.Title, &r.AnswerPath, &r.TestPath, &r.Input, &r.Output, &r.Example, &r.Repo, &r.CommitID, &r.Creator, &r.CreateTime, &r.UpdatedBy, &r.UpdateTime, &r.Addi, &r.Status, &r.Order, &r.GroupID, &r.QuestionAttachmentsPath)
+		`SELECT id, score, type, content, options, answers, analysis, title, answer_file_path, test_file_path, input, output, example, repo, commit_id, creator, create_time, updated_by, update_time, addi, status, order, group_id, question_attachments_path FROM t_exam_paper_question WHERE id = $1`,
+		pk0).Scan(&r.ID, &r.Score, &r.Type, &r.Content, &r.Options, &r.Answers, &r.Analysis, &r.Title, &r.AnswerFilePath, &r.TestFilePath, &r.Input, &r.Output, &r.Example, &r.Repo, &r.CommitID, &r.Creator, &r.CreateTime, &r.UpdatedBy, &r.UpdateTime, &r.Addi, &r.Status, &r.Order, &r.GroupID, &r.QuestionAttachmentsPath)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to select t_exam_paper_question")
 	}
 	return &r, nil
+}
+
+// GetTExamPaperQuestionReflectValuesMap returns a map of field names to their values.
+//
+// key is the tag name, value is the field value.
+// This is useful for reflection and dynamic queries.
+func (r *TExamPaperQuestion) GetTExamPaperQuestionReflectValuesMap() (map[string]any, error) {
+
+	values := make(map[string]any)
+	v := reflect.ValueOf(r).Elem()
+	t := v.Type()
+	for i := range v.NumField() {
+		field := t.Field(i)
+		tag := field.Tag.Get("db")
+		if tag == "" {
+			return nil, errors.Errorf("missing db tag for field %s in table t_exam_paper_question", field.Name)
+		}
+
+		columnName := strings.Split(tag, ",")[0]
+		if columnName == "" {
+			return nil, errors.Errorf("missing column name for field %s in table t_exam_paper_question", field.Name)
+		}
+
+		fieldValue := reflect.ValueOf(r).Elem().Field(i)
+		if !fieldValue.IsValid() {
+			return nil, errors.Errorf("invalid field value for field %s in table t_exam_paper_question", field.Name)
+		}
+
+		if !fieldValue.CanAddr() {
+			return nil, errors.Errorf("cannot read field value for field %s in table t_exam_paper_question", field.Name)
+		}
+
+		values[columnName] = fieldValue.Addr().Interface()
+	}
+
+	return values, nil
 }
 
 /*TExamRecord t_exam_record represents assessuser.t_exam_record */
@@ -1238,7 +3099,7 @@ type TExamRecord struct {
 	UpdateTime  null.Int       `json:"UpdateTime,omitempty" db:"update_time,false,timestamp without time zone"` /* update_time 最近一次更新的时间 */
 	Addi        types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                                    /* addi 附加信息 */
 	Status      null.String    `json:"Status,omitempty" db:"status,false,character varying"`                    /* status 状态码 00:正常 02:失效(删除) */
-	Filter                     // build DML where clause
+	Filter                                                                                                      // build DML where clause
 }
 
 // TExamRecordFields full field list for default query
@@ -1254,6 +3115,70 @@ var TExamRecordFields = []string{
 	"UpdateTime",
 	"Addi",
 	"Status",
+}
+
+// TExamRecordColumns full column list for default query
+var TExamRecordColumns = []string{
+	"id",
+	"exam_room",
+	"exam_session",
+	"content",
+	"basic_eval",
+	"creator",
+	"create_time",
+	"updated_by",
+	"update_time",
+	"addi",
+	"status",
+}
+
+// TExamRecordColumnsDataTypes full column data types for default query
+var TExamRecordColumnsDataTypes = map[string]string{
+	"id":           "integer",
+	"exam_room":    "bigint",
+	"exam_session": "bigint",
+	"content":      "character varying",
+	"basic_eval":   "character varying",
+	"creator":      "bigint",
+	"create_time":  "timestamp without time zone",
+	"updated_by":   "bigint",
+	"update_time":  "timestamp without time zone",
+	"addi":         "jsonb",
+	"status":       "character varying",
+}
+
+// GetFieldsMap returns a map of field names to their values.
+func (r *TExamRecord) GetFieldsMap() map[string]any {
+	return map[string]any{
+		"ID":          r.ID,
+		"ExamRoom":    r.ExamRoom,
+		"ExamSession": r.ExamSession,
+		"Content":     r.Content,
+		"BasicEval":   r.BasicEval,
+		"Creator":     r.Creator,
+		"CreateTime":  r.CreateTime,
+		"UpdatedBy":   r.UpdatedBy,
+		"UpdateTime":  r.UpdateTime,
+		"Addi":        r.Addi,
+		"Status":      r.Status,
+	}
+}
+
+// GetColumnsMap returns a map of column names to their values.
+func (r *TExamRecord) GetColumnsMap() map[string]any {
+	return map[string]any{
+		"id":           r.ID,
+		"exam_room":    r.ExamRoom,
+		"exam_session": r.ExamSession,
+		"content":      r.Content,
+		"basic_eval":   r.BasicEval,
+		"creator":      r.Creator,
+		"create_time":  r.CreateTime,
+		"updated_by":   r.UpdatedBy,
+		"update_time":  r.UpdateTime,
+		"addi":         r.Addi,
+		"status":       r.Status,
+	}
 }
 
 // Fields return all fields of struct.
@@ -1295,6 +3220,42 @@ func GetTExamRecordByPk(db Queryer, pk0 null.Int) (*TExamRecord, error) {
 	return &r, nil
 }
 
+// GetTExamRecordReflectValuesMap returns a map of field names to their values.
+//
+// key is the tag name, value is the field value.
+// This is useful for reflection and dynamic queries.
+func (r *TExamRecord) GetTExamRecordReflectValuesMap() (map[string]any, error) {
+
+	values := make(map[string]any)
+	v := reflect.ValueOf(r).Elem()
+	t := v.Type()
+	for i := range v.NumField() {
+		field := t.Field(i)
+		tag := field.Tag.Get("db")
+		if tag == "" {
+			return nil, errors.Errorf("missing db tag for field %s in table t_exam_record", field.Name)
+		}
+
+		columnName := strings.Split(tag, ",")[0]
+		if columnName == "" {
+			return nil, errors.Errorf("missing column name for field %s in table t_exam_record", field.Name)
+		}
+
+		fieldValue := reflect.ValueOf(r).Elem().Field(i)
+		if !fieldValue.IsValid() {
+			return nil, errors.Errorf("invalid field value for field %s in table t_exam_record", field.Name)
+		}
+
+		if !fieldValue.CanAddr() {
+			return nil, errors.Errorf("cannot read field value for field %s in table t_exam_record", field.Name)
+		}
+
+		values[columnName] = fieldValue.Addr().Interface()
+	}
+
+	return values, nil
+}
+
 /*TExamRoom t_exam_room represents assessuser.t_exam_room */
 type TExamRoom struct {
 	ID         null.Int       `json:"ID,omitempty" db:"id,true,integer"`                                       /* id 考场编号 */
@@ -1307,7 +3268,7 @@ type TExamRoom struct {
 	UpdateTime null.Int       `json:"UpdateTime,omitempty" db:"update_time,false,timestamp without time zone"` /* update_time 更新时间 */
 	Status     null.String    `json:"Status,omitempty" db:"status,false,character varying"`                    /* status 考场状态 00：正常 02：故障 04：占用 06：已删除 */
 	Addi       types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                                    /* addi 附加信息 */
-	Filter                    // build DML where clause
+	Filter                                                                                                     // build DML where clause
 }
 
 // TExamRoomFields full field list for default query
@@ -1322,6 +3283,66 @@ var TExamRoomFields = []string{
 	"UpdateTime",
 	"Status",
 	"Addi",
+}
+
+// TExamRoomColumns full column list for default query
+var TExamRoomColumns = []string{
+	"id",
+	"exam_site",
+	"name",
+	"capacity",
+	"creator",
+	"create_time",
+	"updated_by",
+	"update_time",
+	"status",
+	"addi",
+}
+
+// TExamRoomColumnsDataTypes full column data types for default query
+var TExamRoomColumnsDataTypes = map[string]string{
+	"id":          "integer",
+	"exam_site":   "bigint",
+	"name":        "character varying",
+	"capacity":    "integer",
+	"creator":     "bigint",
+	"create_time": "timestamp without time zone",
+	"updated_by":  "bigint",
+	"update_time": "timestamp without time zone",
+	"status":      "character varying",
+	"addi":        "jsonb",
+}
+
+// GetFieldsMap returns a map of field names to their values.
+func (r *TExamRoom) GetFieldsMap() map[string]any {
+	return map[string]any{
+		"ID":         r.ID,
+		"ExamSite":   r.ExamSite,
+		"Name":       r.Name,
+		"Capacity":   r.Capacity,
+		"Creator":    r.Creator,
+		"CreateTime": r.CreateTime,
+		"UpdatedBy":  r.UpdatedBy,
+		"UpdateTime": r.UpdateTime,
+		"Status":     r.Status,
+		"Addi":       r.Addi,
+	}
+}
+
+// GetColumnsMap returns a map of column names to their values.
+func (r *TExamRoom) GetColumnsMap() map[string]any {
+	return map[string]any{
+		"id":          r.ID,
+		"exam_site":   r.ExamSite,
+		"name":        r.Name,
+		"capacity":    r.Capacity,
+		"creator":     r.Creator,
+		"create_time": r.CreateTime,
+		"updated_by":  r.UpdatedBy,
+		"update_time": r.UpdateTime,
+		"status":      r.Status,
+		"addi":        r.Addi,
+	}
 }
 
 // Fields return all fields of struct.
@@ -1363,6 +3384,42 @@ func GetTExamRoomByPk(db Queryer, pk0 null.Int) (*TExamRoom, error) {
 	return &r, nil
 }
 
+// GetTExamRoomReflectValuesMap returns a map of field names to their values.
+//
+// key is the tag name, value is the field value.
+// This is useful for reflection and dynamic queries.
+func (r *TExamRoom) GetTExamRoomReflectValuesMap() (map[string]any, error) {
+
+	values := make(map[string]any)
+	v := reflect.ValueOf(r).Elem()
+	t := v.Type()
+	for i := range v.NumField() {
+		field := t.Field(i)
+		tag := field.Tag.Get("db")
+		if tag == "" {
+			return nil, errors.Errorf("missing db tag for field %s in table t_exam_room", field.Name)
+		}
+
+		columnName := strings.Split(tag, ",")[0]
+		if columnName == "" {
+			return nil, errors.Errorf("missing column name for field %s in table t_exam_room", field.Name)
+		}
+
+		fieldValue := reflect.ValueOf(r).Elem().Field(i)
+		if !fieldValue.IsValid() {
+			return nil, errors.Errorf("invalid field value for field %s in table t_exam_room", field.Name)
+		}
+
+		if !fieldValue.CanAddr() {
+			return nil, errors.Errorf("cannot read field value for field %s in table t_exam_room", field.Name)
+		}
+
+		values[columnName] = fieldValue.Addr().Interface()
+	}
+
+	return values, nil
+}
+
 /*TExamSession t_exam_session represents assessuser.t_exam_session */
 type TExamSession struct {
 	ID                   null.Int       `json:"ID,omitempty" db:"id,true,integer"`                                                  /* id 编号 */
@@ -1376,7 +3433,7 @@ type TExamSession struct {
 	NameVisibilityIn     null.Bool      `json:"NameVisibilityIn,omitempty" db:"name_visibility_in,false,boolean"`                   /* name_visibility_in 当需要人工批卷时，是否需要在批改中显示学生姓名 */
 	Creator              null.Int       `json:"Creator,omitempty" db:"creator,false,bigint"`                                        /* creator 创建者 */
 	UpdatedBy            null.Int       `json:"UpdatedBy,omitempty" db:"updated_by,false,bigint"`                                   /* updated_by 更新者 */
-	Status               null.String    `json:"Status,omitempty" db:"status,false,character varying"`                               /* status 状态 00：未发布 01：待开始  02：进行中 04：已结束 06：已删除 08：批改中 10：已批改 12：已提交 14：待同步 */
+	Status               null.String    `json:"Status,omitempty" db:"status,false,character varying"`                               /* status 状态 00：未发布 02：待开始  04：进行中 06：已结束  08：批改中 10：已批改 12：已提交 14：已删除 */
 	Addi                 types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                                               /* addi 附加信息 */
 	SessionNum           null.Int       `json:"SessionNum,omitempty" db:"session_num,false,bigint"`                                 /* session_num session_num */
 	LateEntryTime        null.Int       `json:"LateEntryTime,omitempty" db:"late_entry_time,false,bigint"`                          /* late_entry_time 考试开始后最晚能进入考场的时间，如考试开始后30分钟内可进入考场 */
@@ -1390,7 +3447,7 @@ type TExamSession struct {
 	UpdateTime           null.Int       `json:"UpdateTime,omitempty" db:"update_time,false,bigint"`                                 /* update_time 更新时间 */
 	StartTime            null.Int       `json:"StartTime,omitempty" db:"start_time,false,bigint"`                                   /* start_time 考试开始时间 */
 	EndTime              null.Int       `json:"EndTime,omitempty" db:"end_time,false,bigint"`                                       /* end_time 考试结束时间 */
-	Filter                              // build DML where clause
+	Filter                                                                                                                          // build DML where clause
 }
 
 // TExamSessionFields full field list for default query
@@ -1420,6 +3477,126 @@ var TExamSessionFields = []string{
 	"UpdateTime",
 	"StartTime",
 	"EndTime",
+}
+
+// TExamSessionColumns full column list for default query
+var TExamSessionColumns = []string{
+	"id",
+	"exam_id",
+	"paper_id",
+	"mark_method",
+	"period_mode",
+	"duration",
+	"question_shuffled_mode",
+	"mark_mode",
+	"name_visibility_in",
+	"creator",
+	"updated_by",
+	"status",
+	"addi",
+	"session_num",
+	"late_entry_time",
+	"early_submission_time",
+	"reviewer_ids",
+	"basic_eval",
+	"record",
+	"paper_name",
+	"paper_category",
+	"create_time",
+	"update_time",
+	"start_time",
+	"end_time",
+}
+
+// TExamSessionColumnsDataTypes full column data types for default query
+var TExamSessionColumnsDataTypes = map[string]string{
+	"id":                     "integer",
+	"exam_id":                "bigint",
+	"paper_id":               "bigint",
+	"mark_method":            "character varying",
+	"period_mode":            "character varying",
+	"duration":               "integer",
+	"question_shuffled_mode": "character varying",
+	"mark_mode":              "character varying",
+	"name_visibility_in":     "boolean",
+	"creator":                "bigint",
+	"updated_by":             "bigint",
+	"status":                 "character varying",
+	"addi":                   "jsonb",
+	"session_num":            "bigint",
+	"late_entry_time":        "bigint",
+	"early_submission_time":  "bigint",
+	"reviewer_ids":           "bigint[]",
+	"basic_eval":             "character varying",
+	"record":                 "character varying",
+	"paper_name":             "character varying",
+	"paper_category":         "character varying",
+	"create_time":            "bigint",
+	"update_time":            "bigint",
+	"start_time":             "bigint",
+	"end_time":               "bigint",
+}
+
+// GetFieldsMap returns a map of field names to their values.
+func (r *TExamSession) GetFieldsMap() map[string]any {
+	return map[string]any{
+		"ID":                   r.ID,
+		"ExamID":               r.ExamID,
+		"PaperID":              r.PaperID,
+		"MarkMethod":           r.MarkMethod,
+		"PeriodMode":           r.PeriodMode,
+		"Duration":             r.Duration,
+		"QuestionShuffledMode": r.QuestionShuffledMode,
+		"MarkMode":             r.MarkMode,
+		"NameVisibilityIn":     r.NameVisibilityIn,
+		"Creator":              r.Creator,
+		"UpdatedBy":            r.UpdatedBy,
+		"Status":               r.Status,
+		"Addi":                 r.Addi,
+		"SessionNum":           r.SessionNum,
+		"LateEntryTime":        r.LateEntryTime,
+		"EarlySubmissionTime":  r.EarlySubmissionTime,
+		"ReviewerIds":          r.ReviewerIds,
+		"BasicEval":            r.BasicEval,
+		"Record":               r.Record,
+		"PaperName":            r.PaperName,
+		"PaperCategory":        r.PaperCategory,
+		"CreateTime":           r.CreateTime,
+		"UpdateTime":           r.UpdateTime,
+		"StartTime":            r.StartTime,
+		"EndTime":              r.EndTime,
+	}
+}
+
+// GetColumnsMap returns a map of column names to their values.
+func (r *TExamSession) GetColumnsMap() map[string]any {
+	return map[string]any{
+		"id":                     r.ID,
+		"exam_id":                r.ExamID,
+		"paper_id":               r.PaperID,
+		"mark_method":            r.MarkMethod,
+		"period_mode":            r.PeriodMode,
+		"duration":               r.Duration,
+		"question_shuffled_mode": r.QuestionShuffledMode,
+		"mark_mode":              r.MarkMode,
+		"name_visibility_in":     r.NameVisibilityIn,
+		"creator":                r.Creator,
+		"updated_by":             r.UpdatedBy,
+		"status":                 r.Status,
+		"addi":                   r.Addi,
+		"session_num":            r.SessionNum,
+		"late_entry_time":        r.LateEntryTime,
+		"early_submission_time":  r.EarlySubmissionTime,
+		"reviewer_ids":           r.ReviewerIds,
+		"basic_eval":             r.BasicEval,
+		"record":                 r.Record,
+		"paper_name":             r.PaperName,
+		"paper_category":         r.PaperCategory,
+		"create_time":            r.CreateTime,
+		"update_time":            r.UpdateTime,
+		"start_time":             r.StartTime,
+		"end_time":               r.EndTime,
+	}
 }
 
 // Fields return all fields of struct.
@@ -1461,6 +3638,42 @@ func GetTExamSessionByPk(db Queryer, pk0 null.Int) (*TExamSession, error) {
 	return &r, nil
 }
 
+// GetTExamSessionReflectValuesMap returns a map of field names to their values.
+//
+// key is the tag name, value is the field value.
+// This is useful for reflection and dynamic queries.
+func (r *TExamSession) GetTExamSessionReflectValuesMap() (map[string]any, error) {
+
+	values := make(map[string]any)
+	v := reflect.ValueOf(r).Elem()
+	t := v.Type()
+	for i := range v.NumField() {
+		field := t.Field(i)
+		tag := field.Tag.Get("db")
+		if tag == "" {
+			return nil, errors.Errorf("missing db tag for field %s in table t_exam_session", field.Name)
+		}
+
+		columnName := strings.Split(tag, ",")[0]
+		if columnName == "" {
+			return nil, errors.Errorf("missing column name for field %s in table t_exam_session", field.Name)
+		}
+
+		fieldValue := reflect.ValueOf(r).Elem().Field(i)
+		if !fieldValue.IsValid() {
+			return nil, errors.Errorf("invalid field value for field %s in table t_exam_session", field.Name)
+		}
+
+		if !fieldValue.CanAddr() {
+			return nil, errors.Errorf("cannot read field value for field %s in table t_exam_session", field.Name)
+		}
+
+		values[columnName] = fieldValue.Addr().Interface()
+	}
+
+	return values, nil
+}
+
 /*TExamSite t_exam_site represents assessuser.t_exam_site */
 type TExamSite struct {
 	ID         null.Int       `json:"ID,omitempty" db:"id,true,integer"`                                       /* id 考点编号 */
@@ -1474,7 +3687,7 @@ type TExamSite struct {
 	Status     null.String    `json:"Status,omitempty" db:"status,false,character varying"`                    /* status 考点状态 00：空闲 02：故障 04：删除 */
 	Addi       types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                                    /* addi 附加信息 */
 	Admin      null.Int       `json:"Admin,omitempty" db:"admin,false,bigint"`                                 /* admin 考点负责人 */
-	Filter                    // build DML where clause
+	Filter                                                                                                     // build DML where clause
 }
 
 // TExamSiteFields full field list for default query
@@ -1490,6 +3703,70 @@ var TExamSiteFields = []string{
 	"Status",
 	"Addi",
 	"Admin",
+}
+
+// TExamSiteColumns full column list for default query
+var TExamSiteColumns = []string{
+	"id",
+	"name",
+	"address",
+	"server_host",
+	"creator",
+	"create_time",
+	"updated_by",
+	"update_time",
+	"status",
+	"addi",
+	"admin",
+}
+
+// TExamSiteColumnsDataTypes full column data types for default query
+var TExamSiteColumnsDataTypes = map[string]string{
+	"id":          "integer",
+	"name":        "character varying",
+	"address":     "character varying",
+	"server_host": "character varying",
+	"creator":     "bigint",
+	"create_time": "timestamp without time zone",
+	"updated_by":  "bigint",
+	"update_time": "timestamp without time zone",
+	"status":      "character varying",
+	"addi":        "jsonb",
+	"admin":       "bigint",
+}
+
+// GetFieldsMap returns a map of field names to their values.
+func (r *TExamSite) GetFieldsMap() map[string]any {
+	return map[string]any{
+		"ID":         r.ID,
+		"Name":       r.Name,
+		"Address":    r.Address,
+		"ServerHost": r.ServerHost,
+		"Creator":    r.Creator,
+		"CreateTime": r.CreateTime,
+		"UpdatedBy":  r.UpdatedBy,
+		"UpdateTime": r.UpdateTime,
+		"Status":     r.Status,
+		"Addi":       r.Addi,
+		"Admin":      r.Admin,
+	}
+}
+
+// GetColumnsMap returns a map of column names to their values.
+func (r *TExamSite) GetColumnsMap() map[string]any {
+	return map[string]any{
+		"id":          r.ID,
+		"name":        r.Name,
+		"address":     r.Address,
+		"server_host": r.ServerHost,
+		"creator":     r.Creator,
+		"create_time": r.CreateTime,
+		"updated_by":  r.UpdatedBy,
+		"update_time": r.UpdateTime,
+		"status":      r.Status,
+		"addi":        r.Addi,
+		"admin":       r.Admin,
+	}
 }
 
 // Fields return all fields of struct.
@@ -1531,6 +3808,42 @@ func GetTExamSiteByPk(db Queryer, pk0 null.Int) (*TExamSite, error) {
 	return &r, nil
 }
 
+// GetTExamSiteReflectValuesMap returns a map of field names to their values.
+//
+// key is the tag name, value is the field value.
+// This is useful for reflection and dynamic queries.
+func (r *TExamSite) GetTExamSiteReflectValuesMap() (map[string]any, error) {
+
+	values := make(map[string]any)
+	v := reflect.ValueOf(r).Elem()
+	t := v.Type()
+	for i := range v.NumField() {
+		field := t.Field(i)
+		tag := field.Tag.Get("db")
+		if tag == "" {
+			return nil, errors.Errorf("missing db tag for field %s in table t_exam_site", field.Name)
+		}
+
+		columnName := strings.Split(tag, ",")[0]
+		if columnName == "" {
+			return nil, errors.Errorf("missing column name for field %s in table t_exam_site", field.Name)
+		}
+
+		fieldValue := reflect.ValueOf(r).Elem().Field(i)
+		if !fieldValue.IsValid() {
+			return nil, errors.Errorf("invalid field value for field %s in table t_exam_site", field.Name)
+		}
+
+		if !fieldValue.CanAddr() {
+			return nil, errors.Errorf("cannot read field value for field %s in table t_exam_site", field.Name)
+		}
+
+		values[columnName] = fieldValue.Addr().Interface()
+	}
+
+	return values, nil
+}
+
 /*TExaminee t_examinee represents assessuser.t_examinee */
 type TExaminee struct {
 	ID             null.Int       `json:"ID,omitempty" db:"id,true,integer"`                                     /* id id */
@@ -1551,7 +3864,7 @@ type TExaminee struct {
 	UpdateTime     null.Int       `json:"UpdateTime,omitempty" db:"update_time,false,bigint"`                    /* update_time 更新时间 */
 	StartTime      null.Int       `json:"StartTime,omitempty" db:"start_time,false,bigint"`                      /* start_time 学生考试开始时间 */
 	EndTime        null.Int       `json:"EndTime,omitempty" db:"end_time,false,bigint"`                          /* end_time 学生结束考试的时间 */
-	Filter                        // build DML where clause
+	Filter                                                                                                       // build DML where clause
 }
 
 // TExamineeFields full field list for default query
@@ -1574,6 +3887,98 @@ var TExamineeFields = []string{
 	"UpdateTime",
 	"StartTime",
 	"EndTime",
+}
+
+// TExamineeColumns full column list for default query
+var TExamineeColumns = []string{
+	"id",
+	"student_id",
+	"exam_room",
+	"exam_session_id",
+	"exam_paper_id",
+	"remark",
+	"creator",
+	"updated_by",
+	"status",
+	"addi",
+	"serial_number",
+	"examinee_number",
+	"extra_time",
+	"exit_cnt",
+	"create_time",
+	"update_time",
+	"start_time",
+	"end_time",
+}
+
+// TExamineeColumnsDataTypes full column data types for default query
+var TExamineeColumnsDataTypes = map[string]string{
+	"id":              "integer",
+	"student_id":      "bigint",
+	"exam_room":       "bigint",
+	"exam_session_id": "bigint",
+	"exam_paper_id":   "bigint",
+	"remark":          "character varying",
+	"creator":         "bigint",
+	"updated_by":      "bigint",
+	"status":          "character varying",
+	"addi":            "jsonb",
+	"serial_number":   "integer",
+	"examinee_number": "character varying",
+	"extra_time":      "interval",
+	"exit_cnt":        "integer",
+	"create_time":     "bigint",
+	"update_time":     "bigint",
+	"start_time":      "bigint",
+	"end_time":        "bigint",
+}
+
+// GetFieldsMap returns a map of field names to their values.
+func (r *TExaminee) GetFieldsMap() map[string]any {
+	return map[string]any{
+		"ID":             r.ID,
+		"StudentID":      r.StudentID,
+		"ExamRoom":       r.ExamRoom,
+		"ExamSessionID":  r.ExamSessionID,
+		"ExamPaperID":    r.ExamPaperID,
+		"Remark":         r.Remark,
+		"Creator":        r.Creator,
+		"UpdatedBy":      r.UpdatedBy,
+		"Status":         r.Status,
+		"Addi":           r.Addi,
+		"SerialNumber":   r.SerialNumber,
+		"ExamineeNumber": r.ExamineeNumber,
+		"ExtraTime":      r.ExtraTime,
+		"ExitCnt":        r.ExitCnt,
+		"CreateTime":     r.CreateTime,
+		"UpdateTime":     r.UpdateTime,
+		"StartTime":      r.StartTime,
+		"EndTime":        r.EndTime,
+	}
+}
+
+// GetColumnsMap returns a map of column names to their values.
+func (r *TExaminee) GetColumnsMap() map[string]any {
+	return map[string]any{
+		"id":              r.ID,
+		"student_id":      r.StudentID,
+		"exam_room":       r.ExamRoom,
+		"exam_session_id": r.ExamSessionID,
+		"exam_paper_id":   r.ExamPaperID,
+		"remark":          r.Remark,
+		"creator":         r.Creator,
+		"updated_by":      r.UpdatedBy,
+		"status":          r.Status,
+		"addi":            r.Addi,
+		"serial_number":   r.SerialNumber,
+		"examinee_number": r.ExamineeNumber,
+		"extra_time":      r.ExtraTime,
+		"exit_cnt":        r.ExitCnt,
+		"create_time":     r.CreateTime,
+		"update_time":     r.UpdateTime,
+		"start_time":      r.StartTime,
+		"end_time":        r.EndTime,
+	}
 }
 
 // Fields return all fields of struct.
@@ -1615,6 +4020,42 @@ func GetTExamineeByPk(db Queryer, pk0 null.Int) (*TExaminee, error) {
 	return &r, nil
 }
 
+// GetTExamineeReflectValuesMap returns a map of field names to their values.
+//
+// key is the tag name, value is the field value.
+// This is useful for reflection and dynamic queries.
+func (r *TExaminee) GetTExamineeReflectValuesMap() (map[string]any, error) {
+
+	values := make(map[string]any)
+	v := reflect.ValueOf(r).Elem()
+	t := v.Type()
+	for i := range v.NumField() {
+		field := t.Field(i)
+		tag := field.Tag.Get("db")
+		if tag == "" {
+			return nil, errors.Errorf("missing db tag for field %s in table t_examinee", field.Name)
+		}
+
+		columnName := strings.Split(tag, ",")[0]
+		if columnName == "" {
+			return nil, errors.Errorf("missing column name for field %s in table t_examinee", field.Name)
+		}
+
+		fieldValue := reflect.ValueOf(r).Elem().Field(i)
+		if !fieldValue.IsValid() {
+			return nil, errors.Errorf("invalid field value for field %s in table t_examinee", field.Name)
+		}
+
+		if !fieldValue.CanAddr() {
+			return nil, errors.Errorf("cannot read field value for field %s in table t_examinee", field.Name)
+		}
+
+		values[columnName] = fieldValue.Addr().Interface()
+	}
+
+	return values, nil
+}
+
 /*TExpertise 知识能力领域表 represents assessuser.t_expertise */
 type TExpertise struct {
 	ID         null.Int    `json:"ID,omitempty" db:"id,true,integer"`                    /* id 编号 */
@@ -1625,7 +4066,7 @@ type TExpertise struct {
 	CreateTime null.Int    `json:"CreateTime,omitempty" db:"create_time,false,bigint"`   /* create_time 创建时间 */
 	UpdateTime null.Int    `json:"UpdateTime,omitempty" db:"update_time,false,bigint"`   /* update_time 更新时间 */
 	Status     null.String `json:"Status,omitempty" db:"status,false,character varying"` /* status 可用，禁用 */
-	Filter                 // build DML where clause
+	Filter                                                                               // build DML where clause
 }
 
 // TExpertiseFields full field list for default query
@@ -1638,6 +4079,58 @@ var TExpertiseFields = []string{
 	"CreateTime",
 	"UpdateTime",
 	"Status",
+}
+
+// TExpertiseColumns full column list for default query
+var TExpertiseColumns = []string{
+	"id",
+	"belongto",
+	"name",
+	"limn",
+	"creator",
+	"create_time",
+	"update_time",
+	"status",
+}
+
+// TExpertiseColumnsDataTypes full column data types for default query
+var TExpertiseColumnsDataTypes = map[string]string{
+	"id":          "integer",
+	"belongto":    "bigint",
+	"name":        "character varying",
+	"limn":        "character varying",
+	"creator":     "bigint",
+	"create_time": "bigint",
+	"update_time": "bigint",
+	"status":      "character varying",
+}
+
+// GetFieldsMap returns a map of field names to their values.
+func (r *TExpertise) GetFieldsMap() map[string]any {
+	return map[string]any{
+		"ID":         r.ID,
+		"Belongto":   r.Belongto,
+		"Name":       r.Name,
+		"Limn":       r.Limn,
+		"Creator":    r.Creator,
+		"CreateTime": r.CreateTime,
+		"UpdateTime": r.UpdateTime,
+		"Status":     r.Status,
+	}
+}
+
+// GetColumnsMap returns a map of column names to their values.
+func (r *TExpertise) GetColumnsMap() map[string]any {
+	return map[string]any{
+		"id":          r.ID,
+		"belongto":    r.Belongto,
+		"name":        r.Name,
+		"limn":        r.Limn,
+		"creator":     r.Creator,
+		"create_time": r.CreateTime,
+		"update_time": r.UpdateTime,
+		"status":      r.Status,
+	}
 }
 
 // Fields return all fields of struct.
@@ -1679,6 +4172,42 @@ func GetTExpertiseByPk(db Queryer, pk0 null.Int) (*TExpertise, error) {
 	return &r, nil
 }
 
+// GetTExpertiseReflectValuesMap returns a map of field names to their values.
+//
+// key is the tag name, value is the field value.
+// This is useful for reflection and dynamic queries.
+func (r *TExpertise) GetTExpertiseReflectValuesMap() (map[string]any, error) {
+
+	values := make(map[string]any)
+	v := reflect.ValueOf(r).Elem()
+	t := v.Type()
+	for i := range v.NumField() {
+		field := t.Field(i)
+		tag := field.Tag.Get("db")
+		if tag == "" {
+			return nil, errors.Errorf("missing db tag for field %s in table t_expertise", field.Name)
+		}
+
+		columnName := strings.Split(tag, ",")[0]
+		if columnName == "" {
+			return nil, errors.Errorf("missing column name for field %s in table t_expertise", field.Name)
+		}
+
+		fieldValue := reflect.ValueOf(r).Elem().Field(i)
+		if !fieldValue.IsValid() {
+			return nil, errors.Errorf("invalid field value for field %s in table t_expertise", field.Name)
+		}
+
+		if !fieldValue.CanAddr() {
+			return nil, errors.Errorf("cannot read field value for field %s in table t_expertise", field.Name)
+		}
+
+		values[columnName] = fieldValue.Addr().Interface()
+	}
+
+	return values, nil
+}
+
 /*TExternalDomainConf 外部系统访问标识 represents assessuser.t_external_domain_conf */
 type TExternalDomainConf struct {
 	ID      null.Int       `json:"ID,omitempty" db:"id,true,integer"`                       /* id 编号 */
@@ -1697,7 +4226,7 @@ type TExternalDomainConf struct {
 	Addi       types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                 /* addi 附加信息 */
 	Remark     null.String    `json:"Remark,omitempty" db:"remark,false,character varying"` /* remark 备注 */
 	Status     null.String    `json:"Status,omitempty" db:"status,false,character varying"` /* status 状态，00：草稿，02：有效，04: 停用，06：作废 */
-	Filter                    // build DML where clause
+	Filter                                                                                  // build DML where clause
 }
 
 // TExternalDomainConfFields full field list for default query
@@ -1715,6 +4244,78 @@ var TExternalDomainConfFields = []string{
 	"Addi",
 	"Remark",
 	"Status",
+}
+
+// TExternalDomainConfColumns full column list for default query
+var TExternalDomainConfColumns = []string{
+	"id",
+	"app_id",
+	"app_type",
+	"app_name",
+	"tokens",
+	"updated_by",
+	"update_time",
+	"creator",
+	"create_time",
+	"domain_id",
+	"addi",
+	"remark",
+	"status",
+}
+
+// TExternalDomainConfColumnsDataTypes full column data types for default query
+var TExternalDomainConfColumnsDataTypes = map[string]string{
+	"id":          "integer",
+	"app_id":      "character varying",
+	"app_type":    "character varying",
+	"app_name":    "character varying",
+	"tokens":      "jsonb",
+	"updated_by":  "bigint",
+	"update_time": "bigint",
+	"creator":     "bigint",
+	"create_time": "bigint",
+	"domain_id":   "bigint",
+	"addi":        "jsonb",
+	"remark":      "character varying",
+	"status":      "character varying",
+}
+
+// GetFieldsMap returns a map of field names to their values.
+func (r *TExternalDomainConf) GetFieldsMap() map[string]any {
+	return map[string]any{
+		"ID":         r.ID,
+		"AppID":      r.AppID,
+		"AppType":    r.AppType,
+		"AppName":    r.AppName,
+		"Tokens":     r.Tokens,
+		"UpdatedBy":  r.UpdatedBy,
+		"UpdateTime": r.UpdateTime,
+		"Creator":    r.Creator,
+		"CreateTime": r.CreateTime,
+		"DomainID":   r.DomainID,
+		"Addi":       r.Addi,
+		"Remark":     r.Remark,
+		"Status":     r.Status,
+	}
+}
+
+// GetColumnsMap returns a map of column names to their values.
+func (r *TExternalDomainConf) GetColumnsMap() map[string]any {
+	return map[string]any{
+		"id":          r.ID,
+		"app_id":      r.AppID,
+		"app_type":    r.AppType,
+		"app_name":    r.AppName,
+		"tokens":      r.Tokens,
+		"updated_by":  r.UpdatedBy,
+		"update_time": r.UpdateTime,
+		"creator":     r.Creator,
+		"create_time": r.CreateTime,
+		"domain_id":   r.DomainID,
+		"addi":        r.Addi,
+		"remark":      r.Remark,
+		"status":      r.Status,
+	}
 }
 
 // Fields return all fields of struct.
@@ -1756,6 +4357,42 @@ func GetTExternalDomainConfByPk(db Queryer, pk0 null.Int) (*TExternalDomainConf,
 	return &r, nil
 }
 
+// GetTExternalDomainConfReflectValuesMap returns a map of field names to their values.
+//
+// key is the tag name, value is the field value.
+// This is useful for reflection and dynamic queries.
+func (r *TExternalDomainConf) GetTExternalDomainConfReflectValuesMap() (map[string]any, error) {
+
+	values := make(map[string]any)
+	v := reflect.ValueOf(r).Elem()
+	t := v.Type()
+	for i := range v.NumField() {
+		field := t.Field(i)
+		tag := field.Tag.Get("db")
+		if tag == "" {
+			return nil, errors.Errorf("missing db tag for field %s in table t_external_domain_conf", field.Name)
+		}
+
+		columnName := strings.Split(tag, ",")[0]
+		if columnName == "" {
+			return nil, errors.Errorf("missing column name for field %s in table t_external_domain_conf", field.Name)
+		}
+
+		fieldValue := reflect.ValueOf(r).Elem().Field(i)
+		if !fieldValue.IsValid() {
+			return nil, errors.Errorf("invalid field value for field %s in table t_external_domain_conf", field.Name)
+		}
+
+		if !fieldValue.CanAddr() {
+			return nil, errors.Errorf("cannot read field value for field %s in table t_external_domain_conf", field.Name)
+		}
+
+		values[columnName] = fieldValue.Addr().Interface()
+	}
+
+	return values, nil
+}
+
 /*TExternalDomainUser 第三方平台用户标识 represents assessuser.t_external_domain_user */
 type TExternalDomainUser struct {
 	ID                null.Int       `json:"ID,omitempty" db:"id,true,integer"`                                             /* id 编号 */
@@ -1770,7 +4407,7 @@ type TExternalDomainUser struct {
 	DomainID          null.Int       `json:"DomainID,omitempty" db:"domain_id,false,bigint"`                                /* domain_id 数据隶属 */
 	Addi              types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                                          /* addi 附加信息 */
 	Status            null.String    `json:"Status,omitempty" db:"status,false,character varying"`                          /* status 状态，00：草稿，02：有效，04：禁用，06：作废 */
-	Filter                           // build DML where clause
+	Filter                                                                                                                  // build DML where clause
 }
 
 // TExternalDomainUserFields full field list for default query
@@ -1787,6 +4424,74 @@ var TExternalDomainUserFields = []string{
 	"DomainID",
 	"Addi",
 	"Status",
+}
+
+// TExternalDomainUserColumns full column list for default query
+var TExternalDomainUserColumns = []string{
+	"id",
+	"user_id",
+	"business_domain_id",
+	"user_domain_id",
+	"user_domain_union_id",
+	"apply_to",
+	"domain_type",
+	"creator",
+	"create_time",
+	"domain_id",
+	"addi",
+	"status",
+}
+
+// TExternalDomainUserColumnsDataTypes full column data types for default query
+var TExternalDomainUserColumnsDataTypes = map[string]string{
+	"id":                   "integer",
+	"user_id":              "bigint",
+	"business_domain_id":   "character varying",
+	"user_domain_id":       "character varying",
+	"user_domain_union_id": "character varying",
+	"apply_to":             "character varying",
+	"domain_type":          "character varying",
+	"creator":              "bigint",
+	"create_time":          "bigint",
+	"domain_id":            "bigint",
+	"addi":                 "jsonb",
+	"status":               "character varying",
+}
+
+// GetFieldsMap returns a map of field names to their values.
+func (r *TExternalDomainUser) GetFieldsMap() map[string]any {
+	return map[string]any{
+		"ID":                r.ID,
+		"UserID":            r.UserID,
+		"BusinessDomainID":  r.BusinessDomainID,
+		"UserDomainID":      r.UserDomainID,
+		"UserDomainUnionID": r.UserDomainUnionID,
+		"ApplyTo":           r.ApplyTo,
+		"DomainType":        r.DomainType,
+		"Creator":           r.Creator,
+		"CreateTime":        r.CreateTime,
+		"DomainID":          r.DomainID,
+		"Addi":              r.Addi,
+		"Status":            r.Status,
+	}
+}
+
+// GetColumnsMap returns a map of column names to their values.
+func (r *TExternalDomainUser) GetColumnsMap() map[string]any {
+	return map[string]any{
+		"id":                   r.ID,
+		"user_id":              r.UserID,
+		"business_domain_id":   r.BusinessDomainID,
+		"user_domain_id":       r.UserDomainID,
+		"user_domain_union_id": r.UserDomainUnionID,
+		"apply_to":             r.ApplyTo,
+		"domain_type":          r.DomainType,
+		"creator":              r.Creator,
+		"create_time":          r.CreateTime,
+		"domain_id":            r.DomainID,
+		"addi":                 r.Addi,
+		"status":               r.Status,
+	}
 }
 
 // Fields return all fields of struct.
@@ -1828,6 +4533,42 @@ func GetTExternalDomainUserByPk(db Queryer, pk0 null.Int) (*TExternalDomainUser,
 	return &r, nil
 }
 
+// GetTExternalDomainUserReflectValuesMap returns a map of field names to their values.
+//
+// key is the tag name, value is the field value.
+// This is useful for reflection and dynamic queries.
+func (r *TExternalDomainUser) GetTExternalDomainUserReflectValuesMap() (map[string]any, error) {
+
+	values := make(map[string]any)
+	v := reflect.ValueOf(r).Elem()
+	t := v.Type()
+	for i := range v.NumField() {
+		field := t.Field(i)
+		tag := field.Tag.Get("db")
+		if tag == "" {
+			return nil, errors.Errorf("missing db tag for field %s in table t_external_domain_user", field.Name)
+		}
+
+		columnName := strings.Split(tag, ",")[0]
+		if columnName == "" {
+			return nil, errors.Errorf("missing column name for field %s in table t_external_domain_user", field.Name)
+		}
+
+		fieldValue := reflect.ValueOf(r).Elem().Field(i)
+		if !fieldValue.IsValid() {
+			return nil, errors.Errorf("invalid field value for field %s in table t_external_domain_user", field.Name)
+		}
+
+		if !fieldValue.CanAddr() {
+			return nil, errors.Errorf("cannot read field value for field %s in table t_external_domain_user", field.Name)
+		}
+
+		values[columnName] = fieldValue.Addr().Interface()
+	}
+
+	return values, nil
+}
+
 /*TFile 文件描述表 represents assessuser.t_file */
 type TFile struct {
 	ID           null.Int       `json:"ID,omitempty" db:"id,true,integer"`                                 /* id 编号 */
@@ -1847,7 +4588,7 @@ type TFile struct {
 	OriginName   null.String    `json:"OriginName,omitempty" db:"origin_name,false,character varying"`     /* origin_name 用户上传文件名 */
 	Addi         types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                              /* addi 附加信息 */
 	Status       null.String    `json:"Status,omitempty" db:"status,false,character varying"`              /* status 0:有效, 2: 丢失 */
-	Filter                      // build DML where clause
+	Filter                                                                                                 // build DML where clause
 }
 
 // TFileFields full field list for default query
@@ -1869,6 +4610,94 @@ var TFileFields = []string{
 	"OriginName",
 	"Addi",
 	"Status",
+}
+
+// TFileColumns full column list for default query
+var TFileColumns = []string{
+	"id",
+	"file_oid",
+	"file_name",
+	"path",
+	"belongto_path",
+	"digest",
+	"size",
+	"create_time",
+	"creator",
+	"domain_id",
+	"count",
+	"belongto",
+	"limn",
+	"origin_path",
+	"origin_name",
+	"addi",
+	"status",
+}
+
+// TFileColumnsDataTypes full column data types for default query
+var TFileColumnsDataTypes = map[string]string{
+	"id":            "integer",
+	"file_oid":      "oid",
+	"file_name":     "character varying",
+	"path":          "character varying",
+	"belongto_path": "character varying",
+	"digest":        "character varying",
+	"size":          "bigint",
+	"create_time":   "bigint",
+	"creator":       "bigint",
+	"domain_id":     "bigint",
+	"count":         "integer",
+	"belongto":      "bigint",
+	"limn":          "character varying",
+	"origin_path":   "character varying",
+	"origin_name":   "character varying",
+	"addi":          "jsonb",
+	"status":        "character varying",
+}
+
+// GetFieldsMap returns a map of field names to their values.
+func (r *TFile) GetFieldsMap() map[string]any {
+	return map[string]any{
+		"ID":           r.ID,
+		"FileOid":      r.FileOid,
+		"FileName":     r.FileName,
+		"Path":         r.Path,
+		"BelongtoPath": r.BelongtoPath,
+		"Digest":       r.Digest,
+		"Size":         r.Size,
+		"CreateTime":   r.CreateTime,
+		"Creator":      r.Creator,
+		"DomainID":     r.DomainID,
+		"Count":        r.Count,
+		"Belongto":     r.Belongto,
+		"Limn":         r.Limn,
+		"OriginPath":   r.OriginPath,
+		"OriginName":   r.OriginName,
+		"Addi":         r.Addi,
+		"Status":       r.Status,
+	}
+}
+
+// GetColumnsMap returns a map of column names to their values.
+func (r *TFile) GetColumnsMap() map[string]any {
+	return map[string]any{
+		"id":            r.ID,
+		"file_oid":      r.FileOid,
+		"file_name":     r.FileName,
+		"path":          r.Path,
+		"belongto_path": r.BelongtoPath,
+		"digest":        r.Digest,
+		"size":          r.Size,
+		"create_time":   r.CreateTime,
+		"creator":       r.Creator,
+		"domain_id":     r.DomainID,
+		"count":         r.Count,
+		"belongto":      r.Belongto,
+		"limn":          r.Limn,
+		"origin_path":   r.OriginPath,
+		"origin_name":   r.OriginName,
+		"addi":          r.Addi,
+		"status":        r.Status,
+	}
 }
 
 // Fields return all fields of struct.
@@ -1910,6 +4739,42 @@ func GetTFileByPk(db Queryer, pk0 null.Int) (*TFile, error) {
 	return &r, nil
 }
 
+// GetTFileReflectValuesMap returns a map of field names to their values.
+//
+// key is the tag name, value is the field value.
+// This is useful for reflection and dynamic queries.
+func (r *TFile) GetTFileReflectValuesMap() (map[string]any, error) {
+
+	values := make(map[string]any)
+	v := reflect.ValueOf(r).Elem()
+	t := v.Type()
+	for i := range v.NumField() {
+		field := t.Field(i)
+		tag := field.Tag.Get("db")
+		if tag == "" {
+			return nil, errors.Errorf("missing db tag for field %s in table t_file", field.Name)
+		}
+
+		columnName := strings.Split(tag, ",")[0]
+		if columnName == "" {
+			return nil, errors.Errorf("missing column name for field %s in table t_file", field.Name)
+		}
+
+		fieldValue := reflect.ValueOf(r).Elem().Field(i)
+		if !fieldValue.IsValid() {
+			return nil, errors.Errorf("invalid field value for field %s in table t_file", field.Name)
+		}
+
+		if !fieldValue.CanAddr() {
+			return nil, errors.Errorf("cannot read field value for field %s in table t_file", field.Name)
+		}
+
+		values[columnName] = fieldValue.Addr().Interface()
+	}
+
+	return values, nil
+}
+
 /*TGroup 聊天群，设计参考微信群 represents assessuser.t_group */
 type TGroup struct {
 	ID             null.Int       `json:"ID,omitempty" db:"id,true,integer"`                           /* id 编号 */
@@ -1928,7 +4793,7 @@ type TGroup struct {
 	Addi           types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                        /* addi 附加信息 */
 	Remark         null.String    `json:"Remark,omitempty" db:"remark,false,character varying"`        /* remark 备注 */
 	Status         null.String    `json:"Status,omitempty" db:"status,false,character varying"`        /* status 状态，00：草稿，01：有效，02：作废 */
-	Filter                        // build DML where clause
+	Filter                                                                                             // build DML where clause
 }
 
 // TGroupFields full field list for default query
@@ -1949,6 +4814,90 @@ var TGroupFields = []string{
 	"Addi",
 	"Remark",
 	"Status",
+}
+
+// TGroupColumns full column list for default query
+var TGroupColumns = []string{
+	"id",
+	"name",
+	"bulletin",
+	"admin",
+	"owner",
+	"naming_by_admin",
+	"invitation_need",
+	"realm",
+	"creator",
+	"create_time",
+	"updated_by",
+	"update_time",
+	"domain_id",
+	"addi",
+	"remark",
+	"status",
+}
+
+// TGroupColumnsDataTypes full column data types for default query
+var TGroupColumnsDataTypes = map[string]string{
+	"id":              "integer",
+	"name":            "character varying",
+	"bulletin":        "character varying",
+	"admin":           "jsonb",
+	"owner":           "bigint",
+	"naming_by_admin": "boolean",
+	"invitation_need": "boolean",
+	"realm":           "character varying",
+	"creator":         "bigint",
+	"create_time":     "bigint",
+	"updated_by":      "bigint",
+	"update_time":     "bigint",
+	"domain_id":       "bigint",
+	"addi":            "jsonb",
+	"remark":          "character varying",
+	"status":          "character varying",
+}
+
+// GetFieldsMap returns a map of field names to their values.
+func (r *TGroup) GetFieldsMap() map[string]any {
+	return map[string]any{
+		"ID":             r.ID,
+		"Name":           r.Name,
+		"Bulletin":       r.Bulletin,
+		"Admin":          r.Admin,
+		"Owner":          r.Owner,
+		"NamingByAdmin":  r.NamingByAdmin,
+		"InvitationNeed": r.InvitationNeed,
+		"Realm":          r.Realm,
+		"Creator":        r.Creator,
+		"CreateTime":     r.CreateTime,
+		"UpdatedBy":      r.UpdatedBy,
+		"UpdateTime":     r.UpdateTime,
+		"DomainID":       r.DomainID,
+		"Addi":           r.Addi,
+		"Remark":         r.Remark,
+		"Status":         r.Status,
+	}
+}
+
+// GetColumnsMap returns a map of column names to their values.
+func (r *TGroup) GetColumnsMap() map[string]any {
+	return map[string]any{
+		"id":              r.ID,
+		"name":            r.Name,
+		"bulletin":        r.Bulletin,
+		"admin":           r.Admin,
+		"owner":           r.Owner,
+		"naming_by_admin": r.NamingByAdmin,
+		"invitation_need": r.InvitationNeed,
+		"realm":           r.Realm,
+		"creator":         r.Creator,
+		"create_time":     r.CreateTime,
+		"updated_by":      r.UpdatedBy,
+		"update_time":     r.UpdateTime,
+		"domain_id":       r.DomainID,
+		"addi":            r.Addi,
+		"remark":          r.Remark,
+		"status":          r.Status,
+	}
 }
 
 // Fields return all fields of struct.
@@ -1990,6 +4939,42 @@ func GetTGroupByPk(db Queryer, pk0 null.Int) (*TGroup, error) {
 	return &r, nil
 }
 
+// GetTGroupReflectValuesMap returns a map of field names to their values.
+//
+// key is the tag name, value is the field value.
+// This is useful for reflection and dynamic queries.
+func (r *TGroup) GetTGroupReflectValuesMap() (map[string]any, error) {
+
+	values := make(map[string]any)
+	v := reflect.ValueOf(r).Elem()
+	t := v.Type()
+	for i := range v.NumField() {
+		field := t.Field(i)
+		tag := field.Tag.Get("db")
+		if tag == "" {
+			return nil, errors.Errorf("missing db tag for field %s in table t_group", field.Name)
+		}
+
+		columnName := strings.Split(tag, ",")[0]
+		if columnName == "" {
+			return nil, errors.Errorf("missing column name for field %s in table t_group", field.Name)
+		}
+
+		fieldValue := reflect.ValueOf(r).Elem().Field(i)
+		if !fieldValue.IsValid() {
+			return nil, errors.Errorf("invalid field value for field %s in table t_group", field.Name)
+		}
+
+		if !fieldValue.CanAddr() {
+			return nil, errors.Errorf("cannot read field value for field %s in table t_group", field.Name)
+		}
+
+		values[columnName] = fieldValue.Addr().Interface()
+	}
+
+	return values, nil
+}
+
 /*TImportData excel导入表 represents assessuser.t_import_data */
 type TImportData struct {
 	ID         null.Int       `json:"ID,omitempty" db:"id,true,integer"`                             /* id 参数编号 */
@@ -2010,7 +4995,7 @@ type TImportData struct {
 	Addi       types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                          /* addi 附加信息 */
 	Remark     null.String    `json:"Remark,omitempty" db:"remark,false,character varying"`          /* remark 备注 */
 	Status     null.String    `json:"Status,omitempty" db:"status,false,character varying"`          /* status 状态，00：草稿，01：有效，02：作废 */
-	Filter                    // build DML where clause
+	Filter                                                                                           // build DML where clause
 }
 
 // TImportDataFields full field list for default query
@@ -2033,6 +5018,98 @@ var TImportDataFields = []string{
 	"Addi",
 	"Remark",
 	"Status",
+}
+
+// TImportDataColumns full column list for default query
+var TImportDataColumns = []string{
+	"id",
+	"name",
+	"category",
+	"key",
+	"entity_id",
+	"struct",
+	"base",
+	"data",
+	"file",
+	"file_digest",
+	"domain_id",
+	"create_time",
+	"creator",
+	"updated_by",
+	"update_time",
+	"addi",
+	"remark",
+	"status",
+}
+
+// TImportDataColumnsDataTypes full column data types for default query
+var TImportDataColumnsDataTypes = map[string]string{
+	"id":          "integer",
+	"name":        "character varying",
+	"category":    "character varying",
+	"key":         "character varying",
+	"entity_id":   "character varying",
+	"struct":      "jsonb",
+	"base":        "jsonb",
+	"data":        "jsonb",
+	"file":        "jsonb",
+	"file_digest": "character varying",
+	"domain_id":   "bigint",
+	"create_time": "bigint",
+	"creator":     "bigint",
+	"updated_by":  "bigint",
+	"update_time": "bigint",
+	"addi":        "jsonb",
+	"remark":      "character varying",
+	"status":      "character varying",
+}
+
+// GetFieldsMap returns a map of field names to their values.
+func (r *TImportData) GetFieldsMap() map[string]any {
+	return map[string]any{
+		"ID":         r.ID,
+		"Name":       r.Name,
+		"Category":   r.Category,
+		"Key":        r.Key,
+		"EntityID":   r.EntityID,
+		"Struct":     r.Struct,
+		"Base":       r.Base,
+		"Data":       r.Data,
+		"File":       r.File,
+		"FileDigest": r.FileDigest,
+		"DomainID":   r.DomainID,
+		"CreateTime": r.CreateTime,
+		"Creator":    r.Creator,
+		"UpdatedBy":  r.UpdatedBy,
+		"UpdateTime": r.UpdateTime,
+		"Addi":       r.Addi,
+		"Remark":     r.Remark,
+		"Status":     r.Status,
+	}
+}
+
+// GetColumnsMap returns a map of column names to their values.
+func (r *TImportData) GetColumnsMap() map[string]any {
+	return map[string]any{
+		"id":          r.ID,
+		"name":        r.Name,
+		"category":    r.Category,
+		"key":         r.Key,
+		"entity_id":   r.EntityID,
+		"struct":      r.Struct,
+		"base":        r.Base,
+		"data":        r.Data,
+		"file":        r.File,
+		"file_digest": r.FileDigest,
+		"domain_id":   r.DomainID,
+		"create_time": r.CreateTime,
+		"creator":     r.Creator,
+		"updated_by":  r.UpdatedBy,
+		"update_time": r.UpdateTime,
+		"addi":        r.Addi,
+		"remark":      r.Remark,
+		"status":      r.Status,
+	}
 }
 
 // Fields return all fields of struct.
@@ -2072,6 +5149,42 @@ func GetTImportDataByPk(db Queryer, pk0 null.Int) (*TImportData, error) {
 		return nil, errors.Wrap(err, "failed to select t_import_data")
 	}
 	return &r, nil
+}
+
+// GetTImportDataReflectValuesMap returns a map of field names to their values.
+//
+// key is the tag name, value is the field value.
+// This is useful for reflection and dynamic queries.
+func (r *TImportData) GetTImportDataReflectValuesMap() (map[string]any, error) {
+
+	values := make(map[string]any)
+	v := reflect.ValueOf(r).Elem()
+	t := v.Type()
+	for i := range v.NumField() {
+		field := t.Field(i)
+		tag := field.Tag.Get("db")
+		if tag == "" {
+			return nil, errors.Errorf("missing db tag for field %s in table t_import_data", field.Name)
+		}
+
+		columnName := strings.Split(tag, ",")[0]
+		if columnName == "" {
+			return nil, errors.Errorf("missing column name for field %s in table t_import_data", field.Name)
+		}
+
+		fieldValue := reflect.ValueOf(r).Elem().Field(i)
+		if !fieldValue.IsValid() {
+			return nil, errors.Errorf("invalid field value for field %s in table t_import_data", field.Name)
+		}
+
+		if !fieldValue.CanAddr() {
+			return nil, errors.Errorf("cannot read field value for field %s in table t_import_data", field.Name)
+		}
+
+		values[columnName] = fieldValue.Addr().Interface()
+	}
+
+	return values, nil
 }
 
 /*TInsurancePolicy 保险单 represents assessuser.t_insurance_policy */
@@ -2176,7 +5289,7 @@ type TInsurancePolicy struct {
 	Addi             types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                                       /* addi 附加数据 */
 	Remark           null.String    `json:"Remark,omitempty" db:"remark,false,character varying"`                       /* remark 备注 */
 	Status           null.String    `json:"Status,omitempty" db:"status,false,character varying"`                       /* status 一期，0：受理中，2：在保，4：过保, 6: 作废。二期，00: 正常, 04: 重新录单, 08: 撤消, 12: 续保, 16: 已重新录单, 20: 退保, 24: 拒保 */
-	Filter                          // build DML where clause
+	Filter                                                                                                              // build DML where clause
 }
 
 // TInsurancePolicyFields full field list for default query
@@ -2276,6 +5389,398 @@ var TInsurancePolicyFields = []string{
 	"Status",
 }
 
+// TInsurancePolicyColumns full column list for default query
+var TInsurancePolicyColumns = []string{
+	"id",
+	"sn",
+	"sn_creator",
+	"name",
+	"order_id",
+	"policy",
+	"start",
+	"cease",
+	"year",
+	"duration",
+	"premium",
+	"third_party_premium",
+	"third_party_account",
+	"pay_time",
+	"pay_channel",
+	"pay_type",
+	"unit_price",
+	"org_id",
+	"org_manager_id",
+	"policyholder_type",
+	"policyholder",
+	"policyholder_id",
+	"insurance_type",
+	"insurance_type_id",
+	"policy_scheme",
+	"activity_name",
+	"activity_category",
+	"activity_desc",
+	"activity_location",
+	"activity_date_set",
+	"insured_count",
+	"compulsory_student_num",
+	"non_compulsory_student_num",
+	"contact",
+	"fee_scheme",
+	"car_service_target",
+	"same",
+	"relation",
+	"insured",
+	"insured_id",
+	"have_insured_list",
+	"insured_group_by_day",
+	"insured_type",
+	"insured_list",
+	"indate",
+	"jurisdiction",
+	"dispute_handling",
+	"prev_policy_no",
+	"insure_base",
+	"blanket_insure_code",
+	"custom_type",
+	"train_projects",
+	"business_locations",
+	"arbitral_agency",
+	"pool_num",
+	"open_pool_num",
+	"heated_pool_num",
+	"training_pool_num",
+	"inner_area",
+	"outer_area",
+	"pool_name",
+	"have_dinner_num",
+	"dinner_num",
+	"canteen_num",
+	"shop_num",
+	"have_rides",
+	"have_explosive",
+	"area",
+	"traffic_num",
+	"temperature_type",
+	"is_indoor",
+	"extra",
+	"bank_account",
+	"pay_contact",
+	"have_sudden_death",
+	"sudden_death_terms",
+	"spec_agreement",
+	"reminders_num",
+	"is_entry_policy",
+	"is_admin_pay",
+	"policy_enroll_time",
+	"zero_pay_status",
+	"external_status",
+	"cancel_desc",
+	"favorite",
+	"creator",
+	"create_time",
+	"updated_by",
+	"update_time",
+	"domain_id",
+	"addi",
+	"remark",
+	"status",
+}
+
+// TInsurancePolicyColumnsDataTypes full column data types for default query
+var TInsurancePolicyColumnsDataTypes = map[string]string{
+	"id":                         "integer",
+	"sn":                         "character varying",
+	"sn_creator":                 "bigint",
+	"name":                       "character varying",
+	"order_id":                   "bigint",
+	"policy":                     "character varying",
+	"start":                      "bigint",
+	"cease":                      "bigint",
+	"year":                       "smallint",
+	"duration":                   "bigint",
+	"premium":                    "double precision",
+	"third_party_premium":        "double precision",
+	"third_party_account":        "character varying",
+	"pay_time":                   "bigint",
+	"pay_channel":                "character varying",
+	"pay_type":                   "character varying",
+	"unit_price":                 "double precision",
+	"org_id":                     "bigint",
+	"org_manager_id":             "bigint",
+	"policyholder_type":          "character varying",
+	"policyholder":               "jsonb",
+	"policyholder_id":            "bigint",
+	"insurance_type":             "character varying",
+	"insurance_type_id":          "bigint",
+	"policy_scheme":              "jsonb",
+	"activity_name":              "character varying",
+	"activity_category":          "character varying",
+	"activity_desc":              "character varying",
+	"activity_location":          "character varying",
+	"activity_date_set":          "character varying",
+	"insured_count":              "smallint",
+	"compulsory_student_num":     "bigint",
+	"non_compulsory_student_num": "bigint",
+	"contact":                    "jsonb",
+	"fee_scheme":                 "jsonb",
+	"car_service_target":         "character varying",
+	"same":                       "boolean",
+	"relation":                   "character varying",
+	"insured":                    "jsonb",
+	"insured_id":                 "bigint",
+	"have_insured_list":          "boolean",
+	"insured_group_by_day":       "boolean",
+	"insured_type":               "character varying",
+	"insured_list":               "jsonb",
+	"indate":                     "bigint",
+	"jurisdiction":               "character varying",
+	"dispute_handling":           "character varying",
+	"prev_policy_no":             "character varying",
+	"insure_base":                "character varying",
+	"blanket_insure_code":        "character varying",
+	"custom_type":                "character varying",
+	"train_projects":             "character varying",
+	"business_locations":         "jsonb",
+	"arbitral_agency":            "character varying",
+	"pool_num":                   "smallint",
+	"open_pool_num":              "smallint",
+	"heated_pool_num":            "smallint",
+	"training_pool_num":          "smallint",
+	"inner_area":                 "double precision",
+	"outer_area":                 "double precision",
+	"pool_name":                  "character varying",
+	"have_dinner_num":            "boolean",
+	"dinner_num":                 "integer",
+	"canteen_num":                "integer",
+	"shop_num":                   "integer",
+	"have_rides":                 "boolean",
+	"have_explosive":             "boolean",
+	"area":                       "integer",
+	"traffic_num":                "integer",
+	"temperature_type":           "character varying",
+	"is_indoor":                  "character varying",
+	"extra":                      "jsonb",
+	"bank_account":               "jsonb",
+	"pay_contact":                "character varying",
+	"have_sudden_death":          "boolean",
+	"sudden_death_terms":         "character varying",
+	"spec_agreement":             "character varying",
+	"reminders_num":              "smallint",
+	"is_entry_policy":            "boolean",
+	"is_admin_pay":               "boolean",
+	"policy_enroll_time":         "bigint",
+	"zero_pay_status":            "character varying",
+	"external_status":            "character varying",
+	"cancel_desc":                "character varying",
+	"favorite":                   "boolean",
+	"creator":                    "bigint",
+	"create_time":                "bigint",
+	"updated_by":                 "bigint",
+	"update_time":                "bigint",
+	"domain_id":                  "bigint",
+	"addi":                       "jsonb",
+	"remark":                     "character varying",
+	"status":                     "character varying",
+}
+
+// GetFieldsMap returns a map of field names to their values.
+func (r *TInsurancePolicy) GetFieldsMap() map[string]any {
+	return map[string]any{
+		"ID":                      r.ID,
+		"Sn":                      r.Sn,
+		"SnCreator":               r.SnCreator,
+		"Name":                    r.Name,
+		"OrderID":                 r.OrderID,
+		"Policy":                  r.Policy,
+		"Start":                   r.Start,
+		"Cease":                   r.Cease,
+		"Year":                    r.Year,
+		"Duration":                r.Duration,
+		"Premium":                 r.Premium,
+		"ThirdPartyPremium":       r.ThirdPartyPremium,
+		"ThirdPartyAccount":       r.ThirdPartyAccount,
+		"PayTime":                 r.PayTime,
+		"PayChannel":              r.PayChannel,
+		"PayType":                 r.PayType,
+		"UnitPrice":               r.UnitPrice,
+		"OrgID":                   r.OrgID,
+		"OrgManagerID":            r.OrgManagerID,
+		"PolicyholderType":        r.PolicyholderType,
+		"Policyholder":            r.Policyholder,
+		"PolicyholderID":          r.PolicyholderID,
+		"InsuranceType":           r.InsuranceType,
+		"InsuranceTypeID":         r.InsuranceTypeID,
+		"PolicyScheme":            r.PolicyScheme,
+		"ActivityName":            r.ActivityName,
+		"ActivityCategory":        r.ActivityCategory,
+		"ActivityDesc":            r.ActivityDesc,
+		"ActivityLocation":        r.ActivityLocation,
+		"ActivityDateSet":         r.ActivityDateSet,
+		"InsuredCount":            r.InsuredCount,
+		"CompulsoryStudentNum":    r.CompulsoryStudentNum,
+		"NonCompulsoryStudentNum": r.NonCompulsoryStudentNum,
+		"Contact":                 r.Contact,
+		"FeeScheme":               r.FeeScheme,
+		"CarServiceTarget":        r.CarServiceTarget,
+		"Same":                    r.Same,
+		"Relation":                r.Relation,
+		"Insured":                 r.Insured,
+		"InsuredID":               r.InsuredID,
+		"HaveInsuredList":         r.HaveInsuredList,
+		"InsuredGroupByDay":       r.InsuredGroupByDay,
+		"InsuredType":             r.InsuredType,
+		"InsuredList":             r.InsuredList,
+		"Indate":                  r.Indate,
+		"Jurisdiction":            r.Jurisdiction,
+		"DisputeHandling":         r.DisputeHandling,
+		"PrevPolicyNo":            r.PrevPolicyNo,
+		"InsureBase":              r.InsureBase,
+		"BlanketInsureCode":       r.BlanketInsureCode,
+		"CustomType":              r.CustomType,
+		"TrainProjects":           r.TrainProjects,
+		"BusinessLocations":       r.BusinessLocations,
+		"ArbitralAgency":          r.ArbitralAgency,
+		"PoolNum":                 r.PoolNum,
+		"OpenPoolNum":             r.OpenPoolNum,
+		"HeatedPoolNum":           r.HeatedPoolNum,
+		"TrainingPoolNum":         r.TrainingPoolNum,
+		"InnerArea":               r.InnerArea,
+		"OuterArea":               r.OuterArea,
+		"PoolName":                r.PoolName,
+		"HaveDinnerNum":           r.HaveDinnerNum,
+		"DinnerNum":               r.DinnerNum,
+		"CanteenNum":              r.CanteenNum,
+		"ShopNum":                 r.ShopNum,
+		"HaveRides":               r.HaveRides,
+		"HaveExplosive":           r.HaveExplosive,
+		"Area":                    r.Area,
+		"TrafficNum":              r.TrafficNum,
+		"TemperatureType":         r.TemperatureType,
+		"IsIndoor":                r.IsIndoor,
+		"Extra":                   r.Extra,
+		"BankAccount":             r.BankAccount,
+		"PayContact":              r.PayContact,
+		"HaveSuddenDeath":         r.HaveSuddenDeath,
+		"SuddenDeathTerms":        r.SuddenDeathTerms,
+		"SpecAgreement":           r.SpecAgreement,
+		"RemindersNum":            r.RemindersNum,
+		"IsEntryPolicy":           r.IsEntryPolicy,
+		"IsAdminPay":              r.IsAdminPay,
+		"PolicyEnrollTime":        r.PolicyEnrollTime,
+		"ZeroPayStatus":           r.ZeroPayStatus,
+		"ExternalStatus":          r.ExternalStatus,
+		"CancelDesc":              r.CancelDesc,
+		"Favorite":                r.Favorite,
+		"Creator":                 r.Creator,
+		"CreateTime":              r.CreateTime,
+		"UpdatedBy":               r.UpdatedBy,
+		"UpdateTime":              r.UpdateTime,
+		"DomainID":                r.DomainID,
+		"Addi":                    r.Addi,
+		"Remark":                  r.Remark,
+		"Status":                  r.Status,
+	}
+}
+
+// GetColumnsMap returns a map of column names to their values.
+func (r *TInsurancePolicy) GetColumnsMap() map[string]any {
+	return map[string]any{
+		"id":                         r.ID,
+		"sn":                         r.Sn,
+		"sn_creator":                 r.SnCreator,
+		"name":                       r.Name,
+		"order_id":                   r.OrderID,
+		"policy":                     r.Policy,
+		"start":                      r.Start,
+		"cease":                      r.Cease,
+		"year":                       r.Year,
+		"duration":                   r.Duration,
+		"premium":                    r.Premium,
+		"third_party_premium":        r.ThirdPartyPremium,
+		"third_party_account":        r.ThirdPartyAccount,
+		"pay_time":                   r.PayTime,
+		"pay_channel":                r.PayChannel,
+		"pay_type":                   r.PayType,
+		"unit_price":                 r.UnitPrice,
+		"org_id":                     r.OrgID,
+		"org_manager_id":             r.OrgManagerID,
+		"policyholder_type":          r.PolicyholderType,
+		"policyholder":               r.Policyholder,
+		"policyholder_id":            r.PolicyholderID,
+		"insurance_type":             r.InsuranceType,
+		"insurance_type_id":          r.InsuranceTypeID,
+		"policy_scheme":              r.PolicyScheme,
+		"activity_name":              r.ActivityName,
+		"activity_category":          r.ActivityCategory,
+		"activity_desc":              r.ActivityDesc,
+		"activity_location":          r.ActivityLocation,
+		"activity_date_set":          r.ActivityDateSet,
+		"insured_count":              r.InsuredCount,
+		"compulsory_student_num":     r.CompulsoryStudentNum,
+		"non_compulsory_student_num": r.NonCompulsoryStudentNum,
+		"contact":                    r.Contact,
+		"fee_scheme":                 r.FeeScheme,
+		"car_service_target":         r.CarServiceTarget,
+		"same":                       r.Same,
+		"relation":                   r.Relation,
+		"insured":                    r.Insured,
+		"insured_id":                 r.InsuredID,
+		"have_insured_list":          r.HaveInsuredList,
+		"insured_group_by_day":       r.InsuredGroupByDay,
+		"insured_type":               r.InsuredType,
+		"insured_list":               r.InsuredList,
+		"indate":                     r.Indate,
+		"jurisdiction":               r.Jurisdiction,
+		"dispute_handling":           r.DisputeHandling,
+		"prev_policy_no":             r.PrevPolicyNo,
+		"insure_base":                r.InsureBase,
+		"blanket_insure_code":        r.BlanketInsureCode,
+		"custom_type":                r.CustomType,
+		"train_projects":             r.TrainProjects,
+		"business_locations":         r.BusinessLocations,
+		"arbitral_agency":            r.ArbitralAgency,
+		"pool_num":                   r.PoolNum,
+		"open_pool_num":              r.OpenPoolNum,
+		"heated_pool_num":            r.HeatedPoolNum,
+		"training_pool_num":          r.TrainingPoolNum,
+		"inner_area":                 r.InnerArea,
+		"outer_area":                 r.OuterArea,
+		"pool_name":                  r.PoolName,
+		"have_dinner_num":            r.HaveDinnerNum,
+		"dinner_num":                 r.DinnerNum,
+		"canteen_num":                r.CanteenNum,
+		"shop_num":                   r.ShopNum,
+		"have_rides":                 r.HaveRides,
+		"have_explosive":             r.HaveExplosive,
+		"area":                       r.Area,
+		"traffic_num":                r.TrafficNum,
+		"temperature_type":           r.TemperatureType,
+		"is_indoor":                  r.IsIndoor,
+		"extra":                      r.Extra,
+		"bank_account":               r.BankAccount,
+		"pay_contact":                r.PayContact,
+		"have_sudden_death":          r.HaveSuddenDeath,
+		"sudden_death_terms":         r.SuddenDeathTerms,
+		"spec_agreement":             r.SpecAgreement,
+		"reminders_num":              r.RemindersNum,
+		"is_entry_policy":            r.IsEntryPolicy,
+		"is_admin_pay":               r.IsAdminPay,
+		"policy_enroll_time":         r.PolicyEnrollTime,
+		"zero_pay_status":            r.ZeroPayStatus,
+		"external_status":            r.ExternalStatus,
+		"cancel_desc":                r.CancelDesc,
+		"favorite":                   r.Favorite,
+		"creator":                    r.Creator,
+		"create_time":                r.CreateTime,
+		"updated_by":                 r.UpdatedBy,
+		"update_time":                r.UpdateTime,
+		"domain_id":                  r.DomainID,
+		"addi":                       r.Addi,
+		"remark":                     r.Remark,
+		"status":                     r.Status,
+	}
+}
+
 // Fields return all fields of struct.
 func (r *TInsurancePolicy) Fields() []string {
 	return TInsurancePolicyFields
@@ -2313,6 +5818,42 @@ func GetTInsurancePolicyByPk(db Queryer, pk0 null.Int) (*TInsurancePolicy, error
 		return nil, errors.Wrap(err, "failed to select t_insurance_policy")
 	}
 	return &r, nil
+}
+
+// GetTInsurancePolicyReflectValuesMap returns a map of field names to their values.
+//
+// key is the tag name, value is the field value.
+// This is useful for reflection and dynamic queries.
+func (r *TInsurancePolicy) GetTInsurancePolicyReflectValuesMap() (map[string]any, error) {
+
+	values := make(map[string]any)
+	v := reflect.ValueOf(r).Elem()
+	t := v.Type()
+	for i := range v.NumField() {
+		field := t.Field(i)
+		tag := field.Tag.Get("db")
+		if tag == "" {
+			return nil, errors.Errorf("missing db tag for field %s in table t_insurance_policy", field.Name)
+		}
+
+		columnName := strings.Split(tag, ",")[0]
+		if columnName == "" {
+			return nil, errors.Errorf("missing column name for field %s in table t_insurance_policy", field.Name)
+		}
+
+		fieldValue := reflect.ValueOf(r).Elem().Field(i)
+		if !fieldValue.IsValid() {
+			return nil, errors.Errorf("invalid field value for field %s in table t_insurance_policy", field.Name)
+		}
+
+		if !fieldValue.CanAddr() {
+			return nil, errors.Errorf("cannot read field value for field %s in table t_insurance_policy", field.Name)
+		}
+
+		values[columnName] = fieldValue.Addr().Interface()
+	}
+
+	return values, nil
 }
 
 /*TInsuranceTypes 保险类型表 represents assessuser.t_insurance_types */
@@ -2385,7 +5926,7 @@ type TInsuranceTypes struct {
 	DomainID          null.Int       `json:"DomainID,omitempty" db:"domain_id,false,bigint"`                              /* domain_id 数据属主 */
 	Remark            null.String    `json:"Remark,omitempty" db:"remark,false,character varying"`                        /* remark 备注 */
 	Status            null.String    `json:"Status,omitempty" db:"status,false,character varying"`                        /* status 状态, 0: 正常，2:等待推出, 4：禁用，6：作废 */
-	Filter                           // build DML where clause
+	Filter                                                                                                                // build DML where clause
 }
 
 // TInsuranceTypesFields full field list for default query
@@ -2456,6 +5997,282 @@ var TInsuranceTypesFields = []string{
 	"Status",
 }
 
+// TInsuranceTypesColumns full column list for default query
+var TInsuranceTypesColumns = []string{
+	"id",
+	"ref_id",
+	"name",
+	"alias",
+	"data_type",
+	"parent_id",
+	"age_limit",
+	"rule_batch",
+	"org_id",
+	"pay_type",
+	"pay_channel",
+	"pay_name",
+	"bank_account",
+	"bank_account_name",
+	"bank_name",
+	"bank_id",
+	"floor_price",
+	"unit_price",
+	"price",
+	"price_config",
+	"define_level",
+	"layout_order",
+	"layout_level",
+	"list_tpl",
+	"files",
+	"resource",
+	"pic",
+	"sudden_death_description",
+	"description",
+	"auto_fill",
+	"enable_import_list",
+	"have_dinner_num",
+	"invoice_title_update_times",
+	"receipt_account",
+	"transfer_auth_files",
+	"contact",
+	"contact_qr_code",
+	"other_files",
+	"insurer",
+	"underwriter",
+	"remind_days",
+	"mail",
+	"order_repeat_limit",
+	"group_by_max_day",
+	"web_description",
+	"mobile_description",
+	"auto_fill_param",
+	"interval",
+	"max_insure_in_year",
+	"insured_in_month",
+	"insured_start_time",
+	"insured_end_time",
+	"allow_start",
+	"allow_end",
+	"indate_start",
+	"indate_end",
+	"creator",
+	"create_time",
+	"updated_by",
+	"update_time",
+	"addi",
+	"domain_id",
+	"remark",
+	"status",
+}
+
+// TInsuranceTypesColumnsDataTypes full column data types for default query
+var TInsuranceTypesColumnsDataTypes = map[string]string{
+	"id":                         "integer",
+	"ref_id":                     "bigint",
+	"name":                       "character varying",
+	"alias":                      "character varying",
+	"data_type":                  "character varying",
+	"parent_id":                  "bigint",
+	"age_limit":                  "jsonb",
+	"rule_batch":                 "character varying",
+	"org_id":                     "bigint",
+	"pay_type":                   "character varying",
+	"pay_channel":                "character varying",
+	"pay_name":                   "character varying",
+	"bank_account":               "character varying",
+	"bank_account_name":          "character varying",
+	"bank_name":                  "character varying",
+	"bank_id":                    "character varying",
+	"floor_price":                "double precision",
+	"unit_price":                 "double precision",
+	"price":                      "double precision",
+	"price_config":               "jsonb",
+	"define_level":               "smallint",
+	"layout_order":               "smallint",
+	"layout_level":               "smallint",
+	"list_tpl":                   "character varying",
+	"files":                      "jsonb",
+	"resource":                   "jsonb",
+	"pic":                        "character varying",
+	"sudden_death_description":   "jsonb",
+	"description":                "character varying",
+	"auto_fill":                  "character varying",
+	"enable_import_list":         "boolean",
+	"have_dinner_num":            "boolean",
+	"invoice_title_update_times": "smallint",
+	"receipt_account":            "jsonb",
+	"transfer_auth_files":        "jsonb",
+	"contact":                    "jsonb",
+	"contact_qr_code":            "character varying",
+	"other_files":                "jsonb",
+	"insurer":                    "character varying",
+	"underwriter":                "jsonb",
+	"remind_days":                "smallint",
+	"mail":                       "jsonb",
+	"order_repeat_limit":         "smallint",
+	"group_by_max_day":           "smallint",
+	"web_description":            "character varying",
+	"mobile_description":         "character varying",
+	"auto_fill_param":            "jsonb",
+	"interval":                   "bigint",
+	"max_insure_in_year":         "smallint",
+	"insured_in_month":           "smallint",
+	"insured_start_time":         "bigint",
+	"insured_end_time":           "bigint",
+	"allow_start":                "bigint",
+	"allow_end":                  "bigint",
+	"indate_start":               "bigint",
+	"indate_end":                 "bigint",
+	"creator":                    "character varying",
+	"create_time":                "bigint",
+	"updated_by":                 "bigint",
+	"update_time":                "bigint",
+	"addi":                       "jsonb",
+	"domain_id":                  "bigint",
+	"remark":                     "character varying",
+	"status":                     "character varying",
+}
+
+// GetFieldsMap returns a map of field names to their values.
+func (r *TInsuranceTypes) GetFieldsMap() map[string]any {
+	return map[string]any{
+		"ID":                      r.ID,
+		"RefID":                   r.RefID,
+		"Name":                    r.Name,
+		"Alias":                   r.Alias,
+		"DataType":                r.DataType,
+		"ParentID":                r.ParentID,
+		"AgeLimit":                r.AgeLimit,
+		"RuleBatch":               r.RuleBatch,
+		"OrgID":                   r.OrgID,
+		"PayType":                 r.PayType,
+		"PayChannel":              r.PayChannel,
+		"PayName":                 r.PayName,
+		"BankAccount":             r.BankAccount,
+		"BankAccountName":         r.BankAccountName,
+		"BankName":                r.BankName,
+		"BankID":                  r.BankID,
+		"FloorPrice":              r.FloorPrice,
+		"UnitPrice":               r.UnitPrice,
+		"Price":                   r.Price,
+		"PriceConfig":             r.PriceConfig,
+		"DefineLevel":             r.DefineLevel,
+		"LayoutOrder":             r.LayoutOrder,
+		"LayoutLevel":             r.LayoutLevel,
+		"ListTpl":                 r.ListTpl,
+		"Files":                   r.Files,
+		"Resource":                r.Resource,
+		"Pic":                     r.Pic,
+		"SuddenDeathDescription":  r.SuddenDeathDescription,
+		"Description":             r.Description,
+		"AutoFill":                r.AutoFill,
+		"EnableImportList":        r.EnableImportList,
+		"HaveDinnerNum":           r.HaveDinnerNum,
+		"InvoiceTitleUpdateTimes": r.InvoiceTitleUpdateTimes,
+		"ReceiptAccount":          r.ReceiptAccount,
+		"TransferAuthFiles":       r.TransferAuthFiles,
+		"Contact":                 r.Contact,
+		"ContactQrCode":           r.ContactQrCode,
+		"OtherFiles":              r.OtherFiles,
+		"Insurer":                 r.Insurer,
+		"Underwriter":             r.Underwriter,
+		"RemindDays":              r.RemindDays,
+		"Mail":                    r.Mail,
+		"OrderRepeatLimit":        r.OrderRepeatLimit,
+		"GroupByMaxDay":           r.GroupByMaxDay,
+		"WebDescription":          r.WebDescription,
+		"MobileDescription":       r.MobileDescription,
+		"AutoFillParam":           r.AutoFillParam,
+		"Interval":                r.Interval,
+		"MaxInsureInYear":         r.MaxInsureInYear,
+		"InsuredInMonth":          r.InsuredInMonth,
+		"InsuredStartTime":        r.InsuredStartTime,
+		"InsuredEndTime":          r.InsuredEndTime,
+		"AllowStart":              r.AllowStart,
+		"AllowEnd":                r.AllowEnd,
+		"IndateStart":             r.IndateStart,
+		"IndateEnd":               r.IndateEnd,
+		"Creator":                 r.Creator,
+		"CreateTime":              r.CreateTime,
+		"UpdatedBy":               r.UpdatedBy,
+		"UpdateTime":              r.UpdateTime,
+		"Addi":                    r.Addi,
+		"DomainID":                r.DomainID,
+		"Remark":                  r.Remark,
+		"Status":                  r.Status,
+	}
+}
+
+// GetColumnsMap returns a map of column names to their values.
+func (r *TInsuranceTypes) GetColumnsMap() map[string]any {
+	return map[string]any{
+		"id":                         r.ID,
+		"ref_id":                     r.RefID,
+		"name":                       r.Name,
+		"alias":                      r.Alias,
+		"data_type":                  r.DataType,
+		"parent_id":                  r.ParentID,
+		"age_limit":                  r.AgeLimit,
+		"rule_batch":                 r.RuleBatch,
+		"org_id":                     r.OrgID,
+		"pay_type":                   r.PayType,
+		"pay_channel":                r.PayChannel,
+		"pay_name":                   r.PayName,
+		"bank_account":               r.BankAccount,
+		"bank_account_name":          r.BankAccountName,
+		"bank_name":                  r.BankName,
+		"bank_id":                    r.BankID,
+		"floor_price":                r.FloorPrice,
+		"unit_price":                 r.UnitPrice,
+		"price":                      r.Price,
+		"price_config":               r.PriceConfig,
+		"define_level":               r.DefineLevel,
+		"layout_order":               r.LayoutOrder,
+		"layout_level":               r.LayoutLevel,
+		"list_tpl":                   r.ListTpl,
+		"files":                      r.Files,
+		"resource":                   r.Resource,
+		"pic":                        r.Pic,
+		"sudden_death_description":   r.SuddenDeathDescription,
+		"description":                r.Description,
+		"auto_fill":                  r.AutoFill,
+		"enable_import_list":         r.EnableImportList,
+		"have_dinner_num":            r.HaveDinnerNum,
+		"invoice_title_update_times": r.InvoiceTitleUpdateTimes,
+		"receipt_account":            r.ReceiptAccount,
+		"transfer_auth_files":        r.TransferAuthFiles,
+		"contact":                    r.Contact,
+		"contact_qr_code":            r.ContactQrCode,
+		"other_files":                r.OtherFiles,
+		"insurer":                    r.Insurer,
+		"underwriter":                r.Underwriter,
+		"remind_days":                r.RemindDays,
+		"mail":                       r.Mail,
+		"order_repeat_limit":         r.OrderRepeatLimit,
+		"group_by_max_day":           r.GroupByMaxDay,
+		"web_description":            r.WebDescription,
+		"mobile_description":         r.MobileDescription,
+		"auto_fill_param":            r.AutoFillParam,
+		"interval":                   r.Interval,
+		"max_insure_in_year":         r.MaxInsureInYear,
+		"insured_in_month":           r.InsuredInMonth,
+		"insured_start_time":         r.InsuredStartTime,
+		"insured_end_time":           r.InsuredEndTime,
+		"allow_start":                r.AllowStart,
+		"allow_end":                  r.AllowEnd,
+		"indate_start":               r.IndateStart,
+		"indate_end":                 r.IndateEnd,
+		"creator":                    r.Creator,
+		"create_time":                r.CreateTime,
+		"updated_by":                 r.UpdatedBy,
+		"update_time":                r.UpdateTime,
+		"addi":                       r.Addi,
+		"domain_id":                  r.DomainID,
+		"remark":                     r.Remark,
+		"status":                     r.Status,
+	}
+}
+
 // Fields return all fields of struct.
 func (r *TInsuranceTypes) Fields() []string {
 	return TInsuranceTypesFields
@@ -2495,6 +6312,42 @@ func GetTInsuranceTypesByPk(db Queryer, pk0 null.Int) (*TInsuranceTypes, error) 
 	return &r, nil
 }
 
+// GetTInsuranceTypesReflectValuesMap returns a map of field names to their values.
+//
+// key is the tag name, value is the field value.
+// This is useful for reflection and dynamic queries.
+func (r *TInsuranceTypes) GetTInsuranceTypesReflectValuesMap() (map[string]any, error) {
+
+	values := make(map[string]any)
+	v := reflect.ValueOf(r).Elem()
+	t := v.Type()
+	for i := range v.NumField() {
+		field := t.Field(i)
+		tag := field.Tag.Get("db")
+		if tag == "" {
+			return nil, errors.Errorf("missing db tag for field %s in table t_insurance_types", field.Name)
+		}
+
+		columnName := strings.Split(tag, ",")[0]
+		if columnName == "" {
+			return nil, errors.Errorf("missing column name for field %s in table t_insurance_types", field.Name)
+		}
+
+		fieldValue := reflect.ValueOf(r).Elem().Field(i)
+		if !fieldValue.IsValid() {
+			return nil, errors.Errorf("invalid field value for field %s in table t_insurance_types", field.Name)
+		}
+
+		if !fieldValue.CanAddr() {
+			return nil, errors.Errorf("cannot read field value for field %s in table t_insurance_types", field.Name)
+		}
+
+		values[columnName] = fieldValue.Addr().Interface()
+	}
+
+	return values, nil
+}
+
 /*TInsureAttach 保单附件 represents assessuser.t_insure_attach */
 type TInsureAttach struct {
 	ID             null.Int       `json:"ID,omitempty" db:"id,true,integer"`                           /* id 编号 */
@@ -2515,7 +6368,7 @@ type TInsureAttach struct {
 	DomainID       null.Int       `json:"DomainID,omitempty" db:"domain_id,false,bigint"`              /* domain_id 数据属主 */
 	Remark         null.String    `json:"Remark,omitempty" db:"remark,false,character varying"`        /* remark 备注 */
 	Status         null.String    `json:"Status,omitempty" db:"status,false,character varying"`        /* status 状态 */
-	Filter                        // build DML where clause
+	Filter                                                                                             // build DML where clause
 }
 
 // TInsureAttachFields full field list for default query
@@ -2538,6 +6391,98 @@ var TInsureAttachFields = []string{
 	"DomainID",
 	"Remark",
 	"Status",
+}
+
+// TInsureAttachColumns full column list for default query
+var TInsureAttachColumns = []string{
+	"id",
+	"t_u_id",
+	"school_id",
+	"grade",
+	"year",
+	"batch",
+	"policy_no",
+	"insure_policy_id",
+	"others",
+	"files",
+	"creator",
+	"create_time",
+	"updated_by",
+	"update_time",
+	"addi",
+	"domain_id",
+	"remark",
+	"status",
+}
+
+// TInsureAttachColumnsDataTypes full column data types for default query
+var TInsureAttachColumnsDataTypes = map[string]string{
+	"id":               "integer",
+	"t_u_id":           "bigint",
+	"school_id":        "bigint",
+	"grade":            "character varying",
+	"year":             "smallint",
+	"batch":            "character varying",
+	"policy_no":        "character varying",
+	"insure_policy_id": "bigint",
+	"others":           "jsonb",
+	"files":            "jsonb",
+	"creator":          "bigint",
+	"create_time":      "bigint",
+	"updated_by":       "bigint",
+	"update_time":      "bigint",
+	"addi":             "jsonb",
+	"domain_id":        "bigint",
+	"remark":           "character varying",
+	"status":           "character varying",
+}
+
+// GetFieldsMap returns a map of field names to their values.
+func (r *TInsureAttach) GetFieldsMap() map[string]any {
+	return map[string]any{
+		"ID":             r.ID,
+		"TUID":           r.TUID,
+		"SchoolID":       r.SchoolID,
+		"Grade":          r.Grade,
+		"Year":           r.Year,
+		"Batch":          r.Batch,
+		"PolicyNo":       r.PolicyNo,
+		"InsurePolicyID": r.InsurePolicyID,
+		"Others":         r.Others,
+		"Files":          r.Files,
+		"Creator":        r.Creator,
+		"CreateTime":     r.CreateTime,
+		"UpdatedBy":      r.UpdatedBy,
+		"UpdateTime":     r.UpdateTime,
+		"Addi":           r.Addi,
+		"DomainID":       r.DomainID,
+		"Remark":         r.Remark,
+		"Status":         r.Status,
+	}
+}
+
+// GetColumnsMap returns a map of column names to their values.
+func (r *TInsureAttach) GetColumnsMap() map[string]any {
+	return map[string]any{
+		"id":               r.ID,
+		"t_u_id":           r.TUID,
+		"school_id":        r.SchoolID,
+		"grade":            r.Grade,
+		"year":             r.Year,
+		"batch":            r.Batch,
+		"policy_no":        r.PolicyNo,
+		"insure_policy_id": r.InsurePolicyID,
+		"others":           r.Others,
+		"files":            r.Files,
+		"creator":          r.Creator,
+		"create_time":      r.CreateTime,
+		"updated_by":       r.UpdatedBy,
+		"update_time":      r.UpdateTime,
+		"addi":             r.Addi,
+		"domain_id":        r.DomainID,
+		"remark":           r.Remark,
+		"status":           r.Status,
+	}
 }
 
 // Fields return all fields of struct.
@@ -2577,6 +6522,42 @@ func GetTInsureAttachByPk(db Queryer, pk0 null.Int) (*TInsureAttach, error) {
 		return nil, errors.Wrap(err, "failed to select t_insure_attach")
 	}
 	return &r, nil
+}
+
+// GetTInsureAttachReflectValuesMap returns a map of field names to their values.
+//
+// key is the tag name, value is the field value.
+// This is useful for reflection and dynamic queries.
+func (r *TInsureAttach) GetTInsureAttachReflectValuesMap() (map[string]any, error) {
+
+	values := make(map[string]any)
+	v := reflect.ValueOf(r).Elem()
+	t := v.Type()
+	for i := range v.NumField() {
+		field := t.Field(i)
+		tag := field.Tag.Get("db")
+		if tag == "" {
+			return nil, errors.Errorf("missing db tag for field %s in table t_insure_attach", field.Name)
+		}
+
+		columnName := strings.Split(tag, ",")[0]
+		if columnName == "" {
+			return nil, errors.Errorf("missing column name for field %s in table t_insure_attach", field.Name)
+		}
+
+		fieldValue := reflect.ValueOf(r).Elem().Field(i)
+		if !fieldValue.IsValid() {
+			return nil, errors.Errorf("invalid field value for field %s in table t_insure_attach", field.Name)
+		}
+
+		if !fieldValue.CanAddr() {
+			return nil, errors.Errorf("cannot read field value for field %s in table t_insure_attach", field.Name)
+		}
+
+		values[columnName] = fieldValue.Addr().Interface()
+	}
+
+	return values, nil
 }
 
 /*TInsuredDetail 清单表，校车的校车信息 校车承运人存在同一行，但前端分开显示 represents assessuser.t_insured_detail */
@@ -2620,7 +6601,7 @@ type TInsuredDetail struct {
 	Addi                  types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                                        /* addi 附加信息 */
 	Remark                null.String    `json:"Remark,omitempty" db:"remark,false,character varying"`                        /* remark 备注 （实习生) */
 	Status                null.String    `json:"Status,omitempty" db:"status,false,character varying"`                        /* status 状态：0:有效 2:错误  4.拒保 */
-	Filter                               // build DML where clause
+	Filter                                                                                                                    // build DML where clause
 }
 
 // TInsuredDetailFields full field list for default query
@@ -2666,6 +6647,182 @@ var TInsuredDetailFields = []string{
 	"Status",
 }
 
+// TInsuredDetailColumns full column list for default query
+var TInsuredDetailColumns = []string{
+	"id",
+	"type",
+	"sub_type",
+	"order_id",
+	"policy_id",
+	"name",
+	"id_card_no",
+	"gender",
+	"birthday",
+	"role",
+	"org",
+	"class",
+	"group_day",
+	"license_plate_no",
+	"brand",
+	"driver_seat_number",
+	"approved_passengers_num",
+	"seat_num",
+	"road_grade",
+	"driver_license",
+	"driving_license",
+	"action",
+	"err_msg",
+	"province",
+	"city",
+	"district",
+	"addr",
+	"train_item",
+	"other_item",
+	"field_type",
+	"area",
+	"creator",
+	"create_time",
+	"updated_by",
+	"update_time",
+	"domain_id",
+	"addi",
+	"remark",
+	"status",
+}
+
+// TInsuredDetailColumnsDataTypes full column data types for default query
+var TInsuredDetailColumnsDataTypes = map[string]string{
+	"id":                      "integer",
+	"type":                    "character varying",
+	"sub_type":                "character varying",
+	"order_id":                "bigint",
+	"policy_id":               "character varying",
+	"name":                    "character varying",
+	"id_card_no":              "character varying",
+	"gender":                  "character varying",
+	"birthday":                "bigint",
+	"role":                    "character varying",
+	"org":                     "character varying",
+	"class":                   "character varying",
+	"group_day":               "bigint",
+	"license_plate_no":        "character varying",
+	"brand":                   "character varying",
+	"driver_seat_number":      "smallint",
+	"approved_passengers_num": "smallint",
+	"seat_num":                "smallint",
+	"road_grade":              "character varying",
+	"driver_license":          "character varying",
+	"driving_license":         "character varying",
+	"action":                  "character varying",
+	"err_msg":                 "character varying",
+	"province":                "character varying",
+	"city":                    "character varying",
+	"district":                "character varying",
+	"addr":                    "character varying",
+	"train_item":              "character varying",
+	"other_item":              "character varying",
+	"field_type":              "character varying",
+	"area":                    "double precision",
+	"creator":                 "bigint",
+	"create_time":             "bigint",
+	"updated_by":              "bigint",
+	"update_time":             "bigint",
+	"domain_id":               "bigint",
+	"addi":                    "jsonb",
+	"remark":                  "character varying",
+	"status":                  "character varying",
+}
+
+// GetFieldsMap returns a map of field names to their values.
+func (r *TInsuredDetail) GetFieldsMap() map[string]any {
+	return map[string]any{
+		"ID":                    r.ID,
+		"Type":                  r.Type,
+		"SubType":               r.SubType,
+		"OrderID":               r.OrderID,
+		"PolicyID":              r.PolicyID,
+		"Name":                  r.Name,
+		"IDCardNo":              r.IDCardNo,
+		"Gender":                r.Gender,
+		"Birthday":              r.Birthday,
+		"Role":                  r.Role,
+		"Org":                   r.Org,
+		"Class":                 r.Class,
+		"GroupDay":              r.GroupDay,
+		"LicensePlateNo":        r.LicensePlateNo,
+		"Brand":                 r.Brand,
+		"DriverSeatNumber":      r.DriverSeatNumber,
+		"ApprovedPassengersNum": r.ApprovedPassengersNum,
+		"SeatNum":               r.SeatNum,
+		"RoadGrade":             r.RoadGrade,
+		"DriverLicense":         r.DriverLicense,
+		"DrivingLicense":        r.DrivingLicense,
+		"Action":                r.Action,
+		"ErrMsg":                r.ErrMsg,
+		"Province":              r.Province,
+		"City":                  r.City,
+		"District":              r.District,
+		"Addr":                  r.Addr,
+		"TrainItem":             r.TrainItem,
+		"OtherItem":             r.OtherItem,
+		"FieldType":             r.FieldType,
+		"Area":                  r.Area,
+		"Creator":               r.Creator,
+		"CreateTime":            r.CreateTime,
+		"UpdatedBy":             r.UpdatedBy,
+		"UpdateTime":            r.UpdateTime,
+		"DomainID":              r.DomainID,
+		"Addi":                  r.Addi,
+		"Remark":                r.Remark,
+		"Status":                r.Status,
+	}
+}
+
+// GetColumnsMap returns a map of column names to their values.
+func (r *TInsuredDetail) GetColumnsMap() map[string]any {
+	return map[string]any{
+		"id":                      r.ID,
+		"type":                    r.Type,
+		"sub_type":                r.SubType,
+		"order_id":                r.OrderID,
+		"policy_id":               r.PolicyID,
+		"name":                    r.Name,
+		"id_card_no":              r.IDCardNo,
+		"gender":                  r.Gender,
+		"birthday":                r.Birthday,
+		"role":                    r.Role,
+		"org":                     r.Org,
+		"class":                   r.Class,
+		"group_day":               r.GroupDay,
+		"license_plate_no":        r.LicensePlateNo,
+		"brand":                   r.Brand,
+		"driver_seat_number":      r.DriverSeatNumber,
+		"approved_passengers_num": r.ApprovedPassengersNum,
+		"seat_num":                r.SeatNum,
+		"road_grade":              r.RoadGrade,
+		"driver_license":          r.DriverLicense,
+		"driving_license":         r.DrivingLicense,
+		"action":                  r.Action,
+		"err_msg":                 r.ErrMsg,
+		"province":                r.Province,
+		"city":                    r.City,
+		"district":                r.District,
+		"addr":                    r.Addr,
+		"train_item":              r.TrainItem,
+		"other_item":              r.OtherItem,
+		"field_type":              r.FieldType,
+		"area":                    r.Area,
+		"creator":                 r.Creator,
+		"create_time":             r.CreateTime,
+		"updated_by":              r.UpdatedBy,
+		"update_time":             r.UpdateTime,
+		"domain_id":               r.DomainID,
+		"addi":                    r.Addi,
+		"remark":                  r.Remark,
+		"status":                  r.Status,
+	}
+}
+
 // Fields return all fields of struct.
 func (r *TInsuredDetail) Fields() []string {
 	return TInsuredDetailFields
@@ -2705,6 +6862,42 @@ func GetTInsuredDetailByPk(db Queryer, pk0 null.Int) (*TInsuredDetail, error) {
 	return &r, nil
 }
 
+// GetTInsuredDetailReflectValuesMap returns a map of field names to their values.
+//
+// key is the tag name, value is the field value.
+// This is useful for reflection and dynamic queries.
+func (r *TInsuredDetail) GetTInsuredDetailReflectValuesMap() (map[string]any, error) {
+
+	values := make(map[string]any)
+	v := reflect.ValueOf(r).Elem()
+	t := v.Type()
+	for i := range v.NumField() {
+		field := t.Field(i)
+		tag := field.Tag.Get("db")
+		if tag == "" {
+			return nil, errors.Errorf("missing db tag for field %s in table t_insured_detail", field.Name)
+		}
+
+		columnName := strings.Split(tag, ",")[0]
+		if columnName == "" {
+			return nil, errors.Errorf("missing column name for field %s in table t_insured_detail", field.Name)
+		}
+
+		fieldValue := reflect.ValueOf(r).Elem().Field(i)
+		if !fieldValue.IsValid() {
+			return nil, errors.Errorf("invalid field value for field %s in table t_insured_detail", field.Name)
+		}
+
+		if !fieldValue.CanAddr() {
+			return nil, errors.Errorf("cannot read field value for field %s in table t_insured_detail", field.Name)
+		}
+
+		values[columnName] = fieldValue.Addr().Interface()
+	}
+
+	return values, nil
+}
+
 /*TInsuredTerms 保险条款 represents assessuser.t_insured_terms */
 type TInsuredTerms struct {
 	ID              null.Int       `json:"ID,omitempty" db:"id,true,integer"`                             /* id 编号 */
@@ -2721,7 +6914,7 @@ type TInsuredTerms struct {
 	Addi            types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                          /* addi 附加数据 */
 	Remark          null.String    `json:"Remark,omitempty" db:"remark,false,character varying"`          /* remark 备注 */
 	Status          null.String    `json:"Status,omitempty" db:"status,false,character varying"`          /* status 状态0:有效, 2:修改，4删除 */
-	Filter                         // build DML where clause
+	Filter                                                                                                // build DML where clause
 }
 
 // TInsuredTermsFields full field list for default query
@@ -2740,6 +6933,82 @@ var TInsuredTermsFields = []string{
 	"Addi",
 	"Remark",
 	"Status",
+}
+
+// TInsuredTermsColumns full column list for default query
+var TInsuredTermsColumns = []string{
+	"id",
+	"insurance_type_id",
+	"topic",
+	"parent_id",
+	"level",
+	"content",
+	"updated_by",
+	"update_time",
+	"create_time",
+	"creator",
+	"domain_id",
+	"addi",
+	"remark",
+	"status",
+}
+
+// TInsuredTermsColumnsDataTypes full column data types for default query
+var TInsuredTermsColumnsDataTypes = map[string]string{
+	"id":                "integer",
+	"insurance_type_id": "bigint",
+	"topic":             "character varying",
+	"parent_id":         "bigint",
+	"level":             "smallint",
+	"content":           "character varying",
+	"updated_by":        "bigint",
+	"update_time":       "bigint",
+	"create_time":       "bigint",
+	"creator":           "character varying",
+	"domain_id":         "bigint",
+	"addi":              "jsonb",
+	"remark":            "character varying",
+	"status":            "character varying",
+}
+
+// GetFieldsMap returns a map of field names to their values.
+func (r *TInsuredTerms) GetFieldsMap() map[string]any {
+	return map[string]any{
+		"ID":              r.ID,
+		"InsuranceTypeID": r.InsuranceTypeID,
+		"Topic":           r.Topic,
+		"ParentID":        r.ParentID,
+		"Level":           r.Level,
+		"Content":         r.Content,
+		"UpdatedBy":       r.UpdatedBy,
+		"UpdateTime":      r.UpdateTime,
+		"CreateTime":      r.CreateTime,
+		"Creator":         r.Creator,
+		"DomainID":        r.DomainID,
+		"Addi":            r.Addi,
+		"Remark":          r.Remark,
+		"Status":          r.Status,
+	}
+}
+
+// GetColumnsMap returns a map of column names to their values.
+func (r *TInsuredTerms) GetColumnsMap() map[string]any {
+	return map[string]any{
+		"id":                r.ID,
+		"insurance_type_id": r.InsuranceTypeID,
+		"topic":             r.Topic,
+		"parent_id":         r.ParentID,
+		"level":             r.Level,
+		"content":           r.Content,
+		"updated_by":        r.UpdatedBy,
+		"update_time":       r.UpdateTime,
+		"create_time":       r.CreateTime,
+		"creator":           r.Creator,
+		"domain_id":         r.DomainID,
+		"addi":              r.Addi,
+		"remark":            r.Remark,
+		"status":            r.Status,
+	}
 }
 
 // Fields return all fields of struct.
@@ -2781,6 +7050,42 @@ func GetTInsuredTermsByPk(db Queryer, pk0 null.Int) (*TInsuredTerms, error) {
 	return &r, nil
 }
 
+// GetTInsuredTermsReflectValuesMap returns a map of field names to their values.
+//
+// key is the tag name, value is the field value.
+// This is useful for reflection and dynamic queries.
+func (r *TInsuredTerms) GetTInsuredTermsReflectValuesMap() (map[string]any, error) {
+
+	values := make(map[string]any)
+	v := reflect.ValueOf(r).Elem()
+	t := v.Type()
+	for i := range v.NumField() {
+		field := t.Field(i)
+		tag := field.Tag.Get("db")
+		if tag == "" {
+			return nil, errors.Errorf("missing db tag for field %s in table t_insured_terms", field.Name)
+		}
+
+		columnName := strings.Split(tag, ",")[0]
+		if columnName == "" {
+			return nil, errors.Errorf("missing column name for field %s in table t_insured_terms", field.Name)
+		}
+
+		fieldValue := reflect.ValueOf(r).Elem().Field(i)
+		if !fieldValue.IsValid() {
+			return nil, errors.Errorf("invalid field value for field %s in table t_insured_terms", field.Name)
+		}
+
+		if !fieldValue.CanAddr() {
+			return nil, errors.Errorf("cannot read field value for field %s in table t_insured_terms", field.Name)
+		}
+
+		values[columnName] = fieldValue.Addr().Interface()
+	}
+
+	return values, nil
+}
+
 /*TInvigilation t_invigilation represents assessuser.t_invigilation */
 type TInvigilation struct {
 	ID            null.Int       `json:"ID,omitempty" db:"id,true,integer"`                                       /* id 编号 */
@@ -2792,7 +7097,7 @@ type TInvigilation struct {
 	Addi          types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                                    /* addi 附加信息 */
 	Invigilator   null.Int       `json:"Invigilator,omitempty" db:"invigilator,true,bigint"`                      /* invigilator 监考员ID */
 	ExamRoom      null.Int       `json:"ExamRoom,omitempty" db:"exam_room,true,bigint"`                           /* exam_room exam_room */
-	Filter                       // build DML where clause
+	Filter                                                                                                        // build DML where clause
 }
 
 // TInvigilationFields full field list for default query
@@ -2806,6 +7111,62 @@ var TInvigilationFields = []string{
 	"Addi",
 	"Invigilator",
 	"ExamRoom",
+}
+
+// TInvigilationColumns full column list for default query
+var TInvigilationColumns = []string{
+	"id",
+	"exam_session_id",
+	"creator",
+	"create_time",
+	"updated_by",
+	"update_time",
+	"addi",
+	"invigilator",
+	"exam_room",
+}
+
+// TInvigilationColumnsDataTypes full column data types for default query
+var TInvigilationColumnsDataTypes = map[string]string{
+	"id":              "integer",
+	"exam_session_id": "bigint",
+	"creator":         "bigint",
+	"create_time":     "timestamp without time zone",
+	"updated_by":      "bigint",
+	"update_time":     "timestamp without time zone",
+	"addi":            "jsonb",
+	"invigilator":     "bigint",
+	"exam_room":       "bigint",
+}
+
+// GetFieldsMap returns a map of field names to their values.
+func (r *TInvigilation) GetFieldsMap() map[string]any {
+	return map[string]any{
+		"ID":            r.ID,
+		"ExamSessionID": r.ExamSessionID,
+		"Creator":       r.Creator,
+		"CreateTime":    r.CreateTime,
+		"UpdatedBy":     r.UpdatedBy,
+		"UpdateTime":    r.UpdateTime,
+		"Addi":          r.Addi,
+		"Invigilator":   r.Invigilator,
+		"ExamRoom":      r.ExamRoom,
+	}
+}
+
+// GetColumnsMap returns a map of column names to their values.
+func (r *TInvigilation) GetColumnsMap() map[string]any {
+	return map[string]any{
+		"id":              r.ID,
+		"exam_session_id": r.ExamSessionID,
+		"creator":         r.Creator,
+		"create_time":     r.CreateTime,
+		"updated_by":      r.UpdatedBy,
+		"update_time":     r.UpdateTime,
+		"addi":            r.Addi,
+		"invigilator":     r.Invigilator,
+		"exam_room":       r.ExamRoom,
+	}
 }
 
 // Fields return all fields of struct.
@@ -2847,6 +7208,42 @@ func GetTInvigilationByPk(db Queryer, pk0 null.Int, pk1 null.Int, pk7 null.Int, 
 	return &r, nil
 }
 
+// GetTInvigilationReflectValuesMap returns a map of field names to their values.
+//
+// key is the tag name, value is the field value.
+// This is useful for reflection and dynamic queries.
+func (r *TInvigilation) GetTInvigilationReflectValuesMap() (map[string]any, error) {
+
+	values := make(map[string]any)
+	v := reflect.ValueOf(r).Elem()
+	t := v.Type()
+	for i := range v.NumField() {
+		field := t.Field(i)
+		tag := field.Tag.Get("db")
+		if tag == "" {
+			return nil, errors.Errorf("missing db tag for field %s in table t_invigilation", field.Name)
+		}
+
+		columnName := strings.Split(tag, ",")[0]
+		if columnName == "" {
+			return nil, errors.Errorf("missing column name for field %s in table t_invigilation", field.Name)
+		}
+
+		fieldValue := reflect.ValueOf(r).Elem().Field(i)
+		if !fieldValue.IsValid() {
+			return nil, errors.Errorf("invalid field value for field %s in table t_invigilation", field.Name)
+		}
+
+		if !fieldValue.CanAddr() {
+			return nil, errors.Errorf("cannot read field value for field %s in table t_invigilation", field.Name)
+		}
+
+		values[columnName] = fieldValue.Addr().Interface()
+	}
+
+	return values, nil
+}
+
 /*TJudge 鉴定邀请表 represents assessuser.t_judge */
 type TJudge struct {
 	ID          null.Int    `json:"ID,omitempty" db:"id,true,integer"`                    /* id 评价编号 */
@@ -2871,6 +7268,54 @@ var TJudgeFields = []string{
 	"ApplyTime",
 	"JudgeTime",
 	"Status",
+}
+
+// TJudgeColumns full column list for default query
+var TJudgeColumns = []string{
+	"id",
+	"developer_id",
+	"proof_id",
+	"witness_id",
+	"apply_time",
+	"judge_time",
+	"status",
+}
+
+// TJudgeColumnsDataTypes full column data types for default query
+var TJudgeColumnsDataTypes = map[string]string{
+	"id":           "integer",
+	"developer_id": "bigint",
+	"proof_id":     "bigint",
+	"witness_id":   "bigint",
+	"apply_time":   "bigint",
+	"judge_time":   "bigint",
+	"status":       "character varying",
+}
+
+// GetFieldsMap returns a map of field names to their values.
+func (r *TJudge) GetFieldsMap() map[string]any {
+	return map[string]any{
+		"ID":          r.ID,
+		"DeveloperID": r.DeveloperID,
+		"ProofID":     r.ProofID,
+		"WitnessID":   r.WitnessID,
+		"ApplyTime":   r.ApplyTime,
+		"JudgeTime":   r.JudgeTime,
+		"Status":      r.Status,
+	}
+}
+
+// GetColumnsMap returns a map of column names to their values.
+func (r *TJudge) GetColumnsMap() map[string]any {
+	return map[string]any{
+		"id":           r.ID,
+		"developer_id": r.DeveloperID,
+		"proof_id":     r.ProofID,
+		"witness_id":   r.WitnessID,
+		"apply_time":   r.ApplyTime,
+		"judge_time":   r.JudgeTime,
+		"status":       r.Status,
+	}
 }
 
 // Fields return all fields of struct.
@@ -2912,6 +7357,42 @@ func GetTJudgeByPk(db Queryer, pk0 null.Int) (*TJudge, error) {
 	return &r, nil
 }
 
+// GetTJudgeReflectValuesMap returns a map of field names to their values.
+//
+// key is the tag name, value is the field value.
+// This is useful for reflection and dynamic queries.
+func (r *TJudge) GetTJudgeReflectValuesMap() (map[string]any, error) {
+
+	values := make(map[string]any)
+	v := reflect.ValueOf(r).Elem()
+	t := v.Type()
+	for i := range v.NumField() {
+		field := t.Field(i)
+		tag := field.Tag.Get("db")
+		if tag == "" {
+			return nil, errors.Errorf("missing db tag for field %s in table t_judge", field.Name)
+		}
+
+		columnName := strings.Split(tag, ",")[0]
+		if columnName == "" {
+			return nil, errors.Errorf("missing column name for field %s in table t_judge", field.Name)
+		}
+
+		fieldValue := reflect.ValueOf(r).Elem().Field(i)
+		if !fieldValue.IsValid() {
+			return nil, errors.Errorf("invalid field value for field %s in table t_judge", field.Name)
+		}
+
+		if !fieldValue.CanAddr() {
+			return nil, errors.Errorf("cannot read field value for field %s in table t_judge", field.Name)
+		}
+
+		values[columnName] = fieldValue.Addr().Interface()
+	}
+
+	return values, nil
+}
+
 /*TLog t_log represents assessuser.t_log */
 type TLog struct {
 	ID            null.Int    `json:"ID,omitempty" db:"id,true,integer"`                                    /* id 编号 */
@@ -2925,7 +7406,7 @@ type TLog struct {
 	DomainID      null.Int    `json:"DomainID,omitempty" db:"domain_id,false,bigint"`                       /* domain_id 数据隶属 */
 	Creator       null.Int    `json:"Creator,omitempty" db:"creator,false,bigint"`                          /* creator 本数据创建者 */
 	CreateTime    null.Int    `json:"CreateTime,omitempty" db:"create_time,false,bigint"`                   /* create_time 生成时间 */
-	Filter                    // build DML where clause
+	Filter                                                                                                  // build DML where clause
 }
 
 // TLogFields full field list for default query
@@ -2941,6 +7422,70 @@ var TLogFields = []string{
 	"DomainID",
 	"Creator",
 	"CreateTime",
+}
+
+// TLogColumns full column list for default query
+var TLogColumns = []string{
+	"id",
+	"grade",
+	"msg",
+	"caller",
+	"stacktrace",
+	"namespace",
+	"login_user_name",
+	"login_user_id",
+	"domain_id",
+	"creator",
+	"create_time",
+}
+
+// TLogColumnsDataTypes full column data types for default query
+var TLogColumnsDataTypes = map[string]string{
+	"id":              "integer",
+	"grade":           "character varying",
+	"msg":             "character varying",
+	"caller":          "character varying",
+	"stacktrace":      "character varying",
+	"namespace":       "character varying",
+	"login_user_name": "character varying",
+	"login_user_id":   "bigint",
+	"domain_id":       "bigint",
+	"creator":         "bigint",
+	"create_time":     "bigint",
+}
+
+// GetFieldsMap returns a map of field names to their values.
+func (r *TLog) GetFieldsMap() map[string]any {
+	return map[string]any{
+		"ID":            r.ID,
+		"Grade":         r.Grade,
+		"Msg":           r.Msg,
+		"Caller":        r.Caller,
+		"Stacktrace":    r.Stacktrace,
+		"Namespace":     r.Namespace,
+		"LoginUserName": r.LoginUserName,
+		"LoginUserID":   r.LoginUserID,
+		"DomainID":      r.DomainID,
+		"Creator":       r.Creator,
+		"CreateTime":    r.CreateTime,
+	}
+}
+
+// GetColumnsMap returns a map of column names to their values.
+func (r *TLog) GetColumnsMap() map[string]any {
+	return map[string]any{
+		"id":              r.ID,
+		"grade":           r.Grade,
+		"msg":             r.Msg,
+		"caller":          r.Caller,
+		"stacktrace":      r.Stacktrace,
+		"namespace":       r.Namespace,
+		"login_user_name": r.LoginUserName,
+		"login_user_id":   r.LoginUserID,
+		"domain_id":       r.DomainID,
+		"creator":         r.Creator,
+		"create_time":     r.CreateTime,
+	}
 }
 
 // Fields return all fields of struct.
@@ -2982,6 +7527,42 @@ func GetTLogByPk(db Queryer, pk0 null.Int) (*TLog, error) {
 	return &r, nil
 }
 
+// GetTLogReflectValuesMap returns a map of field names to their values.
+//
+// key is the tag name, value is the field value.
+// This is useful for reflection and dynamic queries.
+func (r *TLog) GetTLogReflectValuesMap() (map[string]any, error) {
+
+	values := make(map[string]any)
+	v := reflect.ValueOf(r).Elem()
+	t := v.Type()
+	for i := range v.NumField() {
+		field := t.Field(i)
+		tag := field.Tag.Get("db")
+		if tag == "" {
+			return nil, errors.Errorf("missing db tag for field %s in table t_log", field.Name)
+		}
+
+		columnName := strings.Split(tag, ",")[0]
+		if columnName == "" {
+			return nil, errors.Errorf("missing column name for field %s in table t_log", field.Name)
+		}
+
+		fieldValue := reflect.ValueOf(r).Elem().Field(i)
+		if !fieldValue.IsValid() {
+			return nil, errors.Errorf("invalid field value for field %s in table t_log", field.Name)
+		}
+
+		if !fieldValue.CanAddr() {
+			return nil, errors.Errorf("cannot read field value for field %s in table t_log", field.Name)
+		}
+
+		values[columnName] = fieldValue.Addr().Interface()
+	}
+
+	return values, nil
+}
+
 /*TMark t_mark represents assessuser.t_mark */
 type TMark struct {
 	ID                   null.Int       `json:"ID,omitempty" db:"id,true,integer"`                                       /* id id */
@@ -2999,7 +7580,7 @@ type TMark struct {
 	Score                null.Float     `json:"Score,omitempty" db:"score,false,double precision"`                       /* score score */
 	PracticeSubmissionID null.Int       `json:"PracticeSubmissionID,omitempty" db:"practice_submission_id,false,bigint"` /* practice_submission_id 练习提交id */
 	PracticeID           null.Int       `json:"PracticeID,omitempty" db:"practice_id,false,bigint"`                      /* practice_id 练习id */
-	Filter                              // build DML where clause
+	Filter                                                                                                               // build DML where clause
 }
 
 // TMarkFields full field list for default query
@@ -3019,6 +7600,86 @@ var TMarkFields = []string{
 	"Score",
 	"PracticeSubmissionID",
 	"PracticeID",
+}
+
+// TMarkColumns full column list for default query
+var TMarkColumns = []string{
+	"id",
+	"teacher_id",
+	"examinee_id",
+	"question_id",
+	"exam_session_id",
+	"mark_details",
+	"status",
+	"addi",
+	"creator",
+	"create_time",
+	"updated_by",
+	"update_time",
+	"score",
+	"practice_submission_id",
+	"practice_id",
+}
+
+// TMarkColumnsDataTypes full column data types for default query
+var TMarkColumnsDataTypes = map[string]string{
+	"id":                     "integer",
+	"teacher_id":             "bigint",
+	"examinee_id":            "bigint",
+	"question_id":            "bigint",
+	"exam_session_id":        "bigint",
+	"mark_details":           "jsonb",
+	"status":                 "character varying",
+	"addi":                   "jsonb",
+	"creator":                "bigint",
+	"create_time":            "timestamp without time zone",
+	"updated_by":             "bigint",
+	"update_time":            "timestamp without time zone",
+	"score":                  "double precision",
+	"practice_submission_id": "bigint",
+	"practice_id":            "bigint",
+}
+
+// GetFieldsMap returns a map of field names to their values.
+func (r *TMark) GetFieldsMap() map[string]any {
+	return map[string]any{
+		"ID":                   r.ID,
+		"TeacherID":            r.TeacherID,
+		"ExamineeID":           r.ExamineeID,
+		"QuestionID":           r.QuestionID,
+		"ExamSessionID":        r.ExamSessionID,
+		"MarkDetails":          r.MarkDetails,
+		"Status":               r.Status,
+		"Addi":                 r.Addi,
+		"Creator":              r.Creator,
+		"CreateTime":           r.CreateTime,
+		"UpdatedBy":            r.UpdatedBy,
+		"UpdateTime":           r.UpdateTime,
+		"Score":                r.Score,
+		"PracticeSubmissionID": r.PracticeSubmissionID,
+		"PracticeID":           r.PracticeID,
+	}
+}
+
+// GetColumnsMap returns a map of column names to their values.
+func (r *TMark) GetColumnsMap() map[string]any {
+	return map[string]any{
+		"id":                     r.ID,
+		"teacher_id":             r.TeacherID,
+		"examinee_id":            r.ExamineeID,
+		"question_id":            r.QuestionID,
+		"exam_session_id":        r.ExamSessionID,
+		"mark_details":           r.MarkDetails,
+		"status":                 r.Status,
+		"addi":                   r.Addi,
+		"creator":                r.Creator,
+		"create_time":            r.CreateTime,
+		"updated_by":             r.UpdatedBy,
+		"update_time":            r.UpdateTime,
+		"score":                  r.Score,
+		"practice_submission_id": r.PracticeSubmissionID,
+		"practice_id":            r.PracticeID,
+	}
 }
 
 // Fields return all fields of struct.
@@ -3060,6 +7721,42 @@ func GetTMarkByPk(db Queryer, pk0 null.Int) (*TMark, error) {
 	return &r, nil
 }
 
+// GetTMarkReflectValuesMap returns a map of field names to their values.
+//
+// key is the tag name, value is the field value.
+// This is useful for reflection and dynamic queries.
+func (r *TMark) GetTMarkReflectValuesMap() (map[string]any, error) {
+
+	values := make(map[string]any)
+	v := reflect.ValueOf(r).Elem()
+	t := v.Type()
+	for i := range v.NumField() {
+		field := t.Field(i)
+		tag := field.Tag.Get("db")
+		if tag == "" {
+			return nil, errors.Errorf("missing db tag for field %s in table t_mark", field.Name)
+		}
+
+		columnName := strings.Split(tag, ",")[0]
+		if columnName == "" {
+			return nil, errors.Errorf("missing column name for field %s in table t_mark", field.Name)
+		}
+
+		fieldValue := reflect.ValueOf(r).Elem().Field(i)
+		if !fieldValue.IsValid() {
+			return nil, errors.Errorf("invalid field value for field %s in table t_mark", field.Name)
+		}
+
+		if !fieldValue.CanAddr() {
+			return nil, errors.Errorf("cannot read field value for field %s in table t_mark", field.Name)
+		}
+
+		values[columnName] = fieldValue.Addr().Interface()
+	}
+
+	return values, nil
+}
+
 /*TMarkInfo t_mark_info represents assessuser.t_mark_info */
 type TMarkInfo struct {
 	ID                 null.Int       `json:"ID,omitempty" db:"id,true,integer"`                                       /* id id */
@@ -3076,7 +7773,7 @@ type TMarkInfo struct {
 	Status             null.String    `json:"Status,omitempty" db:"status,false,character varying"`                    /* status 00:正常 02: 已改完 04: 已删除 */
 	QuestionIds        types.JSONText `json:"QuestionIds,omitempty" db:"question_ids,false,jsonb"`                     /* question_ids 批改的题目集 */
 	PracticeID         null.Int       `json:"PracticeID,omitempty" db:"practice_id,false,bigint"`                      /* practice_id 练习id */
-	Filter                            // build DML where clause
+	Filter                                                                                                             // build DML where clause
 }
 
 // TMarkInfoFields full field list for default query
@@ -3095,6 +7792,82 @@ var TMarkInfoFields = []string{
 	"Status",
 	"QuestionIds",
 	"PracticeID",
+}
+
+// TMarkInfoColumns full column list for default query
+var TMarkInfoColumns = []string{
+	"id",
+	"exam_session_id",
+	"mark_teacher_id",
+	"mark_count",
+	"mark_question_groups",
+	"mark_examinee_ids",
+	"creator",
+	"create_time",
+	"updated_by",
+	"update_time",
+	"addi",
+	"status",
+	"question_ids",
+	"practice_id",
+}
+
+// TMarkInfoColumnsDataTypes full column data types for default query
+var TMarkInfoColumnsDataTypes = map[string]string{
+	"id":                   "integer",
+	"exam_session_id":      "bigint",
+	"mark_teacher_id":      "bigint",
+	"mark_count":           "integer",
+	"mark_question_groups": "jsonb",
+	"mark_examinee_ids":    "jsonb",
+	"creator":              "bigint",
+	"create_time":          "timestamp without time zone",
+	"updated_by":           "bigint",
+	"update_time":          "timestamp without time zone",
+	"addi":                 "jsonb",
+	"status":               "character varying",
+	"question_ids":         "jsonb",
+	"practice_id":          "bigint",
+}
+
+// GetFieldsMap returns a map of field names to their values.
+func (r *TMarkInfo) GetFieldsMap() map[string]any {
+	return map[string]any{
+		"ID":                 r.ID,
+		"ExamSessionID":      r.ExamSessionID,
+		"MarkTeacherID":      r.MarkTeacherID,
+		"MarkCount":          r.MarkCount,
+		"MarkQuestionGroups": r.MarkQuestionGroups,
+		"MarkExamineeIds":    r.MarkExamineeIds,
+		"Creator":            r.Creator,
+		"CreateTime":         r.CreateTime,
+		"UpdatedBy":          r.UpdatedBy,
+		"UpdateTime":         r.UpdateTime,
+		"Addi":               r.Addi,
+		"Status":             r.Status,
+		"QuestionIds":        r.QuestionIds,
+		"PracticeID":         r.PracticeID,
+	}
+}
+
+// GetColumnsMap returns a map of column names to their values.
+func (r *TMarkInfo) GetColumnsMap() map[string]any {
+	return map[string]any{
+		"id":                   r.ID,
+		"exam_session_id":      r.ExamSessionID,
+		"mark_teacher_id":      r.MarkTeacherID,
+		"mark_count":           r.MarkCount,
+		"mark_question_groups": r.MarkQuestionGroups,
+		"mark_examinee_ids":    r.MarkExamineeIds,
+		"creator":              r.Creator,
+		"create_time":          r.CreateTime,
+		"updated_by":           r.UpdatedBy,
+		"update_time":          r.UpdateTime,
+		"addi":                 r.Addi,
+		"status":               r.Status,
+		"question_ids":         r.QuestionIds,
+		"practice_id":          r.PracticeID,
+	}
 }
 
 // Fields return all fields of struct.
@@ -3134,6 +7907,42 @@ func GetTMarkInfoByPk(db Queryer, pk0 null.Int) (*TMarkInfo, error) {
 		return nil, errors.Wrap(err, "failed to select t_mark_info")
 	}
 	return &r, nil
+}
+
+// GetTMarkInfoReflectValuesMap returns a map of field names to their values.
+//
+// key is the tag name, value is the field value.
+// This is useful for reflection and dynamic queries.
+func (r *TMarkInfo) GetTMarkInfoReflectValuesMap() (map[string]any, error) {
+
+	values := make(map[string]any)
+	v := reflect.ValueOf(r).Elem()
+	t := v.Type()
+	for i := range v.NumField() {
+		field := t.Field(i)
+		tag := field.Tag.Get("db")
+		if tag == "" {
+			return nil, errors.Errorf("missing db tag for field %s in table t_mark_info", field.Name)
+		}
+
+		columnName := strings.Split(tag, ",")[0]
+		if columnName == "" {
+			return nil, errors.Errorf("missing column name for field %s in table t_mark_info", field.Name)
+		}
+
+		fieldValue := reflect.ValueOf(r).Elem().Field(i)
+		if !fieldValue.IsValid() {
+			return nil, errors.Errorf("invalid field value for field %s in table t_mark_info", field.Name)
+		}
+
+		if !fieldValue.CanAddr() {
+			return nil, errors.Errorf("cannot read field value for field %s in table t_mark_info", field.Name)
+		}
+
+		values[columnName] = fieldValue.Addr().Interface()
+	}
+
+	return values, nil
 }
 
 /*TMistakeCorrect 报错 represents assessuser.t_mistake_correct */
@@ -3220,7 +8029,7 @@ type TMistakeCorrect struct {
 	Addi                     types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                                             /* addi 附加数据 */
 	Remark                   null.String    `json:"Remark,omitempty" db:"remark,false,character varying"`                             /* remark 备注 */
 	Status                   null.String    `json:"Status,omitempty" db:"status,false,character varying"`                             /* status 状态,0: 草稿, 2: 受理中，4:同意， 6:拒绝 */
-	Filter                                  // build DML where clause
+	Filter                                                                                                                            // build DML where clause
 }
 
 // TMistakeCorrectFields full field list for default query
@@ -3309,6 +8118,354 @@ var TMistakeCorrectFields = []string{
 	"Status",
 }
 
+// TMistakeCorrectColumns full column list for default query
+var TMistakeCorrectColumns = []string{
+	"id",
+	"order_id",
+	"policyholder",
+	"contact",
+	"policyholder_id",
+	"official_name_p",
+	"id_card_type_p",
+	"id_card_no_p",
+	"gender_p",
+	"birthday_p",
+	"insured",
+	"insured_id",
+	"official_name",
+	"id_card_type",
+	"id_card_no",
+	"gender",
+	"birthday",
+	"clear_list",
+	"insured_list",
+	"insured_count",
+	"commence_date",
+	"expiry_date",
+	"indate",
+	"charge_mode",
+	"modify_type",
+	"activity_name",
+	"activity_location",
+	"activity_date_set",
+	"insured_type",
+	"schoolbus_company",
+	"guarantee_item",
+	"confirm_guarantee_star_time",
+	"non_compulsory_student_num",
+	"compulsory_student_num",
+	"dinner_num",
+	"school_enrolment_total",
+	"shop_num",
+	"canteen_num",
+	"activity_desc",
+	"invoice_header",
+	"dispute_handling",
+	"have_sudden_death",
+	"prev_policy_no",
+	"revoked_policy_no",
+	"pool_name",
+	"have_explosive",
+	"have_rides",
+	"inner_area",
+	"outer_area",
+	"traffic_num",
+	"temperature_type",
+	"open_pool_num",
+	"heated_pool_num",
+	"training_pool_num",
+	"pool_num",
+	"custom_type",
+	"same",
+	"arbitral_agency",
+	"endorsement_status",
+	"application_files",
+	"amount",
+	"insured_group_by_day",
+	"refused_reason",
+	"pay_type",
+	"need_balance",
+	"fee_scheme",
+	"have_negotiated_price",
+	"policy_scheme",
+	"plan_id",
+	"correct_level",
+	"correct_log",
+	"policy_regen",
+	"files",
+	"files_to_remove",
+	"creator",
+	"create_time",
+	"updated_by",
+	"update_time",
+	"domain_id",
+	"addi",
+	"remark",
+	"status",
+}
+
+// TMistakeCorrectColumnsDataTypes full column data types for default query
+var TMistakeCorrectColumnsDataTypes = map[string]string{
+	"id":                          "integer",
+	"order_id":                    "bigint",
+	"policyholder":                "jsonb",
+	"contact":                     "jsonb",
+	"policyholder_id":             "bigint",
+	"official_name_p":             "character varying",
+	"id_card_type_p":              "character varying",
+	"id_card_no_p":                "character varying",
+	"gender_p":                    "character varying",
+	"birthday_p":                  "bigint",
+	"insured":                     "jsonb",
+	"insured_id":                  "bigint",
+	"official_name":               "character varying",
+	"id_card_type":                "character varying",
+	"id_card_no":                  "character varying",
+	"gender":                      "character varying",
+	"birthday":                    "bigint",
+	"clear_list":                  "boolean",
+	"insured_list":                "jsonb",
+	"insured_count":               "smallint",
+	"commence_date":               "bigint",
+	"expiry_date":                 "bigint",
+	"indate":                      "bigint",
+	"charge_mode":                 "character varying",
+	"modify_type":                 "character varying",
+	"activity_name":               "character varying",
+	"activity_location":           "character varying",
+	"activity_date_set":           "character varying",
+	"insured_type":                "character varying",
+	"schoolbus_company":           "character varying",
+	"guarantee_item":              "jsonb",
+	"confirm_guarantee_star_time": "bigint",
+	"non_compulsory_student_num":  "bigint",
+	"compulsory_student_num":      "bigint",
+	"dinner_num":                  "bigint",
+	"school_enrolment_total":      "bigint",
+	"shop_num":                    "bigint",
+	"canteen_num":                 "bigint",
+	"activity_desc":               "character varying",
+	"invoice_header":              "character varying",
+	"dispute_handling":            "character varying",
+	"have_sudden_death":           "boolean",
+	"prev_policy_no":              "character varying",
+	"revoked_policy_no":           "character varying",
+	"pool_name":                   "character varying",
+	"have_explosive":              "boolean",
+	"have_rides":                  "boolean",
+	"inner_area":                  "double precision",
+	"outer_area":                  "double precision",
+	"traffic_num":                 "integer",
+	"temperature_type":            "character varying",
+	"open_pool_num":               "smallint",
+	"heated_pool_num":             "smallint",
+	"training_pool_num":           "smallint",
+	"pool_num":                    "smallint",
+	"custom_type":                 "character varying",
+	"same":                        "boolean",
+	"arbitral_agency":             "character varying",
+	"endorsement_status":          "character varying",
+	"application_files":           "jsonb",
+	"amount":                      "double precision",
+	"insured_group_by_day":        "boolean",
+	"refused_reason":              "character varying",
+	"pay_type":                    "character varying",
+	"need_balance":                "boolean",
+	"fee_scheme":                  "jsonb",
+	"have_negotiated_price":       "boolean",
+	"policy_scheme":               "jsonb",
+	"plan_id":                     "bigint",
+	"correct_level":               "character varying",
+	"correct_log":                 "jsonb",
+	"policy_regen":                "boolean",
+	"files":                       "jsonb",
+	"files_to_remove":             "character varying",
+	"creator":                     "bigint",
+	"create_time":                 "bigint",
+	"updated_by":                  "bigint",
+	"update_time":                 "bigint",
+	"domain_id":                   "bigint",
+	"addi":                        "jsonb",
+	"remark":                      "character varying",
+	"status":                      "character varying",
+}
+
+// GetFieldsMap returns a map of field names to their values.
+func (r *TMistakeCorrect) GetFieldsMap() map[string]any {
+	return map[string]any{
+		"ID":                       r.ID,
+		"OrderID":                  r.OrderID,
+		"Policyholder":             r.Policyholder,
+		"Contact":                  r.Contact,
+		"PolicyholderID":           r.PolicyholderID,
+		"OfficialNameP":            r.OfficialNameP,
+		"IDCardTypeP":              r.IDCardTypeP,
+		"IDCardNoP":                r.IDCardNoP,
+		"GenderP":                  r.GenderP,
+		"BirthdayP":                r.BirthdayP,
+		"Insured":                  r.Insured,
+		"InsuredID":                r.InsuredID,
+		"OfficialName":             r.OfficialName,
+		"IDCardType":               r.IDCardType,
+		"IDCardNo":                 r.IDCardNo,
+		"Gender":                   r.Gender,
+		"Birthday":                 r.Birthday,
+		"ClearList":                r.ClearList,
+		"InsuredList":              r.InsuredList,
+		"InsuredCount":             r.InsuredCount,
+		"CommenceDate":             r.CommenceDate,
+		"ExpiryDate":               r.ExpiryDate,
+		"Indate":                   r.Indate,
+		"ChargeMode":               r.ChargeMode,
+		"ModifyType":               r.ModifyType,
+		"ActivityName":             r.ActivityName,
+		"ActivityLocation":         r.ActivityLocation,
+		"ActivityDateSet":          r.ActivityDateSet,
+		"InsuredType":              r.InsuredType,
+		"SchoolbusCompany":         r.SchoolbusCompany,
+		"GuaranteeItem":            r.GuaranteeItem,
+		"ConfirmGuaranteeStarTime": r.ConfirmGuaranteeStarTime,
+		"NonCompulsoryStudentNum":  r.NonCompulsoryStudentNum,
+		"CompulsoryStudentNum":     r.CompulsoryStudentNum,
+		"DinnerNum":                r.DinnerNum,
+		"SchoolEnrolmentTotal":     r.SchoolEnrolmentTotal,
+		"ShopNum":                  r.ShopNum,
+		"CanteenNum":               r.CanteenNum,
+		"ActivityDesc":             r.ActivityDesc,
+		"InvoiceHeader":            r.InvoiceHeader,
+		"DisputeHandling":          r.DisputeHandling,
+		"HaveSuddenDeath":          r.HaveSuddenDeath,
+		"PrevPolicyNo":             r.PrevPolicyNo,
+		"RevokedPolicyNo":          r.RevokedPolicyNo,
+		"PoolName":                 r.PoolName,
+		"HaveExplosive":            r.HaveExplosive,
+		"HaveRides":                r.HaveRides,
+		"InnerArea":                r.InnerArea,
+		"OuterArea":                r.OuterArea,
+		"TrafficNum":               r.TrafficNum,
+		"TemperatureType":          r.TemperatureType,
+		"OpenPoolNum":              r.OpenPoolNum,
+		"HeatedPoolNum":            r.HeatedPoolNum,
+		"TrainingPoolNum":          r.TrainingPoolNum,
+		"PoolNum":                  r.PoolNum,
+		"CustomType":               r.CustomType,
+		"Same":                     r.Same,
+		"ArbitralAgency":           r.ArbitralAgency,
+		"EndorsementStatus":        r.EndorsementStatus,
+		"ApplicationFiles":         r.ApplicationFiles,
+		"Amount":                   r.Amount,
+		"InsuredGroupByDay":        r.InsuredGroupByDay,
+		"RefusedReason":            r.RefusedReason,
+		"PayType":                  r.PayType,
+		"NeedBalance":              r.NeedBalance,
+		"FeeScheme":                r.FeeScheme,
+		"HaveNegotiatedPrice":      r.HaveNegotiatedPrice,
+		"PolicyScheme":             r.PolicyScheme,
+		"PlanID":                   r.PlanID,
+		"CorrectLevel":             r.CorrectLevel,
+		"CorrectLog":               r.CorrectLog,
+		"PolicyRegen":              r.PolicyRegen,
+		"Files":                    r.Files,
+		"FilesToRemove":            r.FilesToRemove,
+		"Creator":                  r.Creator,
+		"CreateTime":               r.CreateTime,
+		"UpdatedBy":                r.UpdatedBy,
+		"UpdateTime":               r.UpdateTime,
+		"DomainID":                 r.DomainID,
+		"Addi":                     r.Addi,
+		"Remark":                   r.Remark,
+		"Status":                   r.Status,
+	}
+}
+
+// GetColumnsMap returns a map of column names to their values.
+func (r *TMistakeCorrect) GetColumnsMap() map[string]any {
+	return map[string]any{
+		"id":                          r.ID,
+		"order_id":                    r.OrderID,
+		"policyholder":                r.Policyholder,
+		"contact":                     r.Contact,
+		"policyholder_id":             r.PolicyholderID,
+		"official_name_p":             r.OfficialNameP,
+		"id_card_type_p":              r.IDCardTypeP,
+		"id_card_no_p":                r.IDCardNoP,
+		"gender_p":                    r.GenderP,
+		"birthday_p":                  r.BirthdayP,
+		"insured":                     r.Insured,
+		"insured_id":                  r.InsuredID,
+		"official_name":               r.OfficialName,
+		"id_card_type":                r.IDCardType,
+		"id_card_no":                  r.IDCardNo,
+		"gender":                      r.Gender,
+		"birthday":                    r.Birthday,
+		"clear_list":                  r.ClearList,
+		"insured_list":                r.InsuredList,
+		"insured_count":               r.InsuredCount,
+		"commence_date":               r.CommenceDate,
+		"expiry_date":                 r.ExpiryDate,
+		"indate":                      r.Indate,
+		"charge_mode":                 r.ChargeMode,
+		"modify_type":                 r.ModifyType,
+		"activity_name":               r.ActivityName,
+		"activity_location":           r.ActivityLocation,
+		"activity_date_set":           r.ActivityDateSet,
+		"insured_type":                r.InsuredType,
+		"schoolbus_company":           r.SchoolbusCompany,
+		"guarantee_item":              r.GuaranteeItem,
+		"confirm_guarantee_star_time": r.ConfirmGuaranteeStarTime,
+		"non_compulsory_student_num":  r.NonCompulsoryStudentNum,
+		"compulsory_student_num":      r.CompulsoryStudentNum,
+		"dinner_num":                  r.DinnerNum,
+		"school_enrolment_total":      r.SchoolEnrolmentTotal,
+		"shop_num":                    r.ShopNum,
+		"canteen_num":                 r.CanteenNum,
+		"activity_desc":               r.ActivityDesc,
+		"invoice_header":              r.InvoiceHeader,
+		"dispute_handling":            r.DisputeHandling,
+		"have_sudden_death":           r.HaveSuddenDeath,
+		"prev_policy_no":              r.PrevPolicyNo,
+		"revoked_policy_no":           r.RevokedPolicyNo,
+		"pool_name":                   r.PoolName,
+		"have_explosive":              r.HaveExplosive,
+		"have_rides":                  r.HaveRides,
+		"inner_area":                  r.InnerArea,
+		"outer_area":                  r.OuterArea,
+		"traffic_num":                 r.TrafficNum,
+		"temperature_type":            r.TemperatureType,
+		"open_pool_num":               r.OpenPoolNum,
+		"heated_pool_num":             r.HeatedPoolNum,
+		"training_pool_num":           r.TrainingPoolNum,
+		"pool_num":                    r.PoolNum,
+		"custom_type":                 r.CustomType,
+		"same":                        r.Same,
+		"arbitral_agency":             r.ArbitralAgency,
+		"endorsement_status":          r.EndorsementStatus,
+		"application_files":           r.ApplicationFiles,
+		"amount":                      r.Amount,
+		"insured_group_by_day":        r.InsuredGroupByDay,
+		"refused_reason":              r.RefusedReason,
+		"pay_type":                    r.PayType,
+		"need_balance":                r.NeedBalance,
+		"fee_scheme":                  r.FeeScheme,
+		"have_negotiated_price":       r.HaveNegotiatedPrice,
+		"policy_scheme":               r.PolicyScheme,
+		"plan_id":                     r.PlanID,
+		"correct_level":               r.CorrectLevel,
+		"correct_log":                 r.CorrectLog,
+		"policy_regen":                r.PolicyRegen,
+		"files":                       r.Files,
+		"files_to_remove":             r.FilesToRemove,
+		"creator":                     r.Creator,
+		"create_time":                 r.CreateTime,
+		"updated_by":                  r.UpdatedBy,
+		"update_time":                 r.UpdateTime,
+		"domain_id":                   r.DomainID,
+		"addi":                        r.Addi,
+		"remark":                      r.Remark,
+		"status":                      r.Status,
+	}
+}
+
 // Fields return all fields of struct.
 func (r *TMistakeCorrect) Fields() []string {
 	return TMistakeCorrectFields
@@ -3348,6 +8505,42 @@ func GetTMistakeCorrectByPk(db Queryer, pk0 null.Int) (*TMistakeCorrect, error) 
 	return &r, nil
 }
 
+// GetTMistakeCorrectReflectValuesMap returns a map of field names to their values.
+//
+// key is the tag name, value is the field value.
+// This is useful for reflection and dynamic queries.
+func (r *TMistakeCorrect) GetTMistakeCorrectReflectValuesMap() (map[string]any, error) {
+
+	values := make(map[string]any)
+	v := reflect.ValueOf(r).Elem()
+	t := v.Type()
+	for i := range v.NumField() {
+		field := t.Field(i)
+		tag := field.Tag.Get("db")
+		if tag == "" {
+			return nil, errors.Errorf("missing db tag for field %s in table t_mistake_correct", field.Name)
+		}
+
+		columnName := strings.Split(tag, ",")[0]
+		if columnName == "" {
+			return nil, errors.Errorf("missing column name for field %s in table t_mistake_correct", field.Name)
+		}
+
+		fieldValue := reflect.ValueOf(r).Elem().Field(i)
+		if !fieldValue.IsValid() {
+			return nil, errors.Errorf("invalid field value for field %s in table t_mistake_correct", field.Name)
+		}
+
+		if !fieldValue.CanAddr() {
+			return nil, errors.Errorf("cannot read field value for field %s in table t_mistake_correct", field.Name)
+		}
+
+		values[columnName] = fieldValue.Addr().Interface()
+	}
+
+	return values, nil
+}
+
 /*
 TMsg 即时通信消息表
 represents assessuser.t_msg
@@ -3380,7 +8573,7 @@ type TMsg struct {
 	Addi              types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                             /* addi 附加信息 */
 	Remark            null.String    `json:"Remark,omitempty" db:"remark,false,character varying"`             /* remark 备注 */
 	Status            null.String    `json:"Status,omitempty" db:"status,false,character varying"`             /* status 状态，00：草稿，01：有效，02：作废 */
-	Filter                           // build DML where clause
+	Filter                                                                                                     // build DML where clause
 }
 
 // TMsgFields full field list for default query
@@ -3399,6 +8592,82 @@ var TMsgFields = []string{
 	"Addi",
 	"Remark",
 	"Status",
+}
+
+// TMsgColumns full column list for default query
+var TMsgColumns = []string{
+	"id",
+	"sender",
+	"target",
+	"emit_type",
+	"content",
+	"offline_target_list",
+	"domain_id",
+	"creator",
+	"create_time",
+	"updated_by",
+	"update_time",
+	"addi",
+	"remark",
+	"status",
+}
+
+// TMsgColumnsDataTypes full column data types for default query
+var TMsgColumnsDataTypes = map[string]string{
+	"id":                  "integer",
+	"sender":              "bigint",
+	"target":              "jsonb",
+	"emit_type":           "character varying",
+	"content":             "jsonb",
+	"offline_target_list": "jsonb",
+	"domain_id":           "bigint",
+	"creator":             "bigint",
+	"create_time":         "bigint",
+	"updated_by":          "bigint",
+	"update_time":         "bigint",
+	"addi":                "jsonb",
+	"remark":              "character varying",
+	"status":              "character varying",
+}
+
+// GetFieldsMap returns a map of field names to their values.
+func (r *TMsg) GetFieldsMap() map[string]any {
+	return map[string]any{
+		"ID":                r.ID,
+		"Sender":            r.Sender,
+		"Target":            r.Target,
+		"EmitType":          r.EmitType,
+		"Content":           r.Content,
+		"OfflineTargetList": r.OfflineTargetList,
+		"DomainID":          r.DomainID,
+		"Creator":           r.Creator,
+		"CreateTime":        r.CreateTime,
+		"UpdatedBy":         r.UpdatedBy,
+		"UpdateTime":        r.UpdateTime,
+		"Addi":              r.Addi,
+		"Remark":            r.Remark,
+		"Status":            r.Status,
+	}
+}
+
+// GetColumnsMap returns a map of column names to their values.
+func (r *TMsg) GetColumnsMap() map[string]any {
+	return map[string]any{
+		"id":                  r.ID,
+		"sender":              r.Sender,
+		"target":              r.Target,
+		"emit_type":           r.EmitType,
+		"content":             r.Content,
+		"offline_target_list": r.OfflineTargetList,
+		"domain_id":           r.DomainID,
+		"creator":             r.Creator,
+		"create_time":         r.CreateTime,
+		"updated_by":          r.UpdatedBy,
+		"update_time":         r.UpdateTime,
+		"addi":                r.Addi,
+		"remark":              r.Remark,
+		"status":              r.Status,
+	}
 }
 
 // Fields return all fields of struct.
@@ -3440,6 +8709,42 @@ func GetTMsgByPk(db Queryer, pk0 null.Int) (*TMsg, error) {
 	return &r, nil
 }
 
+// GetTMsgReflectValuesMap returns a map of field names to their values.
+//
+// key is the tag name, value is the field value.
+// This is useful for reflection and dynamic queries.
+func (r *TMsg) GetTMsgReflectValuesMap() (map[string]any, error) {
+
+	values := make(map[string]any)
+	v := reflect.ValueOf(r).Elem()
+	t := v.Type()
+	for i := range v.NumField() {
+		field := t.Field(i)
+		tag := field.Tag.Get("db")
+		if tag == "" {
+			return nil, errors.Errorf("missing db tag for field %s in table t_msg", field.Name)
+		}
+
+		columnName := strings.Split(tag, ",")[0]
+		if columnName == "" {
+			return nil, errors.Errorf("missing column name for field %s in table t_msg", field.Name)
+		}
+
+		fieldValue := reflect.ValueOf(r).Elem().Field(i)
+		if !fieldValue.IsValid() {
+			return nil, errors.Errorf("invalid field value for field %s in table t_msg", field.Name)
+		}
+
+		if !fieldValue.CanAddr() {
+			return nil, errors.Errorf("cannot read field value for field %s in table t_msg", field.Name)
+		}
+
+		values[columnName] = fieldValue.Addr().Interface()
+	}
+
+	return values, nil
+}
+
 /*TMsgStatus 消息状态 represents assessuser.t_msg_status */
 type TMsgStatus struct {
 	ID           null.Int       `json:"ID,omitempty" db:"id,true,integer"`                      /* id 参数编号 */
@@ -3453,7 +8758,7 @@ type TMsgStatus struct {
 	Addi         types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                   /* addi 附加信息 */
 	Remark       null.String    `json:"Remark,omitempty" db:"remark,false,character varying"`   /* remark 备注 */
 	Status       null.String    `json:"Status,omitempty" db:"status,false,character varying"`   /* status 状态，00：草稿，01：有效，02：作废 */
-	Filter                      // build DML where clause
+	Filter                                                                                      // build DML where clause
 }
 
 // TMsgStatusFields full field list for default query
@@ -3469,6 +8774,70 @@ var TMsgStatusFields = []string{
 	"Addi",
 	"Remark",
 	"Status",
+}
+
+// TMsgStatusColumns full column list for default query
+var TMsgStatusColumns = []string{
+	"id",
+	"msg_id",
+	"user_id",
+	"received_time",
+	"viewed_time",
+	"creator",
+	"updated_by",
+	"domain_id",
+	"addi",
+	"remark",
+	"status",
+}
+
+// TMsgStatusColumnsDataTypes full column data types for default query
+var TMsgStatusColumnsDataTypes = map[string]string{
+	"id":            "integer",
+	"msg_id":        "bigint",
+	"user_id":       "bigint",
+	"received_time": "bigint",
+	"viewed_time":   "bigint",
+	"creator":       "bigint",
+	"updated_by":    "bigint",
+	"domain_id":     "bigint",
+	"addi":          "jsonb",
+	"remark":        "character varying",
+	"status":        "character varying",
+}
+
+// GetFieldsMap returns a map of field names to their values.
+func (r *TMsgStatus) GetFieldsMap() map[string]any {
+	return map[string]any{
+		"ID":           r.ID,
+		"MsgID":        r.MsgID,
+		"UserID":       r.UserID,
+		"ReceivedTime": r.ReceivedTime,
+		"ViewedTime":   r.ViewedTime,
+		"Creator":      r.Creator,
+		"UpdatedBy":    r.UpdatedBy,
+		"DomainID":     r.DomainID,
+		"Addi":         r.Addi,
+		"Remark":       r.Remark,
+		"Status":       r.Status,
+	}
+}
+
+// GetColumnsMap returns a map of column names to their values.
+func (r *TMsgStatus) GetColumnsMap() map[string]any {
+	return map[string]any{
+		"id":            r.ID,
+		"msg_id":        r.MsgID,
+		"user_id":       r.UserID,
+		"received_time": r.ReceivedTime,
+		"viewed_time":   r.ViewedTime,
+		"creator":       r.Creator,
+		"updated_by":    r.UpdatedBy,
+		"domain_id":     r.DomainID,
+		"addi":          r.Addi,
+		"remark":        r.Remark,
+		"status":        r.Status,
+	}
 }
 
 // Fields return all fields of struct.
@@ -3510,6 +8879,42 @@ func GetTMsgStatusByPk(db Queryer, pk0 null.Int) (*TMsgStatus, error) {
 	return &r, nil
 }
 
+// GetTMsgStatusReflectValuesMap returns a map of field names to their values.
+//
+// key is the tag name, value is the field value.
+// This is useful for reflection and dynamic queries.
+func (r *TMsgStatus) GetTMsgStatusReflectValuesMap() (map[string]any, error) {
+
+	values := make(map[string]any)
+	v := reflect.ValueOf(r).Elem()
+	t := v.Type()
+	for i := range v.NumField() {
+		field := t.Field(i)
+		tag := field.Tag.Get("db")
+		if tag == "" {
+			return nil, errors.Errorf("missing db tag for field %s in table t_msg_status", field.Name)
+		}
+
+		columnName := strings.Split(tag, ",")[0]
+		if columnName == "" {
+			return nil, errors.Errorf("missing column name for field %s in table t_msg_status", field.Name)
+		}
+
+		fieldValue := reflect.ValueOf(r).Elem().Field(i)
+		if !fieldValue.IsValid() {
+			return nil, errors.Errorf("invalid field value for field %s in table t_msg_status", field.Name)
+		}
+
+		if !fieldValue.CanAddr() {
+			return nil, errors.Errorf("cannot read field value for field %s in table t_msg_status", field.Name)
+		}
+
+		values[columnName] = fieldValue.Addr().Interface()
+	}
+
+	return values, nil
+}
+
 /*TMyContact 聊天联系人， 可能是组或用户，参考微信通讯录设计 represents assessuser.t_my_contact */
 type TMyContact struct {
 	ID          null.Int       `json:"ID,omitempty" db:"id,true,integer"`                               /* id 参数编号 */
@@ -3525,7 +8930,7 @@ type TMyContact struct {
 	Addi        types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                            /* addi 附加信息 */
 	Remark      null.String    `json:"Remark,omitempty" db:"remark,false,character varying"`            /* remark 备注 */
 	Status      null.String    `json:"Status,omitempty" db:"status,false,character varying"`            /* status 状态，00：草稿，01：有效，02：作废 */
-	Filter                     // build DML where clause
+	Filter                                                                                              // build DML where clause
 }
 
 // TMyContactFields full field list for default query
@@ -3543,6 +8948,78 @@ var TMyContactFields = []string{
 	"Addi",
 	"Remark",
 	"Status",
+}
+
+// TMyContactColumns full column list for default query
+var TMyContactColumns = []string{
+	"id",
+	"my_id",
+	"contact_type",
+	"contact_id",
+	"tag",
+	"creator",
+	"create_time",
+	"updated_by",
+	"update_time",
+	"domain_id",
+	"addi",
+	"remark",
+	"status",
+}
+
+// TMyContactColumnsDataTypes full column data types for default query
+var TMyContactColumnsDataTypes = map[string]string{
+	"id":           "integer",
+	"my_id":        "bigint",
+	"contact_type": "character varying",
+	"contact_id":   "bigint",
+	"tag":          "jsonb",
+	"creator":      "bigint",
+	"create_time":  "bigint",
+	"updated_by":   "bigint",
+	"update_time":  "bigint",
+	"domain_id":    "bigint",
+	"addi":         "jsonb",
+	"remark":       "character varying",
+	"status":       "character varying",
+}
+
+// GetFieldsMap returns a map of field names to their values.
+func (r *TMyContact) GetFieldsMap() map[string]any {
+	return map[string]any{
+		"ID":          r.ID,
+		"MyID":        r.MyID,
+		"ContactType": r.ContactType,
+		"ContactID":   r.ContactID,
+		"Tag":         r.Tag,
+		"Creator":     r.Creator,
+		"CreateTime":  r.CreateTime,
+		"UpdatedBy":   r.UpdatedBy,
+		"UpdateTime":  r.UpdateTime,
+		"DomainID":    r.DomainID,
+		"Addi":        r.Addi,
+		"Remark":      r.Remark,
+		"Status":      r.Status,
+	}
+}
+
+// GetColumnsMap returns a map of column names to their values.
+func (r *TMyContact) GetColumnsMap() map[string]any {
+	return map[string]any{
+		"id":           r.ID,
+		"my_id":        r.MyID,
+		"contact_type": r.ContactType,
+		"contact_id":   r.ContactID,
+		"tag":          r.Tag,
+		"creator":      r.Creator,
+		"create_time":  r.CreateTime,
+		"updated_by":   r.UpdatedBy,
+		"update_time":  r.UpdateTime,
+		"domain_id":    r.DomainID,
+		"addi":         r.Addi,
+		"remark":       r.Remark,
+		"status":       r.Status,
+	}
 }
 
 // Fields return all fields of struct.
@@ -3584,6 +9061,42 @@ func GetTMyContactByPk(db Queryer, pk0 null.Int) (*TMyContact, error) {
 	return &r, nil
 }
 
+// GetTMyContactReflectValuesMap returns a map of field names to their values.
+//
+// key is the tag name, value is the field value.
+// This is useful for reflection and dynamic queries.
+func (r *TMyContact) GetTMyContactReflectValuesMap() (map[string]any, error) {
+
+	values := make(map[string]any)
+	v := reflect.ValueOf(r).Elem()
+	t := v.Type()
+	for i := range v.NumField() {
+		field := t.Field(i)
+		tag := field.Tag.Get("db")
+		if tag == "" {
+			return nil, errors.Errorf("missing db tag for field %s in table t_my_contact", field.Name)
+		}
+
+		columnName := strings.Split(tag, ",")[0]
+		if columnName == "" {
+			return nil, errors.Errorf("missing column name for field %s in table t_my_contact", field.Name)
+		}
+
+		fieldValue := reflect.ValueOf(r).Elem().Field(i)
+		if !fieldValue.IsValid() {
+			return nil, errors.Errorf("invalid field value for field %s in table t_my_contact", field.Name)
+		}
+
+		if !fieldValue.CanAddr() {
+			return nil, errors.Errorf("cannot read field value for field %s in table t_my_contact", field.Name)
+		}
+
+		values[columnName] = fieldValue.Addr().Interface()
+	}
+
+	return values, nil
+}
+
 /*TNegotiatedPrice 协议价表 represents assessuser.t_negotiated_price */
 type TNegotiatedPrice struct {
 	ID              null.Int       `json:"ID,omitempty" db:"id,true,integer"`                             /* id 议价表设置编号 */
@@ -3606,7 +9119,7 @@ type TNegotiatedPrice struct {
 	Addi            types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                          /* addi 附加数据 */
 	Remark          null.String    `json:"Remark,omitempty" db:"remark,false,character varying"`          /* remark 备注 */
 	Status          null.String    `json:"Status,omitempty" db:"status,false,character varying"`          /* status 0:有效, 2: 删除 */
-	Filter                         // build DML where clause
+	Filter                                                                                                // build DML where clause
 }
 
 // TNegotiatedPriceFields full field list for default query
@@ -3631,6 +9144,106 @@ var TNegotiatedPriceFields = []string{
 	"Addi",
 	"Remark",
 	"Status",
+}
+
+// TNegotiatedPriceColumns full column list for default query
+var TNegotiatedPriceColumns = []string{
+	"id",
+	"keyword",
+	"commence_date",
+	"location",
+	"province",
+	"city",
+	"district",
+	"price_type",
+	"price",
+	"insurance_type_id",
+	"match_times",
+	"indate",
+	"creator",
+	"create_time",
+	"updated_by",
+	"update_time",
+	"domain_id",
+	"addi",
+	"remark",
+	"status",
+}
+
+// TNegotiatedPriceColumnsDataTypes full column data types for default query
+var TNegotiatedPriceColumnsDataTypes = map[string]string{
+	"id":                "integer",
+	"keyword":           "character varying",
+	"commence_date":     "bigint",
+	"location":          "character varying",
+	"province":          "character varying",
+	"city":              "character varying",
+	"district":          "character varying",
+	"price_type":        "character varying",
+	"price":             "integer",
+	"insurance_type_id": "bigint",
+	"match_times":       "integer",
+	"indate":            "bigint",
+	"creator":           "bigint",
+	"create_time":       "bigint",
+	"updated_by":        "bigint",
+	"update_time":       "bigint",
+	"domain_id":         "bigint",
+	"addi":              "jsonb",
+	"remark":            "character varying",
+	"status":            "character varying",
+}
+
+// GetFieldsMap returns a map of field names to their values.
+func (r *TNegotiatedPrice) GetFieldsMap() map[string]any {
+	return map[string]any{
+		"ID":              r.ID,
+		"Keyword":         r.Keyword,
+		"CommenceDate":    r.CommenceDate,
+		"Location":        r.Location,
+		"Province":        r.Province,
+		"City":            r.City,
+		"District":        r.District,
+		"PriceType":       r.PriceType,
+		"Price":           r.Price,
+		"InsuranceTypeID": r.InsuranceTypeID,
+		"MatchTimes":      r.MatchTimes,
+		"Indate":          r.Indate,
+		"Creator":         r.Creator,
+		"CreateTime":      r.CreateTime,
+		"UpdatedBy":       r.UpdatedBy,
+		"UpdateTime":      r.UpdateTime,
+		"DomainID":        r.DomainID,
+		"Addi":            r.Addi,
+		"Remark":          r.Remark,
+		"Status":          r.Status,
+	}
+}
+
+// GetColumnsMap returns a map of column names to their values.
+func (r *TNegotiatedPrice) GetColumnsMap() map[string]any {
+	return map[string]any{
+		"id":                r.ID,
+		"keyword":           r.Keyword,
+		"commence_date":     r.CommenceDate,
+		"location":          r.Location,
+		"province":          r.Province,
+		"city":              r.City,
+		"district":          r.District,
+		"price_type":        r.PriceType,
+		"price":             r.Price,
+		"insurance_type_id": r.InsuranceTypeID,
+		"match_times":       r.MatchTimes,
+		"indate":            r.Indate,
+		"creator":           r.Creator,
+		"create_time":       r.CreateTime,
+		"updated_by":        r.UpdatedBy,
+		"update_time":       r.UpdateTime,
+		"domain_id":         r.DomainID,
+		"addi":              r.Addi,
+		"remark":            r.Remark,
+		"status":            r.Status,
+	}
 }
 
 // Fields return all fields of struct.
@@ -3672,6 +9285,42 @@ func GetTNegotiatedPriceByPk(db Queryer, pk0 null.Int) (*TNegotiatedPrice, error
 	return &r, nil
 }
 
+// GetTNegotiatedPriceReflectValuesMap returns a map of field names to their values.
+//
+// key is the tag name, value is the field value.
+// This is useful for reflection and dynamic queries.
+func (r *TNegotiatedPrice) GetTNegotiatedPriceReflectValuesMap() (map[string]any, error) {
+
+	values := make(map[string]any)
+	v := reflect.ValueOf(r).Elem()
+	t := v.Type()
+	for i := range v.NumField() {
+		field := t.Field(i)
+		tag := field.Tag.Get("db")
+		if tag == "" {
+			return nil, errors.Errorf("missing db tag for field %s in table t_negotiated_price", field.Name)
+		}
+
+		columnName := strings.Split(tag, ",")[0]
+		if columnName == "" {
+			return nil, errors.Errorf("missing column name for field %s in table t_negotiated_price", field.Name)
+		}
+
+		fieldValue := reflect.ValueOf(r).Elem().Field(i)
+		if !fieldValue.IsValid() {
+			return nil, errors.Errorf("invalid field value for field %s in table t_negotiated_price", field.Name)
+		}
+
+		if !fieldValue.CanAddr() {
+			return nil, errors.Errorf("cannot read field value for field %s in table t_negotiated_price", field.Name)
+		}
+
+		values[columnName] = fieldValue.Addr().Interface()
+	}
+
+	return values, nil
+}
+
 /*TOperationLogs t_operation_logs represents assessuser.t_operation_logs */
 type TOperationLogs struct {
 	ID            null.Int       `json:"ID,omitempty" db:"id,true,integer"`                                       /* id 日志ID */
@@ -3684,7 +9333,7 @@ type TOperationLogs struct {
 	UpdateTime    null.Int       `json:"UpdateTime,omitempty" db:"update_time,false,timestamp without time zone"` /* update_time 更新时间 */
 	Status        null.String    `json:"Status,omitempty" db:"status,false,character varying"`                    /* status 状态 00: 正常 02：已删除 */
 	Addi          types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                                    /* addi 附加信息 */
-	Filter                       // build DML where clause
+	Filter                                                                                                        // build DML where clause
 }
 
 // TOperationLogsFields full field list for default query
@@ -3699,6 +9348,66 @@ var TOperationLogsFields = []string{
 	"UpdateTime",
 	"Status",
 	"Addi",
+}
+
+// TOperationLogsColumns full column list for default query
+var TOperationLogsColumns = []string{
+	"id",
+	"module",
+	"entity_id",
+	"change_content",
+	"creator",
+	"create_time",
+	"updated_by",
+	"update_time",
+	"status",
+	"addi",
+}
+
+// TOperationLogsColumnsDataTypes full column data types for default query
+var TOperationLogsColumnsDataTypes = map[string]string{
+	"id":             "integer",
+	"module":         "character varying",
+	"entity_id":      "bigint",
+	"change_content": "jsonb",
+	"creator":        "bigint",
+	"create_time":    "timestamp without time zone",
+	"updated_by":     "bigint",
+	"update_time":    "timestamp without time zone",
+	"status":         "character varying",
+	"addi":           "jsonb",
+}
+
+// GetFieldsMap returns a map of field names to their values.
+func (r *TOperationLogs) GetFieldsMap() map[string]any {
+	return map[string]any{
+		"ID":            r.ID,
+		"Module":        r.Module,
+		"EntityID":      r.EntityID,
+		"ChangeContent": r.ChangeContent,
+		"Creator":       r.Creator,
+		"CreateTime":    r.CreateTime,
+		"UpdatedBy":     r.UpdatedBy,
+		"UpdateTime":    r.UpdateTime,
+		"Status":        r.Status,
+		"Addi":          r.Addi,
+	}
+}
+
+// GetColumnsMap returns a map of column names to their values.
+func (r *TOperationLogs) GetColumnsMap() map[string]any {
+	return map[string]any{
+		"id":             r.ID,
+		"module":         r.Module,
+		"entity_id":      r.EntityID,
+		"change_content": r.ChangeContent,
+		"creator":        r.Creator,
+		"create_time":    r.CreateTime,
+		"updated_by":     r.UpdatedBy,
+		"update_time":    r.UpdateTime,
+		"status":         r.Status,
+		"addi":           r.Addi,
+	}
 }
 
 // Fields return all fields of struct.
@@ -3738,6 +9447,42 @@ func GetTOperationLogsByPk(db Queryer, pk0 null.Int) (*TOperationLogs, error) {
 		return nil, errors.Wrap(err, "failed to select t_operation_logs")
 	}
 	return &r, nil
+}
+
+// GetTOperationLogsReflectValuesMap returns a map of field names to their values.
+//
+// key is the tag name, value is the field value.
+// This is useful for reflection and dynamic queries.
+func (r *TOperationLogs) GetTOperationLogsReflectValuesMap() (map[string]any, error) {
+
+	values := make(map[string]any)
+	v := reflect.ValueOf(r).Elem()
+	t := v.Type()
+	for i := range v.NumField() {
+		field := t.Field(i)
+		tag := field.Tag.Get("db")
+		if tag == "" {
+			return nil, errors.Errorf("missing db tag for field %s in table t_operation_logs", field.Name)
+		}
+
+		columnName := strings.Split(tag, ",")[0]
+		if columnName == "" {
+			return nil, errors.Errorf("missing column name for field %s in table t_operation_logs", field.Name)
+		}
+
+		fieldValue := reflect.ValueOf(r).Elem().Field(i)
+		if !fieldValue.IsValid() {
+			return nil, errors.Errorf("invalid field value for field %s in table t_operation_logs", field.Name)
+		}
+
+		if !fieldValue.CanAddr() {
+			return nil, errors.Errorf("cannot read field value for field %s in table t_operation_logs", field.Name)
+		}
+
+		values[columnName] = fieldValue.Addr().Interface()
+	}
+
+	return values, nil
 }
 
 /*TOrder 订单 represents assessuser.t_order */
@@ -3883,7 +9628,7 @@ type TOrder struct {
 	Addi        types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                            /* addi 附加数据 */
 	Remark      null.String    `json:"Remark,omitempty" db:"remark,false,character varying"`            /* remark 备注 */
 	Status      null.String    `json:"Status,omitempty" db:"status,false,character varying"`            /* status 0: 未支付, 2: 已支付，4: 已生成保单, 6: 已作废 */
-	Filter                     // build DML where clause
+	Filter                                                                                              // build DML where clause
 }
 
 // TOrderFields full field list for default query
@@ -4018,6 +9763,538 @@ var TOrderFields = []string{
 	"Status",
 }
 
+// TOrderColumns full column list for default query
+var TOrderColumns = []string{
+	"id",
+	"trade_no",
+	"pay_order_no",
+	"transaction_id",
+	"batch",
+	"pay_time",
+	"pay_type",
+	"pay_channel",
+	"pay_name",
+	"pay_account_info",
+	"refundable",
+	"unit_price",
+	"refund_desc",
+	"amount",
+	"actual_amount",
+	"balance",
+	"balance_list",
+	"insure_order_no",
+	"refund_no",
+	"refund",
+	"refund_time",
+	"confirm_refund",
+	"agency_id",
+	"org_id",
+	"org_manager_id",
+	"insurance_type",
+	"insurance_type_id",
+	"insurance_police_id",
+	"plan_id",
+	"plan_name",
+	"insurer",
+	"policy_scheme",
+	"policy_doc",
+	"activity_name",
+	"activity_category",
+	"activity_desc",
+	"activity_location",
+	"activity_date_set",
+	"copies_num",
+	"insured_count",
+	"compulsory_student_num",
+	"non_compulsory_student_num",
+	"contact",
+	"fee_scheme",
+	"car_service_target",
+	"policyholder",
+	"policyholder_type",
+	"policyholder_id",
+	"same",
+	"relation",
+	"insured",
+	"insured_id",
+	"health_survey",
+	"org_name",
+	"org_category",
+	"have_insured_list",
+	"insured_group_by_day",
+	"insured_type",
+	"insured_list",
+	"commence_date",
+	"expiry_date",
+	"indate",
+	"sign",
+	"jurisdiction",
+	"dispute_handling",
+	"prev_policy_no",
+	"insure_base",
+	"blanket_insure_code",
+	"custom_type",
+	"train_projects",
+	"business_locations",
+	"open_pool_num",
+	"heated_pool_num",
+	"training_pool_num",
+	"pool_num",
+	"dinner_num",
+	"have_dinner_num",
+	"canteen_num",
+	"shop_num",
+	"have_rides",
+	"have_explosive",
+	"inner_area",
+	"outer_area",
+	"pool_name",
+	"arbitral_agency",
+	"traffic_num",
+	"temperature_type",
+	"is_indoor",
+	"extra",
+	"bank_account",
+	"pay_contact",
+	"sudden_death_terms",
+	"spec_agreement",
+	"have_negotiated_price",
+	"have_renewal_reminder",
+	"lock_status",
+	"insurance_company",
+	"insurance_company_account",
+	"charge_mode",
+	"can_revoke_order",
+	"can_public_transfers",
+	"is_reminder",
+	"ground_num",
+	"reminders_num",
+	"reminder_times",
+	"refused_reason",
+	"unpaid_reason",
+	"admin_received",
+	"user_received",
+	"have_sudden_death",
+	"have_confirm_date",
+	"is_invoice",
+	"inv_visible",
+	"inv_borrow",
+	"inv_title",
+	"traits",
+	"files",
+	"inv_status",
+	"order_status",
+	"upd_status",
+	"creator",
+	"create_time",
+	"updated_by",
+	"update_time",
+	"domain_id",
+	"addi",
+	"remark",
+	"status",
+}
+
+// TOrderColumnsDataTypes full column data types for default query
+var TOrderColumnsDataTypes = map[string]string{
+	"id":                         "integer",
+	"trade_no":                   "character varying",
+	"pay_order_no":               "character varying",
+	"transaction_id":             "character varying",
+	"batch":                      "character varying",
+	"pay_time":                   "bigint",
+	"pay_type":                   "character varying",
+	"pay_channel":                "character varying",
+	"pay_name":                   "character varying",
+	"pay_account_info":           "jsonb",
+	"refundable":                 "boolean",
+	"unit_price":                 "double precision",
+	"refund_desc":                "character varying",
+	"amount":                     "double precision",
+	"actual_amount":              "double precision",
+	"balance":                    "double precision",
+	"balance_list":               "jsonb",
+	"insure_order_no":            "character varying",
+	"refund_no":                  "character varying",
+	"refund":                     "double precision",
+	"refund_time":                "bigint",
+	"confirm_refund":             "boolean",
+	"agency_id":                  "bigint",
+	"org_id":                     "bigint",
+	"org_manager_id":             "bigint",
+	"insurance_type":             "character varying",
+	"insurance_type_id":          "bigint",
+	"insurance_police_id":        "bigint",
+	"plan_id":                    "bigint",
+	"plan_name":                  "character varying",
+	"insurer":                    "character varying",
+	"policy_scheme":              "jsonb",
+	"policy_doc":                 "character varying",
+	"activity_name":              "character varying",
+	"activity_category":          "character varying",
+	"activity_desc":              "character varying",
+	"activity_location":          "character varying",
+	"activity_date_set":          "character varying",
+	"copies_num":                 "smallint",
+	"insured_count":              "smallint",
+	"compulsory_student_num":     "bigint",
+	"non_compulsory_student_num": "bigint",
+	"contact":                    "jsonb",
+	"fee_scheme":                 "jsonb",
+	"car_service_target":         "character varying",
+	"policyholder":               "jsonb",
+	"policyholder_type":          "character varying",
+	"policyholder_id":            "bigint",
+	"same":                       "boolean",
+	"relation":                   "character varying",
+	"insured":                    "jsonb",
+	"insured_id":                 "bigint",
+	"health_survey":              "jsonb",
+	"org_name":                   "character varying",
+	"org_category":               "character varying",
+	"have_insured_list":          "boolean",
+	"insured_group_by_day":       "boolean",
+	"insured_type":               "character varying",
+	"insured_list":               "jsonb",
+	"commence_date":              "bigint",
+	"expiry_date":                "bigint",
+	"indate":                     "bigint",
+	"sign":                       "character varying",
+	"jurisdiction":               "character varying",
+	"dispute_handling":           "character varying",
+	"prev_policy_no":             "character varying",
+	"insure_base":                "character varying",
+	"blanket_insure_code":        "character varying",
+	"custom_type":                "character varying",
+	"train_projects":             "character varying",
+	"business_locations":         "jsonb",
+	"open_pool_num":              "smallint",
+	"heated_pool_num":            "smallint",
+	"training_pool_num":          "smallint",
+	"pool_num":                   "smallint",
+	"dinner_num":                 "integer",
+	"have_dinner_num":            "boolean",
+	"canteen_num":                "integer",
+	"shop_num":                   "integer",
+	"have_rides":                 "boolean",
+	"have_explosive":             "boolean",
+	"inner_area":                 "double precision",
+	"outer_area":                 "double precision",
+	"pool_name":                  "character varying",
+	"arbitral_agency":            "character varying",
+	"traffic_num":                "integer",
+	"temperature_type":           "character varying",
+	"is_indoor":                  "character varying",
+	"extra":                      "jsonb",
+	"bank_account":               "jsonb",
+	"pay_contact":                "character varying",
+	"sudden_death_terms":         "character varying",
+	"spec_agreement":             "character varying",
+	"have_negotiated_price":      "boolean",
+	"have_renewal_reminder":      "boolean",
+	"lock_status":                "character varying",
+	"insurance_company":          "character varying",
+	"insurance_company_account":  "character varying",
+	"charge_mode":                "character varying",
+	"can_revoke_order":           "boolean",
+	"can_public_transfers":       "boolean",
+	"is_reminder":                "boolean",
+	"ground_num":                 "smallint",
+	"reminders_num":              "smallint",
+	"reminder_times":             "character varying",
+	"refused_reason":             "character varying",
+	"unpaid_reason":              "character varying",
+	"admin_received":             "boolean",
+	"user_received":              "boolean",
+	"have_sudden_death":          "boolean",
+	"have_confirm_date":          "boolean",
+	"is_invoice":                 "boolean",
+	"inv_visible":                "character varying",
+	"inv_borrow":                 "character varying",
+	"inv_title":                  "character varying",
+	"traits":                     "character varying",
+	"files":                      "jsonb",
+	"inv_status":                 "character varying",
+	"order_status":               "character varying",
+	"upd_status":                 "character varying",
+	"creator":                    "bigint",
+	"create_time":                "bigint",
+	"updated_by":                 "bigint",
+	"update_time":                "bigint",
+	"domain_id":                  "bigint",
+	"addi":                       "jsonb",
+	"remark":                     "character varying",
+	"status":                     "character varying",
+}
+
+// GetFieldsMap returns a map of field names to their values.
+func (r *TOrder) GetFieldsMap() map[string]any {
+	return map[string]any{
+		"ID":                      r.ID,
+		"TradeNo":                 r.TradeNo,
+		"PayOrderNo":              r.PayOrderNo,
+		"TransactionID":           r.TransactionID,
+		"Batch":                   r.Batch,
+		"PayTime":                 r.PayTime,
+		"PayType":                 r.PayType,
+		"PayChannel":              r.PayChannel,
+		"PayName":                 r.PayName,
+		"PayAccountInfo":          r.PayAccountInfo,
+		"Refundable":              r.Refundable,
+		"UnitPrice":               r.UnitPrice,
+		"RefundDesc":              r.RefundDesc,
+		"Amount":                  r.Amount,
+		"ActualAmount":            r.ActualAmount,
+		"Balance":                 r.Balance,
+		"BalanceList":             r.BalanceList,
+		"InsureOrderNo":           r.InsureOrderNo,
+		"RefundNo":                r.RefundNo,
+		"Refund":                  r.Refund,
+		"RefundTime":              r.RefundTime,
+		"ConfirmRefund":           r.ConfirmRefund,
+		"AgencyID":                r.AgencyID,
+		"OrgID":                   r.OrgID,
+		"OrgManagerID":            r.OrgManagerID,
+		"InsuranceType":           r.InsuranceType,
+		"InsuranceTypeID":         r.InsuranceTypeID,
+		"InsurancePoliceID":       r.InsurancePoliceID,
+		"PlanID":                  r.PlanID,
+		"PlanName":                r.PlanName,
+		"Insurer":                 r.Insurer,
+		"PolicyScheme":            r.PolicyScheme,
+		"PolicyDoc":               r.PolicyDoc,
+		"ActivityName":            r.ActivityName,
+		"ActivityCategory":        r.ActivityCategory,
+		"ActivityDesc":            r.ActivityDesc,
+		"ActivityLocation":        r.ActivityLocation,
+		"ActivityDateSet":         r.ActivityDateSet,
+		"CopiesNum":               r.CopiesNum,
+		"InsuredCount":            r.InsuredCount,
+		"CompulsoryStudentNum":    r.CompulsoryStudentNum,
+		"NonCompulsoryStudentNum": r.NonCompulsoryStudentNum,
+		"Contact":                 r.Contact,
+		"FeeScheme":               r.FeeScheme,
+		"CarServiceTarget":        r.CarServiceTarget,
+		"Policyholder":            r.Policyholder,
+		"PolicyholderType":        r.PolicyholderType,
+		"PolicyholderID":          r.PolicyholderID,
+		"Same":                    r.Same,
+		"Relation":                r.Relation,
+		"Insured":                 r.Insured,
+		"InsuredID":               r.InsuredID,
+		"HealthSurvey":            r.HealthSurvey,
+		"OrgName":                 r.OrgName,
+		"OrgCategory":             r.OrgCategory,
+		"HaveInsuredList":         r.HaveInsuredList,
+		"InsuredGroupByDay":       r.InsuredGroupByDay,
+		"InsuredType":             r.InsuredType,
+		"InsuredList":             r.InsuredList,
+		"CommenceDate":            r.CommenceDate,
+		"ExpiryDate":              r.ExpiryDate,
+		"Indate":                  r.Indate,
+		"Sign":                    r.Sign,
+		"Jurisdiction":            r.Jurisdiction,
+		"DisputeHandling":         r.DisputeHandling,
+		"PrevPolicyNo":            r.PrevPolicyNo,
+		"InsureBase":              r.InsureBase,
+		"BlanketInsureCode":       r.BlanketInsureCode,
+		"CustomType":              r.CustomType,
+		"TrainProjects":           r.TrainProjects,
+		"BusinessLocations":       r.BusinessLocations,
+		"OpenPoolNum":             r.OpenPoolNum,
+		"HeatedPoolNum":           r.HeatedPoolNum,
+		"TrainingPoolNum":         r.TrainingPoolNum,
+		"PoolNum":                 r.PoolNum,
+		"DinnerNum":               r.DinnerNum,
+		"HaveDinnerNum":           r.HaveDinnerNum,
+		"CanteenNum":              r.CanteenNum,
+		"ShopNum":                 r.ShopNum,
+		"HaveRides":               r.HaveRides,
+		"HaveExplosive":           r.HaveExplosive,
+		"InnerArea":               r.InnerArea,
+		"OuterArea":               r.OuterArea,
+		"PoolName":                r.PoolName,
+		"ArbitralAgency":          r.ArbitralAgency,
+		"TrafficNum":              r.TrafficNum,
+		"TemperatureType":         r.TemperatureType,
+		"IsIndoor":                r.IsIndoor,
+		"Extra":                   r.Extra,
+		"BankAccount":             r.BankAccount,
+		"PayContact":              r.PayContact,
+		"SuddenDeathTerms":        r.SuddenDeathTerms,
+		"SpecAgreement":           r.SpecAgreement,
+		"HaveNegotiatedPrice":     r.HaveNegotiatedPrice,
+		"HaveRenewalReminder":     r.HaveRenewalReminder,
+		"LockStatus":              r.LockStatus,
+		"InsuranceCompany":        r.InsuranceCompany,
+		"InsuranceCompanyAccount": r.InsuranceCompanyAccount,
+		"ChargeMode":              r.ChargeMode,
+		"CanRevokeOrder":          r.CanRevokeOrder,
+		"CanPublicTransfers":      r.CanPublicTransfers,
+		"IsReminder":              r.IsReminder,
+		"GroundNum":               r.GroundNum,
+		"RemindersNum":            r.RemindersNum,
+		"ReminderTimes":           r.ReminderTimes,
+		"RefusedReason":           r.RefusedReason,
+		"UnpaidReason":            r.UnpaidReason,
+		"AdminReceived":           r.AdminReceived,
+		"UserReceived":            r.UserReceived,
+		"HaveSuddenDeath":         r.HaveSuddenDeath,
+		"HaveConfirmDate":         r.HaveConfirmDate,
+		"IsInvoice":               r.IsInvoice,
+		"InvVisible":              r.InvVisible,
+		"InvBorrow":               r.InvBorrow,
+		"InvTitle":                r.InvTitle,
+		"Traits":                  r.Traits,
+		"Files":                   r.Files,
+		"InvStatus":               r.InvStatus,
+		"OrderStatus":             r.OrderStatus,
+		"UpdStatus":               r.UpdStatus,
+		"Creator":                 r.Creator,
+		"CreateTime":              r.CreateTime,
+		"UpdatedBy":               r.UpdatedBy,
+		"UpdateTime":              r.UpdateTime,
+		"DomainID":                r.DomainID,
+		"Addi":                    r.Addi,
+		"Remark":                  r.Remark,
+		"Status":                  r.Status,
+	}
+}
+
+// GetColumnsMap returns a map of column names to their values.
+func (r *TOrder) GetColumnsMap() map[string]any {
+	return map[string]any{
+		"id":                         r.ID,
+		"trade_no":                   r.TradeNo,
+		"pay_order_no":               r.PayOrderNo,
+		"transaction_id":             r.TransactionID,
+		"batch":                      r.Batch,
+		"pay_time":                   r.PayTime,
+		"pay_type":                   r.PayType,
+		"pay_channel":                r.PayChannel,
+		"pay_name":                   r.PayName,
+		"pay_account_info":           r.PayAccountInfo,
+		"refundable":                 r.Refundable,
+		"unit_price":                 r.UnitPrice,
+		"refund_desc":                r.RefundDesc,
+		"amount":                     r.Amount,
+		"actual_amount":              r.ActualAmount,
+		"balance":                    r.Balance,
+		"balance_list":               r.BalanceList,
+		"insure_order_no":            r.InsureOrderNo,
+		"refund_no":                  r.RefundNo,
+		"refund":                     r.Refund,
+		"refund_time":                r.RefundTime,
+		"confirm_refund":             r.ConfirmRefund,
+		"agency_id":                  r.AgencyID,
+		"org_id":                     r.OrgID,
+		"org_manager_id":             r.OrgManagerID,
+		"insurance_type":             r.InsuranceType,
+		"insurance_type_id":          r.InsuranceTypeID,
+		"insurance_police_id":        r.InsurancePoliceID,
+		"plan_id":                    r.PlanID,
+		"plan_name":                  r.PlanName,
+		"insurer":                    r.Insurer,
+		"policy_scheme":              r.PolicyScheme,
+		"policy_doc":                 r.PolicyDoc,
+		"activity_name":              r.ActivityName,
+		"activity_category":          r.ActivityCategory,
+		"activity_desc":              r.ActivityDesc,
+		"activity_location":          r.ActivityLocation,
+		"activity_date_set":          r.ActivityDateSet,
+		"copies_num":                 r.CopiesNum,
+		"insured_count":              r.InsuredCount,
+		"compulsory_student_num":     r.CompulsoryStudentNum,
+		"non_compulsory_student_num": r.NonCompulsoryStudentNum,
+		"contact":                    r.Contact,
+		"fee_scheme":                 r.FeeScheme,
+		"car_service_target":         r.CarServiceTarget,
+		"policyholder":               r.Policyholder,
+		"policyholder_type":          r.PolicyholderType,
+		"policyholder_id":            r.PolicyholderID,
+		"same":                       r.Same,
+		"relation":                   r.Relation,
+		"insured":                    r.Insured,
+		"insured_id":                 r.InsuredID,
+		"health_survey":              r.HealthSurvey,
+		"org_name":                   r.OrgName,
+		"org_category":               r.OrgCategory,
+		"have_insured_list":          r.HaveInsuredList,
+		"insured_group_by_day":       r.InsuredGroupByDay,
+		"insured_type":               r.InsuredType,
+		"insured_list":               r.InsuredList,
+		"commence_date":              r.CommenceDate,
+		"expiry_date":                r.ExpiryDate,
+		"indate":                     r.Indate,
+		"sign":                       r.Sign,
+		"jurisdiction":               r.Jurisdiction,
+		"dispute_handling":           r.DisputeHandling,
+		"prev_policy_no":             r.PrevPolicyNo,
+		"insure_base":                r.InsureBase,
+		"blanket_insure_code":        r.BlanketInsureCode,
+		"custom_type":                r.CustomType,
+		"train_projects":             r.TrainProjects,
+		"business_locations":         r.BusinessLocations,
+		"open_pool_num":              r.OpenPoolNum,
+		"heated_pool_num":            r.HeatedPoolNum,
+		"training_pool_num":          r.TrainingPoolNum,
+		"pool_num":                   r.PoolNum,
+		"dinner_num":                 r.DinnerNum,
+		"have_dinner_num":            r.HaveDinnerNum,
+		"canteen_num":                r.CanteenNum,
+		"shop_num":                   r.ShopNum,
+		"have_rides":                 r.HaveRides,
+		"have_explosive":             r.HaveExplosive,
+		"inner_area":                 r.InnerArea,
+		"outer_area":                 r.OuterArea,
+		"pool_name":                  r.PoolName,
+		"arbitral_agency":            r.ArbitralAgency,
+		"traffic_num":                r.TrafficNum,
+		"temperature_type":           r.TemperatureType,
+		"is_indoor":                  r.IsIndoor,
+		"extra":                      r.Extra,
+		"bank_account":               r.BankAccount,
+		"pay_contact":                r.PayContact,
+		"sudden_death_terms":         r.SuddenDeathTerms,
+		"spec_agreement":             r.SpecAgreement,
+		"have_negotiated_price":      r.HaveNegotiatedPrice,
+		"have_renewal_reminder":      r.HaveRenewalReminder,
+		"lock_status":                r.LockStatus,
+		"insurance_company":          r.InsuranceCompany,
+		"insurance_company_account":  r.InsuranceCompanyAccount,
+		"charge_mode":                r.ChargeMode,
+		"can_revoke_order":           r.CanRevokeOrder,
+		"can_public_transfers":       r.CanPublicTransfers,
+		"is_reminder":                r.IsReminder,
+		"ground_num":                 r.GroundNum,
+		"reminders_num":              r.RemindersNum,
+		"reminder_times":             r.ReminderTimes,
+		"refused_reason":             r.RefusedReason,
+		"unpaid_reason":              r.UnpaidReason,
+		"admin_received":             r.AdminReceived,
+		"user_received":              r.UserReceived,
+		"have_sudden_death":          r.HaveSuddenDeath,
+		"have_confirm_date":          r.HaveConfirmDate,
+		"is_invoice":                 r.IsInvoice,
+		"inv_visible":                r.InvVisible,
+		"inv_borrow":                 r.InvBorrow,
+		"inv_title":                  r.InvTitle,
+		"traits":                     r.Traits,
+		"files":                      r.Files,
+		"inv_status":                 r.InvStatus,
+		"order_status":               r.OrderStatus,
+		"upd_status":                 r.UpdStatus,
+		"creator":                    r.Creator,
+		"create_time":                r.CreateTime,
+		"updated_by":                 r.UpdatedBy,
+		"update_time":                r.UpdateTime,
+		"domain_id":                  r.DomainID,
+		"addi":                       r.Addi,
+		"remark":                     r.Remark,
+		"status":                     r.Status,
+	}
+}
+
 // Fields return all fields of struct.
 func (r *TOrder) Fields() []string {
 	return TOrderFields
@@ -4057,6 +10334,42 @@ func GetTOrderByPk(db Queryer, pk0 null.Int) (*TOrder, error) {
 	return &r, nil
 }
 
+// GetTOrderReflectValuesMap returns a map of field names to their values.
+//
+// key is the tag name, value is the field value.
+// This is useful for reflection and dynamic queries.
+func (r *TOrder) GetTOrderReflectValuesMap() (map[string]any, error) {
+
+	values := make(map[string]any)
+	v := reflect.ValueOf(r).Elem()
+	t := v.Type()
+	for i := range v.NumField() {
+		field := t.Field(i)
+		tag := field.Tag.Get("db")
+		if tag == "" {
+			return nil, errors.Errorf("missing db tag for field %s in table t_order", field.Name)
+		}
+
+		columnName := strings.Split(tag, ",")[0]
+		if columnName == "" {
+			return nil, errors.Errorf("missing column name for field %s in table t_order", field.Name)
+		}
+
+		fieldValue := reflect.ValueOf(r).Elem().Field(i)
+		if !fieldValue.IsValid() {
+			return nil, errors.Errorf("invalid field value for field %s in table t_order", field.Name)
+		}
+
+		if !fieldValue.CanAddr() {
+			return nil, errors.Errorf("cannot read field value for field %s in table t_order", field.Name)
+		}
+
+		values[columnName] = fieldValue.Addr().Interface()
+	}
+
+	return values, nil
+}
+
 /*TPaper t_paper represents assessuser.t_paper */
 type TPaper struct {
 	ID                null.Int       `json:"ID,omitempty" db:"id,true,integer"`                                 /* id 试卷ID */
@@ -4075,7 +10388,7 @@ type TPaper struct {
 	Addi              types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                              /* addi 附加信息 */
 	Status            null.String    `json:"Status,omitempty" db:"status,false,character varying"`              /* status 状态 00：正常， 02：异常 */
 	AccessMode        null.String    `json:"AccessMode,omitempty" db:"access_mode,false,character varying"`     /* access_mode 试卷访问权限，00私有 02共享 04公开 */
-	Filter                           // build DML where clause
+	Filter                                                                                                      // build DML where clause
 }
 
 // TPaperFields full field list for default query
@@ -4096,6 +10409,90 @@ var TPaperFields = []string{
 	"Addi",
 	"Status",
 	"AccessMode",
+}
+
+// TPaperColumns full column list for default query
+var TPaperColumns = []string{
+	"id",
+	"name",
+	"assembly_type",
+	"category",
+	"level",
+	"suggested_duration",
+	"description",
+	"tags",
+	"config",
+	"creator",
+	"create_time",
+	"updated_by",
+	"update_time",
+	"addi",
+	"status",
+	"access_mode",
+}
+
+// TPaperColumnsDataTypes full column data types for default query
+var TPaperColumnsDataTypes = map[string]string{
+	"id":                 "integer",
+	"name":               "character varying",
+	"assembly_type":      "character varying",
+	"category":           "character varying",
+	"level":              "character varying",
+	"suggested_duration": "integer",
+	"description":        "text",
+	"tags":               "jsonb",
+	"config":             "jsonb",
+	"creator":            "bigint",
+	"create_time":        "bigint",
+	"updated_by":         "bigint",
+	"update_time":        "bigint",
+	"addi":               "jsonb",
+	"status":             "character varying",
+	"access_mode":        "character varying",
+}
+
+// GetFieldsMap returns a map of field names to their values.
+func (r *TPaper) GetFieldsMap() map[string]any {
+	return map[string]any{
+		"ID":                r.ID,
+		"Name":              r.Name,
+		"AssemblyType":      r.AssemblyType,
+		"Category":          r.Category,
+		"Level":             r.Level,
+		"SuggestedDuration": r.SuggestedDuration,
+		"Description":       r.Description,
+		"Tags":              r.Tags,
+		"Config":            r.Config,
+		"Creator":           r.Creator,
+		"CreateTime":        r.CreateTime,
+		"UpdatedBy":         r.UpdatedBy,
+		"UpdateTime":        r.UpdateTime,
+		"Addi":              r.Addi,
+		"Status":            r.Status,
+		"AccessMode":        r.AccessMode,
+	}
+}
+
+// GetColumnsMap returns a map of column names to their values.
+func (r *TPaper) GetColumnsMap() map[string]any {
+	return map[string]any{
+		"id":                 r.ID,
+		"name":               r.Name,
+		"assembly_type":      r.AssemblyType,
+		"category":           r.Category,
+		"level":              r.Level,
+		"suggested_duration": r.SuggestedDuration,
+		"description":        r.Description,
+		"tags":               r.Tags,
+		"config":             r.Config,
+		"creator":            r.Creator,
+		"create_time":        r.CreateTime,
+		"updated_by":         r.UpdatedBy,
+		"update_time":        r.UpdateTime,
+		"addi":               r.Addi,
+		"status":             r.Status,
+		"access_mode":        r.AccessMode,
+	}
 }
 
 // Fields return all fields of struct.
@@ -4137,6 +10534,42 @@ func GetTPaperByPk(db Queryer, pk0 null.Int) (*TPaper, error) {
 	return &r, nil
 }
 
+// GetTPaperReflectValuesMap returns a map of field names to their values.
+//
+// key is the tag name, value is the field value.
+// This is useful for reflection and dynamic queries.
+func (r *TPaper) GetTPaperReflectValuesMap() (map[string]any, error) {
+
+	values := make(map[string]any)
+	v := reflect.ValueOf(r).Elem()
+	t := v.Type()
+	for i := range v.NumField() {
+		field := t.Field(i)
+		tag := field.Tag.Get("db")
+		if tag == "" {
+			return nil, errors.Errorf("missing db tag for field %s in table t_paper", field.Name)
+		}
+
+		columnName := strings.Split(tag, ",")[0]
+		if columnName == "" {
+			return nil, errors.Errorf("missing column name for field %s in table t_paper", field.Name)
+		}
+
+		fieldValue := reflect.ValueOf(r).Elem().Field(i)
+		if !fieldValue.IsValid() {
+			return nil, errors.Errorf("invalid field value for field %s in table t_paper", field.Name)
+		}
+
+		if !fieldValue.CanAddr() {
+			return nil, errors.Errorf("cannot read field value for field %s in table t_paper", field.Name)
+		}
+
+		values[columnName] = fieldValue.Addr().Interface()
+	}
+
+	return values, nil
+}
+
 /*TPaperGroup t_paper_group represents assessuser.t_paper_group */
 type TPaperGroup struct {
 	ID         null.Int       `json:"ID,omitempty" db:"id,true,integer"`                    /* id 题组ID */
@@ -4149,7 +10582,7 @@ type TPaperGroup struct {
 	UpdateTime null.Int       `json:"UpdateTime,omitempty" db:"update_time,false,bigint"`   /* update_time 更新时间 */
 	Addi       types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                 /* addi 附加信息 */
 	Status     null.String    `json:"Status,omitempty" db:"status,false,character varying"` /* status 状态 00：正常， 02：异常 */
-	Filter                    // build DML where clause
+	Filter                                                                                  // build DML where clause
 }
 
 // TPaperGroupFields full field list for default query
@@ -4164,6 +10597,66 @@ var TPaperGroupFields = []string{
 	"UpdateTime",
 	"Addi",
 	"Status",
+}
+
+// TPaperGroupColumns full column list for default query
+var TPaperGroupColumns = []string{
+	"id",
+	"paper_id",
+	"name",
+	"order",
+	"creator",
+	"create_time",
+	"updated_by",
+	"update_time",
+	"addi",
+	"status",
+}
+
+// TPaperGroupColumnsDataTypes full column data types for default query
+var TPaperGroupColumnsDataTypes = map[string]string{
+	"id":          "integer",
+	"paper_id":    "bigint",
+	"name":        "text",
+	"order":       "integer",
+	"creator":     "bigint",
+	"create_time": "bigint",
+	"updated_by":  "bigint",
+	"update_time": "bigint",
+	"addi":        "jsonb",
+	"status":      "character varying",
+}
+
+// GetFieldsMap returns a map of field names to their values.
+func (r *TPaperGroup) GetFieldsMap() map[string]any {
+	return map[string]any{
+		"ID":         r.ID,
+		"PaperID":    r.PaperID,
+		"Name":       r.Name,
+		"Order":      r.Order,
+		"Creator":    r.Creator,
+		"CreateTime": r.CreateTime,
+		"UpdatedBy":  r.UpdatedBy,
+		"UpdateTime": r.UpdateTime,
+		"Addi":       r.Addi,
+		"Status":     r.Status,
+	}
+}
+
+// GetColumnsMap returns a map of column names to their values.
+func (r *TPaperGroup) GetColumnsMap() map[string]any {
+	return map[string]any{
+		"id":          r.ID,
+		"paper_id":    r.PaperID,
+		"name":        r.Name,
+		"order":       r.Order,
+		"creator":     r.Creator,
+		"create_time": r.CreateTime,
+		"updated_by":  r.UpdatedBy,
+		"update_time": r.UpdateTime,
+		"addi":        r.Addi,
+		"status":      r.Status,
+	}
 }
 
 // Fields return all fields of struct.
@@ -4205,6 +10698,42 @@ func GetTPaperGroupByPk(db Queryer, pk0 null.Int) (*TPaperGroup, error) {
 	return &r, nil
 }
 
+// GetTPaperGroupReflectValuesMap returns a map of field names to their values.
+//
+// key is the tag name, value is the field value.
+// This is useful for reflection and dynamic queries.
+func (r *TPaperGroup) GetTPaperGroupReflectValuesMap() (map[string]any, error) {
+
+	values := make(map[string]any)
+	v := reflect.ValueOf(r).Elem()
+	t := v.Type()
+	for i := range v.NumField() {
+		field := t.Field(i)
+		tag := field.Tag.Get("db")
+		if tag == "" {
+			return nil, errors.Errorf("missing db tag for field %s in table t_paper_group", field.Name)
+		}
+
+		columnName := strings.Split(tag, ",")[0]
+		if columnName == "" {
+			return nil, errors.Errorf("missing column name for field %s in table t_paper_group", field.Name)
+		}
+
+		fieldValue := reflect.ValueOf(r).Elem().Field(i)
+		if !fieldValue.IsValid() {
+			return nil, errors.Errorf("invalid field value for field %s in table t_paper_group", field.Name)
+		}
+
+		if !fieldValue.CanAddr() {
+			return nil, errors.Errorf("cannot read field value for field %s in table t_paper_group", field.Name)
+		}
+
+		values[columnName] = fieldValue.Addr().Interface()
+	}
+
+	return values, nil
+}
+
 /*TPaperQuestion t_paper_question represents assessuser.t_paper_question */
 type TPaperQuestion struct {
 	ID             null.Int       `json:"ID,omitempty" db:"id,true,integer"`                           /* id 试卷题目ID */
@@ -4219,7 +10748,7 @@ type TPaperQuestion struct {
 	UpdateTime     null.Int       `json:"UpdateTime,omitempty" db:"update_time,false,bigint"`          /* update_time 更新时间 */
 	Addi           types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                        /* addi 附加信息 */
 	Status         null.String    `json:"Status,omitempty" db:"status,false,character varying"`        /* status 状态 00：正常 02：异常 */
-	Filter                        // build DML where clause
+	Filter                                                                                             // build DML where clause
 }
 
 // TPaperQuestionFields full field list for default query
@@ -4236,6 +10765,74 @@ var TPaperQuestionFields = []string{
 	"UpdateTime",
 	"Addi",
 	"Status",
+}
+
+// TPaperQuestionColumns full column list for default query
+var TPaperQuestionColumns = []string{
+	"id",
+	"bank_question_id",
+	"order",
+	"group_id",
+	"score",
+	"sub_score",
+	"creator",
+	"create_time",
+	"updated_by",
+	"update_time",
+	"addi",
+	"status",
+}
+
+// TPaperQuestionColumnsDataTypes full column data types for default query
+var TPaperQuestionColumnsDataTypes = map[string]string{
+	"id":               "integer",
+	"bank_question_id": "bigint",
+	"order":            "integer",
+	"group_id":         "bigint",
+	"score":            "double precision",
+	"sub_score":        "jsonb",
+	"creator":          "bigint",
+	"create_time":      "bigint",
+	"updated_by":       "bigint",
+	"update_time":      "bigint",
+	"addi":             "jsonb",
+	"status":           "character varying",
+}
+
+// GetFieldsMap returns a map of field names to their values.
+func (r *TPaperQuestion) GetFieldsMap() map[string]any {
+	return map[string]any{
+		"ID":             r.ID,
+		"BankQuestionID": r.BankQuestionID,
+		"Order":          r.Order,
+		"GroupID":        r.GroupID,
+		"Score":          r.Score,
+		"SubScore":       r.SubScore,
+		"Creator":        r.Creator,
+		"CreateTime":     r.CreateTime,
+		"UpdatedBy":      r.UpdatedBy,
+		"UpdateTime":     r.UpdateTime,
+		"Addi":           r.Addi,
+		"Status":         r.Status,
+	}
+}
+
+// GetColumnsMap returns a map of column names to their values.
+func (r *TPaperQuestion) GetColumnsMap() map[string]any {
+	return map[string]any{
+		"id":               r.ID,
+		"bank_question_id": r.BankQuestionID,
+		"order":            r.Order,
+		"group_id":         r.GroupID,
+		"score":            r.Score,
+		"sub_score":        r.SubScore,
+		"creator":          r.Creator,
+		"create_time":      r.CreateTime,
+		"updated_by":       r.UpdatedBy,
+		"update_time":      r.UpdateTime,
+		"addi":             r.Addi,
+		"status":           r.Status,
+	}
 }
 
 // Fields return all fields of struct.
@@ -4277,68 +10874,40 @@ func GetTPaperQuestionByPk(db Queryer, pk0 null.Int) (*TPaperQuestion, error) {
 	return &r, nil
 }
 
-/*TPaperShare t_paper_share represents assessuser.t_paper_share */
-type TPaperShare struct {
-	ID         null.Int `json:"ID,omitempty" db:"id,true,integer"`                                       /* id id */
-	PaperID    null.Int `json:"PaperID,omitempty" db:"paper_id,false,bigint"`                            /* paper_id 被分享试卷 */
-	UserID     null.Int `json:"UserID,omitempty" db:"user_id,false,bigint"`                              /* user_id 被分享者 */
-	Creator    null.Int `json:"Creator,omitempty" db:"creator,false,bigint"`                             /* creator 创建者 */
-	CreateTime null.Int `json:"CreateTime,omitempty" db:"create_time,false,timestamp without time zone"` /* create_time 创建时间 */
-	UpdatedBy  null.Int `json:"UpdatedBy,omitempty" db:"updated_by,false,bigint"`                        /* updated_by 更新者 */
-	UpdateTime null.Int `json:"UpdateTime,omitempty" db:"update_time,false,timestamp without time zone"` /* update_time 更新时间 */
-	Status     string   `json:"Status,omitempty" db:"status,false,character varying"`                    /* status 状态：00正常 02废除 */
-	Filter              // build DML where clause
-}
+// GetTPaperQuestionReflectValuesMap returns a map of field names to their values.
+//
+// key is the tag name, value is the field value.
+// This is useful for reflection and dynamic queries.
+func (r *TPaperQuestion) GetTPaperQuestionReflectValuesMap() (map[string]any, error) {
 
-// TPaperShareFields full field list for default query
-var TPaperShareFields = []string{
-	"ID",
-	"PaperID",
-	"UserID",
-	"Creator",
-	"CreateTime",
-	"UpdatedBy",
-	"UpdateTime",
-	"Status",
-}
+	values := make(map[string]any)
+	v := reflect.ValueOf(r).Elem()
+	t := v.Type()
+	for i := range v.NumField() {
+		field := t.Field(i)
+		tag := field.Tag.Get("db")
+		if tag == "" {
+			return nil, errors.Errorf("missing db tag for field %s in table t_paper_question", field.Name)
+		}
 
-// Fields return all fields of struct.
-func (r *TPaperShare) Fields() []string {
-	return TPaperShareFields
-}
+		columnName := strings.Split(tag, ",")[0]
+		if columnName == "" {
+			return nil, errors.Errorf("missing column name for field %s in table t_paper_question", field.Name)
+		}
 
-// GetTableName return the associated db table name.
-func (r *TPaperShare) GetTableName() string {
-	var viewNamePattern = regexp.MustCompile(`(?i)^t_v_[a-z0-9_]+$`)
-	tableName := "t_paper_share"
-	if viewNamePattern.MatchString(tableName) {
-		return tableName[2:]
+		fieldValue := reflect.ValueOf(r).Elem().Field(i)
+		if !fieldValue.IsValid() {
+			return nil, errors.Errorf("invalid field value for field %s in table t_paper_question", field.Name)
+		}
+
+		if !fieldValue.CanAddr() {
+			return nil, errors.Errorf("cannot read field value for field %s in table t_paper_question", field.Name)
+		}
+
+		values[columnName] = fieldValue.Addr().Interface()
 	}
-	return tableName
-}
 
-// Create inserts the TPaperShare to the database.
-func (r *TPaperShare) Create(db Queryer) error {
-	err := db.QueryRow(
-		`INSERT INTO t_paper_share (paper_id, user_id, creator, create_time, updated_by, update_time, status) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
-		&r.PaperID, &r.UserID, &r.Creator, &r.CreateTime, &r.UpdatedBy, &r.UpdateTime, &r.Status).Scan(&r.ID)
-	if err != nil {
-		return errors.Wrap(err, "failed to insert t_paper_share")
-	}
-	return nil
-}
-
-// GetTPaperShareByPk select the TPaperShare from the database.
-func GetTPaperShareByPk(db Queryer, pk0 null.Int) (*TPaperShare, error) {
-
-	var r TPaperShare
-	err := db.QueryRow(
-		`SELECT id, paper_id, user_id, creator, create_time, updated_by, update_time, status FROM t_paper_share WHERE id = $1`,
-		pk0).Scan(&r.ID, &r.PaperID, &r.UserID, &r.Creator, &r.CreateTime, &r.UpdatedBy, &r.UpdateTime, &r.Status)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to select t_paper_share")
-	}
-	return &r, nil
+	return values, nil
 }
 
 /*
@@ -4367,7 +10936,7 @@ type TParam struct {
 	Addi       types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                      /* addi 附加信息 */
 	Remark     null.String    `json:"Remark,omitempty" db:"remark,false,character varying"`      /* remark 备注 */
 	Status     null.String    `json:"Status,omitempty" db:"status,false,character varying"`      /* status 状态，00：草稿，01：有效，02：作废 */
-	Filter                    // build DML where clause
+	Filter                                                                                       // build DML where clause
 }
 
 // TParamFields full field list for default query
@@ -4383,6 +10952,70 @@ var TParamFields = []string{
 	"Addi",
 	"Remark",
 	"Status",
+}
+
+// TParamColumns full column list for default query
+var TParamColumns = []string{
+	"id",
+	"belongto",
+	"name",
+	"value",
+	"data_type",
+	"create_time",
+	"creator",
+	"domain_id",
+	"addi",
+	"remark",
+	"status",
+}
+
+// TParamColumnsDataTypes full column data types for default query
+var TParamColumnsDataTypes = map[string]string{
+	"id":          "integer",
+	"belongto":    "bigint",
+	"name":        "character varying",
+	"value":       "character varying",
+	"data_type":   "character varying",
+	"create_time": "bigint",
+	"creator":     "bigint",
+	"domain_id":   "bigint",
+	"addi":        "jsonb",
+	"remark":      "character varying",
+	"status":      "character varying",
+}
+
+// GetFieldsMap returns a map of field names to their values.
+func (r *TParam) GetFieldsMap() map[string]any {
+	return map[string]any{
+		"ID":         r.ID,
+		"Belongto":   r.Belongto,
+		"Name":       r.Name,
+		"Value":      r.Value,
+		"DataType":   r.DataType,
+		"CreateTime": r.CreateTime,
+		"Creator":    r.Creator,
+		"DomainID":   r.DomainID,
+		"Addi":       r.Addi,
+		"Remark":     r.Remark,
+		"Status":     r.Status,
+	}
+}
+
+// GetColumnsMap returns a map of column names to their values.
+func (r *TParam) GetColumnsMap() map[string]any {
+	return map[string]any{
+		"id":          r.ID,
+		"belongto":    r.Belongto,
+		"name":        r.Name,
+		"value":       r.Value,
+		"data_type":   r.DataType,
+		"create_time": r.CreateTime,
+		"creator":     r.Creator,
+		"domain_id":   r.DomainID,
+		"addi":        r.Addi,
+		"remark":      r.Remark,
+		"status":      r.Status,
+	}
 }
 
 // Fields return all fields of struct.
@@ -4424,6 +11057,42 @@ func GetTParamByPk(db Queryer, pk0 null.Int) (*TParam, error) {
 	return &r, nil
 }
 
+// GetTParamReflectValuesMap returns a map of field names to their values.
+//
+// key is the tag name, value is the field value.
+// This is useful for reflection and dynamic queries.
+func (r *TParam) GetTParamReflectValuesMap() (map[string]any, error) {
+
+	values := make(map[string]any)
+	v := reflect.ValueOf(r).Elem()
+	t := v.Type()
+	for i := range v.NumField() {
+		field := t.Field(i)
+		tag := field.Tag.Get("db")
+		if tag == "" {
+			return nil, errors.Errorf("missing db tag for field %s in table t_param", field.Name)
+		}
+
+		columnName := strings.Split(tag, ",")[0]
+		if columnName == "" {
+			return nil, errors.Errorf("missing column name for field %s in table t_param", field.Name)
+		}
+
+		fieldValue := reflect.ValueOf(r).Elem().Field(i)
+		if !fieldValue.IsValid() {
+			return nil, errors.Errorf("invalid field value for field %s in table t_param", field.Name)
+		}
+
+		if !fieldValue.CanAddr() {
+			return nil, errors.Errorf("cannot read field value for field %s in table t_param", field.Name)
+		}
+
+		values[columnName] = fieldValue.Addr().Interface()
+	}
+
+	return values, nil
+}
+
 /*TPayAccount 支付账号信息 represents assessuser.t_pay_account */
 type TPayAccount struct {
 	ID         null.Int       `json:"ID,omitempty" db:"id,true,integer"`                      /* id 编号 */
@@ -4442,7 +11111,7 @@ type TPayAccount struct {
 	Addi       types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                   /* addi 附加信息 */
 	Remark     null.String    `json:"Remark,omitempty" db:"remark,false,character varying"`   /* remark 备注 */
 	Status     null.String    `json:"Status,omitempty" db:"status,false,character varying"`   /* status 状态，00：草稿，02：有效，04: 停用，06：作废 */
-	Filter                    // build DML where clause
+	Filter                                                                                    // build DML where clause
 }
 
 // TPayAccountFields full field list for default query
@@ -4463,6 +11132,90 @@ var TPayAccountFields = []string{
 	"Addi",
 	"Remark",
 	"Status",
+}
+
+// TPayAccountColumns full column list for default query
+var TPayAccountColumns = []string{
+	"id",
+	"type",
+	"name",
+	"app_id",
+	"account",
+	"key",
+	"cert",
+	"refundable",
+	"updated_by",
+	"update_time",
+	"creator",
+	"create_time",
+	"domain_id",
+	"addi",
+	"remark",
+	"status",
+}
+
+// TPayAccountColumnsDataTypes full column data types for default query
+var TPayAccountColumnsDataTypes = map[string]string{
+	"id":          "integer",
+	"type":        "character varying",
+	"name":        "character varying",
+	"app_id":      "character varying",
+	"account":     "character varying",
+	"key":         "character varying",
+	"cert":        "character varying",
+	"refundable":  "boolean",
+	"updated_by":  "bigint",
+	"update_time": "bigint",
+	"creator":     "bigint",
+	"create_time": "bigint",
+	"domain_id":   "bigint",
+	"addi":        "jsonb",
+	"remark":      "character varying",
+	"status":      "character varying",
+}
+
+// GetFieldsMap returns a map of field names to their values.
+func (r *TPayAccount) GetFieldsMap() map[string]any {
+	return map[string]any{
+		"ID":         r.ID,
+		"Type":       r.Type,
+		"Name":       r.Name,
+		"AppID":      r.AppID,
+		"Account":    r.Account,
+		"Key":        r.Key,
+		"Cert":       r.Cert,
+		"Refundable": r.Refundable,
+		"UpdatedBy":  r.UpdatedBy,
+		"UpdateTime": r.UpdateTime,
+		"Creator":    r.Creator,
+		"CreateTime": r.CreateTime,
+		"DomainID":   r.DomainID,
+		"Addi":       r.Addi,
+		"Remark":     r.Remark,
+		"Status":     r.Status,
+	}
+}
+
+// GetColumnsMap returns a map of column names to their values.
+func (r *TPayAccount) GetColumnsMap() map[string]any {
+	return map[string]any{
+		"id":          r.ID,
+		"type":        r.Type,
+		"name":        r.Name,
+		"app_id":      r.AppID,
+		"account":     r.Account,
+		"key":         r.Key,
+		"cert":        r.Cert,
+		"refundable":  r.Refundable,
+		"updated_by":  r.UpdatedBy,
+		"update_time": r.UpdateTime,
+		"creator":     r.Creator,
+		"create_time": r.CreateTime,
+		"domain_id":   r.DomainID,
+		"addi":        r.Addi,
+		"remark":      r.Remark,
+		"status":      r.Status,
+	}
 }
 
 // Fields return all fields of struct.
@@ -4504,6 +11257,42 @@ func GetTPayAccountByPk(db Queryer, pk0 null.Int) (*TPayAccount, error) {
 	return &r, nil
 }
 
+// GetTPayAccountReflectValuesMap returns a map of field names to their values.
+//
+// key is the tag name, value is the field value.
+// This is useful for reflection and dynamic queries.
+func (r *TPayAccount) GetTPayAccountReflectValuesMap() (map[string]any, error) {
+
+	values := make(map[string]any)
+	v := reflect.ValueOf(r).Elem()
+	t := v.Type()
+	for i := range v.NumField() {
+		field := t.Field(i)
+		tag := field.Tag.Get("db")
+		if tag == "" {
+			return nil, errors.Errorf("missing db tag for field %s in table t_pay_account", field.Name)
+		}
+
+		columnName := strings.Split(tag, ",")[0]
+		if columnName == "" {
+			return nil, errors.Errorf("missing column name for field %s in table t_pay_account", field.Name)
+		}
+
+		fieldValue := reflect.ValueOf(r).Elem().Field(i)
+		if !fieldValue.IsValid() {
+			return nil, errors.Errorf("invalid field value for field %s in table t_pay_account", field.Name)
+		}
+
+		if !fieldValue.CanAddr() {
+			return nil, errors.Errorf("cannot read field value for field %s in table t_pay_account", field.Name)
+		}
+
+		values[columnName] = fieldValue.Addr().Interface()
+	}
+
+	return values, nil
+}
+
 /*TPayment 缴费表(用于对公转账自动化) represents assessuser.t_payment */
 type TPayment struct {
 	ID             null.Int       `json:"ID,omitempty" db:"id,true,integer"`                                    /* id 编码 */
@@ -4519,7 +11308,7 @@ type TPayment struct {
 	Addi           types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                                 /* addi 附加数据 */
 	Remark         null.String    `json:"Remark,omitempty" db:"remark,false,character varying"`                 /* remark 备注 */
 	Status         null.String    `json:"Status,omitempty" db:"status,false,character varying"`                 /* status 状态, 未缴费: 0, 已缴费: 2, 作废: 4 */
-	Filter                        // build DML where clause
+	Filter                                                                                                      // build DML where clause
 }
 
 // TPaymentFields full field list for default query
@@ -4537,6 +11326,78 @@ var TPaymentFields = []string{
 	"Addi",
 	"Remark",
 	"Status",
+}
+
+// TPaymentColumns full column list for default query
+var TPaymentColumns = []string{
+	"id",
+	"batch",
+	"policy_no",
+	"transfer_no",
+	"transfer_amount",
+	"creator",
+	"create_time",
+	"updated_by",
+	"update_time",
+	"domain_id",
+	"addi",
+	"remark",
+	"status",
+}
+
+// TPaymentColumnsDataTypes full column data types for default query
+var TPaymentColumnsDataTypes = map[string]string{
+	"id":              "integer",
+	"batch":           "character varying",
+	"policy_no":       "character varying",
+	"transfer_no":     "character varying",
+	"transfer_amount": "double precision",
+	"creator":         "bigint",
+	"create_time":     "bigint",
+	"updated_by":      "bigint",
+	"update_time":     "bigint",
+	"domain_id":       "bigint",
+	"addi":            "jsonb",
+	"remark":          "character varying",
+	"status":          "character varying",
+}
+
+// GetFieldsMap returns a map of field names to their values.
+func (r *TPayment) GetFieldsMap() map[string]any {
+	return map[string]any{
+		"ID":             r.ID,
+		"Batch":          r.Batch,
+		"PolicyNo":       r.PolicyNo,
+		"TransferNo":     r.TransferNo,
+		"TransferAmount": r.TransferAmount,
+		"Creator":        r.Creator,
+		"CreateTime":     r.CreateTime,
+		"UpdatedBy":      r.UpdatedBy,
+		"UpdateTime":     r.UpdateTime,
+		"DomainID":       r.DomainID,
+		"Addi":           r.Addi,
+		"Remark":         r.Remark,
+		"Status":         r.Status,
+	}
+}
+
+// GetColumnsMap returns a map of column names to their values.
+func (r *TPayment) GetColumnsMap() map[string]any {
+	return map[string]any{
+		"id":              r.ID,
+		"batch":           r.Batch,
+		"policy_no":       r.PolicyNo,
+		"transfer_no":     r.TransferNo,
+		"transfer_amount": r.TransferAmount,
+		"creator":         r.Creator,
+		"create_time":     r.CreateTime,
+		"updated_by":      r.UpdatedBy,
+		"update_time":     r.UpdateTime,
+		"domain_id":       r.DomainID,
+		"addi":            r.Addi,
+		"remark":          r.Remark,
+		"status":          r.Status,
+	}
 }
 
 // Fields return all fields of struct.
@@ -4578,6 +11439,42 @@ func GetTPaymentByPk(db Queryer, pk0 null.Int) (*TPayment, error) {
 	return &r, nil
 }
 
+// GetTPaymentReflectValuesMap returns a map of field names to their values.
+//
+// key is the tag name, value is the field value.
+// This is useful for reflection and dynamic queries.
+func (r *TPayment) GetTPaymentReflectValuesMap() (map[string]any, error) {
+
+	values := make(map[string]any)
+	v := reflect.ValueOf(r).Elem()
+	t := v.Type()
+	for i := range v.NumField() {
+		field := t.Field(i)
+		tag := field.Tag.Get("db")
+		if tag == "" {
+			return nil, errors.Errorf("missing db tag for field %s in table t_payment", field.Name)
+		}
+
+		columnName := strings.Split(tag, ",")[0]
+		if columnName == "" {
+			return nil, errors.Errorf("missing column name for field %s in table t_payment", field.Name)
+		}
+
+		fieldValue := reflect.ValueOf(r).Elem().Field(i)
+		if !fieldValue.IsValid() {
+			return nil, errors.Errorf("invalid field value for field %s in table t_payment", field.Name)
+		}
+
+		if !fieldValue.CanAddr() {
+			return nil, errors.Errorf("cannot read field value for field %s in table t_payment", field.Name)
+		}
+
+		values[columnName] = fieldValue.Addr().Interface()
+	}
+
+	return values, nil
+}
+
 /*TPermission t_permission represents assessuser.t_permission */
 type TPermission struct {
 	ID          null.Int       `json:"ID,omitempty" db:"id,true,integer"`                    /* id 权限ID */
@@ -4590,7 +11487,7 @@ type TPermission struct {
 	Addi        types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                 /* addi 扩展 */
 	Status      null.String    `json:"Status,omitempty" db:"status,false,character varying"` /* status 状态 00: 启用 02: 禁用 */
 	Description null.String    `json:"Description,omitempty" db:"description,false,text"`    /* description description */
-	Filter                     // build DML where clause
+	Filter                                                                                   // build DML where clause
 }
 
 // TPermissionFields full field list for default query
@@ -4605,6 +11502,66 @@ var TPermissionFields = []string{
 	"Addi",
 	"Status",
 	"Description",
+}
+
+// TPermissionColumns full column list for default query
+var TPermissionColumns = []string{
+	"id",
+	"name",
+	"type",
+	"path",
+	"method",
+	"create_time",
+	"update_time",
+	"addi",
+	"status",
+	"description",
+}
+
+// TPermissionColumnsDataTypes full column data types for default query
+var TPermissionColumnsDataTypes = map[string]string{
+	"id":          "integer",
+	"name":        "character varying",
+	"type":        "character varying",
+	"path":        "text",
+	"method":      "character varying",
+	"create_time": "bigint",
+	"update_time": "bigint",
+	"addi":        "jsonb",
+	"status":      "character varying",
+	"description": "text",
+}
+
+// GetFieldsMap returns a map of field names to their values.
+func (r *TPermission) GetFieldsMap() map[string]any {
+	return map[string]any{
+		"ID":          r.ID,
+		"Name":        r.Name,
+		"Type":        r.Type,
+		"Path":        r.Path,
+		"Method":      r.Method,
+		"CreateTime":  r.CreateTime,
+		"UpdateTime":  r.UpdateTime,
+		"Addi":        r.Addi,
+		"Status":      r.Status,
+		"Description": r.Description,
+	}
+}
+
+// GetColumnsMap returns a map of column names to their values.
+func (r *TPermission) GetColumnsMap() map[string]any {
+	return map[string]any{
+		"id":          r.ID,
+		"name":        r.Name,
+		"type":        r.Type,
+		"path":        r.Path,
+		"method":      r.Method,
+		"create_time": r.CreateTime,
+		"update_time": r.UpdateTime,
+		"addi":        r.Addi,
+		"status":      r.Status,
+		"description": r.Description,
+	}
 }
 
 // Fields return all fields of struct.
@@ -4646,23 +11603,59 @@ func GetTPermissionByPk(db Queryer, pk0 null.Int) (*TPermission, error) {
 	return &r, nil
 }
 
+// GetTPermissionReflectValuesMap returns a map of field names to their values.
+//
+// key is the tag name, value is the field value.
+// This is useful for reflection and dynamic queries.
+func (r *TPermission) GetTPermissionReflectValuesMap() (map[string]any, error) {
+
+	values := make(map[string]any)
+	v := reflect.ValueOf(r).Elem()
+	t := v.Type()
+	for i := range v.NumField() {
+		field := t.Field(i)
+		tag := field.Tag.Get("db")
+		if tag == "" {
+			return nil, errors.Errorf("missing db tag for field %s in table t_permission", field.Name)
+		}
+
+		columnName := strings.Split(tag, ",")[0]
+		if columnName == "" {
+			return nil, errors.Errorf("missing column name for field %s in table t_permission", field.Name)
+		}
+
+		fieldValue := reflect.ValueOf(r).Elem().Field(i)
+		if !fieldValue.IsValid() {
+			return nil, errors.Errorf("invalid field value for field %s in table t_permission", field.Name)
+		}
+
+		if !fieldValue.CanAddr() {
+			return nil, errors.Errorf("cannot read field value for field %s in table t_permission", field.Name)
+		}
+
+		values[columnName] = fieldValue.Addr().Interface()
+	}
+
+	return values, nil
+}
+
 /*TPractice t_practice represents assessuser.t_practice */
 type TPractice struct {
-	ID              null.Int       `json:"ID,omitempty" db:"id,true,integer"`                                       /* id 练习ID */
-	Name            null.String    `json:"Name,omitempty" db:"name,false,character varying"`                        /* name 练习名称 */
-	CorrectMode     null.String    `json:"CorrectMode,omitempty" db:"correct_mode,false,character varying"`         /* correct_mode 批改方式，00：手动  02：AI */
-	Type            null.String    `json:"Type,omitempty" db:"type,false,character varying"`                        /* type 练习类型，00：经典  02：常练  04：智能 */
-	Creator         null.Int       `json:"Creator,omitempty" db:"creator,false,bigint"`                             /* creator 创建者 */
-	CreateTime      null.Int       `json:"CreateTime,omitempty" db:"create_time,false,timestamp without time zone"` /* create_time 创建时间 */
-	UpdatedBy       null.Int       `json:"UpdatedBy,omitempty" db:"updated_by,false,bigint"`                        /* updated_by 更新者 */
-	UpdateTime      null.Int       `json:"UpdateTime,omitempty" db:"update_time,false,timestamp without time zone"` /* update_time 更新时间 */
-	Addi            types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                                    /* addi 附加信息 */
-	Status          null.String    `json:"Status,omitempty" db:"status,false,character varying"`                    /* status 状态， 00：未发布  02：发布  04：已删除 */
-	AllowedAttempts null.Int       `json:"AllowedAttempts,omitempty" db:"allowed_attempts,false,integer"`           /* allowed_attempts 可作答的次数；
+	ID              null.Int       `json:"ID,omitempty" db:"id,true,integer"`                               /* id 练习ID */
+	Name            null.String    `json:"Name,omitempty" db:"name,false,character varying"`                /* name 练习名称 */
+	CorrectMode     null.String    `json:"CorrectMode,omitempty" db:"correct_mode,false,character varying"` /* correct_mode 批改方式，00：手动  02：AI */
+	Type            null.String    `json:"Type,omitempty" db:"type,false,character varying"`                /* type 练习类型，00：经典  02：常练  04：智能 */
+	Creator         null.Int       `json:"Creator,omitempty" db:"creator,false,bigint"`                     /* creator 创建者 */
+	UpdatedBy       null.Int       `json:"UpdatedBy,omitempty" db:"updated_by,false,bigint"`                /* updated_by 更新者 */
+	Addi            types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                            /* addi 附加信息 */
+	Status          null.String    `json:"Status,omitempty" db:"status,false,character varying"`            /* status 状态， 00：未发布  02：发布  04：已删除 */
+	AllowedAttempts null.Int       `json:"AllowedAttempts,omitempty" db:"allowed_attempts,false,integer"`   /* allowed_attempts 可作答的次数；
 	如果为0，则说明是无限次数 */
 	PaperID     null.Int `json:"PaperID,omitempty" db:"paper_id,false,integer"`          /* paper_id 试卷编号 */
 	ExamPaperID null.Int `json:"ExamPaperID,omitempty" db:"exam_paper_id,false,integer"` /* exam_paper_id 生成的考卷快照的id，避免重复生成考卷快照 */
-	Filter               // build DML where clause
+	CreateTime  null.Int `json:"CreateTime,omitempty" db:"create_time,false,bigint"`     /* create_time 记录创建时间 */
+	UpdateTime  null.Int `json:"UpdateTime,omitempty" db:"update_time,false,bigint"`     /* update_time 记录更新时间 */
+	Filter                                                                               // build DML where clause
 }
 
 // TPracticeFields full field list for default query
@@ -4672,14 +11665,86 @@ var TPracticeFields = []string{
 	"CorrectMode",
 	"Type",
 	"Creator",
-	"CreateTime",
 	"UpdatedBy",
-	"UpdateTime",
 	"Addi",
 	"Status",
 	"AllowedAttempts",
 	"PaperID",
 	"ExamPaperID",
+	"CreateTime",
+	"UpdateTime",
+}
+
+// TPracticeColumns full column list for default query
+var TPracticeColumns = []string{
+	"id",
+	"name",
+	"correct_mode",
+	"type",
+	"creator",
+	"updated_by",
+	"addi",
+	"status",
+	"allowed_attempts",
+	"paper_id",
+	"exam_paper_id",
+	"create_time",
+	"update_time",
+}
+
+// TPracticeColumnsDataTypes full column data types for default query
+var TPracticeColumnsDataTypes = map[string]string{
+	"id":               "integer",
+	"name":             "character varying",
+	"correct_mode":     "character varying",
+	"type":             "character varying",
+	"creator":          "bigint",
+	"updated_by":       "bigint",
+	"addi":             "jsonb",
+	"status":           "character varying",
+	"allowed_attempts": "integer",
+	"paper_id":         "integer",
+	"exam_paper_id":    "integer",
+	"create_time":      "bigint",
+	"update_time":      "bigint",
+}
+
+// GetFieldsMap returns a map of field names to their values.
+func (r *TPractice) GetFieldsMap() map[string]any {
+	return map[string]any{
+		"ID":              r.ID,
+		"Name":            r.Name,
+		"CorrectMode":     r.CorrectMode,
+		"Type":            r.Type,
+		"Creator":         r.Creator,
+		"UpdatedBy":       r.UpdatedBy,
+		"Addi":            r.Addi,
+		"Status":          r.Status,
+		"AllowedAttempts": r.AllowedAttempts,
+		"PaperID":         r.PaperID,
+		"ExamPaperID":     r.ExamPaperID,
+		"CreateTime":      r.CreateTime,
+		"UpdateTime":      r.UpdateTime,
+	}
+}
+
+// GetColumnsMap returns a map of column names to their values.
+func (r *TPractice) GetColumnsMap() map[string]any {
+	return map[string]any{
+		"id":               r.ID,
+		"name":             r.Name,
+		"correct_mode":     r.CorrectMode,
+		"type":             r.Type,
+		"creator":          r.Creator,
+		"updated_by":       r.UpdatedBy,
+		"addi":             r.Addi,
+		"status":           r.Status,
+		"allowed_attempts": r.AllowedAttempts,
+		"paper_id":         r.PaperID,
+		"exam_paper_id":    r.ExamPaperID,
+		"create_time":      r.CreateTime,
+		"update_time":      r.UpdateTime,
+	}
 }
 
 // Fields return all fields of struct.
@@ -4700,8 +11765,8 @@ func (r *TPractice) GetTableName() string {
 // Create inserts the TPractice to the database.
 func (r *TPractice) Create(db Queryer) error {
 	err := db.QueryRow(
-		`INSERT INTO t_practice (name, correct_mode, type, creator, create_time, updated_by, update_time, addi, status, allowed_attempts, paper_id, exam_paper_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING id`,
-		&r.Name, &r.CorrectMode, &r.Type, &r.Creator, &r.CreateTime, &r.UpdatedBy, &r.UpdateTime, &r.Addi, &r.Status, &r.AllowedAttempts, &r.PaperID, &r.ExamPaperID).Scan(&r.ID)
+		`INSERT INTO t_practice (name, correct_mode, type, creator, updated_by, addi, status, allowed_attempts, paper_id, exam_paper_id, create_time, update_time) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING id`,
+		&r.Name, &r.CorrectMode, &r.Type, &r.Creator, &r.UpdatedBy, &r.Addi, &r.Status, &r.AllowedAttempts, &r.PaperID, &r.ExamPaperID, &r.CreateTime, &r.UpdateTime).Scan(&r.ID)
 	if err != nil {
 		return errors.Wrap(err, "failed to insert t_practice")
 	}
@@ -4713,12 +11778,48 @@ func GetTPracticeByPk(db Queryer, pk0 null.Int) (*TPractice, error) {
 
 	var r TPractice
 	err := db.QueryRow(
-		`SELECT id, name, correct_mode, type, creator, create_time, updated_by, update_time, addi, status, allowed_attempts, paper_id, exam_paper_id FROM t_practice WHERE id = $1`,
-		pk0).Scan(&r.ID, &r.Name, &r.CorrectMode, &r.Type, &r.Creator, &r.CreateTime, &r.UpdatedBy, &r.UpdateTime, &r.Addi, &r.Status, &r.AllowedAttempts, &r.PaperID, &r.ExamPaperID)
+		`SELECT id, name, correct_mode, type, creator, updated_by, addi, status, allowed_attempts, paper_id, exam_paper_id, create_time, update_time FROM t_practice WHERE id = $1`,
+		pk0).Scan(&r.ID, &r.Name, &r.CorrectMode, &r.Type, &r.Creator, &r.UpdatedBy, &r.Addi, &r.Status, &r.AllowedAttempts, &r.PaperID, &r.ExamPaperID, &r.CreateTime, &r.UpdateTime)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to select t_practice")
 	}
 	return &r, nil
+}
+
+// GetTPracticeReflectValuesMap returns a map of field names to their values.
+//
+// key is the tag name, value is the field value.
+// This is useful for reflection and dynamic queries.
+func (r *TPractice) GetTPracticeReflectValuesMap() (map[string]any, error) {
+
+	values := make(map[string]any)
+	v := reflect.ValueOf(r).Elem()
+	t := v.Type()
+	for i := range v.NumField() {
+		field := t.Field(i)
+		tag := field.Tag.Get("db")
+		if tag == "" {
+			return nil, errors.Errorf("missing db tag for field %s in table t_practice", field.Name)
+		}
+
+		columnName := strings.Split(tag, ",")[0]
+		if columnName == "" {
+			return nil, errors.Errorf("missing column name for field %s in table t_practice", field.Name)
+		}
+
+		fieldValue := reflect.ValueOf(r).Elem().Field(i)
+		if !fieldValue.IsValid() {
+			return nil, errors.Errorf("invalid field value for field %s in table t_practice", field.Name)
+		}
+
+		if !fieldValue.CanAddr() {
+			return nil, errors.Errorf("cannot read field value for field %s in table t_practice", field.Name)
+		}
+
+		values[columnName] = fieldValue.Addr().Interface()
+	}
+
+	return values, nil
 }
 
 /*TPracticeStudent t_practice_student represents assessuser.t_practice_student */
@@ -4732,7 +11833,7 @@ type TPracticeStudent struct {
 	CreateTime null.Int       `json:"CreateTime,omitempty" db:"create_time,false,timestamp without time zone"` /* create_time create_time */
 	UpdateTime null.Int       `json:"UpdateTime,omitempty" db:"update_time,false,timestamp without time zone"` /* update_time update_time */
 	Status     null.String    `json:"Status,omitempty" db:"status,false,character varying"`                    /* status 00:正常 02:被删除 */
-	Filter                    // build DML where clause
+	Filter                                                                                                     // build DML where clause
 }
 
 // TPracticeStudentFields full field list for default query
@@ -4746,6 +11847,62 @@ var TPracticeStudentFields = []string{
 	"CreateTime",
 	"UpdateTime",
 	"Status",
+}
+
+// TPracticeStudentColumns full column list for default query
+var TPracticeStudentColumns = []string{
+	"id",
+	"practice_id",
+	"student_id",
+	"addi",
+	"creator",
+	"updated_by",
+	"create_time",
+	"update_time",
+	"status",
+}
+
+// TPracticeStudentColumnsDataTypes full column data types for default query
+var TPracticeStudentColumnsDataTypes = map[string]string{
+	"id":          "integer",
+	"practice_id": "integer",
+	"student_id":  "integer",
+	"addi":        "jsonb",
+	"creator":     "integer",
+	"updated_by":  "integer",
+	"create_time": "timestamp without time zone",
+	"update_time": "timestamp without time zone",
+	"status":      "character varying",
+}
+
+// GetFieldsMap returns a map of field names to their values.
+func (r *TPracticeStudent) GetFieldsMap() map[string]any {
+	return map[string]any{
+		"ID":         r.ID,
+		"PracticeID": r.PracticeID,
+		"StudentID":  r.StudentID,
+		"Addi":       r.Addi,
+		"Creator":    r.Creator,
+		"UpdatedBy":  r.UpdatedBy,
+		"CreateTime": r.CreateTime,
+		"UpdateTime": r.UpdateTime,
+		"Status":     r.Status,
+	}
+}
+
+// GetColumnsMap returns a map of column names to their values.
+func (r *TPracticeStudent) GetColumnsMap() map[string]any {
+	return map[string]any{
+		"id":          r.ID,
+		"practice_id": r.PracticeID,
+		"student_id":  r.StudentID,
+		"addi":        r.Addi,
+		"creator":     r.Creator,
+		"updated_by":  r.UpdatedBy,
+		"create_time": r.CreateTime,
+		"update_time": r.UpdateTime,
+		"status":      r.Status,
+	}
 }
 
 // Fields return all fields of struct.
@@ -4787,24 +11944,62 @@ func GetTPracticeStudentByPk(db Queryer, pk0 null.Int) (*TPracticeStudent, error
 	return &r, nil
 }
 
+// GetTPracticeStudentReflectValuesMap returns a map of field names to their values.
+//
+// key is the tag name, value is the field value.
+// This is useful for reflection and dynamic queries.
+func (r *TPracticeStudent) GetTPracticeStudentReflectValuesMap() (map[string]any, error) {
+
+	values := make(map[string]any)
+	v := reflect.ValueOf(r).Elem()
+	t := v.Type()
+	for i := range v.NumField() {
+		field := t.Field(i)
+		tag := field.Tag.Get("db")
+		if tag == "" {
+			return nil, errors.Errorf("missing db tag for field %s in table t_practice_student", field.Name)
+		}
+
+		columnName := strings.Split(tag, ",")[0]
+		if columnName == "" {
+			return nil, errors.Errorf("missing column name for field %s in table t_practice_student", field.Name)
+		}
+
+		fieldValue := reflect.ValueOf(r).Elem().Field(i)
+		if !fieldValue.IsValid() {
+			return nil, errors.Errorf("invalid field value for field %s in table t_practice_student", field.Name)
+		}
+
+		if !fieldValue.CanAddr() {
+			return nil, errors.Errorf("cannot read field value for field %s in table t_practice_student", field.Name)
+		}
+
+		values[columnName] = fieldValue.Addr().Interface()
+	}
+
+	return values, nil
+}
+
 /*TPracticeSubmissions t_student_practice represents assessuser.t_practice_submissions */
 type TPracticeSubmissions struct {
-	ID          null.Int       `json:"ID,omitempty" db:"id,true,integer"`                                       /* id 学生练习ID */
-	PracticeID  null.Int       `json:"PracticeID,omitempty" db:"practice_id,false,bigint"`                      /* practice_id 练习ID */
-	StudentID   null.Int       `json:"StudentID,omitempty" db:"student_id,false,bigint"`                        /* student_id 学生ID */
-	ExamPaperID null.Int       `json:"ExamPaperID,omitempty" db:"exam_paper_id,false,bigint"`                   /* exam_paper_id 考卷ID */
-	StartTime   null.Int       `json:"StartTime,omitempty" db:"start_time,false,timestamp without time zone"`   /* start_time 开始答题时间 */
-	EndTime     null.Int       `json:"EndTime,omitempty" db:"end_time,false,timestamp without time zone"`       /* end_time 结束答题时间 */
-	Remark      null.String    `json:"Remark,omitempty" db:"remark,false,character varying"`                    /* remark 备注 */
-	Creator     null.Int       `json:"Creator,omitempty" db:"creator,false,bigint"`                             /* creator 创建者 */
-	CreateTime  null.Int       `json:"CreateTime,omitempty" db:"create_time,false,timestamp without time zone"` /* create_time 创建时间 */
-	UpdatedBy   null.Int       `json:"UpdatedBy,omitempty" db:"updated_by,false,bigint"`                        /* updated_by 更新者 */
-	UpdateTime  null.Int       `json:"UpdateTime,omitempty" db:"update_time,false,timestamp without time zone"` /* update_time 更新时间 */
-	Status      null.String    `json:"Status,omitempty" db:"status,false,character varying"`                    /* status 状态 00：允许作答 02 ：不允许作答 04：删除 */
-	Addi        types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                                    /* addi 附加信息 */
-	ExitTimes   types.JSONText `json:"ExitTimes,omitempty" db:"exit_times,false,jsonb"`                         /* exit_times 存储学生此次练习退出的时间 */
-	Attempt     null.Int       `json:"Attempt,omitempty" db:"attempt,false,integer"`                            /* attempt 当前是第几次练习 */
-	Filter                     // build DML where clause
+	ID             null.Int       `json:"ID,omitempty" db:"id,true,integer"`                          /* id 学生练习ID */
+	PracticeID     null.Int       `json:"PracticeID,omitempty" db:"practice_id,false,bigint"`         /* practice_id 练习ID */
+	StudentID      null.Int       `json:"StudentID,omitempty" db:"student_id,false,bigint"`           /* student_id 学生ID */
+	ExamPaperID    null.Int       `json:"ExamPaperID,omitempty" db:"exam_paper_id,false,bigint"`      /* exam_paper_id 考卷ID */
+	Remark         null.String    `json:"Remark,omitempty" db:"remark,false,character varying"`       /* remark 备注 */
+	Creator        null.Int       `json:"Creator,omitempty" db:"creator,false,bigint"`                /* creator 创建者 */
+	UpdatedBy      null.Int       `json:"UpdatedBy,omitempty" db:"updated_by,false,bigint"`           /* updated_by 更新者 */
+	Status         null.String    `json:"Status,omitempty" db:"status,false,character varying"`       /* status 状态 00：允许作答 02 ：不允许作答 04：删除  06：已提交 */
+	Addi           types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                       /* addi 附加信息 */
+	Attempt        null.Int       `json:"Attempt,omitempty" db:"attempt,false,integer"`               /* attempt 当前是第几次练习 */
+	LastStartTime  null.Int       `json:"LastStartTime,omitempty" db:"last_start_time,false,bigint"`  /* last_start_time 最近一次作答时间 */
+	LastEndTime    null.Int       `json:"LastEndTime,omitempty" db:"last_end_time,false,bigint"`      /* last_end_time 最近一次退出作答时间 */
+	ElapsedSeconds null.Int       `json:"ElapsedSeconds,omitempty" db:"elapsed_seconds,false,bigint"` /* elapsed_seconds 当前作答已经过去了多久 */
+	CreateTime     null.Int       `json:"CreateTime,omitempty" db:"create_time,false,bigint"`         /* create_time 当前记录创建的时间 */
+	UpdateTime     null.Int       `json:"UpdateTime,omitempty" db:"update_time,false,bigint"`         /* update_time 当前记录更新的时间 */
+	StartTime      null.Int       `json:"StartTime,omitempty" db:"start_time,false,bigint"`           /* start_time 此次练习第一次进入作答的时间 */
+	EndTime        null.Int       `json:"EndTime,omitempty" db:"end_time,false,bigint"`               /* end_time 此次练习提交作答的时间 */
+	Filter                                                                                            // build DML where clause
 }
 
 // TPracticeSubmissionsFields full field list for default query
@@ -4813,17 +12008,107 @@ var TPracticeSubmissionsFields = []string{
 	"PracticeID",
 	"StudentID",
 	"ExamPaperID",
-	"StartTime",
-	"EndTime",
 	"Remark",
 	"Creator",
-	"CreateTime",
 	"UpdatedBy",
-	"UpdateTime",
 	"Status",
 	"Addi",
-	"ExitTimes",
 	"Attempt",
+	"LastStartTime",
+	"LastEndTime",
+	"ElapsedSeconds",
+	"CreateTime",
+	"UpdateTime",
+	"StartTime",
+	"EndTime",
+}
+
+// TPracticeSubmissionsColumns full column list for default query
+var TPracticeSubmissionsColumns = []string{
+	"id",
+	"practice_id",
+	"student_id",
+	"exam_paper_id",
+	"remark",
+	"creator",
+	"updated_by",
+	"status",
+	"addi",
+	"attempt",
+	"last_start_time",
+	"last_end_time",
+	"elapsed_seconds",
+	"create_time",
+	"update_time",
+	"start_time",
+	"end_time",
+}
+
+// TPracticeSubmissionsColumnsDataTypes full column data types for default query
+var TPracticeSubmissionsColumnsDataTypes = map[string]string{
+	"id":              "integer",
+	"practice_id":     "bigint",
+	"student_id":      "bigint",
+	"exam_paper_id":   "bigint",
+	"remark":          "character varying",
+	"creator":         "bigint",
+	"updated_by":      "bigint",
+	"status":          "character varying",
+	"addi":            "jsonb",
+	"attempt":         "integer",
+	"last_start_time": "bigint",
+	"last_end_time":   "bigint",
+	"elapsed_seconds": "bigint",
+	"create_time":     "bigint",
+	"update_time":     "bigint",
+	"start_time":      "bigint",
+	"end_time":        "bigint",
+}
+
+// GetFieldsMap returns a map of field names to their values.
+func (r *TPracticeSubmissions) GetFieldsMap() map[string]any {
+	return map[string]any{
+		"ID":             r.ID,
+		"PracticeID":     r.PracticeID,
+		"StudentID":      r.StudentID,
+		"ExamPaperID":    r.ExamPaperID,
+		"Remark":         r.Remark,
+		"Creator":        r.Creator,
+		"UpdatedBy":      r.UpdatedBy,
+		"Status":         r.Status,
+		"Addi":           r.Addi,
+		"Attempt":        r.Attempt,
+		"LastStartTime":  r.LastStartTime,
+		"LastEndTime":    r.LastEndTime,
+		"ElapsedSeconds": r.ElapsedSeconds,
+		"CreateTime":     r.CreateTime,
+		"UpdateTime":     r.UpdateTime,
+		"StartTime":      r.StartTime,
+		"EndTime":        r.EndTime,
+	}
+}
+
+// GetColumnsMap returns a map of column names to their values.
+func (r *TPracticeSubmissions) GetColumnsMap() map[string]any {
+	return map[string]any{
+		"id":              r.ID,
+		"practice_id":     r.PracticeID,
+		"student_id":      r.StudentID,
+		"exam_paper_id":   r.ExamPaperID,
+		"remark":          r.Remark,
+		"creator":         r.Creator,
+		"updated_by":      r.UpdatedBy,
+		"status":          r.Status,
+		"addi":            r.Addi,
+		"attempt":         r.Attempt,
+		"last_start_time": r.LastStartTime,
+		"last_end_time":   r.LastEndTime,
+		"elapsed_seconds": r.ElapsedSeconds,
+		"create_time":     r.CreateTime,
+		"update_time":     r.UpdateTime,
+		"start_time":      r.StartTime,
+		"end_time":        r.EndTime,
+	}
 }
 
 // Fields return all fields of struct.
@@ -4844,8 +12129,8 @@ func (r *TPracticeSubmissions) GetTableName() string {
 // Create inserts the TPracticeSubmissions to the database.
 func (r *TPracticeSubmissions) Create(db Queryer) error {
 	err := db.QueryRow(
-		`INSERT INTO t_practice_submissions (practice_id, student_id, exam_paper_id, start_time, end_time, remark, creator, create_time, updated_by, update_time, status, addi, exit_times, attempt) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) RETURNING id`,
-		&r.PracticeID, &r.StudentID, &r.ExamPaperID, &r.StartTime, &r.EndTime, &r.Remark, &r.Creator, &r.CreateTime, &r.UpdatedBy, &r.UpdateTime, &r.Status, &r.Addi, &r.ExitTimes, &r.Attempt).Scan(&r.ID)
+		`INSERT INTO t_practice_submissions (practice_id, student_id, exam_paper_id, remark, creator, updated_by, status, addi, attempt, last_start_time, last_end_time, elapsed_seconds, create_time, update_time, start_time, end_time) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16) RETURNING id`,
+		&r.PracticeID, &r.StudentID, &r.ExamPaperID, &r.Remark, &r.Creator, &r.UpdatedBy, &r.Status, &r.Addi, &r.Attempt, &r.LastStartTime, &r.LastEndTime, &r.ElapsedSeconds, &r.CreateTime, &r.UpdateTime, &r.StartTime, &r.EndTime).Scan(&r.ID)
 	if err != nil {
 		return errors.Wrap(err, "failed to insert t_practice_submissions")
 	}
@@ -4857,12 +12142,48 @@ func GetTPracticeSubmissionsByPk(db Queryer, pk0 null.Int) (*TPracticeSubmission
 
 	var r TPracticeSubmissions
 	err := db.QueryRow(
-		`SELECT id, practice_id, student_id, exam_paper_id, start_time, end_time, remark, creator, create_time, updated_by, update_time, status, addi, exit_times, attempt FROM t_practice_submissions WHERE id = $1`,
-		pk0).Scan(&r.ID, &r.PracticeID, &r.StudentID, &r.ExamPaperID, &r.StartTime, &r.EndTime, &r.Remark, &r.Creator, &r.CreateTime, &r.UpdatedBy, &r.UpdateTime, &r.Status, &r.Addi, &r.ExitTimes, &r.Attempt)
+		`SELECT id, practice_id, student_id, exam_paper_id, remark, creator, updated_by, status, addi, attempt, last_start_time, last_end_time, elapsed_seconds, create_time, update_time, start_time, end_time FROM t_practice_submissions WHERE id = $1`,
+		pk0).Scan(&r.ID, &r.PracticeID, &r.StudentID, &r.ExamPaperID, &r.Remark, &r.Creator, &r.UpdatedBy, &r.Status, &r.Addi, &r.Attempt, &r.LastStartTime, &r.LastEndTime, &r.ElapsedSeconds, &r.CreateTime, &r.UpdateTime, &r.StartTime, &r.EndTime)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to select t_practice_submissions")
 	}
 	return &r, nil
+}
+
+// GetTPracticeSubmissionsReflectValuesMap returns a map of field names to their values.
+//
+// key is the tag name, value is the field value.
+// This is useful for reflection and dynamic queries.
+func (r *TPracticeSubmissions) GetTPracticeSubmissionsReflectValuesMap() (map[string]any, error) {
+
+	values := make(map[string]any)
+	v := reflect.ValueOf(r).Elem()
+	t := v.Type()
+	for i := range v.NumField() {
+		field := t.Field(i)
+		tag := field.Tag.Get("db")
+		if tag == "" {
+			return nil, errors.Errorf("missing db tag for field %s in table t_practice_submissions", field.Name)
+		}
+
+		columnName := strings.Split(tag, ",")[0]
+		if columnName == "" {
+			return nil, errors.Errorf("missing column name for field %s in table t_practice_submissions", field.Name)
+		}
+
+		fieldValue := reflect.ValueOf(r).Elem().Field(i)
+		if !fieldValue.IsValid() {
+			return nil, errors.Errorf("invalid field value for field %s in table t_practice_submissions", field.Name)
+		}
+
+		if !fieldValue.CanAddr() {
+			return nil, errors.Errorf("cannot read field value for field %s in table t_practice_submissions", field.Name)
+		}
+
+		values[columnName] = fieldValue.Addr().Interface()
+	}
+
+	return values, nil
 }
 
 /*
@@ -4891,7 +12212,7 @@ type TPrice struct {
 	Addi               types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                              /* addi 备用字段 */
 	Remark             null.String    `json:"Remark,omitempty" db:"remark,false,character varying"`              /* remark 备注 */
 	Status             null.String    `json:"Status,omitempty" db:"status,false,character varying"`              /* status 状态，0：有效，2：无效 */
-	Filter                            // build DML where clause
+	Filter                                                                                                       // build DML where clause
 }
 
 // TPriceFields full field list for default query
@@ -4917,6 +12238,110 @@ var TPriceFields = []string{
 	"Addi",
 	"Remark",
 	"Status",
+}
+
+// TPriceColumns full column list for default query
+var TPriceColumns = []string{
+	"id",
+	"title",
+	"category",
+	"insurance_type_id",
+	"org_name",
+	"province",
+	"city",
+	"district",
+	"guaranteed_projects",
+	"extra_projects",
+	"price_config",
+	"files",
+	"is_default",
+	"creator_id",
+	"create_time",
+	"updated_by",
+	"update_time",
+	"domain_id",
+	"addi",
+	"remark",
+	"status",
+}
+
+// TPriceColumnsDataTypes full column data types for default query
+var TPriceColumnsDataTypes = map[string]string{
+	"id":                  "integer",
+	"title":               "character varying",
+	"category":            "character varying",
+	"insurance_type_id":   "bigint",
+	"org_name":            "character varying",
+	"province":            "character varying",
+	"city":                "character varying",
+	"district":            "character varying",
+	"guaranteed_projects": "jsonb",
+	"extra_projects":      "jsonb",
+	"price_config":        "jsonb",
+	"files":               "jsonb",
+	"is_default":          "boolean",
+	"creator_id":          "bigint",
+	"create_time":         "bigint",
+	"updated_by":          "bigint",
+	"update_time":         "bigint",
+	"domain_id":           "bigint",
+	"addi":                "jsonb",
+	"remark":              "character varying",
+	"status":              "character varying",
+}
+
+// GetFieldsMap returns a map of field names to their values.
+func (r *TPrice) GetFieldsMap() map[string]any {
+	return map[string]any{
+		"ID":                 r.ID,
+		"Title":              r.Title,
+		"Category":           r.Category,
+		"InsuranceTypeID":    r.InsuranceTypeID,
+		"OrgName":            r.OrgName,
+		"Province":           r.Province,
+		"City":               r.City,
+		"District":           r.District,
+		"GuaranteedProjects": r.GuaranteedProjects,
+		"ExtraProjects":      r.ExtraProjects,
+		"PriceConfig":        r.PriceConfig,
+		"Files":              r.Files,
+		"IsDefault":          r.IsDefault,
+		"CreatorID":          r.CreatorID,
+		"CreateTime":         r.CreateTime,
+		"UpdatedBy":          r.UpdatedBy,
+		"UpdateTime":         r.UpdateTime,
+		"DomainID":           r.DomainID,
+		"Addi":               r.Addi,
+		"Remark":             r.Remark,
+		"Status":             r.Status,
+	}
+}
+
+// GetColumnsMap returns a map of column names to their values.
+func (r *TPrice) GetColumnsMap() map[string]any {
+	return map[string]any{
+		"id":                  r.ID,
+		"title":               r.Title,
+		"category":            r.Category,
+		"insurance_type_id":   r.InsuranceTypeID,
+		"org_name":            r.OrgName,
+		"province":            r.Province,
+		"city":                r.City,
+		"district":            r.District,
+		"guaranteed_projects": r.GuaranteedProjects,
+		"extra_projects":      r.ExtraProjects,
+		"price_config":        r.PriceConfig,
+		"files":               r.Files,
+		"is_default":          r.IsDefault,
+		"creator_id":          r.CreatorID,
+		"create_time":         r.CreateTime,
+		"updated_by":          r.UpdatedBy,
+		"update_time":         r.UpdateTime,
+		"domain_id":           r.DomainID,
+		"addi":                r.Addi,
+		"remark":              r.Remark,
+		"status":              r.Status,
+	}
 }
 
 // Fields return all fields of struct.
@@ -4958,6 +12383,42 @@ func GetTPriceByPk(db Queryer, pk0 null.Int) (*TPrice, error) {
 	return &r, nil
 }
 
+// GetTPriceReflectValuesMap returns a map of field names to their values.
+//
+// key is the tag name, value is the field value.
+// This is useful for reflection and dynamic queries.
+func (r *TPrice) GetTPriceReflectValuesMap() (map[string]any, error) {
+
+	values := make(map[string]any)
+	v := reflect.ValueOf(r).Elem()
+	t := v.Type()
+	for i := range v.NumField() {
+		field := t.Field(i)
+		tag := field.Tag.Get("db")
+		if tag == "" {
+			return nil, errors.Errorf("missing db tag for field %s in table t_price", field.Name)
+		}
+
+		columnName := strings.Split(tag, ",")[0]
+		if columnName == "" {
+			return nil, errors.Errorf("missing column name for field %s in table t_price", field.Name)
+		}
+
+		fieldValue := reflect.ValueOf(r).Elem().Field(i)
+		if !fieldValue.IsValid() {
+			return nil, errors.Errorf("invalid field value for field %s in table t_price", field.Name)
+		}
+
+		if !fieldValue.CanAddr() {
+			return nil, errors.Errorf("cannot read field value for field %s in table t_price", field.Name)
+		}
+
+		values[columnName] = fieldValue.Addr().Interface()
+	}
+
+	return values, nil
+}
+
 /*TPrj 项目信息表 represents assessuser.t_prj */
 type TPrj struct {
 	ID         null.Int    `json:"ID,omitempty" db:"id,true,integer"`                    /* id 编号 */
@@ -4992,6 +12453,70 @@ var TPrjFields = []string{
 	"Deadline",
 	"Remark",
 	"Status",
+}
+
+// TPrjColumns full column list for default query
+var TPrjColumns = []string{
+	"id",
+	"name",
+	"limn",
+	"price",
+	"cycle",
+	"issuer",
+	"create_time",
+	"issue_time",
+	"deadline",
+	"remark",
+	"status",
+}
+
+// TPrjColumnsDataTypes full column data types for default query
+var TPrjColumnsDataTypes = map[string]string{
+	"id":          "integer",
+	"name":        "character varying",
+	"limn":        "character varying",
+	"price":       "numeric",
+	"cycle":       "integer",
+	"issuer":      "bigint",
+	"create_time": "bigint",
+	"issue_time":  "bigint",
+	"deadline":    "bigint",
+	"remark":      "character varying",
+	"status":      "character varying",
+}
+
+// GetFieldsMap returns a map of field names to their values.
+func (r *TPrj) GetFieldsMap() map[string]any {
+	return map[string]any{
+		"ID":         r.ID,
+		"Name":       r.Name,
+		"Limn":       r.Limn,
+		"Price":      r.Price,
+		"Cycle":      r.Cycle,
+		"Issuer":     r.Issuer,
+		"CreateTime": r.CreateTime,
+		"IssueTime":  r.IssueTime,
+		"Deadline":   r.Deadline,
+		"Remark":     r.Remark,
+		"Status":     r.Status,
+	}
+}
+
+// GetColumnsMap returns a map of column names to their values.
+func (r *TPrj) GetColumnsMap() map[string]any {
+	return map[string]any{
+		"id":          r.ID,
+		"name":        r.Name,
+		"limn":        r.Limn,
+		"price":       r.Price,
+		"cycle":       r.Cycle,
+		"issuer":      r.Issuer,
+		"create_time": r.CreateTime,
+		"issue_time":  r.IssueTime,
+		"deadline":    r.Deadline,
+		"remark":      r.Remark,
+		"status":      r.Status,
+	}
 }
 
 // Fields return all fields of struct.
@@ -5033,6 +12558,42 @@ func GetTPrjByPk(db Queryer, pk0 null.Int) (*TPrj, error) {
 	return &r, nil
 }
 
+// GetTPrjReflectValuesMap returns a map of field names to their values.
+//
+// key is the tag name, value is the field value.
+// This is useful for reflection and dynamic queries.
+func (r *TPrj) GetTPrjReflectValuesMap() (map[string]any, error) {
+
+	values := make(map[string]any)
+	v := reflect.ValueOf(r).Elem()
+	t := v.Type()
+	for i := range v.NumField() {
+		field := t.Field(i)
+		tag := field.Tag.Get("db")
+		if tag == "" {
+			return nil, errors.Errorf("missing db tag for field %s in table t_prj", field.Name)
+		}
+
+		columnName := strings.Split(tag, ",")[0]
+		if columnName == "" {
+			return nil, errors.Errorf("missing column name for field %s in table t_prj", field.Name)
+		}
+
+		fieldValue := reflect.ValueOf(r).Elem().Field(i)
+		if !fieldValue.IsValid() {
+			return nil, errors.Errorf("invalid field value for field %s in table t_prj", field.Name)
+		}
+
+		if !fieldValue.CanAddr() {
+			return nil, errors.Errorf("cannot read field value for field %s in table t_prj", field.Name)
+		}
+
+		values[columnName] = fieldValue.Addr().Interface()
+	}
+
+	return values, nil
+}
+
 /*TProof 人才知识能力领域说明表 represents assessuser.t_proof */
 type TProof struct {
 	ID          null.Int    `json:"ID,omitempty" db:"id,true,integer"`                    /* id 编号 */
@@ -5041,7 +12602,7 @@ type TProof struct {
 	Limn        null.String `json:"Limn,omitempty" db:"limn,false,character varying"`     /* limn 能力描述 */
 	CreateTime  null.Int    `json:"CreateTime,omitempty" db:"create_time,false,bigint"`   /* create_time 创建时间 */
 	UpdateTime  null.Int    `json:"UpdateTime,omitempty" db:"update_time,false,bigint"`   /* update_time 更新时间 */
-	Filter                  // build DML where clause
+	Filter                                                                                // build DML where clause
 }
 
 // TProofFields full field list for default query
@@ -5052,6 +12613,50 @@ var TProofFields = []string{
 	"Limn",
 	"CreateTime",
 	"UpdateTime",
+}
+
+// TProofColumns full column list for default query
+var TProofColumns = []string{
+	"id",
+	"user_id",
+	"expertise_id",
+	"limn",
+	"create_time",
+	"update_time",
+}
+
+// TProofColumnsDataTypes full column data types for default query
+var TProofColumnsDataTypes = map[string]string{
+	"id":           "integer",
+	"user_id":      "bigint",
+	"expertise_id": "bigint",
+	"limn":         "character varying",
+	"create_time":  "bigint",
+	"update_time":  "bigint",
+}
+
+// GetFieldsMap returns a map of field names to their values.
+func (r *TProof) GetFieldsMap() map[string]any {
+	return map[string]any{
+		"ID":          r.ID,
+		"UserID":      r.UserID,
+		"ExpertiseID": r.ExpertiseID,
+		"Limn":        r.Limn,
+		"CreateTime":  r.CreateTime,
+		"UpdateTime":  r.UpdateTime,
+	}
+}
+
+// GetColumnsMap returns a map of column names to their values.
+func (r *TProof) GetColumnsMap() map[string]any {
+	return map[string]any{
+		"id":           r.ID,
+		"user_id":      r.UserID,
+		"expertise_id": r.ExpertiseID,
+		"limn":         r.Limn,
+		"create_time":  r.CreateTime,
+		"update_time":  r.UpdateTime,
+	}
 }
 
 // Fields return all fields of struct.
@@ -5093,6 +12698,42 @@ func GetTProofByPk(db Queryer, pk0 null.Int) (*TProof, error) {
 	return &r, nil
 }
 
+// GetTProofReflectValuesMap returns a map of field names to their values.
+//
+// key is the tag name, value is the field value.
+// This is useful for reflection and dynamic queries.
+func (r *TProof) GetTProofReflectValuesMap() (map[string]any, error) {
+
+	values := make(map[string]any)
+	v := reflect.ValueOf(r).Elem()
+	t := v.Type()
+	for i := range v.NumField() {
+		field := t.Field(i)
+		tag := field.Tag.Get("db")
+		if tag == "" {
+			return nil, errors.Errorf("missing db tag for field %s in table t_proof", field.Name)
+		}
+
+		columnName := strings.Split(tag, ",")[0]
+		if columnName == "" {
+			return nil, errors.Errorf("missing column name for field %s in table t_proof", field.Name)
+		}
+
+		fieldValue := reflect.ValueOf(r).Elem().Field(i)
+		if !fieldValue.IsValid() {
+			return nil, errors.Errorf("invalid field value for field %s in table t_proof", field.Name)
+		}
+
+		if !fieldValue.CanAddr() {
+			return nil, errors.Errorf("cannot read field value for field %s in table t_proof", field.Name)
+		}
+
+		values[columnName] = fieldValue.Addr().Interface()
+	}
+
+	return values, nil
+}
+
 /*TProve 知识能力领域鉴定、证明表 represents assessuser.t_prove */
 type TProve struct {
 	ID         null.Int    `json:"ID,omitempty" db:"id,true,integer"`                          /* id 编号 */
@@ -5101,7 +12742,7 @@ type TProve struct {
 	Creator    null.Int    `json:"Creator,omitempty" db:"creator,false,bigint"`                /* creator 鉴定者 */
 	CreateTime null.Int    `json:"CreateTime,omitempty" db:"create_time,false,bigint"`         /* create_time 鉴定时间 */
 	UpdateTime null.Int    `json:"UpdateTime,omitempty" db:"update_time,false,bigint"`         /* update_time 鉴定更新时间 */
-	Filter                 // build DML where clause
+	Filter                                                                                     // build DML where clause
 }
 
 // TProveFields full field list for default query
@@ -5112,6 +12753,50 @@ var TProveFields = []string{
 	"Creator",
 	"CreateTime",
 	"UpdateTime",
+}
+
+// TProveColumns full column list for default query
+var TProveColumns = []string{
+	"id",
+	"proof_id",
+	"judgement",
+	"creator",
+	"create_time",
+	"update_time",
+}
+
+// TProveColumnsDataTypes full column data types for default query
+var TProveColumnsDataTypes = map[string]string{
+	"id":          "integer",
+	"proof_id":    "bigint",
+	"judgement":   "character varying",
+	"creator":     "bigint",
+	"create_time": "bigint",
+	"update_time": "bigint",
+}
+
+// GetFieldsMap returns a map of field names to their values.
+func (r *TProve) GetFieldsMap() map[string]any {
+	return map[string]any{
+		"ID":         r.ID,
+		"ProofID":    r.ProofID,
+		"Judgement":  r.Judgement,
+		"Creator":    r.Creator,
+		"CreateTime": r.CreateTime,
+		"UpdateTime": r.UpdateTime,
+	}
+}
+
+// GetColumnsMap returns a map of column names to their values.
+func (r *TProve) GetColumnsMap() map[string]any {
+	return map[string]any{
+		"id":          r.ID,
+		"proof_id":    r.ProofID,
+		"judgement":   r.Judgement,
+		"creator":     r.Creator,
+		"create_time": r.CreateTime,
+		"update_time": r.UpdateTime,
+	}
 }
 
 // Fields return all fields of struct.
@@ -5153,13 +12838,49 @@ func GetTProveByPk(db Queryer, pk0 null.Int) (*TProve, error) {
 	return &r, nil
 }
 
+// GetTProveReflectValuesMap returns a map of field names to their values.
+//
+// key is the tag name, value is the field value.
+// This is useful for reflection and dynamic queries.
+func (r *TProve) GetTProveReflectValuesMap() (map[string]any, error) {
+
+	values := make(map[string]any)
+	v := reflect.ValueOf(r).Elem()
+	t := v.Type()
+	for i := range v.NumField() {
+		field := t.Field(i)
+		tag := field.Tag.Get("db")
+		if tag == "" {
+			return nil, errors.Errorf("missing db tag for field %s in table t_prove", field.Name)
+		}
+
+		columnName := strings.Split(tag, ",")[0]
+		if columnName == "" {
+			return nil, errors.Errorf("missing column name for field %s in table t_prove", field.Name)
+		}
+
+		fieldValue := reflect.ValueOf(r).Elem().Field(i)
+		if !fieldValue.IsValid() {
+			return nil, errors.Errorf("invalid field value for field %s in table t_prove", field.Name)
+		}
+
+		if !fieldValue.CanAddr() {
+			return nil, errors.Errorf("cannot read field value for field %s in table t_prove", field.Name)
+		}
+
+		values[columnName] = fieldValue.Addr().Interface()
+	}
+
+	return values, nil
+}
+
 /*TQualification 人才资质表 represents assessuser.t_qualification */
 type TQualification struct {
 	ID          null.Int `json:"ID,omitempty" db:"id,true,integer"`                    /* id 资质证明编号 */
 	UserID      null.Int `json:"UserID,omitempty" db:"user_id,false,bigint"`           /* user_id 用户编号 */
 	ExpertiseID null.Int `json:"ExpertiseID,omitempty" db:"expertise_id,false,bigint"` /* expertise_id 专长编号 */
 	CreateTime  null.Int `json:"CreateTime,omitempty" db:"create_time,false,bigint"`   /* create_time 创建时间 */
-	Filter               // build DML where clause
+	Filter                                                                             // build DML where clause
 }
 
 // TQualificationFields full field list for default query
@@ -5168,6 +12889,42 @@ var TQualificationFields = []string{
 	"UserID",
 	"ExpertiseID",
 	"CreateTime",
+}
+
+// TQualificationColumns full column list for default query
+var TQualificationColumns = []string{
+	"id",
+	"user_id",
+	"expertise_id",
+	"create_time",
+}
+
+// TQualificationColumnsDataTypes full column data types for default query
+var TQualificationColumnsDataTypes = map[string]string{
+	"id":           "integer",
+	"user_id":      "bigint",
+	"expertise_id": "bigint",
+	"create_time":  "bigint",
+}
+
+// GetFieldsMap returns a map of field names to their values.
+func (r *TQualification) GetFieldsMap() map[string]any {
+	return map[string]any{
+		"ID":          r.ID,
+		"UserID":      r.UserID,
+		"ExpertiseID": r.ExpertiseID,
+		"CreateTime":  r.CreateTime,
+	}
+}
+
+// GetColumnsMap returns a map of column names to their values.
+func (r *TQualification) GetColumnsMap() map[string]any {
+	return map[string]any{
+		"id":           r.ID,
+		"user_id":      r.UserID,
+		"expertise_id": r.ExpertiseID,
+		"create_time":  r.CreateTime,
+	}
 }
 
 // Fields return all fields of struct.
@@ -5209,6 +12966,42 @@ func GetTQualificationByPk(db Queryer, pk0 null.Int) (*TQualification, error) {
 	return &r, nil
 }
 
+// GetTQualificationReflectValuesMap returns a map of field names to their values.
+//
+// key is the tag name, value is the field value.
+// This is useful for reflection and dynamic queries.
+func (r *TQualification) GetTQualificationReflectValuesMap() (map[string]any, error) {
+
+	values := make(map[string]any)
+	v := reflect.ValueOf(r).Elem()
+	t := v.Type()
+	for i := range v.NumField() {
+		field := t.Field(i)
+		tag := field.Tag.Get("db")
+		if tag == "" {
+			return nil, errors.Errorf("missing db tag for field %s in table t_qualification", field.Name)
+		}
+
+		columnName := strings.Split(tag, ",")[0]
+		if columnName == "" {
+			return nil, errors.Errorf("missing column name for field %s in table t_qualification", field.Name)
+		}
+
+		fieldValue := reflect.ValueOf(r).Elem().Field(i)
+		if !fieldValue.IsValid() {
+			return nil, errors.Errorf("invalid field value for field %s in table t_qualification", field.Name)
+		}
+
+		if !fieldValue.CanAddr() {
+			return nil, errors.Errorf("cannot read field value for field %s in table t_qualification", field.Name)
+		}
+
+		values[columnName] = fieldValue.Addr().Interface()
+	}
+
+	return values, nil
+}
+
 /*TQuestion t_question represents assessuser.t_question */
 type TQuestion struct {
 	ID                      null.Int       `json:"ID,omitempty" db:"id,true,integer"`                                            /* id 编号 */
@@ -5237,7 +13030,7 @@ type TQuestion struct {
 	QuestionAttachmentsPath types.JSONText `json:"QuestionAttachmentsPath,omitempty" db:"question_attachments_path,false,jsonb"` /* question_attachments_path question_attachments_path */
 	AccessMode              string         `json:"AccessMode,omitempty" db:"access_mode,false,character varying"`                /* access_mode access_mode */
 	BelongTo                null.Int       `json:"BelongTo,omitempty" db:"belong_to,false,bigint"`                               /* belong_to belong_to */
-	Filter                                 // build DML where clause
+	Filter                                                                                                                       // build DML where clause
 }
 
 // TQuestionFields full field list for default query
@@ -5268,6 +13061,130 @@ var TQuestionFields = []string{
 	"QuestionAttachmentsPath",
 	"AccessMode",
 	"BelongTo",
+}
+
+// TQuestionColumns full column list for default query
+var TQuestionColumns = []string{
+	"id",
+	"type",
+	"content",
+	"options",
+	"answers",
+	"score",
+	"difficulty",
+	"tags",
+	"analysis",
+	"title",
+	"answer_file_path",
+	"test_file_path",
+	"input",
+	"output",
+	"example",
+	"repo",
+	"order",
+	"creator",
+	"create_time",
+	"updated_by",
+	"update_time",
+	"addi",
+	"status",
+	"question_attachments_path",
+	"access_mode",
+	"belong_to",
+}
+
+// TQuestionColumnsDataTypes full column data types for default query
+var TQuestionColumnsDataTypes = map[string]string{
+	"id":                        "integer",
+	"type":                      "character varying",
+	"content":                   "text",
+	"options":                   "jsonb",
+	"answers":                   "jsonb",
+	"score":                     "double precision",
+	"difficulty":                "integer",
+	"tags":                      "jsonb",
+	"analysis":                  "text",
+	"title":                     "text",
+	"answer_file_path":          "jsonb",
+	"test_file_path":            "jsonb",
+	"input":                     "character varying",
+	"output":                    "character varying",
+	"example":                   "jsonb",
+	"repo":                      "jsonb",
+	"order":                     "bigint",
+	"creator":                   "bigint",
+	"create_time":               "timestamp without time zone",
+	"updated_by":                "bigint",
+	"update_time":               "timestamp without time zone",
+	"addi":                      "jsonb",
+	"status":                    "character varying",
+	"question_attachments_path": "jsonb",
+	"access_mode":               "character varying",
+	"belong_to":                 "bigint",
+}
+
+// GetFieldsMap returns a map of field names to their values.
+func (r *TQuestion) GetFieldsMap() map[string]any {
+	return map[string]any{
+		"ID":                      r.ID,
+		"Type":                    r.Type,
+		"Content":                 r.Content,
+		"Options":                 r.Options,
+		"Answers":                 r.Answers,
+		"Score":                   r.Score,
+		"Difficulty":              r.Difficulty,
+		"Tags":                    r.Tags,
+		"Analysis":                r.Analysis,
+		"Title":                   r.Title,
+		"AnswerFilePath":          r.AnswerFilePath,
+		"TestFilePath":            r.TestFilePath,
+		"Input":                   r.Input,
+		"Output":                  r.Output,
+		"Example":                 r.Example,
+		"Repo":                    r.Repo,
+		"Order":                   r.Order,
+		"Creator":                 r.Creator,
+		"CreateTime":              r.CreateTime,
+		"UpdatedBy":               r.UpdatedBy,
+		"UpdateTime":              r.UpdateTime,
+		"Addi":                    r.Addi,
+		"Status":                  r.Status,
+		"QuestionAttachmentsPath": r.QuestionAttachmentsPath,
+		"AccessMode":              r.AccessMode,
+		"BelongTo":                r.BelongTo,
+	}
+}
+
+// GetColumnsMap returns a map of column names to their values.
+func (r *TQuestion) GetColumnsMap() map[string]any {
+	return map[string]any{
+		"id":                        r.ID,
+		"type":                      r.Type,
+		"content":                   r.Content,
+		"options":                   r.Options,
+		"answers":                   r.Answers,
+		"score":                     r.Score,
+		"difficulty":                r.Difficulty,
+		"tags":                      r.Tags,
+		"analysis":                  r.Analysis,
+		"title":                     r.Title,
+		"answer_file_path":          r.AnswerFilePath,
+		"test_file_path":            r.TestFilePath,
+		"input":                     r.Input,
+		"output":                    r.Output,
+		"example":                   r.Example,
+		"repo":                      r.Repo,
+		"order":                     r.Order,
+		"creator":                   r.Creator,
+		"create_time":               r.CreateTime,
+		"updated_by":                r.UpdatedBy,
+		"update_time":               r.UpdateTime,
+		"addi":                      r.Addi,
+		"status":                    r.Status,
+		"question_attachments_path": r.QuestionAttachmentsPath,
+		"access_mode":               r.AccessMode,
+		"belong_to":                 r.BelongTo,
+	}
 }
 
 // Fields return all fields of struct.
@@ -5309,6 +13226,42 @@ func GetTQuestionByPk(db Queryer, pk0 null.Int) (*TQuestion, error) {
 	return &r, nil
 }
 
+// GetTQuestionReflectValuesMap returns a map of field names to their values.
+//
+// key is the tag name, value is the field value.
+// This is useful for reflection and dynamic queries.
+func (r *TQuestion) GetTQuestionReflectValuesMap() (map[string]any, error) {
+
+	values := make(map[string]any)
+	v := reflect.ValueOf(r).Elem()
+	t := v.Type()
+	for i := range v.NumField() {
+		field := t.Field(i)
+		tag := field.Tag.Get("db")
+		if tag == "" {
+			return nil, errors.Errorf("missing db tag for field %s in table t_question", field.Name)
+		}
+
+		columnName := strings.Split(tag, ",")[0]
+		if columnName == "" {
+			return nil, errors.Errorf("missing column name for field %s in table t_question", field.Name)
+		}
+
+		fieldValue := reflect.ValueOf(r).Elem().Field(i)
+		if !fieldValue.IsValid() {
+			return nil, errors.Errorf("invalid field value for field %s in table t_question", field.Name)
+		}
+
+		if !fieldValue.CanAddr() {
+			return nil, errors.Errorf("cannot read field value for field %s in table t_question", field.Name)
+		}
+
+		values[columnName] = fieldValue.Addr().Interface()
+	}
+
+	return values, nil
+}
+
 /*TQuestionBank t_question_bank represents assessuser.t_question_bank */
 type TQuestionBank struct {
 	ID            null.Int       `json:"ID,omitempty" db:"id,true,integer"`                               /* id 编号 */
@@ -5326,7 +13279,7 @@ type TQuestionBank struct {
 	Status        null.String    `json:"Status,omitempty" db:"status,false,character varying"`            /* status 状态，00:正常 02:作废 04:异常 */
 	QuestionCount null.Int       `json:"QuestionCount,omitempty" db:"question_count,false,bigint"`        /* question_count question_count */
 	AccessMode    string         `json:"AccessMode,omitempty" db:"access_mode,false,character varying"`   /* access_mode access_mode */
-	Filter                       // build DML where clause
+	Filter                                                                                                // build DML where clause
 }
 
 // TQuestionBankFields full field list for default query
@@ -5346,6 +13299,86 @@ var TQuestionBankFields = []string{
 	"Status",
 	"QuestionCount",
 	"AccessMode",
+}
+
+// TQuestionBankColumns full column list for default query
+var TQuestionBankColumns = []string{
+	"id",
+	"type",
+	"name",
+	"tags",
+	"repos",
+	"default_repo",
+	"creator",
+	"create_time",
+	"updated_by",
+	"update_time",
+	"remark",
+	"addi",
+	"status",
+	"question_count",
+	"access_mode",
+}
+
+// TQuestionBankColumnsDataTypes full column data types for default query
+var TQuestionBankColumnsDataTypes = map[string]string{
+	"id":             "integer",
+	"type":           "character varying",
+	"name":           "character varying",
+	"tags":           "jsonb",
+	"repos":          "jsonb",
+	"default_repo":   "character varying",
+	"creator":        "bigint",
+	"create_time":    "bigint",
+	"updated_by":     "bigint",
+	"update_time":    "bigint",
+	"remark":         "character varying",
+	"addi":           "jsonb",
+	"status":         "character varying",
+	"question_count": "bigint",
+	"access_mode":    "character varying",
+}
+
+// GetFieldsMap returns a map of field names to their values.
+func (r *TQuestionBank) GetFieldsMap() map[string]any {
+	return map[string]any{
+		"ID":            r.ID,
+		"Type":          r.Type,
+		"Name":          r.Name,
+		"Tags":          r.Tags,
+		"Repos":         r.Repos,
+		"DefaultRepo":   r.DefaultRepo,
+		"Creator":       r.Creator,
+		"CreateTime":    r.CreateTime,
+		"UpdatedBy":     r.UpdatedBy,
+		"UpdateTime":    r.UpdateTime,
+		"Remark":        r.Remark,
+		"Addi":          r.Addi,
+		"Status":        r.Status,
+		"QuestionCount": r.QuestionCount,
+		"AccessMode":    r.AccessMode,
+	}
+}
+
+// GetColumnsMap returns a map of column names to their values.
+func (r *TQuestionBank) GetColumnsMap() map[string]any {
+	return map[string]any{
+		"id":             r.ID,
+		"type":           r.Type,
+		"name":           r.Name,
+		"tags":           r.Tags,
+		"repos":          r.Repos,
+		"default_repo":   r.DefaultRepo,
+		"creator":        r.Creator,
+		"create_time":    r.CreateTime,
+		"updated_by":     r.UpdatedBy,
+		"update_time":    r.UpdateTime,
+		"remark":         r.Remark,
+		"addi":           r.Addi,
+		"status":         r.Status,
+		"question_count": r.QuestionCount,
+		"access_mode":    r.AccessMode,
+	}
 }
 
 // Fields return all fields of struct.
@@ -5387,6 +13420,42 @@ func GetTQuestionBankByPk(db Queryer, pk0 null.Int) (*TQuestionBank, error) {
 	return &r, nil
 }
 
+// GetTQuestionBankReflectValuesMap returns a map of field names to their values.
+//
+// key is the tag name, value is the field value.
+// This is useful for reflection and dynamic queries.
+func (r *TQuestionBank) GetTQuestionBankReflectValuesMap() (map[string]any, error) {
+
+	values := make(map[string]any)
+	v := reflect.ValueOf(r).Elem()
+	t := v.Type()
+	for i := range v.NumField() {
+		field := t.Field(i)
+		tag := field.Tag.Get("db")
+		if tag == "" {
+			return nil, errors.Errorf("missing db tag for field %s in table t_question_bank", field.Name)
+		}
+
+		columnName := strings.Split(tag, ",")[0]
+		if columnName == "" {
+			return nil, errors.Errorf("missing column name for field %s in table t_question_bank", field.Name)
+		}
+
+		fieldValue := reflect.ValueOf(r).Elem().Field(i)
+		if !fieldValue.IsValid() {
+			return nil, errors.Errorf("invalid field value for field %s in table t_question_bank", field.Name)
+		}
+
+		if !fieldValue.CanAddr() {
+			return nil, errors.Errorf("cannot read field value for field %s in table t_question_bank", field.Name)
+		}
+
+		values[columnName] = fieldValue.Addr().Interface()
+	}
+
+	return values, nil
+}
+
 /*TQuestionBankShare t_question_bank_share represents assessuser.t_question_bank_share */
 type TQuestionBankShare struct {
 	BankID     null.Int `json:"BankID,omitempty" db:"bank_id,true,bigint"`                               /* bank_id 被分享题库 */
@@ -5396,7 +13465,7 @@ type TQuestionBankShare struct {
 	UpdatedBy  null.Int `json:"UpdatedBy,omitempty" db:"updated_by,false,bigint"`                        /* updated_by 更新者 */
 	UpdateTime null.Int `json:"UpdateTime,omitempty" db:"update_time,false,timestamp without time zone"` /* update_time 更新时间 */
 	Status     string   `json:"Status,omitempty" db:"status,false,character varying"`                    /* status 状态：00正常 02废除 */
-	Filter              // build DML where clause
+	Filter                                                                                               // build DML where clause
 }
 
 // TQuestionBankShareFields full field list for default query
@@ -5408,6 +13477,54 @@ var TQuestionBankShareFields = []string{
 	"UpdatedBy",
 	"UpdateTime",
 	"Status",
+}
+
+// TQuestionBankShareColumns full column list for default query
+var TQuestionBankShareColumns = []string{
+	"bank_id",
+	"user_id",
+	"creator",
+	"create_time",
+	"updated_by",
+	"update_time",
+	"status",
+}
+
+// TQuestionBankShareColumnsDataTypes full column data types for default query
+var TQuestionBankShareColumnsDataTypes = map[string]string{
+	"bank_id":     "bigint",
+	"user_id":     "bigint",
+	"creator":     "bigint",
+	"create_time": "timestamp without time zone",
+	"updated_by":  "bigint",
+	"update_time": "timestamp without time zone",
+	"status":      "character varying",
+}
+
+// GetFieldsMap returns a map of field names to their values.
+func (r *TQuestionBankShare) GetFieldsMap() map[string]any {
+	return map[string]any{
+		"BankID":     r.BankID,
+		"UserID":     r.UserID,
+		"Creator":    r.Creator,
+		"CreateTime": r.CreateTime,
+		"UpdatedBy":  r.UpdatedBy,
+		"UpdateTime": r.UpdateTime,
+		"Status":     r.Status,
+	}
+}
+
+// GetColumnsMap returns a map of column names to their values.
+func (r *TQuestionBankShare) GetColumnsMap() map[string]any {
+	return map[string]any{
+		"bank_id":     r.BankID,
+		"user_id":     r.UserID,
+		"creator":     r.Creator,
+		"create_time": r.CreateTime,
+		"updated_by":  r.UpdatedBy,
+		"update_time": r.UpdateTime,
+		"status":      r.Status,
+	}
 }
 
 // Fields return all fields of struct.
@@ -5449,6 +13566,42 @@ func GetTQuestionBankShareByPk(db Queryer, pk0 null.Int, pk1 null.Int) (*TQuesti
 	return &r, nil
 }
 
+// GetTQuestionBankShareReflectValuesMap returns a map of field names to their values.
+//
+// key is the tag name, value is the field value.
+// This is useful for reflection and dynamic queries.
+func (r *TQuestionBankShare) GetTQuestionBankShareReflectValuesMap() (map[string]any, error) {
+
+	values := make(map[string]any)
+	v := reflect.ValueOf(r).Elem()
+	t := v.Type()
+	for i := range v.NumField() {
+		field := t.Field(i)
+		tag := field.Tag.Get("db")
+		if tag == "" {
+			return nil, errors.Errorf("missing db tag for field %s in table t_question_bank_share", field.Name)
+		}
+
+		columnName := strings.Split(tag, ",")[0]
+		if columnName == "" {
+			return nil, errors.Errorf("missing column name for field %s in table t_question_bank_share", field.Name)
+		}
+
+		fieldValue := reflect.ValueOf(r).Elem().Field(i)
+		if !fieldValue.IsValid() {
+			return nil, errors.Errorf("invalid field value for field %s in table t_question_bank_share", field.Name)
+		}
+
+		if !fieldValue.CanAddr() {
+			return nil, errors.Errorf("cannot read field value for field %s in table t_question_bank_share", field.Name)
+		}
+
+		values[columnName] = fieldValue.Addr().Interface()
+	}
+
+	return values, nil
+}
+
 /*TRegion 区域列表 represents assessuser.t_region */
 type TRegion struct {
 	ID              null.Int       `json:"ID,omitempty" db:"id,true,integer"`                                        /* id 区域编号 */
@@ -5463,7 +13616,7 @@ type TRegion struct {
 	Addi            types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                                     /* addi 附加信息 */
 	Remark          null.String    `json:"Remark,omitempty" db:"remark,false,character varying"`                     /* remark 备注 */
 	Status          null.String    `json:"Status,omitempty" db:"status,false,character varying"`                     /* status 0:有效, 2: 删除, 过了一段时间有些区域可能会被删除 */
-	Filter                         // build DML where clause
+	Filter                                                                                                           // build DML where clause
 }
 
 // TRegionFields full field list for default query
@@ -5480,6 +13633,74 @@ var TRegionFields = []string{
 	"Addi",
 	"Remark",
 	"Status",
+}
+
+// TRegionColumns full column list for default query
+var TRegionColumns = []string{
+	"id",
+	"region_name",
+	"code",
+	"region_short_name",
+	"parent_id",
+	"level",
+	"update_time",
+	"creator",
+	"domain_id",
+	"addi",
+	"remark",
+	"status",
+}
+
+// TRegionColumnsDataTypes full column data types for default query
+var TRegionColumnsDataTypes = map[string]string{
+	"id":                "integer",
+	"region_name":       "character varying",
+	"code":              "bigint",
+	"region_short_name": "character varying",
+	"parent_id":         "bigint",
+	"level":             "bigint",
+	"update_time":       "bigint",
+	"creator":           "bigint",
+	"domain_id":         "bigint",
+	"addi":              "jsonb",
+	"remark":            "character varying",
+	"status":            "character varying",
+}
+
+// GetFieldsMap returns a map of field names to their values.
+func (r *TRegion) GetFieldsMap() map[string]any {
+	return map[string]any{
+		"ID":              r.ID,
+		"RegionName":      r.RegionName,
+		"Code":            r.Code,
+		"RegionShortName": r.RegionShortName,
+		"ParentID":        r.ParentID,
+		"Level":           r.Level,
+		"UpdateTime":      r.UpdateTime,
+		"Creator":         r.Creator,
+		"DomainID":        r.DomainID,
+		"Addi":            r.Addi,
+		"Remark":          r.Remark,
+		"Status":          r.Status,
+	}
+}
+
+// GetColumnsMap returns a map of column names to their values.
+func (r *TRegion) GetColumnsMap() map[string]any {
+	return map[string]any{
+		"id":                r.ID,
+		"region_name":       r.RegionName,
+		"code":              r.Code,
+		"region_short_name": r.RegionShortName,
+		"parent_id":         r.ParentID,
+		"level":             r.Level,
+		"update_time":       r.UpdateTime,
+		"creator":           r.Creator,
+		"domain_id":         r.DomainID,
+		"addi":              r.Addi,
+		"remark":            r.Remark,
+		"status":            r.Status,
+	}
 }
 
 // Fields return all fields of struct.
@@ -5521,6 +13742,42 @@ func GetTRegionByPk(db Queryer, pk0 null.Int) (*TRegion, error) {
 	return &r, nil
 }
 
+// GetTRegionReflectValuesMap returns a map of field names to their values.
+//
+// key is the tag name, value is the field value.
+// This is useful for reflection and dynamic queries.
+func (r *TRegion) GetTRegionReflectValuesMap() (map[string]any, error) {
+
+	values := make(map[string]any)
+	v := reflect.ValueOf(r).Elem()
+	t := v.Type()
+	for i := range v.NumField() {
+		field := t.Field(i)
+		tag := field.Tag.Get("db")
+		if tag == "" {
+			return nil, errors.Errorf("missing db tag for field %s in table t_region", field.Name)
+		}
+
+		columnName := strings.Split(tag, ",")[0]
+		if columnName == "" {
+			return nil, errors.Errorf("missing column name for field %s in table t_region", field.Name)
+		}
+
+		fieldValue := reflect.ValueOf(r).Elem().Field(i)
+		if !fieldValue.IsValid() {
+			return nil, errors.Errorf("invalid field value for field %s in table t_region", field.Name)
+		}
+
+		if !fieldValue.CanAddr() {
+			return nil, errors.Errorf("cannot read field value for field %s in table t_region", field.Name)
+		}
+
+		values[columnName] = fieldValue.Addr().Interface()
+	}
+
+	return values, nil
+}
+
 /*
 TRelation 描述两个实体间的隶属关系，类似于master:detail，校快保，描述销售/学校管理员/学校统计员与学校间的对应关系
 
@@ -5558,7 +13815,7 @@ type TRelation struct {
 	Addi           types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                                   /* addi 附加数据 */
 	Remark         null.String    `json:"Remark,omitempty" db:"remark,false,character varying"`                   /* remark 备注 */
 	Status         null.String    `json:"Status,omitempty" db:"status,false,character varying"`                   /* status 状态 */
-	Filter                        // build DML where clause
+	Filter                                                                                                        // build DML where clause
 }
 
 // TRelationFields full field list for default query
@@ -5583,6 +13840,106 @@ var TRelationFields = []string{
 	"Addi",
 	"Remark",
 	"Status",
+}
+
+// TRelationColumns full column list for default query
+var TRelationColumns = []string{
+	"id",
+	"left_id",
+	"left_type",
+	"left_key",
+	"left_key_type",
+	"kind",
+	"right_id",
+	"right_type",
+	"right_key",
+	"right_value_type",
+	"right_value",
+	"rule_area",
+	"creator",
+	"create_time",
+	"updated_by",
+	"update_time",
+	"domain_id",
+	"addi",
+	"remark",
+	"status",
+}
+
+// TRelationColumnsDataTypes full column data types for default query
+var TRelationColumnsDataTypes = map[string]string{
+	"id":               "integer",
+	"left_id":          "bigint",
+	"left_type":        "character varying",
+	"left_key":         "character varying",
+	"left_key_type":    "character varying",
+	"kind":             "character varying",
+	"right_id":         "bigint",
+	"right_type":       "character varying",
+	"right_key":        "character varying",
+	"right_value_type": "character varying",
+	"right_value":      "character varying",
+	"rule_area":        "character varying",
+	"creator":          "bigint",
+	"create_time":      "bigint",
+	"updated_by":       "bigint",
+	"update_time":      "bigint",
+	"domain_id":        "bigint",
+	"addi":             "jsonb",
+	"remark":           "character varying",
+	"status":           "character varying",
+}
+
+// GetFieldsMap returns a map of field names to their values.
+func (r *TRelation) GetFieldsMap() map[string]any {
+	return map[string]any{
+		"ID":             r.ID,
+		"LeftID":         r.LeftID,
+		"LeftType":       r.LeftType,
+		"LeftKey":        r.LeftKey,
+		"LeftKeyType":    r.LeftKeyType,
+		"Kind":           r.Kind,
+		"RightID":        r.RightID,
+		"RightType":      r.RightType,
+		"RightKey":       r.RightKey,
+		"RightValueType": r.RightValueType,
+		"RightValue":     r.RightValue,
+		"RuleArea":       r.RuleArea,
+		"Creator":        r.Creator,
+		"CreateTime":     r.CreateTime,
+		"UpdatedBy":      r.UpdatedBy,
+		"UpdateTime":     r.UpdateTime,
+		"DomainID":       r.DomainID,
+		"Addi":           r.Addi,
+		"Remark":         r.Remark,
+		"Status":         r.Status,
+	}
+}
+
+// GetColumnsMap returns a map of column names to their values.
+func (r *TRelation) GetColumnsMap() map[string]any {
+	return map[string]any{
+		"id":               r.ID,
+		"left_id":          r.LeftID,
+		"left_type":        r.LeftType,
+		"left_key":         r.LeftKey,
+		"left_key_type":    r.LeftKeyType,
+		"kind":             r.Kind,
+		"right_id":         r.RightID,
+		"right_type":       r.RightType,
+		"right_key":        r.RightKey,
+		"right_value_type": r.RightValueType,
+		"right_value":      r.RightValue,
+		"rule_area":        r.RuleArea,
+		"creator":          r.Creator,
+		"create_time":      r.CreateTime,
+		"updated_by":       r.UpdatedBy,
+		"update_time":      r.UpdateTime,
+		"domain_id":        r.DomainID,
+		"addi":             r.Addi,
+		"remark":           r.Remark,
+		"status":           r.Status,
+	}
 }
 
 // Fields return all fields of struct.
@@ -5624,6 +13981,42 @@ func GetTRelationByPk(db Queryer, pk0 null.Int) (*TRelation, error) {
 	return &r, nil
 }
 
+// GetTRelationReflectValuesMap returns a map of field names to their values.
+//
+// key is the tag name, value is the field value.
+// This is useful for reflection and dynamic queries.
+func (r *TRelation) GetTRelationReflectValuesMap() (map[string]any, error) {
+
+	values := make(map[string]any)
+	v := reflect.ValueOf(r).Elem()
+	t := v.Type()
+	for i := range v.NumField() {
+		field := t.Field(i)
+		tag := field.Tag.Get("db")
+		if tag == "" {
+			return nil, errors.Errorf("missing db tag for field %s in table t_relation", field.Name)
+		}
+
+		columnName := strings.Split(tag, ",")[0]
+		if columnName == "" {
+			return nil, errors.Errorf("missing column name for field %s in table t_relation", field.Name)
+		}
+
+		fieldValue := reflect.ValueOf(r).Elem().Field(i)
+		if !fieldValue.IsValid() {
+			return nil, errors.Errorf("invalid field value for field %s in table t_relation", field.Name)
+		}
+
+		if !fieldValue.CanAddr() {
+			return nil, errors.Errorf("cannot read field value for field %s in table t_relation", field.Name)
+		}
+
+		values[columnName] = fieldValue.Addr().Interface()
+	}
+
+	return values, nil
+}
+
 /*TRelationHistory 关系变更历史 represents assessuser.t_relation_history */
 type TRelationHistory struct {
 	ID             null.Int       `json:"ID,omitempty" db:"id,false,bigint"`                                      /* id 编号 */
@@ -5647,7 +14040,7 @@ type TRelationHistory struct {
 	Remark         null.String    `json:"Remark,omitempty" db:"remark,false,character varying"`                   /* remark 备注 */
 	Status         null.String    `json:"Status,omitempty" db:"status,false,character varying"`                   /* status 状态 */
 	Sn             null.Int       `json:"Sn,omitempty" db:"sn,true,integer"`                                      /* sn primary key */
-	Filter                        // build DML where clause
+	Filter                                                                                                        // build DML where clause
 }
 
 // TRelationHistoryFields full field list for default query
@@ -5673,6 +14066,110 @@ var TRelationHistoryFields = []string{
 	"Remark",
 	"Status",
 	"Sn",
+}
+
+// TRelationHistoryColumns full column list for default query
+var TRelationHistoryColumns = []string{
+	"id",
+	"left_id",
+	"left_type",
+	"left_key",
+	"left_key_type",
+	"kind",
+	"right_id",
+	"right_type",
+	"right_key",
+	"right_value_type",
+	"right_value",
+	"rule_area",
+	"creator",
+	"create_time",
+	"updated_by",
+	"update_time",
+	"domain_id",
+	"addi",
+	"remark",
+	"status",
+	"sn",
+}
+
+// TRelationHistoryColumnsDataTypes full column data types for default query
+var TRelationHistoryColumnsDataTypes = map[string]string{
+	"id":               "bigint",
+	"left_id":          "bigint",
+	"left_type":        "character varying",
+	"left_key":         "character varying",
+	"left_key_type":    "character varying",
+	"kind":             "character varying",
+	"right_id":         "bigint",
+	"right_type":       "character varying",
+	"right_key":        "character varying",
+	"right_value_type": "character varying",
+	"right_value":      "character varying",
+	"rule_area":        "character varying",
+	"creator":          "bigint",
+	"create_time":      "bigint",
+	"updated_by":       "bigint",
+	"update_time":      "bigint",
+	"domain_id":        "bigint",
+	"addi":             "jsonb",
+	"remark":           "character varying",
+	"status":           "character varying",
+	"sn":               "integer",
+}
+
+// GetFieldsMap returns a map of field names to their values.
+func (r *TRelationHistory) GetFieldsMap() map[string]any {
+	return map[string]any{
+		"ID":             r.ID,
+		"LeftID":         r.LeftID,
+		"LeftType":       r.LeftType,
+		"LeftKey":        r.LeftKey,
+		"LeftKeyType":    r.LeftKeyType,
+		"Kind":           r.Kind,
+		"RightID":        r.RightID,
+		"RightType":      r.RightType,
+		"RightKey":       r.RightKey,
+		"RightValueType": r.RightValueType,
+		"RightValue":     r.RightValue,
+		"RuleArea":       r.RuleArea,
+		"Creator":        r.Creator,
+		"CreateTime":     r.CreateTime,
+		"UpdatedBy":      r.UpdatedBy,
+		"UpdateTime":     r.UpdateTime,
+		"DomainID":       r.DomainID,
+		"Addi":           r.Addi,
+		"Remark":         r.Remark,
+		"Status":         r.Status,
+		"Sn":             r.Sn,
+	}
+}
+
+// GetColumnsMap returns a map of column names to their values.
+func (r *TRelationHistory) GetColumnsMap() map[string]any {
+	return map[string]any{
+		"id":               r.ID,
+		"left_id":          r.LeftID,
+		"left_type":        r.LeftType,
+		"left_key":         r.LeftKey,
+		"left_key_type":    r.LeftKeyType,
+		"kind":             r.Kind,
+		"right_id":         r.RightID,
+		"right_type":       r.RightType,
+		"right_key":        r.RightKey,
+		"right_value_type": r.RightValueType,
+		"right_value":      r.RightValue,
+		"rule_area":        r.RuleArea,
+		"creator":          r.Creator,
+		"create_time":      r.CreateTime,
+		"updated_by":       r.UpdatedBy,
+		"update_time":      r.UpdateTime,
+		"domain_id":        r.DomainID,
+		"addi":             r.Addi,
+		"remark":           r.Remark,
+		"status":           r.Status,
+		"sn":               r.Sn,
+	}
 }
 
 // Fields return all fields of struct.
@@ -5712,6 +14209,42 @@ func GetTRelationHistoryByPk(db Queryer, pk20 null.Int) (*TRelationHistory, erro
 		return nil, errors.Wrap(err, "failed to select t_relation_history")
 	}
 	return &r, nil
+}
+
+// GetTRelationHistoryReflectValuesMap returns a map of field names to their values.
+//
+// key is the tag name, value is the field value.
+// This is useful for reflection and dynamic queries.
+func (r *TRelationHistory) GetTRelationHistoryReflectValuesMap() (map[string]any, error) {
+
+	values := make(map[string]any)
+	v := reflect.ValueOf(r).Elem()
+	t := v.Type()
+	for i := range v.NumField() {
+		field := t.Field(i)
+		tag := field.Tag.Get("db")
+		if tag == "" {
+			return nil, errors.Errorf("missing db tag for field %s in table t_relation_history", field.Name)
+		}
+
+		columnName := strings.Split(tag, ",")[0]
+		if columnName == "" {
+			return nil, errors.Errorf("missing column name for field %s in table t_relation_history", field.Name)
+		}
+
+		fieldValue := reflect.ValueOf(r).Elem().Field(i)
+		if !fieldValue.IsValid() {
+			return nil, errors.Errorf("invalid field value for field %s in table t_relation_history", field.Name)
+		}
+
+		if !fieldValue.CanAddr() {
+			return nil, errors.Errorf("cannot read field value for field %s in table t_relation_history", field.Name)
+		}
+
+		values[columnName] = fieldValue.Addr().Interface()
+	}
+
+	return values, nil
 }
 
 /*TReportClaims 报案理赔 represents assessuser.t_report_claims */
@@ -5788,7 +14321,7 @@ type TReportClaims struct {
 	Addi                     types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                                           /* addi 附加 */
 	Remark                   null.String    `json:"Remark,omitempty" db:"remark,false,character varying"`                           /* remark 备注 */
 	Status                   null.String    `json:"Status,omitempty" db:"status,false,character varying"`                           /* status 状态:，2: 已报案，等待上传索赔资料，4: 受理中, 6: 等待补充资料, 8: 已结案, 10: 撤销报案, 12: 拒赔 */
-	Filter                                  // build DML where clause
+	Filter                                                                                                                          // build DML where clause
 }
 
 // TReportClaimsFields full field list for default query
@@ -5866,6 +14399,310 @@ var TReportClaimsFields = []string{
 	"Status",
 }
 
+// TReportClaimsColumns full column list for default query
+var TReportClaimsColumns = []string{
+	"id",
+	"informant_id",
+	"informant",
+	"insured_id",
+	"insured",
+	"insurance_type",
+	"insurance_type_id",
+	"insurance_policy_sn",
+	"insurance_policy_id",
+	"insurance_policy_start",
+	"insurance_policy_cease",
+	"report_sn",
+	"insured_channel",
+	"insured_org",
+	"treatment",
+	"hospital",
+	"injured_location",
+	"injured_part",
+	"reason",
+	"injured_desc",
+	"credit_code",
+	"bank_account_type",
+	"bank_account_name",
+	"bank_name",
+	"bank_account_id",
+	"bank_card_pic",
+	"injured_id_pic",
+	"guardian_id_pic",
+	"org_lic_pic",
+	"relation_prove_pic",
+	"bills_pic",
+	"hospitalized_bills_pic",
+	"invoice_pic",
+	"medical_record_pic",
+	"dignostic_inspection_pic",
+	"discharge_abstract_pic",
+	"other_pic",
+	"courier_sn_pic",
+	"paid_notice_pic",
+	"claim_apply_pic",
+	"equity_transfer_file",
+	"match_programme_pic",
+	"policy_file",
+	"addi_pic",
+	"courier_sn",
+	"reply_addr",
+	"injured_time",
+	"report_time",
+	"reply_time",
+	"claims_mat_add_time",
+	"mat_return_date",
+	"close_date",
+	"face_amount",
+	"medi_assure_amount",
+	"third_pay_amount",
+	"claim_amount",
+	"occurr_reason",
+	"treatment_result",
+	"disease_diagnosis_pic",
+	"disability_certificate",
+	"death_certificate",
+	"student_status_certificate",
+	"refuse_desc",
+	"domain_id",
+	"creator",
+	"create_time",
+	"updated_by",
+	"update_time",
+	"addi",
+	"remark",
+	"status",
+}
+
+// TReportClaimsColumnsDataTypes full column data types for default query
+var TReportClaimsColumnsDataTypes = map[string]string{
+	"id":                         "integer",
+	"informant_id":               "bigint",
+	"informant":                  "jsonb",
+	"insured_id":                 "bigint",
+	"insured":                    "jsonb",
+	"insurance_type":             "character varying",
+	"insurance_type_id":          "bigint",
+	"insurance_policy_sn":        "character varying",
+	"insurance_policy_id":        "bigint",
+	"insurance_policy_start":     "bigint",
+	"insurance_policy_cease":     "bigint",
+	"report_sn":                  "character varying",
+	"insured_channel":            "character varying",
+	"insured_org":                "character varying",
+	"treatment":                  "character varying",
+	"hospital":                   "character varying",
+	"injured_location":           "character varying",
+	"injured_part":               "character varying",
+	"reason":                     "character varying",
+	"injured_desc":               "character varying",
+	"credit_code":                "character varying",
+	"bank_account_type":          "character varying",
+	"bank_account_name":          "character varying",
+	"bank_name":                  "character varying",
+	"bank_account_id":            "character varying",
+	"bank_card_pic":              "jsonb",
+	"injured_id_pic":             "jsonb",
+	"guardian_id_pic":            "jsonb",
+	"org_lic_pic":                "jsonb",
+	"relation_prove_pic":         "jsonb",
+	"bills_pic":                  "jsonb",
+	"hospitalized_bills_pic":     "jsonb",
+	"invoice_pic":                "jsonb",
+	"medical_record_pic":         "jsonb",
+	"dignostic_inspection_pic":   "jsonb",
+	"discharge_abstract_pic":     "jsonb",
+	"other_pic":                  "jsonb",
+	"courier_sn_pic":             "jsonb",
+	"paid_notice_pic":            "jsonb",
+	"claim_apply_pic":            "jsonb",
+	"equity_transfer_file":       "jsonb",
+	"match_programme_pic":        "jsonb",
+	"policy_file":                "jsonb",
+	"addi_pic":                   "jsonb",
+	"courier_sn":                 "character varying",
+	"reply_addr":                 "character varying",
+	"injured_time":               "bigint",
+	"report_time":                "bigint",
+	"reply_time":                 "bigint",
+	"claims_mat_add_time":        "bigint",
+	"mat_return_date":            "bigint",
+	"close_date":                 "bigint",
+	"face_amount":                "double precision",
+	"medi_assure_amount":         "double precision",
+	"third_pay_amount":           "double precision",
+	"claim_amount":               "double precision",
+	"occurr_reason":              "character varying",
+	"treatment_result":           "character varying",
+	"disease_diagnosis_pic":      "jsonb",
+	"disability_certificate":     "jsonb",
+	"death_certificate":          "jsonb",
+	"student_status_certificate": "jsonb",
+	"refuse_desc":                "character varying",
+	"domain_id":                  "bigint",
+	"creator":                    "bigint",
+	"create_time":                "bigint",
+	"updated_by":                 "bigint",
+	"update_time":                "bigint",
+	"addi":                       "jsonb",
+	"remark":                     "character varying",
+	"status":                     "character varying",
+}
+
+// GetFieldsMap returns a map of field names to their values.
+func (r *TReportClaims) GetFieldsMap() map[string]any {
+	return map[string]any{
+		"ID":                       r.ID,
+		"InformantID":              r.InformantID,
+		"Informant":                r.Informant,
+		"InsuredID":                r.InsuredID,
+		"Insured":                  r.Insured,
+		"InsuranceType":            r.InsuranceType,
+		"InsuranceTypeID":          r.InsuranceTypeID,
+		"InsurancePolicySn":        r.InsurancePolicySn,
+		"InsurancePolicyID":        r.InsurancePolicyID,
+		"InsurancePolicyStart":     r.InsurancePolicyStart,
+		"InsurancePolicyCease":     r.InsurancePolicyCease,
+		"ReportSn":                 r.ReportSn,
+		"InsuredChannel":           r.InsuredChannel,
+		"InsuredOrg":               r.InsuredOrg,
+		"Treatment":                r.Treatment,
+		"Hospital":                 r.Hospital,
+		"InjuredLocation":          r.InjuredLocation,
+		"InjuredPart":              r.InjuredPart,
+		"Reason":                   r.Reason,
+		"InjuredDesc":              r.InjuredDesc,
+		"CreditCode":               r.CreditCode,
+		"BankAccountType":          r.BankAccountType,
+		"BankAccountName":          r.BankAccountName,
+		"BankName":                 r.BankName,
+		"BankAccountID":            r.BankAccountID,
+		"BankCardPic":              r.BankCardPic,
+		"InjuredIDPic":             r.InjuredIDPic,
+		"GuardianIDPic":            r.GuardianIDPic,
+		"OrgLicPic":                r.OrgLicPic,
+		"RelationProvePic":         r.RelationProvePic,
+		"BillsPic":                 r.BillsPic,
+		"HospitalizedBillsPic":     r.HospitalizedBillsPic,
+		"InvoicePic":               r.InvoicePic,
+		"MedicalRecordPic":         r.MedicalRecordPic,
+		"DignosticInspectionPic":   r.DignosticInspectionPic,
+		"DischargeAbstractPic":     r.DischargeAbstractPic,
+		"OtherPic":                 r.OtherPic,
+		"CourierSnPic":             r.CourierSnPic,
+		"PaidNoticePic":            r.PaidNoticePic,
+		"ClaimApplyPic":            r.ClaimApplyPic,
+		"EquityTransferFile":       r.EquityTransferFile,
+		"MatchProgrammePic":        r.MatchProgrammePic,
+		"PolicyFile":               r.PolicyFile,
+		"AddiPic":                  r.AddiPic,
+		"CourierSn":                r.CourierSn,
+		"ReplyAddr":                r.ReplyAddr,
+		"InjuredTime":              r.InjuredTime,
+		"ReportTime":               r.ReportTime,
+		"ReplyTime":                r.ReplyTime,
+		"ClaimsMatAddTime":         r.ClaimsMatAddTime,
+		"MatReturnDate":            r.MatReturnDate,
+		"CloseDate":                r.CloseDate,
+		"FaceAmount":               r.FaceAmount,
+		"MediAssureAmount":         r.MediAssureAmount,
+		"ThirdPayAmount":           r.ThirdPayAmount,
+		"ClaimAmount":              r.ClaimAmount,
+		"OccurrReason":             r.OccurrReason,
+		"TreatmentResult":          r.TreatmentResult,
+		"DiseaseDiagnosisPic":      r.DiseaseDiagnosisPic,
+		"DisabilityCertificate":    r.DisabilityCertificate,
+		"DeathCertificate":         r.DeathCertificate,
+		"StudentStatusCertificate": r.StudentStatusCertificate,
+		"RefuseDesc":               r.RefuseDesc,
+		"DomainID":                 r.DomainID,
+		"Creator":                  r.Creator,
+		"CreateTime":               r.CreateTime,
+		"UpdatedBy":                r.UpdatedBy,
+		"UpdateTime":               r.UpdateTime,
+		"Addi":                     r.Addi,
+		"Remark":                   r.Remark,
+		"Status":                   r.Status,
+	}
+}
+
+// GetColumnsMap returns a map of column names to their values.
+func (r *TReportClaims) GetColumnsMap() map[string]any {
+	return map[string]any{
+		"id":                         r.ID,
+		"informant_id":               r.InformantID,
+		"informant":                  r.Informant,
+		"insured_id":                 r.InsuredID,
+		"insured":                    r.Insured,
+		"insurance_type":             r.InsuranceType,
+		"insurance_type_id":          r.InsuranceTypeID,
+		"insurance_policy_sn":        r.InsurancePolicySn,
+		"insurance_policy_id":        r.InsurancePolicyID,
+		"insurance_policy_start":     r.InsurancePolicyStart,
+		"insurance_policy_cease":     r.InsurancePolicyCease,
+		"report_sn":                  r.ReportSn,
+		"insured_channel":            r.InsuredChannel,
+		"insured_org":                r.InsuredOrg,
+		"treatment":                  r.Treatment,
+		"hospital":                   r.Hospital,
+		"injured_location":           r.InjuredLocation,
+		"injured_part":               r.InjuredPart,
+		"reason":                     r.Reason,
+		"injured_desc":               r.InjuredDesc,
+		"credit_code":                r.CreditCode,
+		"bank_account_type":          r.BankAccountType,
+		"bank_account_name":          r.BankAccountName,
+		"bank_name":                  r.BankName,
+		"bank_account_id":            r.BankAccountID,
+		"bank_card_pic":              r.BankCardPic,
+		"injured_id_pic":             r.InjuredIDPic,
+		"guardian_id_pic":            r.GuardianIDPic,
+		"org_lic_pic":                r.OrgLicPic,
+		"relation_prove_pic":         r.RelationProvePic,
+		"bills_pic":                  r.BillsPic,
+		"hospitalized_bills_pic":     r.HospitalizedBillsPic,
+		"invoice_pic":                r.InvoicePic,
+		"medical_record_pic":         r.MedicalRecordPic,
+		"dignostic_inspection_pic":   r.DignosticInspectionPic,
+		"discharge_abstract_pic":     r.DischargeAbstractPic,
+		"other_pic":                  r.OtherPic,
+		"courier_sn_pic":             r.CourierSnPic,
+		"paid_notice_pic":            r.PaidNoticePic,
+		"claim_apply_pic":            r.ClaimApplyPic,
+		"equity_transfer_file":       r.EquityTransferFile,
+		"match_programme_pic":        r.MatchProgrammePic,
+		"policy_file":                r.PolicyFile,
+		"addi_pic":                   r.AddiPic,
+		"courier_sn":                 r.CourierSn,
+		"reply_addr":                 r.ReplyAddr,
+		"injured_time":               r.InjuredTime,
+		"report_time":                r.ReportTime,
+		"reply_time":                 r.ReplyTime,
+		"claims_mat_add_time":        r.ClaimsMatAddTime,
+		"mat_return_date":            r.MatReturnDate,
+		"close_date":                 r.CloseDate,
+		"face_amount":                r.FaceAmount,
+		"medi_assure_amount":         r.MediAssureAmount,
+		"third_pay_amount":           r.ThirdPayAmount,
+		"claim_amount":               r.ClaimAmount,
+		"occurr_reason":              r.OccurrReason,
+		"treatment_result":           r.TreatmentResult,
+		"disease_diagnosis_pic":      r.DiseaseDiagnosisPic,
+		"disability_certificate":     r.DisabilityCertificate,
+		"death_certificate":          r.DeathCertificate,
+		"student_status_certificate": r.StudentStatusCertificate,
+		"refuse_desc":                r.RefuseDesc,
+		"domain_id":                  r.DomainID,
+		"creator":                    r.Creator,
+		"create_time":                r.CreateTime,
+		"updated_by":                 r.UpdatedBy,
+		"update_time":                r.UpdateTime,
+		"addi":                       r.Addi,
+		"remark":                     r.Remark,
+		"status":                     r.Status,
+	}
+}
+
 // Fields return all fields of struct.
 func (r *TReportClaims) Fields() []string {
 	return TReportClaimsFields
@@ -5905,6 +14742,42 @@ func GetTReportClaimsByPk(db Queryer, pk0 null.Int) (*TReportClaims, error) {
 	return &r, nil
 }
 
+// GetTReportClaimsReflectValuesMap returns a map of field names to their values.
+//
+// key is the tag name, value is the field value.
+// This is useful for reflection and dynamic queries.
+func (r *TReportClaims) GetTReportClaimsReflectValuesMap() (map[string]any, error) {
+
+	values := make(map[string]any)
+	v := reflect.ValueOf(r).Elem()
+	t := v.Type()
+	for i := range v.NumField() {
+		field := t.Field(i)
+		tag := field.Tag.Get("db")
+		if tag == "" {
+			return nil, errors.Errorf("missing db tag for field %s in table t_report_claims", field.Name)
+		}
+
+		columnName := strings.Split(tag, ",")[0]
+		if columnName == "" {
+			return nil, errors.Errorf("missing column name for field %s in table t_report_claims", field.Name)
+		}
+
+		fieldValue := reflect.ValueOf(r).Elem().Field(i)
+		if !fieldValue.IsValid() {
+			return nil, errors.Errorf("invalid field value for field %s in table t_report_claims", field.Name)
+		}
+
+		if !fieldValue.CanAddr() {
+			return nil, errors.Errorf("cannot read field value for field %s in table t_report_claims", field.Name)
+		}
+
+		values[columnName] = fieldValue.Addr().Interface()
+	}
+
+	return values, nil
+}
+
 /*TResource 资源列表 represents assessuser.t_resource */
 type TResource struct {
 	ID              null.Int       `json:"ID,omitempty" db:"id,true,integer"`                             /* id 资源编号 */
@@ -5924,7 +14797,7 @@ type TResource struct {
 	Addi            types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                          /* addi 附加数据 */
 	Remark          null.String    `json:"Remark,omitempty" db:"remark,false,character varying"`          /* remark 备注 */
 	Status          null.String    `json:"Status,omitempty" db:"status,false,character varying"`          /* status 状态0:有效, 2:修改，4删除 */
-	Filter                         // build DML where clause
+	Filter                                                                                                // build DML where clause
 }
 
 // TResourceFields full field list for default query
@@ -5946,6 +14819,94 @@ var TResourceFields = []string{
 	"Addi",
 	"Remark",
 	"Status",
+}
+
+// TResourceColumns full column list for default query
+var TResourceColumns = []string{
+	"id",
+	"insurance_type_id",
+	"name",
+	"content",
+	"link",
+	"picture",
+	"tag",
+	"is_top",
+	"is_policy",
+	"updated_by",
+	"update_time",
+	"creator",
+	"create_time",
+	"domain_id",
+	"addi",
+	"remark",
+	"status",
+}
+
+// TResourceColumnsDataTypes full column data types for default query
+var TResourceColumnsDataTypes = map[string]string{
+	"id":                "integer",
+	"insurance_type_id": "bigint",
+	"name":              "character varying",
+	"content":           "character varying",
+	"link":              "jsonb",
+	"picture":           "jsonb",
+	"tag":               "character varying",
+	"is_top":            "boolean",
+	"is_policy":         "boolean",
+	"updated_by":        "bigint",
+	"update_time":       "bigint",
+	"creator":           "character varying",
+	"create_time":       "bigint",
+	"domain_id":         "bigint",
+	"addi":              "jsonb",
+	"remark":            "character varying",
+	"status":            "character varying",
+}
+
+// GetFieldsMap returns a map of field names to their values.
+func (r *TResource) GetFieldsMap() map[string]any {
+	return map[string]any{
+		"ID":              r.ID,
+		"InsuranceTypeID": r.InsuranceTypeID,
+		"Name":            r.Name,
+		"Content":         r.Content,
+		"Link":            r.Link,
+		"Picture":         r.Picture,
+		"Tag":             r.Tag,
+		"IsTop":           r.IsTop,
+		"IsPolicy":        r.IsPolicy,
+		"UpdatedBy":       r.UpdatedBy,
+		"UpdateTime":      r.UpdateTime,
+		"Creator":         r.Creator,
+		"CreateTime":      r.CreateTime,
+		"DomainID":        r.DomainID,
+		"Addi":            r.Addi,
+		"Remark":          r.Remark,
+		"Status":          r.Status,
+	}
+}
+
+// GetColumnsMap returns a map of column names to their values.
+func (r *TResource) GetColumnsMap() map[string]any {
+	return map[string]any{
+		"id":                r.ID,
+		"insurance_type_id": r.InsuranceTypeID,
+		"name":              r.Name,
+		"content":           r.Content,
+		"link":              r.Link,
+		"picture":           r.Picture,
+		"tag":               r.Tag,
+		"is_top":            r.IsTop,
+		"is_policy":         r.IsPolicy,
+		"updated_by":        r.UpdatedBy,
+		"update_time":       r.UpdateTime,
+		"creator":           r.Creator,
+		"create_time":       r.CreateTime,
+		"domain_id":         r.DomainID,
+		"addi":              r.Addi,
+		"remark":            r.Remark,
+		"status":            r.Status,
+	}
 }
 
 // Fields return all fields of struct.
@@ -5987,6 +14948,206 @@ func GetTResourceByPk(db Queryer, pk0 null.Int) (*TResource, error) {
 	return &r, nil
 }
 
+// GetTResourceReflectValuesMap returns a map of field names to their values.
+//
+// key is the tag name, value is the field value.
+// This is useful for reflection and dynamic queries.
+func (r *TResource) GetTResourceReflectValuesMap() (map[string]any, error) {
+
+	values := make(map[string]any)
+	v := reflect.ValueOf(r).Elem()
+	t := v.Type()
+	for i := range v.NumField() {
+		field := t.Field(i)
+		tag := field.Tag.Get("db")
+		if tag == "" {
+			return nil, errors.Errorf("missing db tag for field %s in table t_resource", field.Name)
+		}
+
+		columnName := strings.Split(tag, ",")[0]
+		if columnName == "" {
+			return nil, errors.Errorf("missing column name for field %s in table t_resource", field.Name)
+		}
+
+		fieldValue := reflect.ValueOf(r).Elem().Field(i)
+		if !fieldValue.IsValid() {
+			return nil, errors.Errorf("invalid field value for field %s in table t_resource", field.Name)
+		}
+
+		if !fieldValue.CanAddr() {
+			return nil, errors.Errorf("cannot read field value for field %s in table t_resource", field.Name)
+		}
+
+		values[columnName] = fieldValue.Addr().Interface()
+	}
+
+	return values, nil
+}
+
+/*TResourceShare t_resource_share represents assessuser.t_resource_share */
+type TResourceShare struct {
+	ID         null.Int       `json:"ID,omitempty" db:"id,true,integer"`                    /* id 表ID */
+	Type       string         `json:"Type,omitempty" db:"type,false,character varying"`     /* type 资源类型 12:试卷 */
+	ResourceID null.Int       `json:"ResourceID,omitempty" db:"resource_id,false,bigint"`   /* resource_id 资源ID */
+	UserID     null.Int       `json:"UserID,omitempty" db:"user_id,false,bigint"`           /* user_id 被分享者 */
+	Creator    null.Int       `json:"Creator,omitempty" db:"creator,false,bigint"`          /* creator 创建者 */
+	CreateTime null.Int       `json:"CreateTime,omitempty" db:"create_time,false,bigint"`   /* create_time 创建时间 */
+	UpdatedBy  null.Int       `json:"UpdatedBy,omitempty" db:"updated_by,false,bigint"`     /* updated_by 更新者 */
+	UpdateTime null.Int       `json:"UpdateTime,omitempty" db:"update_time,false,bigint"`   /* update_time 更新时间 */
+	Status     string         `json:"Status,omitempty" db:"status,false,character varying"` /* status 状态：00正常 02废除 */
+	Addi       types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                 /* addi 拓展 */
+	Filter                                                                                  // build DML where clause
+}
+
+// TResourceShareFields full field list for default query
+var TResourceShareFields = []string{
+	"ID",
+	"Type",
+	"ResourceID",
+	"UserID",
+	"Creator",
+	"CreateTime",
+	"UpdatedBy",
+	"UpdateTime",
+	"Status",
+	"Addi",
+}
+
+// TResourceShareColumns full column list for default query
+var TResourceShareColumns = []string{
+	"id",
+	"type",
+	"resource_id",
+	"user_id",
+	"creator",
+	"create_time",
+	"updated_by",
+	"update_time",
+	"status",
+	"addi",
+}
+
+// TResourceShareColumnsDataTypes full column data types for default query
+var TResourceShareColumnsDataTypes = map[string]string{
+	"id":          "integer",
+	"type":        "character varying",
+	"resource_id": "bigint",
+	"user_id":     "bigint",
+	"creator":     "bigint",
+	"create_time": "bigint",
+	"updated_by":  "bigint",
+	"update_time": "bigint",
+	"status":      "character varying",
+	"addi":        "jsonb",
+}
+
+// GetFieldsMap returns a map of field names to their values.
+func (r *TResourceShare) GetFieldsMap() map[string]any {
+	return map[string]any{
+		"ID":         r.ID,
+		"Type":       r.Type,
+		"ResourceID": r.ResourceID,
+		"UserID":     r.UserID,
+		"Creator":    r.Creator,
+		"CreateTime": r.CreateTime,
+		"UpdatedBy":  r.UpdatedBy,
+		"UpdateTime": r.UpdateTime,
+		"Status":     r.Status,
+		"Addi":       r.Addi,
+	}
+}
+
+// GetColumnsMap returns a map of column names to their values.
+func (r *TResourceShare) GetColumnsMap() map[string]any {
+	return map[string]any{
+		"id":          r.ID,
+		"type":        r.Type,
+		"resource_id": r.ResourceID,
+		"user_id":     r.UserID,
+		"creator":     r.Creator,
+		"create_time": r.CreateTime,
+		"updated_by":  r.UpdatedBy,
+		"update_time": r.UpdateTime,
+		"status":      r.Status,
+		"addi":        r.Addi,
+	}
+}
+
+// Fields return all fields of struct.
+func (r *TResourceShare) Fields() []string {
+	return TResourceShareFields
+}
+
+// GetTableName return the associated db table name.
+func (r *TResourceShare) GetTableName() string {
+	var viewNamePattern = regexp.MustCompile(`(?i)^t_v_[a-z0-9_]+$`)
+	tableName := "t_resource_share"
+	if viewNamePattern.MatchString(tableName) {
+		return tableName[2:]
+	}
+	return tableName
+}
+
+// Create inserts the TResourceShare to the database.
+func (r *TResourceShare) Create(db Queryer) error {
+	err := db.QueryRow(
+		`INSERT INTO t_resource_share (type, resource_id, user_id, creator, create_time, updated_by, update_time, status, addi) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
+		&r.Type, &r.ResourceID, &r.UserID, &r.Creator, &r.CreateTime, &r.UpdatedBy, &r.UpdateTime, &r.Status, &r.Addi).Scan(&r.ID)
+	if err != nil {
+		return errors.Wrap(err, "failed to insert t_resource_share")
+	}
+	return nil
+}
+
+// GetTResourceShareByPk select the TResourceShare from the database.
+func GetTResourceShareByPk(db Queryer, pk0 null.Int) (*TResourceShare, error) {
+
+	var r TResourceShare
+	err := db.QueryRow(
+		`SELECT id, type, resource_id, user_id, creator, create_time, updated_by, update_time, status, addi FROM t_resource_share WHERE id = $1`,
+		pk0).Scan(&r.ID, &r.Type, &r.ResourceID, &r.UserID, &r.Creator, &r.CreateTime, &r.UpdatedBy, &r.UpdateTime, &r.Status, &r.Addi)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to select t_resource_share")
+	}
+	return &r, nil
+}
+
+// GetTResourceShareReflectValuesMap returns a map of field names to their values.
+//
+// key is the tag name, value is the field value.
+// This is useful for reflection and dynamic queries.
+func (r *TResourceShare) GetTResourceShareReflectValuesMap() (map[string]any, error) {
+
+	values := make(map[string]any)
+	v := reflect.ValueOf(r).Elem()
+	t := v.Type()
+	for i := range v.NumField() {
+		field := t.Field(i)
+		tag := field.Tag.Get("db")
+		if tag == "" {
+			return nil, errors.Errorf("missing db tag for field %s in table t_resource_share", field.Name)
+		}
+
+		columnName := strings.Split(tag, ",")[0]
+		if columnName == "" {
+			return nil, errors.Errorf("missing column name for field %s in table t_resource_share", field.Name)
+		}
+
+		fieldValue := reflect.ValueOf(r).Elem().Field(i)
+		if !fieldValue.IsValid() {
+			return nil, errors.Errorf("invalid field value for field %s in table t_resource_share", field.Name)
+		}
+
+		if !fieldValue.CanAddr() {
+			return nil, errors.Errorf("cannot read field value for field %s in table t_resource_share", field.Name)
+		}
+
+		values[columnName] = fieldValue.Addr().Interface()
+	}
+
+	return values, nil
+}
+
 /*TRole t_role represents assessuser.t_role */
 type TRole struct {
 	ID          null.Int       `json:"ID,omitempty" db:"id,true,integer"`                    /* id 角色ID */
@@ -5998,7 +15159,7 @@ type TRole struct {
 	UpdateTime  null.Int       `json:"UpdateTime,omitempty" db:"update_time,false,bigint"`   /* update_time 更新时间 */
 	Addi        types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                 /* addi 扩展 */
 	Status      null.String    `json:"Status,omitempty" db:"status,false,character varying"` /* status 状态 00: 启用 02: 禁用 */
-	Filter                     // build DML where clause
+	Filter                                                                                   // build DML where clause
 }
 
 // TRoleFields full field list for default query
@@ -6012,6 +15173,62 @@ var TRoleFields = []string{
 	"UpdateTime",
 	"Addi",
 	"Status",
+}
+
+// TRoleColumns full column list for default query
+var TRoleColumns = []string{
+	"id",
+	"name",
+	"permission",
+	"description",
+	"level",
+	"create_time",
+	"update_time",
+	"addi",
+	"status",
+}
+
+// TRoleColumnsDataTypes full column data types for default query
+var TRoleColumnsDataTypes = map[string]string{
+	"id":          "integer",
+	"name":        "character varying",
+	"permission":  "jsonb",
+	"description": "text",
+	"level":       "character varying",
+	"create_time": "bigint",
+	"update_time": "bigint",
+	"addi":        "jsonb",
+	"status":      "character varying",
+}
+
+// GetFieldsMap returns a map of field names to their values.
+func (r *TRole) GetFieldsMap() map[string]any {
+	return map[string]any{
+		"ID":          r.ID,
+		"Name":        r.Name,
+		"Permission":  r.Permission,
+		"Description": r.Description,
+		"Level":       r.Level,
+		"CreateTime":  r.CreateTime,
+		"UpdateTime":  r.UpdateTime,
+		"Addi":        r.Addi,
+		"Status":      r.Status,
+	}
+}
+
+// GetColumnsMap returns a map of column names to their values.
+func (r *TRole) GetColumnsMap() map[string]any {
+	return map[string]any{
+		"id":          r.ID,
+		"name":        r.Name,
+		"permission":  r.Permission,
+		"description": r.Description,
+		"level":       r.Level,
+		"create_time": r.CreateTime,
+		"update_time": r.UpdateTime,
+		"addi":        r.Addi,
+		"status":      r.Status,
+	}
 }
 
 // Fields return all fields of struct.
@@ -6053,6 +15270,42 @@ func GetTRoleByPk(db Queryer, pk0 null.Int) (*TRole, error) {
 	return &r, nil
 }
 
+// GetTRoleReflectValuesMap returns a map of field names to their values.
+//
+// key is the tag name, value is the field value.
+// This is useful for reflection and dynamic queries.
+func (r *TRole) GetTRoleReflectValuesMap() (map[string]any, error) {
+
+	values := make(map[string]any)
+	v := reflect.ValueOf(r).Elem()
+	t := v.Type()
+	for i := range v.NumField() {
+		field := t.Field(i)
+		tag := field.Tag.Get("db")
+		if tag == "" {
+			return nil, errors.Errorf("missing db tag for field %s in table t_role", field.Name)
+		}
+
+		columnName := strings.Split(tag, ",")[0]
+		if columnName == "" {
+			return nil, errors.Errorf("missing column name for field %s in table t_role", field.Name)
+		}
+
+		fieldValue := reflect.ValueOf(r).Elem().Field(i)
+		if !fieldValue.IsValid() {
+			return nil, errors.Errorf("invalid field value for field %s in table t_role", field.Name)
+		}
+
+		if !fieldValue.CanAddr() {
+			return nil, errors.Errorf("cannot read field value for field %s in table t_role", field.Name)
+		}
+
+		values[columnName] = fieldValue.Addr().Interface()
+	}
+
+	return values, nil
+}
+
 /*TScanTdc 请求二维码记录 represents assessuser.t_scan_tdc */
 type TScanTdc struct {
 	ID         null.Int    `json:"ID,omitempty" db:"id,true,integer"`                             /* id 二维码编号 */
@@ -6060,7 +15313,7 @@ type TScanTdc struct {
 	ExternalID null.String `json:"ExternalID,omitempty" db:"external_id,false,character varying"` /* external_id 外部平台ID */
 	ReqTime    null.Int    `json:"ReqTime,omitempty" db:"req_time,false,bigint"`                  /* req_time 请求二维码时间 */
 	ReqSrc     null.String `json:"ReqSrc,omitempty" db:"req_src,false,character varying"`         /* req_src 请求来源 */
-	Filter                 // build DML where clause
+	Filter                                                                                        // build DML where clause
 }
 
 // TScanTdcFields full field list for default query
@@ -6070,6 +15323,46 @@ var TScanTdcFields = []string{
 	"ExternalID",
 	"ReqTime",
 	"ReqSrc",
+}
+
+// TScanTdcColumns full column list for default query
+var TScanTdcColumns = []string{
+	"id",
+	"tdc_id",
+	"external_id",
+	"req_time",
+	"req_src",
+}
+
+// TScanTdcColumnsDataTypes full column data types for default query
+var TScanTdcColumnsDataTypes = map[string]string{
+	"id":          "integer",
+	"tdc_id":      "bigint",
+	"external_id": "character varying",
+	"req_time":    "bigint",
+	"req_src":     "character varying",
+}
+
+// GetFieldsMap returns a map of field names to their values.
+func (r *TScanTdc) GetFieldsMap() map[string]any {
+	return map[string]any{
+		"ID":         r.ID,
+		"TdcID":      r.TdcID,
+		"ExternalID": r.ExternalID,
+		"ReqTime":    r.ReqTime,
+		"ReqSrc":     r.ReqSrc,
+	}
+}
+
+// GetColumnsMap returns a map of column names to their values.
+func (r *TScanTdc) GetColumnsMap() map[string]any {
+	return map[string]any{
+		"id":          r.ID,
+		"tdc_id":      r.TdcID,
+		"external_id": r.ExternalID,
+		"req_time":    r.ReqTime,
+		"req_src":     r.ReqSrc,
+	}
 }
 
 // Fields return all fields of struct.
@@ -6109,6 +15402,42 @@ func GetTScanTdcByPk(db Queryer, pk0 null.Int) (*TScanTdc, error) {
 		return nil, errors.Wrap(err, "failed to select t_scan_tdc")
 	}
 	return &r, nil
+}
+
+// GetTScanTdcReflectValuesMap returns a map of field names to their values.
+//
+// key is the tag name, value is the field value.
+// This is useful for reflection and dynamic queries.
+func (r *TScanTdc) GetTScanTdcReflectValuesMap() (map[string]any, error) {
+
+	values := make(map[string]any)
+	v := reflect.ValueOf(r).Elem()
+	t := v.Type()
+	for i := range v.NumField() {
+		field := t.Field(i)
+		tag := field.Tag.Get("db")
+		if tag == "" {
+			return nil, errors.Errorf("missing db tag for field %s in table t_scan_tdc", field.Name)
+		}
+
+		columnName := strings.Split(tag, ",")[0]
+		if columnName == "" {
+			return nil, errors.Errorf("missing column name for field %s in table t_scan_tdc", field.Name)
+		}
+
+		fieldValue := reflect.ValueOf(r).Elem().Field(i)
+		if !fieldValue.IsValid() {
+			return nil, errors.Errorf("invalid field value for field %s in table t_scan_tdc", field.Name)
+		}
+
+		if !fieldValue.CanAddr() {
+			return nil, errors.Errorf("cannot read field value for field %s in table t_scan_tdc", field.Name)
+		}
+
+		values[columnName] = fieldValue.Addr().Interface()
+	}
+
+	return values, nil
 }
 
 /*TSchool 学校信息表，包含了销售经理，学校管理员，投保规则 represents assessuser.t_school */
@@ -6156,7 +15485,7 @@ type TSchool struct {
 	Addi                    types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                                           /* addi 附加数据 */
 	Remark                  null.String    `json:"Remark,omitempty" db:"remark,false,character varying"`                           /* remark 备注 */
 	Status                  null.String    `json:"Status,omitempty" db:"status,false,character varying"`                           /* status 状态, '0': 未启用, '2': 启用, '6': 作废 */
-	Filter                                 // build DML where clause
+	Filter                                                                                                                         // build DML where clause
 }
 
 // TSchoolFields full field list for default query
@@ -6206,6 +15535,198 @@ var TSchoolFields = []string{
 	"Status",
 }
 
+// TSchoolColumns full column list for default query
+var TSchoolColumns = []string{
+	"id",
+	"name",
+	"org_code",
+	"faculty",
+	"branches",
+	"category",
+	"contact",
+	"post_code",
+	"phone",
+	"addr",
+	"province",
+	"city",
+	"district",
+	"street",
+	"data_sync_target",
+	"sale_managers",
+	"school_managers",
+	"purchase_rule",
+	"business_domain",
+	"school_category",
+	"allow_backdating",
+	"use_credit_code",
+	"credit_code",
+	"credit_code_pic",
+	"invoice_title",
+	"is_compulsory",
+	"reg_num",
+	"compulsory_student_num",
+	"non_compulsory_student_num",
+	"dinner_num",
+	"canteen_num",
+	"shop_num",
+	"files",
+	"contact_role",
+	"is_school",
+	"creator",
+	"create_time",
+	"updated_by",
+	"update_time",
+	"domain_id",
+	"addi",
+	"remark",
+	"status",
+}
+
+// TSchoolColumnsDataTypes full column data types for default query
+var TSchoolColumnsDataTypes = map[string]string{
+	"id":                         "integer",
+	"name":                       "character varying",
+	"org_code":                   "character varying",
+	"faculty":                    "jsonb",
+	"branches":                   "jsonb",
+	"category":                   "character varying",
+	"contact":                    "character varying",
+	"post_code":                  "character varying",
+	"phone":                      "character varying",
+	"addr":                       "character varying",
+	"province":                   "character varying",
+	"city":                       "character varying",
+	"district":                   "character varying",
+	"street":                     "character varying",
+	"data_sync_target":           "character varying",
+	"sale_managers":              "jsonb",
+	"school_managers":            "jsonb",
+	"purchase_rule":              "jsonb",
+	"business_domain":            "character varying",
+	"school_category":            "character varying",
+	"allow_backdating":           "jsonb",
+	"use_credit_code":            "boolean",
+	"credit_code":                "character varying",
+	"credit_code_pic":            "jsonb",
+	"invoice_title":              "character varying",
+	"is_compulsory":              "boolean",
+	"reg_num":                    "integer",
+	"compulsory_student_num":     "bigint",
+	"non_compulsory_student_num": "bigint",
+	"dinner_num":                 "integer",
+	"canteen_num":                "integer",
+	"shop_num":                   "integer",
+	"files":                      "jsonb",
+	"contact_role":               "character varying",
+	"is_school":                  "boolean",
+	"creator":                    "bigint",
+	"create_time":                "bigint",
+	"updated_by":                 "bigint",
+	"update_time":                "bigint",
+	"domain_id":                  "bigint",
+	"addi":                       "jsonb",
+	"remark":                     "character varying",
+	"status":                     "character varying",
+}
+
+// GetFieldsMap returns a map of field names to their values.
+func (r *TSchool) GetFieldsMap() map[string]any {
+	return map[string]any{
+		"ID":                      r.ID,
+		"Name":                    r.Name,
+		"OrgCode":                 r.OrgCode,
+		"Faculty":                 r.Faculty,
+		"Branches":                r.Branches,
+		"Category":                r.Category,
+		"Contact":                 r.Contact,
+		"PostCode":                r.PostCode,
+		"Phone":                   r.Phone,
+		"Addr":                    r.Addr,
+		"Province":                r.Province,
+		"City":                    r.City,
+		"District":                r.District,
+		"Street":                  r.Street,
+		"DataSyncTarget":          r.DataSyncTarget,
+		"SaleManagers":            r.SaleManagers,
+		"SchoolManagers":          r.SchoolManagers,
+		"PurchaseRule":            r.PurchaseRule,
+		"BusinessDomain":          r.BusinessDomain,
+		"SchoolCategory":          r.SchoolCategory,
+		"AllowBackdating":         r.AllowBackdating,
+		"UseCreditCode":           r.UseCreditCode,
+		"CreditCode":              r.CreditCode,
+		"CreditCodePic":           r.CreditCodePic,
+		"InvoiceTitle":            r.InvoiceTitle,
+		"IsCompulsory":            r.IsCompulsory,
+		"RegNum":                  r.RegNum,
+		"CompulsoryStudentNum":    r.CompulsoryStudentNum,
+		"NonCompulsoryStudentNum": r.NonCompulsoryStudentNum,
+		"DinnerNum":               r.DinnerNum,
+		"CanteenNum":              r.CanteenNum,
+		"ShopNum":                 r.ShopNum,
+		"Files":                   r.Files,
+		"ContactRole":             r.ContactRole,
+		"IsSchool":                r.IsSchool,
+		"Creator":                 r.Creator,
+		"CreateTime":              r.CreateTime,
+		"UpdatedBy":               r.UpdatedBy,
+		"UpdateTime":              r.UpdateTime,
+		"DomainID":                r.DomainID,
+		"Addi":                    r.Addi,
+		"Remark":                  r.Remark,
+		"Status":                  r.Status,
+	}
+}
+
+// GetColumnsMap returns a map of column names to their values.
+func (r *TSchool) GetColumnsMap() map[string]any {
+	return map[string]any{
+		"id":                         r.ID,
+		"name":                       r.Name,
+		"org_code":                   r.OrgCode,
+		"faculty":                    r.Faculty,
+		"branches":                   r.Branches,
+		"category":                   r.Category,
+		"contact":                    r.Contact,
+		"post_code":                  r.PostCode,
+		"phone":                      r.Phone,
+		"addr":                       r.Addr,
+		"province":                   r.Province,
+		"city":                       r.City,
+		"district":                   r.District,
+		"street":                     r.Street,
+		"data_sync_target":           r.DataSyncTarget,
+		"sale_managers":              r.SaleManagers,
+		"school_managers":            r.SchoolManagers,
+		"purchase_rule":              r.PurchaseRule,
+		"business_domain":            r.BusinessDomain,
+		"school_category":            r.SchoolCategory,
+		"allow_backdating":           r.AllowBackdating,
+		"use_credit_code":            r.UseCreditCode,
+		"credit_code":                r.CreditCode,
+		"credit_code_pic":            r.CreditCodePic,
+		"invoice_title":              r.InvoiceTitle,
+		"is_compulsory":              r.IsCompulsory,
+		"reg_num":                    r.RegNum,
+		"compulsory_student_num":     r.CompulsoryStudentNum,
+		"non_compulsory_student_num": r.NonCompulsoryStudentNum,
+		"dinner_num":                 r.DinnerNum,
+		"canteen_num":                r.CanteenNum,
+		"shop_num":                   r.ShopNum,
+		"files":                      r.Files,
+		"contact_role":               r.ContactRole,
+		"is_school":                  r.IsSchool,
+		"creator":                    r.Creator,
+		"create_time":                r.CreateTime,
+		"updated_by":                 r.UpdatedBy,
+		"update_time":                r.UpdateTime,
+		"domain_id":                  r.DomainID,
+		"addi":                       r.Addi,
+		"remark":                     r.Remark,
+		"status":                     r.Status,
+	}
+}
+
 // Fields return all fields of struct.
 func (r *TSchool) Fields() []string {
 	return TSchoolFields
@@ -6243,6 +15764,42 @@ func GetTSchoolByPk(db Queryer, pk0 null.Int) (*TSchool, error) {
 		return nil, errors.Wrap(err, "failed to select t_school")
 	}
 	return &r, nil
+}
+
+// GetTSchoolReflectValuesMap returns a map of field names to their values.
+//
+// key is the tag name, value is the field value.
+// This is useful for reflection and dynamic queries.
+func (r *TSchool) GetTSchoolReflectValuesMap() (map[string]any, error) {
+
+	values := make(map[string]any)
+	v := reflect.ValueOf(r).Elem()
+	t := v.Type()
+	for i := range v.NumField() {
+		field := t.Field(i)
+		tag := field.Tag.Get("db")
+		if tag == "" {
+			return nil, errors.Errorf("missing db tag for field %s in table t_school", field.Name)
+		}
+
+		columnName := strings.Split(tag, ",")[0]
+		if columnName == "" {
+			return nil, errors.Errorf("missing column name for field %s in table t_school", field.Name)
+		}
+
+		fieldValue := reflect.ValueOf(r).Elem().Field(i)
+		if !fieldValue.IsValid() {
+			return nil, errors.Errorf("invalid field value for field %s in table t_school", field.Name)
+		}
+
+		if !fieldValue.CanAddr() {
+			return nil, errors.Errorf("cannot read field value for field %s in table t_school", field.Name)
+		}
+
+		values[columnName] = fieldValue.Addr().Interface()
+	}
+
+	return values, nil
 }
 
 /*TSection the section/chapter of course represents assessuser.t_section */
@@ -6294,6 +15851,102 @@ var TSectionFields = []string{
 	"Status",
 }
 
+// TSectionColumns full column list for default query
+var TSectionColumns = []string{
+	"id",
+	"name",
+	"type",
+	"category",
+	"issuer",
+	"issue_time",
+	"data",
+	"repo",
+	"branch",
+	"repo_tag",
+	"tags",
+	"creator",
+	"create_time",
+	"updated_by",
+	"update_time",
+	"domain_id",
+	"addi",
+	"remark",
+	"status",
+}
+
+// TSectionColumnsDataTypes full column data types for default query
+var TSectionColumnsDataTypes = map[string]string{
+	"id":          "integer",
+	"name":        "character varying",
+	"type":        "character varying",
+	"category":    "character varying",
+	"issuer":      "character varying",
+	"issue_time":  "bigint",
+	"data":        "jsonb",
+	"repo":        "character varying",
+	"branch":      "character varying",
+	"repo_tag":    "character varying",
+	"tags":        "jsonb",
+	"creator":     "bigint",
+	"create_time": "bigint",
+	"updated_by":  "bigint",
+	"update_time": "bigint",
+	"domain_id":   "bigint",
+	"addi":        "jsonb",
+	"remark":      "character varying",
+	"status":      "character varying",
+}
+
+// GetFieldsMap returns a map of field names to their values.
+func (r *TSection) GetFieldsMap() map[string]any {
+	return map[string]any{
+		"ID":         r.ID,
+		"Name":       r.Name,
+		"Type":       r.Type,
+		"Category":   r.Category,
+		"Issuer":     r.Issuer,
+		"IssueTime":  r.IssueTime,
+		"Data":       r.Data,
+		"Repo":       r.Repo,
+		"Branch":     r.Branch,
+		"RepoTag":    r.RepoTag,
+		"Tags":       r.Tags,
+		"Creator":    r.Creator,
+		"CreateTime": r.CreateTime,
+		"UpdatedBy":  r.UpdatedBy,
+		"UpdateTime": r.UpdateTime,
+		"DomainID":   r.DomainID,
+		"Addi":       r.Addi,
+		"Remark":     r.Remark,
+		"Status":     r.Status,
+	}
+}
+
+// GetColumnsMap returns a map of column names to their values.
+func (r *TSection) GetColumnsMap() map[string]any {
+	return map[string]any{
+		"id":          r.ID,
+		"name":        r.Name,
+		"type":        r.Type,
+		"category":    r.Category,
+		"issuer":      r.Issuer,
+		"issue_time":  r.IssueTime,
+		"data":        r.Data,
+		"repo":        r.Repo,
+		"branch":      r.Branch,
+		"repo_tag":    r.RepoTag,
+		"tags":        r.Tags,
+		"creator":     r.Creator,
+		"create_time": r.CreateTime,
+		"updated_by":  r.UpdatedBy,
+		"update_time": r.UpdateTime,
+		"domain_id":   r.DomainID,
+		"addi":        r.Addi,
+		"remark":      r.Remark,
+		"status":      r.Status,
+	}
+}
+
 // Fields return all fields of struct.
 func (r *TSection) Fields() []string {
 	return TSectionFields
@@ -6333,6 +15986,42 @@ func GetTSectionByPk(db Queryer, pk0 null.Int) (*TSection, error) {
 	return &r, nil
 }
 
+// GetTSectionReflectValuesMap returns a map of field names to their values.
+//
+// key is the tag name, value is the field value.
+// This is useful for reflection and dynamic queries.
+func (r *TSection) GetTSectionReflectValuesMap() (map[string]any, error) {
+
+	values := make(map[string]any)
+	v := reflect.ValueOf(r).Elem()
+	t := v.Type()
+	for i := range v.NumField() {
+		field := t.Field(i)
+		tag := field.Tag.Get("db")
+		if tag == "" {
+			return nil, errors.Errorf("missing db tag for field %s in table t_section", field.Name)
+		}
+
+		columnName := strings.Split(tag, ",")[0]
+		if columnName == "" {
+			return nil, errors.Errorf("missing column name for field %s in table t_section", field.Name)
+		}
+
+		fieldValue := reflect.ValueOf(r).Elem().Field(i)
+		if !fieldValue.IsValid() {
+			return nil, errors.Errorf("invalid field value for field %s in table t_section", field.Name)
+		}
+
+		if !fieldValue.CanAddr() {
+			return nil, errors.Errorf("cannot read field value for field %s in table t_section", field.Name)
+		}
+
+		values[columnName] = fieldValue.Addr().Interface()
+	}
+
+	return values, nil
+}
+
 /*TSpecialOrder t_special_order represents assessuser.t_special_order */
 type TSpecialOrder struct {
 	ID            null.Int       `json:"ID,omitempty" db:"id,true,integer"`                                   /* id 订单编号 */
@@ -6356,7 +16045,7 @@ type TSpecialOrder struct {
 	Remark        null.String    `json:"Remark,omitempty" db:"remark,false,character varying"`                /* remark 备注 */
 	Addi          types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                                /* addi 附加数据 */
 	Status        null.String    `json:"Status,omitempty" db:"status,false,character varying"`                /* status 状态,0：未支付，2：已支付，4：超时，6：作废 */
-	Filter                       // build DML where clause
+	Filter                                                                                                    // build DML where clause
 }
 
 // TSpecialOrderFields full field list for default query
@@ -6382,6 +16071,110 @@ var TSpecialOrderFields = []string{
 	"Remark",
 	"Addi",
 	"Status",
+}
+
+// TSpecialOrderColumns full column list for default query
+var TSpecialOrderColumns = []string{
+	"id",
+	"id_card_no",
+	"name",
+	"grade",
+	"district",
+	"project",
+	"amount",
+	"pay_time",
+	"open_id",
+	"trade_no",
+	"transaction_id",
+	"refund_no",
+	"refund_time",
+	"creator",
+	"create_time",
+	"updated_by",
+	"update_time",
+	"domain_id",
+	"remark",
+	"addi",
+	"status",
+}
+
+// TSpecialOrderColumnsDataTypes full column data types for default query
+var TSpecialOrderColumnsDataTypes = map[string]string{
+	"id":             "integer",
+	"id_card_no":     "character varying",
+	"name":           "character varying",
+	"grade":          "character varying",
+	"district":       "character varying",
+	"project":        "character varying",
+	"amount":         "double precision",
+	"pay_time":       "bigint",
+	"open_id":        "character varying",
+	"trade_no":       "character varying",
+	"transaction_id": "character varying",
+	"refund_no":      "character varying",
+	"refund_time":    "bigint",
+	"creator":        "bigint",
+	"create_time":    "bigint",
+	"updated_by":     "bigint",
+	"update_time":    "bigint",
+	"domain_id":      "bigint",
+	"remark":         "character varying",
+	"addi":           "jsonb",
+	"status":         "character varying",
+}
+
+// GetFieldsMap returns a map of field names to their values.
+func (r *TSpecialOrder) GetFieldsMap() map[string]any {
+	return map[string]any{
+		"ID":            r.ID,
+		"IDCardNo":      r.IDCardNo,
+		"Name":          r.Name,
+		"Grade":         r.Grade,
+		"District":      r.District,
+		"Project":       r.Project,
+		"Amount":        r.Amount,
+		"PayTime":       r.PayTime,
+		"OpenID":        r.OpenID,
+		"TradeNo":       r.TradeNo,
+		"TransactionID": r.TransactionID,
+		"RefundNo":      r.RefundNo,
+		"RefundTime":    r.RefundTime,
+		"Creator":       r.Creator,
+		"CreateTime":    r.CreateTime,
+		"UpdatedBy":     r.UpdatedBy,
+		"UpdateTime":    r.UpdateTime,
+		"DomainID":      r.DomainID,
+		"Remark":        r.Remark,
+		"Addi":          r.Addi,
+		"Status":        r.Status,
+	}
+}
+
+// GetColumnsMap returns a map of column names to their values.
+func (r *TSpecialOrder) GetColumnsMap() map[string]any {
+	return map[string]any{
+		"id":             r.ID,
+		"id_card_no":     r.IDCardNo,
+		"name":           r.Name,
+		"grade":          r.Grade,
+		"district":       r.District,
+		"project":        r.Project,
+		"amount":         r.Amount,
+		"pay_time":       r.PayTime,
+		"open_id":        r.OpenID,
+		"trade_no":       r.TradeNo,
+		"transaction_id": r.TransactionID,
+		"refund_no":      r.RefundNo,
+		"refund_time":    r.RefundTime,
+		"creator":        r.Creator,
+		"create_time":    r.CreateTime,
+		"updated_by":     r.UpdatedBy,
+		"update_time":    r.UpdateTime,
+		"domain_id":      r.DomainID,
+		"remark":         r.Remark,
+		"addi":           r.Addi,
+		"status":         r.Status,
+	}
 }
 
 // Fields return all fields of struct.
@@ -6423,6 +16216,42 @@ func GetTSpecialOrderByPk(db Queryer, pk0 null.Int) (*TSpecialOrder, error) {
 	return &r, nil
 }
 
+// GetTSpecialOrderReflectValuesMap returns a map of field names to their values.
+//
+// key is the tag name, value is the field value.
+// This is useful for reflection and dynamic queries.
+func (r *TSpecialOrder) GetTSpecialOrderReflectValuesMap() (map[string]any, error) {
+
+	values := make(map[string]any)
+	v := reflect.ValueOf(r).Elem()
+	t := v.Type()
+	for i := range v.NumField() {
+		field := t.Field(i)
+		tag := field.Tag.Get("db")
+		if tag == "" {
+			return nil, errors.Errorf("missing db tag for field %s in table t_special_order", field.Name)
+		}
+
+		columnName := strings.Split(tag, ",")[0]
+		if columnName == "" {
+			return nil, errors.Errorf("missing column name for field %s in table t_special_order", field.Name)
+		}
+
+		fieldValue := reflect.ValueOf(r).Elem().Field(i)
+		if !fieldValue.IsValid() {
+			return nil, errors.Errorf("invalid field value for field %s in table t_special_order", field.Name)
+		}
+
+		if !fieldValue.CanAddr() {
+			return nil, errors.Errorf("cannot read field value for field %s in table t_special_order", field.Name)
+		}
+
+		values[columnName] = fieldValue.Addr().Interface()
+	}
+
+	return values, nil
+}
+
 /*TStudentAnswers t_student_answers represents assessuser.t_student_answers */
 type TStudentAnswers struct {
 	ID                    null.Int       `json:"ID,omitempty" db:"id,true,integer"`                                        /* id 编号 */
@@ -6445,7 +16274,7 @@ type TStudentAnswers struct {
 	AnswerAttachmentsPath types.JSONText `json:"AnswerAttachmentsPath,omitempty" db:"answer_attachments_path,false,jsonb"` /* answer_attachments_path 保存作答中提交的文件附件、图片等的文件路径 */
 	CreateTime            null.Int       `json:"CreateTime,omitempty" db:"create_time,false,bigint"`                       /* create_time 记录创建时间 */
 	UpdateTime            null.Int       `json:"UpdateTime,omitempty" db:"update_time,false,bigint"`                       /* update_time 记录更新记录时间 */
-	Filter                               // build DML where clause
+	Filter                                                                                                                 // build DML where clause
 }
 
 // TStudentAnswersFields full field list for default query
@@ -6470,6 +16299,106 @@ var TStudentAnswersFields = []string{
 	"AnswerAttachmentsPath",
 	"CreateTime",
 	"UpdateTime",
+}
+
+// TStudentAnswersColumns full column list for default query
+var TStudentAnswersColumns = []string{
+	"id",
+	"type",
+	"examinee_id",
+	"practice_submission_id",
+	"question_id",
+	"answer",
+	"answer_score",
+	"marker",
+	"creator",
+	"updated_by",
+	"addi",
+	"status",
+	"order",
+	"group_id",
+	"actual_options",
+	"actual_answers",
+	"attempt",
+	"answer_attachments_path",
+	"create_time",
+	"update_time",
+}
+
+// TStudentAnswersColumnsDataTypes full column data types for default query
+var TStudentAnswersColumnsDataTypes = map[string]string{
+	"id":                      "integer",
+	"type":                    "character varying",
+	"examinee_id":             "bigint",
+	"practice_submission_id":  "bigint",
+	"question_id":             "bigint",
+	"answer":                  "jsonb",
+	"answer_score":            "double precision",
+	"marker":                  "jsonb",
+	"creator":                 "bigint",
+	"updated_by":              "bigint",
+	"addi":                    "jsonb",
+	"status":                  "character varying",
+	"order":                   "integer",
+	"group_id":                "bigint",
+	"actual_options":          "jsonb",
+	"actual_answers":          "jsonb",
+	"attempt":                 "integer",
+	"answer_attachments_path": "jsonb",
+	"create_time":             "bigint",
+	"update_time":             "bigint",
+}
+
+// GetFieldsMap returns a map of field names to their values.
+func (r *TStudentAnswers) GetFieldsMap() map[string]any {
+	return map[string]any{
+		"ID":                    r.ID,
+		"Type":                  r.Type,
+		"ExamineeID":            r.ExamineeID,
+		"PracticeSubmissionID":  r.PracticeSubmissionID,
+		"QuestionID":            r.QuestionID,
+		"Answer":                r.Answer,
+		"AnswerScore":           r.AnswerScore,
+		"Marker":                r.Marker,
+		"Creator":               r.Creator,
+		"UpdatedBy":             r.UpdatedBy,
+		"Addi":                  r.Addi,
+		"Status":                r.Status,
+		"Order":                 r.Order,
+		"GroupID":               r.GroupID,
+		"ActualOptions":         r.ActualOptions,
+		"ActualAnswers":         r.ActualAnswers,
+		"Attempt":               r.Attempt,
+		"AnswerAttachmentsPath": r.AnswerAttachmentsPath,
+		"CreateTime":            r.CreateTime,
+		"UpdateTime":            r.UpdateTime,
+	}
+}
+
+// GetColumnsMap returns a map of column names to their values.
+func (r *TStudentAnswers) GetColumnsMap() map[string]any {
+	return map[string]any{
+		"id":                      r.ID,
+		"type":                    r.Type,
+		"examinee_id":             r.ExamineeID,
+		"practice_submission_id":  r.PracticeSubmissionID,
+		"question_id":             r.QuestionID,
+		"answer":                  r.Answer,
+		"answer_score":            r.AnswerScore,
+		"marker":                  r.Marker,
+		"creator":                 r.Creator,
+		"updated_by":              r.UpdatedBy,
+		"addi":                    r.Addi,
+		"status":                  r.Status,
+		"order":                   r.Order,
+		"group_id":                r.GroupID,
+		"actual_options":          r.ActualOptions,
+		"actual_answers":          r.ActualAnswers,
+		"attempt":                 r.Attempt,
+		"answer_attachments_path": r.AnswerAttachmentsPath,
+		"create_time":             r.CreateTime,
+		"update_time":             r.UpdateTime,
+	}
 }
 
 // Fields return all fields of struct.
@@ -6511,6 +16440,42 @@ func GetTStudentAnswersByPk(db Queryer, pk0 null.Int) (*TStudentAnswers, error) 
 	return &r, nil
 }
 
+// GetTStudentAnswersReflectValuesMap returns a map of field names to their values.
+//
+// key is the tag name, value is the field value.
+// This is useful for reflection and dynamic queries.
+func (r *TStudentAnswers) GetTStudentAnswersReflectValuesMap() (map[string]any, error) {
+
+	values := make(map[string]any)
+	v := reflect.ValueOf(r).Elem()
+	t := v.Type()
+	for i := range v.NumField() {
+		field := t.Field(i)
+		tag := field.Tag.Get("db")
+		if tag == "" {
+			return nil, errors.Errorf("missing db tag for field %s in table t_student_answers", field.Name)
+		}
+
+		columnName := strings.Split(tag, ",")[0]
+		if columnName == "" {
+			return nil, errors.Errorf("missing column name for field %s in table t_student_answers", field.Name)
+		}
+
+		fieldValue := reflect.ValueOf(r).Elem().Field(i)
+		if !fieldValue.IsValid() {
+			return nil, errors.Errorf("invalid field value for field %s in table t_student_answers", field.Name)
+		}
+
+		if !fieldValue.CanAddr() {
+			return nil, errors.Errorf("cannot read field value for field %s in table t_student_answers", field.Name)
+		}
+
+		values[columnName] = fieldValue.Addr().Interface()
+	}
+
+	return values, nil
+}
+
 /*
 TSysVer 应用版本包含业务模型、前端、后端、配置文件等
 
@@ -6531,7 +16496,7 @@ type TSysVer struct {
 	Addi       types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                          /* addi 附加 */
 	Remark     null.String    `json:"Remark,omitempty" db:"remark,false,character varying"`          /* remark 备注 */
 	Status     null.String    `json:"Status,omitempty" db:"status,false,character varying"`          /* status 状态 */
-	Filter                    // build DML where clause
+	Filter                                                                                           // build DML where clause
 }
 
 // TSysVerFields full field list for default query
@@ -6545,6 +16510,62 @@ var TSysVerFields = []string{
 	"Addi",
 	"Remark",
 	"Status",
+}
+
+// TSysVerColumns full column list for default query
+var TSysVerColumns = []string{
+	"id",
+	"tag",
+	"name",
+	"ver",
+	"create_time",
+	"update_time",
+	"addi",
+	"remark",
+	"status",
+}
+
+// TSysVerColumnsDataTypes full column data types for default query
+var TSysVerColumnsDataTypes = map[string]string{
+	"id":          "integer",
+	"tag":         "character varying",
+	"name":        "character varying",
+	"ver":         "character varying",
+	"create_time": "character varying",
+	"update_time": "character varying",
+	"addi":        "jsonb",
+	"remark":      "character varying",
+	"status":      "character varying",
+}
+
+// GetFieldsMap returns a map of field names to their values.
+func (r *TSysVer) GetFieldsMap() map[string]any {
+	return map[string]any{
+		"ID":         r.ID,
+		"Tag":        r.Tag,
+		"Name":       r.Name,
+		"Ver":        r.Ver,
+		"CreateTime": r.CreateTime,
+		"UpdateTime": r.UpdateTime,
+		"Addi":       r.Addi,
+		"Remark":     r.Remark,
+		"Status":     r.Status,
+	}
+}
+
+// GetColumnsMap returns a map of column names to their values.
+func (r *TSysVer) GetColumnsMap() map[string]any {
+	return map[string]any{
+		"id":          r.ID,
+		"tag":         r.Tag,
+		"name":        r.Name,
+		"ver":         r.Ver,
+		"create_time": r.CreateTime,
+		"update_time": r.UpdateTime,
+		"addi":        r.Addi,
+		"remark":      r.Remark,
+		"status":      r.Status,
+	}
 }
 
 // Fields return all fields of struct.
@@ -6586,6 +16607,42 @@ func GetTSysVerByPk(db Queryer, pk0 null.Int) (*TSysVer, error) {
 	return &r, nil
 }
 
+// GetTSysVerReflectValuesMap returns a map of field names to their values.
+//
+// key is the tag name, value is the field value.
+// This is useful for reflection and dynamic queries.
+func (r *TSysVer) GetTSysVerReflectValuesMap() (map[string]any, error) {
+
+	values := make(map[string]any)
+	v := reflect.ValueOf(r).Elem()
+	t := v.Type()
+	for i := range v.NumField() {
+		field := t.Field(i)
+		tag := field.Tag.Get("db")
+		if tag == "" {
+			return nil, errors.Errorf("missing db tag for field %s in table t_sys_ver", field.Name)
+		}
+
+		columnName := strings.Split(tag, ",")[0]
+		if columnName == "" {
+			return nil, errors.Errorf("missing column name for field %s in table t_sys_ver", field.Name)
+		}
+
+		fieldValue := reflect.ValueOf(r).Elem().Field(i)
+		if !fieldValue.IsValid() {
+			return nil, errors.Errorf("invalid field value for field %s in table t_sys_ver", field.Name)
+		}
+
+		if !fieldValue.CanAddr() {
+			return nil, errors.Errorf("cannot read field value for field %s in table t_sys_ver", field.Name)
+		}
+
+		values[columnName] = fieldValue.Addr().Interface()
+	}
+
+	return values, nil
+}
+
 /*TTdc two-dimension-code represents assessuser.t_tdc */
 type TTdc struct {
 	ID         null.Int       `json:"ID,omitempty" db:"id,true,integer"`                         /* id 编码 */
@@ -6623,6 +16680,82 @@ var TTdcFields = []string{
 	"Accepted",
 	"Remark",
 	"Status",
+}
+
+// TTdcColumns full column list for default query
+var TTdcColumns = []string{
+	"id",
+	"tdc_id",
+	"name",
+	"issuer",
+	"issue_time",
+	"limn",
+	"data",
+	"expiration",
+	"type",
+	"goto_view",
+	"requested",
+	"accepted",
+	"remark",
+	"status",
+}
+
+// TTdcColumnsDataTypes full column data types for default query
+var TTdcColumnsDataTypes = map[string]string{
+	"id":         "integer",
+	"tdc_id":     "character varying",
+	"name":       "character varying",
+	"issuer":     "bigint",
+	"issue_time": "bigint",
+	"limn":       "character varying",
+	"data":       "jsonb",
+	"expiration": "bigint",
+	"type":       "character varying",
+	"goto_view":  "character varying",
+	"requested":  "integer",
+	"accepted":   "smallint",
+	"remark":     "character varying",
+	"status":     "character varying",
+}
+
+// GetFieldsMap returns a map of field names to their values.
+func (r *TTdc) GetFieldsMap() map[string]any {
+	return map[string]any{
+		"ID":         r.ID,
+		"TdcID":      r.TdcID,
+		"Name":       r.Name,
+		"Issuer":     r.Issuer,
+		"IssueTime":  r.IssueTime,
+		"Limn":       r.Limn,
+		"Data":       r.Data,
+		"Expiration": r.Expiration,
+		"Type":       r.Type,
+		"GotoView":   r.GotoView,
+		"Requested":  r.Requested,
+		"Accepted":   r.Accepted,
+		"Remark":     r.Remark,
+		"Status":     r.Status,
+	}
+}
+
+// GetColumnsMap returns a map of column names to their values.
+func (r *TTdc) GetColumnsMap() map[string]any {
+	return map[string]any{
+		"id":         r.ID,
+		"tdc_id":     r.TdcID,
+		"name":       r.Name,
+		"issuer":     r.Issuer,
+		"issue_time": r.IssueTime,
+		"limn":       r.Limn,
+		"data":       r.Data,
+		"expiration": r.Expiration,
+		"type":       r.Type,
+		"goto_view":  r.GotoView,
+		"requested":  r.Requested,
+		"accepted":   r.Accepted,
+		"remark":     r.Remark,
+		"status":     r.Status,
+	}
 }
 
 // Fields return all fields of struct.
@@ -6664,6 +16797,42 @@ func GetTTdcByPk(db Queryer, pk0 null.Int) (*TTdc, error) {
 	return &r, nil
 }
 
+// GetTTdcReflectValuesMap returns a map of field names to their values.
+//
+// key is the tag name, value is the field value.
+// This is useful for reflection and dynamic queries.
+func (r *TTdc) GetTTdcReflectValuesMap() (map[string]any, error) {
+
+	values := make(map[string]any)
+	v := reflect.ValueOf(r).Elem()
+	t := v.Type()
+	for i := range v.NumField() {
+		field := t.Field(i)
+		tag := field.Tag.Get("db")
+		if tag == "" {
+			return nil, errors.Errorf("missing db tag for field %s in table t_tdc", field.Name)
+		}
+
+		columnName := strings.Split(tag, ",")[0]
+		if columnName == "" {
+			return nil, errors.Errorf("missing column name for field %s in table t_tdc", field.Name)
+		}
+
+		fieldValue := reflect.ValueOf(r).Elem().Field(i)
+		if !fieldValue.IsValid() {
+			return nil, errors.Errorf("invalid field value for field %s in table t_tdc", field.Name)
+		}
+
+		if !fieldValue.CanAddr() {
+			return nil, errors.Errorf("cannot read field value for field %s in table t_tdc", field.Name)
+		}
+
+		values[columnName] = fieldValue.Addr().Interface()
+	}
+
+	return values, nil
+}
+
 /*TTeacherStudent t_teacher_student represents assessuser.t_teacher_student */
 type TTeacherStudent struct {
 	ID         null.Int       `json:"ID,omitempty" db:"id,true,integer"`                                       /* id 表主键ID */
@@ -6675,7 +16844,7 @@ type TTeacherStudent struct {
 	UpdateTime null.Int       `json:"UpdateTime,omitempty" db:"update_time,false,timestamp without time zone"` /* update_time 更新时间 */
 	Status     null.String    `json:"Status,omitempty" db:"status,false,character varying"`                    /* status 状态 00：正常  02：异常 */
 	Addi       types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                                    /* addi 附加信息 */
-	Filter                    // build DML where clause
+	Filter                                                                                                     // build DML where clause
 }
 
 // TTeacherStudentFields full field list for default query
@@ -6689,6 +16858,62 @@ var TTeacherStudentFields = []string{
 	"UpdateTime",
 	"Status",
 	"Addi",
+}
+
+// TTeacherStudentColumns full column list for default query
+var TTeacherStudentColumns = []string{
+	"id",
+	"teacher_id",
+	"student_id",
+	"creator",
+	"create_time",
+	"updated_by",
+	"update_time",
+	"status",
+	"addi",
+}
+
+// TTeacherStudentColumnsDataTypes full column data types for default query
+var TTeacherStudentColumnsDataTypes = map[string]string{
+	"id":          "integer",
+	"teacher_id":  "bigint",
+	"student_id":  "bigint",
+	"creator":     "bigint",
+	"create_time": "timestamp without time zone",
+	"updated_by":  "bigint",
+	"update_time": "timestamp without time zone",
+	"status":      "character varying",
+	"addi":        "jsonb",
+}
+
+// GetFieldsMap returns a map of field names to their values.
+func (r *TTeacherStudent) GetFieldsMap() map[string]any {
+	return map[string]any{
+		"ID":         r.ID,
+		"TeacherID":  r.TeacherID,
+		"StudentID":  r.StudentID,
+		"Creator":    r.Creator,
+		"CreateTime": r.CreateTime,
+		"UpdatedBy":  r.UpdatedBy,
+		"UpdateTime": r.UpdateTime,
+		"Status":     r.Status,
+		"Addi":       r.Addi,
+	}
+}
+
+// GetColumnsMap returns a map of column names to their values.
+func (r *TTeacherStudent) GetColumnsMap() map[string]any {
+	return map[string]any{
+		"id":          r.ID,
+		"teacher_id":  r.TeacherID,
+		"student_id":  r.StudentID,
+		"creator":     r.Creator,
+		"create_time": r.CreateTime,
+		"updated_by":  r.UpdatedBy,
+		"update_time": r.UpdateTime,
+		"status":      r.Status,
+		"addi":        r.Addi,
+	}
 }
 
 // Fields return all fields of struct.
@@ -6730,6 +16955,42 @@ func GetTTeacherStudentByPk(db Queryer, pk0 null.Int) (*TTeacherStudent, error) 
 	return &r, nil
 }
 
+// GetTTeacherStudentReflectValuesMap returns a map of field names to their values.
+//
+// key is the tag name, value is the field value.
+// This is useful for reflection and dynamic queries.
+func (r *TTeacherStudent) GetTTeacherStudentReflectValuesMap() (map[string]any, error) {
+
+	values := make(map[string]any)
+	v := reflect.ValueOf(r).Elem()
+	t := v.Type()
+	for i := range v.NumField() {
+		field := t.Field(i)
+		tag := field.Tag.Get("db")
+		if tag == "" {
+			return nil, errors.Errorf("missing db tag for field %s in table t_teacher_student", field.Name)
+		}
+
+		columnName := strings.Split(tag, ",")[0]
+		if columnName == "" {
+			return nil, errors.Errorf("missing column name for field %s in table t_teacher_student", field.Name)
+		}
+
+		fieldValue := reflect.ValueOf(r).Elem().Field(i)
+		if !fieldValue.IsValid() {
+			return nil, errors.Errorf("invalid field value for field %s in table t_teacher_student", field.Name)
+		}
+
+		if !fieldValue.CanAddr() {
+			return nil, errors.Errorf("cannot read field value for field %s in table t_teacher_student", field.Name)
+		}
+
+		values[columnName] = fieldValue.Addr().Interface()
+	}
+
+	return values, nil
+}
+
 /*TUndertaker 项目承接表 represents assessuser.t_undertaker */
 type TUndertaker struct {
 	ID            null.Int    `json:"ID,omitempty" db:"id,true,integer"`                                   /* id 承接编号 */
@@ -6760,6 +17021,58 @@ var TUndertakerFields = []string{
 	"UpdateTime",
 	"Remark",
 	"Status",
+}
+
+// TUndertakerColumns full column list for default query
+var TUndertakerColumns = []string{
+	"id",
+	"prj_id",
+	"developer_id",
+	"developer_type",
+	"create_time",
+	"update_time",
+	"remark",
+	"status",
+}
+
+// TUndertakerColumnsDataTypes full column data types for default query
+var TUndertakerColumnsDataTypes = map[string]string{
+	"id":             "integer",
+	"prj_id":         "bigint",
+	"developer_id":   "bigint",
+	"developer_type": "character varying",
+	"create_time":    "bigint",
+	"update_time":    "bigint",
+	"remark":         "character varying",
+	"status":         "character varying",
+}
+
+// GetFieldsMap returns a map of field names to their values.
+func (r *TUndertaker) GetFieldsMap() map[string]any {
+	return map[string]any{
+		"ID":            r.ID,
+		"PrjID":         r.PrjID,
+		"DeveloperID":   r.DeveloperID,
+		"DeveloperType": r.DeveloperType,
+		"CreateTime":    r.CreateTime,
+		"UpdateTime":    r.UpdateTime,
+		"Remark":        r.Remark,
+		"Status":        r.Status,
+	}
+}
+
+// GetColumnsMap returns a map of column names to their values.
+func (r *TUndertaker) GetColumnsMap() map[string]any {
+	return map[string]any{
+		"id":             r.ID,
+		"prj_id":         r.PrjID,
+		"developer_id":   r.DeveloperID,
+		"developer_type": r.DeveloperType,
+		"create_time":    r.CreateTime,
+		"update_time":    r.UpdateTime,
+		"remark":         r.Remark,
+		"status":         r.Status,
+	}
 }
 
 // Fields return all fields of struct.
@@ -6799,6 +17112,42 @@ func GetTUndertakerByPk(db Queryer, pk0 null.Int) (*TUndertaker, error) {
 		return nil, errors.Wrap(err, "failed to select t_undertaker")
 	}
 	return &r, nil
+}
+
+// GetTUndertakerReflectValuesMap returns a map of field names to their values.
+//
+// key is the tag name, value is the field value.
+// This is useful for reflection and dynamic queries.
+func (r *TUndertaker) GetTUndertakerReflectValuesMap() (map[string]any, error) {
+
+	values := make(map[string]any)
+	v := reflect.ValueOf(r).Elem()
+	t := v.Type()
+	for i := range v.NumField() {
+		field := t.Field(i)
+		tag := field.Tag.Get("db")
+		if tag == "" {
+			return nil, errors.Errorf("missing db tag for field %s in table t_undertaker", field.Name)
+		}
+
+		columnName := strings.Split(tag, ",")[0]
+		if columnName == "" {
+			return nil, errors.Errorf("missing column name for field %s in table t_undertaker", field.Name)
+		}
+
+		fieldValue := reflect.ValueOf(r).Elem().Field(i)
+		if !fieldValue.IsValid() {
+			return nil, errors.Errorf("invalid field value for field %s in table t_undertaker", field.Name)
+		}
+
+		if !fieldValue.CanAddr() {
+			return nil, errors.Errorf("cannot read field value for field %s in table t_undertaker", field.Name)
+		}
+
+		values[columnName] = fieldValue.Addr().Interface()
+	}
+
+	return values, nil
 }
 
 /*TUser t_user represents assessuser.t_user */
@@ -6858,7 +17207,7 @@ type TUser struct {
 	Addi            types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                              /* addi 用户定制数据 */
 	Remark          null.String    `json:"Remark,omitempty" db:"remark,false,character varying"`              /* remark 备注 */
 	Status          null.String    `json:"Status,omitempty" db:"status,false,character varying"`              /* status 状态,00: 有效, 02: 禁止登录, 04: 锁定, 06: 攻击者, 08: 过期 */
-	Filter                         // build DML where clause
+	Filter                                                                                                    // build DML where clause
 }
 
 // TUserFields full field list for default query
@@ -6912,6 +17261,214 @@ var TUserFields = []string{
 	"Status",
 }
 
+// TUserColumns full column list for default query
+var TUserColumns = []string{
+	"id",
+	"external_id_type",
+	"external_id",
+	"category",
+	"type",
+	"language",
+	"country",
+	"province",
+	"city",
+	"addr",
+	"fuse_name",
+	"official_name",
+	"id_card_type",
+	"id_card_no",
+	"mobile_phone",
+	"email",
+	"account",
+	"gender",
+	"birthday",
+	"nickname",
+	"avatar",
+	"avatar_type",
+	"dev_id",
+	"dev_user_id",
+	"dev_account",
+	"cert",
+	"user_token",
+	"role",
+	"grp",
+	"ip",
+	"port",
+	"auth_failed_count",
+	"lock_duration",
+	"visit_count",
+	"attack_count",
+	"lock_reason",
+	"logon_time",
+	"begin_lock_time",
+	"creator",
+	"create_time",
+	"updated_by",
+	"update_time",
+	"domain_id",
+	"dynamic_attr",
+	"addi",
+	"remark",
+	"status",
+}
+
+// TUserColumnsDataTypes full column data types for default query
+var TUserColumnsDataTypes = map[string]string{
+	"id":                "integer",
+	"external_id_type":  "character varying",
+	"external_id":       "character varying",
+	"category":          "character varying",
+	"type":              "character varying",
+	"language":          "character varying",
+	"country":           "character varying",
+	"province":          "character varying",
+	"city":              "character varying",
+	"addr":              "character varying",
+	"fuse_name":         "character varying",
+	"official_name":     "character varying",
+	"id_card_type":      "character varying",
+	"id_card_no":        "character varying",
+	"mobile_phone":      "character varying",
+	"email":             "character varying",
+	"account":           "character varying",
+	"gender":            "character varying",
+	"birthday":          "bigint",
+	"nickname":          "character varying",
+	"avatar":            "bytea",
+	"avatar_type":       "character varying",
+	"dev_id":            "character varying",
+	"dev_user_id":       "character varying",
+	"dev_account":       "character varying",
+	"cert":              "character varying",
+	"user_token":        "character varying",
+	"role":              "bigint",
+	"grp":               "bigint",
+	"ip":                "character varying",
+	"port":              "character varying",
+	"auth_failed_count": "integer",
+	"lock_duration":     "integer",
+	"visit_count":       "integer",
+	"attack_count":      "integer",
+	"lock_reason":       "character varying",
+	"logon_time":        "bigint",
+	"begin_lock_time":   "bigint",
+	"creator":           "bigint",
+	"create_time":       "bigint",
+	"updated_by":        "bigint",
+	"update_time":       "bigint",
+	"domain_id":         "bigint",
+	"dynamic_attr":      "character varying",
+	"addi":              "jsonb",
+	"remark":            "character varying",
+	"status":            "character varying",
+}
+
+// GetFieldsMap returns a map of field names to their values.
+func (r *TUser) GetFieldsMap() map[string]any {
+	return map[string]any{
+		"ID":              r.ID,
+		"ExternalIDType":  r.ExternalIDType,
+		"ExternalID":      r.ExternalID,
+		"Category":        r.Category,
+		"Type":            r.Type,
+		"Language":        r.Language,
+		"Country":         r.Country,
+		"Province":        r.Province,
+		"City":            r.City,
+		"Addr":            r.Addr,
+		"FuseName":        r.FuseName,
+		"OfficialName":    r.OfficialName,
+		"IDCardType":      r.IDCardType,
+		"IDCardNo":        r.IDCardNo,
+		"MobilePhone":     r.MobilePhone,
+		"Email":           r.Email,
+		"Account":         r.Account,
+		"Gender":          r.Gender,
+		"Birthday":        r.Birthday,
+		"Nickname":        r.Nickname,
+		"Avatar":          r.Avatar,
+		"AvatarType":      r.AvatarType,
+		"DevID":           r.DevID,
+		"DevUserID":       r.DevUserID,
+		"DevAccount":      r.DevAccount,
+		"Cert":            r.Cert,
+		"UserToken":       r.UserToken,
+		"Role":            r.Role,
+		"Grp":             r.Grp,
+		"IP":              r.IP,
+		"Port":            r.Port,
+		"AuthFailedCount": r.AuthFailedCount,
+		"LockDuration":    r.LockDuration,
+		"VisitCount":      r.VisitCount,
+		"AttackCount":     r.AttackCount,
+		"LockReason":      r.LockReason,
+		"LogonTime":       r.LogonTime,
+		"BeginLockTime":   r.BeginLockTime,
+		"Creator":         r.Creator,
+		"CreateTime":      r.CreateTime,
+		"UpdatedBy":       r.UpdatedBy,
+		"UpdateTime":      r.UpdateTime,
+		"DomainID":        r.DomainID,
+		"DynamicAttr":     r.DynamicAttr,
+		"Addi":            r.Addi,
+		"Remark":          r.Remark,
+		"Status":          r.Status,
+	}
+}
+
+// GetColumnsMap returns a map of column names to their values.
+func (r *TUser) GetColumnsMap() map[string]any {
+	return map[string]any{
+		"id":                r.ID,
+		"external_id_type":  r.ExternalIDType,
+		"external_id":       r.ExternalID,
+		"category":          r.Category,
+		"type":              r.Type,
+		"language":          r.Language,
+		"country":           r.Country,
+		"province":          r.Province,
+		"city":              r.City,
+		"addr":              r.Addr,
+		"fuse_name":         r.FuseName,
+		"official_name":     r.OfficialName,
+		"id_card_type":      r.IDCardType,
+		"id_card_no":        r.IDCardNo,
+		"mobile_phone":      r.MobilePhone,
+		"email":             r.Email,
+		"account":           r.Account,
+		"gender":            r.Gender,
+		"birthday":          r.Birthday,
+		"nickname":          r.Nickname,
+		"avatar":            r.Avatar,
+		"avatar_type":       r.AvatarType,
+		"dev_id":            r.DevID,
+		"dev_user_id":       r.DevUserID,
+		"dev_account":       r.DevAccount,
+		"cert":              r.Cert,
+		"user_token":        r.UserToken,
+		"role":              r.Role,
+		"grp":               r.Grp,
+		"ip":                r.IP,
+		"port":              r.Port,
+		"auth_failed_count": r.AuthFailedCount,
+		"lock_duration":     r.LockDuration,
+		"visit_count":       r.VisitCount,
+		"attack_count":      r.AttackCount,
+		"lock_reason":       r.LockReason,
+		"logon_time":        r.LogonTime,
+		"begin_lock_time":   r.BeginLockTime,
+		"creator":           r.Creator,
+		"create_time":       r.CreateTime,
+		"updated_by":        r.UpdatedBy,
+		"update_time":       r.UpdateTime,
+		"domain_id":         r.DomainID,
+		"dynamic_attr":      r.DynamicAttr,
+		"addi":              r.Addi,
+		"remark":            r.Remark,
+		"status":            r.Status,
+	}
+}
+
 // Fields return all fields of struct.
 func (r *TUser) Fields() []string {
 	return TUserFields
@@ -6951,6 +17508,42 @@ func GetTUserByPk(db Queryer, pk0 null.Int) (*TUser, error) {
 	return &r, nil
 }
 
+// GetTUserReflectValuesMap returns a map of field names to their values.
+//
+// key is the tag name, value is the field value.
+// This is useful for reflection and dynamic queries.
+func (r *TUser) GetTUserReflectValuesMap() (map[string]any, error) {
+
+	values := make(map[string]any)
+	v := reflect.ValueOf(r).Elem()
+	t := v.Type()
+	for i := range v.NumField() {
+		field := t.Field(i)
+		tag := field.Tag.Get("db")
+		if tag == "" {
+			return nil, errors.Errorf("missing db tag for field %s in table t_user", field.Name)
+		}
+
+		columnName := strings.Split(tag, ",")[0]
+		if columnName == "" {
+			return nil, errors.Errorf("missing column name for field %s in table t_user", field.Name)
+		}
+
+		fieldValue := reflect.ValueOf(r).Elem().Field(i)
+		if !fieldValue.IsValid() {
+			return nil, errors.Errorf("invalid field value for field %s in table t_user", field.Name)
+		}
+
+		if !fieldValue.CanAddr() {
+			return nil, errors.Errorf("cannot read field value for field %s in table t_user", field.Name)
+		}
+
+		values[columnName] = fieldValue.Addr().Interface()
+	}
+
+	return values, nil
+}
+
 /*TUserAssessment 学生评价管理 represents assessuser.t_user_assessment */
 type TUserAssessment struct {
 	ID          null.Int       `json:"ID,omitempty" db:"id,true,integer"`                             /* id 作答id */
@@ -6974,7 +17567,7 @@ type TUserAssessment struct {
 	UpdateTime  null.Int       `json:"UpdateTime,omitempty" db:"update_time,false,bigint"`            /* update_time 更新时间 */
 	Remark      null.String    `json:"Remark,omitempty" db:"remark,false,character varying"`          /* remark 备注 */
 	Status      null.String    `json:"Status,omitempty" db:"status,false,character varying"`          /* status 可用，禁用 */
-	Filter                     // build DML where clause
+	Filter                                                                                            // build DML where clause
 }
 
 // TUserAssessmentFields full field list for default query
@@ -7000,6 +17593,110 @@ var TUserAssessmentFields = []string{
 	"UpdateTime",
 	"Remark",
 	"Status",
+}
+
+// TUserAssessmentColumns full column list for default query
+var TUserAssessmentColumns = []string{
+	"id",
+	"user_id",
+	"exam_id",
+	"paper_id",
+	"examiner_id",
+	"reviewer_id",
+	"test_items_id",
+	"score",
+	"scored",
+	"answer_type",
+	"answer",
+	"answering",
+	"feedback",
+	"msg",
+	"addi",
+	"creator",
+	"create_time",
+	"updated_by",
+	"update_time",
+	"remark",
+	"status",
+}
+
+// TUserAssessmentColumnsDataTypes full column data types for default query
+var TUserAssessmentColumnsDataTypes = map[string]string{
+	"id":            "integer",
+	"user_id":       "bigint",
+	"exam_id":       "bigint",
+	"paper_id":      "bigint",
+	"examiner_id":   "bigint",
+	"reviewer_id":   "bigint",
+	"test_items_id": "bigint",
+	"score":         "numeric",
+	"scored":        "numeric",
+	"answer_type":   "character varying",
+	"answer":        "character varying",
+	"answering":     "character varying",
+	"feedback":      "character varying",
+	"msg":           "character varying",
+	"addi":          "jsonb",
+	"creator":       "bigint",
+	"create_time":   "bigint",
+	"updated_by":    "bigint",
+	"update_time":   "bigint",
+	"remark":        "character varying",
+	"status":        "character varying",
+}
+
+// GetFieldsMap returns a map of field names to their values.
+func (r *TUserAssessment) GetFieldsMap() map[string]any {
+	return map[string]any{
+		"ID":          r.ID,
+		"UserID":      r.UserID,
+		"ExamID":      r.ExamID,
+		"PaperID":     r.PaperID,
+		"ExaminerID":  r.ExaminerID,
+		"ReviewerID":  r.ReviewerID,
+		"TestItemsID": r.TestItemsID,
+		"Score":       r.Score,
+		"Scored":      r.Scored,
+		"AnswerType":  r.AnswerType,
+		"Answer":      r.Answer,
+		"Answering":   r.Answering,
+		"Feedback":    r.Feedback,
+		"Msg":         r.Msg,
+		"Addi":        r.Addi,
+		"Creator":     r.Creator,
+		"CreateTime":  r.CreateTime,
+		"UpdatedBy":   r.UpdatedBy,
+		"UpdateTime":  r.UpdateTime,
+		"Remark":      r.Remark,
+		"Status":      r.Status,
+	}
+}
+
+// GetColumnsMap returns a map of column names to their values.
+func (r *TUserAssessment) GetColumnsMap() map[string]any {
+	return map[string]any{
+		"id":            r.ID,
+		"user_id":       r.UserID,
+		"exam_id":       r.ExamID,
+		"paper_id":      r.PaperID,
+		"examiner_id":   r.ExaminerID,
+		"reviewer_id":   r.ReviewerID,
+		"test_items_id": r.TestItemsID,
+		"score":         r.Score,
+		"scored":        r.Scored,
+		"answer_type":   r.AnswerType,
+		"answer":        r.Answer,
+		"answering":     r.Answering,
+		"feedback":      r.Feedback,
+		"msg":           r.Msg,
+		"addi":          r.Addi,
+		"creator":       r.Creator,
+		"create_time":   r.CreateTime,
+		"updated_by":    r.UpdatedBy,
+		"update_time":   r.UpdateTime,
+		"remark":        r.Remark,
+		"status":        r.Status,
+	}
 }
 
 // Fields return all fields of struct.
@@ -7039,6 +17736,42 @@ func GetTUserAssessmentByPk(db Queryer, pk0 null.Int) (*TUserAssessment, error) 
 		return nil, errors.Wrap(err, "failed to select t_user_assessment")
 	}
 	return &r, nil
+}
+
+// GetTUserAssessmentReflectValuesMap returns a map of field names to their values.
+//
+// key is the tag name, value is the field value.
+// This is useful for reflection and dynamic queries.
+func (r *TUserAssessment) GetTUserAssessmentReflectValuesMap() (map[string]any, error) {
+
+	values := make(map[string]any)
+	v := reflect.ValueOf(r).Elem()
+	t := v.Type()
+	for i := range v.NumField() {
+		field := t.Field(i)
+		tag := field.Tag.Get("db")
+		if tag == "" {
+			return nil, errors.Errorf("missing db tag for field %s in table t_user_assessment", field.Name)
+		}
+
+		columnName := strings.Split(tag, ",")[0]
+		if columnName == "" {
+			return nil, errors.Errorf("missing column name for field %s in table t_user_assessment", field.Name)
+		}
+
+		fieldValue := reflect.ValueOf(r).Elem().Field(i)
+		if !fieldValue.IsValid() {
+			return nil, errors.Errorf("invalid field value for field %s in table t_user_assessment", field.Name)
+		}
+
+		if !fieldValue.CanAddr() {
+			return nil, errors.Errorf("cannot read field value for field %s in table t_user_assessment", field.Name)
+		}
+
+		values[columnName] = fieldValue.Addr().Interface()
+	}
+
+	return values, nil
 }
 
 /*TUserCourse 用户课程表 represents assessuser.t_user_course */
@@ -7092,6 +17825,94 @@ var TUserCourseFields = []string{
 	"Status",
 }
 
+// TUserCourseColumns full column list for default query
+var TUserCourseColumns = []string{
+	"id",
+	"u_id",
+	"c_id",
+	"not_before",
+	"not_after",
+	"sections_sum_digest",
+	"sections",
+	"sections_sync_time",
+	"score",
+	"learn_status",
+	"creator",
+	"create_time",
+	"updated_by",
+	"update_time",
+	"domain_id",
+	"addi",
+	"status",
+}
+
+// TUserCourseColumnsDataTypes full column data types for default query
+var TUserCourseColumnsDataTypes = map[string]string{
+	"id":                  "integer",
+	"u_id":                "bigint",
+	"c_id":                "bigint",
+	"not_before":          "bigint",
+	"not_after":           "bigint",
+	"sections_sum_digest": "character varying",
+	"sections":            "jsonb",
+	"sections_sync_time":  "bigint",
+	"score":               "jsonb",
+	"learn_status":        "jsonb",
+	"creator":             "bigint",
+	"create_time":         "bigint",
+	"updated_by":          "bigint",
+	"update_time":         "bigint",
+	"domain_id":           "bigint",
+	"addi":                "jsonb",
+	"status":              "character varying",
+}
+
+// GetFieldsMap returns a map of field names to their values.
+func (r *TUserCourse) GetFieldsMap() map[string]any {
+	return map[string]any{
+		"ID":                r.ID,
+		"UID":               r.UID,
+		"CID":               r.CID,
+		"NotBefore":         r.NotBefore,
+		"NotAfter":          r.NotAfter,
+		"SectionsSumDigest": r.SectionsSumDigest,
+		"Sections":          r.Sections,
+		"SectionsSyncTime":  r.SectionsSyncTime,
+		"Score":             r.Score,
+		"LearnStatus":       r.LearnStatus,
+		"Creator":           r.Creator,
+		"CreateTime":        r.CreateTime,
+		"UpdatedBy":         r.UpdatedBy,
+		"UpdateTime":        r.UpdateTime,
+		"DomainID":          r.DomainID,
+		"Addi":              r.Addi,
+		"Status":            r.Status,
+	}
+}
+
+// GetColumnsMap returns a map of column names to their values.
+func (r *TUserCourse) GetColumnsMap() map[string]any {
+	return map[string]any{
+		"id":                  r.ID,
+		"u_id":                r.UID,
+		"c_id":                r.CID,
+		"not_before":          r.NotBefore,
+		"not_after":           r.NotAfter,
+		"sections_sum_digest": r.SectionsSumDigest,
+		"sections":            r.Sections,
+		"sections_sync_time":  r.SectionsSyncTime,
+		"score":               r.Score,
+		"learn_status":        r.LearnStatus,
+		"creator":             r.Creator,
+		"create_time":         r.CreateTime,
+		"updated_by":          r.UpdatedBy,
+		"update_time":         r.UpdateTime,
+		"domain_id":           r.DomainID,
+		"addi":                r.Addi,
+		"status":              r.Status,
+	}
+}
+
 // Fields return all fields of struct.
 func (r *TUserCourse) Fields() []string {
 	return TUserCourseFields
@@ -7131,12 +17952,48 @@ func GetTUserCourseByPk(db Queryer, pk0 null.Int) (*TUserCourse, error) {
 	return &r, nil
 }
 
+// GetTUserCourseReflectValuesMap returns a map of field names to their values.
+//
+// key is the tag name, value is the field value.
+// This is useful for reflection and dynamic queries.
+func (r *TUserCourse) GetTUserCourseReflectValuesMap() (map[string]any, error) {
+
+	values := make(map[string]any)
+	v := reflect.ValueOf(r).Elem()
+	t := v.Type()
+	for i := range v.NumField() {
+		field := t.Field(i)
+		tag := field.Tag.Get("db")
+		if tag == "" {
+			return nil, errors.Errorf("missing db tag for field %s in table t_user_course", field.Name)
+		}
+
+		columnName := strings.Split(tag, ",")[0]
+		if columnName == "" {
+			return nil, errors.Errorf("missing column name for field %s in table t_user_course", field.Name)
+		}
+
+		fieldValue := reflect.ValueOf(r).Elem().Field(i)
+		if !fieldValue.IsValid() {
+			return nil, errors.Errorf("invalid field value for field %s in table t_user_course", field.Name)
+		}
+
+		if !fieldValue.CanAddr() {
+			return nil, errors.Errorf("cannot read field value for field %s in table t_user_course", field.Name)
+		}
+
+		values[columnName] = fieldValue.Addr().Interface()
+	}
+
+	return values, nil
+}
+
 /*TUserDegree 用户等级表 represents assessuser.t_user_degree */
 type TUserDegree struct {
 	ID       null.Int `json:"ID,omitempty" db:"id,true,integer"`              /* id 用户能力等级编号 */
 	UserID   null.Int `json:"UserID,omitempty" db:"user_id,false,bigint"`     /* user_id 用户编号 */
 	DegreeID null.Int `json:"DegreeID,omitempty" db:"degree_id,false,bigint"` /* degree_id 能力等级编号 */
-	Filter            // build DML where clause
+	Filter                                                                    // build DML where clause
 }
 
 // TUserDegreeFields full field list for default query
@@ -7144,6 +18001,38 @@ var TUserDegreeFields = []string{
 	"ID",
 	"UserID",
 	"DegreeID",
+}
+
+// TUserDegreeColumns full column list for default query
+var TUserDegreeColumns = []string{
+	"id",
+	"user_id",
+	"degree_id",
+}
+
+// TUserDegreeColumnsDataTypes full column data types for default query
+var TUserDegreeColumnsDataTypes = map[string]string{
+	"id":        "integer",
+	"user_id":   "bigint",
+	"degree_id": "bigint",
+}
+
+// GetFieldsMap returns a map of field names to their values.
+func (r *TUserDegree) GetFieldsMap() map[string]any {
+	return map[string]any{
+		"ID":       r.ID,
+		"UserID":   r.UserID,
+		"DegreeID": r.DegreeID,
+	}
+}
+
+// GetColumnsMap returns a map of column names to their values.
+func (r *TUserDegree) GetColumnsMap() map[string]any {
+	return map[string]any{
+		"id":        r.ID,
+		"user_id":   r.UserID,
+		"degree_id": r.DegreeID,
+	}
 }
 
 // Fields return all fields of struct.
@@ -7185,6 +18074,42 @@ func GetTUserDegreeByPk(db Queryer, pk0 null.Int) (*TUserDegree, error) {
 	return &r, nil
 }
 
+// GetTUserDegreeReflectValuesMap returns a map of field names to their values.
+//
+// key is the tag name, value is the field value.
+// This is useful for reflection and dynamic queries.
+func (r *TUserDegree) GetTUserDegreeReflectValuesMap() (map[string]any, error) {
+
+	values := make(map[string]any)
+	v := reflect.ValueOf(r).Elem()
+	t := v.Type()
+	for i := range v.NumField() {
+		field := t.Field(i)
+		tag := field.Tag.Get("db")
+		if tag == "" {
+			return nil, errors.Errorf("missing db tag for field %s in table t_user_degree", field.Name)
+		}
+
+		columnName := strings.Split(tag, ",")[0]
+		if columnName == "" {
+			return nil, errors.Errorf("missing column name for field %s in table t_user_degree", field.Name)
+		}
+
+		fieldValue := reflect.ValueOf(r).Elem().Field(i)
+		if !fieldValue.IsValid() {
+			return nil, errors.Errorf("invalid field value for field %s in table t_user_degree", field.Name)
+		}
+
+		if !fieldValue.CanAddr() {
+			return nil, errors.Errorf("cannot read field value for field %s in table t_user_degree", field.Name)
+		}
+
+		values[columnName] = fieldValue.Addr().Interface()
+	}
+
+	return values, nil
+}
+
 /*TUserDomain 用户，组，角色配置表 represents assessuser.t_user_domain */
 type TUserDomain struct {
 	ID          null.Int    `json:"ID,omitempty" db:"id,true,integer"`                               /* id 编码 */
@@ -7215,7 +18140,7 @@ type TUserDomain struct {
 	Addi       types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                 /* addi 附加信息 */
 	Remark     null.String    `json:"Remark,omitempty" db:"remark,false,character varying"` /* remark 备注 */
 	Status     null.String    `json:"Status,omitempty" db:"status,false,character varying"` /* status 状态，00：草稿，01：有效，02：作废 */
-	Filter                    // build DML where clause
+	Filter                                                                                  // build DML where clause
 }
 
 // TUserDomainFields full field list for default query
@@ -7235,6 +18160,86 @@ var TUserDomainFields = []string{
 	"Addi",
 	"Remark",
 	"Status",
+}
+
+// TUserDomainColumns full column list for default query
+var TUserDomainColumns = []string{
+	"id",
+	"sys_user",
+	"id_on_domain",
+	"domain",
+	"grant_source",
+	"data_access_mode",
+	"data_scope",
+	"domain_id",
+	"creator",
+	"create_time",
+	"update_time",
+	"updated_by",
+	"addi",
+	"remark",
+	"status",
+}
+
+// TUserDomainColumnsDataTypes full column data types for default query
+var TUserDomainColumnsDataTypes = map[string]string{
+	"id":               "integer",
+	"sys_user":         "bigint",
+	"id_on_domain":     "character varying",
+	"domain":           "bigint",
+	"grant_source":     "character varying",
+	"data_access_mode": "character varying",
+	"data_scope":       "jsonb",
+	"domain_id":        "bigint",
+	"creator":          "bigint",
+	"create_time":      "bigint",
+	"update_time":      "bigint",
+	"updated_by":       "bigint",
+	"addi":             "jsonb",
+	"remark":           "character varying",
+	"status":           "character varying",
+}
+
+// GetFieldsMap returns a map of field names to their values.
+func (r *TUserDomain) GetFieldsMap() map[string]any {
+	return map[string]any{
+		"ID":             r.ID,
+		"SysUser":        r.SysUser,
+		"IDOnDomain":     r.IDOnDomain,
+		"Domain":         r.Domain,
+		"GrantSource":    r.GrantSource,
+		"DataAccessMode": r.DataAccessMode,
+		"DataScope":      r.DataScope,
+		"DomainID":       r.DomainID,
+		"Creator":        r.Creator,
+		"CreateTime":     r.CreateTime,
+		"UpdateTime":     r.UpdateTime,
+		"UpdatedBy":      r.UpdatedBy,
+		"Addi":           r.Addi,
+		"Remark":         r.Remark,
+		"Status":         r.Status,
+	}
+}
+
+// GetColumnsMap returns a map of column names to their values.
+func (r *TUserDomain) GetColumnsMap() map[string]any {
+	return map[string]any{
+		"id":               r.ID,
+		"sys_user":         r.SysUser,
+		"id_on_domain":     r.IDOnDomain,
+		"domain":           r.Domain,
+		"grant_source":     r.GrantSource,
+		"data_access_mode": r.DataAccessMode,
+		"data_scope":       r.DataScope,
+		"domain_id":        r.DomainID,
+		"creator":          r.Creator,
+		"create_time":      r.CreateTime,
+		"update_time":      r.UpdateTime,
+		"updated_by":       r.UpdatedBy,
+		"addi":             r.Addi,
+		"remark":           r.Remark,
+		"status":           r.Status,
+	}
 }
 
 // Fields return all fields of struct.
@@ -7276,6 +18281,42 @@ func GetTUserDomainByPk(db Queryer, pk0 null.Int) (*TUserDomain, error) {
 	return &r, nil
 }
 
+// GetTUserDomainReflectValuesMap returns a map of field names to their values.
+//
+// key is the tag name, value is the field value.
+// This is useful for reflection and dynamic queries.
+func (r *TUserDomain) GetTUserDomainReflectValuesMap() (map[string]any, error) {
+
+	values := make(map[string]any)
+	v := reflect.ValueOf(r).Elem()
+	t := v.Type()
+	for i := range v.NumField() {
+		field := t.Field(i)
+		tag := field.Tag.Get("db")
+		if tag == "" {
+			return nil, errors.Errorf("missing db tag for field %s in table t_user_domain", field.Name)
+		}
+
+		columnName := strings.Split(tag, ",")[0]
+		if columnName == "" {
+			return nil, errors.Errorf("missing column name for field %s in table t_user_domain", field.Name)
+		}
+
+		fieldValue := reflect.ValueOf(r).Elem().Field(i)
+		if !fieldValue.IsValid() {
+			return nil, errors.Errorf("invalid field value for field %s in table t_user_domain", field.Name)
+		}
+
+		if !fieldValue.CanAddr() {
+			return nil, errors.Errorf("cannot read field value for field %s in table t_user_domain", field.Name)
+		}
+
+		values[columnName] = fieldValue.Addr().Interface()
+	}
+
+	return values, nil
+}
+
 /*TUserGroup user belong to group represents assessuser.t_user_group */
 type TUserGroup struct {
 	ID         null.Int       `json:"ID,omitempty" db:"id,true,integer"`                    /* id 关系编号 */
@@ -7289,7 +18330,7 @@ type TUserGroup struct {
 	Addi       types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                 /* addi 附加信息 */
 	Remark     null.String    `json:"Remark,omitempty" db:"remark,false,character varying"` /* remark 备注 */
 	Status     null.String    `json:"Status,omitempty" db:"status,false,character varying"` /* status 状态，00：草稿，01：有效，02：作废 */
-	Filter                    // build DML where clause
+	Filter                                                                                  // build DML where clause
 }
 
 // TUserGroupFields full field list for default query
@@ -7305,6 +18346,70 @@ var TUserGroupFields = []string{
 	"Addi",
 	"Remark",
 	"Status",
+}
+
+// TUserGroupColumns full column list for default query
+var TUserGroupColumns = []string{
+	"id",
+	"user_id",
+	"group_id",
+	"domain_id",
+	"creator",
+	"create_time",
+	"updated_by",
+	"update_time",
+	"addi",
+	"remark",
+	"status",
+}
+
+// TUserGroupColumnsDataTypes full column data types for default query
+var TUserGroupColumnsDataTypes = map[string]string{
+	"id":          "integer",
+	"user_id":     "bigint",
+	"group_id":    "bigint",
+	"domain_id":   "bigint",
+	"creator":     "bigint",
+	"create_time": "bigint",
+	"updated_by":  "bigint",
+	"update_time": "bigint",
+	"addi":        "jsonb",
+	"remark":      "character varying",
+	"status":      "character varying",
+}
+
+// GetFieldsMap returns a map of field names to their values.
+func (r *TUserGroup) GetFieldsMap() map[string]any {
+	return map[string]any{
+		"ID":         r.ID,
+		"UserID":     r.UserID,
+		"GroupID":    r.GroupID,
+		"DomainID":   r.DomainID,
+		"Creator":    r.Creator,
+		"CreateTime": r.CreateTime,
+		"UpdatedBy":  r.UpdatedBy,
+		"UpdateTime": r.UpdateTime,
+		"Addi":       r.Addi,
+		"Remark":     r.Remark,
+		"Status":     r.Status,
+	}
+}
+
+// GetColumnsMap returns a map of column names to their values.
+func (r *TUserGroup) GetColumnsMap() map[string]any {
+	return map[string]any{
+		"id":          r.ID,
+		"user_id":     r.UserID,
+		"group_id":    r.GroupID,
+		"domain_id":   r.DomainID,
+		"creator":     r.Creator,
+		"create_time": r.CreateTime,
+		"updated_by":  r.UpdatedBy,
+		"update_time": r.UpdateTime,
+		"addi":        r.Addi,
+		"remark":      r.Remark,
+		"status":      r.Status,
+	}
 }
 
 // Fields return all fields of struct.
@@ -7346,6 +18451,42 @@ func GetTUserGroupByPk(db Queryer, pk0 null.Int) (*TUserGroup, error) {
 	return &r, nil
 }
 
+// GetTUserGroupReflectValuesMap returns a map of field names to their values.
+//
+// key is the tag name, value is the field value.
+// This is useful for reflection and dynamic queries.
+func (r *TUserGroup) GetTUserGroupReflectValuesMap() (map[string]any, error) {
+
+	values := make(map[string]any)
+	v := reflect.ValueOf(r).Elem()
+	t := v.Type()
+	for i := range v.NumField() {
+		field := t.Field(i)
+		tag := field.Tag.Get("db")
+		if tag == "" {
+			return nil, errors.Errorf("missing db tag for field %s in table t_user_group", field.Name)
+		}
+
+		columnName := strings.Split(tag, ",")[0]
+		if columnName == "" {
+			return nil, errors.Errorf("missing column name for field %s in table t_user_group", field.Name)
+		}
+
+		fieldValue := reflect.ValueOf(r).Elem().Field(i)
+		if !fieldValue.IsValid() {
+			return nil, errors.Errorf("invalid field value for field %s in table t_user_group", field.Name)
+		}
+
+		if !fieldValue.CanAddr() {
+			return nil, errors.Errorf("cannot read field value for field %s in table t_user_group", field.Name)
+		}
+
+		values[columnName] = fieldValue.Addr().Interface()
+	}
+
+	return values, nil
+}
+
 /*TUserPermissionOverride t_user_permission_override represents assessuser.t_user_permission_override */
 type TUserPermissionOverride struct {
 	ID           null.Int       `json:"ID,omitempty" db:"id,true,integer"`                      /* id 记录ID */
@@ -7356,7 +18497,7 @@ type TUserPermissionOverride struct {
 	Addi         types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                   /* addi 扩展内容 */
 	CreateTime   null.Int       `json:"CreateTime,omitempty" db:"create_time,false,bigint"`     /* create_time 创建时间 */
 	Status       null.String    `json:"Status,omitempty" db:"status,false,character varying"`   /* status 状态 00：启用 02：禁用 */
-	Filter                      // build DML where clause
+	Filter                                                                                      // build DML where clause
 }
 
 // TUserPermissionOverrideFields full field list for default query
@@ -7369,6 +18510,58 @@ var TUserPermissionOverrideFields = []string{
 	"Addi",
 	"CreateTime",
 	"Status",
+}
+
+// TUserPermissionOverrideColumns full column list for default query
+var TUserPermissionOverrideColumns = []string{
+	"id",
+	"user_id",
+	"role_id",
+	"permission_id",
+	"allow",
+	"addi",
+	"create_time",
+	"status",
+}
+
+// TUserPermissionOverrideColumnsDataTypes full column data types for default query
+var TUserPermissionOverrideColumnsDataTypes = map[string]string{
+	"id":            "integer",
+	"user_id":       "bigint",
+	"role_id":       "bigint",
+	"permission_id": "bigint",
+	"allow":         "boolean",
+	"addi":          "jsonb",
+	"create_time":   "bigint",
+	"status":        "character varying",
+}
+
+// GetFieldsMap returns a map of field names to their values.
+func (r *TUserPermissionOverride) GetFieldsMap() map[string]any {
+	return map[string]any{
+		"ID":           r.ID,
+		"UserID":       r.UserID,
+		"RoleID":       r.RoleID,
+		"PermissionID": r.PermissionID,
+		"Allow":        r.Allow,
+		"Addi":         r.Addi,
+		"CreateTime":   r.CreateTime,
+		"Status":       r.Status,
+	}
+}
+
+// GetColumnsMap returns a map of column names to their values.
+func (r *TUserPermissionOverride) GetColumnsMap() map[string]any {
+	return map[string]any{
+		"id":            r.ID,
+		"user_id":       r.UserID,
+		"role_id":       r.RoleID,
+		"permission_id": r.PermissionID,
+		"allow":         r.Allow,
+		"addi":          r.Addi,
+		"create_time":   r.CreateTime,
+		"status":        r.Status,
+	}
 }
 
 // Fields return all fields of struct.
@@ -7410,6 +18603,42 @@ func GetTUserPermissionOverrideByPk(db Queryer, pk0 null.Int) (*TUserPermissionO
 	return &r, nil
 }
 
+// GetTUserPermissionOverrideReflectValuesMap returns a map of field names to their values.
+//
+// key is the tag name, value is the field value.
+// This is useful for reflection and dynamic queries.
+func (r *TUserPermissionOverride) GetTUserPermissionOverrideReflectValuesMap() (map[string]any, error) {
+
+	values := make(map[string]any)
+	v := reflect.ValueOf(r).Elem()
+	t := v.Type()
+	for i := range v.NumField() {
+		field := t.Field(i)
+		tag := field.Tag.Get("db")
+		if tag == "" {
+			return nil, errors.Errorf("missing db tag for field %s in table t_user_permission_override", field.Name)
+		}
+
+		columnName := strings.Split(tag, ",")[0]
+		if columnName == "" {
+			return nil, errors.Errorf("missing column name for field %s in table t_user_permission_override", field.Name)
+		}
+
+		fieldValue := reflect.ValueOf(r).Elem().Field(i)
+		if !fieldValue.IsValid() {
+			return nil, errors.Errorf("invalid field value for field %s in table t_user_permission_override", field.Name)
+		}
+
+		if !fieldValue.CanAddr() {
+			return nil, errors.Errorf("cannot read field value for field %s in table t_user_permission_override", field.Name)
+		}
+
+		values[columnName] = fieldValue.Addr().Interface()
+	}
+
+	return values, nil
+}
+
 /*TVAa t_v_aa represents assessuser.t_v_aa */
 type TVAa struct {
 	DomainAPIID      null.Int    `json:"DomainAPIID,omitempty" db:"domain_api_id,false,integer"`                      /* domain_api_id domain_api_id */
@@ -7432,7 +18661,7 @@ type TVAa struct {
 	APIID            null.Int    `json:"APIID,omitempty" db:"api_id,false,integer"`                                   /* api_id api_id */
 	APIName          null.String `json:"APIName,omitempty" db:"api_name,false,character varying"`                     /* api_name api_name */
 	API              null.String `json:"API,omitempty" db:"api,false,character varying"`                              /* api api */
-	Filter                       // build DML where clause
+	Filter                                                                                                            // build DML where clause
 }
 
 // TVAaFields full field list for default query
@@ -7457,6 +18686,106 @@ var TVAaFields = []string{
 	"APIID",
 	"APIName",
 	"API",
+}
+
+// TVAaColumns full column list for default query
+var TVAaColumns = []string{
+	"domain_api_id",
+	"da_grant_data",
+	"da_grant_type",
+	"da_grant_source",
+	"da_data_access_mode",
+	"user_domain_id",
+	"ud_grant_data",
+	"ud_grant_type",
+	"ud_grant_source",
+	"ud_data_access_mode",
+	"user_id",
+	"user_name",
+	"mobile_phone",
+	"domain_name",
+	"domain_id",
+	"domain",
+	"priority",
+	"api_id",
+	"api_name",
+	"api",
+}
+
+// TVAaColumnsDataTypes full column data types for default query
+var TVAaColumnsDataTypes = map[string]string{
+	"domain_api_id":       "integer",
+	"da_grant_data":       "text",
+	"da_grant_type":       "text",
+	"da_grant_source":     "character varying",
+	"da_data_access_mode": "character varying",
+	"user_domain_id":      "integer",
+	"ud_grant_data":       "text",
+	"ud_grant_type":       "text",
+	"ud_grant_source":     "character varying",
+	"ud_data_access_mode": "character varying",
+	"user_id":             "integer",
+	"user_name":           "character varying",
+	"mobile_phone":        "character varying",
+	"domain_name":         "character varying",
+	"domain_id":           "integer",
+	"domain":              "character varying",
+	"priority":            "smallint",
+	"api_id":              "integer",
+	"api_name":            "character varying",
+	"api":                 "character varying",
+}
+
+// GetFieldsMap returns a map of field names to their values.
+func (r *TVAa) GetFieldsMap() map[string]any {
+	return map[string]any{
+		"DomainAPIID":      r.DomainAPIID,
+		"DaGrantData":      r.DaGrantData,
+		"DaGrantType":      r.DaGrantType,
+		"DaGrantSource":    r.DaGrantSource,
+		"DaDataAccessMode": r.DaDataAccessMode,
+		"UserDomainID":     r.UserDomainID,
+		"UdGrantData":      r.UdGrantData,
+		"UdGrantType":      r.UdGrantType,
+		"UdGrantSource":    r.UdGrantSource,
+		"UdDataAccessMode": r.UdDataAccessMode,
+		"UserID":           r.UserID,
+		"UserName":         r.UserName,
+		"MobilePhone":      r.MobilePhone,
+		"DomainName":       r.DomainName,
+		"DomainID":         r.DomainID,
+		"Domain":           r.Domain,
+		"Priority":         r.Priority,
+		"APIID":            r.APIID,
+		"APIName":          r.APIName,
+		"API":              r.API,
+	}
+}
+
+// GetColumnsMap returns a map of column names to their values.
+func (r *TVAa) GetColumnsMap() map[string]any {
+	return map[string]any{
+		"domain_api_id":       r.DomainAPIID,
+		"da_grant_data":       r.DaGrantData,
+		"da_grant_type":       r.DaGrantType,
+		"da_grant_source":     r.DaGrantSource,
+		"da_data_access_mode": r.DaDataAccessMode,
+		"user_domain_id":      r.UserDomainID,
+		"ud_grant_data":       r.UdGrantData,
+		"ud_grant_type":       r.UdGrantType,
+		"ud_grant_source":     r.UdGrantSource,
+		"ud_data_access_mode": r.UdDataAccessMode,
+		"user_id":             r.UserID,
+		"user_name":           r.UserName,
+		"mobile_phone":        r.MobilePhone,
+		"domain_name":         r.DomainName,
+		"domain_id":           r.DomainID,
+		"domain":              r.Domain,
+		"priority":            r.Priority,
+		"api_id":              r.APIID,
+		"api_name":            r.APIName,
+		"api":                 r.API,
+	}
 }
 
 // Fields return all fields of struct.
@@ -7499,6 +18828,42 @@ func GetTVAaByPk(db Queryer) (*TVAa, error) {
 	return &r, nil
 }
 
+// GetTVAaReflectValuesMap returns a map of field names to their values.
+//
+// key is the tag name, value is the field value.
+// This is useful for reflection and dynamic queries.
+func (r *TVAa) GetTVAaReflectValuesMap() (map[string]any, error) {
+
+	values := make(map[string]any)
+	v := reflect.ValueOf(r).Elem()
+	t := v.Type()
+	for i := range v.NumField() {
+		field := t.Field(i)
+		tag := field.Tag.Get("db")
+		if tag == "" {
+			return nil, errors.Errorf("missing db tag for field %s in table t_v_aa", field.Name)
+		}
+
+		columnName := strings.Split(tag, ",")[0]
+		if columnName == "" {
+			return nil, errors.Errorf("missing column name for field %s in table t_v_aa", field.Name)
+		}
+
+		fieldValue := reflect.ValueOf(r).Elem().Field(i)
+		if !fieldValue.IsValid() {
+			return nil, errors.Errorf("invalid field value for field %s in table t_v_aa", field.Name)
+		}
+
+		if !fieldValue.CanAddr() {
+			return nil, errors.Errorf("cannot read field value for field %s in table t_v_aa", field.Name)
+		}
+
+		values[columnName] = fieldValue.Addr().Interface()
+	}
+
+	return values, nil
+}
+
 /*TVAPIDomain t_v_api_domain represents assessuser.t_v_api_domain */
 type TVAPIDomain struct {
 	ID             null.Int       `json:"ID,omitempty" db:"id,false,integer"`                                     /* id id */
@@ -7511,7 +18876,7 @@ type TVAPIDomain struct {
 	GrantSource    null.String    `json:"GrantSource,omitempty" db:"grant_source,false,character varying"`        /* grant_source grant_source */
 	DataAccessMode null.String    `json:"DataAccessMode,omitempty" db:"data_access_mode,false,character varying"` /* data_access_mode data_access_mode */
 	DataScope      types.JSONText `json:"DataScope,omitempty" db:"data_scope,false,jsonb"`                        /* data_scope data_scope */
-	Filter                        // build DML where clause
+	Filter                                                                                                        // build DML where clause
 }
 
 // TVAPIDomainFields full field list for default query
@@ -7526,6 +18891,66 @@ var TVAPIDomainFields = []string{
 	"GrantSource",
 	"DataAccessMode",
 	"DataScope",
+}
+
+// TVAPIDomainColumns full column list for default query
+var TVAPIDomainColumns = []string{
+	"id",
+	"api_id",
+	"api_name",
+	"expose_path",
+	"domain_id",
+	"domain_name",
+	"priority",
+	"grant_source",
+	"data_access_mode",
+	"data_scope",
+}
+
+// TVAPIDomainColumnsDataTypes full column data types for default query
+var TVAPIDomainColumnsDataTypes = map[string]string{
+	"id":               "integer",
+	"api_id":           "integer",
+	"api_name":         "character varying",
+	"expose_path":      "character varying",
+	"domain_id":        "integer",
+	"domain_name":      "character varying",
+	"priority":         "smallint",
+	"grant_source":     "character varying",
+	"data_access_mode": "character varying",
+	"data_scope":       "jsonb",
+}
+
+// GetFieldsMap returns a map of field names to their values.
+func (r *TVAPIDomain) GetFieldsMap() map[string]any {
+	return map[string]any{
+		"ID":             r.ID,
+		"APIID":          r.APIID,
+		"APIName":        r.APIName,
+		"ExposePath":     r.ExposePath,
+		"DomainID":       r.DomainID,
+		"DomainName":     r.DomainName,
+		"Priority":       r.Priority,
+		"GrantSource":    r.GrantSource,
+		"DataAccessMode": r.DataAccessMode,
+		"DataScope":      r.DataScope,
+	}
+}
+
+// GetColumnsMap returns a map of column names to their values.
+func (r *TVAPIDomain) GetColumnsMap() map[string]any {
+	return map[string]any{
+		"id":               r.ID,
+		"api_id":           r.APIID,
+		"api_name":         r.APIName,
+		"expose_path":      r.ExposePath,
+		"domain_id":        r.DomainID,
+		"domain_name":      r.DomainName,
+		"priority":         r.Priority,
+		"grant_source":     r.GrantSource,
+		"data_access_mode": r.DataAccessMode,
+		"data_scope":       r.DataScope,
+	}
 }
 
 // Fields return all fields of struct.
@@ -7568,6 +18993,42 @@ func GetTVAPIDomainByPk(db Queryer) (*TVAPIDomain, error) {
 	return &r, nil
 }
 
+// GetTVAPIDomainReflectValuesMap returns a map of field names to their values.
+//
+// key is the tag name, value is the field value.
+// This is useful for reflection and dynamic queries.
+func (r *TVAPIDomain) GetTVAPIDomainReflectValuesMap() (map[string]any, error) {
+
+	values := make(map[string]any)
+	v := reflect.ValueOf(r).Elem()
+	t := v.Type()
+	for i := range v.NumField() {
+		field := t.Field(i)
+		tag := field.Tag.Get("db")
+		if tag == "" {
+			return nil, errors.Errorf("missing db tag for field %s in table t_v_api_domain", field.Name)
+		}
+
+		columnName := strings.Split(tag, ",")[0]
+		if columnName == "" {
+			return nil, errors.Errorf("missing column name for field %s in table t_v_api_domain", field.Name)
+		}
+
+		fieldValue := reflect.ValueOf(r).Elem().Field(i)
+		if !fieldValue.IsValid() {
+			return nil, errors.Errorf("invalid field value for field %s in table t_v_api_domain", field.Name)
+		}
+
+		if !fieldValue.CanAddr() {
+			return nil, errors.Errorf("cannot read field value for field %s in table t_v_api_domain", field.Name)
+		}
+
+		values[columnName] = fieldValue.Addr().Interface()
+	}
+
+	return values, nil
+}
+
 /*TVAuthenticate t_v_authenticate represents assessuser.t_v_authenticate */
 type TVAuthenticate struct {
 	GrantID        null.Int    `json:"GrantID,omitempty" db:"grant_id,false,integer"`                          /* grant_id grant_id */
@@ -7585,7 +19046,7 @@ type TVAuthenticate struct {
 	APIID          null.Int    `json:"APIID,omitempty" db:"api_id,false,integer"`                              /* api_id api_id */
 	APIName        null.String `json:"APIName,omitempty" db:"api_name,false,character varying"`                /* api_name api_name */
 	API            null.String `json:"API,omitempty" db:"api,false,character varying"`                         /* api api */
-	Filter                     // build DML where clause
+	Filter                                                                                                     // build DML where clause
 }
 
 // TVAuthenticateFields full field list for default query
@@ -7605,6 +19066,86 @@ var TVAuthenticateFields = []string{
 	"APIID",
 	"APIName",
 	"API",
+}
+
+// TVAuthenticateColumns full column list for default query
+var TVAuthenticateColumns = []string{
+	"grant_id",
+	"grant_data",
+	"grant_type",
+	"grant_source",
+	"data_access_mode",
+	"user_id",
+	"user_name",
+	"mobile_phone",
+	"domain_name",
+	"domain_id",
+	"domain",
+	"priority",
+	"api_id",
+	"api_name",
+	"api",
+}
+
+// TVAuthenticateColumnsDataTypes full column data types for default query
+var TVAuthenticateColumnsDataTypes = map[string]string{
+	"grant_id":         "integer",
+	"grant_data":       "text",
+	"grant_type":       "text",
+	"grant_source":     "character varying",
+	"data_access_mode": "character varying",
+	"user_id":          "integer",
+	"user_name":        "character varying",
+	"mobile_phone":     "character varying",
+	"domain_name":      "character varying",
+	"domain_id":        "integer",
+	"domain":           "character varying",
+	"priority":         "smallint",
+	"api_id":           "integer",
+	"api_name":         "character varying",
+	"api":              "character varying",
+}
+
+// GetFieldsMap returns a map of field names to their values.
+func (r *TVAuthenticate) GetFieldsMap() map[string]any {
+	return map[string]any{
+		"GrantID":        r.GrantID,
+		"GrantData":      r.GrantData,
+		"GrantType":      r.GrantType,
+		"GrantSource":    r.GrantSource,
+		"DataAccessMode": r.DataAccessMode,
+		"UserID":         r.UserID,
+		"UserName":       r.UserName,
+		"MobilePhone":    r.MobilePhone,
+		"DomainName":     r.DomainName,
+		"DomainID":       r.DomainID,
+		"Domain":         r.Domain,
+		"Priority":       r.Priority,
+		"APIID":          r.APIID,
+		"APIName":        r.APIName,
+		"API":            r.API,
+	}
+}
+
+// GetColumnsMap returns a map of column names to their values.
+func (r *TVAuthenticate) GetColumnsMap() map[string]any {
+	return map[string]any{
+		"grant_id":         r.GrantID,
+		"grant_data":       r.GrantData,
+		"grant_type":       r.GrantType,
+		"grant_source":     r.GrantSource,
+		"data_access_mode": r.DataAccessMode,
+		"user_id":          r.UserID,
+		"user_name":        r.UserName,
+		"mobile_phone":     r.MobilePhone,
+		"domain_name":      r.DomainName,
+		"domain_id":        r.DomainID,
+		"domain":           r.Domain,
+		"priority":         r.Priority,
+		"api_id":           r.APIID,
+		"api_name":         r.APIName,
+		"api":              r.API,
+	}
 }
 
 // Fields return all fields of struct.
@@ -7647,6 +19188,42 @@ func GetTVAuthenticateByPk(db Queryer) (*TVAuthenticate, error) {
 	return &r, nil
 }
 
+// GetTVAuthenticateReflectValuesMap returns a map of field names to their values.
+//
+// key is the tag name, value is the field value.
+// This is useful for reflection and dynamic queries.
+func (r *TVAuthenticate) GetTVAuthenticateReflectValuesMap() (map[string]any, error) {
+
+	values := make(map[string]any)
+	v := reflect.ValueOf(r).Elem()
+	t := v.Type()
+	for i := range v.NumField() {
+		field := t.Field(i)
+		tag := field.Tag.Get("db")
+		if tag == "" {
+			return nil, errors.Errorf("missing db tag for field %s in table t_v_authenticate", field.Name)
+		}
+
+		columnName := strings.Split(tag, ",")[0]
+		if columnName == "" {
+			return nil, errors.Errorf("missing column name for field %s in table t_v_authenticate", field.Name)
+		}
+
+		fieldValue := reflect.ValueOf(r).Elem().Field(i)
+		if !fieldValue.IsValid() {
+			return nil, errors.Errorf("invalid field value for field %s in table t_v_authenticate", field.Name)
+		}
+
+		if !fieldValue.CanAddr() {
+			return nil, errors.Errorf("cannot read field value for field %s in table t_v_authenticate", field.Name)
+		}
+
+		values[columnName] = fieldValue.Addr().Interface()
+	}
+
+	return values, nil
+}
+
 /*TVDomainAPI t_v_domain_api represents assessuser.t_v_domain_api */
 type TVDomainAPI struct {
 	ID                 null.Int       `json:"ID,omitempty" db:"id,false,integer"`                                             /* id id */
@@ -7667,7 +19244,7 @@ type TVDomainAPI struct {
 	Addi               types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                                           /* addi addi */
 	Creator            null.Int       `json:"Creator,omitempty" db:"creator,false,bigint"`                                    /* creator creator */
 	Status             null.String    `json:"Status,omitempty" db:"status,false,character varying"`                           /* status status */
-	Filter                            // build DML where clause
+	Filter                                                                                                                    // build DML where clause
 }
 
 // TVDomainAPIFields full field list for default query
@@ -7690,6 +19267,98 @@ var TVDomainAPIFields = []string{
 	"Addi",
 	"Creator",
 	"Status",
+}
+
+// TVDomainAPIColumns full column list for default query
+var TVDomainAPIColumns = []string{
+	"id",
+	"auth_domain_id",
+	"domain_name",
+	"domain",
+	"priority",
+	"api_id",
+	"api_name",
+	"expose_path",
+	"access_control_level",
+	"domain_id",
+	"grant_source",
+	"data_access_mode",
+	"data_scope",
+	"create_time",
+	"remark",
+	"addi",
+	"creator",
+	"status",
+}
+
+// TVDomainAPIColumnsDataTypes full column data types for default query
+var TVDomainAPIColumnsDataTypes = map[string]string{
+	"id":                   "integer",
+	"auth_domain_id":       "integer",
+	"domain_name":          "character varying",
+	"domain":               "character varying",
+	"priority":             "smallint",
+	"api_id":               "integer",
+	"api_name":             "character varying",
+	"expose_path":          "character varying",
+	"access_control_level": "character varying",
+	"domain_id":            "bigint",
+	"grant_source":         "character varying",
+	"data_access_mode":     "character varying",
+	"data_scope":           "jsonb",
+	"create_time":          "bigint",
+	"remark":               "character varying",
+	"addi":                 "jsonb",
+	"creator":              "bigint",
+	"status":               "character varying",
+}
+
+// GetFieldsMap returns a map of field names to their values.
+func (r *TVDomainAPI) GetFieldsMap() map[string]any {
+	return map[string]any{
+		"ID":                 r.ID,
+		"AuthDomainID":       r.AuthDomainID,
+		"DomainName":         r.DomainName,
+		"Domain":             r.Domain,
+		"Priority":           r.Priority,
+		"APIID":              r.APIID,
+		"APIName":            r.APIName,
+		"ExposePath":         r.ExposePath,
+		"AccessControlLevel": r.AccessControlLevel,
+		"DomainID":           r.DomainID,
+		"GrantSource":        r.GrantSource,
+		"DataAccessMode":     r.DataAccessMode,
+		"DataScope":          r.DataScope,
+		"CreateTime":         r.CreateTime,
+		"Remark":             r.Remark,
+		"Addi":               r.Addi,
+		"Creator":            r.Creator,
+		"Status":             r.Status,
+	}
+}
+
+// GetColumnsMap returns a map of column names to their values.
+func (r *TVDomainAPI) GetColumnsMap() map[string]any {
+	return map[string]any{
+		"id":                   r.ID,
+		"auth_domain_id":       r.AuthDomainID,
+		"domain_name":          r.DomainName,
+		"domain":               r.Domain,
+		"priority":             r.Priority,
+		"api_id":               r.APIID,
+		"api_name":             r.APIName,
+		"expose_path":          r.ExposePath,
+		"access_control_level": r.AccessControlLevel,
+		"domain_id":            r.DomainID,
+		"grant_source":         r.GrantSource,
+		"data_access_mode":     r.DataAccessMode,
+		"data_scope":           r.DataScope,
+		"create_time":          r.CreateTime,
+		"remark":               r.Remark,
+		"addi":                 r.Addi,
+		"creator":              r.Creator,
+		"status":               r.Status,
+	}
 }
 
 // Fields return all fields of struct.
@@ -7732,6 +19401,42 @@ func GetTVDomainAPIByPk(db Queryer) (*TVDomainAPI, error) {
 	return &r, nil
 }
 
+// GetTVDomainAPIReflectValuesMap returns a map of field names to their values.
+//
+// key is the tag name, value is the field value.
+// This is useful for reflection and dynamic queries.
+func (r *TVDomainAPI) GetTVDomainAPIReflectValuesMap() (map[string]any, error) {
+
+	values := make(map[string]any)
+	v := reflect.ValueOf(r).Elem()
+	t := v.Type()
+	for i := range v.NumField() {
+		field := t.Field(i)
+		tag := field.Tag.Get("db")
+		if tag == "" {
+			return nil, errors.Errorf("missing db tag for field %s in table t_v_domain_api", field.Name)
+		}
+
+		columnName := strings.Split(tag, ",")[0]
+		if columnName == "" {
+			return nil, errors.Errorf("missing column name for field %s in table t_v_domain_api", field.Name)
+		}
+
+		fieldValue := reflect.ValueOf(r).Elem().Field(i)
+		if !fieldValue.IsValid() {
+			return nil, errors.Errorf("invalid field value for field %s in table t_v_domain_api", field.Name)
+		}
+
+		if !fieldValue.CanAddr() {
+			return nil, errors.Errorf("cannot read field value for field %s in table t_v_domain_api", field.Name)
+		}
+
+		values[columnName] = fieldValue.Addr().Interface()
+	}
+
+	return values, nil
+}
+
 /*TVDomainAsset t_v_domain_asset represents assessuser.t_v_domain_asset */
 type TVDomainAsset struct {
 	ID            null.Int    `json:"ID,omitempty" db:"id,false,integer"`                                /* id id */
@@ -7752,7 +19457,7 @@ type TVDomainAsset struct {
 	APIID         null.Int    `json:"APIID,omitempty" db:"api_id,false,integer"`                         /* api_id api_id */
 	APIName       null.String `json:"APIName,omitempty" db:"api_name,false,character varying"`           /* api_name api_name */
 	ExposePath    null.String `json:"ExposePath,omitempty" db:"expose_path,false,character varying"`     /* expose_path expose_path */
-	Filter                    // build DML where clause
+	Filter                                                                                               // build DML where clause
 }
 
 // TVDomainAssetFields full field list for default query
@@ -7775,6 +19480,98 @@ var TVDomainAssetFields = []string{
 	"APIID",
 	"APIName",
 	"ExposePath",
+}
+
+// TVDomainAssetColumns full column list for default query
+var TVDomainAssetColumns = []string{
+	"id",
+	"domain_name",
+	"domain",
+	"priority",
+	"domain_asset_id",
+	"user_id",
+	"account",
+	"official_name",
+	"id_card_type",
+	"id_card_no",
+	"email",
+	"nickname",
+	"mobile_phone",
+	"user_status",
+	"user_name",
+	"api_id",
+	"api_name",
+	"expose_path",
+}
+
+// TVDomainAssetColumnsDataTypes full column data types for default query
+var TVDomainAssetColumnsDataTypes = map[string]string{
+	"id":              "integer",
+	"domain_name":     "character varying",
+	"domain":          "character varying",
+	"priority":        "smallint",
+	"domain_asset_id": "integer",
+	"user_id":         "integer",
+	"account":         "character varying",
+	"official_name":   "character varying",
+	"id_card_type":    "character varying",
+	"id_card_no":      "character varying",
+	"email":           "character varying",
+	"nickname":        "character varying",
+	"mobile_phone":    "character varying",
+	"user_status":     "character varying",
+	"user_name":       "character varying",
+	"api_id":          "integer",
+	"api_name":        "character varying",
+	"expose_path":     "character varying",
+}
+
+// GetFieldsMap returns a map of field names to their values.
+func (r *TVDomainAsset) GetFieldsMap() map[string]any {
+	return map[string]any{
+		"ID":            r.ID,
+		"DomainName":    r.DomainName,
+		"Domain":        r.Domain,
+		"Priority":      r.Priority,
+		"DomainAssetID": r.DomainAssetID,
+		"UserID":        r.UserID,
+		"Account":       r.Account,
+		"OfficialName":  r.OfficialName,
+		"IDCardType":    r.IDCardType,
+		"IDCardNo":      r.IDCardNo,
+		"Email":         r.Email,
+		"Nickname":      r.Nickname,
+		"MobilePhone":   r.MobilePhone,
+		"UserStatus":    r.UserStatus,
+		"UserName":      r.UserName,
+		"APIID":         r.APIID,
+		"APIName":       r.APIName,
+		"ExposePath":    r.ExposePath,
+	}
+}
+
+// GetColumnsMap returns a map of column names to their values.
+func (r *TVDomainAsset) GetColumnsMap() map[string]any {
+	return map[string]any{
+		"id":              r.ID,
+		"domain_name":     r.DomainName,
+		"domain":          r.Domain,
+		"priority":        r.Priority,
+		"domain_asset_id": r.DomainAssetID,
+		"user_id":         r.UserID,
+		"account":         r.Account,
+		"official_name":   r.OfficialName,
+		"id_card_type":    r.IDCardType,
+		"id_card_no":      r.IDCardNo,
+		"email":           r.Email,
+		"nickname":        r.Nickname,
+		"mobile_phone":    r.MobilePhone,
+		"user_status":     r.UserStatus,
+		"user_name":       r.UserName,
+		"api_id":          r.APIID,
+		"api_name":        r.APIName,
+		"expose_path":     r.ExposePath,
+	}
 }
 
 // Fields return all fields of struct.
@@ -7817,6 +19614,42 @@ func GetTVDomainAssetByPk(db Queryer) (*TVDomainAsset, error) {
 	return &r, nil
 }
 
+// GetTVDomainAssetReflectValuesMap returns a map of field names to their values.
+//
+// key is the tag name, value is the field value.
+// This is useful for reflection and dynamic queries.
+func (r *TVDomainAsset) GetTVDomainAssetReflectValuesMap() (map[string]any, error) {
+
+	values := make(map[string]any)
+	v := reflect.ValueOf(r).Elem()
+	t := v.Type()
+	for i := range v.NumField() {
+		field := t.Field(i)
+		tag := field.Tag.Get("db")
+		if tag == "" {
+			return nil, errors.Errorf("missing db tag for field %s in table t_v_domain_asset", field.Name)
+		}
+
+		columnName := strings.Split(tag, ",")[0]
+		if columnName == "" {
+			return nil, errors.Errorf("missing column name for field %s in table t_v_domain_asset", field.Name)
+		}
+
+		fieldValue := reflect.ValueOf(r).Elem().Field(i)
+		if !fieldValue.IsValid() {
+			return nil, errors.Errorf("invalid field value for field %s in table t_v_domain_asset", field.Name)
+		}
+
+		if !fieldValue.CanAddr() {
+			return nil, errors.Errorf("cannot read field value for field %s in table t_v_domain_asset", field.Name)
+		}
+
+		values[columnName] = fieldValue.Addr().Interface()
+	}
+
+	return values, nil
+}
+
 /*TVDomainUser t_v_domain_user represents assessuser.t_v_domain_user */
 type TVDomainUser struct {
 	ID         null.Int    `json:"ID,omitempty" db:"id,false,integer"`                            /* id id */
@@ -7825,7 +19658,7 @@ type TVDomainUser struct {
 	Priority   null.Int    `json:"Priority,omitempty" db:"priority,false,smallint"`               /* priority priority */
 	UserID     null.Int    `json:"UserID,omitempty" db:"user_id,false,integer"`                   /* user_id user_id */
 	UserName   null.String `json:"UserName,omitempty" db:"user_name,false,character varying"`     /* user_name user_name */
-	Filter                 // build DML where clause
+	Filter                                                                                        // build DML where clause
 }
 
 // TVDomainUserFields full field list for default query
@@ -7836,6 +19669,50 @@ var TVDomainUserFields = []string{
 	"Priority",
 	"UserID",
 	"UserName",
+}
+
+// TVDomainUserColumns full column list for default query
+var TVDomainUserColumns = []string{
+	"id",
+	"domain_id",
+	"domain_name",
+	"priority",
+	"user_id",
+	"user_name",
+}
+
+// TVDomainUserColumnsDataTypes full column data types for default query
+var TVDomainUserColumnsDataTypes = map[string]string{
+	"id":          "integer",
+	"domain_id":   "integer",
+	"domain_name": "character varying",
+	"priority":    "smallint",
+	"user_id":     "integer",
+	"user_name":   "character varying",
+}
+
+// GetFieldsMap returns a map of field names to their values.
+func (r *TVDomainUser) GetFieldsMap() map[string]any {
+	return map[string]any{
+		"ID":         r.ID,
+		"DomainID":   r.DomainID,
+		"DomainName": r.DomainName,
+		"Priority":   r.Priority,
+		"UserID":     r.UserID,
+		"UserName":   r.UserName,
+	}
+}
+
+// GetColumnsMap returns a map of column names to their values.
+func (r *TVDomainUser) GetColumnsMap() map[string]any {
+	return map[string]any{
+		"id":          r.ID,
+		"domain_id":   r.DomainID,
+		"domain_name": r.DomainName,
+		"priority":    r.Priority,
+		"user_id":     r.UserID,
+		"user_name":   r.UserName,
+	}
 }
 
 // Fields return all fields of struct.
@@ -7876,6 +19753,624 @@ func GetTVDomainUserByPk(db Queryer) (*TVDomainUser, error) {
 		return nil, errors.Wrap(err, "failed to select t_v_domain_user")
 	}
 	return &r, nil
+}
+
+// GetTVDomainUserReflectValuesMap returns a map of field names to their values.
+//
+// key is the tag name, value is the field value.
+// This is useful for reflection and dynamic queries.
+func (r *TVDomainUser) GetTVDomainUserReflectValuesMap() (map[string]any, error) {
+
+	values := make(map[string]any)
+	v := reflect.ValueOf(r).Elem()
+	t := v.Type()
+	for i := range v.NumField() {
+		field := t.Field(i)
+		tag := field.Tag.Get("db")
+		if tag == "" {
+			return nil, errors.Errorf("missing db tag for field %s in table t_v_domain_user", field.Name)
+		}
+
+		columnName := strings.Split(tag, ",")[0]
+		if columnName == "" {
+			return nil, errors.Errorf("missing column name for field %s in table t_v_domain_user", field.Name)
+		}
+
+		fieldValue := reflect.ValueOf(r).Elem().Field(i)
+		if !fieldValue.IsValid() {
+			return nil, errors.Errorf("invalid field value for field %s in table t_v_domain_user", field.Name)
+		}
+
+		if !fieldValue.CanAddr() {
+			return nil, errors.Errorf("cannot read field value for field %s in table t_v_domain_user", field.Name)
+		}
+
+		values[columnName] = fieldValue.Addr().Interface()
+	}
+
+	return values, nil
+}
+
+/*TVExamPaper t_v_exam_paper represents assessuser.t_v_exam_paper */
+type TVExamPaper struct {
+	ID            null.Int       `json:"ID,omitempty" db:"id,false,integer"`                           /* id id */
+	ExamSessionID null.Int       `json:"ExamSessionID,omitempty" db:"exam_session_id,false,bigint"`    /* exam_session_id exam_session_id */
+	PracticeID    null.Int       `json:"PracticeID,omitempty" db:"practice_id,false,bigint"`           /* practice_id practice_id */
+	Name          null.String    `json:"Name,omitempty" db:"name,false,character varying"`             /* name name */
+	Creator       null.Int       `json:"Creator,omitempty" db:"creator,false,bigint"`                  /* creator creator */
+	CreateTime    null.Int       `json:"CreateTime,omitempty" db:"create_time,false,bigint"`           /* create_time create_time */
+	UpdatedBy     null.Int       `json:"UpdatedBy,omitempty" db:"updated_by,false,bigint"`             /* updated_by updated_by */
+	UpdateTime    null.Int       `json:"UpdateTime,omitempty" db:"update_time,false,bigint"`           /* update_time update_time */
+	Status        null.String    `json:"Status,omitempty" db:"status,false,character varying"`         /* status status */
+	TotalScore    null.Float     `json:"TotalScore,omitempty" db:"total_score,false,double precision"` /* total_score total_score */
+	QuestionCount null.Int       `json:"QuestionCount,omitempty" db:"question_count,false,bigint"`     /* question_count question_count */
+	GroupCount    null.Int       `json:"GroupCount,omitempty" db:"group_count,false,bigint"`           /* group_count group_count */
+	GroupsData    types.JSONText `json:"GroupsData,omitempty" db:"groups_data,false,json"`             /* groups_data groups_data */
+	Filter                                                                                             // build DML where clause
+}
+
+// TVExamPaperFields full field list for default query
+var TVExamPaperFields = []string{
+	"ID",
+	"ExamSessionID",
+	"PracticeID",
+	"Name",
+	"Creator",
+	"CreateTime",
+	"UpdatedBy",
+	"UpdateTime",
+	"Status",
+	"TotalScore",
+	"QuestionCount",
+	"GroupCount",
+	"GroupsData",
+}
+
+// TVExamPaperColumns full column list for default query
+var TVExamPaperColumns = []string{
+	"id",
+	"exam_session_id",
+	"practice_id",
+	"name",
+	"creator",
+	"create_time",
+	"updated_by",
+	"update_time",
+	"status",
+	"total_score",
+	"question_count",
+	"group_count",
+	"groups_data",
+}
+
+// TVExamPaperColumnsDataTypes full column data types for default query
+var TVExamPaperColumnsDataTypes = map[string]string{
+	"id":              "integer",
+	"exam_session_id": "bigint",
+	"practice_id":     "bigint",
+	"name":            "character varying",
+	"creator":         "bigint",
+	"create_time":     "bigint",
+	"updated_by":      "bigint",
+	"update_time":     "bigint",
+	"status":          "character varying",
+	"total_score":     "double precision",
+	"question_count":  "bigint",
+	"group_count":     "bigint",
+	"groups_data":     "json",
+}
+
+// GetFieldsMap returns a map of field names to their values.
+func (r *TVExamPaper) GetFieldsMap() map[string]any {
+	return map[string]any{
+		"ID":            r.ID,
+		"ExamSessionID": r.ExamSessionID,
+		"PracticeID":    r.PracticeID,
+		"Name":          r.Name,
+		"Creator":       r.Creator,
+		"CreateTime":    r.CreateTime,
+		"UpdatedBy":     r.UpdatedBy,
+		"UpdateTime":    r.UpdateTime,
+		"Status":        r.Status,
+		"TotalScore":    r.TotalScore,
+		"QuestionCount": r.QuestionCount,
+		"GroupCount":    r.GroupCount,
+		"GroupsData":    r.GroupsData,
+	}
+}
+
+// GetColumnsMap returns a map of column names to their values.
+func (r *TVExamPaper) GetColumnsMap() map[string]any {
+	return map[string]any{
+		"id":              r.ID,
+		"exam_session_id": r.ExamSessionID,
+		"practice_id":     r.PracticeID,
+		"name":            r.Name,
+		"creator":         r.Creator,
+		"create_time":     r.CreateTime,
+		"updated_by":      r.UpdatedBy,
+		"update_time":     r.UpdateTime,
+		"status":          r.Status,
+		"total_score":     r.TotalScore,
+		"question_count":  r.QuestionCount,
+		"group_count":     r.GroupCount,
+		"groups_data":     r.GroupsData,
+	}
+}
+
+// Fields return all fields of struct.
+func (r *TVExamPaper) Fields() []string {
+	return TVExamPaperFields
+}
+
+// GetTableName return the associated db table name.
+func (r *TVExamPaper) GetTableName() string {
+	var viewNamePattern = regexp.MustCompile(`(?i)^t_v_[a-z0-9_]+$`)
+	tableName := "t_v_exam_paper"
+	if viewNamePattern.MatchString(tableName) {
+		return tableName[2:]
+	}
+	return tableName
+}
+
+// Create inserts the TVExamPaper to the database.
+func (r *TVExamPaper) Create(db Queryer) error {
+	_, err := db.Exec(
+		`INSERT INTO t_v_exam_paper (id, exam_session_id, practice_id, name, creator, create_time, updated_by, update_time, status, total_score, question_count, group_count, groups_data) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
+		&r.ID, &r.ExamSessionID, &r.PracticeID, &r.Name, &r.Creator, &r.CreateTime, &r.UpdatedBy, &r.UpdateTime, &r.Status, &r.TotalScore, &r.QuestionCount, &r.GroupCount, &r.GroupsData)
+	if err != nil {
+		return errors.Wrap(err, "failed to insert t_v_exam_paper")
+	}
+	return nil
+}
+
+// GetTVExamPaperByPk select the TVExamPaper from the database.
+func GetTVExamPaperByPk(db Queryer) (*TVExamPaper, error) {
+	// Don't call this function, it is a view and doesn't have a primary key.
+
+	var r TVExamPaper
+	err := db.QueryRow(
+		`SELECT id, exam_session_id, practice_id, name, creator, create_time, updated_by, update_time, status, total_score, question_count, group_count, groups_data FROM t_v_exam_paper`,
+	).Scan(&r.ID, &r.ExamSessionID, &r.PracticeID, &r.Name, &r.Creator, &r.CreateTime, &r.UpdatedBy, &r.UpdateTime, &r.Status, &r.TotalScore, &r.QuestionCount, &r.GroupCount, &r.GroupsData)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to select t_v_exam_paper")
+	}
+	return &r, nil
+}
+
+// GetTVExamPaperReflectValuesMap returns a map of field names to their values.
+//
+// key is the tag name, value is the field value.
+// This is useful for reflection and dynamic queries.
+func (r *TVExamPaper) GetTVExamPaperReflectValuesMap() (map[string]any, error) {
+
+	values := make(map[string]any)
+	v := reflect.ValueOf(r).Elem()
+	t := v.Type()
+	for i := range v.NumField() {
+		field := t.Field(i)
+		tag := field.Tag.Get("db")
+		if tag == "" {
+			return nil, errors.Errorf("missing db tag for field %s in table t_v_exam_paper", field.Name)
+		}
+
+		columnName := strings.Split(tag, ",")[0]
+		if columnName == "" {
+			return nil, errors.Errorf("missing column name for field %s in table t_v_exam_paper", field.Name)
+		}
+
+		fieldValue := reflect.ValueOf(r).Elem().Field(i)
+		if !fieldValue.IsValid() {
+			return nil, errors.Errorf("invalid field value for field %s in table t_v_exam_paper", field.Name)
+		}
+
+		if !fieldValue.CanAddr() {
+			return nil, errors.Errorf("cannot read field value for field %s in table t_v_exam_paper", field.Name)
+		}
+
+		values[columnName] = fieldValue.Addr().Interface()
+	}
+
+	return values, nil
+}
+
+/*TVExamRespondentCount t_v_exam_respondent_count represents assessuser.t_v_exam_respondent_count */
+type TVExamRespondentCount struct {
+	ExamSessionID   null.Int `json:"ExamSessionID,omitempty" db:"exam_session_id,false,integer"`   /* exam_session_id exam_session_id */
+	RespondentCount null.Int `json:"RespondentCount,omitempty" db:"respondent_count,false,bigint"` /* respondent_count respondent_count */
+	Filter                                                                                         // build DML where clause
+}
+
+// TVExamRespondentCountFields full field list for default query
+var TVExamRespondentCountFields = []string{
+	"ExamSessionID",
+	"RespondentCount",
+}
+
+// TVExamRespondentCountColumns full column list for default query
+var TVExamRespondentCountColumns = []string{
+	"exam_session_id",
+	"respondent_count",
+}
+
+// TVExamRespondentCountColumnsDataTypes full column data types for default query
+var TVExamRespondentCountColumnsDataTypes = map[string]string{
+	"exam_session_id":  "integer",
+	"respondent_count": "bigint",
+}
+
+// GetFieldsMap returns a map of field names to their values.
+func (r *TVExamRespondentCount) GetFieldsMap() map[string]any {
+	return map[string]any{
+		"ExamSessionID":   r.ExamSessionID,
+		"RespondentCount": r.RespondentCount,
+	}
+}
+
+// GetColumnsMap returns a map of column names to their values.
+func (r *TVExamRespondentCount) GetColumnsMap() map[string]any {
+	return map[string]any{
+		"exam_session_id":  r.ExamSessionID,
+		"respondent_count": r.RespondentCount,
+	}
+}
+
+// Fields return all fields of struct.
+func (r *TVExamRespondentCount) Fields() []string {
+	return TVExamRespondentCountFields
+}
+
+// GetTableName return the associated db table name.
+func (r *TVExamRespondentCount) GetTableName() string {
+	var viewNamePattern = regexp.MustCompile(`(?i)^t_v_[a-z0-9_]+$`)
+	tableName := "t_v_exam_respondent_count"
+	if viewNamePattern.MatchString(tableName) {
+		return tableName[2:]
+	}
+	return tableName
+}
+
+// Create inserts the TVExamRespondentCount to the database.
+func (r *TVExamRespondentCount) Create(db Queryer) error {
+	_, err := db.Exec(
+		`INSERT INTO t_v_exam_respondent_count (exam_session_id, respondent_count) VALUES ($1, $2)`,
+		&r.ExamSessionID, &r.RespondentCount)
+	if err != nil {
+		return errors.Wrap(err, "failed to insert t_v_exam_respondent_count")
+	}
+	return nil
+}
+
+// GetTVExamRespondentCountByPk select the TVExamRespondentCount from the database.
+func GetTVExamRespondentCountByPk(db Queryer) (*TVExamRespondentCount, error) {
+	// Don't call this function, it is a view and doesn't have a primary key.
+
+	var r TVExamRespondentCount
+	err := db.QueryRow(
+		`SELECT exam_session_id, respondent_count FROM t_v_exam_respondent_count`,
+	).Scan(&r.ExamSessionID, &r.RespondentCount)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to select t_v_exam_respondent_count")
+	}
+	return &r, nil
+}
+
+// GetTVExamRespondentCountReflectValuesMap returns a map of field names to their values.
+//
+// key is the tag name, value is the field value.
+// This is useful for reflection and dynamic queries.
+func (r *TVExamRespondentCount) GetTVExamRespondentCountReflectValuesMap() (map[string]any, error) {
+
+	values := make(map[string]any)
+	v := reflect.ValueOf(r).Elem()
+	t := v.Type()
+	for i := range v.NumField() {
+		field := t.Field(i)
+		tag := field.Tag.Get("db")
+		if tag == "" {
+			return nil, errors.Errorf("missing db tag for field %s in table t_v_exam_respondent_count", field.Name)
+		}
+
+		columnName := strings.Split(tag, ",")[0]
+		if columnName == "" {
+			return nil, errors.Errorf("missing column name for field %s in table t_v_exam_respondent_count", field.Name)
+		}
+
+		fieldValue := reflect.ValueOf(r).Elem().Field(i)
+		if !fieldValue.IsValid() {
+			return nil, errors.Errorf("invalid field value for field %s in table t_v_exam_respondent_count", field.Name)
+		}
+
+		if !fieldValue.CanAddr() {
+			return nil, errors.Errorf("cannot read field value for field %s in table t_v_exam_respondent_count", field.Name)
+		}
+
+		values[columnName] = fieldValue.Addr().Interface()
+	}
+
+	return values, nil
+}
+
+/*TVExamUnmarkedStudentCount t_v_exam_unmarked_student_count represents assessuser.t_v_exam_unmarked_student_count */
+type TVExamUnmarkedStudentCount struct {
+	ExamSessionID        null.Int `json:"ExamSessionID,omitempty" db:"exam_session_id,false,bigint"`               /* exam_session_id exam_session_id */
+	UnmarkedStudentCount null.Int `json:"UnmarkedStudentCount,omitempty" db:"unmarked_student_count,false,bigint"` /* unmarked_student_count unmarked_student_count */
+	Filter                                                                                                         // build DML where clause
+}
+
+// TVExamUnmarkedStudentCountFields full field list for default query
+var TVExamUnmarkedStudentCountFields = []string{
+	"ExamSessionID",
+	"UnmarkedStudentCount",
+}
+
+// TVExamUnmarkedStudentCountColumns full column list for default query
+var TVExamUnmarkedStudentCountColumns = []string{
+	"exam_session_id",
+	"unmarked_student_count",
+}
+
+// TVExamUnmarkedStudentCountColumnsDataTypes full column data types for default query
+var TVExamUnmarkedStudentCountColumnsDataTypes = map[string]string{
+	"exam_session_id":        "bigint",
+	"unmarked_student_count": "bigint",
+}
+
+// GetFieldsMap returns a map of field names to their values.
+func (r *TVExamUnmarkedStudentCount) GetFieldsMap() map[string]any {
+	return map[string]any{
+		"ExamSessionID":        r.ExamSessionID,
+		"UnmarkedStudentCount": r.UnmarkedStudentCount,
+	}
+}
+
+// GetColumnsMap returns a map of column names to their values.
+func (r *TVExamUnmarkedStudentCount) GetColumnsMap() map[string]any {
+	return map[string]any{
+		"exam_session_id":        r.ExamSessionID,
+		"unmarked_student_count": r.UnmarkedStudentCount,
+	}
+}
+
+// Fields return all fields of struct.
+func (r *TVExamUnmarkedStudentCount) Fields() []string {
+	return TVExamUnmarkedStudentCountFields
+}
+
+// GetTableName return the associated db table name.
+func (r *TVExamUnmarkedStudentCount) GetTableName() string {
+	var viewNamePattern = regexp.MustCompile(`(?i)^t_v_[a-z0-9_]+$`)
+	tableName := "t_v_exam_unmarked_student_count"
+	if viewNamePattern.MatchString(tableName) {
+		return tableName[2:]
+	}
+	return tableName
+}
+
+// Create inserts the TVExamUnmarkedStudentCount to the database.
+func (r *TVExamUnmarkedStudentCount) Create(db Queryer) error {
+	_, err := db.Exec(
+		`INSERT INTO t_v_exam_unmarked_student_count (exam_session_id, unmarked_student_count) VALUES ($1, $2)`,
+		&r.ExamSessionID, &r.UnmarkedStudentCount)
+	if err != nil {
+		return errors.Wrap(err, "failed to insert t_v_exam_unmarked_student_count")
+	}
+	return nil
+}
+
+// GetTVExamUnmarkedStudentCountByPk select the TVExamUnmarkedStudentCount from the database.
+func GetTVExamUnmarkedStudentCountByPk(db Queryer) (*TVExamUnmarkedStudentCount, error) {
+	// Don't call this function, it is a view and doesn't have a primary key.
+
+	var r TVExamUnmarkedStudentCount
+	err := db.QueryRow(
+		`SELECT exam_session_id, unmarked_student_count FROM t_v_exam_unmarked_student_count`,
+	).Scan(&r.ExamSessionID, &r.UnmarkedStudentCount)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to select t_v_exam_unmarked_student_count")
+	}
+	return &r, nil
+}
+
+// GetTVExamUnmarkedStudentCountReflectValuesMap returns a map of field names to their values.
+//
+// key is the tag name, value is the field value.
+// This is useful for reflection and dynamic queries.
+func (r *TVExamUnmarkedStudentCount) GetTVExamUnmarkedStudentCountReflectValuesMap() (map[string]any, error) {
+
+	values := make(map[string]any)
+	v := reflect.ValueOf(r).Elem()
+	t := v.Type()
+	for i := range v.NumField() {
+		field := t.Field(i)
+		tag := field.Tag.Get("db")
+		if tag == "" {
+			return nil, errors.Errorf("missing db tag for field %s in table t_v_exam_unmarked_student_count", field.Name)
+		}
+
+		columnName := strings.Split(tag, ",")[0]
+		if columnName == "" {
+			return nil, errors.Errorf("missing column name for field %s in table t_v_exam_unmarked_student_count", field.Name)
+		}
+
+		fieldValue := reflect.ValueOf(r).Elem().Field(i)
+		if !fieldValue.IsValid() {
+			return nil, errors.Errorf("invalid field value for field %s in table t_v_exam_unmarked_student_count", field.Name)
+		}
+
+		if !fieldValue.CanAddr() {
+			return nil, errors.Errorf("cannot read field value for field %s in table t_v_exam_unmarked_student_count", field.Name)
+		}
+
+		values[columnName] = fieldValue.Addr().Interface()
+	}
+
+	return values, nil
+}
+
+/*TVGradeList t_v_grade_list represents assessuser.t_v_grade_list */
+type TVGradeList struct {
+	ExamID        null.Int    `json:"ExamID,omitempty" db:"exam_id,false,integer"`                  /* exam_id exam_id */
+	ExamName      null.String `json:"ExamName,omitempty" db:"exam_name,false,character varying"`    /* exam_name exam_name */
+	ExamType      null.String `json:"ExamType,omitempty" db:"exam_type,false,character varying"`    /* exam_type exam_type */
+	ExamSessionID null.Int    `json:"ExamSessionID,omitempty" db:"exam_session_id,false,bigint"`    /* exam_session_id exam_session_id */
+	TotalScore    null.Float  `json:"TotalScore,omitempty" db:"total_score,false,double precision"` /* total_score total_score */
+	StartTime     null.Int    `json:"StartTime,omitempty" db:"start_time,false,bigint"`             /* start_time start_time */
+	EndTime       null.Int    `json:"EndTime,omitempty" db:"end_time,false,bigint"`                 /* end_time end_time */
+	MarkMode      null.String `json:"MarkMode,omitempty" db:"mark_mode,false,character varying"`    /* mark_mode mark_mode */
+	ExamPaperID   null.Int    `json:"ExamPaperID,omitempty" db:"exam_paper_id,false,integer"`       /* exam_paper_id exam_paper_id */
+	PaperName     null.String `json:"PaperName,omitempty" db:"paper_name,false,character varying"`  /* paper_name paper_name */
+	Filter                                                                                          // build DML where clause
+}
+
+// TVGradeListFields full field list for default query
+var TVGradeListFields = []string{
+	"ExamID",
+	"ExamName",
+	"ExamType",
+	"ExamSessionID",
+	"TotalScore",
+	"StartTime",
+	"EndTime",
+	"MarkMode",
+	"ExamPaperID",
+	"PaperName",
+}
+
+// TVGradeListColumns full column list for default query
+var TVGradeListColumns = []string{
+	"exam_id",
+	"exam_name",
+	"exam_type",
+	"exam_session_id",
+	"total_score",
+	"start_time",
+	"end_time",
+	"mark_mode",
+	"exam_paper_id",
+	"paper_name",
+}
+
+// TVGradeListColumnsDataTypes full column data types for default query
+var TVGradeListColumnsDataTypes = map[string]string{
+	"exam_id":         "integer",
+	"exam_name":       "character varying",
+	"exam_type":       "character varying",
+	"exam_session_id": "bigint",
+	"total_score":     "double precision",
+	"start_time":      "bigint",
+	"end_time":        "bigint",
+	"mark_mode":       "character varying",
+	"exam_paper_id":   "integer",
+	"paper_name":      "character varying",
+}
+
+// GetFieldsMap returns a map of field names to their values.
+func (r *TVGradeList) GetFieldsMap() map[string]any {
+	return map[string]any{
+		"ExamID":        r.ExamID,
+		"ExamName":      r.ExamName,
+		"ExamType":      r.ExamType,
+		"ExamSessionID": r.ExamSessionID,
+		"TotalScore":    r.TotalScore,
+		"StartTime":     r.StartTime,
+		"EndTime":       r.EndTime,
+		"MarkMode":      r.MarkMode,
+		"ExamPaperID":   r.ExamPaperID,
+		"PaperName":     r.PaperName,
+	}
+}
+
+// GetColumnsMap returns a map of column names to their values.
+func (r *TVGradeList) GetColumnsMap() map[string]any {
+	return map[string]any{
+		"exam_id":         r.ExamID,
+		"exam_name":       r.ExamName,
+		"exam_type":       r.ExamType,
+		"exam_session_id": r.ExamSessionID,
+		"total_score":     r.TotalScore,
+		"start_time":      r.StartTime,
+		"end_time":        r.EndTime,
+		"mark_mode":       r.MarkMode,
+		"exam_paper_id":   r.ExamPaperID,
+		"paper_name":      r.PaperName,
+	}
+}
+
+// Fields return all fields of struct.
+func (r *TVGradeList) Fields() []string {
+	return TVGradeListFields
+}
+
+// GetTableName return the associated db table name.
+func (r *TVGradeList) GetTableName() string {
+	var viewNamePattern = regexp.MustCompile(`(?i)^t_v_[a-z0-9_]+$`)
+	tableName := "t_v_grade_list"
+	if viewNamePattern.MatchString(tableName) {
+		return tableName[2:]
+	}
+	return tableName
+}
+
+// Create inserts the TVGradeList to the database.
+func (r *TVGradeList) Create(db Queryer) error {
+	_, err := db.Exec(
+		`INSERT INTO t_v_grade_list (exam_id, exam_name, exam_type, exam_session_id, total_score, start_time, end_time, mark_mode, exam_paper_id, paper_name) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+		&r.ExamID, &r.ExamName, &r.ExamType, &r.ExamSessionID, &r.TotalScore, &r.StartTime, &r.EndTime, &r.MarkMode, &r.ExamPaperID, &r.PaperName)
+	if err != nil {
+		return errors.Wrap(err, "failed to insert t_v_grade_list")
+	}
+	return nil
+}
+
+// GetTVGradeListByPk select the TVGradeList from the database.
+func GetTVGradeListByPk(db Queryer) (*TVGradeList, error) {
+	// Don't call this function, it is a view and doesn't have a primary key.
+
+	var r TVGradeList
+	err := db.QueryRow(
+		`SELECT exam_id, exam_name, exam_type, exam_session_id, total_score, start_time, end_time, mark_mode, exam_paper_id, paper_name FROM t_v_grade_list`,
+	).Scan(&r.ExamID, &r.ExamName, &r.ExamType, &r.ExamSessionID, &r.TotalScore, &r.StartTime, &r.EndTime, &r.MarkMode, &r.ExamPaperID, &r.PaperName)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to select t_v_grade_list")
+	}
+	return &r, nil
+}
+
+// GetTVGradeListReflectValuesMap returns a map of field names to their values.
+//
+// key is the tag name, value is the field value.
+// This is useful for reflection and dynamic queries.
+func (r *TVGradeList) GetTVGradeListReflectValuesMap() (map[string]any, error) {
+
+	values := make(map[string]any)
+	v := reflect.ValueOf(r).Elem()
+	t := v.Type()
+	for i := range v.NumField() {
+		field := t.Field(i)
+		tag := field.Tag.Get("db")
+		if tag == "" {
+			return nil, errors.Errorf("missing db tag for field %s in table t_v_grade_list", field.Name)
+		}
+
+		columnName := strings.Split(tag, ",")[0]
+		if columnName == "" {
+			return nil, errors.Errorf("missing column name for field %s in table t_v_grade_list", field.Name)
+		}
+
+		fieldValue := reflect.ValueOf(r).Elem().Field(i)
+		if !fieldValue.IsValid() {
+			return nil, errors.Errorf("invalid field value for field %s in table t_v_grade_list", field.Name)
+		}
+
+		if !fieldValue.CanAddr() {
+			return nil, errors.Errorf("cannot read field value for field %s in table t_v_grade_list", field.Name)
+		}
+
+		values[columnName] = fieldValue.Addr().Interface()
+	}
+
+	return values, nil
 }
 
 /*TVInsurancePolicy t_v_insurance_policy represents assessuser.t_v_insurance_policy */
@@ -7965,7 +20460,7 @@ type TVInsurancePolicy struct {
 	AttachCreator         null.Int       `json:"AttachCreator,omitempty" db:"attach_creator,false,bigint"`                   /* attach_creator attach_creator */
 	PolicyUploadStatus    null.String    `json:"PolicyUploadStatus,omitempty" db:"policy_upload_status,false,text"`          /* policy_upload_status policy_upload_status */
 	InvoiceUploadStatus   null.String    `json:"InvoiceUploadStatus,omitempty" db:"invoice_upload_status,false,text"`        /* invoice_upload_status invoice_upload_status */
-	Filter                               // build DML where clause
+	Filter                                                                                                                   // build DML where clause
 }
 
 // TVInsurancePolicyFields full field list for default query
@@ -8057,6 +20552,366 @@ var TVInsurancePolicyFields = []string{
 	"InvoiceUploadStatus",
 }
 
+// TVInsurancePolicyColumns full column list for default query
+var TVInsurancePolicyColumns = []string{
+	"id",
+	"order_id",
+	"sn",
+	"name",
+	"policy",
+	"start",
+	"cease",
+	"year",
+	"duration",
+	"premium",
+	"policy_scheme",
+	"create_time",
+	"update_time",
+	"sn_creator",
+	"creator",
+	"addi",
+	"remark",
+	"status",
+	"insurance_type_id",
+	"is_entry_policy",
+	"favorite",
+	"trade_no",
+	"pay_order_no",
+	"insure_order_no",
+	"org_id",
+	"plan_id",
+	"batch",
+	"insured_id",
+	"policyholder_id",
+	"order_create_time",
+	"pay_time",
+	"pay_type",
+	"amount",
+	"unit_price",
+	"commence_date",
+	"expiry_date",
+	"indate",
+	"charge_mode",
+	"relation",
+	"insurance_type",
+	"policy_doc",
+	"same",
+	"order_status",
+	"order_creator",
+	"insurer",
+	"i_official_name",
+	"i_id_card_type",
+	"i_id_card_no",
+	"i_mobile_phone",
+	"i_gender",
+	"i_birthday",
+	"i_addi",
+	"h_official_name",
+	"h_id_card_type",
+	"h_id_card_no",
+	"h_mobile_phone",
+	"h_addi",
+	"subdistrict",
+	"faculty",
+	"grade",
+	"class",
+	"x_create_time",
+	"school",
+	"s_faculty",
+	"s_branches",
+	"s_category",
+	"province",
+	"city",
+	"district",
+	"data_sync_target",
+	"sale_managers",
+	"school_managers",
+	"purchase_rule",
+	"s_create_time",
+	"insurance_type_parent_id",
+	"insure_attach_id",
+	"policy_no",
+	"others",
+	"files",
+	"attach_addi",
+	"attach_create_time",
+	"attach_update_time",
+	"attach_creator",
+	"policy_upload_status",
+	"invoice_upload_status",
+}
+
+// TVInsurancePolicyColumnsDataTypes full column data types for default query
+var TVInsurancePolicyColumnsDataTypes = map[string]string{
+	"id":                       "integer",
+	"order_id":                 "bigint",
+	"sn":                       "character varying",
+	"name":                     "character varying",
+	"policy":                   "character varying",
+	"start":                    "bigint",
+	"cease":                    "bigint",
+	"year":                     "smallint",
+	"duration":                 "bigint",
+	"premium":                  "double precision",
+	"policy_scheme":            "jsonb",
+	"create_time":              "bigint",
+	"update_time":              "bigint",
+	"sn_creator":               "bigint",
+	"creator":                  "bigint",
+	"addi":                     "jsonb",
+	"remark":                   "character varying",
+	"status":                   "character varying",
+	"insurance_type_id":        "bigint",
+	"is_entry_policy":          "boolean",
+	"favorite":                 "boolean",
+	"trade_no":                 "character varying",
+	"pay_order_no":             "character varying",
+	"insure_order_no":          "character varying",
+	"org_id":                   "bigint",
+	"plan_id":                  "bigint",
+	"batch":                    "character varying",
+	"insured_id":               "bigint",
+	"policyholder_id":          "bigint",
+	"order_create_time":        "bigint",
+	"pay_time":                 "bigint",
+	"pay_type":                 "character varying",
+	"amount":                   "double precision",
+	"unit_price":               "double precision",
+	"commence_date":            "bigint",
+	"expiry_date":              "bigint",
+	"indate":                   "bigint",
+	"charge_mode":              "character varying",
+	"relation":                 "character varying",
+	"insurance_type":           "character varying",
+	"policy_doc":               "character varying",
+	"same":                     "boolean",
+	"order_status":             "character varying",
+	"order_creator":            "bigint",
+	"insurer":                  "character varying",
+	"i_official_name":          "character varying",
+	"i_id_card_type":           "character varying",
+	"i_id_card_no":             "character varying",
+	"i_mobile_phone":           "character varying",
+	"i_gender":                 "character varying",
+	"i_birthday":               "bigint",
+	"i_addi":                   "jsonb",
+	"h_official_name":          "character varying",
+	"h_id_card_type":           "character varying",
+	"h_id_card_no":             "character varying",
+	"h_mobile_phone":           "character varying",
+	"h_addi":                   "jsonb",
+	"subdistrict":              "character varying",
+	"faculty":                  "character varying",
+	"grade":                    "character varying",
+	"class":                    "character varying",
+	"x_create_time":            "bigint",
+	"school":                   "character varying",
+	"s_faculty":                "jsonb",
+	"s_branches":               "jsonb",
+	"s_category":               "character varying",
+	"province":                 "character varying",
+	"city":                     "character varying",
+	"district":                 "character varying",
+	"data_sync_target":         "character varying",
+	"sale_managers":            "jsonb",
+	"school_managers":          "jsonb",
+	"purchase_rule":            "jsonb",
+	"s_create_time":            "bigint",
+	"insurance_type_parent_id": "bigint",
+	"insure_attach_id":         "integer",
+	"policy_no":                "character varying",
+	"others":                   "jsonb",
+	"files":                    "jsonb",
+	"attach_addi":              "jsonb",
+	"attach_create_time":       "bigint",
+	"attach_update_time":       "bigint",
+	"attach_creator":           "bigint",
+	"policy_upload_status":     "text",
+	"invoice_upload_status":    "text",
+}
+
+// GetFieldsMap returns a map of field names to their values.
+func (r *TVInsurancePolicy) GetFieldsMap() map[string]any {
+	return map[string]any{
+		"ID":                    r.ID,
+		"OrderID":               r.OrderID,
+		"Sn":                    r.Sn,
+		"Name":                  r.Name,
+		"Policy":                r.Policy,
+		"Start":                 r.Start,
+		"Cease":                 r.Cease,
+		"Year":                  r.Year,
+		"Duration":              r.Duration,
+		"Premium":               r.Premium,
+		"PolicyScheme":          r.PolicyScheme,
+		"CreateTime":            r.CreateTime,
+		"UpdateTime":            r.UpdateTime,
+		"SnCreator":             r.SnCreator,
+		"Creator":               r.Creator,
+		"Addi":                  r.Addi,
+		"Remark":                r.Remark,
+		"Status":                r.Status,
+		"InsuranceTypeID":       r.InsuranceTypeID,
+		"IsEntryPolicy":         r.IsEntryPolicy,
+		"Favorite":              r.Favorite,
+		"TradeNo":               r.TradeNo,
+		"PayOrderNo":            r.PayOrderNo,
+		"InsureOrderNo":         r.InsureOrderNo,
+		"OrgID":                 r.OrgID,
+		"PlanID":                r.PlanID,
+		"Batch":                 r.Batch,
+		"InsuredID":             r.InsuredID,
+		"PolicyholderID":        r.PolicyholderID,
+		"OrderCreateTime":       r.OrderCreateTime,
+		"PayTime":               r.PayTime,
+		"PayType":               r.PayType,
+		"Amount":                r.Amount,
+		"UnitPrice":             r.UnitPrice,
+		"CommenceDate":          r.CommenceDate,
+		"ExpiryDate":            r.ExpiryDate,
+		"Indate":                r.Indate,
+		"ChargeMode":            r.ChargeMode,
+		"Relation":              r.Relation,
+		"InsuranceType":         r.InsuranceType,
+		"PolicyDoc":             r.PolicyDoc,
+		"Same":                  r.Same,
+		"OrderStatus":           r.OrderStatus,
+		"OrderCreator":          r.OrderCreator,
+		"Insurer":               r.Insurer,
+		"IOfficialName":         r.IOfficialName,
+		"IIDCardType":           r.IIDCardType,
+		"IIDCardNo":             r.IIDCardNo,
+		"IMobilePhone":          r.IMobilePhone,
+		"IGender":               r.IGender,
+		"IBirthday":             r.IBirthday,
+		"IAddi":                 r.IAddi,
+		"HOfficialName":         r.HOfficialName,
+		"HIDCardType":           r.HIDCardType,
+		"HIDCardNo":             r.HIDCardNo,
+		"HMobilePhone":          r.HMobilePhone,
+		"HAddi":                 r.HAddi,
+		"Subdistrict":           r.Subdistrict,
+		"Faculty":               r.Faculty,
+		"Grade":                 r.Grade,
+		"Class":                 r.Class,
+		"XCreateTime":           r.XCreateTime,
+		"School":                r.School,
+		"SFaculty":              r.SFaculty,
+		"SBranches":             r.SBranches,
+		"SCategory":             r.SCategory,
+		"Province":              r.Province,
+		"City":                  r.City,
+		"District":              r.District,
+		"DataSyncTarget":        r.DataSyncTarget,
+		"SaleManagers":          r.SaleManagers,
+		"SchoolManagers":        r.SchoolManagers,
+		"PurchaseRule":          r.PurchaseRule,
+		"SCreateTime":           r.SCreateTime,
+		"InsuranceTypeParentID": r.InsuranceTypeParentID,
+		"InsureAttachID":        r.InsureAttachID,
+		"PolicyNo":              r.PolicyNo,
+		"Others":                r.Others,
+		"Files":                 r.Files,
+		"AttachAddi":            r.AttachAddi,
+		"AttachCreateTime":      r.AttachCreateTime,
+		"AttachUpdateTime":      r.AttachUpdateTime,
+		"AttachCreator":         r.AttachCreator,
+		"PolicyUploadStatus":    r.PolicyUploadStatus,
+		"InvoiceUploadStatus":   r.InvoiceUploadStatus,
+	}
+}
+
+// GetColumnsMap returns a map of column names to their values.
+func (r *TVInsurancePolicy) GetColumnsMap() map[string]any {
+	return map[string]any{
+		"id":                       r.ID,
+		"order_id":                 r.OrderID,
+		"sn":                       r.Sn,
+		"name":                     r.Name,
+		"policy":                   r.Policy,
+		"start":                    r.Start,
+		"cease":                    r.Cease,
+		"year":                     r.Year,
+		"duration":                 r.Duration,
+		"premium":                  r.Premium,
+		"policy_scheme":            r.PolicyScheme,
+		"create_time":              r.CreateTime,
+		"update_time":              r.UpdateTime,
+		"sn_creator":               r.SnCreator,
+		"creator":                  r.Creator,
+		"addi":                     r.Addi,
+		"remark":                   r.Remark,
+		"status":                   r.Status,
+		"insurance_type_id":        r.InsuranceTypeID,
+		"is_entry_policy":          r.IsEntryPolicy,
+		"favorite":                 r.Favorite,
+		"trade_no":                 r.TradeNo,
+		"pay_order_no":             r.PayOrderNo,
+		"insure_order_no":          r.InsureOrderNo,
+		"org_id":                   r.OrgID,
+		"plan_id":                  r.PlanID,
+		"batch":                    r.Batch,
+		"insured_id":               r.InsuredID,
+		"policyholder_id":          r.PolicyholderID,
+		"order_create_time":        r.OrderCreateTime,
+		"pay_time":                 r.PayTime,
+		"pay_type":                 r.PayType,
+		"amount":                   r.Amount,
+		"unit_price":               r.UnitPrice,
+		"commence_date":            r.CommenceDate,
+		"expiry_date":              r.ExpiryDate,
+		"indate":                   r.Indate,
+		"charge_mode":              r.ChargeMode,
+		"relation":                 r.Relation,
+		"insurance_type":           r.InsuranceType,
+		"policy_doc":               r.PolicyDoc,
+		"same":                     r.Same,
+		"order_status":             r.OrderStatus,
+		"order_creator":            r.OrderCreator,
+		"insurer":                  r.Insurer,
+		"i_official_name":          r.IOfficialName,
+		"i_id_card_type":           r.IIDCardType,
+		"i_id_card_no":             r.IIDCardNo,
+		"i_mobile_phone":           r.IMobilePhone,
+		"i_gender":                 r.IGender,
+		"i_birthday":               r.IBirthday,
+		"i_addi":                   r.IAddi,
+		"h_official_name":          r.HOfficialName,
+		"h_id_card_type":           r.HIDCardType,
+		"h_id_card_no":             r.HIDCardNo,
+		"h_mobile_phone":           r.HMobilePhone,
+		"h_addi":                   r.HAddi,
+		"subdistrict":              r.Subdistrict,
+		"faculty":                  r.Faculty,
+		"grade":                    r.Grade,
+		"class":                    r.Class,
+		"x_create_time":            r.XCreateTime,
+		"school":                   r.School,
+		"s_faculty":                r.SFaculty,
+		"s_branches":               r.SBranches,
+		"s_category":               r.SCategory,
+		"province":                 r.Province,
+		"city":                     r.City,
+		"district":                 r.District,
+		"data_sync_target":         r.DataSyncTarget,
+		"sale_managers":            r.SaleManagers,
+		"school_managers":          r.SchoolManagers,
+		"purchase_rule":            r.PurchaseRule,
+		"s_create_time":            r.SCreateTime,
+		"insurance_type_parent_id": r.InsuranceTypeParentID,
+		"insure_attach_id":         r.InsureAttachID,
+		"policy_no":                r.PolicyNo,
+		"others":                   r.Others,
+		"files":                    r.Files,
+		"attach_addi":              r.AttachAddi,
+		"attach_create_time":       r.AttachCreateTime,
+		"attach_update_time":       r.AttachUpdateTime,
+		"attach_creator":           r.AttachCreator,
+		"policy_upload_status":     r.PolicyUploadStatus,
+		"invoice_upload_status":    r.InvoiceUploadStatus,
+	}
+}
+
 // Fields return all fields of struct.
 func (r *TVInsurancePolicy) Fields() []string {
 	return TVInsurancePolicyFields
@@ -8095,6 +20950,42 @@ func GetTVInsurancePolicyByPk(db Queryer) (*TVInsurancePolicy, error) {
 		return nil, errors.Wrap(err, "failed to select t_v_insurance_policy")
 	}
 	return &r, nil
+}
+
+// GetTVInsurancePolicyReflectValuesMap returns a map of field names to their values.
+//
+// key is the tag name, value is the field value.
+// This is useful for reflection and dynamic queries.
+func (r *TVInsurancePolicy) GetTVInsurancePolicyReflectValuesMap() (map[string]any, error) {
+
+	values := make(map[string]any)
+	v := reflect.ValueOf(r).Elem()
+	t := v.Type()
+	for i := range v.NumField() {
+		field := t.Field(i)
+		tag := field.Tag.Get("db")
+		if tag == "" {
+			return nil, errors.Errorf("missing db tag for field %s in table t_v_insurance_policy", field.Name)
+		}
+
+		columnName := strings.Split(tag, ",")[0]
+		if columnName == "" {
+			return nil, errors.Errorf("missing column name for field %s in table t_v_insurance_policy", field.Name)
+		}
+
+		fieldValue := reflect.ValueOf(r).Elem().Field(i)
+		if !fieldValue.IsValid() {
+			return nil, errors.Errorf("invalid field value for field %s in table t_v_insurance_policy", field.Name)
+		}
+
+		if !fieldValue.CanAddr() {
+			return nil, errors.Errorf("cannot read field value for field %s in table t_v_insurance_policy", field.Name)
+		}
+
+		values[columnName] = fieldValue.Addr().Interface()
+	}
+
+	return values, nil
 }
 
 /*TVInsurancePolicy2 t_v_insurance_policy2 represents assessuser.t_v_insurance_policy2 */
@@ -8225,7 +21116,7 @@ type TVInsurancePolicy2 struct {
 	OFiles                  types.JSONText `json:"OFiles,omitempty" db:"o_files,false,jsonb"`                                                /* o_files o_files */
 	PolicyUploadStatus      null.String    `json:"PolicyUploadStatus,omitempty" db:"policy_upload_status,false,text"`                        /* policy_upload_status policy_upload_status */
 	InvoiceUploadStatus     null.String    `json:"InvoiceUploadStatus,omitempty" db:"invoice_upload_status,false,text"`                      /* invoice_upload_status invoice_upload_status */
-	Filter                                 // build DML where clause
+	Filter                                                                                                                                   // build DML where clause
 }
 
 // TVInsurancePolicy2Fields full field list for default query
@@ -8358,6 +21249,530 @@ var TVInsurancePolicy2Fields = []string{
 	"InvoiceUploadStatus",
 }
 
+// TVInsurancePolicy2Columns full column list for default query
+var TVInsurancePolicy2Columns = []string{
+	"id",
+	"sn",
+	"sn_creator",
+	"name",
+	"order_id",
+	"policy",
+	"start",
+	"cease",
+	"year",
+	"duration",
+	"premium",
+	"third_party_premium",
+	"insurance_type_id",
+	"plan_id",
+	"create_time",
+	"update_time",
+	"pay_time",
+	"pay_channel",
+	"pay_type",
+	"unit_price",
+	"external_status",
+	"org_id",
+	"insurer",
+	"org_manager_id",
+	"insurance_type",
+	"policy_scheme",
+	"activity_name",
+	"activity_category",
+	"activity_desc",
+	"activity_location",
+	"activity_date_set",
+	"insured_count",
+	"compulsory_student_num",
+	"non_compulsory_student_num",
+	"contact",
+	"fee_scheme",
+	"car_service_target",
+	"policy_enroll_time",
+	"policyholder",
+	"policyholder_type",
+	"policyholder_id",
+	"org_name",
+	"org_province",
+	"org_city",
+	"org_district",
+	"org_school_category",
+	"org_is_compulsory",
+	"org_is_school",
+	"insured_province",
+	"insured_city",
+	"insured_district",
+	"insured_school_category",
+	"insured_is_compulsory",
+	"insured_name",
+	"insured_category",
+	"driver_seat_sum",
+	"seat_sum",
+	"same",
+	"relation",
+	"insured",
+	"insured_id",
+	"have_insured_list",
+	"insured_group_by_day",
+	"insured_type",
+	"insured_list",
+	"indate",
+	"jurisdiction",
+	"dispute_handling",
+	"prev_policy_no",
+	"insure_base",
+	"blanket_insure_code",
+	"custom_type",
+	"train_projects",
+	"business_locations",
+	"pool_num",
+	"have_dinner_num",
+	"open_pool_num",
+	"heated_pool_num",
+	"training_pool_num",
+	"inner_area",
+	"outer_area",
+	"pool_name",
+	"arbitral_agency",
+	"dinner_num",
+	"canteen_num",
+	"shop_num",
+	"have_rides",
+	"have_explosive",
+	"area",
+	"traffic_num",
+	"temperature_type",
+	"is_indoor",
+	"extra",
+	"bank_account",
+	"pay_contact",
+	"sudden_death_terms",
+	"have_sudden_death",
+	"spec_agreement",
+	"third_party_account",
+	"creator",
+	"domain_id",
+	"status",
+	"is_entry_policy",
+	"is_admin_pay",
+	"favorite",
+	"cancel_desc",
+	"zero_pay_status",
+	"others",
+	"files",
+	"insure_policy_id",
+	"a_status",
+	"policy_status",
+	"insurance_type_parent_id",
+	"insurance_display",
+	"charge_mode",
+	"insurance_company",
+	"insurance_company_account",
+	"order_create_time",
+	"is_invoice",
+	"inv_borrow",
+	"inv_visible",
+	"inv_title",
+	"inv_status",
+	"o_files",
+	"policy_upload_status",
+	"invoice_upload_status",
+}
+
+// TVInsurancePolicy2ColumnsDataTypes full column data types for default query
+var TVInsurancePolicy2ColumnsDataTypes = map[string]string{
+	"id":                         "integer",
+	"sn":                         "character varying",
+	"sn_creator":                 "bigint",
+	"name":                       "character varying",
+	"order_id":                   "bigint",
+	"policy":                     "character varying",
+	"start":                      "bigint",
+	"cease":                      "bigint",
+	"year":                       "smallint",
+	"duration":                   "bigint",
+	"premium":                    "double precision",
+	"third_party_premium":        "double precision",
+	"insurance_type_id":          "bigint",
+	"plan_id":                    "bigint",
+	"create_time":                "bigint",
+	"update_time":                "bigint",
+	"pay_time":                   "bigint",
+	"pay_channel":                "character varying",
+	"pay_type":                   "character varying",
+	"unit_price":                 "double precision",
+	"external_status":            "character varying",
+	"org_id":                     "bigint",
+	"insurer":                    "character varying",
+	"org_manager_id":             "bigint",
+	"insurance_type":             "character varying",
+	"policy_scheme":              "jsonb",
+	"activity_name":              "character varying",
+	"activity_category":          "character varying",
+	"activity_desc":              "character varying",
+	"activity_location":          "character varying",
+	"activity_date_set":          "character varying",
+	"insured_count":              "smallint",
+	"compulsory_student_num":     "bigint",
+	"non_compulsory_student_num": "bigint",
+	"contact":                    "jsonb",
+	"fee_scheme":                 "jsonb",
+	"car_service_target":         "character varying",
+	"policy_enroll_time":         "bigint",
+	"policyholder":               "jsonb",
+	"policyholder_type":          "character varying",
+	"policyholder_id":            "bigint",
+	"org_name":                   "text",
+	"org_province":               "text",
+	"org_city":                   "text",
+	"org_district":               "text",
+	"org_school_category":        "text",
+	"org_is_compulsory":          "text",
+	"org_is_school":              "text",
+	"insured_province":           "text",
+	"insured_city":               "text",
+	"insured_district":           "text",
+	"insured_school_category":    "text",
+	"insured_is_compulsory":      "boolean",
+	"insured_name":               "text",
+	"insured_category":           "text",
+	"driver_seat_sum":            "bigint",
+	"seat_sum":                   "bigint",
+	"same":                       "boolean",
+	"relation":                   "character varying",
+	"insured":                    "jsonb",
+	"insured_id":                 "bigint",
+	"have_insured_list":          "boolean",
+	"insured_group_by_day":       "boolean",
+	"insured_type":               "character varying",
+	"insured_list":               "jsonb",
+	"indate":                     "bigint",
+	"jurisdiction":               "character varying",
+	"dispute_handling":           "character varying",
+	"prev_policy_no":             "character varying",
+	"insure_base":                "character varying",
+	"blanket_insure_code":        "character varying",
+	"custom_type":                "character varying",
+	"train_projects":             "character varying",
+	"business_locations":         "jsonb",
+	"pool_num":                   "smallint",
+	"have_dinner_num":            "boolean",
+	"open_pool_num":              "smallint",
+	"heated_pool_num":            "smallint",
+	"training_pool_num":          "smallint",
+	"inner_area":                 "double precision",
+	"outer_area":                 "double precision",
+	"pool_name":                  "character varying",
+	"arbitral_agency":            "character varying",
+	"dinner_num":                 "integer",
+	"canteen_num":                "integer",
+	"shop_num":                   "integer",
+	"have_rides":                 "boolean",
+	"have_explosive":             "boolean",
+	"area":                       "integer",
+	"traffic_num":                "integer",
+	"temperature_type":           "character varying",
+	"is_indoor":                  "character varying",
+	"extra":                      "jsonb",
+	"bank_account":               "jsonb",
+	"pay_contact":                "character varying",
+	"sudden_death_terms":         "character varying",
+	"have_sudden_death":          "boolean",
+	"spec_agreement":             "character varying",
+	"third_party_account":        "character varying",
+	"creator":                    "bigint",
+	"domain_id":                  "bigint",
+	"status":                     "character varying",
+	"is_entry_policy":            "boolean",
+	"is_admin_pay":               "boolean",
+	"favorite":                   "boolean",
+	"cancel_desc":                "character varying",
+	"zero_pay_status":            "character varying",
+	"others":                     "jsonb",
+	"files":                      "jsonb",
+	"insure_policy_id":           "bigint",
+	"a_status":                   "character varying",
+	"policy_status":              "text",
+	"insurance_type_parent_id":   "bigint",
+	"insurance_display":          "character varying",
+	"charge_mode":                "character varying",
+	"insurance_company":          "character varying",
+	"insurance_company_account":  "character varying",
+	"order_create_time":          "bigint",
+	"is_invoice":                 "boolean",
+	"inv_borrow":                 "character varying",
+	"inv_visible":                "character varying",
+	"inv_title":                  "character varying",
+	"inv_status":                 "character varying",
+	"o_files":                    "jsonb",
+	"policy_upload_status":       "text",
+	"invoice_upload_status":      "text",
+}
+
+// GetFieldsMap returns a map of field names to their values.
+func (r *TVInsurancePolicy2) GetFieldsMap() map[string]any {
+	return map[string]any{
+		"ID":                      r.ID,
+		"Sn":                      r.Sn,
+		"SnCreator":               r.SnCreator,
+		"Name":                    r.Name,
+		"OrderID":                 r.OrderID,
+		"Policy":                  r.Policy,
+		"Start":                   r.Start,
+		"Cease":                   r.Cease,
+		"Year":                    r.Year,
+		"Duration":                r.Duration,
+		"Premium":                 r.Premium,
+		"ThirdPartyPremium":       r.ThirdPartyPremium,
+		"InsuranceTypeID":         r.InsuranceTypeID,
+		"PlanID":                  r.PlanID,
+		"CreateTime":              r.CreateTime,
+		"UpdateTime":              r.UpdateTime,
+		"PayTime":                 r.PayTime,
+		"PayChannel":              r.PayChannel,
+		"PayType":                 r.PayType,
+		"UnitPrice":               r.UnitPrice,
+		"ExternalStatus":          r.ExternalStatus,
+		"OrgID":                   r.OrgID,
+		"Insurer":                 r.Insurer,
+		"OrgManagerID":            r.OrgManagerID,
+		"InsuranceType":           r.InsuranceType,
+		"PolicyScheme":            r.PolicyScheme,
+		"ActivityName":            r.ActivityName,
+		"ActivityCategory":        r.ActivityCategory,
+		"ActivityDesc":            r.ActivityDesc,
+		"ActivityLocation":        r.ActivityLocation,
+		"ActivityDateSet":         r.ActivityDateSet,
+		"InsuredCount":            r.InsuredCount,
+		"CompulsoryStudentNum":    r.CompulsoryStudentNum,
+		"NonCompulsoryStudentNum": r.NonCompulsoryStudentNum,
+		"Contact":                 r.Contact,
+		"FeeScheme":               r.FeeScheme,
+		"CarServiceTarget":        r.CarServiceTarget,
+		"PolicyEnrollTime":        r.PolicyEnrollTime,
+		"Policyholder":            r.Policyholder,
+		"PolicyholderType":        r.PolicyholderType,
+		"PolicyholderID":          r.PolicyholderID,
+		"OrgName":                 r.OrgName,
+		"OrgProvince":             r.OrgProvince,
+		"OrgCity":                 r.OrgCity,
+		"OrgDistrict":             r.OrgDistrict,
+		"OrgSchoolCategory":       r.OrgSchoolCategory,
+		"OrgIsCompulsory":         r.OrgIsCompulsory,
+		"OrgIsSchool":             r.OrgIsSchool,
+		"InsuredProvince":         r.InsuredProvince,
+		"InsuredCity":             r.InsuredCity,
+		"InsuredDistrict":         r.InsuredDistrict,
+		"InsuredSchoolCategory":   r.InsuredSchoolCategory,
+		"InsuredIsCompulsory":     r.InsuredIsCompulsory,
+		"InsuredName":             r.InsuredName,
+		"InsuredCategory":         r.InsuredCategory,
+		"DriverSeatSum":           r.DriverSeatSum,
+		"SeatSum":                 r.SeatSum,
+		"Same":                    r.Same,
+		"Relation":                r.Relation,
+		"Insured":                 r.Insured,
+		"InsuredID":               r.InsuredID,
+		"HaveInsuredList":         r.HaveInsuredList,
+		"InsuredGroupByDay":       r.InsuredGroupByDay,
+		"InsuredType":             r.InsuredType,
+		"InsuredList":             r.InsuredList,
+		"Indate":                  r.Indate,
+		"Jurisdiction":            r.Jurisdiction,
+		"DisputeHandling":         r.DisputeHandling,
+		"PrevPolicyNo":            r.PrevPolicyNo,
+		"InsureBase":              r.InsureBase,
+		"BlanketInsureCode":       r.BlanketInsureCode,
+		"CustomType":              r.CustomType,
+		"TrainProjects":           r.TrainProjects,
+		"BusinessLocations":       r.BusinessLocations,
+		"PoolNum":                 r.PoolNum,
+		"HaveDinnerNum":           r.HaveDinnerNum,
+		"OpenPoolNum":             r.OpenPoolNum,
+		"HeatedPoolNum":           r.HeatedPoolNum,
+		"TrainingPoolNum":         r.TrainingPoolNum,
+		"InnerArea":               r.InnerArea,
+		"OuterArea":               r.OuterArea,
+		"PoolName":                r.PoolName,
+		"ArbitralAgency":          r.ArbitralAgency,
+		"DinnerNum":               r.DinnerNum,
+		"CanteenNum":              r.CanteenNum,
+		"ShopNum":                 r.ShopNum,
+		"HaveRides":               r.HaveRides,
+		"HaveExplosive":           r.HaveExplosive,
+		"Area":                    r.Area,
+		"TrafficNum":              r.TrafficNum,
+		"TemperatureType":         r.TemperatureType,
+		"IsIndoor":                r.IsIndoor,
+		"Extra":                   r.Extra,
+		"BankAccount":             r.BankAccount,
+		"PayContact":              r.PayContact,
+		"SuddenDeathTerms":        r.SuddenDeathTerms,
+		"HaveSuddenDeath":         r.HaveSuddenDeath,
+		"SpecAgreement":           r.SpecAgreement,
+		"ThirdPartyAccount":       r.ThirdPartyAccount,
+		"Creator":                 r.Creator,
+		"DomainID":                r.DomainID,
+		"Status":                  r.Status,
+		"IsEntryPolicy":           r.IsEntryPolicy,
+		"IsAdminPay":              r.IsAdminPay,
+		"Favorite":                r.Favorite,
+		"CancelDesc":              r.CancelDesc,
+		"ZeroPayStatus":           r.ZeroPayStatus,
+		"Others":                  r.Others,
+		"Files":                   r.Files,
+		"InsurePolicyID":          r.InsurePolicyID,
+		"AStatus":                 r.AStatus,
+		"PolicyStatus":            r.PolicyStatus,
+		"InsuranceTypeParentID":   r.InsuranceTypeParentID,
+		"InsuranceDisplay":        r.InsuranceDisplay,
+		"ChargeMode":              r.ChargeMode,
+		"InsuranceCompany":        r.InsuranceCompany,
+		"InsuranceCompanyAccount": r.InsuranceCompanyAccount,
+		"OrderCreateTime":         r.OrderCreateTime,
+		"IsInvoice":               r.IsInvoice,
+		"InvBorrow":               r.InvBorrow,
+		"InvVisible":              r.InvVisible,
+		"InvTitle":                r.InvTitle,
+		"InvStatus":               r.InvStatus,
+		"OFiles":                  r.OFiles,
+		"PolicyUploadStatus":      r.PolicyUploadStatus,
+		"InvoiceUploadStatus":     r.InvoiceUploadStatus,
+	}
+}
+
+// GetColumnsMap returns a map of column names to their values.
+func (r *TVInsurancePolicy2) GetColumnsMap() map[string]any {
+	return map[string]any{
+		"id":                         r.ID,
+		"sn":                         r.Sn,
+		"sn_creator":                 r.SnCreator,
+		"name":                       r.Name,
+		"order_id":                   r.OrderID,
+		"policy":                     r.Policy,
+		"start":                      r.Start,
+		"cease":                      r.Cease,
+		"year":                       r.Year,
+		"duration":                   r.Duration,
+		"premium":                    r.Premium,
+		"third_party_premium":        r.ThirdPartyPremium,
+		"insurance_type_id":          r.InsuranceTypeID,
+		"plan_id":                    r.PlanID,
+		"create_time":                r.CreateTime,
+		"update_time":                r.UpdateTime,
+		"pay_time":                   r.PayTime,
+		"pay_channel":                r.PayChannel,
+		"pay_type":                   r.PayType,
+		"unit_price":                 r.UnitPrice,
+		"external_status":            r.ExternalStatus,
+		"org_id":                     r.OrgID,
+		"insurer":                    r.Insurer,
+		"org_manager_id":             r.OrgManagerID,
+		"insurance_type":             r.InsuranceType,
+		"policy_scheme":              r.PolicyScheme,
+		"activity_name":              r.ActivityName,
+		"activity_category":          r.ActivityCategory,
+		"activity_desc":              r.ActivityDesc,
+		"activity_location":          r.ActivityLocation,
+		"activity_date_set":          r.ActivityDateSet,
+		"insured_count":              r.InsuredCount,
+		"compulsory_student_num":     r.CompulsoryStudentNum,
+		"non_compulsory_student_num": r.NonCompulsoryStudentNum,
+		"contact":                    r.Contact,
+		"fee_scheme":                 r.FeeScheme,
+		"car_service_target":         r.CarServiceTarget,
+		"policy_enroll_time":         r.PolicyEnrollTime,
+		"policyholder":               r.Policyholder,
+		"policyholder_type":          r.PolicyholderType,
+		"policyholder_id":            r.PolicyholderID,
+		"org_name":                   r.OrgName,
+		"org_province":               r.OrgProvince,
+		"org_city":                   r.OrgCity,
+		"org_district":               r.OrgDistrict,
+		"org_school_category":        r.OrgSchoolCategory,
+		"org_is_compulsory":          r.OrgIsCompulsory,
+		"org_is_school":              r.OrgIsSchool,
+		"insured_province":           r.InsuredProvince,
+		"insured_city":               r.InsuredCity,
+		"insured_district":           r.InsuredDistrict,
+		"insured_school_category":    r.InsuredSchoolCategory,
+		"insured_is_compulsory":      r.InsuredIsCompulsory,
+		"insured_name":               r.InsuredName,
+		"insured_category":           r.InsuredCategory,
+		"driver_seat_sum":            r.DriverSeatSum,
+		"seat_sum":                   r.SeatSum,
+		"same":                       r.Same,
+		"relation":                   r.Relation,
+		"insured":                    r.Insured,
+		"insured_id":                 r.InsuredID,
+		"have_insured_list":          r.HaveInsuredList,
+		"insured_group_by_day":       r.InsuredGroupByDay,
+		"insured_type":               r.InsuredType,
+		"insured_list":               r.InsuredList,
+		"indate":                     r.Indate,
+		"jurisdiction":               r.Jurisdiction,
+		"dispute_handling":           r.DisputeHandling,
+		"prev_policy_no":             r.PrevPolicyNo,
+		"insure_base":                r.InsureBase,
+		"blanket_insure_code":        r.BlanketInsureCode,
+		"custom_type":                r.CustomType,
+		"train_projects":             r.TrainProjects,
+		"business_locations":         r.BusinessLocations,
+		"pool_num":                   r.PoolNum,
+		"have_dinner_num":            r.HaveDinnerNum,
+		"open_pool_num":              r.OpenPoolNum,
+		"heated_pool_num":            r.HeatedPoolNum,
+		"training_pool_num":          r.TrainingPoolNum,
+		"inner_area":                 r.InnerArea,
+		"outer_area":                 r.OuterArea,
+		"pool_name":                  r.PoolName,
+		"arbitral_agency":            r.ArbitralAgency,
+		"dinner_num":                 r.DinnerNum,
+		"canteen_num":                r.CanteenNum,
+		"shop_num":                   r.ShopNum,
+		"have_rides":                 r.HaveRides,
+		"have_explosive":             r.HaveExplosive,
+		"area":                       r.Area,
+		"traffic_num":                r.TrafficNum,
+		"temperature_type":           r.TemperatureType,
+		"is_indoor":                  r.IsIndoor,
+		"extra":                      r.Extra,
+		"bank_account":               r.BankAccount,
+		"pay_contact":                r.PayContact,
+		"sudden_death_terms":         r.SuddenDeathTerms,
+		"have_sudden_death":          r.HaveSuddenDeath,
+		"spec_agreement":             r.SpecAgreement,
+		"third_party_account":        r.ThirdPartyAccount,
+		"creator":                    r.Creator,
+		"domain_id":                  r.DomainID,
+		"status":                     r.Status,
+		"is_entry_policy":            r.IsEntryPolicy,
+		"is_admin_pay":               r.IsAdminPay,
+		"favorite":                   r.Favorite,
+		"cancel_desc":                r.CancelDesc,
+		"zero_pay_status":            r.ZeroPayStatus,
+		"others":                     r.Others,
+		"files":                      r.Files,
+		"insure_policy_id":           r.InsurePolicyID,
+		"a_status":                   r.AStatus,
+		"policy_status":              r.PolicyStatus,
+		"insurance_type_parent_id":   r.InsuranceTypeParentID,
+		"insurance_display":          r.InsuranceDisplay,
+		"charge_mode":                r.ChargeMode,
+		"insurance_company":          r.InsuranceCompany,
+		"insurance_company_account":  r.InsuranceCompanyAccount,
+		"order_create_time":          r.OrderCreateTime,
+		"is_invoice":                 r.IsInvoice,
+		"inv_borrow":                 r.InvBorrow,
+		"inv_visible":                r.InvVisible,
+		"inv_title":                  r.InvTitle,
+		"inv_status":                 r.InvStatus,
+		"o_files":                    r.OFiles,
+		"policy_upload_status":       r.PolicyUploadStatus,
+		"invoice_upload_status":      r.InvoiceUploadStatus,
+	}
+}
+
 // Fields return all fields of struct.
 func (r *TVInsurancePolicy2) Fields() []string {
 	return TVInsurancePolicy2Fields
@@ -8396,6 +21811,42 @@ func GetTVInsurancePolicy2ByPk(db Queryer) (*TVInsurancePolicy2, error) {
 		return nil, errors.Wrap(err, "failed to select t_v_insurance_policy2")
 	}
 	return &r, nil
+}
+
+// GetTVInsurancePolicy2ReflectValuesMap returns a map of field names to their values.
+//
+// key is the tag name, value is the field value.
+// This is useful for reflection and dynamic queries.
+func (r *TVInsurancePolicy2) GetTVInsurancePolicy2ReflectValuesMap() (map[string]any, error) {
+
+	values := make(map[string]any)
+	v := reflect.ValueOf(r).Elem()
+	t := v.Type()
+	for i := range v.NumField() {
+		field := t.Field(i)
+		tag := field.Tag.Get("db")
+		if tag == "" {
+			return nil, errors.Errorf("missing db tag for field %s in table t_v_insurance_policy2", field.Name)
+		}
+
+		columnName := strings.Split(tag, ",")[0]
+		if columnName == "" {
+			return nil, errors.Errorf("missing column name for field %s in table t_v_insurance_policy2", field.Name)
+		}
+
+		fieldValue := reflect.ValueOf(r).Elem().Field(i)
+		if !fieldValue.IsValid() {
+			return nil, errors.Errorf("invalid field value for field %s in table t_v_insurance_policy2", field.Name)
+		}
+
+		if !fieldValue.CanAddr() {
+			return nil, errors.Errorf("cannot read field value for field %s in table t_v_insurance_policy2", field.Name)
+		}
+
+		values[columnName] = fieldValue.Addr().Interface()
+	}
+
+	return values, nil
 }
 
 /*TVInsuranceType t_v_insurance_type represents assessuser.t_v_insurance_type */
@@ -8463,7 +21914,7 @@ type TVInsuranceType struct {
 	CreateTime              null.Int       `json:"CreateTime,omitempty" db:"create_time,false,bigint"`                               /* create_time create_time */
 	UpdateTime              null.Int       `json:"UpdateTime,omitempty" db:"update_time,false,bigint"`                               /* update_time update_time */
 	Status                  null.String    `json:"Status,omitempty" db:"status,false,character varying"`                             /* status status */
-	Filter                                 // build DML where clause
+	Filter                                                                                                                           // build DML where clause
 }
 
 // TVInsuranceTypeFields full field list for default query
@@ -8533,6 +21984,278 @@ var TVInsuranceTypeFields = []string{
 	"Status",
 }
 
+// TVInsuranceTypeColumns full column list for default query
+var TVInsuranceTypeColumns = []string{
+	"id",
+	"parent_id",
+	"data_type",
+	"parent_name",
+	"org_name",
+	"org_id",
+	"layout_order",
+	"insurer",
+	"ref_id",
+	"name",
+	"alias",
+	"pay_type",
+	"pay_name",
+	"pay_channel",
+	"rule_batch",
+	"unit_price",
+	"price",
+	"price_config",
+	"allow_start",
+	"allow_end",
+	"time_status",
+	"max_insure_in_year",
+	"insured_start_time",
+	"insured_end_time",
+	"insured_in_month",
+	"indate_start",
+	"indate_end",
+	"age_limit",
+	"bank_account",
+	"bank_account_name",
+	"bank_name",
+	"bank_id",
+	"floor_price",
+	"define_level",
+	"layout_level",
+	"list_tpl",
+	"files",
+	"pic",
+	"sudden_death_description",
+	"description",
+	"auto_fill",
+	"enable_import_list",
+	"have_dinner_num",
+	"invoice_title_update_times",
+	"transfer_auth_files",
+	"receipt_account",
+	"contact_qr_code",
+	"other_files",
+	"contact",
+	"underwriter",
+	"remind_days",
+	"mail",
+	"order_repeat_limit",
+	"group_by_max_day",
+	"web_description",
+	"mobile_description",
+	"auto_fill_param",
+	"interval",
+	"addi",
+	"resource",
+	"create_time",
+	"update_time",
+	"status",
+}
+
+// TVInsuranceTypeColumnsDataTypes full column data types for default query
+var TVInsuranceTypeColumnsDataTypes = map[string]string{
+	"id":                         "integer",
+	"parent_id":                  "bigint",
+	"data_type":                  "character varying",
+	"parent_name":                "character varying",
+	"org_name":                   "character varying",
+	"org_id":                     "bigint",
+	"layout_order":               "smallint",
+	"insurer":                    "character varying",
+	"ref_id":                     "bigint",
+	"name":                       "character varying",
+	"alias":                      "character varying",
+	"pay_type":                   "character varying",
+	"pay_name":                   "character varying",
+	"pay_channel":                "character varying",
+	"rule_batch":                 "character varying",
+	"unit_price":                 "double precision",
+	"price":                      "double precision",
+	"price_config":               "jsonb",
+	"allow_start":                "bigint",
+	"allow_end":                  "bigint",
+	"time_status":                "text",
+	"max_insure_in_year":         "smallint",
+	"insured_start_time":         "bigint",
+	"insured_end_time":           "bigint",
+	"insured_in_month":           "smallint",
+	"indate_start":               "bigint",
+	"indate_end":                 "bigint",
+	"age_limit":                  "jsonb",
+	"bank_account":               "character varying",
+	"bank_account_name":          "character varying",
+	"bank_name":                  "character varying",
+	"bank_id":                    "character varying",
+	"floor_price":                "double precision",
+	"define_level":               "smallint",
+	"layout_level":               "smallint",
+	"list_tpl":                   "character varying",
+	"files":                      "jsonb",
+	"pic":                        "character varying",
+	"sudden_death_description":   "jsonb",
+	"description":                "character varying",
+	"auto_fill":                  "character varying",
+	"enable_import_list":         "boolean",
+	"have_dinner_num":            "boolean",
+	"invoice_title_update_times": "smallint",
+	"transfer_auth_files":        "jsonb",
+	"receipt_account":            "jsonb",
+	"contact_qr_code":            "character varying",
+	"other_files":                "jsonb",
+	"contact":                    "jsonb",
+	"underwriter":                "jsonb",
+	"remind_days":                "smallint",
+	"mail":                       "jsonb",
+	"order_repeat_limit":         "smallint",
+	"group_by_max_day":           "smallint",
+	"web_description":            "character varying",
+	"mobile_description":         "character varying",
+	"auto_fill_param":            "jsonb",
+	"interval":                   "bigint",
+	"addi":                       "jsonb",
+	"resource":                   "jsonb",
+	"create_time":                "bigint",
+	"update_time":                "bigint",
+	"status":                     "character varying",
+}
+
+// GetFieldsMap returns a map of field names to their values.
+func (r *TVInsuranceType) GetFieldsMap() map[string]any {
+	return map[string]any{
+		"ID":                      r.ID,
+		"ParentID":                r.ParentID,
+		"DataType":                r.DataType,
+		"ParentName":              r.ParentName,
+		"OrgName":                 r.OrgName,
+		"OrgID":                   r.OrgID,
+		"LayoutOrder":             r.LayoutOrder,
+		"Insurer":                 r.Insurer,
+		"RefID":                   r.RefID,
+		"Name":                    r.Name,
+		"Alias":                   r.Alias,
+		"PayType":                 r.PayType,
+		"PayName":                 r.PayName,
+		"PayChannel":              r.PayChannel,
+		"RuleBatch":               r.RuleBatch,
+		"UnitPrice":               r.UnitPrice,
+		"Price":                   r.Price,
+		"PriceConfig":             r.PriceConfig,
+		"AllowStart":              r.AllowStart,
+		"AllowEnd":                r.AllowEnd,
+		"TimeStatus":              r.TimeStatus,
+		"MaxInsureInYear":         r.MaxInsureInYear,
+		"InsuredStartTime":        r.InsuredStartTime,
+		"InsuredEndTime":          r.InsuredEndTime,
+		"InsuredInMonth":          r.InsuredInMonth,
+		"IndateStart":             r.IndateStart,
+		"IndateEnd":               r.IndateEnd,
+		"AgeLimit":                r.AgeLimit,
+		"BankAccount":             r.BankAccount,
+		"BankAccountName":         r.BankAccountName,
+		"BankName":                r.BankName,
+		"BankID":                  r.BankID,
+		"FloorPrice":              r.FloorPrice,
+		"DefineLevel":             r.DefineLevel,
+		"LayoutLevel":             r.LayoutLevel,
+		"ListTpl":                 r.ListTpl,
+		"Files":                   r.Files,
+		"Pic":                     r.Pic,
+		"SuddenDeathDescription":  r.SuddenDeathDescription,
+		"Description":             r.Description,
+		"AutoFill":                r.AutoFill,
+		"EnableImportList":        r.EnableImportList,
+		"HaveDinnerNum":           r.HaveDinnerNum,
+		"InvoiceTitleUpdateTimes": r.InvoiceTitleUpdateTimes,
+		"TransferAuthFiles":       r.TransferAuthFiles,
+		"ReceiptAccount":          r.ReceiptAccount,
+		"ContactQrCode":           r.ContactQrCode,
+		"OtherFiles":              r.OtherFiles,
+		"Contact":                 r.Contact,
+		"Underwriter":             r.Underwriter,
+		"RemindDays":              r.RemindDays,
+		"Mail":                    r.Mail,
+		"OrderRepeatLimit":        r.OrderRepeatLimit,
+		"GroupByMaxDay":           r.GroupByMaxDay,
+		"WebDescription":          r.WebDescription,
+		"MobileDescription":       r.MobileDescription,
+		"AutoFillParam":           r.AutoFillParam,
+		"Interval":                r.Interval,
+		"Addi":                    r.Addi,
+		"Resource":                r.Resource,
+		"CreateTime":              r.CreateTime,
+		"UpdateTime":              r.UpdateTime,
+		"Status":                  r.Status,
+	}
+}
+
+// GetColumnsMap returns a map of column names to their values.
+func (r *TVInsuranceType) GetColumnsMap() map[string]any {
+	return map[string]any{
+		"id":                         r.ID,
+		"parent_id":                  r.ParentID,
+		"data_type":                  r.DataType,
+		"parent_name":                r.ParentName,
+		"org_name":                   r.OrgName,
+		"org_id":                     r.OrgID,
+		"layout_order":               r.LayoutOrder,
+		"insurer":                    r.Insurer,
+		"ref_id":                     r.RefID,
+		"name":                       r.Name,
+		"alias":                      r.Alias,
+		"pay_type":                   r.PayType,
+		"pay_name":                   r.PayName,
+		"pay_channel":                r.PayChannel,
+		"rule_batch":                 r.RuleBatch,
+		"unit_price":                 r.UnitPrice,
+		"price":                      r.Price,
+		"price_config":               r.PriceConfig,
+		"allow_start":                r.AllowStart,
+		"allow_end":                  r.AllowEnd,
+		"time_status":                r.TimeStatus,
+		"max_insure_in_year":         r.MaxInsureInYear,
+		"insured_start_time":         r.InsuredStartTime,
+		"insured_end_time":           r.InsuredEndTime,
+		"insured_in_month":           r.InsuredInMonth,
+		"indate_start":               r.IndateStart,
+		"indate_end":                 r.IndateEnd,
+		"age_limit":                  r.AgeLimit,
+		"bank_account":               r.BankAccount,
+		"bank_account_name":          r.BankAccountName,
+		"bank_name":                  r.BankName,
+		"bank_id":                    r.BankID,
+		"floor_price":                r.FloorPrice,
+		"define_level":               r.DefineLevel,
+		"layout_level":               r.LayoutLevel,
+		"list_tpl":                   r.ListTpl,
+		"files":                      r.Files,
+		"pic":                        r.Pic,
+		"sudden_death_description":   r.SuddenDeathDescription,
+		"description":                r.Description,
+		"auto_fill":                  r.AutoFill,
+		"enable_import_list":         r.EnableImportList,
+		"have_dinner_num":            r.HaveDinnerNum,
+		"invoice_title_update_times": r.InvoiceTitleUpdateTimes,
+		"transfer_auth_files":        r.TransferAuthFiles,
+		"receipt_account":            r.ReceiptAccount,
+		"contact_qr_code":            r.ContactQrCode,
+		"other_files":                r.OtherFiles,
+		"contact":                    r.Contact,
+		"underwriter":                r.Underwriter,
+		"remind_days":                r.RemindDays,
+		"mail":                       r.Mail,
+		"order_repeat_limit":         r.OrderRepeatLimit,
+		"group_by_max_day":           r.GroupByMaxDay,
+		"web_description":            r.WebDescription,
+		"mobile_description":         r.MobileDescription,
+		"auto_fill_param":            r.AutoFillParam,
+		"interval":                   r.Interval,
+		"addi":                       r.Addi,
+		"resource":                   r.Resource,
+		"create_time":                r.CreateTime,
+		"update_time":                r.UpdateTime,
+		"status":                     r.Status,
+	}
+}
+
 // Fields return all fields of struct.
 func (r *TVInsuranceType) Fields() []string {
 	return TVInsuranceTypeFields
@@ -8573,6 +22296,42 @@ func GetTVInsuranceTypeByPk(db Queryer) (*TVInsuranceType, error) {
 	return &r, nil
 }
 
+// GetTVInsuranceTypeReflectValuesMap returns a map of field names to their values.
+//
+// key is the tag name, value is the field value.
+// This is useful for reflection and dynamic queries.
+func (r *TVInsuranceType) GetTVInsuranceTypeReflectValuesMap() (map[string]any, error) {
+
+	values := make(map[string]any)
+	v := reflect.ValueOf(r).Elem()
+	t := v.Type()
+	for i := range v.NumField() {
+		field := t.Field(i)
+		tag := field.Tag.Get("db")
+		if tag == "" {
+			return nil, errors.Errorf("missing db tag for field %s in table t_v_insurance_type", field.Name)
+		}
+
+		columnName := strings.Split(tag, ",")[0]
+		if columnName == "" {
+			return nil, errors.Errorf("missing column name for field %s in table t_v_insurance_type", field.Name)
+		}
+
+		fieldValue := reflect.ValueOf(r).Elem().Field(i)
+		if !fieldValue.IsValid() {
+			return nil, errors.Errorf("invalid field value for field %s in table t_v_insurance_type", field.Name)
+		}
+
+		if !fieldValue.CanAddr() {
+			return nil, errors.Errorf("cannot read field value for field %s in table t_v_insurance_type", field.Name)
+		}
+
+		values[columnName] = fieldValue.Addr().Interface()
+	}
+
+	return values, nil
+}
+
 /*TVInsureAttach t_v_insure_attach represents assessuser.t_v_insure_attach */
 type TVInsureAttach struct {
 	ID                  null.Int       `json:"ID,omitempty" db:"id,false,integer"`                                  /* id id */
@@ -8593,7 +22352,7 @@ type TVInsureAttach struct {
 	CreateTime          null.Int       `json:"CreateTime,omitempty" db:"create_time,false,bigint"`                  /* create_time create_time */
 	UpdateTime          null.Int       `json:"UpdateTime,omitempty" db:"update_time,false,bigint"`                  /* update_time update_time */
 	Creator             null.Int       `json:"Creator,omitempty" db:"creator,false,bigint"`                         /* creator creator */
-	Filter                             // build DML where clause
+	Filter                                                                                                          // build DML where clause
 }
 
 // TVInsureAttachFields full field list for default query
@@ -8616,6 +22375,98 @@ var TVInsureAttachFields = []string{
 	"CreateTime",
 	"UpdateTime",
 	"Creator",
+}
+
+// TVInsureAttachColumns full column list for default query
+var TVInsureAttachColumns = []string{
+	"id",
+	"org_id",
+	"school",
+	"category",
+	"insurer",
+	"insurance_type",
+	"year",
+	"batch",
+	"grade",
+	"files",
+	"policy_no",
+	"others",
+	"policy_upload_status",
+	"invoice_upload_status",
+	"addi",
+	"create_time",
+	"update_time",
+	"creator",
+}
+
+// TVInsureAttachColumnsDataTypes full column data types for default query
+var TVInsureAttachColumnsDataTypes = map[string]string{
+	"id":                    "integer",
+	"org_id":                "bigint",
+	"school":                "character varying",
+	"category":              "character varying",
+	"insurer":               "character varying",
+	"insurance_type":        "character varying",
+	"year":                  "smallint",
+	"batch":                 "character varying",
+	"grade":                 "character varying",
+	"files":                 "jsonb",
+	"policy_no":             "character varying",
+	"others":                "jsonb",
+	"policy_upload_status":  "text",
+	"invoice_upload_status": "text",
+	"addi":                  "jsonb",
+	"create_time":           "bigint",
+	"update_time":           "bigint",
+	"creator":               "bigint",
+}
+
+// GetFieldsMap returns a map of field names to their values.
+func (r *TVInsureAttach) GetFieldsMap() map[string]any {
+	return map[string]any{
+		"ID":                  r.ID,
+		"OrgID":               r.OrgID,
+		"School":              r.School,
+		"Category":            r.Category,
+		"Insurer":             r.Insurer,
+		"InsuranceType":       r.InsuranceType,
+		"Year":                r.Year,
+		"Batch":               r.Batch,
+		"Grade":               r.Grade,
+		"Files":               r.Files,
+		"PolicyNo":            r.PolicyNo,
+		"Others":              r.Others,
+		"PolicyUploadStatus":  r.PolicyUploadStatus,
+		"InvoiceUploadStatus": r.InvoiceUploadStatus,
+		"Addi":                r.Addi,
+		"CreateTime":          r.CreateTime,
+		"UpdateTime":          r.UpdateTime,
+		"Creator":             r.Creator,
+	}
+}
+
+// GetColumnsMap returns a map of column names to their values.
+func (r *TVInsureAttach) GetColumnsMap() map[string]any {
+	return map[string]any{
+		"id":                    r.ID,
+		"org_id":                r.OrgID,
+		"school":                r.School,
+		"category":              r.Category,
+		"insurer":               r.Insurer,
+		"insurance_type":        r.InsuranceType,
+		"year":                  r.Year,
+		"batch":                 r.Batch,
+		"grade":                 r.Grade,
+		"files":                 r.Files,
+		"policy_no":             r.PolicyNo,
+		"others":                r.Others,
+		"policy_upload_status":  r.PolicyUploadStatus,
+		"invoice_upload_status": r.InvoiceUploadStatus,
+		"addi":                  r.Addi,
+		"create_time":           r.CreateTime,
+		"update_time":           r.UpdateTime,
+		"creator":               r.Creator,
+	}
 }
 
 // Fields return all fields of struct.
@@ -8658,6 +22509,42 @@ func GetTVInsureAttachByPk(db Queryer) (*TVInsureAttach, error) {
 	return &r, nil
 }
 
+// GetTVInsureAttachReflectValuesMap returns a map of field names to their values.
+//
+// key is the tag name, value is the field value.
+// This is useful for reflection and dynamic queries.
+func (r *TVInsureAttach) GetTVInsureAttachReflectValuesMap() (map[string]any, error) {
+
+	values := make(map[string]any)
+	v := reflect.ValueOf(r).Elem()
+	t := v.Type()
+	for i := range v.NumField() {
+		field := t.Field(i)
+		tag := field.Tag.Get("db")
+		if tag == "" {
+			return nil, errors.Errorf("missing db tag for field %s in table t_v_insure_attach", field.Name)
+		}
+
+		columnName := strings.Split(tag, ",")[0]
+		if columnName == "" {
+			return nil, errors.Errorf("missing column name for field %s in table t_v_insure_attach", field.Name)
+		}
+
+		fieldValue := reflect.ValueOf(r).Elem().Field(i)
+		if !fieldValue.IsValid() {
+			return nil, errors.Errorf("invalid field value for field %s in table t_v_insure_attach", field.Name)
+		}
+
+		if !fieldValue.CanAddr() {
+			return nil, errors.Errorf("cannot read field value for field %s in table t_v_insure_attach", field.Name)
+		}
+
+		values[columnName] = fieldValue.Addr().Interface()
+	}
+
+	return values, nil
+}
+
 /*TVInsuredSchool t_v_insured_school represents assessuser.t_v_insured_school */
 type TVInsuredSchool struct {
 	ID        null.Int       `json:"ID,omitempty" db:"id,false,integer"`                          /* id id */
@@ -8670,7 +22557,7 @@ type TVInsuredSchool struct {
 	IsSchool  null.Bool      `json:"IsSchool,omitempty" db:"is_school,false,boolean"`             /* is_school is_school */
 	OrgStatus null.String    `json:"OrgStatus,omitempty" db:"org_status,false,character varying"` /* org_status org_status */
 	AllowTime types.JSONText `json:"AllowTime,omitempty" db:"allow_time,false,jsonb"`             /* allow_time allow_time */
-	Filter                   // build DML where clause
+	Filter                                                                                        // build DML where clause
 }
 
 // TVInsuredSchoolFields full field list for default query
@@ -8685,6 +22572,66 @@ var TVInsuredSchoolFields = []string{
 	"IsSchool",
 	"OrgStatus",
 	"AllowTime",
+}
+
+// TVInsuredSchoolColumns full column list for default query
+var TVInsuredSchoolColumns = []string{
+	"id",
+	"name",
+	"category",
+	"province",
+	"city",
+	"district",
+	"street",
+	"is_school",
+	"org_status",
+	"allow_time",
+}
+
+// TVInsuredSchoolColumnsDataTypes full column data types for default query
+var TVInsuredSchoolColumnsDataTypes = map[string]string{
+	"id":         "integer",
+	"name":       "character varying",
+	"category":   "character varying",
+	"province":   "character varying",
+	"city":       "character varying",
+	"district":   "character varying",
+	"street":     "character varying",
+	"is_school":  "boolean",
+	"org_status": "character varying",
+	"allow_time": "jsonb",
+}
+
+// GetFieldsMap returns a map of field names to their values.
+func (r *TVInsuredSchool) GetFieldsMap() map[string]any {
+	return map[string]any{
+		"ID":        r.ID,
+		"Name":      r.Name,
+		"Category":  r.Category,
+		"Province":  r.Province,
+		"City":      r.City,
+		"District":  r.District,
+		"Street":    r.Street,
+		"IsSchool":  r.IsSchool,
+		"OrgStatus": r.OrgStatus,
+		"AllowTime": r.AllowTime,
+	}
+}
+
+// GetColumnsMap returns a map of column names to their values.
+func (r *TVInsuredSchool) GetColumnsMap() map[string]any {
+	return map[string]any{
+		"id":         r.ID,
+		"name":       r.Name,
+		"category":   r.Category,
+		"province":   r.Province,
+		"city":       r.City,
+		"district":   r.District,
+		"street":     r.Street,
+		"is_school":  r.IsSchool,
+		"org_status": r.OrgStatus,
+		"allow_time": r.AllowTime,
+	}
 }
 
 // Fields return all fields of struct.
@@ -8727,6 +22674,42 @@ func GetTVInsuredSchoolByPk(db Queryer) (*TVInsuredSchool, error) {
 	return &r, nil
 }
 
+// GetTVInsuredSchoolReflectValuesMap returns a map of field names to their values.
+//
+// key is the tag name, value is the field value.
+// This is useful for reflection and dynamic queries.
+func (r *TVInsuredSchool) GetTVInsuredSchoolReflectValuesMap() (map[string]any, error) {
+
+	values := make(map[string]any)
+	v := reflect.ValueOf(r).Elem()
+	t := v.Type()
+	for i := range v.NumField() {
+		field := t.Field(i)
+		tag := field.Tag.Get("db")
+		if tag == "" {
+			return nil, errors.Errorf("missing db tag for field %s in table t_v_insured_school", field.Name)
+		}
+
+		columnName := strings.Split(tag, ",")[0]
+		if columnName == "" {
+			return nil, errors.Errorf("missing column name for field %s in table t_v_insured_school", field.Name)
+		}
+
+		fieldValue := reflect.ValueOf(r).Elem().Field(i)
+		if !fieldValue.IsValid() {
+			return nil, errors.Errorf("invalid field value for field %s in table t_v_insured_school", field.Name)
+		}
+
+		if !fieldValue.CanAddr() {
+			return nil, errors.Errorf("cannot read field value for field %s in table t_v_insured_school", field.Name)
+		}
+
+		values[columnName] = fieldValue.Addr().Interface()
+	}
+
+	return values, nil
+}
+
 /*TVInsurer t_v_insurer represents assessuser.t_v_insurer */
 type TVInsurer struct {
 	ID       null.Int    `json:"ID,omitempty" db:"id,false,integer"`                     /* id id */
@@ -8734,7 +22717,7 @@ type TVInsurer struct {
 	RefID    null.Int    `json:"RefID,omitempty" db:"ref_id,false,bigint"`               /* ref_id ref_id */
 	ParentID null.Int    `json:"ParentID,omitempty" db:"parent_id,false,bigint"`         /* parent_id parent_id */
 	Insurer  null.String `json:"Insurer,omitempty" db:"insurer,false,character varying"` /* insurer insurer */
-	Filter               // build DML where clause
+	Filter                                                                               // build DML where clause
 }
 
 // TVInsurerFields full field list for default query
@@ -8744,6 +22727,46 @@ var TVInsurerFields = []string{
 	"RefID",
 	"ParentID",
 	"Insurer",
+}
+
+// TVInsurerColumns full column list for default query
+var TVInsurerColumns = []string{
+	"id",
+	"name",
+	"ref_id",
+	"parent_id",
+	"insurer",
+}
+
+// TVInsurerColumnsDataTypes full column data types for default query
+var TVInsurerColumnsDataTypes = map[string]string{
+	"id":        "integer",
+	"name":      "character varying",
+	"ref_id":    "bigint",
+	"parent_id": "bigint",
+	"insurer":   "character varying",
+}
+
+// GetFieldsMap returns a map of field names to their values.
+func (r *TVInsurer) GetFieldsMap() map[string]any {
+	return map[string]any{
+		"ID":       r.ID,
+		"Name":     r.Name,
+		"RefID":    r.RefID,
+		"ParentID": r.ParentID,
+		"Insurer":  r.Insurer,
+	}
+}
+
+// GetColumnsMap returns a map of column names to their values.
+func (r *TVInsurer) GetColumnsMap() map[string]any {
+	return map[string]any{
+		"id":        r.ID,
+		"name":      r.Name,
+		"ref_id":    r.RefID,
+		"parent_id": r.ParentID,
+		"insurer":   r.Insurer,
+	}
 }
 
 // Fields return all fields of struct.
@@ -8786,6 +22809,300 @@ func GetTVInsurerByPk(db Queryer) (*TVInsurer, error) {
 	return &r, nil
 }
 
+// GetTVInsurerReflectValuesMap returns a map of field names to their values.
+//
+// key is the tag name, value is the field value.
+// This is useful for reflection and dynamic queries.
+func (r *TVInsurer) GetTVInsurerReflectValuesMap() (map[string]any, error) {
+
+	values := make(map[string]any)
+	v := reflect.ValueOf(r).Elem()
+	t := v.Type()
+	for i := range v.NumField() {
+		field := t.Field(i)
+		tag := field.Tag.Get("db")
+		if tag == "" {
+			return nil, errors.Errorf("missing db tag for field %s in table t_v_insurer", field.Name)
+		}
+
+		columnName := strings.Split(tag, ",")[0]
+		if columnName == "" {
+			return nil, errors.Errorf("missing column name for field %s in table t_v_insurer", field.Name)
+		}
+
+		fieldValue := reflect.ValueOf(r).Elem().Field(i)
+		if !fieldValue.IsValid() {
+			return nil, errors.Errorf("invalid field value for field %s in table t_v_insurer", field.Name)
+		}
+
+		if !fieldValue.CanAddr() {
+			return nil, errors.Errorf("cannot read field value for field %s in table t_v_insurer", field.Name)
+		}
+
+		values[columnName] = fieldValue.Addr().Interface()
+	}
+
+	return values, nil
+}
+
+/*TVLatestSubmittedPractice t_v_latest_submitted_practice represents assessuser.t_v_latest_submitted_practice */
+type TVLatestSubmittedPractice struct {
+	SubmissionID null.Int `json:"SubmissionID,omitempty" db:"submission_id,false,integer"` /* submission_id submission_id */
+	PracticeID   null.Int `json:"PracticeID,omitempty" db:"practice_id,false,bigint"`      /* practice_id practice_id */
+	StudentID    null.Int `json:"StudentID,omitempty" db:"student_id,false,bigint"`        /* student_id student_id */
+	Attempt      null.Int `json:"Attempt,omitempty" db:"attempt,false,integer"`            /* attempt attempt */
+	Filter                                                                                 // build DML where clause
+}
+
+// TVLatestSubmittedPracticeFields full field list for default query
+var TVLatestSubmittedPracticeFields = []string{
+	"SubmissionID",
+	"PracticeID",
+	"StudentID",
+	"Attempt",
+}
+
+// TVLatestSubmittedPracticeColumns full column list for default query
+var TVLatestSubmittedPracticeColumns = []string{
+	"submission_id",
+	"practice_id",
+	"student_id",
+	"attempt",
+}
+
+// TVLatestSubmittedPracticeColumnsDataTypes full column data types for default query
+var TVLatestSubmittedPracticeColumnsDataTypes = map[string]string{
+	"submission_id": "integer",
+	"practice_id":   "bigint",
+	"student_id":    "bigint",
+	"attempt":       "integer",
+}
+
+// GetFieldsMap returns a map of field names to their values.
+func (r *TVLatestSubmittedPractice) GetFieldsMap() map[string]any {
+	return map[string]any{
+		"SubmissionID": r.SubmissionID,
+		"PracticeID":   r.PracticeID,
+		"StudentID":    r.StudentID,
+		"Attempt":      r.Attempt,
+	}
+}
+
+// GetColumnsMap returns a map of column names to their values.
+func (r *TVLatestSubmittedPractice) GetColumnsMap() map[string]any {
+	return map[string]any{
+		"submission_id": r.SubmissionID,
+		"practice_id":   r.PracticeID,
+		"student_id":    r.StudentID,
+		"attempt":       r.Attempt,
+	}
+}
+
+// Fields return all fields of struct.
+func (r *TVLatestSubmittedPractice) Fields() []string {
+	return TVLatestSubmittedPracticeFields
+}
+
+// GetTableName return the associated db table name.
+func (r *TVLatestSubmittedPractice) GetTableName() string {
+	var viewNamePattern = regexp.MustCompile(`(?i)^t_v_[a-z0-9_]+$`)
+	tableName := "t_v_latest_submitted_practice"
+	if viewNamePattern.MatchString(tableName) {
+		return tableName[2:]
+	}
+	return tableName
+}
+
+// Create inserts the TVLatestSubmittedPractice to the database.
+func (r *TVLatestSubmittedPractice) Create(db Queryer) error {
+	_, err := db.Exec(
+		`INSERT INTO t_v_latest_submitted_practice (submission_id, practice_id, student_id, attempt) VALUES ($1, $2, $3, $4)`,
+		&r.SubmissionID, &r.PracticeID, &r.StudentID, &r.Attempt)
+	if err != nil {
+		return errors.Wrap(err, "failed to insert t_v_latest_submitted_practice")
+	}
+	return nil
+}
+
+// GetTVLatestSubmittedPracticeByPk select the TVLatestSubmittedPractice from the database.
+func GetTVLatestSubmittedPracticeByPk(db Queryer) (*TVLatestSubmittedPractice, error) {
+	// Don't call this function, it is a view and doesn't have a primary key.
+
+	var r TVLatestSubmittedPractice
+	err := db.QueryRow(
+		`SELECT submission_id, practice_id, student_id, attempt FROM t_v_latest_submitted_practice`,
+	).Scan(&r.SubmissionID, &r.PracticeID, &r.StudentID, &r.Attempt)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to select t_v_latest_submitted_practice")
+	}
+	return &r, nil
+}
+
+// GetTVLatestSubmittedPracticeReflectValuesMap returns a map of field names to their values.
+//
+// key is the tag name, value is the field value.
+// This is useful for reflection and dynamic queries.
+func (r *TVLatestSubmittedPractice) GetTVLatestSubmittedPracticeReflectValuesMap() (map[string]any, error) {
+
+	values := make(map[string]any)
+	v := reflect.ValueOf(r).Elem()
+	t := v.Type()
+	for i := range v.NumField() {
+		field := t.Field(i)
+		tag := field.Tag.Get("db")
+		if tag == "" {
+			return nil, errors.Errorf("missing db tag for field %s in table t_v_latest_submitted_practice", field.Name)
+		}
+
+		columnName := strings.Split(tag, ",")[0]
+		if columnName == "" {
+			return nil, errors.Errorf("missing column name for field %s in table t_v_latest_submitted_practice", field.Name)
+		}
+
+		fieldValue := reflect.ValueOf(r).Elem().Field(i)
+		if !fieldValue.IsValid() {
+			return nil, errors.Errorf("invalid field value for field %s in table t_v_latest_submitted_practice", field.Name)
+		}
+
+		if !fieldValue.CanAddr() {
+			return nil, errors.Errorf("cannot read field value for field %s in table t_v_latest_submitted_practice", field.Name)
+		}
+
+		values[columnName] = fieldValue.Addr().Interface()
+	}
+
+	return values, nil
+}
+
+/*TVLatestUnsubmittedPractice t_v_latest_unsubmitted_practice represents assessuser.t_v_latest_unsubmitted_practice */
+type TVLatestUnsubmittedPractice struct {
+	SubmissionID null.Int `json:"SubmissionID,omitempty" db:"submission_id,false,integer"` /* submission_id submission_id */
+	PracticeID   null.Int `json:"PracticeID,omitempty" db:"practice_id,false,bigint"`      /* practice_id practice_id */
+	StudentID    null.Int `json:"StudentID,omitempty" db:"student_id,false,bigint"`        /* student_id student_id */
+	Attempt      null.Int `json:"Attempt,omitempty" db:"attempt,false,integer"`            /* attempt attempt */
+	Filter                                                                                 // build DML where clause
+}
+
+// TVLatestUnsubmittedPracticeFields full field list for default query
+var TVLatestUnsubmittedPracticeFields = []string{
+	"SubmissionID",
+	"PracticeID",
+	"StudentID",
+	"Attempt",
+}
+
+// TVLatestUnsubmittedPracticeColumns full column list for default query
+var TVLatestUnsubmittedPracticeColumns = []string{
+	"submission_id",
+	"practice_id",
+	"student_id",
+	"attempt",
+}
+
+// TVLatestUnsubmittedPracticeColumnsDataTypes full column data types for default query
+var TVLatestUnsubmittedPracticeColumnsDataTypes = map[string]string{
+	"submission_id": "integer",
+	"practice_id":   "bigint",
+	"student_id":    "bigint",
+	"attempt":       "integer",
+}
+
+// GetFieldsMap returns a map of field names to their values.
+func (r *TVLatestUnsubmittedPractice) GetFieldsMap() map[string]any {
+	return map[string]any{
+		"SubmissionID": r.SubmissionID,
+		"PracticeID":   r.PracticeID,
+		"StudentID":    r.StudentID,
+		"Attempt":      r.Attempt,
+	}
+}
+
+// GetColumnsMap returns a map of column names to their values.
+func (r *TVLatestUnsubmittedPractice) GetColumnsMap() map[string]any {
+	return map[string]any{
+		"submission_id": r.SubmissionID,
+		"practice_id":   r.PracticeID,
+		"student_id":    r.StudentID,
+		"attempt":       r.Attempt,
+	}
+}
+
+// Fields return all fields of struct.
+func (r *TVLatestUnsubmittedPractice) Fields() []string {
+	return TVLatestUnsubmittedPracticeFields
+}
+
+// GetTableName return the associated db table name.
+func (r *TVLatestUnsubmittedPractice) GetTableName() string {
+	var viewNamePattern = regexp.MustCompile(`(?i)^t_v_[a-z0-9_]+$`)
+	tableName := "t_v_latest_unsubmitted_practice"
+	if viewNamePattern.MatchString(tableName) {
+		return tableName[2:]
+	}
+	return tableName
+}
+
+// Create inserts the TVLatestUnsubmittedPractice to the database.
+func (r *TVLatestUnsubmittedPractice) Create(db Queryer) error {
+	_, err := db.Exec(
+		`INSERT INTO t_v_latest_unsubmitted_practice (submission_id, practice_id, student_id, attempt) VALUES ($1, $2, $3, $4)`,
+		&r.SubmissionID, &r.PracticeID, &r.StudentID, &r.Attempt)
+	if err != nil {
+		return errors.Wrap(err, "failed to insert t_v_latest_unsubmitted_practice")
+	}
+	return nil
+}
+
+// GetTVLatestUnsubmittedPracticeByPk select the TVLatestUnsubmittedPractice from the database.
+func GetTVLatestUnsubmittedPracticeByPk(db Queryer) (*TVLatestUnsubmittedPractice, error) {
+	// Don't call this function, it is a view and doesn't have a primary key.
+
+	var r TVLatestUnsubmittedPractice
+	err := db.QueryRow(
+		`SELECT submission_id, practice_id, student_id, attempt FROM t_v_latest_unsubmitted_practice`,
+	).Scan(&r.SubmissionID, &r.PracticeID, &r.StudentID, &r.Attempt)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to select t_v_latest_unsubmitted_practice")
+	}
+	return &r, nil
+}
+
+// GetTVLatestUnsubmittedPracticeReflectValuesMap returns a map of field names to their values.
+//
+// key is the tag name, value is the field value.
+// This is useful for reflection and dynamic queries.
+func (r *TVLatestUnsubmittedPractice) GetTVLatestUnsubmittedPracticeReflectValuesMap() (map[string]any, error) {
+
+	values := make(map[string]any)
+	v := reflect.ValueOf(r).Elem()
+	t := v.Type()
+	for i := range v.NumField() {
+		field := t.Field(i)
+		tag := field.Tag.Get("db")
+		if tag == "" {
+			return nil, errors.Errorf("missing db tag for field %s in table t_v_latest_unsubmitted_practice", field.Name)
+		}
+
+		columnName := strings.Split(tag, ",")[0]
+		if columnName == "" {
+			return nil, errors.Errorf("missing column name for field %s in table t_v_latest_unsubmitted_practice", field.Name)
+		}
+
+		fieldValue := reflect.ValueOf(r).Elem().Field(i)
+		if !fieldValue.IsValid() {
+			return nil, errors.Errorf("invalid field value for field %s in table t_v_latest_unsubmitted_practice", field.Name)
+		}
+
+		if !fieldValue.CanAddr() {
+			return nil, errors.Errorf("cannot read field value for field %s in table t_v_latest_unsubmitted_practice", field.Name)
+		}
+
+		values[columnName] = fieldValue.Addr().Interface()
+	}
+
+	return values, nil
+}
+
 /*TVManagerSchool t_v_manager_school represents assessuser.t_v_manager_school */
 type TVManagerSchool struct {
 	UserID     null.Int       `json:"UserID,omitempty" db:"user_id,false,bigint"`                    /* user_id user_id */
@@ -8796,7 +23113,7 @@ type TVManagerSchool struct {
 	UserRole   null.String    `json:"UserRole,omitempty" db:"user_role,false,text"`                  /* user_role user_role */
 	RelType    null.String    `json:"RelType,omitempty" db:"rel_type,false,text"`                    /* rel_type rel_type */
 	Addi       types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                          /* addi addi */
-	Filter                    // build DML where clause
+	Filter                                                                                           // build DML where clause
 }
 
 // TVManagerSchoolFields full field list for default query
@@ -8809,6 +23126,58 @@ var TVManagerSchoolFields = []string{
 	"UserRole",
 	"RelType",
 	"Addi",
+}
+
+// TVManagerSchoolColumns full column list for default query
+var TVManagerSchoolColumns = []string{
+	"user_id",
+	"name",
+	"tel",
+	"school_id",
+	"school_name",
+	"user_role",
+	"rel_type",
+	"addi",
+}
+
+// TVManagerSchoolColumnsDataTypes full column data types for default query
+var TVManagerSchoolColumnsDataTypes = map[string]string{
+	"user_id":     "bigint",
+	"name":        "character varying",
+	"tel":         "character varying",
+	"school_id":   "bigint",
+	"school_name": "character varying",
+	"user_role":   "text",
+	"rel_type":    "text",
+	"addi":        "jsonb",
+}
+
+// GetFieldsMap returns a map of field names to their values.
+func (r *TVManagerSchool) GetFieldsMap() map[string]any {
+	return map[string]any{
+		"UserID":     r.UserID,
+		"Name":       r.Name,
+		"Tel":        r.Tel,
+		"SchoolID":   r.SchoolID,
+		"SchoolName": r.SchoolName,
+		"UserRole":   r.UserRole,
+		"RelType":    r.RelType,
+		"Addi":       r.Addi,
+	}
+}
+
+// GetColumnsMap returns a map of column names to their values.
+func (r *TVManagerSchool) GetColumnsMap() map[string]any {
+	return map[string]any{
+		"user_id":     r.UserID,
+		"name":        r.Name,
+		"tel":         r.Tel,
+		"school_id":   r.SchoolID,
+		"school_name": r.SchoolName,
+		"user_role":   r.UserRole,
+		"rel_type":    r.RelType,
+		"addi":        r.Addi,
+	}
 }
 
 // Fields return all fields of struct.
@@ -8851,6 +23220,42 @@ func GetTVManagerSchoolByPk(db Queryer) (*TVManagerSchool, error) {
 	return &r, nil
 }
 
+// GetTVManagerSchoolReflectValuesMap returns a map of field names to their values.
+//
+// key is the tag name, value is the field value.
+// This is useful for reflection and dynamic queries.
+func (r *TVManagerSchool) GetTVManagerSchoolReflectValuesMap() (map[string]any, error) {
+
+	values := make(map[string]any)
+	v := reflect.ValueOf(r).Elem()
+	t := v.Type()
+	for i := range v.NumField() {
+		field := t.Field(i)
+		tag := field.Tag.Get("db")
+		if tag == "" {
+			return nil, errors.Errorf("missing db tag for field %s in table t_v_manager_school", field.Name)
+		}
+
+		columnName := strings.Split(tag, ",")[0]
+		if columnName == "" {
+			return nil, errors.Errorf("missing column name for field %s in table t_v_manager_school", field.Name)
+		}
+
+		fieldValue := reflect.ValueOf(r).Elem().Field(i)
+		if !fieldValue.IsValid() {
+			return nil, errors.Errorf("invalid field value for field %s in table t_v_manager_school", field.Name)
+		}
+
+		if !fieldValue.CanAddr() {
+			return nil, errors.Errorf("cannot read field value for field %s in table t_v_manager_school", field.Name)
+		}
+
+		values[columnName] = fieldValue.Addr().Interface()
+	}
+
+	return values, nil
+}
+
 /*TVMistakeCorrect t_v_mistake_correct represents assessuser.t_v_mistake_correct */
 type TVMistakeCorrect struct {
 	ID                    null.Int       `json:"ID,omitempty" db:"id,false,integer"`                                                    /* id id */
@@ -8890,7 +23295,7 @@ type TVMistakeCorrect struct {
 	Creator               null.Int       `json:"Creator,omitempty" db:"creator,false,bigint"`                                           /* creator creator */
 	Remark                null.String    `json:"Remark,omitempty" db:"remark,false,character varying"`                                  /* remark remark */
 	Status                null.String    `json:"Status,omitempty" db:"status,false,character varying"`                                  /* status status */
-	Filter                               // build DML where clause
+	Filter                                                                                                                              // build DML where clause
 }
 
 // TVMistakeCorrectFields full field list for default query
@@ -8934,6 +23339,174 @@ var TVMistakeCorrectFields = []string{
 	"Status",
 }
 
+// TVMistakeCorrectColumns full column list for default query
+var TVMistakeCorrectColumns = []string{
+	"id",
+	"order_id",
+	"org_id",
+	"commence_date",
+	"expiry_date",
+	"insurance_type",
+	"official_name",
+	"id_card_type",
+	"id_card_no",
+	"gender",
+	"birthday",
+	"school",
+	"school_id",
+	"school_type",
+	"insured_id",
+	"original_official_name",
+	"original_id_card_type",
+	"original_id_card_no",
+	"original_gender",
+	"original_birthday",
+	"official_name_p",
+	"id_card_type_p",
+	"id_card_no_p",
+	"gender_p",
+	"birthday_p",
+	"policyholder_id",
+	"original_official_name_p",
+	"original_id_card_type_p",
+	"original_id_card_no_p",
+	"original_gender_p",
+	"original_birthday_p",
+	"addi",
+	"create_time",
+	"update_time",
+	"creator",
+	"remark",
+	"status",
+}
+
+// TVMistakeCorrectColumnsDataTypes full column data types for default query
+var TVMistakeCorrectColumnsDataTypes = map[string]string{
+	"id":                       "integer",
+	"order_id":                 "bigint",
+	"org_id":                   "bigint",
+	"commence_date":            "bigint",
+	"expiry_date":              "bigint",
+	"insurance_type":           "character varying",
+	"official_name":            "character varying",
+	"id_card_type":             "character varying",
+	"id_card_no":               "character varying",
+	"gender":                   "character varying",
+	"birthday":                 "bigint",
+	"school":                   "character varying",
+	"school_id":                "bigint",
+	"school_type":              "character varying",
+	"insured_id":               "bigint",
+	"original_official_name":   "character varying",
+	"original_id_card_type":    "character varying",
+	"original_id_card_no":      "character varying",
+	"original_gender":          "character varying",
+	"original_birthday":        "bigint",
+	"official_name_p":          "character varying",
+	"id_card_type_p":           "character varying",
+	"id_card_no_p":             "character varying",
+	"gender_p":                 "character varying",
+	"birthday_p":               "bigint",
+	"policyholder_id":          "bigint",
+	"original_official_name_p": "character varying",
+	"original_id_card_type_p":  "character varying",
+	"original_id_card_no_p":    "character varying",
+	"original_gender_p":        "character varying",
+	"original_birthday_p":      "bigint",
+	"addi":                     "jsonb",
+	"create_time":              "bigint",
+	"update_time":              "bigint",
+	"creator":                  "bigint",
+	"remark":                   "character varying",
+	"status":                   "character varying",
+}
+
+// GetFieldsMap returns a map of field names to their values.
+func (r *TVMistakeCorrect) GetFieldsMap() map[string]any {
+	return map[string]any{
+		"ID":                    r.ID,
+		"OrderID":               r.OrderID,
+		"OrgID":                 r.OrgID,
+		"CommenceDate":          r.CommenceDate,
+		"ExpiryDate":            r.ExpiryDate,
+		"InsuranceType":         r.InsuranceType,
+		"OfficialName":          r.OfficialName,
+		"IDCardType":            r.IDCardType,
+		"IDCardNo":              r.IDCardNo,
+		"Gender":                r.Gender,
+		"Birthday":              r.Birthday,
+		"School":                r.School,
+		"SchoolID":              r.SchoolID,
+		"SchoolType":            r.SchoolType,
+		"InsuredID":             r.InsuredID,
+		"OriginalOfficialName":  r.OriginalOfficialName,
+		"OriginalIDCardType":    r.OriginalIDCardType,
+		"OriginalIDCardNo":      r.OriginalIDCardNo,
+		"OriginalGender":        r.OriginalGender,
+		"OriginalBirthday":      r.OriginalBirthday,
+		"OfficialNameP":         r.OfficialNameP,
+		"IDCardTypeP":           r.IDCardTypeP,
+		"IDCardNoP":             r.IDCardNoP,
+		"GenderP":               r.GenderP,
+		"BirthdayP":             r.BirthdayP,
+		"PolicyholderID":        r.PolicyholderID,
+		"OriginalOfficialNameP": r.OriginalOfficialNameP,
+		"OriginalIDCardTypeP":   r.OriginalIDCardTypeP,
+		"OriginalIDCardNoP":     r.OriginalIDCardNoP,
+		"OriginalGenderP":       r.OriginalGenderP,
+		"OriginalBirthdayP":     r.OriginalBirthdayP,
+		"Addi":                  r.Addi,
+		"CreateTime":            r.CreateTime,
+		"UpdateTime":            r.UpdateTime,
+		"Creator":               r.Creator,
+		"Remark":                r.Remark,
+		"Status":                r.Status,
+	}
+}
+
+// GetColumnsMap returns a map of column names to their values.
+func (r *TVMistakeCorrect) GetColumnsMap() map[string]any {
+	return map[string]any{
+		"id":                       r.ID,
+		"order_id":                 r.OrderID,
+		"org_id":                   r.OrgID,
+		"commence_date":            r.CommenceDate,
+		"expiry_date":              r.ExpiryDate,
+		"insurance_type":           r.InsuranceType,
+		"official_name":            r.OfficialName,
+		"id_card_type":             r.IDCardType,
+		"id_card_no":               r.IDCardNo,
+		"gender":                   r.Gender,
+		"birthday":                 r.Birthday,
+		"school":                   r.School,
+		"school_id":                r.SchoolID,
+		"school_type":              r.SchoolType,
+		"insured_id":               r.InsuredID,
+		"original_official_name":   r.OriginalOfficialName,
+		"original_id_card_type":    r.OriginalIDCardType,
+		"original_id_card_no":      r.OriginalIDCardNo,
+		"original_gender":          r.OriginalGender,
+		"original_birthday":        r.OriginalBirthday,
+		"official_name_p":          r.OfficialNameP,
+		"id_card_type_p":           r.IDCardTypeP,
+		"id_card_no_p":             r.IDCardNoP,
+		"gender_p":                 r.GenderP,
+		"birthday_p":               r.BirthdayP,
+		"policyholder_id":          r.PolicyholderID,
+		"original_official_name_p": r.OriginalOfficialNameP,
+		"original_id_card_type_p":  r.OriginalIDCardTypeP,
+		"original_id_card_no_p":    r.OriginalIDCardNoP,
+		"original_gender_p":        r.OriginalGenderP,
+		"original_birthday_p":      r.OriginalBirthdayP,
+		"addi":                     r.Addi,
+		"create_time":              r.CreateTime,
+		"update_time":              r.UpdateTime,
+		"creator":                  r.Creator,
+		"remark":                   r.Remark,
+		"status":                   r.Status,
+	}
+}
+
 // Fields return all fields of struct.
 func (r *TVMistakeCorrect) Fields() []string {
 	return TVMistakeCorrectFields
@@ -8972,6 +23545,42 @@ func GetTVMistakeCorrectByPk(db Queryer) (*TVMistakeCorrect, error) {
 		return nil, errors.Wrap(err, "failed to select t_v_mistake_correct")
 	}
 	return &r, nil
+}
+
+// GetTVMistakeCorrectReflectValuesMap returns a map of field names to their values.
+//
+// key is the tag name, value is the field value.
+// This is useful for reflection and dynamic queries.
+func (r *TVMistakeCorrect) GetTVMistakeCorrectReflectValuesMap() (map[string]any, error) {
+
+	values := make(map[string]any)
+	v := reflect.ValueOf(r).Elem()
+	t := v.Type()
+	for i := range v.NumField() {
+		field := t.Field(i)
+		tag := field.Tag.Get("db")
+		if tag == "" {
+			return nil, errors.Errorf("missing db tag for field %s in table t_v_mistake_correct", field.Name)
+		}
+
+		columnName := strings.Split(tag, ",")[0]
+		if columnName == "" {
+			return nil, errors.Errorf("missing column name for field %s in table t_v_mistake_correct", field.Name)
+		}
+
+		fieldValue := reflect.ValueOf(r).Elem().Field(i)
+		if !fieldValue.IsValid() {
+			return nil, errors.Errorf("invalid field value for field %s in table t_v_mistake_correct", field.Name)
+		}
+
+		if !fieldValue.CanAddr() {
+			return nil, errors.Errorf("cannot read field value for field %s in table t_v_mistake_correct", field.Name)
+		}
+
+		values[columnName] = fieldValue.Addr().Interface()
+	}
+
+	return values, nil
 }
 
 /*TVMistakeCorrect2 t_v_mistake_correct2 represents assessuser.t_v_mistake_correct2 */
@@ -9141,7 +23750,7 @@ type TVMistakeCorrect2 struct {
 	Creator                         null.Int       `json:"Creator,omitempty" db:"creator,false,bigint"`                                                     /* creator creator */
 	Remark                          null.String    `json:"Remark,omitempty" db:"remark,false,character varying"`                                            /* remark remark */
 	Status                          null.String    `json:"Status,omitempty" db:"status,false,character varying"`                                            /* status status */
-	Filter                                         // build DML where clause
+	Filter                                                                                                                                                  // build DML where clause
 }
 
 // TVMistakeCorrect2Fields full field list for default query
@@ -9313,6 +23922,686 @@ var TVMistakeCorrect2Fields = []string{
 	"Status",
 }
 
+// TVMistakeCorrect2Columns full column list for default query
+var TVMistakeCorrect2Columns = []string{
+	"id",
+	"order_id",
+	"insurance_type_id",
+	"insurance_type_parent_id",
+	"org_id",
+	"have_dinner_num",
+	"commence_date",
+	"new_commence_date",
+	"expiry_date",
+	"new_expiry_date",
+	"have_insured_list",
+	"modify_type",
+	"insurance_type",
+	"activity_category",
+	"plan_id",
+	"original_plan_id",
+	"plan_name",
+	"org_name",
+	"org_addr",
+	"org_credit_code",
+	"org_contact",
+	"org_phone",
+	"org_contact_role",
+	"org_credit_code_pic",
+	"org_school_category",
+	"org_province",
+	"org_city",
+	"org_district",
+	"insured_name",
+	"insured_province",
+	"insured_city",
+	"insured_district",
+	"insured_is_compulsory",
+	"insured_category",
+	"insured_school_category",
+	"official_name",
+	"id_card_type",
+	"id_card_no",
+	"gender",
+	"birthday",
+	"school",
+	"school_id",
+	"school_type",
+	"original_official_name",
+	"original_id_card_type",
+	"original_id_card_no",
+	"original_gender",
+	"original_birthday",
+	"official_name_p",
+	"id_card_type_p",
+	"id_card_no_p",
+	"gender_p",
+	"birthday_p",
+	"original_official_name_p",
+	"original_id_card_type_p",
+	"original_id_card_no_p",
+	"original_gender_p",
+	"original_birthday_p",
+	"insurer",
+	"original_activity_name",
+	"activity_name",
+	"original_desc",
+	"activity_desc",
+	"original_activity_location",
+	"activity_location",
+	"original_activity_date_set",
+	"activity_date_set",
+	"original_indate",
+	"indate",
+	"original_policyholder",
+	"policyholder",
+	"policyholder_id",
+	"original_insured",
+	"insured",
+	"insured_id",
+	"original_insured_group_by_day",
+	"insured_group_by_day",
+	"original_charge_mode",
+	"charge_mode",
+	"original_amount",
+	"amount",
+	"original_insured_count",
+	"insured_count",
+	"original_insured_type",
+	"insured_type",
+	"original_insured_list",
+	"insured_list",
+	"insert_insured_list",
+	"delete_insured_list",
+	"update_insured_list",
+	"require_update_insured_list",
+	"original_non_compulsory_student_num",
+	"non_compulsory_student_num",
+	"original_compulsory_student_num",
+	"compulsory_student_num",
+	"original_canteen_num",
+	"canteen_num",
+	"original_shop_num",
+	"shop_num",
+	"original_dinner_num",
+	"dinner_num",
+	"original_pay_type",
+	"pay_type",
+	"original_fee_scheme",
+	"fee_scheme",
+	"need_balance",
+	"order_status",
+	"original_dispute_handling",
+	"dispute_handling",
+	"original_have_sudden_death",
+	"have_sudden_death",
+	"original_prev_policy_no",
+	"revoked_policy_no",
+	"prev_policy_no",
+	"original_pool_name",
+	"pool_name",
+	"original_have_explosive",
+	"have_explosive",
+	"original_have_rides",
+	"have_rides",
+	"original_inner_area",
+	"inner_area",
+	"original_outer_area",
+	"outer_area",
+	"original_traffic_num",
+	"traffic_num",
+	"original_temperature_type",
+	"temperature_type",
+	"original_open_pool_num",
+	"open_pool_num",
+	"original_heated_pool_num",
+	"heated_pool_num",
+	"original_training_pool_num",
+	"training_pool_num",
+	"original_pool_num",
+	"pool_num",
+	"original_custom_type",
+	"custom_type",
+	"original_same",
+	"same",
+	"original_arbitral_agency",
+	"arbitral_agency",
+	"endorsement_status",
+	"application_files",
+	"balance",
+	"balance_list",
+	"have_negotiated_price",
+	"sn",
+	"policy_regen",
+	"clear_list",
+	"files_to_remove",
+	"original_policy_scheme",
+	"policy_scheme",
+	"invoice_header",
+	"correct_level",
+	"correct_log",
+	"original_files",
+	"files",
+	"refused_reason",
+	"addi",
+	"create_time",
+	"update_time",
+	"creator",
+	"remark",
+	"status",
+}
+
+// TVMistakeCorrect2ColumnsDataTypes full column data types for default query
+var TVMistakeCorrect2ColumnsDataTypes = map[string]string{
+	"id":                                  "integer",
+	"order_id":                            "bigint",
+	"insurance_type_id":                   "bigint",
+	"insurance_type_parent_id":            "bigint",
+	"org_id":                              "bigint",
+	"have_dinner_num":                     "boolean",
+	"commence_date":                       "bigint",
+	"new_commence_date":                   "bigint",
+	"expiry_date":                         "bigint",
+	"new_expiry_date":                     "bigint",
+	"have_insured_list":                   "boolean",
+	"modify_type":                         "character varying",
+	"insurance_type":                      "character varying",
+	"activity_category":                   "character varying",
+	"plan_id":                             "bigint",
+	"original_plan_id":                    "bigint",
+	"plan_name":                           "character varying",
+	"org_name":                            "text",
+	"org_addr":                            "text",
+	"org_credit_code":                     "text",
+	"org_contact":                         "text",
+	"org_phone":                           "text",
+	"org_contact_role":                    "text",
+	"org_credit_code_pic":                 "text",
+	"org_school_category":                 "text",
+	"org_province":                        "text",
+	"org_city":                            "text",
+	"org_district":                        "text",
+	"insured_name":                        "text",
+	"insured_province":                    "text",
+	"insured_city":                        "text",
+	"insured_district":                    "text",
+	"insured_is_compulsory":               "boolean",
+	"insured_category":                    "text",
+	"insured_school_category":             "text",
+	"official_name":                       "character varying",
+	"id_card_type":                        "character varying",
+	"id_card_no":                          "character varying",
+	"gender":                              "character varying",
+	"birthday":                            "bigint",
+	"school":                              "character varying",
+	"school_id":                           "bigint",
+	"school_type":                         "character varying",
+	"original_official_name":              "character varying",
+	"original_id_card_type":               "character varying",
+	"original_id_card_no":                 "character varying",
+	"original_gender":                     "character varying",
+	"original_birthday":                   "bigint",
+	"official_name_p":                     "character varying",
+	"id_card_type_p":                      "character varying",
+	"id_card_no_p":                        "character varying",
+	"gender_p":                            "character varying",
+	"birthday_p":                          "bigint",
+	"original_official_name_p":            "character varying",
+	"original_id_card_type_p":             "character varying",
+	"original_id_card_no_p":               "character varying",
+	"original_gender_p":                   "character varying",
+	"original_birthday_p":                 "bigint",
+	"insurer":                             "character varying",
+	"original_activity_name":              "character varying",
+	"activity_name":                       "character varying",
+	"original_desc":                       "character varying",
+	"activity_desc":                       "character varying",
+	"original_activity_location":          "character varying",
+	"activity_location":                   "character varying",
+	"original_activity_date_set":          "character varying",
+	"activity_date_set":                   "character varying",
+	"original_indate":                     "bigint",
+	"indate":                              "bigint",
+	"original_policyholder":               "jsonb",
+	"policyholder":                        "jsonb",
+	"policyholder_id":                     "bigint",
+	"original_insured":                    "jsonb",
+	"insured":                             "jsonb",
+	"insured_id":                          "bigint",
+	"original_insured_group_by_day":       "boolean",
+	"insured_group_by_day":                "boolean",
+	"original_charge_mode":                "character varying",
+	"charge_mode":                         "character varying",
+	"original_amount":                     "double precision",
+	"amount":                              "double precision",
+	"original_insured_count":              "smallint",
+	"insured_count":                       "smallint",
+	"original_insured_type":               "character varying",
+	"insured_type":                        "character varying",
+	"original_insured_list":               "jsonb",
+	"insured_list":                        "jsonb",
+	"insert_insured_list":                 "jsonb",
+	"delete_insured_list":                 "jsonb",
+	"update_insured_list":                 "jsonb",
+	"require_update_insured_list":         "jsonb",
+	"original_non_compulsory_student_num": "bigint",
+	"non_compulsory_student_num":          "bigint",
+	"original_compulsory_student_num":     "bigint",
+	"compulsory_student_num":              "bigint",
+	"original_canteen_num":                "integer",
+	"canteen_num":                         "bigint",
+	"original_shop_num":                   "integer",
+	"shop_num":                            "bigint",
+	"original_dinner_num":                 "integer",
+	"dinner_num":                          "bigint",
+	"original_pay_type":                   "character varying",
+	"pay_type":                            "character varying",
+	"original_fee_scheme":                 "jsonb",
+	"fee_scheme":                          "jsonb",
+	"need_balance":                        "boolean",
+	"order_status":                        "character varying",
+	"original_dispute_handling":           "character varying",
+	"dispute_handling":                    "character varying",
+	"original_have_sudden_death":          "boolean",
+	"have_sudden_death":                   "boolean",
+	"original_prev_policy_no":             "character varying",
+	"revoked_policy_no":                   "character varying",
+	"prev_policy_no":                      "character varying",
+	"original_pool_name":                  "character varying",
+	"pool_name":                           "character varying",
+	"original_have_explosive":             "boolean",
+	"have_explosive":                      "boolean",
+	"original_have_rides":                 "boolean",
+	"have_rides":                          "boolean",
+	"original_inner_area":                 "double precision",
+	"inner_area":                          "double precision",
+	"original_outer_area":                 "double precision",
+	"outer_area":                          "double precision",
+	"original_traffic_num":                "integer",
+	"traffic_num":                         "integer",
+	"original_temperature_type":           "character varying",
+	"temperature_type":                    "character varying",
+	"original_open_pool_num":              "smallint",
+	"open_pool_num":                       "smallint",
+	"original_heated_pool_num":            "smallint",
+	"heated_pool_num":                     "smallint",
+	"original_training_pool_num":          "smallint",
+	"training_pool_num":                   "smallint",
+	"original_pool_num":                   "smallint",
+	"pool_num":                            "smallint",
+	"original_custom_type":                "character varying",
+	"custom_type":                         "character varying",
+	"original_same":                       "boolean",
+	"same":                                "boolean",
+	"original_arbitral_agency":            "character varying",
+	"arbitral_agency":                     "character varying",
+	"endorsement_status":                  "character varying",
+	"application_files":                   "jsonb",
+	"balance":                             "double precision",
+	"balance_list":                        "jsonb",
+	"have_negotiated_price":               "boolean",
+	"sn":                                  "text",
+	"policy_regen":                        "boolean",
+	"clear_list":                          "boolean",
+	"files_to_remove":                     "character varying",
+	"original_policy_scheme":              "jsonb",
+	"policy_scheme":                       "jsonb",
+	"invoice_header":                      "character varying",
+	"correct_level":                       "character varying",
+	"correct_log":                         "jsonb",
+	"original_files":                      "jsonb",
+	"files":                               "jsonb",
+	"refused_reason":                      "character varying",
+	"addi":                                "jsonb",
+	"create_time":                         "bigint",
+	"update_time":                         "bigint",
+	"creator":                             "bigint",
+	"remark":                              "character varying",
+	"status":                              "character varying",
+}
+
+// GetFieldsMap returns a map of field names to their values.
+func (r *TVMistakeCorrect2) GetFieldsMap() map[string]any {
+	return map[string]any{
+		"ID":                              r.ID,
+		"OrderID":                         r.OrderID,
+		"InsuranceTypeID":                 r.InsuranceTypeID,
+		"InsuranceTypeParentID":           r.InsuranceTypeParentID,
+		"OrgID":                           r.OrgID,
+		"HaveDinnerNum":                   r.HaveDinnerNum,
+		"CommenceDate":                    r.CommenceDate,
+		"NewCommenceDate":                 r.NewCommenceDate,
+		"ExpiryDate":                      r.ExpiryDate,
+		"NewExpiryDate":                   r.NewExpiryDate,
+		"HaveInsuredList":                 r.HaveInsuredList,
+		"ModifyType":                      r.ModifyType,
+		"InsuranceType":                   r.InsuranceType,
+		"ActivityCategory":                r.ActivityCategory,
+		"PlanID":                          r.PlanID,
+		"OriginalPlanID":                  r.OriginalPlanID,
+		"PlanName":                        r.PlanName,
+		"OrgName":                         r.OrgName,
+		"OrgAddr":                         r.OrgAddr,
+		"OrgCreditCode":                   r.OrgCreditCode,
+		"OrgContact":                      r.OrgContact,
+		"OrgPhone":                        r.OrgPhone,
+		"OrgContactRole":                  r.OrgContactRole,
+		"OrgCreditCodePic":                r.OrgCreditCodePic,
+		"OrgSchoolCategory":               r.OrgSchoolCategory,
+		"OrgProvince":                     r.OrgProvince,
+		"OrgCity":                         r.OrgCity,
+		"OrgDistrict":                     r.OrgDistrict,
+		"InsuredName":                     r.InsuredName,
+		"InsuredProvince":                 r.InsuredProvince,
+		"InsuredCity":                     r.InsuredCity,
+		"InsuredDistrict":                 r.InsuredDistrict,
+		"InsuredIsCompulsory":             r.InsuredIsCompulsory,
+		"InsuredCategory":                 r.InsuredCategory,
+		"InsuredSchoolCategory":           r.InsuredSchoolCategory,
+		"OfficialName":                    r.OfficialName,
+		"IDCardType":                      r.IDCardType,
+		"IDCardNo":                        r.IDCardNo,
+		"Gender":                          r.Gender,
+		"Birthday":                        r.Birthday,
+		"School":                          r.School,
+		"SchoolID":                        r.SchoolID,
+		"SchoolType":                      r.SchoolType,
+		"OriginalOfficialName":            r.OriginalOfficialName,
+		"OriginalIDCardType":              r.OriginalIDCardType,
+		"OriginalIDCardNo":                r.OriginalIDCardNo,
+		"OriginalGender":                  r.OriginalGender,
+		"OriginalBirthday":                r.OriginalBirthday,
+		"OfficialNameP":                   r.OfficialNameP,
+		"IDCardTypeP":                     r.IDCardTypeP,
+		"IDCardNoP":                       r.IDCardNoP,
+		"GenderP":                         r.GenderP,
+		"BirthdayP":                       r.BirthdayP,
+		"OriginalOfficialNameP":           r.OriginalOfficialNameP,
+		"OriginalIDCardTypeP":             r.OriginalIDCardTypeP,
+		"OriginalIDCardNoP":               r.OriginalIDCardNoP,
+		"OriginalGenderP":                 r.OriginalGenderP,
+		"OriginalBirthdayP":               r.OriginalBirthdayP,
+		"Insurer":                         r.Insurer,
+		"OriginalActivityName":            r.OriginalActivityName,
+		"ActivityName":                    r.ActivityName,
+		"OriginalDesc":                    r.OriginalDesc,
+		"ActivityDesc":                    r.ActivityDesc,
+		"OriginalActivityLocation":        r.OriginalActivityLocation,
+		"ActivityLocation":                r.ActivityLocation,
+		"OriginalActivityDateSet":         r.OriginalActivityDateSet,
+		"ActivityDateSet":                 r.ActivityDateSet,
+		"OriginalIndate":                  r.OriginalIndate,
+		"Indate":                          r.Indate,
+		"OriginalPolicyholder":            r.OriginalPolicyholder,
+		"Policyholder":                    r.Policyholder,
+		"PolicyholderID":                  r.PolicyholderID,
+		"OriginalInsured":                 r.OriginalInsured,
+		"Insured":                         r.Insured,
+		"InsuredID":                       r.InsuredID,
+		"OriginalInsuredGroupByDay":       r.OriginalInsuredGroupByDay,
+		"InsuredGroupByDay":               r.InsuredGroupByDay,
+		"OriginalChargeMode":              r.OriginalChargeMode,
+		"ChargeMode":                      r.ChargeMode,
+		"OriginalAmount":                  r.OriginalAmount,
+		"Amount":                          r.Amount,
+		"OriginalInsuredCount":            r.OriginalInsuredCount,
+		"InsuredCount":                    r.InsuredCount,
+		"OriginalInsuredType":             r.OriginalInsuredType,
+		"InsuredType":                     r.InsuredType,
+		"OriginalInsuredList":             r.OriginalInsuredList,
+		"InsuredList":                     r.InsuredList,
+		"InsertInsuredList":               r.InsertInsuredList,
+		"DeleteInsuredList":               r.DeleteInsuredList,
+		"UpdateInsuredList":               r.UpdateInsuredList,
+		"RequireUpdateInsuredList":        r.RequireUpdateInsuredList,
+		"OriginalNonCompulsoryStudentNum": r.OriginalNonCompulsoryStudentNum,
+		"NonCompulsoryStudentNum":         r.NonCompulsoryStudentNum,
+		"OriginalCompulsoryStudentNum":    r.OriginalCompulsoryStudentNum,
+		"CompulsoryStudentNum":            r.CompulsoryStudentNum,
+		"OriginalCanteenNum":              r.OriginalCanteenNum,
+		"CanteenNum":                      r.CanteenNum,
+		"OriginalShopNum":                 r.OriginalShopNum,
+		"ShopNum":                         r.ShopNum,
+		"OriginalDinnerNum":               r.OriginalDinnerNum,
+		"DinnerNum":                       r.DinnerNum,
+		"OriginalPayType":                 r.OriginalPayType,
+		"PayType":                         r.PayType,
+		"OriginalFeeScheme":               r.OriginalFeeScheme,
+		"FeeScheme":                       r.FeeScheme,
+		"NeedBalance":                     r.NeedBalance,
+		"OrderStatus":                     r.OrderStatus,
+		"OriginalDisputeHandling":         r.OriginalDisputeHandling,
+		"DisputeHandling":                 r.DisputeHandling,
+		"OriginalHaveSuddenDeath":         r.OriginalHaveSuddenDeath,
+		"HaveSuddenDeath":                 r.HaveSuddenDeath,
+		"OriginalPrevPolicyNo":            r.OriginalPrevPolicyNo,
+		"RevokedPolicyNo":                 r.RevokedPolicyNo,
+		"PrevPolicyNo":                    r.PrevPolicyNo,
+		"OriginalPoolName":                r.OriginalPoolName,
+		"PoolName":                        r.PoolName,
+		"OriginalHaveExplosive":           r.OriginalHaveExplosive,
+		"HaveExplosive":                   r.HaveExplosive,
+		"OriginalHaveRides":               r.OriginalHaveRides,
+		"HaveRides":                       r.HaveRides,
+		"OriginalInnerArea":               r.OriginalInnerArea,
+		"InnerArea":                       r.InnerArea,
+		"OriginalOuterArea":               r.OriginalOuterArea,
+		"OuterArea":                       r.OuterArea,
+		"OriginalTrafficNum":              r.OriginalTrafficNum,
+		"TrafficNum":                      r.TrafficNum,
+		"OriginalTemperatureType":         r.OriginalTemperatureType,
+		"TemperatureType":                 r.TemperatureType,
+		"OriginalOpenPoolNum":             r.OriginalOpenPoolNum,
+		"OpenPoolNum":                     r.OpenPoolNum,
+		"OriginalHeatedPoolNum":           r.OriginalHeatedPoolNum,
+		"HeatedPoolNum":                   r.HeatedPoolNum,
+		"OriginalTrainingPoolNum":         r.OriginalTrainingPoolNum,
+		"TrainingPoolNum":                 r.TrainingPoolNum,
+		"OriginalPoolNum":                 r.OriginalPoolNum,
+		"PoolNum":                         r.PoolNum,
+		"OriginalCustomType":              r.OriginalCustomType,
+		"CustomType":                      r.CustomType,
+		"OriginalSame":                    r.OriginalSame,
+		"Same":                            r.Same,
+		"OriginalArbitralAgency":          r.OriginalArbitralAgency,
+		"ArbitralAgency":                  r.ArbitralAgency,
+		"EndorsementStatus":               r.EndorsementStatus,
+		"ApplicationFiles":                r.ApplicationFiles,
+		"Balance":                         r.Balance,
+		"BalanceList":                     r.BalanceList,
+		"HaveNegotiatedPrice":             r.HaveNegotiatedPrice,
+		"Sn":                              r.Sn,
+		"PolicyRegen":                     r.PolicyRegen,
+		"ClearList":                       r.ClearList,
+		"FilesToRemove":                   r.FilesToRemove,
+		"OriginalPolicyScheme":            r.OriginalPolicyScheme,
+		"PolicyScheme":                    r.PolicyScheme,
+		"InvoiceHeader":                   r.InvoiceHeader,
+		"CorrectLevel":                    r.CorrectLevel,
+		"CorrectLog":                      r.CorrectLog,
+		"OriginalFiles":                   r.OriginalFiles,
+		"Files":                           r.Files,
+		"RefusedReason":                   r.RefusedReason,
+		"Addi":                            r.Addi,
+		"CreateTime":                      r.CreateTime,
+		"UpdateTime":                      r.UpdateTime,
+		"Creator":                         r.Creator,
+		"Remark":                          r.Remark,
+		"Status":                          r.Status,
+	}
+}
+
+// GetColumnsMap returns a map of column names to their values.
+func (r *TVMistakeCorrect2) GetColumnsMap() map[string]any {
+	return map[string]any{
+		"id":                                  r.ID,
+		"order_id":                            r.OrderID,
+		"insurance_type_id":                   r.InsuranceTypeID,
+		"insurance_type_parent_id":            r.InsuranceTypeParentID,
+		"org_id":                              r.OrgID,
+		"have_dinner_num":                     r.HaveDinnerNum,
+		"commence_date":                       r.CommenceDate,
+		"new_commence_date":                   r.NewCommenceDate,
+		"expiry_date":                         r.ExpiryDate,
+		"new_expiry_date":                     r.NewExpiryDate,
+		"have_insured_list":                   r.HaveInsuredList,
+		"modify_type":                         r.ModifyType,
+		"insurance_type":                      r.InsuranceType,
+		"activity_category":                   r.ActivityCategory,
+		"plan_id":                             r.PlanID,
+		"original_plan_id":                    r.OriginalPlanID,
+		"plan_name":                           r.PlanName,
+		"org_name":                            r.OrgName,
+		"org_addr":                            r.OrgAddr,
+		"org_credit_code":                     r.OrgCreditCode,
+		"org_contact":                         r.OrgContact,
+		"org_phone":                           r.OrgPhone,
+		"org_contact_role":                    r.OrgContactRole,
+		"org_credit_code_pic":                 r.OrgCreditCodePic,
+		"org_school_category":                 r.OrgSchoolCategory,
+		"org_province":                        r.OrgProvince,
+		"org_city":                            r.OrgCity,
+		"org_district":                        r.OrgDistrict,
+		"insured_name":                        r.InsuredName,
+		"insured_province":                    r.InsuredProvince,
+		"insured_city":                        r.InsuredCity,
+		"insured_district":                    r.InsuredDistrict,
+		"insured_is_compulsory":               r.InsuredIsCompulsory,
+		"insured_category":                    r.InsuredCategory,
+		"insured_school_category":             r.InsuredSchoolCategory,
+		"official_name":                       r.OfficialName,
+		"id_card_type":                        r.IDCardType,
+		"id_card_no":                          r.IDCardNo,
+		"gender":                              r.Gender,
+		"birthday":                            r.Birthday,
+		"school":                              r.School,
+		"school_id":                           r.SchoolID,
+		"school_type":                         r.SchoolType,
+		"original_official_name":              r.OriginalOfficialName,
+		"original_id_card_type":               r.OriginalIDCardType,
+		"original_id_card_no":                 r.OriginalIDCardNo,
+		"original_gender":                     r.OriginalGender,
+		"original_birthday":                   r.OriginalBirthday,
+		"official_name_p":                     r.OfficialNameP,
+		"id_card_type_p":                      r.IDCardTypeP,
+		"id_card_no_p":                        r.IDCardNoP,
+		"gender_p":                            r.GenderP,
+		"birthday_p":                          r.BirthdayP,
+		"original_official_name_p":            r.OriginalOfficialNameP,
+		"original_id_card_type_p":             r.OriginalIDCardTypeP,
+		"original_id_card_no_p":               r.OriginalIDCardNoP,
+		"original_gender_p":                   r.OriginalGenderP,
+		"original_birthday_p":                 r.OriginalBirthdayP,
+		"insurer":                             r.Insurer,
+		"original_activity_name":              r.OriginalActivityName,
+		"activity_name":                       r.ActivityName,
+		"original_desc":                       r.OriginalDesc,
+		"activity_desc":                       r.ActivityDesc,
+		"original_activity_location":          r.OriginalActivityLocation,
+		"activity_location":                   r.ActivityLocation,
+		"original_activity_date_set":          r.OriginalActivityDateSet,
+		"activity_date_set":                   r.ActivityDateSet,
+		"original_indate":                     r.OriginalIndate,
+		"indate":                              r.Indate,
+		"original_policyholder":               r.OriginalPolicyholder,
+		"policyholder":                        r.Policyholder,
+		"policyholder_id":                     r.PolicyholderID,
+		"original_insured":                    r.OriginalInsured,
+		"insured":                             r.Insured,
+		"insured_id":                          r.InsuredID,
+		"original_insured_group_by_day":       r.OriginalInsuredGroupByDay,
+		"insured_group_by_day":                r.InsuredGroupByDay,
+		"original_charge_mode":                r.OriginalChargeMode,
+		"charge_mode":                         r.ChargeMode,
+		"original_amount":                     r.OriginalAmount,
+		"amount":                              r.Amount,
+		"original_insured_count":              r.OriginalInsuredCount,
+		"insured_count":                       r.InsuredCount,
+		"original_insured_type":               r.OriginalInsuredType,
+		"insured_type":                        r.InsuredType,
+		"original_insured_list":               r.OriginalInsuredList,
+		"insured_list":                        r.InsuredList,
+		"insert_insured_list":                 r.InsertInsuredList,
+		"delete_insured_list":                 r.DeleteInsuredList,
+		"update_insured_list":                 r.UpdateInsuredList,
+		"require_update_insured_list":         r.RequireUpdateInsuredList,
+		"original_non_compulsory_student_num": r.OriginalNonCompulsoryStudentNum,
+		"non_compulsory_student_num":          r.NonCompulsoryStudentNum,
+		"original_compulsory_student_num":     r.OriginalCompulsoryStudentNum,
+		"compulsory_student_num":              r.CompulsoryStudentNum,
+		"original_canteen_num":                r.OriginalCanteenNum,
+		"canteen_num":                         r.CanteenNum,
+		"original_shop_num":                   r.OriginalShopNum,
+		"shop_num":                            r.ShopNum,
+		"original_dinner_num":                 r.OriginalDinnerNum,
+		"dinner_num":                          r.DinnerNum,
+		"original_pay_type":                   r.OriginalPayType,
+		"pay_type":                            r.PayType,
+		"original_fee_scheme":                 r.OriginalFeeScheme,
+		"fee_scheme":                          r.FeeScheme,
+		"need_balance":                        r.NeedBalance,
+		"order_status":                        r.OrderStatus,
+		"original_dispute_handling":           r.OriginalDisputeHandling,
+		"dispute_handling":                    r.DisputeHandling,
+		"original_have_sudden_death":          r.OriginalHaveSuddenDeath,
+		"have_sudden_death":                   r.HaveSuddenDeath,
+		"original_prev_policy_no":             r.OriginalPrevPolicyNo,
+		"revoked_policy_no":                   r.RevokedPolicyNo,
+		"prev_policy_no":                      r.PrevPolicyNo,
+		"original_pool_name":                  r.OriginalPoolName,
+		"pool_name":                           r.PoolName,
+		"original_have_explosive":             r.OriginalHaveExplosive,
+		"have_explosive":                      r.HaveExplosive,
+		"original_have_rides":                 r.OriginalHaveRides,
+		"have_rides":                          r.HaveRides,
+		"original_inner_area":                 r.OriginalInnerArea,
+		"inner_area":                          r.InnerArea,
+		"original_outer_area":                 r.OriginalOuterArea,
+		"outer_area":                          r.OuterArea,
+		"original_traffic_num":                r.OriginalTrafficNum,
+		"traffic_num":                         r.TrafficNum,
+		"original_temperature_type":           r.OriginalTemperatureType,
+		"temperature_type":                    r.TemperatureType,
+		"original_open_pool_num":              r.OriginalOpenPoolNum,
+		"open_pool_num":                       r.OpenPoolNum,
+		"original_heated_pool_num":            r.OriginalHeatedPoolNum,
+		"heated_pool_num":                     r.HeatedPoolNum,
+		"original_training_pool_num":          r.OriginalTrainingPoolNum,
+		"training_pool_num":                   r.TrainingPoolNum,
+		"original_pool_num":                   r.OriginalPoolNum,
+		"pool_num":                            r.PoolNum,
+		"original_custom_type":                r.OriginalCustomType,
+		"custom_type":                         r.CustomType,
+		"original_same":                       r.OriginalSame,
+		"same":                                r.Same,
+		"original_arbitral_agency":            r.OriginalArbitralAgency,
+		"arbitral_agency":                     r.ArbitralAgency,
+		"endorsement_status":                  r.EndorsementStatus,
+		"application_files":                   r.ApplicationFiles,
+		"balance":                             r.Balance,
+		"balance_list":                        r.BalanceList,
+		"have_negotiated_price":               r.HaveNegotiatedPrice,
+		"sn":                                  r.Sn,
+		"policy_regen":                        r.PolicyRegen,
+		"clear_list":                          r.ClearList,
+		"files_to_remove":                     r.FilesToRemove,
+		"original_policy_scheme":              r.OriginalPolicyScheme,
+		"policy_scheme":                       r.PolicyScheme,
+		"invoice_header":                      r.InvoiceHeader,
+		"correct_level":                       r.CorrectLevel,
+		"correct_log":                         r.CorrectLog,
+		"original_files":                      r.OriginalFiles,
+		"files":                               r.Files,
+		"refused_reason":                      r.RefusedReason,
+		"addi":                                r.Addi,
+		"create_time":                         r.CreateTime,
+		"update_time":                         r.UpdateTime,
+		"creator":                             r.Creator,
+		"remark":                              r.Remark,
+		"status":                              r.Status,
+	}
+}
+
 // Fields return all fields of struct.
 func (r *TVMistakeCorrect2) Fields() []string {
 	return TVMistakeCorrect2Fields
@@ -9351,6 +24640,42 @@ func GetTVMistakeCorrect2ByPk(db Queryer) (*TVMistakeCorrect2, error) {
 		return nil, errors.Wrap(err, "failed to select t_v_mistake_correct2")
 	}
 	return &r, nil
+}
+
+// GetTVMistakeCorrect2ReflectValuesMap returns a map of field names to their values.
+//
+// key is the tag name, value is the field value.
+// This is useful for reflection and dynamic queries.
+func (r *TVMistakeCorrect2) GetTVMistakeCorrect2ReflectValuesMap() (map[string]any, error) {
+
+	values := make(map[string]any)
+	v := reflect.ValueOf(r).Elem()
+	t := v.Type()
+	for i := range v.NumField() {
+		field := t.Field(i)
+		tag := field.Tag.Get("db")
+		if tag == "" {
+			return nil, errors.Errorf("missing db tag for field %s in table t_v_mistake_correct2", field.Name)
+		}
+
+		columnName := strings.Split(tag, ",")[0]
+		if columnName == "" {
+			return nil, errors.Errorf("missing column name for field %s in table t_v_mistake_correct2", field.Name)
+		}
+
+		fieldValue := reflect.ValueOf(r).Elem().Field(i)
+		if !fieldValue.IsValid() {
+			return nil, errors.Errorf("invalid field value for field %s in table t_v_mistake_correct2", field.Name)
+		}
+
+		if !fieldValue.CanAddr() {
+			return nil, errors.Errorf("cannot read field value for field %s in table t_v_mistake_correct2", field.Name)
+		}
+
+		values[columnName] = fieldValue.Addr().Interface()
+	}
+
+	return values, nil
 }
 
 /*TVMistakeCorrectShow t_v_mistake_correct_show represents assessuser.t_v_mistake_correct_show */
@@ -9455,7 +24780,7 @@ type TVMistakeCorrectShow struct {
 	Creator                  null.Int       `json:"Creator,omitempty" db:"creator,false,bigint"`                                     /* creator creator */
 	Remark                   null.String    `json:"Remark,omitempty" db:"remark,false,character varying"`                            /* remark remark */
 	Status                   null.String    `json:"Status,omitempty" db:"status,false,character varying"`                            /* status status */
-	Filter                                  // build DML where clause
+	Filter                                                                                                                           // build DML where clause
 }
 
 // TVMistakeCorrectShowFields full field list for default query
@@ -9562,6 +24887,426 @@ var TVMistakeCorrectShowFields = []string{
 	"Status",
 }
 
+// TVMistakeCorrectShowColumns full column list for default query
+var TVMistakeCorrectShowColumns = []string{
+	"id",
+	"order_id",
+	"insurance_type_id",
+	"insurance_type_parent_id",
+	"org_id",
+	"commence_date",
+	"expiry_date",
+	"modify_type",
+	"have_insured_list",
+	"insurance_type",
+	"activity_category",
+	"plan_id",
+	"insurer",
+	"plan_name",
+	"org_name",
+	"org_addr",
+	"org_credit_code",
+	"org_contact",
+	"org_phone",
+	"org_contact_role",
+	"org_credit_code_pic",
+	"org_school_category",
+	"org_province",
+	"org_city",
+	"org_district",
+	"insured_name",
+	"insured_province",
+	"insured_city",
+	"insured_district",
+	"insured_is_compulsory",
+	"insured_category",
+	"insured_school_category",
+	"original_insured_list",
+	"insured_list",
+	"insert_insured_list",
+	"delete_insured_list",
+	"update_insured_list",
+	"require_update_insured_list",
+	"policy_scheme",
+	"activity_name",
+	"activity_desc",
+	"activity_location",
+	"activity_date_set",
+	"indate",
+	"policyholder",
+	"policyholder_id",
+	"insured",
+	"insured_id",
+	"insured_group_by_day",
+	"charge_mode",
+	"amount",
+	"insured_count",
+	"insured_type",
+	"non_compulsory_student_num",
+	"compulsory_student_num",
+	"canteen_num",
+	"shop_num",
+	"dinner_num",
+	"pay_type",
+	"fee_scheme",
+	"dispute_handling",
+	"have_sudden_death",
+	"prev_policy_no",
+	"pool_name",
+	"have_explosive",
+	"have_rides",
+	"inner_area",
+	"outer_area",
+	"traffic_num",
+	"temperature_type",
+	"open_pool_num",
+	"heated_pool_num",
+	"training_pool_num",
+	"pool_num",
+	"custom_type",
+	"same",
+	"arbitral_agency",
+	"files",
+	"have_negotiated_price",
+	"endorsement_status",
+	"application_files",
+	"need_balance",
+	"balance",
+	"balance_list",
+	"order_status",
+	"sn",
+	"revoked_policy_no",
+	"policy_regen",
+	"clear_list",
+	"files_to_remove",
+	"invoice_header",
+	"correct_level",
+	"correct_log",
+	"refused_reason",
+	"addi",
+	"create_time",
+	"update_time",
+	"creator",
+	"remark",
+	"status",
+}
+
+// TVMistakeCorrectShowColumnsDataTypes full column data types for default query
+var TVMistakeCorrectShowColumnsDataTypes = map[string]string{
+	"id":                          "integer",
+	"order_id":                    "bigint",
+	"insurance_type_id":           "bigint",
+	"insurance_type_parent_id":    "bigint",
+	"org_id":                      "bigint",
+	"commence_date":               "bigint",
+	"expiry_date":                 "bigint",
+	"modify_type":                 "character varying",
+	"have_insured_list":           "boolean",
+	"insurance_type":              "character varying",
+	"activity_category":           "character varying",
+	"plan_id":                     "bigint",
+	"insurer":                     "text",
+	"plan_name":                   "text",
+	"org_name":                    "text",
+	"org_addr":                    "text",
+	"org_credit_code":             "text",
+	"org_contact":                 "text",
+	"org_phone":                   "text",
+	"org_contact_role":            "text",
+	"org_credit_code_pic":         "text",
+	"org_school_category":         "text",
+	"org_province":                "text",
+	"org_city":                    "text",
+	"org_district":                "text",
+	"insured_name":                "text",
+	"insured_province":            "text",
+	"insured_city":                "text",
+	"insured_district":            "text",
+	"insured_is_compulsory":       "boolean",
+	"insured_category":            "text",
+	"insured_school_category":     "text",
+	"original_insured_list":       "jsonb",
+	"insured_list":                "jsonb",
+	"insert_insured_list":         "jsonb",
+	"delete_insured_list":         "jsonb",
+	"update_insured_list":         "jsonb",
+	"require_update_insured_list": "jsonb",
+	"policy_scheme":               "jsonb",
+	"activity_name":               "character varying",
+	"activity_desc":               "character varying",
+	"activity_location":           "character varying",
+	"activity_date_set":           "character varying",
+	"indate":                      "bigint",
+	"policyholder":                "jsonb",
+	"policyholder_id":             "bigint",
+	"insured":                     "jsonb",
+	"insured_id":                  "bigint",
+	"insured_group_by_day":        "boolean",
+	"charge_mode":                 "character varying",
+	"amount":                      "double precision",
+	"insured_count":               "smallint",
+	"insured_type":                "character varying",
+	"non_compulsory_student_num":  "bigint",
+	"compulsory_student_num":      "bigint",
+	"canteen_num":                 "bigint",
+	"shop_num":                    "bigint",
+	"dinner_num":                  "bigint",
+	"pay_type":                    "character varying",
+	"fee_scheme":                  "jsonb",
+	"dispute_handling":            "character varying",
+	"have_sudden_death":           "boolean",
+	"prev_policy_no":              "character varying",
+	"pool_name":                   "character varying",
+	"have_explosive":              "boolean",
+	"have_rides":                  "boolean",
+	"inner_area":                  "double precision",
+	"outer_area":                  "double precision",
+	"traffic_num":                 "integer",
+	"temperature_type":            "character varying",
+	"open_pool_num":               "smallint",
+	"heated_pool_num":             "smallint",
+	"training_pool_num":           "smallint",
+	"pool_num":                    "smallint",
+	"custom_type":                 "character varying",
+	"same":                        "boolean",
+	"arbitral_agency":             "character varying",
+	"files":                       "jsonb",
+	"have_negotiated_price":       "boolean",
+	"endorsement_status":          "character varying",
+	"application_files":           "jsonb",
+	"need_balance":                "boolean",
+	"balance":                     "double precision",
+	"balance_list":                "jsonb",
+	"order_status":                "character varying",
+	"sn":                          "text",
+	"revoked_policy_no":           "character varying",
+	"policy_regen":                "boolean",
+	"clear_list":                  "boolean",
+	"files_to_remove":             "character varying",
+	"invoice_header":              "character varying",
+	"correct_level":               "character varying",
+	"correct_log":                 "jsonb",
+	"refused_reason":              "character varying",
+	"addi":                        "jsonb",
+	"create_time":                 "bigint",
+	"update_time":                 "bigint",
+	"creator":                     "bigint",
+	"remark":                      "character varying",
+	"status":                      "character varying",
+}
+
+// GetFieldsMap returns a map of field names to their values.
+func (r *TVMistakeCorrectShow) GetFieldsMap() map[string]any {
+	return map[string]any{
+		"ID":                       r.ID,
+		"OrderID":                  r.OrderID,
+		"InsuranceTypeID":          r.InsuranceTypeID,
+		"InsuranceTypeParentID":    r.InsuranceTypeParentID,
+		"OrgID":                    r.OrgID,
+		"CommenceDate":             r.CommenceDate,
+		"ExpiryDate":               r.ExpiryDate,
+		"ModifyType":               r.ModifyType,
+		"HaveInsuredList":          r.HaveInsuredList,
+		"InsuranceType":            r.InsuranceType,
+		"ActivityCategory":         r.ActivityCategory,
+		"PlanID":                   r.PlanID,
+		"Insurer":                  r.Insurer,
+		"PlanName":                 r.PlanName,
+		"OrgName":                  r.OrgName,
+		"OrgAddr":                  r.OrgAddr,
+		"OrgCreditCode":            r.OrgCreditCode,
+		"OrgContact":               r.OrgContact,
+		"OrgPhone":                 r.OrgPhone,
+		"OrgContactRole":           r.OrgContactRole,
+		"OrgCreditCodePic":         r.OrgCreditCodePic,
+		"OrgSchoolCategory":        r.OrgSchoolCategory,
+		"OrgProvince":              r.OrgProvince,
+		"OrgCity":                  r.OrgCity,
+		"OrgDistrict":              r.OrgDistrict,
+		"InsuredName":              r.InsuredName,
+		"InsuredProvince":          r.InsuredProvince,
+		"InsuredCity":              r.InsuredCity,
+		"InsuredDistrict":          r.InsuredDistrict,
+		"InsuredIsCompulsory":      r.InsuredIsCompulsory,
+		"InsuredCategory":          r.InsuredCategory,
+		"InsuredSchoolCategory":    r.InsuredSchoolCategory,
+		"OriginalInsuredList":      r.OriginalInsuredList,
+		"InsuredList":              r.InsuredList,
+		"InsertInsuredList":        r.InsertInsuredList,
+		"DeleteInsuredList":        r.DeleteInsuredList,
+		"UpdateInsuredList":        r.UpdateInsuredList,
+		"RequireUpdateInsuredList": r.RequireUpdateInsuredList,
+		"PolicyScheme":             r.PolicyScheme,
+		"ActivityName":             r.ActivityName,
+		"ActivityDesc":             r.ActivityDesc,
+		"ActivityLocation":         r.ActivityLocation,
+		"ActivityDateSet":          r.ActivityDateSet,
+		"Indate":                   r.Indate,
+		"Policyholder":             r.Policyholder,
+		"PolicyholderID":           r.PolicyholderID,
+		"Insured":                  r.Insured,
+		"InsuredID":                r.InsuredID,
+		"InsuredGroupByDay":        r.InsuredGroupByDay,
+		"ChargeMode":               r.ChargeMode,
+		"Amount":                   r.Amount,
+		"InsuredCount":             r.InsuredCount,
+		"InsuredType":              r.InsuredType,
+		"NonCompulsoryStudentNum":  r.NonCompulsoryStudentNum,
+		"CompulsoryStudentNum":     r.CompulsoryStudentNum,
+		"CanteenNum":               r.CanteenNum,
+		"ShopNum":                  r.ShopNum,
+		"DinnerNum":                r.DinnerNum,
+		"PayType":                  r.PayType,
+		"FeeScheme":                r.FeeScheme,
+		"DisputeHandling":          r.DisputeHandling,
+		"HaveSuddenDeath":          r.HaveSuddenDeath,
+		"PrevPolicyNo":             r.PrevPolicyNo,
+		"PoolName":                 r.PoolName,
+		"HaveExplosive":            r.HaveExplosive,
+		"HaveRides":                r.HaveRides,
+		"InnerArea":                r.InnerArea,
+		"OuterArea":                r.OuterArea,
+		"TrafficNum":               r.TrafficNum,
+		"TemperatureType":          r.TemperatureType,
+		"OpenPoolNum":              r.OpenPoolNum,
+		"HeatedPoolNum":            r.HeatedPoolNum,
+		"TrainingPoolNum":          r.TrainingPoolNum,
+		"PoolNum":                  r.PoolNum,
+		"CustomType":               r.CustomType,
+		"Same":                     r.Same,
+		"ArbitralAgency":           r.ArbitralAgency,
+		"Files":                    r.Files,
+		"HaveNegotiatedPrice":      r.HaveNegotiatedPrice,
+		"EndorsementStatus":        r.EndorsementStatus,
+		"ApplicationFiles":         r.ApplicationFiles,
+		"NeedBalance":              r.NeedBalance,
+		"Balance":                  r.Balance,
+		"BalanceList":              r.BalanceList,
+		"OrderStatus":              r.OrderStatus,
+		"Sn":                       r.Sn,
+		"RevokedPolicyNo":          r.RevokedPolicyNo,
+		"PolicyRegen":              r.PolicyRegen,
+		"ClearList":                r.ClearList,
+		"FilesToRemove":            r.FilesToRemove,
+		"InvoiceHeader":            r.InvoiceHeader,
+		"CorrectLevel":             r.CorrectLevel,
+		"CorrectLog":               r.CorrectLog,
+		"RefusedReason":            r.RefusedReason,
+		"Addi":                     r.Addi,
+		"CreateTime":               r.CreateTime,
+		"UpdateTime":               r.UpdateTime,
+		"Creator":                  r.Creator,
+		"Remark":                   r.Remark,
+		"Status":                   r.Status,
+	}
+}
+
+// GetColumnsMap returns a map of column names to their values.
+func (r *TVMistakeCorrectShow) GetColumnsMap() map[string]any {
+	return map[string]any{
+		"id":                          r.ID,
+		"order_id":                    r.OrderID,
+		"insurance_type_id":           r.InsuranceTypeID,
+		"insurance_type_parent_id":    r.InsuranceTypeParentID,
+		"org_id":                      r.OrgID,
+		"commence_date":               r.CommenceDate,
+		"expiry_date":                 r.ExpiryDate,
+		"modify_type":                 r.ModifyType,
+		"have_insured_list":           r.HaveInsuredList,
+		"insurance_type":              r.InsuranceType,
+		"activity_category":           r.ActivityCategory,
+		"plan_id":                     r.PlanID,
+		"insurer":                     r.Insurer,
+		"plan_name":                   r.PlanName,
+		"org_name":                    r.OrgName,
+		"org_addr":                    r.OrgAddr,
+		"org_credit_code":             r.OrgCreditCode,
+		"org_contact":                 r.OrgContact,
+		"org_phone":                   r.OrgPhone,
+		"org_contact_role":            r.OrgContactRole,
+		"org_credit_code_pic":         r.OrgCreditCodePic,
+		"org_school_category":         r.OrgSchoolCategory,
+		"org_province":                r.OrgProvince,
+		"org_city":                    r.OrgCity,
+		"org_district":                r.OrgDistrict,
+		"insured_name":                r.InsuredName,
+		"insured_province":            r.InsuredProvince,
+		"insured_city":                r.InsuredCity,
+		"insured_district":            r.InsuredDistrict,
+		"insured_is_compulsory":       r.InsuredIsCompulsory,
+		"insured_category":            r.InsuredCategory,
+		"insured_school_category":     r.InsuredSchoolCategory,
+		"original_insured_list":       r.OriginalInsuredList,
+		"insured_list":                r.InsuredList,
+		"insert_insured_list":         r.InsertInsuredList,
+		"delete_insured_list":         r.DeleteInsuredList,
+		"update_insured_list":         r.UpdateInsuredList,
+		"require_update_insured_list": r.RequireUpdateInsuredList,
+		"policy_scheme":               r.PolicyScheme,
+		"activity_name":               r.ActivityName,
+		"activity_desc":               r.ActivityDesc,
+		"activity_location":           r.ActivityLocation,
+		"activity_date_set":           r.ActivityDateSet,
+		"indate":                      r.Indate,
+		"policyholder":                r.Policyholder,
+		"policyholder_id":             r.PolicyholderID,
+		"insured":                     r.Insured,
+		"insured_id":                  r.InsuredID,
+		"insured_group_by_day":        r.InsuredGroupByDay,
+		"charge_mode":                 r.ChargeMode,
+		"amount":                      r.Amount,
+		"insured_count":               r.InsuredCount,
+		"insured_type":                r.InsuredType,
+		"non_compulsory_student_num":  r.NonCompulsoryStudentNum,
+		"compulsory_student_num":      r.CompulsoryStudentNum,
+		"canteen_num":                 r.CanteenNum,
+		"shop_num":                    r.ShopNum,
+		"dinner_num":                  r.DinnerNum,
+		"pay_type":                    r.PayType,
+		"fee_scheme":                  r.FeeScheme,
+		"dispute_handling":            r.DisputeHandling,
+		"have_sudden_death":           r.HaveSuddenDeath,
+		"prev_policy_no":              r.PrevPolicyNo,
+		"pool_name":                   r.PoolName,
+		"have_explosive":              r.HaveExplosive,
+		"have_rides":                  r.HaveRides,
+		"inner_area":                  r.InnerArea,
+		"outer_area":                  r.OuterArea,
+		"traffic_num":                 r.TrafficNum,
+		"temperature_type":            r.TemperatureType,
+		"open_pool_num":               r.OpenPoolNum,
+		"heated_pool_num":             r.HeatedPoolNum,
+		"training_pool_num":           r.TrainingPoolNum,
+		"pool_num":                    r.PoolNum,
+		"custom_type":                 r.CustomType,
+		"same":                        r.Same,
+		"arbitral_agency":             r.ArbitralAgency,
+		"files":                       r.Files,
+		"have_negotiated_price":       r.HaveNegotiatedPrice,
+		"endorsement_status":          r.EndorsementStatus,
+		"application_files":           r.ApplicationFiles,
+		"need_balance":                r.NeedBalance,
+		"balance":                     r.Balance,
+		"balance_list":                r.BalanceList,
+		"order_status":                r.OrderStatus,
+		"sn":                          r.Sn,
+		"revoked_policy_no":           r.RevokedPolicyNo,
+		"policy_regen":                r.PolicyRegen,
+		"clear_list":                  r.ClearList,
+		"files_to_remove":             r.FilesToRemove,
+		"invoice_header":              r.InvoiceHeader,
+		"correct_level":               r.CorrectLevel,
+		"correct_log":                 r.CorrectLog,
+		"refused_reason":              r.RefusedReason,
+		"addi":                        r.Addi,
+		"create_time":                 r.CreateTime,
+		"update_time":                 r.UpdateTime,
+		"creator":                     r.Creator,
+		"remark":                      r.Remark,
+		"status":                      r.Status,
+	}
+}
+
 // Fields return all fields of struct.
 func (r *TVMistakeCorrectShow) Fields() []string {
 	return TVMistakeCorrectShowFields
@@ -9600,6 +25345,42 @@ func GetTVMistakeCorrectShowByPk(db Queryer) (*TVMistakeCorrectShow, error) {
 		return nil, errors.Wrap(err, "failed to select t_v_mistake_correct_show")
 	}
 	return &r, nil
+}
+
+// GetTVMistakeCorrectShowReflectValuesMap returns a map of field names to their values.
+//
+// key is the tag name, value is the field value.
+// This is useful for reflection and dynamic queries.
+func (r *TVMistakeCorrectShow) GetTVMistakeCorrectShowReflectValuesMap() (map[string]any, error) {
+
+	values := make(map[string]any)
+	v := reflect.ValueOf(r).Elem()
+	t := v.Type()
+	for i := range v.NumField() {
+		field := t.Field(i)
+		tag := field.Tag.Get("db")
+		if tag == "" {
+			return nil, errors.Errorf("missing db tag for field %s in table t_v_mistake_correct_show", field.Name)
+		}
+
+		columnName := strings.Split(tag, ",")[0]
+		if columnName == "" {
+			return nil, errors.Errorf("missing column name for field %s in table t_v_mistake_correct_show", field.Name)
+		}
+
+		fieldValue := reflect.ValueOf(r).Elem().Field(i)
+		if !fieldValue.IsValid() {
+			return nil, errors.Errorf("invalid field value for field %s in table t_v_mistake_correct_show", field.Name)
+		}
+
+		if !fieldValue.CanAddr() {
+			return nil, errors.Errorf("cannot read field value for field %s in table t_v_mistake_correct_show", field.Name)
+		}
+
+		values[columnName] = fieldValue.Addr().Interface()
+	}
+
+	return values, nil
 }
 
 /*TVOrder t_v_order represents assessuser.t_v_order */
@@ -9663,7 +25444,7 @@ type TVOrder struct {
 	SchoolManagers types.JSONText `json:"SchoolManagers,omitempty" db:"school_managers,false,jsonb"`              /* school_managers school_managers */
 	PurchaseRule   types.JSONText `json:"PurchaseRule,omitempty" db:"purchase_rule,false,jsonb"`                  /* purchase_rule purchase_rule */
 	SCreateTime    null.Int       `json:"SCreateTime,omitempty" db:"s_create_time,false,bigint"`                  /* s_create_time s_create_time */
-	Filter                        // build DML where clause
+	Filter                                                                                                        // build DML where clause
 }
 
 // TVOrderFields full field list for default query
@@ -9729,6 +25510,262 @@ var TVOrderFields = []string{
 	"SCreateTime",
 }
 
+// TVOrderColumns full column list for default query
+var TVOrderColumns = []string{
+	"id",
+	"trade_no",
+	"org_id",
+	"insured_id",
+	"policyholder_id",
+	"sign",
+	"insure_order_no",
+	"pay_order_no",
+	"batch",
+	"create_time",
+	"pay_time",
+	"pay_type",
+	"amount",
+	"unit_price",
+	"commence_date",
+	"expiry_date",
+	"indate",
+	"confirm_refund",
+	"relation",
+	"insurance_type",
+	"plan_id",
+	"plan_name",
+	"insurer",
+	"policy_doc",
+	"health_survey",
+	"same",
+	"order_files",
+	"addi",
+	"status",
+	"creator",
+	"i_official_name",
+	"i_id_card_type",
+	"i_id_card_no",
+	"i_mobile_phone",
+	"i_gender",
+	"i_birthday",
+	"i_addi",
+	"h_official_name",
+	"h_id_card_type",
+	"h_id_card_no",
+	"h_mobile_phone",
+	"h_addi",
+	"subdistrict",
+	"faculty",
+	"grade",
+	"class",
+	"x_create_time",
+	"school",
+	"s_faculty",
+	"s_branches",
+	"s_category",
+	"province",
+	"city",
+	"district",
+	"data_sync_target",
+	"sale_managers",
+	"school_managers",
+	"purchase_rule",
+	"s_create_time",
+}
+
+// TVOrderColumnsDataTypes full column data types for default query
+var TVOrderColumnsDataTypes = map[string]string{
+	"id":               "integer",
+	"trade_no":         "character varying",
+	"org_id":           "bigint",
+	"insured_id":       "bigint",
+	"policyholder_id":  "bigint",
+	"sign":             "character varying",
+	"insure_order_no":  "character varying",
+	"pay_order_no":     "character varying",
+	"batch":            "character varying",
+	"create_time":      "bigint",
+	"pay_time":         "bigint",
+	"pay_type":         "character varying",
+	"amount":           "double precision",
+	"unit_price":       "double precision",
+	"commence_date":    "bigint",
+	"expiry_date":      "bigint",
+	"indate":           "bigint",
+	"confirm_refund":   "boolean",
+	"relation":         "character varying",
+	"insurance_type":   "character varying",
+	"plan_id":          "bigint",
+	"plan_name":        "character varying",
+	"insurer":          "character varying",
+	"policy_doc":       "character varying",
+	"health_survey":    "jsonb",
+	"same":             "boolean",
+	"order_files":      "jsonb",
+	"addi":             "jsonb",
+	"status":           "character varying",
+	"creator":          "bigint",
+	"i_official_name":  "character varying",
+	"i_id_card_type":   "character varying",
+	"i_id_card_no":     "character varying",
+	"i_mobile_phone":   "character varying",
+	"i_gender":         "character varying",
+	"i_birthday":       "bigint",
+	"i_addi":           "jsonb",
+	"h_official_name":  "character varying",
+	"h_id_card_type":   "character varying",
+	"h_id_card_no":     "character varying",
+	"h_mobile_phone":   "character varying",
+	"h_addi":           "jsonb",
+	"subdistrict":      "character varying",
+	"faculty":          "character varying",
+	"grade":            "character varying",
+	"class":            "character varying",
+	"x_create_time":    "bigint",
+	"school":           "character varying",
+	"s_faculty":        "jsonb",
+	"s_branches":       "jsonb",
+	"s_category":       "character varying",
+	"province":         "character varying",
+	"city":             "character varying",
+	"district":         "character varying",
+	"data_sync_target": "character varying",
+	"sale_managers":    "jsonb",
+	"school_managers":  "jsonb",
+	"purchase_rule":    "jsonb",
+	"s_create_time":    "bigint",
+}
+
+// GetFieldsMap returns a map of field names to their values.
+func (r *TVOrder) GetFieldsMap() map[string]any {
+	return map[string]any{
+		"ID":             r.ID,
+		"TradeNo":        r.TradeNo,
+		"OrgID":          r.OrgID,
+		"InsuredID":      r.InsuredID,
+		"PolicyholderID": r.PolicyholderID,
+		"Sign":           r.Sign,
+		"InsureOrderNo":  r.InsureOrderNo,
+		"PayOrderNo":     r.PayOrderNo,
+		"Batch":          r.Batch,
+		"CreateTime":     r.CreateTime,
+		"PayTime":        r.PayTime,
+		"PayType":        r.PayType,
+		"Amount":         r.Amount,
+		"UnitPrice":      r.UnitPrice,
+		"CommenceDate":   r.CommenceDate,
+		"ExpiryDate":     r.ExpiryDate,
+		"Indate":         r.Indate,
+		"ConfirmRefund":  r.ConfirmRefund,
+		"Relation":       r.Relation,
+		"InsuranceType":  r.InsuranceType,
+		"PlanID":         r.PlanID,
+		"PlanName":       r.PlanName,
+		"Insurer":        r.Insurer,
+		"PolicyDoc":      r.PolicyDoc,
+		"HealthSurvey":   r.HealthSurvey,
+		"Same":           r.Same,
+		"OrderFiles":     r.OrderFiles,
+		"Addi":           r.Addi,
+		"Status":         r.Status,
+		"Creator":        r.Creator,
+		"IOfficialName":  r.IOfficialName,
+		"IIDCardType":    r.IIDCardType,
+		"IIDCardNo":      r.IIDCardNo,
+		"IMobilePhone":   r.IMobilePhone,
+		"IGender":        r.IGender,
+		"IBirthday":      r.IBirthday,
+		"IAddi":          r.IAddi,
+		"HOfficialName":  r.HOfficialName,
+		"HIDCardType":    r.HIDCardType,
+		"HIDCardNo":      r.HIDCardNo,
+		"HMobilePhone":   r.HMobilePhone,
+		"HAddi":          r.HAddi,
+		"Subdistrict":    r.Subdistrict,
+		"Faculty":        r.Faculty,
+		"Grade":          r.Grade,
+		"Class":          r.Class,
+		"XCreateTime":    r.XCreateTime,
+		"School":         r.School,
+		"SFaculty":       r.SFaculty,
+		"SBranches":      r.SBranches,
+		"SCategory":      r.SCategory,
+		"Province":       r.Province,
+		"City":           r.City,
+		"District":       r.District,
+		"DataSyncTarget": r.DataSyncTarget,
+		"SaleManagers":   r.SaleManagers,
+		"SchoolManagers": r.SchoolManagers,
+		"PurchaseRule":   r.PurchaseRule,
+		"SCreateTime":    r.SCreateTime,
+	}
+}
+
+// GetColumnsMap returns a map of column names to their values.
+func (r *TVOrder) GetColumnsMap() map[string]any {
+	return map[string]any{
+		"id":               r.ID,
+		"trade_no":         r.TradeNo,
+		"org_id":           r.OrgID,
+		"insured_id":       r.InsuredID,
+		"policyholder_id":  r.PolicyholderID,
+		"sign":             r.Sign,
+		"insure_order_no":  r.InsureOrderNo,
+		"pay_order_no":     r.PayOrderNo,
+		"batch":            r.Batch,
+		"create_time":      r.CreateTime,
+		"pay_time":         r.PayTime,
+		"pay_type":         r.PayType,
+		"amount":           r.Amount,
+		"unit_price":       r.UnitPrice,
+		"commence_date":    r.CommenceDate,
+		"expiry_date":      r.ExpiryDate,
+		"indate":           r.Indate,
+		"confirm_refund":   r.ConfirmRefund,
+		"relation":         r.Relation,
+		"insurance_type":   r.InsuranceType,
+		"plan_id":          r.PlanID,
+		"plan_name":        r.PlanName,
+		"insurer":          r.Insurer,
+		"policy_doc":       r.PolicyDoc,
+		"health_survey":    r.HealthSurvey,
+		"same":             r.Same,
+		"order_files":      r.OrderFiles,
+		"addi":             r.Addi,
+		"status":           r.Status,
+		"creator":          r.Creator,
+		"i_official_name":  r.IOfficialName,
+		"i_id_card_type":   r.IIDCardType,
+		"i_id_card_no":     r.IIDCardNo,
+		"i_mobile_phone":   r.IMobilePhone,
+		"i_gender":         r.IGender,
+		"i_birthday":       r.IBirthday,
+		"i_addi":           r.IAddi,
+		"h_official_name":  r.HOfficialName,
+		"h_id_card_type":   r.HIDCardType,
+		"h_id_card_no":     r.HIDCardNo,
+		"h_mobile_phone":   r.HMobilePhone,
+		"h_addi":           r.HAddi,
+		"subdistrict":      r.Subdistrict,
+		"faculty":          r.Faculty,
+		"grade":            r.Grade,
+		"class":            r.Class,
+		"x_create_time":    r.XCreateTime,
+		"school":           r.School,
+		"s_faculty":        r.SFaculty,
+		"s_branches":       r.SBranches,
+		"s_category":       r.SCategory,
+		"province":         r.Province,
+		"city":             r.City,
+		"district":         r.District,
+		"data_sync_target": r.DataSyncTarget,
+		"sale_managers":    r.SaleManagers,
+		"school_managers":  r.SchoolManagers,
+		"purchase_rule":    r.PurchaseRule,
+		"s_create_time":    r.SCreateTime,
+	}
+}
+
 // Fields return all fields of struct.
 func (r *TVOrder) Fields() []string {
 	return TVOrderFields
@@ -9767,6 +25804,42 @@ func GetTVOrderByPk(db Queryer) (*TVOrder, error) {
 		return nil, errors.Wrap(err, "failed to select t_v_order")
 	}
 	return &r, nil
+}
+
+// GetTVOrderReflectValuesMap returns a map of field names to their values.
+//
+// key is the tag name, value is the field value.
+// This is useful for reflection and dynamic queries.
+func (r *TVOrder) GetTVOrderReflectValuesMap() (map[string]any, error) {
+
+	values := make(map[string]any)
+	v := reflect.ValueOf(r).Elem()
+	t := v.Type()
+	for i := range v.NumField() {
+		field := t.Field(i)
+		tag := field.Tag.Get("db")
+		if tag == "" {
+			return nil, errors.Errorf("missing db tag for field %s in table t_v_order", field.Name)
+		}
+
+		columnName := strings.Split(tag, ",")[0]
+		if columnName == "" {
+			return nil, errors.Errorf("missing column name for field %s in table t_v_order", field.Name)
+		}
+
+		fieldValue := reflect.ValueOf(r).Elem().Field(i)
+		if !fieldValue.IsValid() {
+			return nil, errors.Errorf("invalid field value for field %s in table t_v_order", field.Name)
+		}
+
+		if !fieldValue.CanAddr() {
+			return nil, errors.Errorf("cannot read field value for field %s in table t_v_order", field.Name)
+		}
+
+		values[columnName] = fieldValue.Addr().Interface()
+	}
+
+	return values, nil
 }
 
 /*TVOrder2 t_v_order2 represents assessuser.t_v_order2 */
@@ -9961,7 +26034,7 @@ type TVOrder2 struct {
 	Difference                 null.Float     `json:"Difference,omitempty" db:"difference,false,double precision"`                              /* difference difference */
 	PolicyNo                   null.String    `json:"PolicyNo,omitempty" db:"policy_no,false,text"`                                             /* policy_no policy_no */
 	FeeStatus                  null.String    `json:"FeeStatus,omitempty" db:"fee_status,false,text"`                                           /* fee_status fee_status */
-	Filter                                    // build DML where clause
+	Filter                                                                                                                                      // build DML where clause
 }
 
 // TVOrder2Fields full field list for default query
@@ -10158,6 +26231,786 @@ var TVOrder2Fields = []string{
 	"FeeStatus",
 }
 
+// TVOrder2Columns full column list for default query
+var TVOrder2Columns = []string{
+	"id",
+	"trade_no",
+	"pay_order_no",
+	"insure_order_no",
+	"batch",
+	"create_time",
+	"pay_time",
+	"pay_channel",
+	"pay_type",
+	"pay_name",
+	"unit_price",
+	"amount",
+	"balance",
+	"balance_list",
+	"org_id",
+	"have_sudden_death",
+	"ground_num",
+	"plan_type",
+	"reminders_num",
+	"org_manager_id",
+	"insurance_type",
+	"have_dinner_num",
+	"have_confirm_date",
+	"insurance_type_id",
+	"health_survey",
+	"plan_id",
+	"plan_name",
+	"insurer",
+	"policy_scheme",
+	"policy_doc",
+	"activity_name",
+	"activity_category",
+	"activity_desc",
+	"activity_location",
+	"activity_date_set",
+	"copies_num",
+	"insured_count",
+	"compulsory_student_num",
+	"non_compulsory_student_num",
+	"contact",
+	"fee_scheme",
+	"car_service_target",
+	"policyholder",
+	"first_insured_id_card_no",
+	"org_addr",
+	"org_credit_code",
+	"org_contact",
+	"org_phone",
+	"org_contact_role",
+	"org_credit_code_pic",
+	"org_school_category",
+	"org_compulsory_student_num",
+	"org_non_compulsory_student_num",
+	"policyholder_type",
+	"policyholder_id",
+	"same",
+	"relation",
+	"insured",
+	"insured_name",
+	"insured_province",
+	"insured_city",
+	"insured_district",
+	"insured_is_compulsory",
+	"insured_category",
+	"insured_school_category",
+	"insured_post_code",
+	"insured_phone",
+	"policy_scheme_title",
+	"org_business_domain",
+	"insured_business_domain",
+	"insured_id",
+	"have_insured_list",
+	"insured_group_by_day",
+	"insured_type",
+	"insured_list",
+	"commence_date",
+	"expiry_date",
+	"indate",
+	"sign",
+	"jurisdiction",
+	"dispute_handling",
+	"prev_policy_no",
+	"reminder_times",
+	"insure_base",
+	"blanket_insure_code",
+	"custom_type",
+	"train_projects",
+	"business_locations",
+	"training_pool_num",
+	"heated_pool_num",
+	"open_pool_num",
+	"pool_num",
+	"dinner_num",
+	"canteen_num",
+	"shop_num",
+	"have_rides",
+	"have_explosive",
+	"area",
+	"traffic_num",
+	"temperature_type",
+	"is_indoor",
+	"extra",
+	"bank_account",
+	"pay_contact",
+	"sudden_death_terms",
+	"spec_agreement",
+	"inner_area",
+	"outer_area",
+	"pool_name",
+	"arbitral_agency",
+	"confirm_refund",
+	"insured_credit_code",
+	"insured_addr",
+	"creator",
+	"domain_id",
+	"order_files",
+	"addi",
+	"remark",
+	"status",
+	"order_status",
+	"have_negotiated_price",
+	"lock_status",
+	"insurance_company",
+	"insurance_company_account",
+	"actual_amount",
+	"can_revoke_order",
+	"can_public_transfers",
+	"is_reminder",
+	"traits",
+	"is_invoice",
+	"inv_borrow",
+	"inv_visible",
+	"inv_title",
+	"inv_status",
+	"upd_status",
+	"driver_seat_num",
+	"approved_passengers_num",
+	"refused_reason",
+	"unpaid_reason",
+	"updated_by",
+	"update_time",
+	"have_renewal_reminder",
+	"charge_mode",
+	"admin_received",
+	"user_received",
+	"have_policy",
+	"insurance_type_parent_id",
+	"can_inv_title_modify",
+	"insurance_display",
+	"user_correct_times",
+	"correct_level",
+	"org_name",
+	"org_province",
+	"org_city",
+	"org_district",
+	"org_is_compulsory",
+	"org_is_school",
+	"reminder_times_count",
+	"i_official_name",
+	"i_id_card_type",
+	"i_id_card_no",
+	"i_mobile_phone",
+	"i_gender",
+	"i_birthday",
+	"i_addi",
+	"h_official_name",
+	"h_id_card_type",
+	"h_id_card_no",
+	"h_mobile_phone",
+	"h_addi",
+	"subdistrict",
+	"faculty",
+	"grade",
+	"class",
+	"x_create_time",
+	"school",
+	"s_faculty",
+	"s_branches",
+	"s_category",
+	"province",
+	"city",
+	"district",
+	"data_sync_target",
+	"sale_managers",
+	"school_managers",
+	"purchase_rule",
+	"s_create_time",
+	"difference",
+	"policy_no",
+	"fee_status",
+}
+
+// TVOrder2ColumnsDataTypes full column data types for default query
+var TVOrder2ColumnsDataTypes = map[string]string{
+	"id":                             "integer",
+	"trade_no":                       "character varying",
+	"pay_order_no":                   "character varying",
+	"insure_order_no":                "character varying",
+	"batch":                          "character varying",
+	"create_time":                    "bigint",
+	"pay_time":                       "bigint",
+	"pay_channel":                    "character varying",
+	"pay_type":                       "character varying",
+	"pay_name":                       "character varying",
+	"unit_price":                     "double precision",
+	"amount":                         "double precision",
+	"balance":                        "double precision",
+	"balance_list":                   "jsonb",
+	"org_id":                         "bigint",
+	"have_sudden_death":              "boolean",
+	"ground_num":                     "smallint",
+	"plan_type":                      "text",
+	"reminders_num":                  "smallint",
+	"org_manager_id":                 "bigint",
+	"insurance_type":                 "character varying",
+	"have_dinner_num":                "boolean",
+	"have_confirm_date":              "boolean",
+	"insurance_type_id":              "bigint",
+	"health_survey":                  "jsonb",
+	"plan_id":                        "bigint",
+	"plan_name":                      "character varying",
+	"insurer":                        "character varying",
+	"policy_scheme":                  "jsonb",
+	"policy_doc":                     "character varying",
+	"activity_name":                  "character varying",
+	"activity_category":              "character varying",
+	"activity_desc":                  "character varying",
+	"activity_location":              "character varying",
+	"activity_date_set":              "character varying",
+	"copies_num":                     "smallint",
+	"insured_count":                  "smallint",
+	"compulsory_student_num":         "bigint",
+	"non_compulsory_student_num":     "bigint",
+	"contact":                        "jsonb",
+	"fee_scheme":                     "jsonb",
+	"car_service_target":             "character varying",
+	"policyholder":                   "jsonb",
+	"first_insured_id_card_no":       "text",
+	"org_addr":                       "text",
+	"org_credit_code":                "text",
+	"org_contact":                    "text",
+	"org_phone":                      "text",
+	"org_contact_role":               "text",
+	"org_credit_code_pic":            "text",
+	"org_school_category":            "text",
+	"org_compulsory_student_num":     "text",
+	"org_non_compulsory_student_num": "text",
+	"policyholder_type":              "character varying",
+	"policyholder_id":                "bigint",
+	"same":                           "boolean",
+	"relation":                       "character varying",
+	"insured":                        "jsonb",
+	"insured_name":                   "text",
+	"insured_province":               "text",
+	"insured_city":                   "text",
+	"insured_district":               "text",
+	"insured_is_compulsory":          "boolean",
+	"insured_category":               "text",
+	"insured_school_category":        "text",
+	"insured_post_code":              "text",
+	"insured_phone":                  "text",
+	"policy_scheme_title":            "text",
+	"org_business_domain":            "jsonb",
+	"insured_business_domain":        "jsonb",
+	"insured_id":                     "bigint",
+	"have_insured_list":              "boolean",
+	"insured_group_by_day":           "boolean",
+	"insured_type":                   "character varying",
+	"insured_list":                   "jsonb",
+	"commence_date":                  "bigint",
+	"expiry_date":                    "bigint",
+	"indate":                         "bigint",
+	"sign":                           "character varying",
+	"jurisdiction":                   "character varying",
+	"dispute_handling":               "character varying",
+	"prev_policy_no":                 "character varying",
+	"reminder_times":                 "character varying",
+	"insure_base":                    "character varying",
+	"blanket_insure_code":            "character varying",
+	"custom_type":                    "character varying",
+	"train_projects":                 "character varying",
+	"business_locations":             "jsonb",
+	"training_pool_num":              "smallint",
+	"heated_pool_num":                "smallint",
+	"open_pool_num":                  "smallint",
+	"pool_num":                       "smallint",
+	"dinner_num":                     "integer",
+	"canteen_num":                    "integer",
+	"shop_num":                       "integer",
+	"have_rides":                     "boolean",
+	"have_explosive":                 "boolean",
+	"area":                           "double precision",
+	"traffic_num":                    "integer",
+	"temperature_type":               "character varying",
+	"is_indoor":                      "character varying",
+	"extra":                          "jsonb",
+	"bank_account":                   "jsonb",
+	"pay_contact":                    "character varying",
+	"sudden_death_terms":             "character varying",
+	"spec_agreement":                 "character varying",
+	"inner_area":                     "double precision",
+	"outer_area":                     "double precision",
+	"pool_name":                      "character varying",
+	"arbitral_agency":                "character varying",
+	"confirm_refund":                 "boolean",
+	"insured_credit_code":            "text",
+	"insured_addr":                   "text",
+	"creator":                        "bigint",
+	"domain_id":                      "bigint",
+	"order_files":                    "jsonb",
+	"addi":                           "jsonb",
+	"remark":                         "character varying",
+	"status":                         "character varying",
+	"order_status":                   "character varying",
+	"have_negotiated_price":          "boolean",
+	"lock_status":                    "character varying",
+	"insurance_company":              "character varying",
+	"insurance_company_account":      "character varying",
+	"actual_amount":                  "double precision",
+	"can_revoke_order":               "boolean",
+	"can_public_transfers":           "boolean",
+	"is_reminder":                    "boolean",
+	"traits":                         "character varying",
+	"is_invoice":                     "boolean",
+	"inv_borrow":                     "character varying",
+	"inv_visible":                    "character varying",
+	"inv_title":                      "character varying",
+	"inv_status":                     "character varying",
+	"upd_status":                     "character varying",
+	"driver_seat_num":                "bigint",
+	"approved_passengers_num":        "bigint",
+	"refused_reason":                 "character varying",
+	"unpaid_reason":                  "character varying",
+	"updated_by":                     "bigint",
+	"update_time":                    "bigint",
+	"have_renewal_reminder":          "boolean",
+	"charge_mode":                    "character varying",
+	"admin_received":                 "boolean",
+	"user_received":                  "boolean",
+	"have_policy":                    "boolean",
+	"insurance_type_parent_id":       "bigint",
+	"can_inv_title_modify":           "boolean",
+	"insurance_display":              "character varying",
+	"user_correct_times":             "bigint",
+	"correct_level":                  "character varying",
+	"org_name":                       "text",
+	"org_province":                   "text",
+	"org_city":                       "text",
+	"org_district":                   "text",
+	"org_is_compulsory":              "text",
+	"org_is_school":                  "text",
+	"reminder_times_count":           "integer",
+	"i_official_name":                "character varying",
+	"i_id_card_type":                 "character varying",
+	"i_id_card_no":                   "character varying",
+	"i_mobile_phone":                 "character varying",
+	"i_gender":                       "character varying",
+	"i_birthday":                     "bigint",
+	"i_addi":                         "jsonb",
+	"h_official_name":                "character varying",
+	"h_id_card_type":                 "character varying",
+	"h_id_card_no":                   "character varying",
+	"h_mobile_phone":                 "character varying",
+	"h_addi":                         "jsonb",
+	"subdistrict":                    "character varying",
+	"faculty":                        "character varying",
+	"grade":                          "character varying",
+	"class":                          "character varying",
+	"x_create_time":                  "bigint",
+	"school":                         "character varying",
+	"s_faculty":                      "jsonb",
+	"s_branches":                     "jsonb",
+	"s_category":                     "character varying",
+	"province":                       "character varying",
+	"city":                           "character varying",
+	"district":                       "character varying",
+	"data_sync_target":               "character varying",
+	"sale_managers":                  "jsonb",
+	"school_managers":                "jsonb",
+	"purchase_rule":                  "jsonb",
+	"s_create_time":                  "bigint",
+	"difference":                     "double precision",
+	"policy_no":                      "text",
+	"fee_status":                     "text",
+}
+
+// GetFieldsMap returns a map of field names to their values.
+func (r *TVOrder2) GetFieldsMap() map[string]any {
+	return map[string]any{
+		"ID":                         r.ID,
+		"TradeNo":                    r.TradeNo,
+		"PayOrderNo":                 r.PayOrderNo,
+		"InsureOrderNo":              r.InsureOrderNo,
+		"Batch":                      r.Batch,
+		"CreateTime":                 r.CreateTime,
+		"PayTime":                    r.PayTime,
+		"PayChannel":                 r.PayChannel,
+		"PayType":                    r.PayType,
+		"PayName":                    r.PayName,
+		"UnitPrice":                  r.UnitPrice,
+		"Amount":                     r.Amount,
+		"Balance":                    r.Balance,
+		"BalanceList":                r.BalanceList,
+		"OrgID":                      r.OrgID,
+		"HaveSuddenDeath":            r.HaveSuddenDeath,
+		"GroundNum":                  r.GroundNum,
+		"PlanType":                   r.PlanType,
+		"RemindersNum":               r.RemindersNum,
+		"OrgManagerID":               r.OrgManagerID,
+		"InsuranceType":              r.InsuranceType,
+		"HaveDinnerNum":              r.HaveDinnerNum,
+		"HaveConfirmDate":            r.HaveConfirmDate,
+		"InsuranceTypeID":            r.InsuranceTypeID,
+		"HealthSurvey":               r.HealthSurvey,
+		"PlanID":                     r.PlanID,
+		"PlanName":                   r.PlanName,
+		"Insurer":                    r.Insurer,
+		"PolicyScheme":               r.PolicyScheme,
+		"PolicyDoc":                  r.PolicyDoc,
+		"ActivityName":               r.ActivityName,
+		"ActivityCategory":           r.ActivityCategory,
+		"ActivityDesc":               r.ActivityDesc,
+		"ActivityLocation":           r.ActivityLocation,
+		"ActivityDateSet":            r.ActivityDateSet,
+		"CopiesNum":                  r.CopiesNum,
+		"InsuredCount":               r.InsuredCount,
+		"CompulsoryStudentNum":       r.CompulsoryStudentNum,
+		"NonCompulsoryStudentNum":    r.NonCompulsoryStudentNum,
+		"Contact":                    r.Contact,
+		"FeeScheme":                  r.FeeScheme,
+		"CarServiceTarget":           r.CarServiceTarget,
+		"Policyholder":               r.Policyholder,
+		"FirstInsuredIDCardNo":       r.FirstInsuredIDCardNo,
+		"OrgAddr":                    r.OrgAddr,
+		"OrgCreditCode":              r.OrgCreditCode,
+		"OrgContact":                 r.OrgContact,
+		"OrgPhone":                   r.OrgPhone,
+		"OrgContactRole":             r.OrgContactRole,
+		"OrgCreditCodePic":           r.OrgCreditCodePic,
+		"OrgSchoolCategory":          r.OrgSchoolCategory,
+		"OrgCompulsoryStudentNum":    r.OrgCompulsoryStudentNum,
+		"OrgNonCompulsoryStudentNum": r.OrgNonCompulsoryStudentNum,
+		"PolicyholderType":           r.PolicyholderType,
+		"PolicyholderID":             r.PolicyholderID,
+		"Same":                       r.Same,
+		"Relation":                   r.Relation,
+		"Insured":                    r.Insured,
+		"InsuredName":                r.InsuredName,
+		"InsuredProvince":            r.InsuredProvince,
+		"InsuredCity":                r.InsuredCity,
+		"InsuredDistrict":            r.InsuredDistrict,
+		"InsuredIsCompulsory":        r.InsuredIsCompulsory,
+		"InsuredCategory":            r.InsuredCategory,
+		"InsuredSchoolCategory":      r.InsuredSchoolCategory,
+		"InsuredPostCode":            r.InsuredPostCode,
+		"InsuredPhone":               r.InsuredPhone,
+		"PolicySchemeTitle":          r.PolicySchemeTitle,
+		"OrgBusinessDomain":          r.OrgBusinessDomain,
+		"InsuredBusinessDomain":      r.InsuredBusinessDomain,
+		"InsuredID":                  r.InsuredID,
+		"HaveInsuredList":            r.HaveInsuredList,
+		"InsuredGroupByDay":          r.InsuredGroupByDay,
+		"InsuredType":                r.InsuredType,
+		"InsuredList":                r.InsuredList,
+		"CommenceDate":               r.CommenceDate,
+		"ExpiryDate":                 r.ExpiryDate,
+		"Indate":                     r.Indate,
+		"Sign":                       r.Sign,
+		"Jurisdiction":               r.Jurisdiction,
+		"DisputeHandling":            r.DisputeHandling,
+		"PrevPolicyNo":               r.PrevPolicyNo,
+		"ReminderTimes":              r.ReminderTimes,
+		"InsureBase":                 r.InsureBase,
+		"BlanketInsureCode":          r.BlanketInsureCode,
+		"CustomType":                 r.CustomType,
+		"TrainProjects":              r.TrainProjects,
+		"BusinessLocations":          r.BusinessLocations,
+		"TrainingPoolNum":            r.TrainingPoolNum,
+		"HeatedPoolNum":              r.HeatedPoolNum,
+		"OpenPoolNum":                r.OpenPoolNum,
+		"PoolNum":                    r.PoolNum,
+		"DinnerNum":                  r.DinnerNum,
+		"CanteenNum":                 r.CanteenNum,
+		"ShopNum":                    r.ShopNum,
+		"HaveRides":                  r.HaveRides,
+		"HaveExplosive":              r.HaveExplosive,
+		"Area":                       r.Area,
+		"TrafficNum":                 r.TrafficNum,
+		"TemperatureType":            r.TemperatureType,
+		"IsIndoor":                   r.IsIndoor,
+		"Extra":                      r.Extra,
+		"BankAccount":                r.BankAccount,
+		"PayContact":                 r.PayContact,
+		"SuddenDeathTerms":           r.SuddenDeathTerms,
+		"SpecAgreement":              r.SpecAgreement,
+		"InnerArea":                  r.InnerArea,
+		"OuterArea":                  r.OuterArea,
+		"PoolName":                   r.PoolName,
+		"ArbitralAgency":             r.ArbitralAgency,
+		"ConfirmRefund":              r.ConfirmRefund,
+		"InsuredCreditCode":          r.InsuredCreditCode,
+		"InsuredAddr":                r.InsuredAddr,
+		"Creator":                    r.Creator,
+		"DomainID":                   r.DomainID,
+		"OrderFiles":                 r.OrderFiles,
+		"Addi":                       r.Addi,
+		"Remark":                     r.Remark,
+		"Status":                     r.Status,
+		"OrderStatus":                r.OrderStatus,
+		"HaveNegotiatedPrice":        r.HaveNegotiatedPrice,
+		"LockStatus":                 r.LockStatus,
+		"InsuranceCompany":           r.InsuranceCompany,
+		"InsuranceCompanyAccount":    r.InsuranceCompanyAccount,
+		"ActualAmount":               r.ActualAmount,
+		"CanRevokeOrder":             r.CanRevokeOrder,
+		"CanPublicTransfers":         r.CanPublicTransfers,
+		"IsReminder":                 r.IsReminder,
+		"Traits":                     r.Traits,
+		"IsInvoice":                  r.IsInvoice,
+		"InvBorrow":                  r.InvBorrow,
+		"InvVisible":                 r.InvVisible,
+		"InvTitle":                   r.InvTitle,
+		"InvStatus":                  r.InvStatus,
+		"UpdStatus":                  r.UpdStatus,
+		"DriverSeatNum":              r.DriverSeatNum,
+		"ApprovedPassengersNum":      r.ApprovedPassengersNum,
+		"RefusedReason":              r.RefusedReason,
+		"UnpaidReason":               r.UnpaidReason,
+		"UpdatedBy":                  r.UpdatedBy,
+		"UpdateTime":                 r.UpdateTime,
+		"HaveRenewalReminder":        r.HaveRenewalReminder,
+		"ChargeMode":                 r.ChargeMode,
+		"AdminReceived":              r.AdminReceived,
+		"UserReceived":               r.UserReceived,
+		"HavePolicy":                 r.HavePolicy,
+		"InsuranceTypeParentID":      r.InsuranceTypeParentID,
+		"CanInvTitleModify":          r.CanInvTitleModify,
+		"InsuranceDisplay":           r.InsuranceDisplay,
+		"UserCorrectTimes":           r.UserCorrectTimes,
+		"CorrectLevel":               r.CorrectLevel,
+		"OrgName":                    r.OrgName,
+		"OrgProvince":                r.OrgProvince,
+		"OrgCity":                    r.OrgCity,
+		"OrgDistrict":                r.OrgDistrict,
+		"OrgIsCompulsory":            r.OrgIsCompulsory,
+		"OrgIsSchool":                r.OrgIsSchool,
+		"ReminderTimesCount":         r.ReminderTimesCount,
+		"IOfficialName":              r.IOfficialName,
+		"IIDCardType":                r.IIDCardType,
+		"IIDCardNo":                  r.IIDCardNo,
+		"IMobilePhone":               r.IMobilePhone,
+		"IGender":                    r.IGender,
+		"IBirthday":                  r.IBirthday,
+		"IAddi":                      r.IAddi,
+		"HOfficialName":              r.HOfficialName,
+		"HIDCardType":                r.HIDCardType,
+		"HIDCardNo":                  r.HIDCardNo,
+		"HMobilePhone":               r.HMobilePhone,
+		"HAddi":                      r.HAddi,
+		"Subdistrict":                r.Subdistrict,
+		"Faculty":                    r.Faculty,
+		"Grade":                      r.Grade,
+		"Class":                      r.Class,
+		"XCreateTime":                r.XCreateTime,
+		"School":                     r.School,
+		"SFaculty":                   r.SFaculty,
+		"SBranches":                  r.SBranches,
+		"SCategory":                  r.SCategory,
+		"Province":                   r.Province,
+		"City":                       r.City,
+		"District":                   r.District,
+		"DataSyncTarget":             r.DataSyncTarget,
+		"SaleManagers":               r.SaleManagers,
+		"SchoolManagers":             r.SchoolManagers,
+		"PurchaseRule":               r.PurchaseRule,
+		"SCreateTime":                r.SCreateTime,
+		"Difference":                 r.Difference,
+		"PolicyNo":                   r.PolicyNo,
+		"FeeStatus":                  r.FeeStatus,
+	}
+}
+
+// GetColumnsMap returns a map of column names to their values.
+func (r *TVOrder2) GetColumnsMap() map[string]any {
+	return map[string]any{
+		"id":                             r.ID,
+		"trade_no":                       r.TradeNo,
+		"pay_order_no":                   r.PayOrderNo,
+		"insure_order_no":                r.InsureOrderNo,
+		"batch":                          r.Batch,
+		"create_time":                    r.CreateTime,
+		"pay_time":                       r.PayTime,
+		"pay_channel":                    r.PayChannel,
+		"pay_type":                       r.PayType,
+		"pay_name":                       r.PayName,
+		"unit_price":                     r.UnitPrice,
+		"amount":                         r.Amount,
+		"balance":                        r.Balance,
+		"balance_list":                   r.BalanceList,
+		"org_id":                         r.OrgID,
+		"have_sudden_death":              r.HaveSuddenDeath,
+		"ground_num":                     r.GroundNum,
+		"plan_type":                      r.PlanType,
+		"reminders_num":                  r.RemindersNum,
+		"org_manager_id":                 r.OrgManagerID,
+		"insurance_type":                 r.InsuranceType,
+		"have_dinner_num":                r.HaveDinnerNum,
+		"have_confirm_date":              r.HaveConfirmDate,
+		"insurance_type_id":              r.InsuranceTypeID,
+		"health_survey":                  r.HealthSurvey,
+		"plan_id":                        r.PlanID,
+		"plan_name":                      r.PlanName,
+		"insurer":                        r.Insurer,
+		"policy_scheme":                  r.PolicyScheme,
+		"policy_doc":                     r.PolicyDoc,
+		"activity_name":                  r.ActivityName,
+		"activity_category":              r.ActivityCategory,
+		"activity_desc":                  r.ActivityDesc,
+		"activity_location":              r.ActivityLocation,
+		"activity_date_set":              r.ActivityDateSet,
+		"copies_num":                     r.CopiesNum,
+		"insured_count":                  r.InsuredCount,
+		"compulsory_student_num":         r.CompulsoryStudentNum,
+		"non_compulsory_student_num":     r.NonCompulsoryStudentNum,
+		"contact":                        r.Contact,
+		"fee_scheme":                     r.FeeScheme,
+		"car_service_target":             r.CarServiceTarget,
+		"policyholder":                   r.Policyholder,
+		"first_insured_id_card_no":       r.FirstInsuredIDCardNo,
+		"org_addr":                       r.OrgAddr,
+		"org_credit_code":                r.OrgCreditCode,
+		"org_contact":                    r.OrgContact,
+		"org_phone":                      r.OrgPhone,
+		"org_contact_role":               r.OrgContactRole,
+		"org_credit_code_pic":            r.OrgCreditCodePic,
+		"org_school_category":            r.OrgSchoolCategory,
+		"org_compulsory_student_num":     r.OrgCompulsoryStudentNum,
+		"org_non_compulsory_student_num": r.OrgNonCompulsoryStudentNum,
+		"policyholder_type":              r.PolicyholderType,
+		"policyholder_id":                r.PolicyholderID,
+		"same":                           r.Same,
+		"relation":                       r.Relation,
+		"insured":                        r.Insured,
+		"insured_name":                   r.InsuredName,
+		"insured_province":               r.InsuredProvince,
+		"insured_city":                   r.InsuredCity,
+		"insured_district":               r.InsuredDistrict,
+		"insured_is_compulsory":          r.InsuredIsCompulsory,
+		"insured_category":               r.InsuredCategory,
+		"insured_school_category":        r.InsuredSchoolCategory,
+		"insured_post_code":              r.InsuredPostCode,
+		"insured_phone":                  r.InsuredPhone,
+		"policy_scheme_title":            r.PolicySchemeTitle,
+		"org_business_domain":            r.OrgBusinessDomain,
+		"insured_business_domain":        r.InsuredBusinessDomain,
+		"insured_id":                     r.InsuredID,
+		"have_insured_list":              r.HaveInsuredList,
+		"insured_group_by_day":           r.InsuredGroupByDay,
+		"insured_type":                   r.InsuredType,
+		"insured_list":                   r.InsuredList,
+		"commence_date":                  r.CommenceDate,
+		"expiry_date":                    r.ExpiryDate,
+		"indate":                         r.Indate,
+		"sign":                           r.Sign,
+		"jurisdiction":                   r.Jurisdiction,
+		"dispute_handling":               r.DisputeHandling,
+		"prev_policy_no":                 r.PrevPolicyNo,
+		"reminder_times":                 r.ReminderTimes,
+		"insure_base":                    r.InsureBase,
+		"blanket_insure_code":            r.BlanketInsureCode,
+		"custom_type":                    r.CustomType,
+		"train_projects":                 r.TrainProjects,
+		"business_locations":             r.BusinessLocations,
+		"training_pool_num":              r.TrainingPoolNum,
+		"heated_pool_num":                r.HeatedPoolNum,
+		"open_pool_num":                  r.OpenPoolNum,
+		"pool_num":                       r.PoolNum,
+		"dinner_num":                     r.DinnerNum,
+		"canteen_num":                    r.CanteenNum,
+		"shop_num":                       r.ShopNum,
+		"have_rides":                     r.HaveRides,
+		"have_explosive":                 r.HaveExplosive,
+		"area":                           r.Area,
+		"traffic_num":                    r.TrafficNum,
+		"temperature_type":               r.TemperatureType,
+		"is_indoor":                      r.IsIndoor,
+		"extra":                          r.Extra,
+		"bank_account":                   r.BankAccount,
+		"pay_contact":                    r.PayContact,
+		"sudden_death_terms":             r.SuddenDeathTerms,
+		"spec_agreement":                 r.SpecAgreement,
+		"inner_area":                     r.InnerArea,
+		"outer_area":                     r.OuterArea,
+		"pool_name":                      r.PoolName,
+		"arbitral_agency":                r.ArbitralAgency,
+		"confirm_refund":                 r.ConfirmRefund,
+		"insured_credit_code":            r.InsuredCreditCode,
+		"insured_addr":                   r.InsuredAddr,
+		"creator":                        r.Creator,
+		"domain_id":                      r.DomainID,
+		"order_files":                    r.OrderFiles,
+		"addi":                           r.Addi,
+		"remark":                         r.Remark,
+		"status":                         r.Status,
+		"order_status":                   r.OrderStatus,
+		"have_negotiated_price":          r.HaveNegotiatedPrice,
+		"lock_status":                    r.LockStatus,
+		"insurance_company":              r.InsuranceCompany,
+		"insurance_company_account":      r.InsuranceCompanyAccount,
+		"actual_amount":                  r.ActualAmount,
+		"can_revoke_order":               r.CanRevokeOrder,
+		"can_public_transfers":           r.CanPublicTransfers,
+		"is_reminder":                    r.IsReminder,
+		"traits":                         r.Traits,
+		"is_invoice":                     r.IsInvoice,
+		"inv_borrow":                     r.InvBorrow,
+		"inv_visible":                    r.InvVisible,
+		"inv_title":                      r.InvTitle,
+		"inv_status":                     r.InvStatus,
+		"upd_status":                     r.UpdStatus,
+		"driver_seat_num":                r.DriverSeatNum,
+		"approved_passengers_num":        r.ApprovedPassengersNum,
+		"refused_reason":                 r.RefusedReason,
+		"unpaid_reason":                  r.UnpaidReason,
+		"updated_by":                     r.UpdatedBy,
+		"update_time":                    r.UpdateTime,
+		"have_renewal_reminder":          r.HaveRenewalReminder,
+		"charge_mode":                    r.ChargeMode,
+		"admin_received":                 r.AdminReceived,
+		"user_received":                  r.UserReceived,
+		"have_policy":                    r.HavePolicy,
+		"insurance_type_parent_id":       r.InsuranceTypeParentID,
+		"can_inv_title_modify":           r.CanInvTitleModify,
+		"insurance_display":              r.InsuranceDisplay,
+		"user_correct_times":             r.UserCorrectTimes,
+		"correct_level":                  r.CorrectLevel,
+		"org_name":                       r.OrgName,
+		"org_province":                   r.OrgProvince,
+		"org_city":                       r.OrgCity,
+		"org_district":                   r.OrgDistrict,
+		"org_is_compulsory":              r.OrgIsCompulsory,
+		"org_is_school":                  r.OrgIsSchool,
+		"reminder_times_count":           r.ReminderTimesCount,
+		"i_official_name":                r.IOfficialName,
+		"i_id_card_type":                 r.IIDCardType,
+		"i_id_card_no":                   r.IIDCardNo,
+		"i_mobile_phone":                 r.IMobilePhone,
+		"i_gender":                       r.IGender,
+		"i_birthday":                     r.IBirthday,
+		"i_addi":                         r.IAddi,
+		"h_official_name":                r.HOfficialName,
+		"h_id_card_type":                 r.HIDCardType,
+		"h_id_card_no":                   r.HIDCardNo,
+		"h_mobile_phone":                 r.HMobilePhone,
+		"h_addi":                         r.HAddi,
+		"subdistrict":                    r.Subdistrict,
+		"faculty":                        r.Faculty,
+		"grade":                          r.Grade,
+		"class":                          r.Class,
+		"x_create_time":                  r.XCreateTime,
+		"school":                         r.School,
+		"s_faculty":                      r.SFaculty,
+		"s_branches":                     r.SBranches,
+		"s_category":                     r.SCategory,
+		"province":                       r.Province,
+		"city":                           r.City,
+		"district":                       r.District,
+		"data_sync_target":               r.DataSyncTarget,
+		"sale_managers":                  r.SaleManagers,
+		"school_managers":                r.SchoolManagers,
+		"purchase_rule":                  r.PurchaseRule,
+		"s_create_time":                  r.SCreateTime,
+		"difference":                     r.Difference,
+		"policy_no":                      r.PolicyNo,
+		"fee_status":                     r.FeeStatus,
+	}
+}
+
 // Fields return all fields of struct.
 func (r *TVOrder2) Fields() []string {
 	return TVOrder2Fields
@@ -10198,6 +27051,42 @@ func GetTVOrder2ByPk(db Queryer) (*TVOrder2, error) {
 	return &r, nil
 }
 
+// GetTVOrder2ReflectValuesMap returns a map of field names to their values.
+//
+// key is the tag name, value is the field value.
+// This is useful for reflection and dynamic queries.
+func (r *TVOrder2) GetTVOrder2ReflectValuesMap() (map[string]any, error) {
+
+	values := make(map[string]any)
+	v := reflect.ValueOf(r).Elem()
+	t := v.Type()
+	for i := range v.NumField() {
+		field := t.Field(i)
+		tag := field.Tag.Get("db")
+		if tag == "" {
+			return nil, errors.Errorf("missing db tag for field %s in table t_v_order2", field.Name)
+		}
+
+		columnName := strings.Split(tag, ",")[0]
+		if columnName == "" {
+			return nil, errors.Errorf("missing column name for field %s in table t_v_order2", field.Name)
+		}
+
+		fieldValue := reflect.ValueOf(r).Elem().Field(i)
+		if !fieldValue.IsValid() {
+			return nil, errors.Errorf("invalid field value for field %s in table t_v_order2", field.Name)
+		}
+
+		if !fieldValue.CanAddr() {
+			return nil, errors.Errorf("cannot read field value for field %s in table t_v_order2", field.Name)
+		}
+
+		values[columnName] = fieldValue.Addr().Interface()
+	}
+
+	return values, nil
+}
+
 /*TVOrderSum t_v_order_sum represents assessuser.t_v_order_sum */
 type TVOrderSum struct {
 	School       null.String `json:"School,omitempty" db:"school,false,character varying"`             /* school school */
@@ -10207,7 +27096,7 @@ type TVOrderSum struct {
 	OrderAmount  null.Float  `json:"OrderAmount,omitempty" db:"order_amount,false,double precision"`   /* order_amount order_amount */
 	CancelNumber null.Int    `json:"CancelNumber,omitempty" db:"cancel_number,false,bigint"`           /* cancel_number cancel_number */
 	CancelAmount null.Float  `json:"CancelAmount,omitempty" db:"cancel_amount,false,double precision"` /* cancel_amount cancel_amount */
-	Filter                   // build DML where clause
+	Filter                                                                                             // build DML where clause
 }
 
 // TVOrderSumFields full field list for default query
@@ -10219,6 +27108,54 @@ var TVOrderSumFields = []string{
 	"OrderAmount",
 	"CancelNumber",
 	"CancelAmount",
+}
+
+// TVOrderSumColumns full column list for default query
+var TVOrderSumColumns = []string{
+	"school",
+	"org_id",
+	"batch",
+	"order_number",
+	"order_amount",
+	"cancel_number",
+	"cancel_amount",
+}
+
+// TVOrderSumColumnsDataTypes full column data types for default query
+var TVOrderSumColumnsDataTypes = map[string]string{
+	"school":        "character varying",
+	"org_id":        "bigint",
+	"batch":         "character varying",
+	"order_number":  "bigint",
+	"order_amount":  "double precision",
+	"cancel_number": "bigint",
+	"cancel_amount": "double precision",
+}
+
+// GetFieldsMap returns a map of field names to their values.
+func (r *TVOrderSum) GetFieldsMap() map[string]any {
+	return map[string]any{
+		"School":       r.School,
+		"OrgID":        r.OrgID,
+		"Batch":        r.Batch,
+		"OrderNumber":  r.OrderNumber,
+		"OrderAmount":  r.OrderAmount,
+		"CancelNumber": r.CancelNumber,
+		"CancelAmount": r.CancelAmount,
+	}
+}
+
+// GetColumnsMap returns a map of column names to their values.
+func (r *TVOrderSum) GetColumnsMap() map[string]any {
+	return map[string]any{
+		"school":        r.School,
+		"org_id":        r.OrgID,
+		"batch":         r.Batch,
+		"order_number":  r.OrderNumber,
+		"order_amount":  r.OrderAmount,
+		"cancel_number": r.CancelNumber,
+		"cancel_amount": r.CancelAmount,
+	}
 }
 
 // Fields return all fields of struct.
@@ -10261,6 +27198,408 @@ func GetTVOrderSumByPk(db Queryer) (*TVOrderSum, error) {
 	return &r, nil
 }
 
+// GetTVOrderSumReflectValuesMap returns a map of field names to their values.
+//
+// key is the tag name, value is the field value.
+// This is useful for reflection and dynamic queries.
+func (r *TVOrderSum) GetTVOrderSumReflectValuesMap() (map[string]any, error) {
+
+	values := make(map[string]any)
+	v := reflect.ValueOf(r).Elem()
+	t := v.Type()
+	for i := range v.NumField() {
+		field := t.Field(i)
+		tag := field.Tag.Get("db")
+		if tag == "" {
+			return nil, errors.Errorf("missing db tag for field %s in table t_v_order_sum", field.Name)
+		}
+
+		columnName := strings.Split(tag, ",")[0]
+		if columnName == "" {
+			return nil, errors.Errorf("missing column name for field %s in table t_v_order_sum", field.Name)
+		}
+
+		fieldValue := reflect.ValueOf(r).Elem().Field(i)
+		if !fieldValue.IsValid() {
+			return nil, errors.Errorf("invalid field value for field %s in table t_v_order_sum", field.Name)
+		}
+
+		if !fieldValue.CanAddr() {
+			return nil, errors.Errorf("cannot read field value for field %s in table t_v_order_sum", field.Name)
+		}
+
+		values[columnName] = fieldValue.Addr().Interface()
+	}
+
+	return values, nil
+}
+
+/*TVPaper t_v_paper represents assessuser.t_v_paper */
+type TVPaper struct {
+	ID                null.Int       `json:"ID,omitempty" db:"id,false,integer"`                                /* id id */
+	Name              null.String    `json:"Name,omitempty" db:"name,false,character varying"`                  /* name name */
+	AssemblyType      null.String    `json:"AssemblyType,omitempty" db:"assembly_type,false,character varying"` /* assembly_type assembly_type */
+	Category          null.String    `json:"Category,omitempty" db:"category,false,character varying"`          /* category category */
+	Level             null.String    `json:"Level,omitempty" db:"level,false,character varying"`                /* level level */
+	SuggestedDuration null.Int       `json:"SuggestedDuration,omitempty" db:"suggested_duration,false,integer"` /* suggested_duration suggested_duration */
+	Description       null.String    `json:"Description,omitempty" db:"description,false,text"`                 /* description description */
+	Tags              types.JSONText `json:"Tags,omitempty" db:"tags,false,jsonb"`                              /* tags tags */
+	Config            types.JSONText `json:"Config,omitempty" db:"config,false,jsonb"`                          /* config config */
+	Creator           null.Int       `json:"Creator,omitempty" db:"creator,false,bigint"`                       /* creator creator */
+	CreatorInfo       types.JSONText `json:"CreatorInfo,omitempty" db:"creator_info,false,jsonb"`               /* creator_info creator_info */
+	CreateTime        null.Int       `json:"CreateTime,omitempty" db:"create_time,false,bigint"`                /* create_time create_time */
+	UpdatedBy         null.Int       `json:"UpdatedBy,omitempty" db:"updated_by,false,bigint"`                  /* updated_by updated_by */
+	UpdateTime        null.Int       `json:"UpdateTime,omitempty" db:"update_time,false,bigint"`                /* update_time update_time */
+	Status            null.String    `json:"Status,omitempty" db:"status,false,character varying"`              /* status status */
+	AccessMode        null.String    `json:"AccessMode,omitempty" db:"access_mode,false,character varying"`     /* access_mode access_mode */
+	TotalScore        null.Float     `json:"TotalScore,omitempty" db:"total_score,false,double precision"`      /* total_score total_score */
+	QuestionCount     null.Int       `json:"QuestionCount,omitempty" db:"question_count,false,bigint"`          /* question_count question_count */
+	GroupCount        null.Int       `json:"GroupCount,omitempty" db:"group_count,false,bigint"`                /* group_count group_count */
+	GroupsData        types.JSONText `json:"GroupsData,omitempty" db:"groups_data,false,json"`                  /* groups_data groups_data */
+	Filter                                                                                                      // build DML where clause
+}
+
+// TVPaperFields full field list for default query
+var TVPaperFields = []string{
+	"ID",
+	"Name",
+	"AssemblyType",
+	"Category",
+	"Level",
+	"SuggestedDuration",
+	"Description",
+	"Tags",
+	"Config",
+	"Creator",
+	"CreatorInfo",
+	"CreateTime",
+	"UpdatedBy",
+	"UpdateTime",
+	"Status",
+	"AccessMode",
+	"TotalScore",
+	"QuestionCount",
+	"GroupCount",
+	"GroupsData",
+}
+
+// TVPaperColumns full column list for default query
+var TVPaperColumns = []string{
+	"id",
+	"name",
+	"assembly_type",
+	"category",
+	"level",
+	"suggested_duration",
+	"description",
+	"tags",
+	"config",
+	"creator",
+	"creator_info",
+	"create_time",
+	"updated_by",
+	"update_time",
+	"status",
+	"access_mode",
+	"total_score",
+	"question_count",
+	"group_count",
+	"groups_data",
+}
+
+// TVPaperColumnsDataTypes full column data types for default query
+var TVPaperColumnsDataTypes = map[string]string{
+	"id":                 "integer",
+	"name":               "character varying",
+	"assembly_type":      "character varying",
+	"category":           "character varying",
+	"level":              "character varying",
+	"suggested_duration": "integer",
+	"description":        "text",
+	"tags":               "jsonb",
+	"config":             "jsonb",
+	"creator":            "bigint",
+	"creator_info":       "jsonb",
+	"create_time":        "bigint",
+	"updated_by":         "bigint",
+	"update_time":        "bigint",
+	"status":             "character varying",
+	"access_mode":        "character varying",
+	"total_score":        "double precision",
+	"question_count":     "bigint",
+	"group_count":        "bigint",
+	"groups_data":        "json",
+}
+
+// GetFieldsMap returns a map of field names to their values.
+func (r *TVPaper) GetFieldsMap() map[string]any {
+	return map[string]any{
+		"ID":                r.ID,
+		"Name":              r.Name,
+		"AssemblyType":      r.AssemblyType,
+		"Category":          r.Category,
+		"Level":             r.Level,
+		"SuggestedDuration": r.SuggestedDuration,
+		"Description":       r.Description,
+		"Tags":              r.Tags,
+		"Config":            r.Config,
+		"Creator":           r.Creator,
+		"CreatorInfo":       r.CreatorInfo,
+		"CreateTime":        r.CreateTime,
+		"UpdatedBy":         r.UpdatedBy,
+		"UpdateTime":        r.UpdateTime,
+		"Status":            r.Status,
+		"AccessMode":        r.AccessMode,
+		"TotalScore":        r.TotalScore,
+		"QuestionCount":     r.QuestionCount,
+		"GroupCount":        r.GroupCount,
+		"GroupsData":        r.GroupsData,
+	}
+}
+
+// GetColumnsMap returns a map of column names to their values.
+func (r *TVPaper) GetColumnsMap() map[string]any {
+	return map[string]any{
+		"id":                 r.ID,
+		"name":               r.Name,
+		"assembly_type":      r.AssemblyType,
+		"category":           r.Category,
+		"level":              r.Level,
+		"suggested_duration": r.SuggestedDuration,
+		"description":        r.Description,
+		"tags":               r.Tags,
+		"config":             r.Config,
+		"creator":            r.Creator,
+		"creator_info":       r.CreatorInfo,
+		"create_time":        r.CreateTime,
+		"updated_by":         r.UpdatedBy,
+		"update_time":        r.UpdateTime,
+		"status":             r.Status,
+		"access_mode":        r.AccessMode,
+		"total_score":        r.TotalScore,
+		"question_count":     r.QuestionCount,
+		"group_count":        r.GroupCount,
+		"groups_data":        r.GroupsData,
+	}
+}
+
+// Fields return all fields of struct.
+func (r *TVPaper) Fields() []string {
+	return TVPaperFields
+}
+
+// GetTableName return the associated db table name.
+func (r *TVPaper) GetTableName() string {
+	var viewNamePattern = regexp.MustCompile(`(?i)^t_v_[a-z0-9_]+$`)
+	tableName := "t_v_paper"
+	if viewNamePattern.MatchString(tableName) {
+		return tableName[2:]
+	}
+	return tableName
+}
+
+// Create inserts the TVPaper to the database.
+func (r *TVPaper) Create(db Queryer) error {
+	_, err := db.Exec(
+		`INSERT INTO t_v_paper (id, name, assembly_type, category, level, suggested_duration, description, tags, config, creator, creator_info, create_time, updated_by, update_time, status, access_mode, total_score, question_count, group_count, groups_data) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)`,
+		&r.ID, &r.Name, &r.AssemblyType, &r.Category, &r.Level, &r.SuggestedDuration, &r.Description, &r.Tags, &r.Config, &r.Creator, &r.CreatorInfo, &r.CreateTime, &r.UpdatedBy, &r.UpdateTime, &r.Status, &r.AccessMode, &r.TotalScore, &r.QuestionCount, &r.GroupCount, &r.GroupsData)
+	if err != nil {
+		return errors.Wrap(err, "failed to insert t_v_paper")
+	}
+	return nil
+}
+
+// GetTVPaperByPk select the TVPaper from the database.
+func GetTVPaperByPk(db Queryer) (*TVPaper, error) {
+	// Don't call this function, it is a view and doesn't have a primary key.
+
+	var r TVPaper
+	err := db.QueryRow(
+		`SELECT id, name, assembly_type, category, level, suggested_duration, description, tags, config, creator, creator_info, create_time, updated_by, update_time, status, access_mode, total_score, question_count, group_count, groups_data FROM t_v_paper`,
+	).Scan(&r.ID, &r.Name, &r.AssemblyType, &r.Category, &r.Level, &r.SuggestedDuration, &r.Description, &r.Tags, &r.Config, &r.Creator, &r.CreatorInfo, &r.CreateTime, &r.UpdatedBy, &r.UpdateTime, &r.Status, &r.AccessMode, &r.TotalScore, &r.QuestionCount, &r.GroupCount, &r.GroupsData)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to select t_v_paper")
+	}
+	return &r, nil
+}
+
+// GetTVPaperReflectValuesMap returns a map of field names to their values.
+//
+// key is the tag name, value is the field value.
+// This is useful for reflection and dynamic queries.
+func (r *TVPaper) GetTVPaperReflectValuesMap() (map[string]any, error) {
+
+	values := make(map[string]any)
+	v := reflect.ValueOf(r).Elem()
+	t := v.Type()
+	for i := range v.NumField() {
+		field := t.Field(i)
+		tag := field.Tag.Get("db")
+		if tag == "" {
+			return nil, errors.Errorf("missing db tag for field %s in table t_v_paper", field.Name)
+		}
+
+		columnName := strings.Split(tag, ",")[0]
+		if columnName == "" {
+			return nil, errors.Errorf("missing column name for field %s in table t_v_paper", field.Name)
+		}
+
+		fieldValue := reflect.ValueOf(r).Elem().Field(i)
+		if !fieldValue.IsValid() {
+			return nil, errors.Errorf("invalid field value for field %s in table t_v_paper", field.Name)
+		}
+
+		if !fieldValue.CanAddr() {
+			return nil, errors.Errorf("cannot read field value for field %s in table t_v_paper", field.Name)
+		}
+
+		values[columnName] = fieldValue.Addr().Interface()
+	}
+
+	return values, nil
+}
+
+/*TVPaperShare t_v_paper_share represents assessuser.t_v_paper_share */
+type TVPaperShare struct {
+	PaperID      null.Int    `json:"PaperID,omitempty" db:"paper_id,false,bigint"`                      /* paper_id paper_id */
+	UserID       null.Int    `json:"UserID,omitempty" db:"user_id,false,bigint"`                        /* user_id user_id */
+	OfficialName null.String `json:"OfficialName,omitempty" db:"official_name,false,character varying"` /* official_name official_name */
+	Account      null.String `json:"Account,omitempty" db:"account,false,character varying"`            /* account account */
+	MobilePhone  null.String `json:"MobilePhone,omitempty" db:"mobile_phone,false,character varying"`   /* mobile_phone mobile_phone */
+	SharedTime   null.Int    `json:"SharedTime,omitempty" db:"shared_time,false,bigint"`                /* shared_time shared_time */
+	Filter                                                                                              // build DML where clause
+}
+
+// TVPaperShareFields full field list for default query
+var TVPaperShareFields = []string{
+	"PaperID",
+	"UserID",
+	"OfficialName",
+	"Account",
+	"MobilePhone",
+	"SharedTime",
+}
+
+// TVPaperShareColumns full column list for default query
+var TVPaperShareColumns = []string{
+	"paper_id",
+	"user_id",
+	"official_name",
+	"account",
+	"mobile_phone",
+	"shared_time",
+}
+
+// TVPaperShareColumnsDataTypes full column data types for default query
+var TVPaperShareColumnsDataTypes = map[string]string{
+	"paper_id":      "bigint",
+	"user_id":       "bigint",
+	"official_name": "character varying",
+	"account":       "character varying",
+	"mobile_phone":  "character varying",
+	"shared_time":   "bigint",
+}
+
+// GetFieldsMap returns a map of field names to their values.
+func (r *TVPaperShare) GetFieldsMap() map[string]any {
+	return map[string]any{
+		"PaperID":      r.PaperID,
+		"UserID":       r.UserID,
+		"OfficialName": r.OfficialName,
+		"Account":      r.Account,
+		"MobilePhone":  r.MobilePhone,
+		"SharedTime":   r.SharedTime,
+	}
+}
+
+// GetColumnsMap returns a map of column names to their values.
+func (r *TVPaperShare) GetColumnsMap() map[string]any {
+	return map[string]any{
+		"paper_id":      r.PaperID,
+		"user_id":       r.UserID,
+		"official_name": r.OfficialName,
+		"account":       r.Account,
+		"mobile_phone":  r.MobilePhone,
+		"shared_time":   r.SharedTime,
+	}
+}
+
+// Fields return all fields of struct.
+func (r *TVPaperShare) Fields() []string {
+	return TVPaperShareFields
+}
+
+// GetTableName return the associated db table name.
+func (r *TVPaperShare) GetTableName() string {
+	var viewNamePattern = regexp.MustCompile(`(?i)^t_v_[a-z0-9_]+$`)
+	tableName := "t_v_paper_share"
+	if viewNamePattern.MatchString(tableName) {
+		return tableName[2:]
+	}
+	return tableName
+}
+
+// Create inserts the TVPaperShare to the database.
+func (r *TVPaperShare) Create(db Queryer) error {
+	_, err := db.Exec(
+		`INSERT INTO t_v_paper_share (paper_id, user_id, official_name, account, mobile_phone, shared_time) VALUES ($1, $2, $3, $4, $5, $6)`,
+		&r.PaperID, &r.UserID, &r.OfficialName, &r.Account, &r.MobilePhone, &r.SharedTime)
+	if err != nil {
+		return errors.Wrap(err, "failed to insert t_v_paper_share")
+	}
+	return nil
+}
+
+// GetTVPaperShareByPk select the TVPaperShare from the database.
+func GetTVPaperShareByPk(db Queryer) (*TVPaperShare, error) {
+	// Don't call this function, it is a view and doesn't have a primary key.
+
+	var r TVPaperShare
+	err := db.QueryRow(
+		`SELECT paper_id, user_id, official_name, account, mobile_phone, shared_time FROM t_v_paper_share`,
+	).Scan(&r.PaperID, &r.UserID, &r.OfficialName, &r.Account, &r.MobilePhone, &r.SharedTime)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to select t_v_paper_share")
+	}
+	return &r, nil
+}
+
+// GetTVPaperShareReflectValuesMap returns a map of field names to their values.
+//
+// key is the tag name, value is the field value.
+// This is useful for reflection and dynamic queries.
+func (r *TVPaperShare) GetTVPaperShareReflectValuesMap() (map[string]any, error) {
+
+	values := make(map[string]any)
+	v := reflect.ValueOf(r).Elem()
+	t := v.Type()
+	for i := range v.NumField() {
+		field := t.Field(i)
+		tag := field.Tag.Get("db")
+		if tag == "" {
+			return nil, errors.Errorf("missing db tag for field %s in table t_v_paper_share", field.Name)
+		}
+
+		columnName := strings.Split(tag, ",")[0]
+		if columnName == "" {
+			return nil, errors.Errorf("missing column name for field %s in table t_v_paper_share", field.Name)
+		}
+
+		fieldValue := reflect.ValueOf(r).Elem().Field(i)
+		if !fieldValue.IsValid() {
+			return nil, errors.Errorf("invalid field value for field %s in table t_v_paper_share", field.Name)
+		}
+
+		if !fieldValue.CanAddr() {
+			return nil, errors.Errorf("cannot read field value for field %s in table t_v_paper_share", field.Name)
+		}
+
+		values[columnName] = fieldValue.Addr().Interface()
+	}
+
+	return values, nil
+}
+
 /*TVParam t_v_param represents assessuser.t_v_param */
 type TVParam struct {
 	ParentID   null.Int    `json:"ParentID,omitempty" db:"parent_id,false,bigint"`                /* parent_id parent_id */
@@ -10271,7 +27610,7 @@ type TVParam struct {
 	Value      null.String `json:"Value,omitempty" db:"value,false,character varying"`            /* value value */
 	Remark     null.String `json:"Remark,omitempty" db:"remark,false,character varying"`          /* remark remark */
 	Status     null.String `json:"Status,omitempty" db:"status,false,character varying"`          /* status status */
-	Filter                 // build DML where clause
+	Filter                                                                                        // build DML where clause
 }
 
 // TVParamFields full field list for default query
@@ -10284,6 +27623,58 @@ var TVParamFields = []string{
 	"Value",
 	"Remark",
 	"Status",
+}
+
+// TVParamColumns full column list for default query
+var TVParamColumns = []string{
+	"parent_id",
+	"parent_name",
+	"id",
+	"name",
+	"data_type",
+	"value",
+	"remark",
+	"status",
+}
+
+// TVParamColumnsDataTypes full column data types for default query
+var TVParamColumnsDataTypes = map[string]string{
+	"parent_id":   "bigint",
+	"parent_name": "character varying",
+	"id":          "integer",
+	"name":        "character varying",
+	"data_type":   "character varying",
+	"value":       "character varying",
+	"remark":      "character varying",
+	"status":      "character varying",
+}
+
+// GetFieldsMap returns a map of field names to their values.
+func (r *TVParam) GetFieldsMap() map[string]any {
+	return map[string]any{
+		"ParentID":   r.ParentID,
+		"ParentName": r.ParentName,
+		"ID":         r.ID,
+		"Name":       r.Name,
+		"DataType":   r.DataType,
+		"Value":      r.Value,
+		"Remark":     r.Remark,
+		"Status":     r.Status,
+	}
+}
+
+// GetColumnsMap returns a map of column names to their values.
+func (r *TVParam) GetColumnsMap() map[string]any {
+	return map[string]any{
+		"parent_id":   r.ParentID,
+		"parent_name": r.ParentName,
+		"id":          r.ID,
+		"name":        r.Name,
+		"data_type":   r.DataType,
+		"value":       r.Value,
+		"remark":      r.Remark,
+		"status":      r.Status,
+	}
 }
 
 // Fields return all fields of struct.
@@ -10326,6 +27717,42 @@ func GetTVParamByPk(db Queryer) (*TVParam, error) {
 	return &r, nil
 }
 
+// GetTVParamReflectValuesMap returns a map of field names to their values.
+//
+// key is the tag name, value is the field value.
+// This is useful for reflection and dynamic queries.
+func (r *TVParam) GetTVParamReflectValuesMap() (map[string]any, error) {
+
+	values := make(map[string]any)
+	v := reflect.ValueOf(r).Elem()
+	t := v.Type()
+	for i := range v.NumField() {
+		field := t.Field(i)
+		tag := field.Tag.Get("db")
+		if tag == "" {
+			return nil, errors.Errorf("missing db tag for field %s in table t_v_param", field.Name)
+		}
+
+		columnName := strings.Split(tag, ",")[0]
+		if columnName == "" {
+			return nil, errors.Errorf("missing column name for field %s in table t_v_param", field.Name)
+		}
+
+		fieldValue := reflect.ValueOf(r).Elem().Field(i)
+		if !fieldValue.IsValid() {
+			return nil, errors.Errorf("invalid field value for field %s in table t_v_param", field.Name)
+		}
+
+		if !fieldValue.CanAddr() {
+			return nil, errors.Errorf("cannot read field value for field %s in table t_v_param", field.Name)
+		}
+
+		values[columnName] = fieldValue.Addr().Interface()
+	}
+
+	return values, nil
+}
+
 /*TVPayment t_v_payment represents assessuser.t_v_payment */
 type TVPayment struct {
 	ID                null.Int       `json:"ID,omitempty" db:"id,false,integer"`                                          /* id id */
@@ -10345,7 +27772,7 @@ type TVPayment struct {
 	Premium           null.Float     `json:"Premium,omitempty" db:"premium,false,double precision"`                       /* premium premium */
 	ThirdPartyPremium null.Float     `json:"ThirdPartyPremium,omitempty" db:"third_party_premium,false,double precision"` /* third_party_premium third_party_premium */
 	PolicyholderName  null.String    `json:"PolicyholderName,omitempty" db:"policyholder_name,false,text"`                /* policyholder_name policyholder_name */
-	Filter                           // build DML where clause
+	Filter                                                                                                                // build DML where clause
 }
 
 // TVPaymentFields full field list for default query
@@ -10367,6 +27794,94 @@ var TVPaymentFields = []string{
 	"Premium",
 	"ThirdPartyPremium",
 	"PolicyholderName",
+}
+
+// TVPaymentColumns full column list for default query
+var TVPaymentColumns = []string{
+	"id",
+	"batch",
+	"policy_no",
+	"transfer_no",
+	"transfer_amount",
+	"creator",
+	"create_time",
+	"updated_by",
+	"update_time",
+	"domain_id",
+	"addi",
+	"remark",
+	"status",
+	"is_admin_pay",
+	"premium",
+	"third_party_premium",
+	"policyholder_name",
+}
+
+// TVPaymentColumnsDataTypes full column data types for default query
+var TVPaymentColumnsDataTypes = map[string]string{
+	"id":                  "integer",
+	"batch":               "character varying",
+	"policy_no":           "character varying",
+	"transfer_no":         "character varying",
+	"transfer_amount":     "double precision",
+	"creator":             "bigint",
+	"create_time":         "bigint",
+	"updated_by":          "bigint",
+	"update_time":         "bigint",
+	"domain_id":           "bigint",
+	"addi":                "jsonb",
+	"remark":              "character varying",
+	"status":              "character varying",
+	"is_admin_pay":        "boolean",
+	"premium":             "double precision",
+	"third_party_premium": "double precision",
+	"policyholder_name":   "text",
+}
+
+// GetFieldsMap returns a map of field names to their values.
+func (r *TVPayment) GetFieldsMap() map[string]any {
+	return map[string]any{
+		"ID":                r.ID,
+		"Batch":             r.Batch,
+		"PolicyNo":          r.PolicyNo,
+		"TransferNo":        r.TransferNo,
+		"TransferAmount":    r.TransferAmount,
+		"Creator":           r.Creator,
+		"CreateTime":        r.CreateTime,
+		"UpdatedBy":         r.UpdatedBy,
+		"UpdateTime":        r.UpdateTime,
+		"DomainID":          r.DomainID,
+		"Addi":              r.Addi,
+		"Remark":            r.Remark,
+		"Status":            r.Status,
+		"IsAdminPay":        r.IsAdminPay,
+		"Premium":           r.Premium,
+		"ThirdPartyPremium": r.ThirdPartyPremium,
+		"PolicyholderName":  r.PolicyholderName,
+	}
+}
+
+// GetColumnsMap returns a map of column names to their values.
+func (r *TVPayment) GetColumnsMap() map[string]any {
+	return map[string]any{
+		"id":                  r.ID,
+		"batch":               r.Batch,
+		"policy_no":           r.PolicyNo,
+		"transfer_no":         r.TransferNo,
+		"transfer_amount":     r.TransferAmount,
+		"creator":             r.Creator,
+		"create_time":         r.CreateTime,
+		"updated_by":          r.UpdatedBy,
+		"update_time":         r.UpdateTime,
+		"domain_id":           r.DomainID,
+		"addi":                r.Addi,
+		"remark":              r.Remark,
+		"status":              r.Status,
+		"is_admin_pay":        r.IsAdminPay,
+		"premium":             r.Premium,
+		"third_party_premium": r.ThirdPartyPremium,
+		"policyholder_name":   r.PolicyholderName,
+	}
 }
 
 // Fields return all fields of struct.
@@ -10409,13 +27924,262 @@ func GetTVPaymentByPk(db Queryer) (*TVPayment, error) {
 	return &r, nil
 }
 
+// GetTVPaymentReflectValuesMap returns a map of field names to their values.
+//
+// key is the tag name, value is the field value.
+// This is useful for reflection and dynamic queries.
+func (r *TVPayment) GetTVPaymentReflectValuesMap() (map[string]any, error) {
+
+	values := make(map[string]any)
+	v := reflect.ValueOf(r).Elem()
+	t := v.Type()
+	for i := range v.NumField() {
+		field := t.Field(i)
+		tag := field.Tag.Get("db")
+		if tag == "" {
+			return nil, errors.Errorf("missing db tag for field %s in table t_v_payment", field.Name)
+		}
+
+		columnName := strings.Split(tag, ",")[0]
+		if columnName == "" {
+			return nil, errors.Errorf("missing column name for field %s in table t_v_payment", field.Name)
+		}
+
+		fieldValue := reflect.ValueOf(r).Elem().Field(i)
+		if !fieldValue.IsValid() {
+			return nil, errors.Errorf("invalid field value for field %s in table t_v_payment", field.Name)
+		}
+
+		if !fieldValue.CanAddr() {
+			return nil, errors.Errorf("cannot read field value for field %s in table t_v_payment", field.Name)
+		}
+
+		values[columnName] = fieldValue.Addr().Interface()
+	}
+
+	return values, nil
+}
+
+/*TVPracticeSummary t_v_practice_summary represents assessuser.t_v_practice_summary */
+type TVPracticeSummary struct {
+	ID                    null.Int    `json:"ID,omitempty" db:"id,false,integer"`                                                   /* id id */
+	Name                  null.String `json:"Name,omitempty" db:"name,false,character varying"`                                     /* name name */
+	StudentID             null.Int    `json:"StudentID,omitempty" db:"student_id,false,integer"`                                    /* student_id student_id */
+	PracticeStatus        null.String `json:"PracticeStatus,omitempty" db:"practice_status,false,character varying"`                /* practice_status practice_status */
+	PracticeStudentStatus null.String `json:"PracticeStudentStatus,omitempty" db:"practice_student_status,false,character varying"` /* practice_student_status practice_student_status */
+	AllowedAttempts       null.Int    `json:"AllowedAttempts,omitempty" db:"allowed_attempts,false,integer"`                        /* allowed_attempts allowed_attempts */
+	Difficulty            null.String `json:"Difficulty,omitempty" db:"difficulty,false,character varying"`                         /* difficulty difficulty */
+	QuestionCount         null.Int    `json:"QuestionCount,omitempty" db:"question_count,false,bigint"`                             /* question_count question_count */
+	WrongCount            null.Int    `json:"WrongCount,omitempty" db:"wrong_count,false,bigint"`                                   /* wrong_count wrong_count */
+	TotalScore            null.Float  `json:"TotalScore,omitempty" db:"total_score,false,double precision"`                         /* total_score total_score */
+	HighestScore          null.Float  `json:"HighestScore,omitempty" db:"highest_score,false,double precision"`                     /* highest_score highest_score */
+	AttemptCount          null.Int    `json:"AttemptCount,omitempty" db:"attempt_count,false,integer"`                              /* attempt_count attempt_count */
+	LatestUnsubmittedID   null.Int    `json:"LatestUnsubmittedID,omitempty" db:"latest_unsubmitted_id,false,integer"`               /* latest_unsubmitted_id latest_unsubmitted_id */
+	LatestSubmittedID     null.Int    `json:"LatestSubmittedID,omitempty" db:"latest_submitted_id,false,integer"`                   /* latest_submitted_id latest_submitted_id */
+	CreateTime            null.Int    `json:"CreateTime,omitempty" db:"create_time,false,timestamp without time zone"`              /* create_time create_time */
+	Type                  null.String `json:"Type,omitempty" db:"type,false,character varying"`                                     /* type type */
+	PaperID               null.Int    `json:"PaperID,omitempty" db:"paper_id,false,integer"`                                        /* paper_id paper_id */
+	PaperTotalScore       null.Float  `json:"PaperTotalScore,omitempty" db:"paper_total_score,false,double precision"`              /* paper_total_score paper_total_score */
+	Filter                                                                                                                          // build DML where clause
+}
+
+// TVPracticeSummaryFields full field list for default query
+var TVPracticeSummaryFields = []string{
+	"ID",
+	"Name",
+	"StudentID",
+	"PracticeStatus",
+	"PracticeStudentStatus",
+	"AllowedAttempts",
+	"Difficulty",
+	"QuestionCount",
+	"WrongCount",
+	"TotalScore",
+	"HighestScore",
+	"AttemptCount",
+	"LatestUnsubmittedID",
+	"LatestSubmittedID",
+	"CreateTime",
+	"Type",
+	"PaperID",
+	"PaperTotalScore",
+}
+
+// TVPracticeSummaryColumns full column list for default query
+var TVPracticeSummaryColumns = []string{
+	"id",
+	"name",
+	"student_id",
+	"practice_status",
+	"practice_student_status",
+	"allowed_attempts",
+	"difficulty",
+	"question_count",
+	"wrong_count",
+	"total_score",
+	"highest_score",
+	"attempt_count",
+	"latest_unsubmitted_id",
+	"latest_submitted_id",
+	"create_time",
+	"type",
+	"paper_id",
+	"paper_total_score",
+}
+
+// TVPracticeSummaryColumnsDataTypes full column data types for default query
+var TVPracticeSummaryColumnsDataTypes = map[string]string{
+	"id":                      "integer",
+	"name":                    "character varying",
+	"student_id":              "integer",
+	"practice_status":         "character varying",
+	"practice_student_status": "character varying",
+	"allowed_attempts":        "integer",
+	"difficulty":              "character varying",
+	"question_count":          "bigint",
+	"wrong_count":             "bigint",
+	"total_score":             "double precision",
+	"highest_score":           "double precision",
+	"attempt_count":           "integer",
+	"latest_unsubmitted_id":   "integer",
+	"latest_submitted_id":     "integer",
+	"create_time":             "timestamp without time zone",
+	"type":                    "character varying",
+	"paper_id":                "integer",
+	"paper_total_score":       "double precision",
+}
+
+// GetFieldsMap returns a map of field names to their values.
+func (r *TVPracticeSummary) GetFieldsMap() map[string]any {
+	return map[string]any{
+		"ID":                    r.ID,
+		"Name":                  r.Name,
+		"StudentID":             r.StudentID,
+		"PracticeStatus":        r.PracticeStatus,
+		"PracticeStudentStatus": r.PracticeStudentStatus,
+		"AllowedAttempts":       r.AllowedAttempts,
+		"Difficulty":            r.Difficulty,
+		"QuestionCount":         r.QuestionCount,
+		"WrongCount":            r.WrongCount,
+		"TotalScore":            r.TotalScore,
+		"HighestScore":          r.HighestScore,
+		"AttemptCount":          r.AttemptCount,
+		"LatestUnsubmittedID":   r.LatestUnsubmittedID,
+		"LatestSubmittedID":     r.LatestSubmittedID,
+		"CreateTime":            r.CreateTime,
+		"Type":                  r.Type,
+		"PaperID":               r.PaperID,
+		"PaperTotalScore":       r.PaperTotalScore,
+	}
+}
+
+// GetColumnsMap returns a map of column names to their values.
+func (r *TVPracticeSummary) GetColumnsMap() map[string]any {
+	return map[string]any{
+		"id":                      r.ID,
+		"name":                    r.Name,
+		"student_id":              r.StudentID,
+		"practice_status":         r.PracticeStatus,
+		"practice_student_status": r.PracticeStudentStatus,
+		"allowed_attempts":        r.AllowedAttempts,
+		"difficulty":              r.Difficulty,
+		"question_count":          r.QuestionCount,
+		"wrong_count":             r.WrongCount,
+		"total_score":             r.TotalScore,
+		"highest_score":           r.HighestScore,
+		"attempt_count":           r.AttemptCount,
+		"latest_unsubmitted_id":   r.LatestUnsubmittedID,
+		"latest_submitted_id":     r.LatestSubmittedID,
+		"create_time":             r.CreateTime,
+		"type":                    r.Type,
+		"paper_id":                r.PaperID,
+		"paper_total_score":       r.PaperTotalScore,
+	}
+}
+
+// Fields return all fields of struct.
+func (r *TVPracticeSummary) Fields() []string {
+	return TVPracticeSummaryFields
+}
+
+// GetTableName return the associated db table name.
+func (r *TVPracticeSummary) GetTableName() string {
+	var viewNamePattern = regexp.MustCompile(`(?i)^t_v_[a-z0-9_]+$`)
+	tableName := "t_v_practice_summary"
+	if viewNamePattern.MatchString(tableName) {
+		return tableName[2:]
+	}
+	return tableName
+}
+
+// Create inserts the TVPracticeSummary to the database.
+func (r *TVPracticeSummary) Create(db Queryer) error {
+	_, err := db.Exec(
+		`INSERT INTO t_v_practice_summary (id, name, student_id, practice_status, practice_student_status, allowed_attempts, difficulty, question_count, wrong_count, total_score, highest_score, attempt_count, latest_unsubmitted_id, latest_submitted_id, create_time, type, paper_id, paper_total_score) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)`,
+		&r.ID, &r.Name, &r.StudentID, &r.PracticeStatus, &r.PracticeStudentStatus, &r.AllowedAttempts, &r.Difficulty, &r.QuestionCount, &r.WrongCount, &r.TotalScore, &r.HighestScore, &r.AttemptCount, &r.LatestUnsubmittedID, &r.LatestSubmittedID, &r.CreateTime, &r.Type, &r.PaperID, &r.PaperTotalScore)
+	if err != nil {
+		return errors.Wrap(err, "failed to insert t_v_practice_summary")
+	}
+	return nil
+}
+
+// GetTVPracticeSummaryByPk select the TVPracticeSummary from the database.
+func GetTVPracticeSummaryByPk(db Queryer) (*TVPracticeSummary, error) {
+	// Don't call this function, it is a view and doesn't have a primary key.
+
+	var r TVPracticeSummary
+	err := db.QueryRow(
+		`SELECT id, name, student_id, practice_status, practice_student_status, allowed_attempts, difficulty, question_count, wrong_count, total_score, highest_score, attempt_count, latest_unsubmitted_id, latest_submitted_id, create_time, type, paper_id, paper_total_score FROM t_v_practice_summary`,
+	).Scan(&r.ID, &r.Name, &r.StudentID, &r.PracticeStatus, &r.PracticeStudentStatus, &r.AllowedAttempts, &r.Difficulty, &r.QuestionCount, &r.WrongCount, &r.TotalScore, &r.HighestScore, &r.AttemptCount, &r.LatestUnsubmittedID, &r.LatestSubmittedID, &r.CreateTime, &r.Type, &r.PaperID, &r.PaperTotalScore)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to select t_v_practice_summary")
+	}
+	return &r, nil
+}
+
+// GetTVPracticeSummaryReflectValuesMap returns a map of field names to their values.
+//
+// key is the tag name, value is the field value.
+// This is useful for reflection and dynamic queries.
+func (r *TVPracticeSummary) GetTVPracticeSummaryReflectValuesMap() (map[string]any, error) {
+
+	values := make(map[string]any)
+	v := reflect.ValueOf(r).Elem()
+	t := v.Type()
+	for i := range v.NumField() {
+		field := t.Field(i)
+		tag := field.Tag.Get("db")
+		if tag == "" {
+			return nil, errors.Errorf("missing db tag for field %s in table t_v_practice_summary", field.Name)
+		}
+
+		columnName := strings.Split(tag, ",")[0]
+		if columnName == "" {
+			return nil, errors.Errorf("missing column name for field %s in table t_v_practice_summary", field.Name)
+		}
+
+		fieldValue := reflect.ValueOf(r).Elem().Field(i)
+		if !fieldValue.IsValid() {
+			return nil, errors.Errorf("invalid field value for field %s in table t_v_practice_summary", field.Name)
+		}
+
+		if !fieldValue.CanAddr() {
+			return nil, errors.Errorf("cannot read field value for field %s in table t_v_practice_summary", field.Name)
+		}
+
+		values[columnName] = fieldValue.Addr().Interface()
+	}
+
+	return values, nil
+}
+
 /*TVRegion t_v_region represents assessuser.t_v_region */
 type TVRegion struct {
 	Province null.String `json:"Province,omitempty" db:"province,false,character varying"` /* province province */
 	City     null.String `json:"City,omitempty" db:"city,false,character varying"`         /* city city */
 	District null.String `json:"District,omitempty" db:"district,false,character varying"` /* district district */
 	Street   null.String `json:"Street,omitempty" db:"street,false,character varying"`     /* street street */
-	Filter               // build DML where clause
+	Filter                                                                                 // build DML where clause
 }
 
 // TVRegionFields full field list for default query
@@ -10424,6 +28188,42 @@ var TVRegionFields = []string{
 	"City",
 	"District",
 	"Street",
+}
+
+// TVRegionColumns full column list for default query
+var TVRegionColumns = []string{
+	"province",
+	"city",
+	"district",
+	"street",
+}
+
+// TVRegionColumnsDataTypes full column data types for default query
+var TVRegionColumnsDataTypes = map[string]string{
+	"province": "character varying",
+	"city":     "character varying",
+	"district": "character varying",
+	"street":   "character varying",
+}
+
+// GetFieldsMap returns a map of field names to their values.
+func (r *TVRegion) GetFieldsMap() map[string]any {
+	return map[string]any{
+		"Province": r.Province,
+		"City":     r.City,
+		"District": r.District,
+		"Street":   r.Street,
+	}
+}
+
+// GetColumnsMap returns a map of column names to their values.
+func (r *TVRegion) GetColumnsMap() map[string]any {
+	return map[string]any{
+		"province": r.Province,
+		"city":     r.City,
+		"district": r.District,
+		"street":   r.Street,
+	}
 }
 
 // Fields return all fields of struct.
@@ -10464,6 +28264,42 @@ func GetTVRegionByPk(db Queryer) (*TVRegion, error) {
 		return nil, errors.Wrap(err, "failed to select t_v_region")
 	}
 	return &r, nil
+}
+
+// GetTVRegionReflectValuesMap returns a map of field names to their values.
+//
+// key is the tag name, value is the field value.
+// This is useful for reflection and dynamic queries.
+func (r *TVRegion) GetTVRegionReflectValuesMap() (map[string]any, error) {
+
+	values := make(map[string]any)
+	v := reflect.ValueOf(r).Elem()
+	t := v.Type()
+	for i := range v.NumField() {
+		field := t.Field(i)
+		tag := field.Tag.Get("db")
+		if tag == "" {
+			return nil, errors.Errorf("missing db tag for field %s in table t_v_region", field.Name)
+		}
+
+		columnName := strings.Split(tag, ",")[0]
+		if columnName == "" {
+			return nil, errors.Errorf("missing column name for field %s in table t_v_region", field.Name)
+		}
+
+		fieldValue := reflect.ValueOf(r).Elem().Field(i)
+		if !fieldValue.IsValid() {
+			return nil, errors.Errorf("invalid field value for field %s in table t_v_region", field.Name)
+		}
+
+		if !fieldValue.CanAddr() {
+			return nil, errors.Errorf("cannot read field value for field %s in table t_v_region", field.Name)
+		}
+
+		values[columnName] = fieldValue.Addr().Interface()
+	}
+
+	return values, nil
 }
 
 /*TVReportClaims t_v_report_claims represents assessuser.t_v_report_claims */
@@ -10562,7 +28398,7 @@ type TVReportClaims struct {
 	DisabilityCertificate    types.JSONText `json:"DisabilityCertificate,omitempty" db:"disability_certificate,false,jsonb"`        /* disability_certificate disability_certificate */
 	DeathCertificate         types.JSONText `json:"DeathCertificate,omitempty" db:"death_certificate,false,jsonb"`                  /* death_certificate death_certificate */
 	StudentStatusCertificate types.JSONText `json:"StudentStatusCertificate,omitempty" db:"student_status_certificate,false,jsonb"` /* student_status_certificate student_status_certificate */
-	Filter                                  // build DML where clause
+	Filter                                                                                                                          // build DML where clause
 }
 
 // TVReportClaimsFields full field list for default query
@@ -10663,6 +28499,402 @@ var TVReportClaimsFields = []string{
 	"StudentStatusCertificate",
 }
 
+// TVReportClaimsColumns full column list for default query
+var TVReportClaimsColumns = []string{
+	"id",
+	"informant_id",
+	"informant",
+	"insured_id",
+	"insured",
+	"insurance_type",
+	"insurance_policy_sn",
+	"insurance_policy_id",
+	"order_id",
+	"org_id",
+	"plan_id",
+	"policy_no",
+	"insurance_policy_start",
+	"insurance_policy_cease",
+	"report_sn",
+	"insured_channel",
+	"insured_org",
+	"treatment",
+	"hospital",
+	"injured_location",
+	"injured_part",
+	"reason",
+	"injured_desc",
+	"credit_code",
+	"bank_account_type",
+	"bank_account_name",
+	"bank_name",
+	"bank_account_id",
+	"bank_card_pic",
+	"injured_id_pic",
+	"guardian_id_pic",
+	"org_lic_pic",
+	"relation_prove_pic",
+	"bills_pic",
+	"hospitalized_bills_pic",
+	"invoice_pic",
+	"medical_record_pic",
+	"dignostic_inspection_pic",
+	"discharge_abstract_pic",
+	"other_pic",
+	"courier_sn_pic",
+	"paid_notice_pic",
+	"claim_apply_pic",
+	"equity_transfer_file",
+	"match_programme_pic",
+	"policy_file",
+	"addi_pic",
+	"courier_sn",
+	"reply_addr",
+	"injured_time",
+	"report_time",
+	"reply_time",
+	"claims_mat_add_time",
+	"mat_return_date",
+	"close_date",
+	"face_amount",
+	"medi_assure_amount",
+	"third_pay_amount",
+	"claim_amount",
+	"refuse_desc",
+	"addi",
+	"creator",
+	"domain_id",
+	"remark",
+	"status",
+	"school",
+	"school_type",
+	"grade",
+	"class",
+	"official_name",
+	"gender",
+	"id_card_type",
+	"id_card_no",
+	"birthday",
+	"w_offcial_name",
+	"w_id_card_type",
+	"w_id_card_no",
+	"insured_offcial_name",
+	"m_offcial_name",
+	"m_gender",
+	"m_id_card_type",
+	"m_id_card_no",
+	"m_mobile_phone",
+	"w_m_offcial_name",
+	"w_m_mobile_phone",
+	"insurance_type_id",
+	"insurance_type_parent_id",
+	"sn",
+	"occurr_reason",
+	"treatment_result",
+	"disease_diagnosis_pic",
+	"disability_certificate",
+	"death_certificate",
+	"student_status_certificate",
+}
+
+// TVReportClaimsColumnsDataTypes full column data types for default query
+var TVReportClaimsColumnsDataTypes = map[string]string{
+	"id":                         "integer",
+	"informant_id":               "bigint",
+	"informant":                  "jsonb",
+	"insured_id":                 "bigint",
+	"insured":                    "jsonb",
+	"insurance_type":             "character varying",
+	"insurance_policy_sn":        "character varying",
+	"insurance_policy_id":        "bigint",
+	"order_id":                   "bigint",
+	"org_id":                     "bigint",
+	"plan_id":                    "bigint",
+	"policy_no":                  "character varying",
+	"insurance_policy_start":     "bigint",
+	"insurance_policy_cease":     "bigint",
+	"report_sn":                  "character varying",
+	"insured_channel":            "character varying",
+	"insured_org":                "character varying",
+	"treatment":                  "character varying",
+	"hospital":                   "character varying",
+	"injured_location":           "character varying",
+	"injured_part":               "character varying",
+	"reason":                     "character varying",
+	"injured_desc":               "character varying",
+	"credit_code":                "character varying",
+	"bank_account_type":          "character varying",
+	"bank_account_name":          "character varying",
+	"bank_name":                  "character varying",
+	"bank_account_id":            "character varying",
+	"bank_card_pic":              "jsonb",
+	"injured_id_pic":             "jsonb",
+	"guardian_id_pic":            "jsonb",
+	"org_lic_pic":                "jsonb",
+	"relation_prove_pic":         "jsonb",
+	"bills_pic":                  "jsonb",
+	"hospitalized_bills_pic":     "jsonb",
+	"invoice_pic":                "jsonb",
+	"medical_record_pic":         "jsonb",
+	"dignostic_inspection_pic":   "jsonb",
+	"discharge_abstract_pic":     "jsonb",
+	"other_pic":                  "jsonb",
+	"courier_sn_pic":             "jsonb",
+	"paid_notice_pic":            "jsonb",
+	"claim_apply_pic":            "jsonb",
+	"equity_transfer_file":       "jsonb",
+	"match_programme_pic":        "jsonb",
+	"policy_file":                "jsonb",
+	"addi_pic":                   "jsonb",
+	"courier_sn":                 "character varying",
+	"reply_addr":                 "character varying",
+	"injured_time":               "bigint",
+	"report_time":                "bigint",
+	"reply_time":                 "bigint",
+	"claims_mat_add_time":        "bigint",
+	"mat_return_date":            "bigint",
+	"close_date":                 "bigint",
+	"face_amount":                "double precision",
+	"medi_assure_amount":         "double precision",
+	"third_pay_amount":           "double precision",
+	"claim_amount":               "double precision",
+	"refuse_desc":                "character varying",
+	"addi":                       "jsonb",
+	"creator":                    "bigint",
+	"domain_id":                  "bigint",
+	"remark":                     "character varying",
+	"status":                     "character varying",
+	"school":                     "character varying",
+	"school_type":                "character varying",
+	"grade":                      "character varying",
+	"class":                      "character varying",
+	"official_name":              "character varying",
+	"gender":                     "character varying",
+	"id_card_type":               "character varying",
+	"id_card_no":                 "character varying",
+	"birthday":                   "bigint",
+	"w_offcial_name":             "text",
+	"w_id_card_type":             "text",
+	"w_id_card_no":               "text",
+	"insured_offcial_name":       "text",
+	"m_offcial_name":             "character varying",
+	"m_gender":                   "character varying",
+	"m_id_card_type":             "character varying",
+	"m_id_card_no":               "character varying",
+	"m_mobile_phone":             "character varying",
+	"w_m_offcial_name":           "text",
+	"w_m_mobile_phone":           "text",
+	"insurance_type_id":          "bigint",
+	"insurance_type_parent_id":   "bigint",
+	"sn":                         "character varying",
+	"occurr_reason":              "character varying",
+	"treatment_result":           "character varying",
+	"disease_diagnosis_pic":      "jsonb",
+	"disability_certificate":     "jsonb",
+	"death_certificate":          "jsonb",
+	"student_status_certificate": "jsonb",
+}
+
+// GetFieldsMap returns a map of field names to their values.
+func (r *TVReportClaims) GetFieldsMap() map[string]any {
+	return map[string]any{
+		"ID":                       r.ID,
+		"InformantID":              r.InformantID,
+		"Informant":                r.Informant,
+		"InsuredID":                r.InsuredID,
+		"Insured":                  r.Insured,
+		"InsuranceType":            r.InsuranceType,
+		"InsurancePolicySn":        r.InsurancePolicySn,
+		"InsurancePolicyID":        r.InsurancePolicyID,
+		"OrderID":                  r.OrderID,
+		"OrgID":                    r.OrgID,
+		"PlanID":                   r.PlanID,
+		"PolicyNo":                 r.PolicyNo,
+		"InsurancePolicyStart":     r.InsurancePolicyStart,
+		"InsurancePolicyCease":     r.InsurancePolicyCease,
+		"ReportSn":                 r.ReportSn,
+		"InsuredChannel":           r.InsuredChannel,
+		"InsuredOrg":               r.InsuredOrg,
+		"Treatment":                r.Treatment,
+		"Hospital":                 r.Hospital,
+		"InjuredLocation":          r.InjuredLocation,
+		"InjuredPart":              r.InjuredPart,
+		"Reason":                   r.Reason,
+		"InjuredDesc":              r.InjuredDesc,
+		"CreditCode":               r.CreditCode,
+		"BankAccountType":          r.BankAccountType,
+		"BankAccountName":          r.BankAccountName,
+		"BankName":                 r.BankName,
+		"BankAccountID":            r.BankAccountID,
+		"BankCardPic":              r.BankCardPic,
+		"InjuredIDPic":             r.InjuredIDPic,
+		"GuardianIDPic":            r.GuardianIDPic,
+		"OrgLicPic":                r.OrgLicPic,
+		"RelationProvePic":         r.RelationProvePic,
+		"BillsPic":                 r.BillsPic,
+		"HospitalizedBillsPic":     r.HospitalizedBillsPic,
+		"InvoicePic":               r.InvoicePic,
+		"MedicalRecordPic":         r.MedicalRecordPic,
+		"DignosticInspectionPic":   r.DignosticInspectionPic,
+		"DischargeAbstractPic":     r.DischargeAbstractPic,
+		"OtherPic":                 r.OtherPic,
+		"CourierSnPic":             r.CourierSnPic,
+		"PaidNoticePic":            r.PaidNoticePic,
+		"ClaimApplyPic":            r.ClaimApplyPic,
+		"EquityTransferFile":       r.EquityTransferFile,
+		"MatchProgrammePic":        r.MatchProgrammePic,
+		"PolicyFile":               r.PolicyFile,
+		"AddiPic":                  r.AddiPic,
+		"CourierSn":                r.CourierSn,
+		"ReplyAddr":                r.ReplyAddr,
+		"InjuredTime":              r.InjuredTime,
+		"ReportTime":               r.ReportTime,
+		"ReplyTime":                r.ReplyTime,
+		"ClaimsMatAddTime":         r.ClaimsMatAddTime,
+		"MatReturnDate":            r.MatReturnDate,
+		"CloseDate":                r.CloseDate,
+		"FaceAmount":               r.FaceAmount,
+		"MediAssureAmount":         r.MediAssureAmount,
+		"ThirdPayAmount":           r.ThirdPayAmount,
+		"ClaimAmount":              r.ClaimAmount,
+		"RefuseDesc":               r.RefuseDesc,
+		"Addi":                     r.Addi,
+		"Creator":                  r.Creator,
+		"DomainID":                 r.DomainID,
+		"Remark":                   r.Remark,
+		"Status":                   r.Status,
+		"School":                   r.School,
+		"SchoolType":               r.SchoolType,
+		"Grade":                    r.Grade,
+		"Class":                    r.Class,
+		"OfficialName":             r.OfficialName,
+		"Gender":                   r.Gender,
+		"IDCardType":               r.IDCardType,
+		"IDCardNo":                 r.IDCardNo,
+		"Birthday":                 r.Birthday,
+		"WOffcialName":             r.WOffcialName,
+		"WIDCardType":              r.WIDCardType,
+		"WIDCardNo":                r.WIDCardNo,
+		"InsuredOffcialName":       r.InsuredOffcialName,
+		"MOffcialName":             r.MOffcialName,
+		"MGender":                  r.MGender,
+		"MIDCardType":              r.MIDCardType,
+		"MIDCardNo":                r.MIDCardNo,
+		"MMobilePhone":             r.MMobilePhone,
+		"WMOffcialName":            r.WMOffcialName,
+		"WMMobilePhone":            r.WMMobilePhone,
+		"InsuranceTypeID":          r.InsuranceTypeID,
+		"InsuranceTypeParentID":    r.InsuranceTypeParentID,
+		"Sn":                       r.Sn,
+		"OccurrReason":             r.OccurrReason,
+		"TreatmentResult":          r.TreatmentResult,
+		"DiseaseDiagnosisPic":      r.DiseaseDiagnosisPic,
+		"DisabilityCertificate":    r.DisabilityCertificate,
+		"DeathCertificate":         r.DeathCertificate,
+		"StudentStatusCertificate": r.StudentStatusCertificate,
+	}
+}
+
+// GetColumnsMap returns a map of column names to their values.
+func (r *TVReportClaims) GetColumnsMap() map[string]any {
+	return map[string]any{
+		"id":                         r.ID,
+		"informant_id":               r.InformantID,
+		"informant":                  r.Informant,
+		"insured_id":                 r.InsuredID,
+		"insured":                    r.Insured,
+		"insurance_type":             r.InsuranceType,
+		"insurance_policy_sn":        r.InsurancePolicySn,
+		"insurance_policy_id":        r.InsurancePolicyID,
+		"order_id":                   r.OrderID,
+		"org_id":                     r.OrgID,
+		"plan_id":                    r.PlanID,
+		"policy_no":                  r.PolicyNo,
+		"insurance_policy_start":     r.InsurancePolicyStart,
+		"insurance_policy_cease":     r.InsurancePolicyCease,
+		"report_sn":                  r.ReportSn,
+		"insured_channel":            r.InsuredChannel,
+		"insured_org":                r.InsuredOrg,
+		"treatment":                  r.Treatment,
+		"hospital":                   r.Hospital,
+		"injured_location":           r.InjuredLocation,
+		"injured_part":               r.InjuredPart,
+		"reason":                     r.Reason,
+		"injured_desc":               r.InjuredDesc,
+		"credit_code":                r.CreditCode,
+		"bank_account_type":          r.BankAccountType,
+		"bank_account_name":          r.BankAccountName,
+		"bank_name":                  r.BankName,
+		"bank_account_id":            r.BankAccountID,
+		"bank_card_pic":              r.BankCardPic,
+		"injured_id_pic":             r.InjuredIDPic,
+		"guardian_id_pic":            r.GuardianIDPic,
+		"org_lic_pic":                r.OrgLicPic,
+		"relation_prove_pic":         r.RelationProvePic,
+		"bills_pic":                  r.BillsPic,
+		"hospitalized_bills_pic":     r.HospitalizedBillsPic,
+		"invoice_pic":                r.InvoicePic,
+		"medical_record_pic":         r.MedicalRecordPic,
+		"dignostic_inspection_pic":   r.DignosticInspectionPic,
+		"discharge_abstract_pic":     r.DischargeAbstractPic,
+		"other_pic":                  r.OtherPic,
+		"courier_sn_pic":             r.CourierSnPic,
+		"paid_notice_pic":            r.PaidNoticePic,
+		"claim_apply_pic":            r.ClaimApplyPic,
+		"equity_transfer_file":       r.EquityTransferFile,
+		"match_programme_pic":        r.MatchProgrammePic,
+		"policy_file":                r.PolicyFile,
+		"addi_pic":                   r.AddiPic,
+		"courier_sn":                 r.CourierSn,
+		"reply_addr":                 r.ReplyAddr,
+		"injured_time":               r.InjuredTime,
+		"report_time":                r.ReportTime,
+		"reply_time":                 r.ReplyTime,
+		"claims_mat_add_time":        r.ClaimsMatAddTime,
+		"mat_return_date":            r.MatReturnDate,
+		"close_date":                 r.CloseDate,
+		"face_amount":                r.FaceAmount,
+		"medi_assure_amount":         r.MediAssureAmount,
+		"third_pay_amount":           r.ThirdPayAmount,
+		"claim_amount":               r.ClaimAmount,
+		"refuse_desc":                r.RefuseDesc,
+		"addi":                       r.Addi,
+		"creator":                    r.Creator,
+		"domain_id":                  r.DomainID,
+		"remark":                     r.Remark,
+		"status":                     r.Status,
+		"school":                     r.School,
+		"school_type":                r.SchoolType,
+		"grade":                      r.Grade,
+		"class":                      r.Class,
+		"official_name":              r.OfficialName,
+		"gender":                     r.Gender,
+		"id_card_type":               r.IDCardType,
+		"id_card_no":                 r.IDCardNo,
+		"birthday":                   r.Birthday,
+		"w_offcial_name":             r.WOffcialName,
+		"w_id_card_type":             r.WIDCardType,
+		"w_id_card_no":               r.WIDCardNo,
+		"insured_offcial_name":       r.InsuredOffcialName,
+		"m_offcial_name":             r.MOffcialName,
+		"m_gender":                   r.MGender,
+		"m_id_card_type":             r.MIDCardType,
+		"m_id_card_no":               r.MIDCardNo,
+		"m_mobile_phone":             r.MMobilePhone,
+		"w_m_offcial_name":           r.WMOffcialName,
+		"w_m_mobile_phone":           r.WMMobilePhone,
+		"insurance_type_id":          r.InsuranceTypeID,
+		"insurance_type_parent_id":   r.InsuranceTypeParentID,
+		"sn":                         r.Sn,
+		"occurr_reason":              r.OccurrReason,
+		"treatment_result":           r.TreatmentResult,
+		"disease_diagnosis_pic":      r.DiseaseDiagnosisPic,
+		"disability_certificate":     r.DisabilityCertificate,
+		"death_certificate":          r.DeathCertificate,
+		"student_status_certificate": r.StudentStatusCertificate,
+	}
+}
+
 // Fields return all fields of struct.
 func (r *TVReportClaims) Fields() []string {
 	return TVReportClaimsFields
@@ -10701,6 +28933,213 @@ func GetTVReportClaimsByPk(db Queryer) (*TVReportClaims, error) {
 		return nil, errors.Wrap(err, "failed to select t_v_report_claims")
 	}
 	return &r, nil
+}
+
+// GetTVReportClaimsReflectValuesMap returns a map of field names to their values.
+//
+// key is the tag name, value is the field value.
+// This is useful for reflection and dynamic queries.
+func (r *TVReportClaims) GetTVReportClaimsReflectValuesMap() (map[string]any, error) {
+
+	values := make(map[string]any)
+	v := reflect.ValueOf(r).Elem()
+	t := v.Type()
+	for i := range v.NumField() {
+		field := t.Field(i)
+		tag := field.Tag.Get("db")
+		if tag == "" {
+			return nil, errors.Errorf("missing db tag for field %s in table t_v_report_claims", field.Name)
+		}
+
+		columnName := strings.Split(tag, ",")[0]
+		if columnName == "" {
+			return nil, errors.Errorf("missing column name for field %s in table t_v_report_claims", field.Name)
+		}
+
+		fieldValue := reflect.ValueOf(r).Elem().Field(i)
+		if !fieldValue.IsValid() {
+			return nil, errors.Errorf("invalid field value for field %s in table t_v_report_claims", field.Name)
+		}
+
+		if !fieldValue.CanAddr() {
+			return nil, errors.Errorf("cannot read field value for field %s in table t_v_report_claims", field.Name)
+		}
+
+		values[columnName] = fieldValue.Addr().Interface()
+	}
+
+	return values, nil
+}
+
+/*TVStudentAnswerQuestion t_v_student_answer_question represents assessuser.t_v_student_answer_question */
+type TVStudentAnswerQuestion struct {
+	ExamSessionID        null.Int       `json:"ExamSessionID,omitempty" db:"exam_session_id,false,bigint"`                /* exam_session_id exam_session_id */
+	PracticeID           null.Int       `json:"PracticeID,omitempty" db:"practice_id,false,bigint"`                       /* practice_id practice_id */
+	QuestionID           null.Int       `json:"QuestionID,omitempty" db:"question_id,false,integer"`                      /* question_id question_id */
+	Order                null.Int       `json:"Order,omitempty" db:"order,false,integer"`                                 /* order order */
+	Type                 null.String    `json:"Type,omitempty" db:"type,false,character varying"`                         /* type type */
+	Answer               types.JSONText `json:"Answer,omitempty" db:"answer,false,jsonb"`                                 /* answer answer */
+	AnswerScore          null.Float     `json:"AnswerScore,omitempty" db:"answer_score,false,double precision"`           /* answer_score answer_score */
+	ActualAnswers        types.JSONText `json:"ActualAnswers,omitempty" db:"actual_answers,false,jsonb"`                  /* actual_answers actual_answers */
+	ActualOptions        types.JSONText `json:"ActualOptions,omitempty" db:"actual_options,false,jsonb"`                  /* actual_options actual_options */
+	ExamineeID           null.Int       `json:"ExamineeID,omitempty" db:"examinee_id,false,integer"`                      /* examinee_id examinee_id */
+	PracticeSubmissionID null.Int       `json:"PracticeSubmissionID,omitempty" db:"practice_submission_id,false,integer"` /* practice_submission_id practice_submission_id */
+	Filter                                                                                                                // build DML where clause
+}
+
+// TVStudentAnswerQuestionFields full field list for default query
+var TVStudentAnswerQuestionFields = []string{
+	"ExamSessionID",
+	"PracticeID",
+	"QuestionID",
+	"Order",
+	"Type",
+	"Answer",
+	"AnswerScore",
+	"ActualAnswers",
+	"ActualOptions",
+	"ExamineeID",
+	"PracticeSubmissionID",
+}
+
+// TVStudentAnswerQuestionColumns full column list for default query
+var TVStudentAnswerQuestionColumns = []string{
+	"exam_session_id",
+	"practice_id",
+	"question_id",
+	"order",
+	"type",
+	"answer",
+	"answer_score",
+	"actual_answers",
+	"actual_options",
+	"examinee_id",
+	"practice_submission_id",
+}
+
+// TVStudentAnswerQuestionColumnsDataTypes full column data types for default query
+var TVStudentAnswerQuestionColumnsDataTypes = map[string]string{
+	"exam_session_id":        "bigint",
+	"practice_id":            "bigint",
+	"question_id":            "integer",
+	"order":                  "integer",
+	"type":                   "character varying",
+	"answer":                 "jsonb",
+	"answer_score":           "double precision",
+	"actual_answers":         "jsonb",
+	"actual_options":         "jsonb",
+	"examinee_id":            "integer",
+	"practice_submission_id": "integer",
+}
+
+// GetFieldsMap returns a map of field names to their values.
+func (r *TVStudentAnswerQuestion) GetFieldsMap() map[string]any {
+	return map[string]any{
+		"ExamSessionID":        r.ExamSessionID,
+		"PracticeID":           r.PracticeID,
+		"QuestionID":           r.QuestionID,
+		"Order":                r.Order,
+		"Type":                 r.Type,
+		"Answer":               r.Answer,
+		"AnswerScore":          r.AnswerScore,
+		"ActualAnswers":        r.ActualAnswers,
+		"ActualOptions":        r.ActualOptions,
+		"ExamineeID":           r.ExamineeID,
+		"PracticeSubmissionID": r.PracticeSubmissionID,
+	}
+}
+
+// GetColumnsMap returns a map of column names to their values.
+func (r *TVStudentAnswerQuestion) GetColumnsMap() map[string]any {
+	return map[string]any{
+		"exam_session_id":        r.ExamSessionID,
+		"practice_id":            r.PracticeID,
+		"question_id":            r.QuestionID,
+		"order":                  r.Order,
+		"type":                   r.Type,
+		"answer":                 r.Answer,
+		"answer_score":           r.AnswerScore,
+		"actual_answers":         r.ActualAnswers,
+		"actual_options":         r.ActualOptions,
+		"examinee_id":            r.ExamineeID,
+		"practice_submission_id": r.PracticeSubmissionID,
+	}
+}
+
+// Fields return all fields of struct.
+func (r *TVStudentAnswerQuestion) Fields() []string {
+	return TVStudentAnswerQuestionFields
+}
+
+// GetTableName return the associated db table name.
+func (r *TVStudentAnswerQuestion) GetTableName() string {
+	var viewNamePattern = regexp.MustCompile(`(?i)^t_v_[a-z0-9_]+$`)
+	tableName := "t_v_student_answer_question"
+	if viewNamePattern.MatchString(tableName) {
+		return tableName[2:]
+	}
+	return tableName
+}
+
+// Create inserts the TVStudentAnswerQuestion to the database.
+func (r *TVStudentAnswerQuestion) Create(db Queryer) error {
+	_, err := db.Exec(
+		`INSERT INTO t_v_student_answer_question (exam_session_id, practice_id, question_id, order, type, answer, answer_score, actual_answers, actual_options, examinee_id, practice_submission_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+		&r.ExamSessionID, &r.PracticeID, &r.QuestionID, &r.Order, &r.Type, &r.Answer, &r.AnswerScore, &r.ActualAnswers, &r.ActualOptions, &r.ExamineeID, &r.PracticeSubmissionID)
+	if err != nil {
+		return errors.Wrap(err, "failed to insert t_v_student_answer_question")
+	}
+	return nil
+}
+
+// GetTVStudentAnswerQuestionByPk select the TVStudentAnswerQuestion from the database.
+func GetTVStudentAnswerQuestionByPk(db Queryer) (*TVStudentAnswerQuestion, error) {
+	// Don't call this function, it is a view and doesn't have a primary key.
+
+	var r TVStudentAnswerQuestion
+	err := db.QueryRow(
+		`SELECT exam_session_id, practice_id, question_id, order, type, answer, answer_score, actual_answers, actual_options, examinee_id, practice_submission_id FROM t_v_student_answer_question`,
+	).Scan(&r.ExamSessionID, &r.PracticeID, &r.QuestionID, &r.Order, &r.Type, &r.Answer, &r.AnswerScore, &r.ActualAnswers, &r.ActualOptions, &r.ExamineeID, &r.PracticeSubmissionID)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to select t_v_student_answer_question")
+	}
+	return &r, nil
+}
+
+// GetTVStudentAnswerQuestionReflectValuesMap returns a map of field names to their values.
+//
+// key is the tag name, value is the field value.
+// This is useful for reflection and dynamic queries.
+func (r *TVStudentAnswerQuestion) GetTVStudentAnswerQuestionReflectValuesMap() (map[string]any, error) {
+
+	values := make(map[string]any)
+	v := reflect.ValueOf(r).Elem()
+	t := v.Type()
+	for i := range v.NumField() {
+		field := t.Field(i)
+		tag := field.Tag.Get("db")
+		if tag == "" {
+			return nil, errors.Errorf("missing db tag for field %s in table t_v_student_answer_question", field.Name)
+		}
+
+		columnName := strings.Split(tag, ",")[0]
+		if columnName == "" {
+			return nil, errors.Errorf("missing column name for field %s in table t_v_student_answer_question", field.Name)
+		}
+
+		fieldValue := reflect.ValueOf(r).Elem().Field(i)
+		if !fieldValue.IsValid() {
+			return nil, errors.Errorf("invalid field value for field %s in table t_v_student_answer_question", field.Name)
+		}
+
+		if !fieldValue.CanAddr() {
+			return nil, errors.Errorf("cannot read field value for field %s in table t_v_student_answer_question", field.Name)
+		}
+
+		values[columnName] = fieldValue.Addr().Interface()
+	}
+
+	return values, nil
 }
 
 /*TVUser t_v_user represents assessuser.t_v_user */
@@ -10757,7 +29196,7 @@ type TVUser struct {
 	GrpID           null.Int       `json:"GrpID,omitempty" db:"grp_id,false,integer"`                              /* grp_id grp_id */
 	Realm           null.String    `json:"Realm,omitempty" db:"realm,false,character varying"`                     /* realm realm */
 	GrpName         null.String    `json:"GrpName,omitempty" db:"grp_name,false,character varying"`                /* grp_name grp_name */
-	Filter                         // build DML where clause
+	Filter                                                                                                         // build DML where clause
 }
 
 // TVUserFields full field list for default query
@@ -10816,6 +29255,234 @@ var TVUserFields = []string{
 	"GrpName",
 }
 
+// TVUserColumns full column list for default query
+var TVUserColumns = []string{
+	"id",
+	"external_id_type",
+	"external_id",
+	"category",
+	"type",
+	"language",
+	"country",
+	"province",
+	"city",
+	"addr",
+	"official_name",
+	"id_card_type",
+	"id_card_no",
+	"mobile_phone",
+	"email",
+	"account",
+	"gender",
+	"birthday",
+	"nickname",
+	"avatar",
+	"avatar_type",
+	"dev_id",
+	"dev_user_id",
+	"dev_account",
+	"ip",
+	"port",
+	"auth_failed_count",
+	"lock_duration",
+	"visit_count",
+	"attack_count",
+	"lock_reason",
+	"logon_time",
+	"begin_lock_time",
+	"creator",
+	"create_time",
+	"updated_by",
+	"update_time",
+	"domain_id",
+	"addi",
+	"remark",
+	"status",
+	"wx_open_id",
+	"mp_open_id",
+	"union_id",
+	"open_id",
+	"wx_nickname",
+	"head_img_url",
+	"wx_create_time",
+	"wx_update_time",
+	"grp_id",
+	"realm",
+	"grp_name",
+}
+
+// TVUserColumnsDataTypes full column data types for default query
+var TVUserColumnsDataTypes = map[string]string{
+	"id":                "integer",
+	"external_id_type":  "character varying",
+	"external_id":       "character varying",
+	"category":          "character varying",
+	"type":              "character varying",
+	"language":          "character varying",
+	"country":           "character varying",
+	"province":          "character varying",
+	"city":              "character varying",
+	"addr":              "character varying",
+	"official_name":     "character varying",
+	"id_card_type":      "character varying",
+	"id_card_no":        "character varying",
+	"mobile_phone":      "character varying",
+	"email":             "character varying",
+	"account":           "character varying",
+	"gender":            "character varying",
+	"birthday":          "bigint",
+	"nickname":          "character varying",
+	"avatar":            "bytea",
+	"avatar_type":       "character varying",
+	"dev_id":            "character varying",
+	"dev_user_id":       "character varying",
+	"dev_account":       "character varying",
+	"ip":                "character varying",
+	"port":              "character varying",
+	"auth_failed_count": "integer",
+	"lock_duration":     "integer",
+	"visit_count":       "integer",
+	"attack_count":      "integer",
+	"lock_reason":       "character varying",
+	"logon_time":        "bigint",
+	"begin_lock_time":   "bigint",
+	"creator":           "bigint",
+	"create_time":       "bigint",
+	"updated_by":        "bigint",
+	"update_time":       "bigint",
+	"domain_id":         "bigint",
+	"addi":              "jsonb",
+	"remark":            "character varying",
+	"status":            "character varying",
+	"wx_open_id":        "character varying",
+	"mp_open_id":        "character varying",
+	"union_id":          "character varying",
+	"open_id":           "character varying",
+	"wx_nickname":       "character varying",
+	"head_img_url":      "character varying",
+	"wx_create_time":    "bigint",
+	"wx_update_time":    "bigint",
+	"grp_id":            "integer",
+	"realm":             "character varying",
+	"grp_name":          "character varying",
+}
+
+// GetFieldsMap returns a map of field names to their values.
+func (r *TVUser) GetFieldsMap() map[string]any {
+	return map[string]any{
+		"ID":              r.ID,
+		"ExternalIDType":  r.ExternalIDType,
+		"ExternalID":      r.ExternalID,
+		"Category":        r.Category,
+		"Type":            r.Type,
+		"Language":        r.Language,
+		"Country":         r.Country,
+		"Province":        r.Province,
+		"City":            r.City,
+		"Addr":            r.Addr,
+		"OfficialName":    r.OfficialName,
+		"IDCardType":      r.IDCardType,
+		"IDCardNo":        r.IDCardNo,
+		"MobilePhone":     r.MobilePhone,
+		"Email":           r.Email,
+		"Account":         r.Account,
+		"Gender":          r.Gender,
+		"Birthday":        r.Birthday,
+		"Nickname":        r.Nickname,
+		"Avatar":          r.Avatar,
+		"AvatarType":      r.AvatarType,
+		"DevID":           r.DevID,
+		"DevUserID":       r.DevUserID,
+		"DevAccount":      r.DevAccount,
+		"IP":              r.IP,
+		"Port":            r.Port,
+		"AuthFailedCount": r.AuthFailedCount,
+		"LockDuration":    r.LockDuration,
+		"VisitCount":      r.VisitCount,
+		"AttackCount":     r.AttackCount,
+		"LockReason":      r.LockReason,
+		"LogonTime":       r.LogonTime,
+		"BeginLockTime":   r.BeginLockTime,
+		"Creator":         r.Creator,
+		"CreateTime":      r.CreateTime,
+		"UpdatedBy":       r.UpdatedBy,
+		"UpdateTime":      r.UpdateTime,
+		"DomainID":        r.DomainID,
+		"Addi":            r.Addi,
+		"Remark":          r.Remark,
+		"Status":          r.Status,
+		"WxOpenID":        r.WxOpenID,
+		"MpOpenID":        r.MpOpenID,
+		"UnionID":         r.UnionID,
+		"OpenID":          r.OpenID,
+		"WxNickname":      r.WxNickname,
+		"HeadImgURL":      r.HeadImgURL,
+		"WxCreateTime":    r.WxCreateTime,
+		"WxUpdateTime":    r.WxUpdateTime,
+		"GrpID":           r.GrpID,
+		"Realm":           r.Realm,
+		"GrpName":         r.GrpName,
+	}
+}
+
+// GetColumnsMap returns a map of column names to their values.
+func (r *TVUser) GetColumnsMap() map[string]any {
+	return map[string]any{
+		"id":                r.ID,
+		"external_id_type":  r.ExternalIDType,
+		"external_id":       r.ExternalID,
+		"category":          r.Category,
+		"type":              r.Type,
+		"language":          r.Language,
+		"country":           r.Country,
+		"province":          r.Province,
+		"city":              r.City,
+		"addr":              r.Addr,
+		"official_name":     r.OfficialName,
+		"id_card_type":      r.IDCardType,
+		"id_card_no":        r.IDCardNo,
+		"mobile_phone":      r.MobilePhone,
+		"email":             r.Email,
+		"account":           r.Account,
+		"gender":            r.Gender,
+		"birthday":          r.Birthday,
+		"nickname":          r.Nickname,
+		"avatar":            r.Avatar,
+		"avatar_type":       r.AvatarType,
+		"dev_id":            r.DevID,
+		"dev_user_id":       r.DevUserID,
+		"dev_account":       r.DevAccount,
+		"ip":                r.IP,
+		"port":              r.Port,
+		"auth_failed_count": r.AuthFailedCount,
+		"lock_duration":     r.LockDuration,
+		"visit_count":       r.VisitCount,
+		"attack_count":      r.AttackCount,
+		"lock_reason":       r.LockReason,
+		"logon_time":        r.LogonTime,
+		"begin_lock_time":   r.BeginLockTime,
+		"creator":           r.Creator,
+		"create_time":       r.CreateTime,
+		"updated_by":        r.UpdatedBy,
+		"update_time":       r.UpdateTime,
+		"domain_id":         r.DomainID,
+		"addi":              r.Addi,
+		"remark":            r.Remark,
+		"status":            r.Status,
+		"wx_open_id":        r.WxOpenID,
+		"mp_open_id":        r.MpOpenID,
+		"union_id":          r.UnionID,
+		"open_id":           r.OpenID,
+		"wx_nickname":       r.WxNickname,
+		"head_img_url":      r.HeadImgURL,
+		"wx_create_time":    r.WxCreateTime,
+		"wx_update_time":    r.WxUpdateTime,
+		"grp_id":            r.GrpID,
+		"realm":             r.Realm,
+		"grp_name":          r.GrpName,
+	}
+}
+
 // Fields return all fields of struct.
 func (r *TVUser) Fields() []string {
 	return TVUserFields
@@ -10856,6 +29523,42 @@ func GetTVUserByPk(db Queryer) (*TVUser, error) {
 	return &r, nil
 }
 
+// GetTVUserReflectValuesMap returns a map of field names to their values.
+//
+// key is the tag name, value is the field value.
+// This is useful for reflection and dynamic queries.
+func (r *TVUser) GetTVUserReflectValuesMap() (map[string]any, error) {
+
+	values := make(map[string]any)
+	v := reflect.ValueOf(r).Elem()
+	t := v.Type()
+	for i := range v.NumField() {
+		field := t.Field(i)
+		tag := field.Tag.Get("db")
+		if tag == "" {
+			return nil, errors.Errorf("missing db tag for field %s in table t_v_user", field.Name)
+		}
+
+		columnName := strings.Split(tag, ",")[0]
+		if columnName == "" {
+			return nil, errors.Errorf("missing column name for field %s in table t_v_user", field.Name)
+		}
+
+		fieldValue := reflect.ValueOf(r).Elem().Field(i)
+		if !fieldValue.IsValid() {
+			return nil, errors.Errorf("invalid field value for field %s in table t_v_user", field.Name)
+		}
+
+		if !fieldValue.CanAddr() {
+			return nil, errors.Errorf("cannot read field value for field %s in table t_v_user", field.Name)
+		}
+
+		values[columnName] = fieldValue.Addr().Interface()
+	}
+
+	return values, nil
+}
+
 /*TVUserDomain t_v_user_domain represents assessuser.t_v_user_domain */
 type TVUserDomain struct {
 	ID             null.Int       `json:"ID,omitempty" db:"id,false,integer"`                                     /* id id */
@@ -10880,7 +29583,7 @@ type TVUserDomain struct {
 	Addi           types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                                   /* addi addi */
 	Creator        null.Int       `json:"Creator,omitempty" db:"creator,false,bigint"`                            /* creator creator */
 	Status         null.String    `json:"Status,omitempty" db:"status,false,character varying"`                   /* status status */
-	Filter                        // build DML where clause
+	Filter                                                                                                        // build DML where clause
 }
 
 // TVUserDomainFields full field list for default query
@@ -10907,6 +29610,114 @@ var TVUserDomainFields = []string{
 	"Addi",
 	"Creator",
 	"Status",
+}
+
+// TVUserDomainColumns full column list for default query
+var TVUserDomainColumns = []string{
+	"id",
+	"user_id",
+	"user_name",
+	"mobile_phone",
+	"email",
+	"id_card_no",
+	"id_card_type",
+	"external_id",
+	"external_id_type",
+	"auth_domain_id",
+	"priority",
+	"domain_name",
+	"domain",
+	"grant_source",
+	"data_access_mode",
+	"data_scope",
+	"domain_id",
+	"create_time",
+	"remark",
+	"addi",
+	"creator",
+	"status",
+}
+
+// TVUserDomainColumnsDataTypes full column data types for default query
+var TVUserDomainColumnsDataTypes = map[string]string{
+	"id":               "integer",
+	"user_id":          "integer",
+	"user_name":        "character varying",
+	"mobile_phone":     "character varying",
+	"email":            "character varying",
+	"id_card_no":       "character varying",
+	"id_card_type":     "character varying",
+	"external_id":      "character varying",
+	"external_id_type": "character varying",
+	"auth_domain_id":   "integer",
+	"priority":         "smallint",
+	"domain_name":      "character varying",
+	"domain":           "character varying",
+	"grant_source":     "character varying",
+	"data_access_mode": "character varying",
+	"data_scope":       "jsonb",
+	"domain_id":        "bigint",
+	"create_time":      "bigint",
+	"remark":           "character varying",
+	"addi":             "jsonb",
+	"creator":          "bigint",
+	"status":           "character varying",
+}
+
+// GetFieldsMap returns a map of field names to their values.
+func (r *TVUserDomain) GetFieldsMap() map[string]any {
+	return map[string]any{
+		"ID":             r.ID,
+		"UserID":         r.UserID,
+		"UserName":       r.UserName,
+		"MobilePhone":    r.MobilePhone,
+		"Email":          r.Email,
+		"IDCardNo":       r.IDCardNo,
+		"IDCardType":     r.IDCardType,
+		"ExternalID":     r.ExternalID,
+		"ExternalIDType": r.ExternalIDType,
+		"AuthDomainID":   r.AuthDomainID,
+		"Priority":       r.Priority,
+		"DomainName":     r.DomainName,
+		"Domain":         r.Domain,
+		"GrantSource":    r.GrantSource,
+		"DataAccessMode": r.DataAccessMode,
+		"DataScope":      r.DataScope,
+		"DomainID":       r.DomainID,
+		"CreateTime":     r.CreateTime,
+		"Remark":         r.Remark,
+		"Addi":           r.Addi,
+		"Creator":        r.Creator,
+		"Status":         r.Status,
+	}
+}
+
+// GetColumnsMap returns a map of column names to their values.
+func (r *TVUserDomain) GetColumnsMap() map[string]any {
+	return map[string]any{
+		"id":               r.ID,
+		"user_id":          r.UserID,
+		"user_name":        r.UserName,
+		"mobile_phone":     r.MobilePhone,
+		"email":            r.Email,
+		"id_card_no":       r.IDCardNo,
+		"id_card_type":     r.IDCardType,
+		"external_id":      r.ExternalID,
+		"external_id_type": r.ExternalIDType,
+		"auth_domain_id":   r.AuthDomainID,
+		"priority":         r.Priority,
+		"domain_name":      r.DomainName,
+		"domain":           r.Domain,
+		"grant_source":     r.GrantSource,
+		"data_access_mode": r.DataAccessMode,
+		"data_scope":       r.DataScope,
+		"domain_id":        r.DomainID,
+		"create_time":      r.CreateTime,
+		"remark":           r.Remark,
+		"addi":             r.Addi,
+		"creator":          r.Creator,
+		"status":           r.Status,
+	}
 }
 
 // Fields return all fields of struct.
@@ -10949,6 +29760,42 @@ func GetTVUserDomainByPk(db Queryer) (*TVUserDomain, error) {
 	return &r, nil
 }
 
+// GetTVUserDomainReflectValuesMap returns a map of field names to their values.
+//
+// key is the tag name, value is the field value.
+// This is useful for reflection and dynamic queries.
+func (r *TVUserDomain) GetTVUserDomainReflectValuesMap() (map[string]any, error) {
+
+	values := make(map[string]any)
+	v := reflect.ValueOf(r).Elem()
+	t := v.Type()
+	for i := range v.NumField() {
+		field := t.Field(i)
+		tag := field.Tag.Get("db")
+		if tag == "" {
+			return nil, errors.Errorf("missing db tag for field %s in table t_v_user_domain", field.Name)
+		}
+
+		columnName := strings.Split(tag, ",")[0]
+		if columnName == "" {
+			return nil, errors.Errorf("missing column name for field %s in table t_v_user_domain", field.Name)
+		}
+
+		fieldValue := reflect.ValueOf(r).Elem().Field(i)
+		if !fieldValue.IsValid() {
+			return nil, errors.Errorf("invalid field value for field %s in table t_v_user_domain", field.Name)
+		}
+
+		if !fieldValue.CanAddr() {
+			return nil, errors.Errorf("cannot read field value for field %s in table t_v_user_domain", field.Name)
+		}
+
+		values[columnName] = fieldValue.Addr().Interface()
+	}
+
+	return values, nil
+}
+
 /*TVUserDomainAPI t_v_user_domain_api represents assessuser.t_v_user_domain_api */
 type TVUserDomainAPI struct {
 	UserID                   null.Int       `json:"UserID,omitempty" db:"user_id,false,integer"`                                                  /* user_id user_id */
@@ -10978,7 +29825,7 @@ type TVUserDomainAPI struct {
 	DomainAPIDataScopeData   null.String    `json:"DomainAPIDataScopeData,omitempty" db:"domain_api_data_scope_data,false,text"`                  /* domain_api_data_scope_data domain_api_data_scope_data */
 	DomainAPIDataScopeType   null.String    `json:"DomainAPIDataScopeType,omitempty" db:"domain_api_data_scope_type,false,text"`                  /* domain_api_data_scope_type domain_api_data_scope_type */
 	DomainAPICreateTime      null.Int       `json:"DomainAPICreateTime,omitempty" db:"domain_api_create_time,false,bigint"`                       /* domain_api_create_time domain_api_create_time */
-	Filter                                  // build DML where clause
+	Filter                                                                                                                                        // build DML where clause
 }
 
 // TVUserDomainAPIFields full field list for default query
@@ -11010,6 +29857,134 @@ var TVUserDomainAPIFields = []string{
 	"DomainAPIDataScopeData",
 	"DomainAPIDataScopeType",
 	"DomainAPICreateTime",
+}
+
+// TVUserDomainAPIColumns full column list for default query
+var TVUserDomainAPIColumns = []string{
+	"user_id",
+	"official_name",
+	"user_name",
+	"role",
+	"mobile_phone",
+	"api_id",
+	"api_name",
+	"api_expose_path",
+	"domain_name",
+	"domain_id",
+	"domain",
+	"priority",
+	"user_domain_id",
+	"user_domain_grant_source",
+	"user_domain_data_access_mode",
+	"user_domain_data_scope",
+	"user_domain_data_scope_data",
+	"user_domain_data_scope_type",
+	"id_on_domain",
+	"user_domain_create_time",
+	"domain_api_id",
+	"domain_api_grant_source",
+	"domain_api_data_access_mode",
+	"domain_api_data_scope",
+	"domain_api_data_scope_data",
+	"domain_api_data_scope_type",
+	"domain_api_create_time",
+}
+
+// TVUserDomainAPIColumnsDataTypes full column data types for default query
+var TVUserDomainAPIColumnsDataTypes = map[string]string{
+	"user_id":                      "integer",
+	"official_name":                "character varying",
+	"user_name":                    "character varying",
+	"role":                         "bigint",
+	"mobile_phone":                 "character varying",
+	"api_id":                       "integer",
+	"api_name":                     "character varying",
+	"api_expose_path":              "character varying",
+	"domain_name":                  "character varying",
+	"domain_id":                    "integer",
+	"domain":                       "character varying",
+	"priority":                     "smallint",
+	"user_domain_id":               "integer",
+	"user_domain_grant_source":     "character varying",
+	"user_domain_data_access_mode": "character varying",
+	"user_domain_data_scope":       "jsonb",
+	"user_domain_data_scope_data":  "text",
+	"user_domain_data_scope_type":  "text",
+	"id_on_domain":                 "character varying",
+	"user_domain_create_time":      "bigint",
+	"domain_api_id":                "integer",
+	"domain_api_grant_source":      "character varying",
+	"domain_api_data_access_mode":  "character varying",
+	"domain_api_data_scope":        "jsonb",
+	"domain_api_data_scope_data":   "text",
+	"domain_api_data_scope_type":   "text",
+	"domain_api_create_time":       "bigint",
+}
+
+// GetFieldsMap returns a map of field names to their values.
+func (r *TVUserDomainAPI) GetFieldsMap() map[string]any {
+	return map[string]any{
+		"UserID":                   r.UserID,
+		"OfficialName":             r.OfficialName,
+		"UserName":                 r.UserName,
+		"Role":                     r.Role,
+		"MobilePhone":              r.MobilePhone,
+		"APIID":                    r.APIID,
+		"APIName":                  r.APIName,
+		"APIExposePath":            r.APIExposePath,
+		"DomainName":               r.DomainName,
+		"DomainID":                 r.DomainID,
+		"Domain":                   r.Domain,
+		"Priority":                 r.Priority,
+		"UserDomainID":             r.UserDomainID,
+		"UserDomainGrantSource":    r.UserDomainGrantSource,
+		"UserDomainDataAccessMode": r.UserDomainDataAccessMode,
+		"UserDomainDataScope":      r.UserDomainDataScope,
+		"UserDomainDataScopeData":  r.UserDomainDataScopeData,
+		"UserDomainDataScopeType":  r.UserDomainDataScopeType,
+		"IDOnDomain":               r.IDOnDomain,
+		"UserDomainCreateTime":     r.UserDomainCreateTime,
+		"DomainAPIID":              r.DomainAPIID,
+		"DomainAPIGrantSource":     r.DomainAPIGrantSource,
+		"DomainAPIDataAccessMode":  r.DomainAPIDataAccessMode,
+		"DomainAPIDataScope":       r.DomainAPIDataScope,
+		"DomainAPIDataScopeData":   r.DomainAPIDataScopeData,
+		"DomainAPIDataScopeType":   r.DomainAPIDataScopeType,
+		"DomainAPICreateTime":      r.DomainAPICreateTime,
+	}
+}
+
+// GetColumnsMap returns a map of column names to their values.
+func (r *TVUserDomainAPI) GetColumnsMap() map[string]any {
+	return map[string]any{
+		"user_id":                      r.UserID,
+		"official_name":                r.OfficialName,
+		"user_name":                    r.UserName,
+		"role":                         r.Role,
+		"mobile_phone":                 r.MobilePhone,
+		"api_id":                       r.APIID,
+		"api_name":                     r.APIName,
+		"api_expose_path":              r.APIExposePath,
+		"domain_name":                  r.DomainName,
+		"domain_id":                    r.DomainID,
+		"domain":                       r.Domain,
+		"priority":                     r.Priority,
+		"user_domain_id":               r.UserDomainID,
+		"user_domain_grant_source":     r.UserDomainGrantSource,
+		"user_domain_data_access_mode": r.UserDomainDataAccessMode,
+		"user_domain_data_scope":       r.UserDomainDataScope,
+		"user_domain_data_scope_data":  r.UserDomainDataScopeData,
+		"user_domain_data_scope_type":  r.UserDomainDataScopeType,
+		"id_on_domain":                 r.IDOnDomain,
+		"user_domain_create_time":      r.UserDomainCreateTime,
+		"domain_api_id":                r.DomainAPIID,
+		"domain_api_grant_source":      r.DomainAPIGrantSource,
+		"domain_api_data_access_mode":  r.DomainAPIDataAccessMode,
+		"domain_api_data_scope":        r.DomainAPIDataScope,
+		"domain_api_data_scope_data":   r.DomainAPIDataScopeData,
+		"domain_api_data_scope_type":   r.DomainAPIDataScopeType,
+		"domain_api_create_time":       r.DomainAPICreateTime,
+	}
 }
 
 // Fields return all fields of struct.
@@ -11052,6 +30027,42 @@ func GetTVUserDomainAPIByPk(db Queryer) (*TVUserDomainAPI, error) {
 	return &r, nil
 }
 
+// GetTVUserDomainAPIReflectValuesMap returns a map of field names to their values.
+//
+// key is the tag name, value is the field value.
+// This is useful for reflection and dynamic queries.
+func (r *TVUserDomainAPI) GetTVUserDomainAPIReflectValuesMap() (map[string]any, error) {
+
+	values := make(map[string]any)
+	v := reflect.ValueOf(r).Elem()
+	t := v.Type()
+	for i := range v.NumField() {
+		field := t.Field(i)
+		tag := field.Tag.Get("db")
+		if tag == "" {
+			return nil, errors.Errorf("missing db tag for field %s in table t_v_user_domain_api", field.Name)
+		}
+
+		columnName := strings.Split(tag, ",")[0]
+		if columnName == "" {
+			return nil, errors.Errorf("missing column name for field %s in table t_v_user_domain_api", field.Name)
+		}
+
+		fieldValue := reflect.ValueOf(r).Elem().Field(i)
+		if !fieldValue.IsValid() {
+			return nil, errors.Errorf("invalid field value for field %s in table t_v_user_domain_api", field.Name)
+		}
+
+		if !fieldValue.CanAddr() {
+			return nil, errors.Errorf("cannot read field value for field %s in table t_v_user_domain_api", field.Name)
+		}
+
+		values[columnName] = fieldValue.Addr().Interface()
+	}
+
+	return values, nil
+}
+
 /*TVXkbSchoolLayout t_v_xkb_school_layout represents assessuser.t_v_xkb_school_layout */
 type TVXkbSchoolLayout struct {
 	School     null.String    `json:"School,omitempty" db:"school,false,character varying"` /* school school */
@@ -11063,7 +30074,7 @@ type TVXkbSchoolLayout struct {
 	Class      null.String    `json:"Class,omitempty" db:"class,false,character varying"`   /* class class */
 	Classid    null.Int       `json:"Classid,omitempty" db:"classid,false,integer"`         /* classid classid */
 	ClassAddi  types.JSONText `json:"ClassAddi,omitempty" db:"class_addi,false,jsonb"`      /* class_addi class_addi */
-	Filter                    // build DML where clause
+	Filter                                                                                  // build DML where clause
 }
 
 // TVXkbSchoolLayoutFields full field list for default query
@@ -11077,6 +30088,62 @@ var TVXkbSchoolLayoutFields = []string{
 	"Class",
 	"Classid",
 	"ClassAddi",
+}
+
+// TVXkbSchoolLayoutColumns full column list for default query
+var TVXkbSchoolLayoutColumns = []string{
+	"school",
+	"schoolid",
+	"school_addi",
+	"grade",
+	"gradeid",
+	"grade_addi",
+	"class",
+	"classid",
+	"class_addi",
+}
+
+// TVXkbSchoolLayoutColumnsDataTypes full column data types for default query
+var TVXkbSchoolLayoutColumnsDataTypes = map[string]string{
+	"school":      "character varying",
+	"schoolid":    "integer",
+	"school_addi": "jsonb",
+	"grade":       "character varying",
+	"gradeid":     "integer",
+	"grade_addi":  "jsonb",
+	"class":       "character varying",
+	"classid":     "integer",
+	"class_addi":  "jsonb",
+}
+
+// GetFieldsMap returns a map of field names to their values.
+func (r *TVXkbSchoolLayout) GetFieldsMap() map[string]any {
+	return map[string]any{
+		"School":     r.School,
+		"Schoolid":   r.Schoolid,
+		"SchoolAddi": r.SchoolAddi,
+		"Grade":      r.Grade,
+		"Gradeid":    r.Gradeid,
+		"GradeAddi":  r.GradeAddi,
+		"Class":      r.Class,
+		"Classid":    r.Classid,
+		"ClassAddi":  r.ClassAddi,
+	}
+}
+
+// GetColumnsMap returns a map of column names to their values.
+func (r *TVXkbSchoolLayout) GetColumnsMap() map[string]any {
+	return map[string]any{
+		"school":      r.School,
+		"schoolid":    r.Schoolid,
+		"school_addi": r.SchoolAddi,
+		"grade":       r.Grade,
+		"gradeid":     r.Gradeid,
+		"grade_addi":  r.GradeAddi,
+		"class":       r.Class,
+		"classid":     r.Classid,
+		"class_addi":  r.ClassAddi,
+	}
 }
 
 // Fields return all fields of struct.
@@ -11117,6 +30184,42 @@ func GetTVXkbSchoolLayoutByPk(db Queryer) (*TVXkbSchoolLayout, error) {
 		return nil, errors.Wrap(err, "failed to select t_v_xkb_school_layout")
 	}
 	return &r, nil
+}
+
+// GetTVXkbSchoolLayoutReflectValuesMap returns a map of field names to their values.
+//
+// key is the tag name, value is the field value.
+// This is useful for reflection and dynamic queries.
+func (r *TVXkbSchoolLayout) GetTVXkbSchoolLayoutReflectValuesMap() (map[string]any, error) {
+
+	values := make(map[string]any)
+	v := reflect.ValueOf(r).Elem()
+	t := v.Type()
+	for i := range v.NumField() {
+		field := t.Field(i)
+		tag := field.Tag.Get("db")
+		if tag == "" {
+			return nil, errors.Errorf("missing db tag for field %s in table t_v_xkb_school_layout", field.Name)
+		}
+
+		columnName := strings.Split(tag, ",")[0]
+		if columnName == "" {
+			return nil, errors.Errorf("missing column name for field %s in table t_v_xkb_school_layout", field.Name)
+		}
+
+		fieldValue := reflect.ValueOf(r).Elem().Field(i)
+		if !fieldValue.IsValid() {
+			return nil, errors.Errorf("invalid field value for field %s in table t_v_xkb_school_layout", field.Name)
+		}
+
+		if !fieldValue.CanAddr() {
+			return nil, errors.Errorf("cannot read field value for field %s in table t_v_xkb_school_layout", field.Name)
+		}
+
+		values[columnName] = fieldValue.Addr().Interface()
+	}
+
+	return values, nil
 }
 
 /*TVXkbUser t_v_xkb_user represents assessuser.t_v_xkb_user */
@@ -11162,7 +30265,7 @@ type TVXkbUser struct {
 	UnionID        null.String    `json:"UnionID,omitempty" db:"union_id,false,character varying"`                /* union_id union_id */
 	WxOpenID       null.String    `json:"WxOpenID,omitempty" db:"wx_open_id,false,character varying"`             /* wx_open_id wx_open_id */
 	MpOpenID       null.String    `json:"MpOpenID,omitempty" db:"mp_open_id,false,character varying"`             /* mp_open_id mp_open_id */
-	Filter                        // build DML where clause
+	Filter                                                                                                        // build DML where clause
 }
 
 // TVXkbUserFields full field list for default query
@@ -11210,6 +30313,190 @@ var TVXkbUserFields = []string{
 	"MpOpenID",
 }
 
+// TVXkbUserColumns full column list for default query
+var TVXkbUserColumns = []string{
+	"id",
+	"account",
+	"official_name",
+	"id_card_type",
+	"id_card_no",
+	"external_id",
+	"external_id_type",
+	"gender",
+	"birthday",
+	"category",
+	"type",
+	"province",
+	"city",
+	"addr",
+	"mobile_phone",
+	"email",
+	"nickname",
+	"avatar",
+	"avatar_type",
+	"role",
+	"grp",
+	"addi",
+	"remark",
+	"status",
+	"create_time",
+	"creator",
+	"grade_count",
+	"class_count",
+	"school_id",
+	"purchase_rule",
+	"school_type",
+	"school",
+	"subdistrict",
+	"faculty",
+	"grade",
+	"grade_sn",
+	"class",
+	"class_sn",
+	"union_id",
+	"wx_open_id",
+	"mp_open_id",
+}
+
+// TVXkbUserColumnsDataTypes full column data types for default query
+var TVXkbUserColumnsDataTypes = map[string]string{
+	"id":               "integer",
+	"account":          "character varying",
+	"official_name":    "character varying",
+	"id_card_type":     "character varying",
+	"id_card_no":       "character varying",
+	"external_id":      "character varying",
+	"external_id_type": "character varying",
+	"gender":           "character varying",
+	"birthday":         "bigint",
+	"category":         "character varying",
+	"type":             "character varying",
+	"province":         "character varying",
+	"city":             "character varying",
+	"addr":             "character varying",
+	"mobile_phone":     "character varying",
+	"email":            "character varying",
+	"nickname":         "character varying",
+	"avatar":           "bytea",
+	"avatar_type":      "character varying",
+	"role":             "bigint",
+	"grp":              "bigint",
+	"addi":             "jsonb",
+	"remark":           "character varying",
+	"status":           "character varying",
+	"create_time":      "bigint",
+	"creator":          "bigint",
+	"grade_count":      "text",
+	"class_count":      "text",
+	"school_id":        "bigint",
+	"purchase_rule":    "jsonb",
+	"school_type":      "character varying",
+	"school":           "character varying",
+	"subdistrict":      "character varying",
+	"faculty":          "character varying",
+	"grade":            "character varying",
+	"grade_sn":         "text",
+	"class":            "character varying",
+	"class_sn":         "text",
+	"union_id":         "character varying",
+	"wx_open_id":       "character varying",
+	"mp_open_id":       "character varying",
+}
+
+// GetFieldsMap returns a map of field names to their values.
+func (r *TVXkbUser) GetFieldsMap() map[string]any {
+	return map[string]any{
+		"ID":             r.ID,
+		"Account":        r.Account,
+		"OfficialName":   r.OfficialName,
+		"IDCardType":     r.IDCardType,
+		"IDCardNo":       r.IDCardNo,
+		"ExternalID":     r.ExternalID,
+		"ExternalIDType": r.ExternalIDType,
+		"Gender":         r.Gender,
+		"Birthday":       r.Birthday,
+		"Category":       r.Category,
+		"Type":           r.Type,
+		"Province":       r.Province,
+		"City":           r.City,
+		"Addr":           r.Addr,
+		"MobilePhone":    r.MobilePhone,
+		"Email":          r.Email,
+		"Nickname":       r.Nickname,
+		"Avatar":         r.Avatar,
+		"AvatarType":     r.AvatarType,
+		"Role":           r.Role,
+		"Grp":            r.Grp,
+		"Addi":           r.Addi,
+		"Remark":         r.Remark,
+		"Status":         r.Status,
+		"CreateTime":     r.CreateTime,
+		"Creator":        r.Creator,
+		"GradeCount":     r.GradeCount,
+		"ClassCount":     r.ClassCount,
+		"SchoolID":       r.SchoolID,
+		"PurchaseRule":   r.PurchaseRule,
+		"SchoolType":     r.SchoolType,
+		"School":         r.School,
+		"Subdistrict":    r.Subdistrict,
+		"Faculty":        r.Faculty,
+		"Grade":          r.Grade,
+		"GradeSn":        r.GradeSn,
+		"Class":          r.Class,
+		"ClassSn":        r.ClassSn,
+		"UnionID":        r.UnionID,
+		"WxOpenID":       r.WxOpenID,
+		"MpOpenID":       r.MpOpenID,
+	}
+}
+
+// GetColumnsMap returns a map of column names to their values.
+func (r *TVXkbUser) GetColumnsMap() map[string]any {
+	return map[string]any{
+		"id":               r.ID,
+		"account":          r.Account,
+		"official_name":    r.OfficialName,
+		"id_card_type":     r.IDCardType,
+		"id_card_no":       r.IDCardNo,
+		"external_id":      r.ExternalID,
+		"external_id_type": r.ExternalIDType,
+		"gender":           r.Gender,
+		"birthday":         r.Birthday,
+		"category":         r.Category,
+		"type":             r.Type,
+		"province":         r.Province,
+		"city":             r.City,
+		"addr":             r.Addr,
+		"mobile_phone":     r.MobilePhone,
+		"email":            r.Email,
+		"nickname":         r.Nickname,
+		"avatar":           r.Avatar,
+		"avatar_type":      r.AvatarType,
+		"role":             r.Role,
+		"grp":              r.Grp,
+		"addi":             r.Addi,
+		"remark":           r.Remark,
+		"status":           r.Status,
+		"create_time":      r.CreateTime,
+		"creator":          r.Creator,
+		"grade_count":      r.GradeCount,
+		"class_count":      r.ClassCount,
+		"school_id":        r.SchoolID,
+		"purchase_rule":    r.PurchaseRule,
+		"school_type":      r.SchoolType,
+		"school":           r.School,
+		"subdistrict":      r.Subdistrict,
+		"faculty":          r.Faculty,
+		"grade":            r.Grade,
+		"grade_sn":         r.GradeSn,
+		"class":            r.Class,
+		"class_sn":         r.ClassSn,
+		"union_id":         r.UnionID,
+		"wx_open_id":       r.WxOpenID,
+		"mp_open_id":       r.MpOpenID,
+	}
+}
+
 // Fields return all fields of struct.
 func (r *TVXkbUser) Fields() []string {
 	return TVXkbUserFields
@@ -11250,6 +30537,42 @@ func GetTVXkbUserByPk(db Queryer) (*TVXkbUser, error) {
 	return &r, nil
 }
 
+// GetTVXkbUserReflectValuesMap returns a map of field names to their values.
+//
+// key is the tag name, value is the field value.
+// This is useful for reflection and dynamic queries.
+func (r *TVXkbUser) GetTVXkbUserReflectValuesMap() (map[string]any, error) {
+
+	values := make(map[string]any)
+	v := reflect.ValueOf(r).Elem()
+	t := v.Type()
+	for i := range v.NumField() {
+		field := t.Field(i)
+		tag := field.Tag.Get("db")
+		if tag == "" {
+			return nil, errors.Errorf("missing db tag for field %s in table t_v_xkb_user", field.Name)
+		}
+
+		columnName := strings.Split(tag, ",")[0]
+		if columnName == "" {
+			return nil, errors.Errorf("missing column name for field %s in table t_v_xkb_user", field.Name)
+		}
+
+		fieldValue := reflect.ValueOf(r).Elem().Field(i)
+		if !fieldValue.IsValid() {
+			return nil, errors.Errorf("invalid field value for field %s in table t_v_xkb_user", field.Name)
+		}
+
+		if !fieldValue.CanAddr() {
+			return nil, errors.Errorf("cannot read field value for field %s in table t_v_xkb_user", field.Name)
+		}
+
+		values[columnName] = fieldValue.Addr().Interface()
+	}
+
+	return values, nil
+}
+
 /*TWxUser 微信开放接口用户信息 represents assessuser.t_wx_user */
 type TWxUser struct {
 	ID             null.Int       `json:"ID,omitempty" db:"id,true,bigint"`                                      /* id 编号 */
@@ -11283,7 +30606,7 @@ type TWxUser struct {
 	Remark         null.String    `json:"Remark,omitempty" db:"remark,false,character varying"`                  /* remark 备注 */
 	Addi           types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                                  /* addi 附加信息 */
 	Status         null.String    `json:"Status,omitempty" db:"status,false,character varying"`                  /* status 状态,00: 有效, 02: 禁止登录, 04: 锁定, 06: 攻击者, 08: 过期 */
-	Filter                        // build DML where clause
+	Filter                                                                                                       // build DML where clause
 }
 
 // TWxUserFields full field list for default query
@@ -11319,6 +30642,150 @@ var TWxUserFields = []string{
 	"Remark",
 	"Addi",
 	"Status",
+}
+
+// TWxUserColumns full column list for default query
+var TWxUserColumns = []string{
+	"id",
+	"subscribe",
+	"subscribe_time",
+	"wx_open_id",
+	"mp_open_id",
+	"pay_open_id",
+	"union_id",
+	"group_id",
+	"open_id",
+	"tag_id_list",
+	"nickname",
+	"sex",
+	"language",
+	"city",
+	"province",
+	"country",
+	"head_img_url",
+	"privilege",
+	"qr_scene",
+	"subscribe_scene",
+	"qr_scene_str",
+	"err_code",
+	"err_msg",
+	"creator",
+	"create_time",
+	"updated_by",
+	"update_time",
+	"domain_id",
+	"remark",
+	"addi",
+	"status",
+}
+
+// TWxUserColumnsDataTypes full column data types for default query
+var TWxUserColumnsDataTypes = map[string]string{
+	"id":              "bigint",
+	"subscribe":       "integer",
+	"subscribe_time":  "integer",
+	"wx_open_id":      "character varying",
+	"mp_open_id":      "character varying",
+	"pay_open_id":     "character varying",
+	"union_id":        "character varying",
+	"group_id":        "integer",
+	"open_id":         "character varying",
+	"tag_id_list":     "character varying",
+	"nickname":        "character varying",
+	"sex":             "integer",
+	"language":        "character varying",
+	"city":            "character varying",
+	"province":        "character varying",
+	"country":         "character varying",
+	"head_img_url":    "character varying",
+	"privilege":       "character varying",
+	"qr_scene":        "integer",
+	"subscribe_scene": "character varying",
+	"qr_scene_str":    "character varying",
+	"err_code":        "integer",
+	"err_msg":         "character varying",
+	"creator":         "bigint",
+	"create_time":     "bigint",
+	"updated_by":      "bigint",
+	"update_time":     "bigint",
+	"domain_id":       "bigint",
+	"remark":          "character varying",
+	"addi":            "jsonb",
+	"status":          "character varying",
+}
+
+// GetFieldsMap returns a map of field names to their values.
+func (r *TWxUser) GetFieldsMap() map[string]any {
+	return map[string]any{
+		"ID":             r.ID,
+		"Subscribe":      r.Subscribe,
+		"SubscribeTime":  r.SubscribeTime,
+		"WxOpenID":       r.WxOpenID,
+		"MpOpenID":       r.MpOpenID,
+		"PayOpenID":      r.PayOpenID,
+		"UnionID":        r.UnionID,
+		"GroupID":        r.GroupID,
+		"OpenID":         r.OpenID,
+		"TagIDList":      r.TagIDList,
+		"Nickname":       r.Nickname,
+		"Sex":            r.Sex,
+		"Language":       r.Language,
+		"City":           r.City,
+		"Province":       r.Province,
+		"Country":        r.Country,
+		"HeadImgURL":     r.HeadImgURL,
+		"Privilege":      r.Privilege,
+		"QrScene":        r.QrScene,
+		"SubscribeScene": r.SubscribeScene,
+		"QrSceneStr":     r.QrSceneStr,
+		"ErrCode":        r.ErrCode,
+		"ErrMsg":         r.ErrMsg,
+		"Creator":        r.Creator,
+		"CreateTime":     r.CreateTime,
+		"UpdatedBy":      r.UpdatedBy,
+		"UpdateTime":     r.UpdateTime,
+		"DomainID":       r.DomainID,
+		"Remark":         r.Remark,
+		"Addi":           r.Addi,
+		"Status":         r.Status,
+	}
+}
+
+// GetColumnsMap returns a map of column names to their values.
+func (r *TWxUser) GetColumnsMap() map[string]any {
+	return map[string]any{
+		"id":              r.ID,
+		"subscribe":       r.Subscribe,
+		"subscribe_time":  r.SubscribeTime,
+		"wx_open_id":      r.WxOpenID,
+		"mp_open_id":      r.MpOpenID,
+		"pay_open_id":     r.PayOpenID,
+		"union_id":        r.UnionID,
+		"group_id":        r.GroupID,
+		"open_id":         r.OpenID,
+		"tag_id_list":     r.TagIDList,
+		"nickname":        r.Nickname,
+		"sex":             r.Sex,
+		"language":        r.Language,
+		"city":            r.City,
+		"province":        r.Province,
+		"country":         r.Country,
+		"head_img_url":    r.HeadImgURL,
+		"privilege":       r.Privilege,
+		"qr_scene":        r.QrScene,
+		"subscribe_scene": r.SubscribeScene,
+		"qr_scene_str":    r.QrSceneStr,
+		"err_code":        r.ErrCode,
+		"err_msg":         r.ErrMsg,
+		"creator":         r.Creator,
+		"create_time":     r.CreateTime,
+		"updated_by":      r.UpdatedBy,
+		"update_time":     r.UpdateTime,
+		"domain_id":       r.DomainID,
+		"remark":          r.Remark,
+		"addi":            r.Addi,
+		"status":          r.Status,
+	}
 }
 
 // Fields return all fields of struct.
@@ -11360,6 +30827,42 @@ func GetTWxUserByPk(db Queryer, pk0 null.Int) (*TWxUser, error) {
 	return &r, nil
 }
 
+// GetTWxUserReflectValuesMap returns a map of field names to their values.
+//
+// key is the tag name, value is the field value.
+// This is useful for reflection and dynamic queries.
+func (r *TWxUser) GetTWxUserReflectValuesMap() (map[string]any, error) {
+
+	values := make(map[string]any)
+	v := reflect.ValueOf(r).Elem()
+	t := v.Type()
+	for i := range v.NumField() {
+		field := t.Field(i)
+		tag := field.Tag.Get("db")
+		if tag == "" {
+			return nil, errors.Errorf("missing db tag for field %s in table t_wx_user", field.Name)
+		}
+
+		columnName := strings.Split(tag, ",")[0]
+		if columnName == "" {
+			return nil, errors.Errorf("missing column name for field %s in table t_wx_user", field.Name)
+		}
+
+		fieldValue := reflect.ValueOf(r).Elem().Field(i)
+		if !fieldValue.IsValid() {
+			return nil, errors.Errorf("invalid field value for field %s in table t_wx_user", field.Name)
+		}
+
+		if !fieldValue.CanAddr() {
+			return nil, errors.Errorf("cannot read field value for field %s in table t_wx_user", field.Name)
+		}
+
+		values[columnName] = fieldValue.Addr().Interface()
+	}
+
+	return values, nil
+}
+
 /*TXkbUser 校快保补充用户信息 represents assessuser.t_xkb_user */
 type TXkbUser struct {
 	ID          null.Int       `json:"ID,omitempty" db:"id,true,bigint"`                               /* id 编号 */
@@ -11376,7 +30879,7 @@ type TXkbUser struct {
 	Addi        types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                           /* addi 附加信息 */
 	Remark      null.String    `json:"Remark,omitempty" db:"remark,false,character varying"`           /* remark 备注 */
 	Status      null.String    `json:"Status,omitempty" db:"status,false,character varying"`           /* status 状态，00：草稿，01：有效，02：作废 */
-	Filter                     // build DML where clause
+	Filter                                                                                             // build DML where clause
 }
 
 // TXkbUserFields full field list for default query
@@ -11395,6 +30898,82 @@ var TXkbUserFields = []string{
 	"Addi",
 	"Remark",
 	"Status",
+}
+
+// TXkbUserColumns full column list for default query
+var TXkbUserColumns = []string{
+	"id",
+	"school_id",
+	"subdistrict",
+	"faculty",
+	"grade",
+	"class",
+	"domain_id",
+	"creator",
+	"create_time",
+	"updated_by",
+	"update_time",
+	"addi",
+	"remark",
+	"status",
+}
+
+// TXkbUserColumnsDataTypes full column data types for default query
+var TXkbUserColumnsDataTypes = map[string]string{
+	"id":          "bigint",
+	"school_id":   "bigint",
+	"subdistrict": "character varying",
+	"faculty":     "character varying",
+	"grade":       "character varying",
+	"class":       "character varying",
+	"domain_id":   "bigint",
+	"creator":     "bigint",
+	"create_time": "bigint",
+	"updated_by":  "bigint",
+	"update_time": "bigint",
+	"addi":        "jsonb",
+	"remark":      "character varying",
+	"status":      "character varying",
+}
+
+// GetFieldsMap returns a map of field names to their values.
+func (r *TXkbUser) GetFieldsMap() map[string]any {
+	return map[string]any{
+		"ID":          r.ID,
+		"SchoolID":    r.SchoolID,
+		"Subdistrict": r.Subdistrict,
+		"Faculty":     r.Faculty,
+		"Grade":       r.Grade,
+		"Class":       r.Class,
+		"DomainID":    r.DomainID,
+		"Creator":     r.Creator,
+		"CreateTime":  r.CreateTime,
+		"UpdatedBy":   r.UpdatedBy,
+		"UpdateTime":  r.UpdateTime,
+		"Addi":        r.Addi,
+		"Remark":      r.Remark,
+		"Status":      r.Status,
+	}
+}
+
+// GetColumnsMap returns a map of column names to their values.
+func (r *TXkbUser) GetColumnsMap() map[string]any {
+	return map[string]any{
+		"id":          r.ID,
+		"school_id":   r.SchoolID,
+		"subdistrict": r.Subdistrict,
+		"faculty":     r.Faculty,
+		"grade":       r.Grade,
+		"class":       r.Class,
+		"domain_id":   r.DomainID,
+		"creator":     r.Creator,
+		"create_time": r.CreateTime,
+		"updated_by":  r.UpdatedBy,
+		"update_time": r.UpdateTime,
+		"addi":        r.Addi,
+		"remark":      r.Remark,
+		"status":      r.Status,
+	}
 }
 
 // Fields return all fields of struct.
@@ -11434,6 +31013,42 @@ func GetTXkbUserByPk(db Queryer, pk0 null.Int) (*TXkbUser, error) {
 		return nil, errors.Wrap(err, "failed to select t_xkb_user")
 	}
 	return &r, nil
+}
+
+// GetTXkbUserReflectValuesMap returns a map of field names to their values.
+//
+// key is the tag name, value is the field value.
+// This is useful for reflection and dynamic queries.
+func (r *TXkbUser) GetTXkbUserReflectValuesMap() (map[string]any, error) {
+
+	values := make(map[string]any)
+	v := reflect.ValueOf(r).Elem()
+	t := v.Type()
+	for i := range v.NumField() {
+		field := t.Field(i)
+		tag := field.Tag.Get("db")
+		if tag == "" {
+			return nil, errors.Errorf("missing db tag for field %s in table t_xkb_user", field.Name)
+		}
+
+		columnName := strings.Split(tag, ",")[0]
+		if columnName == "" {
+			return nil, errors.Errorf("missing column name for field %s in table t_xkb_user", field.Name)
+		}
+
+		fieldValue := reflect.ValueOf(r).Elem().Field(i)
+		if !fieldValue.IsValid() {
+			return nil, errors.Errorf("invalid field value for field %s in table t_xkb_user", field.Name)
+		}
+
+		if !fieldValue.CanAddr() {
+			return nil, errors.Errorf("cannot read field value for field %s in table t_xkb_user", field.Name)
+		}
+
+		values[columnName] = fieldValue.Addr().Interface()
+	}
+
+	return values, nil
 }
 
 // Queryer database/sql compatible query interface
