@@ -109,7 +109,7 @@ func InitDbByParams(db, dbHost, dbPort, dbUser, dbPwd string) {
 		D.Fatal("missing some/all parameters, please supply db, dbHost, dbPort, dbUser, dbPwd ")
 	}
 	//"postgres://pgx_md5:secret@localhost:5432/pgx_test")
-	connInfo := fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=require",
+	connInfo := fmt.Sprintf("postgres://%s:%s@%s:%s/%s?search_path=assessuser",
 		dbUser, dbPwd, dbHost, dbPort, db)
 
 	if viper.IsSet("dbms.postgresql.sslmode") {
