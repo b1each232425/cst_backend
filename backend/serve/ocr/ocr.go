@@ -155,7 +155,7 @@ func sendHttpRequest(ctx context.Context, fileHeader *multipart.FileHeader, url 
 
 	//查看是否需要返回mock的数据
 	test, ok := ctx.Value(TEST).(string)
-	if ok || test != "" {
+	if ok && test != "" {
 		switch test {
 		case "normal-resp":
 			return map[string]interface{}{
