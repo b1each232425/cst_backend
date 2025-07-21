@@ -83,5 +83,9 @@
     "postgresql": {
       "enable": true
     }
+  },
+  "ocr": {
+    "apiHost": "app_model:6268",
+    "ocrApiPath": "/api/idCardRecognition"
   }
 }
