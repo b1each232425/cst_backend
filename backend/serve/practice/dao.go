@@ -267,8 +267,8 @@ func LoadPracticeById(ctx context.Context, practiceId int64) (p cmn.TPractice, e
 	return p, nil
 }
 
-// ListPractice 获取练习列表
-func ListPractice(ctx context.Context, name, pType, status string, orderBy []string, page, pageSize int, uid int64) ([]Map, int, error) {
+// ListPracticeT 获取练习列表
+func ListPracticeT(ctx context.Context, name, pType, status string, orderBy []string, page, pageSize int, uid int64) ([]Map, int, error) {
 	result := make([]Map, 0)
 	// 查询条件
 	var clauses []string
@@ -353,6 +353,12 @@ func ListPractice(ctx context.Context, name, pType, status string, orderBy []str
 		result = append(result, M)
 	}
 	return result, len(result), nil
+}
+
+// TODO 添加上权限设计 可能会整合成一个接口
+// ListPracticeS 学生端练习列表
+func ListPracticeS(ctx context.Context) error {
+	return nil
 }
 
 // ListPracticeStudentIds 获取参与某次练习的所有考生Id

@@ -191,7 +191,7 @@ func practiceH(ctx context.Context) {
 			}
 			// 排序字段
 			orderBy := []string{"create_time desc"}
-			p, total, err := ListPractice(ctx, name, pType, status, orderBy, page, pageSize, 1)
+			p, total, err := ListPracticeT(ctx, name, pType, status, orderBy, page, pageSize, 1)
 			if err != nil {
 				q.Err = err
 				q.RespErr()
