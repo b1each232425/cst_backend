@@ -155,6 +155,9 @@ func StudentAnswer(ctx context.Context) {
 			q.RespErr()
 			return
 		}
+
+		studentId := q.SysUser.ID
+
 		//获取需要保存到数据库的数据
 		var u SaveOrUpdateStudentAnswerReq
 		q.Err = json.Unmarshal(qry.Data, &u)
@@ -163,6 +166,8 @@ func StudentAnswer(ctx context.Context) {
 			q.RespErr()
 			return
 		}
+
+		u.StudentId = studentId.Int64
 
 		//参数校验
 		q.Err = cmn.Validate(u)
@@ -270,7 +275,7 @@ func StudentAnswer(ctx context.Context) {
 				return
 			}
 		} else {
-			dmlReq.PracticeSubmission, q.Err = strconv.ParseInt(pd, 10, 64)
+			dmlReq.PracticeSubmissionId, q.Err = strconv.ParseInt(pd, 10, 64)
 			if q.Err != nil {
 				z.Error(q.Err.Error())
 				q.RespErr()
@@ -367,6 +372,9 @@ func SaveBeginTimeForExam(ctx context.Context) {
 		q.RespErr()
 		return
 	}
+
+	studentId := q.SysUser.ID.Int64
+	u.StudentId = studentId
 
 	//参数校验
 	q.Err = cmn.Validate(u)
@@ -529,6 +537,9 @@ func Submit(ctx context.Context) {
 		q.RespErr()
 		return
 	}
+
+	studentId := q.SysUser.ID.Int64
+	u.StudentId = studentId
 
 	//参数校验
 	q.Err = cmn.Validate(u)

@@ -58,7 +58,7 @@ func insertOrUpdateAnswer(ctx context.Context, req SaveOrUpdateStudentAnswerReq,
 		studentAnswer.PracticeSubmissionID = null.Int{}
 	case PracticeType:
 		studentAnswer.ExamineeID = null.Int{}
-		studentAnswer.PracticeSubmissionID = null.IntFrom(req.PracticeSubmission)
+		studentAnswer.PracticeSubmissionID = null.IntFrom(req.PracticeSubmissionId)
 	default:
 		err := fmt.Errorf("unknown student answer type: %s", req.Type)
 		z.Error(err.Error())

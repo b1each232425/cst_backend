@@ -4,20 +4,20 @@ import "encoding/json"
 
 // SaveOrUpdateStudentAnswerReq   保存学生答题请求
 type SaveOrUpdateStudentAnswerReq struct {
-	Id                 int64           `json:"id"`
-	ExamineeID         int64           `json:"examinee_id" `
-	PracticeSubmission int64           `json:"practice_submission" `
-	Type               string          `json:"type" validate:"required,oneof=00 02"`
-	QuestionID         int64           `json:"question_id" validate:"required"`
-	Answer             json.RawMessage `json:"answer" validate:"required"`
-	StudentId          int64           `json:"student_id" validate:"required"`
-	AttachmentPaths    json.RawMessage `json:"attachment_paths"`
+	Id                   int64           `json:"id"`
+	ExamineeID           int64           `json:"examinee_id" `
+	PracticeSubmissionId int64           `json:"practice_submission_id" `
+	Type                 string          `json:"type" validate:"required,oneof=00 02"`
+	QuestionID           int64           `json:"question_id" validate:"required"`
+	Answer               json.RawMessage `json:"answer" validate:"required"`
+	StudentId            int64           `json:"student_id" validate:"required"`
+	AttachmentPaths      json.RawMessage `json:"attachment_paths"`
 }
 
 type GetStudentAnswerReq struct {
-	ExamineeID         int64 `json:"examinee_id" `
-	PracticeSubmission int64 `json:"practice_submission" `
-	QuestionID         int64 `json:"question_id" validate:"required"`
+	ExamineeID           int64 `json:"examinee_id" `
+	PracticeSubmissionId int64 `json:"practice_submission_id" `
+	QuestionID           int64 `json:"question_id" validate:"required"`
 }
 
 type SaveBeginTimeReq struct {
