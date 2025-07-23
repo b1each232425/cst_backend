@@ -2386,3 +2386,397 @@ func TestGetExamSessions(t *testing.T) {
 		})
 	}
 }
+
+func TestUpdateExamStatus(t *testing.T) {
+	// 初始化配置
+	cmn.ConfigureForTest()
+
+	// 创建基础上下文
+	ctx := context.Background()
+
+	// 创建测试用的事务
+	conn := cmn.GetPgxConn()
+	tx, err := conn.Begin(ctx)
+	if err != nil {
+		t.Fatalf("创建事务失败: %v", err)
+	}
+	defer tx.Rollback(ctx)
+
+	// 准备测试数据 - 插入一个测试考试
+	testExamID := int64(999001)
+	testUserID := int64(1)
+	testExamName := "测试考试_updateStatus"
+
+	// 插入测试考试数据
+	_, err = tx.Exec(ctx, `
+		INSERT INTO t_exam_info (id, name, status, creator, create_time, updated_by, update_time)
+		VALUES ($1, $2, '00', $3, $4, $3, $4)
+	`, testExamID, testExamName, testUserID, time.Now().UnixMilli())
+	if err != nil {
+		t.Fatalf("插入测试考试数据失败: %v", err)
+	}
+
+	tests := []struct {
+		name         string
+		examID       int64
+		newStatus    string
+		userID       int64
+		forceError   string
+		wantError    bool
+		errorMsg     string
+		shouldVerify bool
+	}{
+		{
+			name:         "正常更新考试状态-草稿到发布",
+			examID:       testExamID,
+			newStatus:    "01",
+			userID:       testUserID,
+			forceError:   "",
+			wantError:    false,
+			shouldVerify: true,
+		},
+		{
+			name:         "正常更新考试状态-发布到进行中",
+			examID:       testExamID,
+			newStatus:    "02",
+			userID:       testUserID,
+			forceError:   "",
+			wantError:    false,
+			shouldVerify: true,
+		},
+		{
+			name:      "无效的考试ID-零值",
+			examID:    0,
+			newStatus: "01",
+			userID:    testUserID,
+			wantError: true,
+			errorMsg:  "无效的考试ID",
+		},
+		{
+			name:      "无效的考试ID-负值",
+			examID:    -1,
+			newStatus: "01",
+			userID:    testUserID,
+			wantError: true,
+			errorMsg:  "无效的考试ID",
+		},
+		{
+			name:      "无效的用户ID-零值",
+			examID:    testExamID,
+			newStatus: "01",
+			userID:    0,
+			wantError: true,
+			errorMsg:  "无效的用户ID",
+		},
+		{
+			name:      "无效的用户ID-负值",
+			examID:    testExamID,
+			newStatus: "01",
+			userID:    -1,
+			wantError: true,
+			errorMsg:  "无效的用户ID",
+		},
+		{
+			name:      "空的状态值",
+			examID:    testExamID,
+			newStatus: "",
+			userID:    testUserID,
+			wantError: true,
+			errorMsg:  "更新状态不能为空",
+		},
+		{
+			name:       "数据库执行错误",
+			examID:     testExamID,
+			newStatus:  "01",
+			userID:     testUserID,
+			forceError: "tx.Exec",
+			wantError:  true,
+			errorMsg:   "force error",
+		},
+		{
+			name:      "不存在的考试ID",
+			examID:    999999,
+			newStatus: "01",
+			userID:    testUserID,
+			wantError: false, // SQL执行成功但影响行数为0
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// 如果需要验证，先记录更新前的状态
+			var originalStatus string
+			if tt.shouldVerify && !tt.wantError {
+				err := tx.QueryRow(ctx, "SELECT status FROM t_exam_info WHERE id = $1", tt.examID).Scan(&originalStatus)
+				if err != nil {
+					t.Fatalf("获取更新前状态失败: %v", err)
+				}
+			}
+
+			// 创建测试上下文
+			testCtx := ctx
+			if tt.forceError != "" {
+				testCtx = context.WithValue(ctx, "force-error", tt.forceError)
+			}
+
+			// 执行更新操作
+			err := updateExamStatus(testCtx, tx, tt.examID, tt.newStatus, tt.userID)
+
+			// 检查错误
+			if tt.wantError {
+				if err == nil {
+					t.Errorf("updateExamStatus() 期望返回错误，但实际没有错误")
+					return
+				}
+				if tt.errorMsg != "" && !containsString(err.Error(), tt.errorMsg) {
+					t.Errorf("updateExamStatus() 错误信息 = %v, 期望包含 %v", err.Error(), tt.errorMsg)
+				}
+			} else {
+				if err != nil {
+					t.Errorf("updateExamStatus() 期望没有错误，但返回错误: %v", err)
+					return
+				}
+
+				// 验证更新结果
+				if tt.shouldVerify {
+					var currentStatus string
+					err := tx.QueryRow(ctx, "SELECT status FROM t_exam_info WHERE id = $1", tt.examID).Scan(&currentStatus)
+					if err != nil {
+						t.Errorf("验证更新结果失败: %v", err)
+						return
+					}
+
+					if currentStatus != tt.newStatus {
+						t.Errorf("updateExamStatus() 状态更新失败，期望状态 = %v, 实际状态 = %v", tt.newStatus, currentStatus)
+					}
+
+					// 验证 update_time 和 updated_by 字段
+					var updatedBy int64
+					var updateTime int64
+					err = tx.QueryRow(ctx, "SELECT updated_by, update_time FROM t_exam_info WHERE id = $1", tt.examID).Scan(&updatedBy, &updateTime)
+					if err != nil {
+						t.Errorf("验证更新字段失败: %v", err)
+					} else {
+						if updatedBy != tt.userID {
+							t.Errorf("updateExamStatus() updated_by 字段错误，期望 = %v, 实际 = %v", tt.userID, updatedBy)
+						}
+						// 验证 update_time 是最近更新的（容忍1分钟误差）
+						if time.Since(time.UnixMilli(updateTime)) > time.Minute {
+							t.Errorf("updateExamStatus() update_time 字段未正确更新，时间 = %v", updateTime)
+						}
+					}
+				}
+			}
+		})
+	}
+}
+
+// TestUpdateExamSessionStatus 测试 updateExamSessionStatus 函数
+func TestUpdateExamSessionStatus(t *testing.T) {
+	// 初始化配置
+	cmn.ConfigureForTest()
+
+	ctx := context.Background()
+
+	// 创建测试用的事务
+	conn := cmn.GetPgxConn()
+	tx, err := conn.Begin(ctx)
+	if err != nil {
+		t.Fatalf("创建事务失败: %v", err)
+	}
+	defer tx.Rollback(ctx)
+
+	// 准备测试数据 - 先插入考试信息，再插入考试场次
+	testExamID := int64(999002)
+	testSessionID := int64(999201)
+	testUserID := int64(1)
+	testExamName := "测试考试_updateSessionStatus"
+
+	// 插入测试考试数据
+	_, err = tx.Exec(ctx, `
+		INSERT INTO t_exam_info (id, name, status, creator, create_time, updated_by, update_time)
+		VALUES ($1, $2, '01', $3, $4, $3, $4)
+	`, testExamID, testExamName, testUserID, time.Now().UnixMilli())
+	if err != nil {
+		t.Fatalf("插入测试考试数据失败: %v", err)
+	}
+
+	// 插入测试考试场次数据
+	_, err = tx.Exec(ctx, `
+		INSERT INTO t_exam_session (id, exam_id, paper_id, mark_method, session_num, status, creator, create_time, updated_by, update_time)
+		VALUES ($1, $2, 1, 1, '00', '00', $3, $4, $3, $4)
+	`, testSessionID, testExamID, testUserID, time.Now().UnixMilli())
+	if err != nil {
+		t.Fatalf("插入测试考试场次数据失败: %v", err)
+	}
+
+	tests := []struct {
+		name          string
+		examSessionID int64
+		newStatus     string
+		userID        int64
+		forceError    string
+		wantError     bool
+		errorMsg      string
+		shouldVerify  bool
+	}{
+		{
+			name:          "正常更新考试场次状态-待开始到进行中",
+			examSessionID: testSessionID,
+			newStatus:     "01",
+			userID:        testUserID,
+			forceError:    "",
+			wantError:     false,
+			shouldVerify:  true,
+		},
+		{
+			name:          "正常更新考试场次状态-进行中到已结束",
+			examSessionID: testSessionID,
+			newStatus:     "02",
+			userID:        testUserID,
+			forceError:    "",
+			wantError:     false,
+			shouldVerify:  true,
+		},
+		{
+			name:          "无效的考试场次ID-零值",
+			examSessionID: 0,
+			newStatus:     "01",
+			userID:        testUserID,
+			wantError:     true,
+			errorMsg:      "无效的考试场次ID",
+		},
+		{
+			name:          "无效的考试场次ID-负值",
+			examSessionID: -1,
+			newStatus:     "01",
+			userID:        testUserID,
+			wantError:     true,
+			errorMsg:      "无效的考试场次ID",
+		},
+		{
+			name:          "无效的用户ID-零值",
+			examSessionID: testSessionID,
+			newStatus:     "01",
+			userID:        0,
+			wantError:     true,
+			errorMsg:      "无效的用户ID",
+		},
+		{
+			name:          "无效的用户ID-负值",
+			examSessionID: testSessionID,
+			newStatus:     "01",
+			userID:        -1,
+			wantError:     true,
+			errorMsg:      "无效的用户ID",
+		},
+		{
+			name:          "空的状态值",
+			examSessionID: testSessionID,
+			newStatus:     "",
+			userID:        testUserID,
+			wantError:     true,
+			errorMsg:      "更新状态不能为空",
+		},
+		{
+			name:          "数据库执行错误",
+			examSessionID: testSessionID,
+			newStatus:     "01",
+			userID:        testUserID,
+			forceError:    "tx.Exec",
+			wantError:     true,
+			errorMsg:      "force error",
+		},
+		{
+			name:          "不存在的考试场次ID",
+			examSessionID: 999999,
+			newStatus:     "01",
+			userID:        testUserID,
+			wantError:     false, // SQL执行成功但影响行数为0
+		},
+		{
+			name:          "更新为暂停状态",
+			examSessionID: testSessionID,
+			newStatus:     "03",
+			userID:        testUserID,
+			wantError:     false,
+			shouldVerify:  true,
+		},
+		{
+			name:          "更新为取消状态",
+			examSessionID: testSessionID,
+			newStatus:     "04",
+			userID:        testUserID,
+			wantError:     false,
+			shouldVerify:  true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// 如果需要验证，先记录更新前的状态
+			var originalStatus string
+			if tt.shouldVerify && !tt.wantError {
+				err := tx.QueryRow(ctx, "SELECT status FROM t_exam_session WHERE id = $1", tt.examSessionID).Scan(&originalStatus)
+				if err != nil {
+					t.Fatalf("获取更新前状态失败: %v", err)
+				}
+			}
+
+			// 创建测试上下文
+			testCtx := ctx
+			if tt.forceError != "" {
+				testCtx = context.WithValue(ctx, "force-error", tt.forceError)
+			}
+
+			// 执行更新操作
+			err := updateExamSessionStatus(testCtx, tx, tt.examSessionID, tt.newStatus, tt.userID)
+
+			// 检查错误
+			if tt.wantError {
+				if err == nil {
+					t.Errorf("updateExamSessionStatus() 期望返回错误，但实际没有错误")
+					return
+				}
+				if tt.errorMsg != "" && !containsString(err.Error(), tt.errorMsg) {
+					t.Errorf("updateExamSessionStatus() 错误信息 = %v, 期望包含 %v", err.Error(), tt.errorMsg)
+				}
+			} else {
+				if err != nil {
+					t.Errorf("updateExamSessionStatus() 期望没有错误，但返回错误: %v", err)
+					return
+				}
+
+				// 验证更新结果
+				if tt.shouldVerify {
+					var currentStatus string
+					err := tx.QueryRow(ctx, "SELECT status FROM t_exam_session WHERE id = $1", tt.examSessionID).Scan(&currentStatus)
+					if err != nil {
+						t.Errorf("验证更新结果失败: %v", err)
+						return
+					}
+
+					if currentStatus != tt.newStatus {
+						t.Errorf("updateExamSessionStatus() 状态更新失败，期望状态 = %v, 实际状态 = %v", tt.newStatus, currentStatus)
+					}
+
+					// 验证 update_time 和 updated_by 字段
+					var updatedBy int64
+					var updateTime int64
+					err = tx.QueryRow(ctx, "SELECT updated_by, update_time FROM t_exam_session WHERE id = $1", tt.examSessionID).Scan(&updatedBy, &updateTime)
+					if err != nil {
+						t.Errorf("验证更新字段失败: %v", err)
+					} else {
+						if updatedBy != tt.userID {
+							t.Errorf("updateExamSessionStatus() updated_by 字段错误，期望 = %v, 实际 = %v", tt.userID, updatedBy)
+						}
+						// 验证 update_time 是最近更新的（容忍1分钟误差）
+						if time.Since(time.UnixMilli(updateTime)) > time.Minute {
+							t.Errorf("updateExamSessionStatus() update_time 字段未正确更新，时间 = %v", updateTime)
+						}
+					}
+				}
+			}
+		})
+	}
+}

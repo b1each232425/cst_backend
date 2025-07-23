@@ -705,6 +705,11 @@ func validateUserExamPermission(ctx context.Context, userID, examID int64, role 
 func updateExamStatus(ctx context.Context, tx pgx.Tx, examID int64, newStatus string, userID int64) error {
 	z.Info("---->" + cmn.FncName())
 
+	forceErr := ""
+	if val := ctx.Value("force-error"); val != nil {
+		forceErr = val.(string)
+	}
+
 	if examID <= 0 {
 		err := fmt.Errorf("无效的考试ID: %d", examID)
 		z.Error(err.Error())
@@ -725,9 +730,12 @@ func updateExamStatus(ctx context.Context, tx pgx.Tx, examID int64, newStatus st
 
 	_, err := tx.Exec(ctx, `
 		UPDATE t_exam_info 
-		SET status = $1, update_time = NOW(), updated_by = $3
-		WHERE id = $2 AND status != '12'
-	`, newStatus, examID, userID)
+		SET status = $1, update_time = $2, updated_by = $3
+		WHERE id = $4 AND status != '12'
+	`, newStatus, time.Now().UnixMilli(), userID, examID)
+	if forceErr == "tx.Exec" {
+		err = fmt.Errorf("force error: %s", forceErr)
+	}
 	if err != nil {
 		z.Error(err.Error())
 		return err
@@ -738,6 +746,11 @@ func updateExamStatus(ctx context.Context, tx pgx.Tx, examID int64, newStatus st
 
 func updateExamSessionStatus(ctx context.Context, tx pgx.Tx, examSessionID int64, newStatus string, userID int64) error {
 	z.Info("---->" + cmn.FncName())
+
+	forceErr := ""
+	if val := ctx.Value("force-error"); val != nil {
+		forceErr = val.(string)
+	}
 
 	if examSessionID <= 0 {
 		err := fmt.Errorf("无效的考试场次ID: %d", examSessionID)
@@ -759,9 +772,12 @@ func updateExamSessionStatus(ctx context.Context, tx pgx.Tx, examSessionID int64
 
 	_, err := tx.Exec(ctx, `
 		UPDATE t_exam_session 
-		SET status = $1, update_time = NOW(), updated_by = $3
-		WHERE id = $2 AND status != '14'
-	`, newStatus, examSessionID, userID)
+		SET status = $1, update_time = $2, updated_by = $3
+		WHERE id = $4 AND status != '14'
+	`, newStatus, time.Now().UnixMilli(), userID, examSessionID)
+	if forceErr == "tx.Exec" {
+		err = fmt.Errorf("force error: %s", forceErr)
+	}
 	if err != nil {
 		z.Error(err.Error())
 		return err
