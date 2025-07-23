@@ -43,9 +43,9 @@ func examineesStatusMaintain() {
 			SELECT 
 				e.id,
 				CASE
-					WHEN es.start_time IS NOT NULL THEN '10' -- 如果该场考试考生有开始时间，设为已交卷
+					WHEN e.start_time IS NOT NULL THEN '10' -- 如果该场考试考生有开始时间，设为已交卷
 					ELSE '02' -- 如果该场考试考生没有开始时间，设为已缺考
-				END AS new_status
+				END AS new_status,
 				CASE
 					WHEN e.start_time IS NOT NULL THEN v.actual_end_time
 					ELSE NULL
@@ -116,7 +116,7 @@ func examSessionStatusMaintain() {
 		WHERE es.exam_id = ei.id
 			AND es.status = '04'
 			AND es.end_time <= $1
-			AND ei.status != '00'; -- 排除未发布的考试
+			AND ei.status != '00' -- 排除未发布的考试
 			AND NOT EXISTS (
 				SELECT 1 FROM t_examinee e
 				WHERE e.exam_session_id = es.id
