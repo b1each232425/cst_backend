@@ -50,6 +50,7 @@ func TestNullableString(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+
 			result := NullableString(tt.input)
 
 			if result.Valid != tt.expected.Valid {
@@ -143,6 +144,7 @@ func TestNullableIntFromStr(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+
 			result := NullableIntFromStr(tt.input)
 
 			if result.Valid != tt.expected.Valid {
@@ -192,6 +194,7 @@ func TestNullableString_EdgeCases(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+
 			result := NullableString(tt.input)
 
 			if result.Valid != tt.expectValid {
@@ -253,6 +256,7 @@ func TestNullableIntFromStr_EdgeCases(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+
 			result := NullableIntFromStr(tt.input)
 
 			if result.Valid != tt.expectValid {
@@ -277,6 +281,7 @@ func BenchmarkNullableString(b *testing.B) {
 
 	for _, tc := range testCases {
 		b.Run("len_"+string(rune(len(tc))), func(b *testing.B) {
+
 			for i := 0; i < b.N; i++ {
 				_ = NullableString(tc)
 			}
@@ -296,6 +301,7 @@ func BenchmarkNullableIntFromStr(b *testing.B) {
 
 	for _, tc := range testCases {
 		b.Run("input_"+tc, func(b *testing.B) {
+
 			for i := 0; i < b.N; i++ {
 				_ = NullableIntFromStr(tc)
 			}
