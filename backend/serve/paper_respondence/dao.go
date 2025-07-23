@@ -298,3 +298,25 @@ func UpdateLastStartTime(ctx context.Context, practiceSubmissionId int64, tx *sq
 	return nil
 
 }
+
+// SaveBeginTimeForPracticeWithTx 练习保存开始时间调用，在创建练习试卷的时候调用
+func SaveBeginTimeForPracticeWithTx(ctx context.Context, tx *sql.Tx, req SaveBeginTimeReq) error {
+	if err := cmn.Validate(req); err != nil {
+		return err
+	}
+	if req.PracticeSubmissionID <= 0 {
+		err := fmt.Errorf("PracticeSubmissionID 需要大于0")
+		z.Error(err.Error())
+		return err
+	}
+	//查看是否已经提交过
+	err := checkPracticeIfSaveBeginTime(ctx, tx, req)
+	if err != nil {
+		return err
+	}
+	err = saveStudentBeginTime(ctx, tx, req)
+	if err != nil {
+		return err
+	}
+	return nil
+}

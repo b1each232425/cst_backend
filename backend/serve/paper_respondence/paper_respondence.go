@@ -71,10 +71,10 @@ func Enroll(author string) {
 	})
 
 	_ = cmn.AddService(&cmn.ServeEndPoint{
-		Fn: SaveBeginTimeForExam,
+		Fn: InitForExam,
 
-		Path: "/respondent/begin",
-		Name: "respondent_begin",
+		Path: "/respondent/init",
+		Name: "respondent_init",
 
 		Developer: developer,
 		WhiteList: false,
@@ -100,22 +100,9 @@ func Enroll(author string) {
 		//DefaultDomain 该API将默认授权给的用户
 		DefaultDomain: int64(cmn.CDomainSys),
 	})
-	_ = cmn.AddService(&cmn.ServeEndPoint{
-		Fn: UpdateLastStartTimeForPractice,
-
-		Path: "/respondent/lastStartTime",
-		Name: "respondent_lastStartTime",
-
-		Developer: developer,
-		WhiteList: false,
-
-		//DomainID 创建该API的账号归属的domain
-		DomainID: int64(cmn.CDomainSys),
-
-		//DefaultDomain 该API将默认授权给的用户
-		DefaultDomain: int64(cmn.CDomainSys),
-	})
 }
+
+// --------------------http接口暴露函数区域
 
 // StudentAnswer 保存或者更新作答
 func StudentAnswer(ctx context.Context) {
@@ -321,8 +308,8 @@ func StudentAnswer(ctx context.Context) {
 
 }
 
-// SaveBeginTimeForExam 考试调用保存开始时间
-func SaveBeginTimeForExam(ctx context.Context) {
+// InitForExam 考试初始化
+func InitForExam(ctx context.Context) {
 	q := cmn.GetCtxValue(ctx)
 	z.Info("---->" + cmn.FncName())
 
@@ -383,110 +370,158 @@ func SaveBeginTimeForExam(ctx context.Context) {
 		q.RespErr()
 		return
 	}
-
-	if u.Type != ExamType {
-		q.Err = fmt.Errorf("unknown student answer type: %s", u.Type)
-		z.Error(q.Err.Error())
-		q.RespErr()
-		return
-	}
-
-	if u.ExamId <= 0 || u.ExamineeID <= 0 {
-		q.Err = fmt.Errorf("当前是考试，请输入大于0的考试id大于0的考生id")
-		z.Error(q.Err.Error())
-		q.RespErr()
-		return
-	}
+	//创建事务
 	dmlCtx, cancel := context.WithTimeout(ctx, TIMEOUT)
 	defer cancel()
-	q.Err = saveBeginTimeForExam(dmlCtx, u)
-	if q.Err != nil {
+	db := cmn.GetDbConn()
+	tx, err := db.BeginTx(dmlCtx, &sql.TxOptions{Isolation: sql.LevelReadCommitted})
+	if err != nil {
+		q.Err = err
+		z.Error(err.Error())
+		q.RespErr()
+		return
+	}
+	defer func() {
+		//如果不是tx done错误就返回给前端
+		q.Err = tx.Rollback()
+		if q.Err != nil && !errors.Is(q.Err, sql.ErrTxDone) {
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+	}()
+
+	switch u.Type {
+	case ExamType:
+		if u.ExamId <= 0 || u.ExamineeID <= 0 {
+			q.Err = fmt.Errorf("当前是考试，请输入大于0的考试id大于0的考生id")
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+		//保存开始时间
+		q.Err = saveBeginTimeForExam(dmlCtx, u, tx)
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+		//TODO 获取考试信息
+
+		//TODO 获取考卷
+		q.Err = nil
+		q.Msg.Status = 0
+		q.Msg.Msg = "success"
+		q.Resp()
+	case PracticeType:
+
+		//TODO 生成试卷并获取试卷数据
+		//如果是第一次进入，就要保存练习开始时间
+		if err := SaveBeginTimeForPracticeWithTx(dmlCtx, tx, u); err != nil {
+			q.Err = err
+			q.RespErr()
+			return
+		}
+
+		//更新最近一次进入练习的时间
+		q.Err = UpdateLastStartTime(ctx, u.PracticeSubmissionID, tx)
+		if q.Err != nil {
+			q.RespErr()
+			return
+		}
+	default:
+		q.Err = fmt.Errorf("unknown respondence type: %s", u.Type)
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+	//提交事务
+	if err := tx.Commit(); err != nil {
+		q.Err = err
+		z.Error(err.Error())
+		q.RespErr()
+		return
+	}
+
+}
+
+// CheckExamStatus 将查看当前考试的状态函数暴露http接口
+func CheckExamStatus(ctx context.Context) {
+	q := cmn.GetCtxValue(ctx)
+	z.Info("---->" + cmn.FncName())
+
+	method := strings.ToLower(q.R.Method)
+	if method != "get" {
+		q.Err = fmt.Errorf("please call /api/upLogin with  http get method")
 		z.Error(q.Err.Error())
 		q.RespErr()
 		return
 	}
 
-	q.Err = nil
+	r := q.R
+
+	//获取考试id
+	examId := r.URL.Query().Get("exam_id")
+	if examId == "" {
+		err := fmt.Errorf("exam_id is required")
+		q.Err = err
+		z.Error(err.Error())
+		q.RespErr()
+		return
+	}
+
+	examIdInt, err := strconv.ParseInt(examId, 10, 64)
+	if err != nil {
+		q.Err = err
+		z.Error(err.Error())
+		q.RespErr()
+		return
+	}
+	//获取考生id
+	examineeId := r.URL.Query().Get("examinee_id")
+	if examineeId == "" {
+		err := fmt.Errorf("examinee_id is required")
+		z.Error(err.Error())
+		q.Err = err
+		q.RespErr()
+		return
+	}
+
+	examineeIdInt, err := strconv.ParseInt(examineeId, 10, 64)
+	if err != nil {
+		q.Err = err
+		z.Error(err.Error())
+		q.RespErr()
+		return
+	}
+
+	req := CheckExamStatusReq{
+		ExamineeID: examineeIdInt,
+		ExamId:     examIdInt,
+		StudentId:  q.SysUser.ID.Int64,
+	}
+	checkCtx, cancel := context.WithTimeout(ctx, TIMEOUT)
+	defer cancel()
+	var result int
+	result, q.Err = checkExamStatus(checkCtx, req)
+	if q.Err != nil {
+		q.RespErr()
+		return
+	}
+
+	data, err := json.Marshal(result)
+	if err != nil {
+		z.Error(err.Error())
+		q.Err = err
+		q.RespErr()
+		return
+	}
 	q.Msg.Status = 0
-	q.Msg.Msg = "success"
+	q.Msg.Data = data
 	q.Resp()
 }
 
-func saveBeginTimeForExam(ctx context.Context, req SaveBeginTimeReq) error {
-	//执行数据库操作
-	sqlxDB := cmn.GetDbConn()
-
-	//开启事务
-	tx, err := sqlxDB.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelRepeatableRead})
-	if err != nil {
-		z.Error(err.Error())
-		return err
-	}
-	defer tx.Rollback()
-
-	//获取学生进行考试的开始时间、结束时间
-	se, err := checkStartTimeAndEndTimeAndStatus(ctx, tx, req.ExamineeID)
-	if err != nil {
-		return err
-	}
-
-	//先查看结束时间是否为空，不为空，说明已经提交
-	if se.EndTime.Valid {
-		err := fmt.Errorf("examineeId为d的用户已经提交考试", req.ExamineeID)
-		z.Error(err.Error())
-		return err
-	}
-
-	//查看是否有开始时间，如果有，说明已经开始过了，不需要任何操作
-	if se.StartTime.Valid {
-		info := fmt.Sprintf("examineeId为%d的用户已经开始过考试了，不需要任何操作", req.ExamineeID)
-		z.Info(info)
-		return nil
-	}
-
-	//查看是否有监考管理员提供的进入权限
-	if se.Status.String == CanBeEnterStatus {
-		err := saveStudentBeginTime(ctx, tx, req)
-		if err != nil {
-			return err
-		}
-	} else {
-		//TODO 查看学生的考试场次信息，并查看是否有超过最迟进入考试时间
-		err := saveStudentBeginTime(ctx, tx, req)
-		if err != nil {
-			return err
-		}
-	}
-
-	if err := tx.Commit(); err != nil {
-		z.Error(err.Error())
-		return err
-	}
-	return nil
-}
-
-// SaveBeginTimeForPracticeWithTx 练习保存开始时间调用，在创建练习试卷的时候调用
-func SaveBeginTimeForPracticeWithTx(ctx context.Context, tx *sql.Tx, req SaveBeginTimeReq) error {
-	if err := cmn.Validate(req); err != nil {
-		return err
-	}
-	if req.PracticeSubmissionID <= 0 {
-		err := fmt.Errorf("PracticeSubmissionID 需要大于0")
-		z.Error(err.Error())
-		return err
-	}
-	//查看是否已经提交过
-	err := checkPracticeIfSaveBeginTime(ctx, tx, req)
-	if err != nil {
-		return err
-	}
-	err = saveStudentBeginTime(ctx, tx, req)
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
+// Submit 提交作答
 func Submit(ctx context.Context) {
 	q := cmn.GetCtxValue(ctx)
 	z.Info("---->" + cmn.FncName())
@@ -585,6 +620,47 @@ func Submit(ctx context.Context) {
 	}
 }
 
+//--------------------由于逻辑太长，将一些长逻辑封装到此处，http接口暴露区域直接调用这里的
+
+func saveBeginTimeForExam(ctx context.Context, req SaveBeginTimeReq, tx *sql.Tx) error {
+
+	//获取学生进行考试的开始时间、结束时间
+	se, err := checkStartTimeAndEndTimeAndStatus(ctx, tx, req.ExamineeID)
+	if err != nil {
+		return err
+	}
+
+	//先查看结束时间是否为空，不为空，说明已经提交
+	if se.EndTime.Valid {
+		err := fmt.Errorf("examineeId为d的用户已经提交考试", req.ExamineeID)
+		z.Error(err.Error())
+		return err
+	}
+
+	//查看是否有开始时间，如果有，说明已经开始过了，不需要任何操作
+	if se.StartTime.Valid {
+		info := fmt.Sprintf("examineeId为%d的用户已经开始过考试了，不需要任何操作", req.ExamineeID)
+		z.Info(info)
+		return nil
+	}
+
+	//查看是否有监考管理员提供的进入权限
+	if se.Status.String == CanBeEnterStatus {
+		err := saveStudentBeginTime(ctx, tx, req)
+		if err != nil {
+			return err
+		}
+	} else {
+		//TODO 查看学生的考试场次信息，并查看是否有超过最迟进入考试时间
+		err := saveStudentBeginTime(ctx, tx, req)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 func submitForExam(ctx context.Context, req SubmitReq) error {
 	//TODO 查看学生考试场次信息
 	//执行数据库操作
@@ -652,92 +728,7 @@ func submitForPractice(ctx context.Context, req SubmitReq) error {
 	return nil
 }
 
-// UpdateLastStartTimeForPractice 保存练习最近一次进入作答页面的时间
-func UpdateLastStartTimeForPractice(ctx context.Context) {
-	q := cmn.GetCtxValue(ctx)
-	z.Info("---->" + cmn.FncName())
-
-	method := strings.ToLower(q.R.Method)
-	if method != "put" {
-		q.Err = fmt.Errorf("please call /api/upLogin with  http put method")
-		z.Error(q.Err.Error())
-		q.RespErr()
-		return
-	}
-
-	var buf []byte
-	buf, q.Err = io.ReadAll(q.R.Body)
-	if q.Err != nil {
-		z.Error(q.Err.Error())
-		q.RespErr()
-		return
-	}
-	defer func() {
-		q.Err = q.R.Body.Close()
-		if q.Err != nil {
-			z.Error(q.Err.Error())
-			q.RespErr()
-			return
-		}
-	}()
-
-	if len(buf) == 0 {
-		q.Err = fmt.Errorf("Call /api/respondent with  empty body")
-		z.Error(q.Err.Error())
-		q.RespErr()
-		return
-	}
-	//获取请求的结构体
-	var qry cmn.ReqProto
-	q.Err = json.Unmarshal(buf, &qry)
-	if q.Err != nil {
-		z.Error(q.Err.Error())
-		q.RespErr()
-		return
-	}
-
-	var u SaveLastStartTimeReq
-
-	q.Err = json.Unmarshal(qry.Data, &u)
-	if q.Err != nil {
-		z.Error(q.Err.Error())
-		q.RespErr()
-		return
-	}
-
-	//参数校验
-	q.Err = cmn.Validate(u)
-	if q.Err != nil {
-		z.Error(q.Err.Error())
-		q.RespErr()
-		return
-	}
-
-	//执行数据库操作
-	sqlxDB := cmn.GetDbConn()
-	var tx *sql.Tx
-	tx, q.Err = sqlxDB.BeginTx(ctx, &sql.TxOptions{})
-	if q.Err != nil {
-		z.Error(q.Err.Error())
-		q.RespErr()
-		return
-	}
-	defer tx.Rollback()
-
-	q.Err = UpdateLastStartTime(ctx, u.PracticeSubmissionID, tx)
-	if q.Err != nil {
-		q.RespErr()
-		return
-	}
-
-	if q.Err = tx.Commit(); q.Err != nil {
-		z.Error(q.Err.Error())
-		q.RespErr()
-		return
-	}
-}
-
-// HandleExit 处理学生退出作答
+// HandleExit 处理学生退出作答，用在websocket连接断开的时候
 func HandleExit(ctx context.Context, req ExitReq) error {
 
 	testSign, ok := ctx.Value(TestSign).(string)
@@ -817,82 +808,6 @@ WHERE id = $1;`
 
 		return nil
 	}
-}
-
-// CheckExamStatus 将查看当前考试的状态函数暴露http接口
-func CheckExamStatus(ctx context.Context) {
-	q := cmn.GetCtxValue(ctx)
-	z.Info("---->" + cmn.FncName())
-
-	method := strings.ToLower(q.R.Method)
-	if method != "get" {
-		q.Err = fmt.Errorf("please call /api/upLogin with  http get method")
-		z.Error(q.Err.Error())
-		q.RespErr()
-		return
-	}
-
-	r := q.R
-
-	//获取考试id
-	examId := r.URL.Query().Get("exam_id")
-	if examId == "" {
-		err := fmt.Errorf("exam_id is required")
-		q.Err = err
-		z.Error(err.Error())
-		q.RespErr()
-		return
-	}
-
-	examIdInt, err := strconv.ParseInt(examId, 10, 64)
-	if err != nil {
-		q.Err = err
-		z.Error(err.Error())
-		q.RespErr()
-		return
-	}
-	//获取考生id
-	examineeId := r.URL.Query().Get("examinee_id")
-	if examineeId == "" {
-		err := fmt.Errorf("examinee_id is required")
-		z.Error(err.Error())
-		q.Err = err
-		q.RespErr()
-		return
-	}
-
-	examineeIdInt, err := strconv.ParseInt(examineeId, 10, 64)
-	if err != nil {
-		q.Err = err
-		z.Error(err.Error())
-		q.RespErr()
-		return
-	}
-
-	req := CheckExamStatusReq{
-		ExamineeID: examineeIdInt,
-		ExamId:     examIdInt,
-		StudentId:  q.SysUser.ID.Int64,
-	}
-	checkCtx, cancel := context.WithTimeout(ctx, TIMEOUT)
-	defer cancel()
-	var result int
-	result, q.Err = checkExamStatus(checkCtx, req)
-	if q.Err != nil {
-		q.RespErr()
-		return
-	}
-
-	data, err := json.Marshal(result)
-	if err != nil {
-		z.Error(err.Error())
-		q.Err = err
-		q.RespErr()
-		return
-	}
-	q.Msg.Status = 0
-	q.Msg.Data = data
-	q.Resp()
 }
 
 // checkExamStatus 查看当前考试的状态
