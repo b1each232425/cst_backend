@@ -5,9 +5,9 @@ package paper
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"fmt"
+	"github.com/jackc/pgx/v5"
 	"io"
 	"strconv"
 	"strings"
@@ -124,8 +124,8 @@ func ManualPaper(ctx context.Context) {
 	case "post":
 		dmlCtx, cancel := context.WithTimeout(ctx, TIMEOUT)
 		defer cancel()
-		db := cmn.GetDbConn()
-		tx, err := db.BeginTx(dmlCtx, &sql.TxOptions{Isolation: sql.LevelSerializable})
+		db := cmn.GetPgxConn()
+		tx, err := db.BeginTx(dmlCtx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted})
 		if err != nil {
 			q.Err = err
 			q.RespErr()
@@ -134,10 +134,16 @@ func ManualPaper(ctx context.Context) {
 		var committed bool
 		defer func() {
 			if p := recover(); p != nil {
-				tx.Rollback()
+				q.Err = tx.Rollback(ctx)
+				if q.Err != nil {
+					z.Error(q.Err.Error())
+				}
 				panic(p)
 			} else if !committed {
-				tx.Rollback()
+				q.Err = tx.Rollback(ctx)
+				if q.Err != nil {
+					z.Error(q.Err.Error())
+				}
 			}
 		}()
 
@@ -160,7 +166,7 @@ func ManualPaper(ctx context.Context) {
 			q.RespErr()
 			return
 		}
-		if q.Err = tx.Commit(); q.Err != nil {
+		if q.Err = tx.Commit(ctx); q.Err != nil {
 			q.RespErr()
 			return
 		}
@@ -241,6 +247,20 @@ func ManualPaper(ctx context.Context) {
 			q.RespErr()
 			return
 		}
+		//检测试卷是否存在
+		var exists bool
+		exists, q.Err = paperExists(paperID)
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+		if !exists {
+			q.Err = fmt.Errorf("试卷不存在")
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
 		results, q.Err = updateManualPaper(dmlCtx, paperID, userID, u)
 		if q.Err != nil {
 			q.RespErr()
@@ -270,8 +290,23 @@ func ManualPaper(ctx context.Context) {
 			q.RespErr()
 			return
 		}
+		//检测试卷是否存在
+		var exists bool
+		exists, q.Err = paperExists(paperID)
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+		if !exists {
+			q.Err = fmt.Errorf("试卷不存在")
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
 		dmlCtx, cancel := context.WithTimeout(ctx, TIMEOUT)
 		defer cancel()
+
 		var result *cmn.TVPaper
 		result, q.Err = GetManualPaperDetailByPaperID(dmlCtx, paperID)
 		if q.Err != nil {
@@ -397,11 +432,10 @@ func PaperList(ctx context.Context) {
 		dmlCtx, cancel := context.WithTimeout(ctx, TIMEOUT)
 		defer cancel()
 
-		db := cmn.GetDbConn()
-		var tx *sql.Tx
-		tx, q.Err = db.BeginTx(ctx, &sql.TxOptions{
-			Isolation: sql.LevelSerializable,
-			ReadOnly:  false,
+		db := cmn.GetPgxConn()
+		var tx pgx.Tx
+		tx, q.Err = db.BeginTx(ctx, pgx.TxOptions{
+			IsoLevel: pgx.Serializable,
 		})
 		if q.Err != nil {
 			z.Error(q.Err.Error())
@@ -411,20 +445,26 @@ func PaperList(ctx context.Context) {
 		var committed bool
 		defer func() {
 			if p := recover(); p != nil {
-				tx.Rollback()
+				q.Err = tx.Rollback(ctx)
+				if q.Err != nil {
+					z.Error(q.Err.Error())
+				}
 				panic(p)
 			} else if !committed {
-				tx.Rollback()
+				q.Err = tx.Rollback(ctx)
+				if q.Err != nil {
+					z.Error(q.Err.Error())
+				}
 			}
 		}()
 
 		q.Err = deletePapers(dmlCtx, tx, u, userID)
 		if q.Err != nil {
-			tx.Rollback()
+			tx.Rollback(ctx)
 			q.RespErr()
 			return
 		}
-		if q.Err = tx.Commit(); q.Err != nil {
+		if q.Err = tx.Commit(ctx); q.Err != nil {
 			z.Error(q.Err.Error())
 			q.RespErr()
 			return
@@ -442,17 +482,21 @@ func PaperList(ctx context.Context) {
 func updateManualPaper(ctx context.Context, paperID, userID int64, req UpdateManualPaperRequest) ([]ActionResult, error) {
 	var results []ActionResult
 
-	sqlxDB := cmn.GetDbConn()
-	tx, err := sqlxDB.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelRepeatableRead})
+	sqlxDB := cmn.GetPgxConn()
+	tx, err := sqlxDB.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.Serializable})
 	if err != nil {
 		return nil, err
 	}
 
 	defer func() {
 		if err != nil {
-			_ = tx.Rollback()
+			err = tx.Rollback(ctx)
+			if err != nil {
+				z.Error(err.Error())
+				return
+			}
 		} else {
-			if commitErr := tx.Commit(); commitErr != nil {
+			if commitErr := tx.Commit(ctx); commitErr != nil {
 				err = commitErr
 			}
 		}
