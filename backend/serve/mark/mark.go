@@ -124,20 +124,6 @@ func Enroll(author string) {
 		DefaultDomain: int64(cmn.CDomainSys),
 	})
 
-	//_ = cmn.AddService(&cmn.ServeEndPoint{
-	//	Fn: upLogout,
-	//
-	//	Path: "/logout",
-	//	Name: "logout",
-	//
-	//	Developer: developer,
-	//	WhiteList: false,
-	//
-	//	DomainID: int64(cmn.CDomainSys),
-	//
-	//	DefaultDomain: int64(cmn.CDomainSys),
-	//})
-
 }
 
 func GetExamList(ctx context.Context) {
@@ -233,9 +219,6 @@ func GetExamList(ctx context.Context) {
 		Status:    examStatus,
 	}
 
-	// 参数校验
-	//z.Sugar().Infof("req: %+v", req)
-
 	exams, rowCount, err := QueryExamList(ctx, req)
 	if err != nil {
 		q.Err = fmt.Errorf("获取考试列表失败: %v", err)
@@ -243,12 +226,6 @@ func GetExamList(ctx context.Context) {
 		q.RespErr()
 		return
 	}
-	//q.Data = map[string]interface{}{
-	//	"exams":      exams,
-	//	"row_count":  rowCount,
-	//	"page_index": pageIndex,
-	//	"page_size":  pageSize,
-	//}
 
 	jsonData, err := json.Marshal(map[string]interface{}{
 		"exam_list": exams,
@@ -256,7 +233,7 @@ func GetExamList(ctx context.Context) {
 
 	q.Msg.RowCount = int64(rowCount)
 
-	z.Sugar().Infof("======(%v)===>>: %+v", rowCount, exams)
+	//z.Sugar().Infof("======(%v)===>>: %+v", rowCount, exams)
 
 	if err != nil {
 		q.Err = fmt.Errorf("json序列化失败: %v", err)
