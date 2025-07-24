@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/jackc/pgx/v5"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -14,7 +15,7 @@ import (
 	"time"
 	"w2w.io/cmn"
 	"w2w.io/null"
-	"w2w.io/service"
+	w2wSrv "w2w.io/service"
 )
 
 // createMockContext 创建符合GetCtxValue要求的mock context
@@ -98,12 +99,12 @@ func createMockContextWithBody(method, path string, data string, forceError stri
 }
 
 // 确保MockRepo实现了Repo接口
-var _ Repo = (*MockRepo)(nil)
+var _ Service = (*MockService)(nil)
 
 // TestMain 在测试开始前插入测试数据
 func TestMain(m *testing.M) {
 	cmn.Configure()
-	go service.WebServe(nil, nil)
+	go w2wSrv.WebServe(nil, nil)
 
 	// 读取测试数据
 	testDataFile := "test-data.json"
@@ -377,7 +378,7 @@ func convertMapToTUser(data map[string]interface{}) cmn.TUser {
 
 func Test_handler_HandleUser(t *testing.T) {
 	type fields struct {
-		repo Repo
+		srv Service
 	}
 	type args struct {
 		ctx context.Context
@@ -391,7 +392,7 @@ func Test_handler_HandleUser(t *testing.T) {
 		{
 			name: "成功获取用户列表",
 			fields: fields{
-				repo: &MockRepo{
+				srv: &MockService{
 					users: []cmn.TUser{
 						{
 							ID:           null.NewInt(1, true),
@@ -415,7 +416,7 @@ func Test_handler_HandleUser(t *testing.T) {
 		{
 			name: "带过滤条件的用户查询",
 			fields: fields{
-				repo: &MockRepo{
+				srv: &MockService{
 					users: []cmn.TUser{
 						{
 							ID:           null.NewInt(2, true),
@@ -441,7 +442,7 @@ func Test_handler_HandleUser(t *testing.T) {
 		{
 			name: "无效的页码参数",
 			fields: fields{
-				repo: &MockRepo{},
+				srv: &MockService{},
 			},
 			args: args{
 				ctx: createMockContext("GET", "/api/user", url.Values{
@@ -454,7 +455,7 @@ func Test_handler_HandleUser(t *testing.T) {
 		{
 			name: "无效的页面大小参数",
 			fields: fields{
-				repo: &MockRepo{},
+				srv: &MockService{},
 			},
 			args: args{
 				ctx: createMockContext("GET", "/api/user", url.Values{
@@ -467,7 +468,7 @@ func Test_handler_HandleUser(t *testing.T) {
 		{
 			name: "数据库查询错误",
 			fields: fields{
-				repo: &MockRepo{
+				srv: &MockService{
 					err: fmt.Errorf("数据库连接失败"),
 				},
 			},
@@ -482,7 +483,7 @@ func Test_handler_HandleUser(t *testing.T) {
 		{
 			name: "不支持的HTTP方法",
 			fields: fields{
-				repo: &MockRepo{},
+				srv: &MockService{},
 			},
 			args: args{
 				ctx: createMockContext("PUT", "/api/user", url.Values{}, ""),
@@ -492,7 +493,7 @@ func Test_handler_HandleUser(t *testing.T) {
 		{
 			name: "空的查询结果",
 			fields: fields{
-				repo: &MockRepo{
+				srv: &MockService{
 					users:     []cmn.TUser{},
 					totalRows: 0,
 				},
@@ -509,7 +510,7 @@ func Test_handler_HandleUser(t *testing.T) {
 		{
 			name: "大页面大小查询",
 			fields: fields{
-				repo: &MockRepo{
+				srv: &MockService{
 					users:     make([]cmn.TUser, 100),
 					totalRows: 1000,
 				},
@@ -525,7 +526,7 @@ func Test_handler_HandleUser(t *testing.T) {
 		{
 			name: "多条件过滤查询",
 			fields: fields{
-				repo: &MockRepo{
+				srv: &MockService{
 					users: []cmn.TUser{
 						{
 							ID:           null.NewInt(3, true),
@@ -558,7 +559,7 @@ func Test_handler_HandleUser(t *testing.T) {
 		{
 			name: "触发json.Marshal错误",
 			fields: fields{
-				repo: &MockRepo{
+				srv: &MockService{
 					users: []cmn.TUser{
 						{
 							ID:           null.NewInt(3, true),
@@ -593,7 +594,7 @@ func Test_handler_HandleUser(t *testing.T) {
 		{
 			name: "成功创建单个用户",
 			fields: fields{
-				repo: &MockRepo{},
+				srv: &MockService{},
 			},
 			args: args{
 				ctx: createMockContextWithBody("POST", "/api/user", `[{
@@ -606,7 +607,7 @@ func Test_handler_HandleUser(t *testing.T) {
 		{
 			name: "成功创建多个用户",
 			fields: fields{
-				repo: &MockRepo{},
+				srv: &MockService{},
 			},
 			args: args{
 				ctx: createMockContextWithBody("POST", "/api/user", `[{
@@ -622,7 +623,7 @@ func Test_handler_HandleUser(t *testing.T) {
 		{
 			name: "请求体为空",
 			fields: fields{
-				repo: &MockRepo{},
+				srv: &MockService{},
 			},
 			args: args{
 				ctx: createMockContextWithBody("POST", "/api/user", "", ""),
@@ -632,7 +633,7 @@ func Test_handler_HandleUser(t *testing.T) {
 		{
 			name: "JSON格式正确但不是数组",
 			fields: fields{
-				repo: &MockRepo{},
+				srv: &MockService{},
 			},
 			args: args{
 				ctx: createMockContextWithBody("POST", "/api/user", `{"account": "test"}`, ""),
@@ -642,7 +643,7 @@ func Test_handler_HandleUser(t *testing.T) {
 		{
 			name: "空的用户数组",
 			fields: fields{
-				repo: &MockRepo{},
+				srv: &MockService{},
 			},
 			args: args{
 				ctx: createMockContextWithBody("POST", "/api/user", `[]`, ""),
@@ -652,8 +653,15 @@ func Test_handler_HandleUser(t *testing.T) {
 		{
 			name: "数据库插入失败",
 			fields: fields{
-				repo: &MockRepo{
+				srv: &MockService{
 					err: fmt.Errorf("数据库连接失败"),
+					ValidateUserFunc: func(ctx context.Context, tx pgx.Tx, users []cmn.TUser) ([]cmn.TUser, []InvalidUser, error) {
+						return []cmn.TUser{
+							{
+								Account: "test_user",
+							},
+						}, nil, nil
+					},
 				},
 			},
 			args: args{
@@ -666,7 +674,7 @@ func Test_handler_HandleUser(t *testing.T) {
 		{
 			name: "包含特殊字符的用户数据",
 			fields: fields{
-				repo: &MockRepo{},
+				srv: &MockService{},
 			},
 			args: args{
 				ctx: createMockContextWithBody("POST", "/api/user", `[{
@@ -679,7 +687,7 @@ func Test_handler_HandleUser(t *testing.T) {
 		{
 			name: "包含Unicode字符的用户数据",
 			fields: fields{
-				repo: &MockRepo{},
+				srv: &MockService{},
 			},
 			args: args{
 				ctx: createMockContextWithBody("POST", "/api/user", `[{
@@ -692,7 +700,7 @@ func Test_handler_HandleUser(t *testing.T) {
 		{
 			name: "空请求体",
 			fields: fields{
-				repo: &MockRepo{},
+				srv: &MockService{},
 			},
 			args: args{
 				ctx: createMockContextWithBody("POST", "/api/user", "", ""),
@@ -702,7 +710,7 @@ func Test_handler_HandleUser(t *testing.T) {
 		{
 			name: "io.ReadAll错误",
 			fields: fields{
-				repo: &MockRepo{},
+				srv: &MockService{},
 			},
 			args: args{
 				ctx: createMockContextWithBody("POST", "/api/user", `[{
@@ -715,7 +723,7 @@ func Test_handler_HandleUser(t *testing.T) {
 		{
 			name: "io.Close错误",
 			fields: fields{
-				repo: &MockRepo{},
+				srv: &MockService{},
 			},
 			args: args{
 				ctx: createMockContextWithBody("POST", "/api/user", `[{
@@ -728,7 +736,7 @@ func Test_handler_HandleUser(t *testing.T) {
 		{
 			name: "json.Unmarshal错误",
 			fields: fields{
-				repo: &MockRepo{},
+				srv: &MockService{},
 			},
 			args: args{
 				ctx: createMockContextWithBody("POST", "/api/user", `[{
@@ -738,11 +746,99 @@ func Test_handler_HandleUser(t *testing.T) {
 			},
 			wantErr: true,
 		},
+		{
+			name: "插入用户时发生错误",
+			fields: fields{
+				srv: &MockService{
+					err: fmt.Errorf("插入用户失败"),
+					ValidateUserFunc: func(ctx context.Context, tx pgx.Tx, users []cmn.TUser) ([]cmn.TUser, []InvalidUser, error) {
+						return []cmn.TUser{
+							{
+								Account:      "new_user_001",
+								OfficialName: null.NewString("新用户001", true),
+							},
+						}, nil, nil
+					},
+				},
+			},
+			args: args{
+				ctx: createMockContextWithBody("POST", "/api/user", `[{
+					"Account": "new_user_001",
+					"OfficialName": "新用户001"
+				}]`, ""),
+			},
+			wantErr: true,
+		},
+		{
+			name: "验证用户信息时发生错误",
+			fields: fields{
+				srv: &MockService{
+					ValidateUserFunc: func(ctx context.Context, tx pgx.Tx, users []cmn.TUser) ([]cmn.TUser, []InvalidUser, error) {
+						return nil, nil, fmt.Errorf("验证用户信息失败")
+					},
+				},
+			},
+			args: args{
+				ctx: createMockContextWithBody("POST", "/api/user", `[{
+					"Account": "new_user_001",
+					"OfficialName": "新用户001"
+				}]`, ""),
+			},
+			wantErr: true,
+		},
+		{
+			name: "存在不合法的无法被插入的用户",
+			fields: fields{
+				srv: &MockService{
+					ValidateUserFunc: func(ctx context.Context, tx pgx.Tx, users []cmn.TUser) ([]cmn.TUser, []InvalidUser, error) {
+						return nil, []InvalidUser{
+							{
+								Account: null.NewString("new_user_001", true),
+								ErrorMsg: []null.String{
+									null.NewString("账号已存在", true),
+								},
+							},
+						}, nil
+					},
+				},
+			},
+			args: args{
+				ctx: createMockContextWithBody("POST", "/api/user", `[{
+					"Account": "new_user_001",
+					"OfficialName": "新用户001"
+				}]`, ""),
+			},
+			wantErr: true,
+		},
+		{
+			name: "触发json.Marshal错误",
+			fields: fields{
+				srv: &MockService{
+					ValidateUserFunc: func(ctx context.Context, tx pgx.Tx, users []cmn.TUser) ([]cmn.TUser, []InvalidUser, error) {
+						return nil, []InvalidUser{
+							{
+								Account: null.NewString("new_user_001", true),
+								ErrorMsg: []null.String{
+									null.NewString("账号已存在", true),
+								},
+							},
+						}, nil
+					},
+				},
+			},
+			args: args{
+				ctx: createMockContextWithBody("POST", "/api/user", `[{
+					"Account": "new_user_001",
+					"OfficialName": "新用户001"
+				}]`, "json.Marshal"),
+			},
+			wantErr: true,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			h := &handler{
-				repo: tt.fields.repo,
+				srv: tt.fields.srv,
 			}
 
 			// 执行测试
@@ -798,9 +894,9 @@ func Test_NewHandler(t *testing.T) {
 		t.Fatalf("expected *handler, got %T", h)
 	}
 
-	// 可选断言内部 repo 是否非空（需要暴露或通过接口）
+	// 可选断言内部 service 是否非空（需要暴露或通过接口）
 	internalHandler := h.(*handler)
-	if internalHandler.repo == nil {
-		t.Error("expected repo to be initialized")
+	if internalHandler.srv == nil {
+		t.Error("expected srv to be initialized")
 	}
 }
