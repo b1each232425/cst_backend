@@ -529,7 +529,17 @@ func validateQuestion(question *cmn.TQuestion) (valid bool, err error) {
 	}
 	_, ok = QuestionDifficulty[question.Difficulty]
 	if !ok {
-		err = fmt.Errorf("unsupported question difficulty: %s", question.Difficulty)
+		err = fmt.Errorf("unsupported question difficulty: %v", question.Difficulty)
+		z.Error(err.Error())
+		return false, err
+	}
+	if question.Score.Float64 <= 0 {
+		err = fmt.Errorf("question score must be greater than zero")
+		z.Error(err.Error())
+		return false, err
+	}
+	if question.BelongTo.Int64 <= 0 {
+		err = fmt.Errorf("question belongTo must be greater than zero")
 		z.Error(err.Error())
 		return false, err
 	}
@@ -542,7 +552,7 @@ func validateQuestion(question *cmn.TQuestion) (valid bool, err error) {
 			z.Error(err.Error())
 			return false, err
 		}
-		if len(options) >= 2 {
+		if len(options) <= 2 {
 			err = fmt.Errorf("question options must have at least two options")
 			z.Error(err.Error())
 			return false, err
@@ -573,11 +583,53 @@ func validateQuestion(question *cmn.TQuestion) (valid bool, err error) {
 	return true, nil
 }
 
+func updateBankQuestionCount(ctx context.Context, conn *pgxpool.Pool, questionBankID int64, count int64, updatedBy int64) error {
+	if ctx == nil {
+		err := fmt.Errorf("ctx is nil")
+		z.Error(err.Error())
+		return err
+	}
+	if conn == nil {
+		err := fmt.Errorf("conn is nil")
+		z.Error(err.Error())
+		return err
+	}
+	if questionBankID <= 0 {
+		err := fmt.Errorf("questionBankID must be greater than zero")
+		z.Error(err.Error())
+		return err
+	}
+	if count <= 0 {
+		err := fmt.Errorf("count must be greater than zero")
+		z.Error(err.Error())
+		return err
+	}
+	if updatedBy <= 0 {
+		err := fmt.Errorf("updatedBy must be greater than zero")
+		z.Error(err.Error())
+		return err
+	}
+	t := cmn.GetNowInMS()
+	UpdateTime := null.NewInt(t, true)
+
+	s := `
+	UPDATE t_question_bank
+	SET question_count = $1, updated_by = $2, update_time = $3
+	WHERE id = $4
+	`
+	_, err := conn.Exec(ctx, s, count, updatedBy, UpdateTime, questionBankID)
+	if err != nil {
+		z.Error(err.Error())
+		return err
+	}
+	return nil
+}
+
 // Questions 接口
 func questions(ctx context.Context) {
 	q := cmn.GetCtxValue(ctx)
 
-	//conn := cmn.GetPgxConn()
+	conn := cmn.GetPgxConn()
 
 	z.Info("---->" + cmn.FncName())
 
@@ -748,101 +800,97 @@ func questions(ctx context.Context) {
 			return
 		}
 
-		var req AddQuestionRequest
-		q.Err = json.Unmarshal(buf, &req)
+		var qry cmn.ReqProto
+		q.Err = json.Unmarshal(buf, &qry)
 		if q.Err != nil {
 			z.Error(q.Err.Error())
 			q.RespErr()
 			return
 		}
 
-		if req.BankID <= 0 {
-			q.Err = fmt.Errorf("call /api/questions with invalid bank ID: %d", req.BankID)
+		var questions []cmn.TQuestion
+		q.Err = json.Unmarshal(qry.Data, &questions)
+		if q.Err != nil {
 			z.Error(q.Err.Error())
 			q.RespErr()
 			return
 		}
 
-		if len(req.Questions) == 0 {
-			q.Err = fmt.Errorf("call /api/questions with empty questions list")
-			z.Error(q.Err.Error())
-			q.RespErr()
-			return
-		}
-
-		// 获取当前用户ID
-		userID := int64(1000)
+		userID := null.IntFrom(1000)
 		if q.SysUser != nil {
-			userID = q.SysUser.ID.Int64
+			userID = q.SysUser.ID
 		}
-		var insertedQuestions []*cmn.TQuestion
-		now := cmn.GetNowInMS()
 
-		for i := range req.Questions {
-			question := &req.Questions[i]
-			// 校验题目
-			_, q.Err = validateQuestion(question)
-			if q.Err != nil {
-				q.RespErr()
-				return
-			}
-
-			question.Creator = null.IntFrom(userID)
-			question.CreateTime = null.IntFrom(now)
-			question.UpdateTime = null.IntFrom(now)
-			question.BelongTo = null.IntFrom(req.BankID)
-
-			// 设置 Filter 和表映射
-			question.TableMap = question
-			question.Action = "insert"
-
-			q.Err = cmn.InvalidEmptyNullValue(question)
-			if q.Err != nil {
-				q.RespErr()
-				return
-			}
-
-			// Marshal 成 ReqProto 结构
-			data, err := json.Marshal(question)
-			if err != nil {
+		var insertQuestions []cmn.TQuestion
+		for _, question := range questions {
+			valid, err := validateQuestion(&question)
+			if !valid && err != nil {
 				q.Err = err
 				q.RespErr()
 				return
 			}
+			question.TableMap = &question
+			question.Creator = userID
 
-			// 构建查询请求
-			qry := &cmn.ReqProto{
-				Action: "insert",
-				Data:   data,
-				Filter: &question.Filter,
+			q.Err = cmn.InvalidEmptyNullValue(&question)
+			if q.Err != nil {
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
 			}
 
-			q.Err = cmn.DML(&question.Filter, qry)
+			// 写库
+			qry.Action = "insert"
+			qry.Data, _ = json.Marshal(question)
+			q.Err = cmn.DML(&question.Filter, &qry)
 			if q.Err != nil {
 				q.RespErr()
 				return
 			}
 
-			questionID, ok := question.QryResult.(int64)
+			ID, ok := question.QryResult.(int64)
 			if !ok {
-				q.Err = fmt.Errorf("s.qryResult should be int64, but it isn't")
+				q.Err = fmt.Errorf("qryResult should be int64")
 				z.Error(q.Err.Error())
 				q.RespErr()
 				return
 			}
-			question.ID = null.IntFrom(questionID)
-			insertedQuestions = append(insertedQuestions, question)
+			question.ID = null.IntFrom(ID)
+
+			insertQuestions = append(insertQuestions, question)
 		}
 
-		// 返回插入的题目信息
-		buf, q.Err = cmn.MarshalJSON(insertedQuestions)
+		// 同步更新对于题库
+		count := int64(len(insertQuestions))
+		bankID := insertQuestions[0].BelongTo.Int64
+		q.Err = updateBankQuestionCount(ctx, conn, bankID, count, userID.Int64)
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		var result []json.RawMessage
+		for _, Q := range insertQuestions {
+			b, err := cmn.MarshalJSON(&Q)
+			if err != nil {
+				z.Error(err.Error())
+				q.Err = err
+				q.RespErr()
+				return
+			}
+			result = append(result, b)
+		}
+		// 返回插入后的所有记录
+		buf, q.Err = json.Marshal(result)
 		if q.Err != nil {
 			z.Error(q.Err.Error())
 			q.RespErr()
 			return
 		}
 		q.Msg.Data = buf
-		q.Msg.RowCount = int64(len(insertedQuestions))
+		q.Msg.Msg = "success"
+		q.Resp()
 
 	default:
 		q.Err = fmt.Errorf("unsupported method: %s", method)
