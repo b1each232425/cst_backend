@@ -4,7 +4,9 @@ package cmd
 
 import (
 	"fmt"
+
 	"w2w.io/cmn"
+	"w2w.io/exam_service"
 	"w2w.io/sckserve"
 	"w2w.io/service"
 
@@ -22,6 +24,7 @@ var serveCmd = &cobra.Command{
 func serve(cmd *cobra.Command, args []string) {
 	go service.WebServe(cmd, args)
 	go sckserve.SocketServe(cmd, args)
+	go exam_service.ExamMaintainService()
 
 	z.Info("serve gate started")
 	_ = <-cmn.GetTerminateSignal()

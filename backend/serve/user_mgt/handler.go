@@ -15,12 +15,12 @@ type Handler interface {
 }
 
 type handler struct {
-	repo Repo
+	srv Service
 }
 
 func NewHandler() Handler {
 	return &handler{
-		repo: NewRepo(),
+		srv: NewService(),
 	}
 }
 
@@ -65,7 +65,7 @@ func (h *handler) HandleUser(ctx context.Context) {
 			CreateTime: NullableIntFromStr(query.Get("createTime")),
 		}
 
-		users, totalRows, err := h.repo.QueryUsers(ctx, nil, page, pageSize, filter)
+		users, totalRows, err := h.srv.QueryUsers(ctx, nil, page, pageSize, filter)
 		if err != nil {
 			q.Err = fmt.Errorf("failed to query users: %w", err)
 			q.RespErr()
@@ -137,6 +137,7 @@ func (h *handler) HandleUser(ctx context.Context) {
 			return
 		}
 
+		// 添加通过当前接口创建的用户的默认字段
 		for i := range users {
 			users[i].Category = "sys^user"
 			if q.SysUser != nil && q.SysUser.ID.Valid {
@@ -144,10 +145,35 @@ func (h *handler) HandleUser(ctx context.Context) {
 			}
 		}
 
-		err = h.repo.InsertUsers(ctx, nil, users)
+		validUsers, invalidUsers, err := h.srv.ValidateUser(ctx, nil, users)
 		if err != nil {
-			q.Err = fmt.Errorf("failed to insert users: %w", err)
+			q.Err = fmt.Errorf("failed to validate users: %w", err)
 			q.RespErr()
+			return
+		}
+
+		if len(validUsers) > 0 {
+			err = h.srv.InsertUsers(ctx, nil, validUsers)
+			if err != nil {
+				q.Err = fmt.Errorf("failed to insert users: %w", err)
+				q.RespErr()
+				return
+			}
+		}
+
+		if len(invalidUsers) != 0 {
+			invalidUsersBytes, err := json.Marshal(invalidUsers)
+			if err != nil || forceErr == "json.Marshal" {
+				q.Err = fmt.Errorf("failed to marshal invalid users: %w", err)
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+
+			q.Msg.Status = 405
+			q.Msg.Msg = "some users are invalid and cannot be inserted"
+			q.Msg.Data = invalidUsersBytes
+			q.Resp()
 			return
 		}
 
