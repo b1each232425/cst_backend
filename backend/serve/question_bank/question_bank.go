@@ -625,6 +625,180 @@ func updateBankQuestionCount(ctx context.Context, conn *pgxpool.Pool, questionBa
 	return nil
 }
 
+func getQuestionList(ctx context.Context, conn *pgxpool.Pool, params QueryQuestionsParams) (list []cmn.TQuestion, rowCount int64, err error) {
+	if ctx == nil {
+		err := fmt.Errorf("ctx is nil")
+		z.Error(err.Error())
+		return nil, 0, err
+	}
+	if conn == nil {
+		err := fmt.Errorf("conn is nil")
+		z.Error(err.Error())
+		return nil, 0, err
+	}
+
+	var conditions []string
+	var args []interface{}
+	argIndex := 1
+
+	// 基础状态过滤（必须条件）
+	conditions = append(conditions, fmt.Sprintf("status = $%d", argIndex))
+	args = append(args, "00")
+	argIndex++
+
+	// 名称过滤
+	if params.Name != "" {
+		keywordCondition := fmt.Sprintf("(name LIKE $%d)", argIndex)
+		conditions = append(conditions, keywordCondition)
+		args = append(args, "%"+params.Name+"%")
+		argIndex += 1
+	}
+
+	// 标签过滤
+	if params.Tags != "" {
+		keywordCondition := fmt.Sprintf("(tags @> $%d)", argIndex)
+		conditions = append(conditions, keywordCondition)
+		args = append(args, fmt.Sprintf(`["%s"]`, params.Tags))
+		argIndex += 1
+	}
+
+	// 类型过滤
+	if params.Type != "" {
+		// 类型判断
+		_, ok := QuestionTypes[params.Type]
+		if !ok {
+			err = fmt.Errorf("invalid type: %s", params.Type)
+			z.Error(err.Error())
+			return nil, 0, err
+		}
+		keywordCondition := fmt.Sprintf("(type = $%d)", argIndex)
+		conditions = append(conditions, keywordCondition)
+		args = append(args, params.Type)
+		argIndex += 1
+	}
+
+	// 难度过滤
+	if params.Difficulty.Valid && params.Difficulty.Int64 != 0 {
+		// 难度判断
+		_, ok := QuestionDifficulty[params.Difficulty]
+		if !ok {
+			err = fmt.Errorf("invalid difficulty: %d", params.Difficulty.Int64)
+			z.Error(err.Error())
+			return nil, 0, err
+		}
+		keywordCondition := fmt.Sprintf("(difficulty = $%d)", argIndex)
+		conditions = append(conditions, keywordCondition)
+		args = append(args, params.Difficulty.Int64)
+		argIndex += 1
+	}
+
+	// 权限过滤TODO
+
+	// 构建完整的WHERE子句
+	var whereClause string
+	if len(conditions) > 0 {
+		whereClause = " WHERE " + strings.Join(conditions, " AND ")
+	}
+
+	// 总数查询
+	s1 := "SELECT COUNT(*) FROM t_question" + whereClause
+	err = conn.QueryRow(ctx, s1, args...).Scan(&rowCount)
+	if err != nil {
+		z.Error(err.Error())
+		return nil, 0, err
+	}
+
+	// 数据查询
+	s2 := fmt.Sprintf(`
+		SELECT
+			id,
+			type,
+			content,
+			options,
+			answers,
+			score,
+			difficulty,
+			tags,
+			analysis,
+			title,
+			answer_file_path,
+			test_file_path,
+			input,
+			output,
+			example,
+			repo,
+			"order",
+			creator,
+			create_time,
+			updated_by,
+			update_time,
+			addi,
+			status,
+			question_attachments_path,
+			access_mode,
+			belong_to
+		FROM t_question
+		%s
+		ORDER BY id DESC
+		LIMIT $%d OFFSET $%d
+	`, whereClause, argIndex, argIndex+1)
+
+	offset := (params.Page - 1) * params.PageSize
+	args = append(args, params.PageSize, offset)
+	rows, err := conn.Query(ctx, s2, args...)
+	if err != nil {
+		z.Error(err.Error())
+		return nil, 0, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var q cmn.TQuestion
+		err = rows.Scan(
+			&q.ID,
+			&q.Type,
+			&q.Content,
+			&q.Options,
+			&q.Answers,
+			&q.Score,
+			&q.Difficulty,
+			&q.Tags,
+			&q.Analysis,
+			&q.Title,
+			&q.AnswerFilePath,
+			&q.TestFilePath,
+			&q.Input,
+			&q.Output,
+			&q.Example,
+			&q.Repo,
+			&q.Order,
+			&q.Creator,
+			&q.CreateTime,
+			&q.UpdatedBy,
+			&q.UpdateTime,
+			&q.Addi,
+			&q.Status,
+			&q.QuestionAttachmentsPath,
+			&q.AccessMode,
+			&q.BelongTo,
+		)
+		if err != nil {
+			err = fmt.Errorf("rows.Scan error: %s", err.Error())
+			z.Error(err.Error())
+			return nil, 0, err
+		}
+		list = append(list, q)
+	}
+
+	if rows.Err() != nil {
+		err = fmt.Errorf("rows.Err error: %s", rows.Err().Error())
+		z.Error(err.Error())
+		return nil, 0, err
+	}
+
+	return list, rowCount, nil
+}
+
 // Questions 接口
 func questions(ctx context.Context) {
 	q := cmn.GetCtxValue(ctx)
@@ -636,143 +810,69 @@ func questions(ctx context.Context) {
 	method := strings.ToLower(q.R.Method)
 	switch method {
 	case "get":
-		// 处理 GET 请求
+		// 获取查询参数
 		pageStr := q.R.URL.Query().Get("page")
 		pageSizeStr := q.R.URL.Query().Get("pageSize")
 		bankIDStr := q.R.URL.Query().Get("bankID")
-
-		if bankIDStr == "" {
-			q.Err = fmt.Errorf("call /api/questions with empty bankID")
-			z.Error(q.Err.Error())
-			q.RespErr()
-			return
-		}
+		name := q.R.URL.Query().Get("name")
+		tags := q.R.URL.Query().Get("tags")
+		questionType := q.R.URL.Query().Get("type")
+		difficulty := q.R.URL.Query().Get("difficulty")
 
 		// 设置默认分页参数
 		if pageStr == "" {
-			pageStr = "0"
+			pageStr = "1"
 		}
 		if pageSizeStr == "" {
 			pageSizeStr = "10"
 		}
 		page, _ := strconv.ParseInt(pageStr, 10, 64)
 		pageSize, _ := strconv.ParseInt(pageSizeStr, 10, 64)
+
+		userID := null.IntFrom(1000)
+		if q.SysUser != nil {
+			userID = q.SysUser.ID
+		}
+		//level := "00" // 权限等级，"00" 表示全局权限（TODO: 替换为真实来源）
+
+		if bankIDStr == "" {
+			q.Err = fmt.Errorf("bankID is empty")
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
 		bankID, _ := strconv.ParseInt(bankIDStr, 10, 64)
+		difficultyInt, _ := strconv.ParseInt(difficulty, 10, 64)
 
-		if bankID <= 0 {
-			q.Err = fmt.Errorf("call /api/questions with invalid bankID: %s", bankIDStr)
-			z.Error(q.Err.Error())
+		params := QueryQuestionsParams{
+			BankID:     bankID,
+			Name:       name,
+			Tags:       tags,
+			Type:       questionType,
+			Difficulty: null.IntFrom(difficultyInt),
+			Page:       page,
+			PageSize:   pageSize,
+			UserID:     userID.Int64,
+		}
+
+		list, rowCount, err := getQuestionList(ctx, conn, params)
+		if err != nil {
+			q.Err = err
 			q.RespErr()
 			return
 		}
 
-		// 获取查询参数
-		name := q.R.URL.Query().Get("name")
-		questionType := q.R.URL.Query().Get("type")
-		difficulty := q.R.URL.Query().Get("difficulty")
-		tags := q.R.URL.Query().Get("tags")
-
-		// 构建查询过滤条件
-		filters := []map[string]interface{}{
-			{"Status": map[string]interface{}{"IN": []string{"00"}}},
-			{"BelongTo": bankID},
-		}
-
-		if name != "" {
-			filters = append(filters, map[string]interface{}{
-				"Name": map[string]interface{}{"LIKE": "%" + name + "%"},
-			})
-		}
-		if questionType != "" {
-			if _, ok := QuestionTypes[questionType]; !ok {
-				q.Err = fmt.Errorf("unsupported question type: %s", questionType)
-				z.Error(q.Err.Error())
-				q.RespErr()
-				return
-			}
-			filters = append(filters, map[string]interface{}{
-				"Type": questionType,
-			})
-		}
-		if difficulty != "" {
-			difficultyInt, _ := strconv.ParseInt(difficulty, 10, 64)
-			if _, ok := QuestionDifficulty[null.IntFrom(difficultyInt)]; !ok {
-				q.Err = fmt.Errorf("unsupported question difficulty: %s", difficulty)
-				z.Error(q.Err.Error())
-				q.RespErr()
-				return
-			}
-			filters = append(filters, map[string]interface{}{
-				"Difficulty": null.IntFrom(difficultyInt),
-			})
-		}
-		if len(tags) > 0 {
-			tagsArray := strings.Split(tags, ",")
-			filters = append(filters, map[string]interface{}{
-				"Tags": map[string]interface{}{"@>": tagsArray},
-			})
-		}
-
-		// 构建请求对象
-		req := cmn.ReqProto{
-			Action: "select",
-			OrderBy: []map[string]string{
-				{"ID": "DESC"},
-			},
-			Filter: filters,
-			Sets: []string{
-				"ID",
-				"Type",
-				"Content",
-				"Options",
-				"Answers",
-				"Score",
-				"Difficulty",
-				"Tags",
-				"Analysis",
-				"Title",
-				"AnswerFilePath",
-				"TestFilePath",
-				"Input",
-				"Output",
-				"Example",
-				"Repo",
-				"Order",
-				"Creator",
-				"CreateTime",
-				"UpdatedBy",
-				"UpdateTime",
-				"Addi",
-				"Status",
-				"QuestionAttachmentsPath",
-				"AccessMode",
-				"BelongTo",
-			},
-			Page:     page,
-			PageSize: pageSize,
-		}
-
-		// 调用后端服务
-		var c cmn.TQuestion
-		c.TableMap = &cmn.TQuestion{}
-		q.Err = cmn.DML(&c.Filter, &req)
-		if q.Err != nil {
-			z.Error(q.Err.Error())
-			q.RespErr()
-			return
-		}
-		// 处理查询结果
-		v, ok := c.QryResult.(string)
-		if !ok {
-			q.Err = fmt.Errorf("s.qryResult should be string, but it isn't")
-			z.Error(q.Err.Error())
+		jsonData, err := json.Marshal(list)
+		if err != nil {
+			q.Err = err
 			q.RespErr()
 			return
 		}
 
-		q.Msg.RowCount = c.RowCount
-		q.Msg.Data = types.JSONText(v)
-		z.Info(string(q.Msg.Data))
+		q.Msg.Status = 0
+		q.Msg.Data = jsonData
+		q.Msg.Msg = "success"
+		q.Msg.RowCount = rowCount
 		q.Resp()
 
 	case "post":
