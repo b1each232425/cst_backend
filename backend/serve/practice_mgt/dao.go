@@ -1,12 +1,13 @@
 package practice_mgt
 
-//annotation:practice-service
+//annotation:practice_mgt-service
 //author:{"name":"ZouDeLun","tel":"15920422045", "email":"1311866870@qq.com"}
 import (
 	"context"
 	"database/sql"
 	"errors"
 	"fmt"
+	"github.com/jackc/pgx/v5"
 	"github.com/jmoiron/sqlx"
 	"strings"
 	"time"
@@ -482,13 +483,13 @@ func OperatePracticeStatus(ctx context.Context, practiceId int64, status string,
 		z.Error(err.Error())
 		return err
 	}
-	sqlxDB := cmn.GetDbConn()
+	conn := cmn.GetPgxConn()
 	now := time.Now().UnixMilli()
 	p, _, _, err := LoadPracticeById(ctx, practiceId)
 	if err != nil {
 		return err
 	}
-	tx, err := sqlxDB.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelRepeatableRead})
+	tx, err := conn.Begin(ctx)
 	if err != nil {
 		err = fmt.Errorf("beginTx called failed:%v", err)
 		z.Error(err.Error())
@@ -497,14 +498,14 @@ func OperatePracticeStatus(ctx context.Context, practiceId int64, status string,
 	defer func() {
 		if p := recover(); p != nil {
 			// 发生 panic 回滚
-			err = tx.Rollback()
+			err = tx.Rollback(ctx)
 			panic(p)
 		} else if err != nil {
 			// 操作失败回滚
-			err = tx.Rollback()
+			err = tx.Rollback(ctx)
 		} else {
 			// 无错误则提交
-			err = tx.Commit()
+			err = tx.Commit(ctx)
 		}
 	}()
 	if status == PracticeStatus.Released {
@@ -547,7 +548,7 @@ func OperatePracticeStatus(ctx context.Context, practiceId int64, status string,
 			return err
 		}
 		s := `UPDATE assessuser.t_practice SET status = $1,update_time = $2, updated_by = $3  WHERE id = $4`
-		_, err = tx.ExecContext(ctx, s, PracticeStatus.PendingRelease, now, uid, practiceId)
+		_, err = tx.Exec(ctx, s, PracticeStatus.PendingRelease, now, uid, practiceId)
 		if err != nil {
 			err = fmt.Errorf("OperatePracticeStatus to pendingRelease failed:%v", err)
 			z.Error(err.Error())
@@ -561,7 +562,7 @@ func OperatePracticeStatus(ctx context.Context, practiceId int64, status string,
 	}
 }
 
-// EnterPractice 学生进入练习作答所需试卷信息、练习基本信息
+// EnterPracticeGetPaperDetails 学生进入练习作答所需试卷信息、练习基本信息
 /*
 处理情况如下：
 1、学生上次有作答，但无提交：
@@ -569,7 +570,7 @@ func OperatePracticeStatus(ctx context.Context, practiceId int64, status string,
 2、学生上次作答已提交：
 	生成新的提交记录，生成新的学生答卷，返回基本试卷题组、试卷题目、练习基本信息
 */
-func EnterPractice(ctx context.Context, tx *sqlx.Tx, pid int64, uid int64) (*EnterPracticeInfo, map[int64]*cmn.TExamPaperGroup, map[int64][]*examPaper.ExamQuestion, error) {
+func EnterPracticeGetPaperDetails(ctx context.Context, tx pgx.Tx, pid int64, uid int64) (*EnterPracticeInfo, map[int64]*cmn.TExamPaperGroup, map[int64][]*examPaper.ExamQuestion, error) {
 	// 去判断多种状态学生进入作答的状态
 	if pid <= 0 || uid <= 0 {
 		err := fmt.Errorf("invalid pId | uid param")
@@ -805,7 +806,7 @@ func EnterPractice(ctx context.Context, tx *sqlx.Tx, pid int64, uid int64) (*Ent
 		s := `INSERT INTO t_practice_submissions (practice_id,student_id,exam_paper_id,creator,create_time,update_time,attempt) VALUES (
 			$1,$2,$3,$4,$5,$6,$7	
 		) RETURNING id`
-		err = tx.QueryRowContext(ctx, s, pid, uid, ps.ExamPaperID, uid, now, now, newAttempt).Scan(&pSubmissionID)
+		err = tx.QueryRow(ctx, s, pid, uid, ps.ExamPaperID, uid, now, now, newAttempt).Scan(&pSubmissionID)
 		if err != nil {
 			err = fmt.Errorf("insert practice submission failed:%v", err)
 			z.Error(err.Error())

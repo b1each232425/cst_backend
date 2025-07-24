@@ -3,15 +3,15 @@
  * @Description: 考卷-答卷数据库层
  * @Date: 2025-07-21 13:14:34
  * @LastEditors: zdl <1311866870@qq.com>
- * @LastEditTime: 2025-07-24 12:00:30
+ * @LastEditTime: 2025-07-24 16:08:31
  */
 package examPaper
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"fmt"
+	"github.com/jackc/pgx/v5"
 	"github.com/jmoiron/sqlx"
 	"go.uber.org/zap"
 	"math/rand"
@@ -39,7 +39,7 @@ func LoadExamPaperDetailsById(ctx context.Context, epid int64, withQuestions, wi
 	var examGroups []*cmn.TExamPaperGroup
 	// 一个题组下拥有的题目数组
 	examQuestions := make(map[int64][]*ExamQuestion)
-	sqlxDB := cmn.GetDbConn()
+	conn := cmn.GetPgxConn()
 	var ep cmn.TVExamPaper
 	// 动态构建 SQL 字段
 	fields := []string{"id", "exam_session_id", "practice_id", "name", "creator", "create_time",
@@ -54,7 +54,7 @@ func LoadExamPaperDetailsById(ctx context.Context, epid int64, withQuestions, wi
 		scanArgs = append(scanArgs, &ep.GroupsData)
 	}
 	s := fmt.Sprintf("SELECT %s FROM v_exam_paper WHERE id=$1 AND status=$2", strings.Join(fields, ","))
-	err = sqlxDB.QueryRowxContext(ctx, s, epid, PaperStatus.Normal).Scan(scanArgs...)
+	err = conn.QueryRow(ctx, s, epid, PaperStatus.Normal).Scan(scanArgs...)
 	if err != nil {
 		err = fmt.Errorf("LoadExamPaperById call failed:%v", err)
 		z.Error(err.Error())
@@ -119,8 +119,8 @@ func LoadExamPaperDetailsById(ctx context.Context, epid int64, withQuestions, wi
 	return &ep, examGroups, examQuestions, nil
 }
 
-// GenerateAnswerQuestion 根据一次考卷生成学生答卷信息 批量插入学生答卷
-func GenerateAnswerQuestion(ctx context.Context, tx *sqlx.Tx, req GenerateAnswerQuestionsRequest, uid int64) error {
+// GenerateAnswerQuestion 根据一次考卷生成学生答卷信息 批量插入学生答卷 占位符最多65535个，因此最多一张试卷有3000个题目
+func GenerateAnswerQuestion(ctx context.Context, tx pgx.Tx, req GenerateAnswerQuestionsRequest, uid int64) error {
 	var err error
 	now := time.Now().UnixMilli()
 	r := rand.New(rand.NewSource(now))
@@ -216,46 +216,44 @@ func GenerateAnswerQuestion(ctx context.Context, tx *sqlx.Tx, req GenerateAnswer
 	sa 需要新增的学生答题数组
 	uid 操作者
 */
-func BatchInsertStudentAnswer(ctx context.Context, tx *sqlx.Tx, sa []*cmn.TStudentAnswers, uid int64) error {
-	var err error
+func BatchInsertStudentAnswer(ctx context.Context, tx pgx.Tx, sa []*cmn.TStudentAnswers, uid int64) error {
 	if len(sa) == 0 {
-		err = fmt.Errorf("empty params student answer")
-		z.Error(err.Error())
+		z.Error("empty params student answer")
 		return nil
 	}
-	now := time.Now().UnixMilli()
-	tArgs := make([]interface{}, 0, len(sa)*11)
-	for _, a := range sa {
-		tArgs = append(tArgs, a.Type, a.ExamineeID, a.PracticeSubmissionID, a.QuestionID, uid, now, now, a.GroupID, a.Order, a.ActualOptions, a.ActualAnswers)
-	}
-
-	t := `INSERT INTO t_student_answers (
+	query := `
+		INSERT INTO t_student_answers (
 			type, examinee_id, practice_submission_id, question_id,
-			   creator, create_time,
-			 update_time, group_id, "order",
+			creator, create_time, update_time, group_id, "order",
 			actual_options, actual_answers
 		) VALUES %s
 	`
-	tStr := strings.Repeat("(?,?,?,?,?,?,?,?,?,?,?)", len(sa)-1) + "(?,?,?,?,?,?,?,?,?,?,?)"
-
-	s := fmt.Sprintf(t, tStr)
-	q, args, err := sqlx.In(s, tArgs...)
-	if err != nil {
-		err = fmt.Errorf("prepare student answer insert failed:%v", err)
-		z.Error(err.Error())
-		return err
+	now := time.Now().UnixMilli()
+	values := make([]string, 0, len(sa))
+	args := make([]interface{}, 0, len(sa)*11) // 11个字段
+	idx := 1
+	for _, a := range sa {
+		placeholders := make([]string, 11)
+		for i := 0; i < 11; i++ {
+			placeholders[i] = fmt.Sprintf("$%d", idx)
+			idx++
+		}
+		values = append(values, "("+strings.Join(placeholders, ",")+")")
+		args = append(args,
+			a.Type, a.ExamineeID, a.PracticeSubmissionID, a.QuestionID,
+			uid, now, now, a.GroupID, a.Order, a.ActualOptions, a.ActualAnswers,
+		)
 	}
-	insertQuery := sqlx.Rebind(sqlx.DOLLAR, q)
+	insertQuery := fmt.Sprintf(query, strings.Join(values, ","))
 	z.Sugar().Debugf("打印输出一下插入学生作答SQL语句:%v", insertQuery)
 	z.Sugar().Debugf("打印输出一下插入学生作答SQL参数:%v", args)
-	_, err = tx.ExecContext(ctx, insertQuery, args...)
+	_, err := tx.Exec(ctx, insertQuery, args...)
 	if err != nil {
-		err = fmt.Errorf("create student answer insert failed call failed:%v", err)
+		err = fmt.Errorf("批量插入失败: %v", err)
 		z.Error(err.Error())
 		return err
 	}
 	return nil
-
 }
 
 // LoadPaperTemplateById  一张标准的试卷内容 支持按需加载试卷模板（支持题组和题目按需解析）
@@ -276,7 +274,7 @@ func LoadPaperTemplateById(ctx context.Context, paperId int64, withQuestions boo
 	// 一个题组下拥有的题目数组
 	questions := make(map[int64][]*Question)
 	var p cmn.TVPaper
-	sqlxDB := cmn.GetDbConn()
+	conn := cmn.GetPgxConn()
 	fields := []string{
 		"id", "name", "assembly_type", "category", "level",
 		"suggested_duration", "description", "tags", "config",
@@ -294,7 +292,7 @@ func LoadPaperTemplateById(ctx context.Context, paperId int64, withQuestions boo
 		scanArgs = append(scanArgs, &p.GroupsData)
 	}
 	s := fmt.Sprintf("SELECT %s FROM v_paper WHERE id=$1 AND status != $2", strings.Join(fields, ","))
-	err = sqlxDB.QueryRowxContext(ctx, s, paperId, PaperStatus.Invalid).Scan(scanArgs...)
+	err = conn.QueryRow(ctx, s, paperId, PaperStatus.Invalid).Scan(scanArgs...)
 	if err != nil {
 		err = fmt.Errorf("LoadExamPaperById call failed:%v", err)
 		z.Error(err.Error())
@@ -306,7 +304,6 @@ func LoadPaperTemplateById(ctx context.Context, paperId int64, withQuestions boo
 			z.Error("unmarshal group data failed", zap.Error(err))
 			return nil, nil, nil, err
 		}
-
 		for _, v := range groupData {
 			groups = append(groups, &cmn.TPaperGroup{
 				ID:         v.ID,
@@ -332,6 +329,8 @@ func LoadPaperTemplateById(ctx context.Context, paperId int64, withQuestions boo
 			}
 		}
 	}
+	// 释放题组JSON实体内存
+	p.GroupsData = nil
 
 	return &p, groups, questions, nil
 }
@@ -346,7 +345,7 @@ func LoadPaperTemplateById(ctx context.Context, paperId int64, withQuestions boo
 	uid 操作人Id
 	genMarkInfo 是否生成批改信息 用于考试创建时配置批改信息
 */
-func GenerateExamPaper(ctx context.Context, tx *sql.Tx, category string, paperId, practiceId, examSessionId int64, uid int64, genMarkInfo bool) (*int64, []SubjectiveQuestionGroup, error) {
+func GenerateExamPaper(ctx context.Context, tx pgx.Tx, category string, paperId, practiceId, examSessionId int64, uid int64, genMarkInfo bool) (*int64, []SubjectiveQuestionGroup, error) {
 	var err error
 	if paperId <= 0 {
 		err = fmt.Errorf("invalid paperId ID param")
@@ -363,7 +362,7 @@ func GenerateExamPaper(ctx context.Context, tx *sql.Tx, category string, paperId
 		z.Error(err.Error())
 		return nil, nil, err
 	}
-	p, pg, pq, err := LoadPaperTemplateById(ctx, paperId, true)
+	_, pg, pq, err := LoadPaperTemplateById(ctx, paperId, true)
 	if err != nil {
 		err = fmt.Errorf("LoadPaperTemplateById call failed:%v", err)
 		z.Error(err.Error())
@@ -374,62 +373,52 @@ func GenerateExamPaper(ctx context.Context, tx *sql.Tx, category string, paperId
 		z.Error(err.Error())
 		return nil, nil, err
 	}
-	var ep cmn.TExamPaper
-	if category == PaperCategory.Exam && examSessionId > 0 {
-		ep.ExamSessionID = null.IntFrom(examSessionId)
-	} else if category == PaperCategory.Practice && practiceId > 0 {
-		ep.PracticeID = null.IntFrom(practiceId)
-	} else {
-		err = fmt.Errorf("invalid mapping between category and request id")
-		z.Error(err.Error())
-		return nil, nil, err
-	}
-	ep.Name = p.Name
-	ep.Creator = null.IntFrom(uid)
-	ep.CreateTime = null.IntFrom(time.Now().UnixMilli())
-	ep.UpdateTime = null.IntFrom(time.Now().UnixMilli())
-
-	// 插入一张考卷
-	s := `INSERT INTO t_exam_paper (exam_session_id,practice_id,name,creator,create_time,update_time) VALUES ($1,$2,$3,$4,$5,$6)`
-	err = tx.QueryRowContext(ctx, s, &ep.ExamSessionID, &ep.PracticeID, ep.Name, ep.Creator, ep.CreateTime, ep.UpdateTime).Scan(&ep.ID)
-	if err != nil {
-		err = fmt.Errorf("create exam paper call failed:%v", err)
-		z.Error(err.Error())
-		return nil, nil, err
-	}
-
-	// 插入考卷题组数据
-	t := `INSERT INTO t_exam_paper_group (exam_paper_id,name,“order”,creator,create_time,update_time) VALUES %s`
-	tstr := strings.Repeat("(?, ?, ?, ?, ?, ?),", len(pg)-1) + "(?, ?, ?, ?, ?, ?)"
-	tGroupArgs := make([]interface{}, 0, len(pg)*6)
-
-	for _, g := range pg {
-		tGroupArgs = append(tGroupArgs, ep.ID, g.Name, g.Order, uid, time.Now().UnixMilli(), time.Now().UnixMilli())
-	}
-	s1 := fmt.Sprintf(t, tstr)
-	groupQuery, groupArgs, err := sqlx.In(s1, tGroupArgs...)
-	if err != nil {
-		err = fmt.Errorf("prepare group query failed:%v", err)
-		z.Error(err.Error())
-		return nil, nil, err
-	}
-	groupQuery = sqlx.Rebind(sqlx.DOLLAR, groupQuery)
-	z.Sugar().Debugf("打印输出一下增加SQL语句:%v", groupQuery)
-	z.Sugar().Debugf("打印输出一下增加SQL参数:%v", groupArgs)
-	_, err = tx.ExecContext(ctx, groupQuery, groupArgs...)
-	if err != nil {
-		err = fmt.Errorf("create exam paper group call failed:%v", err)
-		z.Error(err.Error())
-		return nil, nil, err
-	}
-
-	var tQuestionArgs []interface{}
 	now := time.Now().UnixMilli()
-	var questionCount int
+	ep := cmn.TExamPaper{}
+	insertPaperSQL := `
+		INSERT INTO t_exam_paper 
+			(exam_session_id, practice_id, name, creator, create_time, update_time) 
+		VALUES ($1, $2, $3, $4, $5, $6) 
+		RETURNING id`
+	err = tx.QueryRow(
+		ctx,
+		insertPaperSQL,
+		ep.ExamSessionID, ep.PracticeID, ep.Name, ep.Creator, ep.CreateTime, ep.UpdateTime,
+	).Scan(&ep.ID)
+	if err != nil {
+		err = fmt.Errorf("插入考卷失败: %w", err)
+		z.Error(err.Error())
+		return nil, nil, err
+	}
+
+	groupSQL := `INSERT INTO t_exam_paper_group (exam_paper_id, name, "order", creator, create_time, update_time) VALUES `
+	groupArgs := make([]interface{}, 0, len(pg)*6)
+	groupPlaceholders := make([]string, 0, len(pg))
+
+	for i, g := range pg {
+		groupPlaceholders = append(groupPlaceholders,
+			fmt.Sprintf("($%d,$%d,$%d,$%d,$%d,$%d)",
+				i*6+1, i*6+2, i*6+3, i*6+4, i*6+5, i*6+6))
+		groupArgs = append(groupArgs,
+			ep.ID, g.Name, g.Order, uid, now, now)
+	}
+	fullGroupSQL := groupSQL + strings.Join(groupPlaceholders, ",")
+	_, err = tx.Exec(ctx, fullGroupSQL, groupArgs...)
+	if err != nil {
+		return nil, nil, fmt.Errorf("插入题组失败: %w", err)
+	}
+
+	questionSQL := `INSERT INTO t_exam_paper_question (
+		score, type, content, options, answer, analysis, title, 
+		answer_file_path, test_file_path, input, output, example, repo, 
+		creator, create_time, update_time, addi, "order", group_id, question_attachments_path
+	) VALUES `
+	questionArgs := make([]interface{}, 0)
+	questionPlaceholders := make([]string, 0)
 	// 批改配置变量
 	var groups []SubjectiveQuestionGroup
+	placeholderIdx := 1
 
-	// 遍历这个题组题目的group
 	for gid, qs := range pq {
 		var group SubjectiveQuestionGroup
 		if genMarkInfo {
@@ -440,68 +429,47 @@ func GenerateExamPaper(ctx context.Context, tx *sql.Tx, category string, paperId
 			if genMarkInfo {
 				group.QuestionIDs = append(group.QuestionIDs, q.ID.Int64)
 			}
-			questionCount++
-			// 若是填空题、简答题 动态进行赋予分值
 			if q.Type == QuestionCategory.FillInBlank || q.Type == QuestionCategory.ShortAnswer {
-				var a []NonSelectQuestionAnswer
-				if err = json.Unmarshal(q.Answers, &a); err != nil {
-					err = fmt.Errorf("unmarshal answer failed:%v", err)
-					z.Error(err.Error())
-					return nil, nil, err
+				var answers []NonSelectQuestionAnswer
+				if err := json.Unmarshal(q.Answers, &answers); err != nil {
+					return nil, nil, fmt.Errorf("解析答案失败: %w", err)
 				}
-				// 校验分数配置
-				if len(a) != len(q.SubScore) {
-					z.Sugar().Errorw("分数配置不匹配", "question_id", q.ID,
-						"expected", len(q.SubScore),
-						"actual", len(a))
-					return nil, nil, fmt.Errorf("答案分数配置不匹配")
+				if len(answers) != len(q.SubScore) {
+					return nil, nil, fmt.Errorf("答案数量(%d)与分数数量(%d)不匹配", len(answers), len(q.SubScore))
 				}
-				// 设置答案分数
-				for i, ans := range a {
-					if i < len(q.SubScore) {
-						// 设置分数
-						ans.Score = q.SubScore[i]
-						a[i] = ans
-					}
+				for i := range answers {
+					answers[i].Score = q.SubScore[i]
 				}
-				jsonAnswer, _ := json.Marshal(a)
-				q.Answers = jsonAnswer
+				jsonData, _ := json.Marshal(answers)
+				q.Answers = jsonData
 			}
-			tQuestionArgs = append(tQuestionArgs, q.Score, q.Type, q.Content, q.Options,
-				q.Answers, q.Analysis, q.Title, q.AnswerFilePath, q.TestFilePath, q.Input,
-				q.Output, q.Example, q.Repo, uid, now, now, q.Addi, q.Order, gid, q.QuestionAttachmentsPath,
+			ph := make([]string, 20)
+			for i := 0; i < 20; i++ {
+				ph[i] = fmt.Sprintf("$%d", placeholderIdx)
+				placeholderIdx++
+			}
+			questionPlaceholders = append(questionPlaceholders, "("+strings.Join(ph, ",")+")")
+			questionArgs = append(questionArgs,
+				q.Score, q.Type, q.Content, q.Options, q.Answers, q.Analysis, q.Title,
+				q.AnswerFilePath, q.TestFilePath, q.Input, q.Output, q.Example, q.Repo,
+				uid, now, now, q.Addi, q.Order, gid, q.QuestionAttachmentsPath,
 			)
 		}
 		if genMarkInfo {
 			groups = append(groups, group)
 		}
 	}
-	// 批量生成考题
-	t1 := `INSERT INTO t_exam_paper_question (score,type,content,options,answer,analysis,title,answer_file_path,test_file_path,input,output,example,repo,creator,create_time,update_time,addi,"order",group_id,question_attachments_path) VALUES %s`
-	tstr1 := strings.Repeat("(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?),", questionCount-1) +
-		"(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
-	s2 := fmt.Sprintf(t1, tstr1)
-	questionQuery, questionArgs, err := sqlx.In(s2, tQuestionArgs...)
+
+	fullQuestionSQL := questionSQL + strings.Join(questionPlaceholders, ",")
+	_, err = tx.Exec(ctx, fullQuestionSQL, questionArgs...)
 	if err != nil {
-		err = fmt.Errorf("prepare question query failed:%v", err)
-		z.Error(err.Error())
-		return nil, nil, err
-	}
-	questionQuery = sqlx.Rebind(sqlx.DOLLAR, questionQuery)
-	z.Sugar().Debugf("打印输出一下题目SQL语句:%v", questionQuery)
-	z.Sugar().Debugf("打印输出一下题目SQL参数:%v", questionArgs)
-	_, err = tx.ExecContext(ctx, questionQuery, questionArgs...)
-	if err != nil {
-		err = fmt.Errorf("create exam paper question call failed:%v", err)
-		z.Error(err.Error())
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("插入题目失败: %w", err)
 	}
 
 	return &ep.ID.Int64, groups, nil
-
 }
 
-// LoadExamPaperDetailByUserId 考试/练习 考生/练习生获取试卷 可用于获取考试时/练习时的试卷 也可用于查看学生答题情况时的试卷
+// LoadExamPaperDetailByUserId 考试/练习 考生/练习生获取试卷 可用于获取考试时/练习时的试卷 也可用于查看学生答题情况时的获取试卷
 /*
 关键参数说明：
 	examPaperId 考卷Id

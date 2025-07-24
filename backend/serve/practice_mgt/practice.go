@@ -1,6 +1,6 @@
 package practice_mgt
 
-//annotation:practice-service
+//annotation:practice_mgt-service
 //author:{"name":"ZouDeLun","tel":"15920422045", "email":"1311866870@qq.com"}
 
 import (
