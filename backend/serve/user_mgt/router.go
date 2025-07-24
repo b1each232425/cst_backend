@@ -11,6 +11,11 @@ import (
 
 var z *zap.Logger
 
+const (
+	AccountLength = 9           // 账号长度
+	InitialPwd    = "abc123456" // 初始密码
+)
+
 func init() {
 	//Setup package scope variables, just like logger, db connector, configure parameters, etc.
 	cmn.PackageStarters = append(cmn.PackageStarters, func() {
