@@ -18,6 +18,7 @@ const (
 	NormalStatus         = "00"
 	CanBeEnterStatus     = "16"
 	ExamineeDeleteStatus = " 08"
+	MakeupExam           = "04"
 
 	practiceSubmitted = "06"
 
@@ -106,20 +107,6 @@ func getAnswerByExamineeIDAndQuestionID(ctx context.Context, req GetStudentAnswe
 	return r, nil
 }
 
-func checkStartTimeAndEndTimeAndStatus(ctx context.Context, tx *sql.Tx, examineeId int64) (cmn.TExaminee, error) {
-
-	examinee := cmn.TExaminee{ID: null.IntFrom(examineeId)}
-	selectSql := `SELECT start_time,end_time,status FROM t_examinee WHERE id =$1 AND status!=$2 FOR UPDATE`
-	err := tx.QueryRowContext(ctx, selectSql, examineeId, ExamineeDeleteStatus).Scan(&examinee.StartTime, &examinee.EndTime, &examinee.Status)
-	if err != nil {
-		z.Error("student_exam_answer/service checkStartTimeAndEndTime QueryRow error", zap.Error(err))
-		return cmn.TExaminee{}, err
-	}
-
-	z.Info("query success", zap.Any("examinee", examinee))
-	return examinee, nil
-}
-
 // checkPracticeIfSaveBeginTime
 func checkPracticeIfSaveBeginTime(ctx context.Context, tx *sql.Tx, req SaveBeginTimeReq) error {
 	checkSql := `select count(*) from t_practice_submissions where id=$1 AND start_time is not null`
@@ -137,7 +124,7 @@ func checkPracticeIfSaveBeginTime(ctx context.Context, tx *sql.Tx, req SaveBegin
 	return nil
 }
 
-func saveStudentBeginTime(ctx context.Context, tx *sql.Tx, req SaveBeginTimeReq) error {
+func saveStudentBeginTimeForExam(ctx context.Context, tx *sql.Tx, req SaveBeginTimeReq) error {
 
 	var err error
 
@@ -147,12 +134,12 @@ func saveStudentBeginTime(ctx context.Context, tx *sql.Tx, req SaveBeginTimeReq)
 		UpdatedBy:  null.IntFrom(req.StudentId),
 		UpdateTime: null.IntFrom(time.Now().UTC().UnixMilli()),
 	}
-
-	updateSql := `UPDATE t_examinee SET start_time = $1,update_time=$2,updated_by=$3 WHERE id = $4 RETURNING id`
+	//只有start_time为空（说明是第一次进入作答）、end_time为空（说明没有提交过考试）、status为00（正常考试）04（补考）16（管理员允许进入）才能进行时间设置
+	updateSql := `UPDATE t_examinee SET start_time = $1,update_time=$2,updated_by=$3 WHERE id = $4 AND end_time IS NULL AND start_time IS NULL AND (status = $5 OR status = $6 OR status = $7 ) RETURNING id`
 
 	var updateId int64 = 0
 
-	err = tx.QueryRowContext(ctx, updateSql, &examinee.StartTime, examinee.UpdateTime, examinee.UpdatedBy, &examinee.ID).Scan(&updateId)
+	err = tx.QueryRowContext(ctx, updateSql, &examinee.StartTime, examinee.UpdateTime, examinee.UpdatedBy, &examinee.ID, CanBeEnterStatus, NormalStatus, MakeupExam).Scan(&updateId)
 	if err != nil {
 		z.Error("saveStudentBeginTime update error", zap.Error(err))
 		return err
@@ -163,37 +150,17 @@ func saveStudentBeginTime(ctx context.Context, tx *sql.Tx, req SaveBeginTimeReq)
 func submitExamInDataBase(ctx context.Context, tx *sql.Tx, req SubmitReq) (int64, error) {
 	var err error
 
-	//查看当前学生是否有提交过，并且查看当前考试
-	selectSql := `SELECT end_time 
-FROM t_examinee 
-WHERE id = $1
-FOR UPDATE `
-
-	examinee := cmn.TExaminee{}
-
-	err = tx.QueryRowContext(ctx, selectSql, req.ExamineeID).Scan(&examinee.EndTime)
-	if err != nil {
-		z.Error("student_exam_answer/service submitExam select error", zap.Error(err))
-		return -1, err
-	}
-
-	//不为空说明已经提交过了
-	if examinee.EndTime.Valid {
-		z.Info("student_exam_answer/service submitExam end_time is not null,student has already submitted")
-		return req.ExamineeID, nil
-	}
-
 	now := time.Now().UTC()
 
-	examinee = cmn.TExaminee{
+	examinee := cmn.TExaminee{
 		ID:         null.IntFrom(req.ExamineeID),
 		EndTime:    null.IntFrom(now.UnixMilli()),
 		UpdatedBy:  null.IntFrom(req.StudentId),
 		UpdateTime: null.IntFrom(now.UnixMilli()),
 	}
 
-	//更新t_examinee表
-	updateSqlForExaminee := `UPDATE t_examinee SET end_time = $1,status=$2,updated_by=$3,update_time=$4 WHERE id = $5 RETURNING id`
+	//更新t_examinee表，如果end_time为空才能设置，不为空说明已经提交过了
+	updateSqlForExaminee := `UPDATE t_examinee SET end_time = $1,status=$2,updated_by=$3,update_time=$4 WHERE id = $5 AND end_time IS NULL RETURNING id`
 	var updateId int64 = 0
 
 	err = tx.QueryRowContext(ctx, updateSqlForExaminee, &examinee.EndTime, ExamOverStatus, &examinee.UpdatedBy, &examinee.UpdateTime, &examinee.ID).Scan(&updateId)

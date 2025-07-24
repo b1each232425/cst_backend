@@ -72,7 +72,7 @@ func Enroll(author string) {
 	})
 
 	_ = cmn.AddService(&cmn.ServeEndPoint{
-		Fn: InitForExam,
+		Fn: InitRespondent,
 
 		Path: "/respondent/init",
 		Name: "respondent_init",
@@ -309,8 +309,8 @@ func StudentAnswer(ctx context.Context) {
 
 }
 
-// InitForExam 考试初始化
-func InitForExam(ctx context.Context) {
+// InitRespondent 作答初始化
+func InitRespondent(ctx context.Context) {
 	q := cmn.GetCtxValue(ctx)
 	z.Info("---->" + cmn.FncName())
 
@@ -400,8 +400,9 @@ func InitForExam(ctx context.Context) {
 			q.RespErr()
 			return
 		}
+
 		//保存开始时间
-		q.Err = saveBeginTimeForExam(dmlCtx, u, tx)
+		q.Err = saveStudentBeginTimeForExam(dmlCtx, tx, u)
 		if q.Err != nil {
 			z.Error(q.Err.Error())
 			q.RespErr()
@@ -655,47 +656,9 @@ func Submit(ctx context.Context) {
 
 //--------------------由于逻辑太长，将一些长逻辑封装到此处，http接口暴露区域直接调用这里的
 
-func saveBeginTimeForExam(ctx context.Context, req SaveBeginTimeReq, tx *sql.Tx) error {
-
-	//获取学生进行考试的开始时间、结束时间
-	se, err := checkStartTimeAndEndTimeAndStatus(ctx, tx, req.ExamineeID)
-	if err != nil {
-		return err
-	}
-
-	//先查看结束时间是否为空，不为空，说明已经提交
-	if se.EndTime.Valid {
-		err := fmt.Errorf("examineeId为d的用户已经提交考试", req.ExamineeID)
-		z.Error(err.Error())
-		return err
-	}
-
-	//查看是否有开始时间，如果有，说明已经开始过了，不需要任何操作
-	if se.StartTime.Valid {
-		info := fmt.Sprintf("examineeId为%d的用户已经开始过考试了，不需要任何操作", req.ExamineeID)
-		z.Info(info)
-		return nil
-	}
-
-	//查看是否有监考管理员提供的进入权限
-	if se.Status.String == CanBeEnterStatus {
-		err := saveStudentBeginTime(ctx, tx, req)
-		if err != nil {
-			return err
-		}
-	} else {
-		//TODO 查看学生的考试场次信息，并查看是否有超过最迟进入考试时间
-		err := saveStudentBeginTime(ctx, tx, req)
-		if err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
 func submitForExam(ctx context.Context, req SubmitReq) error {
 	//TODO 查看学生考试场次信息
+
 	//执行数据库操作
 	sqlxDB := cmn.GetDbConn()
 
