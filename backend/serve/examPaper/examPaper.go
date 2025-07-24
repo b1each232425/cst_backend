@@ -6,7 +6,6 @@ package examPaper
 import (
 	"context"
 	"encoding/json"
-
 	"go.uber.org/zap"
 	"w2w.io/cmn"
 )
