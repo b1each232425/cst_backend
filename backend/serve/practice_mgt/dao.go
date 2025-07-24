@@ -840,8 +840,6 @@ func EnterPracticeGetPaperDetails(ctx context.Context, tx pgx.Tx, pid int64, uid
 	epInfo.TotalScore = p.TotalScore.Float64
 	epInfo.GroupCount = p.GroupCount.Int64
 
-	// 最终集成练习信息 + 考卷信息结构体返回
-
 	return epInfo, pg, pq, nil
 
 }
