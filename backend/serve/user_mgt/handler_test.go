@@ -834,6 +834,30 @@ func Test_handler_HandleUser(t *testing.T) {
 			},
 			wantErr: true,
 		},
+		{
+			name: "触发开启事务错误",
+			fields: fields{
+				srv: &MockService{
+					ValidateUserFunc: func(ctx context.Context, tx pgx.Tx, users []cmn.TUser) ([]cmn.TUser, []InvalidUser, error) {
+						return nil, []InvalidUser{
+							{
+								Account: null.NewString("new_user_001", true),
+								ErrorMsg: []null.String{
+									null.NewString("账号已存在", true),
+								},
+							},
+						}, nil
+					},
+				},
+			},
+			args: args{
+				ctx: createMockContextWithBody("POST", "/api/user", `[{
+					"Account": "new_user_001",
+					"OfficialName": "新用户001"
+				}]`, "tx.Begin"),
+			},
+			wantErr: true,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

@@ -12,7 +12,8 @@ import (
 var z *zap.Logger
 
 const (
-	AccountLength = 9 //账号长度
+	AccountLength = 9           // 账号长度
+	InitialPwd    = "abc123456" // 初始密码
 )
 
 func init() {

@@ -1912,6 +1912,29 @@ func Test_service_ValidateUser(t *testing.T) {
 			wantErr: false,
 		},
 		{
+			name: "邮箱地址不合法",
+			args: args{
+				ctx: context.Background(),
+				users: []cmn.TUser{
+					{
+						Account: "zhangsanyes",
+						Email:   null.NewString("invalid-email", true),
+					},
+				},
+			},
+			wantValid: nil,
+			wantInvalid: []InvalidUser{
+				{
+					Account: null.NewString("zhangsanyes", true),
+					Email:   null.NewString("invalid-email", true),
+					ErrorMsg: []null.String{
+						null.NewString("邮箱格式不正确", true),
+					},
+				},
+			},
+			wantErr: false,
+		},
+		{
 			name: "空用户列表",
 			args: args{
 				ctx:   context.Background(),
