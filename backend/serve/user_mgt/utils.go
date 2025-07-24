@@ -1,6 +1,7 @@
 package user_mgt
 
 import (
+	"regexp"
 	"strconv"
 	"strings"
 	"unicode"
@@ -35,4 +36,11 @@ func NullableIntFromStr(s string) null.Int {
 	}
 
 	return null.NewInt(i, true)
+}
+
+// IsValidEmail 判断邮箱地址是否合法
+func IsValidEmail(email string) bool {
+	// RFC 5322 标准的简化版正则表达式
+	var emailRegex = regexp.MustCompile(`^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$`)
+	return emailRegex.MatchString(email)
 }
