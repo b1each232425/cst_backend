@@ -231,10 +231,11 @@ func (r *service) InsertUsers(ctx context.Context, tx pgx.Tx, users []cmn.TUser)
 			creator,
 			status,
 			remark,
+            user_token,
 			create_time,
 			update_time
 		) VALUES (
-			$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15
+			$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, crypt($14, gen_salt('bf')), $15, $16
 		)`
 
 		if tx != nil {
@@ -252,6 +253,7 @@ func (r *service) InsertUsers(ctx context.Context, tx pgx.Tx, users []cmn.TUser)
 				users[i].Creator.Int64,
 				r.orDefault(users[i].Status, "00"),
 				users[i].Remark,
+				InitialPwd, // 设置初始密码
 				time.Now().UnixMilli(),
 				time.Now().UnixMilli(),
 			)
@@ -270,6 +272,7 @@ func (r *service) InsertUsers(ctx context.Context, tx pgx.Tx, users []cmn.TUser)
 				users[i].Creator.Int64,
 				r.orDefault(users[i].Status, "00"),
 				users[i].Remark,
+				InitialPwd, // 设置初始密码
 				time.Now().UnixMilli(),
 				time.Now().UnixMilli(),
 			)
