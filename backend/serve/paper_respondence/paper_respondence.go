@@ -730,7 +730,7 @@ func submitForPractice(ctx context.Context, req SubmitReq) error {
 
 // HandleExit 处理学生退出作答，用在websocket连接断开的时候
 func HandleExit(ctx context.Context, req ExitReq) error {
-
+	// 用于测试mock数据
 	testSign, ok := ctx.Value(TestSign).(string)
 	if ok && testSign != "" {
 		switch testSign {
@@ -738,7 +738,7 @@ func HandleExit(ctx context.Context, req ExitReq) error {
 			return nil
 		}
 	}
-
+	// 参数检查
 	if req.ExamineeID <= 0 && req.PracticeSubmissionID <= 0 {
 		err := errors.New("examinee id and practice submission id both are smaller than 0 or equal to 0")
 		z.Error(err.Error())
@@ -812,5 +812,6 @@ WHERE id = $1;`
 
 // checkExamStatus 查看当前考试的状态
 func checkExamStatus(ctx context.Context, req CheckExamStatusReq) (int, error) {
+
 	return 0, nil
 }
