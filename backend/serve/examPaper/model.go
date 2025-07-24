@@ -3,11 +3,23 @@
  * @Description: 考卷-答卷模型
  * @Date: 2025-07-21 13:14:44
  * @LastEditors: zdl <1311866870@qq.com>
- * @LastEditTime: 2025-07-21 15:16:56
+ * @LastEditTime: 2025-07-23 11:37:08
  */
 package examPaper
 
-import "w2w.io/cmn"
+import (
+	"github.com/jmoiron/sqlx/types"
+	"w2w.io/cmn"
+	"w2w.io/null"
+)
+
+type ExamPaper struct {
+	ID            null.Int    `json:"ID,omitempty" db:"id,true,integer"`
+	ExamSessionID null.Int    `json:"ExamSessionID" db:"exam_session_id,false,bigint"`
+	PracticeID    null.Int    `json:"PracticeID" db:"practice_id,false,bigint"`
+	Name          null.String `json:"Name" db:"name,false,character varying"`
+	TotalScore    null.Float  `json:"TotalScore" db:"total_score,double precision"`
+}
 
 type SubjectiveQuestionGroup struct {
 	GroupID     int64   `json:"group_id"`
@@ -55,26 +67,33 @@ var PaperStatus = struct {
 	Invalid: "02",
 }
 
+// Group 学生试卷模版题组结构（试卷模块自用：解析存储在视图的JSON实体）
 type Group struct {
 	cmn.TPaperGroup
 	Questions []Question `json:"questions"`
 }
 
+// Question 试卷模版中的题目（加上老师字修改的分数）
 type Question struct {
 	cmn.TQuestion
 	SubScore []float64 `json:"sub_score"`
 }
 
+// ExamGroup 学生试卷题题组结构（考卷模块自用：解析存储在视图的JSON实体）
 type ExamGroup struct {
 	cmn.TExamPaperGroup
 	Questions []ExamQuestion `json:"questions"`
 }
 
+// ExamQuestion 学生试卷题目结构
 type ExamQuestion struct {
 	cmn.TExamPaperQuestion
-	AnswerNum int `json:"answer_num"`
+	AnswerNum     int            `json:"AnswerNum"`
+	StudentAnswer types.JSONText `json:"StudentAnswer"`
+	StudentScore  null.Float     `json:"StudentScore"`
 }
 
+// GenerateAnswerQuestionsRequest 考试/练习生成答卷
 type GenerateAnswerQuestionsRequest struct {
 	ExamPaperID int64  `json:"exam_paper_id" validate:"required,gt=0"`
 	Category    string `json:"category" validate:"required,oneof=00 02"`
@@ -89,4 +108,10 @@ type GenerateAnswerQuestionsRequest struct {
 	IsQuestionRandom bool  `json:"is_question_random"`
 	IsOptionRandom   bool  `json:"is_option_random"`
 	Attempt          int64 `json:"attempt" validate:"omitempty,min=1"`
+}
+
+// QuestionOption 处理乱序
+type QuestionOption struct {
+	Label string `json:"label"`
+	Value string `json:"value"`
 }

@@ -3,9 +3,9 @@
  * @Description: 请在此填写文件描述
  * @Date: 2025-07-15 16:40:38
  * @LastEditors: zdl <1311866870@qq.com>
- * @LastEditTime: 2025-07-16 11:06:57
+ * @LastEditTime: 2025-07-24 12:11:55
  */
-package practice
+package practice_mgt
 
 import (
 	"encoding/json"
@@ -18,6 +18,7 @@ import (
 	"w2w.io/null"
 )
 
+type JSONText = types.JSONText
 type Map map[string]interface{}
 
 func S2Map(in interface{}) (Map, error) {
@@ -74,7 +75,7 @@ func BuildUpdateSQL(table string, filters Map, id int64) (string, []interface{})
 	}
 	args = append(args, id)
 	query := fmt.Sprintf("UPDATE %s SET %s WHERE id = $%d", table, strings.Join(clauses, ", "), idx)
-	
+
 	return query, args
 }
 
