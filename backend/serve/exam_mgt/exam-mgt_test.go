@@ -2132,6 +2132,7 @@ func TestValidateUserExamPermission(t *testing.T) {
 		errorMsg    string
 		description string
 		forceError  string
+		mockValue   string
 	}{
 		{
 			name:        "管理员权限-应该有权限",
@@ -2247,13 +2248,55 @@ func TestValidateUserExamPermission(t *testing.T) {
 			description: "负数考试ID应该返回错误",
 			forceError:  "",
 		},
+		// Mock测试用例
+		{
+			name:        "Mock-normal-resp",
+			userID:      testStudentID,
+			examID:      testExamID,
+			role:        1,
+			wantResult:  true,
+			wantError:   false,
+			description: "Mock normal-resp应该返回true, nil",
+			forceError:  "",
+			mockValue:   "normal-resp",
+		},
+		{
+			name:        "Mock-validateUserExamPermission-false",
+			userID:      testStudentID,
+			examID:      testExamID,
+			role:        1,
+			wantResult:  false,
+			wantError:   false,
+			description: "Mock validateUserExamPermission-false应该返回false, nil",
+			forceError:  "",
+			mockValue:   "validateUserExamPermission-false",
+		},
+		{
+			name:        "Mock-validateUserExamPermission-error",
+			userID:      testStudentID,
+			examID:      testExamID,
+			role:        1,
+			wantResult:  false,
+			wantError:   true,
+			errorMsg:    "validateUserExamPermission error",
+			description: "Mock validateUserExamPermission-error应该返回false, error",
+			forceError:  "",
+			mockValue:   "validateUserExamPermission-error",
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			ctx := context.Background()
-			// 模拟用户上下文
-			ctx = context.WithValue(ctx, "force-error", tt.forceError)
+			// 设置错误注入
+			if tt.forceError != "" {
+				ctx = context.WithValue(ctx, "force-error", tt.forceError)
+			}
+			// 设置mock值
+			if tt.mockValue != "" {
+				ctx = context.WithValue(ctx, "test", tt.mockValue)
+			}
+
 			result, err := validateUserExamPermission(ctx, tt.userID, tt.examID, tt.role)
 
 			// 检查错误
