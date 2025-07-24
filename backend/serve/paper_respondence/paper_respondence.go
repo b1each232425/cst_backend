@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 	"w2w.io/cmn"
+	"w2w.io/serve/exam_mgt"
 )
 
 const (
@@ -406,11 +407,43 @@ func InitForExam(ctx context.Context) {
 			q.RespErr()
 			return
 		}
-		//TODO 获取考试信息
-
+		// 获取考试信息，role参数暂定1
+		examInfo, err := exam_mgt.GetExamInfo(dmlCtx, u.ExamId, 1)
+		if err != nil {
+			q.Err = err
+			q.RespErr()
+			return
+		}
+		//获取场次信息
+		examSessions, err := exam_mgt.GetExamSessions(dmlCtx, u.ExamId, 1)
+		if err != nil {
+			q.Err = err
+			q.RespErr()
+			return
+		}
 		//TODO 获取考卷
+
+		//定义结构体用于整合数据发送给前端
+		type Msg struct {
+			Sessions []cmn.TExamSession `json:"session"`
+			ExamInfo cmn.TExamInfo      `json:"exam_info"`
+		}
+
+		msg := Msg{
+			Sessions: examSessions,
+			ExamInfo: examInfo,
+		}
+
+		data, err := cmn.MarshalJSON(&msg)
+		if err != nil {
+			q.Err = err
+			q.RespErr()
+			return
+		}
+
 		q.Err = nil
 		q.Msg.Status = 0
+		q.Msg.Data = data
 		q.Msg.Msg = "success"
 		q.Resp()
 	case PracticeType:
