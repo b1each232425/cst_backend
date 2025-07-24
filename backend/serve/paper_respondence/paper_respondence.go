@@ -451,7 +451,7 @@ func InitRespondent(ctx context.Context) {
 
 		//TODO 生成试卷并获取试卷数据
 		//如果是第一次进入，就要保存练习开始时间
-		if err := SaveBeginTimeForPracticeWithTx(dmlCtx, tx, u); err != nil {
+		if err := saveBeginTimeForPractice(dmlCtx, tx, u); err != nil {
 			q.Err = err
 			q.RespErr()
 			return

@@ -107,27 +107,23 @@ func getAnswerByExamineeIDAndQuestionID(ctx context.Context, req GetStudentAnswe
 	return r, nil
 }
 
-// checkPracticeIfSaveBeginTime
-func checkPracticeIfSaveBeginTime(ctx context.Context, tx *sql.Tx, req SaveBeginTimeReq) error {
-	checkSql := `select count(*) from t_practice_submissions where id=$1 AND start_time is not null`
-	var count int
-	err := tx.QueryRowContext(ctx, checkSql, req.PracticeSubmissionID).Scan(&count)
-	if err != nil {
-		z.Error("checkPracticeIfSaveBeginTime error", zap.Error(err))
-		return err
-	}
-	if count > 0 {
-		err := fmt.Errorf("practice of id%d already save begin time", req.PracticeSubmissionID)
-		z.Info(err.Error())
-		return err
-	}
-	return nil
-}
-
+// saveStudentBeginTimeForExam 保存考试作答开始时间
 func saveStudentBeginTimeForExam(ctx context.Context, tx *sql.Tx, req SaveBeginTimeReq) error {
 
 	var err error
+	//查看start_time是否已经设置过，如果设置过的话就不报错，直接返回nil
+	var startTime null.Int
+	selectSql := `SELECT start_time FROM t_examinee WHERE id=$1 FOR UPDATE `
+	err = tx.QueryRowContext(ctx, selectSql, req.ExamineeID).Scan(&startTime)
+	if err != nil {
+		z.Error("saveStudentBeginTimeForExam error", zap.Error(err))
+		return err
+	}
+	if startTime.Valid {
+		return nil
+	}
 
+	//start_time为空，进行操作
 	examinee := cmn.TExaminee{
 		ID:         null.IntFrom(req.ExamineeID),
 		StartTime:  null.IntFrom(time.Now().UTC().UnixMilli()),
@@ -266,8 +262,8 @@ func UpdateLastStartTime(ctx context.Context, practiceSubmissionId int64, tx *sq
 
 }
 
-// SaveBeginTimeForPracticeWithTx 练习保存开始时间调用，在创建练习试卷的时候调用
-func SaveBeginTimeForPracticeWithTx(ctx context.Context, tx *sql.Tx, req SaveBeginTimeReq) error {
+// saveBeginTimeForPractice 练习保存开始时间调用，在创建练习试卷的时候调用
+func saveBeginTimeForPractice(ctx context.Context, tx *sql.Tx, req SaveBeginTimeReq) error {
 	if err := cmn.Validate(req); err != nil {
 		return err
 	}
@@ -276,13 +272,23 @@ func SaveBeginTimeForPracticeWithTx(ctx context.Context, tx *sql.Tx, req SaveBeg
 		z.Error(err.Error())
 		return err
 	}
-	//查看是否已经提交过
-	err := checkPracticeIfSaveBeginTime(ctx, tx, req)
+	//查看是否已经保存过开始时间，有就直接返回不报错
+	checkSql := `select start_time from t_practice_submissions where id=$1`
+	var start_time null.Int
+	err := tx.QueryRowContext(ctx, checkSql, req.PracticeSubmissionID).Scan(&start_time)
 	if err != nil {
+		z.Error("checkPracticeIfSaveBeginTime error", zap.Error(err))
 		return err
 	}
-	err = saveStudentBeginTime(ctx, tx, req)
+	if start_time.Valid {
+		return nil
+	}
+
+	// 开始保存开始时间
+	updateSql := `UPDATE t_practice_submissions SET start_time = $1 WHERE id = $2 AND status = $3`
+	_, err = tx.ExecContext(ctx, updateSql, req.PracticeSubmissionID, NormalStatus)
 	if err != nil {
+		z.Error("updatePracticeIfSaveBeginTime error", zap.Error(err))
 		return err
 	}
 	return nil
