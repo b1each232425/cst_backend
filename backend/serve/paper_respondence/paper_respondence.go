@@ -758,7 +758,7 @@ SET
   elapsed_seconds = elapsed_seconds + (
     (EXTRACT(EPOCH FROM CURRENT_TIMESTAMP)::bigint * 1000) - last_start_time
   )
-WHERE id = $1;`
+WHERE id = $1 AND status = $2;`
 
 		stmt, err := sqlxDB.Prepare(Sql)
 		if err != nil {
@@ -767,18 +767,8 @@ WHERE id = $1;`
 		}
 		defer stmt.Close()
 
-		result, err := stmt.ExecContext(ctx, req.PracticeSubmissionID)
+		_, err = stmt.ExecContext(ctx, req.PracticeSubmissionID, NormalStatus)
 		if err != nil {
-			z.Error(err.Error())
-			return err
-		}
-		cnt, err := result.RowsAffected()
-		if err != nil {
-			z.Error(err.Error())
-			return err
-		}
-		if cnt == 0 {
-			err := fmt.Errorf("handle exit practice: practice submission of id:%d not found", req.PracticeSubmissionID)
 			z.Error(err.Error())
 			return err
 		}
@@ -791,19 +781,10 @@ WHERE id = $1;`
 			return err
 		}
 		defer stmt.Close()
-		result, err := stmt.ExecContext(ctx, Sql, req.StudentId, time.Now(), req.ExamineeID, NormalStatus, CanBeEnterStatus)
+		_, err = stmt.ExecContext(ctx, Sql, req.StudentId, time.Now(), req.ExamineeID, NormalStatus, CanBeEnterStatus)
 		if err != nil {
 			z.Error("更新考试异常状态失败", zap.Error(err))
 			return err
-		}
-		row, err := result.RowsAffected()
-		if err != nil {
-			z.Error(err.Error())
-			return err
-		}
-		if row == 0 {
-			z.Error("can't find record to update", zap.Int64("examineeId", req.ExamineeID))
-			return errors.New("can't find record to update")
 		}
 
 		return nil
@@ -812,6 +793,5 @@ WHERE id = $1;`
 
 // checkExamStatus 查看当前考试的状态
 func checkExamStatus(ctx context.Context, req CheckExamStatusReq) (int, error) {
-
 	return 0, nil
 }
