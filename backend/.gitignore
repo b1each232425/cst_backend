@@ -12,3 +12,4 @@ data/
 .config_linux.json
 .config_windows.json
 kzz
+.config_darwin_template.json
