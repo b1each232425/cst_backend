@@ -10895,9 +10895,9 @@ type TQuestion struct {
 	Repo                    types.JSONText `json:"Repo,omitempty" db:"repo,false,jsonb"`                                         /* repo 仓库 */
 	Order                   null.Int       `json:"Order,omitempty" db:"order,false,bigint"`                                      /* order 顺序 */
 	Creator                 null.Int       `json:"Creator,omitempty" db:"creator,false,bigint"`                                  /* creator 创建者 */
-	CreateTime              null.Int       `json:"CreateTime,omitempty" db:"create_time,false,timestamp without time zone"`      /* create_time 创建时间 */
+	CreateTime              null.Int       `json:"CreateTime,omitempty" db:"create_time,false,bigint"`                           /* create_time 创建时间 */
 	UpdatedBy               null.Int       `json:"UpdatedBy,omitempty" db:"updated_by,false,bigint"`                             /* updated_by 更新者 */
-	UpdateTime              null.Int       `json:"UpdateTime,omitempty" db:"update_time,false,timestamp without time zone"`      /* update_time 更新时间 */
+	UpdateTime              null.Int       `json:"UpdateTime,omitempty" db:"update_time,false,bigint"`                           /* update_time 更新时间 */
 	Addi                    types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                                         /* addi 附加信息 */
 	Status                  string         `json:"Status,omitempty" db:"status,false,character varying"`                         /* status 状态，00:正常 02:作废 04:异常 */
 	QuestionAttachmentsPath types.JSONText `json:"QuestionAttachmentsPath,omitempty" db:"question_attachments_path,false,jsonb"` /* question_attachments_path question_attachments_path */
@@ -10986,9 +10986,9 @@ var TQuestionColumnsDataTypes = map[string]string{
 	"repo":                      "jsonb",
 	"order":                     "bigint",
 	"creator":                   "bigint",
-	"create_time":               "timestamp without time zone",
+	"create_time":               "bigint",
 	"updated_by":                "bigint",
-	"update_time":               "timestamp without time zone",
+	"update_time":               "bigint",
 	"addi":                      "jsonb",
 	"status":                    "character varying",
 	"question_attachments_path": "jsonb",
@@ -16910,29 +16910,35 @@ func GetTVExamUnmarkedStudentCountByPk(db Queryer) (*TVExamUnmarkedStudentCount,
 
 /*TVExamineeInfo t_v_examinee_info represents assessuser.t_v_examinee_info */
 type TVExamineeInfo struct {
-	ID             null.Int    `json:"ID,omitempty" db:"id,false,integer"`                                    /* id id */
-	StudentID      null.Int    `json:"StudentID,omitempty" db:"student_id,false,bigint"`                      /* student_id student_id */
-	Account        null.String `json:"Account,omitempty" db:"account,false,character varying"`                /* account account */
-	MobilePhone    null.String `json:"MobilePhone,omitempty" db:"mobile_phone,false,character varying"`       /* mobile_phone mobile_phone */
-	UserToken      null.String `json:"UserToken,omitempty" db:"user_token,false,character varying"`           /* user_token user_token */
-	OfficialName   null.String `json:"OfficialName,omitempty" db:"official_name,false,character varying"`     /* official_name official_name */
-	IDCardNo       null.String `json:"IDCardNo,omitempty" db:"id_card_no,false,character varying"`            /* id_card_no id_card_no */
-	ExamineeNumber null.String `json:"ExamineeNumber,omitempty" db:"examinee_number,false,character varying"` /* examinee_number examinee_number */
-	ExamID         null.Int    `json:"ExamID,omitempty" db:"exam_id,false,integer"`                           /* exam_id exam_id */
-	ExamName       null.String `json:"ExamName,omitempty" db:"exam_name,false,character varying"`             /* exam_name exam_name */
-	ExamSessionID  null.Int    `json:"ExamSessionID,omitempty" db:"exam_session_id,false,integer"`            /* exam_session_id exam_session_id */
-	ExamPaperID    null.Int    `json:"ExamPaperID,omitempty" db:"exam_paper_id,false,integer"`                /* exam_paper_id exam_paper_id */
-	ExamPaperName  null.String `json:"ExamPaperName,omitempty" db:"exam_paper_name,false,character varying"`  /* exam_paper_name exam_paper_name */
-	ExamRoomID     null.Int    `json:"ExamRoomID,omitempty" db:"exam_room_id,false,bigint"`                   /* exam_room_id exam_room_id */
-	ExamRoomName   null.String `json:"ExamRoomName,omitempty" db:"exam_room_name,false,character varying"`    /* exam_room_name exam_room_name */
-	ExtraTime      null.Int    `json:"ExtraTime,omitempty" db:"extra_time,false,bigint"`                      /* extra_time extra_time */
-	ExtendableTime null.Int    `json:"ExtendableTime,omitempty" db:"extendable_time,false,bigint"`            /* extendable_time extendable_time */
-	StartTime      null.Int    `json:"StartTime,omitempty" db:"start_time,false,bigint"`                      /* start_time start_time */
-	EndTime        null.Int    `json:"EndTime,omitempty" db:"end_time,false,bigint"`                          /* end_time end_time */
-	ActualEndTime  null.Int    `json:"ActualEndTime,omitempty" db:"actual_end_time,false,bigint"`             /* actual_end_time actual_end_time */
-	Status         null.String `json:"Status,omitempty" db:"status,false,character varying"`                  /* status status */
-	Remark         null.String `json:"Remark,omitempty" db:"remark,false,character varying"`                  /* remark remark */
-	Filter                     // build DML where clause
+	ID                null.Int    `json:"ID,omitempty" db:"id,false,integer"`                                    /* id id */
+	StudentID         null.Int    `json:"StudentID,omitempty" db:"student_id,false,bigint"`                      /* student_id student_id */
+	Account           null.String `json:"Account,omitempty" db:"account,false,character varying"`                /* account account */
+	MobilePhone       null.String `json:"MobilePhone,omitempty" db:"mobile_phone,false,character varying"`       /* mobile_phone mobile_phone */
+	UserToken         null.String `json:"UserToken,omitempty" db:"user_token,false,character varying"`           /* user_token user_token */
+	OfficialName      null.String `json:"OfficialName,omitempty" db:"official_name,false,character varying"`     /* official_name official_name */
+	IDCardNo          null.String `json:"IDCardNo,omitempty" db:"id_card_no,false,character varying"`            /* id_card_no id_card_no */
+	ExamineeNumber    null.String `json:"ExamineeNumber,omitempty" db:"examinee_number,false,character varying"` /* examinee_number examinee_number */
+	ExamID            null.Int    `json:"ExamID,omitempty" db:"exam_id,false,integer"`                           /* exam_id exam_id */
+	ExamName          null.String `json:"ExamName,omitempty" db:"exam_name,false,character varying"`             /* exam_name exam_name */
+	ExamSessionID     null.Int    `json:"ExamSessionID,omitempty" db:"exam_session_id,false,integer"`            /* exam_session_id exam_session_id */
+	ExamPaperID       null.Int    `json:"ExamPaperID,omitempty" db:"exam_paper_id,false,integer"`                /* exam_paper_id exam_paper_id */
+	ExamPaperName     null.String `json:"ExamPaperName,omitempty" db:"exam_paper_name,false,character varying"`  /* exam_paper_name exam_paper_name */
+	ExamRoomID        null.Int    `json:"ExamRoomID,omitempty" db:"exam_room_id,false,bigint"`                   /* exam_room_id exam_room_id */
+	ExamRoomName      null.String `json:"ExamRoomName,omitempty" db:"exam_room_name,false,character varying"`    /* exam_room_name exam_room_name */
+	ExtraTime         null.Int    `json:"ExtraTime,omitempty" db:"extra_time,false,bigint"`                      /* extra_time extra_time */
+	ExtendableTime    null.Int    `json:"ExtendableTime,omitempty" db:"extendable_time,false,bigint"`            /* extendable_time extendable_time */
+	StartTime         null.Int    `json:"StartTime,omitempty" db:"start_time,false,bigint"`                      /* start_time start_time */
+	EndTime           null.Int    `json:"EndTime,omitempty" db:"end_time,false,bigint"`                          /* end_time end_time */
+	ActualEndTime     null.Int    `json:"ActualEndTime,omitempty" db:"actual_end_time,false,bigint"`             /* actual_end_time actual_end_time */
+	ExamineeStatus    null.String `json:"ExamineeStatus,omitempty" db:"examinee_status,false,character varying"` /* examinee_status examinee_status */
+	Remark            null.String `json:"Remark,omitempty" db:"remark,false,character varying"`                  /* remark remark */
+	PeriodMode        null.String `json:"PeriodMode,omitempty" db:"period_mode,false,character varying"`         /* period_mode period_mode */
+	AllowEntryTime    null.Int    `json:"AllowEntryTime,omitempty" db:"allow_entry_time,false,bigint"`           /* allow_entry_time allow_entry_time */
+	AllowSubmitTime   null.Int    `json:"AllowSubmitTime,omitempty" db:"allow_submit_time,false,bigint"`         /* allow_submit_time allow_submit_time */
+	Mode              null.String `json:"Mode,omitempty" db:"mode,false,character varying"`                      /* mode mode */
+	ExamineeEndTime   null.Int    `json:"ExamineeEndTime,omitempty" db:"examinee_end_time,false,bigint"`         /* examinee_end_time examinee_end_time */
+	ExamineeStartTime null.Int    `json:"ExamineeStartTime,omitempty" db:"examinee_start_time,false,bigint"`     /* examinee_start_time examinee_start_time */
+	Filter                        // build DML where clause
 }
 
 // TVExamineeInfoFields full field list for default query
@@ -16957,8 +16963,14 @@ var TVExamineeInfoFields = []string{
 	"StartTime",
 	"EndTime",
 	"ActualEndTime",
-	"Status",
+	"ExamineeStatus",
 	"Remark",
+	"PeriodMode",
+	"AllowEntryTime",
+	"AllowSubmitTime",
+	"Mode",
+	"ExamineeEndTime",
+	"ExamineeStartTime",
 }
 
 // TVExamineeInfoColumns full column list for default query
@@ -16983,89 +16995,113 @@ var TVExamineeInfoColumns = []string{
 	"start_time",
 	"end_time",
 	"actual_end_time",
-	"status",
+	"examinee_status",
 	"remark",
+	"period_mode",
+	"allow_entry_time",
+	"allow_submit_time",
+	"mode",
+	"examinee_end_time",
+	"examinee_start_time",
 }
 
 // TVExamineeInfoColumnsDataTypes full column data types for default query
 var TVExamineeInfoColumnsDataTypes = map[string]string{
-	"id":              "integer",
-	"student_id":      "bigint",
-	"account":         "character varying",
-	"mobile_phone":    "character varying",
-	"user_token":      "character varying",
-	"official_name":   "character varying",
-	"id_card_no":      "character varying",
-	"examinee_number": "character varying",
-	"exam_id":         "integer",
-	"exam_name":       "character varying",
-	"exam_session_id": "integer",
-	"exam_paper_id":   "integer",
-	"exam_paper_name": "character varying",
-	"exam_room_id":    "bigint",
-	"exam_room_name":  "character varying",
-	"extra_time":      "bigint",
-	"extendable_time": "bigint",
-	"start_time":      "bigint",
-	"end_time":        "bigint",
-	"actual_end_time": "bigint",
-	"status":          "character varying",
-	"remark":          "character varying",
+	"id":                  "integer",
+	"student_id":          "bigint",
+	"account":             "character varying",
+	"mobile_phone":        "character varying",
+	"user_token":          "character varying",
+	"official_name":       "character varying",
+	"id_card_no":          "character varying",
+	"examinee_number":     "character varying",
+	"exam_id":             "integer",
+	"exam_name":           "character varying",
+	"exam_session_id":     "integer",
+	"exam_paper_id":       "integer",
+	"exam_paper_name":     "character varying",
+	"exam_room_id":        "bigint",
+	"exam_room_name":      "character varying",
+	"extra_time":          "bigint",
+	"extendable_time":     "bigint",
+	"start_time":          "bigint",
+	"end_time":            "bigint",
+	"actual_end_time":     "bigint",
+	"examinee_status":     "character varying",
+	"remark":              "character varying",
+	"period_mode":         "character varying",
+	"allow_entry_time":    "bigint",
+	"allow_submit_time":   "bigint",
+	"mode":                "character varying",
+	"examinee_end_time":   "bigint",
+	"examinee_start_time": "bigint",
 }
 
 // GetFieldsMap returns a map of field names to their values.
 func (r *TVExamineeInfo) GetFieldsMap() map[string]any {
 	return map[string]any{
-		"ID":             r.ID,
-		"StudentID":      r.StudentID,
-		"Account":        r.Account,
-		"MobilePhone":    r.MobilePhone,
-		"UserToken":      r.UserToken,
-		"OfficialName":   r.OfficialName,
-		"IDCardNo":       r.IDCardNo,
-		"ExamineeNumber": r.ExamineeNumber,
-		"ExamID":         r.ExamID,
-		"ExamName":       r.ExamName,
-		"ExamSessionID":  r.ExamSessionID,
-		"ExamPaperID":    r.ExamPaperID,
-		"ExamPaperName":  r.ExamPaperName,
-		"ExamRoomID":     r.ExamRoomID,
-		"ExamRoomName":   r.ExamRoomName,
-		"ExtraTime":      r.ExtraTime,
-		"ExtendableTime": r.ExtendableTime,
-		"StartTime":      r.StartTime,
-		"EndTime":        r.EndTime,
-		"ActualEndTime":  r.ActualEndTime,
-		"Status":         r.Status,
-		"Remark":         r.Remark,
+		"ID":                r.ID,
+		"StudentID":         r.StudentID,
+		"Account":           r.Account,
+		"MobilePhone":       r.MobilePhone,
+		"UserToken":         r.UserToken,
+		"OfficialName":      r.OfficialName,
+		"IDCardNo":          r.IDCardNo,
+		"ExamineeNumber":    r.ExamineeNumber,
+		"ExamID":            r.ExamID,
+		"ExamName":          r.ExamName,
+		"ExamSessionID":     r.ExamSessionID,
+		"ExamPaperID":       r.ExamPaperID,
+		"ExamPaperName":     r.ExamPaperName,
+		"ExamRoomID":        r.ExamRoomID,
+		"ExamRoomName":      r.ExamRoomName,
+		"ExtraTime":         r.ExtraTime,
+		"ExtendableTime":    r.ExtendableTime,
+		"StartTime":         r.StartTime,
+		"EndTime":           r.EndTime,
+		"ActualEndTime":     r.ActualEndTime,
+		"ExamineeStatus":    r.ExamineeStatus,
+		"Remark":            r.Remark,
+		"PeriodMode":        r.PeriodMode,
+		"AllowEntryTime":    r.AllowEntryTime,
+		"AllowSubmitTime":   r.AllowSubmitTime,
+		"Mode":              r.Mode,
+		"ExamineeEndTime":   r.ExamineeEndTime,
+		"ExamineeStartTime": r.ExamineeStartTime,
 	}
 }
 
 // GetColumnsMap returns a map of column names to their values.
 func (r *TVExamineeInfo) GetColumnsMap() map[string]any {
 	return map[string]any{
-		"id":              r.ID,
-		"student_id":      r.StudentID,
-		"account":         r.Account,
-		"mobile_phone":    r.MobilePhone,
-		"user_token":      r.UserToken,
-		"official_name":   r.OfficialName,
-		"id_card_no":      r.IDCardNo,
-		"examinee_number": r.ExamineeNumber,
-		"exam_id":         r.ExamID,
-		"exam_name":       r.ExamName,
-		"exam_session_id": r.ExamSessionID,
-		"exam_paper_id":   r.ExamPaperID,
-		"exam_paper_name": r.ExamPaperName,
-		"exam_room_id":    r.ExamRoomID,
-		"exam_room_name":  r.ExamRoomName,
-		"extra_time":      r.ExtraTime,
-		"extendable_time": r.ExtendableTime,
-		"start_time":      r.StartTime,
-		"end_time":        r.EndTime,
-		"actual_end_time": r.ActualEndTime,
-		"status":          r.Status,
-		"remark":          r.Remark,
+		"id":                  r.ID,
+		"student_id":          r.StudentID,
+		"account":             r.Account,
+		"mobile_phone":        r.MobilePhone,
+		"user_token":          r.UserToken,
+		"official_name":       r.OfficialName,
+		"id_card_no":          r.IDCardNo,
+		"examinee_number":     r.ExamineeNumber,
+		"exam_id":             r.ExamID,
+		"exam_name":           r.ExamName,
+		"exam_session_id":     r.ExamSessionID,
+		"exam_paper_id":       r.ExamPaperID,
+		"exam_paper_name":     r.ExamPaperName,
+		"exam_room_id":        r.ExamRoomID,
+		"exam_room_name":      r.ExamRoomName,
+		"extra_time":          r.ExtraTime,
+		"extendable_time":     r.ExtendableTime,
+		"start_time":          r.StartTime,
+		"end_time":            r.EndTime,
+		"actual_end_time":     r.ActualEndTime,
+		"examinee_status":     r.ExamineeStatus,
+		"remark":              r.Remark,
+		"period_mode":         r.PeriodMode,
+		"allow_entry_time":    r.AllowEntryTime,
+		"allow_submit_time":   r.AllowSubmitTime,
+		"mode":                r.Mode,
+		"examinee_end_time":   r.ExamineeEndTime,
+		"examinee_start_time": r.ExamineeStartTime,
 	}
 }
 
@@ -17087,8 +17123,8 @@ func (r *TVExamineeInfo) GetTableName() string {
 // Create inserts the TVExamineeInfo to the database.
 func (r *TVExamineeInfo) Create(db Queryer) error {
 	_, err := db.Exec(
-		`INSERT INTO t_v_examinee_info (id, student_id, account, mobile_phone, user_token, official_name, id_card_no, examinee_number, exam_id, exam_name, exam_session_id, exam_paper_id, exam_paper_name, exam_room_id, exam_room_name, extra_time, extendable_time, start_time, end_time, actual_end_time, status, remark) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)`,
-		&r.ID, &r.StudentID, &r.Account, &r.MobilePhone, &r.UserToken, &r.OfficialName, &r.IDCardNo, &r.ExamineeNumber, &r.ExamID, &r.ExamName, &r.ExamSessionID, &r.ExamPaperID, &r.ExamPaperName, &r.ExamRoomID, &r.ExamRoomName, &r.ExtraTime, &r.ExtendableTime, &r.StartTime, &r.EndTime, &r.ActualEndTime, &r.Status, &r.Remark)
+		`INSERT INTO t_v_examinee_info (id, student_id, account, mobile_phone, user_token, official_name, id_card_no, examinee_number, exam_id, exam_name, exam_session_id, exam_paper_id, exam_paper_name, exam_room_id, exam_room_name, extra_time, extendable_time, start_time, end_time, actual_end_time, examinee_status, remark, period_mode, allow_entry_time, allow_submit_time, mode, examinee_end_time, examinee_start_time) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28)`,
+		&r.ID, &r.StudentID, &r.Account, &r.MobilePhone, &r.UserToken, &r.OfficialName, &r.IDCardNo, &r.ExamineeNumber, &r.ExamID, &r.ExamName, &r.ExamSessionID, &r.ExamPaperID, &r.ExamPaperName, &r.ExamRoomID, &r.ExamRoomName, &r.ExtraTime, &r.ExtendableTime, &r.StartTime, &r.EndTime, &r.ActualEndTime, &r.ExamineeStatus, &r.Remark, &r.PeriodMode, &r.AllowEntryTime, &r.AllowSubmitTime, &r.Mode, &r.ExamineeEndTime, &r.ExamineeStartTime)
 	if err != nil {
 		return errors.Wrap(err, "failed to insert t_v_examinee_info")
 	}
@@ -17101,8 +17137,8 @@ func GetTVExamineeInfoByPk(db Queryer) (*TVExamineeInfo, error) {
 
 	var r TVExamineeInfo
 	err := db.QueryRow(
-		`SELECT id, student_id, account, mobile_phone, user_token, official_name, id_card_no, examinee_number, exam_id, exam_name, exam_session_id, exam_paper_id, exam_paper_name, exam_room_id, exam_room_name, extra_time, extendable_time, start_time, end_time, actual_end_time, status, remark FROM t_v_examinee_info`,
-	).Scan(&r.ID, &r.StudentID, &r.Account, &r.MobilePhone, &r.UserToken, &r.OfficialName, &r.IDCardNo, &r.ExamineeNumber, &r.ExamID, &r.ExamName, &r.ExamSessionID, &r.ExamPaperID, &r.ExamPaperName, &r.ExamRoomID, &r.ExamRoomName, &r.ExtraTime, &r.ExtendableTime, &r.StartTime, &r.EndTime, &r.ActualEndTime, &r.Status, &r.Remark)
+		`SELECT id, student_id, account, mobile_phone, user_token, official_name, id_card_no, examinee_number, exam_id, exam_name, exam_session_id, exam_paper_id, exam_paper_name, exam_room_id, exam_room_name, extra_time, extendable_time, start_time, end_time, actual_end_time, examinee_status, remark, period_mode, allow_entry_time, allow_submit_time, mode, examinee_end_time, examinee_start_time FROM t_v_examinee_info`,
+	).Scan(&r.ID, &r.StudentID, &r.Account, &r.MobilePhone, &r.UserToken, &r.OfficialName, &r.IDCardNo, &r.ExamineeNumber, &r.ExamID, &r.ExamName, &r.ExamSessionID, &r.ExamPaperID, &r.ExamPaperName, &r.ExamRoomID, &r.ExamRoomName, &r.ExtraTime, &r.ExtendableTime, &r.StartTime, &r.EndTime, &r.ActualEndTime, &r.ExamineeStatus, &r.Remark, &r.PeriodMode, &r.AllowEntryTime, &r.AllowSubmitTime, &r.Mode, &r.ExamineeEndTime, &r.ExamineeStartTime)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to select t_v_examinee_info")
 	}
