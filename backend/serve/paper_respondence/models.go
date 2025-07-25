@@ -20,9 +20,10 @@ type GetStudentAnswerReq struct {
 	QuestionID           int64 `json:"question_id" validate:"required"`
 }
 
-type SaveBeginTimeReq struct {
+type InitRespondentReq struct {
 	Type                 string `json:"type" validate:"required,oneof=00 02"`
 	ExamId               int64  `json:"exam_id" `
+	ExamSessionId        int64  `json:"exam_session_id" `
 	ExamineeID           int64  `json:"examinee_id" `
 	PracticeSubmissionID int64  `json:"practice_submission_id" `
 	StudentId            int64  `json:"student_id" validate:"required"`
@@ -32,6 +33,7 @@ type SubmitReq struct {
 	Type                 string `json:"type" validate:"required,oneof=00 02"`
 	ExamId               int64  `json:"exam_id" `
 	ExamineeID           int64  `json:"examinee_id" `
+	ExamSessionId        int64  `json:"exam_session_id" `
 	PracticeSubmissionID int64  `json:"practice_submission_id" `
 	StudentId            int64  `json:"student_id" validate:"required"`
 }
@@ -47,7 +49,8 @@ type ExitReq struct {
 }
 
 type CheckExamStatusReq struct {
-	ExamId     int64 `json:"exam_id" validate:"required,gte=1"`
-	ExamineeID int64 `json:"examinee_id" validate:"required,gte=1"`
-	StudentId  int64 `json:"student_id" validate:"required,gte=1"`
+	ExamId        int64 `json:"exam_id" `
+	ExamSessionId int64 `json:"exam_session_id" `
+	ExamineeID    int64 `json:"examinee_id" validate:"required,gte=1"`
+	StudentId     int64 `json:"student_id" validate:"required,gte=1"`
 }

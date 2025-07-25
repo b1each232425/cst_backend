@@ -3,8 +3,8 @@ package paper_respondence
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
-	"github.com/jmoiron/sqlx"
 	"github.com/jmoiron/sqlx/types"
 	"go.uber.org/zap"
 	"time"
@@ -26,11 +26,57 @@ const (
 	PracticeType = "02"
 )
 
-func insertOrUpdateAnswer(ctx context.Context, req SaveOrUpdateStudentAnswerReq, stmt *sqlx.Stmt) (cmn.TStudentAnswers, error) {
+var (
+	ErrExamSessionIdInvalid = errors.New("exam session id must be > 0")
+	ErrStudentInvalid       = errors.New("student id must be > 0")
+	ErrExamineeIdIsNull     = errors.New("examinee id is null")
+	ErrExamineeIdInvalid    = errors.New("examinee id must be > 0")
+)
+
+// getExamineeId 获取考生id和状态
+func getExamineeIdAndStatus(ctx context.Context, tx *sql.Tx, studentId, examSessionId int64) (cmn.TExaminee, error) {
+	if examSessionId <= 0 {
+
+		z.Error(ErrExamSessionIdInvalid.Error())
+		return cmn.TExaminee{}, ErrExamSessionIdInvalid
+	}
+	if studentId <= 0 {
+		z.Error(ErrStudentInvalid.Error())
+		return cmn.TExaminee{}, ErrStudentInvalid
+	}
+	var examinee cmn.TExaminee
+	sql := `SELECT id,status FROM t_examinee WHERE student_id = $1 AND exam_session_id = $2`
+	err := tx.QueryRowContext(ctx, sql, studentId, examSessionId).Scan(&examinee.ID, &examinee.Status)
+	if err != nil {
+		z.Error(err.Error())
+		return cmn.TExaminee{}, err
+	}
+	return examinee, nil
+}
+
+func insertOrUpdateAnswer(ctx context.Context, req SaveOrUpdateStudentAnswerReq, tx *sql.Tx) (cmn.TStudentAnswers, error) {
 	//参数检测
 	if err := cmn.Validate(req); err != nil {
 		return cmn.TStudentAnswers{}, err
 	}
+
+	// 直接一条SQL搞定插入或更新，如果是禁止作答的状态，说明已经提交，不能改了
+	sql := `
+	INSERT INTO t_student_answers 
+		(type, examinee_id, practice_submission_id, question_id, answer, answer_score, creator, create_time, updated_by, update_time, addi, status,answer_attachments_path)
+	VALUES
+		($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+	ON CONFLICT (examinee_id, question_id)
+	DO UPDATE SET
+		type = EXCLUDED.type,
+		answer = EXCLUDED.answer,
+		answer_attachments_path = EXCLUDED.answer_attachments_path,
+		updated_by = EXCLUDED.updated_by,
+		update_time = EXCLUDED.update_time
+	WHERE t_student_answers.status <> $14
+	RETURNING id,creator,updated_by
+	`
+
 	//如果没有附件，就给个空的切片
 	var AttachmentPaths types.JSONText
 	if req.AttachmentPaths == nil {
@@ -66,7 +112,7 @@ func insertOrUpdateAnswer(ctx context.Context, req SaveOrUpdateStudentAnswerReq,
 		return cmn.TStudentAnswers{}, err
 	}
 
-	err := stmt.QueryRowContext(ctx,
+	err := tx.QueryRowContext(ctx, sql,
 		&studentAnswer.Type,
 		&studentAnswer.ExamineeID,
 		&studentAnswer.PracticeSubmissionID,
@@ -88,17 +134,24 @@ func insertOrUpdateAnswer(ctx context.Context, req SaveOrUpdateStudentAnswerReq,
 		return cmn.TStudentAnswers{}, err
 	}
 	z.Info("insert or update exam answer result", zap.Any("result", studentAnswer))
+
+	if err := tx.Commit(); err != nil {
+		z.Error(err.Error())
+		return cmn.TStudentAnswers{}, err
+	}
 	return studentAnswer, nil
 }
 
-func getAnswerByExamineeIDAndQuestionID(ctx context.Context, req GetStudentAnswerReq, stmt *sqlx.Stmt) (cmn.TStudentAnswers, error) {
+// getAnswer 获取作答
+func getAnswer(ctx context.Context, req GetStudentAnswerReq, tx *sql.Tx) (cmn.TStudentAnswers, error) {
 	if err := cmn.Validate(req); err != nil {
 		return cmn.TStudentAnswers{}, err
 	}
 
+	//开始查询
 	r := cmn.TStudentAnswers{}
-
-	err := stmt.QueryRow(ctx, req.ExamineeID, req.QuestionID).Scan(&r.ID, &r.Type, &r.ExamineeID, &r.QuestionID, &r.Answer, &r.Marker, &r.Creator, &r.CreateTime, &r.UpdatedBy, &r.UpdateTime, &r.Status)
+	selectSql := `SELECT id, type, examinee_id, question_id, answer, marker, creator, create_time, updated_by, update_time, status FROM t_student_answers WHERE examinee_id =$1 AND question_id =$2`
+	err := tx.QueryRowContext(ctx, selectSql, req.ExamineeID, req.QuestionID).Scan(&r.ID, &r.Type, &r.ExamineeID, &r.QuestionID, &r.Answer, &r.Marker, &r.Creator, &r.CreateTime, &r.UpdatedBy, &r.UpdateTime, &r.Status)
 	if err != nil {
 		z.Error("getAnswerByExamineeID error", zap.Error(err))
 		return cmn.TStudentAnswers{}, err
@@ -108,7 +161,7 @@ func getAnswerByExamineeIDAndQuestionID(ctx context.Context, req GetStudentAnswe
 }
 
 // saveStudentBeginTimeForExam 保存考试作答开始时间
-func saveStudentBeginTimeForExam(ctx context.Context, tx *sql.Tx, req SaveBeginTimeReq) error {
+func saveStudentBeginTimeForExam(ctx context.Context, tx *sql.Tx, req InitRespondentReq) error {
 
 	var err error
 	//查看start_time是否已经设置过，如果设置过的话就不报错，直接返回nil
@@ -143,7 +196,7 @@ func saveStudentBeginTimeForExam(ctx context.Context, tx *sql.Tx, req SaveBeginT
 	return nil
 }
 
-func submitExamInDataBase(ctx context.Context, tx *sql.Tx, req SubmitReq) (int64, error) {
+func submitExam(ctx context.Context, tx *sql.Tx, req SubmitReq) (int64, error) {
 	var err error
 
 	now := time.Now().UTC()
@@ -155,9 +208,9 @@ func submitExamInDataBase(ctx context.Context, tx *sql.Tx, req SubmitReq) (int64
 		UpdateTime: null.IntFrom(now.UnixMilli()),
 	}
 
-	//更新t_examinee表，如果end_time为空才能设置，不为空说明已经提交过了
-	updateSqlForExaminee := `UPDATE t_examinee SET end_time = $1,status=$2,updated_by=$3,update_time=$4 WHERE id = $5 AND end_time IS NULL RETURNING id`
-	var updateId int64 = 0
+	//更新t_examinee表，如果end_time为空、start_time不为空才能设置，end_time不为空说明已经提交过了
+	updateSqlForExaminee := `UPDATE t_examinee SET end_time = $1,status=$2,updated_by=$3,update_time=$4 WHERE id = $5 AND end_time IS NULL AND start_time IS NOT NULL RETURNING id`
+	var updateId null.Int
 
 	err = tx.QueryRowContext(ctx, updateSqlForExaminee, &examinee.EndTime, ExamOverStatus, &examinee.UpdatedBy, &examinee.UpdateTime, &examinee.ID).Scan(&updateId)
 	if err != nil {
@@ -171,7 +224,7 @@ func submitExamInDataBase(ctx context.Context, tx *sql.Tx, req SubmitReq) (int64
 		return -1, err
 	}
 
-	return updateId, nil
+	return updateId.Int64, nil
 }
 
 func setAnswerCanNotUpdate(ctx context.Context, examineeId, userId int64, tx *sql.Tx) error {
@@ -186,26 +239,9 @@ func setAnswerCanNotUpdate(ctx context.Context, examineeId, userId int64, tx *sq
 	return nil
 }
 
-// checkPracticeIfSubmitted 查看练习是否已经提交
-func checkPracticeIfSubmitted(ctx context.Context, tx *sql.Tx, req SubmitReq) error {
-	checkSql := `SELECT COUNT(*) FROM t_practice_submissions WHERE id =$1  AND status = $2`
-	var count int64
-	err := tx.QueryRowContext(ctx, checkSql, req.PracticeSubmissionID, practiceSubmitted).Scan(&count)
-	if err != nil {
-		z.Error("checkPracticeIfSubmitted error", zap.Error(err))
-		return err
-	}
-
-	if count > 0 {
-		err := fmt.Errorf("practice of submissionId %d is already submitted", req.PracticeSubmissionID)
-		z.Error(err.Error())
-		return err
-	}
-	return nil
-}
-
 func submitPractice(ctx context.Context, tx *sql.Tx, req SubmitReq) error {
-	submitSql := `update t_practice_submissions set end_time = $1,status=$2 where id = $3 AND status=$4`
+	//只有状态为正常作答练习以及结束时间为空的，才能进行更新
+	submitSql := `update t_practice_submissions set end_time = $1,status=$2 where id = $3 AND status=$4 AND end_time IS NULL`
 	result, err := tx.ExecContext(ctx, submitSql, time.Now().UTC(), practiceSubmitted, req.PracticeSubmissionID, NormalStatus)
 	if err != nil {
 		z.Error("submitPractice error", zap.Error(err))
@@ -263,7 +299,7 @@ func UpdateLastStartTime(ctx context.Context, practiceSubmissionId int64, tx *sq
 }
 
 // saveBeginTimeForPractice 练习保存开始时间调用，在创建练习试卷的时候调用
-func saveBeginTimeForPractice(ctx context.Context, tx *sql.Tx, req SaveBeginTimeReq) error {
+func saveBeginTimeForPractice(ctx context.Context, tx *sql.Tx, req InitRespondentReq) error {
 	if err := cmn.Validate(req); err != nil {
 		return err
 	}
@@ -292,4 +328,31 @@ func saveBeginTimeForPractice(ctx context.Context, tx *sql.Tx, req SaveBeginTime
 		return err
 	}
 	return nil
+}
+
+// getActualEndTime 获取学生的当场考试的信息
+func getExamineeInfo(ctx context.Context, examineeId int64, tx *sql.Tx) (cmn.TVExamineeInfo, error) {
+	if examineeId <= 0 {
+		z.Error(ErrExamineeIdInvalid.Error())
+		return cmn.TVExamineeInfo{}, ErrExamineeIdInvalid
+	}
+	sql := `SELECT actual_end_time,
+       examinee_status,
+       period_mode,
+       mode,
+       allow_entry_time,
+       allow_submit_time,
+       start_time ,
+       examinee_start_time,
+       examinee_end_time
+	FROM v_examinee_info WHERE examinee_id = $1`
+
+	var t cmn.TVExamineeInfo
+
+	err := tx.QueryRowContext(ctx, sql, examineeId).Scan(&t.ActualEndTime, &t.ExamineeStatus, &t.PeriodMode, &t.Mode, &t.AllowEntryTime, &t.AllowSubmitTime, &t.StartTime, &t.ExamineeStartTime, &t.ExamineeEndTime)
+	if err != nil {
+		z.Error(err.Error())
+		return cmn.TVExamineeInfo{}, err
+	}
+	return t, nil
 }
