@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/jackc/pgx/v5"
 	"io"
 	"strconv"
 	"strings"
@@ -145,7 +146,32 @@ func (h *handler) HandleUser(ctx context.Context) {
 			}
 		}
 
-		validUsers, invalidUsers, err := h.srv.ValidateUser(ctx, nil, users)
+		// 创建事务
+		var tx pgx.Tx
+		pgxConn := cmn.GetPgxConn()
+		tx, err = pgxConn.Begin(ctx)
+		if err != nil || forceErr == "tx.Begin" {
+			q.Err = fmt.Errorf("failed to begin transaction: %w", err)
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+		defer func() {
+			if err != nil {
+				_ = tx.Rollback(ctx)
+				z.Error("transaction rolled back due to error: " + err.Error())
+			} else {
+				err = tx.Commit(ctx)
+				if err != nil || forceErr == "tx.Commit" {
+					z.Error("failed to commit transaction: " + err.Error())
+				}
+			}
+		}()
+
+		// 验证用户信息
+		var validUsers []cmn.TUser
+		var invalidUsers []InvalidUser
+		validUsers, invalidUsers, err = h.srv.ValidateUser(ctx, tx, users)
 		if err != nil {
 			q.Err = fmt.Errorf("failed to validate users: %w", err)
 			q.RespErr()
@@ -153,7 +179,7 @@ func (h *handler) HandleUser(ctx context.Context) {
 		}
 
 		if len(validUsers) > 0 {
-			err = h.srv.InsertUsers(ctx, nil, validUsers)
+			err = h.srv.InsertUsers(ctx, tx, validUsers)
 			if err != nil {
 				q.Err = fmt.Errorf("failed to insert users: %w", err)
 				q.RespErr()

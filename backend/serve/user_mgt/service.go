@@ -231,10 +231,11 @@ func (r *service) InsertUsers(ctx context.Context, tx pgx.Tx, users []cmn.TUser)
 			creator,
 			status,
 			remark,
+            user_token,
 			create_time,
 			update_time
 		) VALUES (
-			$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15
+			$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, crypt($14, gen_salt('bf')), $15, $16
 		)`
 
 		if tx != nil {
@@ -242,7 +243,7 @@ func (r *service) InsertUsers(ctx context.Context, tx pgx.Tx, users []cmn.TUser)
 				users[i].Category,
 				users[i].Type.String,
 				users[i].OfficialName,
-				r.orDefault(users[i].IDCardType, "居民身份证"),
+				users[i].IDCardType,
 				users[i].IDCardNo,
 				users[i].Account,
 				users[i].MobilePhone,
@@ -252,6 +253,7 @@ func (r *service) InsertUsers(ctx context.Context, tx pgx.Tx, users []cmn.TUser)
 				users[i].Creator.Int64,
 				r.orDefault(users[i].Status, "00"),
 				users[i].Remark,
+				InitialPwd, // 设置初始密码
 				time.Now().UnixMilli(),
 				time.Now().UnixMilli(),
 			)
@@ -260,7 +262,7 @@ func (r *service) InsertUsers(ctx context.Context, tx pgx.Tx, users []cmn.TUser)
 				users[i].Category,
 				users[i].Type.String,
 				users[i].OfficialName,
-				r.orDefault(users[i].IDCardType, "居民身份证"),
+				users[i].IDCardType,
 				users[i].IDCardNo,
 				users[i].Account,
 				users[i].MobilePhone,
@@ -270,6 +272,7 @@ func (r *service) InsertUsers(ctx context.Context, tx pgx.Tx, users []cmn.TUser)
 				users[i].Creator.Int64,
 				r.orDefault(users[i].Status, "00"),
 				users[i].Remark,
+				InitialPwd, // 设置初始密码
 				time.Now().UnixMilli(),
 				time.Now().UnixMilli(),
 			)
@@ -478,6 +481,7 @@ func (r *service) ValidateUser(ctx context.Context, tx pgx.Tx, users []cmn.TUser
 		"mobile_phone_exists": "手机号已存在",
 		"email_exists":        "邮箱已存在",
 		"id_card_no_exists":   "证件号已存在",
+		"invalid_email":       "邮箱格式不正确",
 	}
 
 	for i := range users {
@@ -503,6 +507,7 @@ func (r *service) ValidateUser(ctx context.Context, tx pgx.Tx, users []cmn.TUser
 		errorCount := 0
 
 		if users[i].Account != "" {
+			// 检查帐号是否已存在
 			exist, err := r.CheckTUserFieldExists(ctx, tx, "account", users[i].Account)
 			if err != nil || forceErr == "CheckTUserFieldExists_account" {
 				return nil, []InvalidUser{}, fmt.Errorf("error checking account existence: %w", err)
@@ -514,6 +519,7 @@ func (r *service) ValidateUser(ctx context.Context, tx pgx.Tx, users []cmn.TUser
 		}
 
 		if users[i].MobilePhone.Valid {
+			// 检查手机号是否已存在
 			exist, err := r.CheckTUserFieldExists(ctx, tx, "mobile_phone", users[i].MobilePhone)
 			if err != nil || forceErr == "CheckTUserFieldExists_mobile_phone" {
 				return nil, []InvalidUser{}, fmt.Errorf("error checking mobile phone existence: %w", err)
@@ -525,6 +531,12 @@ func (r *service) ValidateUser(ctx context.Context, tx pgx.Tx, users []cmn.TUser
 		}
 
 		if users[i].Email.Valid {
+			// 检查邮箱格式是否有效
+			if !IsValidEmail(users[i].Email.String) {
+				errorCount++
+				errorMessage = append(errorMessage, null.StringFrom(errorMessages["invalid_email"]))
+			}
+			// 检查邮箱是否已存在
 			exist, err := r.CheckTUserFieldExists(ctx, tx, "email", users[i].Email)
 			if err != nil || forceErr == "CheckTUserFieldExists_email" {
 				return nil, []InvalidUser{}, fmt.Errorf("error checking email existence: %w", err)
@@ -536,6 +548,7 @@ func (r *service) ValidateUser(ctx context.Context, tx pgx.Tx, users []cmn.TUser
 		}
 
 		if users[i].IDCardNo.Valid {
+			// 检查证件号是否已存在
 			exist, err := r.CheckTUserFieldExists(ctx, tx, "id_card_no", users[i].IDCardNo)
 			if err != nil || forceErr == "CheckTUserFieldExists_id_card_no" {
 				return nil, []InvalidUser{}, fmt.Errorf("error checking ID card number existence: %w", err)
