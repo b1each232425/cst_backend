@@ -6,6 +6,7 @@ package paper
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"github.com/jackc/pgx/v5"
 	"io"
@@ -126,23 +127,38 @@ func ManualPaper(ctx context.Context) {
 		defer cancel()
 		db := cmn.GetPgxConn()
 		tx, err := db.BeginTx(dmlCtx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted})
+		if val, ok := ctx.Value("force-error").(string); ok && val == "BeginTx-err" {
+			err = errors.New(val)
+		}
 		if err != nil {
 			q.Err = err
 			q.RespErr()
 			return
 		}
-		var committed bool
 		defer func() {
-			if p := recover(); p != nil {
-				q.Err = tx.Rollback(ctx)
-				if q.Err != nil {
-					z.Error(q.Err.Error())
+			p := recover()
+			if val, ok := ctx.Value("force-error").(string); ok && val == "recover-err" {
+				p = errors.New(val)
+			}
+			if p != nil {
+				err = tx.Rollback(ctx)
+				if val, ok := ctx.Value("force-error").(string); ok && val == "recover-err" {
+					err = errors.New(val)
 				}
-				panic(p)
-			} else if !committed {
-				q.Err = tx.Rollback(ctx)
-				if q.Err != nil {
-					z.Error(q.Err.Error())
+				if err != nil {
+					z.Error(err.Error())
+				}
+			}
+			if val, ok := ctx.Value("force-error").(string); ok && val == "Rollback-err" {
+				q.Err = errors.New(val)
+			}
+			if q.Err != nil {
+				err = tx.Rollback(ctx)
+				if val, ok := ctx.Value("force-error").(string); ok && val == "Rollback-err" {
+					err = errors.New(val)
+				}
+				if err != nil {
+					z.Error(err.Error())
 				}
 			}
 		}()
@@ -156,21 +172,30 @@ func ManualPaper(ctx context.Context) {
 		}
 		var paper cmn.TPaper
 		paper, q.Err = createManualPaperTx(dmlCtx, tx, userID)
+		if val, ok := ctx.Value("force-error").(string); ok && val == "createManualPaperTx-err" {
+			q.Err = errors.New(val)
+		}
 		if q.Err != nil {
 			q.RespErr()
 			return
 		}
 		var groups []cmn.TPaperGroup
 		groups, q.Err = initialManualPaperGroupsTx(dmlCtx, tx, paper.ID.Int64, userID)
+		if val, ok := ctx.Value("force-error").(string); ok && val == "initialManualPaperGroupsTx-err" {
+			q.Err = errors.New(val)
+		}
 		if q.Err != nil {
 			q.RespErr()
 			return
 		}
-		if q.Err = tx.Commit(ctx); q.Err != nil {
+		q.Err = tx.Commit(ctx)
+		if val, ok := ctx.Value("force-error").(string); ok && val == "Commit-err" {
+			q.Err = errors.New(val)
+		}
+		if q.Err != nil {
 			q.RespErr()
 			return
 		}
-		committed = true
 
 		result := InitialManualPaperResponse{
 			Paper:  paper,
@@ -185,6 +210,9 @@ func ManualPaper(ctx context.Context) {
 		paperIDStr := q.R.URL.Query().Get("paper_id")
 		var paperID int64
 		paperID, q.Err = strconv.ParseInt(paperIDStr, 10, 64)
+		if val, ok := ctx.Value("force-error").(string); ok && val == "ParseInt-err" {
+			q.Err = errors.New(val)
+		}
 		if q.Err != nil {
 			z.Error(q.Err.Error())
 			q.RespErr()
@@ -192,6 +220,9 @@ func ManualPaper(ctx context.Context) {
 		}
 		var buf []byte
 		buf, q.Err = io.ReadAll(q.R.Body)
+		if val, ok := ctx.Value("force-error").(string); ok && val == "io.ReadAll-err" {
+			q.Err = errors.New(val)
+		}
 		if q.Err != nil {
 			z.Error(q.Err.Error())
 			q.RespErr()
@@ -199,6 +230,9 @@ func ManualPaper(ctx context.Context) {
 		}
 		defer func() {
 			q.Err = q.R.Body.Close()
+			if val, ok := ctx.Value("force-error").(string); ok && val == "R.Body.Close-err" {
+				q.Err = errors.New(val)
+			}
 			if q.Err != nil {
 				z.Error(q.Err.Error())
 				q.RespErr()
@@ -223,6 +257,9 @@ func ManualPaper(ctx context.Context) {
 		//获取需要保存到数据库的数据
 		var u UpdateManualPaperRequest
 		q.Err = json.Unmarshal(qry.Data, &u)
+		if val, ok := ctx.Value("force-error").(string); ok && val == "json.Unmarshal-err" {
+			q.Err = errors.New(val)
+		}
 		if q.Err != nil {
 			z.Error(q.Err.Error())
 			q.RespErr()
@@ -249,7 +286,10 @@ func ManualPaper(ctx context.Context) {
 		}
 		//检测试卷是否存在
 		var exists bool
-		exists, q.Err = paperExists(paperID)
+		if val, ok := ctx.Value("force-error").(string); ok && val == "paperExists-err" {
+			paperID = -1
+		}
+		exists, q.Err = paperExists(ctx, paperID)
 		if q.Err != nil {
 			z.Error(q.Err.Error())
 			q.RespErr()
@@ -292,7 +332,10 @@ func ManualPaper(ctx context.Context) {
 		}
 		//检测试卷是否存在
 		var exists bool
-		exists, q.Err = paperExists(paperID)
+		if val, ok := ctx.Value("force-error").(string); ok && val == "paperExists-err" {
+			paperID = -1
+		}
+		exists, q.Err = paperExists(ctx, paperID)
 		if q.Err != nil {
 			z.Error(q.Err.Error())
 			q.RespErr()
@@ -386,22 +429,27 @@ func PaperList(ctx context.Context) {
 	case "delete":
 		var buf []byte
 		buf, q.Err = io.ReadAll(q.R.Body)
+		if val, ok := ctx.Value("force-error").(string); ok && val == "PaperList-delete-io.ReadAll-err" {
+			q.Err = errors.New(val)
+		}
 		if q.Err != nil {
 			z.Error(q.Err.Error())
 			q.RespErr()
 			return
 		}
 		defer func() {
-			q.Err = q.R.Body.Close()
-			if q.Err != nil {
-				z.Error(q.Err.Error())
-				q.RespErr()
+			err := q.R.Body.Close()
+			if val, ok := ctx.Value("force-error").(string); ok && val == "PaperList-delete-Body.Close-err" {
+				err = errors.New(val)
+			}
+			if err != nil {
+				z.Error(err.Error())
 				return
 			}
 		}()
 
 		if len(buf) == 0 {
-			q.Err = fmt.Errorf("Call /api/paper/manual with empty body")
+			q.Err = fmt.Errorf("Call /api/paper/manual by delete with empty body")
 			z.Error(q.Err.Error())
 			q.RespErr()
 			return
@@ -409,6 +457,9 @@ func PaperList(ctx context.Context) {
 		//获取请求的结构体
 		var qry cmn.ReqProto
 		q.Err = json.Unmarshal(buf, &qry)
+		if val, ok := ctx.Value("force-error").(string); ok && val == "PaperList-delete-json.Unmarshal1-err" {
+			q.Err = errors.New(val)
+		}
 		if q.Err != nil {
 			z.Error(q.Err.Error())
 			q.RespErr()
@@ -417,6 +468,9 @@ func PaperList(ctx context.Context) {
 		//获取需要保存到数据库的数据
 		var u []int64
 		q.Err = json.Unmarshal(qry.Data, &u)
+		if val, ok := ctx.Value("force-error").(string); ok && val == "PaperList-delete-json.Unmarshal2-err" {
+			q.Err = errors.New(val)
+		}
 		if q.Err != nil {
 			z.Error(q.Err.Error())
 			q.RespErr()
@@ -435,46 +489,44 @@ func PaperList(ctx context.Context) {
 		db := cmn.GetPgxConn()
 		var tx pgx.Tx
 		tx, q.Err = db.BeginTx(ctx, pgx.TxOptions{
-			IsoLevel: pgx.Serializable,
+			IsoLevel: pgx.ReadCommitted,
 		})
+		if val, ok := ctx.Value("force-error").(string); ok && val == "PaperList-delete-BeginTx-err" {
+			q.Err = errors.New(val)
+		}
 		if q.Err != nil {
 			z.Error(q.Err.Error())
 			q.RespErr()
 			return
 		}
-		var committed bool
 		defer func() {
-			if p := recover(); p != nil {
-				q.Err = tx.Rollback(ctx)
-				if q.Err != nil {
-					z.Error(q.Err.Error())
-				}
-				panic(p)
-			} else if !committed {
-				q.Err = tx.Rollback(ctx)
-				if q.Err != nil {
-					z.Error(q.Err.Error())
-				}
+			err := tx.Rollback(ctx)
+			if val, ok := ctx.Value("force-error").(string); ok && val == "PaperList-delete-Rollback-err" {
+				err = errors.New(val)
+			}
+			if err != nil && !errors.Is(err, pgx.ErrTxClosed) {
+				z.Error("事务回滚失败", zap.Error(err))
 			}
 		}()
 
 		q.Err = deletePapers(dmlCtx, tx, u, userID)
 		if q.Err != nil {
-			tx.Rollback(ctx)
 			q.RespErr()
 			return
 		}
-		if q.Err = tx.Commit(ctx); q.Err != nil {
+		q.Err = tx.Commit(ctx)
+		if val, ok := ctx.Value("force-error").(string); ok && val == "PaperList-delete-Commit-err" {
+			q.Err = errors.New(val)
+		}
+		if q.Err != nil {
 			z.Error(q.Err.Error())
 			q.RespErr()
 			return
 		}
-		committed = true
 		q.Err = nil
 		q.Msg.Status = 0
 		q.Msg.Msg = "success"
 		q.Resp()
-
 	}
 }
 
@@ -513,6 +565,7 @@ func updateManualPaper(ctx context.Context, paperID, userID int64, req UpdateMan
 				z.Error("failed to unmarshal basic info payload: " + err.Error())
 				return nil, err
 			}
+			err = cmn.Validate(&basicInfo)
 			err = handleUpdateInfo(ctx, tx, paperID, userID, basicInfo)
 			if err != nil {
 				return nil, err

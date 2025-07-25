@@ -16,7 +16,7 @@ type DeletePapersRequest struct {
 }
 
 type UpdateManualPaperRequest struct {
-	Actions []UpdateManualPaperAction `json:"actions"`
+	Actions []UpdateManualPaperAction `json:"actions" validate:"required,min=1"`
 }
 
 type UpdateManualPaperAction struct {
