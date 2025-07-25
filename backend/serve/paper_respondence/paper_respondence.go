@@ -9,13 +9,16 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/jackc/pgx/v5"
 	"go.uber.org/zap"
 	"io"
 	"strconv"
 	"strings"
 	"time"
 	"w2w.io/cmn"
+	"w2w.io/serve/examPaper"
 	"w2w.io/serve/exam_mgt"
+	"w2w.io/serve/practice_mgt"
 )
 
 const (
@@ -385,8 +388,8 @@ func InitRespondent(ctx context.Context) {
 	//创建事务
 	dmlCtx, cancel := context.WithTimeout(ctx, TIMEOUT)
 	defer cancel()
-	db := cmn.GetDbConn()
-	tx, err := db.BeginTx(dmlCtx, &sql.TxOptions{Isolation: sql.LevelReadCommitted})
+	db := cmn.GetPgxConn()
+	tx, err := db.BeginTx(dmlCtx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead})
 	if err != nil {
 		q.Err = err
 		z.Error(err.Error())
@@ -395,8 +398,8 @@ func InitRespondent(ctx context.Context) {
 	}
 	defer func() {
 		//如果不是tx done错误就返回给前端
-		q.Err = tx.Rollback()
-		if q.Err != nil && !errors.Is(q.Err, sql.ErrTxDone) {
+		q.Err = tx.Rollback(dmlCtx)
+		if q.Err != nil && !errors.Is(q.Err, pgx.ErrTxCommitRollback) {
 			z.Error(q.Err.Error())
 			q.RespErr()
 			return
@@ -426,8 +429,7 @@ func InitRespondent(ctx context.Context) {
 			return
 		}
 
-		//获取考生id以及考试状态
-		examinee, err := getExamineeIdAndStatus(dmlCtx, tx, u.ExamId, u.ExamSessionId)
+		examineeInfo, err := getExamineeInfo(dmlCtx, u.ExamSessionId, u.StudentId, tx)
 		if err != nil {
 			q.Err = err
 			q.RespErr()
@@ -435,9 +437,9 @@ func InitRespondent(ctx context.Context) {
 		}
 
 		//如果是监考员设置了学生可以进入考试的话，就不需要检查条件
-		if examinee.Status.String != CanBeEnterStatus {
+		if examineeInfo.ExamineeStatus.String != CanBeEnterStatus {
 			// 查考当前是否符合条件去初始化
-			_, err = checkExamCondition(dmlCtx, examinee.ID.Int64, tx, INIT)
+			_, err = checkExamCondition(dmlCtx, u.ExamSessionId, u.StudentId, tx, INIT)
 			if err != nil {
 				q.Err = err
 				q.RespErr()
@@ -453,19 +455,29 @@ func InitRespondent(ctx context.Context) {
 			return
 		}
 
-		//TODO 获取考卷
+		//获取考卷
+		_, groupInfo, questions, err := examPaper.LoadExamPaperDetailByUserId(dmlCtx, examineeInfo.ExamPaperID.Int64, 0, examineeInfo.ID.Int64, false, false, false)
+		if err != nil {
+			q.Err = err
+			q.RespErr()
+			return
+		}
 
 		//定义结构体用于整合数据发送给前端
 		type Msg struct {
-			Sessions   []cmn.TExamSession `json:"session"`
-			ExamInfo   cmn.TExamInfo      `json:"exam_info"`
-			ExamineeId int64              `json:"examinee_id"`
+			Sessions          []cmn.TExamSession `json:"session"`
+			ExamInfo          cmn.TExamInfo      `json:"exam_info"`
+			ExamineeId        int64              `json:"examinee_id"`
+			QuestionGroupInfo map[int64]*cmn.TExamPaperGroup
+			Questions         map[int64][]*examPaper.ExamQuestion
 		}
 
 		msg := Msg{
-			Sessions:   examSessions,
-			ExamInfo:   examInfo,
-			ExamineeId: examinee.ID.Int64,
+			Sessions:          examSessions,
+			ExamInfo:          examInfo,
+			ExamineeId:        examineeInfo.ID.Int64,
+			QuestionGroupInfo: groupInfo,
+			Questions:         questions,
 		}
 
 		data, err = cmn.MarshalJSON(&msg)
@@ -477,7 +489,21 @@ func InitRespondent(ctx context.Context) {
 
 	case PracticeType:
 
-		//TODO 生成试卷并获取试卷数据
+		if u.PracticeId <= 0 {
+			err := fmt.Errorf("practice id is smaller than 0")
+			z.Error(err.Error())
+			q.Err = err
+			q.RespErr()
+			return
+		}
+
+		//练习初始化并获取试卷数据
+		info, groupInfo, questions, err := practice_mgt.EnterPracticeGetPaperDetails(dmlCtx, tx, u.PracticeId, u.StudentId)
+		if err != nil {
+			q.Err = err
+			q.RespErr()
+			return
+		}
 		//如果是第一次进入，就要保存练习开始时间
 		if err := saveBeginTimeForPractice(dmlCtx, tx, u); err != nil {
 			q.Err = err
@@ -491,6 +517,26 @@ func InitRespondent(ctx context.Context) {
 			q.RespErr()
 			return
 		}
+
+		//定义结构体用于整合数据发送给前端
+		type Msg struct {
+			Info              practice_mgt.EnterPracticeInfo
+			QuestionGroupInfo map[int64]*cmn.TExamPaperGroup
+			Questions         map[int64][]*examPaper.ExamQuestion
+		}
+
+		msg := &Msg{
+			Info:              *info,
+			Questions:         questions,
+			QuestionGroupInfo: groupInfo,
+		}
+		data, err = cmn.MarshalJSON(&msg)
+		if err != nil {
+			q.Err = err
+			q.RespErr()
+			return
+		}
+
 	default:
 		q.Err = fmt.Errorf("unknown respondence type: %s", u.Type)
 		z.Error(q.Err.Error())
@@ -498,7 +544,7 @@ func InitRespondent(ctx context.Context) {
 		return
 	}
 	//提交事务
-	if err := tx.Commit(); err != nil {
+	if err := tx.Commit(dmlCtx); err != nil {
 		q.Err = err
 		z.Error(err.Error())
 		q.RespErr()
@@ -547,8 +593,8 @@ func CheckExamStatus(ctx context.Context) {
 	studentId := q.SysUser.ID.Int64
 	dmlCtx, cancel := context.WithTimeout(ctx, TIMEOUT)
 	defer cancel()
-	db := cmn.GetDbConn()
-	tx, err := db.BeginTx(dmlCtx, &sql.TxOptions{Isolation: sql.LevelReadCommitted})
+	db := cmn.GetPgxConn()
+	tx, err := db.BeginTx(dmlCtx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead})
 	if err != nil {
 		q.Err = err
 		z.Error(err.Error())
@@ -557,7 +603,7 @@ func CheckExamStatus(ctx context.Context) {
 	}
 	defer func() {
 		//如果不是tx done错误就返回给前端
-		q.Err = tx.Rollback()
+		q.Err = tx.Rollback(dmlCtx)
 		if q.Err != nil && !errors.Is(q.Err, sql.ErrTxDone) {
 			z.Error(q.Err.Error())
 			q.RespErr()
@@ -565,22 +611,15 @@ func CheckExamStatus(ctx context.Context) {
 		}
 	}()
 
-	examinee, err := getExamineeIdAndStatus(dmlCtx, tx, studentId, examSessionIdInt)
-	if err != nil {
-		q.Err = err
-		q.RespErr()
-		return
-	}
-
 	//查考当前考生当场考试正处于什么状态
-	result, err := checkExamCondition(dmlCtx, examinee.ID.Int64, tx, STATUS)
+	result, err := checkExamCondition(dmlCtx, examSessionIdInt, studentId, tx, STATUS)
 	if err != nil {
 		q.Err = err
 		q.RespErr()
 		return
 	}
 
-	if err := tx.Commit(); err != nil {
+	if err := tx.Commit(dmlCtx); err != nil {
 		q.Err = err
 		z.Error(err.Error())
 		q.RespErr()
@@ -703,22 +742,22 @@ func Submit(ctx context.Context) {
 func submitForExam(ctx context.Context, req SubmitReq) (err error) {
 
 	//执行数据库操作
-	sqlxDB := cmn.GetDbConn()
+	sqlxDB := cmn.GetPgxConn()
 
 	//开启事务
-	tx, err := sqlxDB.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelRepeatableRead})
+	tx, err := sqlxDB.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead})
 	if err != nil {
 		z.Error(err.Error())
 		return err
 	}
 	defer func() {
-		if RollbackErr := tx.Rollback(); RollbackErr != nil && !errors.Is(RollbackErr, sql.ErrTxDone) {
+		if RollbackErr := tx.Rollback(ctx); RollbackErr != nil && !errors.Is(RollbackErr, pgx.ErrTxCommitRollback) {
 			z.Error(RollbackErr.Error())
 			err = RollbackErr
 		}
 	}()
 	//查考当前是否符合条件去提交
-	_, err = checkExamCondition(ctx, req.ExamineeID, tx, SUBMIT)
+	_, err = checkExamCondition(ctx, req.ExamSessionId, req.StudentId, tx, SUBMIT)
 	if err != nil {
 		return err
 	}
@@ -728,7 +767,7 @@ func submitForExam(ctx context.Context, req SubmitReq) (err error) {
 	}
 	z.Info("update success", zap.Int64("updateId", updateId))
 
-	if err := tx.Commit(); err != nil {
+	if err := tx.Commit(ctx); err != nil {
 		z.Error(err.Error())
 		return err
 	}
@@ -846,8 +885,8 @@ WHERE id = $1 AND status = $2;`
 }
 
 // checkExamCondition 为考试初始化以及考试提交查考当前是否符合条件
-func checkExamCondition(ctx context.Context, ExamineeID int64, tx *sql.Tx, use string) (int, error) {
-	examineeInfo, err := getExamineeInfo(ctx, ExamineeID, tx)
+func checkExamCondition(ctx context.Context, examSession, studentID int64, tx pgx.Tx, use string) (int, error) {
+	examineeInfo, err := getExamineeInfo(ctx, examSession, studentID, tx)
 	if err != nil {
 		return 0, err
 	}
@@ -858,7 +897,7 @@ func checkExamCondition(ctx context.Context, ExamineeID int64, tx *sql.Tx, use s
 	switch use {
 	case INIT:
 		if now.UnixMilli() < examineeInfo.StartTime.Int64 {
-			z.Error(ErrExamNotStart.Error(), zap.Int64("examineeId", ExamineeID))
+			z.Error(ErrExamNotStart.Error(), zap.Int64("examineeId", examineeInfo.ID.Int64))
 			return 0, ErrExamNotStart
 		}
 
@@ -874,7 +913,7 @@ func checkExamCondition(ctx context.Context, ExamineeID int64, tx *sql.Tx, use s
 		}
 	case SUBMIT:
 		if now.UnixMilli() < examineeInfo.StartTime.Int64 {
-			z.Error(ErrExamNotStart.Error(), zap.Int64("examineeId", ExamineeID))
+			z.Error(ErrExamNotStart.Error(), zap.Int64("examineeId", examineeInfo.ID.Int64))
 			return 0, ErrExamNotStart
 		}
 
