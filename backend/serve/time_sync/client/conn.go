@@ -17,8 +17,6 @@ type Connection interface {
 	StartHeartbeatDetection()                           // 心跳检测
 	Close()                                             // 关闭连接
 	GeConnId() string                                   // 获取连接ID
-	GetConn() (*websocket.Conn, error)                  // 获取连接实例
-	GetUserId() int64                                   // 获取用户ID
 	GetExamineeId() int64                               // 获取考生ID
 	SetExamineeID(examineeId int64)                     // 设置考生ID
 	SetPracticeSubmissionID(practiceSubmissionId int64) // 设置练习提交ID
@@ -114,9 +112,9 @@ func (conn *Conn) ListenMessage() {
 		}
 
 		if msg.MsgType == TypeTimestamp {
-			m := map[string]interface{}{
-				"type_num":  TypeTimestamp,
-				"timestamp": time.Now().UnixMilli(),
+			m := SendMsg{
+				MsgType:   TypeTimestamp,
+				Timestamp: time.Now().UnixMilli(),
 			}
 			// 发送时间戳消息
 			if err = conn.SendMessage(m); err != nil {
@@ -149,10 +147,15 @@ func (conn *Conn) StartHeartbeatDetection() {
 		}
 	}()
 
-	for range ticker.C {
-		if err = conn.sendPing(); err != nil {
-			conn.logger.Error("error sending ping", zap.Error(err))
-			return
+	for {
+		select {
+		case <-ticker.C:
+			err = conn.sendPing()
+			if err != nil {
+				conn.logger.Error("error sending ping", zap.Error(err))
+				return
+			}
+			conn.logger.Info("ping sent")
 		}
 	}
 }
@@ -161,7 +164,8 @@ func (conn *Conn) StartHeartbeatDetection() {
 func (conn *Conn) SendMessage(message interface{}) error {
 	conn.mutex.Lock()
 	defer conn.mutex.Unlock()
-	if err := conn.wsConn.SetWriteDeadline(time.Now().Add(timeDeadline)); err != nil {
+	err := conn.wsConn.SetWriteDeadline(time.Now().Add(timeDeadline))
+	if err != nil {
 		conn.logger.Error("error setting write deadline", zap.Error(err))
 		return err
 	}
@@ -191,20 +195,6 @@ func (conn *Conn) Close() {
 // GeConnId 获取连接ID
 func (conn *Conn) GeConnId() string {
 	return conn.ID
-}
-
-// GetConn 获取连接
-func (conn *Conn) GetConn() (*websocket.Conn, error) {
-	if conn.wsConn == nil {
-		conn.logger.Error("connection is nil")
-		return nil, ErrConnNil
-	}
-	return conn.wsConn, nil
-}
-
-// GetUserId 获取用户ID
-func (conn *Conn) GetUserId() int64 {
-	return conn.userID
 }
 
 // GetExamineeId 获取考生ID

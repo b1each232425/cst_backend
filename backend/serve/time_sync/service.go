@@ -15,8 +15,7 @@ import (
 )
 
 type Service interface {
-	StartServe()                                // 启动时间同步服务
-	GetClientsAmount() int                      // 获取客户端数量
+	StartServe(ctx context.Context)             // 启动时间同步服务
 	HandleInitTimeSyncConn(ctx context.Context) // 处理初始化时间同步连接
 }
 
@@ -43,8 +42,10 @@ func NewService(timeSyncInterval time.Duration, pool *ants.Pool, upgrader websoc
 }
 
 // StartServe 启动时间同步服务
-func (srv *serviceImpl) StartServe() {
+func (srv *serviceImpl) StartServe(ctx context.Context) {
 	z.Info("---->" + cmn.FncName())
+
+	forceErr, _ := ctx.Value("force-error").(string) // 用于强制执行错误处理代码
 
 	timeTicker := time.NewTicker(srv.timeSyncInterval)
 
@@ -52,7 +53,7 @@ func (srv *serviceImpl) StartServe() {
 
 	defer func(pool *ants.Pool, timeout time.Duration) {
 		err := pool.ReleaseTimeout(timeout)
-		if err != nil {
+		if err != nil || forceErr == "pool.ReleaseTimeout" {
 			z.Error("error releasing ants pool", zap.Error(err))
 		}
 	}(srv.pool, releaseTimeout)
@@ -60,10 +61,11 @@ func (srv *serviceImpl) StartServe() {
 	for {
 		select {
 		case <-timeTicker.C: // 定时广播时间同步消息
-			srv.broadcastTimeSyncMsg()
+			srv.broadcastTimeSyncMsg(ctx)
 
 		case examineeId := <-cmn.ResetExamEndTimeChan: // 接收需要重置考试结束时刻的考生ID
-			srv.sendResetExamEndTimeMsg(examineeId)
+			z.Info("reset exam end time for examineeId", zap.Int64("examineeId", examineeId))
+			srv.sendResetExamEndTimeMsg(ctx, examineeId)
 
 		case registerClient := <-srv.registerChanel: // 接收注册的客户端
 			id := registerClient.GeConnId()
@@ -75,19 +77,25 @@ func (srv *serviceImpl) StartServe() {
 			id := unregisterClient.GeConnId()
 			z.Info("unregister client", zap.String("client id", id))
 			delete(srv.clients, id) // 从连接池中删除连接
+
+		case <-ctx.Done():
+			z.Info("context done, stopping time sync service")
+			// 关闭所有连接
+			for _, clientConn := range srv.clients {
+				clientConn.Close()
+			}
+			srv.clients = make(map[string]client.Connection) // 清空连接池
+			return
 		}
 	}
-}
-
-// GetClientsAmount 获取客户端数量
-func (srv *serviceImpl) GetClientsAmount() int {
-	return len(srv.clients)
 }
 
 // HandleInitTimeSyncConn 处理初始化时间同步连接
 func (srv *serviceImpl) HandleInitTimeSyncConn(ctx context.Context) {
 	q := cmn.GetCtxValue(ctx)
 	z.Info("---->" + cmn.FncName())
+
+	forceErr, _ := ctx.Value("force-error").(string) // 用于强制执行错误处理代码
 
 	examineeId := q.R.URL.Query().Get("examinee_id")
 	practiceSubmissionId := q.R.URL.Query().Get("practice_submission_id")
@@ -134,7 +142,7 @@ func (srv *serviceImpl) HandleInitTimeSyncConn(ctx context.Context) {
 
 	// 升级HTTP连接到WebSocket
 	conn, err := srv.upgrader.Upgrade(q.W, q.R, nil)
-	if err != nil {
+	if err != nil || forceErr == "websocket.Upgrade" {
 		q.Err = fmt.Errorf("error upgrading connection: %w", err)
 		z.Error(q.Err.Error())
 		q.RespErr()
@@ -167,8 +175,8 @@ func (srv *serviceImpl) HandleInitTimeSyncConn(ctx context.Context) {
 	srv.registerChanel <- newClient
 
 	// 发送时间同步消息
-	err = srv.sendCurrentTimestampMsg(newClient)
-	if err != nil {
+	err = srv.sendCurrentTimestampMsg(ctx, newClient)
+	if err != nil || forceErr == "sendCurrentTimestampMsg" {
 		q.Err = fmt.Errorf("error sending current timestamp: %w", err)
 		_ = newClient.SendMessage("error: " + q.Err.Error())
 		newClient.Close()
@@ -178,22 +186,24 @@ func (srv *serviceImpl) HandleInitTimeSyncConn(ctx context.Context) {
 }
 
 // broadcastTimeSyncMsg 广播时间同步消息
-func (srv *serviceImpl) broadcastTimeSyncMsg() {
+func (srv *serviceImpl) broadcastTimeSyncMsg(ctx context.Context) {
 	z.Info("---->" + cmn.FncName())
+
+	forceErr, _ := ctx.Value("force-error").(string) // 用于强制执行错误处理代码
 
 	// 遍历连接池
 	for _, wsClient := range srv.clients {
 		// 提交任务到协程池
 		err := srv.pool.Submit(func(client client.Connection) func() {
 			return func() {
-				err := srv.sendCurrentTimestampMsg(client)
-				if err != nil {
+				err := srv.sendCurrentTimestampMsg(ctx, client)
+				if err != nil || forceErr == "sendCurrentTimestampMsg" {
 					z.Error("error sending timestamp", zap.Error(err))
 					return
 				}
 			}
 		}(wsClient))
-		if err != nil {
+		if err != nil || forceErr == "ants.Pool.Submit" {
 			z.Error("error submit task to ants pool", zap.Error(err))
 			continue
 		}
@@ -202,7 +212,7 @@ func (srv *serviceImpl) broadcastTimeSyncMsg() {
 
 // sendResetExamEndTimeMsg 发送重置考试结束时刻的消息
 // 该方法会从数据库中查询考生的实际考试结束时间，并将其发送给对应的WebSocket客户端，以与考点管理模块配合实现延长考试时长功能
-func (srv *serviceImpl) sendResetExamEndTimeMsg(examineeId int64) {
+func (srv *serviceImpl) sendResetExamEndTimeMsg(ctx context.Context, examineeId int64) {
 	z.Info("---->" + cmn.FncName())
 
 	if examineeId <= 0 {
@@ -222,7 +232,7 @@ func (srv *serviceImpl) sendResetExamEndTimeMsg(examineeId int64) {
 	}
 
 	// 获取WebSocket连接实例
-	wsClient, err := srv.getClientByExamineeId(examineeId)
+	wsClient, err := srv.getClientByExamineeId(ctx, examineeId)
 	if err != nil {
 		z.Error("error getting WebSocket client by examineeId", zap.Int64("examineeId", examineeId), zap.Error(err))
 		return
@@ -243,7 +253,7 @@ func (srv *serviceImpl) sendResetExamEndTimeMsg(examineeId int64) {
 }
 
 // sendCurrentTimestampMsg 发送当前时间戳消息
-func (srv *serviceImpl) sendCurrentTimestampMsg(c client.Connection) error {
+func (srv *serviceImpl) sendCurrentTimestampMsg(ctx context.Context, c client.Connection) error {
 	z.Info("---->" + cmn.FncName())
 
 	// 获取当前时间戳
@@ -263,12 +273,8 @@ func (srv *serviceImpl) sendCurrentTimestampMsg(c client.Connection) error {
 }
 
 // getClientByExamineeId 根据考生ID获取连接实例
-func (srv *serviceImpl) getClientByExamineeId(examineeId int64) (client.Connection, error) {
+func (srv *serviceImpl) getClientByExamineeId(ctx context.Context, examineeId int64) (client.Connection, error) {
 	z.Info("---->" + cmn.FncName())
-
-	if examineeId <= 0 {
-		return nil, fmt.Errorf("examineeId must be greater than 0")
-	}
 
 	for _, wsClient := range srv.clients {
 		if wsClient.GetExamineeId() == examineeId {

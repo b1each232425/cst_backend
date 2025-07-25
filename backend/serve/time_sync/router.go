@@ -4,6 +4,7 @@ package time_sync
 //author:{"name":"王皓","tel":"15819888226", "email":"xavier.wang.work@icloud.com"}
 
 import (
+	"context"
 	"encoding/json"
 	"github.com/gorilla/websocket"
 	"github.com/panjf2000/ants/v2"
@@ -69,7 +70,7 @@ func Enroll(author string) {
 	srv = NewService(timeSyncIntervalMillisecond, pool, upgrader)
 
 	// 开启时间同步服务
-	go srv.StartServe()
+	go srv.StartServe(context.Background())
 
 	z.Info("time sync service init success", zap.Int("timeSyncInterval", timeSyncInterval), zap.Int("poolInitialSize", poolInitialSize))
 
