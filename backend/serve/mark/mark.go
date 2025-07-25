@@ -584,8 +584,9 @@ func SaveMarkingResults(ctx context.Context) {
 		return
 	}
 	defer func() {
-		q.Err = q.R.Body.Close()
-		if q.Err != nil {
+		err := q.R.Body.Close()
+		if err != nil {
+			q.Err = err
 			z.Error(q.Err.Error())
 			q.RespErr()
 			return
@@ -599,8 +600,17 @@ func SaveMarkingResults(ctx context.Context) {
 		return
 	}
 
+	var body cmn.ReqProto
+	q.Err = json.Unmarshal(buf, &body)
+	if q.Err != nil {
+		q.Err = fmt.Errorf("failed to unmarshal request body: %v", q.Err)
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+
 	var markingResults []*cmn.TMark
-	q.Err = json.Unmarshal(buf, &markingResults)
+	q.Err = json.Unmarshal(body.Data, &markingResults)
 	if q.Err != nil {
 		q.Err = fmt.Errorf("failed to unmarshal marking results: %v", q.Err)
 		z.Error(q.Err.Error())
@@ -608,14 +618,24 @@ func SaveMarkingResults(ctx context.Context) {
 		return
 	}
 
-	_, q.Err = InsertOrUpdateMarkingResults(ctx, markingResults)
-	if q.Err != nil {
-		//q.Err = fmt.Errorf("failed to insert or update marking results: %v", q.Err)
-		//z.Error(q.Err.Error())
+	if len(markingResults) == 0 {
+		q.Err = fmt.Errorf("invalid request body: no marking results provided")
+		z.Error(q.Err.Error())
 		q.RespErr()
 		return
 	}
 
+	_, q.Err = InsertOrUpdateMarkingResults(ctx, markingResults)
+	if q.Err != nil {
+		q.Err = fmt.Errorf("failed to insert or update marking results: %v", q.Err)
+		z.Error(q.Err.Error())
+		q.RespErr()
+
+		z.Sugar().Infof("---------> failed called %v", q.Err)
+		return
+	}
+
+	z.Sugar().Infof("---------> success called")
 	q.Err = nil
 	q.Resp()
 	return

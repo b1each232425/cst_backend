@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/jackc/pgx/v5"
-	"github.com/jmoiron/sqlx"
 	"github.com/jmoiron/sqlx/types"
 	"github.com/lib/pq"
 	"strings"
@@ -908,7 +907,7 @@ func InsertOrUpdateMarkingResults(ctx context.Context, markingResults []*cmn.TMa
 						INSERT INTO t_mark 
 							(examinee_id, question_id, teacher_id, exam_session_id, mark_details, score, create_time, creator, status, updated_by, update_time, practice_submission_id, practice_id)
 						VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-						ON CONFLICT (examinee_id, question_id, teacher_id, exam_session_id, practice_id) 
+						ON CONFLICT (examinee_id, question_id, teacher_id, exam_session_id, practice_id, practice_submission_id) 
 						DO UPDATE SET
 							mark_details = EXCLUDED.mark_details,
 							score = EXCLUDED.score,
@@ -916,32 +915,75 @@ func InsertOrUpdateMarkingResults(ctx context.Context, markingResults []*cmn.TMa
 							updated_by = EXCLUDED.updated_by
 						RETURNING id
 						`
-	sqlxDB := cmn.GetDbConn()
+	pgxConn := cmn.GetPgxConn()
 
-	var stmt *sqlx.Stmt
-	stmt, err = sqlxDB.Preparex(upsertMarkQuery)
+	tx, err := pgxConn.Begin(ctx)
 	if err != nil {
-		err = fmt.Errorf("prepare upsertMark query error: %s", err.Error())
+		err = fmt.Errorf("begin transaction error: %s", err.Error())
 		z.Error(err.Error())
 		return
 	}
+
 	defer func() {
-		err = stmt.Close()
 		if err != nil {
-			z.Error(err.Error())
+			err_ := tx.Rollback(ctx)
+			if err_ != nil {
+				z.Error(err_.Error())
+				return
+			}
 			return
 		}
 	}()
 
 	for _, mark := range markingResults {
+		if mark.Status.String == "" {
+			mark.Status = null.StringFrom("00")
+		}
+
+		if mark.TeacherID.Int64 == 0 {
+			err = fmt.Errorf("teacherID is required for mark")
+			z.Error(err.Error())
+			return
+		}
+
+		if mark.Creator.Int64 <= 0 {
+			mark.Creator = null.IntFrom(mark.TeacherID.Int64)
+		}
+
+		if mark.QuestionID.Int64 <= 0 {
+			err = fmt.Errorf("questionID is required for mark")
+			z.Error(err.Error())
+			return
+		}
+
+		validExam := mark.ExamSessionID.Int64 > 0 && mark.ExamineeID.Int64 > 0 &&
+			mark.PracticeID.Int64 <= 0 && mark.PracticeSubmissionID.Int64 <= 0
+
+		validPractice := mark.PracticeID.Int64 > 0 && mark.PracticeSubmissionID.Int64 > 0 &&
+			mark.ExamSessionID.Int64 <= 0 && mark.ExamineeID.Int64 <= 0
+
+		if !(validExam || validPractice) {
+			err = fmt.Errorf("invalid insert params: must have either (exam session id and examinee id) both > 0 with others <= 0, or (practice id and practice submission id) both > 0 with others <= 0")
+			z.Error(err.Error())
+			return
+		}
+
 		var id null.Int
-		err = stmt.QueryRowxContext(ctx, mark.ExamineeID, mark.QuestionID, mark.TeacherID, mark.ExamSessionID, mark.MarkDetails, mark.Score, time.Now().UnixMilli(), mark.Creator, mark.Status, mark.UpdatedBy, mark.UpdateTime, mark.PracticeSubmissionID, mark.PracticeID).Scan(&id)
+
+		err = tx.QueryRow(ctx, upsertMarkQuery, mark.ExamineeID, mark.QuestionID, mark.TeacherID, mark.ExamSessionID, mark.MarkDetails, mark.Score, time.Now().UnixMilli(), mark.Creator, mark.Status, mark.UpdatedBy, mark.UpdateTime, mark.PracticeSubmissionID, mark.PracticeID).Scan(&id)
 		if err != nil {
 			err = fmt.Errorf("exec upsertMark query error: %s", err.Error())
 			z.Error(err.Error())
 			return
 		}
 		targetIDs = append(targetIDs, id.Int64)
+	}
+
+	err = tx.Commit(ctx)
+	if err != nil {
+		err = fmt.Errorf("commit transaction error: %s", err.Error())
+		z.Error(err.Error())
+		return
 	}
 
 	return
@@ -965,6 +1007,10 @@ func updateStudentAnswerScore(ctx context.Context, markingResults []*cmn.TMark, 
 	} else if cond.PracticeID > 0 {
 		whereClause = append(whereClause, fmt.Sprintf(" AND practice_submission_id = $%d", argIdx))
 		argIdx += 1
+	} else {
+		err = fmt.Errorf("invalid params: exam_session_id or practice_id is required")
+		z.Error(err.Error())
+		return
 	}
 
 	updateQuery = fmt.Sprintf(updateQuery, strings.Join(whereClause, " "))
