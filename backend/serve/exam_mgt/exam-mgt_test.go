@@ -20,6 +20,11 @@ import (
 )
 
 func createMockContext(method, path string, queryParams url.Values, forceError string, userID int64) context.Context {
+	return createMockContextWithRole(method, path, queryParams, forceError, userID, 2) // 默认教师角色
+}
+
+// createMockContextWithRole 创建带用户角色的模拟上下文
+func createMockContextWithRole(method, path string, queryParams url.Values, forceError string, userID, userRole int64) context.Context {
 	// 创建mock HTTP请求
 	req := httptest.NewRequest(method, path, nil)
 	req.URL.RawQuery = queryParams.Encode()
@@ -38,14 +43,19 @@ func createMockContext(method, path string, queryParams url.Values, forceError s
 		BeginTime: time.Now(),
 		Tag:       make(map[string]interface{}),
 		SysUser: &cmn.TUser{
-			ID: null.NewInt(userID, true), // 请求用户ID
+			ID:   null.NewInt(userID, true),
+			Role: null.NewInt(userRole, true),
 		},
 	}
 
 	ctx := context.WithValue(context.Background(), cmn.QNearKey, serviceCtx)
 
-	// 使用QNearKey将ServiceCtx设置到context中
-	return context.WithValue(ctx, "force-error", forceError)
+	// 设置强制错误
+	if forceError != "" {
+		ctx = context.WithValue(ctx, "force-error", forceError)
+	}
+
+	return ctx
 }
 
 func createMockContextWithBody(method, path string, data string, forceError string, userID int64) context.Context {
@@ -1450,54 +1460,524 @@ func TestExamGetMethod(t *testing.T) {
 		cmn.ConfigureForTest()
 	}
 
+	// 准备测试数据 - 插入一个测试考试和场次
+	conn := cmn.GetPgxConn()
+	ctx := context.Background()
+
+	// 测试数据ID
+	testExamID := int64(999005)
+	testSessionID1 := int64(999501)
+	testSessionID2 := int64(999502)
+	testUserID := int64(1)
+	testStudentID := int64(101)
+
+	// 设置测试数据
+	tx, err := conn.Begin(ctx)
+	if err != nil {
+		t.Fatalf("创建事务失败: %v", err)
+	}
+
+	// 插入考试信息
+	_, err = tx.Exec(ctx, `
+		INSERT INTO t_exam_info (id, name, status, creator, create_time, updated_by, update_time)
+		VALUES ($1, '测试考试_GET', '01', $2, $3, $2, $3)
+		ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, status = EXCLUDED.status
+	`, testExamID, testUserID, time.Now().UnixMilli())
+	if err != nil {
+		tx.Rollback(ctx)
+		t.Fatalf("插入测试考试数据失败: %v", err)
+	}
+
+	// 插入考试场次
+	_, err = tx.Exec(ctx, `
+		INSERT INTO t_exam_session (id, exam_id, paper_id, mark_mode, mark_method, session_num, status, creator, create_time, updated_by, update_time)
+		VALUES ($1, $2, 1, '00', '00', 1, '01', $3, $4, $3, $4), ($5, $2, 1, '00', '00', 2, '01', $3, $4, $3, $4)
+	`, testSessionID1, testExamID, testUserID, time.Now().UnixMilli(), testSessionID2)
+	if err != nil {
+		tx.Rollback(ctx)
+		t.Fatalf("插入测试场次数据失败: %v", err)
+	}
+
+	// 插入考生数据
+	_, err = tx.Exec(ctx, `
+		INSERT INTO t_examinee (exam_session_id, student_id, status, creator, create_time)
+		VALUES ($1, $2, '01', $3, $4)
+	`, testSessionID1, testStudentID, testUserID, time.Now().UnixMilli())
+	if err != nil {
+		tx.Rollback(ctx)
+		t.Fatalf("插入测试考生数据失败: %v", err)
+	}
+
+	err = tx.Commit(ctx)
+	if err != nil {
+		t.Fatalf("提交测试数据失败: %v", err)
+	}
+
+	// 清理函数
+	t.Cleanup(func() {
+		tx, err := conn.Begin(ctx)
+		if err != nil {
+			return
+		}
+		defer tx.Rollback(ctx)
+
+		tx.Exec(ctx, "DELETE FROM t_examinee WHERE exam_session_id IN ($1, $2)", testSessionID1, testSessionID2)
+		tx.Exec(ctx, "DELETE FROM t_exam_session WHERE id IN ($1, $2)", testSessionID1, testSessionID2)
+		tx.Exec(ctx, "DELETE FROM t_exam_info WHERE id = $1", testExamID)
+
+		tx.Commit(ctx)
+	})
+
 	tests := []struct {
 		name          string
-		query         string
+		queryParams   string
 		forceError    string
 		expectedError bool
 		errorContains string
 		description   string
 		userID        int64
+		userRole      int64
+		mockValues    map[string]string
 	}{
 		{
-			name:          "有效的考试查询请求",
-			query:         "?examID=1",
+			name:          "正常获取考试信息-教师角色",
+			queryParams:   fmt.Sprintf("exam_id=%d", testExamID),
 			forceError:    "",
 			expectedError: false,
-			description:   "正常的考试查询请求",
-			userID:        99999,
+			description:   "教师角色正常获取考试信息",
+			userID:        testUserID,
+			userRole:      2,
 		},
 		{
-			name:          "无效的考试ID",
-			query:         "?examID=abc",
+			name:          "正常获取考试信息-教师角色 Query错误",
+			queryParams:   fmt.Sprintf("exam_id=%d", testExamID),
+			forceError:    "conn.Query",
+			expectedError: true,
+			description:   "教师角色正常获取考试信息 Query错误",
+			userID:        testUserID,
+			userRole:      2,
+			mockValues:    map[string]string{"test": "normal-resp"},
+		},
+		{
+			name:          "正常获取考试信息-教师角色 Scan错误",
+			queryParams:   fmt.Sprintf("exam_id=%d", testExamID),
+			forceError:    "examinee_rows.Scan",
+			expectedError: true,
+			description:   "教师角色正常获取考试信息 Scan错误",
+			userID:        testUserID,
+			userRole:      2,
+			mockValues:    map[string]string{"test": "normal-resp"},
+		},
+		{
+			name:          "正常获取考试信息-学生角色",
+			queryParams:   fmt.Sprintf("exam_id=%d", testExamID),
+			forceError:    "",
+			expectedError: false,
+			description:   "学生角色正常获取考试信息",
+			userID:        testStudentID,
+			userRole:      1, // 学生角色
+		},
+		{
+			name:          "正常获取考试信息-学生角色",
+			queryParams:   fmt.Sprintf("exam_id=%d", testExamID),
+			forceError:    "",
+			expectedError: false,
+			description:   "学生角色正常获取考试信息",
+			userID:        testStudentID,
+			userRole:      1, // 学生角色
+		},
+		{
+			name:          "无权获取考试信息-教师角色",
+			queryParams:   fmt.Sprintf("exam_id=%d", testExamID),
 			forceError:    "",
 			expectedError: true,
-			errorContains: "invalid exam ID",
-			description:   "无效的考试ID",
-			userID:        99999,
+			description:   "无权获取考试信息-教师角色",
+			userID:        2,
+			userRole:      2,
 		},
 		{
-			name:          "缺少考试ID",
-			query:         "",
+			name:          "无效的考试ID-非数字",
+			queryParams:   "exam_id=invalid",
 			forceError:    "",
 			expectedError: true,
-			errorContains: "missing exam ID",
-			description:   "缺少考试ID",
-			userID:        99999,
+			errorContains: "无效的考试ID",
+			description:   "考试ID为非数字时应返回错误",
+			userID:        testUserID,
+			userRole:      2,
+			mockValues:    map[string]string{"test": "normal-resp"},
 		},
 		{
-			name:          "强制JSON解析错误",
-			query:         "?examID=1",
-			forceError:    "json.Unmarshal",
+			name:          "无效的考试ID-零值",
+			queryParams:   "exam_id=0",
+			forceError:    "",
 			expectedError: true,
-			description:   "模拟JSON解析失败",
-			userID:        99999,
+			errorContains: "无效的考试ID",
+			description:   "考试ID为0时应返回错误",
+			userID:        testUserID,
+			userRole:      2,
+			mockValues:    map[string]string{"test": "normal-resp"},
+		},
+		{
+			name:          "无效的考试ID-负值",
+			queryParams:   "exam_id=-1",
+			forceError:    "",
+			expectedError: true,
+			errorContains: "无效的考试ID",
+			description:   "考试ID为负值时应返回错误",
+			userID:        testUserID,
+			userRole:      2,
+			mockValues:    map[string]string{"test": "normal-resp"},
+		},
+		{
+			name:          "缺少考试ID参数",
+			queryParams:   "",
+			forceError:    "",
+			expectedError: true,
+			errorContains: "无效的考试ID",
+			description:   "缺少exam_id参数时应返回错误",
+			userID:        testUserID,
+			userRole:      2,
+			mockValues:    map[string]string{"test": "normal-resp"},
+		},
+		{
+			name:          "无效的用户ID",
+			queryParams:   fmt.Sprintf("exam_id=%d", testExamID),
+			forceError:    "",
+			expectedError: true,
+			errorContains: "无效的用户ID",
+			description:   "用户ID无效时应返回错误",
+			userID:        0, // 无效用户ID
+			userRole:      2,
+			mockValues:    map[string]string{"test": "normal-resp"},
+		},
+		{
+			name:          "无效的用户角色",
+			queryParams:   fmt.Sprintf("exam_id=%d", testExamID),
+			forceError:    "",
+			expectedError: true,
+			errorContains: "无效的用户角色",
+			description:   "用户角色无效时应返回错误",
+			userID:        testUserID,
+			userRole:      0, // 无效角色
+			mockValues:    map[string]string{"test": "normal-resp"},
+		},
+		{
+			name:          "不存在的考试ID",
+			queryParams:   "exam_id=999999",
+			forceError:    "",
+			expectedError: true,
+			errorContains: "考试不存在",
+			description:   "查询不存在的考试ID时应返回错误",
+			userID:        testUserID,
+			userRole:      2,
+		},
+		{
+			name:          "模拟GetExamInfo错误",
+			queryParams:   fmt.Sprintf("exam_id=%d", testExamID),
+			forceError:    "",
+			expectedError: true,
+			description:   "模拟GetExamInfo函数返回错误",
+			userID:        testUserID,
+			userRole:      2,
+			mockValues:    map[string]string{"test": "GetExamInfo-error"},
+		},
+		{
+			name:          "模拟GetExamSessions错误",
+			queryParams:   fmt.Sprintf("exam_id=%d", testExamID),
+			forceError:    "",
+			expectedError: true,
+			description:   "模拟GetExamSessions函数返回错误",
+			userID:        testUserID,
+			userRole:      2,
+			mockValues:    map[string]string{"test": "GetExamSessions-error"},
+		},
+		{
+			name:          "模拟JSON编码错误1",
+			queryParams:   fmt.Sprintf("exam_id=%d", testExamID),
+			forceError:    "json.Marshal",
+			expectedError: true,
+			description:   "模拟JSON编码失败",
+			userID:        testUserID,
+			userRole:      2,
+			mockValues:    map[string]string{"test": "normal-resp"},
+		},
+		{
+			name:          "模拟JSON编码错误2",
+			queryParams:   fmt.Sprintf("exam_id=%d", testExamID),
+			forceError:    "json.Marshal",
+			expectedError: true,
+			description:   "模拟JSON编码失败",
+			userID:        testUserID,
+			userRole:      1,
+			mockValues:    map[string]string{"test": "normal-resp"},
+		},
+		{
+			name:          "模拟权限验证失败",
+			queryParams:   fmt.Sprintf("exam_id=%d", testExamID),
+			forceError:    "",
+			expectedError: true,
+			description:   "模拟用户无权限访问考试",
+			userID:        999,
+			userRole:      1,
+			mockValues:    map[string]string{"test": "validateUserExamPermission-error"},
+		},
+		{
+			name:          "验证考试是否存在失败",
+			queryParams:   fmt.Sprintf("exam_id=%d", testExamID),
+			forceError:    "",
+			expectedError: true,
+			description:   "模拟验证考试是否存在失败",
+			userID:        999,
+			userRole:      1,
+			mockValues:    map[string]string{"test": "examExists-error"},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			// 解析查询参数
+			queryParams := url.Values{}
+			if tt.queryParams != "" {
+				parts := strings.Split(tt.queryParams, "&")
+				for _, part := range parts {
+					if kv := strings.Split(part, "="); len(kv) == 2 {
+						queryParams.Set(kv[0], kv[1])
+					}
+				}
+			}
 
+			// 创建模拟上下文
+			ctx := createMockContextWithRole("GET", "/api/exam", queryParams, tt.forceError, tt.userID, tt.userRole)
+
+			// 设置mock值
+			for key, value := range tt.mockValues {
+				ctx = context.WithValue(ctx, key, value)
+			}
+
+			func() {
+				defer func() {
+					if r := recover(); r != nil {
+						// 如果有panic，检查是否是预期的
+						if !tt.expectedError {
+							t.Errorf("exam() 意外panic: %v", r)
+						}
+					}
+				}()
+
+				exam(ctx)
+			}()
+
+			// 获取ServiceCtx以检查结果
+			serviceCtx := ctx.Value(cmn.QNearKey).(*cmn.ServiceCtx)
+
+			if tt.expectedError {
+				// 期望有错误
+				if serviceCtx.Err == nil {
+					t.Errorf("exam() 期望返回错误，但实际成功")
+					return
+				}
+
+				if tt.errorContains != "" && !containsString(serviceCtx.Err.Error(), tt.errorContains) {
+					t.Errorf("exam() 错误信息 = %v, 期望包含 %v", serviceCtx.Err.Error(), tt.errorContains)
+				}
+			} else {
+				// 期望成功
+				if serviceCtx.Err != nil {
+					t.Errorf("exam() 期望成功，但返回错误: %v", serviceCtx.Err)
+					return
+				}
+
+				// 验证返回的数据
+				if serviceCtx.Msg.Data == nil {
+					t.Errorf("exam() 期望返回数据，但数据为空")
+					return
+				}
+
+				// 尝试解析返回的JSON数据
+				var examData ExamData
+				if err := json.Unmarshal(serviceCtx.Msg.Data, &examData); err != nil {
+					t.Errorf("exam() 返回数据格式错误: %v", err)
+					return
+				}
+
+				// 验证考试信息
+				if examData.ExamInfo.ID.Int64 != testExamID {
+					t.Logf("exam() 返回的信息 %v", examData.ExamInfo)
+					t.Errorf("exam() 返回的考试ID错误，期望 %d, 实际 %d", testExamID, examData.ExamInfo.ID.Int64)
+
+				}
+
+				// 验证场次信息
+				if len(examData.ExamSessions) == 0 {
+					t.Errorf("exam() 期望返回场次信息，但为空")
+				}
+			}
+		})
+	}
+}
+
+// TestExamPutMethod 测试 exam 函数的 PUT 方法
+func TestExamPutMethod(t *testing.T) {
+	// 确保logger和数据库连接已初始化
+	if z == nil {
+		cmn.ConfigureForTest()
+	}
+
+	tests := []struct {
+		name          string
+		description   string
+		userID        int64
+		userRole      int64
+		expectedError bool
+		errorContains string
+	}{
+		{
+			name:          "PUT方法-不支持",
+			description:   "PUT方法应该返回不支持的错误",
+			userID:        1,
+			userRole:      2,
+			expectedError: true,
+			errorContains: "unsupported method: put",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// 创建模拟上下文
+			queryParams := url.Values{}
+			ctx := createMockContextWithRole("PUT", "/api/exam", queryParams, "", tt.userID, tt.userRole)
+
+			func() {
+				defer func() {
+					if r := recover(); r != nil {
+						t.Errorf("exam() 意外panic: %v", r)
+					}
+				}()
+
+				exam(ctx)
+			}()
+
+			// 获取ServiceCtx以检查结果
+			serviceCtx := ctx.Value(cmn.QNearKey).(*cmn.ServiceCtx)
+
+			if tt.expectedError {
+				// 期望有错误
+				if serviceCtx.Err == nil {
+					t.Errorf("exam() 期望返回错误，但实际成功")
+					return
+				}
+
+				if tt.errorContains != "" && !containsString(serviceCtx.Err.Error(), tt.errorContains) {
+					t.Errorf("exam() 错误信息 = %v, 期望包含 %v", serviceCtx.Err.Error(), tt.errorContains)
+				}
+			} else {
+				// 期望成功
+				if serviceCtx.Err != nil {
+					t.Errorf("exam() 期望成功，但返回错误: %v", serviceCtx.Err)
+				}
+			}
+		})
+	}
+}
+
+// TestExamUnsupportedMethod 测试 exam 函数的不支持方法（default case）
+func TestExamUnsupportedMethod(t *testing.T) {
+	// 确保logger和数据库连接已初始化
+	if z == nil {
+		cmn.ConfigureForTest()
+	}
+
+	tests := []struct {
+		name          string
+		method        string
+		description   string
+		userID        int64
+		userRole      int64
+		expectedError bool
+		errorContains string
+	}{
+		{
+			name:          "DELETE方法-不支持",
+			method:        "DELETE",
+			description:   "DELETE方法应该返回不支持的错误",
+			userID:        1,
+			userRole:      2,
+			expectedError: true,
+			errorContains: "unsupported method: delete",
+		},
+		{
+			name:          "PATCH方法-不支持",
+			method:        "PATCH",
+			description:   "PATCH方法应该返回不支持的错误",
+			userID:        1,
+			userRole:      2,
+			expectedError: true,
+			errorContains: "unsupported method: patch",
+		},
+		{
+			name:          "OPTIONS方法-不支持",
+			method:        "OPTIONS",
+			description:   "OPTIONS方法应该返回不支持的错误",
+			userID:        1,
+			userRole:      2,
+			expectedError: true,
+			errorContains: "unsupported method: options",
+		},
+		{
+			name:          "HEAD方法-不支持",
+			method:        "HEAD",
+			description:   "HEAD方法应该返回不支持的错误",
+			userID:        1,
+			userRole:      2,
+			expectedError: true,
+			errorContains: "unsupported method: head",
+		},
+		{
+			name:          "自定义方法-不支持",
+			method:        "CUSTOM",
+			description:   "自定义方法应该返回不支持的错误",
+			userID:        1,
+			userRole:      2,
+			expectedError: true,
+			errorContains: "unsupported method: custom",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// 创建模拟上下文
+			queryParams := url.Values{}
+			ctx := createMockContextWithRole(tt.method, "/api/exam", queryParams, "", tt.userID, tt.userRole)
+
+			func() {
+				defer func() {
+					if r := recover(); r != nil {
+						t.Errorf("exam() 意外panic: %v", r)
+					}
+				}()
+
+				exam(ctx)
+			}()
+
+			// 获取ServiceCtx以检查结果
+			serviceCtx := ctx.Value(cmn.QNearKey).(*cmn.ServiceCtx)
+
+			if tt.expectedError {
+				// 期望有错误
+				if serviceCtx.Err == nil {
+					t.Errorf("exam() 期望返回错误，但实际成功")
+					return
+				}
+
+				if tt.errorContains != "" && !containsString(serviceCtx.Err.Error(), tt.errorContains) {
+					t.Errorf("exam() 错误信息 = %v, 期望包含 %v", serviceCtx.Err.Error(), tt.errorContains)
+				}
+			} else {
+				// 期望成功
+				if serviceCtx.Err != nil {
+					t.Errorf("exam() 期望成功，但返回错误: %v", serviceCtx.Err)
+				}
+			}
 		})
 	}
 }
@@ -1652,6 +2132,7 @@ func TestValidateUserExamPermission(t *testing.T) {
 		errorMsg    string
 		description string
 		forceError  string
+		mockValue   string
 	}{
 		{
 			name:        "管理员权限-应该有权限",
@@ -1767,13 +2248,55 @@ func TestValidateUserExamPermission(t *testing.T) {
 			description: "负数考试ID应该返回错误",
 			forceError:  "",
 		},
+		// Mock测试用例
+		{
+			name:        "Mock-normal-resp",
+			userID:      testStudentID,
+			examID:      testExamID,
+			role:        1,
+			wantResult:  true,
+			wantError:   false,
+			description: "Mock normal-resp应该返回true, nil",
+			forceError:  "",
+			mockValue:   "normal-resp",
+		},
+		{
+			name:        "Mock-validateUserExamPermission-false",
+			userID:      testStudentID,
+			examID:      testExamID,
+			role:        1,
+			wantResult:  false,
+			wantError:   false,
+			description: "Mock validateUserExamPermission-false应该返回false, nil",
+			forceError:  "",
+			mockValue:   "validateUserExamPermission-false",
+		},
+		{
+			name:        "Mock-validateUserExamPermission-error",
+			userID:      testStudentID,
+			examID:      testExamID,
+			role:        1,
+			wantResult:  false,
+			wantError:   true,
+			errorMsg:    "validateUserExamPermission error",
+			description: "Mock validateUserExamPermission-error应该返回false, error",
+			forceError:  "",
+			mockValue:   "validateUserExamPermission-error",
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			ctx := context.Background()
-			// 模拟用户上下文
-			ctx = context.WithValue(ctx, "force-error", tt.forceError)
+			// 设置错误注入
+			if tt.forceError != "" {
+				ctx = context.WithValue(ctx, "force-error", tt.forceError)
+			}
+			// 设置mock值
+			if tt.mockValue != "" {
+				ctx = context.WithValue(ctx, "test", tt.mockValue)
+			}
+
 			result, err := validateUserExamPermission(ctx, tt.userID, tt.examID, tt.role)
 
 			// 检查错误
@@ -2775,6 +3298,854 @@ func TestUpdateExamSessionStatus(t *testing.T) {
 							t.Errorf("updateExamSessionStatus() update_time 字段未正确更新，时间 = %v", updateTime)
 						}
 					}
+				}
+			}
+		})
+	}
+}
+
+// TestExamList 测试 examList 函数
+func TestExamList(t *testing.T) {
+	// 确保logger和数据库连接已初始化
+	if z == nil {
+		cmn.ConfigureForTest()
+	}
+
+	// 准备测试数据
+	conn := cmn.GetPgxConn()
+	ctx := context.Background()
+
+	// 测试数据ID
+	testExamID1 := int64(999901)
+	testExamID2 := int64(999902)
+	testSessionID1 := int64(999911)
+	testSessionID2 := int64(999912)
+	testUserID := int64(1001)
+	testStudentID := int64(1002)
+
+	// 设置测试数据
+	tx, err := conn.Begin(ctx)
+	if err != nil {
+		t.Fatalf("创建事务失败: %v", err)
+	}
+
+	currentTime := time.Now().UnixMilli()
+
+	// 插入考试信息
+	_, err = tx.Exec(ctx, `
+		INSERT INTO t_exam_info (id, name, type, mode, status, creator, create_time, updated_by, update_time)
+		VALUES ($1, '测试考试1', '00', '00', '02', $2, $3, $2, $3),
+		       ($4, '测试考试2', '02', '02', '04', $2, $3, $2, $3)
+	`, testExamID1, testUserID, currentTime, testExamID2)
+	if err != nil {
+		tx.Rollback(ctx)
+		t.Fatalf("插入测试考试数据失败: %v", err)
+	}
+
+	// 插入考试场次
+	_, err = tx.Exec(ctx, `
+		INSERT INTO t_exam_session (id, exam_id, paper_id, mark_method, mark_mode, session_num, start_time, end_time, duration, status, creator, create_time, updated_by, update_time)
+		VALUES ($1, $2, 1, '00', '00', 1, $5, $6, 120, '02', $3, $4, $3, $4),
+		       ($7, $8, 1, '00', '00', 1, $5, $6, 90, '04', $3, $4, $3, $4)
+	`, testSessionID1, testExamID1, testUserID, currentTime, currentTime+3600000, currentTime+7200000, testSessionID2, testExamID2)
+	if err != nil {
+		tx.Rollback(ctx)
+		t.Fatalf("插入测试场次数据失败: %v", err)
+	}
+
+	// 插入考生数据（为学生角色测试准备）
+	_, err = tx.Exec(ctx, `
+		INSERT INTO t_examinee (exam_session_id, student_id, status, creator, create_time)
+		VALUES ($1, $2, '01', $3, $4)
+	`, testSessionID1, testStudentID, testUserID, currentTime)
+	if err != nil {
+		tx.Rollback(ctx)
+		t.Fatalf("插入测试考生数据失败: %v", err)
+	}
+
+	err = tx.Commit(ctx)
+	if err != nil {
+		t.Fatalf("提交测试数据失败: %v", err)
+	}
+
+	// 清理函数
+	t.Cleanup(func() {
+		tx, err := conn.Begin(ctx)
+		if err != nil {
+			return
+		}
+		defer tx.Rollback(ctx)
+
+		tx.Exec(ctx, "DELETE FROM t_examinee WHERE exam_session_id IN ($1, $2)", testSessionID1, testSessionID2)
+		tx.Exec(ctx, "DELETE FROM t_exam_session WHERE id IN ($1, $2)", testSessionID1, testSessionID2)
+		tx.Exec(ctx, "DELETE FROM t_exam_info WHERE id IN ($1, $2)", testExamID1, testExamID2)
+
+		tx.Commit(ctx)
+	})
+
+	tests := []struct {
+		name          string
+		method        string
+		queryParams   string
+		userID        int64
+		userRole      int64
+		forceError    string
+		expectedError bool
+		errorContains string
+		description   string
+		checkResult   func(t *testing.T, serviceCtx *cmn.ServiceCtx)
+	}{
+		{
+			name:          "教师角色-默认查询",
+			method:        "GET",
+			queryParams:   "",
+			userID:        testUserID,
+			userRole:      2, // 教师角色
+			expectedError: false,
+			description:   "教师角色使用默认查询参数获取考试列表",
+			checkResult: func(t *testing.T, serviceCtx *cmn.ServiceCtx) {
+				if serviceCtx.Msg.Data == nil {
+					t.Error("期望返回数据，但数据为空")
+					return
+				}
+				var examList []ExamList
+				if err := json.Unmarshal(serviceCtx.Msg.Data, &examList); err != nil {
+					t.Errorf("解析返回数据失败: %v", err)
+					return
+				}
+				if len(examList) == 0 {
+					t.Error("期望返回考试列表，但为空")
+				}
+				if serviceCtx.Msg.RowCount <= 0 {
+					t.Error("期望返回行数大于0")
+				}
+			},
+		},
+		{
+			name:          "教师角色-默认查询 Query错误",
+			method:        "GET",
+			queryParams:   "",
+			userID:        testUserID,
+			userRole:      2, // 教师角色
+			expectedError: true,
+			forceError:    "conn.Query",
+			description:   "教师角色-默认查询 Query错误",
+		},
+		{
+			name:          "教师角色-默认查询 Scan错误",
+			method:        "GET",
+			queryParams:   "",
+			userID:        testUserID,
+			userRole:      2, // 教师角色
+			expectedError: true,
+			forceError:    "rows.Scan",
+			description:   "教师角色-默认查询 Scan错误",
+		},
+		{
+			name:          "学生角色-查询自己的考试",
+			method:        "GET",
+			queryParams:   "",
+			userID:        testStudentID,
+			userRole:      1, // 学生角色
+			expectedError: false,
+			description:   "学生角色查询自己参与的考试",
+			checkResult: func(t *testing.T, serviceCtx *cmn.ServiceCtx) {
+				if serviceCtx.Msg.Data == nil {
+					t.Error("期望返回数据，但数据为空")
+					return
+				}
+				var examList []ExamList
+				if err := json.Unmarshal(serviceCtx.Msg.Data, &examList); err != nil {
+					t.Errorf("解析返回数据失败: %v", err)
+					return
+				}
+				// 学生应该至少能看到一个自己参与的考试
+				if len(examList) == 0 {
+					t.Error("学生应该能看到自己参与的考试")
+				}
+			},
+		},
+		{
+			name:          "学生角色-查询自己的考试 Query错误",
+			method:        "GET",
+			queryParams:   "",
+			userID:        testStudentID,
+			userRole:      1, // 学生角色
+			expectedError: true,
+			forceError:    "conn.Query",
+			description:   "学生角色-查询自己的考试 Query错误",
+		},
+		{
+			name:          "学生角色-查询自己的考试 Scan错误",
+			method:        "GET",
+			queryParams:   "",
+			userID:        testStudentID,
+			userRole:      1, // 学生角色
+			expectedError: true,
+			forceError:    "rows.Scan",
+			description:   "学生角色-查询自己的考试 Scan错误",
+		},
+		{
+			name:          "管理员角色-查询所有考试",
+			method:        "GET",
+			queryParams:   "",
+			userID:        testUserID,
+			userRole:      3, // 管理员角色
+			expectedError: false,
+			description:   "管理员角色查询所有考试",
+			checkResult: func(t *testing.T, serviceCtx *cmn.ServiceCtx) {
+				if serviceCtx.Msg.Data == nil {
+					t.Error("期望返回数据，但数据为空")
+					return
+				}
+			},
+		},
+		{
+			name:          "自定义查询-按名称过滤",
+			method:        "GET",
+			queryParams:   `q={"Action":"select","OrderBy":[{"ID":"DESC"}],"Filter":{"Name":"测试考试1","Status":"","StartTime":0,"EndTime":0},"Page":1,"PageSize":10}`,
+			userID:        testUserID,
+			userRole:      2,
+			expectedError: false,
+			description:   "按考试名称过滤查询",
+			checkResult: func(t *testing.T, serviceCtx *cmn.ServiceCtx) {
+				if serviceCtx.Msg.Data == nil {
+					t.Error("期望返回数据，但数据为空")
+					return
+				}
+				var examList []ExamList
+				if err := json.Unmarshal(serviceCtx.Msg.Data, &examList); err != nil {
+					t.Errorf("解析返回数据失败: %v", err)
+					return
+				}
+				// 验证返回的考试名称包含过滤条件
+				for _, exam := range examList {
+					if !strings.Contains(exam.ExamName, "测试考试1") {
+						t.Errorf("返回的考试名称不符合过滤条件: %s", exam.ExamName)
+					}
+				}
+			},
+		},
+		{
+			name:          "自定义查询-按时间过滤",
+			method:        "GET",
+			queryParams:   `q={"Action":"select","OrderBy":[{"ID":"DESC"}],"Filter":{"Name":"","Status":"","StartTime":` + strconv.FormatInt(currentTime+3600000, 10) + `,"EndTime":` + strconv.FormatInt(currentTime+7200000, 10) + `},"Page":1,"PageSize":10}`,
+			userID:        testUserID,
+			userRole:      2,
+			expectedError: false,
+			description:   "按考试时间过滤查询",
+			checkResult: func(t *testing.T, serviceCtx *cmn.ServiceCtx) {
+				if serviceCtx.Msg.Data == nil {
+					t.Error("期望返回数据，但数据为空")
+					return
+				}
+				var examList []ExamList
+				if err := json.Unmarshal(serviceCtx.Msg.Data, &examList); err != nil {
+					t.Errorf("解析返回数据失败: %v", err)
+					return
+				}
+			},
+		},
+		{
+			name:          "自定义查询-按状态过滤",
+			method:        "GET",
+			queryParams:   `q={"Action":"select","OrderBy":[{"ID":"DESC"}],"Filter":{"Name":"","Status":"02","StartTime":0,"EndTime":0},"Page":1,"PageSize":10}`,
+			userID:        testUserID,
+			userRole:      2,
+			expectedError: false,
+			description:   "按考试状态过滤查询",
+			checkResult: func(t *testing.T, serviceCtx *cmn.ServiceCtx) {
+				if serviceCtx.Msg.Data == nil {
+					t.Error("期望返回数据，但数据为空")
+					return
+				}
+				var examList []ExamList
+				if err := json.Unmarshal(serviceCtx.Msg.Data, &examList); err != nil {
+					t.Errorf("解析返回数据失败: %v", err)
+					return
+				}
+				// 验证返回的考试状态符合过滤条件
+				for _, exam := range examList {
+					if exam.Status != "02" {
+						t.Errorf("返回的考试状态不符合过滤条件: %s", exam.Status)
+					}
+				}
+			},
+		},
+		{
+			name:          "自定义查询-分页测试",
+			method:        "GET",
+			queryParams:   `q={"Action":"select","OrderBy":[{"ID":"DESC"}],"Filter":{"Name":"","Status":"","StartTime":0,"EndTime":0},"Page":1,"PageSize":1}`,
+			userID:        testUserID,
+			userRole:      2,
+			expectedError: false,
+			description:   "测试分页功能",
+			checkResult: func(t *testing.T, serviceCtx *cmn.ServiceCtx) {
+				if serviceCtx.Msg.Data == nil {
+					t.Error("期望返回数据，但数据为空")
+					return
+				}
+				var examList []ExamList
+				if err := json.Unmarshal(serviceCtx.Msg.Data, &examList); err != nil {
+					t.Errorf("解析返回数据失败: %v", err)
+					return
+				}
+				// 由于PageSize设置为1，返回的考试数量应该不超过1
+				if len(examList) > 1 {
+					t.Errorf("分页测试失败，期望最多返回1个考试，实际返回%d个", len(examList))
+				}
+			},
+		},
+		{
+			name:          "自定义查询-分页测试",
+			method:        "GET",
+			queryParams:   `q={"Action":"select","OrderBy":[{"ID":"DESC"}],"Filter":{"Name":"","Status":"","StartTime":0,"EndTime":0},"Page":-1,"PageSize":1}`,
+			userID:        testUserID,
+			userRole:      2,
+			expectedError: false,
+			description:   "测试分页功能",
+			checkResult: func(t *testing.T, serviceCtx *cmn.ServiceCtx) {
+				if serviceCtx.Msg.Data == nil {
+					t.Error("期望返回数据，但数据为空")
+					return
+				}
+				var examList []ExamList
+				if err := json.Unmarshal(serviceCtx.Msg.Data, &examList); err != nil {
+					t.Errorf("解析返回数据失败: %v", err)
+					return
+				}
+				// 由于PageSize设置为1，返回的考试数量应该不超过1
+				if len(examList) > 1 {
+					t.Errorf("分页测试失败，期望最多返回1个考试，实际返回%d个", len(examList))
+				}
+			},
+		},
+		{
+			name:          "自定义查询-分页测试",
+			method:        "GET",
+			queryParams:   `q={"Action":"select","OrderBy":[{"ID":"DESC"}],"Filter":{"Name":"","Status":"","StartTime":0,"EndTime":0},"Page":0,"PageSize":-1}`,
+			userID:        testUserID,
+			userRole:      2,
+			expectedError: false,
+			description:   "测试分页功能",
+			checkResult: func(t *testing.T, serviceCtx *cmn.ServiceCtx) {
+				if serviceCtx.Msg.Data == nil {
+					t.Error("期望返回数据，但数据为空")
+					return
+				}
+				var examList []ExamList
+				if err := json.Unmarshal(serviceCtx.Msg.Data, &examList); err != nil {
+					t.Errorf("解析返回数据失败: %v", err)
+					return
+				}
+				// 由于PageSize设置为1，返回的考试数量应该不超过1
+				if len(examList) > 1 {
+					t.Errorf("分页测试失败，期望最多返回1个考试，实际返回%d个", len(examList))
+				}
+			},
+		},
+		{
+			name:          "无效JSON查询参数",
+			method:        "GET",
+			queryParams:   `q={"invalid json}`,
+			userID:        testUserID,
+			userRole:      2,
+			expectedError: true,
+			description:   "无效的JSON查询参数应返回错误",
+		},
+		{
+			name:          "时间范围错误-开始时间晚于结束时间",
+			method:        "GET",
+			queryParams:   `q={"Action":"select","Filter":{"Name":"","Status":"","StartTime":2000000000000,"EndTime":1000000000000},"Page":1,"PageSize":10}`,
+			userID:        testUserID,
+			userRole:      2,
+			expectedError: true,
+			errorContains: "开始时间不能晚于结束时间",
+			description:   "开始时间晚于结束时间应返回错误",
+		},
+		{
+			name:          "不支持的HTTP方法",
+			method:        "POST",
+			queryParams:   "",
+			userID:        testUserID,
+			userRole:      2,
+			expectedError: true,
+			errorContains: "unsupported method",
+			description:   "POST方法应返回不支持的错误",
+		},
+		{
+			name:          "模拟数据库查询错误",
+			method:        "GET",
+			queryParams:   "",
+			userID:        testUserID,
+			userRole:      2,
+			forceError:    "conn.QueryRow",
+			expectedError: true,
+			description:   "模拟数据库查询错误",
+		},
+		{
+			name:          "模拟JSON序列化错误1",
+			method:        "GET",
+			queryParams:   "",
+			userID:        testUserID,
+			userRole:      2,
+			forceError:    "json.Marshal1",
+			expectedError: true,
+			description:   "模拟JSON序列化错误1",
+		},
+		{
+			name:          "模拟JSON序列化错误2",
+			method:        "GET",
+			queryParams:   "",
+			userID:        testUserID,
+			userRole:      2,
+			forceError:    "json.Marshal2",
+			expectedError: true,
+			description:   "模拟JSON序列化错误2",
+		},
+		{
+			name:          "模拟强制JSON解析错误1",
+			method:        "GET",
+			queryParams:   "",
+			userID:        testUserID,
+			userRole:      2,
+			forceError:    "json.Unmarshal1",
+			expectedError: true,
+			description:   "模拟强制JSON解析错误1",
+		},
+		{
+			name:          "模拟强制JSON解析错误2",
+			method:        "GET",
+			queryParams:   "",
+			userID:        testUserID,
+			userRole:      2,
+			forceError:    "json.Unmarshal2",
+			expectedError: true,
+			description:   "模拟强制JSON解析错误1",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// 解析查询参数
+			queryParams := url.Values{}
+			if tt.queryParams != "" {
+				if strings.HasPrefix(tt.queryParams, "q=") {
+					queryParams.Set("q", tt.queryParams[2:])
+				} else {
+					parts := strings.Split(tt.queryParams, "&")
+					for _, part := range parts {
+						if kv := strings.Split(part, "="); len(kv) == 2 {
+							queryParams.Set(kv[0], kv[1])
+						}
+					}
+				}
+			}
+
+			// 创建模拟上下文
+			ctx := createMockContextWithRole(tt.method, "/api/examList", queryParams, tt.forceError, tt.userID, tt.userRole)
+
+			// 调用被测试的函数
+			examList(ctx)
+
+			// 获取ServiceCtx以检查结果
+			serviceCtx := ctx.Value(cmn.QNearKey).(*cmn.ServiceCtx)
+
+			if tt.expectedError {
+				// 期望有错误
+				if serviceCtx.Err == nil {
+					t.Errorf("examList() 期望返回错误，但实际成功")
+					return
+				}
+
+				if tt.errorContains != "" && !containsString(serviceCtx.Err.Error(), tt.errorContains) {
+					t.Errorf("examList() 错误信息 = %v, 期望包含 %v", serviceCtx.Err.Error(), tt.errorContains)
+				}
+			} else {
+				// 期望成功
+				if serviceCtx.Err != nil {
+					t.Errorf("examList() 期望成功，但返回错误: %v", serviceCtx.Err)
+					return
+				}
+
+				// 使用自定义检查函数
+				if tt.checkResult != nil {
+					tt.checkResult(t, serviceCtx)
+				}
+			}
+		})
+	}
+}
+
+// TestExaminee 测试examinee函数
+func TestExaminee(t *testing.T) {
+	// 确保logger和数据库连接已初始化
+	if z == nil {
+		cmn.ConfigureForTest()
+	}
+
+	// 准备测试数据
+	conn := cmn.GetPgxConn()
+	ctx := context.Background()
+
+	// 测试数据ID
+	testExamID := int64(999801)
+	testSessionID := int64(999811)
+	testUserID := int64(1001)
+	testStudentID := int64(1002)
+	testExamineeID := int64(999821)
+
+	// 设置测试数据
+	tx, err := conn.Begin(ctx)
+	if err != nil {
+		t.Fatalf("创建事务失败: %v", err)
+	}
+
+	defer func() {
+		// 清理测试数据
+		tx.Rollback(ctx)
+		conn.Exec(ctx, "DELETE FROM t_examinee WHERE id = $1", testExamineeID)
+		conn.Exec(ctx, "DELETE FROM t_exam_session WHERE id = $1", testSessionID)
+		conn.Exec(ctx, "DELETE FROM t_exam_info WHERE id = $1", testExamID)
+		conn.Exec(ctx, "DELETE FROM t_user WHERE id IN ($1, $2)", testUserID, testStudentID)
+	}()
+
+	currentTime := time.Now().UnixMilli()
+
+	// 插入测试用户
+	_, err = tx.Exec(ctx, `
+		INSERT INTO t_user (id, role, account, category, official_name, create_time, update_time, status, id_card_no) 
+		VALUES 
+			($1, 2, 'test_teacher_exam', '00', '测试教师', $3, $3, '00', '110101199001011234'),
+			($2, 1, 'test_student_exam', '00', '测试学生', $3, $3, '00', '110101199001011235')
+		ON CONFLICT (id) DO NOTHING`,
+		testUserID, testStudentID, currentTime)
+	if err != nil {
+		tx.Rollback(ctx)
+		t.Fatalf("插入测试用户失败: %v", err)
+	}
+
+	// 插入考试信息
+	_, err = tx.Exec(ctx, `
+		INSERT INTO t_exam_info (id, name, type, mode, status, creator, create_time, updated_by, update_time)
+		VALUES ($1, '测试考试-考生', '00', '00', '02', $2, $3, $2, $3)
+		ON CONFLICT (id) DO NOTHING
+	`, testExamID, testUserID, currentTime)
+	if err != nil {
+		tx.Rollback(ctx)
+		t.Fatalf("插入测试考试数据失败: %v", err)
+	}
+
+	// 插入考试场次
+	_, err = tx.Exec(ctx, `
+		INSERT INTO t_exam_session (id, exam_id, paper_id, mark_method, mark_mode, session_num, start_time, end_time, duration, status, creator, create_time, updated_by, update_time)
+		VALUES ($1, $2, 1, '00', '00', 1, $3, $4, 120, '02', $5, $3, $5, $3)
+		ON CONFLICT (id) DO NOTHING
+	`, testSessionID, testExamID, currentTime, currentTime+7200000, testUserID)
+	if err != nil {
+		tx.Rollback(ctx)
+		t.Fatalf("插入测试考试场次失败: %v", err)
+	}
+
+	// 插入考生数据
+	_, err = tx.Exec(ctx, `
+		INSERT INTO t_examinee (id, student_id, exam_session_id, serial_number, examinee_number, status, creator, create_time, updated_by, update_time)
+		VALUES ($1, $2, $3, 1, '24001000001', '00', $4, $5, $4, $5)
+		ON CONFLICT (id) DO NOTHING
+	`, testExamineeID, testStudentID, testSessionID, testUserID, currentTime)
+	if err != nil {
+		tx.Rollback(ctx)
+		t.Fatalf("插入测试考生数据失败: %v", err)
+	}
+
+	// 提交事务
+	err = tx.Commit(ctx)
+	if err != nil {
+		t.Fatalf("提交事务失败: %v", err)
+	}
+
+	tests := []struct {
+		name          string
+		method        string
+		queryParams   map[string]string
+		userID        int64
+		userRole      int64
+		forceError    string
+		expectedError bool
+		errorContains string
+		checkResult   func(t *testing.T, serviceCtx *cmn.ServiceCtx)
+		description   string
+		mockValues    map[string]string
+	}{
+		{
+			name:   "GET方法-成功获取考生列表",
+			method: "GET",
+			queryParams: map[string]string{
+				"exam_id": fmt.Sprintf("%d", testExamID),
+			},
+			userID:        testUserID,
+			userRole:      2, // 教师角色
+			expectedError: false,
+			checkResult: func(t *testing.T, serviceCtx *cmn.ServiceCtx) {
+				if serviceCtx.Msg.Data == nil {
+					t.Error("期望返回考生数据，但Data为空")
+					return
+				}
+
+				var examinees []Examinee
+				err := json.Unmarshal(serviceCtx.Msg.Data, &examinees)
+				if err != nil {
+					t.Errorf("解析返回数据失败: %v", err)
+					return
+				}
+
+				// 验证数据结构
+				if len(examinees) == 0 {
+					t.Log("返回空的考生列表（这可能是正常的，如果没有考生数据）")
+				} else {
+					for _, examinee := range examinees {
+						if examinee.StudentID <= 0 {
+							t.Errorf("无效的学生ID: %d", examinee.StudentID)
+						}
+						if examinee.OfficialName == "" {
+							t.Error("学生姓名不能为空")
+						}
+						if examinee.Account == "" {
+							t.Error("学生账号不能为空")
+						}
+					}
+				}
+			},
+			description: "教师角色成功获取考生列表",
+		},
+		{
+			name:   "GET方法-获取权限失败",
+			method: "GET",
+			queryParams: map[string]string{
+				"exam_id": fmt.Sprintf("%d", testExamID),
+			},
+			userID:        testUserID,
+			userRole:      2, // 教师角色
+			expectedError: true,
+			mockValues:    map[string]string{"test": "validateUserExamPermission-error"},
+			description:   "获取权限失败",
+		},
+		{
+			name:        "GET方法-缺少exam_id参数",
+			method:      "GET",
+			queryParams: map[string]string{
+				// 不提供exam_id
+			},
+			userID:        testUserID,
+			userRole:      2,
+			expectedError: true,
+			errorContains: "无效的考试ID",
+			description:   "缺少exam_id参数应返回错误",
+		},
+		{
+			name:   "GET方法-无效的exam_id参数",
+			method: "GET",
+			queryParams: map[string]string{
+				"exam_id": "invalid",
+			},
+			userID:        testUserID,
+			userRole:      2,
+			expectedError: true,
+			errorContains: "无效的考试ID",
+			description:   "无效的exam_id参数应返回错误",
+		},
+		{
+			name:   "GET方法-exam_id为0",
+			method: "GET",
+			queryParams: map[string]string{
+				"exam_id": "0",
+			},
+			userID:        testUserID,
+			userRole:      2,
+			expectedError: true,
+			errorContains: "无效的考试ID",
+			description:   "exam_id为0应返回错误",
+		},
+		{
+			name:   "GET方法-exam_id为负数",
+			method: "GET",
+			queryParams: map[string]string{
+				"exam_id": "-1",
+			},
+			userID:        testUserID,
+			userRole:      2,
+			expectedError: true,
+			errorContains: "无效的考试ID",
+			description:   "exam_id为负数应返回错误",
+		},
+		{
+			name:   "GET方法-无效的用户ID",
+			method: "GET",
+			queryParams: map[string]string{
+				"exam_id": fmt.Sprintf("%d", testExamID),
+			},
+			userID:        0, // 无效的用户ID
+			userRole:      2,
+			expectedError: true,
+			errorContains: "无效的用户ID",
+			description:   "无效的用户ID应返回错误",
+		},
+		{
+			name:   "GET方法-无效的用户角色",
+			method: "GET",
+			queryParams: map[string]string{
+				"exam_id": fmt.Sprintf("%d", testExamID),
+			},
+			userID:        testUserID,
+			userRole:      0, // 无效的用户角色
+			expectedError: true,
+			errorContains: "无效的用户角色",
+			description:   "无效的用户角色应返回错误",
+		},
+		{
+			name:   "GET方法-不存在的考试ID",
+			method: "GET",
+			queryParams: map[string]string{
+				"exam_id": "999999", // 不存在的考试ID
+			},
+			userID:        testUserID,
+			userRole:      2,
+			expectedError: true,
+			errorContains: "无权限访问该考试",
+			description:   "不存在的考试ID应返回权限错误",
+		},
+		{
+			name:   "POST方法-不支持的方法",
+			method: "POST",
+			queryParams: map[string]string{
+				"exam_id": fmt.Sprintf("%d", testExamID),
+			},
+			userID:        testUserID,
+			userRole:      2,
+			expectedError: true,
+			errorContains: "unsupported method",
+			description:   "不支持的HTTP方法应返回错误",
+		},
+		{
+			name:   "PUT方法-不支持的方法",
+			method: "PUT",
+			queryParams: map[string]string{
+				"exam_id": fmt.Sprintf("%d", testExamID),
+			},
+			userID:        testUserID,
+			userRole:      2,
+			expectedError: true,
+			errorContains: "unsupported method",
+			description:   "不支持的HTTP方法应返回错误",
+		},
+		{
+			name:   "DELETE方法-不支持的方法",
+			method: "DELETE",
+			queryParams: map[string]string{
+				"exam_id": fmt.Sprintf("%d", testExamID),
+			},
+			userID:        testUserID,
+			userRole:      2,
+			expectedError: true,
+			errorContains: "unsupported method",
+			description:   "不支持的HTTP方法应返回错误",
+		},
+		{
+			name:   "GET方法-模拟数据库查询错误",
+			method: "GET",
+			queryParams: map[string]string{
+				"exam_id": fmt.Sprintf("%d", testExamID),
+			},
+			userID:        testUserID,
+			userRole:      2,
+			forceError:    "conn.Query",
+			expectedError: true,
+			errorContains: "force error",
+			description:   "模拟数据库查询错误",
+		},
+		{
+			name:   "GET方法-模拟数据库扫描错误",
+			method: "GET",
+			queryParams: map[string]string{
+				"exam_id": fmt.Sprintf("%d", testExamID),
+			},
+			userID:        testUserID,
+			userRole:      2,
+			forceError:    "conn.Scan",
+			expectedError: true,
+			description:   "模拟数据库扫描错误",
+		},
+		{
+			name:   "GET方法-模拟数据库Rows错误",
+			method: "GET",
+			queryParams: map[string]string{
+				"exam_id": fmt.Sprintf("%d", testExamID),
+			},
+			userID:        testUserID,
+			userRole:      2,
+			forceError:    "rows.Err",
+			expectedError: true,
+			description:   "模拟数据库扫描错误",
+		},
+		{
+			name:   "GET方法-模拟JSON序列化错误",
+			method: "GET",
+			queryParams: map[string]string{
+				"exam_id": fmt.Sprintf("%d", testExamID),
+			},
+			userID:        testUserID,
+			userRole:      2,
+			forceError:    "json.Marshal",
+			expectedError: true,
+			errorContains: "强制JSON序列化错误",
+			description:   "模拟JSON序列化错误",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Logf("测试用例: %s", tt.description)
+
+			// 构建查询参数
+			queryParams := url.Values{}
+			for key, value := range tt.queryParams {
+				queryParams.Set(key, value)
+			}
+
+			// 创建模拟上下文
+			ctx := createMockContextWithRole(tt.method, "/api/examinee", queryParams, tt.forceError, tt.userID, tt.userRole)
+
+			// 如果有模拟的错误，设置mockValues
+			for key, value := range tt.mockValues {
+				ctx = context.WithValue(ctx, key, value)
+			}
+
+			// 调用被测试的函数
+			examinee(ctx)
+
+			// 获取ServiceCtx以检查结果
+			serviceCtx := ctx.Value(cmn.QNearKey).(*cmn.ServiceCtx)
+
+			if tt.expectedError {
+				// 期望有错误
+				if serviceCtx.Err == nil {
+					t.Errorf("examinee() 期望返回错误，但实际成功")
+					return
+				}
+
+				if tt.errorContains != "" && !containsString(serviceCtx.Err.Error(), tt.errorContains) {
+					t.Errorf("examinee() 错误信息 = %v, 期望包含 %v", serviceCtx.Err.Error(), tt.errorContains)
+				}
+			} else {
+				// 期望成功
+				if serviceCtx.Err != nil {
+					t.Errorf("examinee() 期望成功，但返回错误: %v", serviceCtx.Err)
+					return
+				}
+
+				// 使用自定义检查函数
+				if tt.checkResult != nil {
+					tt.checkResult(t, serviceCtx)
 				}
 			}
 		})
