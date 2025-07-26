@@ -11,7 +11,7 @@ var (
 	ErrInvalidUserID                 = errors.New("invalid user ID")
 	ErrEmptyPaperIDs                 = errors.New("paper IDs cannot be empty")
 	ErrPaperAlreadyDeletedOrUnNormal = errors.New("paper already deleted or unnormal")
-	ErrInvalidPaperID                = errors.New("invalid paper id")
+	ErrInvalidPaperID                = errors.New("试卷ID不合规")
 	ErrUserForbidden                 = errors.New("user forbidden")
 	ErrPaperLocked                   = errors.New("paper locked")
 	ErrLockAcquire                   = errors.New("paper lock acquired failed")

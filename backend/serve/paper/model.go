@@ -44,7 +44,7 @@ type AddQuestionsRequest struct {
 }
 
 type AddQuestionGroupRequest struct {
-	Name  string `json:"name" validate:"required"`
+	Name  string `json:"name" validate:"required,min=1"`
 	Order int    `json:"order" validate:"required,min=1"`
 }
 

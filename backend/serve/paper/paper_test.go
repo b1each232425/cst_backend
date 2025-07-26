@@ -44,7 +44,7 @@ func createMockContextWithBody(method, path string, data any, forceError string,
 	} else {
 		z.Sugar().Info(data)
 		// 如果 data 是 nil，构造一个空的请求体
-		req = httptest.NewRequest(method, path, strings.NewReader(string([]byte{})))
+		req = httptest.NewRequest(method, path, nil)
 	}
 
 	// 设置请求头
@@ -138,6 +138,7 @@ func TestPaperListGetMethod(t *testing.T) {
 		wantError     bool
 		userID        int64
 		forceError    string
+		expectedError string // 新增期望的错误信息字段
 		setup         func() []int64
 	}{
 		{
@@ -153,7 +154,7 @@ func TestPaperListGetMethod(t *testing.T) {
 					var id int64
 					_ = db.QueryRow(ctx, `INSERT INTO t_paper 
     (name, category, creator, create_time, updated_by, update_time, status) 
-VALUES ($1, '00', $2, $3, $2, $3, '00') RETURNING id`, fmt.Sprintf("测试试卷%d", i+1), userID, time.Now().UnixMilli()).Scan(&id)
+	VALUES ($1, '00', $2, $3, $2, $3, '00') RETURNING id`, fmt.Sprintf("测试试卷%d", i+1), userID, time.Now().UnixMilli()).Scan(&id)
 					ids = append(ids, id)
 				}
 				return ids
@@ -170,7 +171,7 @@ VALUES ($1, '00', $2, $3, $2, $3, '00') RETURNING id`, fmt.Sprintf("测试试卷
 				var id int64
 				_ = db.QueryRow(ctx,
 					`INSERT INTO t_paper (name, category, creator, create_time, updated_by, update_time, status) 
-VALUES ('唯一名试卷', '00', $1, $2, $1, $2, '00') RETURNING id`, userID, time.Now().UnixMilli()).Scan(&id)
+	VALUES ('唯一名试卷', '00', $1, $2, $1, $2, '00') RETURNING id`, userID, time.Now().UnixMilli()).Scan(&id)
 				return []int64{id}
 			},
 		},
@@ -185,7 +186,7 @@ VALUES ('唯一名试卷', '00', $1, $2, $1, $2, '00') RETURNING id`, userID, ti
 				var id int64
 				_ = db.QueryRow(ctx,
 					`INSERT INTO t_paper (name, category,tags, creator, create_time, updated_by, update_time, status) 
-VALUES ('唯一名试卷', '00',$3, $1, $2, $1, $2, '00') RETURNING id`, userID, time.Now().UnixMilli(), types.JSONText(`["vue"]`)).Scan(&id)
+	VALUES ('唯一名试卷', '00',$3, $1, $2, $1, $2, '00') RETURNING id`, userID, time.Now().UnixMilli(), types.JSONText(`["vue"]`)).Scan(&id)
 				return []int64{id}
 			},
 		},
@@ -200,7 +201,7 @@ VALUES ('唯一名试卷', '00',$3, $1, $2, $1, $2, '00') RETURNING id`, userID,
 				var id int64
 				_ = db.QueryRow(ctx,
 					`INSERT INTO t_paper (name, category, creator, create_time, updated_by, update_time, status) 
-VALUES ('分类试卷', '02', $1, $2, $1, $2, '00') RETURNING id`, userID, time.Now().UnixMilli()).Scan(&id)
+	VALUES ('分类试卷', '02', $1, $2, $1, $2, '00') RETURNING id`, userID, time.Now().UnixMilli()).Scan(&id)
 				return []int64{id}
 			},
 		},
@@ -215,7 +216,7 @@ VALUES ('分类试卷', '02', $1, $2, $1, $2, '00') RETURNING id`, userID, time.
 				var id int64
 				_ = db.QueryRow(ctx,
 					`INSERT INTO t_paper (name, category, creator, create_time, updated_by, update_time, status) 
-VALUES ('分类试卷', '03', $1, $2, $1, $2, '00') RETURNING id`, userID, time.Now().UnixMilli()).Scan(&id)
+	VALUES ('分类试卷', '03', $1, $2, $1, $2, '00') RETURNING id`, userID, time.Now().UnixMilli()).Scan(&id)
 				return []int64{id}
 			},
 		},
@@ -264,7 +265,7 @@ VALUES ('分类试卷', '03', $1, $2, $1, $2, '00') RETURNING id`, userID, time.
 				var id int64
 				_ = db.QueryRow(ctx,
 					`INSERT INTO t_paper (name, category,tags, creator, create_time, updated_by, update_time, status) 
-VALUES ('组合试卷', '02',$3, $1, $2, $1, $2, '00') RETURNING id`, userID, time.Now().UnixMilli(), types.JSONText(`["go"]`)).Scan(&id)
+	VALUES ('组合试卷', '02',$3, $1, $2, $1, $2, '00') RETURNING id`, userID, time.Now().UnixMilli(), types.JSONText(`["go"]`)).Scan(&id)
 				return []int64{id}
 			},
 		},
@@ -325,12 +326,13 @@ VALUES ('组合试卷', '02',$3, $1, $2, $1, $2, '00') RETURNING id`, userID, ti
 			setup:         func() []int64 { return nil },
 		},
 		{
-			name:       "无效用户ID",
-			query:      "",
-			wantError:  true,
-			userID:     0,
-			forceError: "",
-			setup:      func() []int64 { return nil },
+			name:          "无效用户ID",
+			query:         "",
+			wantError:     true,
+			userID:        0,
+			forceError:    "",
+			expectedError: "Invalid UserID",
+			setup:         func() []int64 { return nil },
 		},
 		{
 			name:       "ForceErrorQueryCount",
@@ -360,7 +362,7 @@ VALUES ('组合试卷', '02',$3, $1, $2, $1, $2, '00') RETURNING id`, userID, ti
 					var id int64
 					_ = db.QueryRow(ctx, `INSERT INTO t_paper 
     (name, category, creator, create_time, updated_by, update_time, status) 
-VALUES ($1, '00', $2, $3, $2, $3, '00') RETURNING id`, fmt.Sprintf("测试试卷%d", i+1), userID, time.Now().UnixMilli()).Scan(&id)
+	VALUES ($1, '00', $2, $3, $2, $3, '00') RETURNING id`, fmt.Sprintf("测试试卷%d", i+1), userID, time.Now().UnixMilli()).Scan(&id)
 					ids = append(ids, id)
 				}
 				return ids
@@ -378,7 +380,7 @@ VALUES ($1, '00', $2, $3, $2, $3, '00') RETURNING id`, fmt.Sprintf("测试试卷
 					var id int64
 					_ = db.QueryRow(ctx, `INSERT INTO t_paper 
     (name, category, creator, create_time, updated_by, update_time, status) 
-VALUES ($1, '00', $2, $3, $2, $3, '00') RETURNING id`, fmt.Sprintf("测试试卷%d", i+1), userID, time.Now().UnixMilli()).Scan(&id)
+	VALUES ($1, '00', $2, $3, $2, $3, '00') RETURNING id`, fmt.Sprintf("测试试卷%d", i+1), userID, time.Now().UnixMilli()).Scan(&id)
 					ids = append(ids, id)
 				}
 				return ids
@@ -398,8 +400,8 @@ VALUES ($1, '00', $2, $3, $2, $3, '00') RETURNING id`, fmt.Sprintf("测试试卷
 			q.R.URL.RawQuery = tt.query
 			PaperList(ctxGet)
 			if tt.wantError {
-				if q.Msg.Status == 0 {
-					t.Errorf("期望错误, 实际无错: %+v", q.Msg)
+				if q.Msg.Status == 0 || !strings.Contains(q.Msg.Msg, tt.expectedError) {
+					t.Errorf("期望错误信息包含'%s', 实际: %+v", tt.expectedError, q.Msg)
 				}
 			} else {
 				if q.Msg.Status != 0 {
@@ -422,12 +424,13 @@ func TestPaperListDeleteMethod(t *testing.T) {
 	userID := int64(90003)
 
 	tests := []struct {
-		name       string
-		deleteIDs  []int64
-		wantError  bool
-		userID     int64
-		forceError string
-		setup      func() []int64
+		name          string
+		deleteIDs     []int64
+		wantError     bool
+		userID        int64
+		forceError    string
+		expectedError string
+		setup         func() []int64
 	}{
 		{
 			name:       "正常批量删除",
@@ -718,11 +721,12 @@ func TestManualPaperPostMethod(t *testing.T) {
 	userID := int64(91001)
 
 	tests := []struct {
-		name       string
-		wantError  bool
-		userID     int64
-		forceError string
-		setup      func() []int64
+		name          string
+		wantError     bool
+		userID        int64
+		forceError    string
+		expectedError string
+		setup         func() []int64
 	}{
 		{
 			name:       "正常新建试卷",
@@ -829,12 +833,14 @@ func TestManualPaperPutMethod(t *testing.T) {
 	userID := int64(91002)
 
 	tests := []struct {
-		name       string
-		reqBody    *UpdateManualPaperRequest
-		wantError  bool
-		userID     int64
-		forceError string
-		setup      func() (int64, []int64)
+		name          string
+		reqBody       *UpdateManualPaperRequest
+		wantError     bool
+		userID        int64
+		forceError    string
+		expectedError string // 增加期望的错误信息字段
+		setup         func() (int64, []int64)
+		validate      func(*testing.T, context.Context, *cmn.ServiceCtx, int64)
 	}{
 		{
 			name: "正常更新试卷",
@@ -863,6 +869,13 @@ func TestManualPaperPutMethod(t *testing.T) {
                                     RETURNING id`, userID, time.Now().UnixMilli()).Scan(&id)
 				return id, []int64{id}
 			},
+			validate: func(t *testing.T, ctx context.Context, q *cmn.ServiceCtx, paperID int64) {
+				var name, category, level, desc string
+				_ = db.QueryRow(ctx, "SELECT name, category, level, description FROM t_paper WHERE id=$1", paperID).Scan(&name, &category, &level, &desc)
+				if name != "单元测试试卷" || category != "02" || level != "04" || desc != "desc" {
+					t.Errorf("PUT后数据库字段未正确更新: got %s %s %s %s", name, category, level, desc)
+				}
+			},
 		},
 		{
 			name: "无效用户ID",
@@ -881,9 +894,10 @@ func TestManualPaperPutMethod(t *testing.T) {
 					},
 				},
 			},
-			wantError:  true,
-			userID:     0,
-			forceError: "",
+			wantError:     true,
+			userID:        0,
+			forceError:    "",
+			expectedError: "无效用户ID",
 			setup: func() (int64, []int64) {
 				var id int64
 				_ = db.QueryRow(ctx, `INSERT INTO t_paper (name, category, creator, create_time, updated_by, update_time, status) 
@@ -909,9 +923,10 @@ func TestManualPaperPutMethod(t *testing.T) {
 					},
 				},
 			},
-			wantError:  true,
-			userID:     userID,
-			forceError: "ParseInt-err",
+			wantError:     true,
+			userID:        userID,
+			forceError:    "",
+			expectedError: "invalid syntax",
 			setup: func() (int64, []int64) {
 				var id int64
 				_ = db.QueryRow(ctx, `INSERT INTO t_paper (name, category, creator, create_time, updated_by, update_time, status) VALUES ('待更新试卷', '00', $1, $2, $1, $2, '00') RETURNING id`, userID, time.Now().UnixMilli()).Scan(&id)
@@ -1062,6 +1077,349 @@ func TestManualPaperPutMethod(t *testing.T) {
 				return 99999999, []int64{id}
 			},
 		},
+		//测试updateManualPaper函数
+		{
+			name: "BeginTx-err",
+			reqBody: &UpdateManualPaperRequest{
+				[]UpdateManualPaperAction{
+					{
+						Action: "update_info",
+						Payload: json.RawMessage(`{  
+                        "Name": "单元测试试卷",
+                        "category": "02",
+                        "level": "04",
+                        "duration": 60,
+                        "description": "desc",
+                        "tags": ["tag1", "tag2"]
+                    }`),
+					},
+				},
+			},
+			wantError:  true,
+			userID:     userID,
+			forceError: "BeginTx-err",
+			setup: func() (int64, []int64) {
+				var id int64
+				_ = db.QueryRow(ctx, `INSERT INTO t_paper (name, category, creator, create_time, updated_by, update_time, status) VALUES ('待更新试卷', '00', $1, $2, $1, $2, '00') RETURNING id`, userID, time.Now().UnixMilli()).Scan(&id)
+				return id, []int64{id}
+			},
+		},
+		{
+			name: "recover-err",
+			reqBody: &UpdateManualPaperRequest{
+				[]UpdateManualPaperAction{
+					{
+						Action: "update_info",
+						Payload: json.RawMessage(`{  
+                        "Name": "单元测试试卷",
+                        "category": "02",
+                        "level": "04",
+                        "duration": 60,
+                        "description": "desc",
+                        "tags": ["tag1", "tag2"]
+                    }`),
+					},
+				},
+			},
+			wantError:  true,
+			userID:     userID,
+			forceError: "recover-err",
+			setup: func() (int64, []int64) {
+				var id int64
+				_ = db.QueryRow(ctx, `INSERT INTO t_paper (name, category, creator, create_time, updated_by, update_time, status) VALUES ('单元测试试卷', '02', $1, $2, $1, $2, '00') RETURNING id`, userID, time.Now().UnixMilli()).Scan(&id)
+				return id, []int64{id}
+			},
+		},
+		{
+			name: "Rollback-err",
+			reqBody: &UpdateManualPaperRequest{
+				[]UpdateManualPaperAction{
+					{
+						Action: "rollback-err",
+						Payload: json.RawMessage(`{  
+                        "Name": "单元测试试卷",
+                        "category": "02",
+                        "level": "04",
+                        "duration": 60,
+                        "description": "desc",
+                        "tags": ["tag1", "tag2"]
+                    }`),
+					},
+				},
+			},
+			wantError:  true,
+			userID:     userID,
+			forceError: "Rollback-err",
+			setup: func() (int64, []int64) {
+				var id int64
+				_ = db.QueryRow(ctx, `INSERT INTO t_paper (name, category, creator, create_time, updated_by, update_time, status) VALUES ('待更新试卷', '00', $1, $2, $1, $2, '00') RETURNING id`, userID, time.Now().UnixMilli()).Scan(&id)
+				return id, []int64{id}
+			},
+			validate: func(t *testing.T, ctx context.Context, q *cmn.ServiceCtx, paperID int64) {
+				var name, category string
+				_ = db.QueryRow(ctx, "SELECT name, category FROM t_paper WHERE id=$1", paperID).Scan(&name, &category)
+				if name != "待更新试卷" || category != "00" {
+					t.Errorf("回滚错误后数据被修改: name=%s category=%s", name, category)
+				}
+			},
+		},
+		{
+			name: "Commit-err",
+			reqBody: &UpdateManualPaperRequest{
+				[]UpdateManualPaperAction{
+					{
+						Action: "update_info",
+						Payload: json.RawMessage(`{  
+                        "Name": "单元测试试卷",
+                        "category": "02",
+                        "level": "04",
+                        "duration": 60,
+                        "description": "desc",
+                        "tags": ["tag1", "tag2"]
+                    }`),
+					},
+				},
+			},
+			wantError:  true,
+			userID:     userID,
+			forceError: "Commit-err",
+			setup: func() (int64, []int64) {
+				var id int64
+				_ = db.QueryRow(ctx, `INSERT INTO t_paper (name, category, creator, create_time, updated_by, update_time, status) VALUES ('待更新试卷', '00', $1, $2, $1, $2, '00') RETURNING id`, userID, time.Now().UnixMilli()).Scan(&id)
+				return id, []int64{id}
+			},
+		},
+		//update_info
+		{
+			name: "update_info-json.Unmarshal-err",
+			reqBody: &UpdateManualPaperRequest{
+				[]UpdateManualPaperAction{
+					{
+						Action:  "update_info",
+						Payload: json.RawMessage(`[]`),
+					},
+				},
+			},
+			wantError:  true,
+			userID:     userID,
+			forceError: "",
+			setup: func() (int64, []int64) {
+				var id int64
+				_ = db.QueryRow(ctx, `INSERT INTO t_paper (name, category, creator, create_time, updated_by, update_time, status) VALUES ('待更新试卷', '00', $1, $2, $1, $2, '00') RETURNING id`, userID, time.Now().UnixMilli()).Scan(&id)
+				return id, []int64{id}
+			},
+			validate: func(t *testing.T, ctx context.Context, q *cmn.ServiceCtx, paperID int64) {
+				var name, category string
+				_ = db.QueryRow(ctx, "SELECT name, category FROM t_paper WHERE id=$1", paperID).Scan(&name, &category)
+				if name != "待更新试卷" || category != "00" {
+					t.Errorf("非法JSON反序列化错误后数据被修改: name=%s category=%s", name, category)
+				}
+			},
+		},
+		{
+			name: "empty update_info",
+			reqBody: &UpdateManualPaperRequest{
+				[]UpdateManualPaperAction{
+					{
+						Action:  "update_info",
+						Payload: json.RawMessage(`{}`),
+					},
+				},
+			},
+			wantError:  false,
+			userID:     userID,
+			forceError: "",
+			setup: func() (int64, []int64) {
+				var id int64
+				_ = db.QueryRow(ctx, `INSERT INTO t_paper (name, category, creator, create_time, updated_by, update_time, status) VALUES ('待更新试卷', '00', $1, $2, $1, $2, '00') RETURNING id`, userID, time.Now().UnixMilli()).Scan(&id)
+				return id, []int64{id}
+			},
+			validate: func(t *testing.T, ctx context.Context, q *cmn.ServiceCtx, paperID int64) {
+				var name, category, level, desc string
+				var updateTime int64
+				_ = db.QueryRow(ctx, "SELECT name, category, level, description, update_time FROM t_paper WHERE id=$1", paperID).Scan(&name, &category, &level, &desc, &updateTime)
+				if name != "待更新试卷" || category != "00" || level != "" || desc != "" {
+					t.Errorf("空更新后数据库字段被修改: name=%s category=%s level=%s desc=%s", name, category, level, desc)
+				}
+			},
+		},
+		{
+			name: "update_info-tx.Exec-err",
+			reqBody: &UpdateManualPaperRequest{
+				[]UpdateManualPaperAction{
+					{
+						Action: "update_info",
+						Payload: json.RawMessage(`{  
+                        "Name": "单元测试试卷",
+                        "category": "02",
+                        "level": "04",
+                        "duration": 60,
+                        "description": "desc",
+                        "tags": ["tag1", "tag2"]
+                    }`),
+					},
+				},
+			},
+			wantError:  true,
+			userID:     userID,
+			forceError: "tx.Exec-err",
+			setup: func() (int64, []int64) {
+				var id int64
+				_ = db.QueryRow(ctx, `INSERT INTO t_paper (name, category, creator, create_time, updated_by, update_time, status) VALUES ('待更新试卷', '00', $1, $2, $1, $2, '00') RETURNING id`, userID, time.Now().UnixMilli()).Scan(&id)
+				return id, []int64{id}
+			},
+			validate: func(t *testing.T, ctx context.Context, q *cmn.ServiceCtx, paperID int64) {
+				var name, category string
+				_ = db.QueryRow(ctx, "SELECT name, category FROM t_paper WHERE id=$1", paperID).Scan(&name, &category)
+				if name != "待更新试卷" || category != "00" {
+					t.Errorf("tx.Exec执行失败，事务应该回退，数据不应该更新: name=%s category=%s", name, category)
+				}
+			},
+		},
+		//add_group
+		{
+			name: "add_group-json.Unmarshal-err",
+			reqBody: &UpdateManualPaperRequest{
+				[]UpdateManualPaperAction{
+					{
+						Action:  "add_group",
+						Payload: json.RawMessage(`[]`),
+					},
+				},
+			},
+			wantError:  true,
+			userID:     userID,
+			forceError: "",
+			setup: func() (int64, []int64) {
+				var id int64
+				_ = db.QueryRow(ctx, `INSERT INTO t_paper (name, category, creator, create_time, updated_by, update_time, status) VALUES ('待更新试卷', '00', $1, $2, $1, $2, '00') RETURNING id`, userID, time.Now().UnixMilli()).Scan(&id)
+				return id, []int64{id}
+			},
+			validate: func(t *testing.T, ctx context.Context, q *cmn.ServiceCtx, paperID int64) {
+				var name, category string
+				_ = db.QueryRow(ctx, "SELECT name, category FROM t_paper WHERE id=$1", paperID).Scan(&name, &category)
+				if name != "待更新试卷" || category != "00" {
+					t.Errorf("非法JSON反序列化错误后数据被修改: name=%s category=%s", name, category)
+				}
+			},
+		},
+		{
+			name: "正常添加题组",
+			reqBody: &UpdateManualPaperRequest{
+				[]UpdateManualPaperAction{
+					{
+						Action: "add_group",
+						Payload: json.RawMessage(`{
+                            "name": "一、单选题",
+                            "order": 1
+                        }`),
+					},
+				},
+			},
+			wantError:  false,
+			userID:     userID,
+			forceError: "",
+			setup: func() (int64, []int64) {
+				var id int64
+				_ = db.QueryRow(ctx, `INSERT INTO t_paper (name, category, creator, create_time, updated_by, update_time, status) VALUES ('待更新试卷', '00', $1, $2, $1, $2, '00') RETURNING id`, userID, time.Now().UnixMilli()).Scan(&id)
+				return id, []int64{id}
+			},
+			validate: func(t *testing.T, ctx context.Context, q *cmn.ServiceCtx, paperID int64) {
+				// 从响应中获取新建的题组ID
+				var results []ActionResult
+				err := json.Unmarshal(q.Msg.Data, &results)
+				if err != nil {
+					t.Fatalf("解析响应失败: %v", err)
+				}
+
+				// 将 result.Result 从 float64 转换为 int64
+				resultFloat, ok := results[0].Result.(float64)
+				if !ok {
+					t.Fatalf("无法将result转换为float64,实际类型=%T", results[0].Result)
+				}
+				GroupID := int64(resultFloat)
+
+				// 验证题组是否被正确创建
+				var name string
+				var order int
+				err = db.QueryRow(ctx, `SELECT name, "order" FROM t_paper_group WHERE id=$1 AND paper_id=$2`,
+					GroupID, paperID).Scan(&name, &order)
+
+				if err != nil {
+					t.Fatalf("查询题组失败: %v", err)
+				}
+
+				// 验证字段值
+				if name != "一、单选题" {
+					t.Errorf("题组名称错误,期望='一、单选题',实际=%s", name)
+				}
+				if order != 1 {
+					t.Errorf("题组顺序错误,期望=1,实际=%d", order)
+				}
+			},
+		},
+		{
+			name: "add_group-tx.QueryRow-err",
+			reqBody: &UpdateManualPaperRequest{
+				[]UpdateManualPaperAction{
+					{
+						Action: "add_group",
+						Payload: json.RawMessage(`{
+                            "name": "一、单选题",
+                            "order": 1
+                        }`),
+					},
+				},
+			},
+			wantError:  true,
+			userID:     userID,
+			forceError: "tx.QueryRow-err",
+			setup: func() (int64, []int64) {
+				var id int64
+				_ = db.QueryRow(ctx, `INSERT INTO t_paper (name, category, creator, create_time, updated_by, update_time, status) VALUES ('待更新试卷', '00', $1, $2, $1, $2, '00') RETURNING id`, userID, time.Now().UnixMilli()).Scan(&id)
+				return id, []int64{id}
+			},
+			validate: func(t *testing.T, ctx context.Context, q *cmn.ServiceCtx, paperID int64) {
+				// 校验响应是否包含错误信息
+				if q.Msg.Status == 0 || !strings.Contains(q.Msg.Msg, "tx.QueryRow-err") {
+					t.Errorf("期望QueryRow错误,实际响应:%+v", q.Msg)
+				}
+
+				// 验证没有创建题组
+				var count int
+				err := db.QueryRow(ctx, "SELECT COUNT(*) FROM t_paper_group WHERE paper_id=$1", paperID).Scan(&count)
+				if err != nil {
+					t.Fatalf("查询题组失败: %v", err)
+				}
+				if count != 0 {
+					t.Errorf("期望题组数=0,实际=%d", count)
+				}
+			},
+		},
+		{
+			name: "add_group-validate-err",
+			reqBody: &UpdateManualPaperRequest{
+				[]UpdateManualPaperAction{
+					{
+						Action: "add_group",
+						Payload: json.RawMessage(`{
+                            "name": "",
+                            "order": -1
+                        }`),
+					},
+				},
+			},
+			wantError:  true,
+			userID:     userID,
+			forceError: "",
+			setup: func() (int64, []int64) {
+				var id int64
+				_ = db.QueryRow(ctx, `INSERT INTO t_paper (name, category, creator, create_time, updated_by, update_time, status) VALUES ('待更新试卷', '00', $1, $2, $1, $2, '00') RETURNING id`, userID, time.Now().UnixMilli()).Scan(&id)
+				return id, []int64{id}
+			},
+			validate: func(t *testing.T, ctx context.Context, q *cmn.ServiceCtx, paperID int64) {
+			},
+		},
 	}
 
 	t.Run("UnmarshalJSON", func(t *testing.T) {
@@ -1099,20 +1457,20 @@ func TestManualPaperPutMethod(t *testing.T) {
 			ctxPut := createMockContextWithBody("PUT", "/paper/manual?paper_id="+fmt.Sprint(paperID), tt.reqBody, tt.forceError, tt.userID)
 			qPut := cmn.GetCtxValue(ctxPut)
 			qPut.R.URL.RawQuery = fmt.Sprintf("paper_id=%d", paperID)
+			if tt.name == "ParseInt-err" {
+				qPut.R.URL.RawQuery = fmt.Sprintf("paper_id=%s", "123abc")
+			}
 			ManualPaper(ctxPut)
 			if tt.wantError {
-				if qPut.Msg.Status == 0 {
-					t.Errorf("期望错误, 实际无错: %+v", qPut.Msg)
+				if qPut.Msg.Status == 0 || !strings.Contains(qPut.Msg.Msg, tt.expectedError) {
+					t.Errorf("期望错误信息包含'%s', 实际: %+v", tt.expectedError, qPut.Msg)
 				}
 			} else {
 				if qPut.Msg.Status != 0 || qPut.Msg.Msg != "success" {
 					t.Fatalf("期望成功, 实际: %+v", qPut.Msg)
 				}
-				// 校验数据库字段已变更
-				var name, category, level, desc string
-				_ = db.QueryRow(ctx, "SELECT name, category, level, description FROM t_paper WHERE id=$1", paperID).Scan(&name, &category, &level, &desc)
-				if name != "单元测试试卷" || category != "02" || level != "04" || desc != "desc" {
-					t.Errorf("PUT后数据库字段未正确更新: got %s %s %s %s", name, category, level, desc)
+				if tt.validate != nil {
+					tt.validate(t, ctx, qPut, paperID)
 				}
 			}
 		})
@@ -1126,17 +1484,19 @@ func TestManualPaperGetMethod(t *testing.T) {
 	userID := int64(91003)
 
 	tests := []struct {
-		name       string
-		wantError  bool
-		userID     int64
-		forceError string
-		setup      func() (int64, []int64)
+		name          string
+		wantError     bool
+		userID        int64
+		forceError    string
+		expectedError string
+		setup         func() (int64, []int64)
 	}{
 		{
-			name:       "正常获取试卷详情",
-			wantError:  false,
-			userID:     userID,
-			forceError: "",
+			name:          "正常获取试卷详情",
+			wantError:     false,
+			userID:        userID,
+			forceError:    "",
+			expectedError: "",
 			setup: func() (int64, []int64) {
 				var id int64
 				_ = db.QueryRow(ctx, `INSERT INTO t_paper (name, category, creator, create_time, updated_by, update_time, status) VALUES ('待查试卷', '00', $1, $2, $1, $2, '00') RETURNING id`, userID, time.Now().UnixMilli()).Scan(&id)
@@ -1144,17 +1504,52 @@ func TestManualPaperGetMethod(t *testing.T) {
 			},
 		},
 		{
-			name:       "无效用户ID",
-			wantError:  true,
-			userID:     0,
-			forceError: "",
+			name:          "无效用户ID",
+			wantError:     true,
+			userID:        0,
+			forceError:    "",
+			expectedError: "无效用户ID",
 			setup: func() (int64, []int64) {
 				var id int64
 				_ = db.QueryRow(ctx, `INSERT INTO t_paper (name, category, creator, create_time, updated_by, update_time, status) VALUES ('无效用户试卷', '00', 1, $1, 1, $1, '00') RETURNING id`, time.Now().UnixMilli()).Scan(&id)
 				return id, []int64{id}
 			},
 		},
+		{
+			name:          "试卷不存在",
+			wantError:     true,
+			userID:        userID,
+			forceError:    "",
+			expectedError: ErrRecordNotFound.Error(),
+			setup: func() (int64, []int64) {
+				var id int64
+				_ = db.QueryRow(ctx, `INSERT INTO t_paper (name, category, creator, create_time, updated_by, update_time, status) VALUES ('无效用户试卷', '00', 1, $1, 1, $1, '00') RETURNING id`, time.Now().UnixMilli()).Scan(&id)
+				return 9999999, []int64{id}
+			},
+		},
+		{
+			name:          "试卷ID不合规",
+			wantError:     true,
+			userID:        userID,
+			forceError:    "",
+			expectedError: "试卷ID不合规",
+			setup: func() (int64, []int64) {
+				var id int64
+				_ = db.QueryRow(ctx, `INSERT INTO t_paper (name, category, creator, create_time, updated_by, update_time, status) VALUES ('无效用户试卷', '00', 1, $1, 1, $1, '00') RETURNING id`, time.Now().UnixMilli()).Scan(&id)
+				return -1, []int64{id}
+			},
+		},
 	}
+
+	t.Run("ParseInt Error", func(t *testing.T) {
+		ctxGet := createMockContextWithBody("GET", "/paper/manual?paper_id="+fmt.Sprint("str"), "", "", userID)
+		qGet := cmn.GetCtxValue(ctxGet)
+		qGet.R.URL.RawQuery = fmt.Sprintf("paper_id=%s", "str")
+		ManualPaper(ctxGet)
+		if qGet.Msg.Status == 0 {
+			t.Errorf("期望错误, 实际无错: %+v", qGet.Msg)
+		}
+	})
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -1167,6 +1562,9 @@ func TestManualPaperGetMethod(t *testing.T) {
 			if tt.wantError {
 				if qGet.Msg.Status == 0 {
 					t.Errorf("期望错误, 实际无错: %+v", qGet.Msg)
+				}
+				if tt.expectedError != "" && !strings.Contains(qGet.Msg.Msg, tt.expectedError) {
+					t.Errorf("期望错误消息包含 %q, 实际为: %q", tt.expectedError, qGet.Msg.Msg)
 				}
 			} else {
 				if qGet.Msg.Status != 0 || qGet.Msg.Msg != "success" {

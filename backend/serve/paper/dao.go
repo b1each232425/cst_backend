@@ -154,6 +154,10 @@ RETURNING id`
 }
 
 func handleUpdateInfo(ctx context.Context, tx pgx.Tx, paperID int64, userID int64, basicInfo UpdatePaperBasicInfoRequest) error {
+	forceError := ""
+	if val, ok := ctx.Value("force-error").(string); ok {
+		forceError = val
+	}
 	if paperID <= 0 {
 		z.Error(ErrInvalidUserID.Error())
 		return ErrInvalidUserID
@@ -184,11 +188,7 @@ func handleUpdateInfo(ctx context.Context, tx pgx.Tx, paperID int64, userID int6
 	addField(basicInfo.Description != "", "description", basicInfo.Description)
 
 	if basicInfo.Tags != nil {
-		jsonTags, err := json.Marshal(basicInfo.Tags)
-		if err != nil {
-			z.Error("failed to marshal tags: " + err.Error())
-			return err
-		}
+		jsonTags, _ := json.Marshal(basicInfo.Tags)
 		addField(true, "tags", jsonTags)
 	}
 
@@ -208,6 +208,9 @@ func handleUpdateInfo(ctx context.Context, tx pgx.Tx, paperID int64, userID int6
 	sqlStr := fmt.Sprintf("UPDATE t_paper SET %s %s", strings.Join(setClauses, ", "), whereClause)
 
 	result, err := tx.Exec(ctx, sqlStr, params...)
+	if forceError == "tx.Exec-err" {
+		err = errors.New(forceError)
+	}
 	if err != nil {
 		z.Error("failed to update paper info: " + err.Error())
 		return err
@@ -280,6 +283,10 @@ func handleDeleteGroup(ctx context.Context, tx pgx.Tx, paperID int64, userID int
 }
 
 func handleAddGroup(ctx context.Context, tx pgx.Tx, paperID int64, userID int64, req AddQuestionGroupRequest) (int64, error) {
+	forceError := ""
+	if val, ok := ctx.Value("force-error").(string); ok {
+		forceError = val
+	}
 	// 插入题组
 	var groupID int64
 	now := time.Now().UnixMilli()
@@ -298,7 +305,9 @@ func handleAddGroup(ctx context.Context, tx pgx.Tx, paperID int64, userID int64,
 		now,
 		StatusNormal,
 	).Scan(&groupID)
-
+	if forceError == "tx.QueryRow-err" {
+		err = errors.New(forceError)
+	}
 	if err != nil {
 		z.Error(err.Error())
 		return 0, err
@@ -593,6 +602,10 @@ func GetManualPaperDetailByPaperID(ctx context.Context, paperID int64) (*cmn.TVP
 		&paper.GroupsData,
 	)
 	if err != nil {
+		if errors.Is(err, ErrRecordNotFound) {
+			z.Error(err.Error())
+			return nil, ErrRecordNotFound
+		}
 		z.Error(err.Error())
 		return nil, err
 	}
