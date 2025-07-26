@@ -103,6 +103,22 @@ func Enroll(author string) {
 		DefaultDomain: int64(cmn.CDomainSys),
 	})
 
+	_ = cmn.AddService(&cmn.ServeEndPoint{
+		Fn: practiceEnterH,
+
+		Path: "/practiceEnter",
+		Name: "practiceEnter",
+
+		Developer: developer,
+		WhiteList: true,
+
+		//DomainID 创建该API的账号归属的domain
+		DomainID: int64(cmn.CDomainSys),
+
+		//DefaultDomain 该API将默认授权给的用户
+		DefaultDomain: int64(cmn.CDomainSys),
+	})
+
 }
 
 func practiceTH(ctx context.Context) {
@@ -271,7 +287,7 @@ func practiceTH(ctx context.Context) {
 			var id int64
 			id, q.Err = strconv.ParseInt(idStr, 10, 64)
 			if q.Err != nil {
-				q.Err = fmt.Errorf("分页页大小解析失败：%v", q.Err.Error())
+				q.Err = fmt.Errorf("练习ID解析失败：%v", q.Err.Error())
 				z.Error(q.Err.Error())
 				q.RespErr()
 				return
@@ -450,8 +466,8 @@ func practiceStudentListH(ctx context.Context) {
 		q.Resp()
 		return
 	}
-	s1 := `SELECT id, account, official_name, id_card_no, mobile_phone,password FROM t_user WHERE id IN (?)"`
-	query, args, err := sqlx.In(s1, result)
+	s1 := `SELECT id, account,official_name,id_card_no,mobile_phone,password FROM t_user WHERE id IN (?)`
+	query, args, err := sqlx.In(s1, tResult)
 	if err != nil {
 		q.Err = fmt.Errorf("prepare sqlx.In sql query failed:%v", err)
 		z.Error(q.Err.Error())
@@ -461,7 +477,7 @@ func practiceStudentListH(ctx context.Context) {
 	query = sqlx.Rebind(sqlx.DOLLAR, query)
 	z.Sugar().Debugf("打印一下构建的查询用户信息语句：%v", query)
 	z.Sugar().Debugf("打印一下构建的查询用户信息注入参数：%v", args)
-	rows, err = sqlxDB.QueryContext(ctx, s, args...)
+	rows, err = sqlxDB.QueryContext(ctx, query, args...)
 	if err != nil {
 		err = fmt.Errorf("query studentList in practice failed:%v", err)
 		q.Err = err
@@ -499,6 +515,79 @@ func practiceStudentListH(ctx context.Context) {
 	z.Info("---->" + cmn.FncName())
 	q.Msg.Msg = "OK"
 	q.Resp()
+}
+
+func practiceEnterH(ctx context.Context) {
+	q := cmn.GetCtxValue(ctx)
+	ctx, cancel := context.WithTimeout(q.R.Context(), 5*time.Second)
+	defer cancel()
+	p := q.R.URL.Query().Get("pid")
+	u := q.R.URL.Query().Get("uid")
+	var pid, uid int64
+	pid, q.Err = strconv.ParseInt(p, 10, 64)
+	if q.Err != nil {
+		q.Err = fmt.Errorf("练习ID获取失败：%v", q.Err.Error())
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+	uid, q.Err = strconv.ParseInt(u, 10, 64)
+	if q.Err != nil {
+		q.Err = fmt.Errorf("用户ID获取失败：%v", q.Err.Error())
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+
+	conn := cmn.GetPgxConn()
+
+	tx, err := conn.Begin(ctx)
+	if err != nil {
+		err = fmt.Errorf("beginTx called failed:%v", err)
+		q.Err = err
+		q.RespErr()
+		return
+	}
+	defer func() {
+		if err != nil {
+			// 操作失败回滚
+			err = tx.Rollback(ctx)
+			if err != nil {
+				z.Error(err.Error())
+			}
+		} else {
+			// 无错误则提交
+			err = tx.Commit(ctx)
+			if err != nil {
+				z.Error(err.Error())
+			}
+		}
+	}()
+
+	epInfo, pg, pq, err := EnterPracticeGetPaperDetails(ctx, tx, pid, uid)
+	if err != nil {
+		q.Err = err
+		q.RespErr()
+		return
+	}
+
+	result := Map{}
+	result["practiceInfo"] = *epInfo
+	result["examPaperGroup"] = pg
+	result["examPaperQuestion"] = pq
+	data, err := json.Marshal(result)
+	if err != nil {
+		z.Error(err.Error())
+		q.Err = err
+		q.RespErr()
+		return
+	}
+	q.Msg.Data = data
+	z.Info("---->" + cmn.FncName())
+	q.Msg.Msg = "OK"
+	q.Resp()
+	return
+
 }
 
 //{

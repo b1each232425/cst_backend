@@ -33,12 +33,12 @@ func UpsertPractice(ctx context.Context, p *cmn.TPractice, ps []int64, uid int64
 	if p2.Status.String == PracticeStatus.Released {
 		return fmt.Errorf("练习已经发布，不可修改练习信息")
 	}
-	return UpdatePractice(ctx, p, ps, uid)
+	return UpdatePractice(ctx, p, ps, uid, false)
 
 }
 
 // UpdatePractice 更新练习本身信息
-func UpdatePractice(ctx context.Context, p *cmn.TPractice, ps []int64, uid int64) error {
+func UpdatePractice(ctx context.Context, p *cmn.TPractice, ps []int64, uid int64, isOperate bool) error {
 	if uid <= 0 {
 		err := fmt.Errorf("invalid updator ID param")
 		z.Error(err.Error())
@@ -48,12 +48,14 @@ func UpdatePractice(ctx context.Context, p *cmn.TPractice, ps []int64, uid int64
 	p.UpdatedBy = null.IntFrom(uid)
 	p.UpdateTime = null.IntFrom(now)
 	update, _ := S2Map(p)
-	// 不允许随意的更改练习的发布状态
 	notUpdate := []string{
 		"id",
 		"creator",
 		"create_time",
-		"status",
+	}
+	// 不允许随意的更改练习的发布状态
+	if !isOperate {
+		notUpdate = append(notUpdate, "status")
 	}
 
 	RemoveFields(update, notUpdate...)
@@ -230,9 +232,9 @@ func LoadPracticeById(ctx context.Context, practiceId int64) (*cmn.TPractice, st
 	s := `
 	select p.id, p.name, p.correct_mode,p.addi,p.status,p.type,
 			COALESCE(tp.name, '') as paper_name,p.allowed_attempts,p.paper_id,p.exam_paper_id,
-			COALESCE((SELECT COUNT(*) FROM t_practice_student tps WHERE tps.practice_id=tp.id AND status=$1),0) as student_cnt
-	from t_practice p
-	left join t_paper tp on tp.id = p.paper_id AND tp.status = $2
+			COALESCE((SELECT COUNT(*) FROM assessuser.t_practice_student tps WHERE tps.practice_id=tp.id AND status=$1),0) as student_cnt
+	from assessuser.t_practice p
+	left join assessuser.t_paper tp on tp.id = p.paper_id AND tp.status = $2
 	where p.id = $3 AND p.status != $4
 	limit 1`
 	sqlxDB := cmn.GetDbConn()
@@ -303,7 +305,7 @@ func ListPracticeS(ctx context.Context, pType, name, difficulty string, orderBy 
 	s := `SELECT
 		id,name,type,attempt_count,difficulty,allowed_attempts,question_count,wrong_count,
 		total_score,highest_score,paper_total_score,paper_id,latest_unsubmitted_id,latest_submitted_id
-		FROM v_practice_summary`
+		FROM assessuser.v_practice_summary`
 
 	if len(clauses) > 0 {
 		s += " WHERE " + strings.Join(clauses, " AND ")
@@ -384,7 +386,7 @@ func ListPracticeT(ctx context.Context, name, pType, status string, orderBy []st
  	SELECT 
 		tp.id, tp.name,tp.correct_mode,
 		tp.type, tp.creator, tp.create_time, tp.updated_by, tp.update_time, tp.addi, tp.status ,tp.allowed_attempts,
-		COALESCE((SELECT COUNT(*) FROM t_practice_student tps WHERE tps.practice_id=tp.id AND status=$1),0) as student_cnt
+		COALESCE((SELECT COUNT(*) FROM assessuser.t_practice_student tps WHERE tps.practice_id=tp.id AND status=$1),0) as student_cnt
 		FROM assessuser.t_practice tp
 	`
 	if len(clauses) > 0 {
@@ -480,6 +482,13 @@ func ListPracticeStudentIds(ctx context.Context, pid int64) ([]int64, error) {
 	return ids, nil
 }
 
+// OperatePracticeStatus 教师及以上权限操作练习发布状态 控制学生能否作答、能否在列表中查看到该练习
+/*
+关键参数：
+	pid 练习ID
+	status 想要切换的状态
+	uid 操作者
+*/
 // OperatePracticeStatus 操作练习的发布状态 取消/发布/删除 练习
 func OperatePracticeStatus(ctx context.Context, pid int64, status string, uid int64) error {
 	var err error
@@ -545,7 +554,7 @@ func OperatePracticeStatus(ctx context.Context, pid int64, status string, uid in
 		p.UpdatedBy = null.IntFrom(uid)
 		p.UpdateTime = null.IntFrom(now)
 
-		err = UpdatePractice(ctx, p, nil, uid)
+		err = UpdatePractice(ctx, p, nil, uid, true)
 		if err != nil {
 			return err
 		}
@@ -792,62 +801,127 @@ func EnterPracticeGetPaperDetails(ctx context.Context, tx pgx.Tx, pid int64, uid
 	var ps cmn.TVPracticeSummary
 	sqlxDB := cmn.GetDbConn()
 	now := time.Now().UnixMilli()
-	// 这里先根据练习ID跟userId去获取一下这个练习状态 去查这个last_unSubmitted_id然后能根据这个ID去拿出这个
-	s := `SELECT allowed_attempts,attempt_count,latest_unsubmitted_id,exam_paper_id,paper_name,duration  FROM  v_practice_summary WHERE id = $1 AND student_id = $2`
-	err := sqlxDB.QueryRowxContext(ctx, s, pid, uid).Scan(&ps.AllowedAttempts, &ps.AttemptCount, &ps.LatestUnsubmittedID, &ps.ExamPaperID,
+	// 判断学生作答练习的情况
+	var submissionStatus string
+
+	// 这里先根据练习ID跟userId去获取一下这个练习状态 去查这个last_unSubmitted_id然后能根据这个ID去拿出这个 这里有可能是学生根据没有一次提交
+	// 也就是说此时是第一次进入，那就需要创建新的submissions的，同理如果查询出有记录，但是last为空的话，仍然需要创建，否则就不需要创建
+	s := `SELECT allowed_attempts,attempt_count,latest_unsubmitted_id, latest_submitted_id, exam_paper_id,paper_name,suggested_duration
+	 FROM assessuser.v_practice_summary 
+	 WHERE id = $1 AND student_id = $2 AND practice_status != $3 
+	 AND practice_student_status != $4`
+	err := sqlxDB.QueryRowxContext(ctx, s, pid, uid, PracticeStatus.Deleted, PracticeStudentStatus.Deleted).Scan(&ps.AllowedAttempts, &ps.AttemptCount, &ps.LatestUnsubmittedID,
+		&ps.LatestSubmittedID, &ps.ExamPaperID,
 		&ps.PaperName, &ps.SuggestedDuration)
 	if err != nil {
-		err = fmt.Errorf("select student practice status failed:%v", err)
+		err = fmt.Errorf("select student practice submission failed:%v", err)
 		z.Error(err.Error())
 		return nil, nil, nil, err
 	}
-	var pSubmissionID int64
-	var epInfo *EnterPracticeInfo
-	var withStudentAnswer bool
-	// 没有任何的提交记录，那就说明是新的作答了，那就需要重新去生成这个学生答卷 还要去检查他是否已经满了
-	if !(ps.LatestUnsubmittedID.Valid && ps.LatestUnsubmittedID.Int64 > 0) {
-		z.Debug("学生新一次进入练习")
-		if ps.AllowedAttempts.Int64 == ps.AttemptCount.Int64 {
-			// 学生进入练习次数已经满了，无法再继续获取
-			err = fmt.Errorf("practice attempts exceeded,have %v attempts", ps.AttemptCount.Int64)
-			z.Error(err.Error())
-			return nil, nil, nil, err
-		}
-		if !ps.ExamPaperID.Valid || ps.ExamPaperID.Int64 <= 0 {
-			err = fmt.Errorf("练习所属考卷ID丢失，请检查练习视图或操作发布练习逻辑")
-			z.Error(err.Error())
-			return nil, nil, nil, err
-		}
-		newAttempt := ps.AttemptCount.Int64 + 1
+	if ps.LatestUnsubmittedID.Int64 == 0 && ps.LatestSubmittedID.Int64 == 0 {
+		// 如果两个值均等于0的话，那就没有过练习记录，
+		submissionStatus = StudentSubmissionStatus.NeverAnswer
+	} else if ps.LatestUnsubmittedID.Int64 != 0 && ps.LatestSubmittedID.Int64 > 0 {
+		// 如果上一次练习提交ID不等于0且上一次记录已提交 那就有未提交的练习记录，
+		submissionStatus = StudentSubmissionStatus.UnSubmitted
+	} else {
+		// 否则就都是已经提交的状态
+		submissionStatus = StudentSubmissionStatus.Submitted
+	}
 
-		s := `INSERT INTO t_practice_submissions (practice_id,student_id,exam_paper_id,creator,create_time,update_time,attempt) VALUES (
+	var pSubmissionID int64
+	epInfo := EnterPracticeInfo{}
+	withStudentAnswer := false
+
+	switch submissionStatus {
+	//以前所有的记录均已提交，现在重新练习
+	case StudentSubmissionStatus.Submitted:
+		{
+			if ps.AllowedAttempts.Int64 != 0 && ps.AllowedAttempts.Int64 == ps.AttemptCount.Int64 {
+				// 学生进入练习次数已经满了，无法再继续获取
+				err = fmt.Errorf("已达练习最大次数:%v，无法再次进入练习", ps.AttemptCount.Int64)
+				z.Error(err.Error())
+				return nil, nil, nil, err
+			}
+			if !ps.ExamPaperID.Valid || ps.ExamPaperID.Int64 <= 0 {
+				err = fmt.Errorf("练习所属考卷ID丢失，请检查练习视图或操作发布练习逻辑")
+				z.Error(err.Error())
+				return nil, nil, nil, err
+			}
+			newAttempt := ps.AttemptCount.Int64 + 1
+			s := `INSERT INTO assessuser.t_practice_submissions (practice_id,student_id,exam_paper_id,creator,create_time,update_time,attempt) VALUES (
 			$1,$2,$3,$4,$5,$6,$7	
 		) RETURNING id`
-		err = tx.QueryRow(ctx, s, pid, uid, ps.ExamPaperID, uid, now, now, newAttempt).Scan(&pSubmissionID)
-		if err != nil {
-			err = fmt.Errorf("insert practice submission failed:%v", err)
+			err = tx.QueryRow(ctx, s, pid, uid, ps.ExamPaperID, uid, now, now, newAttempt).Scan(&pSubmissionID)
+			if err != nil {
+				err = fmt.Errorf("insert practice submission failed:%v", err)
+				z.Error(err.Error())
+				return nil, nil, nil, err
+			}
+			r := examPaper.GenerateAnswerQuestionsRequest{
+				ExamPaperID:          ps.ExamPaperID.Int64,
+				Category:             examPaper.PaperCategory.Practice,
+				PracticeSubmissionID: []int64{pSubmissionID},
+				IsOptionRandom:       false,
+				IsQuestionRandom:     false,
+				Attempt:              newAttempt,
+			}
+			// 生成学生答卷
+			err = examPaper.GenerateAnswerQuestion(ctx, tx, r, uid)
+			if err != nil {
+				return nil, nil, nil, err
+			}
+			withStudentAnswer = false
+		}
+		//第一次进入练习 没有任何练习提交记录
+	case StudentSubmissionStatus.NeverAnswer:
+		{
+			//在创建记录之前，需要先加载一下练习的基本信息
+			p, _, _, err := LoadPracticeById(ctx, pid)
+			if err != nil {
+				return nil, nil, nil, err
+			}
+			s := `INSERT INTO assessuser.t_practice_submissions (practice_id,student_id,exam_paper_id,creator,create_time,update_time,attempt) VALUES (
+					$1,$2,$3,$4,$5,$6,$7	
+				  ) RETURNING id`
+			err = tx.QueryRow(ctx, s, pid, uid, p.ExamPaperID, uid, now, now, 1).Scan(&pSubmissionID)
+			if err != nil {
+				err = fmt.Errorf("insert practice submission failed:%v", err)
+				z.Error(err.Error())
+				return nil, nil, nil, err
+			}
+			r := examPaper.GenerateAnswerQuestionsRequest{
+				ExamPaperID:          p.ExamPaperID.Int64,
+				Category:             examPaper.PaperCategory.Practice,
+				PracticeSubmissionID: []int64{pSubmissionID},
+				IsOptionRandom:       false,
+				IsQuestionRandom:     false,
+				Attempt:              1,
+			}
+			// 生成学生答卷
+			err = examPaper.GenerateAnswerQuestion(ctx, tx, r, uid)
+			if err != nil {
+				return nil, nil, nil, err
+			}
+			withStudentAnswer = false
+		}
+	case StudentSubmissionStatus.UnSubmitted:
+		{
+			withStudentAnswer = true
+			pSubmissionID = ps.LatestUnsubmittedID.Int64
+		}
+	default:
+		{
+			err = fmt.Errorf("invalid practice submissions status")
 			z.Error(err.Error())
 			return nil, nil, nil, err
 		}
-		r := examPaper.GenerateAnswerQuestionsRequest{
-			ExamPaperID:          ps.ExamPaperID.Int64,
-			Category:             examPaper.PaperCategory.Practice,
-			PracticeSubmissionID: []int64{pSubmissionID},
-			IsOptionRandom:       false,
-			IsQuestionRandom:     false,
-			Attempt:              newAttempt,
-		}
-		// 生成学生答卷
-		err = examPaper.GenerateAnswerQuestion(ctx, tx, r, uid)
-		if err != nil {
-			return nil, nil, nil, err
-		}
-		withStudentAnswer = false
-	} else {
-		// 说明真的有作答过但是没有提交的记录 此时就需要直接查询这个试卷信息 并且加上学生的作答信息 就不需要加上这个最大尝试次数的
-		withStudentAnswer = true
 	}
-	p, pg, pq, err := examPaper.LoadExamPaperDetailByUserId(ctx, ps.ExamPaperID.Int64, pSubmissionID, 0, withStudentAnswer, false, false)
+
+	// 这里要提交了
+
+	// 获取以上三种情况之后，根据参数传入加载此时学生作答应该查看的试卷
+	p, pg, pq, err := examPaper.LoadExamPaperDetailByUserId(ctx, tx, ps.ExamPaperID.Int64, pSubmissionID, 0, withStudentAnswer, false, false)
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -857,6 +931,6 @@ func EnterPracticeGetPaperDetails(ctx context.Context, tx pgx.Tx, pid int64, uid
 	epInfo.TotalScore = p.TotalScore.Float64
 	epInfo.GroupCount = p.GroupCount.Int64
 
-	return epInfo, pg, pq, nil
+	return &epInfo, pg, pq, nil
 
 }

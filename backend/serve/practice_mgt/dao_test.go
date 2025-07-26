@@ -3,7 +3,7 @@
  * @Description: 练习管理数据库层函数逻辑测试
  * @Date: 2025-07-24 14:51:50
  * @LastEditors: zdl <1311866870@qq.com>
- * @LastEditTime: 2025-07-26 15:10:39
+ * @LastEditTime: 2025-07-26 20:49:18
  */
 package practice_mgt
 
@@ -183,7 +183,7 @@ func TestUpdatePractice(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := UpdatePractice(ctx, tt.p, tt.ps, tt.uid)
+			err := UpdatePractice(ctx, tt.p, tt.ps, tt.uid, false)
 			if tt.expectedError {
 				t.Errorf("本次执行不会有报错的才对: %v", err)
 			} else {
