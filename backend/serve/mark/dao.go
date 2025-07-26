@@ -2,7 +2,6 @@ package mark
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"fmt"
 	"github.com/jackc/pgx/v5"
@@ -820,7 +819,7 @@ func QueryExamineeInfo(ctx context.Context, cond QueryCondition) (students []Stu
 	return
 }
 
-func InsertMarkerInfo(ctx context.Context, tx *sql.Tx, markInfo []cmn.TMarkInfo) (ids []int64, err error) {
+func InsertMarkerInfo(ctx context.Context, tx *pgx.Tx, markInfo []cmn.TMarkInfo) (ids []int64, err error) {
 	if markInfo == nil || len(markInfo) == 0 {
 		err = fmt.Errorf("no mark info to insert")
 		z.Error(err.Error())
@@ -833,26 +832,11 @@ func InsertMarkerInfo(ctx context.Context, tx *sql.Tx, markInfo []cmn.TMarkInfo)
 						($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) 
 					RETURNING id`
 
-	insertStmt, err := tx.PrepareContext(ctx, insertQuery)
-	if err != nil {
-		err = fmt.Errorf("prepare insert query error: %s", err.Error())
-		z.Error(err.Error())
-		return
-	}
-
-	defer func() {
-		err = insertStmt.Close()
-		if err != nil {
-			z.Error(err.Error())
-			return
-		}
-	}()
-
 	for _, info := range markInfo {
 		var id null.Int
-		err = insertStmt.QueryRowContext(ctx, info.ExamSessionID, info.MarkTeacherID, info.MarkCount, info.QuestionIds, info.MarkExamineeIds, info.Creator, info.CreateTime, info.UpdatedBy, info.UpdateTime, info.Addi, info.Status).Scan(&id)
+		err = (*tx).QueryRow(ctx, insertQuery, info.ExamSessionID, info.MarkTeacherID, info.MarkCount, info.QuestionIds, info.MarkExamineeIds, info.Creator, info.CreateTime, info.UpdatedBy, info.UpdateTime, info.Addi, info.Status).Scan(&id)
 		if err != nil {
-			err = fmt.Errorf("exec insert query error: %s", err.Error())
+			err = fmt.Errorf("exec insert query error: %v", err)
 			z.Error(err.Error())
 			return
 		}
@@ -861,7 +845,7 @@ func InsertMarkerInfo(ctx context.Context, tx *sql.Tx, markInfo []cmn.TMarkInfo)
 	return
 }
 
-func UpdateMarkerInfoState(ctx context.Context, tx *sql.Tx, teacherID int64, examSessionIDs []int64) (targetIDs []int64, err error) {
+func UpdateMarkerInfoState(ctx context.Context, tx *pgx.Tx, teacherID int64, examSessionIDs []int64) (targetIDs []int64, err error) {
 	if examSessionIDs == nil || len(examSessionIDs) == 0 {
 		err = fmt.Errorf("no examSessionIDs to update")
 		z.Error(err.Error())
@@ -876,26 +860,22 @@ func UpdateMarkerInfoState(ctx context.Context, tx *sql.Tx, teacherID int64, exa
 					WHERE exam_session_id = ANY($1)
 					RETURNING id`
 
-	updateStmt, err := tx.PrepareContext(ctx, updateQuery)
+	rows, err := (*tx).Query(ctx, updateQuery, pq.Array(examSessionIDs), "04", teacherID, time.Now().UnixMilli())
 	if err != nil {
-		err = fmt.Errorf("prepare update query error: %s", err.Error())
+		err = fmt.Errorf("exec update query error: %v", err)
 		z.Error(err.Error())
 		return
 	}
 
-	defer func() {
-		err = updateStmt.Close()
+	for rows.Next() {
+		var id null.Int
+		err = rows.Scan(&id)
 		if err != nil {
+			err = fmt.Errorf("unable to scan row data: %v", err)
 			z.Error(err.Error())
 			return
 		}
-	}()
-
-	err = updateStmt.QueryRowContext(ctx, pq.Array(examSessionIDs), "04", teacherID, time.Now().UnixMilli()).Scan(&targetIDs)
-	if err != nil {
-		err = fmt.Errorf("exec update query error: %s", err.Error())
-		z.Error(err.Error())
-		return
+		targetIDs = append(targetIDs, id.Int64)
 	}
 
 	return
@@ -1123,7 +1103,7 @@ func updateExamSessionState(ctx context.Context, tx *pgx.Tx, teacherID int64, ex
 		var id int64
 		err = rows.Scan(&id)
 		if err != nil {
-			err = fmt.Errorf("exec updateExamSessionState sql error: %v", err)
+			err = fmt.Errorf("unable to scan row data: %v", err)
 			z.Error(err.Error())
 			return
 		}

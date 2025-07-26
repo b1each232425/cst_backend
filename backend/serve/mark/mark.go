@@ -5,7 +5,6 @@ package mark
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"fmt"
 	"github.com/jackc/pgx/v5"
@@ -16,6 +15,7 @@ import (
 	"strings"
 	"time"
 	"w2w.io/null"
+	"w2w.io/serve/examPaper"
 
 	"go.uber.org/zap"
 	"w2w.io/cmn"
@@ -375,18 +375,19 @@ func GetMarkingDetails(ctx context.Context) {
 }
 
 type HandleMarkerInfoReq struct {
-	Markers          []int64   `json:"markers"`
-	QuestionIDs      []int64   `json:"question_ids"`
-	ExamineeIDs      []int64   `json:"examinee_ids"`
-	QuestionIDGroups [][]int64 `json:"question_id_groups"`
-	MarkMode         string    `json:"mark_mode"`
-	ExamSessionID    int64     `json:"exam_session_id"`
-	PracticeID       int64     `json:"practice_id"`
-	Status           string    `json:"status"` // 00 插入批改配置 02 删除批改配置
-	ExamSessionIDs   []int64   `json:"exam_session_ids"`
+	Markers          []int64                             `json:"markers"`         // 批改员id数组
+	QuestionGroups   []examPaper.SubjectiveQuestionGroup `json:"question_groups"` // 题组（配置时传入）
+	QuestionIDs      []int64                             `json:"question_ids"`    // 题目id数组
+	ExamineeIDs      []int64                             `json:"examinee_ids"`    // 考生id数组
+	QuestionIDGroups [][]int64                           `json:"question_id_groups"`
+	MarkMode         string                              `json:"mark_mode"` // 批卷模式 00：不需要手动批改  02：全卷多评 04：试卷分配 06：题组专评 08：题目分配 10：单人批改
+	ExamSessionID    int64                               `json:"exam_session_id"`
+	PracticeID       int64                               `json:"practice_id"`
+	Status           string                              `json:"status"`           // 00 插入批改配置 02 删除批改配置
+	ExamSessionIDs   []int64                             `json:"exam_session_ids"` // 要删除的考试场次id数组
 }
 
-func HandleMarkerInfo(ctx context.Context, tx *sql.Tx, teacherID int64, req HandleMarkerInfoReq) (err error) {
+func HandleMarkerInfo(ctx context.Context, tx *pgx.Tx, teacherID int64, req HandleMarkerInfoReq) (err error) {
 	if teacherID <= 0 {
 		err = fmt.Errorf("invalid teacherID")
 		z.Error(err.Error())
@@ -495,18 +496,18 @@ func HandleMarkerInfo(ctx context.Context, tx *sql.Tx, teacherID int64, req Hand
 		}
 		break
 	case "06": // 分题组
-		if req.QuestionIDGroups == nil || len(req.QuestionIDGroups) == 0 {
+		if req.QuestionGroups == nil || len(req.QuestionGroups) == 0 {
 			err = fmt.Errorf("invalid question group ids")
 			z.Error(err.Error())
 			return
 		}
 
 		// 分题组
-		splitGroups := randomSplit(req.QuestionIDGroups, len(req.Markers))
-		for i, ids := range splitGroups {
+		splitGroups := randomSplit(req.QuestionGroups, len(req.Markers))
+		for i, groups := range splitGroups {
 			var questionIDs []int64
-			for _, group := range ids {
-				questionIDs = append(questionIDs, group...)
+			for _, group := range groups {
+				questionIDs = append(questionIDs, group.QuestionIDs...)
 			}
 
 			markQuestionIDsBytes, err := json.Marshal(questionIDs)
