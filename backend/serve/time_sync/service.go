@@ -15,8 +15,13 @@ import (
 )
 
 type Service interface {
-	StartServe(ctx context.Context)             // 启动时间同步服务
-	HandleInitTimeSyncConn(ctx context.Context) // 处理初始化时间同步连接
+	SendResetExamEndTimeMsg(ctx context.Context, ids []int64) error // 发送重置考试结束时刻的消息
+
+	startServe(ctx context.Context)                                                         // 启动时间同步服务
+	handleInitTimeSyncConn(ctx context.Context)                                             // 处理初始化时间同步连接
+	getClientByExamineeId(ctx context.Context, examineeId int64) (client.Connection, error) // 根据考生ID获取连接实例
+	sendCurrentTimestampMsg(ctx context.Context, c client.Connection) error                 // 发送当前时间戳消息
+	broadcastTimeSyncMsg(ctx context.Context)                                               // 广播时间同步消息
 }
 
 type serviceImpl struct {
@@ -52,7 +57,7 @@ func NewService(timeSyncInterval time.Duration, pool *ants.Pool, upgrader websoc
 }
 
 // StartServe 启动时间同步服务
-func (srv *serviceImpl) StartServe(ctx context.Context) {
+func (srv *serviceImpl) startServe(ctx context.Context) {
 	z.Info("---->" + cmn.FncName())
 
 	forceErr, _ := ctx.Value("force-error").(string) // 用于强制执行错误处理代码
@@ -72,13 +77,6 @@ func (srv *serviceImpl) StartServe(ctx context.Context) {
 		select {
 		case <-timeTicker.C: // 定时广播时间同步消息
 			srv.broadcastTimeSyncMsg(ctx)
-
-		case examineeId := <-cmn.ResetExamEndTimeChan: // 接收需要重置考试结束时刻的考生ID
-			z.Info("reset exam end time for examineeId", zap.Int64("examineeId", examineeId))
-			err := srv.sendResetExamEndTimeMsg(ctx, examineeId)
-			if err != nil {
-				cmn.ResetExamEndTimeErrChan <- err // 将错误发送到错误通道
-			}
 
 		case registerClient := <-srv.registerChanel: // 接收注册的客户端
 			id := registerClient.GeConnId()
@@ -104,7 +102,7 @@ func (srv *serviceImpl) StartServe(ctx context.Context) {
 }
 
 // HandleInitTimeSyncConn 处理初始化时间同步连接
-func (srv *serviceImpl) HandleInitTimeSyncConn(ctx context.Context) {
+func (srv *serviceImpl) handleInitTimeSyncConn(ctx context.Context) {
 	q := cmn.GetCtxValue(ctx)
 	z.Info("---->" + cmn.FncName())
 
@@ -189,7 +187,7 @@ func (srv *serviceImpl) HandleInitTimeSyncConn(ctx context.Context) {
 
 	// 发送时间同步消息
 	err = srv.sendCurrentTimestampMsg(ctx, newClient)
-	if err != nil || forceErr == "sendCurrentTimestampMsg" {
+	if err != nil {
 		q.Err = fmt.Errorf("error sending current timestamp: %w", err)
 		_ = newClient.SendMessage("error: " + q.Err.Error())
 		newClient.Close()
@@ -223,68 +221,11 @@ func (srv *serviceImpl) broadcastTimeSyncMsg(ctx context.Context) {
 	}
 }
 
-// sendResetExamEndTimeMsg 发送重置考试结束时刻的消息
-// 该方法会从数据库中查询考生的实际考试结束时间，并将其发送给对应的WebSocket客户端，以与考点管理模块配合实现延长考试时长功能
-func (srv *serviceImpl) sendResetExamEndTimeMsg(ctx context.Context, examineeId int64) error {
-	z.Info("---->" + cmn.FncName())
-
-	forceErr, _ := ctx.Value("force-error").(string) // 用于强制执行错误处理代码
-
-	if examineeId <= 0 {
-		e := fmt.Errorf("examineeId must be greater than 0")
-		z.Error(e.Error())
-		return e
-	}
-
-	var execErr error
-
-	err := srv.pool.Submit(func() {
-		// 获取考生的实际考试结束时间
-		var actualEndTime int64
-		actualEndTime, execErr = srv.repo.QueryActualExamEndTime(examineeId)
-		if execErr != nil {
-			execErr = fmt.Errorf("error querying actual exam end time: %w, examineeID: %v", execErr, examineeId)
-			return
-		}
-		if actualEndTime <= time.Now().UnixMilli() {
-			execErr = fmt.Errorf("actual exam end time is not greater than current time, examineeID: %v, actualEndTime: %v", examineeId, actualEndTime)
-			z.Error(execErr.Error())
-			return
-		}
-
-		// 获取WebSocket连接实例
-		wsClient, err := srv.getClientByExamineeId(ctx, examineeId)
-		if err != nil {
-			execErr = fmt.Errorf("error getting WebSocket client by examineeId: %w, examineeID: %v", err, examineeId)
-			return
-		}
-
-		// 发送消息
-		msg := client.SendMsg{
-			MsgType: client.TypeExamEndtime,
-			EndTime: actualEndTime,
-		}
-		err = wsClient.SendMessage(msg)
-		if err != nil || forceErr == "sendMessage" {
-			execErr = fmt.Errorf("error sending timestamp: %w, examineeID: %v", err, examineeId)
-			return
-		}
-	})
-	if err != nil || forceErr == "ants.Pool.Submit" {
-		e := fmt.Errorf("error submitting task to ants pool: %w", err)
-		z.Error(e.Error())
-		return e
-	}
-	if execErr != nil {
-		return execErr
-	}
-
-	return nil
-}
-
 // sendCurrentTimestampMsg 发送当前时间戳消息
 func (srv *serviceImpl) sendCurrentTimestampMsg(ctx context.Context, c client.Connection) error {
 	z.Info("---->" + cmn.FncName())
+
+	forceErr, _ := ctx.Value("force-error").(string) // 用于强制执行错误处理代码
 
 	// 获取当前时间戳
 	timestamp := time.Now().UnixMilli()
@@ -295,7 +236,7 @@ func (srv *serviceImpl) sendCurrentTimestampMsg(ctx context.Context, c client.Co
 		Timestamp: timestamp,
 	}
 	err := c.SendMessage(msg)
-	if err != nil {
+	if err != nil || forceErr == "sendMessage" {
 		return fmt.Errorf("error sending timestamp msg: %w", err)
 	}
 
@@ -312,5 +253,58 @@ func (srv *serviceImpl) getClientByExamineeId(ctx context.Context, examineeId in
 		}
 	}
 
-	return nil, fmt.Errorf("no client found for examineeId: %d", examineeId)
+	e := fmt.Errorf("no client found for examineeId: %d", examineeId)
+	z.Error(e.Error())
+	return nil, e
+}
+
+// SendResetExamEndTimeMsg 发送重置考试结束时刻的消息
+// 该方法会从数据库中查询考生的实际考试结束时间，并将其发送给对应的WebSocket客户端，以与考点管理模块配合实现延长考试时长功能
+func (srv *serviceImpl) SendResetExamEndTimeMsg(ctx context.Context, examineeIds []int64) error {
+	z.Info("---->" + cmn.FncName())
+
+	var err error
+
+	forceErr, _ := ctx.Value("force-error").(string) // 用于强制执行错误处理代码
+
+	for _, id := range examineeIds {
+		if id <= 0 {
+			e := fmt.Errorf("examineeId must be greater than 0, got: %v", id)
+			z.Error(e.Error())
+			return e
+		}
+
+		// 获取考生的实际考试结束时间
+		var actualEndTime int64
+		actualEndTime, err = srv.repo.QueryActualExamEndTime(id)
+		if err != nil {
+			return err
+		}
+		if actualEndTime <= time.Now().UnixMilli() {
+			e := fmt.Errorf("actual exam end time is not greater than current time, examineeID: %v, actualEndTime: %v", id, actualEndTime)
+			z.Error(e.Error())
+			return e
+		}
+
+		// 获取WebSocket连接实例
+		var wsClient client.Connection
+		wsClient, err = srv.getClientByExamineeId(ctx, id)
+		if err != nil {
+			return err
+		}
+
+		// 发送消息
+		msg := client.SendMsg{
+			MsgType: client.TypeExamEndtime,
+			EndTime: actualEndTime,
+		}
+		err = wsClient.SendMessage(msg)
+		if err != nil || forceErr == "sendMessage" {
+			e := fmt.Errorf("error sending reset end time message: %w, examineeID: %v", err, id)
+			z.Error(e.Error())
+			return e
+		}
+	}
+
+	return nil
 }

@@ -23,7 +23,7 @@ var _ Service = (*serviceImpl)(nil)
 
 var (
 	z   *zap.Logger
-	srv Service // 全局服务实例
+	Srv Service // 全局服务实例
 )
 
 func init() {
@@ -67,18 +67,18 @@ func Enroll(author string) {
 	}
 
 	// 初始化时间同步服务
-	srv, err = NewService(timeSyncIntervalMillisecond, pool, upgrader)
+	Srv, err = NewService(timeSyncIntervalMillisecond, pool, upgrader)
 	if err != nil {
 		z.Fatal("Failed to create time sync service", zap.Error(err))
 	}
 
 	// 开启时间同步服务
-	go srv.StartServe(context.Background())
+	go Srv.startServe(context.Background())
 
 	z.Info("time sync service init success", zap.Int("timeSyncInterval", timeSyncInterval), zap.Int("poolInitialSize", poolInitialSize))
 
 	_ = cmn.AddService(&cmn.ServeEndPoint{
-		Fn: srv.HandleInitTimeSyncConn,
+		Fn: Srv.handleInitTimeSyncConn,
 
 		Path: "/time-sync",
 		Name: "TimeSync",

@@ -351,7 +351,7 @@ func Test_serviceImpl_HandleInitTimeSyncConn(t *testing.T) {
 			}()
 
 			// 调用HandleInitTimeSyncConn
-			srv.HandleInitTimeSyncConn(ctx)
+			srv.handleInitTimeSyncConn(ctx)
 
 			// 验证结果
 			if tt.wantErr {
@@ -376,100 +376,102 @@ func Test_serviceImpl_HandleInitTimeSyncConn(t *testing.T) {
 // Test_serviceImpl_HandleInitTimeSyncConn_Websocket 测试HandleInitTimeSyncConn方法（启用WebSocket）
 func Test_serviceImpl_HandleInitTimeSyncConn_Websocket(t *testing.T) {
 	tests := []struct {
-		name                   string
-		sysUserID              null.Int
-		examineeID             string
-		submissionID           string
-		doResetEndTime         bool
-		resetEndTimeExamineeID int64
-		sleepDuration1         time.Duration
-		sleepDuration2         time.Duration
-		msgToSend              interface{}
-		reqForceError          string
-		serveForceError        string
-		wantErr                bool
-		desc                   string
-		mockRepoFunc           func() Repo
+		name                              string
+		sysUserID                         null.Int
+		examineeID                        string
+		submissionID                      string
+		doResetEndTime                    bool
+		resetEndTimeExamineeID            int64
+		sleepDuration1                    time.Duration
+		sleepDuration2                    time.Duration
+		msgToSend                         interface{}
+		HandleInitTimeSyncConnForceError  string
+		SendResetExamEndTimeMsgForceError string
+		serveForceError                   string
+		wantErr                           bool
+		wantSendResetExamEndTimeMsgErr    bool
+		desc                              string
+		mockRepoFunc                      func() Repo
 	}{
 		{
-			name:            "只有examinee_id参数",
-			examineeID:      "12345",
-			submissionID:    "",
-			sysUserID:       null.NewInt(12345, true),
-			sleepDuration1:  0,
-			reqForceError:   "",
-			serveForceError: "",
-			wantErr:         false,
-			desc:            "测试只有examinee_id参数",
+			name:                             "只有examinee_id参数",
+			examineeID:                       "12345",
+			submissionID:                     "",
+			sysUserID:                        null.NewInt(12345, true),
+			sleepDuration1:                   0,
+			HandleInitTimeSyncConnForceError: "",
+			serveForceError:                  "",
+			wantErr:                          false,
+			desc:                             "测试只有examinee_id参数",
 			mockRepoFunc: func() Repo {
 				return &MockRepo{}
 			},
 		},
 		{
-			name:            "只有submission_id参数",
-			examineeID:      "",
-			submissionID:    "12345",
-			sysUserID:       null.NewInt(12345, true),
-			sleepDuration1:  0,
-			reqForceError:   "",
-			serveForceError: "",
-			wantErr:         false,
-			desc:            "测试只有examinee_id参数",
+			name:                             "只有submission_id参数",
+			examineeID:                       "",
+			submissionID:                     "12345",
+			sysUserID:                        null.NewInt(12345, true),
+			sleepDuration1:                   0,
+			HandleInitTimeSyncConnForceError: "",
+			serveForceError:                  "",
+			wantErr:                          false,
+			desc:                             "测试只有examinee_id参数",
 			mockRepoFunc: func() Repo {
 				return &MockRepo{}
 			},
 		},
 		{
-			name:            "examinee_id和submission_id参数都没有",
-			examineeID:      "",
-			submissionID:    "",
-			sysUserID:       null.NewInt(12345, true),
-			sleepDuration1:  0,
-			reqForceError:   "",
-			serveForceError: "",
-			wantErr:         true,
-			desc:            "测试xaminee_id和submission_id参数都没有",
+			name:                             "examinee_id和submission_id参数都没有",
+			examineeID:                       "",
+			submissionID:                     "",
+			sysUserID:                        null.NewInt(12345, true),
+			sleepDuration1:                   0,
+			HandleInitTimeSyncConnForceError: "",
+			serveForceError:                  "",
+			wantErr:                          true,
+			desc:                             "测试xaminee_id和submission_id参数都没有",
 			mockRepoFunc: func() Repo {
 				return &MockRepo{}
 			},
 		},
 		{
-			name:            "pool.ReleaseTimeout错误",
-			examineeID:      "",
-			submissionID:    "12345",
-			sysUserID:       null.NewInt(12345, true),
-			sleepDuration1:  0,
-			reqForceError:   "",
-			serveForceError: "pool.ReleaseTimeout",
-			wantErr:         false,
-			desc:            "测试只有examinee_id参数",
+			name:                             "pool.ReleaseTimeout错误",
+			examineeID:                       "",
+			submissionID:                     "12345",
+			sysUserID:                        null.NewInt(12345, true),
+			sleepDuration1:                   0,
+			HandleInitTimeSyncConnForceError: "",
+			serveForceError:                  "pool.ReleaseTimeout",
+			wantErr:                          false,
+			desc:                             "测试只有examinee_id参数",
 			mockRepoFunc: func() Repo {
 				return &MockRepo{}
 			},
 		},
 		{
-			name:            "websocket.Upgrade错误",
-			examineeID:      "12345",
-			submissionID:    "",
-			sysUserID:       null.NewInt(12345, true),
-			sleepDuration1:  0,
-			reqForceError:   "websocket.Upgrade",
-			serveForceError: "",
-			wantErr:         true,
-			desc:            "测试websocket.Upgrade错误的处理",
+			name:                             "websocket.Upgrade错误",
+			examineeID:                       "12345",
+			submissionID:                     "",
+			sysUserID:                        null.NewInt(12345, true),
+			sleepDuration1:                   0,
+			HandleInitTimeSyncConnForceError: "websocket.Upgrade",
+			serveForceError:                  "",
+			wantErr:                          true,
+			desc:                             "测试websocket.Upgrade错误的处理",
 			mockRepoFunc: func() Repo {
 				return &MockRepo{}
 			},
 		},
 		{
-			name:           "测试广播时间同步消息",
-			examineeID:     "12345",
-			submissionID:   "67890",
-			sysUserID:      null.NewInt(54242, true),
-			sleepDuration1: 10 * time.Second,
-			reqForceError:  "",
-			wantErr:        false,
-			desc:           "测试测试广播时间同步消息",
+			name:                             "测试广播时间同步消息",
+			examineeID:                       "12345",
+			submissionID:                     "67890",
+			sysUserID:                        null.NewInt(54242, true),
+			sleepDuration1:                   10 * time.Second,
+			HandleInitTimeSyncConnForceError: "",
+			wantErr:                          false,
+			desc:                             "测试测试广播时间同步消息",
 			mockRepoFunc: func() Repo {
 				mockRepo := &MockRepo{}
 				mockRepo.QueryActualExamEndTimeFunc = func(examineeId int64) (int64, error) {
@@ -479,29 +481,29 @@ func Test_serviceImpl_HandleInitTimeSyncConn_Websocket(t *testing.T) {
 			},
 		},
 		{
-			name:            "注册客户端后发送时间同步消息错误",
-			examineeID:      "12345",
-			submissionID:    "",
-			sysUserID:       null.NewInt(12345, true),
-			sleepDuration1:  5 * time.Second,
-			reqForceError:   "sendCurrentTimestampMsg",
-			serveForceError: "",
-			wantErr:         true,
-			desc:            "测试注册客户端后发送时间同步消息错误的错误处理",
+			name:                             "注册客户端后发送时间同步消息错误",
+			examineeID:                       "12345",
+			submissionID:                     "",
+			sysUserID:                        null.NewInt(12345, true),
+			sleepDuration1:                   5 * time.Second,
+			HandleInitTimeSyncConnForceError: "sendMessage",
+			serveForceError:                  "",
+			wantErr:                          true,
+			desc:                             "测试注册客户端后发送时间同步消息错误的错误处理",
 			mockRepoFunc: func() Repo {
 				return &MockRepo{}
 			},
 		},
 		{
-			name:            "测试广播时间同步消息时发送消息错误",
-			examineeID:      "12345",
-			submissionID:    "67890",
-			sysUserID:       null.NewInt(54242, true),
-			sleepDuration1:  10 * time.Second,
-			reqForceError:   "",
-			serveForceError: "sendCurrentTimestampMsg",
-			wantErr:         false,
-			desc:            "测试测试广播时间同步消息时发送消息错误",
+			name:                             "测试广播时间同步消息时发送消息错误",
+			examineeID:                       "12345",
+			submissionID:                     "67890",
+			sysUserID:                        null.NewInt(54242, true),
+			sleepDuration1:                   10 * time.Second,
+			HandleInitTimeSyncConnForceError: "",
+			serveForceError:                  "sendCurrentTimestampMsg",
+			wantErr:                          false,
+			desc:                             "测试测试广播时间同步消息时发送消息错误",
 			mockRepoFunc: func() Repo {
 				mockRepo := &MockRepo{}
 				mockRepo.QueryActualExamEndTimeFunc = func(examineeId int64) (int64, error) {
@@ -511,15 +513,15 @@ func Test_serviceImpl_HandleInitTimeSyncConn_Websocket(t *testing.T) {
 			},
 		},
 		{
-			name:            "测试广播时间同步消息时提交协程池错误",
-			examineeID:      "12345",
-			submissionID:    "67890",
-			sysUserID:       null.NewInt(54242, true),
-			sleepDuration1:  10 * time.Second,
-			reqForceError:   "",
-			serveForceError: "ants.Pool.Submit",
-			wantErr:         false,
-			desc:            "测试测试广播时间同步消息时提交协程池错误",
+			name:                             "测试广播时间同步消息时提交协程池错误",
+			examineeID:                       "12345",
+			submissionID:                     "67890",
+			sysUserID:                        null.NewInt(54242, true),
+			sleepDuration1:                   10 * time.Second,
+			HandleInitTimeSyncConnForceError: "",
+			serveForceError:                  "ants.Pool.Submit",
+			wantErr:                          false,
+			desc:                             "测试测试广播时间同步消息时提交协程池错误",
 			mockRepoFunc: func() Repo {
 				mockRepo := &MockRepo{}
 				mockRepo.QueryActualExamEndTimeFunc = func(examineeId int64) (int64, error) {
@@ -529,17 +531,41 @@ func Test_serviceImpl_HandleInitTimeSyncConn_Websocket(t *testing.T) {
 			},
 		},
 		{
-			name:                   "测试重置考试结束时间｜重置成功",
-			examineeID:             "12345",
-			submissionID:           "67890",
-			sysUserID:              null.NewInt(54242, true),
-			resetEndTimeExamineeID: 12345,
-			doResetEndTime:         true,
-			sleepDuration1:         5 * time.Second,
-			sleepDuration2:         5 * time.Second,
-			reqForceError:          "",
-			wantErr:                false,
-			desc:                   "测试重置考试结束时间",
+			name:                             "客户端发送非json格式的消息",
+			examineeID:                       "12345",
+			submissionID:                     "67890",
+			sysUserID:                        null.NewInt(54242, true),
+			resetEndTimeExamineeID:           12345,
+			doResetEndTime:                   false,
+			sleepDuration1:                   5 * time.Second,
+			sleepDuration2:                   5 * time.Second,
+			HandleInitTimeSyncConnForceError: "",
+			msgToSend:                        "invalid message format",
+			wantErr:                          false,
+			desc:                             "测试重置考试结束时间",
+			mockRepoFunc: func() Repo {
+				mockRepo := &MockRepo{}
+				mockRepo.QueryActualExamEndTimeFunc = func(examineeId int64) (int64, error) {
+					return time.Now().Add(time.Hour).UnixMilli(), nil
+				}
+				return mockRepo
+			},
+		},
+
+		// 以下是重置考试结束时间的测试用例
+		{
+			name:                             "测试重置考试结束时间｜重置成功",
+			examineeID:                       "12345",
+			submissionID:                     "67890",
+			sysUserID:                        null.NewInt(54242, true),
+			resetEndTimeExamineeID:           12345,
+			doResetEndTime:                   true,
+			sleepDuration1:                   2 * time.Second,
+			sleepDuration2:                   2 * time.Second,
+			HandleInitTimeSyncConnForceError: "",
+			wantErr:                          false,
+			wantSendResetExamEndTimeMsgErr:   false,
+			desc:                             "测试重置考试结束时间",
 			mockRepoFunc: func() Repo {
 				mockRepo := &MockRepo{}
 				mockRepo.QueryActualExamEndTimeFunc = func(examineeId int64) (int64, error) {
@@ -549,18 +575,20 @@ func Test_serviceImpl_HandleInitTimeSyncConn_Websocket(t *testing.T) {
 			},
 		},
 		{
-			name:                   "测试重置考试结束时间｜发送消息错误",
-			examineeID:             "12345",
-			submissionID:           "67890",
-			sysUserID:              null.NewInt(54242, true),
-			resetEndTimeExamineeID: 12345,
-			doResetEndTime:         true,
-			sleepDuration1:         5 * time.Second,
-			sleepDuration2:         5 * time.Second,
-			reqForceError:          "",
-			serveForceError:        "sendMessage",
-			wantErr:                false,
-			desc:                   "测试重置考试结束时间",
+			name:                              "测试重置考试结束时间｜发送消息错误",
+			examineeID:                        "12345",
+			submissionID:                      "67890",
+			sysUserID:                         null.NewInt(54242, true),
+			resetEndTimeExamineeID:            12345,
+			doResetEndTime:                    true,
+			sleepDuration1:                    5 * time.Second,
+			sleepDuration2:                    5 * time.Second,
+			HandleInitTimeSyncConnForceError:  "",
+			SendResetExamEndTimeMsgForceError: "sendMessage",
+			serveForceError:                   "",
+			wantErr:                           false,
+			wantSendResetExamEndTimeMsgErr:    true,
+			desc:                              "测试重置考试结束时间",
 			mockRepoFunc: func() Repo {
 				mockRepo := &MockRepo{}
 				mockRepo.QueryActualExamEndTimeFunc = func(examineeId int64) (int64, error) {
@@ -570,18 +598,18 @@ func Test_serviceImpl_HandleInitTimeSyncConn_Websocket(t *testing.T) {
 			},
 		},
 		{
-			name:                   "测试重置考试结束时间｜ants.Pool.Submit错误",
-			examineeID:             "12345",
-			submissionID:           "67890",
-			sysUserID:              null.NewInt(54242, true),
-			resetEndTimeExamineeID: 12345,
-			doResetEndTime:         true,
-			sleepDuration1:         5 * time.Second,
-			sleepDuration2:         5 * time.Second,
-			reqForceError:          "",
-			serveForceError:        "ants.Pool.Submit",
-			wantErr:                false,
-			desc:                   "测试重置考试结束时间",
+			name:                             "测试重置考试结束时间｜目标考生ID不合法",
+			examineeID:                       "12345",
+			submissionID:                     "67890",
+			sysUserID:                        null.NewInt(54242, true),
+			resetEndTimeExamineeID:           -1,
+			doResetEndTime:                   true,
+			sleepDuration1:                   2 * time.Second,
+			sleepDuration2:                   2 * time.Second,
+			HandleInitTimeSyncConnForceError: "",
+			wantErr:                          false,
+			wantSendResetExamEndTimeMsgErr:   true,
+			desc:                             "测试重置考试结束时间",
 			mockRepoFunc: func() Repo {
 				mockRepo := &MockRepo{}
 				mockRepo.QueryActualExamEndTimeFunc = func(examineeId int64) (int64, error) {
@@ -591,17 +619,18 @@ func Test_serviceImpl_HandleInitTimeSyncConn_Websocket(t *testing.T) {
 			},
 		},
 		{
-			name:                   "测试重置考试结束时间｜目标考生ID不合法",
-			examineeID:             "12345",
-			submissionID:           "67890",
-			sysUserID:              null.NewInt(54242, true),
-			resetEndTimeExamineeID: -1,
-			doResetEndTime:         true,
-			sleepDuration1:         5 * time.Second,
-			sleepDuration2:         5 * time.Second,
-			reqForceError:          "",
-			wantErr:                false,
-			desc:                   "测试重置考试结束时间",
+			name:                             "测试重置考试结束时间｜不存在的考生ID",
+			examineeID:                       "12345",
+			submissionID:                     "67890",
+			sysUserID:                        null.NewInt(54242, true),
+			resetEndTimeExamineeID:           45634,
+			doResetEndTime:                   true,
+			sleepDuration1:                   2 * time.Second,
+			sleepDuration2:                   2 * time.Second,
+			HandleInitTimeSyncConnForceError: "",
+			wantErr:                          false,
+			wantSendResetExamEndTimeMsgErr:   true,
+			desc:                             "测试重置考试结束时间",
 			mockRepoFunc: func() Repo {
 				mockRepo := &MockRepo{}
 				mockRepo.QueryActualExamEndTimeFunc = func(examineeId int64) (int64, error) {
@@ -611,37 +640,18 @@ func Test_serviceImpl_HandleInitTimeSyncConn_Websocket(t *testing.T) {
 			},
 		},
 		{
-			name:                   "测试重置考试结束时间｜不存在的考生ID",
-			examineeID:             "12345",
-			submissionID:           "67890",
-			sysUserID:              null.NewInt(54242, true),
-			resetEndTimeExamineeID: 45634,
-			doResetEndTime:         true,
-			sleepDuration1:         5 * time.Second,
-			sleepDuration2:         5 * time.Second,
-			reqForceError:          "",
-			wantErr:                false,
-			desc:                   "测试重置考试结束时间",
-			mockRepoFunc: func() Repo {
-				mockRepo := &MockRepo{}
-				mockRepo.QueryActualExamEndTimeFunc = func(examineeId int64) (int64, error) {
-					return time.Now().Add(time.Hour).UnixMilli(), nil
-				}
-				return mockRepo
-			},
-		},
-		{
-			name:                   "测试重置考试结束时间｜获取考生的实际考试结束时间错误",
-			examineeID:             "12345",
-			submissionID:           "67890",
-			sysUserID:              null.NewInt(54242, true),
-			resetEndTimeExamineeID: 54242,
-			doResetEndTime:         true,
-			sleepDuration1:         5 * time.Second,
-			sleepDuration2:         5 * time.Second,
-			reqForceError:          "",
-			wantErr:                false,
-			desc:                   "测试重置考试结束时间",
+			name:                             "测试重置考试结束时间｜获取考生的实际考试结束时间错误",
+			examineeID:                       "12345",
+			submissionID:                     "67890",
+			sysUserID:                        null.NewInt(54242, true),
+			resetEndTimeExamineeID:           54242,
+			doResetEndTime:                   true,
+			sleepDuration1:                   2 * time.Second,
+			sleepDuration2:                   2 * time.Second,
+			HandleInitTimeSyncConnForceError: "",
+			wantErr:                          false,
+			wantSendResetExamEndTimeMsgErr:   true,
+			desc:                             "测试重置考试结束时间",
 			mockRepoFunc: func() Repo {
 				mockRepo := &MockRepo{}
 				mockRepo.QueryActualExamEndTimeFunc = func(examineeId int64) (int64, error) {
@@ -651,42 +661,22 @@ func Test_serviceImpl_HandleInitTimeSyncConn_Websocket(t *testing.T) {
 			},
 		},
 		{
-			name:                   "测试重置考试结束时间｜考生的实际考试结束时间比当前时间小",
-			examineeID:             "12345",
-			submissionID:           "67890",
-			sysUserID:              null.NewInt(54242, true),
-			resetEndTimeExamineeID: 54242,
-			doResetEndTime:         true,
-			sleepDuration1:         5 * time.Second,
-			sleepDuration2:         5 * time.Second,
-			reqForceError:          "",
-			wantErr:                false,
-			desc:                   "测试重置考试结束时间",
+			name:                             "测试重置考试结束时间｜考生的实际考试结束时间比当前时间小",
+			examineeID:                       "12345",
+			submissionID:                     "67890",
+			sysUserID:                        null.NewInt(54242, true),
+			resetEndTimeExamineeID:           54242,
+			doResetEndTime:                   true,
+			sleepDuration1:                   2 * time.Second,
+			sleepDuration2:                   2 * time.Second,
+			HandleInitTimeSyncConnForceError: "",
+			wantErr:                          false,
+			wantSendResetExamEndTimeMsgErr:   true,
+			desc:                             "测试重置考试结束时间",
 			mockRepoFunc: func() Repo {
 				mockRepo := &MockRepo{}
 				mockRepo.QueryActualExamEndTimeFunc = func(examineeId int64) (int64, error) {
 					return time.Now().Add(-time.Hour).UnixMilli(), nil
-				}
-				return mockRepo
-			},
-		},
-		{
-			name:                   "发送非json格式的消息",
-			examineeID:             "12345",
-			submissionID:           "67890",
-			sysUserID:              null.NewInt(54242, true),
-			resetEndTimeExamineeID: 12345,
-			doResetEndTime:         true,
-			sleepDuration1:         5 * time.Second,
-			sleepDuration2:         5 * time.Second,
-			reqForceError:          "",
-			msgToSend:              "invalid message format",
-			wantErr:                false,
-			desc:                   "测试重置考试结束时间",
-			mockRepoFunc: func() Repo {
-				mockRepo := &MockRepo{}
-				mockRepo.QueryActualExamEndTimeFunc = func(examineeId int64) (int64, error) {
-					return time.Now().Add(time.Hour).UnixMilli(), nil
 				}
 				return mockRepo
 			},
@@ -729,7 +719,7 @@ func Test_serviceImpl_HandleInitTimeSyncConn_Websocket(t *testing.T) {
 			defer cancel()
 
 			// 启动时间同步服务
-			go srv.StartServe(serveCtx)
+			go srv.startServe(serveCtx)
 
 			srvCtx := &cmn.ServiceCtx{
 				Msg: &cmn.ReplyProto{
@@ -751,10 +741,10 @@ func Test_serviceImpl_HandleInitTimeSyncConn_Websocket(t *testing.T) {
 				serviceCtx.W = w
 
 				ctx := context.WithValue(context.Background(), cmn.QNearKey, serviceCtx)
-				ctx = context.WithValue(ctx, "force-error", tt.reqForceError)
+				ctx = context.WithValue(ctx, "force-error", tt.HandleInitTimeSyncConnForceError)
 
 				// 调用HandleInitTimeSyncConn处理WebSocket连接
-				srv.HandleInitTimeSyncConn(ctx)
+				srv.handleInitTimeSyncConn(ctx)
 			}))
 			defer server.Close()
 
@@ -825,11 +815,28 @@ func Test_serviceImpl_HandleInitTimeSyncConn_Websocket(t *testing.T) {
 
 			time.Sleep(tt.sleepDuration1)
 
+			var SendResetExamEndTimeMsgGetErr error
 			if tt.doResetEndTime {
-				cmn.ResetExamEndTimeChan <- tt.resetEndTimeExamineeID
+				resetEndTimeCtx := context.WithValue(context.Background(), "force-error", tt.SendResetExamEndTimeMsgForceError)
+				SendResetExamEndTimeMsgGetErr = srv.SendResetExamEndTimeMsg(resetEndTimeCtx, []int64{tt.resetEndTimeExamineeID})
 			}
 
 			time.Sleep(tt.sleepDuration2)
+
+			// 验证发送重置考试结束时间消息的结果
+			if tt.wantSendResetExamEndTimeMsgErr {
+				if SendResetExamEndTimeMsgGetErr == nil {
+					t.Errorf("Expected error when sending reset exam end time message but got none")
+				} else {
+					t.Logf("Expected error occurred: %v", SendResetExamEndTimeMsgGetErr)
+				}
+			} else {
+				if SendResetExamEndTimeMsgGetErr != nil {
+					t.Errorf("Expected success but got error: %v", SendResetExamEndTimeMsgGetErr)
+				} else {
+					t.Log("Reset exam end time message sent successfully")
+				}
+			}
 
 			// 验证结果
 			if tt.wantErr {
