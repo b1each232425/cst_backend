@@ -75,7 +75,10 @@ func (srv *serviceImpl) StartServe(ctx context.Context) {
 
 		case examineeId := <-cmn.ResetExamEndTimeChan: // 接收需要重置考试结束时刻的考生ID
 			z.Info("reset exam end time for examineeId", zap.Int64("examineeId", examineeId))
-			srv.sendResetExamEndTimeMsg(ctx, examineeId)
+			err := srv.sendResetExamEndTimeMsg(ctx, examineeId)
+			if err != nil {
+				cmn.ResetExamEndTimeErrChan <- err // 将错误发送到错误通道
+			}
 
 		case registerClient := <-srv.registerChanel: // 接收注册的客户端
 			id := registerClient.GeConnId()
@@ -222,46 +225,61 @@ func (srv *serviceImpl) broadcastTimeSyncMsg(ctx context.Context) {
 
 // sendResetExamEndTimeMsg 发送重置考试结束时刻的消息
 // 该方法会从数据库中查询考生的实际考试结束时间，并将其发送给对应的WebSocket客户端，以与考点管理模块配合实现延长考试时长功能
-func (srv *serviceImpl) sendResetExamEndTimeMsg(ctx context.Context, examineeId int64) {
+func (srv *serviceImpl) sendResetExamEndTimeMsg(ctx context.Context, examineeId int64) error {
 	z.Info("---->" + cmn.FncName())
 
 	forceErr, _ := ctx.Value("force-error").(string) // 用于强制执行错误处理代码
 
 	if examineeId <= 0 {
-		z.Error("examineeId must be greater than 0")
-		return
+		e := fmt.Errorf("examineeId must be greater than 0")
+		z.Error(e.Error())
+		return e
 	}
 
-	// 获取考生的实际考试结束时间
-	actualEndTime, err := srv.repo.QueryActualExamEndTime(examineeId)
-	if err != nil {
-		z.Error("error querying actual exam end time", zap.Int64("examineeId", examineeId), zap.Error(err))
-		return
+	var execErr error
+
+	err := srv.pool.Submit(func() {
+		// 获取考生的实际考试结束时间
+		var actualEndTime int64
+		actualEndTime, execErr = srv.repo.QueryActualExamEndTime(examineeId)
+		if execErr != nil {
+			execErr = fmt.Errorf("error querying actual exam end time: %w, examineeID: %v", execErr, examineeId)
+			return
+		}
+		if actualEndTime <= time.Now().UnixMilli() {
+			execErr = fmt.Errorf("actual exam end time is not greater than current time, examineeID: %v, actualEndTime: %v", examineeId, actualEndTime)
+			z.Error(execErr.Error())
+			return
+		}
+
+		// 获取WebSocket连接实例
+		wsClient, err := srv.getClientByExamineeId(ctx, examineeId)
+		if err != nil {
+			execErr = fmt.Errorf("error getting WebSocket client by examineeId: %w, examineeID: %v", err, examineeId)
+			return
+		}
+
+		// 发送消息
+		msg := client.SendMsg{
+			MsgType: client.TypeExamEndtime,
+			EndTime: actualEndTime,
+		}
+		err = wsClient.SendMessage(msg)
+		if err != nil || forceErr == "sendMessage" {
+			execErr = fmt.Errorf("error sending timestamp: %w, examineeID: %v", err, examineeId)
+			return
+		}
+	})
+	if err != nil || forceErr == "ants.Pool.Submit" {
+		e := fmt.Errorf("error submitting task to ants pool: %w", err)
+		z.Error(e.Error())
+		return e
 	}
-	if actualEndTime <= time.Now().UnixMilli() {
-		z.Warn("actual exam end time is not greater than current time", zap.Int64("examineeId", examineeId), zap.Int64("actualEndTime", actualEndTime))
-		return
+	if execErr != nil {
+		return execErr
 	}
 
-	// 获取WebSocket连接实例
-	wsClient, err := srv.getClientByExamineeId(ctx, examineeId)
-	if err != nil {
-		z.Error("error getting WebSocket client by examineeId", zap.Int64("examineeId", examineeId), zap.Error(err))
-		return
-	}
-
-	// 发送消息
-	msg := client.SendMsg{
-		MsgType: client.TypeExamEndtime,
-		EndTime: actualEndTime,
-	}
-	err = wsClient.SendMessage(msg)
-	if err != nil || forceErr == "sendMessage" {
-		z.Error("error sending timestamp", zap.Error(err))
-		return
-	}
-
-	return
+	return nil
 }
 
 // sendCurrentTimestampMsg 发送当前时间戳消息

@@ -570,6 +570,27 @@ func Test_serviceImpl_HandleInitTimeSyncConn_Websocket(t *testing.T) {
 			},
 		},
 		{
+			name:                   "测试重置考试结束时间｜ants.Pool.Submit错误",
+			examineeID:             "12345",
+			submissionID:           "67890",
+			sysUserID:              null.NewInt(54242, true),
+			resetEndTimeExamineeID: 12345,
+			doResetEndTime:         true,
+			sleepDuration1:         5 * time.Second,
+			sleepDuration2:         5 * time.Second,
+			reqForceError:          "",
+			serveForceError:        "ants.Pool.Submit",
+			wantErr:                false,
+			desc:                   "测试重置考试结束时间",
+			mockRepoFunc: func() Repo {
+				mockRepo := &MockRepo{}
+				mockRepo.QueryActualExamEndTimeFunc = func(examineeId int64) (int64, error) {
+					return time.Now().Add(time.Hour).UnixMilli(), nil
+				}
+				return mockRepo
+			},
+		},
+		{
 			name:                   "测试重置考试结束时间｜目标考生ID不合法",
 			examineeID:             "12345",
 			submissionID:           "67890",
