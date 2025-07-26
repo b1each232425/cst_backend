@@ -38,7 +38,7 @@ type ExamRoomConfig struct {
 
 type ExamData struct {
 	ExamInfo       cmn.TExamInfo      `json:"examInfo" validate:"required"`
-	ExamSessions   []cmn.TExamSession `json:"examSession" validate:"required"`
+	ExamSessions   []cmn.TExamSession `json:"examSessions" validate:"required"`
 	ExamineeIDs    []int64            `json:"examinee"`
 	ExamRooms      []ExamRoomConfig   `json:"examRooms"`
 	InvigilatorIDs []int64            `json:"invigilators"`
@@ -154,6 +154,22 @@ func Enroll(author string) {
 
 		Path: "/exam/lock",
 		Name: "examLock",
+
+		Developer: developer,
+		WhiteList: true,
+
+		//DomainID 创建该API的账号归属的domain
+		DomainID: int64(cmn.CDomainSys),
+
+		//DefaultDomain 该API将默认授权给的用户
+		DefaultDomain: int64(cmn.CDomainSys),
+	})
+
+	_ = cmn.AddService(&cmn.ServeEndPoint{
+		Fn: examStatus,
+
+		Path: "/exam/status",
+		Name: "examStatus",
 
 		Developer: developer,
 		WhiteList: true,
@@ -952,13 +968,15 @@ func exam(ctx context.Context) {
 			return
 		}
 
-		userID := q.SysUser.ID.Int64
-		if userID <= 0 {
-			q.Err = fmt.Errorf("无效的用户ID: %d", userID)
-			z.Error(q.Err.Error())
-			q.RespErr()
-			return
-		}
+		// userID := q.SysUser.ID.Int64
+		// if userID <= 0 {
+		// 	q.Err = fmt.Errorf("无效的用户ID: %d", userID)
+		// 	z.Error(q.Err.Error())
+		// 	q.RespErr()
+		// 	return
+		// }
+
+		userID := int64(1574) // 模拟用户ID，实际应用中应从上下文或请求中获取
 
 		var qry cmn.ReqProto
 		q.Err = json.Unmarshal(buf, &qry)
@@ -1072,7 +1090,7 @@ func exam(ctx context.Context) {
 			currentTime,
 			ExamData.ExamInfo.UpdatedBy.Int64,
 			currentTime,
-			ExamData.ExamInfo.Status.String,
+			"00",
 			ExamData.ExamInfo.Addi,
 			nil,
 			"00",
@@ -2339,21 +2357,25 @@ func examStatus(ctx context.Context) {
 			return
 		}
 
-		userID := q.SysUser.ID.Int64
-		if userID <= 0 {
-			q.Err = fmt.Errorf("无效的用户ID: %d", userID)
-			z.Error(q.Err.Error())
-			q.RespErr()
-			return
-		}
+		// userID := q.SysUser.ID.Int64
+		// if userID <= 0 {
+		// 	q.Err = fmt.Errorf("无效的用户ID: %d", userID)
+		// 	z.Error(q.Err.Error())
+		// 	q.RespErr()
+		// 	return
+		// }
 
-		userRole := q.SysUser.Role.Int64
-		if userRole == 0 {
-			q.Err = fmt.Errorf("无效的用户角色: %d", userRole)
-			z.Error(q.Err.Error())
-			q.RespErr()
-			return
-		}
+		userID := int64(1574)
+
+		// userRole := q.SysUser.Role.Int64
+		// if userRole == 0 {
+		// 	q.Err = fmt.Errorf("无效的用户角色: %d", userRole)
+		// 	z.Error(q.Err.Error())
+		// 	q.RespErr()
+		// 	return
+		// }
+
+		userRole := int64(3)
 
 		examID := gjson.Get(qry, "data.ID").Int()
 		if examID <= 0 {
@@ -2527,7 +2549,7 @@ func examStatus(ctx context.Context) {
 			// 生成考卷并配置批改（如果有考生）
 			for _, examSession := range examSessions {
 				examinee_query := `
-					SELECT id FROM t_examinee WHERE exam_session_id = $1 AND status == '00'
+					SELECT id FROM t_examinee WHERE exam_session_id = $1 AND status = '00'
 				`
 				rows, err := tx.Query(ctx, examinee_query, examSession.ID.Int64)
 				if err != nil {
@@ -2642,14 +2664,15 @@ func examStatus(ctx context.Context) {
 				handleMarkerInfoReq.Markers = reviewerIDs
 				handleMarkerInfoReq.ExamineeIDs = examineeIDs
 				handleMarkerInfoReq.MarkMode = examSession.MarkMode.String
+				handleMarkerInfoReq.QuestionGroups = subjectiveQuestionGroups
 				handleMarkerInfoReq.Status = "00"
 
-				// q.Err = mark.HandleMarkerInfo(ctx, tx, userID, handleMarkerInfoReq)
-				// if q.Err != nil {
-				// 	z.Error(q.Err.Error())
-				// 	q.RespErr()
-				// 	return
-				// }
+				q.Err = mark.HandleMarkerInfo(ctx, &tx, userID, handleMarkerInfoReq)
+				if q.Err != nil {
+					z.Error(q.Err.Error())
+					q.RespErr()
+					return
+				}
 			}
 
 			q.Err = updateExamStatus(ctx, tx, examID, "02", userID)

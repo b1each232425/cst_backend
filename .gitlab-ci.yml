@@ -107,8 +107,7 @@ deploy-devmentor-be:
   stage: deploy
   only:
     refs:
-      - main
-      - master
+      - /^v\d+\.\d+\.\d+$/
 
   tags:
     - nodejs-build
@@ -118,3 +117,20 @@ deploy-devmentor-be:
     - cd backend
     - chmod +x ./deploy.sh
     - ./deploy.sh
+
+
+deploy-3min-be:
+  stage: deploy
+  only:
+    refs:
+      - main
+      - master
+
+  tags:
+    - nodejs-build
+  environment: production
+  script:
+    - 'echo "deploy backend: 3min serve"'
+    - cd backend
+    - chmod +x ./deploy_p.sh
+    - ./deploy_p.sh
