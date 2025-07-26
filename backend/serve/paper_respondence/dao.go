@@ -2,13 +2,13 @@ package paper_respondence
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
+	"time"
+
 	"github.com/jackc/pgx/v5"
 	"github.com/jmoiron/sqlx/types"
 	"go.uber.org/zap"
-	"time"
 	"w2w.io/cmn"
 	"w2w.io/null"
 )
@@ -34,18 +34,19 @@ var (
 	ErrExamineeIdInvalid    = errors.New("examinee id must be > 0")
 )
 
-func insertOrUpdateAnswer(ctx context.Context, req SaveOrUpdateStudentAnswerReq, tx *sql.Tx) (cmn.TStudentAnswers, error) {
+func insertOrUpdateAnswer(ctx context.Context, req SaveOrUpdateStudentAnswerReq, tx pgx.Tx) (cmn.TStudentAnswers, error) {
 	//参数检测
 	if err := cmn.Validate(req); err != nil {
 		return cmn.TStudentAnswers{}, err
 	}
-
-	// 直接一条SQL搞定插入或更新，如果是禁止作答的状态，说明已经提交，不能改了
-	sql := `
+	var sql string
+	if req.ExamineeID > 0 {
+		// 直接一条SQL搞定插入或更新，如果是禁止作答的状态，说明已经提交，不能改了
+		sql = `
 	INSERT INTO t_student_answers 
-		(type, examinee_id, practice_submission_id, question_id, answer, answer_score, creator, create_time, updated_by, update_time, addi, status,answer_attachments_path)
+		(type, examinee_id, practice_submission_id, question_id, answer, creator, create_time, updated_by, update_time, status,answer_attachments_path)
 	VALUES
-		($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+		($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
 	ON CONFLICT (examinee_id, question_id)
 	DO UPDATE SET
 		type = EXCLUDED.type,
@@ -53,9 +54,27 @@ func insertOrUpdateAnswer(ctx context.Context, req SaveOrUpdateStudentAnswerReq,
 		answer_attachments_path = EXCLUDED.answer_attachments_path,
 		updated_by = EXCLUDED.updated_by,
 		update_time = EXCLUDED.update_time
-	WHERE t_student_answers.status <> $14
+	WHERE t_student_answers.status <> $12
 	RETURNING id,creator,updated_by
 	`
+	} else if req.PracticeSubmissionId > 0 {
+		// 直接一条SQL搞定插入或更新，如果是禁止作答的状态，说明已经提交，不能改了
+		sql = `
+	INSERT INTO t_student_answers 
+		(type, examinee_id, practice_submission_id, question_id, answer, creator, create_time, updated_by, update_time, status,answer_attachments_path)
+	VALUES
+		($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+	ON CONFLICT (practice_submission_id, question_id)
+	DO UPDATE SET
+		type = EXCLUDED.type,
+		answer = EXCLUDED.answer,
+		answer_attachments_path = EXCLUDED.answer_attachments_path,
+		updated_by = EXCLUDED.updated_by,
+		update_time = EXCLUDED.update_time
+	WHERE t_student_answers.status <> $12
+	RETURNING id,creator,updated_by
+	`
+	}
 
 	//如果没有附件，就给个空的切片
 	var AttachmentPaths types.JSONText
@@ -69,12 +88,10 @@ func insertOrUpdateAnswer(ctx context.Context, req SaveOrUpdateStudentAnswerReq,
 		Type:                  null.NewString(req.Type, true),
 		QuestionID:            null.IntFrom(req.QuestionID),
 		Answer:                types.JSONText(req.Answer),
-		AnswerScore:           null.Float{},
 		Creator:               null.IntFrom(req.StudentId),
 		CreateTime:            null.IntFrom(time.Now().UnixMilli()),
 		UpdateTime:            null.IntFrom(time.Now().UnixMilli()),
 		UpdatedBy:             null.IntFrom(req.StudentId),
-		Addi:                  types.JSONText{},
 		Status:                null.NewString("00", true),
 		AnswerAttachmentsPath: AttachmentPaths,
 	}
@@ -92,18 +109,16 @@ func insertOrUpdateAnswer(ctx context.Context, req SaveOrUpdateStudentAnswerReq,
 		return cmn.TStudentAnswers{}, err
 	}
 
-	err := tx.QueryRowContext(ctx, sql,
+	err := tx.QueryRow(ctx, sql,
 		&studentAnswer.Type,
 		&studentAnswer.ExamineeID,
 		&studentAnswer.PracticeSubmissionID,
 		&studentAnswer.QuestionID,
 		&studentAnswer.Answer,
-		&studentAnswer.AnswerScore,
 		&studentAnswer.Creator,
 		&studentAnswer.CreateTime,
 		&studentAnswer.UpdatedBy,
 		&studentAnswer.UpdateTime,
-		&studentAnswer.Addi,
 		&studentAnswer.Status,
 		&studentAnswer.AnswerAttachmentsPath,
 		QuestionCanNotAnswer,
@@ -115,29 +130,7 @@ func insertOrUpdateAnswer(ctx context.Context, req SaveOrUpdateStudentAnswerReq,
 	}
 	z.Info("insert or update exam answer result", zap.Any("result", studentAnswer))
 
-	if err := tx.Commit(); err != nil {
-		z.Error(err.Error())
-		return cmn.TStudentAnswers{}, err
-	}
 	return studentAnswer, nil
-}
-
-// getAnswer 获取作答
-func getAnswer(ctx context.Context, req GetStudentAnswerReq, tx *sql.Tx) (cmn.TStudentAnswers, error) {
-	if err := cmn.Validate(req); err != nil {
-		return cmn.TStudentAnswers{}, err
-	}
-
-	//开始查询
-	r := cmn.TStudentAnswers{}
-	selectSql := `SELECT id, type, examinee_id, question_id, answer, marker, creator, create_time, updated_by, update_time, status FROM t_student_answers WHERE examinee_id =$1 AND question_id =$2`
-	err := tx.QueryRowContext(ctx, selectSql, req.ExamineeID, req.QuestionID).Scan(&r.ID, &r.Type, &r.ExamineeID, &r.QuestionID, &r.Answer, &r.Marker, &r.Creator, &r.CreateTime, &r.UpdatedBy, &r.UpdateTime, &r.Status)
-	if err != nil {
-		z.Error("getAnswerByExamineeID error", zap.Error(err))
-		return cmn.TStudentAnswers{}, err
-	}
-
-	return r, nil
 }
 
 // saveStudentBeginTimeForExam 保存考试作答开始时间
@@ -219,29 +212,21 @@ func setAnswerCanNotUpdate(ctx context.Context, examineeId, userId int64, tx pgx
 	return nil
 }
 
-func submitPractice(ctx context.Context, tx *sql.Tx, req SubmitReq) error {
+func submitPractice(ctx context.Context, tx pgx.Tx, req SubmitReq) error {
 	//只有状态为正常作答练习以及结束时间为空的，才能进行更新
 	submitSql := `update t_practice_submissions set end_time = $1,status=$2 where id = $3 AND status=$4 AND end_time IS NULL`
-	result, err := tx.ExecContext(ctx, submitSql, time.Now().UTC(), practiceSubmitted, req.PracticeSubmissionID, NormalStatus)
+	var updateId null.Int
+	err := tx.QueryRow(ctx, submitSql, time.Now().UTC(), practiceSubmitted, req.PracticeSubmissionID, NormalStatus).Scan(&updateId)
 	if err != nil {
 		z.Error("submitPractice error", zap.Error(err))
 		return err
 	}
-	rowsAffected, err := result.RowsAffected()
-	if err != nil {
-		z.Error("submitPractice error", zap.Error(err))
-		return err
-	}
-	if rowsAffected == 0 {
-		err := fmt.Errorf("practice_submission_id of %d not exist", req.PracticeSubmissionID)
-		z.Error(err.Error())
-		return err
-	}
+	z.Info("submit success", zap.Int64("update id", updateId.Int64))
 	return nil
 }
 
 // getCorrectMode 获取练习的批改模式
-func getCorrectMode(ctx context.Context, practiceSubmissionId int64, tx *sql.Tx) (string, error) {
+func getCorrectMode(ctx context.Context, practiceSubmissionId int64, tx pgx.Tx) (string, error) {
 	selectSql := `SELECT 
   p.correct_mode
 FROM 
@@ -252,7 +237,7 @@ WHERE
   ps.id = $1;`
 	var correctMode null.String
 
-	err := tx.QueryRowContext(ctx, selectSql, practiceSubmissionId).Scan(&correctMode)
+	err := tx.QueryRow(ctx, selectSql, practiceSubmissionId).Scan(&correctMode)
 	if err != nil {
 		z.Error("getCorrectMode error", zap.Error(err))
 		return "", err

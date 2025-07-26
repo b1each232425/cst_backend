@@ -14,12 +14,6 @@ type SaveOrUpdateStudentAnswerReq struct {
 	AttachmentPaths      json.RawMessage `json:"attachment_paths"`
 }
 
-type GetStudentAnswerReq struct {
-	ExamineeID           int64 `json:"examinee_id" `
-	PracticeSubmissionId int64 `json:"practice_submission_id" `
-	QuestionID           int64 `json:"question_id" validate:"required"`
-}
-
 type InitRespondentReq struct {
 	Type                 string `json:"type" validate:"required,oneof=00 02"`
 	ExamId               int64  `json:"exam_id" `

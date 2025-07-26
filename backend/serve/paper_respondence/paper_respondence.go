@@ -9,12 +9,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/jackc/pgx/v5"
-	"go.uber.org/zap"
 	"io"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/jackc/pgx/v5"
+	"go.uber.org/zap"
 	"w2w.io/cmn"
 	"w2w.io/serve/examPaper"
 	"w2w.io/serve/exam_mgt"
@@ -45,12 +46,10 @@ const (
 )
 
 var (
-	ErrHasSubmit              = errors.New("student has submit exam")
 	ErrExamNotStart           = errors.New("exam has not started yet")
 	ErrExamOverEntryTime      = errors.New("exam can not be entry,because over entry time")
 	ErrExamFinished           = errors.New("exam has finished")
 	ErrAllowedSubmitNotArrive = errors.New("allowed submit time not arrive")
-	ErrNoEnterExam            = errors.New("student has no enter exam")
 )
 
 var z *zap.Logger
@@ -121,6 +120,21 @@ func Enroll(author string) {
 		//DefaultDomain 该API将默认授权给的用户
 		DefaultDomain: int64(cmn.CDomainSys),
 	})
+	_ = cmn.AddService(&cmn.ServeEndPoint{
+		Fn: CheckExamStatus,
+
+		Path: "/respondent/exam/status",
+		Name: "respondent_exam_status",
+
+		Developer: developer,
+		WhiteList: false,
+
+		//DomainID 创建该API的账号归属的domain
+		DomainID: int64(cmn.CDomainSys),
+
+		//DefaultDomain 该API将默认授权给的用户
+		DefaultDomain: int64(cmn.CDomainSys),
+	})
 }
 
 // --------------------http接口暴露函数区域
@@ -131,6 +145,11 @@ func StudentAnswer(ctx context.Context) {
 	z.Info("---->" + cmn.FncName())
 
 	method := strings.ToLower(q.R.Method)
+	//执行数据库操作
+	db := cmn.GetPgxConn()
+	dmlCtx, cancel := context.WithTimeout(ctx, TIMEOUT)
+	defer cancel()
+
 	switch method {
 	case "post":
 		var buf []byte
@@ -184,10 +203,8 @@ func StudentAnswer(ctx context.Context) {
 			q.RespErr()
 			return
 		}
-		//执行数据库操作
-		sqlxDB := cmn.GetDbConn()
 
-		tx, err := sqlxDB.BeginTx(ctx, nil)
+		tx, err := db.BeginTx(dmlCtx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead})
 		if err != nil {
 			z.Error(err.Error())
 			q.Err = err
@@ -195,14 +212,13 @@ func StudentAnswer(ctx context.Context) {
 			return
 		}
 		defer func() {
-			if q.Err = tx.Rollback(); q.Err != nil {
+			if q.Err = tx.Rollback(dmlCtx); q.Err != nil {
 				z.Error(q.Err.Error())
 				q.RespErr()
 				return
 			}
 		}()
-		dmlCtx, cancel := context.WithTimeout(ctx, TIMEOUT)
-		defer cancel()
+
 		var result cmn.TStudentAnswers
 		result, q.Err = insertOrUpdateAnswer(dmlCtx, u, tx)
 		if q.Err != nil {
@@ -210,7 +226,7 @@ func StudentAnswer(ctx context.Context) {
 			return
 		}
 		//提交
-		if q.Err = tx.Commit(); q.Err != nil {
+		if q.Err = tx.Commit(dmlCtx); q.Err != nil {
 			z.Error(q.Err.Error())
 			q.RespErr()
 			return
@@ -256,57 +272,40 @@ func StudentAnswer(ctx context.Context) {
 			return
 		}
 
-		dmlReq := GetStudentAnswerReq{
-			QuestionID: questionId,
-		}
-
+		//表示考生id或者练习的submissionId
+		var id int64
+		//查询sql语句
+		var selectSql string
 		//查看哪个不为空
 		if ed != "" {
-			dmlReq.ExamineeID, q.Err = strconv.ParseInt(ed, 10, 64)
+			id, q.Err = strconv.ParseInt(ed, 10, 64)
 			if q.Err != nil {
 				z.Error(q.Err.Error())
 				q.RespErr()
 				return
 			}
+			selectSql = `SELECT id, type, examinee_id, question_id, answer, marker, creator, create_time, updated_by, update_time, status FROM t_student_answers WHERE examinee_id =$1 AND question_id =$2`
 		} else {
-			dmlReq.PracticeSubmissionId, q.Err = strconv.ParseInt(pd, 10, 64)
+			id, q.Err = strconv.ParseInt(pd, 10, 64)
 			if q.Err != nil {
 				z.Error(q.Err.Error())
 				q.RespErr()
 				return
 			}
+			selectSql = `SELECT id, type, examinee_id, question_id, answer, marker, creator, create_time, updated_by, update_time, status FROM t_student_answers WHERE practice_submission_id =$1 AND question_id =$2`
 		}
-		//执行数据库操作
-		sqlxDB := cmn.GetDbConn()
 
-		tx, err := sqlxDB.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelRepeatableRead})
-		if err != nil {
-			z.Error(err.Error())
-			q.Err = err
-			q.RespErr()
-			return
-		}
-		defer func() {
-			if q.Err = tx.Rollback(); q.Err != nil {
-				z.Error(q.Err.Error())
-				q.RespErr()
-				return
-			}
-		}()
 		var result cmn.TStudentAnswers
-		dmlCtx, cancel := context.WithTimeout(ctx, TIMEOUT)
-		defer cancel()
-		result, q.Err = getAnswer(dmlCtx, dmlReq, tx)
+
+		//开始查询
+		r := cmn.TStudentAnswers{}
+
+		q.Err = db.QueryRow(ctx, selectSql, id, questionId).Scan(&r.ID, &r.Type, &r.ExamineeID, &r.QuestionID, &r.Answer, &r.Marker, &r.Creator, &r.CreateTime, &r.UpdatedBy, &r.UpdateTime, &r.Status)
 		if q.Err != nil {
-			q.RespErr()
-			return
+			z.Error("getAnswerByExamineeID error", zap.Error(q.Err))
+
 		}
-		//提交
-		if q.Err = tx.Commit(); q.Err != nil {
-			z.Error(q.Err.Error())
-			q.RespErr()
-			return
-		}
+
 		var buf []byte
 		buf, q.Err = cmn.MarshalJSON(&result)
 
@@ -709,11 +708,46 @@ func Submit(ctx context.Context) {
 			q.RespErr()
 			return
 		}
-		q.Err = submitForExam(dmlCtx, u)
-		if q.Err != nil {
+		//执行数据库操作
+		db := cmn.GetPgxConn()
+
+		//开启事务
+		tx, err := db.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead})
+		if err != nil {
+			z.Error(err.Error())
+			q.Err = err
 			q.RespErr()
 			return
 		}
+		defer func() {
+			if q.Err = tx.Rollback(ctx); q.Err != nil && !errors.Is(q.Err, pgx.ErrTxCommitRollback) {
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+		}()
+		//查考当前是否符合条件去提交
+		_, err = checkExamCondition(ctx, u.ExamSessionId, u.StudentId, tx, SUBMIT)
+		if err != nil {
+			q.Err = err
+			q.RespErr()
+			return
+		}
+		updateId, err := submitExam(ctx, tx, u)
+		if err != nil {
+			q.Err = err
+			q.RespErr()
+			return
+		}
+		z.Info("update success", zap.Int64("updateId", updateId))
+
+		if err := tx.Commit(ctx); err != nil {
+			z.Error(err.Error())
+			q.Err = err
+			q.RespErr()
+			return
+		}
+
 		q.Msg.Msg = "success"
 		q.Msg.Status = 0
 		q.Resp()
@@ -724,11 +758,53 @@ func Submit(ctx context.Context) {
 			q.RespErr()
 			return
 		}
-		q.Err = submitForPractice(dmlCtx, u)
-		if q.Err != nil {
+		//执行数据库操作
+		db := cmn.GetPgxConn()
+
+		//开启事务
+		tx, err := db.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead})
+		if err != nil {
+			z.Error(err.Error())
+			q.Err = err
 			q.RespErr()
 			return
 		}
+		defer func() {
+			if q.Err = tx.Rollback(ctx); q.Err != nil && !errors.Is(q.Err, pgx.ErrTxCommitRollback) {
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+		}()
+		//将练习置为提交状态
+		err = submitPractice(ctx, tx, u)
+		if err != nil {
+			q.Err = err
+			q.RespErr()
+			return
+		}
+
+		//获取练习的批改模式
+		correctMode, err := getCorrectMode(ctx, u.PracticeSubmissionID, tx)
+		if err != nil {
+			q.Err = err
+			q.RespErr()
+			return
+		}
+
+		if err := tx.Commit(dmlCtx); err != nil {
+			z.Error(err.Error())
+			q.Err = err
+			q.RespErr()
+			return
+		}
+
+		go func(correctMode string) {
+			if correctMode != AiCorrectMode {
+				return
+			}
+			//TODO 对接ai批改接口
+		}(correctMode)
 	default:
 		q.Err = fmt.Errorf("unknown student answer type: %s", u.Type)
 		z.Error(q.Err.Error())
@@ -737,87 +813,9 @@ func Submit(ctx context.Context) {
 	}
 }
 
-//--------------------由于逻辑太长，将一些长逻辑封装到此处，http接口暴露区域直接调用这里的
+//--------------------封装一些给外部调用，或者常用的函数
 
-func submitForExam(ctx context.Context, req SubmitReq) (err error) {
-
-	//执行数据库操作
-	sqlxDB := cmn.GetPgxConn()
-
-	//开启事务
-	tx, err := sqlxDB.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead})
-	if err != nil {
-		z.Error(err.Error())
-		return err
-	}
-	defer func() {
-		if RollbackErr := tx.Rollback(ctx); RollbackErr != nil && !errors.Is(RollbackErr, pgx.ErrTxCommitRollback) {
-			z.Error(RollbackErr.Error())
-			err = RollbackErr
-		}
-	}()
-	//查考当前是否符合条件去提交
-	_, err = checkExamCondition(ctx, req.ExamSessionId, req.StudentId, tx, SUBMIT)
-	if err != nil {
-		return err
-	}
-	updateId, err := submitExam(ctx, tx, req)
-	if err != nil {
-		return err
-	}
-	z.Info("update success", zap.Int64("updateId", updateId))
-
-	if err := tx.Commit(ctx); err != nil {
-		z.Error(err.Error())
-		return err
-	}
-	return nil
-}
-
-// submitForPractice 提交练习
-func submitForPractice(ctx context.Context, req SubmitReq) (err error) {
-	//执行数据库操作
-	sqlxDB := cmn.GetDbConn()
-
-	//开启事务
-	tx, err := sqlxDB.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelRepeatableRead})
-	if err != nil {
-		z.Error(err.Error())
-		return err
-	}
-	defer func() {
-		if RollbackErr := tx.Rollback(); RollbackErr != nil && !errors.Is(RollbackErr, sql.ErrTxDone) {
-			z.Error(RollbackErr.Error())
-			err = RollbackErr
-		}
-	}()
-	//将练习置为提交状态
-	err = submitPractice(ctx, tx, req)
-	if err != nil {
-		return err
-	}
-
-	//获取练习的批改模式
-	correctMode, err := getCorrectMode(ctx, req.PracticeSubmissionID, tx)
-	if err != nil {
-		return err
-	}
-
-	if err := tx.Commit(); err != nil {
-		z.Error(err.Error())
-		return err
-	}
-
-	go func(correctMode string) {
-		if correctMode != AiCorrectMode {
-			return
-		}
-		//TODO 对接ai批改接口
-	}(correctMode)
-	return nil
-}
-
-// HandleExit 处理学生退出作答，用在websocket连接断开的时候
+// HandleExit 给予时间同步模块处理学生退出作答，用在websocket连接断开的时候
 func HandleExit(ctx context.Context, req ExitReq) (err error) {
 	// 用于测试mock数据
 	testSign, ok := ctx.Value(TestSign).(string)
@@ -884,7 +882,7 @@ WHERE id = $1 AND status = $2;`
 	}
 }
 
-// checkExamCondition 为考试初始化以及考试提交查考当前是否符合条件
+// checkExamCondition 为考试初始化以及考试提交查考当前是否符合条件，多处地方需要使用，因此封装
 func checkExamCondition(ctx context.Context, examSession, studentID int64, tx pgx.Tx, use string) (int, error) {
 	examineeInfo, err := getExamineeInfo(ctx, examSession, studentID, tx)
 	if err != nil {
