@@ -3,7 +3,7 @@
  * @Description: 考卷-答卷数据库层
  * @Date: 2025-07-21 13:14:34
  * @LastEditors: zdl <1311866870@qq.com>
- * @LastEditTime: 2025-07-24 16:08:31
+ * @LastEditTime: 2025-07-24 17:06:54
  */
 package examPaper
 
@@ -56,7 +56,7 @@ func LoadExamPaperDetailsById(ctx context.Context, epid int64, withQuestions, wi
 	s := fmt.Sprintf("SELECT %s FROM v_exam_paper WHERE id=$1 AND status=$2", strings.Join(fields, ","))
 	err = conn.QueryRow(ctx, s, epid, PaperStatus.Normal).Scan(scanArgs...)
 	if err != nil {
-		err = fmt.Errorf("LoadExamPaperById call failed:%v", err)
+		err = fmt.Errorf("select examPaper failed:%v", err)
 		z.Error(err.Error())
 		return nil, nil, nil, err
 	}
@@ -119,7 +119,7 @@ func LoadExamPaperDetailsById(ctx context.Context, epid int64, withQuestions, wi
 	return &ep, examGroups, examQuestions, nil
 }
 
-// GenerateAnswerQuestion 根据一次考卷生成学生答卷信息 批量插入学生答卷 占位符最多65535个，因此最多一张试卷有3000个题目
+// GenerateAnswerQuestion 根据一次考卷生成学生答卷信息 批量插入学生答卷
 func GenerateAnswerQuestion(ctx context.Context, tx pgx.Tx, req GenerateAnswerQuestionsRequest, uid int64) error {
 	var err error
 	now := time.Now().UnixMilli()
@@ -143,8 +143,6 @@ func GenerateAnswerQuestion(ctx context.Context, tx pgx.Tx, req GenerateAnswerQu
 	// 获取考题
 	_, pg, pq, err := LoadExamPaperDetailsById(ctx, req.ExamPaperID, true, true)
 	if err != nil {
-		err = fmt.Errorf("LoadExamPaperById call failed:%v", err)
-		z.Error(err.Error())
 		return err
 	}
 	var Answers []*cmn.TStudentAnswers
@@ -200,8 +198,6 @@ func GenerateAnswerQuestion(ctx context.Context, tx pgx.Tx, req GenerateAnswerQu
 		// 执行单次操作语句
 		err = BatchInsertStudentAnswer(ctx, tx, batchStudentAnswers, uid)
 		if err != nil {
-			err = fmt.Errorf("BatchInsertStudentAnswer call failed:%v", err)
-			z.Error(err.Error())
 			return err
 		}
 	}
@@ -249,7 +245,7 @@ func BatchInsertStudentAnswer(ctx context.Context, tx pgx.Tx, sa []*cmn.TStudent
 	z.Sugar().Debugf("打印输出一下插入学生作答SQL参数:%v", args)
 	_, err := tx.Exec(ctx, insertQuery, args...)
 	if err != nil {
-		err = fmt.Errorf("批量插入失败: %v", err)
+		err = fmt.Errorf("批量插入学生答卷失败: %v", err)
 		z.Error(err.Error())
 		return err
 	}
@@ -294,7 +290,7 @@ func LoadPaperTemplateById(ctx context.Context, paperId int64, withQuestions boo
 	s := fmt.Sprintf("SELECT %s FROM v_paper WHERE id=$1 AND status != $2", strings.Join(fields, ","))
 	err = conn.QueryRow(ctx, s, paperId, PaperStatus.Invalid).Scan(scanArgs...)
 	if err != nil {
-		err = fmt.Errorf("LoadExamPaperById call failed:%v", err)
+		err = fmt.Errorf("select paper failed:%v", err)
 		z.Error(err.Error())
 		return nil, nil, nil, err
 	}
@@ -335,7 +331,7 @@ func LoadPaperTemplateById(ctx context.Context, paperId int64, withQuestions boo
 	return &p, groups, questions, nil
 }
 
-// GenerateExamPaper 生成一张可用考卷（包括题组与题目）
+// GenerateExamPaper 生成一张可用考卷（包括题组与题目） 占位符最多65535个，因此一张试卷最多支持有3000个题目，超过的话目前实现方式数据库无法插入
 /*
 关键参数说明：
 	category 考卷服务类型 00：考试 02：练习
@@ -364,8 +360,6 @@ func GenerateExamPaper(ctx context.Context, tx pgx.Tx, category string, paperId,
 	}
 	_, pg, pq, err := LoadPaperTemplateById(ctx, paperId, true)
 	if err != nil {
-		err = fmt.Errorf("LoadPaperTemplateById call failed:%v", err)
-		z.Error(err.Error())
 		return nil, nil, err
 	}
 	if len(pg) == 0 {
@@ -669,8 +663,6 @@ func LoadExamPaperDetailByUserId(ctx context.Context, examPaperId, pSubmissionId
 	// 获取本次考卷基本信息、考卷题组、考题原本信息
 	p, pg, pq, err := LoadExamPaperDetailsById(ctx, examPaperId, true, withAnswer)
 	if err != nil {
-		err = fmt.Errorf("LoadExamPaperDetailsById call failed:%v", err)
-		z.Error(err.Error())
 		return nil, nil, nil, err
 	}
 

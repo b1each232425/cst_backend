@@ -106,7 +106,7 @@ func Enroll(author string) {
 }
 
 func practiceTH(ctx context.Context) {
-	TEMPUID := int64(1)
+	TEMPUID := int64(1574)
 	q := cmn.GetCtxValue(ctx)
 	// TODO 对接用户管理的令牌功能
 	//userID, _ := q.Session.Values["ID"].(int64)
@@ -149,6 +149,12 @@ func practiceTH(ctx context.Context) {
 				q.RespErr()
 				return
 			}
+			q.Err = ValidatePractice(&p.Practice, p.Student)
+			if q.Err != nil {
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
 			err := UpsertPractice(ctx, &p.Practice, p.Student, TEMPUID)
 			if err != nil {
 				q.Err = err
@@ -183,7 +189,7 @@ func practiceTH(ctx context.Context) {
 					return
 				}
 				result := Map{
-					"practice":      p,
+					"practice":      &p,
 					"student_count": sCount,
 					"paper_name":    pName,
 				}
@@ -305,7 +311,7 @@ func practiceStudentH(ctx context.Context) {
 }
 
 func practiceSH(ctx context.Context) {
-	TEMPUID := int64(1)
+	TEMPUID := int64(1575)
 	q := cmn.GetCtxValue(ctx)
 	// TODO 对接用户管理的令牌功能
 	//userID, _ := q.Session.Values["ID"].(int64)
@@ -325,6 +331,13 @@ func practiceSH(ctx context.Context) {
 	}
 	name := q.R.URL.Query().Get("name")
 	d := q.R.URL.Query().Get("difficulty")
+	t := q.R.URL.Query().Get("type")
+	if t == "" {
+		q.Err = fmt.Errorf("缺失练习类型")
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
 	pageStr := q.R.URL.Query().Get("page")
 	if pageStr == "" {
 		q.Err = fmt.Errorf("缺失分页查询页号")
@@ -332,6 +345,7 @@ func practiceSH(ctx context.Context) {
 		q.RespErr()
 		return
 	}
+
 	var page int
 	page, q.Err = strconv.Atoi(pageStr)
 	if q.Err != nil {
@@ -358,7 +372,7 @@ func practiceSH(ctx context.Context) {
 
 	// 排序字段
 	orderBy := []string{"create_time desc"}
-	p, total, err := ListPracticeS(ctx, name, d, orderBy, page, pageSize, TEMPUID)
+	p, total, err := ListPracticeS(ctx, t, name, d, orderBy, page, pageSize, TEMPUID)
 	if err != nil {
 		q.Err = err
 		q.RespErr()
@@ -486,3 +500,18 @@ func practiceStudentListH(ctx context.Context) {
 	q.Msg.Msg = "OK"
 	q.Resp()
 }
+
+//{
+//// TODO 将这个测试用例放在URL测试上
+//name: "期望正常3 有练习信息 但无学生名单,前端没有传空数组  这个不能放在这里测，只能放在http请求那里测的",
+//p: &cmn.TPractice{
+//PaperID:         null.IntFrom(101),
+//Name:            null.StringFrom("英语期末考试"),
+//CorrectMode:     null.StringFrom("00"), // 批改模式
+//Type:            null.StringFrom("00"), // 练习类型（试卷）
+//AllowedAttempts: null.IntFrom(3),
+//},
+//ps:            []int64{},
+//uid:           int64(1),
+//expectedError: false,
+//},
