@@ -156,27 +156,28 @@ func pollRedisTimers() {
 	for {
 		now := time.Now()
 
-		// 获取Redis连接
-		conn := cmn.GetRedisConn()
-		defer conn.Close()
+		func() {
+			conn := cmn.GetRedisConn()
+			defer conn.Close()
 
-		// 获取并删除到期事件
-		result, err := conn.Do("EVAL", luaScript, 1, EXAM_TIMER_SET_KEY, now.UnixMilli(), 100)
-		if err != nil {
-			z.Error("Failed to execute Lua script for timer events", zap.Error(err))
-			continue
-		}
+			// 获取并删除到期事件
+			result, err := conn.Do("EVAL", luaScript, 1, EXAM_TIMER_SET_KEY, now.UnixMilli(), 100)
+			if err != nil {
+				z.Error("Failed to execute Lua script for timer events", zap.Error(err))
+				return
+			}
 
-		events, err := redis.Strings(result, nil)
-		if err != nil {
-			z.Error("Failed to convert Lua script result", zap.Error(err))
-			continue
-		}
+			events, err := redis.Strings(result, nil)
+			if err != nil {
+				z.Error("Failed to convert Lua script result", zap.Error(err))
+				return
+			}
 
-		// 处理到期事件
-		if len(events) > 0 {
-			handleTimerEventsBatch(events)
-		}
+			// 处理到期事件
+			if len(events) > 0 {
+				handleTimerEventsBatch(events)
+			}
+		}()
 
 		// 等待到下一个整分钟
 		nextMinute := now.Truncate(time.Minute).Add(time.Minute)
