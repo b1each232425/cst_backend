@@ -119,7 +119,7 @@ deploy-devmentor-be:
     - ./deploy.sh
 
 
-deploy-devmentor-be:
+deploy-3min-be:
   stage: deploy
   only:
     refs:
