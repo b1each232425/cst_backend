@@ -29,7 +29,17 @@ type serviceImpl struct {
 	repo             Repo
 }
 
-func NewService(timeSyncInterval time.Duration, pool *ants.Pool, upgrader websocket.Upgrader) Service {
+func NewService(timeSyncInterval time.Duration, pool *ants.Pool, upgrader websocket.Upgrader) (Service, error) {
+	if timeSyncInterval <= 0 {
+		return nil, fmt.Errorf("invalid timeSyncInterval: %v, must be greater than 0", timeSyncInterval)
+	}
+	if pool == nil {
+		return nil, fmt.Errorf("ants pool cannot be nil")
+	}
+	if upgrader.CheckOrigin == nil {
+		return nil, fmt.Errorf("websocket upgrader CheckOrigin cannot be nil")
+	}
+
 	return &serviceImpl{
 		upgrader:         upgrader,
 		timeSyncInterval: timeSyncInterval,
@@ -38,7 +48,7 @@ func NewService(timeSyncInterval time.Duration, pool *ants.Pool, upgrader websoc
 		unregisterChanel: make(chan client.Connection, 100),
 		pool:             pool,
 		repo:             NewRepo(),
-	}
+	}, nil
 }
 
 // StartServe 启动时间同步服务
@@ -215,6 +225,8 @@ func (srv *serviceImpl) broadcastTimeSyncMsg(ctx context.Context) {
 func (srv *serviceImpl) sendResetExamEndTimeMsg(ctx context.Context, examineeId int64) {
 	z.Info("---->" + cmn.FncName())
 
+	forceErr, _ := ctx.Value("force-error").(string) // 用于强制执行错误处理代码
+
 	if examineeId <= 0 {
 		z.Error("examineeId must be greater than 0")
 		return
@@ -244,7 +256,7 @@ func (srv *serviceImpl) sendResetExamEndTimeMsg(ctx context.Context, examineeId 
 		EndTime: actualEndTime,
 	}
 	err = wsClient.SendMessage(msg)
-	if err != nil {
+	if err != nil || forceErr == "sendMessage" {
 		z.Error("error sending timestamp", zap.Error(err))
 		return
 	}

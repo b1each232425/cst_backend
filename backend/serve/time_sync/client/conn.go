@@ -155,7 +155,6 @@ func (conn *Conn) StartHeartbeatDetection() {
 				conn.logger.Error("error sending ping", zap.Error(err))
 				return
 			}
-			conn.logger.Info("ping sent")
 		}
 	}
 }

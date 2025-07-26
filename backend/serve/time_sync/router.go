@@ -67,7 +67,10 @@ func Enroll(author string) {
 	}
 
 	// 初始化时间同步服务
-	srv = NewService(timeSyncIntervalMillisecond, pool, upgrader)
+	srv, err = NewService(timeSyncIntervalMillisecond, pool, upgrader)
+	if err != nil {
+		z.Fatal("Failed to create time sync service", zap.Error(err))
+	}
 
 	// 开启时间同步服务
 	go srv.StartServe(context.Background())

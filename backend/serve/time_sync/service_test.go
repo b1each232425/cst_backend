@@ -32,6 +32,185 @@ func TestMain(m *testing.M) {
 	os.Exit(code)
 }
 
+// Test_NewService 测试 NewService 函数
+func Test_NewService(t *testing.T) {
+	tests := []struct {
+		name             string
+		timeSyncInterval time.Duration
+		pool             *ants.Pool
+		upgrader         websocket.Upgrader
+		wantNil          bool
+		wantErr          bool
+		desc             string
+	}{
+		{
+			name:             "正常创建服务实例",
+			timeSyncInterval: 5 * time.Second,
+			pool:             createTestPool(t, 10),
+			upgrader:         websocket.Upgrader{CheckOrigin: func(r *http.Request) bool { return true }},
+			wantNil:          false,
+			desc:             "使用有效参数创建服务实例",
+		},
+		{
+			name:             "零时间间隔",
+			timeSyncInterval: 0,
+			pool:             createTestPool(t, 10),
+			upgrader:         websocket.Upgrader{CheckOrigin: func(r *http.Request) bool { return true }},
+			wantNil:          false,
+			wantErr:          true,
+			desc:             "使用零时间间隔创建服务实例",
+		},
+		{
+			name:             "负数时间间隔",
+			timeSyncInterval: -1 * time.Second,
+			pool:             createTestPool(t, 10),
+			upgrader:         websocket.Upgrader{CheckOrigin: func(r *http.Request) bool { return true }},
+			wantNil:          false,
+			wantErr:          true,
+			desc:             "使用负数时间间隔创建服务实例",
+		},
+		{
+			name:             "小池容量",
+			timeSyncInterval: 5 * time.Second,
+			pool:             createTestPool(t, 1),
+			upgrader:         websocket.Upgrader{CheckOrigin: func(r *http.Request) bool { return true }},
+			wantNil:          false,
+			desc:             "使用小容量协程池创建服务实例",
+		},
+		{
+			name:             "大池容量",
+			timeSyncInterval: 5 * time.Second,
+			pool:             createTestPool(t, 1000),
+			upgrader:         websocket.Upgrader{CheckOrigin: func(r *http.Request) bool { return true }},
+			wantNil:          false,
+			desc:             "使用大容量协程池创建服务实例",
+		},
+		{
+			name:             "自定义WebSocket升级器",
+			timeSyncInterval: 5 * time.Second,
+			pool:             createTestPool(t, 10),
+			upgrader: websocket.Upgrader{
+				CheckOrigin:     func(r *http.Request) bool { return false },
+				ReadBufferSize:  1024,
+				WriteBufferSize: 1024,
+			},
+			wantNil: false,
+			wantErr: false,
+			desc:    "使用自定义WebSocket升级器创建服务实例",
+		},
+		{
+			name:             "空的WebSocket升级器",
+			timeSyncInterval: 5 * time.Second,
+			pool:             createTestPool(t, 10),
+			upgrader:         websocket.Upgrader{},
+			wantNil:          false,
+			wantErr:          true,
+			desc:             "使用自定义WebSocket升级器创建服务实例",
+		},
+		{
+			name:             "空的ants池",
+			timeSyncInterval: 5 * time.Second,
+			pool:             nil,
+			upgrader:         websocket.Upgrader{CheckOrigin: func(r *http.Request) bool { return true }},
+			wantNil:          false,
+			wantErr:          true,
+			desc:             "使用自定义WebSocket升级器创建服务实例",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// 确保在测试结束后释放协程池
+			defer func() {
+				if tt.pool != nil {
+					tt.pool.Release()
+				}
+			}()
+
+			// 调用 NewService 函数
+			service, err := NewService(tt.timeSyncInterval, tt.pool, tt.upgrader)
+
+			// 验证返回值
+			if tt.wantNil {
+				if service != nil {
+					t.Errorf("Expected nil service but got non-nil")
+				}
+				return
+			}
+
+			if tt.wantErr {
+				if err == nil {
+					t.Errorf("Expected error but got none")
+				} else {
+					t.Logf("Expected error occurred: %v", err)
+				}
+				return
+			}
+
+			// 验证服务实例不为空
+			if service == nil {
+				t.Errorf("Expected non-nil service but got nil")
+				return
+			}
+
+			// 验证服务实例类型
+			srvImpl, ok := service.(*serviceImpl)
+			if !ok {
+				t.Errorf("Expected *serviceImpl but got %T", service)
+				return
+			}
+
+			// 验证字段设置
+			if srvImpl.timeSyncInterval != tt.timeSyncInterval {
+				t.Errorf("Expected timeSyncInterval %v but got %v", tt.timeSyncInterval, srvImpl.timeSyncInterval)
+			}
+
+			if srvImpl.pool != tt.pool {
+				t.Errorf("Expected pool %p but got %p", tt.pool, srvImpl.pool)
+			}
+
+			// 验证通道初始化
+			if srvImpl.registerChanel == nil {
+				t.Error("Expected registerChanel to be initialized but got nil")
+			}
+
+			if srvImpl.unregisterChanel == nil {
+				t.Error("Expected unregisterChanel to be initialized but got nil")
+			}
+
+			// 验证客户端映射初始化
+			if srvImpl.clients == nil {
+				t.Error("Expected clients map to be initialized but got nil")
+			}
+
+			// 验证仓库初始化
+			if srvImpl.repo == nil {
+				t.Error("Expected repo to be initialized but got nil")
+			}
+
+			// 验证通道容量
+			if cap(srvImpl.registerChanel) != 100 {
+				t.Errorf("Expected registerChanel capacity 100 but got %d", cap(srvImpl.registerChanel))
+			}
+
+			if cap(srvImpl.unregisterChanel) != 100 {
+				t.Errorf("Expected unregisterChanel capacity 100 but got %d", cap(srvImpl.unregisterChanel))
+			}
+
+			t.Logf("Test passed: %s", tt.desc)
+		})
+	}
+}
+
+// createTestPool 创建测试用的协程池
+func createTestPool(t *testing.T, size int) *ants.Pool {
+	pool, err := ants.NewPool(size)
+	if err != nil {
+		t.Fatalf("Failed to create test pool: %v", err)
+	}
+	return pool
+}
+
 // Test_serviceImpl_HandleInitTimeSyncConn 测试HandleInitTimeSyncConn方法
 func Test_serviceImpl_HandleInitTimeSyncConn(t *testing.T) {
 	tests := []struct {
@@ -350,11 +529,11 @@ func Test_serviceImpl_HandleInitTimeSyncConn_Websocket(t *testing.T) {
 			},
 		},
 		{
-			name:                   "测试重置考试结束时间｜目标考生ID不合法",
+			name:                   "测试重置考试结束时间｜重置成功",
 			examineeID:             "12345",
 			submissionID:           "67890",
 			sysUserID:              null.NewInt(54242, true),
-			resetEndTimeExamineeID: -1,
+			resetEndTimeExamineeID: 12345,
 			doResetEndTime:         true,
 			sleepDuration1:         5 * time.Second,
 			sleepDuration2:         5 * time.Second,
@@ -370,11 +549,32 @@ func Test_serviceImpl_HandleInitTimeSyncConn_Websocket(t *testing.T) {
 			},
 		},
 		{
-			name:                   "测试重置考试结束时间｜重置成功",
+			name:                   "测试重置考试结束时间｜发送消息错误",
 			examineeID:             "12345",
 			submissionID:           "67890",
 			sysUserID:              null.NewInt(54242, true),
 			resetEndTimeExamineeID: 12345,
+			doResetEndTime:         true,
+			sleepDuration1:         5 * time.Second,
+			sleepDuration2:         5 * time.Second,
+			reqForceError:          "",
+			serveForceError:        "sendMessage",
+			wantErr:                false,
+			desc:                   "测试重置考试结束时间",
+			mockRepoFunc: func() Repo {
+				mockRepo := &MockRepo{}
+				mockRepo.QueryActualExamEndTimeFunc = func(examineeId int64) (int64, error) {
+					return time.Now().Add(time.Hour).UnixMilli(), nil
+				}
+				return mockRepo
+			},
+		},
+		{
+			name:                   "测试重置考试结束时间｜目标考生ID不合法",
+			examineeID:             "12345",
+			submissionID:           "67890",
+			sysUserID:              null.NewInt(54242, true),
+			resetEndTimeExamineeID: -1,
 			doResetEndTime:         true,
 			sleepDuration1:         5 * time.Second,
 			sleepDuration2:         5 * time.Second,
