@@ -27,8 +27,8 @@ type ExamSessionInfo struct {
 	ExamID             null.Int    `json:"exam_id"`             // 考试id
 	ExamSessionID      null.Int    `json:"exam_session_id"`     // 考试场次id
 	PaperName          null.String `json:"paper_name"`          // 考卷名称
-	StartTime          null.Time   `json:"start_time"`          // 考试开始时间
-	EndTime            null.Time   `json:"end_time"`            // 考试结束时间
+	StartTime          null.Int    `json:"start_time"`          // 考试开始时间
+	EndTime            null.Int    `json:"end_time"`            // 考试结束时间
 	MarkMode           null.String `json:"mark_mode"`           // 阅卷方式
 	TotalScore         null.Float  `json:"total_score"`         // 试卷总分
 	AverageScore       null.Float  `json:"average_score"`       // 平均分

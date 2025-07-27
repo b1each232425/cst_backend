@@ -112,17 +112,32 @@ func initTestData() {
 	queries = append(queries, insertExamSessionSQL)
 	now := time.Now()
 	tempArgs = [][]interface{}{
-		{101, 11, 101, "00", "10", now.Add(-25 * time.Hour).UnixMilli(), now.Add(-24 * time.Hour).UnixMilli(), 1, "00", 1101},
-		{102, 11, 102, "00", "10", now.Add(-23 * time.Hour).UnixMilli(), now.Add(-22 * time.Hour).UnixMilli(), 2, "00", 1101},
-		{103, 11, 103, "00", "10", now.Add(-21 * time.Hour).UnixMilli(), now.Add(-20 * time.Hour).UnixMilli(), 3, "00", 1101},
+		{101, 11, 101, "00", "10", now.Add(-25 * time.Hour).UnixMilli(), now.Add(-24 * time.Hour).UnixMilli(), 1, "00", 1101}, // 纯理论
+		{102, 11, 102, "00", "10", now.Add(-23 * time.Hour).UnixMilli(), now.Add(-22 * time.Hour).UnixMilli(), 2, "00", 1101}, // 理论+主观
+		{103, 11, 103, "00", "10", now.Add(-21 * time.Hour).UnixMilli(), now.Add(-20 * time.Hour).UnixMilli(), 3, "00", 1101}, // 题目答案缺失
+		{104, 11, 104, "00", "10", now.Add(-21 * time.Hour).UnixMilli(), now.Add(-20 * time.Hour).UnixMilli(), 3, "00", 1101},
+		{105, 11, 105, "00", "10", now.Add(-21 * time.Hour).UnixMilli(), now.Add(-20 * time.Hour).UnixMilli(), 3, "00", 1101},
+		{106, 11, 106, "00", "10", now.Add(-21 * time.Hour).UnixMilli(), now.Add(-20 * time.Hour).UnixMilli(), 3, "00", 1101},
 	}
 	args = append(args, tempArgs)
 
-	queries = append(queries, `INSERT INTO t_exam_paper(id, exam_session_id, name, status, creator) VALUES($1, $2, $3, $4, $5)`)
+	queries = append(queries, `INSERT INTO t_practice(id, name, correct_mode, type, status, creator) VALUES($1, $2, $3, $4, $5, $6)`)
 	tempArgs = [][]interface{}{
-		{101, 101, "test exam paper 1", "00", 1101},
-		{102, 102, "test exam paper 2", "00", 1101},
-		{103, 103, "test exam paper 3", "00", 1101},
+		{21, "test practice 1", "02", "00", "02", 1101},
+		{22, "test practice 2", "02", "00", "02", 1101},
+		{23, "test practice 3", "00", "00", "02", 1101},
+	}
+	args = append(args, tempArgs)
+
+	queries = append(queries, `INSERT INTO t_exam_paper(id, exam_session_id, practice_id, name, status, creator) VALUES($1, $2, $3, $4, $5, $6)`)
+	tempArgs = [][]interface{}{
+		{101, 101, null.NewInt(0, false), "test exam paper 1", "00", 1101},
+		{102, 102, null.NewInt(0, false), "test exam paper 2", "00", 1101},
+		{103, 103, null.NewInt(0, false), "test exam paper 3", "00", 1101},
+		{104, 104, null.NewInt(0, false), "test exam paper 4", "00", 1101},
+		{124, null.NewInt(0, false), 21, "test practice paper 4", "00", 1101},
+		{125, null.NewInt(0, false), 22, "test practice paper 5", "00", 1101},
+		{126, null.NewInt(0, false), 23, "test practice paper 6", "00", 1101},
 	}
 	args = append(args, tempArgs)
 
@@ -131,6 +146,10 @@ func initTestData() {
 		{301, 101, "test group 1", "00", 1101},
 		{302, 102, "test group 2", "00", 1101},
 		{303, 103, "test group 3", "00", 1101},
+		{304, 104, "test group 4", "00", 1101},
+		{324, 124, "test group 24", "00", 1101},
+		{325, 125, "test group 25", "00", 1101},
+		{326, 126, "test group 26", "00", 1101},
 	}
 	args = append(args, tempArgs)
 
@@ -139,6 +158,14 @@ func initTestData() {
 		{401, 3, "00", "单选1", `["C"]`, 301, "00", 1101},
 		{402, 3, "02", "多选1", `["B", "D"]`, 301, "00", 1101},
 		{403, 3, "04", "判断1", `["A"]`, 301, "00", 1101},
+		{404, 3, "00", "单选1", `["C"]`, 302, "00", 1101},
+		{405, 3, "06", "填空1", `[{"index": 1, "score": 3, "answer": "填空答案1", "grading_rule": "1", "alternative_answer": null}]`, 302, "00", 1101},
+		{411, 3, "00", "单选2", `[]`, 303, "00", 1101}, // 异常数据
+		{412, 3, "02", "多选2", `["B", "D"]`, 304, "00", 1101},
+		{424, 3, "00", "单选1", `["C"]`, 324, "00", 1101}, // 练习
+		{425, 3, "02", "多选1", `["B", "D"]`, 324, "00", 1101},
+		{426, 3, "04", "判断1", `["A"]`, 324, "00", 1101},
+		{421, 3, "00", "单选2", `[]`, 326, "00", 1101}, // 异常数据
 	}
 	args = append(args, tempArgs)
 
@@ -146,10 +173,20 @@ func initTestData() {
 	tempArgs = [][]interface{}{
 		{2201, 1201, 101, "10", 1101},
 		{2202, 1202, 101, "10", 1101},
-		{2203, 1203, 101, "10", 1101},
+		{2203, 1203, 103, "10", 1101},
+		{2205, 1201, 102, "10", 1101},
 	}
 	args = append(args, tempArgs)
 
+	queries = append(queries, `INSERT INTO t_practice_submissions(id, student_id, practice_id, status, creator) VALUES($1, $2, $3, $4, $5)`)
+	tempArgs = [][]interface{}{
+		{2401, 1201, 21, "06", 1101},
+		{2402, 1202, 21, "06", 1101},
+		{2403, 1203, 21, "06", 1101},
+	}
+	args = append(args, tempArgs)
+
+	// 考试作答
 	queries = append(queries, `INSERT INTO t_student_answers(id, examinee_id, question_id, answer, actual_answers, status, creator) VALUES($1, $2, $3, $4, $5, $6, $7)`)
 	tempArgs = [][]interface{}{
 		{21, 2201, 401, `{"answer": ["C"]}`, `["C"]`, "00", 1101},
@@ -158,6 +195,21 @@ func initTestData() {
 		{24, 2202, 401, `{"answer": ["B"]}`, `["C"]`, "00", 1101},
 		{25, 2202, 402, `{"answer": ["B"]}`, `["B", "D"]`, "00", 1101},
 		{26, 2202, 403, `{"answer": ["A"]}`, `["A"]`, "00", 1101},
+		{27, 2203, 411, `{"answer": ["B"]}`, `[]`, "00", 1101},
+		{28, 2205, 404, `{"answer": ["B"]}`, `["B"]`, "00", 1101},
+		{29, 2205, 405, `{"answer": ["填空学生作答1"]}`, `[]`, "00", 1101},
+	}
+	args = append(args, tempArgs)
+
+	// 练习作答
+	queries = append(queries, `INSERT INTO t_student_answers(id, practice_submission_id, question_id, answer, actual_answers, status, creator) VALUES($1, $2, $3, $4, $5, $6, $7)`)
+	tempArgs = [][]interface{}{
+		{41, 2401, 424, `{"answer": ["C"]}`, `["C"]`, "00", 1101},
+		{42, 2401, 425, `{"answer": ["B", "D"]}`, `["B", "D"]`, "00", 1101},
+		{43, 2401, 426, `{"answer": ["A"]}`, `["A"]`, "00", 1101},
+		{44, 2402, 424, `{"answer": ["B"]}`, `["C"]`, "00", 1101},
+		{45, 2402, 425, `{"answer": ["B"]}`, `["B", "D"]`, "00", 1101},
+		{46, 2402, 426, `{"answer": ["A"]}`, `["A"]`, "00", 1101},
 	}
 	args = append(args, tempArgs)
 
@@ -216,16 +268,16 @@ func cleanTestData() {
 	var args [][]interface{}
 
 	queries = append(queries, `DELETE FROM t_student_answers WHERE id = $1`)
-	args = append(args, []interface{}{21, 22, 23, 24, 25, 26})
+	args = append(args, []interface{}{21, 22, 23, 24, 25, 26, 27, 28, 29, 41, 42, 43, 44, 45, 46})
 
 	queries = append(queries, `DELETE FROM t_examinee WHERE id = $1`)
-	args = append(args, []interface{}{2201, 2202, 2203})
+	args = append(args, []interface{}{2201, 2202, 2203, 2205})
 
 	queries = append(queries, `DELETE FROM t_exam_paper_question WHERE id = $1`)
-	args = append(args, []interface{}{401, 402, 403})
+	args = append(args, []interface{}{401, 402, 403, 404, 405, 411, 412, 424, 425, 426, 421})
 
 	queries = append(queries, `DELETE FROM t_exam_paper_group WHERE id = $1`)
-	args = append(args, []interface{}{301, 302, 303})
+	args = append(args, []interface{}{301, 302, 303, 304, 324, 325, 326})
 
 	queries = append(queries, `DELETE FROM t_user WHERE id = $1`)
 	args = append(args, []interface{}{1101, 1102, 1103, 1201, 1202, 1203})
@@ -234,10 +286,16 @@ func cleanTestData() {
 	args = append(args, []interface{}{201, 202, 203, 204})
 
 	queries = append(queries, `DELETE FROM t_exam_paper WHERE id = $1`)
-	args = append(args, []interface{}{101, 102, 103})
+	args = append(args, []interface{}{101, 102, 103, 104, 105, 106, 124, 125, 126})
 
 	queries = append(queries, `DELETE FROM t_exam_session WHERE id = $1`)
-	args = append(args, []interface{}{101, 102, 103})
+	args = append(args, []interface{}{101, 102, 103, 104, 105, 106})
+
+	queries = append(queries, `DELETE FROM t_practice_submissions WHERE id = $1`)
+	args = append(args, []interface{}{2401, 2402, 2403})
+
+	queries = append(queries, `DELETE FROM t_practice WHERE id = $1`)
+	args = append(args, []interface{}{21, 22, 23})
 
 	queries = append(queries, `DELETE FROM t_exam_info WHERE id = $1`)
 	args = append(args, []interface{}{11, 12, 13})
@@ -279,8 +337,135 @@ func cleanTestData() {
 	err = tx.Commit(ctx)
 }
 
+func cleanTestDataWithID(ids [][]interface{}) {
+	var queries []string
+	var args [][]interface{}
+
+	queries = append(queries, `DELETE FROM t_student_answers WHERE id = $1`)
+	args = append(args, []interface{}{21, 22, 23, 24, 25, 26, 27, 28, 29, 41, 42, 43, 44, 45, 46})
+
+	queries = append(queries, `DELETE FROM t_examinee WHERE id = $1`)
+	args = append(args, []interface{}{2201, 2202, 2203, 2205})
+
+	queries = append(queries, `DELETE FROM t_exam_paper_question WHERE id = $1`)
+	args = append(args, []interface{}{401, 402, 403, 404, 405, 411, 412, 424, 425, 426, 421})
+
+	queries = append(queries, `DELETE FROM t_exam_paper_group WHERE id = $1`)
+	args = append(args, []interface{}{301, 302, 303, 304, 324, 325, 326})
+
+	queries = append(queries, `DELETE FROM t_user WHERE id = $1`)
+	args = append(args, []interface{}{1101, 1102, 1103, 1201, 1202, 1203})
+
+	queries = append(queries, `DELETE FROM t_mark_info WHERE id = $1`)
+	args = append(args, []interface{}{201, 202, 203, 204})
+
+	queries = append(queries, `DELETE FROM t_exam_paper WHERE id = $1`)
+	args = append(args, []interface{}{101, 102, 103, 104, 105, 106, 124, 125, 126})
+
+	queries = append(queries, `DELETE FROM t_exam_session WHERE id = $1`)
+	args = append(args, []interface{}{101, 102, 103, 104, 105, 106})
+
+	queries = append(queries, `DELETE FROM t_practice_submissions WHERE id = $1`)
+	args = append(args, []interface{}{2401, 2402, 2403})
+
+	queries = append(queries, `DELETE FROM t_practice WHERE id = $1`)
+	args = append(args, []interface{}{21, 22, 23})
+
+	queries = append(queries, `DELETE FROM t_exam_info WHERE id = $1`)
+	args = append(args, []interface{}{11, 12, 13})
+
+	pgxConn := cmn.GetPgxConn()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	tx, err := pgxConn.Begin(ctx)
+	if err != nil {
+		panic(err)
+		return
+	}
+
+	defer func() {
+		if err != nil {
+			err = tx.Rollback(ctx)
+			panic(err)
+		}
+	}()
+
+	if len(queries) != len(args) {
+		err = fmt.Errorf("queries and args length not equal")
+		panic(err)
+		return
+	}
+
+	for i, query := range queries {
+		for _, arg := range args[i] {
+			_, err = tx.Exec(ctx, query, arg)
+			if err != nil {
+				err = fmt.Errorf("cleanTestData exec SQL (%d) error: %v", i, err)
+
+				panic(err)
+				return
+			}
+		}
+
+	}
+
+	err = tx.Commit(ctx)
+}
+
+func TestMarkObjectiveQuestionAnswersBusiness(t *testing.T) {
+	t.Run("MarkObjectiveQuestionAnswersBusiness", func(t *testing.T) {
+		var ctx context.Context
+		var err error
+		ctx = context.Background()
+
+		//pgxConn := cmn.GetPgxConn()
+		//tx, err := pgxConn.Begin(ctx)
+		//if err != nil {
+		//	panic(err)
+		//	return
+		//}
+		//
+		//defer func() {
+		//	if err != nil {
+		//		err_ := tx.Rollback(ctx)
+		//		if err_ != nil {
+		//			panic(err_)
+		//			return
+		//		}
+		//	}
+		//}()
+		//
+		//err = HandleMarkerInfo(ctx, &tx, 1574, HandleMarkerInfoReq{
+		//	MarkMode:      "00",
+		//	Markers:       []int64{1574},
+		//	ExamSessionID: 152,
+		//	Status:        "00",
+		//})
+		//if err != nil {
+		//	t.Errorf("HandleMarkerInfo error: %v", err)
+		//}
+		//
+		//err = tx.Commit(ctx)
+		//if err != nil {
+		//	panic(err)
+		//	return
+		//}
+
+		ctx = context.Background()
+		err = MarkObjectiveQuestionAnswers(ctx, QueryCondition{
+			ExamSessionID: 152,
+			TeacherID:     1574,
+		})
+		if err != nil {
+			t.Errorf("MarkObjectiveQuestionAnswers error: %v", err)
+		}
+	})
+}
+
 func TestCleanTestData(t *testing.T) {
 	t.Run("cleanTestData", func(t *testing.T) {
+		cleanTestData()
+		initTestData()
 		cleanTestData()
 	})
 }
@@ -710,7 +895,7 @@ func TestHandleMarkerInfo(t *testing.T) {
 				ExamSessionID: 101,
 				Status:        "00",
 			},
-			expectedErrStr: "no mark info to insert",
+			expectedErrStr: "no markInfos to insert",
 		},
 	}
 
@@ -756,12 +941,11 @@ func TestHandleMarkerInfo(t *testing.T) {
 }
 
 func TestMarkObjectiveQuestionAnswers(t *testing.T) {
-
 	z := cmn.GetLogger()
 	z.Info("starting mark Test")
 	cleanTestData()
 	initTestData()
-	//defer cleanTestData()
+	defer cleanTestData()
 
 	tests := []struct {
 		name           string
@@ -775,6 +959,14 @@ func TestMarkObjectiveQuestionAnswers(t *testing.T) {
 			requestParams: QueryCondition{
 				ExamSessionID: 101,
 				TeacherID:     testedTeacherID,
+			},
+		},
+		{
+			name:      "success-practice",
+			teacherID: testedTeacherID,
+			requestParams: QueryCondition{
+				PracticeID: 21,
+				TeacherID:  testedTeacherID,
 			},
 		},
 		{
@@ -793,7 +985,6 @@ func TestMarkObjectiveQuestionAnswers(t *testing.T) {
 			},
 			expectedErrStr: "invalid params: exam session id or practice id must be greater than zero",
 		},
-
 		{
 			name:      "invalid params(both exam_session_id and practice_submission_id > 0)",
 			teacherID: testedTeacherID,
@@ -803,6 +994,23 @@ func TestMarkObjectiveQuestionAnswers(t *testing.T) {
 				PracticeID:    10001,
 			},
 			expectedErrStr: "invalid params",
+		},
+		{
+			name:      "invalid actual answers",
+			teacherID: testedTeacherID,
+			requestParams: QueryCondition{
+				ExamSessionID: 103,
+				TeacherID:     testedTeacherID,
+			},
+			expectedErrStr: "invalid actual answers",
+		},
+		{
+			name:      "success-dont need to auto submit",
+			teacherID: testedTeacherID,
+			requestParams: QueryCondition{
+				ExamSessionID: 102,
+				TeacherID:     testedTeacherID,
+			},
 		},
 	}
 
