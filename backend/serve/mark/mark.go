@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"github.com/jackc/pgx/v5"
 	"github.com/jmoiron/sqlx/types"
-	"github.com/pkg/errors"
 	"io"
 	"strconv"
 	"strings"
@@ -375,16 +374,16 @@ func GetMarkingDetails(ctx context.Context) {
 }
 
 type HandleMarkerInfoReq struct {
-	Markers          []int64                             `json:"markers"`         // 批改员id数组
-	QuestionGroups   []examPaper.SubjectiveQuestionGroup `json:"question_groups"` // 题组（配置时传入）
-	QuestionIDs      []int64                             `json:"question_ids"`    // 题目id数组
-	ExamineeIDs      []int64                             `json:"examinee_ids"`    // 考生id数组
-	QuestionIDGroups [][]int64                           `json:"question_id_groups"`
-	MarkMode         string                              `json:"mark_mode"` // 批卷模式 00：不需要手动批改  02：全卷多评 04：试卷分配 06：题组专评 08：题目分配 10：单人批改
-	ExamSessionID    int64                               `json:"exam_session_id"`
-	PracticeID       int64                               `json:"practice_id"`
-	Status           string                              `json:"status"`           // 00 插入批改配置 02 删除批改配置
-	ExamSessionIDs   []int64                             `json:"exam_session_ids"` // 要删除的考试场次id数组
+	Markers        []int64                             `json:"markers"`          // *批改员id数组
+	QuestionGroups []examPaper.SubjectiveQuestionGroup `json:"question_groups"`  // *题组（配置时传入）
+	QuestionIDs    []int64                             `json:"question_ids"`     // 题目id数组
+	ExamineeIDs    []int64                             `json:"examinee_ids"`     // 考生id数组
+	MarkMode       string                              `json:"mark_mode"`        // *批卷模式 00：不需要手动批改  02：全卷多评 04：试卷分配 06：题组专评 08：题目分配 10：单人批改
+	ExamSessionID  int64                               `json:"exam_session_id"`  // 考试场次id
+	PracticeID     int64                               `json:"practice_id"`      // 练习id
+	Status         string                              `json:"status"`           // *00 插入批改配置 02 删除批改配置
+	ExamSessionIDs []int64                             `json:"exam_session_ids"` // 要删除的考试场次id数组
+	PracticeIDs    []int64                             `json:"practice_ids"`     // 要删除的练习id数组
 }
 
 func HandleMarkerInfo(ctx context.Context, tx *pgx.Tx, teacherID int64, req HandleMarkerInfoReq) (err error) {
@@ -401,13 +400,23 @@ func HandleMarkerInfo(ctx context.Context, tx *pgx.Tx, teacherID int64, req Hand
 	}
 
 	if req.Status == "02" {
+		if len(req.PracticeIDs) > 0 {
+			// 删除练习批改配置
+			_, err = UpdateMarkerInfoState(ctx, tx, teacherID, req.PracticeIDs, "02")
+			if err != nil {
+				return
+			}
+			return
+		}
+
+		// 删除考试批改配置
 		if req.ExamSessionIDs == nil || len(req.ExamSessionIDs) == 0 {
 			err = fmt.Errorf("no examSessionIDs to update mark info state")
 			z.Error(err.Error())
 			return
 		}
 
-		_, err = UpdateMarkerInfoState(ctx, tx, teacherID, req.ExamSessionIDs)
+		_, err = UpdateMarkerInfoState(ctx, tx, teacherID, req.ExamSessionIDs, "00")
 		if err != nil {
 			return
 		}
@@ -497,7 +506,7 @@ func HandleMarkerInfo(ctx context.Context, tx *pgx.Tx, teacherID int64, req Hand
 		break
 	case "06": // 分题组
 		if req.QuestionGroups == nil || len(req.QuestionGroups) == 0 {
-			err = fmt.Errorf("invalid question group ids")
+			err = fmt.Errorf("invalid question groups")
 			z.Error(err.Error())
 			return
 		}
@@ -510,9 +519,11 @@ func HandleMarkerInfo(ctx context.Context, tx *pgx.Tx, teacherID int64, req Hand
 				questionIDs = append(questionIDs, group.QuestionIDs...)
 			}
 
-			markQuestionIDsBytes, err := json.Marshal(questionIDs)
+			var markQuestionIDsBytes []byte
+			markQuestionIDsBytes, err = json.Marshal(questionIDs)
 			if err != nil {
-				return errors.Wrap(err, "Failed to serialize MarkQuestionGroups")
+				err = fmt.Errorf("failed to marshal markQuestionIDs: %v", err)
+				return
 			}
 
 			markInfos = append(markInfos, cmn.TMarkInfo{

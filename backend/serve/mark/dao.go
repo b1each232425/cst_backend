@@ -827,14 +827,14 @@ func InsertMarkerInfo(ctx context.Context, tx *pgx.Tx, markInfo []cmn.TMarkInfo)
 	}
 
 	insertQuery := `INSERT INTO t_mark_info 
-						(exam_session_id, mark_teacher_id, mark_count, question_ids, mark_examinee_ids, creator, create_time, updated_by, update_time, addi, status) 
+						(exam_session_id, practice_id, mark_teacher_id, mark_count, question_ids, mark_examinee_ids, creator, create_time, updated_by, update_time, addi, status) 
 					VALUES 
-						($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) 
+						($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) 
 					RETURNING id`
 
 	for _, info := range markInfo {
 		var id null.Int
-		err = (*tx).QueryRow(ctx, insertQuery, info.ExamSessionID, info.MarkTeacherID, info.MarkCount, info.QuestionIds, info.MarkExamineeIds, info.Creator, info.CreateTime, info.UpdatedBy, info.UpdateTime, info.Addi, info.Status).Scan(&id)
+		err = (*tx).QueryRow(ctx, insertQuery, info.ExamSessionID, info.PracticeID, info.MarkTeacherID, info.MarkCount, info.QuestionIds, info.MarkExamineeIds, info.Creator, info.CreateTime, info.UpdatedBy, info.UpdateTime, info.Addi, info.Status).Scan(&id)
 		if err != nil {
 			err = fmt.Errorf("exec insert query error: %v", err)
 			z.Error(err.Error())
@@ -845,22 +845,36 @@ func InsertMarkerInfo(ctx context.Context, tx *pgx.Tx, markInfo []cmn.TMarkInfo)
 	return
 }
 
-func UpdateMarkerInfoState(ctx context.Context, tx *pgx.Tx, teacherID int64, examSessionIDs []int64) (targetIDs []int64, err error) {
-	if examSessionIDs == nil || len(examSessionIDs) == 0 {
-		err = fmt.Errorf("no examSessionIDs to update")
+func UpdateMarkerInfoState(ctx context.Context, tx *pgx.Tx, teacherID int64, ids []int64, mode string) (targetIDs []int64, err error) {
+	if ids == nil || len(ids) == 0 {
+		err = fmt.Errorf("no exam_session_ids or practice_ids to update")
 		z.Error(err.Error())
 		return
 	}
+
+	var whereClause []string
 
 	updateQuery := `UPDATE t_mark_info 
 					SET
 						status = $2,
 						updated_by = $3, 
 						update_time = $4
-					WHERE exam_session_id = ANY($1)
+					WHERE %s 
 					RETURNING id`
 
-	rows, err := (*tx).Query(ctx, updateQuery, pq.Array(examSessionIDs), "04", teacherID, time.Now().UnixMilli())
+	if mode == "00" {
+		whereClause = append(whereClause, "exam_session_id = ANY($1)")
+	} else if mode == "02" {
+		whereClause = append(whereClause, "practice_id = ANY($1)")
+	} else {
+		err = fmt.Errorf("invalid update mode")
+		z.Error(err.Error())
+		return
+	}
+
+	updateQuery = fmt.Sprintf(updateQuery, strings.Join(whereClause, " "))
+
+	rows, err := (*tx).Query(ctx, updateQuery, pq.Array(ids), "04", teacherID, time.Now().UnixMilli())
 	if err != nil {
 		err = fmt.Errorf("exec update query error: %v", err)
 		z.Error(err.Error())
