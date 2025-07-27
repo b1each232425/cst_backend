@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 	"w2w.io/cmn"
+	"w2w.io/serve/examPaper"
 )
 
 var z *zap.Logger
@@ -103,10 +104,42 @@ func Enroll(author string) {
 		DefaultDomain: int64(cmn.CDomainSys),
 	})
 
+	_ = cmn.AddService(&cmn.ServeEndPoint{
+		Fn: practiceEnterH,
+
+		Path: "/practiceEnter",
+		Name: "practiceEnter",
+
+		Developer: developer,
+		WhiteList: true,
+
+		//DomainID 创建该API的账号归属的domain
+		DomainID: int64(cmn.CDomainSys),
+
+		//DefaultDomain 该API将默认授权给的用户
+		DefaultDomain: int64(cmn.CDomainSys),
+	})
+
+	_ = cmn.AddService(&cmn.ServeEndPoint{
+		Fn: getPracticePaper,
+
+		Path: "/practicePaper",
+		Name: "practicePaper",
+
+		Developer: developer,
+		WhiteList: true,
+
+		//DomainID 创建该API的账号归属的domain
+		DomainID: int64(cmn.CDomainSys),
+
+		//DefaultDomain 该API将默认授权给的用户
+		DefaultDomain: int64(cmn.CDomainSys),
+	})
+
 }
 
 func practiceTH(ctx context.Context) {
-	TEMPUID := int64(1)
+	TEMPUID := int64(1574)
 	q := cmn.GetCtxValue(ctx)
 	// TODO 对接用户管理的令牌功能
 	//userID, _ := q.Session.Values["ID"].(int64)
@@ -149,6 +182,12 @@ func practiceTH(ctx context.Context) {
 				q.RespErr()
 				return
 			}
+			q.Err = ValidatePractice(&p.Practice, p.Student)
+			if q.Err != nil {
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
 			err := UpsertPractice(ctx, &p.Practice, p.Student, TEMPUID)
 			if err != nil {
 				q.Err = err
@@ -183,7 +222,7 @@ func practiceTH(ctx context.Context) {
 					return
 				}
 				result := Map{
-					"practice":      p,
+					"practice":      &p,
 					"student_count": sCount,
 					"paper_name":    pName,
 				}
@@ -265,7 +304,7 @@ func practiceTH(ctx context.Context) {
 			var id int64
 			id, q.Err = strconv.ParseInt(idStr, 10, 64)
 			if q.Err != nil {
-				q.Err = fmt.Errorf("分页页大小解析失败：%v", q.Err.Error())
+				q.Err = fmt.Errorf("练习ID解析失败：%v", q.Err.Error())
 				z.Error(q.Err.Error())
 				q.RespErr()
 				return
@@ -305,7 +344,7 @@ func practiceStudentH(ctx context.Context) {
 }
 
 func practiceSH(ctx context.Context) {
-	TEMPUID := int64(1)
+	TEMPUID := int64(1575)
 	q := cmn.GetCtxValue(ctx)
 	// TODO 对接用户管理的令牌功能
 	//userID, _ := q.Session.Values["ID"].(int64)
@@ -325,6 +364,13 @@ func practiceSH(ctx context.Context) {
 	}
 	name := q.R.URL.Query().Get("name")
 	d := q.R.URL.Query().Get("difficulty")
+	t := q.R.URL.Query().Get("type")
+	if t == "" {
+		q.Err = fmt.Errorf("缺失练习类型")
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
 	pageStr := q.R.URL.Query().Get("page")
 	if pageStr == "" {
 		q.Err = fmt.Errorf("缺失分页查询页号")
@@ -332,6 +378,7 @@ func practiceSH(ctx context.Context) {
 		q.RespErr()
 		return
 	}
+
 	var page int
 	page, q.Err = strconv.Atoi(pageStr)
 	if q.Err != nil {
@@ -358,7 +405,7 @@ func practiceSH(ctx context.Context) {
 
 	// 排序字段
 	orderBy := []string{"create_time desc"}
-	p, total, err := ListPracticeS(ctx, name, d, orderBy, page, pageSize, TEMPUID)
+	p, total, err := ListPracticeS(ctx, t, name, d, orderBy, page, pageSize, TEMPUID)
 	if err != nil {
 		q.Err = err
 		q.RespErr()
@@ -436,8 +483,8 @@ func practiceStudentListH(ctx context.Context) {
 		q.Resp()
 		return
 	}
-	s1 := `SELECT id, account, official_name, id_card_no, mobile_phone,password FROM t_user WHERE id IN (?)"`
-	query, args, err := sqlx.In(s1, result)
+	s1 := `SELECT id, account,official_name,id_card_no,mobile_phone,password FROM t_user WHERE id IN (?)`
+	query, args, err := sqlx.In(s1, tResult)
 	if err != nil {
 		q.Err = fmt.Errorf("prepare sqlx.In sql query failed:%v", err)
 		z.Error(q.Err.Error())
@@ -447,7 +494,7 @@ func practiceStudentListH(ctx context.Context) {
 	query = sqlx.Rebind(sqlx.DOLLAR, query)
 	z.Sugar().Debugf("打印一下构建的查询用户信息语句：%v", query)
 	z.Sugar().Debugf("打印一下构建的查询用户信息注入参数：%v", args)
-	rows, err = sqlxDB.QueryContext(ctx, s, args...)
+	rows, err = sqlxDB.QueryContext(ctx, query, args...)
 	if err != nil {
 		err = fmt.Errorf("query studentList in practice failed:%v", err)
 		q.Err = err
@@ -486,3 +533,163 @@ func practiceStudentListH(ctx context.Context) {
 	q.Msg.Msg = "OK"
 	q.Resp()
 }
+
+func practiceEnterH(ctx context.Context) {
+	q := cmn.GetCtxValue(ctx)
+	ctx, cancel := context.WithTimeout(q.R.Context(), 5*time.Second)
+	defer cancel()
+	p := q.R.URL.Query().Get("pid")
+	u := q.R.URL.Query().Get("uid")
+	var pid, uid int64
+	pid, q.Err = strconv.ParseInt(p, 10, 64)
+	if q.Err != nil {
+		q.Err = fmt.Errorf("练习ID获取失败：%v", q.Err.Error())
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+	uid, q.Err = strconv.ParseInt(u, 10, 64)
+	if q.Err != nil {
+		q.Err = fmt.Errorf("用户ID获取失败：%v", q.Err.Error())
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+
+	conn := cmn.GetPgxConn()
+
+	tx, err := conn.Begin(ctx)
+	if err != nil {
+		err = fmt.Errorf("beginTx called failed:%v", err)
+		q.Err = err
+		q.RespErr()
+		return
+	}
+	defer func() {
+		if err != nil {
+			// 操作失败回滚
+			err = tx.Rollback(ctx)
+			if err != nil {
+				z.Error(err.Error())
+			}
+		} else {
+			// 无错误则提交
+			err = tx.Commit(ctx)
+			if err != nil {
+				z.Error(err.Error())
+			}
+		}
+	}()
+
+	epInfo, pg, pq, err := EnterPracticeGetPaperDetails(ctx, tx, pid, uid)
+	if err != nil {
+		q.Err = err
+		q.RespErr()
+		return
+	}
+
+	result := Map{}
+	result["practiceInfo"] = *epInfo
+	result["examPaperGroup"] = pg
+	result["examPaperQuestion"] = pq
+	data, err := json.Marshal(result)
+	if err != nil {
+		z.Error(err.Error())
+		q.Err = err
+		q.RespErr()
+		return
+	}
+	q.Msg.Data = data
+	z.Info("---->" + cmn.FncName())
+	q.Msg.Msg = "OK"
+	q.Resp()
+	return
+
+}
+
+func getPracticePaper(ctx context.Context) {
+	q := cmn.GetCtxValue(ctx)
+	ctx, cancel := context.WithTimeout(q.R.Context(), 5*time.Second)
+	defer cancel()
+	p := q.R.URL.Query().Get("pid")
+	e := q.R.URL.Query().Get("eid")
+	var pid, eid int64
+	pid, q.Err = strconv.ParseInt(p, 10, 64)
+	if q.Err != nil {
+		q.Err = fmt.Errorf("练习ID获取失败：%v", q.Err.Error())
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+
+	eid, q.Err = strconv.ParseInt(e, 10, 64)
+	if q.Err != nil {
+		q.Err = fmt.Errorf("用户ID获取失败：%v", q.Err.Error())
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+
+	conn := cmn.GetPgxConn()
+
+	tx, err := conn.Begin(ctx)
+	if err != nil {
+		err = fmt.Errorf("beginTx called failed:%v", err)
+		q.Err = err
+		q.RespErr()
+		return
+	}
+	defer func() {
+		if err != nil {
+			// 操作失败回滚
+			err = tx.Rollback(ctx)
+			if err != nil {
+				z.Error(err.Error())
+			}
+		} else {
+			// 无错误则提交
+			err = tx.Commit(ctx)
+			if err != nil {
+				z.Error(err.Error())
+			}
+		}
+	}()
+
+	_, pg, pq, err := examPaper.LoadExamPaperDetailByUserId(ctx, tx, eid, pid, 0, false, true, false)
+	if err != nil {
+		q.Err = err
+		q.RespErr()
+		return
+	}
+
+	result := Map{}
+	result["examPaperGroup"] = pg
+	result["examPaperQuestion"] = pq
+	data, err := json.Marshal(result)
+	if err != nil {
+		z.Error(err.Error())
+		q.Err = err
+		q.RespErr()
+		return
+	}
+	q.Msg.Data = data
+	z.Info("---->" + cmn.FncName())
+	q.Msg.Msg = "OK"
+	q.Resp()
+	return
+}
+
+//{
+//// TODO 将这个测试用例放在URL测试上
+//name: "期望正常3 有练习信息 但无学生名单,前端没有传空数组  这个不能放在这里测，只能放在http请求那里测的",
+//p: &cmn.TPractice{
+//PaperID:         null.IntFrom(101),
+//Name:            null.StringFrom("英语期末考试"),
+//CorrectMode:     null.StringFrom("00"), // 批改模式
+//Type:            null.StringFrom("00"), // 练习类型（试卷）
+//AllowedAttempts: null.IntFrom(3),
+//},
+//ps:            []int64{},
+//uid:           int64(1),
+//expectedError: false,
+//},
