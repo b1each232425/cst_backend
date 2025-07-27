@@ -566,11 +566,30 @@ func HandleMarkerInfo(ctx context.Context, tx *pgx.Tx, teacherID int64, req Hand
 		break
 	}
 
-	z.Sugar().Infof("markInfos: %+v", markInfos)
+	//z.Sugar().Infof("markInfos: %+v", markInfos)
 
-	_, err = InsertMarkerInfo(ctx, tx, markInfos)
-	if err != nil {
+	if len(markInfos) <= 0 {
+		err = fmt.Errorf("no markInfos to insert")
+		z.Error(err.Error())
 		return
+	}
+
+	insertQuery := `INSERT INTO t_mark_info 
+						(exam_session_id, practice_id, mark_teacher_id, mark_count, question_ids, mark_examinee_ids, creator, create_time, updated_by, update_time, addi, status) 
+					VALUES 
+						($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) 
+					RETURNING id`
+
+	var targetIDs []int64
+	for _, info := range markInfos {
+		var id null.Int
+		err = (*tx).QueryRow(ctx, insertQuery, info.ExamSessionID, info.PracticeID, info.MarkTeacherID, info.MarkCount, info.QuestionIds, info.MarkExamineeIds, info.Creator, info.CreateTime, info.UpdatedBy, info.UpdateTime, info.Addi, info.Status).Scan(&id)
+		if err != nil {
+			err = fmt.Errorf("exec insert query error: %v", err)
+			z.Error(err.Error())
+			return
+		}
+		targetIDs = append(targetIDs, id.Int64)
 	}
 
 	return
@@ -683,22 +702,6 @@ func MarkObjectiveQuestionAnswers(ctx context.Context, cond QueryCondition) (err
 
 	marks := make([]*cmn.TMark, len(studentAnswers))
 	for i, studentAnswer := range studentAnswers {
-		if studentAnswer.QuestionID.Int64 <= 0 {
-			err = fmt.Errorf("invalid question id in student answer")
-			z.Error(err.Error())
-			return
-		}
-
-		if studentAnswer.ExamSessionID.Int64 <= 0 && studentAnswer.PracticeID.Int64 <= 0 {
-			err = fmt.Errorf("invalid exam session id && practice id in student answer")
-			z.Error(err.Error())
-			return
-		}
-
-		if studentAnswer.ExamSessionID.Int64 > 0 && studentAnswer.PracticeID.Int64 > 0 {
-			err = fmt.Errorf("invalid params: exam session id && practice id cannot be both greater than zero")
-		}
-
 		mark := cmn.TMark{
 			TeacherID:            null.IntFrom(cond.TeacherID),
 			QuestionID:           studentAnswer.QuestionID,
