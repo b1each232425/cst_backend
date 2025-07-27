@@ -485,33 +485,44 @@ func gradeSubmissionH(ctx context.Context) {
 			return
 		}
 
-		//
-		teacherID := int64(gjson.Get(string(buf), "data.teacher_id").Num)
-		if teacherID <= 0 {
-			q.Err = fmt.Errorf("教师ID无效")
-			z.Error(q.Err.Error())
-			q.RespErr()
-			return
-		}
+		// //
+		// teacherID := int64(gjson.Get(string(buf), "data.teacher_id").Num)
+		// if teacherID <= 0 {
+		// 	q.Err = fmt.Errorf("教师ID无效")
+		// 	z.Error(q.Err.Error())
+		// 	q.RespErr()
+		// 	return
+		// }
 
-		args.TeacherID = teacherID
+		// args.TeacherID = teacherID
+		args.TeacherID = 1575
 
-		examIDs := gjson.Get(string(buf), "data.exam_ids").Array()
-		if len(examIDs) <= 0 {
+		examIDQuerys := gjson.GetBytes(buf, "data.exam_ids").Array()
+		if len(examIDQuerys) <= 0 {
 			q.Err = fmt.Errorf("examIDs为空")
 			z.Error(q.Err.Error())
 			q.RespErr()
 			return
 		}
+		var examIDs []int
+		for _, examIDQuery := range examIDQuerys {
+			examIDs = append(examIDs, int(examIDQuery.Num))
+		}
+		z.Debug("examIDs", zap.Any("examIDs", examIDs))
+		args.ExamIDs = examIDs
 
 		err = SetExamGradeSubmitted(ctx, &args)
 		if err != nil {
-			err = fmt.Errorf("提交考试(教师ID:%v) 错误信息:%s", teacherID, err.Error())
+			err = fmt.Errorf("提交考试(教师ID:%v) 错误信息:%s", args.TeacherID, err.Error())
 			if errors.Is(err, ErrExamIsNotOver) {
 				q.Msg.Msg = "当前选择提交的考试存在未结束的考试"
 			} else {
-				q.Msg.Msg = fmt.Sprintf("提交考试(教师ID:%v) 错误信息:%s", teacherID, err.Error())
+				q.Msg.Msg = fmt.Sprintf("提交考试(教师ID:%v) 错误信息:%s", args.TeacherID, err.Error())
 			}
+			q.Err = err
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
 		}
 		q.Err = nil
 		q.Msg.Status = 0
