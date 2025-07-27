@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"testing"
 	"time"
@@ -26,22 +27,6 @@ func init() {
 
 const testedTeacherID = 1101
 
-type mockResponseWriter struct {
-	headers http.Header
-	body    *bytes.Buffer
-	status  int
-}
-
-func (m *mockResponseWriter) Header() http.Header {
-	return m.headers
-}
-func (m *mockResponseWriter) Write(b []byte) (int, error) {
-	return m.body.Write(b)
-}
-func (m *mockResponseWriter) WriteHeader(statusCode int) {
-	m.status = statusCode
-}
-
 func newMockServiceCtx(method string, params map[string]string, bodyBytes []byte) *cmn.ServiceCtx {
 	form := url.Values{}
 	for k, v := range params {
@@ -54,7 +39,7 @@ func newMockServiceCtx(method string, params map[string]string, bodyBytes []byte
 		Body:   io.NopCloser(bytes.NewReader(bodyBytes)),
 	}
 
-	w := &mockResponseWriter{headers: http.Header{}, body: &bytes.Buffer{}}
+	w := httptest.NewRecorder()
 	return &cmn.ServiceCtx{
 		W: w,
 		R: r,
@@ -217,13 +202,6 @@ func initTestData() {
 			}
 		}
 
-		//_, err = tx.Exec(query, args[i]...)
-		//if err != nil {
-		//	err = fmt.Errorf("insert test data SQL error: %s", err.Error())
-		//	panic(err)
-		//	return
-		//}
-
 	}
 	err = tx.Commit()
 	if err != nil {
@@ -296,12 +274,6 @@ func cleanTestData() {
 			}
 		}
 
-		//_, err = tx.Exec(ctx, query, args[i])
-		//if err != nil {
-		//	err = fmt.Errorf("cleanTestData exec SQL (%d) error: %v", i, err)
-		//	panic(err)
-		//	return
-		//}
 	}
 
 	err = tx.Commit(ctx)
@@ -536,28 +508,63 @@ func TestHandleMarkerInfo(t *testing.T) {
 	}{
 		{
 			name:      "success-update mark info state",
-			teacherID: 1001,
+			teacherID: testedTeacherID,
 			requestParams: HandleMarkerInfoReq{
-				ExamSessionID:  101,
-				MarkMode:       "00",
-				Markers:        []int64{1001},
 				ExamSessionIDs: []int64{108},
 				Status:         "02",
 			},
 		},
 		{
+			name:      "success-update mark info state（练习）",
+			teacherID: testedTeacherID,
+			requestParams: HandleMarkerInfoReq{
+				PracticeIDs: []int64{901},
+				Status:      "02",
+			},
+		},
+		{
+			name:      "no examSessionIDs to update mark info state",
+			teacherID: testedTeacherID,
+			requestParams: HandleMarkerInfoReq{
+				Markers: []int64{testedTeacherID},
+				Status:  "02",
+			},
+			expectedErrStr: "no examSessionIDs to update mark info state",
+		},
+		{
+			name:      "success-markMode:00-自动批改（练习）",
+			teacherID: testedTeacherID,
+			requestParams: HandleMarkerInfoReq{
+				PracticeID: 901,
+				MarkMode:   "00",
+				Markers:    []int64{testedTeacherID},
+				Status:     "00",
+			},
+		},
+		{
+			name:      "success-markMode:10-单人批改（练习）",
+			teacherID: testedTeacherID,
+			requestParams: HandleMarkerInfoReq{
+				PracticeID: 902,
+				MarkMode:   "10",
+				Markers:    []int64{testedTeacherID},
+				Status:     "00",
+			},
+		},
+
+		{
 			name:      "success-markMode:00-自动批改",
-			teacherID: 1001,
+			teacherID: testedTeacherID,
 			requestParams: HandleMarkerInfoReq{
 				ExamSessionID: 101,
 				MarkMode:      "00",
-				Markers:       []int64{1001},
+				Markers:       []int64{testedTeacherID},
 				Status:        "00",
 			},
 		},
 		{
 			name:      "success-markMode:02-全卷多评",
-			teacherID: 1001,
+			teacherID: testedTeacherID,
 			requestParams: HandleMarkerInfoReq{
 				ExamSessionID: 101,
 				MarkMode:      "02",
@@ -567,22 +574,22 @@ func TestHandleMarkerInfo(t *testing.T) {
 		},
 		{
 			name:      "success-markMode:04-试卷分配",
-			teacherID: 1001,
+			teacherID: testedTeacherID,
 			requestParams: HandleMarkerInfoReq{
 				ExamSessionID: 101,
 				ExamineeIDs:   []int64{801, 802, 803, 804},
 				MarkMode:      "04",
-				Markers:       []int64{1001, 1002},
+				Markers:       []int64{testedTeacherID, 1002},
 				Status:        "00",
 			},
 		},
 		{
 			name:      "success-markMode:06-题组专评",
-			teacherID: 1001,
+			teacherID: testedTeacherID,
 			requestParams: HandleMarkerInfoReq{
 				ExamSessionID: 101,
 				MarkMode:      "06",
-				Markers:       []int64{1001, 1002},
+				Markers:       []int64{testedTeacherID, 1002},
 				//QuestionIDGroups: [][]int64{{1, 2, 3}, {4, 5}, {6, 7}},
 				QuestionGroups: []examPaper.SubjectiveQuestionGroup{
 					{
@@ -603,13 +610,107 @@ func TestHandleMarkerInfo(t *testing.T) {
 		},
 		{
 			name:      "success-markMode:10-单人批改",
-			teacherID: 1001,
+			teacherID: testedTeacherID,
 			requestParams: HandleMarkerInfoReq{
 				ExamSessionID: 101,
 				MarkMode:      "10",
-				Markers:       []int64{1001},
+				Markers:       []int64{testedTeacherID},
 				Status:        "00",
 			},
+		},
+		{
+			name:      "invalid teacher id",
+			teacherID: 0,
+			requestParams: HandleMarkerInfoReq{
+				ExamSessionID: 101,
+				MarkMode:      "10",
+				Markers:       []int64{testedTeacherID},
+				Status:        "00",
+			},
+			expectedErrStr: "invalid teacherID",
+		},
+		{
+			name:      "invalid teacher id",
+			teacherID: -3,
+			requestParams: HandleMarkerInfoReq{
+				ExamSessionID: 101,
+				MarkMode:      "10",
+				Markers:       []int64{testedTeacherID},
+				Status:        "00",
+			},
+			expectedErrStr: "invalid teacherID",
+		},
+		{
+			name:      "invalid exam_session_id && practice_id",
+			teacherID: testedTeacherID,
+			requestParams: HandleMarkerInfoReq{
+				MarkMode: "10",
+				Markers:  []int64{testedTeacherID},
+				Status:   "00",
+			},
+			expectedErrStr: "invalid exam_session_id && practice_id",
+		},
+		{
+			name:      "invalid status",
+			teacherID: testedTeacherID,
+			requestParams: HandleMarkerInfoReq{
+				ExamSessionID: 101,
+				MarkMode:      "10",
+				Markers:       []int64{testedTeacherID},
+				Status:        "",
+			},
+			expectedErrStr: "invalid status",
+		},
+		{
+			name:      "markMode:02 markers is empty",
+			teacherID: testedTeacherID,
+			requestParams: HandleMarkerInfoReq{
+				ExamSessionID: 101,
+				MarkMode:      "02",
+				Status:        "00",
+			},
+			expectedErrStr: "markers is empty",
+		},
+		{
+			name:      "markMode:04 examinee_ids is empty",
+			teacherID: testedTeacherID,
+			requestParams: HandleMarkerInfoReq{
+				ExamSessionID: 101,
+				MarkMode:      "04",
+				Markers:       []int64{testedTeacherID, 1002},
+				Status:        "00",
+			},
+			expectedErrStr: "examinee_ids is empty",
+		},
+		{
+			name:      "markMode:06 invalid question groups",
+			teacherID: testedTeacherID,
+			requestParams: HandleMarkerInfoReq{
+				ExamSessionID: 101,
+				MarkMode:      "06",
+				Markers:       []int64{testedTeacherID, 1002},
+				Status:        "00",
+			},
+			expectedErrStr: "invalid question groups",
+		},
+		{
+			name:      "markMode:10 invalid markers",
+			teacherID: testedTeacherID,
+			requestParams: HandleMarkerInfoReq{
+				ExamSessionID: 101,
+				MarkMode:      "10",
+				Status:        "00",
+			},
+			expectedErrStr: "invalid markers",
+		},
+		{
+			name:      "invalid mark mode",
+			teacherID: testedTeacherID,
+			requestParams: HandleMarkerInfoReq{
+				ExamSessionID: 101,
+				Status:        "00",
+			},
+			expectedErrStr: "no mark info to insert",
 		},
 	}
 
