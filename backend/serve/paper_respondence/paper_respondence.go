@@ -9,16 +9,15 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/jackc/pgx/v5"
 	"github.com/jmoiron/sqlx/types"
+	"go.uber.org/zap"
 	"io"
 	"strconv"
 	"strings"
 	"time"
-	"w2w.io/null"
-
-	"github.com/jackc/pgx/v5"
-	"go.uber.org/zap"
 	"w2w.io/cmn"
+	"w2w.io/null"
 	"w2w.io/serve/examPaper"
 	"w2w.io/serve/exam_mgt"
 	"w2w.io/serve/practice_mgt"
@@ -57,6 +56,8 @@ const (
 
 	ExamType     = "00"
 	PracticeType = "02"
+
+	ForceErr = "forceErr"
 )
 
 var (
@@ -97,7 +98,7 @@ func Enroll(author string) {
 		Name: "respondent",
 
 		Developer: developer,
-		WhiteList: true,
+		WhiteList: false,
 
 		//DomainID 创建该API的账号归属的domain
 		DomainID: int64(cmn.CDomainSys),
@@ -143,7 +144,7 @@ func Enroll(author string) {
 		Name: "respondent_exam_status",
 
 		Developer: developer,
-		WhiteList: false,
+		WhiteList: true,
 
 		//DomainID 创建该API的账号归属的domain
 		DomainID: int64(cmn.CDomainSys),
@@ -166,10 +167,19 @@ func StudentAnswer(ctx context.Context) {
 	dmlCtx, cancel := context.WithTimeout(ctx, TIMEOUT)
 	defer cancel()
 
+	//强制错误，用于使得难以触发的错误强制它报错
+	forceErr := ""
+	forceErr, ok := ctx.Value(ForceErr).(string)
+	if !ok {
+		forceErr = ""
+	}
 	switch method {
 	case "post":
 		var buf []byte
 		buf, q.Err = io.ReadAll(q.R.Body)
+		if forceErr == "io-readAll" {
+			q.Err = errors.New("io-readAll error")
+		}
 		if q.Err != nil {
 			z.Error(q.Err.Error())
 			q.RespErr()
@@ -177,6 +187,9 @@ func StudentAnswer(ctx context.Context) {
 		}
 		defer func() {
 			q.Err = q.R.Body.Close()
+			if forceErr == "body-close" {
+				q.Err = errors.New("body-close")
+			}
 			if q.Err != nil {
 				z.Error(q.Err.Error())
 				q.RespErr()
@@ -221,6 +234,9 @@ func StudentAnswer(ctx context.Context) {
 		}
 
 		tx, err := db.BeginTx(dmlCtx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead})
+		if forceErr == "begin-tx" {
+			err = errors.New("begin tx error")
+		}
 		if err != nil {
 			z.Error(err.Error())
 			q.Err = err
@@ -228,8 +244,13 @@ func StudentAnswer(ctx context.Context) {
 			return
 		}
 		defer func() {
-			if q.Err = tx.Rollback(dmlCtx); q.Err != nil {
+			q.Err = tx.Rollback(dmlCtx)
+			if forceErr == "rollback-tx" {
+				q.Err = pgx.ErrTxCommitRollback
+			}
+			if q.Err != nil && !errors.Is(q.Err, pgx.ErrTxClosed) {
 				z.Error(q.Err.Error())
+				q.Msg.Data = nil
 				q.RespErr()
 				return
 			}
@@ -241,21 +262,30 @@ func StudentAnswer(ctx context.Context) {
 			q.RespErr()
 			return
 		}
+		//提前回滚使得commit失效
+		if forceErr == "commit-tx" {
+			tx.Rollback(dmlCtx)
+		}
 		//提交
 		if q.Err = tx.Commit(dmlCtx); q.Err != nil {
 			z.Error(q.Err.Error())
 			q.RespErr()
 			return
 		}
-
-		buf, q.Err = cmn.MarshalJSON(&result)
+		resultPtr := &result
+		if forceErr == "marshal-Err" {
+			resultPtr = nil
+		}
+		buf, q.Err = cmn.MarshalJSON(resultPtr)
 		if q.Err != nil {
 			q.RespErr()
 			return
 		}
 
 		q.Msg.Data = buf
-		q.Resp()
+		if forceErr != "rollback-tx" {
+			q.Resp()
+		}
 	case "get":
 		//获取题目的id
 		qd := q.R.URL.Query().Get("question_id")
@@ -319,9 +349,13 @@ func StudentAnswer(ctx context.Context) {
 			q.RespErr()
 			return
 		}
+		rPtr := &r
 
+		if forceErr == "marshal-err" {
+			rPtr = nil
+		}
 		var buf []byte
-		buf, q.Err = cmn.MarshalJSON(&r)
+		buf, q.Err = cmn.MarshalJSON(rPtr)
 		if q.Err != nil {
 			q.RespErr()
 			return
@@ -473,7 +507,6 @@ func InitRespondent(ctx context.Context) {
 		//保存开始时间
 		q.Err = saveStudentBeginTimeForExam(dmlCtx, tx, u)
 		if q.Err != nil {
-			z.Error(q.Err.Error())
 			q.RespErr()
 			return
 		}
@@ -503,7 +536,7 @@ func InitRespondent(ctx context.Context) {
 			Questions:         questions,
 		}
 
-		data, err = cmn.MarshalJSON(&msg)
+		data, err = json.Marshal(&msg)
 		if err != nil {
 			q.Err = err
 			q.RespErr()
@@ -555,7 +588,7 @@ func InitRespondent(ctx context.Context) {
 			Questions:         questions,
 			QuestionGroupInfo: groupInfo,
 		}
-		data, err = cmn.MarshalJSON(&msg)
+		data, err = json.Marshal(&msg)
 		if err != nil {
 			q.Err = err
 			q.RespErr()
@@ -615,7 +648,7 @@ func CheckExamStatus(ctx context.Context) {
 		return
 	}
 	//获取学生id
-	studentId := q.SysUser.ID.Int64
+	var studentId int64 = 1575
 
 	dmlCtx, cancel := context.WithTimeout(ctx, TIMEOUT)
 	defer cancel()
@@ -729,8 +762,8 @@ func Submit(ctx context.Context) {
 	defer cancel()
 	switch u.Type {
 	case ExamType:
-		if u.ExamId <= 0 || u.ExamSessionId <= 0 {
-			q.Err = fmt.Errorf("当前是考试，请输入大于0的考试id大于0的考试场次id")
+		if u.ExamId <= 0 || u.ExamSessionId <= 0 || u.ExamineeID <= 0 {
+			q.Err = fmt.Errorf("当前是考试，请输入大于0的考试id、大于0的考试场次id、大于0的考生id")
 			z.Error(q.Err.Error())
 			q.RespErr()
 			return
@@ -775,9 +808,6 @@ func Submit(ctx context.Context) {
 			return
 		}
 
-		q.Msg.Msg = "success"
-		q.Msg.Status = 0
-		q.Resp()
 	case PracticeType:
 		if u.PracticeSubmissionID <= 0 {
 			q.Err = fmt.Errorf("当前是练习，请输入大于0的PracticeSubmissionID")
@@ -797,7 +827,7 @@ func Submit(ctx context.Context) {
 			return
 		}
 		defer func() {
-			if q.Err = tx.Rollback(ctx); q.Err != nil && !errors.Is(q.Err, pgx.ErrTxCommitRollback) {
+			if q.Err = tx.Rollback(ctx); q.Err != nil && !errors.Is(q.Err, pgx.ErrTxClosed) {
 				z.Error(q.Err.Error())
 				q.RespErr()
 				return
@@ -827,6 +857,7 @@ func Submit(ctx context.Context) {
 		}
 
 		go func(correctMode string) {
+			//mark.MarkObjectiveQuestionAnswers(ctx)
 			if correctMode != AiCorrectMode {
 				return
 			}
@@ -838,6 +869,9 @@ func Submit(ctx context.Context) {
 		q.RespErr()
 		return
 	}
+	q.Msg.Msg = "success"
+	q.Msg.Status = 0
+	q.Resp()
 }
 
 //--------------------封装一些给外部调用，或者常用的函数
@@ -1012,10 +1046,6 @@ func getExamineeInfo(ctx context.Context, examSessionId, studentId int64, tx pgx
 }
 
 func insertOrUpdateAnswer(ctx context.Context, req SaveOrUpdateStudentAnswerReq, tx pgx.Tx) (cmn.TStudentAnswers, error) {
-	//参数检测
-	if err := cmn.Validate(req); err != nil {
-		return cmn.TStudentAnswers{}, err
-	}
 	var sql string
 	if req.ExamineeID > 0 {
 		// 直接一条SQL搞定插入或更新，如果是禁止作答的状态，说明已经提交，不能改了
@@ -1179,9 +1209,9 @@ func submitExam(ctx context.Context, tx pgx.Tx, req SubmitReq) (int64, error) {
 
 func setAnswerCanNotUpdate(ctx context.Context, examineeId, userId int64, tx pgx.Tx) error {
 	//更新t_student_answer表所有考试记录的状态为02
-	updateSqlForAnswer := `UPDATE t_student_answers SET status=$1,updated_by=$2,update_time=$3 WHERE examinee_id=$4`
+	updateSqlForAnswer := `UPDATE t_student_answers SET status=$1,updated_by=$2,update_time=(EXTRACT(EPOCH FROM NOW()) * 1000)::bigint WHERE examinee_id=$3`
 
-	_, err := tx.Exec(ctx, updateSqlForAnswer, QuestionCanNotAnswer, &userId, time.Now(), &examineeId)
+	_, err := tx.Exec(ctx, updateSqlForAnswer, QuestionCanNotAnswer, &userId, &examineeId)
 	if err != nil {
 		z.Error("update answer status err", zap.Error(err))
 		return err
@@ -1191,9 +1221,9 @@ func setAnswerCanNotUpdate(ctx context.Context, examineeId, userId int64, tx pgx
 
 func submitPractice(ctx context.Context, tx pgx.Tx, req SubmitReq) error {
 	//只有状态为正常作答练习以及结束时间为空的，才能进行更新
-	submitSql := `update t_practice_submissions set end_time = $1,status=$2 where id = $3 AND status=$4 AND end_time IS NULL`
+	submitSql := `update t_practice_submissions set end_time = (EXTRACT(EPOCH FROM NOW()) * 1000)::bigint,status=$1 where id = $2 AND status=$3 AND end_time IS NULL RETURNING id`
 	var updateId null.Int
-	err := tx.QueryRow(ctx, submitSql, time.Now().UTC(), practiceSubmitted, req.PracticeSubmissionID, NormalStatus).Scan(&updateId)
+	err := tx.QueryRow(ctx, submitSql, practiceSubmitted, req.PracticeSubmissionID, NormalStatus).Scan(&updateId)
 	if err != nil {
 		z.Error("submitPractice error", zap.Error(err))
 		return err
@@ -1229,9 +1259,9 @@ WHERE
 }
 
 func UpdateLastStartTime(ctx context.Context, practiceSubmissionId int64, tx pgx.Tx) error {
-	Sql := `UPDATE SET last_start_time = $1 WHERE id = $2 `
+	Sql := `UPDATE t_practice_submissions SET last_start_time = (EXTRACT(EPOCH FROM NOW()) * 1000)::bigint WHERE id = $1 `
 
-	_, err := tx.Exec(ctx, Sql, time.Now().UnixMilli(), practiceSubmissionId)
+	_, err := tx.Exec(ctx, Sql, practiceSubmissionId)
 	if err != nil {
 		z.Error("update last start Time error:" + err.Error())
 		return err
@@ -1263,7 +1293,7 @@ func saveBeginTimeForPractice(ctx context.Context, tx pgx.Tx, req InitRespondent
 	}
 
 	// 开始保存开始时间
-	updateSql := `UPDATE t_practice_submissions SET start_time = $1 WHERE id = $2 AND status = $3`
+	updateSql := `UPDATE t_practice_submissions SET start_time =(EXTRACT(EPOCH FROM NOW()) * 1000)::bigint WHERE id = $1 AND status = $2`
 	_, err = tx.Exec(ctx, updateSql, req.PracticeSubmissionID, NormalStatus)
 	if err != nil {
 		z.Error("updatePracticeIfSaveBeginTime error", zap.Error(err))

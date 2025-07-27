@@ -23,12 +23,14 @@ func TestStudentAnswer(t *testing.T) {
 	cmn.ConfigureForTest()
 	// 定义测试用例
 	testCases := []struct {
-		name        string
-		method      string
-		url         string
-		reqBody     *cmn.ReqProto
-		userId      int64
-		expectedLog string
+		name     string
+		method   string
+		url      string
+		reqBody  *cmn.ReqProto
+		userId   int64
+		forceErr string
+		ctxKey   string
+		ctxValue string
 		// 预期结果
 		expectSuccess   bool            // 是否期望成功
 		expectedMessage string          // 预期错误消息
@@ -41,17 +43,30 @@ func TestStudentAnswer(t *testing.T) {
 			url:    "/api/respondent",
 			reqBody: &cmn.ReqProto{
 				Data: json.RawMessage(`{
-					"id": 0,
-					"examinee_id": 12345,
+					"examinee_id": 3112,
 					"type": "00",
-					"question_id": 67890,
-					"answer": {"text":"这是学生的答案"},
-					"student_id": 54321
+					"question_id": 3684,
+					"answer": {"answer":["B"]}
 				}`),
 			},
-			expectedLog:     "POST test setup completed successfully",
+			userId:          1574,
 			expectSuccess:   true,
 			expectedMessage: "",
+			expectedData: json.RawMessage(`{
+			  "Answer": {
+				"answer":["B"]
+			  },
+			  "AnswerAttachmentsPath": [],
+			  "CreateTime": 1753577351944,
+			  "Creator": 1580,
+			  "ID": 34795,
+			  "ExamineeID":3112,
+			  "QuestionID": 3684,
+			  "Status": "00",
+			  "Type": "00",
+			  "UpdateTime": 1753577351944,
+			  "UpdatedBy": 1580
+			}`),
 		},
 		{
 			name:   "POST 请求 - 保存学生答案 - 练习模式",
@@ -62,10 +77,9 @@ func TestStudentAnswer(t *testing.T) {
 					"practice_submission_id": 159,
 					"type": "02",
 					"question_id": 3624,
-					"answer": {"answer":["北京市朝阳区"]}
+					"answer": {"answer":["B"]}
 				}`),
 			},
-			expectedLog:     "POST test setup completed successfully",
 			expectSuccess:   true,
 			userId:          1580,
 			expectedMessage: "",
@@ -97,7 +111,6 @@ func TestStudentAnswer(t *testing.T) {
 					"answer": {"answer":["广州市白云区"]}
 				}`),
 			},
-			expectedLog:     "POST test setup completed successfully",
 			expectSuccess:   true,
 			expectedMessage: "",
 			userId:          1580,
@@ -130,7 +143,6 @@ func TestStudentAnswer(t *testing.T) {
 					"attachment_paths": ["path/to/file1.jpg", "path/to/file2.pdf"]
 				}`),
 			},
-			expectedLog:     "POST test setup completed successfully",
 			expectSuccess:   true,
 			userId:          1580,
 			expectedMessage: "",
@@ -162,7 +174,6 @@ func TestStudentAnswer(t *testing.T) {
 				}`),
 			},
 			userId:          1580,
-			expectedLog:     "POST test setup completed successfully",
 			expectSuccess:   false,
 			expectedMessage: "",
 		},
@@ -178,7 +189,6 @@ func TestStudentAnswer(t *testing.T) {
 				}`),
 			},
 			userId:          1580,
-			expectedLog:     "POST test setup completed successfully",
 			expectSuccess:   false,
 			expectedMessage: "",
 		},
@@ -194,7 +204,6 @@ func TestStudentAnswer(t *testing.T) {
 				}`),
 			},
 			userId:          1580,
-			expectedLog:     "POST test setup completed successfully",
 			expectSuccess:   false,
 			expectedMessage: "",
 		},
@@ -210,23 +219,177 @@ func TestStudentAnswer(t *testing.T) {
 				}`),
 			},
 			userId:          1580,
-			expectedLog:     "POST test setup completed successfully",
 			expectSuccess:   false,
 			expectedMessage: "",
 		},
+		{
+			name:   "POST 请求 - io read报错",
+			method: "POST",
+			url:    "/api/respondent",
+			reqBody: &cmn.ReqProto{
+				Data: json.RawMessage(`{
 
+				}`),
+			},
+			userId:          1580,
+			expectSuccess:   false,
+			expectedMessage: "",
+			forceErr:        "io-readAll",
+		},
+		{
+			name:   "POST 请求 - body close报错",
+			method: "POST",
+			url:    "/api/respondent",
+			reqBody: &cmn.ReqProto{
+				Data: json.RawMessage(`{
+
+				}`),
+			},
+			userId:          1580,
+			expectSuccess:   false,
+			expectedMessage: "",
+			forceErr:        "body-close",
+		},
+		{
+			name:   "POST 请求 - data unmarshal error",
+			method: "POST",
+			url:    "/api/respondent",
+			reqBody: &cmn.ReqProto{
+				Data: json.RawMessage(``),
+			},
+			userId:          1580,
+			expectSuccess:   false,
+			expectedMessage: "",
+		},
+		{
+			name:            "POST 请求 - req unmarshal error",
+			method:          "POST",
+			url:             "/api/respondent",
+			reqBody:         &cmn.ReqProto{},
+			userId:          1580,
+			expectSuccess:   false,
+			expectedMessage: "",
+		},
+		{
+			name:            "POST 请求 - buf-zero error",
+			method:          "POST",
+			url:             "/api/respondent",
+			reqBody:         &cmn.ReqProto{},
+			userId:          1580,
+			expectSuccess:   false,
+			expectedMessage: "",
+			forceErr:        "buf-zero",
+		},
+		{
+			name:   "POST 请求 - begin-tx error",
+			method: "POST",
+			url:    "/api/respondent",
+			reqBody: &cmn.ReqProto{
+				Data: json.RawMessage(`{
+					"practice_submission_id": 159,
+					"type": "02",
+					"question_id": 3624,
+					"answer": {"answer":["广州市白云区"]}
+				}`),
+			},
+			userId:          1580,
+			expectSuccess:   false,
+			expectedMessage: "",
+			forceErr:        "begin-tx",
+		},
+		{
+			name:   "POST 请求 - commit-tx error",
+			method: "POST",
+			url:    "/api/respondent",
+			reqBody: &cmn.ReqProto{
+				Data: json.RawMessage(`{
+					"practice_submission_id": 159,
+					"type": "02",
+					"question_id": 3624,
+					"answer": {"answer":["广州市白云区"]}
+				}`),
+			},
+			userId:          1580,
+			expectSuccess:   false,
+			expectedMessage: "",
+			forceErr:        "commit-tx",
+		},
+		{
+			name:   "POST 请求 - marshal error",
+			method: "POST",
+			url:    "/api/respondent",
+			reqBody: &cmn.ReqProto{
+				Data: json.RawMessage(`{
+					"practice_submission_id": 159,
+					"type": "02",
+					"question_id": 3624,
+					"answer": {"answer":["广州市白云区"]}
+				}`),
+			},
+			userId:          1580,
+			expectSuccess:   false,
+			expectedMessage: "",
+			forceErr:        "marshal-Err",
+		},
+		{
+			name:   "POST 请求 - empty-buf error",
+			method: "POST",
+			url:    "/api/respondent",
+			reqBody: &cmn.ReqProto{
+				Data: json.RawMessage(`{
+					"practice_submission_id": 159,
+					"type": "02",
+					"question_id": 3624,
+					"answer": {"answer":["广州市白云区"]}
+				}`),
+			},
+			userId:          1580,
+			expectSuccess:   false,
+			expectedMessage: "",
+		},
+		{
+			name:   "POST 请求 - rollback-tx error",
+			method: "POST",
+			url:    "/api/respondent",
+			reqBody: &cmn.ReqProto{
+				Data: json.RawMessage(`{
+					"practice_submission_id": 159,
+					"type": "02",
+					"question_id": 3624,
+					"answer": {"answer":["广州市白云区"]}
+				}`),
+			},
+			userId:        1580,
+			expectSuccess: false,
+			forceErr:      "rollback-tx",
+		},
+		{
+			name:   "POST 请求 - err type",
+			method: "POST",
+			url:    "/api/respondent",
+			reqBody: &cmn.ReqProto{
+				Data: json.RawMessage(`{
+					"examinee_id": 3112,
+					"type": "04",
+					"question_id": 3684,
+					"answer": {"answer":["B"]}
+				}`),
+			},
+			userId:          1574,
+			expectSuccess:   false,
+			expectedMessage: "",
+		},
 		// GET 请求测试用例
 		{
 			name:            "GET 请求 - 通过考生ID获取学生答案",
 			method:          "GET",
-			url:             "/api/respondent?question_id=67890&examinee_id=12345",
+			url:             "/api/respondent?question_id=3684&examinee_id=3112",
 			reqBody:         nil,
-			expectedLog:     "GET test setup completed successfully",
 			expectSuccess:   true,
-			userId:          1580,
+			userId:          1574,
 			expectedMessage: "",
 			expectedData: json.RawMessage(
-				` {"ID":34795,"Type":"02","QuestionID":3624,"Answer":{"answer":["广州市白云区"]},"Creator":1580,"UpdatedBy":1580,"Status":"00","CreateTime":1753551715472,"UpdateTime":1753583181560}`,
+				` {"ID":34895,"Type":"00","ExamineeID":3112,"QuestionID":3684,"Answer":{"answer":["B"]},"Creator":1574,"UpdatedBy":1574,"Status":"00","AnswerAttachmentsPath":[],"CreateTime":1753580552008,"UpdateTime":1753600525670}`,
 			),
 		},
 		{
@@ -234,12 +397,11 @@ func TestStudentAnswer(t *testing.T) {
 			method:          "GET",
 			url:             "/api/respondent?question_id=3624&practice_submission_id=159",
 			reqBody:         nil,
-			expectedLog:     "GET test setup completed successfully",
 			expectSuccess:   true,
 			userId:          1580,
 			expectedMessage: "",
 			expectedData: json.RawMessage(
-				` {"ID":34795,"Type":"02","QuestionID":3624,"Answer":{"answer":["广州市白云区"]},"Creator":1580,"UpdatedBy":1580,"Status":"00","CreateTime":1753551715472,"UpdateTime":1753583181560,"AnswerAttachmentsPath":["path/to/file1.jpg","path/to/file2.pdf"]}`,
+				` {"ID":34795,"Type":"02","QuestionID":3624,"Answer":{"answer":["广州市白云区"]},"Creator":1580,"UpdatedBy":1580,"Status":"00","CreateTime":1753551715472,"UpdateTime":1753583181560,"AnswerAttachmentsPath":[]}`,
 			),
 		},
 		{
@@ -247,7 +409,6 @@ func TestStudentAnswer(t *testing.T) {
 			method:          "GET",
 			url:             "/api/respondent?examinee_id=12345",
 			reqBody:         nil,
-			expectedLog:     "GET test setup completed successfully",
 			expectSuccess:   false,
 			userId:          1580,
 			expectedMessage: "题目ID不能为空",
@@ -257,10 +418,65 @@ func TestStudentAnswer(t *testing.T) {
 			method:          "GET",
 			url:             "/api/respondent?question_id=67890",
 			reqBody:         nil,
-			expectedLog:     "GET test setup completed successfully",
 			expectSuccess:   false,
 			userId:          1580,
 			expectedMessage: "考生ID和练习提交ID不能同时为空",
+		},
+		{
+			name:            "GET 请求 - 考生ID不是数字",
+			method:          "GET",
+			url:             "/api/respondent?question_id=3684&examinee_id=yes",
+			reqBody:         nil,
+			expectSuccess:   false,
+			userId:          1574,
+			expectedMessage: "",
+		},
+		{
+			name:            "GET 请求 - practiceSubmissionID不是数字",
+			method:          "GET",
+			url:             "/api/respondent?question_id=3624&practice_submission_id=yes",
+			reqBody:         nil,
+			expectSuccess:   false,
+			userId:          1580,
+			expectedMessage: "",
+		},
+		{
+			name:            "GET 请求 - questionId不是数字",
+			method:          "GET",
+			url:             "/api/respondent?question_id=yes&examinee_id=3112",
+			reqBody:         nil,
+			expectSuccess:   false,
+			userId:          1574,
+			expectedMessage: "",
+		},
+		{
+			name:            "GET 请求 - no row",
+			method:          "GET",
+			url:             "/api/respondent?question_id=1&examinee_id=3112",
+			reqBody:         nil,
+			expectSuccess:   false,
+			userId:          1574,
+			expectedMessage: "",
+		},
+		{
+			name:            "GET 请求 - marshal err",
+			method:          "GET",
+			url:             "/api/respondent?question_id=3684&examinee_id=3112",
+			reqBody:         nil,
+			expectSuccess:   false,
+			userId:          1574,
+			expectedMessage: "",
+
+			forceErr: "marshal-err",
+		},
+		{
+			name:            "GET 请求 - error method",
+			method:          "PUT",
+			url:             "/api/respondent?question_id=3684&examinee_id=3112",
+			reqBody:         nil,
+			expectSuccess:   false,
+			userId:          1574,
+			expectedMessage: "",
 		},
 	}
 
@@ -271,12 +487,20 @@ func TestStudentAnswer(t *testing.T) {
 			var err error
 
 			if tc.reqBody != nil {
+
 				// 对于 POST 请求，准备请求体
 				bodyBytes, err := json.Marshal(tc.reqBody)
 				if err != nil {
 					t.Fatalf("Failed to marshal request body: %v", err)
 				}
 				req, err = http.NewRequest(tc.method, tc.url, bytes.NewBuffer(bodyBytes))
+				if tc.name == "buf-zero" {
+					req, err = http.NewRequest(tc.method, tc.url, bytes.NewBuffer(nil))
+				} else if tc.reqBody.Data == nil {
+					req, err = http.NewRequest(tc.method, tc.url, bytes.NewBuffer([]byte("{")))
+				} else if tc.name == "POST 请求 - empty-buf error" {
+					req, err = http.NewRequest(tc.method, tc.url, bytes.NewBuffer([]byte("")))
+				}
 			} else {
 				// 对于 GET 请求，没有请求体
 				req, err = http.NewRequest(tc.method, tc.url, nil)
@@ -288,8 +512,10 @@ func TestStudentAnswer(t *testing.T) {
 			// 创建模拟的上下文，应用自定义选项
 			ctx := createMockContext(t, req, tc.userId)
 
-			// 验证测试设置是否正确
-			t.Log(tc.expectedLog)
+			//传入强制err
+			if tc.forceErr != "" {
+				ctx = context.WithValue(ctx, ForceErr, tc.forceErr)
+			}
 
 			// // 验证请求和上下文是否正确设置
 			// verifyRequestAndContext(t, req, ctx, method)
@@ -317,6 +543,7 @@ func TestStudentAnswer(t *testing.T) {
 						t.Fatalf("Failed to unmarshal response: %v", err)
 					}
 					assert.Equal(t, expected.PracticeSubmissionID, result.PracticeSubmissionID)
+					assert.Equal(t, expected.ExamineeID, result.ExamineeID)
 					assert.JSONEq(t, expected.Answer.String(), expected.Answer.String())
 					assert.Equal(t, expected.QuestionID, result.QuestionID)
 					assert.JSONEq(t, expected.AnswerAttachmentsPath.String(), result.AnswerAttachmentsPath.String())
