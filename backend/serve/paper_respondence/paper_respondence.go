@@ -479,7 +479,7 @@ func InitRespondent(ctx context.Context) {
 		}
 
 		//获取考卷
-		_, groupInfo, questions, err := examPaper.LoadExamPaperDetailByUserId(dmlCtx, examineeInfo.ExamPaperID.Int64, 0, examineeInfo.ID.Int64, false, false, false)
+		_, groupInfo, questions, err := examPaper.LoadExamPaperDetailByUserId(dmlCtx, tx, examineeInfo.ExamPaperID.Int64, 0, examineeInfo.ID.Int64, false, false, false)
 		if err != nil {
 			q.Err = err
 			q.RespErr()
