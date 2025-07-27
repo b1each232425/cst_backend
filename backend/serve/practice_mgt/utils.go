@@ -3,7 +3,7 @@
  * @Description: 请在此填写文件描述
  * @Date: 2025-07-15 16:40:38
  * @LastEditors: zdl <1311866870@qq.com>
- * @LastEditTime: 2025-07-24 12:11:55
+ * @LastEditTime: 2025-07-26 09:54:28
  */
 package practice_mgt
 
@@ -12,9 +12,8 @@ import (
 	"fmt"
 	"github.com/jmoiron/sqlx/types"
 	"reflect"
-	"sort"
 	"strings"
-	"time"
+	"w2w.io/cmn"
 	"w2w.io/null"
 )
 
@@ -63,76 +62,6 @@ func S2Map(in interface{}) (Map, error) {
 	return data, nil
 }
 
-// BuildUpdateSQL 构建动态更新练习信息的SQL语句
-func BuildUpdateSQL(table string, filters Map, id int64) (string, []interface{}) {
-	var clauses []string
-	var args []interface{}
-	idx := 1
-	for field, value := range filters {
-		clauses = append(clauses, fmt.Sprintf("%s = $%d", field, idx))
-		args = append(args, value)
-		idx++
-	}
-	args = append(args, id)
-	query := fmt.Sprintf("UPDATE %s SET %s WHERE id = $%d", table, strings.Join(clauses, ", "), idx)
-
-	return query, args
-}
-
-// BuildQuerySQL 构建动态查询练习SQL语句
-func BuildQuerySQL(table string, filters Map, orderBy []string, offset, limit int) (string, []interface{}) {
-	var clauses []string
-	var args []interface{}
-	idx := 1
-
-	// 处理WHERE条件
-	if len(filters) > 0 {
-		// 对字段名排序保证生成的SQL稳定
-		keys := make([]string, 0, len(filters))
-		for k := range filters {
-			keys = append(keys, k)
-		}
-		sort.Strings(keys)
-
-		for _, field := range keys {
-			value := filters[field]
-			// 处理NULL值情况
-			if value == nil {
-				clauses = append(clauses, fmt.Sprintf("%s IS NULL", field))
-			} else {
-				clauses = append(clauses, fmt.Sprintf("%s = $%d", field, idx))
-				args = append(args, value)
-				idx++
-			}
-		}
-	}
-
-	// 构建基础查询
-	query := fmt.Sprintf("SELECT * FROM %s", table)
-	if len(clauses) > 0 {
-		query += " WHERE " + strings.Join(clauses, " AND ")
-	}
-
-	// 添加ORDER BY子句
-	if len(orderBy) > 0 {
-		query += " ORDER BY " + strings.Join(orderBy, ", ")
-	}
-
-	// 添加分页参数
-	if limit > 0 {
-		query += fmt.Sprintf(" LIMIT $%d", idx)
-		args = append(args, limit)
-		idx++
-	}
-
-	if offset > 0 {
-		query += fmt.Sprintf(" OFFSET $%d", idx)
-		args = append(args, offset)
-	}
-
-	return query, args
-}
-
 // RemoveFields 清除不需要更新的字段
 func RemoveFields(m Map, fields ...string) Map {
 	for _, field := range fields {
@@ -146,6 +75,37 @@ func Json(v interface{}) string {
 	return string(buf)
 }
 
-func Timestamp(t time.Time) int64 {
-	return t.Local().UnixNano() / 1e6
+// ValidatePractice 对前端传来的Practice结构体进行参数校验
+func ValidatePractice(p *cmn.TPractice, ps []int64) error {
+	var err error
+	if !p.Name.Valid || p.Name.String == "" {
+		err = fmt.Errorf("invalid practice Name")
+		return err
+	}
+	if !p.CorrectMode.Valid || p.CorrectMode.String == "" || (p.CorrectMode.String != MarkMode.Normal && p.CorrectMode.String != MarkMode.AI) {
+		err = fmt.Errorf("invalid practice CorrectMode")
+		return err
+	}
+	if !p.PaperID.Valid || p.PaperID.Int64 <= 0 {
+		err = fmt.Errorf("invalid practice PaperID")
+		return err
+	}
+	if !p.Type.Valid || p.Type.String == "" || (p.Type.String != PracticeType.PracticeNew && p.Type.String != PracticeType.Classical && p.Type.String != PracticeType.Intelligent) {
+		err = fmt.Errorf("invalid practice Type")
+		return err
+	}
+	if !p.AllowedAttempts.Valid || p.AllowedAttempts.Int64 < 0 {
+		err = fmt.Errorf("invalid practice AllowedAttempts")
+		return err
+	}
+	if ps != nil && len(ps) > 0 {
+		for _, id := range ps {
+			if id <= 0 {
+				err = fmt.Errorf("invalid practice studentID")
+				return err
+			}
+		}
+	}
+	return nil
+
 }
