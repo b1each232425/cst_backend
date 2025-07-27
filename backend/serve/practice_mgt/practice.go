@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 	"w2w.io/cmn"
+	"w2w.io/serve/examPaper"
 )
 
 var z *zap.Logger
@@ -108,6 +109,22 @@ func Enroll(author string) {
 
 		Path: "/practiceEnter",
 		Name: "practiceEnter",
+
+		Developer: developer,
+		WhiteList: true,
+
+		//DomainID 创建该API的账号归属的domain
+		DomainID: int64(cmn.CDomainSys),
+
+		//DefaultDomain 该API将默认授权给的用户
+		DefaultDomain: int64(cmn.CDomainSys),
+	})
+
+	_ = cmn.AddService(&cmn.ServeEndPoint{
+		Fn: getPracticePaper,
+
+		Path: "/practicePaper",
+		Name: "practicePaper",
 
 		Developer: developer,
 		WhiteList: true,
@@ -588,6 +605,78 @@ func practiceEnterH(ctx context.Context) {
 	q.Resp()
 	return
 
+}
+
+func getPracticePaper(ctx context.Context) {
+	q := cmn.GetCtxValue(ctx)
+	ctx, cancel := context.WithTimeout(q.R.Context(), 5*time.Second)
+	defer cancel()
+	p := q.R.URL.Query().Get("pid")
+	e := q.R.URL.Query().Get("eid")
+	var pid, eid int64
+	pid, q.Err = strconv.ParseInt(p, 10, 64)
+	if q.Err != nil {
+		q.Err = fmt.Errorf("练习ID获取失败：%v", q.Err.Error())
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+
+	eid, q.Err = strconv.ParseInt(e, 10, 64)
+	if q.Err != nil {
+		q.Err = fmt.Errorf("用户ID获取失败：%v", q.Err.Error())
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+
+	conn := cmn.GetPgxConn()
+
+	tx, err := conn.Begin(ctx)
+	if err != nil {
+		err = fmt.Errorf("beginTx called failed:%v", err)
+		q.Err = err
+		q.RespErr()
+		return
+	}
+	defer func() {
+		if err != nil {
+			// 操作失败回滚
+			err = tx.Rollback(ctx)
+			if err != nil {
+				z.Error(err.Error())
+			}
+		} else {
+			// 无错误则提交
+			err = tx.Commit(ctx)
+			if err != nil {
+				z.Error(err.Error())
+			}
+		}
+	}()
+
+	_, pg, pq, err := examPaper.LoadExamPaperDetailByUserId(ctx, tx, eid, pid, 0, false, true, false)
+	if err != nil {
+		q.Err = err
+		q.RespErr()
+		return
+	}
+
+	result := Map{}
+	result["examPaperGroup"] = pg
+	result["examPaperQuestion"] = pq
+	data, err := json.Marshal(result)
+	if err != nil {
+		z.Error(err.Error())
+		q.Err = err
+		q.RespErr()
+		return
+	}
+	q.Msg.Data = data
+	z.Info("---->" + cmn.FncName())
+	q.Msg.Msg = "OK"
+	q.Resp()
+	return
 }
 
 //{

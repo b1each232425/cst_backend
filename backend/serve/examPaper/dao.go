@@ -3,7 +3,7 @@
  * @Description: 考卷-答卷数据库层
  * @Date: 2025-07-21 13:14:34
  * @LastEditors: zdl <1311866870@qq.com>
- * @LastEditTime: 2025-07-27 01:21:27
+ * @LastEditTime: 2025-07-27 09:31:57
  */
 package examPaper
 
@@ -27,7 +27,7 @@ import (
 	withQuestions 是否查询题组及题目信息 对应返回体[]*cmn.TExamPaperGroup、map[int64][]*ExamQuestion
 	withAnswers 题目是否需要答案
 */
-func LoadExamPaperDetailsById(ctx context.Context, epid int64, withQuestions, withAnswers bool) (*cmn.TVExamPaper, []*cmn.TExamPaperGroup, map[int64][]*ExamQuestion, error) {
+func LoadExamPaperDetailsById(ctx context.Context, tx pgx.Tx, epid int64, withQuestions, withAnswers bool) (*cmn.TVExamPaper, []*cmn.TExamPaperGroup, map[int64][]*ExamQuestion, error) {
 	var err error
 	if epid <= 0 {
 		err = fmt.Errorf("invalid examPaper ID param")
@@ -38,7 +38,6 @@ func LoadExamPaperDetailsById(ctx context.Context, epid int64, withQuestions, wi
 	var examGroups []*cmn.TExamPaperGroup
 	// 一个题组下拥有的题目数组
 	examQuestions := make(map[int64][]*ExamQuestion)
-	conn := cmn.GetPgxConn()
 	var ep cmn.TVExamPaper
 	// 动态构建 SQL 字段
 	fields := []string{"id", "exam_session_id", "practice_id", "name", "creator", "create_time", "updated_by",
@@ -55,7 +54,7 @@ func LoadExamPaperDetailsById(ctx context.Context, epid int64, withQuestions, wi
 	}
 	s := fmt.Sprintf("SELECT %s FROM v_exam_paper WHERE id=$1 AND status=$2", strings.Join(fields, ","))
 	z.Sugar().Infof("打印输出sql查询语句：%v", s)
-	err = conn.QueryRow(ctx, s, epid, PaperStatus.Normal).Scan(scanArgs...)
+	err = tx.QueryRow(ctx, s, epid, PaperStatus.Normal).Scan(scanArgs...)
 	if err != nil {
 		err = fmt.Errorf("select examPaper failed:%v", err)
 		z.Error(err.Error())
@@ -142,7 +141,7 @@ func GenerateAnswerQuestion(ctx context.Context, tx pgx.Tx, req GenerateAnswerQu
 	}
 
 	// 获取考题
-	_, pg, pq, err := LoadExamPaperDetailsById(ctx, req.ExamPaperID, true, true)
+	_, pg, pq, err := LoadExamPaperDetailsById(ctx, tx, req.ExamPaperID, true, true)
 	if err != nil {
 		return err
 	}
@@ -717,7 +716,9 @@ func LoadExamPaperDetailByUserId(ctx context.Context, tx pgx.Tx, examPaperId, pS
 	var sAnswer []*cmn.TStudentAnswers
 	orderBy := `ORDER BY sa."order"`
 	s = `SELECT 
-			sa.question_id,sa."order",
+			sa.question_id,
+			sa."order",
+			sa.group_id,
 			CASE WHEN $2 THEN sa.answer ELSE NULL END AS answer,
         	CASE WHEN $3 THEN sa.answer_score ELSE NULL END AS answer_score,
             CASE WHEN $4 THEN 
@@ -757,7 +758,7 @@ func LoadExamPaperDetailByUserId(ctx context.Context, tx pgx.Tx, examPaperId, pS
 	for rows.Next() {
 		var a cmn.TStudentAnswers
 		// 将属于这个学生的真正题目、学生作答等信息获取出来，解析在答卷结构体中，最后经过循环遍历，嵌入成一个完整的题目
-		err = rows.Scan(&a.QuestionID, &a.Order, &a.Answer, &a.AnswerScore, &a.ActualAnswers, &a.ActualOptions)
+		err = rows.Scan(&a.QuestionID, &a.Order, &a.GroupID, &a.Answer, &a.AnswerScore, &a.ActualAnswers, &a.ActualOptions)
 		if err != nil {
 			err = fmt.Errorf("解析学生答卷错误：%v", err)
 			z.Error(err.Error())
@@ -772,7 +773,7 @@ func LoadExamPaperDetailByUserId(ctx context.Context, tx pgx.Tx, examPaperId, pS
 	}
 
 	// 获取本次考卷基本信息、考卷题组、考题原本信息
-	p, pg, pq, err := LoadExamPaperDetailsById(ctx, examPaperId, true, withAnswer)
+	p, pg, pq, err := LoadExamPaperDetailsById(ctx, tx, examPaperId, true, withAnswer)
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -791,6 +792,7 @@ func LoadExamPaperDetailByUserId(ctx context.Context, tx pgx.Tx, examPaperId, pS
 			z.Sugar().Warnf("exam question id:%v not found in examPaper:", sa.QuestionID.Int64)
 			continue
 		}
+		tq.GroupID = sa.GroupID
 		// 赋值学生作答情况
 		tq.StudentAnswer = sa.Answer
 		tq.StudentScore = sa.AnswerScore
@@ -798,6 +800,7 @@ func LoadExamPaperDetailByUserId(ctx context.Context, tx pgx.Tx, examPaperId, pS
 		tq.Order = sa.Order
 		tq.Options = sa.ActualOptions
 		tq.Answers = sa.ActualAnswers
+
 	}
 
 	// 构建前端需要的题组结构体

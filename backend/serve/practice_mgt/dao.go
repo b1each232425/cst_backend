@@ -672,6 +672,7 @@ func EnterPracticeGetPaperDetails(ctx context.Context, tx pgx.Tx, pid int64, uid
 				}`)
 				q1.Score = null.FloatFrom(3)
 				q1.Order = null.IntFrom(1)
+				q1.GroupID = null.IntFrom(200)
 				qList1 = append(qList1, q1)
 
 				qList2 := make([]*examPaper.ExamQuestion, 0)
@@ -694,6 +695,7 @@ func EnterPracticeGetPaperDetails(ctx context.Context, tx pgx.Tx, pid int64, uid
     				"question_id": 2045
 				}`)
 				q2.Order = null.IntFrom(1)
+				q2.GroupID = null.IntFrom(201)
 				qList2 = append(qList2, q2)
 
 				questionMap[int64(200)] = qList1
