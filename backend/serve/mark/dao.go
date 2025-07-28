@@ -455,7 +455,7 @@ func QueryMarkerInfo(ctx context.Context, cond QueryCondition) (markerInfo Marke
 		queryParams = append(queryParams, cond.ExamSessionID)
 	} else {
 		query = `SELECT mi.mark_teacher_id, mi.mark_count, 
-                        mi.mark_question_groups, mi.mark_examinee_ids
+                        mi.mark_question_groups, mi.mark_examinee_ids, p.correct_mode 
                  FROM t_mark_info mi
                  JOIN t_practice p ON p.id = mi.practice_id
                  WHERE mi.practice_id = $1 AND mi.status != '04'`
@@ -486,6 +486,8 @@ func QueryMarkerInfo(ctx context.Context, cond QueryCondition) (markerInfo Marke
 
 		if cond.ExamSessionID != 0 {
 			scanVars = append(scanVars, &markMode, &markMethod, &name)
+		} else {
+			scanVars = append(scanVars, &markMode)
 		}
 
 		err = rows.Scan(scanVars...)
@@ -503,8 +505,8 @@ func QueryMarkerInfo(ctx context.Context, cond QueryCondition) (markerInfo Marke
 
 	if cond.ExamSessionID != 0 {
 		markerInfo.MarkMethod = markMethod.String
-		markerInfo.MarkMode = markMode.String
 	}
+	markerInfo.MarkMode = markMode.String
 
 	return markerInfo, nil
 }
@@ -676,7 +678,8 @@ func QueryExamQuestionsByMarkMode(ctx context.Context, cond QueryCondition, mark
 								   q.answers, q.analysis, q.title, 
 								   q.input, q.output, q.example, q.repo, q.commit_id 
 							FROM t_exam_paper p
-							JOIN t_exam_paper_question q ON p.id = q.exam_paper_id
+							JOIN t_exam_paper_group pg ON pg.exam_paper_id = p.id 
+							JOIN t_exam_paper_question q ON q.group_id = pg.id 
 							JOIN t_paper_group g ON q.group_id = g.id 
 							WHERE p.status != '04' AND p.status IS NOT NULL 
 							  AND p.exam_session_id = $1 
@@ -1097,26 +1100,33 @@ func updateStudentAnswerScore(ctx context.Context, markingResults []*cmn.TMark, 
 	return
 }
 
-func updateExamSessionState(ctx context.Context, tx *pgx.Tx, teacherID int64, examSessionIDs []int64, status string) (targetIDs []int64, err error) {
+func updateExamSessionOrPracticeSubmissionState(ctx context.Context, tx *pgx.Tx, teacherID int64, examSessionIDs []int64, practiceSubmissionIDs []int64, status string) (targetIDs []int64, err error) {
 	if teacherID <= 0 {
 		err = fmt.Errorf("invalid params: teacher_id is required")
 		z.Error(err.Error())
 		return
 	}
 
-	if examSessionIDs == nil || len(examSessionIDs) == 0 {
-		err = fmt.Errorf("no examSessionIDs to update")
+	if len(examSessionIDs) == 0 && len(practiceSubmissionIDs) == 0 {
+		err = fmt.Errorf("invalid params: exam_session_ids or practice_submission_ids is required")
+		z.Error(err.Error())
+		return
+	}
+
+	if len(examSessionIDs) > 0 && len(practiceSubmissionIDs) > 0 {
+		err = fmt.Errorf("invalid params: exam_session_ids and practice_submission_ids cannot be both specified")
 		z.Error(err.Error())
 		return
 	}
 
 	if status == "" {
+		// 考试：10， 练习提交：08
 		err = fmt.Errorf("invalid params: status is required")
 		z.Error(err.Error())
 		return
 	}
 
-	updateQuery := `UPDATE t_exam_session 
+	updateQuery := `UPDATE %s -- 拼接表名 
 					SET
 						status = $2,
 						updated_by = $3, 
@@ -1124,7 +1134,16 @@ func updateExamSessionState(ctx context.Context, tx *pgx.Tx, teacherID int64, ex
 					WHERE id = ANY($1)
 					RETURNING id`
 
-	rows, err := (*tx).Query(ctx, updateQuery, pq.Array(examSessionIDs), status, teacherID, time.Now().UnixMilli())
+	var ids []int64
+	if len(examSessionIDs) > 0 {
+		updateQuery = fmt.Sprintf(updateQuery, "t_exam_session")
+		ids = examSessionIDs
+	} else {
+		updateQuery = fmt.Sprintf(updateQuery, "t_practice_submissions")
+		ids = practiceSubmissionIDs
+	}
+
+	rows, err := (*tx).Query(ctx, updateQuery, pq.Array(ids), status, teacherID, time.Now().UnixMilli())
 	if err != nil {
 		err = fmt.Errorf("exec updateExamSessionState sql error: %v", err)
 		z.Error(err.Error())

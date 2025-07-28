@@ -339,7 +339,7 @@ func GetMarkingDetails(ctx context.Context) {
 		return
 	}
 
-	studentAnswers, err := QueryStudentAnswersByMarkMode(ctx, "", QueryCondition{
+	studentAnswers, err := QueryStudentAnswersByMarkMode(ctx, "00", QueryCondition{
 		TeacherID:     teacherID,
 		ExamSessionID: examSessionID,
 		ExamineeID:    examineeID,
@@ -788,6 +788,7 @@ func MarkObjectiveQuestionAnswers(ctx context.Context, cond QueryCondition) (err
 	var subjectiveQustionCounts int
 	var whereClause []string
 
+	// 查询该考试/练习的主观题数量
 	querySubjectiveQuestionCounts := `
 	SELECT COALESCE(count(q.id), 0)
 	FROM t_exam_paper p
@@ -816,9 +817,11 @@ func MarkObjectiveQuestionAnswers(ctx context.Context, cond QueryCondition) (err
 	}
 
 	if subjectiveQustionCounts != 0 {
+		// 主观题数量大于0，直接结束
 		return
 	}
 
+	// 考试/练习仅有客观题，改完自动提交
 	z.Info("---------->no subjective question found, auto submit")
 	var tx pgx.Tx
 	tx, err = pgxConn.Begin(ctx)
@@ -838,7 +841,18 @@ func MarkObjectiveQuestionAnswers(ctx context.Context, cond QueryCondition) (err
 		}
 	}()
 
-	_, err = updateExamSessionState(ctx, &tx, cond.TeacherID, []int64{cond.ExamSessionID}, "10")
+	var status string
+	var examSessionIDs []int64
+	var practiceSubmissionIDs []int64
+	if cond.ExamSessionID > 0 {
+		status = "10"
+		examSessionIDs = []int64{cond.ExamSessionID}
+	} else if cond.PracticeSubmissionID > 0 {
+		status = "08"
+		practiceSubmissionIDs = []int64{cond.PracticeSubmissionID}
+	}
+
+	_, err = updateExamSessionOrPracticeSubmissionState(ctx, &tx, cond.TeacherID, examSessionIDs, practiceSubmissionIDs, status)
 	if err != nil {
 		err = fmt.Errorf("update exam session state error: %v", err)
 		z.Error(err.Error())
@@ -877,6 +891,17 @@ func AutoMark(ctx context.Context, cond QueryCondition) (err error) {
 		err = fmt.Errorf("no marker info found")
 		z.Error(err.Error())
 		return
+	}
+
+	if markerInfo.MarkMode == "" {
+		err = fmt.Errorf("invalid mark mode in marker info")
+		z.Error(err.Error())
+		return
+	}
+
+	if markerInfo.MarkMode != "00" {
+		// 不需要自动批改
+		return nil
 	}
 
 	cond.TeacherID = markerInfo.MarkInfos[0].MarkTeacherID.Int64

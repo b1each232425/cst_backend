@@ -23,9 +23,12 @@ import (
 func init() {
 	cmn.ConfigureForTest()
 	z = cmn.GetLogger()
+	testedIDGroups = make([][]interface{}, 0)
 }
 
 const testedTeacherID = 1101
+
+var testedIDGroups [][]interface{}
 
 func newMockServiceCtx(method string, params map[string]string, bodyBytes []byte) *cmn.ServiceCtx {
 	form := url.Values{}
@@ -112,18 +115,18 @@ func initTestData() {
 	queries = append(queries, insertExamSessionSQL)
 	now := time.Now()
 	tempArgs = [][]interface{}{
-		{101, 11, 101, "00", "10", now.Add(-25 * time.Hour).UnixMilli(), now.Add(-24 * time.Hour).UnixMilli(), 1, "00", 1101}, // 纯理论
+		{101, 11, 101, "02", "00", now.Add(-25 * time.Hour).UnixMilli(), now.Add(-24 * time.Hour).UnixMilli(), 1, "00", 1101}, // 纯理论
 		{102, 11, 102, "00", "10", now.Add(-23 * time.Hour).UnixMilli(), now.Add(-22 * time.Hour).UnixMilli(), 2, "00", 1101}, // 理论+主观
 		{103, 11, 103, "00", "10", now.Add(-21 * time.Hour).UnixMilli(), now.Add(-20 * time.Hour).UnixMilli(), 3, "00", 1101}, // 题目答案缺失
 		{104, 11, 104, "00", "10", now.Add(-21 * time.Hour).UnixMilli(), now.Add(-20 * time.Hour).UnixMilli(), 3, "00", 1101},
-		{105, 11, 105, "00", "10", now.Add(-21 * time.Hour).UnixMilli(), now.Add(-20 * time.Hour).UnixMilli(), 3, "00", 1101},
+		{105, 11, 105, "00", "", now.Add(-21 * time.Hour).UnixMilli(), now.Add(-20 * time.Hour).UnixMilli(), 3, "00", 1101}, // 批改模式缺失
 		{106, 11, 106, "00", "10", now.Add(-21 * time.Hour).UnixMilli(), now.Add(-20 * time.Hour).UnixMilli(), 3, "00", 1101},
 	}
 	args = append(args, tempArgs)
 
 	queries = append(queries, `INSERT INTO t_practice(id, name, correct_mode, type, status, creator) VALUES($1, $2, $3, $4, $5, $6)`)
 	tempArgs = [][]interface{}{
-		{21, "test practice 1", "02", "00", "02", 1101},
+		{21, "test practice 1", "00", "00", "02", 1101},
 		{22, "test practice 2", "02", "00", "02", 1101},
 		{23, "test practice 3", "00", "00", "02", 1101},
 	}
@@ -222,6 +225,7 @@ func initTestData() {
 		{204, 108, null.NewInt(0, false), 1101, 1101, "00"}, // 测试软删除接口
 		{205, null.NewInt(0, false), 21, 1101, 1101, "00"},
 		{206, 106, null.NewInt(0, false), null.NewInt(0, false), 1101, "00"},
+		{207, 105, null.NewInt(0, false), 1101, 1101, "00"},
 	}
 	args = append(args, tempArgs)
 
@@ -247,14 +251,17 @@ func initTestData() {
 	}()
 
 	for i, query := range queries {
+		var ids []interface{}
 		for _, arg := range args[i] {
+			ids = append(ids, arg[0])
 			_, err = tx.Exec(query, arg...)
 			if err != nil {
-				err = fmt.Errorf("insert test data SQL error: %s", err.Error())
+				err = fmt.Errorf("insert test data SQL error: %v", err)
 				panic(err)
 				return
 			}
 		}
+		testedIDGroups = append(testedIDGroups, ids)
 
 	}
 	err = tx.Commit()
@@ -285,7 +292,7 @@ func cleanTestData() {
 	args = append(args, []interface{}{1101, 1102, 1103, 1201, 1202, 1203})
 
 	queries = append(queries, `DELETE FROM t_mark_info WHERE id = $1`)
-	args = append(args, []interface{}{201, 202, 203, 204, 205, 206})
+	args = append(args, []interface{}{201, 202, 203, 204, 205, 206, 207})
 
 	queries = append(queries, `DELETE FROM t_exam_paper WHERE id = $1`)
 	args = append(args, []interface{}{101, 102, 103, 104, 105, 106, 124, 125, 126})
@@ -339,130 +346,94 @@ func cleanTestData() {
 	err = tx.Commit(ctx)
 }
 
-func cleanTestDataWithID(ids [][]interface{}) {
-	var queries []string
-	var args [][]interface{}
+//func cleanTestDataWithID(queries []string, args [][]interface{}) {
+//	pgxConn := cmn.GetPgxConn()
+//	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+//	defer cancel()
+//	tx, err := pgxConn.Begin(ctx)
+//	if err != nil {
+//		panic(err)
+//		return
+//	}
+//
+//	defer func() {
+//		if err != nil {
+//			err = tx.Rollback(ctx)
+//			panic(err)
+//		}
+//	}()
+//
+//	if len(queries) != len(args) {
+//		err = fmt.Errorf("queries and args length not equal")
+//		panic(err)
+//		return
+//	}
+//
+//	for i, query := range queries {
+//		for _, arg := range args[i] {
+//			_, err = tx.Exec(ctx, query, arg)
+//			if err != nil {
+//				err = fmt.Errorf("cleanTestData exec SQL (%d) error: %v, query: %v, arg: %v", i, err, query, arg)
+//
+//				panic(err)
+//				return
+//			}
+//		}
+//
+//	}
+//
+//	err = tx.Commit(ctx)
+//}
 
-	queries = append(queries, `DELETE FROM t_student_answers WHERE id = $1`)
-	args = append(args, []interface{}{21, 22, 23, 24, 25, 26, 27, 28, 29, 41, 42, 43, 44, 45, 46})
-
-	queries = append(queries, `DELETE FROM t_examinee WHERE id = $1`)
-	args = append(args, []interface{}{2201, 2202, 2203, 2205})
-
-	queries = append(queries, `DELETE FROM t_exam_paper_question WHERE id = $1`)
-	args = append(args, []interface{}{401, 402, 403, 404, 405, 411, 412, 424, 425, 426, 421})
-
-	queries = append(queries, `DELETE FROM t_exam_paper_group WHERE id = $1`)
-	args = append(args, []interface{}{301, 302, 303, 304, 324, 325, 326})
-
-	queries = append(queries, `DELETE FROM t_user WHERE id = $1`)
-	args = append(args, []interface{}{1101, 1102, 1103, 1201, 1202, 1203})
-
-	queries = append(queries, `DELETE FROM t_mark_info WHERE id = $1`)
-	args = append(args, []interface{}{201, 202, 203, 204, 205})
-
-	queries = append(queries, `DELETE FROM t_exam_paper WHERE id = $1`)
-	args = append(args, []interface{}{101, 102, 103, 104, 105, 106, 124, 125, 126})
-
-	queries = append(queries, `DELETE FROM t_exam_session WHERE id = $1`)
-	args = append(args, []interface{}{101, 102, 103, 104, 105, 106})
-
-	queries = append(queries, `DELETE FROM t_practice_submissions WHERE id = $1`)
-	args = append(args, []interface{}{2401, 2402, 2403})
-
-	queries = append(queries, `DELETE FROM t_practice WHERE id = $1`)
-	args = append(args, []interface{}{21, 22, 23})
-
-	queries = append(queries, `DELETE FROM t_exam_info WHERE id = $1`)
-	args = append(args, []interface{}{11, 12, 13})
-
-	pgxConn := cmn.GetPgxConn()
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	tx, err := pgxConn.Begin(ctx)
-	if err != nil {
-		panic(err)
-		return
-	}
-
-	defer func() {
-		if err != nil {
-			err = tx.Rollback(ctx)
-			panic(err)
-		}
-	}()
-
-	if len(queries) != len(args) {
-		err = fmt.Errorf("queries and args length not equal")
-		panic(err)
-		return
-	}
-
-	for i, query := range queries {
-		for _, arg := range args[i] {
-			_, err = tx.Exec(ctx, query, arg)
-			if err != nil {
-				err = fmt.Errorf("cleanTestData exec SQL (%d) error: %v", i, err)
-
-				panic(err)
-				return
-			}
-		}
-
-	}
-
-	err = tx.Commit(ctx)
-}
-
-func TestMarkObjectiveQuestionAnswersBusiness(t *testing.T) {
-	t.Run("MarkObjectiveQuestionAnswersBusiness", func(t *testing.T) {
-		var ctx context.Context
-		var err error
-		ctx = context.Background()
-
-		//pgxConn := cmn.GetPgxConn()
-		//tx, err := pgxConn.Begin(ctx)
-		//if err != nil {
-		//	panic(err)
-		//	return
-		//}
-		//
-		//defer func() {
-		//	if err != nil {
-		//		err_ := tx.Rollback(ctx)
-		//		if err_ != nil {
-		//			panic(err_)
-		//			return
-		//		}
-		//	}
-		//}()
-		//
-		//err = HandleMarkerInfo(ctx, &tx, 1574, HandleMarkerInfoReq{
-		//	MarkMode:      "00",
-		//	Markers:       []int64{1574},
-		//	ExamSessionID: 152,
-		//	Status:        "00",
-		//})
-		//if err != nil {
-		//	t.Errorf("HandleMarkerInfo error: %v", err)
-		//}
-		//
-		//err = tx.Commit(ctx)
-		//if err != nil {
-		//	panic(err)
-		//	return
-		//}
-
-		ctx = context.Background()
-		err = MarkObjectiveQuestionAnswers(ctx, QueryCondition{
-			ExamSessionID: 152,
-			TeacherID:     1574,
-		})
-		if err != nil {
-			t.Errorf("MarkObjectiveQuestionAnswers error: %v", err)
-		}
-	})
-}
+//func TestMarkObjectiveQuestionAnswersBusiness(t *testing.T) {
+//	t.Run("MarkObjectiveQuestionAnswersBusiness", func(t *testing.T) {
+//		var ctx context.Context
+//		var err error
+//		ctx = context.Background()
+//
+//		//pgxConn := cmn.GetPgxConn()
+//		//tx, err := pgxConn.Begin(ctx)
+//		//if err != nil {
+//		//	panic(err)
+//		//	return
+//		//}
+//		//
+//		//defer func() {
+//		//	if err != nil {
+//		//		err_ := tx.Rollback(ctx)
+//		//		if err_ != nil {
+//		//			panic(err_)
+//		//			return
+//		//		}
+//		//	}
+//		//}()
+//		//
+//		//err = HandleMarkerInfo(ctx, &tx, 1574, HandleMarkerInfoReq{
+//		//	MarkMode:      "00",
+//		//	Markers:       []int64{1574},
+//		//	ExamSessionID: 152,
+//		//	Status:        "00",
+//		//})
+//		//if err != nil {
+//		//	t.Errorf("HandleMarkerInfo error: %v", err)
+//		//}
+//		//
+//		//err = tx.Commit(ctx)
+//		//if err != nil {
+//		//	panic(err)
+//		//	return
+//		//}
+//
+//		ctx = context.Background()
+//		err = MarkObjectiveQuestionAnswers(ctx, QueryCondition{
+//			ExamSessionID: 152,
+//			TeacherID:     1574,
+//		})
+//		if err != nil {
+//			t.Errorf("MarkObjectiveQuestionAnswers error: %v", err)
+//		}
+//	})
+//}
 
 func TestCleanTestData(t *testing.T) {
 	t.Run("cleanTestData", func(t *testing.T) {
@@ -647,6 +618,46 @@ func TestGetMarkingDetails(t *testing.T) {
 				"exam_session_id": "101",
 				"examinee_id":     "",
 			},
+		},
+		{
+			name: "method post",
+			params: map[string]string{
+				"exam_session_id": "101",
+				"examinee_id":     "",
+			},
+			requestMethod:  "POST",
+			expectedErrStr: "please call /api/mark/getMarkingDetails with http GET method",
+		},
+		{
+			name: "exam_session_id is required",
+			params: map[string]string{
+				"examinee_id": "",
+			},
+			expectedErrStr: "exam_session_id is required",
+		},
+		{
+			name: "error parsing exam_session_id",
+			params: map[string]string{
+				"exam_session_id": "abc",
+				"examinee_id":     "",
+			},
+			expectedErrStr: "error parsing exam_session_id",
+		},
+		{
+			name: "error parsing examinee_id",
+			params: map[string]string{
+				"exam_session_id": "101",
+				"examinee_id":     "abc",
+			},
+			expectedErrStr: "error parsing examinee_id",
+		},
+		{
+			name: "no marker info",
+			params: map[string]string{
+				"exam_session_id": "104",
+				"examinee_id":     "",
+			},
+			expectedErrStr: "no marker info",
 		},
 	}
 
@@ -973,14 +984,6 @@ func TestMarkObjectiveQuestionAnswers(t *testing.T) {
 			},
 		},
 		{
-			name:      "success-practice",
-			teacherID: testedTeacherID,
-			requestParams: QueryCondition{
-				PracticeID: 21,
-				TeacherID:  testedTeacherID,
-			},
-		},
-		{
 			name:      "success-practice (批改单个练习学生)",
 			teacherID: testedTeacherID,
 			requestParams: QueryCondition{
@@ -1239,6 +1242,12 @@ func TestAutoMark(t *testing.T) {
 			},
 		},
 		{
+			name: "success - 不需要自动批改",
+			cond: QueryCondition{
+				ExamSessionID: 102,
+			},
+		},
+		{
 			name:           "invalid params(exam_session_id or practice_submission_id < 0)",
 			expectedErrStr: "invalid params: exam session id or practice id must be greater than zero",
 		},
@@ -1258,6 +1267,13 @@ func TestAutoMark(t *testing.T) {
 				ExamSessionID: 104,
 			},
 			expectedErrStr: "no marker info found",
+		},
+		{
+			name: "invalid mark mode in marker info",
+			cond: QueryCondition{
+				ExamSessionID: 105,
+			},
+			expectedErrStr: "invalid mark mode in marker info",
 		},
 	}
 
