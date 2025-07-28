@@ -565,7 +565,6 @@ func validateUserExamPermission(ctx context.Context, userID, examID int64, role 
 	}
 
 	test, ok := ctx.Value(TEST).(string)
-	z.Sugar().Infof("validateUserExamPermission test: %s", test)
 	if ok || test != "" {
 		switch test {
 		case "normal-resp":
@@ -605,7 +604,6 @@ func validateUserExamPermission(ctx context.Context, userID, examID int64, role 
 			z.Error(err.Error())
 			return false, err
 		}
-		z.Sugar().Infof("validateUserExamPermission role 2: exists=%v", exists)
 	} else if role == 1 {
 		err := conn.QueryRow(context.Background(), `
 			SELECT EXISTS(
@@ -787,7 +785,7 @@ func updateExamStatus(ctx context.Context, tx pgx.Tx, examID int64, newStatus st
 	return nil
 }
 
-func updateExamSessionStatus(ctx context.Context, tx pgx.Tx, examSessionID int64, newStatus string, userID int64) error {
+func updateExamSessionStatus(ctx context.Context, tx pgx.Tx, examID int64, newStatus string, userID int64) error {
 	z.Info("---->" + cmn.FncName())
 
 	forceErr := ""
@@ -795,8 +793,8 @@ func updateExamSessionStatus(ctx context.Context, tx pgx.Tx, examSessionID int64
 		forceErr = val.(string)
 	}
 
-	if examSessionID <= 0 {
-		err := fmt.Errorf("无效的考试场次ID: %d", examSessionID)
+	if examID <= 0 {
+		err := fmt.Errorf("无效的考试ID: %d", examID)
 		z.Error(err.Error())
 		return err
 	}
@@ -816,8 +814,8 @@ func updateExamSessionStatus(ctx context.Context, tx pgx.Tx, examSessionID int64
 	_, err := tx.Exec(ctx, `
 		UPDATE t_exam_session 
 		SET status = $1, update_time = $2, updated_by = $3
-		WHERE id = $4 AND status != '14'
-	`, newStatus, time.Now().UnixMilli(), userID, examSessionID)
+		WHERE exam_id = $4 AND status != '14'
+	`, newStatus, time.Now().UnixMilli(), userID, examID)
 	if forceErr == "tx.Exec" {
 		err = fmt.Errorf("force error: %s", forceErr)
 	}
@@ -968,15 +966,13 @@ func exam(ctx context.Context) {
 			return
 		}
 
-		// userID := q.SysUser.ID.Int64
-		// if userID <= 0 {
-		// 	q.Err = fmt.Errorf("无效的用户ID: %d", userID)
-		// 	z.Error(q.Err.Error())
-		// 	q.RespErr()
-		// 	return
-		// }
-
-		userID := int64(1574) // 模拟用户ID，实际应用中应从上下文或请求中获取
+		userID := q.SysUser.ID.Int64
+		if userID <= 0 {
+			q.Err = fmt.Errorf("无效的用户ID: %d", userID)
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
 
 		var qry cmn.ReqProto
 		q.Err = json.Unmarshal(buf, &qry)
@@ -1710,7 +1706,23 @@ func examList(ctx context.Context) {
 		var userRole int64
 
 		userID = q.SysUser.ID.Int64
-		userRole = q.SysUser.Role.Int64
+		if userID <= 0 {
+			q.Err = fmt.Errorf("无效的用户ID: %d", userID)
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		// userRole = q.SysUser.Role.Int64
+		// if userRole == 0 {
+		// 	q.Err = fmt.Errorf("无效的用户角色: %d", userRole)
+		// 	z.Error(q.Err.Error())
+		// 	q.RespErr()
+		// 	return
+		// }
+
+		// userID = 1574
+		userRole = 2
 
 		if examFilter.StartTime > examFilter.EndTime && examFilter.EndTime != 0 {
 			q.Err = fmt.Errorf("查询考试时筛选的开始时间不能晚于结束时间")
@@ -2067,13 +2079,15 @@ func examinee(ctx context.Context) {
 			q.RespErr()
 			return
 		}
-		userRole := q.SysUser.Role.Int64
-		if userRole == 0 {
-			q.Err = fmt.Errorf("无效的用户角色: %d", userRole)
-			z.Error(q.Err.Error())
-			q.RespErr()
-			return
-		}
+		// userRole := q.SysUser.Role.Int64
+		// if userRole == 0 {
+		// 	q.Err = fmt.Errorf("无效的用户角色: %d", userRole)
+		// 	z.Error(q.Err.Error())
+		// 	q.RespErr()
+		// 	return
+		// }
+
+		userRole := int64(2)
 
 		// 验证用户对考试的访问权限
 		var hasPermission bool
@@ -2357,25 +2371,23 @@ func examStatus(ctx context.Context) {
 			return
 		}
 
-		// userID := q.SysUser.ID.Int64
-		// if userID <= 0 {
-		// 	q.Err = fmt.Errorf("无效的用户ID: %d", userID)
-		// 	z.Error(q.Err.Error())
-		// 	q.RespErr()
-		// 	return
-		// }
+		userID := q.SysUser.ID.Int64
+		if userID <= 0 {
+			q.Err = fmt.Errorf("无效的用户ID: %d", userID)
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
 
-		userID := int64(1574)
+		userRole := q.SysUser.Role.Int64
+		if userRole == 0 {
+			q.Err = fmt.Errorf("无效的用户角色: %d", userRole)
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
 
-		// userRole := q.SysUser.Role.Int64
-		// if userRole == 0 {
-		// 	q.Err = fmt.Errorf("无效的用户角色: %d", userRole)
-		// 	z.Error(q.Err.Error())
-		// 	q.RespErr()
-		// 	return
-		// }
-
-		userRole := int64(3)
+		userRole = int64(2)
 
 		examID := gjson.Get(qry, "data.ID").Int()
 		if examID <= 0 {
@@ -2610,6 +2622,7 @@ func examStatus(ctx context.Context) {
 				generateAnswerQuestionsRequest.ExamineeIDs = examineeIDs
 				generateAnswerQuestionsRequest.IsQuestionRandom = isQuestionRandom
 				generateAnswerQuestionsRequest.IsOptionRandom = isOptionRandom
+				generateAnswerQuestionsRequest.Category = "00"
 
 				q.Err = examPaper.GenerateAnswerQuestion(ctx, tx, generateAnswerQuestionsRequest, userID)
 				if q.Err != nil {
@@ -2622,7 +2635,7 @@ func examStatus(ctx context.Context) {
 				assign_query := `
 					UPDATE t_examinee
 					SET exam_paper_id = $1,
-						update_by = $2,
+						updated_by = $2,
 						update_time = $3
 					WHERE exam_session_id = $4
 					AND status != '08'
@@ -2636,9 +2649,27 @@ func examStatus(ctx context.Context) {
 
 				// 配置批改
 				var reviewerIDs []int64
-				reviewerIDs, ok := examSession.ReviewerIds.([]int64)
-				if !ok {
-					q.Err = fmt.Errorf("无效的批改员ID列表")
+				switch v := examSession.ReviewerIds.(type) {
+				case []int64:
+					reviewerIDs = v
+				case []interface{}:
+					reviewerIDs = make([]int64, len(v))
+					for i, item := range v {
+						switch id := item.(type) {
+						case int64:
+							reviewerIDs[i] = id
+						case int:
+							reviewerIDs[i] = int64(id)
+						default:
+							q.Err = fmt.Errorf("无效的批改员ID类型: %T", id)
+							z.Error(q.Err.Error())
+							q.RespErr()
+							return
+						}
+					}
+				default:
+					z.Info("Unknown type", zap.String("type", fmt.Sprintf("%T", v)), zap.Any("value", v))
+					q.Err = fmt.Errorf("无效的批改员ID列表类型: %T", v)
 					z.Error(q.Err.Error())
 					q.RespErr()
 					return
