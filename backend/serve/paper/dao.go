@@ -618,6 +618,10 @@ func handleMoveQuestionGroup(ctx context.Context, tx pgx.Tx, paperID, userID int
 }
 
 func GetManualPaperDetailByPaperID(ctx context.Context, paperID int64) (*cmn.TVPaper, error) {
+	forceError := ""
+	if val, ok := ctx.Value("force-error").(string); ok {
+		forceError = val
+	}
 	if paperID <= 0 {
 		z.Error(ErrInvalidPaperID.Error())
 		return nil, ErrInvalidPaperID
@@ -630,9 +634,8 @@ func GetManualPaperDetailByPaperID(ctx context.Context, paperID int64) (*cmn.TVP
 	LIMIT 1`
 
 	db := cmn.GetPgxConn()
-	row := db.QueryRow(ctx, query, paperID)
 	var paper cmn.TVPaper
-	err := row.Scan(
+	err := db.QueryRow(ctx, query, paperID).Scan(
 		&paper.ID,
 		&paper.Name,
 		&paper.AssemblyType,
@@ -649,6 +652,9 @@ func GetManualPaperDetailByPaperID(ctx context.Context, paperID int64) (*cmn.TVP
 		&paper.QuestionCount,
 		&paper.GroupsData,
 	)
+	if forceError == "tx.QueryRow-err" {
+		err = errors.New(forceError)
+	}
 	if err != nil {
 		if errors.Is(err, ErrRecordNotFound) {
 			z.Error(err.Error())
@@ -796,10 +802,6 @@ func deletePapers(ctx context.Context, tx pgx.Tx, paperIDs []int64, userID int64
 		z.Error(ErrEmptyPaperIDs.Error())
 		return ErrEmptyPaperIDs
 	}
-	if userID <= 0 {
-		z.Error(ErrInvalidUserID.Error())
-		return ErrInvalidUserID
-	}
 	now := time.Now().UnixMilli()
 
 	// 1. 软删除 t_paper
@@ -838,62 +840,62 @@ func deletePapers(ctx context.Context, tx pgx.Tx, paperIDs []int64, userID int64
 	return nil
 }
 
-func ValidateExistingPapers(ctx context.Context, tx pgx.Tx, paperIDs []int64) ([]int64, error) {
-	if len(paperIDs) == 0 {
-		z.Error(ErrEmptyPaperIDs.Error())
-		return []int64{}, nil
-	}
-	const sqlString = `SELECT id FROM t_paper WHERE id = ANY($1) AND status = '00'`
-	rows, err := tx.Query(ctx, sqlString, paperIDs)
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			z.Error(ErrPaperNotFound.Error())
-			return []int64{}, ErrPaperNotFound
-		}
-		z.Error(err.Error())
-		return []int64{}, err
-	}
-	defer rows.Close()
+//func ValidateExistingPapers(ctx context.Context, tx pgx.Tx, paperIDs []int64) ([]int64, error) {
+//	if len(paperIDs) == 0 {
+//		z.Error(ErrEmptyPaperIDs.Error())
+//		return []int64{}, nil
+//	}
+//	const sqlString = `SELECT id FROM t_paper WHERE id = ANY($1) AND status = '00'`
+//	rows, err := tx.Query(ctx, sqlString, paperIDs)
+//	if err != nil {
+//		if errors.Is(err, pgx.ErrNoRows) {
+//			z.Error(ErrPaperNotFound.Error())
+//			return []int64{}, ErrPaperNotFound
+//		}
+//		z.Error(err.Error())
+//		return []int64{}, err
+//	}
+//	defer rows.Close()
+//
+//	var validIDs []int64
+//	for rows.Next() {
+//		var id int64
+//		if err := rows.Scan(&id); err != nil {
+//			z.Error(err.Error())
+//			return []int64{}, err
+//		}
+//		validIDs = append(validIDs, id)
+//	}
+//	if err := rows.Err(); err != nil {
+//		z.Error(err.Error())
+//		return []int64{}, err
+//	}
+//	return validIDs, nil
+//}
 
-	var validIDs []int64
-	for rows.Next() {
-		var id int64
-		if err := rows.Scan(&id); err != nil {
-			z.Error(err.Error())
-			return []int64{}, err
-		}
-		validIDs = append(validIDs, id)
-	}
-	if err := rows.Err(); err != nil {
-		z.Error(err.Error())
-		return []int64{}, err
-	}
-	return validIDs, nil
-}
-
-// 检查试卷是否存在
-func paperExists(ctx context.Context, paperID int64) (bool, error) {
-	z.Info("---->" + cmn.FncName())
-
-	if paperID <= 0 {
-		err := fmt.Errorf("无效的试卷ID: %d", paperID)
-		z.Error(err.Error())
-		return false, err
-	}
-
-	conn := cmn.GetPgxConn()
-	var exists bool
-	err := conn.QueryRow(context.Background(), "SELECT EXISTS(SELECT 1 FROM t_paper WHERE id=$1 AND status!= '02')", paperID).Scan(&exists)
-	if val, ok := ctx.Value("force-error").(string); ok && val == "paperExists-QueryRow-err" {
-		err = errors.New(val)
-	}
-	if err != nil {
-		z.Error(err.Error())
-		return false, err
-	}
-
-	return exists, nil
-}
+//// 检查试卷是否存在
+//func paperExists(ctx context.Context, paperID int64) (bool, error) {
+//	z.Info("---->" + cmn.FncName())
+//
+//	if paperID <= 0 {
+//		err := fmt.Errorf("无效的试卷ID: %d", paperID)
+//		z.Error(err.Error())
+//		return false, err
+//	}
+//
+//	conn := cmn.GetPgxConn()
+//	var exists bool
+//	err := conn.QueryRow(context.Background(), "SELECT EXISTS(SELECT 1 FROM t_paper WHERE id=$1 AND status!= '02')", paperID).Scan(&exists)
+//	if val, ok := ctx.Value("force-error").(string); ok && val == "paperExists-QueryRow-err" {
+//		err = errors.New(val)
+//	}
+//	if err != nil {
+//		z.Error(err.Error())
+//		return false, err
+//	}
+//
+//	return exists, nil
+//}
 
 //// ---------------------------------------共享试卷----------------------------------------------
 //func getPaperShareInfo(ctx context.Context, tx *pgx.Tx, paperID int64, req GetSharedUserListRequest) ([]cmn.TVPaperShare, int64, error) {

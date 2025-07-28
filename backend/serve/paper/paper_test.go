@@ -158,10 +158,11 @@ func initTestQuestionBankData() {
 
 }
 
-func createTestPaperWithGroupsAndQuestions(ctx context.Context, bankQuestionIDs []int64, testUserID int64) (paperID int64, groupIDs []int64, questionIDs []int64, err error) {
+// 生成一张测试试卷
+func CreateTestPaperWithGroupsAndQuestions(ctx context.Context, bankQuestionIDs []int64, testUserID int64) (paperID int64, groupIDs []int64, questionIDs []int64, err error) {
 	now := time.Now().UnixMilli()
 	pgxConn := cmn.GetPgxConn()
-
+	fmt.Println("111111")
 	// 开始事务
 	tx, err := pgxConn.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
@@ -316,6 +317,7 @@ func TestMain(m *testing.M) {
 	initTestQuestionBankData()
 	m.Run()
 	cleanupTestBankQuestions()
+
 }
 
 func TestPaperListGetMethod(t *testing.T) {
@@ -1265,7 +1267,7 @@ func TestManualPaperPutMethod(t *testing.T) {
 			wantError:     true,
 			userID:        userID,
 			forceError:    "",
-			expectedError: "无效的试卷ID",
+			expectedError: "no rows in result",
 			setup: func() (int64, []int64) {
 				return -1, []int64{}
 			},
@@ -1290,7 +1292,7 @@ func TestManualPaperPutMethod(t *testing.T) {
 			wantError:     true,
 			userID:        userID,
 			forceError:    "",
-			expectedError: "试卷不存在",
+			expectedError: "no rows in result",
 			setup: func() (int64, []int64) {
 				var id int64
 				_ = db.QueryRow(ctx, `INSERT INTO t_paper (name, category, creator, create_time, updated_by, update_time, status) VALUES ('待更新试卷', '00', $1, $2, $1, $2, '00') RETURNING id`, userID, time.Now().UnixMilli()).Scan(&id)
@@ -3362,6 +3364,50 @@ func TestManualPaperPutMethod(t *testing.T) {
 			},
 		},
 		{
+			name:          "tx.QueryRow-err",
+			reqBody:       nil,
+			wantError:     true,
+			userID:        userID,
+			forceError:    "tx.QueryRow-err",
+			expectedError: "tx.QueryRow-err",
+			setup: func(t *testing.T) (int64, any) {
+				var id int64
+				var groupID int64
+				var questionID1, questionID2 int64
+				// 创建一个试卷
+				err := db.QueryRow(ctx, `INSERT INTO t_paper (name, category, creator, create_time, updated_by, update_time, status) VALUES ('待更新试卷', '00', $1, $2, $1, $2, '00') RETURNING id`, userID, time.Now().UnixMilli()).Scan(&id)
+				require.NoError(t, err)
+				// 创建一个题组
+				err = db.QueryRow(ctx, `INSERT INTO t_paper_group (paper_id, name, "order", creator, create_time, updated_by, update_time,status) 
+					VALUES ($1, '待删除题组', 1, $2, $3, $2, $3,'00') RETURNING id`,
+					id, userID, time.Now().UnixMilli()).Scan(&groupID)
+				require.NoError(t, err)
+				// 创建一个题目
+				err = db.QueryRow(ctx, `INSERT INTO t_paper_question (group_id, "order",score,sub_score,bank_question_id, creator, create_time, updated_by, update_time,status) 
+					VALUES ($1, 1, 2,$2, $3,$4, $5, $4, $5,'00') RETURNING id`,
+					groupID, []float64{1, 2, 3}, BankQuestionIDs[0], userID, time.Now().UnixMilli()).Scan(&questionID1)
+				require.NoError(t, err)
+				// 创建一个题目
+				err = db.QueryRow(ctx, `INSERT INTO t_paper_question (group_id, "order",score,sub_score,bank_question_id, creator, create_time, updated_by, update_time,status) 
+					VALUES ($1, 1, 2,$2, $3,$4, $5, $4, $5,'00') RETURNING id`,
+					groupID, []float64{1, 2, 3}, BankQuestionIDs[1], userID, time.Now().UnixMilli()).Scan(&questionID2)
+				require.NoError(t, err)
+				jsondata, err := json.Marshal([]int64{questionID1, questionID2})
+				require.NoError(t, err)
+				reqBody := UpdateManualPaperRequest{
+					[]UpdateManualPaperAction{
+						{
+							Action:  "move_question",
+							Payload: json.RawMessage(jsondata),
+						},
+					},
+				}
+				return id, reqBody
+			},
+			validate: func(t *testing.T, ctx context.Context, q *cmn.ServiceCtx, paperID int64) {
+			},
+		},
+		{
 			name:          "题目数组中的题目并不存在",
 			reqBody:       nil,
 			wantError:     true,
@@ -3646,6 +3692,55 @@ func TestManualPaperPutMethod(t *testing.T) {
 			},
 		},
 		{
+			name:          "传入的题目数组数量与试卷题组数不符",
+			reqBody:       nil,
+			wantError:     true,
+			userID:        userID,
+			forceError:    "",
+			expectedError: "数量不匹配",
+			setup: func(t *testing.T) (int64, any) {
+				var id int64
+				var groupID1, groupID2 int64
+				// 创建一个试卷
+				err := db.QueryRow(ctx, `INSERT INTO t_paper (name, category, creator, create_time, updated_by, update_time, status) VALUES ('待更新试卷', '00', $1, $2, $1, $2, '00') RETURNING id`, userID, time.Now().UnixMilli()).Scan(&id)
+				require.NoError(t, err)
+				// 创建一个题组
+				err = db.QueryRow(ctx, `INSERT INTO t_paper_group (paper_id, name, "order", creator, create_time, updated_by, update_time,status) 
+					VALUES ($1, '移动题组1', 1, $2, $3, $2, $3,'00') RETURNING id`,
+					id, userID, time.Now().UnixMilli()).Scan(&groupID1)
+				require.NoError(t, err)
+				// 创建一个题组
+				err = db.QueryRow(ctx, `INSERT INTO t_paper_group (paper_id, name, "order", creator, create_time, updated_by, update_time,status) 
+					VALUES ($1, '移动题组2', 2, $2, $3, $2, $3,'00') RETURNING id`,
+					id, userID, time.Now().UnixMilli()).Scan(&groupID2)
+				require.NoError(t, err)
+				jsondata, err := json.Marshal([]int64{groupID2, groupID1, 9999})
+				require.NoError(t, err)
+				reqBody := UpdateManualPaperRequest{
+					[]UpdateManualPaperAction{
+						{
+							Action:  "move_group",
+							Payload: json.RawMessage(jsondata),
+						},
+					},
+				}
+				return id, reqBody
+			},
+			validate: func(t *testing.T, ctx context.Context, q *cmn.ServiceCtx, paperID int64) {
+				var groupData types.JSONText
+				err := db.QueryRow(ctx, "SELECT groups_data FROM v_paper WHERE id=$1", paperID).Scan(&groupData)
+				require.NoError(t, err)
+				var groups []Group
+				err = json.Unmarshal(groupData, &groups)
+				require.NoError(t, err)
+				require.Equal(t, len(groups), 2, "期望题组长度为2")
+				require.Equal(t, groups[0].Name.String, "移动题组2", "期望移动题组2排在第一位")
+				require.Equal(t, groups[0].Order.Int64, int64(1), "期望移动题组2顺序为1")
+				require.Equal(t, groups[1].Name.String, "移动题组1", "期望移动题组1排在第二位")
+				require.Equal(t, groups[1].Order.Int64, int64(2), "期望移动题组1顺序为2")
+			},
+		},
+		{
 			name:          "tx.QueryRow-err",
 			reqBody:       nil,
 			wantError:     true,
@@ -3878,6 +3973,18 @@ func TestManualPaperGetMethod(t *testing.T) {
 				var id int64
 				_ = db.QueryRow(ctx, `INSERT INTO t_paper (name, category, creator, create_time, updated_by, update_time, status) VALUES ('无效用户试卷', '00', 1, $1, 1, $1, '00') RETURNING id`, time.Now().UnixMilli()).Scan(&id)
 				return -1, []int64{id}
+			},
+		},
+		{
+			name:          "tx.QueryRow-err",
+			wantError:     true,
+			userID:        userID,
+			forceError:    "tx.QueryRow-err",
+			expectedError: "tx.QueryRow-err",
+			setup: func() (int64, []int64) {
+				var id int64
+				_ = db.QueryRow(ctx, `INSERT INTO t_paper (name, category, creator, create_time, updated_by, update_time, status) VALUES ('无效用户试卷', '00', 1, $1, 1, $1, '00') RETURNING id`, time.Now().UnixMilli()).Scan(&id)
+				return id, []int64{id}
 			},
 		},
 	}

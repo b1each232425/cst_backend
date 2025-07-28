@@ -280,20 +280,6 @@ func ManualPaper(ctx context.Context) {
 			q.RespErr()
 			return
 		}
-		//检测试卷是否存在
-		var exists bool
-		exists, q.Err = paperExists(ctx, paperID)
-		if q.Err != nil {
-			z.Error(q.Err.Error())
-			q.RespErr()
-			return
-		}
-		if !exists {
-			q.Err = fmt.Errorf("试卷不存在")
-			z.Error(q.Err.Error())
-			q.RespErr()
-			return
-		}
 		results, q.Err = updateManualPaper(dmlCtx, paperID, userID, u)
 		if q.Err != nil {
 			q.RespErr()
