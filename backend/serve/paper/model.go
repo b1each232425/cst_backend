@@ -2,8 +2,8 @@ package paper
 
 import (
 	"encoding/json"
-	"math/rand"
 	"w2w.io/cmn"
+	"w2w.io/null"
 )
 
 type InitialManualPaperResponse struct {
@@ -37,7 +37,7 @@ type UpdateManualPaperResponse struct {
 type AddQuestionsRequest struct {
 	TempID         string    `json:"temp_id" validate:"required,startswith=temp_question"` // 客户端生成的唯一标识(如UUID)
 	GroupID        int64     `json:"group_id" validate:"omitempty"`
-	Order          int64     `json:"order" validate:"omitempty"`
+	Order          int64     `json:"order" validate:"required,gt=0"`
 	BankQuestionID int64     `json:"bank_question_id" validate:"required,min=1"`
 	Score          float64   `json:"score" validate:"required,min=1"`
 	SubScore       []float64 `json:"sub_score" validate:"omitempty,dive,min=1"`
@@ -50,7 +50,7 @@ type AddQuestionGroupRequest struct {
 
 type UpdatePaperQuestionRequest struct {
 	ID       int64     `json:"id" validate:"required,min=1"`
-	GroupID  int64     `json:"group_id" validate:"omitempty"`
+	GroupID  int64     `json:"group_id" validate:"omitempty,min=1"`
 	Score    float64   `json:"score,omitempty" validate:"omitempty,min=1"`
 	SubScore []float64 `json:"sub_score,omitempty" validate:"omitempty,dive,min=0.5"`
 }
@@ -65,8 +65,8 @@ type UpdatePaperBasicInfoRequest struct {
 }
 
 type UpdateQuestionsGroupRequest struct {
-	ID   int64  `json:"id" validate:"min=1,omitempty"`
-	Name string `json:"name,omitempty" validate:"omitempty"`
+	ID   int64  `json:"id" validate:"min=1,required"`
+	Name string `json:"name" validate:"required"`
 }
 
 // 请求试卷列表结构体
@@ -98,30 +98,15 @@ type UpdatePaperAccessModeRequest struct {
 	AccessMode string `json:"access_mode" validate:"required,oneof=00 02 04"`
 }
 
-// --------------------------------------------下发考卷--------------------------------------------
-
-type GenerateExamPapersRequest struct {
-	PaperID  int64  `json:"paper_id"    validate:"required,gt=0"`
-	Category string `json:"category"    validate:"required,oneof=00 02"`
-	// 当 Category == "00" 时必须有 ExamID
-	ExamID int64 `json:"exam_id,omitempty"    validate:"required_if=Category 00"`
-	// 当 Category == "02" 时必须有 PracticeID
-	PracticeID int64 `json:"practice_id,omitempty" validate:"required_if=Category 02"`
+// Group 学生试卷模版题组结构（试卷模块自用：解析存储在视图的JSON实体）
+type Group struct {
+	cmn.TPaperGroup
+	Questions []Question `json:"questions"`
 }
 
-type GenerateAnswerQuestionsRequest struct {
-	ExamPaperID int64  `json:"exam_paper_id" validate:"required,gt=0"`
-	Category    string `json:"category" validate:"required,oneof=00 02"`
-
-	// 考试场景：Category == "00" 时必填，并且每个元素都要大于 0
-	ExamineeIDs []int64 `json:"examinee_ids" validate:"required_if=Category 00,dive,gt=0"`
-
-	// 练习场景：Category == "02" 时必填，并且每个元素都要大于 0
-	PracticeSubmissionID []int64 `json:"practice_submission_id" validate:"required_if=Category 02,dive,gt=0"`
-
-	// 布尔类型不需要额外标签，bool 默认就只有 true/false
-	IsQuestionRandom bool       `json:"is_question_random"`
-	IsOptionRandom   bool       `json:"is_option_random"`
-	Attempt          int64      `json:"attempt" validate:"omitempty,min=1"`
-	Shuffler         *rand.Rand `json:"-"`
+// Question 试卷模版中的题目（加上老师字修改的分数）
+type Question struct {
+	cmn.TQuestion
+	BankQuestionID null.Int  `json:"bank_question_id"`
+	SubScore       []float64 `json:"sub_score"`
 }

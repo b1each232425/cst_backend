@@ -177,18 +177,12 @@ func ManualPaper(ctx context.Context) {
 		}
 		var paper cmn.TPaper
 		paper, q.Err = createManualPaperTx(dmlCtx, tx, userID)
-		if forceError == "createManualPaperTx-err" {
-			q.Err = errors.New(forceError)
-		}
 		if q.Err != nil {
 			q.RespErr()
 			return
 		}
 		var groups []cmn.TPaperGroup
 		groups, q.Err = initialManualPaperGroupsTx(dmlCtx, tx, paper.ID.Int64, userID)
-		if forceError == "initialManualPaperGroupsTx-err" {
-			q.Err = errors.New(forceError)
-		}
 		if q.Err != nil {
 			q.RespErr()
 			return
@@ -288,9 +282,6 @@ func ManualPaper(ctx context.Context) {
 		}
 		//检测试卷是否存在
 		var exists bool
-		if forceError == "paperExists-err" {
-			paperID = -1
-		}
 		exists, q.Err = paperExists(ctx, paperID)
 		if q.Err != nil {
 			z.Error(q.Err.Error())
@@ -545,6 +536,7 @@ func updateManualPaper(ctx context.Context, paperID, userID int64, req UpdateMan
 			if rollbackErr != nil {
 				z.Error(rollbackErr.Error())
 				err = rollbackErr
+				return
 			}
 		}
 		if err != nil {
@@ -607,6 +599,11 @@ func updateManualPaper(ctx context.Context, paperID, userID int64, req UpdateMan
 			err = json.Unmarshal(act.Payload, &groupID)
 			if err != nil {
 				z.Error(err.Error())
+				return
+			}
+			if groupID <= 0 {
+				err = ErrEmptyGroupID
+				z.Error(ErrEmptyGroupID.Error())
 				return
 			}
 			err = handleDeleteGroup(ctx, tx, paperID, userID, groupID)
@@ -673,7 +670,7 @@ func updateManualPaper(ctx context.Context, paperID, userID int64, req UpdateMan
 			if err = validateIDs(orders); err != nil {
 				return nil, err
 			}
-			err = handleMoveQuestion(ctx, tx, userID, orders)
+			err = handleMoveQuestion(ctx, tx, paperID, userID, orders)
 			if err != nil {
 				return
 			}

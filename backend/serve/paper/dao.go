@@ -34,9 +34,9 @@ const (
 // -------------------------------------------------试卷基础部分---------------------------------------------------
 // 创建空卷
 func createManualPaperTx(ctx context.Context, tx pgx.Tx, userID int64) (cmn.TPaper, error) {
-	if userID <= 0 {
-		z.Error(ErrInvalidUserID.Error())
-		return cmn.TPaper{}, ErrInvalidUserID
+	forceError := ""
+	if val, ok := ctx.Value("force-error").(string); ok {
+		forceError = val
 	}
 	//初始化一张空试卷SQL
 	sql := `
@@ -60,7 +60,7 @@ RETURNING id`
 		Status:            null.NewString(StatusNormal, true),
 		AccessMode:        null.NewString(PaperShareStatusPrivate, true),
 	}
-	row := tx.QueryRow(ctx, sql,
+	err := tx.QueryRow(ctx, sql,
 		paper.Name.String,
 		paper.AssemblyType.String,
 		paper.Category.String,
@@ -73,8 +73,11 @@ RETURNING id`
 		paper.UpdateTime.Int64,
 		paper.Status.String,
 		paper.AccessMode.String,
-	)
-	if err := row.Scan(&paper.ID); err != nil {
+	).Scan(&paper.ID)
+	if forceError == "tx.QueryRow-err" {
+		err = errors.New(forceError)
+	}
+	if err != nil {
 		z.Error(err.Error())
 		return cmn.TPaper{}, err
 	}
@@ -83,9 +86,9 @@ RETURNING id`
 
 // 初始化题组
 func initialManualPaperGroupsTx(ctx context.Context, tx pgx.Tx, paperID, userID int64) ([]cmn.TPaperGroup, error) {
-	if userID <= 0 {
-		z.Error(ErrInvalidUserID.Error())
-		return nil, ErrInvalidUserID
+	forceError := ""
+	if val, ok := ctx.Value("force-error").(string); ok {
+		forceError = val
 	}
 	groupNames := []string{
 		DefaultGroup1Name,
@@ -120,6 +123,9 @@ RETURNING id`
 		groupNames[4],
 	}
 	rows, err := tx.Query(ctx, sql, args...)
+	if forceError == "tx.Query-err" {
+		err = errors.New(forceError)
+	}
 	if err != nil {
 		z.Error("insert paper groups failed", zap.Error(err))
 		return nil, err
@@ -128,7 +134,11 @@ RETURNING id`
 	groups := make([]cmn.TPaperGroup, 0, 5)
 	for i := 0; rows.Next(); i++ {
 		var groupID int64
-		if err := rows.Scan(&groupID); err != nil {
+		err := rows.Scan(&groupID)
+		if forceError == "rows.Scan-err" {
+			err = errors.New(forceError)
+		}
+		if err != nil {
 			z.Error("scan group id failed", zap.Error(err))
 			return nil, err
 		}
@@ -146,7 +156,11 @@ RETURNING id`
 		}
 		groups = append(groups, group)
 	}
-	if err := rows.Err(); err != nil {
+	err = rows.Err()
+	if forceError == "rows.Err-err" {
+		err = errors.New(forceError)
+	}
+	if err != nil {
 		z.Error("rows error", zap.Error(err))
 		return nil, err
 	}
@@ -157,15 +171,6 @@ func handleUpdateInfo(ctx context.Context, tx pgx.Tx, paperID int64, userID int6
 	forceError := ""
 	if val, ok := ctx.Value("force-error").(string); ok {
 		forceError = val
-	}
-	if paperID <= 0 {
-		z.Error(ErrInvalidUserID.Error())
-		return ErrInvalidUserID
-	}
-
-	if userID <= 0 {
-		z.Error(ErrInvalidUserID.Error())
-		return ErrInvalidUserID
 	}
 	var (
 		setClauses []string
@@ -226,19 +231,10 @@ func handleUpdateInfo(ctx context.Context, tx pgx.Tx, paperID int64, userID int6
 }
 
 func handleDeleteGroup(ctx context.Context, tx pgx.Tx, paperID int64, userID int64, groupID int64) error {
-	if paperID <= 0 {
-		z.Error(ErrInvalidPaperID.Error())
-		return ErrInvalidPaperID
+	forceError := ""
+	if val, ok := ctx.Value("force-error").(string); ok {
+		forceError = val
 	}
-	if userID <= 0 {
-		z.Error(ErrInvalidUserID.Error())
-		return ErrInvalidUserID
-	}
-	if groupID <= 0 {
-		z.Error(ErrEmptyGroupID.Error())
-		return ErrEmptyGroupID
-	}
-
 	// 检查题组是否存在且属于该试卷
 	var exists bool
 	err := tx.QueryRow(ctx, `
@@ -247,26 +243,15 @@ func handleDeleteGroup(ctx context.Context, tx pgx.Tx, paperID int64, userID int
 			WHERE id = $1 AND paper_id = $2
 		)
 	`, groupID, paperID).Scan(&exists)
+	if forceError == "handleDeleteGroup-tx.QueryRow-err" {
+		err = errors.New(forceError)
+	}
 	if err != nil {
 		z.Error(err.Error())
 		return err
 	}
 	if !exists {
-		z.Error(ErrRecordNotFound.Error())
-		return ErrRecordNotFound
-	}
-	//删除前要检查下有没有还没删除题目，存在的话报错，因为优先删除会先删除题目或者修改题目所在题组
-	var count int
-	err = tx.QueryRow(ctx, `
-		SELECT COUNT(*) FROM t_paper_question 
-		WHERE group_id = $1
-	`, groupID).Scan(&count)
-	if err != nil {
-		z.Error(err.Error())
-		return err
-	}
-	if count > 0 {
-		err := fmt.Errorf("group %d still has %d questions, cannot delete", groupID, count)
+		err = fmt.Errorf("题组不存在于当前试卷:" + ErrRecordNotFound.Error())
 		z.Error(err.Error())
 		return err
 	}
@@ -274,6 +259,9 @@ func handleDeleteGroup(ctx context.Context, tx pgx.Tx, paperID int64, userID int
 	_, err = tx.Exec(ctx, `
 		DELETE FROM t_paper_group WHERE id = $1 AND paper_id = $2
 	`, groupID, paperID)
+	if forceError == "handleDeleteGroup-tx.Exec-err" {
+		err = errors.New(forceError)
+	}
 	if err != nil {
 		z.Error(err.Error())
 		return err
@@ -316,10 +304,17 @@ func handleAddGroup(ctx context.Context, tx pgx.Tx, paperID int64, userID int64,
 }
 
 func handleUpdateGroup(ctx context.Context, tx pgx.Tx, userID int64, req UpdateQuestionsGroupRequest) error {
+	forceError := ""
+	if val, ok := ctx.Value("force-error").(string); ok {
+		forceError = val
+	}
 	sql := `UPDATE t_paper_group
 SET name = $1, updated_by = $2, update_time = $3
 WHERE id = $4`
 	result, err := tx.Exec(ctx, sql, req.Name, userID, time.Now().UnixMilli(), req.ID)
+	if forceError == "tx.Exec-err" {
+		err = errors.New(forceError)
+	}
 	if err != nil {
 		z.Error(err.Error())
 		return err
@@ -333,6 +328,10 @@ WHERE id = $4`
 }
 
 func handleAddQuestions(ctx context.Context, tx pgx.Tx, userID int64, req []AddQuestionsRequest) (map[string]int64, error) {
+	forceError := ""
+	if val, ok := ctx.Value("force-error").(string); ok {
+		forceError = val
+	}
 	const batchInsertPaperQuestionsSQL = `INSERT INTO t_paper_question 
     (bank_question_id, group_id, "order", score,sub_score, creator, create_time, updated_by, update_time, status) 
 VALUES %s RETURNING id`
@@ -366,6 +365,10 @@ VALUES %s RETURNING id`
 		strings.Join(placeholders, ","))
 
 	rows, err := tx.Query(ctx, query, args...)
+	defer rows.Close()
+	if forceError == "tx.Query-err" {
+		err = errors.New(forceError)
+	}
 	if err != nil {
 		z.Error(err.Error())
 		return nil, err
@@ -374,13 +377,20 @@ VALUES %s RETURNING id`
 	for rows.Next() {
 		var id int64
 		err := rows.Scan(&id)
+		if forceError == "rows.Scan-err" {
+			err = errors.New(forceError)
+		}
 		if err != nil {
 			z.Error(err.Error())
 			return nil, err
 		}
 		ids = append(ids, id)
 	}
-	if err := rows.Err(); err != nil {
+	err = rows.Err()
+	if forceError == "rows.Err-err" {
+		err = errors.New(forceError)
+	}
+	if err != nil {
 		z.Error(err.Error())
 		return map[string]int64{}, err
 	}
@@ -392,15 +402,18 @@ VALUES %s RETURNING id`
 }
 
 func handleDeleteQuestions(ctx context.Context, tx pgx.Tx, userID int64, questionIDs []int64) error {
-	if userID <= 0 {
-		z.Error(ErrInvalidUserID.Error())
-		return ErrInvalidUserID
+	forceError := ""
+	if val, ok := ctx.Value("force-error").(string); ok {
+		forceError = val
 	}
 	const sql = `
 DELETE FROM t_paper_question tpq 
 	WHERE tpq.id = ANY($1::bigint[])`
 
 	result, err := tx.Exec(ctx, sql, questionIDs)
+	if forceError == "tx.Exec-err" {
+		err = errors.New(forceError)
+	}
 	if err != nil {
 		z.Error(err.Error())
 		return err
@@ -414,17 +427,17 @@ DELETE FROM t_paper_question tpq
 }
 
 func handleUpdateQuestions(ctx context.Context, tx pgx.Tx, userID int64, updates []UpdatePaperQuestionRequest) error {
-	//参数校验
-	if userID <= 0 {
-		z.Error(ErrInvalidUserID.Error())
-		return ErrInvalidUserID
+	forceError := ""
+	if val, ok := ctx.Value("force-error").(string); ok {
+		forceError = val
 	}
-	if len(updates) == 0 {
-		z.Error(ErrEmptyQuestionIDs.Error())
-		return ErrEmptyQuestionIDs
-	}
-
 	for _, update := range updates {
+		//检查结构体
+		err := cmn.Validate(update)
+		if err != nil {
+			z.Error(err.Error())
+			return err
+		}
 		var setClauses []string
 		var args []interface{}
 		argIndex := 1 // 参数索引从1开始（公共字段从第3个参数开始）
@@ -436,18 +449,14 @@ func handleUpdateQuestions(ctx context.Context, tx pgx.Tx, userID int64, updates
 			argIndex++
 		}
 
-		if update.Score >= 0 {
+		if update.Score > 0 {
 			setClauses = append(setClauses, "score = $"+strconv.Itoa(argIndex))
 			args = append(args, update.Score)
 			argIndex++
 		}
 
 		if len(update.SubScore) > 0 {
-			subScore, err := json.Marshal(update.SubScore)
-			if err != nil {
-				z.Error(err.Error())
-				return err
-			}
+			subScore, _ := json.Marshal(update.SubScore)
 			setClauses = append(setClauses, "sub_score = $"+strconv.Itoa(argIndex))
 			args = append(args, subScore)
 			argIndex++
@@ -458,8 +467,14 @@ func handleUpdateQuestions(ctx context.Context, tx pgx.Tx, userID int64, updates
 		args = append(args, userID)
 		argIndex++
 		setClauses = append(setClauses, "update_time = $"+strconv.Itoa(argIndex))
-		args = append(args, time.Now().UTC())
+		args = append(args, time.Now().UnixMilli())
 		argIndex++
+
+		if len(setClauses) <= 2 {
+			err := fmt.Errorf("更新题目没有传入需要更新的字段或传入的字段为零值")
+			z.Error(err.Error())
+			return err
+		}
 
 		// 构建完整 SQL
 		query := fmt.Sprintf(
@@ -471,6 +486,9 @@ func handleUpdateQuestions(ctx context.Context, tx pgx.Tx, userID int64, updates
 
 		// 执行更新
 		result, err := tx.Exec(ctx, query, args...)
+		if forceError == "tx.Exec-err" {
+			err = errors.New(forceError)
+		}
 		if err != nil {
 			z.Error(err.Error())
 			return err
@@ -485,16 +503,34 @@ func handleUpdateQuestions(ctx context.Context, tx pgx.Tx, userID int64, updates
 	return nil
 }
 
-func handleMoveQuestion(ctx context.Context, tx pgx.Tx, userID int64, orders []int64) error {
-	if userID <= 0 {
-		z.Error(ErrInvalidUserID.Error())
-		return ErrInvalidUserID
+func handleMoveQuestion(ctx context.Context, tx pgx.Tx, paperID, userID int64, orders []int64) error {
+	forceError := ""
+	if val, ok := ctx.Value("force-error").(string); ok {
+		forceError = val
 	}
 	if len(orders) == 0 {
 		z.Error(ErrEmptyQuestionIDs.Error())
 		return ErrEmptyQuestionIDs
 	}
-
+	// 1. 查询实际题组数量
+	var actualCount int
+	err := tx.QueryRow(ctx, `
+        SELECT question_count FROM v_paper 
+        WHERE id = $1 AND status != '02'`,
+		paperID).Scan(&actualCount)
+	if forceError == "tx.QueryRow-err" {
+		err = errors.New(forceError)
+	}
+	if err != nil {
+		z.Error(err.Error())
+		return err
+	}
+	// 2. 验证数量
+	if len(orders) != actualCount {
+		err := fmt.Errorf("数量不匹配，输入%d个ID，实际有%d个题目", len(orders), actualCount)
+		z.Error(err.Error())
+		return err
+	}
 	now := time.Now().UnixMilli()
 	// 构建批量更新SQL
 	sqlStr := `
@@ -509,6 +545,9 @@ func handleMoveQuestion(ctx context.Context, tx pgx.Tx, userID int64, orders []i
 			)o
 		WHERE pq.id = o.id;`
 	result, err := tx.Exec(ctx, sqlStr, orders, userID, now)
+	if forceError == "tx.Exec-err" {
+		err = errors.New(forceError)
+	}
 	if err != nil {
 		z.Error(err.Error())
 		return err
@@ -522,9 +561,9 @@ func handleMoveQuestion(ctx context.Context, tx pgx.Tx, userID int64, orders []i
 }
 
 func handleMoveQuestionGroup(ctx context.Context, tx pgx.Tx, paperID, userID int64, orders []int64) error {
-	if userID <= 0 {
-		z.Error(ErrInvalidUserID.Error())
-		return ErrInvalidUserID
+	forceError := ""
+	if val, ok := ctx.Value("force-error").(string); ok {
+		forceError = val
 	}
 	if len(orders) == 0 {
 		z.Error(ErrEmptyGroupID.Error())
@@ -533,10 +572,16 @@ func handleMoveQuestionGroup(ctx context.Context, tx pgx.Tx, paperID, userID int
 	// 1. 查询实际题组数量
 	var actualCount int
 	err := tx.QueryRow(ctx, `
-        SELECT COUNT(*) FROM t_paper_group 
-        WHERE paper_id = $1 AND status != '02'`,
+        SELECT group_count FROM v_paper 
+        WHERE id = $1 AND status != '02'`,
 		paperID).Scan(&actualCount)
-
+	if forceError == "tx.QueryRow-err" {
+		err = errors.New(forceError)
+	}
+	if err != nil {
+		z.Error(err.Error())
+		return err
+	}
 	// 2. 验证数量
 	if len(orders) != actualCount {
 		err := fmt.Errorf("数量不匹配，输入%d个ID，实际有%d个题组", len(orders), actualCount)
@@ -557,6 +602,9 @@ func handleMoveQuestionGroup(ctx context.Context, tx pgx.Tx, paperID, userID int
 			)o
 		WHERE pg.id = o.id;`
 	result, err := tx.Exec(ctx, sqlStr, orders, userID, now)
+	if forceError == "tx.Exec-err" {
+		err = errors.New(forceError)
+	}
 	if err != nil {
 		z.Error(err.Error())
 		return err
