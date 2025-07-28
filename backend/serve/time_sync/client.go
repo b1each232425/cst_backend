@@ -1,14 +1,34 @@
-package client
+package time_sync
 
 import (
 	"context"
 	"encoding/json"
+	"github.com/gorilla/websocket"
+	"go.uber.org/zap"
 	"sync"
 	"time"
 	"w2w.io/serve/paper_respondence"
+)
 
-	"github.com/gorilla/websocket"
-	"go.uber.org/zap"
+type ReceiveMsg struct {
+	MsgType int64 `json:"msg_type"` // 消息类型
+}
+
+type SendMsg struct {
+	MsgType   int64 `json:"msg_type"`  // 消息类型
+	EndTime   int64 `json:"end_time"`  // 考试结束时间
+	Timestamp int64 `json:"timestamp"` // 当前时间戳
+}
+
+var _ Connection = (*Conn)(nil)
+
+var (
+	timeDeadline = 20 * time.Second // 心跳超时时间
+)
+
+const (
+	TypeTimestamp   = 1 // 时间戳消息类型
+	TypeExamEndtime = 2 // 考试结束时刻消息类型
 )
 
 type Connection interface {

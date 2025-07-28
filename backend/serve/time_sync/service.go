@@ -8,7 +8,6 @@ import (
 	"strconv"
 	"time"
 	"w2w.io/cmn"
-	"w2w.io/serve/time_sync/client"
 
 	"github.com/panjf2000/ants/v2"
 	"go.uber.org/zap"
@@ -17,20 +16,20 @@ import (
 type Service interface {
 	SendResetExamEndTimeMsg(ctx context.Context, ids []int64) error // 发送重置考试结束时刻的消息
 
-	startServe(ctx context.Context)                                                         // 启动时间同步服务
-	handleInitTimeSyncConn(ctx context.Context)                                             // 处理初始化时间同步连接
-	getClientByExamineeId(ctx context.Context, examineeId int64) (client.Connection, error) // 根据考生ID获取连接实例
-	sendCurrentTimestampMsg(ctx context.Context, c client.Connection) error                 // 发送当前时间戳消息
-	broadcastTimeSyncMsg(ctx context.Context)                                               // 广播时间同步消息
+	startServe(ctx context.Context)                                                  // 启动时间同步服务
+	handleInitTimeSyncConn(ctx context.Context)                                      // 处理初始化时间同步连接
+	getClientByExamineeId(ctx context.Context, examineeId int64) (Connection, error) // 根据考生ID获取连接实例
+	sendCurrentTimestampMsg(ctx context.Context, c Connection) error                 // 发送当前时间戳消息
+	broadcastTimeSyncMsg(ctx context.Context)                                        // 广播时间同步消息
 }
 
 type serviceImpl struct {
-	upgrader         websocket.Upgrader           // WebSocket升级器
-	timeSyncInterval time.Duration                // 时间同步间隔
-	clients          map[string]client.Connection // 客户端连接池，key为连接ID
-	registerChanel   chan client.Connection       // 注册客户端连接管道
-	unregisterChanel chan client.Connection       // 注销客户端连接管道
-	pool             *ants.Pool                   // ants协程池
+	upgrader         websocket.Upgrader    // WebSocket升级器
+	timeSyncInterval time.Duration         // 时间同步间隔
+	clients          map[string]Connection // 客户端连接池，key为连接ID
+	registerChanel   chan Connection       // 注册客户端连接管道
+	unregisterChanel chan Connection       // 注销客户端连接管道
+	pool             *ants.Pool            // ants协程池
 	repo             Repo
 }
 
@@ -41,16 +40,13 @@ func NewService(timeSyncInterval time.Duration, pool *ants.Pool, upgrader websoc
 	if pool == nil {
 		return nil, fmt.Errorf("ants pool cannot be nil")
 	}
-	if upgrader.CheckOrigin == nil {
-		return nil, fmt.Errorf("websocket upgrader CheckOrigin cannot be nil")
-	}
 
 	return &serviceImpl{
 		upgrader:         upgrader,
 		timeSyncInterval: timeSyncInterval,
-		clients:          make(map[string]client.Connection),
-		registerChanel:   make(chan client.Connection, 100),
-		unregisterChanel: make(chan client.Connection, 100),
+		clients:          make(map[string]Connection),
+		registerChanel:   make(chan Connection, 100),
+		unregisterChanel: make(chan Connection, 100),
 		pool:             pool,
 		repo:             NewRepo(),
 	}, nil
@@ -95,7 +91,7 @@ func (srv *serviceImpl) startServe(ctx context.Context) {
 			for _, clientConn := range srv.clients {
 				clientConn.Close()
 			}
-			srv.clients = make(map[string]client.Connection) // 清空连接池
+			srv.clients = make(map[string]Connection) // 清空连接池
 			return
 		}
 	}
@@ -162,7 +158,7 @@ func (srv *serviceImpl) handleInitTimeSyncConn(ctx context.Context) {
 
 	// 生成连接的唯一ID
 	id := xid.New().String() + strconv.FormatInt(time.Now().UnixMilli(), 10)
-	newClient := client.NewConnection(id, conn, z, srv.unregisterChanel, userId)
+	newClient := NewConnection(id, conn, z, srv.unregisterChanel, userId)
 
 	// 启动心跳检测
 	go newClient.StartHeartbeatDetection()
@@ -205,7 +201,7 @@ func (srv *serviceImpl) broadcastTimeSyncMsg(ctx context.Context) {
 	// 遍历连接池
 	for _, wsClient := range srv.clients {
 		// 提交任务到协程池
-		err := srv.pool.Submit(func(client client.Connection) func() {
+		err := srv.pool.Submit(func(client Connection) func() {
 			return func() {
 				err := srv.sendCurrentTimestampMsg(ctx, client)
 				if err != nil || forceErr == "sendCurrentTimestampMsg" {
@@ -222,7 +218,7 @@ func (srv *serviceImpl) broadcastTimeSyncMsg(ctx context.Context) {
 }
 
 // sendCurrentTimestampMsg 发送当前时间戳消息
-func (srv *serviceImpl) sendCurrentTimestampMsg(ctx context.Context, c client.Connection) error {
+func (srv *serviceImpl) sendCurrentTimestampMsg(ctx context.Context, c Connection) error {
 	z.Info("---->" + cmn.FncName())
 
 	forceErr, _ := ctx.Value("force-error").(string) // 用于强制执行错误处理代码
@@ -231,8 +227,8 @@ func (srv *serviceImpl) sendCurrentTimestampMsg(ctx context.Context, c client.Co
 	timestamp := time.Now().UnixMilli()
 
 	// 发送消息
-	msg := client.SendMsg{
-		MsgType:   client.TypeExamEndtime,
+	msg := SendMsg{
+		MsgType:   TypeExamEndtime,
 		Timestamp: timestamp,
 	}
 	err := c.SendMessage(msg)
@@ -244,7 +240,7 @@ func (srv *serviceImpl) sendCurrentTimestampMsg(ctx context.Context, c client.Co
 }
 
 // getClientByExamineeId 根据考生ID获取连接实例
-func (srv *serviceImpl) getClientByExamineeId(ctx context.Context, examineeId int64) (client.Connection, error) {
+func (srv *serviceImpl) getClientByExamineeId(ctx context.Context, examineeId int64) (Connection, error) {
 	z.Info("---->" + cmn.FncName())
 
 	for _, wsClient := range srv.clients {
@@ -287,15 +283,15 @@ func (srv *serviceImpl) SendResetExamEndTimeMsg(ctx context.Context, examineeIds
 		}
 
 		// 获取WebSocket连接实例
-		var wsClient client.Connection
+		var wsClient Connection
 		wsClient, err = srv.getClientByExamineeId(ctx, id)
 		if err != nil {
 			return err
 		}
 
 		// 发送消息
-		msg := client.SendMsg{
-			MsgType: client.TypeExamEndtime,
+		msg := SendMsg{
+			MsgType: TypeExamEndtime,
 			EndTime: actualEndTime,
 		}
 		err = wsClient.SendMessage(msg)

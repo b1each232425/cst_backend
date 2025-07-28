@@ -15,7 +15,6 @@ import (
 	"github.com/panjf2000/ants/v2"
 	"github.com/spf13/viper"
 	"go.uber.org/zap"
-	"w2w.io/serve/time_sync/client"
 
 	"github.com/gorilla/websocket"
 	"w2w.io/cmn"
@@ -97,15 +96,6 @@ func Test_NewService(t *testing.T) {
 			wantNil: false,
 			wantErr: false,
 			desc:    "使用自定义WebSocket升级器创建服务实例",
-		},
-		{
-			name:             "空的WebSocket升级器",
-			timeSyncInterval: 5 * time.Second,
-			pool:             createTestPool(t, 10),
-			upgrader:         websocket.Upgrader{},
-			wantNil:          false,
-			wantErr:          true,
-			desc:             "使用自定义WebSocket升级器创建服务实例",
 		},
 		{
 			name:             "空的ants池",
@@ -285,9 +275,9 @@ func Test_serviceImpl_HandleInitTimeSyncConn(t *testing.T) {
 				upgrader:         websocket.Upgrader{CheckOrigin: func(r *http.Request) bool { return true }},
 				timeSyncInterval: time.Second,
 				pool:             pool,
-				clients:          make(map[string]client.Connection),
-				registerChanel:   make(chan client.Connection, 100),
-				unregisterChanel: make(chan client.Connection, 100),
+				clients:          make(map[string]Connection),
+				registerChanel:   make(chan Connection, 100),
+				unregisterChanel: make(chan Connection, 100),
 			}
 
 			// 构建请求URL
@@ -709,9 +699,9 @@ func Test_serviceImpl_HandleInitTimeSyncConn_Websocket(t *testing.T) {
 				upgrader:         websocket.Upgrader{CheckOrigin: func(r *http.Request) bool { return true }},
 				timeSyncInterval: timeSyncIntervalMillisecond,
 				pool:             pool,
-				clients:          make(map[string]client.Connection),
-				registerChanel:   make(chan client.Connection, 100),
-				unregisterChanel: make(chan client.Connection, 100),
+				clients:          make(map[string]Connection),
+				registerChanel:   make(chan Connection, 100),
+				unregisterChanel: make(chan Connection, 100),
 			}
 
 			serveCtx, cancel := context.WithCancel(context.Background())
@@ -784,7 +774,7 @@ func Test_serviceImpl_HandleInitTimeSyncConn_Websocket(t *testing.T) {
 					if tt.msgToSend != nil {
 						msg = tt.msgToSend
 					} else {
-						msg = client.ReceiveMsg{
+						msg = ReceiveMsg{
 							MsgType: 1, // 示例：你可以自定义类型
 						}
 					}
