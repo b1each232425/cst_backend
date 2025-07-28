@@ -8,22 +8,6 @@ import (
 	"time"
 )
 
-func convertAnswerData(rawAnswer RawAnswer) []*AnswerDetails {
-	var answerDetails []*AnswerDetails
-	for i, answer := range rawAnswer.SubAnswers {
-		if answer == "" {
-			answer = "无"
-		}
-
-		answerDetails = append(answerDetails, &AnswerDetails{
-			Content: answer,
-			Index:   i,
-			Type:    "",
-		})
-	}
-	return answerDetails
-}
-
 func validateMarkMode(markMode string) bool {
 	switch markMode {
 	case "00", "02", "04", "06", "08", "10":
