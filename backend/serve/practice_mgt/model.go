@@ -3,7 +3,7 @@
  * @Description: 练习管理所需模型
  * @Date: 2025-07-15 19:59:25
  * @LastEditors: zdl <1311866870@qq.com>
- * @LastEditTime: 2025-07-26 23:04:36
+ * @LastEditTime: 2025-07-27 10:52:07
  */
 package practice_mgt
 
@@ -68,12 +68,13 @@ var PracticeStatus = struct {
 
 // MarkMode 练习批改模式
 var MarkMode = struct {
-	Normal string // 手动批改 00
-	AI     string // AI批改 02
+	AI string // AI批改 00
+
+	Normal string // 手动批改 10
 
 }{
-	Normal: "00",
-	AI:     "02",
+	AI:     "00",
+	Normal: "10",
 }
 
 // PracticeStudentStatus 练习学生参与状态
