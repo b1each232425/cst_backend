@@ -60,67 +60,55 @@ func GetExamSessionInfo(ctx context.Context, examID int, queryArgs ...string) ([
 		return result, ErrInvalidID
 	}
 
-	conn := cmn.GetDbConn()
+	conn := cmn.GetPgxConn()
 	if conn == nil {
 		z.Error("PostgreSQL connection pool is nil")
 		return result, ErrNilDBConn
 	}
 
-	tExamSession := cmn.TExamSession{}
+	sql := `
+			SELECT
+				es.id, es.exam_id, es.paper_id, es.mark_method, es.period_mode,
+				es.start_time, es.end_time, es.duration, es.question_shuffled_mode,
+				es.mark_mode, es.name_visibility_in, es.session_num, es.late_entry_time,
+				es.early_submission_time, es.reviewer_ids
+			FROM t_exam_session es
+			WHERE exam_id=$1 AND status = '06'
+			ORDER BY start_time ASC`
 
-	// tableName := tExamSession.GetTableName()
-
-	if len(queryArgs) == 0 {
-		queryArgs = []string{
-			"id",
-			"start_time",
-			"end_time",
-		}
-	}
-
-	// structsValuesMap, err := tExamSession.GetTExamSessionReflectValuesMap()
-	// if err != nil {
-	// 	err = fmt.Errorf("get exam info error: %s", err.Error())
-	// 	z.Error(err.Error())
-	// 	return result, err
-	// }
-
-	// structFieldValues := []any{}
-
-	// for _, queryArg := range queryArgs {
-	// 	if _, ok := structsValuesMap[queryArg]; !ok {
-	// 		err = fmt.Errorf("get exam session info error: %w: column name '%s' not found in TExamSession struct", ErrNoSuchQueryArg, queryArg)
-	// 		z.Error(err.Error())
-	// 		return result, err
-	// 	}
-
-	// 	structFieldValues = append(structFieldValues, structsValuesMap[queryArg])
-	// }
-
-	sql := fmt.Sprintf(`SELECT %s FROM t_exam_session
-		WHERE exam_id=$1 AND status::text <> '06'::text
-		ORDER BY start_time ASC`,
-		strings.Join(queryArgs, ","))
-
-	rows, err := conn.Query(sql, examID)
+	var es_rows pgx.Rows
+	es_rows, err := conn.Query(context.Background(), sql, examID)
 	if err != nil {
-		err = fmt.Errorf("get exam session info(examID=%v) occurred error: %s", examID, err.Error())
 		z.Error(err.Error())
-		return result, err
+		return nil, err
 	}
-
-	defer rows.Close()
-
-	for rows.Next() {
-
-		// err := rows.Scan(structFieldValues...)
+	defer es_rows.Close()
+	for es_rows.Next() {
+		var es cmn.TExamSession
+		err := es_rows.Scan(
+			&es.ID,
+			&es.ExamID,
+			&es.PaperID,
+			&es.MarkMethod,
+			&es.PeriodMode,
+			&es.StartTime,
+			&es.EndTime,
+			&es.Duration,
+			&es.QuestionShuffledMode,
+			&es.MarkMode,
+			&es.NameVisibilityIn,
+			&es.SessionNum,
+			&es.LateEntryTime,
+			&es.EarlySubmissionTime,
+			&es.ReviewerIds,
+			&es.PaperName,
+			&es.PaperCategory,
+		)
 		if err != nil {
-			err = fmt.Errorf("scan exam session info(examID=%v) occurred error: %s", examID, err.Error())
 			z.Error(err.Error())
-			return result, err
+			return nil, err
 		}
-
-		result = append(result, tExamSession)
+		result = append(result, es)
 	}
 
 	return result, nil
@@ -407,6 +395,7 @@ func GradeListExam(ctx context.Context, args *GradeListArgs) ([]GradeExam, int64
 			&grade.Sessions,
 			&grade.Submitted,
 		)
+		z.Sugar().Debug("grade: %#v", grade)
 		if err != nil {
 			err = fmt.Errorf("扫描考试成绩列表失败: %w", err)
 			z.Error(err.Error())
@@ -624,6 +613,17 @@ func SetExamGradeSubmitted(ctx context.Context, args *GradeSubmitArgs) error {
 		return err
 	}
 
+	// 标记事务是否成功，默认失败
+	txSuccess := false
+	defer func() {
+		if !txSuccess {
+			rollbackErr := tx.Rollback(context.Background())
+			if rollbackErr != nil {
+				z.Sugar().Error(fmt.Errorf("rollback transaction error: %w", rollbackErr))
+			}
+		}
+	}()
+
 	for _, examID := range examIDs {
 		examSessions, err := GetExamSessionInfo(ctx, examID, "id", "start_time", "end_time")
 		if err != nil {
@@ -654,15 +654,31 @@ func SetExamGradeSubmitted(ctx context.Context, args *GradeSubmitArgs) error {
 			return err
 		}
 
-		sql := fmt.Sprintf(`UPDATE t_exam_info SET submitted=true, updated_by=$2, update_time=$3 WHERE id=$1`)
+		sql := `UPDATE t_exam_info SET submitted=true, updated_by=$2, update_time=$3 WHERE id=$1`
 
-		_, err = tx.Exec(ctx, sql, examID, teacherID, currTime)
+		// 获取当前时间戳，这里以毫秒级为例
+		curr := currTime.UnixMilli()
+
+		z.Sugar().Debug("set exam grade submitted(examID=%v teacherID=%v) currTime=%v", examID, teacherID, curr)
+		commandTag, err := tx.Exec(ctx, sql, examID, teacherID, curr)
 		if err != nil {
 			err = fmt.Errorf("set exam grade submitted(examID=%v teacherID=%v) error: %s", examID, teacherID, err.Error())
 			z.Error(err.Error())
 			return err
 		}
+		// 获取受影响的行数
+		rowsAffected := commandTag.RowsAffected()
+		z.Sugar().Debug("set exam grade submitted(examID=%v) affected rows: %d", examID, rowsAffected)
 	}
+
+	// 提交事务
+	err = tx.Commit(context.Background())
+	if err != nil {
+		err = fmt.Errorf("commit transaction error: %w", err)
+		z.Error(err.Error())
+		return err
+	}
+	txSuccess = true
 
 	return nil
 }
