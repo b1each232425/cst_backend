@@ -6,7 +6,10 @@ package examPaper
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"go.uber.org/zap"
+	"strconv"
+	"strings"
 	"w2w.io/cmn"
 )
 
@@ -34,10 +37,10 @@ func Enroll(author string) {
 	}
 
 	_ = cmn.AddService(&cmn.ServeEndPoint{
-		Fn: examPaperSimple,
+		Fn: paperTemplateH,
 
-		Path: "/examPaper",
-		Name: "examPaper",
+		Path: "/paperTemplate",
+		Name: "paperTemplate",
 
 		Developer: developer,
 		WhiteList: true,
@@ -51,9 +54,51 @@ func Enroll(author string) {
 }
 
 // just a trial
-func examPaperSimple(ctx context.Context) {
+func paperTemplateH(ctx context.Context) {
 	q := cmn.GetCtxValue(ctx)
+
+	// 这里只需要测试每一个接口，返回是否正常数据就可以了
+
+	method := strings.ToLower(q.R.Method)
+	if method != "get" {
+		q.Err = fmt.Errorf("please call /api/practiceS with  http GET method")
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+	id := q.R.URL.Query().Get("id")
+	// 代表此时进入到编辑页面了
+	var pid int64
+	pid, q.Err = strconv.ParseInt(id, 10, 64)
+	if q.Err != nil {
+		q.Err = fmt.Errorf("练习ID获取失败：%v", q.Err.Error())
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+	p, pg, pq, err := LoadPaperTemplateById(ctx, pid, true)
+	if err != nil {
+		q.Err = err
+		q.RespErr()
+		return
+	}
+
+	result := Map{}
+	result["paperinfo"] = *p
+	result["paperGroup"] = pg
+	result["paperQuestion"] = pq
+
+	data, err := json.Marshal(result)
+	if err != nil {
+		z.Error(err.Error())
+		q.Err = err
+		q.RespErr()
+		return
+	}
+	q.Msg.Data = data
 	z.Info("---->" + cmn.FncName())
-	q.Msg.Msg = cmn.FncName()
+	q.Msg.Msg = "OK"
 	q.Resp()
+	return
+
 }

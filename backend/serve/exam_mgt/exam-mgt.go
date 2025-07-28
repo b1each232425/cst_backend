@@ -1,6 +1,6 @@
 package exam_mgt
 
-//annotation:exam_mgt
+//annotation:exam_mgt-service
 //author:{"name":"Ma Yuxin","tel":"13824087366", "email":"dbs45412@163.com"}
 
 import (
@@ -17,8 +17,10 @@ import (
 	"github.com/tidwall/gjson"
 	"go.uber.org/zap"
 	"w2w.io/cmn"
+	"w2w.io/exam_service"
 	"w2w.io/null"
 	"w2w.io/serve/examPaper"
+	"w2w.io/serve/mark"
 )
 
 var z *zap.Logger
@@ -36,7 +38,7 @@ type ExamRoomConfig struct {
 
 type ExamData struct {
 	ExamInfo       cmn.TExamInfo      `json:"examInfo" validate:"required"`
-	ExamSessions   []cmn.TExamSession `json:"examSession" validate:"required"`
+	ExamSessions   []cmn.TExamSession `json:"examSessions" validate:"required"`
 	ExamineeIDs    []int64            `json:"examinee"`
 	ExamRooms      []ExamRoomConfig   `json:"examRooms"`
 	InvigilatorIDs []int64            `json:"invigilators"`
@@ -81,12 +83,13 @@ type Examinee struct {
 func init() {
 	cmn.PackageStarters = append(cmn.PackageStarters, func() {
 		z = cmn.GetLogger()
-		z.Info("message zLogger settled")
+		z.Info("exam_mgt zLogger settled")
 	})
 }
 
 func Enroll(author string) {
-	z.Info("message.Enroll called")
+	z.Info("exam_mgt.Enroll called")
+
 	var developer *cmn.ModuleAuthor
 	if author != "" {
 		var d cmn.ModuleAuthor
@@ -151,6 +154,22 @@ func Enroll(author string) {
 
 		Path: "/exam/lock",
 		Name: "examLock",
+
+		Developer: developer,
+		WhiteList: true,
+
+		//DomainID 创建该API的账号归属的domain
+		DomainID: int64(cmn.CDomainSys),
+
+		//DefaultDomain 该API将默认授权给的用户
+		DefaultDomain: int64(cmn.CDomainSys),
+	})
+
+	_ = cmn.AddService(&cmn.ServeEndPoint{
+		Fn: examStatus,
+
+		Path: "/exam/status",
+		Name: "examStatus",
 
 		Developer: developer,
 		WhiteList: true,
@@ -949,13 +968,15 @@ func exam(ctx context.Context) {
 			return
 		}
 
-		userID := q.SysUser.ID.Int64
-		if userID <= 0 {
-			q.Err = fmt.Errorf("无效的用户ID: %d", userID)
-			z.Error(q.Err.Error())
-			q.RespErr()
-			return
-		}
+		// userID := q.SysUser.ID.Int64
+		// if userID <= 0 {
+		// 	q.Err = fmt.Errorf("无效的用户ID: %d", userID)
+		// 	z.Error(q.Err.Error())
+		// 	q.RespErr()
+		// 	return
+		// }
+
+		userID := int64(1574) // 模拟用户ID，实际应用中应从上下文或请求中获取
 
 		var qry cmn.ReqProto
 		q.Err = json.Unmarshal(buf, &qry)
@@ -1069,7 +1090,7 @@ func exam(ctx context.Context) {
 			currentTime,
 			ExamData.ExamInfo.UpdatedBy.Int64,
 			currentTime,
-			ExamData.ExamInfo.Status.String,
+			"00",
 			ExamData.ExamInfo.Addi,
 			nil,
 			"00",
@@ -2336,21 +2357,25 @@ func examStatus(ctx context.Context) {
 			return
 		}
 
-		userID := q.SysUser.ID.Int64
-		if userID <= 0 {
-			q.Err = fmt.Errorf("无效的用户ID: %d", userID)
-			z.Error(q.Err.Error())
-			q.RespErr()
-			return
-		}
+		// userID := q.SysUser.ID.Int64
+		// if userID <= 0 {
+		// 	q.Err = fmt.Errorf("无效的用户ID: %d", userID)
+		// 	z.Error(q.Err.Error())
+		// 	q.RespErr()
+		// 	return
+		// }
 
-		userRole := q.SysUser.Role.Int64
-		if userRole == 0 {
-			q.Err = fmt.Errorf("无效的用户角色: %d", userRole)
-			z.Error(q.Err.Error())
-			q.RespErr()
-			return
-		}
+		userID := int64(1574)
+
+		// userRole := q.SysUser.Role.Int64
+		// if userRole == 0 {
+		// 	q.Err = fmt.Errorf("无效的用户角色: %d", userRole)
+		// 	z.Error(q.Err.Error())
+		// 	q.RespErr()
+		// 	return
+		// }
+
+		userRole := int64(3)
 
 		examID := gjson.Get(qry, "data.ID").Int()
 		if examID <= 0 {
@@ -2472,6 +2497,27 @@ func examStatus(ctx context.Context) {
 
 			// 清除批改和考卷配置
 
+			q.Err = updateExamStatus(ctx, tx, examID, "00", userID)
+			if q.Err != nil {
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+
+			q.Err = updateExamSessionStatus(ctx, tx, examID, "00", userID)
+			if q.Err != nil {
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+
+			q.Err = exam_service.CancelExamTimers(ctx, examID)
+			if q.Err != nil {
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+
 		case "02":
 			// 发布考试
 			if nowStatus != "00" {
@@ -2503,7 +2549,7 @@ func examStatus(ctx context.Context) {
 			// 生成考卷并配置批改（如果有考生）
 			for _, examSession := range examSessions {
 				examinee_query := `
-					SELECT id FROM t_examinee WHERE exam_session_id = $1 AND status == '00'
+					SELECT id FROM t_examinee WHERE exam_session_id = $1 AND status = '00'
 				`
 				rows, err := tx.Query(ctx, examinee_query, examSession.ID.Int64)
 				if err != nil {
@@ -2531,12 +2577,13 @@ func examStatus(ctx context.Context) {
 				}
 
 				var examPaperID *int64
-				// var subjectiveQuestionGroups []examPaper.SubjectiveQuestionGroup
-				// examPaperID, subjectiveQuestionGroups, q.Err = examPaper.GenerateExamPaper(ctx, &tx, "00", examSession.PaperID.Int64, 0, examSession.ID.Int64, userID, true)
-				// if q.Err != nil {
-				// 	q.RespErr()
-				// 	return
-				// }
+				var subjectiveQuestionGroups []examPaper.SubjectiveQuestionGroup
+				examPaperID, subjectiveQuestionGroups, q.Err = examPaper.GenerateExamPaper(ctx, tx, "00", examSession.PaperID.Int64, 0, examSession.ID.Int64, userID, true)
+				if q.Err != nil {
+					q.RespErr()
+					return
+				}
+				_ = subjectiveQuestionGroups
 
 				var isQuestionRandom, isOptionRandom bool
 
@@ -2564,12 +2611,12 @@ func examStatus(ctx context.Context) {
 				generateAnswerQuestionsRequest.IsQuestionRandom = isQuestionRandom
 				generateAnswerQuestionsRequest.IsOptionRandom = isOptionRandom
 
-				// q.Err = examPaper.GenerateAnswerQuestion(ctx, &tx, generateAnswerQuestionsRequest, userID)
-				// if q.Err != nil {
-				// 	z.Error(q.Err.Error())
-				// 	q.RespErr()
-				// 	return
-				// }
+				q.Err = examPaper.GenerateAnswerQuestion(ctx, tx, generateAnswerQuestionsRequest, userID)
+				if q.Err != nil {
+					z.Error(q.Err.Error())
+					q.RespErr()
+					return
+				}
 
 				// 将考卷ID记录到考生表中
 				assign_query := `
@@ -2612,6 +2659,20 @@ func examStatus(ctx context.Context) {
 					examSession.MarkMethod = "00"
 				}
 
+				var handleMarkerInfoReq mark.HandleMarkerInfoReq
+				handleMarkerInfoReq.ExamSessionID = examSession.ID.Int64
+				handleMarkerInfoReq.Markers = reviewerIDs
+				handleMarkerInfoReq.ExamineeIDs = examineeIDs
+				handleMarkerInfoReq.MarkMode = examSession.MarkMode.String
+				handleMarkerInfoReq.QuestionGroups = subjectiveQuestionGroups
+				handleMarkerInfoReq.Status = "00"
+
+				q.Err = mark.HandleMarkerInfo(ctx, &tx, userID, handleMarkerInfoReq)
+				if q.Err != nil {
+					z.Error(q.Err.Error())
+					q.RespErr()
+					return
+				}
 			}
 
 			q.Err = updateExamStatus(ctx, tx, examID, "02", userID)
@@ -2622,6 +2683,13 @@ func examStatus(ctx context.Context) {
 			}
 
 			q.Err = updateExamSessionStatus(ctx, tx, examID, "02", userID)
+			if q.Err != nil {
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+
+			q.Err = exam_service.SetExamTimers(ctx, examID)
 			if q.Err != nil {
 				z.Error(q.Err.Error())
 				q.RespErr()

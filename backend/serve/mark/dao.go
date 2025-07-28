@@ -2,7 +2,6 @@ package mark
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"fmt"
 	"github.com/jackc/pgx/v5"
@@ -83,13 +82,6 @@ type QuestionDetails struct {
 	Index   int     `json:"index"`
 }
 
-type StudentAnswer struct {
-	ExamineeID           int64     `json:"examinee_id"`
-	PracticeSubmissionID int64     `json:"practice_submission_id"`
-	StudentID            int64     `json:"student_id"`
-	Answers              []*Answer `json:"answers"`
-}
-
 type QuestionSet struct {
 	ID        int64       `json:"id"`        // 题组id
 	Name      string      `json:"name"`      // 题组名称
@@ -109,17 +101,6 @@ type Question struct {
 	OrderNum         int                `json:"order_num"`
 	Type             string             `json:"type"` // 00:单选题  02:多选题 04:判断题 06:填空题 08:简答题 10:编程题
 	Score            float64            `json:"score"`
-}
-
-type QuestionGroups struct {
-	ID    int64  `json:"id"`
-	Name  string `json:"name"`
-	Order int    `json:"order"`
-}
-
-type SubjectiveQuestionGroup struct {
-	GroupID     int64   `json:"group_id"`
-	QuestionIDs []int64 `json:"question_ids"`
 }
 
 // 简答题、填空题答案
@@ -148,9 +129,6 @@ type Student struct {
 	IdType              string  `json:"id_type"`
 	IdNumber            string  `json:"id_number"`
 	ExamAdmissionNumber string  `json:"exam_admission_number"`
-}
-
-type Repo struct {
 }
 
 // QueryExamList 获取考试列表 管理员查询全部列表，教师查询与其有关的考试列表
@@ -567,7 +545,7 @@ func QueryStudentAnswersByMarkMode(ctx context.Context, answerType string, cond 
 		var questionIDs []int64
 		err = json.Unmarshal(markerInfo.MarkInfos[0].QuestionIds, &questionIDs)
 		if err != nil {
-			err = fmt.Errorf("unable to unmarshal markQuestionGroups: %v", err)
+			err = fmt.Errorf("unable to unmarshal question_ids: %v", err)
 			z.Error(err.Error())
 			return
 		}
@@ -589,7 +567,7 @@ func QueryStudentAnswersByMarkMode(ctx context.Context, answerType string, cond 
 	}
 
 	for rows.Next() {
-		var row cmn.TVStudentAnswerQuestion
+		row := new(cmn.TVStudentAnswerQuestion)
 		err = rows.Scan(
 			&row.ExamSessionID,
 			&row.PracticeID,
@@ -610,7 +588,7 @@ func QueryStudentAnswersByMarkMode(ctx context.Context, answerType string, cond 
 			return nil, err
 		}
 
-		studentAnswers = append(studentAnswers, &row)
+		studentAnswers = append(studentAnswers, row)
 
 	}
 
@@ -820,82 +798,57 @@ func QueryExamineeInfo(ctx context.Context, cond QueryCondition) (students []Stu
 	return
 }
 
-func InsertMarkerInfo(ctx context.Context, tx *sql.Tx, markInfo []cmn.TMarkInfo) (ids []int64, err error) {
-	if markInfo == nil || len(markInfo) == 0 {
-		err = fmt.Errorf("no mark info to insert")
+func UpdateMarkerInfoState(ctx context.Context, tx *pgx.Tx, teacherID int64, ids []int64, mode string) (targetIDs []int64, err error) {
+	if teacherID <= 0 {
+		err = fmt.Errorf("invalid teacher ID param")
 		z.Error(err.Error())
 		return
 	}
 
-	insertQuery := `INSERT INTO t_mark_info 
-						(exam_session_id, mark_teacher_id, mark_count, question_ids, mark_examinee_ids, creator, create_time, updated_by, update_time, addi, status) 
-					VALUES 
-						($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) 
-					RETURNING id`
-
-	insertStmt, err := tx.PrepareContext(ctx, insertQuery)
-	if err != nil {
-		err = fmt.Errorf("prepare insert query error: %s", err.Error())
+	if ids == nil || len(ids) == 0 {
+		err = fmt.Errorf("no exam_session_ids or practice_ids to update")
 		z.Error(err.Error())
 		return
 	}
 
-	defer func() {
-		err = insertStmt.Close()
-		if err != nil {
-			z.Error(err.Error())
-			return
-		}
-	}()
-
-	for _, info := range markInfo {
-		var id null.Int
-		err = insertStmt.QueryRowContext(ctx, info.ExamSessionID, info.MarkTeacherID, info.MarkCount, info.QuestionIds, info.MarkExamineeIds, info.Creator, info.CreateTime, info.UpdatedBy, info.UpdateTime, info.Addi, info.Status).Scan(&id)
-		if err != nil {
-			err = fmt.Errorf("exec insert query error: %s", err.Error())
-			z.Error(err.Error())
-			return
-		}
-		ids = append(ids, id.Int64)
-	}
-	return
-}
-
-func UpdateMarkerInfoState(ctx context.Context, tx *sql.Tx, teacherID int64, examSessionIDs []int64) (targetIDs []int64, err error) {
-	if examSessionIDs == nil || len(examSessionIDs) == 0 {
-		err = fmt.Errorf("no examSessionIDs to update")
-		z.Error(err.Error())
-		return
-	}
+	var whereClause []string
 
 	updateQuery := `UPDATE t_mark_info 
 					SET
 						status = $2,
 						updated_by = $3, 
 						update_time = $4
-					WHERE exam_session_id = ANY($1)
+					WHERE %s 
 					RETURNING id`
 
-	updateStmt, err := tx.PrepareContext(ctx, updateQuery)
-	if err != nil {
-		err = fmt.Errorf("prepare update query error: %s", err.Error())
+	if mode == "00" {
+		whereClause = append(whereClause, "exam_session_id = ANY($1)")
+	} else if mode == "02" {
+		whereClause = append(whereClause, "practice_id = ANY($1)")
+	} else {
+		err = fmt.Errorf("invalid update mode")
 		z.Error(err.Error())
 		return
 	}
 
-	defer func() {
-		err = updateStmt.Close()
+	updateQuery = fmt.Sprintf(updateQuery, strings.Join(whereClause, " "))
+
+	rows, err := (*tx).Query(ctx, updateQuery, pq.Array(ids), "04", teacherID, time.Now().UnixMilli())
+	if err != nil {
+		err = fmt.Errorf("exec update query error: %v", err)
+		z.Error(err.Error())
+		return
+	}
+
+	for rows.Next() {
+		var id null.Int
+		err = rows.Scan(&id)
 		if err != nil {
+			err = fmt.Errorf("unable to scan row data: %v", err)
 			z.Error(err.Error())
 			return
 		}
-	}()
-
-	err = updateStmt.QueryRowContext(ctx, pq.Array(examSessionIDs), "04", teacherID, time.Now().UnixMilli()).Scan(&targetIDs)
-	if err != nil {
-		err = fmt.Errorf("exec update query error: %s", err.Error())
-		z.Error(err.Error())
-		return
+		targetIDs = append(targetIDs, id.Int64)
 	}
 
 	return
@@ -990,6 +943,12 @@ func InsertOrUpdateMarkingResults(ctx context.Context, markingResults []*cmn.TMa
 }
 
 func updateStudentAnswerScore(ctx context.Context, markingResults []*cmn.TMark, cond QueryCondition) (targetIDs []int64, err error) {
+	if len(markingResults) == 0 {
+		err = fmt.Errorf("no marking results for update")
+		z.Error(err.Error())
+		return
+	}
+
 	updateQuery := `UPDATE t_student_answers
 					SET answer_score = $1,
 						update_time = $2,
@@ -1035,13 +994,13 @@ func updateStudentAnswerScore(ctx context.Context, markingResults []*cmn.TMark, 
 
 	for _, mark := range markingResults {
 		if mark.QuestionID.Int64 <= 0 {
-			err = fmt.Errorf("mark question_id is required")
+			err = fmt.Errorf("question_id is required in mark")
 			z.Error(err.Error())
 			return
 		}
 
 		if mark.TeacherID.Int64 <= 0 {
-			err = fmt.Errorf("mark teacher id is required")
+			err = fmt.Errorf("teacher id is required in mark")
 			z.Error(err.Error())
 			return
 		}
@@ -1092,6 +1051,12 @@ func updateStudentAnswerScore(ctx context.Context, markingResults []*cmn.TMark, 
 }
 
 func updateExamSessionState(ctx context.Context, tx *pgx.Tx, teacherID int64, examSessionIDs []int64, status string) (targetIDs []int64, err error) {
+	if teacherID <= 0 {
+		err = fmt.Errorf("invalid params: teacher_id is required")
+		z.Error(err.Error())
+		return
+	}
+
 	if examSessionIDs == nil || len(examSessionIDs) == 0 {
 		err = fmt.Errorf("no examSessionIDs to update")
 		z.Error(err.Error())
@@ -1123,7 +1088,7 @@ func updateExamSessionState(ctx context.Context, tx *pgx.Tx, teacherID int64, ex
 		var id int64
 		err = rows.Scan(&id)
 		if err != nil {
-			err = fmt.Errorf("exec updateExamSessionState sql error: %v", err)
+			err = fmt.Errorf("unable to scan row data: %v", err)
 			z.Error(err.Error())
 			return
 		}
