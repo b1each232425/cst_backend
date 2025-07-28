@@ -3,7 +3,7 @@
  * @Description: 练习管理数据库层函数逻辑测试
  * @Date: 2025-07-24 14:51:50
  * @LastEditors: zdl <1311866870@qq.com>
- * @LastEditTime: 2025-07-28 12:15:11
+ * @LastEditTime: 2025-07-28 23:58:30
  */
 package practice_mgt
 
@@ -971,10 +971,142 @@ func TestListPracticeT(t *testing.T) {
 	}
 }
 
-// 操作练习的发布状态的，需要跟考卷挂钩的，但是此时我又没有题目的数据，就没法测，不然就是使用mock咯？专门就是去测试
+// 操作练习的发布状态的，需要跟考卷挂钩的
 // 单元函数测试逻辑的
 func TestOperatePracticeStatus(t *testing.T) {
 
+	// 这里只能去测试那个删除与取消发布的分支
+	// 确保logger已初始化
+	if z == nil {
+		cmn.ConfigureForTest()
+	}
+
+	// 先插入一场练习，不会依赖于其他的测试用例
+	conn := cmn.GetPgxConn()
+
+	var p1, p2 int64
+
+	// 直接插入一个已经发布了的练习
+	err := conn.QueryRow(ctx, `INSERT INTO assessuser.t_practice (name,correct_mode,creator,create_time, update_time, addi,allowed_attempts,type,paper_id)
+	VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`, "测试练习名称1", MarkMode.AI, 100, now, now, nil, 5, PracticeType.Classical, 62).Scan(&p1)
+	if err != nil {
+		t.Fatalf("创建测试练习p1失败: %v", err)
+	}
+	err = conn.QueryRow(ctx, `INSERT INTO assessuser.t_practice (name,correct_mode,creator,create_time, update_time,status,addi,allowed_attempts,type,paper_id)
+	VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9,$10) RETURNING id`, "测试练习名称2", MarkMode.AI, 100, now, now, PracticeStatus.Released, nil, 10, PracticeType.Classical, 62).Scan(&p2)
+	if err != nil {
+		t.Fatalf("创建测试练习p2失败: %v", err)
+	}
+
+	// 然后就是操作他变成待发布与删除状态
+	tests := []struct {
+		name          string
+		pid           int64
+		status        string
+		expectedError error
+	}{
+		{
+			name:          "异常1 将已发布的练习调整为删除状态",
+			pid:           p1,
+			status:        PracticeStatus.Deleted,
+			expectedError: errors.New("获取练习状态出现数据错误"),
+		},
+		{
+			name:          "正常1 将已发布的练习调整为待发布",
+			pid:           p1,
+			status:        PracticeStatus.PendingRelease,
+			expectedError: nil,
+		},
+		{
+			name:          "正常2 将待发布的练习调整为删除状态",
+			pid:           p2,
+			status:        PracticeStatus.Deleted,
+			expectedError: nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err = OperatePracticeStatus(ctx, tt.pid, tt.status, 100)
+			if tt.expectedError != nil {
+				if err == nil {
+					t.Errorf("%v expected error but got nil", tt.name)
+				}
+				if err != nil && err.Error() != tt.expectedError.Error() {
+					t.Errorf("%v expected error:%v but got %v", tt.name, tt.expectedError, err)
+				}
+			} else {
+				// 这里去搜索一下
+				var status string
+				s := `SELECT (status) FROM t_practice WHERE id = $1`
+				_ = conn.QueryRow(ctx, s, tt.pid).Scan(&status)
+				if status != tt.status {
+					t.Errorf("没有成功更新练习发布状态")
+				}
+			}
+
+		})
+	}
+
+	t.Cleanup(func() {
+		_, _ = conn.Exec(ctx, "DELETE FROM assessuser.t_practice WHERE id = $1", p1)
+		_, _ = conn.Exec(ctx, "DELETE FROM assessuser.t_practice WHERE id = $1", p2)
+	})
+}
+
+// 测试这个函数，是否能达到各种情况
+func TestEnterPracticeGetPaperDetails(t *testing.T) {
+	// 需要去提前插入很多很多的数据，不过也没关系，主要是这个练习提交这些逻辑，实际上不生成考卷也是可以的
+	var queries []string
+	var args [][][]interface{}
+	var tempArgs [][]interface{}
+	queries = append(queries, `INSERT INTO t_practice(id, name, correct_mode, type, status, creator) VALUES($1, $2, $3, $4, $5, $6)`)
+	tempArgs = [][]interface{}{
+		{21, "test practice 1", "02", "00", "02", 1101},
+		{22, "test practice 2", "02", "00", "02", 1101},
+		{23, "test practice 3", "00", "00", "02", 1101},
+	}
+	args = append(args, tempArgs)
+
+	queries = append(queries, `INSERT INTO t_exam_paper(id, exam_session_id, practice_id, name, status, creator) VALUES($1, $2, $3, $4, $5, $6)`)
+	tempArgs = [][]interface{}{
+		{101, 101, null.NewInt(0, false), "test exam paper 1", "00", 1101},
+		{102, 102, null.NewInt(0, false), "test exam paper 2", "00", 1101},
+		{103, 103, null.NewInt(0, false), "test exam paper 3", "00", 1101},
+		{104, 104, null.NewInt(0, false), "test exam paper 4", "00", 1101},
+		{124, null.NewInt(0, false), 21, "test practice paper 4", "00", 1101},
+		{125, null.NewInt(0, false), 22, "test practice paper 5", "00", 1101},
+		{126, null.NewInt(0, false), 23, "test practice paper 6", "00", 1101},
+	}
+	args = append(args, tempArgs)
+
+	queries = append(queries, `INSERT INTO t_exam_paper_group(id, exam_paper_id, name, status, creator) VALUES($1, $2, $3, $4, $5)`)
+	tempArgs = [][]interface{}{
+		{301, 101, "test group 1", "00", 1101},
+		{302, 102, "test group 2", "00", 1101},
+		{303, 103, "test group 3", "00", 1101},
+		{304, 104, "test group 4", "00", 1101},
+		{324, 124, "test group 24", "00", 1101},
+		{325, 125, "test group 25", "00", 1101},
+		{326, 126, "test group 26", "00", 1101},
+	}
+	args = append(args, tempArgs)
+
+	queries = append(queries, `INSERT INTO t_exam_paper_question(id, score, type, content, answers, group_id, status, creator) VALUES($1, $2, $3, $4, $5, $6, $7, $8)`)
+	tempArgs = [][]interface{}{
+		{401, 3, "00", "单选1", `["C"]`, 301, "00", 1101},
+		{402, 3, "02", "多选1", `["B", "D"]`, 301, "00", 1101},
+		{403, 3, "04", "判断1", `["A"]`, 301, "00", 1101},
+		{404, 3, "00", "单选1", `["C"]`, 302, "00", 1101},
+		{405, 3, "06", "填空1", `[{"index": 1, "score": 3, "answer": "填空答案1", "grading_rule": "1", "alternative_answer": null}]`, 302, "00", 1101},
+		{411, 3, "00", "单选2", `[]`, 303, "00", 1101}, // 异常数据
+		{412, 3, "02", "多选2", `["B", "D"]`, 304, "00", 1101},
+		{424, 3, "00", "单选1", `["C"]`, 324, "00", 1101}, // 练习
+		{425, 3, "02", "多选1", `["B", "D"]`, 324, "00", 1101},
+		{426, 3, "04", "判断1", `["A"]`, 324, "00", 1101},
+		{421, 3, "00", "单选2", `[]`, 326, "00", 1101}, // 异常数据
+	}
+	args = append(args, tempArgs)
 }
 
 // 辅助函数：检查字符串是否包含子字符串
