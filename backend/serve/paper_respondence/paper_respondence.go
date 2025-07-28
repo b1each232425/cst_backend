@@ -5,22 +5,21 @@ package paper_respondence
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/jackc/pgx/v5"
 	"github.com/jmoiron/sqlx/types"
+	"go.uber.org/zap"
 	"io"
 	"strconv"
 	"strings"
 	"time"
-	"w2w.io/null"
-
-	"github.com/jackc/pgx/v5"
-	"go.uber.org/zap"
 	"w2w.io/cmn"
+	"w2w.io/null"
 	"w2w.io/serve/examPaper"
 	"w2w.io/serve/exam_mgt"
+	"w2w.io/serve/mark"
 	"w2w.io/serve/practice_mgt"
 )
 
@@ -57,6 +56,8 @@ const (
 
 	ExamType     = "00"
 	PracticeType = "02"
+
+	ForceErr = "forceErr"
 )
 
 var (
@@ -93,11 +94,10 @@ func Enroll(author string) {
 	_ = cmn.AddService(&cmn.ServeEndPoint{
 		Fn: StudentAnswer,
 
-		Path: "/respondent",
-		Name: "respondent",
-
+		Path:      "/respondent",
+		Name:      "respondent",
 		Developer: developer,
-		WhiteList: true,
+		WhiteList: false,
 
 		//DomainID 创建该API的账号归属的domain
 		DomainID: int64(cmn.CDomainSys),
@@ -143,7 +143,7 @@ func Enroll(author string) {
 		Name: "respondent_exam_status",
 
 		Developer: developer,
-		WhiteList: false,
+		WhiteList: true,
 
 		//DomainID 创建该API的账号归属的domain
 		DomainID: int64(cmn.CDomainSys),
@@ -166,10 +166,19 @@ func StudentAnswer(ctx context.Context) {
 	dmlCtx, cancel := context.WithTimeout(ctx, TIMEOUT)
 	defer cancel()
 
+	//强制错误，用于使得难以触发的错误强制它报错
+	forceErr := ""
+	forceErr, ok := ctx.Value(ForceErr).(string)
+	if !ok {
+		forceErr = ""
+	}
 	switch method {
 	case "post":
 		var buf []byte
 		buf, q.Err = io.ReadAll(q.R.Body)
+		if forceErr == "io-readAll" {
+			q.Err = errors.New("io-readAll error")
+		}
 		if q.Err != nil {
 			z.Error(q.Err.Error())
 			q.RespErr()
@@ -177,6 +186,9 @@ func StudentAnswer(ctx context.Context) {
 		}
 		defer func() {
 			q.Err = q.R.Body.Close()
+			if forceErr == "body-close" {
+				q.Err = errors.New("body-close")
+			}
 			if q.Err != nil {
 				z.Error(q.Err.Error())
 				q.RespErr()
@@ -221,6 +233,9 @@ func StudentAnswer(ctx context.Context) {
 		}
 
 		tx, err := db.BeginTx(dmlCtx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead})
+		if forceErr == "begin-tx" {
+			err = errors.New("begin tx error")
+		}
 		if err != nil {
 			z.Error(err.Error())
 			q.Err = err
@@ -228,8 +243,13 @@ func StudentAnswer(ctx context.Context) {
 			return
 		}
 		defer func() {
-			if q.Err = tx.Rollback(dmlCtx); q.Err != nil {
+			q.Err = tx.Rollback(dmlCtx)
+			if forceErr == "rollback-tx" {
+				q.Err = pgx.ErrTxCommitRollback
+			}
+			if q.Err != nil && !errors.Is(q.Err, pgx.ErrTxClosed) {
 				z.Error(q.Err.Error())
+				q.Msg.Data = nil
 				q.RespErr()
 				return
 			}
@@ -241,21 +261,30 @@ func StudentAnswer(ctx context.Context) {
 			q.RespErr()
 			return
 		}
+		//提前回滚使得commit失效
+		if forceErr == "commit-tx" {
+			tx.Rollback(dmlCtx)
+		}
 		//提交
 		if q.Err = tx.Commit(dmlCtx); q.Err != nil {
 			z.Error(q.Err.Error())
 			q.RespErr()
 			return
 		}
-
-		buf, q.Err = cmn.MarshalJSON(&result)
+		resultPtr := &result
+		if forceErr == "marshal-Err" {
+			resultPtr = nil
+		}
+		buf, q.Err = cmn.MarshalJSON(resultPtr)
 		if q.Err != nil {
 			q.RespErr()
 			return
 		}
 
 		q.Msg.Data = buf
-		q.Resp()
+		if forceErr != "rollback-tx" {
+			q.Resp()
+		}
 	case "get":
 		//获取题目的id
 		qd := q.R.URL.Query().Get("question_id")
@@ -319,9 +348,13 @@ func StudentAnswer(ctx context.Context) {
 			q.RespErr()
 			return
 		}
+		rPtr := &r
 
+		if forceErr == "marshal-err" {
+			rPtr = nil
+		}
 		var buf []byte
-		buf, q.Err = cmn.MarshalJSON(&r)
+		buf, q.Err = cmn.MarshalJSON(rPtr)
 		if q.Err != nil {
 			q.RespErr()
 			return
@@ -351,8 +384,17 @@ func InitRespondent(ctx context.Context) {
 		q.RespErr()
 		return
 	}
+	//强制错误，用于使得难以触发的错误强制它报错
+	forceErr := ""
+	forceErr, ok := ctx.Value(ForceErr).(string)
+	if !ok {
+		forceErr = ""
+	}
 	var buf []byte
 	buf, q.Err = io.ReadAll(q.R.Body)
+	if forceErr == "io.ReadAll" {
+		q.Err = errors.New("io read all error")
+	}
 	if q.Err != nil {
 		z.Error(q.Err.Error())
 		q.RespErr()
@@ -360,6 +402,9 @@ func InitRespondent(ctx context.Context) {
 	}
 	defer func() {
 		q.Err = q.R.Body.Close()
+		if forceErr == "close body err" {
+			q.Err = errors.New("close body err")
+		}
 		if q.Err != nil {
 			z.Error(q.Err.Error())
 			q.RespErr()
@@ -393,8 +438,8 @@ func InitRespondent(ctx context.Context) {
 
 	studentId := q.SysUser.ID.Int64
 	if studentId <= 0 {
-		err := errors.New("student id is smaller than 0")
-		z.Error(err.Error())
+		q.Err = errors.New("student id is smaller than 0 or equal to 0")
+		z.Error(q.Err.Error())
 		q.RespErr()
 		return
 	}
@@ -412,6 +457,9 @@ func InitRespondent(ctx context.Context) {
 	defer cancel()
 	db := cmn.GetPgxConn()
 	tx, err := db.BeginTx(dmlCtx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead})
+	if forceErr == "begin-tx" {
+		err = errors.New("begin tx error")
+	}
 	if err != nil {
 		q.Err = err
 		z.Error(err.Error())
@@ -421,7 +469,10 @@ func InitRespondent(ctx context.Context) {
 	defer func() {
 		//如果不是tx done错误就返回给前端
 		q.Err = tx.Rollback(dmlCtx)
-		if q.Err != nil && !errors.Is(q.Err, pgx.ErrTxCommitRollback) {
+		if forceErr == "rollback-tx" {
+			q.Err = pgx.ErrTxCommitRollback
+		}
+		if q.Err != nil && !errors.Is(q.Err, pgx.ErrTxClosed) {
 			z.Error(q.Err.Error())
 			q.RespErr()
 			return
@@ -436,6 +487,7 @@ func InitRespondent(ctx context.Context) {
 			q.RespErr()
 			return
 		}
+
 		// 获取考试信息，role参数暂定1
 		examInfo, err := exam_mgt.GetExamInfo(dmlCtx, u.ExamId, 1)
 		if err != nil {
@@ -473,7 +525,6 @@ func InitRespondent(ctx context.Context) {
 		//保存开始时间
 		q.Err = saveStudentBeginTimeForExam(dmlCtx, tx, u)
 		if q.Err != nil {
-			z.Error(q.Err.Error())
 			q.RespErr()
 			return
 		}
@@ -503,7 +554,7 @@ func InitRespondent(ctx context.Context) {
 			Questions:         questions,
 		}
 
-		data, err = cmn.MarshalJSON(&msg)
+		data, err = json.Marshal(&msg)
 		if err != nil {
 			q.Err = err
 			q.RespErr()
@@ -519,16 +570,15 @@ func InitRespondent(ctx context.Context) {
 			q.RespErr()
 			return
 		}
-
 		//练习初始化并获取试卷数据
-		info, groupInfo, questions, err := practice_mgt.EnterPracticeGetPaperDetails(dmlCtx, tx, u.PracticeId, u.StudentId)
+		practiceInfo, groupInfo, questions, err := practice_mgt.EnterPracticeGetPaperDetails(dmlCtx, tx, u.PracticeId, u.StudentId)
 		if err != nil {
 			q.Err = err
 			q.RespErr()
 			return
 		}
 
-		u.PracticeSubmissionID = info.PracticeSubmissionID
+		u.PracticeSubmissionID = practiceInfo.PracticeSubmissionID
 		//如果是第一次进入，就要保存练习开始时间
 		if err := saveBeginTimeForPractice(dmlCtx, tx, u); err != nil {
 			q.Err = err
@@ -536,8 +586,18 @@ func InitRespondent(ctx context.Context) {
 			return
 		}
 
+		//获取已经过去的时间
+		var t cmn.TPracticeSubmissions
+		elapsedSecondsSql := `SELECT elapsed_seconds FROM assessuser.t_practice_submissions WHERE id=$1`
+		q.Err = tx.QueryRow(dmlCtx, elapsedSecondsSql, u.PracticeSubmissionID).Scan(&t.ElapsedSeconds)
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
 		//更新最近一次进入练习的时间
-		q.Err = UpdateLastStartTime(ctx, info.PracticeSubmissionID, tx)
+		q.Err = UpdateLastStartTime(ctx, practiceInfo.PracticeSubmissionID, tx)
 		if q.Err != nil {
 			q.RespErr()
 			return
@@ -548,14 +608,16 @@ func InitRespondent(ctx context.Context) {
 			Info              practice_mgt.EnterPracticeInfo
 			QuestionGroupInfo map[int64]*cmn.TExamPaperGroup
 			Questions         map[int64][]*examPaper.ExamQuestion
+			ElapsedSeconds    int64
 		}
 
 		msg := &Msg{
-			Info:              *info,
+			Info:              *practiceInfo,
 			Questions:         questions,
 			QuestionGroupInfo: groupInfo,
+			ElapsedSeconds:    t.ElapsedSeconds.Int64,
 		}
-		data, err = cmn.MarshalJSON(&msg)
+		data, err = json.Marshal(&msg)
 		if err != nil {
 			q.Err = err
 			q.RespErr()
@@ -573,6 +635,12 @@ func InitRespondent(ctx context.Context) {
 		q.Err = err
 		z.Error(err.Error())
 		q.RespErr()
+		return
+	}
+	if forceErr == "close body err" {
+		return
+	}
+	if forceErr == "rollback-tx" {
 		return
 	}
 	q.Err = nil
@@ -594,7 +662,12 @@ func CheckExamStatus(ctx context.Context) {
 		q.RespErr()
 		return
 	}
-
+	//强制错误，用于使得难以触发的错误强制它报错
+	forceErr := ""
+	forceErr, ok := ctx.Value(ForceErr).(string)
+	if !ok {
+		forceErr = ""
+	}
 	r := q.R
 
 	//获取考生id
@@ -616,11 +689,21 @@ func CheckExamStatus(ctx context.Context) {
 	}
 	//获取学生id
 	studentId := q.SysUser.ID.Int64
+	if studentId <= 0 {
+		err := fmt.Errorf("studentId is invalid")
+		z.Error(err.Error())
+		q.Err = err
+		q.RespErr()
+		return
+	}
 
 	dmlCtx, cancel := context.WithTimeout(ctx, TIMEOUT)
 	defer cancel()
 	db := cmn.GetPgxConn()
 	tx, err := db.BeginTx(dmlCtx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead})
+	if forceErr == "begin-tx" {
+		err = errors.New("begin tx error")
+	}
 	if err != nil {
 		q.Err = err
 		z.Error(err.Error())
@@ -630,7 +713,10 @@ func CheckExamStatus(ctx context.Context) {
 	defer func() {
 		//如果不是tx done错误就返回给前端
 		q.Err = tx.Rollback(dmlCtx)
-		if q.Err != nil && !errors.Is(q.Err, sql.ErrTxDone) {
+		if forceErr == "rollback-tx" {
+			q.Err = pgx.ErrTxCommitRollback
+		}
+		if q.Err != nil && !errors.Is(q.Err, pgx.ErrTxClosed) {
 			z.Error(q.Err.Error())
 			q.RespErr()
 			return
@@ -645,6 +731,11 @@ func CheckExamStatus(ctx context.Context) {
 		return
 	}
 
+	//提前回滚使得commit失效
+	if forceErr == "commit-tx" {
+		tx.Rollback(dmlCtx)
+	}
+
 	if err := tx.Commit(dmlCtx); err != nil {
 		q.Err = err
 		z.Error(err.Error())
@@ -652,16 +743,22 @@ func CheckExamStatus(ctx context.Context) {
 		return
 	}
 
-	data, err := json.Marshal(result)
+	data, err := json.Marshal(&result)
+	if forceErr == "marshal-Err" {
+		err = errors.New("marshal-Err")
+	}
 	if err != nil {
 		z.Error(err.Error())
 		q.Err = err
 		q.RespErr()
 		return
 	}
-	q.Msg.Status = 0
-	q.Msg.Data = data
-	q.Resp()
+	if forceErr != "rollback-tx" {
+		q.Msg.Status = 0
+		q.Msg.Data = data
+		q.Resp()
+	}
+
 }
 
 // Submit 提交作答
@@ -729,8 +826,8 @@ func Submit(ctx context.Context) {
 	defer cancel()
 	switch u.Type {
 	case ExamType:
-		if u.ExamId <= 0 || u.ExamSessionId <= 0 {
-			q.Err = fmt.Errorf("当前是考试，请输入大于0的考试id大于0的考试场次id")
+		if u.ExamId <= 0 || u.ExamSessionId <= 0 || u.ExamineeID <= 0 {
+			q.Err = fmt.Errorf("当前是考试，请输入大于0的考试id、大于0的考试场次id、大于0的考生id")
 			z.Error(q.Err.Error())
 			q.RespErr()
 			return
@@ -775,12 +872,20 @@ func Submit(ctx context.Context) {
 			return
 		}
 
-		q.Msg.Msg = "success"
-		q.Msg.Status = 0
-		q.Resp()
+		markCtx, cancel := context.WithTimeout(ctx, TIMEOUT)
+		defer cancel()
+		q.Err = mark.AutoMark(markCtx, mark.QueryCondition{
+			ExamineeID:    u.ExamineeID,
+			ExamSessionID: u.ExamSessionId,
+		})
+		if q.Err != nil {
+			q.RespErr()
+			return
+		}
+
 	case PracticeType:
-		if u.PracticeSubmissionID <= 0 {
-			q.Err = fmt.Errorf("当前是练习，请输入大于0的PracticeSubmissionID")
+		if u.PracticeSubmissionID <= 0 || u.PracticeId <= 0 {
+			q.Err = fmt.Errorf("当前是练习，请输入大于0的PracticeSubmissionID以及大于0的PracticeId")
 			z.Error(q.Err.Error())
 			q.RespErr()
 			return
@@ -797,7 +902,7 @@ func Submit(ctx context.Context) {
 			return
 		}
 		defer func() {
-			if q.Err = tx.Rollback(ctx); q.Err != nil && !errors.Is(q.Err, pgx.ErrTxCommitRollback) {
+			if q.Err = tx.Rollback(ctx); q.Err != nil && !errors.Is(q.Err, pgx.ErrTxClosed) {
 				z.Error(q.Err.Error())
 				q.RespErr()
 				return
@@ -811,33 +916,34 @@ func Submit(ctx context.Context) {
 			return
 		}
 
-		//获取练习的批改模式
-		correctMode, err := getCorrectMode(ctx, u.PracticeSubmissionID, tx)
-		if err != nil {
-			q.Err = err
-			q.RespErr()
-			return
-		}
-
 		if err := tx.Commit(dmlCtx); err != nil {
 			z.Error(err.Error())
 			q.Err = err
 			q.RespErr()
 			return
 		}
-
-		go func(correctMode string) {
-			if correctMode != AiCorrectMode {
-				return
-			}
+		markCtx, cancel := context.WithTimeout(ctx, TIMEOUT)
+		defer cancel()
+		q.Err = mark.AutoMark(markCtx, mark.QueryCondition{
+			PracticeSubmissionID: u.PracticeSubmissionID,
+			PracticeID:           u.PracticeId,
+		})
+		if q.Err != nil {
+			q.RespErr()
+			return
+		}
+		go func() {
 			//TODO 对接ai批改接口
-		}(correctMode)
+		}()
 	default:
 		q.Err = fmt.Errorf("unknown student answer type: %s", u.Type)
 		z.Error(q.Err.Error())
 		q.RespErr()
 		return
 	}
+	q.Msg.Msg = "success"
+	q.Msg.Status = 0
+	q.Resp()
 }
 
 //--------------------封装一些给外部调用，或者常用的函数
@@ -979,15 +1085,6 @@ func checkExamCondition(ctx context.Context, examSession, studentID int64, tx pg
 
 // getActualEndTime 获取学生的当场考试的信息
 func getExamineeInfo(ctx context.Context, examSessionId, studentId int64, tx pgx.Tx) (cmn.TVExamineeInfo, error) {
-	if examSessionId <= 0 {
-
-		z.Error(ErrExamSessionIdInvalid.Error())
-		return cmn.TVExamineeInfo{}, ErrExamSessionIdInvalid
-	}
-	if studentId <= 0 {
-		z.Error(ErrStudentInvalid.Error())
-		return cmn.TVExamineeInfo{}, ErrStudentInvalid
-	}
 	sql := `SELECT id,
     actual_end_time,
        examinee_status,
@@ -1012,10 +1109,6 @@ func getExamineeInfo(ctx context.Context, examSessionId, studentId int64, tx pgx
 }
 
 func insertOrUpdateAnswer(ctx context.Context, req SaveOrUpdateStudentAnswerReq, tx pgx.Tx) (cmn.TStudentAnswers, error) {
-	//参数检测
-	if err := cmn.Validate(req); err != nil {
-		return cmn.TStudentAnswers{}, err
-	}
 	var sql string
 	if req.ExamineeID > 0 {
 		// 直接一条SQL搞定插入或更新，如果是禁止作答的状态，说明已经提交，不能改了
@@ -1179,9 +1272,9 @@ func submitExam(ctx context.Context, tx pgx.Tx, req SubmitReq) (int64, error) {
 
 func setAnswerCanNotUpdate(ctx context.Context, examineeId, userId int64, tx pgx.Tx) error {
 	//更新t_student_answer表所有考试记录的状态为02
-	updateSqlForAnswer := `UPDATE t_student_answers SET status=$1,updated_by=$2,update_time=$3 WHERE examinee_id=$4`
+	updateSqlForAnswer := `UPDATE t_student_answers SET status=$1,updated_by=$2,update_time=(EXTRACT(EPOCH FROM NOW()) * 1000)::bigint WHERE examinee_id=$3`
 
-	_, err := tx.Exec(ctx, updateSqlForAnswer, QuestionCanNotAnswer, &userId, time.Now(), &examineeId)
+	_, err := tx.Exec(ctx, updateSqlForAnswer, QuestionCanNotAnswer, &userId, &examineeId)
 	if err != nil {
 		z.Error("update answer status err", zap.Error(err))
 		return err
@@ -1191,9 +1284,9 @@ func setAnswerCanNotUpdate(ctx context.Context, examineeId, userId int64, tx pgx
 
 func submitPractice(ctx context.Context, tx pgx.Tx, req SubmitReq) error {
 	//只有状态为正常作答练习以及结束时间为空的，才能进行更新
-	submitSql := `update t_practice_submissions set end_time = $1,status=$2 where id = $3 AND status=$4 AND end_time IS NULL`
+	submitSql := `update t_practice_submissions set end_time = (EXTRACT(EPOCH FROM NOW()) * 1000)::bigint,status=$1 where id = $2 AND status=$3 AND end_time IS NULL RETURNING id`
 	var updateId null.Int
-	err := tx.QueryRow(ctx, submitSql, time.Now().UTC(), practiceSubmitted, req.PracticeSubmissionID, NormalStatus).Scan(&updateId)
+	err := tx.QueryRow(ctx, submitSql, practiceSubmitted, req.PracticeSubmissionID, NormalStatus).Scan(&updateId)
 	if err != nil {
 		z.Error("submitPractice error", zap.Error(err))
 		return err
@@ -1202,36 +1295,10 @@ func submitPractice(ctx context.Context, tx pgx.Tx, req SubmitReq) error {
 	return nil
 }
 
-// getCorrectMode 获取练习的批改模式
-func getCorrectMode(ctx context.Context, practiceSubmissionId int64, tx pgx.Tx) (string, error) {
-	selectSql := `SELECT 
-  p.correct_mode
-FROM 
-  t_practice_submissions ps
-JOIN 
-  t_practice p ON ps.practice_id = p.id
-WHERE 
-  ps.id = $1;`
-	var correctMode null.String
-
-	err := tx.QueryRow(ctx, selectSql, practiceSubmissionId).Scan(&correctMode)
-	if err != nil {
-		z.Error("getCorrectMode error", zap.Error(err))
-		return "", err
-	}
-	if !correctMode.Valid {
-		err := fmt.Errorf("correct_mode of practiceSubmissionId:%d not exist", practiceSubmissionId)
-		z.Error(err.Error())
-		return "", err
-	}
-	return correctMode.String, nil
-
-}
-
 func UpdateLastStartTime(ctx context.Context, practiceSubmissionId int64, tx pgx.Tx) error {
-	Sql := `UPDATE SET last_start_time = $1 WHERE id = $2 `
+	Sql := `UPDATE t_practice_submissions SET last_start_time = (EXTRACT(EPOCH FROM NOW()) * 1000)::bigint WHERE id = $1 `
 
-	_, err := tx.Exec(ctx, Sql, time.Now().UnixMilli(), practiceSubmissionId)
+	_, err := tx.Exec(ctx, Sql, practiceSubmissionId)
 	if err != nil {
 		z.Error("update last start Time error:" + err.Error())
 		return err
@@ -1242,14 +1309,7 @@ func UpdateLastStartTime(ctx context.Context, practiceSubmissionId int64, tx pgx
 
 // saveBeginTimeForPractice 练习保存开始时间调用，在创建练习试卷的时候调用
 func saveBeginTimeForPractice(ctx context.Context, tx pgx.Tx, req InitRespondentReq) error {
-	if err := cmn.Validate(req); err != nil {
-		return err
-	}
-	if req.PracticeSubmissionID <= 0 {
-		err := fmt.Errorf("PracticeSubmissionID 需要大于0")
-		z.Error(err.Error())
-		return err
-	}
+
 	//查看是否已经保存过开始时间，有就直接返回不报错
 	checkSql := `select start_time from t_practice_submissions where id=$1`
 	var start_time null.Int
@@ -1263,7 +1323,7 @@ func saveBeginTimeForPractice(ctx context.Context, tx pgx.Tx, req InitRespondent
 	}
 
 	// 开始保存开始时间
-	updateSql := `UPDATE t_practice_submissions SET start_time = $1 WHERE id = $2 AND status = $3`
+	updateSql := `UPDATE t_practice_submissions SET start_time =(EXTRACT(EPOCH FROM NOW()) * 1000)::bigint WHERE id = $1 AND status = $2`
 	_, err = tx.Exec(ctx, updateSql, req.PracticeSubmissionID, NormalStatus)
 	if err != nil {
 		z.Error("updatePracticeIfSaveBeginTime error", zap.Error(err))
