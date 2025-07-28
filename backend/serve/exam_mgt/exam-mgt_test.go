@@ -19,10 +19,6 @@ import (
 	"w2w.io/null"
 )
 
-func createMockContext(method, path string, queryParams url.Values, forceError string, userID int64) context.Context {
-	return createMockContextWithRole(method, path, queryParams, forceError, userID, 2) // 默认教师角色
-}
-
 // createMockContextWithRole 创建带用户角色的模拟上下文
 func createMockContextWithRole(method, path string, queryParams url.Values, forceError string, userID, userRole int64) context.Context {
 	// 创建mock HTTP请求
@@ -4151,3 +4147,262 @@ func TestExaminee(t *testing.T) {
 		})
 	}
 }
+
+// func TestExamLock(t *testing.T) {
+// 	// 确保logger和数据库连接已初始化
+// 	cmn.ConfigureForTest()
+
+// 	// 准备测试数据
+// 	ctx := context.Background()
+// 	conn := cmn.GetPgxConn()
+
+// 	// 测试数据ID
+// 	testExamID := int64(999001)
+// 	testUserID := int64(888001)
+// 	testCreatorID := int64(888002)
+
+// 	// 清理函数
+// 	cleanup := func() {
+// 		// 清理考试锁
+// 		cmn.ReleaseLock(ctx, testExamID, testUserID, REDIS_LOCK_PREFIX)
+// 		cmn.ReleaseLock(ctx, testExamID, testCreatorID, REDIS_LOCK_PREFIX)
+
+// 		// 清理测试数据
+// 		conn.Exec(ctx, "DELETE FROM t_exam_info WHERE id = $1", testExamID)
+// 	}
+// 	defer cleanup()
+
+// 	// 插入测试考试数据
+// 	_, err := conn.Exec(ctx, `
+//         INSERT INTO t_exam_info (
+//             id, name, rules, type, mode, creator, create_time,
+//             updated_by, update_time, status
+//         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+// 		testExamID, "测试考试锁", "测试规则", "00", "00",
+// 		testCreatorID, time.Now().UnixMilli(), testCreatorID,
+// 		time.Now().UnixMilli(), "00")
+// 	if err != nil {
+// 		t.Fatalf("插入测试考试失败: %v", err)
+// 	}
+
+// 	tests := []struct {
+// 		name          string
+// 		method        string
+// 		examID        string
+// 		userID        int64
+// 		userRole      int64
+// 		setupMock     func(*cmn.ServiceCtx)
+// 		expectedError bool
+// 		checkResult   func(*testing.T, *cmn.ServiceCtx)
+// 	}{
+// 		{
+// 			name:     "GET - 成功获取考试锁 - 管理员",
+// 			method:   "GET",
+// 			examID:   strconv.FormatInt(testExamID, 10),
+// 			userID:   testUserID,
+// 			userRole: 3, // 管理员
+// 			setupMock: func(serviceCtx *cmn.ServiceCtx) {
+// 				// 不需要特殊设置
+// 			},
+// 			expectedError: false,
+// 			checkResult: func(t *testing.T, serviceCtx *cmn.ServiceCtx) {
+// 				if serviceCtx.Msg.Msg != "成功获取考试锁" {
+// 					t.Errorf("期望消息 '成功获取考试锁'，但得到 '%s'", serviceCtx.Msg.Msg)
+// 				}
+// 			},
+// 		},
+// 		{
+// 			name:     "GET - 成功获取考试锁 - 考试创建者",
+// 			method:   "GET",
+// 			examID:   strconv.FormatInt(testExamID, 10),
+// 			userID:   testCreatorID,
+// 			userRole: 2, // 教师
+// 			setupMock: func(serviceCtx *cmn.ServiceCtx) {
+// 				// 先释放之前的锁
+// 				cmn.ReleaseLock(ctx, testExamID, testUserID, REDIS_LOCK_PREFIX)
+// 			},
+// 			expectedError: false,
+// 			checkResult: func(t *testing.T, serviceCtx *cmn.ServiceCtx) {
+// 				if serviceCtx.Msg.Msg != "成功获取考试锁" {
+// 					t.Errorf("期望消息 '成功获取考试锁'，但得到 '%s'", serviceCtx.Msg.Msg)
+// 				}
+// 			},
+// 		},
+// 		{
+// 			name:     "GET - 锁已被占用",
+// 			method:   "GET",
+// 			examID:   strconv.FormatInt(testExamID, 10),
+// 			userID:   testUserID,
+// 			userRole: 3,
+// 			setupMock: func(serviceCtx *cmn.ServiceCtx) {
+// 				// 预先获取锁
+// 				cmn.TryLock(ctx, testExamID, testCreatorID, REDIS_LOCK_PREFIX, 5*time.Minute)
+// 			},
+// 			expectedError: true,
+// 		},
+// 		{
+// 			name:     "GET - 无效考试ID",
+// 			method:   "GET",
+// 			examID:   "invalid",
+// 			userID:   testUserID,
+// 			userRole: 3,
+// 			setupMock: func(serviceCtx *cmn.ServiceCtx) {
+// 				// 清理锁
+// 				cmn.ReleaseLock(ctx, testExamID, testCreatorID, REDIS_LOCK_PREFIX)
+// 			},
+// 			expectedError: true,
+// 		},
+// 		{
+// 			name:          "GET - 考试ID为0",
+// 			method:        "GET",
+// 			examID:        "0",
+// 			userID:        testUserID,
+// 			userRole:      3,
+// 			setupMock:     func(serviceCtx *cmn.ServiceCtx) {},
+// 			expectedError: true,
+// 		},
+// 		{
+// 			name:          "GET - 无效用户ID",
+// 			method:        "GET",
+// 			examID:        strconv.FormatInt(testExamID, 10),
+// 			userID:        0,
+// 			userRole:      3,
+// 			setupMock:     func(serviceCtx *cmn.ServiceCtx) {},
+// 			expectedError: true,
+// 		},
+// 		{
+// 			name:          "GET - 无效用户角色",
+// 			method:        "GET",
+// 			examID:        strconv.FormatInt(testExamID, 10),
+// 			userID:        testUserID,
+// 			userRole:      0,
+// 			setupMock:     func(serviceCtx *cmn.ServiceCtx) {},
+// 			expectedError: true,
+// 		},
+// 		{
+// 			name:          "GET - 用户无权限",
+// 			method:        "GET",
+// 			examID:        strconv.FormatInt(testExamID, 10),
+// 			userID:        testUserID,
+// 			userRole:      2, // 教师但不是创建者
+// 			setupMock:     func(serviceCtx *cmn.ServiceCtx) {},
+// 			expectedError: true,
+// 		},
+// 		{
+// 			name:     "PUT - 成功刷新考试锁",
+// 			method:   "PUT",
+// 			examID:   strconv.FormatInt(testExamID, 10),
+// 			userID:   testCreatorID,
+// 			userRole: 2,
+// 			setupMock: func(serviceCtx *cmn.ServiceCtx) {
+// 				// 先获取锁
+// 				cmn.TryLock(ctx, testExamID, testCreatorID, REDIS_LOCK_PREFIX, 5*time.Minute)
+// 			},
+// 			expectedError: false,
+// 			checkResult: func(t *testing.T, serviceCtx *cmn.ServiceCtx) {
+// 				if serviceCtx.Msg.Msg != "成功刷新考试锁" {
+// 					t.Errorf("期望消息 '成功刷新考试锁'，但得到 '%s'", serviceCtx.Msg.Msg)
+// 				}
+// 			},
+// 		},
+// 		{
+// 			name:     "PUT - 刷新不存在的锁",
+// 			method:   "PUT",
+// 			examID:   strconv.FormatInt(testExamID, 10),
+// 			userID:   testUserID,
+// 			userRole: 3,
+// 			setupMock: func(serviceCtx *cmn.ServiceCtx) {
+// 				// 确保没有锁
+// 				cmn.ReleaseLock(ctx, testExamID, testCreatorID, REDIS_LOCK_PREFIX)
+// 				cmn.ReleaseLock(ctx, testExamID, testUserID, REDIS_LOCK_PREFIX)
+// 			},
+// 			expectedError: true, // RefreshLock 如果锁不存在会返回错误
+// 		},
+// 		{
+// 			name:     "DELETE - 成功释放考试锁",
+// 			method:   "DELETE",
+// 			examID:   strconv.FormatInt(testExamID, 10),
+// 			userID:   testCreatorID,
+// 			userRole: 2,
+// 			setupMock: func(serviceCtx *cmn.ServiceCtx) {
+// 				// 先获取锁
+// 				cmn.TryLock(ctx, testExamID, testCreatorID, REDIS_LOCK_PREFIX, 5*time.Minute)
+// 			},
+// 			expectedError: false,
+// 			checkResult: func(t *testing.T, serviceCtx *cmn.ServiceCtx) {
+// 				if serviceCtx.Msg.Msg != "成功清除考试锁" {
+// 					t.Errorf("期望消息 '成功清除考试锁'，但得到 '%s'", serviceCtx.Msg.Msg)
+// 				}
+// 			},
+// 		},
+// 		{
+// 			name:     "DELETE - 释放不存在的锁",
+// 			method:   "DELETE",
+// 			examID:   strconv.FormatInt(testExamID, 10),
+// 			userID:   testUserID,
+// 			userRole: 3,
+// 			setupMock: func(serviceCtx *cmn.ServiceCtx) {
+// 				// 确保没有锁
+// 				cmn.ReleaseLock(ctx, testExamID, testCreatorID, REDIS_LOCK_PREFIX)
+// 				cmn.ReleaseLock(ctx, testExamID, testUserID, REDIS_LOCK_PREFIX)
+// 			},
+// 			expectedError: false,
+// 			checkResult: func(t *testing.T, serviceCtx *cmn.ServiceCtx) {
+// 				if serviceCtx.Msg.Msg != "成功清除考试锁" {
+// 					t.Errorf("期望消息 '成功清除考试锁'，但得到 '%s'", serviceCtx.Msg.Msg)
+// 				}
+// 			},
+// 		},
+// 		{
+// 			name:          "POST - 不支持的方法",
+// 			method:        "POST",
+// 			examID:        strconv.FormatInt(testExamID, 10),
+// 			userID:        testUserID,
+// 			userRole:      3,
+// 			setupMock:     func(serviceCtx *cmn.ServiceCtx) {},
+// 			expectedError: true,
+// 		},
+// 	}
+
+// 	for _, tt := range tests {
+// 		t.Run(tt.name, func(t *testing.T) {
+// 			// 构建查询参数
+// 			queryParams := url.Values{}
+// 			queryParams.Set("exam_id", tt.examID)
+
+// 			// 创建模拟上下文
+// 			ctx := createMockContextWithRole(tt.method, "/api/exam/lock", queryParams, "", tt.userID, tt.userRole)
+// 			serviceCtx := cmn.GetCtxValue(ctx)
+
+// 			// 执行设置函数
+// 			if tt.setupMock != nil {
+// 				tt.setupMock(serviceCtx)
+// 			}
+
+// 			// 调用被测试的函数
+// 			examLock(ctx)
+
+// 			// 获取ServiceCtx以检查结果
+// 			serviceCtx = cmn.GetCtxValue(ctx)
+
+// 			if tt.expectedError {
+// 				// 期望有错误
+// 				if serviceCtx.Err == nil {
+// 					t.Errorf("examLock() 期望返回错误，但没有错误")
+// 					return
+// 				}
+// 			} else {
+// 				// 期望成功
+// 				if serviceCtx.Err != nil {
+// 					t.Errorf("examLock() 期望成功，但返回错误: %v", serviceCtx.Err)
+// 					return
+// 				}
+
+// 				// 使用自定义检查函数
+// 				if tt.checkResult != nil {
+// 					tt.checkResult(t, serviceCtx)
+// 				}
+// 			}
+// 		})
+// 	}
+// }
