@@ -213,13 +213,15 @@ func initTestData() {
 	}
 	args = append(args, tempArgs)
 
-	insertMarkInfoSQL := `INSERT INTO t_mark_info(id, exam_session_id, mark_teacher_id, creator, status) VALUES($1, $2, $3, $4, $5)`
+	insertMarkInfoSQL := `INSERT INTO t_mark_info(id, exam_session_id, practice_id, mark_teacher_id, creator, status) VALUES($1, $2, $3, $4, $5, $6)`
 	queries = append(queries, insertMarkInfoSQL)
 	tempArgs = [][]interface{}{
-		{201, 101, 1101, 1101, "00"},
-		{202, 102, 1101, 1101, "00"},
-		{203, 103, 1101, 1101, "00"},
-		{204, 108, 1101, 1101, "00"}, // 测试软删除接口
+		{201, 101, null.NewInt(0, false), 1101, 1101, "00"},
+		{202, 102, null.NewInt(0, false), 1101, 1101, "00"},
+		{203, 103, null.NewInt(0, false), 1101, 1101, "00"},
+		{204, 108, null.NewInt(0, false), 1101, 1101, "00"}, // 测试软删除接口
+		{205, null.NewInt(0, false), 21, 1101, 1101, "00"},
+		{206, 106, null.NewInt(0, false), null.NewInt(0, false), 1101, "00"},
 	}
 	args = append(args, tempArgs)
 
@@ -283,7 +285,7 @@ func cleanTestData() {
 	args = append(args, []interface{}{1101, 1102, 1103, 1201, 1202, 1203})
 
 	queries = append(queries, `DELETE FROM t_mark_info WHERE id = $1`)
-	args = append(args, []interface{}{201, 202, 203, 204})
+	args = append(args, []interface{}{201, 202, 203, 204, 205, 206})
 
 	queries = append(queries, `DELETE FROM t_exam_paper WHERE id = $1`)
 	args = append(args, []interface{}{101, 102, 103, 104, 105, 106, 124, 125, 126})
@@ -357,7 +359,7 @@ func cleanTestDataWithID(ids [][]interface{}) {
 	args = append(args, []interface{}{1101, 1102, 1103, 1201, 1202, 1203})
 
 	queries = append(queries, `DELETE FROM t_mark_info WHERE id = $1`)
-	args = append(args, []interface{}{201, 202, 203, 204})
+	args = append(args, []interface{}{201, 202, 203, 204, 205})
 
 	queries = append(queries, `DELETE FROM t_exam_paper WHERE id = $1`)
 	args = append(args, []interface{}{101, 102, 103, 104, 105, 106, 124, 125, 126})
@@ -962,11 +964,29 @@ func TestMarkObjectiveQuestionAnswers(t *testing.T) {
 			},
 		},
 		{
+			name:      "success (批改单个考试学生)",
+			teacherID: testedTeacherID,
+			requestParams: QueryCondition{
+				ExamSessionID: 101,
+				ExamineeID:    2201,
+				TeacherID:     testedTeacherID,
+			},
+		},
+		{
 			name:      "success-practice",
 			teacherID: testedTeacherID,
 			requestParams: QueryCondition{
 				PracticeID: 21,
 				TeacherID:  testedTeacherID,
+			},
+		},
+		{
+			name:      "success-practice (批改单个练习学生)",
+			teacherID: testedTeacherID,
+			requestParams: QueryCondition{
+				PracticeID:           21,
+				PracticeSubmissionID: 2401,
+				TeacherID:            testedTeacherID,
 			},
 		},
 		{
@@ -1186,6 +1206,70 @@ func TestSaveMarkingResults(t *testing.T) {
 					t.Errorf("expected success, but got error: %v", q.Err.Error())
 				} else {
 					assert.Contains(t, q.Msg.Msg, tt.expectedErrStr)
+				}
+			} else if tt.expectedErrStr != "" {
+				t.Errorf("expected error: %s, but got success", tt.expectedErrStr)
+			}
+		})
+	}
+}
+
+func TestAutoMark(t *testing.T) {
+	cleanTestData()
+	initTestData()
+	defer cleanTestData()
+
+	tests := []struct {
+		name           string
+		cond           QueryCondition
+		expectedErrStr string
+	}{
+		{
+			name: "success",
+			cond: QueryCondition{
+				ExamSessionID: 101,
+				ExamineeID:    2201,
+			},
+		},
+		{
+			name: "success-practice",
+			cond: QueryCondition{
+				PracticeID:           21,
+				PracticeSubmissionID: 2401,
+			},
+		},
+		{
+			name:           "invalid params(exam_session_id or practice_submission_id < 0)",
+			expectedErrStr: "invalid params: exam session id or practice id must be greater than zero",
+		},
+		{
+			name: "invalid params(both exam_session_id and practice_submission_id > 0)",
+			cond: QueryCondition{
+				ExamSessionID:        101,
+				PracticeID:           21,
+				PracticeSubmissionID: 2401,
+				ExamineeID:           2201,
+			},
+			expectedErrStr: "invalid params: exam session id && practice id cannot be both greater than zero",
+		},
+		{
+			name: "no marker info found",
+			cond: QueryCondition{
+				ExamSessionID: 104,
+			},
+			expectedErrStr: "no marker info found",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := context.Background()
+			err := AutoMark(ctx, tt.cond)
+			if err != nil {
+				if tt.expectedErrStr == "" {
+					t.Errorf("expected success, but got error: %v", err.Error())
+				} else {
+					assert.Contains(t, err.Error(), tt.expectedErrStr)
 				}
 			} else if tt.expectedErrStr != "" {
 				t.Errorf("expected error: %s, but got success", tt.expectedErrStr)
