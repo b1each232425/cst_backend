@@ -211,7 +211,7 @@ func StudentAnswer(ctx context.Context) {
 			return
 		}
 
-		//studentId := q.SysUser.ID
+		studentId := q.SysUser.ID
 
 		//获取需要保存到数据库的数据
 		var u SaveOrUpdateStudentAnswerReq
@@ -222,7 +222,7 @@ func StudentAnswer(ctx context.Context) {
 			return
 		}
 
-		u.StudentId = int64(1578)
+		u.StudentId = studentId.Int64
 
 		//参数校验
 		q.Err = cmn.Validate(u)
@@ -436,14 +436,14 @@ func InitRespondent(ctx context.Context) {
 		return
 	}
 
-	//studentId := q.SysUser.ID.Int64
-	//if studentId <= 0 {
-	//	q.Err = errors.New("student id is smaller than 0 or equal to 0")
-	//	z.Error(q.Err.Error())
-	//	q.RespErr()
-	//	return
-	//}
-	u.StudentId = 1582
+	studentId := q.SysUser.ID.Int64
+	if studentId <= 0 {
+		q.Err = errors.New("student id is smaller than 0 or equal to 0")
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+	u.StudentId = studentId
 
 	//参数校验
 	q.Err = cmn.Validate(u)
@@ -813,8 +813,8 @@ func Submit(ctx context.Context) {
 		return
 	}
 
-	//studentId := q.SysUser.ID.Int64
-	u.StudentId = 1578
+	studentId := q.SysUser.ID.Int64
+	u.StudentId = studentId
 
 	//参数校验
 	q.Err = cmn.Validate(u)
