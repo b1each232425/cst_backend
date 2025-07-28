@@ -14,6 +14,7 @@ import (
 	"w2w.io/cmn"
 	"w2w.io/null"
 	"w2w.io/serve/examPaper"
+	"w2w.io/serve/mark"
 )
 
 // UpsertPractice 新增/修改练习信息 根据用户传输的信息动态构建SQL语句
@@ -72,8 +73,8 @@ func UpdatePractice(ctx context.Context, p *cmn.TPractice, ps []int64, uid int64
 	args = append(args, p.ID)
 	// 更新练习本身与更新练习学生是两个事情，可以不同步进行
 	query := fmt.Sprintf("UPDATE %s SET %s WHERE id = $%d", tableName, strings.Join(clauses, ", "), idx)
-	z.Sugar().Infof("update sql:%v", query)
-	z.Sugar().Infof("update args:%v", args)
+	z.Sugar().Debugf("update sql:%v", query)
+	z.Sugar().Debugf("update args:%v", args)
 	sqlxDB := cmn.GetDbConn()
 	_, err := sqlxDB.ExecContext(ctx, query, args...)
 	if err != nil {
@@ -482,7 +483,7 @@ func ListPracticeStudentIds(ctx context.Context, pid int64) ([]int64, error) {
 	return ids, nil
 }
 
-// OperatePracticeStatus 教师及以上权限操作练习发布状态 控制学生能否作答、能否在列表中查看到该练习
+// OperatePracticeStatus 教师及以上权限操作练习发布状态 控制学生能否作答、能否在列表中查看到该练习 并配置批改信息
 /*
 关键参数：
 	pid 练习ID
@@ -558,6 +559,19 @@ func OperatePracticeStatus(ctx context.Context, pid int64, status string, uid in
 		if err != nil {
 			return err
 		}
+
+		// 生成批改配置信息
+		req := mark.HandleMarkerInfoReq{
+			PracticeID: p.ID.Int64,
+			MarkMode:   p.CorrectMode.String,
+			Markers:    []int64{uid},
+			Status:     "00",
+		}
+
+		err = mark.HandleMarkerInfo(ctx, &tx, uid, req)
+		if err != nil {
+			return err
+		}
 		return nil
 	} else if status == PracticeStatus.PendingRelease || status == PracticeStatus.Deleted {
 		if p.Status.String != PracticeStatus.Released {
@@ -570,6 +584,17 @@ func OperatePracticeStatus(ctx context.Context, pid int64, status string, uid in
 		if err != nil {
 			err = fmt.Errorf("OperatePracticeStatus to pendingRelease failed:%v", err)
 			z.Error(err.Error())
+			return err
+		}
+
+		// 清除批改配置信息
+		req := mark.HandleMarkerInfoReq{
+			Status:      "02",
+			PracticeIDs: []int64{p.ID.Int64},
+		}
+
+		err = mark.HandleMarkerInfo(ctx, &tx, uid, req)
+		if err != nil {
 			return err
 		}
 		return nil
@@ -820,10 +845,12 @@ func EnterPracticeGetPaperDetails(ctx context.Context, tx pgx.Tx, pid int64, uid
 		z.Error(err.Error())
 		return nil, nil, nil, err
 	}
+
+	z.Sugar().Debugf("打印输出一下查询出来的数据:%v,%v,%v", ps.AttemptCount, ps.LatestSubmittedID, ps.LatestUnsubmittedID)
 	if ps.LatestUnsubmittedID.Int64 == 0 && ps.LatestSubmittedID.Int64 == 0 {
 		// 如果两个值均等于0的话，那就没有过练习记录，
 		submissionStatus = StudentSubmissionStatus.NeverAnswer
-	} else if ps.LatestUnsubmittedID.Int64 != 0 && ps.LatestSubmittedID.Int64 > 0 {
+	} else if ps.LatestUnsubmittedID.Int64 != 0 {
 		// 如果上一次练习提交ID不等于0且上一次记录已提交 那就有未提交的练习记录，
 		submissionStatus = StudentSubmissionStatus.UnSubmitted
 	} else {
@@ -919,8 +946,6 @@ func EnterPracticeGetPaperDetails(ctx context.Context, tx pgx.Tx, pid int64, uid
 			return nil, nil, nil, err
 		}
 	}
-
-	// 这里要提交了
 
 	// 获取以上三种情况之后，根据参数传入加载此时学生作答应该查看的试卷
 	p, pg, pq, err := examPaper.LoadExamPaperDetailByUserId(ctx, tx, ps.ExamPaperID.Int64, pSubmissionID, 0, withStudentAnswer, false, false)
