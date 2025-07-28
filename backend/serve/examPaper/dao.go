@@ -3,7 +3,7 @@
  * @Description: 考卷-答卷数据库层
  * @Date: 2025-07-21 13:14:34
  * @LastEditors: zdl <1311866870@qq.com>
- * @LastEditTime: 2025-07-28 12:11:32
+ * @LastEditTime: 2025-07-28 14:55:19
  */
 package examPaper
 
@@ -492,7 +492,7 @@ func GenerateExamPaper(ctx context.Context, tx pgx.Tx, category string, paperId,
 
 			tq := &cmn.TExamPaperQuestion{}
 			tq.Score = q.Score
-			tq.Type.String = q.Type
+			tq.Type = null.StringFrom(q.Type)
 			tq.Content = q.Content
 			tq.Options = q.Options
 			tq.Answers = q.Answers

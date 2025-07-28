@@ -665,7 +665,7 @@ func getPracticePaper(ctx context.Context) {
 		}
 	}()
 
-	_, pg, pq, err := examPaper.LoadExamPaperDetailByUserId(ctx, tx, eid, pid, 0, false, true, false)
+	_, pg, pq, err := examPaper.LoadExamPaperDetailByUserId(ctx, tx, eid, pid, 0, true, true, false)
 	if err != nil {
 		q.Err = err
 		q.RespErr()
