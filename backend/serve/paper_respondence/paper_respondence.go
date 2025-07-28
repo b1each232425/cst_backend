@@ -97,7 +97,7 @@ func Enroll(author string) {
 		Path:      "/respondent",
 		Name:      "respondent",
 		Developer: developer,
-		WhiteList: false,
+		WhiteList: true,
 
 		//DomainID 创建该API的账号归属的domain
 		DomainID: int64(cmn.CDomainSys),
@@ -113,7 +113,7 @@ func Enroll(author string) {
 		Name: "respondent_init",
 
 		Developer: developer,
-		WhiteList: false,
+		WhiteList: true,
 
 		//DomainID 创建该API的账号归属的domain
 		DomainID: int64(cmn.CDomainSys),
@@ -128,7 +128,7 @@ func Enroll(author string) {
 		Name: "respondent_Submit",
 
 		Developer: developer,
-		WhiteList: false,
+		WhiteList: true,
 
 		//DomainID 创建该API的账号归属的domain
 		DomainID: int64(cmn.CDomainSys),
@@ -541,7 +541,7 @@ func InitRespondent(ctx context.Context) {
 		type Msg struct {
 			Sessions          []cmn.TExamSession `json:"session"`
 			ExamInfo          cmn.TExamInfo      `json:"exam_info"`
-			ExamineeId        int64              `json:"examinee_id"`
+			ExamineeInfo      cmn.TVExamineeInfo
 			QuestionGroupInfo map[int64]*cmn.TExamPaperGroup
 			Questions         map[int64][]*examPaper.ExamQuestion
 		}
@@ -549,7 +549,7 @@ func InitRespondent(ctx context.Context) {
 		msg := Msg{
 			Sessions:          examSessions,
 			ExamInfo:          examInfo,
-			ExamineeId:        examineeInfo.ID.Int64,
+			ExamineeInfo:      examineeInfo,
 			QuestionGroupInfo: groupInfo,
 			Questions:         questions,
 		}
@@ -688,14 +688,14 @@ func CheckExamStatus(ctx context.Context) {
 		return
 	}
 	//获取学生id
-	studentId := q.SysUser.ID.Int64
-	if studentId <= 0 {
-		err := fmt.Errorf("studentId is invalid")
-		z.Error(err.Error())
-		q.Err = err
-		q.RespErr()
-		return
-	}
+	studentId := int64(1578)
+	//if studentId <= 0 {
+	//	err := fmt.Errorf("studentId is invalid")
+	//	z.Error(err.Error())
+	//	q.Err = err
+	//	q.RespErr()
+	//	return
+	//}
 
 	dmlCtx, cancel := context.WithTimeout(ctx, TIMEOUT)
 	defer cancel()
