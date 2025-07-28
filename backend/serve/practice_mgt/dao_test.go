@@ -3,7 +3,7 @@
  * @Description: 练习管理数据库层函数逻辑测试
  * @Date: 2025-07-24 14:51:50
  * @LastEditors: zdl <1311866870@qq.com>
- * @LastEditTime: 2025-07-26 20:49:18
+ * @LastEditTime: 2025-07-28 10:24:04
  */
 package practice_mgt
 
@@ -790,10 +790,119 @@ func TestUpsertPracticeStudent(t *testing.T) {
 }
 
 // 测试学生权限获取练习作答列表
-func TestListPracticeS(t *testing.T) {}
+func TestListPracticeS(t *testing.T) {
+	// 确保logger已初始化
+	if z == nil {
+		cmn.ConfigureForTest()
+	}
+
+}
 
 // 测试教师及以上权限获取练习作答列表
-func TestListPracticeT(t *testing.T) {}
+func TestListPracticeT(t *testing.T) {
+	// 确保logger已初始化
+	if z == nil {
+		cmn.ConfigureForTest()
+	}
+
+	// 这里就可以插入数据的方式去进行测试了
+	conn := cmn.GetPgxConn()
+
+	var p1, p2 int64
+
+	err := conn.QueryRow(ctx, `INSERT INTO assessuser.t_practice (name,correct_mode,creator,create_time, update_time, addi,allowed_attempts,type,paper_id)
+	VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`, "测试练习名称1", MarkMode.AI, 100, now, now, nil, 5, PracticeType.Classical, 62).Scan(&p1)
+	if err != nil {
+		t.Fatalf("创建测试练习p1失败: %v", err)
+	}
+	err = conn.QueryRow(ctx, `INSERT INTO assessuser.t_practice (name,correct_mode,creator,create_time, update_time, addi,allowed_attempts,type,paper_id)
+	VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`, "测试练习名称2", MarkMode.AI, 100, now, now, nil, 10, PracticeType.Classical, 62).Scan(&p2)
+	if err != nil {
+		t.Fatalf("创建测试练习p2失败: %v", err)
+	}
+
+	testStudents := []int64{101, 102, 103}
+	// 这里还需要插入学生
+	err = UpsertPracticeStudent(ctx, p1, 1, testStudents)
+	require.NoError(t, err)
+	err = UpsertPracticeStudent(ctx, p2, 1, testStudents)
+	require.NoError(t, err)
+
+	// 此处的分页也是要测试
+	tests := []struct {
+		name          string
+		pName         string
+		Type          string
+		status        string
+		page          int
+		pageSize      int
+		expectedError error
+	}{
+		{
+			name:          "正常1 不进行筛选查询",
+			pName:         "",
+			Type:          "",
+			status:        "",
+			page:          1,
+			pageSize:      10,
+			expectedError: nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			pa, total, err := ListPracticeT(ctx, tt.pName, tt.Type, tt.status, []string{"create_time desc"}, tt.page, tt.pageSize, 100)
+			if tt.expectedError == nil {
+				// 这里返回的是一个数组啊
+				for _, tp := range pa {
+					// 这里取出来的每一个p都是一个单独的练习实体（里面就会有练习本身+练习学生名单数量）
+					p, ok := tp["practice"].(cmn.TPractice)
+					if !ok {
+						t.Errorf("practice 字段类型断言失败")
+					}
+					t.Logf("打印输出练习本身:%v", p)
+					t.Logf("打印输出练习学生数量:%v", tp["student_count"])
+					if tt.status == "" && p.Status.String != PracticeStatus.PendingRelease {
+						t.Errorf("无筛选查询 错误练习发布状态")
+					}
+					if tt.status != "" && p.Status.String != tt.status {
+						t.Errorf("有发布状态筛选查询 错误练习发布状态搜索：期望%v,实际:%v", tt.status, p.Status.String)
+					}
+					if tt.name == "" && !containsString(p.Name.String, "测试练习") {
+						t.Errorf("无筛选查询 错误练习名称")
+					}
+					if tt.name != "" && !containsString(p.Name.String, tt.pName) {
+						t.Errorf("有练习名称筛选查询 错误练习名称模糊搜索：期望包含%v,实际没有", tt.pName)
+					}
+					if tt.Type == "" && p.Type.String != PracticeType.Classical {
+						t.Errorf("无筛选查询 错误练习类型")
+					}
+					if tt.Type != "" && p.Type.String != tt.Type {
+						t.Errorf("有练习类型筛选查询 错误练习类型搜索：期望%v,实际:%v", tt.Type, p.Type.String)
+					}
+					if tp["student_count"].(int64) != 3 {
+						t.Errorf("统计练习学生数量错误")
+					}
+				}
+				if total != 2 {
+					t.Errorf("统计练习列表个数错误")
+				}
+
+			} else {
+				if err != nil {
+					t.Errorf("%v expected error nil but got %v", tt.name, err)
+				}
+			}
+		})
+
+		t.Cleanup(func() {
+			_, _ = conn.Exec(ctx, "DELETE FROM assessuser.t_practice_student WHERE practice_id = $1", p1)
+			_, _ = conn.Exec(ctx, "DELETE FROM assessuser.t_practice_student WHERE practice_id = $1", p2)
+			_, _ = conn.Exec(ctx, "DELETE FROM assessuser.t_practice WHERE id = $1", p1)
+			_, _ = conn.Exec(ctx, "DELETE FROM assessuser.t_practice WHERE id = $1", p2)
+		})
+	}
+}
 
 // 辅助函数：检查字符串是否包含子字符串
 func containsString(s, substr string) bool {

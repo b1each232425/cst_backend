@@ -3,7 +3,7 @@
  * @Description: 考卷-答卷数据库层
  * @Date: 2025-07-21 13:14:34
  * @LastEditors: zdl <1311866870@qq.com>
- * @LastEditTime: 2025-07-27 09:31:57
+ * @LastEditTime: 2025-07-28 00:04:18
  */
 package examPaper
 
@@ -48,12 +48,11 @@ func LoadExamPaperDetailsById(ctx context.Context, tx pgx.Tx, epid int64, withQu
 		&ep.TotalScore, &ep.QuestionCount, &ep.GroupCount,
 	}
 	if withQuestions {
-		z.Sugar().Infof("打印输出携带问题")
 		fields = append(fields, "groups_data")
 		scanArgs = append(scanArgs, &ep.GroupsData)
 	}
 	s := fmt.Sprintf("SELECT %s FROM v_exam_paper WHERE id=$1 AND status=$2", strings.Join(fields, ","))
-	z.Sugar().Infof("打印输出sql查询语句：%v", s)
+	z.Sugar().Debugf("打印输出sql查询语句：%v", s)
 	err = tx.QueryRow(ctx, s, epid, PaperStatus.Normal).Scan(scanArgs...)
 	if err != nil {
 		err = fmt.Errorf("select examPaper failed:%v", err)
@@ -100,7 +99,7 @@ func LoadExamPaperDetailsById(ctx context.Context, tx pgx.Tx, epid int64, withQu
 					q := v.Questions[idx]
 					var answersSlice []interface{}
 					if len(q.Answers) > 0 {
-						if err = json.Unmarshal([]byte(q.Answers), &answersSlice); err != nil {
+						if err = json.Unmarshal(q.Answers, &answersSlice); err != nil {
 							err = fmt.Errorf("failed to unmarshal Answers questionId:%v for:%v", q.ID.Int64, err)
 							z.Error(err.Error())
 							return &ep, nil, nil, err
@@ -339,7 +338,7 @@ func LoadPaperTemplateById(ctx context.Context, paperId int64, withQuestions boo
 	practiceId 练习Id 若类型为练习必填 否则填0
 	examSessionId 考试场次Id 若类型为考试必填 否则填0
 	uid 操作人Id
-	genMarkInfo 是否生成批改信息 用于考试创建时配置批改信息
+	genMarkInfo 是否生成批改信息 用于考试创建时配置批改信息 考卷ID与考卷题组的结构
 */
 func GenerateExamPaper(ctx context.Context, tx pgx.Tx, category string, paperId, practiceId, examSessionId int64, uid int64, genMarkInfo bool) (*int64, []SubjectiveQuestionGroup, error) {
 	var err error
@@ -410,7 +409,7 @@ func GenerateExamPaper(ctx context.Context, tx pgx.Tx, category string, paperId,
 		groupPlaceholders = append(groupPlaceholders, ph)
 		groupArgs = append(groupArgs,
 			ep.ID, g.Name, g.Order, uid, now, now)
-		z.Sugar().Infof("打印一下原试卷模拟提供的题组信息ID:%v，名字：%v，顺序:%v,", g.ID, g.Name, g.Order)
+		z.Sugar().Debugf("打印一下原试卷模拟提供的题组信息ID:%v，名字：%v，顺序:%v,", g.ID, g.Name, g.Order)
 	}
 
 	fullGroupSQL := fmt.Sprintf(groupSQL, strings.Join(groupPlaceholders, ","))
@@ -448,51 +447,33 @@ func GenerateExamPaper(ctx context.Context, tx pgx.Tx, category string, paperId,
 		orderToOrigIDMap[g.Order.Int64] = g.ID.Int64
 	}
 
-	z.Sugar().Infof("打印输出一下映射顺序到ID的映射:%v", Json(orderToNewIDMap))
-	z.Sugar().Infof("打印输出一下顺序值到原始ID的映射:%v", Json(orderToOrigIDMap))
+	z.Sugar().Debugf("打印输出一下映射顺序到ID的映射:%v", Json(orderToNewIDMap))
+	z.Sugar().Debugf("打印输出一下顺序值到原始ID的映射:%v", Json(orderToOrigIDMap))
 
 	// 题目插入部分
 	questionSQL := `INSERT INTO assessuser.t_exam_paper_question (
 		score, type, content, options, answers, analysis, title, 
 		answer_file_path, test_file_path, input, output, example, repo, 
 		creator, create_time, update_time, addi, "order", group_id, question_attachments_path
-	) VALUES `
+	) VALUES %s RETURNING id`
 
-	questionArgs := make([]interface{}, 0)
-	questionPlaceholders := make([]string, 0)
-	placeholderIdx := 1
-
-	// 批改配置变量
-	var groups []SubjectiveQuestionGroup
-
-	// 遍历原始题组
+	// 那这里就需要构建这个插入数据的数组
+	var tqs []*cmn.TExamPaperQuestion
 	for _, origGroup := range pg {
-		// 通过唯一顺序找到考卷题组ID
 		newGroupID, exists := orderToNewIDMap[origGroup.Order.Int64]
 		if !exists {
 			err = fmt.Errorf("无法找到顺序为:%v的题组", origGroup.Order.Int64)
 			z.Error(err.Error())
 			return nil, nil, err
 		}
-
+		// 这里根据旧的题组ID去获取到对应的题目
 		// 获取该题组的题目
 		qs, exists := pq[origGroup.ID.Int64]
 		if !exists || len(qs) == 0 {
 			continue
 		}
-
-		var group SubjectiveQuestionGroup
-		if genMarkInfo {
-			group.GroupID = newGroupID
-			group.QuestionIDs = make([]int64, 0, len(qs))
-		}
-
-		// 处理题目
+		//这里构建这个数组
 		for _, q := range qs {
-			if genMarkInfo {
-				group.QuestionIDs = append(group.QuestionIDs, q.ID.Int64)
-			}
-
 			// 处理填空题和简答题
 			if q.Type == QuestionCategory.FillInBlank || q.Type == QuestionCategory.ShortAnswer {
 				var answers []NonSelectQuestionAnswer
@@ -508,42 +489,121 @@ func GenerateExamPaper(ctx context.Context, tx pgx.Tx, category string, paperId,
 				jsonData, _ := json.Marshal(answers)
 				q.Answers = jsonData
 			}
-			// 构建占位符
-			ph := make([]string, 20)
-			for i := 0; i < 20; i++ {
-				ph[i] = fmt.Sprintf("$%d", placeholderIdx)
-				placeholderIdx++
-			}
-			questionPlaceholders = append(questionPlaceholders, "("+strings.Join(ph, ",")+")")
 
-			// 添加题目参数
-			questionArgs = append(questionArgs,
-				q.Score, q.Type, q.Content, q.Options, q.Answers, q.Analysis, q.Title,
-				q.AnswerFilePath, q.TestFilePath, q.Input, q.Output, q.Example, q.Repo,
-				uid, now, now, q.Addi, q.Order, newGroupID, q.QuestionAttachmentsPath,
-			)
-		}
+			tq := &cmn.TExamPaperQuestion{}
+			tq.Score = q.Score
+			tq.Type.String = q.Type
+			tq.Content = q.Content
+			tq.Options = q.Options
+			tq.Answers = q.Answers
+			tq.Analysis = q.Analysis
+			tq.Title = q.Title
+			tq.AnswerFilePath = q.AnswerFilePath
+			tq.TestFilePath = q.TestFilePath
+			tq.Input = q.Input
+			tq.Output = q.Output
+			tq.Example = q.Example
+			tq.Repo = q.Repo
+			tq.Order = q.Order
+			tq.Creator = null.IntFrom(uid)
+			tq.CreateTime = null.IntFrom(now)
+			tq.UpdateTime = null.IntFrom(now)
+			tq.Addi = q.Addi
+			tq.GroupID = null.IntFrom(newGroupID)
+			tq.QuestionAttachmentsPath = q.QuestionAttachmentsPath
 
-		if genMarkInfo {
-			groups = append(groups, group)
+			tqs = append(tqs, tq)
 		}
 	}
+	var (
+		placeholders []string
+		questionArgs []interface{}
+		paramIndex   = 1
+	)
+	for _, s := range tqs {
+		phFields := make([]string, 20)
+		for i := 0; i < 20; i++ {
+			phFields[i] = fmt.Sprintf("$%d", paramIndex)
+			paramIndex++
+		}
+		placeholders = append(placeholders, "("+strings.Join(phFields, ",")+")")
 
-	// 确保有题目需要插入
-	if len(questionPlaceholders) == 0 {
-		return nil, nil, fmt.Errorf("生成的考卷无题目")
+		questionArgs = append(questionArgs,
+			s.Score,
+			s.Type,
+			s.Content,
+			s.Options,
+			s.Answers,
+			s.Analysis,
+			s.Title,
+			s.AnswerFilePath,
+			s.TestFilePath,
+			s.Input,
+			s.Output,
+			s.Example,
+			s.Repo,
+			s.Creator,
+			s.CreateTime,
+			s.UpdateTime,
+			s.Addi,
+			s.Order,
+			s.GroupID,
+			s.QuestionAttachmentsPath,
+		)
 	}
 
-	fullQuestionSQL := questionSQL + strings.Join(questionPlaceholders, ",")
-	// 调试输出
+	fullQuestionSQL := fmt.Sprintf(questionSQL, strings.Join(placeholders, ","))
+
 	z.Sugar().Debugf("插入题目SQL: %s", fullQuestionSQL)
 	z.Sugar().Debugf("插入题目参数: %+v", questionArgs)
 
-	// 执行题目插入
-	if _, err := tx.Exec(ctx, fullQuestionSQL, questionArgs...); err != nil {
-		return nil, nil, fmt.Errorf("插入题目失败: %w", err)
+	rows, err = tx.Query(ctx, fullQuestionSQL, questionArgs...)
+	if err != nil {
+		z.Sugar().Errorf("failed to execute batch insert and return IDs:%v", err)
+		return nil, nil, err
+	}
+	defer rows.Close()
+
+	i := 0
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			z.Sugar().Errorf("failed to scan batch insert ID:%v", err)
+			return nil, nil, err
+		}
+		if i < len(tqs) {
+			tqs[i].ID = null.IntFrom(id)
+		}
+		i++
+	}
+	if err := rows.Err(); err != nil {
+		z.Sugar().Errorf("row iteration error: %s", rows.Err().Error())
+		return nil, nil, err
 	}
 
+	// 批改配置变量
+	var groups []SubjectiveQuestionGroup
+
+	// 如果需要AI批改配置
+	if genMarkInfo {
+		groupQuestions := make(map[int64][]int64)
+		for _, question := range tqs {
+			if question.Type.String != QuestionCategory.FillInBlank &&
+				question.Type.String != QuestionCategory.ShortAnswer {
+				continue
+			}
+
+			groupID := question.GroupID.Int64
+			groupQuestions[groupID] = append(groupQuestions[groupID], question.ID.Int64)
+		}
+
+		for groupID, questionIDs := range groupQuestions {
+			groups = append(groups, SubjectiveQuestionGroup{
+				GroupID:     groupID,
+				QuestionIDs: questionIDs,
+			})
+		}
+	}
 	return &ep.ID.Int64, groups, nil
 }
 
