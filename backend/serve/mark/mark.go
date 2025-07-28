@@ -311,7 +311,7 @@ func GetMarkingDetails(ctx context.Context) {
 		return
 	}
 
-	markerInfo, err := QueryExamMarkerInfo(ctx, QueryCondition{
+	markerInfo, err := QueryMarkerInfo(ctx, QueryCondition{
 		TeacherID:     teacherID,
 		ExamSessionID: examSessionID,
 		ExamineeID:    examineeID,
@@ -378,7 +378,7 @@ type HandleMarkerInfoReq struct {
 	QuestionGroups []examPaper.SubjectiveQuestionGroup `json:"question_groups"`  // *题组（配置时传入）
 	QuestionIDs    []int64                             `json:"question_ids"`     // 题目id数组
 	ExamineeIDs    []int64                             `json:"examinee_ids"`     // 考生id数组
-	MarkMode       string                              `json:"mark_mode"`        // *批卷模式 00：不需要手动批改  02：全卷多评 04：试卷分配 06：题组专评 08：题目分配 10：单人批改
+	MarkMode       string                              `json:"mark_mode"`        // *批卷模式 00：不需要手动批改  02：全卷多评 04：试卷分配 06：题组专评 08：题目分配 10：单人（人工）批改
 	ExamSessionID  int64                               `json:"exam_session_id"`  // 考试场次id
 	PracticeID     int64                               `json:"practice_id"`      // 练习id
 	Status         string                              `json:"status"`           // *00 插入批改配置 02 删除批改配置
@@ -693,7 +693,21 @@ func MarkObjectiveQuestionAnswers(ctx context.Context, cond QueryCondition) (err
 		return
 	}
 
-	studentAnswers, err := QueryStudentAnswersByMarkMode(ctx, "02", cond, MarkerInfo{MarkerID: cond.TeacherID})
+	markerInfo := MarkerInfo{
+		MarkerID: cond.TeacherID,
+	}
+
+	if cond.ExamineeID > 0 {
+		// 查询单个考试考生
+		markerInfo.MarkMode = "04"
+	}
+
+	if cond.PracticeSubmissionID > 0 {
+		// 查询单个练习学生
+		markerInfo.MarkMode = "12"
+	}
+
+	studentAnswers, err := QueryStudentAnswersByMarkMode(ctx, "02", cond, markerInfo)
 	if err != nil {
 		err = fmt.Errorf("failed to query student answers: %v", err)
 		z.Error(err.Error())
@@ -835,6 +849,40 @@ func MarkObjectiveQuestionAnswers(ctx context.Context, cond QueryCondition) (err
 	if err != nil {
 		err = fmt.Errorf("commit tx error: %v", err)
 		z.Error(err.Error())
+		return
+	}
+
+	return
+}
+
+func AutoMark(ctx context.Context, cond QueryCondition) (err error) {
+	if cond.ExamSessionID <= 0 && cond.PracticeID <= 0 {
+		err = fmt.Errorf("invalid params: exam session id or practice id must be greater than zero")
+		z.Error(err.Error())
+		return
+	}
+
+	if cond.ExamSessionID > 0 && cond.PracticeID > 0 {
+		err = fmt.Errorf("invalid params: exam session id && practice id cannot be both greater than zero")
+		z.Error(err.Error())
+		return
+	}
+
+	markerInfo, err := QueryMarkerInfo(ctx, cond)
+	if err != nil {
+		return
+	}
+
+	if len(markerInfo.MarkInfos) == 0 {
+		err = fmt.Errorf("no marker info found")
+		z.Error(err.Error())
+		return
+	}
+
+	cond.TeacherID = markerInfo.MarkInfos[0].MarkTeacherID.Int64
+
+	err = MarkObjectiveQuestionAnswers(ctx, cond)
+	if err != nil {
 		return
 	}
 

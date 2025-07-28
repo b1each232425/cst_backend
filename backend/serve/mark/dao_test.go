@@ -115,6 +115,20 @@ func TestQueryStudentAnswersByMarkMode(t *testing.T) {
 			expectedErrStr: "",
 		},
 		{
+			name:       "success with markMode:12（查询单个练习学生）",
+			answerType: "02",
+			cond: QueryCondition{
+				PracticeID:           21,
+				TeacherID:            testedTeacherID,
+				PracticeSubmissionID: 2401,
+			},
+			markerInfo: MarkerInfo{
+				MarkMode: "12",
+				MarkerID: testedTeacherID,
+			},
+			expectedErrStr: "",
+		},
+		{
 			name:       "invalid answer type",
 			answerType: "",
 			cond: QueryCondition{
@@ -492,6 +506,59 @@ func TestUpdateMarkerInfoState(t *testing.T) {
 			}()
 
 			_, err = UpdateMarkerInfoState(ctx, &tx, tt.teacherID, tt.ids, tt.mode)
+			if err != nil {
+				if tt.expectedErrStr == "" {
+					t.Errorf("expected success, but got error: %v", err.Error())
+				} else {
+					assert.Contains(t, err.Error(), tt.expectedErrStr)
+				}
+			} else if tt.expectedErrStr != "" {
+				t.Errorf("expected error: %s, but got success", tt.expectedErrStr)
+			}
+		})
+	}
+}
+
+func TestQueryMarkerInfo(t *testing.T) {
+	cleanTestData()
+	initTestData()
+	defer cleanTestData()
+
+	tests := []struct {
+		name           string
+		cond           QueryCondition
+		expectedErrStr string
+	}{
+		{
+			name: "success",
+			cond: QueryCondition{
+				TeacherID:     testedTeacherID,
+				ExamSessionID: 101,
+			},
+		},
+		{
+			name: "success with practice",
+			cond: QueryCondition{
+				TeacherID:  testedTeacherID,
+				PracticeID: 21,
+			},
+		},
+		{
+			name: "invalid params",
+			cond: QueryCondition{
+				TeacherID: testedTeacherID,
+			},
+			expectedErrStr: "invalid params: either exam session id or practice id is required",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := context.Background()
+
+			result, err := QueryMarkerInfo(ctx, tt.cond)
+			z.Sugar().Infof("result: %+v", result.MarkInfos)
+
 			if err != nil {
 				if tt.expectedErrStr == "" {
 					t.Errorf("expected success, but got error: %v", err.Error())
