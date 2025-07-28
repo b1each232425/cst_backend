@@ -3,7 +3,7 @@
  * @Description: 考卷-答卷数据库层
  * @Date: 2025-07-21 13:14:34
  * @LastEditors: zdl <1311866870@qq.com>
- * @LastEditTime: 2025-07-28 00:04:18
+ * @LastEditTime: 2025-07-28 12:11:32
  */
 package examPaper
 
@@ -240,8 +240,8 @@ func BatchInsertStudentAnswer(ctx context.Context, tx pgx.Tx, sa []*cmn.TStudent
 		)
 	}
 	insertQuery := fmt.Sprintf(query, strings.Join(values, ","))
-	z.Sugar().Debugf("打印输出一下插入学生作答SQL语句:%v", insertQuery)
-	z.Sugar().Debugf("打印输出一下插入学生作答SQL参数:%v", args)
+	//z.Sugar().Debugf("打印输出一下插入学生作答SQL语句:%v", insertQuery)
+	//z.Sugar().Debugf("打印输出一下插入学生作答SQL参数:%v", args)
 	_, err := tx.Exec(ctx, insertQuery, args...)
 	if err != nil {
 		err = fmt.Errorf("批量插入学生答卷失败: %v", err)
@@ -330,7 +330,7 @@ func LoadPaperTemplateById(ctx context.Context, paperId int64, withQuestions boo
 	return &p, groups, questions, nil
 }
 
-// GenerateExamPaper 生成一张可用考卷（包括题组与题目） 占位符最多65535个，因此一张试卷最多支持有3000个题目，超过的话目前实现方式数据库无法插入
+// GenerateExamPaper 生成一张可用考卷（包括题组与题目） 占位符最多65535个，优化为同一个事务批量插入考题，避免试卷体量过大而无法一次插入的问题
 /*
 关键参数说明：
 	category 考卷服务类型 00：考试 02：练习
@@ -447,8 +447,8 @@ func GenerateExamPaper(ctx context.Context, tx pgx.Tx, category string, paperId,
 		orderToOrigIDMap[g.Order.Int64] = g.ID.Int64
 	}
 
-	z.Sugar().Debugf("打印输出一下映射顺序到ID的映射:%v", Json(orderToNewIDMap))
-	z.Sugar().Debugf("打印输出一下顺序值到原始ID的映射:%v", Json(orderToOrigIDMap))
+	//z.Sugar().Debugf("打印输出一下映射顺序到ID的映射:%v", Json(orderToNewIDMap))
+	//z.Sugar().Debugf("打印输出一下顺序值到原始ID的映射:%v", Json(orderToOrigIDMap))
 
 	// 题目插入部分
 	questionSQL := `INSERT INTO assessuser.t_exam_paper_question (
@@ -515,70 +515,89 @@ func GenerateExamPaper(ctx context.Context, tx pgx.Tx, category string, paperId,
 			tqs = append(tqs, tq)
 		}
 	}
-	var (
-		placeholders []string
-		questionArgs []interface{}
-		paramIndex   = 1
-	)
-	for _, s := range tqs {
-		phFields := make([]string, 20)
-		for i := 0; i < 20; i++ {
-			phFields[i] = fmt.Sprintf("$%d", paramIndex)
-			paramIndex++
+
+	// 每批最多一次性插入1000考题 1000 * 20  = 20000 参数个数
+	_limit := 1000
+
+	// 批量插入考题，避免参数超出postgresql限制
+	for start := 0; start < len(tqs); start += _limit {
+		end := start + _limit
+		if end > len(tqs) {
+			end = len(tqs)
 		}
-		placeholders = append(placeholders, "("+strings.Join(phFields, ",")+")")
-
-		questionArgs = append(questionArgs,
-			s.Score,
-			s.Type,
-			s.Content,
-			s.Options,
-			s.Answers,
-			s.Analysis,
-			s.Title,
-			s.AnswerFilePath,
-			s.TestFilePath,
-			s.Input,
-			s.Output,
-			s.Example,
-			s.Repo,
-			s.Creator,
-			s.CreateTime,
-			s.UpdateTime,
-			s.Addi,
-			s.Order,
-			s.GroupID,
-			s.QuestionAttachmentsPath,
+		batch := tqs[start:end]
+		var (
+			placeholders []string
+			questionArgs []interface{}
+			paramIndex   = 1
 		)
-	}
+		for _, s := range batch {
+			phFields := make([]string, 20)
+			for i := 0; i < 20; i++ {
+				phFields[i] = fmt.Sprintf("$%d", paramIndex)
+				paramIndex++
+			}
+			placeholders = append(placeholders, "("+strings.Join(phFields, ",")+")")
 
-	fullQuestionSQL := fmt.Sprintf(questionSQL, strings.Join(placeholders, ","))
+			questionArgs = append(questionArgs,
+				s.Score,
+				s.Type,
+				s.Content,
+				s.Options,
+				s.Answers,
+				s.Analysis,
+				s.Title,
+				s.AnswerFilePath,
+				s.TestFilePath,
+				s.Input,
+				s.Output,
+				s.Example,
+				s.Repo,
+				s.Creator,
+				s.CreateTime,
+				s.UpdateTime,
+				s.Addi,
+				s.Order,
+				s.GroupID,
+				s.QuestionAttachmentsPath,
+			)
+		}
+		fullQuestionSQL := fmt.Sprintf(questionSQL, strings.Join(placeholders, ","))
+		//z.Sugar().Debugf("插入题目批次 [%d-%d] SQL: %s", start, end-1, fullQuestionSQL)
+		//z.Sugar().Debugf("插入题目批次 [%d-%d] 参数: %v", start, end-1, questionArgs)
 
-	z.Sugar().Debugf("插入题目SQL: %s", fullQuestionSQL)
-	z.Sugar().Debugf("插入题目参数: %+v", questionArgs)
-
-	rows, err = tx.Query(ctx, fullQuestionSQL, questionArgs...)
-	if err != nil {
-		z.Sugar().Errorf("failed to execute batch insert and return IDs:%v", err)
-		return nil, nil, err
-	}
-	defer rows.Close()
-
-	i := 0
-	for rows.Next() {
-		var id int64
-		if err := rows.Scan(&id); err != nil {
-			z.Sugar().Errorf("failed to scan batch insert ID:%v", err)
+		batchRows, err := tx.Query(ctx, fullQuestionSQL, questionArgs...)
+		if err != nil {
+			z.Sugar().Errorf("插入题目批次 [%d-%d] 失败: %v", start, end-1, err)
 			return nil, nil, err
 		}
-		if i < len(tqs) {
-			tqs[i].ID = null.IntFrom(id)
+		batchIndex := start
+		for batchRows.Next() {
+			var id int64
+			if err := batchRows.Scan(&id); err != nil {
+				batchRows.Close()
+				err = fmt.Errorf("扫描题目ID失败 [%d]: %v", batchIndex, err)
+				z.Error(err.Error())
+				return nil, nil, err
+			}
+			if batchIndex < len(tqs) {
+				tqs[batchIndex].ID = null.IntFrom(id)
+			}
+			batchIndex++
 		}
-		i++
-	}
-	if err := rows.Err(); err != nil {
-		z.Sugar().Errorf("row iteration error: %s", rows.Err().Error())
-		return nil, nil, err
+		// 立即关闭
+		batchRows.Close()
+
+		if err := batchRows.Err(); err != nil {
+			err = fmt.Errorf("读取题目ID失败 [%d-%d]: %v", start, end-1, err)
+			z.Error(err.Error())
+			return nil, nil, err
+		}
+		if batchIndex != end {
+			err = fmt.Errorf("题目ID数量不匹配: 预期%d, 实际%d", end-start, batchIndex-start)
+			z.Error(err.Error())
+			return nil, nil, err
+		}
 	}
 
 	// 批改配置变量
@@ -605,52 +624,6 @@ func GenerateExamPaper(ctx context.Context, tx pgx.Tx, category string, paperId,
 		}
 	}
 	return &ep.ID.Int64, groups, nil
-}
-
-// BatchInsertExamQuestion  按照批次批量生成考卷题目
-/*
-关键参数说明：
-	sa 需要新增的学生答题数组
-	uid 操作者
-*/
-func BatchInsertExamQuestion(ctx context.Context, tx pgx.Tx, sa []*cmn.TStudentAnswers, uid int64) error {
-	if len(sa) == 0 {
-		z.Error("empty params student answer")
-		return nil
-	}
-	query := `
-		INSERT INTO assessuser.t_student_answers (
-			type, examinee_id, practice_submission_id, question_id,
-			creator, create_time, update_time, group_id, "order",
-			actual_options, actual_answers
-		) VALUES %s
-	`
-	now := time.Now().UnixMilli()
-	values := make([]string, 0, len(sa))
-	args := make([]interface{}, 0, len(sa)*11) // 11个字段
-	idx := 1
-	for _, a := range sa {
-		placeholders := make([]string, 11)
-		for i := 0; i < 11; i++ {
-			placeholders[i] = fmt.Sprintf("$%d", idx)
-			idx++
-		}
-		values = append(values, "("+strings.Join(placeholders, ",")+")")
-		args = append(args,
-			a.Type, a.ExamineeID, a.PracticeSubmissionID, a.QuestionID,
-			uid, now, now, a.GroupID, a.Order, a.ActualOptions, a.ActualAnswers,
-		)
-	}
-	insertQuery := fmt.Sprintf(query, strings.Join(values, ","))
-	z.Sugar().Debugf("打印输出一下插入学生作答SQL语句:%v", insertQuery)
-	z.Sugar().Debugf("打印输出一下插入学生作答SQL参数:%v", args)
-	_, err := tx.Exec(ctx, insertQuery, args...)
-	if err != nil {
-		err = fmt.Errorf("批量插入学生答卷失败: %v", err)
-		z.Error(err.Error())
-		return err
-	}
-	return nil
 }
 
 // LoadExamPaperDetailByUserId 考试/练习 考生/练习生获取试卷 可用于获取考试时/练习时的试卷 也可用于查看学生答题情况时的获取试卷
