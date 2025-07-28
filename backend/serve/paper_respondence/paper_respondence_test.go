@@ -3,13 +3,15 @@ package paper_respondence
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"encoding/json"
-	"github.com/stretchr/testify/assert"
 	"net/http"
 	"net/http/httptest"
-
 	"testing"
+	"time"
 
+	"github.com/jackc/pgx/v5"
+	"github.com/stretchr/testify/assert"
 	"w2w.io/cmn"
 	"w2w.io/null"
 )
@@ -517,9 +519,6 @@ func TestStudentAnswer(t *testing.T) {
 				ctx = context.WithValue(ctx, ForceErr, tc.forceErr)
 			}
 
-			// // 验证请求和上下文是否正确设置
-			// verifyRequestAndContext(t, req, ctx, method)
-
 			// 执行 StudentAnswer 函数
 			StudentAnswer(ctx)
 
@@ -600,345 +599,1486 @@ func createMockContext(t *testing.T, req *http.Request, userId int64) context.Co
 	return ctx
 }
 
-//func TestCheckExamStatus(t *testing.T) {
-//	// 定义测试用例
-//	testCases := []struct {
-//		name            string
-//		method          string
-//		url             string
-//		reqBody         *cmn.ReqProto
-//		expectedLog     string
-//		expectSuccess   bool
-//		expectedCode    int
-//		expectedMessage string
-//		expectedData    interface{}
-//		options         []ContextOption
-//	}{
-//		// 成功场景 - 有效的考试会话ID
-//		{
-//			name:            "GET 请求 - 有效的考试会话ID",
-//			method:          "GET",
-//			url:             "/api/exam/status?exam_session_id=12345",
-//			reqBody:         nil,
-//			expectedLog:     "GET test setup completed successfully",
-//			expectSuccess:   true,
-//			expectedCode:    0,
-//			expectedMessage: "",
-//			expectedData:    nil, // 根据实际情况设置预期数据
-//			options:         []ContextOption{WithUserID(54321)},
-//		},
-//		// 失败场景 - 缺少考试会话ID
-//		{
-//			name:            "GET 请求 - 缺少考试会话ID",
-//			method:          "GET",
-//			url:             "/api/exam/status",
-//			reqBody:         nil,
-//			expectedLog:     "GET test setup completed successfully",
-//			expectSuccess:   false,
-//			expectedCode:    400,
-//			expectedMessage: "考试会话ID不能为空",
-//			expectedData:    nil,
-//			options:         []ContextOption{WithUserID(54321)},
-//		},
-//		// 失败场景 - 无效的考试会话ID
-//		{
-//			name:            "GET 请求 - 无效的考试会话ID",
-//			method:          "GET",
-//			url:             "/api/exam/status?exam_session_id=99999",
-//			reqBody:         nil,
-//			expectedLog:     "GET test setup completed successfully",
-//			expectSuccess:   false,
-//			expectedCode:    404,
-//			expectedMessage: "考试会话不存在",
-//			expectedData:    nil,
-//			options:         []ContextOption{WithUserID(54321)},
-//		},
-//		// 失败场景 - 用户未登录
-//		{
-//			name:            "GET 请求 - 用户未登录",
-//			method:          "GET",
-//			url:             "/api/exam/status?exam_session_id=12345",
-//			reqBody:         nil,
-//			expectedLog:     "GET test setup completed successfully",
-//			expectSuccess:   false,
-//			expectedCode:    401,
-//			expectedMessage: "用户未登录",
-//			expectedData:    nil,
-//			options:         []ContextOption{}, // 不设置用户ID，模拟未登录状态
-//		},
-//	}
-//
-//	// 运行所有测试用例
-//	for _, tc := range testCases {
-//		t.Run(tc.name, func(t *testing.T) {
-//			runTestCase(t, tc.method, tc.url, tc.reqBody, tc.expectedLog, tc.expectSuccess, tc.expectedCode, tc.expectedMessage, tc.expectedData, tc.options...)
-//		})
-//	}
-//}
-//
-//func TestInitRespondent(t *testing.T) {
-//	// 定义测试用例
-//	testCases := []struct {
-//		name            string
-//		method          string
-//		url             string
-//		reqBody         *cmn.ReqProto
-//		expectedLog     string
-//		expectSuccess   bool
-//		expectedCode    int
-//		expectedMessage string
-//		expectedData    interface{}
-//		options         []ContextOption
-//	}{
-//		// 成功场景 - 考试类型初始化
-//		{
-//			name:   "POST 请求 - 考试类型初始化 - 成功",
-//			method: "POST",
-//			url:    "/api/respondent/init",
-//			reqBody: &cmn.ReqProto{
-//				Data: json.RawMessage(`{
-//					"type": "00",
-//					"exam_id": 12345,
-//					"exam_session_id": 67890
-//				}`),
-//			},
-//			expectedLog:     "POST test setup completed successfully",
-//			expectSuccess:   true,
-//			expectedCode:    0,
-//			expectedMessage: "success",
-//			options:         []ContextOption{WithUserID(54321)},
-//		},
-//		// 成功场景 - 练习类型初始化
-//		{
-//			name:   "POST 请求 - 练习类型初始化 - 成功",
-//			method: "POST",
-//			url:    "/api/respondent/init",
-//			reqBody: &cmn.ReqProto{
-//				Data: json.RawMessage(`{
-//					"type": "01",
-//					"practice_id": 12345,
-//					"practice_submission_id": 67890
-//				}`),
-//			},
-//			expectedLog:     "POST test setup completed successfully",
-//			expectSuccess:   true,
-//			expectedCode:    0,
-//			expectedMessage: "success",
-//			options:         []ContextOption{WithUserID(54321)},
-//		},
-//		// 失败场景 - 未登录用户
-//		{
-//			name:   "POST 请求 - 未登录用户",
-//			method: "POST",
-//			url:    "/api/respondent/init",
-//			reqBody: &cmn.ReqProto{
-//				Data: json.RawMessage(`{
-//					"type": "00",
-//					"exam_id": 12345,
-//					"exam_session_id": 67890
-//				}`),
-//			},
-//			expectedLog:     "POST test setup completed successfully",
-//			expectSuccess:   false,
-//			expectedCode:    400,
-//			expectedMessage: "student id is smaller than 0",
-//			options:         []ContextOption{}, // 不设置用户ID，模拟未登录状态
-//		},
-//		// 失败场景 - 考试类型但缺少考试ID
-//		{
-//			name:   "POST 请求 - 考试类型但缺少考试ID",
-//			method: "POST",
-//			url:    "/api/respondent/init",
-//			reqBody: &cmn.ReqProto{
-//				Data: json.RawMessage(`{
-//					"type": "00",
-//					"exam_session_id": 67890
-//				}`),
-//			},
-//			expectedLog:     "POST test setup completed successfully",
-//			expectSuccess:   false,
-//			expectedCode:    400,
-//			expectedMessage: "当前是考试，请输入大于0的考试id大于0的考试场次id",
-//			options:         []ContextOption{WithUserID(54321)},
-//		},
-//		// 失败场景 - 练习类型但缺少练习ID
-//		{
-//			name:   "POST 请求 - 练习类型但缺少练习ID",
-//			method: "POST",
-//			url:    "/api/respondent/init",
-//			reqBody: &cmn.ReqProto{
-//				Data: json.RawMessage(`{
-//					"type": "01",
-//					"practice_submission_id": 67890
-//				}`),
-//			},
-//			expectedLog:     "POST test setup completed successfully",
-//			expectSuccess:   false,
-//			expectedCode:    400,
-//			expectedMessage: "practice id is smaller than 0",
-//			options:         []ContextOption{WithUserID(54321)},
-//		},
-//		// 失败场景 - 未知类型
-//		{
-//			name:   "POST 请求 - 未知类型",
-//			method: "POST",
-//			url:    "/api/respondent/init",
-//			reqBody: &cmn.ReqProto{
-//				Data: json.RawMessage(`{
-//					"type": "99",
-//					"exam_id": 12345,
-//					"exam_session_id": 67890
-//				}`),
-//			},
-//			expectedLog:     "POST test setup completed successfully",
-//			expectSuccess:   false,
-//			expectedCode:    400,
-//			expectedMessage: "unknown respondence type",
-//			options:         []ContextOption{WithUserID(54321)},
-//		},
-//		// 失败场景 - 使用GET方法
-//		{
-//			name:            "GET 请求 - 方法不支持",
-//			method:          "GET",
-//			url:             "/api/respondent/init",
-//			reqBody:         nil,
-//			expectedLog:     "GET test setup completed successfully",
-//			expectSuccess:   false,
-//			expectedCode:    400,
-//			expectedMessage: "please call /api/upLogin with  http POST method",
-//			options:         []ContextOption{WithUserID(54321)},
-//		},
-//	}
-//
-//	// 运行所有测试用例
-//	for _, tc := range testCases {
-//		t.Run(tc.name, func(t *testing.T) {
-//			runTestCase(t, tc.method, tc.url, tc.reqBody, tc.expectedLog, tc.expectSuccess, tc.expectedCode, tc.expectedMessage, tc.expectedData, tc.options...)
-//		})
-//	}
-//}
-//
-//func TestSubmit(t *testing.T) {
-//	// 定义测试用例
-//	testCases := []struct {
-//		name            string
-//		method          string
-//		url             string
-//		reqBody         *cmn.ReqProto
-//		expectedLog     string
-//		expectSuccess   bool
-//		expectedCode    int
-//		expectedMessage string
-//		expectedData    interface{}
-//		options         []ContextOption
-//	}{
-//		// 成功场景 - 考试类型提交
-//		{
-//			name:   "POST 请求 - 考试类型提交 - 成功",
-//			method: "POST",
-//			url:    "/api/respondent/submit",
-//			reqBody: &cmn.ReqProto{
-//				Data: json.RawMessage(`{
-//					"type": "00",
-//					"exam_id": 12345,
-//					"exam_session_id": 67890,
-//					"examinee_id": 54321
-//				}`),
-//			},
-//			expectedLog:     "POST test setup completed successfully",
-//			expectSuccess:   true,
-//			expectedCode:    0,
-//			expectedMessage: "success",
-//			options:         []ContextOption{WithUserID(54321)},
-//		},
-//		// 成功场景 - 练习类型提交
-//		{
-//			name:   "POST 请求 - 练习类型提交 - 成功",
-//			method: "POST",
-//			url:    "/api/respondent/submit",
-//			reqBody: &cmn.ReqProto{
-//				Data: json.RawMessage(`{
-//					"type": "01",
-//					"practice_submission_id": 67890
-//				}`),
-//			},
-//			expectedLog:     "POST test setup completed successfully",
-//			expectSuccess:   true,
-//			expectedCode:    0,
-//			expectedMessage: "success",
-//			options:         []ContextOption{WithUserID(54321)},
-//		},
-//		// 失败场景 - 未登录用户
-//		{
-//			name:   "POST 请求 - 未登录用户",
-//			method: "POST",
-//			url:    "/api/respondent/submit",
-//			reqBody: &cmn.ReqProto{
-//				Data: json.RawMessage(`{
-//					"type": "00",
-//					"exam_id": 12345,
-//					"exam_session_id": 67890,
-//					"examinee_id": 54321
-//				}`),
-//			},
-//			expectedLog:     "POST test setup completed successfully",
-//			expectSuccess:   false,
-//			expectedCode:    400,
-//			expectedMessage: "validation failed", // 假设验证会失败，因为studentId为0
-//			options:         []ContextOption{},   // 不设置用户ID，模拟未登录状态
-//		},
-//		// 失败场景 - 考试类型但缺少考试ID
-//		{
-//			name:   "POST 请求 - 考试类型但缺少考试ID",
-//			method: "POST",
-//			url:    "/api/respondent/submit",
-//			reqBody: &cmn.ReqProto{
-//				Data: json.RawMessage(`{
-//					"type": "00",
-//					"exam_session_id": 67890,
-//					"examinee_id": 54321
-//				}`),
-//			},
-//			expectedLog:     "POST test setup completed successfully",
-//			expectSuccess:   false,
-//			expectedCode:    400,
-//			expectedMessage: "当前是考试，请输入大于0的考试id大于0的考生id",
-//			options:         []ContextOption{WithUserID(54321)},
-//		},
-//		// 失败场景 - 练习类型但缺少提交ID
-//		{
-//			name:   "POST 请求 - 练习类型但缺少提交ID",
-//			method: "POST",
-//			url:    "/api/respondent/submit",
-//			reqBody: &cmn.ReqProto{
-//				Data: json.RawMessage(`{
-//					"type": "01"
-//				}`),
-//			},
-//			expectedLog:     "POST test setup completed successfully",
-//			expectSuccess:   false,
-//			expectedCode:    400,
-//			expectedMessage: "当前是练习，请输入大于0的PracticeSubmissionID",
-//			options:         []ContextOption{WithUserID(54321)},
-//		},
-//		// 失败场景 - 使用GET方法
-//		{
-//			name:            "GET 请求 - 方法不支持",
-//			method:          "GET",
-//			url:             "/api/respondent/submit",
-//			reqBody:         nil,
-//			expectedLog:     "GET test setup completed successfully",
-//			expectSuccess:   false,
-//			expectedCode:    400,
-//			expectedMessage: "please call /api/upLogin with  http POST method",
-//			options:         []ContextOption{WithUserID(54321)},
-//		},
-//	}
-//
-//	// 运行所有测试用例
-//	for _, tc := range testCases {
-//		t.Run(tc.name, func(t *testing.T) {
-//			runTestCase(t, tc.method, tc.url, tc.reqBody, tc.expectedLog, tc.expectSuccess, tc.expectedCode, tc.expectedMessage, tc.expectedData, tc.options...)
-//		})
-//	}
-//}
+func TestCheckExamStatus(t *testing.T) {
+	cmn.ConfigureForTest()
+
+	// 在测试开始前，保存原始数据库状态
+	db := cmn.GetPgxConn()
+	ctx := context.Background()
+
+	// 开始事务，用于测试期间的数据修改
+	tx, err := db.Begin(ctx)
+	if err != nil {
+		t.Fatalf("Failed to begin transaction: %v", err)
+	}
+	defer tx.Rollback(ctx) // 确保测试结束后回滚事务，恢复原始数据
+
+	// 修改数据库中的考试状态以测试不同场景
+	// 1. 保存考试会话152的原始数据
+	var originalStartTime, originalEndTime, originalExamineeEndTime, originalAllowEntryTime sql.NullInt64
+	var originalExamineeStatus sql.NullString
+	err = tx.QueryRow(ctx, `
+			SELECT start_time, actual_end_time, examinee_end_time, allow_entry_time, examinee_status 
+			FROM v_examinee_info 
+			WHERE exam_session_id = 152 AND student_id = 1575
+		`).Scan(&originalStartTime, &originalEndTime, &originalExamineeEndTime, &originalAllowEntryTime, &originalExamineeStatus)
+	if err != nil {
+		t.Logf("Warning: Could not fetch original exam data: %v", err)
+		// 继续测试，但只测试基本场景
+	}
+
+	// 定义测试用例
+	testCases := []struct {
+		name            string
+		method          string
+		url             string
+		reqBody         *cmn.ReqProto
+		expectSuccess   bool
+		expectedCode    int
+		expectedMessage string
+		expectedData    json.RawMessage // 预期数据（可选）
+		forceErr        string
+		userId          int64
+		// 测试前需要设置的数据库状态
+		setupDB func(t *testing.T, tx pgx.Tx) error
+	}{
+		// 成功场景 - 考试可以进入（ExamCanBeEnter）
+		{
+			name:            "GET 请求 - 考试可以进入",
+			method:          "GET",
+			url:             "/api/exam/status?exam_session_id=152",
+			reqBody:         nil,
+			expectSuccess:   true,
+			expectedCode:    0,
+			expectedMessage: "",
+			expectedData:    json.RawMessage(`5`), // ExamCanBeEnter状态
+			userId:          1575,
+			setupDB: func(t *testing.T, tx pgx.Tx) error {
+				// 设置考试状态为可以进入
+				// 1. 确保考试已开始（start_time < 当前时间）
+				// 2. 确保考试未结束（actual_end_time > 当前时间）
+				// 3. 确保考生未提交（examinee_end_time IS NULL）
+				// 4. 设置考生状态为可以进入（examinee_status = '16'）
+				now := time.Now().UnixMilli()
+				_, err := tx.Exec(ctx, `
+						UPDATE t_examinee 
+						SET status = '16', 
+						    end_time = NULL 
+						WHERE exam_session_id = 152 AND student_id = 1575
+					`)
+				if err != nil {
+					return err
+				}
+
+				// 更新考试会话的时间
+				_, err = tx.Exec(ctx, `
+						UPDATE t_exam_session 
+						SET start_time = $1, 
+						    end_time = $2 
+						WHERE id = 152
+					`, now-3600000, now+3600000) // 开始时间为1小时前，结束时间为1小时后
+				return err
+			},
+		},
+		// 成功场景 - 考试未开始（StartTimeNotArrived）
+		{
+			name:            "GET 请求 - 考试未开始",
+			method:          "GET",
+			url:             "/api/exam/status?exam_session_id=152",
+			reqBody:         nil,
+			expectSuccess:   true,
+			expectedCode:    0,
+			expectedMessage: "",
+			expectedData:    json.RawMessage(`1`), // StartTimeNotArrived状态
+			userId:          1575,
+			setupDB: func(t *testing.T, tx pgx.Tx) error {
+				// 设置考试状态为未开始
+				now := time.Now().UnixMilli()
+				_, err := tx.Exec(ctx, `
+						UPDATE t_exam_session 
+						SET start_time = $1, 
+						    end_time = $2 
+						WHERE id = 152
+					`, now+3600000, now+7200000) // 开始时间为1小时后，结束时间为2小时后
+				return err
+			},
+		},
+		// 成功场景 - 考试已结束（EndTimeArrived）
+		{
+			name:            "GET 请求 - 考试已结束",
+			method:          "GET",
+			url:             "/api/exam/status?exam_session_id=152",
+			reqBody:         nil,
+			expectSuccess:   true,
+			expectedCode:    0,
+			expectedMessage: "",
+			expectedData:    json.RawMessage(`2`), // EndTimeArrived状态
+			userId:          1575,
+			setupDB: func(t *testing.T, tx pgx.Tx) error {
+				// 设置考试状态为已结束
+				now := time.Now().UnixMilli()
+				_, err := tx.Exec(ctx, `
+						UPDATE t_exam_session 
+						SET start_time = $1, 
+						    end_time = $2 
+						WHERE id = 152
+					`, now-7200000, now-3600000) // 开始时间为2小时前，结束时间为1小时前
+				return err
+			},
+		},
+		// 成功场景 - 考试已提交（ExamSubmitted）
+		{
+			name:            "GET 请求 - 考试已提交",
+			method:          "GET",
+			url:             "/api/exam/status?exam_session_id=152",
+			reqBody:         nil,
+			expectSuccess:   true,
+			expectedCode:    0,
+			expectedMessage: "",
+			expectedData:    json.RawMessage(`3`), // ExamSubmitted状态
+			userId:          1575,
+			setupDB: func(t *testing.T, tx pgx.Tx) error {
+				// 设置考试状态为已提交
+				now := time.Now().UnixMilli()
+				_, err := tx.Exec(ctx, `
+						UPDATE t_exam_session 
+						SET start_time = $1, 
+						    end_time = $2 
+						WHERE id = 152
+					`, now-3600000, now+3600000) // 开始时间为1小时前，结束时间为1小时后
+				if err != nil {
+					return err
+				}
+
+				// 设置考生已提交
+				_, err = tx.Exec(ctx, `
+						UPDATE t_examinee 
+						SET end_time = $1 
+						WHERE exam_session_id = 152 AND student_id = 1575
+					`, now-1800000) // 提交时间为30分钟前
+				return err
+			},
+		},
+		// 成功场景 - 超过最迟进入时间（LateEntryTimeArrived）
+		{
+			name:            "GET 请求 - 超过最迟进入时间",
+			method:          "GET",
+			url:             "/api/exam/status?exam_session_id=152",
+			reqBody:         nil,
+			expectSuccess:   true,
+			expectedCode:    0,
+			expectedMessage: "",
+			expectedData:    json.RawMessage(`4`), // LateEntryTimeArrived状态
+			userId:          1575,
+			setupDB: func(t *testing.T, tx pgx.Tx) error {
+				// 设置考试状态为超过最迟进入时间
+				now := time.Now().UnixMilli()
+				_, err := tx.Exec(ctx, `
+						UPDATE t_exam_session 
+						SET start_time = $1, 
+						    end_time = $2,
+						    period_mode = '00' ,
+						    late_entry_time = $3
+						WHERE id = 152
+					`, now-3600000, now+3600000, 3) // 开始时间为1小时前，结束时间为1小时后
+				if err != nil {
+					return err
+				}
+
+				// 设置最迟进入时间为30分钟前
+				_, err = tx.Exec(ctx, `
+						UPDATE t_examinee 
+						SET start_time = NULL,
+						    end_time = NULL, 
+						    status = '00' 
+						WHERE exam_session_id = 152 AND student_id = 1575
+					`) // 最迟进入时间为30分钟前
+				return err
+			},
+		},
+		// 失败场景 - 缺少考试会话ID
+		{
+			name:            "GET 请求 - 缺少考试会话ID",
+			method:          "GET",
+			url:             "/api/exam/status",
+			reqBody:         nil,
+			expectSuccess:   false,
+			expectedCode:    400,
+			expectedMessage: "examSessionId is required",
+			expectedData:    nil,
+			userId:          1575,
+			setupDB:         nil, // 不需要设置数据库
+		},
+		// 失败场景 - 无效的考试会话ID
+		{
+			name:            "GET 请求 - 无效的考试会话ID",
+			method:          "GET",
+			url:             "/api/exam/status?exam_session_id=99999",
+			reqBody:         nil,
+			expectSuccess:   false,
+			expectedCode:    400,
+			expectedMessage: "",
+			expectedData:    nil,
+			userId:          1575,
+			setupDB:         nil, // 不需要设置数据库
+		},
+		// 失败场景 - 用户未登录
+		{
+			name:            "GET 请求 - 用户未登录",
+			method:          "GET",
+			url:             "/api/exam/status?exam_session_id=152",
+			reqBody:         nil,
+			expectSuccess:   false,
+			expectedCode:    200,
+			expectedMessage: "",
+			expectedData:    nil,
+			userId:          0,   // 用户ID为0表示未登录
+			setupDB:         nil, // 不需要设置数据库
+		},
+		{
+			name:            "GET 请求 - 请求方法不对",
+			method:          "POST",
+			url:             "/api/exam/status?exam_session_id=152",
+			reqBody:         nil,
+			expectSuccess:   false,
+			expectedCode:    200,
+			expectedMessage: "",
+			expectedData:    nil,
+			userId:          1575, // 用户ID为0表示未登录
+			setupDB:         nil,  // 不需要设置数据库
+		},
+		{
+			name:            "GET 请求 - exam_session_id不是数字",
+			method:          "GET",
+			url:             "/api/exam/status?exam_session_id=test",
+			reqBody:         nil,
+			expectSuccess:   false,
+			expectedCode:    0,
+			expectedMessage: "",
+			expectedData:    nil, // ExamSubmitted状态
+			userId:          1575,
+			setupDB:         nil,
+		},
+		{
+			name:            "GET 请求 - tx begin error",
+			method:          "GET",
+			url:             "/api/exam/status?exam_session_id=152",
+			reqBody:         nil,
+			expectSuccess:   false,
+			expectedCode:    0,
+			expectedMessage: "",
+			expectedData:    nil, // ExamSubmitted状态
+			userId:          1575,
+			setupDB:         nil,
+			forceErr:        "begin-tx",
+		},
+		{
+			name:            "GET 请求 - commit error",
+			method:          "GET",
+			url:             "/api/exam/status?exam_session_id=152",
+			reqBody:         nil,
+			expectSuccess:   false,
+			expectedCode:    0,
+			expectedMessage: "",
+			expectedData:    nil, // ExamSubmitted状态
+			userId:          1575,
+			setupDB:         nil,
+			forceErr:        "commit-tx",
+		},
+		{
+			name:            "GET 请求 - marshal-Err",
+			method:          "GET",
+			url:             "/api/exam/status?exam_session_id=152",
+			reqBody:         nil,
+			expectSuccess:   false,
+			expectedCode:    0,
+			expectedMessage: "",
+			expectedData:    nil, // ExamSubmitted状态
+			userId:          1575,
+			setupDB:         nil,
+			forceErr:        "marshal-Err",
+		},
+		{
+			name:            "GET 请求 - rollback-tx-Err",
+			method:          "GET",
+			url:             "/api/exam/status?exam_session_id=152",
+			reqBody:         nil,
+			expectSuccess:   false,
+			expectedCode:    0,
+			expectedMessage: "",
+			expectedData:    nil, // ExamSubmitted状态
+			userId:          1575,
+			setupDB:         nil,
+			forceErr:        "rollback-tx",
+		},
+	}
+
+	// 运行所有测试用例
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			// 如果需要设置数据库状态
+			if tc.setupDB != nil {
+				err := tc.setupDB(t, tx)
+				if err != nil {
+					t.Fatalf("Failed to setup database: %v", err)
+				}
+
+				// 提交事务以应用更改
+				err = tx.Commit(ctx)
+				if err != nil {
+					t.Fatalf("Failed to commit transaction: %v", err)
+				}
+
+				// 开始新事务用于下一个测试或恢复
+				tx, err = db.Begin(ctx)
+				if err != nil {
+					t.Fatalf("Failed to begin new transaction: %v", err)
+				}
+			}
+
+			var req *http.Request
+			var err error
+
+			if tc.reqBody != nil {
+				// 对于 POST 请求，准备请求体
+				bodyBytes, err := json.Marshal(tc.reqBody)
+				if err != nil {
+					t.Fatalf("Failed to marshal request body: %v", err)
+				}
+				req, err = http.NewRequest(tc.method, tc.url, bytes.NewBuffer(bodyBytes))
+				if tc.name == "buf-zero" {
+					req, err = http.NewRequest(tc.method, tc.url, bytes.NewBuffer(nil))
+				} else if tc.reqBody.Data == nil {
+					req, err = http.NewRequest(tc.method, tc.url, bytes.NewBuffer([]byte("{")))
+				} else if tc.name == "POST 请求 - empty-buf error" {
+					req, err = http.NewRequest(tc.method, tc.url, bytes.NewBuffer([]byte("")))
+				}
+			} else {
+				// 对于 GET 请求，没有请求体
+				req, err = http.NewRequest(tc.method, tc.url, nil)
+			}
+
+			if err != nil {
+				t.Fatalf("Failed to create request: %v", err)
+			}
+			// 创建模拟的上下文，应用自定义选项
+			ctx := createMockContext(t, req, tc.userId)
+
+			//传入强制err
+			if tc.forceErr != "" {
+				ctx = context.WithValue(ctx, ForceErr, tc.forceErr)
+			}
+
+			// 执行 CheckExamStatus 函数
+			CheckExamStatus(ctx)
+
+			// 从上下文中获取响应
+			q := cmn.GetCtxValue(ctx)
+			resp := q.Msg
+			t.Logf("resp:%v\n", resp)
+
+			// 根据预期结果验证响应
+			if tc.expectSuccess {
+				// 成功场景
+				assert.Equal(t, tc.expectedCode, resp.Status)
+				if tc.expectedData != nil {
+					var result int
+					err := json.Unmarshal(resp.Data, &result)
+					if err != nil {
+						t.Fatalf("Failed to unmarshal response: %v", err)
+					}
+					var expected int
+					err = json.Unmarshal(tc.expectedData, &expected)
+					if err != nil {
+						t.Fatalf("Failed to unmarshal expected data: %v", err)
+					}
+					assert.Equal(t, expected, result)
+				}
+			} else {
+				// 失败场景
+				if tc.expectedMessage != "" {
+					assert.Contains(t, resp.Msg, tc.expectedMessage)
+				}
+				assert.NotEqual(t, 0, resp.Status)
+				assert.Empty(t, resp.Data)
+			}
+		})
+	}
+
+	// 测试结束后，恢复原始数据
+	if originalStartTime.Valid && originalEndTime.Valid {
+		// 开始新事务用于恢复
+		tx, err = db.Begin(ctx)
+		if err != nil {
+			t.Fatalf("Failed to begin transaction for cleanup: %v", err)
+		}
+		defer tx.Rollback(ctx)
+
+		// 恢复考试会话的原始时间
+		_, err = tx.Exec(ctx, `
+				UPDATE assessuser.t_exam_session 
+				SET start_time = $1, 
+				    end_time = $2 
+				WHERE id = 152
+			`, originalStartTime.Int64, originalEndTime.Int64)
+		if err != nil {
+			t.Logf("Warning: Failed to restore original exam session data: %v", err)
+		}
+
+		// 恢复考生的原始状态
+		_, err = tx.Exec(ctx, `
+				UPDATE assessuser.t_examinee 
+				SET end_time = $1, 
+				    status = $2 
+				WHERE exam_session_id = 152 AND student_id = 1575
+			`,
+			originalExamineeEndTime, originalExamineeStatus)
+		if err != nil {
+			t.Logf("Warning: Failed to restore original examinee data: %v", err)
+		}
+
+		// 提交恢复事务
+		err = tx.Commit(ctx)
+		if err != nil {
+			t.Logf("Warning: Failed to commit cleanup transaction: %v", err)
+		}
+	}
+}
+
+func TestInitRespondent(t *testing.T) {
+	cmn.ConfigureForTest()
+
+	// 在测试开始前，保存原始数据库状态
+	db := cmn.GetPgxConn()
+	ctx := context.Background()
+
+	// 开始事务，用于测试期间的数据修改
+	tx, err := db.Begin(ctx)
+	if err != nil {
+		t.Fatalf("Failed to begin transaction: %v", err)
+	}
+	defer tx.Rollback(ctx) // 确保测试结束后回滚事务，恢复原始数据
+
+	// 定义测试用例
+	testCases := []struct {
+		name            string
+		method          string
+		url             string
+		reqBody         *cmn.ReqProto
+		Type            string
+		expectSuccess   bool
+		ctxKey          string
+		ctxValue        string
+		expectedMessage string
+		expectedData    json.RawMessage // 预期数据（可选）
+		forceErr        string
+		userId          int64
+		// 测试前需要设置的数据库状态
+		setupDB func(t *testing.T, tx pgx.Tx) error
+		//清理数据
+		clean func(t *testing.T, tx pgx.Tx) error
+	}{
+		// 成功场景 - 考试类型初始化
+		{
+			name:            "监考员允许进入初始化",
+			method:          "POST",
+			url:             "/api/respondent",
+			expectSuccess:   true,
+			expectedMessage: "",
+			userId:          1575,
+			reqBody: &cmn.ReqProto{
+				Data: json.RawMessage(`{
+					"type": "00",
+					"exam_id": 108,
+					"exam_session_id": 152
+				}`),
+			},
+			setupDB: func(t *testing.T, tx pgx.Tx) error {
+				now := time.Now().UnixMilli()
+				_, err := tx.Exec(ctx, `
+						UPDATE t_examinee 
+						SET status = '16', 
+						    start_time=NULL,
+						    end_time = NULL 
+						WHERE exam_session_id = 152 AND student_id = 1575
+					`)
+				if err != nil {
+					return err
+				}
+
+				// 更新考试会话的时间
+				_, err = tx.Exec(ctx, `
+						UPDATE t_exam_session 
+						SET start_time = $1, 
+						    end_time = $2 
+						WHERE id = 152
+					`, now-3600000, now+3600000) // 开始时间为1小时前，结束时间为1小时后
+				return err
+			},
+		},
+		{
+			name:            "监考员允许进入初始化",
+			method:          "POST",
+			url:             "/api/respondent",
+			expectSuccess:   true,
+			expectedMessage: "",
+			userId:          1575,
+			reqBody: &cmn.ReqProto{
+				Data: json.RawMessage(`{
+					"type": "00",
+					"exam_id": 108,
+					"exam_session_id": 152
+				}`),
+			},
+			setupDB: func(t *testing.T, tx pgx.Tx) error {
+				now := time.Now().UnixMilli()
+				_, err := tx.Exec(ctx, `
+						UPDATE t_examinee 
+						SET status = '16', 
+						    start_time=NULL,
+						    end_time = NULL 
+						WHERE exam_session_id = 152 AND student_id = 1575
+					`)
+				if err != nil {
+					return err
+				}
+
+				// 更新考试会话的时间
+				_, err = tx.Exec(ctx, `
+						UPDATE t_exam_session 
+						SET start_time = $1, 
+						    end_time = $2 
+						WHERE id = 152
+					`, now-3600000, now+3600000) // 开始时间为1小时前，结束时间为1小时后
+				return err
+			},
+		},
+		{
+			name:            "学生退出网页，重新进入作答",
+			method:          "POST",
+			url:             "/api/respondent",
+			expectSuccess:   true,
+			expectedMessage: "",
+			userId:          1575,
+			reqBody: &cmn.ReqProto{
+				Data: json.RawMessage(`{
+					"type": "00",
+					"exam_id": 108,
+					"exam_session_id": 152
+				}`),
+			},
+			setupDB: func(t *testing.T, tx pgx.Tx) error {
+				now := time.Now().UnixMilli()
+				_, err := tx.Exec(ctx, `
+						UPDATE t_examinee 
+						SET status = '00', 
+						    start_time=$1,
+						    end_time = NULL 
+						WHERE exam_session_id = 152 AND student_id = 1575
+					`, now)
+				if err != nil {
+					return err
+				}
+
+				// 更新考试会话的时间
+				_, err = tx.Exec(ctx, `
+						UPDATE t_exam_session 
+						SET start_time = $1, 
+						    end_time = $2 ,
+						    late_entry_time = $3
+						WHERE id = 152
+					`, now-3600000, now+3600000, 5000) // 开始时间为1小时前，结束时间为1小时后
+				return err
+			},
+		},
+		{
+			name:            "POST 请求 - 正常考试初始化",
+			method:          "POST",
+			url:             "/api/respondent",
+			expectSuccess:   true,
+			expectedMessage: "",
+			userId:          1575,
+			reqBody: &cmn.ReqProto{
+				Data: json.RawMessage(`{
+					"type": "00",
+					"exam_id": 108,
+					"exam_session_id": 152
+				}`),
+			},
+			setupDB: func(t *testing.T, tx pgx.Tx) error {
+				now := time.Now().UnixMilli()
+				_, err := tx.Exec(ctx, `
+						UPDATE t_examinee 
+						SET status = '00', 
+						    start_time=NULL,
+						    end_time = NULL 
+						WHERE exam_session_id = 152 AND student_id = 1575
+					`)
+				if err != nil {
+					return err
+				}
+
+				// 更新考试会话的时间
+				_, err = tx.Exec(ctx, `
+						UPDATE t_exam_session 
+						SET start_time = $1, 
+						    end_time = $2 ,
+						    late_entry_time = $3
+						WHERE id = 152
+					`, now-3600000, now+3600000, 5000) // 开始时间为1小时前，结束时间为1小时后
+				return err
+			},
+		},
+		{
+			name:            "POST 请求 - 不存在的exam_session_id",
+			method:          "POST",
+			url:             "/api/respondent",
+			expectSuccess:   false,
+			expectedMessage: "",
+			userId:          1575,
+			reqBody: &cmn.ReqProto{
+				Data: json.RawMessage(`{
+					"type": "00",
+					"exam_id": 108,
+					"exam_session_id": 1,
+					"student_id": 1575
+				}`),
+			},
+			setupDB: func(t *testing.T, tx pgx.Tx) error {
+				now := time.Now().UnixMilli()
+				_, err := tx.Exec(ctx, `
+						UPDATE t_examinee 
+						SET status = '16', 
+						    start_time=NULL,
+						    end_time = NULL 
+						WHERE exam_session_id = 152 AND student_id = 1575
+					`)
+				if err != nil {
+					return err
+				}
+
+				// 更新考试会话的时间
+				_, err = tx.Exec(ctx, `
+						UPDATE t_exam_session 
+						SET start_time = $1, 
+						    end_time = $2 
+						WHERE id = 152
+					`, now-3600000, now+3600000) // 开始时间为1小时前，结束时间为1小时后
+				return err
+			},
+		},
+		{
+			name:            "POST 请求 - 不存在的exam_id",
+			method:          "POST",
+			url:             "/api/respondent",
+			expectSuccess:   false,
+			expectedMessage: "",
+			userId:          1575,
+			reqBody: &cmn.ReqProto{
+				Data: json.RawMessage(`{
+					"type": "00",
+					"exam_id": 1,
+					"exam_session_id": 152,
+					"student_id": 1575
+				}`),
+			},
+			setupDB: func(t *testing.T, tx pgx.Tx) error {
+				now := time.Now().UnixMilli()
+				_, err := tx.Exec(ctx, `
+						UPDATE t_examinee 
+						SET status = '16', 
+						    start_time=NULL,
+						    end_time = NULL 
+						WHERE exam_session_id = 152 AND student_id = 1575
+					`)
+				if err != nil {
+					return err
+				}
+
+				// 更新考试会话的时间
+				_, err = tx.Exec(ctx, `
+						UPDATE t_exam_session 
+						SET start_time = $1, 
+						    end_time = $2 
+						WHERE id = 152
+					`, now-3600000, now+3600000) // 开始时间为1小时前，结束时间为1小时后
+				return err
+			},
+		},
+		{
+			name:            "POST 请求 - exam_id为0",
+			method:          "POST",
+			url:             "/api/respondent",
+			expectSuccess:   false,
+			expectedMessage: "",
+			userId:          1575,
+			reqBody: &cmn.ReqProto{
+				Data: json.RawMessage(`{
+					"type": "00",
+					"exam_id": 0,
+					"exam_session_id": 152,
+					"student_id": 1575
+				}`),
+			},
+			setupDB: func(t *testing.T, tx pgx.Tx) error {
+				now := time.Now().UnixMilli()
+				_, err := tx.Exec(ctx, `
+						UPDATE t_examinee 
+						SET status = '16', 
+						    start_time=NULL,
+						    end_time = NULL 
+						WHERE exam_session_id = 152 AND student_id = 1575
+					`)
+				if err != nil {
+					return err
+				}
+
+				// 更新考试会话的时间
+				_, err = tx.Exec(ctx, `
+						UPDATE t_exam_session 
+						SET start_time = $1, 
+						    end_time = $2 
+						WHERE id = 152
+					`, now-3600000, now+3600000) // 开始时间为1小时前，结束时间为1小时后
+				return err
+			},
+		},
+		{
+			name:            "POST 请求 - exam_id为-1",
+			method:          "POST",
+			url:             "/api/respondent",
+			expectSuccess:   false,
+			expectedMessage: "",
+			userId:          1575,
+			reqBody: &cmn.ReqProto{
+				Data: json.RawMessage(`{
+					"type": "00",
+					"exam_id": -1,
+					"exam_session_id": 152,
+					"student_id": 1575
+				}`),
+			},
+			setupDB: func(t *testing.T, tx pgx.Tx) error {
+				now := time.Now().UnixMilli()
+				_, err := tx.Exec(ctx, `
+						UPDATE t_examinee 
+						SET status = '16', 
+						    start_time=NULL,
+						    end_time = NULL 
+						WHERE exam_session_id = 152 AND student_id = 1575
+					`)
+				if err != nil {
+					return err
+				}
+
+				// 更新考试会话的时间
+				_, err = tx.Exec(ctx, `
+						UPDATE t_exam_session 
+						SET start_time = $1, 
+						    end_time = $2 
+						WHERE id = 152
+					`, now-3600000, now+3600000) // 开始时间为1小时前，结束时间为1小时后
+				return err
+			},
+		},
+		{
+			name:            "POST 请求 - exam_session_id为0",
+			method:          "POST",
+			url:             "/api/respondent",
+			expectSuccess:   false,
+			expectedMessage: "",
+			userId:          1575,
+			reqBody: &cmn.ReqProto{
+				Data: json.RawMessage(`{
+					"type": "00",
+					"exam_id": 108,
+					"exam_session_id": 0
+				}`),
+			},
+			setupDB: func(t *testing.T, tx pgx.Tx) error {
+				now := time.Now().UnixMilli()
+				_, err := tx.Exec(ctx, `
+						UPDATE t_examinee 
+						SET status = '16', 
+						    start_time=NULL,
+						    end_time = NULL 
+						WHERE exam_session_id = 152 AND student_id = 1575
+					`)
+				if err != nil {
+					return err
+				}
+
+				// 更新考试会话的时间
+				_, err = tx.Exec(ctx, `
+						UPDATE t_exam_session 
+						SET start_time = $1, 
+						    end_time = $2 
+						WHERE id = 152
+					`, now-3600000, now+3600000) // 开始时间为1小时前，结束时间为1小时后
+				return err
+			},
+		},
+		{
+			name:            "超过进入考试的最迟时间",
+			method:          "POST",
+			url:             "/api/respondent",
+			expectSuccess:   false,
+			expectedMessage: "",
+			userId:          1575,
+			reqBody: &cmn.ReqProto{
+				Data: json.RawMessage(`{
+					"type": "00",
+					"exam_id": 108,
+					"exam_session_id": 152
+				}`),
+			},
+			setupDB: func(t *testing.T, tx pgx.Tx) error {
+				now := time.Now().UnixMilli()
+				_, err := tx.Exec(ctx, `
+						UPDATE t_examinee 
+						SET status = '00', 
+						    start_time=NULL,
+						    end_time = NULL 
+						WHERE exam_session_id = 152 AND student_id = 1575
+					`)
+				if err != nil {
+					return err
+				}
+
+				// 更新考试会话的时间
+				_, err = tx.Exec(ctx, `
+						UPDATE t_exam_session 
+						SET start_time = $1, 
+						    end_time = $2 ,
+						    late_entry_time = $3
+						WHERE id = 152
+					`, now-3600000, now+3600000, 2) // 开始时间为1小时前，结束时间为1小时后
+				return err
+			},
+		},
+		{
+			name:            "考试时间已经结束",
+			method:          "POST",
+			url:             "/api/respondent",
+			expectSuccess:   false,
+			expectedMessage: "",
+			userId:          1575,
+			reqBody: &cmn.ReqProto{
+				Data: json.RawMessage(`{
+					"type": "00",
+					"exam_id": 108,
+					"exam_session_id": 152
+				}`),
+			},
+			setupDB: func(t *testing.T, tx pgx.Tx) error {
+				now := time.Now().UnixMilli()
+				_, err := tx.Exec(ctx, `
+						UPDATE t_examinee 
+						SET status = '00', 
+						    start_time=NULL,
+						    end_time = NULL 
+						WHERE exam_session_id = 152 AND student_id = 1575
+					`)
+				if err != nil {
+					return err
+				}
+
+				// 更新考试会话的时间
+				_, err = tx.Exec(ctx, `
+						UPDATE t_exam_session 
+						SET start_time = $1, 
+						    end_time = $2 ,
+						    late_entry_time = $3
+						WHERE id = 152
+					`, now-3600000, now-2800, 2) // 开始时间为1小时前，结束时间为1小时后
+				return err
+			},
+		},
+		{
+			name:            "考试未开始",
+			method:          "POST",
+			url:             "/api/respondent",
+			expectSuccess:   false,
+			expectedMessage: "",
+			userId:          1575,
+			reqBody: &cmn.ReqProto{
+				Data: json.RawMessage(`{
+					"type": "00",
+					"exam_id": 108,
+					"exam_session_id": 152
+				}`),
+			},
+			setupDB: func(t *testing.T, tx pgx.Tx) error {
+				now := time.Now().UnixMilli()
+				_, err := tx.Exec(ctx, `
+						UPDATE t_examinee 
+						SET status = '00', 
+						    start_time=NULL,
+						    end_time = NULL 
+						WHERE exam_session_id = 152 AND student_id = 1575
+					`)
+				if err != nil {
+					return err
+				}
+
+				// 更新考试会话的时间
+				_, err = tx.Exec(ctx, `
+						UPDATE t_exam_session 
+						SET start_time = $1, 
+						    end_time = $2 ,
+						    late_entry_time = $3
+						WHERE id = 152
+					`, now+3600000, now+2*3600000, 2) // 开始时间为1小时前，结束时间为1小时后
+				return err
+			},
+		},
+		{
+			name:            "begin-tx-err",
+			method:          "POST",
+			url:             "/api/respondent",
+			expectSuccess:   false,
+			expectedMessage: "",
+			userId:          1575,
+			reqBody: &cmn.ReqProto{
+				Data: json.RawMessage(`{
+					"type": "00",
+					"exam_id": 108,
+					"exam_session_id": 152
+				}`),
+			},
+			forceErr: "begin-tx",
+			setupDB: func(t *testing.T, tx pgx.Tx) error {
+				now := time.Now().UnixMilli()
+				_, err := tx.Exec(ctx, `
+						UPDATE t_examinee 
+						SET status = '16', 
+						    start_time=NULL,
+						    end_time = NULL 
+						WHERE exam_session_id = 152 AND student_id = 1575
+					`)
+				if err != nil {
+					return err
+				}
+
+				// 更新考试会话的时间
+				_, err = tx.Exec(ctx, `
+						UPDATE t_exam_session 
+						SET start_time = $1, 
+						    end_time = $2 
+						WHERE id = 152
+					`, now-3600000, now+3600000) // 开始时间为1小时前，结束时间为1小时后
+				return err
+			},
+		},
+		{
+			name:            "roll back err",
+			method:          "POST",
+			url:             "/api/respondent",
+			expectSuccess:   false,
+			expectedMessage: "",
+			userId:          1575,
+			reqBody: &cmn.ReqProto{
+				Data: json.RawMessage(`{
+					"type": "00",
+					"exam_id": 108,
+					"exam_session_id": 152
+				}`),
+			},
+			forceErr: "rollback-tx",
+			setupDB: func(t *testing.T, tx pgx.Tx) error {
+				now := time.Now().UnixMilli()
+				_, err := tx.Exec(ctx, `
+						UPDATE t_examinee 
+						SET status = '16', 
+						    start_time=NULL,
+						    end_time = NULL 
+						WHERE exam_session_id = 152 AND student_id = 1575
+					`)
+				if err != nil {
+					return err
+				}
+
+				// 更新考试会话的时间
+				_, err = tx.Exec(ctx, `
+						UPDATE t_exam_session 
+						SET start_time = $1, 
+						    end_time = $2 
+						WHERE id = 152
+					`, now-3600000, now+3600000) // 开始时间为1小时前，结束时间为1小时后
+				return err
+			},
+		},
+		{
+			name:            "POST 请求 - exam_session_id为-1",
+			method:          "POST",
+			url:             "/api/respondent",
+			expectSuccess:   false,
+			expectedMessage: "",
+			userId:          1575,
+			reqBody: &cmn.ReqProto{
+				Data: json.RawMessage(`{
+					"type": "00",
+					"exam_id": 108,
+					"exam_session_id": -1
+				}`),
+			},
+			setupDB: func(t *testing.T, tx pgx.Tx) error {
+				now := time.Now().UnixMilli()
+				_, err := tx.Exec(ctx, `
+						UPDATE t_examinee 
+						SET status = '16', 
+						    start_time=NULL,
+						    end_time = NULL 
+						WHERE exam_session_id = 152 AND student_id = 1575
+					`)
+				if err != nil {
+					return err
+				}
+
+				// 更新考试会话的时间
+				_, err = tx.Exec(ctx, `
+						UPDATE t_exam_session 
+						SET start_time = $1, 
+						    end_time = $2 
+						WHERE id = 152
+					`, now-3600000, now+3600000) // 开始时间为1小时前，结束时间为1小时后
+				return err
+			},
+		},
+		{
+			name:            "POST 请求 - userId为-1",
+			method:          "POST",
+			url:             "/api/respondent",
+			expectSuccess:   false,
+			expectedMessage: "",
+			userId:          -1,
+			reqBody: &cmn.ReqProto{
+				Data: json.RawMessage(`{
+					"type": "00",
+					"exam_id": 108,
+					"exam_session_id": 152
+				}`),
+			},
+			setupDB: func(t *testing.T, tx pgx.Tx) error {
+				now := time.Now().UnixMilli()
+				_, err := tx.Exec(ctx, `
+						UPDATE t_examinee 
+						SET status = '16', 
+						    start_time=NULL,
+						    end_time = NULL 
+						WHERE exam_session_id = 152 AND student_id = 1575
+					`)
+				if err != nil {
+					return err
+				}
+
+				// 更新考试会话的时间
+				_, err = tx.Exec(ctx, `
+						UPDATE t_exam_session 
+						SET start_time = $1, 
+						    end_time = $2 
+						WHERE id = 152
+					`, now-3600000, now+3600000) // 开始时间为1小时前，结束时间为1小时后
+				return err
+			},
+		},
+		{
+			name:            "POST 请求 - userId为0",
+			method:          "POST",
+			url:             "/api/respondent",
+			expectSuccess:   false,
+			expectedMessage: "",
+			userId:          -1,
+			reqBody: &cmn.ReqProto{
+				Data: json.RawMessage(`{
+					"type": "00",
+					"exam_id": 108,
+					"exam_session_id": 152
+				}`),
+			},
+			setupDB: func(t *testing.T, tx pgx.Tx) error {
+				now := time.Now().UnixMilli()
+				_, err := tx.Exec(ctx, `
+						UPDATE t_examinee 
+						SET status = '16', 
+						    start_time=NULL,
+						    end_time = NULL 
+						WHERE exam_session_id = 152 AND student_id = 1575
+					`)
+				if err != nil {
+					return err
+				}
+
+				// 更新考试会话的时间
+				_, err = tx.Exec(ctx, `
+						UPDATE t_exam_session 
+						SET start_time = $1, 
+						    end_time = $2 
+						WHERE id = 152
+					`, now-3600000, now+3600000) // 开始时间为1小时前，结束时间为1小时后
+				return err
+			},
+		},
+		{
+			name:            "POST 请求 - io read err",
+			method:          "POST",
+			url:             "/api/respondent",
+			reqBody:         &cmn.ReqProto{},
+			expectSuccess:   false,
+			expectedMessage: "io read all error",
+			userId:          1575,
+			forceErr:        "io.ReadAll",
+		},
+		{
+			name:            "empty-buf error",
+			method:          "POST",
+			url:             "/api/respondent",
+			reqBody:         &cmn.ReqProto{},
+			expectSuccess:   false,
+			expectedMessage: "",
+			userId:          1575,
+		},
+		{
+			name:            "buf-zero",
+			method:          "POST",
+			url:             "/api/respondent",
+			reqBody:         &cmn.ReqProto{},
+			expectSuccess:   false,
+			expectedMessage: "",
+			userId:          1575,
+		},
+		// 失败场景 - 无效的JSON
+		{
+			name:            "POST 请求 - 无效的JSON",
+			method:          "POST",
+			url:             "/api/respondent",
+			reqBody:         &cmn.ReqProto{},
+			expectSuccess:   false,
+			expectedMessage: "unexpected end of JSON input",
+			userId:          1575,
+		},
+		{
+			name:            "不是POST的请求方法",
+			method:          "GET",
+			url:             "/api/respondent",
+			reqBody:         &cmn.ReqProto{},
+			expectSuccess:   false,
+			expectedMessage: "please call /api/upLogin with  http POST method",
+			userId:          1575,
+		},
+		{
+			name:   "close body err",
+			method: "POST",
+			url:    "/api/respondent",
+			reqBody: &cmn.ReqProto{
+				Data: json.RawMessage(`{
+					"type": "00",
+					"exam_id": 108,
+					"exam_session_id": 152
+				}`),
+			},
+			expectSuccess:   false,
+			expectedMessage: "",
+			userId:          1575,
+			forceErr:        "close body err",
+		},
+		// 失败场景 - 未登录用户
+		{
+			name:   "POST 请求 - 未登录用户",
+			method: "POST",
+			url:    "/api/respondent",
+			reqBody: &cmn.ReqProto{
+				Data: json.RawMessage(`{
+					"type": "00",
+					"exam_id": 123,
+					"exam_session_id": 152
+				}`),
+			},
+			expectSuccess:   false,
+			expectedMessage: "student id is smaller than 0 or equal to 0",
+			userId:          0,
+		},
+		{
+			name:            "type是无效的",
+			method:          "POST",
+			url:             "/api/respondent",
+			expectSuccess:   false,
+			expectedMessage: "",
+			userId:          1575,
+			reqBody: &cmn.ReqProto{
+				Data: json.RawMessage(`{
+					"type": "04",
+					"exam_id": 108,
+					"exam_session_id": 152
+				}`),
+			},
+			setupDB: func(t *testing.T, tx pgx.Tx) error {
+				now := time.Now().UnixMilli()
+				_, err := tx.Exec(ctx, `
+						UPDATE t_examinee 
+						SET status = '16', 
+						    start_time=NULL,
+						    end_time = NULL 
+						WHERE exam_session_id = 152 AND student_id = 1575
+					`)
+				if err != nil {
+					return err
+				}
+
+				// 更新考试会话的时间
+				_, err = tx.Exec(ctx, `
+						UPDATE t_exam_session 
+						SET start_time = $1, 
+						    end_time = $2 
+						WHERE id = 152
+					`, now-3600000, now+3600000) // 开始时间为1小时前，结束时间为1小时后
+				return err
+			},
+		},
+		{
+			name:            "qry.data unmarshal err",
+			method:          "POST",
+			url:             "/api/respondent",
+			expectSuccess:   false,
+			expectedMessage: "",
+			userId:          1575,
+			reqBody: &cmn.ReqProto{
+				Data: json.RawMessage(""),
+			},
+			setupDB: func(t *testing.T, tx pgx.Tx) error {
+				now := time.Now().UnixMilli()
+				_, err := tx.Exec(ctx, `
+						UPDATE t_examinee 
+						SET status = '16', 
+						    start_time=NULL,
+						    end_time = NULL 
+						WHERE exam_session_id = 152 AND student_id = 1575
+					`)
+				if err != nil {
+					return err
+				}
+
+				// 更新考试会话的时间
+				_, err = tx.Exec(ctx, `
+						UPDATE t_exam_session 
+						SET start_time = $1, 
+						    end_time = $2 
+						WHERE id = 152
+					`, now-3600000, now+3600000) // 开始时间为1小时前，结束时间为1小时后
+				return err
+			},
+		},
+		{
+			name:            "save start time error",
+			method:          "POST",
+			url:             "/api/respondent",
+			expectSuccess:   false,
+			expectedMessage: "",
+			ctxKey:          "test",
+			ctxValue:        "normal-resp",
+			userId:          1575,
+			reqBody: &cmn.ReqProto{
+				Data: json.RawMessage(
+					`{
+						"type":"00",
+					"exam_id":108,
+					"exam_session_id":152
+						}`,
+				),
+			},
+			setupDB: func(t *testing.T, tx pgx.Tx) error {
+				now := time.Now().UnixMilli()
+				_, err := tx.Exec(ctx, `
+						UPDATE t_examinee 
+						SET status = '16', 
+						    start_time=NULL,
+						    end_time = $1 
+						WHERE exam_session_id = 152 AND student_id = 1575
+					`, now)
+				if err != nil {
+					return err
+				}
+
+				// 更新考试会话的时间
+				_, err = tx.Exec(ctx, `
+						UPDATE t_exam_session 
+						SET start_time = $1, 
+						    end_time = $2 
+						WHERE id = 152
+					`, now-3600000, now+3600000) // 开始时间为1小时前，结束时间为1小时后
+				return err
+			},
+		},
+		{
+			name:            "练习正常初始化",
+			method:          "POST",
+			url:             "/api/respondent",
+			expectSuccess:   true,
+			expectedMessage: "",
+			userId:          1575,
+			Type:            "练习",
+			reqBody: &cmn.ReqProto{
+				Data: json.RawMessage(`{
+					"type": "02",
+					"practice_id": 2034
+				}`),
+			},
+			setupDB: func(t *testing.T, tx pgx.Tx) error {
+				return nil
+			},
+			clean: func(t *testing.T, tx pgx.Tx) error {
+				_, err := tx.Exec(context.Background(), `DELETE FROM assessuser.t_practice_submissions WHERE id>176`)
+				if err != nil {
+					t.Fatal(err)
+				}
+				return nil
+			},
+		},
+		{
+			name:            "练习之前已经初始化了，继续进入",
+			method:          "POST",
+			url:             "/api/respondent",
+			expectSuccess:   true,
+			expectedMessage: "",
+			userId:          1580,
+			Type:            "练习",
+			reqBody: &cmn.ReqProto{
+				Data: json.RawMessage(`{
+					"type": "02",
+					"practice_id": 2034
+				}`),
+			},
+			setupDB: func(t *testing.T, tx pgx.Tx) error {
+				return nil
+			},
+			clean: func(t *testing.T, tx pgx.Tx) error {
+				_, err := tx.Exec(context.Background(), `DELETE FROM assessuser.t_practice_submissions WHERE id>176`)
+				if err != nil {
+					t.Fatal(err)
+				}
+				return nil
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			// 如果需要设置数据库状态
+			if tc.setupDB != nil {
+				err := tc.setupDB(t, tx)
+				if err != nil {
+					t.Fatalf("Failed to setup database: %v", err)
+				}
+
+				// 提交事务以应用更改
+				err = tx.Commit(ctx)
+				if err != nil {
+					t.Fatalf("Failed to commit transaction: %v", err)
+				}
+
+				// 开始新事务用于下一个测试或恢复
+				tx, err = db.Begin(ctx)
+				if err != nil {
+					t.Fatalf("Failed to begin new transaction: %v", err)
+				}
+			}
+
+			var req *http.Request
+			var err error
+
+			if tc.reqBody != nil {
+				// 对于 POST 请求，准备请求体
+				bodyBytes, err := json.Marshal(tc.reqBody)
+				if err != nil {
+					t.Fatalf("Failed to marshal request body: %v", err)
+				}
+				req, err = http.NewRequest(tc.method, tc.url, bytes.NewBuffer(bodyBytes))
+				if tc.name == "buf-zero" {
+					req, err = http.NewRequest(tc.method, tc.url, bytes.NewBuffer(nil))
+				} else if tc.reqBody.Data == nil {
+					req, err = http.NewRequest(tc.method, tc.url, bytes.NewBuffer([]byte("{")))
+				} else if tc.name == "empty-buf error" {
+					req, err = http.NewRequest(tc.method, tc.url, bytes.NewBuffer([]byte("")))
+				}
+			} else {
+				// 对于 GET 请求，没有请求体
+				req, err = http.NewRequest(tc.method, tc.url, nil)
+			}
+
+			if err != nil {
+				t.Fatalf("Failed to create request: %v", err)
+			}
+			// 创建模拟的上下文，应用自定义选项
+			ctx := createMockContext(t, req, tc.userId)
+
+			//传入强制err
+			if tc.forceErr != "" {
+				ctx = context.WithValue(ctx, ForceErr, tc.forceErr)
+			}
+			if tc.ctxValue != "" {
+				ctx = context.WithValue(ctx, tc.ctxKey, tc.ctxValue)
+			}
+
+			// 调用被测试的函数
+			InitRespondent(ctx)
+			if tc.clean != nil {
+
+				err := tc.clean(t, tx)
+				if err != nil {
+					t.Fatalf("Failed to setup database: %v", err)
+				}
+				// 提交事务以应用更改
+				err = tx.Commit(ctx)
+				if err != nil {
+					t.Fatalf("Failed to commit transaction: %v", err)
+				}
+			}
+
+			// 从上下文中获取响应
+			q := cmn.GetCtxValue(ctx)
+			resp := q.Msg
+			t.Logf("resp:%v\n", resp)
+
+			// 根据预期结果验证响应
+			if tc.expectSuccess {
+				// 成功场景
+
+				if tc.Type == "练习" {
+					assert.Equal(t, resp.Status, 0)
+					assert.NotEmpty(t, resp.Data)
+					var data map[string]interface{}
+					err := json.Unmarshal(resp.Data, &data)
+					if err != nil {
+						t.Fatalf("Failed to unmarshal response: %v", err)
+					}
+					assert.NotEmpty(t, data["Info"])
+					assert.NotEmpty(t, data["QuestionGroupInfo"])
+					assert.NotEmpty(t, data["Questions"])
+					//assert.NotEmpty(t, data["ElapsedSeconds"])
+				} else {
+					assert.Equal(t, resp.Status, 0)
+					assert.NotEmpty(t, resp.Data)
+					var data map[string]interface{}
+					err := json.Unmarshal(resp.Data, &data)
+					if err != nil {
+						t.Fatalf("Failed to unmarshal response: %v", err)
+					}
+					assert.NotEmpty(t, data["examinee_id"])
+					assert.NotEmpty(t, data["session"])
+					assert.NotEmpty(t, data["exam_info"])
+					assert.NotEmpty(t, data["QuestionGroupInfo"])
+					assert.NotEmpty(t, data["Questions"])
+				}
+
+			} else {
+				// 失败场景
+				if tc.expectedMessage != "" {
+					assert.Contains(t, resp.Msg, tc.expectedMessage)
+				}
+				assert.NotEqual(t, 0, resp.Status)
+				assert.Empty(t, resp.Data)
+			}
+
+		})
+	}
+}
