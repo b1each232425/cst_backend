@@ -3,7 +3,7 @@
  * @Description: 练习管理数据库层函数逻辑测试
  * @Date: 2025-07-24 14:51:50
  * @LastEditors: zdl <1311866870@qq.com>
- * @LastEditTime: 2025-07-28 10:24:04
+ * @LastEditTime: 2025-07-28 12:15:11
  */
 package practice_mgt
 
@@ -587,7 +587,7 @@ func TestValidatePractice(t *testing.T) {
 				PaperID:         null.IntFrom(102),
 				Name:            null.StringFrom("化学期末考试"),
 				CorrectMode:     null.StringFrom("异常批改数据"), // 批改模式
-				Type:            null.StringFrom("02"),     // 练习类型（试卷）
+				Type:            null.StringFrom("02"),           // 练习类型（试卷）
 				AllowedAttempts: null.IntFrom(10),
 			},
 			ps:            nil,
@@ -609,7 +609,7 @@ func TestValidatePractice(t *testing.T) {
 			p: &cmn.TPractice{
 				PaperID:         null.IntFrom(102),
 				Name:            null.StringFrom("化学期末考试"),
-				CorrectMode:     null.StringFrom("02"),     // 批改模式
+				CorrectMode:     null.StringFrom("02"),           // 批改模式
 				Type:            null.StringFrom("异常练习类型"), // 练习类型（试卷）
 				AllowedAttempts: null.IntFrom(10),
 			},
@@ -789,7 +789,7 @@ func TestUpsertPracticeStudent(t *testing.T) {
 	})
 }
 
-// 测试学生权限获取练习作答列表
+// 测试学生权限获取练习作答列表 这里虽然无数据，但也是可以
 func TestListPracticeS(t *testing.T) {
 	// 确保logger已初始化
 	if z == nil {
@@ -799,6 +799,7 @@ func TestListPracticeS(t *testing.T) {
 }
 
 // 测试教师及以上权限获取练习作答列表
+// 练习暂无其余练习
 func TestListPracticeT(t *testing.T) {
 	// 确保logger已初始化
 	if z == nil {
@@ -815,20 +816,20 @@ func TestListPracticeT(t *testing.T) {
 	if err != nil {
 		t.Fatalf("创建测试练习p1失败: %v", err)
 	}
-	err = conn.QueryRow(ctx, `INSERT INTO assessuser.t_practice (name,correct_mode,creator,create_time, update_time, addi,allowed_attempts,type,paper_id)
-	VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`, "测试练习名称2", MarkMode.AI, 100, now, now, nil, 10, PracticeType.Classical, 62).Scan(&p2)
+	err = conn.QueryRow(ctx, `INSERT INTO assessuser.t_practice (name,correct_mode,creator,create_time, update_time,status,addi,allowed_attempts,type,paper_id)
+	VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9,$10) RETURNING id`, "测试练习名称2", MarkMode.AI, 100, now, now, PracticeStatus.Released, nil, 10, PracticeType.Classical, 62).Scan(&p2)
 	if err != nil {
 		t.Fatalf("创建测试练习p2失败: %v", err)
 	}
 
 	testStudents := []int64{101, 102, 103}
 	// 这里还需要插入学生
-	err = UpsertPracticeStudent(ctx, p1, 1, testStudents)
+	err = UpsertPracticeStudent(ctx, p1, 100, testStudents)
 	require.NoError(t, err)
-	err = UpsertPracticeStudent(ctx, p2, 1, testStudents)
+	err = UpsertPracticeStudent(ctx, p2, 100, testStudents)
 	require.NoError(t, err)
 
-	// 此处的分页也是要测试
+	// 此处的分页也是要测试	 分页的逻辑检测已经放在handler层了
 	tests := []struct {
 		name          string
 		pName         string
@@ -837,17 +838,74 @@ func TestListPracticeT(t *testing.T) {
 		page          int
 		pageSize      int
 		expectedError error
+		expectedNum   int
 	}{
 		{
-			name:          "正常1 不进行筛选查询",
+			name:          "正常1 不进行其余筛选查询",
 			pName:         "",
-			Type:          "",
+			Type:          PracticeType.Classical,
 			status:        "",
 			page:          1,
 			pageSize:      10,
 			expectedError: nil,
+			expectedNum:   2,
+		},
+		{
+			name:          "正常2 练习名称1模糊筛选查询",
+			pName:         "1",
+			Type:          PracticeType.Classical,
+			status:        "",
+			page:          1,
+			pageSize:      10,
+			expectedError: nil,
+			expectedNum:   1,
+		},
+		{
+			name:          "正常3 练习名称2模糊筛选查询",
+			pName:         "2",
+			Type:          PracticeType.Classical,
+			status:        "",
+			page:          1,
+			pageSize:      10,
+			expectedError: nil,
+			expectedNum:   1,
+		},
+		{
+			name:          "正常4 其他练习类型筛选查询 无结果",
+			pName:         "",
+			Type:          PracticeType.PracticeNew,
+			status:        "",
+			page:          1,
+			pageSize:      10,
+			expectedError: nil,
+			expectedNum:   0,
+		},
+		{
+			name:          "正常5 已发布练习状态筛选",
+			pName:         "",
+			Type:          PracticeType.Classical,
+			status:        PracticeStatus.Released,
+			page:          1,
+			pageSize:      10,
+			expectedError: nil,
+			expectedNum:   1,
+		},
+		{
+			name:          "正常5 未发布练习状态筛选",
+			pName:         "",
+			Type:          PracticeType.Classical,
+			status:        PracticeStatus.PendingRelease,
+			page:          1,
+			pageSize:      10,
+			expectedError: nil,
+			expectedNum:   1,
 		},
 	}
+
+	// 这里给一个状态的数量
+	var pending, release int
+	pending = 0
+	release = 0
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -862,8 +920,14 @@ func TestListPracticeT(t *testing.T) {
 					}
 					t.Logf("打印输出练习本身:%v", p)
 					t.Logf("打印输出练习学生数量:%v", tp["student_count"])
-					if tt.status == "" && p.Status.String != PracticeStatus.PendingRelease {
-						t.Errorf("无筛选查询 错误练习发布状态")
+					// 现在是分为两种了 你不可能去满足所有的测试用例去写这个
+					if tt.status == "" {
+						if p.Status.String == PracticeStatus.PendingRelease {
+							pending++
+						}
+						if p.Status.String == PracticeStatus.Released {
+							release++
+						}
 					}
 					if tt.status != "" && p.Status.String != tt.status {
 						t.Errorf("有发布状态筛选查询 错误练习发布状态搜索：期望%v,实际:%v", tt.status, p.Status.String)
@@ -884,7 +948,10 @@ func TestListPracticeT(t *testing.T) {
 						t.Errorf("统计练习学生数量错误")
 					}
 				}
-				if total != 2 {
+				if tt.status == "" && tt.expectedNum == 2 && (pending != 1 || release != 1) {
+					t.Errorf("practice 筛选的练习发布状态有误")
+				}
+				if total != tt.expectedNum {
 					t.Errorf("统计练习列表个数错误")
 				}
 
@@ -902,6 +969,12 @@ func TestListPracticeT(t *testing.T) {
 			_, _ = conn.Exec(ctx, "DELETE FROM assessuser.t_practice WHERE id = $1", p2)
 		})
 	}
+}
+
+// 操作练习的发布状态的，需要跟考卷挂钩的，但是此时我又没有题目的数据，就没法测，不然就是使用mock咯？专门就是去测试
+// 单元函数测试逻辑的
+func TestOperatePracticeStatus(t *testing.T) {
+
 }
 
 // 辅助函数：检查字符串是否包含子字符串

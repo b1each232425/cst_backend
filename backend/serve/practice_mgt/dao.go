@@ -18,6 +18,12 @@ import (
 )
 
 // UpsertPractice 新增/修改练习信息 根据用户传输的信息动态构建SQL语句
+/*
+关键参数说明：
+	p 要插入/更新的练习信息
+	ps 参与练习的学生ID数组
+	uid 操作人
+*/
 func UpsertPractice(ctx context.Context, p *cmn.TPractice, ps []int64, uid int64) error {
 	if uid <= 0 {
 		err := fmt.Errorf("invalid updator ID param")
@@ -39,6 +45,13 @@ func UpsertPractice(ctx context.Context, p *cmn.TPractice, ps []int64, uid int64
 }
 
 // UpdatePractice 更新练习本身信息
+/*
+关键参数说明：
+	p 要插入/更新的练习信息
+	ps 参与练习的学生ID数组
+	uid 操作人
+	isOperate 是否通过operate操作函数调用的：是则允许更新status字段，否则不允许更新status字段
+*/
 func UpdatePractice(ctx context.Context, p *cmn.TPractice, ps []int64, uid int64, isOperate bool) error {
 	if uid <= 0 {
 		err := fmt.Errorf("invalid updator ID param")
@@ -91,7 +104,12 @@ func UpdatePractice(ctx context.Context, p *cmn.TPractice, ps []int64, uid int64
 }
 
 // AddPractice 添加一场练习 包括插入成功导入的学生
-// TODO 需对接学生管理接口
+/*
+关键参数说明：
+	p 要插入/更新的练习信息
+	ps 参与练习的学生ID数组
+	uid 操作人
+*/
 func AddPractice(ctx context.Context, p *cmn.TPractice, ps []int64, uid int64) error {
 	var id int64
 	now := time.Now().UnixMilli()
@@ -114,6 +132,12 @@ func AddPractice(ctx context.Context, p *cmn.TPractice, ps []int64, uid int64) e
 }
 
 // UpsertPracticeStudent 更新一次练习参与的学生名单
+/*
+关键参数说明：
+	pid 要绑定关联的练习ID
+	uid 操作人
+	ps 参与练习的学生ID数组
+*/
 func UpsertPracticeStudent(ctx context.Context, pid, uid int64, ps []int64) error {
 	if ps == nil || len(ps) == 0 {
 		return nil
@@ -224,9 +248,13 @@ func UpsertPracticeStudent(ctx context.Context, pid, uid int64, ps []int64) erro
 }
 
 // LoadPracticeById 获取练习详情 其中不需要查询学生具体信息
-func LoadPracticeById(ctx context.Context, practiceId int64) (*cmn.TPractice, string, int, error) {
-	if practiceId <= 0 {
-		err := fmt.Errorf("非法practiceID:%v", practiceId)
+/*
+关键参数说明：
+	pid 要查询的练习ID
+*/
+func LoadPracticeById(ctx context.Context, pid int64) (*cmn.TPractice, string, int, error) {
+	if pid <= 0 {
+		err := fmt.Errorf("非法practiceID:%v", pid)
 		z.Error(err.Error())
 		return &cmn.TPractice{}, "", 0, err
 	}
@@ -256,7 +284,7 @@ func LoadPracticeById(ctx context.Context, practiceId int64) (*cmn.TPractice, st
 	var p cmn.TPractice
 	var paperName string
 	var studentCount int
-	err = stmt.QueryRowxContext(ctx, PracticeStudentStatus.Normal, examPaper.PaperStatus.Normal, practiceId, PracticeStatus.Deleted).
+	err = stmt.QueryRowxContext(ctx, PracticeStudentStatus.Normal, examPaper.PaperStatus.Normal, pid, PracticeStatus.Deleted).
 		Scan(&p.ID, &p.Name, &p.CorrectMode,
 			&p.Addi, &p.Status, &p.Type, &paperName, &p.AllowedAttempts, &p.PaperID, &p.ExamPaperID, &studentCount)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -273,8 +301,16 @@ func LoadPracticeById(ctx context.Context, practiceId int64) (*cmn.TPractice, st
 }
 
 // ListPracticeS 学生权限及以下获取练习列表
-// TODO 添加上权限设计 可能会整合成一个接口
-
+/*
+关键参数说明：条件查询
+	pType 练习类型
+	name 练习名称（模糊）
+	difficulty 练习难度
+	orderBy 排序顺序
+	page 页号
+	pageSize 页大小
+	uid 操作人ID
+*/
 func ListPracticeS(ctx context.Context, pType, name, difficulty string, orderBy []string, page, pageSize int, uid int64) ([]*cmn.TVPracticeSummary, int, error) {
 	result := make([]*cmn.TVPracticeSummary, 0)
 	// 查询条件
@@ -359,6 +395,16 @@ func ListPracticeS(ctx context.Context, pType, name, difficulty string, orderBy 
 }
 
 // ListPracticeT 教师权限及以上获取练习列表
+/*
+关键参数说明：条件查询
+	name 练习名称（模糊）
+	pType 练习类型
+	status 练习发布状态
+	orderBy 排序顺序
+	page 页号
+	pageSize 页大小
+	uid 操作人ID
+*/
 func ListPracticeT(ctx context.Context, name, pType, status string, orderBy []string, page, pageSize int, uid int64) ([]Map, int, error) {
 	result := make([]Map, 0)
 	// 查询条件
@@ -398,7 +444,7 @@ func ListPracticeT(ctx context.Context, name, pType, status string, orderBy []st
 		s += " ORDER BY " + strings.Join(orderBy, ", ")
 	}
 	// 添加分页参数
-	if pageSize > 0 && pageSize <= 100 {
+	if pageSize > 0 && pageSize <= 999 {
 		s += fmt.Sprintf(" LIMIT $%d", len(args)+1)
 		args = append(args, pageSize)
 	}
@@ -447,6 +493,10 @@ func ListPracticeT(ctx context.Context, name, pType, status string, orderBy []st
 }
 
 // ListPracticeStudentIds 获取参与某次练习的所有考生Id
+/*
+关键参数说明：
+	pid 练习ID
+*/
 func ListPracticeStudentIds(ctx context.Context, pid int64) ([]int64, error) {
 	if pid <= 0 {
 		err := fmt.Errorf("invalid practice ID param")
