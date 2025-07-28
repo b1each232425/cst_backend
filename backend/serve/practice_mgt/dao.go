@@ -738,8 +738,8 @@ func EnterPracticeGetPaperDetails(ctx context.Context, tx pgx.Tx, pid int64, uid
 		case "normal-resp":
 			{
 				now := time.Now().UnixMilli()
-				var p *cmn.TVExamPaper
-				var epInfo *EnterPracticeInfo
+				var p *cmn.TVExamPaper = &cmn.TVExamPaper{}
+				var epInfo *EnterPracticeInfo = &EnterPracticeInfo{}
 				p.ID = null.IntFrom(101)
 				p.ExamSessionID = null.IntFrom(201)
 				p.PracticeID = null.IntFrom(201)
@@ -765,7 +765,7 @@ func EnterPracticeGetPaperDetails(ctx context.Context, tx pgx.Tx, pid int64, uid
 
 				questionMap := make(map[int64][]*examPaper.ExamQuestion)
 				qList1 := make([]*examPaper.ExamQuestion, 0)
-				var q1 *examPaper.ExamQuestion
+				var q1 *examPaper.ExamQuestion = &examPaper.ExamQuestion{}
 				q1.ID = null.IntFrom(2042)
 				q1.Type = null.StringFrom("00")
 				q1.Title = null.StringFrom("")
@@ -795,7 +795,7 @@ func EnterPracticeGetPaperDetails(ctx context.Context, tx pgx.Tx, pid int64, uid
 				qList1 = append(qList1, q1)
 
 				qList2 := make([]*examPaper.ExamQuestion, 0)
-				var q2 *examPaper.ExamQuestion
+				var q2 *examPaper.ExamQuestion = &examPaper.ExamQuestion{}
 				q2.ID = null.IntFrom(2045)
 				q2.Type = null.StringFrom("06")
 				q2.Title = null.StringFrom("")
