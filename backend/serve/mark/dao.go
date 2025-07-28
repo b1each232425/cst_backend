@@ -37,16 +37,17 @@ type ExamSession struct {
 }
 
 type QueryCondition struct {
-	TeacherID     int64 `json:"teacher_id" validate:"required,gt=0"`
-	ExamSessionID int64 `json:"exam_session_id" validate:"gte=0"`
-	ExamineeID    int64 `json:"examinee_id" validate:"gte=0"`
-	PracticeID    int64 `json:"practice_id" validate:"gte=0"`
+	TeacherID            int64 `json:"teacher_id" validate:"required,gt=0"`
+	ExamSessionID        int64 `json:"exam_session_id" validate:"gte=0"`
+	ExamineeID           int64 `json:"examinee_id" validate:"gte=0"`
+	PracticeID           int64 `json:"practice_id" validate:"gte=0"`
+	PracticeSubmissionID int64 `json:"practice_submission_id" validate:"gte=0"`
 }
 
 type MarkerInfo struct {
 	MarkerID           int64           `json:"marker_id"`
 	MarkInfos          []cmn.TMarkInfo `json:"mark_infos"`
-	MarkMode           string          `json:"mark_mode"`
+	MarkMode           string          `json:"mark_mode"` // 00：不需要手动批改  02：全卷多评 04：试卷分配 06：题组专评 08：题目分配 10：单人（人工）批改 12：批改单个练习学生
 	MarkMethod         string          `json:"mark_method"`
 	MarkedStudentNames []string        `json:"marked_student_names"`
 }
@@ -429,35 +430,65 @@ func QueryMarkingResults(ctx context.Context, cond QueryCondition) (markingResul
 	return
 }
 
-func QueryExamMarkerInfo(ctx context.Context, cond QueryCondition) (markerInfo MarkerInfo, err error) {
-	if cond.ExamSessionID == 0 {
-		err = fmt.Errorf("exam session id is required")
+func QueryMarkerInfo(ctx context.Context, cond QueryCondition) (markerInfo MarkerInfo, err error) {
+	// 参数校验
+	if cond.ExamSessionID == 0 && cond.PracticeID == 0 {
+		err = fmt.Errorf("invalid params: either exam session id or practice id is required")
 		z.Error(err.Error())
 		return
 	}
 
-	getExamMarkerInfoSQL := `	SELECT mi.mark_teacher_id, mi.mark_count, 
-	       							mi.mark_question_groups, mi.mark_examinee_ids, es.mark_mode, es.mark_method, u.official_name
-								FROM t_mark_info mi
-								JOIN t_exam_session es ON es.id = mi.exam_session_id
-								JOIN t_user u ON u.id = mi.mark_teacher_id
-								WHERE mi.exam_session_id = $1 AND mi.status != '04'`
+	var (
+		query       string
+		queryParams []interface{}
+	)
+
+	// 构建不同的SQL查询
+	if cond.ExamSessionID != 0 {
+		query = `SELECT mi.mark_teacher_id, mi.mark_count, 
+                        mi.mark_question_groups, mi.mark_examinee_ids, 
+                        es.mark_mode, es.mark_method, u.official_name
+                 FROM t_mark_info mi
+                 JOIN t_exam_session es ON es.id = mi.exam_session_id
+                 JOIN t_user u ON u.id = mi.mark_teacher_id
+                 WHERE mi.exam_session_id = $1 AND mi.status != '04'`
+		queryParams = append(queryParams, cond.ExamSessionID)
+	} else {
+		query = `SELECT mi.mark_teacher_id, mi.mark_count, 
+                        mi.mark_question_groups, mi.mark_examinee_ids
+                 FROM t_mark_info mi
+                 JOIN t_practice p ON p.id = mi.practice_id
+                 WHERE mi.practice_id = $1 AND mi.status != '04'`
+		queryParams = append(queryParams, cond.PracticeID)
+	}
 
 	pgxConn := cmn.GetPgxConn()
-	rows, err := pgxConn.Query(ctx, getExamMarkerInfoSQL, cond.ExamSessionID)
+	rows, err := pgxConn.Query(ctx, query, queryParams...)
 	if err != nil {
-		err = fmt.Errorf("exec getExamMarkerInfo SQL error: %s", err.Error())
+		err = fmt.Errorf("exec QueryMarkerInfo SQL error: %s", err.Error())
 		z.Error(err.Error())
 		return
 	}
+	defer rows.Close()
 
-	var markMode null.String
-	var markMethod null.String
+	var (
+		markMode   null.String
+		markMethod null.String
+		scanVars   []interface{}
+	)
+
 	for rows.Next() {
 		var markInfo cmn.TMarkInfo
 		var name null.String
 
-		err = rows.Scan(&markInfo.MarkTeacherID, &markInfo.MarkCount, &markInfo.MarkQuestionGroups, &markInfo.MarkExamineeIds, &markMode, &markMethod, &name)
+		scanVars = []interface{}{&markInfo.MarkTeacherID, &markInfo.MarkCount,
+			&markInfo.MarkQuestionGroups, &markInfo.MarkExamineeIds}
+
+		if cond.ExamSessionID != 0 {
+			scanVars = append(scanVars, &markMode, &markMethod, &name)
+		}
+
+		err = rows.Scan(scanVars...)
 		if err != nil {
 			err = fmt.Errorf("unable to scan row data:%s", err)
 			z.Error(err.Error())
@@ -465,13 +496,17 @@ func QueryExamMarkerInfo(ctx context.Context, cond QueryCondition) (markerInfo M
 		}
 
 		markerInfo.MarkInfos = append(markerInfo.MarkInfos, markInfo)
-		markerInfo.MarkedStudentNames = append(markerInfo.MarkedStudentNames, name.String)
+		if cond.ExamSessionID != 0 {
+			markerInfo.MarkedStudentNames = append(markerInfo.MarkedStudentNames, name.String)
+		}
 	}
 
-	markerInfo.MarkMethod = markMethod.String
-	markerInfo.MarkMode = markMode.String
+	if cond.ExamSessionID != 0 {
+		markerInfo.MarkMethod = markMethod.String
+		markerInfo.MarkMode = markMode.String
+	}
 
-	return
+	return markerInfo, nil
 }
 
 func QueryStudentAnswersByMarkMode(ctx context.Context, answerType string, cond QueryCondition, markerInfo MarkerInfo) (studentAnswers []*cmn.TVStudentAnswerQuestion, err error) {
@@ -520,7 +555,7 @@ func QueryStudentAnswersByMarkMode(ctx context.Context, answerType string, cond 
 	}
 
 	switch markerInfo.MarkMode {
-	case "04": // 试卷分配 以及批改单个考生
+	case "04": // 试卷分配 查询单个考试考生的数据
 		whereClause = append(whereClause, fmt.Sprintf(" AND examinee_id = ANY($%d) ", argIdx))
 		argIdx++
 
@@ -551,6 +586,18 @@ func QueryStudentAnswersByMarkMode(ctx context.Context, answerType string, cond 
 		}
 
 		args = append(args, pq.Array(questionIDs))
+		break
+	case "12": // 查询单个练习学生的数据
+		whereClause = append(whereClause, fmt.Sprintf(" AND practice_submission_id = $%d ", argIdx))
+		argIdx++
+
+		if cond.PracticeSubmissionID <= 0 {
+			err = fmt.Errorf("invalid practice_submission_id")
+			z.Error(err.Error())
+			return
+		}
+
+		args = append(args, cond.PracticeSubmissionID)
 		break
 	default:
 		break

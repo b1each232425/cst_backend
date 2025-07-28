@@ -239,7 +239,11 @@ func practiceTH(ctx context.Context) {
 				q.Resp()
 				return
 			}
-
+			if pType == "" {
+				q.Err = fmt.Errorf("缺少练习类型参数")
+				q.RespErr()
+				return
+			}
 			pageStr := q.R.URL.Query().Get("page")
 			if pageStr == "" {
 				q.Err = fmt.Errorf("缺失分页查询页号")
@@ -266,6 +270,12 @@ func practiceTH(ctx context.Context) {
 			pageSize, q.Err = strconv.Atoi(pageSizeStr)
 			if q.Err != nil {
 				q.Err = fmt.Errorf("分页页大小解析失败：%v", q.Err.Error())
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+			if pageSize >= 999 {
+				q.Err = fmt.Errorf("页数量过大，不允许访问")
 				z.Error(q.Err.Error())
 				q.RespErr()
 				return

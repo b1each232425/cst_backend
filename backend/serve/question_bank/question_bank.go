@@ -552,7 +552,7 @@ func validateQuestion(question *cmn.TQuestion) (valid bool, err error) {
 			z.Error(err.Error())
 			return false, err
 		}
-		if len(options) <= 2 {
+		if len(options) < 2 {
 			err = fmt.Errorf("question options must have at least two options")
 			z.Error(err.Error())
 			return false, err
@@ -645,6 +645,12 @@ func getQuestionList(ctx context.Context, conn *pgxpool.Pool, params QueryQuesti
 	conditions = append(conditions, fmt.Sprintf("status = $%d", argIndex))
 	args = append(args, "00")
 	argIndex++
+
+	// 题库过滤(必须)
+	keywordCondition := fmt.Sprintf("(belong_to = $%d)", argIndex)
+	conditions = append(conditions, keywordCondition)
+	args = append(args, params.BankID)
+	argIndex += 1
 
 	// 名称过滤
 	if params.Name != "" {
