@@ -2032,6 +2032,11 @@ func TestInitRespondent(t *testing.T) {
 				if err != nil {
 					t.Fatalf("Failed to commit transaction: %v", err)
 				}
+				// 开始新事务用于下一个测试或恢复
+				tx, err = db.Begin(ctx)
+				if err != nil {
+					t.Fatalf("Failed to begin new transaction: %v", err)
+				}
 			}
 
 			// 从上下文中获取响应
@@ -2054,7 +2059,10 @@ func TestInitRespondent(t *testing.T) {
 					assert.NotEmpty(t, data["Info"])
 					assert.NotEmpty(t, data["QuestionGroupInfo"])
 					assert.NotEmpty(t, data["Questions"])
-					//assert.NotEmpty(t, data["ElapsedSeconds"])
+					if tc.name == "练习之前已经初始化了，继续进入" {
+						assert.NotEmpty(t, data["ElapsedSeconds"])
+					}
+
 				} else {
 					assert.Equal(t, resp.Status, 0)
 					assert.NotEmpty(t, resp.Data)

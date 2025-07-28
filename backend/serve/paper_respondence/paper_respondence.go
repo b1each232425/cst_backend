@@ -19,6 +19,7 @@ import (
 	"w2w.io/null"
 	"w2w.io/serve/examPaper"
 	"w2w.io/serve/exam_mgt"
+	"w2w.io/serve/mark"
 	"w2w.io/serve/practice_mgt"
 )
 
@@ -871,9 +872,20 @@ func Submit(ctx context.Context) {
 			return
 		}
 
+		markCtx, cancel := context.WithTimeout(ctx, TIMEOUT)
+		defer cancel()
+		q.Err = mark.AutoMark(markCtx, mark.QueryCondition{
+			ExamineeID:    u.ExamineeID,
+			ExamSessionID: u.ExamSessionId,
+		})
+		if q.Err != nil {
+			q.RespErr()
+			return
+		}
+
 	case PracticeType:
-		if u.PracticeSubmissionID <= 0 {
-			q.Err = fmt.Errorf("当前是练习，请输入大于0的PracticeSubmissionID")
+		if u.PracticeSubmissionID <= 0 || u.PracticeId <= 0 {
+			q.Err = fmt.Errorf("当前是练习，请输入大于0的PracticeSubmissionID以及大于0的PracticeId")
 			z.Error(q.Err.Error())
 			q.RespErr()
 			return
@@ -904,28 +916,25 @@ func Submit(ctx context.Context) {
 			return
 		}
 
-		//获取练习的批改模式
-		correctMode, err := getCorrectMode(ctx, u.PracticeSubmissionID, tx)
-		if err != nil {
-			q.Err = err
-			q.RespErr()
-			return
-		}
-
 		if err := tx.Commit(dmlCtx); err != nil {
 			z.Error(err.Error())
 			q.Err = err
 			q.RespErr()
 			return
 		}
-
-		go func(correctMode string) {
-			//mark.MarkObjectiveQuestionAnswers(ctx)
-			if correctMode != AiCorrectMode {
-				return
-			}
+		markCtx, cancel := context.WithTimeout(ctx, TIMEOUT)
+		defer cancel()
+		q.Err = mark.AutoMark(markCtx, mark.QueryCondition{
+			PracticeSubmissionID: u.PracticeSubmissionID,
+			PracticeID:           u.PracticeId,
+		})
+		if q.Err != nil {
+			q.RespErr()
+			return
+		}
+		go func() {
 			//TODO 对接ai批改接口
-		}(correctMode)
+		}()
 	default:
 		q.Err = fmt.Errorf("unknown student answer type: %s", u.Type)
 		z.Error(q.Err.Error())
@@ -1284,32 +1293,6 @@ func submitPractice(ctx context.Context, tx pgx.Tx, req SubmitReq) error {
 	}
 	z.Info("submit success", zap.Int64("update id", updateId.Int64))
 	return nil
-}
-
-// getCorrectMode 获取练习的批改模式
-func getCorrectMode(ctx context.Context, practiceSubmissionId int64, tx pgx.Tx) (string, error) {
-	selectSql := `SELECT 
-  p.correct_mode
-FROM 
-  t_practice_submissions ps
-JOIN 
-  t_practice p ON ps.practice_id = p.id
-WHERE 
-  ps.id = $1;`
-	var correctMode null.String
-
-	err := tx.QueryRow(ctx, selectSql, practiceSubmissionId).Scan(&correctMode)
-	if err != nil {
-		z.Error("getCorrectMode error", zap.Error(err))
-		return "", err
-	}
-	if !correctMode.Valid {
-		err := fmt.Errorf("correct_mode of practiceSubmissionId:%d not exist", practiceSubmissionId)
-		z.Error(err.Error())
-		return "", err
-	}
-	return correctMode.String, nil
-
 }
 
 func UpdateLastStartTime(ctx context.Context, practiceSubmissionId int64, tx pgx.Tx) error {
