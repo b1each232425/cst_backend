@@ -5,9 +5,10 @@ package paper
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"github.com/jackc/pgx/v5"
 	"io"
 	"strconv"
 	"strings"
@@ -120,24 +121,50 @@ func ManualPaper(ctx context.Context) {
 	z.Info("---->" + cmn.FncName())
 
 	method := strings.ToLower(q.R.Method)
+
+	forceError := ""
+	if val, ok := ctx.Value("force-error").(string); ok {
+		forceError = val
+	}
 	switch method {
 	case "post":
 		dmlCtx, cancel := context.WithTimeout(ctx, TIMEOUT)
 		defer cancel()
-		db := cmn.GetDbConn()
-		tx, err := db.BeginTx(dmlCtx, &sql.TxOptions{Isolation: sql.LevelSerializable})
+		db := cmn.GetPgxConn()
+		tx, err := db.BeginTx(dmlCtx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted})
+		if forceError == "BeginTx-err" {
+			err = errors.New(forceError)
+		}
 		if err != nil {
 			q.Err = err
 			q.RespErr()
 			return
 		}
-		var committed bool
 		defer func() {
-			if p := recover(); p != nil {
-				tx.Rollback()
-				panic(p)
-			} else if !committed {
-				tx.Rollback()
+			p := recover()
+			if forceError == "recover-err" {
+				p = errors.New(forceError)
+			}
+			if p != nil {
+				err = tx.Rollback(ctx)
+				if forceError == "recover-err" {
+					err = errors.New(forceError)
+				}
+				if err != nil {
+					z.Error(err.Error())
+				}
+			}
+			if forceError == "Rollback-err" {
+				q.Err = errors.New(forceError)
+			}
+			if q.Err != nil {
+				err = tx.Rollback(ctx)
+				if forceError == "Rollback-err" {
+					err = errors.New(forceError)
+				}
+				if err != nil {
+					z.Error(err.Error())
+				}
 			}
 		}()
 
@@ -160,11 +187,14 @@ func ManualPaper(ctx context.Context) {
 			q.RespErr()
 			return
 		}
-		if q.Err = tx.Commit(); q.Err != nil {
+		q.Err = tx.Commit(ctx)
+		if forceError == "Commit-err" {
+			q.Err = errors.New(forceError)
+		}
+		if q.Err != nil {
 			q.RespErr()
 			return
 		}
-		committed = true
 
 		result := InitialManualPaperResponse{
 			Paper:  paper,
@@ -186,6 +216,9 @@ func ManualPaper(ctx context.Context) {
 		}
 		var buf []byte
 		buf, q.Err = io.ReadAll(q.R.Body)
+		if forceError == "io.ReadAll-err" {
+			q.Err = errors.New(forceError)
+		}
 		if q.Err != nil {
 			z.Error(q.Err.Error())
 			q.RespErr()
@@ -193,6 +226,9 @@ func ManualPaper(ctx context.Context) {
 		}
 		defer func() {
 			q.Err = q.R.Body.Close()
+			if forceError == "R.Body.Close-err" {
+				q.Err = errors.New(forceError)
+			}
 			if q.Err != nil {
 				z.Error(q.Err.Error())
 				q.RespErr()
@@ -217,6 +253,9 @@ func ManualPaper(ctx context.Context) {
 		//获取需要保存到数据库的数据
 		var u UpdateManualPaperRequest
 		q.Err = json.Unmarshal(qry.Data, &u)
+		if forceError == "json.Unmarshal-err" {
+			q.Err = errors.New(forceError)
+		}
 		if q.Err != nil {
 			z.Error(q.Err.Error())
 			q.RespErr()
@@ -236,7 +275,7 @@ func ManualPaper(ctx context.Context) {
 		var results []ActionResult
 		userID := q.SysUser.ID.Int64
 		if userID <= 0 {
-			q.Err = fmt.Errorf("Invalid UserID: %d", userID)
+			q.Err = fmt.Errorf("无效用户ID: %d", userID)
 			z.Error(q.Err.Error())
 			q.RespErr()
 			return
@@ -265,7 +304,7 @@ func ManualPaper(ctx context.Context) {
 		}
 		userID := q.SysUser.ID.Int64
 		if userID <= 0 {
-			q.Err = fmt.Errorf("Invalid UserID: %d", userID)
+			q.Err = fmt.Errorf("无效用户ID: %d", userID)
 			z.Error(q.Err.Error())
 			q.RespErr()
 			return
@@ -294,6 +333,11 @@ func ManualPaper(ctx context.Context) {
 func PaperList(ctx context.Context) {
 	q := cmn.GetCtxValue(ctx)
 	z.Info("---->" + cmn.FncName())
+
+	forceError := ""
+	if val, ok := ctx.Value("force-error").(string); ok {
+		forceError = val
+	}
 
 	method := strings.ToLower(q.R.Method)
 	switch method {
@@ -351,22 +395,27 @@ func PaperList(ctx context.Context) {
 	case "delete":
 		var buf []byte
 		buf, q.Err = io.ReadAll(q.R.Body)
+		if forceError == "PaperList-delete-io.ReadAll-err" {
+			q.Err = errors.New(forceError)
+		}
 		if q.Err != nil {
 			z.Error(q.Err.Error())
 			q.RespErr()
 			return
 		}
 		defer func() {
-			q.Err = q.R.Body.Close()
-			if q.Err != nil {
-				z.Error(q.Err.Error())
-				q.RespErr()
+			err := q.R.Body.Close()
+			if forceError == "PaperList-delete-Body.Close-err" {
+				err = errors.New(forceError)
+			}
+			if err != nil {
+				z.Error(err.Error())
 				return
 			}
 		}()
 
 		if len(buf) == 0 {
-			q.Err = fmt.Errorf("Call /api/paper/manual with empty body")
+			q.Err = fmt.Errorf("Call /api/paper/manual by delete with empty body")
 			z.Error(q.Err.Error())
 			q.RespErr()
 			return
@@ -374,6 +423,9 @@ func PaperList(ctx context.Context) {
 		//获取请求的结构体
 		var qry cmn.ReqProto
 		q.Err = json.Unmarshal(buf, &qry)
+		if forceError == "PaperList-delete-json.Unmarshal1-err" {
+			q.Err = errors.New(forceError)
+		}
 		if q.Err != nil {
 			z.Error(q.Err.Error())
 			q.RespErr()
@@ -382,6 +434,9 @@ func PaperList(ctx context.Context) {
 		//获取需要保存到数据库的数据
 		var u []int64
 		q.Err = json.Unmarshal(qry.Data, &u)
+		if forceError == "PaperList-delete-json.Unmarshal2-err" {
+			q.Err = errors.New(forceError)
+		}
 		if q.Err != nil {
 			z.Error(q.Err.Error())
 			q.RespErr()
@@ -397,96 +452,132 @@ func PaperList(ctx context.Context) {
 		dmlCtx, cancel := context.WithTimeout(ctx, TIMEOUT)
 		defer cancel()
 
-		db := cmn.GetDbConn()
-		var tx *sql.Tx
-		tx, q.Err = db.BeginTx(ctx, &sql.TxOptions{
-			Isolation: sql.LevelSerializable,
-			ReadOnly:  false,
+		db := cmn.GetPgxConn()
+		var tx pgx.Tx
+		tx, q.Err = db.BeginTx(ctx, pgx.TxOptions{
+			IsoLevel: pgx.ReadCommitted,
 		})
+		if forceError == "PaperList-delete-BeginTx-err" {
+			q.Err = errors.New(forceError)
+		}
 		if q.Err != nil {
 			z.Error(q.Err.Error())
 			q.RespErr()
 			return
 		}
-		var committed bool
 		defer func() {
-			if p := recover(); p != nil {
-				tx.Rollback()
-				panic(p)
-			} else if !committed {
-				tx.Rollback()
+			err := tx.Rollback(ctx)
+			if forceError == "PaperList-delete-Rollback-err" {
+				err = errors.New(forceError)
+			}
+			if err != nil && !errors.Is(err, pgx.ErrTxClosed) {
+				z.Error("事务回滚失败", zap.Error(err))
 			}
 		}()
 
 		q.Err = deletePapers(dmlCtx, tx, u, userID)
 		if q.Err != nil {
-			tx.Rollback()
 			q.RespErr()
 			return
 		}
-		if q.Err = tx.Commit(); q.Err != nil {
+		q.Err = tx.Commit(ctx)
+		if forceError == "PaperList-delete-Commit-err" {
+			q.Err = errors.New(forceError)
+		}
+		if q.Err != nil {
 			z.Error(q.Err.Error())
 			q.RespErr()
 			return
 		}
-		committed = true
 		q.Err = nil
 		q.Msg.Status = 0
 		q.Msg.Msg = "success"
 		q.Resp()
-
 	}
 }
 
 // 更新试卷流程
-func updateManualPaper(ctx context.Context, paperID, userID int64, req UpdateManualPaperRequest) ([]ActionResult, error) {
-	var results []ActionResult
-
-	sqlxDB := cmn.GetDbConn()
-	tx, err := sqlxDB.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelRepeatableRead})
+func updateManualPaper(ctx context.Context, paperID, userID int64, req UpdateManualPaperRequest) (results []ActionResult, err error) {
+	forceError := ""
+	if val, ok := ctx.Value("force-error").(string); ok {
+		forceError = val
+	}
+	sqlxDB := cmn.GetPgxConn()
+	var tx pgx.Tx
+	tx, err = sqlxDB.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.Serializable})
+	if forceError == "BeginTx-err" {
+		err = errors.New(forceError)
+	}
 	if err != nil {
-		return nil, err
+		z.Error("updateManualPaper启动事务失败:" + err.Error())
+		return
 	}
 
 	defer func() {
+		if p := recover(); p != nil {
+			rollbackErr := tx.Rollback(ctx)
+			if forceError == "recover-err" {
+				rollbackErr = errors.New(forceError)
+			}
+			if rollbackErr != nil {
+				z.Error(rollbackErr.Error())
+				err = rollbackErr
+				return
+			}
+		}
 		if err != nil {
-			_ = tx.Rollback()
+			rollbackErr := tx.Rollback(ctx)
+			if forceError == "Rollback-err" {
+				rollbackErr = errors.New(forceError)
+			}
+			if rollbackErr != nil {
+				z.Error(err.Error())
+				err = rollbackErr
+			}
 		} else {
-			if commitErr := tx.Commit(); commitErr != nil {
+			commitErr := tx.Commit(ctx)
+			if forceError == "Commit-err" {
+				commitErr = errors.New(forceError)
+			}
+			if commitErr != nil {
+				z.Error(commitErr.Error())
 				err = commitErr
 			}
 		}
 	}()
-
+	if forceError == "recover-err" {
+		panic(errors.New(forceError))
+	}
 	for _, act := range req.Actions {
 		var result interface{}
 
 		switch act.Action {
 		case "update_info":
 			var basicInfo UpdatePaperBasicInfoRequest
-			err := json.Unmarshal(act.Payload, &basicInfo)
+			err = json.Unmarshal(act.Payload, &basicInfo)
 			if err != nil {
 				z.Error("failed to unmarshal basic info payload: " + err.Error())
-				return nil, err
+				return
 			}
+			err = cmn.Validate(&basicInfo)
 			err = handleUpdateInfo(ctx, tx, paperID, userID, basicInfo)
 			if err != nil {
-				return nil, err
+				return
 			}
 		case "add_group":
 			var req AddQuestionGroupRequest
-			if err := json.Unmarshal(act.Payload, &req); err != nil {
+			if err = json.Unmarshal(act.Payload, &req); err != nil {
 				z.Error(err.Error())
-				return nil, err
+				return
 			}
-			err := cmn.Validate(req)
+			err = cmn.Validate(req)
 			if err != nil {
 				z.Error(err.Error())
-				return nil, err
+				return
 			}
 			result, err = handleAddGroup(ctx, tx, paperID, userID, req)
 			if err != nil {
-				return nil, err
+				return
 			}
 		case "delete_group":
 			//解析结构体
@@ -494,28 +585,33 @@ func updateManualPaper(ctx context.Context, paperID, userID int64, req UpdateMan
 			err = json.Unmarshal(act.Payload, &groupID)
 			if err != nil {
 				z.Error(err.Error())
-				return nil, err
+				return
+			}
+			if groupID <= 0 {
+				err = ErrEmptyGroupID
+				z.Error(ErrEmptyGroupID.Error())
+				return
 			}
 			err = handleDeleteGroup(ctx, tx, paperID, userID, groupID)
 			if err != nil {
-				return nil, err
+				return
 			}
 		case "add_question":
 			var req []AddQuestionsRequest
-			if err := json.Unmarshal(act.Payload, &req); err != nil {
+			if err = json.Unmarshal(act.Payload, &req); err != nil {
 				z.Error(err.Error())
-				return nil, err
+				return
 			}
 			result, err = handleAddQuestions(ctx, tx, userID, req)
 			if err != nil {
-				return nil, err
+				return
 			}
 		case "delete_question":
 			var questionIDs []int64
-			err := json.Unmarshal(act.Payload, &questionIDs)
+			err = json.Unmarshal(act.Payload, &questionIDs)
 			if err != nil {
 				z.Error(err.Error())
-				return nil, err
+				return
 			}
 			if len(questionIDs) == 0 {
 				z.Error(ErrEmptyQuestionIDs.Error())
@@ -523,63 +619,65 @@ func updateManualPaper(ctx context.Context, paperID, userID int64, req UpdateMan
 			}
 			err = handleDeleteQuestions(ctx, tx, userID, questionIDs)
 			if err != nil {
-				return nil, err
+				return
 			}
 		case "update_question":
 			var req []UpdatePaperQuestionRequest
-			if err := json.Unmarshal(act.Payload, &req); err != nil {
+			if err = json.Unmarshal(act.Payload, &req); err != nil {
 				z.Error(err.Error())
-				return nil, err
+				return
 			}
 			err = handleUpdateQuestions(ctx, tx, userID, req)
 			if err != nil {
-				return nil, err
+				return
 			}
 		case "update_group":
 			var req UpdateQuestionsGroupRequest
-			if err := json.Unmarshal(act.Payload, &req); err != nil {
+			if err = json.Unmarshal(act.Payload, &req); err != nil {
 				z.Error(err.Error())
-				return nil, err
+				return
 			}
-			err := cmn.Validate(req)
+			err = cmn.Validate(req)
 			if err != nil {
 				z.Error(err.Error())
-				return nil, err
+				return
 			}
 			err = handleUpdateGroup(ctx, tx, userID, req)
 			if err != nil {
-				return nil, err
+				return
 			}
 		case "move_question":
 			var orders []int64
-			err := json.Unmarshal(act.Payload, &orders)
+			err = json.Unmarshal(act.Payload, &orders)
 			if err != nil {
 				z.Error(err.Error())
+				return
+			}
+			if err = validateIDs(orders); err != nil {
 				return nil, err
 			}
-			if err := validateIDs(orders); err != nil {
-				return nil, err
-			}
-			err = handleMoveQuestion(ctx, tx, userID, orders)
+			err = handleMoveQuestion(ctx, tx, paperID, userID, orders)
 			if err != nil {
-				return nil, err
+				return
 			}
 		case "move_group":
 			var orders []int64
-			err := json.Unmarshal(act.Payload, &orders)
+			err = json.Unmarshal(act.Payload, &orders)
 			if err != nil {
 				z.Error(err.Error())
-				return nil, err
+				return
 			}
-			if err := validateIDs(orders); err != nil {
-				return nil, err
+			if err = validateIDs(orders); err != nil {
+				return
 			}
 			err = handleMoveQuestionGroup(ctx, tx, paperID, userID, orders)
 			if err != nil {
-				return nil, err
+				return
 			}
 		default:
 			err = fmt.Errorf("unsupported action type: %s", act.Action)
+			z.Error(err.Error())
+			return
 		}
 
 		// 只有指定的操作需要返回结果
@@ -591,7 +689,7 @@ func updateManualPaper(ctx context.Context, paperID, userID int64, req UpdateMan
 		}
 	}
 
-	return results, nil
+	return
 }
 
 //// 试卷共享

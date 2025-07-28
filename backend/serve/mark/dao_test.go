@@ -353,17 +353,18 @@ func TestUpdateStudentAnswerScore(t *testing.T) {
 	}
 }
 
-func TestUpdateExamSessionState(t *testing.T) {
+func TestUpdateExamSessionOrPracticeSubmissionState(t *testing.T) {
 	cleanTestData()
 	initTestData()
 	defer cleanTestData()
 
 	tests := []struct {
-		name           string
-		teacherID      int64
-		examSessionIDs []int64
-		status         string
-		expectedErrStr string
+		name                  string
+		teacherID             int64
+		examSessionIDs        []int64
+		practiceSubmissionIDs []int64
+		status                string
+		expectedErrStr        string
 	}{
 		{
 			name:           "success",
@@ -373,11 +374,25 @@ func TestUpdateExamSessionState(t *testing.T) {
 			expectedErrStr: "",
 		},
 		{
-			name:           "no examSessionIDs to update",
+			name:                  "success （修改练习提交状态）",
+			teacherID:             testedTeacherID,
+			practiceSubmissionIDs: []int64{2401},
+			status:                "08",
+			expectedErrStr:        "",
+		},
+		{
+			name:           "invalid params: exam_session_ids or practice_submission_ids is required",
 			teacherID:      testedTeacherID,
-			examSessionIDs: []int64{},
 			status:         "10",
-			expectedErrStr: "no examSessionIDs to update",
+			expectedErrStr: "invalid params: exam_session_ids or practice_submission_ids is required",
+		},
+		{
+			name:                  "invalid params: exam_session_ids and practice_submission_ids cannot be both specified",
+			teacherID:             testedTeacherID,
+			examSessionIDs:        []int64{101},
+			practiceSubmissionIDs: []int64{2401},
+			status:                "10",
+			expectedErrStr:        "invalid params: exam_session_ids and practice_submission_ids cannot be both specified",
 		},
 		{
 			name:           "invalid params: status is required",
@@ -420,7 +435,7 @@ func TestUpdateExamSessionState(t *testing.T) {
 				}
 			}()
 
-			_, err = updateExamSessionState(ctx, &tx, tt.teacherID, tt.examSessionIDs, tt.status)
+			_, err = updateExamSessionOrPracticeSubmissionState(ctx, &tx, tt.teacherID, tt.examSessionIDs, tt.practiceSubmissionIDs, tt.status)
 			if err != nil {
 				if tt.expectedErrStr == "" {
 					t.Errorf("expected success, but got error: %v", err.Error())
