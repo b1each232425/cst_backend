@@ -11,13 +11,13 @@ import (
 	"w2w.io/cmn"
 )
 
-//annotation:exam_mgt
+//annotation:exam_service
 //author:{"name":"Ma Yuxin","tel":"13824087366", "email":"dbs45412@163.com"}
 
 // 基于Redis有序集合的考试状态维护服务
 
 const (
-	EXAM_TIMER_SET_KEY = "exam:timers" // Redis有序集合存储所有定时事件
+	EXAM_TIMER_SET_KEY = "exam:timers"
 
 	// 事件类型
 	EVENT_TYPE_EXAM_SESSION_START = "exam_session_start"
@@ -613,7 +613,7 @@ func CancelExamTimers(ctx context.Context, examID int64) error {
 		return nil
 	}
 
-	// Lua 脚本：原子性地删除指定场次的所有事件
+	// 删除指定场次的所有事件
 	luaScript := `
 		local timer_key = KEYS[1]
 		local session_ids = {}
@@ -642,14 +642,12 @@ func CancelExamTimers(ctx context.Context, examID int64) error {
 		return removed_count
 	`
 
-	// 准备参数：将所有场次ID作为参数传递
 	luaArgs := make([]interface{}, 0, len(sessionIDs)+2)
 	luaArgs = append(luaArgs, luaScript, 1, EXAM_TIMER_SET_KEY)
 	for _, sessionID := range sessionIDs {
 		luaArgs = append(luaArgs, sessionID)
 	}
 
-	// 执行 Lua 脚本
 	conn := cmn.GetRedisConn()
 	defer conn.Close()
 
