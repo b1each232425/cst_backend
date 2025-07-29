@@ -239,11 +239,6 @@ func practiceTH(ctx context.Context) {
 				q.Resp()
 				return
 			}
-			if pType == "" {
-				q.Err = fmt.Errorf("缺少练习类型参数")
-				q.RespErr()
-				return
-			}
 			pageStr := q.R.URL.Query().Get("page")
 			if pageStr == "" {
 				q.Err = fmt.Errorf("缺失分页查询页号")
@@ -354,7 +349,7 @@ func practiceStudentH(ctx context.Context) {
 }
 
 func practiceSH(ctx context.Context) {
-	TEMPUID := int64(1575)
+	TEMPUID := int64(1580)
 	q := cmn.GetCtxValue(ctx)
 	// TODO 对接用户管理的令牌功能
 	//userID, _ := q.Session.Values["ID"].(int64)
