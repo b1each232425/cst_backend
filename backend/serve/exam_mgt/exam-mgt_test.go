@@ -1013,7 +1013,7 @@ func TestExamPostMethod(t *testing.T) {
 					"Rules": "考试规则",
 					"Status": "00"
 				},
-				"examSession": [{
+				"examSessions": [{
 					"SessionNum": 1,
 					"PaperID": 123,
 					"StartTime": ` + strconv.FormatInt(time.Now().Add(24*time.Hour).UnixMilli(), 10) + `,
@@ -1053,7 +1053,7 @@ func TestExamPostMethod(t *testing.T) {
 					"Type": "00",
 					"Mode": "00"
 				},
-				"examSession": [{
+				"examSessions": [{
 					"SessionNum": 1,
 					"PaperID": 123,
 					"StartTime": ` + strconv.FormatInt(time.Now().Add(24*time.Hour).UnixMilli(), 10) + `,
@@ -1080,7 +1080,7 @@ func TestExamPostMethod(t *testing.T) {
 					"Type": "00",
 					"Mode": "00"
 				},
-				"examSession": [{
+				"examSessions": [{
 					"SessionNum": 1,
 					"PaperID": 123,
 					"StartTime": ` + strconv.FormatInt(time.Now().Add(24*time.Hour).UnixMilli(), 10) + `,
@@ -1106,7 +1106,7 @@ func TestExamPostMethod(t *testing.T) {
 					"Type": "00",
 					"Mode": "00"
 				},
-				"examSession": [{
+				"examSessions": [{
 					"SessionNum": 1,
 					"PaperID": 123,
 					"StartTime": ` + strconv.FormatInt(time.Now().Add(24*time.Hour).UnixMilli(), 10) + `,
@@ -1134,7 +1134,7 @@ func TestExamPostMethod(t *testing.T) {
 					"Rules": "考试规则",
 					"Status": "00"
 				},
-				"examSession": [{
+				"examSessions": [{
 					"SessionNum": 1,
 					"PaperID": 123,
 					"StartTime": ` + strconv.FormatInt(time.Now().Add(24*time.Hour).UnixMilli(), 10) + `,
@@ -1167,7 +1167,7 @@ func TestExamPostMethod(t *testing.T) {
 					"Rules": "考试规则",
 					"Status": "00"
 				},
-				"examSession": [{
+				"examSessions": [{
 					"SessionNum": 1,
 					"PaperID": 123,
 					"StartTime": ` + strconv.FormatInt(time.Now().Add(24*time.Hour).UnixMilli(), 10) + `,
@@ -1200,7 +1200,7 @@ func TestExamPostMethod(t *testing.T) {
 					"Rules": "考试规则",
 					"Status": "00"
 				},
-				"examSession": [{
+				"examSessions": [{
 					"SessionNum": 1,
 					"PaperID": 123,
 					"StartTime": ` + strconv.FormatInt(time.Now().Add(24*time.Hour).UnixMilli(), 10) + `,
@@ -1231,7 +1231,7 @@ func TestExamPostMethod(t *testing.T) {
 					"Type": "00",
 					"Mode": "00"
 				},
-				"examSession": [{
+				"examSessions": [{
 					"SessionNum": 1,
 					"PaperID": 123,
 					"StartTime": ` + strconv.FormatInt(time.Now().Add(24*time.Hour).UnixMilli(), 10) + `,
@@ -1257,7 +1257,7 @@ func TestExamPostMethod(t *testing.T) {
 					"Type": "00",
 					"Mode": "00"
 				},
-				"examSession": [{
+				"examSessions": [{
 					"SessionNum": 1,
 					"PaperID": 123,
 					"StartTime": ` + strconv.FormatInt(time.Now().Add(24*time.Hour).UnixMilli(), 10) + `,
@@ -1285,7 +1285,7 @@ func TestExamPostMethod(t *testing.T) {
 					"Rules": "考试规则",
 					"Status": "00"
 				},
-				"examSession": [{
+				"examSessions": [{
 					"SessionNum": 1,
 					"PaperID": 123,
 					"StartTime": ` + strconv.FormatInt(time.Now().Add(24*time.Hour).UnixMilli(), 10) + `,
@@ -1318,7 +1318,7 @@ func TestExamPostMethod(t *testing.T) {
 					"Rules": "考试规则",
 					"Status": "00"
 				},
-				"examSession": [{
+				"examSessions": [{
 					"SessionNum": 1,
 					"PaperID": 123,
 					"StartTime": ` + strconv.FormatInt(time.Now().Add(24*time.Hour).UnixMilli(), 10) + `,
@@ -1351,7 +1351,7 @@ func TestExamPostMethod(t *testing.T) {
 					"Rules": "考试规则",
 					"Status": "00"
 				},
-				"examSession": [{
+				"examSessions": [{
 					"SessionNum": 1,
 					"PaperID": 123,
 					"StartTime": ` + strconv.FormatInt(time.Now().Add(24*time.Hour).UnixMilli(), 10) + `,
@@ -1384,7 +1384,7 @@ func TestExamPostMethod(t *testing.T) {
 					"Rules": "考试规则",
 					"Status": "00"
 				},
-				"examSession": [{
+				"examSessions": [{
 					"SessionNum": 1,
 					"PaperID": 123,
 					"StartTime": ` + strconv.FormatInt(time.Now().Add(24*time.Hour).UnixMilli(), 10) + `,
@@ -3120,125 +3120,139 @@ func TestUpdateExamSessionStatus(t *testing.T) {
 		t.Fatalf("插入测试考试数据失败: %v", err)
 	}
 
-	// 插入测试考试场次数据
+	// 插入多个测试考试场次数据
+	testSessionID2 := int64(999202)
+	currentTime := time.Now().UnixMilli()
+
 	_, err = tx.Exec(ctx, `
 		INSERT INTO t_exam_session (id, exam_id, paper_id, mark_method, session_num, status, creator, create_time, updated_by, update_time)
-		VALUES ($1, $2, 1, 1, '00', '00', $3, $4, $3, $4)
-	`, testSessionID, testExamID, testUserID, time.Now().UnixMilli())
+		VALUES 
+			($1, $2, 1, '00', 1, '00', $3, $4, $3, $4),
+			($5, $2, 1, '00', 2, '00', $3, $4, $3, $4)
+	`, testSessionID, testExamID, testUserID, currentTime, testSessionID2)
 	if err != nil {
 		t.Fatalf("插入测试考试场次数据失败: %v", err)
 	}
 
 	tests := []struct {
-		name          string
-		examSessionID int64
-		newStatus     string
-		userID        int64
-		forceError    string
-		wantError     bool
-		errorMsg      string
-		shouldVerify  bool
+		name         string
+		examID       int64
+		newStatus    string
+		userID       int64
+		forceError   string
+		wantError    bool
+		errorMsg     string
+		shouldVerify bool
 	}{
 		{
-			name:          "正常更新考试场次状态-待开始到进行中",
-			examSessionID: testSessionID,
-			newStatus:     "01",
-			userID:        testUserID,
-			forceError:    "",
-			wantError:     false,
-			shouldVerify:  true,
+			name:         "正常更新考试场次状态-待开始到进行中",
+			examID:       testExamID,
+			newStatus:    "01",
+			userID:       testUserID,
+			forceError:   "",
+			wantError:    false,
+			shouldVerify: true,
 		},
 		{
-			name:          "正常更新考试场次状态-进行中到已结束",
-			examSessionID: testSessionID,
-			newStatus:     "02",
-			userID:        testUserID,
-			forceError:    "",
-			wantError:     false,
-			shouldVerify:  true,
+			name:         "正常更新考试场次状态-进行中到已结束",
+			examID:       testExamID,
+			newStatus:    "02",
+			userID:       testUserID,
+			forceError:   "",
+			wantError:    false,
+			shouldVerify: true,
 		},
 		{
-			name:          "无效的考试场次ID-零值",
-			examSessionID: 0,
-			newStatus:     "01",
-			userID:        testUserID,
-			wantError:     true,
-			errorMsg:      "无效的考试场次ID",
+			name:      "无效的考试ID-零值",
+			examID:    0,
+			newStatus: "01",
+			userID:    testUserID,
+			wantError: true,
+			errorMsg:  "无效的考试ID",
 		},
 		{
-			name:          "无效的考试场次ID-负值",
-			examSessionID: -1,
-			newStatus:     "01",
-			userID:        testUserID,
-			wantError:     true,
-			errorMsg:      "无效的考试场次ID",
+			name:      "无效的考试ID-负值",
+			examID:    -1,
+			newStatus: "01",
+			userID:    testUserID,
+			wantError: true,
+			errorMsg:  "无效的考试ID",
 		},
 		{
-			name:          "无效的用户ID-零值",
-			examSessionID: testSessionID,
-			newStatus:     "01",
-			userID:        0,
-			wantError:     true,
-			errorMsg:      "无效的用户ID",
+			name:      "无效的用户ID-零值",
+			examID:    testExamID,
+			newStatus: "01",
+			userID:    0,
+			wantError: true,
+			errorMsg:  "无效的用户ID",
 		},
 		{
-			name:          "无效的用户ID-负值",
-			examSessionID: testSessionID,
-			newStatus:     "01",
-			userID:        -1,
-			wantError:     true,
-			errorMsg:      "无效的用户ID",
+			name:      "无效的用户ID-负值",
+			examID:    testExamID,
+			newStatus: "01",
+			userID:    -1,
+			wantError: true,
+			errorMsg:  "无效的用户ID",
 		},
 		{
-			name:          "空的状态值",
-			examSessionID: testSessionID,
-			newStatus:     "",
-			userID:        testUserID,
-			wantError:     true,
-			errorMsg:      "更新状态不能为空",
+			name:      "空的状态值",
+			examID:    testExamID,
+			newStatus: "",
+			userID:    testUserID,
+			wantError: true,
+			errorMsg:  "更新状态不能为空",
 		},
 		{
-			name:          "数据库执行错误",
-			examSessionID: testSessionID,
-			newStatus:     "01",
-			userID:        testUserID,
-			forceError:    "tx.Exec",
-			wantError:     true,
-			errorMsg:      "force error",
+			name:       "数据库执行错误",
+			examID:     testExamID,
+			newStatus:  "01",
+			userID:     testUserID,
+			forceError: "tx.Exec",
+			wantError:  true,
+			errorMsg:   "force error",
 		},
 		{
-			name:          "不存在的考试场次ID",
-			examSessionID: 999999,
-			newStatus:     "01",
-			userID:        testUserID,
-			wantError:     false, // SQL执行成功但影响行数为0
+			name:      "不存在的考试场次ID",
+			examID:    999999,
+			newStatus: "01",
+			userID:    testUserID,
+			wantError: false, // SQL执行成功但影响行数为0
 		},
 		{
-			name:          "更新为暂停状态",
-			examSessionID: testSessionID,
-			newStatus:     "03",
-			userID:        testUserID,
-			wantError:     false,
-			shouldVerify:  true,
+			name:         "更新为暂停状态",
+			examID:       testExamID,
+			newStatus:    "03",
+			userID:       testUserID,
+			wantError:    false,
+			shouldVerify: true,
 		},
 		{
-			name:          "更新为取消状态",
-			examSessionID: testSessionID,
-			newStatus:     "04",
-			userID:        testUserID,
-			wantError:     false,
-			shouldVerify:  true,
+			name:         "更新为取消状态",
+			examID:       testExamID,
+			newStatus:    "04",
+			userID:       testUserID,
+			wantError:    false,
+			shouldVerify: true,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// 如果需要验证，先记录更新前的状态
-			var originalStatus string
+			// 如果需要验证，先记录更新前所有场次的状态
+			var originalStatuses []string
 			if tt.shouldVerify && !tt.wantError {
-				err := tx.QueryRow(ctx, "SELECT status FROM t_exam_session WHERE id = $1", tt.examSessionID).Scan(&originalStatus)
+				rows, err := tx.Query(ctx, "SELECT status FROM t_exam_session WHERE exam_id = $1 ORDER BY session_num", tt.examID)
 				if err != nil {
 					t.Fatalf("获取更新前状态失败: %v", err)
+				}
+				defer rows.Close()
+
+				for rows.Next() {
+					var status string
+					if err := rows.Scan(&status); err != nil {
+						t.Fatalf("扫描原始状态失败: %v", err)
+					}
+					originalStatuses = append(originalStatuses, status)
 				}
 			}
 
@@ -3249,7 +3263,7 @@ func TestUpdateExamSessionStatus(t *testing.T) {
 			}
 
 			// 执行更新操作
-			err := updateExamSessionStatus(testCtx, tx, tt.examSessionID, tt.newStatus, tt.userID)
+			err := updateExamSessionStatus(testCtx, tx, tt.examID, tt.newStatus, tt.userID)
 
 			// 检查错误
 			if tt.wantError {
@@ -3268,31 +3282,46 @@ func TestUpdateExamSessionStatus(t *testing.T) {
 
 				// 验证更新结果
 				if tt.shouldVerify {
-					var currentStatus string
-					err := tx.QueryRow(ctx, "SELECT status FROM t_exam_session WHERE id = $1", tt.examSessionID).Scan(&currentStatus)
+					// 检查所有场次的状态是否都被更新
+					rows, err := tx.Query(ctx, "SELECT status, updated_by, update_time FROM t_exam_session WHERE exam_id = $1 ORDER BY session_num", tt.examID)
 					if err != nil {
-						t.Errorf("验证更新结果失败: %v", err)
+						t.Errorf("验证更新结果查询失败: %v", err)
 						return
 					}
+					defer rows.Close()
 
-					if currentStatus != tt.newStatus {
-						t.Errorf("updateExamSessionStatus() 状态更新失败，期望状态 = %v, 实际状态 = %v", tt.newStatus, currentStatus)
-					}
+					var sessionCount int
+					for rows.Next() {
+						var currentStatus string
+						var updatedBy int64
+						var updateTime int64
 
-					// 验证 update_time 和 updated_by 字段
-					var updatedBy int64
-					var updateTime int64
-					err = tx.QueryRow(ctx, "SELECT updated_by, update_time FROM t_exam_session WHERE id = $1", tt.examSessionID).Scan(&updatedBy, &updateTime)
-					if err != nil {
-						t.Errorf("验证更新字段失败: %v", err)
-					} else {
-						if updatedBy != tt.userID {
-							t.Errorf("updateExamSessionStatus() updated_by 字段错误，期望 = %v, 实际 = %v", tt.userID, updatedBy)
+						if err := rows.Scan(&currentStatus, &updatedBy, &updateTime); err != nil {
+							t.Errorf("验证更新结果扫描失败: %v", err)
+							return
 						}
+
+						sessionCount++
+
+						// 验证状态是否正确更新
+						if currentStatus != tt.newStatus {
+							t.Errorf("updateExamSessionStatus() 场次%d状态更新失败，期望状态 = %v, 实际状态 = %v", sessionCount, tt.newStatus, currentStatus)
+						}
+
+						// 验证 updated_by 字段
+						if updatedBy != tt.userID {
+							t.Errorf("updateExamSessionStatus() 场次%d updated_by 字段错误，期望 = %v, 实际 = %v", sessionCount, tt.userID, updatedBy)
+						}
+
 						// 验证 update_time 是最近更新的（容忍1分钟误差）
 						if time.Since(time.UnixMilli(updateTime)) > time.Minute {
-							t.Errorf("updateExamSessionStatus() update_time 字段未正确更新，时间 = %v", updateTime)
+							t.Errorf("updateExamSessionStatus() 场次%d update_time 字段未正确更新，时间 = %v", sessionCount, updateTime)
 						}
+					}
+
+					// 验证是否更新了所有场次（至少应该有2个场次）
+					if sessionCount != len(originalStatuses) {
+						t.Errorf("updateExamSessionStatus() 场次数量不匹配，期望更新 %d 个场次，实际更新了 %d 个", len(originalStatuses), sessionCount)
 					}
 				}
 			}
@@ -3650,6 +3679,46 @@ func TestExamList(t *testing.T) {
 			description:   "无效的JSON查询参数应返回错误",
 		},
 		{
+			name:          "无效的用户ID-零值",
+			method:        "GET",
+			queryParams:   "",
+			userID:        0,
+			userRole:      2,
+			expectedError: true,
+			errorContains: "无效的用户ID",
+			description:   "用户ID为0应返回错误",
+		},
+		{
+			name:          "无效的用户ID-负值",
+			method:        "GET",
+			queryParams:   "",
+			userID:        -1,
+			userRole:      2,
+			expectedError: true,
+			errorContains: "无效的用户ID",
+			description:   "用户ID为负值应返回错误",
+		},
+		{
+			name:          "无效的用户角色-零值",
+			method:        "GET",
+			queryParams:   "",
+			userID:        testUserID,
+			userRole:      0,
+			expectedError: true,
+			errorContains: "无效的用户角色",
+			description:   "用户角色为0应返回错误",
+		},
+		{
+			name:          "无效的用户角色-负值",
+			method:        "GET",
+			queryParams:   "",
+			userID:        testUserID,
+			userRole:      -1,
+			expectedError: true,
+			errorContains: "无效的用户角色",
+			description:   "用户角色为负值应返回错误",
+		},
+		{
 			name:          "时间范围错误-开始时间晚于结束时间",
 			method:        "GET",
 			queryParams:   `q={"Action":"select","Filter":{"Name":"","Status":"","StartTime":2000000000000,"EndTime":1000000000000},"Page":1,"PageSize":10}`,
@@ -3993,7 +4062,7 @@ func TestExaminee(t *testing.T) {
 				"exam_id": fmt.Sprintf("%d", testExamID),
 			},
 			userID:        testUserID,
-			userRole:      0, // 无效的用户角色
+			userRole:      0,
 			expectedError: true,
 			errorContains: "无效的用户角色",
 			description:   "无效的用户角色应返回错误",
@@ -4147,262 +4216,3 @@ func TestExaminee(t *testing.T) {
 		})
 	}
 }
-
-// func TestExamLock(t *testing.T) {
-// 	// 确保logger和数据库连接已初始化
-// 	cmn.ConfigureForTest()
-
-// 	// 准备测试数据
-// 	ctx := context.Background()
-// 	conn := cmn.GetPgxConn()
-
-// 	// 测试数据ID
-// 	testExamID := int64(999001)
-// 	testUserID := int64(888001)
-// 	testCreatorID := int64(888002)
-
-// 	// 清理函数
-// 	cleanup := func() {
-// 		// 清理考试锁
-// 		cmn.ReleaseLock(ctx, testExamID, testUserID, REDIS_LOCK_PREFIX)
-// 		cmn.ReleaseLock(ctx, testExamID, testCreatorID, REDIS_LOCK_PREFIX)
-
-// 		// 清理测试数据
-// 		conn.Exec(ctx, "DELETE FROM t_exam_info WHERE id = $1", testExamID)
-// 	}
-// 	defer cleanup()
-
-// 	// 插入测试考试数据
-// 	_, err := conn.Exec(ctx, `
-//         INSERT INTO t_exam_info (
-//             id, name, rules, type, mode, creator, create_time,
-//             updated_by, update_time, status
-//         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
-// 		testExamID, "测试考试锁", "测试规则", "00", "00",
-// 		testCreatorID, time.Now().UnixMilli(), testCreatorID,
-// 		time.Now().UnixMilli(), "00")
-// 	if err != nil {
-// 		t.Fatalf("插入测试考试失败: %v", err)
-// 	}
-
-// 	tests := []struct {
-// 		name          string
-// 		method        string
-// 		examID        string
-// 		userID        int64
-// 		userRole      int64
-// 		setupMock     func(*cmn.ServiceCtx)
-// 		expectedError bool
-// 		checkResult   func(*testing.T, *cmn.ServiceCtx)
-// 	}{
-// 		{
-// 			name:     "GET - 成功获取考试锁 - 管理员",
-// 			method:   "GET",
-// 			examID:   strconv.FormatInt(testExamID, 10),
-// 			userID:   testUserID,
-// 			userRole: 3, // 管理员
-// 			setupMock: func(serviceCtx *cmn.ServiceCtx) {
-// 				// 不需要特殊设置
-// 			},
-// 			expectedError: false,
-// 			checkResult: func(t *testing.T, serviceCtx *cmn.ServiceCtx) {
-// 				if serviceCtx.Msg.Msg != "成功获取考试锁" {
-// 					t.Errorf("期望消息 '成功获取考试锁'，但得到 '%s'", serviceCtx.Msg.Msg)
-// 				}
-// 			},
-// 		},
-// 		{
-// 			name:     "GET - 成功获取考试锁 - 考试创建者",
-// 			method:   "GET",
-// 			examID:   strconv.FormatInt(testExamID, 10),
-// 			userID:   testCreatorID,
-// 			userRole: 2, // 教师
-// 			setupMock: func(serviceCtx *cmn.ServiceCtx) {
-// 				// 先释放之前的锁
-// 				cmn.ReleaseLock(ctx, testExamID, testUserID, REDIS_LOCK_PREFIX)
-// 			},
-// 			expectedError: false,
-// 			checkResult: func(t *testing.T, serviceCtx *cmn.ServiceCtx) {
-// 				if serviceCtx.Msg.Msg != "成功获取考试锁" {
-// 					t.Errorf("期望消息 '成功获取考试锁'，但得到 '%s'", serviceCtx.Msg.Msg)
-// 				}
-// 			},
-// 		},
-// 		{
-// 			name:     "GET - 锁已被占用",
-// 			method:   "GET",
-// 			examID:   strconv.FormatInt(testExamID, 10),
-// 			userID:   testUserID,
-// 			userRole: 3,
-// 			setupMock: func(serviceCtx *cmn.ServiceCtx) {
-// 				// 预先获取锁
-// 				cmn.TryLock(ctx, testExamID, testCreatorID, REDIS_LOCK_PREFIX, 5*time.Minute)
-// 			},
-// 			expectedError: true,
-// 		},
-// 		{
-// 			name:     "GET - 无效考试ID",
-// 			method:   "GET",
-// 			examID:   "invalid",
-// 			userID:   testUserID,
-// 			userRole: 3,
-// 			setupMock: func(serviceCtx *cmn.ServiceCtx) {
-// 				// 清理锁
-// 				cmn.ReleaseLock(ctx, testExamID, testCreatorID, REDIS_LOCK_PREFIX)
-// 			},
-// 			expectedError: true,
-// 		},
-// 		{
-// 			name:          "GET - 考试ID为0",
-// 			method:        "GET",
-// 			examID:        "0",
-// 			userID:        testUserID,
-// 			userRole:      3,
-// 			setupMock:     func(serviceCtx *cmn.ServiceCtx) {},
-// 			expectedError: true,
-// 		},
-// 		{
-// 			name:          "GET - 无效用户ID",
-// 			method:        "GET",
-// 			examID:        strconv.FormatInt(testExamID, 10),
-// 			userID:        0,
-// 			userRole:      3,
-// 			setupMock:     func(serviceCtx *cmn.ServiceCtx) {},
-// 			expectedError: true,
-// 		},
-// 		{
-// 			name:          "GET - 无效用户角色",
-// 			method:        "GET",
-// 			examID:        strconv.FormatInt(testExamID, 10),
-// 			userID:        testUserID,
-// 			userRole:      0,
-// 			setupMock:     func(serviceCtx *cmn.ServiceCtx) {},
-// 			expectedError: true,
-// 		},
-// 		{
-// 			name:          "GET - 用户无权限",
-// 			method:        "GET",
-// 			examID:        strconv.FormatInt(testExamID, 10),
-// 			userID:        testUserID,
-// 			userRole:      2, // 教师但不是创建者
-// 			setupMock:     func(serviceCtx *cmn.ServiceCtx) {},
-// 			expectedError: true,
-// 		},
-// 		{
-// 			name:     "PUT - 成功刷新考试锁",
-// 			method:   "PUT",
-// 			examID:   strconv.FormatInt(testExamID, 10),
-// 			userID:   testCreatorID,
-// 			userRole: 2,
-// 			setupMock: func(serviceCtx *cmn.ServiceCtx) {
-// 				// 先获取锁
-// 				cmn.TryLock(ctx, testExamID, testCreatorID, REDIS_LOCK_PREFIX, 5*time.Minute)
-// 			},
-// 			expectedError: false,
-// 			checkResult: func(t *testing.T, serviceCtx *cmn.ServiceCtx) {
-// 				if serviceCtx.Msg.Msg != "成功刷新考试锁" {
-// 					t.Errorf("期望消息 '成功刷新考试锁'，但得到 '%s'", serviceCtx.Msg.Msg)
-// 				}
-// 			},
-// 		},
-// 		{
-// 			name:     "PUT - 刷新不存在的锁",
-// 			method:   "PUT",
-// 			examID:   strconv.FormatInt(testExamID, 10),
-// 			userID:   testUserID,
-// 			userRole: 3,
-// 			setupMock: func(serviceCtx *cmn.ServiceCtx) {
-// 				// 确保没有锁
-// 				cmn.ReleaseLock(ctx, testExamID, testCreatorID, REDIS_LOCK_PREFIX)
-// 				cmn.ReleaseLock(ctx, testExamID, testUserID, REDIS_LOCK_PREFIX)
-// 			},
-// 			expectedError: true, // RefreshLock 如果锁不存在会返回错误
-// 		},
-// 		{
-// 			name:     "DELETE - 成功释放考试锁",
-// 			method:   "DELETE",
-// 			examID:   strconv.FormatInt(testExamID, 10),
-// 			userID:   testCreatorID,
-// 			userRole: 2,
-// 			setupMock: func(serviceCtx *cmn.ServiceCtx) {
-// 				// 先获取锁
-// 				cmn.TryLock(ctx, testExamID, testCreatorID, REDIS_LOCK_PREFIX, 5*time.Minute)
-// 			},
-// 			expectedError: false,
-// 			checkResult: func(t *testing.T, serviceCtx *cmn.ServiceCtx) {
-// 				if serviceCtx.Msg.Msg != "成功清除考试锁" {
-// 					t.Errorf("期望消息 '成功清除考试锁'，但得到 '%s'", serviceCtx.Msg.Msg)
-// 				}
-// 			},
-// 		},
-// 		{
-// 			name:     "DELETE - 释放不存在的锁",
-// 			method:   "DELETE",
-// 			examID:   strconv.FormatInt(testExamID, 10),
-// 			userID:   testUserID,
-// 			userRole: 3,
-// 			setupMock: func(serviceCtx *cmn.ServiceCtx) {
-// 				// 确保没有锁
-// 				cmn.ReleaseLock(ctx, testExamID, testCreatorID, REDIS_LOCK_PREFIX)
-// 				cmn.ReleaseLock(ctx, testExamID, testUserID, REDIS_LOCK_PREFIX)
-// 			},
-// 			expectedError: false,
-// 			checkResult: func(t *testing.T, serviceCtx *cmn.ServiceCtx) {
-// 				if serviceCtx.Msg.Msg != "成功清除考试锁" {
-// 					t.Errorf("期望消息 '成功清除考试锁'，但得到 '%s'", serviceCtx.Msg.Msg)
-// 				}
-// 			},
-// 		},
-// 		{
-// 			name:          "POST - 不支持的方法",
-// 			method:        "POST",
-// 			examID:        strconv.FormatInt(testExamID, 10),
-// 			userID:        testUserID,
-// 			userRole:      3,
-// 			setupMock:     func(serviceCtx *cmn.ServiceCtx) {},
-// 			expectedError: true,
-// 		},
-// 	}
-
-// 	for _, tt := range tests {
-// 		t.Run(tt.name, func(t *testing.T) {
-// 			// 构建查询参数
-// 			queryParams := url.Values{}
-// 			queryParams.Set("exam_id", tt.examID)
-
-// 			// 创建模拟上下文
-// 			ctx := createMockContextWithRole(tt.method, "/api/exam/lock", queryParams, "", tt.userID, tt.userRole)
-// 			serviceCtx := cmn.GetCtxValue(ctx)
-
-// 			// 执行设置函数
-// 			if tt.setupMock != nil {
-// 				tt.setupMock(serviceCtx)
-// 			}
-
-// 			// 调用被测试的函数
-// 			examLock(ctx)
-
-// 			// 获取ServiceCtx以检查结果
-// 			serviceCtx = cmn.GetCtxValue(ctx)
-
-// 			if tt.expectedError {
-// 				// 期望有错误
-// 				if serviceCtx.Err == nil {
-// 					t.Errorf("examLock() 期望返回错误，但没有错误")
-// 					return
-// 				}
-// 			} else {
-// 				// 期望成功
-// 				if serviceCtx.Err != nil {
-// 					t.Errorf("examLock() 期望成功，但返回错误: %v", serviceCtx.Err)
-// 					return
-// 				}
-
-// 				// 使用自定义检查函数
-// 				if tt.checkResult != nil {
-// 					tt.checkResult(t, serviceCtx)
-// 				}
-// 			}
-// 		})
-// 	}
-// }
