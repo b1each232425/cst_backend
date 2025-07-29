@@ -371,7 +371,7 @@ func PaperList(ctx context.Context) {
 		defer cancel()
 		var result []cmn.TVPaper
 		var totalCount int64
-		var userID int64 = 1573
+		var userID int64 = 1574
 		if userID <= 0 {
 			q.Err = fmt.Errorf("Invalid UserID: %d", userID)
 			z.Error(q.Err.Error())
