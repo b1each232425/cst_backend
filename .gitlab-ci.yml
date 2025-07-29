@@ -109,6 +109,8 @@ deploy-devmentor-be:
     refs:
       - /^v\d+\.\d+\.\d+$/
 
+  when: manual
+
   tags:
     - nodejs-build
   environment: production
@@ -125,6 +127,8 @@ deploy-3min-be:
     refs:
       - main
       - master
+
+  when: manual
 
   tags:
     - nodejs-build
