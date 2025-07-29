@@ -272,16 +272,22 @@ func gradeListH(ctx context.Context) {
 			req.PageSize = p
 		}
 
-		if teacherID := queryParams.Get("teacherID"); teacherID != "" {
-			p, err := strconv.Atoi(teacherID)
-			if err != nil {
-				q.Err = fmt.Errorf("无效教师ID: %s", teacherID)
-				z.Warn(q.Err.Error())
-				q.RespErr()
-				return
-			}
-			req.TeacherID = p
+		// if teacherID := queryParams.Get("teacherID"); teacherID != "" {
+		// 	p, err := strconv.Atoi(teacherID)
+		// 	if err != nil {
+		// 		q.Err = fmt.Errorf("无效教师ID: %s", teacherID)
+		// 		z.Warn(q.Err.Error())
+		// 		q.RespErr()
+		// 		return
+		// 	}
+		// 	req.TeacherID = p
+		// }
+		userID := null.IntFrom(1574)
+		if q.SysUser != nil {
+			userID = q.SysUser.ID
 		}
+		req.TeacherID = userID.Int64
+
 
 		if name := queryParams.Get("name"); name != "" {
 			req.Filter.Name = name
@@ -467,13 +473,11 @@ func gradeSubmissionH(ctx context.Context) {
 			return
 		}
 
-		userID := null.IntFrom(1000)
+		userID := null.IntFrom(1574)
 		if q.SysUser != nil {
 			userID = q.SysUser.ID
 		}
 		args.TeacherID = userID.Int64
-		// 主流程采用
-		args.TeacherID = 1574
 
 		examIDQuerys := gjson.GetBytes(buf, "data.exam_ids").Array()
 		if len(examIDQuerys) <= 0 {
