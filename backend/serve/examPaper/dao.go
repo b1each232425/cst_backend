@@ -3,7 +3,7 @@
  * @Description: 考卷-答卷数据库层
  * @Date: 2025-07-21 13:14:34
  * @LastEditors: zdl <1311866870@qq.com>
- * @LastEditTime: 2025-07-29 11:23:29
+ * @LastEditTime: 2025-07-29 16:24:46
  */
 package examPaper
 
@@ -368,6 +368,11 @@ func GenerateExamPaper(ctx context.Context, tx pgx.Tx, category string, paperId,
 		z.Error(err.Error())
 		return nil, nil, err
 	}
+	if uid <= 0 {
+		err = fmt.Errorf("invalid uid ID param")
+		z.Error(err.Error())
+		return nil, nil, err
+	}
 	if practiceId == 0 {
 		pid = nil
 	}
@@ -489,7 +494,7 @@ func GenerateExamPaper(ctx context.Context, tx pgx.Tx, category string, paperId,
 					return nil, nil, fmt.Errorf("解析答案失败: %w", err)
 				}
 				if len(answers) != len(q.SubScore) {
-					return nil, nil, fmt.Errorf("答案数量(%d)与分数数量(%d)不匹配", len(answers), len(q.SubScore))
+					return nil, nil, fmt.Errorf("题目ID：%v中的答案数量(%d)与分数数量(%d)不匹配", q.ID, len(answers), len(q.SubScore))
 				}
 				for i := range answers {
 					answers[i].Score = q.SubScore[i]
@@ -615,7 +620,7 @@ func GenerateExamPaper(ctx context.Context, tx pgx.Tx, category string, paperId,
 	if genMarkInfo {
 		groupQuestions := make(map[int64][]int64)
 		for _, question := range tqs {
-			if question.Type.String != QuestionCategory.FillInBlank &&
+			if question.Type.String != QuestionCategory.FillInBlank ||
 				question.Type.String != QuestionCategory.ShortAnswer {
 				continue
 			}

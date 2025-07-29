@@ -3,7 +3,7 @@
  * @Description: 考卷数据库层单元测试
  * @Date: 2025-07-28 19:55:28
  * @LastEditors: zdl <1311866870@qq.com>
- * @LastEditTime: 2025-07-29 11:24:26
+ * @LastEditTime: 2025-07-29 16:25:43
  */
 package examPaper
 
@@ -195,6 +195,223 @@ func TestLoadPaperTemplateById(t *testing.T) {
 			}
 		})
 	}
+}
+
+// 生成考卷测试
+func TestGenerateExamPaper(t *testing.T) {
+	// 由于这里已经有创建好试卷了，就直接使用就好
+
+	if z == nil {
+		cmn.ConfigureForTest()
+	}
+	var err error
+	var practiceID, paperID int64
+	practiceID = 2
+	paperID = 68
+
+	conn := cmn.GetPgxConn()
+	tx, err := conn.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// 这里先测试练习那边生成的逻辑
+	// 开启一个事务
+	defer func() {
+		err = tx.Rollback(ctx)
+		if err != nil {
+			z.Error(err.Error())
+		}
+	}()
+	p := `INSERT INTO t_practice (id,name,correct_mode,creator,allowed_attempts,type,paper_id) VALUES ($1, $2, $3, $4, $5, $6, $7)`
+	_, err = tx.Exec(ctx, p, practiceID, "考卷生成逻辑测试练习", "00", uid, 5, "00", 68)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// 插入练习之后还要插入学生 3个，学生ID为1,2,3
+	s := `
+	INSERT INTO assessuser.t_practice_student 
+    	(student_id, practice_id, creator, status) 
+	VALUES ($1,$2,$3,$4),($5,$6,$7,$8),($9,$10,$11,$12)
+	`
+	_, err = tx.Exec(ctx, s, 1, practiceID, uid, "00", 2, practiceID, uid, "00", 3, practiceID, uid, "00")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// 这里创建一个新的练习
+
+	tests := []struct {
+		name        string
+		category    string
+		pid         int64
+		practiceID  int64
+		sessionID   int64
+		uid         int64
+		genMarkInfo bool
+		expectedErr error
+	}{
+		{
+			name:        "正常生成练习考卷逻辑 并返回批改信息",
+			category:    PaperCategory.Practice,
+			pid:         paperID,
+			practiceID:  1,
+			sessionID:   0,
+			uid:         uid.Int64,
+			genMarkInfo: true,
+			expectedErr: nil,
+		},
+		{
+			name:        "正常生成练习考卷逻辑 不返回批改信息",
+			category:    PaperCategory.Practice,
+			pid:         paperID,
+			practiceID:  1,
+			sessionID:   0,
+			uid:         uid.Int64,
+			genMarkInfo: false,
+			expectedErr: nil,
+		},
+		{
+			name:        "异常1 参数检测非法pid",
+			category:    PaperCategory.Practice,
+			pid:         -1,
+			practiceID:  1,
+			sessionID:   0,
+			uid:         uid.Int64,
+			genMarkInfo: true,
+			expectedErr: errors.New("invalid paperId ID param"),
+		},
+		{
+			name:        "异常2 参数检测非法练习试卷类型",
+			category:    "06",
+			pid:         paperID,
+			practiceID:  1,
+			sessionID:   0,
+			uid:         uid.Int64,
+			genMarkInfo: true,
+			expectedErr: errors.New("invalid category param"),
+		},
+		{
+			name:        "异常3 参数检测非法练习ID与考试场次ID",
+			category:    PaperCategory.Practice,
+			pid:         paperID,
+			practiceID:  0,
+			sessionID:   0,
+			uid:         uid.Int64,
+			genMarkInfo: true,
+			expectedErr: errors.New("invalid practice or examSession ID param"),
+		},
+		{
+			name:        "异常4 参数检测非法操作者ID",
+			category:    PaperCategory.Practice,
+			pid:         paperID,
+			practiceID:  1,
+			sessionID:   0,
+			uid:         -1,
+			genMarkInfo: true,
+			expectedErr: errors.New("invalid uid ID param"),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			epid, mark, err := GenerateExamPaper(ctx, tx, tt.category, tt.pid, tt.practiceID, tt.sessionID, tt.uid, tt.genMarkInfo)
+			if tt.expectedErr != nil {
+				if err == nil || !containsString(err.Error(), tt.expectedErr.Error()) {
+					t.Errorf("返回的错误不符合预期：%v", err)
+				}
+			} else {
+				// 否则的话，这里就是没有错误
+				// 就需要检测此时生成的考卷信息了
+				// 这里获取到考卷的ID，就能去检验是否生成成功
+				if err != nil {
+					t.Fatalf("预期无错误，但返回错误：%v", err)
+				}
+				if epid == nil {
+					t.Fatalf("返回的考卷ID为空")
+				}
+				ep := `SELECT name,practice_id,creator FROM t_exam_paper WHERE id=$1 AND status = $2`
+				examPaper := cmn.TExamPaper{}
+				err := tx.QueryRow(ctx, ep, *epid, PaperStatus.Normal).Scan(&examPaper.Name, &examPaper.PracticeID, &examPaper.Creator)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if examPaper.PracticeID.Int64 != 1 {
+					t.Errorf("生成的考卷练习ID错误 预期：1，实际：%v", examPaper.PracticeID.Int64)
+				}
+				if examPaper.Name.String != "考卷单元测试试卷名" {
+					t.Errorf("生成的考卷名称错误 预期：考卷单元测试试卷名，实际：%v", examPaper.Name.String)
+				}
+				if examPaper.Creator.Int64 != uid.Int64 {
+					t.Errorf("生成的考卷创建者错误 预期：%v，实际：%v", uid, examPaper.Creator)
+				}
+				// 如果此时是选择了生成这个的话
+				if tt.genMarkInfo {
+					groups := []int64{}
+					questions := []int64{}
+					for _, m := range mark {
+						t.Logf("打印输出一下返回的题组信息%v", m.GroupID)
+						groups = append(groups, m.GroupID)
+						for _, q := range m.QuestionIDs {
+							t.Logf("打印输出一下返回的题目信息%v", q)
+							questions = append(questions, q)
+						}
+					}
+					var pgCount, qCount int
+
+					groupPlaceholders := make([]string, len(groups))
+					groupArgs := make([]interface{}, len(groups))
+					for i, id := range groups {
+						groupPlaceholders[i] = fmt.Sprintf("$%d", i+1)
+						groupArgs[i] = id
+					}
+
+					pg := fmt.Sprintf(
+						`SELECT COUNT(*) FROM t_exam_paper_group WHERE id IN (%s)`,
+						strings.Join(groupPlaceholders, ","),
+					)
+
+					err = tx.QueryRow(ctx, pg, groupArgs...).Scan(&pgCount)
+					if err != nil {
+						t.Fatal(err)
+					}
+
+					// 构建动态占位符
+					questionPlaceholders := make([]string, len(questions))
+					questionArgs := make([]interface{}, len(questions))
+					for i, id := range questions {
+						questionPlaceholders[i] = fmt.Sprintf("$%d", i+1)
+						questionArgs[i] = id
+					}
+
+					q := fmt.Sprintf(
+						`SELECT COUNT(*) FROM t_exam_paper_question WHERE id IN (%s)`,
+						strings.Join(questionPlaceholders, ","),
+					)
+
+					err = tx.QueryRow(ctx, q, questionArgs...).Scan(&qCount)
+					if err != nil {
+						t.Fatal(err)
+					}
+					if pgCount != 2 || qCount != 5 {
+						t.Errorf("生成的考卷题组与考卷题目数据有误：实际上：题组%v,题目%v", pgCount, qCount)
+					}
+				} else {
+					var pgCount, qCount int
+					// 如果没返回这个的话，还是需要去查这个视图，去看这个数量是否一致 如果选择不返回AI批改的配置，则会返回所有题组的信息，因此与批改的数量会不一样
+					v := `SELECT group_count,question_count FROM v_exam_paper WHERE id = $1`
+					err = tx.QueryRow(ctx, v, *epid).Scan(&pgCount, &qCount)
+					if err != nil {
+						t.Fatal(err)
+					}
+					if pgCount != 5 || qCount != 13 {
+						t.Errorf("生成的考卷题组与考卷题目数据有误：实际上：题组%v,题目%v", pgCount, qCount)
+					}
+				}
+			}
+
+		})
+	}
+
 }
 
 func containsString(s, substr string) bool {
@@ -415,7 +632,7 @@ func initPaper(t *testing.T, tx pgx.Tx) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = tx.Exec(ctx, pq, 11, groupIDs[4], 12, 5, uid, "00", types.JSONText(`[5]`))
+	_, err = tx.Exec(ctx, pq, 11, groupIDs[4], 12, 5, uid, "00", types.JSONText(`[2,2,1]`))
 	if err != nil {
 		t.Fatal(err)
 	}

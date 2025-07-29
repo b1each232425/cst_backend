@@ -205,7 +205,7 @@ func practiceTH(ctx context.Context) {
 			pType := q.R.URL.Query().Get("type")
 			status := q.R.URL.Query().Get("status")
 			id := q.R.URL.Query().Get("id")
-			// 代表此时进入到编辑页面了
+			// 此时需要获取练习具体信息
 			if id != "" {
 				var pid int64
 				pid, q.Err = strconv.ParseInt(id, 10, 64)
@@ -488,7 +488,7 @@ func practiceStudentListH(ctx context.Context) {
 		q.Resp()
 		return
 	}
-	s1 := `SELECT id, account,official_name,id_card_no,mobile_phone,password FROM t_user WHERE id IN (?)`
+	s1 := `SELECT id, account,official_name,id_card_no,mobile_phone FROM t_user WHERE id IN (?)`
 	query, args, err := sqlx.In(s1, tResult)
 	if err != nil {
 		q.Err = fmt.Errorf("prepare sqlx.In sql query failed:%v", err)
