@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"w2w.io/null"
 
 	"github.com/tidwall/gjson"
 	"go.uber.org/zap"
@@ -86,29 +87,12 @@ func Enroll(author string) {
 	// // --------------------------------------------------
 	// //                     成绩分布接口                  |
 	// // --------------------------------------------------
-	// // gradeDistributionExam
+	// // gradeDistribution
 	// _ = cmn.AddService(&cmn.ServeEndPoint{
-	// 	Fn: gradeDistributionExam,
+	// 	Fn: gradeDistribution,
 
-	// 	Path: "/grade/distribution/exam",
-	// 	Name: "grade/distribution/exam",
-
-	// 	Developer: developer,
-	// 	WhiteList: true,
-
-	// 	//DomainID 创建该API的账号归属的domain
-	// 	DomainID: int64(cmn.CDomainSys),
-
-	// 	//DefaultDomain 该API将默认授权给的用户
-	// 	DefaultDomain: int64(cmn.CDomainSys),
-	// })
-
-	// // gradeDistributionPractice
-	// _ = cmn.AddService(&cmn.ServeEndPoint{
-	// 	Fn: gradeDistributionPractice,
-
-	// 	Path: "/grade/distribution/practice",
-	// 	Name: "grade/distribution/practice",
+	// 	Path: "/grade/distribution",
+	// 	Name: "grade/distribution",
 
 	// 	Developer: developer,
 	// 	WhiteList: true,
@@ -307,9 +291,6 @@ func gradeListH(ctx context.Context) {
 			req.Filter.Name = name
 		}
 
-		// 及格率
-		req.PassScoreRate = 0.6
-
 		switch req.Category {
 		case "exam":
 			// 考试ID
@@ -485,17 +466,11 @@ func gradeSubmissionH(ctx context.Context) {
 			return
 		}
 
-		// //
-		// teacherID := int64(gjson.Get(string(buf), "data.teacher_id").Num)
-		// if teacherID <= 0 {
-		// 	q.Err = fmt.Errorf("教师ID无效")
-		// 	z.Error(q.Err.Error())
-		// 	q.RespErr()
-		// 	return
-		// }
-
-		// args.TeacherID = teacherID
-		args.TeacherID = 1575
+		userID := null.IntFrom(1000)
+		if q.SysUser != nil {
+			userID = q.SysUser.ID
+		}
+		args.TeacherID = userID.Int64
 
 		examIDQuerys := gjson.GetBytes(buf, "data.exam_ids").Array()
 		if len(examIDQuerys) <= 0 {
@@ -537,7 +512,7 @@ func gradeSubmissionH(ctx context.Context) {
 	}
 }
 
-// func gradeDistributionExam(ctx context.Context) {
+// func gradeDistribution(ctx context.Context) {
 // 	q := cmn.GetCtxValue(ctx)
 // 	z.Info("---->" + cmn.FncName())
 // 	method := strings.ToLower(q.R.Method)

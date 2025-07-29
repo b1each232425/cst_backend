@@ -3,10 +3,7 @@ package grade
 import (
 	"context"
 	"fmt"
-	"strings"
 	"time"
-
-	// "gopkg.in/guregu/null.v4"
 
 	"github.com/jackc/pgx/v5"
 	"w2w.io/cmn"
@@ -15,39 +12,39 @@ import (
 /*
 * GetExamSessionCount
  */
-func GetExamSessionCount(examID []int) (int, error) {
-
-	var err error
-
-	z.Info("----->" + cmn.FncName())
-
-	conn := cmn.GetDbConn()
-	if conn == nil {
-		z.Error("PostgreSQL connection pool is nil")
-		return 0, ErrNilDBConn
-	}
-
-	placeholders := make([]string, len(examID))
-	params := []any{}
-	for i, id := range examID {
-		placeholders[i] = fmt.Sprintf("$%d", i+1)
-		params = append(params, id)
-	}
-	placeholderStr := strings.Join(placeholders, ", ")
-
-	var count int
-
-	sql := fmt.Sprintf(`SELECT COUNT(id) FROM t_exam_session WHERE exam_id IN (%s)`, placeholderStr)
-
-	err = conn.QueryRow(sql, params...).Scan(&count)
-	if err != nil {
-		err = fmt.Errorf("scan exam session count(examID:%v) occurred error: %s", examID, err.Error())
-		z.Error(err.Error())
-		return 0, err
-	}
-
-	return count, nil
-}
+//func GetExamSessionCount(examID []int) (int, error) {
+//
+//	var err error
+//
+//	z.Info("----->" + cmn.FncName())
+//
+//	conn := cmn.GetDbConn()
+//	if conn == nil {
+//		z.Error("PostgreSQL connection pool is nil")
+//		return 0, ErrNilDBConn
+//	}
+//
+//	placeholders := make([]string, len(examID))
+//	params := []any{}
+//	for i, id := range examID {
+//		placeholders[i] = fmt.Sprintf("$%d", i+1)
+//		params = append(params, id)
+//	}
+//	placeholderStr := strings.Join(placeholders, ", ")
+//
+//	var count int
+//
+//	sql := fmt.Sprintf(`SELECT COUNT(id) FROM t_exam_session WHERE exam_id IN (%s)`, placeholderStr)
+//
+//	err = conn.QueryRow(sql, params...).Scan(&count)
+//	if err != nil {
+//		err = fmt.Errorf("scan exam session count(examID:%v) occurred error: %s", examID, err.Error())
+//		z.Error(err.Error())
+//		return 0, err
+//	}
+//
+//	return count, nil
+//}
 
 func GetExamSessionInfo(ctx context.Context, examID int, queryArgs ...string) ([]cmn.TExamSession, error) {
 
@@ -154,44 +151,44 @@ func GetRowCount(ctx context.Context, sql string, params []any) (int64, error) {
 	return result, err
 }
 
-func GetManualPaperDetailByPaperID(ctx context.Context, paperID int64) (*cmn.TVPaper, error) {
-	if paperID <= 0 {
-		z.Error(ErrInvalidPaperID.Error())
-		return nil, ErrInvalidPaperID
-	}
-
-	query := `SELECT 
-    id,name,assembly_type,category,level,suggested_duration,description,tags,creator,create_time,update_time,status,total_score,question_count,groups_data
-	FROM v_paper
-	WHERE id = $1
-	LIMIT 1`
-
-	db := cmn.GetDbConn()
-	row := db.QueryRowContext(ctx, query, paperID)
-	var paper cmn.TVPaper
-	err := row.Scan(
-		&paper.ID,
-		&paper.Name,
-		&paper.AssemblyType,
-		&paper.Category,
-		&paper.Level,
-		&paper.SuggestedDuration,
-		&paper.Description,
-		&paper.Tags,
-		&paper.Creator,
-		&paper.CreateTime,
-		&paper.UpdateTime,
-		&paper.Status,
-		&paper.TotalScore,
-		&paper.QuestionCount,
-		&paper.GroupsData,
-	)
-	if err != nil {
-		z.Error(err.Error())
-		return nil, err
-	}
-	return &paper, nil
-}
+//func GetManualPaperDetailByPaperID(ctx context.Context, paperID int64) (*cmn.TVPaper, error) {
+//	if paperID <= 0 {
+//		z.Error(ErrInvalidPaperID.Error())
+//		return nil, ErrInvalidPaperID
+//	}
+//
+//	query := `SELECT
+//    id,name,assembly_type,category,level,suggested_duration,description,tags,creator,create_time,update_time,status,total_score,question_count,groups_data
+//	FROM v_paper
+//	WHERE id = $1
+//	LIMIT 1`
+//
+//	db := cmn.GetDbConn()
+//	row := db.QueryRowContext(ctx, query, paperID)
+//	var paper cmn.TVPaper
+//	err := row.Scan(
+//		&paper.ID,
+//		&paper.Name,
+//		&paper.AssemblyType,
+//		&paper.Category,
+//		&paper.Level,
+//		&paper.SuggestedDuration,
+//		&paper.Description,
+//		&paper.Tags,
+//		&paper.Creator,
+//		&paper.CreateTime,
+//		&paper.UpdateTime,
+//		&paper.Status,
+//		&paper.TotalScore,
+//		&paper.QuestionCount,
+//		&paper.GroupsData,
+//	)
+//	if err != nil {
+//		z.Error(err.Error())
+//		return nil, err
+//	}
+//	return &paper, nil
+//}
 
 func GradeListExam(ctx context.Context, args *GradeListArgs) ([]GradeExam, int64, error) {
 	var err error
@@ -228,12 +225,6 @@ func GradeListExam(ctx context.Context, args *GradeListArgs) ([]GradeExam, int64
 
 	if args.ExamID < 0 {
 		err = fmt.Errorf("%w: 考试ID必须为正整数", ErrInvalidID)
-		z.Error(err.Error())
-		return nil, 0, err
-	}
-
-	if args.PassScoreRate < 0 || args.PassScoreRate > 1 {
-		err = fmt.Errorf("%w: 及格率必须在0到1之间", ErrInvalidRate)
 		z.Error(err.Error())
 		return nil, 0, err
 	}
@@ -449,12 +440,6 @@ func GradeListPractice(ctx context.Context, args *GradeListArgs) ([]GradePractic
 
 	if args.PracticeID < 0 {
 		err = fmt.Errorf("%w: 练习ID必须为正整数", ErrInvalidID)
-		z.Error(err.Error())
-		return nil, 0, err
-	}
-
-	if args.PassScoreRate < 0 || args.PassScoreRate > 1 {
-		err = fmt.Errorf("%w: 及格率必须在0到1之间", ErrInvalidRate)
 		z.Error(err.Error())
 		return nil, 0, err
 	}
