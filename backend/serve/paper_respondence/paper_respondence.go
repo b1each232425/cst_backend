@@ -901,19 +901,42 @@ func Submit(ctx context.Context) {
 		}
 
 		//查考当前是否符合条件去提交
-		_, err = checkExamCondition(ctx, u.ExamSessionId, u.StudentId, tx, SUBMIT)
-		if err != nil {
-			q.Err = err
+		_, q.Err = checkExamCondition(ctx, u.ExamSessionId, u.StudentId, tx, SUBMIT)
+		if q.Err != nil {
 			q.RespErr()
 			return
 		}
-		updateId, err := submitExam(ctx, tx, u)
-		if err != nil {
-			q.Err = err
+
+		now := time.Now().UTC()
+
+		examinee := cmn.TExaminee{
+			ID:         null.IntFrom(u.ExamineeID),
+			EndTime:    null.IntFrom(now.UnixMilli()),
+			UpdatedBy:  null.IntFrom(u.StudentId),
+			UpdateTime: null.IntFrom(now.UnixMilli()),
+		}
+		if forceErr == "exam-submit-err" {
+			tx.Rollback(dmlCtx)
+		}
+		//更新t_examinee表，如果end_time为空、start_time不为空才能设置，end_time不为空说明已经提交过了
+		updateSqlForExaminee := `UPDATE t_examinee SET end_time = $1,status=$2,updated_by=$3,update_time=$4 WHERE id = $5 AND end_time IS NULL AND start_time IS NOT NULL RETURNING id`
+		var updateId null.Int
+
+		q.Err = tx.QueryRow(ctx, updateSqlForExaminee, &examinee.EndTime, ExamOverStatus, &examinee.UpdatedBy, &examinee.UpdateTime, &examinee.ID).Scan(&updateId)
+		if q.Err != nil {
+			z.Error("QueryRow", zap.Error(q.Err))
 			q.RespErr()
 			return
 		}
-		z.Info("update success", zap.Int64("updateId", updateId))
+		if forceErr == "setAnswerCanNotUpdate error" {
+			tx.Rollback(dmlCtx)
+		}
+		//设置作答为禁止作答状态
+		q.Err = setAnswerCanNotUpdate(ctx, u.ExamineeID, 0, u.StudentId, tx)
+		if q.Err != nil {
+			q.RespErr()
+			return
+		}
 
 		q.Err = tx.Commit(ctx)
 		if forceErr == "commit-tx" {
@@ -946,10 +969,24 @@ func Submit(ctx context.Context) {
 			q.RespErr()
 			return
 		}
+		if forceErr == "setAnswerCanNotUpdate error" {
+			tx.Rollback(dmlCtx)
+		}
 		//将练习置为提交状态
-		err = submitPractice(ctx, tx, u)
-		if err != nil {
-			q.Err = err
+		q.Err = setAnswerCanNotUpdate(ctx, 0, u.PracticeSubmissionID, u.StudentId, tx)
+		if q.Err != nil {
+			q.RespErr()
+			return
+		}
+		if forceErr == "practice-submit-err" {
+			tx.Rollback(dmlCtx)
+		}
+		//只有状态为正常作答练习以及结束时间为空的，才能进行更新
+		submitSql := `update t_practice_submissions set end_time = (EXTRACT(EPOCH FROM NOW()) * 1000)::bigint,status=$1 where id = $2 AND status=$3 AND end_time IS NULL RETURNING id`
+		var updateId null.Int
+		q.Err = tx.QueryRow(ctx, submitSql, practiceSubmitted, u.PracticeSubmissionID, NormalStatus).Scan(&updateId)
+		if q.Err != nil {
+			z.Error("submitPractice error", zap.Error(q.Err))
 			q.RespErr()
 			return
 		}
@@ -1289,37 +1326,6 @@ func saveStudentBeginTimeForExam(ctx context.Context, tx pgx.Tx, req InitRespond
 	return nil
 }
 
-func submitExam(ctx context.Context, tx pgx.Tx, req SubmitReq) (int64, error) {
-	var err error
-
-	now := time.Now().UTC()
-
-	examinee := cmn.TExaminee{
-		ID:         null.IntFrom(req.ExamineeID),
-		EndTime:    null.IntFrom(now.UnixMilli()),
-		UpdatedBy:  null.IntFrom(req.StudentId),
-		UpdateTime: null.IntFrom(now.UnixMilli()),
-	}
-
-	//更新t_examinee表，如果end_time为空、start_time不为空才能设置，end_time不为空说明已经提交过了
-	updateSqlForExaminee := `UPDATE t_examinee SET end_time = $1,status=$2,updated_by=$3,update_time=$4 WHERE id = $5 AND end_time IS NULL AND start_time IS NOT NULL RETURNING id`
-	var updateId null.Int
-
-	err = tx.QueryRow(ctx, updateSqlForExaminee, &examinee.EndTime, ExamOverStatus, &examinee.UpdatedBy, &examinee.UpdateTime, &examinee.ID).Scan(&updateId)
-	if err != nil {
-		z.Error("submitExamInDataBase update error", zap.Error(err))
-		return -1, err
-	}
-	//设置作答为禁止作答状态
-	err = setAnswerCanNotUpdate(ctx, req.ExamineeID, 0, req.StudentId, tx)
-	if err != nil {
-		z.Error("submitExamInDataBase setAnswerCanNotUpdate error", zap.Error(err))
-		return -1, err
-	}
-
-	return updateId.Int64, nil
-}
-
 func setAnswerCanNotUpdate(ctx context.Context, examineeId, practiceSubmissionId, userId int64, tx pgx.Tx) error {
 
 	var updateSqlForAnswer string
@@ -1338,23 +1344,6 @@ func setAnswerCanNotUpdate(ctx context.Context, examineeId, practiceSubmissionId
 		z.Error("update answer status err", zap.Error(err))
 		return err
 	}
-	return nil
-}
-
-func submitPractice(ctx context.Context, tx pgx.Tx, req SubmitReq) error {
-	err := setAnswerCanNotUpdate(ctx, 0, req.PracticeSubmissionID, req.StudentId, tx)
-	if err != nil {
-		return err
-	}
-	//只有状态为正常作答练习以及结束时间为空的，才能进行更新
-	submitSql := `update t_practice_submissions set end_time = (EXTRACT(EPOCH FROM NOW()) * 1000)::bigint,status=$1 where id = $2 AND status=$3 AND end_time IS NULL RETURNING id`
-	var updateId null.Int
-	err = tx.QueryRow(ctx, submitSql, practiceSubmitted, req.PracticeSubmissionID, NormalStatus).Scan(&updateId)
-	if err != nil {
-		z.Error("submitPractice error", zap.Error(err))
-		return err
-	}
-	z.Info("submit success", zap.Int64("update id", updateId.Int64))
 	return nil
 }
 

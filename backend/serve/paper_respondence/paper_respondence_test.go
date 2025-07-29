@@ -37,6 +37,7 @@ func TestStudentAnswer(t *testing.T) {
 		expectSuccess   bool            // 是否期望成功
 		expectedMessage string          // 预期错误消息
 		expectedData    json.RawMessage // 预期数据（可选）
+		setup           func(tx pgx.Tx) error
 	}{
 		// POST 请求测试用例
 		{
@@ -51,7 +52,7 @@ func TestStudentAnswer(t *testing.T) {
 					"answer": {"answer":["B"]}
 				}`),
 			},
-			userId:          1574,
+			userId:          1575,
 			expectSuccess:   true,
 			expectedMessage: "",
 			expectedData: json.RawMessage(`{
@@ -69,6 +70,10 @@ func TestStudentAnswer(t *testing.T) {
 			  "UpdateTime": 1753577351944,
 			  "UpdatedBy": 1580
 			}`),
+			setup: func(tx pgx.Tx) error {
+				_, err := tx.Exec(context.Background(), `update t_student_answers set status='00' where examinee_id=3112`)
+				return err
+			},
 		},
 		{
 			name:   "POST 请求 - 保存学生答案 - 练习模式",
@@ -100,6 +105,10 @@ func TestStudentAnswer(t *testing.T) {
 			  "UpdateTime": 1753577351944,
 			  "UpdatedBy": 1580
 			}`),
+			setup: func(tx pgx.Tx) error {
+				_, err := tx.Exec(context.Background(), `update t_student_answers set status='00' where practice_submission_id=159`)
+				return err
+			},
 		},
 		{
 			name:   "POST 请求 - 更新学生答案",
@@ -131,6 +140,10 @@ func TestStudentAnswer(t *testing.T) {
 			  "UpdateTime": 1753577351944,
 			  "UpdatedBy": 1580
 			}`),
+			setup: func(tx pgx.Tx) error {
+				_, err := tx.Exec(context.Background(), `update t_student_answers set status='00' where practice_submission_id=159`)
+				return err
+			},
 		},
 		{
 			name:   "POST 请求 - 带附件的学生答案",
@@ -163,6 +176,10 @@ func TestStudentAnswer(t *testing.T) {
 			  "UpdateTime": 1753577351944,
 			  "UpdatedBy": 1580
 			}`),
+			setup: func(tx pgx.Tx) error {
+				_, err := tx.Exec(context.Background(), `update t_student_answers set status='00' where practice_submission_id=159`)
+				return err
+			},
 		},
 		{
 			name:   "POST 请求 - 练习缺少必要参数PracticeSubmissionID",
@@ -481,10 +498,32 @@ func TestStudentAnswer(t *testing.T) {
 			expectedMessage: "",
 		},
 	}
-
+	tx, err := cmn.GetPgxConn().BeginTx(context.Background(), pgx.TxOptions{})
+	if err != nil {
+		t.Fatalf("begin tx err: %v", err)
+	}
 	// 运行所有测试用例
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			// 如果需要设置数据库状态
+			if tc.setup != nil {
+				err := tc.setup(tx)
+				if err != nil {
+					t.Fatalf("Failed to setup database: %v", err)
+				}
+
+				// 提交事务以应用更改
+				err = tx.Commit(context.Background())
+				if err != nil {
+					t.Fatalf("Failed to commit transaction: %v", err)
+				}
+
+				// 开始新事务用于下一个测试或恢复
+				tx, err = cmn.GetPgxConn().Begin(context.Background())
+				if err != nil {
+					t.Fatalf("Failed to begin new transaction: %v", err)
+				}
+			}
 			var req *http.Request
 			var err error
 
@@ -2567,9 +2606,7 @@ func TestSubmit(t *testing.T) {
 			expectSuccess:   false,
 			expectedMessage: "Call /api/respondent with  empty body",
 			userId:          1575,
-			forceErr:        "io.ReadAll",
 		},
-		// 失败场景 - 无效的JSON
 		{
 			name:            "POST 请求 - 无效的JSON",
 			method:          "POST",
@@ -2578,6 +2615,16 @@ func TestSubmit(t *testing.T) {
 			expectSuccess:   false,
 			expectedMessage: "unexpected end of JSON input",
 			userId:          1575,
+		},
+		{
+			name:   "POST 请求 - data解析失败",
+			method: "POST",
+			url:    "/api/submit",
+			reqBody: &cmn.ReqProto{
+				Data: json.RawMessage(``),
+			},
+			expectSuccess: false,
+			userId:        1575,
 		},
 		// 失败场景 - 未登录用户
 		{
@@ -3079,6 +3126,191 @@ func TestSubmit(t *testing.T) {
 				`)
 
 				_, err = tx.Exec(ctx, `update t_student_answers set answer_score=null ,status='00' where practice_submission_id=164`)
+				if err != nil {
+					return err
+
+				}
+				return err
+			},
+		},
+		{
+			name:          "POST 请求 - 不存在的exam_id",
+			method:        "POST",
+			url:           "/api/respondent/submit",
+			expectSuccess: false,
+			userId:        1575,
+			reqBody: &cmn.ReqProto{
+				Data: json.RawMessage(`{
+					"type": "00",
+					"exam_id": 10,
+					"exam_session_id": 159,
+					"examinee_id": 3112
+				}`),
+			},
+		},
+		{
+			name:          "POST 请求 - setAnswerCanNotUpdate error（考试）",
+			method:        "POST",
+			url:           "/api/respondent/submit",
+			expectSuccess: false,
+			userId:        1575,
+			forceErr:      "setAnswerCanNotUpdate error",
+			reqBody: &cmn.ReqProto{
+				Data: json.RawMessage(`{
+					"type": "00",
+					"exam_id": 108,
+					"exam_session_id": 152,
+					"examinee_id": 3112
+				}`),
+			},
+			setupDB: func(t *testing.T, tx pgx.Tx) error {
+				// 设置考试状态为可以提交
+				currentTime := time.Now().Unix()
+				// 更新t_examinee表而不是视图
+				_, err := tx.Exec(ctx, `
+					UPDATE t_examinee 
+					SET start_time = $1, end_time = NULL, status = $2 
+					WHERE exam_session_id = 152 AND student_id = 1575
+				`, currentTime-3600, NormalStatus)
+				if err != nil {
+					return err
+				}
+
+				// 更新t_exam_session表设置end_time
+				_, err = tx.Exec(ctx, `
+					UPDATE t_exam_session 
+					SET end_time = $1 
+					WHERE id = 152
+				`, currentTime+3600)
+				return err
+			},
+			clean: func(t *testing.T, tx pgx.Tx) error {
+				// 考试类型提交后，将 examinee 的 end_time 设为 null
+				_, err := tx.Exec(ctx, `
+					UPDATE t_examinee 
+					SET end_time = NULL 
+					WHERE exam_session_id = 152 AND student_id = 1575
+				`)
+				_, err = tx.Exec(ctx, `update t_student_answers set answer_score=null ,status='02' where examinee_id=3112`)
+				if err != nil {
+					return err
+
+				}
+				return err
+			},
+		},
+		{
+			name:          "POST 请求 - setAnswerCanNotUpdate error（练习）",
+			method:        "POST",
+			url:           "/api/respondent/submit",
+			expectSuccess: false,
+			userId:        1575,
+			forceErr:      "setAnswerCanNotUpdate error",
+			reqBody: &cmn.ReqProto{
+				Data: json.RawMessage(`{
+					"type": "02",
+					"practice_id": 2036,
+					"practice_submission_id": 164
+				}`),
+			},
+			setupDB: func(t *testing.T, tx pgx.Tx) error {
+				return nil
+			},
+			clean: func(t *testing.T, tx pgx.Tx) error {
+				// 练习类型提交后，将 submission 的 status 改为 "00"
+				_, err := tx.Exec(ctx, `
+					UPDATE t_practice_submissions 
+					SET status = '00' ,
+					    end_time = null
+					WHERE id = 164 AND student_id = 1580
+				`)
+
+				_, err = tx.Exec(ctx, `update t_student_answers set answer_score=null ,status='00' where practice_submission_id=164`)
+				if err != nil {
+					return err
+
+				}
+				return err
+			},
+		},
+		{
+			name:          "POST 请求 - submit error（练习）",
+			method:        "POST",
+			url:           "/api/respondent/submit",
+			expectSuccess: false,
+			userId:        1575,
+			forceErr:      "practice-submit-err",
+			reqBody: &cmn.ReqProto{
+				Data: json.RawMessage(`{
+					"type": "02",
+					"practice_id": 2036,
+					"practice_submission_id": 164
+				}`),
+			},
+			setupDB: func(t *testing.T, tx pgx.Tx) error {
+				return nil
+			},
+			clean: func(t *testing.T, tx pgx.Tx) error {
+				// 练习类型提交后，将 submission 的 status 改为 "00"
+				_, err := tx.Exec(ctx, `
+					UPDATE t_practice_submissions 
+					SET status = '00' ,
+					    end_time = null
+					WHERE id = 164 AND student_id = 1580
+				`)
+
+				_, err = tx.Exec(ctx, `update t_student_answers set answer_score=null ,status='00' where practice_submission_id=164`)
+				if err != nil {
+					return err
+
+				}
+				return err
+			},
+		},
+		{
+			name:          "POST 请求 - submit error（考试）",
+			method:        "POST",
+			url:           "/api/respondent/submit",
+			expectSuccess: false,
+			userId:        1575,
+			forceErr:      "exam-submit-err",
+			reqBody: &cmn.ReqProto{
+				Data: json.RawMessage(`{
+					"type": "00",
+					"exam_id": 108,
+					"exam_session_id": 152,
+					"examinee_id": 3112
+				}`),
+			},
+			setupDB: func(t *testing.T, tx pgx.Tx) error {
+				// 设置考试状态为可以提交
+				currentTime := time.Now().Unix()
+				// 更新t_examinee表而不是视图
+				_, err := tx.Exec(ctx, `
+					UPDATE t_examinee 
+					SET start_time = $1, end_time = NULL, status = $2 
+					WHERE exam_session_id = 152 AND student_id = 1575
+				`, currentTime-3600, NormalStatus)
+				if err != nil {
+					return err
+				}
+
+				// 更新t_exam_session表设置end_time
+				_, err = tx.Exec(ctx, `
+					UPDATE t_exam_session 
+					SET end_time = $1 
+					WHERE id = 152
+				`, currentTime+3600)
+				return err
+			},
+			clean: func(t *testing.T, tx pgx.Tx) error {
+				// 考试类型提交后，将 examinee 的 end_time 设为 null
+				_, err := tx.Exec(ctx, `
+					UPDATE t_examinee 
+					SET end_time = NULL 
+					WHERE exam_session_id = 152 AND student_id = 1575
+				`)
+				_, err = tx.Exec(ctx, `update t_student_answers set answer_score=null ,status='02' where examinee_id=3112`)
 				if err != nil {
 					return err
 
