@@ -17,7 +17,6 @@ import (
 
 	"golang.org/x/crypto/bcrypt"
 
-	"github.com/gomodule/redigo/redis"
 	"github.com/jmoiron/sqlx"
 	"github.com/spf13/viper"
 	"github.com/valyala/fasthttp"
@@ -87,15 +86,15 @@ func wxLoginCached(ctx context.Context, u *wxUser) (bHit bool) {
 	}
 
 	key := fmt.Sprintf("%s:%s", CWxUserByUnionID, u.UnionID)
-	z.Info(key)
-	jsonStr, err := redis.String(q.Redis.Do("JSON.GET", key, "."))
+
+	val, err := q.RedisClient.JSONGet(ctx, key, ".").Result()
 	if err != nil {
 		z.Info(fmt.Sprintf("missing: %s", key))
 		return
 	}
 
 	var wxUser TWxUser
-	q.Err = json.Unmarshal([]byte(jsonStr), &wxUser)
+	q.Err = json.Unmarshal([]byte(val), &wxUser)
 	if q.Err != nil {
 		z.Error(q.Err.Error())
 		return
@@ -113,7 +112,7 @@ func wxLoginCached(ctx context.Context, u *wxUser) (bHit bool) {
 	}
 
 	key = fmt.Sprintf("%s:%s", CWxUserByOpenID, u.OpenID)
-	jsonStr, err = redis.String(q.Redis.Do("GET", key))
+	jsonStr, err := q.RedisClient.Get(ctx, key).Result()
 	if err != nil {
 		z.Info(fmt.Sprintf("missing: %s", key))
 		field := ""
@@ -156,7 +155,7 @@ func wxLoginCached(ctx context.Context, u *wxUser) (bHit bool) {
 			z.Error(q.Err.Error())
 			return
 		}
-		_, q.Err = q.Redis.Do("SET", key, wxUser.ID.Int64)
+		_, q.Err = q.RedisClient.Set(ctx, key, wxUser.ID.Int64, time.Second).Result()
 		if q.Err != nil {
 			z.Error(q.Err.Error())
 			return
@@ -184,7 +183,7 @@ func wxLoginCached(ctx context.Context, u *wxUser) (bHit bool) {
 			return
 		}
 		key = fmt.Sprintf("%s:%s", CWxUserByUnionID, u.UnionID)
-		_, q.Err = q.Redis.Do("JSON.SET", key, ".", string(buf))
+		_, q.Err = q.RedisClient.JSONSet(ctx, key, ".", string(buf)).Result()
 		if q.Err != nil {
 			z.Error(q.Err.Error())
 			return
@@ -193,7 +192,7 @@ func wxLoginCached(ctx context.Context, u *wxUser) (bHit bool) {
 
 	key = fmt.Sprintf("%s:%d", CSysUserByID, wxUser.ID.Int64)
 	var userName string
-	userName, q.Err = redis.String(q.Redis.Do("GET", key))
+	userName, q.Err = q.RedisClient.Get(ctx, key).Result()
 	if q.Err != nil {
 		q.Err = fmt.Errorf("user: %d not exists in cache", wxUser.ID.Int64)
 		z.Error(q.Err.Error())
@@ -202,7 +201,7 @@ func wxLoginCached(ctx context.Context, u *wxUser) (bHit bool) {
 	}
 
 	key = fmt.Sprintf("%s:%s", CSysUserByName, userName)
-	jsonStr, q.Err = redis.String(q.Redis.Do("JSON.GET", key, "."))
+	jsonStr, q.Err = q.RedisClient.JSONGet(ctx, key, ".").Result()
 	if q.Err != nil {
 		z.Error(q.Err.Error())
 		q.Err = fmt.Errorf("user: %s not exists in cache", userName)
@@ -876,7 +875,7 @@ func cacheWxUser(ctx context.Context, wxUser *TWxUser) {
 	}
 
 	key := fmt.Sprintf("%s:%s", CWxUserByUnionID, wxUser.UnionID.String)
-	_, q.Err = q.Redis.Do("JSON.SET", key, ".", string(buf))
+	_, q.Err = q.RedisClient.JSONSet(ctx, key, ".", string(buf)).Result()
 	if q.Err != nil {
 		z.Error(q.Err.Error())
 		return
@@ -884,7 +883,7 @@ func cacheWxUser(ctx context.Context, wxUser *TWxUser) {
 
 	key = fmt.Sprintf("%s:%d", CWxUserByID, wxUser.ID.Int64)
 
-	_, q.Err = q.Redis.Do("SET", key, wxUser.UnionID.String)
+	_, q.Err = q.RedisClient.Set(ctx, key, wxUser.UnionID.String, time.Second).Result()
 	if q.Err != nil {
 		z.Error(q.Err.Error())
 	}
@@ -892,7 +891,7 @@ func cacheWxUser(ctx context.Context, wxUser *TWxUser) {
 	var haveValidOpenID bool
 	if wxUser.MpOpenID.Valid && wxUser.MpOpenID.String != "" {
 		key = fmt.Sprintf("%s:%s", CWxUserByOpenID, wxUser.MpOpenID.String)
-		_, q.Err = q.Redis.Do("SET", key, wxUser.ID.Int64)
+		_, q.Err = q.RedisClient.Set(ctx, key, wxUser.ID.Int64, time.Second).Result()
 		if q.Err != nil {
 			z.Error(q.Err.Error())
 		}
@@ -901,7 +900,7 @@ func cacheWxUser(ctx context.Context, wxUser *TWxUser) {
 
 	if wxUser.WxOpenID.Valid && wxUser.WxOpenID.String != "" {
 		key = fmt.Sprintf("%s:%s", CWxUserByOpenID, wxUser.WxOpenID.String)
-		_, q.Err = q.Redis.Do("SET", key, wxUser.ID.Int64)
+		_, q.Err = q.RedisClient.Set(ctx, key, wxUser.ID.Int64, time.Second).Result()
 		if q.Err != nil {
 			z.Error(q.Err.Error())
 		}
@@ -943,14 +942,14 @@ func cacheSysUser(ctx context.Context, sysUser *TUser) {
 	}
 
 	key := fmt.Sprintf("%s:%s", CSysUserByName, sysUser.Account)
-	_, q.Err = q.Redis.Do("JSON.SET", key, ".", string(buf))
+	_, q.Err = q.RedisClient.JSONSet(ctx, key, ".", string(buf)).Result()
 	if q.Err != nil {
 		z.Error(q.Err.Error())
 		return
 	}
 
 	key = fmt.Sprintf("%s:%d", CSysUserByID, sysUser.ID.Int64)
-	_, q.Err = q.Redis.Do("SET", key, sysUser.Account)
+	_, q.Err = q.RedisClient.Set(ctx, key, sysUser.Account, time.Second).Result()
 	if q.Err != nil {
 		z.Error(q.Err.Error())
 		return
@@ -958,7 +957,7 @@ func cacheSysUser(ctx context.Context, sysUser *TUser) {
 
 	if sysUser.MobilePhone.Valid && sysUser.MobilePhone.String != "" {
 		key = fmt.Sprintf("%s:%s", CSysUserByTel, sysUser.MobilePhone.String)
-		_, q.Err = q.Redis.Do("SET", key, sysUser.Account)
+		_, q.Err = q.RedisClient.Set(ctx, key, sysUser.Account, time.Second).Result()
 		if q.Err != nil {
 			z.Error(q.Err.Error())
 			return
@@ -968,7 +967,7 @@ func cacheSysUser(ctx context.Context, sysUser *TUser) {
 
 	if sysUser.Email.Valid && sysUser.Email.String != "" {
 		key = fmt.Sprintf("%s:%s", CSysUserByEmail, sysUser.Email.String)
-		_, q.Err = q.Redis.Do("SET", key, sysUser.Account)
+		_, q.Err = q.RedisClient.Set(ctx, key, sysUser.Account, time.Second).Result()
 		if q.Err != nil {
 			z.Error(q.Err.Error())
 			return
