@@ -11,22 +11,22 @@ import (
 	"w2w.io/cmn"
 )
 
-//annotation:exam_mgt
+//annotation:exam_service
 //author:{"name":"Ma Yuxin","tel":"13824087366", "email":"dbs45412@163.com"}
 
 // 基于Redis有序集合的考试状态维护服务
 
 const (
-	EXAM_TIMER_SET_KEY = "exam:timers" // Redis有序集合存储所有定时事件
+	EXAM_TIMER_SET_KEY = "exam:timers"
 
 	// 事件类型
-	EVENT_TYPE_SESSION_START = "session_start"
-	EVENT_TYPE_SESSION_END   = "session_end"
+	EVENT_TYPE_EXAM_SESSION_START = "exam_session_start"
+	EVENT_TYPE_EXAM_SESSION_END   = "exam_session_end"
 )
 
 // 事件数据结构
 type ExamEvent struct {
-	Type          string `json:"type"` // 事件类型：session_start, session_end
+	Type          string `json:"type"` // 事件类型：exam_session_start, exam_session_end
 	ExamID        int64  `json:"exam_id,omitempty"`
 	ExamSessionID int64  `json:"exam_session_id,omitempty"`
 }
@@ -94,7 +94,7 @@ func initializeExamTimers() {
 
 		// 场次开始定时器
 		if startTime > now {
-			setRedisTimer(EVENT_TYPE_SESSION_START, examSessionID, startTime, ExamEvent{
+			setRedisTimer(EVENT_TYPE_EXAM_SESSION_START, examSessionID, startTime, ExamEvent{
 				ExamSessionID: examSessionID,
 				ExamID:        examID,
 			})
@@ -102,7 +102,7 @@ func initializeExamTimers() {
 
 		// 场次结束定时器
 		if endTime > now {
-			setRedisTimer(EVENT_TYPE_SESSION_END, examSessionID, endTime, ExamEvent{
+			setRedisTimer(EVENT_TYPE_EXAM_SESSION_END, examSessionID, endTime, ExamEvent{
 				ExamSessionID: examSessionID,
 				ExamID:        examID,
 			})
@@ -156,27 +156,28 @@ func pollRedisTimers() {
 	for {
 		now := time.Now()
 
-		// 获取Redis连接
-		conn := cmn.GetRedisConn()
-		defer conn.Close()
+		func() {
+			conn := cmn.GetRedisConn()
+			defer conn.Close()
 
-		// 获取并删除到期事件
-		result, err := conn.Do("EVAL", luaScript, 1, EXAM_TIMER_SET_KEY, now.UnixMilli(), 100)
-		if err != nil {
-			z.Error("Failed to execute Lua script for timer events", zap.Error(err))
-			continue
-		}
+			// 获取并删除到期事件
+			result, err := conn.Do("EVAL", luaScript, 1, EXAM_TIMER_SET_KEY, now.UnixMilli(), 100)
+			if err != nil {
+				z.Error("Failed to execute Lua script for timer events", zap.Error(err))
+				return
+			}
 
-		events, err := redis.Strings(result, nil)
-		if err != nil {
-			z.Error("Failed to convert Lua script result", zap.Error(err))
-			continue
-		}
+			events, err := redis.Strings(result, nil)
+			if err != nil {
+				z.Error("Failed to convert Lua script result", zap.Error(err))
+				return
+			}
 
-		// 处理到期事件
-		if len(events) > 0 {
-			handleTimerEventsBatch(events)
-		}
+			// 处理到期事件
+			if len(events) > 0 {
+				handleTimerEventsBatch(events)
+			}
+		}()
 
 		// 等待到下一个整分钟
 		nextMinute := now.Truncate(time.Minute).Add(time.Minute)
@@ -208,9 +209,9 @@ func handleTimerEventsBatch(eventStrs []string) {
 		}
 
 		switch event.Type {
-		case EVENT_TYPE_SESSION_START:
+		case EVENT_TYPE_EXAM_SESSION_START:
 			sessionStartEvents = append(sessionStartEvents, event)
-		case EVENT_TYPE_SESSION_END:
+		case EVENT_TYPE_EXAM_SESSION_END:
 			sessionEndEvents = append(sessionEndEvents, event)
 		default:
 			z.Warn("未知的事件类型", zap.String("type", event.Type))
@@ -421,7 +422,6 @@ func handleExamSessionEndBatch(events []ExamEvent) {
 	if err != nil {
 		z.Error("批量更新考生状态失败", zap.Error(err))
 	}
-
 	// 检查每个场次是否还有未结束的考生
 	checkQuery := `
 		SELECT 
@@ -477,12 +477,11 @@ func handleExamSessionEndBatch(events []ExamEvent) {
 	if len(delayedExamSessions) > 0 {
 		delayedEndTime := now + 60*1000
 		for _, delayed := range delayedExamSessions {
-			setRedisTimer(EVENT_TYPE_SESSION_END, delayed.ExamSessionID, delayedEndTime, ExamEvent{
+			setRedisTimer(EVENT_TYPE_EXAM_SESSION_END, delayed.ExamSessionID, delayedEndTime, ExamEvent{
 				ExamSessionID: delayed.ExamSessionID,
 				ExamID:        delayed.ExamID,
 			})
 		}
-		z.Info("延迟处理场次结束事件", zap.Int("count", len(delayedExamSessions)))
 	}
 
 	// 处理可以结束的场次
@@ -494,12 +493,9 @@ func handleExamSessionEndBatch(events []ExamEvent) {
 				update_time = $1
 			WHERE id = ANY($2) AND status = '04'
 		`
-		cmdTag1, err := pgxConn.Exec(ctx, sessionEndQuery, now, readyToEndExamSessions)
+		_, err := pgxConn.Exec(ctx, sessionEndQuery, now, readyToEndExamSessions)
 		if err != nil {
 			z.Error("批量更新场次状态为已结束失败", zap.Error(err))
-		} else if cmdTag1.RowsAffected() > 0 {
-			z.Info("批量更新场次状态为已结束",
-				zap.Int64("affected_rows", cmdTag1.RowsAffected()))
 		}
 
 		// 检查并更新考试状态
@@ -517,12 +513,9 @@ func handleExamSessionEndBatch(events []ExamEvent) {
 					WHERE es2.exam_id = ei.id AND es2.id = ANY($2)
 				)
 		`
-		cmdTag2, err := pgxConn.Exec(ctx, examUpdateQuery, now, readyToEndExamSessions)
+		_, err = pgxConn.Exec(ctx, examUpdateQuery, now, readyToEndExamSessions)
 		if err != nil {
 			z.Error("批量更新考试状态为已结束失败", zap.Error(err))
-		} else if cmdTag2.RowsAffected() > 0 {
-			z.Info("批量更新考试状态为已结束",
-				zap.Int64("affected_rows", cmdTag2.RowsAffected()))
 		}
 	}
 }
@@ -577,13 +570,13 @@ func SetExamTimers(ctx context.Context, examID int64) error {
 
 	for _, examSession := range examSessionInfo {
 		// 设置场次开始定时器
-		setRedisTimer(EVENT_TYPE_SESSION_START, examSession.ExamSessionID, examSession.StartTime, ExamEvent{
+		setRedisTimer(EVENT_TYPE_EXAM_SESSION_START, examSession.ExamSessionID, examSession.StartTime, ExamEvent{
 			ExamSessionID: examSession.ExamSessionID,
 			ExamID:        examID,
 		})
 
 		// 设置场次结束定时器
-		setRedisTimer(EVENT_TYPE_SESSION_END, examSession.ExamSessionID, examSession.EndTime, ExamEvent{
+		setRedisTimer(EVENT_TYPE_EXAM_SESSION_END, examSession.ExamSessionID, examSession.EndTime, ExamEvent{
 			ExamSessionID: examSession.ExamSessionID,
 			ExamID:        examID,
 		})
@@ -616,11 +609,11 @@ func CancelExamTimers(ctx context.Context, examID int64) error {
 	}
 
 	if len(sessionIDs) == 0 {
-		z.Info("没有找到需要取消的定时器", zap.Int64("exam_id", examID))
+		z.Info("没有需要取消的定时器", zap.Int64("exam_id", examID))
 		return nil
 	}
 
-	// Lua 脚本：原子性地删除指定场次的所有事件
+	// 删除指定场次的所有事件
 	luaScript := `
 		local timer_key = KEYS[1]
 		local session_ids = {}
@@ -649,14 +642,12 @@ func CancelExamTimers(ctx context.Context, examID int64) error {
 		return removed_count
 	`
 
-	// 准备参数：将所有场次ID作为参数传递
 	luaArgs := make([]interface{}, 0, len(sessionIDs)+2)
 	luaArgs = append(luaArgs, luaScript, 1, EXAM_TIMER_SET_KEY)
 	for _, sessionID := range sessionIDs {
 		luaArgs = append(luaArgs, sessionID)
 	}
 
-	// 执行 Lua 脚本
 	conn := cmn.GetRedisConn()
 	defer conn.Close()
 

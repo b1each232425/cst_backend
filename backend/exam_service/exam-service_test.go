@@ -406,9 +406,9 @@ func TestExamTimerIntegration(t *testing.T) {
 
 				assert.Equal(t, tc.examID, event.ExamID, "事件应该包含正确的考试ID")
 
-				if event.Type == EVENT_TYPE_SESSION_START {
+				if event.Type == EVENT_TYPE_EXAM_SESSION_START {
 					startEventCount++
-				} else if event.Type == EVENT_TYPE_SESSION_END {
+				} else if event.Type == EVENT_TYPE_EXAM_SESSION_END {
 					endEventCount++
 				}
 			}
@@ -485,184 +485,7 @@ func TestTimerCancellation(t *testing.T) {
 	}
 }
 
-// // TestHandleExamSessionStart 测试考试场次开始处理函数
-// func TestHandleExamSessionStart(t *testing.T) {
-// 	cmn.ConfigureForTest()
-// 	ctx := context.Background()
-// 	now := time.Now().UnixMilli()
-
-// 	// 定义测试用例数组
-// 	testCases := []struct {
-// 		name                  string
-// 		hasExaminee           bool
-// 		expectedExamStatus    string
-// 		expectedSessionStatus string
-// 		description           string
-// 	}{
-// 		{
-// 			name:                  "有考生的场次开始",
-// 			hasExaminee:           true,
-// 			expectedExamStatus:    "04",
-// 			expectedSessionStatus: "04",
-// 			description:           "有考生时，考试和场次状态都应该更新为进行中",
-// 		},
-// 		{
-// 			name:                  "无考生的场次开始",
-// 			hasExaminee:           false,
-// 			expectedExamStatus:    "10",
-// 			expectedSessionStatus: "02", // 场次状态不变，考试状态变为异常
-// 			description:           "无考生时，考试状态应该更新为异常",
-// 		},
-// 	}
-
-// 	// 遍历测试用例
-// 	for _, tc := range testCases {
-// 		t.Run(tc.name, func(t *testing.T) {
-// 			// 每个子测试独立设置和清理环境
-// 			setupTestEnvironment(t)
-// 			defer cleanupTestEnvironment(t)
-
-// 			examID := createTestExam(t, ctx)
-// 			sessionID := createTestExamSession(t, ctx, examID, now-1000, now+300000) // 开始时间已过
-
-// 			if tc.hasExaminee {
-// 				createTestExaminee(t, ctx, sessionID)
-// 			}
-
-// 			// 调用处理函数
-// 			handleExamSessionStart(sessionID)
-
-// 			// 验证考试状态
-// 			var examStatus string
-// 			err := pgxConn.QueryRow(ctx, "SELECT status FROM t_exam_info WHERE id = $1", examID).Scan(&examStatus)
-// 			require.NoError(t, err)
-// 			assert.Equal(t, tc.expectedExamStatus, examStatus, tc.description)
-
-// 			// 验证场次状态
-// 			var sessionStatus string
-// 			err = pgxConn.QueryRow(ctx, "SELECT status FROM t_exam_session WHERE id = $1", sessionID).Scan(&sessionStatus)
-// 			require.NoError(t, err)
-// 			assert.Equal(t, tc.expectedSessionStatus, sessionStatus, tc.description)
-
-// 			t.Logf("✅ %s 测试通过", tc.name)
-// 		})
-// 	}
-// }
-
-// // TestHandleExamSessionEnd 测试考试场次结束处理函数
-// func TestHandleExamSessionEnd(t *testing.T) {
-// 	cmn.ConfigureForTest()
-// 	ctx := context.Background()
-// 	now := time.Now().UnixMilli()
-
-// 	// 定义测试用例数组
-// 	testCases := []struct {
-// 		name                  string
-// 		examineeStatus        string
-// 		expectedSessionStatus string
-// 		expectedExamStatus    string
-// 		shouldAddDelayTimer   bool
-// 		description           string
-// 		setupFunc             func(examID, sessionID int64)
-// 	}{
-// 		{
-// 			name:                  "所有考生已结束的场次结束",
-// 			examineeStatus:        "10", // 已交卷
-// 			expectedSessionStatus: "06", // 已结束
-// 			expectedExamStatus:    "06", // 已结束
-// 			shouldAddDelayTimer:   false,
-// 			description:           "所有考生已结束时，场次和考试状态都应该更新为已结束",
-// 			setupFunc: func(examID, sessionID int64) {
-// 				// 设置考试和场次为进行中状态
-// 				pgxConn.Exec(ctx, "UPDATE t_exam_info SET status = '04' WHERE id = $1", examID)
-// 				pgxConn.Exec(ctx, "UPDATE t_exam_session SET status = '04' WHERE id = $1", sessionID)
-// 			},
-// 		},
-// 		{
-// 			name:                  "有考生未结束的场次结束",
-// 			examineeStatus:        "00", // 正常考
-// 			expectedSessionStatus: "04", // 进行中（不变）
-// 			expectedExamStatus:    "04", // 进行中（不变）
-// 			shouldAddDelayTimer:   true,
-// 			description:           "有考生未结束时，状态保持不变，并添加延迟检查事件",
-// 			setupFunc: func(examID, sessionID int64) {
-// 				// 设置考试和场次为进行中状态
-// 				pgxConn.Exec(ctx, "UPDATE t_exam_info SET status = '04' WHERE id = $1", examID)
-// 				pgxConn.Exec(ctx, "UPDATE t_exam_session SET status = '04' WHERE id = $1", sessionID)
-// 			},
-// 		},
-// 		{
-// 			name:                  "考生缺考的场次结束",
-// 			examineeStatus:        "02", // 缺考
-// 			expectedSessionStatus: "06", // 已结束
-// 			expectedExamStatus:    "06", // 已结束
-// 			shouldAddDelayTimer:   false,
-// 			description:           "考生缺考时，场次和考试状态都应该更新为已结束",
-// 			setupFunc: func(examID, sessionID int64) {
-// 				pgxConn.Exec(ctx, "UPDATE t_exam_info SET status = '04' WHERE id = $1", examID)
-// 				pgxConn.Exec(ctx, "UPDATE t_exam_session SET status = '04' WHERE id = $1", sessionID)
-// 			},
-// 		},
-// 	}
-
-// 	// 遍历测试用例
-// 	for _, tc := range testCases {
-// 		t.Run(tc.name, func(t *testing.T) {
-// 			// 每个子测试独立设置和清理环境
-// 			setupTestEnvironment(t)
-// 			defer cleanupTestEnvironment(t)
-
-// 			examID := createTestExam(t, ctx)
-// 			sessionID := createTestExamSession(t, ctx, examID, now-300000, now-1000) // 结束时间已过
-
-// 			// 执行setup函数
-// 			tc.setupFunc(examID, sessionID)
-
-// 			// 创建指定状态的考生
-// 			createTestExamineeWithStatus(t, ctx, sessionID, tc.examineeStatus)
-
-// 			// 记录Redis事件数量（用于验证延迟定时器）
-// 			var beforeCount int
-// 			if tc.shouldAddDelayTimer {
-// 				conn := cmn.GetRedisConn()
-// 				defer conn.Close()
-
-// 				var err error
-// 				beforeCount, err = redis.Int(conn.Do("ZCARD", EXAM_TIMER_SET_KEY))
-// 				require.NoError(t, err)
-// 			}
-
-// 			// 调用处理函数
-// 			handleExamSessionEnd(sessionID)
-
-// 			// 验证场次状态
-// 			var sessionStatus string
-// 			err := pgxConn.QueryRow(ctx, "SELECT status FROM t_exam_session WHERE id = $1", sessionID).Scan(&sessionStatus)
-// 			require.NoError(t, err)
-// 			assert.Equal(t, tc.expectedSessionStatus, sessionStatus, tc.description)
-
-// 			// 验证考试状态
-// 			var examStatus string
-// 			err = pgxConn.QueryRow(ctx, "SELECT status FROM t_exam_info WHERE id = $1", examID).Scan(&examStatus)
-// 			require.NoError(t, err)
-// 			assert.Equal(t, tc.expectedExamStatus, examStatus, tc.description)
-
-// 			// 验证延迟定时器
-// 			if tc.shouldAddDelayTimer {
-// 				conn := cmn.GetRedisConn()
-// 				defer conn.Close()
-
-// 				afterCount, err := redis.Int(conn.Do("ZCARD", EXAM_TIMER_SET_KEY))
-// 				require.NoError(t, err)
-// 				assert.Equal(t, beforeCount+1, afterCount, "应该添加了一个延迟检查事件")
-// 			}
-
-// 			t.Logf("✅ %s 测试通过", tc.name)
-// 		})
-// 	}
-// }
-
-// TestHandleTimerEvent 测试定时器事件处理函数 - 使用批量处理
+// TestHandleTimerEvent 测试定时器事件处理函数
 func TestHandleTimerEvent(t *testing.T) {
 	cmn.ConfigureForTest()
 	setupTestEnvironment(t)
@@ -684,7 +507,7 @@ func TestHandleTimerEvent(t *testing.T) {
 	}{
 		{
 			name:           "处理开始事件-有考生",
-			eventType:      EVENT_TYPE_SESSION_START,
+			eventType:      EVENT_TYPE_EXAM_SESSION_START,
 			sessionID:      testData.NormalSessionID,
 			examID:         testData.NormalExamID,
 			expectedStatus: "04",
@@ -696,7 +519,7 @@ func TestHandleTimerEvent(t *testing.T) {
 		},
 		{
 			name:           "处理开始事件-无考生",
-			eventType:      EVENT_TYPE_SESSION_START,
+			eventType:      EVENT_TYPE_EXAM_SESSION_START,
 			sessionID:      testData.AbnormalSessionID,
 			examID:         testData.AbnormalExamID,
 			expectedStatus: "10",
@@ -708,7 +531,7 @@ func TestHandleTimerEvent(t *testing.T) {
 		},
 		{
 			name:           "处理结束事件-考生已完成",
-			eventType:      EVENT_TYPE_SESSION_END,
+			eventType:      EVENT_TYPE_EXAM_SESSION_END,
 			sessionID:      testData.EndedSessionID,
 			examID:         testData.NormalExamID,
 			expectedStatus: "06",
@@ -722,7 +545,7 @@ func TestHandleTimerEvent(t *testing.T) {
 		},
 		{
 			name:           "处理结束事件-考生未完成",
-			eventType:      EVENT_TYPE_SESSION_END,
+			eventType:      EVENT_TYPE_EXAM_SESSION_END,
 			sessionID:      testData.UnfinishedSessionID,
 			examID:         testData.NormalExamID,
 			expectedStatus: "06",
@@ -752,9 +575,9 @@ func TestHandleTimerEvent(t *testing.T) {
 			}
 
 			// 调用批量事件处理函数
-			if tc.eventType == EVENT_TYPE_SESSION_START {
+			if tc.eventType == EVENT_TYPE_EXAM_SESSION_START {
 				handleExamSessionStartBatch(events)
-			} else if tc.eventType == EVENT_TYPE_SESSION_END {
+			} else if tc.eventType == EVENT_TYPE_EXAM_SESSION_END {
 				handleExamSessionEndBatch(events)
 			}
 
@@ -775,7 +598,7 @@ func TestHandleTimerEvent(t *testing.T) {
 		})
 	}
 
-	// 测试未知事件类型（单独测试）
+	// 测试未知事件类型
 	t.Run("处理未知事件类型", func(t *testing.T) {
 		events := []ExamEvent{
 			{
@@ -785,13 +608,13 @@ func TestHandleTimerEvent(t *testing.T) {
 			},
 		}
 
-		// 调用批量处理函数（应该不会崩溃，未知事件类型会被忽略）
+		// 调用批量处理函数
 		require.NotPanics(t, func() {
-			handleExamSessionStartBatch(events) // 尝试用开始处理
+			handleExamSessionStartBatch(events)
 		}, "未知事件类型不应该导致panic")
 
 		require.NotPanics(t, func() {
-			handleExamSessionEndBatch(events) // 尝试用结束处理
+			handleExamSessionEndBatch(events)
 		}, "未知事件类型不应该导致panic")
 
 		t.Log("✅ 未知事件类型处理测试通过")
@@ -817,12 +640,12 @@ func TestHandleExamSessionStartBatch(t *testing.T) {
 			name: "批量处理-混合场景",
 			events: []ExamEvent{
 				{
-					Type:          EVENT_TYPE_SESSION_START,
+					Type:          EVENT_TYPE_EXAM_SESSION_START,
 					ExamSessionID: testData.NormalSessionID,
 					ExamID:        testData.NormalExamID,
 				},
 				{
-					Type:          EVENT_TYPE_SESSION_START,
+					Type:          EVENT_TYPE_EXAM_SESSION_START,
 					ExamSessionID: testData.AbnormalSessionID,
 					ExamID:        testData.AbnormalExamID,
 				},
@@ -833,12 +656,12 @@ func TestHandleExamSessionStartBatch(t *testing.T) {
 			name: "批量处理-多场次正常场景",
 			events: []ExamEvent{
 				{
-					Type:          EVENT_TYPE_SESSION_START,
+					Type:          EVENT_TYPE_EXAM_SESSION_START,
 					ExamSessionID: testData.MultiSession1ID,
 					ExamID:        testData.MultiSessionExamID,
 				},
 				{
-					Type:          EVENT_TYPE_SESSION_START,
+					Type:          EVENT_TYPE_EXAM_SESSION_START,
 					ExamSessionID: testData.MultiSession2ID,
 					ExamID:        testData.MultiSessionExamID,
 				},
@@ -911,7 +734,7 @@ func TestHandleExamSessionEndBatch(t *testing.T) {
 			name: "批量结束-已完成场次",
 			events: []ExamEvent{
 				{
-					Type:          EVENT_TYPE_SESSION_END,
+					Type:          EVENT_TYPE_EXAM_SESSION_END,
 					ExamSessionID: testData.EndedSessionID,
 					ExamID:        testData.NormalExamID,
 				},
@@ -927,7 +750,7 @@ func TestHandleExamSessionEndBatch(t *testing.T) {
 			name: "批量结束-未完成场次",
 			events: []ExamEvent{
 				{
-					Type:          EVENT_TYPE_SESSION_END,
+					Type:          EVENT_TYPE_EXAM_SESSION_END,
 					ExamSessionID: testData.UnfinishedSessionID,
 					ExamID:        testData.NormalExamID,
 				},
@@ -1024,7 +847,7 @@ func TestAutoUpdateExamineeStatusOnSessionEnd(t *testing.T) {
 	// 创建结束事件并处理
 	events := []ExamEvent{
 		{
-			Type:          EVENT_TYPE_SESSION_END,
+			Type:          EVENT_TYPE_EXAM_SESSION_END,
 			ExamSessionID: testData.UnfinishedSessionID,
 			ExamID:        testData.NormalExamID,
 		},

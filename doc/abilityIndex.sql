@@ -1,6 +1,6 @@
 /*==============================================================*/
 /* DBMS name:      PostgreSQL 9.x                               */
-/* Created on:     2025-07-13 16:57:03                          */
+/* Created on:     2025-07-26 19:21:55                          */
 /*==============================================================*/
 
 
@@ -908,88 +908,100 @@ comment on column t_domain.status is
 '状态，00：草稿，01：有效，02：作废';
 
 ALTER SEQUENCE t_domain_id_seq RESTART WITH 20000;
-/*
-# 关于“域"(domain)
 
-功能与数据本质上都应该被视为数据, 域(domain)主要用于分类系统中的三类对象以实现功能权限与数据权限划分
-1）账号，表示该账号可以访问哪些数据与功能，例如，一个账号在t_obj_domain中的domain是xkb@admin则该账号只能访问数据库表中domain属性以xkb开头的功能与数据，或无domain属性数据。账号的domain属性必须符合"域^角色"形式，即，账号必须具备角色。
-
-2）***[存疑, 该约束可能导致严重性能问题]***功能，
-表示该功能可以访问哪些数据与其它功能，例如，一个功能在表t_obj_domain中的domain属性是xkb@admin则该账号只能访问数据库表中domain属性以xkb开头的功能与数据，或无domain属性数据。
-
-3) 数据, 表示该数据的归属，例如，一个数据的数据库表中doamin属性为xkb.sale, 则表示，账号domain属性是以xkb.sale开头的用户可以访问它。如果一个数据的数据库表中doamin属性为xkb.sale^admin，则表示只有账号domain属性以xkb.sale^admin开头的用户可以访问它。
-
-
-即，做数据或功能权限划分时以前缀为约束或筛选条件。
-
-任何账号如果具有^anonymous,^user域，则该账号不被允许再被授权其它权限，即仅被允许访问特定“公共”功能集，而特定“公共功能集”由t_domain_obj中的left_value为[app]^anonymous或[app]^user定义。
-
-
-*/
+-- ***无角色的域仅做为数据隔离条件使用, 优先级为0, 不允许使用于账号授权**
 -- sys是平台域
 insert into t_domain(id,name, domain, creator,priority) values
 
 (322,'系统','sys',1000,0),-- 表示该对对象是平台相关，非特定业务相关, 
-(333,'系统.管理','sys^admin',1000,0),-- 平台管理员角色，上帝角色
-(366,'系统.运维','sys^maintain',1000,3), -- 平台维护角色
+(333,'系统.管理','sys^admin',1000,11),-- 平台管理员角色，上帝角色
+(366,'系统.运维','sys^maintain',1000,13), -- 平台维护角色
 
--- (377,'系统.用户','sys^user',1000,7), -- 普通平台账号，这个不应该存在或被使用
--- (388,'系统.匿名','sys^anonymous',1000,9), -- 普通平台匿名账号，这个不应该存在或被使用
+-- (377,'系统.用户','sys^user',1000,17), -- 普通平台账号，这个不应该存在或被使用
+-- (388,'系统.匿名','sys^anonymous',1000,19), -- 普通平台匿名账号，这个不应该存在或被使用
 
--- (561,'系统.运营','sys^promotion',1000,5), -- 普通平台运营角色账号, 这个不应该存在或被使用
--- (563,'系统.销售','sys^sale',1000,5), -- 普通平台销售角色账号，这个不应该存在或被使用
+-- (561,'系统.运营','sys^promotion',1000,21), -- 普通平台运营角色账号, 这个不应该存在或被使用
+-- (563,'系统.销售','sys^sale',1000,23), -- 普通平台销售角色账号，这个不应该存在或被使用
 
 -- sys^trial 平台测试账号，相当于sys@admin，这个账号应该仅存在于开发数据库中
 --     或以调试为目的短暂存在于生产系统中，该角色应该仅用于平台自身，用完即禁。每个应用应该建立自己的[app]^trial域
-(566,'系统.测试','sys^trial',1000,5), 
+(566,'系统.测试','sys^trial',1000,9), 
 
 -- common是为第三方提供服务的域,只能用于功能的domain属性, 表示该功
 --     能可以跨域访问数据，数据约束则以账号的domain为线索。
-(567,'管理','common^admin',1000,0),
-(569,'运维','common^maintain',1000,3),
+(567,'管理','common^admin',1000,25),
+(569,'运维','common^maintain',1000,27),
 
 
-(671,'用户','common^user',1000,7),
-(673,'匿名','common^anonymous',1000,9),
+(671,'用户','common^user',1000,29),
+-- (673,'匿名','common^anonymous',1000,31),
 
-(675,'运营','common^promotion',1000,5),
-(677,'销售','common^sale',1000,5),
-(679,'测试','common^trial',1000,5),
+(675,'运营','common^promotion',1000,33),
+(677,'销售','common^sale',1000,35),
+(679,'测试','common^trial',1000,37),
 
 -- 
-(1077,'近邻科技','qnear',1000,3),
-(1079,'近邻科技.管理','qnear^admin',1000,3),
+(1077,'近邻科技','qnear',1000,0),
+(1079,'近邻科技.管理','qnear^admin',1000,1005),
 
 --
-(1177,'能力索引','abilityIdx',1000,3),
-(1179,'能力索引.管理','abilityIdx^admin',1000,3),
+(1177,'能力索引','abilityIdx',1000,0),
+(1179,'能力索引.管理','abilityIdx^admin',1000,1009),
 
 --
-(1277,'IT双创精英孵化实训室','foreseeLab',1000,3),
-(1279,'IT双创精英孵化实训室.管理','foreseeLab^admin',1000,3),
+(1277,'IT双创精英孵化实训室','foreseeLab',1000,0),
+(1279,'IT双创精英孵化实训室.管理','foreseeLab^admin',1000,1019),
 
 --
-(1377,'人才引进','recuitMgr',1000,3),
-(1379,'人才引进.管理','recuitMgr^admin',1000,3),
+(1377,'人才引进','recuitMgr',1000,0),
+(1379,'人才引进.管理','recuitMgr^admin',1000,1025),
 
 --
-(1477,'教学督导','jxdd',1000,3),
-(1479,'教学督导.管理','jxdd^admin',1000,3),
+(1477,'教学督导','jxdd',1000,0),
+(1479,'教学督导.管理','jxdd^admin',1000,1035),
 
 --
-(1577,'校友会小额捐献','donate',1000,3),
-(1579,'校友会小额捐献.管理','donate^admin',1000,3),
+(1577,'校友会小额捐献','donate',1000,0),
+(1579,'校友会小额捐献.管理','donate^admin',1000,1045),
 
 --
-(10002,'校快保','xkb',1000,3),
-(10004,'校快保.管理','xkb^admin',1000,3),
-(10006,'校快保.销售经理','xkb^sale',1000,5),
-(10008,'校快保.学校管理员','xkb.school^admin',1000,5),
-(10010,'校快保.学校统计员','xkb.school^statistics',1000,5),
-(10012,'校快保.客户','xkb^user',1000,7),
-(10016,'校快保.运营','xkb^promotion',1000,5),
-(10020,'校快保.前台','xkb^fe',1000,5),
-(10030,'校快保.后台','xkb^be',1000,5);
+(10002,'校快保','xkb',1000,0),
+(10004,'校快保.管理','xkb^admin',1000,1055),
+(10006,'校快保.销售经理','xkb^sale',1000,1057),
+(10008,'校快保.学校管理员','xkb.school^admin',1000,1059),
+(10010,'校快保.学校统计员','xkb.school^statistics',1000,1061),
+(10012,'校快保.客户','xkb^user',1000,1067),
+(10016,'校快保.运营','xkb^promotion',1000,1069),
+(10020,'校快保.前台','xkb^fe',1000,1071),
+(10030,'校快保.后台','xkb^be',1000,1073),
+
+(10098,'考试系统','assess',1000,0),
+(10100,'考试系统.学校管理员','assess^admin',1000,1083),
+(10102,'考试系统.学校领导','assess^leader',1000,1085),
+(10104,'考试系统.学院管理员','assess.faculty^admin',1000,1087),
+(10106,'考试系统.教务处领导','assess.academicAffair^dean',1000,1089),
+(10108,'考试系统.学生处领导','assess.studentAffair^dean',1000,1091),
+(10110,'考试系统.学院领导','assess.faculty^leader',1000,1093),
+
+(10112,'考试系统.教务员','assess.academicAffair^admin',1000,1095),
+(10114,'考试系统.教师','assess^teacher',1000,1097),
+(10116,'考试系统.监考员','assess^examSupervisor',1000,1099),
+(10118,'考试系统.运维','assess^maintain',1000,1111), -- 平台维护角色
+(10120,'考试系统.学生','assess^student',1000,1113),
+
+
+(10200,'教学系统','course',1000,0),
+(10202,'教学系统.管理员','course^admin',1000,1201),
+(10204,'教学系统.运维','course^maintain',1000,1203), -- 平台维护角色
+(10206,'教学系统.运营','course^promotion',1000,1205),
+(10208,'教学系统.教师','course^teacher',1000,1207),
+(10210,'教学系统.助教','course^teachingAssistant',1000,1209),
+(10212,'教学系统.班长','course^classRepresentative',1000,1211),
+(10214,'教学系统.学生','course^student',1000,1213);
+
+
+
+
 
 /*==============================================================*/
 /* Index: idx_domain_domain                                     */
@@ -1296,37 +1308,37 @@ comment on column t_user.status is
 ALTER SEQUENCE t_user_id_seq RESTART WITH 20000;
 
 delete from t_user where id <=20000;
-insert into t_user(id,type,email,account,user_token,status,category)
-values(1000,'80','kzz@gzhu.edu.cn','admin',crypt('cSc^6z9B',gen_salt('bf')),'00','sys^admin');
 
-insert into t_user(id,type,email,account,user_token,status,category)
-values(1002,'02','dawnfire@126.com','mickey',crypt('cSc^6z9B',gen_salt('bf')),'00','sys^admin');
+insert into t_user(id,type,email,account,user_token,status,category) values
+(1000,'80','kzz@gzhu.edu.cn','admin',crypt('cSc^6z9B',gen_salt('bf')),'00','sys^admin'),
+(1002,'02','dawnfire@126.com','mickey',crypt('cSc^6z9B',gen_salt('bf')),'00','sys^admin'),
+(1004,'04','kzz@tom.com','trialUser',crypt('cSc^6z9B',gen_salt('bf')),'00','sys^trial'),
+(1008,'08','kmanager@gmail.com','organizationLeader',crypt('cSc^6z9B',gen_salt('bf')),'00','sys^admin'),
+(1010,'10','kforce@gmail.com','tester',crypt('cSc^6z9B',gen_salt('bf')),'00','sys^trial'),
+(1110,'10','stu01@w2w.io','spider1',crypt('1',gen_salt('bf')),'00','sys^trial'),
+(1111,'10','stu02@w2w.io','spider2',crypt('2',gen_salt('bf')),'00','sys^trial'),
+(1212,'10','stu03@w2w.io','spider3',crypt('3',gen_salt('bf')),'00','sys^trial'),
+(1313,'10','stu04@w2w.io','spider4',crypt('4',gen_salt('bf')),'00','sys^trial'),
+(1314,'10','stu05@w2w.io','spider5',crypt('3',gen_salt('bf')),'00','sys^trial'),
 
-insert into t_user(id,type,email,account,user_token,status,category)
-values(1004,'04','kzz@tom.com','trialUser',crypt('cSc^6z9B',gen_salt('bf')),'00','sys^trial');
+(1400,'10','course.admin@w2w.io','course.admin',crypt('0',gen_salt('bf')),'00','course^admin'),
+(1402,'10','course.maintain@w2w.io','course.maintain',crypt('0',gen_salt('bf')),'00','course^maintain'),
 
-insert into t_user(id,type,email,account,user_token,status,category)
-values(1008,'08','kmanager@gmail.com','organizationLeader',crypt('cSc^6z9B',gen_salt('bf')),'00','sys^admin');
+(1404,'10','course.teacher1@w2w.io','t1',crypt('1',gen_salt('bf')),'00','course^teacher'),
+(1406,'10','course.teacher2@w2w.io','t2',crypt('2',gen_salt('bf')),'00','course^teacher'),
+(1408,'10','course.teacher3@w2w.io','t3',crypt('3',gen_salt('bf')),'00','course^teacher'),
 
-insert into t_user(id,type,email,account,user_token,status,category)
-values(1010,'10','kforce@gmail.com','tester',crypt('cSc^6z9B',gen_salt('bf')),'00','sys^trial');
-
-insert into t_user(id,type,email,account,user_token,status,category)
-values(1111,'10','stu01@w2w.io','spider1',crypt('1',gen_salt('bf')),'00','sys^trial');
-
-insert into t_user(id,type,email,account,user_token,status,category)
-values(1212,'10','stu02@w2w.io','spider2',crypt('2',gen_salt('bf')),'00','sys^trial');
-
-insert into t_user(id,type,email,account,user_token,status,category)
-values(1313,'10','kzz@w2w.io','spider3',crypt('3',gen_salt('bf')),'00','sys^trial');
+(1410,'10','course.stu1@w2w.io','s1',crypt('1',gen_salt('bf')),'00','course^student'),
+(1412,'10','course.stu2@w2w.io','s2',crypt('2',gen_salt('bf')),'00','course^student'),
+(1414,'10','course.stu3@w2w.io','s3',crypt('3',gen_salt('bf')),'00','course^student'),
+(1416,'10','course.stu4@w2w.io','s4',crypt('4',gen_salt('bf')),'00','course^student'),
+(1418,'10','course.stu5@w2w.io','s5',crypt('5',gen_salt('bf')),'00','course^student');
 
 
 
 update t_user set role=566;
 
 update t_user set user_token=crypt('x2K3c',gen_salt('bf')) where id in(10002,10004,10008,10010,10040,10042,10044);
-
-
 
 /*==============================================================*/
 /* Index: idx_user_account                                      */
@@ -8668,6 +8680,41 @@ create trigger trigger_user_domain_del after insert or update or delete
 on t_user_domain
 for each row
 execute function user_domain_sync();
+
+
+
+insert into t_user_domain(sys_user,domain,domain_id,creator) values
+(1000,333,322,1000),
+(1000,366,322,1000),
+(1000,566,322,1000),
+(1000,1079,322,1000),
+(1000,10100,322,1000),
+(1002,366,322,1000),
+(1002,566,322,1000),
+(1002,10100,322,1000),
+(1002,10102,322,1000),
+(1002,10104,322,1000),
+(1002,10106,322,1000),
+(1004,10102,322,1000),
+(1008,10104,322,1000),
+(1008,10106,322,1000),
+(1010,366,322,1000),
+(1010,566,322,1000),
+(1010,10100,322,1000),
+(1010,10102,322,1000),
+(1010,10104,322,1000),
+(1010,10106,322,1000),
+(1111,10104,322,1000),
+(1212,10108,322,1000),
+(1313,10108,322,1000),
+(1404,10202,322,1000),
+(1406,10204,322,1000),
+(1408,10208,322,1000),
+(1410,10210,322,1000),
+(1412,10212,322,1000),
+(1414,10214,322,1000),
+(1416,10214,322,1000),
+(1418,10214,322,1000);
 
 /*==============================================================*/
 /* Index: idx_user_domain                                       */

@@ -19,16 +19,16 @@
     },
     "postgresql": {
       "addr": "postgres",
-      "db": "kdb",
+      "db": "assessdb_p",
       "enable": true,
-      "port": 16900,
-      "pwd": "ak47-Ever",
-      "user": "kuser"
+      "port": 6900,
+      "pwd": "as142857",
+      "user": "assessuser"
     },
     "redis": {
       "addr": "redis",
       "init": false,
-      "cert": "QDD2S23SDVasdfQWFAS5E262A29282628295E_7B7Ddasdfasdflc2Cvsdffffdfdazzxcvnm3Fasdf21235E262A2829_2B7C7D7BPOIUYTREWQ3ALKJHGFDSA3F3E3CMNBVCXZqwertyuiopasdfghjklzxcvbnm2C2F5B5D5C1234567890_3DadfdsdfWDFSwfdFSFA4023235E2628372A2829JHKljkL3ANM3C3EVBNMaEFesvrgwRTHDFGNBasdfWSVSDFSV8XCVXGDFGDFGSFWVF",
+      "cert": "QDD2S23SDVasdfQQDFAS23SDVasdfQWFAS5E262A29282628295E_7B7Ddasdfasdflc2Cvsdffffdfdazzxcvnm3Fasdf21235E262A2829_2B7C7D7BPOIUYTREWQ3ALKJHGFDSA3F3E3CMNBVCXZqwertyuiopasdfghjklzxcvbnm2C2F5B5D5C1234567890_3DadfdsdfWDFSwfdFSFA4023235E2628262A2829JHKljkL3ANM3C3EVBNMaEFesvrgwRTHDFGNBasdfWSVSDFSDVXCVXGDFGDFGSFWVFWFAS5E262A29282628295E_7B7Ddasdfasdflc2Cvsdffffdfdazzxcvnm3Fasdf21235E262A2829_2B7C7D7BPOIUYTREWQ3ALKJHGFDSA3F3E3CMNBVCXZqwertyuiopasdfghjklzxcvbnm2C2F5B5D5C1234567890_3DadfdsdfWDFSwfdFSFA4023235E2628372A2829JHKljkL3ANM3C3EVBNMaEFesvrgwRTHDFGNBasdfWSVSDFSV8XCVXGDFGDFGSFWVF",
       "port": 6910
     }
   },
@@ -90,5 +90,9 @@
   "ocr": {
     "apiHost": "app_model:6268",
     "ocrApiPath": "/api/idCardRecognition"
+  },
+  "timeSync":{
+    "timeSyncInterval":5000,
+    "poolInitialSize":100
   }
 }

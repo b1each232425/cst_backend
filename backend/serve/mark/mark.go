@@ -5,17 +5,16 @@ package mark
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"fmt"
 	"github.com/jackc/pgx/v5"
 	"github.com/jmoiron/sqlx/types"
-	"github.com/pkg/errors"
 	"io"
 	"strconv"
 	"strings"
 	"time"
 	"w2w.io/null"
+	"w2w.io/serve/examPaper"
 
 	"go.uber.org/zap"
 	"w2w.io/cmn"
@@ -312,7 +311,7 @@ func GetMarkingDetails(ctx context.Context) {
 		return
 	}
 
-	markerInfo, err := QueryExamMarkerInfo(ctx, QueryCondition{
+	markerInfo, err := QueryMarkerInfo(ctx, QueryCondition{
 		TeacherID:     teacherID,
 		ExamSessionID: examSessionID,
 		ExamineeID:    examineeID,
@@ -340,7 +339,7 @@ func GetMarkingDetails(ctx context.Context) {
 		return
 	}
 
-	studentAnswers, err := QueryStudentAnswersByMarkMode(ctx, "", QueryCondition{
+	studentAnswers, err := QueryStudentAnswersByMarkMode(ctx, "00", QueryCondition{
 		TeacherID:     teacherID,
 		ExamSessionID: examSessionID,
 		ExamineeID:    examineeID,
@@ -375,18 +374,19 @@ func GetMarkingDetails(ctx context.Context) {
 }
 
 type HandleMarkerInfoReq struct {
-	Markers          []int64   `json:"markers"`
-	QuestionIDs      []int64   `json:"question_ids"`
-	ExamineeIDs      []int64   `json:"examinee_ids"`
-	QuestionIDGroups [][]int64 `json:"question_id_groups"`
-	MarkMode         string    `json:"mark_mode"`
-	ExamSessionID    int64     `json:"exam_session_id"`
-	PracticeID       int64     `json:"practice_id"`
-	Status           string    `json:"status"` // 00 插入批改配置 02 删除批改配置
-	ExamSessionIDs   []int64   `json:"exam_session_ids"`
+	Markers        []int64                             `json:"markers"`          // *批改员id数组
+	QuestionGroups []examPaper.SubjectiveQuestionGroup `json:"question_groups"`  // *题组（配置时传入）
+	QuestionIDs    []int64                             `json:"question_ids"`     // 题目id数组
+	ExamineeIDs    []int64                             `json:"examinee_ids"`     // 考生id数组
+	MarkMode       string                              `json:"mark_mode"`        // *批卷模式 00：不需要手动批改  02：全卷多评 04：试卷分配 06：题组专评 08：题目分配 10：单人（人工）批改
+	ExamSessionID  int64                               `json:"exam_session_id"`  // 考试场次id
+	PracticeID     int64                               `json:"practice_id"`      // 练习id
+	Status         string                              `json:"status"`           // *00 插入批改配置 02 删除批改配置
+	ExamSessionIDs []int64                             `json:"exam_session_ids"` // 要删除的考试场次id数组
+	PracticeIDs    []int64                             `json:"practice_ids"`     // 要删除的练习id数组
 }
 
-func HandleMarkerInfo(ctx context.Context, tx *sql.Tx, teacherID int64, req HandleMarkerInfoReq) (err error) {
+func HandleMarkerInfo(ctx context.Context, tx *pgx.Tx, teacherID int64, req HandleMarkerInfoReq) (err error) {
 	if teacherID <= 0 {
 		err = fmt.Errorf("invalid teacherID")
 		z.Error(err.Error())
@@ -400,13 +400,23 @@ func HandleMarkerInfo(ctx context.Context, tx *sql.Tx, teacherID int64, req Hand
 	}
 
 	if req.Status == "02" {
+		if len(req.PracticeIDs) > 0 {
+			// 删除练习批改配置
+			_, err = UpdateMarkerInfoState(ctx, tx, teacherID, req.PracticeIDs, "02")
+			if err != nil {
+				return
+			}
+			return
+		}
+
+		// 删除考试批改配置
 		if req.ExamSessionIDs == nil || len(req.ExamSessionIDs) == 0 {
 			err = fmt.Errorf("no examSessionIDs to update mark info state")
 			z.Error(err.Error())
 			return
 		}
 
-		_, err = UpdateMarkerInfoState(ctx, tx, teacherID, req.ExamSessionIDs)
+		_, err = UpdateMarkerInfoState(ctx, tx, teacherID, req.ExamSessionIDs, "00")
 		if err != nil {
 			return
 		}
@@ -495,23 +505,25 @@ func HandleMarkerInfo(ctx context.Context, tx *sql.Tx, teacherID int64, req Hand
 		}
 		break
 	case "06": // 分题组
-		if req.QuestionIDGroups == nil || len(req.QuestionIDGroups) == 0 {
-			err = fmt.Errorf("invalid question group ids")
+		if req.QuestionGroups == nil || len(req.QuestionGroups) == 0 {
+			err = fmt.Errorf("invalid question groups")
 			z.Error(err.Error())
 			return
 		}
 
 		// 分题组
-		splitGroups := randomSplit(req.QuestionIDGroups, len(req.Markers))
-		for i, ids := range splitGroups {
+		splitGroups := randomSplit(req.QuestionGroups, len(req.Markers))
+		for i, groups := range splitGroups {
 			var questionIDs []int64
-			for _, group := range ids {
-				questionIDs = append(questionIDs, group...)
+			for _, group := range groups {
+				questionIDs = append(questionIDs, group.QuestionIDs...)
 			}
 
-			markQuestionIDsBytes, err := json.Marshal(questionIDs)
+			var markQuestionIDsBytes []byte
+			markQuestionIDsBytes, err = json.Marshal(questionIDs)
 			if err != nil {
-				return errors.Wrap(err, "Failed to serialize MarkQuestionGroups")
+				err = fmt.Errorf("failed to marshal markQuestionIDs: %v", err)
+				return
 			}
 
 			markInfos = append(markInfos, cmn.TMarkInfo{
@@ -554,11 +566,30 @@ func HandleMarkerInfo(ctx context.Context, tx *sql.Tx, teacherID int64, req Hand
 		break
 	}
 
-	z.Sugar().Infof("markInfos: %+v", markInfos)
+	//z.Sugar().Infof("markInfos: %+v", markInfos)
 
-	_, err = InsertMarkerInfo(ctx, tx, markInfos)
-	if err != nil {
+	if len(markInfos) <= 0 {
+		err = fmt.Errorf("no markInfos to insert")
+		z.Error(err.Error())
 		return
+	}
+
+	insertQuery := `INSERT INTO t_mark_info 
+						(exam_session_id, practice_id, mark_teacher_id, mark_count, question_ids, mark_examinee_ids, creator, create_time, updated_by, update_time, addi, status) 
+					VALUES 
+						($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) 
+					RETURNING id`
+
+	var targetIDs []int64
+	for _, info := range markInfos {
+		var id null.Int
+		err = (*tx).QueryRow(ctx, insertQuery, info.ExamSessionID, info.PracticeID, info.MarkTeacherID, info.MarkCount, info.QuestionIds, info.MarkExamineeIds, info.Creator, info.CreateTime, info.UpdatedBy, info.UpdateTime, info.Addi, info.Status).Scan(&id)
+		if err != nil {
+			err = fmt.Errorf("exec insert query error: %v", err)
+			z.Error(err.Error())
+			return
+		}
+		targetIDs = append(targetIDs, id.Int64)
 	}
 
 	return
@@ -662,7 +693,21 @@ func MarkObjectiveQuestionAnswers(ctx context.Context, cond QueryCondition) (err
 		return
 	}
 
-	studentAnswers, err := QueryStudentAnswersByMarkMode(ctx, "02", cond, MarkerInfo{MarkerID: cond.TeacherID})
+	markerInfo := MarkerInfo{
+		MarkerID: cond.TeacherID,
+	}
+
+	if cond.ExamineeID > 0 {
+		// 查询单个考试考生
+		markerInfo.MarkMode = "04"
+	}
+
+	if cond.PracticeSubmissionID > 0 {
+		// 查询单个练习学生
+		markerInfo.MarkMode = "12"
+	}
+
+	studentAnswers, err := QueryStudentAnswersByMarkMode(ctx, "02", cond, markerInfo)
 	if err != nil {
 		err = fmt.Errorf("failed to query student answers: %v", err)
 		z.Error(err.Error())
@@ -671,22 +716,6 @@ func MarkObjectiveQuestionAnswers(ctx context.Context, cond QueryCondition) (err
 
 	marks := make([]*cmn.TMark, len(studentAnswers))
 	for i, studentAnswer := range studentAnswers {
-		if studentAnswer.QuestionID.Int64 <= 0 {
-			err = fmt.Errorf("invalid question id in student answer")
-			z.Error(err.Error())
-			return
-		}
-
-		if studentAnswer.ExamSessionID.Int64 <= 0 && studentAnswer.PracticeID.Int64 <= 0 {
-			err = fmt.Errorf("invalid exam session id && practice id in student answer")
-			z.Error(err.Error())
-			return
-		}
-
-		if studentAnswer.ExamSessionID.Int64 > 0 && studentAnswer.PracticeID.Int64 > 0 {
-			err = fmt.Errorf("invalid params: exam session id && practice id cannot be both greater than zero")
-		}
-
 		mark := cmn.TMark{
 			TeacherID:            null.IntFrom(cond.TeacherID),
 			QuestionID:           studentAnswer.QuestionID,
@@ -759,6 +788,7 @@ func MarkObjectiveQuestionAnswers(ctx context.Context, cond QueryCondition) (err
 	var subjectiveQustionCounts int
 	var whereClause []string
 
+	// 查询该考试/练习的主观题数量
 	querySubjectiveQuestionCounts := `
 	SELECT COALESCE(count(q.id), 0)
 	FROM t_exam_paper p
@@ -787,9 +817,11 @@ func MarkObjectiveQuestionAnswers(ctx context.Context, cond QueryCondition) (err
 	}
 
 	if subjectiveQustionCounts != 0 {
+		// 主观题数量大于0，直接结束
 		return
 	}
 
+	// 考试/练习仅有客观题，改完自动提交
 	z.Info("---------->no subjective question found, auto submit")
 	var tx pgx.Tx
 	tx, err = pgxConn.Begin(ctx)
@@ -809,7 +841,18 @@ func MarkObjectiveQuestionAnswers(ctx context.Context, cond QueryCondition) (err
 		}
 	}()
 
-	_, err = updateExamSessionState(ctx, &tx, cond.TeacherID, []int64{cond.ExamSessionID}, "10")
+	var status string
+	var examSessionIDs []int64
+	var practiceSubmissionIDs []int64
+	if cond.ExamSessionID > 0 {
+		status = "10"
+		examSessionIDs = []int64{cond.ExamSessionID}
+	} else if cond.PracticeSubmissionID > 0 {
+		status = "08"
+		practiceSubmissionIDs = []int64{cond.PracticeSubmissionID}
+	}
+
+	_, err = updateExamSessionOrPracticeSubmissionState(ctx, &tx, cond.TeacherID, examSessionIDs, practiceSubmissionIDs, status)
 	if err != nil {
 		err = fmt.Errorf("update exam session state error: %v", err)
 		z.Error(err.Error())
@@ -820,6 +863,51 @@ func MarkObjectiveQuestionAnswers(ctx context.Context, cond QueryCondition) (err
 	if err != nil {
 		err = fmt.Errorf("commit tx error: %v", err)
 		z.Error(err.Error())
+		return
+	}
+
+	return
+}
+
+func AutoMark(ctx context.Context, cond QueryCondition) (err error) {
+	if cond.ExamSessionID <= 0 && cond.PracticeID <= 0 {
+		err = fmt.Errorf("invalid params: exam session id or practice id must be greater than zero")
+		z.Error(err.Error())
+		return
+	}
+
+	if cond.ExamSessionID > 0 && cond.PracticeID > 0 {
+		err = fmt.Errorf("invalid params: exam session id && practice id cannot be both greater than zero")
+		z.Error(err.Error())
+		return
+	}
+
+	markerInfo, err := QueryMarkerInfo(ctx, cond)
+	if err != nil {
+		return
+	}
+
+	if len(markerInfo.MarkInfos) == 0 {
+		err = fmt.Errorf("no marker info found")
+		z.Error(err.Error())
+		return
+	}
+
+	if markerInfo.MarkMode == "" {
+		err = fmt.Errorf("invalid mark mode in marker info")
+		z.Error(err.Error())
+		return
+	}
+
+	if markerInfo.MarkMode != "00" {
+		// 不需要自动批改
+		return nil
+	}
+
+	cond.TeacherID = markerInfo.MarkInfos[0].MarkTeacherID.Int64
+
+	err = MarkObjectiveQuestionAnswers(ctx, cond)
+	if err != nil {
 		return
 	}
 

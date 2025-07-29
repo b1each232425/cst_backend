@@ -376,6 +376,188 @@ func convertMapToTUser(data map[string]interface{}) cmn.TUser {
 	return user
 }
 
+// Test_handler_HandleGetNewAccount 测试HandleGetNewAccount方法
+func Test_handler_HandleGetNewAccount(t *testing.T) {
+	type fields struct {
+		srv Service
+	}
+	type args struct {
+		ctx context.Context
+	}
+	tests := []struct {
+		name    string
+		fields  fields
+		args    args
+		wantErr bool
+	}{
+		{
+			name: "成功生成新账号",
+			fields: fields{
+				srv: &MockService{
+					GenerateUniqueAccountFunc: func(ctx context.Context, tx pgx.Tx, length int, maxAttempts int) (string, error) {
+						return "abc123def", nil
+					},
+				},
+			},
+			args: args{
+				ctx: createMockContext("GET", "/api/user/new-account", url.Values{}, ""),
+			},
+			wantErr: false,
+		},
+		{
+			name: "不支持的HTTP方法",
+			fields: fields{
+				srv: &MockService{},
+			},
+			args: args{
+				ctx: createMockContext("POST", "/api/user/new-account", url.Values{}, ""),
+			},
+			wantErr: true,
+		},
+		{
+			name: "不支持的HTTP方法 - PUT",
+			fields: fields{
+				srv: &MockService{},
+			},
+			args: args{
+				ctx: createMockContext("PUT", "/api/user/new-account", url.Values{}, ""),
+			},
+			wantErr: true,
+		},
+		{
+			name: "不支持的HTTP方法 - DELETE",
+			fields: fields{
+				srv: &MockService{},
+			},
+			args: args{
+				ctx: createMockContext("DELETE", "/api/user/new-account", url.Values{}, ""),
+			},
+			wantErr: true,
+		},
+		{
+			name: "生成账号失败",
+			fields: fields{
+				srv: &MockService{
+					GenerateUniqueAccountFunc: func(ctx context.Context, tx pgx.Tx, length int, maxAttempts int) (string, error) {
+						return "", fmt.Errorf("生成账号失败")
+					},
+				},
+			},
+			args: args{
+				ctx: createMockContext("GET", "/api/user/new-account", url.Values{}, ""),
+			},
+			wantErr: true,
+		},
+		{
+			name: "生成账号参数验证 - 正确的长度和最大尝试次数",
+			fields: fields{
+				srv: &MockService{
+					GenerateUniqueAccountFunc: func(ctx context.Context, tx pgx.Tx, length int, maxAttempts int) (string, error) {
+						// 验证传入的参数是否正确
+						if length != AccountLength {
+							return "", fmt.Errorf("期望长度为 %d，实际为 %d", AccountLength, length)
+						}
+						if maxAttempts != 20 {
+							return "", fmt.Errorf("期望最大尝试次数为 20，实际为 %d", maxAttempts)
+						}
+						return "test12345", nil
+					},
+				},
+			},
+			args: args{
+				ctx: createMockContext("GET", "/api/user/new-account", url.Values{}, ""),
+			},
+			wantErr: false,
+		},
+		{
+			name: "生成空账号",
+			fields: fields{
+				srv: &MockService{
+					GenerateUniqueAccountFunc: func(ctx context.Context, tx pgx.Tx, length int, maxAttempts int) (string, error) {
+						return "", nil // 返回空字符串但无错误
+					},
+				},
+			},
+			args: args{
+				ctx: createMockContext("GET", "/api/user/new-account", url.Values{}, ""),
+			},
+			wantErr: false,
+		},
+		{
+			name: "HTTP方法大小写不敏感 - Get",
+			fields: fields{
+				srv: &MockService{
+					GenerateUniqueAccountFunc: func(ctx context.Context, tx pgx.Tx, length int, maxAttempts int) (string, error) {
+						return "mixedcase1", nil
+					},
+				},
+			},
+			args: args{
+				ctx: createMockContext("Get", "/api/user/new-account", url.Values{}, ""),
+			},
+			wantErr: false,
+		},
+		{
+			name: "HTTP方法大小写不敏感 - GET",
+			fields: fields{
+				srv: &MockService{
+					GenerateUniqueAccountFunc: func(ctx context.Context, tx pgx.Tx, length int, maxAttempts int) (string, error) {
+						return "uppercase1", nil
+					},
+				},
+			},
+			args: args{
+				ctx: createMockContext("GET", "/api/user/new-account", url.Values{}, ""),
+			},
+			wantErr: false,
+		},
+		{
+			name: "json.Marshal错误",
+			fields: fields{
+				srv: &MockService{
+					GenerateUniqueAccountFunc: func(ctx context.Context, tx pgx.Tx, length int, maxAttempts int) (string, error) {
+						return "uppercase1", nil
+					},
+				},
+			},
+			args: args{
+				ctx: createMockContext("GET", "/api/user/new-account", url.Values{}, "json.Marshal"),
+			},
+			wantErr: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			h := &handler{
+				srv: tt.fields.srv,
+			}
+			h.HandleGetNewAccount(tt.args.ctx)
+
+			// 获取ServiceCtx以检查结果
+			q := cmn.GetCtxValue(tt.args.ctx)
+			if tt.wantErr {
+				if q.Err == nil {
+					t.Errorf("HandleGetNewAccount() 期望有错误，但没有错误")
+				}
+			} else {
+				if q.Err != nil {
+					t.Errorf("HandleGetNewAccount() 不期望有错误，但出现错误: %v", q.Err)
+				}
+				// 检查成功响应
+				if q.Msg.Status != 0 {
+					t.Errorf("HandleGetNewAccount() 期望状态码为 0，实际为 %d", q.Msg.Status)
+				}
+				if q.Msg.Msg != "success" {
+					t.Errorf("HandleGetNewAccount() 期望消息为 'success'，实际为 '%s'", q.Msg.Msg)
+				}
+				if len(q.Msg.Data) == 0 {
+					t.Errorf("HandleGetNewAccount() 期望返回账号数据，但数据为空")
+				}
+			}
+		})
+	}
+}
+
 func Test_handler_HandleUser(t *testing.T) {
 	type fields struct {
 		srv Service

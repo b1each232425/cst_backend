@@ -14,19 +14,13 @@ type SaveOrUpdateStudentAnswerReq struct {
 	AttachmentPaths      json.RawMessage `json:"attachment_paths"`
 }
 
-type GetStudentAnswerReq struct {
-	ExamineeID           int64 `json:"examinee_id" `
-	PracticeSubmissionId int64 `json:"practice_submission_id" `
-	QuestionID           int64 `json:"question_id" validate:"required"`
-}
-
 type InitRespondentReq struct {
 	Type                 string `json:"type" validate:"required,oneof=00 02"`
 	ExamId               int64  `json:"exam_id" `
 	ExamSessionId        int64  `json:"exam_session_id" `
 	ExamineeID           int64  `json:"examinee_id" `
-	PracticeSubmissionID int64  `json:"practice_submission_id" `
 	PracticeId           int64  `json:"practice_id" `
+	PracticeSubmissionID int64  `json:"practice_submission_id" `
 	StudentId            int64  `json:"student_id" validate:"required"`
 }
 
@@ -36,6 +30,7 @@ type SubmitReq struct {
 	ExamineeID           int64  `json:"examinee_id" `
 	ExamSessionId        int64  `json:"exam_session_id" `
 	PracticeSubmissionID int64  `json:"practice_submission_id" `
+	PracticeId           int64  `json:"practice_id" `
 	StudentId            int64  `json:"student_id" validate:"required"`
 }
 

@@ -38,9 +38,9 @@ if [ -z "$(which mockgen)" ]; then
   echo "mockgen installed"
 fi
 
-export containerName=i3l_p
-export backEndFileName=i3l
-export deployDst=$DEPLOY_PATH/i3l_p
+export containerName=3min_p
+export backEndFileName=3min
+export deployDst=$DEPLOY_PATH/3min_p
 export workspace=$PWD
 # correct go build syntax
 # go build -o kzz.io -ldflags \
@@ -110,7 +110,7 @@ echo "start new ${containerName} container"
 
 d run --name=${containerName} \
  -d --restart=always \
- -p 6712:6712 \
+ -p 6611:6610 \
  -v data:/var/data \
  -v deploy:/var/deploy \
  -e KAPP_NAME="$deployDst/$appName" \
