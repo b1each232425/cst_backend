@@ -1386,7 +1386,7 @@ func exam(ctx context.Context) {
 			return
 		}
 
-		userID := int64(1578)
+		userID := q.SysUser.ID.Int64
 		if userID <= 0 {
 			q.Err = fmt.Errorf("无效的用户ID: %d", userID)
 			z.Error(q.Err.Error())
@@ -1394,7 +1394,7 @@ func exam(ctx context.Context) {
 			return
 		}
 
-		userRole := int64(1)
+		userRole := q.SysUser.Role.Int64
 		if userRole == 0 {
 			q.Err = fmt.Errorf("无效的用户角色: %d", userRole)
 			z.Error(q.Err.Error())
