@@ -622,8 +622,8 @@ func OperatePracticeStatus(ctx context.Context, pid int64, status string, uid in
 		return nil
 	} else if status == PracticeStatus.PendingRelease || status == PracticeStatus.Deleted {
 		// 若练习已经发布了，无法被删除，必须先回退为待发布状态后才能被删除
-		if p.Status.String != PracticeStatus.Released && status == PracticeStatus.Deleted {
-			err = fmt.Errorf("获取练习状态出现数据错误")
+		if p.Status.String == PracticeStatus.Released && status == PracticeStatus.Deleted {
+			err = fmt.Errorf("获取练习状态出现数据错误:练习此时为发布状态，无法删除")
 			z.Error(err.Error())
 			return err
 		}
