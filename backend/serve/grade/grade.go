@@ -1,7 +1,7 @@
 package grade
 
-//annotation:template-service
-//author:{"name":"txl","tel":"19832706790", "email":"188307257@qq.com"}
+//annotation:grade
+//author:{"name":"txl","tel":"19832706790", "email":"188306257@qq.com"}
 
 import (
 	"context"
@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
 	"w2w.io/null"
 
 	"github.com/tidwall/gjson"
@@ -243,12 +244,10 @@ func gradeListH(ctx context.Context) {
 
 		queryParams := q.R.URL.Query()
 
-		// 成绩类型
 		if category := queryParams.Get("category"); category != "" {
 			req.Category = category
 		}
 
-		// 页码
 		req.Page = 1
 		if page := queryParams.Get("page"); page != "" {
 			p, err := strconv.Atoi(page)
@@ -261,7 +260,6 @@ func gradeListH(ctx context.Context) {
 			req.Page = p
 		}
 
-		// 每页数量
 		req.PageSize = 10
 		if pageSize := queryParams.Get("pageSize"); pageSize != "" {
 			p, err := strconv.Atoi(pageSize)
@@ -274,7 +272,6 @@ func gradeListH(ctx context.Context) {
 			req.PageSize = p
 		}
 
-		// 教师ID
 		if teacherID := queryParams.Get("teacherID"); teacherID != "" {
 			p, err := strconv.Atoi(teacherID)
 			if err != nil {
@@ -286,14 +283,12 @@ func gradeListH(ctx context.Context) {
 			req.TeacherID = p
 		}
 
-		// 考试名称
 		if name := queryParams.Get("name"); name != "" {
 			req.Filter.Name = name
 		}
 
 		switch req.Category {
 		case "exam":
-			// 考试ID
 			if examID := queryParams.Get("examID"); examID != "" {
 				p, err := strconv.Atoi(examID)
 				if err != nil {
@@ -305,17 +300,23 @@ func gradeListH(ctx context.Context) {
 				req.ExamID = p
 			}
 
-			// 考试类型
 			if examType := queryParams.Get("type"); examType != "" {
 				req.Filter.Type = examType
 			}
 
-			// 提交状态
 			if submitted := queryParams.Get("submitted"); submitted != "" {
-				if submitted == "0" {
+				switch submitted {
+				case "0":
 					req.Filter.Submitted = 0
-				} else {
+				case "1":
 					req.Filter.Submitted = 1
+				case "":
+					req.Filter.Submitted = -1
+				default:
+					q.Err = fmt.Errorf("无效提交状态: %s", submitted)
+					z.Warn(q.Err.Error())
+					q.RespErr()
+					return
 				}
 			}
 
@@ -379,7 +380,7 @@ func gradeListH(ctx context.Context) {
 			}
 
 		default:
-			q.Err = fmt.Errorf("unsupported category: %s", req.Category)
+			q.Err = fmt.Errorf("不支持的类型: %s", req.Category)
 			z.Warn(q.Err.Error())
 			q.RespErr()
 			return
@@ -394,7 +395,7 @@ func gradeListH(ctx context.Context) {
 		q.Resp()
 
 	default:
-		q.Err = fmt.Errorf("unsupported method: %s", method)
+		q.Err = fmt.Errorf("不支持的请求方法: %s", method)
 		z.Warn(q.Err.Error())
 		q.RespErr()
 		return
@@ -460,7 +461,7 @@ func gradeSubmissionH(ctx context.Context) {
 		}()
 
 		if len(buf) == 0 {
-			q.Err = fmt.Errorf("call /api/course by post with empty body")
+			q.Err = fmt.Errorf("调用/api/course接口时，请求体为空")
 			z.Error(q.Err.Error())
 			q.RespErr()
 			return
@@ -471,6 +472,8 @@ func gradeSubmissionH(ctx context.Context) {
 			userID = q.SysUser.ID
 		}
 		args.TeacherID = userID.Int64
+		// 主流程采用
+		args.TeacherID = 1574
 
 		examIDQuerys := gjson.GetBytes(buf, "data.exam_ids").Array()
 		if len(examIDQuerys) <= 0 {
@@ -483,7 +486,6 @@ func gradeSubmissionH(ctx context.Context) {
 		for _, examIDQuery := range examIDQuerys {
 			examIDs = append(examIDs, int(examIDQuery.Num))
 		}
-		z.Debug("examIDs", zap.Any("examIDs", examIDs))
 		args.ExamIDs = examIDs
 
 		err = SetExamGradeSubmitted(ctx, &args)
@@ -505,7 +507,7 @@ func gradeSubmissionH(ctx context.Context) {
 		q.Resp()
 
 	default:
-		q.Err = fmt.Errorf("unsupported method: %s", method)
+		q.Err = fmt.Errorf("不支持的请求方法: %s", method)
 		z.Warn(q.Err.Error())
 		q.RespErr()
 		return
