@@ -13,6 +13,7 @@ import (
 
 type Handler interface {
 	HandleUser(ctx context.Context)
+	HandleGetNewAccount(ctx context.Context)
 }
 
 type handler struct {
@@ -214,4 +215,42 @@ func (h *handler) HandleUser(ctx context.Context) {
 		q.RespErr()
 		return
 	}
+}
+
+// HandleGetNewAccount 处理获取新账户的请求
+func (h *handler) HandleGetNewAccount(ctx context.Context) {
+	q := cmn.GetCtxValue(ctx)
+	z.Info("---->" + cmn.FncName())
+
+	forceErr, _ := ctx.Value("force-error").(string) // 用于强制执行错误处理代码
+	var err error
+
+	method := strings.ToLower(q.R.Method)
+	if method != "get" {
+		q.Err = fmt.Errorf("unsupported method: %s", method)
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+
+	newAccount, err := h.srv.GenerateUniqueAccount(ctx, nil, AccountLength, 20)
+	if err != nil {
+		q.Err = fmt.Errorf("failed to generate new account: %w", err)
+		q.RespErr()
+		return
+	}
+
+	accountBytes, err := json.Marshal(newAccount)
+	if err != nil || forceErr == "json.Marshal" {
+		q.Err = fmt.Errorf("failed to marshal new account: %w", err)
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+
+	q.Msg.Status = 0
+	q.Msg.Msg = "success"
+	q.Msg.Data = accountBytes
+	q.Resp()
+	return
 }
