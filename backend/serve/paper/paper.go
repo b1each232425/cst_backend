@@ -371,7 +371,7 @@ func PaperList(ctx context.Context) {
 		defer cancel()
 		var result []cmn.TVPaper
 		var totalCount int64
-		var userID int64 = 1574
+		var userID int64 = 1573
 		if userID <= 0 {
 			q.Err = fmt.Errorf("Invalid UserID: %d", userID)
 			z.Error(q.Err.Error())
@@ -383,10 +383,11 @@ func PaperList(ctx context.Context) {
 			q.RespErr()
 			return
 		}
-		if result != nil {
-			data, _ := json.Marshal(result)
-			q.Msg.Data = data
+		if result == nil {
+			result = []cmn.TVPaper{} // 确保非 nil
 		}
+		data, _ := json.Marshal(result)
+		q.Msg.Data = data
 		q.Err = nil
 		q.Msg.Status = 0
 		q.Msg.RowCount = totalCount
