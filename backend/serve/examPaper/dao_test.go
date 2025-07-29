@@ -3,15 +3,17 @@
  * @Description: 考卷数据库层单元测试
  * @Date: 2025-07-28 19:55:28
  * @LastEditors: zdl <1311866870@qq.com>
- * @LastEditTime: 2025-07-28 23:56:56
+ * @LastEditTime: 2025-07-29 11:24:26
  */
 package examPaper
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"github.com/jackc/pgx/v5"
 	"github.com/jmoiron/sqlx/types"
+	"strings"
 	"testing"
 	"time"
 	"w2w.io/cmn"
@@ -32,25 +34,171 @@ func TestLoadPaperTemplateById(t *testing.T) {
 	if z == nil {
 		cmn.ConfigureForTest()
 	}
-
-	// 先插入一场练习，不会依赖于其他的测试用例
-	conn := cmn.GetPgxConn()
-
-	tx, err := conn.Begin(ctx)
-	if err != nil {
-		t.Fatal(err)
+	paper := &cmn.TPaper{
+		Name:              null.StringFrom("考卷单元测试试卷名"),
+		AssemblyType:      null.StringFrom("00"),
+		Category:          null.StringFrom("02"),
+		Level:             null.StringFrom("02"),
+		Description:       null.StringFrom("考卷专门服务"),
+		SuggestedDuration: null.IntFrom(60),
+		Creator:           uid,
+		CreateTime:        null.IntFrom(now),
+		UpdatedBy:         uid,
+		UpdateTime:        null.IntFrom(now),
+		Status:            null.StringFrom("00"),
+		Tags:              types.JSONText(`["test", "unit"]`),
+		AccessMode:        null.StringFrom("00"), // 默认访问模式
 	}
-
-	defer func() {
-		err = tx.Commit(ctx)
-		if err != nil {
-			z.Error(err.Error())
-		}
-	}()
+	groupNames := []string{"一、单选题", "二、多选题", "三、判断题", "四、填空题", "五、简答题"}
 
 	// 这里已经成功构建出题目跟试卷数据了，现在可以进行一次查询了
 	// TODO 考卷后面的所有逻辑
 
+	tests := []struct {
+		name          string
+		pid           int64
+		withQuestions bool
+		expectedErr   error
+	}{
+		{
+			name:          "正常1 正确paperID 携带问题查询",
+			pid:           68,
+			withQuestions: true,
+			expectedErr:   nil,
+		},
+		{
+			name:          "正常1 正确paperID 不携带问题查询",
+			pid:           68,
+			withQuestions: false,
+			expectedErr:   nil,
+		},
+		{
+			name:          "异常1 不正确paperID 携带问题查询",
+			pid:           1000,
+			withQuestions: false,
+			expectedErr:   errors.New("select paper failed"),
+		},
+		{
+			name:          "异常2 不正确paperID 不携带问题查询",
+			pid:           1000,
+			withQuestions: false,
+			expectedErr:   errors.New("select paper failed"),
+		},
+		{
+			name:          "异常2 非法paperID",
+			pid:           -1,
+			withQuestions: false,
+			expectedErr:   errors.New("invalid practice ID param"),
+		},
+		{
+			name:          "异常3 json.unmarshal触发失败",
+			pid:           68,
+			withQuestions: true,
+			expectedErr:   errors.New("unmarshal group data failed"),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if containsString(tt.name, "异常3") {
+				ctx = context.WithValue(ctx, "test", "json")
+			} else {
+				ctx = context.Background()
+			}
+			tp, pg, pq, err := LoadPaperTemplateById(ctx, tt.pid, tt.withQuestions)
+			if tt.expectedErr != nil {
+				if err == nil || !containsString(err.Error(), tt.expectedErr.Error()) {
+					t.Errorf("返回的错误不符合预期：%v", err)
+				}
+			} else {
+				// 这里如果没有错误返回的话，那正常就需要获取到这些试卷题目
+				// 下面就是检测这个试卷本身
+				if tp == nil {
+					t.Errorf("期望正常返回，但是没有返回正常数据出来")
+				}
+				if tp.Name != paper.Name {
+					t.Errorf("查询的试卷名出错 期望：%v , 实际：%v", paper.Name, tp.Name)
+				}
+				if tp.AssemblyType != paper.AssemblyType {
+					t.Errorf("查询的试卷组卷方式出错 期望：%v , 实际：%v", paper.AssemblyType, tp.AssemblyType)
+				}
+				if tp.Category != paper.Category {
+					t.Errorf("查询的试卷用途方式出错 期望%v,实际：%v", paper.Category, tp.Category)
+				}
+				if tp.Level != paper.Level {
+					t.Errorf("查询的试卷难度出错 期望%v,实际：%v", paper.Level, tp.Level)
+				}
+				if tp.SuggestedDuration != paper.SuggestedDuration {
+					t.Errorf("查询的试卷建议时长出错 期望%v,实际：%v", paper.SuggestedDuration, tp.SuggestedDuration)
+				}
+				if tp.Creator != paper.Creator {
+					t.Errorf("查询的试卷创建者出错 期望%v,实际：%v", paper.Creator, tp.Creator)
+				}
+				if tp.TotalScore.Float64 != 48 {
+					t.Errorf("查询的试卷总分出错 期望%v,实际：%v", 48, tp.TotalScore.Float64)
+				}
+				if tp.QuestionCount.Int64 != 13 {
+					t.Errorf("查询的试卷题目总数出错 期望%v,实际：%v", 13, tp.QuestionCount.Int64)
+				}
+				if tp.GroupCount.Int64 != 5 {
+					t.Errorf("查询的试卷题组总数出错 期望%v,实际：%v", 5, tp.GroupCount.Int64)
+				}
+				if tt.withQuestions {
+					// 下面是检测题组
+					if pg[0].Name.String != groupNames[0] {
+						t.Errorf("查询的试卷题组1名称出错 期望%v,实际：%v", groupNames[0], pg[0].Name.String)
+					}
+					if pg[0].Order.Int64 != 1 {
+						t.Errorf("查询的试卷题组1顺序出错 期望%v,实际：%v", 1, pg[0].Order.Int64)
+					}
+					if pg[1].Name.String != groupNames[1] {
+						t.Errorf("查询的试卷题组1名称出错 期望%v,实际：%v", groupNames[1], pg[1].Name.String)
+					}
+					if pg[1].Order.Int64 != 2 {
+						t.Errorf("查询的试卷题组1顺序出错 期望%v,实际：%v", 2, pg[1].Order.Int64)
+					}
+					if pg[2].Name.String != groupNames[2] {
+						t.Errorf("查询的试卷题组1名称出错 期望%v,实际：%v", groupNames[2], pg[2].Name.String)
+					}
+					if pg[2].Order.Int64 != 3 {
+						t.Errorf("查询的试卷题组1顺序出错 期望%v,实际：%v", 3, pg[2].Order.Int64)
+					}
+					if pg[3].Name.String != groupNames[3] {
+						t.Errorf("查询的试卷题组1名称出错 期望%v,实际：%v", groupNames[3], pg[3].Name.String)
+					}
+					if pg[3].Order.Int64 != 4 {
+						t.Errorf("查询的试卷题组1顺序出错 期望%v,实际：%v", 4, pg[3].Order.Int64)
+					}
+					if pg[4].Name.String != groupNames[4] {
+						t.Errorf("查询的试卷题组1名称出错 期望%v,实际：%v", groupNames[4], pg[4].Name.String)
+					}
+					if pg[4].Order.Int64 != 5 {
+						t.Errorf("查询的试卷题组1顺序出错 期望%v,实际：%v", 5, pg[4].Order.Int64)
+					}
+
+					var questionCount int64
+
+					// 再下面是统一题目本身 如果满足每一个题组下的题目个数都符合预算的话，那就算通过
+					for _, questions := range pq {
+						for _, _ = range questions {
+							questionCount++
+						}
+					}
+					if questionCount != tp.QuestionCount.Int64 {
+						t.Errorf("统计的题目数量错误，期望：%v,实际%v", tp.QuestionCount.Int64, questionCount)
+					}
+				} else {
+					if len(pg) != 0 {
+						t.Errorf("不携带试卷题组时，但是还是返回了")
+					}
+				}
+			}
+		})
+	}
+}
+
+func containsString(s, substr string) bool {
+	return strings.Contains(s, substr)
 }
 
 func initQuestion(t *testing.T, tx pgx.Tx) {
@@ -192,7 +340,7 @@ func initPaper(t *testing.T, tx pgx.Tx) {
 		return
 	}
 
-	groupNames := []string{"一、单选题", "二、单选题", "三、判断题", "四、填空题", "五、简答题"}
+	groupNames := []string{"一、单选题", "二、多选题", "三、判断题", "四、填空题", "五、简答题"}
 	groupIDMap := make(map[string]int64)
 	groupIDs := []int64{}
 
