@@ -1056,50 +1056,38 @@ func HandleExit(ctx context.Context, req ExitReq) (err error) {
 	}
 
 	//执行数据库操作
-	sqlxDB := cmn.GetDbConn()
+	db := cmn.GetPgxConn()
+
+	var updateReturnId null.Int
+
+	Sql := ""
+
+	params := make([]interface{}, 0, 5)
+
 	if req.PracticeSubmissionID > 0 {
 
-		Sql := `UPDATE t_practice_submissions
+		Sql = `UPDATE t_practice_submissions
 SET
   last_end_time = EXTRACT(EPOCH FROM CURRENT_TIMESTAMP)::bigint * 1000,
   elapsed_seconds = elapsed_seconds + (
     (EXTRACT(EPOCH FROM CURRENT_TIMESTAMP)::bigint * 1000) - last_start_time
-  )
-WHERE id = $1 AND status = $2;`
+  ),
+	updated_by=$1,
+    update_time=EXTRACT(EPOCH FROM CURRENT_TIMESTAMP)::bigint * 1000
+WHERE id = $2 AND status = $3 RETURNING id`
 
-		stmt, err := sqlxDB.Prepare(Sql)
-		if err != nil {
-			z.Error(err.Error())
-			return err
-		}
-		defer func() {
-			if err = stmt.Close(); err != nil {
-				z.Error(err.Error())
-			}
-		}()
-
-		_, err = stmt.ExecContext(ctx, req.PracticeSubmissionID, NormalStatus)
-		if err != nil {
-			z.Error(err.Error())
-			return err
-		}
-		return nil
+		params = append(params, req.StudentId, req.PracticeSubmissionID, NormalStatus)
 	} else {
-		Sql := `UPDATE t_examinee SET  updated_by = $1, update_time = $2, exit_cnt = exit_cnt + 1 WHERE id = $3 AND (status = $4 OR status = $5) `
-		stmt, err := sqlxDB.Prepare(Sql)
-		if err != nil {
-			z.Error(err.Error())
-			return err
-		}
-		defer stmt.Close()
-		_, err = stmt.ExecContext(ctx, Sql, req.StudentId, time.Now(), req.ExamineeID, NormalStatus, CanBeEnterStatus)
-		if err != nil {
-			z.Error("更新考试异常状态失败", zap.Error(err))
-			return err
-		}
-
-		return nil
+		Sql = `UPDATE t_examinee SET  updated_by = $1, update_time = EXTRACT(EPOCH FROM CURRENT_TIMESTAMP)::bigint * 1000, exit_cnt = exit_cnt + 1 WHERE id = $2 AND (status = $3 OR status = $4) RETURNING id`
+		params = append(params, req.StudentId, req.ExamineeID, CanBeEnterStatus, NormalStatus)
 	}
+	err = db.QueryRow(ctx, Sql, params...).Scan(&updateReturnId)
+	if err != nil {
+		z.Error(err.Error())
+		return err
+	}
+
+	return nil
 }
 
 // checkExamCondition 为考试初始化以及考试提交查考当前是否符合条件，多处地方需要使用，因此封装

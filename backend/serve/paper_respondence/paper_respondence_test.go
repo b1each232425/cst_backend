@@ -612,6 +612,7 @@ func TestStudentAnswer(t *testing.T) {
 			}
 		})
 	}
+	tx.Commit(context.Background())
 }
 
 // 创建模拟的上下文，更加通用的版本，支持自定义用户ID和请求头
@@ -1082,6 +1083,7 @@ func TestCheckExamStatus(t *testing.T) {
 			t.Logf("Warning: Failed to commit cleanup transaction: %v", err)
 		}
 	}
+	tx.Commit(context.Background())
 }
 
 func TestInitRespondent(t *testing.T) {
@@ -2462,6 +2464,7 @@ func TestInitRespondent(t *testing.T) {
 
 		})
 	}
+	tx.Commit(context.Background())
 }
 
 func TestSubmit(t *testing.T) {
@@ -3413,6 +3416,232 @@ func TestSubmit(t *testing.T) {
 				assert.NotEqual(t, 0, resp.Status)
 				if tc.expectedMessage != "" {
 					assert.Contains(t, resp.Msg, tc.expectedMessage)
+				}
+			}
+		})
+	}
+	tx.Commit(context.Background())
+}
+
+func TestHandleExit(t *testing.T) {
+	cmn.ConfigureForTest()
+
+	// 在测试开始前，保存原始数据库状态
+	db := cmn.GetPgxConn()
+	ctx := context.Background()
+
+	// 开始事务，用于测试期间的数据修改
+	tx, err := db.Begin(ctx)
+	if err != nil {
+		t.Fatalf("Failed to begin transaction: %v", err)
+	}
+
+	// 确保测试结束后回滚事务
+	defer tx.Rollback(ctx)
+
+	// 定义测试用例
+	testCases := []struct {
+		name                 string
+		expectSuccess        bool
+		ctxKey               string
+		ctxValue             string
+		expectedMessage      string
+		examineeId           int64
+		expectCnt            int
+		studentId            int64
+		practiceSubmissionId int64
+		forceErr             string
+		// 测试前需要设置的数据库状态
+		setupDB func(t *testing.T, tx pgx.Tx) error
+		//清理数据
+		clean func(t *testing.T, tx pgx.Tx) error
+	}{
+		// 成功场景 - 考试类型退出
+		{
+			name:          "考试类型退出",
+			expectSuccess: true,
+			examineeId:    3112,
+			studentId:     1575,
+			expectCnt:     1,
+			setupDB: func(t *testing.T, tx pgx.Tx) error {
+				// 设置考试状态为正常
+				_, err := tx.Exec(ctx, `
+					UPDATE t_examinee 
+					SET status = $1 ,exit_cnt=0
+					WHERE id = 3112
+				`, NormalStatus)
+				return err
+			},
+			clean: func(t *testing.T, tx pgx.Tx) error {
+				// 恢复考试状态
+				_, err := tx.Exec(ctx, `
+					UPDATE t_examinee 
+					SET status = $1, exit_cnt = 0 
+					WHERE id = 3112
+				`, NormalStatus)
+				return err
+			},
+		},
+		// 成功场景 - 练习类型退出
+		{
+			name:                 "POST 请求 - 练习类型退出",
+			expectSuccess:        true,
+			expectedMessage:      "success",
+			practiceSubmissionId: 164,
+			studentId:            1580,
+			setupDB: func(t *testing.T, tx pgx.Tx) error {
+				// 设置练习状态为正常
+				_, err := tx.Exec(ctx, `
+					UPDATE t_practice_submissions
+					SET status = $1,
+					    last_start_time = EXTRACT(EPOCH FROM CURRENT_TIMESTAMP)::bigint * 1000 - 60000
+					WHERE id = 164
+				`, NormalStatus)
+				return err
+			},
+			clean: func(t *testing.T, tx pgx.Tx) error {
+				// 恢复练习状态
+				_, err := tx.Exec(ctx, `
+					UPDATE t_practice_submissions
+					SET status = $1,
+					    last_start_time = NULL,
+					    elapsed_seconds = 0
+					WHERE id = 164
+				`, NormalStatus)
+				return err
+			},
+		},
+
+		// 失败场景 - examinee_id和practice_submission_id都为0
+		{
+			name:            "examinee_id和practice_submission_id都为0",
+			expectSuccess:   false,
+			expectedMessage: "examinee id and practice submission id both are smaller than 0 or equal to 0",
+		},
+		// 失败场景 - student_id为0
+		{
+			name:                 "student_id为0",
+			practiceSubmissionId: 164,
+			expectSuccess:        false,
+			expectedMessage:      "Key: 'ExitReq.StudentId' Error:Field validation for 'StudentId' failed on the 'required' tag",
+			studentId:            0,
+		},
+		// 失败场景 - 数据库操作失败（练习）
+		{
+			name: "practiceSubmissionId不存在（练习）",
+
+			expectSuccess:        false,
+			expectedMessage:      "no rows in result set",
+			practiceSubmissionId: 10,
+			studentId:            1580,
+		},
+		{
+			name: "examineeId不存在（考试）",
+
+			expectSuccess:   false,
+			expectedMessage: "no rows in result set",
+			examineeId:      10,
+			studentId:       1580,
+		},
+		{
+			name:          "考试类型studentId不存在",
+			expectSuccess: true,
+			examineeId:    3112,
+			studentId:     1,
+			expectCnt:     1,
+			setupDB: func(t *testing.T, tx pgx.Tx) error {
+				// 设置考试状态为正常
+				_, err := tx.Exec(ctx, `
+					UPDATE t_examinee 
+					SET status = $1 ,exit_cnt=0
+					WHERE id = 3112
+				`, NormalStatus)
+				return err
+			},
+			clean: func(t *testing.T, tx pgx.Tx) error {
+				// 恢复考试状态
+				_, err := tx.Exec(ctx, `
+					UPDATE t_examinee 
+					SET status = $1, exit_cnt = 0 
+					WHERE id = 3112
+				`, NormalStatus)
+				return err
+			},
+		},
+	}
+
+	// 执行测试用例
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			// 设置数据库状态
+			if tc.setupDB != nil {
+				err := tc.setupDB(t, tx)
+				if err != nil {
+					t.Fatalf("Failed to setup database: %v", err)
+				}
+
+				// 提交事务以应用更改
+				err = tx.Commit(ctx)
+				if err != nil {
+					t.Fatalf("Failed to commit transaction: %v", err)
+				}
+
+				// 开始新事务用于下一个测试或恢复
+				tx, err = db.Begin(ctx)
+				if err != nil {
+					t.Fatalf("Failed to begin new transaction: %v", err)
+				}
+			}
+
+			//传入强制err
+			if tc.forceErr != "" {
+				ctx = context.WithValue(ctx, ForceErr, tc.forceErr)
+			}
+			if tc.ctxValue != "" {
+				ctx = context.WithValue(ctx, tc.ctxKey, tc.ctxValue)
+			}
+
+			err = HandleExit(ctx, ExitReq{ExamineeID: tc.examineeId, PracticeSubmissionID: tc.practiceSubmissionId, StudentId: tc.studentId})
+			if tc.expectSuccess {
+				assert.NoError(t, err)
+				if tc.examineeId > 0 {
+					cnt := 0
+					err = cmn.GetPgxConn().QueryRow(ctx, `SELECT exit_cnt FROM t_examinee WHERE id=$1`, tc.examineeId).Scan(&cnt)
+					if err != nil {
+						panic(err)
+					}
+					t.Logf("cnt:%v", cnt)
+					assert.Equal(t, tc.expectCnt, cnt)
+				} else {
+					var sc int64
+					var lastEndTime null.Int
+					err = cmn.GetPgxConn().QueryRow(ctx, `SELECT last_end_time,elapsed_seconds FROM t_practice_submissions WHERE id=$1`, tc.practiceSubmissionId).Scan(&lastEndTime, &sc)
+					if err != nil {
+						panic(err)
+					}
+					t.Logf("last end time:%v;sc:%v", lastEndTime, sc)
+					assert.NotEmpty(t, lastEndTime.Int64)
+					assert.NotEmpty(t, sc)
+
+				}
+			} else {
+				assert.Error(t, err)
+				assert.Equal(t, tc.expectedMessage, err.Error())
+			}
+			if tc.clean != nil {
+				err := tc.clean(t, tx)
+				if err != nil {
+					t.Fatalf("Failed to clean database: %v", err)
+				}
+				// 提交事务以应用更改
+				err = tx.Commit(ctx)
+				if err != nil {
+					t.Fatalf("Failed to commit transaction: %v", err)
+				}
+				// 开始新事务用于下一个测试或恢复
+				tx, err = db.Begin(ctx)
+				if err != nil {
+					t.Fatalf("Failed to begin new transaction: %v", err)
 				}
 			}
 		})
