@@ -381,7 +381,7 @@ func ListPracticeS(ctx context.Context, pType, name, difficulty string, orderBy 
 	// 遍历行数据
 	for rows.Next() {
 		var p cmn.TVPracticeSummary
-		err = rows.Scan(&p.ID, &p.Name, &p.Type, &p.AttemptCount, p.Difficulty, &p.AllowedAttempts,
+		err = rows.Scan(&p.ID, &p.Name, &p.Type, &p.AttemptCount, &p.Difficulty, &p.AllowedAttempts,
 			&p.QuestionCount, &p.WrongCount, &p.TotalScore, &p.HighestScore, &p.PaperTotalScore,
 			&p.PaperID, &p.LatestUnsubmittedID, &p.LatestSubmittedID)
 		if err != nil {
@@ -588,8 +588,8 @@ func OperatePracticeStatus(ctx context.Context, pid int64, status string, uid in
 			z.Error(err.Error())
 			return err
 		}
-		//只有当第一次创建发布练习时，才会创建新的考卷 但是这样有个问题，那就是可能会出现老师选择发布了之后，但是又取消，
-		//重新编辑了一张新的试卷 ，再继续发布，但实际上是不会影响你exam_paper_id的值的 只是会影响你paperID的值，因此不能通过这个是否存在来判断他是否应该生成考卷
+		// 目前无论这个考卷之前有没有生成，均生成新的
+		// TODO 对考卷的生成进行判断，如果之前生成过，就沿用
 		examPaperId, _, err := examPaper.GenerateExamPaper(ctx, tx, examPaper.PaperCategory.Practice, p.PaperID.Int64, pid, 0, uid, false)
 		if err != nil {
 			return err
@@ -599,17 +599,14 @@ func OperatePracticeStatus(ctx context.Context, pid int64, status string, uid in
 			z.Error(err.Error())
 			return err
 		}
-		p.ExamPaperID = null.IntFrom(*examPaperId)
-		// 更新练习状态信息
-		p.Status = null.StringFrom(PracticeStatus.Released)
-		p.UpdatedBy = null.IntFrom(uid)
-		p.UpdateTime = null.IntFrom(now)
 
-		err = UpdatePractice(ctx, p, nil, uid, true)
+		s := `UPDATE assessuser.t_practice SET status = $1,update_time = $2, updated_by = $3 ,exam_paper_id = $4 WHERE id = $4`
+		_, err = tx.Exec(ctx, s, PracticeStatus.Released, now, uid, examPaperId, pid)
 		if err != nil {
+			err = fmt.Errorf("OperatePracticeStatus to pendingRelease failed:%v", err)
+			z.Error(err.Error())
 			return err
 		}
-
 		// 生成批改配置信息
 		req := mark.HandleMarkerInfoReq{
 			PracticeID: p.ID.Int64,
@@ -624,13 +621,14 @@ func OperatePracticeStatus(ctx context.Context, pid int64, status string, uid in
 		}
 		return nil
 	} else if status == PracticeStatus.PendingRelease || status == PracticeStatus.Deleted {
-		if p.Status.String != PracticeStatus.Released {
+		// 若练习已经发布了，无法被删除，必须先回退为待发布状态后才能被删除
+		if p.Status.String != PracticeStatus.Released && status == PracticeStatus.Deleted {
 			err = fmt.Errorf("获取练习状态出现数据错误")
 			z.Error(err.Error())
 			return err
 		}
 		s := `UPDATE assessuser.t_practice SET status = $1,update_time = $2, updated_by = $3  WHERE id = $4`
-		_, err = tx.Exec(ctx, s, PracticeStatus.PendingRelease, now, uid, pid)
+		_, err = tx.Exec(ctx, s, status, now, uid, pid)
 		if err != nil {
 			err = fmt.Errorf("OperatePracticeStatus to pendingRelease failed:%v", err)
 			z.Error(err.Error())
@@ -686,8 +684,8 @@ func EnterPracticeGetPaperDetails(ctx context.Context, tx pgx.Tx, pid int64, uid
 		case "normal-withStudentAnswer-resp":
 			{
 				now := time.Now().UnixMilli()
-				var p *cmn.TVExamPaper
-				var epInfo *EnterPracticeInfo
+				p := &cmn.TVExamPaper{}
+				epInfo := &EnterPracticeInfo{}
 				p.ID = null.IntFrom(101)
 				p.ExamSessionID = null.IntFrom(201)
 				p.PracticeID = null.IntFrom(201)
@@ -713,7 +711,7 @@ func EnterPracticeGetPaperDetails(ctx context.Context, tx pgx.Tx, pid int64, uid
 
 				questionMap := make(map[int64][]*examPaper.ExamQuestion)
 				qList1 := make([]*examPaper.ExamQuestion, 0)
-				var q1 *examPaper.ExamQuestion
+				q1 := &examPaper.ExamQuestion{}
 				q1.ID = null.IntFrom(2042)
 				q1.Type = null.StringFrom("00")
 				q1.Title = null.StringFrom("")
@@ -751,7 +749,7 @@ func EnterPracticeGetPaperDetails(ctx context.Context, tx pgx.Tx, pid int64, uid
 				qList1 = append(qList1, q1)
 
 				qList2 := make([]*examPaper.ExamQuestion, 0)
-				var q2 *examPaper.ExamQuestion
+				q2 := &examPaper.ExamQuestion{}
 				q2.ID = null.IntFrom(2045)
 				q2.Type = null.StringFrom("06")
 				q2.Title = null.StringFrom("")
@@ -788,8 +786,8 @@ func EnterPracticeGetPaperDetails(ctx context.Context, tx pgx.Tx, pid int64, uid
 		case "normal-resp":
 			{
 				now := time.Now().UnixMilli()
-				var p *cmn.TVExamPaper = &cmn.TVExamPaper{}
-				var epInfo *EnterPracticeInfo = &EnterPracticeInfo{}
+				p := &cmn.TVExamPaper{}
+				epInfo := &EnterPracticeInfo{}
 				p.ID = null.IntFrom(101)
 				p.ExamSessionID = null.IntFrom(201)
 				p.PracticeID = null.IntFrom(201)
@@ -815,7 +813,7 @@ func EnterPracticeGetPaperDetails(ctx context.Context, tx pgx.Tx, pid int64, uid
 
 				questionMap := make(map[int64][]*examPaper.ExamQuestion)
 				qList1 := make([]*examPaper.ExamQuestion, 0)
-				var q1 *examPaper.ExamQuestion = &examPaper.ExamQuestion{}
+				q1 := &examPaper.ExamQuestion{}
 				q1.ID = null.IntFrom(2042)
 				q1.Type = null.StringFrom("00")
 				q1.Title = null.StringFrom("")
@@ -845,7 +843,7 @@ func EnterPracticeGetPaperDetails(ctx context.Context, tx pgx.Tx, pid int64, uid
 				qList1 = append(qList1, q1)
 
 				qList2 := make([]*examPaper.ExamQuestion, 0)
-				var q2 *examPaper.ExamQuestion = &examPaper.ExamQuestion{}
+				q2 := &examPaper.ExamQuestion{}
 				q2.ID = null.IntFrom(2045)
 				q2.Type = null.StringFrom("06")
 				q2.Title = null.StringFrom("")
@@ -885,9 +883,9 @@ func EnterPracticeGetPaperDetails(ctx context.Context, tx pgx.Tx, pid int64, uid
 	// 也就是说此时是第一次进入，那就需要创建新的submissions的，同理如果查询出有记录，但是last为空的话，仍然需要创建，否则就不需要创建
 	s := `SELECT allowed_attempts,attempt_count,latest_unsubmitted_id, latest_submitted_id, exam_paper_id,paper_name,suggested_duration
 	 FROM assessuser.v_practice_summary 
-	 WHERE id = $1 AND student_id = $2 AND practice_status != $3 
+	 WHERE id = $1 AND student_id = $2 AND practice_status == $3 
 	 AND practice_student_status != $4`
-	err := sqlxDB.QueryRowxContext(ctx, s, pid, uid, PracticeStatus.Deleted, PracticeStudentStatus.Deleted).Scan(&ps.AllowedAttempts, &ps.AttemptCount, &ps.LatestUnsubmittedID,
+	err := sqlxDB.QueryRowxContext(ctx, s, pid, uid, PracticeStatus.Released, PracticeStudentStatus.Deleted).Scan(&ps.AllowedAttempts, &ps.AttemptCount, &ps.LatestUnsubmittedID,
 		&ps.LatestSubmittedID, &ps.ExamPaperID,
 		&ps.PaperName, &ps.SuggestedDuration)
 	if err != nil {

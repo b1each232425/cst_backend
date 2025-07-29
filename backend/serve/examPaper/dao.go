@@ -3,7 +3,7 @@
  * @Description: 考卷-答卷数据库层
  * @Date: 2025-07-21 13:14:34
  * @LastEditors: zdl <1311866870@qq.com>
- * @LastEditTime: 2025-07-28 14:55:19
+ * @LastEditTime: 2025-07-29 11:23:29
  */
 package examPaper
 
@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/jackc/pgx/v5"
+	"github.com/jmoiron/sqlx/types"
 	"go.uber.org/zap"
 	"math/rand"
 	"strings"
@@ -263,6 +264,9 @@ func LoadPaperTemplateById(ctx context.Context, paperId int64, withQuestions boo
 		z.Error(err.Error())
 		return nil, nil, nil, err
 	}
+	TEST := "test"
+	//查看是否需要返回mock的数据
+	test, _ := ctx.Value(TEST).(string)
 	var err error
 	// 一张试卷拥有的题组map
 	var groups []*cmn.TPaperGroup
@@ -286,7 +290,7 @@ func LoadPaperTemplateById(ctx context.Context, paperId int64, withQuestions boo
 		fields = append(fields, "groups_data")
 		scanArgs = append(scanArgs, &p.GroupsData)
 	}
-	s := fmt.Sprintf("SELECT %s FROM v_paper WHERE id=$1 AND status != $2", strings.Join(fields, ","))
+	s := fmt.Sprintf("SELECT %s FROM assessuser.v_paper WHERE id=$1 AND status != $2", strings.Join(fields, ","))
 	err = conn.QueryRow(ctx, s, paperId, PaperStatus.Invalid).Scan(scanArgs...)
 	if err != nil {
 		err = fmt.Errorf("select paper failed:%v", err)
@@ -295,8 +299,12 @@ func LoadPaperTemplateById(ctx context.Context, paperId int64, withQuestions boo
 	}
 	if withQuestions && len(p.GroupsData) > 0 {
 		var groupData []Group
+		if test == "json" {
+			p.GroupsData = types.JSONText(`invalid json: missing closing brace`)
+		}
 		if err := json.Unmarshal(p.GroupsData, &groupData); err != nil {
-			z.Error("unmarshal group data failed", zap.Error(err))
+			err = fmt.Errorf("unmarshal group data failed:%v", err)
+			z.Error(err.Error())
 			return nil, nil, nil, err
 		}
 		for _, v := range groupData {
