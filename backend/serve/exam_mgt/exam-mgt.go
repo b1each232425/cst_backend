@@ -1394,8 +1394,8 @@ func exam(ctx context.Context) {
 			return
 		}
 
-		userRole := q.SysUser.Role.Int64
-		if userRole == 0 {
+		userRole := int64(1)
+		if userRole <= 0 {
 			q.Err = fmt.Errorf("无效的用户角色: %d", userRole)
 			z.Error(q.Err.Error())
 			q.RespErr()
@@ -1654,6 +1654,14 @@ func examList(ctx context.Context) {
 			}`
 		}
 
+		userRole, err := strconv.ParseInt(q.R.URL.Query().Get("role"), 10, 64)
+		if err != nil {
+			q.Err = fmt.Errorf("无效的用户角色: %s", q.R.URL.Query().Get("role"))
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
 		var req cmn.ReqProto
 		q.Err = json.Unmarshal([]byte(qry), &req)
 		if forceErr == "json.Unmarshal1" {
@@ -1689,7 +1697,6 @@ func examList(ctx context.Context) {
 		}
 
 		var userID int64
-		var userRole int64
 
 		userID = q.SysUser.ID.Int64
 		if userID <= 0 {
@@ -1699,13 +1706,13 @@ func examList(ctx context.Context) {
 			return
 		}
 
-		userRole = q.SysUser.Role.Int64
-		if userRole <= 0 {
-			q.Err = fmt.Errorf("无效的用户角色: %d", userRole)
-			z.Error(q.Err.Error())
-			q.RespErr()
-			return
-		}
+		// userRole = q.SysUser.Role.Int64
+		// if userRole <= 0 {
+		// 	q.Err = fmt.Errorf("无效的用户角色: %d", userRole)
+		// 	z.Error(q.Err.Error())
+		// 	q.RespErr()
+		// 	return
+		// }
 
 		// userID = 1574
 		// userRole = 2
