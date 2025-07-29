@@ -5,6 +5,8 @@ logs/
 *.pid
 sys.db
 go_build_w2w_io
+debug_w2w.io
+debug_w2w_io
 upload/
 services-generated.go
 data/

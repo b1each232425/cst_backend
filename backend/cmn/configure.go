@@ -4,25 +4,24 @@ import (
 	"context"
 	"encoding/gob"
 	"fmt"
-	"io"
-	"runtime"
-
 	"github.com/asdine/storm/v3"
+	//"github.com/gomodule/redigo/redis"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	_ "github.com/jackc/pgx/v5/stdlib"
+	"io"
+	"runtime"
 	"w2w.io/null"
 
-	"github.com/gomodule/redigo/redis"
-
+	//"github.com/gomodule/redigo/redis"
+	"github.com/jmoiron/sqlx"
+	"github.com/redis/go-redis/v9"
+	"github.com/spf13/viper"
+	bolt "go.etcd.io/bbolt"
 	"log"
 	"os"
 	"path/filepath"
 	"time"
-
-	"github.com/jmoiron/sqlx"
-	"github.com/spf13/viper"
-	bolt "go.etcd.io/bbolt"
 )
 
 type (
@@ -53,9 +52,9 @@ var (
 	//sqlxDB, pgxConn global dbms connection
 	sqlxDB *sqlx.DB
 
-	pgxConn *pgxpool.Pool
-
-	redisPool *redis.Pool
+	pgxConn     *pgxpool.Pool
+	redisClient *redis.Client
+	//redisPool *redis.Pool
 
 	//CancelWaitDbNotify cancel waiting for pg db notify
 	CancelWaitDbNotify context.CancelFunc
@@ -111,12 +110,6 @@ func InitDbByParams(db, dbHost, dbPort, dbUser, dbPwd string) {
 	//"postgres://pgx_md5:secret@localhost:5432/pgx_test")
 	connInfo := fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=require",
 		dbUser, dbPwd, dbHost, dbPort, db)
-
-	if viper.IsSet("dbms.postgresql.sslmode") {
-		connInfo = fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=%s",
-			dbUser, dbPwd, dbHost, dbPort, db, viper.GetString("dbms.postgresql.sslmode"))
-	}
-
 	var err error
 
 	sqlxDB, err = sqlx.Open("pgx", connInfo)
@@ -237,8 +230,7 @@ func configureDb() {
 	dbHost := "cst.gzhu.edu.cn"
 	dbPort := "16900"
 	dbUser := "kuser"
-
-	dbPwd := "ak47-Ever"
+	dbPwd := "cst$Ever"
 
 	var s string
 	s = "dbms.postgresql.addr"
@@ -300,20 +292,19 @@ func GetDbConn() *sqlx.DB {
 }
 
 // GetRedisConn return redis.Conn
-func GetRedisConn() redis.Conn {
-	if redisPool == nil {
+func GetRedisConn() *redis.Client {
+	if redisClient == nil {
 		redisConnInit()
 	}
-	poolStats := redisPool.Stats()
 
-	D.Info(fmt.Sprintf("redisPool activeCount:%d, idleAcount: %d",
-		poolStats.ActiveCount, poolStats.IdleCount))
-
-	return redisPool.Get()
+	status := redisClient.PoolStats()
+	D.Info(fmt.Sprintf("redisPool total: %d, activeCount:%d, idleAcount: %d",
+		status.TotalConns, status.StaleConns, status.IdleConns))
+	return redisClient
 }
 
 func redisConnInit() {
-	if redisPool != nil {
+	if redisClient != nil {
 		return
 	}
 
@@ -330,66 +321,26 @@ func redisConnInit() {
 		port = viper.GetInt(s)
 	}
 	serv := fmt.Sprintf("%s:%d", host, port)
+	pass := "x2Jc5K^5"
+	if viper.IsSet("dbms.redis.cert") {
+		pass = viper.GetString("dbms.redis.cert")
+	}
 	log.Printf("connecting redis to %s", serv)
-	redisPool = &redis.Pool{
-		MaxIdle:     32,
-		IdleTimeout: 60 * time.Minute,
-		Dial: func() (conn redis.Conn, err error) {
-			for {
-				conn, err = redis.Dial("tcp", serv)
-				if err != nil {
-					D.Error(err.Error())
-					<-time.After(time.Second * 15)
-					continue
-				}
-				pass := "x2Jc5K^5"
-				if viper.IsSet("dbms.redis.cert") {
-					pass = viper.GetString("dbms.redis.cert")
-				}
+	redisClient = redis.NewClient(&redis.Options{
+		Addr:     serv,
+		Password: pass,
+		DB:       0, // use default DB
+	})
 
-				_, err = conn.Do("AUTH", pass)
-				if err != nil {
-					D.Error(err.Error())
-					<-time.After(time.Second * 15)
-					continue
-				}
-				log.Printf("redis connected with " + serv)
-
-				if viper.IsSet("dbms.redis.init") {
-					cleanCache := viper.GetBool("dbms.redis.init")
-					if cleanCache {
-						_, err = conn.Do("flushdb")
-						if err != nil {
-							D.Error(err.Error())
-							return
-						}
-						D.Info("successfully cleanup redis db")
-						defer disableNextFlushDB()
-					}
-				}
-				break
-			}
-			return
-		},
-		TestOnBorrow: func(c redis.Conn, t time.Time) error {
-			_, err := c.Do("PING")
-			return err
-		},
-	}
-	conn := redisPool.Get()
-	_, err := conn.Do("INFO")
-	if err != nil {
-		D.Fatal(err.Error())
-	}
 	D.Info(fmt.Sprintf("connected with redis: %s\n", serv))
 }
 
 // CleanRedis redis current db
 func CleanRedis() {
 	r := GetRedisConn()
-	defer r.Close()
-
-	_, err := r.Do("flushdb")
+	ctx := context.Background()
+	status := r.FlushDB(ctx)
+	err := status.Err()
 	if err != nil {
 		D.Error(err.Error())
 		return
@@ -455,158 +406,6 @@ func Configure() {
 
 	var err error
 	AppLaunchPath, err = filepath.Abs(filepath.Dir(os.Args[0]))
-	if err != nil {
-		fmt.Println(err.Error())
-		Terminate(-1)
-	}
-
-	logDir := AppLaunchPath + "/logs"
-	if _, err := os.Stat(logDir); os.IsNotExist(err) {
-		_ = os.Mkdir(logDir, os.ModePerm)
-	}
-
-	bootLogFN := logDir + "/bootlog.txt"
-	fd, err := os.OpenFile(bootLogFN, os.O_WRONLY|os.O_CREATE|os.O_APPEND, os.ModePerm)
-	if err != nil {
-		log.Fatal("open " + bootLogFN + " failed by " + err.Error())
-	}
-	log.SetFlags(log.Lmicroseconds | log.Lshortfile)
-	mf := io.MultiWriter(os.Stdout, fd)
-	log.SetOutput(mf)
-	D.fd = fd
-	D.Info("=========================")
-	D.Info("== boot logger started ==")
-
-	// adding application startup directory as first search path.
-	viper.AddConfigPath(AppLaunchPath)
-
-	userHomeDir, err := os.UserHomeDir()
-	if err != nil {
-		D.Fatal(err.Error())
-	}
-
-	viper.AddConfigPath(userHomeDir)
-
-	userConfigDir, err := os.UserConfigDir()
-	if err != nil {
-		D.Fatal(err.Error())
-	}
-
-	viper.AddConfigPath(userConfigDir)
-
-	wd, err := os.Getwd()
-	if err != nil {
-		D.Fatal(err.Error())
-	}
-
-	viper.AddConfigPath(wd)
-
-	cfgFileName := ".config_" + runtime.GOOS
-	switch runtime.GOOS {
-	case "darwin", "windows", "linux":
-		break
-
-	default:
-		D.Fatal("unsupported os: " + runtime.GOOS)
-
-	}
-
-	configureFileName := AppLaunchPath + string(os.PathSeparator) + cfgFileName + ".json"
-	if _, err := os.Stat(configureFileName); err != nil {
-		templateFileName := AppLaunchPath + string(os.PathSeparator) +
-			".config_" + runtime.GOOS + "_template.json"
-		if _, err := os.Stat(templateFileName); err != nil {
-			D.Fatal("can not find " + templateFileName + ", " +
-				err.Error())
-		}
-
-		src, err := os.Open(templateFileName)
-		if err != nil {
-			D.Fatal("can not open " + templateFileName)
-		}
-
-		defer func() { _ = src.Close() }()
-
-		dst, err := os.Create(configureFileName)
-		if err != nil {
-			D.Fatal("can not create " + configureFileName)
-		}
-		defer func() { _ = dst.Close() }()
-
-		if _, err = io.Copy(dst, src); err != nil {
-			D.Fatal(err.Error())
-		}
-
-		D.Info(fmt.Sprintf("can not find %s, recreate it by %s\n",
-			configureFileName, templateFileName))
-	}
-	viper.SetConfigName(cfgFileName)
-
-	viper.AutomaticEnv() // read in environment variables that match
-
-	err = viper.ReadInConfig()
-	if err != nil {
-		D.Fatal(err.Error())
-	}
-
-	D.Info("configured with " + viper.ConfigFileUsed())
-
-	configureDb()
-
-	InitLogger()
-
-	if viper.IsSet("debug.aa") {
-		zjTEL := viper.GetInt64("debug.aa")
-		if zjTEL == 13450464791 {
-			DisableAA = true
-		}
-	}
-
-	if viper.IsSet("debug.enable") {
-		InDebugMode = viper.GetBool("debug.enable")
-	}
-
-	if InDebugMode {
-		if viper.IsSet("debug.serializationReq") {
-			SerializationReq = viper.GetBool("debug.serializationReq")
-		}
-	}
-
-	if viper.IsSet("webServe.attackDefence") {
-		AttackDefence = viper.GetBool("webServe.attackDefence")
-	}
-
-	if viper.IsSet("w2w.grpc.addr") {
-		GRPCAddr = viper.GetString("w2w.grpc.addr")
-	}
-
-	if viper.IsSet("repo.base") {
-		BaseRepo = viper.GetString("repo.base")
-	}
-
-	if viper.IsSet("w2w.grpc.port") {
-		GRPCPort = viper.GetInt("w2w.grpc.port")
-	}
-
-	if viper.IsSet("webServe.attackDefence") {
-		AttackDefence = viper.GetBool("webServe.attackDefence")
-	}
-	nonCmnPackageSetup()
-}
-
-// ConfigureForTest 用于本地的单元测试初始化
-func ConfigureForTest() {
-	gob.Register(map[string]string{})
-
-	gob.Register(null.String{})
-	gob.Register(null.Int{})
-	gob.Register(null.Float{})
-	gob.Register(null.Time{})
-	gob.Register(null.Bool{})
-	gob.Register(null.QNearTime{})
-
-	var err error
-	AppLaunchPath, err = os.Getwd()
 	if err != nil {
 		fmt.Println(err.Error())
 		Terminate(-1)

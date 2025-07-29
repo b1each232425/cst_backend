@@ -3,13 +3,10 @@ package cmn
 import (
 	"context"
 	"database/sql"
-	"github.com/pkg/errors"
-	"reflect"
 	"regexp"
-	"strings"
-	"time"
 
 	"github.com/jmoiron/sqlx/types"
+	"github.com/pkg/errors"
 	"w2w.io/null"
 )
 
@@ -23,7 +20,7 @@ type TAccountOprLog struct {
 	DomainID   null.Int       `json:"DomainID,omitempty" db:"domain_id,false,bigint"`       /* domain_id 数据隶属 */
 	Addi       types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                 /* addi 附加信息 */
 	Remark     null.String    `json:"Remark,omitempty" db:"remark,false,character varying"` /* remark 备注 */
-	Filter                                                                                  // build DML where clause
+	Filter     `json:"-"`     // build DML where clause
 }
 
 // TAccountOprLogFields full field list for default query
@@ -129,42 +126,6 @@ func GetTAccountOprLogByPk(db Queryer, pk0 null.Int) (*TAccountOprLog, error) {
 	return &r, nil
 }
 
-// GetTAccountOprLogReflectValuesMap returns a map of field names to their values.
-//
-// key is the tag name, value is the field value.
-// This is useful for reflection and dynamic queries.
-func (r *TAccountOprLog) GetTAccountOprLogReflectValuesMap() (map[string]any, error) {
-
-	values := make(map[string]any)
-	v := reflect.ValueOf(r).Elem()
-	t := v.Type()
-	for i := range v.NumField() {
-		field := t.Field(i)
-		tag := field.Tag.Get("db")
-		if tag == "" {
-			return nil, errors.Errorf("missing db tag for field %s in table t_account_opr_log", field.Name)
-		}
-
-		columnName := strings.Split(tag, ",")[0]
-		if columnName == "" {
-			return nil, errors.Errorf("missing column name for field %s in table t_account_opr_log", field.Name)
-		}
-
-		fieldValue := reflect.ValueOf(r).Elem().Field(i)
-		if !fieldValue.IsValid() {
-			return nil, errors.Errorf("invalid field value for field %s in table t_account_opr_log", field.Name)
-		}
-
-		if !fieldValue.CanAddr() {
-			return nil, errors.Errorf("cannot read field value for field %s in table t_account_opr_log", field.Name)
-		}
-
-		values[columnName] = fieldValue.Addr().Interface()
-	}
-
-	return values, nil
-}
-
 /*TAge 年龄表 represents assessuser.t_age */
 type TAge struct {
 	ID              null.Int       `json:"ID,omitempty" db:"id,true,integer"`                             /* id 条目编号 */
@@ -186,7 +147,7 @@ type TAge struct {
 	UpdatedBy       null.Int       `json:"UpdatedBy,omitempty" db:"updated_by,false,bigint"`              /* updated_by 更新人 */
 	Remark          null.String    `json:"Remark,omitempty" db:"remark,false,character varying"`          /* remark 备注 */
 	Status          null.String    `json:"Status,omitempty" db:"status,false,character varying"`          /* status 0:有效, 2: 删除 */
-	Filter                                                                                                // build DML where clause
+	Filter          `json:"-"`     // build DML where clause
 }
 
 // TAgeFields full field list for default query
@@ -347,42 +308,6 @@ func GetTAgeByPk(db Queryer, pk0 null.Int) (*TAge, error) {
 	return &r, nil
 }
 
-// GetTAgeReflectValuesMap returns a map of field names to their values.
-//
-// key is the tag name, value is the field value.
-// This is useful for reflection and dynamic queries.
-func (r *TAge) GetTAgeReflectValuesMap() (map[string]any, error) {
-
-	values := make(map[string]any)
-	v := reflect.ValueOf(r).Elem()
-	t := v.Type()
-	for i := range v.NumField() {
-		field := t.Field(i)
-		tag := field.Tag.Get("db")
-		if tag == "" {
-			return nil, errors.Errorf("missing db tag for field %s in table t_age", field.Name)
-		}
-
-		columnName := strings.Split(tag, ",")[0]
-		if columnName == "" {
-			return nil, errors.Errorf("missing column name for field %s in table t_age", field.Name)
-		}
-
-		fieldValue := reflect.ValueOf(r).Elem().Field(i)
-		if !fieldValue.IsValid() {
-			return nil, errors.Errorf("invalid field value for field %s in table t_age", field.Name)
-		}
-
-		if !fieldValue.CanAddr() {
-			return nil, errors.Errorf("cannot read field value for field %s in table t_age", field.Name)
-		}
-
-		values[columnName] = fieldValue.Addr().Interface()
-	}
-
-	return values, nil
-}
-
 /*TAPI 接口信息表 represents assessuser.t_api */
 type TAPI struct {
 	ID                 null.Int    `json:"ID,omitempty" db:"id,true,integer"`                                              /* id 编码 */
@@ -402,7 +327,7 @@ type TAPI struct {
 	Addi       types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                 /* addi 附加信息 */
 	Remark     null.String    `json:"Remark,omitempty" db:"remark,false,character varying"` /* remark 备注 */
 	Status     null.String    `json:"Status,omitempty" db:"status,false,character varying"` /* status 状态，00：草稿，01：有效，02：作废 */
-	Filter                                                                                  // build DML where clause
+	Filter     `json:"-"`     // build DML where clause
 }
 
 // TAPIFields full field list for default query
@@ -533,42 +458,6 @@ func GetTAPIByPk(db Queryer, pk0 null.Int) (*TAPI, error) {
 	return &r, nil
 }
 
-// GetTAPIReflectValuesMap returns a map of field names to their values.
-//
-// key is the tag name, value is the field value.
-// This is useful for reflection and dynamic queries.
-func (r *TAPI) GetTAPIReflectValuesMap() (map[string]any, error) {
-
-	values := make(map[string]any)
-	v := reflect.ValueOf(r).Elem()
-	t := v.Type()
-	for i := range v.NumField() {
-		field := t.Field(i)
-		tag := field.Tag.Get("db")
-		if tag == "" {
-			return nil, errors.Errorf("missing db tag for field %s in table t_api", field.Name)
-		}
-
-		columnName := strings.Split(tag, ",")[0]
-		if columnName == "" {
-			return nil, errors.Errorf("missing column name for field %s in table t_api", field.Name)
-		}
-
-		fieldValue := reflect.ValueOf(r).Elem().Field(i)
-		if !fieldValue.IsValid() {
-			return nil, errors.Errorf("invalid field value for field %s in table t_api", field.Name)
-		}
-
-		if !fieldValue.CanAddr() {
-			return nil, errors.Errorf("cannot read field value for field %s in table t_api", field.Name)
-		}
-
-		values[columnName] = fieldValue.Addr().Interface()
-	}
-
-	return values, nil
-}
-
 /*TArticle 消息：包含新闻，私信，广告，通知等 represents assessuser.t_article */
 type TArticle struct {
 	ID         null.Int       `json:"ID,omitempty" db:"id,true,integer"`                        /* id 参数编号 */
@@ -599,7 +488,7 @@ type TArticle struct {
 	Addi       types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                     /* addi 附加信息 */
 	Remark     null.String    `json:"Remark,omitempty" db:"remark,false,character varying"`     /* remark 备注 */
 	Status     null.String    `json:"Status,omitempty" db:"status,false,character varying"`     /* status 状态，00：草稿，01：有效，02：作废 */
-	Filter                                                                                      // build DML where clause
+	Filter     `json:"-"`     // build DML where clause
 }
 
 // TArticleFields full field list for default query
@@ -805,42 +694,6 @@ func GetTArticleByPk(db Queryer, pk0 null.Int) (*TArticle, error) {
 	return &r, nil
 }
 
-// GetTArticleReflectValuesMap returns a map of field names to their values.
-//
-// key is the tag name, value is the field value.
-// This is useful for reflection and dynamic queries.
-func (r *TArticle) GetTArticleReflectValuesMap() (map[string]any, error) {
-
-	values := make(map[string]any)
-	v := reflect.ValueOf(r).Elem()
-	t := v.Type()
-	for i := range v.NumField() {
-		field := t.Field(i)
-		tag := field.Tag.Get("db")
-		if tag == "" {
-			return nil, errors.Errorf("missing db tag for field %s in table t_article", field.Name)
-		}
-
-		columnName := strings.Split(tag, ",")[0]
-		if columnName == "" {
-			return nil, errors.Errorf("missing column name for field %s in table t_article", field.Name)
-		}
-
-		fieldValue := reflect.ValueOf(r).Elem().Field(i)
-		if !fieldValue.IsValid() {
-			return nil, errors.Errorf("invalid field value for field %s in table t_article", field.Name)
-		}
-
-		if !fieldValue.CanAddr() {
-			return nil, errors.Errorf("cannot read field value for field %s in table t_article", field.Name)
-		}
-
-		values[columnName] = fieldValue.Addr().Interface()
-	}
-
-	return values, nil
-}
-
 /*TBlacklist 黑名单表 represents assessuser.t_blacklist */
 type TBlacklist struct {
 	ID         null.Int       `json:"ID,omitempty" db:"id,true,integer"`                      /* id 拒保黑名单编号 */
@@ -854,7 +707,7 @@ type TBlacklist struct {
 	DomainID   null.Int       `json:"DomainID,omitempty" db:"domain_id,false,bigint"`         /* domain_id 数据属主 */
 	Addi       types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                   /* addi 附加数据 */
 	Status     null.String    `json:"Status,omitempty" db:"status,false,character varying"`   /* status 状态 0:有效, 2: 无效 */
-	Filter                                                                                    // build DML where clause
+	Filter     `json:"-"`     // build DML where clause
 }
 
 // TBlacklistFields full field list for default query
@@ -975,42 +828,6 @@ func GetTBlacklistByPk(db Queryer, pk0 null.Int) (*TBlacklist, error) {
 	return &r, nil
 }
 
-// GetTBlacklistReflectValuesMap returns a map of field names to their values.
-//
-// key is the tag name, value is the field value.
-// This is useful for reflection and dynamic queries.
-func (r *TBlacklist) GetTBlacklistReflectValuesMap() (map[string]any, error) {
-
-	values := make(map[string]any)
-	v := reflect.ValueOf(r).Elem()
-	t := v.Type()
-	for i := range v.NumField() {
-		field := t.Field(i)
-		tag := field.Tag.Get("db")
-		if tag == "" {
-			return nil, errors.Errorf("missing db tag for field %s in table t_blacklist", field.Name)
-		}
-
-		columnName := strings.Split(tag, ",")[0]
-		if columnName == "" {
-			return nil, errors.Errorf("missing column name for field %s in table t_blacklist", field.Name)
-		}
-
-		fieldValue := reflect.ValueOf(r).Elem().Field(i)
-		if !fieldValue.IsValid() {
-			return nil, errors.Errorf("invalid field value for field %s in table t_blacklist", field.Name)
-		}
-
-		if !fieldValue.CanAddr() {
-			return nil, errors.Errorf("cannot read field value for field %s in table t_blacklist", field.Name)
-		}
-
-		values[columnName] = fieldValue.Addr().Interface()
-	}
-
-	return values, nil
-}
-
 /*TCorrection t_correction represents assessuser.t_correction */
 type TCorrection struct {
 	ID               null.Int       `json:"ID,omitempty" db:"id,true,integer"`                                       /* id id */
@@ -1024,7 +841,7 @@ type TCorrection struct {
 	UpdatedBy        null.Int       `json:"UpdatedBy,omitempty" db:"updated_by,false,bigint"`                        /* updated_by 更新者 */
 	UpdateTime       null.Int       `json:"UpdateTime,omitempty" db:"update_time,false,timestamp without time zone"` /* update_time 更新时间 */
 	Addi             types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                                    /* addi 附加信息 */
-	Filter                                                                                                           // build DML where clause
+	Filter           `json:"-"`     // build DML where clause
 }
 
 // TCorrectionFields full field list for default query
@@ -1145,42 +962,6 @@ func GetTCorrectionByPk(db Queryer, pk0 null.Int) (*TCorrection, error) {
 	return &r, nil
 }
 
-// GetTCorrectionReflectValuesMap returns a map of field names to their values.
-//
-// key is the tag name, value is the field value.
-// This is useful for reflection and dynamic queries.
-func (r *TCorrection) GetTCorrectionReflectValuesMap() (map[string]any, error) {
-
-	values := make(map[string]any)
-	v := reflect.ValueOf(r).Elem()
-	t := v.Type()
-	for i := range v.NumField() {
-		field := t.Field(i)
-		tag := field.Tag.Get("db")
-		if tag == "" {
-			return nil, errors.Errorf("missing db tag for field %s in table t_correction", field.Name)
-		}
-
-		columnName := strings.Split(tag, ",")[0]
-		if columnName == "" {
-			return nil, errors.Errorf("missing column name for field %s in table t_correction", field.Name)
-		}
-
-		fieldValue := reflect.ValueOf(r).Elem().Field(i)
-		if !fieldValue.IsValid() {
-			return nil, errors.Errorf("invalid field value for field %s in table t_correction", field.Name)
-		}
-
-		if !fieldValue.CanAddr() {
-			return nil, errors.Errorf("cannot read field value for field %s in table t_correction", field.Name)
-		}
-
-		values[columnName] = fieldValue.Addr().Interface()
-	}
-
-	return values, nil
-}
-
 /*TCourse course table represents assessuser.t_course */
 type TCourse struct {
 	ID          null.Int       `json:"ID,omitempty" db:"id,true,integer"`                               /* id 编码 */
@@ -1206,7 +987,7 @@ type TCourse struct {
 	02：发布/上架
 	04：下架
 	06：禁用 */
-	Filter // build DML where clause
+	Filter `json:"-"` // build DML where clause
 }
 
 // TCourseFields full field list for default query
@@ -1372,42 +1153,6 @@ func GetTCourseByPk(db Queryer, pk0 null.Int) (*TCourse, error) {
 	return &r, nil
 }
 
-// GetTCourseReflectValuesMap returns a map of field names to their values.
-//
-// key is the tag name, value is the field value.
-// This is useful for reflection and dynamic queries.
-func (r *TCourse) GetTCourseReflectValuesMap() (map[string]any, error) {
-
-	values := make(map[string]any)
-	v := reflect.ValueOf(r).Elem()
-	t := v.Type()
-	for i := range v.NumField() {
-		field := t.Field(i)
-		tag := field.Tag.Get("db")
-		if tag == "" {
-			return nil, errors.Errorf("missing db tag for field %s in table t_course", field.Name)
-		}
-
-		columnName := strings.Split(tag, ",")[0]
-		if columnName == "" {
-			return nil, errors.Errorf("missing column name for field %s in table t_course", field.Name)
-		}
-
-		fieldValue := reflect.ValueOf(r).Elem().Field(i)
-		if !fieldValue.IsValid() {
-			return nil, errors.Errorf("invalid field value for field %s in table t_course", field.Name)
-		}
-
-		if !fieldValue.CanAddr() {
-			return nil, errors.Errorf("cannot read field value for field %s in table t_course", field.Name)
-		}
-
-		values[columnName] = fieldValue.Addr().Interface()
-	}
-
-	return values, nil
-}
-
 /*TDegree 知识能力领域等级表 represents assessuser.t_degree */
 type TDegree struct {
 	ID     null.Int    `json:"ID,omitempty" db:"id,true,integer"`                    /* id 编号 */
@@ -1415,7 +1160,7 @@ type TDegree struct {
 	Name   null.String `json:"Name,omitempty" db:"name,false,character varying"`     /* name 等级名称 */
 	Limn   null.String `json:"Limn,omitempty" db:"limn,false,character varying"`     /* limn 等级描述 */
 	Status null.String `json:"Status,omitempty" db:"status,false,character varying"` /* status 可用，禁用 */
-	Filter                                                                           // build DML where clause
+	Filter `json:"-"`  // build DML where clause
 }
 
 // TDegreeFields full field list for default query
@@ -1506,42 +1251,6 @@ func GetTDegreeByPk(db Queryer, pk0 null.Int) (*TDegree, error) {
 	return &r, nil
 }
 
-// GetTDegreeReflectValuesMap returns a map of field names to their values.
-//
-// key is the tag name, value is the field value.
-// This is useful for reflection and dynamic queries.
-func (r *TDegree) GetTDegreeReflectValuesMap() (map[string]any, error) {
-
-	values := make(map[string]any)
-	v := reflect.ValueOf(r).Elem()
-	t := v.Type()
-	for i := range v.NumField() {
-		field := t.Field(i)
-		tag := field.Tag.Get("db")
-		if tag == "" {
-			return nil, errors.Errorf("missing db tag for field %s in table t_degree", field.Name)
-		}
-
-		columnName := strings.Split(tag, ",")[0]
-		if columnName == "" {
-			return nil, errors.Errorf("missing column name for field %s in table t_degree", field.Name)
-		}
-
-		fieldValue := reflect.ValueOf(r).Elem().Field(i)
-		if !fieldValue.IsValid() {
-			return nil, errors.Errorf("invalid field value for field %s in table t_degree", field.Name)
-		}
-
-		if !fieldValue.CanAddr() {
-			return nil, errors.Errorf("cannot read field value for field %s in table t_degree", field.Name)
-		}
-
-		values[columnName] = fieldValue.Addr().Interface()
-	}
-
-	return values, nil
-}
-
 /*TDomain 用户组织结构定义，格式为：机构[部门.科室.组]#角色 represents assessuser.t_domain */
 type TDomain struct {
 	ID         null.Int       `json:"ID,omitempty" db:"id,true,integer"`                    /* id 编码 */
@@ -1556,7 +1265,7 @@ type TDomain struct {
 	Addi       types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                 /* addi 附加信息 */
 	Remark     null.String    `json:"Remark,omitempty" db:"remark,false,character varying"` /* remark 备注 */
 	Status     null.String    `json:"Status,omitempty" db:"status,false,character varying"` /* status 状态，00：草稿，01：有效，02：作废 */
-	Filter                                                                                  // build DML where clause
+	Filter     `json:"-"`     // build DML where clause
 }
 
 // TDomainFields full field list for default query
@@ -1682,42 +1391,6 @@ func GetTDomainByPk(db Queryer, pk0 null.Int) (*TDomain, error) {
 	return &r, nil
 }
 
-// GetTDomainReflectValuesMap returns a map of field names to their values.
-//
-// key is the tag name, value is the field value.
-// This is useful for reflection and dynamic queries.
-func (r *TDomain) GetTDomainReflectValuesMap() (map[string]any, error) {
-
-	values := make(map[string]any)
-	v := reflect.ValueOf(r).Elem()
-	t := v.Type()
-	for i := range v.NumField() {
-		field := t.Field(i)
-		tag := field.Tag.Get("db")
-		if tag == "" {
-			return nil, errors.Errorf("missing db tag for field %s in table t_domain", field.Name)
-		}
-
-		columnName := strings.Split(tag, ",")[0]
-		if columnName == "" {
-			return nil, errors.Errorf("missing column name for field %s in table t_domain", field.Name)
-		}
-
-		fieldValue := reflect.ValueOf(r).Elem().Field(i)
-		if !fieldValue.IsValid() {
-			return nil, errors.Errorf("invalid field value for field %s in table t_domain", field.Name)
-		}
-
-		if !fieldValue.CanAddr() {
-			return nil, errors.Errorf("cannot read field value for field %s in table t_domain", field.Name)
-		}
-
-		values[columnName] = fieldValue.Addr().Interface()
-	}
-
-	return values, nil
-}
-
 /*TDomainAPI 用户、接口、数据访问控制表 represents assessuser.t_domain_api */
 type TDomainAPI struct {
 	ID          null.Int    `json:"ID,omitempty" db:"id,true,integer"`                               /* id 权限编码 */
@@ -1747,7 +1420,7 @@ type TDomainAPI struct {
 	Addi       types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                 /* addi 附加信息 */
 	Remark     null.String    `json:"Remark,omitempty" db:"remark,false,character varying"` /* remark 备注 */
 	Status     null.String    `json:"Status,omitempty" db:"status,false,character varying"` /* status 状态，00：草稿，01：有效，02：作废 */
-	Filter                                                                                  // build DML where clause
+	Filter     `json:"-"`     // build DML where clause
 }
 
 // TDomainAPIFields full field list for default query
@@ -1883,49 +1556,11 @@ func GetTDomainAPIByPk(db Queryer, pk0 null.Int) (*TDomainAPI, error) {
 	return &r, nil
 }
 
-// GetTDomainAPIReflectValuesMap returns a map of field names to their values.
-//
-// key is the tag name, value is the field value.
-// This is useful for reflection and dynamic queries.
-func (r *TDomainAPI) GetTDomainAPIReflectValuesMap() (map[string]any, error) {
-
-	values := make(map[string]any)
-	v := reflect.ValueOf(r).Elem()
-	t := v.Type()
-	for i := range v.NumField() {
-		field := t.Field(i)
-		tag := field.Tag.Get("db")
-		if tag == "" {
-			return nil, errors.Errorf("missing db tag for field %s in table t_domain_api", field.Name)
-		}
-
-		columnName := strings.Split(tag, ",")[0]
-		if columnName == "" {
-			return nil, errors.Errorf("missing column name for field %s in table t_domain_api", field.Name)
-		}
-
-		fieldValue := reflect.ValueOf(r).Elem().Field(i)
-		if !fieldValue.IsValid() {
-			return nil, errors.Errorf("invalid field value for field %s in table t_domain_api", field.Name)
-		}
-
-		if !fieldValue.CanAddr() {
-			return nil, errors.Errorf("cannot read field value for field %s in table t_domain_api", field.Name)
-		}
-
-		values[columnName] = fieldValue.Addr().Interface()
-	}
-
-	return values, nil
-}
-
-/*
-TDomainAsset define
+/*TDomainAsset define
 
 user domain relation
 domain api relation
-other relation represents assessuser.t_domain_asset
-*/
+other relation represents assessuser.t_domain_asset */
 type TDomainAsset struct {
 	ID          null.Int    `json:"ID,omitempty" db:"id,true,integer"`                               /* id id */
 	RType       string      `json:"RType,omitempty" db:"r_type,false,character varying"`             /* r_type 关系类型, ud: user of domain, da: API of domain */
@@ -1955,7 +1590,7 @@ type TDomainAsset struct {
 	Addi       types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                 /* addi 附加信息 */
 	Remark     null.String    `json:"Remark,omitempty" db:"remark,false,character varying"` /* remark 备注 */
 	Status     null.String    `json:"Status,omitempty" db:"status,false,character varying"` /* status 状态，00：草稿，01：有效，02：作废 */
-	Filter                                                                                  // build DML where clause
+	Filter     `json:"-"`     // build DML where clause
 }
 
 // TDomainAssetFields full field list for default query
@@ -2096,42 +1731,6 @@ func GetTDomainAssetByPk(db Queryer, pk0 null.Int) (*TDomainAsset, error) {
 	return &r, nil
 }
 
-// GetTDomainAssetReflectValuesMap returns a map of field names to their values.
-//
-// key is the tag name, value is the field value.
-// This is useful for reflection and dynamic queries.
-func (r *TDomainAsset) GetTDomainAssetReflectValuesMap() (map[string]any, error) {
-
-	values := make(map[string]any)
-	v := reflect.ValueOf(r).Elem()
-	t := v.Type()
-	for i := range v.NumField() {
-		field := t.Field(i)
-		tag := field.Tag.Get("db")
-		if tag == "" {
-			return nil, errors.Errorf("missing db tag for field %s in table t_domain_asset", field.Name)
-		}
-
-		columnName := strings.Split(tag, ",")[0]
-		if columnName == "" {
-			return nil, errors.Errorf("missing column name for field %s in table t_domain_asset", field.Name)
-		}
-
-		fieldValue := reflect.ValueOf(r).Elem().Field(i)
-		if !fieldValue.IsValid() {
-			return nil, errors.Errorf("invalid field value for field %s in table t_domain_asset", field.Name)
-		}
-
-		if !fieldValue.CanAddr() {
-			return nil, errors.Errorf("cannot read field value for field %s in table t_domain_asset", field.Name)
-		}
-
-		values[columnName] = fieldValue.Addr().Interface()
-	}
-
-	return values, nil
-}
-
 /*TExamAttachmentTransfer t_exam_attachment_transfer represents assessuser.t_exam_attachment_transfer */
 type TExamAttachmentTransfer struct {
 	ID                     null.Int       `json:"ID,omitempty" db:"id,true,integer"`                                                      /* id id */
@@ -2145,7 +1744,7 @@ type TExamAttachmentTransfer struct {
 	Status                 null.String    `json:"Status,omitempty" db:"status,false,character varying"`                                   /* status 状态 */
 	Addi                   types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                                                   /* addi 额外信息 */
 	AnswerTransferStatus   null.String    `json:"AnswerTransferStatus,omitempty" db:"answer_transfer_status,false,character varying"`     /* answer_transfer_status 答案附件传输状态：00 待传输 02 传输中 04 传输完成 06 传输失败 */
-	Filter                                                                                                                                // build DML where clause
+	Filter                 `json:"-"`     // build DML where clause
 }
 
 // TExamAttachmentTransferFields full field list for default query
@@ -2266,42 +1865,6 @@ func GetTExamAttachmentTransferByPk(db Queryer, pk0 null.Int) (*TExamAttachmentT
 	return &r, nil
 }
 
-// GetTExamAttachmentTransferReflectValuesMap returns a map of field names to their values.
-//
-// key is the tag name, value is the field value.
-// This is useful for reflection and dynamic queries.
-func (r *TExamAttachmentTransfer) GetTExamAttachmentTransferReflectValuesMap() (map[string]any, error) {
-
-	values := make(map[string]any)
-	v := reflect.ValueOf(r).Elem()
-	t := v.Type()
-	for i := range v.NumField() {
-		field := t.Field(i)
-		tag := field.Tag.Get("db")
-		if tag == "" {
-			return nil, errors.Errorf("missing db tag for field %s in table t_exam_attachment_transfer", field.Name)
-		}
-
-		columnName := strings.Split(tag, ",")[0]
-		if columnName == "" {
-			return nil, errors.Errorf("missing column name for field %s in table t_exam_attachment_transfer", field.Name)
-		}
-
-		fieldValue := reflect.ValueOf(r).Elem().Field(i)
-		if !fieldValue.IsValid() {
-			return nil, errors.Errorf("invalid field value for field %s in table t_exam_attachment_transfer", field.Name)
-		}
-
-		if !fieldValue.CanAddr() {
-			return nil, errors.Errorf("cannot read field value for field %s in table t_exam_attachment_transfer", field.Name)
-		}
-
-		values[columnName] = fieldValue.Addr().Interface()
-	}
-
-	return values, nil
-}
-
 /*TExamInfo t_exam_info represents assessuser.t_exam_info */
 type TExamInfo struct {
 	ID                 null.Int       `json:"ID,omitempty" db:"id,true,integer"`                                              /* id 考试编号 */
@@ -2323,7 +1886,7 @@ type TExamInfo struct {
 	ExamDeliveryError        null.String    `json:"ExamDeliveryError,omitempty" db:"exam_delivery_error,false,character varying"`    /* exam_delivery_error 下发考卷失败的报错信息 */
 	CreateTime               null.Int       `json:"CreateTime,omitempty" db:"create_time,false,bigint"`                              /* create_time 创建时间 */
 	UpdateTime               null.Int       `json:"UpdateTime,omitempty" db:"update_time,false,bigint"`                              /* update_time update_time */
-	Filter                                                                                                                           // build DML where clause
+	Filter                   `json:"-"`     // build DML where clause
 }
 
 // TExamInfoFields full field list for default query
@@ -2474,42 +2037,6 @@ func GetTExamInfoByPk(db Queryer, pk0 null.Int) (*TExamInfo, error) {
 	return &r, nil
 }
 
-// GetTExamInfoReflectValuesMap returns a map of field names to their values.
-//
-// key is the tag name, value is the field value.
-// This is useful for reflection and dynamic queries.
-func (r *TExamInfo) GetTExamInfoReflectValuesMap() (map[string]any, error) {
-
-	values := make(map[string]any)
-	v := reflect.ValueOf(r).Elem()
-	t := v.Type()
-	for i := range v.NumField() {
-		field := t.Field(i)
-		tag := field.Tag.Get("db")
-		if tag == "" {
-			return nil, errors.Errorf("missing db tag for field %s in table t_exam_info", field.Name)
-		}
-
-		columnName := strings.Split(tag, ",")[0]
-		if columnName == "" {
-			return nil, errors.Errorf("missing column name for field %s in table t_exam_info", field.Name)
-		}
-
-		fieldValue := reflect.ValueOf(r).Elem().Field(i)
-		if !fieldValue.IsValid() {
-			return nil, errors.Errorf("invalid field value for field %s in table t_exam_info", field.Name)
-		}
-
-		if !fieldValue.CanAddr() {
-			return nil, errors.Errorf("cannot read field value for field %s in table t_exam_info", field.Name)
-		}
-
-		values[columnName] = fieldValue.Addr().Interface()
-	}
-
-	return values, nil
-}
-
 /*TExamPaper t_exam_paper represents assessuser.t_exam_paper */
 type TExamPaper struct {
 	ID            null.Int       `json:"ID,omitempty" db:"id,true,integer"`                         /* id 考卷ID */
@@ -2522,7 +2049,7 @@ type TExamPaper struct {
 	UpdateTime    null.Int       `json:"UpdateTime,omitempty" db:"update_time,false,bigint"`        /* update_time 更新时间 */
 	Addi          types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                      /* addi 附加信息 */
 	Status        null.String    `json:"Status,omitempty" db:"status,false,character varying"`      /* status 状态 00：使用中，02：归档，04：废弃 */
-	Filter                                                                                          // build DML where clause
+	Filter        `json:"-"`     // build DML where clause
 }
 
 // TExamPaperFields full field list for default query
@@ -2638,42 +2165,6 @@ func GetTExamPaperByPk(db Queryer, pk0 null.Int) (*TExamPaper, error) {
 	return &r, nil
 }
 
-// GetTExamPaperReflectValuesMap returns a map of field names to their values.
-//
-// key is the tag name, value is the field value.
-// This is useful for reflection and dynamic queries.
-func (r *TExamPaper) GetTExamPaperReflectValuesMap() (map[string]any, error) {
-
-	values := make(map[string]any)
-	v := reflect.ValueOf(r).Elem()
-	t := v.Type()
-	for i := range v.NumField() {
-		field := t.Field(i)
-		tag := field.Tag.Get("db")
-		if tag == "" {
-			return nil, errors.Errorf("missing db tag for field %s in table t_exam_paper", field.Name)
-		}
-
-		columnName := strings.Split(tag, ",")[0]
-		if columnName == "" {
-			return nil, errors.Errorf("missing column name for field %s in table t_exam_paper", field.Name)
-		}
-
-		fieldValue := reflect.ValueOf(r).Elem().Field(i)
-		if !fieldValue.IsValid() {
-			return nil, errors.Errorf("invalid field value for field %s in table t_exam_paper", field.Name)
-		}
-
-		if !fieldValue.CanAddr() {
-			return nil, errors.Errorf("cannot read field value for field %s in table t_exam_paper", field.Name)
-		}
-
-		values[columnName] = fieldValue.Addr().Interface()
-	}
-
-	return values, nil
-}
-
 /*TExamPaperGroup 学生考卷题组 represents assessuser.t_exam_paper_group */
 type TExamPaperGroup struct {
 	ID          null.Int       `json:"ID,omitempty" db:"id,true,integer"`                     /* id 答卷题组id */
@@ -2686,7 +2177,7 @@ type TExamPaperGroup struct {
 	UpdateTime  null.Int       `json:"UpdateTime,omitempty" db:"update_time,false,bigint"`    /* update_time 更新时间 */
 	Addi        types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                  /* addi 附加信息 */
 	Status      null.String    `json:"Status,omitempty" db:"status,false,character varying"`  /* status 状态 00：正常， 02：异常 */
-	Filter                                                                                    // build DML where clause
+	Filter      `json:"-"`     // build DML where clause
 }
 
 // TExamPaperGroupFields full field list for default query
@@ -2802,42 +2293,6 @@ func GetTExamPaperGroupByPk(db Queryer, pk0 null.Int) (*TExamPaperGroup, error) 
 	return &r, nil
 }
 
-// GetTExamPaperGroupReflectValuesMap returns a map of field names to their values.
-//
-// key is the tag name, value is the field value.
-// This is useful for reflection and dynamic queries.
-func (r *TExamPaperGroup) GetTExamPaperGroupReflectValuesMap() (map[string]any, error) {
-
-	values := make(map[string]any)
-	v := reflect.ValueOf(r).Elem()
-	t := v.Type()
-	for i := range v.NumField() {
-		field := t.Field(i)
-		tag := field.Tag.Get("db")
-		if tag == "" {
-			return nil, errors.Errorf("missing db tag for field %s in table t_exam_paper_group", field.Name)
-		}
-
-		columnName := strings.Split(tag, ",")[0]
-		if columnName == "" {
-			return nil, errors.Errorf("missing column name for field %s in table t_exam_paper_group", field.Name)
-		}
-
-		fieldValue := reflect.ValueOf(r).Elem().Field(i)
-		if !fieldValue.IsValid() {
-			return nil, errors.Errorf("invalid field value for field %s in table t_exam_paper_group", field.Name)
-		}
-
-		if !fieldValue.CanAddr() {
-			return nil, errors.Errorf("cannot read field value for field %s in table t_exam_paper_group", field.Name)
-		}
-
-		values[columnName] = fieldValue.Addr().Interface()
-	}
-
-	return values, nil
-}
-
 /*TExamPaperQuestion t_exam_paper_question represents assessuser.t_exam_paper_question */
 type TExamPaperQuestion struct {
 	ID                      null.Int       `json:"ID,omitempty" db:"id,true,integer"`                                            /* id 考卷题目ID */
@@ -2864,7 +2319,7 @@ type TExamPaperQuestion struct {
 	Order                   null.Int       `json:"Order,omitempty" db:"order,false,integer"`                                     /* order 原始考卷的题目顺序 */
 	GroupID                 null.Int       `json:"GroupID,omitempty" db:"group_id,false,bigint"`                                 /* group_id 题目所属题组ID */
 	QuestionAttachmentsPath types.JSONText `json:"QuestionAttachmentsPath,omitempty" db:"question_attachments_path,false,jsonb"` /* question_attachments_path 题目附件url数组 */
-	Filter                                                                                                                       // build DML where clause
+	Filter                  `json:"-"`     // build DML where clause
 }
 
 // TExamPaperQuestionFields full field list for default query
@@ -3050,56 +2505,20 @@ func GetTExamPaperQuestionByPk(db Queryer, pk0 null.Int) (*TExamPaperQuestion, e
 	return &r, nil
 }
 
-// GetTExamPaperQuestionReflectValuesMap returns a map of field names to their values.
-//
-// key is the tag name, value is the field value.
-// This is useful for reflection and dynamic queries.
-func (r *TExamPaperQuestion) GetTExamPaperQuestionReflectValuesMap() (map[string]any, error) {
-
-	values := make(map[string]any)
-	v := reflect.ValueOf(r).Elem()
-	t := v.Type()
-	for i := range v.NumField() {
-		field := t.Field(i)
-		tag := field.Tag.Get("db")
-		if tag == "" {
-			return nil, errors.Errorf("missing db tag for field %s in table t_exam_paper_question", field.Name)
-		}
-
-		columnName := strings.Split(tag, ",")[0]
-		if columnName == "" {
-			return nil, errors.Errorf("missing column name for field %s in table t_exam_paper_question", field.Name)
-		}
-
-		fieldValue := reflect.ValueOf(r).Elem().Field(i)
-		if !fieldValue.IsValid() {
-			return nil, errors.Errorf("invalid field value for field %s in table t_exam_paper_question", field.Name)
-		}
-
-		if !fieldValue.CanAddr() {
-			return nil, errors.Errorf("cannot read field value for field %s in table t_exam_paper_question", field.Name)
-		}
-
-		values[columnName] = fieldValue.Addr().Interface()
-	}
-
-	return values, nil
-}
-
 /*TExamRecord t_exam_record represents assessuser.t_exam_record */
 type TExamRecord struct {
-	ID          null.Int       `json:"ID,omitempty" db:"id,true,integer"`                                       /* id 记录ID */
-	ExamRoom    null.Int       `json:"ExamRoom,omitempty" db:"exam_room,false,bigint"`                          /* exam_room 考场ID */
-	ExamSession null.Int       `json:"ExamSession,omitempty" db:"exam_session,false,bigint"`                    /* exam_session 考试场次ID */
-	Content     null.String    `json:"Content,omitempty" db:"content,false,character varying"`                  /* content 记录内容 */
-	BasicEval   null.String    `json:"BasicEval,omitempty" db:"basic_eval,false,character varying"`             /* basic_eval 基本情况评估 00: 良好 02: 一般 04: 较差 */
-	Creator     null.Int       `json:"Creator,omitempty" db:"creator,false,bigint"`                             /* creator 创建者 */
-	CreateTime  null.Int       `json:"CreateTime,omitempty" db:"create_time,false,timestamp without time zone"` /* create_time 创建时间 */
-	UpdatedBy   null.Int       `json:"UpdatedBy,omitempty" db:"updated_by,false,bigint"`                        /* updated_by 最近一次的更新者 */
-	UpdateTime  null.Int       `json:"UpdateTime,omitempty" db:"update_time,false,timestamp without time zone"` /* update_time 最近一次更新的时间 */
-	Addi        types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                                    /* addi 附加信息 */
-	Status      null.String    `json:"Status,omitempty" db:"status,false,character varying"`                    /* status 状态码 00:正常 02:失效(删除) */
-	Filter                                                                                                      // build DML where clause
+	ID          null.Int       `json:"ID,omitempty" db:"id,true,integer"`                           /* id 记录ID */
+	ExamRoom    null.Int       `json:"ExamRoom,omitempty" db:"exam_room,false,bigint"`              /* exam_room 考场ID */
+	ExamSession null.Int       `json:"ExamSession,omitempty" db:"exam_session,false,bigint"`        /* exam_session 考试场次ID */
+	Content     null.String    `json:"Content,omitempty" db:"content,false,character varying"`      /* content 记录内容 */
+	BasicEval   null.String    `json:"BasicEval,omitempty" db:"basic_eval,false,character varying"` /* basic_eval 基本情况评估 00: 良好 02: 一般 04: 较差 */
+	Creator     null.Int       `json:"Creator,omitempty" db:"creator,false,bigint"`                 /* creator 创建者 */
+	UpdatedBy   null.Int       `json:"UpdatedBy,omitempty" db:"updated_by,false,bigint"`            /* updated_by 最近一次的更新者 */
+	Addi        types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                        /* addi 附加信息 */
+	Status      null.String    `json:"Status,omitempty" db:"status,false,character varying"`        /* status 状态码 00:正常 02:失效(删除) */
+	CreateTime  null.Int       `json:"CreateTime,omitempty" db:"create_time,false,bigint"`          /* create_time create_time */
+	UpdateTime  null.Int       `json:"UpdateTime,omitempty" db:"update_time,false,bigint"`          /* update_time update_time */
+	Filter      `json:"-"`     // build DML where clause
 }
 
 // TExamRecordFields full field list for default query
@@ -3110,11 +2529,11 @@ var TExamRecordFields = []string{
 	"Content",
 	"BasicEval",
 	"Creator",
-	"CreateTime",
 	"UpdatedBy",
-	"UpdateTime",
 	"Addi",
 	"Status",
+	"CreateTime",
+	"UpdateTime",
 }
 
 // TExamRecordColumns full column list for default query
@@ -3125,11 +2544,11 @@ var TExamRecordColumns = []string{
 	"content",
 	"basic_eval",
 	"creator",
-	"create_time",
 	"updated_by",
-	"update_time",
 	"addi",
 	"status",
+	"create_time",
+	"update_time",
 }
 
 // TExamRecordColumnsDataTypes full column data types for default query
@@ -3140,11 +2559,11 @@ var TExamRecordColumnsDataTypes = map[string]string{
 	"content":      "character varying",
 	"basic_eval":   "character varying",
 	"creator":      "bigint",
-	"create_time":  "timestamp without time zone",
 	"updated_by":   "bigint",
-	"update_time":  "timestamp without time zone",
 	"addi":         "jsonb",
 	"status":       "character varying",
+	"create_time":  "bigint",
+	"update_time":  "bigint",
 }
 
 // GetFieldsMap returns a map of field names to their values.
@@ -3156,11 +2575,11 @@ func (r *TExamRecord) GetFieldsMap() map[string]any {
 		"Content":     r.Content,
 		"BasicEval":   r.BasicEval,
 		"Creator":     r.Creator,
-		"CreateTime":  r.CreateTime,
 		"UpdatedBy":   r.UpdatedBy,
-		"UpdateTime":  r.UpdateTime,
 		"Addi":        r.Addi,
 		"Status":      r.Status,
+		"CreateTime":  r.CreateTime,
+		"UpdateTime":  r.UpdateTime,
 	}
 }
 
@@ -3173,11 +2592,11 @@ func (r *TExamRecord) GetColumnsMap() map[string]any {
 		"content":      r.Content,
 		"basic_eval":   r.BasicEval,
 		"creator":      r.Creator,
-		"create_time":  r.CreateTime,
 		"updated_by":   r.UpdatedBy,
-		"update_time":  r.UpdateTime,
 		"addi":         r.Addi,
 		"status":       r.Status,
+		"create_time":  r.CreateTime,
+		"update_time":  r.UpdateTime,
 	}
 }
 
@@ -3199,8 +2618,8 @@ func (r *TExamRecord) GetTableName() string {
 // Create inserts the TExamRecord to the database.
 func (r *TExamRecord) Create(db Queryer) error {
 	err := db.QueryRow(
-		`INSERT INTO t_exam_record (exam_room, exam_session, content, basic_eval, creator, create_time, updated_by, update_time, addi, status) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id`,
-		&r.ExamRoom, &r.ExamSession, &r.Content, &r.BasicEval, &r.Creator, &r.CreateTime, &r.UpdatedBy, &r.UpdateTime, &r.Addi, &r.Status).Scan(&r.ID)
+		`INSERT INTO t_exam_record (exam_room, exam_session, content, basic_eval, creator, updated_by, addi, status, create_time, update_time) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id`,
+		&r.ExamRoom, &r.ExamSession, &r.Content, &r.BasicEval, &r.Creator, &r.UpdatedBy, &r.Addi, &r.Status, &r.CreateTime, &r.UpdateTime).Scan(&r.ID)
 	if err != nil {
 		return errors.Wrap(err, "failed to insert t_exam_record")
 	}
@@ -3212,63 +2631,27 @@ func GetTExamRecordByPk(db Queryer, pk0 null.Int) (*TExamRecord, error) {
 
 	var r TExamRecord
 	err := db.QueryRow(
-		`SELECT id, exam_room, exam_session, content, basic_eval, creator, create_time, updated_by, update_time, addi, status FROM t_exam_record WHERE id = $1`,
-		pk0).Scan(&r.ID, &r.ExamRoom, &r.ExamSession, &r.Content, &r.BasicEval, &r.Creator, &r.CreateTime, &r.UpdatedBy, &r.UpdateTime, &r.Addi, &r.Status)
+		`SELECT id, exam_room, exam_session, content, basic_eval, creator, updated_by, addi, status, create_time, update_time FROM t_exam_record WHERE id = $1`,
+		pk0).Scan(&r.ID, &r.ExamRoom, &r.ExamSession, &r.Content, &r.BasicEval, &r.Creator, &r.UpdatedBy, &r.Addi, &r.Status, &r.CreateTime, &r.UpdateTime)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to select t_exam_record")
 	}
 	return &r, nil
 }
 
-// GetTExamRecordReflectValuesMap returns a map of field names to their values.
-//
-// key is the tag name, value is the field value.
-// This is useful for reflection and dynamic queries.
-func (r *TExamRecord) GetTExamRecordReflectValuesMap() (map[string]any, error) {
-
-	values := make(map[string]any)
-	v := reflect.ValueOf(r).Elem()
-	t := v.Type()
-	for i := range v.NumField() {
-		field := t.Field(i)
-		tag := field.Tag.Get("db")
-		if tag == "" {
-			return nil, errors.Errorf("missing db tag for field %s in table t_exam_record", field.Name)
-		}
-
-		columnName := strings.Split(tag, ",")[0]
-		if columnName == "" {
-			return nil, errors.Errorf("missing column name for field %s in table t_exam_record", field.Name)
-		}
-
-		fieldValue := reflect.ValueOf(r).Elem().Field(i)
-		if !fieldValue.IsValid() {
-			return nil, errors.Errorf("invalid field value for field %s in table t_exam_record", field.Name)
-		}
-
-		if !fieldValue.CanAddr() {
-			return nil, errors.Errorf("cannot read field value for field %s in table t_exam_record", field.Name)
-		}
-
-		values[columnName] = fieldValue.Addr().Interface()
-	}
-
-	return values, nil
-}
-
 /*TExamRoom t_exam_room represents assessuser.t_exam_room */
 type TExamRoom struct {
-	ID         null.Int       `json:"ID,omitempty" db:"id,true,integer"`                                       /* id 考场编号 */
-	ExamSite   null.Int       `json:"ExamSite,omitempty" db:"exam_site,false,bigint"`                          /* exam_site 考点编号 */
-	Name       null.String    `json:"Name,omitempty" db:"name,false,character varying"`                        /* name 考场名字 */
-	Capacity   null.Int       `json:"Capacity,omitempty" db:"capacity,false,integer"`                          /* capacity 考场容量 */
-	Creator    null.Int       `json:"Creator,omitempty" db:"creator,false,bigint"`                             /* creator 创建者 */
-	CreateTime null.Int       `json:"CreateTime,omitempty" db:"create_time,false,timestamp without time zone"` /* create_time 创建时间 */
-	UpdatedBy  null.Int       `json:"UpdatedBy,omitempty" db:"updated_by,false,bigint"`                        /* updated_by 更新者 */
-	UpdateTime null.Int       `json:"UpdateTime,omitempty" db:"update_time,false,timestamp without time zone"` /* update_time 更新时间 */
-	Status     null.String    `json:"Status,omitempty" db:"status,false,character varying"`                    /* status 考场状态 00：正常 02：故障 04：占用 06：已删除 */
-	Addi       types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                                    /* addi 附加信息 */
-	Filter                                                                                                     // build DML where clause
+	ID         null.Int       `json:"ID,omitempty" db:"id,true,integer"`                    /* id 考场编号 */
+	ExamSite   null.Int       `json:"ExamSite,omitempty" db:"exam_site,false,bigint"`       /* exam_site 考点编号 */
+	Name       null.String    `json:"Name,omitempty" db:"name,false,character varying"`     /* name 考场名字 */
+	Capacity   null.Int       `json:"Capacity,omitempty" db:"capacity,false,integer"`       /* capacity 考场容量 */
+	Creator    null.Int       `json:"Creator,omitempty" db:"creator,false,bigint"`          /* creator 创建者 */
+	UpdatedBy  null.Int       `json:"UpdatedBy,omitempty" db:"updated_by,false,bigint"`     /* updated_by 更新者 */
+	Status     null.String    `json:"Status,omitempty" db:"status,false,character varying"` /* status 考场状态 00：正常 02：故障 04：占用 06：已删除 */
+	Addi       types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                 /* addi 附加信息 */
+	CreateTime null.Int       `json:"CreateTime,omitempty" db:"create_time,false,bigint"`   /* create_time create_time */
+	UpdateTime null.Int       `json:"UpdateTime,omitempty" db:"update_time,false,bigint"`   /* update_time update_time */
+	Filter     `json:"-"`     // build DML where clause
 }
 
 // TExamRoomFields full field list for default query
@@ -3278,11 +2661,11 @@ var TExamRoomFields = []string{
 	"Name",
 	"Capacity",
 	"Creator",
-	"CreateTime",
 	"UpdatedBy",
-	"UpdateTime",
 	"Status",
 	"Addi",
+	"CreateTime",
+	"UpdateTime",
 }
 
 // TExamRoomColumns full column list for default query
@@ -3292,11 +2675,11 @@ var TExamRoomColumns = []string{
 	"name",
 	"capacity",
 	"creator",
-	"create_time",
 	"updated_by",
-	"update_time",
 	"status",
 	"addi",
+	"create_time",
+	"update_time",
 }
 
 // TExamRoomColumnsDataTypes full column data types for default query
@@ -3306,11 +2689,11 @@ var TExamRoomColumnsDataTypes = map[string]string{
 	"name":        "character varying",
 	"capacity":    "integer",
 	"creator":     "bigint",
-	"create_time": "timestamp without time zone",
 	"updated_by":  "bigint",
-	"update_time": "timestamp without time zone",
 	"status":      "character varying",
 	"addi":        "jsonb",
+	"create_time": "bigint",
+	"update_time": "bigint",
 }
 
 // GetFieldsMap returns a map of field names to their values.
@@ -3321,11 +2704,11 @@ func (r *TExamRoom) GetFieldsMap() map[string]any {
 		"Name":       r.Name,
 		"Capacity":   r.Capacity,
 		"Creator":    r.Creator,
-		"CreateTime": r.CreateTime,
 		"UpdatedBy":  r.UpdatedBy,
-		"UpdateTime": r.UpdateTime,
 		"Status":     r.Status,
 		"Addi":       r.Addi,
+		"CreateTime": r.CreateTime,
+		"UpdateTime": r.UpdateTime,
 	}
 }
 
@@ -3337,11 +2720,11 @@ func (r *TExamRoom) GetColumnsMap() map[string]any {
 		"name":        r.Name,
 		"capacity":    r.Capacity,
 		"creator":     r.Creator,
-		"create_time": r.CreateTime,
 		"updated_by":  r.UpdatedBy,
-		"update_time": r.UpdateTime,
 		"status":      r.Status,
 		"addi":        r.Addi,
+		"create_time": r.CreateTime,
+		"update_time": r.UpdateTime,
 	}
 }
 
@@ -3363,8 +2746,8 @@ func (r *TExamRoom) GetTableName() string {
 // Create inserts the TExamRoom to the database.
 func (r *TExamRoom) Create(db Queryer) error {
 	err := db.QueryRow(
-		`INSERT INTO t_exam_room (exam_site, name, capacity, creator, create_time, updated_by, update_time, status, addi) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
-		&r.ExamSite, &r.Name, &r.Capacity, &r.Creator, &r.CreateTime, &r.UpdatedBy, &r.UpdateTime, &r.Status, &r.Addi).Scan(&r.ID)
+		`INSERT INTO t_exam_room (exam_site, name, capacity, creator, updated_by, status, addi, create_time, update_time) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
+		&r.ExamSite, &r.Name, &r.Capacity, &r.Creator, &r.UpdatedBy, &r.Status, &r.Addi, &r.CreateTime, &r.UpdateTime).Scan(&r.ID)
 	if err != nil {
 		return errors.Wrap(err, "failed to insert t_exam_room")
 	}
@@ -3376,48 +2759,12 @@ func GetTExamRoomByPk(db Queryer, pk0 null.Int) (*TExamRoom, error) {
 
 	var r TExamRoom
 	err := db.QueryRow(
-		`SELECT id, exam_site, name, capacity, creator, create_time, updated_by, update_time, status, addi FROM t_exam_room WHERE id = $1`,
-		pk0).Scan(&r.ID, &r.ExamSite, &r.Name, &r.Capacity, &r.Creator, &r.CreateTime, &r.UpdatedBy, &r.UpdateTime, &r.Status, &r.Addi)
+		`SELECT id, exam_site, name, capacity, creator, updated_by, status, addi, create_time, update_time FROM t_exam_room WHERE id = $1`,
+		pk0).Scan(&r.ID, &r.ExamSite, &r.Name, &r.Capacity, &r.Creator, &r.UpdatedBy, &r.Status, &r.Addi, &r.CreateTime, &r.UpdateTime)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to select t_exam_room")
 	}
 	return &r, nil
-}
-
-// GetTExamRoomReflectValuesMap returns a map of field names to their values.
-//
-// key is the tag name, value is the field value.
-// This is useful for reflection and dynamic queries.
-func (r *TExamRoom) GetTExamRoomReflectValuesMap() (map[string]any, error) {
-
-	values := make(map[string]any)
-	v := reflect.ValueOf(r).Elem()
-	t := v.Type()
-	for i := range v.NumField() {
-		field := t.Field(i)
-		tag := field.Tag.Get("db")
-		if tag == "" {
-			return nil, errors.Errorf("missing db tag for field %s in table t_exam_room", field.Name)
-		}
-
-		columnName := strings.Split(tag, ",")[0]
-		if columnName == "" {
-			return nil, errors.Errorf("missing column name for field %s in table t_exam_room", field.Name)
-		}
-
-		fieldValue := reflect.ValueOf(r).Elem().Field(i)
-		if !fieldValue.IsValid() {
-			return nil, errors.Errorf("invalid field value for field %s in table t_exam_room", field.Name)
-		}
-
-		if !fieldValue.CanAddr() {
-			return nil, errors.Errorf("cannot read field value for field %s in table t_exam_room", field.Name)
-		}
-
-		values[columnName] = fieldValue.Addr().Interface()
-	}
-
-	return values, nil
 }
 
 /*TExamSession t_exam_session represents assessuser.t_exam_session */
@@ -3447,7 +2794,7 @@ type TExamSession struct {
 	UpdateTime           null.Int       `json:"UpdateTime,omitempty" db:"update_time,false,bigint"`                                 /* update_time 更新时间 */
 	StartTime            null.Int       `json:"StartTime,omitempty" db:"start_time,false,bigint"`                                   /* start_time 考试开始时间 */
 	EndTime              null.Int       `json:"EndTime,omitempty" db:"end_time,false,bigint"`                                       /* end_time 考试结束时间 */
-	Filter                                                                                                                          // build DML where clause
+	Filter               `json:"-"`     // build DML where clause
 }
 
 // TExamSessionFields full field list for default query
@@ -3638,56 +2985,20 @@ func GetTExamSessionByPk(db Queryer, pk0 null.Int) (*TExamSession, error) {
 	return &r, nil
 }
 
-// GetTExamSessionReflectValuesMap returns a map of field names to their values.
-//
-// key is the tag name, value is the field value.
-// This is useful for reflection and dynamic queries.
-func (r *TExamSession) GetTExamSessionReflectValuesMap() (map[string]any, error) {
-
-	values := make(map[string]any)
-	v := reflect.ValueOf(r).Elem()
-	t := v.Type()
-	for i := range v.NumField() {
-		field := t.Field(i)
-		tag := field.Tag.Get("db")
-		if tag == "" {
-			return nil, errors.Errorf("missing db tag for field %s in table t_exam_session", field.Name)
-		}
-
-		columnName := strings.Split(tag, ",")[0]
-		if columnName == "" {
-			return nil, errors.Errorf("missing column name for field %s in table t_exam_session", field.Name)
-		}
-
-		fieldValue := reflect.ValueOf(r).Elem().Field(i)
-		if !fieldValue.IsValid() {
-			return nil, errors.Errorf("invalid field value for field %s in table t_exam_session", field.Name)
-		}
-
-		if !fieldValue.CanAddr() {
-			return nil, errors.Errorf("cannot read field value for field %s in table t_exam_session", field.Name)
-		}
-
-		values[columnName] = fieldValue.Addr().Interface()
-	}
-
-	return values, nil
-}
-
 /*TExamSite t_exam_site represents assessuser.t_exam_site */
 type TExamSite struct {
-	ID         null.Int       `json:"ID,omitempty" db:"id,true,integer"`                                       /* id 考点编号 */
-	Name       null.String    `json:"Name,omitempty" db:"name,false,character varying"`                        /* name 考点名字 */
-	Address    null.String    `json:"Address,omitempty" db:"address,false,character varying"`                  /* address 考点地址 */
-	ServerHost null.String    `json:"ServerHost,omitempty" db:"server_host,false,character varying"`           /* server_host 考点服务器地址(包含端口) */
-	Creator    null.Int       `json:"Creator,omitempty" db:"creator,false,bigint"`                             /* creator 创建者 */
-	CreateTime null.Int       `json:"CreateTime,omitempty" db:"create_time,false,timestamp without time zone"` /* create_time 创建时间 */
-	UpdatedBy  null.Int       `json:"UpdatedBy,omitempty" db:"updated_by,false,bigint"`                        /* updated_by 更新者 */
-	UpdateTime null.Int       `json:"UpdateTime,omitempty" db:"update_time,false,timestamp without time zone"` /* update_time 更新时间 */
-	Status     null.String    `json:"Status,omitempty" db:"status,false,character varying"`                    /* status 考点状态 00：空闲 02：故障 04：删除 */
-	Addi       types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                                    /* addi 附加信息 */
-	Admin      null.Int       `json:"Admin,omitempty" db:"admin,false,bigint"`                                 /* admin 考点负责人 */
-	Filter                                                                                                     // build DML where clause
+	ID         null.Int       `json:"ID,omitempty" db:"id,true,integer"`                             /* id 考点编号 */
+	Name       null.String    `json:"Name,omitempty" db:"name,false,character varying"`              /* name 考点名字 */
+	Address    null.String    `json:"Address,omitempty" db:"address,false,character varying"`        /* address 考点地址 */
+	ServerHost null.String    `json:"ServerHost,omitempty" db:"server_host,false,character varying"` /* server_host 考点服务器地址(包含端口) */
+	Creator    null.Int       `json:"Creator,omitempty" db:"creator,false,bigint"`                   /* creator 创建者 */
+	UpdatedBy  null.Int       `json:"UpdatedBy,omitempty" db:"updated_by,false,bigint"`              /* updated_by 更新者 */
+	Status     null.String    `json:"Status,omitempty" db:"status,false,character varying"`          /* status 考点状态 00：空闲 02：故障 04：删除 */
+	Addi       types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                          /* addi 附加信息 */
+	Admin      null.Int       `json:"Admin,omitempty" db:"admin,false,bigint"`                       /* admin 考点负责人 */
+	CreateTime null.Int       `json:"CreateTime,omitempty" db:"create_time,false,bigint"`            /* create_time create_time */
+	UpdateTime null.Int       `json:"UpdateTime,omitempty" db:"update_time,false,bigint"`            /* update_time update_time */
+	Filter     `json:"-"`     // build DML where clause
 }
 
 // TExamSiteFields full field list for default query
@@ -3697,12 +3008,12 @@ var TExamSiteFields = []string{
 	"Address",
 	"ServerHost",
 	"Creator",
-	"CreateTime",
 	"UpdatedBy",
-	"UpdateTime",
 	"Status",
 	"Addi",
 	"Admin",
+	"CreateTime",
+	"UpdateTime",
 }
 
 // TExamSiteColumns full column list for default query
@@ -3712,12 +3023,12 @@ var TExamSiteColumns = []string{
 	"address",
 	"server_host",
 	"creator",
-	"create_time",
 	"updated_by",
-	"update_time",
 	"status",
 	"addi",
 	"admin",
+	"create_time",
+	"update_time",
 }
 
 // TExamSiteColumnsDataTypes full column data types for default query
@@ -3727,12 +3038,12 @@ var TExamSiteColumnsDataTypes = map[string]string{
 	"address":     "character varying",
 	"server_host": "character varying",
 	"creator":     "bigint",
-	"create_time": "timestamp without time zone",
 	"updated_by":  "bigint",
-	"update_time": "timestamp without time zone",
 	"status":      "character varying",
 	"addi":        "jsonb",
 	"admin":       "bigint",
+	"create_time": "bigint",
+	"update_time": "bigint",
 }
 
 // GetFieldsMap returns a map of field names to their values.
@@ -3743,12 +3054,12 @@ func (r *TExamSite) GetFieldsMap() map[string]any {
 		"Address":    r.Address,
 		"ServerHost": r.ServerHost,
 		"Creator":    r.Creator,
-		"CreateTime": r.CreateTime,
 		"UpdatedBy":  r.UpdatedBy,
-		"UpdateTime": r.UpdateTime,
 		"Status":     r.Status,
 		"Addi":       r.Addi,
 		"Admin":      r.Admin,
+		"CreateTime": r.CreateTime,
+		"UpdateTime": r.UpdateTime,
 	}
 }
 
@@ -3760,12 +3071,12 @@ func (r *TExamSite) GetColumnsMap() map[string]any {
 		"address":     r.Address,
 		"server_host": r.ServerHost,
 		"creator":     r.Creator,
-		"create_time": r.CreateTime,
 		"updated_by":  r.UpdatedBy,
-		"update_time": r.UpdateTime,
 		"status":      r.Status,
 		"addi":        r.Addi,
 		"admin":       r.Admin,
+		"create_time": r.CreateTime,
+		"update_time": r.UpdateTime,
 	}
 }
 
@@ -3787,8 +3098,8 @@ func (r *TExamSite) GetTableName() string {
 // Create inserts the TExamSite to the database.
 func (r *TExamSite) Create(db Queryer) error {
 	err := db.QueryRow(
-		`INSERT INTO t_exam_site (name, address, server_host, creator, create_time, updated_by, update_time, status, addi, admin) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id`,
-		&r.Name, &r.Address, &r.ServerHost, &r.Creator, &r.CreateTime, &r.UpdatedBy, &r.UpdateTime, &r.Status, &r.Addi, &r.Admin).Scan(&r.ID)
+		`INSERT INTO t_exam_site (name, address, server_host, creator, updated_by, status, addi, admin, create_time, update_time) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id`,
+		&r.Name, &r.Address, &r.ServerHost, &r.Creator, &r.UpdatedBy, &r.Status, &r.Addi, &r.Admin, &r.CreateTime, &r.UpdateTime).Scan(&r.ID)
 	if err != nil {
 		return errors.Wrap(err, "failed to insert t_exam_site")
 	}
@@ -3800,48 +3111,12 @@ func GetTExamSiteByPk(db Queryer, pk0 null.Int) (*TExamSite, error) {
 
 	var r TExamSite
 	err := db.QueryRow(
-		`SELECT id, name, address, server_host, creator, create_time, updated_by, update_time, status, addi, admin FROM t_exam_site WHERE id = $1`,
-		pk0).Scan(&r.ID, &r.Name, &r.Address, &r.ServerHost, &r.Creator, &r.CreateTime, &r.UpdatedBy, &r.UpdateTime, &r.Status, &r.Addi, &r.Admin)
+		`SELECT id, name, address, server_host, creator, updated_by, status, addi, admin, create_time, update_time FROM t_exam_site WHERE id = $1`,
+		pk0).Scan(&r.ID, &r.Name, &r.Address, &r.ServerHost, &r.Creator, &r.UpdatedBy, &r.Status, &r.Addi, &r.Admin, &r.CreateTime, &r.UpdateTime)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to select t_exam_site")
 	}
 	return &r, nil
-}
-
-// GetTExamSiteReflectValuesMap returns a map of field names to their values.
-//
-// key is the tag name, value is the field value.
-// This is useful for reflection and dynamic queries.
-func (r *TExamSite) GetTExamSiteReflectValuesMap() (map[string]any, error) {
-
-	values := make(map[string]any)
-	v := reflect.ValueOf(r).Elem()
-	t := v.Type()
-	for i := range v.NumField() {
-		field := t.Field(i)
-		tag := field.Tag.Get("db")
-		if tag == "" {
-			return nil, errors.Errorf("missing db tag for field %s in table t_exam_site", field.Name)
-		}
-
-		columnName := strings.Split(tag, ",")[0]
-		if columnName == "" {
-			return nil, errors.Errorf("missing column name for field %s in table t_exam_site", field.Name)
-		}
-
-		fieldValue := reflect.ValueOf(r).Elem().Field(i)
-		if !fieldValue.IsValid() {
-			return nil, errors.Errorf("invalid field value for field %s in table t_exam_site", field.Name)
-		}
-
-		if !fieldValue.CanAddr() {
-			return nil, errors.Errorf("cannot read field value for field %s in table t_exam_site", field.Name)
-		}
-
-		values[columnName] = fieldValue.Addr().Interface()
-	}
-
-	return values, nil
 }
 
 /*TExaminee t_examinee represents assessuser.t_examinee */
@@ -3858,13 +3133,13 @@ type TExaminee struct {
 	Addi           types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                                  /* addi 附加信息(备注),可以保存考试异常的原因等 */
 	SerialNumber   null.Int       `json:"SerialNumber,omitempty" db:"serial_number,false,integer"`               /* serial_number serial_number */
 	ExamineeNumber null.String    `json:"ExamineeNumber,omitempty" db:"examinee_number,false,character varying"` /* examinee_number 考生准考证号 */
-	ExtraTime      *time.Duration `json:"ExtraTime,omitempty" db:"extra_time,false,interval"`                    /* extra_time 考试延长时间,单位为分钟,考试实际结束时间=当前考试结束时间+延长时间 */
 	ExitCnt        null.Int       `json:"ExitCnt,omitempty" db:"exit_cnt,false,integer"`                         /* exit_cnt 学生退出考试页面的次数 */
 	CreateTime     null.Int       `json:"CreateTime,omitempty" db:"create_time,false,bigint"`                    /* create_time 创建时间 */
 	UpdateTime     null.Int       `json:"UpdateTime,omitempty" db:"update_time,false,bigint"`                    /* update_time 更新时间 */
 	StartTime      null.Int       `json:"StartTime,omitempty" db:"start_time,false,bigint"`                      /* start_time 学生考试开始时间 */
 	EndTime        null.Int       `json:"EndTime,omitempty" db:"end_time,false,bigint"`                          /* end_time 学生结束考试的时间 */
-	Filter                                                                                                       // build DML where clause
+	ExtraTime      null.Int       `json:"ExtraTime,omitempty" db:"extra_time,false,bigint"`                      /* extra_time 延长时间(毫秒) */
+	Filter         `json:"-"`     // build DML where clause
 }
 
 // TExamineeFields full field list for default query
@@ -3881,12 +3156,12 @@ var TExamineeFields = []string{
 	"Addi",
 	"SerialNumber",
 	"ExamineeNumber",
-	"ExtraTime",
 	"ExitCnt",
 	"CreateTime",
 	"UpdateTime",
 	"StartTime",
 	"EndTime",
+	"ExtraTime",
 }
 
 // TExamineeColumns full column list for default query
@@ -3903,12 +3178,12 @@ var TExamineeColumns = []string{
 	"addi",
 	"serial_number",
 	"examinee_number",
-	"extra_time",
 	"exit_cnt",
 	"create_time",
 	"update_time",
 	"start_time",
 	"end_time",
+	"extra_time",
 }
 
 // TExamineeColumnsDataTypes full column data types for default query
@@ -3925,12 +3200,12 @@ var TExamineeColumnsDataTypes = map[string]string{
 	"addi":            "jsonb",
 	"serial_number":   "integer",
 	"examinee_number": "character varying",
-	"extra_time":      "interval",
 	"exit_cnt":        "integer",
 	"create_time":     "bigint",
 	"update_time":     "bigint",
 	"start_time":      "bigint",
 	"end_time":        "bigint",
+	"extra_time":      "bigint",
 }
 
 // GetFieldsMap returns a map of field names to their values.
@@ -3948,12 +3223,12 @@ func (r *TExaminee) GetFieldsMap() map[string]any {
 		"Addi":           r.Addi,
 		"SerialNumber":   r.SerialNumber,
 		"ExamineeNumber": r.ExamineeNumber,
-		"ExtraTime":      r.ExtraTime,
 		"ExitCnt":        r.ExitCnt,
 		"CreateTime":     r.CreateTime,
 		"UpdateTime":     r.UpdateTime,
 		"StartTime":      r.StartTime,
 		"EndTime":        r.EndTime,
+		"ExtraTime":      r.ExtraTime,
 	}
 }
 
@@ -3972,12 +3247,12 @@ func (r *TExaminee) GetColumnsMap() map[string]any {
 		"addi":            r.Addi,
 		"serial_number":   r.SerialNumber,
 		"examinee_number": r.ExamineeNumber,
-		"extra_time":      r.ExtraTime,
 		"exit_cnt":        r.ExitCnt,
 		"create_time":     r.CreateTime,
 		"update_time":     r.UpdateTime,
 		"start_time":      r.StartTime,
 		"end_time":        r.EndTime,
+		"extra_time":      r.ExtraTime,
 	}
 }
 
@@ -3999,8 +3274,8 @@ func (r *TExaminee) GetTableName() string {
 // Create inserts the TExaminee to the database.
 func (r *TExaminee) Create(db Queryer) error {
 	err := db.QueryRow(
-		`INSERT INTO t_examinee (student_id, exam_room, exam_session_id, exam_paper_id, remark, creator, updated_by, status, addi, serial_number, examinee_number, extra_time, exit_cnt, create_time, update_time, start_time, end_time) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17) RETURNING id`,
-		&r.StudentID, &r.ExamRoom, &r.ExamSessionID, &r.ExamPaperID, &r.Remark, &r.Creator, &r.UpdatedBy, &r.Status, &r.Addi, &r.SerialNumber, &r.ExamineeNumber, &r.ExtraTime, &r.ExitCnt, &r.CreateTime, &r.UpdateTime, &r.StartTime, &r.EndTime).Scan(&r.ID)
+		`INSERT INTO t_examinee (student_id, exam_room, exam_session_id, exam_paper_id, remark, creator, updated_by, status, addi, serial_number, examinee_number, exit_cnt, create_time, update_time, start_time, end_time, extra_time) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17) RETURNING id`,
+		&r.StudentID, &r.ExamRoom, &r.ExamSessionID, &r.ExamPaperID, &r.Remark, &r.Creator, &r.UpdatedBy, &r.Status, &r.Addi, &r.SerialNumber, &r.ExamineeNumber, &r.ExitCnt, &r.CreateTime, &r.UpdateTime, &r.StartTime, &r.EndTime, &r.ExtraTime).Scan(&r.ID)
 	if err != nil {
 		return errors.Wrap(err, "failed to insert t_examinee")
 	}
@@ -4012,48 +3287,12 @@ func GetTExamineeByPk(db Queryer, pk0 null.Int) (*TExaminee, error) {
 
 	var r TExaminee
 	err := db.QueryRow(
-		`SELECT id, student_id, exam_room, exam_session_id, exam_paper_id, remark, creator, updated_by, status, addi, serial_number, examinee_number, extra_time, exit_cnt, create_time, update_time, start_time, end_time FROM t_examinee WHERE id = $1`,
-		pk0).Scan(&r.ID, &r.StudentID, &r.ExamRoom, &r.ExamSessionID, &r.ExamPaperID, &r.Remark, &r.Creator, &r.UpdatedBy, &r.Status, &r.Addi, &r.SerialNumber, &r.ExamineeNumber, &r.ExtraTime, &r.ExitCnt, &r.CreateTime, &r.UpdateTime, &r.StartTime, &r.EndTime)
+		`SELECT id, student_id, exam_room, exam_session_id, exam_paper_id, remark, creator, updated_by, status, addi, serial_number, examinee_number, exit_cnt, create_time, update_time, start_time, end_time, extra_time FROM t_examinee WHERE id = $1`,
+		pk0).Scan(&r.ID, &r.StudentID, &r.ExamRoom, &r.ExamSessionID, &r.ExamPaperID, &r.Remark, &r.Creator, &r.UpdatedBy, &r.Status, &r.Addi, &r.SerialNumber, &r.ExamineeNumber, &r.ExitCnt, &r.CreateTime, &r.UpdateTime, &r.StartTime, &r.EndTime, &r.ExtraTime)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to select t_examinee")
 	}
 	return &r, nil
-}
-
-// GetTExamineeReflectValuesMap returns a map of field names to their values.
-//
-// key is the tag name, value is the field value.
-// This is useful for reflection and dynamic queries.
-func (r *TExaminee) GetTExamineeReflectValuesMap() (map[string]any, error) {
-
-	values := make(map[string]any)
-	v := reflect.ValueOf(r).Elem()
-	t := v.Type()
-	for i := range v.NumField() {
-		field := t.Field(i)
-		tag := field.Tag.Get("db")
-		if tag == "" {
-			return nil, errors.Errorf("missing db tag for field %s in table t_examinee", field.Name)
-		}
-
-		columnName := strings.Split(tag, ",")[0]
-		if columnName == "" {
-			return nil, errors.Errorf("missing column name for field %s in table t_examinee", field.Name)
-		}
-
-		fieldValue := reflect.ValueOf(r).Elem().Field(i)
-		if !fieldValue.IsValid() {
-			return nil, errors.Errorf("invalid field value for field %s in table t_examinee", field.Name)
-		}
-
-		if !fieldValue.CanAddr() {
-			return nil, errors.Errorf("cannot read field value for field %s in table t_examinee", field.Name)
-		}
-
-		values[columnName] = fieldValue.Addr().Interface()
-	}
-
-	return values, nil
 }
 
 /*TExpertise 知识能力领域表 represents assessuser.t_expertise */
@@ -4066,7 +3305,7 @@ type TExpertise struct {
 	CreateTime null.Int    `json:"CreateTime,omitempty" db:"create_time,false,bigint"`   /* create_time 创建时间 */
 	UpdateTime null.Int    `json:"UpdateTime,omitempty" db:"update_time,false,bigint"`   /* update_time 更新时间 */
 	Status     null.String `json:"Status,omitempty" db:"status,false,character varying"` /* status 可用，禁用 */
-	Filter                                                                               // build DML where clause
+	Filter     `json:"-"`  // build DML where clause
 }
 
 // TExpertiseFields full field list for default query
@@ -4172,42 +3411,6 @@ func GetTExpertiseByPk(db Queryer, pk0 null.Int) (*TExpertise, error) {
 	return &r, nil
 }
 
-// GetTExpertiseReflectValuesMap returns a map of field names to their values.
-//
-// key is the tag name, value is the field value.
-// This is useful for reflection and dynamic queries.
-func (r *TExpertise) GetTExpertiseReflectValuesMap() (map[string]any, error) {
-
-	values := make(map[string]any)
-	v := reflect.ValueOf(r).Elem()
-	t := v.Type()
-	for i := range v.NumField() {
-		field := t.Field(i)
-		tag := field.Tag.Get("db")
-		if tag == "" {
-			return nil, errors.Errorf("missing db tag for field %s in table t_expertise", field.Name)
-		}
-
-		columnName := strings.Split(tag, ",")[0]
-		if columnName == "" {
-			return nil, errors.Errorf("missing column name for field %s in table t_expertise", field.Name)
-		}
-
-		fieldValue := reflect.ValueOf(r).Elem().Field(i)
-		if !fieldValue.IsValid() {
-			return nil, errors.Errorf("invalid field value for field %s in table t_expertise", field.Name)
-		}
-
-		if !fieldValue.CanAddr() {
-			return nil, errors.Errorf("cannot read field value for field %s in table t_expertise", field.Name)
-		}
-
-		values[columnName] = fieldValue.Addr().Interface()
-	}
-
-	return values, nil
-}
-
 /*TExternalDomainConf 外部系统访问标识 represents assessuser.t_external_domain_conf */
 type TExternalDomainConf struct {
 	ID      null.Int       `json:"ID,omitempty" db:"id,true,integer"`                       /* id 编号 */
@@ -4226,7 +3429,7 @@ type TExternalDomainConf struct {
 	Addi       types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                 /* addi 附加信息 */
 	Remark     null.String    `json:"Remark,omitempty" db:"remark,false,character varying"` /* remark 备注 */
 	Status     null.String    `json:"Status,omitempty" db:"status,false,character varying"` /* status 状态，00：草稿，02：有效，04: 停用，06：作废 */
-	Filter                                                                                  // build DML where clause
+	Filter     `json:"-"`     // build DML where clause
 }
 
 // TExternalDomainConfFields full field list for default query
@@ -4357,42 +3560,6 @@ func GetTExternalDomainConfByPk(db Queryer, pk0 null.Int) (*TExternalDomainConf,
 	return &r, nil
 }
 
-// GetTExternalDomainConfReflectValuesMap returns a map of field names to their values.
-//
-// key is the tag name, value is the field value.
-// This is useful for reflection and dynamic queries.
-func (r *TExternalDomainConf) GetTExternalDomainConfReflectValuesMap() (map[string]any, error) {
-
-	values := make(map[string]any)
-	v := reflect.ValueOf(r).Elem()
-	t := v.Type()
-	for i := range v.NumField() {
-		field := t.Field(i)
-		tag := field.Tag.Get("db")
-		if tag == "" {
-			return nil, errors.Errorf("missing db tag for field %s in table t_external_domain_conf", field.Name)
-		}
-
-		columnName := strings.Split(tag, ",")[0]
-		if columnName == "" {
-			return nil, errors.Errorf("missing column name for field %s in table t_external_domain_conf", field.Name)
-		}
-
-		fieldValue := reflect.ValueOf(r).Elem().Field(i)
-		if !fieldValue.IsValid() {
-			return nil, errors.Errorf("invalid field value for field %s in table t_external_domain_conf", field.Name)
-		}
-
-		if !fieldValue.CanAddr() {
-			return nil, errors.Errorf("cannot read field value for field %s in table t_external_domain_conf", field.Name)
-		}
-
-		values[columnName] = fieldValue.Addr().Interface()
-	}
-
-	return values, nil
-}
-
 /*TExternalDomainUser 第三方平台用户标识 represents assessuser.t_external_domain_user */
 type TExternalDomainUser struct {
 	ID                null.Int       `json:"ID,omitempty" db:"id,true,integer"`                                             /* id 编号 */
@@ -4407,7 +3574,7 @@ type TExternalDomainUser struct {
 	DomainID          null.Int       `json:"DomainID,omitempty" db:"domain_id,false,bigint"`                                /* domain_id 数据隶属 */
 	Addi              types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                                          /* addi 附加信息 */
 	Status            null.String    `json:"Status,omitempty" db:"status,false,character varying"`                          /* status 状态，00：草稿，02：有效，04：禁用，06：作废 */
-	Filter                                                                                                                  // build DML where clause
+	Filter            `json:"-"`     // build DML where clause
 }
 
 // TExternalDomainUserFields full field list for default query
@@ -4533,42 +3700,6 @@ func GetTExternalDomainUserByPk(db Queryer, pk0 null.Int) (*TExternalDomainUser,
 	return &r, nil
 }
 
-// GetTExternalDomainUserReflectValuesMap returns a map of field names to their values.
-//
-// key is the tag name, value is the field value.
-// This is useful for reflection and dynamic queries.
-func (r *TExternalDomainUser) GetTExternalDomainUserReflectValuesMap() (map[string]any, error) {
-
-	values := make(map[string]any)
-	v := reflect.ValueOf(r).Elem()
-	t := v.Type()
-	for i := range v.NumField() {
-		field := t.Field(i)
-		tag := field.Tag.Get("db")
-		if tag == "" {
-			return nil, errors.Errorf("missing db tag for field %s in table t_external_domain_user", field.Name)
-		}
-
-		columnName := strings.Split(tag, ",")[0]
-		if columnName == "" {
-			return nil, errors.Errorf("missing column name for field %s in table t_external_domain_user", field.Name)
-		}
-
-		fieldValue := reflect.ValueOf(r).Elem().Field(i)
-		if !fieldValue.IsValid() {
-			return nil, errors.Errorf("invalid field value for field %s in table t_external_domain_user", field.Name)
-		}
-
-		if !fieldValue.CanAddr() {
-			return nil, errors.Errorf("cannot read field value for field %s in table t_external_domain_user", field.Name)
-		}
-
-		values[columnName] = fieldValue.Addr().Interface()
-	}
-
-	return values, nil
-}
-
 /*TFile 文件描述表 represents assessuser.t_file */
 type TFile struct {
 	ID           null.Int       `json:"ID,omitempty" db:"id,true,integer"`                                 /* id 编号 */
@@ -4588,7 +3719,7 @@ type TFile struct {
 	OriginName   null.String    `json:"OriginName,omitempty" db:"origin_name,false,character varying"`     /* origin_name 用户上传文件名 */
 	Addi         types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                              /* addi 附加信息 */
 	Status       null.String    `json:"Status,omitempty" db:"status,false,character varying"`              /* status 0:有效, 2: 丢失 */
-	Filter                                                                                                 // build DML where clause
+	Filter       `json:"-"`     // build DML where clause
 }
 
 // TFileFields full field list for default query
@@ -4739,42 +3870,6 @@ func GetTFileByPk(db Queryer, pk0 null.Int) (*TFile, error) {
 	return &r, nil
 }
 
-// GetTFileReflectValuesMap returns a map of field names to their values.
-//
-// key is the tag name, value is the field value.
-// This is useful for reflection and dynamic queries.
-func (r *TFile) GetTFileReflectValuesMap() (map[string]any, error) {
-
-	values := make(map[string]any)
-	v := reflect.ValueOf(r).Elem()
-	t := v.Type()
-	for i := range v.NumField() {
-		field := t.Field(i)
-		tag := field.Tag.Get("db")
-		if tag == "" {
-			return nil, errors.Errorf("missing db tag for field %s in table t_file", field.Name)
-		}
-
-		columnName := strings.Split(tag, ",")[0]
-		if columnName == "" {
-			return nil, errors.Errorf("missing column name for field %s in table t_file", field.Name)
-		}
-
-		fieldValue := reflect.ValueOf(r).Elem().Field(i)
-		if !fieldValue.IsValid() {
-			return nil, errors.Errorf("invalid field value for field %s in table t_file", field.Name)
-		}
-
-		if !fieldValue.CanAddr() {
-			return nil, errors.Errorf("cannot read field value for field %s in table t_file", field.Name)
-		}
-
-		values[columnName] = fieldValue.Addr().Interface()
-	}
-
-	return values, nil
-}
-
 /*TGroup 聊天群，设计参考微信群 represents assessuser.t_group */
 type TGroup struct {
 	ID             null.Int       `json:"ID,omitempty" db:"id,true,integer"`                           /* id 编号 */
@@ -4793,7 +3888,7 @@ type TGroup struct {
 	Addi           types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                        /* addi 附加信息 */
 	Remark         null.String    `json:"Remark,omitempty" db:"remark,false,character varying"`        /* remark 备注 */
 	Status         null.String    `json:"Status,omitempty" db:"status,false,character varying"`        /* status 状态，00：草稿，01：有效，02：作废 */
-	Filter                                                                                             // build DML where clause
+	Filter         `json:"-"`     // build DML where clause
 }
 
 // TGroupFields full field list for default query
@@ -4939,42 +4034,6 @@ func GetTGroupByPk(db Queryer, pk0 null.Int) (*TGroup, error) {
 	return &r, nil
 }
 
-// GetTGroupReflectValuesMap returns a map of field names to their values.
-//
-// key is the tag name, value is the field value.
-// This is useful for reflection and dynamic queries.
-func (r *TGroup) GetTGroupReflectValuesMap() (map[string]any, error) {
-
-	values := make(map[string]any)
-	v := reflect.ValueOf(r).Elem()
-	t := v.Type()
-	for i := range v.NumField() {
-		field := t.Field(i)
-		tag := field.Tag.Get("db")
-		if tag == "" {
-			return nil, errors.Errorf("missing db tag for field %s in table t_group", field.Name)
-		}
-
-		columnName := strings.Split(tag, ",")[0]
-		if columnName == "" {
-			return nil, errors.Errorf("missing column name for field %s in table t_group", field.Name)
-		}
-
-		fieldValue := reflect.ValueOf(r).Elem().Field(i)
-		if !fieldValue.IsValid() {
-			return nil, errors.Errorf("invalid field value for field %s in table t_group", field.Name)
-		}
-
-		if !fieldValue.CanAddr() {
-			return nil, errors.Errorf("cannot read field value for field %s in table t_group", field.Name)
-		}
-
-		values[columnName] = fieldValue.Addr().Interface()
-	}
-
-	return values, nil
-}
-
 /*TImportData excel导入表 represents assessuser.t_import_data */
 type TImportData struct {
 	ID         null.Int       `json:"ID,omitempty" db:"id,true,integer"`                             /* id 参数编号 */
@@ -4995,7 +4054,7 @@ type TImportData struct {
 	Addi       types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                          /* addi 附加信息 */
 	Remark     null.String    `json:"Remark,omitempty" db:"remark,false,character varying"`          /* remark 备注 */
 	Status     null.String    `json:"Status,omitempty" db:"status,false,character varying"`          /* status 状态，00：草稿，01：有效，02：作废 */
-	Filter                                                                                           // build DML where clause
+	Filter     `json:"-"`     // build DML where clause
 }
 
 // TImportDataFields full field list for default query
@@ -5151,42 +4210,6 @@ func GetTImportDataByPk(db Queryer, pk0 null.Int) (*TImportData, error) {
 	return &r, nil
 }
 
-// GetTImportDataReflectValuesMap returns a map of field names to their values.
-//
-// key is the tag name, value is the field value.
-// This is useful for reflection and dynamic queries.
-func (r *TImportData) GetTImportDataReflectValuesMap() (map[string]any, error) {
-
-	values := make(map[string]any)
-	v := reflect.ValueOf(r).Elem()
-	t := v.Type()
-	for i := range v.NumField() {
-		field := t.Field(i)
-		tag := field.Tag.Get("db")
-		if tag == "" {
-			return nil, errors.Errorf("missing db tag for field %s in table t_import_data", field.Name)
-		}
-
-		columnName := strings.Split(tag, ",")[0]
-		if columnName == "" {
-			return nil, errors.Errorf("missing column name for field %s in table t_import_data", field.Name)
-		}
-
-		fieldValue := reflect.ValueOf(r).Elem().Field(i)
-		if !fieldValue.IsValid() {
-			return nil, errors.Errorf("invalid field value for field %s in table t_import_data", field.Name)
-		}
-
-		if !fieldValue.CanAddr() {
-			return nil, errors.Errorf("cannot read field value for field %s in table t_import_data", field.Name)
-		}
-
-		values[columnName] = fieldValue.Addr().Interface()
-	}
-
-	return values, nil
-}
-
 /*TInsurancePolicy 保险单 represents assessuser.t_insurance_policy */
 type TInsurancePolicy struct {
 	ID                      null.Int       `json:"ID,omitempty" db:"id,true,integer"`                                              /* id 编号 */
@@ -5289,7 +4312,7 @@ type TInsurancePolicy struct {
 	Addi             types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                                       /* addi 附加数据 */
 	Remark           null.String    `json:"Remark,omitempty" db:"remark,false,character varying"`                       /* remark 备注 */
 	Status           null.String    `json:"Status,omitempty" db:"status,false,character varying"`                       /* status 一期，0：受理中，2：在保，4：过保, 6: 作废。二期，00: 正常, 04: 重新录单, 08: 撤消, 12: 续保, 16: 已重新录单, 20: 退保, 24: 拒保 */
-	Filter                                                                                                              // build DML where clause
+	Filter           `json:"-"`     // build DML where clause
 }
 
 // TInsurancePolicyFields full field list for default query
@@ -5820,42 +4843,6 @@ func GetTInsurancePolicyByPk(db Queryer, pk0 null.Int) (*TInsurancePolicy, error
 	return &r, nil
 }
 
-// GetTInsurancePolicyReflectValuesMap returns a map of field names to their values.
-//
-// key is the tag name, value is the field value.
-// This is useful for reflection and dynamic queries.
-func (r *TInsurancePolicy) GetTInsurancePolicyReflectValuesMap() (map[string]any, error) {
-
-	values := make(map[string]any)
-	v := reflect.ValueOf(r).Elem()
-	t := v.Type()
-	for i := range v.NumField() {
-		field := t.Field(i)
-		tag := field.Tag.Get("db")
-		if tag == "" {
-			return nil, errors.Errorf("missing db tag for field %s in table t_insurance_policy", field.Name)
-		}
-
-		columnName := strings.Split(tag, ",")[0]
-		if columnName == "" {
-			return nil, errors.Errorf("missing column name for field %s in table t_insurance_policy", field.Name)
-		}
-
-		fieldValue := reflect.ValueOf(r).Elem().Field(i)
-		if !fieldValue.IsValid() {
-			return nil, errors.Errorf("invalid field value for field %s in table t_insurance_policy", field.Name)
-		}
-
-		if !fieldValue.CanAddr() {
-			return nil, errors.Errorf("cannot read field value for field %s in table t_insurance_policy", field.Name)
-		}
-
-		values[columnName] = fieldValue.Addr().Interface()
-	}
-
-	return values, nil
-}
-
 /*TInsuranceTypes 保险类型表 represents assessuser.t_insurance_types */
 type TInsuranceTypes struct {
 	ID                      null.Int       `json:"ID,omitempty" db:"id,true,integer"`                                                /* id 保险产品id */
@@ -5926,7 +4913,7 @@ type TInsuranceTypes struct {
 	DomainID          null.Int       `json:"DomainID,omitempty" db:"domain_id,false,bigint"`                              /* domain_id 数据属主 */
 	Remark            null.String    `json:"Remark,omitempty" db:"remark,false,character varying"`                        /* remark 备注 */
 	Status            null.String    `json:"Status,omitempty" db:"status,false,character varying"`                        /* status 状态, 0: 正常，2:等待推出, 4：禁用，6：作废 */
-	Filter                                                                                                                // build DML where clause
+	Filter            `json:"-"`     // build DML where clause
 }
 
 // TInsuranceTypesFields full field list for default query
@@ -6312,42 +5299,6 @@ func GetTInsuranceTypesByPk(db Queryer, pk0 null.Int) (*TInsuranceTypes, error) 
 	return &r, nil
 }
 
-// GetTInsuranceTypesReflectValuesMap returns a map of field names to their values.
-//
-// key is the tag name, value is the field value.
-// This is useful for reflection and dynamic queries.
-func (r *TInsuranceTypes) GetTInsuranceTypesReflectValuesMap() (map[string]any, error) {
-
-	values := make(map[string]any)
-	v := reflect.ValueOf(r).Elem()
-	t := v.Type()
-	for i := range v.NumField() {
-		field := t.Field(i)
-		tag := field.Tag.Get("db")
-		if tag == "" {
-			return nil, errors.Errorf("missing db tag for field %s in table t_insurance_types", field.Name)
-		}
-
-		columnName := strings.Split(tag, ",")[0]
-		if columnName == "" {
-			return nil, errors.Errorf("missing column name for field %s in table t_insurance_types", field.Name)
-		}
-
-		fieldValue := reflect.ValueOf(r).Elem().Field(i)
-		if !fieldValue.IsValid() {
-			return nil, errors.Errorf("invalid field value for field %s in table t_insurance_types", field.Name)
-		}
-
-		if !fieldValue.CanAddr() {
-			return nil, errors.Errorf("cannot read field value for field %s in table t_insurance_types", field.Name)
-		}
-
-		values[columnName] = fieldValue.Addr().Interface()
-	}
-
-	return values, nil
-}
-
 /*TInsureAttach 保单附件 represents assessuser.t_insure_attach */
 type TInsureAttach struct {
 	ID             null.Int       `json:"ID,omitempty" db:"id,true,integer"`                           /* id 编号 */
@@ -6368,7 +5319,7 @@ type TInsureAttach struct {
 	DomainID       null.Int       `json:"DomainID,omitempty" db:"domain_id,false,bigint"`              /* domain_id 数据属主 */
 	Remark         null.String    `json:"Remark,omitempty" db:"remark,false,character varying"`        /* remark 备注 */
 	Status         null.String    `json:"Status,omitempty" db:"status,false,character varying"`        /* status 状态 */
-	Filter                                                                                             // build DML where clause
+	Filter         `json:"-"`     // build DML where clause
 }
 
 // TInsureAttachFields full field list for default query
@@ -6524,42 +5475,6 @@ func GetTInsureAttachByPk(db Queryer, pk0 null.Int) (*TInsureAttach, error) {
 	return &r, nil
 }
 
-// GetTInsureAttachReflectValuesMap returns a map of field names to their values.
-//
-// key is the tag name, value is the field value.
-// This is useful for reflection and dynamic queries.
-func (r *TInsureAttach) GetTInsureAttachReflectValuesMap() (map[string]any, error) {
-
-	values := make(map[string]any)
-	v := reflect.ValueOf(r).Elem()
-	t := v.Type()
-	for i := range v.NumField() {
-		field := t.Field(i)
-		tag := field.Tag.Get("db")
-		if tag == "" {
-			return nil, errors.Errorf("missing db tag for field %s in table t_insure_attach", field.Name)
-		}
-
-		columnName := strings.Split(tag, ",")[0]
-		if columnName == "" {
-			return nil, errors.Errorf("missing column name for field %s in table t_insure_attach", field.Name)
-		}
-
-		fieldValue := reflect.ValueOf(r).Elem().Field(i)
-		if !fieldValue.IsValid() {
-			return nil, errors.Errorf("invalid field value for field %s in table t_insure_attach", field.Name)
-		}
-
-		if !fieldValue.CanAddr() {
-			return nil, errors.Errorf("cannot read field value for field %s in table t_insure_attach", field.Name)
-		}
-
-		values[columnName] = fieldValue.Addr().Interface()
-	}
-
-	return values, nil
-}
-
 /*TInsuredDetail 清单表，校车的校车信息 校车承运人存在同一行，但前端分开显示 represents assessuser.t_insured_detail */
 type TInsuredDetail struct {
 	ID                    null.Int       `json:"ID,omitempty" db:"id,true,integer"`                                           /* id 主键 */
@@ -6601,7 +5516,7 @@ type TInsuredDetail struct {
 	Addi                  types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                                        /* addi 附加信息 */
 	Remark                null.String    `json:"Remark,omitempty" db:"remark,false,character varying"`                        /* remark 备注 （实习生) */
 	Status                null.String    `json:"Status,omitempty" db:"status,false,character varying"`                        /* status 状态：0:有效 2:错误  4.拒保 */
-	Filter                                                                                                                    // build DML where clause
+	Filter                `json:"-"`     // build DML where clause
 }
 
 // TInsuredDetailFields full field list for default query
@@ -6862,42 +5777,6 @@ func GetTInsuredDetailByPk(db Queryer, pk0 null.Int) (*TInsuredDetail, error) {
 	return &r, nil
 }
 
-// GetTInsuredDetailReflectValuesMap returns a map of field names to their values.
-//
-// key is the tag name, value is the field value.
-// This is useful for reflection and dynamic queries.
-func (r *TInsuredDetail) GetTInsuredDetailReflectValuesMap() (map[string]any, error) {
-
-	values := make(map[string]any)
-	v := reflect.ValueOf(r).Elem()
-	t := v.Type()
-	for i := range v.NumField() {
-		field := t.Field(i)
-		tag := field.Tag.Get("db")
-		if tag == "" {
-			return nil, errors.Errorf("missing db tag for field %s in table t_insured_detail", field.Name)
-		}
-
-		columnName := strings.Split(tag, ",")[0]
-		if columnName == "" {
-			return nil, errors.Errorf("missing column name for field %s in table t_insured_detail", field.Name)
-		}
-
-		fieldValue := reflect.ValueOf(r).Elem().Field(i)
-		if !fieldValue.IsValid() {
-			return nil, errors.Errorf("invalid field value for field %s in table t_insured_detail", field.Name)
-		}
-
-		if !fieldValue.CanAddr() {
-			return nil, errors.Errorf("cannot read field value for field %s in table t_insured_detail", field.Name)
-		}
-
-		values[columnName] = fieldValue.Addr().Interface()
-	}
-
-	return values, nil
-}
-
 /*TInsuredTerms 保险条款 represents assessuser.t_insured_terms */
 type TInsuredTerms struct {
 	ID              null.Int       `json:"ID,omitempty" db:"id,true,integer"`                             /* id 编号 */
@@ -6914,7 +5793,7 @@ type TInsuredTerms struct {
 	Addi            types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                          /* addi 附加数据 */
 	Remark          null.String    `json:"Remark,omitempty" db:"remark,false,character varying"`          /* remark 备注 */
 	Status          null.String    `json:"Status,omitempty" db:"status,false,character varying"`          /* status 状态0:有效, 2:修改，4删除 */
-	Filter                                                                                                // build DML where clause
+	Filter          `json:"-"`     // build DML where clause
 }
 
 // TInsuredTermsFields full field list for default query
@@ -7050,54 +5929,18 @@ func GetTInsuredTermsByPk(db Queryer, pk0 null.Int) (*TInsuredTerms, error) {
 	return &r, nil
 }
 
-// GetTInsuredTermsReflectValuesMap returns a map of field names to their values.
-//
-// key is the tag name, value is the field value.
-// This is useful for reflection and dynamic queries.
-func (r *TInsuredTerms) GetTInsuredTermsReflectValuesMap() (map[string]any, error) {
-
-	values := make(map[string]any)
-	v := reflect.ValueOf(r).Elem()
-	t := v.Type()
-	for i := range v.NumField() {
-		field := t.Field(i)
-		tag := field.Tag.Get("db")
-		if tag == "" {
-			return nil, errors.Errorf("missing db tag for field %s in table t_insured_terms", field.Name)
-		}
-
-		columnName := strings.Split(tag, ",")[0]
-		if columnName == "" {
-			return nil, errors.Errorf("missing column name for field %s in table t_insured_terms", field.Name)
-		}
-
-		fieldValue := reflect.ValueOf(r).Elem().Field(i)
-		if !fieldValue.IsValid() {
-			return nil, errors.Errorf("invalid field value for field %s in table t_insured_terms", field.Name)
-		}
-
-		if !fieldValue.CanAddr() {
-			return nil, errors.Errorf("cannot read field value for field %s in table t_insured_terms", field.Name)
-		}
-
-		values[columnName] = fieldValue.Addr().Interface()
-	}
-
-	return values, nil
-}
-
 /*TInvigilation t_invigilation represents assessuser.t_invigilation */
 type TInvigilation struct {
-	ID            null.Int       `json:"ID,omitempty" db:"id,true,integer"`                                       /* id 编号 */
-	ExamSessionID null.Int       `json:"ExamSessionID,omitempty" db:"exam_session_id,true,bigint"`                /* exam_session_id 考试场次id */
-	Creator       null.Int       `json:"Creator,omitempty" db:"creator,false,bigint"`                             /* creator 创建者 */
-	CreateTime    null.Int       `json:"CreateTime,omitempty" db:"create_time,false,timestamp without time zone"` /* create_time 创建时间 */
-	UpdatedBy     null.Int       `json:"UpdatedBy,omitempty" db:"updated_by,false,bigint"`                        /* updated_by 更新者 */
-	UpdateTime    null.Int       `json:"UpdateTime,omitempty" db:"update_time,false,timestamp without time zone"` /* update_time 更新时间 */
-	Addi          types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                                    /* addi 附加信息 */
-	Invigilator   null.Int       `json:"Invigilator,omitempty" db:"invigilator,true,bigint"`                      /* invigilator 监考员ID */
-	ExamRoom      null.Int       `json:"ExamRoom,omitempty" db:"exam_room,true,bigint"`                           /* exam_room exam_room */
-	Filter                                                                                                        // build DML where clause
+	ID            null.Int       `json:"ID,omitempty" db:"id,true,integer"`                        /* id 编号 */
+	ExamSessionID null.Int       `json:"ExamSessionID,omitempty" db:"exam_session_id,true,bigint"` /* exam_session_id 考试场次id */
+	Creator       null.Int       `json:"Creator,omitempty" db:"creator,false,bigint"`              /* creator 创建者 */
+	UpdatedBy     null.Int       `json:"UpdatedBy,omitempty" db:"updated_by,false,bigint"`         /* updated_by 更新者 */
+	Addi          types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                     /* addi 附加信息 */
+	Invigilator   null.Int       `json:"Invigilator,omitempty" db:"invigilator,true,bigint"`       /* invigilator 监考员ID */
+	ExamRoom      null.Int       `json:"ExamRoom,omitempty" db:"exam_room,true,bigint"`            /* exam_room exam_room */
+	CreateTime    null.Int       `json:"CreateTime,omitempty" db:"create_time,false,bigint"`       /* create_time create_time */
+	UpdateTime    null.Int       `json:"UpdateTime,omitempty" db:"update_time,false,bigint"`       /* update_time update_time */
+	Filter        `json:"-"`     // build DML where clause
 }
 
 // TInvigilationFields full field list for default query
@@ -7105,12 +5948,12 @@ var TInvigilationFields = []string{
 	"ID",
 	"ExamSessionID",
 	"Creator",
-	"CreateTime",
 	"UpdatedBy",
-	"UpdateTime",
 	"Addi",
 	"Invigilator",
 	"ExamRoom",
+	"CreateTime",
+	"UpdateTime",
 }
 
 // TInvigilationColumns full column list for default query
@@ -7118,12 +5961,12 @@ var TInvigilationColumns = []string{
 	"id",
 	"exam_session_id",
 	"creator",
-	"create_time",
 	"updated_by",
-	"update_time",
 	"addi",
 	"invigilator",
 	"exam_room",
+	"create_time",
+	"update_time",
 }
 
 // TInvigilationColumnsDataTypes full column data types for default query
@@ -7131,12 +5974,12 @@ var TInvigilationColumnsDataTypes = map[string]string{
 	"id":              "integer",
 	"exam_session_id": "bigint",
 	"creator":         "bigint",
-	"create_time":     "timestamp without time zone",
 	"updated_by":      "bigint",
-	"update_time":     "timestamp without time zone",
 	"addi":            "jsonb",
 	"invigilator":     "bigint",
 	"exam_room":       "bigint",
+	"create_time":     "bigint",
+	"update_time":     "bigint",
 }
 
 // GetFieldsMap returns a map of field names to their values.
@@ -7145,12 +5988,12 @@ func (r *TInvigilation) GetFieldsMap() map[string]any {
 		"ID":            r.ID,
 		"ExamSessionID": r.ExamSessionID,
 		"Creator":       r.Creator,
-		"CreateTime":    r.CreateTime,
 		"UpdatedBy":     r.UpdatedBy,
-		"UpdateTime":    r.UpdateTime,
 		"Addi":          r.Addi,
 		"Invigilator":   r.Invigilator,
 		"ExamRoom":      r.ExamRoom,
+		"CreateTime":    r.CreateTime,
+		"UpdateTime":    r.UpdateTime,
 	}
 }
 
@@ -7160,12 +6003,12 @@ func (r *TInvigilation) GetColumnsMap() map[string]any {
 		"id":              r.ID,
 		"exam_session_id": r.ExamSessionID,
 		"creator":         r.Creator,
-		"create_time":     r.CreateTime,
 		"updated_by":      r.UpdatedBy,
-		"update_time":     r.UpdateTime,
 		"addi":            r.Addi,
 		"invigilator":     r.Invigilator,
 		"exam_room":       r.ExamRoom,
+		"create_time":     r.CreateTime,
+		"update_time":     r.UpdateTime,
 	}
 }
 
@@ -7187,8 +6030,8 @@ func (r *TInvigilation) GetTableName() string {
 // Create inserts the TInvigilation to the database.
 func (r *TInvigilation) Create(db Queryer) error {
 	err := db.QueryRow(
-		`INSERT INTO t_invigilation (creator, create_time, updated_by, update_time, addi) VALUES ($1, $2, $3, $4, $5) RETURNING id, exam_session_id, invigilator, exam_room`,
-		&r.Creator, &r.CreateTime, &r.UpdatedBy, &r.UpdateTime, &r.Addi).Scan(&r.ID, &r.ExamSessionID, &r.Invigilator, &r.ExamRoom)
+		`INSERT INTO t_invigilation (creator, updated_by, addi, create_time, update_time) VALUES ($1, $2, $3, $4, $5) RETURNING id, exam_session_id, invigilator, exam_room`,
+		&r.Creator, &r.UpdatedBy, &r.Addi, &r.CreateTime, &r.UpdateTime).Scan(&r.ID, &r.ExamSessionID, &r.Invigilator, &r.ExamRoom)
 	if err != nil {
 		return errors.Wrap(err, "failed to insert t_invigilation")
 	}
@@ -7196,52 +6039,16 @@ func (r *TInvigilation) Create(db Queryer) error {
 }
 
 // GetTInvigilationByPk select the TInvigilation from the database.
-func GetTInvigilationByPk(db Queryer, pk0 null.Int, pk1 null.Int, pk7 null.Int, pk8 null.Int) (*TInvigilation, error) {
+func GetTInvigilationByPk(db Queryer, pk0 null.Int, pk1 null.Int, pk5 null.Int, pk6 null.Int) (*TInvigilation, error) {
 
 	var r TInvigilation
 	err := db.QueryRow(
-		`SELECT id, exam_session_id, creator, create_time, updated_by, update_time, addi, invigilator, exam_room FROM t_invigilation WHERE id = $1 AND exam_session_id = $2 AND invigilator = $3 AND exam_room = $4`,
-		pk0, pk1, pk7, pk8).Scan(&r.ID, &r.ExamSessionID, &r.Creator, &r.CreateTime, &r.UpdatedBy, &r.UpdateTime, &r.Addi, &r.Invigilator, &r.ExamRoom)
+		`SELECT id, exam_session_id, creator, updated_by, addi, invigilator, exam_room, create_time, update_time FROM t_invigilation WHERE id = $1 AND exam_session_id = $2 AND invigilator = $3 AND exam_room = $4`,
+		pk0, pk1, pk5, pk6).Scan(&r.ID, &r.ExamSessionID, &r.Creator, &r.UpdatedBy, &r.Addi, &r.Invigilator, &r.ExamRoom, &r.CreateTime, &r.UpdateTime)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to select t_invigilation")
 	}
 	return &r, nil
-}
-
-// GetTInvigilationReflectValuesMap returns a map of field names to their values.
-//
-// key is the tag name, value is the field value.
-// This is useful for reflection and dynamic queries.
-func (r *TInvigilation) GetTInvigilationReflectValuesMap() (map[string]any, error) {
-
-	values := make(map[string]any)
-	v := reflect.ValueOf(r).Elem()
-	t := v.Type()
-	for i := range v.NumField() {
-		field := t.Field(i)
-		tag := field.Tag.Get("db")
-		if tag == "" {
-			return nil, errors.Errorf("missing db tag for field %s in table t_invigilation", field.Name)
-		}
-
-		columnName := strings.Split(tag, ",")[0]
-		if columnName == "" {
-			return nil, errors.Errorf("missing column name for field %s in table t_invigilation", field.Name)
-		}
-
-		fieldValue := reflect.ValueOf(r).Elem().Field(i)
-		if !fieldValue.IsValid() {
-			return nil, errors.Errorf("invalid field value for field %s in table t_invigilation", field.Name)
-		}
-
-		if !fieldValue.CanAddr() {
-			return nil, errors.Errorf("cannot read field value for field %s in table t_invigilation", field.Name)
-		}
-
-		values[columnName] = fieldValue.Addr().Interface()
-	}
-
-	return values, nil
 }
 
 /*TJudge 鉴定邀请表 represents assessuser.t_judge */
@@ -7256,7 +6063,7 @@ type TJudge struct {
 	judged,已评价、签定
 	rejected,拒绝评价
 	expired,邀请已过期/拒绝评价 */
-	Filter // build DML where clause
+	Filter `json:"-"` // build DML where clause
 }
 
 // TJudgeFields full field list for default query
@@ -7357,42 +6164,6 @@ func GetTJudgeByPk(db Queryer, pk0 null.Int) (*TJudge, error) {
 	return &r, nil
 }
 
-// GetTJudgeReflectValuesMap returns a map of field names to their values.
-//
-// key is the tag name, value is the field value.
-// This is useful for reflection and dynamic queries.
-func (r *TJudge) GetTJudgeReflectValuesMap() (map[string]any, error) {
-
-	values := make(map[string]any)
-	v := reflect.ValueOf(r).Elem()
-	t := v.Type()
-	for i := range v.NumField() {
-		field := t.Field(i)
-		tag := field.Tag.Get("db")
-		if tag == "" {
-			return nil, errors.Errorf("missing db tag for field %s in table t_judge", field.Name)
-		}
-
-		columnName := strings.Split(tag, ",")[0]
-		if columnName == "" {
-			return nil, errors.Errorf("missing column name for field %s in table t_judge", field.Name)
-		}
-
-		fieldValue := reflect.ValueOf(r).Elem().Field(i)
-		if !fieldValue.IsValid() {
-			return nil, errors.Errorf("invalid field value for field %s in table t_judge", field.Name)
-		}
-
-		if !fieldValue.CanAddr() {
-			return nil, errors.Errorf("cannot read field value for field %s in table t_judge", field.Name)
-		}
-
-		values[columnName] = fieldValue.Addr().Interface()
-	}
-
-	return values, nil
-}
-
 /*TLog t_log represents assessuser.t_log */
 type TLog struct {
 	ID            null.Int    `json:"ID,omitempty" db:"id,true,integer"`                                    /* id 编号 */
@@ -7406,7 +6177,7 @@ type TLog struct {
 	DomainID      null.Int    `json:"DomainID,omitempty" db:"domain_id,false,bigint"`                       /* domain_id 数据隶属 */
 	Creator       null.Int    `json:"Creator,omitempty" db:"creator,false,bigint"`                          /* creator 本数据创建者 */
 	CreateTime    null.Int    `json:"CreateTime,omitempty" db:"create_time,false,bigint"`                   /* create_time 生成时间 */
-	Filter                                                                                                  // build DML where clause
+	Filter        `json:"-"`  // build DML where clause
 }
 
 // TLogFields full field list for default query
@@ -7527,42 +6298,6 @@ func GetTLogByPk(db Queryer, pk0 null.Int) (*TLog, error) {
 	return &r, nil
 }
 
-// GetTLogReflectValuesMap returns a map of field names to their values.
-//
-// key is the tag name, value is the field value.
-// This is useful for reflection and dynamic queries.
-func (r *TLog) GetTLogReflectValuesMap() (map[string]any, error) {
-
-	values := make(map[string]any)
-	v := reflect.ValueOf(r).Elem()
-	t := v.Type()
-	for i := range v.NumField() {
-		field := t.Field(i)
-		tag := field.Tag.Get("db")
-		if tag == "" {
-			return nil, errors.Errorf("missing db tag for field %s in table t_log", field.Name)
-		}
-
-		columnName := strings.Split(tag, ",")[0]
-		if columnName == "" {
-			return nil, errors.Errorf("missing column name for field %s in table t_log", field.Name)
-		}
-
-		fieldValue := reflect.ValueOf(r).Elem().Field(i)
-		if !fieldValue.IsValid() {
-			return nil, errors.Errorf("invalid field value for field %s in table t_log", field.Name)
-		}
-
-		if !fieldValue.CanAddr() {
-			return nil, errors.Errorf("cannot read field value for field %s in table t_log", field.Name)
-		}
-
-		values[columnName] = fieldValue.Addr().Interface()
-	}
-
-	return values, nil
-}
-
 /*TMark t_mark represents assessuser.t_mark */
 type TMark struct {
 	ID                   null.Int       `json:"ID,omitempty" db:"id,true,integer"`                                       /* id id */
@@ -7574,13 +6309,13 @@ type TMark struct {
 	Status               null.String    `json:"Status,omitempty" db:"status,false,character varying"`                    /* status 状态 00:正常 02 */
 	Addi                 types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                                    /* addi 附加信息 */
 	Creator              null.Int       `json:"Creator,omitempty" db:"creator,false,bigint"`                             /* creator 创建者 */
-	CreateTime           null.Int       `json:"CreateTime,omitempty" db:"create_time,false,timestamp without time zone"` /* create_time 创建时间 */
+	CreateTime           null.Int       `json:"CreateTime,omitempty" db:"create_time,false,bigint"`                      /* create_time 创建时间 */
 	UpdatedBy            null.Int       `json:"UpdatedBy,omitempty" db:"updated_by,false,bigint"`                        /* updated_by 更新者 */
-	UpdateTime           null.Int       `json:"UpdateTime,omitempty" db:"update_time,false,timestamp without time zone"` /* update_time 更新时间 */
+	UpdateTime           null.Int       `json:"UpdateTime,omitempty" db:"update_time,false,bigint"`                      /* update_time 更新时间 */
 	Score                null.Float     `json:"Score,omitempty" db:"score,false,double precision"`                       /* score score */
 	PracticeSubmissionID null.Int       `json:"PracticeSubmissionID,omitempty" db:"practice_submission_id,false,bigint"` /* practice_submission_id 练习提交id */
 	PracticeID           null.Int       `json:"PracticeID,omitempty" db:"practice_id,false,bigint"`                      /* practice_id 练习id */
-	Filter                                                                                                               // build DML where clause
+	Filter               `json:"-"`     // build DML where clause
 }
 
 // TMarkFields full field list for default query
@@ -7632,9 +6367,9 @@ var TMarkColumnsDataTypes = map[string]string{
 	"status":                 "character varying",
 	"addi":                   "jsonb",
 	"creator":                "bigint",
-	"create_time":            "timestamp without time zone",
+	"create_time":            "bigint",
 	"updated_by":             "bigint",
-	"update_time":            "timestamp without time zone",
+	"update_time":            "bigint",
 	"score":                  "double precision",
 	"practice_submission_id": "bigint",
 	"practice_id":            "bigint",
@@ -7721,59 +6456,23 @@ func GetTMarkByPk(db Queryer, pk0 null.Int) (*TMark, error) {
 	return &r, nil
 }
 
-// GetTMarkReflectValuesMap returns a map of field names to their values.
-//
-// key is the tag name, value is the field value.
-// This is useful for reflection and dynamic queries.
-func (r *TMark) GetTMarkReflectValuesMap() (map[string]any, error) {
-
-	values := make(map[string]any)
-	v := reflect.ValueOf(r).Elem()
-	t := v.Type()
-	for i := range v.NumField() {
-		field := t.Field(i)
-		tag := field.Tag.Get("db")
-		if tag == "" {
-			return nil, errors.Errorf("missing db tag for field %s in table t_mark", field.Name)
-		}
-
-		columnName := strings.Split(tag, ",")[0]
-		if columnName == "" {
-			return nil, errors.Errorf("missing column name for field %s in table t_mark", field.Name)
-		}
-
-		fieldValue := reflect.ValueOf(r).Elem().Field(i)
-		if !fieldValue.IsValid() {
-			return nil, errors.Errorf("invalid field value for field %s in table t_mark", field.Name)
-		}
-
-		if !fieldValue.CanAddr() {
-			return nil, errors.Errorf("cannot read field value for field %s in table t_mark", field.Name)
-		}
-
-		values[columnName] = fieldValue.Addr().Interface()
-	}
-
-	return values, nil
-}
-
 /*TMarkInfo t_mark_info represents assessuser.t_mark_info */
 type TMarkInfo struct {
-	ID                 null.Int       `json:"ID,omitempty" db:"id,true,integer"`                                       /* id id */
-	ExamSessionID      null.Int       `json:"ExamSessionID,omitempty" db:"exam_session_id,false,bigint"`               /* exam_session_id 考试场次id */
-	MarkTeacherID      null.Int       `json:"MarkTeacherID,omitempty" db:"mark_teacher_id,false,bigint"`               /* mark_teacher_id 批改员id */
-	MarkCount          null.Int       `json:"MarkCount,omitempty" db:"mark_count,false,integer"`                       /* mark_count 批改份数 */
-	MarkQuestionGroups types.JSONText `json:"MarkQuestionGroups,omitempty" db:"mark_question_groups,false,jsonb"`      /* mark_question_groups 批改题组 */
-	MarkExamineeIds    types.JSONText `json:"MarkExamineeIds,omitempty" db:"mark_examinee_ids,false,jsonb"`            /* mark_examinee_ids 批改的学生数组 */
-	Creator            null.Int       `json:"Creator,omitempty" db:"creator,false,bigint"`                             /* creator 创建者 */
-	CreateTime         null.Int       `json:"CreateTime,omitempty" db:"create_time,false,timestamp without time zone"` /* create_time 创建时间 */
-	UpdatedBy          null.Int       `json:"UpdatedBy,omitempty" db:"updated_by,false,bigint"`                        /* updated_by 更新者 */
-	UpdateTime         null.Int       `json:"UpdateTime,omitempty" db:"update_time,false,timestamp without time zone"` /* update_time 更新时间 */
-	Addi               types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                                    /* addi 附加信息 */
-	Status             null.String    `json:"Status,omitempty" db:"status,false,character varying"`                    /* status 00:正常 02: 已改完 04: 已删除 */
-	QuestionIds        types.JSONText `json:"QuestionIds,omitempty" db:"question_ids,false,jsonb"`                     /* question_ids 批改的题目集 */
-	PracticeID         null.Int       `json:"PracticeID,omitempty" db:"practice_id,false,bigint"`                      /* practice_id 练习id */
-	Filter                                                                                                             // build DML where clause
+	ID                 null.Int       `json:"ID,omitempty" db:"id,true,integer"`                                  /* id id */
+	ExamSessionID      null.Int       `json:"ExamSessionID,omitempty" db:"exam_session_id,false,bigint"`          /* exam_session_id 考试场次id */
+	MarkTeacherID      null.Int       `json:"MarkTeacherID,omitempty" db:"mark_teacher_id,false,bigint"`          /* mark_teacher_id 批改员id */
+	MarkCount          null.Int       `json:"MarkCount,omitempty" db:"mark_count,false,integer"`                  /* mark_count 批改份数 */
+	MarkQuestionGroups types.JSONText `json:"MarkQuestionGroups,omitempty" db:"mark_question_groups,false,jsonb"` /* mark_question_groups 批改题组 */
+	MarkExamineeIds    types.JSONText `json:"MarkExamineeIds,omitempty" db:"mark_examinee_ids,false,jsonb"`       /* mark_examinee_ids 批改的学生数组 */
+	Creator            null.Int       `json:"Creator,omitempty" db:"creator,false,bigint"`                        /* creator 创建者 */
+	CreateTime         null.Int       `json:"CreateTime,omitempty" db:"create_time,false,bigint"`                 /* create_time 创建时间 */
+	UpdatedBy          null.Int       `json:"UpdatedBy,omitempty" db:"updated_by,false,bigint"`                   /* updated_by 更新者 */
+	UpdateTime         null.Int       `json:"UpdateTime,omitempty" db:"update_time,false,bigint"`                 /* update_time 更新时间 */
+	Addi               types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                               /* addi 附加信息 */
+	Status             null.String    `json:"Status,omitempty" db:"status,false,character varying"`               /* status 00:正常 02: 已改完 04: 已删除 */
+	QuestionIds        types.JSONText `json:"QuestionIds,omitempty" db:"question_ids,false,jsonb"`                /* question_ids 批改的题目集 */
+	PracticeID         null.Int       `json:"PracticeID,omitempty" db:"practice_id,false,bigint"`                 /* practice_id 练习id */
+	Filter             `json:"-"`     // build DML where clause
 }
 
 // TMarkInfoFields full field list for default query
@@ -7821,9 +6520,9 @@ var TMarkInfoColumnsDataTypes = map[string]string{
 	"mark_question_groups": "jsonb",
 	"mark_examinee_ids":    "jsonb",
 	"creator":              "bigint",
-	"create_time":          "timestamp without time zone",
+	"create_time":          "bigint",
 	"updated_by":           "bigint",
-	"update_time":          "timestamp without time zone",
+	"update_time":          "bigint",
 	"addi":                 "jsonb",
 	"status":               "character varying",
 	"question_ids":         "jsonb",
@@ -7907,42 +6606,6 @@ func GetTMarkInfoByPk(db Queryer, pk0 null.Int) (*TMarkInfo, error) {
 		return nil, errors.Wrap(err, "failed to select t_mark_info")
 	}
 	return &r, nil
-}
-
-// GetTMarkInfoReflectValuesMap returns a map of field names to their values.
-//
-// key is the tag name, value is the field value.
-// This is useful for reflection and dynamic queries.
-func (r *TMarkInfo) GetTMarkInfoReflectValuesMap() (map[string]any, error) {
-
-	values := make(map[string]any)
-	v := reflect.ValueOf(r).Elem()
-	t := v.Type()
-	for i := range v.NumField() {
-		field := t.Field(i)
-		tag := field.Tag.Get("db")
-		if tag == "" {
-			return nil, errors.Errorf("missing db tag for field %s in table t_mark_info", field.Name)
-		}
-
-		columnName := strings.Split(tag, ",")[0]
-		if columnName == "" {
-			return nil, errors.Errorf("missing column name for field %s in table t_mark_info", field.Name)
-		}
-
-		fieldValue := reflect.ValueOf(r).Elem().Field(i)
-		if !fieldValue.IsValid() {
-			return nil, errors.Errorf("invalid field value for field %s in table t_mark_info", field.Name)
-		}
-
-		if !fieldValue.CanAddr() {
-			return nil, errors.Errorf("cannot read field value for field %s in table t_mark_info", field.Name)
-		}
-
-		values[columnName] = fieldValue.Addr().Interface()
-	}
-
-	return values, nil
 }
 
 /*TMistakeCorrect 报错 represents assessuser.t_mistake_correct */
@@ -8029,7 +6692,7 @@ type TMistakeCorrect struct {
 	Addi                     types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                                             /* addi 附加数据 */
 	Remark                   null.String    `json:"Remark,omitempty" db:"remark,false,character varying"`                             /* remark 备注 */
 	Status                   null.String    `json:"Status,omitempty" db:"status,false,character varying"`                             /* status 状态,0: 草稿, 2: 受理中，4:同意， 6:拒绝 */
-	Filter                                                                                                                            // build DML where clause
+	Filter                   `json:"-"`     // build DML where clause
 }
 
 // TMistakeCorrectFields full field list for default query
@@ -8505,46 +7168,8 @@ func GetTMistakeCorrectByPk(db Queryer, pk0 null.Int) (*TMistakeCorrect, error) 
 	return &r, nil
 }
 
-// GetTMistakeCorrectReflectValuesMap returns a map of field names to their values.
-//
-// key is the tag name, value is the field value.
-// This is useful for reflection and dynamic queries.
-func (r *TMistakeCorrect) GetTMistakeCorrectReflectValuesMap() (map[string]any, error) {
-
-	values := make(map[string]any)
-	v := reflect.ValueOf(r).Elem()
-	t := v.Type()
-	for i := range v.NumField() {
-		field := t.Field(i)
-		tag := field.Tag.Get("db")
-		if tag == "" {
-			return nil, errors.Errorf("missing db tag for field %s in table t_mistake_correct", field.Name)
-		}
-
-		columnName := strings.Split(tag, ",")[0]
-		if columnName == "" {
-			return nil, errors.Errorf("missing column name for field %s in table t_mistake_correct", field.Name)
-		}
-
-		fieldValue := reflect.ValueOf(r).Elem().Field(i)
-		if !fieldValue.IsValid() {
-			return nil, errors.Errorf("invalid field value for field %s in table t_mistake_correct", field.Name)
-		}
-
-		if !fieldValue.CanAddr() {
-			return nil, errors.Errorf("cannot read field value for field %s in table t_mistake_correct", field.Name)
-		}
-
-		values[columnName] = fieldValue.Addr().Interface()
-	}
-
-	return values, nil
-}
-
-/*
-TMsg 即时通信消息表
-represents assessuser.t_msg
-*/
+/*TMsg 即时通信消息表
+represents assessuser.t_msg */
 type TMsg struct {
 	ID     null.Int       `json:"ID,omitempty" db:"id,true,integer"`         /* id 参数编号 */
 	Sender null.Int       `json:"Sender,omitempty" db:"sender,false,bigint"` /* sender 消息发送者ID */
@@ -8573,7 +7198,7 @@ type TMsg struct {
 	Addi              types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                             /* addi 附加信息 */
 	Remark            null.String    `json:"Remark,omitempty" db:"remark,false,character varying"`             /* remark 备注 */
 	Status            null.String    `json:"Status,omitempty" db:"status,false,character varying"`             /* status 状态，00：草稿，01：有效，02：作废 */
-	Filter                                                                                                     // build DML where clause
+	Filter            `json:"-"`     // build DML where clause
 }
 
 // TMsgFields full field list for default query
@@ -8709,42 +7334,6 @@ func GetTMsgByPk(db Queryer, pk0 null.Int) (*TMsg, error) {
 	return &r, nil
 }
 
-// GetTMsgReflectValuesMap returns a map of field names to their values.
-//
-// key is the tag name, value is the field value.
-// This is useful for reflection and dynamic queries.
-func (r *TMsg) GetTMsgReflectValuesMap() (map[string]any, error) {
-
-	values := make(map[string]any)
-	v := reflect.ValueOf(r).Elem()
-	t := v.Type()
-	for i := range v.NumField() {
-		field := t.Field(i)
-		tag := field.Tag.Get("db")
-		if tag == "" {
-			return nil, errors.Errorf("missing db tag for field %s in table t_msg", field.Name)
-		}
-
-		columnName := strings.Split(tag, ",")[0]
-		if columnName == "" {
-			return nil, errors.Errorf("missing column name for field %s in table t_msg", field.Name)
-		}
-
-		fieldValue := reflect.ValueOf(r).Elem().Field(i)
-		if !fieldValue.IsValid() {
-			return nil, errors.Errorf("invalid field value for field %s in table t_msg", field.Name)
-		}
-
-		if !fieldValue.CanAddr() {
-			return nil, errors.Errorf("cannot read field value for field %s in table t_msg", field.Name)
-		}
-
-		values[columnName] = fieldValue.Addr().Interface()
-	}
-
-	return values, nil
-}
-
 /*TMsgStatus 消息状态 represents assessuser.t_msg_status */
 type TMsgStatus struct {
 	ID           null.Int       `json:"ID,omitempty" db:"id,true,integer"`                      /* id 参数编号 */
@@ -8758,7 +7347,7 @@ type TMsgStatus struct {
 	Addi         types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                   /* addi 附加信息 */
 	Remark       null.String    `json:"Remark,omitempty" db:"remark,false,character varying"`   /* remark 备注 */
 	Status       null.String    `json:"Status,omitempty" db:"status,false,character varying"`   /* status 状态，00：草稿，01：有效，02：作废 */
-	Filter                                                                                      // build DML where clause
+	Filter       `json:"-"`     // build DML where clause
 }
 
 // TMsgStatusFields full field list for default query
@@ -8879,42 +7468,6 @@ func GetTMsgStatusByPk(db Queryer, pk0 null.Int) (*TMsgStatus, error) {
 	return &r, nil
 }
 
-// GetTMsgStatusReflectValuesMap returns a map of field names to their values.
-//
-// key is the tag name, value is the field value.
-// This is useful for reflection and dynamic queries.
-func (r *TMsgStatus) GetTMsgStatusReflectValuesMap() (map[string]any, error) {
-
-	values := make(map[string]any)
-	v := reflect.ValueOf(r).Elem()
-	t := v.Type()
-	for i := range v.NumField() {
-		field := t.Field(i)
-		tag := field.Tag.Get("db")
-		if tag == "" {
-			return nil, errors.Errorf("missing db tag for field %s in table t_msg_status", field.Name)
-		}
-
-		columnName := strings.Split(tag, ",")[0]
-		if columnName == "" {
-			return nil, errors.Errorf("missing column name for field %s in table t_msg_status", field.Name)
-		}
-
-		fieldValue := reflect.ValueOf(r).Elem().Field(i)
-		if !fieldValue.IsValid() {
-			return nil, errors.Errorf("invalid field value for field %s in table t_msg_status", field.Name)
-		}
-
-		if !fieldValue.CanAddr() {
-			return nil, errors.Errorf("cannot read field value for field %s in table t_msg_status", field.Name)
-		}
-
-		values[columnName] = fieldValue.Addr().Interface()
-	}
-
-	return values, nil
-}
-
 /*TMyContact 聊天联系人， 可能是组或用户，参考微信通讯录设计 represents assessuser.t_my_contact */
 type TMyContact struct {
 	ID          null.Int       `json:"ID,omitempty" db:"id,true,integer"`                               /* id 参数编号 */
@@ -8930,7 +7483,7 @@ type TMyContact struct {
 	Addi        types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                            /* addi 附加信息 */
 	Remark      null.String    `json:"Remark,omitempty" db:"remark,false,character varying"`            /* remark 备注 */
 	Status      null.String    `json:"Status,omitempty" db:"status,false,character varying"`            /* status 状态，00：草稿，01：有效，02：作废 */
-	Filter                                                                                              // build DML where clause
+	Filter      `json:"-"`     // build DML where clause
 }
 
 // TMyContactFields full field list for default query
@@ -9061,42 +7614,6 @@ func GetTMyContactByPk(db Queryer, pk0 null.Int) (*TMyContact, error) {
 	return &r, nil
 }
 
-// GetTMyContactReflectValuesMap returns a map of field names to their values.
-//
-// key is the tag name, value is the field value.
-// This is useful for reflection and dynamic queries.
-func (r *TMyContact) GetTMyContactReflectValuesMap() (map[string]any, error) {
-
-	values := make(map[string]any)
-	v := reflect.ValueOf(r).Elem()
-	t := v.Type()
-	for i := range v.NumField() {
-		field := t.Field(i)
-		tag := field.Tag.Get("db")
-		if tag == "" {
-			return nil, errors.Errorf("missing db tag for field %s in table t_my_contact", field.Name)
-		}
-
-		columnName := strings.Split(tag, ",")[0]
-		if columnName == "" {
-			return nil, errors.Errorf("missing column name for field %s in table t_my_contact", field.Name)
-		}
-
-		fieldValue := reflect.ValueOf(r).Elem().Field(i)
-		if !fieldValue.IsValid() {
-			return nil, errors.Errorf("invalid field value for field %s in table t_my_contact", field.Name)
-		}
-
-		if !fieldValue.CanAddr() {
-			return nil, errors.Errorf("cannot read field value for field %s in table t_my_contact", field.Name)
-		}
-
-		values[columnName] = fieldValue.Addr().Interface()
-	}
-
-	return values, nil
-}
-
 /*TNegotiatedPrice 协议价表 represents assessuser.t_negotiated_price */
 type TNegotiatedPrice struct {
 	ID              null.Int       `json:"ID,omitempty" db:"id,true,integer"`                             /* id 议价表设置编号 */
@@ -9119,7 +7636,7 @@ type TNegotiatedPrice struct {
 	Addi            types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                          /* addi 附加数据 */
 	Remark          null.String    `json:"Remark,omitempty" db:"remark,false,character varying"`          /* remark 备注 */
 	Status          null.String    `json:"Status,omitempty" db:"status,false,character varying"`          /* status 0:有效, 2: 删除 */
-	Filter                                                                                                // build DML where clause
+	Filter          `json:"-"`     // build DML where clause
 }
 
 // TNegotiatedPriceFields full field list for default query
@@ -9285,42 +7802,6 @@ func GetTNegotiatedPriceByPk(db Queryer, pk0 null.Int) (*TNegotiatedPrice, error
 	return &r, nil
 }
 
-// GetTNegotiatedPriceReflectValuesMap returns a map of field names to their values.
-//
-// key is the tag name, value is the field value.
-// This is useful for reflection and dynamic queries.
-func (r *TNegotiatedPrice) GetTNegotiatedPriceReflectValuesMap() (map[string]any, error) {
-
-	values := make(map[string]any)
-	v := reflect.ValueOf(r).Elem()
-	t := v.Type()
-	for i := range v.NumField() {
-		field := t.Field(i)
-		tag := field.Tag.Get("db")
-		if tag == "" {
-			return nil, errors.Errorf("missing db tag for field %s in table t_negotiated_price", field.Name)
-		}
-
-		columnName := strings.Split(tag, ",")[0]
-		if columnName == "" {
-			return nil, errors.Errorf("missing column name for field %s in table t_negotiated_price", field.Name)
-		}
-
-		fieldValue := reflect.ValueOf(r).Elem().Field(i)
-		if !fieldValue.IsValid() {
-			return nil, errors.Errorf("invalid field value for field %s in table t_negotiated_price", field.Name)
-		}
-
-		if !fieldValue.CanAddr() {
-			return nil, errors.Errorf("cannot read field value for field %s in table t_negotiated_price", field.Name)
-		}
-
-		values[columnName] = fieldValue.Addr().Interface()
-	}
-
-	return values, nil
-}
-
 /*TOperationLogs t_operation_logs represents assessuser.t_operation_logs */
 type TOperationLogs struct {
 	ID            null.Int       `json:"ID,omitempty" db:"id,true,integer"`                                       /* id 日志ID */
@@ -9333,7 +7814,7 @@ type TOperationLogs struct {
 	UpdateTime    null.Int       `json:"UpdateTime,omitempty" db:"update_time,false,timestamp without time zone"` /* update_time 更新时间 */
 	Status        null.String    `json:"Status,omitempty" db:"status,false,character varying"`                    /* status 状态 00: 正常 02：已删除 */
 	Addi          types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                                    /* addi 附加信息 */
-	Filter                                                                                                        // build DML where clause
+	Filter        `json:"-"`     // build DML where clause
 }
 
 // TOperationLogsFields full field list for default query
@@ -9447,42 +7928,6 @@ func GetTOperationLogsByPk(db Queryer, pk0 null.Int) (*TOperationLogs, error) {
 		return nil, errors.Wrap(err, "failed to select t_operation_logs")
 	}
 	return &r, nil
-}
-
-// GetTOperationLogsReflectValuesMap returns a map of field names to their values.
-//
-// key is the tag name, value is the field value.
-// This is useful for reflection and dynamic queries.
-func (r *TOperationLogs) GetTOperationLogsReflectValuesMap() (map[string]any, error) {
-
-	values := make(map[string]any)
-	v := reflect.ValueOf(r).Elem()
-	t := v.Type()
-	for i := range v.NumField() {
-		field := t.Field(i)
-		tag := field.Tag.Get("db")
-		if tag == "" {
-			return nil, errors.Errorf("missing db tag for field %s in table t_operation_logs", field.Name)
-		}
-
-		columnName := strings.Split(tag, ",")[0]
-		if columnName == "" {
-			return nil, errors.Errorf("missing column name for field %s in table t_operation_logs", field.Name)
-		}
-
-		fieldValue := reflect.ValueOf(r).Elem().Field(i)
-		if !fieldValue.IsValid() {
-			return nil, errors.Errorf("invalid field value for field %s in table t_operation_logs", field.Name)
-		}
-
-		if !fieldValue.CanAddr() {
-			return nil, errors.Errorf("cannot read field value for field %s in table t_operation_logs", field.Name)
-		}
-
-		values[columnName] = fieldValue.Addr().Interface()
-	}
-
-	return values, nil
 }
 
 /*TOrder 订单 represents assessuser.t_order */
@@ -9628,7 +8073,7 @@ type TOrder struct {
 	Addi        types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                            /* addi 附加数据 */
 	Remark      null.String    `json:"Remark,omitempty" db:"remark,false,character varying"`            /* remark 备注 */
 	Status      null.String    `json:"Status,omitempty" db:"status,false,character varying"`            /* status 0: 未支付, 2: 已支付，4: 已生成保单, 6: 已作废 */
-	Filter                                                                                              // build DML where clause
+	Filter      `json:"-"`     // build DML where clause
 }
 
 // TOrderFields full field list for default query
@@ -10334,42 +8779,6 @@ func GetTOrderByPk(db Queryer, pk0 null.Int) (*TOrder, error) {
 	return &r, nil
 }
 
-// GetTOrderReflectValuesMap returns a map of field names to their values.
-//
-// key is the tag name, value is the field value.
-// This is useful for reflection and dynamic queries.
-func (r *TOrder) GetTOrderReflectValuesMap() (map[string]any, error) {
-
-	values := make(map[string]any)
-	v := reflect.ValueOf(r).Elem()
-	t := v.Type()
-	for i := range v.NumField() {
-		field := t.Field(i)
-		tag := field.Tag.Get("db")
-		if tag == "" {
-			return nil, errors.Errorf("missing db tag for field %s in table t_order", field.Name)
-		}
-
-		columnName := strings.Split(tag, ",")[0]
-		if columnName == "" {
-			return nil, errors.Errorf("missing column name for field %s in table t_order", field.Name)
-		}
-
-		fieldValue := reflect.ValueOf(r).Elem().Field(i)
-		if !fieldValue.IsValid() {
-			return nil, errors.Errorf("invalid field value for field %s in table t_order", field.Name)
-		}
-
-		if !fieldValue.CanAddr() {
-			return nil, errors.Errorf("cannot read field value for field %s in table t_order", field.Name)
-		}
-
-		values[columnName] = fieldValue.Addr().Interface()
-	}
-
-	return values, nil
-}
-
 /*TPaper t_paper represents assessuser.t_paper */
 type TPaper struct {
 	ID                null.Int       `json:"ID,omitempty" db:"id,true,integer"`                                 /* id 试卷ID */
@@ -10388,7 +8797,7 @@ type TPaper struct {
 	Addi              types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                              /* addi 附加信息 */
 	Status            null.String    `json:"Status,omitempty" db:"status,false,character varying"`              /* status 状态 00：正常， 02：异常 */
 	AccessMode        null.String    `json:"AccessMode,omitempty" db:"access_mode,false,character varying"`     /* access_mode 试卷访问权限，00私有 02共享 04公开 */
-	Filter                                                                                                      // build DML where clause
+	Filter            `json:"-"`     // build DML where clause
 }
 
 // TPaperFields full field list for default query
@@ -10534,42 +8943,6 @@ func GetTPaperByPk(db Queryer, pk0 null.Int) (*TPaper, error) {
 	return &r, nil
 }
 
-// GetTPaperReflectValuesMap returns a map of field names to their values.
-//
-// key is the tag name, value is the field value.
-// This is useful for reflection and dynamic queries.
-func (r *TPaper) GetTPaperReflectValuesMap() (map[string]any, error) {
-
-	values := make(map[string]any)
-	v := reflect.ValueOf(r).Elem()
-	t := v.Type()
-	for i := range v.NumField() {
-		field := t.Field(i)
-		tag := field.Tag.Get("db")
-		if tag == "" {
-			return nil, errors.Errorf("missing db tag for field %s in table t_paper", field.Name)
-		}
-
-		columnName := strings.Split(tag, ",")[0]
-		if columnName == "" {
-			return nil, errors.Errorf("missing column name for field %s in table t_paper", field.Name)
-		}
-
-		fieldValue := reflect.ValueOf(r).Elem().Field(i)
-		if !fieldValue.IsValid() {
-			return nil, errors.Errorf("invalid field value for field %s in table t_paper", field.Name)
-		}
-
-		if !fieldValue.CanAddr() {
-			return nil, errors.Errorf("cannot read field value for field %s in table t_paper", field.Name)
-		}
-
-		values[columnName] = fieldValue.Addr().Interface()
-	}
-
-	return values, nil
-}
-
 /*TPaperGroup t_paper_group represents assessuser.t_paper_group */
 type TPaperGroup struct {
 	ID         null.Int       `json:"ID,omitempty" db:"id,true,integer"`                    /* id 题组ID */
@@ -10582,7 +8955,7 @@ type TPaperGroup struct {
 	UpdateTime null.Int       `json:"UpdateTime,omitempty" db:"update_time,false,bigint"`   /* update_time 更新时间 */
 	Addi       types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                 /* addi 附加信息 */
 	Status     null.String    `json:"Status,omitempty" db:"status,false,character varying"` /* status 状态 00：正常， 02：异常 */
-	Filter                                                                                  // build DML where clause
+	Filter     `json:"-"`     // build DML where clause
 }
 
 // TPaperGroupFields full field list for default query
@@ -10698,42 +9071,6 @@ func GetTPaperGroupByPk(db Queryer, pk0 null.Int) (*TPaperGroup, error) {
 	return &r, nil
 }
 
-// GetTPaperGroupReflectValuesMap returns a map of field names to their values.
-//
-// key is the tag name, value is the field value.
-// This is useful for reflection and dynamic queries.
-func (r *TPaperGroup) GetTPaperGroupReflectValuesMap() (map[string]any, error) {
-
-	values := make(map[string]any)
-	v := reflect.ValueOf(r).Elem()
-	t := v.Type()
-	for i := range v.NumField() {
-		field := t.Field(i)
-		tag := field.Tag.Get("db")
-		if tag == "" {
-			return nil, errors.Errorf("missing db tag for field %s in table t_paper_group", field.Name)
-		}
-
-		columnName := strings.Split(tag, ",")[0]
-		if columnName == "" {
-			return nil, errors.Errorf("missing column name for field %s in table t_paper_group", field.Name)
-		}
-
-		fieldValue := reflect.ValueOf(r).Elem().Field(i)
-		if !fieldValue.IsValid() {
-			return nil, errors.Errorf("invalid field value for field %s in table t_paper_group", field.Name)
-		}
-
-		if !fieldValue.CanAddr() {
-			return nil, errors.Errorf("cannot read field value for field %s in table t_paper_group", field.Name)
-		}
-
-		values[columnName] = fieldValue.Addr().Interface()
-	}
-
-	return values, nil
-}
-
 /*TPaperQuestion t_paper_question represents assessuser.t_paper_question */
 type TPaperQuestion struct {
 	ID             null.Int       `json:"ID,omitempty" db:"id,true,integer"`                           /* id 试卷题目ID */
@@ -10748,7 +9085,7 @@ type TPaperQuestion struct {
 	UpdateTime     null.Int       `json:"UpdateTime,omitempty" db:"update_time,false,bigint"`          /* update_time 更新时间 */
 	Addi           types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                        /* addi 附加信息 */
 	Status         null.String    `json:"Status,omitempty" db:"status,false,character varying"`        /* status 状态 00：正常 02：异常 */
-	Filter                                                                                             // build DML where clause
+	Filter         `json:"-"`     // build DML where clause
 }
 
 // TPaperQuestionFields full field list for default query
@@ -10874,44 +9211,7 @@ func GetTPaperQuestionByPk(db Queryer, pk0 null.Int) (*TPaperQuestion, error) {
 	return &r, nil
 }
 
-// GetTPaperQuestionReflectValuesMap returns a map of field names to their values.
-//
-// key is the tag name, value is the field value.
-// This is useful for reflection and dynamic queries.
-func (r *TPaperQuestion) GetTPaperQuestionReflectValuesMap() (map[string]any, error) {
-
-	values := make(map[string]any)
-	v := reflect.ValueOf(r).Elem()
-	t := v.Type()
-	for i := range v.NumField() {
-		field := t.Field(i)
-		tag := field.Tag.Get("db")
-		if tag == "" {
-			return nil, errors.Errorf("missing db tag for field %s in table t_paper_question", field.Name)
-		}
-
-		columnName := strings.Split(tag, ",")[0]
-		if columnName == "" {
-			return nil, errors.Errorf("missing column name for field %s in table t_paper_question", field.Name)
-		}
-
-		fieldValue := reflect.ValueOf(r).Elem().Field(i)
-		if !fieldValue.IsValid() {
-			return nil, errors.Errorf("invalid field value for field %s in table t_paper_question", field.Name)
-		}
-
-		if !fieldValue.CanAddr() {
-			return nil, errors.Errorf("cannot read field value for field %s in table t_paper_question", field.Name)
-		}
-
-		values[columnName] = fieldValue.Addr().Interface()
-	}
-
-	return values, nil
-}
-
-/*
-TParam 提供用户设置参数
+/*TParam 提供用户设置参数
 belongTo value scope
 系统一级:1000-1990
 系统二级:2000-2990
@@ -10922,8 +9222,7 @@ belongTo value scope
 应用系统二级:12000-12990
 应用系统三级:13000-13990
 应用系统四级:14000-14990
-预置参数ID只使用偶数 represents assessuser.t_param
-*/
+预置参数ID只使用偶数 represents assessuser.t_param */
 type TParam struct {
 	ID         null.Int       `json:"ID,omitempty" db:"id,true,integer"`                         /* id 参数编号 */
 	Belongto   null.Int       `json:"Belongto,omitempty" db:"belongto,false,bigint"`             /* belongto 类属 */
@@ -10936,7 +9235,7 @@ type TParam struct {
 	Addi       types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                      /* addi 附加信息 */
 	Remark     null.String    `json:"Remark,omitempty" db:"remark,false,character varying"`      /* remark 备注 */
 	Status     null.String    `json:"Status,omitempty" db:"status,false,character varying"`      /* status 状态，00：草稿，01：有效，02：作废 */
-	Filter                                                                                       // build DML where clause
+	Filter     `json:"-"`     // build DML where clause
 }
 
 // TParamFields full field list for default query
@@ -11057,42 +9356,6 @@ func GetTParamByPk(db Queryer, pk0 null.Int) (*TParam, error) {
 	return &r, nil
 }
 
-// GetTParamReflectValuesMap returns a map of field names to their values.
-//
-// key is the tag name, value is the field value.
-// This is useful for reflection and dynamic queries.
-func (r *TParam) GetTParamReflectValuesMap() (map[string]any, error) {
-
-	values := make(map[string]any)
-	v := reflect.ValueOf(r).Elem()
-	t := v.Type()
-	for i := range v.NumField() {
-		field := t.Field(i)
-		tag := field.Tag.Get("db")
-		if tag == "" {
-			return nil, errors.Errorf("missing db tag for field %s in table t_param", field.Name)
-		}
-
-		columnName := strings.Split(tag, ",")[0]
-		if columnName == "" {
-			return nil, errors.Errorf("missing column name for field %s in table t_param", field.Name)
-		}
-
-		fieldValue := reflect.ValueOf(r).Elem().Field(i)
-		if !fieldValue.IsValid() {
-			return nil, errors.Errorf("invalid field value for field %s in table t_param", field.Name)
-		}
-
-		if !fieldValue.CanAddr() {
-			return nil, errors.Errorf("cannot read field value for field %s in table t_param", field.Name)
-		}
-
-		values[columnName] = fieldValue.Addr().Interface()
-	}
-
-	return values, nil
-}
-
 /*TPayAccount 支付账号信息 represents assessuser.t_pay_account */
 type TPayAccount struct {
 	ID         null.Int       `json:"ID,omitempty" db:"id,true,integer"`                      /* id 编号 */
@@ -11111,7 +9374,7 @@ type TPayAccount struct {
 	Addi       types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                   /* addi 附加信息 */
 	Remark     null.String    `json:"Remark,omitempty" db:"remark,false,character varying"`   /* remark 备注 */
 	Status     null.String    `json:"Status,omitempty" db:"status,false,character varying"`   /* status 状态，00：草稿，02：有效，04: 停用，06：作废 */
-	Filter                                                                                    // build DML where clause
+	Filter     `json:"-"`     // build DML where clause
 }
 
 // TPayAccountFields full field list for default query
@@ -11257,42 +9520,6 @@ func GetTPayAccountByPk(db Queryer, pk0 null.Int) (*TPayAccount, error) {
 	return &r, nil
 }
 
-// GetTPayAccountReflectValuesMap returns a map of field names to their values.
-//
-// key is the tag name, value is the field value.
-// This is useful for reflection and dynamic queries.
-func (r *TPayAccount) GetTPayAccountReflectValuesMap() (map[string]any, error) {
-
-	values := make(map[string]any)
-	v := reflect.ValueOf(r).Elem()
-	t := v.Type()
-	for i := range v.NumField() {
-		field := t.Field(i)
-		tag := field.Tag.Get("db")
-		if tag == "" {
-			return nil, errors.Errorf("missing db tag for field %s in table t_pay_account", field.Name)
-		}
-
-		columnName := strings.Split(tag, ",")[0]
-		if columnName == "" {
-			return nil, errors.Errorf("missing column name for field %s in table t_pay_account", field.Name)
-		}
-
-		fieldValue := reflect.ValueOf(r).Elem().Field(i)
-		if !fieldValue.IsValid() {
-			return nil, errors.Errorf("invalid field value for field %s in table t_pay_account", field.Name)
-		}
-
-		if !fieldValue.CanAddr() {
-			return nil, errors.Errorf("cannot read field value for field %s in table t_pay_account", field.Name)
-		}
-
-		values[columnName] = fieldValue.Addr().Interface()
-	}
-
-	return values, nil
-}
-
 /*TPayment 缴费表(用于对公转账自动化) represents assessuser.t_payment */
 type TPayment struct {
 	ID             null.Int       `json:"ID,omitempty" db:"id,true,integer"`                                    /* id 编码 */
@@ -11308,7 +9535,7 @@ type TPayment struct {
 	Addi           types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                                 /* addi 附加数据 */
 	Remark         null.String    `json:"Remark,omitempty" db:"remark,false,character varying"`                 /* remark 备注 */
 	Status         null.String    `json:"Status,omitempty" db:"status,false,character varying"`                 /* status 状态, 未缴费: 0, 已缴费: 2, 作废: 4 */
-	Filter                                                                                                      // build DML where clause
+	Filter         `json:"-"`     // build DML where clause
 }
 
 // TPaymentFields full field list for default query
@@ -11439,42 +9666,6 @@ func GetTPaymentByPk(db Queryer, pk0 null.Int) (*TPayment, error) {
 	return &r, nil
 }
 
-// GetTPaymentReflectValuesMap returns a map of field names to their values.
-//
-// key is the tag name, value is the field value.
-// This is useful for reflection and dynamic queries.
-func (r *TPayment) GetTPaymentReflectValuesMap() (map[string]any, error) {
-
-	values := make(map[string]any)
-	v := reflect.ValueOf(r).Elem()
-	t := v.Type()
-	for i := range v.NumField() {
-		field := t.Field(i)
-		tag := field.Tag.Get("db")
-		if tag == "" {
-			return nil, errors.Errorf("missing db tag for field %s in table t_payment", field.Name)
-		}
-
-		columnName := strings.Split(tag, ",")[0]
-		if columnName == "" {
-			return nil, errors.Errorf("missing column name for field %s in table t_payment", field.Name)
-		}
-
-		fieldValue := reflect.ValueOf(r).Elem().Field(i)
-		if !fieldValue.IsValid() {
-			return nil, errors.Errorf("invalid field value for field %s in table t_payment", field.Name)
-		}
-
-		if !fieldValue.CanAddr() {
-			return nil, errors.Errorf("cannot read field value for field %s in table t_payment", field.Name)
-		}
-
-		values[columnName] = fieldValue.Addr().Interface()
-	}
-
-	return values, nil
-}
-
 /*TPermission t_permission represents assessuser.t_permission */
 type TPermission struct {
 	ID          null.Int       `json:"ID,omitempty" db:"id,true,integer"`                    /* id 权限ID */
@@ -11487,7 +9678,7 @@ type TPermission struct {
 	Addi        types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                 /* addi 扩展 */
 	Status      null.String    `json:"Status,omitempty" db:"status,false,character varying"` /* status 状态 00: 启用 02: 禁用 */
 	Description null.String    `json:"Description,omitempty" db:"description,false,text"`    /* description description */
-	Filter                                                                                   // build DML where clause
+	Filter      `json:"-"`     // build DML where clause
 }
 
 // TPermissionFields full field list for default query
@@ -11603,47 +9794,11 @@ func GetTPermissionByPk(db Queryer, pk0 null.Int) (*TPermission, error) {
 	return &r, nil
 }
 
-// GetTPermissionReflectValuesMap returns a map of field names to their values.
-//
-// key is the tag name, value is the field value.
-// This is useful for reflection and dynamic queries.
-func (r *TPermission) GetTPermissionReflectValuesMap() (map[string]any, error) {
-
-	values := make(map[string]any)
-	v := reflect.ValueOf(r).Elem()
-	t := v.Type()
-	for i := range v.NumField() {
-		field := t.Field(i)
-		tag := field.Tag.Get("db")
-		if tag == "" {
-			return nil, errors.Errorf("missing db tag for field %s in table t_permission", field.Name)
-		}
-
-		columnName := strings.Split(tag, ",")[0]
-		if columnName == "" {
-			return nil, errors.Errorf("missing column name for field %s in table t_permission", field.Name)
-		}
-
-		fieldValue := reflect.ValueOf(r).Elem().Field(i)
-		if !fieldValue.IsValid() {
-			return nil, errors.Errorf("invalid field value for field %s in table t_permission", field.Name)
-		}
-
-		if !fieldValue.CanAddr() {
-			return nil, errors.Errorf("cannot read field value for field %s in table t_permission", field.Name)
-		}
-
-		values[columnName] = fieldValue.Addr().Interface()
-	}
-
-	return values, nil
-}
-
 /*TPractice t_practice represents assessuser.t_practice */
 type TPractice struct {
 	ID              null.Int       `json:"ID,omitempty" db:"id,true,integer"`                               /* id 练习ID */
 	Name            null.String    `json:"Name,omitempty" db:"name,false,character varying"`                /* name 练习名称 */
-	CorrectMode     null.String    `json:"CorrectMode,omitempty" db:"correct_mode,false,character varying"` /* correct_mode 批改方式，00：手动  02：AI */
+	CorrectMode     null.String    `json:"CorrectMode,omitempty" db:"correct_mode,false,character varying"` /* correct_mode 批改方式，00：自动（AI）  10：手动 */
 	Type            null.String    `json:"Type,omitempty" db:"type,false,character varying"`                /* type 练习类型，00：经典  02：常练  04：智能 */
 	Creator         null.Int       `json:"Creator,omitempty" db:"creator,false,bigint"`                     /* creator 创建者 */
 	UpdatedBy       null.Int       `json:"UpdatedBy,omitempty" db:"updated_by,false,bigint"`                /* updated_by 更新者 */
@@ -11651,11 +9806,11 @@ type TPractice struct {
 	Status          null.String    `json:"Status,omitempty" db:"status,false,character varying"`            /* status 状态， 00：未发布  02：发布  04：已删除 */
 	AllowedAttempts null.Int       `json:"AllowedAttempts,omitempty" db:"allowed_attempts,false,integer"`   /* allowed_attempts 可作答的次数；
 	如果为0，则说明是无限次数 */
-	PaperID     null.Int `json:"PaperID,omitempty" db:"paper_id,false,integer"`          /* paper_id 试卷编号 */
-	ExamPaperID null.Int `json:"ExamPaperID,omitempty" db:"exam_paper_id,false,integer"` /* exam_paper_id 生成的考卷快照的id，避免重复生成考卷快照 */
-	CreateTime  null.Int `json:"CreateTime,omitempty" db:"create_time,false,bigint"`     /* create_time 记录创建时间 */
-	UpdateTime  null.Int `json:"UpdateTime,omitempty" db:"update_time,false,bigint"`     /* update_time 记录更新时间 */
-	Filter                                                                               // build DML where clause
+	PaperID     null.Int   `json:"PaperID,omitempty" db:"paper_id,false,integer"`          /* paper_id 试卷编号 */
+	ExamPaperID null.Int   `json:"ExamPaperID,omitempty" db:"exam_paper_id,false,integer"` /* exam_paper_id 生成的考卷快照的id，避免重复生成考卷快照 */
+	CreateTime  null.Int   `json:"CreateTime,omitempty" db:"create_time,false,bigint"`     /* create_time 记录创建时间 */
+	UpdateTime  null.Int   `json:"UpdateTime,omitempty" db:"update_time,false,bigint"`     /* update_time 记录更新时间 */
+	Filter      `json:"-"` // build DML where clause
 }
 
 // TPracticeFields full field list for default query
@@ -11786,54 +9941,18 @@ func GetTPracticeByPk(db Queryer, pk0 null.Int) (*TPractice, error) {
 	return &r, nil
 }
 
-// GetTPracticeReflectValuesMap returns a map of field names to their values.
-//
-// key is the tag name, value is the field value.
-// This is useful for reflection and dynamic queries.
-func (r *TPractice) GetTPracticeReflectValuesMap() (map[string]any, error) {
-
-	values := make(map[string]any)
-	v := reflect.ValueOf(r).Elem()
-	t := v.Type()
-	for i := range v.NumField() {
-		field := t.Field(i)
-		tag := field.Tag.Get("db")
-		if tag == "" {
-			return nil, errors.Errorf("missing db tag for field %s in table t_practice", field.Name)
-		}
-
-		columnName := strings.Split(tag, ",")[0]
-		if columnName == "" {
-			return nil, errors.Errorf("missing column name for field %s in table t_practice", field.Name)
-		}
-
-		fieldValue := reflect.ValueOf(r).Elem().Field(i)
-		if !fieldValue.IsValid() {
-			return nil, errors.Errorf("invalid field value for field %s in table t_practice", field.Name)
-		}
-
-		if !fieldValue.CanAddr() {
-			return nil, errors.Errorf("cannot read field value for field %s in table t_practice", field.Name)
-		}
-
-		values[columnName] = fieldValue.Addr().Interface()
-	}
-
-	return values, nil
-}
-
 /*TPracticeStudent t_practice_student represents assessuser.t_practice_student */
 type TPracticeStudent struct {
-	ID         null.Int       `json:"ID,omitempty" db:"id,true,integer"`                                       /* id id */
-	PracticeID null.Int       `json:"PracticeID,omitempty" db:"practice_id,false,integer"`                     /* practice_id practice_id */
-	StudentID  null.Int       `json:"StudentID,omitempty" db:"student_id,false,integer"`                       /* student_id student_id */
-	Addi       types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                                    /* addi addi */
-	Creator    null.Int       `json:"Creator,omitempty" db:"creator,false,integer"`                            /* creator creator */
-	UpdatedBy  null.Int       `json:"UpdatedBy,omitempty" db:"updated_by,false,integer"`                       /* updated_by updated_by */
-	CreateTime null.Int       `json:"CreateTime,omitempty" db:"create_time,false,timestamp without time zone"` /* create_time create_time */
-	UpdateTime null.Int       `json:"UpdateTime,omitempty" db:"update_time,false,timestamp without time zone"` /* update_time update_time */
-	Status     null.String    `json:"Status,omitempty" db:"status,false,character varying"`                    /* status 00:正常 02:被删除 */
-	Filter                                                                                                     // build DML where clause
+	ID         null.Int       `json:"ID,omitempty" db:"id,true,integer"`                    /* id id */
+	PracticeID null.Int       `json:"PracticeID,omitempty" db:"practice_id,false,integer"`  /* practice_id practice_id */
+	StudentID  null.Int       `json:"StudentID,omitempty" db:"student_id,false,integer"`    /* student_id student_id */
+	Addi       types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                 /* addi addi */
+	Creator    null.Int       `json:"Creator,omitempty" db:"creator,false,integer"`         /* creator creator */
+	UpdatedBy  null.Int       `json:"UpdatedBy,omitempty" db:"updated_by,false,integer"`    /* updated_by updated_by */
+	Status     null.String    `json:"Status,omitempty" db:"status,false,character varying"` /* status 00:正常 02:被删除 */
+	CreateTime null.Int       `json:"CreateTime,omitempty" db:"create_time,false,bigint"`   /* create_time 创建时间 */
+	UpdateTime null.Int       `json:"UpdateTime,omitempty" db:"update_time,false,bigint"`   /* update_time 更新时间 */
+	Filter     `json:"-"`     // build DML where clause
 }
 
 // TPracticeStudentFields full field list for default query
@@ -11844,9 +9963,9 @@ var TPracticeStudentFields = []string{
 	"Addi",
 	"Creator",
 	"UpdatedBy",
+	"Status",
 	"CreateTime",
 	"UpdateTime",
-	"Status",
 }
 
 // TPracticeStudentColumns full column list for default query
@@ -11857,9 +9976,9 @@ var TPracticeStudentColumns = []string{
 	"addi",
 	"creator",
 	"updated_by",
+	"status",
 	"create_time",
 	"update_time",
-	"status",
 }
 
 // TPracticeStudentColumnsDataTypes full column data types for default query
@@ -11870,9 +9989,9 @@ var TPracticeStudentColumnsDataTypes = map[string]string{
 	"addi":        "jsonb",
 	"creator":     "integer",
 	"updated_by":  "integer",
-	"create_time": "timestamp without time zone",
-	"update_time": "timestamp without time zone",
 	"status":      "character varying",
+	"create_time": "bigint",
+	"update_time": "bigint",
 }
 
 // GetFieldsMap returns a map of field names to their values.
@@ -11884,9 +10003,9 @@ func (r *TPracticeStudent) GetFieldsMap() map[string]any {
 		"Addi":       r.Addi,
 		"Creator":    r.Creator,
 		"UpdatedBy":  r.UpdatedBy,
+		"Status":     r.Status,
 		"CreateTime": r.CreateTime,
 		"UpdateTime": r.UpdateTime,
-		"Status":     r.Status,
 	}
 }
 
@@ -11899,9 +10018,9 @@ func (r *TPracticeStudent) GetColumnsMap() map[string]any {
 		"addi":        r.Addi,
 		"creator":     r.Creator,
 		"updated_by":  r.UpdatedBy,
+		"status":      r.Status,
 		"create_time": r.CreateTime,
 		"update_time": r.UpdateTime,
-		"status":      r.Status,
 	}
 }
 
@@ -11923,8 +10042,8 @@ func (r *TPracticeStudent) GetTableName() string {
 // Create inserts the TPracticeStudent to the database.
 func (r *TPracticeStudent) Create(db Queryer) error {
 	err := db.QueryRow(
-		`INSERT INTO t_practice_student (practice_id, student_id, addi, creator, updated_by, create_time, update_time, status) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
-		&r.PracticeID, &r.StudentID, &r.Addi, &r.Creator, &r.UpdatedBy, &r.CreateTime, &r.UpdateTime, &r.Status).Scan(&r.ID)
+		`INSERT INTO t_practice_student (practice_id, student_id, addi, creator, updated_by, status, create_time, update_time) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
+		&r.PracticeID, &r.StudentID, &r.Addi, &r.Creator, &r.UpdatedBy, &r.Status, &r.CreateTime, &r.UpdateTime).Scan(&r.ID)
 	if err != nil {
 		return errors.Wrap(err, "failed to insert t_practice_student")
 	}
@@ -11936,48 +10055,12 @@ func GetTPracticeStudentByPk(db Queryer, pk0 null.Int) (*TPracticeStudent, error
 
 	var r TPracticeStudent
 	err := db.QueryRow(
-		`SELECT id, practice_id, student_id, addi, creator, updated_by, create_time, update_time, status FROM t_practice_student WHERE id = $1`,
-		pk0).Scan(&r.ID, &r.PracticeID, &r.StudentID, &r.Addi, &r.Creator, &r.UpdatedBy, &r.CreateTime, &r.UpdateTime, &r.Status)
+		`SELECT id, practice_id, student_id, addi, creator, updated_by, status, create_time, update_time FROM t_practice_student WHERE id = $1`,
+		pk0).Scan(&r.ID, &r.PracticeID, &r.StudentID, &r.Addi, &r.Creator, &r.UpdatedBy, &r.Status, &r.CreateTime, &r.UpdateTime)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to select t_practice_student")
 	}
 	return &r, nil
-}
-
-// GetTPracticeStudentReflectValuesMap returns a map of field names to their values.
-//
-// key is the tag name, value is the field value.
-// This is useful for reflection and dynamic queries.
-func (r *TPracticeStudent) GetTPracticeStudentReflectValuesMap() (map[string]any, error) {
-
-	values := make(map[string]any)
-	v := reflect.ValueOf(r).Elem()
-	t := v.Type()
-	for i := range v.NumField() {
-		field := t.Field(i)
-		tag := field.Tag.Get("db")
-		if tag == "" {
-			return nil, errors.Errorf("missing db tag for field %s in table t_practice_student", field.Name)
-		}
-
-		columnName := strings.Split(tag, ",")[0]
-		if columnName == "" {
-			return nil, errors.Errorf("missing column name for field %s in table t_practice_student", field.Name)
-		}
-
-		fieldValue := reflect.ValueOf(r).Elem().Field(i)
-		if !fieldValue.IsValid() {
-			return nil, errors.Errorf("invalid field value for field %s in table t_practice_student", field.Name)
-		}
-
-		if !fieldValue.CanAddr() {
-			return nil, errors.Errorf("cannot read field value for field %s in table t_practice_student", field.Name)
-		}
-
-		values[columnName] = fieldValue.Addr().Interface()
-	}
-
-	return values, nil
 }
 
 /*TPracticeSubmissions t_student_practice represents assessuser.t_practice_submissions */
@@ -11989,7 +10072,7 @@ type TPracticeSubmissions struct {
 	Remark         null.String    `json:"Remark,omitempty" db:"remark,false,character varying"`       /* remark 备注 */
 	Creator        null.Int       `json:"Creator,omitempty" db:"creator,false,bigint"`                /* creator 创建者 */
 	UpdatedBy      null.Int       `json:"UpdatedBy,omitempty" db:"updated_by,false,bigint"`           /* updated_by 更新者 */
-	Status         null.String    `json:"Status,omitempty" db:"status,false,character varying"`       /* status 状态 00：允许作答 02 ：不允许作答 04：删除  06：已提交 */
+	Status         null.String    `json:"Status,omitempty" db:"status,false,character varying"`       /* status 状态 00：允许作答 02 ：不允许作答 04：删除  06：已提交 08：已批改 */
 	Addi           types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                       /* addi 附加信息 */
 	Attempt        null.Int       `json:"Attempt,omitempty" db:"attempt,false,integer"`               /* attempt 当前是第几次练习 */
 	LastStartTime  null.Int       `json:"LastStartTime,omitempty" db:"last_start_time,false,bigint"`  /* last_start_time 最近一次作答时间 */
@@ -11999,7 +10082,7 @@ type TPracticeSubmissions struct {
 	UpdateTime     null.Int       `json:"UpdateTime,omitempty" db:"update_time,false,bigint"`         /* update_time 当前记录更新的时间 */
 	StartTime      null.Int       `json:"StartTime,omitempty" db:"start_time,false,bigint"`           /* start_time 此次练习第一次进入作答的时间 */
 	EndTime        null.Int       `json:"EndTime,omitempty" db:"end_time,false,bigint"`               /* end_time 此次练习提交作答的时间 */
-	Filter                                                                                            // build DML where clause
+	Filter         `json:"-"`     // build DML where clause
 }
 
 // TPracticeSubmissionsFields full field list for default query
@@ -12150,46 +10233,8 @@ func GetTPracticeSubmissionsByPk(db Queryer, pk0 null.Int) (*TPracticeSubmission
 	return &r, nil
 }
 
-// GetTPracticeSubmissionsReflectValuesMap returns a map of field names to their values.
-//
-// key is the tag name, value is the field value.
-// This is useful for reflection and dynamic queries.
-func (r *TPracticeSubmissions) GetTPracticeSubmissionsReflectValuesMap() (map[string]any, error) {
-
-	values := make(map[string]any)
-	v := reflect.ValueOf(r).Elem()
-	t := v.Type()
-	for i := range v.NumField() {
-		field := t.Field(i)
-		tag := field.Tag.Get("db")
-		if tag == "" {
-			return nil, errors.Errorf("missing db tag for field %s in table t_practice_submissions", field.Name)
-		}
-
-		columnName := strings.Split(tag, ",")[0]
-		if columnName == "" {
-			return nil, errors.Errorf("missing column name for field %s in table t_practice_submissions", field.Name)
-		}
-
-		fieldValue := reflect.ValueOf(r).Elem().Field(i)
-		if !fieldValue.IsValid() {
-			return nil, errors.Errorf("invalid field value for field %s in table t_practice_submissions", field.Name)
-		}
-
-		if !fieldValue.CanAddr() {
-			return nil, errors.Errorf("cannot read field value for field %s in table t_practice_submissions", field.Name)
-		}
-
-		values[columnName] = fieldValue.Addr().Interface()
-	}
-
-	return values, nil
-}
-
-/*
-TPrice 价格设置表
-represents assessuser.t_price
-*/
+/*TPrice 价格设置表
+represents assessuser.t_price */
 type TPrice struct {
 	ID                 null.Int       `json:"ID,omitempty" db:"id,true,integer"`                                 /* id 价格id */
 	Title              null.String    `json:"Title,omitempty" db:"title,false,character varying"`                /* title 标题 */
@@ -12212,7 +10257,7 @@ type TPrice struct {
 	Addi               types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                              /* addi 备用字段 */
 	Remark             null.String    `json:"Remark,omitempty" db:"remark,false,character varying"`              /* remark 备注 */
 	Status             null.String    `json:"Status,omitempty" db:"status,false,character varying"`              /* status 状态，0：有效，2：无效 */
-	Filter                                                                                                       // build DML where clause
+	Filter             `json:"-"`     // build DML where clause
 }
 
 // TPriceFields full field list for default query
@@ -12383,42 +10428,6 @@ func GetTPriceByPk(db Queryer, pk0 null.Int) (*TPrice, error) {
 	return &r, nil
 }
 
-// GetTPriceReflectValuesMap returns a map of field names to their values.
-//
-// key is the tag name, value is the field value.
-// This is useful for reflection and dynamic queries.
-func (r *TPrice) GetTPriceReflectValuesMap() (map[string]any, error) {
-
-	values := make(map[string]any)
-	v := reflect.ValueOf(r).Elem()
-	t := v.Type()
-	for i := range v.NumField() {
-		field := t.Field(i)
-		tag := field.Tag.Get("db")
-		if tag == "" {
-			return nil, errors.Errorf("missing db tag for field %s in table t_price", field.Name)
-		}
-
-		columnName := strings.Split(tag, ",")[0]
-		if columnName == "" {
-			return nil, errors.Errorf("missing column name for field %s in table t_price", field.Name)
-		}
-
-		fieldValue := reflect.ValueOf(r).Elem().Field(i)
-		if !fieldValue.IsValid() {
-			return nil, errors.Errorf("invalid field value for field %s in table t_price", field.Name)
-		}
-
-		if !fieldValue.CanAddr() {
-			return nil, errors.Errorf("cannot read field value for field %s in table t_price", field.Name)
-		}
-
-		values[columnName] = fieldValue.Addr().Interface()
-	}
-
-	return values, nil
-}
-
 /*TPrj 项目信息表 represents assessuser.t_prj */
 type TPrj struct {
 	ID         null.Int    `json:"ID,omitempty" db:"id,true,integer"`                    /* id 编号 */
@@ -12437,7 +10446,7 @@ type TPrj struct {
 	engaged,确定了承接人
 	signed,签订合同
 	finished,项目完成 */
-	Filter // build DML where clause
+	Filter `json:"-"` // build DML where clause
 }
 
 // TPrjFields full field list for default query
@@ -12558,42 +10567,6 @@ func GetTPrjByPk(db Queryer, pk0 null.Int) (*TPrj, error) {
 	return &r, nil
 }
 
-// GetTPrjReflectValuesMap returns a map of field names to their values.
-//
-// key is the tag name, value is the field value.
-// This is useful for reflection and dynamic queries.
-func (r *TPrj) GetTPrjReflectValuesMap() (map[string]any, error) {
-
-	values := make(map[string]any)
-	v := reflect.ValueOf(r).Elem()
-	t := v.Type()
-	for i := range v.NumField() {
-		field := t.Field(i)
-		tag := field.Tag.Get("db")
-		if tag == "" {
-			return nil, errors.Errorf("missing db tag for field %s in table t_prj", field.Name)
-		}
-
-		columnName := strings.Split(tag, ",")[0]
-		if columnName == "" {
-			return nil, errors.Errorf("missing column name for field %s in table t_prj", field.Name)
-		}
-
-		fieldValue := reflect.ValueOf(r).Elem().Field(i)
-		if !fieldValue.IsValid() {
-			return nil, errors.Errorf("invalid field value for field %s in table t_prj", field.Name)
-		}
-
-		if !fieldValue.CanAddr() {
-			return nil, errors.Errorf("cannot read field value for field %s in table t_prj", field.Name)
-		}
-
-		values[columnName] = fieldValue.Addr().Interface()
-	}
-
-	return values, nil
-}
-
 /*TProof 人才知识能力领域说明表 represents assessuser.t_proof */
 type TProof struct {
 	ID          null.Int    `json:"ID,omitempty" db:"id,true,integer"`                    /* id 编号 */
@@ -12602,7 +10575,7 @@ type TProof struct {
 	Limn        null.String `json:"Limn,omitempty" db:"limn,false,character varying"`     /* limn 能力描述 */
 	CreateTime  null.Int    `json:"CreateTime,omitempty" db:"create_time,false,bigint"`   /* create_time 创建时间 */
 	UpdateTime  null.Int    `json:"UpdateTime,omitempty" db:"update_time,false,bigint"`   /* update_time 更新时间 */
-	Filter                                                                                // build DML where clause
+	Filter      `json:"-"`  // build DML where clause
 }
 
 // TProofFields full field list for default query
@@ -12698,42 +10671,6 @@ func GetTProofByPk(db Queryer, pk0 null.Int) (*TProof, error) {
 	return &r, nil
 }
 
-// GetTProofReflectValuesMap returns a map of field names to their values.
-//
-// key is the tag name, value is the field value.
-// This is useful for reflection and dynamic queries.
-func (r *TProof) GetTProofReflectValuesMap() (map[string]any, error) {
-
-	values := make(map[string]any)
-	v := reflect.ValueOf(r).Elem()
-	t := v.Type()
-	for i := range v.NumField() {
-		field := t.Field(i)
-		tag := field.Tag.Get("db")
-		if tag == "" {
-			return nil, errors.Errorf("missing db tag for field %s in table t_proof", field.Name)
-		}
-
-		columnName := strings.Split(tag, ",")[0]
-		if columnName == "" {
-			return nil, errors.Errorf("missing column name for field %s in table t_proof", field.Name)
-		}
-
-		fieldValue := reflect.ValueOf(r).Elem().Field(i)
-		if !fieldValue.IsValid() {
-			return nil, errors.Errorf("invalid field value for field %s in table t_proof", field.Name)
-		}
-
-		if !fieldValue.CanAddr() {
-			return nil, errors.Errorf("cannot read field value for field %s in table t_proof", field.Name)
-		}
-
-		values[columnName] = fieldValue.Addr().Interface()
-	}
-
-	return values, nil
-}
-
 /*TProve 知识能力领域鉴定、证明表 represents assessuser.t_prove */
 type TProve struct {
 	ID         null.Int    `json:"ID,omitempty" db:"id,true,integer"`                          /* id 编号 */
@@ -12742,7 +10679,7 @@ type TProve struct {
 	Creator    null.Int    `json:"Creator,omitempty" db:"creator,false,bigint"`                /* creator 鉴定者 */
 	CreateTime null.Int    `json:"CreateTime,omitempty" db:"create_time,false,bigint"`         /* create_time 鉴定时间 */
 	UpdateTime null.Int    `json:"UpdateTime,omitempty" db:"update_time,false,bigint"`         /* update_time 鉴定更新时间 */
-	Filter                                                                                     // build DML where clause
+	Filter     `json:"-"`  // build DML where clause
 }
 
 // TProveFields full field list for default query
@@ -12838,49 +10775,13 @@ func GetTProveByPk(db Queryer, pk0 null.Int) (*TProve, error) {
 	return &r, nil
 }
 
-// GetTProveReflectValuesMap returns a map of field names to their values.
-//
-// key is the tag name, value is the field value.
-// This is useful for reflection and dynamic queries.
-func (r *TProve) GetTProveReflectValuesMap() (map[string]any, error) {
-
-	values := make(map[string]any)
-	v := reflect.ValueOf(r).Elem()
-	t := v.Type()
-	for i := range v.NumField() {
-		field := t.Field(i)
-		tag := field.Tag.Get("db")
-		if tag == "" {
-			return nil, errors.Errorf("missing db tag for field %s in table t_prove", field.Name)
-		}
-
-		columnName := strings.Split(tag, ",")[0]
-		if columnName == "" {
-			return nil, errors.Errorf("missing column name for field %s in table t_prove", field.Name)
-		}
-
-		fieldValue := reflect.ValueOf(r).Elem().Field(i)
-		if !fieldValue.IsValid() {
-			return nil, errors.Errorf("invalid field value for field %s in table t_prove", field.Name)
-		}
-
-		if !fieldValue.CanAddr() {
-			return nil, errors.Errorf("cannot read field value for field %s in table t_prove", field.Name)
-		}
-
-		values[columnName] = fieldValue.Addr().Interface()
-	}
-
-	return values, nil
-}
-
 /*TQualification 人才资质表 represents assessuser.t_qualification */
 type TQualification struct {
-	ID          null.Int `json:"ID,omitempty" db:"id,true,integer"`                    /* id 资质证明编号 */
-	UserID      null.Int `json:"UserID,omitempty" db:"user_id,false,bigint"`           /* user_id 用户编号 */
-	ExpertiseID null.Int `json:"ExpertiseID,omitempty" db:"expertise_id,false,bigint"` /* expertise_id 专长编号 */
-	CreateTime  null.Int `json:"CreateTime,omitempty" db:"create_time,false,bigint"`   /* create_time 创建时间 */
-	Filter                                                                             // build DML where clause
+	ID          null.Int   `json:"ID,omitempty" db:"id,true,integer"`                    /* id 资质证明编号 */
+	UserID      null.Int   `json:"UserID,omitempty" db:"user_id,false,bigint"`           /* user_id 用户编号 */
+	ExpertiseID null.Int   `json:"ExpertiseID,omitempty" db:"expertise_id,false,bigint"` /* expertise_id 专长编号 */
+	CreateTime  null.Int   `json:"CreateTime,omitempty" db:"create_time,false,bigint"`   /* create_time 创建时间 */
+	Filter      `json:"-"` // build DML where clause
 }
 
 // TQualificationFields full field list for default query
@@ -12966,42 +10867,6 @@ func GetTQualificationByPk(db Queryer, pk0 null.Int) (*TQualification, error) {
 	return &r, nil
 }
 
-// GetTQualificationReflectValuesMap returns a map of field names to their values.
-//
-// key is the tag name, value is the field value.
-// This is useful for reflection and dynamic queries.
-func (r *TQualification) GetTQualificationReflectValuesMap() (map[string]any, error) {
-
-	values := make(map[string]any)
-	v := reflect.ValueOf(r).Elem()
-	t := v.Type()
-	for i := range v.NumField() {
-		field := t.Field(i)
-		tag := field.Tag.Get("db")
-		if tag == "" {
-			return nil, errors.Errorf("missing db tag for field %s in table t_qualification", field.Name)
-		}
-
-		columnName := strings.Split(tag, ",")[0]
-		if columnName == "" {
-			return nil, errors.Errorf("missing column name for field %s in table t_qualification", field.Name)
-		}
-
-		fieldValue := reflect.ValueOf(r).Elem().Field(i)
-		if !fieldValue.IsValid() {
-			return nil, errors.Errorf("invalid field value for field %s in table t_qualification", field.Name)
-		}
-
-		if !fieldValue.CanAddr() {
-			return nil, errors.Errorf("cannot read field value for field %s in table t_qualification", field.Name)
-		}
-
-		values[columnName] = fieldValue.Addr().Interface()
-	}
-
-	return values, nil
-}
-
 /*TQuestion t_question represents assessuser.t_question */
 type TQuestion struct {
 	ID                      null.Int       `json:"ID,omitempty" db:"id,true,integer"`                                            /* id 编号 */
@@ -13022,15 +10887,15 @@ type TQuestion struct {
 	Repo                    types.JSONText `json:"Repo,omitempty" db:"repo,false,jsonb"`                                         /* repo 仓库 */
 	Order                   null.Int       `json:"Order,omitempty" db:"order,false,bigint"`                                      /* order 顺序 */
 	Creator                 null.Int       `json:"Creator,omitempty" db:"creator,false,bigint"`                                  /* creator 创建者 */
-	CreateTime              null.Int       `json:"CreateTime,omitempty" db:"create_time,false,timestamp without time zone"`      /* create_time 创建时间 */
+	CreateTime              null.Int       `json:"CreateTime,omitempty" db:"create_time,false,bigint"`                           /* create_time 创建时间 */
 	UpdatedBy               null.Int       `json:"UpdatedBy,omitempty" db:"updated_by,false,bigint"`                             /* updated_by 更新者 */
-	UpdateTime              null.Int       `json:"UpdateTime,omitempty" db:"update_time,false,timestamp without time zone"`      /* update_time 更新时间 */
+	UpdateTime              null.Int       `json:"UpdateTime,omitempty" db:"update_time,false,bigint"`                           /* update_time 更新时间 */
 	Addi                    types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                                         /* addi 附加信息 */
 	Status                  string         `json:"Status,omitempty" db:"status,false,character varying"`                         /* status 状态，00:正常 02:作废 04:异常 */
 	QuestionAttachmentsPath types.JSONText `json:"QuestionAttachmentsPath,omitempty" db:"question_attachments_path,false,jsonb"` /* question_attachments_path question_attachments_path */
 	AccessMode              string         `json:"AccessMode,omitempty" db:"access_mode,false,character varying"`                /* access_mode access_mode */
 	BelongTo                null.Int       `json:"BelongTo,omitempty" db:"belong_to,false,bigint"`                               /* belong_to belong_to */
-	Filter                                                                                                                       // build DML where clause
+	Filter                  `json:"-"`     // build DML where clause
 }
 
 // TQuestionFields full field list for default query
@@ -13113,9 +10978,9 @@ var TQuestionColumnsDataTypes = map[string]string{
 	"repo":                      "jsonb",
 	"order":                     "bigint",
 	"creator":                   "bigint",
-	"create_time":               "timestamp without time zone",
+	"create_time":               "bigint",
 	"updated_by":                "bigint",
-	"update_time":               "timestamp without time zone",
+	"update_time":               "bigint",
 	"addi":                      "jsonb",
 	"status":                    "character varying",
 	"question_attachments_path": "jsonb",
@@ -13226,42 +11091,6 @@ func GetTQuestionByPk(db Queryer, pk0 null.Int) (*TQuestion, error) {
 	return &r, nil
 }
 
-// GetTQuestionReflectValuesMap returns a map of field names to their values.
-//
-// key is the tag name, value is the field value.
-// This is useful for reflection and dynamic queries.
-func (r *TQuestion) GetTQuestionReflectValuesMap() (map[string]any, error) {
-
-	values := make(map[string]any)
-	v := reflect.ValueOf(r).Elem()
-	t := v.Type()
-	for i := range v.NumField() {
-		field := t.Field(i)
-		tag := field.Tag.Get("db")
-		if tag == "" {
-			return nil, errors.Errorf("missing db tag for field %s in table t_question", field.Name)
-		}
-
-		columnName := strings.Split(tag, ",")[0]
-		if columnName == "" {
-			return nil, errors.Errorf("missing column name for field %s in table t_question", field.Name)
-		}
-
-		fieldValue := reflect.ValueOf(r).Elem().Field(i)
-		if !fieldValue.IsValid() {
-			return nil, errors.Errorf("invalid field value for field %s in table t_question", field.Name)
-		}
-
-		if !fieldValue.CanAddr() {
-			return nil, errors.Errorf("cannot read field value for field %s in table t_question", field.Name)
-		}
-
-		values[columnName] = fieldValue.Addr().Interface()
-	}
-
-	return values, nil
-}
-
 /*TQuestionBank t_question_bank represents assessuser.t_question_bank */
 type TQuestionBank struct {
 	ID            null.Int       `json:"ID,omitempty" db:"id,true,integer"`                               /* id 编号 */
@@ -13277,9 +11106,9 @@ type TQuestionBank struct {
 	Remark        null.String    `json:"Remark,omitempty" db:"remark,false,character varying"`            /* remark 备注 */
 	Addi          types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                            /* addi 附加信息 */
 	Status        null.String    `json:"Status,omitempty" db:"status,false,character varying"`            /* status 状态，00:正常 02:作废 04:异常 */
-	QuestionCount null.Int       `json:"QuestionCount,omitempty" db:"question_count,false,bigint"`        /* question_count question_count */
-	AccessMode    string         `json:"AccessMode,omitempty" db:"access_mode,false,character varying"`   /* access_mode access_mode */
-	Filter                                                                                                // build DML where clause
+	QuestionCount null.Int       `json:"QuestionCount,omitempty" db:"question_count,false,bigint"`        /* question_count 题目数量 */
+	AccessMode    string         `json:"AccessMode,omitempty" db:"access_mode,false,character varying"`   /* access_mode 题库共享状态码，”00“：私有；”02“：共享：”04“：公有 */
+	Filter        `json:"-"`     // build DML where clause
 }
 
 // TQuestionBankFields full field list for default query
@@ -13420,52 +11249,16 @@ func GetTQuestionBankByPk(db Queryer, pk0 null.Int) (*TQuestionBank, error) {
 	return &r, nil
 }
 
-// GetTQuestionBankReflectValuesMap returns a map of field names to their values.
-//
-// key is the tag name, value is the field value.
-// This is useful for reflection and dynamic queries.
-func (r *TQuestionBank) GetTQuestionBankReflectValuesMap() (map[string]any, error) {
-
-	values := make(map[string]any)
-	v := reflect.ValueOf(r).Elem()
-	t := v.Type()
-	for i := range v.NumField() {
-		field := t.Field(i)
-		tag := field.Tag.Get("db")
-		if tag == "" {
-			return nil, errors.Errorf("missing db tag for field %s in table t_question_bank", field.Name)
-		}
-
-		columnName := strings.Split(tag, ",")[0]
-		if columnName == "" {
-			return nil, errors.Errorf("missing column name for field %s in table t_question_bank", field.Name)
-		}
-
-		fieldValue := reflect.ValueOf(r).Elem().Field(i)
-		if !fieldValue.IsValid() {
-			return nil, errors.Errorf("invalid field value for field %s in table t_question_bank", field.Name)
-		}
-
-		if !fieldValue.CanAddr() {
-			return nil, errors.Errorf("cannot read field value for field %s in table t_question_bank", field.Name)
-		}
-
-		values[columnName] = fieldValue.Addr().Interface()
-	}
-
-	return values, nil
-}
-
 /*TQuestionBankShare t_question_bank_share represents assessuser.t_question_bank_share */
 type TQuestionBankShare struct {
-	BankID     null.Int `json:"BankID,omitempty" db:"bank_id,true,bigint"`                               /* bank_id 被分享题库 */
-	UserID     null.Int `json:"UserID,omitempty" db:"user_id,true,bigint"`                               /* user_id 被分享者 */
-	Creator    null.Int `json:"Creator,omitempty" db:"creator,false,bigint"`                             /* creator 创建者 */
-	CreateTime null.Int `json:"CreateTime,omitempty" db:"create_time,false,timestamp without time zone"` /* create_time 创建时间 */
-	UpdatedBy  null.Int `json:"UpdatedBy,omitempty" db:"updated_by,false,bigint"`                        /* updated_by 更新者 */
-	UpdateTime null.Int `json:"UpdateTime,omitempty" db:"update_time,false,timestamp without time zone"` /* update_time 更新时间 */
-	Status     string   `json:"Status,omitempty" db:"status,false,character varying"`                    /* status 状态：00正常 02废除 */
-	Filter                                                                                               // build DML where clause
+	BankID     null.Int   `json:"BankID,omitempty" db:"bank_id,true,bigint"`                               /* bank_id 被分享题库 */
+	UserID     null.Int   `json:"UserID,omitempty" db:"user_id,true,bigint"`                               /* user_id 被分享者 */
+	Creator    null.Int   `json:"Creator,omitempty" db:"creator,false,bigint"`                             /* creator 创建者 */
+	CreateTime null.Int   `json:"CreateTime,omitempty" db:"create_time,false,timestamp without time zone"` /* create_time 创建时间 */
+	UpdatedBy  null.Int   `json:"UpdatedBy,omitempty" db:"updated_by,false,bigint"`                        /* updated_by 更新者 */
+	UpdateTime null.Int   `json:"UpdateTime,omitempty" db:"update_time,false,timestamp without time zone"` /* update_time 更新时间 */
+	Status     string     `json:"Status,omitempty" db:"status,false,character varying"`                    /* status 状态：00正常 02废除 */
+	Filter     `json:"-"` // build DML where clause
 }
 
 // TQuestionBankShareFields full field list for default query
@@ -13566,42 +11359,6 @@ func GetTQuestionBankShareByPk(db Queryer, pk0 null.Int, pk1 null.Int) (*TQuesti
 	return &r, nil
 }
 
-// GetTQuestionBankShareReflectValuesMap returns a map of field names to their values.
-//
-// key is the tag name, value is the field value.
-// This is useful for reflection and dynamic queries.
-func (r *TQuestionBankShare) GetTQuestionBankShareReflectValuesMap() (map[string]any, error) {
-
-	values := make(map[string]any)
-	v := reflect.ValueOf(r).Elem()
-	t := v.Type()
-	for i := range v.NumField() {
-		field := t.Field(i)
-		tag := field.Tag.Get("db")
-		if tag == "" {
-			return nil, errors.Errorf("missing db tag for field %s in table t_question_bank_share", field.Name)
-		}
-
-		columnName := strings.Split(tag, ",")[0]
-		if columnName == "" {
-			return nil, errors.Errorf("missing column name for field %s in table t_question_bank_share", field.Name)
-		}
-
-		fieldValue := reflect.ValueOf(r).Elem().Field(i)
-		if !fieldValue.IsValid() {
-			return nil, errors.Errorf("invalid field value for field %s in table t_question_bank_share", field.Name)
-		}
-
-		if !fieldValue.CanAddr() {
-			return nil, errors.Errorf("cannot read field value for field %s in table t_question_bank_share", field.Name)
-		}
-
-		values[columnName] = fieldValue.Addr().Interface()
-	}
-
-	return values, nil
-}
-
 /*TRegion 区域列表 represents assessuser.t_region */
 type TRegion struct {
 	ID              null.Int       `json:"ID,omitempty" db:"id,true,integer"`                                        /* id 区域编号 */
@@ -13616,7 +11373,7 @@ type TRegion struct {
 	Addi            types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                                     /* addi 附加信息 */
 	Remark          null.String    `json:"Remark,omitempty" db:"remark,false,character varying"`                     /* remark 备注 */
 	Status          null.String    `json:"Status,omitempty" db:"status,false,character varying"`                     /* status 0:有效, 2: 删除, 过了一段时间有些区域可能会被删除 */
-	Filter                                                                                                           // build DML where clause
+	Filter          `json:"-"`     // build DML where clause
 }
 
 // TRegionFields full field list for default query
@@ -13742,44 +11499,9 @@ func GetTRegionByPk(db Queryer, pk0 null.Int) (*TRegion, error) {
 	return &r, nil
 }
 
-// GetTRegionReflectValuesMap returns a map of field names to their values.
-//
-// key is the tag name, value is the field value.
-// This is useful for reflection and dynamic queries.
-func (r *TRegion) GetTRegionReflectValuesMap() (map[string]any, error) {
+/*TRelation 描述两个实体间的隶属关系，类似于master:detail，校快保，描述销售/学校管理员/学校统计员与学校间的对应关系
 
-	values := make(map[string]any)
-	v := reflect.ValueOf(r).Elem()
-	t := v.Type()
-	for i := range v.NumField() {
-		field := t.Field(i)
-		tag := field.Tag.Get("db")
-		if tag == "" {
-			return nil, errors.Errorf("missing db tag for field %s in table t_region", field.Name)
-		}
 
-		columnName := strings.Split(tag, ",")[0]
-		if columnName == "" {
-			return nil, errors.Errorf("missing column name for field %s in table t_region", field.Name)
-		}
-
-		fieldValue := reflect.ValueOf(r).Elem().Field(i)
-		if !fieldValue.IsValid() {
-			return nil, errors.Errorf("invalid field value for field %s in table t_region", field.Name)
-		}
-
-		if !fieldValue.CanAddr() {
-			return nil, errors.Errorf("cannot read field value for field %s in table t_region", field.Name)
-		}
-
-		values[columnName] = fieldValue.Addr().Interface()
-	}
-
-	return values, nil
-}
-
-/*
-TRelation 描述两个实体间的隶属关系，类似于master:detail，校快保，描述销售/学校管理员/学校统计员与学校间的对应关系
 
 left_key_type -- 左识别标识类型，帐号: account, 邮箱: email, 手机: tel, 微信公众号openID: mp_open_id, 微信开放平台openID: wx_open_id
 +{left_id,left_key} --左键(表中的主键,如果主键类型是int，则为left_id, 否则是left_key)
@@ -13792,8 +11514,7 @@ left_type          left_id kind         right_type     right_id
 't_user.id',       1000,   '学校:管理员', 't_school.id', 2273
 
 left_type          left_key kind         right_type     right_key
-'t_user.account',  'ax992', '保安:门岗',  't_gate.name', '南门'   represents assessuser.t_relation
-*/
+'t_user.account',  'ax992', '保安:门岗',  't_gate.name', '南门'   represents assessuser.t_relation */
 type TRelation struct {
 	ID             null.Int       `json:"ID,omitempty" db:"id,true,integer"`                                      /* id 编号 */
 	LeftID         null.Int       `json:"LeftID,omitempty" db:"left_id,false,bigint"`                             /* left_id 左编号 */
@@ -13815,7 +11536,7 @@ type TRelation struct {
 	Addi           types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                                   /* addi 附加数据 */
 	Remark         null.String    `json:"Remark,omitempty" db:"remark,false,character varying"`                   /* remark 备注 */
 	Status         null.String    `json:"Status,omitempty" db:"status,false,character varying"`                   /* status 状态 */
-	Filter                                                                                                        // build DML where clause
+	Filter         `json:"-"`     // build DML where clause
 }
 
 // TRelationFields full field list for default query
@@ -13981,42 +11702,6 @@ func GetTRelationByPk(db Queryer, pk0 null.Int) (*TRelation, error) {
 	return &r, nil
 }
 
-// GetTRelationReflectValuesMap returns a map of field names to their values.
-//
-// key is the tag name, value is the field value.
-// This is useful for reflection and dynamic queries.
-func (r *TRelation) GetTRelationReflectValuesMap() (map[string]any, error) {
-
-	values := make(map[string]any)
-	v := reflect.ValueOf(r).Elem()
-	t := v.Type()
-	for i := range v.NumField() {
-		field := t.Field(i)
-		tag := field.Tag.Get("db")
-		if tag == "" {
-			return nil, errors.Errorf("missing db tag for field %s in table t_relation", field.Name)
-		}
-
-		columnName := strings.Split(tag, ",")[0]
-		if columnName == "" {
-			return nil, errors.Errorf("missing column name for field %s in table t_relation", field.Name)
-		}
-
-		fieldValue := reflect.ValueOf(r).Elem().Field(i)
-		if !fieldValue.IsValid() {
-			return nil, errors.Errorf("invalid field value for field %s in table t_relation", field.Name)
-		}
-
-		if !fieldValue.CanAddr() {
-			return nil, errors.Errorf("cannot read field value for field %s in table t_relation", field.Name)
-		}
-
-		values[columnName] = fieldValue.Addr().Interface()
-	}
-
-	return values, nil
-}
-
 /*TRelationHistory 关系变更历史 represents assessuser.t_relation_history */
 type TRelationHistory struct {
 	ID             null.Int       `json:"ID,omitempty" db:"id,false,bigint"`                                      /* id 编号 */
@@ -14040,7 +11725,7 @@ type TRelationHistory struct {
 	Remark         null.String    `json:"Remark,omitempty" db:"remark,false,character varying"`                   /* remark 备注 */
 	Status         null.String    `json:"Status,omitempty" db:"status,false,character varying"`                   /* status 状态 */
 	Sn             null.Int       `json:"Sn,omitempty" db:"sn,true,integer"`                                      /* sn primary key */
-	Filter                                                                                                        // build DML where clause
+	Filter         `json:"-"`     // build DML where clause
 }
 
 // TRelationHistoryFields full field list for default query
@@ -14211,42 +11896,6 @@ func GetTRelationHistoryByPk(db Queryer, pk20 null.Int) (*TRelationHistory, erro
 	return &r, nil
 }
 
-// GetTRelationHistoryReflectValuesMap returns a map of field names to their values.
-//
-// key is the tag name, value is the field value.
-// This is useful for reflection and dynamic queries.
-func (r *TRelationHistory) GetTRelationHistoryReflectValuesMap() (map[string]any, error) {
-
-	values := make(map[string]any)
-	v := reflect.ValueOf(r).Elem()
-	t := v.Type()
-	for i := range v.NumField() {
-		field := t.Field(i)
-		tag := field.Tag.Get("db")
-		if tag == "" {
-			return nil, errors.Errorf("missing db tag for field %s in table t_relation_history", field.Name)
-		}
-
-		columnName := strings.Split(tag, ",")[0]
-		if columnName == "" {
-			return nil, errors.Errorf("missing column name for field %s in table t_relation_history", field.Name)
-		}
-
-		fieldValue := reflect.ValueOf(r).Elem().Field(i)
-		if !fieldValue.IsValid() {
-			return nil, errors.Errorf("invalid field value for field %s in table t_relation_history", field.Name)
-		}
-
-		if !fieldValue.CanAddr() {
-			return nil, errors.Errorf("cannot read field value for field %s in table t_relation_history", field.Name)
-		}
-
-		values[columnName] = fieldValue.Addr().Interface()
-	}
-
-	return values, nil
-}
-
 /*TReportClaims 报案理赔 represents assessuser.t_report_claims */
 type TReportClaims struct {
 	ID                     null.Int       `json:"ID,omitempty" db:"id,true,integer"`                                            /* id 编号 */
@@ -14321,7 +11970,7 @@ type TReportClaims struct {
 	Addi                     types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                                           /* addi 附加 */
 	Remark                   null.String    `json:"Remark,omitempty" db:"remark,false,character varying"`                           /* remark 备注 */
 	Status                   null.String    `json:"Status,omitempty" db:"status,false,character varying"`                           /* status 状态:，2: 已报案，等待上传索赔资料，4: 受理中, 6: 等待补充资料, 8: 已结案, 10: 撤销报案, 12: 拒赔 */
-	Filter                                                                                                                          // build DML where clause
+	Filter                   `json:"-"`     // build DML where clause
 }
 
 // TReportClaimsFields full field list for default query
@@ -14742,42 +12391,6 @@ func GetTReportClaimsByPk(db Queryer, pk0 null.Int) (*TReportClaims, error) {
 	return &r, nil
 }
 
-// GetTReportClaimsReflectValuesMap returns a map of field names to their values.
-//
-// key is the tag name, value is the field value.
-// This is useful for reflection and dynamic queries.
-func (r *TReportClaims) GetTReportClaimsReflectValuesMap() (map[string]any, error) {
-
-	values := make(map[string]any)
-	v := reflect.ValueOf(r).Elem()
-	t := v.Type()
-	for i := range v.NumField() {
-		field := t.Field(i)
-		tag := field.Tag.Get("db")
-		if tag == "" {
-			return nil, errors.Errorf("missing db tag for field %s in table t_report_claims", field.Name)
-		}
-
-		columnName := strings.Split(tag, ",")[0]
-		if columnName == "" {
-			return nil, errors.Errorf("missing column name for field %s in table t_report_claims", field.Name)
-		}
-
-		fieldValue := reflect.ValueOf(r).Elem().Field(i)
-		if !fieldValue.IsValid() {
-			return nil, errors.Errorf("invalid field value for field %s in table t_report_claims", field.Name)
-		}
-
-		if !fieldValue.CanAddr() {
-			return nil, errors.Errorf("cannot read field value for field %s in table t_report_claims", field.Name)
-		}
-
-		values[columnName] = fieldValue.Addr().Interface()
-	}
-
-	return values, nil
-}
-
 /*TResource 资源列表 represents assessuser.t_resource */
 type TResource struct {
 	ID              null.Int       `json:"ID,omitempty" db:"id,true,integer"`                             /* id 资源编号 */
@@ -14797,7 +12410,7 @@ type TResource struct {
 	Addi            types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                          /* addi 附加数据 */
 	Remark          null.String    `json:"Remark,omitempty" db:"remark,false,character varying"`          /* remark 备注 */
 	Status          null.String    `json:"Status,omitempty" db:"status,false,character varying"`          /* status 状态0:有效, 2:修改，4删除 */
-	Filter                                                                                                // build DML where clause
+	Filter          `json:"-"`     // build DML where clause
 }
 
 // TResourceFields full field list for default query
@@ -14948,42 +12561,6 @@ func GetTResourceByPk(db Queryer, pk0 null.Int) (*TResource, error) {
 	return &r, nil
 }
 
-// GetTResourceReflectValuesMap returns a map of field names to their values.
-//
-// key is the tag name, value is the field value.
-// This is useful for reflection and dynamic queries.
-func (r *TResource) GetTResourceReflectValuesMap() (map[string]any, error) {
-
-	values := make(map[string]any)
-	v := reflect.ValueOf(r).Elem()
-	t := v.Type()
-	for i := range v.NumField() {
-		field := t.Field(i)
-		tag := field.Tag.Get("db")
-		if tag == "" {
-			return nil, errors.Errorf("missing db tag for field %s in table t_resource", field.Name)
-		}
-
-		columnName := strings.Split(tag, ",")[0]
-		if columnName == "" {
-			return nil, errors.Errorf("missing column name for field %s in table t_resource", field.Name)
-		}
-
-		fieldValue := reflect.ValueOf(r).Elem().Field(i)
-		if !fieldValue.IsValid() {
-			return nil, errors.Errorf("invalid field value for field %s in table t_resource", field.Name)
-		}
-
-		if !fieldValue.CanAddr() {
-			return nil, errors.Errorf("cannot read field value for field %s in table t_resource", field.Name)
-		}
-
-		values[columnName] = fieldValue.Addr().Interface()
-	}
-
-	return values, nil
-}
-
 /*TResourceShare t_resource_share represents assessuser.t_resource_share */
 type TResourceShare struct {
 	ID         null.Int       `json:"ID,omitempty" db:"id,true,integer"`                    /* id 表ID */
@@ -14996,7 +12573,7 @@ type TResourceShare struct {
 	UpdateTime null.Int       `json:"UpdateTime,omitempty" db:"update_time,false,bigint"`   /* update_time 更新时间 */
 	Status     string         `json:"Status,omitempty" db:"status,false,character varying"` /* status 状态：00正常 02废除 */
 	Addi       types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                 /* addi 拓展 */
-	Filter                                                                                  // build DML where clause
+	Filter     `json:"-"`     // build DML where clause
 }
 
 // TResourceShareFields full field list for default query
@@ -15112,42 +12689,6 @@ func GetTResourceShareByPk(db Queryer, pk0 null.Int) (*TResourceShare, error) {
 	return &r, nil
 }
 
-// GetTResourceShareReflectValuesMap returns a map of field names to their values.
-//
-// key is the tag name, value is the field value.
-// This is useful for reflection and dynamic queries.
-func (r *TResourceShare) GetTResourceShareReflectValuesMap() (map[string]any, error) {
-
-	values := make(map[string]any)
-	v := reflect.ValueOf(r).Elem()
-	t := v.Type()
-	for i := range v.NumField() {
-		field := t.Field(i)
-		tag := field.Tag.Get("db")
-		if tag == "" {
-			return nil, errors.Errorf("missing db tag for field %s in table t_resource_share", field.Name)
-		}
-
-		columnName := strings.Split(tag, ",")[0]
-		if columnName == "" {
-			return nil, errors.Errorf("missing column name for field %s in table t_resource_share", field.Name)
-		}
-
-		fieldValue := reflect.ValueOf(r).Elem().Field(i)
-		if !fieldValue.IsValid() {
-			return nil, errors.Errorf("invalid field value for field %s in table t_resource_share", field.Name)
-		}
-
-		if !fieldValue.CanAddr() {
-			return nil, errors.Errorf("cannot read field value for field %s in table t_resource_share", field.Name)
-		}
-
-		values[columnName] = fieldValue.Addr().Interface()
-	}
-
-	return values, nil
-}
-
 /*TRole t_role represents assessuser.t_role */
 type TRole struct {
 	ID          null.Int       `json:"ID,omitempty" db:"id,true,integer"`                    /* id 角色ID */
@@ -15159,7 +12700,7 @@ type TRole struct {
 	UpdateTime  null.Int       `json:"UpdateTime,omitempty" db:"update_time,false,bigint"`   /* update_time 更新时间 */
 	Addi        types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                 /* addi 扩展 */
 	Status      null.String    `json:"Status,omitempty" db:"status,false,character varying"` /* status 状态 00: 启用 02: 禁用 */
-	Filter                                                                                   // build DML where clause
+	Filter      `json:"-"`     // build DML where clause
 }
 
 // TRoleFields full field list for default query
@@ -15270,42 +12811,6 @@ func GetTRoleByPk(db Queryer, pk0 null.Int) (*TRole, error) {
 	return &r, nil
 }
 
-// GetTRoleReflectValuesMap returns a map of field names to their values.
-//
-// key is the tag name, value is the field value.
-// This is useful for reflection and dynamic queries.
-func (r *TRole) GetTRoleReflectValuesMap() (map[string]any, error) {
-
-	values := make(map[string]any)
-	v := reflect.ValueOf(r).Elem()
-	t := v.Type()
-	for i := range v.NumField() {
-		field := t.Field(i)
-		tag := field.Tag.Get("db")
-		if tag == "" {
-			return nil, errors.Errorf("missing db tag for field %s in table t_role", field.Name)
-		}
-
-		columnName := strings.Split(tag, ",")[0]
-		if columnName == "" {
-			return nil, errors.Errorf("missing column name for field %s in table t_role", field.Name)
-		}
-
-		fieldValue := reflect.ValueOf(r).Elem().Field(i)
-		if !fieldValue.IsValid() {
-			return nil, errors.Errorf("invalid field value for field %s in table t_role", field.Name)
-		}
-
-		if !fieldValue.CanAddr() {
-			return nil, errors.Errorf("cannot read field value for field %s in table t_role", field.Name)
-		}
-
-		values[columnName] = fieldValue.Addr().Interface()
-	}
-
-	return values, nil
-}
-
 /*TScanTdc 请求二维码记录 represents assessuser.t_scan_tdc */
 type TScanTdc struct {
 	ID         null.Int    `json:"ID,omitempty" db:"id,true,integer"`                             /* id 二维码编号 */
@@ -15313,7 +12818,7 @@ type TScanTdc struct {
 	ExternalID null.String `json:"ExternalID,omitempty" db:"external_id,false,character varying"` /* external_id 外部平台ID */
 	ReqTime    null.Int    `json:"ReqTime,omitempty" db:"req_time,false,bigint"`                  /* req_time 请求二维码时间 */
 	ReqSrc     null.String `json:"ReqSrc,omitempty" db:"req_src,false,character varying"`         /* req_src 请求来源 */
-	Filter                                                                                        // build DML where clause
+	Filter     `json:"-"`  // build DML where clause
 }
 
 // TScanTdcFields full field list for default query
@@ -15404,42 +12909,6 @@ func GetTScanTdcByPk(db Queryer, pk0 null.Int) (*TScanTdc, error) {
 	return &r, nil
 }
 
-// GetTScanTdcReflectValuesMap returns a map of field names to their values.
-//
-// key is the tag name, value is the field value.
-// This is useful for reflection and dynamic queries.
-func (r *TScanTdc) GetTScanTdcReflectValuesMap() (map[string]any, error) {
-
-	values := make(map[string]any)
-	v := reflect.ValueOf(r).Elem()
-	t := v.Type()
-	for i := range v.NumField() {
-		field := t.Field(i)
-		tag := field.Tag.Get("db")
-		if tag == "" {
-			return nil, errors.Errorf("missing db tag for field %s in table t_scan_tdc", field.Name)
-		}
-
-		columnName := strings.Split(tag, ",")[0]
-		if columnName == "" {
-			return nil, errors.Errorf("missing column name for field %s in table t_scan_tdc", field.Name)
-		}
-
-		fieldValue := reflect.ValueOf(r).Elem().Field(i)
-		if !fieldValue.IsValid() {
-			return nil, errors.Errorf("invalid field value for field %s in table t_scan_tdc", field.Name)
-		}
-
-		if !fieldValue.CanAddr() {
-			return nil, errors.Errorf("cannot read field value for field %s in table t_scan_tdc", field.Name)
-		}
-
-		values[columnName] = fieldValue.Addr().Interface()
-	}
-
-	return values, nil
-}
-
 /*TSchool 学校信息表，包含了销售经理，学校管理员，投保规则 represents assessuser.t_school */
 type TSchool struct {
 	ID                      null.Int       `json:"ID,omitempty" db:"id,true,integer"`                                              /* id 学校编号 */
@@ -15485,7 +12954,7 @@ type TSchool struct {
 	Addi                    types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                                           /* addi 附加数据 */
 	Remark                  null.String    `json:"Remark,omitempty" db:"remark,false,character varying"`                           /* remark 备注 */
 	Status                  null.String    `json:"Status,omitempty" db:"status,false,character varying"`                           /* status 状态, '0': 未启用, '2': 启用, '6': 作废 */
-	Filter                                                                                                                         // build DML where clause
+	Filter                  `json:"-"`     // build DML where clause
 }
 
 // TSchoolFields full field list for default query
@@ -15766,42 +13235,6 @@ func GetTSchoolByPk(db Queryer, pk0 null.Int) (*TSchool, error) {
 	return &r, nil
 }
 
-// GetTSchoolReflectValuesMap returns a map of field names to their values.
-//
-// key is the tag name, value is the field value.
-// This is useful for reflection and dynamic queries.
-func (r *TSchool) GetTSchoolReflectValuesMap() (map[string]any, error) {
-
-	values := make(map[string]any)
-	v := reflect.ValueOf(r).Elem()
-	t := v.Type()
-	for i := range v.NumField() {
-		field := t.Field(i)
-		tag := field.Tag.Get("db")
-		if tag == "" {
-			return nil, errors.Errorf("missing db tag for field %s in table t_school", field.Name)
-		}
-
-		columnName := strings.Split(tag, ",")[0]
-		if columnName == "" {
-			return nil, errors.Errorf("missing column name for field %s in table t_school", field.Name)
-		}
-
-		fieldValue := reflect.ValueOf(r).Elem().Field(i)
-		if !fieldValue.IsValid() {
-			return nil, errors.Errorf("invalid field value for field %s in table t_school", field.Name)
-		}
-
-		if !fieldValue.CanAddr() {
-			return nil, errors.Errorf("cannot read field value for field %s in table t_school", field.Name)
-		}
-
-		values[columnName] = fieldValue.Addr().Interface()
-	}
-
-	return values, nil
-}
-
 /*TSection the section/chapter of course represents assessuser.t_section */
 type TSection struct {
 	ID         null.Int       `json:"ID,omitempty" db:"id,true,integer"`                        /* id 编码 */
@@ -15825,7 +13258,7 @@ type TSection struct {
 	Status     null.String    `json:"Status,omitempty" db:"status,false,character varying"`     /* status enabled,有效
 	disabled,无效
 	expired,过期、无效 */
-	Filter // build DML where clause
+	Filter `json:"-"` // build DML where clause
 }
 
 // TSectionFields full field list for default query
@@ -15986,42 +13419,6 @@ func GetTSectionByPk(db Queryer, pk0 null.Int) (*TSection, error) {
 	return &r, nil
 }
 
-// GetTSectionReflectValuesMap returns a map of field names to their values.
-//
-// key is the tag name, value is the field value.
-// This is useful for reflection and dynamic queries.
-func (r *TSection) GetTSectionReflectValuesMap() (map[string]any, error) {
-
-	values := make(map[string]any)
-	v := reflect.ValueOf(r).Elem()
-	t := v.Type()
-	for i := range v.NumField() {
-		field := t.Field(i)
-		tag := field.Tag.Get("db")
-		if tag == "" {
-			return nil, errors.Errorf("missing db tag for field %s in table t_section", field.Name)
-		}
-
-		columnName := strings.Split(tag, ",")[0]
-		if columnName == "" {
-			return nil, errors.Errorf("missing column name for field %s in table t_section", field.Name)
-		}
-
-		fieldValue := reflect.ValueOf(r).Elem().Field(i)
-		if !fieldValue.IsValid() {
-			return nil, errors.Errorf("invalid field value for field %s in table t_section", field.Name)
-		}
-
-		if !fieldValue.CanAddr() {
-			return nil, errors.Errorf("cannot read field value for field %s in table t_section", field.Name)
-		}
-
-		values[columnName] = fieldValue.Addr().Interface()
-	}
-
-	return values, nil
-}
-
 /*TSpecialOrder t_special_order represents assessuser.t_special_order */
 type TSpecialOrder struct {
 	ID            null.Int       `json:"ID,omitempty" db:"id,true,integer"`                                   /* id 订单编号 */
@@ -16045,7 +13442,7 @@ type TSpecialOrder struct {
 	Remark        null.String    `json:"Remark,omitempty" db:"remark,false,character varying"`                /* remark 备注 */
 	Addi          types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                                /* addi 附加数据 */
 	Status        null.String    `json:"Status,omitempty" db:"status,false,character varying"`                /* status 状态,0：未支付，2：已支付，4：超时，6：作废 */
-	Filter                                                                                                    // build DML where clause
+	Filter        `json:"-"`     // build DML where clause
 }
 
 // TSpecialOrderFields full field list for default query
@@ -16216,42 +13613,6 @@ func GetTSpecialOrderByPk(db Queryer, pk0 null.Int) (*TSpecialOrder, error) {
 	return &r, nil
 }
 
-// GetTSpecialOrderReflectValuesMap returns a map of field names to their values.
-//
-// key is the tag name, value is the field value.
-// This is useful for reflection and dynamic queries.
-func (r *TSpecialOrder) GetTSpecialOrderReflectValuesMap() (map[string]any, error) {
-
-	values := make(map[string]any)
-	v := reflect.ValueOf(r).Elem()
-	t := v.Type()
-	for i := range v.NumField() {
-		field := t.Field(i)
-		tag := field.Tag.Get("db")
-		if tag == "" {
-			return nil, errors.Errorf("missing db tag for field %s in table t_special_order", field.Name)
-		}
-
-		columnName := strings.Split(tag, ",")[0]
-		if columnName == "" {
-			return nil, errors.Errorf("missing column name for field %s in table t_special_order", field.Name)
-		}
-
-		fieldValue := reflect.ValueOf(r).Elem().Field(i)
-		if !fieldValue.IsValid() {
-			return nil, errors.Errorf("invalid field value for field %s in table t_special_order", field.Name)
-		}
-
-		if !fieldValue.CanAddr() {
-			return nil, errors.Errorf("cannot read field value for field %s in table t_special_order", field.Name)
-		}
-
-		values[columnName] = fieldValue.Addr().Interface()
-	}
-
-	return values, nil
-}
-
 /*TStudentAnswers t_student_answers represents assessuser.t_student_answers */
 type TStudentAnswers struct {
 	ID                    null.Int       `json:"ID,omitempty" db:"id,true,integer"`                                        /* id 编号 */
@@ -16274,7 +13635,7 @@ type TStudentAnswers struct {
 	AnswerAttachmentsPath types.JSONText `json:"AnswerAttachmentsPath,omitempty" db:"answer_attachments_path,false,jsonb"` /* answer_attachments_path 保存作答中提交的文件附件、图片等的文件路径 */
 	CreateTime            null.Int       `json:"CreateTime,omitempty" db:"create_time,false,bigint"`                       /* create_time 记录创建时间 */
 	UpdateTime            null.Int       `json:"UpdateTime,omitempty" db:"update_time,false,bigint"`                       /* update_time 记录更新记录时间 */
-	Filter                                                                                                                 // build DML where clause
+	Filter                `json:"-"`     // build DML where clause
 }
 
 // TStudentAnswersFields full field list for default query
@@ -16440,52 +13801,14 @@ func GetTStudentAnswersByPk(db Queryer, pk0 null.Int) (*TStudentAnswers, error) 
 	return &r, nil
 }
 
-// GetTStudentAnswersReflectValuesMap returns a map of field names to their values.
-//
-// key is the tag name, value is the field value.
-// This is useful for reflection and dynamic queries.
-func (r *TStudentAnswers) GetTStudentAnswersReflectValuesMap() (map[string]any, error) {
-
-	values := make(map[string]any)
-	v := reflect.ValueOf(r).Elem()
-	t := v.Type()
-	for i := range v.NumField() {
-		field := t.Field(i)
-		tag := field.Tag.Get("db")
-		if tag == "" {
-			return nil, errors.Errorf("missing db tag for field %s in table t_student_answers", field.Name)
-		}
-
-		columnName := strings.Split(tag, ",")[0]
-		if columnName == "" {
-			return nil, errors.Errorf("missing column name for field %s in table t_student_answers", field.Name)
-		}
-
-		fieldValue := reflect.ValueOf(r).Elem().Field(i)
-		if !fieldValue.IsValid() {
-			return nil, errors.Errorf("invalid field value for field %s in table t_student_answers", field.Name)
-		}
-
-		if !fieldValue.CanAddr() {
-			return nil, errors.Errorf("cannot read field value for field %s in table t_student_answers", field.Name)
-		}
-
-		values[columnName] = fieldValue.Addr().Interface()
-	}
-
-	return values, nil
-}
-
-/*
-TSysVer 应用版本包含业务模型、前端、后端、配置文件等
+/*TSysVer 应用版本包含业务模型、前端、后端、配置文件等
 
 1、业务模型版本在模型生成时建立；
 2、后端模型版本在每次后端启动时建立或更新；
 3、配置文件版本在每次后端启动时建立或更新；
 4、前端版本在每次后端启动时建立或更新；
 
-	represents assessuser.t_sys_ver
-*/
+ represents assessuser.t_sys_ver */
 type TSysVer struct {
 	ID         null.Int       `json:"ID,omitempty" db:"id,true,integer"`                             /* id 编码 */
 	Tag        null.String    `json:"Tag,omitempty" db:"tag,false,character varying"`                /* tag 标识 */
@@ -16496,7 +13819,7 @@ type TSysVer struct {
 	Addi       types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                          /* addi 附加 */
 	Remark     null.String    `json:"Remark,omitempty" db:"remark,false,character varying"`          /* remark 备注 */
 	Status     null.String    `json:"Status,omitempty" db:"status,false,character varying"`          /* status 状态 */
-	Filter                                                                                           // build DML where clause
+	Filter     `json:"-"`     // build DML where clause
 }
 
 // TSysVerFields full field list for default query
@@ -16607,42 +13930,6 @@ func GetTSysVerByPk(db Queryer, pk0 null.Int) (*TSysVer, error) {
 	return &r, nil
 }
 
-// GetTSysVerReflectValuesMap returns a map of field names to their values.
-//
-// key is the tag name, value is the field value.
-// This is useful for reflection and dynamic queries.
-func (r *TSysVer) GetTSysVerReflectValuesMap() (map[string]any, error) {
-
-	values := make(map[string]any)
-	v := reflect.ValueOf(r).Elem()
-	t := v.Type()
-	for i := range v.NumField() {
-		field := t.Field(i)
-		tag := field.Tag.Get("db")
-		if tag == "" {
-			return nil, errors.Errorf("missing db tag for field %s in table t_sys_ver", field.Name)
-		}
-
-		columnName := strings.Split(tag, ",")[0]
-		if columnName == "" {
-			return nil, errors.Errorf("missing column name for field %s in table t_sys_ver", field.Name)
-		}
-
-		fieldValue := reflect.ValueOf(r).Elem().Field(i)
-		if !fieldValue.IsValid() {
-			return nil, errors.Errorf("invalid field value for field %s in table t_sys_ver", field.Name)
-		}
-
-		if !fieldValue.CanAddr() {
-			return nil, errors.Errorf("cannot read field value for field %s in table t_sys_ver", field.Name)
-		}
-
-		values[columnName] = fieldValue.Addr().Interface()
-	}
-
-	return values, nil
-}
-
 /*TTdc two-dimension-code represents assessuser.t_tdc */
 type TTdc struct {
 	ID         null.Int       `json:"ID,omitempty" db:"id,true,integer"`                         /* id 编码 */
@@ -16661,7 +13948,7 @@ type TTdc struct {
 	Status     null.String    `json:"Status,omitempty" db:"status,false,character varying"`      /* status enabled,有效
 	disabled,无效
 	expired,过期、无效 */
-	Filter // build DML where clause
+	Filter `json:"-"` // build DML where clause
 }
 
 // TTdcFields full field list for default query
@@ -16797,42 +14084,6 @@ func GetTTdcByPk(db Queryer, pk0 null.Int) (*TTdc, error) {
 	return &r, nil
 }
 
-// GetTTdcReflectValuesMap returns a map of field names to their values.
-//
-// key is the tag name, value is the field value.
-// This is useful for reflection and dynamic queries.
-func (r *TTdc) GetTTdcReflectValuesMap() (map[string]any, error) {
-
-	values := make(map[string]any)
-	v := reflect.ValueOf(r).Elem()
-	t := v.Type()
-	for i := range v.NumField() {
-		field := t.Field(i)
-		tag := field.Tag.Get("db")
-		if tag == "" {
-			return nil, errors.Errorf("missing db tag for field %s in table t_tdc", field.Name)
-		}
-
-		columnName := strings.Split(tag, ",")[0]
-		if columnName == "" {
-			return nil, errors.Errorf("missing column name for field %s in table t_tdc", field.Name)
-		}
-
-		fieldValue := reflect.ValueOf(r).Elem().Field(i)
-		if !fieldValue.IsValid() {
-			return nil, errors.Errorf("invalid field value for field %s in table t_tdc", field.Name)
-		}
-
-		if !fieldValue.CanAddr() {
-			return nil, errors.Errorf("cannot read field value for field %s in table t_tdc", field.Name)
-		}
-
-		values[columnName] = fieldValue.Addr().Interface()
-	}
-
-	return values, nil
-}
-
 /*TTeacherStudent t_teacher_student represents assessuser.t_teacher_student */
 type TTeacherStudent struct {
 	ID         null.Int       `json:"ID,omitempty" db:"id,true,integer"`                                       /* id 表主键ID */
@@ -16844,7 +14095,7 @@ type TTeacherStudent struct {
 	UpdateTime null.Int       `json:"UpdateTime,omitempty" db:"update_time,false,timestamp without time zone"` /* update_time 更新时间 */
 	Status     null.String    `json:"Status,omitempty" db:"status,false,character varying"`                    /* status 状态 00：正常  02：异常 */
 	Addi       types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                                    /* addi 附加信息 */
-	Filter                                                                                                     // build DML where clause
+	Filter     `json:"-"`     // build DML where clause
 }
 
 // TTeacherStudentFields full field list for default query
@@ -16955,42 +14206,6 @@ func GetTTeacherStudentByPk(db Queryer, pk0 null.Int) (*TTeacherStudent, error) 
 	return &r, nil
 }
 
-// GetTTeacherStudentReflectValuesMap returns a map of field names to their values.
-//
-// key is the tag name, value is the field value.
-// This is useful for reflection and dynamic queries.
-func (r *TTeacherStudent) GetTTeacherStudentReflectValuesMap() (map[string]any, error) {
-
-	values := make(map[string]any)
-	v := reflect.ValueOf(r).Elem()
-	t := v.Type()
-	for i := range v.NumField() {
-		field := t.Field(i)
-		tag := field.Tag.Get("db")
-		if tag == "" {
-			return nil, errors.Errorf("missing db tag for field %s in table t_teacher_student", field.Name)
-		}
-
-		columnName := strings.Split(tag, ",")[0]
-		if columnName == "" {
-			return nil, errors.Errorf("missing column name for field %s in table t_teacher_student", field.Name)
-		}
-
-		fieldValue := reflect.ValueOf(r).Elem().Field(i)
-		if !fieldValue.IsValid() {
-			return nil, errors.Errorf("invalid field value for field %s in table t_teacher_student", field.Name)
-		}
-
-		if !fieldValue.CanAddr() {
-			return nil, errors.Errorf("cannot read field value for field %s in table t_teacher_student", field.Name)
-		}
-
-		values[columnName] = fieldValue.Addr().Interface()
-	}
-
-	return values, nil
-}
-
 /*TUndertaker 项目承接表 represents assessuser.t_undertaker */
 type TUndertaker struct {
 	ID            null.Int    `json:"ID,omitempty" db:"id,true,integer"`                                   /* id 承接编号 */
@@ -17008,7 +14223,7 @@ type TUndertaker struct {
 	accepted,已接受
 	rejected,被拒绝
 	signed, 已签定合同 */
-	Filter // build DML where clause
+	Filter `json:"-"` // build DML where clause
 }
 
 // TUndertakerFields full field list for default query
@@ -17114,42 +14329,6 @@ func GetTUndertakerByPk(db Queryer, pk0 null.Int) (*TUndertaker, error) {
 	return &r, nil
 }
 
-// GetTUndertakerReflectValuesMap returns a map of field names to their values.
-//
-// key is the tag name, value is the field value.
-// This is useful for reflection and dynamic queries.
-func (r *TUndertaker) GetTUndertakerReflectValuesMap() (map[string]any, error) {
-
-	values := make(map[string]any)
-	v := reflect.ValueOf(r).Elem()
-	t := v.Type()
-	for i := range v.NumField() {
-		field := t.Field(i)
-		tag := field.Tag.Get("db")
-		if tag == "" {
-			return nil, errors.Errorf("missing db tag for field %s in table t_undertaker", field.Name)
-		}
-
-		columnName := strings.Split(tag, ",")[0]
-		if columnName == "" {
-			return nil, errors.Errorf("missing column name for field %s in table t_undertaker", field.Name)
-		}
-
-		fieldValue := reflect.ValueOf(r).Elem().Field(i)
-		if !fieldValue.IsValid() {
-			return nil, errors.Errorf("invalid field value for field %s in table t_undertaker", field.Name)
-		}
-
-		if !fieldValue.CanAddr() {
-			return nil, errors.Errorf("cannot read field value for field %s in table t_undertaker", field.Name)
-		}
-
-		values[columnName] = fieldValue.Addr().Interface()
-	}
-
-	return values, nil
-}
-
 /*TUser t_user represents assessuser.t_user */
 type TUser struct {
 	ID             null.Int    `json:"ID,omitempty" db:"id,true,integer"`                                      /* id 用户内部编号 */
@@ -17207,7 +14386,7 @@ type TUser struct {
 	Addi            types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                              /* addi 用户定制数据 */
 	Remark          null.String    `json:"Remark,omitempty" db:"remark,false,character varying"`              /* remark 备注 */
 	Status          null.String    `json:"Status,omitempty" db:"status,false,character varying"`              /* status 状态,00: 有效, 02: 禁止登录, 04: 锁定, 06: 攻击者, 08: 过期 */
-	Filter                                                                                                    // build DML where clause
+	Filter          `json:"-"`     // build DML where clause
 }
 
 // TUserFields full field list for default query
@@ -17508,42 +14687,6 @@ func GetTUserByPk(db Queryer, pk0 null.Int) (*TUser, error) {
 	return &r, nil
 }
 
-// GetTUserReflectValuesMap returns a map of field names to their values.
-//
-// key is the tag name, value is the field value.
-// This is useful for reflection and dynamic queries.
-func (r *TUser) GetTUserReflectValuesMap() (map[string]any, error) {
-
-	values := make(map[string]any)
-	v := reflect.ValueOf(r).Elem()
-	t := v.Type()
-	for i := range v.NumField() {
-		field := t.Field(i)
-		tag := field.Tag.Get("db")
-		if tag == "" {
-			return nil, errors.Errorf("missing db tag for field %s in table t_user", field.Name)
-		}
-
-		columnName := strings.Split(tag, ",")[0]
-		if columnName == "" {
-			return nil, errors.Errorf("missing column name for field %s in table t_user", field.Name)
-		}
-
-		fieldValue := reflect.ValueOf(r).Elem().Field(i)
-		if !fieldValue.IsValid() {
-			return nil, errors.Errorf("invalid field value for field %s in table t_user", field.Name)
-		}
-
-		if !fieldValue.CanAddr() {
-			return nil, errors.Errorf("cannot read field value for field %s in table t_user", field.Name)
-		}
-
-		values[columnName] = fieldValue.Addr().Interface()
-	}
-
-	return values, nil
-}
-
 /*TUserAssessment 学生评价管理 represents assessuser.t_user_assessment */
 type TUserAssessment struct {
 	ID          null.Int       `json:"ID,omitempty" db:"id,true,integer"`                             /* id 作答id */
@@ -17567,7 +14710,7 @@ type TUserAssessment struct {
 	UpdateTime  null.Int       `json:"UpdateTime,omitempty" db:"update_time,false,bigint"`            /* update_time 更新时间 */
 	Remark      null.String    `json:"Remark,omitempty" db:"remark,false,character varying"`          /* remark 备注 */
 	Status      null.String    `json:"Status,omitempty" db:"status,false,character varying"`          /* status 可用，禁用 */
-	Filter                                                                                            // build DML where clause
+	Filter      `json:"-"`     // build DML where clause
 }
 
 // TUserAssessmentFields full field list for default query
@@ -17738,42 +14881,6 @@ func GetTUserAssessmentByPk(db Queryer, pk0 null.Int) (*TUserAssessment, error) 
 	return &r, nil
 }
 
-// GetTUserAssessmentReflectValuesMap returns a map of field names to their values.
-//
-// key is the tag name, value is the field value.
-// This is useful for reflection and dynamic queries.
-func (r *TUserAssessment) GetTUserAssessmentReflectValuesMap() (map[string]any, error) {
-
-	values := make(map[string]any)
-	v := reflect.ValueOf(r).Elem()
-	t := v.Type()
-	for i := range v.NumField() {
-		field := t.Field(i)
-		tag := field.Tag.Get("db")
-		if tag == "" {
-			return nil, errors.Errorf("missing db tag for field %s in table t_user_assessment", field.Name)
-		}
-
-		columnName := strings.Split(tag, ",")[0]
-		if columnName == "" {
-			return nil, errors.Errorf("missing column name for field %s in table t_user_assessment", field.Name)
-		}
-
-		fieldValue := reflect.ValueOf(r).Elem().Field(i)
-		if !fieldValue.IsValid() {
-			return nil, errors.Errorf("invalid field value for field %s in table t_user_assessment", field.Name)
-		}
-
-		if !fieldValue.CanAddr() {
-			return nil, errors.Errorf("cannot read field value for field %s in table t_user_assessment", field.Name)
-		}
-
-		values[columnName] = fieldValue.Addr().Interface()
-	}
-
-	return values, nil
-}
-
 /*TUserCourse 用户课程表 represents assessuser.t_user_course */
 type TUserCourse struct {
 	ID                null.Int       `json:"ID,omitempty" db:"id,true,integer"`                                            /* id 关系编号 */
@@ -17801,7 +14908,7 @@ type TUserCourse struct {
 	12: 取消收藏
 	14: 退款
 	16: 例外退款 */
-	Filter // build DML where clause
+	Filter `json:"-"` // build DML where clause
 }
 
 // TUserCourseFields full field list for default query
@@ -17952,48 +15059,12 @@ func GetTUserCourseByPk(db Queryer, pk0 null.Int) (*TUserCourse, error) {
 	return &r, nil
 }
 
-// GetTUserCourseReflectValuesMap returns a map of field names to their values.
-//
-// key is the tag name, value is the field value.
-// This is useful for reflection and dynamic queries.
-func (r *TUserCourse) GetTUserCourseReflectValuesMap() (map[string]any, error) {
-
-	values := make(map[string]any)
-	v := reflect.ValueOf(r).Elem()
-	t := v.Type()
-	for i := range v.NumField() {
-		field := t.Field(i)
-		tag := field.Tag.Get("db")
-		if tag == "" {
-			return nil, errors.Errorf("missing db tag for field %s in table t_user_course", field.Name)
-		}
-
-		columnName := strings.Split(tag, ",")[0]
-		if columnName == "" {
-			return nil, errors.Errorf("missing column name for field %s in table t_user_course", field.Name)
-		}
-
-		fieldValue := reflect.ValueOf(r).Elem().Field(i)
-		if !fieldValue.IsValid() {
-			return nil, errors.Errorf("invalid field value for field %s in table t_user_course", field.Name)
-		}
-
-		if !fieldValue.CanAddr() {
-			return nil, errors.Errorf("cannot read field value for field %s in table t_user_course", field.Name)
-		}
-
-		values[columnName] = fieldValue.Addr().Interface()
-	}
-
-	return values, nil
-}
-
 /*TUserDegree 用户等级表 represents assessuser.t_user_degree */
 type TUserDegree struct {
-	ID       null.Int `json:"ID,omitempty" db:"id,true,integer"`              /* id 用户能力等级编号 */
-	UserID   null.Int `json:"UserID,omitempty" db:"user_id,false,bigint"`     /* user_id 用户编号 */
-	DegreeID null.Int `json:"DegreeID,omitempty" db:"degree_id,false,bigint"` /* degree_id 能力等级编号 */
-	Filter                                                                    // build DML where clause
+	ID       null.Int   `json:"ID,omitempty" db:"id,true,integer"`              /* id 用户能力等级编号 */
+	UserID   null.Int   `json:"UserID,omitempty" db:"user_id,false,bigint"`     /* user_id 用户编号 */
+	DegreeID null.Int   `json:"DegreeID,omitempty" db:"degree_id,false,bigint"` /* degree_id 能力等级编号 */
+	Filter   `json:"-"` // build DML where clause
 }
 
 // TUserDegreeFields full field list for default query
@@ -18074,42 +15145,6 @@ func GetTUserDegreeByPk(db Queryer, pk0 null.Int) (*TUserDegree, error) {
 	return &r, nil
 }
 
-// GetTUserDegreeReflectValuesMap returns a map of field names to their values.
-//
-// key is the tag name, value is the field value.
-// This is useful for reflection and dynamic queries.
-func (r *TUserDegree) GetTUserDegreeReflectValuesMap() (map[string]any, error) {
-
-	values := make(map[string]any)
-	v := reflect.ValueOf(r).Elem()
-	t := v.Type()
-	for i := range v.NumField() {
-		field := t.Field(i)
-		tag := field.Tag.Get("db")
-		if tag == "" {
-			return nil, errors.Errorf("missing db tag for field %s in table t_user_degree", field.Name)
-		}
-
-		columnName := strings.Split(tag, ",")[0]
-		if columnName == "" {
-			return nil, errors.Errorf("missing column name for field %s in table t_user_degree", field.Name)
-		}
-
-		fieldValue := reflect.ValueOf(r).Elem().Field(i)
-		if !fieldValue.IsValid() {
-			return nil, errors.Errorf("invalid field value for field %s in table t_user_degree", field.Name)
-		}
-
-		if !fieldValue.CanAddr() {
-			return nil, errors.Errorf("cannot read field value for field %s in table t_user_degree", field.Name)
-		}
-
-		values[columnName] = fieldValue.Addr().Interface()
-	}
-
-	return values, nil
-}
-
 /*TUserDomain 用户，组，角色配置表 represents assessuser.t_user_domain */
 type TUserDomain struct {
 	ID          null.Int    `json:"ID,omitempty" db:"id,true,integer"`                               /* id 编码 */
@@ -18140,7 +15175,7 @@ type TUserDomain struct {
 	Addi       types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                 /* addi 附加信息 */
 	Remark     null.String    `json:"Remark,omitempty" db:"remark,false,character varying"` /* remark 备注 */
 	Status     null.String    `json:"Status,omitempty" db:"status,false,character varying"` /* status 状态，00：草稿，01：有效，02：作废 */
-	Filter                                                                                  // build DML where clause
+	Filter     `json:"-"`     // build DML where clause
 }
 
 // TUserDomainFields full field list for default query
@@ -18281,42 +15316,6 @@ func GetTUserDomainByPk(db Queryer, pk0 null.Int) (*TUserDomain, error) {
 	return &r, nil
 }
 
-// GetTUserDomainReflectValuesMap returns a map of field names to their values.
-//
-// key is the tag name, value is the field value.
-// This is useful for reflection and dynamic queries.
-func (r *TUserDomain) GetTUserDomainReflectValuesMap() (map[string]any, error) {
-
-	values := make(map[string]any)
-	v := reflect.ValueOf(r).Elem()
-	t := v.Type()
-	for i := range v.NumField() {
-		field := t.Field(i)
-		tag := field.Tag.Get("db")
-		if tag == "" {
-			return nil, errors.Errorf("missing db tag for field %s in table t_user_domain", field.Name)
-		}
-
-		columnName := strings.Split(tag, ",")[0]
-		if columnName == "" {
-			return nil, errors.Errorf("missing column name for field %s in table t_user_domain", field.Name)
-		}
-
-		fieldValue := reflect.ValueOf(r).Elem().Field(i)
-		if !fieldValue.IsValid() {
-			return nil, errors.Errorf("invalid field value for field %s in table t_user_domain", field.Name)
-		}
-
-		if !fieldValue.CanAddr() {
-			return nil, errors.Errorf("cannot read field value for field %s in table t_user_domain", field.Name)
-		}
-
-		values[columnName] = fieldValue.Addr().Interface()
-	}
-
-	return values, nil
-}
-
 /*TUserGroup user belong to group represents assessuser.t_user_group */
 type TUserGroup struct {
 	ID         null.Int       `json:"ID,omitempty" db:"id,true,integer"`                    /* id 关系编号 */
@@ -18330,7 +15329,7 @@ type TUserGroup struct {
 	Addi       types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                 /* addi 附加信息 */
 	Remark     null.String    `json:"Remark,omitempty" db:"remark,false,character varying"` /* remark 备注 */
 	Status     null.String    `json:"Status,omitempty" db:"status,false,character varying"` /* status 状态，00：草稿，01：有效，02：作废 */
-	Filter                                                                                  // build DML where clause
+	Filter     `json:"-"`     // build DML where clause
 }
 
 // TUserGroupFields full field list for default query
@@ -18451,42 +15450,6 @@ func GetTUserGroupByPk(db Queryer, pk0 null.Int) (*TUserGroup, error) {
 	return &r, nil
 }
 
-// GetTUserGroupReflectValuesMap returns a map of field names to their values.
-//
-// key is the tag name, value is the field value.
-// This is useful for reflection and dynamic queries.
-func (r *TUserGroup) GetTUserGroupReflectValuesMap() (map[string]any, error) {
-
-	values := make(map[string]any)
-	v := reflect.ValueOf(r).Elem()
-	t := v.Type()
-	for i := range v.NumField() {
-		field := t.Field(i)
-		tag := field.Tag.Get("db")
-		if tag == "" {
-			return nil, errors.Errorf("missing db tag for field %s in table t_user_group", field.Name)
-		}
-
-		columnName := strings.Split(tag, ",")[0]
-		if columnName == "" {
-			return nil, errors.Errorf("missing column name for field %s in table t_user_group", field.Name)
-		}
-
-		fieldValue := reflect.ValueOf(r).Elem().Field(i)
-		if !fieldValue.IsValid() {
-			return nil, errors.Errorf("invalid field value for field %s in table t_user_group", field.Name)
-		}
-
-		if !fieldValue.CanAddr() {
-			return nil, errors.Errorf("cannot read field value for field %s in table t_user_group", field.Name)
-		}
-
-		values[columnName] = fieldValue.Addr().Interface()
-	}
-
-	return values, nil
-}
-
 /*TUserPermissionOverride t_user_permission_override represents assessuser.t_user_permission_override */
 type TUserPermissionOverride struct {
 	ID           null.Int       `json:"ID,omitempty" db:"id,true,integer"`                      /* id 记录ID */
@@ -18497,7 +15460,7 @@ type TUserPermissionOverride struct {
 	Addi         types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                   /* addi 扩展内容 */
 	CreateTime   null.Int       `json:"CreateTime,omitempty" db:"create_time,false,bigint"`     /* create_time 创建时间 */
 	Status       null.String    `json:"Status,omitempty" db:"status,false,character varying"`   /* status 状态 00：启用 02：禁用 */
-	Filter                                                                                      // build DML where clause
+	Filter       `json:"-"`     // build DML where clause
 }
 
 // TUserPermissionOverrideFields full field list for default query
@@ -18603,42 +15566,6 @@ func GetTUserPermissionOverrideByPk(db Queryer, pk0 null.Int) (*TUserPermissionO
 	return &r, nil
 }
 
-// GetTUserPermissionOverrideReflectValuesMap returns a map of field names to their values.
-//
-// key is the tag name, value is the field value.
-// This is useful for reflection and dynamic queries.
-func (r *TUserPermissionOverride) GetTUserPermissionOverrideReflectValuesMap() (map[string]any, error) {
-
-	values := make(map[string]any)
-	v := reflect.ValueOf(r).Elem()
-	t := v.Type()
-	for i := range v.NumField() {
-		field := t.Field(i)
-		tag := field.Tag.Get("db")
-		if tag == "" {
-			return nil, errors.Errorf("missing db tag for field %s in table t_user_permission_override", field.Name)
-		}
-
-		columnName := strings.Split(tag, ",")[0]
-		if columnName == "" {
-			return nil, errors.Errorf("missing column name for field %s in table t_user_permission_override", field.Name)
-		}
-
-		fieldValue := reflect.ValueOf(r).Elem().Field(i)
-		if !fieldValue.IsValid() {
-			return nil, errors.Errorf("invalid field value for field %s in table t_user_permission_override", field.Name)
-		}
-
-		if !fieldValue.CanAddr() {
-			return nil, errors.Errorf("cannot read field value for field %s in table t_user_permission_override", field.Name)
-		}
-
-		values[columnName] = fieldValue.Addr().Interface()
-	}
-
-	return values, nil
-}
-
 /*TVAa t_v_aa represents assessuser.t_v_aa */
 type TVAa struct {
 	DomainAPIID      null.Int    `json:"DomainAPIID,omitempty" db:"domain_api_id,false,integer"`                      /* domain_api_id domain_api_id */
@@ -18661,7 +15588,7 @@ type TVAa struct {
 	APIID            null.Int    `json:"APIID,omitempty" db:"api_id,false,integer"`                                   /* api_id api_id */
 	APIName          null.String `json:"APIName,omitempty" db:"api_name,false,character varying"`                     /* api_name api_name */
 	API              null.String `json:"API,omitempty" db:"api,false,character varying"`                              /* api api */
-	Filter                                                                                                            // build DML where clause
+	Filter           `json:"-"`  // build DML where clause
 }
 
 // TVAaFields full field list for default query
@@ -18828,42 +15755,6 @@ func GetTVAaByPk(db Queryer) (*TVAa, error) {
 	return &r, nil
 }
 
-// GetTVAaReflectValuesMap returns a map of field names to their values.
-//
-// key is the tag name, value is the field value.
-// This is useful for reflection and dynamic queries.
-func (r *TVAa) GetTVAaReflectValuesMap() (map[string]any, error) {
-
-	values := make(map[string]any)
-	v := reflect.ValueOf(r).Elem()
-	t := v.Type()
-	for i := range v.NumField() {
-		field := t.Field(i)
-		tag := field.Tag.Get("db")
-		if tag == "" {
-			return nil, errors.Errorf("missing db tag for field %s in table t_v_aa", field.Name)
-		}
-
-		columnName := strings.Split(tag, ",")[0]
-		if columnName == "" {
-			return nil, errors.Errorf("missing column name for field %s in table t_v_aa", field.Name)
-		}
-
-		fieldValue := reflect.ValueOf(r).Elem().Field(i)
-		if !fieldValue.IsValid() {
-			return nil, errors.Errorf("invalid field value for field %s in table t_v_aa", field.Name)
-		}
-
-		if !fieldValue.CanAddr() {
-			return nil, errors.Errorf("cannot read field value for field %s in table t_v_aa", field.Name)
-		}
-
-		values[columnName] = fieldValue.Addr().Interface()
-	}
-
-	return values, nil
-}
-
 /*TVAPIDomain t_v_api_domain represents assessuser.t_v_api_domain */
 type TVAPIDomain struct {
 	ID             null.Int       `json:"ID,omitempty" db:"id,false,integer"`                                     /* id id */
@@ -18876,7 +15767,7 @@ type TVAPIDomain struct {
 	GrantSource    null.String    `json:"GrantSource,omitempty" db:"grant_source,false,character varying"`        /* grant_source grant_source */
 	DataAccessMode null.String    `json:"DataAccessMode,omitempty" db:"data_access_mode,false,character varying"` /* data_access_mode data_access_mode */
 	DataScope      types.JSONText `json:"DataScope,omitempty" db:"data_scope,false,jsonb"`                        /* data_scope data_scope */
-	Filter                                                                                                        // build DML where clause
+	Filter         `json:"-"`     // build DML where clause
 }
 
 // TVAPIDomainFields full field list for default query
@@ -18993,42 +15884,6 @@ func GetTVAPIDomainByPk(db Queryer) (*TVAPIDomain, error) {
 	return &r, nil
 }
 
-// GetTVAPIDomainReflectValuesMap returns a map of field names to their values.
-//
-// key is the tag name, value is the field value.
-// This is useful for reflection and dynamic queries.
-func (r *TVAPIDomain) GetTVAPIDomainReflectValuesMap() (map[string]any, error) {
-
-	values := make(map[string]any)
-	v := reflect.ValueOf(r).Elem()
-	t := v.Type()
-	for i := range v.NumField() {
-		field := t.Field(i)
-		tag := field.Tag.Get("db")
-		if tag == "" {
-			return nil, errors.Errorf("missing db tag for field %s in table t_v_api_domain", field.Name)
-		}
-
-		columnName := strings.Split(tag, ",")[0]
-		if columnName == "" {
-			return nil, errors.Errorf("missing column name for field %s in table t_v_api_domain", field.Name)
-		}
-
-		fieldValue := reflect.ValueOf(r).Elem().Field(i)
-		if !fieldValue.IsValid() {
-			return nil, errors.Errorf("invalid field value for field %s in table t_v_api_domain", field.Name)
-		}
-
-		if !fieldValue.CanAddr() {
-			return nil, errors.Errorf("cannot read field value for field %s in table t_v_api_domain", field.Name)
-		}
-
-		values[columnName] = fieldValue.Addr().Interface()
-	}
-
-	return values, nil
-}
-
 /*TVAuthenticate t_v_authenticate represents assessuser.t_v_authenticate */
 type TVAuthenticate struct {
 	GrantID        null.Int    `json:"GrantID,omitempty" db:"grant_id,false,integer"`                          /* grant_id grant_id */
@@ -19046,7 +15901,7 @@ type TVAuthenticate struct {
 	APIID          null.Int    `json:"APIID,omitempty" db:"api_id,false,integer"`                              /* api_id api_id */
 	APIName        null.String `json:"APIName,omitempty" db:"api_name,false,character varying"`                /* api_name api_name */
 	API            null.String `json:"API,omitempty" db:"api,false,character varying"`                         /* api api */
-	Filter                                                                                                     // build DML where clause
+	Filter         `json:"-"`  // build DML where clause
 }
 
 // TVAuthenticateFields full field list for default query
@@ -19188,42 +16043,6 @@ func GetTVAuthenticateByPk(db Queryer) (*TVAuthenticate, error) {
 	return &r, nil
 }
 
-// GetTVAuthenticateReflectValuesMap returns a map of field names to their values.
-//
-// key is the tag name, value is the field value.
-// This is useful for reflection and dynamic queries.
-func (r *TVAuthenticate) GetTVAuthenticateReflectValuesMap() (map[string]any, error) {
-
-	values := make(map[string]any)
-	v := reflect.ValueOf(r).Elem()
-	t := v.Type()
-	for i := range v.NumField() {
-		field := t.Field(i)
-		tag := field.Tag.Get("db")
-		if tag == "" {
-			return nil, errors.Errorf("missing db tag for field %s in table t_v_authenticate", field.Name)
-		}
-
-		columnName := strings.Split(tag, ",")[0]
-		if columnName == "" {
-			return nil, errors.Errorf("missing column name for field %s in table t_v_authenticate", field.Name)
-		}
-
-		fieldValue := reflect.ValueOf(r).Elem().Field(i)
-		if !fieldValue.IsValid() {
-			return nil, errors.Errorf("invalid field value for field %s in table t_v_authenticate", field.Name)
-		}
-
-		if !fieldValue.CanAddr() {
-			return nil, errors.Errorf("cannot read field value for field %s in table t_v_authenticate", field.Name)
-		}
-
-		values[columnName] = fieldValue.Addr().Interface()
-	}
-
-	return values, nil
-}
-
 /*TVDomainAPI t_v_domain_api represents assessuser.t_v_domain_api */
 type TVDomainAPI struct {
 	ID                 null.Int       `json:"ID,omitempty" db:"id,false,integer"`                                             /* id id */
@@ -19244,7 +16063,7 @@ type TVDomainAPI struct {
 	Addi               types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                                           /* addi addi */
 	Creator            null.Int       `json:"Creator,omitempty" db:"creator,false,bigint"`                                    /* creator creator */
 	Status             null.String    `json:"Status,omitempty" db:"status,false,character varying"`                           /* status status */
-	Filter                                                                                                                    // build DML where clause
+	Filter             `json:"-"`     // build DML where clause
 }
 
 // TVDomainAPIFields full field list for default query
@@ -19401,42 +16220,6 @@ func GetTVDomainAPIByPk(db Queryer) (*TVDomainAPI, error) {
 	return &r, nil
 }
 
-// GetTVDomainAPIReflectValuesMap returns a map of field names to their values.
-//
-// key is the tag name, value is the field value.
-// This is useful for reflection and dynamic queries.
-func (r *TVDomainAPI) GetTVDomainAPIReflectValuesMap() (map[string]any, error) {
-
-	values := make(map[string]any)
-	v := reflect.ValueOf(r).Elem()
-	t := v.Type()
-	for i := range v.NumField() {
-		field := t.Field(i)
-		tag := field.Tag.Get("db")
-		if tag == "" {
-			return nil, errors.Errorf("missing db tag for field %s in table t_v_domain_api", field.Name)
-		}
-
-		columnName := strings.Split(tag, ",")[0]
-		if columnName == "" {
-			return nil, errors.Errorf("missing column name for field %s in table t_v_domain_api", field.Name)
-		}
-
-		fieldValue := reflect.ValueOf(r).Elem().Field(i)
-		if !fieldValue.IsValid() {
-			return nil, errors.Errorf("invalid field value for field %s in table t_v_domain_api", field.Name)
-		}
-
-		if !fieldValue.CanAddr() {
-			return nil, errors.Errorf("cannot read field value for field %s in table t_v_domain_api", field.Name)
-		}
-
-		values[columnName] = fieldValue.Addr().Interface()
-	}
-
-	return values, nil
-}
-
 /*TVDomainAsset t_v_domain_asset represents assessuser.t_v_domain_asset */
 type TVDomainAsset struct {
 	ID            null.Int    `json:"ID,omitempty" db:"id,false,integer"`                                /* id id */
@@ -19457,7 +16240,7 @@ type TVDomainAsset struct {
 	APIID         null.Int    `json:"APIID,omitempty" db:"api_id,false,integer"`                         /* api_id api_id */
 	APIName       null.String `json:"APIName,omitempty" db:"api_name,false,character varying"`           /* api_name api_name */
 	ExposePath    null.String `json:"ExposePath,omitempty" db:"expose_path,false,character varying"`     /* expose_path expose_path */
-	Filter                                                                                               // build DML where clause
+	Filter        `json:"-"`  // build DML where clause
 }
 
 // TVDomainAssetFields full field list for default query
@@ -19614,42 +16397,6 @@ func GetTVDomainAssetByPk(db Queryer) (*TVDomainAsset, error) {
 	return &r, nil
 }
 
-// GetTVDomainAssetReflectValuesMap returns a map of field names to their values.
-//
-// key is the tag name, value is the field value.
-// This is useful for reflection and dynamic queries.
-func (r *TVDomainAsset) GetTVDomainAssetReflectValuesMap() (map[string]any, error) {
-
-	values := make(map[string]any)
-	v := reflect.ValueOf(r).Elem()
-	t := v.Type()
-	for i := range v.NumField() {
-		field := t.Field(i)
-		tag := field.Tag.Get("db")
-		if tag == "" {
-			return nil, errors.Errorf("missing db tag for field %s in table t_v_domain_asset", field.Name)
-		}
-
-		columnName := strings.Split(tag, ",")[0]
-		if columnName == "" {
-			return nil, errors.Errorf("missing column name for field %s in table t_v_domain_asset", field.Name)
-		}
-
-		fieldValue := reflect.ValueOf(r).Elem().Field(i)
-		if !fieldValue.IsValid() {
-			return nil, errors.Errorf("invalid field value for field %s in table t_v_domain_asset", field.Name)
-		}
-
-		if !fieldValue.CanAddr() {
-			return nil, errors.Errorf("cannot read field value for field %s in table t_v_domain_asset", field.Name)
-		}
-
-		values[columnName] = fieldValue.Addr().Interface()
-	}
-
-	return values, nil
-}
-
 /*TVDomainUser t_v_domain_user represents assessuser.t_v_domain_user */
 type TVDomainUser struct {
 	ID         null.Int    `json:"ID,omitempty" db:"id,false,integer"`                            /* id id */
@@ -19658,7 +16405,7 @@ type TVDomainUser struct {
 	Priority   null.Int    `json:"Priority,omitempty" db:"priority,false,smallint"`               /* priority priority */
 	UserID     null.Int    `json:"UserID,omitempty" db:"user_id,false,integer"`                   /* user_id user_id */
 	UserName   null.String `json:"UserName,omitempty" db:"user_name,false,character varying"`     /* user_name user_name */
-	Filter                                                                                        // build DML where clause
+	Filter     `json:"-"`  // build DML where clause
 }
 
 // TVDomainUserFields full field list for default query
@@ -19755,42 +16502,6 @@ func GetTVDomainUserByPk(db Queryer) (*TVDomainUser, error) {
 	return &r, nil
 }
 
-// GetTVDomainUserReflectValuesMap returns a map of field names to their values.
-//
-// key is the tag name, value is the field value.
-// This is useful for reflection and dynamic queries.
-func (r *TVDomainUser) GetTVDomainUserReflectValuesMap() (map[string]any, error) {
-
-	values := make(map[string]any)
-	v := reflect.ValueOf(r).Elem()
-	t := v.Type()
-	for i := range v.NumField() {
-		field := t.Field(i)
-		tag := field.Tag.Get("db")
-		if tag == "" {
-			return nil, errors.Errorf("missing db tag for field %s in table t_v_domain_user", field.Name)
-		}
-
-		columnName := strings.Split(tag, ",")[0]
-		if columnName == "" {
-			return nil, errors.Errorf("missing column name for field %s in table t_v_domain_user", field.Name)
-		}
-
-		fieldValue := reflect.ValueOf(r).Elem().Field(i)
-		if !fieldValue.IsValid() {
-			return nil, errors.Errorf("invalid field value for field %s in table t_v_domain_user", field.Name)
-		}
-
-		if !fieldValue.CanAddr() {
-			return nil, errors.Errorf("cannot read field value for field %s in table t_v_domain_user", field.Name)
-		}
-
-		values[columnName] = fieldValue.Addr().Interface()
-	}
-
-	return values, nil
-}
-
 /*TVExamPaper t_v_exam_paper represents assessuser.t_v_exam_paper */
 type TVExamPaper struct {
 	ID            null.Int       `json:"ID,omitempty" db:"id,false,integer"`                           /* id id */
@@ -19806,7 +16517,7 @@ type TVExamPaper struct {
 	QuestionCount null.Int       `json:"QuestionCount,omitempty" db:"question_count,false,bigint"`     /* question_count question_count */
 	GroupCount    null.Int       `json:"GroupCount,omitempty" db:"group_count,false,bigint"`           /* group_count group_count */
 	GroupsData    types.JSONText `json:"GroupsData,omitempty" db:"groups_data,false,json"`             /* groups_data groups_data */
-	Filter                                                                                             // build DML where clause
+	Filter        `json:"-"`     // build DML where clause
 }
 
 // TVExamPaperFields full field list for default query
@@ -19938,47 +16649,11 @@ func GetTVExamPaperByPk(db Queryer) (*TVExamPaper, error) {
 	return &r, nil
 }
 
-// GetTVExamPaperReflectValuesMap returns a map of field names to their values.
-//
-// key is the tag name, value is the field value.
-// This is useful for reflection and dynamic queries.
-func (r *TVExamPaper) GetTVExamPaperReflectValuesMap() (map[string]any, error) {
-
-	values := make(map[string]any)
-	v := reflect.ValueOf(r).Elem()
-	t := v.Type()
-	for i := range v.NumField() {
-		field := t.Field(i)
-		tag := field.Tag.Get("db")
-		if tag == "" {
-			return nil, errors.Errorf("missing db tag for field %s in table t_v_exam_paper", field.Name)
-		}
-
-		columnName := strings.Split(tag, ",")[0]
-		if columnName == "" {
-			return nil, errors.Errorf("missing column name for field %s in table t_v_exam_paper", field.Name)
-		}
-
-		fieldValue := reflect.ValueOf(r).Elem().Field(i)
-		if !fieldValue.IsValid() {
-			return nil, errors.Errorf("invalid field value for field %s in table t_v_exam_paper", field.Name)
-		}
-
-		if !fieldValue.CanAddr() {
-			return nil, errors.Errorf("cannot read field value for field %s in table t_v_exam_paper", field.Name)
-		}
-
-		values[columnName] = fieldValue.Addr().Interface()
-	}
-
-	return values, nil
-}
-
 /*TVExamRespondentCount t_v_exam_respondent_count represents assessuser.t_v_exam_respondent_count */
 type TVExamRespondentCount struct {
-	ExamSessionID   null.Int `json:"ExamSessionID,omitempty" db:"exam_session_id,false,integer"`   /* exam_session_id exam_session_id */
-	RespondentCount null.Int `json:"RespondentCount,omitempty" db:"respondent_count,false,bigint"` /* respondent_count respondent_count */
-	Filter                                                                                         // build DML where clause
+	ExamSessionID   null.Int   `json:"ExamSessionID,omitempty" db:"exam_session_id,false,integer"`   /* exam_session_id exam_session_id */
+	RespondentCount null.Int   `json:"RespondentCount,omitempty" db:"respondent_count,false,bigint"` /* respondent_count respondent_count */
+	Filter          `json:"-"` // build DML where clause
 }
 
 // TVExamRespondentCountFields full field list for default query
@@ -20055,47 +16730,98 @@ func GetTVExamRespondentCountByPk(db Queryer) (*TVExamRespondentCount, error) {
 	return &r, nil
 }
 
-// GetTVExamRespondentCountReflectValuesMap returns a map of field names to their values.
-//
-// key is the tag name, value is the field value.
-// This is useful for reflection and dynamic queries.
-func (r *TVExamRespondentCount) GetTVExamRespondentCountReflectValuesMap() (map[string]any, error) {
+/*TVExamTeacherMarkedCount t_v_exam_teacher_marked_count represents assessuser.t_v_exam_teacher_marked_count */
+type TVExamTeacherMarkedCount struct {
+	ExamSessionID null.Int   `json:"ExamSessionID,omitempty" db:"exam_session_id,false,bigint"` /* exam_session_id exam_session_id */
+	TeacherID     null.Int   `json:"TeacherID,omitempty" db:"teacher_id,false,bigint"`          /* teacher_id teacher_id */
+	MarkedCount   null.Int   `json:"MarkedCount,omitempty" db:"marked_count,false,bigint"`      /* marked_count marked_count */
+	Filter        `json:"-"` // build DML where clause
+}
 
-	values := make(map[string]any)
-	v := reflect.ValueOf(r).Elem()
-	t := v.Type()
-	for i := range v.NumField() {
-		field := t.Field(i)
-		tag := field.Tag.Get("db")
-		if tag == "" {
-			return nil, errors.Errorf("missing db tag for field %s in table t_v_exam_respondent_count", field.Name)
-		}
+// TVExamTeacherMarkedCountFields full field list for default query
+var TVExamTeacherMarkedCountFields = []string{
+	"ExamSessionID",
+	"TeacherID",
+	"MarkedCount",
+}
 
-		columnName := strings.Split(tag, ",")[0]
-		if columnName == "" {
-			return nil, errors.Errorf("missing column name for field %s in table t_v_exam_respondent_count", field.Name)
-		}
+// TVExamTeacherMarkedCountColumns full column list for default query
+var TVExamTeacherMarkedCountColumns = []string{
+	"exam_session_id",
+	"teacher_id",
+	"marked_count",
+}
 
-		fieldValue := reflect.ValueOf(r).Elem().Field(i)
-		if !fieldValue.IsValid() {
-			return nil, errors.Errorf("invalid field value for field %s in table t_v_exam_respondent_count", field.Name)
-		}
+// TVExamTeacherMarkedCountColumnsDataTypes full column data types for default query
+var TVExamTeacherMarkedCountColumnsDataTypes = map[string]string{
+	"exam_session_id": "bigint",
+	"teacher_id":      "bigint",
+	"marked_count":    "bigint",
+}
 
-		if !fieldValue.CanAddr() {
-			return nil, errors.Errorf("cannot read field value for field %s in table t_v_exam_respondent_count", field.Name)
-		}
-
-		values[columnName] = fieldValue.Addr().Interface()
+// GetFieldsMap returns a map of field names to their values.
+func (r *TVExamTeacherMarkedCount) GetFieldsMap() map[string]any {
+	return map[string]any{
+		"ExamSessionID": r.ExamSessionID,
+		"TeacherID":     r.TeacherID,
+		"MarkedCount":   r.MarkedCount,
 	}
+}
 
-	return values, nil
+// GetColumnsMap returns a map of column names to their values.
+func (r *TVExamTeacherMarkedCount) GetColumnsMap() map[string]any {
+	return map[string]any{
+		"exam_session_id": r.ExamSessionID,
+		"teacher_id":      r.TeacherID,
+		"marked_count":    r.MarkedCount,
+	}
+}
+
+// Fields return all fields of struct.
+func (r *TVExamTeacherMarkedCount) Fields() []string {
+	return TVExamTeacherMarkedCountFields
+}
+
+// GetTableName return the associated db table name.
+func (r *TVExamTeacherMarkedCount) GetTableName() string {
+	var viewNamePattern = regexp.MustCompile(`(?i)^t_v_[a-z0-9_]+$`)
+	tableName := "t_v_exam_teacher_marked_count"
+	if viewNamePattern.MatchString(tableName) {
+		return tableName[2:]
+	}
+	return tableName
+}
+
+// Create inserts the TVExamTeacherMarkedCount to the database.
+func (r *TVExamTeacherMarkedCount) Create(db Queryer) error {
+	_, err := db.Exec(
+		`INSERT INTO t_v_exam_teacher_marked_count (exam_session_id, teacher_id, marked_count) VALUES ($1, $2, $3)`,
+		&r.ExamSessionID, &r.TeacherID, &r.MarkedCount)
+	if err != nil {
+		return errors.Wrap(err, "failed to insert t_v_exam_teacher_marked_count")
+	}
+	return nil
+}
+
+// GetTVExamTeacherMarkedCountByPk select the TVExamTeacherMarkedCount from the database.
+func GetTVExamTeacherMarkedCountByPk(db Queryer) (*TVExamTeacherMarkedCount, error) {
+	// Don't call this function, it is a view and doesn't have a primary key.
+
+	var r TVExamTeacherMarkedCount
+	err := db.QueryRow(
+		`SELECT exam_session_id, teacher_id, marked_count FROM t_v_exam_teacher_marked_count`,
+	).Scan(&r.ExamSessionID, &r.TeacherID, &r.MarkedCount)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to select t_v_exam_teacher_marked_count")
+	}
+	return &r, nil
 }
 
 /*TVExamUnmarkedStudentCount t_v_exam_unmarked_student_count represents assessuser.t_v_exam_unmarked_student_count */
 type TVExamUnmarkedStudentCount struct {
-	ExamSessionID        null.Int `json:"ExamSessionID,omitempty" db:"exam_session_id,false,bigint"`               /* exam_session_id exam_session_id */
-	UnmarkedStudentCount null.Int `json:"UnmarkedStudentCount,omitempty" db:"unmarked_student_count,false,bigint"` /* unmarked_student_count unmarked_student_count */
-	Filter                                                                                                         // build DML where clause
+	ExamSessionID        null.Int   `json:"ExamSessionID,omitempty" db:"exam_session_id,false,bigint"`               /* exam_session_id exam_session_id */
+	UnmarkedStudentCount null.Int   `json:"UnmarkedStudentCount,omitempty" db:"unmarked_student_count,false,bigint"` /* unmarked_student_count unmarked_student_count */
+	Filter               `json:"-"` // build DML where clause
 }
 
 // TVExamUnmarkedStudentCountFields full field list for default query
@@ -20172,40 +16898,241 @@ func GetTVExamUnmarkedStudentCountByPk(db Queryer) (*TVExamUnmarkedStudentCount,
 	return &r, nil
 }
 
-// GetTVExamUnmarkedStudentCountReflectValuesMap returns a map of field names to their values.
-//
-// key is the tag name, value is the field value.
-// This is useful for reflection and dynamic queries.
-func (r *TVExamUnmarkedStudentCount) GetTVExamUnmarkedStudentCountReflectValuesMap() (map[string]any, error) {
+/*TVExamineeInfo t_v_examinee_info represents assessuser.t_v_examinee_info */
+type TVExamineeInfo struct {
+	ID                null.Int    `json:"ID,omitempty" db:"id,false,integer"`                                    /* id id */
+	StudentID         null.Int    `json:"StudentID,omitempty" db:"student_id,false,bigint"`                      /* student_id student_id */
+	Account           null.String `json:"Account,omitempty" db:"account,false,character varying"`                /* account account */
+	MobilePhone       null.String `json:"MobilePhone,omitempty" db:"mobile_phone,false,character varying"`       /* mobile_phone mobile_phone */
+	UserToken         null.String `json:"UserToken,omitempty" db:"user_token,false,character varying"`           /* user_token user_token */
+	OfficialName      null.String `json:"OfficialName,omitempty" db:"official_name,false,character varying"`     /* official_name official_name */
+	IDCardNo          null.String `json:"IDCardNo,omitempty" db:"id_card_no,false,character varying"`            /* id_card_no id_card_no */
+	ExamineeNumber    null.String `json:"ExamineeNumber,omitempty" db:"examinee_number,false,character varying"` /* examinee_number examinee_number */
+	ExamID            null.Int    `json:"ExamID,omitempty" db:"exam_id,false,integer"`                           /* exam_id exam_id */
+	ExamName          null.String `json:"ExamName,omitempty" db:"exam_name,false,character varying"`             /* exam_name exam_name */
+	ExamSessionID     null.Int    `json:"ExamSessionID,omitempty" db:"exam_session_id,false,integer"`            /* exam_session_id exam_session_id */
+	ExamPaperID       null.Int    `json:"ExamPaperID,omitempty" db:"exam_paper_id,false,integer"`                /* exam_paper_id exam_paper_id */
+	ExamPaperName     null.String `json:"ExamPaperName,omitempty" db:"exam_paper_name,false,character varying"`  /* exam_paper_name exam_paper_name */
+	ExamRoomID        null.Int    `json:"ExamRoomID,omitempty" db:"exam_room_id,false,bigint"`                   /* exam_room_id exam_room_id */
+	ExamRoomName      null.String `json:"ExamRoomName,omitempty" db:"exam_room_name,false,character varying"`    /* exam_room_name exam_room_name */
+	ExtraTime         null.Int    `json:"ExtraTime,omitempty" db:"extra_time,false,bigint"`                      /* extra_time extra_time */
+	ExtendableTime    null.Int    `json:"ExtendableTime,omitempty" db:"extendable_time,false,bigint"`            /* extendable_time extendable_time */
+	StartTime         null.Int    `json:"StartTime,omitempty" db:"start_time,false,bigint"`                      /* start_time start_time */
+	EndTime           null.Int    `json:"EndTime,omitempty" db:"end_time,false,bigint"`                          /* end_time end_time */
+	ActualEndTime     null.Int    `json:"ActualEndTime,omitempty" db:"actual_end_time,false,bigint"`             /* actual_end_time actual_end_time */
+	ExamineeStatus    null.String `json:"ExamineeStatus,omitempty" db:"examinee_status,false,character varying"` /* examinee_status examinee_status */
+	Remark            null.String `json:"Remark,omitempty" db:"remark,false,character varying"`                  /* remark remark */
+	PeriodMode        null.String `json:"PeriodMode,omitempty" db:"period_mode,false,character varying"`         /* period_mode period_mode */
+	AllowEntryTime    null.Int    `json:"AllowEntryTime,omitempty" db:"allow_entry_time,false,bigint"`           /* allow_entry_time allow_entry_time */
+	AllowSubmitTime   null.Int    `json:"AllowSubmitTime,omitempty" db:"allow_submit_time,false,bigint"`         /* allow_submit_time allow_submit_time */
+	Mode              null.String `json:"Mode,omitempty" db:"mode,false,character varying"`                      /* mode mode */
+	ExamineeEndTime   null.Int    `json:"ExamineeEndTime,omitempty" db:"examinee_end_time,false,bigint"`         /* examinee_end_time examinee_end_time */
+	ExamineeStartTime null.Int    `json:"ExamineeStartTime,omitempty" db:"examinee_start_time,false,bigint"`     /* examinee_start_time examinee_start_time */
+	Filter            `json:"-"`  // build DML where clause
+}
 
-	values := make(map[string]any)
-	v := reflect.ValueOf(r).Elem()
-	t := v.Type()
-	for i := range v.NumField() {
-		field := t.Field(i)
-		tag := field.Tag.Get("db")
-		if tag == "" {
-			return nil, errors.Errorf("missing db tag for field %s in table t_v_exam_unmarked_student_count", field.Name)
-		}
+// TVExamineeInfoFields full field list for default query
+var TVExamineeInfoFields = []string{
+	"ID",
+	"StudentID",
+	"Account",
+	"MobilePhone",
+	"UserToken",
+	"OfficialName",
+	"IDCardNo",
+	"ExamineeNumber",
+	"ExamID",
+	"ExamName",
+	"ExamSessionID",
+	"ExamPaperID",
+	"ExamPaperName",
+	"ExamRoomID",
+	"ExamRoomName",
+	"ExtraTime",
+	"ExtendableTime",
+	"StartTime",
+	"EndTime",
+	"ActualEndTime",
+	"ExamineeStatus",
+	"Remark",
+	"PeriodMode",
+	"AllowEntryTime",
+	"AllowSubmitTime",
+	"Mode",
+	"ExamineeEndTime",
+	"ExamineeStartTime",
+}
 
-		columnName := strings.Split(tag, ",")[0]
-		if columnName == "" {
-			return nil, errors.Errorf("missing column name for field %s in table t_v_exam_unmarked_student_count", field.Name)
-		}
+// TVExamineeInfoColumns full column list for default query
+var TVExamineeInfoColumns = []string{
+	"id",
+	"student_id",
+	"account",
+	"mobile_phone",
+	"user_token",
+	"official_name",
+	"id_card_no",
+	"examinee_number",
+	"exam_id",
+	"exam_name",
+	"exam_session_id",
+	"exam_paper_id",
+	"exam_paper_name",
+	"exam_room_id",
+	"exam_room_name",
+	"extra_time",
+	"extendable_time",
+	"start_time",
+	"end_time",
+	"actual_end_time",
+	"examinee_status",
+	"remark",
+	"period_mode",
+	"allow_entry_time",
+	"allow_submit_time",
+	"mode",
+	"examinee_end_time",
+	"examinee_start_time",
+}
 
-		fieldValue := reflect.ValueOf(r).Elem().Field(i)
-		if !fieldValue.IsValid() {
-			return nil, errors.Errorf("invalid field value for field %s in table t_v_exam_unmarked_student_count", field.Name)
-		}
+// TVExamineeInfoColumnsDataTypes full column data types for default query
+var TVExamineeInfoColumnsDataTypes = map[string]string{
+	"id":                  "integer",
+	"student_id":          "bigint",
+	"account":             "character varying",
+	"mobile_phone":        "character varying",
+	"user_token":          "character varying",
+	"official_name":       "character varying",
+	"id_card_no":          "character varying",
+	"examinee_number":     "character varying",
+	"exam_id":             "integer",
+	"exam_name":           "character varying",
+	"exam_session_id":     "integer",
+	"exam_paper_id":       "integer",
+	"exam_paper_name":     "character varying",
+	"exam_room_id":        "bigint",
+	"exam_room_name":      "character varying",
+	"extra_time":          "bigint",
+	"extendable_time":     "bigint",
+	"start_time":          "bigint",
+	"end_time":            "bigint",
+	"actual_end_time":     "bigint",
+	"examinee_status":     "character varying",
+	"remark":              "character varying",
+	"period_mode":         "character varying",
+	"allow_entry_time":    "bigint",
+	"allow_submit_time":   "bigint",
+	"mode":                "character varying",
+	"examinee_end_time":   "bigint",
+	"examinee_start_time": "bigint",
+}
 
-		if !fieldValue.CanAddr() {
-			return nil, errors.Errorf("cannot read field value for field %s in table t_v_exam_unmarked_student_count", field.Name)
-		}
-
-		values[columnName] = fieldValue.Addr().Interface()
+// GetFieldsMap returns a map of field names to their values.
+func (r *TVExamineeInfo) GetFieldsMap() map[string]any {
+	return map[string]any{
+		"ID":                r.ID,
+		"StudentID":         r.StudentID,
+		"Account":           r.Account,
+		"MobilePhone":       r.MobilePhone,
+		"UserToken":         r.UserToken,
+		"OfficialName":      r.OfficialName,
+		"IDCardNo":          r.IDCardNo,
+		"ExamineeNumber":    r.ExamineeNumber,
+		"ExamID":            r.ExamID,
+		"ExamName":          r.ExamName,
+		"ExamSessionID":     r.ExamSessionID,
+		"ExamPaperID":       r.ExamPaperID,
+		"ExamPaperName":     r.ExamPaperName,
+		"ExamRoomID":        r.ExamRoomID,
+		"ExamRoomName":      r.ExamRoomName,
+		"ExtraTime":         r.ExtraTime,
+		"ExtendableTime":    r.ExtendableTime,
+		"StartTime":         r.StartTime,
+		"EndTime":           r.EndTime,
+		"ActualEndTime":     r.ActualEndTime,
+		"ExamineeStatus":    r.ExamineeStatus,
+		"Remark":            r.Remark,
+		"PeriodMode":        r.PeriodMode,
+		"AllowEntryTime":    r.AllowEntryTime,
+		"AllowSubmitTime":   r.AllowSubmitTime,
+		"Mode":              r.Mode,
+		"ExamineeEndTime":   r.ExamineeEndTime,
+		"ExamineeStartTime": r.ExamineeStartTime,
 	}
+}
 
-	return values, nil
+// GetColumnsMap returns a map of column names to their values.
+func (r *TVExamineeInfo) GetColumnsMap() map[string]any {
+	return map[string]any{
+		"id":                  r.ID,
+		"student_id":          r.StudentID,
+		"account":             r.Account,
+		"mobile_phone":        r.MobilePhone,
+		"user_token":          r.UserToken,
+		"official_name":       r.OfficialName,
+		"id_card_no":          r.IDCardNo,
+		"examinee_number":     r.ExamineeNumber,
+		"exam_id":             r.ExamID,
+		"exam_name":           r.ExamName,
+		"exam_session_id":     r.ExamSessionID,
+		"exam_paper_id":       r.ExamPaperID,
+		"exam_paper_name":     r.ExamPaperName,
+		"exam_room_id":        r.ExamRoomID,
+		"exam_room_name":      r.ExamRoomName,
+		"extra_time":          r.ExtraTime,
+		"extendable_time":     r.ExtendableTime,
+		"start_time":          r.StartTime,
+		"end_time":            r.EndTime,
+		"actual_end_time":     r.ActualEndTime,
+		"examinee_status":     r.ExamineeStatus,
+		"remark":              r.Remark,
+		"period_mode":         r.PeriodMode,
+		"allow_entry_time":    r.AllowEntryTime,
+		"allow_submit_time":   r.AllowSubmitTime,
+		"mode":                r.Mode,
+		"examinee_end_time":   r.ExamineeEndTime,
+		"examinee_start_time": r.ExamineeStartTime,
+	}
+}
+
+// Fields return all fields of struct.
+func (r *TVExamineeInfo) Fields() []string {
+	return TVExamineeInfoFields
+}
+
+// GetTableName return the associated db table name.
+func (r *TVExamineeInfo) GetTableName() string {
+	var viewNamePattern = regexp.MustCompile(`(?i)^t_v_[a-z0-9_]+$`)
+	tableName := "t_v_examinee_info"
+	if viewNamePattern.MatchString(tableName) {
+		return tableName[2:]
+	}
+	return tableName
+}
+
+// Create inserts the TVExamineeInfo to the database.
+func (r *TVExamineeInfo) Create(db Queryer) error {
+	_, err := db.Exec(
+		`INSERT INTO t_v_examinee_info (id, student_id, account, mobile_phone, user_token, official_name, id_card_no, examinee_number, exam_id, exam_name, exam_session_id, exam_paper_id, exam_paper_name, exam_room_id, exam_room_name, extra_time, extendable_time, start_time, end_time, actual_end_time, examinee_status, remark, period_mode, allow_entry_time, allow_submit_time, mode, examinee_end_time, examinee_start_time) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28)`,
+		&r.ID, &r.StudentID, &r.Account, &r.MobilePhone, &r.UserToken, &r.OfficialName, &r.IDCardNo, &r.ExamineeNumber, &r.ExamID, &r.ExamName, &r.ExamSessionID, &r.ExamPaperID, &r.ExamPaperName, &r.ExamRoomID, &r.ExamRoomName, &r.ExtraTime, &r.ExtendableTime, &r.StartTime, &r.EndTime, &r.ActualEndTime, &r.ExamineeStatus, &r.Remark, &r.PeriodMode, &r.AllowEntryTime, &r.AllowSubmitTime, &r.Mode, &r.ExamineeEndTime, &r.ExamineeStartTime)
+	if err != nil {
+		return errors.Wrap(err, "failed to insert t_v_examinee_info")
+	}
+	return nil
+}
+
+// GetTVExamineeInfoByPk select the TVExamineeInfo from the database.
+func GetTVExamineeInfoByPk(db Queryer) (*TVExamineeInfo, error) {
+	// Don't call this function, it is a view and doesn't have a primary key.
+
+	var r TVExamineeInfo
+	err := db.QueryRow(
+		`SELECT id, student_id, account, mobile_phone, user_token, official_name, id_card_no, examinee_number, exam_id, exam_name, exam_session_id, exam_paper_id, exam_paper_name, exam_room_id, exam_room_name, extra_time, extendable_time, start_time, end_time, actual_end_time, examinee_status, remark, period_mode, allow_entry_time, allow_submit_time, mode, examinee_end_time, examinee_start_time FROM t_v_examinee_info`,
+	).Scan(&r.ID, &r.StudentID, &r.Account, &r.MobilePhone, &r.UserToken, &r.OfficialName, &r.IDCardNo, &r.ExamineeNumber, &r.ExamID, &r.ExamName, &r.ExamSessionID, &r.ExamPaperID, &r.ExamPaperName, &r.ExamRoomID, &r.ExamRoomName, &r.ExtraTime, &r.ExtendableTime, &r.StartTime, &r.EndTime, &r.ActualEndTime, &r.ExamineeStatus, &r.Remark, &r.PeriodMode, &r.AllowEntryTime, &r.AllowSubmitTime, &r.Mode, &r.ExamineeEndTime, &r.ExamineeStartTime)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to select t_v_examinee_info")
+	}
+	return &r, nil
 }
 
 /*TVGradeList t_v_grade_list represents assessuser.t_v_grade_list */
@@ -20220,7 +17147,7 @@ type TVGradeList struct {
 	MarkMode      null.String `json:"MarkMode,omitempty" db:"mark_mode,false,character varying"`    /* mark_mode mark_mode */
 	ExamPaperID   null.Int    `json:"ExamPaperID,omitempty" db:"exam_paper_id,false,integer"`       /* exam_paper_id exam_paper_id */
 	PaperName     null.String `json:"PaperName,omitempty" db:"paper_name,false,character varying"`  /* paper_name paper_name */
-	Filter                                                                                          // build DML where clause
+	Filter        `json:"-"`  // build DML where clause
 }
 
 // TVGradeListFields full field list for default query
@@ -20337,42 +17264,6 @@ func GetTVGradeListByPk(db Queryer) (*TVGradeList, error) {
 	return &r, nil
 }
 
-// GetTVGradeListReflectValuesMap returns a map of field names to their values.
-//
-// key is the tag name, value is the field value.
-// This is useful for reflection and dynamic queries.
-func (r *TVGradeList) GetTVGradeListReflectValuesMap() (map[string]any, error) {
-
-	values := make(map[string]any)
-	v := reflect.ValueOf(r).Elem()
-	t := v.Type()
-	for i := range v.NumField() {
-		field := t.Field(i)
-		tag := field.Tag.Get("db")
-		if tag == "" {
-			return nil, errors.Errorf("missing db tag for field %s in table t_v_grade_list", field.Name)
-		}
-
-		columnName := strings.Split(tag, ",")[0]
-		if columnName == "" {
-			return nil, errors.Errorf("missing column name for field %s in table t_v_grade_list", field.Name)
-		}
-
-		fieldValue := reflect.ValueOf(r).Elem().Field(i)
-		if !fieldValue.IsValid() {
-			return nil, errors.Errorf("invalid field value for field %s in table t_v_grade_list", field.Name)
-		}
-
-		if !fieldValue.CanAddr() {
-			return nil, errors.Errorf("cannot read field value for field %s in table t_v_grade_list", field.Name)
-		}
-
-		values[columnName] = fieldValue.Addr().Interface()
-	}
-
-	return values, nil
-}
-
 /*TVInsurancePolicy t_v_insurance_policy represents assessuser.t_v_insurance_policy */
 type TVInsurancePolicy struct {
 	ID                    null.Int       `json:"ID,omitempty" db:"id,false,integer"`                                         /* id id */
@@ -20460,7 +17351,7 @@ type TVInsurancePolicy struct {
 	AttachCreator         null.Int       `json:"AttachCreator,omitempty" db:"attach_creator,false,bigint"`                   /* attach_creator attach_creator */
 	PolicyUploadStatus    null.String    `json:"PolicyUploadStatus,omitempty" db:"policy_upload_status,false,text"`          /* policy_upload_status policy_upload_status */
 	InvoiceUploadStatus   null.String    `json:"InvoiceUploadStatus,omitempty" db:"invoice_upload_status,false,text"`        /* invoice_upload_status invoice_upload_status */
-	Filter                                                                                                                   // build DML where clause
+	Filter                `json:"-"`     // build DML where clause
 }
 
 // TVInsurancePolicyFields full field list for default query
@@ -20952,42 +17843,6 @@ func GetTVInsurancePolicyByPk(db Queryer) (*TVInsurancePolicy, error) {
 	return &r, nil
 }
 
-// GetTVInsurancePolicyReflectValuesMap returns a map of field names to their values.
-//
-// key is the tag name, value is the field value.
-// This is useful for reflection and dynamic queries.
-func (r *TVInsurancePolicy) GetTVInsurancePolicyReflectValuesMap() (map[string]any, error) {
-
-	values := make(map[string]any)
-	v := reflect.ValueOf(r).Elem()
-	t := v.Type()
-	for i := range v.NumField() {
-		field := t.Field(i)
-		tag := field.Tag.Get("db")
-		if tag == "" {
-			return nil, errors.Errorf("missing db tag for field %s in table t_v_insurance_policy", field.Name)
-		}
-
-		columnName := strings.Split(tag, ",")[0]
-		if columnName == "" {
-			return nil, errors.Errorf("missing column name for field %s in table t_v_insurance_policy", field.Name)
-		}
-
-		fieldValue := reflect.ValueOf(r).Elem().Field(i)
-		if !fieldValue.IsValid() {
-			return nil, errors.Errorf("invalid field value for field %s in table t_v_insurance_policy", field.Name)
-		}
-
-		if !fieldValue.CanAddr() {
-			return nil, errors.Errorf("cannot read field value for field %s in table t_v_insurance_policy", field.Name)
-		}
-
-		values[columnName] = fieldValue.Addr().Interface()
-	}
-
-	return values, nil
-}
-
 /*TVInsurancePolicy2 t_v_insurance_policy2 represents assessuser.t_v_insurance_policy2 */
 type TVInsurancePolicy2 struct {
 	ID                      null.Int       `json:"ID,omitempty" db:"id,false,integer"`                                                       /* id id */
@@ -21116,7 +17971,7 @@ type TVInsurancePolicy2 struct {
 	OFiles                  types.JSONText `json:"OFiles,omitempty" db:"o_files,false,jsonb"`                                                /* o_files o_files */
 	PolicyUploadStatus      null.String    `json:"PolicyUploadStatus,omitempty" db:"policy_upload_status,false,text"`                        /* policy_upload_status policy_upload_status */
 	InvoiceUploadStatus     null.String    `json:"InvoiceUploadStatus,omitempty" db:"invoice_upload_status,false,text"`                      /* invoice_upload_status invoice_upload_status */
-	Filter                                                                                                                                   // build DML where clause
+	Filter                  `json:"-"`     // build DML where clause
 }
 
 // TVInsurancePolicy2Fields full field list for default query
@@ -21813,42 +18668,6 @@ func GetTVInsurancePolicy2ByPk(db Queryer) (*TVInsurancePolicy2, error) {
 	return &r, nil
 }
 
-// GetTVInsurancePolicy2ReflectValuesMap returns a map of field names to their values.
-//
-// key is the tag name, value is the field value.
-// This is useful for reflection and dynamic queries.
-func (r *TVInsurancePolicy2) GetTVInsurancePolicy2ReflectValuesMap() (map[string]any, error) {
-
-	values := make(map[string]any)
-	v := reflect.ValueOf(r).Elem()
-	t := v.Type()
-	for i := range v.NumField() {
-		field := t.Field(i)
-		tag := field.Tag.Get("db")
-		if tag == "" {
-			return nil, errors.Errorf("missing db tag for field %s in table t_v_insurance_policy2", field.Name)
-		}
-
-		columnName := strings.Split(tag, ",")[0]
-		if columnName == "" {
-			return nil, errors.Errorf("missing column name for field %s in table t_v_insurance_policy2", field.Name)
-		}
-
-		fieldValue := reflect.ValueOf(r).Elem().Field(i)
-		if !fieldValue.IsValid() {
-			return nil, errors.Errorf("invalid field value for field %s in table t_v_insurance_policy2", field.Name)
-		}
-
-		if !fieldValue.CanAddr() {
-			return nil, errors.Errorf("cannot read field value for field %s in table t_v_insurance_policy2", field.Name)
-		}
-
-		values[columnName] = fieldValue.Addr().Interface()
-	}
-
-	return values, nil
-}
-
 /*TVInsuranceType t_v_insurance_type represents assessuser.t_v_insurance_type */
 type TVInsuranceType struct {
 	ID                      null.Int       `json:"ID,omitempty" db:"id,false,integer"`                                               /* id id */
@@ -21914,7 +18733,7 @@ type TVInsuranceType struct {
 	CreateTime              null.Int       `json:"CreateTime,omitempty" db:"create_time,false,bigint"`                               /* create_time create_time */
 	UpdateTime              null.Int       `json:"UpdateTime,omitempty" db:"update_time,false,bigint"`                               /* update_time update_time */
 	Status                  null.String    `json:"Status,omitempty" db:"status,false,character varying"`                             /* status status */
-	Filter                                                                                                                           // build DML where clause
+	Filter                  `json:"-"`     // build DML where clause
 }
 
 // TVInsuranceTypeFields full field list for default query
@@ -22296,42 +19115,6 @@ func GetTVInsuranceTypeByPk(db Queryer) (*TVInsuranceType, error) {
 	return &r, nil
 }
 
-// GetTVInsuranceTypeReflectValuesMap returns a map of field names to their values.
-//
-// key is the tag name, value is the field value.
-// This is useful for reflection and dynamic queries.
-func (r *TVInsuranceType) GetTVInsuranceTypeReflectValuesMap() (map[string]any, error) {
-
-	values := make(map[string]any)
-	v := reflect.ValueOf(r).Elem()
-	t := v.Type()
-	for i := range v.NumField() {
-		field := t.Field(i)
-		tag := field.Tag.Get("db")
-		if tag == "" {
-			return nil, errors.Errorf("missing db tag for field %s in table t_v_insurance_type", field.Name)
-		}
-
-		columnName := strings.Split(tag, ",")[0]
-		if columnName == "" {
-			return nil, errors.Errorf("missing column name for field %s in table t_v_insurance_type", field.Name)
-		}
-
-		fieldValue := reflect.ValueOf(r).Elem().Field(i)
-		if !fieldValue.IsValid() {
-			return nil, errors.Errorf("invalid field value for field %s in table t_v_insurance_type", field.Name)
-		}
-
-		if !fieldValue.CanAddr() {
-			return nil, errors.Errorf("cannot read field value for field %s in table t_v_insurance_type", field.Name)
-		}
-
-		values[columnName] = fieldValue.Addr().Interface()
-	}
-
-	return values, nil
-}
-
 /*TVInsureAttach t_v_insure_attach represents assessuser.t_v_insure_attach */
 type TVInsureAttach struct {
 	ID                  null.Int       `json:"ID,omitempty" db:"id,false,integer"`                                  /* id id */
@@ -22352,7 +19135,7 @@ type TVInsureAttach struct {
 	CreateTime          null.Int       `json:"CreateTime,omitempty" db:"create_time,false,bigint"`                  /* create_time create_time */
 	UpdateTime          null.Int       `json:"UpdateTime,omitempty" db:"update_time,false,bigint"`                  /* update_time update_time */
 	Creator             null.Int       `json:"Creator,omitempty" db:"creator,false,bigint"`                         /* creator creator */
-	Filter                                                                                                          // build DML where clause
+	Filter              `json:"-"`     // build DML where clause
 }
 
 // TVInsureAttachFields full field list for default query
@@ -22509,42 +19292,6 @@ func GetTVInsureAttachByPk(db Queryer) (*TVInsureAttach, error) {
 	return &r, nil
 }
 
-// GetTVInsureAttachReflectValuesMap returns a map of field names to their values.
-//
-// key is the tag name, value is the field value.
-// This is useful for reflection and dynamic queries.
-func (r *TVInsureAttach) GetTVInsureAttachReflectValuesMap() (map[string]any, error) {
-
-	values := make(map[string]any)
-	v := reflect.ValueOf(r).Elem()
-	t := v.Type()
-	for i := range v.NumField() {
-		field := t.Field(i)
-		tag := field.Tag.Get("db")
-		if tag == "" {
-			return nil, errors.Errorf("missing db tag for field %s in table t_v_insure_attach", field.Name)
-		}
-
-		columnName := strings.Split(tag, ",")[0]
-		if columnName == "" {
-			return nil, errors.Errorf("missing column name for field %s in table t_v_insure_attach", field.Name)
-		}
-
-		fieldValue := reflect.ValueOf(r).Elem().Field(i)
-		if !fieldValue.IsValid() {
-			return nil, errors.Errorf("invalid field value for field %s in table t_v_insure_attach", field.Name)
-		}
-
-		if !fieldValue.CanAddr() {
-			return nil, errors.Errorf("cannot read field value for field %s in table t_v_insure_attach", field.Name)
-		}
-
-		values[columnName] = fieldValue.Addr().Interface()
-	}
-
-	return values, nil
-}
-
 /*TVInsuredSchool t_v_insured_school represents assessuser.t_v_insured_school */
 type TVInsuredSchool struct {
 	ID        null.Int       `json:"ID,omitempty" db:"id,false,integer"`                          /* id id */
@@ -22557,7 +19304,7 @@ type TVInsuredSchool struct {
 	IsSchool  null.Bool      `json:"IsSchool,omitempty" db:"is_school,false,boolean"`             /* is_school is_school */
 	OrgStatus null.String    `json:"OrgStatus,omitempty" db:"org_status,false,character varying"` /* org_status org_status */
 	AllowTime types.JSONText `json:"AllowTime,omitempty" db:"allow_time,false,jsonb"`             /* allow_time allow_time */
-	Filter                                                                                        // build DML where clause
+	Filter    `json:"-"`     // build DML where clause
 }
 
 // TVInsuredSchoolFields full field list for default query
@@ -22674,42 +19421,6 @@ func GetTVInsuredSchoolByPk(db Queryer) (*TVInsuredSchool, error) {
 	return &r, nil
 }
 
-// GetTVInsuredSchoolReflectValuesMap returns a map of field names to their values.
-//
-// key is the tag name, value is the field value.
-// This is useful for reflection and dynamic queries.
-func (r *TVInsuredSchool) GetTVInsuredSchoolReflectValuesMap() (map[string]any, error) {
-
-	values := make(map[string]any)
-	v := reflect.ValueOf(r).Elem()
-	t := v.Type()
-	for i := range v.NumField() {
-		field := t.Field(i)
-		tag := field.Tag.Get("db")
-		if tag == "" {
-			return nil, errors.Errorf("missing db tag for field %s in table t_v_insured_school", field.Name)
-		}
-
-		columnName := strings.Split(tag, ",")[0]
-		if columnName == "" {
-			return nil, errors.Errorf("missing column name for field %s in table t_v_insured_school", field.Name)
-		}
-
-		fieldValue := reflect.ValueOf(r).Elem().Field(i)
-		if !fieldValue.IsValid() {
-			return nil, errors.Errorf("invalid field value for field %s in table t_v_insured_school", field.Name)
-		}
-
-		if !fieldValue.CanAddr() {
-			return nil, errors.Errorf("cannot read field value for field %s in table t_v_insured_school", field.Name)
-		}
-
-		values[columnName] = fieldValue.Addr().Interface()
-	}
-
-	return values, nil
-}
-
 /*TVInsurer t_v_insurer represents assessuser.t_v_insurer */
 type TVInsurer struct {
 	ID       null.Int    `json:"ID,omitempty" db:"id,false,integer"`                     /* id id */
@@ -22717,7 +19428,7 @@ type TVInsurer struct {
 	RefID    null.Int    `json:"RefID,omitempty" db:"ref_id,false,bigint"`               /* ref_id ref_id */
 	ParentID null.Int    `json:"ParentID,omitempty" db:"parent_id,false,bigint"`         /* parent_id parent_id */
 	Insurer  null.String `json:"Insurer,omitempty" db:"insurer,false,character varying"` /* insurer insurer */
-	Filter                                                                               // build DML where clause
+	Filter   `json:"-"`  // build DML where clause
 }
 
 // TVInsurerFields full field list for default query
@@ -22809,49 +19520,220 @@ func GetTVInsurerByPk(db Queryer) (*TVInsurer, error) {
 	return &r, nil
 }
 
-// GetTVInsurerReflectValuesMap returns a map of field names to their values.
-//
-// key is the tag name, value is the field value.
-// This is useful for reflection and dynamic queries.
-func (r *TVInsurer) GetTVInsurerReflectValuesMap() (map[string]any, error) {
+/*TVInvigilationInfo t_v_invigilation_info represents assessuser.t_v_invigilation_info */
+type TVInvigilationInfo struct {
+	InvigilatorIds      interface{} `json:"InvigilatorIds,omitempty" db:"invigilator_ids,false,integer[]"`               /* invigilator_ids invigilator_ids */
+	InvigilatorNames    interface{} `json:"InvigilatorNames,omitempty" db:"invigilator_names,false,character varying[]"` /* invigilator_names invigilator_names */
+	InvigilatorNum      null.Int    `json:"InvigilatorNum,omitempty" db:"invigilator_num,false,bigint"`                  /* invigilator_num invigilator_num */
+	ExamID              null.Int    `json:"ExamID,omitempty" db:"exam_id,false,integer"`                                 /* exam_id exam_id */
+	ExamType            null.String `json:"ExamType,omitempty" db:"exam_type,false,character varying"`                   /* exam_type exam_type */
+	ExamMode            null.String `json:"ExamMode,omitempty" db:"exam_mode,false,character varying"`                   /* exam_mode exam_mode */
+	ExamSessionID       null.Int    `json:"ExamSessionID,omitempty" db:"exam_session_id,false,integer"`                  /* exam_session_id exam_session_id */
+	StartTime           null.Int    `json:"StartTime,omitempty" db:"start_time,false,bigint"`                            /* start_time start_time */
+	EndTime             null.Int    `json:"EndTime,omitempty" db:"end_time,false,bigint"`                                /* end_time end_time */
+	Status              null.String `json:"Status,omitempty" db:"status,false,character varying"`                        /* status status */
+	ExamSiteID          null.Int    `json:"ExamSiteID,omitempty" db:"exam_site_id,false,integer"`                        /* exam_site_id exam_site_id */
+	ExamSiteName        null.String `json:"ExamSiteName,omitempty" db:"exam_site_name,false,character varying"`          /* exam_site_name exam_site_name */
+	ExamRoomID          null.Int    `json:"ExamRoomID,omitempty" db:"exam_room_id,false,integer"`                        /* exam_room_id exam_room_id */
+	ExamRoomName        null.String `json:"ExamRoomName,omitempty" db:"exam_room_name,false,character varying"`          /* exam_room_name exam_room_name */
+	ExamRoomCapacity    null.Int    `json:"ExamRoomCapacity,omitempty" db:"exam_room_capacity,false,integer"`            /* exam_room_capacity exam_room_capacity */
+	ExamSessionName     null.String `json:"ExamSessionName,omitempty" db:"exam_session_name,false,character varying"`    /* exam_session_name exam_session_name */
+	Record              null.String `json:"Record,omitempty" db:"record,false,character varying"`                        /* record record */
+	BasicEval           null.String `json:"BasicEval,omitempty" db:"basic_eval,false,character varying"`                 /* basic_eval basic_eval */
+	ExamineeNum         null.Int    `json:"ExamineeNum,omitempty" db:"examinee_num,false,bigint"`                        /* examinee_num examinee_num */
+	AbsenteeNum         null.Int    `json:"AbsenteeNum,omitempty" db:"absentee_num,false,bigint"`                        /* absentee_num absentee_num */
+	CheaterNum          null.Int    `json:"CheaterNum,omitempty" db:"cheater_num,false,bigint"`                          /* cheater_num cheater_num */
+	AbnormalExamineeNum null.Int    `json:"AbnormalExamineeNum,omitempty" db:"abnormal_examinee_num,false,bigint"`       /* abnormal_examinee_num abnormal_examinee_num */
+	ExtendedTimeNum     null.Int    `json:"ExtendedTimeNum,omitempty" db:"extended_time_num,false,bigint"`               /* extended_time_num extended_time_num */
+	Filter              `json:"-"`  // build DML where clause
+}
 
-	values := make(map[string]any)
-	v := reflect.ValueOf(r).Elem()
-	t := v.Type()
-	for i := range v.NumField() {
-		field := t.Field(i)
-		tag := field.Tag.Get("db")
-		if tag == "" {
-			return nil, errors.Errorf("missing db tag for field %s in table t_v_insurer", field.Name)
-		}
+// TVInvigilationInfoFields full field list for default query
+var TVInvigilationInfoFields = []string{
+	"InvigilatorIds",
+	"InvigilatorNames",
+	"InvigilatorNum",
+	"ExamID",
+	"ExamType",
+	"ExamMode",
+	"ExamSessionID",
+	"StartTime",
+	"EndTime",
+	"Status",
+	"ExamSiteID",
+	"ExamSiteName",
+	"ExamRoomID",
+	"ExamRoomName",
+	"ExamRoomCapacity",
+	"ExamSessionName",
+	"Record",
+	"BasicEval",
+	"ExamineeNum",
+	"AbsenteeNum",
+	"CheaterNum",
+	"AbnormalExamineeNum",
+	"ExtendedTimeNum",
+}
 
-		columnName := strings.Split(tag, ",")[0]
-		if columnName == "" {
-			return nil, errors.Errorf("missing column name for field %s in table t_v_insurer", field.Name)
-		}
+// TVInvigilationInfoColumns full column list for default query
+var TVInvigilationInfoColumns = []string{
+	"invigilator_ids",
+	"invigilator_names",
+	"invigilator_num",
+	"exam_id",
+	"exam_type",
+	"exam_mode",
+	"exam_session_id",
+	"start_time",
+	"end_time",
+	"status",
+	"exam_site_id",
+	"exam_site_name",
+	"exam_room_id",
+	"exam_room_name",
+	"exam_room_capacity",
+	"exam_session_name",
+	"record",
+	"basic_eval",
+	"examinee_num",
+	"absentee_num",
+	"cheater_num",
+	"abnormal_examinee_num",
+	"extended_time_num",
+}
 
-		fieldValue := reflect.ValueOf(r).Elem().Field(i)
-		if !fieldValue.IsValid() {
-			return nil, errors.Errorf("invalid field value for field %s in table t_v_insurer", field.Name)
-		}
+// TVInvigilationInfoColumnsDataTypes full column data types for default query
+var TVInvigilationInfoColumnsDataTypes = map[string]string{
+	"invigilator_ids":       "integer[]",
+	"invigilator_names":     "character varying[]",
+	"invigilator_num":       "bigint",
+	"exam_id":               "integer",
+	"exam_type":             "character varying",
+	"exam_mode":             "character varying",
+	"exam_session_id":       "integer",
+	"start_time":            "bigint",
+	"end_time":              "bigint",
+	"status":                "character varying",
+	"exam_site_id":          "integer",
+	"exam_site_name":        "character varying",
+	"exam_room_id":          "integer",
+	"exam_room_name":        "character varying",
+	"exam_room_capacity":    "integer",
+	"exam_session_name":     "character varying",
+	"record":                "character varying",
+	"basic_eval":            "character varying",
+	"examinee_num":          "bigint",
+	"absentee_num":          "bigint",
+	"cheater_num":           "bigint",
+	"abnormal_examinee_num": "bigint",
+	"extended_time_num":     "bigint",
+}
 
-		if !fieldValue.CanAddr() {
-			return nil, errors.Errorf("cannot read field value for field %s in table t_v_insurer", field.Name)
-		}
-
-		values[columnName] = fieldValue.Addr().Interface()
+// GetFieldsMap returns a map of field names to their values.
+func (r *TVInvigilationInfo) GetFieldsMap() map[string]any {
+	return map[string]any{
+		"InvigilatorIds":      r.InvigilatorIds,
+		"InvigilatorNames":    r.InvigilatorNames,
+		"InvigilatorNum":      r.InvigilatorNum,
+		"ExamID":              r.ExamID,
+		"ExamType":            r.ExamType,
+		"ExamMode":            r.ExamMode,
+		"ExamSessionID":       r.ExamSessionID,
+		"StartTime":           r.StartTime,
+		"EndTime":             r.EndTime,
+		"Status":              r.Status,
+		"ExamSiteID":          r.ExamSiteID,
+		"ExamSiteName":        r.ExamSiteName,
+		"ExamRoomID":          r.ExamRoomID,
+		"ExamRoomName":        r.ExamRoomName,
+		"ExamRoomCapacity":    r.ExamRoomCapacity,
+		"ExamSessionName":     r.ExamSessionName,
+		"Record":              r.Record,
+		"BasicEval":           r.BasicEval,
+		"ExamineeNum":         r.ExamineeNum,
+		"AbsenteeNum":         r.AbsenteeNum,
+		"CheaterNum":          r.CheaterNum,
+		"AbnormalExamineeNum": r.AbnormalExamineeNum,
+		"ExtendedTimeNum":     r.ExtendedTimeNum,
 	}
+}
 
-	return values, nil
+// GetColumnsMap returns a map of column names to their values.
+func (r *TVInvigilationInfo) GetColumnsMap() map[string]any {
+	return map[string]any{
+		"invigilator_ids":       r.InvigilatorIds,
+		"invigilator_names":     r.InvigilatorNames,
+		"invigilator_num":       r.InvigilatorNum,
+		"exam_id":               r.ExamID,
+		"exam_type":             r.ExamType,
+		"exam_mode":             r.ExamMode,
+		"exam_session_id":       r.ExamSessionID,
+		"start_time":            r.StartTime,
+		"end_time":              r.EndTime,
+		"status":                r.Status,
+		"exam_site_id":          r.ExamSiteID,
+		"exam_site_name":        r.ExamSiteName,
+		"exam_room_id":          r.ExamRoomID,
+		"exam_room_name":        r.ExamRoomName,
+		"exam_room_capacity":    r.ExamRoomCapacity,
+		"exam_session_name":     r.ExamSessionName,
+		"record":                r.Record,
+		"basic_eval":            r.BasicEval,
+		"examinee_num":          r.ExamineeNum,
+		"absentee_num":          r.AbsenteeNum,
+		"cheater_num":           r.CheaterNum,
+		"abnormal_examinee_num": r.AbnormalExamineeNum,
+		"extended_time_num":     r.ExtendedTimeNum,
+	}
+}
+
+// Fields return all fields of struct.
+func (r *TVInvigilationInfo) Fields() []string {
+	return TVInvigilationInfoFields
+}
+
+// GetTableName return the associated db table name.
+func (r *TVInvigilationInfo) GetTableName() string {
+	var viewNamePattern = regexp.MustCompile(`(?i)^t_v_[a-z0-9_]+$`)
+	tableName := "t_v_invigilation_info"
+	if viewNamePattern.MatchString(tableName) {
+		return tableName[2:]
+	}
+	return tableName
+}
+
+// Create inserts the TVInvigilationInfo to the database.
+func (r *TVInvigilationInfo) Create(db Queryer) error {
+	_, err := db.Exec(
+		`INSERT INTO t_v_invigilation_info (invigilator_ids, invigilator_names, invigilator_num, exam_id, exam_type, exam_mode, exam_session_id, start_time, end_time, status, exam_site_id, exam_site_name, exam_room_id, exam_room_name, exam_room_capacity, exam_session_name, record, basic_eval, examinee_num, absentee_num, cheater_num, abnormal_examinee_num, extended_time_num) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23)`,
+		&r.InvigilatorIds, &r.InvigilatorNames, &r.InvigilatorNum, &r.ExamID, &r.ExamType, &r.ExamMode, &r.ExamSessionID, &r.StartTime, &r.EndTime, &r.Status, &r.ExamSiteID, &r.ExamSiteName, &r.ExamRoomID, &r.ExamRoomName, &r.ExamRoomCapacity, &r.ExamSessionName, &r.Record, &r.BasicEval, &r.ExamineeNum, &r.AbsenteeNum, &r.CheaterNum, &r.AbnormalExamineeNum, &r.ExtendedTimeNum)
+	if err != nil {
+		return errors.Wrap(err, "failed to insert t_v_invigilation_info")
+	}
+	return nil
+}
+
+// GetTVInvigilationInfoByPk select the TVInvigilationInfo from the database.
+func GetTVInvigilationInfoByPk(db Queryer) (*TVInvigilationInfo, error) {
+	// Don't call this function, it is a view and doesn't have a primary key.
+
+	var r TVInvigilationInfo
+	err := db.QueryRow(
+		`SELECT invigilator_ids, invigilator_names, invigilator_num, exam_id, exam_type, exam_mode, exam_session_id, start_time, end_time, status, exam_site_id, exam_site_name, exam_room_id, exam_room_name, exam_room_capacity, exam_session_name, record, basic_eval, examinee_num, absentee_num, cheater_num, abnormal_examinee_num, extended_time_num FROM t_v_invigilation_info`,
+	).Scan(&r.InvigilatorIds, &r.InvigilatorNames, &r.InvigilatorNum, &r.ExamID, &r.ExamType, &r.ExamMode, &r.ExamSessionID, &r.StartTime, &r.EndTime, &r.Status, &r.ExamSiteID, &r.ExamSiteName, &r.ExamRoomID, &r.ExamRoomName, &r.ExamRoomCapacity, &r.ExamSessionName, &r.Record, &r.BasicEval, &r.ExamineeNum, &r.AbsenteeNum, &r.CheaterNum, &r.AbnormalExamineeNum, &r.ExtendedTimeNum)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to select t_v_invigilation_info")
+	}
+	return &r, nil
 }
 
 /*TVLatestSubmittedPractice t_v_latest_submitted_practice represents assessuser.t_v_latest_submitted_practice */
 type TVLatestSubmittedPractice struct {
-	SubmissionID null.Int `json:"SubmissionID,omitempty" db:"submission_id,false,integer"` /* submission_id submission_id */
-	PracticeID   null.Int `json:"PracticeID,omitempty" db:"practice_id,false,bigint"`      /* practice_id practice_id */
-	StudentID    null.Int `json:"StudentID,omitempty" db:"student_id,false,bigint"`        /* student_id student_id */
-	Attempt      null.Int `json:"Attempt,omitempty" db:"attempt,false,integer"`            /* attempt attempt */
-	Filter                                                                                 // build DML where clause
+	SubmissionID null.Int   `json:"SubmissionID,omitempty" db:"submission_id,false,integer"` /* submission_id submission_id */
+	PracticeID   null.Int   `json:"PracticeID,omitempty" db:"practice_id,false,bigint"`      /* practice_id practice_id */
+	StudentID    null.Int   `json:"StudentID,omitempty" db:"student_id,false,bigint"`        /* student_id student_id */
+	Attempt      null.Int   `json:"Attempt,omitempty" db:"attempt,false,integer"`            /* attempt attempt */
+	Filter       `json:"-"` // build DML where clause
 }
 
 // TVLatestSubmittedPracticeFields full field list for default query
@@ -22938,49 +19820,13 @@ func GetTVLatestSubmittedPracticeByPk(db Queryer) (*TVLatestSubmittedPractice, e
 	return &r, nil
 }
 
-// GetTVLatestSubmittedPracticeReflectValuesMap returns a map of field names to their values.
-//
-// key is the tag name, value is the field value.
-// This is useful for reflection and dynamic queries.
-func (r *TVLatestSubmittedPractice) GetTVLatestSubmittedPracticeReflectValuesMap() (map[string]any, error) {
-
-	values := make(map[string]any)
-	v := reflect.ValueOf(r).Elem()
-	t := v.Type()
-	for i := range v.NumField() {
-		field := t.Field(i)
-		tag := field.Tag.Get("db")
-		if tag == "" {
-			return nil, errors.Errorf("missing db tag for field %s in table t_v_latest_submitted_practice", field.Name)
-		}
-
-		columnName := strings.Split(tag, ",")[0]
-		if columnName == "" {
-			return nil, errors.Errorf("missing column name for field %s in table t_v_latest_submitted_practice", field.Name)
-		}
-
-		fieldValue := reflect.ValueOf(r).Elem().Field(i)
-		if !fieldValue.IsValid() {
-			return nil, errors.Errorf("invalid field value for field %s in table t_v_latest_submitted_practice", field.Name)
-		}
-
-		if !fieldValue.CanAddr() {
-			return nil, errors.Errorf("cannot read field value for field %s in table t_v_latest_submitted_practice", field.Name)
-		}
-
-		values[columnName] = fieldValue.Addr().Interface()
-	}
-
-	return values, nil
-}
-
 /*TVLatestUnsubmittedPractice t_v_latest_unsubmitted_practice represents assessuser.t_v_latest_unsubmitted_practice */
 type TVLatestUnsubmittedPractice struct {
-	SubmissionID null.Int `json:"SubmissionID,omitempty" db:"submission_id,false,integer"` /* submission_id submission_id */
-	PracticeID   null.Int `json:"PracticeID,omitempty" db:"practice_id,false,bigint"`      /* practice_id practice_id */
-	StudentID    null.Int `json:"StudentID,omitempty" db:"student_id,false,bigint"`        /* student_id student_id */
-	Attempt      null.Int `json:"Attempt,omitempty" db:"attempt,false,integer"`            /* attempt attempt */
-	Filter                                                                                 // build DML where clause
+	SubmissionID null.Int   `json:"SubmissionID,omitempty" db:"submission_id,false,integer"` /* submission_id submission_id */
+	PracticeID   null.Int   `json:"PracticeID,omitempty" db:"practice_id,false,bigint"`      /* practice_id practice_id */
+	StudentID    null.Int   `json:"StudentID,omitempty" db:"student_id,false,bigint"`        /* student_id student_id */
+	Attempt      null.Int   `json:"Attempt,omitempty" db:"attempt,false,integer"`            /* attempt attempt */
+	Filter       `json:"-"` // build DML where clause
 }
 
 // TVLatestUnsubmittedPracticeFields full field list for default query
@@ -23067,42 +19913,6 @@ func GetTVLatestUnsubmittedPracticeByPk(db Queryer) (*TVLatestUnsubmittedPractic
 	return &r, nil
 }
 
-// GetTVLatestUnsubmittedPracticeReflectValuesMap returns a map of field names to their values.
-//
-// key is the tag name, value is the field value.
-// This is useful for reflection and dynamic queries.
-func (r *TVLatestUnsubmittedPractice) GetTVLatestUnsubmittedPracticeReflectValuesMap() (map[string]any, error) {
-
-	values := make(map[string]any)
-	v := reflect.ValueOf(r).Elem()
-	t := v.Type()
-	for i := range v.NumField() {
-		field := t.Field(i)
-		tag := field.Tag.Get("db")
-		if tag == "" {
-			return nil, errors.Errorf("missing db tag for field %s in table t_v_latest_unsubmitted_practice", field.Name)
-		}
-
-		columnName := strings.Split(tag, ",")[0]
-		if columnName == "" {
-			return nil, errors.Errorf("missing column name for field %s in table t_v_latest_unsubmitted_practice", field.Name)
-		}
-
-		fieldValue := reflect.ValueOf(r).Elem().Field(i)
-		if !fieldValue.IsValid() {
-			return nil, errors.Errorf("invalid field value for field %s in table t_v_latest_unsubmitted_practice", field.Name)
-		}
-
-		if !fieldValue.CanAddr() {
-			return nil, errors.Errorf("cannot read field value for field %s in table t_v_latest_unsubmitted_practice", field.Name)
-		}
-
-		values[columnName] = fieldValue.Addr().Interface()
-	}
-
-	return values, nil
-}
-
 /*TVManagerSchool t_v_manager_school represents assessuser.t_v_manager_school */
 type TVManagerSchool struct {
 	UserID     null.Int       `json:"UserID,omitempty" db:"user_id,false,bigint"`                    /* user_id user_id */
@@ -23113,7 +19923,7 @@ type TVManagerSchool struct {
 	UserRole   null.String    `json:"UserRole,omitempty" db:"user_role,false,text"`                  /* user_role user_role */
 	RelType    null.String    `json:"RelType,omitempty" db:"rel_type,false,text"`                    /* rel_type rel_type */
 	Addi       types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                          /* addi addi */
-	Filter                                                                                           // build DML where clause
+	Filter     `json:"-"`     // build DML where clause
 }
 
 // TVManagerSchoolFields full field list for default query
@@ -23220,40 +20030,109 @@ func GetTVManagerSchoolByPk(db Queryer) (*TVManagerSchool, error) {
 	return &r, nil
 }
 
-// GetTVManagerSchoolReflectValuesMap returns a map of field names to their values.
-//
-// key is the tag name, value is the field value.
-// This is useful for reflection and dynamic queries.
-func (r *TVManagerSchool) GetTVManagerSchoolReflectValuesMap() (map[string]any, error) {
+/*TVMaxSubmittedView t_v_max_submitted_view represents assessuser.t_v_max_submitted_view */
+type TVMaxSubmittedView struct {
+	ID         null.Int   `json:"ID,omitempty" db:"id,false,integer"`                           /* id id */
+	StudentID  null.Int   `json:"StudentID,omitempty" db:"student_id,false,bigint"`             /* student_id student_id */
+	Attempt    null.Int   `json:"Attempt,omitempty" db:"attempt,false,integer"`                 /* attempt attempt */
+	WrongCount null.Int   `json:"WrongCount,omitempty" db:"wrong_count,false,bigint"`           /* wrong_count wrong_count */
+	TotalScore null.Float `json:"TotalScore,omitempty" db:"total_score,false,double precision"` /* total_score total_score */
+	PracticeID null.Int   `json:"PracticeID,omitempty" db:"practice_id,false,bigint"`           /* practice_id practice_id */
+	Filter     `json:"-"` // build DML where clause
+}
 
-	values := make(map[string]any)
-	v := reflect.ValueOf(r).Elem()
-	t := v.Type()
-	for i := range v.NumField() {
-		field := t.Field(i)
-		tag := field.Tag.Get("db")
-		if tag == "" {
-			return nil, errors.Errorf("missing db tag for field %s in table t_v_manager_school", field.Name)
-		}
+// TVMaxSubmittedViewFields full field list for default query
+var TVMaxSubmittedViewFields = []string{
+	"ID",
+	"StudentID",
+	"Attempt",
+	"WrongCount",
+	"TotalScore",
+	"PracticeID",
+}
 
-		columnName := strings.Split(tag, ",")[0]
-		if columnName == "" {
-			return nil, errors.Errorf("missing column name for field %s in table t_v_manager_school", field.Name)
-		}
+// TVMaxSubmittedViewColumns full column list for default query
+var TVMaxSubmittedViewColumns = []string{
+	"id",
+	"student_id",
+	"attempt",
+	"wrong_count",
+	"total_score",
+	"practice_id",
+}
 
-		fieldValue := reflect.ValueOf(r).Elem().Field(i)
-		if !fieldValue.IsValid() {
-			return nil, errors.Errorf("invalid field value for field %s in table t_v_manager_school", field.Name)
-		}
+// TVMaxSubmittedViewColumnsDataTypes full column data types for default query
+var TVMaxSubmittedViewColumnsDataTypes = map[string]string{
+	"id":          "integer",
+	"student_id":  "bigint",
+	"attempt":     "integer",
+	"wrong_count": "bigint",
+	"total_score": "double precision",
+	"practice_id": "bigint",
+}
 
-		if !fieldValue.CanAddr() {
-			return nil, errors.Errorf("cannot read field value for field %s in table t_v_manager_school", field.Name)
-		}
-
-		values[columnName] = fieldValue.Addr().Interface()
+// GetFieldsMap returns a map of field names to their values.
+func (r *TVMaxSubmittedView) GetFieldsMap() map[string]any {
+	return map[string]any{
+		"ID":         r.ID,
+		"StudentID":  r.StudentID,
+		"Attempt":    r.Attempt,
+		"WrongCount": r.WrongCount,
+		"TotalScore": r.TotalScore,
+		"PracticeID": r.PracticeID,
 	}
+}
 
-	return values, nil
+// GetColumnsMap returns a map of column names to their values.
+func (r *TVMaxSubmittedView) GetColumnsMap() map[string]any {
+	return map[string]any{
+		"id":          r.ID,
+		"student_id":  r.StudentID,
+		"attempt":     r.Attempt,
+		"wrong_count": r.WrongCount,
+		"total_score": r.TotalScore,
+		"practice_id": r.PracticeID,
+	}
+}
+
+// Fields return all fields of struct.
+func (r *TVMaxSubmittedView) Fields() []string {
+	return TVMaxSubmittedViewFields
+}
+
+// GetTableName return the associated db table name.
+func (r *TVMaxSubmittedView) GetTableName() string {
+	var viewNamePattern = regexp.MustCompile(`(?i)^t_v_[a-z0-9_]+$`)
+	tableName := "t_v_max_submitted_view"
+	if viewNamePattern.MatchString(tableName) {
+		return tableName[2:]
+	}
+	return tableName
+}
+
+// Create inserts the TVMaxSubmittedView to the database.
+func (r *TVMaxSubmittedView) Create(db Queryer) error {
+	_, err := db.Exec(
+		`INSERT INTO t_v_max_submitted_view (id, student_id, attempt, wrong_count, total_score, practice_id) VALUES ($1, $2, $3, $4, $5, $6)`,
+		&r.ID, &r.StudentID, &r.Attempt, &r.WrongCount, &r.TotalScore, &r.PracticeID)
+	if err != nil {
+		return errors.Wrap(err, "failed to insert t_v_max_submitted_view")
+	}
+	return nil
+}
+
+// GetTVMaxSubmittedViewByPk select the TVMaxSubmittedView from the database.
+func GetTVMaxSubmittedViewByPk(db Queryer) (*TVMaxSubmittedView, error) {
+	// Don't call this function, it is a view and doesn't have a primary key.
+
+	var r TVMaxSubmittedView
+	err := db.QueryRow(
+		`SELECT id, student_id, attempt, wrong_count, total_score, practice_id FROM t_v_max_submitted_view`,
+	).Scan(&r.ID, &r.StudentID, &r.Attempt, &r.WrongCount, &r.TotalScore, &r.PracticeID)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to select t_v_max_submitted_view")
+	}
+	return &r, nil
 }
 
 /*TVMistakeCorrect t_v_mistake_correct represents assessuser.t_v_mistake_correct */
@@ -23295,7 +20174,7 @@ type TVMistakeCorrect struct {
 	Creator               null.Int       `json:"Creator,omitempty" db:"creator,false,bigint"`                                           /* creator creator */
 	Remark                null.String    `json:"Remark,omitempty" db:"remark,false,character varying"`                                  /* remark remark */
 	Status                null.String    `json:"Status,omitempty" db:"status,false,character varying"`                                  /* status status */
-	Filter                                                                                                                              // build DML where clause
+	Filter                `json:"-"`     // build DML where clause
 }
 
 // TVMistakeCorrectFields full field list for default query
@@ -23547,42 +20426,6 @@ func GetTVMistakeCorrectByPk(db Queryer) (*TVMistakeCorrect, error) {
 	return &r, nil
 }
 
-// GetTVMistakeCorrectReflectValuesMap returns a map of field names to their values.
-//
-// key is the tag name, value is the field value.
-// This is useful for reflection and dynamic queries.
-func (r *TVMistakeCorrect) GetTVMistakeCorrectReflectValuesMap() (map[string]any, error) {
-
-	values := make(map[string]any)
-	v := reflect.ValueOf(r).Elem()
-	t := v.Type()
-	for i := range v.NumField() {
-		field := t.Field(i)
-		tag := field.Tag.Get("db")
-		if tag == "" {
-			return nil, errors.Errorf("missing db tag for field %s in table t_v_mistake_correct", field.Name)
-		}
-
-		columnName := strings.Split(tag, ",")[0]
-		if columnName == "" {
-			return nil, errors.Errorf("missing column name for field %s in table t_v_mistake_correct", field.Name)
-		}
-
-		fieldValue := reflect.ValueOf(r).Elem().Field(i)
-		if !fieldValue.IsValid() {
-			return nil, errors.Errorf("invalid field value for field %s in table t_v_mistake_correct", field.Name)
-		}
-
-		if !fieldValue.CanAddr() {
-			return nil, errors.Errorf("cannot read field value for field %s in table t_v_mistake_correct", field.Name)
-		}
-
-		values[columnName] = fieldValue.Addr().Interface()
-	}
-
-	return values, nil
-}
-
 /*TVMistakeCorrect2 t_v_mistake_correct2 represents assessuser.t_v_mistake_correct2 */
 type TVMistakeCorrect2 struct {
 	ID                              null.Int       `json:"ID,omitempty" db:"id,false,integer"`                                                              /* id id */
@@ -23750,7 +20593,7 @@ type TVMistakeCorrect2 struct {
 	Creator                         null.Int       `json:"Creator,omitempty" db:"creator,false,bigint"`                                                     /* creator creator */
 	Remark                          null.String    `json:"Remark,omitempty" db:"remark,false,character varying"`                                            /* remark remark */
 	Status                          null.String    `json:"Status,omitempty" db:"status,false,character varying"`                                            /* status status */
-	Filter                                                                                                                                                  // build DML where clause
+	Filter                          `json:"-"`     // build DML where clause
 }
 
 // TVMistakeCorrect2Fields full field list for default query
@@ -24642,42 +21485,6 @@ func GetTVMistakeCorrect2ByPk(db Queryer) (*TVMistakeCorrect2, error) {
 	return &r, nil
 }
 
-// GetTVMistakeCorrect2ReflectValuesMap returns a map of field names to their values.
-//
-// key is the tag name, value is the field value.
-// This is useful for reflection and dynamic queries.
-func (r *TVMistakeCorrect2) GetTVMistakeCorrect2ReflectValuesMap() (map[string]any, error) {
-
-	values := make(map[string]any)
-	v := reflect.ValueOf(r).Elem()
-	t := v.Type()
-	for i := range v.NumField() {
-		field := t.Field(i)
-		tag := field.Tag.Get("db")
-		if tag == "" {
-			return nil, errors.Errorf("missing db tag for field %s in table t_v_mistake_correct2", field.Name)
-		}
-
-		columnName := strings.Split(tag, ",")[0]
-		if columnName == "" {
-			return nil, errors.Errorf("missing column name for field %s in table t_v_mistake_correct2", field.Name)
-		}
-
-		fieldValue := reflect.ValueOf(r).Elem().Field(i)
-		if !fieldValue.IsValid() {
-			return nil, errors.Errorf("invalid field value for field %s in table t_v_mistake_correct2", field.Name)
-		}
-
-		if !fieldValue.CanAddr() {
-			return nil, errors.Errorf("cannot read field value for field %s in table t_v_mistake_correct2", field.Name)
-		}
-
-		values[columnName] = fieldValue.Addr().Interface()
-	}
-
-	return values, nil
-}
-
 /*TVMistakeCorrectShow t_v_mistake_correct_show represents assessuser.t_v_mistake_correct_show */
 type TVMistakeCorrectShow struct {
 	ID                       null.Int       `json:"ID,omitempty" db:"id,false,integer"`                                              /* id id */
@@ -24780,7 +21587,7 @@ type TVMistakeCorrectShow struct {
 	Creator                  null.Int       `json:"Creator,omitempty" db:"creator,false,bigint"`                                     /* creator creator */
 	Remark                   null.String    `json:"Remark,omitempty" db:"remark,false,character varying"`                            /* remark remark */
 	Status                   null.String    `json:"Status,omitempty" db:"status,false,character varying"`                            /* status status */
-	Filter                                                                                                                           // build DML where clause
+	Filter                   `json:"-"`     // build DML where clause
 }
 
 // TVMistakeCorrectShowFields full field list for default query
@@ -25347,42 +22154,6 @@ func GetTVMistakeCorrectShowByPk(db Queryer) (*TVMistakeCorrectShow, error) {
 	return &r, nil
 }
 
-// GetTVMistakeCorrectShowReflectValuesMap returns a map of field names to their values.
-//
-// key is the tag name, value is the field value.
-// This is useful for reflection and dynamic queries.
-func (r *TVMistakeCorrectShow) GetTVMistakeCorrectShowReflectValuesMap() (map[string]any, error) {
-
-	values := make(map[string]any)
-	v := reflect.ValueOf(r).Elem()
-	t := v.Type()
-	for i := range v.NumField() {
-		field := t.Field(i)
-		tag := field.Tag.Get("db")
-		if tag == "" {
-			return nil, errors.Errorf("missing db tag for field %s in table t_v_mistake_correct_show", field.Name)
-		}
-
-		columnName := strings.Split(tag, ",")[0]
-		if columnName == "" {
-			return nil, errors.Errorf("missing column name for field %s in table t_v_mistake_correct_show", field.Name)
-		}
-
-		fieldValue := reflect.ValueOf(r).Elem().Field(i)
-		if !fieldValue.IsValid() {
-			return nil, errors.Errorf("invalid field value for field %s in table t_v_mistake_correct_show", field.Name)
-		}
-
-		if !fieldValue.CanAddr() {
-			return nil, errors.Errorf("cannot read field value for field %s in table t_v_mistake_correct_show", field.Name)
-		}
-
-		values[columnName] = fieldValue.Addr().Interface()
-	}
-
-	return values, nil
-}
-
 /*TVOrder t_v_order represents assessuser.t_v_order */
 type TVOrder struct {
 	ID             null.Int       `json:"ID,omitempty" db:"id,false,integer"`                                     /* id id */
@@ -25444,7 +22215,7 @@ type TVOrder struct {
 	SchoolManagers types.JSONText `json:"SchoolManagers,omitempty" db:"school_managers,false,jsonb"`              /* school_managers school_managers */
 	PurchaseRule   types.JSONText `json:"PurchaseRule,omitempty" db:"purchase_rule,false,jsonb"`                  /* purchase_rule purchase_rule */
 	SCreateTime    null.Int       `json:"SCreateTime,omitempty" db:"s_create_time,false,bigint"`                  /* s_create_time s_create_time */
-	Filter                                                                                                        // build DML where clause
+	Filter         `json:"-"`     // build DML where clause
 }
 
 // TVOrderFields full field list for default query
@@ -25806,42 +22577,6 @@ func GetTVOrderByPk(db Queryer) (*TVOrder, error) {
 	return &r, nil
 }
 
-// GetTVOrderReflectValuesMap returns a map of field names to their values.
-//
-// key is the tag name, value is the field value.
-// This is useful for reflection and dynamic queries.
-func (r *TVOrder) GetTVOrderReflectValuesMap() (map[string]any, error) {
-
-	values := make(map[string]any)
-	v := reflect.ValueOf(r).Elem()
-	t := v.Type()
-	for i := range v.NumField() {
-		field := t.Field(i)
-		tag := field.Tag.Get("db")
-		if tag == "" {
-			return nil, errors.Errorf("missing db tag for field %s in table t_v_order", field.Name)
-		}
-
-		columnName := strings.Split(tag, ",")[0]
-		if columnName == "" {
-			return nil, errors.Errorf("missing column name for field %s in table t_v_order", field.Name)
-		}
-
-		fieldValue := reflect.ValueOf(r).Elem().Field(i)
-		if !fieldValue.IsValid() {
-			return nil, errors.Errorf("invalid field value for field %s in table t_v_order", field.Name)
-		}
-
-		if !fieldValue.CanAddr() {
-			return nil, errors.Errorf("cannot read field value for field %s in table t_v_order", field.Name)
-		}
-
-		values[columnName] = fieldValue.Addr().Interface()
-	}
-
-	return values, nil
-}
-
 /*TVOrder2 t_v_order2 represents assessuser.t_v_order2 */
 type TVOrder2 struct {
 	ID                         null.Int       `json:"ID,omitempty" db:"id,false,integer"`                                                       /* id id */
@@ -26034,7 +22769,7 @@ type TVOrder2 struct {
 	Difference                 null.Float     `json:"Difference,omitempty" db:"difference,false,double precision"`                              /* difference difference */
 	PolicyNo                   null.String    `json:"PolicyNo,omitempty" db:"policy_no,false,text"`                                             /* policy_no policy_no */
 	FeeStatus                  null.String    `json:"FeeStatus,omitempty" db:"fee_status,false,text"`                                           /* fee_status fee_status */
-	Filter                                                                                                                                      // build DML where clause
+	Filter                     `json:"-"`     // build DML where clause
 }
 
 // TVOrder2Fields full field list for default query
@@ -27051,42 +23786,6 @@ func GetTVOrder2ByPk(db Queryer) (*TVOrder2, error) {
 	return &r, nil
 }
 
-// GetTVOrder2ReflectValuesMap returns a map of field names to their values.
-//
-// key is the tag name, value is the field value.
-// This is useful for reflection and dynamic queries.
-func (r *TVOrder2) GetTVOrder2ReflectValuesMap() (map[string]any, error) {
-
-	values := make(map[string]any)
-	v := reflect.ValueOf(r).Elem()
-	t := v.Type()
-	for i := range v.NumField() {
-		field := t.Field(i)
-		tag := field.Tag.Get("db")
-		if tag == "" {
-			return nil, errors.Errorf("missing db tag for field %s in table t_v_order2", field.Name)
-		}
-
-		columnName := strings.Split(tag, ",")[0]
-		if columnName == "" {
-			return nil, errors.Errorf("missing column name for field %s in table t_v_order2", field.Name)
-		}
-
-		fieldValue := reflect.ValueOf(r).Elem().Field(i)
-		if !fieldValue.IsValid() {
-			return nil, errors.Errorf("invalid field value for field %s in table t_v_order2", field.Name)
-		}
-
-		if !fieldValue.CanAddr() {
-			return nil, errors.Errorf("cannot read field value for field %s in table t_v_order2", field.Name)
-		}
-
-		values[columnName] = fieldValue.Addr().Interface()
-	}
-
-	return values, nil
-}
-
 /*TVOrderSum t_v_order_sum represents assessuser.t_v_order_sum */
 type TVOrderSum struct {
 	School       null.String `json:"School,omitempty" db:"school,false,character varying"`             /* school school */
@@ -27096,7 +23795,7 @@ type TVOrderSum struct {
 	OrderAmount  null.Float  `json:"OrderAmount,omitempty" db:"order_amount,false,double precision"`   /* order_amount order_amount */
 	CancelNumber null.Int    `json:"CancelNumber,omitempty" db:"cancel_number,false,bigint"`           /* cancel_number cancel_number */
 	CancelAmount null.Float  `json:"CancelAmount,omitempty" db:"cancel_amount,false,double precision"` /* cancel_amount cancel_amount */
-	Filter                                                                                             // build DML where clause
+	Filter       `json:"-"`  // build DML where clause
 }
 
 // TVOrderSumFields full field list for default query
@@ -27198,42 +23897,6 @@ func GetTVOrderSumByPk(db Queryer) (*TVOrderSum, error) {
 	return &r, nil
 }
 
-// GetTVOrderSumReflectValuesMap returns a map of field names to their values.
-//
-// key is the tag name, value is the field value.
-// This is useful for reflection and dynamic queries.
-func (r *TVOrderSum) GetTVOrderSumReflectValuesMap() (map[string]any, error) {
-
-	values := make(map[string]any)
-	v := reflect.ValueOf(r).Elem()
-	t := v.Type()
-	for i := range v.NumField() {
-		field := t.Field(i)
-		tag := field.Tag.Get("db")
-		if tag == "" {
-			return nil, errors.Errorf("missing db tag for field %s in table t_v_order_sum", field.Name)
-		}
-
-		columnName := strings.Split(tag, ",")[0]
-		if columnName == "" {
-			return nil, errors.Errorf("missing column name for field %s in table t_v_order_sum", field.Name)
-		}
-
-		fieldValue := reflect.ValueOf(r).Elem().Field(i)
-		if !fieldValue.IsValid() {
-			return nil, errors.Errorf("invalid field value for field %s in table t_v_order_sum", field.Name)
-		}
-
-		if !fieldValue.CanAddr() {
-			return nil, errors.Errorf("cannot read field value for field %s in table t_v_order_sum", field.Name)
-		}
-
-		values[columnName] = fieldValue.Addr().Interface()
-	}
-
-	return values, nil
-}
-
 /*TVPaper t_v_paper represents assessuser.t_v_paper */
 type TVPaper struct {
 	ID                null.Int       `json:"ID,omitempty" db:"id,false,integer"`                                /* id id */
@@ -27256,7 +23919,7 @@ type TVPaper struct {
 	QuestionCount     null.Int       `json:"QuestionCount,omitempty" db:"question_count,false,bigint"`          /* question_count question_count */
 	GroupCount        null.Int       `json:"GroupCount,omitempty" db:"group_count,false,bigint"`                /* group_count group_count */
 	GroupsData        types.JSONText `json:"GroupsData,omitempty" db:"groups_data,false,json"`                  /* groups_data groups_data */
-	Filter                                                                                                      // build DML where clause
+	Filter            `json:"-"`     // build DML where clause
 }
 
 // TVPaperFields full field list for default query
@@ -27423,42 +24086,6 @@ func GetTVPaperByPk(db Queryer) (*TVPaper, error) {
 	return &r, nil
 }
 
-// GetTVPaperReflectValuesMap returns a map of field names to their values.
-//
-// key is the tag name, value is the field value.
-// This is useful for reflection and dynamic queries.
-func (r *TVPaper) GetTVPaperReflectValuesMap() (map[string]any, error) {
-
-	values := make(map[string]any)
-	v := reflect.ValueOf(r).Elem()
-	t := v.Type()
-	for i := range v.NumField() {
-		field := t.Field(i)
-		tag := field.Tag.Get("db")
-		if tag == "" {
-			return nil, errors.Errorf("missing db tag for field %s in table t_v_paper", field.Name)
-		}
-
-		columnName := strings.Split(tag, ",")[0]
-		if columnName == "" {
-			return nil, errors.Errorf("missing column name for field %s in table t_v_paper", field.Name)
-		}
-
-		fieldValue := reflect.ValueOf(r).Elem().Field(i)
-		if !fieldValue.IsValid() {
-			return nil, errors.Errorf("invalid field value for field %s in table t_v_paper", field.Name)
-		}
-
-		if !fieldValue.CanAddr() {
-			return nil, errors.Errorf("cannot read field value for field %s in table t_v_paper", field.Name)
-		}
-
-		values[columnName] = fieldValue.Addr().Interface()
-	}
-
-	return values, nil
-}
-
 /*TVPaperShare t_v_paper_share represents assessuser.t_v_paper_share */
 type TVPaperShare struct {
 	PaperID      null.Int    `json:"PaperID,omitempty" db:"paper_id,false,bigint"`                      /* paper_id paper_id */
@@ -27467,7 +24094,7 @@ type TVPaperShare struct {
 	Account      null.String `json:"Account,omitempty" db:"account,false,character varying"`            /* account account */
 	MobilePhone  null.String `json:"MobilePhone,omitempty" db:"mobile_phone,false,character varying"`   /* mobile_phone mobile_phone */
 	SharedTime   null.Int    `json:"SharedTime,omitempty" db:"shared_time,false,bigint"`                /* shared_time shared_time */
-	Filter                                                                                              // build DML where clause
+	Filter       `json:"-"`  // build DML where clause
 }
 
 // TVPaperShareFields full field list for default query
@@ -27564,42 +24191,6 @@ func GetTVPaperShareByPk(db Queryer) (*TVPaperShare, error) {
 	return &r, nil
 }
 
-// GetTVPaperShareReflectValuesMap returns a map of field names to their values.
-//
-// key is the tag name, value is the field value.
-// This is useful for reflection and dynamic queries.
-func (r *TVPaperShare) GetTVPaperShareReflectValuesMap() (map[string]any, error) {
-
-	values := make(map[string]any)
-	v := reflect.ValueOf(r).Elem()
-	t := v.Type()
-	for i := range v.NumField() {
-		field := t.Field(i)
-		tag := field.Tag.Get("db")
-		if tag == "" {
-			return nil, errors.Errorf("missing db tag for field %s in table t_v_paper_share", field.Name)
-		}
-
-		columnName := strings.Split(tag, ",")[0]
-		if columnName == "" {
-			return nil, errors.Errorf("missing column name for field %s in table t_v_paper_share", field.Name)
-		}
-
-		fieldValue := reflect.ValueOf(r).Elem().Field(i)
-		if !fieldValue.IsValid() {
-			return nil, errors.Errorf("invalid field value for field %s in table t_v_paper_share", field.Name)
-		}
-
-		if !fieldValue.CanAddr() {
-			return nil, errors.Errorf("cannot read field value for field %s in table t_v_paper_share", field.Name)
-		}
-
-		values[columnName] = fieldValue.Addr().Interface()
-	}
-
-	return values, nil
-}
-
 /*TVParam t_v_param represents assessuser.t_v_param */
 type TVParam struct {
 	ParentID   null.Int    `json:"ParentID,omitempty" db:"parent_id,false,bigint"`                /* parent_id parent_id */
@@ -27610,7 +24201,7 @@ type TVParam struct {
 	Value      null.String `json:"Value,omitempty" db:"value,false,character varying"`            /* value value */
 	Remark     null.String `json:"Remark,omitempty" db:"remark,false,character varying"`          /* remark remark */
 	Status     null.String `json:"Status,omitempty" db:"status,false,character varying"`          /* status status */
-	Filter                                                                                        // build DML where clause
+	Filter     `json:"-"`  // build DML where clause
 }
 
 // TVParamFields full field list for default query
@@ -27717,42 +24308,6 @@ func GetTVParamByPk(db Queryer) (*TVParam, error) {
 	return &r, nil
 }
 
-// GetTVParamReflectValuesMap returns a map of field names to their values.
-//
-// key is the tag name, value is the field value.
-// This is useful for reflection and dynamic queries.
-func (r *TVParam) GetTVParamReflectValuesMap() (map[string]any, error) {
-
-	values := make(map[string]any)
-	v := reflect.ValueOf(r).Elem()
-	t := v.Type()
-	for i := range v.NumField() {
-		field := t.Field(i)
-		tag := field.Tag.Get("db")
-		if tag == "" {
-			return nil, errors.Errorf("missing db tag for field %s in table t_v_param", field.Name)
-		}
-
-		columnName := strings.Split(tag, ",")[0]
-		if columnName == "" {
-			return nil, errors.Errorf("missing column name for field %s in table t_v_param", field.Name)
-		}
-
-		fieldValue := reflect.ValueOf(r).Elem().Field(i)
-		if !fieldValue.IsValid() {
-			return nil, errors.Errorf("invalid field value for field %s in table t_v_param", field.Name)
-		}
-
-		if !fieldValue.CanAddr() {
-			return nil, errors.Errorf("cannot read field value for field %s in table t_v_param", field.Name)
-		}
-
-		values[columnName] = fieldValue.Addr().Interface()
-	}
-
-	return values, nil
-}
-
 /*TVPayment t_v_payment represents assessuser.t_v_payment */
 type TVPayment struct {
 	ID                null.Int       `json:"ID,omitempty" db:"id,false,integer"`                                          /* id id */
@@ -27772,7 +24327,7 @@ type TVPayment struct {
 	Premium           null.Float     `json:"Premium,omitempty" db:"premium,false,double precision"`                       /* premium premium */
 	ThirdPartyPremium null.Float     `json:"ThirdPartyPremium,omitempty" db:"third_party_premium,false,double precision"` /* third_party_premium third_party_premium */
 	PolicyholderName  null.String    `json:"PolicyholderName,omitempty" db:"policyholder_name,false,text"`                /* policyholder_name policyholder_name */
-	Filter                                                                                                                // build DML where clause
+	Filter            `json:"-"`     // build DML where clause
 }
 
 // TVPaymentFields full field list for default query
@@ -27924,42 +24479,6 @@ func GetTVPaymentByPk(db Queryer) (*TVPayment, error) {
 	return &r, nil
 }
 
-// GetTVPaymentReflectValuesMap returns a map of field names to their values.
-//
-// key is the tag name, value is the field value.
-// This is useful for reflection and dynamic queries.
-func (r *TVPayment) GetTVPaymentReflectValuesMap() (map[string]any, error) {
-
-	values := make(map[string]any)
-	v := reflect.ValueOf(r).Elem()
-	t := v.Type()
-	for i := range v.NumField() {
-		field := t.Field(i)
-		tag := field.Tag.Get("db")
-		if tag == "" {
-			return nil, errors.Errorf("missing db tag for field %s in table t_v_payment", field.Name)
-		}
-
-		columnName := strings.Split(tag, ",")[0]
-		if columnName == "" {
-			return nil, errors.Errorf("missing column name for field %s in table t_v_payment", field.Name)
-		}
-
-		fieldValue := reflect.ValueOf(r).Elem().Field(i)
-		if !fieldValue.IsValid() {
-			return nil, errors.Errorf("invalid field value for field %s in table t_v_payment", field.Name)
-		}
-
-		if !fieldValue.CanAddr() {
-			return nil, errors.Errorf("cannot read field value for field %s in table t_v_payment", field.Name)
-		}
-
-		values[columnName] = fieldValue.Addr().Interface()
-	}
-
-	return values, nil
-}
-
 /*TVPracticeSummary t_v_practice_summary represents assessuser.t_v_practice_summary */
 type TVPracticeSummary struct {
 	ID                    null.Int    `json:"ID,omitempty" db:"id,false,integer"`                                                   /* id id */
@@ -27976,11 +24495,14 @@ type TVPracticeSummary struct {
 	AttemptCount          null.Int    `json:"AttemptCount,omitempty" db:"attempt_count,false,integer"`                              /* attempt_count attempt_count */
 	LatestUnsubmittedID   null.Int    `json:"LatestUnsubmittedID,omitempty" db:"latest_unsubmitted_id,false,integer"`               /* latest_unsubmitted_id latest_unsubmitted_id */
 	LatestSubmittedID     null.Int    `json:"LatestSubmittedID,omitempty" db:"latest_submitted_id,false,integer"`                   /* latest_submitted_id latest_submitted_id */
-	CreateTime            null.Int    `json:"CreateTime,omitempty" db:"create_time,false,timestamp without time zone"`              /* create_time create_time */
+	CreateTime            null.Int    `json:"CreateTime,omitempty" db:"create_time,false,bigint"`                                   /* create_time create_time */
 	Type                  null.String `json:"Type,omitempty" db:"type,false,character varying"`                                     /* type type */
 	PaperID               null.Int    `json:"PaperID,omitempty" db:"paper_id,false,integer"`                                        /* paper_id paper_id */
+	PaperName             null.String `json:"PaperName,omitempty" db:"paper_name,false,character varying"`                          /* paper_name paper_name */
 	PaperTotalScore       null.Float  `json:"PaperTotalScore,omitempty" db:"paper_total_score,false,double precision"`              /* paper_total_score paper_total_score */
-	Filter                                                                                                                          // build DML where clause
+	ExamPaperID           null.Int    `json:"ExamPaperID,omitempty" db:"exam_paper_id,false,integer"`                               /* exam_paper_id exam_paper_id */
+	SuggestedDuration     null.Int    `json:"SuggestedDuration,omitempty" db:"suggested_duration,false,integer"`                    /* suggested_duration suggested_duration */
+	Filter                `json:"-"`  // build DML where clause
 }
 
 // TVPracticeSummaryFields full field list for default query
@@ -28002,7 +24524,10 @@ var TVPracticeSummaryFields = []string{
 	"CreateTime",
 	"Type",
 	"PaperID",
+	"PaperName",
 	"PaperTotalScore",
+	"ExamPaperID",
+	"SuggestedDuration",
 }
 
 // TVPracticeSummaryColumns full column list for default query
@@ -28024,7 +24549,10 @@ var TVPracticeSummaryColumns = []string{
 	"create_time",
 	"type",
 	"paper_id",
+	"paper_name",
 	"paper_total_score",
+	"exam_paper_id",
+	"suggested_duration",
 }
 
 // TVPracticeSummaryColumnsDataTypes full column data types for default query
@@ -28043,10 +24571,13 @@ var TVPracticeSummaryColumnsDataTypes = map[string]string{
 	"attempt_count":           "integer",
 	"latest_unsubmitted_id":   "integer",
 	"latest_submitted_id":     "integer",
-	"create_time":             "timestamp without time zone",
+	"create_time":             "bigint",
 	"type":                    "character varying",
 	"paper_id":                "integer",
+	"paper_name":              "character varying",
 	"paper_total_score":       "double precision",
+	"exam_paper_id":           "integer",
+	"suggested_duration":      "integer",
 }
 
 // GetFieldsMap returns a map of field names to their values.
@@ -28069,7 +24600,10 @@ func (r *TVPracticeSummary) GetFieldsMap() map[string]any {
 		"CreateTime":            r.CreateTime,
 		"Type":                  r.Type,
 		"PaperID":               r.PaperID,
+		"PaperName":             r.PaperName,
 		"PaperTotalScore":       r.PaperTotalScore,
+		"ExamPaperID":           r.ExamPaperID,
+		"SuggestedDuration":     r.SuggestedDuration,
 	}
 }
 
@@ -28093,7 +24627,10 @@ func (r *TVPracticeSummary) GetColumnsMap() map[string]any {
 		"create_time":             r.CreateTime,
 		"type":                    r.Type,
 		"paper_id":                r.PaperID,
+		"paper_name":              r.PaperName,
 		"paper_total_score":       r.PaperTotalScore,
+		"exam_paper_id":           r.ExamPaperID,
+		"suggested_duration":      r.SuggestedDuration,
 	}
 }
 
@@ -28115,8 +24652,8 @@ func (r *TVPracticeSummary) GetTableName() string {
 // Create inserts the TVPracticeSummary to the database.
 func (r *TVPracticeSummary) Create(db Queryer) error {
 	_, err := db.Exec(
-		`INSERT INTO t_v_practice_summary (id, name, student_id, practice_status, practice_student_status, allowed_attempts, difficulty, question_count, wrong_count, total_score, highest_score, attempt_count, latest_unsubmitted_id, latest_submitted_id, create_time, type, paper_id, paper_total_score) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)`,
-		&r.ID, &r.Name, &r.StudentID, &r.PracticeStatus, &r.PracticeStudentStatus, &r.AllowedAttempts, &r.Difficulty, &r.QuestionCount, &r.WrongCount, &r.TotalScore, &r.HighestScore, &r.AttemptCount, &r.LatestUnsubmittedID, &r.LatestSubmittedID, &r.CreateTime, &r.Type, &r.PaperID, &r.PaperTotalScore)
+		`INSERT INTO t_v_practice_summary (id, name, student_id, practice_status, practice_student_status, allowed_attempts, difficulty, question_count, wrong_count, total_score, highest_score, attempt_count, latest_unsubmitted_id, latest_submitted_id, create_time, type, paper_id, paper_name, paper_total_score, exam_paper_id, suggested_duration) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)`,
+		&r.ID, &r.Name, &r.StudentID, &r.PracticeStatus, &r.PracticeStudentStatus, &r.AllowedAttempts, &r.Difficulty, &r.QuestionCount, &r.WrongCount, &r.TotalScore, &r.HighestScore, &r.AttemptCount, &r.LatestUnsubmittedID, &r.LatestSubmittedID, &r.CreateTime, &r.Type, &r.PaperID, &r.PaperName, &r.PaperTotalScore, &r.ExamPaperID, &r.SuggestedDuration)
 	if err != nil {
 		return errors.Wrap(err, "failed to insert t_v_practice_summary")
 	}
@@ -28129,48 +24666,93 @@ func GetTVPracticeSummaryByPk(db Queryer) (*TVPracticeSummary, error) {
 
 	var r TVPracticeSummary
 	err := db.QueryRow(
-		`SELECT id, name, student_id, practice_status, practice_student_status, allowed_attempts, difficulty, question_count, wrong_count, total_score, highest_score, attempt_count, latest_unsubmitted_id, latest_submitted_id, create_time, type, paper_id, paper_total_score FROM t_v_practice_summary`,
-	).Scan(&r.ID, &r.Name, &r.StudentID, &r.PracticeStatus, &r.PracticeStudentStatus, &r.AllowedAttempts, &r.Difficulty, &r.QuestionCount, &r.WrongCount, &r.TotalScore, &r.HighestScore, &r.AttemptCount, &r.LatestUnsubmittedID, &r.LatestSubmittedID, &r.CreateTime, &r.Type, &r.PaperID, &r.PaperTotalScore)
+		`SELECT id, name, student_id, practice_status, practice_student_status, allowed_attempts, difficulty, question_count, wrong_count, total_score, highest_score, attempt_count, latest_unsubmitted_id, latest_submitted_id, create_time, type, paper_id, paper_name, paper_total_score, exam_paper_id, suggested_duration FROM t_v_practice_summary`,
+	).Scan(&r.ID, &r.Name, &r.StudentID, &r.PracticeStatus, &r.PracticeStudentStatus, &r.AllowedAttempts, &r.Difficulty, &r.QuestionCount, &r.WrongCount, &r.TotalScore, &r.HighestScore, &r.AttemptCount, &r.LatestUnsubmittedID, &r.LatestSubmittedID, &r.CreateTime, &r.Type, &r.PaperID, &r.PaperName, &r.PaperTotalScore, &r.ExamPaperID, &r.SuggestedDuration)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to select t_v_practice_summary")
 	}
 	return &r, nil
 }
 
-// GetTVPracticeSummaryReflectValuesMap returns a map of field names to their values.
-//
-// key is the tag name, value is the field value.
-// This is useful for reflection and dynamic queries.
-func (r *TVPracticeSummary) GetTVPracticeSummaryReflectValuesMap() (map[string]any, error) {
+/*TVPracticeUnmarkedStudentCount t_v_practice_unmarked_student_count represents assessuser.t_v_practice_unmarked_student_count */
+type TVPracticeUnmarkedStudentCount struct {
+	PracticeID    null.Int   `json:"PracticeID,omitempty" db:"practice_id,false,integer"`      /* practice_id practice_id */
+	UnmarkedCount null.Int   `json:"UnmarkedCount,omitempty" db:"unmarked_count,false,bigint"` /* unmarked_count unmarked_count */
+	Filter        `json:"-"` // build DML where clause
+}
 
-	values := make(map[string]any)
-	v := reflect.ValueOf(r).Elem()
-	t := v.Type()
-	for i := range v.NumField() {
-		field := t.Field(i)
-		tag := field.Tag.Get("db")
-		if tag == "" {
-			return nil, errors.Errorf("missing db tag for field %s in table t_v_practice_summary", field.Name)
-		}
+// TVPracticeUnmarkedStudentCountFields full field list for default query
+var TVPracticeUnmarkedStudentCountFields = []string{
+	"PracticeID",
+	"UnmarkedCount",
+}
 
-		columnName := strings.Split(tag, ",")[0]
-		if columnName == "" {
-			return nil, errors.Errorf("missing column name for field %s in table t_v_practice_summary", field.Name)
-		}
+// TVPracticeUnmarkedStudentCountColumns full column list for default query
+var TVPracticeUnmarkedStudentCountColumns = []string{
+	"practice_id",
+	"unmarked_count",
+}
 
-		fieldValue := reflect.ValueOf(r).Elem().Field(i)
-		if !fieldValue.IsValid() {
-			return nil, errors.Errorf("invalid field value for field %s in table t_v_practice_summary", field.Name)
-		}
+// TVPracticeUnmarkedStudentCountColumnsDataTypes full column data types for default query
+var TVPracticeUnmarkedStudentCountColumnsDataTypes = map[string]string{
+	"practice_id":    "integer",
+	"unmarked_count": "bigint",
+}
 
-		if !fieldValue.CanAddr() {
-			return nil, errors.Errorf("cannot read field value for field %s in table t_v_practice_summary", field.Name)
-		}
-
-		values[columnName] = fieldValue.Addr().Interface()
+// GetFieldsMap returns a map of field names to their values.
+func (r *TVPracticeUnmarkedStudentCount) GetFieldsMap() map[string]any {
+	return map[string]any{
+		"PracticeID":    r.PracticeID,
+		"UnmarkedCount": r.UnmarkedCount,
 	}
+}
 
-	return values, nil
+// GetColumnsMap returns a map of column names to their values.
+func (r *TVPracticeUnmarkedStudentCount) GetColumnsMap() map[string]any {
+	return map[string]any{
+		"practice_id":    r.PracticeID,
+		"unmarked_count": r.UnmarkedCount,
+	}
+}
+
+// Fields return all fields of struct.
+func (r *TVPracticeUnmarkedStudentCount) Fields() []string {
+	return TVPracticeUnmarkedStudentCountFields
+}
+
+// GetTableName return the associated db table name.
+func (r *TVPracticeUnmarkedStudentCount) GetTableName() string {
+	var viewNamePattern = regexp.MustCompile(`(?i)^t_v_[a-z0-9_]+$`)
+	tableName := "t_v_practice_unmarked_student_count"
+	if viewNamePattern.MatchString(tableName) {
+		return tableName[2:]
+	}
+	return tableName
+}
+
+// Create inserts the TVPracticeUnmarkedStudentCount to the database.
+func (r *TVPracticeUnmarkedStudentCount) Create(db Queryer) error {
+	_, err := db.Exec(
+		`INSERT INTO t_v_practice_unmarked_student_count (practice_id, unmarked_count) VALUES ($1, $2)`,
+		&r.PracticeID, &r.UnmarkedCount)
+	if err != nil {
+		return errors.Wrap(err, "failed to insert t_v_practice_unmarked_student_count")
+	}
+	return nil
+}
+
+// GetTVPracticeUnmarkedStudentCountByPk select the TVPracticeUnmarkedStudentCount from the database.
+func GetTVPracticeUnmarkedStudentCountByPk(db Queryer) (*TVPracticeUnmarkedStudentCount, error) {
+	// Don't call this function, it is a view and doesn't have a primary key.
+
+	var r TVPracticeUnmarkedStudentCount
+	err := db.QueryRow(
+		`SELECT practice_id, unmarked_count FROM t_v_practice_unmarked_student_count`,
+	).Scan(&r.PracticeID, &r.UnmarkedCount)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to select t_v_practice_unmarked_student_count")
+	}
+	return &r, nil
 }
 
 /*TVRegion t_v_region represents assessuser.t_v_region */
@@ -28179,7 +24761,7 @@ type TVRegion struct {
 	City     null.String `json:"City,omitempty" db:"city,false,character varying"`         /* city city */
 	District null.String `json:"District,omitempty" db:"district,false,character varying"` /* district district */
 	Street   null.String `json:"Street,omitempty" db:"street,false,character varying"`     /* street street */
-	Filter                                                                                 // build DML where clause
+	Filter   `json:"-"`  // build DML where clause
 }
 
 // TVRegionFields full field list for default query
@@ -28264,42 +24846,6 @@ func GetTVRegionByPk(db Queryer) (*TVRegion, error) {
 		return nil, errors.Wrap(err, "failed to select t_v_region")
 	}
 	return &r, nil
-}
-
-// GetTVRegionReflectValuesMap returns a map of field names to their values.
-//
-// key is the tag name, value is the field value.
-// This is useful for reflection and dynamic queries.
-func (r *TVRegion) GetTVRegionReflectValuesMap() (map[string]any, error) {
-
-	values := make(map[string]any)
-	v := reflect.ValueOf(r).Elem()
-	t := v.Type()
-	for i := range v.NumField() {
-		field := t.Field(i)
-		tag := field.Tag.Get("db")
-		if tag == "" {
-			return nil, errors.Errorf("missing db tag for field %s in table t_v_region", field.Name)
-		}
-
-		columnName := strings.Split(tag, ",")[0]
-		if columnName == "" {
-			return nil, errors.Errorf("missing column name for field %s in table t_v_region", field.Name)
-		}
-
-		fieldValue := reflect.ValueOf(r).Elem().Field(i)
-		if !fieldValue.IsValid() {
-			return nil, errors.Errorf("invalid field value for field %s in table t_v_region", field.Name)
-		}
-
-		if !fieldValue.CanAddr() {
-			return nil, errors.Errorf("cannot read field value for field %s in table t_v_region", field.Name)
-		}
-
-		values[columnName] = fieldValue.Addr().Interface()
-	}
-
-	return values, nil
 }
 
 /*TVReportClaims t_v_report_claims represents assessuser.t_v_report_claims */
@@ -28398,7 +24944,7 @@ type TVReportClaims struct {
 	DisabilityCertificate    types.JSONText `json:"DisabilityCertificate,omitempty" db:"disability_certificate,false,jsonb"`        /* disability_certificate disability_certificate */
 	DeathCertificate         types.JSONText `json:"DeathCertificate,omitempty" db:"death_certificate,false,jsonb"`                  /* death_certificate death_certificate */
 	StudentStatusCertificate types.JSONText `json:"StudentStatusCertificate,omitempty" db:"student_status_certificate,false,jsonb"` /* student_status_certificate student_status_certificate */
-	Filter                                                                                                                          // build DML where clause
+	Filter                   `json:"-"`     // build DML where clause
 }
 
 // TVReportClaimsFields full field list for default query
@@ -28935,42 +25481,6 @@ func GetTVReportClaimsByPk(db Queryer) (*TVReportClaims, error) {
 	return &r, nil
 }
 
-// GetTVReportClaimsReflectValuesMap returns a map of field names to their values.
-//
-// key is the tag name, value is the field value.
-// This is useful for reflection and dynamic queries.
-func (r *TVReportClaims) GetTVReportClaimsReflectValuesMap() (map[string]any, error) {
-
-	values := make(map[string]any)
-	v := reflect.ValueOf(r).Elem()
-	t := v.Type()
-	for i := range v.NumField() {
-		field := t.Field(i)
-		tag := field.Tag.Get("db")
-		if tag == "" {
-			return nil, errors.Errorf("missing db tag for field %s in table t_v_report_claims", field.Name)
-		}
-
-		columnName := strings.Split(tag, ",")[0]
-		if columnName == "" {
-			return nil, errors.Errorf("missing column name for field %s in table t_v_report_claims", field.Name)
-		}
-
-		fieldValue := reflect.ValueOf(r).Elem().Field(i)
-		if !fieldValue.IsValid() {
-			return nil, errors.Errorf("invalid field value for field %s in table t_v_report_claims", field.Name)
-		}
-
-		if !fieldValue.CanAddr() {
-			return nil, errors.Errorf("cannot read field value for field %s in table t_v_report_claims", field.Name)
-		}
-
-		values[columnName] = fieldValue.Addr().Interface()
-	}
-
-	return values, nil
-}
-
 /*TVStudentAnswerQuestion t_v_student_answer_question represents assessuser.t_v_student_answer_question */
 type TVStudentAnswerQuestion struct {
 	ExamSessionID        null.Int       `json:"ExamSessionID,omitempty" db:"exam_session_id,false,bigint"`                /* exam_session_id exam_session_id */
@@ -28978,13 +25488,14 @@ type TVStudentAnswerQuestion struct {
 	QuestionID           null.Int       `json:"QuestionID,omitempty" db:"question_id,false,integer"`                      /* question_id question_id */
 	Order                null.Int       `json:"Order,omitempty" db:"order,false,integer"`                                 /* order order */
 	Type                 null.String    `json:"Type,omitempty" db:"type,false,character varying"`                         /* type type */
+	QuestionScore        null.Float     `json:"QuestionScore,omitempty" db:"question_score,false,double precision"`       /* question_score question_score */
 	Answer               types.JSONText `json:"Answer,omitempty" db:"answer,false,jsonb"`                                 /* answer answer */
 	AnswerScore          null.Float     `json:"AnswerScore,omitempty" db:"answer_score,false,double precision"`           /* answer_score answer_score */
 	ActualAnswers        types.JSONText `json:"ActualAnswers,omitempty" db:"actual_answers,false,jsonb"`                  /* actual_answers actual_answers */
 	ActualOptions        types.JSONText `json:"ActualOptions,omitempty" db:"actual_options,false,jsonb"`                  /* actual_options actual_options */
 	ExamineeID           null.Int       `json:"ExamineeID,omitempty" db:"examinee_id,false,integer"`                      /* examinee_id examinee_id */
 	PracticeSubmissionID null.Int       `json:"PracticeSubmissionID,omitempty" db:"practice_submission_id,false,integer"` /* practice_submission_id practice_submission_id */
-	Filter                                                                                                                // build DML where clause
+	Filter               `json:"-"`     // build DML where clause
 }
 
 // TVStudentAnswerQuestionFields full field list for default query
@@ -28994,6 +25505,7 @@ var TVStudentAnswerQuestionFields = []string{
 	"QuestionID",
 	"Order",
 	"Type",
+	"QuestionScore",
 	"Answer",
 	"AnswerScore",
 	"ActualAnswers",
@@ -29009,6 +25521,7 @@ var TVStudentAnswerQuestionColumns = []string{
 	"question_id",
 	"order",
 	"type",
+	"question_score",
 	"answer",
 	"answer_score",
 	"actual_answers",
@@ -29024,6 +25537,7 @@ var TVStudentAnswerQuestionColumnsDataTypes = map[string]string{
 	"question_id":            "integer",
 	"order":                  "integer",
 	"type":                   "character varying",
+	"question_score":         "double precision",
 	"answer":                 "jsonb",
 	"answer_score":           "double precision",
 	"actual_answers":         "jsonb",
@@ -29040,6 +25554,7 @@ func (r *TVStudentAnswerQuestion) GetFieldsMap() map[string]any {
 		"QuestionID":           r.QuestionID,
 		"Order":                r.Order,
 		"Type":                 r.Type,
+		"QuestionScore":        r.QuestionScore,
 		"Answer":               r.Answer,
 		"AnswerScore":          r.AnswerScore,
 		"ActualAnswers":        r.ActualAnswers,
@@ -29057,6 +25572,7 @@ func (r *TVStudentAnswerQuestion) GetColumnsMap() map[string]any {
 		"question_id":            r.QuestionID,
 		"order":                  r.Order,
 		"type":                   r.Type,
+		"question_score":         r.QuestionScore,
 		"answer":                 r.Answer,
 		"answer_score":           r.AnswerScore,
 		"actual_answers":         r.ActualAnswers,
@@ -29084,8 +25600,8 @@ func (r *TVStudentAnswerQuestion) GetTableName() string {
 // Create inserts the TVStudentAnswerQuestion to the database.
 func (r *TVStudentAnswerQuestion) Create(db Queryer) error {
 	_, err := db.Exec(
-		`INSERT INTO t_v_student_answer_question (exam_session_id, practice_id, question_id, order, type, answer, answer_score, actual_answers, actual_options, examinee_id, practice_submission_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
-		&r.ExamSessionID, &r.PracticeID, &r.QuestionID, &r.Order, &r.Type, &r.Answer, &r.AnswerScore, &r.ActualAnswers, &r.ActualOptions, &r.ExamineeID, &r.PracticeSubmissionID)
+		`INSERT INTO t_v_student_answer_question (exam_session_id, practice_id, question_id, order, type, question_score, answer, answer_score, actual_answers, actual_options, examinee_id, practice_submission_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+		&r.ExamSessionID, &r.PracticeID, &r.QuestionID, &r.Order, &r.Type, &r.QuestionScore, &r.Answer, &r.AnswerScore, &r.ActualAnswers, &r.ActualOptions, &r.ExamineeID, &r.PracticeSubmissionID)
 	if err != nil {
 		return errors.Wrap(err, "failed to insert t_v_student_answer_question")
 	}
@@ -29098,48 +25614,12 @@ func GetTVStudentAnswerQuestionByPk(db Queryer) (*TVStudentAnswerQuestion, error
 
 	var r TVStudentAnswerQuestion
 	err := db.QueryRow(
-		`SELECT exam_session_id, practice_id, question_id, order, type, answer, answer_score, actual_answers, actual_options, examinee_id, practice_submission_id FROM t_v_student_answer_question`,
-	).Scan(&r.ExamSessionID, &r.PracticeID, &r.QuestionID, &r.Order, &r.Type, &r.Answer, &r.AnswerScore, &r.ActualAnswers, &r.ActualOptions, &r.ExamineeID, &r.PracticeSubmissionID)
+		`SELECT exam_session_id, practice_id, question_id, order, type, question_score, answer, answer_score, actual_answers, actual_options, examinee_id, practice_submission_id FROM t_v_student_answer_question`,
+	).Scan(&r.ExamSessionID, &r.PracticeID, &r.QuestionID, &r.Order, &r.Type, &r.QuestionScore, &r.Answer, &r.AnswerScore, &r.ActualAnswers, &r.ActualOptions, &r.ExamineeID, &r.PracticeSubmissionID)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to select t_v_student_answer_question")
 	}
 	return &r, nil
-}
-
-// GetTVStudentAnswerQuestionReflectValuesMap returns a map of field names to their values.
-//
-// key is the tag name, value is the field value.
-// This is useful for reflection and dynamic queries.
-func (r *TVStudentAnswerQuestion) GetTVStudentAnswerQuestionReflectValuesMap() (map[string]any, error) {
-
-	values := make(map[string]any)
-	v := reflect.ValueOf(r).Elem()
-	t := v.Type()
-	for i := range v.NumField() {
-		field := t.Field(i)
-		tag := field.Tag.Get("db")
-		if tag == "" {
-			return nil, errors.Errorf("missing db tag for field %s in table t_v_student_answer_question", field.Name)
-		}
-
-		columnName := strings.Split(tag, ",")[0]
-		if columnName == "" {
-			return nil, errors.Errorf("missing column name for field %s in table t_v_student_answer_question", field.Name)
-		}
-
-		fieldValue := reflect.ValueOf(r).Elem().Field(i)
-		if !fieldValue.IsValid() {
-			return nil, errors.Errorf("invalid field value for field %s in table t_v_student_answer_question", field.Name)
-		}
-
-		if !fieldValue.CanAddr() {
-			return nil, errors.Errorf("cannot read field value for field %s in table t_v_student_answer_question", field.Name)
-		}
-
-		values[columnName] = fieldValue.Addr().Interface()
-	}
-
-	return values, nil
 }
 
 /*TVUser t_v_user represents assessuser.t_v_user */
@@ -29196,7 +25676,7 @@ type TVUser struct {
 	GrpID           null.Int       `json:"GrpID,omitempty" db:"grp_id,false,integer"`                              /* grp_id grp_id */
 	Realm           null.String    `json:"Realm,omitempty" db:"realm,false,character varying"`                     /* realm realm */
 	GrpName         null.String    `json:"GrpName,omitempty" db:"grp_name,false,character varying"`                /* grp_name grp_name */
-	Filter                                                                                                         // build DML where clause
+	Filter          `json:"-"`     // build DML where clause
 }
 
 // TVUserFields full field list for default query
@@ -29523,42 +26003,6 @@ func GetTVUserByPk(db Queryer) (*TVUser, error) {
 	return &r, nil
 }
 
-// GetTVUserReflectValuesMap returns a map of field names to their values.
-//
-// key is the tag name, value is the field value.
-// This is useful for reflection and dynamic queries.
-func (r *TVUser) GetTVUserReflectValuesMap() (map[string]any, error) {
-
-	values := make(map[string]any)
-	v := reflect.ValueOf(r).Elem()
-	t := v.Type()
-	for i := range v.NumField() {
-		field := t.Field(i)
-		tag := field.Tag.Get("db")
-		if tag == "" {
-			return nil, errors.Errorf("missing db tag for field %s in table t_v_user", field.Name)
-		}
-
-		columnName := strings.Split(tag, ",")[0]
-		if columnName == "" {
-			return nil, errors.Errorf("missing column name for field %s in table t_v_user", field.Name)
-		}
-
-		fieldValue := reflect.ValueOf(r).Elem().Field(i)
-		if !fieldValue.IsValid() {
-			return nil, errors.Errorf("invalid field value for field %s in table t_v_user", field.Name)
-		}
-
-		if !fieldValue.CanAddr() {
-			return nil, errors.Errorf("cannot read field value for field %s in table t_v_user", field.Name)
-		}
-
-		values[columnName] = fieldValue.Addr().Interface()
-	}
-
-	return values, nil
-}
-
 /*TVUserDomain t_v_user_domain represents assessuser.t_v_user_domain */
 type TVUserDomain struct {
 	ID             null.Int       `json:"ID,omitempty" db:"id,false,integer"`                                     /* id id */
@@ -29583,7 +26027,7 @@ type TVUserDomain struct {
 	Addi           types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                                   /* addi addi */
 	Creator        null.Int       `json:"Creator,omitempty" db:"creator,false,bigint"`                            /* creator creator */
 	Status         null.String    `json:"Status,omitempty" db:"status,false,character varying"`                   /* status status */
-	Filter                                                                                                        // build DML where clause
+	Filter         `json:"-"`     // build DML where clause
 }
 
 // TVUserDomainFields full field list for default query
@@ -29760,42 +26204,6 @@ func GetTVUserDomainByPk(db Queryer) (*TVUserDomain, error) {
 	return &r, nil
 }
 
-// GetTVUserDomainReflectValuesMap returns a map of field names to their values.
-//
-// key is the tag name, value is the field value.
-// This is useful for reflection and dynamic queries.
-func (r *TVUserDomain) GetTVUserDomainReflectValuesMap() (map[string]any, error) {
-
-	values := make(map[string]any)
-	v := reflect.ValueOf(r).Elem()
-	t := v.Type()
-	for i := range v.NumField() {
-		field := t.Field(i)
-		tag := field.Tag.Get("db")
-		if tag == "" {
-			return nil, errors.Errorf("missing db tag for field %s in table t_v_user_domain", field.Name)
-		}
-
-		columnName := strings.Split(tag, ",")[0]
-		if columnName == "" {
-			return nil, errors.Errorf("missing column name for field %s in table t_v_user_domain", field.Name)
-		}
-
-		fieldValue := reflect.ValueOf(r).Elem().Field(i)
-		if !fieldValue.IsValid() {
-			return nil, errors.Errorf("invalid field value for field %s in table t_v_user_domain", field.Name)
-		}
-
-		if !fieldValue.CanAddr() {
-			return nil, errors.Errorf("cannot read field value for field %s in table t_v_user_domain", field.Name)
-		}
-
-		values[columnName] = fieldValue.Addr().Interface()
-	}
-
-	return values, nil
-}
-
 /*TVUserDomainAPI t_v_user_domain_api represents assessuser.t_v_user_domain_api */
 type TVUserDomainAPI struct {
 	UserID                   null.Int       `json:"UserID,omitempty" db:"user_id,false,integer"`                                                  /* user_id user_id */
@@ -29825,7 +26233,7 @@ type TVUserDomainAPI struct {
 	DomainAPIDataScopeData   null.String    `json:"DomainAPIDataScopeData,omitempty" db:"domain_api_data_scope_data,false,text"`                  /* domain_api_data_scope_data domain_api_data_scope_data */
 	DomainAPIDataScopeType   null.String    `json:"DomainAPIDataScopeType,omitempty" db:"domain_api_data_scope_type,false,text"`                  /* domain_api_data_scope_type domain_api_data_scope_type */
 	DomainAPICreateTime      null.Int       `json:"DomainAPICreateTime,omitempty" db:"domain_api_create_time,false,bigint"`                       /* domain_api_create_time domain_api_create_time */
-	Filter                                                                                                                                        // build DML where clause
+	Filter                   `json:"-"`     // build DML where clause
 }
 
 // TVUserDomainAPIFields full field list for default query
@@ -30027,42 +26435,6 @@ func GetTVUserDomainAPIByPk(db Queryer) (*TVUserDomainAPI, error) {
 	return &r, nil
 }
 
-// GetTVUserDomainAPIReflectValuesMap returns a map of field names to their values.
-//
-// key is the tag name, value is the field value.
-// This is useful for reflection and dynamic queries.
-func (r *TVUserDomainAPI) GetTVUserDomainAPIReflectValuesMap() (map[string]any, error) {
-
-	values := make(map[string]any)
-	v := reflect.ValueOf(r).Elem()
-	t := v.Type()
-	for i := range v.NumField() {
-		field := t.Field(i)
-		tag := field.Tag.Get("db")
-		if tag == "" {
-			return nil, errors.Errorf("missing db tag for field %s in table t_v_user_domain_api", field.Name)
-		}
-
-		columnName := strings.Split(tag, ",")[0]
-		if columnName == "" {
-			return nil, errors.Errorf("missing column name for field %s in table t_v_user_domain_api", field.Name)
-		}
-
-		fieldValue := reflect.ValueOf(r).Elem().Field(i)
-		if !fieldValue.IsValid() {
-			return nil, errors.Errorf("invalid field value for field %s in table t_v_user_domain_api", field.Name)
-		}
-
-		if !fieldValue.CanAddr() {
-			return nil, errors.Errorf("cannot read field value for field %s in table t_v_user_domain_api", field.Name)
-		}
-
-		values[columnName] = fieldValue.Addr().Interface()
-	}
-
-	return values, nil
-}
-
 /*TVXkbSchoolLayout t_v_xkb_school_layout represents assessuser.t_v_xkb_school_layout */
 type TVXkbSchoolLayout struct {
 	School     null.String    `json:"School,omitempty" db:"school,false,character varying"` /* school school */
@@ -30074,7 +26446,7 @@ type TVXkbSchoolLayout struct {
 	Class      null.String    `json:"Class,omitempty" db:"class,false,character varying"`   /* class class */
 	Classid    null.Int       `json:"Classid,omitempty" db:"classid,false,integer"`         /* classid classid */
 	ClassAddi  types.JSONText `json:"ClassAddi,omitempty" db:"class_addi,false,jsonb"`      /* class_addi class_addi */
-	Filter                                                                                  // build DML where clause
+	Filter     `json:"-"`     // build DML where clause
 }
 
 // TVXkbSchoolLayoutFields full field list for default query
@@ -30186,42 +26558,6 @@ func GetTVXkbSchoolLayoutByPk(db Queryer) (*TVXkbSchoolLayout, error) {
 	return &r, nil
 }
 
-// GetTVXkbSchoolLayoutReflectValuesMap returns a map of field names to their values.
-//
-// key is the tag name, value is the field value.
-// This is useful for reflection and dynamic queries.
-func (r *TVXkbSchoolLayout) GetTVXkbSchoolLayoutReflectValuesMap() (map[string]any, error) {
-
-	values := make(map[string]any)
-	v := reflect.ValueOf(r).Elem()
-	t := v.Type()
-	for i := range v.NumField() {
-		field := t.Field(i)
-		tag := field.Tag.Get("db")
-		if tag == "" {
-			return nil, errors.Errorf("missing db tag for field %s in table t_v_xkb_school_layout", field.Name)
-		}
-
-		columnName := strings.Split(tag, ",")[0]
-		if columnName == "" {
-			return nil, errors.Errorf("missing column name for field %s in table t_v_xkb_school_layout", field.Name)
-		}
-
-		fieldValue := reflect.ValueOf(r).Elem().Field(i)
-		if !fieldValue.IsValid() {
-			return nil, errors.Errorf("invalid field value for field %s in table t_v_xkb_school_layout", field.Name)
-		}
-
-		if !fieldValue.CanAddr() {
-			return nil, errors.Errorf("cannot read field value for field %s in table t_v_xkb_school_layout", field.Name)
-		}
-
-		values[columnName] = fieldValue.Addr().Interface()
-	}
-
-	return values, nil
-}
-
 /*TVXkbUser t_v_xkb_user represents assessuser.t_v_xkb_user */
 type TVXkbUser struct {
 	ID             null.Int       `json:"ID,omitempty" db:"id,false,integer"`                                     /* id id */
@@ -30265,7 +26601,7 @@ type TVXkbUser struct {
 	UnionID        null.String    `json:"UnionID,omitempty" db:"union_id,false,character varying"`                /* union_id union_id */
 	WxOpenID       null.String    `json:"WxOpenID,omitempty" db:"wx_open_id,false,character varying"`             /* wx_open_id wx_open_id */
 	MpOpenID       null.String    `json:"MpOpenID,omitempty" db:"mp_open_id,false,character varying"`             /* mp_open_id mp_open_id */
-	Filter                                                                                                        // build DML where clause
+	Filter         `json:"-"`     // build DML where clause
 }
 
 // TVXkbUserFields full field list for default query
@@ -30537,42 +26873,6 @@ func GetTVXkbUserByPk(db Queryer) (*TVXkbUser, error) {
 	return &r, nil
 }
 
-// GetTVXkbUserReflectValuesMap returns a map of field names to their values.
-//
-// key is the tag name, value is the field value.
-// This is useful for reflection and dynamic queries.
-func (r *TVXkbUser) GetTVXkbUserReflectValuesMap() (map[string]any, error) {
-
-	values := make(map[string]any)
-	v := reflect.ValueOf(r).Elem()
-	t := v.Type()
-	for i := range v.NumField() {
-		field := t.Field(i)
-		tag := field.Tag.Get("db")
-		if tag == "" {
-			return nil, errors.Errorf("missing db tag for field %s in table t_v_xkb_user", field.Name)
-		}
-
-		columnName := strings.Split(tag, ",")[0]
-		if columnName == "" {
-			return nil, errors.Errorf("missing column name for field %s in table t_v_xkb_user", field.Name)
-		}
-
-		fieldValue := reflect.ValueOf(r).Elem().Field(i)
-		if !fieldValue.IsValid() {
-			return nil, errors.Errorf("invalid field value for field %s in table t_v_xkb_user", field.Name)
-		}
-
-		if !fieldValue.CanAddr() {
-			return nil, errors.Errorf("cannot read field value for field %s in table t_v_xkb_user", field.Name)
-		}
-
-		values[columnName] = fieldValue.Addr().Interface()
-	}
-
-	return values, nil
-}
-
 /*TWxUser 微信开放接口用户信息 represents assessuser.t_wx_user */
 type TWxUser struct {
 	ID             null.Int       `json:"ID,omitempty" db:"id,true,bigint"`                                      /* id 编号 */
@@ -30606,7 +26906,7 @@ type TWxUser struct {
 	Remark         null.String    `json:"Remark,omitempty" db:"remark,false,character varying"`                  /* remark 备注 */
 	Addi           types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                                  /* addi 附加信息 */
 	Status         null.String    `json:"Status,omitempty" db:"status,false,character varying"`                  /* status 状态,00: 有效, 02: 禁止登录, 04: 锁定, 06: 攻击者, 08: 过期 */
-	Filter                                                                                                       // build DML where clause
+	Filter         `json:"-"`     // build DML where clause
 }
 
 // TWxUserFields full field list for default query
@@ -30827,42 +27127,6 @@ func GetTWxUserByPk(db Queryer, pk0 null.Int) (*TWxUser, error) {
 	return &r, nil
 }
 
-// GetTWxUserReflectValuesMap returns a map of field names to their values.
-//
-// key is the tag name, value is the field value.
-// This is useful for reflection and dynamic queries.
-func (r *TWxUser) GetTWxUserReflectValuesMap() (map[string]any, error) {
-
-	values := make(map[string]any)
-	v := reflect.ValueOf(r).Elem()
-	t := v.Type()
-	for i := range v.NumField() {
-		field := t.Field(i)
-		tag := field.Tag.Get("db")
-		if tag == "" {
-			return nil, errors.Errorf("missing db tag for field %s in table t_wx_user", field.Name)
-		}
-
-		columnName := strings.Split(tag, ",")[0]
-		if columnName == "" {
-			return nil, errors.Errorf("missing column name for field %s in table t_wx_user", field.Name)
-		}
-
-		fieldValue := reflect.ValueOf(r).Elem().Field(i)
-		if !fieldValue.IsValid() {
-			return nil, errors.Errorf("invalid field value for field %s in table t_wx_user", field.Name)
-		}
-
-		if !fieldValue.CanAddr() {
-			return nil, errors.Errorf("cannot read field value for field %s in table t_wx_user", field.Name)
-		}
-
-		values[columnName] = fieldValue.Addr().Interface()
-	}
-
-	return values, nil
-}
-
 /*TXkbUser 校快保补充用户信息 represents assessuser.t_xkb_user */
 type TXkbUser struct {
 	ID          null.Int       `json:"ID,omitempty" db:"id,true,bigint"`                               /* id 编号 */
@@ -30879,7 +27143,7 @@ type TXkbUser struct {
 	Addi        types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                           /* addi 附加信息 */
 	Remark      null.String    `json:"Remark,omitempty" db:"remark,false,character varying"`           /* remark 备注 */
 	Status      null.String    `json:"Status,omitempty" db:"status,false,character varying"`           /* status 状态，00：草稿，01：有效，02：作废 */
-	Filter                                                                                             // build DML where clause
+	Filter      `json:"-"`     // build DML where clause
 }
 
 // TXkbUserFields full field list for default query
@@ -31013,42 +27277,6 @@ func GetTXkbUserByPk(db Queryer, pk0 null.Int) (*TXkbUser, error) {
 		return nil, errors.Wrap(err, "failed to select t_xkb_user")
 	}
 	return &r, nil
-}
-
-// GetTXkbUserReflectValuesMap returns a map of field names to their values.
-//
-// key is the tag name, value is the field value.
-// This is useful for reflection and dynamic queries.
-func (r *TXkbUser) GetTXkbUserReflectValuesMap() (map[string]any, error) {
-
-	values := make(map[string]any)
-	v := reflect.ValueOf(r).Elem()
-	t := v.Type()
-	for i := range v.NumField() {
-		field := t.Field(i)
-		tag := field.Tag.Get("db")
-		if tag == "" {
-			return nil, errors.Errorf("missing db tag for field %s in table t_xkb_user", field.Name)
-		}
-
-		columnName := strings.Split(tag, ",")[0]
-		if columnName == "" {
-			return nil, errors.Errorf("missing column name for field %s in table t_xkb_user", field.Name)
-		}
-
-		fieldValue := reflect.ValueOf(r).Elem().Field(i)
-		if !fieldValue.IsValid() {
-			return nil, errors.Errorf("invalid field value for field %s in table t_xkb_user", field.Name)
-		}
-
-		if !fieldValue.CanAddr() {
-			return nil, errors.Errorf("cannot read field value for field %s in table t_xkb_user", field.Name)
-		}
-
-		values[columnName] = fieldValue.Addr().Interface()
-	}
-
-	return values, nil
 }
 
 // Queryer database/sql compatible query interface

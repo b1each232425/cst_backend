@@ -2,9 +2,13 @@ package cmn
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
+
+	"github.com/redis/go-redis/v9"
+
 	"net"
 	"net/http"
 	"os"
@@ -15,11 +19,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/gomodule/redigo/redis"
 	"github.com/gorilla/sessions"
 	"github.com/spf13/viper"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
+	"w2w.io/null"
 )
 
 type ModuleAuthor struct {
@@ -78,65 +82,6 @@ func GetCallerTypeName(i int) string {
 	}
 }
 
-type cServiceCtx struct {
-	Err  error // error occurred during process
-	Stop bool  // should run next process
-
-	Attacker  bool // the requester is an attacker
-	WhiteList bool // the request path in white list
-
-	Ep *ServeEndPoint
-
-	//stack *stack
-
-	Responded bool // Dose response written
-
-	Session *sessions.Session // gorilla cookie's
-
-	Redis redis.Conn
-
-	W http.ResponseWriter
-	R *http.Request
-
-	DomainList []string
-
-	Domains []TDomain
-
-	//角色中是否有管理员角色
-	IsAdmin bool
-
-	//是否在请求的URL中包含了admin=true
-	ReqAdminFnc bool
-
-	WxUser  *TWxUser
-	SysUser *TUser
-	Msg     *ReplyProto
-
-	CallerType int
-
-	UserAgent string
-
-	WxLoginProcessed bool
-
-	//xkb *xkbCtx
-	//reqScope map[string]interface{} // session variables
-
-	TouchTime time.Time
-
-	Channel chan []byte
-
-	RoutineID int
-	BeginTime time.Time
-
-	Tag map[string]interface{}
-
-	//用户访问系统所使用的角色
-	Role int64
-
-	//用户访问的模块类型: 未知类型，函数，同未知类型，后台管理员模块，前台普通用户模块
-	ReqFnType int
-}
-
 type ServiceCtx struct {
 	Err  error // error occurred during process
 	Stop bool  // should run next process
@@ -152,7 +97,7 @@ type ServiceCtx struct {
 
 	Session *sessions.Session // gorilla cookie's
 
-	Redis redis.Conn
+	RedisClient *redis.Client
 
 	W http.ResponseWriter
 	R *http.Request
@@ -438,7 +383,9 @@ func AddService(ep *ServeEndPoint) (err error) {
 		return
 	}
 
-	z.Info(ep.Name + " added")
+	if ep != nil {
+		z.Info(ep.Name + " added")
+	}
 
 	serviceMutex.Lock()
 	defer serviceMutex.Unlock()
@@ -683,27 +630,30 @@ func CleanCacheByUserID(userID int64) (err error) {
 		z.Error(err.Error())
 		return
 	}
+	ctx := context.Background()
 
-	r := GetRedisConn()
-	var keys []interface{}
+	redisClient := GetRedisConn()
+	var keys []string
 	for {
 		key := fmt.Sprintf("%s:%d", SysUserByID, userID)
 		var account string
-		account, err = redis.String(r.Do("get", key))
+		account, err = redisClient.Get(ctx, key).Result()
 		if err != nil {
 			z.Error(err.Error())
 			return
 		}
+
 		keys = append(keys, key)
 
 		key = fmt.Sprintf("%s:%s", SysUserByName, account)
 		var userData string
-		userData, err = redis.String(r.Do("JSON.GET", key, "."))
+		userData, err = redisClient.JSONGet(ctx, key, ".").Result()
 		if err != nil {
 			z.Error(err.Error())
 			return
 		}
 
+		// userData := jsonCmd.String()
 		rX := gjson.Get(userData, "MobilePhone")
 		if rX.Exists() && rX.Num > 0 {
 			userData, _ = sjson.Set(userData, "MobilePhone",
@@ -720,8 +670,7 @@ func CleanCacheByUserID(userID int64) (err error) {
 		}
 
 		key = fmt.Sprintf("%s:%s", SysUserByTel, u.MobilePhone.String)
-
-		account, err = redis.String(r.Do("get", key))
+		account, err = redisClient.Get(ctx, key).Result()
 		if err != nil {
 			z.Warn(err.Error())
 		}
@@ -730,7 +679,7 @@ func CleanCacheByUserID(userID int64) (err error) {
 		}
 
 		key = fmt.Sprintf("%s:%s", SysUserByEmail, u.Email.String)
-		account, err = redis.String(r.Do("get", key))
+		account, err = redisClient.Get(ctx, key).Result()
 		if err != nil {
 			z.Warn(err.Error())
 		}
@@ -740,22 +689,26 @@ func CleanCacheByUserID(userID int64) (err error) {
 
 		key = fmt.Sprintf("%s:%d", WxUserByID, userID)
 		var unionID string
-		unionID, err = redis.String(r.Do("get", key))
+		unionID, err = redisClient.Get(ctx, key).Result()
 		if err != nil {
 			z.Error(err.Error())
 			break
 		}
-		keys = append(keys, key)
+		if unionID != "" {
+			keys = append(keys, key)
+		}
 
 		key = fmt.Sprintf("%s:%s", WxUserByUnionID, unionID)
 		var wxUserData string
-		wxUserData, err = redis.String(r.Do("JSON.GET", key, "."))
+		wxUserData, err = redisClient.JSONGet(ctx, key, ".").Result()
 		if err != nil {
 			z.Error(err.Error())
 			break
 		}
-		keys = append(keys, key)
 
+		if wxUserData != "" {
+			keys = append(keys, key)
+		}
 		var x TWxUser
 		err = json.Unmarshal([]byte(wxUserData), &x)
 		if err != nil {
@@ -764,7 +717,7 @@ func CleanCacheByUserID(userID int64) (err error) {
 		}
 
 		key = fmt.Sprintf("%s:%s", WxUserByOpenID, x.MpOpenID.String)
-		account, err = redis.String(r.Do("get", key))
+		account, err = redisClient.Get(ctx, key).Result()
 		if err != nil {
 			z.Warn(err.Error())
 		}
@@ -778,16 +731,15 @@ func CleanCacheByUserID(userID int64) (err error) {
 		z.Info(fmt.Sprintf("%d:%s", k, v))
 	}
 
-	var reply interface{}
-	reply, err = r.Do("DEL", keys...)
+	intCmd := redisClient.Del(ctx, keys...)
+	err = intCmd.Err()
 	if err != nil {
 		z.Error(err.Error())
 		return
 	}
 
-	keysDropped, ok := reply.(int64)
-	if !ok {
-		err = fmt.Errorf("reply should be a int, %v", keysDropped)
+	_, err = intCmd.Uint64()
+	if err != nil {
 		z.Error(err.Error())
 		return
 	}
@@ -897,15 +849,16 @@ func CacheSysUser(ctx context.Context, sysUser *TUser) {
 		return
 	}
 
+	redisClient := GetRedisConn()
 	key := fmt.Sprintf("%s:%s", SysUserByName, sysUser.Account)
-	_, q.Err = q.Redis.Do("JSON.SET", key, ".", string(buf))
+	_, q.Err = redisClient.JSONSet(ctx, key, ".", string(buf)).Result()
 	if q.Err != nil {
 		z.Error(q.Err.Error())
 		return
 	}
 
 	key = fmt.Sprintf("%s:%d", SysUserByID, sysUser.ID.Int64)
-	_, q.Err = q.Redis.Do("SET", key, sysUser.Account)
+	_, q.Err = redisClient.Set(ctx, key, sysUser.Account, time.Second*3).Result()
 	if q.Err != nil {
 		z.Error(q.Err.Error())
 		return
@@ -913,7 +866,7 @@ func CacheSysUser(ctx context.Context, sysUser *TUser) {
 
 	if sysUser.MobilePhone.Valid && sysUser.MobilePhone.String != "" {
 		key = fmt.Sprintf("%s:%s", SysUserByTel, sysUser.MobilePhone.String)
-		_, q.Err = q.Redis.Do("SET", key, sysUser.Account)
+		_, q.Err = redisClient.Set(ctx, key, sysUser.Account, time.Second*3).Result()
 		if q.Err != nil {
 			z.Error(q.Err.Error())
 			return
@@ -923,7 +876,7 @@ func CacheSysUser(ctx context.Context, sysUser *TUser) {
 
 	if sysUser.Email.Valid && sysUser.Email.String != "" {
 		key = fmt.Sprintf("%s:%s", SysUserByEmail, sysUser.Email.String)
-		_, q.Err = q.Redis.Do("SET", key, sysUser.Account)
+		_, q.Err = redisClient.Set(ctx, key, sysUser.Account, time.Second).Result()
 		if q.Err != nil {
 			z.Error(q.Err.Error())
 			return
@@ -960,8 +913,9 @@ func CacheWxUser(ctx context.Context, wxUser *TWxUser) {
 		return
 	}
 
+	redisClient := GetRedisConn()
 	key := fmt.Sprintf("%s:%s", WxUserByUnionID, wxUser.UnionID.String)
-	_, q.Err = q.Redis.Do("JSON.SET", key, ".", string(buf))
+	_, q.Err = redisClient.JSONSet(ctx, key, ".", string(buf)).Result()
 	if q.Err != nil {
 		z.Error(q.Err.Error())
 		return
@@ -969,7 +923,7 @@ func CacheWxUser(ctx context.Context, wxUser *TWxUser) {
 
 	key = fmt.Sprintf("%s:%d", WxUserByID, wxUser.ID.Int64)
 
-	_, q.Err = q.Redis.Do("SET", key, wxUser.UnionID.String)
+	_, q.Err = redisClient.Set(ctx, key, wxUser.UnionID.String, time.Second).Result()
 	if q.Err != nil {
 		z.Error(q.Err.Error())
 	}
@@ -977,7 +931,7 @@ func CacheWxUser(ctx context.Context, wxUser *TWxUser) {
 	var haveValidOpenID bool
 	if wxUser.MpOpenID.Valid && wxUser.MpOpenID.String != "" {
 		key = fmt.Sprintf("%s:%s", WxUserByOpenID, wxUser.MpOpenID.String)
-		_, q.Err = q.Redis.Do("SET", key, wxUser.ID.Int64)
+		_, q.Err = redisClient.Set(ctx, key, wxUser.ID.Int64, time.Second).Result()
 		if q.Err != nil {
 			z.Error(q.Err.Error())
 		}
@@ -986,7 +940,7 @@ func CacheWxUser(ctx context.Context, wxUser *TWxUser) {
 
 	if wxUser.WxOpenID.Valid && wxUser.WxOpenID.String != "" {
 		key = fmt.Sprintf("%s:%s", WxUserByOpenID, wxUser.WxOpenID.String)
-		_, q.Err = q.Redis.Do("SET", key, wxUser.ID.Int64)
+		_, q.Err = redisClient.Set(ctx, key, wxUser.ID.Int64, time.Second).Result()
 		if q.Err != nil {
 			z.Error(q.Err.Error())
 		}
@@ -1037,12 +991,12 @@ func ValidateCookie(ctx context.Context) (err error) {
 		return
 	}
 
+	redisClient := GetRedisConn()
 	var key string
 	var jsonStr string
 	key = fmt.Sprintf("%s:%s", SysUserByName, name)
-	jsonStr, err = redis.String(q.Redis.Do("JSON.GET", key, "."))
-
-	if err != nil && err.Error() == RedisNil {
+	jsonStr, err = redisClient.JSONGet(ctx, key, ".").Result()
+	if errors.Is(err, redis.Nil) {
 		CleanSession(ctx)
 		q.Session.Options.MaxAge = 0
 		_ = q.Session.Save(q.R, q.W)
@@ -1073,7 +1027,7 @@ func BuildUserInfo(ctx context.Context) (authenticated bool, err error) {
 	}
 
 	userDefaultRole, _ := q.Session.Values["Role"].(int)
-
+	redisClient := GetRedisConn()
 	name, _ := (q.Session.Values["Account"]).(string)
 	for {
 		if name == "" {
@@ -1083,11 +1037,10 @@ func BuildUserInfo(ctx context.Context) (authenticated bool, err error) {
 		}
 
 		var key string
-		var jsonStr string
 		key = fmt.Sprintf("%s:%s", SysUserByName, name)
-		jsonStr, err = redis.String(q.Redis.Do("JSON.GET", key, "."))
-
-		if err != nil && err.Error() == RedisNil {
+		var jsonStr string
+		jsonStr, err = redisClient.JSONGet(ctx, key, ".").Result()
+		if errors.Is(err, redis.Nil) {
 			err = nil
 		}
 		if err != nil {
@@ -1101,13 +1054,95 @@ func BuildUserInfo(ctx context.Context) (authenticated bool, err error) {
 			break
 		}
 
-		var sysUser TUser
-		r := gjson.Get(jsonStr, "MobilePhone")
-		if r.Exists() && r.Num > 0 {
-			jsonStr, q.Err = sjson.Set(jsonStr, "MobilePhone",
-				fmt.Sprintf("%d", int64(r.Num)))
+		r := gjson.Get(jsonStr, "ID")
+		if !r.Exists() || r.Num <= 0 {
+			err = fmt.Errorf(`can't find user ID from redis'`)
+			z.Error(err.Error())
+			break
+		}
+		userID := r.Uint()
+
+		var domains []TDomain
+
+		// get use domains
+		r = gjson.Get(jsonStr, "domains")
+		if !r.Exists() {
+			s := `select 
+					user_id,
+					jsonb_agg(jsonb_build_object(
+					'ID',auth_domain_id,'Name',domain_name,'Domain',domain,'Priority',priority
+				)) domains 
+				from v_user_domain
+				where 
+					user_id=$1
+				group by user_id`
+			conn := GetPgxConn()
+
+			var id uint64
+
+			err = conn.QueryRow(ctx, s, userID).Scan(&id, &domains)
+			if errors.Is(err, sql.ErrNoRows) {
+				err = nil
+				id = userID
+
+				//(388,'系统.匿名','sys^anonymous'
+				domains = append(domains, TDomain{
+					ID:       null.IntFrom(388),
+					Name:     "系统.匿名",
+					Domain:   "sys^anonymous",
+					Priority: null.IntFrom(19)})
+			}
+			if err != nil {
+				z.Error(err.Error())
+				break
+			}
+
+			jsonStr, err = sjson.Set(jsonStr, "domains", domains)
+			if err != nil {
+				z.Error(err.Error())
+				break
+			}
+			jsonStr, err = CleanJSONString(jsonStr)
+			if err != nil {
+				break
+			}
+
+			_, q.Err = redisClient.JSONSet(ctx, key, ".", jsonStr).Result()
+			if q.Err != nil {
+				z.Error(q.Err.Error())
+				return
+			}
+		} else {
+			if !r.IsArray() {
+				q.Err = fmt.Errorf("domains should be array")
+				z.Error(q.Err.Error())
+				return
+			}
+
+			domainArray := r.Array()
+			if len(domainArray) == 0 {
+				q.Err = fmt.Errorf("len(domains) should greater than 0")
+				z.Error(q.Err.Error())
+				return
+			}
+			q.Err = json.Unmarshal([]byte(r.String()), &domains)
+			if q.Err != nil {
+				z.Error(q.Err.Error())
+				return
+			}
 		}
 
+		r = gjson.Get(jsonStr, "MobilePhone")
+		if r.Exists() && r.Num > 0 {
+			jsonStr, err = sjson.Set(jsonStr, "MobilePhone", fmt.Sprintf("%d", int64(r.Num)))
+			if err != nil {
+				z.Error(err.Error())
+				break
+			}
+		}
+		q.Domains = domains
+
+		var sysUser TUser
 		err = json.Unmarshal([]byte(jsonStr), &sysUser)
 		if err != nil {
 			z.Error(err.Error())
@@ -1140,7 +1175,7 @@ func BuildUserInfo(ctx context.Context) (authenticated bool, err error) {
 		}
 
 		if userDefaultRole <= 0 {
-			_, err = q.Redis.Do("JSON.SET", key, ".Role", sysUser.Role.Int64)
+			_, err = redisClient.JSONSet(ctx, key, ".Role", sysUser.Role.Int64).Result()
 			if err != nil {
 				z.Error(err.Error())
 				break
@@ -1154,10 +1189,8 @@ func BuildUserInfo(ctx context.Context) (authenticated bool, err error) {
 		// ------ settle wxUser
 		key = fmt.Sprintf("%s:%d", WxUserByID, sysUser.ID.Int64)
 		var openID string
-		openID, err = redis.String(q.Redis.Do("GET",
-			fmt.Sprintf("%s:%d", WxUserByID, sysUser.ID.Int64)))
-
-		if err != nil && err.Error() == RedisNil {
+		openID, err = redisClient.Get(ctx, fmt.Sprintf("%s:%d", WxUserByID, sysUser.ID.Int64)).Result()
+		if errors.Is(err, redis.Nil) {
 			err = nil
 		}
 		if err != nil {
@@ -1180,12 +1213,12 @@ func BuildUserInfo(ctx context.Context) (authenticated bool, err error) {
 		}
 
 		key = fmt.Sprintf("%s:%s", WxUserByUnionID, openID)
-		jsonStr, err = redis.String(q.Redis.Do("JSON.GET",
-			fmt.Sprintf("%s:%s", WxUserByUnionID, openID), "."))
 
-		if err != nil && err.Error() == RedisNil {
+		jsonStr, err = redisClient.JSONGet(ctx, fmt.Sprintf("%s:%s", WxUserByUnionID, openID), ".").Result()
+		if errors.Is(err, redis.Nil) {
 			err = nil
 		}
+
 		if err != nil {
 			z.Error(err.Error())
 			break
@@ -1238,7 +1271,6 @@ func BuildUserInfo(ctx context.Context) (authenticated bool, err error) {
 		}
 
 		q.WxUser = &wxUser
-		break
 	}
 	return
 }
