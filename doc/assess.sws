@@ -4,7 +4,7 @@
 
 <Workspace>
 	<Local Expanded="Yes">
-		<Model Expanded="Yes" ID="{AED957EA-6BBC-4595-AB4A-0F135BE4269B}" Name="kzz.io" Selected="Yes" Type="{CDE44E21-9669-11D1-9914-006097355D9B}" URL="kzz.io.pdm"/>
+		<Model Expanded="Yes" ID="{AED957EA-6BBC-4595-AB4A-0F135BE4269B}" Name="kzz.io" Type="{CDE44E21-9669-11D1-9914-006097355D9B}" URL="kzz.io.pdm"/>
 	</Local>
 	<BrowserModule Name="Repository"/>
 </Workspace>
