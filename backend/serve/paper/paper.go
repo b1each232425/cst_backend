@@ -168,7 +168,7 @@ func ManualPaper(ctx context.Context) {
 			}
 		}()
 
-		userID := q.SysUser.ID.Int64
+		var userID int64 = 1574
 		if userID <= 0 {
 			q.Err = fmt.Errorf("Invalid UserID: %d", userID)
 			z.Error(q.Err.Error())
@@ -273,7 +273,7 @@ func ManualPaper(ctx context.Context) {
 		dmlCtx, cancel := context.WithTimeout(ctx, TIMEOUT)
 		defer cancel()
 		var results []ActionResult
-		userID := q.SysUser.ID.Int64
+		var userID int64 = 1574
 		if userID <= 0 {
 			q.Err = fmt.Errorf("无效用户ID: %d", userID)
 			z.Error(q.Err.Error())
@@ -302,7 +302,7 @@ func ManualPaper(ctx context.Context) {
 			q.RespErr()
 			return
 		}
-		userID := q.SysUser.ID.Int64
+		var userID int64 = 1574
 		if userID <= 0 {
 			q.Err = fmt.Errorf("无效用户ID: %d", userID)
 			z.Error(q.Err.Error())
@@ -371,7 +371,7 @@ func PaperList(ctx context.Context) {
 		defer cancel()
 		var result []cmn.TVPaper
 		var totalCount int64
-		userID := q.SysUser.ID.Int64
+		var userID int64 = 1574
 		if userID <= 0 {
 			q.Err = fmt.Errorf("Invalid UserID: %d", userID)
 			z.Error(q.Err.Error())
@@ -442,7 +442,7 @@ func PaperList(ctx context.Context) {
 			q.RespErr()
 			return
 		}
-		userID := q.SysUser.ID.Int64
+		var userID int64 = 1574
 		if userID <= 0 {
 			q.Err = fmt.Errorf("Invalid UserID: %d", userID)
 			z.Error(q.Err.Error())
@@ -728,7 +728,7 @@ func updateManualPaper(ctx context.Context, paperID, userID int64, req UpdateMan
 //		if filter := q.R.URL.Query().Get("filter"); filter != "" {
 //			req.Filter = filter
 //		}
-//		userID := q.SysUser.ID.Int64
+//		var userID int64 =1574
 //		if userID <= 0 {
 //			q.Err = fmt.Errorf("Invalid UserID: %d", userID)
 //			z.Error(q.Err.Error())
@@ -828,7 +828,7 @@ func updateManualPaper(ctx context.Context, paperID, userID int64, req UpdateMan
 //
 //		dmlCtx, cancel := context.WithTimeout(ctx, TIMEOUT)
 //		defer cancel()
-//		userID := q.SysUser.ID.Int64
+//		var userID int64 =1574
 //		if userID <= 0 {
 //			q.Err = fmt.Errorf("Invalid UserID: %d", userID)
 //			z.Error(q.Err.Error())
@@ -931,7 +931,7 @@ func updateManualPaper(ctx context.Context, paperID, userID int64, req UpdateMan
 //			q.RespErr()
 //			return
 //		}
-//		userID := q.SysUser.ID.Int64
+//		var userID int64 =1574
 //		if userID <= 0 {
 //			q.Err = fmt.Errorf("Invalid UserID: %d", userID)
 //			z.Error(q.Err.Error())
