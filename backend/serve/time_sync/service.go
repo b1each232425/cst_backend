@@ -228,7 +228,7 @@ func (srv *serviceImpl) sendCurrentTimestampMsg(ctx context.Context, c Connectio
 
 	// 发送消息
 	msg := SendMsg{
-		MsgType:   TypeExamEndtime,
+		MsgType:   TypeTimestamp,
 		Timestamp: timestamp,
 	}
 	err := c.SendMessage(msg)
