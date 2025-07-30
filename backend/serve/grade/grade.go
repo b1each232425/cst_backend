@@ -1,7 +1,7 @@
 package grade
 
-//annotation:template-service
-//author:{"name":"txl","tel":"19832706790", "email":"188307257@qq.com"}
+//annotation:grade
+//author:{"name":"txl","tel":"19832706790", "email":"188306257@qq.com"}
 
 import (
 	"context"
@@ -12,6 +12,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"w2w.io/null"
 
 	"github.com/tidwall/gjson"
 	"go.uber.org/zap"
@@ -86,29 +88,12 @@ func Enroll(author string) {
 	// // --------------------------------------------------
 	// //                     成绩分布接口                  |
 	// // --------------------------------------------------
-	// // gradeDistributionExam
+	// // gradeDistribution
 	// _ = cmn.AddService(&cmn.ServeEndPoint{
-	// 	Fn: gradeDistributionExam,
+	// 	Fn: gradeDistribution,
 
-	// 	Path: "/grade/distribution/exam",
-	// 	Name: "grade/distribution/exam",
-
-	// 	Developer: developer,
-	// 	WhiteList: true,
-
-	// 	//DomainID 创建该API的账号归属的domain
-	// 	DomainID: int64(cmn.CDomainSys),
-
-	// 	//DefaultDomain 该API将默认授权给的用户
-	// 	DefaultDomain: int64(cmn.CDomainSys),
-	// })
-
-	// // gradeDistributionPractice
-	// _ = cmn.AddService(&cmn.ServeEndPoint{
-	// 	Fn: gradeDistributionPractice,
-
-	// 	Path: "/grade/distribution/practice",
-	// 	Name: "grade/distribution/practice",
+	// 	Path: "/grade/distribution",
+	// 	Name: "grade/distribution",
 
 	// 	Developer: developer,
 	// 	WhiteList: true,
@@ -259,12 +244,10 @@ func gradeListH(ctx context.Context) {
 
 		queryParams := q.R.URL.Query()
 
-		// 成绩类型
 		if category := queryParams.Get("category"); category != "" {
 			req.Category = category
 		}
 
-		// 页码
 		req.Page = 1
 		if page := queryParams.Get("page"); page != "" {
 			p, err := strconv.Atoi(page)
@@ -277,7 +260,6 @@ func gradeListH(ctx context.Context) {
 			req.Page = p
 		}
 
-		// 每页数量
 		req.PageSize = 10
 		if pageSize := queryParams.Get("pageSize"); pageSize != "" {
 			p, err := strconv.Atoi(pageSize)
@@ -290,29 +272,29 @@ func gradeListH(ctx context.Context) {
 			req.PageSize = p
 		}
 
-		// 教师ID
-		if teacherID := queryParams.Get("teacherID"); teacherID != "" {
-			p, err := strconv.Atoi(teacherID)
-			if err != nil {
-				q.Err = fmt.Errorf("无效教师ID: %s", teacherID)
-				z.Warn(q.Err.Error())
-				q.RespErr()
-				return
-			}
-			req.TeacherID = p
+		// if teacherID := queryParams.Get("teacherID"); teacherID != "" {
+		// 	p, err := strconv.Atoi(teacherID)
+		// 	if err != nil {
+		// 		q.Err = fmt.Errorf("无效教师ID: %s", teacherID)
+		// 		z.Warn(q.Err.Error())
+		// 		q.RespErr()
+		// 		return
+		// 	}
+		// 	req.TeacherID = p
+		// }
+		userID := null.IntFrom(1574)
+		if q.SysUser != nil {
+			userID = q.SysUser.ID
 		}
+		req.TeacherID = userID.Int64
 
-		// 考试名称
+
 		if name := queryParams.Get("name"); name != "" {
 			req.Filter.Name = name
 		}
 
-		// 及格率
-		req.PassScoreRate = 0.6
-
 		switch req.Category {
 		case "exam":
-			// 考试ID
 			if examID := queryParams.Get("examID"); examID != "" {
 				p, err := strconv.Atoi(examID)
 				if err != nil {
@@ -324,17 +306,23 @@ func gradeListH(ctx context.Context) {
 				req.ExamID = p
 			}
 
-			// 考试类型
 			if examType := queryParams.Get("type"); examType != "" {
 				req.Filter.Type = examType
 			}
 
-			// 提交状态
 			if submitted := queryParams.Get("submitted"); submitted != "" {
-				if submitted == "0" {
+				switch submitted {
+				case "0":
 					req.Filter.Submitted = 0
-				} else {
+				case "1":
 					req.Filter.Submitted = 1
+				case "":
+					req.Filter.Submitted = -1
+				default:
+					q.Err = fmt.Errorf("无效提交状态: %s", submitted)
+					z.Warn(q.Err.Error())
+					q.RespErr()
+					return
 				}
 			}
 
@@ -398,7 +386,7 @@ func gradeListH(ctx context.Context) {
 			}
 
 		default:
-			q.Err = fmt.Errorf("unsupported category: %s", req.Category)
+			q.Err = fmt.Errorf("不支持的类型: %s", req.Category)
 			z.Warn(q.Err.Error())
 			q.RespErr()
 			return
@@ -413,7 +401,7 @@ func gradeListH(ctx context.Context) {
 		q.Resp()
 
 	default:
-		q.Err = fmt.Errorf("unsupported method: %s", method)
+		q.Err = fmt.Errorf("不支持的请求方法: %s", method)
 		z.Warn(q.Err.Error())
 		q.RespErr()
 		return
@@ -479,23 +467,17 @@ func gradeSubmissionH(ctx context.Context) {
 		}()
 
 		if len(buf) == 0 {
-			q.Err = fmt.Errorf("call /api/course by post with empty body")
+			q.Err = fmt.Errorf("调用/api/course接口时，请求体为空")
 			z.Error(q.Err.Error())
 			q.RespErr()
 			return
 		}
 
-		// //
-		// teacherID := int64(gjson.Get(string(buf), "data.teacher_id").Num)
-		// if teacherID <= 0 {
-		// 	q.Err = fmt.Errorf("教师ID无效")
-		// 	z.Error(q.Err.Error())
-		// 	q.RespErr()
-		// 	return
-		// }
-
-		// args.TeacherID = teacherID
-		args.TeacherID = 1575
+		userID := null.IntFrom(1574)
+		if q.SysUser != nil {
+			userID = q.SysUser.ID
+		}
+		args.TeacherID = userID.Int64
 
 		examIDQuerys := gjson.GetBytes(buf, "data.exam_ids").Array()
 		if len(examIDQuerys) <= 0 {
@@ -508,7 +490,6 @@ func gradeSubmissionH(ctx context.Context) {
 		for _, examIDQuery := range examIDQuerys {
 			examIDs = append(examIDs, int(examIDQuery.Num))
 		}
-		z.Debug("examIDs", zap.Any("examIDs", examIDs))
 		args.ExamIDs = examIDs
 
 		err = SetExamGradeSubmitted(ctx, &args)
@@ -530,14 +511,14 @@ func gradeSubmissionH(ctx context.Context) {
 		q.Resp()
 
 	default:
-		q.Err = fmt.Errorf("unsupported method: %s", method)
+		q.Err = fmt.Errorf("不支持的请求方法: %s", method)
 		z.Warn(q.Err.Error())
 		q.RespErr()
 		return
 	}
 }
 
-// func gradeDistributionExam(ctx context.Context) {
+// func gradeDistribution(ctx context.Context) {
 // 	q := cmn.GetCtxValue(ctx)
 // 	z.Info("---->" + cmn.FncName())
 // 	method := strings.ToLower(q.R.Method)
