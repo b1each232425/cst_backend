@@ -5,8 +5,9 @@ import (
 	"encoding/json"
 	"time"
 
-	"github.com/gomodule/redigo/redis"
+	// "github.com/gomodule/redigo/redis"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
 	"w2w.io/cmn"
 )
@@ -32,14 +33,16 @@ type ExamEvent struct {
 }
 
 var (
-	z       *zap.Logger
-	pgxConn *pgxpool.Pool
+	z           *zap.Logger
+	pgxConn     *pgxpool.Pool
+	redisClient *redis.Client
 )
 
 func init() {
 	cmn.PackageStarters = append(cmn.PackageStarters, func() {
 		z = cmn.GetLogger()
 		pgxConn = cmn.GetPgxConn()
+		redisClient = cmn.GetRedisConn()
 
 		z.Info("exam_service zLogger settled")
 	})
@@ -153,21 +156,20 @@ func pollRedisTimers() {
 		return events
 	`
 
+	ctx := context.Background()
+
 	for {
 		now := time.Now()
 
 		func() {
-			conn := cmn.GetRedisConn()
-			defer conn.Close()
-
 			// 获取并删除到期事件
-			result, err := conn.Do("EVAL", luaScript, 1, EXAM_TIMER_SET_KEY, now.UnixMilli(), 100)
-			if err != nil {
-				z.Error("Failed to execute Lua script for timer events", zap.Error(err))
+			result := redisClient.Eval(ctx, luaScript, []string{EXAM_TIMER_SET_KEY}, now.UnixMilli(), 100)
+			if result.Err() != nil {
+				z.Error("Failed to execute Lua script for timer events", zap.Error(result.Err()))
 				return
 			}
 
-			events, err := redis.Strings(result, nil)
+			events, err := result.StringSlice()
 			if err != nil {
 				z.Error("Failed to convert Lua script result", zap.Error(err))
 				return
@@ -642,18 +644,22 @@ func CancelExamTimers(ctx context.Context, examID int64) error {
 		return removed_count
 	`
 
-	luaArgs := make([]interface{}, 0, len(sessionIDs)+2)
-	luaArgs = append(luaArgs, luaScript, 1, EXAM_TIMER_SET_KEY)
+	evalCtx := context.Background()
+
+	args := make([]interface{}, 0, len(sessionIDs))
 	for _, sessionID := range sessionIDs {
-		luaArgs = append(luaArgs, sessionID)
+		args = append(args, sessionID)
 	}
 
-	conn := cmn.GetRedisConn()
-	defer conn.Close()
+	result := redisClient.Eval(evalCtx, luaScript, []string{EXAM_TIMER_SET_KEY}, args...)
+	if result.Err() != nil {
+		z.Error("Failed to execute Lua script for timer cancellation", zap.Error(result.Err()))
+		return result.Err()
+	}
 
-	removedCount, err := redis.Int(conn.Do("EVAL", luaArgs...))
+	removedCount, err := result.Int()
 	if err != nil {
-		z.Error("Failed to execute Lua script for timer cancellation", zap.Error(err))
+		z.Error("Failed to get removed count", zap.Error(err))
 		return err
 	}
 
