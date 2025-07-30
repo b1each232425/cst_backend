@@ -3,7 +3,7 @@
  * @Description: 考卷-答卷数据库层
  * @Date: 2025-07-21 13:14:34
  * @LastEditors: zdl <1311866870@qq.com>
- * @LastEditTime: 2025-07-30 22:47:54
+ * @LastEditTime: 2025-07-30 22:53:16
  */
 package examPaper
 
@@ -831,7 +831,7 @@ func LoadExamPaperDetailByUserId(ctx context.Context, tx pgx.Tx, examPaperId, pS
 			exists = false
 		}
 		if !exists {
-			err = fmt.Errorf("exam question id:%v not found in examPaper:", sa.QuestionID.Int64)
+			err = fmt.Errorf("exam question id:%v not found in examPaper", sa.QuestionID.Int64)
 			z.Error(err.Error())
 			return nil, nil, nil, err
 		}
