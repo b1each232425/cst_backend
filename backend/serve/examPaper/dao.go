@@ -3,7 +3,7 @@
  * @Description: 考卷-答卷数据库层
  * @Date: 2025-07-21 13:14:34
  * @LastEditors: zdl <1311866870@qq.com>
- * @LastEditTime: 2025-07-29 16:24:46
+ * @LastEditTime: 2025-07-30 00:00:16
  */
 package examPaper
 
@@ -13,7 +13,6 @@ import (
 	"fmt"
 	"github.com/jackc/pgx/v5"
 	"github.com/jmoiron/sqlx/types"
-	"go.uber.org/zap"
 	"math/rand"
 	"strings"
 	"time"
@@ -35,6 +34,9 @@ func LoadExamPaperDetailsById(ctx context.Context, tx pgx.Tx, epid int64, withQu
 		z.Error(err.Error())
 		return nil, nil, nil, err
 	}
+	TEST := "test"
+	//查看是否需要返回mock的数据
+	test, _ := ctx.Value(TEST).(string)
 	// 一张考卷卷拥有的题组map
 	var examGroups []*cmn.TExamPaperGroup
 	// 一个题组下拥有的题目数组
@@ -62,9 +64,16 @@ func LoadExamPaperDetailsById(ctx context.Context, tx pgx.Tx, epid int64, withQu
 	}
 	if withQuestions && len(ep.GroupsData) > 0 {
 		var groupData []ExamGroup
+		if test == "json" {
+			ep.GroupsData = types.JSONText(`invalid json: missing closing brace`)
+		}
+		if test == "jsonA" {
+			ep.GroupsData = types.JSONText(`[]`) // 空数组
+		}
 		err = json.Unmarshal(ep.GroupsData, &groupData)
 		if err != nil {
-			z.Error("unmarshal group data failed", zap.Error(err))
+			err = fmt.Errorf("unmarshal group data failed:%v", err)
+			z.Error(err.Error())
 			return nil, nil, nil, err
 		}
 		if len(groupData) == 0 {
@@ -100,6 +109,9 @@ func LoadExamPaperDetailsById(ctx context.Context, tx pgx.Tx, epid int64, withQu
 					q := v.Questions[idx]
 					var answersSlice []interface{}
 					if len(q.Answers) > 0 {
+						if test == "jsonB" {
+							q.Answers = types.JSONText(`invalid json: missing closing brace`)
+						}
 						if err = json.Unmarshal(q.Answers, &answersSlice); err != nil {
 							err = fmt.Errorf("failed to unmarshal Answers questionId:%v for:%v", q.ID.Int64, err)
 							z.Error(err.Error())
@@ -353,6 +365,9 @@ func GenerateExamPaper(ctx context.Context, tx pgx.Tx, category string, paperId,
 	var esid, pid interface{}
 	esid = examSessionId
 	pid = practiceId
+	TEST := "test"
+	//查看是否需要返回mock的数据
+	test, _ := ctx.Value(TEST).(string)
 	if paperId <= 0 {
 		err = fmt.Errorf("invalid paperId ID param")
 		z.Error(err.Error())
@@ -490,6 +505,17 @@ func GenerateExamPaper(ctx context.Context, tx pgx.Tx, category string, paperId,
 			// 处理填空题和简答题
 			if q.Type == QuestionCategory.FillInBlank || q.Type == QuestionCategory.ShortAnswer {
 				var answers []NonSelectQuestionAnswer
+				if test == "jsonA" {
+					p.GroupsData = types.JSONText(`invalid json: missing closing brace`)
+				}
+				if test == "jsonB" {
+					q.Answers = []byte(`[
+        {"index":1,"answer":"ans1","alternative_answer":["alt1"],"score":5.0,"grading_rule":"rule1"},
+        {"index":2,"answer":"ans2","alternative_answer":["alt2"],"score":5.0,"grading_rule":"rule2"}
+    ]`)
+					// 设置分数数量为 3（比答案数量多 1）
+					q.SubScore = []float64{5.0, 5.0, 5.0}
+				}
 				if err := json.Unmarshal(q.Answers, &answers); err != nil {
 					return nil, nil, fmt.Errorf("解析答案失败: %w", err)
 				}
@@ -620,7 +646,7 @@ func GenerateExamPaper(ctx context.Context, tx pgx.Tx, category string, paperId,
 	if genMarkInfo {
 		groupQuestions := make(map[int64][]int64)
 		for _, question := range tqs {
-			if question.Type.String != QuestionCategory.FillInBlank ||
+			if question.Type.String != QuestionCategory.FillInBlank &&
 				question.Type.String != QuestionCategory.ShortAnswer {
 				continue
 			}

@@ -3,7 +3,7 @@
  * @Description: 考卷数据库层单元测试
  * @Date: 2025-07-28 19:55:28
  * @LastEditors: zdl <1311866870@qq.com>
- * @LastEditTime: 2025-07-29 16:25:43
+ * @LastEditTime: 2025-07-30 11:45:24
  */
 package examPaper
 
@@ -206,7 +206,7 @@ func TestGenerateExamPaper(t *testing.T) {
 	}
 	var err error
 	var practiceID, paperID int64
-	practiceID = 2
+	practiceID = 6
 	paperID = 68
 
 	conn := cmn.GetPgxConn()
@@ -217,9 +217,16 @@ func TestGenerateExamPaper(t *testing.T) {
 	// 这里先测试练习那边生成的逻辑
 	// 开启一个事务
 	defer func() {
-		err = tx.Rollback(ctx)
 		if err != nil {
-			z.Error(err.Error())
+			err = tx.Rollback(ctx)
+			if err != nil {
+				z.Error(err.Error())
+			}
+		} else {
+			err = tx.Commit(ctx)
+			if err != nil {
+				z.Error(err.Error())
+			}
 		}
 	}()
 	p := `INSERT INTO t_practice (id,name,correct_mode,creator,allowed_attempts,type,paper_id) VALUES ($1, $2, $3, $4, $5, $6, $7)`
@@ -310,10 +317,72 @@ func TestGenerateExamPaper(t *testing.T) {
 			genMarkInfo: true,
 			expectedErr: errors.New("invalid uid ID param"),
 		},
+		{
+			name:        "异常5 触发LoadPaperTemplateById函数错误",
+			category:    PaperCategory.Practice,
+			pid:         paperID,
+			practiceID:  1,
+			sessionID:   0,
+			uid:         uid.Int64,
+			genMarkInfo: true,
+			expectedErr: errors.New("unmarshal group data failed"),
+		},
+		{
+			name:        "异常6 触发LoadPaperTemplateById函数加载的试卷数据题目为空",
+			category:    PaperCategory.Practice,
+			pid:         paperID,
+			practiceID:  1,
+			sessionID:   0,
+			uid:         uid.Int64,
+			genMarkInfo: true,
+			expectedErr: errors.New("invalid paper question group"),
+		},
+		{
+			name:        "异常7 触发解析题目答案 jsonUnmarshal错误",
+			category:    PaperCategory.Practice,
+			pid:         paperID,
+			practiceID:  1,
+			sessionID:   0,
+			uid:         uid.Int64,
+			genMarkInfo: true,
+			expectedErr: errors.New("解析答案失败"),
+		},
+		{
+			name:        "异常8 触发解析题目答案与试卷保存的更改小题分后长度不一错误",
+			category:    PaperCategory.Practice,
+			pid:         paperID,
+			practiceID:  1,
+			sessionID:   0,
+			uid:         uid.Int64,
+			genMarkInfo: true,
+			expectedErr: errors.New("不匹配"),
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			var paperID int64
+			paperID = 0
+			if containsString(tt.name, "异常5") {
+				ctx = context.WithValue(ctx, "test", "json")
+			} else {
+				ctx = context.Background()
+			}
+			if containsString(tt.name, "异常6") {
+				createEmpty := `
+INSERT INTO assessuser.t_paper 
+    (name, assembly_type, category, level, suggested_duration, tags, creator, status, access_mode) 
+VALUES 
+    ($1, $2, $3, $4, $5, $6, $7, $8, $9) 
+RETURNING id`
+				err = conn.QueryRow(ctx, createEmpty, "生成考卷触发空数据试卷", "00", "00", "00", 120, types.JSONText("[]"), uid, "00", "00").Scan(&paperID)
+				if err != nil {
+					t.Errorf("无法生成一张空试卷：%v", err)
+				}
+			}
+			if paperID != 0 {
+				tt.pid = paperID
+			}
 			epid, mark, err := GenerateExamPaper(ctx, tx, tt.category, tt.pid, tt.practiceID, tt.sessionID, tt.uid, tt.genMarkInfo)
 			if tt.expectedErr != nil {
 				if err == nil || !containsString(err.Error(), tt.expectedErr.Error()) {
@@ -346,6 +415,9 @@ func TestGenerateExamPaper(t *testing.T) {
 				}
 				// 如果此时是选择了生成这个的话
 				if tt.genMarkInfo {
+					if len(mark) == 0 {
+						t.Errorf("返回的批改信息为空")
+					}
 					groups := []int64{}
 					questions := []int64{}
 					for _, m := range mark {
@@ -358,43 +430,24 @@ func TestGenerateExamPaper(t *testing.T) {
 					}
 					var pgCount, qCount int
 
-					groupPlaceholders := make([]string, len(groups))
-					groupArgs := make([]interface{}, len(groups))
-					for i, id := range groups {
-						groupPlaceholders[i] = fmt.Sprintf("$%d", i+1)
-						groupArgs[i] = id
-					}
-
-					pg := fmt.Sprintf(
-						`SELECT COUNT(*) FROM t_exam_paper_group WHERE id IN (%s)`,
-						strings.Join(groupPlaceholders, ","),
-					)
-
-					err = tx.QueryRow(ctx, pg, groupArgs...).Scan(&pgCount)
+					// 处理题组计数
+					pg := `SELECT COUNT(*) FROM t_exam_paper_group WHERE id = ANY($1)`
+					err = tx.QueryRow(ctx, pg, groups).Scan(&pgCount)
 					if err != nil {
 						t.Fatal(err)
 					}
 
-					// 构建动态占位符
-					questionPlaceholders := make([]string, len(questions))
-					questionArgs := make([]interface{}, len(questions))
-					for i, id := range questions {
-						questionPlaceholders[i] = fmt.Sprintf("$%d", i+1)
-						questionArgs[i] = id
-					}
-
-					q := fmt.Sprintf(
-						`SELECT COUNT(*) FROM t_exam_paper_question WHERE id IN (%s)`,
-						strings.Join(questionPlaceholders, ","),
-					)
-
-					err = tx.QueryRow(ctx, q, questionArgs...).Scan(&qCount)
+					// 处理问题计数
+					q := `SELECT COUNT(*) FROM t_exam_paper_question WHERE id = ANY($1)`
+					err = tx.QueryRow(ctx, q, questions).Scan(&qCount)
 					if err != nil {
 						t.Fatal(err)
 					}
+
 					if pgCount != 2 || qCount != 5 {
 						t.Errorf("生成的考卷题组与考卷题目数据有误：实际上：题组%v,题目%v", pgCount, qCount)
 					}
+
 				} else {
 					var pgCount, qCount int
 					// 如果没返回这个的话，还是需要去查这个视图，去看这个数量是否一致 如果选择不返回AI批改的配置，则会返回所有题组的信息，因此与批改的数量会不一样
@@ -408,7 +461,142 @@ func TestGenerateExamPaper(t *testing.T) {
 					}
 				}
 			}
+			paperID = 0
+		})
+	}
 
+}
+
+func TestLoadExamPaperDetailsById(t *testing.T) {
+	// 现在已经成功生成了考卷了，那就需要去测试这个数据是否存在
+	if z == nil {
+		cmn.ConfigureForTest()
+	}
+	var paperID int64
+	paperID = 341
+
+	conn := cmn.GetPgxConn()
+	tx, err := conn.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tests := []struct {
+		name          string
+		epid          int64
+		withQuestions bool
+		withAnswers   bool
+		expectedErr   error
+	}{
+		{
+			name:          "正常1 能查询出一张完整的考卷试卷 不携带题目答案",
+			epid:          paperID,
+			withQuestions: true,
+			withAnswers:   false,
+			expectedErr:   nil,
+		},
+		{
+			name:          "正常2 能查询出一张完整的考卷试卷 携带题目答案",
+			epid:          paperID,
+			withQuestions: true,
+			withAnswers:   true,
+			expectedErr:   nil,
+		},
+		{
+			name:          "正常2 能查询出一张完整的考卷试卷 携带题目答案",
+			epid:          paperID,
+			withQuestions: true,
+			withAnswers:   true,
+			expectedErr:   nil,
+		},
+		{
+			name:          "异常1 参数检测 非法考卷ID",
+			epid:          0,
+			withQuestions: true,
+			withAnswers:   true,
+			expectedErr:   errors.New("invalid examPaper ID param"),
+		},
+		{
+			name:          "异常2 参数检测 不存在的考卷ID",
+			epid:          10086,
+			withQuestions: true,
+			withAnswers:   true,
+			expectedErr:   errors.New("select examPaper failed"),
+		},
+		{
+			name:          "异常3 空groupsData 并非真的为空，而是json标签或者db标签的无法被识别导致失败",
+			epid:          paperID,
+			withQuestions: true,
+			withAnswers:   true,
+			expectedErr:   errors.New("empty examPaper groups data"),
+		},
+		{
+			name:          "异常4 非法groupsData jsonUnmarshal 失败",
+			epid:          paperID,
+			withQuestions: true,
+			withAnswers:   true,
+			expectedErr:   errors.New("unmarshal group data failed"),
+		},
+		{
+			name:          "异常5 非法Answers jsonUnmarshal 失败",
+			epid:          paperID,
+			withQuestions: true,
+			withAnswers:   false,
+			expectedErr:   errors.New("failed to unmarshal Answers questionId"),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if containsString(tt.name, "异常5") {
+				ctx = context.WithValue(ctx, "test", "jsonB")
+			} else if containsString(tt.name, "异常4") {
+				ctx = context.WithValue(ctx, "test", "json")
+			} else if containsString(tt.name, "异常3") {
+				ctx = context.WithValue(ctx, "test", "jsonA")
+			} else {
+				ctx = context.Background()
+			}
+			p, pg, pq, err := LoadExamPaperDetailsById(ctx, tx, tt.epid, tt.withQuestions, tt.withAnswers)
+			if tt.expectedErr != nil {
+				if err == nil || !containsString(err.Error(), tt.expectedErr.Error()) {
+					t.Errorf("返回的错误不符合预期：%v", err)
+				}
+			} else {
+				if err != nil {
+					t.Fatalf("预期无错误，但返回错误：%v", err)
+				}
+				if p == nil {
+					t.Errorf("返回的考卷信息体为空")
+				} else {
+					if p.Name.String != "考卷单元测试试卷名" {
+						t.Errorf("查询的考卷信息名称错误，实际：%v", p.Name.String)
+					}
+					if p.TotalScore.Float64 != 48 {
+						t.Errorf("查询的考卷信息总分错误，实际：%v", p.TotalScore.Float64)
+					}
+					if p.QuestionCount.Int64 != 13 {
+						t.Errorf("查询的考卷信息题目数量错误，实际：%v", p.QuestionCount.Int64)
+					}
+					if p.GroupCount.Int64 != 5 {
+						t.Errorf("查询的考卷信息题组数量错误，实际：%v", p.GroupCount.Int64)
+					}
+					if len(pg) != 5 {
+						t.Errorf("查询的题组数量错误，实际：%v", len(pg))
+					}
+
+					var qCount int
+					for _, g := range pg {
+						quesitons := pq[g.ID.Int64]
+						for _, _ = range quesitons {
+							qCount++
+						}
+					}
+					if qCount != 13 {
+						t.Errorf("考卷题目数量错误")
+					}
+				}
+			}
 		})
 	}
 
