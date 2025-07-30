@@ -1,7 +1,6 @@
 package null
 
 import (
-	"bytes"
 	"database/sql"
 	"database/sql/driver"
 	"encoding/json"
@@ -54,6 +53,14 @@ func (t Time) ValueOrZero() time.Time {
 	return t.Time
 }
 
+// ValueOr returns the inner value if valid, otherwise v.
+func (t Time) ValueOr(v time.Time) time.Time {
+	if !t.Valid {
+		return v
+	}
+	return t.Time
+}
+
 // MarshalJSON implements json.Marshaler.
 // It will encode null if this time is null.
 func (t Time) MarshalJSON() ([]byte, error) {
@@ -66,7 +73,7 @@ func (t Time) MarshalJSON() ([]byte, error) {
 // UnmarshalJSON implements json.Unmarshaler.
 // It supports string and null input.
 func (t *Time) UnmarshalJSON(data []byte) error {
-	if bytes.Equal(data, nullBytes) {
+	if len(data) > 0 && data[0] == 'n' {
 		t.Valid = false
 		return nil
 	}

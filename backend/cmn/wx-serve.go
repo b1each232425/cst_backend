@@ -141,7 +141,7 @@ type weChatMsg struct {
 var wxOpenPageToken wxPageAccessToken
 var wxMxPageToken wxPageAccessToken
 
-var wxMpServeKeyToken = ""
+var wxMpServeKeyToken = "GynostemmaPentaphylla"
 
 func verifyWxSign(ctx context.Context) bool {
 	q := GetCtxValue(ctx)
@@ -299,7 +299,7 @@ func getWxAccessToken(seconds int) bool {
 
 	//https://api.weixin.qq.com/cgi-bin/token?grant_type=client_credential&appid=APPID&secret=APPSECRET
 	wxMpAppID := "wx0fefb244eeef3422"
-	wxMpAppSecret := ""
+	wxMpAppSecret := "9e4a4dfd0da11c0cb473c08b758a2582"
 
 	if viper.IsSet("wxServe.wxMpAppID") {
 		wxMpAppID = viper.GetString("wxServe.wxMpAppID")

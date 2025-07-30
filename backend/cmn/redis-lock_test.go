@@ -3,28 +3,28 @@ package cmn
 import (
 	"context"
 	"fmt"
+	"github.com/redis/go-redis/v9"
 	"strconv"
 	"testing"
 	"time"
 
-	"github.com/gomodule/redigo/redis"
 	"github.com/stretchr/testify/assert"
 )
 
 // 创建一个使用真实Redis连接的上下文
-func createRealContext() (context.Context, redis.Conn) {
+func createRealContext() (context.Context, *redis.Client) {
 	// 使用项目中已有的Redis连接池获取连接
 	conn := GetRedisConn()
 	q := &ServiceCtx{
-		Redis: conn,
+		RedisClient: conn,
 	}
 	return context.WithValue(context.Background(), QNearKey, q), conn
 }
 
 // 清理测试使用的Redis键
-func cleanupTestKeys(conn redis.Conn, keyPrefix string, resourceID int64) {
+func cleanupTestKeys(conn *redis.Client, keyPrefix string, resourceID int64) {
 	key := fmt.Sprintf("%s%d", keyPrefix, resourceID)
-	_, err := conn.Do("DEL", key)
+	_, err := conn.Do(context.Background(), "DEL", key).Result()
 	if err != nil {
 		fmt.Printf("清理测试键失败: %v\n", err)
 	}
@@ -45,8 +45,8 @@ func TestTryLock(t *testing.T) {
 	tests := []struct {
 		name    string
 		args    args
-		setup   func(redis.Conn)
-		cleanup func(redis.Conn)
+		setup   func(*redis.Client)
+		cleanup func(*redis.Client)
 		want    bool
 		want1   int64
 		wantErr bool
@@ -59,14 +59,14 @@ func TestTryLock(t *testing.T) {
 				keyPrefix:  "test_lock:",
 				expiration: 5 * time.Minute,
 			},
-			setup: func(conn redis.Conn) {
+			setup: func(conn *redis.Client) {
 				// 确保测试前键不存在
-				_, err := conn.Do("DEL", "test_lock:123")
+				_, err := conn.Do(context.Background(), "DEL", "test_lock:123").Result()
 				if err != nil {
 					t.Fatalf("清理测试键失败: %v", err)
 				}
 			},
-			cleanup: func(conn redis.Conn) {
+			cleanup: func(conn *redis.Client) {
 				cleanupTestKeys(conn, "test_lock:", 123)
 			},
 			want:    true,
@@ -81,8 +81,8 @@ func TestTryLock(t *testing.T) {
 				keyPrefix:  "test_lock:",
 				expiration: 5 * time.Minute,
 			},
-			setup:   func(conn redis.Conn) {},
-			cleanup: func(conn redis.Conn) {},
+			setup:   func(conn *redis.Client) {},
+			cleanup: func(conn *redis.Client) {},
 			want:    false,
 			want1:   -1,
 			wantErr: true,
@@ -95,8 +95,8 @@ func TestTryLock(t *testing.T) {
 				keyPrefix:  "test_lock:",
 				expiration: 5 * time.Minute,
 			},
-			setup:   func(conn redis.Conn) {},
-			cleanup: func(conn redis.Conn) {},
+			setup:   func(conn *redis.Client) {},
+			cleanup: func(conn *redis.Client) {},
 			want:    false,
 			want1:   -1,
 			wantErr: true,
@@ -109,19 +109,19 @@ func TestTryLock(t *testing.T) {
 				keyPrefix:  "test_lock:",
 				expiration: 5 * time.Minute,
 			},
-			setup: func(conn redis.Conn) {
+			setup: func(conn *redis.Client) {
 				// 先清理可能存在的键
-				_, err := conn.Do("DEL", "test_lock:124")
+				_, err := conn.Do(context.Background(), "DEL", "test_lock:124").Result()
 				if err != nil {
 					t.Fatalf("清理测试键失败: %v", err)
 				}
 				// 预先设置锁，由当前用户持有
-				_, err = conn.Do("SET", "test_lock:124", 456, "EX", 300)
+				_, err = conn.Do(context.Background(), "SET", "test_lock:124", 456, "EX", 300).Result()
 				if err != nil {
 					t.Fatalf("设置测试锁失败: %v", err)
 				}
 			},
-			cleanup: func(conn redis.Conn) {
+			cleanup: func(conn *redis.Client) {
 				cleanupTestKeys(conn, "test_lock:", 124)
 			},
 			want:    true,
@@ -136,19 +136,19 @@ func TestTryLock(t *testing.T) {
 				keyPrefix:  "test_lock:",
 				expiration: 5 * time.Minute,
 			},
-			setup: func(conn redis.Conn) {
+			setup: func(conn *redis.Client) {
 				// 先清理可能存在的键
-				_, err := conn.Do("DEL", "test_lock:125")
+				_, err := conn.Do(context.Background(), "DEL", "test_lock:125").Result()
 				if err != nil {
 					t.Fatalf("清理测试键失败: %v", err)
 				}
 				// 预先设置锁，由其他用户持有
-				_, err = conn.Do("SET", "test_lock:125", 789, "EX", 300)
+				_, err = conn.Do(context.Background(), "SET", "test_lock:125", 789, "EX", 300).Result()
 				if err != nil {
 					t.Fatalf("设置测试锁失败: %v", err)
 				}
 			},
-			cleanup: func(conn redis.Conn) {
+			cleanup: func(conn *redis.Client) {
 				cleanupTestKeys(conn, "test_lock:", 125)
 			},
 			want:    false,
@@ -163,14 +163,14 @@ func TestTryLock(t *testing.T) {
 				keyPrefix:  "test_lock:",
 				expiration: 0, // 使用默认过期时间
 			},
-			setup: func(conn redis.Conn) {
+			setup: func(conn *redis.Client) {
 				// 确保测试前键不存在
-				_, err := conn.Do("DEL", "test_lock:126")
+				_, err := conn.Do(context.Background(), "DEL", "test_lock:126").Result()
 				if err != nil {
 					t.Fatalf("清理测试键失败: %v", err)
 				}
 			},
-			cleanup: func(conn redis.Conn) {
+			cleanup: func(conn *redis.Client) {
 				cleanupTestKeys(conn, "test_lock:", 126)
 			},
 			want:    true,
@@ -185,16 +185,18 @@ func TestTryLock(t *testing.T) {
 				keyPrefix:  "test_lock:",
 				expiration: 0, // 使用默认过期时间
 			},
-			setup: func(conn redis.Conn) {
+			setup: func(conn *redis.Client) {
 				// 确保测试前键不存在
-				_, err := conn.Do("DEL", "test_lock:126")
+				_, err := conn.Do(context.Background(), "DEL", "test_lock:126").Result()
 				if err != nil {
 					t.Fatalf("清理测试键失败: %v", err)
 				}
 				conn.Close()
+
 			},
-			cleanup: func(conn redis.Conn) {
+			cleanup: func(conn *redis.Client) {
 				cleanupTestKeys(conn, "test_lock:", 126)
+				redisClient = nil
 			},
 			want:    false,
 			want1:   -1,
@@ -206,12 +208,11 @@ func TestTryLock(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// 创建真实上下文和Redis连接
 			ctx, conn := createRealContext()
-			defer conn.Close()
 
 			// 设置测试环境
 			tt.setup(conn)
-			// 确保测试结束后清理
-			//defer tt.cleanup(conn)
+			//确保测试结束后清理
+			defer tt.cleanup(conn)
 
 			// 更新上下文
 			tt.args.ctx = ctx
@@ -230,16 +231,15 @@ func TestTryLock(t *testing.T) {
 				return
 			}
 			resourceIdStr := strconv.Itoa(int(tt.args.resourceID))
-			res, err := conn.Do("GET", tt.args.keyPrefix+resourceIdStr)
+			res, err := conn.Do(context.Background(), "GET", tt.args.keyPrefix+resourceIdStr).Result()
 			if err != nil {
 				panic(err)
 			}
-			bytes, ok := res.([]byte)
+			s, ok := res.(string)
 			if !ok {
 				t.Fatalf("unexpected type: %T", res)
 			}
 
-			s := string(bytes)
 			val, err := strconv.ParseInt(s, 10, 64)
 			if err != nil {
 				t.Fatalf("parse error: %v", err)
@@ -263,8 +263,8 @@ func TestReleaseLock(t *testing.T) {
 	tests := []struct {
 		name    string
 		args    args
-		setup   func(redis.Conn)
-		cleanup func(redis.Conn)
+		setup   func(*redis.Client)
+		cleanup func(*redis.Client)
 		wantErr bool
 	}{
 		{
@@ -274,19 +274,19 @@ func TestReleaseLock(t *testing.T) {
 				holderID:   456,
 				keyPrefix:  "test_lock:",
 			},
-			setup: func(conn redis.Conn) {
+			setup: func(conn *redis.Client) {
 				// 先清理可能存在的键
-				_, err := conn.Do("DEL", "test_lock:123")
+				_, err := conn.Do(context.Background(), "DEL", "test_lock:123").Result()
 				if err != nil {
 					t.Fatalf("清理测试键失败: %v", err)
 				}
 				// 设置锁，由当前用户持有
-				_, err = conn.Do("SET", "test_lock:123", 456, "EX", 300)
+				_, err = conn.Do(context.Background(), "SET", "test_lock:123", 456, "EX", 300).Result()
 				if err != nil {
 					t.Fatalf("设置测试锁失败: %v", err)
 				}
 			},
-			cleanup: func(conn redis.Conn) {
+			cleanup: func(conn *redis.Client) {
 				cleanupTestKeys(conn, "test_lock:", 123)
 			},
 			wantErr: false,
@@ -298,8 +298,8 @@ func TestReleaseLock(t *testing.T) {
 				holderID:   456,
 				keyPrefix:  "test_lock:",
 			},
-			setup:   func(conn redis.Conn) {},
-			cleanup: func(conn redis.Conn) {},
+			setup:   func(conn *redis.Client) {},
+			cleanup: func(conn *redis.Client) {},
 			wantErr: true,
 		},
 		{
@@ -309,8 +309,8 @@ func TestReleaseLock(t *testing.T) {
 				holderID:   0, // 非法值
 				keyPrefix:  "test_lock:",
 			},
-			setup:   func(conn redis.Conn) {},
-			cleanup: func(conn redis.Conn) {},
+			setup:   func(conn *redis.Client) {},
+			cleanup: func(conn *redis.Client) {},
 			wantErr: true,
 		},
 		{
@@ -320,14 +320,14 @@ func TestReleaseLock(t *testing.T) {
 				holderID:   456,
 				keyPrefix:  "test_lock:",
 			},
-			setup: func(conn redis.Conn) {
+			setup: func(conn *redis.Client) {
 				// 确保锁不存在
-				_, err := conn.Do("DEL", "test_lock:124")
+				_, err := conn.Do(context.Background(), "DEL", "test_lock:124").Result()
 				if err != nil {
 					t.Fatalf("清理测试键失败: %v", err)
 				}
 			},
-			cleanup: func(conn redis.Conn) {},
+			cleanup: func(conn *redis.Client) {},
 			wantErr: true,
 		},
 		{
@@ -337,19 +337,19 @@ func TestReleaseLock(t *testing.T) {
 				holderID:   456,
 				keyPrefix:  "test_lock:",
 			},
-			setup: func(conn redis.Conn) {
+			setup: func(conn *redis.Client) {
 				// 先清理可能存在的键
-				_, err := conn.Do("DEL", "test_lock:125")
+				_, err := conn.Do(context.Background(), "DEL", "test_lock:125").Result()
 				if err != nil {
 					t.Fatalf("清理测试键失败: %v", err)
 				}
 				// 设置锁，由其他用户持有
-				_, err = conn.Do("SET", "test_lock:125", 789, "EX", 300)
+				_, err = conn.Do(context.Background(), "SET", "test_lock:125", 789, "EX", 300).Result()
 				if err != nil {
 					t.Fatalf("设置测试锁失败: %v", err)
 				}
 			},
-			cleanup: func(conn redis.Conn) {
+			cleanup: func(conn *redis.Client) {
 				cleanupTestKeys(conn, "test_lock:", 125)
 			},
 			wantErr: true,
@@ -361,16 +361,17 @@ func TestReleaseLock(t *testing.T) {
 				holderID:   456,
 				keyPrefix:  "test_lock:",
 			},
-			setup: func(conn redis.Conn) {
+			setup: func(conn *redis.Client) {
 				// 确保测试前键不存在
-				_, err := conn.Do("DEL", "test_lock:126")
+				_, err := conn.Do(context.Background(), "DEL", "test_lock:126").Result()
 				if err != nil {
 					t.Fatalf("清理测试键失败: %v", err)
 				}
 				conn.Close()
 			},
-			cleanup: func(conn redis.Conn) {
+			cleanup: func(conn *redis.Client) {
 				cleanupTestKeys(conn, "test_lock:", 126)
+				redisClient = nil
 			},
 			wantErr: true,
 		},
@@ -380,7 +381,6 @@ func TestReleaseLock(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// 创建真实上下文和Redis连接
 			ctx, conn := createRealContext()
-			defer conn.Close()
 
 			// 设置测试环境
 			tt.setup(conn)
@@ -399,7 +399,7 @@ func TestReleaseLock(t *testing.T) {
 			// 如果期望成功释放锁，验证锁是否已被删除
 			if !tt.wantErr {
 				resourceIdStr := strconv.Itoa(int(tt.args.resourceID))
-				res, err := conn.Do("EXISTS", tt.args.keyPrefix+resourceIdStr)
+				res, err := conn.Do(context.Background(), "EXISTS", tt.args.keyPrefix+resourceIdStr).Result()
 				if err != nil {
 					t.Fatalf("检查锁是否存在失败: %v", err)
 				}
@@ -427,8 +427,8 @@ func TestRefreshLock(t *testing.T) {
 	tests := []struct {
 		name    string
 		args    args
-		setup   func(redis.Conn)
-		cleanup func(redis.Conn)
+		setup   func(*redis.Client)
+		cleanup func(*redis.Client)
 		wantErr bool
 	}{
 		{
@@ -439,19 +439,19 @@ func TestRefreshLock(t *testing.T) {
 				keyPrefix:  "test_lock:",
 				expiration: 10 * time.Minute, // 新的过期时间
 			},
-			setup: func(conn redis.Conn) {
+			setup: func(conn *redis.Client) {
 				// 先清理可能存在的键
-				_, err := conn.Do("DEL", "test_lock:123")
+				_, err := conn.Do(context.Background(), "DEL", "test_lock:123").Result()
 				if err != nil {
 					t.Fatalf("清理测试键失败: %v", err)
 				}
 				// 设置锁，由当前用户持有，初始过期时间为5分钟
-				_, err = conn.Do("SET", "test_lock:123", 456, "EX", 300)
+				_, err = conn.Do(context.Background(), "SET", "test_lock:123", 456, "EX", 300).Result()
 				if err != nil {
 					t.Fatalf("设置测试锁失败: %v", err)
 				}
 			},
-			cleanup: func(conn redis.Conn) {
+			cleanup: func(conn *redis.Client) {
 				cleanupTestKeys(conn, "test_lock:", 123)
 			},
 			wantErr: false,
@@ -464,8 +464,8 @@ func TestRefreshLock(t *testing.T) {
 				keyPrefix:  "test_lock:",
 				expiration: 5 * time.Minute,
 			},
-			setup:   func(conn redis.Conn) {},
-			cleanup: func(conn redis.Conn) {},
+			setup:   func(conn *redis.Client) {},
+			cleanup: func(conn *redis.Client) {},
 			wantErr: true,
 		},
 		{
@@ -476,8 +476,8 @@ func TestRefreshLock(t *testing.T) {
 				keyPrefix:  "test_lock:",
 				expiration: 5 * time.Minute,
 			},
-			setup:   func(conn redis.Conn) {},
-			cleanup: func(conn redis.Conn) {},
+			setup:   func(conn *redis.Client) {},
+			cleanup: func(conn *redis.Client) {},
 			wantErr: true,
 		},
 		{
@@ -488,14 +488,14 @@ func TestRefreshLock(t *testing.T) {
 				keyPrefix:  "test_lock:",
 				expiration: 5 * time.Minute,
 			},
-			setup: func(conn redis.Conn) {
+			setup: func(conn *redis.Client) {
 				// 确保锁不存在
-				_, err := conn.Do("DEL", "test_lock:124")
+				_, err := conn.Do(context.Background(), "DEL", "test_lock:124").Result()
 				if err != nil {
 					t.Fatalf("清理测试键失败: %v", err)
 				}
 			},
-			cleanup: func(conn redis.Conn) {},
+			cleanup: func(conn *redis.Client) {},
 			wantErr: true,
 		},
 		{
@@ -506,19 +506,19 @@ func TestRefreshLock(t *testing.T) {
 				keyPrefix:  "test_lock:",
 				expiration: 5 * time.Minute,
 			},
-			setup: func(conn redis.Conn) {
+			setup: func(conn *redis.Client) {
 				// 先清理可能存在的键
-				_, err := conn.Do("DEL", "test_lock:125")
+				_, err := conn.Do(context.Background(), "DEL", "test_lock:125").Result()
 				if err != nil {
 					t.Fatalf("清理测试键失败: %v", err)
 				}
 				// 设置锁，由其他用户持有
-				_, err = conn.Do("SET", "test_lock:125", 789, "EX", 300)
+				_, err = conn.Do(context.Background(), "SET", "test_lock:125", 789, "EX", 300).Result()
 				if err != nil {
 					t.Fatalf("设置测试锁失败: %v", err)
 				}
 			},
-			cleanup: func(conn redis.Conn) {
+			cleanup: func(conn *redis.Client) {
 				cleanupTestKeys(conn, "test_lock:", 125)
 			},
 			wantErr: true,
@@ -531,19 +531,19 @@ func TestRefreshLock(t *testing.T) {
 				keyPrefix:  "test_lock:",
 				expiration: 0, // 使用默认过期时间
 			},
-			setup: func(conn redis.Conn) {
+			setup: func(conn *redis.Client) {
 				// 先清理可能存在的键
-				_, err := conn.Do("DEL", "test_lock:126")
+				_, err := conn.Do(context.Background(), "DEL", "test_lock:126").Result()
 				if err != nil {
 					t.Fatalf("清理测试键失败: %v", err)
 				}
 				// 设置锁，由当前用户持有
-				_, err = conn.Do("SET", "test_lock:126", 456, "EX", 300)
+				_, err = conn.Do(context.Background(), "SET", "test_lock:126", 456, "EX", 300).Result()
 				if err != nil {
 					t.Fatalf("设置测试锁失败: %v", err)
 				}
 			},
-			cleanup: func(conn redis.Conn) {
+			cleanup: func(conn *redis.Client) {
 				cleanupTestKeys(conn, "test_lock:", 126)
 			},
 			wantErr: false,
@@ -556,16 +556,17 @@ func TestRefreshLock(t *testing.T) {
 				keyPrefix:  "test_lock:",
 				expiration: 5 * time.Minute,
 			},
-			setup: func(conn redis.Conn) {
+			setup: func(conn *redis.Client) {
 				// 确保测试前键不存在
-				_, err := conn.Do("DEL", "test_lock:127")
+				_, err := conn.Do(context.Background(), "DEL", "test_lock:127").Result()
 				if err != nil {
 					t.Fatalf("清理测试键失败: %v", err)
 				}
 				conn.Close()
 			},
-			cleanup: func(conn redis.Conn) {
+			cleanup: func(conn *redis.Client) {
 				cleanupTestKeys(conn, "test_lock:", 127)
+				redisClient = nil
 			},
 			wantErr: true,
 		},
@@ -575,7 +576,6 @@ func TestRefreshLock(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// 创建真实上下文和Redis连接
 			ctx, conn := createRealContext()
-			defer conn.Close()
 
 			// 设置测试环境
 			tt.setup(conn)
@@ -589,7 +589,7 @@ func TestRefreshLock(t *testing.T) {
 			var beforeTTL int64 = -1
 			if !tt.wantErr && tt.name != "锁不存在" {
 				resourceIdStr := strconv.Itoa(int(tt.args.resourceID))
-				res, err := conn.Do("TTL", tt.args.keyPrefix+resourceIdStr)
+				res, err := conn.Do(context.Background(), "TTL", tt.args.keyPrefix+resourceIdStr).Result()
 				if err != nil {
 					t.Fatalf("获取锁TTL失败: %v", err)
 				}
@@ -609,7 +609,7 @@ func TestRefreshLock(t *testing.T) {
 			// 如果期望成功刷新锁，验证锁的TTL是否已更新
 			if !tt.wantErr {
 				resourceIdStr := strconv.Itoa(int(tt.args.resourceID))
-				res, err := conn.Do("TTL", tt.args.keyPrefix+resourceIdStr)
+				res, err := conn.Do(context.Background(), "TTL", tt.args.keyPrefix+resourceIdStr).Result()
 				if err != nil {
 					t.Fatalf("获取锁TTL失败: %v", err)
 				}
@@ -630,15 +630,15 @@ func TestRefreshLock(t *testing.T) {
 				}
 
 				// 验证锁的持有者是否未变
-				res, err = conn.Do("GET", tt.args.keyPrefix+resourceIdStr)
+				res, err = conn.Do(context.Background(), "GET", tt.args.keyPrefix+resourceIdStr).Result()
 				if err != nil {
 					t.Fatalf("获取锁持有者失败: %v", err)
 				}
-				bytes, ok := res.([]byte)
+				s, ok := res.(string)
 				if !ok {
 					t.Fatalf("unexpected type: %T", res)
 				}
-				s := string(bytes)
+
 				val, err := strconv.ParseInt(s, 10, 64)
 				if err != nil {
 					t.Fatalf("parse error: %v", err)
@@ -661,8 +661,8 @@ func TestGetLockHolder(t *testing.T) {
 	tests := []struct {
 		name    string
 		args    args
-		setup   func(redis.Conn)
-		cleanup func(redis.Conn)
+		setup   func(*redis.Client)
+		cleanup func(*redis.Client)
 		want    int64
 		wantErr bool
 	}{
@@ -672,19 +672,19 @@ func TestGetLockHolder(t *testing.T) {
 				resourceID: 123,
 				keyPrefix:  "test_lock:",
 			},
-			setup: func(conn redis.Conn) {
+			setup: func(conn *redis.Client) {
 				// 先清理可能存在的键
-				_, err := conn.Do("DEL", "test_lock:123")
+				_, err := conn.Do(context.Background(), "DEL", "test_lock:123").Result()
 				if err != nil {
 					t.Fatalf("清理测试键失败: %v", err)
 				}
 				// 设置锁，由指定用户持有
-				_, err = conn.Do("SET", "test_lock:123", 456, "EX", 300)
+				_, err = conn.Do(context.Background(), "SET", "test_lock:123", 456, "EX", 300).Result()
 				if err != nil {
 					t.Fatalf("设置测试锁失败: %v", err)
 				}
 			},
-			cleanup: func(conn redis.Conn) {
+			cleanup: func(conn *redis.Client) {
 				cleanupTestKeys(conn, "test_lock:", 123)
 			},
 			want:    456, // 期望返回的持有者ID
@@ -696,8 +696,8 @@ func TestGetLockHolder(t *testing.T) {
 				resourceID: 0, // 非法值
 				keyPrefix:  "test_lock:",
 			},
-			setup:   func(conn redis.Conn) {},
-			cleanup: func(conn redis.Conn) {},
+			setup:   func(conn *redis.Client) {},
+			cleanup: func(conn *redis.Client) {},
 			want:    -1,
 			wantErr: true,
 		},
@@ -707,14 +707,14 @@ func TestGetLockHolder(t *testing.T) {
 				resourceID: 124,
 				keyPrefix:  "test_lock:",
 			},
-			setup: func(conn redis.Conn) {
+			setup: func(conn *redis.Client) {
 				// 确保锁不存在
-				_, err := conn.Do("DEL", "test_lock:124")
+				_, err := conn.Do(context.Background(), "DEL", "test_lock:124").Result()
 				if err != nil {
 					t.Fatalf("清理测试键失败: %v", err)
 				}
 			},
-			cleanup: func(conn redis.Conn) {},
+			cleanup: func(conn *redis.Client) {},
 			want:    -1,
 			wantErr: true,
 		},
@@ -724,16 +724,64 @@ func TestGetLockHolder(t *testing.T) {
 				resourceID: 125,
 				keyPrefix:  "test_lock:",
 			},
-			setup: func(conn redis.Conn) {
+			setup: func(conn *redis.Client) {
 				// 确保测试前键不存在
-				_, err := conn.Do("DEL", "test_lock:125")
+				_, err := conn.Do(context.Background(), "DEL", "test_lock:125").Result()
+				if err != nil {
+					t.Fatalf("清理测试键失败: %v", err)
+				}
+
+			},
+			cleanup: func(conn *redis.Client) {
+				cleanupTestKeys(conn, "test_lock:", 125)
+			},
+			want:    -1,
+			wantErr: true,
+		},
+		{
+			name: "执行脚本报错",
+			args: args{
+				resourceID: 125,
+				keyPrefix:  "test_lock:",
+			},
+			setup: func(conn *redis.Client) {
+				// 确保测试前键不存在
+				_, err := conn.Do(context.Background(), "DEL", "test_lock:125").Result()
 				if err != nil {
 					t.Fatalf("清理测试键失败: %v", err)
 				}
 				conn.Close()
+
 			},
-			cleanup: func(conn redis.Conn) {
+			cleanup: func(conn *redis.Client) {
 				cleanupTestKeys(conn, "test_lock:", 125)
+				redisClient = nil
+			},
+			want:    -1,
+			wantErr: true,
+		},
+		{
+			name: "str转int错误",
+			args: args{
+				resourceID: 125,
+				keyPrefix:  "test_lock:",
+			},
+			setup: func(conn *redis.Client) {
+				// 确保测试前键不存在
+				_, err := conn.Do(context.Background(), "DEL", "test_lock:125").Result()
+				if err != nil {
+					t.Fatalf("清理测试键失败: %v", err)
+				}
+				// 设置锁，由指定用户持有
+				_, err = conn.Do(context.Background(), "SET", "test_lock:125", "test", "EX", 300).Result()
+				if err != nil {
+					t.Fatalf("设置测试锁失败: %v", err)
+				}
+
+			},
+			cleanup: func(conn *redis.Client) {
+				cleanupTestKeys(conn, "test_lock:", 125)
+				redisClient = nil
 			},
 			want:    -1,
 			wantErr: true,
@@ -744,7 +792,6 @@ func TestGetLockHolder(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// 创建真实上下文和Redis连接
 			ctx, conn := createRealContext()
-			defer conn.Close()
 
 			// 设置测试环境
 			tt.setup(conn)

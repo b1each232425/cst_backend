@@ -185,9 +185,9 @@ func UtilCleanup() {
 		D.Info("sqlxDB closed")
 	}
 
-	if redisPool != nil {
+	if redisClient != nil {
 		D.Info("close redis")
-		_ = redisPool.Close()
+		_ = redisClient.Close()
 		D.Info("redis closed")
 	}
 
