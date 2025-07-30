@@ -139,8 +139,14 @@ func Enroll(author string) {
 }
 
 func practiceTH(ctx context.Context) {
-	TEMPUID := int64(1574)
 	q := cmn.GetCtxValue(ctx)
+	userID := q.SysUser.ID.Int64
+	if userID <= 0 {
+		q.Err = fmt.Errorf("Invalid UserID: %d", userID)
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
 	// TODO 对接用户管理的令牌功能
 	//userID, _ := q.Session.Values["ID"].(int64)
 	//if userID <= 0 {
@@ -188,7 +194,7 @@ func practiceTH(ctx context.Context) {
 				q.RespErr()
 				return
 			}
-			err := UpsertPractice(ctx, &p.Practice, p.Student, TEMPUID)
+			err := UpsertPractice(ctx, &p.Practice, p.Student, userID)
 			if err != nil {
 				q.Err = err
 				q.RespErr()
@@ -277,7 +283,7 @@ func practiceTH(ctx context.Context) {
 			}
 			// 排序字段
 			orderBy := []string{"create_time desc"}
-			p, total, err := ListPracticeT(ctx, name, pType, status, orderBy, page, pageSize, TEMPUID)
+			p, total, err := ListPracticeT(ctx, name, pType, status, orderBy, page, pageSize, userID)
 			if err != nil {
 				q.Err = err
 				q.RespErr()
@@ -314,7 +320,7 @@ func practiceTH(ctx context.Context) {
 				q.RespErr()
 				return
 			}
-			q.Err = OperatePracticeStatus(ctx, id, status, TEMPUID)
+			q.Err = OperatePracticeStatus(ctx, id, status, userID)
 			if q.Err != nil {
 				q.RespErr()
 				return
@@ -349,15 +355,14 @@ func practiceStudentH(ctx context.Context) {
 }
 
 func practiceSH(ctx context.Context) {
-	TEMPUID := int64(1580)
 	q := cmn.GetCtxValue(ctx)
-	// TODO 对接用户管理的令牌功能
-	//userID, _ := q.Session.Values["ID"].(int64)
-	//if userID <= 0 {
-	//	q.Err = fmt.Errorf("invalid session")
-	//	z.Error(q.Err.Error())
-	//	return
-	//}
+	userID := q.SysUser.ID.Int64
+	if userID <= 0 {
+		q.Err = fmt.Errorf("Invalid UserID: %d", userID)
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
 	method := strings.ToLower(q.R.Method)
 	ctx, cancel := context.WithTimeout(q.R.Context(), 5*time.Second)
 	defer cancel()
@@ -410,7 +415,7 @@ func practiceSH(ctx context.Context) {
 
 	// 排序字段
 	orderBy := []string{"create_time desc"}
-	p, total, err := ListPracticeS(ctx, t, name, d, orderBy, page, pageSize, TEMPUID)
+	p, total, err := ListPracticeS(ctx, t, name, d, orderBy, page, pageSize, userID)
 	if err != nil {
 		q.Err = err
 		q.RespErr()
@@ -437,6 +442,7 @@ func practiceStudentListH(ctx context.Context) {
 	q := cmn.GetCtxValue(ctx)
 	ctx, cancel := context.WithTimeout(q.R.Context(), 5*time.Second)
 	defer cancel()
+
 	id := q.R.URL.Query().Get("id")
 	if id == "" {
 		q.Err = fmt.Errorf("缺失练习ID")
