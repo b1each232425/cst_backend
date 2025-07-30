@@ -52,7 +52,7 @@ func TestStudentAnswer(t *testing.T) {
 					"answer": {"answer":["B"]}
 				}`),
 			},
-			userId:          1575,
+			userId:          1623,
 			expectSuccess:   true,
 			expectedMessage: "",
 			expectedData: json.RawMessage(`{
@@ -654,13 +654,13 @@ func TestCheckExamStatus(t *testing.T) {
 	defer tx.Rollback(ctx) // 确保测试结束后回滚事务，恢复原始数据
 
 	// 修改数据库中的考试状态以测试不同场景
-	// 1. 保存考试会话152的原始数据
+	// 1. 保存考试会话155的原始数据
 	var originalStartTime, originalEndTime, originalExamineeEndTime, originalAllowEntryTime sql.NullInt64
 	var originalExamineeStatus sql.NullString
 	err = tx.QueryRow(ctx, `
 			SELECT start_time, actual_end_time, examinee_end_time, allow_entry_time, examinee_status 
 			FROM v_examinee_info 
-			WHERE exam_session_id = 152 AND student_id = 1575
+			WHERE exam_session_id = 155 AND student_id = 1623
 		`).Scan(&originalStartTime, &originalEndTime, &originalExamineeEndTime, &originalAllowEntryTime, &originalExamineeStatus)
 	if err != nil {
 		t.Logf("Warning: Could not fetch original exam data: %v", err)
@@ -686,13 +686,13 @@ func TestCheckExamStatus(t *testing.T) {
 		{
 			name:            "GET 请求 - 考试可以进入",
 			method:          "GET",
-			url:             "/api/exam/status?exam_session_id=152",
+			url:             "/api/exam/status?exam_session_id=155",
 			reqBody:         nil,
 			expectSuccess:   true,
 			expectedCode:    0,
 			expectedMessage: "",
 			expectedData:    json.RawMessage(`5`), // ExamCanBeEnter状态
-			userId:          1575,
+			userId:          1623,
 			setupDB: func(t *testing.T, tx pgx.Tx) error {
 				// 设置考试状态为可以进入
 				// 1. 确保考试已开始（start_time < 当前时间）
@@ -704,7 +704,7 @@ func TestCheckExamStatus(t *testing.T) {
 						UPDATE t_examinee 
 						SET status = '16', 
 						    end_time = NULL 
-						WHERE exam_session_id = 152 AND student_id = 1575
+						WHERE exam_session_id = 155 AND student_id = 1623
 					`)
 				if err != nil {
 					return err
@@ -715,7 +715,7 @@ func TestCheckExamStatus(t *testing.T) {
 						UPDATE t_exam_session 
 						SET start_time = $1, 
 						    end_time = $2 
-						WHERE id = 152
+						WHERE id = 155
 					`, now-3600000, now+3600000) // 开始时间为1小时前，结束时间为1小时后
 				return err
 			},
@@ -724,13 +724,13 @@ func TestCheckExamStatus(t *testing.T) {
 		{
 			name:            "GET 请求 - 考试未开始",
 			method:          "GET",
-			url:             "/api/exam/status?exam_session_id=152",
+			url:             "/api/exam/status?exam_session_id=155",
 			reqBody:         nil,
 			expectSuccess:   true,
 			expectedCode:    0,
 			expectedMessage: "",
 			expectedData:    json.RawMessage(`1`), // StartTimeNotArrived状态
-			userId:          1575,
+			userId:          1623,
 			setupDB: func(t *testing.T, tx pgx.Tx) error {
 				// 设置考试状态为未开始
 				now := time.Now().UnixMilli()
@@ -738,7 +738,7 @@ func TestCheckExamStatus(t *testing.T) {
 						UPDATE t_exam_session 
 						SET start_time = $1, 
 						    end_time = $2 
-						WHERE id = 152
+						WHERE id = 155
 					`, now+3600000, now+7200000) // 开始时间为1小时后，结束时间为2小时后
 				return err
 			},
@@ -747,13 +747,13 @@ func TestCheckExamStatus(t *testing.T) {
 		{
 			name:            "GET 请求 - 考试已结束",
 			method:          "GET",
-			url:             "/api/exam/status?exam_session_id=152",
+			url:             "/api/exam/status?exam_session_id=155",
 			reqBody:         nil,
 			expectSuccess:   true,
 			expectedCode:    0,
 			expectedMessage: "",
 			expectedData:    json.RawMessage(`2`), // EndTimeArrived状态
-			userId:          1575,
+			userId:          1623,
 			setupDB: func(t *testing.T, tx pgx.Tx) error {
 				// 设置考试状态为已结束
 				now := time.Now().UnixMilli()
@@ -761,7 +761,7 @@ func TestCheckExamStatus(t *testing.T) {
 						UPDATE t_exam_session 
 						SET start_time = $1, 
 						    end_time = $2 
-						WHERE id = 152
+						WHERE id = 155
 					`, now-7200000, now-3600000) // 开始时间为2小时前，结束时间为1小时前
 				return err
 			},
@@ -770,13 +770,13 @@ func TestCheckExamStatus(t *testing.T) {
 		{
 			name:            "GET 请求 - 考试已提交",
 			method:          "GET",
-			url:             "/api/exam/status?exam_session_id=152",
+			url:             "/api/exam/status?exam_session_id=155",
 			reqBody:         nil,
 			expectSuccess:   true,
 			expectedCode:    0,
 			expectedMessage: "",
 			expectedData:    json.RawMessage(`3`), // ExamSubmitted状态
-			userId:          1575,
+			userId:          1623,
 			setupDB: func(t *testing.T, tx pgx.Tx) error {
 				// 设置考试状态为已提交
 				now := time.Now().UnixMilli()
@@ -784,7 +784,7 @@ func TestCheckExamStatus(t *testing.T) {
 						UPDATE t_exam_session 
 						SET start_time = $1, 
 						    end_time = $2 
-						WHERE id = 152
+						WHERE id = 155
 					`, now-3600000, now+3600000) // 开始时间为1小时前，结束时间为1小时后
 				if err != nil {
 					return err
@@ -794,7 +794,7 @@ func TestCheckExamStatus(t *testing.T) {
 				_, err = tx.Exec(ctx, `
 						UPDATE t_examinee 
 						SET end_time = $1 
-						WHERE exam_session_id = 152 AND student_id = 1575
+						WHERE exam_session_id = 155 AND student_id = 1623
 					`, now-1800000) // 提交时间为30分钟前
 				return err
 			},
@@ -803,13 +803,13 @@ func TestCheckExamStatus(t *testing.T) {
 		{
 			name:            "GET 请求 - 超过最迟进入时间",
 			method:          "GET",
-			url:             "/api/exam/status?exam_session_id=152",
+			url:             "/api/exam/status?exam_session_id=155",
 			reqBody:         nil,
 			expectSuccess:   true,
 			expectedCode:    0,
 			expectedMessage: "",
 			expectedData:    json.RawMessage(`4`), // LateEntryTimeArrived状态
-			userId:          1575,
+			userId:          1623,
 			setupDB: func(t *testing.T, tx pgx.Tx) error {
 				// 设置考试状态为超过最迟进入时间
 				now := time.Now().UnixMilli()
@@ -819,7 +819,7 @@ func TestCheckExamStatus(t *testing.T) {
 						    end_time = $2,
 						    period_mode = '00' ,
 						    late_entry_time = $3
-						WHERE id = 152
+						WHERE id = 155
 					`, now-3600000, now+3600000, 3) // 开始时间为1小时前，结束时间为1小时后
 				if err != nil {
 					return err
@@ -831,7 +831,7 @@ func TestCheckExamStatus(t *testing.T) {
 						SET start_time = NULL,
 						    end_time = NULL, 
 						    status = '00' 
-						WHERE exam_session_id = 152 AND student_id = 1575
+						WHERE exam_session_id = 155 AND student_id = 1623
 					`) // 最迟进入时间为30分钟前
 				return err
 			},
@@ -846,7 +846,7 @@ func TestCheckExamStatus(t *testing.T) {
 			expectedCode:    400,
 			expectedMessage: "examSessionId is required",
 			expectedData:    nil,
-			userId:          1575,
+			userId:          1623,
 			setupDB:         nil, // 不需要设置数据库
 		},
 		// 失败场景 - 无效的考试会话ID
@@ -859,14 +859,14 @@ func TestCheckExamStatus(t *testing.T) {
 			expectedCode:    400,
 			expectedMessage: "",
 			expectedData:    nil,
-			userId:          1575,
+			userId:          1623,
 			setupDB:         nil, // 不需要设置数据库
 		},
 		// 失败场景 - 用户未登录
 		{
 			name:            "GET 请求 - 用户未登录",
 			method:          "GET",
-			url:             "/api/exam/status?exam_session_id=152",
+			url:             "/api/exam/status?exam_session_id=155",
 			reqBody:         nil,
 			expectSuccess:   false,
 			expectedCode:    200,
@@ -878,13 +878,13 @@ func TestCheckExamStatus(t *testing.T) {
 		{
 			name:            "GET 请求 - 请求方法不对",
 			method:          "POST",
-			url:             "/api/exam/status?exam_session_id=152",
+			url:             "/api/exam/status?exam_session_id=155",
 			reqBody:         nil,
 			expectSuccess:   false,
 			expectedCode:    200,
 			expectedMessage: "",
 			expectedData:    nil,
-			userId:          1575, // 用户ID为0表示未登录
+			userId:          1623, // 用户ID为0表示未登录
 			setupDB:         nil,  // 不需要设置数据库
 		},
 		{
@@ -896,58 +896,58 @@ func TestCheckExamStatus(t *testing.T) {
 			expectedCode:    0,
 			expectedMessage: "",
 			expectedData:    nil, // ExamSubmitted状态
-			userId:          1575,
+			userId:          1623,
 			setupDB:         nil,
 		},
 		{
 			name:            "GET 请求 - tx begin error",
 			method:          "GET",
-			url:             "/api/exam/status?exam_session_id=152",
+			url:             "/api/exam/status?exam_session_id=155",
 			reqBody:         nil,
 			expectSuccess:   false,
 			expectedCode:    0,
 			expectedMessage: "",
 			expectedData:    nil, // ExamSubmitted状态
-			userId:          1575,
+			userId:          1623,
 			setupDB:         nil,
 			forceErr:        "begin-tx",
 		},
 		{
 			name:            "GET 请求 - commit error",
 			method:          "GET",
-			url:             "/api/exam/status?exam_session_id=152",
+			url:             "/api/exam/status?exam_session_id=155",
 			reqBody:         nil,
 			expectSuccess:   false,
 			expectedCode:    0,
 			expectedMessage: "",
 			expectedData:    nil, // ExamSubmitted状态
-			userId:          1575,
+			userId:          1623,
 			setupDB:         nil,
 			forceErr:        "commit-tx",
 		},
 		{
 			name:            "GET 请求 - marshal-Err",
 			method:          "GET",
-			url:             "/api/exam/status?exam_session_id=152",
+			url:             "/api/exam/status?exam_session_id=155",
 			reqBody:         nil,
 			expectSuccess:   false,
 			expectedCode:    0,
 			expectedMessage: "",
 			expectedData:    nil, // ExamSubmitted状态
-			userId:          1575,
+			userId:          1623,
 			setupDB:         nil,
 			forceErr:        "marshal-Err",
 		},
 		{
 			name:            "GET 请求 - rollback-tx-Err",
 			method:          "GET",
-			url:             "/api/exam/status?exam_session_id=152",
+			url:             "/api/exam/status?exam_session_id=155",
 			reqBody:         nil,
 			expectSuccess:   false,
 			expectedCode:    0,
 			expectedMessage: "",
 			expectedData:    nil, // ExamSubmitted状态
-			userId:          1575,
+			userId:          1623,
 			setupDB:         nil,
 			forceErr:        "rollback-tx",
 		},
@@ -1059,7 +1059,7 @@ func TestCheckExamStatus(t *testing.T) {
 				UPDATE assessuser.t_exam_session 
 				SET start_time = $1, 
 				    end_time = $2 
-				WHERE id = 152
+				WHERE id = 155
 			`, originalStartTime.Int64, originalEndTime.Int64)
 		if err != nil {
 			t.Logf("Warning: Failed to restore original exam session data: %v", err)
@@ -1070,7 +1070,7 @@ func TestCheckExamStatus(t *testing.T) {
 				UPDATE assessuser.t_examinee 
 				SET end_time = $1, 
 				    status = $2 
-				WHERE exam_session_id = 152 AND student_id = 1575
+				WHERE exam_session_id = 155 AND student_id = 1623
 			`,
 			originalExamineeEndTime, originalExamineeStatus)
 		if err != nil {
@@ -1126,12 +1126,12 @@ func TestInitRespondent(t *testing.T) {
 			url:             "/api/respondent",
 			expectSuccess:   true,
 			expectedMessage: "",
-			userId:          1575,
+			userId:          1623,
 			reqBody: &cmn.ReqProto{
 				Data: json.RawMessage(`{
 					"type": "00",
-					"exam_id": 108,
-					"exam_session_id": 152
+					"exam_id": 111,
+					"exam_session_id": 155
 				}`),
 			},
 			setupDB: func(t *testing.T, tx pgx.Tx) error {
@@ -1141,7 +1141,7 @@ func TestInitRespondent(t *testing.T) {
 						SET status = '16', 
 						    start_time=NULL,
 						    end_time = NULL 
-						WHERE exam_session_id = 152 AND student_id = 1575
+						WHERE exam_session_id = 155 AND student_id = 1623
 					`)
 				if err != nil {
 					return err
@@ -1152,7 +1152,7 @@ func TestInitRespondent(t *testing.T) {
 						UPDATE t_exam_session 
 						SET start_time = $1, 
 						    end_time = $2 
-						WHERE id = 152
+						WHERE id = 155
 					`, now-3600000, now+3600000) // 开始时间为1小时前，结束时间为1小时后
 				return err
 			},
@@ -1163,12 +1163,12 @@ func TestInitRespondent(t *testing.T) {
 			url:             "/api/respondent",
 			expectSuccess:   true,
 			expectedMessage: "",
-			userId:          1575,
+			userId:          1623,
 			reqBody: &cmn.ReqProto{
 				Data: json.RawMessage(`{
 					"type": "00",
-					"exam_id": 108,
-					"exam_session_id": 152
+					"exam_id": 111,
+					"exam_session_id": 155
 				}`),
 			},
 			setupDB: func(t *testing.T, tx pgx.Tx) error {
@@ -1178,7 +1178,7 @@ func TestInitRespondent(t *testing.T) {
 						SET status = '16', 
 						    start_time=NULL,
 						    end_time = NULL 
-						WHERE exam_session_id = 152 AND student_id = 1575
+						WHERE exam_session_id = 155 AND student_id = 1623
 					`)
 				if err != nil {
 					return err
@@ -1189,7 +1189,7 @@ func TestInitRespondent(t *testing.T) {
 						UPDATE t_exam_session 
 						SET start_time = $1, 
 						    end_time = $2 
-						WHERE id = 152
+						WHERE id = 155
 					`, now-3600000, now+3600000) // 开始时间为1小时前，结束时间为1小时后
 				return err
 			},
@@ -1200,12 +1200,12 @@ func TestInitRespondent(t *testing.T) {
 			url:             "/api/respondent",
 			expectSuccess:   true,
 			expectedMessage: "",
-			userId:          1575,
+			userId:          1623,
 			reqBody: &cmn.ReqProto{
 				Data: json.RawMessage(`{
 					"type": "00",
-					"exam_id": 108,
-					"exam_session_id": 152
+					"exam_id": 111,
+					"exam_session_id": 155
 				}`),
 			},
 			setupDB: func(t *testing.T, tx pgx.Tx) error {
@@ -1215,7 +1215,7 @@ func TestInitRespondent(t *testing.T) {
 						SET status = '00', 
 						    start_time=$1,
 						    end_time = NULL 
-						WHERE exam_session_id = 152 AND student_id = 1575
+						WHERE exam_session_id = 155 AND student_id = 1623
 					`, now)
 				if err != nil {
 					return err
@@ -1227,7 +1227,7 @@ func TestInitRespondent(t *testing.T) {
 						SET start_time = $1, 
 						    end_time = $2 ,
 						    late_entry_time = $3
-						WHERE id = 152
+						WHERE id = 155
 					`, now-3600000, now+3600000, 5000) // 开始时间为1小时前，结束时间为1小时后
 				return err
 			},
@@ -1238,12 +1238,12 @@ func TestInitRespondent(t *testing.T) {
 			url:             "/api/respondent",
 			expectSuccess:   true,
 			expectedMessage: "",
-			userId:          1575,
+			userId:          1623,
 			reqBody: &cmn.ReqProto{
 				Data: json.RawMessage(`{
 					"type": "00",
-					"exam_id": 108,
-					"exam_session_id": 152
+					"exam_id": 111,
+					"exam_session_id": 155
 				}`),
 			},
 			setupDB: func(t *testing.T, tx pgx.Tx) error {
@@ -1253,7 +1253,7 @@ func TestInitRespondent(t *testing.T) {
 						SET status = '00', 
 						    start_time=NULL,
 						    end_time = NULL 
-						WHERE exam_session_id = 152 AND student_id = 1575
+						WHERE exam_session_id = 155 AND student_id = 1623
 					`)
 				if err != nil {
 					return err
@@ -1265,7 +1265,7 @@ func TestInitRespondent(t *testing.T) {
 						SET start_time = $1, 
 						    end_time = $2 ,
 						    late_entry_time = $3
-						WHERE id = 152
+						WHERE id = 155
 					`, now-3600000, now+3600000, 5000) // 开始时间为1小时前，结束时间为1小时后
 				return err
 			},
@@ -1276,13 +1276,13 @@ func TestInitRespondent(t *testing.T) {
 			url:             "/api/respondent",
 			expectSuccess:   false,
 			expectedMessage: "",
-			userId:          1575,
+			userId:          1623,
 			reqBody: &cmn.ReqProto{
 				Data: json.RawMessage(`{
 					"type": "00",
-					"exam_id": 108,
+					"exam_id": 111,
 					"exam_session_id": 1,
-					"student_id": 1575
+					"student_id": 1623
 				}`),
 			},
 			setupDB: func(t *testing.T, tx pgx.Tx) error {
@@ -1292,7 +1292,7 @@ func TestInitRespondent(t *testing.T) {
 						SET status = '16', 
 						    start_time=NULL,
 						    end_time = NULL 
-						WHERE exam_session_id = 152 AND student_id = 1575
+						WHERE exam_session_id = 155 AND student_id = 1623
 					`)
 				if err != nil {
 					return err
@@ -1303,7 +1303,7 @@ func TestInitRespondent(t *testing.T) {
 						UPDATE t_exam_session 
 						SET start_time = $1, 
 						    end_time = $2 
-						WHERE id = 152
+						WHERE id = 155
 					`, now-3600000, now+3600000) // 开始时间为1小时前，结束时间为1小时后
 				return err
 			},
@@ -1314,13 +1314,13 @@ func TestInitRespondent(t *testing.T) {
 			url:             "/api/respondent",
 			expectSuccess:   false,
 			expectedMessage: "",
-			userId:          1575,
+			userId:          1623,
 			reqBody: &cmn.ReqProto{
 				Data: json.RawMessage(`{
 					"type": "00",
 					"exam_id": 1,
-					"exam_session_id": 152,
-					"student_id": 1575
+					"exam_session_id": 155,
+					"student_id": 1623
 				}`),
 			},
 			setupDB: func(t *testing.T, tx pgx.Tx) error {
@@ -1330,7 +1330,7 @@ func TestInitRespondent(t *testing.T) {
 						SET status = '16', 
 						    start_time=NULL,
 						    end_time = NULL 
-						WHERE exam_session_id = 152 AND student_id = 1575
+						WHERE exam_session_id = 155 AND student_id = 1623
 					`)
 				if err != nil {
 					return err
@@ -1341,7 +1341,7 @@ func TestInitRespondent(t *testing.T) {
 						UPDATE t_exam_session 
 						SET start_time = $1, 
 						    end_time = $2 
-						WHERE id = 152
+						WHERE id = 155
 					`, now-3600000, now+3600000) // 开始时间为1小时前，结束时间为1小时后
 				return err
 			},
@@ -1352,13 +1352,13 @@ func TestInitRespondent(t *testing.T) {
 			url:             "/api/respondent",
 			expectSuccess:   false,
 			expectedMessage: "",
-			userId:          1575,
+			userId:          1623,
 			reqBody: &cmn.ReqProto{
 				Data: json.RawMessage(`{
 					"type": "00",
 					"exam_id": 0,
-					"exam_session_id": 152,
-					"student_id": 1575
+					"exam_session_id": 155,
+					"student_id": 1623
 				}`),
 			},
 			setupDB: func(t *testing.T, tx pgx.Tx) error {
@@ -1368,7 +1368,7 @@ func TestInitRespondent(t *testing.T) {
 						SET status = '16', 
 						    start_time=NULL,
 						    end_time = NULL 
-						WHERE exam_session_id = 152 AND student_id = 1575
+						WHERE exam_session_id = 155 AND student_id = 1623
 					`)
 				if err != nil {
 					return err
@@ -1379,7 +1379,7 @@ func TestInitRespondent(t *testing.T) {
 						UPDATE t_exam_session 
 						SET start_time = $1, 
 						    end_time = $2 
-						WHERE id = 152
+						WHERE id = 155
 					`, now-3600000, now+3600000) // 开始时间为1小时前，结束时间为1小时后
 				return err
 			},
@@ -1390,13 +1390,13 @@ func TestInitRespondent(t *testing.T) {
 			url:             "/api/respondent",
 			expectSuccess:   false,
 			expectedMessage: "",
-			userId:          1575,
+			userId:          1623,
 			reqBody: &cmn.ReqProto{
 				Data: json.RawMessage(`{
 					"type": "00",
 					"exam_id": -1,
-					"exam_session_id": 152,
-					"student_id": 1575
+					"exam_session_id": 155,
+					"student_id": 1623
 				}`),
 			},
 			setupDB: func(t *testing.T, tx pgx.Tx) error {
@@ -1406,7 +1406,7 @@ func TestInitRespondent(t *testing.T) {
 						SET status = '16', 
 						    start_time=NULL,
 						    end_time = NULL 
-						WHERE exam_session_id = 152 AND student_id = 1575
+						WHERE exam_session_id = 155 AND student_id = 1623
 					`)
 				if err != nil {
 					return err
@@ -1417,7 +1417,7 @@ func TestInitRespondent(t *testing.T) {
 						UPDATE t_exam_session 
 						SET start_time = $1, 
 						    end_time = $2 
-						WHERE id = 152
+						WHERE id = 155
 					`, now-3600000, now+3600000) // 开始时间为1小时前，结束时间为1小时后
 				return err
 			},
@@ -1428,7 +1428,7 @@ func TestInitRespondent(t *testing.T) {
 			url:             "/api/respondent",
 			expectSuccess:   false,
 			expectedMessage: "",
-			userId:          1575,
+			userId:          1623,
 			reqBody: &cmn.ReqProto{
 				Data: json.RawMessage(`{
 					"type": "00",
@@ -1443,7 +1443,7 @@ func TestInitRespondent(t *testing.T) {
 						SET status = '16', 
 						    start_time=NULL,
 						    end_time = NULL 
-						WHERE exam_session_id = 152 AND student_id = 1575
+						WHERE exam_session_id = 155 AND student_id = 1623
 					`)
 				if err != nil {
 					return err
@@ -1454,7 +1454,7 @@ func TestInitRespondent(t *testing.T) {
 						UPDATE t_exam_session 
 						SET start_time = $1, 
 						    end_time = $2 
-						WHERE id = 152
+						WHERE id = 155
 					`, now-3600000, now+3600000) // 开始时间为1小时前，结束时间为1小时后
 				return err
 			},
@@ -1465,12 +1465,12 @@ func TestInitRespondent(t *testing.T) {
 			url:             "/api/respondent",
 			expectSuccess:   false,
 			expectedMessage: "",
-			userId:          1575,
+			userId:          1623,
 			reqBody: &cmn.ReqProto{
 				Data: json.RawMessage(`{
 					"type": "00",
 					"exam_id": 108,
-					"exam_session_id": 152
+					"exam_session_id": 155
 				}`),
 			},
 			setupDB: func(t *testing.T, tx pgx.Tx) error {
@@ -1480,7 +1480,7 @@ func TestInitRespondent(t *testing.T) {
 						SET status = '00', 
 						    start_time=NULL,
 						    end_time = NULL 
-						WHERE exam_session_id = 152 AND student_id = 1575
+						WHERE exam_session_id = 155 AND student_id = 1623
 					`)
 				if err != nil {
 					return err
@@ -1492,7 +1492,7 @@ func TestInitRespondent(t *testing.T) {
 						SET start_time = $1, 
 						    end_time = $2 ,
 						    late_entry_time = $3
-						WHERE id = 152
+						WHERE id = 155
 					`, now-3600000, now+3600000, 2) // 开始时间为1小时前，结束时间为1小时后
 				return err
 			},
@@ -1503,12 +1503,12 @@ func TestInitRespondent(t *testing.T) {
 			url:             "/api/respondent",
 			expectSuccess:   false,
 			expectedMessage: "",
-			userId:          1575,
+			userId:          1623,
 			reqBody: &cmn.ReqProto{
 				Data: json.RawMessage(`{
 					"type": "00",
 					"exam_id": 108,
-					"exam_session_id": 152
+					"exam_session_id": 155
 				}`),
 			},
 			setupDB: func(t *testing.T, tx pgx.Tx) error {
@@ -1518,7 +1518,7 @@ func TestInitRespondent(t *testing.T) {
 						SET status = '00', 
 						    start_time=NULL,
 						    end_time = NULL 
-						WHERE exam_session_id = 152 AND student_id = 1575
+						WHERE exam_session_id = 155 AND student_id = 1623
 					`)
 				if err != nil {
 					return err
@@ -1530,7 +1530,7 @@ func TestInitRespondent(t *testing.T) {
 						SET start_time = $1, 
 						    end_time = $2 ,
 						    late_entry_time = $3
-						WHERE id = 152
+						WHERE id = 155
 					`, now-3600000, now-2800, 2) // 开始时间为1小时前，结束时间为1小时后
 				return err
 			},
@@ -1541,12 +1541,12 @@ func TestInitRespondent(t *testing.T) {
 			url:             "/api/respondent",
 			expectSuccess:   false,
 			expectedMessage: "",
-			userId:          1575,
+			userId:          1623,
 			reqBody: &cmn.ReqProto{
 				Data: json.RawMessage(`{
 					"type": "00",
 					"exam_id": 108,
-					"exam_session_id": 152
+					"exam_session_id": 155
 				}`),
 			},
 			setupDB: func(t *testing.T, tx pgx.Tx) error {
@@ -1556,7 +1556,7 @@ func TestInitRespondent(t *testing.T) {
 						SET status = '00', 
 						    start_time=NULL,
 						    end_time = NULL 
-						WHERE exam_session_id = 152 AND student_id = 1575
+						WHERE exam_session_id = 155 AND student_id = 1623
 					`)
 				if err != nil {
 					return err
@@ -1568,7 +1568,7 @@ func TestInitRespondent(t *testing.T) {
 						SET start_time = $1, 
 						    end_time = $2 ,
 						    late_entry_time = $3
-						WHERE id = 152
+						WHERE id = 155
 					`, now+3600000, now+2*3600000, 2) // 开始时间为1小时前，结束时间为1小时后
 				return err
 			},
@@ -1579,12 +1579,12 @@ func TestInitRespondent(t *testing.T) {
 			url:             "/api/respondent",
 			expectSuccess:   false,
 			expectedMessage: "",
-			userId:          1575,
+			userId:          1623,
 			reqBody: &cmn.ReqProto{
 				Data: json.RawMessage(`{
 					"type": "00",
 					"exam_id": 108,
-					"exam_session_id": 152
+					"exam_session_id": 155
 				}`),
 			},
 			forceErr: "begin-tx",
@@ -1595,7 +1595,7 @@ func TestInitRespondent(t *testing.T) {
 						SET status = '16', 
 						    start_time=NULL,
 						    end_time = NULL 
-						WHERE exam_session_id = 152 AND student_id = 1575
+						WHERE exam_session_id = 155 AND student_id = 1623
 					`)
 				if err != nil {
 					return err
@@ -1606,7 +1606,7 @@ func TestInitRespondent(t *testing.T) {
 						UPDATE t_exam_session 
 						SET start_time = $1, 
 						    end_time = $2 
-						WHERE id = 152
+						WHERE id = 155
 					`, now-3600000, now+3600000) // 开始时间为1小时前，结束时间为1小时后
 				return err
 			},
@@ -1617,12 +1617,12 @@ func TestInitRespondent(t *testing.T) {
 			url:             "/api/respondent",
 			expectSuccess:   false,
 			expectedMessage: "",
-			userId:          1575,
+			userId:          1623,
 			reqBody: &cmn.ReqProto{
 				Data: json.RawMessage(`{
 					"type": "00",
 					"exam_id": 108,
-					"exam_session_id": 152
+					"exam_session_id": 155
 				}`),
 			},
 			forceErr: "rollback-tx",
@@ -1633,7 +1633,7 @@ func TestInitRespondent(t *testing.T) {
 						SET status = '16', 
 						    start_time=NULL,
 						    end_time = NULL 
-						WHERE exam_session_id = 152 AND student_id = 1575
+						WHERE exam_session_id = 155 AND student_id = 1623
 					`)
 				if err != nil {
 					return err
@@ -1644,7 +1644,7 @@ func TestInitRespondent(t *testing.T) {
 						UPDATE t_exam_session 
 						SET start_time = $1, 
 						    end_time = $2 
-						WHERE id = 152
+						WHERE id = 155
 					`, now-3600000, now+3600000) // 开始时间为1小时前，结束时间为1小时后
 				return err
 			},
@@ -1655,7 +1655,7 @@ func TestInitRespondent(t *testing.T) {
 			url:             "/api/respondent",
 			expectSuccess:   false,
 			expectedMessage: "",
-			userId:          1575,
+			userId:          1623,
 			reqBody: &cmn.ReqProto{
 				Data: json.RawMessage(`{
 					"type": "00",
@@ -1670,7 +1670,7 @@ func TestInitRespondent(t *testing.T) {
 						SET status = '16', 
 						    start_time=NULL,
 						    end_time = NULL 
-						WHERE exam_session_id = 152 AND student_id = 1575
+						WHERE exam_session_id = 155 AND student_id = 1623
 					`)
 				if err != nil {
 					return err
@@ -1681,7 +1681,7 @@ func TestInitRespondent(t *testing.T) {
 						UPDATE t_exam_session 
 						SET start_time = $1, 
 						    end_time = $2 
-						WHERE id = 152
+						WHERE id = 155
 					`, now-3600000, now+3600000) // 开始时间为1小时前，结束时间为1小时后
 				return err
 			},
@@ -1697,7 +1697,7 @@ func TestInitRespondent(t *testing.T) {
 				Data: json.RawMessage(`{
 					"type": "00",
 					"exam_id": 108,
-					"exam_session_id": 152
+					"exam_session_id": 155
 				}`),
 			},
 			setupDB: func(t *testing.T, tx pgx.Tx) error {
@@ -1707,7 +1707,7 @@ func TestInitRespondent(t *testing.T) {
 						SET status = '16', 
 						    start_time=NULL,
 						    end_time = NULL 
-						WHERE exam_session_id = 152 AND student_id = 1575
+						WHERE exam_session_id = 155 AND student_id = 1623
 					`)
 				if err != nil {
 					return err
@@ -1718,7 +1718,7 @@ func TestInitRespondent(t *testing.T) {
 						UPDATE t_exam_session 
 						SET start_time = $1, 
 						    end_time = $2 
-						WHERE id = 152
+						WHERE id = 155
 					`, now-3600000, now+3600000) // 开始时间为1小时前，结束时间为1小时后
 				return err
 			},
@@ -1734,7 +1734,7 @@ func TestInitRespondent(t *testing.T) {
 				Data: json.RawMessage(`{
 					"type": "00",
 					"exam_id": 108,
-					"exam_session_id": 152
+					"exam_session_id": 155
 				}`),
 			},
 			setupDB: func(t *testing.T, tx pgx.Tx) error {
@@ -1744,7 +1744,7 @@ func TestInitRespondent(t *testing.T) {
 						SET status = '16', 
 						    start_time=NULL,
 						    end_time = NULL 
-						WHERE exam_session_id = 152 AND student_id = 1575
+						WHERE exam_session_id = 155 AND student_id = 1623
 					`)
 				if err != nil {
 					return err
@@ -1755,7 +1755,7 @@ func TestInitRespondent(t *testing.T) {
 						UPDATE t_exam_session 
 						SET start_time = $1, 
 						    end_time = $2 
-						WHERE id = 152
+						WHERE id = 155
 					`, now-3600000, now+3600000) // 开始时间为1小时前，结束时间为1小时后
 				return err
 			},
@@ -1767,7 +1767,7 @@ func TestInitRespondent(t *testing.T) {
 			reqBody:         &cmn.ReqProto{},
 			expectSuccess:   false,
 			expectedMessage: "io read all error",
-			userId:          1575,
+			userId:          1623,
 			forceErr:        "io.ReadAll",
 		},
 		{
@@ -1777,7 +1777,7 @@ func TestInitRespondent(t *testing.T) {
 			reqBody:         &cmn.ReqProto{},
 			expectSuccess:   false,
 			expectedMessage: "",
-			userId:          1575,
+			userId:          1623,
 		},
 		{
 			name:            "buf-zero",
@@ -1786,7 +1786,7 @@ func TestInitRespondent(t *testing.T) {
 			reqBody:         &cmn.ReqProto{},
 			expectSuccess:   false,
 			expectedMessage: "",
-			userId:          1575,
+			userId:          1623,
 		},
 		// 失败场景 - 无效的JSON
 		{
@@ -1796,7 +1796,7 @@ func TestInitRespondent(t *testing.T) {
 			reqBody:         &cmn.ReqProto{},
 			expectSuccess:   false,
 			expectedMessage: "unexpected end of JSON input",
-			userId:          1575,
+			userId:          1623,
 		},
 		{
 			name:            "不是POST的请求方法",
@@ -1805,7 +1805,7 @@ func TestInitRespondent(t *testing.T) {
 			reqBody:         &cmn.ReqProto{},
 			expectSuccess:   false,
 			expectedMessage: "please call /api/upLogin with  http POST method",
-			userId:          1575,
+			userId:          1623,
 		},
 		{
 			name:   "close body err",
@@ -1815,12 +1815,12 @@ func TestInitRespondent(t *testing.T) {
 				Data: json.RawMessage(`{
 					"type": "00",
 					"exam_id": 108,
-					"exam_session_id": 152
+					"exam_session_id": 155
 				}`),
 			},
 			expectSuccess:   false,
 			expectedMessage: "",
-			userId:          1575,
+			userId:          1623,
 			forceErr:        "close body err",
 		},
 		// 失败场景 - 未登录用户
@@ -1832,7 +1832,7 @@ func TestInitRespondent(t *testing.T) {
 				Data: json.RawMessage(`{
 					"type": "00",
 					"exam_id": 123,
-					"exam_session_id": 152
+					"exam_session_id": 155
 				}`),
 			},
 			expectSuccess:   false,
@@ -1845,12 +1845,12 @@ func TestInitRespondent(t *testing.T) {
 			url:             "/api/respondent",
 			expectSuccess:   false,
 			expectedMessage: "",
-			userId:          1575,
+			userId:          1623,
 			reqBody: &cmn.ReqProto{
 				Data: json.RawMessage(`{
 					"type": "04",
 					"exam_id": 108,
-					"exam_session_id": 152
+					"exam_session_id": 155
 				}`),
 			},
 			setupDB: func(t *testing.T, tx pgx.Tx) error {
@@ -1860,7 +1860,7 @@ func TestInitRespondent(t *testing.T) {
 						SET status = '16', 
 						    start_time=NULL,
 						    end_time = NULL 
-						WHERE exam_session_id = 152 AND student_id = 1575
+						WHERE exam_session_id = 155 AND student_id = 1623
 					`)
 				if err != nil {
 					return err
@@ -1871,7 +1871,7 @@ func TestInitRespondent(t *testing.T) {
 						UPDATE t_exam_session 
 						SET start_time = $1, 
 						    end_time = $2 
-						WHERE id = 152
+						WHERE id = 155
 					`, now-3600000, now+3600000) // 开始时间为1小时前，结束时间为1小时后
 				return err
 			},
@@ -1882,7 +1882,7 @@ func TestInitRespondent(t *testing.T) {
 			url:             "/api/respondent",
 			expectSuccess:   false,
 			expectedMessage: "",
-			userId:          1575,
+			userId:          1623,
 			reqBody: &cmn.ReqProto{
 				Data: json.RawMessage(""),
 			},
@@ -1893,7 +1893,7 @@ func TestInitRespondent(t *testing.T) {
 						SET status = '16', 
 						    start_time=NULL,
 						    end_time = NULL 
-						WHERE exam_session_id = 152 AND student_id = 1575
+						WHERE exam_session_id = 155 AND student_id = 1623
 					`)
 				if err != nil {
 					return err
@@ -1904,7 +1904,7 @@ func TestInitRespondent(t *testing.T) {
 						UPDATE t_exam_session 
 						SET start_time = $1, 
 						    end_time = $2 
-						WHERE id = 152
+						WHERE id = 155
 					`, now-3600000, now+3600000) // 开始时间为1小时前，结束时间为1小时后
 				return err
 			},
@@ -1917,13 +1917,13 @@ func TestInitRespondent(t *testing.T) {
 			expectedMessage: "",
 			ctxKey:          "test",
 			ctxValue:        "normal-resp",
-			userId:          1575,
+			userId:          1623,
 			reqBody: &cmn.ReqProto{
 				Data: json.RawMessage(
 					`{
 						"type":"00",
 					"exam_id":108,
-					"exam_session_id":152
+					"exam_session_id":155
 						}`,
 				),
 			},
@@ -1934,7 +1934,7 @@ func TestInitRespondent(t *testing.T) {
 						SET status = '16', 
 						    start_time=NULL,
 						    end_time = $1 
-						WHERE exam_session_id = 152 AND student_id = 1575
+						WHERE exam_session_id = 155 AND student_id = 1623
 					`, now)
 				if err != nil {
 					return err
@@ -1945,7 +1945,7 @@ func TestInitRespondent(t *testing.T) {
 						UPDATE t_exam_session 
 						SET start_time = $1, 
 						    end_time = $2 
-						WHERE id = 152
+						WHERE id = 155
 					`, now-3600000, now+3600000) // 开始时间为1小时前，结束时间为1小时后
 				return err
 			},
@@ -1957,12 +1957,12 @@ func TestInitRespondent(t *testing.T) {
 			expectSuccess:   false,
 			forceErr:        "marshal err",
 			expectedMessage: "",
-			userId:          1575,
+			userId:          1623,
 			reqBody: &cmn.ReqProto{
 				Data: json.RawMessage(`{
 					"type": "00",
 					"exam_id": 108,
-					"exam_session_id": 152
+					"exam_session_id": 155
 				}`),
 			},
 			setupDB: func(t *testing.T, tx pgx.Tx) error {
@@ -1972,7 +1972,7 @@ func TestInitRespondent(t *testing.T) {
 						SET status = '16', 
 						    start_time=NULL,
 						    end_time = NULL 
-						WHERE exam_session_id = 152 AND student_id = 1575
+						WHERE exam_session_id = 155 AND student_id = 1623
 					`)
 				if err != nil {
 					return err
@@ -1983,7 +1983,7 @@ func TestInitRespondent(t *testing.T) {
 						UPDATE t_exam_session 
 						SET start_time = $1, 
 						    end_time = $2 
-						WHERE id = 152
+						WHERE id = 155
 					`, now-3600000, now+3600000) // 开始时间为1小时前，结束时间为1小时后
 				return err
 			},
@@ -1995,12 +1995,12 @@ func TestInitRespondent(t *testing.T) {
 			expectSuccess:   false,
 			forceErr:        "load paper detail err",
 			expectedMessage: "",
-			userId:          1575,
+			userId:          1623,
 			reqBody: &cmn.ReqProto{
 				Data: json.RawMessage(`{
 					"type": "00",
 					"exam_id": 108,
-					"exam_session_id": 152
+					"exam_session_id": 155
 				}`),
 			},
 			setupDB: func(t *testing.T, tx pgx.Tx) error {
@@ -2010,7 +2010,7 @@ func TestInitRespondent(t *testing.T) {
 						SET status = '16', 
 						    start_time=NULL,
 						    end_time = NULL 
-						WHERE exam_session_id = 152 AND student_id = 1575
+						WHERE exam_session_id = 155 AND student_id = 1623
 					`)
 				if err != nil {
 					return err
@@ -2021,7 +2021,7 @@ func TestInitRespondent(t *testing.T) {
 						UPDATE t_exam_session 
 						SET start_time = $1, 
 						    end_time = $2 
-						WHERE id = 152
+						WHERE id = 155
 					`, now-3600000, now+3600000) // 开始时间为1小时前，结束时间为1小时后
 				return err
 			},
@@ -2033,12 +2033,12 @@ func TestInitRespondent(t *testing.T) {
 			expectSuccess:   false,
 			forceErr:        "get sessions err",
 			expectedMessage: "",
-			userId:          1575,
+			userId:          1623,
 			reqBody: &cmn.ReqProto{
 				Data: json.RawMessage(`{
 					"type": "00",
 					"exam_id": 108,
-					"exam_session_id": 152
+					"exam_session_id": 155
 				}`),
 			},
 			setupDB: func(t *testing.T, tx pgx.Tx) error {
@@ -2048,7 +2048,7 @@ func TestInitRespondent(t *testing.T) {
 						SET status = '16', 
 						    start_time=NULL,
 						    end_time = NULL 
-						WHERE exam_session_id = 152 AND student_id = 1575
+						WHERE exam_session_id = 155 AND student_id = 1623
 					`)
 				if err != nil {
 					return err
@@ -2059,7 +2059,7 @@ func TestInitRespondent(t *testing.T) {
 						UPDATE t_exam_session 
 						SET start_time = $1, 
 						    end_time = $2 
-						WHERE id = 152
+						WHERE id = 155
 					`, now-3600000, now+3600000) // 开始时间为1小时前，结束时间为1小时后
 				return err
 			},
@@ -2070,7 +2070,7 @@ func TestInitRespondent(t *testing.T) {
 			url:             "/api/respondent",
 			expectSuccess:   true,
 			expectedMessage: "",
-			userId:          1575,
+			userId:          1623,
 			Type:            "练习",
 			reqBody: &cmn.ReqProto{
 				Data: json.RawMessage(`{
@@ -2204,7 +2204,7 @@ func TestInitRespondent(t *testing.T) {
 			url:             "/api/respondent",
 			expectSuccess:   false,
 			expectedMessage: "",
-			userId:          1575,
+			userId:          1623,
 			Type:            "练习",
 			forceErr:        "save time",
 			reqBody: &cmn.ReqProto{
@@ -2236,7 +2236,7 @@ func TestInitRespondent(t *testing.T) {
 			url:             "/api/respondent",
 			expectSuccess:   false,
 			expectedMessage: "",
-			userId:          1575,
+			userId:          1623,
 			Type:            "练习",
 			forceErr:        "select elapsed seconds",
 			reqBody: &cmn.ReqProto{
@@ -2268,7 +2268,7 @@ func TestInitRespondent(t *testing.T) {
 			url:             "/api/respondent",
 			expectSuccess:   false,
 			expectedMessage: "",
-			userId:          1575,
+			userId:          1623,
 			Type:            "练习",
 			reqBody: &cmn.ReqProto{
 				Data: json.RawMessage(`{
@@ -2292,7 +2292,7 @@ func TestInitRespondent(t *testing.T) {
 			url:             "/api/respondent",
 			expectSuccess:   false,
 			expectedMessage: "",
-			userId:          1575,
+			userId:          1623,
 			Type:            "练习",
 			reqBody: &cmn.ReqProto{
 				Data: json.RawMessage(`{
@@ -2316,7 +2316,7 @@ func TestInitRespondent(t *testing.T) {
 			url:             "/api/respondent",
 			expectSuccess:   false,
 			expectedMessage: "",
-			userId:          1575,
+			userId:          1623,
 			Type:            "练习",
 			reqBody: &cmn.ReqProto{
 				Data: json.RawMessage(`{
@@ -2508,12 +2508,12 @@ func TestSubmit(t *testing.T) {
 			url:             "/api/respondent/submit",
 			expectSuccess:   true,
 			expectedMessage: "success",
-			userId:          1575,
+			userId:          1623,
 			reqBody: &cmn.ReqProto{
 				Data: json.RawMessage(`{
 					"type": "00",
 					"exam_id": 108,
-					"exam_session_id": 152,
+					"exam_session_id": 155,
 					"examinee_id": 3112
 				}`),
 			},
@@ -2524,7 +2524,7 @@ func TestSubmit(t *testing.T) {
 				_, err := tx.Exec(ctx, `
 					UPDATE t_examinee 
 					SET start_time = $1, end_time = NULL, status = $2 
-					WHERE exam_session_id = 152 AND student_id = 1575
+					WHERE exam_session_id = 155 AND student_id = 1623
 				`, currentTime-3600, NormalStatus)
 				if err != nil {
 					return err
@@ -2534,7 +2534,7 @@ func TestSubmit(t *testing.T) {
 				_, err = tx.Exec(ctx, `
 					UPDATE t_exam_session 
 					SET end_time = $1 
-					WHERE id = 152
+					WHERE id = 155
 				`, currentTime+3600)
 				return err
 			},
@@ -2543,7 +2543,7 @@ func TestSubmit(t *testing.T) {
 				_, err := tx.Exec(ctx, `
 					UPDATE t_examinee 
 					SET end_time = NULL 
-					WHERE exam_session_id = 152 AND student_id = 1575
+					WHERE exam_session_id = 155 AND student_id = 1623
 				`)
 				_, err = tx.Exec(ctx, `update t_student_answers set answer_score=null ,status='02' where examinee_id=3112`)
 				if err != nil {
@@ -2598,7 +2598,7 @@ func TestSubmit(t *testing.T) {
 			reqBody:         nil,
 			expectSuccess:   false,
 			expectedMessage: "please call /api/upLogin with  http POST method",
-			userId:          1575,
+			userId:          1623,
 		},
 		// 失败场景 - 空请求体
 		{
@@ -2608,7 +2608,7 @@ func TestSubmit(t *testing.T) {
 			reqBody:         &cmn.ReqProto{},
 			expectSuccess:   false,
 			expectedMessage: "Call /api/respondent with  empty body",
-			userId:          1575,
+			userId:          1623,
 		},
 		{
 			name:            "POST 请求 - 无效的JSON",
@@ -2617,7 +2617,7 @@ func TestSubmit(t *testing.T) {
 			reqBody:         &cmn.ReqProto{},
 			expectSuccess:   false,
 			expectedMessage: "unexpected end of JSON input",
-			userId:          1575,
+			userId:          1623,
 		},
 		{
 			name:   "POST 请求 - data解析失败",
@@ -2627,7 +2627,7 @@ func TestSubmit(t *testing.T) {
 				Data: json.RawMessage(``),
 			},
 			expectSuccess: false,
-			userId:        1575,
+			userId:        1623,
 		},
 		// 失败场景 - 未登录用户
 		{
@@ -2638,7 +2638,7 @@ func TestSubmit(t *testing.T) {
 				Data: json.RawMessage(`{
 					"type": "00",
 					"exam_id": 123,
-					"exam_session_id": 152,
+					"exam_session_id": 155,
 					"examinee_id": 3112
 				}`),
 			},
@@ -2652,12 +2652,12 @@ func TestSubmit(t *testing.T) {
 			url:             "/api/submit",
 			expectSuccess:   false,
 			expectedMessage: "当前是考试，请输入大于0的考试id、大于0的考试场次id、大于0的考生id",
-			userId:          1575,
+			userId:          1623,
 			reqBody: &cmn.ReqProto{
 				Data: json.RawMessage(`{
 					"type": "00",
 					"exam_id": 0,
-					"exam_session_id": 152,
+					"exam_session_id": 155,
 					"examinee_id": 3112
 				}`),
 			},
@@ -2668,12 +2668,12 @@ func TestSubmit(t *testing.T) {
 			url:             "/api/submit",
 			expectSuccess:   false,
 			expectedMessage: "当前是考试，请输入大于0的考试id、大于0的考试场次id、大于0的考生id",
-			userId:          1575,
+			userId:          1623,
 			reqBody: &cmn.ReqProto{
 				Data: json.RawMessage(`{
 					"type": "00",
 					"exam_id": -1,
-					"exam_session_id": 152,
+					"exam_session_id": 155,
 					"examinee_id": 3112
 				}`),
 			},
@@ -2684,7 +2684,7 @@ func TestSubmit(t *testing.T) {
 			url:             "/api/submit",
 			expectSuccess:   false,
 			expectedMessage: "当前是考试，请输入大于0的考试id、大于0的考试场次id、大于0的考生id",
-			userId:          1575,
+			userId:          1623,
 			reqBody: &cmn.ReqProto{
 				Data: json.RawMessage(`{
 					"type": "00",
@@ -2700,7 +2700,7 @@ func TestSubmit(t *testing.T) {
 			url:             "/api/submit",
 			expectSuccess:   false,
 			expectedMessage: "当前是考试，请输入大于0的考试id、大于0的考试场次id、大于0的考生id",
-			userId:          1575,
+			userId:          1623,
 			reqBody: &cmn.ReqProto{
 				Data: json.RawMessage(`{
 					"type": "00",
@@ -2716,12 +2716,12 @@ func TestSubmit(t *testing.T) {
 			url:             "/api/submit",
 			expectSuccess:   false,
 			expectedMessage: "当前是考试，请输入大于0的考试id、大于0的考试场次id、大于0的考生id",
-			userId:          1575,
+			userId:          1623,
 			reqBody: &cmn.ReqProto{
 				Data: json.RawMessage(`{
 					"type": "00",
 					"exam_id": 108,
-					"exam_session_id": 152,
+					"exam_session_id": 155,
 					"examinee_id": 0
 				}`),
 			},
@@ -2732,12 +2732,12 @@ func TestSubmit(t *testing.T) {
 			url:             "/api/submit",
 			expectSuccess:   false,
 			expectedMessage: "当前是考试，请输入大于0的考试id、大于0的考试场次id、大于0的考生id",
-			userId:          1575,
+			userId:          1623,
 			reqBody: &cmn.ReqProto{
 				Data: json.RawMessage(`{
 					"type": "00",
 					"exam_id": 108,
-					"exam_session_id": 152,
+					"exam_session_id": 155,
 					"examinee_id": -1
 				}`),
 			},
@@ -2748,7 +2748,7 @@ func TestSubmit(t *testing.T) {
 			url:             "/api/submit",
 			expectSuccess:   false,
 			expectedMessage: "当前是练习，请输入大于0的PracticeSubmissionID以及大于0的PracticeId",
-			userId:          1575,
+			userId:          1623,
 			reqBody: &cmn.ReqProto{
 				Data: json.RawMessage(`{
 					"type": "02",
@@ -2763,7 +2763,7 @@ func TestSubmit(t *testing.T) {
 			url:             "/api/submit",
 			expectSuccess:   false,
 			expectedMessage: "当前是练习，请输入大于0的PracticeSubmissionID以及大于0的PracticeId",
-			userId:          1575,
+			userId:          1623,
 			reqBody: &cmn.ReqProto{
 				Data: json.RawMessage(`{
 					"type": "02",
@@ -2778,7 +2778,7 @@ func TestSubmit(t *testing.T) {
 			url:             "/api/submit",
 			expectSuccess:   false,
 			expectedMessage: "当前是练习，请输入大于0的PracticeSubmissionID以及大于0的PracticeId",
-			userId:          1575,
+			userId:          1623,
 			reqBody: &cmn.ReqProto{
 				Data: json.RawMessage(`{
 					"type": "02",
@@ -2793,7 +2793,7 @@ func TestSubmit(t *testing.T) {
 			url:             "/api/submit",
 			expectSuccess:   false,
 			expectedMessage: "当前是练习，请输入大于0的PracticeSubmissionID以及大于0的PracticeId",
-			userId:          1575,
+			userId:          1623,
 			reqBody: &cmn.ReqProto{
 				Data: json.RawMessage(`{
 					"type": "02",
@@ -2810,14 +2810,14 @@ func TestSubmit(t *testing.T) {
 			url:           "/api/submit",
 			expectSuccess: false,
 
-			userId: 1575,
+			userId: 1623,
 			reqBody: &cmn.ReqProto{
 				Data: json.RawMessage(`{
 					"type": "03",
 					"exam_id": 123,
-					"exam_session_id": 152,
+					"exam_session_id": 155,
 					"examinee_id": 3112,
-					"student_id": 1575
+					"student_id": 1623
 				}`),
 			},
 		},
@@ -2828,13 +2828,13 @@ func TestSubmit(t *testing.T) {
 			url:             "/api/submit",
 			expectSuccess:   false,
 			expectedMessage: "",
-			userId:          1575,
+			userId:          1623,
 			forceErr:        "begin-tx",
 			reqBody: &cmn.ReqProto{
 				Data: json.RawMessage(`{
 					"type": "00",
 					"exam_id": 123,
-					"exam_session_id": 152,
+					"exam_session_id": 155,
 					"examinee_id": 3112
 				}`),
 			},
@@ -2845,13 +2845,13 @@ func TestSubmit(t *testing.T) {
 			url:             "/api/submit",
 			expectSuccess:   false,
 			expectedMessage: "",
-			userId:          1575,
+			userId:          1623,
 			forceErr:        "commit-tx",
 			reqBody: &cmn.ReqProto{
 				Data: json.RawMessage(`{
 					"type": "00",
 					"exam_id": 108,
-					"exam_session_id": 152,
+					"exam_session_id": 155,
 					"examinee_id": 3112
 				}`),
 			},
@@ -2862,7 +2862,7 @@ func TestSubmit(t *testing.T) {
 				_, err := tx.Exec(ctx, `
 					UPDATE t_examinee 
 					SET start_time = $1, end_time = NULL, status = $2 
-					WHERE exam_session_id = 152 AND student_id = 1575
+					WHERE exam_session_id = 155 AND student_id = 1623
 				`, currentTime-3600, NormalStatus)
 				if err != nil {
 					return err
@@ -2872,7 +2872,7 @@ func TestSubmit(t *testing.T) {
 				_, err = tx.Exec(ctx, `
 					UPDATE t_exam_session 
 					SET end_time = $1 
-					WHERE id = 152
+					WHERE id = 155
 				`, currentTime+3600)
 				return err
 			},
@@ -2881,7 +2881,7 @@ func TestSubmit(t *testing.T) {
 				_, err := tx.Exec(ctx, `
 					UPDATE t_examinee 
 					SET end_time = NULL 
-					WHERE exam_session_id = 152 AND student_id = 1575
+					WHERE exam_session_id = 155 AND student_id = 1623
 				`)
 				_, err = tx.Exec(ctx, `update t_student_answers set answer_score=null ,status='02' where examinee_id=3112`)
 				if err != nil {
@@ -2897,7 +2897,7 @@ func TestSubmit(t *testing.T) {
 			url:             "/api/submit",
 			expectSuccess:   false,
 			expectedMessage: "",
-			userId:          1575,
+			userId:          1623,
 			forceErr:        "commit-tx",
 			reqBody: &cmn.ReqProto{
 				Data: json.RawMessage(`{
@@ -2932,13 +2932,13 @@ func TestSubmit(t *testing.T) {
 			url:             "/api/submit",
 			expectSuccess:   false,
 			expectedMessage: "",
-			userId:          1575,
+			userId:          1623,
 			forceErr:        "rollback-tx",
 			reqBody: &cmn.ReqProto{
 				Data: json.RawMessage(`{
 					"type": "00",
 					"exam_id": 108,
-					"exam_session_id": 152,
+					"exam_session_id": 155,
 					"examinee_id": 3112
 				}`),
 			},
@@ -2949,7 +2949,7 @@ func TestSubmit(t *testing.T) {
 				_, err := tx.Exec(ctx, `
 					UPDATE t_examinee 
 					SET start_time = $1, end_time = NULL, status = $2 
-					WHERE exam_session_id = 152 AND student_id = 1575
+					WHERE exam_session_id = 155 AND student_id = 1623
 				`, currentTime-3600, NormalStatus)
 				if err != nil {
 					return err
@@ -2959,7 +2959,7 @@ func TestSubmit(t *testing.T) {
 				_, err = tx.Exec(ctx, `
 					UPDATE t_exam_session 
 					SET end_time = $1 
-					WHERE id = 152
+					WHERE id = 155
 				`, currentTime+3600)
 				return err
 			},
@@ -2968,7 +2968,7 @@ func TestSubmit(t *testing.T) {
 				_, err := tx.Exec(ctx, `
 					UPDATE t_examinee 
 					SET end_time = NULL 
-					WHERE exam_session_id = 152 AND student_id = 1575
+					WHERE exam_session_id = 155 AND student_id = 1623
 				`)
 				_, err = tx.Exec(ctx, `update t_student_answers set answer_score=null ,status='02' where examinee_id=3112`)
 				if err != nil {
@@ -2984,13 +2984,13 @@ func TestSubmit(t *testing.T) {
 			url:             "/api/submit",
 			expectSuccess:   false,
 			expectedMessage: "",
-			userId:          1575,
+			userId:          1623,
 			forceErr:        "mark-err",
 			reqBody: &cmn.ReqProto{
 				Data: json.RawMessage(`{
 					"type": "00",
 					"exam_id": 108,
-					"exam_session_id": 152,
+					"exam_session_id": 155,
 					"examinee_id": 3112
 				}`),
 			},
@@ -3001,7 +3001,7 @@ func TestSubmit(t *testing.T) {
 				_, err := tx.Exec(ctx, `
 					UPDATE t_examinee 
 					SET start_time = $1, end_time = NULL, status = $2 
-					WHERE exam_session_id = 152 AND student_id = 1575
+					WHERE exam_session_id = 155 AND student_id = 1623
 				`, currentTime-3600, NormalStatus)
 				if err != nil {
 					return err
@@ -3011,7 +3011,7 @@ func TestSubmit(t *testing.T) {
 				_, err = tx.Exec(ctx, `
 					UPDATE t_exam_session 
 					SET end_time = $1 
-					WHERE id = 152
+					WHERE id = 155
 				`, currentTime+3600)
 				return err
 			},
@@ -3020,7 +3020,7 @@ func TestSubmit(t *testing.T) {
 				_, err := tx.Exec(ctx, `
 					UPDATE t_examinee 
 					SET end_time = NULL 
-					WHERE exam_session_id = 152 AND student_id = 1575
+					WHERE exam_session_id = 155 AND student_id = 1623
 				`)
 				_, err = tx.Exec(ctx, `update t_student_answers set answer_score=null ,status='02' where examinee_id=3112`)
 				if err != nil {
@@ -3036,7 +3036,7 @@ func TestSubmit(t *testing.T) {
 			url:             "/api/submit",
 			expectSuccess:   false,
 			expectedMessage: "",
-			userId:          1575,
+			userId:          1623,
 			forceErr:        "mark-err",
 			reqBody: &cmn.ReqProto{
 				Data: json.RawMessage(`{
@@ -3072,7 +3072,7 @@ func TestSubmit(t *testing.T) {
 			url:             "/api/submit",
 			expectSuccess:   false,
 			expectedMessage: "",
-			userId:          1575,
+			userId:          1623,
 			forceErr:        "close body err",
 			reqBody: &cmn.ReqProto{
 				Data: json.RawMessage(`{
@@ -3107,7 +3107,7 @@ func TestSubmit(t *testing.T) {
 			url:             "/api/submit",
 			expectSuccess:   false,
 			expectedMessage: "",
-			userId:          1575,
+			userId:          1623,
 			forceErr:        "io.ReadAll",
 			reqBody: &cmn.ReqProto{
 				Data: json.RawMessage(`{
@@ -3141,7 +3141,7 @@ func TestSubmit(t *testing.T) {
 			method:        "POST",
 			url:           "/api/respondent/submit",
 			expectSuccess: false,
-			userId:        1575,
+			userId:        1623,
 			reqBody: &cmn.ReqProto{
 				Data: json.RawMessage(`{
 					"type": "00",
@@ -3156,13 +3156,13 @@ func TestSubmit(t *testing.T) {
 			method:        "POST",
 			url:           "/api/respondent/submit",
 			expectSuccess: false,
-			userId:        1575,
+			userId:        1623,
 			forceErr:      "setAnswerCanNotUpdate error",
 			reqBody: &cmn.ReqProto{
 				Data: json.RawMessage(`{
 					"type": "00",
 					"exam_id": 108,
-					"exam_session_id": 152,
+					"exam_session_id": 155,
 					"examinee_id": 3112
 				}`),
 			},
@@ -3173,7 +3173,7 @@ func TestSubmit(t *testing.T) {
 				_, err := tx.Exec(ctx, `
 					UPDATE t_examinee 
 					SET start_time = $1, end_time = NULL, status = $2 
-					WHERE exam_session_id = 152 AND student_id = 1575
+					WHERE exam_session_id = 155 AND student_id = 1623
 				`, currentTime-3600, NormalStatus)
 				if err != nil {
 					return err
@@ -3183,7 +3183,7 @@ func TestSubmit(t *testing.T) {
 				_, err = tx.Exec(ctx, `
 					UPDATE t_exam_session 
 					SET end_time = $1 
-					WHERE id = 152
+					WHERE id = 155
 				`, currentTime+3600)
 				return err
 			},
@@ -3192,7 +3192,7 @@ func TestSubmit(t *testing.T) {
 				_, err := tx.Exec(ctx, `
 					UPDATE t_examinee 
 					SET end_time = NULL 
-					WHERE exam_session_id = 152 AND student_id = 1575
+					WHERE exam_session_id = 155 AND student_id = 1623
 				`)
 				_, err = tx.Exec(ctx, `update t_student_answers set answer_score=null ,status='02' where examinee_id=3112`)
 				if err != nil {
@@ -3207,7 +3207,7 @@ func TestSubmit(t *testing.T) {
 			method:        "POST",
 			url:           "/api/respondent/submit",
 			expectSuccess: false,
-			userId:        1575,
+			userId:        1623,
 			forceErr:      "setAnswerCanNotUpdate error",
 			reqBody: &cmn.ReqProto{
 				Data: json.RawMessage(`{
@@ -3241,7 +3241,7 @@ func TestSubmit(t *testing.T) {
 			method:        "POST",
 			url:           "/api/respondent/submit",
 			expectSuccess: false,
-			userId:        1575,
+			userId:        1623,
 			forceErr:      "practice-submit-err",
 			reqBody: &cmn.ReqProto{
 				Data: json.RawMessage(`{
@@ -3275,13 +3275,13 @@ func TestSubmit(t *testing.T) {
 			method:        "POST",
 			url:           "/api/respondent/submit",
 			expectSuccess: false,
-			userId:        1575,
+			userId:        1623,
 			forceErr:      "exam-submit-err",
 			reqBody: &cmn.ReqProto{
 				Data: json.RawMessage(`{
 					"type": "00",
 					"exam_id": 108,
-					"exam_session_id": 152,
+					"exam_session_id": 155,
 					"examinee_id": 3112
 				}`),
 			},
@@ -3292,7 +3292,7 @@ func TestSubmit(t *testing.T) {
 				_, err := tx.Exec(ctx, `
 					UPDATE t_examinee 
 					SET start_time = $1, end_time = NULL, status = $2 
-					WHERE exam_session_id = 152 AND student_id = 1575
+					WHERE exam_session_id = 155 AND student_id = 1623
 				`, currentTime-3600, NormalStatus)
 				if err != nil {
 					return err
@@ -3302,7 +3302,7 @@ func TestSubmit(t *testing.T) {
 				_, err = tx.Exec(ctx, `
 					UPDATE t_exam_session 
 					SET end_time = $1 
-					WHERE id = 152
+					WHERE id = 155
 				`, currentTime+3600)
 				return err
 			},
@@ -3311,7 +3311,7 @@ func TestSubmit(t *testing.T) {
 				_, err := tx.Exec(ctx, `
 					UPDATE t_examinee 
 					SET end_time = NULL 
-					WHERE exam_session_id = 152 AND student_id = 1575
+					WHERE exam_session_id = 155 AND student_id = 1623
 				`)
 				_, err = tx.Exec(ctx, `update t_student_answers set answer_score=null ,status='02' where examinee_id=3112`)
 				if err != nil {
@@ -3461,7 +3461,7 @@ func TestHandleExit(t *testing.T) {
 			name:          "考试类型退出",
 			expectSuccess: true,
 			examineeId:    3112,
-			studentId:     1575,
+			studentId:     1623,
 			expectCnt:     1,
 			setupDB: func(t *testing.T, tx pgx.Tx) error {
 				// 设置考试状态为正常
