@@ -7,7 +7,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gomodule/redigo/redis"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"w2w.io/cmn"
@@ -96,10 +95,10 @@ var globalTestData *TestData
 // 测试辅助函数
 func setupTestEnvironment(t *testing.T) {
 	conn := cmn.GetRedisConn()
-	defer conn.Close()
+	ctx := context.Background()
 
 	// 清理Redis测试数据
-	_, err := conn.Do("DEL", EXAM_TIMER_SET_KEY)
+	err := conn.Del(ctx, EXAM_TIMER_SET_KEY).Err()
 	require.NoError(t, err)
 
 	// 初始化数据库连接（如果未初始化）
@@ -380,20 +379,20 @@ func TestExamTimerIntegration(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			// 清理Redis状态
 			conn := cmn.GetRedisConn()
-			defer conn.Close()
-			conn.Do("DEL", EXAM_TIMER_SET_KEY)
+			ctx := context.Background()
+			conn.Del(ctx, EXAM_TIMER_SET_KEY)
 
 			// 设置定时器
 			err := SetExamTimers(ctx, tc.examID)
 			require.NoError(t, err, "设置考试定时器应该成功")
 
 			// 验证Redis中是否正确设置了定时器
-			count, err := redis.Int(conn.Do("ZCARD", EXAM_TIMER_SET_KEY))
+			count, err := conn.ZCard(ctx, EXAM_TIMER_SET_KEY).Result()
 			require.NoError(t, err)
-			assert.Equal(t, tc.expectedTimers, count, tc.description)
+			assert.Equal(t, tc.expectedTimers, int(count), tc.description)
 
 			// 验证事件内容
-			events, err := redis.Strings(conn.Do("ZRANGE", EXAM_TIMER_SET_KEY, 0, -1))
+			events, err := conn.ZRange(ctx, EXAM_TIMER_SET_KEY, 0, -1).Result()
 			require.NoError(t, err)
 
 			startEventCount := 0
@@ -461,26 +460,26 @@ func TestTimerCancellation(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			// 清理Redis状态
 			conn := cmn.GetRedisConn()
-			defer conn.Close()
-			conn.Do("DEL", EXAM_TIMER_SET_KEY)
+			ctx := context.Background()
+			conn.Del(ctx, EXAM_TIMER_SET_KEY)
 
 			// 设置定时器
 			err := SetExamTimers(ctx, tc.examID)
 			require.NoError(t, err)
 
 			// 验证定时器已设置
-			count, err := redis.Int(conn.Do("ZCARD", EXAM_TIMER_SET_KEY))
+			count, err := conn.ZCard(ctx, EXAM_TIMER_SET_KEY).Result()
 			require.NoError(t, err)
-			assert.Equal(t, tc.expectedTimers, count, tc.description)
+			assert.Equal(t, tc.expectedTimers, int(count), tc.description)
 
 			// 取消定时器
 			err = CancelExamTimers(ctx, tc.examID)
 			require.NoError(t, err)
 
 			// 验证定时器已取消
-			count, err = redis.Int(conn.Do("ZCARD", EXAM_TIMER_SET_KEY))
+			count, err = conn.ZCard(ctx, EXAM_TIMER_SET_KEY).Result()
 			require.NoError(t, err)
-			assert.Equal(t, 0, count, "所有定时器应该已被取消")
+			assert.Equal(t, 0, int(count), "所有定时器应该已被取消")
 		})
 	}
 }

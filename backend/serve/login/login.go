@@ -14,7 +14,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/gomodule/redigo/redis"
 	"github.com/jmoiron/sqlx"
 	"go.uber.org/zap"
 	"golang.org/x/crypto/bcrypt"
@@ -94,19 +93,20 @@ func upLoginCached(ctx context.Context, u *upInfo) (bHit bool) {
 
 	for {
 		key = fmt.Sprintf("%s:%s", cmn.SysUserByID, u.Name)
-		name, err = redis.String(q.Redis.Do("GET", key))
+		name, err = q.RedisClient.Get(ctx, key).Result()
+
 		if err == nil {
 			break
 		}
 
 		key = fmt.Sprintf("%s:%s", cmn.SysUserByTel, u.Name)
-		name, err = redis.String(q.Redis.Do("GET", key))
+		name, err = q.RedisClient.Get(ctx, key).Result()
 		if err == nil {
 			break
 		}
 
 		key = fmt.Sprintf("%s:%s", cmn.SysUserByEmail, u.Name)
-		name, err = redis.String(q.Redis.Do("GET", key))
+		name, err = q.RedisClient.Get(ctx, key).Result()
 		if err == nil {
 			break
 		}
@@ -115,7 +115,7 @@ func upLoginCached(ctx context.Context, u *upInfo) (bHit bool) {
 	}
 
 	key = fmt.Sprintf("%s:%s", cmn.SysUserByName, name)
-	jsonStr, err = redis.String(q.Redis.Do("JSON.GET", key, "."))
+	jsonStr, err = q.RedisClient.JSONGet(ctx, key, ".").Result()
 	if err != nil {
 		z.Info(err.Error())
 		return
@@ -142,13 +142,15 @@ func upLoginCached(ctx context.Context, u *upInfo) (bHit bool) {
 
 	q.SysUser = &sysUser
 
-	openID, err := redis.String(q.Redis.Do("GET", fmt.Sprintf("%s:%d", cmn.WxUserByID, sysUser.ID.Int64)))
+	openID, err := q.RedisClient.Get(ctx, fmt.Sprintf(
+		"%s:%d", cmn.WxUserByID, sysUser.ID.Int64)).Result()
 	if err != nil {
 		z.Info(err.Error())
 		return true
 	}
 
-	jsonStr, q.Err = redis.String(q.Redis.Do("JSON.GET", fmt.Sprintf("%s:%s", cmn.WxUserByUnionID, openID), "."))
+	jsonStr, q.Err = q.RedisClient.JSONGet(ctx, fmt.Sprintf(
+		"%s:%s", cmn.WxUserByUnionID, openID), ".").Result()
 	if q.Err != nil {
 		z.Error(q.Err.Error())
 		return

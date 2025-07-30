@@ -3,9 +3,8 @@ type {{ .Struct.Name }} struct {
 {{- range .Struct.Fields }}
 	{{ .Name }} {{ .Type }}  `json:"{{.Name}},omitempty" db:"{{.Column.Name}},{{.Column.IsPrimaryKey}},{{.Column.DataType}}"`/* {{ .Column.Name }} {{.Comment}} */
 {{- end }}
-  Filter  // build DML where clause
+  Filter  `json:"-"`// build DML where clause
 }
-
 
 //{{.Struct.Name}}Fields full field list for default query
 var {{.Struct.Name}}Fields = []string {
@@ -50,6 +49,8 @@ func (r *{{ .Struct.Name }})GetColumnsMap() map[string]any {
 func (r *{{ .Struct.Name }})Fields() []string{
 	return {{.Struct.Name}}Fields
 }
+
+
 
 
 //GetTableName return the associated db table name.

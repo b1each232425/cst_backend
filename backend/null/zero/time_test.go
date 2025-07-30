@@ -179,8 +179,8 @@ func TestTimeValue(t *testing.T) {
 	ti := TimeFrom(timeValue1)
 	v, err := ti.Value()
 	maybePanic(err)
-	if ti.Time != timeValue1 {
-		t.Errorf("bad time.Time value: %v ≠ %v", ti.Time, timeValue1)
+	if v != timeValue1 {
+		t.Errorf("bad time.Time value: %v ≠ %v", v, timeValue1)
 	}
 
 	var nt time.Time
@@ -202,6 +202,19 @@ func TestTimeValueOrZero(t *testing.T) {
 	invalid.Valid = false
 	if !invalid.ValueOrZero().IsZero() {
 		t.Error("unexpected ValueOrZero", invalid.ValueOrZero())
+	}
+}
+
+func TestTimeValueOr(t *testing.T) {
+	valid := TimeFrom(timeValue1)
+	if valid.ValueOr(timeValue2) != valid.Time {
+		t.Error("unexpected ValueOr", valid.ValueOr(timeValue2))
+	}
+
+	invalid := valid
+	invalid.Valid = false
+	if invalid.ValueOr(timeValue2) != timeValue2 {
+		t.Error("unexpected ValueOr", invalid.ValueOr(timeValue2))
 	}
 }
 

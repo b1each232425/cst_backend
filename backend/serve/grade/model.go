@@ -8,14 +8,13 @@ import (
 
 // ExamGrade 是考试成绩数据
 type GradeListArgs struct {
-	Category      string  `json:"category"`
-	Page          int     `json:"page"`
-	PageSize      int     `json:"pageSize"`
-	PassScoreRate float64 `json:"passScoreRate"`
-	TeacherID     int     `json:"teacherID"`
-	ExamID        int     `json:"examID"`
-	PracticeID    int     `json:"practiceID"`
-	Filter        struct {
+	Category   string `json:"category"`
+	Page       int    `json:"page"`
+	PageSize   int    `json:"pageSize"`
+	TeacherID  int    `json:"teacherID"`
+	ExamID     int    `json:"examID"`
+	PracticeID int    `json:"practiceID"`
+	Filter     struct {
 		Name      string `json:"name"`
 		Type      string `json:"type"`
 		Submitted int    `json:"submitted"`

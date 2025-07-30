@@ -1,7 +1,6 @@
 package zero
 
 import (
-	"bytes"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -43,10 +42,18 @@ func (b Bool) ValueOrZero() bool {
 	return b.Valid && b.Bool
 }
 
+// ValueOr returns the inner value if valid, otherwise v.
+func (b Bool) ValueOr(v bool) bool {
+	if !b.Valid {
+		return v
+	}
+	return b.Bool
+}
+
 // UnmarshalJSON implements json.Unmarshaler.
 // "false" will be considered a null Bool.
 func (b *Bool) UnmarshalJSON(data []byte) error {
-	if bytes.Equal(data, nullBytes) {
+	if len(data) > 0 && data[0] == 'n' {
 		b.Valid = false
 		return nil
 	}

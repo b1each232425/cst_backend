@@ -4,25 +4,24 @@ import (
 	"context"
 	"encoding/gob"
 	"fmt"
-	"io"
-	"runtime"
-
 	"github.com/asdine/storm/v3"
+	//"github.com/gomodule/redigo/redis"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	_ "github.com/jackc/pgx/v5/stdlib"
+	"io"
+	"runtime"
 	"w2w.io/null"
 
-	"github.com/gomodule/redigo/redis"
-
+	//"github.com/gomodule/redigo/redis"
+	"github.com/jmoiron/sqlx"
+	"github.com/redis/go-redis/v9"
+	"github.com/spf13/viper"
+	bolt "go.etcd.io/bbolt"
 	"log"
 	"os"
 	"path/filepath"
 	"time"
-
-	"github.com/jmoiron/sqlx"
-	"github.com/spf13/viper"
-	bolt "go.etcd.io/bbolt"
 )
 
 type (
@@ -53,9 +52,9 @@ var (
 	//sqlxDB, pgxConn global dbms connection
 	sqlxDB *sqlx.DB
 
-	pgxConn *pgxpool.Pool
-
-	redisPool *redis.Pool
+	pgxConn     *pgxpool.Pool
+	redisClient *redis.Client
+	//redisPool *redis.Pool
 
 	//CancelWaitDbNotify cancel waiting for pg db notify
 	CancelWaitDbNotify context.CancelFunc
@@ -237,8 +236,7 @@ func configureDb() {
 	dbHost := "cst.gzhu.edu.cn"
 	dbPort := "16900"
 	dbUser := "kuser"
-
-	dbPwd := "ak47-Ever"
+	dbPwd := "cst$Ever"
 
 	var s string
 	s = "dbms.postgresql.addr"
@@ -300,20 +298,19 @@ func GetDbConn() *sqlx.DB {
 }
 
 // GetRedisConn return redis.Conn
-func GetRedisConn() redis.Conn {
-	if redisPool == nil {
+func GetRedisConn() *redis.Client {
+	if redisClient == nil {
 		redisConnInit()
 	}
-	poolStats := redisPool.Stats()
 
-	D.Info(fmt.Sprintf("redisPool activeCount:%d, idleAcount: %d",
-		poolStats.ActiveCount, poolStats.IdleCount))
-
-	return redisPool.Get()
+	status := redisClient.PoolStats()
+	D.Info(fmt.Sprintf("redisPool total: %d, activeCount:%d, idleAcount: %d",
+		status.TotalConns, status.StaleConns, status.IdleConns))
+	return redisClient
 }
 
 func redisConnInit() {
-	if redisPool != nil {
+	if redisClient != nil {
 		return
 	}
 
@@ -330,66 +327,26 @@ func redisConnInit() {
 		port = viper.GetInt(s)
 	}
 	serv := fmt.Sprintf("%s:%d", host, port)
+	pass := "x2Jc5K^5"
+	if viper.IsSet("dbms.redis.cert") {
+		pass = viper.GetString("dbms.redis.cert")
+	}
 	log.Printf("connecting redis to %s", serv)
-	redisPool = &redis.Pool{
-		MaxIdle:     32,
-		IdleTimeout: 60 * time.Minute,
-		Dial: func() (conn redis.Conn, err error) {
-			for {
-				conn, err = redis.Dial("tcp", serv)
-				if err != nil {
-					D.Error(err.Error())
-					<-time.After(time.Second * 15)
-					continue
-				}
-				pass := "x2Jc5K^5"
-				if viper.IsSet("dbms.redis.cert") {
-					pass = viper.GetString("dbms.redis.cert")
-				}
+	redisClient = redis.NewClient(&redis.Options{
+		Addr:     serv,
+		Password: pass,
+		DB:       0, // use default DB
+	})
 
-				_, err = conn.Do("AUTH", pass)
-				if err != nil {
-					D.Error(err.Error())
-					<-time.After(time.Second * 15)
-					continue
-				}
-				log.Printf("redis connected with " + serv)
-
-				if viper.IsSet("dbms.redis.init") {
-					cleanCache := viper.GetBool("dbms.redis.init")
-					if cleanCache {
-						_, err = conn.Do("flushdb")
-						if err != nil {
-							D.Error(err.Error())
-							return
-						}
-						D.Info("successfully cleanup redis db")
-						defer disableNextFlushDB()
-					}
-				}
-				break
-			}
-			return
-		},
-		TestOnBorrow: func(c redis.Conn, t time.Time) error {
-			_, err := c.Do("PING")
-			return err
-		},
-	}
-	conn := redisPool.Get()
-	_, err := conn.Do("INFO")
-	if err != nil {
-		D.Fatal(err.Error())
-	}
 	D.Info(fmt.Sprintf("connected with redis: %s\n", serv))
 }
 
 // CleanRedis redis current db
 func CleanRedis() {
 	r := GetRedisConn()
-	defer r.Close()
-
-	_, err := r.Do("flushdb")
+	ctx := context.Background()
+	status := r.FlushDB(ctx)
+	err := status.Err()
 	if err != nil {
 		D.Error(err.Error())
 		return
