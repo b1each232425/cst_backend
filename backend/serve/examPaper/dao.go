@@ -3,7 +3,7 @@
  * @Description: 考卷-答卷数据库层
  * @Date: 2025-07-21 13:14:34
  * @LastEditors: zdl <1311866870@qq.com>
- * @LastEditTime: 2025-07-30 00:00:16
+ * @LastEditTime: 2025-07-30 16:00:29
  */
 package examPaper
 
@@ -138,18 +138,13 @@ func GenerateAnswerQuestion(ctx context.Context, tx pgx.Tx, req GenerateAnswerQu
 	r := rand.New(rand.NewSource(now))
 	err = cmn.Validate(req)
 	if err != nil {
-		z.Error(err.Error())
 		return err
 	}
 	var studentIds []int64
 	if req.Category == PaperCategory.Exam {
 		studentIds = req.ExamineeIDs
-	} else if req.Category == PaperCategory.Practice {
-		studentIds = req.PracticeSubmissionID
 	} else {
-		err = fmt.Errorf("invalid param:category:%v", req.Category)
-		z.Error(err.Error())
-		return err
+		studentIds = req.PracticeSubmissionID
 	}
 
 	// 获取考题
@@ -184,7 +179,7 @@ func GenerateAnswerQuestion(ctx context.Context, tx pgx.Tx, req GenerateAnswerQu
 				actualOptions := q.Options
 				if q.Type.String == QuestionCategory.SingleChoice || q.Type.String == QuestionCategory.MultiChoice || q.Type.String == QuestionCategory.TrueFalse {
 					if req.IsOptionRandom {
-						answer.ActualAnswers, answer.ActualOptions, err = shuffleOptionsAndMapAnswers(r, actualOptions, actualAnswers)
+						answer.ActualAnswers, answer.ActualOptions, err = shuffleOptionsAndMapAnswers(r, q.ID.Int64, actualOptions, actualAnswers)
 						if err != nil {
 							return err
 						}
@@ -208,60 +203,42 @@ func GenerateAnswerQuestion(ctx context.Context, tx pgx.Tx, req GenerateAnswerQu
 		}
 		batchStudentAnswers := Answers[i:end]
 		// 执行单次操作语句
-		err = BatchInsertStudentAnswer(ctx, tx, batchStudentAnswers, uid)
-		if err != nil {
-			return err
-		}
-	}
-
-	return nil
-
-}
-
-// BatchInsertStudentAnswer  按照批次批量生成学生试卷每道题的答题（支持题组和题目按需解析）
-/*
-关键参数说明：
-	sa 需要新增的学生答题数组
-	uid 操作者
-*/
-func BatchInsertStudentAnswer(ctx context.Context, tx pgx.Tx, sa []*cmn.TStudentAnswers, uid int64) error {
-	if len(sa) == 0 {
-		z.Error("empty params student answer")
-		return nil
-	}
-	query := `
+		query := `
 		INSERT INTO assessuser.t_student_answers (
 			type, examinee_id, practice_submission_id, question_id,
 			creator, create_time, update_time, group_id, "order",
 			actual_options, actual_answers
 		) VALUES %s
 	`
-	now := time.Now().UnixMilli()
-	values := make([]string, 0, len(sa))
-	args := make([]interface{}, 0, len(sa)*11) // 11个字段
-	idx := 1
-	for _, a := range sa {
-		placeholders := make([]string, 11)
-		for i := 0; i < 11; i++ {
-			placeholders[i] = fmt.Sprintf("$%d", idx)
-			idx++
+		now := time.Now().UnixMilli()
+		values := make([]string, 0, len(batchStudentAnswers))
+		args := make([]interface{}, 0, len(batchStudentAnswers)*11) // 11个字段
+		idx := 1
+		for _, a := range batchStudentAnswers {
+			placeholders := make([]string, 11)
+			for i := 0; i < 11; i++ {
+				placeholders[i] = fmt.Sprintf("$%d", idx)
+				idx++
+			}
+			values = append(values, "("+strings.Join(placeholders, ",")+")")
+			args = append(args,
+				a.Type, a.ExamineeID, a.PracticeSubmissionID, a.QuestionID,
+				uid, now, now, a.GroupID, a.Order, a.ActualOptions, a.ActualAnswers,
+			)
 		}
-		values = append(values, "("+strings.Join(placeholders, ",")+")")
-		args = append(args,
-			a.Type, a.ExamineeID, a.PracticeSubmissionID, a.QuestionID,
-			uid, now, now, a.GroupID, a.Order, a.ActualOptions, a.ActualAnswers,
-		)
+		insertQuery := fmt.Sprintf(query, strings.Join(values, ","))
+		//z.Sugar().Debugf("打印输出一下插入学生作答SQL语句:%v", insertQuery)
+		//z.Sugar().Debugf("打印输出一下插入学生作答SQL参数:%v", args)
+		_, err := tx.Exec(ctx, insertQuery, args...)
+		if err != nil {
+			err = fmt.Errorf("批量插入学生答卷失败: %v", err)
+			z.Error(err.Error())
+			return err
+		}
 	}
-	insertQuery := fmt.Sprintf(query, strings.Join(values, ","))
-	//z.Sugar().Debugf("打印输出一下插入学生作答SQL语句:%v", insertQuery)
-	//z.Sugar().Debugf("打印输出一下插入学生作答SQL参数:%v", args)
-	_, err := tx.Exec(ctx, insertQuery, args...)
-	if err != nil {
-		err = fmt.Errorf("批量插入学生答卷失败: %v", err)
-		z.Error(err.Error())
-		return err
-	}
+
 	return nil
+
 }
 
 // LoadPaperTemplateById  一张标准的试卷内容 支持按需加载试卷模板（支持题组和题目按需解析）
@@ -730,7 +707,6 @@ func LoadExamPaperDetailByUserId(ctx context.Context, tx pgx.Tx, examPaperId, pS
 				q1.Title = null.StringFrom("")
 				q1.Content = null.StringFrom("<p><span style=\"font-family: 等线; font-size: 12pt\">具有风险分析的软件生命周期模型是</span><span style=\"font-family: Aptos, sans-serif; font-size: 12pt\">()</span></p>")
 				q1.Options = JSONText(`[
-                    [
                         {
                             "label": "A",
                             "value": "<p><span style=\"font-family: 等线; font-size: 12pt\">瀑布模型</span></p>"
@@ -747,7 +723,6 @@ func LoadExamPaperDetailByUserId(ctx context.Context, tx pgx.Tx, examPaperId, pS
                             "label": "D",
                             "value": "<p><span style=\"font-family: 等线; font-size: 12pt\">增量模型</span></p>"
                         }
-                    ]
                 ]`)
 				q1.Score = null.FloatFrom(3)
 				q1.Order = null.IntFrom(1)

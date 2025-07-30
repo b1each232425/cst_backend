@@ -3,7 +3,7 @@
  * @Description: 考卷数据库层单元测试
  * @Date: 2025-07-28 19:55:28
  * @LastEditors: zdl <1311866870@qq.com>
- * @LastEditTime: 2025-07-30 11:45:24
+ * @LastEditTime: 2025-07-30 16:19:21
  */
 package examPaper
 
@@ -602,6 +602,261 @@ func TestLoadExamPaperDetailsById(t *testing.T) {
 
 }
 
+// 测试根据考卷题目与信息，批量插入学生考卷
+func TestGenerateAnswerQuestion(t *testing.T) {
+	if z == nil {
+		cmn.ConfigureForTest()
+	}
+	conn := cmn.GetPgxConn()
+	tx, err := conn.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	defer func() {
+		_ = tx.Rollback(ctx)
+	}()
+	var examPaperID, practiceID int64
+	examPaperID = 341
+	practiceID = 7
+
+	//创建一个新的练习把
+	p := `INSERT INTO t_practice (id,name,correct_mode,creator,allowed_attempts,type,paper_id) VALUES ($1, $2, $3, $4, $5, $6, $7)`
+	_, err = tx.Exec(ctx, p, practiceID, "考卷生成逻辑测试练习", "00", uid, 5, "00", 68)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// 初始化参数切片（500名学生 * 4个字段 = 2000个参数）
+	params := make([]interface{}, 0, 2000)
+	valuePlaceholders := make([]string, 0, 500)
+
+	// 动态生成占位符和参数
+	for i := 1; i <= 500; i++ {
+		offset := (i-1)*4
+		valuePlaceholders = append(
+			valuePlaceholders,
+			fmt.Sprintf("($%d,$%d,$%d,$%d)", offset+1, offset+2, offset+3, offset+4)
+		)
+		params = append(params,
+			i,           // student_id (从1到500)
+			practiceID,  // 固定practiceID
+			uid,         // 固定创建者ID
+			"00",        // 固定状态
+		)
+	}
+
+	// 组合完整SQL
+	s := fmt.Sprintf(`
+    INSERT INTO assessuser.t_practice_student 
+        (student_id, practice_id, creator, status) 
+    VALUES %s`,
+		strings.Join(valuePlaceholders, ","),
+	)
+	// 执行批量插入
+	_, err = tx.Exec(ctx, s, params...)
+	if err != nil {
+		z.Sugar().Errorf("插入学生失败: SQL=%s, 错误=%v", s, err)
+		t.Fatal(err)
+	}
+
+	// 生成 SQL 的 VALUES 部分和参数切片
+	valuePlaceholders = make([]string, 0, 500)
+	params = make([]interface{}, 0, 500*6) // 每个学生6个参数
+	n := 500
+	submissionIDs := make([]int64, n)
+	for i := int64(0); i < int64(n); i++ {
+		submissionIDs[i] = i + 1 // 从1开始递增
+	}
+
+	for i := 1; i <= 500; i++ {
+		// 每组占位符: ($1,$2,$3,$4,$5,$6) -> 扩展为100组
+		placeholder := fmt.Sprintf("($%d,$%d,$%d,$%d,$%d,$%d)",
+			i*6-5, i*6-4, i*6-3, i*6-2, i*6-1, i*6)
+		valuePlaceholders = append(valuePlaceholders, placeholder)
+
+		// 添加实际参数（示例数据，按需调整）
+		params = append(params,
+			i,           // 动态生成ID（实际中建议用序列或UUID）
+			practiceID,  // 练习ID
+			i,           // 学生ID（假设学生ID从1递增）
+			examPaperID, // 试卷ID
+			uid,         // 创建者ID
+			1,           // 尝试次数
+		)
+	}
+
+	// 组合完整SQL
+	m := fmt.Sprintf(
+		`INSERT INTO assessuser.t_practice_submissions 
+        (id, practice_id, student_id, exam_paper_id, creator, attempt) 
+     VALUES %s`,
+		strings.Join(valuePlaceholders, ","),
+	)
+	_, err = tx.Exec(ctx, m, params...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	validError := errors.New("validation fail")
+
+	// 现在全部都生成了 直接构造函数记录即可
+	tests := []struct {
+		name        string
+		req         GenerateAnswerQuestionsRequest
+		expectedErr error
+	}{
+		{
+			name: "正常1 能生成学生考卷 携带两个乱序",
+			req: GenerateAnswerQuestionsRequest{
+				ExamPaperID:          examPaperID,
+				Category:             PaperCategory.Practice,
+				PracticeSubmissionID: []int64{1, 2, 3},
+				IsQuestionRandom:     true,
+				IsOptionRandom:       true,
+				Attempt:              1,
+			},
+			expectedErr: nil,
+		},
+		{
+			name: "正常2 能生成学生考卷 携带题组内乱序",
+			req: GenerateAnswerQuestionsRequest{
+				ExamPaperID:          examPaperID,
+				Category:             PaperCategory.Practice,
+				PracticeSubmissionID: []int64{1, 2, 3},
+				IsQuestionRandom:     true,
+				IsOptionRandom:       false,
+				Attempt:              1,
+			},
+			expectedErr: nil,
+		},
+		{
+			name: "正常3 能生成学生考卷 携带题目选项乱序",
+			req: GenerateAnswerQuestionsRequest{
+				ExamPaperID:          examPaperID,
+				Category:             PaperCategory.Practice,
+				PracticeSubmissionID: []int64{1, 2, 3},
+				IsQuestionRandom:     false,
+				IsOptionRandom:       true,
+				Attempt:              1,
+			},
+			expectedErr: nil,
+		},
+		{
+			name: "正常4 能生成学生考卷 携带两个乱序，操作生成500个学生答卷",
+			req: GenerateAnswerQuestionsRequest{
+				ExamPaperID:          examPaperID,
+				Category:             PaperCategory.Practice,
+				PracticeSubmissionID: submissionIDs,
+				IsQuestionRandom:     false,
+				IsOptionRandom:       true,
+				Attempt:              1,
+			},
+			expectedErr: nil,
+		},
+		{
+			name: "异常1因题目问题导致jsonUnmarshal无法解析 手动制造一个题目强行插入进入",
+			req: GenerateAnswerQuestionsRequest{
+				ExamPaperID:          examPaperID,
+				Category:             PaperCategory.Practice,
+				PracticeSubmissionID: []int64{1, 2, 3},
+				IsQuestionRandom:     false,
+				IsOptionRandom:       true,
+				Attempt:              1,
+			},
+			expectedErr: nil,
+		},
+		{
+			name: "异常2 参数检测 非法考卷ID",
+			req: GenerateAnswerQuestionsRequest{
+				ExamPaperID:          -1,
+				Category:             PaperCategory.Practice,
+				PracticeSubmissionID: []int64{1, 2, 3},
+				IsQuestionRandom:     false,
+				IsOptionRandom:       true,
+				Attempt:              1,
+			},
+			expectedErr: validError,
+		},
+		{
+			name: "异常3 参数检测 非法考卷用途",
+			req: GenerateAnswerQuestionsRequest{
+				ExamPaperID:          examPaperID,
+				Category:             "04",
+				PracticeSubmissionID: []int64{1, 2, 3},
+				IsQuestionRandom:     false,
+				IsOptionRandom:       true,
+				Attempt:              1,
+			},
+			expectedErr: validError,
+		},
+		{
+			name: "异常4 参数检测 非法练习提交记录ID",
+			req: GenerateAnswerQuestionsRequest{
+				ExamPaperID:          examPaperID,
+				Category:             PaperCategory.Practice,
+				PracticeSubmissionID: []int64{1, -2, 3},
+				IsQuestionRandom:     false,
+				IsOptionRandom:       true,
+				Attempt:              1,
+			},
+			expectedErr: validError,
+		},
+		{
+			name: "异常5 参数检测 非法练习提交记录ID",
+			req: GenerateAnswerQuestionsRequest{
+				ExamPaperID:          examPaperID,
+				Category:             PaperCategory.Practice,
+				PracticeSubmissionID: []int64{1, -2, 3},
+				IsQuestionRandom:     false,
+				IsOptionRandom:       true,
+				Attempt:              1,
+			},
+			expectedErr: validError,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var  insertqCount int64
+			err = conn.QueryRow(ctx,`SELECT COUNT(*) FROM t_student_answers WHERE status = '00' ` ).Scan(&insertqCount)
+			if err != nil {
+				t.Fatal(err)
+			}
+			err = GenerateAnswerQuestion(ctx, tx, tt.req, uid.Int64)
+			if tt.expectedErr == nil {
+				if err != nil {
+					t.Errorf("期望无错误，但是返回错误：%v", err)
+				}
+				var questionCount int64
+				if containsString(tt.name,"正常4"){
+					err = conn.QueryRow(ctx,`SELECT COUNT(*) FROM t_student_answers WHERE status = '00' ` ).Scan(&questionCount)
+					if err != nil {
+						t.Fatal(err)
+					}
+					if questionCount != (500 * 13 + insertqCount){
+						t.Errorf("生成的题目数量不对")
+					}
+				}else{
+					// 这里需要去检测一下这个是否真的生成了
+					c := `SELECT COUNT(*) FROM t_student_answers WHERE practice_submission_id = $1 OR practice_submission_id = $2 OR practice_submission_id = $3`
+					err = tx.QueryRow(ctx, c, 1, 2, 3).Scan(&questionCount)
+					if err != nil {
+						t.Error(err)
+					}
+
+					if questionCount != 13*3 {
+						t.Errorf("生成的学生答卷题目数量不一，实际：%v", questionCount)
+					}
+				}
+				
+			} else {
+				if err == nil || !containsString(err.Error(), tt.expectedErr.Error()) {
+					t.Errorf("返回的错误不符合预期：%v", err)
+				}
+			}
+		})
+	}
+}
+
 func containsString(s, substr string) bool {
 	return strings.Contains(s, substr)
 }
@@ -618,25 +873,23 @@ func initQuestion(t *testing.T, tx pgx.Tx) {
 	qArgs := [][]interface{}{
 		{1, "00", "<p><span style=\"font-family: 等线; font-size: 12pt\">具有风险分析的软件生命周期模型是</span><span style=\"font-family: Aptos, sans-serif; font-size: 12pt\">()</span></p>",
 			`[
-	               [
-	                   {
-	                       "label": "A",
-	                       "value": "<p><span style=\"font-family: 等线; font-size: 12pt\">瀑布模型</span></p>"
-	                   },
-	                   {
-	                       "label": "B",
-	                       "value": "<p><span style=\"font-family: 等线; font-size: 12pt\">喷泉模型</span></p>"
-	                   },
-	                   {
-	                       "label": "C",
-	                       "value": "<p><span style=\"font-family: 等线; font-size: 12pt\">螺旋模型</span></p>"
-	                   },
-	                   {
-	                       "label": "D",
-	                       "value": "<p><span style=\"font-family: 等线; font-size: 12pt\">增量模型</span></p>"
-	                   }
-	               ]
-	           ]`,
+				{
+            		"label": "A",
+            		"value": "<p><span style=\"font-family: 等线; font-size: 12pt\">瀑布模型</span></p>"
+        		},
+        		{
+            		"label": "B",
+            		"value": "<p><span style=\"font-family: 等线; font-size: 12pt\">喷泉模型</span></p>"
+        		},
+        		{
+            		"label": "C",
+            		"value": "<p><span style=\"font-family: 等线; font-size: 12pt\">螺旋模型</span></p>"
+        		},
+        		{
+            		"label": "D",
+            		"value": "<p><span style=\"font-family: 等线; font-size: 12pt\">增量模型</span></p>"
+        		}
+			],`,
 			`["A", "D"]`, 2, nil, nil, uid, "00", qbID, 1,
 		},
 		{2, "00", "<p><span style=\"font-size: 12pt\">H3C公司的总部位于哪个城市？</span></p>",

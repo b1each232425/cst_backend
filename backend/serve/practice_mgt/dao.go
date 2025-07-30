@@ -258,16 +258,28 @@ func LoadPracticeById(ctx context.Context, pid int64) (*cmn.TPractice, string, i
 		z.Error(err.Error())
 		return &cmn.TPractice{}, "", 0, err
 	}
+	TEST := "test"
+	//查看是否需要返回mock的数据
+	test, _ := ctx.Value(TEST).(string)
 	s := `
 	select p.id, p.name, p.correct_mode,p.addi,p.status,p.type,
 			COALESCE(tp.name, '') as paper_name,p.allowed_attempts,p.paper_id,p.exam_paper_id,
-			COALESCE((SELECT COUNT(*) FROM assessuser.t_practice_student tps WHERE tps.practice_id=tp.id AND status=$1),0) as student_cnt
+			COALESCE((SELECT COUNT(*) FROM assessuser.t_practice_student tps WHERE tps.practice_id=p.id AND tps.status=$1),0) as student_cnt
 	from assessuser.t_practice p
 	left join assessuser.t_paper tp on tp.id = p.paper_id AND tp.status = $2
 	where p.id = $3 AND p.status != $4
 	limit 1`
 	sqlxDB := cmn.GetDbConn()
 	var stmt *sqlx.Stmt
+	if test == "prepare" {
+		s = `
+	select p.id, p.name, p.correct_mode,p.addi,p.status,p.type,
+			COALESCE(tp.name, '') as paper_name,p.allowed_attempts,p.paper_id,p.exam_paper_id,
+			COALESCE((SELECT COUNT(*) FROM assessuser.t_practice_student tps WHERE tps.practice_id=p.id AND tps.status=$1),0) as student_cnt
+	from assessuser.t_practice p,
+	left join assessuser.t_paper tp on tp.id = p.paper_id AND tp.status = $2
+	where p.id = $3 AND `
+	}
 	stmt, err := sqlxDB.Preparex(s)
 	if err != nil {
 		z.Error(err.Error())
@@ -600,7 +612,7 @@ func OperatePracticeStatus(ctx context.Context, pid int64, status string, uid in
 			return err
 		}
 
-		s := `UPDATE assessuser.t_practice SET status = $1,update_time = $2, updated_by = $3 ,exam_paper_id = $4 WHERE id = $4`
+		s := `UPDATE assessuser.t_practice SET status = $1,update_time = $2, updated_by = $3 ,exam_paper_id = $4 WHERE id = $5`
 		_, err = tx.Exec(ctx, s, PracticeStatus.Released, now, uid, examPaperId, pid)
 		if err != nil {
 			err = fmt.Errorf("OperatePracticeStatus to pendingRelease failed:%v", err)
@@ -716,7 +728,7 @@ func EnterPracticeGetPaperDetails(ctx context.Context, tx pgx.Tx, pid int64, uid
 				q1.Type = null.StringFrom("00")
 				q1.Title = null.StringFrom("")
 				q1.Content = null.StringFrom("<p><span style=\"font-family: 等线; font-size: 12pt\">具有风险分析的软件生命周期模型是</span><span style=\"font-family: Aptos, sans-serif; font-size: 12pt\">()</span></p>")
-				q1.Options = JSONText(`[
+				q1.Options = JSONText(`
                     [
                         {
                             "label": "A",
@@ -735,7 +747,7 @@ func EnterPracticeGetPaperDetails(ctx context.Context, tx pgx.Tx, pid int64, uid
                             "value": "<p><span style=\"font-family: 等线; font-size: 12pt\">增量模型</span></p>"
                         }
                     ]
-                ]`)
+                `)
 				q1.StudentAnswer = JSONText(`{
     			"type": "00",
     			"answer": [
@@ -818,7 +830,7 @@ func EnterPracticeGetPaperDetails(ctx context.Context, tx pgx.Tx, pid int64, uid
 				q1.Type = null.StringFrom("00")
 				q1.Title = null.StringFrom("")
 				q1.Content = null.StringFrom("<p><span style=\"font-family: 等线; font-size: 12pt\">具有风险分析的软件生命周期模型是</span><span style=\"font-family: Aptos, sans-serif; font-size: 12pt\">()</span></p>")
-				q1.Options = JSONText(`[
+				q1.Options = JSONText(`
                     [
                         {
                             "label": "A",
@@ -837,7 +849,7 @@ func EnterPracticeGetPaperDetails(ctx context.Context, tx pgx.Tx, pid int64, uid
                             "value": "<p><span style=\"font-family: 等线; font-size: 12pt\">增量模型</span></p>"
                         }
                     ]
-                ]`)
+                `)
 				q1.Score = null.FloatFrom(3)
 				q1.Order = null.IntFrom(1)
 				qList1 = append(qList1, q1)
@@ -883,7 +895,7 @@ func EnterPracticeGetPaperDetails(ctx context.Context, tx pgx.Tx, pid int64, uid
 	// 也就是说此时是第一次进入，那就需要创建新的submissions的，同理如果查询出有记录，但是last为空的话，仍然需要创建，否则就不需要创建
 	s := `SELECT allowed_attempts,attempt_count,latest_unsubmitted_id, latest_submitted_id, exam_paper_id,paper_name,suggested_duration
 	 FROM assessuser.v_practice_summary 
-	 WHERE id = $1 AND student_id = $2 AND practice_status == $3 
+	 WHERE id = $1 AND student_id = $2 AND practice_status = $3 
 	 AND practice_student_status != $4`
 	err := sqlxDB.QueryRowxContext(ctx, s, pid, uid, PracticeStatus.Released, PracticeStudentStatus.Deleted).Scan(&ps.AllowedAttempts, &ps.AttemptCount, &ps.LatestUnsubmittedID,
 		&ps.LatestSubmittedID, &ps.ExamPaperID,

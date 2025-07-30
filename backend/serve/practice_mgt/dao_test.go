@@ -3,7 +3,7 @@
  * @Description: 练习管理数据库层函数逻辑测试
  * @Date: 2025-07-24 14:51:50
  * @LastEditors: zdl <1311866870@qq.com>
- * @LastEditTime: 2025-07-29 16:29:01
+ * @LastEditTime: 2025-07-30 16:26:12
  */
 package practice_mgt
 
@@ -257,7 +257,7 @@ func TestLoadPracticeById(t *testing.T) {
 	}{
 		{
 			name:          "期望正常1 存在正常练习信息且能正常查询到",
-			pid:           int64(2086),
+			pid:           int64(2036),
 			expectedError: false,
 			havePractice:  true,
 		},
@@ -294,15 +294,14 @@ func TestLoadPracticeById(t *testing.T) {
 			} else {
 				if tt.havePractice {
 					p1 := &cmn.TPractice{
-						ID:              null.IntFrom(2086),
+						ID:              null.IntFrom(2036),
 						PaperID:         null.IntFrom(102),
-						Name:            null.StringFrom("数学期末考试"),
-						CorrectMode:     null.StringFrom("02"), // 批改模式
-						Type:            null.StringFrom("02"), // 练习类型（试卷）
+						Name:            null.StringFrom("第一版练习数据v2"),
+						CorrectMode:     null.StringFrom("00"), // 批改模式
+						Type:            null.StringFrom("00"), // 练习类型（试卷）
 						Status:          null.StringFrom("02"),
-						Creator:         null.IntFrom(100),
-						CreateTime:      null.IntFrom(now),
-						AllowedAttempts: null.IntFrom(10),
+						Creator:         null.IntFrom(1574),
+						AllowedAttempts: null.IntFrom(5),
 					}
 					if p.Name.String != p1.Name.String {
 						t.Errorf("查询练习名称不符合；预期:%v,实际:%v", p1.Name.String, p.Name.String)
@@ -316,8 +315,8 @@ func TestLoadPracticeById(t *testing.T) {
 					if p.Type.String != p1.Type.String {
 						t.Errorf("查询练习类型不符合；预期:%v,实际:%v", p1.Type.String, p.Type.String)
 					}
-					if sCount != 0 {
-						t.Errorf("查询练习参会学生名单不符合；预期:%v,实际:%v", 0, sCount)
+					if sCount != 7 {
+						t.Errorf("查询练习参会学生名单不符合；预期:%v,实际:%v", 7, sCount)
 					}
 					if pName != "" {
 						t.Errorf("查询练习试卷名称不符合；预期:%v,实际:%v", "", pName)
@@ -587,7 +586,7 @@ func TestValidatePractice(t *testing.T) {
 				PaperID:         null.IntFrom(102),
 				Name:            null.StringFrom("化学期末考试"),
 				CorrectMode:     null.StringFrom("异常批改数据"), // 批改模式
-				Type:            null.StringFrom("02"),     // 练习类型（试卷）
+				Type:            null.StringFrom("02"),           // 练习类型（试卷）
 				AllowedAttempts: null.IntFrom(10),
 			},
 			ps:            nil,
@@ -609,7 +608,7 @@ func TestValidatePractice(t *testing.T) {
 			p: &cmn.TPractice{
 				PaperID:         null.IntFrom(102),
 				Name:            null.StringFrom("化学期末考试"),
-				CorrectMode:     null.StringFrom("02"),     // 批改模式
+				CorrectMode:     null.StringFrom("02"),           // 批改模式
 				Type:            null.StringFrom("异常练习类型"), // 练习类型（试卷）
 				AllowedAttempts: null.IntFrom(10),
 			},
@@ -1023,6 +1022,12 @@ func TestOperatePracticeStatus(t *testing.T) {
 			status:        PracticeStatus.Deleted,
 			expectedError: nil,
 		},
+		{
+			name:          "正常3 将待发布的练习调整为发布状态",
+			pid:           6,
+			status:        PracticeStatus.Released,
+			expectedError: nil,
+		},
 	}
 
 	for _, tt := range tests {
@@ -1036,15 +1041,20 @@ func TestOperatePracticeStatus(t *testing.T) {
 					t.Errorf("%v expected error:%v but got %v", tt.name, tt.expectedError, err)
 				}
 			} else {
-				// 这里去搜索一下
 				var status string
-				s := `SELECT (status) FROM t_practice WHERE id = $1`
-				_ = conn.QueryRow(ctx, s, tt.pid).Scan(&status)
+				var epID null.Int
+				s := `SELECT status ,exam_paper_id FROM t_practice WHERE id = $1`
+				_ = conn.QueryRow(ctx, s, tt.pid).Scan(&status, &epID)
 				if status != tt.status {
-					t.Errorf("没有成功更新练习发布状态")
+					t.Errorf("没有成功更新练习发布状态,实际：%v，预期：%v", tt.status, status)
+				}
+				// 如果是调整发布状态的话，那就需要
+				if containsString(tt.name, "正常3") {
+					if !epID.Valid || epID.Int64 < 0 {
+						t.Errorf("没有成功更新练习发布状态，没有成功发布练习中的生成考卷实际：%v", epID)
+					}
 				}
 			}
-
 		})
 	}
 
