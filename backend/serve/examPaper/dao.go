@@ -3,7 +3,7 @@
  * @Description: 考卷-答卷数据库层
  * @Date: 2025-07-21 13:14:34
  * @LastEditors: zdl <1311866870@qq.com>
- * @LastEditTime: 2025-07-30 16:00:29
+ * @LastEditTime: 2025-07-30 22:47:54
  */
 package examPaper
 
@@ -25,7 +25,7 @@ import (
 关键参数说明：
 	epid 考卷Id
 	withQuestions 是否查询题组及题目信息 对应返回体[]*cmn.TExamPaperGroup、map[int64][]*ExamQuestion
-	withAnswers 题目是否需要答案
+	withAnswers 题目是否需要答案与解析
 */
 func LoadExamPaperDetailsById(ctx context.Context, tx pgx.Tx, epid int64, withQuestions, withAnswers bool) (*cmn.TVExamPaper, []*cmn.TExamPaperGroup, map[int64][]*ExamQuestion, error) {
 	var err error
@@ -647,11 +647,12 @@ func GenerateExamPaper(ctx context.Context, tx pgx.Tx, category string, paperId,
 关键参数说明：
 	tx 事务 由于有操作需要先写后读，且只有在同一个事务中操作写与读，才能被共享
 	examPaperId 考卷Id
-	pSubmissionId 练习生提交Id
-	examineeId 考生Id
+	pSubmissionId 练习生提交Id 大于0则查询练习学生试卷
+	examineeId 考生Id 大于0则查询考试学生试卷
 	withStudentAnswer 是否携带学生作答信息 如果为true 题目中会携带学生作答信息 反之ExamQuestion结构体中学生作答信息为空
 	withAnswer 题目是否携带原答案、解析 如果为true 题目中会携带题目 反之ExamQuestion结构体中题目答案、解析为空
-	withAnswerScore 是否携带学生作答分数 如果为true 题目中会携带学生作答题目的得分 反之ExamQuestion结构体中学生得分为空
+	withAnswerScore 是否携带学生作答分数 如果为true 题目中会携带学生作答题目的得分 反之ExamQuestion结构体中学生得分、解析为空
+特别说明：若pSubmissionId与examineeId均大于0 默认取考试学生试卷
 实现设计思路：
 	先获取考卷本身拥有的题组与考题，再获取单一考生/练习生答卷 进行合并自定义过之后的数据（乱序的选项与答案等）
 	根据传入参数，选择是否查询学生作答信息、题目原答案解析等
@@ -747,11 +748,6 @@ func LoadExamPaperDetailByUserId(ctx context.Context, tx pgx.Tx, examPaperId, pS
 				return p, groupMap, questionMap, nil
 
 			}
-		default:
-			{
-				err := fmt.Errorf("不成功都是失败")
-				return nil, nil, nil, err
-			}
 		}
 	}
 
@@ -785,14 +781,10 @@ func LoadExamPaperDetailByUserId(ctx context.Context, tx pgx.Tx, examPaperId, pS
 		whereClause = `WHERE sa.practice_submission_id = $1`
 		query = fmt.Sprintf("%s %s %s", s, whereClause, orderBy)
 		queryId = pSubmissionId
-	} else if pSubmissionId <= 0 {
+	} else {
 		whereClause = `WHERE sa.examinee_id = $1`
 		query = fmt.Sprintf("%s %s %s", s, whereClause, orderBy)
 		queryId = examineeId
-	} else {
-		err = fmt.Errorf("invalid pSubmissionId、examineeId  param")
-		z.Error(err.Error())
-		return nil, nil, nil, err
 	}
 	rows, err := tx.Query(ctx, query, queryId, withStudentAnswer, withAnswerScore, withAnswer)
 	if err != nil {
@@ -835,9 +827,13 @@ func LoadExamPaperDetailByUserId(ctx context.Context, tx pgx.Tx, examPaperId, pS
 	// 合并学生答卷记录的信息到考题中
 	for _, sa := range sAnswer {
 		tq, exists := questionIndex[sa.QuestionID.Int64]
+		if test == "exist" {
+			exists = false
+		}
 		if !exists {
-			z.Sugar().Warnf("exam question id:%v not found in examPaper:", sa.QuestionID.Int64)
-			continue
+			err = fmt.Errorf("exam question id:%v not found in examPaper:", sa.QuestionID.Int64)
+			z.Error(err.Error())
+			return nil, nil, nil, err
 		}
 		tq.GroupID = sa.GroupID
 		// 赋值学生作答情况
@@ -847,7 +843,9 @@ func LoadExamPaperDetailByUserId(ctx context.Context, tx pgx.Tx, examPaperId, pS
 		tq.Order = sa.Order
 		tq.Options = sa.ActualOptions
 		tq.Answers = sa.ActualAnswers
-
+		if !withAnswerScore {
+			tq.Analysis = null.String{}
+		}
 	}
 
 	// 构建前端需要的题组结构体

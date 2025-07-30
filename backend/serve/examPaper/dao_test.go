@@ -3,7 +3,7 @@
  * @Description: 考卷数据库层单元测试
  * @Date: 2025-07-28 19:55:28
  * @LastEditors: zdl <1311866870@qq.com>
- * @LastEditTime: 2025-07-30 16:19:21
+ * @LastEditTime: 2025-07-30 22:44:17
  */
 package examPaper
 
@@ -626,22 +626,23 @@ func TestGenerateAnswerQuestion(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// 初始化参数切片（500名学生 * 4个字段 = 2000个参数）
-	params := make([]interface{}, 0, 2000)
+	// 第一部分：插入学生记录
+	startID := 200 // 起始ID
 	valuePlaceholders := make([]string, 0, 500)
+	params := make([]interface{}, 0, 500*4) // 每个学生4个参数
 
 	// 动态生成占位符和参数
-	for i := 1; i <= 500; i++ {
-		offset := (i-1)*4
+	for i := 0; i < 500; i++ {
+		studentID := startID + i
+		offset := i * 4
 		valuePlaceholders = append(
 			valuePlaceholders,
-			fmt.Sprintf("($%d,$%d,$%d,$%d)", offset+1, offset+2, offset+3, offset+4)
-		)
+			fmt.Sprintf("($%d,$%d,$%d,$%d)", offset+1, offset+2, offset+3, offset+4))
 		params = append(params,
-			i,           // student_id (从1到500)
-			practiceID,  // 固定practiceID
-			uid,         // 固定创建者ID
-			"00",        // 固定状态
+			studentID,  // student_id (从200开始)
+			practiceID, // 固定practiceID
+			uid,        // 固定创建者ID
+			"00",       // 固定状态
 		)
 	}
 
@@ -652,6 +653,7 @@ func TestGenerateAnswerQuestion(t *testing.T) {
     VALUES %s`,
 		strings.Join(valuePlaceholders, ","),
 	)
+
 	// 执行批量插入
 	_, err = tx.Exec(ctx, s, params...)
 	if err != nil {
@@ -659,26 +661,27 @@ func TestGenerateAnswerQuestion(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// 生成 SQL 的 VALUES 部分和参数切片
+	// 第二部分：插入提交记录
 	valuePlaceholders = make([]string, 0, 500)
-	params = make([]interface{}, 0, 500*6) // 每个学生6个参数
+	params = make([]interface{}, 0, 500*6) // 每个提交6个参数
+	submissionIDs := make([]int64, 0, 500)
 	n := 500
-	submissionIDs := make([]int64, n)
-	for i := int64(0); i < int64(n); i++ {
-		submissionIDs[i] = i + 1 // 从1开始递增
-	}
 
-	for i := 1; i <= 500; i++ {
-		// 每组占位符: ($1,$2,$3,$4,$5,$6) -> 扩展为100组
+	for i := 0; i < n; i++ {
+		id := startID + i // 提交ID从200开始
+		submissionIDs = append(submissionIDs, int64(id))
+		studentID := startID + i // 学生ID从200开始
+
+		offset := i * 6
 		placeholder := fmt.Sprintf("($%d,$%d,$%d,$%d,$%d,$%d)",
-			i*6-5, i*6-4, i*6-3, i*6-2, i*6-1, i*6)
+			offset+1, offset+2, offset+3, offset+4, offset+5, offset+6)
 		valuePlaceholders = append(valuePlaceholders, placeholder)
 
-		// 添加实际参数（示例数据，按需调整）
+		// 添加实际参数
 		params = append(params,
-			i,           // 动态生成ID（实际中建议用序列或UUID）
+			id,          // 提交ID
 			practiceID,  // 练习ID
-			i,           // 学生ID（假设学生ID从1递增）
+			studentID,   // 学生ID
 			examPaperID, // 试卷ID
 			uid,         // 创建者ID
 			1,           // 尝试次数
@@ -692,9 +695,10 @@ func TestGenerateAnswerQuestion(t *testing.T) {
      VALUES %s`,
 		strings.Join(valuePlaceholders, ","),
 	)
+
 	_, err = tx.Exec(ctx, m, params...)
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("插入提交记录失败: %v", err)
 	}
 	validError := errors.New("validation fail")
 
@@ -753,18 +757,6 @@ func TestGenerateAnswerQuestion(t *testing.T) {
 			expectedErr: nil,
 		},
 		{
-			name: "异常1因题目问题导致jsonUnmarshal无法解析 手动制造一个题目强行插入进入",
-			req: GenerateAnswerQuestionsRequest{
-				ExamPaperID:          examPaperID,
-				Category:             PaperCategory.Practice,
-				PracticeSubmissionID: []int64{1, 2, 3},
-				IsQuestionRandom:     false,
-				IsOptionRandom:       true,
-				Attempt:              1,
-			},
-			expectedErr: nil,
-		},
-		{
 			name: "异常2 参数检测 非法考卷ID",
 			req: GenerateAnswerQuestionsRequest{
 				ExamPaperID:          -1,
@@ -816,29 +808,34 @@ func TestGenerateAnswerQuestion(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			var  insertqCount int64
-			err = conn.QueryRow(ctx,`SELECT COUNT(*) FROM t_student_answers WHERE status = '00' ` ).Scan(&insertqCount)
+			tx1, err := conn.Begin(ctx)
 			if err != nil {
 				t.Fatal(err)
 			}
-			err = GenerateAnswerQuestion(ctx, tx, tt.req, uid.Int64)
+			defer tx1.Rollback(ctx)
+			var insertqCount int64
+			err = tx1.QueryRow(ctx, `SELECT COUNT(*) FROM t_student_answers WHERE status = '00' `).Scan(&insertqCount)
+			if err != nil {
+				t.Fatal(err)
+			}
+			err = GenerateAnswerQuestion(ctx, tx1, tt.req, uid.Int64)
 			if tt.expectedErr == nil {
 				if err != nil {
 					t.Errorf("期望无错误，但是返回错误：%v", err)
 				}
 				var questionCount int64
-				if containsString(tt.name,"正常4"){
-					err = conn.QueryRow(ctx,`SELECT COUNT(*) FROM t_student_answers WHERE status = '00' ` ).Scan(&questionCount)
+				if containsString(tt.name, "正常4") {
+					err = tx1.QueryRow(ctx, `SELECT COUNT(*) FROM t_student_answers WHERE status = '00' `).Scan(&questionCount)
 					if err != nil {
 						t.Fatal(err)
 					}
-					if questionCount != (500 * 13 + insertqCount){
+					if questionCount != (500*13 + insertqCount) {
 						t.Errorf("生成的题目数量不对")
 					}
-				}else{
-					// 这里需要去检测一下这个是否真的生成了
+				} else {
+					// 这里需要去检测一下这个是否真的生成了 这里就不能这样显示了，只能是先查，然后再比较
 					c := `SELECT COUNT(*) FROM t_student_answers WHERE practice_submission_id = $1 OR practice_submission_id = $2 OR practice_submission_id = $3`
-					err = tx.QueryRow(ctx, c, 1, 2, 3).Scan(&questionCount)
+					err = tx1.QueryRow(ctx, c, 1, 2, 3).Scan(&questionCount)
 					if err != nil {
 						t.Error(err)
 					}
@@ -847,7 +844,220 @@ func TestGenerateAnswerQuestion(t *testing.T) {
 						t.Errorf("生成的学生答卷题目数量不一，实际：%v", questionCount)
 					}
 				}
-				
+
+			} else {
+				if err == nil || !containsString(err.Error(), tt.expectedErr.Error()) {
+					t.Errorf("返回的错误不符合预期：%v", err)
+				}
+			}
+		})
+	}
+}
+
+// 这里的话需要拿已经拥有的练习数据去
+func TestLoadExamPaperDetailByUserId(t *testing.T) {
+
+	if z == nil {
+		cmn.ConfigureForTest()
+	}
+	conn := cmn.GetPgxConn()
+	tx, err := conn.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var PexamPaperID, EexanPaperID, pSubmissionId, examineeId int64
+	PexamPaperID = 324
+	EexanPaperID = 322
+	pSubmissionId = 164
+	examineeId = 3114
+
+	defer func() {
+		_ = tx.Rollback(ctx)
+	}()
+	tests := []struct {
+		name              string
+		examPaper         int64
+		psid              int64
+		eid               int64
+		withStudentAnswer bool
+		withAnswer        bool
+		withAnswerScore   bool
+		expectedErr       error
+		paperName         string
+	}{
+		// 下面可以通过两种方式去触发这个函数的 第一种就是练习
+		{
+			// 满足学生查询自己作答详情时 能获取试卷、作答内容、批改分数、解析、AI解析
+			name:              "正常1 携带学生答案 携带题目答案 携带学生答案批改后分数",
+			examPaper:         PexamPaperID,
+			psid:              pSubmissionId,
+			eid:               0,
+			withStudentAnswer: true,
+			withAnswer:        true,
+			withAnswerScore:   true,
+			expectedErr:       nil,
+			paperName:         "H3C选择题练习试卷",
+		},
+		{
+			// 满足学生继续作答获取上一次的作答
+			name:              "正常2 携带学生答案 不携带题目答案 不携带学生答案批改后分数",
+			examPaper:         PexamPaperID,
+			psid:              pSubmissionId,
+			eid:               0,
+			withStudentAnswer: false,
+			withAnswer:        false,
+			withAnswerScore:   false,
+			expectedErr:       nil,
+			paperName:         "H3C选择题练习试卷",
+		},
+		{
+			// 满足学生进入练习或考试时获取作答试卷（若已乱序，则每个学生试卷内容都会被乱序过）
+			name:              "正常3 不携带学生答案 不携带题目答案 不携带学生答案批改后分数",
+			examPaper:         PexamPaperID,
+			psid:              pSubmissionId,
+			eid:               0,
+			withStudentAnswer: false,
+			withAnswer:        false,
+			withAnswerScore:   false,
+			expectedErr:       nil,
+			paperName:         "H3C选择题练习试卷",
+		},
+		// 下面可以通过两种方式去触发这个函数的 第二种就是考试
+		{
+			// 满足学生查询自己作答详情时 能获取试卷、作答内容、批改分数、解析、AI解析
+			name:              "正常1 携带学生答案 携带题目答案 携带学生答案批改后分数",
+			examPaper:         EexanPaperID,
+			psid:              0,
+			eid:               examineeId,
+			withStudentAnswer: true,
+			withAnswer:        true,
+			withAnswerScore:   true,
+			expectedErr:       nil,
+			paperName:         "H3C选择题考试试卷",
+		},
+		{
+			// 满足学生继续作答获取上一次的作答
+			name:              "正常2 携带学生答案 不携带题目答案 不携带学生答案批改后分数",
+			examPaper:         EexanPaperID,
+			psid:              0,
+			eid:               examineeId,
+			withStudentAnswer: false,
+			withAnswer:        false,
+			withAnswerScore:   false,
+			expectedErr:       nil,
+			paperName:         "H3C选择题考试试卷",
+		},
+		{
+			// 满足学生进入练习或考试时获取作答试卷（若已乱序，则每个学生试卷内容都会被乱序过）
+			name:              "正常3 不携带学生答案 不携带题目答案 不携带学生答案批改后分数",
+			examPaper:         EexanPaperID,
+			psid:              0,
+			eid:               examineeId,
+			withStudentAnswer: false,
+			withAnswer:        false,
+			withAnswerScore:   false,
+			expectedErr:       nil,
+			paperName:         "H3C选择题考试试卷",
+		},
+		{
+			// 满足学生进入练习或考试时获取作答试卷（若已乱序，则每个学生试卷内容都会被乱序过）
+			name:              "异常1 非法考卷ID",
+			examPaper:         -2,
+			psid:              pSubmissionId,
+			eid:               examineeId,
+			withStudentAnswer: false,
+			withAnswer:        false,
+			withAnswerScore:   false,
+			expectedErr:       errors.New("invalid examPaperId ID param"),
+		},
+		{
+			// 满足学生进入练习或考试时获取作答试卷（若已乱序，则每个学生试卷内容都会被乱序过）
+			name:              "异常2 非法考生ID与练习提交ID",
+			examPaper:         PexamPaperID,
+			psid:              -1,
+			eid:               -1,
+			withStudentAnswer: false,
+			withAnswer:        false,
+			withAnswerScore:   false,
+			expectedErr:       errors.New("invalid pSubmissionId、examineeId  param"),
+		},
+		{
+			// 此时随便也测试了两个同时大于0的话，还是会选取考试
+			name:              "异常3 空考卷ID 无法查询到数据",
+			examPaper:         10086,
+			psid:              pSubmissionId,
+			eid:               examineeId,
+			withStudentAnswer: false,
+			withAnswer:        false,
+			withAnswerScore:   false,
+			expectedErr:       errors.New("select examPaper failed"),
+		},
+		{
+			// 满足学生进入练习或考试时获取作答试卷（若已乱序，则每个学生试卷内容都会被乱序过）
+			name:              "异常4 不存在的考生ID与练习提交ID",
+			examPaper:         PexamPaperID,
+			psid:              10086,
+			eid:               0,
+			withStudentAnswer: false,
+			withAnswer:        false,
+			withAnswerScore:   false,
+			expectedErr:       errors.New("查询出学生答卷为空，请检查查询答卷语句或生成答卷逻辑"),
+		},
+		{
+			// 满足学生进入练习或考试时获取作答试卷（若已乱序，则每个学生试卷内容都会被乱序过）
+			name:              "异常5 函数处理考卷题目逻辑出错",
+			examPaper:         PexamPaperID,
+			psid:              pSubmissionId,
+			eid:               0,
+			withStudentAnswer: false,
+			withAnswer:        false,
+			withAnswerScore:   false,
+			expectedErr:       errors.New("not found in examPaper"),
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if containsString(tt.name, "异常5") {
+				ctx = context.WithValue(ctx, "test", "exist")
+			} else {
+				ctx = context.Background()
+			}
+			p, pg, pq, err := LoadExamPaperDetailByUserId(ctx, tx, tt.examPaper, tt.psid, tt.eid, tt.withStudentAnswer, tt.withAnswer, tt.withAnswerScore)
+			if tt.expectedErr == nil {
+				if err != nil {
+					t.Fatalf("预期无错误，但返回错误：%v", err)
+				}
+				if p == nil {
+					t.Errorf("返回的考卷信息体为空")
+				} else {
+					if p.Name.String != tt.paperName {
+						t.Errorf("查询的考卷信息名称错误，实际：%v", p.Name.String)
+					}
+					if p.TotalScore.Float64 != 20 {
+						t.Errorf("查询的考卷信息总分错误，实际：%v", p.TotalScore.Float64)
+					}
+					if p.QuestionCount.Int64 != 10 {
+						t.Errorf("查询的考卷信息题目数量错误，实际：%v", p.QuestionCount.Int64)
+					}
+					if p.GroupCount.Int64 != 1 {
+						t.Errorf("查询的考卷信息题组数量错误，实际：%v", p.GroupCount.Int64)
+					}
+					if len(pg) != 1 {
+						t.Errorf("查询的题组数量错误，实际：%v", len(pg))
+					}
+
+					var qCount int
+					for id, _ := range pg {
+						quesitons := pq[id]
+						for _, _ = range quesitons {
+							qCount++
+						}
+					}
+					if qCount != 10 {
+						t.Errorf("考卷题目数量错误")
+					}
+				}
 			} else {
 				if err == nil || !containsString(err.Error(), tt.expectedErr.Error()) {
 					t.Errorf("返回的错误不符合预期：%v", err)

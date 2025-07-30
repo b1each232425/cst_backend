@@ -878,11 +878,6 @@ func EnterPracticeGetPaperDetails(ctx context.Context, tx pgx.Tx, pid int64, uid
 
 				return epInfo, groupMap, questionMap, nil
 			}
-		default:
-			{
-				err := fmt.Errorf("不成功都是失败")
-				return nil, nil, nil, err
-			}
 		}
 	}
 	var ps cmn.TVPracticeSummary
@@ -998,12 +993,6 @@ func EnterPracticeGetPaperDetails(ctx context.Context, tx pgx.Tx, pid int64, uid
 		{
 			withStudentAnswer = true
 			pSubmissionID = ps.LatestUnsubmittedID.Int64
-		}
-	default:
-		{
-			err = fmt.Errorf("invalid practice submissions status")
-			z.Error(err.Error())
-			return nil, nil, nil, err
 		}
 	}
 
