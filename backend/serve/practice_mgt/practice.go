@@ -140,13 +140,15 @@ func Enroll(author string) {
 
 func practiceTH(ctx context.Context) {
 	q := cmn.GetCtxValue(ctx)
-	userID := q.SysUser.ID.Int64
-	if userID <= 0 {
-		q.Err = fmt.Errorf("Invalid UserID: %d", userID)
-		z.Error(q.Err.Error())
-		q.RespErr()
-		return
-	}
+	var userID int64
+	userID = 1
+	//userID := q.SysUser.ID.Int64
+	//if userID <= 0 {
+	//	q.Err = fmt.Errorf("Invalid UserID: %d", userID)
+	//	z.Error(q.Err.Error())
+	//	q.RespErr()
+	//	return
+	//}
 	// TODO 对接用户管理的令牌功能
 	//userID, _ := q.Session.Values["ID"].(int64)
 	//if userID <= 0 {
