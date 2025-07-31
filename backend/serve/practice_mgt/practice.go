@@ -57,22 +57,6 @@ func Enroll(author string) {
 	})
 
 	_ = cmn.AddService(&cmn.ServeEndPoint{
-		Fn: practiceStudentH,
-
-		Path: "/practiceStudent",
-		Name: "practiceStudent",
-
-		Developer: developer,
-		WhiteList: true,
-
-		//DomainID 创建该API的账号归属的domain
-		DomainID: int64(cmn.CDomainSys),
-
-		//DefaultDomain 该API将默认授权给的用户
-		DefaultDomain: int64(cmn.CDomainSys),
-	})
-
-	_ = cmn.AddService(&cmn.ServeEndPoint{
 		Fn: practiceStudentListH,
 
 		Path: "/practiceStudentList",
@@ -139,7 +123,10 @@ func Enroll(author string) {
 }
 
 func practiceTH(ctx context.Context) {
+
 	q := cmn.GetCtxValue(ctx)
+	z.Sugar().Infof("先打印一下这个domain%v", q.Domains)
+	z.Sugar().Infof("先打印一下这个domainList%v", q.DomainList)
 	var userID int64
 	userID = 1629
 	//userID := q.SysUser.ID.Int64
@@ -341,26 +328,15 @@ func practiceTH(ctx context.Context) {
 
 }
 
-// 处理获取学生名单列表
-func practiceStudentH(ctx context.Context) {
-	q := cmn.GetCtxValue(ctx)
-	testData := []int64{
-		123, 123, 456,
-	}
-	err := UpsertPracticeStudent(context.Background(), 1, 1, testData)
-	if err != nil {
-		q.Err = err
-		q.RespErr()
-		return
-	}
-	q.Resp()
-}
-
 func practiceSH(ctx context.Context) {
 	q := cmn.GetCtxValue(ctx)
+	z.Sugar().Infof("先打印一下这个domain%v", q.Domains)
+	z.Sugar().Infof("先打印一下这个domainList%v", q.DomainList)
 	userID := q.SysUser.ID.Int64
+	userID = 1634
+	// 这里要进行域的处理，就是这个学生能查看谁的
 	if userID <= 0 {
-		q.Err = fmt.Errorf("Invalid UserID: %d", userID)
+		q.Err = fmt.Errorf("invalid UserID: %d", userID)
 		z.Error(q.Err.Error())
 		q.RespErr()
 		return

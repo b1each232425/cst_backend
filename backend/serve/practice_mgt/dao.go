@@ -152,7 +152,6 @@ func UpsertPracticeStudent(ctx context.Context, pid, uid int64, ps []int64) erro
 		z.Error(err.Error())
 		return err
 	}
-	// 这里添加这个rollback的错误
 	// 用于测试，强制执行某些错误分支
 	forceErr, _ := ctx.Value("force-error").(string)
 	//添加学生
@@ -888,15 +887,21 @@ func EnterPracticeGetPaperDetails(ctx context.Context, tx pgx.Tx, pid int64, uid
 
 	// 这里先根据练习ID跟userId去获取一下这个练习状态 去查这个last_unSubmitted_id然后能根据这个ID去拿出这个 这里有可能是学生根据没有一次提交
 	// 也就是说此时是第一次进入，那就需要创建新的submissions的，同理如果查询出有记录，但是last为空的话，仍然需要创建，否则就不需要创建
-	s := `SELECT allowed_attempts,attempt_count,latest_unsubmitted_id, latest_submitted_id, exam_paper_id,paper_name,suggested_duration
+	s := `SELECT allowed_attempts,attempt_count,latest_unsubmitted_id, latest_submitted_id,pending_mark_id, exam_paper_id,paper_name,suggested_duration
 	 FROM assessuser.v_practice_summary 
 	 WHERE id = $1 AND student_id = $2 AND practice_status = $3 
 	 AND practice_student_status != $4`
 	err := sqlxDB.QueryRowxContext(ctx, s, pid, uid, PracticeStatus.Released, PracticeStudentStatus.Deleted).Scan(&ps.AllowedAttempts, &ps.AttemptCount, &ps.LatestUnsubmittedID,
-		&ps.LatestSubmittedID, &ps.ExamPaperID,
+		&ps.LatestSubmittedID, &ps.PendingMarkID, &ps.ExamPaperID,
 		&ps.PaperName, &ps.SuggestedDuration)
 	if err != nil {
 		err = fmt.Errorf("select student practice submission failed:%v", err)
+		z.Error(err.Error())
+		return nil, nil, nil, err
+	}
+	// 证明此时有练习需要等待批改，所以不能进行再一次的作答的
+	if ps.PendingMarkID.Valid && ps.PendingMarkID.Int64 > 0 {
+		err = fmt.Errorf("practice must be marked before new attempt practice")
 		z.Error(err.Error())
 		return nil, nil, nil, err
 	}
@@ -1000,6 +1005,7 @@ func EnterPracticeGetPaperDetails(ctx context.Context, tx pgx.Tx, pid int64, uid
 	epInfo.QuestionCount = p.QuestionCount.Int64
 	epInfo.TotalScore = p.TotalScore.Float64
 	epInfo.GroupCount = p.GroupCount.Int64
+	epInfo.Duration = ps.SuggestedDuration.Int64
 
 	return &epInfo, pg, pq, nil
 
