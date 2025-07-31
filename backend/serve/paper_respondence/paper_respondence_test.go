@@ -2082,10 +2082,10 @@ func TestInitRespondent(t *testing.T) {
 				return nil
 			},
 			clean: func(t *testing.T, tx pgx.Tx) error {
-				//_, err := tx.Exec(context.Background(), `DELETE FROM assessuser.t_practice_submissions WHERE id>176`)
-				//if err != nil {
-				//	t.Fatal(err)
-				//}
+				_, err := tx.Exec(context.Background(), `DELETE FROM assessuser.t_practice_submissions WHERE id>176`)
+				if err != nil {
+					t.Fatal(err)
+				}
 				return nil
 			},
 		},
