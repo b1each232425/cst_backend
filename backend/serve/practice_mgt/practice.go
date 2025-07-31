@@ -141,7 +141,7 @@ func Enroll(author string) {
 func practiceTH(ctx context.Context) {
 	q := cmn.GetCtxValue(ctx)
 	var userID int64
-	userID = 1
+	userID = 1629
 	//userID := q.SysUser.ID.Int64
 	//if userID <= 0 {
 	//	q.Err = fmt.Errorf("Invalid UserID: %d", userID)

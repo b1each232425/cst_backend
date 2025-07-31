@@ -916,19 +916,13 @@ func EnterPracticeGetPaperDetails(ctx context.Context, tx pgx.Tx, pid int64, uid
 	var pSubmissionID int64
 	epInfo := EnterPracticeInfo{}
 	withStudentAnswer := false
-
 	switch submissionStatus {
 	//以前所有的记录均已提交，现在重新练习
 	case StudentSubmissionStatus.Submitted:
 		{
-			if ps.AllowedAttempts.Int64 != 0 && ps.AllowedAttempts.Int64 == ps.AttemptCount.Int64 {
+			if ps.AllowedAttempts.Int64 != 0 && ps.AllowedAttempts.Int64 <= ps.AttemptCount.Int64 {
 				// 学生进入练习次数已经满了，无法再继续获取
 				err = fmt.Errorf("已达练习最大次数:%v，无法再次进入练习", ps.AttemptCount.Int64)
-				z.Error(err.Error())
-				return nil, nil, nil, err
-			}
-			if !ps.ExamPaperID.Valid || ps.ExamPaperID.Int64 <= 0 {
-				err = fmt.Errorf("练习所属考卷ID丢失，请检查练习视图或操作发布练习逻辑")
 				z.Error(err.Error())
 				return nil, nil, nil, err
 			}
