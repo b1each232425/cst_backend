@@ -1,0 +1,940 @@
+[
+    {
+        "ID": null,
+        "Type": "00",
+        "Content": "<p><span style=\"font-size: 12pt\">在计算机网络中，以下哪一种协议属于传输层协议？</span></p>",
+        "Options": [
+            {
+                "Label": "A",
+                "Value": "<p><span style=\"font-size: 12pt\">IP</span></p>"
+            },
+            {
+                "Label": "B",
+                "Value": "<p><span style=\"font-size: 12pt\">TCP</span></p>"
+            },
+            {
+                "Label": "C",
+                "Value": "<p><span style=\"font-size: 12pt\">HTTP</span></p>"
+            },
+            {
+                "Label": "D",
+                "Value": "<p><span style=\"font-size: 12pt\">ARP</span></p>"
+            }
+        ],
+        "Answers": [
+            "B"
+        ],
+        "Score": 2,
+        "Difficulty": 2,
+        "Tags": [
+            "计算机网络",
+            "传输层",
+            "TCP/IP"
+        ],
+        "Analysis": "<p>TCP 是传输层协议，IP 是网络层协议，HTTP 属于应用层，ARP 属于数据链路层。</p>",
+        "Title": "",
+        "AnswerFilePath": [],
+        "TestFilePath": [],
+        "Input": "",
+        "Output": "",
+        "Example": [],
+        "Repo": [],
+        "Order": null,
+        "Creator": 11,
+        "CreateTime": 1722000200000,
+        "UpdatedBy": 11,
+        "UpdateTime": 1722100200000,
+        "Addi": {
+            "source": "系统生成"
+        },
+        "Status": "00",
+        "QuestionAttachmentsPath": [],
+        "AccessMode": "",
+        "BelongTo": 1001
+    },
+    {
+        "Type": "00",
+        "Difficulty": 1,
+        "Content": "<p><span style=\"font-size: 12pt\">以下哪一种数据结构最适合用于实现先进先出（FIFO）逻辑？</span></p>",
+        "Tags": [
+            "数据结构",
+            "基础"
+        ],
+        "Options": [
+            {
+                "Label": "A",
+                "Value": "<p><span style=\"font-size: 12pt\">栈</span></p>"
+            },
+            {
+                "Label": "B",
+                "Value": "<p><span style=\"font-size: 12pt\">队列</span></p>"
+            },
+            {
+                "Label": "C",
+                "Value": "<p><span style=\"font-size: 12pt\">树</span></p>"
+            },
+            {
+                "Label": "D",
+                "Value": "<p><span style=\"font-size: 12pt\">图</span></p>"
+            }
+        ],
+        "Answers": [
+            "B"
+        ],
+        "Score": 2,
+        "Analysis": "<p>队列（Queue）遵循先进先出（FIFO）的顺序，而栈（Stack）是先进后出（LIFO）。</p>",
+        "QuestionAttachmentsPath": [],
+        "BelongTo": 1001,
+        "Creator": 1001,
+        "CreateTime": 1722000200000,
+        "UpdatedBy": 1001,
+        "UpdateTime": 1722100200000,
+        "Addi": {
+            "source": "系统生成"
+        },
+        "Status": "00"
+    },
+    {
+        "Type": "00",
+        "Difficulty": 2,
+        "Content": "<p><span style=\"font-size: 12pt\">关系型数据库中用于唯一标识一条记录的字段称为？</span></p>",
+        "Tags": [
+            "数据库",
+            "SQL"
+        ],
+        "Options": [
+            {
+                "Label": "A",
+                "Value": "<p><span style=\"font-size: 12pt\">外键</span></p>"
+            },
+            {
+                "Label": "B",
+                "Value": "<p><span style=\"font-size: 12pt\">主键</span></p>"
+            },
+            {
+                "Label": "C",
+                "Value": "<p><span style=\"font-size: 12pt\">候选键</span></p>"
+            },
+            {
+                "Label": "D",
+                "Value": "<p><span style=\"font-size: 12pt\">唯一索引</span></p>"
+            }
+        ],
+        "Answers": [
+            "B"
+        ],
+        "Score": 2,
+        "Analysis": "<p>主键（Primary Key）是用于唯一标识一条记录的字段，不能重复且不能为空。</p>",
+        "QuestionAttachmentsPath": [],
+        "BelongTo": 1001,
+        "Creator": 1001,
+        "CreateTime": 1722000200000,
+        "UpdatedBy": 1001,
+        "UpdateTime": 1722100200000,
+        "Addi": {
+            "source": "系统生成"
+        },
+        "Status": "00"
+    },
+    {
+        "Type": "00",
+        "Difficulty": 3,
+        "Content": "<p><span style=\"font-size: 12pt\">以下哪种调度算法最适合用于实时操作系统？</span></p>",
+        "Tags": [
+            "操作系统",
+            "进程调度",
+            "实时系统"
+        ],
+        "Options": [
+            {
+                "Label": "A",
+                "Value": "<p><span style=\"font-size: 12pt\">先来先服务（FCFS）</span></p>"
+            },
+            {
+                "Label": "B",
+                "Value": "<p><span style=\"font-size: 12pt\">短作业优先（SJF）</span></p>"
+            },
+            {
+                "Label": "C",
+                "Value": "<p><span style=\"font-size: 12pt\">轮转法（RR）</span></p>"
+            },
+            {
+                "Label": "D",
+                "Value": "<p><span style=\"font-size: 12pt\">优先级调度</span></p>"
+            }
+        ],
+        "Answers": [
+            "D"
+        ],
+        "Score": 3,
+        "Analysis": "<p>实时系统需要优先响应关键任务，优先级调度可以更好满足这一需求。</p>",
+        "QuestionAttachmentsPath": [],
+        "BelongTo": 1001,
+        "Creator": 1001,
+        "CreateTime": 1722000200000,
+        "UpdatedBy": 1001,
+        "UpdateTime": 1722100200000,
+        "Addi": {
+            "source": "系统生成"
+        },
+        "Status": "00"
+    },
+    {
+        "Type": "00",
+        "Difficulty": 2,
+        "Content": "<p><span style=\"font-size: 12pt\">时间复杂度为 O(log n) 的数据结构操作通常对应于哪种结构？</span></p>",
+        "Tags": [
+            "时间复杂度",
+            "算法",
+            "数据结构"
+        ],
+        "Options": [
+            {
+                "Label": "A",
+                "Value": "<p><span style=\"font-size: 12pt\">数组线性查找</span></p>"
+            },
+            {
+                "Label": "B",
+                "Value": "<p><span style=\"font-size: 12pt\">哈希表插入</span></p>"
+            },
+            {
+                "Label": "C",
+                "Value": "<p><span style=\"font-size: 12pt\">平衡二叉搜索树查找</span></p>"
+            },
+            {
+                "Label": "D",
+                "Value": "<p><span style=\"font-size: 12pt\">冒泡排序</span></p>"
+            }
+        ],
+        "Answers": [
+            "C"
+        ],
+        "Score": 2,
+        "Analysis": "<p>在平衡二叉搜索树中（如 AVL、红黑树），查找操作的时间复杂度为 O(log n)。</p>",
+        "QuestionAttachmentsPath": [],
+        "BelongTo": 1001,
+        "Creator": 1001,
+        "CreateTime": 1722000200000,
+        "UpdatedBy": 1001,
+        "UpdateTime": 1722100200000,
+        "Addi": {
+            "source": "系统生成"
+        },
+        "Status": "00"
+    },
+    {
+        "Type": "02",
+        "Difficulty": 2,
+        "Content": "<p><span style=\"font-size: 12pt\">以下哪些属于操作系统的主要功能？</span></p>",
+        "Tags": [
+            "操作系统",
+            "基础"
+        ],
+        "Options": [
+            {
+                "Label": "A",
+                "Value": "<p><span style=\"font-size: 12pt\">进程管理</span></p>"
+            },
+            {
+                "Label": "B",
+                "Value": "<p><span style=\"font-size: 12pt\">内存管理</span></p>"
+            },
+            {
+                "Label": "C",
+                "Value": "<p><span style=\"font-size: 12pt\">网页渲染</span></p>"
+            },
+            {
+                "Label": "D",
+                "Value": "<p><span style=\"font-size: 12pt\">文件系统</span></p>"
+            }
+        ],
+        "Answers": [
+            "A",
+            "B",
+            "D"
+        ],
+        "Score": 3,
+        "Analysis": "<p>操作系统核心功能包括进程管理、内存管理、文件系统、设备管理等。</p>",
+        "QuestionAttachmentsPath": [],
+        "BelongTo": 1001,
+        "Creator": 1001,
+        "CreateTime": 1722000300000,
+        "UpdatedBy": 1001,
+        "UpdateTime": 1722000300000,
+        "Addi": {
+            "source": "系统生成"
+        },
+        "Status": "00"
+    },
+    {
+        "Type": "02",
+        "Difficulty": 1,
+        "Content": "<p><span style=\"font-size: 12pt\">以下哪些数据结构属于非线性结构？</span></p>",
+        "Tags": [
+            "数据结构"
+        ],
+        "Options": [
+            {
+                "Label": "A",
+                "Value": "<p><span style=\"font-size: 12pt\">数组</span></p>"
+            },
+            {
+                "Label": "B",
+                "Value": "<p><span style=\"font-size: 12pt\">链表</span></p>"
+            },
+            {
+                "Label": "C",
+                "Value": "<p><span style=\"font-size: 12pt\">树</span></p>"
+            },
+            {
+                "Label": "D",
+                "Value": "<p><span style=\"font-size: 12pt\">图</span></p>"
+            }
+        ],
+        "Answers": [
+            "C",
+            "D"
+        ],
+        "Score": 2,
+        "Analysis": "<p>树和图是典型的非线性数据结构，数组和链表是线性结构。</p>",
+        "QuestionAttachmentsPath": [],
+        "BelongTo": 1001,
+        "Creator": 1001,
+        "CreateTime": 1722000300000,
+        "UpdatedBy": 1001,
+        "UpdateTime": 1722000300000,
+        "Addi": {
+            "source": "系统生成"
+        },
+        "Status": "00"
+    },
+    {
+        "Type": "02",
+        "Difficulty": 2,
+        "Content": "<p><span style=\"font-size: 12pt\">下列哪些排序算法的平均时间复杂度为 O(n log n)？</span></p>",
+        "Tags": [
+            "算法",
+            "排序"
+        ],
+        "Options": [
+            {
+                "Label": "A",
+                "Value": "<p><span style=\"font-size: 12pt\">快速排序</span></p>"
+            },
+            {
+                "Label": "B",
+                "Value": "<p><span style=\"font-size: 12pt\">冒泡排序</span></p>"
+            },
+            {
+                "Label": "C",
+                "Value": "<p><span style=\"font-size: 12pt\">堆排序</span></p>"
+            },
+            {
+                "Label": "D",
+                "Value": "<p><span style=\"font-size: 12pt\">归并排序</span></p>"
+            }
+        ],
+        "Answers": [
+            "A",
+            "C",
+            "D"
+        ],
+        "Score": 3,
+        "Analysis": "<p>快速排序、堆排序、归并排序的平均时间复杂度为 O(n log n)，冒泡排序为 O(n²)。</p>",
+        "QuestionAttachmentsPath": [],
+        "BelongTo": 1001,
+        "Creator": 1001,
+        "CreateTime": 1722000300000,
+        "UpdatedBy": 1001,
+        "UpdateTime": 1722000300000,
+        "Addi": {
+            "source": "系统生成"
+        },
+        "Status": "00"
+    },
+    {
+        "Type": "02",
+        "Difficulty": 3,
+        "Content": "<p><span style=\"font-size: 12pt\">以下哪些属于编译器前端的任务？</span></p>",
+        "Tags": [
+            "编译原理"
+        ],
+        "Options": [
+            {
+                "Label": "A",
+                "Value": "<p><span style=\"font-size: 12pt\">词法分析</span></p>"
+            },
+            {
+                "Label": "B",
+                "Value": "<p><span style=\"font-size: 12pt\">语义分析</span></p>"
+            },
+            {
+                "Label": "C",
+                "Value": "<p><span style=\"font-size: 12pt\">代码生成</span></p>"
+            },
+            {
+                "Label": "D",
+                "Value": "<p><span style=\"font-size: 12pt\">语法分析</span></p>"
+            }
+        ],
+        "Answers": [
+            "A",
+            "B",
+            "D"
+        ],
+        "Score": 4,
+        "Analysis": "<p>编译器前端主要负责词法、语法和语义分析，代码生成属于编译器后端。</p>",
+        "QuestionAttachmentsPath": [],
+        "BelongTo": 1001,
+        "Creator": 1001,
+        "CreateTime": 1722000300000,
+        "UpdatedBy": 1001,
+        "UpdateTime": 1722000300000,
+        "Addi": {
+            "source": "系统生成"
+        },
+        "Status": "00"
+    },
+    {
+        "Type": "02",
+        "Difficulty": 2,
+        "Content": "<p><span style=\"font-size: 12pt\">在关系型数据库中，以下哪些操作属于数据操纵语言（DML）？</span></p>",
+        "Tags": [
+            "数据库",
+            "SQL"
+        ],
+        "Options": [
+            {
+                "Label": "A",
+                "Value": "<p><span style=\"font-size: 12pt\">SELECT</span></p>"
+            },
+            {
+                "Label": "B",
+                "Value": "<p><span style=\"font-size: 12pt\">INSERT</span></p>"
+            },
+            {
+                "Label": "C",
+                "Value": "<p><span style=\"font-size: 12pt\">CREATE</span></p>"
+            },
+            {
+                "Label": "D",
+                "Value": "<p><span style=\"font-size: 12pt\">UPDATE</span></p>"
+            }
+        ],
+        "Answers": [
+            "A",
+            "B",
+            "D"
+        ],
+        "Score": 3,
+        "Analysis": "<p>DML 包括 SELECT、INSERT、UPDATE 和 DELETE，CREATE 属于 DDL。</p>",
+        "QuestionAttachmentsPath": [],
+        "BelongTo": 1001,
+        "Creator": 1001,
+        "CreateTime": 1722000300000,
+        "UpdatedBy": 1001,
+        "UpdateTime": 1722000300000,
+        "Addi": {
+            "source": "系统生成"
+        },
+        "Status": "00"
+    },
+    {
+        "Type": "04",
+        "Difficulty": 1,
+        "Content": "<p>RAM 是计算机的只读存储器。</p>",
+        "Options": [
+            {
+                "Label": "A",
+                "Value": "正确"
+            },
+            {
+                "Label": "B",
+                "Value": "错误"
+            }
+        ],
+        "Answers": [
+            "B"
+        ],
+        "Tags": [
+            "计算机基础"
+        ],
+        "Score": 1,
+        "Analysis": "<p>RAM 是随机存取存储器，非只读。</p>",
+        "QuestionAttachmentsPath": [],
+        "BelongTo": 1001,
+        "Creator": 1001,
+        "CreateTime": 1722000300000,
+        "UpdatedBy": 1001,
+        "UpdateTime": 1722000300000,
+        "Addi": {
+            "source": "系统生成"
+        },
+        "Status": "00"
+    },
+    {
+        "Type": "04",
+        "Difficulty": 2,
+        "Content": "<p>IPv6 的地址长度为 128 位。</p>",
+        "Options": [
+            {
+                "Label": "A",
+                "Value": "正确"
+            },
+            {
+                "Label": "B",
+                "Value": "错误"
+            }
+        ],
+        "Answers": [
+            "A"
+        ],
+        "Tags": [
+            "计算机网络"
+        ],
+        "Score": 2,
+        "Analysis": "<p>IPv6 是下一代互联网协议，地址长度为 128 位。</p>",
+        "QuestionAttachmentsPath": [],
+        "BelongTo": 1001,
+        "Creator": 1001,
+        "CreateTime": 1722000300000,
+        "UpdatedBy": 1001,
+        "UpdateTime": 1722000300000,
+        "Addi": {
+            "source": "系统生成"
+        },
+        "Status": "00"
+    },
+    {
+        "Type": "04",
+        "Difficulty": 2,
+        "Content": "<p>在栈中使用的是先进先出原则。</p>",
+        "Options": [
+            {
+                "Label": "A",
+                "Value": "正确"
+            },
+            {
+                "Label": "B",
+                "Value": "错误"
+            }
+        ],
+        "Answers": [
+            "B"
+        ],
+        "Tags": [
+            "数据结构"
+        ],
+        "Score": 2,
+        "Analysis": "<p>栈采用后进先出（LIFO）原则。</p>",
+        "QuestionAttachmentsPath": [],
+        "BelongTo": 1001,
+        "Creator": 1001,
+        "CreateTime": 1722000300000,
+        "UpdatedBy": 1001,
+        "UpdateTime": 1722000300000,
+        "Addi": {
+            "source": "系统生成"
+        },
+        "Status": "00"
+    },
+    {
+        "Type": "04",
+        "Difficulty": 1,
+        "Content": "<p>SELECT 语句可以用于查询数据库中的数据。</p>",
+        "Options": [
+            {
+                "Label": "A",
+                "Value": "正确"
+            },
+            {
+                "Label": "B",
+                "Value": "错误"
+            }
+        ],
+        "Answers": [
+            "A"
+        ],
+        "Tags": [
+            "数据库",
+            "SQL"
+        ],
+        "Score": 1,
+        "Analysis": "<p>SELECT 是用于查询的 SQL 基本语句。</p>",
+        "QuestionAttachmentsPath": [],
+        "BelongTo": 1001,
+        "Creator": 1001,
+        "CreateTime": 1722000300000,
+        "UpdatedBy": 1001,
+        "UpdateTime": 1722000300000,
+        "Addi": {
+            "source": "系统生成"
+        },
+        "Status": "00"
+    },
+    {
+        "Type": "04",
+        "Difficulty": 2,
+        "Content": "<p>Java 支持多重继承。</p>",
+        "Options": [
+            {
+                "Label": "A",
+                "Value": "正确"
+            },
+            {
+                "Label": "B",
+                "Value": "错误"
+            }
+        ],
+        "Answers": [
+            "B"
+        ],
+        "Tags": [
+            "Java",
+            "面向对象"
+        ],
+        "Score": 2,
+        "Analysis": "<p>Java 中类不支持多重继承，但接口可以。</p>",
+        "QuestionAttachmentsPath": [],
+        "BelongTo": 1001,
+        "Creator": 1001,
+        "CreateTime": 1722000300000,
+        "UpdatedBy": 1001,
+        "UpdateTime": 1722000300000,
+        "Addi": {
+            "source": "系统生成"
+        },
+        "Status": "00"
+    },
+    {
+        "Type": "06",
+        "Difficulty": 2,
+        "Content": "<p><span style=\"font-family: 等线; font-size: 12pt\">具有风险分析的软件生命周期模型是</span><span style=\"font-family: Aptos, sans-serif; font-size: 12pt\">()</span></p>",
+        "Answers": [
+            {
+                "index": 1,
+                "score": 2,
+                "answer": "螺旋模型",
+                "grading_rule": "答案必须准确匹配“螺旋模型”",
+                "alternative_answers": []
+            }
+        ],
+        "Tags": [
+            "软件工程",
+            "生命周期模型"
+        ],
+        "Score": 2,
+        "Analysis": "<p>螺旋模型是唯一支持风险分析的软件生命周期模型。</p>",
+        "QuestionAttachmentsPath": [],
+        "BelongTo": 1001,
+        "Creator": 1001,
+        "CreateTime": 1722000300000,
+        "UpdatedBy": 1001,
+        "UpdateTime": 1722000300000,
+        "Addi": {
+            "source": "系统生成"
+        },
+        "Status": "00"
+    },
+    {
+        "Type": "06",
+        "Difficulty": 3,
+        "Content": "<p>关系型数据库中，主键具有()</p>",
+        "Answers": [
+            {
+                "index": 1,
+                "score": 2,
+                "answer": "唯一性",
+                "grading_rule": "必须填写‘唯一性’才能得分",
+                "alternative_answers": []
+            }
+        ],
+        "Tags": [
+            "数据库",
+            "主键"
+        ],
+        "Score": 2,
+        "Analysis": "<p>主键必须唯一，用于唯一标识记录。</p>",
+        "QuestionAttachmentsPath": [],
+        "BelongTo": 1001,
+        "Creator": 1001,
+        "CreateTime": 1722000300000,
+        "UpdatedBy": 1001,
+        "UpdateTime": 1722000300000,
+        "Addi": {
+            "source": "系统生成"
+        },
+        "Status": "00"
+    },
+    {
+        "Type": "06",
+        "Difficulty": 3,
+        "Content": "<p>面向对象的三大基本特性是()、() 和 ()。</p>",
+        "Answers": [
+            {
+                "index": 1,
+                "score": 1,
+                "answer": "封装",
+                "grading_rule": "顺序不限，必须包含三个特性",
+                "alternative_answers": []
+            },
+            {
+                "index": 2,
+                "score": 1,
+                "answer": "继承",
+                "grading_rule": "顺序不限，必须包含三个特性",
+                "alternative_answers": []
+            },
+            {
+                "index": 3,
+                "score": 1,
+                "answer": "多态",
+                "grading_rule": "顺序不限，必须包含三个特性",
+                "alternative_answers": []
+            }
+        ],
+        "Tags": [
+            "面向对象",
+            "软件设计"
+        ],
+        "Score": 3,
+        "Analysis": "<p>面向对象的三大特性是封装、继承、多态。</p>",
+        "QuestionAttachmentsPath": [],
+        "BelongTo": 1001,
+        "Creator": 1001,
+        "CreateTime": 1722000300000,
+        "UpdatedBy": 1001,
+        "UpdateTime": 1722000300000,
+        "Addi": {
+            "source": "系统生成"
+        },
+        "Status": "00"
+    },
+    {
+        "Type": "06",
+        "Difficulty": 2,
+        "Content": "<p>在 TCP/IP 模型中，应用层对应的是 OSI 的第()</p>",
+        "Answers": [
+            {
+                "index": 1,
+                "score": 2,
+                "answer": "七层",
+                "grading_rule": "填写‘七层’或‘第七层’均可",
+                "alternative_answers": [
+                    "第七层"
+                ]
+            }
+        ],
+        "Tags": [
+            "计算机网络",
+            "TCP/IP",
+            "OSI模型"
+        ],
+        "Score": 2,
+        "Analysis": "<p>应用层在 OSI 模型中对应第七层：应用层。</p>",
+        "QuestionAttachmentsPath": [],
+        "BelongTo": 1001,
+        "Creator": 1001,
+        "CreateTime": 1722000300000,
+        "UpdatedBy": 1001,
+        "UpdateTime": 1722000300000,
+        "Addi": {
+            "source": "系统生成"
+        },
+        "Status": "00"
+    },
+    {
+        "Type": "06",
+        "Difficulty": 3,
+        "Content": "<p>在类之间可以通过关系来建立联系，常见的关系包括 ()、() 和 ()。</p>",
+        "Answers": [
+            {
+                "index": 1,
+                "score": 1,
+                "answer": "包含",
+                "grading_rule": "可以是乱序填写，但必须是包含、扩展和继承这三个关系，每空1分",
+                "alternative_answers": []
+            },
+            {
+                "index": 2,
+                "score": 1,
+                "answer": "扩展",
+                "grading_rule": "可以是乱序填写，但必须是包含、扩展和继承这三个关系，每空1分",
+                "alternative_answers": []
+            },
+            {
+                "index": 3,
+                "score": 1,
+                "answer": "继承",
+                "grading_rule": "可以是乱序填写，但必须是包含、扩展和继承这三个关系，每空1分",
+                "alternative_answers": []
+            }
+        ],
+        "Tags": [
+            "软件工程",
+            "面向对象"
+        ],
+        "Score": 3,
+        "Analysis": "<p>包含、扩展和继承是类之间最常见的三种关系。</p>",
+        "QuestionAttachmentsPath": [],
+        "BelongTo": 1001,
+        "Creator": 1001,
+        "CreateTime": 1722000300000,
+        "UpdatedBy": 1001,
+        "UpdateTime": 1722000300000,
+        "Addi": {
+            "source": "系统生成"
+        },
+        "Status": "00"
+    },
+    {
+        "Type": "08",
+        "Difficulty": 2,
+        "Content": "<p>简述计算机病毒的传播途径。</p>",
+        "Answers": [
+            {
+                "index": 1,
+                "score": 5,
+                "answer": "通过网络下载、移动存储设备、电子邮件等方式传播",
+                "grading_rule": "答出3种主要传播方式即可得满分",
+                "alternative_answers": []
+            }
+        ],
+        "Tags": [
+            "信息安全",
+            "病毒传播"
+        ],
+        "Score": 5,
+        "Analysis": "<p>病毒可通过网络传播、U盘拷贝、邮件附件、盗版软件等途径感染主机。</p>",
+        "QuestionAttachmentsPath": [],
+        "BelongTo": 1001,
+        "Creator": 1001,
+        "CreateTime": 1722000300000,
+        "UpdatedBy": 1001,
+        "UpdateTime": 1722000300000,
+        "Addi": {
+            "source": "系统生成"
+        },
+        "Status": "00"
+    },
+    {
+        "Type": "08",
+        "Difficulty": 3,
+        "Content": "<p>什么是数据库事务？它具有哪些特性？</p>",
+        "Answers": [
+            {
+                "index": 1,
+                "score": 5,
+                "answer": "数据库事务是一组操作的集合，这些操作作为一个单元执行，要么全部执行成功，要么全部失败回滚。事务的特性包括原子性、一致性、隔离性、持久性（ACID）。",
+                "grading_rule": "答出事务定义和ACID四个特性即可得满分",
+                "alternative_answers": []
+            }
+        ],
+        "Tags": [
+            "数据库",
+            "事务管理"
+        ],
+        "Score": 5,
+        "Analysis": "<p>事务是数据库中的重要概念，确保数据一致性和完整性。</p>",
+        "QuestionAttachmentsPath": [],
+        "BelongTo": 1001,
+        "Creator": 1001,
+        "CreateTime": 1722000300000,
+        "UpdatedBy": 1001,
+        "UpdateTime": 1722000300000,
+        "Addi": {
+            "source": "系统生成"
+        },
+        "Status": "00"
+    },
+    {
+        "Type": "08",
+        "Difficulty": 2,
+        "Content": "<p>简述操作系统中进程与线程的区别。</p>",
+        "Answers": [
+            {
+                "index": 1,
+                "score": 5,
+                "answer": "进程是系统资源分配的最小单位，线程是程序执行的最小单位；同一进程中的线程共享资源，进程之间相互独立。",
+                "grading_rule": "答出资源隔离、共享、执行单位等关键点即可得分",
+                "alternative_answers": []
+            }
+        ],
+        "Tags": [
+            "操作系统",
+            "进程线程"
+        ],
+        "Score": 5,
+        "Analysis": "<p>理解进程和线程的关系有助于掌握并发编程。</p>",
+        "QuestionAttachmentsPath": [],
+        "BelongTo": 1001,
+        "Creator": 1001,
+        "CreateTime": 1722000300000,
+        "UpdatedBy": 1001,
+        "UpdateTime": 1722000300000,
+        "Addi": {
+            "source": "系统生成"
+        },
+        "Status": "00"
+    },
+    {
+        "Type": "08",
+        "Difficulty": 3,
+        "Content": "<p>请说明 HTTP 和 HTTPS 的主要区别。</p>",
+        "Answers": [
+            {
+                "index": 1,
+                "score": 5,
+                "answer": "HTTP 是明文传输，HTTPS 使用 SSL/TLS 加密传输；HTTPS 更安全，适合敏感数据传输。",
+                "grading_rule": "提到加密、安全性和传输协议的不同即可得满分",
+                "alternative_answers": []
+            }
+        ],
+        "Tags": [
+            "网络协议",
+            "HTTP"
+        ],
+        "Score": 5,
+        "Analysis": "<p>HTTPS 基于 SSL/TLS，在安全通信方面比 HTTP 更具优势。</p>",
+        "QuestionAttachmentsPath": [],
+        "BelongTo": 1001,
+        "Creator": 1001,
+        "CreateTime": 1722000300000,
+        "UpdatedBy": 1001,
+        "UpdateTime": 1722000300000,
+        "Addi": {
+            "source": "系统生成"
+        },
+        "Status": "00"
+    },
+    {
+        "Type": "08",
+        "Difficulty": 2,
+        "Content": "<p>什么是软件测试？它的主要目标是什么？</p>",
+        "Answers": [
+            {
+                "index": 1,
+                "score": 5,
+                "answer": "软件测试是为了发现软件缺陷的过程，目标是验证软件是否符合需求、提升质量、减少缺陷。",
+                "grading_rule": "必须提到‘发现缺陷’和‘验证需求’两个目标",
+                "alternative_answers": []
+            }
+        ],
+        "Tags": [
+            "软件工程",
+            "测试"
+        ],
+        "Score": 5,
+        "Analysis": "<p>测试是软件开发生命周期的重要环节，用于确保产品质量。</p>",
+        "QuestionAttachmentsPath": [],
+        "BelongTo": 1001,
+        "Creator": 1001,
+        "CreateTime": 1722000300000,
+        "UpdatedBy": 1001,
+        "UpdateTime": 1722000300000,
+        "Addi": {
+            "source": "系统生成"
+        },
+        "Status": "00"
+    }
+]

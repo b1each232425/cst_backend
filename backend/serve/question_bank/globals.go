@@ -1,7 +1,5 @@
 package question_bank
 
-import "w2w.io/null"
-
 const (
 
 	// Question bank types
@@ -23,8 +21,8 @@ var QuestionTypes = map[string]string{
 	"08": "简答题",
 }
 
-var QuestionDifficulty = map[null.Int]string{
-	null.IntFrom(1): "简单",
-	null.IntFrom(2): "中等",
-	null.IntFrom(3): "困难",
+var QuestionDifficulty = map[int64]string{
+	1: "简单",
+	2: "中等",
+	3: "困难",
 }

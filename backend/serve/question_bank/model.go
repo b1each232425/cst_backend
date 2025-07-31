@@ -1,7 +1,5 @@
 package question_bank
 
-import "w2w.io/null"
-
 // 查询题库参数结构体
 type QueryQuestionBankParams struct {
 	BankID   int64  // 题库ID
@@ -15,9 +13,9 @@ type QueryQuestionBankParams struct {
 type QueryQuestionsParams struct {
 	BankID     int64    // 题库ID
 	Name       string   // 题目名称
-	Tags       string   // 题目标签
-	Type       string   // 题目类型
-	Difficulty null.Int // 题目难度
+	Tags       []string // 题目标签
+	Type       []string // 题目类型
+	Difficulty []int64  // 题目难度
 	Page       int64    // 分页页码
 	PageSize   int64    // 分页大小
 	UserID     int64    // 用户ID
