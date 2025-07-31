@@ -56,6 +56,14 @@ func (h *handler) HandleUser(ctx context.Context) {
 			return
 		}
 
+		domain := query.Get("domain")
+		if domain != "" && !IsDomainExist(domain) {
+			q.Err = fmt.Errorf("invalid filter domain: %s", query.Get("domain"))
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
 		// 构造过滤条件
 		filter := QueryUsersFilter{
 			Account:    NullableString(query.Get("account")),
@@ -65,6 +73,7 @@ func (h *handler) HandleUser(ctx context.Context) {
 			Gender:     NullableString(query.Get("gender")),
 			Status:     NullableString(query.Get("status")),
 			CreateTime: NullableIntFromStr(query.Get("createTime")),
+			Domain:     NullableString(domain),
 		}
 
 		users, totalRows, err := h.srv.QueryUsers(ctx, nil, page, pageSize, filter)
@@ -123,7 +132,7 @@ func (h *handler) HandleUser(ctx context.Context) {
 			return
 		}
 
-		var users []cmn.TUser
+		var users []User
 		err = json.Unmarshal(body.Data, &users)
 		if err != nil {
 			q.Err = fmt.Errorf("failed to unmarshal request json data: %w", err)
@@ -170,7 +179,7 @@ func (h *handler) HandleUser(ctx context.Context) {
 		}()
 
 		// 验证用户信息
-		var validUsers []cmn.TUser
+		var validUsers []User
 		var invalidUsers []InvalidUser
 		validUsers, invalidUsers, err = h.srv.ValidateUser(ctx, tx, users)
 		if err != nil {

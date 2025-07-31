@@ -2,6 +2,7 @@ package grade
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -199,13 +200,18 @@ func GetRowCount(ctx context.Context, sql string, params []any) (int64, error) {
 //}
 
 func GradeListExam(ctx context.Context, args *GradeListArgs) ([]GradeExam, int64, error) {
+	z.Info("---->" + cmn.FncName())
+
 	var err error
 	var page int
 	var pageSize int
 	var result []GradeExam
 	var rowCount int64
 
-	z.Info("---->" + cmn.FncName())
+	forceError := ""
+	if val, ok := ctx.Value("force-error").(string); ok {
+		forceError = val
+	}
 
 	// 分页参数: Page PageSize
 	// 数据库查询必需参数: TeacherID ExamID PassScoreRate
@@ -326,6 +332,10 @@ func GradeListExam(ctx context.Context, args *GradeListArgs) ([]GradeExam, int64
 			return result, rowCount, err
 		}
 		result = append(result, grade)
+	}
+	err = rows.Err()
+	if forceError == "rows.Err-err" {
+		err = errors.New(forceError)
 	}
 
 	// 统计总数

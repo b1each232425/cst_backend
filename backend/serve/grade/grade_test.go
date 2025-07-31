@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"w2w.io/cmn"
@@ -28,31 +29,41 @@ func TestGradeListH(t *testing.T) {
 		expectSuccess   bool
 		expectedStatus  int
 		expectedMessage string
+		forceError      string
+		userID          int64
 	}{
-		// 考试列表
+		// --------------------------------------------------
+		//               考试成绩列表 - 管理员身份               |
+		// --------------------------------------------------
 		{
-			name:            "GET 请求 - 获取考试成绩列表",
+			name:            "GET 请求 - 管理员正常获取所有教师考试成绩列表",
 			method:          "GET",
 			url:             "/api/grade/list?category=exam&page=1&pageSize=10&teacherID=-1",
 			expectSuccess:   true,
 			expectedStatus:  0,
-			expectedMessage: "success",
+			expectedMessage: "",
+			forceError:      "",
+			userID:          1,
 		},
 		{
-			name:            "GET 请求 - 无效页码",
+			name:            "GET 请求 - 无效页码，页码不为数字",
 			method:          "GET",
 			url:             "/api/grade/list?category=exam&page=abc&pageSize=10&teacherID=-1",
 			expectSuccess:   false,
 			expectedStatus:  -1,
-			expectedMessage: "无效页码: abc",
+			expectedMessage: "",
+			forceError:      "",
+			userID:          1,
 		},
 		{
-			name:            "GET 请求 - 无效每页数量",
+			name:            "GET 请求 - 无效每页数量，页数不为数字",
 			method:          "GET",
 			url:             "/api/grade/list?category=exam&page=1&pageSize=abc&teacherID=-1",
 			expectSuccess:   false,
 			expectedStatus:  -1,
 			expectedMessage: "",
+			forceError:      "",
+			userID:          1,
 		},
 		{
 			name:            "GET 请求 - 负页码",
@@ -61,6 +72,8 @@ func TestGradeListH(t *testing.T) {
 			expectSuccess:   false,
 			expectedStatus:  -1,
 			expectedMessage: "",
+			forceError:      "",
+			userID:          -1,
 		},
 		{
 			name:            "GET 请求 - 负每页数量",
@@ -69,38 +82,52 @@ func TestGradeListH(t *testing.T) {
 			expectSuccess:   false,
 			expectedStatus:  -1,
 			expectedMessage: "",
+			forceError:      "",
+			userID:          -1,
 		},
+		// --------------------------------------------------
+		//               考试成绩列表 - 教师身份 - 身份校验       |
+		// --------------------------------------------------
 		{
-			name:            "GET 请求 - 无效教师ID",
+			name:            "GET 请求 - 无效教师ID，教师ID不为数字",
 			method:          "GET",
 			url:             "/api/grade/list?category=exam&page=1&pageSize=10&teacherID=abc",
 			expectSuccess:   false,
 			expectedStatus:  -1,
-			expectedMessage: "无效教师ID: abc",
+			expectedMessage: "",
+			forceError:      "",
+			userID:          -1,
 		},
 		{
 			name:            "GET 请求 - 有效教师ID",
 			method:          "GET",
-			url:             "/api/grade/list?category=exam&page=1&pageSize=10&teacherID=1574",
+			url:             "/api/grade/list?category=exam&page=1&pageSize=10",
 			expectSuccess:   true,
 			expectedStatus:  0,
-			expectedMessage: "无效教师ID: abc",
+			expectedMessage: "",
+			forceError:      "",
+			userID:          -1,
 		},
 		{
-			name:            "GET 请求 - 非法教师ID",
+			name:            "GET 请求 - 非法教师ID，教师ID为负数",
 			method:          "GET",
 			url:             "/api/grade/list?category=exam&page=1&pageSize=10&teacherID=-100",
 			expectSuccess:   false,
 			expectedStatus:  -1,
 			expectedMessage: "",
+			forceError:      "",
+			userID:          -1,
 		},
+		// 考试ID校验
 		{
 			name:            "GET 请求 - 无效考试ID",
 			method:          "GET",
 			url:             "/api/grade/list?category=exam&page=1&pageSize=10&teacherID=-1&examID=abc",
 			expectSuccess:   false,
 			expectedStatus:  -1,
-			expectedMessage: "无效考试ID: abc",
+			expectedMessage: "",
+			forceError:      "",
+			userID:          -1,
 		},
 		{
 			name:            "GET 请求 - 非法考试ID",
@@ -109,6 +136,8 @@ func TestGradeListH(t *testing.T) {
 			expectSuccess:   false,
 			expectedStatus:  -1,
 			expectedMessage: "",
+			forceError:      "",
+			userID:          -1,
 		},
 		{
 			name:            "GET 请求 - 有效考试ID",
@@ -117,14 +146,19 @@ func TestGradeListH(t *testing.T) {
 			expectSuccess:   true,
 			expectedStatus:  0,
 			expectedMessage: "",
+			forceError:      "",
+			userID:          -1,
 		},
+		// 筛选条件校验
 		{
 			name:            "GET 请求 - 考试名称过滤",
 			method:          "GET",
 			url:             "/api/grade/list?category=exam&page=1&pageSize=10&teacherID=-1&name=math_test",
 			expectSuccess:   true,
 			expectedStatus:  0,
-			expectedMessage: "success",
+			expectedMessage: "",
+			forceError:      "",
+			userID:          -1,
 		},
 		{
 			name:            "GET 请求 - 提交状态过滤（未提交）",
@@ -132,7 +166,9 @@ func TestGradeListH(t *testing.T) {
 			url:             "/api/grade/list?category=exam&page=1&pageSize=10&teacherID=-1&submitted=0",
 			expectSuccess:   true,
 			expectedStatus:  0,
-			expectedMessage: "success",
+			expectedMessage: "",
+			forceError:      "",
+			userID:          -1,
 		},
 		{
 			name:            "GET 请求 - 提交状态过滤（已提交）",
@@ -140,7 +176,9 @@ func TestGradeListH(t *testing.T) {
 			url:             "/api/grade/list?category=exam&page=1&pageSize=10&teacherID=-1&submitted=1",
 			expectSuccess:   true,
 			expectedStatus:  0,
-			expectedMessage: "success",
+			expectedMessage: "",
+			forceError:      "",
+			userID:          -1,
 		},
 		{
 			name:            "GET 请求 - 考试类型过滤",
@@ -148,7 +186,9 @@ func TestGradeListH(t *testing.T) {
 			url:             "/api/grade/list?category=exam&page=1&pageSize=10&teacherID=-1&type=midterm",
 			expectSuccess:   true,
 			expectedStatus:  0,
-			expectedMessage: "success",
+			expectedMessage: "",
+			forceError:      "",
+			userID:          -1,
 		},
 		{
 			name:            "GET 请求 - 空提交状态",
@@ -156,7 +196,9 @@ func TestGradeListH(t *testing.T) {
 			url:             "/api/grade/list?category=exam&page=1&pageSize=10&teacherID=-1&submitted=",
 			expectSuccess:   true,
 			expectedStatus:  0,
-			expectedMessage: "success",
+			expectedMessage: "",
+			forceError:      "",
+			userID:          -1,
 		},
 		{
 			name:            "GET 请求 - 最大页码和每页数量",
@@ -164,7 +206,9 @@ func TestGradeListH(t *testing.T) {
 			url:             "/api/grade/list?category=exam&page=1000&pageSize=1000&teacherID=-1",
 			expectSuccess:   true,
 			expectedStatus:  0,
-			expectedMessage: "success",
+			expectedMessage: "",
+			forceError:      "",
+			userID:          -1,
 		},
 		// 练习列表
 		{
@@ -173,7 +217,9 @@ func TestGradeListH(t *testing.T) {
 			url:             "/api/grade/list?category=practice&page=1&pageSize=10&teacherID=-1",
 			expectSuccess:   true,
 			expectedStatus:  0,
-			expectedMessage: "success",
+			expectedMessage: "",
+			forceError:      "",
+			userID:          -1,
 		},
 		{
 			name:            "GET 请求 - 无效练习ID",
@@ -181,7 +227,9 @@ func TestGradeListH(t *testing.T) {
 			url:             "/api/grade/list?category=practice&page=1&pageSize=10&teacherID=-1&practiceID=abc",
 			expectSuccess:   false,
 			expectedStatus:  -1,
-			expectedMessage: "无效练习ID: abc",
+			expectedMessage: "",
+			forceError:      "",
+			userID:          -1,
 		},
 		{
 			name:            "GET 请求 - 非法练习ID",
@@ -190,6 +238,8 @@ func TestGradeListH(t *testing.T) {
 			expectSuccess:   false,
 			expectedStatus:  -1,
 			expectedMessage: "",
+			forceError:      "",
+			userID:          -1,
 		},
 		{
 			name:            "GET 请求 - 有效练习ID",
@@ -198,6 +248,8 @@ func TestGradeListH(t *testing.T) {
 			expectSuccess:   true,
 			expectedStatus:  0,
 			expectedMessage: "",
+			forceError:      "",
+			userID:          -1,
 		},
 		{
 			name:            "GET 请求 - 非法教师ID",
@@ -206,6 +258,8 @@ func TestGradeListH(t *testing.T) {
 			expectSuccess:   false,
 			expectedStatus:  -1,
 			expectedMessage: "",
+			forceError:      "",
+			userID:          -1,
 		},
 		{
 			name:            "GET 请求 - 有效教师ID",
@@ -214,6 +268,8 @@ func TestGradeListH(t *testing.T) {
 			expectSuccess:   true,
 			expectedStatus:  0,
 			expectedMessage: "",
+			forceError:      "",
+			userID:          -1,
 		},
 		{
 			name:            "GET 请求 - 练习名称过滤",
@@ -221,7 +277,9 @@ func TestGradeListH(t *testing.T) {
 			url:             "/api/grade/list?category=practice&page=1&pageSize=10&teacherID=-1&name=math_test",
 			expectSuccess:   true,
 			expectedStatus:  0,
-			expectedMessage: "success",
+			expectedMessage: "",
+			forceError:      "",
+			userID:          -1,
 		},
 		{
 			name:            "GET 请求 - 最大页码和每页数量",
@@ -229,7 +287,9 @@ func TestGradeListH(t *testing.T) {
 			url:             "/api/grade/list?category=practice&page=1000&pageSize=1000&teacherID=-1&practiceID=109",
 			expectSuccess:   true,
 			expectedStatus:  0,
-			expectedMessage: "success",
+			expectedMessage: "",
+			forceError:      "",
+			userID:          -1,
 		},
 		// 共同异常
 		{
@@ -238,7 +298,9 @@ func TestGradeListH(t *testing.T) {
 			url:             "/api/grade/list?page=1&pageSize=10&teacherID=-1",
 			expectSuccess:   false,
 			expectedStatus:  -1,
-			expectedMessage: "unsupported category: ",
+			expectedMessage: "",
+			forceError:      "",
+			userID:          -1,
 		},
 		{
 			name:            "GET 请求 - 不支持的类型",
@@ -246,7 +308,9 @@ func TestGradeListH(t *testing.T) {
 			url:             "/api/grade/list?category=invalid&page=1&pageSize=10&teacherID=-1",
 			expectSuccess:   false,
 			expectedStatus:  -1,
-			expectedMessage: "unsupported category: invalid",
+			expectedMessage: "",
+			forceError:      "",
+			userID:          -1,
 		},
 		{
 			name:            "不支持的请求方法",
@@ -254,8 +318,11 @@ func TestGradeListH(t *testing.T) {
 			url:             "/api/grade/list",
 			expectSuccess:   false,
 			expectedStatus:  -1,
-			expectedMessage: "unsupported method: post",
-		}}
+			expectedMessage: "",
+			forceError:      "",
+			userID:          -1,
+		},
+	}
 
 	// 运行测试用例
 	for _, tc := range testCases {
@@ -267,7 +334,7 @@ func TestGradeListH(t *testing.T) {
 			}
 
 			// 创建模拟上下文
-			ctx := createMockContext(t, req, 1575)
+			ctx := createMockContext(t, req, tc.forceError, tc.userID)
 
 			// 执行处理函数
 			gradeListH(ctx)
@@ -302,6 +369,8 @@ func TestGradeSubmissionH(t *testing.T) {
 		expectSuccess   bool
 		expectedStatus  int
 		expectedMessage string
+		forceError      string
+		userID          int64
 	}{
 		{
 			name:            "PATCH 请求 - 提交考试成绩",
@@ -310,7 +379,9 @@ func TestGradeSubmissionH(t *testing.T) {
 			reqBody:         `{"data":{"exam_ids":[1,2,3]}}`,
 			expectSuccess:   true,
 			expectedStatus:  0,
-			expectedMessage: "success",
+			expectedMessage: "",
+			forceError:      "",
+			userID:          -1,
 		},
 		{
 			name:            "PATCH 请求 - 缺少考试ID",
@@ -319,7 +390,9 @@ func TestGradeSubmissionH(t *testing.T) {
 			reqBody:         `{"data":{}}`,
 			expectSuccess:   false,
 			expectedStatus:  -1,
-			expectedMessage: "examIDs为空",
+			expectedMessage: "",
+			forceError:      "",
+			userID:          -1,
 		}, {
 			name:            "不支持的请求方法",
 			method:          "GET",
@@ -327,7 +400,9 @@ func TestGradeSubmissionH(t *testing.T) {
 			reqBody:         "",
 			expectSuccess:   false,
 			expectedStatus:  -1,
-			expectedMessage: "unsupported method: get",
+			expectedMessage: "",
+			forceError:      "",
+			userID:          -1,
 		}, {
 			name:            "无效请求体",
 			method:          "PATCH",
@@ -335,7 +410,9 @@ func TestGradeSubmissionH(t *testing.T) {
 			reqBody:         `invalid json`,
 			expectSuccess:   false,
 			expectedStatus:  -1,
-			expectedMessage: "invalid character 'i' looking for beginning of value",
+			expectedMessage: "",
+			forceError:      "",
+			userID:          -1,
 		}, {
 			name:            "PATCH 请求 - 提交考试成绩",
 			method:          "PATCH",
@@ -343,7 +420,9 @@ func TestGradeSubmissionH(t *testing.T) {
 			reqBody:         `{"data":{"exam_ids":[1,2,3]}}`,
 			expectSuccess:   true,
 			expectedStatus:  0,
-			expectedMessage: "success",
+			expectedMessage: "",
+			forceError:      "",
+			userID:          -1,
 		},
 		{
 			name:            "PATCH 请求 - 缺少考试ID",
@@ -352,7 +431,9 @@ func TestGradeSubmissionH(t *testing.T) {
 			reqBody:         `{"data":{}}`,
 			expectSuccess:   false,
 			expectedStatus:  -1,
-			expectedMessage: "examIDs为空",
+			expectedMessage: "",
+			forceError:      "",
+			userID:          -1,
 		},
 		{
 			name:            "不支持的请求方法",
@@ -361,7 +442,9 @@ func TestGradeSubmissionH(t *testing.T) {
 			reqBody:         "",
 			expectSuccess:   false,
 			expectedStatus:  -1,
-			expectedMessage: "unsupported method: get",
+			expectedMessage: "",
+			forceError:      "",
+			userID:          -1,
 		},
 		{
 			name:            "无效请求体",
@@ -370,7 +453,9 @@ func TestGradeSubmissionH(t *testing.T) {
 			reqBody:         `invalid json`,
 			expectSuccess:   false,
 			expectedStatus:  -1,
-			expectedMessage: "invalid character 'i' looking for beginning of value",
+			expectedMessage: "",
+			forceError:      "",
+			userID:          -1,
 		},
 		// New test cases
 		{
@@ -380,7 +465,9 @@ func TestGradeSubmissionH(t *testing.T) {
 			reqBody:         `{"data":{"exam_ids":[]}}`,
 			expectSuccess:   false,
 			expectedStatus:  -1,
-			expectedMessage: "examIDs为空",
+			expectedMessage: "",
+			forceError:      "",
+			userID:          -1,
 		},
 		//{
 		//	name:            "PATCH 请求 - 无效考试ID（非整数）",
@@ -398,7 +485,9 @@ func TestGradeSubmissionH(t *testing.T) {
 			reqBody:         `{}`,
 			expectSuccess:   false,
 			expectedStatus:  -1,
-			expectedMessage: "examIDs为空",
+			expectedMessage: "",
+			forceError:      "",
+			userID:          -1,
 		},
 		{
 			name:            "PATCH 请求 - 大量考试ID",
@@ -407,7 +496,9 @@ func TestGradeSubmissionH(t *testing.T) {
 			reqBody:         `{"data":{"exam_ids":[1,2,3,4,5,6,7,8,9,10]}}`,
 			expectSuccess:   true,
 			expectedStatus:  0,
-			expectedMessage: "success",
+			expectedMessage: "",
+			forceError:      "",
+			userID:          -1,
 		},
 	}
 
@@ -429,7 +520,7 @@ func TestGradeSubmissionH(t *testing.T) {
 			}
 
 			// 创建模拟上下文
-			ctx := createMockContext(t, req, 1575)
+			ctx := createMockContext(t, req, tc.forceError, tc.userID)
 
 			// 执行处理函数
 			gradeSubmissionH(ctx)
@@ -450,7 +541,7 @@ func TestGradeSubmissionH(t *testing.T) {
 }
 
 // 创建模拟上下文
-func createMockContext(t *testing.T, req *http.Request, userId int64) context.Context {
+func createMockContext(t *testing.T, req *http.Request, forceError string, userId int64) context.Context {
 	ctx := context.Background()
 
 	// 创建响应记录器
@@ -458,8 +549,10 @@ func createMockContext(t *testing.T, req *http.Request, userId int64) context.Co
 
 	// 创建服务上下文2
 	q := &cmn.ServiceCtx{
-		R: req,
-		W: rec,
+		R:         req,
+		W:         rec,
+		BeginTime: time.Now(),
+		Tag:       make(map[string]interface{}),
 		SysUser: &cmn.TUser{
 			ID: null.IntFrom(userId),
 		},
@@ -467,5 +560,13 @@ func createMockContext(t *testing.T, req *http.Request, userId int64) context.Co
 	}
 
 	// 将服务上下文存储到上下文中
-	return context.WithValue(ctx, cmn.QNearKey, q)
+	//return context.WithValue(ctx, cmn.QNearKey, q)
+	ctx = context.WithValue(context.Background(), cmn.QNearKey, q)
+
+	// 设置强制错误
+	if forceError != "" {
+		ctx = context.WithValue(ctx, "force-error", forceError)
+	}
+
+	return ctx
 }

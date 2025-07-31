@@ -11,7 +11,7 @@ type GradeListArgs struct {
 	Category   string `json:"category"`
 	Page       int    `json:"page"`
 	PageSize   int    `json:"pageSize"`
-	TeacherID  int    `json:"teacherID"`
+	TeacherID  int64  `json:"teacherID"`
 	ExamID     int    `json:"examID"`
 	PracticeID int    `json:"practiceID"`
 	Filter     struct {
