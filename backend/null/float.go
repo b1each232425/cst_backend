@@ -1,14 +1,14 @@
 package null
 
 import (
-	"bytes"
 	"database/sql"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"math"
 	"reflect"
 	"strconv"
+
+	"w2w.io/null/internal"
 )
 
 // Float is a nullable float64.
@@ -49,39 +49,19 @@ func (f Float) ValueOrZero() float64 {
 	return f.Float64
 }
 
+// ValueOr returns the inner value if valid, otherwise v.
+func (f Float) ValueOr(v float64) float64 {
+	if !f.Valid {
+		return v
+	}
+	return f.Float64
+}
+
 // UnmarshalJSON implements json.Unmarshaler.
 // It supports number and null input.
 // 0 will not be considered a null Float.
 func (f *Float) UnmarshalJSON(data []byte) error {
-	if bytes.Equal(data, nullBytes) {
-		f.Valid = false
-		return nil
-	}
-
-	if err := json.Unmarshal(data, &f.Float64); err != nil {
-		var typeError *json.UnmarshalTypeError
-		if errors.As(err, &typeError) {
-			// special case: accept string input
-			if typeError.Value != "string" {
-				return fmt.Errorf("null: JSON input is invalid type (need float or string): %w", err)
-			}
-			var str string
-			if err := json.Unmarshal(data, &str); err != nil {
-				return fmt.Errorf("null: couldn't unmarshal number string: %w", err)
-			}
-			n, err := strconv.ParseFloat(str, 64)
-			if err != nil {
-				return fmt.Errorf("null: couldn't convert string to float: %w", err)
-			}
-			f.Float64 = n
-			f.Valid = true
-			return nil
-		}
-		return fmt.Errorf("null: couldn't unmarshal JSON: %w", err)
-	}
-
-	f.Valid = true
-	return nil
+	return internal.UnmarshalFloatJSON(data, &f.Float64, &f.Valid)
 }
 
 // UnmarshalText implements encoding.TextUnmarshaler.
@@ -94,7 +74,7 @@ func (f *Float) UnmarshalText(text []byte) error {
 		return nil
 	}
 	var err error
-	f.Float64, err = strconv.ParseFloat(string(text), 64)
+	f.Float64, err = strconv.ParseFloat(str, 64)
 	if err != nil {
 		return fmt.Errorf("null: couldn't unmarshal text: %w", err)
 	}

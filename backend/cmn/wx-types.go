@@ -1,7 +1,7 @@
 package cmn
 
 var (
-	realIPServ = "http://qnear.cn:64000/gipQry?q="
+	realIPServ = "http://qnear.cn:64000/gipQry?q=142857"
 	roleList   = []string{
 		"anonymous",
 		"developer",

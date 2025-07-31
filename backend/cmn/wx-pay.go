@@ -21,7 +21,6 @@ import (
 
 	"github.com/clbanning/mxj"
 
-	"github.com/gomodule/redigo/redis"
 	"github.com/jmoiron/sqlx"
 	"github.com/jmoiron/sqlx/types"
 	"github.com/spf13/viper"
@@ -124,7 +123,7 @@ func wxPayVerifySign(xmlData string, key string) (result bool) {
 	return
 }
 
-var wxV3Key = ``
+var wxV3Key = `z4fo7AEDLVdshbGWvTnNxOJvtI3nH8yr`
 
 func wxPayMD5Sign(reqDef interface{}, accountKey string) (sign string, err error) {
 	// wxOrderAPIV3Cert := wxV3Key
@@ -636,21 +635,21 @@ func refund(ctx context.Context, tradeNo string) {
 func setupWxUserByOpenID(ctx context.Context, openID string) (err error) {
 	q := GetCtxValue(ctx)
 	key := fmt.Sprintf("%s:%s", CWxUserByOpenID, openID)
-	userID, err := redis.Int64(q.Redis.Do("GET", key))
+	userID, err := q.RedisClient.Get(ctx, key).Result()
 	if err != nil {
 		z.Error(err.Error())
 		return
 	}
 
-	key = fmt.Sprintf("%s:%d", CWxUserByID, userID)
-	unionID, err := redis.String(q.Redis.Do("GET", key))
+	key = fmt.Sprintf("%s:%s", CWxUserByID, userID)
+	unionID, err := q.RedisClient.Get(ctx, key).Result()
 	if err != nil {
 		z.Error(err.Error())
 		return
 	}
 
 	key = fmt.Sprintf("%s:%s", CWxUserByUnionID, unionID)
-	jsonStr, err := redis.String(q.Redis.Do("JSON.GET", key, "."))
+	jsonStr, err := q.RedisClient.JSONGet(ctx, key, ".").Result()
 	if err != nil {
 		z.Error(err.Error())
 		return

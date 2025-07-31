@@ -3,7 +3,7 @@
  * @Description: 练习管理数据库层函数逻辑测试
  * @Date: 2025-07-24 14:51:50
  * @LastEditors: zdl <1311866870@qq.com>
- * @LastEditTime: 2025-07-29 16:29:01
+ * @LastEditTime: 2025-07-30 22:53:16
  */
 package practice_mgt
 
@@ -257,7 +257,7 @@ func TestLoadPracticeById(t *testing.T) {
 	}{
 		{
 			name:          "期望正常1 存在正常练习信息且能正常查询到",
-			pid:           int64(2086),
+			pid:           int64(2036),
 			expectedError: false,
 			havePractice:  true,
 		},
@@ -294,15 +294,14 @@ func TestLoadPracticeById(t *testing.T) {
 			} else {
 				if tt.havePractice {
 					p1 := &cmn.TPractice{
-						ID:              null.IntFrom(2086),
+						ID:              null.IntFrom(2036),
 						PaperID:         null.IntFrom(102),
-						Name:            null.StringFrom("数学期末考试"),
-						CorrectMode:     null.StringFrom("02"), // 批改模式
-						Type:            null.StringFrom("02"), // 练习类型（试卷）
+						Name:            null.StringFrom("第一版练习数据v2"),
+						CorrectMode:     null.StringFrom("00"), // 批改模式
+						Type:            null.StringFrom("00"), // 练习类型（试卷）
 						Status:          null.StringFrom("02"),
-						Creator:         null.IntFrom(100),
-						CreateTime:      null.IntFrom(now),
-						AllowedAttempts: null.IntFrom(10),
+						Creator:         null.IntFrom(1574),
+						AllowedAttempts: null.IntFrom(5),
 					}
 					if p.Name.String != p1.Name.String {
 						t.Errorf("查询练习名称不符合；预期:%v,实际:%v", p1.Name.String, p.Name.String)
@@ -316,8 +315,8 @@ func TestLoadPracticeById(t *testing.T) {
 					if p.Type.String != p1.Type.String {
 						t.Errorf("查询练习类型不符合；预期:%v,实际:%v", p1.Type.String, p.Type.String)
 					}
-					if sCount != 0 {
-						t.Errorf("查询练习参会学生名单不符合；预期:%v,实际:%v", 0, sCount)
+					if sCount != 7 {
+						t.Errorf("查询练习参会学生名单不符合；预期:%v,实际:%v", 7, sCount)
 					}
 					if pName != "" {
 						t.Errorf("查询练习试卷名称不符合；预期:%v,实际:%v", "", pName)
@@ -587,7 +586,7 @@ func TestValidatePractice(t *testing.T) {
 				PaperID:         null.IntFrom(102),
 				Name:            null.StringFrom("化学期末考试"),
 				CorrectMode:     null.StringFrom("异常批改数据"), // 批改模式
-				Type:            null.StringFrom("02"),     // 练习类型（试卷）
+				Type:            null.StringFrom("02"),           // 练习类型（试卷）
 				AllowedAttempts: null.IntFrom(10),
 			},
 			ps:            nil,
@@ -609,7 +608,7 @@ func TestValidatePractice(t *testing.T) {
 			p: &cmn.TPractice{
 				PaperID:         null.IntFrom(102),
 				Name:            null.StringFrom("化学期末考试"),
-				CorrectMode:     null.StringFrom("02"),     // 批改模式
+				CorrectMode:     null.StringFrom("02"),           // 批改模式
 				Type:            null.StringFrom("异常练习类型"), // 练习类型（试卷）
 				AllowedAttempts: null.IntFrom(10),
 			},
@@ -1023,6 +1022,12 @@ func TestOperatePracticeStatus(t *testing.T) {
 			status:        PracticeStatus.Deleted,
 			expectedError: nil,
 		},
+		{
+			name:          "正常3 将待发布的练习调整为发布状态",
+			pid:           6,
+			status:        PracticeStatus.Released,
+			expectedError: nil,
+		},
 	}
 
 	for _, tt := range tests {
@@ -1036,15 +1041,20 @@ func TestOperatePracticeStatus(t *testing.T) {
 					t.Errorf("%v expected error:%v but got %v", tt.name, tt.expectedError, err)
 				}
 			} else {
-				// 这里去搜索一下
 				var status string
-				s := `SELECT (status) FROM t_practice WHERE id = $1`
-				_ = conn.QueryRow(ctx, s, tt.pid).Scan(&status)
+				var epID null.Int
+				s := `SELECT status ,exam_paper_id FROM t_practice WHERE id = $1`
+				_ = conn.QueryRow(ctx, s, tt.pid).Scan(&status, &epID)
 				if status != tt.status {
-					t.Errorf("没有成功更新练习发布状态")
+					t.Errorf("没有成功更新练习发布状态,实际：%v，预期：%v", tt.status, status)
+				}
+				// 如果是调整发布状态的话，那就需要
+				if containsString(tt.name, "正常3") {
+					if !epID.Valid || epID.Int64 < 0 {
+						t.Errorf("没有成功更新练习发布状态，没有成功发布练习中的生成考卷实际：%v", epID)
+					}
 				}
 			}
-
 		})
 	}
 
@@ -1054,59 +1064,9 @@ func TestOperatePracticeStatus(t *testing.T) {
 	})
 }
 
-// 测试这个函数，是否能达到各种情况
+// 测试学生进入练习的三种不同状态
 func TestEnterPracticeGetPaperDetails(t *testing.T) {
-	// 需要去提前插入很多很多的数据，不过也没关系，主要是这个练习提交这些逻辑，实际上不生成考卷也是可以的
-	var queries []string
-	var args [][][]interface{}
-	var tempArgs [][]interface{}
-	queries = append(queries, `INSERT INTO t_practice(id, name, correct_mode, type, status, creator) VALUES($1, $2, $3, $4, $5, $6)`)
-	tempArgs = [][]interface{}{
-		{21, "test practice 1", "02", "00", "02", 1101},
-		{22, "test practice 2", "02", "00", "02", 1101},
-		{23, "test practice 3", "00", "00", "02", 1101},
-	}
-	args = append(args, tempArgs)
 
-	queries = append(queries, `INSERT INTO t_exam_paper(id, exam_session_id, practice_id, name, status, creator) VALUES($1, $2, $3, $4, $5, $6)`)
-	tempArgs = [][]interface{}{
-		{101, 101, null.NewInt(0, false), "test exam paper 1", "00", 1101},
-		{102, 102, null.NewInt(0, false), "test exam paper 2", "00", 1101},
-		{103, 103, null.NewInt(0, false), "test exam paper 3", "00", 1101},
-		{104, 104, null.NewInt(0, false), "test exam paper 4", "00", 1101},
-		{124, null.NewInt(0, false), 21, "test practice paper 4", "00", 1101},
-		{125, null.NewInt(0, false), 22, "test practice paper 5", "00", 1101},
-		{126, null.NewInt(0, false), 23, "test practice paper 6", "00", 1101},
-	}
-	args = append(args, tempArgs)
-
-	queries = append(queries, `INSERT INTO t_exam_paper_group(id, exam_paper_id, name, status, creator) VALUES($1, $2, $3, $4, $5)`)
-	tempArgs = [][]interface{}{
-		{301, 101, "test group 1", "00", 1101},
-		{302, 102, "test group 2", "00", 1101},
-		{303, 103, "test group 3", "00", 1101},
-		{304, 104, "test group 4", "00", 1101},
-		{324, 124, "test group 24", "00", 1101},
-		{325, 125, "test group 25", "00", 1101},
-		{326, 126, "test group 26", "00", 1101},
-	}
-	args = append(args, tempArgs)
-
-	queries = append(queries, `INSERT INTO t_exam_paper_question(id, score, type, content, answers, group_id, status, creator) VALUES($1, $2, $3, $4, $5, $6, $7, $8)`)
-	tempArgs = [][]interface{}{
-		{401, 3, "00", "单选1", `["C"]`, 301, "00", 1101},
-		{402, 3, "02", "多选1", `["B", "D"]`, 301, "00", 1101},
-		{403, 3, "04", "判断1", `["A"]`, 301, "00", 1101},
-		{404, 3, "00", "单选1", `["C"]`, 302, "00", 1101},
-		{405, 3, "06", "填空1", `[{"index": 1, "score": 3, "answer": "填空答案1", "grading_rule": "1", "alternative_answer": null}]`, 302, "00", 1101},
-		{411, 3, "00", "单选2", `[]`, 303, "00", 1101}, // 异常数据
-		{412, 3, "02", "多选2", `["B", "D"]`, 304, "00", 1101},
-		{424, 3, "00", "单选1", `["C"]`, 324, "00", 1101}, // 练习
-		{425, 3, "02", "多选1", `["B", "D"]`, 324, "00", 1101},
-		{426, 3, "04", "判断1", `["A"]`, 324, "00", 1101},
-		{421, 3, "00", "单选2", `[]`, 326, "00", 1101}, // 异常数据
-	}
-	args = append(args, tempArgs)
 }
 
 // 辅助函数：检查字符串是否包含子字符串

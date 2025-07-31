@@ -5,14 +5,10 @@
 package zero
 
 import (
-	"bytes"
 	"database/sql"
 	"encoding/json"
 	"fmt"
 )
-
-// nullBytes is a JSON null literal
-var nullBytes = []byte("null")
 
 // String is a nullable string.
 // JSON marshals to a blank string if null.
@@ -53,10 +49,18 @@ func (s String) ValueOrZero() string {
 	return s.String
 }
 
+// ValueOr returns the inner value if valid, otherwise v.
+func (s String) ValueOr(v string) string {
+	if !s.Valid {
+		return v
+	}
+	return s.String
+}
+
 // UnmarshalJSON implements json.Unmarshaler.
 // It supports string and null input. Blank string input produces a null String.
 func (s *String) UnmarshalJSON(data []byte) error {
-	if bytes.Equal(data, nullBytes) {
+	if len(data) > 0 && data[0] == 'n' {
 		s.Valid = false
 		return nil
 	}
