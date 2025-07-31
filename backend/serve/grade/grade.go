@@ -1,6 +1,6 @@
 package grade
 
-//annotation:grade
+//annotation:grade-service
 //author:{"name":"txl","tel":"19832706790", "email":"188306257@qq.com"}
 
 import (
@@ -12,8 +12,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-
-	"w2w.io/null"
 
 	"github.com/tidwall/gjson"
 	"go.uber.org/zap"
@@ -231,6 +229,11 @@ func Enroll(author string) {
 func gradeListH(ctx context.Context) {
 	z.Info("---->" + cmn.FncName())
 
+	forceErr := ""
+	if val := ctx.Value("force-error"); val != nil {
+		forceErr = val.(string)
+	}
+
 	q := cmn.GetCtxValue(ctx)
 
 	method := strings.ToLower(q.R.Method)
@@ -282,7 +285,7 @@ func gradeListH(ctx context.Context) {
 			}
 			req.TeacherID = p
 		} else {
-			if q.SysUser == nil {
+			if q.SysUser == nil || forceErr == "q.SysUser nil" {
 				q.Err = fmt.Errorf("非法请求，鉴权用户失败")
 				z.Warn(q.Err.Error())
 				q.RespErr()
@@ -343,6 +346,9 @@ func gradeListH(ctx context.Context) {
 
 			if result != nil {
 				data, err = json.Marshal(result)
+				if forceErr == "json.Marshal fail" {
+					err = fmt.Errorf("force error: %s", forceErr)
+				}
 				if err != nil {
 					q.Err = err
 					z.Error(q.Err.Error())
@@ -380,6 +386,9 @@ func gradeListH(ctx context.Context) {
 
 			if result != nil {
 				data, err = json.Marshal(result)
+				if forceErr == "json.Marshal fail" {
+					err = fmt.Errorf("force error: %s", forceErr)
+				}
 				if err != nil {
 					q.Err = err
 					z.Error(q.Err.Error())
@@ -444,19 +453,29 @@ func gradeListH(ctx context.Context) {
 	*
 */
 func gradeSubmissionH(ctx context.Context) {
-	q := cmn.GetCtxValue(ctx)
 	z.Info("---->" + cmn.FncName())
+
+	forceErr := ""
+	if val := ctx.Value("force-error"); val != nil {
+		forceErr = val.(string)
+	}
+
+	q := cmn.GetCtxValue(ctx)
+
 	method := strings.ToLower(q.R.Method)
 	switch method {
 	case "patch":
+
 		var err error
 		var args GradeSubmitArgs
 
-		z.Info("---->" + cmn.FncName())
-
 		var buf []byte
-		buf, q.Err = io.ReadAll(q.R.Body)
-		if q.Err != nil {
+		buf, err = io.ReadAll(q.R.Body)
+		if forceErr == "io.ReadAll fail" {
+			err = fmt.Errorf(forceErr)
+		}
+		if err != nil {
+			q.Err = err
 			z.Error(q.Err.Error())
 			q.RespErr()
 			return
@@ -464,23 +483,25 @@ func gradeSubmissionH(ctx context.Context) {
 
 		defer func() {
 			err := q.R.Body.Close()
-			if err != nil {
+			if err != nil || forceErr == "q.R.Body.Close() fail" {
 				z.Error(err.Error())
 			}
 		}()
 
-		if len(buf) == 0 {
+		if len(buf) == 0 || forceErr == "io.ReadAll len(buf)==0" {
 			q.Err = fmt.Errorf("调用/api/course接口时，请求体为空")
 			z.Error(q.Err.Error())
 			q.RespErr()
 			return
 		}
 
-		userID := null.IntFrom(1574)
-		if q.SysUser != nil {
-			userID = q.SysUser.ID
+		if q.SysUser == nil || forceErr == "q.SysUser nil" {
+			q.Err = fmt.Errorf("非法请求，鉴权用户失败")
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
 		}
-		args.TeacherID = userID.Int64
+		args.TeacherID = q.SysUser.ID.Int64
 
 		examIDQuerys := gjson.GetBytes(buf, "data.exam_ids").Array()
 		if len(examIDQuerys) <= 0 {
@@ -495,9 +516,15 @@ func gradeSubmissionH(ctx context.Context) {
 		}
 		args.ExamIDs = examIDs
 
-		err = SetExamGradeSubmitted(ctx, &args)
+		rowsAffected, err := SetExamGradeSubmitted(ctx, &args)
+		if forceErr == "SetExamGradeSubmitted fail" {
+			err = fmt.Errorf(forceErr)
+		}
 		if err != nil {
 			err = fmt.Errorf("提交考试(教师ID:%v) 错误信息:%s", args.TeacherID, err.Error())
+			if forceErr == "exam has not ended yet" {
+				err = ErrExamIsNotOver
+			}
 			if errors.Is(err, ErrExamIsNotOver) {
 				q.Msg.Msg = "当前选择提交的考试存在未结束的考试"
 			} else {
@@ -510,7 +537,7 @@ func gradeSubmissionH(ctx context.Context) {
 		}
 		q.Err = nil
 		q.Msg.Status = 0
-		q.Msg.Msg = "success"
+		q.Msg.Msg = fmt.Sprintf("success %v", rowsAffected)
 		q.Resp()
 
 	default:
