@@ -143,6 +143,18 @@ func TestService_QueryUsers(t *testing.T) {
 			desc:           "测试按创建时间过滤查询",
 		},
 		{
+			name:     "角色过滤查询测试",
+			ctx:      context.WithValue(context.Background(), "force-error", ""),
+			page:     1,
+			pageSize: 10,
+			filter: QueryUsersFilter{
+				Domain: null.NewString("cst.school^student", true),
+			},
+			wantUsersCount: 1,
+			wantErr:        false,
+			desc:           "测试按性别过滤查询",
+		},
+		{
 			name:     "多条件组合过滤查询测试",
 			ctx:      context.WithValue(context.Background(), "force-error", ""),
 			page:     1,
@@ -562,24 +574,30 @@ func TestService_InsertUsers(t *testing.T) {
 	tests := []struct {
 		name    string
 		ctx     context.Context
-		users   []cmn.TUser
+		users   []User
 		wantErr bool
 		desc    string
 	}{
 		{
 			name: "成功插入单个用户",
 			ctx:  context.Background(),
-			users: []cmn.TUser{
+			users: []User{
 				{
-					Account:      fmt.Sprintf("test_user_%d", time.Now().UnixNano()),
-					Category:     "normal",
-					OfficialName: null.NewString("测试用户", true),
-					Gender:       null.NewString("M", true),
-					MobilePhone:  null.NewString("13800138000", true),
-					Email:        null.NewString("test1@example.com", true),
-					Creator:      null.NewInt(1, true),
-					Status:       null.NewString("00", true),
-					Remark:       null.NewString("test", true),
+					TUser: cmn.TUser{
+						Account:      fmt.Sprintf("test_user_%d", time.Now().UnixNano()),
+						Category:     "normal",
+						OfficialName: null.NewString("测试用户", true),
+						Gender:       null.NewString("M", true),
+						MobilePhone:  null.NewString("13800138000", true),
+						Email:        null.NewString("test1@example.com", true),
+						Creator:      null.NewInt(1, true),
+						Status:       null.NewString("00", true),
+						Remark:       null.NewString("test", true),
+					},
+					Domains: []null.String{
+						null.NewString("cst.school^teacher", true),
+						null.NewString("cst.school^admin", true),
+					},
 				},
 			},
 			wantErr: false,
@@ -588,23 +606,31 @@ func TestService_InsertUsers(t *testing.T) {
 		{
 			name: "成功插入多个用户",
 			ctx:  context.Background(),
-			users: []cmn.TUser{
+			users: []User{
 				{
-					Account:      fmt.Sprintf("batch_user_1_%d", time.Now().UnixNano()),
-					Category:     "vip",
-					OfficialName: null.NewString("批量用户1", true),
-					Gender:       null.NewString("F", true),
-					Creator:      null.NewInt(1, true),
-					Remark:       null.NewString("test", true),
+					TUser: cmn.TUser{
+						Account:      fmt.Sprintf("batch_user_1_%d", time.Now().UnixNano()),
+						Category:     "vip",
+						OfficialName: null.NewString("批量用户1", true),
+						Gender:       null.NewString("F", true),
+						Creator:      null.NewInt(1, true),
+						Remark:       null.NewString("test", true),
+					},
+					Domains: []null.String{
+						null.NewString("cst.school^teacher", true),
+						null.NewString("cst.school^admin", true),
+					},
 				},
 				{
-					Account:      fmt.Sprintf("batch_user_2_%d", time.Now().UnixNano()),
-					Category:     "normal",
-					OfficialName: null.NewString("批量用户2", true),
-					Gender:       null.NewString("M", true),
-					IDCardNo:     null.NewString("110101199001011234", true),
-					Creator:      null.NewInt(1, true),
-					Remark:       null.NewString("test", true),
+					TUser: cmn.TUser{
+						Account:      fmt.Sprintf("batch_user_2_%d", time.Now().UnixNano()),
+						Category:     "normal",
+						OfficialName: null.NewString("批量用户2", true),
+						Gender:       null.NewString("M", true),
+						IDCardNo:     null.NewString("110101199001011234", true),
+						Creator:      null.NewInt(1, true),
+						Remark:       null.NewString("test", true),
+					},
 				},
 			},
 			wantErr: false,
@@ -613,19 +639,21 @@ func TestService_InsertUsers(t *testing.T) {
 		{
 			name:    "空用户列表",
 			ctx:     context.Background(),
-			users:   []cmn.TUser{},
+			users:   []User{},
 			wantErr: true,
 			desc:    "测试空用户列表应该返回错误",
 		},
 		{
 			name: "缺少必要字段Account",
 			ctx:  context.Background(),
-			users: []cmn.TUser{
+			users: []User{
 				{
-					// Account 字段为空
-					Category: "normal",
-					Creator:  null.NewInt(1, true),
-					Remark:   null.NewString("test", true),
+					TUser: cmn.TUser{
+						// Account 字段为空
+						Category: "normal",
+						Creator:  null.NewInt(1, true),
+						Remark:   null.NewString("test", true),
+					},
 				},
 			},
 			wantErr: true,
@@ -634,12 +662,14 @@ func TestService_InsertUsers(t *testing.T) {
 		{
 			name: "缺少必要字段Category",
 			ctx:  context.Background(),
-			users: []cmn.TUser{
+			users: []User{
 				{
-					Account: fmt.Sprintf("invalid_user_%d", time.Now().UnixNano()),
-					// Category 字段为空
-					Creator: null.NewInt(1, true),
-					Remark:  null.NewString("test", true),
+					TUser: cmn.TUser{
+						Account: fmt.Sprintf("invalid_user_%d", time.Now().UnixNano()),
+						// Category 字段为空
+						Creator: null.NewInt(1, true),
+						Remark:  null.NewString("test", true),
+					},
 				},
 			},
 			wantErr: true,
@@ -648,9 +678,11 @@ func TestService_InsertUsers(t *testing.T) {
 		{
 			name: "缺少必要字段Account",
 			ctx:  context.Background(),
-			users: []cmn.TUser{
+			users: []User{
 				{
-					Remark: null.NewString("test", true),
+					TUser: cmn.TUser{
+						Remark: null.NewString("test", true),
+					},
 				},
 			},
 			wantErr: true,
@@ -659,14 +691,16 @@ func TestService_InsertUsers(t *testing.T) {
 		{
 			name: "匿名用户类型测试",
 			ctx:  context.Background(),
-			users: []cmn.TUser{
+			users: []User{
 				{
-					Account:      fmt.Sprintf("anonymous_user_%d", time.Now().UnixNano()),
-					Category:     "anonymous",
-					OfficialName: null.NewString("匿名用户", true),
-					// 没有身份证、手机号、邮箱，应该被设置为匿名用户类型
-					Creator: null.NewInt(1, true),
-					Remark:  null.NewString("test", true),
+					TUser: cmn.TUser{
+						Account:      fmt.Sprintf("anonymous_user_%d", time.Now().UnixNano()),
+						Category:     "anonymous",
+						OfficialName: null.NewString("匿名用户", true),
+						// 没有身份证、手机号、邮箱，应该被设置为匿名用户类型
+						Creator: null.NewInt(1, true),
+						Remark:  null.NewString("test", true),
+					},
 				},
 			},
 			wantErr: false,
@@ -675,15 +709,17 @@ func TestService_InsertUsers(t *testing.T) {
 		{
 			name: "注册用户类型测试",
 			ctx:  context.Background(),
-			users: []cmn.TUser{
+			users: []User{
 				{
-					Account:      fmt.Sprintf("registered_user_%d", time.Now().UnixNano()),
-					Category:     "registered",
-					OfficialName: null.NewString("注册用户", true),
-					MobilePhone:  null.NewString("13900139000", true),
-					// 有手机号，应该被设置为注册用户类型
-					Creator: null.NewInt(1, true),
-					Remark:  null.NewString("test", true),
+					TUser: cmn.TUser{
+						Account:      fmt.Sprintf("registered_user_%d", time.Now().UnixNano()),
+						Category:     "registered",
+						OfficialName: null.NewString("注册用户", true),
+						MobilePhone:  null.NewString("13900139000", true),
+						// 有手机号，应该被设置为注册用户类型
+						Creator: null.NewInt(1, true),
+						Remark:  null.NewString("test", true),
+					},
 				},
 			},
 			wantErr: false,
@@ -692,14 +728,16 @@ func TestService_InsertUsers(t *testing.T) {
 		{
 			name: "包含特殊字符的用户数据",
 			ctx:  context.Background(),
-			users: []cmn.TUser{
+			users: []User{
 				{
-					Account:      fmt.Sprintf("special_user_%d", time.Now().UnixNano()),
-					Category:     "special",
-					OfficialName: null.NewString("特殊字符用户@#$%^&*()", true),
-					Email:        null.NewString("special+test@example.com", true),
-					Creator:      null.NewInt(1, true),
-					Remark:       null.NewString("test", true),
+					TUser: cmn.TUser{
+						Account:      fmt.Sprintf("special_user_%d", time.Now().UnixNano()),
+						Category:     "special",
+						OfficialName: null.NewString("特殊字符用户@#$%^&*()", true),
+						Email:        null.NewString("special+test@example.com", true),
+						Creator:      null.NewInt(1, true),
+						Remark:       null.NewString("test", true),
+					},
 				},
 			},
 			wantErr: false,
@@ -708,14 +746,16 @@ func TestService_InsertUsers(t *testing.T) {
 		{
 			name: "Unicode字符用户数据",
 			ctx:  context.Background(),
-			users: []cmn.TUser{
+			users: []User{
 				{
-					Account:      fmt.Sprintf("unicode_用户_%d", time.Now().UnixNano()),
-					Category:     "unicode",
-					OfficialName: null.NewString("张三李四王五赵六🎉", true),
-					Gender:       null.NewString("M", true),
-					Creator:      null.NewInt(1, true),
-					Remark:       null.NewString("test", true),
+					TUser: cmn.TUser{
+						Account:      fmt.Sprintf("unicode_用户_%d", time.Now().UnixNano()),
+						Category:     "unicode",
+						OfficialName: null.NewString("张三李四王五赵六🎉", true),
+						Gender:       null.NewString("M", true),
+						Creator:      null.NewInt(1, true),
+						Remark:       null.NewString("test", true),
+					},
 				},
 			},
 			wantErr: false,
@@ -724,16 +764,58 @@ func TestService_InsertUsers(t *testing.T) {
 		{
 			name: "强制执行SQL错误",
 			ctx:  context.WithValue(context.Background(), "force-error", "Exec"),
-			users: []cmn.TUser{
+			users: []User{
 				{
-					Account:  fmt.Sprintf("error_user_%d", time.Now().UnixNano()),
-					Category: "normal",
-					Creator:  null.NewInt(1, true),
-					Remark:   null.NewString("test", true),
+					TUser: cmn.TUser{
+						Account:  fmt.Sprintf("error_user_%d", time.Now().UnixNano()),
+						Category: "normal",
+						Creator:  null.NewInt(1, true),
+						Remark:   null.NewString("test", true),
+					},
 				},
 			},
 			wantErr: true,
 			desc:    "测试强制执行SQL错误",
+		},
+		{
+			name: "查询用户ID错误",
+			ctx:  context.WithValue(context.Background(), "force-error", "QueryUserID"),
+			users: []User{
+				{
+					TUser: cmn.TUser{
+						Account:      fmt.Sprintf("batch_user_1_%d", time.Now().UnixNano()),
+						Category:     "vip",
+						OfficialName: null.NewString("批量用户1", true),
+						Gender:       null.NewString("F", true),
+						Creator:      null.NewInt(1, true),
+						Remark:       null.NewString("test", true),
+					},
+				},
+			},
+			wantErr: true,
+			desc:    "测试查询用户ID错误",
+		},
+		{
+			name: "插入角色错误",
+			ctx:  context.WithValue(context.Background(), "force-error", "InsertUserDomain"),
+			users: []User{
+				{
+					TUser: cmn.TUser{
+						Account:      fmt.Sprintf("batch_user_1_%d", time.Now().UnixNano()),
+						Category:     "vip",
+						OfficialName: null.NewString("批量用户1", true),
+						Gender:       null.NewString("F", true),
+						Creator:      null.NewInt(1, true),
+						Remark:       null.NewString("test", true),
+					},
+					Domains: []null.String{
+						null.NewString("cst.school^teacher", true),
+						null.NewString("cst.school^admin", true),
+					},
+				},
+			},
+			wantErr: true,
+			desc:    "测试插入角色错误",
 		},
 	}
 
@@ -820,19 +902,25 @@ func TestService_InsertUsers_WithTransaction(t *testing.T) {
 
 	tests := []struct {
 		name    string
-		users   []cmn.TUser
+		users   []User
 		wantErr bool
 		desc    string
 	}{
 		{
 			name: "事务中成功插入用户",
-			users: []cmn.TUser{
+			users: []User{
 				{
-					Account:      fmt.Sprintf("tx_user_%d", time.Now().UnixNano()),
-					Category:     "transaction",
-					OfficialName: null.NewString("事务用户", true),
-					Creator:      null.NewInt(1, true),
-					Remark:       null.NewString("test", true),
+					TUser: cmn.TUser{
+						Account:      fmt.Sprintf("tx_user_%d", time.Now().UnixNano()),
+						Category:     "transaction",
+						OfficialName: null.NewString("事务用户", true),
+						Creator:      null.NewInt(1, true),
+						Remark:       null.NewString("test", true),
+					},
+					Domains: []null.String{
+						null.NewString("cst.school^teacher", true),
+						null.NewString("cst.school^admin", true),
+					},
 				},
 			},
 			wantErr: false,
@@ -840,18 +928,22 @@ func TestService_InsertUsers_WithTransaction(t *testing.T) {
 		},
 		{
 			name: "事务中插入多个用户",
-			users: []cmn.TUser{
+			users: []User{
 				{
-					Account:  fmt.Sprintf("tx_batch_1_%d", time.Now().UnixNano()),
-					Category: "batch_tx",
-					Creator:  null.NewInt(1, true),
-					Remark:   null.NewString("test", true),
+					TUser: cmn.TUser{
+						Account:  fmt.Sprintf("tx_batch_1_%d", time.Now().UnixNano()),
+						Category: "batch_tx",
+						Creator:  null.NewInt(1, true),
+						Remark:   null.NewString("test", true),
+					},
 				},
 				{
-					Account:  fmt.Sprintf("tx_batch_2_%d", time.Now().UnixNano()),
-					Category: "batch_tx",
-					Creator:  null.NewInt(1, true),
-					Remark:   null.NewString("test", true),
+					TUser: cmn.TUser{
+						Account:  fmt.Sprintf("tx_batch_2_%d", time.Now().UnixNano()),
+						Category: "batch_tx",
+						Creator:  null.NewInt(1, true),
+						Remark:   null.NewString("test", true),
+					},
 				},
 			},
 			wantErr: false,
@@ -894,14 +986,16 @@ func TestService_InsertUsers_Performance(t *testing.T) {
 	for _, batchSize := range batchSizes {
 		t.Run(fmt.Sprintf("批次大小_%d", batchSize), func(t *testing.T) {
 			// 准备测试数据
-			users := make([]cmn.TUser, batchSize)
+			users := make([]User, batchSize)
 			for i := 0; i < batchSize; i++ {
-				users[i] = cmn.TUser{
-					Account:      fmt.Sprintf("perf_user_%d_%d", batchSize, time.Now().UnixNano()+int64(i)),
-					Category:     "performance",
-					OfficialName: null.NewString(fmt.Sprintf("性能测试用户%d", i+1), true),
-					Creator:      null.NewInt(1, true),
-					Remark:       null.NewString("test", true),
+				users[i] = User{
+					TUser: cmn.TUser{
+						Account:      fmt.Sprintf("perf_user_%d_%d", batchSize, time.Now().UnixNano()+int64(i)),
+						Category:     "performance",
+						OfficialName: null.NewString(fmt.Sprintf("性能测试用户%d", i+1), true),
+						Creator:      null.NewInt(1, true),
+						Remark:       null.NewString("test", true),
+					},
 				}
 			}
 
@@ -932,12 +1026,14 @@ func BenchmarkInsertUsers(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		users := []cmn.TUser{
+		users := []User{
 			{
-				Account:  fmt.Sprintf("bench_user_%d_%d", i, time.Now().UnixNano()),
-				Category: "benchmark",
-				Creator:  null.NewInt(1, true),
-				Remark:   null.NewString("test", true),
+				TUser: cmn.TUser{
+					Account:  fmt.Sprintf("bench_user_%d_%d", i, time.Now().UnixNano()),
+					Category: "benchmark",
+					Creator:  null.NewInt(1, true),
+					Remark:   null.NewString("test", true),
+				},
 			},
 		}
 		err := repo.InsertUsers(ctx, nil, users)
@@ -955,13 +1051,15 @@ func BenchmarkInsertUsersBatch(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		users := make([]cmn.TUser, batchSize)
+		users := make([]User, batchSize)
 		for j := 0; j < batchSize; j++ {
-			users[j] = cmn.TUser{
-				Account:  fmt.Sprintf("bench_batch_user_%d_%d_%d", i, j, time.Now().UnixNano()),
-				Category: "benchmark_batch",
-				Creator:  null.NewInt(1, true),
-				Remark:   null.NewString("test", true),
+			users[j] = User{
+				TUser: cmn.TUser{
+					Account:  fmt.Sprintf("bench_batch_user_%d_%d_%d", i, j, time.Now().UnixNano()),
+					Category: "benchmark_batch",
+					Creator:  null.NewInt(1, true),
+					Remark:   null.NewString("test", true),
+				},
 			}
 		}
 		err := repo.InsertUsers(ctx, nil, users)
@@ -978,23 +1076,25 @@ func TestService_InsertUsersWithAccount(t *testing.T) {
 	tests := []struct {
 		name    string
 		ctx     context.Context
-		users   []cmn.TUser
+		users   []User
 		wantErr bool
 		desc    string
 	}{
 		{
 			name: "成功插入单个用户",
 			ctx:  context.Background(),
-			users: []cmn.TUser{
+			users: []User{
 				{
-					Category:     "normal",
-					OfficialName: null.NewString("测试用户", true),
-					Gender:       null.NewString("M", true),
-					MobilePhone:  null.NewString("13900138001", true),
-					Email:        null.NewString("test2@example.com", true),
-					Creator:      null.NewInt(1, true),
-					Status:       null.NewString("00", true),
-					Remark:       null.NewString("test", true),
+					TUser: cmn.TUser{
+						Category:     "normal",
+						OfficialName: null.NewString("测试用户", true),
+						Gender:       null.NewString("M", true),
+						MobilePhone:  null.NewString("13900138001", true),
+						Email:        null.NewString("test2@example.com", true),
+						Creator:      null.NewInt(1, true),
+						Status:       null.NewString("00", true),
+						Remark:       null.NewString("test", true),
+					},
 				},
 			},
 			wantErr: false,
@@ -1003,21 +1103,25 @@ func TestService_InsertUsersWithAccount(t *testing.T) {
 		{
 			name: "成功插入多个用户",
 			ctx:  context.Background(),
-			users: []cmn.TUser{
+			users: []User{
 				{
-					Category:     "vip",
-					OfficialName: null.NewString("批量用户11", true),
-					Gender:       null.NewString("F", true),
-					Creator:      null.NewInt(1, true),
-					Remark:       null.NewString("test", true),
+					TUser: cmn.TUser{
+						Category:     "vip",
+						OfficialName: null.NewString("批量用户11", true),
+						Gender:       null.NewString("F", true),
+						Creator:      null.NewInt(1, true),
+						Remark:       null.NewString("test", true),
+					},
 				},
 				{
-					Category:     "normal",
-					OfficialName: null.NewString("批量用户22", true),
-					Gender:       null.NewString("M", true),
-					IDCardNo:     null.NewString("110101199003011234", true),
-					Creator:      null.NewInt(1, true),
-					Remark:       null.NewString("test", true),
+					TUser: cmn.TUser{
+						Category:     "normal",
+						OfficialName: null.NewString("批量用户22", true),
+						Gender:       null.NewString("M", true),
+						IDCardNo:     null.NewString("110101199003011234", true),
+						Creator:      null.NewInt(1, true),
+						Remark:       null.NewString("test", true),
+					},
 				},
 			},
 			wantErr: false,
@@ -1026,19 +1130,21 @@ func TestService_InsertUsersWithAccount(t *testing.T) {
 		{
 			name:    "空用户列表",
 			ctx:     context.Background(),
-			users:   []cmn.TUser{},
+			users:   []User{},
 			wantErr: true,
 			desc:    "测试空用户列表应该返回错误",
 		},
 		{
 			name: "缺少必要字段Category",
 			ctx:  context.Background(),
-			users: []cmn.TUser{
+			users: []User{
 				{
-					Account: fmt.Sprintf("invalid_user_%d", time.Now().UnixNano()),
-					// Category 字段为空
-					Creator: null.NewInt(1, true),
-					Remark:  null.NewString("test", true),
+					TUser: cmn.TUser{
+						Account: fmt.Sprintf("invalid_user_%d", time.Now().UnixNano()),
+						// Category 字段为空
+						Creator: null.NewInt(1, true),
+						Remark:  null.NewString("test", true),
+					},
 				},
 			},
 			wantErr: true,
@@ -1047,13 +1153,15 @@ func TestService_InsertUsersWithAccount(t *testing.T) {
 		{
 			name: "匿名用户类型测试",
 			ctx:  context.Background(),
-			users: []cmn.TUser{
+			users: []User{
 				{
-					Category:     "anonymous",
-					OfficialName: null.NewString("匿名用户", true),
-					// 没有身份证、手机号、邮箱，应该被设置为匿名用户类型
-					Creator: null.NewInt(1, true),
-					Remark:  null.NewString("test", true),
+					TUser: cmn.TUser{
+						Category:     "anonymous",
+						OfficialName: null.NewString("匿名用户", true),
+						// 没有身份证、手机号、邮箱，应该被设置为匿名用户类型
+						Creator: null.NewInt(1, true),
+						Remark:  null.NewString("test", true),
+					},
 				},
 			},
 			wantErr: false,
@@ -1062,14 +1170,16 @@ func TestService_InsertUsersWithAccount(t *testing.T) {
 		{
 			name: "注册用户类型测试",
 			ctx:  context.Background(),
-			users: []cmn.TUser{
+			users: []User{
 				{
-					Category:     "registered",
-					OfficialName: null.NewString("注册用户", true),
-					MobilePhone:  null.NewString("13900139040", true),
-					// 有手机号，应该被设置为注册用户类型
-					Creator: null.NewInt(1, true),
-					Remark:  null.NewString("test", true),
+					TUser: cmn.TUser{
+						Category:     "registered",
+						OfficialName: null.NewString("注册用户", true),
+						MobilePhone:  null.NewString("13900139040", true),
+						// 有手机号，应该被设置为注册用户类型
+						Creator: null.NewInt(1, true),
+						Remark:  null.NewString("test", true),
+					},
 				},
 			},
 			wantErr: false,
@@ -1078,13 +1188,15 @@ func TestService_InsertUsersWithAccount(t *testing.T) {
 		{
 			name: "包含特殊字符的用户数据",
 			ctx:  context.Background(),
-			users: []cmn.TUser{
+			users: []User{
 				{
-					Category:     "special",
-					OfficialName: null.NewString("特殊字符用户@#$%^&*()", true),
-					Email:        null.NewString("special+test1@example.com", true),
-					Creator:      null.NewInt(1, true),
-					Remark:       null.NewString("test", true),
+					TUser: cmn.TUser{
+						Category:     "special",
+						OfficialName: null.NewString("特殊字符用户@#$%^&*()", true),
+						Email:        null.NewString("special+test1@example.com", true),
+						Creator:      null.NewInt(1, true),
+						Remark:       null.NewString("test", true),
+					},
 				},
 			},
 			wantErr: false,
@@ -1093,13 +1205,15 @@ func TestService_InsertUsersWithAccount(t *testing.T) {
 		{
 			name: "Unicode字符用户数据",
 			ctx:  context.Background(),
-			users: []cmn.TUser{
+			users: []User{
 				{
-					Category:     "unicode",
-					OfficialName: null.NewString("张三李四王五赵六🎉", true),
-					Gender:       null.NewString("M", true),
-					Creator:      null.NewInt(1, true),
-					Remark:       null.NewString("test", true),
+					TUser: cmn.TUser{
+						Category:     "unicode",
+						OfficialName: null.NewString("张三李四王五赵六🎉", true),
+						Gender:       null.NewString("M", true),
+						Creator:      null.NewInt(1, true),
+						Remark:       null.NewString("test", true),
+					},
 				},
 			},
 			wantErr: false,
@@ -1108,11 +1222,13 @@ func TestService_InsertUsersWithAccount(t *testing.T) {
 		{
 			name: "强制执行SQL错误",
 			ctx:  context.WithValue(context.Background(), "force-error", "Exec"),
-			users: []cmn.TUser{
+			users: []User{
 				{
-					Category: "normal",
-					Creator:  null.NewInt(1, true),
-					Remark:   null.NewString("test", true),
+					TUser: cmn.TUser{
+						Category: "normal",
+						Creator:  null.NewInt(1, true),
+						Remark:   null.NewString("test", true),
+					},
 				},
 			},
 			wantErr: true,
@@ -1121,11 +1237,13 @@ func TestService_InsertUsersWithAccount(t *testing.T) {
 		{
 			name: "强制触发生成唯一帐号错误",
 			ctx:  context.WithValue(context.Background(), "force-error", "GenerateUniqueAccount"),
-			users: []cmn.TUser{
+			users: []User{
 				{
-					Category: "normal",
-					Creator:  null.NewInt(1, true),
-					Remark:   null.NewString("test", true),
+					TUser: cmn.TUser{
+						Category: "normal",
+						Creator:  null.NewInt(1, true),
+						Remark:   null.NewString("test", true),
+					},
 				},
 			},
 			wantErr: true,
@@ -1134,11 +1252,13 @@ func TestService_InsertUsersWithAccount(t *testing.T) {
 		{
 			name: "强制触发插入用户错误",
 			ctx:  context.WithValue(context.Background(), "force-error", "InsertUsers"),
-			users: []cmn.TUser{
+			users: []User{
 				{
-					Category: "normal",
-					Creator:  null.NewInt(1, true),
-					Remark:   null.NewString("test", true),
+					TUser: cmn.TUser{
+						Category: "normal",
+						Creator:  null.NewInt(1, true),
+						Remark:   null.NewString("test", true),
+					},
 				},
 			},
 			wantErr: true,
@@ -1849,12 +1969,12 @@ func Test_service_ValidateUser(t *testing.T) {
 
 	type args struct {
 		ctx   context.Context
-		users []cmn.TUser
+		users []User
 	}
 	tests := []struct {
 		name        string
 		args        args
-		wantValid   []cmn.TUser
+		wantValid   []User
 		wantInvalid []InvalidUser
 		wantErr     bool
 	}{
@@ -1862,29 +1982,43 @@ func Test_service_ValidateUser(t *testing.T) {
 			name: "所有用户都有效",
 			args: args{
 				ctx: context.Background(),
-				users: []cmn.TUser{
+				users: []User{
 					{
-						Account:      "new_user_001",
-						OfficialName: null.NewString("新用户001_Test_service_ValidateUser", true),
-						Email:        null.NewString("new001ValidateUser@example.com", true),
+						TUser: cmn.TUser{
+							Account:      "new_user_001",
+							OfficialName: null.NewString("新用户001_Test_service_ValidateUser", true),
+							Email:        null.NewString("new001ValidateUser@example.com", true),
+						},
+						Domains: []null.String{
+							null.NewString("cst.school^teacher", true),
+						},
 					},
 					{
-						Account:      "new_user_002",
-						OfficialName: null.NewString("新用户002_Test_service_ValidateUser", true),
-						MobilePhone:  null.NewString("13900139111", true),
+						TUser: cmn.TUser{
+							Account:      "new_user_002",
+							OfficialName: null.NewString("新用户002_Test_service_ValidateUser", true),
+							MobilePhone:  null.NewString("13900139111", true),
+						},
+						Domains: []null.String{
+							null.NewString("cst.school^teacher", true),
+						},
 					},
 				},
 			},
-			wantValid: []cmn.TUser{
+			wantValid: []User{
 				{
-					Account:      "new_user_001",
-					OfficialName: null.NewString("新用户001", true),
-					Email:        null.NewString("new001@example.com", true),
+					TUser: cmn.TUser{
+						Account:      "new_user_001",
+						OfficialName: null.NewString("新用户001", true),
+						Email:        null.NewString("new001@example.com", true),
+					},
 				},
 				{
-					Account:      "new_user_002",
-					OfficialName: null.NewString("新用户002", true),
-					MobilePhone:  null.NewString("13900139000", true),
+					TUser: cmn.TUser{
+						Account:      "new_user_002",
+						OfficialName: null.NewString("新用户002", true),
+						MobilePhone:  null.NewString("13900139000", true),
+					},
 				},
 			},
 			wantInvalid: nil,
@@ -1894,9 +2028,11 @@ func Test_service_ValidateUser(t *testing.T) {
 			name: "存在无效用户",
 			args: args{
 				ctx: context.Background(),
-				users: []cmn.TUser{
+				users: []User{
 					{
-						Account: "zhangsan",
+						TUser: cmn.TUser{
+							Account: "zhangsan",
+						},
 					},
 				},
 			},
@@ -1906,6 +2042,7 @@ func Test_service_ValidateUser(t *testing.T) {
 					Account: null.NewString("zhangsan", true),
 					ErrorMsg: []null.String{
 						null.NewString("账号已存在", true),
+						null.NewString("角色不能为空", true),
 					},
 				},
 			},
@@ -1915,10 +2052,15 @@ func Test_service_ValidateUser(t *testing.T) {
 			name: "邮箱地址不合法",
 			args: args{
 				ctx: context.Background(),
-				users: []cmn.TUser{
+				users: []User{
 					{
-						Account: "zhangsanyes",
-						Email:   null.NewString("invalid-email", true),
+						TUser: cmn.TUser{
+							Account: "zhangsanyes",
+							Email:   null.NewString("invalid-email", true),
+						},
+						Domains: []null.String{
+							null.NewString("cst.school^teacher", true),
+						},
 					},
 				},
 			},
@@ -1938,7 +2080,7 @@ func Test_service_ValidateUser(t *testing.T) {
 			name: "空用户列表",
 			args: args{
 				ctx:   context.Background(),
-				users: []cmn.TUser{},
+				users: []User{},
 			},
 			wantValid:   nil,
 			wantInvalid: []InvalidUser{},
@@ -1948,9 +2090,11 @@ func Test_service_ValidateUser(t *testing.T) {
 			name: "检查用户存在性时出错",
 			args: args{
 				ctx: context.WithValue(context.Background(), "force-error", "CheckTUserRowExists"),
-				users: []cmn.TUser{
+				users: []User{
 					{
-						Account: "test_user",
+						TUser: cmn.TUser{
+							Account: "test_user",
+						},
 					},
 				},
 			},
@@ -1962,21 +2106,33 @@ func Test_service_ValidateUser(t *testing.T) {
 			name: "混合有效和无效用户",
 			args: args{
 				ctx: context.Background(),
-				users: []cmn.TUser{
+				users: []User{
 					{
-						Account:      "valid_user",
-						OfficialName: null.NewString("有效用户", true),
+						TUser: cmn.TUser{
+							Account:      "valid_user",
+							OfficialName: null.NewString("有效用户", true),
+						},
+						Domains: []null.String{
+							null.NewString("cst.school^teacher", true),
+						},
 					},
 					{
-						Account: "invalid_user",
-						Email:   null.NewString("zhangsan@example.com", true),
+						TUser: cmn.TUser{
+							Account: "invalid_user",
+							Email:   null.NewString("zhangsan@example.com", true),
+						},
 					},
 				},
 			},
-			wantValid: []cmn.TUser{
+			wantValid: []User{
 				{
-					Account:      "valid_user",
-					OfficialName: null.NewString("有效用户", true),
+					TUser: cmn.TUser{
+						Account:      "valid_user",
+						OfficialName: null.NewString("有效用户", true),
+					},
+					Domains: []null.String{
+						null.NewString("cst.school^teacher", true),
+					},
 				},
 			},
 			wantInvalid: []InvalidUser{
@@ -1984,6 +2140,7 @@ func Test_service_ValidateUser(t *testing.T) {
 					Account: null.NewString("invalid_user", true),
 					ErrorMsg: []null.String{
 						null.NewString("邮箱已存在", true),
+						null.NewString("角色不能为空", true),
 					},
 				},
 			},
@@ -1993,12 +2150,17 @@ func Test_service_ValidateUser(t *testing.T) {
 			name: "多个错误信息的无效用户",
 			args: args{
 				ctx: context.Background(),
-				users: []cmn.TUser{
+				users: []User{
 					{
-						Account:     "lisi",
-						Email:       null.NewString("zhangsan@example.com", true),
-						MobilePhone: null.NewString("13900139002", true),
-						IDCardNo:    null.NewString("310115198801011234", true),
+						TUser: cmn.TUser{
+							Account:     "lisi",
+							Email:       null.NewString("zhangsan@example.com", true),
+							MobilePhone: null.NewString("13900139002", true),
+							IDCardNo:    null.NewString("310115198801011234", true),
+						},
+						Domains: []null.String{
+							null.NewString("cst.school^invalid", true),
+						},
 					},
 				},
 			},
@@ -2011,6 +2173,7 @@ func Test_service_ValidateUser(t *testing.T) {
 						null.NewString("邮箱已存在", true),
 						null.NewString("手机号已存在", true),
 						null.NewString("证件号已存在", true),
+						null.NewString("角色不合法", true),
 					},
 				},
 			},
@@ -2020,20 +2183,24 @@ func Test_service_ValidateUser(t *testing.T) {
 			name: "多个已存在用户",
 			args: args{
 				ctx: context.Background(),
-				users: []cmn.TUser{
+				users: []User{
 					{
-						Account:      "lisi",
-						OfficialName: null.NewString("李四", true),
-						Email:        null.NewString("lisi@example.com", true),
-						MobilePhone:  null.NewString("13900139002", true),
-						IDCardNo:     null.NewString("110101199502021234", true),
+						TUser: cmn.TUser{
+							Account:      "lisi",
+							OfficialName: null.NewString("李四", true),
+							Email:        null.NewString("lisi@example.com", true),
+							MobilePhone:  null.NewString("13900139002", true),
+							IDCardNo:     null.NewString("110101199502021234", true),
+						},
 					},
 					{
-						Account:      "zhangsan",
-						OfficialName: null.NewString("张三", true),
-						Email:        null.NewString("zhangsan@example.com", true),
-						MobilePhone:  null.NewString("13800138001", true),
-						IDCardNo:     null.NewString("440106199001011234", true),
+						TUser: cmn.TUser{
+							Account:      "zhangsan",
+							OfficialName: null.NewString("张三", true),
+							Email:        null.NewString("zhangsan@example.com", true),
+							MobilePhone:  null.NewString("13800138001", true),
+							IDCardNo:     null.NewString("440106199001011234", true),
+						},
 					},
 				},
 			},
@@ -2045,13 +2212,15 @@ func Test_service_ValidateUser(t *testing.T) {
 			name: "检查Account字段失败",
 			args: args{
 				ctx: context.WithValue(context.Background(), "force-error", "CheckTUserFieldExists_account"),
-				users: []cmn.TUser{
+				users: []User{
 					{
-						Account:      "lisi",
-						OfficialName: null.NewString("李五", true),
-						Email:        null.NewString("lisi@example.com", true),
-						MobilePhone:  null.NewString("13900139002", true),
-						IDCardNo:     null.NewString("110101199502021234", true),
+						TUser: cmn.TUser{
+							Account:      "lisi",
+							OfficialName: null.NewString("李五", true),
+							Email:        null.NewString("lisi@example.com", true),
+							MobilePhone:  null.NewString("13900139002", true),
+							IDCardNo:     null.NewString("110101199502021234", true),
+						},
 					},
 				},
 			},
@@ -2063,13 +2232,15 @@ func Test_service_ValidateUser(t *testing.T) {
 			name: "检查MobilePhone字段失败",
 			args: args{
 				ctx: context.WithValue(context.Background(), "force-error", "CheckTUserFieldExists_mobile_phone"),
-				users: []cmn.TUser{
+				users: []User{
 					{
-						Account:      "lisi",
-						OfficialName: null.NewString("李五", true),
-						Email:        null.NewString("lisi@example.com", true),
-						MobilePhone:  null.NewString("13900139002", true),
-						IDCardNo:     null.NewString("110101199502021234", true),
+						TUser: cmn.TUser{
+							Account:      "lisi",
+							OfficialName: null.NewString("李五", true),
+							Email:        null.NewString("lisi@example.com", true),
+							MobilePhone:  null.NewString("13900139002", true),
+							IDCardNo:     null.NewString("110101199502021234", true),
+						},
 					},
 				},
 			},
@@ -2081,13 +2252,15 @@ func Test_service_ValidateUser(t *testing.T) {
 			name: "检查Email字段失败",
 			args: args{
 				ctx: context.WithValue(context.Background(), "force-error", "CheckTUserFieldExists_email"),
-				users: []cmn.TUser{
+				users: []User{
 					{
-						Account:      "lisi",
-						OfficialName: null.NewString("李五", true),
-						Email:        null.NewString("lisi@example.com", true),
-						MobilePhone:  null.NewString("13900139002", true),
-						IDCardNo:     null.NewString("110101199502021234", true),
+						TUser: cmn.TUser{
+							Account:      "lisi",
+							OfficialName: null.NewString("李五", true),
+							Email:        null.NewString("lisi@example.com", true),
+							MobilePhone:  null.NewString("13900139002", true),
+							IDCardNo:     null.NewString("110101199502021234", true),
+						},
 					},
 				},
 			},
@@ -2099,13 +2272,15 @@ func Test_service_ValidateUser(t *testing.T) {
 			name: "检查IDCardNo字段失败",
 			args: args{
 				ctx: context.WithValue(context.Background(), "force-error", "CheckTUserFieldExists_id_card_no"),
-				users: []cmn.TUser{
+				users: []User{
 					{
-						Account:      "lisi",
-						OfficialName: null.NewString("李五", true),
-						Email:        null.NewString("lisi@example.com", true),
-						MobilePhone:  null.NewString("13900139002", true),
-						IDCardNo:     null.NewString("110101199502021234", true),
+						TUser: cmn.TUser{
+							Account:      "lisi",
+							OfficialName: null.NewString("李五", true),
+							Email:        null.NewString("lisi@example.com", true),
+							MobilePhone:  null.NewString("13900139002", true),
+							IDCardNo:     null.NewString("110101199502021234", true),
+						},
 					},
 				},
 			},
@@ -2176,12 +2351,12 @@ func Test_service_ValidateUser_WithTransaction(t *testing.T) {
 
 	type args struct {
 		ctx   context.Context
-		users []cmn.TUser
+		users []User
 	}
 	tests := []struct {
 		name        string
 		args        args
-		wantValid   []cmn.TUser
+		wantValid   []User
 		wantInvalid []InvalidUser
 		wantErr     bool
 	}{
@@ -2189,29 +2364,43 @@ func Test_service_ValidateUser_WithTransaction(t *testing.T) {
 			name: "所有用户都有效",
 			args: args{
 				ctx: context.Background(),
-				users: []cmn.TUser{
+				users: []User{
 					{
-						Account:      "new_user_001",
-						OfficialName: null.NewString("新用户001_Test_service_ValidateUser_WithTransaction", true),
-						Email:        null.NewString("new001ValidateUser_WithTransaction@example.com", true),
+						TUser: cmn.TUser{
+							Account:      "new_user_001",
+							OfficialName: null.NewString("新用户001_Test_service_ValidateUser_WithTransaction", true),
+							Email:        null.NewString("new001ValidateUser_WithTransaction@example.com", true),
+						},
+						Domains: []null.String{
+							null.NewString("cst.school^teacher", true),
+						},
 					},
 					{
-						Account:      "new_user_002",
-						OfficialName: null.NewString("新用户002_Test_service_ValidateUser_WithTransaction", true),
-						MobilePhone:  null.NewString("13900139222", true),
+						TUser: cmn.TUser{
+							Account:      "new_user_002",
+							OfficialName: null.NewString("新用户002_Test_service_ValidateUser_WithTransaction", true),
+							MobilePhone:  null.NewString("13900139222", true),
+						},
+						Domains: []null.String{
+							null.NewString("cst.school^teacher", true),
+						},
 					},
 				},
 			},
-			wantValid: []cmn.TUser{
+			wantValid: []User{
 				{
-					Account:      "new_user_001",
-					OfficialName: null.NewString("新用户001", true),
-					Email:        null.NewString("new001@example.com", true),
+					TUser: cmn.TUser{
+						Account:      "new_user_001",
+						OfficialName: null.NewString("新用户001", true),
+						Email:        null.NewString("new001@example.com", true),
+					},
 				},
 				{
-					Account:      "new_user_002",
-					OfficialName: null.NewString("新用户002", true),
-					MobilePhone:  null.NewString("13900139000", true),
+					TUser: cmn.TUser{
+						Account:      "new_user_002",
+						OfficialName: null.NewString("新用户002", true),
+						MobilePhone:  null.NewString("13900139000", true),
+					},
 				},
 			},
 			wantInvalid: nil,
@@ -2221,9 +2410,14 @@ func Test_service_ValidateUser_WithTransaction(t *testing.T) {
 			name: "存在无效用户",
 			args: args{
 				ctx: context.Background(),
-				users: []cmn.TUser{
+				users: []User{
 					{
-						Account: "zhangsan",
+						TUser: cmn.TUser{
+							Account: "zhangsan",
+						},
+						Domains: []null.String{
+							null.NewString("cst.school^teacher", true),
+						},
 					},
 				},
 			},
@@ -2242,7 +2436,7 @@ func Test_service_ValidateUser_WithTransaction(t *testing.T) {
 			name: "空用户列表",
 			args: args{
 				ctx:   context.Background(),
-				users: []cmn.TUser{},
+				users: []User{},
 			},
 			wantValid:   nil,
 			wantInvalid: []InvalidUser{},
@@ -2252,9 +2446,11 @@ func Test_service_ValidateUser_WithTransaction(t *testing.T) {
 			name: "检查用户存在性时出错",
 			args: args{
 				ctx: context.WithValue(context.Background(), "force-error", "CheckTUserRowExists"),
-				users: []cmn.TUser{
+				users: []User{
 					{
-						Account: "test_user",
+						TUser: cmn.TUser{
+							Account: "test_user",
+						},
 					},
 				},
 			},
@@ -2266,21 +2462,30 @@ func Test_service_ValidateUser_WithTransaction(t *testing.T) {
 			name: "混合有效和无效用户",
 			args: args{
 				ctx: context.Background(),
-				users: []cmn.TUser{
+				users: []User{
 					{
-						Account:      "valid_user",
-						OfficialName: null.NewString("有效用户", true),
+						TUser: cmn.TUser{
+							Account:      "valid_user",
+							OfficialName: null.NewString("有效用户", true),
+						},
+						Domains: []null.String{
+							null.NewString("cst.school^teacher", true),
+						},
 					},
 					{
-						Account: "invalid_user",
-						Email:   null.NewString("zhangsan@example.com", true),
+						TUser: cmn.TUser{
+							Account: "invalid_user",
+							Email:   null.NewString("zhangsan@example.com", true),
+						},
 					},
 				},
 			},
-			wantValid: []cmn.TUser{
+			wantValid: []User{
 				{
-					Account:      "valid_user",
-					OfficialName: null.NewString("有效用户", true),
+					TUser: cmn.TUser{
+						Account:      "valid_user",
+						OfficialName: null.NewString("有效用户", true),
+					},
 				},
 			},
 			wantInvalid: []InvalidUser{
@@ -2288,6 +2493,7 @@ func Test_service_ValidateUser_WithTransaction(t *testing.T) {
 					Account: null.NewString("invalid_user", true),
 					ErrorMsg: []null.String{
 						null.NewString("邮箱已存在", true),
+						null.NewString("角色不能为空", true),
 					},
 				},
 			},
@@ -2297,11 +2503,13 @@ func Test_service_ValidateUser_WithTransaction(t *testing.T) {
 			name: "多个错误信息的无效用户",
 			args: args{
 				ctx: context.Background(),
-				users: []cmn.TUser{
+				users: []User{
 					{
-						Account:     "lisi",
-						Email:       null.NewString("zhangsan@example.com", true),
-						MobilePhone: null.NewString("13900139002", true),
+						TUser: cmn.TUser{
+							Account:     "lisi",
+							Email:       null.NewString("zhangsan@example.com", true),
+							MobilePhone: null.NewString("13900139002", true),
+						},
 					},
 				},
 			},
@@ -2313,6 +2521,7 @@ func Test_service_ValidateUser_WithTransaction(t *testing.T) {
 						null.NewString("账号已存在", true),
 						null.NewString("邮箱已存在", true),
 						null.NewString("手机号已存在", true),
+						null.NewString("角色不能为空", true),
 					},
 				},
 			},
