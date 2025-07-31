@@ -44,3 +44,9 @@ func IsValidEmail(email string) bool {
 	var emailRegex = regexp.MustCompile(`^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$`)
 	return emailRegex.MatchString(email)
 }
+
+// IsDomainExist 判断角色是否合法
+func IsDomainExist(domain string) bool {
+	_, ok := domainSet[domain]
+	return ok
+}
