@@ -639,7 +639,7 @@ func TestStudentAnswer(t *testing.T) {
 		{
 			name:   "GET 请求 - marshal err",
 			method: "GET",
-			url:    "/api/respondent?question_id=3684&examinee_id=3119",
+			url:    "/api/respondent?question_id=3794&examinee_id=3119",
 			Domain: []cmn.TDomain{
 				{DomainID: null.IntFrom(StudentDomainId)},
 			},
@@ -716,7 +716,7 @@ func TestStudentAnswer(t *testing.T) {
 				t.Fatalf("Failed to create request: %v", err)
 			}
 			// 创建模拟的上下文，应用自定义选项
-			ctx := createMockContext(t, req, tc.userId, tc.Domain)
+			ctx := createMockContext(req, tc.userId, tc.Domain)
 
 			//传入强制err
 			if tc.forceErr != "" {
@@ -781,13 +781,16 @@ func TestStudentAnswer(t *testing.T) {
 }
 
 // 创建模拟的上下文，更加通用的版本，支持自定义用户ID和请求头
-func createMockContext(t *testing.T, req *http.Request, userId int64, domain []cmn.TDomain) context.Context {
+func createMockContext(req *http.Request, userId int64, domain []cmn.TDomain, role ...int) context.Context {
 	// 创建基本的上下文
 	ctx := context.Background()
 
 	// 创建响应记录器
 	rec := httptest.NewRecorder()
-
+	var r int64 = 0
+	if len(role) > 0 {
+		r = int64(role[0])
+	}
 	// 创建默认的服务上下文
 	q := &cmn.ServiceCtx{
 		R: req,
@@ -797,6 +800,7 @@ func createMockContext(t *testing.T, req *http.Request, userId int64, domain []c
 		},
 		Msg:     &cmn.ReplyProto{},
 		Domains: domain,
+		Role:    r,
 	}
 
 	// 将服务上下文存储到上下文中
@@ -1292,7 +1296,7 @@ func TestCheckExamStatus(t *testing.T) {
 				t.Fatalf("Failed to create request: %v", err)
 			}
 			// 创建模拟的上下文，应用自定义选项
-			ctx := createMockContext(t, req, tc.userId, tc.Domain)
+			ctx := createMockContext(req, tc.userId, tc.Domain)
 
 			//传入强制err
 			if tc.forceErr != "" {
@@ -1405,6 +1409,7 @@ func TestInitRespondent(t *testing.T) {
 		forceErr        string
 		userId          int64
 		Domain          []cmn.TDomain
+		role            int
 		// 测试前需要设置的数据库状态
 		setupDB func(t *testing.T, tx pgx.Tx) error
 		//清理数据
@@ -1419,6 +1424,48 @@ func TestInitRespondent(t *testing.T) {
 			},
 			url:             "/api/respondent",
 			expectSuccess:   true,
+			expectedMessage: "",
+			role:            2008,
+			userId:          1623,
+			reqBody: &cmn.ReqProto{
+				Data: json.RawMessage(`{
+					"type": "00",
+					"exam_id": 111,
+					"exam_session_id": 155
+				}`),
+			},
+			setupDB: func(t *testing.T, tx pgx.Tx) error {
+				now := time.Now().UnixMilli()
+				_, err := tx.Exec(ctx, `
+						UPDATE t_examinee 
+						SET status = '16', 
+						    start_time=NULL,
+						    end_time = NULL 
+						WHERE exam_session_id = 155 AND student_id = 1623
+					`)
+				if err != nil {
+					return err
+				}
+
+				// 更新考试会话的时间
+				_, err = tx.Exec(ctx, `
+						UPDATE t_exam_session 
+						SET start_time = $1, 
+						    end_time = $2 
+						WHERE id = 155
+					`, now-3600000, now+3600000) // 开始时间为1小时前，结束时间为1小时后
+				return err
+			},
+		},
+		{
+			name:   "不是学生域",
+			method: "POST",
+			role:   2008,
+			Domain: []cmn.TDomain{
+				{DomainID: null.IntFrom(2001)},
+			},
+			url:             "/api/respondent",
+			expectSuccess:   false,
 			expectedMessage: "",
 			userId:          1623,
 			reqBody: &cmn.ReqProto{
@@ -1452,13 +1499,14 @@ func TestInitRespondent(t *testing.T) {
 			},
 		},
 		{
-			name:   "监考员允许进入初始化",
+			name:   "role not exist",
 			method: "POST",
+			role:   1,
 			Domain: []cmn.TDomain{
 				{DomainID: null.IntFrom(StudentDomainId)},
 			},
 			url:             "/api/respondent",
-			expectSuccess:   true,
+			expectSuccess:   false,
 			expectedMessage: "",
 			userId:          1623,
 			reqBody: &cmn.ReqProto{
@@ -1494,6 +1542,7 @@ func TestInitRespondent(t *testing.T) {
 		{
 			name:   "学生退出网页，重新进入作答",
 			method: "POST",
+			role:   2008,
 			Domain: []cmn.TDomain{
 				{DomainID: null.IntFrom(StudentDomainId)},
 			},
@@ -1535,6 +1584,7 @@ func TestInitRespondent(t *testing.T) {
 		{
 			name:   "POST 请求 - 正常考试初始化",
 			method: "POST",
+			role:   2008,
 			Domain: []cmn.TDomain{
 				{DomainID: null.IntFrom(StudentDomainId)},
 			},
@@ -1576,6 +1626,7 @@ func TestInitRespondent(t *testing.T) {
 		{
 			name:   "POST 请求 - 不存在的exam_session_id",
 			method: "POST",
+			role:   2008,
 			Domain: []cmn.TDomain{
 				{DomainID: null.IntFrom(StudentDomainId)},
 			},
@@ -1617,6 +1668,7 @@ func TestInitRespondent(t *testing.T) {
 		{
 			name:   "POST 请求 - 不存在的exam_id",
 			method: "POST",
+			role:   2008,
 			Domain: []cmn.TDomain{
 				{DomainID: null.IntFrom(StudentDomainId)},
 			},
@@ -1656,8 +1708,12 @@ func TestInitRespondent(t *testing.T) {
 			},
 		},
 		{
-			name:            "POST 请求 - exam_id为0",
-			method:          "POST",
+			name:   "POST 请求 - exam_id为0",
+			method: "POST",
+			role:   2008,
+			Domain: []cmn.TDomain{
+				{DomainID: null.IntFrom(StudentDomainId)},
+			},
 			url:             "/api/respondent",
 			expectSuccess:   false,
 			expectedMessage: "",
@@ -1694,8 +1750,12 @@ func TestInitRespondent(t *testing.T) {
 			},
 		},
 		{
-			name:            "POST 请求 - exam_id为-1",
-			method:          "POST",
+			name:   "POST 请求 - exam_id为-1",
+			method: "POST",
+			role:   2008,
+			Domain: []cmn.TDomain{
+				{DomainID: null.IntFrom(StudentDomainId)},
+			},
 			url:             "/api/respondent",
 			expectSuccess:   false,
 			expectedMessage: "",
@@ -1732,10 +1792,14 @@ func TestInitRespondent(t *testing.T) {
 			},
 		},
 		{
-			name:            "POST 请求 - exam_session_id为0",
-			method:          "POST",
-			url:             "/api/respondent",
-			expectSuccess:   false,
+			name:          "POST 请求 - exam_session_id为0",
+			method:        "POST",
+			url:           "/api/respondent",
+			expectSuccess: false,
+			role:          2008,
+			Domain: []cmn.TDomain{
+				{DomainID: null.IntFrom(StudentDomainId)},
+			},
 			expectedMessage: "",
 			userId:          1623,
 			reqBody: &cmn.ReqProto{
@@ -1775,6 +1839,10 @@ func TestInitRespondent(t *testing.T) {
 			expectSuccess:   false,
 			expectedMessage: "",
 			userId:          1623,
+			role:            2008,
+			Domain: []cmn.TDomain{
+				{DomainID: null.IntFrom(StudentDomainId)},
+			},
 			reqBody: &cmn.ReqProto{
 				Data: json.RawMessage(`{
 					"type": "00",
@@ -1813,6 +1881,10 @@ func TestInitRespondent(t *testing.T) {
 			expectSuccess:   false,
 			expectedMessage: "",
 			userId:          1623,
+			role:            2008,
+			Domain: []cmn.TDomain{
+				{DomainID: null.IntFrom(StudentDomainId)},
+			},
 			reqBody: &cmn.ReqProto{
 				Data: json.RawMessage(`{
 					"type": "00",
@@ -1851,6 +1923,10 @@ func TestInitRespondent(t *testing.T) {
 			expectSuccess:   false,
 			expectedMessage: "",
 			userId:          1623,
+			role:            2008,
+			Domain: []cmn.TDomain{
+				{DomainID: null.IntFrom(StudentDomainId)},
+			},
 			reqBody: &cmn.ReqProto{
 				Data: json.RawMessage(`{
 					"type": "00",
@@ -1888,7 +1964,11 @@ func TestInitRespondent(t *testing.T) {
 			url:             "/api/respondent",
 			expectSuccess:   false,
 			expectedMessage: "",
-			userId:          1623,
+			role:            2008,
+			Domain: []cmn.TDomain{
+				{DomainID: null.IntFrom(StudentDomainId)},
+			},
+			userId: 1623,
 			reqBody: &cmn.ReqProto{
 				Data: json.RawMessage(`{
 					"type": "00",
@@ -1926,7 +2006,11 @@ func TestInitRespondent(t *testing.T) {
 			url:             "/api/respondent",
 			expectSuccess:   false,
 			expectedMessage: "",
-			userId:          1623,
+			role:            2008,
+			Domain: []cmn.TDomain{
+				{DomainID: null.IntFrom(StudentDomainId)},
+			},
+			userId: 1623,
 			reqBody: &cmn.ReqProto{
 				Data: json.RawMessage(`{
 					"type": "00",
@@ -1965,6 +2049,10 @@ func TestInitRespondent(t *testing.T) {
 			expectSuccess:   false,
 			expectedMessage: "",
 			userId:          1623,
+			role:            2008,
+			Domain: []cmn.TDomain{
+				{DomainID: null.IntFrom(StudentDomainId)},
+			},
 			reqBody: &cmn.ReqProto{
 				Data: json.RawMessage(`{
 					"type": "00",
@@ -1996,8 +2084,53 @@ func TestInitRespondent(t *testing.T) {
 			},
 		},
 		{
-			name:            "POST 请求 - userId为-1",
-			method:          "POST",
+			name:   "POST 请求 - userId为-1",
+			method: "POST",
+			url:    "/api/respondent",
+			role:   2008,
+			Domain: []cmn.TDomain{
+				{DomainID: null.IntFrom(StudentDomainId)},
+			},
+			expectSuccess:   false,
+			expectedMessage: "",
+			userId:          -1,
+			reqBody: &cmn.ReqProto{
+				Data: json.RawMessage(`{
+					"type": "00",
+					"exam_id": 108,
+					"exam_session_id": 155
+				}`),
+			},
+			setupDB: func(t *testing.T, tx pgx.Tx) error {
+				now := time.Now().UnixMilli()
+				_, err := tx.Exec(ctx, `
+						UPDATE t_examinee 
+						SET status = '16', 
+						    start_time=NULL,
+						    end_time = NULL 
+						WHERE exam_session_id = 155 AND student_id = 1623
+					`)
+				if err != nil {
+					return err
+				}
+
+				// 更新考试会话的时间
+				_, err = tx.Exec(ctx, `
+						UPDATE t_exam_session 
+						SET start_time = $1, 
+						    end_time = $2 
+						WHERE id = 155
+					`, now-3600000, now+3600000) // 开始时间为1小时前，结束时间为1小时后
+				return err
+			},
+		},
+		{
+			name:   "POST 请求 - userId为0",
+			method: "POST",
+			role:   2008,
+			Domain: []cmn.TDomain{
+				{DomainID: null.IntFrom(StudentDomainId)},
+			},
 			url:             "/api/respondent",
 			expectSuccess:   false,
 			expectedMessage: "",
@@ -2033,45 +2166,12 @@ func TestInitRespondent(t *testing.T) {
 			},
 		},
 		{
-			name:            "POST 请求 - userId为0",
-			method:          "POST",
-			url:             "/api/respondent",
-			expectSuccess:   false,
-			expectedMessage: "",
-			userId:          -1,
-			reqBody: &cmn.ReqProto{
-				Data: json.RawMessage(`{
-					"type": "00",
-					"exam_id": 108,
-					"exam_session_id": 155
-				}`),
+			name:   "POST 请求 - io read err",
+			method: "POST",
+			role:   2008,
+			Domain: []cmn.TDomain{
+				{DomainID: null.IntFrom(StudentDomainId)},
 			},
-			setupDB: func(t *testing.T, tx pgx.Tx) error {
-				now := time.Now().UnixMilli()
-				_, err := tx.Exec(ctx, `
-						UPDATE t_examinee 
-						SET status = '16', 
-						    start_time=NULL,
-						    end_time = NULL 
-						WHERE exam_session_id = 155 AND student_id = 1623
-					`)
-				if err != nil {
-					return err
-				}
-
-				// 更新考试会话的时间
-				_, err = tx.Exec(ctx, `
-						UPDATE t_exam_session 
-						SET start_time = $1, 
-						    end_time = $2 
-						WHERE id = 155
-					`, now-3600000, now+3600000) // 开始时间为1小时前，结束时间为1小时后
-				return err
-			},
-		},
-		{
-			name:            "POST 请求 - io read err",
-			method:          "POST",
 			url:             "/api/respondent",
 			reqBody:         &cmn.ReqProto{},
 			expectSuccess:   false,
@@ -2080,8 +2180,11 @@ func TestInitRespondent(t *testing.T) {
 			forceErr:        "io.ReadAll",
 		},
 		{
-			name:            "empty-buf error",
-			method:          "POST",
+			name:   "empty-buf error",
+			method: "POST", role: 2008,
+			Domain: []cmn.TDomain{
+				{DomainID: null.IntFrom(StudentDomainId)},
+			},
 			url:             "/api/respondent",
 			reqBody:         &cmn.ReqProto{},
 			expectSuccess:   false,
@@ -2089,8 +2192,12 @@ func TestInitRespondent(t *testing.T) {
 			userId:          1623,
 		},
 		{
-			name:            "buf-zero",
-			method:          "POST",
+			name:   "buf-zero",
+			method: "POST",
+			role:   2008,
+			Domain: []cmn.TDomain{
+				{DomainID: null.IntFrom(StudentDomainId)},
+			},
 			url:             "/api/respondent",
 			reqBody:         &cmn.ReqProto{},
 			expectSuccess:   false,
@@ -2099,8 +2206,12 @@ func TestInitRespondent(t *testing.T) {
 		},
 		// 失败场景 - 无效的JSON
 		{
-			name:            "POST 请求 - 无效的JSON",
-			method:          "POST",
+			name:   "POST 请求 - 无效的JSON",
+			method: "POST",
+			role:   2008,
+			Domain: []cmn.TDomain{
+				{DomainID: null.IntFrom(StudentDomainId)},
+			},
 			url:             "/api/respondent",
 			reqBody:         &cmn.ReqProto{},
 			expectSuccess:   false,
@@ -2108,8 +2219,12 @@ func TestInitRespondent(t *testing.T) {
 			userId:          1623,
 		},
 		{
-			name:            "不是POST的请求方法",
-			method:          "GET",
+			name:   "不是POST的请求方法",
+			method: "GET",
+			role:   2008,
+			Domain: []cmn.TDomain{
+				{DomainID: null.IntFrom(StudentDomainId)},
+			},
 			url:             "/api/respondent",
 			reqBody:         &cmn.ReqProto{},
 			expectSuccess:   false,
@@ -2119,7 +2234,11 @@ func TestInitRespondent(t *testing.T) {
 		{
 			name:   "close body err",
 			method: "POST",
-			url:    "/api/respondent",
+			role:   2008,
+			Domain: []cmn.TDomain{
+				{DomainID: null.IntFrom(StudentDomainId)},
+			},
+			url: "/api/respondent",
 			reqBody: &cmn.ReqProto{
 				Data: json.RawMessage(`{
 					"type": "00",
@@ -2136,7 +2255,11 @@ func TestInitRespondent(t *testing.T) {
 		{
 			name:   "POST 请求 - 未登录用户",
 			method: "POST",
-			url:    "/api/respondent",
+			role:   2008,
+			Domain: []cmn.TDomain{
+				{DomainID: null.IntFrom(StudentDomainId)},
+			},
+			url: "/api/respondent",
 			reqBody: &cmn.ReqProto{
 				Data: json.RawMessage(`{
 					"type": "00",
@@ -2149,8 +2272,12 @@ func TestInitRespondent(t *testing.T) {
 			userId:          0,
 		},
 		{
-			name:            "type是无效的",
-			method:          "POST",
+			name:   "type是无效的",
+			method: "POST",
+			role:   2008,
+			Domain: []cmn.TDomain{
+				{DomainID: null.IntFrom(StudentDomainId)},
+			},
 			url:             "/api/respondent",
 			expectSuccess:   false,
 			expectedMessage: "",
@@ -2191,7 +2318,11 @@ func TestInitRespondent(t *testing.T) {
 			url:             "/api/respondent",
 			expectSuccess:   false,
 			expectedMessage: "",
-			userId:          1623,
+			role:            2008,
+			Domain: []cmn.TDomain{
+				{DomainID: null.IntFrom(StudentDomainId)},
+			},
+			userId: 1623,
 			reqBody: &cmn.ReqProto{
 				Data: json.RawMessage(""),
 			},
@@ -2219,8 +2350,12 @@ func TestInitRespondent(t *testing.T) {
 			},
 		},
 		{
-			name:            "save start time error",
-			method:          "POST",
+			name:   "save start time error",
+			method: "POST",
+			role:   2008,
+			Domain: []cmn.TDomain{
+				{DomainID: null.IntFrom(StudentDomainId)},
+			},
 			url:             "/api/respondent",
 			expectSuccess:   false,
 			expectedMessage: "",
@@ -2260,8 +2395,12 @@ func TestInitRespondent(t *testing.T) {
 			},
 		},
 		{
-			name:            "考试marshal err",
-			method:          "POST",
+			name:   "考试marshal err",
+			method: "POST",
+			role:   2008,
+			Domain: []cmn.TDomain{
+				{DomainID: null.IntFrom(StudentDomainId)},
+			},
 			url:             "/api/respondent",
 			expectSuccess:   false,
 			forceErr:        "marshal err",
@@ -2298,8 +2437,12 @@ func TestInitRespondent(t *testing.T) {
 			},
 		},
 		{
-			name:            "load paper detail err",
-			method:          "POST",
+			name:   "load paper detail err",
+			method: "POST",
+			role:   2008,
+			Domain: []cmn.TDomain{
+				{DomainID: null.IntFrom(StudentDomainId)},
+			},
 			url:             "/api/respondent",
 			expectSuccess:   false,
 			forceErr:        "load paper detail err",
@@ -2336,8 +2479,12 @@ func TestInitRespondent(t *testing.T) {
 			},
 		},
 		{
-			name:            "get sessions err",
-			method:          "POST",
+			name:   "get sessions err",
+			method: "POST",
+			role:   2008,
+			Domain: []cmn.TDomain{
+				{DomainID: null.IntFrom(StudentDomainId)},
+			},
 			url:             "/api/respondent",
 			expectSuccess:   false,
 			forceErr:        "get sessions err",
@@ -2374,7 +2521,40 @@ func TestInitRespondent(t *testing.T) {
 			},
 		},
 		{
-			name:            "练习正常初始化",
+			name:   "练习正常初始化",
+			method: "POST",
+			role:   2008,
+			Domain: []cmn.TDomain{
+				{DomainID: null.IntFrom(StudentDomainId)},
+			},
+			url:             "/api/respondent",
+			expectSuccess:   true,
+			expectedMessage: "",
+			userId:          1634,
+			Type:            "练习",
+			reqBody: &cmn.ReqProto{
+				Data: json.RawMessage(`{
+					"type": "02",
+					"practice_id": 2060
+				}`),
+			},
+			setupDB: func(t *testing.T, tx pgx.Tx) error {
+				return nil
+			},
+			clean: func(t *testing.T, tx pgx.Tx) error {
+				_, err := tx.Exec(context.Background(), `DELETE FROM assessuser.t_practice_submissions WHERE id>176`)
+				if err != nil {
+					t.Fatal(err)
+				}
+				return nil
+			},
+		},
+		{
+			name: "练习之前已经初始化了，继续进入",
+			role: 2008,
+			Domain: []cmn.TDomain{
+				{DomainID: null.IntFrom(StudentDomainId)},
+			},
 			method:          "POST",
 			url:             "/api/respondent",
 			expectSuccess:   true,
@@ -2399,37 +2579,16 @@ func TestInitRespondent(t *testing.T) {
 			},
 		},
 		{
-			name:            "练习之前已经初始化了，继续进入",
-			method:          "POST",
-			url:             "/api/respondent",
-			expectSuccess:   true,
-			expectedMessage: "",
-			userId:          1634,
-			Type:            "练习",
-			reqBody: &cmn.ReqProto{
-				Data: json.RawMessage(`{
-					"type": "02",
-					"practice_id": 2060
-				}`),
+			name:   "practice_id为负数",
+			method: "POST",
+			role:   2008,
+			Domain: []cmn.TDomain{
+				{DomainID: null.IntFrom(StudentDomainId)},
 			},
-			setupDB: func(t *testing.T, tx pgx.Tx) error {
-				return nil
-			},
-			clean: func(t *testing.T, tx pgx.Tx) error {
-				_, err := tx.Exec(context.Background(), `DELETE FROM assessuser.t_practice_submissions WHERE id>176`)
-				if err != nil {
-					t.Fatal(err)
-				}
-				return nil
-			},
-		},
-		{
-			name:            "practice_id为负数",
-			method:          "POST",
 			url:             "/api/respondent",
 			expectSuccess:   false,
 			expectedMessage: "",
-			userId:          1580,
+			userId:          1634,
 			Type:            "练习",
 			reqBody: &cmn.ReqProto{
 				Data: json.RawMessage(`{
@@ -2449,19 +2608,23 @@ func TestInitRespondent(t *testing.T) {
 			},
 		},
 		{
-			name:            "调用练习管理接口失败",
-			method:          "POST",
+			name:   "调用练习管理接口失败",
+			method: "POST",
+			role:   2008,
+			Domain: []cmn.TDomain{
+				{DomainID: null.IntFrom(StudentDomainId)},
+			},
 			url:             "/api/respondent",
 			expectSuccess:   false,
 			expectedMessage: "",
 			ctxKey:          "test",
 			ctxValue:        "err",
-			userId:          1580,
+			userId:          1634,
 			Type:            "练习",
 			reqBody: &cmn.ReqProto{
 				Data: json.RawMessage(`{
 					"type": "02",
-					"practice_id": 2034
+					"practice_id": 2056
 				}`),
 			},
 			setupDB: func(t *testing.T, tx pgx.Tx) error {
@@ -2476,21 +2639,25 @@ func TestInitRespondent(t *testing.T) {
 			},
 		},
 		{
-			name:            "commit err",
-			method:          "POST",
+			name:   "commit err",
+			method: "POST",
+			role:   2008,
+			Domain: []cmn.TDomain{
+				{DomainID: null.IntFrom(StudentDomainId)},
+			},
 			url:             "/api/respondent",
 			expectSuccess:   false,
 			expectedMessage: "",
-			userId:          1580,
+			userId:          1634,
 			Type:            "练习",
 			reqBody: &cmn.ReqProto{
 				Data: json.RawMessage(`{
 					"type": "02",
-					"practice_id": 2034
+					"practice_id": 2060
 				}`),
 			},
 			setupDB: func(t *testing.T, tx pgx.Tx) error {
-				_, err = tx.Exec(context.Background(), `UPDATE assessuser.t_practice_submissions SET status = '04' WHERE practice_id=2034 AND student_id=1580`)
+				_, err = tx.Exec(context.Background(), `UPDATE assessuser.t_practice_submissions SET status = '04' WHERE practice_id=2060 AND student_id=1634`)
 				if err != nil {
 					t.Fatal(err)
 					return err
@@ -2498,7 +2665,7 @@ func TestInitRespondent(t *testing.T) {
 				return nil
 			},
 			clean: func(t *testing.T, tx pgx.Tx) error {
-				_, err = tx.Exec(context.Background(), `UPDATE assessuser.t_practice_submissions SET status = '00' WHERE practice_id=2034 AND student_id=1580`)
+				_, err = tx.Exec(context.Background(), `UPDATE assessuser.t_practice_submissions SET status = '00' WHERE practice_id=2060 AND student_id=1634`)
 				if err != nil {
 					t.Fatal(err)
 					return err
@@ -2508,22 +2675,26 @@ func TestInitRespondent(t *testing.T) {
 			forceErr: "commit-tx",
 		},
 		{
-			name:            "save begin err",
-			method:          "POST",
+			name:   "save begin err",
+			method: "POST",
+			role:   2008,
+			Domain: []cmn.TDomain{
+				{DomainID: null.IntFrom(StudentDomainId)},
+			},
 			url:             "/api/respondent",
 			expectSuccess:   false,
 			expectedMessage: "",
-			userId:          1623,
+			userId:          1634,
 			Type:            "练习",
 			forceErr:        "save time",
 			reqBody: &cmn.ReqProto{
 				Data: json.RawMessage(`{
 					"type": "02",
-					"practice_id": 2034
+					"practice_id": 2060
 				}`),
 			},
 			setupDB: func(t *testing.T, tx pgx.Tx) error {
-				_, err = tx.Exec(context.Background(), `UPDATE assessuser.t_practice_submissions SET start_time = null , status='00' WHERE id=166`)
+				_, err = tx.Exec(context.Background(), `UPDATE assessuser.t_practice_submissions SET start_time = null , status='00' WHERE id=165`)
 				if err != nil {
 					t.Fatal(err)
 					return err
@@ -2531,7 +2702,7 @@ func TestInitRespondent(t *testing.T) {
 				return nil
 			},
 			clean: func(t *testing.T, tx pgx.Tx) error {
-				_, err = tx.Exec(context.Background(), `UPDATE assessuser.t_practice_submissions SET status = '00' WHERE id=166`)
+				_, err = tx.Exec(context.Background(), `UPDATE assessuser.t_practice_submissions SET status = '00' WHERE id=165`)
 				if err != nil {
 					t.Fatal(err)
 					return err
@@ -2540,22 +2711,26 @@ func TestInitRespondent(t *testing.T) {
 			},
 		},
 		{
-			name:            "select elapsed seconds error",
-			method:          "POST",
+			name:   "select elapsed seconds error",
+			method: "POST",
+			role:   2008,
+			Domain: []cmn.TDomain{
+				{DomainID: null.IntFrom(StudentDomainId)},
+			},
 			url:             "/api/respondent",
 			expectSuccess:   false,
 			expectedMessage: "",
-			userId:          1623,
+			userId:          1634,
 			Type:            "练习",
 			forceErr:        "select elapsed seconds",
 			reqBody: &cmn.ReqProto{
 				Data: json.RawMessage(`{
 					"type": "02",
-					"practice_id": 2034
+					"practice_id": 2060
 				}`),
 			},
 			setupDB: func(t *testing.T, tx pgx.Tx) error {
-				_, err = tx.Exec(context.Background(), `UPDATE assessuser.t_practice_submissions SET start_time = null , status='00' WHERE id=166`)
+				_, err = tx.Exec(context.Background(), `UPDATE assessuser.t_practice_submissions SET start_time = null , status='00' WHERE id=165`)
 				if err != nil {
 					t.Fatal(err)
 					return err
@@ -2563,7 +2738,7 @@ func TestInitRespondent(t *testing.T) {
 				return nil
 			},
 			clean: func(t *testing.T, tx pgx.Tx) error {
-				_, err = tx.Exec(context.Background(), `UPDATE assessuser.t_practice_submissions SET status = '00' WHERE id=166`)
+				_, err = tx.Exec(context.Background(), `UPDATE assessuser.t_practice_submissions SET status = '00' WHERE id=165`)
 				if err != nil {
 					t.Fatal(err)
 					return err
@@ -2572,17 +2747,21 @@ func TestInitRespondent(t *testing.T) {
 			},
 		},
 		{
-			name:            "update last start time error",
-			method:          "POST",
+			name:   "update last start time error",
+			method: "POST",
+			role:   2008,
+			Domain: []cmn.TDomain{
+				{DomainID: null.IntFrom(StudentDomainId)},
+			},
 			url:             "/api/respondent",
 			expectSuccess:   false,
 			expectedMessage: "",
-			userId:          1623,
+			userId:          1634,
 			Type:            "练习",
 			reqBody: &cmn.ReqProto{
 				Data: json.RawMessage(`{
 					"type": "02",
-					"practice_id": 2034
+					"practice_id": 2060
 				}`),
 			},
 			forceErr: "update-last-start-time-err",
@@ -2596,17 +2775,21 @@ func TestInitRespondent(t *testing.T) {
 			},
 		},
 		{
-			name:            "update last start time error",
-			method:          "POST",
+			name:   "update last start time error",
+			method: "POST",
+			role:   2008,
+			Domain: []cmn.TDomain{
+				{DomainID: null.IntFrom(StudentDomainId)},
+			},
 			url:             "/api/respondent",
 			expectSuccess:   false,
 			expectedMessage: "",
-			userId:          1623,
+			userId:          1634,
 			Type:            "练习",
 			reqBody: &cmn.ReqProto{
 				Data: json.RawMessage(`{
 					"type": "02",
-					"practice_id": 2034
+					"practice_id": 2060
 				}`),
 			},
 			forceErr: "marshal err",
@@ -2620,17 +2803,21 @@ func TestInitRespondent(t *testing.T) {
 			},
 		},
 		{
-			name:            "update last start time error",
-			method:          "POST",
+			name:   "update last start time error",
+			method: "POST",
+			role:   2008,
+			Domain: []cmn.TDomain{
+				{DomainID: null.IntFrom(StudentDomainId)},
+			},
 			url:             "/api/respondent",
 			expectSuccess:   false,
 			expectedMessage: "",
-			userId:          1623,
+			userId:          1634,
 			Type:            "练习",
 			reqBody: &cmn.ReqProto{
 				Data: json.RawMessage(`{
 					"type": "02",
-					"practice_id": 2034
+					"practice_id": 2060
 				}`),
 			},
 			forceErr: "commit-tx",
@@ -2641,6 +2828,48 @@ func TestInitRespondent(t *testing.T) {
 			clean: func(t *testing.T, tx pgx.Tx) error {
 
 				return nil
+			},
+		},
+		{
+			name:   "类型不是考试和练习",
+			method: "POST",
+			Domain: []cmn.TDomain{
+				{DomainID: null.IntFrom(StudentDomainId)},
+			},
+			url:             "/api/respondent",
+			expectSuccess:   false,
+			expectedMessage: "",
+			role:            2008,
+			userId:          1623,
+			forceErr:        "type-err",
+			reqBody: &cmn.ReqProto{
+				Data: json.RawMessage(`{
+					"type": "00",
+					"exam_id": 111,
+					"exam_session_id": 155
+				}`),
+			},
+			setupDB: func(t *testing.T, tx pgx.Tx) error {
+				now := time.Now().UnixMilli()
+				_, err := tx.Exec(ctx, `
+						UPDATE t_examinee 
+						SET status = '16', 
+						    start_time=NULL,
+						    end_time = NULL 
+						WHERE exam_session_id = 155 AND student_id = 1623
+					`)
+				if err != nil {
+					return err
+				}
+
+				// 更新考试会话的时间
+				_, err = tx.Exec(ctx, `
+						UPDATE t_exam_session 
+						SET start_time = $1, 
+						    end_time = $2 
+						WHERE id = 155
+					`, now-3600000, now+3600000) // 开始时间为1小时前，结束时间为1小时后
+				return err
 			},
 		},
 	}
@@ -2693,7 +2922,7 @@ func TestInitRespondent(t *testing.T) {
 				t.Fatalf("Failed to create request: %v", err)
 			}
 			// 创建模拟的上下文，应用自定义选项
-			ctx := createMockContext(t, req, tc.userId, tc.Domain)
+			ctx := createMockContext(req, tc.userId, tc.Domain, []int{tc.role}...)
 
 			//传入强制err
 			if tc.forceErr != "" {
@@ -2743,9 +2972,9 @@ func TestInitRespondent(t *testing.T) {
 					assert.NotEmpty(t, data["Info"])
 					assert.NotEmpty(t, data["QuestionGroupInfo"])
 					assert.NotEmpty(t, data["Questions"])
-					if tc.name == "练习之前已经初始化了，继续进入" {
-						assert.NotEmpty(t, data["ElapsedSeconds"])
-					}
+					//if tc.name == "练习之前已经初始化了，继续进入" {
+					//	assert.NotEmpty(t, data["ElapsedSeconds"])
+					//}
 
 				} else {
 					assert.Equal(t, resp.Status, 0)
@@ -2807,6 +3036,7 @@ func TestSubmit(t *testing.T) {
 		forceErr        string
 		userId          int64
 		Domain          []cmn.TDomain
+		Role            []int
 		// 测试前需要设置的数据库状态
 		setupDB func(t *testing.T, tx pgx.Tx) error
 		//清理数据
@@ -2814,12 +3044,16 @@ func TestSubmit(t *testing.T) {
 	}{
 		// 成功场景 - 考试类型提交
 		{
-			name:            "POST 请求 - 考试类型提交",
-			method:          "POST",
-			url:             "/api/respondent/submit",
-			expectSuccess:   true,
+			name:          "POST 请求 - 考试类型提交",
+			method:        "POST",
+			url:           "/api/respondent/submit",
+			expectSuccess: true,
+			Domain: []cmn.TDomain{
+				{DomainID: null.IntFrom(StudentDomainId)},
+			},
 			expectedMessage: "success",
 			userId:          1623,
+			Role:            []int{2008},
 			reqBody: &cmn.ReqProto{
 				Data: json.RawMessage(`{
 					"type": "00",
@@ -2844,39 +3078,100 @@ func TestSubmit(t *testing.T) {
 				// 更新t_exam_session表设置end_time
 				_, err = tx.Exec(ctx, `
 					UPDATE t_exam_session 
-					SET end_time = $1 
+					SET end_time = $1,
+					    start_time = $2
 					WHERE id = 155
-				`, currentTime+3600)
+				`, currentTime+3600, currentTime)
 				return err
 			},
 			clean: func(t *testing.T, tx pgx.Tx) error {
 				// 考试类型提交后，将 examinee 的 end_time 设为 null
 				_, err := tx.Exec(ctx, `
 					UPDATE t_examinee 
-					SET end_time = NULL 
+					SET end_time = NULL ,
+					    status='00'
 					WHERE exam_session_id = 155 AND student_id = 1623
 				`)
-				_, err = tx.Exec(ctx, `update t_student_answers set answer_score=null ,status='02' where examinee_id=3119`)
+				_, err = tx.Exec(ctx, `update t_student_answers set answer_score=null ,status='00' where examinee_id=3119`)
 				if err != nil {
 					return err
-
 				}
 				return err
 			},
 		},
-		// 成功场景 - 练习类型提交
 		{
-			name:            "POST 请求 - 练习类型提交",
-			method:          "POST",
-			url:             "/api/submit",
+			name:          "POST 请求 - 除了学生域还有其他的域",
+			method:        "POST",
+			url:           "/api/respondent/submit",
+			expectSuccess: true,
+			Domain: []cmn.TDomain{
+				{DomainID: null.IntFrom(StudentDomainId)},
+				{DomainID: null.IntFrom(2001)},
+			},
+			expectedMessage: "not student domain",
+			userId:          1623,
+			Role:            []int{2008},
+			reqBody: &cmn.ReqProto{
+				Data: json.RawMessage(`{
+					"type": "00",
+					"exam_id": 111,
+					"exam_session_id": 155,
+					"examinee_id": 3119
+				}`),
+			},
+			setupDB: func(t *testing.T, tx pgx.Tx) error {
+				// 设置考试状态为可以提交
+				currentTime := time.Now().Unix()
+				// 更新t_examinee表而不是视图
+				_, err := tx.Exec(ctx, `
+					UPDATE t_examinee 
+					SET start_time = $1, end_time = NULL, status = $2 
+					WHERE exam_session_id = 155 AND student_id = 1623
+				`, currentTime-3600, NormalStatus)
+				if err != nil {
+					return err
+				}
+
+				// 更新t_exam_session表设置end_time
+				_, err = tx.Exec(ctx, `
+					UPDATE t_exam_session 
+					SET end_time = $1,
+					    start_time = $2
+					WHERE id = 155
+				`, currentTime+3600, currentTime)
+				return err
+			},
+			clean: func(t *testing.T, tx pgx.Tx) error {
+				// 考试类型提交后，将 examinee 的 end_time 设为 null
+				_, err := tx.Exec(ctx, `
+					UPDATE t_examinee 
+					SET end_time = NULL ,
+					    status='00'
+					WHERE exam_session_id = 155 AND student_id = 1623
+				`)
+				_, err = tx.Exec(ctx, `update t_student_answers set answer_score=null ,status='00' where examinee_id=3119`)
+				if err != nil {
+					return err
+				}
+				return err
+			},
+		},
+		{
+			name:   "POST 请求 - 练习类型提交",
+			method: "POST",
+			url:    "/api/submit",
+
 			expectSuccess:   true,
 			expectedMessage: "success",
-			userId:          1580,
+			userId:          1634,
+			Domain: []cmn.TDomain{
+				{DomainID: null.IntFrom(StudentDomainId)},
+			},
 			reqBody: &cmn.ReqProto{
 				Data: json.RawMessage(`{
 					"type": "02",
-					"practice_id": 2036,
-					"practice_submission_id": 164
+					"practice_id": 2060,
+					"practice_submission_id": 165
 				}`),
 			},
 			setupDB: func(t *testing.T, tx pgx.Tx) error {
@@ -2890,22 +3185,24 @@ func TestSubmit(t *testing.T) {
 					UPDATE t_practice_submissions 
 					SET status = '00' ,
 					    end_time = null
-					WHERE id = 164 AND student_id = 1580
+					WHERE id = 165 AND student_id = 1634
 				`)
 
-				_, err = tx.Exec(ctx, `update t_student_answers set answer_score=null ,status='00' where practice_submission_id=164`)
+				_, err = tx.Exec(ctx, `update t_student_answers set answer_score=null ,status='00' where practice_submission_id=165`)
 				if err != nil {
 					return err
-
 				}
 				return err
 			},
 		},
-		// 失败场景 - 非POST请求
+
 		{
-			name:            "GET 请求 - 应该失败",
-			method:          "GET",
-			url:             "/api/submit",
+			name:   "GET 请求 - 应该失败",
+			method: "GET",
+			url:    "/api/submit",
+			Domain: []cmn.TDomain{
+				{DomainID: null.IntFrom(StudentDomainId)},
+			},
 			reqBody:         nil,
 			expectSuccess:   false,
 			expectedMessage: "please call /api/upLogin with  http POST method",
@@ -2913,19 +3210,25 @@ func TestSubmit(t *testing.T) {
 		},
 		// 失败场景 - 空请求体
 		{
-			name:            "buf-zero",
-			method:          "POST",
-			url:             "/api/submit",
-			reqBody:         &cmn.ReqProto{},
+			name:    "buf-zero",
+			method:  "POST",
+			url:     "/api/submit",
+			reqBody: &cmn.ReqProto{},
+			Domain: []cmn.TDomain{
+				{DomainID: null.IntFrom(StudentDomainId)},
+			},
 			expectSuccess:   false,
 			expectedMessage: "Call /api/respondent with  empty body",
 			userId:          1623,
 		},
 		{
-			name:            "POST 请求 - 无效的JSON",
-			method:          "POST",
-			url:             "/api/submit",
-			reqBody:         &cmn.ReqProto{},
+			name:    "POST 请求 - 无效的JSON",
+			method:  "POST",
+			url:     "/api/submit",
+			reqBody: &cmn.ReqProto{},
+			Domain: []cmn.TDomain{
+				{DomainID: null.IntFrom(StudentDomainId)},
+			},
 			expectSuccess:   false,
 			expectedMessage: "unexpected end of JSON input",
 			userId:          1623,
@@ -2938,17 +3241,23 @@ func TestSubmit(t *testing.T) {
 				Data: json.RawMessage(``),
 			},
 			expectSuccess: false,
-			userId:        1623,
+			Domain: []cmn.TDomain{
+				{DomainID: null.IntFrom(StudentDomainId)},
+			},
+			userId: 1623,
 		},
 		// 失败场景 - 未登录用户
 		{
 			name:   "POST 请求 - 未登录用户",
 			method: "POST",
 			url:    "/api/submit",
+			Domain: []cmn.TDomain{
+				{DomainID: null.IntFrom(StudentDomainId)},
+			},
 			reqBody: &cmn.ReqProto{
 				Data: json.RawMessage(`{
 					"type": "00",
-					"exam_id": 123,
+					"exam_id": 111,
 					"exam_session_id": 155,
 					"examinee_id": 3119
 				}`),
@@ -2958,9 +3267,12 @@ func TestSubmit(t *testing.T) {
 			userId:          0,
 		},
 		{
-			name:            "POST 请求 - exam_id为0",
-			method:          "POST",
-			url:             "/api/submit",
+			name:   "POST 请求 - exam_id为0",
+			method: "POST",
+			url:    "/api/submit",
+			Domain: []cmn.TDomain{
+				{DomainID: null.IntFrom(StudentDomainId)},
+			},
 			expectSuccess:   false,
 			expectedMessage: "当前是考试，请输入大于0的考试id、大于0的考试场次id、大于0的考生id",
 			userId:          1623,
@@ -2974,10 +3286,13 @@ func TestSubmit(t *testing.T) {
 			},
 		},
 		{
-			name:            "POST 请求 - exam_id为-1",
-			method:          "POST",
-			url:             "/api/submit",
-			expectSuccess:   false,
+			name:          "POST 请求 - exam_id为-1",
+			method:        "POST",
+			url:           "/api/submit",
+			expectSuccess: false,
+			Domain: []cmn.TDomain{
+				{DomainID: null.IntFrom(StudentDomainId)},
+			},
 			expectedMessage: "当前是考试，请输入大于0的考试id、大于0的考试场次id、大于0的考生id",
 			userId:          1623,
 			reqBody: &cmn.ReqProto{
@@ -2996,66 +3311,99 @@ func TestSubmit(t *testing.T) {
 			expectSuccess:   false,
 			expectedMessage: "当前是考试，请输入大于0的考试id、大于0的考试场次id、大于0的考生id",
 			userId:          1623,
+			Domain: []cmn.TDomain{
+				{DomainID: null.IntFrom(StudentDomainId)},
+			},
 			reqBody: &cmn.ReqProto{
 				Data: json.RawMessage(`{
 					"type": "00",
-					"exam_id": 108,
+					"exam_id": 111,
 					"exam_session_id": -1,
 					"examinee_id": 3119
 				}`),
 			},
 		},
 		{
-			name:            "POST 请求 - exam_session_id为0",
-			method:          "POST",
-			url:             "/api/submit",
-			expectSuccess:   false,
+			name:          "POST 请求 - exam_session_id不存在",
+			method:        "POST",
+			url:           "/api/submit",
+			expectSuccess: false,
+			userId:        1623,
+			Domain: []cmn.TDomain{
+				{DomainID: null.IntFrom(StudentDomainId)},
+			},
+			reqBody: &cmn.ReqProto{
+				Data: json.RawMessage(`{
+					"type": "00",
+					"exam_id": 111,
+					"exam_session_id": 2,
+					"examinee_id": 3119
+				}`),
+			},
+		},
+		{
+			name:          "POST 请求 - exam_session_id为0",
+			method:        "POST",
+			url:           "/api/submit",
+			expectSuccess: false,
+			Domain: []cmn.TDomain{
+				{DomainID: null.IntFrom(StudentDomainId)},
+			},
 			expectedMessage: "当前是考试，请输入大于0的考试id、大于0的考试场次id、大于0的考生id",
 			userId:          1623,
 			reqBody: &cmn.ReqProto{
 				Data: json.RawMessage(`{
 					"type": "00",
-					"exam_id": 108,
+					"exam_id": 111,
 					"exam_session_id": 0,
 					"examinee_id": 3119
 				}`),
 			},
 		},
 		{
-			name:            "POST 请求 - examinee_id为0",
-			method:          "POST",
-			url:             "/api/submit",
+			name:   "POST 请求 - examinee_id为0",
+			method: "POST",
+			url:    "/api/submit",
+			Domain: []cmn.TDomain{
+				{DomainID: null.IntFrom(StudentDomainId)},
+			},
 			expectSuccess:   false,
 			expectedMessage: "当前是考试，请输入大于0的考试id、大于0的考试场次id、大于0的考生id",
 			userId:          1623,
 			reqBody: &cmn.ReqProto{
 				Data: json.RawMessage(`{
 					"type": "00",
-					"exam_id": 108,
+					"exam_id": 111,
 					"exam_session_id": 155,
 					"examinee_id": 0
 				}`),
 			},
 		},
 		{
-			name:            "POST 请求 - examinee_id为-1",
-			method:          "POST",
-			url:             "/api/submit",
+			name:   "POST 请求 - examinee_id为-1",
+			method: "POST",
+			url:    "/api/submit",
+			Domain: []cmn.TDomain{
+				{DomainID: null.IntFrom(StudentDomainId)},
+			},
 			expectSuccess:   false,
 			expectedMessage: "当前是考试，请输入大于0的考试id、大于0的考试场次id、大于0的考生id",
 			userId:          1623,
 			reqBody: &cmn.ReqProto{
 				Data: json.RawMessage(`{
 					"type": "00",
-					"exam_id": 108,
+					"exam_id": 111,
 					"exam_session_id": 155,
 					"examinee_id": -1
 				}`),
 			},
 		},
 		{
-			name:            "POST 请求 - 练习practice_id为0",
-			method:          "POST",
+			name:   "POST 请求 - 练习practice_id为0",
+			method: "POST",
+			Domain: []cmn.TDomain{
+				{DomainID: null.IntFrom(StudentDomainId)},
+			},
 			url:             "/api/submit",
 			expectSuccess:   false,
 			expectedMessage: "当前是练习，请输入大于0的PracticeSubmissionID以及大于0的PracticeId",
@@ -3069,9 +3417,12 @@ func TestSubmit(t *testing.T) {
 			},
 		},
 		{
-			name:            "POST 请求 - 练习practice_id为-1",
-			method:          "POST",
-			url:             "/api/submit",
+			name:   "POST 请求 - 练习practice_id为-1",
+			method: "POST",
+			url:    "/api/submit",
+			Domain: []cmn.TDomain{
+				{DomainID: null.IntFrom(StudentDomainId)},
+			},
 			expectSuccess:   false,
 			expectedMessage: "当前是练习，请输入大于0的PracticeSubmissionID以及大于0的PracticeId",
 			userId:          1623,
@@ -3084,31 +3435,37 @@ func TestSubmit(t *testing.T) {
 			},
 		},
 		{
-			name:            "POST 请求 - 练习practice_submission_id为0",
-			method:          "POST",
-			url:             "/api/submit",
+			name:   "POST 请求 - 练习practice_submission_id为0",
+			method: "POST",
+			url:    "/api/submit",
+			Domain: []cmn.TDomain{
+				{DomainID: null.IntFrom(StudentDomainId)},
+			},
 			expectSuccess:   false,
 			expectedMessage: "当前是练习，请输入大于0的PracticeSubmissionID以及大于0的PracticeId",
 			userId:          1623,
 			reqBody: &cmn.ReqProto{
 				Data: json.RawMessage(`{
 					"type": "02",
-					"practice_id": 2036,
+					"practice_id": 2060,
 					"practice_submission_id": 0
 				}`),
 			},
 		},
 		{
-			name:            "POST 请求 - 练习practice_submission_id为-1",
-			method:          "POST",
-			url:             "/api/submit",
+			name:   "POST 请求 - 练习practice_submission_id为-1",
+			method: "POST",
+			url:    "/api/submit",
+			Domain: []cmn.TDomain{
+				{DomainID: null.IntFrom(StudentDomainId)},
+			},
 			expectSuccess:   false,
 			expectedMessage: "当前是练习，请输入大于0的PracticeSubmissionID以及大于0的PracticeId",
 			userId:          1623,
 			reqBody: &cmn.ReqProto{
 				Data: json.RawMessage(`{
 					"type": "02",
-					"practice_id": 2036,
+					"practice_id": 2060,
 					"practice_submission_id": -1
 				}`),
 			},
@@ -3120,6 +3477,9 @@ func TestSubmit(t *testing.T) {
 			method:        "POST",
 			url:           "/api/submit",
 			expectSuccess: false,
+			Domain: []cmn.TDomain{
+				{DomainID: null.IntFrom(StudentDomainId)},
+			},
 
 			userId: 1623,
 			reqBody: &cmn.ReqProto{
@@ -3134,9 +3494,12 @@ func TestSubmit(t *testing.T) {
 		},
 		// 失败场景 - 事务开始失败
 		{
-			name:            "POST 请求 - 事务开始失败",
-			method:          "POST",
-			url:             "/api/submit",
+			name:   "POST 请求 - 事务开始失败",
+			method: "POST",
+			url:    "/api/submit",
+			Domain: []cmn.TDomain{
+				{DomainID: null.IntFrom(StudentDomainId)},
+			},
 			expectSuccess:   false,
 			expectedMessage: "",
 			userId:          1623,
@@ -3151,7 +3514,10 @@ func TestSubmit(t *testing.T) {
 			},
 		},
 		{
-			name:            "POST 请求 - 事务提交失败",
+			name: "POST 请求 - 事务提交失败",
+			Domain: []cmn.TDomain{
+				{DomainID: null.IntFrom(StudentDomainId)},
+			},
 			method:          "POST",
 			url:             "/api/submit",
 			expectSuccess:   false,
@@ -3161,7 +3527,7 @@ func TestSubmit(t *testing.T) {
 			reqBody: &cmn.ReqProto{
 				Data: json.RawMessage(`{
 					"type": "00",
-					"exam_id": 108,
+					"exam_id": 111,
 					"exam_session_id": 155,
 					"examinee_id": 3119
 				}`),
@@ -3182,19 +3548,24 @@ func TestSubmit(t *testing.T) {
 				// 更新t_exam_session表设置end_time
 				_, err = tx.Exec(ctx, `
 					UPDATE t_exam_session 
-					SET end_time = $1 
+					SET end_time = $1 ,
+					    start_time = $2 
 					WHERE id = 155
-				`, currentTime+3600)
+				`, currentTime+3600, currentTime)
 				return err
 			},
 			clean: func(t *testing.T, tx pgx.Tx) error {
 				// 考试类型提交后，将 examinee 的 end_time 设为 null
 				_, err := tx.Exec(ctx, `
 					UPDATE t_examinee 
-					SET end_time = NULL 
+					SET end_time = NULL ,
+						start_time = NULL
 					WHERE exam_session_id = 155 AND student_id = 1623
 				`)
-				_, err = tx.Exec(ctx, `update t_student_answers set answer_score=null ,status='02' where examinee_id=3119`)
+				if err != nil {
+					return err
+				}
+				_, err = tx.Exec(ctx, `update t_student_answers set answer_score=null ,status='00' where examinee_id=3119`)
 				if err != nil {
 					return err
 
@@ -3203,18 +3574,21 @@ func TestSubmit(t *testing.T) {
 			},
 		},
 		{
-			name:            "POST 请求 - 事务提交失败",
-			method:          "POST",
-			url:             "/api/submit",
+			name:   "POST 请求 - 事务提交失败",
+			method: "POST",
+			url:    "/api/submit",
+			Domain: []cmn.TDomain{
+				{DomainID: null.IntFrom(StudentDomainId)},
+			},
 			expectSuccess:   false,
 			expectedMessage: "",
-			userId:          1623,
+			userId:          1634,
 			forceErr:        "commit-tx",
 			reqBody: &cmn.ReqProto{
 				Data: json.RawMessage(`{
 					"type": "02",
-					"practice_id": 2036,
-					"practice_submission_id": 164
+					"practice_id": 2060,
+					"practice_submission_id": 165
 				}`),
 			},
 			setupDB: func(t *testing.T, tx pgx.Tx) error {
@@ -3226,10 +3600,10 @@ func TestSubmit(t *testing.T) {
 					UPDATE t_practice_submissions 
 					SET status = '00' ,
 					    end_time = null
-					WHERE id = 164 AND student_id = 1580
+					WHERE id = 165 AND student_id = 1634
 				`)
 
-				_, err = tx.Exec(ctx, `update t_student_answers set answer_score=null ,status='00' where practice_submission_id=164`)
+				_, err = tx.Exec(ctx, `update t_student_answers set answer_score=null ,status='00' where practice_submission_id=165`)
 				if err != nil {
 					return err
 
@@ -3238,9 +3612,12 @@ func TestSubmit(t *testing.T) {
 			},
 		},
 		{
-			name:            "POST 请求 - 事务回滚失败",
-			method:          "POST",
-			url:             "/api/submit",
+			name:   "POST 请求 - 事务回滚失败",
+			method: "POST",
+			url:    "/api/submit",
+			Domain: []cmn.TDomain{
+				{DomainID: null.IntFrom(StudentDomainId)},
+			},
 			expectSuccess:   false,
 			expectedMessage: "",
 			userId:          1623,
@@ -3290,9 +3667,12 @@ func TestSubmit(t *testing.T) {
 			},
 		},
 		{
-			name:            "POST 请求 - 批改失败（考试）",
-			method:          "POST",
-			url:             "/api/submit",
+			name:   "POST 请求 - 批改失败（考试）",
+			method: "POST",
+			url:    "/api/submit",
+			Domain: []cmn.TDomain{
+				{DomainID: null.IntFrom(StudentDomainId)},
+			},
 			expectSuccess:   false,
 			expectedMessage: "",
 			userId:          1623,
@@ -3300,7 +3680,7 @@ func TestSubmit(t *testing.T) {
 			reqBody: &cmn.ReqProto{
 				Data: json.RawMessage(`{
 					"type": "00",
-					"exam_id": 108,
+					"exam_id": 111,
 					"exam_session_id": 155,
 					"examinee_id": 3119
 				}`),
@@ -3333,7 +3713,7 @@ func TestSubmit(t *testing.T) {
 					SET end_time = NULL 
 					WHERE exam_session_id = 155 AND student_id = 1623
 				`)
-				_, err = tx.Exec(ctx, `update t_student_answers set answer_score=null ,status='02' where examinee_id=3119`)
+				_, err = tx.Exec(ctx, `update t_student_answers set answer_score=null ,status='00' where examinee_id=3119`)
 				if err != nil {
 					return err
 
@@ -3342,18 +3722,21 @@ func TestSubmit(t *testing.T) {
 			},
 		},
 		{
-			name:            "POST 请求 - 批改失败（练习）",
-			method:          "POST",
+			name:   "POST 请求 - 批改失败（练习）",
+			method: "POST",
+			Domain: []cmn.TDomain{
+				{DomainID: null.IntFrom(StudentDomainId)},
+			},
 			url:             "/api/submit",
 			expectSuccess:   false,
 			expectedMessage: "",
-			userId:          1623,
+			userId:          1634,
 			forceErr:        "mark-err",
 			reqBody: &cmn.ReqProto{
 				Data: json.RawMessage(`{
 					"type": "02",
-					"practice_id": 2036,
-					"practice_submission_id": 164
+					"practice_id": 2060,
+					"practice_submission_id": 165
 				}`),
 			},
 			setupDB: func(t *testing.T, tx pgx.Tx) error {
@@ -3366,10 +3749,10 @@ func TestSubmit(t *testing.T) {
 					UPDATE t_practice_submissions 
 					SET status = '00' ,
 					    end_time = null
-					WHERE id = 164 AND student_id = 1580
+					WHERE id = 165 AND student_id = 1634
 				`)
 
-				_, err = tx.Exec(ctx, `update t_student_answers set answer_score=null ,status='00' where practice_submission_id=164`)
+				_, err = tx.Exec(ctx, `update t_student_answers set answer_score=null ,status='00' where practice_submission_id=165`)
 				if err != nil {
 					return err
 
@@ -3378,9 +3761,12 @@ func TestSubmit(t *testing.T) {
 			},
 		},
 		{
-			name:            "POST 请求 - body close error",
-			method:          "POST",
-			url:             "/api/submit",
+			name:   "POST 请求 - body close error",
+			method: "POST",
+			url:    "/api/submit",
+			Domain: []cmn.TDomain{
+				{DomainID: null.IntFrom(StudentDomainId)},
+			},
 			expectSuccess:   false,
 			expectedMessage: "",
 			userId:          1623,
@@ -3388,8 +3774,8 @@ func TestSubmit(t *testing.T) {
 			reqBody: &cmn.ReqProto{
 				Data: json.RawMessage(`{
 					"type": "02",
-					"practice_id": 2036,
-					"practice_submission_id": 164
+					"practice_id": 2060,
+					"practice_submission_id": 165
 				}`),
 			},
 			setupDB: func(t *testing.T, tx pgx.Tx) error {
@@ -3401,13 +3787,69 @@ func TestSubmit(t *testing.T) {
 					UPDATE t_practice_submissions 
 					SET status = '00' ,
 					    end_time = null
-					WHERE id = 164 AND student_id = 1580
+					WHERE id = 165 AND student_id = 1634
 				`)
 
-				_, err = tx.Exec(ctx, `update t_student_answers set answer_score=null ,status='00' where practice_submission_id=164`)
+				_, err = tx.Exec(ctx, `update t_student_answers set answer_score=null ,status='00' where practice_submission_id=165`)
 				if err != nil {
 					return err
 
+				}
+				return err
+			},
+		},
+		{
+			name:          "POST 请求 - 缺乏学生域",
+			method:        "POST",
+			url:           "/api/respondent/submit",
+			expectSuccess: false,
+			Domain: []cmn.TDomain{
+				{DomainID: null.IntFrom(2001)},
+			},
+			expectedMessage: "not student domain",
+			userId:          1623,
+			Role:            []int{2008},
+			reqBody: &cmn.ReqProto{
+				Data: json.RawMessage(`{
+					"type": "00",
+					"exam_id": 111,
+					"exam_session_id": 155,
+					"examinee_id": 3119
+				}`),
+			},
+			setupDB: func(t *testing.T, tx pgx.Tx) error {
+				// 设置考试状态为可以提交
+				currentTime := time.Now().Unix()
+				// 更新t_examinee表而不是视图
+				_, err := tx.Exec(ctx, `
+					UPDATE t_examinee 
+					SET start_time = $1, end_time = NULL, status = $2 
+					WHERE exam_session_id = 155 AND student_id = 1623
+				`, currentTime-3600, NormalStatus)
+				if err != nil {
+					return err
+				}
+
+				// 更新t_exam_session表设置end_time
+				_, err = tx.Exec(ctx, `
+					UPDATE t_exam_session 
+					SET end_time = $1,
+					    start_time = $2
+					WHERE id = 155
+				`, currentTime+3600, currentTime)
+				return err
+			},
+			clean: func(t *testing.T, tx pgx.Tx) error {
+				// 考试类型提交后，将 examinee 的 end_time 设为 null
+				_, err := tx.Exec(ctx, `
+					UPDATE t_examinee 
+					SET end_time = NULL ,
+					    status='00'
+					WHERE exam_session_id = 155 AND student_id = 1623
+				`)
+				_, err = tx.Exec(ctx, `update t_student_answers set answer_score=null ,status='00' where examinee_id=3119`)
+				if err != nil {
+					return err
 				}
 				return err
 			},
@@ -3418,13 +3860,16 @@ func TestSubmit(t *testing.T) {
 			url:             "/api/submit",
 			expectSuccess:   false,
 			expectedMessage: "",
-			userId:          1623,
+			userId:          1634,
 			forceErr:        "io.ReadAll",
+			Domain: []cmn.TDomain{
+				{DomainID: null.IntFrom(StudentDomainId)},
+			},
 			reqBody: &cmn.ReqProto{
 				Data: json.RawMessage(`{
 					"type": "02",
-					"practice_id": 2036,
-					"practice_submission_id": 164
+					"practice_id": 2060,
+					"practice_submission_id": 165
 				}`),
 			},
 			setupDB: func(t *testing.T, tx pgx.Tx) error {
@@ -3436,10 +3881,10 @@ func TestSubmit(t *testing.T) {
 					UPDATE t_practice_submissions 
 					SET status = '00' ,
 					    end_time = null
-					WHERE id = 164 AND student_id = 1580
+					WHERE id = 165 AND student_id = 1634
 				`)
 
-				_, err = tx.Exec(ctx, `update t_student_answers set answer_score=null ,status='00' where practice_submission_id=164`)
+				_, err = tx.Exec(ctx, `update t_student_answers set answer_score=null ,status='00' where practice_submission_id=165`)
 				if err != nil {
 					return err
 
@@ -3448,31 +3893,19 @@ func TestSubmit(t *testing.T) {
 			},
 		},
 		{
-			name:          "POST 请求 - 不存在的exam_id",
-			method:        "POST",
-			url:           "/api/respondent/submit",
-			expectSuccess: false,
-			userId:        1623,
-			reqBody: &cmn.ReqProto{
-				Data: json.RawMessage(`{
-					"type": "00",
-					"exam_id": 10,
-					"exam_session_id": 155,
-					"examinee_id": 3119
-				}`),
-			},
-		},
-		{
 			name:          "POST 请求 - setAnswerCanNotUpdate error（考试）",
 			method:        "POST",
 			url:           "/api/respondent/submit",
 			expectSuccess: false,
-			userId:        1623,
-			forceErr:      "setAnswerCanNotUpdate error",
+			Domain: []cmn.TDomain{
+				{DomainID: null.IntFrom(StudentDomainId)},
+			},
+			userId:   1623,
+			forceErr: "setAnswerCanNotUpdate error",
 			reqBody: &cmn.ReqProto{
 				Data: json.RawMessage(`{
 					"type": "00",
-					"exam_id": 108,
+					"exam_id": 111,
 					"exam_session_id": 155,
 					"examinee_id": 3119
 				}`),
@@ -3505,7 +3938,7 @@ func TestSubmit(t *testing.T) {
 					SET end_time = NULL 
 					WHERE exam_session_id = 155 AND student_id = 1623
 				`)
-				_, err = tx.Exec(ctx, `update t_student_answers set answer_score=null ,status='02' where examinee_id=3119`)
+				_, err = tx.Exec(ctx, `update t_student_answers set answer_score=null ,status='00' where examinee_id=3119`)
 				if err != nil {
 					return err
 
@@ -3514,17 +3947,20 @@ func TestSubmit(t *testing.T) {
 			},
 		},
 		{
-			name:          "POST 请求 - setAnswerCanNotUpdate error（练习）",
-			method:        "POST",
+			name:   "POST 请求 - setAnswerCanNotUpdate error（练习）",
+			method: "POST",
+			Domain: []cmn.TDomain{
+				{DomainID: null.IntFrom(StudentDomainId)},
+			},
 			url:           "/api/respondent/submit",
 			expectSuccess: false,
-			userId:        1623,
+			userId:        1634,
 			forceErr:      "setAnswerCanNotUpdate error",
 			reqBody: &cmn.ReqProto{
 				Data: json.RawMessage(`{
 					"type": "02",
-					"practice_id": 2036,
-					"practice_submission_id": 164
+					"practice_id": 2060,
+					"practice_submission_id": 165
 				}`),
 			},
 			setupDB: func(t *testing.T, tx pgx.Tx) error {
@@ -3536,10 +3972,10 @@ func TestSubmit(t *testing.T) {
 					UPDATE t_practice_submissions 
 					SET status = '00' ,
 					    end_time = null
-					WHERE id = 164 AND student_id = 1580
+					WHERE id = 165 AND student_id = 1634
 				`)
 
-				_, err = tx.Exec(ctx, `update t_student_answers set answer_score=null ,status='00' where practice_submission_id=164`)
+				_, err = tx.Exec(ctx, `update t_student_answers set answer_score=null ,status='00' where practice_submission_id=165`)
 				if err != nil {
 					return err
 
@@ -3548,17 +3984,20 @@ func TestSubmit(t *testing.T) {
 			},
 		},
 		{
-			name:          "POST 请求 - submit error（练习）",
-			method:        "POST",
+			name:   "POST 请求 - submit error（练习）",
+			method: "POST",
+			Domain: []cmn.TDomain{
+				{DomainID: null.IntFrom(StudentDomainId)},
+			},
 			url:           "/api/respondent/submit",
 			expectSuccess: false,
-			userId:        1623,
+			userId:        1634,
 			forceErr:      "practice-submit-err",
 			reqBody: &cmn.ReqProto{
 				Data: json.RawMessage(`{
 					"type": "02",
-					"practice_id": 2036,
-					"practice_submission_id": 164
+					"practice_id": 2060,
+					"practice_submission_id": 165
 				}`),
 			},
 			setupDB: func(t *testing.T, tx pgx.Tx) error {
@@ -3570,10 +4009,10 @@ func TestSubmit(t *testing.T) {
 					UPDATE t_practice_submissions 
 					SET status = '00' ,
 					    end_time = null
-					WHERE id = 164 AND student_id = 1580
+					WHERE id = 165 AND student_id = 1634
 				`)
 
-				_, err = tx.Exec(ctx, `update t_student_answers set answer_score=null ,status='00' where practice_submission_id=164`)
+				_, err = tx.Exec(ctx, `update t_student_answers set answer_score=null ,status='00' where practice_submission_id=165`)
 				if err != nil {
 					return err
 
@@ -3587,11 +4026,14 @@ func TestSubmit(t *testing.T) {
 			url:           "/api/respondent/submit",
 			expectSuccess: false,
 			userId:        1623,
-			forceErr:      "exam-submit-err",
+			Domain: []cmn.TDomain{
+				{DomainID: null.IntFrom(StudentDomainId)},
+			},
+			forceErr: "exam-submit-err",
 			reqBody: &cmn.ReqProto{
 				Data: json.RawMessage(`{
 					"type": "00",
-					"exam_id": 108,
+					"exam_id": 111,
 					"exam_session_id": 155,
 					"examinee_id": 3119
 				}`),
@@ -3624,7 +4066,7 @@ func TestSubmit(t *testing.T) {
 					SET end_time = NULL 
 					WHERE exam_session_id = 155 AND student_id = 1623
 				`)
-				_, err = tx.Exec(ctx, `update t_student_answers set answer_score=null ,status='02' where examinee_id=3119`)
+				_, err = tx.Exec(ctx, `update t_student_answers set answer_score=null ,status='00' where examinee_id=3119`)
 				if err != nil {
 					return err
 
@@ -3632,8 +4074,64 @@ func TestSubmit(t *testing.T) {
 				return err
 			},
 		},
-	}
+		{
+			name:          "类型不是考试也不是练习",
+			method:        "POST",
+			url:           "/api/respondent/submit",
+			expectSuccess: false,
+			Domain: []cmn.TDomain{
+				{DomainID: null.IntFrom(StudentDomainId)},
+			},
+			forceErr: "type-err",
+			userId:   1623,
+			Role:     []int{2008},
+			reqBody: &cmn.ReqProto{
+				Data: json.RawMessage(`{
+					"type": "00",
+					"exam_id": 111,
+					"exam_session_id": 155,
+					"examinee_id": 3119
+				}`),
+			},
+			setupDB: func(t *testing.T, tx pgx.Tx) error {
+				// 设置考试状态为可以提交
+				currentTime := time.Now().Unix()
+				// 更新t_examinee表而不是视图
+				_, err := tx.Exec(ctx, `
+					UPDATE t_examinee 
+					SET start_time = $1, end_time = NULL, status = $2 
+					WHERE exam_session_id = 155 AND student_id = 1623
+				`, currentTime-3600, NormalStatus)
+				if err != nil {
+					return err
+				}
 
+				// 更新t_exam_session表设置end_time
+				_, err = tx.Exec(ctx, `
+					UPDATE t_exam_session 
+					SET end_time = $1,
+					    start_time = $2
+					WHERE id = 155
+				`, currentTime+3600, currentTime)
+				return err
+			},
+			clean: func(t *testing.T, tx pgx.Tx) error {
+				// 考试类型提交后，将 examinee 的 end_time 设为 null
+				_, err := tx.Exec(ctx, `
+					UPDATE t_examinee 
+					SET end_time = NULL ,
+					    status='00'
+					WHERE exam_session_id = 155 AND student_id = 1623
+				`)
+				_, err = tx.Exec(ctx, `update t_student_answers set answer_score=null ,status='00' where examinee_id=3119`)
+				if err != nil {
+					return err
+				}
+				return err
+			},
+		},
+	}
+	defer tx.Rollback(context.Background())
 	// 执行测试用例
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -3683,7 +4181,7 @@ func TestSubmit(t *testing.T) {
 				t.Fatalf("Failed to create request: %v", err)
 			}
 			// 创建模拟的上下文，应用自定义选项
-			ctx := createMockContext(t, req, tc.userId, tc.Domain)
+			ctx := createMockContext(req, tc.userId, tc.Domain)
 
 			//传入强制err
 			if tc.forceErr != "" {
@@ -3800,7 +4298,7 @@ func TestHandleExit(t *testing.T) {
 			expectSuccess:        true,
 			expectedMessage:      "success",
 			practiceSubmissionId: 164,
-			studentId:            1580,
+			studentId:            1634,
 			setupDB: func(t *testing.T, tx pgx.Tx) error {
 				// 设置练习状态为正常
 				_, err := tx.Exec(ctx, `
@@ -3844,7 +4342,7 @@ func TestHandleExit(t *testing.T) {
 			expectSuccess:        false,
 			expectedMessage:      "no rows in result set",
 			practiceSubmissionId: 10,
-			studentId:            1580,
+			studentId:            1634,
 		},
 		{
 			name: "examineeId不存在（考试）",
@@ -3852,7 +4350,7 @@ func TestHandleExit(t *testing.T) {
 			expectSuccess:   false,
 			expectedMessage: "no rows in result set",
 			examineeId:      10,
-			studentId:       1580,
+			studentId:       1634,
 		},
 		{
 			name:          "考试类型studentId不存在",

@@ -493,6 +493,9 @@ func InitRespondent(ctx context.Context) {
 		}
 	}()
 	var data []byte
+	if forceErr == "type-err" {
+		u.Type = "invalid-type"
+	}
 	switch u.Type {
 	case ExamType:
 		if u.ExamId <= 0 || u.ExamSessionId <= 0 {
@@ -502,15 +505,25 @@ func InitRespondent(ctx context.Context) {
 			return
 		}
 
+		//获取当前用户的角色
+		roleId := q.Role
+		var role null.String
+		q.Err = tx.QueryRow(dmlCtx, `SELECT domain FROM assessuser.t_domain WHERE id=$1 `, roleId).Scan(&role)
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
 		// 获取考试信息，role参数暂定1
-		examInfo, err := exam_mgt.GetExamInfo(dmlCtx, u.ExamId, 1)
+		examInfo, err := exam_mgt.GetExamInfo(dmlCtx, u.ExamId, role.String)
 		if err != nil {
 			q.Err = err
 			q.RespErr()
 			return
 		}
 		//获取场次信息
-		examSessions, err := exam_mgt.GetExamSessions(dmlCtx, u.ExamId, 1)
+		examSessions, err := exam_mgt.GetExamSessions(dmlCtx, u.ExamId, role.String)
 		if forceErr == "get sessions err" {
 			err = errors.New("get sessions err")
 		}
@@ -915,6 +928,9 @@ func Submit(ctx context.Context) {
 
 	dmlCtx, cancel := context.WithTimeout(ctx, TIMEOUT)
 	defer cancel()
+	if forceErr == "type-err" {
+		u.Type = "invalid-type"
+	}
 	switch u.Type {
 	case ExamType:
 		if u.ExamId <= 0 || u.ExamSessionId <= 0 || u.ExamineeID <= 0 {
