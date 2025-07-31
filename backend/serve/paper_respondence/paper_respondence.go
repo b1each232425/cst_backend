@@ -58,6 +58,8 @@ const (
 	PracticeType = "02"
 
 	ForceErr = "forceErr"
+
+	StudentDomainId = 2008
 )
 
 var (
@@ -159,6 +161,12 @@ func Enroll(author string) {
 func StudentAnswer(ctx context.Context) {
 	q := cmn.GetCtxValue(ctx)
 	z.Info("---->" + cmn.FncName())
+
+	q.Err = checkDomainIfStudent(q)
+	if q.Err != nil {
+		q.RespErr()
+		return
+	}
 
 	method := strings.ToLower(q.R.Method)
 	//执行数据库操作
@@ -384,6 +392,12 @@ func InitRespondent(ctx context.Context) {
 		q.RespErr()
 		return
 	}
+	q.Err = checkDomainIfStudent(q)
+	if q.Err != nil {
+		q.RespErr()
+		return
+	}
+
 	//强制错误，用于使得难以触发的错误强制它报错
 	forceErr := ""
 	forceErr, ok := ctx.Value(ForceErr).(string)
@@ -690,6 +704,11 @@ func CheckExamStatus(ctx context.Context) {
 		q.RespErr()
 		return
 	}
+	q.Err = checkDomainIfStudent(q)
+	if q.Err != nil {
+		q.RespErr()
+		return
+	}
 	//强制错误，用于使得难以触发的错误强制它报错
 	forceErr := ""
 	forceErr, ok := ctx.Value(ForceErr).(string)
@@ -798,6 +817,11 @@ func Submit(ctx context.Context) {
 	if method != "post" {
 		q.Err = fmt.Errorf("please call /api/upLogin with  http POST method")
 		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+	q.Err = checkDomainIfStudent(q)
+	if q.Err != nil {
 		q.RespErr()
 		return
 	}
@@ -1034,6 +1058,18 @@ func Submit(ctx context.Context) {
 }
 
 //--------------------封装一些给外部调用，或者常用的函数
+
+// checkDomainIfStudent 查看是否是学生账号
+func checkDomainIfStudent(q *cmn.ServiceCtx) error {
+	for _, domain := range q.Domains {
+		if domain.DomainID.Int64 == StudentDomainId {
+			return nil
+		}
+	}
+	err := errors.New("not student domain")
+	z.Error(err.Error())
+	return err
+}
 
 // HandleExit 给予时间同步模块处理学生退出作答，用在websocket连接断开的时候
 func HandleExit(ctx context.Context, req ExitReq) (err error) {
