@@ -1,6 +1,7 @@
 package user_mgt
 
 import (
+	"fmt"
 	"testing"
 	"w2w.io/null"
 )
@@ -304,6 +305,272 @@ func BenchmarkNullableIntFromStr(b *testing.B) {
 
 			for i := 0; i < b.N; i++ {
 				_ = NullableIntFromStr(tc)
+			}
+		})
+	}
+}
+
+// TestContains 测试Contains泛型函数
+func TestContains(t *testing.T) {
+	t.Run("字符串切片测试", func(t *testing.T) {
+		tests := []struct {
+			name     string
+			item     string
+			list     []string
+			expected bool
+		}{
+			{
+				name:     "存在的元素",
+				item:     "apple",
+				list:     []string{"apple", "banana", "cherry"},
+				expected: true,
+			},
+			{
+				name:     "不存在的元素",
+				item:     "orange",
+				list:     []string{"apple", "banana", "cherry"},
+				expected: false,
+			},
+			{
+				name:     "空切片",
+				item:     "apple",
+				list:     []string{},
+				expected: false,
+			},
+			{
+				name:     "空字符串元素",
+				item:     "",
+				list:     []string{"", "test"},
+				expected: true,
+			},
+			{
+				name:     "重复元素",
+				item:     "test",
+				list:     []string{"test", "test", "other"},
+				expected: true,
+			},
+			{
+				name:     "单个元素切片-存在",
+				item:     "only",
+				list:     []string{"only"},
+				expected: true,
+			},
+			{
+				name:     "单个元素切片-不存在",
+				item:     "missing",
+				list:     []string{"only"},
+				expected: false,
+			},
+		}
+
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				result := Contains(tt.item, tt.list)
+				if result != tt.expected {
+					t.Errorf("Contains(%q, %v) = %v, want %v", tt.item, tt.list, result, tt.expected)
+				}
+			})
+		}
+	})
+
+	t.Run("整数切片测试", func(t *testing.T) {
+		tests := []struct {
+			name     string
+			item     int
+			list     []int
+			expected bool
+		}{
+			{
+				name:     "存在的正整数",
+				item:     5,
+				list:     []int{1, 3, 5, 7, 9},
+				expected: true,
+			},
+			{
+				name:     "不存在的整数",
+				item:     4,
+				list:     []int{1, 3, 5, 7, 9},
+				expected: false,
+			},
+			{
+				name:     "负数",
+				item:     -1,
+				list:     []int{-3, -1, 0, 1, 3},
+				expected: true,
+			},
+			{
+				name:     "零值",
+				item:     0,
+				list:     []int{-1, 0, 1},
+				expected: true,
+			},
+			{
+				name:     "大整数",
+				item:     1000000,
+				list:     []int{999999, 1000000, 1000001},
+				expected: true,
+			},
+		}
+
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				result := Contains(tt.item, tt.list)
+				if result != tt.expected {
+					t.Errorf("Contains(%d, %v) = %v, want %v", tt.item, tt.list, result, tt.expected)
+				}
+			})
+		}
+	})
+
+	t.Run("浮点数切片测试", func(t *testing.T) {
+		tests := []struct {
+			name     string
+			item     float64
+			list     []float64
+			expected bool
+		}{
+			{
+				name:     "存在的浮点数",
+				item:     3.14,
+				list:     []float64{1.0, 2.5, 3.14, 4.2},
+				expected: true,
+			},
+			{
+				name:     "不存在的浮点数",
+				item:     2.71,
+				list:     []float64{1.0, 2.5, 3.14, 4.2},
+				expected: false,
+			},
+			{
+				name:     "零值浮点数",
+				item:     0.0,
+				list:     []float64{-1.0, 0.0, 1.0},
+				expected: true,
+			},
+		}
+
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				result := Contains(tt.item, tt.list)
+				if result != tt.expected {
+					t.Errorf("Contains(%f, %v) = %v, want %v", tt.item, tt.list, result, tt.expected)
+				}
+			})
+		}
+	})
+
+	t.Run("布尔值切片测试", func(t *testing.T) {
+		tests := []struct {
+			name     string
+			item     bool
+			list     []bool
+			expected bool
+		}{
+			{
+				name:     "存在true",
+				item:     true,
+				list:     []bool{false, true},
+				expected: true,
+			},
+			{
+				name:     "存在false",
+				item:     false,
+				list:     []bool{false, true},
+				expected: true,
+			},
+			{
+				name:     "不存在true",
+				item:     true,
+				list:     []bool{false, false},
+				expected: false,
+			},
+		}
+
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				result := Contains(tt.item, tt.list)
+				if result != tt.expected {
+					t.Errorf("Contains(%t, %v) = %t, want %t", tt.item, tt.list, result, tt.expected)
+				}
+			})
+		}
+	})
+}
+
+// TestContains_EdgeCases 测试Contains函数的边界情况
+func TestContains_EdgeCases(t *testing.T) {
+	tests := []struct {
+		name        string
+		description string
+		test        func(t *testing.T)
+	}{
+		{
+			name:        "nil切片",
+			description: "测试nil切片的处理",
+			test: func(t *testing.T) {
+				var nilSlice []string
+				result := Contains("test", nilSlice)
+				if result != false {
+					t.Errorf("Contains with nil slice should return false, got %v", result)
+				}
+			},
+		},
+		{
+			name:        "大切片性能",
+			description: "测试大切片的查找性能",
+			test: func(t *testing.T) {
+				// 创建一个大切片
+				largeSlice := make([]int, 10000)
+				for i := 0; i < 10000; i++ {
+					largeSlice[i] = i
+				}
+
+				// 测试查找第一个元素
+				result := Contains(0, largeSlice)
+				if !result {
+					t.Error("Should find first element")
+				}
+
+				// 测试查找最后一个元素
+				result = Contains(9999, largeSlice)
+				if !result {
+					t.Error("Should find last element")
+				}
+
+				// 测试查找不存在的元素
+				result = Contains(10000, largeSlice)
+				if result {
+					t.Error("Should not find non-existent element")
+				}
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Log(tt.description)
+			tt.test(t)
+		})
+	}
+}
+
+// BenchmarkContains 性能基准测试
+func BenchmarkContains(b *testing.B) {
+	// 测试不同大小的切片
+	sizes := []int{10, 100, 1000, 10000}
+
+	for _, size := range sizes {
+		b.Run(fmt.Sprintf("size_%d", size), func(b *testing.B) {
+			// 创建测试切片
+			slice := make([]int, size)
+			for i := 0; i < size; i++ {
+				slice[i] = i
+			}
+
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				// 查找中间的元素
+				_ = Contains(size/2, slice)
 			}
 		})
 	}
