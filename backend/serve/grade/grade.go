@@ -183,7 +183,6 @@ func Enroll(author string) {
 
 /*
 *
-
 	*
 	* @api {GET} /api/grade/list gradeListH 获取成绩列表
 	* @apiDescription 获取成绩列表
@@ -230,9 +229,9 @@ func Enroll(author string) {
 	*
 */
 func gradeListH(ctx context.Context) {
-	q := cmn.GetCtxValue(ctx)
-
 	z.Info("---->" + cmn.FncName())
+
+	q := cmn.GetCtxValue(ctx)
 
 	method := strings.ToLower(q.R.Method)
 	switch method {
@@ -272,22 +271,26 @@ func gradeListH(ctx context.Context) {
 			req.PageSize = p
 		}
 
-		// if teacherID := queryParams.Get("teacherID"); teacherID != "" {
-		// 	p, err := strconv.Atoi(teacherID)
-		// 	if err != nil {
-		// 		q.Err = fmt.Errorf("无效教师ID: %s", teacherID)
-		// 		z.Warn(q.Err.Error())
-		// 		q.RespErr()
-		// 		return
-		// 	}
-		// 	req.TeacherID = p
-		// }
-		userID := null.IntFrom(1574)
-		if q.SysUser != nil {
-			userID = q.SysUser.ID
+		teacherID := queryParams.Get("teacherID")
+		if teacherID != "" {
+			p, err := strconv.ParseInt(teacherID, 10, 64)
+			if err != nil {
+				q.Err = fmt.Errorf("无效教师ID: %s", teacherID)
+				z.Warn(q.Err.Error())
+				q.RespErr()
+				return
+			}
+			req.TeacherID = p
+		} else {
+			if q.SysUser == nil {
+				q.Err = fmt.Errorf("非法请求，鉴权用户失败")
+				z.Warn(q.Err.Error())
+				q.RespErr()
+				return
+			}
+			userID := q.SysUser.ID.Int64
+			req.TeacherID = userID
 		}
-		req.TeacherID = userID.Int64
-
 
 		if name := queryParams.Get("name"); name != "" {
 			req.Filter.Name = name
@@ -316,7 +319,7 @@ func gradeListH(ctx context.Context) {
 					req.Filter.Submitted = 0
 				case "1":
 					req.Filter.Submitted = 1
-				case "":
+				case "-1":
 					req.Filter.Submitted = -1
 				default:
 					q.Err = fmt.Errorf("无效提交状态: %s", submitted)
