@@ -288,7 +288,6 @@ func gradeListH(ctx context.Context) {
 		}
 		req.TeacherID = userID.Int64
 
-
 		if name := queryParams.Get("name"); name != "" {
 			req.Filter.Name = name
 		}
