@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
 	"w2w.io/cmn"
 	"w2w.io/null"
 )
@@ -105,6 +106,37 @@ func createMockContextWithBody(method, path string, data string, forceError stri
 // 辅助函数：检查字符串是否包含子字符串
 func containsString(s, substr string) bool {
 	return strings.Contains(s, substr)
+}
+
+// 辅助函数：生成指定长度的字符串
+func generateLongString(length int) string {
+	if length <= 0 {
+		return ""
+	}
+
+	// 使用中文字符测试 rune 计算
+	baseString := "这是一个测试字符串用于验证长度限制功能"
+	baseLength := len([]rune(baseString))
+
+	if length <= baseLength {
+		return string([]rune(baseString)[:length])
+	}
+
+	// 如果需要更长的字符串，重复基础字符串
+	var result strings.Builder
+	result.Grow(length * 3) // 预分配空间，考虑中文字符的字节数
+
+	for result.Len() < length*3 { // 估算字节数
+		result.WriteString(baseString)
+	}
+
+	// 截取到确切的字符数
+	resultRunes := []rune(result.String())
+	if len(resultRunes) > length {
+		resultRunes = resultRunes[:length]
+	}
+
+	return string(resultRunes)
 }
 
 func TestGenerateExamineeNumber(t *testing.T) {
@@ -907,6 +939,179 @@ func TestValidateExamData(t *testing.T) {
 			isUpdate:  false,
 			wantError: true,
 			errorMsg:  "考试场次的时长无效",
+		},
+		{
+			name: "考试名称超过50个字符",
+			examData: ExamData{
+				ExamInfo: cmn.TExamInfo{
+					Name: null.StringFrom("这是一个非常非常非常非常非常非常非常非常非常非常非常非常非常非常非常非常非常非常非常非常长的考试名称1"),
+					Type: null.StringFrom("00"),
+					Mode: null.StringFrom("00"),
+				},
+				ExamSessions: []cmn.TExamSession{
+					{
+						PaperID:              null.IntFrom(1),
+						MarkMethod:           "00",
+						PeriodMode:           null.StringFrom("00"),
+						Duration:             null.IntFrom(120),
+						QuestionShuffledMode: null.StringFrom("00"),
+						MarkMode:             null.StringFrom("00"),
+						StartTime:            null.IntFrom(time.Now().UnixMilli()),
+						EndTime:              null.IntFrom(time.Now().Add(2 * time.Hour).UnixMilli()),
+					},
+				},
+			},
+			isUpdate:  false,
+			wantError: true,
+			errorMsg:  "考试名称过长",
+		},
+		{
+			name: "考试名称正好50个字符（边界值测试）",
+			examData: ExamData{
+				ExamInfo: cmn.TExamInfo{
+					Name: null.StringFrom("这是一个测试考试名称这是一个测试考试名称这是一个测试考试名称这是一个测试考试名称这是十个字"), // 正好50个字符
+					Type: null.StringFrom("00"),
+					Mode: null.StringFrom("00"),
+				},
+				ExamSessions: []cmn.TExamSession{
+					{
+						PaperID:              null.IntFrom(1),
+						MarkMethod:           "00",
+						PeriodMode:           null.StringFrom("00"),
+						Duration:             null.IntFrom(120),
+						QuestionShuffledMode: null.StringFrom("00"),
+						MarkMode:             null.StringFrom("00"),
+						StartTime:            null.IntFrom(time.Now().UnixMilli()),
+						EndTime:              null.IntFrom(time.Now().Add(2 * time.Hour).UnixMilli()),
+					},
+				},
+			},
+			isUpdate:  false,
+			wantError: false,
+		},
+		{
+			name: "考试规则超过5000个字符",
+			examData: ExamData{
+				ExamInfo: cmn.TExamInfo{
+					Name:  null.StringFrom("考试"),
+					Type:  null.StringFrom("00"),
+					Mode:  null.StringFrom("00"),
+					Rules: null.StringFrom(generateLongString(5001)), // 超过5000个字符
+				},
+				ExamSessions: []cmn.TExamSession{
+					{
+						PaperID:              null.IntFrom(1),
+						MarkMethod:           "00",
+						PeriodMode:           null.StringFrom("00"),
+						Duration:             null.IntFrom(120),
+						QuestionShuffledMode: null.StringFrom("00"),
+						MarkMode:             null.StringFrom("00"),
+						StartTime:            null.IntFrom(time.Now().UnixMilli()),
+						EndTime:              null.IntFrom(time.Now().Add(2 * time.Hour).UnixMilli()),
+					},
+				},
+			},
+			isUpdate:  false,
+			wantError: true,
+			errorMsg:  "考试规则过长",
+		},
+		{
+			name: "考试规则正好5000个字符（边界值测试）",
+			examData: ExamData{
+				ExamInfo: cmn.TExamInfo{
+					Name:  null.StringFrom("考试"),
+					Type:  null.StringFrom("00"),
+					Mode:  null.StringFrom("00"),
+					Rules: null.StringFrom(generateLongString(5000)), // 正好5000个字符
+				},
+				ExamSessions: []cmn.TExamSession{
+					{
+						PaperID:              null.IntFrom(1),
+						MarkMethod:           "00",
+						PeriodMode:           null.StringFrom("00"),
+						Duration:             null.IntFrom(120),
+						QuestionShuffledMode: null.StringFrom("00"),
+						MarkMode:             null.StringFrom("00"),
+						StartTime:            null.IntFrom(time.Now().UnixMilli()),
+						EndTime:              null.IntFrom(time.Now().Add(2 * time.Hour).UnixMilli()),
+					},
+				},
+			},
+			isUpdate:  false,
+			wantError: false,
+		},
+		{
+			name: "考试名称包含中英文混合（测试rune计算）",
+			examData: ExamData{
+				ExamInfo: cmn.TExamInfo{
+					Name: null.StringFrom("Final Exam期末考试2024年度测试Hello World你好世界"), // 中英文混合，正好50个字符
+					Type: null.StringFrom("00"),
+					Mode: null.StringFrom("00"),
+				},
+				ExamSessions: []cmn.TExamSession{
+					{
+						PaperID:              null.IntFrom(1),
+						MarkMethod:           "00",
+						PeriodMode:           null.StringFrom("00"),
+						Duration:             null.IntFrom(120),
+						QuestionShuffledMode: null.StringFrom("00"),
+						MarkMode:             null.StringFrom("00"),
+						StartTime:            null.IntFrom(time.Now().UnixMilli()),
+						EndTime:              null.IntFrom(time.Now().Add(2 * time.Hour).UnixMilli()),
+					},
+				},
+			},
+			isUpdate:  false,
+			wantError: false,
+		},
+		{
+			name: "考试名称包含emoji字符（测试rune计算）",
+			examData: ExamData{
+				ExamInfo: cmn.TExamInfo{
+					Name: null.StringFrom("📚数学考试📝测试用例🎯"), // 包含emoji，测试Unicode字符计算
+					Type: null.StringFrom("00"),
+					Mode: null.StringFrom("00"),
+				},
+				ExamSessions: []cmn.TExamSession{
+					{
+						PaperID:              null.IntFrom(1),
+						MarkMethod:           "00",
+						PeriodMode:           null.StringFrom("00"),
+						Duration:             null.IntFrom(120),
+						QuestionShuffledMode: null.StringFrom("00"),
+						MarkMode:             null.StringFrom("00"),
+						StartTime:            null.IntFrom(time.Now().UnixMilli()),
+						EndTime:              null.IntFrom(time.Now().Add(2 * time.Hour).UnixMilli()),
+					},
+				},
+			},
+			isUpdate:  false,
+			wantError: false,
+		},
+		{
+			name: "空的考试规则（Valid=false）",
+			examData: ExamData{
+				ExamInfo: cmn.TExamInfo{
+					Name:  null.StringFrom("考试"),
+					Type:  null.StringFrom("00"),
+					Mode:  null.StringFrom("00"),
+					Rules: null.String{}, // 空的规则，Valid=false
+				},
+				ExamSessions: []cmn.TExamSession{
+					{
+						PaperID:              null.IntFrom(1),
+						MarkMethod:           "00",
+						PeriodMode:           null.StringFrom("00"),
+						Duration:             null.IntFrom(120),
+						QuestionShuffledMode: null.StringFrom("00"),
+						MarkMode:             null.StringFrom("00"),
+						StartTime:            null.IntFrom(time.Now().UnixMilli()),
+						EndTime:              null.IntFrom(time.Now().Add(2 * time.Hour).UnixMilli()),
+					},
+				},
+			},
+			isUpdate:  false,
+			wantError: false, // 空的规则应该是允许的
 		},
 	}
 
@@ -2042,9 +2247,10 @@ func TestValidateUserExamPermission(t *testing.T) {
 
 	// 创建测试用户
 	testTeacherID := int64(99001)
+	testAcademicAffairID := int64(99004)
 	testStudentID := int64(99002)
 	testAdminID := int64(99003)
-	testUserIDs = append(testUserIDs, testTeacherID, testStudentID, testAdminID)
+	testUserIDs = append(testUserIDs, testTeacherID, testStudentID, testAdminID, testAcademicAffairID)
 
 	currentTime := time.Now().UnixMilli()
 
@@ -2052,11 +2258,12 @@ func TestValidateUserExamPermission(t *testing.T) {
 	_, err := conn.Exec(ctx, `
 		INSERT INTO t_user (id, role, account, category, official_name, create_time, update_time, status) 
 		VALUES 
-			($1, 2, 'test_teacher', '00', '测试教师', $4, $4, '00'),
-			($2, 1, 'test_student', '00', '测试学生', $4, $4, '00'),
-			($3, 3, 'test_admin', '00', '测试管理员', $4, $4, '00')
+			($1, 2003, 'test_teacher', '00', '测试教师', $5, $5, '00'),
+			($2, 2008, 'test_student', '00', '测试学生', $5, $5, '00'),
+			($3, 2001, 'test_admin', '00', '测试管理员', $5, $5, '00'),
+			($4, 2002, 'test_academic_affair', '00', '测试教务', $5, $5, '00')
 		ON CONFLICT (id) DO NOTHING`,
-		testTeacherID, testStudentID, testAdminID, currentTime)
+		testTeacherID, testStudentID, testAdminID, testAcademicAffairID, currentTime)
 	if err != nil {
 		t.Fatalf("创建测试用户失败: %v", err)
 	}
@@ -2065,9 +2272,9 @@ func TestValidateUserExamPermission(t *testing.T) {
 	var testExamID int64
 	err = conn.QueryRow(ctx, `
 		INSERT INTO t_exam_info (
-			name, type, mode, creator, create_time, updated_by, update_time, status
+			name, type, mode, creator, create_time, updated_by, update_time, status, domain_id
 		) VALUES (
-			'测试权限考试', '00', '00', $1, $2, $1, $2, '00'
+			'测试权限考试', '00', '00', $1, $2, $1, $2, '00', 2002
 		) RETURNING id`,
 		testTeacherID, currentTime).Scan(&testExamID)
 	if err != nil {
@@ -2091,7 +2298,7 @@ func TestValidateUserExamPermission(t *testing.T) {
 	}
 	testSessionIDs = append(testSessionIDs, testSessionID)
 
-	// 创建考生记录（将testStudentID添加为考生）
+	// 创建考生记录
 	_, err = conn.Exec(ctx, `
 		INSERT INTO t_examinee (
 			student_id, exam_session_id, creator, create_time, updated_by, update_time, 
@@ -2104,25 +2311,11 @@ func TestValidateUserExamPermission(t *testing.T) {
 		t.Fatalf("创建考生记录失败: %v", err)
 	}
 
-	// 创建另一个考试（不属于testTeacherID）
-	var otherExamID int64
-	err = conn.QueryRow(ctx, `
-		INSERT INTO t_exam_info (
-			name, type, mode, creator, create_time, updated_by, update_time, status
-		) VALUES (
-			'其他人的考试', '00', '00', $1, $2, $1, $2, '00'
-		) RETURNING id`,
-		88888, currentTime).Scan(&otherExamID)
-	if err != nil {
-		t.Fatalf("创建其他考试失败: %v", err)
-	}
-	testExamIDs = append(testExamIDs, otherExamID)
-
 	tests := []struct {
 		name        string
 		userID      int64
 		examID      int64
-		role        int64
+		domain      string
 		wantResult  bool
 		wantError   bool
 		errorMsg    string
@@ -2134,47 +2327,37 @@ func TestValidateUserExamPermission(t *testing.T) {
 			name:        "管理员权限-应该有权限",
 			userID:      testAdminID,
 			examID:      testExamID,
-			role:        3, // 管理员角色
+			domain:      "cst.school^admin", // 管理员角色
 			wantResult:  true,
 			wantError:   false,
 			description: "管理员对所有考试都有权限",
 			forceError:  "",
 		},
 		{
-			name:        "教师权限-自己创建的考试,QueryRow 错误",
-			userID:      testTeacherID,
+			name:        "教务员权限QueryRow 错误",
+			userID:      testAcademicAffairID,
 			examID:      testExamID,
-			role:        2, // 教师角色
+			domain:      "cst.school^academicAffair^admin", // 教务员角色
 			wantResult:  false,
 			wantError:   true,
-			description: "教师对自己创建的考试有权限",
+			description: "教务员对自己创建的考试有权限",
 			forceError:  "conn.QueryRow",
 		},
 		{
-			name:        "教师权限-自己创建的考试",
-			userID:      testTeacherID,
+			name:        "教务员权限",
+			userID:      testAcademicAffairID,
 			examID:      testExamID,
-			role:        2, // 教师角色
+			domain:      "cst.school^academicAffair^admin",
 			wantResult:  true,
 			wantError:   false,
-			description: "教师对自己创建的考试有权限",
-			forceError:  "",
-		},
-		{
-			name:        "教师权限-不是自己创建的考试",
-			userID:      testTeacherID,
-			examID:      otherExamID,
-			role:        2, // 教师角色
-			wantResult:  false,
-			wantError:   false,
-			description: "教师对不是自己创建的考试没有权限",
+			description: "教务员对自己创建的考试有权限",
 			forceError:  "",
 		},
 		{
 			name:        "学生权限-参加的考试",
 			userID:      testStudentID,
 			examID:      testExamID,
-			role:        1, // 学生角色
+			domain:      "cst.school^student", // 学生角色
 			wantResult:  true,
 			wantError:   false,
 			description: "学生对自己参加的考试有权限",
@@ -2184,27 +2367,17 @@ func TestValidateUserExamPermission(t *testing.T) {
 			name:        "学生权限-参加的考试 QueryRow 错误",
 			userID:      testStudentID,
 			examID:      testExamID,
-			role:        1, // 学生角色
+			domain:      "cst.school^student", // 学生角色
 			wantResult:  false,
 			wantError:   true,
 			description: "学生对自己参加的考试有权限",
 			forceError:  "conn.QueryRow",
 		},
 		{
-			name:        "学生权限-未参加的考试",
-			userID:      testStudentID,
-			examID:      otherExamID,
-			role:        1, // 学生角色
-			wantResult:  false,
-			wantError:   false,
-			description: "学生对未参加的考试没有权限",
-			forceError:  "",
-		},
-		{
 			name:        "无效的用户ID",
 			userID:      0,
 			examID:      testExamID,
-			role:        1,
+			domain:      "cst.school^academicAffair^admin",
 			wantResult:  false,
 			wantError:   true,
 			errorMsg:    "无效的用户ID或考试ID",
@@ -2215,7 +2388,7 @@ func TestValidateUserExamPermission(t *testing.T) {
 			name:        "负数用户ID",
 			userID:      -1,
 			examID:      testExamID,
-			role:        1,
+			domain:      "cst.school^academicAffair^admin",
 			wantResult:  false,
 			wantError:   true,
 			errorMsg:    "无效的用户ID或考试ID",
@@ -2226,7 +2399,7 @@ func TestValidateUserExamPermission(t *testing.T) {
 			name:        "无效的考试ID",
 			userID:      testStudentID,
 			examID:      0,
-			role:        1,
+			domain:      "cst.school^student",
 			wantResult:  false,
 			wantError:   true,
 			errorMsg:    "无效的用户ID或考试ID",
@@ -2237,7 +2410,7 @@ func TestValidateUserExamPermission(t *testing.T) {
 			name:        "负数考试ID",
 			userID:      testStudentID,
 			examID:      -1,
-			role:        1,
+			domain:      "cst.school^student",
 			wantResult:  false,
 			wantError:   true,
 			errorMsg:    "无效的用户ID或考试ID",
@@ -2249,7 +2422,7 @@ func TestValidateUserExamPermission(t *testing.T) {
 			name:        "Mock-normal-resp",
 			userID:      testStudentID,
 			examID:      testExamID,
-			role:        1,
+			domain:      "cst.school^student",
 			wantResult:  true,
 			wantError:   false,
 			description: "Mock normal-resp应该返回true, nil",
@@ -2260,7 +2433,7 @@ func TestValidateUserExamPermission(t *testing.T) {
 			name:        "Mock-validateUserExamPermission-false",
 			userID:      testStudentID,
 			examID:      testExamID,
-			role:        1,
+			domain:      "cst.school^student",
 			wantResult:  false,
 			wantError:   false,
 			description: "Mock validateUserExamPermission-false应该返回false, nil",
@@ -2271,7 +2444,7 @@ func TestValidateUserExamPermission(t *testing.T) {
 			name:        "Mock-validateUserExamPermission-error",
 			userID:      testStudentID,
 			examID:      testExamID,
-			role:        1,
+			domain:      "cst.school^student",
 			wantResult:  false,
 			wantError:   true,
 			errorMsg:    "validateUserExamPermission error",
@@ -2293,7 +2466,7 @@ func TestValidateUserExamPermission(t *testing.T) {
 				ctx = context.WithValue(ctx, "test", tt.mockValue)
 			}
 
-			result, err := validateUserExamPermission(ctx, tt.userID, tt.examID, tt.role)
+			result, err := validateUserExamPermission(ctx, tt.userID, tt.examID, tt.domain)
 
 			// 检查错误
 			if tt.wantError {
@@ -4211,6 +4384,107 @@ func TestExaminee(t *testing.T) {
 				// 使用自定义检查函数
 				if tt.checkResult != nil {
 					tt.checkResult(t, serviceCtx)
+				}
+			}
+		})
+	}
+}
+
+// TestValidateUserForExamCreate 测试用户域权限验证
+func TestValidateUserForExamCreate(t *testing.T) {
+	cmn.ConfigureForTest()
+	tests := []struct {
+		name          string
+		domain        string
+		expectValid   bool
+		expectError   bool
+		errorContains string
+	}{
+		{
+			name:        "有效的cst管理员域",
+			domain:      "cst.school.academicAffair^admin",
+			expectValid: true,
+			expectError: false,
+		},
+		{
+			name:        "另一个有效的cst管理员域",
+			domain:      "cst.university.department^admin",
+			expectValid: true,
+			expectError: false,
+		},
+		{
+			name:        "cst前缀的admin域",
+			domain:      "cst.admin.system^admin",
+			expectValid: true,
+			expectError: false,
+		},
+		{
+			name:        "无cst前缀的域",
+			domain:      "university.department.admin^admin",
+			expectValid: false,
+			expectError: false,
+		},
+		{
+			name:        "无cst前缀的域2",
+			domain:      "test.admin.system^admin",
+			expectValid: false,
+			expectError: false,
+		},
+		{
+			name:        "有cst但无admin权限的域",
+			domain:      "cst.school.academicAffair^user",
+			expectValid: false,
+			expectError: false,
+		},
+		{
+			name:        "有cst但无权限标识的域",
+			domain:      "cst.school.student",
+			expectValid: false,
+			expectError: false,
+		},
+		{
+			name:          "空域名",
+			domain:        "",
+			expectValid:   false,
+			expectError:   true,
+			errorContains: "无效的用户域",
+		},
+		{
+			name:        "只有admin但无cst前缀",
+			domain:      "admin",
+			expectValid: false,
+			expectError: false,
+		},
+		{
+			name:        "包含admin但无cst前缀且位置错误",
+			domain:      "admin.school.department^user",
+			expectValid: false,
+			expectError: false,
+		},
+		{
+			name:        "无cst前缀且无admin权限",
+			domain:      "school.department^user",
+			expectValid: false,
+			expectError: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			valid, err := validateUserForExamCreate(tt.domain)
+
+			if tt.expectValid {
+				assert.True(t, valid, "期望域验证通过")
+				assert.NoError(t, err, "期望无错误")
+			} else {
+				assert.False(t, valid, "期望域验证失败")
+				if tt.expectError {
+					assert.Error(t, err, "期望有错误")
+					if tt.errorContains != "" {
+						assert.Contains(t, err.Error(), tt.errorContains, "错误信息应包含指定内容")
+					}
+				} else {
+					assert.NoError(t, err, "期望无错误")
 				}
 			}
 		})
