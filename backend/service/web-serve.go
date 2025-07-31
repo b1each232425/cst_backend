@@ -7,17 +7,11 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
-	"github.com/gomodule/redigo/redis"
+
+	"github.com/redis/go-redis/v9"
+
 	"github.com/gorilla/sessions"
 
-	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/jmoiron/sqlx"
-	"github.com/klauspost/compress/gzhttp"
-	"github.com/klauspost/compress/gzip"
-	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
-	"go.uber.org/zap"
-	"golang.org/x/crypto/acme/autocert"
 	"log"
 	"net/http"
 	"os"
@@ -28,6 +22,15 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/jmoiron/sqlx"
+	"github.com/klauspost/compress/gzhttp"
+	"github.com/klauspost/compress/gzip"
+	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
+	"go.uber.org/zap"
+	"golang.org/x/crypto/acme/autocert"
 	"w2w.io/cmn"
 	"w2w.io/mux"
 )
@@ -37,7 +40,7 @@ var (
 
 	pgxConn *pgxpool.Pool
 	sqlxDB  *sqlx.DB
-	rConn   redis.Conn
+	rConn   *redis.Client
 )
 
 func init() {
@@ -395,7 +398,7 @@ func reqProc(reqPath string, w http.ResponseWriter, r *http.Request) {
 		WhiteList:  whiteList,
 		CallerType: clnType,
 
-		Redis: cmn.GetRedisConn(),
+		RedisClient: cmn.GetRedisConn(),
 
 		R:  r,
 		W:  w,

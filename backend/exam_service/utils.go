@@ -1,8 +1,10 @@
 package exam_service
 
 import (
+	"context"
 	"encoding/json"
 
+	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
 	"w2w.io/cmn"
 )
@@ -11,8 +13,7 @@ import (
 func setRedisTimer(eventType string, id int64, timeStamp int64, event ExamEvent) {
 	z.Info("---->" + cmn.FncName())
 
-	redisConn := cmn.GetRedisConn()
-	defer redisConn.Close()
+	ctx := context.Background()
 
 	event.Type = eventType
 
@@ -27,7 +28,10 @@ func setRedisTimer(eventType string, id int64, timeStamp int64, event ExamEvent)
 	member := string(eventData)
 
 	// 添加到有序集合
-	_, err = redisConn.Do("ZADD", EXAM_TIMER_SET_KEY, score, member)
+	err = redisClient.ZAdd(ctx, EXAM_TIMER_SET_KEY, redis.Z{
+		Score:  score,
+		Member: member,
+	}).Err()
 	if err != nil {
 		z.Error("Failed to set Redis timer",
 			zap.String("eventType", eventType),

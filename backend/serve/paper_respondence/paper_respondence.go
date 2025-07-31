@@ -612,7 +612,7 @@ func InitRespondent(ctx context.Context) {
 		}
 
 		//更新最近一次进入练习的时间
-		Sql := `UPDATE t_practice_submissions SET last_start_time = (EXTRACT(EPOCH FROM NOW()) * 1000)::bigint WHERE id = $1 AND status=$2 RETURNING id`
+		Sql := `UPDATE t_practice_submissions SET last_start_time = EXTRACT(EPOCH FROM CURRENT_TIMESTAMP)::bigint * 1000 WHERE id = $1 AND status=$2 RETURNING id`
 
 		var updateId null.Int
 		q.Err = tx.QueryRow(ctx, Sql, u.PracticeSubmissionID, NormalStatus).Scan(&updateId)
@@ -1070,8 +1070,8 @@ func HandleExit(ctx context.Context, req ExitReq) (err error) {
 SET
   last_end_time = EXTRACT(EPOCH FROM CURRENT_TIMESTAMP)::bigint * 1000,
   elapsed_seconds = elapsed_seconds + (
-    (EXTRACT(EPOCH FROM CURRENT_TIMESTAMP)::bigint * 1000) - last_start_time
-  ),
+    ((EXTRACT(EPOCH FROM CURRENT_TIMESTAMP)::bigint * 1000) - last_start_time) / 1000.0
+),
 	updated_by=$1,
     update_time=EXTRACT(EPOCH FROM CURRENT_TIMESTAMP)::bigint * 1000
 WHERE id = $2 AND status = $3 RETURNING id`

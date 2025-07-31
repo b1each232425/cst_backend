@@ -31,6 +31,14 @@ func (t *QNearTime) Scan(value interface{}) error {
 	return err
 }
 
+// ValueOr returns the inner value if valid, otherwise v.
+func (t QNearTime) ValueOr(v time.Time) time.Time {
+	if !t.Valid {
+		return v
+	}
+	return t.Time
+}
+
 // Value implements the driver Valuer interface.
 func (t QNearTime) Value() (driver.Value, error) {
 	if !t.Valid {
@@ -82,6 +90,11 @@ func (t QNearTime) MarshalJSON() ([]byte, error) {
 // It supports string, object (e.g. pq.NullTime and friends)
 // and null input.
 func (t *QNearTime) UnmarshalJSON(data []byte) error {
+	if len(data) > 0 && data[0] == 'n' {
+		t.Valid = false
+		return nil
+	}
+
 	var err error
 	var v interface{}
 	if err = json.Unmarshal(data, &v); err != nil {
@@ -109,7 +122,7 @@ func (t *QNearTime) UnmarshalJSON(data []byte) error {
 	return err
 }
 
-//MarshalText customize version
+// MarshalText customize version
 func (t QNearTime) MarshalText() ([]byte, error) {
 	if !t.Valid {
 		return []byte("null"), nil
@@ -117,7 +130,7 @@ func (t QNearTime) MarshalText() ([]byte, error) {
 	return t.Time.MarshalText()
 }
 
-//UnmarshalText comstomize version
+// UnmarshalText comstomize version
 func (t *QNearTime) UnmarshalText(text []byte) error {
 	str := string(text)
 	if str == "" || str == "null" {

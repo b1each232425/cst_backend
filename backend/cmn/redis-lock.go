@@ -4,9 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"time"
 
-	"github.com/gomodule/redigo/redis"
+	"github.com/redis/go-redis/v9"
 )
 
 const (
@@ -53,12 +54,11 @@ end`
 // 返回值：
 //
 //	bool  —— 是否成功获取锁
-//	int64 —— 如果锁被占用，返回当前持有者ID，否则为 -1
 //	error —— 错误信息（如参数非法、Redis 操作失败等）
 //
 // 注意：
 //   - 若锁已被当前 holderID 持有，则自动刷新锁并返回 true。
-//   - 若锁被其他用户持有，返回 false、持有者ID 和错误信息。
+//   - 若锁被其他用户持有，返回 false和错误信息。
 //   - 若 resourceID 或 holderID 非正数，直接返回错误。
 func TryLock(ctx context.Context, resourceID, holderID int64, keyPrefix string, expiration time.Duration) (bool, error) {
 	// 参数校验，resourceID 和 holderID 必须为正数
@@ -81,25 +81,25 @@ func TryLock(ctx context.Context, resourceID, holderID int64, keyPrefix string, 
 	key := fmt.Sprintf("%s%d", keyPrefix, resourceID)
 
 	// 原子执行 Lua
-	res, err := redis.Int(
-		q.Redis.Do("EVAL", luaLock,
+	res, err :=
+		q.RedisClient.Do(context.Background(), "EVAL", luaLock,
 			1,                         // 1 个 key
 			key,                       // KEYS[1]
 			holderID,                  // ARGV[1]
 			int(expiration.Seconds()), // ARGV[2]
-		),
-	)
+		).Result()
+
 	if err != nil {
 		z.Error(err.Error())
 		return false, err
 	}
-	if res == 1 {
+	v, ok := res.(int64)
+	if ok && v == 1 {
 		return true, nil
-	} else {
-		err := fmt.Errorf("key %s is locked", key)
-		z.Error(err.Error())
-		return false, err
 	}
+	err = fmt.Errorf("key %s is locked", key)
+	z.Error(err.Error())
+	return false, err
 
 }
 
@@ -123,13 +123,16 @@ func ReleaseLock(ctx context.Context, resourceID, holderID int64, keyPrefix stri
 	q := GetCtxValue(ctx)
 	key := fmt.Sprintf("%s%d", keyPrefix, resourceID)
 
-	res, err := redis.Int(q.Redis.Do("EVAL", luaUnlock, 1, key, holderID))
+	res, err := q.RedisClient.Do(ctx, "EVAL", luaUnlock, 1, key, holderID).Result()
 	if err != nil {
+		z.Error(err.Error())
 		return err
 	}
-	if res == 0 {
+
+	if v, ok := res.(int64); ok && v == 0 {
 		return errors.New("lock not held by current client")
 	}
+
 	return nil
 }
 
@@ -163,27 +166,33 @@ func RefreshLock(ctx context.Context,
 	}
 
 	// 原子执行 Lua
-	res, err := redis.Int(
-		q.Redis.Do("EVAL", luaRefresh,
+	res, err :=
+		q.RedisClient.Do(ctx, "EVAL", luaRefresh,
 			1,                         // 1 个 key
 			key,                       // KEYS[1]
 			holderID,                  // ARGV[1]
 			int(expiration.Seconds()), // ARGV[2]
-		),
-	)
-
-	switch {
-	case err != nil:
+		).Result()
+	if err != nil {
 		z.Error("RefreshLock eval error:" + err.Error())
 		return err
-	case res == 0:
+	}
+	v, ok := res.(int64)
+	if !ok {
+		err := fmt.Errorf("key %s value is not int64", key)
+		z.Error(err.Error())
+		return err
+	}
+
+	if v == 0 {
 		// 两种情况：锁不存在，或者持有者不匹配
 		err = fmt.Errorf("RefreshLock: lock not exist or not held by %d", holderID)
 		z.Info(err.Error())
 		return err
-	default:
-		return nil
 	}
+
+	return nil
+
 }
 
 // GetLockHolder 获取指定资源锁的当前持有者ID。
@@ -206,15 +215,29 @@ func GetLockHolder(ctx context.Context, resourceID int64, keyPrefix string) (int
 	key := fmt.Sprintf("%s%d", keyPrefix, resourceID)
 
 	// 查询锁持有者ID
-	holder, err := redis.Int64(q.Redis.Do("GET", key))
+	holder, err := q.RedisClient.Do(ctx, "GET", key).Result()
+
 	if err != nil {
 		// 锁不存在，直接返回 redis.ErrNil
-		if errors.Is(err, redis.ErrNil) {
+		if errors.Is(err, redis.Nil) {
 			z.Info(err.Error())
 			return -1, err
 		}
 		z.Error(err.Error())
 		return -1, err
 	}
-	return holder, nil
+	v, ok := holder.(string)
+	if !ok {
+		err = fmt.Errorf("holder should be string")
+		z.Error(err.Error())
+		return -1, err
+	}
+
+	i, err := strconv.ParseInt(v, 10, 64)
+	if err != nil {
+		z.Error(err.Error())
+		return -1, err
+	}
+
+	return i, nil
 }

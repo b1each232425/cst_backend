@@ -389,7 +389,8 @@ func getMxOpenID(ctx context.Context, wxCode string, wxAppID string, wxAppSecere
 
 		//在此更新redis.TWxUser.PayOpenID
 		key := fmt.Sprintf("%s:%s", CWxUserByUnionID, unionID.String)
-		_, q.Err = q.Redis.Do("JSON.SET", key, ".PayOpenID", fmt.Sprintf(`"%s"`, openID))
+
+		_, q.Err = q.RedisClient.JSONSet(ctx, key, ".PayOpenID", fmt.Sprintf(`"%s"`, openID)).Result()
 		if q.Err != nil {
 			z.Error(q.Err.Error())
 		}
