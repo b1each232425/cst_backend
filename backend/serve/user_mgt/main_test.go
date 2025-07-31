@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/pkg/errors"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -50,7 +51,7 @@ func TestMain(m *testing.M) {
 	// 转换并插入测试数据到数据库
 	for _, userData := range testData.Users {
 		user := convertMapToTUser(userData)
-		err = user.Create(cmn.GetDbConn())
+		err = createTUser(cmn.GetDbConn(), user)
 		if err != nil {
 			e := fmt.Sprintf("Failed to create user %v: %v", user.ID.Int64, err)
 			z.Warn(e)
@@ -112,6 +113,17 @@ func TestMain(m *testing.M) {
 	}
 
 	os.Exit(code)
+}
+
+// Create inserts the TUser to the database.
+func createTUser(db cmn.Queryer, r cmn.TUser) error {
+	err := db.QueryRow(
+		`INSERT INTO t_user (id, external_id_type, external_id, category, type, language, country, province, city, addr, fuse_name, official_name, id_card_type, id_card_no, mobile_phone, email, account, gender, birthday, nickname, avatar, avatar_type, dev_id, dev_user_id, dev_account, cert, user_token, role, grp, ip, port, auth_failed_count, lock_duration, visit_count, attack_count, lock_reason, logon_time, begin_lock_time, creator, create_time, updated_by, update_time, domain_id, dynamic_attr, addi, remark, status) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45, $46, $47) RETURNING id`,
+		&r.ID, &r.ExternalIDType, &r.ExternalID, &r.Category, &r.Type, &r.Language, &r.Country, &r.Province, &r.City, &r.Addr, &r.FuseName, &r.OfficialName, &r.IDCardType, &r.IDCardNo, &r.MobilePhone, &r.Email, &r.Account, &r.Gender, &r.Birthday, &r.Nickname, &r.Avatar, &r.AvatarType, &r.DevID, &r.DevUserID, &r.DevAccount, &r.Cert, &r.UserToken, &r.Role, &r.Grp, &r.IP, &r.Port, &r.AuthFailedCount, &r.LockDuration, &r.VisitCount, &r.AttackCount, &r.LockReason, &r.LogonTime, &r.BeginLockTime, &r.Creator, &r.CreateTime, &r.UpdatedBy, &r.UpdateTime, &r.DomainID, &r.DynamicAttr, &r.Addi, &r.Remark, &r.Status).Scan(&r.ID)
+	if err != nil {
+		return errors.Wrap(err, "failed to insert t_user")
+	}
+	return nil
 }
 
 // createMockContext 创建符合GetCtxValue要求的mock context

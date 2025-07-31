@@ -20,7 +20,8 @@ type Service interface {
 	CheckTUserFieldExists(ctx context.Context, tx pgx.Tx, field string, value any) (bool, error)
 	CheckTUserRowExists(ctx context.Context, tx pgx.Tx, fields map[string]any) (bool, error)
 	GenerateUniqueAccount(ctx context.Context, tx pgx.Tx, length int, maxAttempts int) (string, error)
-	ValidateUser(ctx context.Context, tx pgx.Tx, users []User) ([]User, []InvalidUser, error)
+	ValidateUserToBeInsert(ctx context.Context, tx pgx.Tx, users []User) ([]User, []InvalidUser, error)
+	QueryUserCurrentRole(ctx context.Context, userId null.Int) (null.Int, null.String, error)
 }
 
 type service struct {
@@ -511,10 +512,10 @@ func (r *service) GenerateUniqueAccount(ctx context.Context, tx pgx.Tx, length i
 	return "", e
 }
 
-// ValidateUser 验证用户信息
+// ValidateUserToBeInsert 验证即将被插入数据库的用户信息
 // 返回 允许插入的有效用户列表 和 不允许插入的不合法用户列表
 // 会使用用户已有的信息（除了帐号）检索这个用户是否存在，已存在的用户会被跳过，既不会被归为有效用户，也不会被归为无效用户
-func (r *service) ValidateUser(ctx context.Context, tx pgx.Tx, users []User) ([]User, []InvalidUser, error) {
+func (r *service) ValidateUserToBeInsert(ctx context.Context, tx pgx.Tx, users []User) ([]User, []InvalidUser, error) {
 	if len(users) == 0 {
 		e := fmt.Errorf("users cannot be empty")
 		z.Error(e.Error())
@@ -528,13 +529,14 @@ func (r *service) ValidateUser(ctx context.Context, tx pgx.Tx, users []User) ([]
 
 	// 构造错误信息map
 	errorMessages := map[string]string{
-		"account_exists":      "账号已存在",
-		"mobile_phone_exists": "手机号已存在",
-		"email_exists":        "邮箱已存在",
-		"id_card_no_exists":   "证件号已存在",
-		"invalid_email":       "邮箱格式不正确",
-		"invalid_domain":      "角色不合法",
-		"empty_domain":        "角色不能为空",
+		"account_exists":        "账号已存在",
+		"mobile_phone_exists":   "手机号已存在",
+		"email_exists":          "邮箱已存在",
+		"id_card_no_exists":     "证件号已存在",
+		"invalid_email":         "邮箱格式不正确",
+		"invalid_domain":        "角色不合法",
+		"empty_domain":          "角色不能为空",
+		"can_not_be_superAdmin": "不允许为超级管理员角色",
 	}
 
 	for i := range users {
@@ -620,6 +622,12 @@ func (r *service) ValidateUser(ctx context.Context, tx pgx.Tx, users []User) ([]
 					errorMessage = append(errorMessage, null.StringFrom(fmt.Sprintf("%s: %s", errorMessages["invalid_domain"], domain.String)))
 					break // 一旦发现一个角色不合法，就不需要继续检查其他角色
 				}
+				if domain.String == DomainSuperAdmin {
+					// 如果角色是超级管理员，则不允许添加
+					errorCount++
+					errorMessage = append(errorMessage, null.StringFrom(errorMessages["can_not_be_superAdmin"]))
+					break // 一旦发现是超级管理员角色，就不需要继续检查其他角色
+				}
 			}
 		} else {
 			// 如果角色列表为空，则添加错误信息
@@ -646,4 +654,43 @@ func (r *service) ValidateUser(ctx context.Context, tx pgx.Tx, users []User) ([]
 	}
 
 	return validUsers, invalidUsers, nil
+}
+
+// QueryUserCurrentRole 查询用户当前角色
+// 返回值: 角色ID、角色名称、错误
+func (r *service) QueryUserCurrentRole(ctx context.Context, userId null.Int) (null.Int, null.String, error) {
+	if !userId.Valid {
+		e := fmt.Errorf("userId is required")
+		z.Error(e.Error())
+		return null.Int{}, null.String{}, e
+	}
+
+	forceErr, _ := ctx.Value("force-error").(string)
+
+	const query = `
+	SELECT u.role AS role_id, d.domain AS role_name
+	FROM t_user u
+	JOIN t_domain d ON u.role = d.id
+	WHERE u.id = $1
+	`
+
+	var roleId null.Int
+	var roleName null.String
+
+	var err error
+
+	err = r.pgxConn.QueryRow(ctx, query, userId.Int64).Scan(&roleId, &roleName)
+	if err != nil || forceErr == "QueryUserCurrentRole" {
+		e := fmt.Errorf("failed to query user current role: %w", err)
+		z.Error(e.Error())
+		return null.Int{}, null.String{}, e
+	}
+
+	if !roleId.Valid || !roleName.Valid || forceErr == "InvalidRole" {
+		e := fmt.Errorf("user %d does not have a valid role", userId.Int64)
+		z.Error(e.Error())
+		return null.Int{}, null.String{}, e
+	}
+
+	return roleId, roleName, nil
 }
