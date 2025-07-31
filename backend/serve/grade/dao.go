@@ -2,7 +2,6 @@ package grade
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"time"
 
@@ -18,6 +17,11 @@ import (
 func GetExamSessionInfo(ctx context.Context, examID int, queryArgs ...string) ([]cmn.TExamSession, error) {
 
 	z.Info("---->" + cmn.FncName())
+
+	//forceErr := ""
+	//if val := ctx.Value("force-error"); val != nil {
+	//	forceErr = val.(string)
+	//}
 
 	result := []cmn.TExamSession{}
 
@@ -83,13 +87,17 @@ func GetExamSessionInfo(ctx context.Context, examID int, queryArgs ...string) ([
 /*
 * GetRowCount 用于获取指定 SQL 查询结果的行数。
 * 该函数构建一个嵌套查询，通过 COUNT(1) 统计传入查询的结果行数。
-* 参数 ctx 是上下文，用于控制请求的生命周期。
-* 参数 query 是包含 SQL 语句和查询参数的结构体指针。
-* 返回值为查询结果的行数和可能出现的错误。
+* 参数：ctx query
+* 返回值：查询结果的行数和可能出现的错误
  */
 func GetRowCount(ctx context.Context, sql string, params []any) (int64, error) {
 
 	z.Info("---->" + cmn.FncName())
+
+	//forceErr := ""
+	//if val := ctx.Value("force-error"); val != nil {
+	//	forceErr = val.(string)
+	//}
 
 	var err error
 
@@ -120,98 +128,19 @@ func GetRowCount(ctx context.Context, sql string, params []any) (int64, error) {
 	return result, err
 }
 
-/*
-* GetExamSessionCount
- */
-//func GetExamSessionCount(examID []int) (int, error) {
-//
-//	var err error
-//
-//	z.Info("----->" + cmn.FncName())
-//
-//	conn := cmn.GetDbConn()
-//	if conn == nil {
-//		z.Error("PostgreSQL connection pool is nil")
-//		return 0, ErrNilDBConn
-//	}
-//
-//	placeholders := make([]string, len(examID))
-//	params := []any{}
-//	for i, id := range examID {
-//		placeholders[i] = fmt.Sprintf("$%d", i+1)
-//		params = append(params, id)
-//	}
-//	placeholderStr := strings.Join(placeholders, ", ")
-//
-//	var count int
-//
-//	sql := fmt.Sprintf(`SELECT COUNT(id) FROM t_exam_session WHERE exam_id IN (%s)`, placeholderStr)
-//
-//	err = conn.QueryRow(sql, params...).Scan(&count)
-//	if err != nil {
-//		err = fmt.Errorf("scan exam session count(examID:%v) occurred error: %s", examID, err.Error())
-//		z.Error(err.Error())
-//		return 0, err
-//	}
-//
-//	return count, nil
-//}
-
-/*
-* GetManualPaperDetailByPaperID
- */
-//func GetManualPaperDetailByPaperID(ctx context.Context, paperID int64) (*cmn.TVPaper, error) {
-//	if paperID <= 0 {
-//		z.Error(ErrInvalidPaperID.Error())
-//		return nil, ErrInvalidPaperID
-//	}
-//
-//	query := `SELECT
-//    id,name,assembly_type,category,level,suggested_duration,description,tags,creator,create_time,update_time,status,total_score,question_count,groups_data
-//	FROM v_paper
-//	WHERE id = $1
-//	LIMIT 1`
-//
-//	db := cmn.GetDbConn()
-//	row := db.QueryRowContext(ctx, query, paperID)
-//	var paper cmn.TVPaper
-//	err := row.Scan(
-//		&paper.ID,
-//		&paper.Name,
-//		&paper.AssemblyType,
-//		&paper.Category,
-//		&paper.Level,
-//		&paper.SuggestedDuration,
-//		&paper.Description,
-//		&paper.Tags,
-//		&paper.Creator,
-//		&paper.CreateTime,
-//		&paper.UpdateTime,
-//		&paper.Status,
-//		&paper.TotalScore,
-//		&paper.QuestionCount,
-//		&paper.GroupsData,
-//	)
-//	if err != nil {
-//		z.Error(err.Error())
-//		return nil, err
-//	}
-//	return &paper, nil
-//}
-
 func GradeListExam(ctx context.Context, args *GradeListArgs) ([]GradeExam, int64, error) {
 	z.Info("---->" + cmn.FncName())
+
+	forceErr := ""
+	if val := ctx.Value("force-error"); val != nil {
+		forceErr = val.(string)
+	}
 
 	var err error
 	var page int
 	var pageSize int
 	var result []GradeExam
 	var rowCount int64
-
-	forceError := ""
-	if val, ok := ctx.Value("force-error").(string); ok {
-		forceError = val
-	}
 
 	// 分页参数: Page PageSize
 	// 数据库查询必需参数: TeacherID ExamID PassScoreRate
@@ -302,14 +231,14 @@ func GradeListExam(ctx context.Context, args *GradeListArgs) ([]GradeExam, int64
 
 	// 执行查询
 	conn := cmn.GetPgxConn()
-	if conn == nil {
+	if conn == nil || forceErr == "conn nil" {
 		err = fmt.Errorf("获取考试成绩列表查询数据库连接失败: %w", ErrNilDBConn)
 		z.Error(err.Error())
 		return result, rowCount, err
 	}
 
 	rows, err := conn.Query(ctx, listSQL, listParams...)
-	if err != nil {
+	if err != nil || forceErr == "conn query fail" {
 		err = fmt.Errorf("执行获取考试成绩列表分页查询失败: %w", err)
 		z.Error(err.Error())
 		return result, rowCount, err
@@ -326,7 +255,7 @@ func GradeListExam(ctx context.Context, args *GradeListArgs) ([]GradeExam, int64
 			&grade.Sessions,
 			&grade.Submitted,
 		)
-		if err != nil {
+		if err != nil || forceErr == "rows scan fail" {
 			err = fmt.Errorf("扫描考试成绩列表失败: %w", err)
 			z.Error(err.Error())
 			return result, rowCount, err
@@ -334,12 +263,12 @@ func GradeListExam(ctx context.Context, args *GradeListArgs) ([]GradeExam, int64
 		result = append(result, grade)
 	}
 	err = rows.Err()
-	if forceError == "rows.Err-err" {
-		err = errors.New(forceError)
-	}
 
 	// 统计总数
 	rowCount, err = GetRowCount(ctx, sql, params)
+	if forceErr == "GetRowCount fail" {
+		err = fmt.Errorf(forceErr)
+	}
 	if err != nil {
 		z.Error(err.Error())
 		return nil, 0, err
@@ -349,13 +278,18 @@ func GradeListExam(ctx context.Context, args *GradeListArgs) ([]GradeExam, int64
 }
 
 func GradeListPractice(ctx context.Context, args *GradeListArgs) ([]GradePractice, int64, error) {
+	z.Info("---->" + cmn.FncName())
+
+	forceErr := ""
+	if val := ctx.Value("force-error"); val != nil {
+		forceErr = val.(string)
+	}
+
 	var err error
 	var page int
 	var pageSize int
 	var result []GradePractice
 	var rowCount int64
-
-	z.Info("---->" + cmn.FncName())
 
 	// 分页参数: Page PageSize
 	// 数据库查询必需参数: TeacherID PracticeID PassScoreRate
@@ -432,13 +366,14 @@ func GradeListPractice(ctx context.Context, args *GradeListArgs) ([]GradePractic
 
 	// 分页查询
 	conn := cmn.GetPgxConn()
-	if conn == nil {
+	if conn == nil || forceErr == "conn nil" {
 		err = fmt.Errorf("查询练习成绩列表获取数据库连接失败: %w", ErrNilDBConn)
 		z.Error(err.Error())
 		return result, rowCount, err
 	}
+
 	rows, err := conn.Query(ctx, listSQL, listParams...)
-	if err != nil {
+	if err != nil || forceErr == "conn query fail" {
 		err = fmt.Errorf("执行练习成绩列表分页查询出现错误: %w", err)
 		z.Error(err.Error())
 		return result, rowCount, err
@@ -457,8 +392,8 @@ func GradeListPractice(ctx context.Context, args *GradeListArgs) ([]GradePractic
 			&grade.CompletedStudents,
 			&grade.PassedStudents,
 		)
-		if err != nil {
-			err = fmt.Errorf("扫描练习成绩列表出现错误: %s", err.Error())
+		if err != nil || forceErr == "rows scan fail" {
+			err = fmt.Errorf("扫描练习成绩列表出现错误: %w", err)
 			z.Error(err.Error())
 			return result, rowCount, err
 		}
@@ -467,6 +402,9 @@ func GradeListPractice(ctx context.Context, args *GradeListArgs) ([]GradePractic
 	}
 
 	rowCount, err = GetRowCount(ctx, sql, params)
+	if forceErr == "GetRowCount fail" {
+		err = fmt.Errorf(forceErr)
+	}
 	if err != nil {
 		z.Error(err.Error())
 		return nil, 0, err
@@ -475,44 +413,50 @@ func GradeListPractice(ctx context.Context, args *GradeListArgs) ([]GradePractic
 	return result, rowCount, nil
 }
 
-func SetExamGradeSubmitted(ctx context.Context, args *GradeSubmitArgs) error {
-	var err error
-
+func SetExamGradeSubmitted(ctx context.Context, args *GradeSubmitArgs) (int64, error) {
 	z.Info("---->" + cmn.FncName())
+
+	var err error
+	var rowsAffected int64
+
+	forceErr := ""
+	if val := ctx.Value("force-error"); val != nil {
+		forceErr = val.(string)
+	}
 
 	if args.TeacherID <= 0 {
 		err := fmt.Errorf("%w: 教师ID无效，必须为正整数", ErrInvalidID)
 		z.Error(err.Error())
-		return err
+		return 0, err
 	}
 	teacherID := args.TeacherID
 
-	if len(args.ExamIDs) <= 0 {
+	if len(args.ExamIDs) <= 0 || forceErr == "len(args.ExamIDs)==0" {
 		err = fmt.Errorf("%w: examID无效，必须为正整数", ErrInvalidID)
 		z.Error(err.Error())
-		return err
+		return 0, err
 	}
 	examIDs := args.ExamIDs
 
 	conn := cmn.GetPgxConn()
-	if conn == nil {
+	if conn == nil || forceErr == "conn nil" {
 		err = fmt.Errorf("查询练习成绩列表获取数据库连接失败: %w", ErrNilDBConn)
 		z.Error(err.Error())
-		return err
+		return 0, err
 	}
 
 	var tx pgx.Tx
 	tx, err = conn.Begin(context.Background())
-	if err != nil {
+	if err != nil || forceErr == "conn begin tx fail" {
 		err = fmt.Errorf("开启事务失败: %w", err)
 		z.Error(err.Error())
-		return err
+		return 0, err
 	}
 
 	// 标记事务是否成功，默认失败
 	txSuccess := false
 	defer func() {
-		if !txSuccess {
+		if !txSuccess || forceErr == "txSuccess must fail" {
 			rollbackErr := tx.Rollback(context.Background())
 			if rollbackErr != nil {
 				err = fmt.Errorf("提交考试成绩失败: 回滚事务失败: %w", rollbackErr)
@@ -523,10 +467,10 @@ func SetExamGradeSubmitted(ctx context.Context, args *GradeSubmitArgs) error {
 
 	for _, examID := range examIDs {
 		examSessions, err := GetExamSessionInfo(ctx, examID, "id", "start_time", "end_time")
-		if err != nil {
+		if err != nil || forceErr == "GetExamSessionInfo must fail" {
 			err = fmt.Errorf("查询考试场次信息失败(examID=%v): %w", examID, err)
 			z.Error(err.Error())
-			return err
+			return 0, err
 		}
 
 		currTime := time.Now()
@@ -543,12 +487,12 @@ func SetExamGradeSubmitted(ctx context.Context, args *GradeSubmitArgs) error {
 				// 如果 EndTime 无效，则认为考试未结束
 				err = fmt.Errorf("提交考试成绩失败: %w: 考试场次(examSession=%v)没有有效结束时间", ErrExamIsNotOver, examSession.ID.Int64)
 				z.Error(err.Error())
-				return err
+				return 0, err
 			}
 
 			err = fmt.Errorf("提交考试成绩失败: %w: 考试场次(examSession=%v)还未结束", ErrExamIsNotOver, examSession.ID.Int64)
 			z.Error(err.Error())
-			return err
+			return 0, err
 		}
 
 		sql := `UPDATE t_exam_info SET submitted=true, updated_by=$2, update_time=$3 WHERE id=$1`
@@ -557,31 +501,110 @@ func SetExamGradeSubmitted(ctx context.Context, args *GradeSubmitArgs) error {
 		curr := currTime.UnixMilli()
 
 		commandTag, err := tx.Exec(ctx, sql, examID, teacherID, curr)
-		if err != nil {
+		if err != nil || forceErr == "tx exec fail" {
 			err = fmt.Errorf("提交考试成绩失败(examID=%v teacherID=%v) error: %s", examID, teacherID, err.Error())
 			z.Error(err.Error())
-			return err
+			return 0, err
 		}
-		// 获取受影响的行数
-		rowsAffected := commandTag.RowsAffected()
-		if rowsAffected != 1 {
-			err = fmt.Errorf("提交考试成绩失败(examID=%v teacherID=%v) 影响的行数: %d", examID, teacherID, rowsAffected)
-			z.Error(err.Error())
-			return err
-		}
+		//// 获取受影响的行数
+		rowsAffected = commandTag.RowsAffected()
+		//if rowsAffected == 1 {
+		//	err = fmt.Errorf("提交考试成绩失败(examID=%v teacherID=%v) 影响的行数: %d", examID, teacherID, rowsAffected)
+		//	z.Error(err.Error())
+		//	return err
+		//}
 	}
 
 	// 提交事务
 	err = tx.Commit(context.Background())
-	if err != nil {
+	if err != nil || forceErr == "tx commit fail" {
 		err = fmt.Errorf("提交考试成绩失败: %w", err)
 		z.Error(err.Error())
-		return err
+		return 0, err
 	}
 	txSuccess = true
 
-	return nil
+	return rowsAffected, nil
 }
+
+/*
+* GetExamSessionCount
+ */
+//func GetExamSessionCount(examID []int) (int, error) {
+//
+//	var err error
+//
+//	z.Info("----->" + cmn.FncName())
+//
+//	conn := cmn.GetDbConn()
+//	if conn == nil {
+//		z.Error("PostgreSQL connection pool is nil")
+//		return 0, ErrNilDBConn
+//	}
+//
+//	placeholders := make([]string, len(examID))
+//	params := []any{}
+//	for i, id := range examID {
+//		placeholders[i] = fmt.Sprintf("$%d", i+1)
+//		params = append(params, id)
+//	}
+//	placeholderStr := strings.Join(placeholders, ", ")
+//
+//	var count int
+//
+//	sql := fmt.Sprintf(`SELECT COUNT(id) FROM t_exam_session WHERE exam_id IN (%s)`, placeholderStr)
+//
+//	err = conn.QueryRow(sql, params...).Scan(&count)
+//	if err != nil {
+//		err = fmt.Errorf("scan exam session count(examID:%v) occurred error: %s", examID, err.Error())
+//		z.Error(err.Error())
+//		return 0, err
+//	}
+//
+//	return count, nil
+//}
+
+/*
+* GetManualPaperDetailByPaperID
+ */
+//func GetManualPaperDetailByPaperID(ctx context.Context, paperID int64) (*cmn.TVPaper, error) {
+//	if paperID <= 0 {
+//		z.Error(ErrInvalidPaperID.Error())
+//		return nil, ErrInvalidPaperID
+//	}
+//
+//	query := `SELECT
+//    id,name,assembly_type,category,level,suggested_duration,description,tags,creator,create_time,update_time,status,total_score,question_count,groups_data
+//	FROM v_paper
+//	WHERE id = $1
+//	LIMIT 1`
+//
+//	db := cmn.GetDbConn()
+//	row := db.QueryRowContext(ctx, query, paperID)
+//	var paper cmn.TVPaper
+//	err := row.Scan(
+//		&paper.ID,
+//		&paper.Name,
+//		&paper.AssemblyType,
+//		&paper.Category,
+//		&paper.Level,
+//		&paper.SuggestedDuration,
+//		&paper.Description,
+//		&paper.Tags,
+//		&paper.Creator,
+//		&paper.CreateTime,
+//		&paper.UpdateTime,
+//		&paper.Status,
+//		&paper.TotalScore,
+//		&paper.QuestionCount,
+//		&paper.GroupsData,
+//	)
+//	if err != nil {
+//		z.Error(err.Error())
+//		return nil, err
+//	}
+//	return &paper, nil
+//}
 
 // func GradeDistributionExam(ctx context.Context, args GradeDistributionExamArgs) (ExamGradeDistribution, error) {
 
