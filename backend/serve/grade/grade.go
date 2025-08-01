@@ -190,11 +190,11 @@ func Enroll(author string) {
 	* @apiParam (200) {String} [category] 	成绩类型
 	* @apiParam (200) {Number} [page] 	页码
 	* @apiParam (200) {Number} [pageSize] 每页数量
+	* @apiParam (200) {Number} [submitted] 是否已提交
 	* @apiParam (200) {Number} [teacherID] 教师ID
 	* @apiParam (200) {Number} [examID] 考试ID
 	* @apiParam (200) {String} [name] 考试名称
 	* @apiParam (200) {String} [type] 考试类型
-	* @apiParam (200) {Number} [submitted] 是否已提交
 	*
 	* @apiParamExample  {type} Request-Example:
 	* {
@@ -239,40 +239,57 @@ func gradeListH(ctx context.Context) {
 	method := strings.ToLower(q.R.Method)
 	switch method {
 	case "get":
-		var req GradeListArgs
-		var err error
-		var data []byte
-		var rowCount int64
-
 		queryParams := q.R.URL.Query()
 
-		if category := queryParams.Get("category"); category != "" {
-			req.Category = category
-		}
+		var (
+			// 结果集
+			err      error
+			data     []byte
+			rowCount int64
 
-		req.Page = 1
-		if page := queryParams.Get("page"); page != "" {
-			p, err := strconv.Atoi(page)
-			if err != nil {
-				q.Err = fmt.Errorf("无效页码: %s", page)
-				z.Warn(q.Err.Error())
-				q.RespErr()
-				return
-			}
-			req.Page = p
-		}
+			// 必需参数集
+			req      GradeListArgs
+			category string
+			page     string
+			pageSize string
+			p        int
+		)
 
-		req.PageSize = 10
-		if pageSize := queryParams.Get("pageSize"); pageSize != "" {
-			p, err := strconv.Atoi(pageSize)
-			if err != nil {
-				q.Err = fmt.Errorf("无效每页数量: %s", pageSize)
-				z.Warn(q.Err.Error())
-				q.RespErr()
-				return
-			}
-			req.PageSize = p
+		if category = queryParams.Get("category"); category == "" {
+			q.Err = fmt.Errorf("不支持的类型: %s", req.Category)
+			z.Warn(q.Err.Error())
+			q.RespErr()
+			return
 		}
+		req.Category = category
+
+		if page = queryParams.Get("page"); page == "" {
+			q.Err = fmt.Errorf("页码为空: %s", page)
+			z.Warn(q.Err.Error())
+			q.RespErr()
+			return
+		}
+		if p, err = strconv.Atoi(page); err != nil {
+			q.Err = fmt.Errorf("无效页码: %s", page)
+			z.Warn(q.Err.Error())
+			q.RespErr()
+			return
+		}
+		req.Page = p
+
+		if pageSize = queryParams.Get("pageSize"); pageSize == "" {
+			q.Err = fmt.Errorf("每页数量为空: %s", pageSize)
+			z.Warn(q.Err.Error())
+			q.RespErr()
+			return
+		}
+		if p, err = strconv.Atoi(pageSize); err != nil {
+			q.Err = fmt.Errorf("无效每页数量: %s", pageSize)
+			z.Warn(q.Err.Error())
+			q.RespErr()
+			return
+		}
+		req.PageSize = p
 
 		teacherID := queryParams.Get("teacherID")
 		if teacherID != "" {
@@ -316,20 +333,20 @@ func gradeListH(ctx context.Context) {
 				req.Filter.Type = examType
 			}
 
-			if submitted := queryParams.Get("submitted"); submitted != "" {
-				switch submitted {
-				case "0":
-					req.Filter.Submitted = 0
-				case "1":
-					req.Filter.Submitted = 1
-				case "-1":
-					req.Filter.Submitted = -1
-				default:
-					q.Err = fmt.Errorf("无效提交状态: %s", submitted)
-					z.Warn(q.Err.Error())
-					q.RespErr()
-					return
-				}
+			submitted := queryParams.Get("submitted")
+			switch submitted {
+			case "0":
+				req.Filter.Submitted = 0
+			case "1":
+				req.Filter.Submitted = 1
+			case "-1":
+			case "":
+				req.Filter.Submitted = -1
+			default:
+				q.Err = fmt.Errorf("无效提交状态: %s", submitted)
+				z.Warn(q.Err.Error())
+				q.RespErr()
+				return
 			}
 
 			dmlCtx, cancel := context.WithTimeout(ctx, TIMEOUT)
@@ -339,7 +356,8 @@ func gradeListH(ctx context.Context) {
 			var result []GradeExam
 			result, rowCount, err = GradeListExam(dmlCtx, &req)
 			if err != nil {
-				q.Err = err
+				q.Err = fmt.Errorf("获取考试成绩列表失败 错误信息:%w", err)
+				z.Error(q.Err.Error())
 				q.RespErr()
 				return
 			}
@@ -350,7 +368,7 @@ func gradeListH(ctx context.Context) {
 					err = fmt.Errorf("force error: %s", forceErr)
 				}
 				if err != nil {
-					q.Err = err
+					q.Err = fmt.Errorf("json格式化失败 错误信息:%w", err)
 					z.Error(q.Err.Error())
 					q.RespErr()
 					return
@@ -360,7 +378,7 @@ func gradeListH(ctx context.Context) {
 			// z.Debug("gradeListExam", zap.Any("result", result))
 
 		case "practice":
-			// 练习类型
+			// 练习ID
 			if practiceID := queryParams.Get("practiceID"); practiceID != "" {
 				p, err := strconv.Atoi(practiceID)
 				if err != nil {
@@ -379,7 +397,8 @@ func gradeListH(ctx context.Context) {
 			var result []GradePractice
 			result, rowCount, err = GradeListPractice(dmlCtx, &req)
 			if err != nil {
-				q.Err = err
+				q.Err = fmt.Errorf("获取练习成绩列表失败 错误信息:%w", err)
+				z.Error(q.Err.Error())
 				q.RespErr()
 				return
 			}
@@ -390,7 +409,7 @@ func gradeListH(ctx context.Context) {
 					err = fmt.Errorf("force error: %s", forceErr)
 				}
 				if err != nil {
-					q.Err = err
+					q.Err = fmt.Errorf("json格式化失败 错误信息:%w", err)
 					z.Error(q.Err.Error())
 					q.RespErr()
 					return
@@ -537,7 +556,7 @@ func gradeSubmissionH(ctx context.Context) {
 		}
 		q.Err = nil
 		q.Msg.Status = 0
-		q.Msg.Msg = fmt.Sprintf("success %v", rowsAffected)
+		q.Msg.Msg = fmt.Sprintf("success rowsAffected:%v", rowsAffected)
 		q.Resp()
 
 	default:
