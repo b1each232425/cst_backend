@@ -340,7 +340,7 @@ func (h *handler) HandleSelectLoginDomain(ctx context.Context) {
 	}
 
 	var domain string
-	if err = json.Unmarshal(body.Data, &domain); err != nil {
+	if err = json.Unmarshal(body.Data, &domain); err != nil || forceErr == "json.UnmarshalDomain" {
 		q.Err = fmt.Errorf("failed to parse domain from data: %w", err)
 		z.Error(q.Err.Error())
 		q.RespErr()
