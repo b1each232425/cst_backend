@@ -3,7 +3,7 @@
  * @Description: 练习管理所需模型
  * @Date: 2025-07-15 19:59:25
  * @LastEditors: zdl <1311866870@qq.com>
- * @LastEditTime: 2025-07-28 15:22:07
+ * @LastEditTime: 2025-08-01 10:54:32
  */
 package practice_mgt
 
@@ -87,7 +87,7 @@ var PracticeStudentStatus = struct {
 
 type practiceInfo struct {
 	Practice cmn.TPractice `json:"practice"`
-	Student  []int64       `json:"student"`
+	Student  []int64       `json:"student,omitempty"`
 }
 
 type EnterPracticeInfo struct {
