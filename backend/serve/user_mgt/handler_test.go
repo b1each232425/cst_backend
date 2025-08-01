@@ -264,6 +264,64 @@ func Test_handler_HandleUser(t *testing.T) {
 			wantErr: false,
 		},
 		{
+			name: "当前用户权限不足",
+			fields: fields{
+				srv: &MockService{
+					users: []User{
+						{
+							TUser: cmn.TUser{
+								ID:           null.NewInt(1, true),
+								Account:      "test_user_001",
+								OfficialName: null.NewString("测试用户001", true),
+								Gender:       null.NewString("M", true),
+								Status:       null.NewString("00", true),
+							},
+						},
+					},
+					totalRows: 1,
+					QueryUserCurrentRoleFunc: func(ctx context.Context, userId null.Int) (null.Int, null.String, error) {
+						return null.Int{}, null.NewString("cst.school^teacher", true), nil
+					},
+				},
+			},
+			args: args{
+				ctx: createMockContext("GET", "/api/user", url.Values{
+					"page":     {"1"},
+					"pageSize": {"10"},
+				}, ""),
+			},
+			wantErr: true,
+		},
+		{
+			name: "查询当前用户角色失败",
+			fields: fields{
+				srv: &MockService{
+					users: []User{
+						{
+							TUser: cmn.TUser{
+								ID:           null.NewInt(1, true),
+								Account:      "test_user_001",
+								OfficialName: null.NewString("测试用户001", true),
+								Gender:       null.NewString("M", true),
+								Status:       null.NewString("00", true),
+							},
+						},
+					},
+					totalRows: 1,
+					QueryUserCurrentRoleFunc: func(ctx context.Context, userId null.Int) (null.Int, null.String, error) {
+						return null.Int{}, null.String{}, fmt.Errorf("查询角色失败")
+					},
+				},
+			},
+			args: args{
+				ctx: createMockContext("GET", "/api/user", url.Values{
+					"page":     {"1"},
+					"pageSize": {"10"},
+				}, ""),
+			},
+			wantErr: true,
+		},
+		{
 			name: "不合法的domain过滤条件",
 			fields: fields{
 				srv: &MockService{

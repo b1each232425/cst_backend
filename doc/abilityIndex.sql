@@ -1,6 +1,6 @@
 /*==============================================================*/
 /* DBMS name:      PostgreSQL 9.x                               */
-/* Created on:     2025-07-26 19:21:55                          */
+/* Created on:     7/30/2025 9:15:10 AM                         */
 /*==============================================================*/
 
 
@@ -918,7 +918,8 @@ insert into t_domain(id,name, domain, creator,priority) values
 (366,'系统.运维','sys^maintain',1000,13), -- 平台维护角色
 
 -- (377,'系统.用户','sys^user',1000,17), -- 普通平台账号，这个不应该存在或被使用
--- (388,'系统.匿名','sys^anonymous',1000,19), -- 普通平台匿名账号，这个不应该存在或被使用
+
+(388,'系统.匿名','sys^anonymous',1000,19), -- 普通平台匿名账号，用户处于未登录状态时所属于的领域/角色
 
 -- (561,'系统.运营','sys^promotion',1000,21), -- 普通平台运营角色账号, 这个不应该存在或被使用
 -- (563,'系统.销售','sys^sale',1000,23), -- 普通平台销售角色账号，这个不应该存在或被使用
@@ -934,7 +935,7 @@ insert into t_domain(id,name, domain, creator,priority) values
 
 
 (671,'用户','common^user',1000,29),
--- (673,'匿名','common^anonymous',1000,31),
+(673,'匿名','common^anonymous',1000,31),
 
 (675,'运营','common^promotion',1000,33),
 (677,'销售','common^sale',1000,35),
@@ -998,10 +999,6 @@ insert into t_domain(id,name, domain, creator,priority) values
 (10210,'教学系统.助教','course^teachingAssistant',1000,1209),
 (10212,'教学系统.班长','course^classRepresentative',1000,1211),
 (10214,'教学系统.学生','course^student',1000,1213);
-
-
-
-
 
 /*==============================================================*/
 /* Index: idx_domain_domain                                     */
@@ -1310,16 +1307,16 @@ ALTER SEQUENCE t_user_id_seq RESTART WITH 20000;
 delete from t_user where id <=20000;
 
 insert into t_user(id,type,email,account,user_token,status,category) values
-(1000,'80','kzz@gzhu.edu.cn','admin',crypt('cSc^6z9B',gen_salt('bf')),'00','sys^admin'),
-(1002,'02','dawnfire@126.com','mickey',crypt('cSc^6z9B',gen_salt('bf')),'00','sys^admin'),
-(1004,'04','kzz@tom.com','trialUser',crypt('cSc^6z9B',gen_salt('bf')),'00','sys^trial'),
-(1008,'08','kmanager@gmail.com','organizationLeader',crypt('cSc^6z9B',gen_salt('bf')),'00','sys^admin'),
-(1010,'10','kforce@gmail.com','tester',crypt('cSc^6z9B',gen_salt('bf')),'00','sys^trial'),
-(1110,'10','stu01@w2w.io','spider1',crypt('1',gen_salt('bf')),'00','sys^trial'),
-(1111,'10','stu02@w2w.io','spider2',crypt('2',gen_salt('bf')),'00','sys^trial'),
-(1212,'10','stu03@w2w.io','spider3',crypt('3',gen_salt('bf')),'00','sys^trial'),
-(1313,'10','stu04@w2w.io','spider4',crypt('4',gen_salt('bf')),'00','sys^trial'),
-(1314,'10','stu05@w2w.io','spider5',crypt('3',gen_salt('bf')),'00','sys^trial'),
+(1000,'80','kzz@gzhu.edu.cn','admin',crypt('cst4Ever',gen_salt('bf')),'00','sys^admin'),
+(1002,'02','dawnfire@126.com','mickey',crypt('cst4Ever',gen_salt('bf')),'00','sys^admin'),
+(1004,'04','kzz@tom.com','trialUser',crypt('cst4Ever',gen_salt('bf')),'00','sys^trial'),
+(1008,'08','kmanager@gmail.com','organizationLeader',crypt('cst4Ever',gen_salt('bf')),'00','sys^admin'),
+(1010,'10','kforce@gmail.com','tester',crypt('cst4Ever',gen_salt('bf')),'00','sys'),
+(1110,'10','stu01@w2w.io','1110',crypt('1',gen_salt('bf')),'00','course^student'),
+(1111,'10','stu02@w2w.io','1111',crypt('2',gen_salt('bf')),'00','course^student'),
+(1212,'10','stu03@w2w.io','1212',crypt('3',gen_salt('bf')),'00','course^student'),
+(1313,'10','stu04@w2w.io','1313',crypt('3',gen_salt('bf')),'00','course^student'),
+(1314,'10','stu05@w2w.io','1314',crypt('5',gen_salt('bf')),'00','course^student'),
 
 (1400,'10','course.admin@w2w.io','course.admin',crypt('0',gen_salt('bf')),'00','course^admin'),
 (1402,'10','course.maintain@w2w.io','course.maintain',crypt('0',gen_salt('bf')),'00','course^maintain'),
@@ -1332,7 +1329,66 @@ insert into t_user(id,type,email,account,user_token,status,category) values
 (1412,'10','course.stu2@w2w.io','s2',crypt('2',gen_salt('bf')),'00','course^student'),
 (1414,'10','course.stu3@w2w.io','s3',crypt('3',gen_salt('bf')),'00','course^student'),
 (1416,'10','course.stu4@w2w.io','s4',crypt('4',gen_salt('bf')),'00','course^student'),
-(1418,'10','course.stu5@w2w.io','s5',crypt('5',gen_salt('bf')),'00','course^student');
+(1418,'10','course.stu5@w2w.io','s5',crypt('5',gen_salt('bf')),'00','course^student'),
+
+-- xkb default user
+
+(10002,'02','admin@xkb888.cn','xkb_admin',crypt('cst4Ever',gen_salt('bf')),'00','xkb^admin'),
+(10004,'04','sale@xkb888.cn','xkb_sale',crypt('cst4Ever',gen_salt('bf')),'00','xkb^sale'),
+(10008,'08','school.admin@xkb888.cn','xkb_school_admin',crypt('cst4Ever',gen_salt('bf')),'00','xkb.school^admin'),
+(10010,'10','school.statistics@xkb888.cn','xkb_school_statistics',crypt('cst4Ever',gen_salt('bf')),'00','xkb.school^statistics'),
+(10050,'10','user1@xkb888.cn','10050',crypt('cst4Ever',gen_salt('bf')),'00','sys^user'),
+(10052,'10','user2@xkb888.cn','10052',crypt('cst4Ever',gen_salt('bf')),'00','sys^user'),
+(10054,'10','user3@xkb888.cn','10054',crypt('cst4Ever',gen_salt('bf')),'00','sys^user');
+
+
+insert into t_user(id,account,category,id_card_type,official_name,id_card_no,user_token) values
+(10100,'10001','xkb.user','身份证','李玟筱','430523200011094320',crypt('cst4Ever',gen_salt('bf'))),
+(10102,'10002','xkb.user','身份证','徐夏龙','430223200108148018',crypt('cst4Ever',gen_salt('bf'))),
+(10104,'10004','xkb.user','身份证','刘思婕','430225200203308545',crypt('cst4Ever',gen_salt('bf'))),
+(10106,'10006','xkb.user','身份证','杨世杰','430223200111013210',crypt('cst4Ever',gen_salt('bf'))),
+(10108,'10008','xkb.user','身份证','吴博宇','43021120011022001x',crypt('cst4Ever',gen_salt('bf'))),
+(10110,'10010','xkb.user','身份证','郑子龙','330322200106121618',crypt('cst4Ever',gen_salt('bf'))),
+(10112,'10012','xkb.user','身份证','蒋志','430523200106098017',crypt('cst4Ever',gen_salt('bf'))),
+(10114,'10014','xkb.user','身份证','刘洁琼','430223200108097249',crypt('cst4Ever',gen_salt('bf'))),
+(10116,'10016','xkb.user','身份证','陈嘉正','430203200107230217',crypt('cst4Ever',gen_salt('bf'))),
+(10118,'10018','xkb.user','身份证','向菁','431224200104200031',crypt('cst4Ever',gen_salt('bf')));
+
+insert into t_user(id,account,category,official_name,mobile_phone,user_token) values   
+(10120,'10020','xkb.user','卢星宇','13342885601',crypt('cst4Ever',gen_salt('bf'))),
+(10122,'10022','xkb.user','李嘉文','13342885602',crypt('cst4Ever',gen_salt('bf'))),
+(10124,'10024','xkb.user','罗晟宇','13342885603',crypt('cst4Ever',gen_salt('bf'))),
+(10126,'10026','xkb.user','戴仟仟','13342885604',crypt('cst4Ever',gen_salt('bf'))),
+(10128,'10028','xkb.user','姜湘晨','13342885605',crypt('cst4Ever',gen_salt('bf'))),
+(10130,'10030','xkb.user','周方圆','13342885606',crypt('cst4Ever',gen_salt('bf'))),
+(10132,'10032','xkb.user','宓楚钰','13342885607',crypt('cst4Ever',gen_salt('bf'))),
+(10134,'10034','xkb.user','李文琪','13342885608',crypt('cst4Ever',gen_salt('bf'))),
+(10136,'10036','xkb.user','刘旭兵','13342885609',crypt('cst4Ever',gen_salt('bf'))),
+(10138,'10038','xkb.user','康朝岳','13342885600',crypt('cst4Ever',gen_salt('bf')));
+
+
+insert into t_user(id,type,email,account,user_token,status,category) values
+(10140,'02','admin10040@xkb888.cn','xkb_admin_10040',crypt('cst4Ever',gen_salt('bf')),'00','xkb^admin'),
+(10142,'02','admin10042@xkb888.cn','xkb_admin_10042',crypt('cst4Ever',gen_salt('bf')),'00','xkb^admin'),
+(10144,'02','admin10044@xkb888.cn','xkb_admin_10044',crypt('cst4Ever',gen_salt('bf')),'00','xkb^admin');
+
+
+insert into t_user(id,email,account,user_token,status,category) values
+(10156,'user4@xkb888.cn','10056',crypt('cst4Ever',gen_salt('bf')),'00','sys^user'),
+(10158,'user5@xkb888.cn','10058',crypt('cst4Ever',gen_salt('bf')),'00','sys^user'),
+(10160,'user6@xkb888.cn','10060',crypt('cst4Ever',gen_salt('bf')),'00','sys^user'),
+(10162,'user7@xkb888.cn','10062',crypt('cst4Ever',gen_salt('bf')),'00','sys^user'),
+(10164,'user8@xkb888.cn','10064',crypt('cst4Ever',gen_salt('bf')),'00','sys^user'),
+(10168,'user9@xkb888.cn','10068',crypt('cst4Ever',gen_salt('bf')),'00','sys^user'),
+(10170,'user10@xkb888.cn','10070',crypt('cst4Ever',gen_salt('bf')),'00','sys^user'),
+(10172,'user11@xkb888.cn','10072',crypt('cst4Ever',gen_salt('bf')),'00','sys^user'),
+(10174,'user12@xkb888.cn','10074',crypt('cst4Ever',gen_salt('bf')),'00','sys^user'),
+(10176,'user13@xkb888.cn','10076',crypt('cst4Ever',gen_salt('bf')),'00','sys^user'),
+(10178,'user14@xkb888.cn','10078',crypt('cst4Ever',gen_salt('bf')),'00','sys^user'),
+(10180,'user15@xkb888.cn','10080',crypt('cst4Ever',gen_salt('bf')),'00','sys^user');
+
+
+
 
 
 
@@ -7480,10 +7536,10 @@ comment on column t_sys_ver.status is
 ALTER SEQUENCE t_sys_ver_id_seq RESTART WITH 20000;
 
 insert into t_sys_ver(id,name,ver,create_time,update_time,remark)
-  values(1000,'业务模型','3.0.0.0',
-  'Monday, December 5, 2016 09:52:53','Sunday, July 13, 2025 16:56:56',
-  '3.0.0.0
-添加t_user_course, t_user_assessment 为全面实现评测做准备
+  values(1000,'业务模型','3.0.0.1',
+  'Monday, December 5, 2016 9:52:53 AM','Wednesday, July 30, 2025 9:14:55 AM',
+  '3.0.0.1
+重构表t_user/t_domain/t_user_doman的初始化数据
 
 2.8.2.1
 为t_course/section添加tags
@@ -8706,7 +8762,20 @@ insert into t_user_domain(sys_user,domain,domain_id,creator) values
 (1010,10106,322,1000),
 (1111,10104,322,1000),
 (1212,10108,322,1000),
+
+(1313,10100,322,1000),
+(1313,10102,322,1000),
+(1313,10104,322,1000),
+(1313,10106,322,1000),
 (1313,10108,322,1000),
+(1313,10202,322,1000),
+(1313,10204,322,1000),
+(1313,10208,322,1000),
+(1313,10210,322,1000),
+(1313,10212,322,1000),
+(1313,10214,322,1000),
+
+
 (1404,10202,322,1000),
 (1406,10204,322,1000),
 (1408,10208,322,1000),
