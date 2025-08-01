@@ -1078,7 +1078,7 @@ func Submit(ctx context.Context) {
 // checkDomainIfStudent 查看是否是学生账号
 func checkDomainIfStudent(q *cmn.ServiceCtx) error {
 	for _, domain := range q.Domains {
-		if domain.DomainID.Int64 == StudentDomainId {
+		if domain.ID.Int64 == StudentDomainId {
 			return nil
 		}
 	}
