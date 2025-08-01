@@ -1356,6 +1356,7 @@ func checkExamCondition(ctx context.Context, examSession, studentID int64, tx pg
 		if now.UnixMilli() > examineeInfo.AllowEntryTime.Int64 && examineeInfo.Mode.String == ExamModeOnline {
 			return LateEntryTimeArrived, nil
 		}
+		return ExamCanBeEnter, nil
 	case ALLOW:
 		//查看当前考试是否开始
 		if now.UnixMilli() < examineeInfo.StartTime.Int64 {
