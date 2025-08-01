@@ -333,8 +333,6 @@ func practiceSH(ctx context.Context) {
 	z.Sugar().Infof("先打印一下这个domain%v", q.Domains)
 	z.Sugar().Infof("先打印一下这个domainList%v", q.DomainList)
 	userID := q.SysUser.ID.Int64
-	userID = 1634
-	// 这里要进行域的处理，就是这个学生能查看谁的
 	if userID <= 0 {
 		q.Err = fmt.Errorf("invalid UserID: %d", userID)
 		z.Error(q.Err.Error())
@@ -420,107 +418,173 @@ func practiceStudentListH(ctx context.Context) {
 	q := cmn.GetCtxValue(ctx)
 	ctx, cancel := context.WithTimeout(q.R.Context(), 5*time.Second)
 	defer cancel()
-
-	id := q.R.URL.Query().Get("id")
-	if id == "" {
-		q.Err = fmt.Errorf("缺失练习ID")
+	userID := q.SysUser.ID.Int64
+	// 这里要进行域的处理，就是这个学生能查看谁的
+	if userID <= 0 {
+		q.Err = fmt.Errorf("invalid UserID: %d", userID)
 		z.Error(q.Err.Error())
 		q.RespErr()
 		return
 	}
-	var pid int64
-	tResult := make([]int64, 0)
-	result := make([]StudentInfo, 0)
 
-	pid, q.Err = strconv.ParseInt(id, 10, 64)
+	method := strings.ToLower(q.R.Method)
+	switch method {
+	case "get":
+		{
+			id := q.R.URL.Query().Get("id")
+			if id == "" {
+				q.Err = fmt.Errorf("缺失练习ID")
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+			var pid int64
+			tResult := make([]int64, 0)
+			result := make([]StudentInfo, 0)
 
-	s := `SELECT student_id FROM t_practice_student WHERE practice_id = $1 AND status = $2`
-	sqlxDB := cmn.GetDbConn()
-	rows, err := sqlxDB.QueryContext(ctx, s, pid, PracticeStudentStatus.Normal)
-	if err != nil {
-		err = fmt.Errorf("query studentList in practice failed:%v", err)
-		z.Error(err.Error())
-		q.Err = err
-		q.RespErr()
-		return
-	}
-	defer func() {
-		err = rows.Close()
-		if err != nil {
-			q.Err = err
-			z.Error(err.Error())
-			q.RespErr()
-			return
+			pid, q.Err = strconv.ParseInt(id, 10, 64)
+
+			s := `SELECT student_id FROM t_practice_student WHERE practice_id = $1 AND status = $2`
+			sqlxDB := cmn.GetDbConn()
+			rows, err := sqlxDB.QueryContext(ctx, s, pid, PracticeStudentStatus.Normal)
+			if err != nil {
+				err = fmt.Errorf("query studentList in practice failed:%v", err)
+				z.Error(err.Error())
+				q.Err = err
+				q.RespErr()
+				return
+			}
+			defer func() {
+				err = rows.Close()
+				if err != nil {
+					q.Err = err
+					z.Error(err.Error())
+					q.RespErr()
+					return
+				}
+			}()
+			for rows.Next() {
+				var id int64
+				q.Err = rows.Scan(&id)
+				if q.Err != nil {
+					z.Error(q.Err.Error())
+					q.RespErr()
+					return
+				}
+				tResult = append(tResult, id)
+			}
+			// 这里已经有这个student的id数组之后，就需要获取这个数据
+			if len(tResult) == 0 {
+				data, _ := json.Marshal(tResult)
+				q.Msg.Data = data
+				z.Info("---->" + cmn.FncName())
+				q.Msg.Msg = "OK but empty result"
+				q.Resp()
+				return
+			}
+			s1 := `SELECT id, account,official_name,id_card_no,mobile_phone FROM t_user WHERE id IN (?)`
+			query, args, err := sqlx.In(s1, tResult)
+			if err != nil {
+				q.Err = fmt.Errorf("prepare sqlx.In sql query failed:%v", err)
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+			query = sqlx.Rebind(sqlx.DOLLAR, query)
+			z.Sugar().Debugf("打印一下构建的查询用户信息语句：%v", query)
+			z.Sugar().Debugf("打印一下构建的查询用户信息注入参数：%v", args)
+			rows, err = sqlxDB.QueryContext(ctx, query, args...)
+			if err != nil {
+				err = fmt.Errorf("query studentList in practice failed:%v", err)
+				q.Err = err
+				z.Error(err.Error())
+				q.RespErr()
+				return
+			}
+			defer func() {
+				err = rows.Close()
+				if err != nil {
+					q.Err = err
+					z.Error(err.Error())
+					q.RespErr()
+					return
+				}
+			}()
+			for rows.Next() {
+				var s StudentInfo
+				q.Err = rows.Scan(&s.ID, &s.Account, &s.OfficialName, &s.IdCardNo, &s.Phone)
+				if q.Err != nil {
+					z.Error(q.Err.Error())
+					q.RespErr()
+					return
+				}
+				result = append(result, s)
+			}
+			data, err := json.Marshal(result)
+			if err != nil {
+				q.Err = err
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+			q.Msg.Data = data
+			z.Info("---->" + cmn.FncName())
+			q.Msg.Msg = "OK"
+			q.Resp()
 		}
-	}()
-	for rows.Next() {
-		var id int64
-		q.Err = rows.Scan(&id)
-		if q.Err != nil {
+
+	case "post":
+		{
+			var buf []byte
+			buf, q.Err = io.ReadAll(q.R.Body)
+			if q.Err != nil {
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+			defer func() {
+				q.Err = q.R.Body.Close()
+				if q.Err != nil {
+					z.Error(q.Err.Error())
+					q.RespErr()
+					return
+				}
+			}()
+			if len(buf) == 0 {
+				q.Err = fmt.Errorf("Call /api/practiceStudentList with  empty body")
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+			var p practiceStudent
+			q.Err = json.Unmarshal(buf, &p)
+			if q.Err != nil {
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+			//参数校验
+			q.Err = cmn.Validate(p)
+			if q.Err != nil {
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+			q.Err = UpsertPracticeStudent(ctx, p.Pid, userID, p.Student)
+			if q.Err != nil {
+				q.RespErr()
+				return
+			}
+		}
+	default:
+		{
+			q.Err = fmt.Errorf("please call /api/upLogin with  http POST/GET method")
 			z.Error(q.Err.Error())
 			q.RespErr()
 			return
 		}
-		tResult = append(tResult, id)
 	}
-	// 这里已经有这个student的id数组之后，就需要获取这个数据
-	if len(tResult) == 0 {
-		data, _ := json.Marshal(tResult)
-		q.Msg.Data = data
-		z.Info("---->" + cmn.FncName())
-		q.Msg.Msg = "OK but empty result"
-		q.Resp()
-		return
-	}
-	s1 := `SELECT id, account,official_name,id_card_no,mobile_phone FROM t_user WHERE id IN (?)`
-	query, args, err := sqlx.In(s1, tResult)
-	if err != nil {
-		q.Err = fmt.Errorf("prepare sqlx.In sql query failed:%v", err)
-		z.Error(q.Err.Error())
-		q.RespErr()
-		return
-	}
-	query = sqlx.Rebind(sqlx.DOLLAR, query)
-	z.Sugar().Debugf("打印一下构建的查询用户信息语句：%v", query)
-	z.Sugar().Debugf("打印一下构建的查询用户信息注入参数：%v", args)
-	rows, err = sqlxDB.QueryContext(ctx, query, args...)
-	if err != nil {
-		err = fmt.Errorf("query studentList in practice failed:%v", err)
-		q.Err = err
-		z.Error(err.Error())
-		q.RespErr()
-		return
-	}
-	defer func() {
-		err = rows.Close()
-		if err != nil {
-			q.Err = err
-			z.Error(err.Error())
-			q.RespErr()
-			return
-		}
-	}()
-	for rows.Next() {
-		var s StudentInfo
-		q.Err = rows.Scan(&s.ID, &s.Account, &s.OfficialName, &s.IdCardNo, &s.Phone)
-		if q.Err != nil {
-			z.Error(q.Err.Error())
-			q.RespErr()
-			return
-		}
-		result = append(result, s)
-	}
-	data, err := json.Marshal(result)
-	if err != nil {
-		q.Err = err
-		z.Error(q.Err.Error())
-		q.RespErr()
-		return
-	}
-	q.Msg.Data = data
-	z.Info("---->" + cmn.FncName())
-	q.Msg.Msg = "OK"
-	q.Resp()
+
 }
 
 func practiceEnterH(ctx context.Context) {
