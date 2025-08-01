@@ -122,20 +122,20 @@ func Enroll(author string) {
 
 }
 
+// 并且此时是需要区分多种的，例如超级管理员、管理员等等
 func practiceTH(ctx context.Context) {
 
+	// 不要浪费时间了，直接刷算法，刷八股算了
 	q := cmn.GetCtxValue(ctx)
-	z.Sugar().Infof("先打印一下这个domain%v", q.Domains)
-	z.Sugar().Infof("先打印一下这个domainList%v", q.DomainList)
-	var userID int64
-	userID = 1629
-	//userID := q.SysUser.ID.Int64
-	//if userID <= 0 {
-	//	q.Err = fmt.Errorf("Invalid UserID: %d", userID)
-	//	z.Error(q.Err.Error())
-	//	q.RespErr()
-	//	return
-	//}
+	//var userID int64
+	//userID = 1629
+	userID := q.SysUser.ID.Int64
+	if userID <= 0 {
+		q.Err = fmt.Errorf("invalid UserID: %d", userID)
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
 	// TODO 对接用户管理的令牌功能
 	//userID, _ := q.Session.Values["ID"].(int64)
 	//if userID <= 0 {
@@ -502,7 +502,7 @@ func practiceStudentListH(ctx context.Context) {
 	}()
 	for rows.Next() {
 		var s StudentInfo
-		q.Err = rows.Scan(&s.ID, &s.Account, &s.OfficialName, &s.IdCardNo, &s.Phone, &s.Password)
+		q.Err = rows.Scan(&s.ID, &s.Account, &s.OfficialName, &s.IdCardNo, &s.Phone)
 		if q.Err != nil {
 			z.Error(q.Err.Error())
 			q.RespErr()
