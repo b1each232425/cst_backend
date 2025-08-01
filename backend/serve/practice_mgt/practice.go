@@ -118,10 +118,14 @@ func practiceH(ctx context.Context) {
 	}
 	var domainID int64
 	for _, domain := range q.Domains {
-		if domain.ID.Int64 == PracticeDomainID.Student || domain.ID.Int64 == PracticeDomainID.Teacher {
+		if domain.ID.Int64 == PracticeDomainID.Student || domain.ID.Int64 == PracticeDomainID.Teacher || domain.ID.Int64 == PracticeDomainID.Admin || domain.ID.Int64 == PracticeDomainID.SuperAdmin {
 			domainID = domain.ID.Int64
 			break
 		}
+	}
+	// 将所有非学生权限，都转换为教师权限
+	if domainID != 0 && domainID < PracticeDomainID.Student {
+		domainID = PracticeDomainID.Teacher
 	}
 	ctx, cancel := context.WithTimeout(q.R.Context(), 5*time.Second)
 	defer cancel()
