@@ -76,7 +76,7 @@ type Examinee struct {
 	OfficialName   string      `json:"official_name"`
 	Account        string      `json:"account"`      // 学生账号
 	Passwd         string      `json:"passwd"`       // 学生密码
-	IdCardNo       string      `json:"id_card_no"`   // 学生身份证号
+	IdCardNo       null.String `json:"id_card_no"`   // 学生身份证号
 	MobilePhone    string      `json:"mobile_phone"` // 学生电话
 }
 
@@ -570,7 +570,7 @@ func validateUserExamPermission(ctx context.Context, userID, examID int64, domai
 	exists = false
 
 	// 根据角色查询是否能访问该考试
-	if strings.Contains(domain, "^admin") {
+	if strings.Contains(domain, "^admin") || strings.Contains(domain, "^superAdmin") {
 		domainPrefix := getDomainPrefix(domain)
 
 		err := conn.QueryRow(context.Background(), `
@@ -887,11 +887,7 @@ func exam(ctx context.Context) {
 
 		// 检查是否具备创建考试的权限
 		var result bool
-		result, q.Err = validateUserForExamCreate(userDomain)
-		if q.Err != nil {
-			q.RespErr()
-			return
-		}
+		result = validateUserForExamCreate(userDomain)
 
 		if !result {
 			q.Err = fmt.Errorf("用户没有创建考试的权限")
@@ -2453,37 +2449,37 @@ func examStatus(ctx context.Context) {
 		}()
 
 		switch status {
-		case "00":
-			// 取消考试
-			if nowStatus != "02" && nowStatus != "10" {
-				q.Err = fmt.Errorf("当前考试状态不支持取消操作: %s", nowStatus)
-				z.Error(q.Err.Error())
-				q.RespErr()
-				return
-			}
+		// case "00":
+		// 	// 取消考试
+		// 	if nowStatus != "02" && nowStatus != "10" {
+		// 		q.Err = fmt.Errorf("当前考试状态不支持取消操作: %s", nowStatus)
+		// 		z.Error(q.Err.Error())
+		// 		q.RespErr()
+		// 		return
+		// 	}
 
-			// 清除批改和考卷配置
+		// 	// 清除批改和考卷配置
 
-			q.Err = updateExamStatus(ctx, tx, examID, "00", userID)
-			if q.Err != nil {
-				z.Error(q.Err.Error())
-				q.RespErr()
-				return
-			}
+		// 	q.Err = updateExamStatus(ctx, tx, examID, "00", userID)
+		// 	if q.Err != nil {
+		// 		z.Error(q.Err.Error())
+		// 		q.RespErr()
+		// 		return
+		// 	}
 
-			q.Err = updateExamSessionStatus(ctx, tx, examID, "00", userID)
-			if q.Err != nil {
-				z.Error(q.Err.Error())
-				q.RespErr()
-				return
-			}
+		// 	q.Err = updateExamSessionStatus(ctx, tx, examID, "00", userID)
+		// 	if q.Err != nil {
+		// 		z.Error(q.Err.Error())
+		// 		q.RespErr()
+		// 		return
+		// 	}
 
-			q.Err = exam_service.CancelExamTimers(ctx, examID)
-			if q.Err != nil {
-				z.Error(q.Err.Error())
-				q.RespErr()
-				return
-			}
+		// 	q.Err = exam_service.CancelExamTimers(ctx, examID)
+		// 	if q.Err != nil {
+		// 		z.Error(q.Err.Error())
+		// 		q.RespErr()
+		// 		return
+		// 	}
 
 		case "02":
 			// 发布考试
@@ -2682,30 +2678,30 @@ func examStatus(ctx context.Context) {
 
 			q.Resp()
 			return
-		case "12":
-			// 删除考试
-			if nowStatus != "00" {
-				q.Err = fmt.Errorf("当前考试状态不支持删除操作: %s", nowStatus)
-				z.Error(q.Err.Error())
-				q.RespErr()
-				return
-			}
+		// case "12":
+		// 	// 删除考试
+		// 	if nowStatus != "00" {
+		// 		q.Err = fmt.Errorf("当前考试状态不支持删除操作: %s", nowStatus)
+		// 		z.Error(q.Err.Error())
+		// 		q.RespErr()
+		// 		return
+		// 	}
 
-			// 清除考卷配置
-			q.Err = updateExamStatus(ctx, tx, examID, "12", userID)
-			if q.Err != nil {
-				z.Error(q.Err.Error())
-				q.RespErr()
-				return
-			}
-			q.Resp()
+		// 	// 清除考卷配置
+		// 	q.Err = updateExamStatus(ctx, tx, examID, "12", userID)
+		// 	if q.Err != nil {
+		// 		z.Error(q.Err.Error())
+		// 		q.RespErr()
+		// 		return
+		// 	}
+		// 	q.Resp()
 
-			q.Err = updateExamSessionStatus(ctx, tx, examID, "14", userID)
-			if q.Err != nil {
-				z.Error(q.Err.Error())
-				q.RespErr()
-				return
-			}
+		// 	q.Err = updateExamSessionStatus(ctx, tx, examID, "14", userID)
+		// 	if q.Err != nil {
+		// 		z.Error(q.Err.Error())
+		// 		q.RespErr()
+		// 		return
+		// 	}
 
 		default:
 			q.Err = fmt.Errorf("不支持更新的考试状态: %s", status)

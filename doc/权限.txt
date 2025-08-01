@@ -1,3 +1,15 @@
+
+https://github.com/jackc/pgx/blob/e68ff102de88423a0ffd4aecbc28dced4077b99f/query_test.go#L597
+
+https://github.com/jackc/pgx/blob/e68ff102de88423a0ffd4aecbc28dced4077b99f/query_test.go#L654
+
+
+https://github.com/jackc/pgx/blob/e68ff102de88423a0ffd4aecbc28dced4077b99f/query_test.go#L762
+
+https://git.xkb66.com/dawnfire/kzz.io/-/blob/master/cmd/dml_test.go?ref_type=heads
+
+https://git.xkb66.com/dawnfire/kzz.io/-/blob/master/cmd/dml-test-data.go?ref_type=heads
+
 权限
 一、权限用例
 

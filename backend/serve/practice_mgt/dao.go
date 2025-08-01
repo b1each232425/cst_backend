@@ -48,7 +48,7 @@ func UpsertPractice(ctx context.Context, p *cmn.TPractice, ps []int64, uid int64
 /*
 关键参数说明：
 	p 要插入/更新的练习信息
-	ps 参与练习的学生ID数组
+	ps 参与练习的学生ID数组 为空或者长度为0则不更新学生名单 否则就更新
 	uid 操作人
 	isOperate 是否通过operate操作函数调用的：是则允许更新status字段，否则不允许更新status字段
 */
@@ -152,7 +152,6 @@ func UpsertPracticeStudent(ctx context.Context, pid, uid int64, ps []int64) erro
 		z.Error(err.Error())
 		return err
 	}
-	// 这里添加这个rollback的错误
 	// 用于测试，强制执行某些错误分支
 	forceErr, _ := ctx.Value("force-error").(string)
 	//添加学生
@@ -888,15 +887,21 @@ func EnterPracticeGetPaperDetails(ctx context.Context, tx pgx.Tx, pid int64, uid
 
 	// 这里先根据练习ID跟userId去获取一下这个练习状态 去查这个last_unSubmitted_id然后能根据这个ID去拿出这个 这里有可能是学生根据没有一次提交
 	// 也就是说此时是第一次进入，那就需要创建新的submissions的，同理如果查询出有记录，但是last为空的话，仍然需要创建，否则就不需要创建
-	s := `SELECT allowed_attempts,attempt_count,latest_unsubmitted_id, latest_submitted_id, exam_paper_id,paper_name,suggested_duration
+	s := `SELECT allowed_attempts,attempt_count,latest_unsubmitted_id, latest_submitted_id,pending_mark_id, exam_paper_id,paper_name,suggested_duration
 	 FROM assessuser.v_practice_summary 
 	 WHERE id = $1 AND student_id = $2 AND practice_status = $3 
 	 AND practice_student_status != $4`
 	err := sqlxDB.QueryRowxContext(ctx, s, pid, uid, PracticeStatus.Released, PracticeStudentStatus.Deleted).Scan(&ps.AllowedAttempts, &ps.AttemptCount, &ps.LatestUnsubmittedID,
-		&ps.LatestSubmittedID, &ps.ExamPaperID,
+		&ps.LatestSubmittedID, &ps.PendingMarkID, &ps.ExamPaperID,
 		&ps.PaperName, &ps.SuggestedDuration)
 	if err != nil {
 		err = fmt.Errorf("select student practice submission failed:%v", err)
+		z.Error(err.Error())
+		return nil, nil, nil, err
+	}
+	// 证明此时有练习需要等待批改，所以不能进行再一次的作答的
+	if ps.PendingMarkID.Valid && ps.PendingMarkID.Int64 > 0 {
+		err = fmt.Errorf("practice must be marked before new attempt practice")
 		z.Error(err.Error())
 		return nil, nil, nil, err
 	}
@@ -916,19 +921,13 @@ func EnterPracticeGetPaperDetails(ctx context.Context, tx pgx.Tx, pid int64, uid
 	var pSubmissionID int64
 	epInfo := EnterPracticeInfo{}
 	withStudentAnswer := false
-
 	switch submissionStatus {
 	//以前所有的记录均已提交，现在重新练习
 	case StudentSubmissionStatus.Submitted:
 		{
-			if ps.AllowedAttempts.Int64 != 0 && ps.AllowedAttempts.Int64 == ps.AttemptCount.Int64 {
+			if ps.AllowedAttempts.Int64 != 0 && ps.AllowedAttempts.Int64 <= ps.AttemptCount.Int64 {
 				// 学生进入练习次数已经满了，无法再继续获取
 				err = fmt.Errorf("已达练习最大次数:%v，无法再次进入练习", ps.AttemptCount.Int64)
-				z.Error(err.Error())
-				return nil, nil, nil, err
-			}
-			if !ps.ExamPaperID.Valid || ps.ExamPaperID.Int64 <= 0 {
-				err = fmt.Errorf("练习所属考卷ID丢失，请检查练习视图或操作发布练习逻辑")
 				z.Error(err.Error())
 				return nil, nil, nil, err
 			}
@@ -1006,6 +1005,7 @@ func EnterPracticeGetPaperDetails(ctx context.Context, tx pgx.Tx, pid int64, uid
 	epInfo.QuestionCount = p.QuestionCount.Int64
 	epInfo.TotalScore = p.TotalScore.Float64
 	epInfo.GroupCount = p.GroupCount.Int64
+	epInfo.Duration = ps.SuggestedDuration.Int64
 
 	return &epInfo, pg, pq, nil
 

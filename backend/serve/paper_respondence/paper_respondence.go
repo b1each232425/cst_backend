@@ -58,6 +58,8 @@ const (
 	PracticeType = "02"
 
 	ForceErr = "forceErr"
+
+	StudentDomainId = 2008
 )
 
 var (
@@ -159,6 +161,12 @@ func Enroll(author string) {
 func StudentAnswer(ctx context.Context) {
 	q := cmn.GetCtxValue(ctx)
 	z.Info("---->" + cmn.FncName())
+
+	q.Err = checkDomainIfStudent(q)
+	if q.Err != nil {
+		q.RespErr()
+		return
+	}
 
 	method := strings.ToLower(q.R.Method)
 	//执行数据库操作
@@ -384,6 +392,12 @@ func InitRespondent(ctx context.Context) {
 		q.RespErr()
 		return
 	}
+	q.Err = checkDomainIfStudent(q)
+	if q.Err != nil {
+		q.RespErr()
+		return
+	}
+
 	//强制错误，用于使得难以触发的错误强制它报错
 	forceErr := ""
 	forceErr, ok := ctx.Value(ForceErr).(string)
@@ -479,6 +493,9 @@ func InitRespondent(ctx context.Context) {
 		}
 	}()
 	var data []byte
+	if forceErr == "type-err" {
+		u.Type = "invalid-type"
+	}
 	switch u.Type {
 	case ExamType:
 		if u.ExamId <= 0 || u.ExamSessionId <= 0 {
@@ -488,15 +505,25 @@ func InitRespondent(ctx context.Context) {
 			return
 		}
 
+		//获取当前用户的角色
+		roleId := q.Role
+		var role null.String
+		q.Err = tx.QueryRow(dmlCtx, `SELECT domain FROM assessuser.t_domain WHERE id=$1 `, roleId).Scan(&role)
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
 		// 获取考试信息，role参数暂定1
-		examInfo, err := exam_mgt.GetExamInfo(dmlCtx, u.ExamId, 1)
+		examInfo, err := exam_mgt.GetExamInfo(dmlCtx, u.ExamId, role.String)
 		if err != nil {
 			q.Err = err
 			q.RespErr()
 			return
 		}
 		//获取场次信息
-		examSessions, err := exam_mgt.GetExamSessions(dmlCtx, u.ExamId, 1)
+		examSessions, err := exam_mgt.GetExamSessions(dmlCtx, u.ExamId, role.String)
 		if forceErr == "get sessions err" {
 			err = errors.New("get sessions err")
 		}
@@ -690,6 +717,11 @@ func CheckExamStatus(ctx context.Context) {
 		q.RespErr()
 		return
 	}
+	q.Err = checkDomainIfStudent(q)
+	if q.Err != nil {
+		q.RespErr()
+		return
+	}
 	//强制错误，用于使得难以触发的错误强制它报错
 	forceErr := ""
 	forceErr, ok := ctx.Value(ForceErr).(string)
@@ -801,6 +833,11 @@ func Submit(ctx context.Context) {
 		q.RespErr()
 		return
 	}
+	q.Err = checkDomainIfStudent(q)
+	if q.Err != nil {
+		q.RespErr()
+		return
+	}
 	//强制错误，用于使得难以触发的错误强制它报错
 	forceErr := ""
 	forceErr, ok := ctx.Value(ForceErr).(string)
@@ -891,6 +928,9 @@ func Submit(ctx context.Context) {
 
 	dmlCtx, cancel := context.WithTimeout(ctx, TIMEOUT)
 	defer cancel()
+	if forceErr == "type-err" {
+		u.Type = "invalid-type"
+	}
 	switch u.Type {
 	case ExamType:
 		if u.ExamId <= 0 || u.ExamSessionId <= 0 || u.ExamineeID <= 0 {
@@ -1034,6 +1074,18 @@ func Submit(ctx context.Context) {
 }
 
 //--------------------封装一些给外部调用，或者常用的函数
+
+// checkDomainIfStudent 查看是否是学生账号
+func checkDomainIfStudent(q *cmn.ServiceCtx) error {
+	for _, domain := range q.Domains {
+		if domain.ID.Int64 == StudentDomainId {
+			return nil
+		}
+	}
+	err := errors.New("not student domain")
+	z.Error(err.Error())
+	return err
+}
 
 // HandleExit 给予时间同步模块处理学生退出作答，用在websocket连接断开的时候
 func HandleExit(ctx context.Context, req ExitReq) (err error) {

@@ -156,6 +156,36 @@ func createMockContext(method, path string, queryParams url.Values, forceError s
 	return context.WithValue(ctx, "force-error", forceError)
 }
 
+// createMockContextWithoutUser 创建不包含用户信息的mock上下文（用于测试未登录状态）
+func createMockContextWithoutUser(method, path string, queryParams string, forceError string) context.Context {
+	// 创建mock HTTP请求
+	req := httptest.NewRequest(method, path, nil)
+	if queryParams != "" {
+		req.URL.RawQuery = queryParams
+	}
+
+	// 创建mock HTTP响应
+	w := httptest.NewRecorder()
+
+	// 创建ServiceCtx，但不设置SysUser字段
+	serviceCtx := &cmn.ServiceCtx{
+		R: req,
+		W: w,
+		Msg: &cmn.ReplyProto{
+			API:    path,
+			Method: method,
+		},
+		BeginTime: time.Now(),
+		Tag:       make(map[string]interface{}),
+		// SysUser 字段为nil，模拟未登录状态
+	}
+
+	ctx := context.WithValue(context.Background(), cmn.QNearKey, serviceCtx)
+
+	// 使用QNearKey将ServiceCtx设置到context中
+	return context.WithValue(ctx, "force-error", forceError)
+}
+
 // createMockContextWithBody 创建带有请求体数据的mock上下文
 // 参数data应该是有效的JSON字符串，将作为ReqProto的Data字段
 func createMockContextWithBody(method, path string, data string, forceError string) context.Context {

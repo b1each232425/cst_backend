@@ -128,6 +128,9 @@ func GetRowCount(ctx context.Context, sql string, params []any) (int64, error) {
 	return result, err
 }
 
+/*
+* 获取考试列表
+ */
 func GradeListExam(ctx context.Context, args *GradeListArgs) ([]GradeExam, int64, error) {
 	z.Info("---->" + cmn.FncName())
 
@@ -136,40 +139,43 @@ func GradeListExam(ctx context.Context, args *GradeListArgs) ([]GradeExam, int64
 		forceErr = val.(string)
 	}
 
-	var err error
-	var page int
-	var pageSize int
-	var result []GradeExam
-	var rowCount int64
+	var (
+		page     int
+		pageSize int
+
+		result   []GradeExam
+		rowCount int64
+		err      error
+	)
 
 	// 分页参数: Page PageSize
-	// 数据库查询必需参数: TeacherID ExamID PassScoreRate
+	// 数据库查询必需参数: TeacherID ExamID
 	// 可选参数: Name Type Submitted
 
 	if args.Page <= 0 {
-		err = fmt.Errorf("%w: 页码必须为正整数", ErrInvalidPage)
+		err = fmt.Errorf("无效页码: 页码必须为正整数")
 		z.Error(err.Error())
-		return nil, 0, err
+		return result, rowCount, err
 	}
 	page = args.Page
 
 	if args.PageSize <= 0 {
-		err = fmt.Errorf("%w: 每页数量必须为正整数", ErrInvalidPageSize)
+		err = fmt.Errorf("无效每页数量: 每页数量必须为正整数")
 		z.Error(err.Error())
-		return nil, 0, err
+		return result, rowCount, err
 	}
 	pageSize = args.PageSize
 
 	if args.TeacherID <= 0 && args.TeacherID != -1 {
-		err = fmt.Errorf("%w: 教师ID必须为正整数或-1(表示所有教师)", ErrInvalidID)
+		err = fmt.Errorf("无效教师ID")
 		z.Error(err.Error())
-		return nil, 0, err
+		return result, rowCount, err
 	}
 
 	if args.ExamID < 0 {
-		err = fmt.Errorf("%w: 考试ID必须为正整数", ErrInvalidID)
+		err = fmt.Errorf("无效考试ID: 考试ID必须为正整数")
 		z.Error(err.Error())
-		return nil, 0, err
+		return result, rowCount, err
 	}
 
 	// 查询条件
@@ -232,7 +238,7 @@ func GradeListExam(ctx context.Context, args *GradeListArgs) ([]GradeExam, int64
 	// 执行查询
 	conn := cmn.GetPgxConn()
 	if conn == nil || forceErr == "conn nil" {
-		err = fmt.Errorf("获取考试成绩列表查询数据库连接失败: %w", ErrNilDBConn)
+		err = fmt.Errorf("获取考试成绩列表查询数据库连接失败")
 		z.Error(err.Error())
 		return result, rowCount, err
 	}
@@ -271,7 +277,7 @@ func GradeListExam(ctx context.Context, args *GradeListArgs) ([]GradeExam, int64
 	}
 	if err != nil {
 		z.Error(err.Error())
-		return nil, 0, err
+		return result, rowCount, err
 	}
 
 	return result, rowCount, nil
@@ -292,33 +298,33 @@ func GradeListPractice(ctx context.Context, args *GradeListArgs) ([]GradePractic
 	var rowCount int64
 
 	// 分页参数: Page PageSize
-	// 数据库查询必需参数: TeacherID PracticeID PassScoreRate
+	// 数据库查询必需参数: TeacherID PracticeID
 	// 可选参数: Name
 
 	if args.Page <= 0 {
-		err = fmt.Errorf("%w: 页码必须为正整数", ErrInvalidPage)
+		err = fmt.Errorf("无效页码: 页码必须为正整数")
 		z.Error(err.Error())
-		return nil, 0, err
+		return result, 0, err
 	}
 	page = args.Page
 
 	if args.PageSize <= 0 {
-		err = fmt.Errorf("%w: 每页数量必须为正整数", ErrInvalidPageSize)
+		err = fmt.Errorf("无效每页数量: 每页数量必须为正整数")
 		z.Error(err.Error())
-		return nil, 0, err
+		return result, 0, err
 	}
 	pageSize = args.PageSize
 
 	if args.TeacherID <= 0 && args.TeacherID != -1 {
-		err = fmt.Errorf("%w: 教师ID必须为正整数或-1(表示所有教师)", ErrInvalidID)
+		err = fmt.Errorf("无效教师ID")
 		z.Error(err.Error())
-		return nil, 0, err
+		return result, 0, err
 	}
 
 	if args.PracticeID < 0 {
-		err = fmt.Errorf("%w: 练习ID必须为正整数", ErrInvalidID)
+		err = fmt.Errorf("无效练习ID: 练习ID必须为正整数")
 		z.Error(err.Error())
-		return nil, 0, err
+		return result, 0, err
 	}
 
 	whereClause := " WHERE 1=1 "
@@ -367,7 +373,7 @@ func GradeListPractice(ctx context.Context, args *GradeListArgs) ([]GradePractic
 	// 分页查询
 	conn := cmn.GetPgxConn()
 	if conn == nil || forceErr == "conn nil" {
-		err = fmt.Errorf("查询练习成绩列表获取数据库连接失败: %w", ErrNilDBConn)
+		err = fmt.Errorf("查询练习成绩列表获取数据库连接失败")
 		z.Error(err.Error())
 		return result, rowCount, err
 	}
@@ -407,7 +413,7 @@ func GradeListPractice(ctx context.Context, args *GradeListArgs) ([]GradePractic
 	}
 	if err != nil {
 		z.Error(err.Error())
-		return nil, 0, err
+		return result, 0, err
 	}
 
 	return result, rowCount, nil
@@ -425,14 +431,14 @@ func SetExamGradeSubmitted(ctx context.Context, args *GradeSubmitArgs) (int64, e
 	}
 
 	if args.TeacherID <= 0 {
-		err := fmt.Errorf("%w: 教师ID无效，必须为正整数", ErrInvalidID)
+		err := fmt.Errorf("无效教师ID")
 		z.Error(err.Error())
 		return 0, err
 	}
 	teacherID := args.TeacherID
 
 	if len(args.ExamIDs) <= 0 || forceErr == "len(args.ExamIDs)==0" {
-		err = fmt.Errorf("%w: examID无效，必须为正整数", ErrInvalidID)
+		err = fmt.Errorf("无效考试ID，必须为正整数")
 		z.Error(err.Error())
 		return 0, err
 	}
@@ -440,7 +446,7 @@ func SetExamGradeSubmitted(ctx context.Context, args *GradeSubmitArgs) (int64, e
 
 	conn := cmn.GetPgxConn()
 	if conn == nil || forceErr == "conn nil" {
-		err = fmt.Errorf("查询练习成绩列表获取数据库连接失败: %w", ErrNilDBConn)
+		err = fmt.Errorf("查询练习成绩列表获取数据库连接失败")
 		z.Error(err.Error())
 		return 0, err
 	}
@@ -506,7 +512,7 @@ func SetExamGradeSubmitted(ctx context.Context, args *GradeSubmitArgs) (int64, e
 			z.Error(err.Error())
 			return 0, err
 		}
-		//// 获取受影响的行数
+		// 获取受影响的行数
 		rowsAffected = commandTag.RowsAffected()
 		//if rowsAffected == 1 {
 		//	err = fmt.Errorf("提交考试成绩失败(examID=%v teacherID=%v) 影响的行数: %d", examID, teacherID, rowsAffected)
