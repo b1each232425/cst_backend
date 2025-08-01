@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/jmoiron/sqlx"
+	"github.com/pkg/errors"
 	"go.uber.org/zap"
 	"io"
 	"strconv"
@@ -41,7 +42,7 @@ func Enroll(author string) {
 	}
 
 	_ = cmn.AddService(&cmn.ServeEndPoint{
-		Fn: practiceTH,
+		Fn: practiceH,
 
 		Path: "/practice",
 		Name: "practice",
@@ -61,22 +62,6 @@ func Enroll(author string) {
 
 		Path: "/practiceStudentList",
 		Name: "practiceStudentList",
-
-		Developer: developer,
-		WhiteList: true,
-
-		//DomainID 创建该API的账号归属的domain
-		DomainID: int64(cmn.CDomainSys),
-
-		//DefaultDomain 该API将默认授权给的用户
-		DefaultDomain: int64(cmn.CDomainSys),
-	})
-
-	_ = cmn.AddService(&cmn.ServeEndPoint{
-		Fn: practiceSH,
-
-		Path: "/practiceS",
-		Name: "practiceS",
 
 		Developer: developer,
 		WhiteList: true,
@@ -122,13 +107,9 @@ func Enroll(author string) {
 
 }
 
-// 并且此时是需要区分多种的，例如超级管理员、管理员等等
-func practiceTH(ctx context.Context) {
-
-	// 不要浪费时间了，直接刷算法，刷八股算了
+// 整合为一个接口
+func practiceH(ctx context.Context) {
 	q := cmn.GetCtxValue(ctx)
-	//var userID int64
-	//userID = 1629
 	userID := q.SysUser.ID.Int64
 	if userID <= 0 {
 		q.Err = fmt.Errorf("invalid UserID: %d", userID)
@@ -136,102 +117,37 @@ func practiceTH(ctx context.Context) {
 		q.RespErr()
 		return
 	}
-	// TODO 对接用户管理的令牌功能
-	//userID, _ := q.Session.Values["ID"].(int64)
-	//if userID <= 0 {
-	//	q.Err = fmt.Errorf("invalid session")
-	//	z.Error(q.Err.Error())
-	//	return
-	//}
-	method := strings.ToLower(q.R.Method)
+	var domainID int64
+	for _, domain := range q.Domains {
+		if domain.ID.Int64 == PracticeDomainID.Student || domain.ID.Int64 == PracticeDomainID.Teacher || domain.ID.Int64 == PracticeDomainID.Admin || domain.ID.Int64 == PracticeDomainID.SuperAdmin {
+			domainID = domain.ID.Int64
+			break
+		}
+	}
+	// 将所有非学生权限，都转换为教师权限
+	if domainID != 0 && domainID < PracticeDomainID.Student {
+		domainID = PracticeDomainID.Teacher
+	}
 	ctx, cancel := context.WithTimeout(q.R.Context(), 5*time.Second)
 	defer cancel()
-	switch method {
-	case "post":
+	switch domainID {
+	case PracticeDomainID.Student:
 		{
-			var buf []byte
-			buf, q.Err = io.ReadAll(q.R.Body)
-			if q.Err != nil {
+			method := strings.ToLower(q.R.Method)
+			defer cancel()
+			if method != "get" {
+				q.Err = fmt.Errorf("please call /api/practice with  http GET method")
 				z.Error(q.Err.Error())
 				q.RespErr()
 				return
 			}
-			defer func() {
-				q.Err = q.R.Body.Close()
-				if q.Err != nil {
-					z.Error(q.Err.Error())
-					q.RespErr()
-					return
-				}
-			}()
-			if len(buf) == 0 {
-				q.Err = fmt.Errorf("Call /api/upLogin with  empty body")
-				z.Error(q.Err.Error())
-				q.RespErr()
-				return
-			}
-			var p practiceInfo
-			q.Err = json.Unmarshal(buf, &p)
-			if q.Err != nil {
-				z.Error(q.Err.Error())
-				q.RespErr()
-				return
-			}
-			q.Err = ValidatePractice(&p.Practice, p.Student)
-			if q.Err != nil {
-				z.Error(q.Err.Error())
-				q.RespErr()
-				return
-			}
-			err := UpsertPractice(ctx, &p.Practice, p.Student, userID)
-			if err != nil {
-				q.Err = err
-				q.RespErr()
-				return
-			}
-			z.Info("---->" + cmn.FncName())
-			q.Msg.Msg = "OK"
-			q.Resp()
-			return
-		}
-	case "get":
-		{
 			name := q.R.URL.Query().Get("name")
-			pType := q.R.URL.Query().Get("type")
-			status := q.R.URL.Query().Get("status")
-			id := q.R.URL.Query().Get("id")
-			// 此时需要获取练习具体信息
-			if id != "" {
-				var pid int64
-				pid, q.Err = strconv.ParseInt(id, 10, 64)
-				if q.Err != nil {
-					q.Err = fmt.Errorf("练习ID获取失败：%v", q.Err.Error())
-					z.Error(q.Err.Error())
-					q.RespErr()
-					return
-				}
-				p, pName, sCount, err := LoadPracticeById(ctx, pid)
-				if err != nil {
-					q.Err = err
-					q.RespErr()
-					return
-				}
-				result := Map{
-					"practice":      &p,
-					"student_count": sCount,
-					"paper_name":    pName,
-				}
-				data, err := json.Marshal(result)
-				if err != nil {
-					z.Error(err.Error())
-					q.Err = err
-					q.RespErr()
-					return
-				}
-				q.Msg.Data = data
-				z.Info("---->" + cmn.FncName())
-				q.Msg.Msg = "OK"
-				q.Resp()
+			d := q.R.URL.Query().Get("difficulty")
+			t := q.R.URL.Query().Get("type")
+			if t == "" {
+				q.Err = fmt.Errorf("缺失练习类型")
+				z.Error(q.Err.Error())
+				q.RespErr()
 				return
 			}
 			pageStr := q.R.URL.Query().Get("page")
@@ -241,6 +157,7 @@ func practiceTH(ctx context.Context) {
 				q.RespErr()
 				return
 			}
+
 			var page int
 			page, q.Err = strconv.Atoi(pageStr)
 			if q.Err != nil {
@@ -264,15 +181,10 @@ func practiceTH(ctx context.Context) {
 				q.RespErr()
 				return
 			}
-			if pageSize >= 999 {
-				q.Err = fmt.Errorf("页数量过大，不允许访问")
-				z.Error(q.Err.Error())
-				q.RespErr()
-				return
-			}
+
 			// 排序字段
 			orderBy := []string{"create_time desc"}
-			p, total, err := ListPracticeT(ctx, name, pType, status, orderBy, page, pageSize, userID)
+			p, total, err := ListPracticeS(ctx, t, name, d, orderBy, page, pageSize, userID)
 			if err != nil {
 				q.Err = err
 				q.RespErr()
@@ -293,131 +205,222 @@ func practiceTH(ctx context.Context) {
 			z.Info("---->" + cmn.FncName())
 			q.Msg.Msg = "OK"
 			q.Resp()
-			return
 		}
-	case "patch":
+
+	case PracticeDomainID.Teacher:
 		{
-			// 更新练习状态，对练习进行发布、取消操作
-			idStr := q.R.URL.Query().Get("id")
-			status := q.R.URL.Query().Get("status")
+			method := strings.ToLower(q.R.Method)
 
-			var id int64
-			id, q.Err = strconv.ParseInt(idStr, 10, 64)
-			if q.Err != nil {
-				q.Err = fmt.Errorf("练习ID解析失败：%v", q.Err.Error())
-				z.Error(q.Err.Error())
+			switch method {
+			case "post":
+				{
+					var buf []byte
+					buf, q.Err = io.ReadAll(q.R.Body)
+					if q.Err != nil {
+						z.Error(q.Err.Error())
+						q.RespErr()
+						return
+					}
+					defer func() {
+						q.Err = q.R.Body.Close()
+						if q.Err != nil {
+							z.Error(q.Err.Error())
+							q.RespErr()
+							return
+						}
+					}()
+					if len(buf) == 0 {
+						q.Err = fmt.Errorf("Call /api/upLogin with  empty body")
+						z.Error(q.Err.Error())
+						q.RespErr()
+						return
+					}
+					var p practiceInfo
+					q.Err = json.Unmarshal(buf, &p)
+					if q.Err != nil {
+						z.Error(q.Err.Error())
+						q.RespErr()
+						return
+					}
+					q.Err = ValidatePractice(&p.Practice, p.Student)
+					if q.Err != nil {
+						z.Error(q.Err.Error())
+						q.RespErr()
+						return
+					}
+					err := UpsertPractice(ctx, &p.Practice, p.Student, userID)
+					if err != nil {
+						q.Err = err
+						q.RespErr()
+						return
+					}
+					z.Info("---->" + cmn.FncName())
+					q.Msg.Msg = "OK"
+					q.Resp()
+					return
+				}
+			case "get":
+				{
+					name := q.R.URL.Query().Get("name")
+					pType := q.R.URL.Query().Get("type")
+					status := q.R.URL.Query().Get("status")
+					id := q.R.URL.Query().Get("id")
+					// 此时需要获取练习具体信息
+					if id != "" {
+						var pid int64
+						pid, q.Err = strconv.ParseInt(id, 10, 64)
+						if q.Err != nil {
+							q.Err = fmt.Errorf("练习ID获取失败：%v", q.Err.Error())
+							z.Error(q.Err.Error())
+							q.RespErr()
+							return
+						}
+						p, pName, sCount, err := LoadPracticeById(ctx, pid)
+						if err != nil {
+							q.Err = err
+							q.RespErr()
+							return
+						}
+						result := Map{
+							"practice":      &p,
+							"student_count": sCount,
+							"paper_name":    pName,
+						}
+						data, err := json.Marshal(result)
+						if err != nil {
+							z.Error(err.Error())
+							q.Err = err
+							q.RespErr()
+							return
+						}
+						q.Msg.Data = data
+						z.Info("---->" + cmn.FncName())
+						q.Msg.Msg = "OK"
+						q.Resp()
+						return
+					}
+					pageStr := q.R.URL.Query().Get("page")
+					if pageStr == "" {
+						q.Err = fmt.Errorf("缺失分页查询页号")
+						z.Error(q.Err.Error())
+						q.RespErr()
+						return
+					}
+					var page int
+					page, q.Err = strconv.Atoi(pageStr)
+					if q.Err != nil {
+						q.Err = fmt.Errorf("分页查询的页号解析失败：%v", q.Err.Error())
+						z.Error(q.Err.Error())
+						q.RespErr()
+						return
+					}
+					pageSizeStr := q.R.URL.Query().Get("page_size")
+					if pageSizeStr == "" {
+						q.Err = fmt.Errorf("缺失分页查询页大小")
+						z.Error(q.Err.Error())
+						q.RespErr()
+						return
+					}
+					var pageSize int
+					pageSize, q.Err = strconv.Atoi(pageSizeStr)
+					if q.Err != nil {
+						q.Err = fmt.Errorf("分页页大小解析失败：%v", q.Err.Error())
+						z.Error(q.Err.Error())
+						q.RespErr()
+						return
+					}
+					if pageSize >= 999 {
+						q.Err = fmt.Errorf("页数量过大，不允许访问")
+						z.Error(q.Err.Error())
+						q.RespErr()
+						return
+					}
+					// 排序字段
+					orderBy := []string{"create_time desc"}
+					p, total, err := ListPracticeT(ctx, name, pType, status, orderBy, page, pageSize, userID)
+					if err != nil {
+						q.Err = err
+						q.RespErr()
+						return
+					}
+					result := Map{
+						"total":     total,
+						"practices": p,
+					}
+					data, err := json.Marshal(result)
+					if err != nil {
+						z.Error(err.Error())
+						q.Err = err
+						q.RespErr()
+						return
+					}
+					q.Msg.Data = data
+					z.Info("---->" + cmn.FncName())
+					q.Msg.Msg = "OK"
+					q.Resp()
+					return
+				}
+			case "patch":
+				{
+					// 更新练习状态，对练习进行发布、取消操作
+					idStr := q.R.URL.Query().Get("id")
+					status := q.R.URL.Query().Get("status")
+
+					var id int64
+					id, q.Err = strconv.ParseInt(idStr, 10, 64)
+					if q.Err != nil {
+						q.Err = fmt.Errorf("练习ID解析失败：%v", q.Err.Error())
+						z.Error(q.Err.Error())
+						q.RespErr()
+						return
+					}
+					q.Err = OperatePracticeStatus(ctx, id, status, userID)
+					if q.Err != nil {
+						q.RespErr()
+						return
+					}
+					z.Info("---->" + cmn.FncName())
+					q.Msg.Status = 0
+					q.Msg.Msg = "OK"
+					q.Resp()
+					return
+				}
+			default:
+				q.Err = fmt.Errorf("please call /api/Practice with  http POST/GET/PATCH method")
 				q.RespErr()
 				return
 			}
-			q.Err = OperatePracticeStatus(ctx, id, status, userID)
-			if q.Err != nil {
-				q.RespErr()
-				return
-			}
-			z.Info("---->" + cmn.FncName())
-			q.Msg.Status = 0
-			q.Msg.Msg = "OK"
-			q.Resp()
+		}
+
+	default:
+		{
+			q.Err = fmt.Errorf("please call /api/practice without  student/teacher domain")
+			z.Error(q.Err.Error())
+			q.RespErr()
 			return
 		}
-	default:
-		q.Err = fmt.Errorf("please call /api/Practice with  http POST/GET/PATCH method")
-		q.RespErr()
-		return
 	}
-
-}
-
-func practiceSH(ctx context.Context) {
-	q := cmn.GetCtxValue(ctx)
-	z.Sugar().Infof("先打印一下这个domain%v", q.Domains)
-	z.Sugar().Infof("先打印一下这个domainList%v", q.DomainList)
-	userID := q.SysUser.ID.Int64
-	if userID <= 0 {
-		q.Err = fmt.Errorf("invalid UserID: %d", userID)
-		z.Error(q.Err.Error())
-		q.RespErr()
-		return
-	}
-	method := strings.ToLower(q.R.Method)
-	ctx, cancel := context.WithTimeout(q.R.Context(), 5*time.Second)
-	defer cancel()
-	if method != "get" {
-		q.Err = fmt.Errorf("please call /api/practiceS with  http GET method")
-		z.Error(q.Err.Error())
-		q.RespErr()
-		return
-	}
-	name := q.R.URL.Query().Get("name")
-	d := q.R.URL.Query().Get("difficulty")
-	t := q.R.URL.Query().Get("type")
-	if t == "" {
-		q.Err = fmt.Errorf("缺失练习类型")
-		z.Error(q.Err.Error())
-		q.RespErr()
-		return
-	}
-	pageStr := q.R.URL.Query().Get("page")
-	if pageStr == "" {
-		q.Err = fmt.Errorf("缺失分页查询页号")
-		z.Error(q.Err.Error())
-		q.RespErr()
-		return
-	}
-
-	var page int
-	page, q.Err = strconv.Atoi(pageStr)
-	if q.Err != nil {
-		q.Err = fmt.Errorf("分页查询的页号解析失败：%v", q.Err.Error())
-		z.Error(q.Err.Error())
-		q.RespErr()
-		return
-	}
-	pageSizeStr := q.R.URL.Query().Get("page_size")
-	if pageSizeStr == "" {
-		q.Err = fmt.Errorf("缺失分页查询页大小")
-		z.Error(q.Err.Error())
-		q.RespErr()
-		return
-	}
-	var pageSize int
-	pageSize, q.Err = strconv.Atoi(pageSizeStr)
-	if q.Err != nil {
-		q.Err = fmt.Errorf("分页页大小解析失败：%v", q.Err.Error())
-		z.Error(q.Err.Error())
-		q.RespErr()
-		return
-	}
-
-	// 排序字段
-	orderBy := []string{"create_time desc"}
-	p, total, err := ListPracticeS(ctx, t, name, d, orderBy, page, pageSize, userID)
-	if err != nil {
-		q.Err = err
-		q.RespErr()
-		return
-	}
-	result := Map{
-		"total":     total,
-		"practices": p,
-	}
-	data, err := json.Marshal(result)
-	if err != nil {
-		z.Error(err.Error())
-		q.Err = err
-		q.RespErr()
-		return
-	}
-	q.Msg.Data = data
-	z.Info("---->" + cmn.FncName())
-	q.Msg.Msg = "OK"
-	q.Resp()
 }
 
 func practiceStudentListH(ctx context.Context) {
 	q := cmn.GetCtxValue(ctx)
 	ctx, cancel := context.WithTimeout(q.R.Context(), 5*time.Second)
 	defer cancel()
+	var domainID int64
+	for _, domain := range q.Domains {
+		if domain.ID.Int64 == PracticeDomainID.Student || domain.ID.Int64 == PracticeDomainID.Teacher || domain.ID.Int64 == PracticeDomainID.Admin || domain.ID.Int64 == PracticeDomainID.SuperAdmin {
+			domainID = domain.ID.Int64
+			break
+		}
+	}
+	if domainID != 0 && domainID == PracticeDomainID.Student {
+		warn := "检测到学生权限，无法操作学生名单"
+		z.Warn(warn)
+		q.Err = errors.New(warn)
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
 	userID := q.SysUser.ID.Int64
 	// 这里要进行域的处理，就是这个学生能查看谁的
 	if userID <= 0 {
@@ -575,6 +578,11 @@ func practiceStudentListH(ctx context.Context) {
 				q.RespErr()
 				return
 			}
+			z.Info("---->" + cmn.FncName())
+			q.Msg.Status = 0
+			q.Msg.Msg = "OK"
+			q.Resp()
+			return
 		}
 	default:
 		{
