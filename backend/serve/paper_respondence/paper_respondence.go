@@ -508,10 +508,13 @@ func InitRespondent(ctx context.Context) {
 		}
 
 		//获取当前用户的角色
-		roleId := q.Role
+		roleId := q.SysUser.Role.Int64
+		z.Info("查看当前用户角色id", zap.Int64("roleId", roleId))
 		var role null.String
 		q.Err = tx.QueryRow(dmlCtx, `SELECT domain FROM assessuser.t_domain WHERE id=$1 `, roleId).Scan(&role)
 		if q.Err != nil {
+			err := fmt.Errorf("查找用户角色发生错误:" + q.Err.Error())
+			q.Err = err
 			z.Error(q.Err.Error())
 			q.RespErr()
 			return
