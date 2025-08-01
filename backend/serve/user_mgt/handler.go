@@ -3,17 +3,21 @@ package user_mgt
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"github.com/jackc/pgx/v5"
 	"io"
 	"strconv"
 	"strings"
 	"w2w.io/cmn"
+	"w2w.io/null"
 )
 
 type Handler interface {
 	HandleUser(ctx context.Context)
 	HandleGetNewAccount(ctx context.Context)
+	HandleSelectLoginDomain(ctx context.Context)
+	HandleQueryMyInfo(ctx context.Context)
 }
 
 type handler struct {
@@ -36,6 +40,13 @@ func (h *handler) HandleUser(ctx context.Context) {
 
 	method := strings.ToLower(q.R.Method)
 
+	if q.SysUser == nil || !q.SysUser.ID.Valid {
+		q.Err = fmt.Errorf("user not logged in or invalid user ID")
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+
 	_, roleName, err := h.srv.QueryUserCurrentRole(ctx, q.SysUser.ID)
 	if err != nil {
 		q.Err = fmt.Errorf("failed to query user current role: %w", err)
@@ -43,7 +54,8 @@ func (h *handler) HandleUser(ctx context.Context) {
 		q.RespErr()
 		return
 	}
-	if (roleName.String != DomainSuperAdmin && roleName.String != DomainAdmin) || !roleName.Valid {
+	// 角色不合法不能访问、学生不能访问
+	if !IsDomainExist(roleName.String) || roleName.String == DomainStudent || !roleName.Valid {
 		q.Err = fmt.Errorf("user does not have permission to access this resource")
 		z.Error(q.Err.Error())
 		q.RespErr()
@@ -274,6 +286,178 @@ func (h *handler) HandleGetNewAccount(ctx context.Context) {
 	q.Msg.Status = 0
 	q.Msg.Msg = "success"
 	q.Msg.Data = accountBytes
+	q.Resp()
+	return
+}
+
+// HandleSelectLoginDomain 处理选择登录角色的请求
+func (h *handler) HandleSelectLoginDomain(ctx context.Context) {
+	q := cmn.GetCtxValue(ctx)
+	z.Info("---->" + cmn.FncName())
+
+	forceErr, _ := ctx.Value("force-error").(string) // 用于强制执行错误处理代码
+	var err error
+
+	method := strings.ToLower(q.R.Method)
+	if method != "patch" {
+		q.Err = fmt.Errorf("unsupported method: %s", method)
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+
+	var buf []byte
+	buf, err = io.ReadAll(q.R.Body)
+	if err != nil || forceErr == "io.ReadAll" {
+		q.Err = fmt.Errorf("failed to read body: %w", err)
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+	defer func() {
+		err = q.R.Body.Close()
+		if err != nil || forceErr == "io.Close" {
+			e := fmt.Errorf("failed to close request body: %w", err)
+			z.Error(e.Error())
+			return
+		}
+	}()
+
+	if len(buf) == 0 {
+		q.Err = fmt.Errorf("request body cannot be empty")
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+
+	var body cmn.ReqProto
+	err = json.Unmarshal(buf, &body)
+	if err != nil || forceErr == "json.Unmarshal" {
+		q.Err = fmt.Errorf("failed to unmarshal request body: %w", err)
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+
+	var domain string
+	if err = json.Unmarshal(body.Data, &domain); err != nil {
+		q.Err = fmt.Errorf("failed to parse domain from data: %w", err)
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+
+	if !IsDomainExist(domain) {
+		q.Err = fmt.Errorf("invalid domain: %s", domain)
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+
+	users, _, err := h.srv.QueryUsers(ctx, nil, 1, 1, QueryUsersFilter{
+		ID: q.SysUser.ID,
+	})
+	if err != nil {
+		q.Err = fmt.Errorf("failed to query user: %w", err)
+		q.RespErr()
+		return
+	}
+	if len(users) == 0 {
+		q.Err = fmt.Errorf("user not found")
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+	user := users[0]
+
+	if !Contains(null.StringFrom(domain), user.Domains) {
+		q.Err = fmt.Errorf("user does not have permission to access this domain: %s", domain)
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+
+	pgxConn := cmn.GetPgxConn()
+
+	const queryDomainID = "SELECT id FROM t_domain WHERE domain = $1"
+	var domainID int64
+	err = pgxConn.QueryRow(ctx, queryDomainID, domain).Scan(&domainID)
+	if err != nil || forceErr == "QueryDomainID" {
+		if errors.Is(err, pgx.ErrNoRows) {
+			q.Err = fmt.Errorf("domain not found: %s", domain)
+		} else {
+			q.Err = fmt.Errorf("failed to query domain ID: %w", err)
+		}
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+
+	const updateUserRole = "UPDATE t_user SET role = $1 WHERE id = $2"
+	_, err = pgxConn.Exec(ctx, updateUserRole, domainID, user.ID)
+	if err != nil || forceErr == "UpdateUserRole" {
+		q.Err = fmt.Errorf("failed to update user role: %w", err)
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+
+	q.Msg.Status = 0
+	q.Msg.Msg = "success"
+	q.Resp()
+	return
+}
+
+// HandleQueryMyInfo 处理查询我的信息请求
+func (h *handler) HandleQueryMyInfo(ctx context.Context) {
+	q := cmn.GetCtxValue(ctx)
+	z.Info("---->" + cmn.FncName())
+
+	forceErr, _ := ctx.Value("force-error").(string) // 用于强制执行错误处理代码
+	var err error
+
+	method := strings.ToLower(q.R.Method)
+	if method != "get" {
+		q.Err = fmt.Errorf("unsupported method: %s", method)
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+
+	if q.SysUser == nil || !q.SysUser.ID.Valid {
+		q.Err = fmt.Errorf("user not logged in or invalid user ID")
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+
+	users, _, err := h.srv.QueryUsers(ctx, nil, 1, 1, QueryUsersFilter{
+		ID: q.SysUser.ID,
+	})
+	if err != nil {
+		q.Err = fmt.Errorf("failed to query user: %w", err)
+		q.RespErr()
+		return
+	}
+	if len(users) == 0 {
+		q.Err = fmt.Errorf("user not found")
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+	user := users[0]
+
+	userJson, err := json.Marshal(user)
+	if err != nil || forceErr == "json.Marshal" {
+		q.Err = fmt.Errorf("failed to marshal users: %w", err)
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+
+	q.Msg.Status = 0
+	q.Msg.Msg = "success"
+	q.Msg.Data = userJson
 	q.Resp()
 	return
 }

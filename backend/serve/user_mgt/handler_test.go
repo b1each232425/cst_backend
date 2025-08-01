@@ -196,6 +196,320 @@ func Test_handler_HandleGetNewAccount(t *testing.T) {
 	}
 }
 
+// Test_handler_HandleQueryMyInfo 测试HandleQueryMyInfo方法
+func Test_handler_HandleQueryMyInfo(t *testing.T) {
+	type fields struct {
+		srv Service
+	}
+	type args struct {
+		ctx context.Context
+	}
+	tests := []struct {
+		name    string
+		fields  fields
+		args    args
+		wantErr bool
+	}{
+		{
+			name: "成功查询用户信息",
+			fields: fields{
+				srv: &MockService{
+					users: []User{
+						{
+							TUser: cmn.TUser{
+								ID:           null.NewInt(54242, true),
+								Account:      "test_user",
+								OfficialName: null.NewString("测试用户", true),
+								Gender:       null.NewString("M", true),
+								MobilePhone:  null.NewString("13800138000", true),
+								Email:        null.NewString("test@example.com", true),
+								Category:     "normal",
+								Status:       null.NewString("active", true),
+								Type:         null.NewString("user", true),
+								IDCardNo:     null.NewString("123456789012345678", true),
+								IDCardType:   null.NewString("身份证", true),
+								Role:         null.NewInt(1, true),
+								LogonTime:    null.NewInt(time.Now().Unix(), true),
+								CreateTime:   null.NewInt(time.Now().Unix(), true),
+								UpdateTime:   null.NewInt(time.Now().Unix(), true),
+								Creator:      null.NewInt(1000, true),
+							},
+							Domains: []null.String{
+								null.StringFrom("test.domain"),
+								null.StringFrom("other.domain"),
+							},
+							APIs: []cmn.TVUserDomainAPI{
+								{
+									UserID:   null.NewInt(54242, true),
+									DomainID: null.NewInt(1, true),
+									APIID:    null.NewInt(1, true),
+								},
+							},
+						},
+					},
+					totalRows: 1,
+				},
+			},
+			args: args{
+				ctx: createMockContext("GET", "/api/user/my-info", url.Values{}, ""),
+			},
+			wantErr: false,
+		},
+		{
+			name: "不支持的HTTP方法",
+			fields: fields{
+				srv: &MockService{},
+			},
+			args: args{
+				ctx: createMockContext("POST", "/api/user/my-info", url.Values{}, ""),
+			},
+			wantErr: true,
+		},
+		{
+			name: "不支持的HTTP方法 - PUT",
+			fields: fields{
+				srv: &MockService{},
+			},
+			args: args{
+				ctx: createMockContext("PUT", "/api/user/my-info", url.Values{}, ""),
+			},
+			wantErr: true,
+		},
+		{
+			name: "不支持的HTTP方法 - DELETE",
+			fields: fields{
+				srv: &MockService{},
+			},
+			args: args{
+				ctx: createMockContext("DELETE", "/api/user/my-info", url.Values{}, ""),
+			},
+			wantErr: true,
+		},
+		{
+			name: "不支持的HTTP方法 - PATCH",
+			fields: fields{
+				srv: &MockService{},
+			},
+			args: args{
+				ctx: createMockContext("PATCH", "/api/user/my-info", url.Values{}, ""),
+			},
+			wantErr: true,
+		},
+		{
+			name: "用户未登录",
+			fields: fields{
+				srv: &MockService{},
+			},
+			args: args{
+				ctx: createMockContextWithoutUser("GET", "/api/user/my-info", "", ""),
+			},
+			wantErr: true,
+		},
+		{
+			name: "查询用户失败",
+			fields: fields{
+				srv: &MockService{
+					err: fmt.Errorf("数据库查询失败"),
+				},
+			},
+			args: args{
+				ctx: createMockContext("GET", "/api/user/my-info", url.Values{}, ""),
+			},
+			wantErr: true,
+		},
+		{
+			name: "用户不存在",
+			fields: fields{
+				srv: &MockService{
+					users:     []User{},
+					totalRows: 0,
+				},
+			},
+			args: args{
+				ctx: createMockContext("GET", "/api/user/my-info", url.Values{}, ""),
+			},
+			wantErr: true,
+		},
+		{
+			name: "json.Marshal强制错误",
+			fields: fields{
+				srv: &MockService{
+					users: []User{
+						{
+							TUser: cmn.TUser{
+								ID:           null.NewInt(54242, true),
+								Account:      "test_user",
+								OfficialName: null.NewString("测试用户", true),
+								Category:     "normal",
+							},
+							Domains: []null.String{
+								null.StringFrom("test.domain"),
+							},
+						},
+					},
+					totalRows: 1,
+				},
+			},
+			args: args{
+				ctx: createMockContext("GET", "/api/user/my-info", url.Values{}, "json.Marshal"),
+			},
+			wantErr: true,
+		},
+		{
+			name: "HTTP方法大小写不敏感 - get",
+			fields: fields{
+				srv: &MockService{
+					users: []User{
+						{
+							TUser: cmn.TUser{
+								ID:           null.NewInt(54242, true),
+								Account:      "test_user",
+								OfficialName: null.NewString("测试用户", true),
+								Category:     "normal",
+							},
+							Domains: []null.String{
+								null.StringFrom("test.domain"),
+							},
+						},
+					},
+					totalRows: 1,
+				},
+			},
+			args: args{
+				ctx: createMockContext("get", "/api/user/my-info", url.Values{}, ""),
+			},
+			wantErr: false,
+		},
+		{
+			name: "HTTP方法大小写不敏感 - Get",
+			fields: fields{
+				srv: &MockService{
+					users: []User{
+						{
+							TUser: cmn.TUser{
+								ID:           null.NewInt(54242, true),
+								Account:      "test_user",
+								OfficialName: null.NewString("测试用户", true),
+								Category:     "normal",
+							},
+							Domains: []null.String{
+								null.StringFrom("test.domain"),
+							},
+						},
+					},
+					totalRows: 1,
+				},
+			},
+			args: args{
+				ctx: createMockContext("Get", "/api/user/my-info", url.Values{}, ""),
+			},
+			wantErr: false,
+		},
+		{
+			name: "用户信息包含空值",
+			fields: fields{
+				srv: &MockService{
+					users: []User{
+						{
+							TUser: cmn.TUser{
+								ID:           null.NewInt(54242, true),
+								Account:      "test_user",
+								Category:     "normal",
+								OfficialName: null.String{}, // 空值
+								Gender:       null.String{}, // 空值
+								MobilePhone:  null.String{}, // 空值
+								Email:        null.String{}, // 空值
+							},
+							Domains: []null.String{},
+							APIs:    []cmn.TVUserDomainAPI{},
+						},
+					},
+					totalRows: 1,
+				},
+			},
+			args: args{
+				ctx: createMockContext("GET", "/api/user/my-info", url.Values{}, ""),
+			},
+			wantErr: false,
+		},
+		{
+			name: "用户信息包含多个域和API",
+			fields: fields{
+				srv: &MockService{
+					users: []User{
+						{
+							TUser: cmn.TUser{
+								ID:           null.NewInt(54242, true),
+								Account:      "test_user",
+								OfficialName: null.NewString("测试用户", true),
+								Category:     "normal",
+							},
+							Domains: []null.String{
+								null.StringFrom("domain1.com"),
+								null.StringFrom("domain2.com"),
+								null.StringFrom("domain3.com"),
+							},
+							APIs: []cmn.TVUserDomainAPI{
+								{
+									UserID:   null.NewInt(54242, true),
+									DomainID: null.NewInt(1, true),
+									APIID:    null.NewInt(1, true),
+								},
+								{
+									UserID:   null.NewInt(54242, true),
+									DomainID: null.NewInt(2, true),
+									APIID:    null.NewInt(2, true),
+								},
+								{
+									UserID:   null.NewInt(54242, true),
+									DomainID: null.NewInt(3, true),
+									APIID:    null.NewInt(3, true),
+								},
+							},
+						},
+					},
+					totalRows: 1,
+				},
+			},
+			args: args{
+				ctx: createMockContext("GET", "/api/user/my-info", url.Values{}, ""),
+			},
+			wantErr: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			h := &handler{
+				srv: tt.fields.srv,
+			}
+			h.HandleQueryMyInfo(tt.args.ctx)
+
+			// 获取ServiceCtx以检查结果
+			q := cmn.GetCtxValue(tt.args.ctx)
+			if tt.wantErr {
+				if q.Err == nil {
+					t.Errorf("HandleQueryMyInfo() 期望有错误，但没有错误")
+				}
+			} else {
+				if q.Err != nil {
+					t.Errorf("HandleQueryMyInfo() 不期望有错误，但出现错误: %v", q.Err)
+				}
+				// 检查成功响应
+				if q.Msg.Status != 0 {
+					t.Errorf("HandleQueryMyInfo() 期望状态码为 0，实际为 %d", q.Msg.Status)
+				}
+				if q.Msg.Msg != "success" {
+					t.Errorf("HandleQueryMyInfo() 期望消息为 'success'，实际为 '%s'", q.Msg.Msg)
+				}
+				// 检查返回的数据是否为用户信息
+				if q.Msg.Data == nil {
+					t.Errorf("HandleQueryMyInfo() 期望返回用户数据，但数据为空")
+				}
+			}
+		})
+	}
+}
+
 func Test_handler_HandleUser(t *testing.T) {
 	type fields struct {
 		srv Service
@@ -280,7 +594,7 @@ func Test_handler_HandleUser(t *testing.T) {
 					},
 					totalRows: 1,
 					QueryUserCurrentRoleFunc: func(ctx context.Context, userId null.Int) (null.Int, null.String, error) {
-						return null.Int{}, null.NewString("cst.school^teacher", true), nil
+						return null.Int{}, null.NewString("cst.school^student", true), nil
 					},
 				},
 			},
@@ -841,5 +1155,347 @@ func Test_NewHandler(t *testing.T) {
 	internalHandler := h.(*handler)
 	if internalHandler.srv == nil {
 		t.Error("expected srv to be initialized")
+	}
+}
+
+// Test_handler_HandleSelectLoginDomain 测试HandleSelectLoginDomain方法
+func Test_handler_HandleSelectLoginDomain(t *testing.T) {
+	type fields struct {
+		srv Service
+	}
+	type args struct {
+		ctx context.Context
+	}
+	tests := []struct {
+		name    string
+		fields  fields
+		args    args
+		wantErr bool
+	}{
+		{
+			name: "成功选择登录域",
+			fields: fields{
+				srv: &MockService{
+					users: []User{
+						{
+							TUser: cmn.TUser{
+								ID:           null.NewInt(54242, true),
+								Account:      "test_user",
+								OfficialName: null.NewString("测试用户", true),
+							},
+							Domains: []null.String{
+								null.StringFrom("cst.school^superAdmin"),
+								null.StringFrom("other.domain"),
+							},
+						},
+					},
+					totalRows: 1,
+				},
+			},
+			args: args{
+				ctx: createMockContextWithBody("PATCH", "/api/user/select-domain", `"cst.school^superAdmin"`, ""),
+			},
+			wantErr: false,
+		},
+		{
+			name: "不支持的HTTP方法",
+			fields: fields{
+				srv: &MockService{},
+			},
+			args: args{
+				ctx: createMockContextWithBody("GET", "/api/user/select-domain", `"test.domain"`, ""),
+			},
+			wantErr: true,
+		},
+		{
+			name: "不支持的HTTP方法 - POST",
+			fields: fields{
+				srv: &MockService{},
+			},
+			args: args{
+				ctx: createMockContextWithBody("POST", "/api/user/select-domain", `"test.domain"`, ""),
+			},
+			wantErr: true,
+		},
+		{
+			name: "不支持的HTTP方法 - PUT",
+			fields: fields{
+				srv: &MockService{},
+			},
+			args: args{
+				ctx: createMockContextWithBody("PUT", "/api/user/select-domain", `"test.domain"`, ""),
+			},
+			wantErr: true,
+		},
+		{
+			name: "不支持的HTTP方法 - DELETE",
+			fields: fields{
+				srv: &MockService{},
+			},
+			args: args{
+				ctx: createMockContextWithBody("DELETE", "/api/user/select-domain", `"test.domain"`, ""),
+			},
+			wantErr: true,
+		},
+		{
+			name: "io.ReadAll错误",
+			fields: fields{
+				srv: &MockService{},
+			},
+			args: args{
+				ctx: createMockContextWithBody("PATCH", "/api/user/select-domain", `"test.domain"`, "io.ReadAll"),
+			},
+			wantErr: true,
+		},
+		{
+			name: "io.Close错误",
+			fields: fields{
+				srv: &MockService{
+					users: []User{
+						{
+							TUser: cmn.TUser{
+								ID:           null.NewInt(54242, true),
+								Account:      "test_user",
+								OfficialName: null.NewString("测试用户", true),
+							},
+							Domains: []null.String{
+								null.StringFrom("cst.school^teacher"),
+							},
+						},
+					},
+					totalRows: 1,
+				},
+			},
+			args: args{
+				ctx: createMockContextWithBody("PATCH", "/api/user/select-domain", `"cst.school^teacher"`, "io.Close"),
+			},
+			wantErr: false, // io.Close错误不会导致整个请求失败
+		},
+		{
+			name: "空请求体",
+			fields: fields{
+				srv: &MockService{},
+			},
+			args: args{
+				ctx: createMockContextWithBody("PATCH", "/api/user/select-domain", "", ""),
+			},
+			wantErr: true,
+		},
+		{
+			name: "json.Unmarshal错误",
+			fields: fields{
+				srv: &MockService{},
+			},
+			args: args{
+				ctx: createMockContextWithBody("PATCH", "/api/user/select-domain", `"test.domain"`, "json.Unmarshal"),
+			},
+			wantErr: true,
+		},
+		{
+			name: "无效的域名",
+			fields: fields{
+				srv: &MockService{},
+			},
+			args: args{
+				ctx: createMockContextWithBody("PATCH", "/api/user/select-domain", `"invalid.domain"`, ""),
+			},
+			wantErr: true,
+		},
+		{
+			name: "查询用户失败",
+			fields: fields{
+				srv: &MockService{
+					err: fmt.Errorf("数据库查询失败"),
+				},
+			},
+			args: args{
+				ctx: createMockContextWithBody("PATCH", "/api/user/select-domain", `"test.domain"`, ""),
+			},
+			wantErr: true,
+		},
+		{
+			name: "用户不存在",
+			fields: fields{
+				srv: &MockService{
+					users:     []User{},
+					totalRows: 0,
+				},
+			},
+			args: args{
+				ctx: createMockContextWithBody("PATCH", "/api/user/select-domain", `"test.domain"`, ""),
+			},
+			wantErr: true,
+		},
+		{
+			name: "用户无权限访问该域",
+			fields: fields{
+				srv: &MockService{
+					users: []User{
+						{
+							TUser: cmn.TUser{
+								ID:           null.NewInt(54242, true),
+								Account:      "test_user",
+								OfficialName: null.NewString("测试用户", true),
+							},
+							Domains: []null.String{
+								null.StringFrom("other.domain"),
+							},
+						},
+					},
+					totalRows: 1,
+				},
+			},
+			args: args{
+				ctx: createMockContextWithBody("PATCH", "/api/user/select-domain", `"test.domain"`, ""),
+			},
+			wantErr: true,
+		},
+		{
+			name: "QueryDomainID强制错误",
+			fields: fields{
+				srv: &MockService{
+					users: []User{
+						{
+							TUser: cmn.TUser{
+								ID:           null.NewInt(54242, true),
+								Account:      "test_user",
+								OfficialName: null.NewString("测试用户", true),
+							},
+							Domains: []null.String{
+								null.StringFrom("test.domain"),
+							},
+						},
+					},
+					totalRows: 1,
+				},
+			},
+			args: args{
+				ctx: createMockContextWithBody("PATCH", "/api/user/select-domain", `"test.domain"`, "QueryDomainID"),
+			},
+			wantErr: true,
+		},
+		{
+			name: "UpdateUserRole强制错误",
+			fields: fields{
+				srv: &MockService{
+					users: []User{
+						{
+							TUser: cmn.TUser{
+								ID:           null.NewInt(54242, true),
+								Account:      "test_user",
+								OfficialName: null.NewString("测试用户", true),
+							},
+							Domains: []null.String{
+								null.StringFrom("test.domain"),
+							},
+						},
+					},
+					totalRows: 1,
+				},
+			},
+			args: args{
+				ctx: createMockContextWithBody("PATCH", "/api/user/select-domain", `"test.domain"`, "UpdateUserRole"),
+			},
+			wantErr: true,
+		},
+		{
+			name: "HTTP方法大小写不敏感 - patch",
+			fields: fields{
+				srv: &MockService{
+					users: []User{
+						{
+							TUser: cmn.TUser{
+								ID:           null.NewInt(54242, true),
+								Account:      "test_user",
+								OfficialName: null.NewString("测试用户", true),
+							},
+							Domains: []null.String{
+								null.StringFrom("cst.school^teacher"),
+							},
+						},
+					},
+					totalRows: 1,
+				},
+			},
+			args: args{
+				ctx: createMockContextWithBody("patch", "/api/user/select-domain", `"cst.school^teacher"`, ""),
+			},
+			wantErr: false,
+		},
+		{
+			name: "HTTP方法大小写不敏感 - Patch",
+			fields: fields{
+				srv: &MockService{
+					users: []User{
+						{
+							TUser: cmn.TUser{
+								ID:           null.NewInt(54242, true),
+								Account:      "test_user",
+								OfficialName: null.NewString("测试用户", true),
+							},
+							Domains: []null.String{
+								null.StringFrom("cst.school^teacher"),
+							},
+						},
+					},
+					totalRows: 1,
+				},
+			},
+			args: args{
+				ctx: createMockContextWithBody("Patch", "/api/user/select-domain", `"cst.school^teacher"`, ""),
+			},
+			wantErr: false,
+		},
+		{
+			name: "包含特殊字符的域名",
+			fields: fields{
+				srv: &MockService{
+					users: []User{
+						{
+							TUser: cmn.TUser{
+								ID:           null.NewInt(54242, true),
+								Account:      "test_user",
+								OfficialName: null.NewString("测试用户", true),
+							},
+							Domains: []null.String{
+								null.StringFrom("cst.school^teacher"),
+							},
+						},
+					},
+					totalRows: 1,
+				},
+			},
+			args: args{
+				ctx: createMockContextWithBody("PATCH", "/api/user/select-domain", `"cst.school^teacher"`, ""),
+			},
+			wantErr: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			h := &handler{
+				srv: tt.fields.srv,
+			}
+			h.HandleSelectLoginDomain(tt.args.ctx)
+
+			// 获取ServiceCtx以检查结果
+			q := cmn.GetCtxValue(tt.args.ctx)
+			if tt.wantErr {
+				if q.Err == nil {
+					t.Errorf("HandleSelectLoginDomain() 期望有错误，但没有错误")
+				}
+			} else {
+				if q.Err != nil {
+					t.Errorf("HandleSelectLoginDomain() 不期望有错误，但出现错误: %v", q.Err)
+				}
+				// 检查成功响应
+				if q.Msg.Status != 0 {
+					t.Errorf("HandleSelectLoginDomain() 期望状态码为 0，实际为 %d", q.Msg.Status)
+				}
+				if q.Msg.Msg != "success" {
+					t.Errorf("HandleSelectLoginDomain() 期望消息为 'success'，实际为 '%s'", q.Msg.Msg)
+				}
+			}
+		})
 	}
 }

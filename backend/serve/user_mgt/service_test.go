@@ -59,6 +59,18 @@ func TestService_QueryUsers(t *testing.T) {
 			desc:           "测试页面大小为负数时应该返回错误",
 		},
 		{
+			name:     "ID过滤查询测试",
+			ctx:      context.WithValue(context.Background(), "force-error", ""),
+			page:     1,
+			pageSize: 10,
+			filter: QueryUsersFilter{
+				ID: null.NewInt(1, true),
+			},
+			wantUsersCount: 1,
+			wantErr:        false,
+			desc:           "测试按ID过滤查询",
+		},
+		{
 			name:     "账号过滤查询测试",
 			ctx:      context.WithValue(context.Background(), "force-error", ""),
 			page:     1,
