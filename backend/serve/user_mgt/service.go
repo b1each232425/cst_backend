@@ -2,6 +2,7 @@ package user_mgt
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -53,6 +54,11 @@ func (r *service) QueryUsers(ctx context.Context, tx pgx.Tx, page, pageSize int6
 	var args []interface{}
 	argIndex := 1
 
+	if filter.ID.Valid {
+		where = append(where, fmt.Sprintf("u.id = $%d", argIndex))
+		args = append(args, filter.ID.Int64)
+		argIndex++
+	}
 	if filter.Account.Valid {
 		where = append(where, fmt.Sprintf("u.account ILIKE $%d", argIndex))
 		args = append(args, "%"+filter.Account.String+"%")
@@ -136,6 +142,8 @@ func (r *service) QueryUsers(ctx context.Context, tx pgx.Tx, page, pageSize int6
            u.status,
            u.type,
            u.id_card_no,
+           u.id_card_type,
+           u.role,
            u.logon_time,
            u.create_time,
            u.update_time,
@@ -144,7 +152,23 @@ func (r *service) QueryUsers(ctx context.Context, tx pgx.Tx, page, pageSize int6
                SELECT array_agg(d.domain)
                FROM v_user_domain d
                WHERE d.user_id = u.id
-           ), '{}') AS domains
+           ), '{}') AS domains,
+           COALESCE((
+               SELECT json_agg(
+                   json_build_object(
+                   	   'Role', api.role,
+                       'APIID', api.api_id,
+                       'APIName', api.api_name,
+                       'APIExposePath', api.api_expose_path,
+                       'DomainName', api.domain_name,
+                       'DomainID', api.domain_id,
+                       'Domain', api.domain,
+                       'Priority', api.priority
+                   )
+               )
+               FROM v_user_domain_api api
+               WHERE api.user_id = u.id
+           ), '[]') AS apis
     FROM t_user u
     %s
     ORDER BY u.create_time DESC
@@ -166,6 +190,7 @@ func (r *service) QueryUsers(ctx context.Context, tx pgx.Tx, page, pageSize int6
 	var users = make([]User, 0, pageSize)
 	for rows.Next() {
 		var user User
+		var apisJSON []byte
 		err = rows.Scan(
 			&user.ID,
 			&user.Account,
@@ -177,16 +202,30 @@ func (r *service) QueryUsers(ctx context.Context, tx pgx.Tx, page, pageSize int6
 			&user.Status,
 			&user.Type,
 			&user.IDCardNo,
+			&user.IDCardType,
+			&user.Role,
 			&user.LogonTime,
 			&user.CreateTime,
 			&user.UpdateTime,
 			&user.Creator,
 			&user.Domains,
+			&apisJSON,
 		)
 		if err != nil || forceErr == "scan" {
 			e := fmt.Errorf("failed to scan user row: %w", err)
 			z.Error(e.Error())
 			return []User{}, 0, e
+		}
+
+		// 解析APIs JSON数据
+		if len(apisJSON) > 0 && string(apisJSON) != "[]" {
+			err = json.Unmarshal(apisJSON, &user.APIs)
+			if err != nil {
+				z.Warn(fmt.Sprintf("failed to unmarshal APIs JSON for user %d: %v", user.ID.Int64, err))
+				user.APIs = []cmn.TVUserDomainAPI{} // 设置为空数组
+			}
+		} else {
+			user.APIs = []cmn.TVUserDomainAPI{} // 设置为空数组
 		}
 
 		users = append(users, user)
