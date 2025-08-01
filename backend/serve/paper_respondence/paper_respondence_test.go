@@ -72,7 +72,7 @@ func TestStudentAnswer(t *testing.T) {
 			  "UpdatedBy": 1623
 			}`),
 			Domain: []cmn.TDomain{
-				{DomainID: null.IntFrom(StudentDomainId)},
+				{ID: null.IntFrom(StudentDomainId)},
 			},
 			setup: func(tx pgx.Tx) error {
 				_, err := tx.Exec(context.Background(), `update t_student_answers set status='00' where examinee_id=3119`)
@@ -110,7 +110,7 @@ func TestStudentAnswer(t *testing.T) {
 			  "UpdatedBy": 1634
 			}`),
 			Domain: []cmn.TDomain{
-				{DomainID: null.IntFrom(StudentDomainId)},
+				{ID: null.IntFrom(StudentDomainId)},
 			},
 			setup: func(tx pgx.Tx) error {
 				_, err := tx.Exec(context.Background(), `update t_student_answers set status='00' where practice_submission_id=165`)
@@ -132,7 +132,7 @@ func TestStudentAnswer(t *testing.T) {
 			expectSuccess:   true,
 			expectedMessage: "",
 			Domain: []cmn.TDomain{
-				{DomainID: null.IntFrom(StudentDomainId)},
+				{ID: null.IntFrom(StudentDomainId)},
 			},
 			userId: 1634,
 			expectedData: json.RawMessage(`{
@@ -160,7 +160,7 @@ func TestStudentAnswer(t *testing.T) {
 			method: "POST",
 			url:    "/api/respondent",
 			Domain: []cmn.TDomain{
-				{DomainID: null.IntFrom(StudentDomainId)},
+				{ID: null.IntFrom(StudentDomainId)},
 			},
 			reqBody: &cmn.ReqProto{
 				Data: json.RawMessage(`{
@@ -225,8 +225,8 @@ func TestStudentAnswer(t *testing.T) {
 			  "UpdatedBy": 1623
 			}`),
 			Domain: []cmn.TDomain{
-				{DomainID: null.IntFrom(2003)},
-				{DomainID: null.IntFrom(StudentDomainId)},
+				{ID: null.IntFrom(2003)},
+				{ID: null.IntFrom(StudentDomainId)},
 			},
 			setup: func(tx pgx.Tx) error {
 				_, err := tx.Exec(context.Background(), `update t_student_answers set status='00' where examinee_id=3119`)
@@ -264,7 +264,7 @@ func TestStudentAnswer(t *testing.T) {
 			  "UpdatedBy": 1623
 			}`),
 			Domain: []cmn.TDomain{
-				{DomainID: null.IntFrom(2003)},
+				{ID: null.IntFrom(2003)},
 			},
 			setup: func(tx pgx.Tx) error {
 				_, err := tx.Exec(context.Background(), `update t_student_answers set status='00' where examinee_id=3119`)
@@ -274,7 +274,7 @@ func TestStudentAnswer(t *testing.T) {
 		{
 			name: "POST 请求 - 练习缺少必要参数PracticeSubmissionID",
 			Domain: []cmn.TDomain{
-				{DomainID: null.IntFrom(StudentDomainId)},
+				{ID: null.IntFrom(StudentDomainId)},
 			},
 			method: "POST",
 			url:    "/api/respondent",
@@ -294,7 +294,7 @@ func TestStudentAnswer(t *testing.T) {
 			method: "POST",
 			url:    "/api/respondent",
 			Domain: []cmn.TDomain{
-				{DomainID: null.IntFrom(StudentDomainId)},
+				{ID: null.IntFrom(StudentDomainId)},
 			},
 			reqBody: &cmn.ReqProto{
 				Data: json.RawMessage(`{
@@ -310,7 +310,7 @@ func TestStudentAnswer(t *testing.T) {
 		{
 			name: "POST 请求 - 练习缺少必要参数answer",
 			Domain: []cmn.TDomain{
-				{DomainID: null.IntFrom(StudentDomainId)},
+				{ID: null.IntFrom(StudentDomainId)},
 			},
 			method: "POST",
 			url:    "/api/respondent",
@@ -328,7 +328,7 @@ func TestStudentAnswer(t *testing.T) {
 		{
 			name: "POST 请求 - 练习缺少必要参数answer",
 			Domain: []cmn.TDomain{
-				{DomainID: null.IntFrom(StudentDomainId)},
+				{ID: null.IntFrom(StudentDomainId)},
 			},
 			method: "POST",
 			url:    "/api/respondent",
@@ -348,7 +348,7 @@ func TestStudentAnswer(t *testing.T) {
 			method: "POST",
 			url:    "/api/respondent",
 			Domain: []cmn.TDomain{
-				{DomainID: null.IntFrom(StudentDomainId)},
+				{ID: null.IntFrom(StudentDomainId)},
 			},
 			reqBody: &cmn.ReqProto{
 				Data: json.RawMessage(`{
@@ -365,7 +365,7 @@ func TestStudentAnswer(t *testing.T) {
 			method: "POST",
 			url:    "/api/respondent",
 			Domain: []cmn.TDomain{
-				{DomainID: null.IntFrom(StudentDomainId)},
+				{ID: null.IntFrom(StudentDomainId)},
 			},
 			reqBody: &cmn.ReqProto{
 				Data: json.RawMessage(`{
@@ -382,7 +382,7 @@ func TestStudentAnswer(t *testing.T) {
 			method: "POST",
 			url:    "/api/respondent",
 			Domain: []cmn.TDomain{
-				{DomainID: null.IntFrom(StudentDomainId)},
+				{ID: null.IntFrom(StudentDomainId)},
 			},
 			reqBody: &cmn.ReqProto{
 				Data: json.RawMessage(``),
@@ -397,7 +397,7 @@ func TestStudentAnswer(t *testing.T) {
 			url:     "/api/respondent",
 			reqBody: &cmn.ReqProto{},
 			Domain: []cmn.TDomain{
-				{DomainID: null.IntFrom(StudentDomainId)},
+				{ID: null.IntFrom(StudentDomainId)},
 			},
 			userId:          1634,
 			expectSuccess:   false,
@@ -408,7 +408,7 @@ func TestStudentAnswer(t *testing.T) {
 			method: "POST",
 			url:    "/api/respondent",
 			Domain: []cmn.TDomain{
-				{DomainID: null.IntFrom(StudentDomainId)},
+				{ID: null.IntFrom(StudentDomainId)},
 			},
 			reqBody:         &cmn.ReqProto{},
 			userId:          1634,
@@ -430,7 +430,7 @@ func TestStudentAnswer(t *testing.T) {
 			},
 			userId: 1634,
 			Domain: []cmn.TDomain{
-				{DomainID: null.IntFrom(StudentDomainId)},
+				{ID: null.IntFrom(StudentDomainId)},
 			},
 			expectSuccess:   false,
 			expectedMessage: "",
@@ -441,7 +441,7 @@ func TestStudentAnswer(t *testing.T) {
 			method: "POST",
 			url:    "/api/respondent",
 			Domain: []cmn.TDomain{
-				{DomainID: null.IntFrom(StudentDomainId)},
+				{ID: null.IntFrom(StudentDomainId)},
 			},
 			reqBody: &cmn.ReqProto{
 				Data: json.RawMessage(`{
@@ -461,7 +461,7 @@ func TestStudentAnswer(t *testing.T) {
 			method: "POST",
 			url:    "/api/respondent",
 			Domain: []cmn.TDomain{
-				{DomainID: null.IntFrom(StudentDomainId)},
+				{ID: null.IntFrom(StudentDomainId)},
 			},
 			reqBody: &cmn.ReqProto{
 				Data: json.RawMessage(`{
@@ -479,7 +479,7 @@ func TestStudentAnswer(t *testing.T) {
 		{
 			name: "POST 请求 - empty-buf error",
 			Domain: []cmn.TDomain{
-				{DomainID: null.IntFrom(StudentDomainId)},
+				{ID: null.IntFrom(StudentDomainId)},
 			},
 			method: "POST",
 			url:    "/api/respondent",
@@ -498,7 +498,7 @@ func TestStudentAnswer(t *testing.T) {
 		{
 			name: "POST 请求 - rollback-tx error",
 			Domain: []cmn.TDomain{
-				{DomainID: null.IntFrom(StudentDomainId)},
+				{ID: null.IntFrom(StudentDomainId)},
 			},
 			method: "POST",
 			url:    "/api/respondent",
@@ -519,7 +519,7 @@ func TestStudentAnswer(t *testing.T) {
 			method: "POST",
 			url:    "/api/respondent",
 			Domain: []cmn.TDomain{
-				{DomainID: null.IntFrom(StudentDomainId)},
+				{ID: null.IntFrom(StudentDomainId)},
 			},
 			reqBody: &cmn.ReqProto{
 				Data: json.RawMessage(`{
@@ -537,7 +537,7 @@ func TestStudentAnswer(t *testing.T) {
 		{
 			name: "GET 请求 - 通过考生ID获取学生答案",
 			Domain: []cmn.TDomain{
-				{DomainID: null.IntFrom(StudentDomainId)},
+				{ID: null.IntFrom(StudentDomainId)},
 			},
 			method:          "GET",
 			url:             "/api/respondent?question_id=3794&examinee_id=3119",
@@ -554,7 +554,7 @@ func TestStudentAnswer(t *testing.T) {
 			method: "GET",
 			url:    "/api/respondent?question_id=3795&practice_submission_id=165",
 			Domain: []cmn.TDomain{
-				{DomainID: null.IntFrom(StudentDomainId)},
+				{ID: null.IntFrom(StudentDomainId)},
 			},
 			reqBody:         nil,
 			expectSuccess:   true,
@@ -569,7 +569,7 @@ func TestStudentAnswer(t *testing.T) {
 			method: "GET",
 			url:    "/api/respondent?examinee_id=12345",
 			Domain: []cmn.TDomain{
-				{DomainID: null.IntFrom(StudentDomainId)},
+				{ID: null.IntFrom(StudentDomainId)},
 			},
 			reqBody:         nil,
 			expectSuccess:   false,
@@ -581,7 +581,7 @@ func TestStudentAnswer(t *testing.T) {
 			method: "GET",
 			url:    "/api/respondent?question_id=67890",
 			Domain: []cmn.TDomain{
-				{DomainID: null.IntFrom(StudentDomainId)},
+				{ID: null.IntFrom(StudentDomainId)},
 			},
 			reqBody:         nil,
 			expectSuccess:   false,
@@ -593,7 +593,7 @@ func TestStudentAnswer(t *testing.T) {
 			method: "GET",
 			url:    "/api/respondent?question_id=3684&examinee_id=yes",
 			Domain: []cmn.TDomain{
-				{DomainID: null.IntFrom(StudentDomainId)},
+				{ID: null.IntFrom(StudentDomainId)},
 			},
 			reqBody:         nil,
 			expectSuccess:   false,
@@ -605,7 +605,7 @@ func TestStudentAnswer(t *testing.T) {
 			method: "GET",
 			url:    "/api/respondent?question_id=3624&practice_submission_id=yes",
 			Domain: []cmn.TDomain{
-				{DomainID: null.IntFrom(StudentDomainId)},
+				{ID: null.IntFrom(StudentDomainId)},
 			},
 			reqBody:         nil,
 			expectSuccess:   false,
@@ -617,7 +617,7 @@ func TestStudentAnswer(t *testing.T) {
 			method: "GET",
 			url:    "/api/respondent?question_id=yes&examinee_id=3119",
 			Domain: []cmn.TDomain{
-				{DomainID: null.IntFrom(StudentDomainId)},
+				{ID: null.IntFrom(StudentDomainId)},
 			},
 			reqBody:         nil,
 			expectSuccess:   false,
@@ -629,7 +629,7 @@ func TestStudentAnswer(t *testing.T) {
 			method: "GET",
 			url:    "/api/respondent?question_id=1&examinee_id=3119",
 			Domain: []cmn.TDomain{
-				{DomainID: null.IntFrom(StudentDomainId)},
+				{ID: null.IntFrom(StudentDomainId)},
 			},
 			reqBody:         nil,
 			expectSuccess:   false,
@@ -641,7 +641,7 @@ func TestStudentAnswer(t *testing.T) {
 			method: "GET",
 			url:    "/api/respondent?question_id=3794&examinee_id=3119",
 			Domain: []cmn.TDomain{
-				{DomainID: null.IntFrom(StudentDomainId)},
+				{ID: null.IntFrom(StudentDomainId)},
 			},
 			reqBody:         nil,
 			expectSuccess:   false,
@@ -655,7 +655,7 @@ func TestStudentAnswer(t *testing.T) {
 			method: "PUT",
 			url:    "/api/respondent?question_id=3684&examinee_id=3119",
 			Domain: []cmn.TDomain{
-				{DomainID: null.IntFrom(StudentDomainId)},
+				{ID: null.IntFrom(StudentDomainId)},
 			},
 			reqBody:         nil,
 			expectSuccess:   false,
@@ -857,7 +857,7 @@ func TestCheckExamStatus(t *testing.T) {
 		{
 			name: "GET 请求 - 考试可以进入",
 			Domain: []cmn.TDomain{
-				{DomainID: null.IntFrom(StudentDomainId)},
+				{ID: null.IntFrom(StudentDomainId)},
 			},
 			method:          "GET",
 			url:             "/api/exam/status?exam_session_id=155",
@@ -897,7 +897,7 @@ func TestCheckExamStatus(t *testing.T) {
 		{
 			name: "GET 请求 - 缺少学生域",
 			Domain: []cmn.TDomain{
-				{DomainID: null.IntFrom(2001)},
+				{ID: null.IntFrom(2001)},
 			},
 			method:          "GET",
 			url:             "/api/exam/status?exam_session_id=155",
@@ -937,8 +937,8 @@ func TestCheckExamStatus(t *testing.T) {
 		{
 			name: "GET 请求 - 有学生域还有其他的域",
 			Domain: []cmn.TDomain{
-				{DomainID: null.IntFrom(2001)},
-				{DomainID: null.IntFrom(StudentDomainId)},
+				{ID: null.IntFrom(2001)},
+				{ID: null.IntFrom(StudentDomainId)},
 			},
 			method:          "GET",
 			url:             "/api/exam/status?exam_session_id=155",
@@ -979,7 +979,7 @@ func TestCheckExamStatus(t *testing.T) {
 		{
 			name: "GET 请求 - 考试未开始",
 			Domain: []cmn.TDomain{
-				{DomainID: null.IntFrom(StudentDomainId)},
+				{ID: null.IntFrom(StudentDomainId)},
 			},
 			method:          "GET",
 			url:             "/api/exam/status?exam_session_id=155",
@@ -1005,7 +1005,7 @@ func TestCheckExamStatus(t *testing.T) {
 		{
 			name: "GET 请求 - 考试已结束",
 			Domain: []cmn.TDomain{
-				{DomainID: null.IntFrom(StudentDomainId)},
+				{ID: null.IntFrom(StudentDomainId)},
 			},
 			method:          "GET",
 			url:             "/api/exam/status?exam_session_id=155",
@@ -1031,7 +1031,7 @@ func TestCheckExamStatus(t *testing.T) {
 		{
 			name: "GET 请求 - 考试已提交",
 			Domain: []cmn.TDomain{
-				{DomainID: null.IntFrom(StudentDomainId)},
+				{ID: null.IntFrom(StudentDomainId)},
 			},
 			method:          "GET",
 			url:             "/api/exam/status?exam_session_id=155",
@@ -1067,7 +1067,7 @@ func TestCheckExamStatus(t *testing.T) {
 		{
 			name: "GET 请求 - 超过最迟进入时间",
 			Domain: []cmn.TDomain{
-				{DomainID: null.IntFrom(StudentDomainId)},
+				{ID: null.IntFrom(StudentDomainId)},
 			},
 			method:          "GET",
 			url:             "/api/exam/status?exam_session_id=155",
@@ -1107,7 +1107,7 @@ func TestCheckExamStatus(t *testing.T) {
 		{
 			name: "GET 请求 - 缺少考试会话ID",
 			Domain: []cmn.TDomain{
-				{DomainID: null.IntFrom(StudentDomainId)},
+				{ID: null.IntFrom(StudentDomainId)},
 			},
 			method:          "GET",
 			url:             "/api/exam/status",
@@ -1123,7 +1123,7 @@ func TestCheckExamStatus(t *testing.T) {
 		{
 			name: "GET 请求 - 无效的考试会话ID",
 			Domain: []cmn.TDomain{
-				{DomainID: null.IntFrom(StudentDomainId)},
+				{ID: null.IntFrom(StudentDomainId)},
 			},
 			method:          "GET",
 			url:             "/api/exam/status?exam_session_id=99999",
@@ -1139,7 +1139,7 @@ func TestCheckExamStatus(t *testing.T) {
 		{
 			name: "GET 请求 - 用户未登录",
 			Domain: []cmn.TDomain{
-				{DomainID: null.IntFrom(StudentDomainId)},
+				{ID: null.IntFrom(StudentDomainId)},
 			},
 			method:          "GET",
 			url:             "/api/exam/status?exam_session_id=155",
@@ -1154,7 +1154,7 @@ func TestCheckExamStatus(t *testing.T) {
 		{
 			name: "GET 请求 - 请求方法不对",
 			Domain: []cmn.TDomain{
-				{DomainID: null.IntFrom(StudentDomainId)},
+				{ID: null.IntFrom(StudentDomainId)},
 			},
 			method:          "POST",
 			url:             "/api/exam/status?exam_session_id=155",
@@ -1169,7 +1169,7 @@ func TestCheckExamStatus(t *testing.T) {
 		{
 			name: "GET 请求 - exam_session_id不是数字",
 			Domain: []cmn.TDomain{
-				{DomainID: null.IntFrom(StudentDomainId)},
+				{ID: null.IntFrom(StudentDomainId)},
 			},
 			method:          "GET",
 			url:             "/api/exam/status?exam_session_id=test",
@@ -1184,7 +1184,7 @@ func TestCheckExamStatus(t *testing.T) {
 		{
 			name: "GET 请求 - tx begin error",
 			Domain: []cmn.TDomain{
-				{DomainID: null.IntFrom(StudentDomainId)},
+				{ID: null.IntFrom(StudentDomainId)},
 			},
 			method:          "GET",
 			url:             "/api/exam/status?exam_session_id=155",
@@ -1200,7 +1200,7 @@ func TestCheckExamStatus(t *testing.T) {
 		{
 			name: "GET 请求 - commit error",
 			Domain: []cmn.TDomain{
-				{DomainID: null.IntFrom(StudentDomainId)},
+				{ID: null.IntFrom(StudentDomainId)},
 			},
 			method:          "GET",
 			url:             "/api/exam/status?exam_session_id=155",
@@ -1216,7 +1216,7 @@ func TestCheckExamStatus(t *testing.T) {
 		{
 			name: "GET 请求 - marshal-Err",
 			Domain: []cmn.TDomain{
-				{DomainID: null.IntFrom(StudentDomainId)},
+				{ID: null.IntFrom(StudentDomainId)},
 			},
 			method:          "GET",
 			url:             "/api/exam/status?exam_session_id=155",
@@ -1232,7 +1232,7 @@ func TestCheckExamStatus(t *testing.T) {
 		{
 			name: "GET 请求 - rollback-tx-Err",
 			Domain: []cmn.TDomain{
-				{DomainID: null.IntFrom(StudentDomainId)},
+				{ID: null.IntFrom(StudentDomainId)},
 			},
 			method:          "GET",
 			url:             "/api/exam/status?exam_session_id=155",
@@ -1420,7 +1420,7 @@ func TestInitRespondent(t *testing.T) {
 			name:   "监考员允许进入初始化",
 			method: "POST",
 			Domain: []cmn.TDomain{
-				{DomainID: null.IntFrom(StudentDomainId)},
+				{ID: null.IntFrom(StudentDomainId)},
 			},
 			url:             "/api/respondent",
 			expectSuccess:   true,
@@ -1462,7 +1462,7 @@ func TestInitRespondent(t *testing.T) {
 			method: "POST",
 			role:   2008,
 			Domain: []cmn.TDomain{
-				{DomainID: null.IntFrom(2001)},
+				{ID: null.IntFrom(2001)},
 			},
 			url:             "/api/respondent",
 			expectSuccess:   false,
@@ -1503,7 +1503,7 @@ func TestInitRespondent(t *testing.T) {
 			method: "POST",
 			role:   1,
 			Domain: []cmn.TDomain{
-				{DomainID: null.IntFrom(StudentDomainId)},
+				{ID: null.IntFrom(StudentDomainId)},
 			},
 			url:             "/api/respondent",
 			expectSuccess:   false,
@@ -1544,7 +1544,7 @@ func TestInitRespondent(t *testing.T) {
 			method: "POST",
 			role:   2008,
 			Domain: []cmn.TDomain{
-				{DomainID: null.IntFrom(StudentDomainId)},
+				{ID: null.IntFrom(StudentDomainId)},
 			},
 			url:             "/api/respondent",
 			expectSuccess:   true,
@@ -1586,7 +1586,7 @@ func TestInitRespondent(t *testing.T) {
 			method: "POST",
 			role:   2008,
 			Domain: []cmn.TDomain{
-				{DomainID: null.IntFrom(StudentDomainId)},
+				{ID: null.IntFrom(StudentDomainId)},
 			},
 			url:             "/api/respondent",
 			expectSuccess:   true,
@@ -1628,7 +1628,7 @@ func TestInitRespondent(t *testing.T) {
 			method: "POST",
 			role:   2008,
 			Domain: []cmn.TDomain{
-				{DomainID: null.IntFrom(StudentDomainId)},
+				{ID: null.IntFrom(StudentDomainId)},
 			},
 			url:             "/api/respondent",
 			expectSuccess:   false,
@@ -1670,7 +1670,7 @@ func TestInitRespondent(t *testing.T) {
 			method: "POST",
 			role:   2008,
 			Domain: []cmn.TDomain{
-				{DomainID: null.IntFrom(StudentDomainId)},
+				{ID: null.IntFrom(StudentDomainId)},
 			},
 			url:             "/api/respondent",
 			expectSuccess:   false,
@@ -1712,7 +1712,7 @@ func TestInitRespondent(t *testing.T) {
 			method: "POST",
 			role:   2008,
 			Domain: []cmn.TDomain{
-				{DomainID: null.IntFrom(StudentDomainId)},
+				{ID: null.IntFrom(StudentDomainId)},
 			},
 			url:             "/api/respondent",
 			expectSuccess:   false,
@@ -1754,7 +1754,7 @@ func TestInitRespondent(t *testing.T) {
 			method: "POST",
 			role:   2008,
 			Domain: []cmn.TDomain{
-				{DomainID: null.IntFrom(StudentDomainId)},
+				{ID: null.IntFrom(StudentDomainId)},
 			},
 			url:             "/api/respondent",
 			expectSuccess:   false,
@@ -1798,7 +1798,7 @@ func TestInitRespondent(t *testing.T) {
 			expectSuccess: false,
 			role:          2008,
 			Domain: []cmn.TDomain{
-				{DomainID: null.IntFrom(StudentDomainId)},
+				{ID: null.IntFrom(StudentDomainId)},
 			},
 			expectedMessage: "",
 			userId:          1623,
@@ -1841,7 +1841,7 @@ func TestInitRespondent(t *testing.T) {
 			userId:          1623,
 			role:            2008,
 			Domain: []cmn.TDomain{
-				{DomainID: null.IntFrom(StudentDomainId)},
+				{ID: null.IntFrom(StudentDomainId)},
 			},
 			reqBody: &cmn.ReqProto{
 				Data: json.RawMessage(`{
@@ -1883,7 +1883,7 @@ func TestInitRespondent(t *testing.T) {
 			userId:          1623,
 			role:            2008,
 			Domain: []cmn.TDomain{
-				{DomainID: null.IntFrom(StudentDomainId)},
+				{ID: null.IntFrom(StudentDomainId)},
 			},
 			reqBody: &cmn.ReqProto{
 				Data: json.RawMessage(`{
@@ -1925,7 +1925,7 @@ func TestInitRespondent(t *testing.T) {
 			userId:          1623,
 			role:            2008,
 			Domain: []cmn.TDomain{
-				{DomainID: null.IntFrom(StudentDomainId)},
+				{ID: null.IntFrom(StudentDomainId)},
 			},
 			reqBody: &cmn.ReqProto{
 				Data: json.RawMessage(`{
@@ -1966,7 +1966,7 @@ func TestInitRespondent(t *testing.T) {
 			expectedMessage: "",
 			role:            2008,
 			Domain: []cmn.TDomain{
-				{DomainID: null.IntFrom(StudentDomainId)},
+				{ID: null.IntFrom(StudentDomainId)},
 			},
 			userId: 1623,
 			reqBody: &cmn.ReqProto{
@@ -2008,7 +2008,7 @@ func TestInitRespondent(t *testing.T) {
 			expectedMessage: "",
 			role:            2008,
 			Domain: []cmn.TDomain{
-				{DomainID: null.IntFrom(StudentDomainId)},
+				{ID: null.IntFrom(StudentDomainId)},
 			},
 			userId: 1623,
 			reqBody: &cmn.ReqProto{
@@ -2051,7 +2051,7 @@ func TestInitRespondent(t *testing.T) {
 			userId:          1623,
 			role:            2008,
 			Domain: []cmn.TDomain{
-				{DomainID: null.IntFrom(StudentDomainId)},
+				{ID: null.IntFrom(StudentDomainId)},
 			},
 			reqBody: &cmn.ReqProto{
 				Data: json.RawMessage(`{
@@ -2089,7 +2089,7 @@ func TestInitRespondent(t *testing.T) {
 			url:    "/api/respondent",
 			role:   2008,
 			Domain: []cmn.TDomain{
-				{DomainID: null.IntFrom(StudentDomainId)},
+				{ID: null.IntFrom(StudentDomainId)},
 			},
 			expectSuccess:   false,
 			expectedMessage: "",
@@ -2129,7 +2129,7 @@ func TestInitRespondent(t *testing.T) {
 			method: "POST",
 			role:   2008,
 			Domain: []cmn.TDomain{
-				{DomainID: null.IntFrom(StudentDomainId)},
+				{ID: null.IntFrom(StudentDomainId)},
 			},
 			url:             "/api/respondent",
 			expectSuccess:   false,
@@ -2170,7 +2170,7 @@ func TestInitRespondent(t *testing.T) {
 			method: "POST",
 			role:   2008,
 			Domain: []cmn.TDomain{
-				{DomainID: null.IntFrom(StudentDomainId)},
+				{ID: null.IntFrom(StudentDomainId)},
 			},
 			url:             "/api/respondent",
 			reqBody:         &cmn.ReqProto{},
@@ -2183,7 +2183,7 @@ func TestInitRespondent(t *testing.T) {
 			name:   "empty-buf error",
 			method: "POST", role: 2008,
 			Domain: []cmn.TDomain{
-				{DomainID: null.IntFrom(StudentDomainId)},
+				{ID: null.IntFrom(StudentDomainId)},
 			},
 			url:             "/api/respondent",
 			reqBody:         &cmn.ReqProto{},
@@ -2196,7 +2196,7 @@ func TestInitRespondent(t *testing.T) {
 			method: "POST",
 			role:   2008,
 			Domain: []cmn.TDomain{
-				{DomainID: null.IntFrom(StudentDomainId)},
+				{ID: null.IntFrom(StudentDomainId)},
 			},
 			url:             "/api/respondent",
 			reqBody:         &cmn.ReqProto{},
@@ -2210,7 +2210,7 @@ func TestInitRespondent(t *testing.T) {
 			method: "POST",
 			role:   2008,
 			Domain: []cmn.TDomain{
-				{DomainID: null.IntFrom(StudentDomainId)},
+				{ID: null.IntFrom(StudentDomainId)},
 			},
 			url:             "/api/respondent",
 			reqBody:         &cmn.ReqProto{},
@@ -2223,7 +2223,7 @@ func TestInitRespondent(t *testing.T) {
 			method: "GET",
 			role:   2008,
 			Domain: []cmn.TDomain{
-				{DomainID: null.IntFrom(StudentDomainId)},
+				{ID: null.IntFrom(StudentDomainId)},
 			},
 			url:             "/api/respondent",
 			reqBody:         &cmn.ReqProto{},
@@ -2236,7 +2236,7 @@ func TestInitRespondent(t *testing.T) {
 			method: "POST",
 			role:   2008,
 			Domain: []cmn.TDomain{
-				{DomainID: null.IntFrom(StudentDomainId)},
+				{ID: null.IntFrom(StudentDomainId)},
 			},
 			url: "/api/respondent",
 			reqBody: &cmn.ReqProto{
@@ -2257,7 +2257,7 @@ func TestInitRespondent(t *testing.T) {
 			method: "POST",
 			role:   2008,
 			Domain: []cmn.TDomain{
-				{DomainID: null.IntFrom(StudentDomainId)},
+				{ID: null.IntFrom(StudentDomainId)},
 			},
 			url: "/api/respondent",
 			reqBody: &cmn.ReqProto{
@@ -2276,7 +2276,7 @@ func TestInitRespondent(t *testing.T) {
 			method: "POST",
 			role:   2008,
 			Domain: []cmn.TDomain{
-				{DomainID: null.IntFrom(StudentDomainId)},
+				{ID: null.IntFrom(StudentDomainId)},
 			},
 			url:             "/api/respondent",
 			expectSuccess:   false,
@@ -2320,7 +2320,7 @@ func TestInitRespondent(t *testing.T) {
 			expectedMessage: "",
 			role:            2008,
 			Domain: []cmn.TDomain{
-				{DomainID: null.IntFrom(StudentDomainId)},
+				{ID: null.IntFrom(StudentDomainId)},
 			},
 			userId: 1623,
 			reqBody: &cmn.ReqProto{
@@ -2354,7 +2354,7 @@ func TestInitRespondent(t *testing.T) {
 			method: "POST",
 			role:   2008,
 			Domain: []cmn.TDomain{
-				{DomainID: null.IntFrom(StudentDomainId)},
+				{ID: null.IntFrom(StudentDomainId)},
 			},
 			url:             "/api/respondent",
 			expectSuccess:   false,
@@ -2399,7 +2399,7 @@ func TestInitRespondent(t *testing.T) {
 			method: "POST",
 			role:   2008,
 			Domain: []cmn.TDomain{
-				{DomainID: null.IntFrom(StudentDomainId)},
+				{ID: null.IntFrom(StudentDomainId)},
 			},
 			url:             "/api/respondent",
 			expectSuccess:   false,
@@ -2441,7 +2441,7 @@ func TestInitRespondent(t *testing.T) {
 			method: "POST",
 			role:   2008,
 			Domain: []cmn.TDomain{
-				{DomainID: null.IntFrom(StudentDomainId)},
+				{ID: null.IntFrom(StudentDomainId)},
 			},
 			url:             "/api/respondent",
 			expectSuccess:   false,
@@ -2483,7 +2483,7 @@ func TestInitRespondent(t *testing.T) {
 			method: "POST",
 			role:   2008,
 			Domain: []cmn.TDomain{
-				{DomainID: null.IntFrom(StudentDomainId)},
+				{ID: null.IntFrom(StudentDomainId)},
 			},
 			url:             "/api/respondent",
 			expectSuccess:   false,
@@ -2525,7 +2525,7 @@ func TestInitRespondent(t *testing.T) {
 			method: "POST",
 			role:   2008,
 			Domain: []cmn.TDomain{
-				{DomainID: null.IntFrom(StudentDomainId)},
+				{ID: null.IntFrom(StudentDomainId)},
 			},
 			url:             "/api/respondent",
 			expectSuccess:   true,
@@ -2553,7 +2553,7 @@ func TestInitRespondent(t *testing.T) {
 			name: "练习之前已经初始化了，继续进入",
 			role: 2008,
 			Domain: []cmn.TDomain{
-				{DomainID: null.IntFrom(StudentDomainId)},
+				{ID: null.IntFrom(StudentDomainId)},
 			},
 			method:          "POST",
 			url:             "/api/respondent",
@@ -2583,7 +2583,7 @@ func TestInitRespondent(t *testing.T) {
 			method: "POST",
 			role:   2008,
 			Domain: []cmn.TDomain{
-				{DomainID: null.IntFrom(StudentDomainId)},
+				{ID: null.IntFrom(StudentDomainId)},
 			},
 			url:             "/api/respondent",
 			expectSuccess:   false,
@@ -2612,7 +2612,7 @@ func TestInitRespondent(t *testing.T) {
 			method: "POST",
 			role:   2008,
 			Domain: []cmn.TDomain{
-				{DomainID: null.IntFrom(StudentDomainId)},
+				{ID: null.IntFrom(StudentDomainId)},
 			},
 			url:             "/api/respondent",
 			expectSuccess:   false,
@@ -2643,7 +2643,7 @@ func TestInitRespondent(t *testing.T) {
 			method: "POST",
 			role:   2008,
 			Domain: []cmn.TDomain{
-				{DomainID: null.IntFrom(StudentDomainId)},
+				{ID: null.IntFrom(StudentDomainId)},
 			},
 			url:             "/api/respondent",
 			expectSuccess:   false,
@@ -2679,7 +2679,7 @@ func TestInitRespondent(t *testing.T) {
 			method: "POST",
 			role:   2008,
 			Domain: []cmn.TDomain{
-				{DomainID: null.IntFrom(StudentDomainId)},
+				{ID: null.IntFrom(StudentDomainId)},
 			},
 			url:             "/api/respondent",
 			expectSuccess:   false,
@@ -2715,7 +2715,7 @@ func TestInitRespondent(t *testing.T) {
 			method: "POST",
 			role:   2008,
 			Domain: []cmn.TDomain{
-				{DomainID: null.IntFrom(StudentDomainId)},
+				{ID: null.IntFrom(StudentDomainId)},
 			},
 			url:             "/api/respondent",
 			expectSuccess:   false,
@@ -2751,7 +2751,7 @@ func TestInitRespondent(t *testing.T) {
 			method: "POST",
 			role:   2008,
 			Domain: []cmn.TDomain{
-				{DomainID: null.IntFrom(StudentDomainId)},
+				{ID: null.IntFrom(StudentDomainId)},
 			},
 			url:             "/api/respondent",
 			expectSuccess:   false,
@@ -2779,7 +2779,7 @@ func TestInitRespondent(t *testing.T) {
 			method: "POST",
 			role:   2008,
 			Domain: []cmn.TDomain{
-				{DomainID: null.IntFrom(StudentDomainId)},
+				{ID: null.IntFrom(StudentDomainId)},
 			},
 			url:             "/api/respondent",
 			expectSuccess:   false,
@@ -2807,7 +2807,7 @@ func TestInitRespondent(t *testing.T) {
 			method: "POST",
 			role:   2008,
 			Domain: []cmn.TDomain{
-				{DomainID: null.IntFrom(StudentDomainId)},
+				{ID: null.IntFrom(StudentDomainId)},
 			},
 			url:             "/api/respondent",
 			expectSuccess:   false,
@@ -2834,7 +2834,7 @@ func TestInitRespondent(t *testing.T) {
 			name:   "类型不是考试和练习",
 			method: "POST",
 			Domain: []cmn.TDomain{
-				{DomainID: null.IntFrom(StudentDomainId)},
+				{ID: null.IntFrom(StudentDomainId)},
 			},
 			url:             "/api/respondent",
 			expectSuccess:   false,
@@ -3049,7 +3049,7 @@ func TestSubmit(t *testing.T) {
 			url:           "/api/respondent/submit",
 			expectSuccess: true,
 			Domain: []cmn.TDomain{
-				{DomainID: null.IntFrom(StudentDomainId)},
+				{ID: null.IntFrom(StudentDomainId)},
 			},
 			expectedMessage: "success",
 			userId:          1623,
@@ -3105,8 +3105,8 @@ func TestSubmit(t *testing.T) {
 			url:           "/api/respondent/submit",
 			expectSuccess: true,
 			Domain: []cmn.TDomain{
-				{DomainID: null.IntFrom(StudentDomainId)},
-				{DomainID: null.IntFrom(2001)},
+				{ID: null.IntFrom(StudentDomainId)},
+				{ID: null.IntFrom(2001)},
 			},
 			expectedMessage: "not student domain",
 			userId:          1623,
@@ -3165,7 +3165,7 @@ func TestSubmit(t *testing.T) {
 			expectedMessage: "success",
 			userId:          1634,
 			Domain: []cmn.TDomain{
-				{DomainID: null.IntFrom(StudentDomainId)},
+				{ID: null.IntFrom(StudentDomainId)},
 			},
 			reqBody: &cmn.ReqProto{
 				Data: json.RawMessage(`{
@@ -3201,7 +3201,7 @@ func TestSubmit(t *testing.T) {
 			method: "GET",
 			url:    "/api/submit",
 			Domain: []cmn.TDomain{
-				{DomainID: null.IntFrom(StudentDomainId)},
+				{ID: null.IntFrom(StudentDomainId)},
 			},
 			reqBody:         nil,
 			expectSuccess:   false,
@@ -3215,7 +3215,7 @@ func TestSubmit(t *testing.T) {
 			url:     "/api/submit",
 			reqBody: &cmn.ReqProto{},
 			Domain: []cmn.TDomain{
-				{DomainID: null.IntFrom(StudentDomainId)},
+				{ID: null.IntFrom(StudentDomainId)},
 			},
 			expectSuccess:   false,
 			expectedMessage: "Call /api/respondent with  empty body",
@@ -3227,7 +3227,7 @@ func TestSubmit(t *testing.T) {
 			url:     "/api/submit",
 			reqBody: &cmn.ReqProto{},
 			Domain: []cmn.TDomain{
-				{DomainID: null.IntFrom(StudentDomainId)},
+				{ID: null.IntFrom(StudentDomainId)},
 			},
 			expectSuccess:   false,
 			expectedMessage: "unexpected end of JSON input",
@@ -3242,7 +3242,7 @@ func TestSubmit(t *testing.T) {
 			},
 			expectSuccess: false,
 			Domain: []cmn.TDomain{
-				{DomainID: null.IntFrom(StudentDomainId)},
+				{ID: null.IntFrom(StudentDomainId)},
 			},
 			userId: 1623,
 		},
@@ -3252,7 +3252,7 @@ func TestSubmit(t *testing.T) {
 			method: "POST",
 			url:    "/api/submit",
 			Domain: []cmn.TDomain{
-				{DomainID: null.IntFrom(StudentDomainId)},
+				{ID: null.IntFrom(StudentDomainId)},
 			},
 			reqBody: &cmn.ReqProto{
 				Data: json.RawMessage(`{
@@ -3271,7 +3271,7 @@ func TestSubmit(t *testing.T) {
 			method: "POST",
 			url:    "/api/submit",
 			Domain: []cmn.TDomain{
-				{DomainID: null.IntFrom(StudentDomainId)},
+				{ID: null.IntFrom(StudentDomainId)},
 			},
 			expectSuccess:   false,
 			expectedMessage: "当前是考试，请输入大于0的考试id、大于0的考试场次id、大于0的考生id",
@@ -3291,7 +3291,7 @@ func TestSubmit(t *testing.T) {
 			url:           "/api/submit",
 			expectSuccess: false,
 			Domain: []cmn.TDomain{
-				{DomainID: null.IntFrom(StudentDomainId)},
+				{ID: null.IntFrom(StudentDomainId)},
 			},
 			expectedMessage: "当前是考试，请输入大于0的考试id、大于0的考试场次id、大于0的考生id",
 			userId:          1623,
@@ -3312,7 +3312,7 @@ func TestSubmit(t *testing.T) {
 			expectedMessage: "当前是考试，请输入大于0的考试id、大于0的考试场次id、大于0的考生id",
 			userId:          1623,
 			Domain: []cmn.TDomain{
-				{DomainID: null.IntFrom(StudentDomainId)},
+				{ID: null.IntFrom(StudentDomainId)},
 			},
 			reqBody: &cmn.ReqProto{
 				Data: json.RawMessage(`{
@@ -3330,7 +3330,7 @@ func TestSubmit(t *testing.T) {
 			expectSuccess: false,
 			userId:        1623,
 			Domain: []cmn.TDomain{
-				{DomainID: null.IntFrom(StudentDomainId)},
+				{ID: null.IntFrom(StudentDomainId)},
 			},
 			reqBody: &cmn.ReqProto{
 				Data: json.RawMessage(`{
@@ -3347,7 +3347,7 @@ func TestSubmit(t *testing.T) {
 			url:           "/api/submit",
 			expectSuccess: false,
 			Domain: []cmn.TDomain{
-				{DomainID: null.IntFrom(StudentDomainId)},
+				{ID: null.IntFrom(StudentDomainId)},
 			},
 			expectedMessage: "当前是考试，请输入大于0的考试id、大于0的考试场次id、大于0的考生id",
 			userId:          1623,
@@ -3365,7 +3365,7 @@ func TestSubmit(t *testing.T) {
 			method: "POST",
 			url:    "/api/submit",
 			Domain: []cmn.TDomain{
-				{DomainID: null.IntFrom(StudentDomainId)},
+				{ID: null.IntFrom(StudentDomainId)},
 			},
 			expectSuccess:   false,
 			expectedMessage: "当前是考试，请输入大于0的考试id、大于0的考试场次id、大于0的考生id",
@@ -3384,7 +3384,7 @@ func TestSubmit(t *testing.T) {
 			method: "POST",
 			url:    "/api/submit",
 			Domain: []cmn.TDomain{
-				{DomainID: null.IntFrom(StudentDomainId)},
+				{ID: null.IntFrom(StudentDomainId)},
 			},
 			expectSuccess:   false,
 			expectedMessage: "当前是考试，请输入大于0的考试id、大于0的考试场次id、大于0的考生id",
@@ -3402,7 +3402,7 @@ func TestSubmit(t *testing.T) {
 			name:   "POST 请求 - 练习practice_id为0",
 			method: "POST",
 			Domain: []cmn.TDomain{
-				{DomainID: null.IntFrom(StudentDomainId)},
+				{ID: null.IntFrom(StudentDomainId)},
 			},
 			url:             "/api/submit",
 			expectSuccess:   false,
@@ -3421,7 +3421,7 @@ func TestSubmit(t *testing.T) {
 			method: "POST",
 			url:    "/api/submit",
 			Domain: []cmn.TDomain{
-				{DomainID: null.IntFrom(StudentDomainId)},
+				{ID: null.IntFrom(StudentDomainId)},
 			},
 			expectSuccess:   false,
 			expectedMessage: "当前是练习，请输入大于0的PracticeSubmissionID以及大于0的PracticeId",
@@ -3439,7 +3439,7 @@ func TestSubmit(t *testing.T) {
 			method: "POST",
 			url:    "/api/submit",
 			Domain: []cmn.TDomain{
-				{DomainID: null.IntFrom(StudentDomainId)},
+				{ID: null.IntFrom(StudentDomainId)},
 			},
 			expectSuccess:   false,
 			expectedMessage: "当前是练习，请输入大于0的PracticeSubmissionID以及大于0的PracticeId",
@@ -3457,7 +3457,7 @@ func TestSubmit(t *testing.T) {
 			method: "POST",
 			url:    "/api/submit",
 			Domain: []cmn.TDomain{
-				{DomainID: null.IntFrom(StudentDomainId)},
+				{ID: null.IntFrom(StudentDomainId)},
 			},
 			expectSuccess:   false,
 			expectedMessage: "当前是练习，请输入大于0的PracticeSubmissionID以及大于0的PracticeId",
@@ -3478,7 +3478,7 @@ func TestSubmit(t *testing.T) {
 			url:           "/api/submit",
 			expectSuccess: false,
 			Domain: []cmn.TDomain{
-				{DomainID: null.IntFrom(StudentDomainId)},
+				{ID: null.IntFrom(StudentDomainId)},
 			},
 
 			userId: 1623,
@@ -3498,7 +3498,7 @@ func TestSubmit(t *testing.T) {
 			method: "POST",
 			url:    "/api/submit",
 			Domain: []cmn.TDomain{
-				{DomainID: null.IntFrom(StudentDomainId)},
+				{ID: null.IntFrom(StudentDomainId)},
 			},
 			expectSuccess:   false,
 			expectedMessage: "",
@@ -3516,7 +3516,7 @@ func TestSubmit(t *testing.T) {
 		{
 			name: "POST 请求 - 事务提交失败",
 			Domain: []cmn.TDomain{
-				{DomainID: null.IntFrom(StudentDomainId)},
+				{ID: null.IntFrom(StudentDomainId)},
 			},
 			method:          "POST",
 			url:             "/api/submit",
@@ -3578,7 +3578,7 @@ func TestSubmit(t *testing.T) {
 			method: "POST",
 			url:    "/api/submit",
 			Domain: []cmn.TDomain{
-				{DomainID: null.IntFrom(StudentDomainId)},
+				{ID: null.IntFrom(StudentDomainId)},
 			},
 			expectSuccess:   false,
 			expectedMessage: "",
@@ -3616,7 +3616,7 @@ func TestSubmit(t *testing.T) {
 			method: "POST",
 			url:    "/api/submit",
 			Domain: []cmn.TDomain{
-				{DomainID: null.IntFrom(StudentDomainId)},
+				{ID: null.IntFrom(StudentDomainId)},
 			},
 			expectSuccess:   false,
 			expectedMessage: "",
@@ -3671,7 +3671,7 @@ func TestSubmit(t *testing.T) {
 			method: "POST",
 			url:    "/api/submit",
 			Domain: []cmn.TDomain{
-				{DomainID: null.IntFrom(StudentDomainId)},
+				{ID: null.IntFrom(StudentDomainId)},
 			},
 			expectSuccess:   false,
 			expectedMessage: "",
@@ -3725,7 +3725,7 @@ func TestSubmit(t *testing.T) {
 			name:   "POST 请求 - 批改失败（练习）",
 			method: "POST",
 			Domain: []cmn.TDomain{
-				{DomainID: null.IntFrom(StudentDomainId)},
+				{ID: null.IntFrom(StudentDomainId)},
 			},
 			url:             "/api/submit",
 			expectSuccess:   false,
@@ -3765,7 +3765,7 @@ func TestSubmit(t *testing.T) {
 			method: "POST",
 			url:    "/api/submit",
 			Domain: []cmn.TDomain{
-				{DomainID: null.IntFrom(StudentDomainId)},
+				{ID: null.IntFrom(StudentDomainId)},
 			},
 			expectSuccess:   false,
 			expectedMessage: "",
@@ -3804,7 +3804,7 @@ func TestSubmit(t *testing.T) {
 			url:           "/api/respondent/submit",
 			expectSuccess: false,
 			Domain: []cmn.TDomain{
-				{DomainID: null.IntFrom(2001)},
+				{ID: null.IntFrom(2001)},
 			},
 			expectedMessage: "not student domain",
 			userId:          1623,
@@ -3863,7 +3863,7 @@ func TestSubmit(t *testing.T) {
 			userId:          1634,
 			forceErr:        "io.ReadAll",
 			Domain: []cmn.TDomain{
-				{DomainID: null.IntFrom(StudentDomainId)},
+				{ID: null.IntFrom(StudentDomainId)},
 			},
 			reqBody: &cmn.ReqProto{
 				Data: json.RawMessage(`{
@@ -3898,7 +3898,7 @@ func TestSubmit(t *testing.T) {
 			url:           "/api/respondent/submit",
 			expectSuccess: false,
 			Domain: []cmn.TDomain{
-				{DomainID: null.IntFrom(StudentDomainId)},
+				{ID: null.IntFrom(StudentDomainId)},
 			},
 			userId:   1623,
 			forceErr: "setAnswerCanNotUpdate error",
@@ -3950,7 +3950,7 @@ func TestSubmit(t *testing.T) {
 			name:   "POST 请求 - setAnswerCanNotUpdate error（练习）",
 			method: "POST",
 			Domain: []cmn.TDomain{
-				{DomainID: null.IntFrom(StudentDomainId)},
+				{ID: null.IntFrom(StudentDomainId)},
 			},
 			url:           "/api/respondent/submit",
 			expectSuccess: false,
@@ -3987,7 +3987,7 @@ func TestSubmit(t *testing.T) {
 			name:   "POST 请求 - submit error（练习）",
 			method: "POST",
 			Domain: []cmn.TDomain{
-				{DomainID: null.IntFrom(StudentDomainId)},
+				{ID: null.IntFrom(StudentDomainId)},
 			},
 			url:           "/api/respondent/submit",
 			expectSuccess: false,
@@ -4027,7 +4027,7 @@ func TestSubmit(t *testing.T) {
 			expectSuccess: false,
 			userId:        1623,
 			Domain: []cmn.TDomain{
-				{DomainID: null.IntFrom(StudentDomainId)},
+				{ID: null.IntFrom(StudentDomainId)},
 			},
 			forceErr: "exam-submit-err",
 			reqBody: &cmn.ReqProto{
@@ -4080,7 +4080,7 @@ func TestSubmit(t *testing.T) {
 			url:           "/api/respondent/submit",
 			expectSuccess: false,
 			Domain: []cmn.TDomain{
-				{DomainID: null.IntFrom(StudentDomainId)},
+				{ID: null.IntFrom(StudentDomainId)},
 			},
 			forceErr: "type-err",
 			userId:   1623,
