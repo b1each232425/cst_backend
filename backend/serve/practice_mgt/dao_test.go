@@ -3,7 +3,7 @@
  * @Description: 练习管理数据库层函数逻辑测试
  * @Date: 2025-07-24 14:51:50
  * @LastEditors: zdl <1311866870@qq.com>
- * @LastEditTime: 2025-07-30 22:53:16
+ * @LastEditTime: 2025-07-31 15:40:46
  */
 package practice_mgt
 
@@ -586,7 +586,7 @@ func TestValidatePractice(t *testing.T) {
 				PaperID:         null.IntFrom(102),
 				Name:            null.StringFrom("化学期末考试"),
 				CorrectMode:     null.StringFrom("异常批改数据"), // 批改模式
-				Type:            null.StringFrom("02"),           // 练习类型（试卷）
+				Type:            null.StringFrom("02"),     // 练习类型（试卷）
 				AllowedAttempts: null.IntFrom(10),
 			},
 			ps:            nil,
@@ -608,7 +608,7 @@ func TestValidatePractice(t *testing.T) {
 			p: &cmn.TPractice{
 				PaperID:         null.IntFrom(102),
 				Name:            null.StringFrom("化学期末考试"),
-				CorrectMode:     null.StringFrom("02"),           // 批改模式
+				CorrectMode:     null.StringFrom("02"),     // 批改模式
 				Type:            null.StringFrom("异常练习类型"), // 练习类型（试卷）
 				AllowedAttempts: null.IntFrom(10),
 			},
@@ -1064,8 +1064,151 @@ func TestOperatePracticeStatus(t *testing.T) {
 	})
 }
 
-// 测试学生进入练习的三种不同状态
+// 测试学生进入练习的三种不同状态 这里使用的是主流程测试数据中的其余学生 这里使用三种情况，就是进入过一次作答但是没有提交的 ， 然后就是完全提交了的、最后是第一次作答的
 func TestEnterPracticeGetPaperDetails(t *testing.T) {
+
+	// 确保logger已初始化
+	if z == nil {
+		cmn.ConfigureForTest()
+	}
+
+	conn := cmn.GetPgxConn()
+
+	tx, err := conn.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	defer func() {
+		_ = tx.Rollback(ctx)
+	}()
+
+	// 我这里先生成一个试试
+	var unSubmit, never, submit, pid int64
+	never = 1581
+	submit = 1580
+	unSubmit = 1579
+	pid = 2036
+	t.Logf("%v,%v,%v,%v", unSubmit, never, submit, pid)
+
+	tests := []struct {
+		name          string
+		pid           int64
+		uid           int64
+		expectedError error
+	}{
+		{
+			name:          "正常1 第一次进入练习作答 生成练习提交记录与考卷",
+			pid:           pid,
+			uid:           never,
+			expectedError: nil,
+		},
+		{
+			name:          "正常2 进入练习但是此时没有提交就退出了 不生成考卷与提交记录",
+			pid:           pid,
+			uid:           unSubmit,
+			expectedError: nil,
+		},
+		{
+			name:          "正常3 曾经进入练习已经提交了  重新生成考卷与提交记录",
+			pid:           pid,
+			uid:           submit,
+			expectedError: nil,
+		},
+		{
+			name:          "异常1 参数检测 非法pid与uid",
+			pid:           -1,
+			uid:           0,
+			expectedError: errors.New("invalid practiceID | uid param"),
+		},
+		{
+			name:          "异常2 不存在的pid与uid",
+			pid:           10086,
+			uid:           10086,
+			expectedError: errors.New("select student practice submission failed"),
+		},
+		{
+			name:          "异常3 此时重新作答的话，最大次数超过了",
+			pid:           pid,
+			uid:           submit,
+			expectedError: errors.New("已达练习最大次数"),
+		},
+		// 如果是删除了考卷的话，因为视图那边是根据试卷进行join的，如果没有考卷，是无法创建一行记录的
+		{
+			name:          "异常4 删除后考卷ID再进行查询",
+			pid:           pid,
+			uid:           submit,
+			expectedError: errors.New("select student practice submission failed"),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if containsString(tt.name, "异常3 此时重新作答的话，最大次数超过了") {
+				// 需要直接去修改练习的最大次数
+				_, err := conn.Exec(ctx, "UPDATE assessuser.t_practice  SET allowed_attempts = 1 WHERE id = $1", tt.pid)
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+			if containsString(tt.name, "异常4 删除后考卷ID再进行查询") {
+				_, err := conn.Exec(ctx, "UPDATE assessuser.t_practice SET exam_paper_id = NULL WHERE id = $1", tt.pid)
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+
+			info, pg, pq, err := EnterPracticeGetPaperDetails(ctx, tx, tt.pid, tt.uid)
+			if tt.expectedError != nil {
+				if err == nil {
+					t.Errorf("%v expected error but got nil", tt.name)
+				}
+				if err != nil && !containsString(err.Error(), tt.expectedError.Error()) {
+					t.Errorf("%v expected error:%v but got %v", tt.name, tt.expectedError, err)
+				}
+			} else {
+				if err != nil {
+					t.Errorf("期望无错误，但是返回错误：%v", err)
+				}
+				// 如果此时没有错误的话，那就是直接查看返回的信息
+				if info.PaperName != "H3C选择题练习试卷" {
+					t.Errorf("返回的练习数据名字错误，实际：%v", info.PaperName)
+				}
+				if info.TotalScore != 20 {
+					t.Errorf("返回的练习数据总分错误，实际：%v", info.TotalScore)
+				}
+				if info.GroupCount != 1 {
+					t.Errorf("返回的练习数据题组错误，实际：%v", info.GroupCount)
+				}
+				if info.QuestionCount != 10 {
+					t.Errorf("返回的练习数据题目数量错误，实际：%v", info.QuestionCount)
+				}
+				var qCount int
+				for id, _ := range pg {
+					quesitons := pq[id]
+					for _, _ = range quesitons {
+						qCount++
+					}
+				}
+				if qCount != 10 {
+					t.Errorf("考卷题目数量错误")
+				}
+			}
+			if containsString(tt.name, "异常3 此时重新作答的话，最大次数超过了") {
+				// 需要直接去修改练习的最大次数
+				_, err := conn.Exec(ctx, "UPDATE assessuser.t_practice  SET allowed_attempts = 5 WHERE id = $1", tt.pid)
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+			if containsString(tt.name, "异常4 删除后考卷ID再进行查询") {
+				_, err := tx.Exec(ctx, "UPDATE assessuser.t_practice SET exam_paper_id = 324 WHERE id = $1", tt.pid)
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+		})
+	}
 
 }
 

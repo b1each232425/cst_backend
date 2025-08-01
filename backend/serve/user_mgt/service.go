@@ -14,13 +14,14 @@ import (
 )
 
 type Service interface {
-	QueryUsers(ctx context.Context, tx pgx.Tx, page, pageSize int64, filter QueryUsersFilter) ([]cmn.TUser, int64, error)
-	InsertUsers(ctx context.Context, tx pgx.Tx, users []cmn.TUser) error
-	InsertUsersWithAccount(ctx context.Context, tx pgx.Tx, users []cmn.TUser) error
+	QueryUsers(ctx context.Context, tx pgx.Tx, page, pageSize int64, filter QueryUsersFilter) ([]User, int64, error)
+	InsertUsers(ctx context.Context, tx pgx.Tx, users []User) error
+	InsertUsersWithAccount(ctx context.Context, tx pgx.Tx, users []User) error
 	CheckTUserFieldExists(ctx context.Context, tx pgx.Tx, field string, value any) (bool, error)
 	CheckTUserRowExists(ctx context.Context, tx pgx.Tx, fields map[string]any) (bool, error)
 	GenerateUniqueAccount(ctx context.Context, tx pgx.Tx, length int, maxAttempts int) (string, error)
-	ValidateUser(ctx context.Context, tx pgx.Tx, users []cmn.TUser) ([]cmn.TUser, []InvalidUser, error)
+	ValidateUserToBeInsert(ctx context.Context, tx pgx.Tx, users []User) ([]User, []InvalidUser, error)
+	QueryUserCurrentRole(ctx context.Context, userId null.Int) (null.Int, null.String, error)
 }
 
 type service struct {
@@ -36,7 +37,7 @@ func NewService() Service {
 // QueryUsers 查询用户列表
 // 第一页从 1 开始，pageSize 为每页记录数
 // 返回值: 用户列表、总记录数、错误
-func (r *service) QueryUsers(ctx context.Context, tx pgx.Tx, page, pageSize int64, filter QueryUsersFilter) ([]cmn.TUser, int64, error) {
+func (r *service) QueryUsers(ctx context.Context, tx pgx.Tx, page, pageSize int64, filter QueryUsersFilter) ([]User, int64, error) {
 	z.Info("---->" + cmn.FncName())
 
 	forceErr, _ := ctx.Value("force-error").(string)
@@ -44,7 +45,7 @@ func (r *service) QueryUsers(ctx context.Context, tx pgx.Tx, page, pageSize int6
 	if page <= 0 || pageSize <= 0 {
 		e := fmt.Errorf("page and page size must be positive integers")
 		z.Error(e.Error())
-		return []cmn.TUser{}, 0, e
+		return []User{}, 0, e
 	}
 
 	// 构建 WHERE 条件和参数
@@ -87,6 +88,17 @@ func (r *service) QueryUsers(ctx context.Context, tx pgx.Tx, page, pageSize int6
 		args = append(args, filter.CreateTime.Int64)
 		argIndex++
 	}
+	if filter.Domain.Valid {
+		// 在 v_user_domain 里找出包含指定 domain 的用户
+		where = append(where, fmt.Sprintf(`
+        EXISTS (
+            SELECT 1 FROM v_user_domain vd
+            WHERE vd.user_id = u.id
+              AND vd.domain  = $%d
+        )`, argIndex))
+		args = append(args, filter.Domain.String)
+		argIndex++
+	}
 
 	// 构建查询总记录数 SQL
 	var whereClause string
@@ -107,31 +119,36 @@ func (r *service) QueryUsers(ctx context.Context, tx pgx.Tx, page, pageSize int6
 	if err != nil || forceErr == "count" {
 		e := fmt.Errorf("failed to count user records: %w", err)
 		z.Error(e.Error())
-		return []cmn.TUser{}, 0, e
+		return []User{}, 0, e
 	}
 
 	// 分页查询数据（追加 LIMIT 和 OFFSET 参数）
 	offset := (page - 1) * pageSize
 	args = append(args, pageSize, offset)
 	querySQL := fmt.Sprintf(`
-		SELECT u.id, 
-		       u.account, 
-		       u.official_name, 
-		       u.gender, 
-		       u.mobile_phone, 
-		       u.email,
-		       u.category,
-		       u.status,
-		       u.type,
-		       u.id_card_no,
-		       u.logon_time,
-			   u.create_time,
-			   u.update_time,
-			   u.creator
-		FROM t_user u
-		%s
-		ORDER BY u.create_time DESC
-		LIMIT $%d OFFSET $%d`, whereClause, argIndex, argIndex+1)
+    SELECT u.id, 
+           u.account, 
+           u.official_name, 
+           u.gender, 
+           u.mobile_phone, 
+           u.email,
+           u.category,
+           u.status,
+           u.type,
+           u.id_card_no,
+           u.logon_time,
+           u.create_time,
+           u.update_time,
+           u.creator,
+           COALESCE((
+               SELECT array_agg(d.domain)
+               FROM v_user_domain d
+               WHERE d.user_id = u.id
+           ), '{}') AS domains
+    FROM t_user u
+    %s
+    ORDER BY u.create_time DESC
+    LIMIT $%d OFFSET $%d`, whereClause, argIndex, argIndex+1)
 
 	var rows pgx.Rows
 	if tx != nil {
@@ -142,13 +159,13 @@ func (r *service) QueryUsers(ctx context.Context, tx pgx.Tx, page, pageSize int6
 	if err != nil || forceErr == "query" {
 		e := fmt.Errorf("failed to query user list: %w", err)
 		z.Error(e.Error())
-		return []cmn.TUser{}, 0, e
+		return []User{}, 0, e
 	}
 	defer rows.Close()
 
-	var users = make([]cmn.TUser, 0, pageSize)
+	var users = make([]User, 0, pageSize)
 	for rows.Next() {
-		var user cmn.TUser
+		var user User
 		err = rows.Scan(
 			&user.ID,
 			&user.Account,
@@ -164,11 +181,12 @@ func (r *service) QueryUsers(ctx context.Context, tx pgx.Tx, page, pageSize int6
 			&user.CreateTime,
 			&user.UpdateTime,
 			&user.Creator,
+			&user.Domains,
 		)
 		if err != nil || forceErr == "scan" {
 			e := fmt.Errorf("failed to scan user row: %w", err)
 			z.Error(e.Error())
-			return []cmn.TUser{}, 0, e
+			return []User{}, 0, e
 		}
 
 		users = append(users, user)
@@ -177,7 +195,7 @@ func (r *service) QueryUsers(ctx context.Context, tx pgx.Tx, page, pageSize int6
 	if rows.Err() != nil || forceErr == "reading" {
 		e := fmt.Errorf("error occurred during row iteration: %w", rows.Err())
 		z.Error(e.Error())
-		return []cmn.TUser{}, 0, e
+		return []User{}, 0, e
 	}
 
 	return users, rowCount, nil
@@ -185,7 +203,8 @@ func (r *service) QueryUsers(ctx context.Context, tx pgx.Tx, page, pageSize int6
 
 // InsertUsers 批量插入用户数据
 // 必要字段: account, category
-func (r *service) InsertUsers(ctx context.Context, tx pgx.Tx, users []cmn.TUser) error {
+// 请不要轻易调用该方法插入用户，该方法不会对用户信息做全面的校验
+func (r *service) InsertUsers(ctx context.Context, tx pgx.Tx, users []User) error {
 	z.Info("---->" + cmn.FncName())
 
 	forceErr, _ := ctx.Value("force-error").(string)
@@ -283,6 +302,39 @@ func (r *service) InsertUsers(ctx context.Context, tx pgx.Tx, users []cmn.TUser)
 			z.Error(e.Error())
 			return e
 		}
+
+		// 读取用户ID
+		var userID int64
+		if tx != nil {
+			err = tx.QueryRow(ctx, "SELECT id FROM t_user WHERE account = $1", users[i].Account).Scan(&userID)
+		} else {
+			err = r.pgxConn.QueryRow(ctx, "SELECT id FROM t_user WHERE account = $1", users[i].Account).Scan(&userID)
+		}
+		if err != nil || forceErr == "QueryUserID" {
+			e := fmt.Errorf("failed to retrieve user ID for %s: %w", users[i].Account, err)
+			z.Error(e.Error())
+			return e
+		}
+
+		// 插入用户角色到 t_user_domain
+		if len(users[i].Domains) > 0 {
+			insertDomainSQL := `
+				INSERT INTO t_user_domain (sys_user, domain)
+				VALUES ($1, (SELECT id FROM t_domain WHERE domain = $2))
+			`
+			for _, domain := range users[i].Domains {
+				if tx != nil {
+					_, err = tx.Exec(ctx, insertDomainSQL, userID, domain.String)
+				} else {
+					_, err = r.pgxConn.Exec(ctx, insertDomainSQL, userID, domain.String)
+				}
+				if err != nil || forceErr == "InsertUserDomain" {
+					e := fmt.Errorf("failed to insert user domain %s for user %s: %w", domain.String, users[i].Account, err)
+					z.Error(e.Error())
+					return e
+				}
+			}
+		}
 	}
 
 	return nil
@@ -290,7 +342,7 @@ func (r *service) InsertUsers(ctx context.Context, tx pgx.Tx, users []cmn.TUser)
 
 // InsertUsersWithAccount 批量插入用户数据，并为每个用户生成唯一账号
 // 必要字段: category
-func (r *service) InsertUsersWithAccount(ctx context.Context, tx pgx.Tx, users []cmn.TUser) error {
+func (r *service) InsertUsersWithAccount(ctx context.Context, tx pgx.Tx, users []User) error {
 	z.Info("---->" + cmn.FncName())
 
 	forceErr, _ := ctx.Value("force-error").(string)
@@ -460,10 +512,10 @@ func (r *service) GenerateUniqueAccount(ctx context.Context, tx pgx.Tx, length i
 	return "", e
 }
 
-// ValidateUser 验证用户信息
+// ValidateUserToBeInsert 验证即将被插入数据库的用户信息
 // 返回 允许插入的有效用户列表 和 不允许插入的不合法用户列表
 // 会使用用户已有的信息（除了帐号）检索这个用户是否存在，已存在的用户会被跳过，既不会被归为有效用户，也不会被归为无效用户
-func (r *service) ValidateUser(ctx context.Context, tx pgx.Tx, users []cmn.TUser) ([]cmn.TUser, []InvalidUser, error) {
+func (r *service) ValidateUserToBeInsert(ctx context.Context, tx pgx.Tx, users []User) ([]User, []InvalidUser, error) {
 	if len(users) == 0 {
 		e := fmt.Errorf("users cannot be empty")
 		z.Error(e.Error())
@@ -473,15 +525,18 @@ func (r *service) ValidateUser(ctx context.Context, tx pgx.Tx, users []cmn.TUser
 	forceErr, _ := ctx.Value("force-error").(string)
 
 	invalidUsers := make([]InvalidUser, 0)
-	validUsers := make([]cmn.TUser, 0)
+	validUsers := make([]User, 0)
 
 	// 构造错误信息map
 	errorMessages := map[string]string{
-		"account_exists":      "账号已存在",
-		"mobile_phone_exists": "手机号已存在",
-		"email_exists":        "邮箱已存在",
-		"id_card_no_exists":   "证件号已存在",
-		"invalid_email":       "邮箱格式不正确",
+		"account_exists":        "账号已存在",
+		"mobile_phone_exists":   "手机号已存在",
+		"email_exists":          "邮箱已存在",
+		"id_card_no_exists":     "证件号已存在",
+		"invalid_email":         "邮箱格式不正确",
+		"invalid_domain":        "角色不合法",
+		"empty_domain":          "角色不能为空",
+		"can_not_be_superAdmin": "不允许为超级管理员角色",
 	}
 
 	for i := range users {
@@ -559,6 +614,27 @@ func (r *service) ValidateUser(ctx context.Context, tx pgx.Tx, users []cmn.TUser
 			}
 		}
 
+		if len(users[i].Domains) != 0 {
+			// 检查角色是否合法
+			for _, domain := range users[i].Domains {
+				if !IsDomainExist(domain.String) {
+					errorCount++
+					errorMessage = append(errorMessage, null.StringFrom(fmt.Sprintf("%s: %s", errorMessages["invalid_domain"], domain.String)))
+					break // 一旦发现一个角色不合法，就不需要继续检查其他角色
+				}
+				if domain.String == DomainSuperAdmin {
+					// 如果角色是超级管理员，则不允许添加
+					errorCount++
+					errorMessage = append(errorMessage, null.StringFrom(errorMessages["can_not_be_superAdmin"]))
+					break // 一旦发现是超级管理员角色，就不需要继续检查其他角色
+				}
+			}
+		} else {
+			// 如果角色列表为空，则添加错误信息
+			errorCount++
+			errorMessage = append(errorMessage, null.StringFrom(errorMessages["empty_domain"]))
+		}
+
 		if errorCount > 0 {
 			// 如果有错误，则将用户添加到无效列表
 			invalidUsers = append(invalidUsers, InvalidUser{
@@ -578,4 +654,43 @@ func (r *service) ValidateUser(ctx context.Context, tx pgx.Tx, users []cmn.TUser
 	}
 
 	return validUsers, invalidUsers, nil
+}
+
+// QueryUserCurrentRole 查询用户当前角色
+// 返回值: 角色ID、角色名称、错误
+func (r *service) QueryUserCurrentRole(ctx context.Context, userId null.Int) (null.Int, null.String, error) {
+	if !userId.Valid {
+		e := fmt.Errorf("userId is required")
+		z.Error(e.Error())
+		return null.Int{}, null.String{}, e
+	}
+
+	forceErr, _ := ctx.Value("force-error").(string)
+
+	const query = `
+	SELECT u.role AS role_id, d.domain AS role_name
+	FROM t_user u
+	JOIN t_domain d ON u.role = d.id
+	WHERE u.id = $1
+	`
+
+	var roleId null.Int
+	var roleName null.String
+
+	var err error
+
+	err = r.pgxConn.QueryRow(ctx, query, userId.Int64).Scan(&roleId, &roleName)
+	if err != nil || forceErr == "QueryUserCurrentRole" {
+		e := fmt.Errorf("failed to query user current role: %w", err)
+		z.Error(e.Error())
+		return null.Int{}, null.String{}, e
+	}
+
+	if !roleId.Valid || !roleName.Valid || forceErr == "InvalidRole" {
+		e := fmt.Errorf("user %d does not have a valid role", userId.Int64)
+		z.Error(e.Error())
+		return null.Int{}, null.String{}, e
+	}
+
+	return roleId, roleName, nil
 }

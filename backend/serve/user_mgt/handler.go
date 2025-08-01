@@ -26,7 +26,7 @@ func NewHandler() Handler {
 	}
 }
 
-// HandleUser 处理用户用户管理相关请求
+// HandleUser 处理用户管理相关请求
 func (h *handler) HandleUser(ctx context.Context) {
 	q := cmn.GetCtxValue(ctx)
 	z.Info("---->" + cmn.FncName())
@@ -35,6 +35,20 @@ func (h *handler) HandleUser(ctx context.Context) {
 	var err error
 
 	method := strings.ToLower(q.R.Method)
+
+	_, roleName, err := h.srv.QueryUserCurrentRole(ctx, q.SysUser.ID)
+	if err != nil {
+		q.Err = fmt.Errorf("failed to query user current role: %w", err)
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+	if (roleName.String != DomainSuperAdmin && roleName.String != DomainAdmin) || !roleName.Valid {
+		q.Err = fmt.Errorf("user does not have permission to access this resource")
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
 
 	switch method {
 	case "get": // 获取用户列表
@@ -56,6 +70,14 @@ func (h *handler) HandleUser(ctx context.Context) {
 			return
 		}
 
+		domain := query.Get("domain")
+		if domain != "" && !IsDomainExist(domain) {
+			q.Err = fmt.Errorf("invalid filter domain: %s", query.Get("domain"))
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
 		// 构造过滤条件
 		filter := QueryUsersFilter{
 			Account:    NullableString(query.Get("account")),
@@ -65,6 +87,7 @@ func (h *handler) HandleUser(ctx context.Context) {
 			Gender:     NullableString(query.Get("gender")),
 			Status:     NullableString(query.Get("status")),
 			CreateTime: NullableIntFromStr(query.Get("createTime")),
+			Domain:     NullableString(domain),
 		}
 
 		users, totalRows, err := h.srv.QueryUsers(ctx, nil, page, pageSize, filter)
@@ -123,7 +146,7 @@ func (h *handler) HandleUser(ctx context.Context) {
 			return
 		}
 
-		var users []cmn.TUser
+		var users []User
 		err = json.Unmarshal(body.Data, &users)
 		if err != nil {
 			q.Err = fmt.Errorf("failed to unmarshal request json data: %w", err)
@@ -170,9 +193,9 @@ func (h *handler) HandleUser(ctx context.Context) {
 		}()
 
 		// 验证用户信息
-		var validUsers []cmn.TUser
+		var validUsers []User
 		var invalidUsers []InvalidUser
-		validUsers, invalidUsers, err = h.srv.ValidateUser(ctx, tx, users)
+		validUsers, invalidUsers, err = h.srv.ValidateUserToBeInsert(ctx, tx, users)
 		if err != nil {
 			q.Err = fmt.Errorf("failed to validate users: %w", err)
 			q.RespErr()
