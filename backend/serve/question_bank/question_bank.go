@@ -114,7 +114,12 @@ func getQuestionBankList(ctx context.Context, conn *pgxpool.Pool, params QueryQu
 		argIndex++
 	}
 
-	// 权限过滤TODO
+	// 检查是否有creator
+	if params.Creator > 0 {
+		conditions = append(conditions, fmt.Sprintf("creator = $%d", argIndex))
+		args = append(args, params.Creator)
+		argIndex++
+	}
 
 	// 构建完整的WHERE子句
 	var whereClause string
@@ -197,27 +202,29 @@ func getQuestionBankList(ctx context.Context, conn *pgxpool.Pool, params QueryQu
 	return list, rowCount, nil
 }
 
-// 是否有权限修改题库
-func hasPermissionToEditBank(bankID int64, userID int64) (exists bool, err error) {
-	if bankID <= 0 || userID <= 0 {
-		return false, fmt.Errorf("invalid bankID or userID: %d, %d", bankID, userID)
-	}
-
-	params := []interface{}{bankID, userID}
-	conn := cmn.GetPgxConn()
-	s := "select count(id) from t_question_bank where id = $1 and creator = $2"
-	var count int
-	err = conn.QueryRow(context.Background(), s, params...).Scan(&count)
-	if err != nil {
-		return false, err
-	}
-	return count > 0, nil
-}
-
 // 题库接口
 func questionBanks(ctx context.Context) {
 	q := cmn.GetCtxValue(ctx)
 
+	// 检查权限
+	userDomains := q.Domains     //用户权限域
+	role := q.SysUser.Role.Int64 //用户角色编号
+	var userDoamin string
+	for _, d := range userDomains {
+		if d.ID.Valid && d.ID.Int64 == role {
+			userDoamin = d.Domain
+			break
+		}
+	}
+	// 判断是否在允许范围内
+	isAllowed := isAllowedDomain(userDoamin)
+
+	if !isAllowed {
+		q.Err = fmt.Errorf("domain %s is not allowed", userDoamin)
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
 	conn := cmn.GetPgxConn()
 
 	z.Info("---->" + cmn.FncName())
@@ -241,12 +248,6 @@ func questionBanks(ctx context.Context) {
 		page, _ := strconv.ParseInt(pageStr, 10, 64)
 		pageSize, _ := strconv.ParseInt(pageSizeStr, 10, 64)
 
-		userID := null.IntFrom(1000)
-		if q.SysUser != nil {
-			userID = q.SysUser.ID
-		}
-		//level := "00" // 权限等级，"00" 表示全局权限（TODO: 替换为真实来源）
-
 		var bankID int64
 		if bankIDStr != "" {
 			bankID, q.Err = strconv.ParseInt(bankIDStr, 10, 64)
@@ -258,12 +259,24 @@ func questionBanks(ctx context.Context) {
 			}
 		}
 
+		// 检查是否为教师身份，此身份只能获取自己的题库
+		var userID int64
+		if userDoamin == DomainTeacher {
+			userID = q.SysUser.ID.Int64
+			if userID <= 0 {
+				q.Err = fmt.Errorf("invalid userID: %d", userID)
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+		}
+
 		params := QueryQuestionBankParams{
 			BankID:   bankID,
 			Keyword:  keyword,
 			Page:     page,
 			PageSize: pageSize,
-			UserID:   userID.Int64,
+			Creator:  userID,
 		}
 
 		list, rowCount, err := getQuestionBankList(ctx, conn, params)
@@ -351,9 +364,12 @@ func questionBanks(ctx context.Context) {
 		}
 
 		// 设置创建者
-		userID := null.IntFrom(1000)
-		if q.SysUser != nil {
-			userID = q.SysUser.ID
+		userID := q.SysUser.ID
+		if userID.Int64 <= 0 {
+			q.Err = fmt.Errorf("invalid userID: %d", userID.Int64)
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
 		}
 		bank.Creator = userID
 
@@ -450,27 +466,13 @@ func questionBanks(ctx context.Context) {
 			return
 		}
 
-		userID := null.IntFrom(1000)
-		if q.SysUser != nil {
-			userID = q.SysUser.ID
+		userID := q.SysUser.ID
+		if userID.Int64 <= 0 {
+			q.Err = fmt.Errorf("invalid userID: %d", userID.Int64)
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
 		}
-
-		if CurrentLevelSign != GlobalLevelSign {
-			// 不具备全局权限时，检查是否有权限修改题库
-			var exists bool
-			exists, q.Err = hasPermissionToEditBank(questionBankID, userID.Int64)
-			if q.Err != nil {
-				q.RespErr()
-				return
-			}
-			if !exists {
-				q.Err = fmt.Errorf("call /api/question-banks with invalid question bank ID: %d", questionBankID)
-				z.Error(q.Err.Error())
-				q.RespErr()
-				return
-			}
-		}
-
 		// 设置更新者以及更新时间（毫秒级时间戳）
 		bank.UpdatedBy = userID
 		t := cmn.GetNowInMS()
@@ -820,6 +822,25 @@ func getQuestionList(ctx context.Context, conn *pgxpool.Pool, params QueryQuesti
 func questions(ctx context.Context) {
 	q := cmn.GetCtxValue(ctx)
 
+	// 检查权限
+	userDomains := q.Domains     //用户权限域
+	role := q.SysUser.Role.Int64 //用户角色编号
+	var userDoamin string
+	for _, d := range userDomains {
+		if d.ID.Valid && d.ID.Int64 == role {
+			userDoamin = d.Domain
+			break
+		}
+	}
+	// 判断是否在允许范围内
+	isAllowed := isAllowedDomain(userDoamin)
+
+	if !isAllowed {
+		q.Err = fmt.Errorf("domain %s is not allowed", userDoamin)
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
 	conn := cmn.GetPgxConn()
 
 	z.Info("---->" + cmn.FncName())
@@ -846,11 +867,6 @@ func questions(ctx context.Context) {
 		page, _ := strconv.ParseInt(pageStr, 10, 64)
 		pageSize, _ := strconv.ParseInt(pageSizeStr, 10, 64)
 
-		userID := null.IntFrom(1000)
-		if q.SysUser != nil {
-			userID = q.SysUser.ID
-		}
-
 		if bankIDStr == "" {
 			q.Err = fmt.Errorf("bankID is empty")
 			z.Error(q.Err.Error())
@@ -873,7 +889,6 @@ func questions(ctx context.Context) {
 			Difficulty: difficultyList,
 			Page:       page,
 			PageSize:   pageSize,
-			UserID:     userID.Int64,
 		}
 
 		list, rowCount, err := getQuestionList(ctx, conn, params)
@@ -937,9 +952,12 @@ func questions(ctx context.Context) {
 			return
 		}
 
-		userID := null.IntFrom(1000)
-		if q.SysUser != nil {
-			userID = q.SysUser.ID
+		userID := q.SysUser.ID.Int64
+		if userID <= 0 {
+			q.Err = fmt.Errorf("无效的用户ID: %d", userID)
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
 		}
 
 		var insertQuestions []cmn.TQuestion
@@ -951,7 +969,7 @@ func questions(ctx context.Context) {
 				return
 			}
 			question.TableMap = &question
-			question.Creator = userID
+			question.Creator = null.IntFrom(userID)
 
 			q.Err = cmn.InvalidEmptyNullValue(&question)
 			if q.Err != nil {
@@ -984,7 +1002,7 @@ func questions(ctx context.Context) {
 		// 同步更新对于题库
 		count := int64(len(insertQuestions))
 		bankID := insertQuestions[0].BelongTo.Int64
-		q.Err = updateBankQuestionCount(ctx, conn, bankID, count, userID.Int64)
+		q.Err = updateBankQuestionCount(ctx, conn, bankID, count, userID)
 		if q.Err != nil {
 			z.Error(q.Err.Error())
 			q.RespErr()

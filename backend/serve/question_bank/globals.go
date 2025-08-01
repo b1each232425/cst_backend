@@ -8,10 +8,24 @@ const (
 )
 
 const (
-	GlobalLevelSign  = "00" // 全局权限
-	NormalLevelSign  = "02" // 普通权限
-	CurrentLevelSign = "00" // 当前权限(TODO: 目前未使用, 可能会在后续版本中使用, 仅作为占位符保留)
+	// allowDomain
+	DomainSuperAdmin          = "cst.school^superAdmin"           // 超级管理员
+	DomainAdmin               = "cst.school^admin"                // 管理员
+	DomainAcademicAffairAdmin = "cst.school.academicAffair^admin" // 考务员
+	DomainTeacher             = "cst.school^teacher"              // 教师
 )
+
+var allowedDomains = map[string]struct{}{
+	DomainSuperAdmin:          {},
+	DomainAdmin:               {},
+	DomainAcademicAffairAdmin: {},
+	DomainTeacher:             {},
+}
+
+func isAllowedDomain(domain string) bool {
+	_, exists := allowedDomains[domain]
+	return exists
+}
 
 var QuestionTypes = map[string]string{
 	"00": "单选题",

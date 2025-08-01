@@ -6,7 +6,7 @@ type QueryQuestionBankParams struct {
 	Keyword  string // 关键字
 	Page     int64  // 分页页码
 	PageSize int64  // 分页大小
-	UserID   int64  // 用户ID
+	Creator  int64  // 用户ID
 }
 
 // 查询题目参数结构体
@@ -18,7 +18,6 @@ type QueryQuestionsParams struct {
 	Difficulty []int64  // 题目难度
 	Page       int64    // 分页页码
 	PageSize   int64    // 分页大小
-	UserID     int64    // 用户ID
 }
 
 // QuestionOption 客观题题目选项结构
