@@ -3,7 +3,7 @@
  * @Description: 练习管理所需模型
  * @Date: 2025-07-15 19:59:25
  * @LastEditors: zdl <1311866870@qq.com>
- * @LastEditTime: 2025-08-01 15:24:26
+ * @LastEditTime: 2025-08-01 16:04:10
  */
 package practice_mgt
 
@@ -83,6 +83,14 @@ var PracticeStudentStatus = struct {
 }{
 	Normal:  "00",
 	Deleted: "02",
+}
+
+var PracticeDomainID = struct {
+	Student int64 // 学生 2008
+	Teacher int64 // 教师 2003
+}{
+	Student: 2008,
+	Teacher: 2003,
 }
 
 type practiceInfo struct {
