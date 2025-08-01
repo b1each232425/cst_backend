@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/jmoiron/sqlx"
+	"github.com/pkg/errors"
 	"go.uber.org/zap"
 	"io"
 	"strconv"
@@ -405,6 +406,21 @@ func practiceStudentListH(ctx context.Context) {
 	q := cmn.GetCtxValue(ctx)
 	ctx, cancel := context.WithTimeout(q.R.Context(), 5*time.Second)
 	defer cancel()
+	var domainID int64
+	for _, domain := range q.Domains {
+		if domain.ID.Int64 == PracticeDomainID.Student || domain.ID.Int64 == PracticeDomainID.Teacher || domain.ID.Int64 == PracticeDomainID.Admin || domain.ID.Int64 == PracticeDomainID.SuperAdmin {
+			domainID = domain.ID.Int64
+			break
+		}
+	}
+	if domainID != 0 && domainID == PracticeDomainID.Student {
+		warn := "检测到学生权限，无法操作学生名单"
+		z.Warn(warn)
+		q.Err = errors.New(warn)
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
 	userID := q.SysUser.ID.Int64
 	// 这里要进行域的处理，就是这个学生能查看谁的
 	if userID <= 0 {
@@ -562,6 +578,11 @@ func practiceStudentListH(ctx context.Context) {
 				q.RespErr()
 				return
 			}
+			z.Info("---->" + cmn.FncName())
+			q.Msg.Status = 0
+			q.Msg.Msg = "OK"
+			q.Resp()
+			return
 		}
 	default:
 		{
