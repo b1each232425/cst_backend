@@ -594,7 +594,7 @@ func Test_handler_HandleUser(t *testing.T) {
 					},
 					totalRows: 1,
 					QueryUserCurrentRoleFunc: func(ctx context.Context, userId null.Int) (null.Int, null.String, error) {
-						return null.Int{}, null.NewString("cst.school^teacher", true), nil
+						return null.Int{}, null.NewString("cst.school^student", true), nil
 					},
 				},
 			},

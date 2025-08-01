@@ -54,7 +54,8 @@ func (h *handler) HandleUser(ctx context.Context) {
 		q.RespErr()
 		return
 	}
-	if (roleName.String != DomainSuperAdmin && roleName.String != DomainAdmin) || !roleName.Valid {
+	// 角色不合法不能访问、学生不能访问
+	if !IsDomainExist(roleName.String) || roleName.String == DomainStudent || !roleName.Valid {
 		q.Err = fmt.Errorf("user does not have permission to access this resource")
 		z.Error(q.Err.Error())
 		q.RespErr()
