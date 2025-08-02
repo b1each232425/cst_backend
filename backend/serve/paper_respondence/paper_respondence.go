@@ -962,41 +962,43 @@ func Submit(ctx context.Context) {
 		}
 
 		//查考当前是否符合条件去提交
-		_, q.Err = checkExamCondition(ctx, u.ExamSessionId, u.StudentId, tx, SUBMIT)
-		if q.Err != nil {
+		status, err := checkExamCondition(ctx, u.ExamSessionId, u.StudentId, tx, SUBMIT)
+		if err != nil {
+			q.Err = err
 			q.RespErr()
 			return
 		}
+		if status != ExamSubmitted {
+			now := time.Now().UTC()
 
-		now := time.Now().UTC()
+			examinee := cmn.TExaminee{
+				ID:         null.IntFrom(u.ExamineeID),
+				EndTime:    null.IntFrom(now.UnixMilli()),
+				UpdatedBy:  null.IntFrom(u.StudentId),
+				UpdateTime: null.IntFrom(now.UnixMilli()),
+			}
+			if forceErr == "exam-submit-err" {
+				tx.Rollback(dmlCtx)
+			}
+			//更新t_examinee表，如果end_time为空、start_time不为空才能设置，end_time不为空说明已经提交过了
+			updateSqlForExaminee := `UPDATE t_examinee SET end_time = $1,status=$2,updated_by=$3,update_time=$4 WHERE id = $5 AND end_time IS NULL AND start_time IS NOT NULL RETURNING id`
+			var updateId null.Int
 
-		examinee := cmn.TExaminee{
-			ID:         null.IntFrom(u.ExamineeID),
-			EndTime:    null.IntFrom(now.UnixMilli()),
-			UpdatedBy:  null.IntFrom(u.StudentId),
-			UpdateTime: null.IntFrom(now.UnixMilli()),
-		}
-		if forceErr == "exam-submit-err" {
-			tx.Rollback(dmlCtx)
-		}
-		//更新t_examinee表，如果end_time为空、start_time不为空才能设置，end_time不为空说明已经提交过了
-		updateSqlForExaminee := `UPDATE t_examinee SET end_time = $1,status=$2,updated_by=$3,update_time=$4 WHERE id = $5 AND end_time IS NULL AND start_time IS NOT NULL RETURNING id`
-		var updateId null.Int
-
-		q.Err = tx.QueryRow(ctx, updateSqlForExaminee, &examinee.EndTime, ExamOverStatus, &examinee.UpdatedBy, &examinee.UpdateTime, &examinee.ID).Scan(&updateId)
-		if q.Err != nil {
-			z.Error("QueryRow", zap.Error(q.Err))
-			q.RespErr()
-			return
-		}
-		if forceErr == "setAnswerCanNotUpdate error" {
-			tx.Rollback(dmlCtx)
-		}
-		//设置作答为禁止作答状态
-		q.Err = setAnswerCanNotUpdate(ctx, u.ExamineeID, 0, u.StudentId, tx)
-		if q.Err != nil {
-			q.RespErr()
-			return
+			q.Err = tx.QueryRow(ctx, updateSqlForExaminee, &examinee.EndTime, ExamOverStatus, &examinee.UpdatedBy, &examinee.UpdateTime, &examinee.ID).Scan(&updateId)
+			if q.Err != nil {
+				z.Error("QueryRow", zap.Error(q.Err))
+				q.RespErr()
+				return
+			}
+			if forceErr == "setAnswerCanNotUpdate error" {
+				tx.Rollback(dmlCtx)
+			}
+			//设置作答为禁止作答状态
+			q.Err = setAnswerCanNotUpdate(ctx, u.ExamineeID, 0, u.StudentId, tx)
+			if q.Err != nil {
+				q.RespErr()
+				return
+			}
 		}
 
 		q.Err = tx.Commit(ctx)
@@ -1364,11 +1366,16 @@ func checkExamCondition(ctx context.Context, examSession, studentID int64, tx pg
 			return 0, ErrExamNotStart
 		}
 
+		if examineeInfo.ExamineeEndTime.Valid {
+			return ExamSubmitted, nil
+		}
+
 		//必须满足考试模式为线上固定时段考试、设置了提前几分钟交卷、时间还未到达交卷时间才会触发错误
-		if now.UnixMilli() < examineeInfo.AllowSubmitTime.Int64 && examineeInfo.PeriodMode.String == ExamTypeFixed && examineeInfo.Mode.String == ExamModeOnline {
+		if now.UnixMilli() < examineeInfo.AllowSubmitTime.Int64-1000 && examineeInfo.PeriodMode.String == ExamTypeFixed && examineeInfo.Mode.String == ExamModeOnline {
 			z.Error(ErrAllowedSubmitNotArrive.Error())
 			return 0, ErrAllowedSubmitNotArrive
 		}
+
 	case STATUS:
 		//查考考试是否开始
 		if now.UnixMilli() < examineeInfo.StartTime.Int64 {
