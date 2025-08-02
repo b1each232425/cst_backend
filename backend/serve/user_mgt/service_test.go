@@ -59,6 +59,18 @@ func TestService_QueryUsers(t *testing.T) {
 			desc:           "测试页面大小为负数时应该返回错误",
 		},
 		{
+			name:     "ID过滤查询测试",
+			ctx:      context.WithValue(context.Background(), "force-error", ""),
+			page:     1,
+			pageSize: 10,
+			filter: QueryUsersFilter{
+				ID: null.NewInt(1, true),
+			},
+			wantUsersCount: 1,
+			wantErr:        false,
+			desc:           "测试按ID过滤查询",
+		},
+		{
 			name:     "账号过滤查询测试",
 			ctx:      context.WithValue(context.Background(), "force-error", ""),
 			page:     1,
@@ -326,6 +338,176 @@ func TestService_QueryUsers(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestService_QueryUserCurrentRole 测试QueryUserCurrentRole方法
+func TestService_QueryUserCurrentRole(t *testing.T) {
+	// 创建真实的repo实例
+	repo := NewService()
+
+	tests := []struct {
+		name         string
+		ctx          context.Context
+		userId       null.Int
+		wantRoleId   null.Int
+		wantRoleName null.String
+		wantErr      bool
+		desc         string
+	}{
+		{
+			name:         "查询有效用户角色",
+			ctx:          context.Background(),
+			userId:       null.IntFrom(2), // 假设用户ID为1存在且有角色
+			wantRoleId:   null.NewInt(2000, true),
+			wantRoleName: null.NewString("cst.school^superAdmin", true),
+			wantErr:      false,
+			desc:         "测试查询存在且有角色的用户",
+		},
+		{
+			name:         "查询得到的用户角色无效",
+			ctx:          context.WithValue(context.Background(), "force-error", "InvalidRole"),
+			userId:       null.IntFrom(2), // 假设用户ID为1存在且有角色
+			wantRoleId:   null.NewInt(2000, true),
+			wantRoleName: null.NewString("cst.school^superAdmin", true),
+			wantErr:      true,
+			desc:         "测试查询存在且有角色的用户",
+		},
+		{
+			name:         "用户ID无效",
+			ctx:          context.Background(),
+			userId:       null.NewInt(0, false),
+			wantRoleId:   null.NewInt(0, false),
+			wantRoleName: null.NewString("", false),
+			wantErr:      true,
+			desc:         "测试用户ID无效时应该返回错误",
+		},
+		{
+			name:         "用户不存在",
+			ctx:          context.Background(),
+			userId:       null.IntFrom(999999), // 假设这个用户ID不存在
+			wantRoleId:   null.NewInt(0, false),
+			wantRoleName: null.NewString("", false),
+			wantErr:      true,
+			desc:         "测试查询不存在的用户应该返回错误",
+		},
+		{
+			name:         "强制查询错误",
+			ctx:          context.WithValue(context.Background(), "force-error", "QueryUserCurrentRole"),
+			userId:       null.IntFrom(1),
+			wantRoleId:   null.NewInt(0, false),
+			wantRoleName: null.NewString("", false),
+			wantErr:      true,
+			desc:         "测试强制查询错误",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Logf("开始测试: %s", tt.desc)
+
+			// 执行查询
+			roleId, roleName, err := repo.QueryUserCurrentRole(tt.ctx, tt.userId)
+
+			// 验证错误
+			if (err != nil) != tt.wantErr {
+				t.Errorf("QueryUserCurrentRole() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+
+			// 如果期望有错误，则不需要进一步验证
+			if tt.wantErr {
+				t.Logf("预期错误已正确返回: %v", err)
+				return
+			}
+
+			// 验证返回结果
+			if roleId.Valid != tt.wantRoleId.Valid {
+				t.Errorf("QueryUserCurrentRole() roleId.Valid = %v, want %v", roleId.Valid, tt.wantRoleId.Valid)
+			}
+
+			if roleName.Valid != tt.wantRoleName.Valid {
+				t.Errorf("QueryUserCurrentRole() roleName.Valid = %v, want %v", roleName.Valid, tt.wantRoleName.Valid)
+			}
+
+			// 如果角色ID和角色名称都有效，验证它们不为空
+			if roleId.Valid && roleId.Int64 <= 0 {
+				t.Errorf("QueryUserCurrentRole() roleId should be positive, got %d", roleId.Int64)
+			}
+
+			if roleName.Valid && roleName.String == "" {
+				t.Error("QueryUserCurrentRole() roleName should not be empty when valid")
+			}
+
+			t.Logf("查询结果: roleId=%v, roleName=%v", roleId, roleName)
+		})
+	}
+}
+
+// TestService_QueryUserCurrentRole_EdgeCases 边界情况测试
+func TestService_QueryUserCurrentRole_EdgeCases(t *testing.T) {
+	repo := NewService()
+	ctx := context.Background()
+
+	tests := []struct {
+		name    string
+		userId  null.Int
+		wantErr bool
+		desc    string
+	}{
+		{
+			name:    "极大用户ID测试",
+			userId:  null.IntFrom(9223372036854775807), // int64最大值
+			wantErr: true,
+			desc:    "测试极大用户ID应该返回错误",
+		},
+		{
+			name:    "负数用户ID测试",
+			userId:  null.IntFrom(-1),
+			wantErr: true,
+			desc:    "测试负数用户ID应该返回错误",
+		},
+		{
+			name:    "零用户ID测试",
+			userId:  null.IntFrom(0),
+			wantErr: true,
+			desc:    "测试零用户ID应该返回错误",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Logf("开始测试: %s", tt.desc)
+
+			roleId, roleName, err := repo.QueryUserCurrentRole(ctx, tt.userId)
+
+			if (err != nil) != tt.wantErr {
+				t.Errorf("QueryUserCurrentRole() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+
+			if !tt.wantErr {
+				t.Logf("边界测试结果: roleId=%v, roleName=%v", roleId, roleName)
+			} else {
+				t.Logf("预期错误已正确返回: %v", err)
+			}
+		})
+	}
+}
+
+// BenchmarkQueryUserCurrentRole 基准测试
+func BenchmarkQueryUserCurrentRole(b *testing.B) {
+	repo := NewService()
+	ctx := context.Background()
+	userId := null.IntFrom(1) // 假设用户ID为1存在
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, _, err := repo.QueryUserCurrentRole(ctx, userId)
+		if err != nil {
+			// 在基准测试中，如果用户不存在是正常的，不应该停止测试
+			// b.Errorf("QueryUserCurrentRole() error = %v", err)
+		}
 	}
 }
 
@@ -2049,6 +2231,33 @@ func Test_service_ValidateUser(t *testing.T) {
 			wantErr: false,
 		},
 		{
+			name: "尝试插入超级管理员用户",
+			args: args{
+				ctx: context.Background(),
+				users: []User{
+					{
+						TUser: cmn.TUser{
+							Account: "zhangsan",
+						},
+						Domains: []null.String{
+							null.NewString("cst.school^superAdmin", true),
+						},
+					},
+				},
+			},
+			wantValid: nil,
+			wantInvalid: []InvalidUser{
+				{
+					Account: null.NewString("zhangsan", true),
+					ErrorMsg: []null.String{
+						null.NewString("账号已存在", true),
+						null.NewString("不允许为超级管理员角色", true),
+					},
+				},
+			},
+			wantErr: false,
+		},
+		{
 			name: "邮箱地址不合法",
 			args: args{
 				ctx: context.Background(),
@@ -2291,34 +2500,34 @@ func Test_service_ValidateUser(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			gotValid, gotInvalid, err := srv.ValidateUser(tt.args.ctx, nil, tt.args.users)
+			gotValid, gotInvalid, err := srv.ValidateUserToBeInsert(tt.args.ctx, nil, tt.args.users)
 			if (err != nil) != tt.wantErr {
-				t.Errorf("ValidateUser() error = %v, wantErr %v", err, tt.wantErr)
+				t.Errorf("ValidateUserToBeInsert() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
 
 			// 比较有效用户列表
 			if len(gotValid) != len(tt.wantValid) {
-				t.Errorf("ValidateUser() gotValid length = %v, want %v", len(gotValid), len(tt.wantValid))
+				t.Errorf("ValidateUserToBeInsert() gotValid length = %v, want %v", len(gotValid), len(tt.wantValid))
 				return
 			}
 			for i, user := range gotValid {
 				if user.Account != tt.wantValid[i].Account {
-					t.Errorf("ValidateUser() gotValid[%d].Account = %v, want %v", i, user.Account, tt.wantValid[i].Account)
+					t.Errorf("ValidateUserToBeInsert() gotValid[%d].Account = %v, want %v", i, user.Account, tt.wantValid[i].Account)
 				}
 			}
 
 			// 比较无效用户列表
 			if len(gotInvalid) != len(tt.wantInvalid) {
-				t.Errorf("ValidateUser() gotInvalid length = %v, want %v", len(gotInvalid), len(tt.wantInvalid))
+				t.Errorf("ValidateUserToBeInsert() gotInvalid length = %v, want %v", len(gotInvalid), len(tt.wantInvalid))
 				return
 			}
 			for i, user := range gotInvalid {
 				if user.Account.String != tt.wantInvalid[i].Account.String {
-					t.Errorf("ValidateUser() gotInvalid[%d].Account = %v, want %v", i, user.Account.String, tt.wantInvalid[i].Account.String)
+					t.Errorf("ValidateUserToBeInsert() gotInvalid[%d].Account = %v, want %v", i, user.Account.String, tt.wantInvalid[i].Account.String)
 				}
 				if len(user.ErrorMsg) != len(tt.wantInvalid[i].ErrorMsg) {
-					t.Errorf("ValidateUser() gotInvalid[%d].ErrorMsg length = %v, want %v", i, len(user.ErrorMsg), len(tt.wantInvalid[i].ErrorMsg))
+					t.Errorf("ValidateUserToBeInsert() gotInvalid[%d].ErrorMsg length = %v, want %v", i, len(user.ErrorMsg), len(tt.wantInvalid[i].ErrorMsg))
 				}
 			}
 		})
@@ -2530,34 +2739,34 @@ func Test_service_ValidateUser_WithTransaction(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			gotValid, gotInvalid, err := srv.ValidateUser(tt.args.ctx, tx, tt.args.users)
+			gotValid, gotInvalid, err := srv.ValidateUserToBeInsert(tt.args.ctx, tx, tt.args.users)
 			if (err != nil) != tt.wantErr {
-				t.Errorf("ValidateUser() error = %v, wantErr %v", err, tt.wantErr)
+				t.Errorf("ValidateUserToBeInsert() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
 
 			// 比较有效用户列表
 			if len(gotValid) != len(tt.wantValid) {
-				t.Errorf("ValidateUser() gotValid length = %v, want %v", len(gotValid), len(tt.wantValid))
+				t.Errorf("ValidateUserToBeInsert() gotValid length = %v, want %v", len(gotValid), len(tt.wantValid))
 				return
 			}
 			for i, user := range gotValid {
 				if user.Account != tt.wantValid[i].Account {
-					t.Errorf("ValidateUser() gotValid[%d].Account = %v, want %v", i, user.Account, tt.wantValid[i].Account)
+					t.Errorf("ValidateUserToBeInsert() gotValid[%d].Account = %v, want %v", i, user.Account, tt.wantValid[i].Account)
 				}
 			}
 
 			// 比较无效用户列表
 			if len(gotInvalid) != len(tt.wantInvalid) {
-				t.Errorf("ValidateUser() gotInvalid length = %v, want %v", len(gotInvalid), len(tt.wantInvalid))
+				t.Errorf("ValidateUserToBeInsert() gotInvalid length = %v, want %v", len(gotInvalid), len(tt.wantInvalid))
 				return
 			}
 			for i, user := range gotInvalid {
 				if user.Account.String != tt.wantInvalid[i].Account.String {
-					t.Errorf("ValidateUser() gotInvalid[%d].Account = %v, want %v", i, user.Account.String, tt.wantInvalid[i].Account.String)
+					t.Errorf("ValidateUserToBeInsert() gotInvalid[%d].Account = %v, want %v", i, user.Account.String, tt.wantInvalid[i].Account.String)
 				}
 				if len(user.ErrorMsg) != len(tt.wantInvalid[i].ErrorMsg) {
-					t.Errorf("ValidateUser() gotInvalid[%d].ErrorMsg length = %v, want %v", i, len(user.ErrorMsg), len(tt.wantInvalid[i].ErrorMsg))
+					t.Errorf("ValidateUserToBeInsert() gotInvalid[%d].ErrorMsg length = %v, want %v", i, len(user.ErrorMsg), len(tt.wantInvalid[i].ErrorMsg))
 				}
 			}
 		})

@@ -70,4 +70,36 @@ func Enroll(author string) {
 		//DefaultDomain 该API将默认授权给的用户
 		DefaultDomain: int64(cmn.CDomainSys),
 	})
+
+	_ = cmn.AddService(&cmn.ServeEndPoint{
+		Fn: handler.HandleQueryMyInfo,
+
+		Path: "/user/me",
+		Name: "Query My Info",
+
+		Developer: developer,
+		WhiteList: true,
+
+		//DomainID 创建该API的账号归属的domain
+		DomainID: int64(cmn.CDomainSys),
+
+		//DefaultDomain 该API将默认授权给的用户
+		DefaultDomain: int64(cmn.CDomainSys),
+	})
+
+	_ = cmn.AddService(&cmn.ServeEndPoint{
+		Fn: handler.HandleSelectLoginDomain,
+
+		Path: "/user/login-domain",
+		Name: "Select Login Domain",
+
+		Developer: developer,
+		WhiteList: true,
+
+		//DomainID 创建该API的账号归属的domain
+		DomainID: int64(cmn.CDomainSys),
+
+		//DefaultDomain 该API将默认授权给的用户
+		DefaultDomain: int64(cmn.CDomainSys),
+	})
 }
