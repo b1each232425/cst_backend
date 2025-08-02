@@ -1349,6 +1349,10 @@ func checkExamCondition(ctx context.Context, examSession, studentID int64, tx pg
 			z.Error(ErrExamFinished.Error())
 			return 0, ErrExamFinished
 		}
+		// 如果监考员允许或者学生之前已经进入过考试了，就允许他进入考试
+		if examineeInfo.ExamineeStatus.String == CanBeEnterStatus || examineeInfo.ExamineeStartTime.Valid {
+			return 0, nil
+		}
 		//必须满足考试模式为线上固定时段考试、设置了最迟几分钟计入考试、超过进入时间才会触发错误
 		if now.UnixMilli() > examineeInfo.AllowEntryTime.Int64 && examineeInfo.AllowEntryTime.Int64 != examineeInfo.StartTime.Int64 && examineeInfo.PeriodMode.String == ExamTypeFixed && examineeInfo.Mode.String == ExamModeOnline {
 			z.Error(ErrExamOverEntryTime.Error())
