@@ -8,13 +8,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
-	"github.com/jmoiron/sqlx/types"
 	"io"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jmoiron/sqlx/types"
 	"w2w.io/null"
 
 	"go.uber.org/zap"
@@ -144,9 +145,66 @@ func ManualPaper(ctx context.Context) {
 	}
 	switch method {
 	case "post":
+		//获取用户ID
+		userID := q.SysUser.ID.Int64
+		if userID <= 0 {
+			q.Err = fmt.Errorf("无效用户ID: %d", userID)
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		//获取用户角色
+		roleID := q.SysUser.Role.Int64
+		if roleID <= 0 {
+			q.Err = fmt.Errorf("invalid role: %d", userID)
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		//判断用户是否有权限获取试卷列表
+		var role string
+		var resourceDomain string
+		// 从q.Domains找到当前用户角色的角色名称
+		for _, domain := range q.Domains {
+			if domain.DomainID.Int64 == roleID {
+				//拆出domain的名称前缀，确认资源范围
+				resources := strings.Split(domain.Domain, "^")
+				resourceDomain = resources[0]
+				parts := strings.Split(resourceDomain, ".")
+				if len(parts) >= 2 {
+					resourceDomain = strings.Join(parts[:2], ".")
+				} else {
+				}
+				role = resources[1]
+				break
+			}
+		}
+
+		if role != "teacher" && role != "superAdmin" && role != "admin" {
+			q.Err = fmt.Errorf("没有权限创建试卷: %s", role)
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		db := cmn.GetPgxConn()
 		dmlCtx, cancel := context.WithTimeout(ctx, TIMEOUT)
 		defer cancel()
-		db := cmn.GetPgxConn()
+
+		resourceIDSql := `SELECT id FROM t_domain WHERE domain = $1`
+		var resourceID int64
+		q.Err = db.QueryRow(ctx, resourceIDSql, resourceDomain).Scan(&resourceID)
+		if forceError == "tx.QueryRow-err" {
+			q.Err = errors.New(forceError)
+		}
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
 		var tx pgx.Tx
 		tx, q.Err = db.BeginTx(dmlCtx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead})
 		if forceError == "BeginTx-err" {
@@ -185,17 +243,10 @@ func ManualPaper(ctx context.Context) {
 			}
 		}()
 
-		userID := q.SysUser.ID.Int64
-		if userID <= 0 {
-			q.Err = fmt.Errorf("invalid UserID: %d", userID)
-			z.Error(q.Err.Error())
-			q.RespErr()
-			return
-		}
 		//初始化一张空试卷SQL
-		sql := `
+		initPaperSql := `
 INSERT INTO t_paper 
-    (name, assembly_type, category, level, suggested_duration, tags, creator, create_time, updated_by, update_time, status, access_mode) 
+    (name, assembly_type, category, level, suggested_duration, tags, creator, create_time, updated_by, update_time, status, access_mode,domain_id) 
 VALUES 
     ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11,$12) 
 RETURNING id`
@@ -213,8 +264,9 @@ RETURNING id`
 			UpdateTime:        null.IntFrom(time.Now().UnixMilli()),
 			Status:            null.NewString(StatusNormal, true),
 			AccessMode:        null.NewString(PaperShareStatusPrivate, true),
+			DomainID:          null.IntFrom(resourceID),
 		}
-		q.Err = tx.QueryRow(ctx, sql,
+		q.Err = tx.QueryRow(ctx, initPaperSql,
 			paper.Name.String,
 			paper.AssemblyType.String,
 			paper.Category.String,
@@ -227,6 +279,7 @@ RETURNING id`
 			paper.UpdateTime.Int64,
 			paper.Status.String,
 			paper.AccessMode.String,
+			paper.DomainID.Int64,
 		).Scan(&paper.ID)
 		if forceError == "tx.QueryRow-err" {
 			q.Err = errors.New(forceError)
@@ -339,6 +392,32 @@ RETURNING id`
 			q.RespErr()
 			return
 		}
+
+		userID := q.SysUser.ID.Int64
+		if userID <= 0 {
+			q.Err = fmt.Errorf("无效用户ID: %d", userID)
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+		var isCreator bool
+		// 如果是超级管理员，则直接拥有权限
+		if q.IsAdmin {
+			isCreator = true
+		}
+		isCreator, q.Err = isPaperCreator(ctx, paperID, userID)
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+		if !isCreator {
+			q.Err = fmt.Errorf("无权限更新试卷: %d", paperID)
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
 		var buf []byte
 		buf, q.Err = io.ReadAll(q.R.Body)
 		if forceError == "io.ReadAll-err" {
@@ -398,13 +477,6 @@ RETURNING id`
 		dmlCtx, cancel := context.WithTimeout(ctx, TIMEOUT)
 		defer cancel()
 		var results []ActionResult
-		userID := q.SysUser.ID.Int64
-		if userID <= 0 {
-			q.Err = fmt.Errorf("无效用户ID: %d", userID)
-			z.Error(q.Err.Error())
-			q.RespErr()
-			return
-		}
 		results, q.Err = updateManualPaper(dmlCtx, paperID, userID, u)
 		if q.Err != nil {
 			q.RespErr()
@@ -434,6 +506,21 @@ RETURNING id`
 			q.RespErr()
 			return
 		}
+
+		var isCreator bool
+		isCreator, q.Err = isPaperCreator(ctx, paperID, userID)
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+		if !isCreator {
+			q.Err = fmt.Errorf("无权限更新试卷: %d", paperID)
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
 		dmlCtx, cancel := context.WithTimeout(ctx, TIMEOUT)
 		defer cancel()
 		if paperID <= 0 {
@@ -503,7 +590,67 @@ func PaperList(ctx context.Context) {
 	method := strings.ToLower(q.R.Method)
 	switch method {
 	case "get":
-		z.Sugar().Info(q.Domains)
+		//获取用户ID
+		userID := q.SysUser.ID.Int64
+		if userID <= 0 {
+			q.Err = fmt.Errorf("invalid UserID: %d", userID)
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		//获取用户角色
+		roleID := q.SysUser.Role.Int64
+		if roleID <= 0 {
+			q.Err = fmt.Errorf("invalid role: %d", userID)
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		//判断用户是否有权限获取试卷列表
+		var role string
+		var resourceDomain string
+		// 从q.Domains找到当前用户角色的角色名称
+		for _, domain := range q.Domains {
+			if domain.DomainID.Int64 == roleID {
+				//拆出domain的名称前缀，确认资源范围
+				resources := strings.Split(domain.Domain, "^")
+				resourceDomain = resources[0]
+				parts := strings.Split(resourceDomain, ".")
+				if len(parts) >= 2 {
+					resourceDomain = strings.Join(parts[:2], ".")
+				} else {
+				}
+				role = resources[1]
+				break
+			}
+		}
+
+		if role != "teacher" && role != "superAdmin" && role != "admin" {
+			q.Err = fmt.Errorf("没有权限创建试卷: %s", role)
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		db := cmn.GetPgxConn()
+
+		dmlCtx, cancel := context.WithTimeout(ctx, TIMEOUT)
+		defer cancel()
+
+		resourceIDSql := `SELECT id FROM t_domain WHERE domain = $1`
+		var resourceID int64
+		q.Err = db.QueryRow(dmlCtx, resourceIDSql, resourceDomain).Scan(&resourceID)
+		if forceError == "tx.QueryRow-err" {
+			q.Err = errors.New(forceError)
+		}
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
 		//创建请求体并绑定参数
 		var req PaperListRequest
 		queryParams := q.R.URL.Query()
@@ -530,22 +677,22 @@ func PaperList(ctx context.Context) {
 			}
 		}
 
-		dmlCtx, cancel := context.WithTimeout(ctx, TIMEOUT)
-		defer cancel()
-		var totalCount int64
-		userID := q.SysUser.ID.Int64
-		if userID <= 0 {
-			q.Err = fmt.Errorf("Invalid UserID: %d", userID)
-			z.Error(q.Err.Error())
-			q.RespErr()
-			return
+		req.Self = false
+		if self := queryParams.Get("self"); self != "" {
+			if s, err := strconv.ParseBool(self); err == nil {
+				req.Self = s
+			}
 		}
+
 		q.Err = cmn.Validate(req)
 		if q.Err != nil {
 			z.Error(q.Err.Error())
 			q.RespErr()
 			return
 		}
+
+		var totalCount int64
+
 		offset := (req.Page - 1) * req.PageSize
 		// 构建动态查询条件
 		var whereClauses []string
@@ -555,13 +702,22 @@ func PaperList(ctx context.Context) {
 		// 基础条件：状态为有效
 		whereClauses = append(whereClauses, "p.status = '00'")
 
-		//查询当前用户试卷
-		var creatorClause strings.Builder
-		creatorClause.WriteString("p.creator = $")
-		creatorClause.WriteString(strconv.Itoa(paramCount))
-		whereClauses = append(whereClauses, creatorClause.String())
-		params = append(params, userID)
+		// 资源范围
+		var resourceClause strings.Builder
+		resourceClause.WriteString("p.domain_id = $")
+		resourceClause.WriteString(strconv.Itoa(paramCount))
+		whereClauses = append(whereClauses, resourceClause.String())
+		params = append(params, resourceID)
 		paramCount++
+		// 如果设置了self，则只查询当前用户创建的试卷
+		if req.Self {
+			var creatorClause strings.Builder
+			creatorClause.WriteString("p.creator = $")
+			creatorClause.WriteString(strconv.Itoa(paramCount))
+			whereClauses = append(whereClauses, creatorClause.String())
+			params = append(params, userID)
+			paramCount++
+		}
 
 		//// 权限控制
 		//accessControlClause := fmt.Sprintf(`(
@@ -627,8 +783,6 @@ func PaperList(ctx context.Context) {
 		if len(whereClauses) > 0 {
 			whereClause = "WHERE " + strings.Join(whereClauses, " AND ")
 		}
-
-		db := cmn.GetPgxConn()
 
 		// 1. 查询总数
 		var countSQLBuilder strings.Builder
@@ -701,6 +855,49 @@ func PaperList(ctx context.Context) {
 		q.Msg.Msg = "success"
 		q.Resp()
 	case "delete":
+		userID := q.SysUser.ID.Int64
+		if userID <= 0 {
+			q.Err = fmt.Errorf("invalid UserID: %d", userID)
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		//获取用户角色
+		roleID := q.SysUser.Role.Int64
+		if roleID <= 0 {
+			q.Err = fmt.Errorf("invalid role: %d", userID)
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		//判断用户是否有权限获取试卷列表
+		var role string
+		var resourceDomain string
+		// 从q.Domains找到当前用户角色的角色名称
+		for _, domain := range q.Domains {
+			if domain.DomainID.Int64 == roleID {
+				//拆出domain的名称前缀，确认资源范围
+				resources := strings.Split(domain.Domain, "^")
+				resourceDomain = resources[0]
+				parts := strings.Split(resourceDomain, ".")
+				if len(parts) >= 2 {
+					resourceDomain = strings.Join(parts[:2], ".")
+				} else {
+				}
+				role = resources[1]
+				break
+			}
+		}
+
+		if role != "teacher" && role != "superAdmin" && role != "admin" {
+			q.Err = fmt.Errorf("没有权限创建试卷: %s", role)
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
 		var buf []byte
 		buf, q.Err = io.ReadAll(q.R.Body)
 		if forceError == "PaperList-delete-io.ReadAll-err" {
@@ -750,17 +947,30 @@ func PaperList(ctx context.Context) {
 			q.RespErr()
 			return
 		}
-		userID := q.SysUser.ID.Int64
-		if userID <= 0 {
-			q.Err = fmt.Errorf("Invalid UserID: %d", userID)
+
+		if paperIDs == nil && len(paperIDs) == 0 {
+			q.Err = ErrEmptyPaperIDs
 			z.Error(q.Err.Error())
 			q.RespErr()
 			return
 		}
+
+		db := cmn.GetPgxConn()
 		dmlCtx, cancel := context.WithTimeout(ctx, TIMEOUT)
 		defer cancel()
 
-		db := cmn.GetPgxConn()
+		resourceIDSql := `SELECT id FROM t_domain WHERE domain = $1`
+		var resourceID int64
+		q.Err = db.QueryRow(ctx, resourceIDSql, resourceDomain).Scan(&resourceID)
+		if forceError == "tx.QueryRow-err" {
+			q.Err = errors.New(forceError)
+		}
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
 		var tx pgx.Tx
 		tx, q.Err = db.BeginTx(ctx, pgx.TxOptions{
 			IsoLevel: pgx.ReadCommitted,
@@ -773,6 +983,7 @@ func PaperList(ctx context.Context) {
 			q.RespErr()
 			return
 		}
+
 		defer func() {
 			err := tx.Rollback(ctx)
 			if forceError == "PaperList-delete-Rollback-err" {
@@ -783,14 +994,63 @@ func PaperList(ctx context.Context) {
 			}
 		}()
 
-		if paperIDs == nil && len(paperIDs) == 0 {
-			q.Err = ErrEmptyPaperIDs
+		// 检查每个试卷的权限
+		var checkSQL string
+		if q.IsAdmin {
+			// 管理员检查试卷存在性和域
+			checkSQL = `
+				SELECT array_agg(
+					CASE 
+						WHEN p.id IS NULL THEN '试卷 "' || ids.id || '" 不存在'
+						WHEN p.domain_id != $2 THEN '试卷 "' || COALESCE(p.name, '未知') || '" 不在当前域范围内'
+						ELSE NULL 
+					END
+				) as error_messages
+				FROM unnest($1::bigint[]) AS ids(id)
+				LEFT JOIN t_paper p ON p.id = ids.id
+				WHERE p.id IS NULL OR p.domain_id != $2`
+		} else {
+			// 普通用户检查试卷存在性、域和创建者
+			checkSQL = `
+				SELECT array_agg(
+					CASE 
+						WHEN p.id IS NULL THEN '试卷 "' || ids.id || '" 不存在'
+						WHEN p.domain_id != $2 THEN '试卷 "' || COALESCE(p.name, '未知') || '" 不在当前域范围内'
+						WHEN p.creator != $3 THEN '试卷 "' || COALESCE(p.name, '未知') || '" 非试卷创建者，无删除权限'
+						ELSE NULL 
+					END
+				) as error_messages
+				FROM unnest($1::bigint[]) AS ids(id)
+				LEFT JOIN t_paper p ON p.id = ids.id
+				WHERE p.id IS NULL OR p.domain_id != $2 OR p.creator != $3`
+		}
+
+		var errorMessages []string
+		q.Err = tx.QueryRow(ctx, checkSQL, paperIDs, resourceID, userID).Scan(&errorMessages)
+		if q.Err != nil {
 			z.Error(q.Err.Error())
 			q.RespErr()
 			return
 		}
-		now := time.Now().UnixMilli()
 
+		// 移除空错误消息
+		var validErrors []string
+		for _, msg := range errorMessages {
+			if msg != "" {
+				validErrors = append(validErrors, msg)
+			}
+		}
+
+		// 如果有任何不能删除的试卷，返回错误
+		if len(validErrors) > 0 {
+			data, _ := json.Marshal(validErrors)
+			q.Msg.Data = data
+			q.Msg.Status = 1
+			q.Msg.Msg = "部分试卷无法删除"
+			q.RespErr()
+			return
+		}
+		now := time.Now().UnixMilli()
 		// 1. 软删除 t_paper
 		paperSQL := `UPDATE t_paper SET status = $2, updated_by = $3, update_time = $4 WHERE id = ANY($1)`
 		_, q.Err = tx.Exec(dmlCtx, paperSQL, paperIDs, StatusUnNormal, userID, now)
@@ -832,7 +1092,6 @@ func PaperList(ctx context.Context) {
 			q.RespErr()
 			return
 		}
-		q.Err = nil
 		q.Msg.Status = 0
 		q.Msg.Msg = "success"
 		q.Resp()
@@ -1374,6 +1633,28 @@ WHERE id = $4`
 	}
 
 	return
+}
+
+func isPaperCreator(ctx context.Context, paperID, userID int64) (bool, error) {
+	forceError := ""
+	if val, ok := ctx.Value("force-error").(string); ok {
+		forceError = val
+	}
+	db := cmn.GetPgxConn()
+	var isCreator bool
+	err := db.QueryRow(ctx, `
+	SELECT EXISTS (
+		SELECT 1 FROM t_paper 
+		WHERE id = $1 AND creator = $2 AND status != '02'
+	)`, paperID, userID).Scan(&isCreator)
+	if forceError == "isPaperCreator-QueryRow-err" {
+		err = errors.New(forceError)
+	}
+	if err != nil {
+		z.Error("failed to check if user is paper creator: " + err.Error())
+		return false, err
+	}
+	return isCreator, nil
 }
 
 //// 试卷共享
