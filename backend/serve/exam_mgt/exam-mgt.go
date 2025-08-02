@@ -1767,9 +1767,12 @@ func examList(ctx context.Context) {
 					es.status,
 					e.status,
 					vep.total_score,
-					sc.total_score
+					CASE 
+						WHEN ei.submitted = false THEN -1
+						ELSE sc.total_score
+					END as total_score
 				FROM (
-					SELECT ei.id, ei.name, ei.update_time
+					SELECT ei.id, ei.name, ei.update_time, ei.submitted
 					FROM t_exam_info ei
 					WHERE ei.status NOT IN ('00','10','12') ` + conditionBuilder.String() + `
 					ORDER BY ei.update_time DESC, ei.id DESC
