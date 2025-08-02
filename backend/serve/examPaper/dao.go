@@ -3,7 +3,7 @@
  * @Description: 考卷-答卷数据库层
  * @Date: 2025-07-21 13:14:34
  * @LastEditors: zdl <1311866870@qq.com>
- * @LastEditTime: 2025-07-30 22:53:16
+ * @LastEditTime: 2025-08-01 23:40:13
  */
 package examPaper
 
@@ -811,17 +811,21 @@ func LoadExamPaperDetailByUserId(ctx context.Context, tx pgx.Tx, examPaperId, pS
 		return nil, nil, nil, err
 	}
 
+	z.Sugar().Debugf("打印sAnswer是什么：%#v", sAnswer)
 	// 获取本次考卷基本信息、考卷题组、考题原本信息
 	p, pg, pq, err := LoadExamPaperDetailsById(ctx, tx, examPaperId, true, withAnswer)
 	if err != nil {
 		return nil, nil, nil, err
 	}
 
+	// TODO 回来之后要遍历查看一下这个东西是否真的不存在，然后不存在的原因是什么？实际上这个逻辑是可以的
 	// 构建指针操作哈希表 避免嵌套O（N*M）循环 无需重新构建题组map
 	questionIndex := make(map[int64]*ExamQuestion)
+	z.Sugar().Debugf("打印pq是什么：%#v", pq)
 	for _, questions := range pq {
 		for _, q := range questions {
 			questionIndex[q.ID.Int64] = q
+			z.Sugar().Debugf("打印输出一下考卷中存到题目ID：%v", q.ID.Int64)
 		}
 	}
 	// 合并学生答卷记录的信息到考题中
