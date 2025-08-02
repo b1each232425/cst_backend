@@ -38,11 +38,11 @@ func GetExamSessionInfo(ctx context.Context, examID int, queryArgs ...string) ([
 
 	sql := `
 			SELECT
-				es.id, es.exam_id, es.paper_id, es.mark_method, es.period_mode,
-				es.start_time, es.end_time, es.duration, es.question_shuffled_mode,
-				es.mark_mode, es.name_visibility_in, es.session_num, es.late_entry_time,
-				es.early_submission_time, es.reviewer_ids
-			FROM t_exam_session es
+				id, exam_id, paper_id, mark_method, period_mode,
+				start_time, end_time, duration, question_shuffled_mode,
+				mark_mode, name_visibility_in, session_num, late_entry_time,
+				early_submission_time, reviewer_ids
+			FROM t_exam_session
 			WHERE exam_id=$1 AND status = '06'
 			ORDER BY start_time ASC`
 
@@ -71,8 +71,6 @@ func GetExamSessionInfo(ctx context.Context, examID int, queryArgs ...string) ([
 			&es.LateEntryTime,
 			&es.EarlySubmissionTime,
 			&es.ReviewerIds,
-			&es.PaperName,
-			&es.PaperCategory,
 		)
 		if err != nil {
 			z.Error(err.Error())
@@ -476,6 +474,11 @@ func SetExamGradeSubmitted(ctx context.Context, args *GradeSubmitArgs) (int64, e
 		if err != nil || forceErr == "GetExamSessionInfo must fail" {
 			err = fmt.Errorf("查询考试场次信息失败(examID=%v): %w", examID, err)
 			z.Error(err.Error())
+			return 0, err
+		}
+		if len(examSessions) == 0 {
+			err = fmt.Errorf("该考试成绩仍不可提交(examID=%v)！", examID)
+			z.Warn(err.Error())
 			return 0, err
 		}
 
