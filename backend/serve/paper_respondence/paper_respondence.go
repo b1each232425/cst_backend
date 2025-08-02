@@ -141,10 +141,10 @@ func Enroll(author string) {
 		DefaultDomain: int64(cmn.CDomainSys),
 	})
 	_ = cmn.AddService(&cmn.ServeEndPoint{
-		Fn: CheckExamStatus,
+		Fn: AllowStudentCanBeInExam,
 
-		Path: "/respondent/exam/status",
-		Name: "respondent_exam_status",
+		Path: "/respondent/allow",
+		Name: "respondent_allow",
 
 		Developer: developer,
 		WhiteList: true,
@@ -155,6 +155,7 @@ func Enroll(author string) {
 		//DefaultDomain 该API将默认授权给的用户
 		DefaultDomain: int64(cmn.CDomainSys),
 	})
+
 }
 
 // --------------------http接口暴露函数区域
@@ -1190,7 +1191,7 @@ func AllowStudentCanBeInExam(ctx context.Context) {
 			return
 		}
 	}()
-
+	z.Info("查看参数", zap.Any("params", u))
 	//检查考试状态是否允许操作
 	_, q.Err = checkExamCondition(dmlCtx, u.ExamSessionId, u.StudentId, tx, ALLOW)
 	if q.Err != nil {
@@ -1199,11 +1200,23 @@ func AllowStudentCanBeInExam(ctx context.Context) {
 	}
 
 	//开始设置考生状态
-	updateSql := `UPDATE t_examinee SET updated_by = $1, update_time = $2, status = $3 WHERE exam_session_id = $4 AND student_id=$5 AND status=$6`
+	updateSql := `UPDATE t_examinee e
+SET updated_by = $1,
+    update_time = (EXTRACT(EPOCH FROM NOW()) * 1000)::bigint,
+    status = $2
+WHERE e.exam_session_id = $3
+  AND e.student_id = $4
+  AND e.status = $5
+  AND EXISTS (
+      SELECT 1
+      FROM t_exam_session s
+      WHERE s.id = e.exam_session_id
+        AND $6=ANY(COALESCE(s.reviewer_ids, '{}'))
+  ) RETURNING id;`
 	var updateId null.Int
-	q.Err = tx.QueryRow(ctx, updateSql, u.TeacherId, time.Now(), CanBeEnterStatus, u.ExamSessionId, NormalStatus).Scan(&updateId)
+	q.Err = tx.QueryRow(ctx, updateSql, u.TeacherId, CanBeEnterStatus, u.ExamSessionId, u.StudentId, NormalStatus, u.TeacherId).Scan(&updateId)
 	if q.Err != nil {
-		z.Error("更新考试异常状态失败", zap.Error(err))
+		z.Error("允许学生进入考试失败", zap.Error(err))
 		q.RespErr()
 		return
 	}
@@ -1238,8 +1251,8 @@ func checkDomain(q *cmn.ServiceCtx, domainID int64) error {
 			return nil
 		}
 	}
-	err := errors.New("not student domain")
-	z.Error(err.Error())
+	err := errors.New("invalid domain")
+	z.Error(err.Error(), zap.Any("domainIds", q.Domains))
 	return err
 }
 
