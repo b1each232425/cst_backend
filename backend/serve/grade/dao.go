@@ -476,11 +476,11 @@ func SetExamGradeSubmitted(ctx context.Context, args *GradeSubmitArgs) (int64, e
 			z.Error(err.Error())
 			return 0, err
 		}
-		if len(examSessions) == 0 {
-			err = fmt.Errorf("该考试成绩仍不可提交(examID=%v)！", examID)
-			z.Warn(err.Error())
-			return 0, err
-		}
+		// if len(examSessions) == 0 {
+		// 	err = fmt.Errorf("该考试成绩仍不可提交(examID=%v)！", examID)
+		// 	z.Warn(err.Error())
+		// 	return 0, err
+		// }
 
 		currTime := time.Now()
 
