@@ -41,9 +41,10 @@ const (
 
 	TestSign = "test"
 
-	SUBMIT = "submit"
-	INIT   = "init"
-	STATUS = "status"
+	SUBMIT = "0"
+	INIT   = "1"
+	STATUS = "2"
+	ALLOW  = "3"
 
 	ExamOverStatus       = "10"
 	QuestionCanNotAnswer = "02"
@@ -52,6 +53,7 @@ const (
 	ExamineeDeleteStatus = " 08"
 	MakeupExam           = "04"
 
+	//
 	practiceSubmitted = "06"
 
 	ExamType     = "00"
@@ -60,15 +62,15 @@ const (
 	ForceErr = "forceErr"
 
 	StudentDomainId = 2008
+	ExamInvigilator = 2004
 )
 
 var (
-	ErrExamNotStart           = errors.New("exam has not started yet")
-	ErrExamOverEntryTime      = errors.New("exam can not be entry,because over entry time")
-	ErrExamFinished           = errors.New("exam has finished")
-	ErrAllowedSubmitNotArrive = errors.New("allowed submit time not arrive")
-	ErrExamSessionIdInvalid   = errors.New("exam session id must be > 0")
-	ErrStudentInvalid         = errors.New("student id must be > 0")
+	ErrExamNotStart           = errors.New("考试还未开始")
+	ErrExamOverEntryTime      = errors.New("无法进入考试，因为超过最迟进入考试时间")
+	ErrExamFinished           = errors.New("考试已经结束")
+	ErrAllowedSubmitNotArrive = errors.New("还未到达交卷的时间")
+	ErrExamineeHaveSubmitted  = errors.New("考生已经提交试卷")
 )
 
 var z *zap.Logger
@@ -153,6 +155,22 @@ func Enroll(author string) {
 		//DefaultDomain 该API将默认授权给的用户
 		DefaultDomain: int64(cmn.CDomainSys),
 	})
+	_ = cmn.AddService(&cmn.ServeEndPoint{
+		Fn: AllowStudentCanBeInExam,
+
+		Path: "/respondent/allow",
+		Name: "respondent_allow",
+
+		Developer: developer,
+		WhiteList: true,
+
+		//DomainID 创建该API的账号归属的domain
+		DomainID: int64(cmn.CDomainSys),
+
+		//DefaultDomain 该API将默认授权给的用户
+		DefaultDomain: int64(cmn.CDomainSys),
+	})
+
 }
 
 // --------------------http接口暴露函数区域
@@ -162,7 +180,7 @@ func StudentAnswer(ctx context.Context) {
 	q := cmn.GetCtxValue(ctx)
 	z.Info("---->" + cmn.FncName())
 
-	q.Err = checkDomainIfStudent(q)
+	q.Err = checkDomain(q, StudentDomainId)
 	if q.Err != nil {
 		q.RespErr()
 		return
@@ -392,7 +410,7 @@ func InitRespondent(ctx context.Context) {
 		q.RespErr()
 		return
 	}
-	q.Err = checkDomainIfStudent(q)
+	q.Err = checkDomain(q, StudentDomainId)
 	if q.Err != nil {
 		q.RespErr()
 		return
@@ -506,10 +524,13 @@ func InitRespondent(ctx context.Context) {
 		}
 
 		//获取当前用户的角色
-		roleId := q.Role
+		roleId := q.SysUser.Role.Int64
+		z.Info("查看当前用户角色id", zap.Int64("roleId", roleId))
 		var role null.String
 		q.Err = tx.QueryRow(dmlCtx, `SELECT domain FROM assessuser.t_domain WHERE id=$1 `, roleId).Scan(&role)
 		if q.Err != nil {
+			err := fmt.Errorf("查找用户角色发生错误:" + q.Err.Error())
+			q.Err = err
 			z.Error(q.Err.Error())
 			q.RespErr()
 			return
@@ -717,7 +738,7 @@ func CheckExamStatus(ctx context.Context) {
 		q.RespErr()
 		return
 	}
-	q.Err = checkDomainIfStudent(q)
+	q.Err = checkDomain(q, StudentDomainId)
 	if q.Err != nil {
 		q.RespErr()
 		return
@@ -833,7 +854,7 @@ func Submit(ctx context.Context) {
 		q.RespErr()
 		return
 	}
-	q.Err = checkDomainIfStudent(q)
+	q.Err = checkDomain(q, StudentDomainId)
 	if q.Err != nil {
 		q.RespErr()
 		return
@@ -941,41 +962,43 @@ func Submit(ctx context.Context) {
 		}
 
 		//查考当前是否符合条件去提交
-		_, q.Err = checkExamCondition(ctx, u.ExamSessionId, u.StudentId, tx, SUBMIT)
-		if q.Err != nil {
+		status, err := checkExamCondition(ctx, u.ExamSessionId, u.StudentId, tx, SUBMIT)
+		if err != nil {
+			q.Err = err
 			q.RespErr()
 			return
 		}
+		if status != ExamSubmitted {
+			now := time.Now().UTC()
 
-		now := time.Now().UTC()
+			examinee := cmn.TExaminee{
+				ID:         null.IntFrom(u.ExamineeID),
+				EndTime:    null.IntFrom(now.UnixMilli()),
+				UpdatedBy:  null.IntFrom(u.StudentId),
+				UpdateTime: null.IntFrom(now.UnixMilli()),
+			}
+			if forceErr == "exam-submit-err" {
+				tx.Rollback(dmlCtx)
+			}
+			//更新t_examinee表，如果end_time为空、start_time不为空才能设置，end_time不为空说明已经提交过了
+			updateSqlForExaminee := `UPDATE t_examinee SET end_time = $1,status=$2,updated_by=$3,update_time=$4 WHERE id = $5 AND end_time IS NULL AND start_time IS NOT NULL RETURNING id`
+			var updateId null.Int
 
-		examinee := cmn.TExaminee{
-			ID:         null.IntFrom(u.ExamineeID),
-			EndTime:    null.IntFrom(now.UnixMilli()),
-			UpdatedBy:  null.IntFrom(u.StudentId),
-			UpdateTime: null.IntFrom(now.UnixMilli()),
-		}
-		if forceErr == "exam-submit-err" {
-			tx.Rollback(dmlCtx)
-		}
-		//更新t_examinee表，如果end_time为空、start_time不为空才能设置，end_time不为空说明已经提交过了
-		updateSqlForExaminee := `UPDATE t_examinee SET end_time = $1,status=$2,updated_by=$3,update_time=$4 WHERE id = $5 AND end_time IS NULL AND start_time IS NOT NULL RETURNING id`
-		var updateId null.Int
-
-		q.Err = tx.QueryRow(ctx, updateSqlForExaminee, &examinee.EndTime, ExamOverStatus, &examinee.UpdatedBy, &examinee.UpdateTime, &examinee.ID).Scan(&updateId)
-		if q.Err != nil {
-			z.Error("QueryRow", zap.Error(q.Err))
-			q.RespErr()
-			return
-		}
-		if forceErr == "setAnswerCanNotUpdate error" {
-			tx.Rollback(dmlCtx)
-		}
-		//设置作答为禁止作答状态
-		q.Err = setAnswerCanNotUpdate(ctx, u.ExamineeID, 0, u.StudentId, tx)
-		if q.Err != nil {
-			q.RespErr()
-			return
+			q.Err = tx.QueryRow(ctx, updateSqlForExaminee, &examinee.EndTime, ExamOverStatus, &examinee.UpdatedBy, &examinee.UpdateTime, &examinee.ID).Scan(&updateId)
+			if q.Err != nil {
+				z.Error("QueryRow", zap.Error(q.Err))
+				q.RespErr()
+				return
+			}
+			if forceErr == "setAnswerCanNotUpdate error" {
+				tx.Rollback(dmlCtx)
+			}
+			//设置作答为禁止作答状态
+			q.Err = setAnswerCanNotUpdate(ctx, u.ExamineeID, 0, u.StudentId, tx)
+			if q.Err != nil {
+				q.RespErr()
+				return
+			}
 		}
 
 		q.Err = tx.Commit(ctx)
@@ -1073,17 +1096,180 @@ func Submit(ctx context.Context) {
 	q.Resp()
 }
 
+// AllowStudentCanBeInExam 允许学生进入考试（只有监考员才允许）
+func AllowStudentCanBeInExam(ctx context.Context) {
+	q := cmn.GetCtxValue(ctx)
+	z.Info("---->" + cmn.FncName())
+
+	method := strings.ToLower(q.R.Method)
+	if method != "post" {
+		q.Err = fmt.Errorf("please call /api/upLogin with  http POST method")
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+	//检查是否为监考员
+	q.Err = checkDomain(q, ExamInvigilator)
+	if q.Err != nil {
+		q.RespErr()
+		return
+	}
+	//强制错误，用于使得难以触发的错误强制它报错
+	forceErr := ""
+	forceErr, ok := ctx.Value(ForceErr).(string)
+	if !ok {
+		forceErr = ""
+	}
+	var buf []byte
+	buf, q.Err = io.ReadAll(q.R.Body)
+	if forceErr == "io.ReadAll" {
+		q.Err = errors.New("io read all error")
+	}
+	if q.Err != nil {
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+	defer func() {
+		q.Err = q.R.Body.Close()
+		if forceErr == "close body err" {
+			q.Err = errors.New("close body err")
+		}
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+	}()
+
+	if len(buf) == 0 {
+		q.Err = fmt.Errorf("Call /api/respondent with  empty body")
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+	//获取请求的结构体
+	var qry cmn.ReqProto
+	q.Err = json.Unmarshal(buf, &qry)
+	if q.Err != nil {
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+	var u AllowStudentEnterReq
+	q.Err = json.Unmarshal(qry.Data, &u)
+	if q.Err != nil {
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+	//获取老师的id
+	TeacherId := q.SysUser.ID.Int64
+	if TeacherId <= 0 {
+		q.Err = errors.New("TeacherId is smaller than 0 or equal to 0")
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+	u.TeacherId = TeacherId
+
+	//参数校验
+	q.Err = cmn.Validate(u)
+	if q.Err != nil {
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+
+	//创建事务
+	dmlCtx, cancel := context.WithTimeout(ctx, TIMEOUT)
+	defer cancel()
+
+	db := cmn.GetPgxConn()
+	tx, err := db.BeginTx(dmlCtx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead})
+	if forceErr == "begin-tx" {
+		err = errors.New("begin tx error")
+	}
+	if err != nil {
+		q.Err = err
+		z.Error(err.Error())
+		q.RespErr()
+		return
+	}
+	defer func() {
+		//如果不是tx done错误就返回给前端
+		q.Err = tx.Rollback(dmlCtx)
+		if forceErr == "rollback-tx" {
+			q.Err = pgx.ErrTxCommitRollback
+		}
+		if q.Err != nil && !errors.Is(q.Err, pgx.ErrTxClosed) {
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+	}()
+	z.Info("查看参数", zap.Any("params", u))
+	//检查考试状态是否允许操作
+	_, q.Err = checkExamCondition(dmlCtx, u.ExamSessionId, u.StudentId, tx, ALLOW)
+	if q.Err != nil {
+		q.RespErr()
+		return
+	}
+
+	//开始设置考生状态
+	updateSql := `UPDATE t_examinee e
+SET updated_by = $1,
+    update_time = (EXTRACT(EPOCH FROM NOW()) * 1000)::bigint,
+    status = $2
+WHERE e.exam_session_id = $3
+  AND e.student_id = $4
+  AND e.status = $5
+  AND EXISTS (
+      SELECT 1
+      FROM t_exam_session s
+      WHERE s.id = e.exam_session_id
+        AND $6=ANY(COALESCE(s.reviewer_ids, '{}'))
+  ) RETURNING id;`
+	var updateId null.Int
+	q.Err = tx.QueryRow(ctx, updateSql, u.TeacherId, CanBeEnterStatus, u.ExamSessionId, u.StudentId, NormalStatus, u.TeacherId).Scan(&updateId)
+	if q.Err != nil {
+		z.Error("允许学生进入考试失败", zap.Error(err))
+		q.RespErr()
+		return
+	}
+	if forceErr == "commit-tx" {
+		tx.Rollback(dmlCtx)
+	}
+	//提交事务
+	if err := tx.Commit(dmlCtx); err != nil {
+		q.Err = err
+		z.Error(err.Error())
+		q.RespErr()
+		return
+	}
+	if forceErr == "close body err" {
+		return
+	}
+	if forceErr == "rollback-tx" {
+		return
+	}
+	q.Err = nil
+	q.Msg.Status = 0
+	q.Msg.Msg = "success"
+	q.Resp()
+}
+
 //--------------------封装一些给外部调用，或者常用的函数
 
 // checkDomainIfStudent 查看是否是学生账号
-func checkDomainIfStudent(q *cmn.ServiceCtx) error {
+func checkDomain(q *cmn.ServiceCtx, domainID int64) error {
 	for _, domain := range q.Domains {
-		if domain.DomainID.Int64 == StudentDomainId {
+		if domain.ID.Int64 == domainID {
 			return nil
 		}
 	}
-	err := errors.New("not student domain")
-	z.Error(err.Error())
+	err := errors.New("invalid domain")
+	z.Error(err.Error(), zap.Any("domainIds", q.Domains))
 	return err
 }
 
@@ -1154,15 +1340,20 @@ func checkExamCondition(ctx context.Context, examSession, studentID int64, tx pg
 
 	switch use {
 	case INIT:
+		//查看当前考试是否开始
 		if now.UnixMilli() < examineeInfo.StartTime.Int64 {
 			z.Error(ErrExamNotStart.Error(), zap.Int64("examineeId", examineeInfo.ID.Int64))
 			return 0, ErrExamNotStart
 		}
 
-		//查考当前是否是在考试结束后进入考试
+		//查考当前是否是在考试结束
 		if now.UnixMilli() > examineeInfo.ActualEndTime.Int64 {
 			z.Error(ErrExamFinished.Error())
 			return 0, ErrExamFinished
+		}
+		// 如果监考员允许或者学生之前已经进入过考试了，就允许他进入考试
+		if examineeInfo.ExamineeStatus.String == CanBeEnterStatus || examineeInfo.ExamineeStartTime.Valid {
+			return 0, nil
 		}
 		//必须满足考试模式为线上固定时段考试、设置了最迟几分钟计入考试、超过进入时间才会触发错误
 		if now.UnixMilli() > examineeInfo.AllowEntryTime.Int64 && examineeInfo.AllowEntryTime.Int64 != examineeInfo.StartTime.Int64 && examineeInfo.PeriodMode.String == ExamTypeFixed && examineeInfo.Mode.String == ExamModeOnline {
@@ -1175,11 +1366,16 @@ func checkExamCondition(ctx context.Context, examSession, studentID int64, tx pg
 			return 0, ErrExamNotStart
 		}
 
+		if examineeInfo.ExamineeEndTime.Valid {
+			return ExamSubmitted, nil
+		}
+
 		//必须满足考试模式为线上固定时段考试、设置了提前几分钟交卷、时间还未到达交卷时间才会触发错误
-		if now.UnixMilli() < examineeInfo.AllowSubmitTime.Int64 && examineeInfo.PeriodMode.String == ExamTypeFixed && examineeInfo.Mode.String == ExamModeOnline {
+		if now.UnixMilli() < examineeInfo.AllowSubmitTime.Int64-1000 && examineeInfo.PeriodMode.String == ExamTypeFixed && examineeInfo.Mode.String == ExamModeOnline {
 			z.Error(ErrAllowedSubmitNotArrive.Error())
 			return 0, ErrAllowedSubmitNotArrive
 		}
+
 	case STATUS:
 		//查考考试是否开始
 		if now.UnixMilli() < examineeInfo.StartTime.Int64 {
@@ -1201,6 +1397,24 @@ func checkExamCondition(ctx context.Context, examSession, studentID int64, tx pg
 		//线上需要查考最迟进入时间
 		if now.UnixMilli() > examineeInfo.AllowEntryTime.Int64 && examineeInfo.Mode.String == ExamModeOnline {
 			return LateEntryTimeArrived, nil
+		}
+		return ExamCanBeEnter, nil
+	case ALLOW:
+		//查看当前考试是否开始
+		if now.UnixMilli() < examineeInfo.StartTime.Int64 {
+			z.Error(ErrExamNotStart.Error(), zap.Int64("examineeId", examineeInfo.ID.Int64))
+			return 0, ErrExamNotStart
+		}
+
+		//查考当前是否是在考试结束
+		if now.UnixMilli() > examineeInfo.ActualEndTime.Int64 {
+			z.Error(ErrExamFinished.Error())
+			return 0, ErrExamFinished
+		}
+		//查看考生是否已经提交
+		if examineeInfo.ExamineeEndTime.Valid {
+			z.Error(ErrExamineeHaveSubmitted.Error(), zap.Int64("examineeId", examineeInfo.ID.Int64))
+			return 0, ErrExamineeHaveSubmitted
 		}
 	default:
 		err := fmt.Errorf("unknown use %s", use)

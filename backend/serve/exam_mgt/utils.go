@@ -8,21 +8,6 @@ import (
 	"w2w.io/cmn"
 )
 
-// 检查用户是否具有指定域权限的辅助函数
-func hasAnyDomainPermissionByID(userDomainIDs []int64, requiredDomainIDs []int64) bool {
-	domainSet := make(map[int64]bool)
-	for _, domainID := range userDomainIDs {
-		domainSet[domainID] = true
-	}
-
-	for _, requiredID := range requiredDomainIDs {
-		if domainSet[requiredID] {
-			return true
-		}
-	}
-	return false
-}
-
 // 检查考试数据的有效性
 func validateExamData(examData ExamData, isUpdate bool) error {
 	z.Info("---->" + cmn.FncName())
@@ -129,24 +114,19 @@ func validateExamData(examData ExamData, isUpdate bool) error {
 	return nil
 }
 
-func validateUserForExamCreate(domain string) (bool, error) {
+func validateUserForExamCreate(domain string) bool {
 	z.Info("---->" + cmn.FncName())
-	if domain == "" {
-		err := fmt.Errorf("无效的用户域: %s", domain)
-		z.Error(err.Error())
-		return false, err
-	}
 
 	// 检查域名是否包含 cst 前缀和 ^admin 权限标识
 	if !strings.HasPrefix(domain, "cst") {
-		return false, nil
+		return false
 	}
 
-	if !strings.Contains(domain, "^admin") {
-		return false, nil
+	if !strings.Contains(domain, "^admin") && !strings.Contains(domain, "^superAdmin") {
+		return false
 	}
 
-	return true, nil
+	return true
 }
 
 // getDomainByUserRole 根据用户角色ID从用户域列表中查找对应的域字符串

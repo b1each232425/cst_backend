@@ -48,7 +48,7 @@ func UpsertPractice(ctx context.Context, p *cmn.TPractice, ps []int64, uid int64
 /*
 关键参数说明：
 	p 要插入/更新的练习信息
-	ps 参与练习的学生ID数组
+	ps 参与练习的学生ID数组 为空或者长度为0则不更新学生名单 否则就更新
 	uid 操作人
 	isOperate 是否通过operate操作函数调用的：是则允许更新status字段，否则不允许更新status字段
 */

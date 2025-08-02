@@ -17,6 +17,7 @@ import (
 )
 
 const testUserID = 1
+const creator = 11
 
 // createMockContextWithRole 创建带用户角色的模拟上下文
 func createMockContextWithRole(method, path string, queryParams url.Values, forceError string, userID, userRole int64) context.Context {
@@ -103,14 +104,80 @@ func createMockContextWithBody(method, path string, data string, forceError stri
 
 func setup() {
 	// 提前准备好测试数据
+	testBankFilePath := "test-bank.json"
+	testQuestionFilePath := "test-question.json"
+
+	bankBytes, err := os.ReadFile(testBankFilePath)
+	if err != nil {
+		e := fmt.Sprintf("Failed to read test bank file %s: %v", testBankFilePath, err)
+		z.Fatal(e)
+	}
+	questionBytes, err := os.ReadFile(testQuestionFilePath)
+	if err != nil {
+		e := fmt.Sprintf("Failed to read test question file %s: %v", testQuestionFilePath, err)
+		z.Fatal(e)
+	}
+
+	var testBankData cmn.TQuestionBank
+	var testQuestionData []cmn.TQuestion
+
+	err = json.Unmarshal(bankBytes, &testBankData)
+	if err != nil {
+		e := fmt.Sprintf("Failed to unmarshal test bank data from %s: %v", testBankFilePath, err)
+		z.Fatal(e)
+	}
+	err = json.Unmarshal(questionBytes, &testQuestionData)
+	if err != nil {
+		e := fmt.Sprintf("Failed to unmarshal test question data from %s: %v", testQuestionFilePath, err)
+		z.Fatal(e)
+	}
+
+	// 数据库连接
+	db := cmn.GetDbConn()
+
+	// 插入题库并记录映射
+	err = testBankData.Create(db)
+	if err != nil {
+		e := fmt.Sprintf("Failed to create question bank: %v", err)
+		z.Warn(e)
+	}
+	bankID := testBankData.ID.Int64
+	fmt.Printf("Created question bank with ID: %v\n", bankID)
+	// 插入该题库下的所有题目
+	for _, question := range testQuestionData {
+		// 设置题目id归属
+		question.BelongTo = null.NewInt(bankID, true)
+		question.Creator = null.NewInt(creator, true)
+
+		err = question.Create(db)
+		if err != nil {
+			e := fmt.Sprintf("Failed to create question (BelongTo: %v): %v", bankID, err)
+			z.Warn(e)
+		}
+	}
 }
 
 func teardown() {
-	fmt.Println("After all tests")
+	// 清理测试数据
+	clearSql1 := "DELETE FROM t_question_bank WHERE remark = 'test'"
+	clearSql2 := `DELETE FROM t_question WHERE creator=$1`
+	pgxConn := cmn.GetPgxConn()
+	_, err := pgxConn.Exec(context.Background(), clearSql1)
+	if err != nil {
+		e := fmt.Sprintf("Failed to clear test data: %v", err)
+		z.Warn(e)
+	}
+	_, err = pgxConn.Exec(context.Background(), clearSql2, creator)
+	if err != nil {
+		e := fmt.Sprintf("Failed to clear test data: %v", err)
+		z.Warn(e)
+	}
 }
 
-func Test1(t *testing.T) {
-	fmt.Println("I'm test1")
+// 添加题库测试
+func TestAddQuestionBank(t *testing.T) {
+	z.Info("TestAddQuestionBank is running...")
+
 }
 
 func Test2(t *testing.T) {
@@ -118,6 +185,7 @@ func Test2(t *testing.T) {
 }
 
 func TestMain(m *testing.M) {
+	cmn.ConfigureForTest()
 	setup()
 	code := m.Run()
 	teardown()
