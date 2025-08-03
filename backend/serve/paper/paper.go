@@ -168,7 +168,7 @@ func ManualPaper(ctx context.Context) {
 		var resourceDomain string
 		// 从q.Domains找到当前用户角色的角色名称
 		for _, domain := range q.Domains {
-			if domain.DomainID.Int64 == roleID {
+			if domain.ID.Int64 == roleID {
 				//拆出domain的名称前缀，确认资源范围
 				resources := strings.Split(domain.Domain, "^")
 				resourceDomain = resources[0]
@@ -400,6 +400,42 @@ RETURNING id`
 			q.RespErr()
 			return
 		}
+
+		//获取用户角色
+		roleID := q.SysUser.Role.Int64
+		if roleID <= 0 {
+			q.Err = fmt.Errorf("invalid role: %d", userID)
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		//判断用户是否有权限获取试卷列表
+		var role string
+		var resourceDomain string
+		// 从q.Domains找到当前用户角色的角色名称
+		for _, domain := range q.Domains {
+			if domain.ID.Int64 == roleID {
+				//拆出domain的名称前缀，确认资源范围
+				resources := strings.Split(domain.Domain, "^")
+				resourceDomain = resources[0]
+				parts := strings.Split(resourceDomain, ".")
+				if len(parts) >= 2 {
+					resourceDomain = strings.Join(parts[:2], ".")
+				} else {
+				}
+				role = resources[1]
+				break
+			}
+		}
+
+		if role != "teacher" && role != "superAdmin" && role != "admin" {
+			q.Err = fmt.Errorf("没有权限更新试卷: %s", role)
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
 		var isCreator bool
 		// 如果是超级管理员，则直接拥有权限
 		if q.IsAdmin {
@@ -607,13 +643,12 @@ func PaperList(ctx context.Context) {
 			q.RespErr()
 			return
 		}
-
 		//判断用户是否有权限获取试卷列表
 		var role string
 		var resourceDomain string
 		// 从q.Domains找到当前用户角色的角色名称
 		for _, domain := range q.Domains {
-			if domain.DomainID.Int64 == roleID {
+			if domain.ID.Int64 == roleID {
 				//拆出domain的名称前缀，确认资源范围
 				resources := strings.Split(domain.Domain, "^")
 				resourceDomain = resources[0]
@@ -877,7 +912,7 @@ func PaperList(ctx context.Context) {
 		var resourceDomain string
 		// 从q.Domains找到当前用户角色的角色名称
 		for _, domain := range q.Domains {
-			if domain.DomainID.Int64 == roleID {
+			if domain.ID.Int64 == roleID {
 				//拆出domain的名称前缀，确认资源范围
 				resources := strings.Split(domain.Domain, "^")
 				resourceDomain = resources[0]
