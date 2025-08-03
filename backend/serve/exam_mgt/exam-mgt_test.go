@@ -1803,7 +1803,7 @@ func TestExamPostMethod(t *testing.T) {
 			expectedError: false,
 			description:   "正常的考试创建请求",
 			userID:        userID,
-			userRole:      2002,
+			userRole:      2003,
 		},
 		{
 			name: "无权限的考试创建请求",
@@ -4988,7 +4988,7 @@ func TestExamStatus(t *testing.T) {
 			description:   "用户没有权限获取考试锁",
 			examID:        testExamToPublishID,
 			userID:        testAcademicAffair,
-			userRole:      2003,
+			userRole:      2008,
 			queryParams:   fmt.Sprintf(`q={"data":{"ID":%d,"Status":"02"}}`, testExamToPublishID),
 			expectSuccess: false,
 			errorContains: "用户没有权限获取考试锁",

@@ -1625,6 +1625,299 @@ func TestSetExamTimers(t *testing.T) {
 }
 
 // TestCancelExamTimers
+func TestInitializeExamTimers(t *testing.T) {
+	cmn.ConfigureForTest()
+	setupTestEnvironment(t)
+	defer cleanupTestEnvironment(t)
+
+	ctx := context.Background()
+	testData := createUnifiedTestData(t, ctx)
+
+	tests := []struct {
+		name        string
+		forceError  string
+		expectError bool
+		checkLogs   bool
+		description string
+		setupFunc   func(t *testing.T, ctx context.Context) // 测试前的设置函数
+		verifyFunc  func(t *testing.T, ctx context.Context) // 测试后的验证函数
+	}{
+		{
+			name:        "正常初始化考试定时器",
+			forceError:  "",
+			expectError: false,
+			checkLogs:   false,
+			description: "应该成功初始化所有符合条件的考试定时器",
+			setupFunc: func(t *testing.T, ctx context.Context) {
+				// 清理Redis状态
+				conn := cmn.GetRedisConn()
+				conn.Del(ctx, EXAM_TIMER_SET_KEY)
+
+				// 设置考试和场次为符合条件的状态
+				pgxConn.Exec(ctx, "UPDATE t_exam_info SET status = '02' WHERE id IN ($1, $2, $3)",
+					testData.NormalExamID, testData.AbnormalExamID, testData.MultiSessionExamID)
+				pgxConn.Exec(ctx, "UPDATE t_exam_session SET status = '02' WHERE exam_id IN ($1, $2, $3)",
+					testData.NormalExamID, testData.AbnormalExamID, testData.MultiSessionExamID)
+			},
+			verifyFunc: func(t *testing.T, ctx context.Context) {
+				// 验证Redis中是否设置了正确数量的定时器
+				conn := cmn.GetRedisConn()
+				count, err := conn.ZCard(ctx, EXAM_TIMER_SET_KEY).Result()
+				require.NoError(t, err)
+
+				// 验证定时器事件的内容
+				events, err := conn.ZRange(ctx, EXAM_TIMER_SET_KEY, 0, -1).Result()
+				require.NoError(t, err)
+
+				startEventCount := 0
+				endEventCount := 0
+				examIDSet := make(map[int64]bool)
+
+				for _, eventStr := range events {
+					var event ExamEvent
+					err := json.Unmarshal([]byte(eventStr), &event)
+					require.NoError(t, err)
+
+					examIDSet[event.ExamID] = true
+
+					if event.Type == EVENT_TYPE_EXAM_SESSION_START {
+						startEventCount++
+					} else if event.Type == EVENT_TYPE_EXAM_SESSION_END {
+						endEventCount++
+					}
+				}
+
+				// 验证设置了正确的考试
+				assert.Contains(t, examIDSet, testData.NormalExamID, "应该包含正常考试")
+				assert.Contains(t, examIDSet, testData.AbnormalExamID, "应该包含异常考试")
+				assert.Contains(t, examIDSet, testData.MultiSessionExamID, "应该包含多场次考试")
+
+				assert.Greater(t, int(count), 0, "应该有定时器被设置")
+			},
+		},
+		{
+			name:        "强制查询考试场次信息失败",
+			forceError:  "queryExamSessions",
+			expectError: false, // initializeExamTimers 在出错时只记录日志，不返回错误
+			checkLogs:   true,
+			description: "查询考试场次信息失败时应该记录错误日志并返回",
+			setupFunc: func(t *testing.T, ctx context.Context) {
+				// 清理Redis状态
+				conn := cmn.GetRedisConn()
+				conn.Del(ctx, EXAM_TIMER_SET_KEY)
+			},
+			verifyFunc: func(t *testing.T, ctx context.Context) {
+				// 验证Redis中没有设置任何定时器
+				conn := cmn.GetRedisConn()
+				count, err := conn.ZCard(ctx, EXAM_TIMER_SET_KEY).Result()
+				require.NoError(t, err)
+				assert.Equal(t, int64(0), count, "查询失败时不应该设置任何定时器")
+			},
+		},
+		{
+			name:        "强制获取考试场次信息错误",
+			forceError:  "scanExamSessionInfo",
+			expectError: false,
+			checkLogs:   true,
+			description: "获取考试场次信息失败时应该记录错误日志并返回",
+			setupFunc: func(t *testing.T, ctx context.Context) {
+				// 清理Redis状态
+				conn := cmn.GetRedisConn()
+				conn.Del(ctx, EXAM_TIMER_SET_KEY)
+
+				// 设置考试和场次为符合条件的状态
+				pgxConn.Exec(ctx, "UPDATE t_exam_info SET status = '02' WHERE id = $1", testData.NormalExamID)
+				pgxConn.Exec(ctx, "UPDATE t_exam_session SET status = '02' WHERE exam_id = $1", testData.NormalExamID)
+			},
+			verifyFunc: func(t *testing.T, ctx context.Context) {
+				// 验证Redis中没有设置任何定时器
+				conn := cmn.GetRedisConn()
+				count, err := conn.ZCard(ctx, EXAM_TIMER_SET_KEY).Result()
+				require.NoError(t, err)
+				assert.Equal(t, int64(0), count, "扫描失败时不应该设置任何定时器")
+			},
+		},
+		{
+			name:        "强制panic错误",
+			forceError:  "panic",
+			expectError: false,
+			checkLogs:   true,
+			description: "panic错误应该被recover并记录日志",
+			setupFunc: func(t *testing.T, ctx context.Context) {
+				// 清理Redis状态
+				conn := cmn.GetRedisConn()
+				conn.Del(ctx, EXAM_TIMER_SET_KEY)
+			},
+			verifyFunc: func(t *testing.T, ctx context.Context) {
+			},
+		},
+		{
+			name:        "没有符合条件的考试场次",
+			forceError:  "",
+			expectError: false,
+			checkLogs:   false,
+			description: "没有符合条件的考试场次时应该正常返回",
+			setupFunc: func(t *testing.T, ctx context.Context) {
+				// 清理Redis状态
+				conn := cmn.GetRedisConn()
+				conn.Del(ctx, EXAM_TIMER_SET_KEY)
+
+				// 设置所有考试为已结束状态，同时设置场次也为已结束状态
+				pgxConn.Exec(ctx, "UPDATE t_exam_info SET status = '06' WHERE id IN ($1, $2, $3)",
+					testData.NormalExamID, testData.AbnormalExamID, testData.MultiSessionExamID)
+				pgxConn.Exec(ctx, "UPDATE t_exam_session SET status = '06' WHERE exam_id IN ($1, $2, $3)",
+					testData.NormalExamID, testData.AbnormalExamID, testData.MultiSessionExamID)
+			},
+			verifyFunc: func(t *testing.T, ctx context.Context) {
+				// 验证Redis中没有设置任何定时器
+				conn := cmn.GetRedisConn()
+				count, err := conn.ZCard(ctx, EXAM_TIMER_SET_KEY).Result()
+				require.NoError(t, err)
+				assert.Equal(t, int64(0), count, "没有符合条件的场次时不应该设置任何定时器")
+			},
+		},
+		{
+			name:        "只有过去时间的场次",
+			forceError:  "",
+			expectError: false,
+			checkLogs:   false,
+			description: "只有过去时间的场次不应该设置定时器",
+			setupFunc: func(t *testing.T, ctx context.Context) {
+				// 清理Redis状态
+				conn := cmn.GetRedisConn()
+				conn.Del(ctx, EXAM_TIMER_SET_KEY)
+
+				// 设置考试和场次为符合条件的状态，但时间都在过去
+				pgxConn.Exec(ctx, "UPDATE t_exam_info SET status = '02' WHERE id = $1", testData.NormalExamID)
+				pgxConn.Exec(ctx, "UPDATE t_exam_session SET status = '02', start_time = $1, end_time = $2 WHERE exam_id = $3",
+					testData.PastTime-3600000, testData.PastTime-1800000, testData.NormalExamID)
+			},
+			verifyFunc: func(t *testing.T, ctx context.Context) {
+				// 验证Redis中没有设置任何定时器
+				conn := cmn.GetRedisConn()
+				count, err := conn.ZCard(ctx, EXAM_TIMER_SET_KEY).Result()
+				require.NoError(t, err)
+				assert.Equal(t, int64(0), count, "过去时间的场次不应该设置定时器")
+			},
+		},
+		{
+			name:        "混合时间场次-部分过期",
+			forceError:  "",
+			expectError: false,
+			checkLogs:   false,
+			description: "对于混合时间的场次，只有未来时间的事件应该被设置",
+			setupFunc: func(t *testing.T, ctx context.Context) {
+				// 清理Redis状态
+				conn := cmn.GetRedisConn()
+				conn.Del(ctx, EXAM_TIMER_SET_KEY)
+
+				// 设置考试和场次：开始时间已过，结束时间未来
+				pgxConn.Exec(ctx, "UPDATE t_exam_info SET status = '04' WHERE id = $1", testData.NormalExamID)
+				pgxConn.Exec(ctx, "UPDATE t_exam_session SET status = '04', start_time = $1, end_time = $2 WHERE exam_id = $3",
+					testData.PastTime-1800000, testData.FutureTime, testData.NormalExamID)
+			},
+			verifyFunc: func(t *testing.T, ctx context.Context) {
+				// 验证Redis中只设置了结束定时器
+				conn := cmn.GetRedisConn()
+				count, err := conn.ZCard(ctx, EXAM_TIMER_SET_KEY).Result()
+				require.NoError(t, err)
+
+				events, err := conn.ZRange(ctx, EXAM_TIMER_SET_KEY, 0, -1).Result()
+				require.NoError(t, err)
+
+				endEventCount := 0
+				startEventCount := 0
+
+				for _, eventStr := range events {
+					var event ExamEvent
+					err := json.Unmarshal([]byte(eventStr), &event)
+					require.NoError(t, err)
+
+					if event.Type == EVENT_TYPE_EXAM_SESSION_START {
+						startEventCount++
+					} else if event.Type == EVENT_TYPE_EXAM_SESSION_END {
+						endEventCount++
+					}
+				}
+
+				assert.Equal(t, 0, startEventCount, "过去的开始时间不应该设置定时器")
+				assert.Greater(t, endEventCount, 0, "未来的结束时间应该设置定时器")
+				assert.Equal(t, int64(endEventCount), count, "定时器总数应该等于结束事件数量")
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// 执行测试前的设置
+			if tt.setupFunc != nil {
+				tt.setupFunc(t, ctx)
+			}
+
+			// 日志捕获
+			var observedZapCore zapcore.Core
+			var observedLogs *observer.ObservedLogs
+			var originalLogger *zap.Logger
+
+			if tt.checkLogs {
+				observedZapCore, observedLogs = observer.New(zap.ErrorLevel)
+				observedLogger := zap.New(observedZapCore)
+				originalLogger = z
+				z = observedLogger
+				defer func() {
+					z = originalLogger
+				}()
+			}
+
+			// 创建带强制错误的上下文
+			testCtx := ctx
+			if tt.forceError != "" {
+				testCtx = context.WithValue(ctx, "initializeExamTimers-force-error", tt.forceError)
+			}
+
+			// 执行initializeExamTimers
+			initializeExamTimers(testCtx)
+
+			// 如果需要检查日志，则验证错误信息
+			if tt.checkLogs {
+				allLogs := observedLogs.All()
+				foundExpectedError := false
+
+				for _, logEntry := range allLogs {
+					switch tt.forceError {
+					case "queryExamSessions":
+						if strings.Contains(logEntry.Message, "查询考试场次信息失败") {
+							foundExpectedError = true
+							t.Logf("成功在日志中捕获到预期错误: %s", logEntry.Message)
+						}
+					case "scanExamSessionInfo":
+						if strings.Contains(logEntry.Message, "获取考试场次信息失败") {
+							foundExpectedError = true
+							t.Logf("成功在日志中捕获到预期错误: %s", logEntry.Message)
+						}
+					case "panic":
+						if strings.Contains(logEntry.Message, "Panic recovered in initializeExamTimers") {
+							foundExpectedError = true
+							t.Logf("成功在日志中捕获到预期错误: %s", logEntry.Message)
+						}
+					}
+				}
+
+				if tt.forceError != "" {
+					assert.True(t, foundExpectedError, "应该在日志中找到预期的错误信息: %s", tt.forceError)
+				}
+			}
+
+			// 执行测试后的验证
+			if tt.verifyFunc != nil {
+				tt.verifyFunc(t, ctx)
+			}
+
+			t.Logf("%s: 测试通过 - %s", tt.name, tt.description)
+		})
+	}
+}
+
 func TestCancelExamTimers(t *testing.T) {
 	cmn.ConfigureForTest()
 	setupTestEnvironment(t)
