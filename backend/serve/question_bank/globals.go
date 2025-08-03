@@ -13,6 +13,7 @@ const (
 	DomainAdmin               = "cst.school^admin"                // 管理员
 	DomainAcademicAffairAdmin = "cst.school.academicAffair^admin" // 考务员
 	DomainTeacher             = "cst.school^teacher"              // 教师
+	DomainStudent             = "cst.school^student"              // 学生
 )
 
 var allowedDomains = map[string]struct{}{
