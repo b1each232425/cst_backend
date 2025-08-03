@@ -646,6 +646,15 @@ func OperatePracticeStatus(ctx context.Context, pid int64, status string, uid in
 			return err
 		}
 
+		// 这里我需要更改一下这个practice_submission练习学生的提交状态 终结所有不合理的提交记录，全部无法再次作答了
+		s = `UPDATE assessuser.t_practice_submissions SET status = $1,update_time = $2,updated_by = $3 WHERE practice_id = $4`
+		_, err = tx.Exec(ctx, s, PracticeSubmissionStatus.Deleted, now, uid, pid)
+		if err != nil {
+			err = fmt.Errorf("OperatePracticeSubmissionStatus to Deleted failed:%v", err)
+			z.Error(err.Error())
+			return err
+		}
+
 		// 清除批改配置信息
 		req := mark.HandleMarkerInfoReq{
 			Status:      "02",

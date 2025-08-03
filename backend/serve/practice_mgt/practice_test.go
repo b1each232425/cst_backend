@@ -3,7 +3,7 @@
  * @Description: 请在此填写文件描述
  * @Date: 2025-07-25 23:20:51
  * @LastEditors: zdl <1311866870@qq.com>
- * @LastEditTime: 2025-08-02 22:00:09
+ * @LastEditTime: 2025-08-03 15:17:32
  */
 package practice_mgt
 
@@ -242,9 +242,43 @@ func TestPracticeH(t *testing.T) {
     				}
 				}`),
 			},
-			userId:          1634,
+			userId:          uid,
 			expectSuccess:   false,
 			expectedMessage: "Call /api/practice with  empty body",
+		},
+		{
+			name: "GET 请求 - 教师及其以上权限获取练习列表",
+			Domain: []cmn.TDomain{
+				{ID: null.IntFrom(PracticeDomainID.SuperAdmin)},
+			},
+			method:          "GET",
+			url:             "/api/practice?page=1&page_size=10",
+			userId:          uid,
+			expectSuccess:   true,
+			expectedMessage: "",
+			setup: func() error {
+				_, err := conn.Exec(context.Background(), `
+	INSERT INTO assessuser.t_practice (id,name,correct_mode,creator,create_time, update_time, addi,allowed_attempts,type,paper_id)
+	VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9,$10)`, 10086, "练习模拟数据期末考试", "00", uid, now, now, nil, 5, "00", paperID)
+				return err
+			},
+			expectedData: json.RawMessage(`{
+			"total":1,
+			"practices":[
+				{
+					"practice":{
+					"ID":10086,
+					"Name":"练习模拟数据期末考试",
+					"CorrectMode":"00",
+					"Type":"00",
+					"AllowedAttempts":5,
+					"Status":"00"
+					},
+					"student_count":0
+				}
+			]
+			}`,
+			),
 		},
 	}
 
@@ -302,21 +336,19 @@ func TestPracticeH(t *testing.T) {
 					assert.Equal(t, resp.Status, 0)
 
 				case "GET":
-					var result cmn.TStudentAnswers
+					var result Map
 					err := json.Unmarshal(resp.Data, &result)
 					if err != nil {
 						t.Fatalf("Failed to unmarshal response: %v", err)
 					}
-					var expected cmn.TStudentAnswers
+					var expected Map
 					err = json.Unmarshal(tc.expectedData, &expected)
 					if err != nil {
 						t.Fatalf("Failed to unmarshal response: %v", err)
 					}
-					assert.Equal(t, expected.PracticeSubmissionID, result.PracticeSubmissionID)
-					assert.JSONEq(t, expected.Answer.String(), expected.Answer.String())
-					assert.Equal(t, expected.QuestionID, result.QuestionID)
+					assert.Equal(t, result["total"], expected["total"])
+					assert.Equal(t, result["practices"], expected["practices"])
 
-					assert.JSONEq(t, expected.AnswerAttachmentsPath.String(), result.AnswerAttachmentsPath.String())
 					assert.Equal(t, resp.Status, 0)
 				}
 			} else {
@@ -325,15 +357,18 @@ func TestPracticeH(t *testing.T) {
 				assert.Equal(t, resp.Msg, tc.expectedMessage)
 				assert.Empty(t, resp.Data)
 			}
-			_, err = conn.Exec(context.Background(), `DELETE FROM t_practice WHERE id = 10086;`)
-			if err != nil {
-				t.Fatal(err)
-			}
 
-			_, err = conn.Exec(context.Background(), `DELETE FROM t_practice WHERE name = '练习模拟数据期末考试';`)
-			if err != nil {
-				t.Fatal(err)
-			}
+			t.Cleanup(func() {
+				_, err = conn.Exec(context.Background(), `DELETE FROM t_practice WHERE id = 10086`)
+				if err != nil {
+					t.Fatal(err)
+				}
+
+				_, err = conn.Exec(context.Background(), `DELETE FROM t_practice WHERE name = '练习模拟数据期末考试'`)
+				if err != nil {
+					t.Fatal(err)
+				}
+			})
 		})
 	}
 }
