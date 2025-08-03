@@ -578,7 +578,26 @@ func validateUserExamPermission(ctx context.Context, userID, examID int64, domai
 	exists = false
 
 	// 根据角色查询是否能访问该考试
-	if strings.Contains(domain, "^admin") || strings.Contains(domain, "^superAdmin") {
+	if strings.Contains(domain, "^student") {
+		err := conn.QueryRow(context.Background(), `
+			SELECT EXISTS(
+			SELECT 1
+			FROM t_examinee e
+			INNER JOIN t_exam_session es ON e.exam_session_id = es.id
+			WHERE es.exam_id = $1
+			AND es.status NOT IN ('00', '14')
+			AND e.student_id = $2
+			AND e.status != '08'
+			)
+		`, examID, userID).Scan(&exists)
+		if forceErr == "conn.QueryRow" {
+			err = fmt.Errorf("force error: %s", forceErr)
+		}
+		if err != nil {
+			z.Error(err.Error())
+			return false, err
+		}
+	} else if strings.Contains(domain, "^admin") || strings.Contains(domain, "^superAdmin") || strings.Contains(domain, "^teacher") {
 		domainPrefix := getDomainPrefix(domain)
 
 		err := conn.QueryRow(context.Background(), `
@@ -594,25 +613,6 @@ func validateUserExamPermission(ctx context.Context, userID, examID int64, domai
 			)
 		)
 		`, examID, domainPrefix).Scan(&exists)
-		if forceErr == "conn.QueryRow" {
-			err = fmt.Errorf("force error: %s", forceErr)
-		}
-		if err != nil {
-			z.Error(err.Error())
-			return false, err
-		}
-	} else if strings.Contains(domain, "^student") {
-		err := conn.QueryRow(context.Background(), `
-			SELECT EXISTS(
-			SELECT 1
-			FROM t_examinee e
-			INNER JOIN t_exam_session es ON e.exam_session_id = es.id
-			WHERE es.exam_id = $1
-			AND es.status NOT IN ('00', '14')
-			AND e.student_id = $2
-			AND e.status != '08'
-			)
-		`, examID, userID).Scan(&exists)
 		if forceErr == "conn.QueryRow" {
 			err = fmt.Errorf("force error: %s", forceErr)
 		}
@@ -2393,6 +2393,11 @@ func examStatus(ctx context.Context) {
 		if q.Err != nil {
 			q.RespErr()
 			return
+		}
+
+		// 学生角色不允许获取考试锁
+		if strings.Contains(userDomain, "^student") {
+			hasPermission = false
 		}
 		if !hasPermission {
 			q.Err = fmt.Errorf("用户没有权限获取考试锁")

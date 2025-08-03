@@ -50,17 +50,26 @@ func init() {
 }
 
 // 初始化现有考试的Redis定时器
-func initializeExamTimers() {
+func initializeExamTimers(ctx context.Context) {
 	z.Info("---->" + cmn.FncName())
+
+	forceErr := ""
+	if val := ctx.Value("initializeExamTimers-force-error"); val != nil {
+		forceErr = val.(string)
+	}
+
 	defer func() {
-		if r := recover(); r != nil {
+		r := recover()
+		if forceErr == "panic" {
+			r = fmt.Errorf("panic") // 强制触发的panic错误
+		}
+		if r != nil {
 			z.Error("Panic recovered in initializeExamTimers",
 				zap.Any("panic", r),
 				zap.Stack("stack"))
 		}
 	}()
 
-	ctx := context.Background()
 	now := time.Now().UnixMilli()
 
 	// 查询场次信息
@@ -77,8 +86,10 @@ func initializeExamTimers() {
             AND (es.start_time > $1 OR es.end_time > $1)
         ORDER BY es.exam_id, es.id
     `
-
 	rows, err := pgxConn.Query(ctx, query, now)
+	if forceErr == "queryExamSessions" {
+		err = fmt.Errorf("强制查询考试场次信息错误")
+	}
 	if err != nil {
 		z.Error("查询考试场次信息失败", zap.Error(err))
 		return
@@ -86,14 +97,22 @@ func initializeExamTimers() {
 	defer rows.Close()
 
 	sessionCount := 0
+	z.Info(forceErr)
 
 	// 设置场次定时器
 	for rows.Next() {
 		var examSessionID, examID, startTime, endTime int64
 		err := rows.Scan(&examSessionID, &examID, &startTime, &endTime)
+		z.Info("", zap.Int64("exam_session_id", examSessionID),
+			zap.Int64("exam_id", examID),
+		)
+		z.Info(forceErr)
+		if forceErr == "scanExamSessionInfo" {
+			err = fmt.Errorf("强制获取考试场次信息错误")
+		}
 		if err != nil {
 			z.Error("获取考试场次信息失败", zap.Error(err))
-			continue
+			return
 		}
 
 		// 场次开始定时器
@@ -118,8 +137,14 @@ func initializeExamTimers() {
 }
 
 // 轮询Redis有序集合检查到期事件
-func pollRedisTimers() {
+func pollRedisTimers(ctx context.Context) {
 	z.Info("---->" + cmn.FncName())
+
+	forceErr := ""
+	if val := ctx.Value("pollRedisTimers-force-error"); val != nil {
+		forceErr = val.(string)
+	}
+	_ = forceErr
 
 	defer func() {
 		if r := recover(); r != nil {
@@ -129,7 +154,7 @@ func pollRedisTimers() {
 
 			// 重新启动轮询
 			time.Sleep(5 * time.Second)
-			go pollRedisTimers()
+			go pollRedisTimers(ctx)
 		}
 	}()
 
@@ -157,20 +182,25 @@ func pollRedisTimers() {
 		return events
 	`
 
-	ctx := context.Background()
-
 	for {
 		now := time.Now()
 
 		func() {
 			// 获取并删除到期事件
 			result := redisClient.Eval(ctx, luaScript, []string{EXAM_TIMER_SET_KEY}, now.UnixMilli(), 100)
-			if result.Err() != nil {
-				z.Error("Failed to execute Lua script for timer events", zap.Error(result.Err()))
+			if result.Err() != nil || forceErr == "luaScriptError" {
+				err := result.Err()
+				if forceErr == "luaScriptError" {
+					err = fmt.Errorf("强制Lua脚本错误")
+				}
+				z.Error("Failed to execute Lua script for timer events", zap.Error(err))
 				return
 			}
 
 			events, err := result.StringSlice()
+			if forceErr == "luaScriptResult" {
+				err = fmt.Errorf("强制Lua脚本结果错误")
+			}
 			if err != nil {
 				z.Error("Failed to convert Lua script result", zap.Error(err))
 				return
@@ -182,7 +212,6 @@ func pollRedisTimers() {
 			}
 		}()
 
-		// 等待到下一个整分钟
 		nextMinute := now.Truncate(time.Minute).Add(time.Minute)
 		waitDuration := nextMinute.Sub(now)
 		time.Sleep(waitDuration)
@@ -742,9 +771,11 @@ func CancelExamTimers(ctx context.Context, examID int64) error {
 
 func ExamMaintainService() {
 
+	ctx := context.Background()
+
 	// 重新初始化定时器
-	initializeExamTimers()
+	initializeExamTimers(ctx)
 
 	// 启动Redis定时器轮询
-	pollRedisTimers()
+	pollRedisTimers(ctx)
 }

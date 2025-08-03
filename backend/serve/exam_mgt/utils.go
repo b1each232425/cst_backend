@@ -118,11 +118,15 @@ func validateUserForExamCreate(domain string) bool {
 	z.Info("---->" + cmn.FncName())
 
 	// 检查域名是否包含 academicAffair 前缀和 ^admin 权限标识
-	if !strings.HasPrefix(domain, "academicAffair") {
+	// if !strings.HasPrefix(domain, "academicAffair") {
+	// 	return false
+	// }
+
+	if !strings.Contains(domain, "^admin") && !strings.Contains(domain, "^superAdmin") && !strings.Contains(domain, "^teacher") {
 		return false
 	}
 
-	if !strings.Contains(domain, "^admin") && !strings.Contains(domain, "^superAdmin") {
+	if strings.Contains(domain, "^student") {
 		return false
 	}
 
