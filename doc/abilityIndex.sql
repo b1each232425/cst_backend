@@ -1,6 +1,6 @@
 /*==============================================================*/
 /* DBMS name:      PostgreSQL 9.x                               */
-/* Created on:     2025/8/1 11:57:42                            */
+/* Created on:     2025/8/3 21:35:42                            */
 /*==============================================================*/
 
 
@@ -9190,7 +9190,7 @@ ALTER SEQUENCE t_sys_ver_id_seq RESTART WITH 20000;
 
 insert into t_sys_ver(id,name,ver,create_time,update_time,remark)
   values(1000,'业务模型','3.1.0.0',
-  '2016年12月5日 9:52:53','2025年8月1日 11:57:38',
+  '2016年12月5日 9:52:53','2025年8月3日 21:35:37',
   '3.1.0.0
 添加考试系统的表和视图
 
@@ -13014,6 +13014,7 @@ create table t_v_order_sum as select * from v_order_sum limit 1;
 /*==============================================================*/
 create or replace view v_paper as
  SELECT p.id,
+    p.domain_id,
     p.name,
     p.assembly_type,
     p.category,
@@ -13057,7 +13058,7 @@ create or replace view v_paper as
      LEFT JOIN t_paper_group pg ON pg.paper_id = p.id AND pg.status::text <> '02'::text
      LEFT JOIN t_paper_question pq ON pq.group_id = pg.id AND pq.status::text <> '02'::text
   WHERE p.status::text = '00'::text
-  GROUP BY p.id, u.id;
+  GROUP BY p.id,p.domain_id,u.id;
 
 comment on view v_paper is
 '考卷';
