@@ -76,7 +76,7 @@ type Examinee struct {
 	OfficialName   string      `json:"official_name"`
 	Account        string      `json:"account"`      // 学生账号
 	Passwd         string      `json:"passwd"`       // 学生密码
-	IdCardNo       string      `json:"id_card_no"`   // 学生身份证号
+	IdCardNo       null.String `json:"id_card_no"`   // 学生身份证号
 	MobilePhone    string      `json:"mobile_phone"` // 学生电话
 }
 
@@ -170,6 +170,11 @@ func Enroll(author string) {
 func examExists(ctx context.Context, examID int64) (bool, error) {
 	z.Info("---->" + cmn.FncName())
 
+	forceErr := ""
+	if val := ctx.Value("examExists-force-error"); val != nil {
+		forceErr = val.(string)
+	}
+
 	test, ok := ctx.Value(TEST).(string)
 	if ok || test != "" {
 		switch test {
@@ -189,6 +194,9 @@ func examExists(ctx context.Context, examID int64) (bool, error) {
 	conn := cmn.GetPgxConn()
 	var exists bool
 	err := conn.QueryRow(context.Background(), "SELECT EXISTS(SELECT 1 FROM t_exam_info WHERE id=$1 AND status!= '12')", examID).Scan(&exists)
+	if forceErr == "conn.QueryRow" {
+		err = fmt.Errorf("force error: %s", forceErr)
+	}
 	if err != nil {
 		z.Error(err.Error())
 		return false, err
@@ -273,9 +281,9 @@ func generateExamineeNumber(serialNumber int64, examInfo cmn.TExamInfo, examSess
 }
 
 // 获取考试信息
-// 参数: ctx: 上下文, examID: 考试ID, role: 用户角色
+// 参数: ctx: 上下文, examID: 考试ID, domain: 用户域
 // 返回: cmn.TExamInfo, error
-func GetExamInfo(ctx context.Context, examID int64, role int64) (cmn.TExamInfo, error) {
+func GetExamInfo(ctx context.Context, examID int64, domain string) (cmn.TExamInfo, error) {
 	z.Info("---->" + cmn.FncName())
 
 	forceErr := ""
@@ -322,42 +330,7 @@ func GetExamInfo(ctx context.Context, examID int64, role int64) (cmn.TExamInfo, 
 
 	conn := cmn.GetPgxConn()
 
-	if role == 3 || role == 2 {
-		query := `
-			SELECT 
-				id, name, rules, type, mode, files, submitted, creator,
-				create_time, updated_by, update_time, status, addi, exam_room_ids, exam_delivery_status, exam_room_invigilator_count
-			FROM t_exam_info
-			WHERE id = $1 AND status != '12'
-		`
-
-		row := conn.QueryRow(context.Background(), query, examID)
-		err := row.Scan(
-			&examInfo.ID,
-			&examInfo.Name,
-			&examInfo.Rules,
-			&examInfo.Type,
-			&examInfo.Mode,
-			&examInfo.Files,
-			&examInfo.Submitted,
-			&examInfo.Creator,
-			&examInfo.CreateTime,
-			&examInfo.UpdatedBy,
-			&examInfo.UpdateTime,
-			&examInfo.Status,
-			&examInfo.Addi,
-			&examInfo.ExamRoomIds,
-			&examInfo.ExamDeliveryStatus,
-			&examInfo.ExamRoomInvigilatorCount,
-		)
-		if forceErr == "conn.Scan" {
-			err = fmt.Errorf("force error: %s", forceErr)
-		}
-		if err != nil {
-			z.Error(err.Error())
-			return cmn.TExamInfo{}, err
-		}
-	} else if role == 1 {
+	if strings.Contains(domain, "^student") {
 		query := `
 			SELECT 
 				id, name, rules, type, mode, files, status
@@ -381,15 +354,49 @@ func GetExamInfo(ctx context.Context, examID int64, role int64) (cmn.TExamInfo, 
 			z.Error(err.Error())
 			return cmn.TExamInfo{}, err
 		}
+	} else {
+		query := `
+			SELECT 
+				id, name, rules, type, mode, files, submitted, creator,
+				create_time, updated_by, update_time, status, addi, exam_room_ids, exam_room_invigilator_count
+			FROM t_exam_info
+			WHERE id = $1 AND status != '12'
+		`
+
+		row := conn.QueryRow(context.Background(), query, examID)
+		err := row.Scan(
+			&examInfo.ID,
+			&examInfo.Name,
+			&examInfo.Rules,
+			&examInfo.Type,
+			&examInfo.Mode,
+			&examInfo.Files,
+			&examInfo.Submitted,
+			&examInfo.Creator,
+			&examInfo.CreateTime,
+			&examInfo.UpdatedBy,
+			&examInfo.UpdateTime,
+			&examInfo.Status,
+			&examInfo.Addi,
+			&examInfo.ExamRoomIds,
+			&examInfo.ExamRoomInvigilatorCount,
+		)
+		if forceErr == "conn.Scan" {
+			err = fmt.Errorf("force error: %s", forceErr)
+		}
+		if err != nil {
+			z.Error(err.Error())
+			return cmn.TExamInfo{}, err
+		}
 	}
 
 	return examInfo, nil
 }
 
 // 获取考试场次信息
-// 参数: ctx: 上下文, examID: 考试ID, role: 用户角色(角色信息暂定)
+// 参数: ctx: 上下文, examID: 考试ID, domain: 用户域
 // 返回: cmn.TExamInfo, error
-func GetExamSessions(ctx context.Context, examID int64, role int64) ([]cmn.TExamSession, error) {
+func GetExamSessions(ctx context.Context, examID int64, domain string) ([]cmn.TExamSession, error) {
 	z.Info("---->" + cmn.FncName())
 
 	forceErr := ""
@@ -437,7 +444,7 @@ func GetExamSessions(ctx context.Context, examID int64, role int64) ([]cmn.TExam
 	var es_array []cmn.TExamSession
 
 	conn := cmn.GetPgxConn()
-	if role == 1 {
+	if strings.Contains(domain, "^student") {
 		es_query := `
 			SELECT
 				id, exam_id, paper_id, mark_method, period_mode,
@@ -481,7 +488,7 @@ func GetExamSessions(ctx context.Context, examID int64, role int64) ([]cmn.TExam
 			}
 			es_array = append(es_array, es)
 		}
-	} else if role == 3 || role == 2 {
+	} else {
 		es_query := `
 			SELECT
 				es.id, es.exam_id, es.paper_id, es.mark_method, es.period_mode,
@@ -539,8 +546,8 @@ func GetExamSessions(ctx context.Context, examID int64, role int64) ([]cmn.TExam
 
 }
 
-// 验证用户对考试的权限
-func validateUserExamPermission(ctx context.Context, userID, examID int64, role int64) (bool, error) {
+// 验证用户对考试的访问权限
+func validateUserExamPermission(ctx context.Context, userID, examID int64, domain string) (bool, error) {
 	z.Info("---->" + cmn.FncName())
 
 	forceErr := ""
@@ -571,15 +578,17 @@ func validateUserExamPermission(ctx context.Context, userID, examID int64, role 
 	exists = false
 
 	// 根据角色查询是否能访问该考试
-	if role == 3 {
-		exists = true
-	} else if role == 2 {
+	if strings.Contains(domain, "^student") {
 		err := conn.QueryRow(context.Background(), `
 			SELECT EXISTS(
 			SELECT 1
-			FROM t_exam_info
-			WHERE id = $1
-			AND creator = $2)    -- 检查创建者是否为当前用户
+			FROM t_examinee e
+			INNER JOIN t_exam_session es ON e.exam_session_id = es.id
+			WHERE es.exam_id = $1
+			AND es.status NOT IN ('00', '14')
+			AND e.student_id = $2
+			AND e.status != '08'
+			)
 		`, examID, userID).Scan(&exists)
 		if forceErr == "conn.QueryRow" {
 			err = fmt.Errorf("force error: %s", forceErr)
@@ -588,17 +597,22 @@ func validateUserExamPermission(ctx context.Context, userID, examID int64, role 
 			z.Error(err.Error())
 			return false, err
 		}
-	} else if role == 1 {
+	} else if strings.Contains(domain, "^admin") || strings.Contains(domain, "^superAdmin") || strings.Contains(domain, "^teacher") {
+		domainPrefix := getDomainPrefix(domain)
+
 		err := conn.QueryRow(context.Background(), `
-			SELECT EXISTS(
-			SELECT 1
-			FROM t_examinee e
-			INNER JOIN t_exam_session es ON e.exam_session_id = es.id
-			WHERE es.exam_id = $1
-			AND e.student_id = $2
-			AND e.status != '08'
+		SELECT EXISTS(
+		SELECT 1
+		FROM t_exam_info ei
+		JOIN t_domain d ON ei.domain_id = d.id
+		WHERE ei.id = $1
+			AND (
+				d.domain LIKE $2 || '^%'       
+				OR 
+				d.domain LIKE $2 || '.%^%'     
 			)
-		`, examID, userID).Scan(&exists)
+		)
+		`, examID, domainPrefix).Scan(&exists)
 		if forceErr == "conn.QueryRow" {
 			err = fmt.Errorf("force error: %s", forceErr)
 		}
@@ -811,99 +825,6 @@ func updateExamSessionStatus(ctx context.Context, tx pgx.Tx, examID int64, newSt
 	return nil
 }
 
-func validateExamData(examData ExamData, isUpdate bool) error {
-	z.Info("---->" + cmn.FncName())
-	if isUpdate && examData.ExamInfo.ID.Int64 <= 0 {
-		err := fmt.Errorf("更新考试时传入的考试ID无效: %d", examData.ExamInfo.ID.Int64)
-		z.Error(err.Error())
-		return err
-	}
-
-	if examData.ExamInfo.Name.String == "" {
-		err := fmt.Errorf("考试名称不能为空")
-		z.Error(err.Error())
-		return err
-	}
-
-	if examData.ExamInfo.Type.String == "" || (examData.ExamInfo.Type.String != "00" && examData.ExamInfo.Type.String != "02" && examData.ExamInfo.Type.String != "04") {
-		err := fmt.Errorf("无效的考试类型: %s", examData.ExamInfo.Type.String)
-		z.Error(err.Error())
-		return err
-	}
-
-	if examData.ExamInfo.Mode.String == "" || (examData.ExamInfo.Mode.String != "00" && examData.ExamInfo.Mode.String != "02") {
-		err := fmt.Errorf("无效的考试方式: %s", examData.ExamInfo.Mode.String)
-		z.Error(err.Error())
-		return err
-	}
-
-	if len(examData.ExamSessions) == 0 {
-		err := fmt.Errorf("考试场次不能为空")
-		z.Error(err.Error())
-		return err
-	}
-
-	for _, examSession := range examData.ExamSessions {
-		if examSession.PaperID.Int64 <= 0 {
-			err := fmt.Errorf("考试场次的试卷ID无效: %d", examSession.PaperID.Int64)
-			z.Error(err.Error())
-			return err
-		}
-
-		if examSession.MarkMethod == "" || (examSession.MarkMethod != "00" && examSession.MarkMethod != "02") {
-			err := fmt.Errorf("考试场次的批卷方式无效: %s", examSession.MarkMethod)
-			z.Error(err.Error())
-			return err
-		}
-
-		if examSession.PeriodMode.String == "" || (examSession.PeriodMode.String != "00" && examSession.PeriodMode.String != "02") {
-			err := fmt.Errorf("考试场次的考试时段模式无效: %s", examSession.PeriodMode.String)
-			z.Error(err.Error())
-			return err
-		}
-
-		if examSession.Duration.Int64 <= 0 {
-			err := fmt.Errorf("考试场次的时长无效: %d", examSession.Duration.Int64)
-			z.Error(err.Error())
-			return err
-		}
-
-		if examSession.QuestionShuffledMode.String == "" || (examSession.QuestionShuffledMode.String != "00" && examSession.QuestionShuffledMode.String != "02" && examSession.QuestionShuffledMode.String != "04" && examSession.QuestionShuffledMode.String != "06") {
-			err := fmt.Errorf("考试场次的乱序方式无效: %s", examSession.QuestionShuffledMode.String)
-			z.Error(err.Error())
-			return err
-		}
-
-		if examSession.MarkMode.String == "" || (examSession.MarkMode.String != "00" && examSession.MarkMode.String != "02" && examSession.MarkMode.String != "04" && examSession.MarkMode.String != "06" && examSession.MarkMode.String != "08" && examSession.MarkMode.String != "10") {
-			err := fmt.Errorf("考试场次的批改配置无效: %s", examSession.MarkMode.String)
-			z.Error(err.Error())
-			return err
-		}
-
-		if examSession.StartTime.Int64 >= examSession.EndTime.Int64 {
-			err := fmt.Errorf("考试场次的开始时间晚于或等于结束时间")
-			z.Error(err.Error())
-			return err
-		}
-
-		//检查设定的考试时长是否大于考试总时长
-		startTime := time.UnixMilli(examSession.StartTime.Int64)
-		endTime := time.UnixMilli(examSession.EndTime.Int64)
-		totalDuration := endTime.Sub(startTime).Minutes()
-		if float64(examSession.Duration.Int64) > totalDuration {
-			err := fmt.Errorf("设定的考试时长: %d 大于总时长: %f", examSession.Duration.Int64, totalDuration)
-			z.Error(err.Error())
-			return err
-		}
-
-		if examSession.MarkMethod != "00" {
-			examSession.MarkMode.String = "00"
-		}
-	}
-
-	return nil
-}
-
 // 创建/更新/获取考试信息
 func exam(ctx context.Context) {
 	q := cmn.GetCtxValue(ctx)
@@ -953,6 +874,31 @@ func exam(ctx context.Context) {
 		userID := q.SysUser.ID.Int64
 		if userID <= 0 {
 			q.Err = fmt.Errorf("无效的用户ID: %d", userID)
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		// 用户拥有的域
+		userDomains := q.Domains
+
+		// 当前用户登录选择的域
+		userRole := q.SysUser.Role.Int64
+
+		var userDomain string
+		userDomain, q.Err = getDomainByUserRole(userRole, userDomains)
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		// 检查是否具备创建考试的权限
+		var result bool
+		result = validateUserForExamCreate(userDomain)
+
+		if !result {
+			q.Err = fmt.Errorf("用户没有创建考试的权限")
 			z.Error(q.Err.Error())
 			q.RespErr()
 			return
@@ -1054,8 +1000,8 @@ func exam(ctx context.Context) {
 		q.Err = tx.QueryRow(ctx, `
 			INSERT INTO t_exam_info (
 				name, rules, type, mode, files, submitted, creator, create_time, 
-				updated_by, update_time, status, addi, exam_room_ids, exam_delivery_status, 
-				exam_room_invigilator_count
+				updated_by, update_time, status, addi, exam_room_ids, 
+				exam_room_invigilator_count, domain_id
 			) VALUES (
 				$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15
 			) RETURNING id
@@ -1073,8 +1019,8 @@ func exam(ctx context.Context) {
 			"00",
 			ExamData.ExamInfo.Addi,
 			nil,
-			"00",
 			nil,
+			userRole,
 		).Scan(&newExamID)
 		if forceErr == "tx.QueryRow1" {
 			q.Err = fmt.Errorf("强制查询错误")
@@ -1394,9 +1340,15 @@ func exam(ctx context.Context) {
 			return
 		}
 
-		userRole := int64(1)
-		if userRole <= 0 {
-			q.Err = fmt.Errorf("无效的用户角色: %d", userRole)
+		// 用户拥有的域
+		userDomains := q.Domains
+
+		// 当前用户登录选择的域
+		userRole := q.SysUser.Role.Int64
+
+		var userDomain string
+		userDomain, q.Err = getDomainByUserRole(userRole, userDomains)
+		if q.Err != nil {
 			z.Error(q.Err.Error())
 			q.RespErr()
 			return
@@ -1420,7 +1372,7 @@ func exam(ctx context.Context) {
 
 		// 验证用户对考试的访问权限
 		var hasPermission bool
-		hasPermission, q.Err = validateUserExamPermission(ctx, userID, examID, userRole)
+		hasPermission, q.Err = validateUserExamPermission(ctx, userID, examID, userDomain)
 		if q.Err != nil {
 			q.RespErr()
 			return
@@ -1435,7 +1387,7 @@ func exam(ctx context.Context) {
 
 		// 考试基本信息
 		var ei cmn.TExamInfo
-		ei, q.Err = GetExamInfo(ctx, examID, userRole)
+		ei, q.Err = GetExamInfo(ctx, examID, userDomain)
 		if q.Err != nil {
 			q.RespErr()
 			return
@@ -1443,13 +1395,13 @@ func exam(ctx context.Context) {
 
 		// 考试场次信息
 		var es_array []cmn.TExamSession
-		es_array, q.Err = GetExamSessions(ctx, examID, userRole)
+		es_array, q.Err = GetExamSessions(ctx, examID, userDomain)
 		if q.Err != nil {
 			q.RespErr()
 			return
 		}
 
-		if userRole == 1 {
+		if strings.Contains(userDomain, "^student") {
 			examData := ExamData{
 				ExamInfo:       ei,
 				ExamSessions:   es_array,
@@ -1654,14 +1606,6 @@ func examList(ctx context.Context) {
 			}`
 		}
 
-		userRole, err := strconv.ParseInt(q.R.URL.Query().Get("role"), 10, 64)
-		if err != nil {
-			q.Err = fmt.Errorf("无效的用户角色: %s", q.R.URL.Query().Get("role"))
-			z.Error(q.Err.Error())
-			q.RespErr()
-			return
-		}
-
 		var req cmn.ReqProto
 		q.Err = json.Unmarshal([]byte(qry), &req)
 		if forceErr == "json.Unmarshal1" {
@@ -1706,19 +1650,22 @@ func examList(ctx context.Context) {
 			return
 		}
 
-		// userRole = q.SysUser.Role.Int64
-		// if userRole <= 0 {
-		// 	q.Err = fmt.Errorf("无效的用户角色: %d", userRole)
-		// 	z.Error(q.Err.Error())
-		// 	q.RespErr()
-		// 	return
-		// }
-
-		// userID = 1574
-		// userRole = 2
-
 		if examFilter.StartTime > examFilter.EndTime && examFilter.EndTime != 0 {
 			q.Err = fmt.Errorf("查询考试时筛选的开始时间不能晚于结束时间")
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		// 用户拥有的域
+		userDomains := q.Domains
+
+		// 当前用户登录选择的域
+		userRole := q.SysUser.Role.Int64
+
+		var userDomain string
+		userDomain, q.Err = getDomainByUserRole(userRole, userDomains)
+		if q.Err != nil {
 			z.Error(q.Err.Error())
 			q.RespErr()
 			return
@@ -1738,12 +1685,6 @@ func examList(ctx context.Context) {
 		)
 
 		// 条件语句
-		if userRole == 2 {
-			conditionBuilder.WriteString(fmt.Sprintf(" AND ei.creator = $%d", argIdx))
-			args = append(args, userID)
-			argIdx++
-		}
-
 		if examFilter.Name != "" {
 			conditionBuilder.WriteString(fmt.Sprintf(" AND ei.name ILIKE $%d", argIdx))
 			args = append(args, "%"+examFilter.Name+"%")
@@ -1768,7 +1709,7 @@ func examList(ctx context.Context) {
 			argIdx += 2
 		}
 
-		if userRole == 1 {
+		if strings.Contains(userDomain, "^student") {
 			// 学生只能查看自己参与的考试
 			conditionBuilder.WriteString(fmt.Sprintf(`
 				AND EXISTS (
@@ -1781,9 +1722,21 @@ func examList(ctx context.Context) {
 				)`, argIdx))
 			args = append(args, userID)
 			argIdx++
+		} else {
+			// 其他角色只能查看本人所在域的考试
+			domainPrefix := getDomainPrefix(userDomain)
+
+			conditionBuilder.WriteString(fmt.Sprintf(`
+			AND (
+				d.domain LIKE $%d || '^%%'       
+				OR 
+				d.domain LIKE $%d || '.%%^%%'     
+			)`, argIdx, argIdx+1))
+			args = append(args, domainPrefix, domainPrefix)
+			argIdx += 2
 		}
 
-		countSQL := "SELECT COUNT(ei.id) FROM t_exam_info ei WHERE ei.status!='12' " + conditionBuilder.String()
+		countSQL := "SELECT COUNT(ei.id) FROM t_exam_info ei LEFT JOIN t_domain d ON ei.domain_id = d.id WHERE ei.status!='12' " + conditionBuilder.String()
 
 		var rowCount int64
 		q.Err = conn.QueryRow(ctx, countSQL, args...).Scan(&rowCount)
@@ -1801,7 +1754,7 @@ func examList(ctx context.Context) {
 		var searchSQL string
 		var examMap map[int64]*ExamList
 
-		if userRole == 1 {
+		if strings.Contains(userDomain, "^student") {
 			searchSQL = `
 				SELECT 
 					ei.id, 
@@ -1814,9 +1767,12 @@ func examList(ctx context.Context) {
 					es.status,
 					e.status,
 					vep.total_score,
-					sc.total_score
+					CASE 
+						WHEN ei.submitted = false THEN -1
+						ELSE sc.total_score
+					END as total_score
 				FROM (
-					SELECT ei.id, ei.name, ei.update_time
+					SELECT ei.id, ei.name, ei.update_time, ei.submitted
 					FROM t_exam_info ei
 					WHERE ei.status NOT IN ('00','10','12') ` + conditionBuilder.String() + `
 					ORDER BY ei.update_time DESC, ei.id DESC
@@ -1835,7 +1791,9 @@ func examList(ctx context.Context) {
 				LEFT JOIN v_student_exam_total_score sc
 					ON sc.exam_session_id = es.id
 					AND sc.student_id = $` + strconv.Itoa(argIdx+2) + `
-				ORDER BY es.session_num
+				ORDER BY es.session_num,
+					ei.update_time DESC, 
+					ei.id DESC
 			`
 			var rows pgx.Rows
 			rows, q.Err = conn.Query(ctx, searchSQL, append(args, req.PageSize, offset, userID)...)
@@ -1928,6 +1886,8 @@ func examList(ctx context.Context) {
 			LEFT JOIN t_exam_session es ON 
 				ei.id = es.exam_id AND 
 				es.status != '14' 
+			LEFT JOIN t_domain d ON
+				ei.domain_id = d.id
 			WHERE 
 				ei.status != '12' ` + conditionBuilder.String() + ` 
 			ORDER BY 
@@ -2000,7 +1960,7 @@ func examList(ctx context.Context) {
 		}
 
 		// 将考试信息转换为切片
-		var examList []ExamList
+		examList := make([]ExamList, 0)
 		for _, item := range examMap {
 			examList = append(examList, *item)
 		}
@@ -2072,19 +2032,25 @@ func examinee(ctx context.Context) {
 			q.RespErr()
 			return
 		}
+
+		// 用户拥有的域
+		userDomains := q.Domains
+
+		// 当前用户登录选择的域
 		userRole := q.SysUser.Role.Int64
-		if userRole == 0 {
-			q.Err = fmt.Errorf("无效的用户角色: %d", userRole)
+
+		// 从用户域列表中查找当前角色对应的域
+		var userDomain string
+		userDomain, q.Err = getDomainByUserRole(userRole, userDomains)
+		if q.Err != nil {
 			z.Error(q.Err.Error())
 			q.RespErr()
 			return
 		}
 
-		// userRole := int64(2)
-
 		// 验证用户对考试的访问权限
 		var hasPermission bool
-		hasPermission, q.Err = validateUserExamPermission(ctx, userID, examID, userRole)
+		hasPermission, q.Err = validateUserExamPermission(ctx, userID, examID, userDomain)
 		if q.Err != nil {
 			q.RespErr()
 			return
@@ -2351,6 +2317,11 @@ func examStatus(ctx context.Context) {
 	q := cmn.GetCtxValue(ctx)
 	z.Info("---->" + cmn.FncName())
 
+	forceErr := ""
+	if val := ctx.Value("examStatus-force-error"); val != nil {
+		forceErr = val.(string)
+	}
+
 	conn := cmn.GetPgxConn()
 
 	method := strings.ToLower(q.R.Method)
@@ -2372,15 +2343,20 @@ func examStatus(ctx context.Context) {
 			return
 		}
 
+		// 用户拥有的域
+		userDomains := q.Domains
+
+		// 当前用户登录选择的域
 		userRole := q.SysUser.Role.Int64
-		if userRole == 0 {
-			q.Err = fmt.Errorf("无效的用户角色: %d", userRole)
+
+		// 从用户域列表中查找当前角色对应的域
+		var userDomain string
+		userDomain, q.Err = getDomainByUserRole(userRole, userDomains)
+		if q.Err != nil {
 			z.Error(q.Err.Error())
 			q.RespErr()
 			return
 		}
-
-		userRole = int64(2)
 
 		examID := gjson.Get(qry, "data.ID").Int()
 		if examID <= 0 {
@@ -2390,12 +2366,38 @@ func examStatus(ctx context.Context) {
 			return
 		}
 
-		// 检查用户是否有权限获取考试锁
-		var hasPermission bool
-		hasPermission, q.Err = validateUserExamPermission(ctx, userID, examID, userRole)
+		// 检查考试是否存在
+		var exists bool
+		exists, q.Err = examExists(ctx, examID)
+		if forceErr == "examExists" {
+			q.Err = fmt.Errorf("强制检查考试存在错误")
+		}
 		if q.Err != nil {
 			q.RespErr()
 			return
+		}
+
+		if !exists {
+			q.Err = fmt.Errorf("考试不存在")
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		// 检查用户是否有权限获取考试锁
+		var hasPermission bool
+		hasPermission, q.Err = validateUserExamPermission(ctx, userID, examID, userDomain)
+		if forceErr == "validateUserExamPermission" {
+			q.Err = fmt.Errorf("强制验证用户考试权限错误")
+		}
+		if q.Err != nil {
+			q.RespErr()
+			return
+		}
+
+		// 学生角色不允许获取考试锁
+		if strings.Contains(userDomain, "^student") {
+			hasPermission = false
 		}
 		if !hasPermission {
 			q.Err = fmt.Errorf("用户没有权限获取考试锁")
@@ -2406,12 +2408,18 @@ func examStatus(ctx context.Context) {
 
 		var tryLockSuccess bool
 		tryLockSuccess, q.Err = cmn.TryLock(ctx, examID, userID, REDIS_LOCK_PREFIX, 5*time.Minute)
+		if forceErr == "cmn.TryLock" {
+			q.Err = fmt.Errorf("强制尝试获取考试锁错误")
+		}
 		if q.Err != nil {
 			z.Error(q.Err.Error())
 			q.RespErr()
 			return
 		}
 
+		if forceErr == "cmn.TryLockFailed" {
+			tryLockSuccess = false // 强制模拟锁获取失败
+		}
 		if !tryLockSuccess {
 			q.Err = fmt.Errorf("考试正在被其他用户编辑")
 			z.Error(q.Err.Error())
@@ -2423,6 +2431,9 @@ func examStatus(ctx context.Context) {
 		defer func() {
 			if tryLockSuccess {
 				err := cmn.ReleaseLock(ctx, examID, userID, REDIS_LOCK_PREFIX)
+				if forceErr == "cmn.ReleaseLock" {
+					err = fmt.Errorf("强制释放考试锁错误")
+				}
 				if err != nil {
 					z.Error(err.Error())
 				}
@@ -2438,25 +2449,13 @@ func examStatus(ctx context.Context) {
 			return
 		}
 
-		// 检查考试是否存在
-		var exists bool
-		exists, q.Err = examExists(ctx, examID)
-		if q.Err != nil {
-			q.RespErr()
-			return
-		}
-
-		if !exists {
-			q.Err = fmt.Errorf("考试不存在")
-			z.Error(q.Err.Error())
-			q.RespErr()
-			return
-		}
-
 		// 获取当前考试状态
 		var nowStatus string
 		query := `SELECT status FROM t_exam_info WHERE id = $1`
 		q.Err = conn.QueryRow(context.Background(), query, examID).Scan(&nowStatus)
+		if forceErr == "conn.QueryRow" {
+			q.Err = fmt.Errorf("强制查询当前考试状态错误")
+		}
 		if q.Err != nil {
 			z.Error(q.Err.Error())
 			q.RespErr()
@@ -2467,61 +2466,89 @@ func examStatus(ctx context.Context) {
 
 		var tx pgx.Tx
 		tx, q.Err = conn.Begin(context.Background())
+		if forceErr == "tx.Begin" {
+			q.Err = fmt.Errorf("强制开始事务错误")
+		}
 		if q.Err != nil {
 			z.Error(q.Err.Error())
 			q.RespErr()
 			return
 		}
 		defer func() {
-			if p := recover(); p != nil {
-				z.Error(fmt.Sprintf("recovered from panic: %v", p))
-				if rollbackErr := tx.Rollback(context.Background()); rollbackErr != nil {
-					z.Error(fmt.Sprintf("failed to rollback during panic: %s", rollbackErr.Error()))
+			p := recover()
+			if p != nil {
+				err := tx.Rollback(ctx)
+				if forceErr == "reviewerIds-panic" {
+					err = errors.New(forceErr)
 				}
+				if err != nil {
+					z.Error(err.Error())
+				}
+				q.Err = fmt.Errorf("panic: %s", p)
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
 			}
+
 			if q.Err != nil {
-				if rollbackErr := tx.Rollback(context.Background()); rollbackErr != nil {
+				rollbackErr := tx.Rollback(context.Background())
+				z.Info(forceErr)
+				if forceErr == "tx.Rollback" {
+					rollbackErr = fmt.Errorf("强制回滚事务错误")
+				}
+				if rollbackErr != nil {
 					z.Error(fmt.Sprintf("failed to rollback transaction: %s", rollbackErr.Error()))
 				}
 			} else {
-				if commitErr := tx.Commit(context.Background()); commitErr != nil {
+				commitErr := tx.Commit(context.Background())
+				if forceErr == "tx.Commit" {
+					commitErr = fmt.Errorf("强制提交事务错误")
+				}
+				if commitErr != nil {
 					z.Error(fmt.Sprintf("failed to commit transaction: %s", commitErr.Error()))
 				}
 			}
 		}()
 
+		if forceErr == "tx.Rollback" {
+			q.Err = fmt.Errorf("强制回滚事务错误")
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
 		switch status {
-		case "00":
-			// 取消考试
-			if nowStatus != "02" && nowStatus != "10" {
-				q.Err = fmt.Errorf("当前考试状态不支持取消操作: %s", nowStatus)
-				z.Error(q.Err.Error())
-				q.RespErr()
-				return
-			}
+		// case "00":
+		// 	// 取消考试
+		// 	if nowStatus != "02" && nowStatus != "10" {
+		// 		q.Err = fmt.Errorf("当前考试状态不支持取消操作: %s", nowStatus)
+		// 		z.Error(q.Err.Error())
+		// 		q.RespErr()
+		// 		return
+		// 	}
 
-			// 清除批改和考卷配置
+		// 	// 清除批改和考卷配置
 
-			q.Err = updateExamStatus(ctx, tx, examID, "00", userID)
-			if q.Err != nil {
-				z.Error(q.Err.Error())
-				q.RespErr()
-				return
-			}
+		// 	q.Err = updateExamStatus(ctx, tx, examID, "00", userID)
+		// 	if q.Err != nil {
+		// 		z.Error(q.Err.Error())
+		// 		q.RespErr()
+		// 		return
+		// 	}
 
-			q.Err = updateExamSessionStatus(ctx, tx, examID, "00", userID)
-			if q.Err != nil {
-				z.Error(q.Err.Error())
-				q.RespErr()
-				return
-			}
+		// 	q.Err = updateExamSessionStatus(ctx, tx, examID, "00", userID)
+		// 	if q.Err != nil {
+		// 		z.Error(q.Err.Error())
+		// 		q.RespErr()
+		// 		return
+		// 	}
 
-			q.Err = exam_service.CancelExamTimers(ctx, examID)
-			if q.Err != nil {
-				z.Error(q.Err.Error())
-				q.RespErr()
-				return
-			}
+		// 	q.Err = exam_service.CancelExamTimers(ctx, examID)
+		// 	if q.Err != nil {
+		// 		z.Error(q.Err.Error())
+		// 		q.RespErr()
+		// 		return
+		// 	}
 
 		case "02":
 			// 发布考试
@@ -2534,7 +2561,10 @@ func examStatus(ctx context.Context) {
 
 			// 获取当前考试场次信息
 			var examSessions []cmn.TExamSession
-			examSessions, q.Err = GetExamSessions(ctx, examID, userRole)
+			examSessions, q.Err = GetExamSessions(ctx, examID, userDomain)
+			if forceErr == "GetExamSessions" {
+				q.Err = fmt.Errorf("强制获取考试场次错误")
+			}
 			if q.Err != nil {
 				z.Error(q.Err.Error())
 				q.RespErr()
@@ -2553,10 +2583,14 @@ func examStatus(ctx context.Context) {
 
 			// 生成考卷并配置批改（如果有考生）
 			for _, examSession := range examSessions {
+
 				examinee_query := `
 					SELECT id FROM t_examinee WHERE exam_session_id = $1 AND status = '00'
 				`
 				rows, err := tx.Query(ctx, examinee_query, examSession.ID.Int64)
+				if forceErr == "tx.Query" {
+					err = fmt.Errorf("强制查询考生错误")
+				}
 				if err != nil {
 					q.Err = fmt.Errorf("查询考生失败: %s", err.Error())
 					z.Error(q.Err.Error())
@@ -2568,7 +2602,11 @@ func examStatus(ctx context.Context) {
 				var examineeIDs []int64
 				for rows.Next() {
 					var examineeID int64
-					if err := rows.Scan(&examineeID); err != nil {
+					err := rows.Scan(&examineeID)
+					if forceErr == "rows.Scan" {
+						err = fmt.Errorf("强制获取考生ID错误")
+					}
+					if err != nil {
 						q.Err = fmt.Errorf("获取考生ID失败: %s", err.Error())
 						z.Error(q.Err.Error())
 						q.RespErr()
@@ -2584,6 +2622,9 @@ func examStatus(ctx context.Context) {
 				var examPaperID *int64
 				var subjectiveQuestionGroups []examPaper.SubjectiveQuestionGroup
 				examPaperID, subjectiveQuestionGroups, q.Err = examPaper.GenerateExamPaper(ctx, tx, "00", examSession.PaperID.Int64, 0, examSession.ID.Int64, userID, true)
+				if forceErr == "examPaper.GenerateExamPaper" {
+					q.Err = fmt.Errorf("强制生成考卷错误")
+				}
 				if q.Err != nil {
 					q.RespErr()
 					return
@@ -2591,6 +2632,8 @@ func examStatus(ctx context.Context) {
 				_ = subjectiveQuestionGroups
 
 				var isQuestionRandom, isOptionRandom bool
+				isOptionRandom = false
+				isQuestionRandom = false
 
 				switch examSession.QuestionShuffledMode.String {
 				case "00": // 既有试题乱序也有选项乱序
@@ -2605,9 +2648,6 @@ func examStatus(ctx context.Context) {
 				case "06": // 都不选择
 					isQuestionRandom = false
 					isOptionRandom = false
-				default:
-					isQuestionRandom = false
-					isOptionRandom = false
 				}
 
 				var generateAnswerQuestionsRequest examPaper.GenerateAnswerQuestionsRequest
@@ -2618,6 +2658,9 @@ func examStatus(ctx context.Context) {
 				generateAnswerQuestionsRequest.Category = "00"
 
 				q.Err = examPaper.GenerateAnswerQuestion(ctx, tx, generateAnswerQuestionsRequest, userID)
+				if forceErr == "examPaper.GenerateAnswerQuestion" {
+					q.Err = fmt.Errorf("强制生成答卷错误")
+				}
 				if q.Err != nil {
 					z.Error(q.Err.Error())
 					q.RespErr()
@@ -2634,40 +2677,36 @@ func examStatus(ctx context.Context) {
 					AND status != '08'
 					`
 				_, q.Err = tx.Exec(ctx, assign_query, *examPaperID, userID, now, examSession.ID.Int64)
+				if forceErr == "tx.Exec" {
+					q.Err = fmt.Errorf("强制更新考生考卷ID错误")
+				}
 				if q.Err != nil {
 					z.Error(q.Err.Error())
 					q.RespErr()
 					return
 				}
 
-				// 配置批改
+				// 配置批改员
 				var reviewerIDs []int64
-				switch v := examSession.ReviewerIds.(type) {
-				case []interface{}:
-					reviewerIDs = make([]int64, len(v))
-					for i, item := range v {
-						switch id := item.(type) {
-						case int64:
-							reviewerIDs[i] = id
-						case int:
-							reviewerIDs[i] = int64(id)
-						default:
-							q.Err = fmt.Errorf("无效的批改员ID类型: %T", id)
-							z.Error(q.Err.Error())
-							q.RespErr()
-							return
-						}
+
+				if forceErr == "reviewerIds-panic" {
+					examSession.ReviewerIds = "invalid_type_to_trigger_panic"
+				}
+
+				if ids, ok := examSession.ReviewerIds.([]interface{}); ok {
+					reviewerIDs = make([]int64, len(ids))
+					for i, id := range ids {
+						reviewerIDs[i] = id.(int64)
 					}
-				default:
-					z.Info("Unknown type", zap.String("type", fmt.Sprintf("%T", v)), zap.Any("value", v))
-					q.Err = fmt.Errorf("无效的批改员ID列表类型: %T", v)
-					z.Error(q.Err.Error())
-					q.RespErr()
-					return
+				} else {
+					reviewerIDs = examSession.ReviewerIds.([]int64)
 				}
 
 				var examCreator int64
 				q.Err = tx.QueryRow(ctx, "SELECT creator FROM t_exam_info WHERE id = $1", examID).Scan(&examCreator)
+				if forceErr == "tx.QueryRow" {
+					q.Err = fmt.Errorf("强制查询考试创建者错误")
+				}
 				if q.Err != nil {
 					z.Error(q.Err.Error())
 					q.RespErr()
@@ -2690,6 +2729,9 @@ func examStatus(ctx context.Context) {
 				handleMarkerInfoReq.Status = "00"
 
 				q.Err = mark.HandleMarkerInfo(ctx, &tx, userID, handleMarkerInfoReq)
+				if forceErr == "mark.HandleMarkerInfo" {
+					q.Err = fmt.Errorf("强制处理批改员信息错误")
+				}
 				if q.Err != nil {
 					z.Error(q.Err.Error())
 					q.RespErr()
@@ -2698,6 +2740,9 @@ func examStatus(ctx context.Context) {
 			}
 
 			q.Err = updateExamStatus(ctx, tx, examID, "02", userID)
+			if forceErr == "updateExamStatus" {
+				q.Err = fmt.Errorf("强制更新考试状态错误")
+			}
 			if q.Err != nil {
 				z.Error(q.Err.Error())
 				q.RespErr()
@@ -2705,6 +2750,9 @@ func examStatus(ctx context.Context) {
 			}
 
 			q.Err = updateExamSessionStatus(ctx, tx, examID, "02", userID)
+			if forceErr == "updateExamSessionStatus" {
+				q.Err = fmt.Errorf("强制更新考试场次状态错误")
+			}
 			if q.Err != nil {
 				z.Error(q.Err.Error())
 				q.RespErr()
@@ -2712,6 +2760,9 @@ func examStatus(ctx context.Context) {
 			}
 
 			q.Err = exam_service.SetExamTimers(ctx, examID)
+			if forceErr == "exam_service.SetExamTimers" {
+				q.Err = fmt.Errorf("强制设置考试计时器错误")
+			}
 			if q.Err != nil {
 				z.Error(q.Err.Error())
 				q.RespErr()
@@ -2720,30 +2771,30 @@ func examStatus(ctx context.Context) {
 
 			q.Resp()
 			return
-		case "12":
-			// 删除考试
-			if nowStatus != "00" {
-				q.Err = fmt.Errorf("当前考试状态不支持删除操作: %s", nowStatus)
-				z.Error(q.Err.Error())
-				q.RespErr()
-				return
-			}
+		// case "12":
+		// 	// 删除考试
+		// 	if nowStatus != "00" {
+		// 		q.Err = fmt.Errorf("当前考试状态不支持删除操作: %s", nowStatus)
+		// 		z.Error(q.Err.Error())
+		// 		q.RespErr()
+		// 		return
+		// 	}
 
-			// 清除考卷配置
-			q.Err = updateExamStatus(ctx, tx, examID, "12", userID)
-			if q.Err != nil {
-				z.Error(q.Err.Error())
-				q.RespErr()
-				return
-			}
-			q.Resp()
+		// 	// 清除考卷配置
+		// 	q.Err = updateExamStatus(ctx, tx, examID, "12", userID)
+		// 	if q.Err != nil {
+		// 		z.Error(q.Err.Error())
+		// 		q.RespErr()
+		// 		return
+		// 	}
+		// 	q.Resp()
 
-			q.Err = updateExamSessionStatus(ctx, tx, examID, "14", userID)
-			if q.Err != nil {
-				z.Error(q.Err.Error())
-				q.RespErr()
-				return
-			}
+		// 	q.Err = updateExamSessionStatus(ctx, tx, examID, "14", userID)
+		// 	if q.Err != nil {
+		// 		z.Error(q.Err.Error())
+		// 		q.RespErr()
+		// 		return
+		// 	}
 
 		default:
 			q.Err = fmt.Errorf("不支持更新的考试状态: %s", status)

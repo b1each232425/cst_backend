@@ -3,10 +3,11 @@ package cmn
 import (
 	"context"
 	"database/sql"
+	"github.com/pkg/errors"
 	"regexp"
 
 	"github.com/jmoiron/sqlx/types"
-	"github.com/pkg/errors"
+	
 	"w2w.io/null"
 )
 
@@ -20,7 +21,7 @@ type TAccountOprLog struct {
 	DomainID   null.Int       `json:"DomainID,omitempty" db:"domain_id,false,bigint"`       /* domain_id 数据隶属 */
 	Addi       types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                 /* addi 附加信息 */
 	Remark     null.String    `json:"Remark,omitempty" db:"remark,false,character varying"` /* remark 备注 */
-	Filter     `json:"-"`     // build DML where clause
+	Filter     `json:"-"`                                                                   // build DML where clause
 }
 
 // TAccountOprLogFields full field list for default query
@@ -147,7 +148,7 @@ type TAge struct {
 	UpdatedBy       null.Int       `json:"UpdatedBy,omitempty" db:"updated_by,false,bigint"`              /* updated_by 更新人 */
 	Remark          null.String    `json:"Remark,omitempty" db:"remark,false,character varying"`          /* remark 备注 */
 	Status          null.String    `json:"Status,omitempty" db:"status,false,character varying"`          /* status 0:有效, 2: 删除 */
-	Filter          `json:"-"`     // build DML where clause
+	Filter          `json:"-"`                                                                            // build DML where clause
 }
 
 // TAgeFields full field list for default query
@@ -327,7 +328,7 @@ type TAPI struct {
 	Addi       types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                 /* addi 附加信息 */
 	Remark     null.String    `json:"Remark,omitempty" db:"remark,false,character varying"` /* remark 备注 */
 	Status     null.String    `json:"Status,omitempty" db:"status,false,character varying"` /* status 状态，00：草稿，01：有效，02：作废 */
-	Filter     `json:"-"`     // build DML where clause
+	Filter     `json:"-"`                                                                   // build DML where clause
 }
 
 // TAPIFields full field list for default query
@@ -488,7 +489,7 @@ type TArticle struct {
 	Addi       types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                     /* addi 附加信息 */
 	Remark     null.String    `json:"Remark,omitempty" db:"remark,false,character varying"`     /* remark 备注 */
 	Status     null.String    `json:"Status,omitempty" db:"status,false,character varying"`     /* status 状态，00：草稿，01：有效，02：作废 */
-	Filter     `json:"-"`     // build DML where clause
+	Filter     `json:"-"`                                                                       // build DML where clause
 }
 
 // TArticleFields full field list for default query
@@ -707,7 +708,7 @@ type TBlacklist struct {
 	DomainID   null.Int       `json:"DomainID,omitempty" db:"domain_id,false,bigint"`         /* domain_id 数据属主 */
 	Addi       types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                   /* addi 附加数据 */
 	Status     null.String    `json:"Status,omitempty" db:"status,false,character varying"`   /* status 状态 0:有效, 2: 无效 */
-	Filter     `json:"-"`     // build DML where clause
+	Filter     `json:"-"`                                                                     // build DML where clause
 }
 
 // TBlacklistFields full field list for default query
@@ -841,7 +842,7 @@ type TCorrection struct {
 	UpdatedBy        null.Int       `json:"UpdatedBy,omitempty" db:"updated_by,false,bigint"`                        /* updated_by 更新者 */
 	UpdateTime       null.Int       `json:"UpdateTime,omitempty" db:"update_time,false,timestamp without time zone"` /* update_time 更新时间 */
 	Addi             types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                                    /* addi 附加信息 */
-	Filter           `json:"-"`     // build DML where clause
+	Filter           `json:"-"`                                                                                      // build DML where clause
 }
 
 // TCorrectionFields full field list for default query
@@ -1160,7 +1161,7 @@ type TDegree struct {
 	Name   null.String `json:"Name,omitempty" db:"name,false,character varying"`     /* name 等级名称 */
 	Limn   null.String `json:"Limn,omitempty" db:"limn,false,character varying"`     /* limn 等级描述 */
 	Status null.String `json:"Status,omitempty" db:"status,false,character varying"` /* status 可用，禁用 */
-	Filter `json:"-"`  // build DML where clause
+	Filter `json:"-"`                                                                // build DML where clause
 }
 
 // TDegreeFields full field list for default query
@@ -1265,7 +1266,7 @@ type TDomain struct {
 	Addi       types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                 /* addi 附加信息 */
 	Remark     null.String    `json:"Remark,omitempty" db:"remark,false,character varying"` /* remark 备注 */
 	Status     null.String    `json:"Status,omitempty" db:"status,false,character varying"` /* status 状态，00：草稿，01：有效，02：作废 */
-	Filter     `json:"-"`     // build DML where clause
+	Filter     `json:"-"`                                                                   // build DML where clause
 }
 
 // TDomainFields full field list for default query
@@ -1420,7 +1421,7 @@ type TDomainAPI struct {
 	Addi       types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                 /* addi 附加信息 */
 	Remark     null.String    `json:"Remark,omitempty" db:"remark,false,character varying"` /* remark 备注 */
 	Status     null.String    `json:"Status,omitempty" db:"status,false,character varying"` /* status 状态，00：草稿，01：有效，02：作废 */
-	Filter     `json:"-"`     // build DML where clause
+	Filter     `json:"-"`                                                                   // build DML where clause
 }
 
 // TDomainAPIFields full field list for default query
@@ -1556,11 +1557,13 @@ func GetTDomainAPIByPk(db Queryer, pk0 null.Int) (*TDomainAPI, error) {
 	return &r, nil
 }
 
-/*TDomainAsset define
+/*
+TDomainAsset define
 
 user domain relation
 domain api relation
-other relation represents assessuser.t_domain_asset */
+other relation represents assessuser.t_domain_asset
+*/
 type TDomainAsset struct {
 	ID          null.Int    `json:"ID,omitempty" db:"id,true,integer"`                               /* id id */
 	RType       string      `json:"RType,omitempty" db:"r_type,false,character varying"`             /* r_type 关系类型, ud: user of domain, da: API of domain */
@@ -1590,7 +1593,7 @@ type TDomainAsset struct {
 	Addi       types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                 /* addi 附加信息 */
 	Remark     null.String    `json:"Remark,omitempty" db:"remark,false,character varying"` /* remark 备注 */
 	Status     null.String    `json:"Status,omitempty" db:"status,false,character varying"` /* status 状态，00：草稿，01：有效，02：作废 */
-	Filter     `json:"-"`     // build DML where clause
+	Filter     `json:"-"`                                                                   // build DML where clause
 }
 
 // TDomainAssetFields full field list for default query
@@ -1731,162 +1734,25 @@ func GetTDomainAssetByPk(db Queryer, pk0 null.Int) (*TDomainAsset, error) {
 	return &r, nil
 }
 
-/*TExamAttachmentTransfer t_exam_attachment_transfer represents assessuser.t_exam_attachment_transfer */
-type TExamAttachmentTransfer struct {
-	ID                     null.Int       `json:"ID,omitempty" db:"id,true,integer"`                                                      /* id id */
-	ExamID                 null.Int       `json:"ExamID,omitempty" db:"exam_id,false,bigint"`                                             /* exam_id 考试ID */
-	ExamSite               null.Int       `json:"ExamSite,omitempty" db:"exam_site,false,bigint"`                                         /* exam_site 考点ID */
-	QuestionTransferStatus null.String    `json:"QuestionTransferStatus,omitempty" db:"question_transfer_status,false,character varying"` /* question_transfer_status 题目附件传输状态：00 待传输 02 传输中 04 传输完成 06 传输失败 08 传输超时 */
-	Creator                null.Int       `json:"Creator,omitempty" db:"creator,false,bigint"`                                            /* creator 创建者 */
-	CreateTime             null.Int       `json:"CreateTime,omitempty" db:"create_time,false,timestamp without time zone"`                /* create_time 创建时间 */
-	UpdatedBy              null.Int       `json:"UpdatedBy,omitempty" db:"updated_by,false,bigint"`                                       /* updated_by 更新者 */
-	UpdateTime             null.Int       `json:"UpdateTime,omitempty" db:"update_time,false,timestamp without time zone"`                /* update_time 更新时间 */
-	Status                 null.String    `json:"Status,omitempty" db:"status,false,character varying"`                                   /* status 状态 */
-	Addi                   types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                                                   /* addi 额外信息 */
-	AnswerTransferStatus   null.String    `json:"AnswerTransferStatus,omitempty" db:"answer_transfer_status,false,character varying"`     /* answer_transfer_status 答案附件传输状态：00 待传输 02 传输中 04 传输完成 06 传输失败 */
-	Filter                 `json:"-"`     // build DML where clause
-}
-
-// TExamAttachmentTransferFields full field list for default query
-var TExamAttachmentTransferFields = []string{
-	"ID",
-	"ExamID",
-	"ExamSite",
-	"QuestionTransferStatus",
-	"Creator",
-	"CreateTime",
-	"UpdatedBy",
-	"UpdateTime",
-	"Status",
-	"Addi",
-	"AnswerTransferStatus",
-}
-
-// TExamAttachmentTransferColumns full column list for default query
-var TExamAttachmentTransferColumns = []string{
-	"id",
-	"exam_id",
-	"exam_site",
-	"question_transfer_status",
-	"creator",
-	"create_time",
-	"updated_by",
-	"update_time",
-	"status",
-	"addi",
-	"answer_transfer_status",
-}
-
-// TExamAttachmentTransferColumnsDataTypes full column data types for default query
-var TExamAttachmentTransferColumnsDataTypes = map[string]string{
-	"id":                       "integer",
-	"exam_id":                  "bigint",
-	"exam_site":                "bigint",
-	"question_transfer_status": "character varying",
-	"creator":                  "bigint",
-	"create_time":              "timestamp without time zone",
-	"updated_by":               "bigint",
-	"update_time":              "timestamp without time zone",
-	"status":                   "character varying",
-	"addi":                     "jsonb",
-	"answer_transfer_status":   "character varying",
-}
-
-// GetFieldsMap returns a map of field names to their values.
-func (r *TExamAttachmentTransfer) GetFieldsMap() map[string]any {
-	return map[string]any{
-		"ID":                     r.ID,
-		"ExamID":                 r.ExamID,
-		"ExamSite":               r.ExamSite,
-		"QuestionTransferStatus": r.QuestionTransferStatus,
-		"Creator":                r.Creator,
-		"CreateTime":             r.CreateTime,
-		"UpdatedBy":              r.UpdatedBy,
-		"UpdateTime":             r.UpdateTime,
-		"Status":                 r.Status,
-		"Addi":                   r.Addi,
-		"AnswerTransferStatus":   r.AnswerTransferStatus,
-	}
-}
-
-// GetColumnsMap returns a map of column names to their values.
-func (r *TExamAttachmentTransfer) GetColumnsMap() map[string]any {
-	return map[string]any{
-		"id":                       r.ID,
-		"exam_id":                  r.ExamID,
-		"exam_site":                r.ExamSite,
-		"question_transfer_status": r.QuestionTransferStatus,
-		"creator":                  r.Creator,
-		"create_time":              r.CreateTime,
-		"updated_by":               r.UpdatedBy,
-		"update_time":              r.UpdateTime,
-		"status":                   r.Status,
-		"addi":                     r.Addi,
-		"answer_transfer_status":   r.AnswerTransferStatus,
-	}
-}
-
-// Fields return all fields of struct.
-func (r *TExamAttachmentTransfer) Fields() []string {
-	return TExamAttachmentTransferFields
-}
-
-// GetTableName return the associated db table name.
-func (r *TExamAttachmentTransfer) GetTableName() string {
-	var viewNamePattern = regexp.MustCompile(`(?i)^t_v_[a-z0-9_]+$`)
-	tableName := "t_exam_attachment_transfer"
-	if viewNamePattern.MatchString(tableName) {
-		return tableName[2:]
-	}
-	return tableName
-}
-
-// Create inserts the TExamAttachmentTransfer to the database.
-func (r *TExamAttachmentTransfer) Create(db Queryer) error {
-	err := db.QueryRow(
-		`INSERT INTO t_exam_attachment_transfer (exam_id, exam_site, question_transfer_status, creator, create_time, updated_by, update_time, status, addi, answer_transfer_status) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id`,
-		&r.ExamID, &r.ExamSite, &r.QuestionTransferStatus, &r.Creator, &r.CreateTime, &r.UpdatedBy, &r.UpdateTime, &r.Status, &r.Addi, &r.AnswerTransferStatus).Scan(&r.ID)
-	if err != nil {
-		return errors.Wrap(err, "failed to insert t_exam_attachment_transfer")
-	}
-	return nil
-}
-
-// GetTExamAttachmentTransferByPk select the TExamAttachmentTransfer from the database.
-func GetTExamAttachmentTransferByPk(db Queryer, pk0 null.Int) (*TExamAttachmentTransfer, error) {
-
-	var r TExamAttachmentTransfer
-	err := db.QueryRow(
-		`SELECT id, exam_id, exam_site, question_transfer_status, creator, create_time, updated_by, update_time, status, addi, answer_transfer_status FROM t_exam_attachment_transfer WHERE id = $1`,
-		pk0).Scan(&r.ID, &r.ExamID, &r.ExamSite, &r.QuestionTransferStatus, &r.Creator, &r.CreateTime, &r.UpdatedBy, &r.UpdateTime, &r.Status, &r.Addi, &r.AnswerTransferStatus)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to select t_exam_attachment_transfer")
-	}
-	return &r, nil
-}
-
 /*TExamInfo t_exam_info represents assessuser.t_exam_info */
 type TExamInfo struct {
-	ID                 null.Int       `json:"ID,omitempty" db:"id,true,integer"`                                              /* id 考试编号 */
-	Name               null.String    `json:"Name,omitempty" db:"name,false,character varying"`                               /* name 考试名称 */
-	Rules              null.String    `json:"Rules,omitempty" db:"rules,false,text"`                                          /* rules 考试规则 */
-	Type               null.String    `json:"Type,omitempty" db:"type,false,character varying"`                               /* type 考试类型 00：平时考试 02：期末成绩考试  04：资格证考试 */
-	Mode               null.String    `json:"Mode,omitempty" db:"mode,false,character varying"`                               /* mode 考试方式 00：线上考试  02：线下考试 */
-	Files              types.JSONText `json:"Files,omitempty" db:"files,false,jsonb"`                                         /* files 考试附件资料 */
-	Submitted          null.Bool      `json:"Submitted,omitempty" db:"submitted,false,boolean"`                               /* submitted 考试成绩是否已提交 */
-	Creator            null.Int       `json:"Creator,omitempty" db:"creator,false,bigint"`                                    /* creator 创建者 */
-	UpdatedBy          null.Int       `json:"UpdatedBy,omitempty" db:"updated_by,false,bigint"`                               /* updated_by 更新者 */
-	Status             null.String    `json:"Status,omitempty" db:"status,false,character varying"`                           /* status 状态  00：未发布 02：待开始  04：进行中 06：已结束 08：已归档 10：考试异常 12：已删除 */
-	Addi               types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                                           /* addi 附加信息 */
-	ExamRoomIds        interface{}    `json:"ExamRoomIds,omitempty" db:"exam_room_ids,false,bigint[]"`                        /* exam_room_ids 考场id数组 */
-	ExamDeliveryStatus null.String    `json:"ExamDeliveryStatus,omitempty" db:"exam_delivery_status,false,character varying"` /* exam_delivery_status 考试的考卷下发状态：
-	中心服务器使用：00：待下发  02：下发中  04：下发完成   06：下发失败  08：待更新（教师在下发完考卷后又更新了考试）10：待同步（需要等待考点服务器将数据发回） 12：已同步 （所有数据都成功发回)
-	考点服务器使用：14:待发送 16:发送中 */
+	ID                       null.Int       `json:"ID,omitempty" db:"id,true,integer"`                                               /* id 考试编号 */
+	Name                     null.String    `json:"Name,omitempty" db:"name,false,character varying"`                                /* name 考试名称 */
+	Rules                    null.String    `json:"Rules,omitempty" db:"rules,false,text"`                                           /* rules 考试规则 */
+	Type                     null.String    `json:"Type,omitempty" db:"type,false,character varying"`                                /* type 考试类型 00：平时考试 02：期末成绩考试  04：资格证考试 */
+	Mode                     null.String    `json:"Mode,omitempty" db:"mode,false,character varying"`                                /* mode 考试方式 00：线上考试  02：线下考试 */
+	Files                    types.JSONText `json:"Files,omitempty" db:"files,false,jsonb"`                                          /* files 考试附件资料 */
+	Submitted                null.Bool      `json:"Submitted,omitempty" db:"submitted,false,boolean"`                                /* submitted 考试成绩是否已提交 */
+	Creator                  null.Int       `json:"Creator,omitempty" db:"creator,false,bigint"`                                     /* creator 创建者 */
+	UpdatedBy                null.Int       `json:"UpdatedBy,omitempty" db:"updated_by,false,bigint"`                                /* updated_by 更新者 */
+	Status                   null.String    `json:"Status,omitempty" db:"status,false,character varying"`                            /* status 状态  00：未发布 02：待开始  04：进行中 06：已结束 08：已归档 10：考试异常 12：已删除 */
+	Addi                     types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                                            /* addi 附加信息 */
+	ExamRoomIds              interface{}    `json:"ExamRoomIds,omitempty" db:"exam_room_ids,false,bigint[]"`                         /* exam_room_ids 考场id数组 */
 	ExamRoomInvigilatorCount types.JSONText `json:"ExamRoomInvigilatorCount,omitempty" db:"exam_room_invigilator_count,false,jsonb"` /* exam_room_invigilator_count 记录当前每个考场的所需监考员数量，例：[{exam_room_id:1,invigilator_count:1}] */
-	ExamDeliveryError        null.String    `json:"ExamDeliveryError,omitempty" db:"exam_delivery_error,false,character varying"`    /* exam_delivery_error 下发考卷失败的报错信息 */
 	CreateTime               null.Int       `json:"CreateTime,omitempty" db:"create_time,false,bigint"`                              /* create_time 创建时间 */
 	UpdateTime               null.Int       `json:"UpdateTime,omitempty" db:"update_time,false,bigint"`                              /* update_time update_time */
-	Filter                   `json:"-"`     // build DML where clause
+	DomainID                 null.Int       `json:"DomainID,omitempty" db:"domain_id,false,bigint"`                                  /* domain_id domain_id */
+	Filter                   `json:"-"`                                                                                              // build DML where clause
 }
 
 // TExamInfoFields full field list for default query
@@ -1903,11 +1769,10 @@ var TExamInfoFields = []string{
 	"Status",
 	"Addi",
 	"ExamRoomIds",
-	"ExamDeliveryStatus",
 	"ExamRoomInvigilatorCount",
-	"ExamDeliveryError",
 	"CreateTime",
 	"UpdateTime",
+	"DomainID",
 }
 
 // TExamInfoColumns full column list for default query
@@ -1924,11 +1789,10 @@ var TExamInfoColumns = []string{
 	"status",
 	"addi",
 	"exam_room_ids",
-	"exam_delivery_status",
 	"exam_room_invigilator_count",
-	"exam_delivery_error",
 	"create_time",
 	"update_time",
+	"domain_id",
 }
 
 // TExamInfoColumnsDataTypes full column data types for default query
@@ -1945,11 +1809,10 @@ var TExamInfoColumnsDataTypes = map[string]string{
 	"status":                      "character varying",
 	"addi":                        "jsonb",
 	"exam_room_ids":               "bigint[]",
-	"exam_delivery_status":        "character varying",
 	"exam_room_invigilator_count": "jsonb",
-	"exam_delivery_error":         "character varying",
 	"create_time":                 "bigint",
 	"update_time":                 "bigint",
+	"domain_id":                   "bigint",
 }
 
 // GetFieldsMap returns a map of field names to their values.
@@ -1967,11 +1830,10 @@ func (r *TExamInfo) GetFieldsMap() map[string]any {
 		"Status":                   r.Status,
 		"Addi":                     r.Addi,
 		"ExamRoomIds":              r.ExamRoomIds,
-		"ExamDeliveryStatus":       r.ExamDeliveryStatus,
 		"ExamRoomInvigilatorCount": r.ExamRoomInvigilatorCount,
-		"ExamDeliveryError":        r.ExamDeliveryError,
 		"CreateTime":               r.CreateTime,
 		"UpdateTime":               r.UpdateTime,
+		"DomainID":                 r.DomainID,
 	}
 }
 
@@ -1990,11 +1852,10 @@ func (r *TExamInfo) GetColumnsMap() map[string]any {
 		"status":                      r.Status,
 		"addi":                        r.Addi,
 		"exam_room_ids":               r.ExamRoomIds,
-		"exam_delivery_status":        r.ExamDeliveryStatus,
 		"exam_room_invigilator_count": r.ExamRoomInvigilatorCount,
-		"exam_delivery_error":         r.ExamDeliveryError,
 		"create_time":                 r.CreateTime,
 		"update_time":                 r.UpdateTime,
+		"domain_id":                   r.DomainID,
 	}
 }
 
@@ -2016,8 +1877,8 @@ func (r *TExamInfo) GetTableName() string {
 // Create inserts the TExamInfo to the database.
 func (r *TExamInfo) Create(db Queryer) error {
 	err := db.QueryRow(
-		`INSERT INTO t_exam_info (name, rules, type, mode, files, submitted, creator, updated_by, status, addi, exam_room_ids, exam_delivery_status, exam_room_invigilator_count, exam_delivery_error, create_time, update_time) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16) RETURNING id`,
-		&r.Name, &r.Rules, &r.Type, &r.Mode, &r.Files, &r.Submitted, &r.Creator, &r.UpdatedBy, &r.Status, &r.Addi, &r.ExamRoomIds, &r.ExamDeliveryStatus, &r.ExamRoomInvigilatorCount, &r.ExamDeliveryError, &r.CreateTime, &r.UpdateTime).Scan(&r.ID)
+		`INSERT INTO t_exam_info (name, rules, type, mode, files, submitted, creator, updated_by, status, addi, exam_room_ids, exam_room_invigilator_count, create_time, update_time, domain_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15) RETURNING id`,
+		&r.Name, &r.Rules, &r.Type, &r.Mode, &r.Files, &r.Submitted, &r.Creator, &r.UpdatedBy, &r.Status, &r.Addi, &r.ExamRoomIds, &r.ExamRoomInvigilatorCount, &r.CreateTime, &r.UpdateTime, &r.DomainID).Scan(&r.ID)
 	if err != nil {
 		return errors.Wrap(err, "failed to insert t_exam_info")
 	}
@@ -2029,8 +1890,8 @@ func GetTExamInfoByPk(db Queryer, pk0 null.Int) (*TExamInfo, error) {
 
 	var r TExamInfo
 	err := db.QueryRow(
-		`SELECT id, name, rules, type, mode, files, submitted, creator, updated_by, status, addi, exam_room_ids, exam_delivery_status, exam_room_invigilator_count, exam_delivery_error, create_time, update_time FROM t_exam_info WHERE id = $1`,
-		pk0).Scan(&r.ID, &r.Name, &r.Rules, &r.Type, &r.Mode, &r.Files, &r.Submitted, &r.Creator, &r.UpdatedBy, &r.Status, &r.Addi, &r.ExamRoomIds, &r.ExamDeliveryStatus, &r.ExamRoomInvigilatorCount, &r.ExamDeliveryError, &r.CreateTime, &r.UpdateTime)
+		`SELECT id, name, rules, type, mode, files, submitted, creator, updated_by, status, addi, exam_room_ids, exam_room_invigilator_count, create_time, update_time, domain_id FROM t_exam_info WHERE id = $1`,
+		pk0).Scan(&r.ID, &r.Name, &r.Rules, &r.Type, &r.Mode, &r.Files, &r.Submitted, &r.Creator, &r.UpdatedBy, &r.Status, &r.Addi, &r.ExamRoomIds, &r.ExamRoomInvigilatorCount, &r.CreateTime, &r.UpdateTime, &r.DomainID)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to select t_exam_info")
 	}
@@ -2049,7 +1910,7 @@ type TExamPaper struct {
 	UpdateTime    null.Int       `json:"UpdateTime,omitempty" db:"update_time,false,bigint"`        /* update_time 更新时间 */
 	Addi          types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                      /* addi 附加信息 */
 	Status        null.String    `json:"Status,omitempty" db:"status,false,character varying"`      /* status 状态 00：使用中，02：归档，04：废弃 */
-	Filter        `json:"-"`     // build DML where clause
+	Filter        `json:"-"`                                                                        // build DML where clause
 }
 
 // TExamPaperFields full field list for default query
@@ -2177,7 +2038,7 @@ type TExamPaperGroup struct {
 	UpdateTime  null.Int       `json:"UpdateTime,omitempty" db:"update_time,false,bigint"`    /* update_time 更新时间 */
 	Addi        types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                  /* addi 附加信息 */
 	Status      null.String    `json:"Status,omitempty" db:"status,false,character varying"`  /* status 状态 00：正常， 02：异常 */
-	Filter      `json:"-"`     // build DML where clause
+	Filter      `json:"-"`                                                                    // build DML where clause
 }
 
 // TExamPaperGroupFields full field list for default query
@@ -2319,7 +2180,7 @@ type TExamPaperQuestion struct {
 	Order                   null.Int       `json:"Order,omitempty" db:"order,false,integer"`                                     /* order 原始考卷的题目顺序 */
 	GroupID                 null.Int       `json:"GroupID,omitempty" db:"group_id,false,bigint"`                                 /* group_id 题目所属题组ID */
 	QuestionAttachmentsPath types.JSONText `json:"QuestionAttachmentsPath,omitempty" db:"question_attachments_path,false,jsonb"` /* question_attachments_path 题目附件url数组 */
-	Filter                  `json:"-"`     // build DML where clause
+	Filter                  `json:"-"`                                                                                           // build DML where clause
 }
 
 // TExamPaperQuestionFields full field list for default query
@@ -2518,7 +2379,7 @@ type TExamRecord struct {
 	Status      null.String    `json:"Status,omitempty" db:"status,false,character varying"`        /* status 状态码 00:正常 02:失效(删除) */
 	CreateTime  null.Int       `json:"CreateTime,omitempty" db:"create_time,false,bigint"`          /* create_time create_time */
 	UpdateTime  null.Int       `json:"UpdateTime,omitempty" db:"update_time,false,bigint"`          /* update_time update_time */
-	Filter      `json:"-"`     // build DML where clause
+	Filter      `json:"-"`                                                                          // build DML where clause
 }
 
 // TExamRecordFields full field list for default query
@@ -2651,7 +2512,7 @@ type TExamRoom struct {
 	Addi       types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                 /* addi 附加信息 */
 	CreateTime null.Int       `json:"CreateTime,omitempty" db:"create_time,false,bigint"`   /* create_time create_time */
 	UpdateTime null.Int       `json:"UpdateTime,omitempty" db:"update_time,false,bigint"`   /* update_time update_time */
-	Filter     `json:"-"`     // build DML where clause
+	Filter     `json:"-"`                                                                   // build DML where clause
 }
 
 // TExamRoomFields full field list for default query
@@ -2794,7 +2655,7 @@ type TExamSession struct {
 	UpdateTime           null.Int       `json:"UpdateTime,omitempty" db:"update_time,false,bigint"`                                 /* update_time 更新时间 */
 	StartTime            null.Int       `json:"StartTime,omitempty" db:"start_time,false,bigint"`                                   /* start_time 考试开始时间 */
 	EndTime              null.Int       `json:"EndTime,omitempty" db:"end_time,false,bigint"`                                       /* end_time 考试结束时间 */
-	Filter               `json:"-"`     // build DML where clause
+	Filter               `json:"-"`                                                                                                 // build DML where clause
 }
 
 // TExamSessionFields full field list for default query
@@ -2998,7 +2859,7 @@ type TExamSite struct {
 	Admin      null.Int       `json:"Admin,omitempty" db:"admin,false,bigint"`                       /* admin 考点负责人 */
 	CreateTime null.Int       `json:"CreateTime,omitempty" db:"create_time,false,bigint"`            /* create_time create_time */
 	UpdateTime null.Int       `json:"UpdateTime,omitempty" db:"update_time,false,bigint"`            /* update_time update_time */
-	Filter     `json:"-"`     // build DML where clause
+	Filter     `json:"-"`                                                                            // build DML where clause
 }
 
 // TExamSiteFields full field list for default query
@@ -3139,7 +3000,7 @@ type TExaminee struct {
 	StartTime      null.Int       `json:"StartTime,omitempty" db:"start_time,false,bigint"`                      /* start_time 学生考试开始时间 */
 	EndTime        null.Int       `json:"EndTime,omitempty" db:"end_time,false,bigint"`                          /* end_time 学生结束考试的时间 */
 	ExtraTime      null.Int       `json:"ExtraTime,omitempty" db:"extra_time,false,bigint"`                      /* extra_time 延长时间(毫秒) */
-	Filter         `json:"-"`     // build DML where clause
+	Filter         `json:"-"`                                                                                    // build DML where clause
 }
 
 // TExamineeFields full field list for default query
@@ -3305,7 +3166,7 @@ type TExpertise struct {
 	CreateTime null.Int    `json:"CreateTime,omitempty" db:"create_time,false,bigint"`   /* create_time 创建时间 */
 	UpdateTime null.Int    `json:"UpdateTime,omitempty" db:"update_time,false,bigint"`   /* update_time 更新时间 */
 	Status     null.String `json:"Status,omitempty" db:"status,false,character varying"` /* status 可用，禁用 */
-	Filter     `json:"-"`  // build DML where clause
+	Filter     `json:"-"`                                                                // build DML where clause
 }
 
 // TExpertiseFields full field list for default query
@@ -3429,7 +3290,7 @@ type TExternalDomainConf struct {
 	Addi       types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                 /* addi 附加信息 */
 	Remark     null.String    `json:"Remark,omitempty" db:"remark,false,character varying"` /* remark 备注 */
 	Status     null.String    `json:"Status,omitempty" db:"status,false,character varying"` /* status 状态，00：草稿，02：有效，04: 停用，06：作废 */
-	Filter     `json:"-"`     // build DML where clause
+	Filter     `json:"-"`                                                                   // build DML where clause
 }
 
 // TExternalDomainConfFields full field list for default query
@@ -3574,7 +3435,7 @@ type TExternalDomainUser struct {
 	DomainID          null.Int       `json:"DomainID,omitempty" db:"domain_id,false,bigint"`                                /* domain_id 数据隶属 */
 	Addi              types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                                          /* addi 附加信息 */
 	Status            null.String    `json:"Status,omitempty" db:"status,false,character varying"`                          /* status 状态，00：草稿，02：有效，04：禁用，06：作废 */
-	Filter            `json:"-"`     // build DML where clause
+	Filter            `json:"-"`                                                                                            // build DML where clause
 }
 
 // TExternalDomainUserFields full field list for default query
@@ -3719,7 +3580,7 @@ type TFile struct {
 	OriginName   null.String    `json:"OriginName,omitempty" db:"origin_name,false,character varying"`     /* origin_name 用户上传文件名 */
 	Addi         types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                              /* addi 附加信息 */
 	Status       null.String    `json:"Status,omitempty" db:"status,false,character varying"`              /* status 0:有效, 2: 丢失 */
-	Filter       `json:"-"`     // build DML where clause
+	Filter       `json:"-"`                                                                                // build DML where clause
 }
 
 // TFileFields full field list for default query
@@ -3888,7 +3749,7 @@ type TGroup struct {
 	Addi           types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                        /* addi 附加信息 */
 	Remark         null.String    `json:"Remark,omitempty" db:"remark,false,character varying"`        /* remark 备注 */
 	Status         null.String    `json:"Status,omitempty" db:"status,false,character varying"`        /* status 状态，00：草稿，01：有效，02：作废 */
-	Filter         `json:"-"`     // build DML where clause
+	Filter         `json:"-"`                                                                          // build DML where clause
 }
 
 // TGroupFields full field list for default query
@@ -4054,7 +3915,7 @@ type TImportData struct {
 	Addi       types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                          /* addi 附加信息 */
 	Remark     null.String    `json:"Remark,omitempty" db:"remark,false,character varying"`          /* remark 备注 */
 	Status     null.String    `json:"Status,omitempty" db:"status,false,character varying"`          /* status 状态，00：草稿，01：有效，02：作废 */
-	Filter     `json:"-"`     // build DML where clause
+	Filter     `json:"-"`                                                                            // build DML where clause
 }
 
 // TImportDataFields full field list for default query
@@ -4312,7 +4173,7 @@ type TInsurancePolicy struct {
 	Addi             types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                                       /* addi 附加数据 */
 	Remark           null.String    `json:"Remark,omitempty" db:"remark,false,character varying"`                       /* remark 备注 */
 	Status           null.String    `json:"Status,omitempty" db:"status,false,character varying"`                       /* status 一期，0：受理中，2：在保，4：过保, 6: 作废。二期，00: 正常, 04: 重新录单, 08: 撤消, 12: 续保, 16: 已重新录单, 20: 退保, 24: 拒保 */
-	Filter           `json:"-"`     // build DML where clause
+	Filter           `json:"-"`                                                                                         // build DML where clause
 }
 
 // TInsurancePolicyFields full field list for default query
@@ -4913,7 +4774,7 @@ type TInsuranceTypes struct {
 	DomainID          null.Int       `json:"DomainID,omitempty" db:"domain_id,false,bigint"`                              /* domain_id 数据属主 */
 	Remark            null.String    `json:"Remark,omitempty" db:"remark,false,character varying"`                        /* remark 备注 */
 	Status            null.String    `json:"Status,omitempty" db:"status,false,character varying"`                        /* status 状态, 0: 正常，2:等待推出, 4：禁用，6：作废 */
-	Filter            `json:"-"`     // build DML where clause
+	Filter            `json:"-"`                                                                                          // build DML where clause
 }
 
 // TInsuranceTypesFields full field list for default query
@@ -5319,7 +5180,7 @@ type TInsureAttach struct {
 	DomainID       null.Int       `json:"DomainID,omitempty" db:"domain_id,false,bigint"`              /* domain_id 数据属主 */
 	Remark         null.String    `json:"Remark,omitempty" db:"remark,false,character varying"`        /* remark 备注 */
 	Status         null.String    `json:"Status,omitempty" db:"status,false,character varying"`        /* status 状态 */
-	Filter         `json:"-"`     // build DML where clause
+	Filter         `json:"-"`                                                                          // build DML where clause
 }
 
 // TInsureAttachFields full field list for default query
@@ -5516,7 +5377,7 @@ type TInsuredDetail struct {
 	Addi                  types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                                        /* addi 附加信息 */
 	Remark                null.String    `json:"Remark,omitempty" db:"remark,false,character varying"`                        /* remark 备注 （实习生) */
 	Status                null.String    `json:"Status,omitempty" db:"status,false,character varying"`                        /* status 状态：0:有效 2:错误  4.拒保 */
-	Filter                `json:"-"`     // build DML where clause
+	Filter                `json:"-"`                                                                                          // build DML where clause
 }
 
 // TInsuredDetailFields full field list for default query
@@ -5793,7 +5654,7 @@ type TInsuredTerms struct {
 	Addi            types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                          /* addi 附加数据 */
 	Remark          null.String    `json:"Remark,omitempty" db:"remark,false,character varying"`          /* remark 备注 */
 	Status          null.String    `json:"Status,omitempty" db:"status,false,character varying"`          /* status 状态0:有效, 2:修改，4删除 */
-	Filter          `json:"-"`     // build DML where clause
+	Filter          `json:"-"`                                                                            // build DML where clause
 }
 
 // TInsuredTermsFields full field list for default query
@@ -5940,7 +5801,7 @@ type TInvigilation struct {
 	ExamRoom      null.Int       `json:"ExamRoom,omitempty" db:"exam_room,true,bigint"`            /* exam_room exam_room */
 	CreateTime    null.Int       `json:"CreateTime,omitempty" db:"create_time,false,bigint"`       /* create_time create_time */
 	UpdateTime    null.Int       `json:"UpdateTime,omitempty" db:"update_time,false,bigint"`       /* update_time update_time */
-	Filter        `json:"-"`     // build DML where clause
+	Filter        `json:"-"`                                                                       // build DML where clause
 }
 
 // TInvigilationFields full field list for default query
@@ -6177,7 +6038,7 @@ type TLog struct {
 	DomainID      null.Int    `json:"DomainID,omitempty" db:"domain_id,false,bigint"`                       /* domain_id 数据隶属 */
 	Creator       null.Int    `json:"Creator,omitempty" db:"creator,false,bigint"`                          /* creator 本数据创建者 */
 	CreateTime    null.Int    `json:"CreateTime,omitempty" db:"create_time,false,bigint"`                   /* create_time 生成时间 */
-	Filter        `json:"-"`  // build DML where clause
+	Filter        `json:"-"`                                                                                // build DML where clause
 }
 
 // TLogFields full field list for default query
@@ -6315,7 +6176,7 @@ type TMark struct {
 	Score                null.Float     `json:"Score,omitempty" db:"score,false,double precision"`                       /* score score */
 	PracticeSubmissionID null.Int       `json:"PracticeSubmissionID,omitempty" db:"practice_submission_id,false,bigint"` /* practice_submission_id 练习提交id */
 	PracticeID           null.Int       `json:"PracticeID,omitempty" db:"practice_id,false,bigint"`                      /* practice_id 练习id */
-	Filter               `json:"-"`     // build DML where clause
+	Filter               `json:"-"`                                                                                      // build DML where clause
 }
 
 // TMarkFields full field list for default query
@@ -6472,7 +6333,7 @@ type TMarkInfo struct {
 	Status             null.String    `json:"Status,omitempty" db:"status,false,character varying"`               /* status 00:正常 02: 已改完 04: 已删除 */
 	QuestionIds        types.JSONText `json:"QuestionIds,omitempty" db:"question_ids,false,jsonb"`                /* question_ids 批改的题目集 */
 	PracticeID         null.Int       `json:"PracticeID,omitempty" db:"practice_id,false,bigint"`                 /* practice_id 练习id */
-	Filter             `json:"-"`     // build DML where clause
+	Filter             `json:"-"`                                                                                 // build DML where clause
 }
 
 // TMarkInfoFields full field list for default query
@@ -6692,7 +6553,7 @@ type TMistakeCorrect struct {
 	Addi                     types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                                             /* addi 附加数据 */
 	Remark                   null.String    `json:"Remark,omitempty" db:"remark,false,character varying"`                             /* remark 备注 */
 	Status                   null.String    `json:"Status,omitempty" db:"status,false,character varying"`                             /* status 状态,0: 草稿, 2: 受理中，4:同意， 6:拒绝 */
-	Filter                   `json:"-"`     // build DML where clause
+	Filter                   `json:"-"`                                                                                               // build DML where clause
 }
 
 // TMistakeCorrectFields full field list for default query
@@ -7168,8 +7029,10 @@ func GetTMistakeCorrectByPk(db Queryer, pk0 null.Int) (*TMistakeCorrect, error) 
 	return &r, nil
 }
 
-/*TMsg 即时通信消息表
-represents assessuser.t_msg */
+/*
+TMsg 即时通信消息表
+represents assessuser.t_msg
+*/
 type TMsg struct {
 	ID     null.Int       `json:"ID,omitempty" db:"id,true,integer"`         /* id 参数编号 */
 	Sender null.Int       `json:"Sender,omitempty" db:"sender,false,bigint"` /* sender 消息发送者ID */
@@ -7198,7 +7061,7 @@ type TMsg struct {
 	Addi              types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                             /* addi 附加信息 */
 	Remark            null.String    `json:"Remark,omitempty" db:"remark,false,character varying"`             /* remark 备注 */
 	Status            null.String    `json:"Status,omitempty" db:"status,false,character varying"`             /* status 状态，00：草稿，01：有效，02：作废 */
-	Filter            `json:"-"`     // build DML where clause
+	Filter            `json:"-"`                                                                               // build DML where clause
 }
 
 // TMsgFields full field list for default query
@@ -7347,7 +7210,7 @@ type TMsgStatus struct {
 	Addi         types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                   /* addi 附加信息 */
 	Remark       null.String    `json:"Remark,omitempty" db:"remark,false,character varying"`   /* remark 备注 */
 	Status       null.String    `json:"Status,omitempty" db:"status,false,character varying"`   /* status 状态，00：草稿，01：有效，02：作废 */
-	Filter       `json:"-"`     // build DML where clause
+	Filter       `json:"-"`                                                                     // build DML where clause
 }
 
 // TMsgStatusFields full field list for default query
@@ -7483,7 +7346,7 @@ type TMyContact struct {
 	Addi        types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                            /* addi 附加信息 */
 	Remark      null.String    `json:"Remark,omitempty" db:"remark,false,character varying"`            /* remark 备注 */
 	Status      null.String    `json:"Status,omitempty" db:"status,false,character varying"`            /* status 状态，00：草稿，01：有效，02：作废 */
-	Filter      `json:"-"`     // build DML where clause
+	Filter      `json:"-"`                                                                              // build DML where clause
 }
 
 // TMyContactFields full field list for default query
@@ -7636,7 +7499,7 @@ type TNegotiatedPrice struct {
 	Addi            types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                          /* addi 附加数据 */
 	Remark          null.String    `json:"Remark,omitempty" db:"remark,false,character varying"`          /* remark 备注 */
 	Status          null.String    `json:"Status,omitempty" db:"status,false,character varying"`          /* status 0:有效, 2: 删除 */
-	Filter          `json:"-"`     // build DML where clause
+	Filter          `json:"-"`                                                                            // build DML where clause
 }
 
 // TNegotiatedPriceFields full field list for default query
@@ -7814,7 +7677,7 @@ type TOperationLogs struct {
 	UpdateTime    null.Int       `json:"UpdateTime,omitempty" db:"update_time,false,timestamp without time zone"` /* update_time 更新时间 */
 	Status        null.String    `json:"Status,omitempty" db:"status,false,character varying"`                    /* status 状态 00: 正常 02：已删除 */
 	Addi          types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                                    /* addi 附加信息 */
-	Filter        `json:"-"`     // build DML where clause
+	Filter        `json:"-"`                                                                                      // build DML where clause
 }
 
 // TOperationLogsFields full field list for default query
@@ -8073,7 +7936,7 @@ type TOrder struct {
 	Addi        types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                            /* addi 附加数据 */
 	Remark      null.String    `json:"Remark,omitempty" db:"remark,false,character varying"`            /* remark 备注 */
 	Status      null.String    `json:"Status,omitempty" db:"status,false,character varying"`            /* status 0: 未支付, 2: 已支付，4: 已生成保单, 6: 已作废 */
-	Filter      `json:"-"`     // build DML where clause
+	Filter      `json:"-"`                                                                              // build DML where clause
 }
 
 // TOrderFields full field list for default query
@@ -8797,7 +8660,7 @@ type TPaper struct {
 	Addi              types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                              /* addi 附加信息 */
 	Status            null.String    `json:"Status,omitempty" db:"status,false,character varying"`              /* status 状态 00：正常， 02：异常 */
 	AccessMode        null.String    `json:"AccessMode,omitempty" db:"access_mode,false,character varying"`     /* access_mode 试卷访问权限，00私有 02共享 04公开 */
-	Filter            `json:"-"`     // build DML where clause
+	Filter            `json:"-"`                                                                                // build DML where clause
 }
 
 // TPaperFields full field list for default query
@@ -8955,7 +8818,7 @@ type TPaperGroup struct {
 	UpdateTime null.Int       `json:"UpdateTime,omitempty" db:"update_time,false,bigint"`   /* update_time 更新时间 */
 	Addi       types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                 /* addi 附加信息 */
 	Status     null.String    `json:"Status,omitempty" db:"status,false,character varying"` /* status 状态 00：正常， 02：异常 */
-	Filter     `json:"-"`     // build DML where clause
+	Filter     `json:"-"`                                                                   // build DML where clause
 }
 
 // TPaperGroupFields full field list for default query
@@ -9085,7 +8948,7 @@ type TPaperQuestion struct {
 	UpdateTime     null.Int       `json:"UpdateTime,omitempty" db:"update_time,false,bigint"`          /* update_time 更新时间 */
 	Addi           types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                        /* addi 附加信息 */
 	Status         null.String    `json:"Status,omitempty" db:"status,false,character varying"`        /* status 状态 00：正常 02：异常 */
-	Filter         `json:"-"`     // build DML where clause
+	Filter         `json:"-"`                                                                          // build DML where clause
 }
 
 // TPaperQuestionFields full field list for default query
@@ -9211,7 +9074,8 @@ func GetTPaperQuestionByPk(db Queryer, pk0 null.Int) (*TPaperQuestion, error) {
 	return &r, nil
 }
 
-/*TParam 提供用户设置参数
+/*
+TParam 提供用户设置参数
 belongTo value scope
 系统一级:1000-1990
 系统二级:2000-2990
@@ -9222,7 +9086,8 @@ belongTo value scope
 应用系统二级:12000-12990
 应用系统三级:13000-13990
 应用系统四级:14000-14990
-预置参数ID只使用偶数 represents assessuser.t_param */
+预置参数ID只使用偶数 represents assessuser.t_param
+*/
 type TParam struct {
 	ID         null.Int       `json:"ID,omitempty" db:"id,true,integer"`                         /* id 参数编号 */
 	Belongto   null.Int       `json:"Belongto,omitempty" db:"belongto,false,bigint"`             /* belongto 类属 */
@@ -9235,7 +9100,7 @@ type TParam struct {
 	Addi       types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                      /* addi 附加信息 */
 	Remark     null.String    `json:"Remark,omitempty" db:"remark,false,character varying"`      /* remark 备注 */
 	Status     null.String    `json:"Status,omitempty" db:"status,false,character varying"`      /* status 状态，00：草稿，01：有效，02：作废 */
-	Filter     `json:"-"`     // build DML where clause
+	Filter     `json:"-"`                                                                        // build DML where clause
 }
 
 // TParamFields full field list for default query
@@ -9374,7 +9239,7 @@ type TPayAccount struct {
 	Addi       types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                   /* addi 附加信息 */
 	Remark     null.String    `json:"Remark,omitempty" db:"remark,false,character varying"`   /* remark 备注 */
 	Status     null.String    `json:"Status,omitempty" db:"status,false,character varying"`   /* status 状态，00：草稿，02：有效，04: 停用，06：作废 */
-	Filter     `json:"-"`     // build DML where clause
+	Filter     `json:"-"`                                                                     // build DML where clause
 }
 
 // TPayAccountFields full field list for default query
@@ -9535,7 +9400,7 @@ type TPayment struct {
 	Addi           types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                                 /* addi 附加数据 */
 	Remark         null.String    `json:"Remark,omitempty" db:"remark,false,character varying"`                 /* remark 备注 */
 	Status         null.String    `json:"Status,omitempty" db:"status,false,character varying"`                 /* status 状态, 未缴费: 0, 已缴费: 2, 作废: 4 */
-	Filter         `json:"-"`     // build DML where clause
+	Filter         `json:"-"`                                                                                   // build DML where clause
 }
 
 // TPaymentFields full field list for default query
@@ -9678,7 +9543,7 @@ type TPermission struct {
 	Addi        types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                 /* addi 扩展 */
 	Status      null.String    `json:"Status,omitempty" db:"status,false,character varying"` /* status 状态 00: 启用 02: 禁用 */
 	Description null.String    `json:"Description,omitempty" db:"description,false,text"`    /* description description */
-	Filter      `json:"-"`     // build DML where clause
+	Filter      `json:"-"`                                                                   // build DML where clause
 }
 
 // TPermissionFields full field list for default query
@@ -9806,11 +9671,11 @@ type TPractice struct {
 	Status          null.String    `json:"Status,omitempty" db:"status,false,character varying"`            /* status 状态， 00：未发布  02：发布  04：已删除 */
 	AllowedAttempts null.Int       `json:"AllowedAttempts,omitempty" db:"allowed_attempts,false,integer"`   /* allowed_attempts 可作答的次数；
 	如果为0，则说明是无限次数 */
-	PaperID     null.Int   `json:"PaperID,omitempty" db:"paper_id,false,integer"`          /* paper_id 试卷编号 */
-	ExamPaperID null.Int   `json:"ExamPaperID,omitempty" db:"exam_paper_id,false,integer"` /* exam_paper_id 生成的考卷快照的id，避免重复生成考卷快照 */
-	CreateTime  null.Int   `json:"CreateTime,omitempty" db:"create_time,false,bigint"`     /* create_time 记录创建时间 */
-	UpdateTime  null.Int   `json:"UpdateTime,omitempty" db:"update_time,false,bigint"`     /* update_time 记录更新时间 */
-	Filter      `json:"-"` // build DML where clause
+	PaperID     null.Int `json:"PaperID,omitempty" db:"paper_id,false,integer"`          /* paper_id 试卷编号 */
+	ExamPaperID null.Int `json:"ExamPaperID,omitempty" db:"exam_paper_id,false,integer"` /* exam_paper_id 生成的考卷快照的id，避免重复生成考卷快照 */
+	CreateTime  null.Int `json:"CreateTime,omitempty" db:"create_time,false,bigint"`     /* create_time 记录创建时间 */
+	UpdateTime  null.Int `json:"UpdateTime,omitempty" db:"update_time,false,bigint"`     /* update_time 记录更新时间 */
+	Filter      `json:"-"`                                                               // build DML where clause
 }
 
 // TPracticeFields full field list for default query
@@ -9952,7 +9817,7 @@ type TPracticeStudent struct {
 	Status     null.String    `json:"Status,omitempty" db:"status,false,character varying"` /* status 00:正常 02:被删除 */
 	CreateTime null.Int       `json:"CreateTime,omitempty" db:"create_time,false,bigint"`   /* create_time 创建时间 */
 	UpdateTime null.Int       `json:"UpdateTime,omitempty" db:"update_time,false,bigint"`   /* update_time 更新时间 */
-	Filter     `json:"-"`     // build DML where clause
+	Filter     `json:"-"`                                                                   // build DML where clause
 }
 
 // TPracticeStudentFields full field list for default query
@@ -10082,7 +9947,7 @@ type TPracticeSubmissions struct {
 	UpdateTime     null.Int       `json:"UpdateTime,omitempty" db:"update_time,false,bigint"`         /* update_time 当前记录更新的时间 */
 	StartTime      null.Int       `json:"StartTime,omitempty" db:"start_time,false,bigint"`           /* start_time 此次练习第一次进入作答的时间 */
 	EndTime        null.Int       `json:"EndTime,omitempty" db:"end_time,false,bigint"`               /* end_time 此次练习提交作答的时间 */
-	Filter         `json:"-"`     // build DML where clause
+	Filter         `json:"-"`                                                                         // build DML where clause
 }
 
 // TPracticeSubmissionsFields full field list for default query
@@ -10233,8 +10098,10 @@ func GetTPracticeSubmissionsByPk(db Queryer, pk0 null.Int) (*TPracticeSubmission
 	return &r, nil
 }
 
-/*TPrice 价格设置表
-represents assessuser.t_price */
+/*
+TPrice 价格设置表
+represents assessuser.t_price
+*/
 type TPrice struct {
 	ID                 null.Int       `json:"ID,omitempty" db:"id,true,integer"`                                 /* id 价格id */
 	Title              null.String    `json:"Title,omitempty" db:"title,false,character varying"`                /* title 标题 */
@@ -10257,7 +10124,7 @@ type TPrice struct {
 	Addi               types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                              /* addi 备用字段 */
 	Remark             null.String    `json:"Remark,omitempty" db:"remark,false,character varying"`              /* remark 备注 */
 	Status             null.String    `json:"Status,omitempty" db:"status,false,character varying"`              /* status 状态，0：有效，2：无效 */
-	Filter             `json:"-"`     // build DML where clause
+	Filter             `json:"-"`                                                                                // build DML where clause
 }
 
 // TPriceFields full field list for default query
@@ -10575,7 +10442,7 @@ type TProof struct {
 	Limn        null.String `json:"Limn,omitempty" db:"limn,false,character varying"`     /* limn 能力描述 */
 	CreateTime  null.Int    `json:"CreateTime,omitempty" db:"create_time,false,bigint"`   /* create_time 创建时间 */
 	UpdateTime  null.Int    `json:"UpdateTime,omitempty" db:"update_time,false,bigint"`   /* update_time 更新时间 */
-	Filter      `json:"-"`  // build DML where clause
+	Filter      `json:"-"`                                                                // build DML where clause
 }
 
 // TProofFields full field list for default query
@@ -10679,7 +10546,7 @@ type TProve struct {
 	Creator    null.Int    `json:"Creator,omitempty" db:"creator,false,bigint"`                /* creator 鉴定者 */
 	CreateTime null.Int    `json:"CreateTime,omitempty" db:"create_time,false,bigint"`         /* create_time 鉴定时间 */
 	UpdateTime null.Int    `json:"UpdateTime,omitempty" db:"update_time,false,bigint"`         /* update_time 鉴定更新时间 */
-	Filter     `json:"-"`  // build DML where clause
+	Filter     `json:"-"`                                                                      // build DML where clause
 }
 
 // TProveFields full field list for default query
@@ -10777,11 +10644,11 @@ func GetTProveByPk(db Queryer, pk0 null.Int) (*TProve, error) {
 
 /*TQualification 人才资质表 represents assessuser.t_qualification */
 type TQualification struct {
-	ID          null.Int   `json:"ID,omitempty" db:"id,true,integer"`                    /* id 资质证明编号 */
-	UserID      null.Int   `json:"UserID,omitempty" db:"user_id,false,bigint"`           /* user_id 用户编号 */
-	ExpertiseID null.Int   `json:"ExpertiseID,omitempty" db:"expertise_id,false,bigint"` /* expertise_id 专长编号 */
-	CreateTime  null.Int   `json:"CreateTime,omitempty" db:"create_time,false,bigint"`   /* create_time 创建时间 */
-	Filter      `json:"-"` // build DML where clause
+	ID          null.Int `json:"ID,omitempty" db:"id,true,integer"`                    /* id 资质证明编号 */
+	UserID      null.Int `json:"UserID,omitempty" db:"user_id,false,bigint"`           /* user_id 用户编号 */
+	ExpertiseID null.Int `json:"ExpertiseID,omitempty" db:"expertise_id,false,bigint"` /* expertise_id 专长编号 */
+	CreateTime  null.Int `json:"CreateTime,omitempty" db:"create_time,false,bigint"`   /* create_time 创建时间 */
+	Filter      `json:"-"`                                                             // build DML where clause
 }
 
 // TQualificationFields full field list for default query
@@ -10895,7 +10762,7 @@ type TQuestion struct {
 	QuestionAttachmentsPath types.JSONText `json:"QuestionAttachmentsPath,omitempty" db:"question_attachments_path,false,jsonb"` /* question_attachments_path question_attachments_path */
 	AccessMode              string         `json:"AccessMode,omitempty" db:"access_mode,false,character varying"`                /* access_mode access_mode */
 	BelongTo                null.Int       `json:"BelongTo,omitempty" db:"belong_to,false,bigint"`                               /* belong_to belong_to */
-	Filter                  `json:"-"`     // build DML where clause
+	Filter                  `json:"-"`                                                                                           // build DML where clause
 }
 
 // TQuestionFields full field list for default query
@@ -11108,7 +10975,7 @@ type TQuestionBank struct {
 	Status        null.String    `json:"Status,omitempty" db:"status,false,character varying"`            /* status 状态，00:正常 02:作废 04:异常 */
 	QuestionCount null.Int       `json:"QuestionCount,omitempty" db:"question_count,false,bigint"`        /* question_count 题目数量 */
 	AccessMode    string         `json:"AccessMode,omitempty" db:"access_mode,false,character varying"`   /* access_mode 题库共享状态码，”00“：私有；”02“：共享：”04“：公有 */
-	Filter        `json:"-"`     // build DML where clause
+	Filter        `json:"-"`                                                                              // build DML where clause
 }
 
 // TQuestionBankFields full field list for default query
@@ -11251,14 +11118,14 @@ func GetTQuestionBankByPk(db Queryer, pk0 null.Int) (*TQuestionBank, error) {
 
 /*TQuestionBankShare t_question_bank_share represents assessuser.t_question_bank_share */
 type TQuestionBankShare struct {
-	BankID     null.Int   `json:"BankID,omitempty" db:"bank_id,true,bigint"`                               /* bank_id 被分享题库 */
-	UserID     null.Int   `json:"UserID,omitempty" db:"user_id,true,bigint"`                               /* user_id 被分享者 */
-	Creator    null.Int   `json:"Creator,omitempty" db:"creator,false,bigint"`                             /* creator 创建者 */
-	CreateTime null.Int   `json:"CreateTime,omitempty" db:"create_time,false,timestamp without time zone"` /* create_time 创建时间 */
-	UpdatedBy  null.Int   `json:"UpdatedBy,omitempty" db:"updated_by,false,bigint"`                        /* updated_by 更新者 */
-	UpdateTime null.Int   `json:"UpdateTime,omitempty" db:"update_time,false,timestamp without time zone"` /* update_time 更新时间 */
-	Status     string     `json:"Status,omitempty" db:"status,false,character varying"`                    /* status 状态：00正常 02废除 */
-	Filter     `json:"-"` // build DML where clause
+	BankID     null.Int `json:"BankID,omitempty" db:"bank_id,true,bigint"`                               /* bank_id 被分享题库 */
+	UserID     null.Int `json:"UserID,omitempty" db:"user_id,true,bigint"`                               /* user_id 被分享者 */
+	Creator    null.Int `json:"Creator,omitempty" db:"creator,false,bigint"`                             /* creator 创建者 */
+	CreateTime null.Int `json:"CreateTime,omitempty" db:"create_time,false,timestamp without time zone"` /* create_time 创建时间 */
+	UpdatedBy  null.Int `json:"UpdatedBy,omitempty" db:"updated_by,false,bigint"`                        /* updated_by 更新者 */
+	UpdateTime null.Int `json:"UpdateTime,omitempty" db:"update_time,false,timestamp without time zone"` /* update_time 更新时间 */
+	Status     string   `json:"Status,omitempty" db:"status,false,character varying"`                    /* status 状态：00正常 02废除 */
+	Filter     `json:"-"`                                                                                // build DML where clause
 }
 
 // TQuestionBankShareFields full field list for default query
@@ -11373,7 +11240,7 @@ type TRegion struct {
 	Addi            types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                                     /* addi 附加信息 */
 	Remark          null.String    `json:"Remark,omitempty" db:"remark,false,character varying"`                     /* remark 备注 */
 	Status          null.String    `json:"Status,omitempty" db:"status,false,character varying"`                     /* status 0:有效, 2: 删除, 过了一段时间有些区域可能会被删除 */
-	Filter          `json:"-"`     // build DML where clause
+	Filter          `json:"-"`                                                                                       // build DML where clause
 }
 
 // TRegionFields full field list for default query
@@ -11499,9 +11366,8 @@ func GetTRegionByPk(db Queryer, pk0 null.Int) (*TRegion, error) {
 	return &r, nil
 }
 
-/*TRelation 描述两个实体间的隶属关系，类似于master:detail，校快保，描述销售/学校管理员/学校统计员与学校间的对应关系
-
-
+/*
+TRelation 描述两个实体间的隶属关系，类似于master:detail，校快保，描述销售/学校管理员/学校统计员与学校间的对应关系
 
 left_key_type -- 左识别标识类型，帐号: account, 邮箱: email, 手机: tel, 微信公众号openID: mp_open_id, 微信开放平台openID: wx_open_id
 +{left_id,left_key} --左键(表中的主键,如果主键类型是int，则为left_id, 否则是left_key)
@@ -11514,7 +11380,8 @@ left_type          left_id kind         right_type     right_id
 't_user.id',       1000,   '学校:管理员', 't_school.id', 2273
 
 left_type          left_key kind         right_type     right_key
-'t_user.account',  'ax992', '保安:门岗',  't_gate.name', '南门'   represents assessuser.t_relation */
+'t_user.account',  'ax992', '保安:门岗',  't_gate.name', '南门'   represents assessuser.t_relation
+*/
 type TRelation struct {
 	ID             null.Int       `json:"ID,omitempty" db:"id,true,integer"`                                      /* id 编号 */
 	LeftID         null.Int       `json:"LeftID,omitempty" db:"left_id,false,bigint"`                             /* left_id 左编号 */
@@ -11536,7 +11403,7 @@ type TRelation struct {
 	Addi           types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                                   /* addi 附加数据 */
 	Remark         null.String    `json:"Remark,omitempty" db:"remark,false,character varying"`                   /* remark 备注 */
 	Status         null.String    `json:"Status,omitempty" db:"status,false,character varying"`                   /* status 状态 */
-	Filter         `json:"-"`     // build DML where clause
+	Filter         `json:"-"`                                                                                     // build DML where clause
 }
 
 // TRelationFields full field list for default query
@@ -11725,7 +11592,7 @@ type TRelationHistory struct {
 	Remark         null.String    `json:"Remark,omitempty" db:"remark,false,character varying"`                   /* remark 备注 */
 	Status         null.String    `json:"Status,omitempty" db:"status,false,character varying"`                   /* status 状态 */
 	Sn             null.Int       `json:"Sn,omitempty" db:"sn,true,integer"`                                      /* sn primary key */
-	Filter         `json:"-"`     // build DML where clause
+	Filter         `json:"-"`                                                                                     // build DML where clause
 }
 
 // TRelationHistoryFields full field list for default query
@@ -11970,7 +11837,7 @@ type TReportClaims struct {
 	Addi                     types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                                           /* addi 附加 */
 	Remark                   null.String    `json:"Remark,omitempty" db:"remark,false,character varying"`                           /* remark 备注 */
 	Status                   null.String    `json:"Status,omitempty" db:"status,false,character varying"`                           /* status 状态:，2: 已报案，等待上传索赔资料，4: 受理中, 6: 等待补充资料, 8: 已结案, 10: 撤销报案, 12: 拒赔 */
-	Filter                   `json:"-"`     // build DML where clause
+	Filter                   `json:"-"`                                                                                             // build DML where clause
 }
 
 // TReportClaimsFields full field list for default query
@@ -12410,7 +12277,7 @@ type TResource struct {
 	Addi            types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                          /* addi 附加数据 */
 	Remark          null.String    `json:"Remark,omitempty" db:"remark,false,character varying"`          /* remark 备注 */
 	Status          null.String    `json:"Status,omitempty" db:"status,false,character varying"`          /* status 状态0:有效, 2:修改，4删除 */
-	Filter          `json:"-"`     // build DML where clause
+	Filter          `json:"-"`                                                                            // build DML where clause
 }
 
 // TResourceFields full field list for default query
@@ -12573,7 +12440,7 @@ type TResourceShare struct {
 	UpdateTime null.Int       `json:"UpdateTime,omitempty" db:"update_time,false,bigint"`   /* update_time 更新时间 */
 	Status     string         `json:"Status,omitempty" db:"status,false,character varying"` /* status 状态：00正常 02废除 */
 	Addi       types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                 /* addi 拓展 */
-	Filter     `json:"-"`     // build DML where clause
+	Filter     `json:"-"`                                                                   // build DML where clause
 }
 
 // TResourceShareFields full field list for default query
@@ -12700,7 +12567,7 @@ type TRole struct {
 	UpdateTime  null.Int       `json:"UpdateTime,omitempty" db:"update_time,false,bigint"`   /* update_time 更新时间 */
 	Addi        types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                 /* addi 扩展 */
 	Status      null.String    `json:"Status,omitempty" db:"status,false,character varying"` /* status 状态 00: 启用 02: 禁用 */
-	Filter      `json:"-"`     // build DML where clause
+	Filter      `json:"-"`                                                                   // build DML where clause
 }
 
 // TRoleFields full field list for default query
@@ -12818,7 +12685,7 @@ type TScanTdc struct {
 	ExternalID null.String `json:"ExternalID,omitempty" db:"external_id,false,character varying"` /* external_id 外部平台ID */
 	ReqTime    null.Int    `json:"ReqTime,omitempty" db:"req_time,false,bigint"`                  /* req_time 请求二维码时间 */
 	ReqSrc     null.String `json:"ReqSrc,omitempty" db:"req_src,false,character varying"`         /* req_src 请求来源 */
-	Filter     `json:"-"`  // build DML where clause
+	Filter     `json:"-"`                                                                         // build DML where clause
 }
 
 // TScanTdcFields full field list for default query
@@ -12954,7 +12821,7 @@ type TSchool struct {
 	Addi                    types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                                           /* addi 附加数据 */
 	Remark                  null.String    `json:"Remark,omitempty" db:"remark,false,character varying"`                           /* remark 备注 */
 	Status                  null.String    `json:"Status,omitempty" db:"status,false,character varying"`                           /* status 状态, '0': 未启用, '2': 启用, '6': 作废 */
-	Filter                  `json:"-"`     // build DML where clause
+	Filter                  `json:"-"`                                                                                             // build DML where clause
 }
 
 // TSchoolFields full field list for default query
@@ -13442,7 +13309,7 @@ type TSpecialOrder struct {
 	Remark        null.String    `json:"Remark,omitempty" db:"remark,false,character varying"`                /* remark 备注 */
 	Addi          types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                                /* addi 附加数据 */
 	Status        null.String    `json:"Status,omitempty" db:"status,false,character varying"`                /* status 状态,0：未支付，2：已支付，4：超时，6：作废 */
-	Filter        `json:"-"`     // build DML where clause
+	Filter        `json:"-"`                                                                                  // build DML where clause
 }
 
 // TSpecialOrderFields full field list for default query
@@ -13635,7 +13502,7 @@ type TStudentAnswers struct {
 	AnswerAttachmentsPath types.JSONText `json:"AnswerAttachmentsPath,omitempty" db:"answer_attachments_path,false,jsonb"` /* answer_attachments_path 保存作答中提交的文件附件、图片等的文件路径 */
 	CreateTime            null.Int       `json:"CreateTime,omitempty" db:"create_time,false,bigint"`                       /* create_time 记录创建时间 */
 	UpdateTime            null.Int       `json:"UpdateTime,omitempty" db:"update_time,false,bigint"`                       /* update_time 记录更新记录时间 */
-	Filter                `json:"-"`     // build DML where clause
+	Filter                `json:"-"`                                                                                       // build DML where clause
 }
 
 // TStudentAnswersFields full field list for default query
@@ -13801,14 +13668,16 @@ func GetTStudentAnswersByPk(db Queryer, pk0 null.Int) (*TStudentAnswers, error) 
 	return &r, nil
 }
 
-/*TSysVer 应用版本包含业务模型、前端、后端、配置文件等
+/*
+TSysVer 应用版本包含业务模型、前端、后端、配置文件等
 
 1、业务模型版本在模型生成时建立；
 2、后端模型版本在每次后端启动时建立或更新；
 3、配置文件版本在每次后端启动时建立或更新；
 4、前端版本在每次后端启动时建立或更新；
 
- represents assessuser.t_sys_ver */
+	represents assessuser.t_sys_ver
+*/
 type TSysVer struct {
 	ID         null.Int       `json:"ID,omitempty" db:"id,true,integer"`                             /* id 编码 */
 	Tag        null.String    `json:"Tag,omitempty" db:"tag,false,character varying"`                /* tag 标识 */
@@ -13819,7 +13688,7 @@ type TSysVer struct {
 	Addi       types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                          /* addi 附加 */
 	Remark     null.String    `json:"Remark,omitempty" db:"remark,false,character varying"`          /* remark 备注 */
 	Status     null.String    `json:"Status,omitempty" db:"status,false,character varying"`          /* status 状态 */
-	Filter     `json:"-"`     // build DML where clause
+	Filter     `json:"-"`                                                                            // build DML where clause
 }
 
 // TSysVerFields full field list for default query
@@ -14095,7 +13964,7 @@ type TTeacherStudent struct {
 	UpdateTime null.Int       `json:"UpdateTime,omitempty" db:"update_time,false,timestamp without time zone"` /* update_time 更新时间 */
 	Status     null.String    `json:"Status,omitempty" db:"status,false,character varying"`                    /* status 状态 00：正常  02：异常 */
 	Addi       types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                                    /* addi 附加信息 */
-	Filter     `json:"-"`     // build DML where clause
+	Filter     `json:"-"`                                                                                      // build DML where clause
 }
 
 // TTeacherStudentFields full field list for default query
@@ -14386,7 +14255,7 @@ type TUser struct {
 	Addi            types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                              /* addi 用户定制数据 */
 	Remark          null.String    `json:"Remark,omitempty" db:"remark,false,character varying"`              /* remark 备注 */
 	Status          null.String    `json:"Status,omitempty" db:"status,false,character varying"`              /* status 状态,00: 有效, 02: 禁止登录, 04: 锁定, 06: 攻击者, 08: 过期 */
-	Filter          `json:"-"`     // build DML where clause
+	Filter          `json:"-"`                                                                                // build DML where clause
 }
 
 // TUserFields full field list for default query
@@ -14710,7 +14579,7 @@ type TUserAssessment struct {
 	UpdateTime  null.Int       `json:"UpdateTime,omitempty" db:"update_time,false,bigint"`            /* update_time 更新时间 */
 	Remark      null.String    `json:"Remark,omitempty" db:"remark,false,character varying"`          /* remark 备注 */
 	Status      null.String    `json:"Status,omitempty" db:"status,false,character varying"`          /* status 可用，禁用 */
-	Filter      `json:"-"`     // build DML where clause
+	Filter      `json:"-"`                                                                            // build DML where clause
 }
 
 // TUserAssessmentFields full field list for default query
@@ -15061,10 +14930,10 @@ func GetTUserCourseByPk(db Queryer, pk0 null.Int) (*TUserCourse, error) {
 
 /*TUserDegree 用户等级表 represents assessuser.t_user_degree */
 type TUserDegree struct {
-	ID       null.Int   `json:"ID,omitempty" db:"id,true,integer"`              /* id 用户能力等级编号 */
-	UserID   null.Int   `json:"UserID,omitempty" db:"user_id,false,bigint"`     /* user_id 用户编号 */
-	DegreeID null.Int   `json:"DegreeID,omitempty" db:"degree_id,false,bigint"` /* degree_id 能力等级编号 */
-	Filter   `json:"-"` // build DML where clause
+	ID       null.Int `json:"ID,omitempty" db:"id,true,integer"`              /* id 用户能力等级编号 */
+	UserID   null.Int `json:"UserID,omitempty" db:"user_id,false,bigint"`     /* user_id 用户编号 */
+	DegreeID null.Int `json:"DegreeID,omitempty" db:"degree_id,false,bigint"` /* degree_id 能力等级编号 */
+	Filter   `json:"-"`                                                       // build DML where clause
 }
 
 // TUserDegreeFields full field list for default query
@@ -15175,7 +15044,7 @@ type TUserDomain struct {
 	Addi       types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                 /* addi 附加信息 */
 	Remark     null.String    `json:"Remark,omitempty" db:"remark,false,character varying"` /* remark 备注 */
 	Status     null.String    `json:"Status,omitempty" db:"status,false,character varying"` /* status 状态，00：草稿，01：有效，02：作废 */
-	Filter     `json:"-"`     // build DML where clause
+	Filter     `json:"-"`                                                                   // build DML where clause
 }
 
 // TUserDomainFields full field list for default query
@@ -15329,7 +15198,7 @@ type TUserGroup struct {
 	Addi       types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                 /* addi 附加信息 */
 	Remark     null.String    `json:"Remark,omitempty" db:"remark,false,character varying"` /* remark 备注 */
 	Status     null.String    `json:"Status,omitempty" db:"status,false,character varying"` /* status 状态，00：草稿，01：有效，02：作废 */
-	Filter     `json:"-"`     // build DML where clause
+	Filter     `json:"-"`                                                                   // build DML where clause
 }
 
 // TUserGroupFields full field list for default query
@@ -15460,7 +15329,7 @@ type TUserPermissionOverride struct {
 	Addi         types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                   /* addi 扩展内容 */
 	CreateTime   null.Int       `json:"CreateTime,omitempty" db:"create_time,false,bigint"`     /* create_time 创建时间 */
 	Status       null.String    `json:"Status,omitempty" db:"status,false,character varying"`   /* status 状态 00：启用 02：禁用 */
-	Filter       `json:"-"`     // build DML where clause
+	Filter       `json:"-"`                                                                     // build DML where clause
 }
 
 // TUserPermissionOverrideFields full field list for default query
@@ -15588,7 +15457,7 @@ type TVAa struct {
 	APIID            null.Int    `json:"APIID,omitempty" db:"api_id,false,integer"`                                   /* api_id api_id */
 	APIName          null.String `json:"APIName,omitempty" db:"api_name,false,character varying"`                     /* api_name api_name */
 	API              null.String `json:"API,omitempty" db:"api,false,character varying"`                              /* api api */
-	Filter           `json:"-"`  // build DML where clause
+	Filter           `json:"-"`                                                                                       // build DML where clause
 }
 
 // TVAaFields full field list for default query
@@ -15767,7 +15636,7 @@ type TVAPIDomain struct {
 	GrantSource    null.String    `json:"GrantSource,omitempty" db:"grant_source,false,character varying"`        /* grant_source grant_source */
 	DataAccessMode null.String    `json:"DataAccessMode,omitempty" db:"data_access_mode,false,character varying"` /* data_access_mode data_access_mode */
 	DataScope      types.JSONText `json:"DataScope,omitempty" db:"data_scope,false,jsonb"`                        /* data_scope data_scope */
-	Filter         `json:"-"`     // build DML where clause
+	Filter         `json:"-"`                                                                                     // build DML where clause
 }
 
 // TVAPIDomainFields full field list for default query
@@ -15901,7 +15770,7 @@ type TVAuthenticate struct {
 	APIID          null.Int    `json:"APIID,omitempty" db:"api_id,false,integer"`                              /* api_id api_id */
 	APIName        null.String `json:"APIName,omitempty" db:"api_name,false,character varying"`                /* api_name api_name */
 	API            null.String `json:"API,omitempty" db:"api,false,character varying"`                         /* api api */
-	Filter         `json:"-"`  // build DML where clause
+	Filter         `json:"-"`                                                                                  // build DML where clause
 }
 
 // TVAuthenticateFields full field list for default query
@@ -16063,7 +15932,7 @@ type TVDomainAPI struct {
 	Addi               types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                                           /* addi addi */
 	Creator            null.Int       `json:"Creator,omitempty" db:"creator,false,bigint"`                                    /* creator creator */
 	Status             null.String    `json:"Status,omitempty" db:"status,false,character varying"`                           /* status status */
-	Filter             `json:"-"`     // build DML where clause
+	Filter             `json:"-"`                                                                                             // build DML where clause
 }
 
 // TVDomainAPIFields full field list for default query
@@ -16240,7 +16109,7 @@ type TVDomainAsset struct {
 	APIID         null.Int    `json:"APIID,omitempty" db:"api_id,false,integer"`                         /* api_id api_id */
 	APIName       null.String `json:"APIName,omitempty" db:"api_name,false,character varying"`           /* api_name api_name */
 	ExposePath    null.String `json:"ExposePath,omitempty" db:"expose_path,false,character varying"`     /* expose_path expose_path */
-	Filter        `json:"-"`  // build DML where clause
+	Filter        `json:"-"`                                                                             // build DML where clause
 }
 
 // TVDomainAssetFields full field list for default query
@@ -16405,7 +16274,7 @@ type TVDomainUser struct {
 	Priority   null.Int    `json:"Priority,omitempty" db:"priority,false,smallint"`               /* priority priority */
 	UserID     null.Int    `json:"UserID,omitempty" db:"user_id,false,integer"`                   /* user_id user_id */
 	UserName   null.String `json:"UserName,omitempty" db:"user_name,false,character varying"`     /* user_name user_name */
-	Filter     `json:"-"`  // build DML where clause
+	Filter     `json:"-"`                                                                         // build DML where clause
 }
 
 // TVDomainUserFields full field list for default query
@@ -16517,7 +16386,7 @@ type TVExamPaper struct {
 	QuestionCount null.Int       `json:"QuestionCount,omitempty" db:"question_count,false,bigint"`     /* question_count question_count */
 	GroupCount    null.Int       `json:"GroupCount,omitempty" db:"group_count,false,bigint"`           /* group_count group_count */
 	GroupsData    types.JSONText `json:"GroupsData,omitempty" db:"groups_data,false,json"`             /* groups_data groups_data */
-	Filter        `json:"-"`     // build DML where clause
+	Filter        `json:"-"`                                                                           // build DML where clause
 }
 
 // TVExamPaperFields full field list for default query
@@ -16651,9 +16520,9 @@ func GetTVExamPaperByPk(db Queryer) (*TVExamPaper, error) {
 
 /*TVExamRespondentCount t_v_exam_respondent_count represents assessuser.t_v_exam_respondent_count */
 type TVExamRespondentCount struct {
-	ExamSessionID   null.Int   `json:"ExamSessionID,omitempty" db:"exam_session_id,false,integer"`   /* exam_session_id exam_session_id */
-	RespondentCount null.Int   `json:"RespondentCount,omitempty" db:"respondent_count,false,bigint"` /* respondent_count respondent_count */
-	Filter          `json:"-"` // build DML where clause
+	ExamSessionID   null.Int `json:"ExamSessionID,omitempty" db:"exam_session_id,false,integer"`   /* exam_session_id exam_session_id */
+	RespondentCount null.Int `json:"RespondentCount,omitempty" db:"respondent_count,false,bigint"` /* respondent_count respondent_count */
+	Filter          `json:"-"`                                                                     // build DML where clause
 }
 
 // TVExamRespondentCountFields full field list for default query
@@ -16732,10 +16601,10 @@ func GetTVExamRespondentCountByPk(db Queryer) (*TVExamRespondentCount, error) {
 
 /*TVExamTeacherMarkedCount t_v_exam_teacher_marked_count represents assessuser.t_v_exam_teacher_marked_count */
 type TVExamTeacherMarkedCount struct {
-	ExamSessionID null.Int   `json:"ExamSessionID,omitempty" db:"exam_session_id,false,bigint"` /* exam_session_id exam_session_id */
-	TeacherID     null.Int   `json:"TeacherID,omitempty" db:"teacher_id,false,bigint"`          /* teacher_id teacher_id */
-	MarkedCount   null.Int   `json:"MarkedCount,omitempty" db:"marked_count,false,bigint"`      /* marked_count marked_count */
-	Filter        `json:"-"` // build DML where clause
+	ExamSessionID null.Int `json:"ExamSessionID,omitempty" db:"exam_session_id,false,bigint"` /* exam_session_id exam_session_id */
+	TeacherID     null.Int `json:"TeacherID,omitempty" db:"teacher_id,false,bigint"`          /* teacher_id teacher_id */
+	MarkedCount   null.Int `json:"MarkedCount,omitempty" db:"marked_count,false,bigint"`      /* marked_count marked_count */
+	Filter        `json:"-"`                                                                  // build DML where clause
 }
 
 // TVExamTeacherMarkedCountFields full field list for default query
@@ -16819,9 +16688,9 @@ func GetTVExamTeacherMarkedCountByPk(db Queryer) (*TVExamTeacherMarkedCount, err
 
 /*TVExamUnmarkedStudentCount t_v_exam_unmarked_student_count represents assessuser.t_v_exam_unmarked_student_count */
 type TVExamUnmarkedStudentCount struct {
-	ExamSessionID        null.Int   `json:"ExamSessionID,omitempty" db:"exam_session_id,false,bigint"`               /* exam_session_id exam_session_id */
-	UnmarkedStudentCount null.Int   `json:"UnmarkedStudentCount,omitempty" db:"unmarked_student_count,false,bigint"` /* unmarked_student_count unmarked_student_count */
-	Filter               `json:"-"` // build DML where clause
+	ExamSessionID        null.Int `json:"ExamSessionID,omitempty" db:"exam_session_id,false,bigint"`               /* exam_session_id exam_session_id */
+	UnmarkedStudentCount null.Int `json:"UnmarkedStudentCount,omitempty" db:"unmarked_student_count,false,bigint"` /* unmarked_student_count unmarked_student_count */
+	Filter               `json:"-"`                                                                                // build DML where clause
 }
 
 // TVExamUnmarkedStudentCountFields full field list for default query
@@ -16928,7 +16797,7 @@ type TVExamineeInfo struct {
 	Mode              null.String `json:"Mode,omitempty" db:"mode,false,character varying"`                      /* mode mode */
 	ExamineeEndTime   null.Int    `json:"ExamineeEndTime,omitempty" db:"examinee_end_time,false,bigint"`         /* examinee_end_time examinee_end_time */
 	ExamineeStartTime null.Int    `json:"ExamineeStartTime,omitempty" db:"examinee_start_time,false,bigint"`     /* examinee_start_time examinee_start_time */
-	Filter            `json:"-"`  // build DML where clause
+	Filter            `json:"-"`                                                                                 // build DML where clause
 }
 
 // TVExamineeInfoFields full field list for default query
@@ -17147,7 +17016,7 @@ type TVGradeList struct {
 	MarkMode      null.String `json:"MarkMode,omitempty" db:"mark_mode,false,character varying"`    /* mark_mode mark_mode */
 	ExamPaperID   null.Int    `json:"ExamPaperID,omitempty" db:"exam_paper_id,false,integer"`       /* exam_paper_id exam_paper_id */
 	PaperName     null.String `json:"PaperName,omitempty" db:"paper_name,false,character varying"`  /* paper_name paper_name */
-	Filter        `json:"-"`  // build DML where clause
+	Filter        `json:"-"`                                                                        // build DML where clause
 }
 
 // TVGradeListFields full field list for default query
@@ -17351,7 +17220,7 @@ type TVInsurancePolicy struct {
 	AttachCreator         null.Int       `json:"AttachCreator,omitempty" db:"attach_creator,false,bigint"`                   /* attach_creator attach_creator */
 	PolicyUploadStatus    null.String    `json:"PolicyUploadStatus,omitempty" db:"policy_upload_status,false,text"`          /* policy_upload_status policy_upload_status */
 	InvoiceUploadStatus   null.String    `json:"InvoiceUploadStatus,omitempty" db:"invoice_upload_status,false,text"`        /* invoice_upload_status invoice_upload_status */
-	Filter                `json:"-"`     // build DML where clause
+	Filter                `json:"-"`                                                                                         // build DML where clause
 }
 
 // TVInsurancePolicyFields full field list for default query
@@ -17971,7 +17840,7 @@ type TVInsurancePolicy2 struct {
 	OFiles                  types.JSONText `json:"OFiles,omitempty" db:"o_files,false,jsonb"`                                                /* o_files o_files */
 	PolicyUploadStatus      null.String    `json:"PolicyUploadStatus,omitempty" db:"policy_upload_status,false,text"`                        /* policy_upload_status policy_upload_status */
 	InvoiceUploadStatus     null.String    `json:"InvoiceUploadStatus,omitempty" db:"invoice_upload_status,false,text"`                      /* invoice_upload_status invoice_upload_status */
-	Filter                  `json:"-"`     // build DML where clause
+	Filter                  `json:"-"`                                                                                                       // build DML where clause
 }
 
 // TVInsurancePolicy2Fields full field list for default query
@@ -18733,7 +18602,7 @@ type TVInsuranceType struct {
 	CreateTime              null.Int       `json:"CreateTime,omitempty" db:"create_time,false,bigint"`                               /* create_time create_time */
 	UpdateTime              null.Int       `json:"UpdateTime,omitempty" db:"update_time,false,bigint"`                               /* update_time update_time */
 	Status                  null.String    `json:"Status,omitempty" db:"status,false,character varying"`                             /* status status */
-	Filter                  `json:"-"`     // build DML where clause
+	Filter                  `json:"-"`                                                                                               // build DML where clause
 }
 
 // TVInsuranceTypeFields full field list for default query
@@ -19135,7 +19004,7 @@ type TVInsureAttach struct {
 	CreateTime          null.Int       `json:"CreateTime,omitempty" db:"create_time,false,bigint"`                  /* create_time create_time */
 	UpdateTime          null.Int       `json:"UpdateTime,omitempty" db:"update_time,false,bigint"`                  /* update_time update_time */
 	Creator             null.Int       `json:"Creator,omitempty" db:"creator,false,bigint"`                         /* creator creator */
-	Filter              `json:"-"`     // build DML where clause
+	Filter              `json:"-"`                                                                                  // build DML where clause
 }
 
 // TVInsureAttachFields full field list for default query
@@ -19304,7 +19173,7 @@ type TVInsuredSchool struct {
 	IsSchool  null.Bool      `json:"IsSchool,omitempty" db:"is_school,false,boolean"`             /* is_school is_school */
 	OrgStatus null.String    `json:"OrgStatus,omitempty" db:"org_status,false,character varying"` /* org_status org_status */
 	AllowTime types.JSONText `json:"AllowTime,omitempty" db:"allow_time,false,jsonb"`             /* allow_time allow_time */
-	Filter    `json:"-"`     // build DML where clause
+	Filter    `json:"-"`                                                                          // build DML where clause
 }
 
 // TVInsuredSchoolFields full field list for default query
@@ -19428,7 +19297,7 @@ type TVInsurer struct {
 	RefID    null.Int    `json:"RefID,omitempty" db:"ref_id,false,bigint"`               /* ref_id ref_id */
 	ParentID null.Int    `json:"ParentID,omitempty" db:"parent_id,false,bigint"`         /* parent_id parent_id */
 	Insurer  null.String `json:"Insurer,omitempty" db:"insurer,false,character varying"` /* insurer insurer */
-	Filter   `json:"-"`  // build DML where clause
+	Filter   `json:"-"`                                                                  // build DML where clause
 }
 
 // TVInsurerFields full field list for default query
@@ -19545,7 +19414,7 @@ type TVInvigilationInfo struct {
 	CheaterNum          null.Int    `json:"CheaterNum,omitempty" db:"cheater_num,false,bigint"`                          /* cheater_num cheater_num */
 	AbnormalExamineeNum null.Int    `json:"AbnormalExamineeNum,omitempty" db:"abnormal_examinee_num,false,bigint"`       /* abnormal_examinee_num abnormal_examinee_num */
 	ExtendedTimeNum     null.Int    `json:"ExtendedTimeNum,omitempty" db:"extended_time_num,false,bigint"`               /* extended_time_num extended_time_num */
-	Filter              `json:"-"`  // build DML where clause
+	Filter              `json:"-"`                                                                                       // build DML where clause
 }
 
 // TVInvigilationInfoFields full field list for default query
@@ -19727,13 +19596,106 @@ func GetTVInvigilationInfoByPk(db Queryer) (*TVInvigilationInfo, error) {
 	return &r, nil
 }
 
+/*TVLatestPendingMarkPractice t_v_latest_pending_mark_practice represents assessuser.t_v_latest_pending_mark_practice */
+type TVLatestPendingMarkPractice struct {
+	SubmissionID null.Int `json:"SubmissionID,omitempty" db:"submission_id,false,integer"` /* submission_id submission_id */
+	PracticeID   null.Int `json:"PracticeID,omitempty" db:"practice_id,false,bigint"`      /* practice_id practice_id */
+	StudentID    null.Int `json:"StudentID,omitempty" db:"student_id,false,bigint"`        /* student_id student_id */
+	Attempt      null.Int `json:"Attempt,omitempty" db:"attempt,false,integer"`            /* attempt attempt */
+	Filter       `json:"-"`                                                                // build DML where clause
+}
+
+// TVLatestPendingMarkPracticeFields full field list for default query
+var TVLatestPendingMarkPracticeFields = []string{
+	"SubmissionID",
+	"PracticeID",
+	"StudentID",
+	"Attempt",
+}
+
+// TVLatestPendingMarkPracticeColumns full column list for default query
+var TVLatestPendingMarkPracticeColumns = []string{
+	"submission_id",
+	"practice_id",
+	"student_id",
+	"attempt",
+}
+
+// TVLatestPendingMarkPracticeColumnsDataTypes full column data types for default query
+var TVLatestPendingMarkPracticeColumnsDataTypes = map[string]string{
+	"submission_id": "integer",
+	"practice_id":   "bigint",
+	"student_id":    "bigint",
+	"attempt":       "integer",
+}
+
+// GetFieldsMap returns a map of field names to their values.
+func (r *TVLatestPendingMarkPractice) GetFieldsMap() map[string]any {
+	return map[string]any{
+		"SubmissionID": r.SubmissionID,
+		"PracticeID":   r.PracticeID,
+		"StudentID":    r.StudentID,
+		"Attempt":      r.Attempt,
+	}
+}
+
+// GetColumnsMap returns a map of column names to their values.
+func (r *TVLatestPendingMarkPractice) GetColumnsMap() map[string]any {
+	return map[string]any{
+		"submission_id": r.SubmissionID,
+		"practice_id":   r.PracticeID,
+		"student_id":    r.StudentID,
+		"attempt":       r.Attempt,
+	}
+}
+
+// Fields return all fields of struct.
+func (r *TVLatestPendingMarkPractice) Fields() []string {
+	return TVLatestPendingMarkPracticeFields
+}
+
+// GetTableName return the associated db table name.
+func (r *TVLatestPendingMarkPractice) GetTableName() string {
+	var viewNamePattern = regexp.MustCompile(`(?i)^t_v_[a-z0-9_]+$`)
+	tableName := "t_v_latest_pending_mark_practice"
+	if viewNamePattern.MatchString(tableName) {
+		return tableName[2:]
+	}
+	return tableName
+}
+
+// Create inserts the TVLatestPendingMarkPractice to the database.
+func (r *TVLatestPendingMarkPractice) Create(db Queryer) error {
+	_, err := db.Exec(
+		`INSERT INTO t_v_latest_pending_mark_practice (submission_id, practice_id, student_id, attempt) VALUES ($1, $2, $3, $4)`,
+		&r.SubmissionID, &r.PracticeID, &r.StudentID, &r.Attempt)
+	if err != nil {
+		return errors.Wrap(err, "failed to insert t_v_latest_pending_mark_practice")
+	}
+	return nil
+}
+
+// GetTVLatestPendingMarkPracticeByPk select the TVLatestPendingMarkPractice from the database.
+func GetTVLatestPendingMarkPracticeByPk(db Queryer) (*TVLatestPendingMarkPractice, error) {
+	// Don't call this function, it is a view and doesn't have a primary key.
+
+	var r TVLatestPendingMarkPractice
+	err := db.QueryRow(
+		`SELECT submission_id, practice_id, student_id, attempt FROM t_v_latest_pending_mark_practice`,
+	).Scan(&r.SubmissionID, &r.PracticeID, &r.StudentID, &r.Attempt)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to select t_v_latest_pending_mark_practice")
+	}
+	return &r, nil
+}
+
 /*TVLatestSubmittedPractice t_v_latest_submitted_practice represents assessuser.t_v_latest_submitted_practice */
 type TVLatestSubmittedPractice struct {
-	SubmissionID null.Int   `json:"SubmissionID,omitempty" db:"submission_id,false,integer"` /* submission_id submission_id */
-	PracticeID   null.Int   `json:"PracticeID,omitempty" db:"practice_id,false,bigint"`      /* practice_id practice_id */
-	StudentID    null.Int   `json:"StudentID,omitempty" db:"student_id,false,bigint"`        /* student_id student_id */
-	Attempt      null.Int   `json:"Attempt,omitempty" db:"attempt,false,integer"`            /* attempt attempt */
-	Filter       `json:"-"` // build DML where clause
+	SubmissionID null.Int `json:"SubmissionID,omitempty" db:"submission_id,false,integer"` /* submission_id submission_id */
+	PracticeID   null.Int `json:"PracticeID,omitempty" db:"practice_id,false,bigint"`      /* practice_id practice_id */
+	StudentID    null.Int `json:"StudentID,omitempty" db:"student_id,false,bigint"`        /* student_id student_id */
+	Attempt      null.Int `json:"Attempt,omitempty" db:"attempt,false,integer"`            /* attempt attempt */
+	Filter       `json:"-"`                                                                // build DML where clause
 }
 
 // TVLatestSubmittedPracticeFields full field list for default query
@@ -19822,11 +19784,11 @@ func GetTVLatestSubmittedPracticeByPk(db Queryer) (*TVLatestSubmittedPractice, e
 
 /*TVLatestUnsubmittedPractice t_v_latest_unsubmitted_practice represents assessuser.t_v_latest_unsubmitted_practice */
 type TVLatestUnsubmittedPractice struct {
-	SubmissionID null.Int   `json:"SubmissionID,omitempty" db:"submission_id,false,integer"` /* submission_id submission_id */
-	PracticeID   null.Int   `json:"PracticeID,omitempty" db:"practice_id,false,bigint"`      /* practice_id practice_id */
-	StudentID    null.Int   `json:"StudentID,omitempty" db:"student_id,false,bigint"`        /* student_id student_id */
-	Attempt      null.Int   `json:"Attempt,omitempty" db:"attempt,false,integer"`            /* attempt attempt */
-	Filter       `json:"-"` // build DML where clause
+	SubmissionID null.Int `json:"SubmissionID,omitempty" db:"submission_id,false,integer"` /* submission_id submission_id */
+	PracticeID   null.Int `json:"PracticeID,omitempty" db:"practice_id,false,bigint"`      /* practice_id practice_id */
+	StudentID    null.Int `json:"StudentID,omitempty" db:"student_id,false,bigint"`        /* student_id student_id */
+	Attempt      null.Int `json:"Attempt,omitempty" db:"attempt,false,integer"`            /* attempt attempt */
+	Filter       `json:"-"`                                                                // build DML where clause
 }
 
 // TVLatestUnsubmittedPracticeFields full field list for default query
@@ -19923,7 +19885,7 @@ type TVManagerSchool struct {
 	UserRole   null.String    `json:"UserRole,omitempty" db:"user_role,false,text"`                  /* user_role user_role */
 	RelType    null.String    `json:"RelType,omitempty" db:"rel_type,false,text"`                    /* rel_type rel_type */
 	Addi       types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                          /* addi addi */
-	Filter     `json:"-"`     // build DML where clause
+	Filter     `json:"-"`                                                                            // build DML where clause
 }
 
 // TVManagerSchoolFields full field list for default query
@@ -20038,7 +20000,7 @@ type TVMaxSubmittedView struct {
 	WrongCount null.Int   `json:"WrongCount,omitempty" db:"wrong_count,false,bigint"`           /* wrong_count wrong_count */
 	TotalScore null.Float `json:"TotalScore,omitempty" db:"total_score,false,double precision"` /* total_score total_score */
 	PracticeID null.Int   `json:"PracticeID,omitempty" db:"practice_id,false,bigint"`           /* practice_id practice_id */
-	Filter     `json:"-"` // build DML where clause
+	Filter     `json:"-"`                                                                       // build DML where clause
 }
 
 // TVMaxSubmittedViewFields full field list for default query
@@ -20174,7 +20136,7 @@ type TVMistakeCorrect struct {
 	Creator               null.Int       `json:"Creator,omitempty" db:"creator,false,bigint"`                                           /* creator creator */
 	Remark                null.String    `json:"Remark,omitempty" db:"remark,false,character varying"`                                  /* remark remark */
 	Status                null.String    `json:"Status,omitempty" db:"status,false,character varying"`                                  /* status status */
-	Filter                `json:"-"`     // build DML where clause
+	Filter                `json:"-"`                                                                                                    // build DML where clause
 }
 
 // TVMistakeCorrectFields full field list for default query
@@ -20593,7 +20555,7 @@ type TVMistakeCorrect2 struct {
 	Creator                         null.Int       `json:"Creator,omitempty" db:"creator,false,bigint"`                                                     /* creator creator */
 	Remark                          null.String    `json:"Remark,omitempty" db:"remark,false,character varying"`                                            /* remark remark */
 	Status                          null.String    `json:"Status,omitempty" db:"status,false,character varying"`                                            /* status status */
-	Filter                          `json:"-"`     // build DML where clause
+	Filter                          `json:"-"`                                                                                                              // build DML where clause
 }
 
 // TVMistakeCorrect2Fields full field list for default query
@@ -21587,7 +21549,7 @@ type TVMistakeCorrectShow struct {
 	Creator                  null.Int       `json:"Creator,omitempty" db:"creator,false,bigint"`                                     /* creator creator */
 	Remark                   null.String    `json:"Remark,omitempty" db:"remark,false,character varying"`                            /* remark remark */
 	Status                   null.String    `json:"Status,omitempty" db:"status,false,character varying"`                            /* status status */
-	Filter                   `json:"-"`     // build DML where clause
+	Filter                   `json:"-"`                                                                                              // build DML where clause
 }
 
 // TVMistakeCorrectShowFields full field list for default query
@@ -22215,7 +22177,7 @@ type TVOrder struct {
 	SchoolManagers types.JSONText `json:"SchoolManagers,omitempty" db:"school_managers,false,jsonb"`              /* school_managers school_managers */
 	PurchaseRule   types.JSONText `json:"PurchaseRule,omitempty" db:"purchase_rule,false,jsonb"`                  /* purchase_rule purchase_rule */
 	SCreateTime    null.Int       `json:"SCreateTime,omitempty" db:"s_create_time,false,bigint"`                  /* s_create_time s_create_time */
-	Filter         `json:"-"`     // build DML where clause
+	Filter         `json:"-"`                                                                                     // build DML where clause
 }
 
 // TVOrderFields full field list for default query
@@ -22769,7 +22731,7 @@ type TVOrder2 struct {
 	Difference                 null.Float     `json:"Difference,omitempty" db:"difference,false,double precision"`                              /* difference difference */
 	PolicyNo                   null.String    `json:"PolicyNo,omitempty" db:"policy_no,false,text"`                                             /* policy_no policy_no */
 	FeeStatus                  null.String    `json:"FeeStatus,omitempty" db:"fee_status,false,text"`                                           /* fee_status fee_status */
-	Filter                     `json:"-"`     // build DML where clause
+	Filter                     `json:"-"`                                                                                                       // build DML where clause
 }
 
 // TVOrder2Fields full field list for default query
@@ -23795,7 +23757,7 @@ type TVOrderSum struct {
 	OrderAmount  null.Float  `json:"OrderAmount,omitempty" db:"order_amount,false,double precision"`   /* order_amount order_amount */
 	CancelNumber null.Int    `json:"CancelNumber,omitempty" db:"cancel_number,false,bigint"`           /* cancel_number cancel_number */
 	CancelAmount null.Float  `json:"CancelAmount,omitempty" db:"cancel_amount,false,double precision"` /* cancel_amount cancel_amount */
-	Filter       `json:"-"`  // build DML where clause
+	Filter       `json:"-"`                                                                            // build DML where clause
 }
 
 // TVOrderSumFields full field list for default query
@@ -23919,7 +23881,7 @@ type TVPaper struct {
 	QuestionCount     null.Int       `json:"QuestionCount,omitempty" db:"question_count,false,bigint"`          /* question_count question_count */
 	GroupCount        null.Int       `json:"GroupCount,omitempty" db:"group_count,false,bigint"`                /* group_count group_count */
 	GroupsData        types.JSONText `json:"GroupsData,omitempty" db:"groups_data,false,json"`                  /* groups_data groups_data */
-	Filter            `json:"-"`     // build DML where clause
+	Filter            `json:"-"`                                                                                // build DML where clause
 }
 
 // TVPaperFields full field list for default query
@@ -24094,7 +24056,7 @@ type TVPaperShare struct {
 	Account      null.String `json:"Account,omitempty" db:"account,false,character varying"`            /* account account */
 	MobilePhone  null.String `json:"MobilePhone,omitempty" db:"mobile_phone,false,character varying"`   /* mobile_phone mobile_phone */
 	SharedTime   null.Int    `json:"SharedTime,omitempty" db:"shared_time,false,bigint"`                /* shared_time shared_time */
-	Filter       `json:"-"`  // build DML where clause
+	Filter       `json:"-"`                                                                             // build DML where clause
 }
 
 // TVPaperShareFields full field list for default query
@@ -24201,7 +24163,7 @@ type TVParam struct {
 	Value      null.String `json:"Value,omitempty" db:"value,false,character varying"`            /* value value */
 	Remark     null.String `json:"Remark,omitempty" db:"remark,false,character varying"`          /* remark remark */
 	Status     null.String `json:"Status,omitempty" db:"status,false,character varying"`          /* status status */
-	Filter     `json:"-"`  // build DML where clause
+	Filter     `json:"-"`                                                                         // build DML where clause
 }
 
 // TVParamFields full field list for default query
@@ -24327,7 +24289,7 @@ type TVPayment struct {
 	Premium           null.Float     `json:"Premium,omitempty" db:"premium,false,double precision"`                       /* premium premium */
 	ThirdPartyPremium null.Float     `json:"ThirdPartyPremium,omitempty" db:"third_party_premium,false,double precision"` /* third_party_premium third_party_premium */
 	PolicyholderName  null.String    `json:"PolicyholderName,omitempty" db:"policyholder_name,false,text"`                /* policyholder_name policyholder_name */
-	Filter            `json:"-"`     // build DML where clause
+	Filter            `json:"-"`                                                                                          // build DML where clause
 }
 
 // TVPaymentFields full field list for default query
@@ -24495,6 +24457,7 @@ type TVPracticeSummary struct {
 	AttemptCount          null.Int    `json:"AttemptCount,omitempty" db:"attempt_count,false,integer"`                              /* attempt_count attempt_count */
 	LatestUnsubmittedID   null.Int    `json:"LatestUnsubmittedID,omitempty" db:"latest_unsubmitted_id,false,integer"`               /* latest_unsubmitted_id latest_unsubmitted_id */
 	LatestSubmittedID     null.Int    `json:"LatestSubmittedID,omitempty" db:"latest_submitted_id,false,integer"`                   /* latest_submitted_id latest_submitted_id */
+	PendingMarkID         null.Int    `json:"PendingMarkID,omitempty" db:"pending_mark_id,false,integer"`                           /* pending_mark_id pending_mark_id */
 	CreateTime            null.Int    `json:"CreateTime,omitempty" db:"create_time,false,bigint"`                                   /* create_time create_time */
 	Type                  null.String `json:"Type,omitempty" db:"type,false,character varying"`                                     /* type type */
 	PaperID               null.Int    `json:"PaperID,omitempty" db:"paper_id,false,integer"`                                        /* paper_id paper_id */
@@ -24502,7 +24465,7 @@ type TVPracticeSummary struct {
 	PaperTotalScore       null.Float  `json:"PaperTotalScore,omitempty" db:"paper_total_score,false,double precision"`              /* paper_total_score paper_total_score */
 	ExamPaperID           null.Int    `json:"ExamPaperID,omitempty" db:"exam_paper_id,false,integer"`                               /* exam_paper_id exam_paper_id */
 	SuggestedDuration     null.Int    `json:"SuggestedDuration,omitempty" db:"suggested_duration,false,integer"`                    /* suggested_duration suggested_duration */
-	Filter                `json:"-"`  // build DML where clause
+	Filter                `json:"-"`                                                                                                // build DML where clause
 }
 
 // TVPracticeSummaryFields full field list for default query
@@ -24521,6 +24484,7 @@ var TVPracticeSummaryFields = []string{
 	"AttemptCount",
 	"LatestUnsubmittedID",
 	"LatestSubmittedID",
+	"PendingMarkID",
 	"CreateTime",
 	"Type",
 	"PaperID",
@@ -24546,6 +24510,7 @@ var TVPracticeSummaryColumns = []string{
 	"attempt_count",
 	"latest_unsubmitted_id",
 	"latest_submitted_id",
+	"pending_mark_id",
 	"create_time",
 	"type",
 	"paper_id",
@@ -24571,6 +24536,7 @@ var TVPracticeSummaryColumnsDataTypes = map[string]string{
 	"attempt_count":           "integer",
 	"latest_unsubmitted_id":   "integer",
 	"latest_submitted_id":     "integer",
+	"pending_mark_id":         "integer",
 	"create_time":             "bigint",
 	"type":                    "character varying",
 	"paper_id":                "integer",
@@ -24597,6 +24563,7 @@ func (r *TVPracticeSummary) GetFieldsMap() map[string]any {
 		"AttemptCount":          r.AttemptCount,
 		"LatestUnsubmittedID":   r.LatestUnsubmittedID,
 		"LatestSubmittedID":     r.LatestSubmittedID,
+		"PendingMarkID":         r.PendingMarkID,
 		"CreateTime":            r.CreateTime,
 		"Type":                  r.Type,
 		"PaperID":               r.PaperID,
@@ -24624,6 +24591,7 @@ func (r *TVPracticeSummary) GetColumnsMap() map[string]any {
 		"attempt_count":           r.AttemptCount,
 		"latest_unsubmitted_id":   r.LatestUnsubmittedID,
 		"latest_submitted_id":     r.LatestSubmittedID,
+		"pending_mark_id":         r.PendingMarkID,
 		"create_time":             r.CreateTime,
 		"type":                    r.Type,
 		"paper_id":                r.PaperID,
@@ -24652,8 +24620,8 @@ func (r *TVPracticeSummary) GetTableName() string {
 // Create inserts the TVPracticeSummary to the database.
 func (r *TVPracticeSummary) Create(db Queryer) error {
 	_, err := db.Exec(
-		`INSERT INTO t_v_practice_summary (id, name, student_id, practice_status, practice_student_status, allowed_attempts, difficulty, question_count, wrong_count, total_score, highest_score, attempt_count, latest_unsubmitted_id, latest_submitted_id, create_time, type, paper_id, paper_name, paper_total_score, exam_paper_id, suggested_duration) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)`,
-		&r.ID, &r.Name, &r.StudentID, &r.PracticeStatus, &r.PracticeStudentStatus, &r.AllowedAttempts, &r.Difficulty, &r.QuestionCount, &r.WrongCount, &r.TotalScore, &r.HighestScore, &r.AttemptCount, &r.LatestUnsubmittedID, &r.LatestSubmittedID, &r.CreateTime, &r.Type, &r.PaperID, &r.PaperName, &r.PaperTotalScore, &r.ExamPaperID, &r.SuggestedDuration)
+		`INSERT INTO t_v_practice_summary (id, name, student_id, practice_status, practice_student_status, allowed_attempts, difficulty, question_count, wrong_count, total_score, highest_score, attempt_count, latest_unsubmitted_id, latest_submitted_id, pending_mark_id, create_time, type, paper_id, paper_name, paper_total_score, exam_paper_id, suggested_duration) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)`,
+		&r.ID, &r.Name, &r.StudentID, &r.PracticeStatus, &r.PracticeStudentStatus, &r.AllowedAttempts, &r.Difficulty, &r.QuestionCount, &r.WrongCount, &r.TotalScore, &r.HighestScore, &r.AttemptCount, &r.LatestUnsubmittedID, &r.LatestSubmittedID, &r.PendingMarkID, &r.CreateTime, &r.Type, &r.PaperID, &r.PaperName, &r.PaperTotalScore, &r.ExamPaperID, &r.SuggestedDuration)
 	if err != nil {
 		return errors.Wrap(err, "failed to insert t_v_practice_summary")
 	}
@@ -24666,8 +24634,8 @@ func GetTVPracticeSummaryByPk(db Queryer) (*TVPracticeSummary, error) {
 
 	var r TVPracticeSummary
 	err := db.QueryRow(
-		`SELECT id, name, student_id, practice_status, practice_student_status, allowed_attempts, difficulty, question_count, wrong_count, total_score, highest_score, attempt_count, latest_unsubmitted_id, latest_submitted_id, create_time, type, paper_id, paper_name, paper_total_score, exam_paper_id, suggested_duration FROM t_v_practice_summary`,
-	).Scan(&r.ID, &r.Name, &r.StudentID, &r.PracticeStatus, &r.PracticeStudentStatus, &r.AllowedAttempts, &r.Difficulty, &r.QuestionCount, &r.WrongCount, &r.TotalScore, &r.HighestScore, &r.AttemptCount, &r.LatestUnsubmittedID, &r.LatestSubmittedID, &r.CreateTime, &r.Type, &r.PaperID, &r.PaperName, &r.PaperTotalScore, &r.ExamPaperID, &r.SuggestedDuration)
+		`SELECT id, name, student_id, practice_status, practice_student_status, allowed_attempts, difficulty, question_count, wrong_count, total_score, highest_score, attempt_count, latest_unsubmitted_id, latest_submitted_id, pending_mark_id, create_time, type, paper_id, paper_name, paper_total_score, exam_paper_id, suggested_duration FROM t_v_practice_summary`,
+	).Scan(&r.ID, &r.Name, &r.StudentID, &r.PracticeStatus, &r.PracticeStudentStatus, &r.AllowedAttempts, &r.Difficulty, &r.QuestionCount, &r.WrongCount, &r.TotalScore, &r.HighestScore, &r.AttemptCount, &r.LatestUnsubmittedID, &r.LatestSubmittedID, &r.PendingMarkID, &r.CreateTime, &r.Type, &r.PaperID, &r.PaperName, &r.PaperTotalScore, &r.ExamPaperID, &r.SuggestedDuration)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to select t_v_practice_summary")
 	}
@@ -24676,9 +24644,9 @@ func GetTVPracticeSummaryByPk(db Queryer) (*TVPracticeSummary, error) {
 
 /*TVPracticeUnmarkedStudentCount t_v_practice_unmarked_student_count represents assessuser.t_v_practice_unmarked_student_count */
 type TVPracticeUnmarkedStudentCount struct {
-	PracticeID    null.Int   `json:"PracticeID,omitempty" db:"practice_id,false,integer"`      /* practice_id practice_id */
-	UnmarkedCount null.Int   `json:"UnmarkedCount,omitempty" db:"unmarked_count,false,bigint"` /* unmarked_count unmarked_count */
-	Filter        `json:"-"` // build DML where clause
+	PracticeID    null.Int `json:"PracticeID,omitempty" db:"practice_id,false,integer"`      /* practice_id practice_id */
+	UnmarkedCount null.Int `json:"UnmarkedCount,omitempty" db:"unmarked_count,false,bigint"` /* unmarked_count unmarked_count */
+	Filter        `json:"-"`                                                                 // build DML where clause
 }
 
 // TVPracticeUnmarkedStudentCountFields full field list for default query
@@ -24761,7 +24729,7 @@ type TVRegion struct {
 	City     null.String `json:"City,omitempty" db:"city,false,character varying"`         /* city city */
 	District null.String `json:"District,omitempty" db:"district,false,character varying"` /* district district */
 	Street   null.String `json:"Street,omitempty" db:"street,false,character varying"`     /* street street */
-	Filter   `json:"-"`  // build DML where clause
+	Filter   `json:"-"`                                                                    // build DML where clause
 }
 
 // TVRegionFields full field list for default query
@@ -24944,7 +24912,7 @@ type TVReportClaims struct {
 	DisabilityCertificate    types.JSONText `json:"DisabilityCertificate,omitempty" db:"disability_certificate,false,jsonb"`        /* disability_certificate disability_certificate */
 	DeathCertificate         types.JSONText `json:"DeathCertificate,omitempty" db:"death_certificate,false,jsonb"`                  /* death_certificate death_certificate */
 	StudentStatusCertificate types.JSONText `json:"StudentStatusCertificate,omitempty" db:"student_status_certificate,false,jsonb"` /* student_status_certificate student_status_certificate */
-	Filter                   `json:"-"`     // build DML where clause
+	Filter                   `json:"-"`                                                                                             // build DML where clause
 }
 
 // TVReportClaimsFields full field list for default query
@@ -25495,7 +25463,7 @@ type TVStudentAnswerQuestion struct {
 	ActualOptions        types.JSONText `json:"ActualOptions,omitempty" db:"actual_options,false,jsonb"`                  /* actual_options actual_options */
 	ExamineeID           null.Int       `json:"ExamineeID,omitempty" db:"examinee_id,false,integer"`                      /* examinee_id examinee_id */
 	PracticeSubmissionID null.Int       `json:"PracticeSubmissionID,omitempty" db:"practice_submission_id,false,integer"` /* practice_submission_id practice_submission_id */
-	Filter               `json:"-"`     // build DML where clause
+	Filter               `json:"-"`                                                                                       // build DML where clause
 }
 
 // TVStudentAnswerQuestionFields full field list for default query
@@ -25676,7 +25644,7 @@ type TVUser struct {
 	GrpID           null.Int       `json:"GrpID,omitempty" db:"grp_id,false,integer"`                              /* grp_id grp_id */
 	Realm           null.String    `json:"Realm,omitempty" db:"realm,false,character varying"`                     /* realm realm */
 	GrpName         null.String    `json:"GrpName,omitempty" db:"grp_name,false,character varying"`                /* grp_name grp_name */
-	Filter          `json:"-"`     // build DML where clause
+	Filter          `json:"-"`                                                                                     // build DML where clause
 }
 
 // TVUserFields full field list for default query
@@ -26027,7 +25995,7 @@ type TVUserDomain struct {
 	Addi           types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                                   /* addi addi */
 	Creator        null.Int       `json:"Creator,omitempty" db:"creator,false,bigint"`                            /* creator creator */
 	Status         null.String    `json:"Status,omitempty" db:"status,false,character varying"`                   /* status status */
-	Filter         `json:"-"`     // build DML where clause
+	Filter         `json:"-"`                                                                                     // build DML where clause
 }
 
 // TVUserDomainFields full field list for default query
@@ -26233,7 +26201,7 @@ type TVUserDomainAPI struct {
 	DomainAPIDataScopeData   null.String    `json:"DomainAPIDataScopeData,omitempty" db:"domain_api_data_scope_data,false,text"`                  /* domain_api_data_scope_data domain_api_data_scope_data */
 	DomainAPIDataScopeType   null.String    `json:"DomainAPIDataScopeType,omitempty" db:"domain_api_data_scope_type,false,text"`                  /* domain_api_data_scope_type domain_api_data_scope_type */
 	DomainAPICreateTime      null.Int       `json:"DomainAPICreateTime,omitempty" db:"domain_api_create_time,false,bigint"`                       /* domain_api_create_time domain_api_create_time */
-	Filter                   `json:"-"`     // build DML where clause
+	Filter                   `json:"-"`                                                                                                           // build DML where clause
 }
 
 // TVUserDomainAPIFields full field list for default query
@@ -26446,7 +26414,7 @@ type TVXkbSchoolLayout struct {
 	Class      null.String    `json:"Class,omitempty" db:"class,false,character varying"`   /* class class */
 	Classid    null.Int       `json:"Classid,omitempty" db:"classid,false,integer"`         /* classid classid */
 	ClassAddi  types.JSONText `json:"ClassAddi,omitempty" db:"class_addi,false,jsonb"`      /* class_addi class_addi */
-	Filter     `json:"-"`     // build DML where clause
+	Filter     `json:"-"`                                                                   // build DML where clause
 }
 
 // TVXkbSchoolLayoutFields full field list for default query
@@ -26601,7 +26569,7 @@ type TVXkbUser struct {
 	UnionID        null.String    `json:"UnionID,omitempty" db:"union_id,false,character varying"`                /* union_id union_id */
 	WxOpenID       null.String    `json:"WxOpenID,omitempty" db:"wx_open_id,false,character varying"`             /* wx_open_id wx_open_id */
 	MpOpenID       null.String    `json:"MpOpenID,omitempty" db:"mp_open_id,false,character varying"`             /* mp_open_id mp_open_id */
-	Filter         `json:"-"`     // build DML where clause
+	Filter         `json:"-"`                                                                                     // build DML where clause
 }
 
 // TVXkbUserFields full field list for default query
@@ -26906,7 +26874,7 @@ type TWxUser struct {
 	Remark         null.String    `json:"Remark,omitempty" db:"remark,false,character varying"`                  /* remark 备注 */
 	Addi           types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                                  /* addi 附加信息 */
 	Status         null.String    `json:"Status,omitempty" db:"status,false,character varying"`                  /* status 状态,00: 有效, 02: 禁止登录, 04: 锁定, 06: 攻击者, 08: 过期 */
-	Filter         `json:"-"`     // build DML where clause
+	Filter         `json:"-"`                                                                                    // build DML where clause
 }
 
 // TWxUserFields full field list for default query
@@ -27143,7 +27111,7 @@ type TXkbUser struct {
 	Addi        types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                           /* addi 附加信息 */
 	Remark      null.String    `json:"Remark,omitempty" db:"remark,false,character varying"`           /* remark 备注 */
 	Status      null.String    `json:"Status,omitempty" db:"status,false,character varying"`           /* status 状态，00：草稿，01：有效，02：作废 */
-	Filter      `json:"-"`     // build DML where clause
+	Filter      `json:"-"`                                                                             // build DML where clause
 }
 
 // TXkbUserFields full field list for default query

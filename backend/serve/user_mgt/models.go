@@ -41,6 +41,7 @@ var domainSet = func() map[string]struct{} {
 
 // QueryUsersFilter 查询用户列表的过滤条件
 type QueryUsersFilter struct {
+	ID         null.Int    `json:"id"`         // 用户ID
 	Account    null.String `json:"account"`    // 用户账号
 	Name       null.String `json:"name"`       // 用户姓名
 	Phone      null.String `json:"phone"`      // 用户电话
@@ -63,5 +64,6 @@ type InvalidUser struct {
 
 type User struct {
 	cmn.TUser
-	Domains []null.String `json:"Domains"`
+	Domains []null.String         `json:"Domains"`
+	APIs    []cmn.TVUserDomainAPI `json:"APIs"`
 }

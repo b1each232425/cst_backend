@@ -50,3 +50,13 @@ func IsDomainExist(domain string) bool {
 	_, ok := domainSet[domain]
 	return ok
 }
+
+// Contains 泛型函数，判断元素是否存在于切片中
+func Contains[T comparable](item T, list []T) bool {
+	for _, v := range list {
+		if v == item {
+			return true
+		}
+	}
+	return false
+}

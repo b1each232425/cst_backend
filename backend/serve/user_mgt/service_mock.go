@@ -3,12 +3,14 @@ package user_mgt
 import (
 	"context"
 	"github.com/jackc/pgx/v5"
+	"w2w.io/null"
 )
 
 // MockService 模拟 Service 接口
 type MockService struct {
 	GenerateUniqueAccountFunc func(ctx context.Context, tx pgx.Tx, length int, maxAttempts int) (string, error)
 	ValidateUserFunc          func(ctx context.Context, tx pgx.Tx, users []User) ([]User, []InvalidUser, error)
+	QueryUserCurrentRoleFunc  func(ctx context.Context, userId null.Int) (null.Int, null.String, error)
 
 	users     []User
 	totalRows int64
@@ -62,9 +64,16 @@ func (m *MockService) GenerateUniqueAccount(ctx context.Context, tx pgx.Tx, leng
 	return "", nil // 默认返回空字符串和 nil 错误
 }
 
-func (m *MockService) ValidateUser(ctx context.Context, tx pgx.Tx, users []User) ([]User, []InvalidUser, error) {
+func (m *MockService) ValidateUserToBeInsert(ctx context.Context, tx pgx.Tx, users []User) ([]User, []InvalidUser, error) {
 	if m.ValidateUserFunc != nil {
 		return m.ValidateUserFunc(ctx, tx, users)
 	}
 	return nil, nil, nil // 默认返回空切片和 nil 错误
+}
+
+func (m *MockService) QueryUserCurrentRole(ctx context.Context, userId null.Int) (null.Int, null.String, error) {
+	if m.QueryUserCurrentRoleFunc == nil {
+		return null.Int{}, null.NewString("cst.school^superAdmin", true), nil // 默认超级管理员角色
+	}
+	return m.QueryUserCurrentRoleFunc(ctx, userId)
 }
