@@ -155,6 +155,22 @@ func Enroll(author string) {
 		//DefaultDomain 该API将默认授权给的用户
 		DefaultDomain: int64(cmn.CDomainSys),
 	})
+	_ = cmn.AddService(&cmn.ServeEndPoint{
+		Fn: AllowStudentCanBeInExam,
+
+		Path: "/respondent/allow",
+		Name: "respondent_allow",
+
+		Developer: developer,
+		WhiteList: true,
+
+		//DomainID 创建该API的账号归属的domain
+		DomainID: int64(cmn.CDomainSys),
+
+		//DefaultDomain 该API将默认授权给的用户
+		DefaultDomain: int64(cmn.CDomainSys),
+	})
+
 }
 
 // --------------------http接口暴露函数区域
@@ -946,41 +962,43 @@ func Submit(ctx context.Context) {
 		}
 
 		//查考当前是否符合条件去提交
-		_, q.Err = checkExamCondition(ctx, u.ExamSessionId, u.StudentId, tx, SUBMIT)
-		if q.Err != nil {
+		status, err := checkExamCondition(ctx, u.ExamSessionId, u.StudentId, tx, SUBMIT)
+		if err != nil {
+			q.Err = err
 			q.RespErr()
 			return
 		}
+		if status != ExamSubmitted {
+			now := time.Now().UTC()
 
-		now := time.Now().UTC()
+			examinee := cmn.TExaminee{
+				ID:         null.IntFrom(u.ExamineeID),
+				EndTime:    null.IntFrom(now.UnixMilli()),
+				UpdatedBy:  null.IntFrom(u.StudentId),
+				UpdateTime: null.IntFrom(now.UnixMilli()),
+			}
+			if forceErr == "exam-submit-err" {
+				tx.Rollback(dmlCtx)
+			}
+			//更新t_examinee表，如果end_time为空、start_time不为空才能设置，end_time不为空说明已经提交过了
+			updateSqlForExaminee := `UPDATE t_examinee SET end_time = $1,status=$2,updated_by=$3,update_time=$4 WHERE id = $5 AND end_time IS NULL AND start_time IS NOT NULL RETURNING id`
+			var updateId null.Int
 
-		examinee := cmn.TExaminee{
-			ID:         null.IntFrom(u.ExamineeID),
-			EndTime:    null.IntFrom(now.UnixMilli()),
-			UpdatedBy:  null.IntFrom(u.StudentId),
-			UpdateTime: null.IntFrom(now.UnixMilli()),
-		}
-		if forceErr == "exam-submit-err" {
-			tx.Rollback(dmlCtx)
-		}
-		//更新t_examinee表，如果end_time为空、start_time不为空才能设置，end_time不为空说明已经提交过了
-		updateSqlForExaminee := `UPDATE t_examinee SET end_time = $1,status=$2,updated_by=$3,update_time=$4 WHERE id = $5 AND end_time IS NULL AND start_time IS NOT NULL RETURNING id`
-		var updateId null.Int
-
-		q.Err = tx.QueryRow(ctx, updateSqlForExaminee, &examinee.EndTime, ExamOverStatus, &examinee.UpdatedBy, &examinee.UpdateTime, &examinee.ID).Scan(&updateId)
-		if q.Err != nil {
-			z.Error("QueryRow", zap.Error(q.Err))
-			q.RespErr()
-			return
-		}
-		if forceErr == "setAnswerCanNotUpdate error" {
-			tx.Rollback(dmlCtx)
-		}
-		//设置作答为禁止作答状态
-		q.Err = setAnswerCanNotUpdate(ctx, u.ExamineeID, 0, u.StudentId, tx)
-		if q.Err != nil {
-			q.RespErr()
-			return
+			q.Err = tx.QueryRow(ctx, updateSqlForExaminee, &examinee.EndTime, ExamOverStatus, &examinee.UpdatedBy, &examinee.UpdateTime, &examinee.ID).Scan(&updateId)
+			if q.Err != nil {
+				z.Error("QueryRow", zap.Error(q.Err))
+				q.RespErr()
+				return
+			}
+			if forceErr == "setAnswerCanNotUpdate error" {
+				tx.Rollback(dmlCtx)
+			}
+			//设置作答为禁止作答状态
+			q.Err = setAnswerCanNotUpdate(ctx, u.ExamineeID, 0, u.StudentId, tx)
+			if q.Err != nil {
+				q.RespErr()
+				return
+			}
 		}
 
 		q.Err = tx.Commit(ctx)
@@ -1190,7 +1208,7 @@ func AllowStudentCanBeInExam(ctx context.Context) {
 			return
 		}
 	}()
-
+	z.Info("查看参数", zap.Any("params", u))
 	//检查考试状态是否允许操作
 	_, q.Err = checkExamCondition(dmlCtx, u.ExamSessionId, u.StudentId, tx, ALLOW)
 	if q.Err != nil {
@@ -1199,11 +1217,23 @@ func AllowStudentCanBeInExam(ctx context.Context) {
 	}
 
 	//开始设置考生状态
-	updateSql := `UPDATE t_examinee SET updated_by = $1, update_time = $2, status = $3 WHERE exam_session_id = $4 AND student_id=$5 AND status=$6`
+	updateSql := `UPDATE t_examinee e
+SET updated_by = $1,
+    update_time = (EXTRACT(EPOCH FROM NOW()) * 1000)::bigint,
+    status = $2
+WHERE e.exam_session_id = $3
+  AND e.student_id = $4
+  AND e.status = $5
+  AND EXISTS (
+      SELECT 1
+      FROM t_exam_session s
+      WHERE s.id = e.exam_session_id
+        AND $6=ANY(COALESCE(s.reviewer_ids, '{}'))
+  ) RETURNING id;`
 	var updateId null.Int
-	q.Err = tx.QueryRow(ctx, updateSql, u.TeacherId, time.Now(), CanBeEnterStatus, u.ExamSessionId, NormalStatus).Scan(&updateId)
+	q.Err = tx.QueryRow(ctx, updateSql, u.TeacherId, CanBeEnterStatus, u.ExamSessionId, u.StudentId, NormalStatus, u.TeacherId).Scan(&updateId)
 	if q.Err != nil {
-		z.Error("更新考试异常状态失败", zap.Error(err))
+		z.Error("允许学生进入考试失败", zap.Error(err))
 		q.RespErr()
 		return
 	}
@@ -1238,8 +1268,8 @@ func checkDomain(q *cmn.ServiceCtx, domainID int64) error {
 			return nil
 		}
 	}
-	err := errors.New("not student domain")
-	z.Error(err.Error())
+	err := errors.New("invalid domain")
+	z.Error(err.Error(), zap.Any("domainIds", q.Domains))
 	return err
 }
 
@@ -1321,6 +1351,10 @@ func checkExamCondition(ctx context.Context, examSession, studentID int64, tx pg
 			z.Error(ErrExamFinished.Error())
 			return 0, ErrExamFinished
 		}
+		// 如果监考员允许或者学生之前已经进入过考试了，就允许他进入考试
+		if examineeInfo.ExamineeStatus.String == CanBeEnterStatus || examineeInfo.ExamineeStartTime.Valid {
+			return 0, nil
+		}
 		//必须满足考试模式为线上固定时段考试、设置了最迟几分钟计入考试、超过进入时间才会触发错误
 		if now.UnixMilli() > examineeInfo.AllowEntryTime.Int64 && examineeInfo.AllowEntryTime.Int64 != examineeInfo.StartTime.Int64 && examineeInfo.PeriodMode.String == ExamTypeFixed && examineeInfo.Mode.String == ExamModeOnline {
 			z.Error(ErrExamOverEntryTime.Error())
@@ -1332,11 +1366,16 @@ func checkExamCondition(ctx context.Context, examSession, studentID int64, tx pg
 			return 0, ErrExamNotStart
 		}
 
+		if examineeInfo.ExamineeEndTime.Valid {
+			return ExamSubmitted, nil
+		}
+
 		//必须满足考试模式为线上固定时段考试、设置了提前几分钟交卷、时间还未到达交卷时间才会触发错误
-		if now.UnixMilli() < examineeInfo.AllowSubmitTime.Int64 && examineeInfo.PeriodMode.String == ExamTypeFixed && examineeInfo.Mode.String == ExamModeOnline {
+		if now.UnixMilli() < examineeInfo.AllowSubmitTime.Int64-1000 && examineeInfo.PeriodMode.String == ExamTypeFixed && examineeInfo.Mode.String == ExamModeOnline {
 			z.Error(ErrAllowedSubmitNotArrive.Error())
 			return 0, ErrAllowedSubmitNotArrive
 		}
+
 	case STATUS:
 		//查考考试是否开始
 		if now.UnixMilli() < examineeInfo.StartTime.Int64 {

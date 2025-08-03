@@ -340,7 +340,6 @@ func gradeListH(ctx context.Context) {
 			case "1":
 				req.Filter.Submitted = 1
 			case "-1":
-			case "":
 				req.Filter.Submitted = -1
 			default:
 				q.Err = fmt.Errorf("无效提交状态: %s", submitted)

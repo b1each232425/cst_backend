@@ -52,7 +52,7 @@ type CheckExamStatusReq struct {
 }
 
 type AllowStudentEnterReq struct {
-	ExamSessionId int64 `json:"exam_session_id" `
+	ExamSessionId int64 `json:"exam_session_id" validate:"required,gte=1"`
 	StudentId     int64 `json:"student_id" validate:"required,gte=1"`
 	TeacherId     int64 `json:"teacher_id" validate:"required,gte=1"`
 }

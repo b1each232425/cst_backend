@@ -600,6 +600,8 @@ func OperatePracticeStatus(ctx context.Context, pid int64, status string, uid in
 			return err
 		}
 		// 目前无论这个考卷之前有没有生成，均生成新的
+		// 如果此时有学生做过的话，那就不需要重新生成考卷 如果是有做过的话，就不需要重新生成考卷
+		// 或者这里不需要变，那就是在更换试卷的时候，如果判断到此时有学生处理正在作答的时候，
 		// TODO 对考卷的生成进行判断，如果之前生成过，就沿用
 		examPaperId, _, err := examPaper.GenerateExamPaper(ctx, tx, examPaper.PaperCategory.Practice, p.PaperID.Int64, pid, 0, uid, false)
 		if err != nil {
@@ -642,6 +644,15 @@ func OperatePracticeStatus(ctx context.Context, pid int64, status string, uid in
 		_, err = tx.Exec(ctx, s, status, now, uid, pid)
 		if err != nil {
 			err = fmt.Errorf("OperatePracticeStatus to pendingRelease failed:%v", err)
+			z.Error(err.Error())
+			return err
+		}
+
+		// 更改practice_submission练习学生的提交状态及其练习次数，将本次练习附带的所有次数均变为无效
+		s = `UPDATE assessuser.t_practice_submissions SET status = $1,update_time = $2,updated_by = $3 , attempt = $4 WHERE practice_id = $5`
+		_, err = tx.Exec(ctx, s, PracticeSubmissionStatus.Deleted, now, uid, -1, pid)
+		if err != nil {
+			err = fmt.Errorf("OperatePracticeSubmissionStatus to pendingRelease failed:%v", err)
 			z.Error(err.Error())
 			return err
 		}
