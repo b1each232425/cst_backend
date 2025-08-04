@@ -245,14 +245,32 @@ func questionBanks(ctx context.Context) {
 		if pageSizeStr == "" {
 			pageSizeStr = "99"
 		}
-		page, _ := strconv.ParseInt(pageStr, 10, 64)
-		pageSize, _ := strconv.ParseInt(pageSizeStr, 10, 64)
+		page, err := strconv.ParseInt(pageStr, 10, 64)
+		if err != nil {
+			q.Err = fmt.Errorf("error parsing page: %v", err)
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+		pageSize, err := strconv.ParseInt(pageSizeStr, 10, 64)
+		if err != nil {
+			q.Err = fmt.Errorf("error parsing pageSize: %v", err)
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
 
 		var bankID int64
 		if bankIDStr != "" {
-			bankID, q.Err = strconv.ParseInt(bankIDStr, 10, 64)
-			if q.Err != nil || bankID <= 0 {
-				q.Err = fmt.Errorf("invalid bankID: %s", bankIDStr)
+			bankID, err = strconv.ParseInt(bankIDStr, 10, 64)
+			if err != nil {
+				q.Err = fmt.Errorf("error parsing bankID: %v", err)
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+			if bankID <= 0 {
+				q.Err = fmt.Errorf("invalid bankID: %d", bankID)
 				z.Error(q.Err.Error())
 				q.RespErr()
 				return
@@ -393,6 +411,7 @@ func questionBanks(ctx context.Context) {
 		bankID, ok := bank.QryResult.(int64)
 		if !ok {
 			q.Err = fmt.Errorf("s.qryResult should be int64, but it isn't")
+			z.Error(q.Err.Error())
 			q.RespErr()
 			return
 		}
@@ -401,6 +420,7 @@ func questionBanks(ctx context.Context) {
 		// 返回响应
 		buf, q.Err = cmn.MarshalJSON(&bank)
 		if q.Err != nil {
+			z.Error(q.Err.Error())
 			q.RespErr()
 			return
 		}
@@ -853,9 +873,29 @@ func questions(ctx context.Context) {
 		pageSizeStr := q.R.URL.Query().Get("pageSize")
 		bankIDStr := q.R.URL.Query().Get("bankID")
 		name := q.R.URL.Query().Get("name")
-		tags := q.R.URL.Query()["tags"]                 // 允许获取多个tag参数
-		questionTypes := q.R.URL.Query()["type"]        // 允许获取多个type参数
+		tagsParams := q.R.URL.Query()["tags"] // 允许获取多个tag参数
+		var tags []string
+		for _, t := range tagsParams {
+			if t != "" {
+				tags = append(tags, t)
+			}
+		}
+		// 获取type参数并过滤空值
+		typeParams := q.R.URL.Query()["type"]
+		var questionTypes []string
+		for _, t := range typeParams {
+			if t != "" {
+				questionTypes = append(questionTypes, t)
+			}
+		}
 		difficultyStrs := q.R.URL.Query()["difficulty"] // 允许获取多个difficulty参数
+
+		var difficultyList []int64
+		for _, d := range difficultyStrs {
+			if val, err := strconv.ParseInt(d, 10, 64); err == nil {
+				difficultyList = append(difficultyList, val)
+			}
+		}
 
 		// 设置默认分页参数
 		if pageStr == "" {
@@ -875,12 +915,6 @@ func questions(ctx context.Context) {
 		}
 		bankID, _ := strconv.ParseInt(bankIDStr, 10, 64)
 
-		var difficultyList []int64
-		for _, d := range difficultyStrs {
-			if val, err := strconv.ParseInt(d, 10, 64); err == nil {
-				difficultyList = append(difficultyList, val)
-			}
-		}
 		params := QueryQuestionsParams{
 			BankID:     bankID,
 			Name:       name,
