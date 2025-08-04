@@ -220,7 +220,7 @@ func (r *service) QueryUsers(ctx context.Context, tx pgx.Tx, page, pageSize int6
 		// 解析APIs JSON数据
 		if len(apisJSON) > 0 && string(apisJSON) != "[]" {
 			err = json.Unmarshal(apisJSON, &user.APIs)
-			if err != nil {
+			if err != nil || forceErr == "json.Unmarshal" {
 				z.Warn(fmt.Sprintf("failed to unmarshal APIs JSON for user %d: %v", user.ID.Int64, err))
 				user.APIs = []cmn.TVUserDomainAPI{} // 设置为空数组
 			}
