@@ -18,6 +18,7 @@ type Handler interface {
 	HandleGetNewAccount(ctx context.Context)
 	HandleSelectLoginDomain(ctx context.Context)
 	HandleQueryMyInfo(ctx context.Context)
+	HandleValidateUserToBeInsert(ctx context.Context)
 }
 
 type handler struct {
@@ -458,6 +459,101 @@ func (h *handler) HandleQueryMyInfo(ctx context.Context) {
 	q.Msg.Status = 0
 	q.Msg.Msg = "success"
 	q.Msg.Data = userJson
+	q.Resp()
+	return
+}
+
+func (h *handler) HandleValidateUserToBeInsert(ctx context.Context) {
+	q := cmn.GetCtxValue(ctx)
+	z.Info("---->" + cmn.FncName())
+
+	forceErr, _ := ctx.Value("force-error").(string) // 用于强制执行错误处理代码
+	var err error
+
+	method := strings.ToLower(q.R.Method)
+	if method != "post" {
+		q.Err = fmt.Errorf("unsupported method: %s", method)
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+
+	var buf []byte
+	buf, err = io.ReadAll(q.R.Body)
+	if err != nil || forceErr == "io.ReadAll" {
+		q.Err = fmt.Errorf("failed to read body: %w", err)
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+	defer func() {
+		err = q.R.Body.Close()
+		if err != nil || forceErr == "io.Close" {
+			e := fmt.Errorf("failed to close request body: %w", err)
+			z.Error(e.Error())
+			return
+		}
+	}()
+
+	if len(buf) == 0 {
+		q.Err = fmt.Errorf("request body cannot be empty")
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+
+	var body cmn.ReqProto
+	err = json.Unmarshal(buf, &body)
+	if err != nil || forceErr == "json.Unmarshal" {
+		q.Err = fmt.Errorf("failed to unmarshal request body: %w", err)
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+
+	var users []User
+	err = json.Unmarshal(body.Data, &users)
+	if err != nil {
+		q.Err = fmt.Errorf("failed to unmarshal request json data: %w", err)
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+
+	if len(users) == 0 {
+		q.Err = fmt.Errorf("no users provided in request json data")
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+
+	// 验证用户信息
+	var invalidUsers []InvalidUser
+	_, invalidUsers, err = h.srv.ValidateUserToBeInsert(ctx, nil, users)
+	if err != nil {
+		q.Err = fmt.Errorf("failed to validate users: %w", err)
+		q.RespErr()
+		return
+	}
+
+	if len(invalidUsers) != 0 {
+		invalidUsersBytes, err := json.Marshal(invalidUsers)
+		if err != nil || forceErr == "json.Marshal" {
+			q.Err = fmt.Errorf("failed to marshal invalid users: %w", err)
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		q.Msg.Status = 405
+		q.Msg.Msg = "some users are invalid and cannot be inserted"
+		q.Msg.Data = invalidUsersBytes
+		q.Resp()
+		return
+	}
+
+	q.Msg.Status = 0
+	q.Msg.Msg = "success"
 	q.Resp()
 	return
 }
