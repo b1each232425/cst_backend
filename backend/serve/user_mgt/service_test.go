@@ -76,7 +76,7 @@ func TestService_QueryUsers(t *testing.T) {
 			page:     1,
 			pageSize: 10,
 			filter: QueryUsersFilter{
-				Account: null.NewString("admin", true),
+				FuzzyCondition: null.NewString("admin", true),
 			},
 			wantUsersCount: 2,
 			wantErr:        false,
@@ -88,7 +88,7 @@ func TestService_QueryUsers(t *testing.T) {
 			page:     1,
 			pageSize: 10,
 			filter: QueryUsersFilter{
-				Name: null.NewString("测试", true),
+				FuzzyCondition: null.NewString("测试", true),
 			},
 			wantUsersCount: 0,
 			wantErr:        false,
@@ -100,7 +100,7 @@ func TestService_QueryUsers(t *testing.T) {
 			page:     1,
 			pageSize: 10,
 			filter: QueryUsersFilter{
-				Phone: null.NewString("138", true),
+				FuzzyCondition: null.NewString("138", true),
 			},
 			wantUsersCount: 1,
 			wantErr:        false,
@@ -112,7 +112,7 @@ func TestService_QueryUsers(t *testing.T) {
 			page:     1,
 			pageSize: 10,
 			filter: QueryUsersFilter{
-				Email: null.NewString("@example.com", true),
+				FuzzyCondition: null.NewString("@example.com", true),
 			},
 			wantUsersCount: 6,
 			wantErr:        false,
@@ -205,7 +205,7 @@ func TestService_QueryUsers(t *testing.T) {
 			page:     1,
 			pageSize: 10,
 			filter: QueryUsersFilter{
-				Account: null.NewString("nonexistent_user_12345", true),
+				FuzzyCondition: null.NewString("nonexistent_user_12345", true),
 			},
 			wantUsersCount: 0,
 			wantErr:        false,
@@ -217,7 +217,7 @@ func TestService_QueryUsers(t *testing.T) {
 			page:     1,
 			pageSize: 10,
 			filter: QueryUsersFilter{
-				Account: null.NewString("nonexistent_user_12345", true),
+				FuzzyCondition: null.NewString("nonexistent_user_12345", true),
 			},
 			wantUsersCount: 0,
 			wantErr:        true,
@@ -229,7 +229,7 @@ func TestService_QueryUsers(t *testing.T) {
 			page:     1,
 			pageSize: 10,
 			filter: QueryUsersFilter{
-				Account: null.NewString("nonexistent_user_12345", true),
+				FuzzyCondition: null.NewString("nonexistent_user_12345", true),
 			},
 			wantUsersCount: 0,
 			wantErr:        true,
@@ -251,7 +251,7 @@ func TestService_QueryUsers(t *testing.T) {
 			page:     1,
 			pageSize: 10,
 			filter: QueryUsersFilter{
-				Account: null.NewString("nonexistent_user_12345", true),
+				FuzzyCondition: null.NewString("nonexistent_user_12345", true),
 			},
 			wantUsersCount: 0,
 			wantErr:        true,
@@ -324,10 +324,29 @@ func TestService_QueryUsers(t *testing.T) {
 			}
 
 			// 验证过滤条件是否生效（仅对有过滤条件的测试）
-			if tt.filter.Account.Valid {
+			if tt.filter.FuzzyCondition.Valid {
 				for i, user := range users {
-					if !containsIgnoreCase(user.Account, tt.filter.Account.String) {
-						t.Errorf("用户[%d]的Account '%s' 不包含过滤条件 '%s'", i, user.Account, tt.filter.Account.String)
+					fc := tt.filter.FuzzyCondition.String
+					matched := false
+
+					if containsIgnoreCase(user.Account, fc) {
+						matched = true
+					}
+					if containsIgnoreCase(user.OfficialName.String, fc) {
+						matched = true
+					}
+					if containsIgnoreCase(user.MobilePhone.String, fc) {
+						matched = true
+					}
+					if containsIgnoreCase(user.Email.String, fc) {
+						matched = true
+					}
+					if containsIgnoreCase(user.IDCardNo.String, fc) {
+						matched = true
+					}
+
+					if !matched {
+						t.Errorf("用户[%d]的所有字段都不包含过滤条件 '%s'", i, fc)
 					}
 				}
 			}
@@ -667,7 +686,7 @@ func TestService_QueryUsers_EdgeCases(t *testing.T) {
 			page:     1,
 			pageSize: 10,
 			filter: QueryUsersFilter{
-				Account: null.NewString("test'user", true), // 包含单引号
+				FuzzyCondition: null.NewString("test'user", true), // 包含单引号
 			},
 			wantErr: false,
 			desc:    "测试包含特殊字符的过滤条件",
@@ -677,7 +696,7 @@ func TestService_QueryUsers_EdgeCases(t *testing.T) {
 			page:     1,
 			pageSize: 10,
 			filter: QueryUsersFilter{
-				Account: null.NewString("'; DROP TABLE t_user; --", true),
+				FuzzyCondition: null.NewString("'; DROP TABLE t_user; --", true),
 			},
 			wantErr: false,
 			desc:    "测试SQL注入防护",
@@ -687,7 +706,7 @@ func TestService_QueryUsers_EdgeCases(t *testing.T) {
 			page:     1,
 			pageSize: 10,
 			filter: QueryUsersFilter{
-				Name: null.NewString("测试用户🎉", true),
+				FuzzyCondition: null.NewString("测试用户🎉", true),
 			},
 			wantErr: false,
 			desc:    "测试Unicode字符过滤",
@@ -1038,7 +1057,7 @@ func TestService_InsertUsers(t *testing.T) {
 				for _, user := range tt.users {
 					// 查询刚插入的用户
 					filter := QueryUsersFilter{
-						Account: null.NewString(user.Account, true),
+						FuzzyCondition: null.NewString(user.Account, true),
 					}
 					users, _, queryErr := repo.QueryUsers(context.Background(), nil, 1, 1, filter)
 					if queryErr != nil {
@@ -1485,7 +1504,7 @@ func TestService_InsertUsersWithAccount(t *testing.T) {
 				for _, user := range tt.users {
 					// 查询刚插入的用户
 					filter := QueryUsersFilter{
-						Account: null.NewString(user.Account, true),
+						FuzzyCondition: null.NewString(user.Account, true),
 					}
 					users, _, queryErr := srv.QueryUsers(context.Background(), nil, 1, 1, filter)
 					if queryErr != nil {

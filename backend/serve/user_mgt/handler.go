@@ -93,14 +93,11 @@ func (h *handler) HandleUser(ctx context.Context) {
 
 		// 构造过滤条件
 		filter := QueryUsersFilter{
-			Account:    NullableString(query.Get("account")),
-			Name:       NullableString(query.Get("officialName")),
-			Phone:      NullableString(query.Get("mobilePhone")),
-			Email:      NullableString(query.Get("email")),
-			Gender:     NullableString(query.Get("gender")),
-			Status:     NullableString(query.Get("status")),
-			CreateTime: NullableIntFromStr(query.Get("createTime")),
-			Domain:     NullableString(domain),
+			FuzzyCondition: NullableString(query.Get("fuzzyCondition")),
+			Gender:         NullableString(query.Get("gender")),
+			Status:         NullableString(query.Get("status")),
+			CreateTime:     NullableIntFromStr(query.Get("createTime")),
+			Domain:         NullableString(domain),
 		}
 
 		users, totalRows, err := h.srv.QueryUsers(ctx, nil, page, pageSize, filter)
