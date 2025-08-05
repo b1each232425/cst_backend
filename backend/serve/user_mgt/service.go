@@ -54,29 +54,21 @@ func (r *service) QueryUsers(ctx context.Context, tx pgx.Tx, page, pageSize int6
 	var args []interface{}
 	argIndex := 1
 
+	if filter.FuzzyCondition.Valid && filter.FuzzyCondition.String != "" {
+		textPattern := "%" + filter.FuzzyCondition.String + "%"
+		where = append(where, fmt.Sprintf(`(
+			u.account ILIKE $%d OR
+			u.official_name ILIKE $%d OR
+			u.mobile_phone ILIKE $%d OR
+			u.email ILIKE $%d OR
+			u.id_card_no ILIKE $%d
+		)`, argIndex, argIndex, argIndex, argIndex, argIndex))
+		args = append(args, textPattern)
+		argIndex++
+	}
 	if filter.ID.Valid {
 		where = append(where, fmt.Sprintf("u.id = $%d", argIndex))
 		args = append(args, filter.ID.Int64)
-		argIndex++
-	}
-	if filter.Account.Valid {
-		where = append(where, fmt.Sprintf("u.account ILIKE $%d", argIndex))
-		args = append(args, "%"+filter.Account.String+"%")
-		argIndex++
-	}
-	if filter.Name.Valid {
-		where = append(where, fmt.Sprintf("u.official_name ILIKE $%d", argIndex))
-		args = append(args, "%"+filter.Name.String+"%")
-		argIndex++
-	}
-	if filter.Phone.Valid {
-		where = append(where, fmt.Sprintf("u.mobile_phone ILIKE $%d", argIndex))
-		args = append(args, "%"+filter.Phone.String+"%")
-		argIndex++
-	}
-	if filter.Email.Valid {
-		where = append(where, fmt.Sprintf("u.email ILIKE $%d", argIndex))
-		args = append(args, "%"+filter.Email.String+"%")
 		argIndex++
 	}
 	if filter.Gender.Valid {
@@ -220,7 +212,7 @@ func (r *service) QueryUsers(ctx context.Context, tx pgx.Tx, page, pageSize int6
 		// 解析APIs JSON数据
 		if len(apisJSON) > 0 && string(apisJSON) != "[]" {
 			err = json.Unmarshal(apisJSON, &user.APIs)
-			if err != nil {
+			if err != nil || forceErr == "json.Unmarshal" {
 				z.Warn(fmt.Sprintf("failed to unmarshal APIs JSON for user %d: %v", user.ID.Int64, err))
 				user.APIs = []cmn.TVUserDomainAPI{} // 设置为空数组
 			}
