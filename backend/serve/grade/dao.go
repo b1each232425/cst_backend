@@ -2,6 +2,7 @@ package grade
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -12,13 +13,14 @@ import (
 /*
 * 获取考试成绩列表
  */
-func GradeListExam(ctx context.Context, args *GradeListArgs) ([]GradeExam, int64, error) {
+func gradeListExam(ctx context.Context, args *GradeListArgs) ([]GradeExam, int64, error) {
 	z.Info("---->" + cmn.FncName())
 
 	forceErr := ""
 	if val := ctx.Value("force-error"); val != nil {
 		forceErr = val.(string)
 	}
+	z.Debug(forceErr)
 
 	var (
 		page     int
@@ -119,6 +121,9 @@ func GradeListExam(ctx context.Context, args *GradeListArgs) ([]GradeExam, int64
 	// 统计SQL
 	countSql := fmt.Sprintf(`SELECT COUNT(1) FROM (%s) AS exam_grade_list_count`, sql)
 	err = conn.QueryRow(ctx, countSql, params...).Scan(&rowCount)
+	if forceErr == "conn.QueryRow fail" {
+		err = errors.New(forceErr)
+	}
 	if err != nil {
 		err = fmt.Errorf("执行查询语句失败: %w", err)
 		z.Error(err.Error())
@@ -150,7 +155,10 @@ func GradeListExam(ctx context.Context, args *GradeListArgs) ([]GradeExam, int64
 			&grade.Sessions,
 			&grade.Submitted,
 		)
-		if err != nil || forceErr == "rows scan fail" {
+		if forceErr == "rows scan fail" {
+			err = errors.New(forceErr)
+		}
+		if err != nil {
 			err = fmt.Errorf("扫描考试成绩列表失败: %w", err)
 			z.Error(err.Error())
 			return result, rowCount, err
@@ -165,13 +173,14 @@ func GradeListExam(ctx context.Context, args *GradeListArgs) ([]GradeExam, int64
 /*
 * 获取练习成绩列表
  */
-func GradeListPractice(ctx context.Context, args *GradeListArgs) ([]GradePractice, int64, error) {
+func gradeListPractice(ctx context.Context, args *GradeListArgs) ([]GradePractice, int64, error) {
 	z.Info("---->" + cmn.FncName())
 
 	forceErr := ""
 	if val := ctx.Value("force-error"); val != nil {
 		forceErr = val.(string)
 	}
+	z.Debug(forceErr)
 
 	var err error
 	var page int
@@ -255,6 +264,9 @@ func GradeListPractice(ctx context.Context, args *GradeListArgs) ([]GradePractic
 	// 统计SQL
 	countSql := fmt.Sprintf(`SELECT COUNT(1) FROM (%s) AS practice_grade_list_count`, sql)
 	err = conn.QueryRow(ctx, countSql, params...).Scan(&rowCount)
+	if forceErr == "conn.QueryRow fail" {
+		err = errors.New(forceErr)
+	}
 	if err != nil {
 		err = fmt.Errorf("执行查询语句失败: %w", err)
 		z.Error(err.Error())
@@ -288,7 +300,10 @@ func GradeListPractice(ctx context.Context, args *GradeListArgs) ([]GradePractic
 			&grade.CompletedStudents,
 			&grade.PassedStudents,
 		)
-		if err != nil || forceErr == "rows scan fail" {
+		if forceErr == "rows scan fail" {
+			err = errors.New(forceErr)
+		}
+		if err != nil {
 			err = fmt.Errorf("扫描练习成绩列表出现错误: %w", err)
 			z.Error(err.Error())
 			return result, rowCount, err
@@ -303,7 +318,7 @@ func GradeListPractice(ctx context.Context, args *GradeListArgs) ([]GradePractic
 /*
 * 提交考试成绩
  */
-func SetExamGradeSubmitted(ctx context.Context, args *GradeSubmitArgs) (int64, error) {
+func setExamGradeSubmitted(ctx context.Context, args *GradeSubmitArgs) (int64, error) {
 	z.Info("---->" + cmn.FncName())
 
 	var err error
@@ -313,19 +328,10 @@ func SetExamGradeSubmitted(ctx context.Context, args *GradeSubmitArgs) (int64, e
 	if val := ctx.Value("force-error"); val != nil {
 		forceErr = val.(string)
 	}
+	z.Debug(forceErr)
 
-	if args.TeacherID <= 0 {
-		err := fmt.Errorf("无效教师ID")
-		z.Error(err.Error())
-		return 0, err
-	}
 	teacherID := args.TeacherID
 
-	if len(args.ExamIDs) <= 0 || forceErr == "len(args.ExamIDs)==0" {
-		err = fmt.Errorf("无效考试ID，必须为正整数")
-		z.Error(err.Error())
-		return 0, err
-	}
 	examIDs := args.ExamIDs
 
 	conn := cmn.GetPgxConn()
@@ -358,11 +364,6 @@ func SetExamGradeSubmitted(ctx context.Context, args *GradeSubmitArgs) (int64, e
 	for _, examID := range examIDs {
 		examSessions := []cmn.TExamSession{}
 
-		if examID < 0 {
-			z.Error(ErrInvalidID.Error())
-			return 0, ErrInvalidID
-		}
-
 		querySql := `
 			SELECT
 				id, end_time
@@ -372,6 +373,9 @@ func SetExamGradeSubmitted(ctx context.Context, args *GradeSubmitArgs) (int64, e
 
 		var es_rows pgx.Rows
 		es_rows, err := conn.Query(context.Background(), querySql, examID)
+		if forceErr == "conn query fail" {
+			err = errors.New(forceErr)
+		}
 		if err != nil {
 			z.Error(err.Error())
 			return 0, err
@@ -383,6 +387,9 @@ func SetExamGradeSubmitted(ctx context.Context, args *GradeSubmitArgs) (int64, e
 				&es.ID,
 				&es.EndTime,
 			)
+			if forceErr == "rows scan fail" {
+				err = errors.New(forceErr)
+			}
 			if err != nil {
 				z.Error(err.Error())
 				return 0, err
@@ -394,7 +401,7 @@ func SetExamGradeSubmitted(ctx context.Context, args *GradeSubmitArgs) (int64, e
 
 		for _, examSession := range examSessions {
 			// 检查 EndTime 是否有效
-			if !examSession.EndTime.Valid {
+			if !examSession.EndTime.Valid || forceErr == "examSession endTime invalid" {
 				// 如果 EndTime 无效，则认为考试未结束
 				err = fmt.Errorf("提交考试成绩失败: %w: 考试场次(examSession=%v)没有有效结束时间", ErrExamIsNotOver, examSession.ID.Int64)
 				z.Error(err.Error())
@@ -402,15 +409,12 @@ func SetExamGradeSubmitted(ctx context.Context, args *GradeSubmitArgs) (int64, e
 			}
 
 			endTime := time.UnixMilli(examSession.EndTime.Int64)
-			if endTime.Before(currTime) {
-				// 考试结束时间已过，可正常提交
-				continue
+			if endTime.After(currTime) || forceErr == "endTime after currTime" {
+				// 考试结束时间未过，不可提交
+				err = fmt.Errorf("提交考试成绩失败: %w: 考试场次(examSession=%v)还未结束", ErrExamIsNotOver, examSession.ID.Int64)
+				z.Error(err.Error())
+				return 0, err
 			}
-
-			// 考试结束时间未过，不可提交
-			err = fmt.Errorf("提交考试成绩失败: %w: 考试场次(examSession=%v)还未结束", ErrExamIsNotOver, examSession.ID.Int64)
-			z.Error(err.Error())
-			return 0, err
 		}
 
 		updateSql := `UPDATE t_exam_info SET submitted=true, updated_by=$2, update_time=$3 WHERE id=$1`
@@ -419,7 +423,10 @@ func SetExamGradeSubmitted(ctx context.Context, args *GradeSubmitArgs) (int64, e
 		curr := currTime.UnixMilli()
 
 		commandTag, err := tx.Exec(ctx, updateSql, examID, teacherID, curr)
-		if err != nil || forceErr == "tx exec fail" {
+		if forceErr == "tx exec fail" {
+			err = errors.New(forceErr)
+		}
+		if err != nil {
 			err = fmt.Errorf("提交考试成绩失败(examID=%v teacherID=%v) error: %s", examID, teacherID, err.Error())
 			z.Error(err.Error())
 			return 0, err

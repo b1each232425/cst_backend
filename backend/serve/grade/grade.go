@@ -45,9 +45,7 @@ func Enroll(author string) {
 		developer = &d
 	}
 
-	// --------------------------------------------------
-	//                     成绩列表接口                  |
-	// --------------------------------------------------
+	//  ********** 成绩列表接口 **********
 	_ = cmn.AddService(&cmn.ServeEndPoint{
 		Fn: gradeListH,
 
@@ -64,9 +62,7 @@ func Enroll(author string) {
 		DefaultDomain: int64(cmn.CDomainSys),
 	})
 
-	// --------------------------------------------------
-	//                     成绩提交接口                  |
-	// --------------------------------------------------
+	//  ********** 成绩提交接口 **********
 	_ = cmn.AddService(&cmn.ServeEndPoint{
 		Fn: gradeSubmissionH,
 
@@ -85,53 +81,6 @@ func Enroll(author string) {
 
 }
 
-/*
-*
-	*
-	* @api {GET} /api/grade/list gradeListH 获取成绩列表
-	* @apiDescription 获取成绩列表
-	* @apiName gradeListH
-	* @apiGroup Grade
-	*
-	* @apiParam (200) {String} [category] 	成绩类型
-	* @apiParam (200) {Number} [page] 	页码
-	* @apiParam (200) {Number} [pageSize] 每页数量
-	* @apiParam (200) {Number} [submitted] 是否已提交
-	* @apiParam (200) {Number} [teacherID] 教师ID
-	* @apiParam (200) {Number} [examID] 考试ID
-	* @apiParam (200) {String} [name] 考试名称
-	* @apiParam (200) {String} [type] 考试类型
-	*
-	* @apiParamExample  {type} Request-Example:
-	* {
-	*   "category": "exam",
-	*   "page": 1,
-	*   "pageSize": 10,
-	*   "teacherID": 0,
-	*   "examID": 0,
-	*   "name": "",
-	*   "type": "",
-	*   "submitted": 0
-	* }
-	*
-	* @apiParamExample  {type} Request-Example:
-	* {
-	*   "category": "practice",
-	*   "page": 1,
-	*   "pageSize": 10,
-	*   "teacherID": 0,
-	*   "practice": 0,
-	*   "name": ""
-	* }
-	*
-	*
-	* @apiSuccessExample {type} Success-Response:
-	* {
-	*
-	* }
-	*
-	*
-*/
 func gradeListH(ctx context.Context) {
 	z.Info("---->" + cmn.FncName())
 
@@ -140,6 +89,7 @@ func gradeListH(ctx context.Context) {
 	if val := ctx.Value("force-error"); val != nil {
 		forceErr = val.(string)
 	}
+	z.Debug(forceErr)
 
 	q := cmn.GetCtxValue(ctx)
 
@@ -156,11 +106,11 @@ func gradeListH(ctx context.Context) {
 
 			// 必需参数集
 			req      GradeListArgs
-			category string
+			category string // 类别：exam practice
 			page     string
 			pageSize string
-			p        int
 		)
+		var p int
 
 		if category = queryParams.Get("category"); category == "" {
 			q.Err = fmt.Errorf("不支持的类型: %s", req.Category)
@@ -198,6 +148,16 @@ func gradeListH(ctx context.Context) {
 		}
 		req.PageSize = p
 
+		// 用户身份
+		if q.SysUser == nil || forceErr == "q.SysUser nil" {
+			q.Err = fmt.Errorf("非法请求，鉴权用户失败")
+			z.Warn(q.Err.Error())
+			q.RespErr()
+			return
+		}
+		req.TeacherID = q.SysUser.ID.Int64
+
+		// 管理员实现全部教师数据展示
 		teacherID := queryParams.Get("teacherID")
 		if teacherID != "" {
 			p, err := strconv.ParseInt(teacherID, 10, 64)
@@ -208,15 +168,6 @@ func gradeListH(ctx context.Context) {
 				return
 			}
 			req.TeacherID = p
-		} else {
-			if q.SysUser == nil || forceErr == "q.SysUser nil" {
-				q.Err = fmt.Errorf("非法请求，鉴权用户失败")
-				z.Warn(q.Err.Error())
-				q.RespErr()
-				return
-			}
-			userID := q.SysUser.ID.Int64
-			req.TeacherID = userID
 		}
 
 		if name := queryParams.Get("name"); name != "" {
@@ -260,7 +211,7 @@ func gradeListH(ctx context.Context) {
 
 			// 调用数据库层处理
 			var result []GradeExam
-			result, rowCount, err = GradeListExam(dmlCtx, &req)
+			result, rowCount, err = gradeListExam(dmlCtx, &req)
 			if err != nil {
 				q.Err = fmt.Errorf("获取考试成绩列表失败 错误信息:%w", err)
 				z.Error(q.Err.Error())
@@ -269,16 +220,7 @@ func gradeListH(ctx context.Context) {
 			}
 
 			if result != nil {
-				data, err = json.Marshal(result)
-				if forceErr == "json.Marshal fail" {
-					err = fmt.Errorf("force error: %s", forceErr)
-				}
-				if err != nil {
-					q.Err = fmt.Errorf("json格式化失败 错误信息:%w", err)
-					z.Error(q.Err.Error())
-					q.RespErr()
-					return
-				}
+				data, _ = json.Marshal(result)
 			}
 
 			// z.Debug("gradeListExam", zap.Any("result", result))
@@ -301,7 +243,7 @@ func gradeListH(ctx context.Context) {
 
 			// 调用数据库层处理
 			var result []GradePractice
-			result, rowCount, err = GradeListPractice(dmlCtx, &req)
+			result, rowCount, err = gradeListPractice(dmlCtx, &req)
 			if err != nil {
 				q.Err = fmt.Errorf("获取练习成绩列表失败 错误信息:%w", err)
 				z.Error(q.Err.Error())
@@ -310,16 +252,7 @@ func gradeListH(ctx context.Context) {
 			}
 
 			if result != nil {
-				data, err = json.Marshal(result)
-				if forceErr == "json.Marshal fail" {
-					err = fmt.Errorf("force error: %s", forceErr)
-				}
-				if err != nil {
-					q.Err = fmt.Errorf("json格式化失败 错误信息:%w", err)
-					z.Error(q.Err.Error())
-					q.RespErr()
-					return
-				}
+				data, _ = json.Marshal(result)
 			}
 
 		default:
@@ -345,36 +278,6 @@ func gradeListH(ctx context.Context) {
 	}
 }
 
-/*
-*
-
-	*
-	* @api {GET} /api/grade/submission gradeSubmissionH 获取成绩提交列表
-	* @apiDescription 提交成绩
-	* @apiName gradeSubmissionH
-	* @apiGroup Grade
-	*
-	* @apiParam (200) {Array}  [exam_ids] 	    考试ID
-	*
-	* @apiParamExample  {type} Request-Example:
-	* {
-	*   "exam_ids": [1],
-	* }
-	*
-	* @apiParamExample  {type} Request-Example:
-	* {
-	*   "category": "practice",
-	*   "page": 1,
-	* }
-	*
-	*
-	* @apiSuccessExample {type} Success-Response:
-	* {
-	*
-	* }
-	*
-	*
-*/
 func gradeSubmissionH(ctx context.Context) {
 	z.Info("---->" + cmn.FncName())
 
@@ -382,6 +285,7 @@ func gradeSubmissionH(ctx context.Context) {
 	if val := ctx.Value("force-error"); val != nil {
 		forceErr = val.(string)
 	}
+	z.Debug(forceErr)
 
 	q := cmn.GetCtxValue(ctx)
 
@@ -406,7 +310,10 @@ func gradeSubmissionH(ctx context.Context) {
 
 		defer func() {
 			err := q.R.Body.Close()
-			if err != nil || forceErr == "q.R.Body.Close() fail" {
+			if forceErr == "q.R.Body.Close-fail" {
+				err = errors.New(forceErr)
+			}
+			if err != nil {
 				z.Error(err.Error())
 			}
 		}()
@@ -418,6 +325,7 @@ func gradeSubmissionH(ctx context.Context) {
 			return
 		}
 
+		// 用户身份校验
 		if q.SysUser == nil || forceErr == "q.SysUser nil" {
 			q.Err = fmt.Errorf("非法请求，鉴权用户失败")
 			z.Error(q.Err.Error())
@@ -435,24 +343,25 @@ func gradeSubmissionH(ctx context.Context) {
 		}
 		var examIDs []int
 		for _, examIDQuery := range examIDQuerys {
-			examIDs = append(examIDs, int(examIDQuery.Num))
+			id := int(examIDQuery.Num)
+			if id <= 0 {
+				q.Err = fmt.Errorf("请求存在非法examID")
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+			examIDs = append(examIDs, id)
 		}
 		args.ExamIDs = examIDs
 
-		rowsAffected, err := SetExamGradeSubmitted(ctx, &args)
-		if forceErr == "SetExamGradeSubmitted fail" {
+		dmlCtx, cancel := context.WithTimeout(ctx, TIMEOUT)
+		defer cancel()
+
+		rowsAffected, err := setExamGradeSubmitted(dmlCtx, &args)
+		if forceErr == "setExamGradeSubmitted fail" {
 			err = fmt.Errorf(forceErr)
 		}
 		if err != nil {
-			err = fmt.Errorf("提交考试(教师ID:%v) 错误信息:%s", args.TeacherID, err.Error())
-			if forceErr == "exam has not ended yet" {
-				err = ErrExamIsNotOver
-			}
-			if errors.Is(err, ErrExamIsNotOver) {
-				q.Msg.Msg = "当前选择提交的考试存在未结束的考试"
-			} else {
-				q.Msg.Msg = fmt.Sprintf("提交考试(教师ID:%v) 错误信息:%s", args.TeacherID, err.Error())
-			}
 			q.Err = err
 			z.Error(q.Err.Error())
 			q.RespErr()

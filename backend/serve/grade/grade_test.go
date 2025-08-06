@@ -45,7 +45,7 @@ func TestGradeListH(t *testing.T) {
 		//               考试成绩列表 - 管理员身份               |
 		// --------------------------------------------------
 		{
-			name:            "GET 请求 - 管理员正常获取所有教师考试成绩列表",
+			name:            "管理员正常获取所有教师考试成绩列表",
 			method:          "GET",
 			url:             "/api/grade/list?category=exam&page=1&pageSize=10&teacherID=-1&submitted=-1",
 			expectSuccess:   true,
@@ -55,7 +55,7 @@ func TestGradeListH(t *testing.T) {
 			userID:          -1,
 		},
 		{
-			name:            "GET 请求 - 无效页码，页码不为数字",
+			name:            "无效页码，页码不为数字",
 			method:          "GET",
 			url:             "/api/grade/list?category=exam&page=abc&pageSize=10&teacherID=-1&submitted=-1",
 			expectSuccess:   false,
@@ -65,7 +65,7 @@ func TestGradeListH(t *testing.T) {
 			userID:          1,
 		},
 		{
-			name:            "GET 请求 - 无效每页数量，页数不为数字",
+			name:            "无效每页数量，页数不为数字",
 			method:          "GET",
 			url:             "/api/grade/list?category=exam&page=1&pageSize=abc&teacherID=-1&submitted=-1",
 			expectSuccess:   false,
@@ -75,7 +75,7 @@ func TestGradeListH(t *testing.T) {
 			userID:          1,
 		},
 		{
-			name:            "GET 请求 - 负页码",
+			name:            "负页码",
 			method:          "GET",
 			url:             "/api/grade/list?category=exam&page=-1&pageSize=10&teacherID=-1&submitted=-1",
 			expectSuccess:   false,
@@ -85,9 +85,29 @@ func TestGradeListH(t *testing.T) {
 			userID:          -1,
 		},
 		{
-			name:            "GET 请求 - 负每页数量",
+			name:            "负每页数量",
 			method:          "GET",
 			url:             "/api/grade/list?category=exam&page=1&pageSize=-10&teacherID=-1&submitted=-1",
+			expectSuccess:   false,
+			expectedStatus:  -1,
+			expectedMessage: "",
+			forceError:      "",
+			userID:          -1,
+		},
+		{
+			name:            "无页码",
+			method:          "GET",
+			url:             "/api/grade/list?category=exam&pageSize=10&teacherID=-1&submitted=-1",
+			expectSuccess:   false,
+			expectedStatus:  -1,
+			expectedMessage: "",
+			forceError:      "",
+			userID:          -1,
+		},
+		{
+			name:            "无每页数量",
+			method:          "GET",
+			url:             "/api/grade/list?category=exam&page=1&teacherID=-1&submitted=-1",
 			expectSuccess:   false,
 			expectedStatus:  -1,
 			expectedMessage: "",
@@ -98,7 +118,7 @@ func TestGradeListH(t *testing.T) {
 		//               考试成绩列表 - 教师身份 - 身份校验       |
 		// --------------------------------------------------
 		{
-			name:            "GET 请求 - 无效教师ID，教师ID不为数字",
+			name:            "无效教师ID，教师ID不为数字",
 			method:          "GET",
 			url:             "/api/grade/list?category=exam&page=1&pageSize=10&teacherID=abc&submitted=-1",
 			expectSuccess:   false,
@@ -108,7 +128,7 @@ func TestGradeListH(t *testing.T) {
 			userID:          -1,
 		},
 		{
-			name:            "GET 请求 - 有效教师ID",
+			name:            "有效教师ID",
 			method:          "GET",
 			url:             "/api/grade/list?category=exam&page=1&pageSize=10&teacherID=1622&submitted=-1",
 			expectSuccess:   true,
@@ -118,7 +138,7 @@ func TestGradeListH(t *testing.T) {
 			userID:          -1,
 		},
 		{
-			name:            "GET 请求 - 非法教师ID，教师ID为负数",
+			name:            "非法教师ID，教师ID为负数",
 			method:          "GET",
 			url:             "/api/grade/list?category=exam&page=1&pageSize=10&teacherID=-100&submitted=-1",
 			expectSuccess:   false,
@@ -131,7 +151,7 @@ func TestGradeListH(t *testing.T) {
 		//               考试成绩列表 - 教师身份 - 考试ID校验     |
 		// --------------------------------------------------
 		{
-			name:            "GET 请求 - 无效考试ID",
+			name:            "无效考试ID",
 			method:          "GET",
 			url:             "/api/grade/list?category=exam&page=1&pageSize=10&teacherID=-1&examID=abc&submitted=-1",
 			expectSuccess:   false,
@@ -141,7 +161,7 @@ func TestGradeListH(t *testing.T) {
 			userID:          -1,
 		},
 		{
-			name:            "GET 请求 - 非法考试ID，为负数",
+			name:            "非法考试ID，为负数",
 			method:          "GET",
 			url:             "/api/grade/list?category=exam&page=1&pageSize=10&teacherID=-1&examID=-100&submitted=-1",
 			expectSuccess:   false,
@@ -151,7 +171,7 @@ func TestGradeListH(t *testing.T) {
 			userID:          -1,
 		},
 		{
-			name:            "GET 请求 - 有效考试ID",
+			name:            "有效考试ID",
 			method:          "GET",
 			url:             "/api/grade/list?category=exam&page=1&pageSize=10&teacherID=-1&examID=108&submitted=-1",
 			expectSuccess:   true,
@@ -164,7 +184,7 @@ func TestGradeListH(t *testing.T) {
 		//               考试成绩列表 - 教师身份 - 筛选条件校验    |
 		// --------------------------------------------------
 		{
-			name:            "GET 请求 - 考试名称过滤",
+			name:            "考试名称过滤",
 			method:          "GET",
 			url:             "/api/grade/list?category=exam&page=1&pageSize=10&teacherID=-1&name=math_test&submitted=-1",
 			expectSuccess:   true,
@@ -174,7 +194,7 @@ func TestGradeListH(t *testing.T) {
 			userID:          -1,
 		},
 		{
-			name:            "GET 请求 - 提交状态过滤（未提交）",
+			name:            "提交状态过滤（未提交）",
 			method:          "GET",
 			url:             "/api/grade/list?category=exam&page=1&pageSize=10&teacherID=-1&submitted=0",
 			expectSuccess:   true,
@@ -184,7 +204,7 @@ func TestGradeListH(t *testing.T) {
 			userID:          -1,
 		},
 		{
-			name:            "GET 请求 - 提交状态过滤（已提交）",
+			name:            "提交状态过滤（已提交）",
 			method:          "GET",
 			url:             "/api/grade/list?category=exam&page=1&pageSize=10&teacherID=-1&submitted=1",
 			expectSuccess:   true,
@@ -194,7 +214,7 @@ func TestGradeListH(t *testing.T) {
 			userID:          -1,
 		},
 		{
-			name:            "GET 请求 - 提交状态过滤（不筛选）",
+			name:            "提交状态过滤（不筛选）",
 			method:          "GET",
 			url:             "/api/grade/list?category=exam&page=1&pageSize=10&teacherID=-1&submitted=-1",
 			expectSuccess:   true,
@@ -204,7 +224,7 @@ func TestGradeListH(t *testing.T) {
 			userID:          -1,
 		},
 		{
-			name:            "GET 请求 - 提交状态过滤请求非法，数字非法",
+			name:            "提交状态过滤请求非法，数字非法",
 			method:          "GET",
 			url:             "/api/grade/list?category=exam&page=1&pageSize=10&teacherID=-1&submitted=-9",
 			expectSuccess:   false,
@@ -214,7 +234,7 @@ func TestGradeListH(t *testing.T) {
 			userID:          -1,
 		},
 		{
-			name:            "GET 请求 - 提交状态过滤请求非法，为非数字",
+			name:            "提交状态过滤请求非法，为非数字",
 			method:          "GET",
 			url:             "/api/grade/list?category=exam&page=1&pageSize=10&teacherID=-1&submitted=abc",
 			expectSuccess:   false,
@@ -224,7 +244,7 @@ func TestGradeListH(t *testing.T) {
 			userID:          -1,
 		},
 		{
-			name:            "GET 请求 - 考试类型过滤",
+			name:            "考试类型过滤",
 			method:          "GET",
 			url:             "/api/grade/list?category=exam&page=1&pageSize=10&teacherID=-1&type=02&submitted=-1",
 			expectSuccess:   true,
@@ -234,17 +254,17 @@ func TestGradeListH(t *testing.T) {
 			userID:          -1,
 		},
 		{
-			name:            "GET 请求 - 空提交状态",
+			name:            "空提交状态",
 			method:          "GET",
 			url:             "/api/grade/list?category=exam&page=1&pageSize=10&teacherID=-1&submitted=",
-			expectSuccess:   true,
-			expectedStatus:  0,
+			expectSuccess:   false,
+			expectedStatus:  -1,
 			expectedMessage: "",
 			forceError:      "",
 			userID:          -1,
 		},
 		{
-			name:            "GET 请求 - 最大页码和每页数量",
+			name:            "最大页码和每页数量",
 			method:          "GET",
 			url:             "/api/grade/list?category=exam&page=1000&pageSize=1000&teacherID=-1&submitted=-1",
 			expectSuccess:   true,
@@ -259,7 +279,7 @@ func TestGradeListH(t *testing.T) {
 		// --------------------------------------------------
 		// --------------------------------------------------
 		{
-			name:            "GET 请求 - 管理员正常获取所有教师练习成绩列表",
+			name:            "管理员正常获取所有教师练习成绩列表",
 			method:          "GET",
 			url:             "/api/grade/list?category=practice&page=1&pageSize=10&teacherID=-1",
 			expectSuccess:   true,
@@ -269,7 +289,7 @@ func TestGradeListH(t *testing.T) {
 			userID:          -1,
 		},
 		{
-			name:            "GET 请求 - 无效页码，页码不为数字",
+			name:            "无效页码，页码不为数字",
 			method:          "GET",
 			url:             "/api/grade/list?category=practice&page=abc&pageSize=10&teacherID=-1",
 			expectSuccess:   false,
@@ -279,7 +299,7 @@ func TestGradeListH(t *testing.T) {
 			userID:          1,
 		},
 		{
-			name:            "GET 请求 - 无效每页数量，页数不为数字",
+			name:            "无效每页数量，页数不为数字",
 			method:          "GET",
 			url:             "/api/grade/list?category=practice&page=1&pageSize=abc&teacherID=-1",
 			expectSuccess:   false,
@@ -289,7 +309,7 @@ func TestGradeListH(t *testing.T) {
 			userID:          1,
 		},
 		{
-			name:            "GET 请求 - 负页码",
+			name:            "负页码",
 			method:          "GET",
 			url:             "/api/grade/list?category=practice&page=-1&pageSize=10&teacherID=-1",
 			expectSuccess:   false,
@@ -299,7 +319,7 @@ func TestGradeListH(t *testing.T) {
 			userID:          -1,
 		},
 		{
-			name:            "GET 请求 - 负每页数量",
+			name:            "负每页数量",
 			method:          "GET",
 			url:             "/api/grade/list?category=practice&page=1&pageSize=-10&teacherID=-1",
 			expectSuccess:   false,
@@ -312,7 +332,7 @@ func TestGradeListH(t *testing.T) {
 		//               练习成绩列表 - 练习ID校验               |
 		// --------------------------------------------------
 		{
-			name:            "GET 请求 - 无效练习ID",
+			name:            "无效练习ID",
 			method:          "GET",
 			url:             "/api/grade/list?category=practice&page=1&pageSize=10&teacherID=-1&practiceID=abc",
 			expectSuccess:   false,
@@ -322,7 +342,7 @@ func TestGradeListH(t *testing.T) {
 			userID:          -1,
 		},
 		{
-			name:            "GET 请求 - 非法练习ID",
+			name:            "非法练习ID",
 			method:          "GET",
 			url:             "/api/grade/list?category=practice&page=1&pageSize=10&teacherID=-1&practiceID=-100",
 			expectSuccess:   false,
@@ -332,7 +352,7 @@ func TestGradeListH(t *testing.T) {
 			userID:          -1,
 		},
 		{
-			name:            "GET 请求 - 有效练习ID",
+			name:            "有效练习ID",
 			method:          "GET",
 			url:             "/api/grade/list?category=practice&page=1&pageSize=10&teacherID=-1&practiceID=109",
 			expectSuccess:   true,
@@ -345,7 +365,7 @@ func TestGradeListH(t *testing.T) {
 		//               练习成绩列表 - 教师ID校验               |
 		// --------------------------------------------------
 		{
-			name:            "GET 请求 - 非法教师ID",
+			name:            "非法教师ID",
 			method:          "GET",
 			url:             "/api/grade/list?category=practice&page=1&pageSize=10&teacherID=-100&practiceID=109",
 			expectSuccess:   false,
@@ -355,7 +375,7 @@ func TestGradeListH(t *testing.T) {
 			userID:          -1,
 		},
 		{
-			name:            "GET 请求 - 有效教师ID",
+			name:            "有效教师ID",
 			method:          "GET",
 			url:             "/api/grade/list?category=practice&page=1&pageSize=10&teacherID=1574&practiceID=109",
 			expectSuccess:   true,
@@ -368,7 +388,7 @@ func TestGradeListH(t *testing.T) {
 		//               练习成绩列表 - 筛选过滤               |
 		// --------------------------------------------------
 		{
-			name:            "GET 请求 - 练习名称过滤",
+			name:            "练习名称过滤",
 			method:          "GET",
 			url:             "/api/grade/list?category=practice&page=1&pageSize=10&teacherID=-1&name=math_test",
 			expectSuccess:   true,
@@ -378,7 +398,7 @@ func TestGradeListH(t *testing.T) {
 			userID:          -1,
 		},
 		{
-			name:            "GET 请求 - 最大页码和每页数量",
+			name:            "最大页码和每页数量",
 			method:          "GET",
 			url:             "/api/grade/list?category=practice&page=1000&pageSize=1000&teacherID=-1&practiceID=109",
 			expectSuccess:   true,
@@ -389,7 +409,7 @@ func TestGradeListH(t *testing.T) {
 		},
 		// 共同异常
 		{
-			name:            "GET 请求 - 缺少category参数",
+			name:            "缺少category参数",
 			method:          "GET",
 			url:             "/api/grade/list?page=1&pageSize=10&teacherID=-1",
 			expectSuccess:   false,
@@ -399,7 +419,7 @@ func TestGradeListH(t *testing.T) {
 			userID:          -1,
 		},
 		{
-			name:            "GET 请求 - 不支持的类型",
+			name:            "不支持的类型",
 			method:          "GET",
 			url:             "/api/grade/list?category=invalid&page=1&pageSize=10&teacherID=-1",
 			expectSuccess:   false,
@@ -424,7 +444,7 @@ func TestGradeListH(t *testing.T) {
 		// --------------------------------------------------
 		// --------------------------------------------------
 		{
-			name:            "GET 请求 - 用户为空",
+			name:            "用户为空",
 			method:          "GET",
 			url:             "/api/grade/list?category=exam&page=1&pageSize=10&submitted=-1",
 			expectSuccess:   false,
@@ -433,18 +453,8 @@ func TestGradeListH(t *testing.T) {
 			forceError:      "q.SysUser nil",
 			userID:          1,
 		},
-		//{
-		//	name:            "GET 请求 - json格式化失败",
-		//	method:          "GET",
-		//	url:             "/api/grade/list?category=exam&page=1&pageSize=10&teacherID=-1&submitted=-1",
-		//	expectSuccess:   false,
-		//	expectedStatus:  -1,
-		//	expectedMessage: "",
-		//	forceError:      "json.Marshal fail",
-		//	userID:          1,
-		//},
 		{
-			name:            "GET 请求 - conn nil",
+			name:            "conn nil",
 			method:          "GET",
 			url:             "/api/grade/list?category=exam&page=1&pageSize=10&teacherID=-1&submitted=-1",
 			expectSuccess:   false,
@@ -454,7 +464,7 @@ func TestGradeListH(t *testing.T) {
 			userID:          1,
 		},
 		{
-			name:            "GET 请求 - conn nil",
+			name:            "conn nil",
 			method:          "GET",
 			url:             "/api/grade/list?category=practice&page=1&pageSize=10&teacherID=-1",
 			expectSuccess:   false,
@@ -464,7 +474,7 @@ func TestGradeListH(t *testing.T) {
 			userID:          1,
 		},
 		{
-			name:            "GET 请求 - conn query fail",
+			name:            "conn query fail",
 			method:          "GET",
 			url:             "/api/grade/list?category=exam&page=1&pageSize=10&teacherID=-1&submitted=-1",
 			expectSuccess:   false,
@@ -474,7 +484,7 @@ func TestGradeListH(t *testing.T) {
 			userID:          1,
 		},
 		{
-			name:            "GET 请求 - conn query fail",
+			name:            "conn query fail",
 			method:          "GET",
 			url:             "/api/grade/list?category=practice&page=1&pageSize=10&teacherID=-1",
 			expectSuccess:   false,
@@ -483,26 +493,46 @@ func TestGradeListH(t *testing.T) {
 			forceError:      "conn query fail",
 			userID:          1,
 		},
-		//{
-		//	name:            "GET 请求 - rows scan fail",
-		//	method:          "GET",
-		//	url:             "/api/grade/list?category=exam&page=1&pageSize=10&teacherID=-1&submitted=-1",
-		//	expectSuccess:   false,
-		//	expectedStatus:  -1,
-		//	expectedMessage: "",
-		//	forceError:      "rows scan fail",
-		//	userID:          1,
-		//},
-		//{
-		//	name:            "GET 请求 - GetRowCount fail",
-		//	method:          "GET",
-		//	url:             "/api/grade/list?category=exam&page=1&pageSize=10&teacherID=-1&submitted=-1",
-		//	expectSuccess:   false,
-		//	expectedStatus:  -1,
-		//	expectedMessage: "",
-		//	forceError:      "GetRowCount fail",
-		//	userID:          1,
-		//},
+		{
+			name:            "rows scan fail",
+			method:          "GET",
+			url:             "/api/grade/list?category=exam&page=1&pageSize=10&teacherID=-1&submitted=-1",
+			expectSuccess:   false,
+			expectedStatus:  -1,
+			expectedMessage: "",
+			forceError:      "rows scan fail",
+			userID:          1,
+		},
+		{
+			name:            "conn.QueryRow fail",
+			method:          "GET",
+			url:             "/api/grade/list?category=exam&page=1&pageSize=10&teacherID=-1&submitted=-1",
+			expectSuccess:   false,
+			expectedStatus:  -1,
+			expectedMessage: "",
+			forceError:      "conn.QueryRow fail",
+			userID:          1,
+		},
+		{
+			name:            "rows scan fail",
+			method:          "GET",
+			url:             "/api/grade/list?category=practice&page=1&pageSize=10&teacherID=-1",
+			expectSuccess:   false,
+			expectedStatus:  -1,
+			expectedMessage: "",
+			forceError:      "rows scan fail",
+			userID:          1,
+		},
+		{
+			name:            "conn.QueryRow fail",
+			method:          "GET",
+			url:             "/api/grade/list?category=practice&page=1&pageSize=10&teacherID=-1&submitted=-1",
+			expectSuccess:   false,
+			expectedStatus:  -1,
+			expectedMessage: "",
+			forceError:      "conn.QueryRow fail",
+			userID:          1,
+		},
 	}
 
 	// 运行测试用例
@@ -554,10 +584,10 @@ func TestGradeSubmissionH(t *testing.T) {
 		userID          int64
 	}{
 		{
-			name:            "PATCH 请求 - 提交考试成绩",
+			name:            "提交考试成绩",
 			method:          "PATCH",
 			url:             "/api/grade/submission",
-			reqBody:         `{"data":{"exam_ids":[1,2,3,108]}}`,
+			reqBody:         `{"data":{"exam_ids":[1,2,3,108,160.159,158,157]}}`,
 			expectSuccess:   true,
 			expectedStatus:  0,
 			expectedMessage: "",
@@ -565,7 +595,7 @@ func TestGradeSubmissionH(t *testing.T) {
 			userID:          168,
 		},
 		{
-			name:            "PATCH 请求 - 缺少考试ID",
+			name:            "缺少考试ID",
 			method:          "PATCH",
 			url:             "/api/grade/submission",
 			reqBody:         `{"data":{}}`,
@@ -574,7 +604,8 @@ func TestGradeSubmissionH(t *testing.T) {
 			expectedMessage: "",
 			forceError:      "",
 			userID:          168,
-		}, {
+		},
+		{
 			name:            "不支持的请求方法",
 			method:          "GET",
 			url:             "/api/grade/submission",
@@ -596,7 +627,7 @@ func TestGradeSubmissionH(t *testing.T) {
 			userID:          -1,
 		},
 		{
-			name:            "PATCH 请求 - 缺少考试ID",
+			name:            "缺少考试ID",
 			method:          "PATCH",
 			url:             "/api/grade/submission",
 			reqBody:         `{"data":{}}`,
@@ -628,9 +659,8 @@ func TestGradeSubmissionH(t *testing.T) {
 			forceError:      "",
 			userID:          -1,
 		},
-		// New test cases
 		{
-			name:            "PATCH 请求 - 空考试ID数组",
+			name:            "空考试ID数组",
 			method:          "PATCH",
 			url:             "/api/grade/submission",
 			reqBody:         `{"data":{"exam_ids":[]}}`,
@@ -640,17 +670,26 @@ func TestGradeSubmissionH(t *testing.T) {
 			forceError:      "",
 			userID:          -1,
 		},
-		//{
-		//	name:            "PATCH 请求 - 无效考试ID（非整数）",
-		//	method:          "PATCH",
-		//	url:             "/api/grade/submission",
-		//	reqBody:         `{"data":{"exam_ids":["invalid",2,3]}}`,
-		//	expectSuccess:   false,
-		//	expectedStatus:  -1,
-		//	expectedMessage: "invalid exam_ids: non-integer value",
-		//},
 		{
-			name:            "PATCH 请求 - 缺少data字段",
+			name:            "无效考试ID（非整数）",
+			method:          "PATCH",
+			url:             "/api/grade/submission",
+			reqBody:         `{"data":{"exam_ids":["invalid",2,3]}}`,
+			expectSuccess:   false,
+			expectedStatus:  -1,
+			expectedMessage: "invalid exam_ids: non-integer value",
+		},
+		{
+			name:            "无效考试ID（非整数）",
+			method:          "PATCH",
+			url:             "/api/grade/submission",
+			reqBody:         `{"data":{"exam_ids":[-2,2,3]}}`,
+			expectSuccess:   false,
+			expectedStatus:  -1,
+			expectedMessage: "invalid exam_ids",
+		},
+		{
+			name:            "缺少data字段",
 			method:          "PATCH",
 			url:             "/api/grade/submission",
 			reqBody:         `{}`,
@@ -661,7 +700,7 @@ func TestGradeSubmissionH(t *testing.T) {
 			userID:          -1,
 		},
 		{
-			name:            "PATCH 请求 - 大量考试ID",
+			name:            "大量考试ID",
 			method:          "PATCH",
 			url:             "/api/grade/submission",
 			reqBody:         `{"data":{"exam_ids":[1,2,3,4,5,6,7,8,9,10]}}`,
@@ -677,10 +716,10 @@ func TestGradeSubmissionH(t *testing.T) {
 		// --------------------------------------------------
 		// --------------------------------------------------
 		{
-			name:            "PATCH 请求 - io.ReadAll fail",
+			name:            "io.ReadAll fail",
 			method:          "PATCH",
 			url:             "/api/grade/submission",
-			reqBody:         `{"data":{"exam_ids":[1,2,3,108]}}`,
+			reqBody:         `{"data":{"exam_ids":[1,2,3,108,160.159,158,157]}}`,
 			expectSuccess:   false,
 			expectedStatus:  -1,
 			expectedMessage: "",
@@ -688,10 +727,43 @@ func TestGradeSubmissionH(t *testing.T) {
 			userID:          168,
 		},
 		{
-			name:            "PATCH 请求 - io.ReadAll len(buf)==0",
+			name:            "q.R.Body.Close-fail",
 			method:          "PATCH",
 			url:             "/api/grade/submission",
-			reqBody:         `{"data":{"exam_ids":[1,2,3,108]}}`,
+			reqBody:         `{"data":{"exam_ids":[1,2,3,108,160.159,158,157]}}`,
+			expectSuccess:   true,
+			expectedStatus:  0,
+			expectedMessage: "",
+			forceError:      "q.R.Body.Close-fail",
+			userID:          168,
+		},
+		{
+			name:            "conn query fail",
+			method:          "PATCH",
+			url:             "/api/grade/submission",
+			reqBody:         `{"data":{"exam_ids":[1,2,3,108,160.159,158,157]}}`,
+			expectSuccess:   false,
+			expectedStatus:  -1,
+			expectedMessage: "",
+			forceError:      "conn query fail",
+			userID:          168,
+		},
+		{
+			name:            "rows scan fail",
+			method:          "PATCH",
+			url:             "/api/grade/submission",
+			reqBody:         `{"data":{"exam_ids":[1,2,3,108,160.159,158,157]}}`,
+			expectSuccess:   false,
+			expectedStatus:  -1,
+			expectedMessage: "",
+			forceError:      "rows scan fail",
+			userID:          168,
+		},
+		{
+			name:            "io.ReadAll len(buf)==0",
+			method:          "PATCH",
+			url:             "/api/grade/submission",
+			reqBody:         `{"data":{"exam_ids":[1,2,3,108,160.159,158,157]}}`,
 			expectSuccess:   false,
 			expectedStatus:  -1,
 			expectedMessage: "",
@@ -699,10 +771,10 @@ func TestGradeSubmissionH(t *testing.T) {
 			userID:          168,
 		},
 		{
-			name:            "PATCH 请求 - 请求用户空",
+			name:            "请求用户空",
 			method:          "PATCH",
 			url:             "/api/grade/submission",
-			reqBody:         `{"data":{"exam_ids":[1,2,3,108]}}`,
+			reqBody:         `{"data":{"exam_ids":[1,2,3,108,160.159,158,157]}}`,
 			expectSuccess:   false,
 			expectedStatus:  -1,
 			expectedMessage: "",
@@ -710,32 +782,32 @@ func TestGradeSubmissionH(t *testing.T) {
 			userID:          168,
 		},
 		{
-			name:            "PATCH 请求 - SetExamGradeSubmitted fail",
+			name:            "setExamGradeSubmitted fail",
 			method:          "PATCH",
 			url:             "/api/grade/submission",
-			reqBody:         `{"data":{"exam_ids":[1,2,3,108]}}`,
+			reqBody:         `{"data":{"exam_ids":[1,2,3,108,160.159,158,157]}}`,
 			expectSuccess:   false,
 			expectedStatus:  -1,
 			expectedMessage: "",
-			forceError:      "SetExamGradeSubmitted fail",
+			forceError:      "setExamGradeSubmitted fail",
 			userID:          168,
 		},
 		{
-			name:            "PATCH 请求 - SetExamGradeSubmitted fail",
+			name:            "setExamGradeSubmitted fail",
 			method:          "PATCH",
 			url:             "/api/grade/submission",
-			reqBody:         `{"data":{"exam_ids":[1,2,3,108]}}`,
+			reqBody:         `{"data":{"exam_ids":[1,2,3,108,160.159,158,157]}}`,
 			expectSuccess:   false,
 			expectedStatus:  -1,
 			expectedMessage: "",
-			forceError:      "SetExamGradeSubmitted fail",
+			forceError:      "setExamGradeSubmitted fail",
 			userID:          168,
 		},
 		//{
-		//	name:            "PATCH 请求 - exam has not ended yet",
+		//	name:            "exam has not ended yet",
 		//	method:          "PATCH",
 		//	url:             "/api/grade/submission",
-		//	reqBody:         `{"data":{"exam_ids":[1,2,3,108]}}`,
+		//	reqBody:         `{"data":{"exam_ids":[1,2,3,108,160.159,158,157]}}`,
 		//	expectSuccess:   false,
 		//	expectedStatus:  -1,
 		//	expectedMessage: "",
@@ -743,10 +815,10 @@ func TestGradeSubmissionH(t *testing.T) {
 		//	userID:          168,
 		//},
 		{
-			name:            "PATCH 请求 - conn nil",
+			name:            "conn nil",
 			method:          "PATCH",
 			url:             "/api/grade/submission",
-			reqBody:         `{"data":{"exam_ids":[1,2,3,108]}}`,
+			reqBody:         `{"data":{"exam_ids":[1,2,3,108,160.159,158,157]}}`,
 			expectSuccess:   false,
 			expectedStatus:  -1,
 			expectedMessage: "",
@@ -754,58 +826,69 @@ func TestGradeSubmissionH(t *testing.T) {
 			userID:          168,
 		},
 		{
-			name:            "PATCH 请求 - conn begin tx fail",
+			name:            "conn begin tx fail",
 			method:          "PATCH",
 			url:             "/api/grade/submission",
-			reqBody:         `{"data":{"exam_ids":[1,2,3,108]}}`,
+			reqBody:         `{"data":{"exam_ids":[1,2,3,108,160.159,158,157]}}`,
 			expectSuccess:   false,
 			expectedStatus:  -1,
 			expectedMessage: "",
 			forceError:      "conn begin tx fail",
 			userID:          168,
 		},
-		//{
-		//	name:            "PATCH 请求 - txSuccess must fail",
-		//	method:          "PATCH",
-		//	url:             "/api/grade/submission",
-		//	reqBody:         `{"data":{"exam_ids":[1,2,3,108]}}`,
-		//	expectSuccess:   false,
-		//	expectedStatus:  -1,
-		//	expectedMessage: "",
-		//	forceError:      "txSuccess must fail",
-		//	userID:          168,
-		//},
 		{
-			name:            "PATCH 请求 - GetExamSessionInfo must fail",
+			name:            "txSuccess must fail",
 			method:          "PATCH",
 			url:             "/api/grade/submission",
-			reqBody:         `{"data":{"exam_ids":[1,2,3,108]}}`,
+			reqBody:         `{"data":{"exam_ids":[1,2,3,108,160.159,158,157]}}`,
+			expectSuccess:   true,
+			expectedStatus:  0,
+			expectedMessage: "",
+			forceError:      "txSuccess must fail",
+			userID:          168,
+		},
+		{
+			name:            "tx exec fail",
+			method:          "PATCH",
+			url:             "/api/grade/submission",
+			reqBody:         `{"data":{"exam_ids":[1,2,3,108,160.159,158,157]}}`,
 			expectSuccess:   false,
 			expectedStatus:  -1,
 			expectedMessage: "",
-			forceError:      "GetExamSessionInfo must fail",
+			forceError:      "tx exec fail",
 			userID:          168,
 		},
-		//{
-		//	name:            "PATCH 请求 - tx exec fail",
-		//	method:          "PATCH",
-		//	url:             "/api/grade/submission",
-		//	reqBody:         `{"data":{"exam_ids":[1,2,3,108]}}`,
-		//	expectSuccess:   false,
-		//	expectedStatus:  -1,
-		//	expectedMessage: "",
-		//	forceError:      "tx exec fail",
-		//	userID:          168,
-		//},
 		{
-			name:            "PATCH 请求 - tx commit fail",
+			name:            "tx commit fail",
 			method:          "PATCH",
 			url:             "/api/grade/submission",
-			reqBody:         `{"data":{"exam_ids":[1,2,3,108]}}`,
+			reqBody:         `{"data":{"exam_ids":[1,2,3,108,160.159,158,157]}}`,
 			expectSuccess:   false,
 			expectedStatus:  -1,
 			expectedMessage: "",
 			forceError:      "tx commit fail",
+			userID:          168,
+		},
+		{
+			name:            "examSession endTime invalid",
+			method:          "PATCH",
+			url:             "/api/grade/submission",
+			reqBody:         `{"data":{"exam_ids":[1,2,3,108,160.159,158,157]}}`,
+			expectSuccess:   false,
+			expectedStatus:  -1,
+			expectedMessage: "",
+			forceError:      "examSession endTime invalid",
+			userID:          168,
+		},
+		{
+			name:            "endTime after currTime",
+			method:          "PATCH",
+			url:             "/api/grade/submission",
+			reqBody:         `{"data":{"exam_ids":[1,2,3,108,160.159,158,157]}}`,
+			expectSuccess:   false,
+			expectedStatus:  -1,
+			expectedMessage: "",
+			forceError:      "endTime after currTime",
 			userID:          168,
 		},
 	}
