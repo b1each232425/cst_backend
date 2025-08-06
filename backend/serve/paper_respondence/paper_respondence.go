@@ -30,39 +30,39 @@ const (
 	LateEntryTimeArrived            // 最迟进入时间已经到达
 	ExamCanBeEnter                  //考试无论什么条件都能进入
 
-	TIMEOUT = 5 * time.Second
+	TIMEOUT = 5 * time.Second //超时时间
 
-	AiCorrectMode = "02"
+	ExamModeOnline = "00" //线上考试模式
 
-	ExamModeOnline = "00"
+	ExamTypeFixed    = "00" //固定时间考试模式
+	ExamTypeFlexible = "02" //灵活时间考试模式
 
-	ExamTypeFixed    = "00"
-	ExamTypeFlexible = "02"
+	TestSign = "test" //测试标志
 
-	TestSign = "test"
+	SUBMIT = "0" //用于提交的条件检测
+	INIT   = "1" //用于初始化的条件检测
+	STATUS = "2" //用于查看考试状态的条件检测
+	ALLOW  = "3" //用于允许学生进入考试的条件检测
 
-	SUBMIT = "0"
-	INIT   = "1"
-	STATUS = "2"
-	ALLOW  = "3"
+	ExamOverStatus = "10"
 
-	ExamOverStatus       = "10"
-	QuestionCanNotAnswer = "02"
-	NormalStatus         = "00"
-	CanBeEnterStatus     = "16"
-	ExamineeDeleteStatus = " 08"
-	MakeupExam           = "04"
+	NormalStatus = "00" //正常状态
 
-	//
-	practiceSubmitted = "06"
+	MakeupExam = "04" //补考状态
 
-	ExamType     = "00"
-	PracticeType = "02"
+	CanBeEnterStatus = "16" //学生是被允许进入考试的，即使超过了最迟进入时间
 
-	ForceErr = "forceErr"
+	QuestionCanNotAnswer = "02" //不可作答的状态
 
-	StudentDomainId = 2008
-	ExamInvigilator = 2004
+	practiceSubmitted = "06" //练习提交状态
+
+	ExamType     = "00" //考试类型
+	PracticeType = "02" //练习类型
+
+	ForceErr = "forceErr" //强制错误标记
+
+	StudentDomainId = 2008 //学生域
+	ExamInvigilator = 2004 //监考员域
 )
 
 var (
@@ -1580,6 +1580,7 @@ func saveStudentBeginTimeForExam(ctx context.Context, tx pgx.Tx, req InitRespond
 	return nil
 }
 
+// setAnswerCanNotUpdate 设置作答不可作答
 func setAnswerCanNotUpdate(ctx context.Context, examineeId, practiceSubmissionId, userId int64, tx pgx.Tx) error {
 
 	var updateSqlForAnswer string
