@@ -63,6 +63,8 @@ const (
 
 	StudentDomainId = 2008 //学生域
 	ExamInvigilator = 2004 //监考员域
+
+	PracticeSubmissionDeleteStatus = "04"
 )
 
 var (
@@ -1035,8 +1037,19 @@ func Submit(ctx context.Context) {
 		if forceErr == "setAnswerCanNotUpdate error" {
 			tx.Rollback(dmlCtx)
 		}
+
+		//查看练习是否被其他人删除了
+		q.Err = checkPracticeSubmission(ctx, tx, u.PracticeSubmissionID)
+		if q.Err != nil {
+			q.RespErr()
+			return
+		}
+
 		//将练习置为提交状态
 		q.Err = setAnswerCanNotUpdate(ctx, 0, u.PracticeSubmissionID, u.StudentId, tx)
+		if forceErr == "set answer can not update err" {
+			q.Err = errors.New("set answer can not update err")
+		}
 		if q.Err != nil {
 			q.RespErr()
 			return
@@ -1469,6 +1482,12 @@ func insertOrUpdateAnswer(ctx context.Context, req SaveOrUpdateStudentAnswerReq,
 	RETURNING id,creator,updated_by
 	`
 	} else if req.PracticeSubmissionId > 0 {
+		//查看练习是否被其他人删除了
+		err := checkPracticeSubmission(ctx, tx, req.PracticeSubmissionId)
+		if err != nil {
+			return cmn.TStudentAnswers{}, err
+		}
+
 		// 直接一条SQL搞定插入或更新，如果是禁止作答的状态，说明已经提交，不能改了
 		sql = `
 	INSERT INTO t_student_answers 
@@ -1625,4 +1644,26 @@ func saveBeginTimeForPractice(ctx context.Context, tx pgx.Tx, req InitRespondent
 		return err
 	}
 	return nil
+}
+
+// checkPracticeSubmission 查看练习的状态
+func checkPracticeSubmission(ctx context.Context, tx pgx.Tx, practiceSubmissionId int64) error {
+	sql := `SELECT EXISTS(
+    SELECT 1
+    FROM t_practice_submissions
+    WHERE id = $1 AND status=$2 AND attempt=-1
+) AS result;`
+	var result null.Bool
+	err := tx.QueryRow(ctx, sql, practiceSubmissionId, PracticeSubmissionDeleteStatus).Scan(&result)
+	if err != nil {
+		z.Error("checkPracticeSubmission error", zap.Error(err))
+		return err
+	}
+	z.Info("result", zap.Bool("result", result.Bool))
+	if !result.Bool {
+		return nil
+	}
+	err = fmt.Errorf("当前练习已经被删除")
+	z.Info(err.Error(), zap.Int64("practiceSubmissionId", practiceSubmissionId))
+	return err
 }
