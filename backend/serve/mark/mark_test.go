@@ -101,6 +101,7 @@ func initTestData() {
 		{1201, "test account 4", "test student"},
 		{1202, "test account 5", "test student"},
 		{1203, "test account 6", "test student"},
+		{1204, "test account 7", "test student"},
 	})
 
 	queries = append(queries, `INSERT INTO t_exam_info(id, name, type, creator, create_time, status) VALUES($1, $2, $3, $4, $5, $6)`)
@@ -169,6 +170,8 @@ func initTestData() {
 		{425, 3, "02", "多选1", `["B", "D"]`, 324, "00", 1101},
 		{426, 3, "04", "判断1", `["A"]`, 324, "00", 1101},
 		{421, 3, "00", "单选2", `[]`, 326, "00", 1101}, // 异常数据
+		{422, 3, "06", "填空2", `[{"index": 1, "score": 1, "answer": "填空1第一空答案", "grading_rule": "1"},{"index": 2, "score": 2, "answer": "填空2第二空答案", "grading_rule": "2"}]`, 302, "00", 1101},
+		{423, 3, "06", "异常答案填空1", `{}`, 303, "00", 1101},
 	}
 	args = append(args, tempArgs)
 
@@ -177,7 +180,10 @@ func initTestData() {
 		{2201, 1201, 101, "10", 1101},
 		{2202, 1202, 101, "10", 1101},
 		{2203, 1203, 103, "10", 1101},
+		{2204, 1204, 103, "10", 1101},
 		{2205, 1201, 102, "10", 1101},
+		{2206, 1201, 103, "10", 1101},
+		{2207, 1202, 103, "10", 1101},
 	}
 	args = append(args, tempArgs)
 
@@ -201,6 +207,9 @@ func initTestData() {
 		{27, 2203, 411, `{"answer": ["B"]}`, `[]`, "00", 1101},
 		{28, 2205, 404, `{"answer": ["B"]}`, `["B"]`, "00", 1101},
 		{29, 2205, 405, `{"answer": ["填空学生作答1"]}`, `[]`, "00", 1101},
+		{30, 2204, 411, `{"answer": {}}`, `["B"]`, "00", 1101},
+		{31, 2206, 411, `{"answer": ["B"]}`, `{}`, "00", 1101},
+		{32, 2207, 411, `{"answer": []}`, `["B"]`, "00", 1101},
 	}
 	args = append(args, tempArgs)
 
@@ -226,6 +235,13 @@ func initTestData() {
 		{205, null.NewInt(0, false), 21, 1101, 1101, "00"},
 		{206, 106, null.NewInt(0, false), null.NewInt(0, false), 1101, "00"},
 		{207, 105, null.NewInt(0, false), 1101, 1101, "00"},
+	}
+	args = append(args, tempArgs)
+
+	query := `INSERT INTO t_mark(id, teacher_id, exam_session_id, examinee_id, question_id, mark_details, score, creator, status) VALUES($1, $2, $3, $4, $5, $6, $7, $8, $9)`
+	queries = append(queries, query)
+	tempArgs = [][]interface{}{
+		{9901, testedTeacherID, 102, 2205, 405, `{}`, 2, testedTeacherID, "00"},
 	}
 	args = append(args, tempArgs)
 
@@ -276,20 +292,23 @@ func cleanTestData() {
 	var queries []string
 	var args [][]interface{}
 
+	queries = append(queries, `DELETE FROM t_mark WHERE id = $1`)
+	args = append(args, []interface{}{9901})
+
 	queries = append(queries, `DELETE FROM t_student_answers WHERE id = $1`)
-	args = append(args, []interface{}{21, 22, 23, 24, 25, 26, 27, 28, 29, 41, 42, 43, 44, 45, 46})
+	args = append(args, []interface{}{21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 41, 42, 43, 44, 45, 46})
 
 	queries = append(queries, `DELETE FROM t_examinee WHERE id = $1`)
-	args = append(args, []interface{}{2201, 2202, 2203, 2205})
+	args = append(args, []interface{}{2201, 2202, 2203, 2204, 2205, 2206, 2207})
 
 	queries = append(queries, `DELETE FROM t_exam_paper_question WHERE id = $1`)
-	args = append(args, []interface{}{401, 402, 403, 404, 405, 411, 412, 424, 425, 426, 421})
+	args = append(args, []interface{}{401, 402, 403, 404, 405, 411, 412, 424, 425, 426, 421, 422, 423})
 
 	queries = append(queries, `DELETE FROM t_exam_paper_group WHERE id = $1`)
 	args = append(args, []interface{}{301, 302, 303, 304, 324, 325, 326})
 
 	queries = append(queries, `DELETE FROM t_user WHERE id = $1`)
-	args = append(args, []interface{}{1101, 1102, 1103, 1201, 1202, 1203})
+	args = append(args, []interface{}{1101, 1102, 1103, 1201, 1202, 1203, 1204})
 
 	queries = append(queries, `DELETE FROM t_mark_info WHERE id = $1`)
 	args = append(args, []interface{}{201, 202, 203, 204, 205, 206, 207})
@@ -454,6 +473,7 @@ func TestGetExamList(t *testing.T) {
 		name             string
 		params           map[string]string
 		requestMethod    string
+		forceErr         string
 		expectedErrStr   string
 		expectedMsg      *cmn.ReplyProto
 		expectedExams    []Exam
@@ -563,6 +583,28 @@ func TestGetExamList(t *testing.T) {
 			},
 			expectedErrStr: "error parsing page size",
 		},
+		{
+			name: "unable to marshal response data",
+			params: map[string]string{
+				"page_index": "1",
+				"page_size":  "10",
+				"exam_name":  "",
+				"status":     "",
+			},
+			forceErr:       "GetExamList-json.Marshal",
+			expectedErrStr: "unable to marshal response data",
+		},
+		{
+			name: "getExamList count SQL error",
+			params: map[string]string{
+				"page_index": "1",
+				"page_size":  "10",
+				"exam_name":  "",
+				"status":     "",
+			},
+			forceErr:       "QueryExamList-pgxConn.QueryRow",
+			expectedErrStr: "getExamList count SQL error",
+		},
 	}
 
 	for _, tt := range tests {
@@ -573,7 +615,13 @@ func TestGetExamList(t *testing.T) {
 			} else {
 				method = "GET"
 			}
-			ctx := context.WithValue(context.Background(), cmn.QNearKey, newMockServiceCtx(method, tt.params, nil))
+
+			ctx := context.Background()
+			if tt.forceErr != "" {
+				ctx = context.WithValue(ctx, ForceErrKey, tt.forceErr)
+			}
+
+			ctx = context.WithValue(ctx, cmn.QNearKey, newMockServiceCtx(method, tt.params, nil))
 			GetExamList(ctx)
 			q := cmn.GetCtxValue(ctx)
 			z.Sugar().Infof("GetExamList: %+v", q.Msg)
@@ -597,9 +645,7 @@ func TestGetExamList(t *testing.T) {
 }
 
 func TestGetMarkingDetails(t *testing.T) {
-
-	z := cmn.GetLogger()
-	z.Info("starting mark Test")
+	cleanTestData()
 	initTestData()
 	defer cleanTestData()
 
@@ -607,6 +653,7 @@ func TestGetMarkingDetails(t *testing.T) {
 		name             string
 		params           map[string]string
 		requestMethod    string
+		forceErr         string
 		expectedErrStr   string
 		expectedMsg      *cmn.ReplyProto
 		expectedExams    []Exam
@@ -659,6 +706,69 @@ func TestGetMarkingDetails(t *testing.T) {
 			},
 			expectedErrStr: "no marker info",
 		},
+		{
+			name: "failed to marshal response data",
+			params: map[string]string{
+				"exam_session_id": "101",
+				"examinee_id":     "",
+			},
+			forceErr:       "GetMarkingDetails-json.Marshal",
+			expectedErrStr: "failed to marshal response data",
+		},
+		{
+			name: "QueryExamineeInfo-error",
+			params: map[string]string{
+				"exam_session_id": "101",
+				"examinee_id":     "",
+			},
+			forceErr:       "QueryExamineeInfo-pgxConn.Query",
+			expectedErrStr: "exec query examinee info SQL error",
+		},
+		{
+			name: "QueryMarkingResults-error",
+			params: map[string]string{
+				"exam_session_id": "101",
+				"examinee_id":     "",
+			},
+			forceErr:       "QueryMarkingResults-pgxConn.Query",
+			expectedErrStr: "exec getMarkingResults SQL error",
+		},
+		{
+			name: "QueryMarkerInfo-error",
+			params: map[string]string{
+				"exam_session_id": "101",
+				"examinee_id":     "",
+			},
+			forceErr:       "QueryMarkerInfo-pgxConn.Query",
+			expectedErrStr: "QueryMarkerInfo",
+		},
+		{
+			name: "QueryExamQuestionsByMarkMode-error",
+			params: map[string]string{
+				"exam_session_id": "101",
+				"examinee_id":     "",
+			},
+			forceErr:       "QueryExamQuestionsByMarkMode-pgxConn.Query",
+			expectedErrStr: "exec getQuestionsQuery SQL error",
+		},
+		{
+			name: "QueryStudentAnswersByMarkMode-error",
+			params: map[string]string{
+				"exam_session_id": "101",
+				"examinee_id":     "",
+			},
+			forceErr:       "QueryStudentAnswersByMarkMode-pgxConn.Query",
+			expectedErrStr: "exec getStudentAnswersByMarkMode SQL error",
+		},
+		{
+			name: "failed to marshal response data",
+			params: map[string]string{
+				"exam_session_id": "101",
+				"examinee_id":     "",
+			},
+			forceErr:       "GetMarkingDetails-json.Marshal",
+			expectedErrStr: "failed to marshal response data",
+		},
 	}
 
 	for _, tt := range tests {
@@ -669,7 +779,13 @@ func TestGetMarkingDetails(t *testing.T) {
 			} else {
 				method = "GET"
 			}
-			ctx := context.WithValue(context.Background(), cmn.QNearKey, newMockServiceCtx(method, tt.params, nil))
+
+			ctx := context.Background()
+			if tt.forceErr != "" {
+				ctx = context.WithValue(ctx, ForceErrKey, tt.forceErr)
+			}
+
+			ctx = context.WithValue(ctx, cmn.QNearKey, newMockServiceCtx(method, tt.params, nil))
 			GetMarkingDetails(ctx)
 			q := cmn.GetCtxValue(ctx)
 			if q.Err != nil {
@@ -702,6 +818,7 @@ func TestHandleMarkerInfo(t *testing.T) {
 		name           string
 		teacherID      int64
 		requestParams  HandleMarkerInfoReq
+		forceErr       string
 		expectedErrStr string
 	}{
 		{
@@ -910,11 +1027,77 @@ func TestHandleMarkerInfo(t *testing.T) {
 			},
 			expectedErrStr: "no markInfos to insert",
 		},
+		{
+			name:      "failed to marshal MarkExamineeIds",
+			teacherID: testedTeacherID,
+			requestParams: HandleMarkerInfoReq{
+				ExamSessionID: 101,
+				ExamineeIDs:   []int64{801, 802, 803, 804},
+				MarkMode:      "04",
+				Markers:       []int64{testedTeacherID, 1002},
+				Status:        "00",
+			},
+			forceErr:       "json.Marshal-1",
+			expectedErrStr: "failed to marshal MarkExamineeIds",
+		},
+		{
+			name:      "failed to marshal markQuestionIDs",
+			teacherID: testedTeacherID,
+			requestParams: HandleMarkerInfoReq{
+				ExamSessionID: 101,
+				MarkMode:      "06",
+				Markers:       []int64{testedTeacherID, 1002},
+				//QuestionIDGroups: [][]int64{{1, 2, 3}, {4, 5}, {6, 7}},
+				QuestionGroups: []examPaper.SubjectiveQuestionGroup{
+					{
+						GroupID:     1,
+						QuestionIDs: []int64{1, 2, 3},
+					},
+					{
+						GroupID:     2,
+						QuestionIDs: []int64{4, 5},
+					},
+					{
+						GroupID:     3,
+						QuestionIDs: []int64{6, 7},
+					},
+				},
+				Status: "00",
+			},
+			forceErr:       "json.Marshal-2",
+			expectedErrStr: "failed to marshal markQuestionIDs",
+		},
+		{
+			name:      "exec insert query error",
+			teacherID: testedTeacherID,
+			requestParams: HandleMarkerInfoReq{
+				ExamSessionID: 101,
+				MarkMode:      "00",
+				Markers:       []int64{testedTeacherID},
+				Status:        "00",
+			},
+			forceErr:       "HandleMarkerInfo-tx.QueryRow",
+			expectedErrStr: "exec insert query error",
+		},
+		{
+			name:      "exec update query error",
+			teacherID: testedTeacherID,
+			requestParams: HandleMarkerInfoReq{
+				ExamSessionIDs: []int64{108},
+				Status:         "02",
+			},
+			forceErr:       "tx.Query",
+			expectedErrStr: "exec update query error",
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			ctx := context.Background()
+
+			if tt.forceErr != "" {
+				ctx = context.WithValue(context.Background(), ForceErrKey, tt.forceErr)
+			}
 
 			pgxConn := cmn.GetPgxConn()
 			tx, err := pgxConn.Begin(ctx)
@@ -925,11 +1108,7 @@ func TestHandleMarkerInfo(t *testing.T) {
 
 			defer func() {
 				if err != nil {
-					err_ := tx.Rollback(ctx)
-					if err_ != nil {
-						panic(err_)
-						return
-					}
+					_ = tx.Rollback(ctx)
 				}
 			}()
 
@@ -947,7 +1126,6 @@ func TestHandleMarkerInfo(t *testing.T) {
 			err = tx.Commit(ctx)
 			if err != nil {
 				panic(err)
-				return
 			}
 		})
 	}
@@ -964,6 +1142,7 @@ func TestMarkObjectiveQuestionAnswers(t *testing.T) {
 		name           string
 		teacherID      int64
 		requestParams  QueryCondition
+		forceErr       string
 		expectedErrStr string
 	}{
 		{
@@ -990,6 +1169,15 @@ func TestMarkObjectiveQuestionAnswers(t *testing.T) {
 				PracticeID:           21,
 				PracticeSubmissionID: 2401,
 				TeacherID:            testedTeacherID,
+			},
+		},
+		{
+			name:      "success-（学生作答结果字段为空数组，得分为0）",
+			teacherID: testedTeacherID,
+			requestParams: QueryCondition{
+				ExamSessionID: 103,
+				ExamineeID:    2207,
+				TeacherID:     testedTeacherID,
 			},
 		},
 		{
@@ -1023,9 +1211,30 @@ func TestMarkObjectiveQuestionAnswers(t *testing.T) {
 			teacherID: testedTeacherID,
 			requestParams: QueryCondition{
 				ExamSessionID: 103,
+				ExamineeID:    2203,
 				TeacherID:     testedTeacherID,
 			},
 			expectedErrStr: "invalid actual answers",
+		},
+		{
+			name:      "failed to unmarshal actual answers",
+			teacherID: testedTeacherID,
+			requestParams: QueryCondition{
+				ExamSessionID: 103,
+				ExamineeID:    2206,
+				TeacherID:     testedTeacherID,
+			},
+			expectedErrStr: "failed to unmarshal actual answers",
+		},
+		{
+			name:      "failed to unmarshal answer",
+			teacherID: testedTeacherID,
+			requestParams: QueryCondition{
+				ExamSessionID: 103,
+				ExamineeID:    2204,
+				TeacherID:     testedTeacherID,
+			},
+			expectedErrStr: "failed to unmarshal answer",
 		},
 		{
 			name:      "success-dont need to auto submit",
@@ -1035,11 +1244,93 @@ func TestMarkObjectiveQuestionAnswers(t *testing.T) {
 				TeacherID:     testedTeacherID,
 			},
 		},
+		{
+			name:      "failed to marshal mark details",
+			teacherID: testedTeacherID,
+			requestParams: QueryCondition{
+				ExamSessionID: 101,
+				TeacherID:     testedTeacherID,
+			},
+			forceErr:       "MarkObjectiveQuestionAnswers-json.Marshal",
+			expectedErrStr: "failed to marshal mark details",
+		},
+		{
+			name:      "failed to query subjective question counts",
+			teacherID: testedTeacherID,
+			requestParams: QueryCondition{
+				ExamSessionID: 101,
+				TeacherID:     testedTeacherID,
+			},
+			forceErr:       "MarkObjectiveQuestionAnswers-pgxConn.QueryRow",
+			expectedErrStr: "failed to query subjective question counts",
+		},
+		{
+			name:      "begin transaction error",
+			teacherID: testedTeacherID,
+			requestParams: QueryCondition{
+				ExamSessionID: 101,
+				TeacherID:     testedTeacherID,
+			},
+			forceErr:       "MarkObjectiveQuestionAnswers-pgxConn.Begin",
+			expectedErrStr: "begin transaction error",
+		},
+		{
+			name:      "tx.Rollback error",
+			teacherID: testedTeacherID,
+			requestParams: QueryCondition{
+				ExamSessionID: 101,
+				TeacherID:     testedTeacherID,
+			},
+			forceErr: "MarkObjectiveQuestionAnswers-tx.Rollback",
+		},
+		{
+			name:      "commit tx error",
+			teacherID: testedTeacherID,
+			requestParams: QueryCondition{
+				ExamSessionID: 101,
+				TeacherID:     testedTeacherID,
+			},
+			forceErr:       "MarkObjectiveQuestionAnswers-tx.Commit",
+			expectedErrStr: "commit tx error",
+		},
+		{
+			name:      "exec getStudentAnswersByMarkMode SQL error",
+			teacherID: testedTeacherID,
+			requestParams: QueryCondition{
+				ExamSessionID: 101,
+				TeacherID:     testedTeacherID,
+			},
+			forceErr:       "QueryStudentAnswersByMarkMode-pgxConn.Query",
+			expectedErrStr: "exec getStudentAnswersByMarkMode SQL error",
+		},
+		{
+			name:      "begin transaction error",
+			teacherID: testedTeacherID,
+			requestParams: QueryCondition{
+				ExamSessionID: 101,
+				TeacherID:     testedTeacherID,
+			},
+			forceErr:       "updateStudentAnswerScore-pgxConn.Begin",
+			expectedErrStr: "begin transaction error",
+		},
+		{
+			name:      "exec updateExamSessionState sql error",
+			teacherID: testedTeacherID,
+			requestParams: QueryCondition{
+				ExamSessionID: 101,
+				TeacherID:     testedTeacherID,
+			},
+			forceErr:       "updateExamSessionOrPracticeSubmissionState-tx.Query",
+			expectedErrStr: "exec updateExamSessionState sql error",
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			ctx := context.Background()
+			if tt.forceErr != "" {
+				ctx = context.WithValue(context.Background(), ForceErrKey, tt.forceErr)
+			}
 			err := MarkObjectiveQuestionAnswers(ctx, tt.requestParams)
 			if err != nil {
 				if tt.expectedErrStr == "" {
@@ -1059,7 +1350,7 @@ func TestSaveMarkingResults(t *testing.T) {
 	cleanTestData()
 	z.Info("starting mark Test")
 	initTestData()
-	//defer cleanTestData()
+	defer cleanTestData()
 
 	tests := []struct {
 		name              string
@@ -1068,6 +1359,7 @@ func TestSaveMarkingResults(t *testing.T) {
 		requestData       interface{}
 		isInvalidReqProto bool
 		bodyStr           string
+		forceErr          string
 		expectedErrStr    string
 		expectedMsg       *cmn.ReplyProto
 		expectedRowCount  int
@@ -1191,6 +1483,108 @@ func TestSaveMarkingResults(t *testing.T) {
 			},
 			expectedErrStr: "invalid insert params",
 		},
+		{
+			name:          "failed to read request body",
+			requestMethod: "POST",
+			requestData: []*cmn.TMark{
+				{
+					TeacherID:     null.IntFrom(testedTeacherID),
+					ExamSessionID: null.IntFrom(103),
+					ExamineeID:    null.IntFrom(2203),
+					QuestionID:    null.IntFrom(10001),
+					Score:         null.FloatFrom(3),
+					MarkDetails:   make(types.JSONText, 0),
+					Creator:       null.IntFrom(testedTeacherID),
+				},
+			},
+			forceErr:       "io.ReadAll",
+			expectedErrStr: "failed to read request body",
+		},
+		{
+			name:          "failed to close request body",
+			requestMethod: "POST",
+			requestData: []*cmn.TMark{
+				{
+					TeacherID:     null.IntFrom(testedTeacherID),
+					ExamSessionID: null.IntFrom(103),
+					ExamineeID:    null.IntFrom(2203),
+					QuestionID:    null.IntFrom(10001),
+					Score:         null.FloatFrom(3),
+					MarkDetails:   make(types.JSONText, 0),
+					Creator:       null.IntFrom(testedTeacherID),
+				},
+			},
+			forceErr: "io.Close",
+			//expectedErrStr: "failed to read request body",
+		},
+		{
+			name:          "begin transaction error",
+			requestMethod: "POST",
+			requestData: []*cmn.TMark{
+				{
+					TeacherID:     null.IntFrom(testedTeacherID),
+					ExamSessionID: null.IntFrom(103),
+					ExamineeID:    null.IntFrom(2203),
+					QuestionID:    null.IntFrom(10001),
+					Score:         null.FloatFrom(3),
+					MarkDetails:   make(types.JSONText, 0),
+					Creator:       null.IntFrom(testedTeacherID),
+				},
+			},
+			forceErr:       "pgxConn.Begin",
+			expectedErrStr: "begin transaction error",
+		},
+		{
+			name:          "rollback tx error",
+			requestMethod: "POST",
+			requestData: []*cmn.TMark{
+				{
+					TeacherID:     null.IntFrom(testedTeacherID),
+					ExamSessionID: null.IntFrom(103),
+					ExamineeID:    null.IntFrom(2203),
+					QuestionID:    null.IntFrom(10001),
+					Score:         null.FloatFrom(3),
+					MarkDetails:   make(types.JSONText, 0),
+					Creator:       null.IntFrom(testedTeacherID),
+				},
+			},
+			forceErr: "tx.Rollback",
+			//expectedErrStr: "rollback tx error",
+		},
+		{
+			name:          "exec upsertMark query error",
+			requestMethod: "POST",
+			requestData: []*cmn.TMark{
+				{
+					TeacherID:     null.IntFrom(testedTeacherID),
+					ExamSessionID: null.IntFrom(103),
+					ExamineeID:    null.IntFrom(2203),
+					QuestionID:    null.IntFrom(10001),
+					Score:         null.FloatFrom(3),
+					MarkDetails:   make(types.JSONText, 0),
+					Creator:       null.IntFrom(testedTeacherID),
+				},
+			},
+			forceErr:       "tx.QueryRow",
+			expectedErrStr: "exec upsertMark query error",
+		},
+		{
+			name:          "commit transaction error",
+			requestMethod: "POST",
+			requestData: []*cmn.TMark{
+				{
+					TeacherID:     null.IntFrom(testedTeacherID),
+					ExamSessionID: null.IntFrom(103),
+					ExamineeID:    null.IntFrom(2203),
+					QuestionID:    null.IntFrom(10001),
+					Score:         null.FloatFrom(3),
+					MarkDetails:   make(types.JSONText, 0),
+					Creator:       null.IntFrom(testedTeacherID),
+				},
+			},
+			forceErr:       "tx.Commit",
+			expectedErrStr: "commit transaction error",
+		},
 	}
 
 	for _, tt := range tests {
@@ -1201,7 +1595,14 @@ func TestSaveMarkingResults(t *testing.T) {
 			} else {
 				ctxVal = newReqProtoData(tt.requestData)
 			}
-			ctx := context.WithValue(context.Background(), cmn.QNearKey, newMockServiceCtx(tt.requestMethod, tt.params, ctxVal))
+
+			ctx := context.Background()
+
+			if tt.forceErr != "" {
+				ctx = context.WithValue(context.Background(), ForceErrKey, tt.forceErr)
+			}
+
+			ctx = context.WithValue(ctx, cmn.QNearKey, newMockServiceCtx(tt.requestMethod, tt.params, ctxVal))
 			SaveMarkingResults(ctx)
 			q := cmn.GetCtxValue(ctx)
 			if q.Err != nil {
@@ -1225,6 +1626,7 @@ func TestAutoMark(t *testing.T) {
 	tests := []struct {
 		name           string
 		cond           QueryCondition
+		forceErr       string
 		expectedErrStr string
 	}{
 		{
@@ -1275,11 +1677,32 @@ func TestAutoMark(t *testing.T) {
 			},
 			expectedErrStr: "invalid mark mode in marker info",
 		},
+		{
+			name: "exec QueryMarkerInfo SQL error",
+			cond: QueryCondition{
+				ExamSessionID: 101,
+				ExamineeID:    2201,
+			},
+			forceErr:       "QueryMarkerInfo-pgxConn.Query",
+			expectedErrStr: "exec QueryMarkerInfo SQL error",
+		},
+		{
+			name: "failed to query subjective question counts",
+			cond: QueryCondition{
+				ExamSessionID: 101,
+				ExamineeID:    2201,
+			},
+			forceErr:       "MarkObjectiveQuestionAnswers-pgxConn.QueryRow",
+			expectedErrStr: "failed to query subjective question counts",
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			ctx := context.Background()
+			if tt.forceErr != "" {
+				ctx = context.WithValue(context.Background(), ForceErrKey, tt.forceErr)
+			}
 			err := AutoMark(ctx, tt.cond)
 			if err != nil {
 				if tt.expectedErrStr == "" {

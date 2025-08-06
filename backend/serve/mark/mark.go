@@ -22,6 +22,8 @@ import (
 
 var z *zap.Logger
 
+const ForceErrKey = "force-err"
+
 func init() {
 	//Setup package scope variables, just like logger, db connector, configure parameters, etc.
 	cmn.PackageStarters = append(cmn.PackageStarters, func() {
@@ -126,6 +128,7 @@ func Enroll(author string) {
 }
 
 func GetExamList(ctx context.Context) {
+	forceErr, _ := ctx.Value(ForceErrKey).(string)
 	q := cmn.GetCtxValue(ctx)
 	z.Info("---->" + cmn.FncName())
 	method := strings.ToLower(q.R.Method)
@@ -205,10 +208,9 @@ func GetExamList(ctx context.Context) {
 
 	}
 
-	userID := 1101 //TODO
 	req := GetExamListReq{
 		User: &User{
-			ID: int64(userID),
+			ID: q.SysUser.ID.Int64,
 		},
 		ExamName:  examName,
 		Limit:     pageSize,
@@ -220,8 +222,7 @@ func GetExamList(ctx context.Context) {
 
 	exams, rowCount, err := QueryExamList(ctx, req)
 	if err != nil {
-		q.Err = fmt.Errorf("获取考试列表失败: %v", err)
-		z.Error(q.Err.Error())
+		q.Err = err
 		q.RespErr()
 		return
 	}
@@ -230,23 +231,23 @@ func GetExamList(ctx context.Context) {
 		"exam_list": exams,
 	})
 
-	q.Msg.RowCount = int64(rowCount)
-
 	//z.Sugar().Infof("======(%v)===>>: %+v", rowCount, exams)
 
-	if err != nil {
-		q.Err = fmt.Errorf("json序列化失败: %v", err)
+	if err != nil || forceErr == "GetExamList-json.Marshal" {
+		q.Err = fmt.Errorf("unable to marshal response data: %v", err)
 		z.Error(q.Err.Error())
 		q.RespErr()
 		return
 	}
 	q.Msg.Data = jsonData
+	q.Msg.RowCount = int64(rowCount)
 	q.Err = nil
 	q.Resp()
 	return
 }
 
 func GetMarkingDetails(ctx context.Context) {
+	forceErr, _ := ctx.Value(ForceErrKey).(string)
 	q := cmn.GetCtxValue(ctx)
 	z.Info("---->" + cmn.FncName())
 	method := strings.ToLower(q.R.Method)
@@ -287,12 +288,10 @@ func GetMarkingDetails(ctx context.Context) {
 		}
 	}
 
-	var teacherID int64 = 1101 //TODO
-
 	studentInfos, err := QueryExamineeInfo(ctx, QueryCondition{
 		ExamSessionID: examSessionID,
 		ExamineeID:    examineeID,
-		TeacherID:     teacherID,
+		TeacherID:     q.SysUser.ID.Int64,
 	})
 	if err != nil {
 		q.Err = err
@@ -301,7 +300,7 @@ func GetMarkingDetails(ctx context.Context) {
 	}
 
 	markingResults, err := QueryMarkingResults(ctx, QueryCondition{
-		TeacherID:     teacherID,
+		TeacherID:     q.SysUser.ID.Int64,
 		ExamSessionID: examSessionID,
 		ExamineeID:    examineeID,
 	})
@@ -312,7 +311,7 @@ func GetMarkingDetails(ctx context.Context) {
 	}
 
 	markerInfo, err := QueryMarkerInfo(ctx, QueryCondition{
-		TeacherID:     teacherID,
+		TeacherID:     q.SysUser.ID.Int64,
 		ExamSessionID: examSessionID,
 		ExamineeID:    examineeID,
 	})
@@ -329,7 +328,7 @@ func GetMarkingDetails(ctx context.Context) {
 	}
 
 	questionSets, err := QueryExamQuestionsByMarkMode(ctx, QueryCondition{
-		TeacherID:     teacherID,
+		TeacherID:     q.SysUser.ID.Int64,
 		ExamSessionID: examSessionID,
 		ExamineeID:    examineeID,
 	}, markerInfo)
@@ -340,7 +339,7 @@ func GetMarkingDetails(ctx context.Context) {
 	}
 
 	studentAnswers, err := QueryStudentAnswersByMarkMode(ctx, "00", QueryCondition{
-		TeacherID:     teacherID,
+		TeacherID:     q.SysUser.ID.Int64,
 		ExamSessionID: examSessionID,
 		ExamineeID:    examineeID,
 	}, markerInfo)
@@ -357,14 +356,14 @@ func GetMarkingDetails(ctx context.Context) {
 		"marking_results": markingResults,
 		"student_count":   len(studentInfos),
 	})
-	if err != nil {
-		q.Err = fmt.Errorf("failed to marshal json data: %v", err)
+	if err != nil || forceErr == "GetMarkingDetails-json.Marshal" {
+		q.Err = fmt.Errorf("failed to marshal response data: %v", err)
 		z.Error(q.Err.Error())
 		q.RespErr()
 		return
 	}
 
-	z.Sugar().Infof("getExamList response: %s", string(jsonData))
+	//z.Sugar().Infof("getExamList response: %s", string(jsonData))
 
 	q.Msg.Data = jsonData
 	q.Err = nil
@@ -387,6 +386,7 @@ type HandleMarkerInfoReq struct {
 }
 
 func HandleMarkerInfo(ctx context.Context, tx *pgx.Tx, teacherID int64, req HandleMarkerInfoReq) (err error) {
+	forceErr, _ := ctx.Value(ForceErrKey).(string)
 	if teacherID <= 0 {
 		err = fmt.Errorf("invalid teacherID")
 		z.Error(err.Error())
@@ -400,23 +400,26 @@ func HandleMarkerInfo(ctx context.Context, tx *pgx.Tx, teacherID int64, req Hand
 	}
 
 	if req.Status == "02" {
+		var mode string
+		var ids []int64
+
 		if len(req.PracticeIDs) > 0 {
 			// 删除练习批改配置
-			_, err = UpdateMarkerInfoState(ctx, tx, teacherID, req.PracticeIDs, "02")
-			if err != nil {
+			ids = req.PracticeIDs
+			mode = "02"
+		} else {
+			if req.ExamSessionIDs == nil || len(req.ExamSessionIDs) == 0 {
+				// 删除考试批改配置
+				err = fmt.Errorf("no examSessionIDs to update mark info state")
+				z.Error(err.Error())
 				return
 			}
-			return
+
+			ids = req.ExamSessionIDs
+			mode = "00"
 		}
 
-		// 删除考试批改配置
-		if req.ExamSessionIDs == nil || len(req.ExamSessionIDs) == 0 {
-			err = fmt.Errorf("no examSessionIDs to update mark info state")
-			z.Error(err.Error())
-			return
-		}
-
-		_, err = UpdateMarkerInfoState(ctx, tx, teacherID, req.ExamSessionIDs, "00")
+		_, err = UpdateMarkerInfoState(ctx, tx, teacherID, ids, mode)
 		if err != nil {
 			return
 		}
@@ -485,7 +488,7 @@ func HandleMarkerInfo(ctx context.Context, tx *pgx.Tx, teacherID int64, req Hand
 		for i, ids := range splitIDs {
 
 			markExamineeIdsBytes, err := json.Marshal(ids)
-			if err != nil {
+			if err != nil || forceErr == "json.Marshal-1" {
 				err = fmt.Errorf("failed to marshal MarkExamineeIds: %v", err)
 				z.Error(err.Error())
 				return err
@@ -521,7 +524,7 @@ func HandleMarkerInfo(ctx context.Context, tx *pgx.Tx, teacherID int64, req Hand
 
 			var markQuestionIDsBytes []byte
 			markQuestionIDsBytes, err = json.Marshal(questionIDs)
-			if err != nil {
+			if err != nil || forceErr == "json.Marshal-2" {
 				err = fmt.Errorf("failed to marshal markQuestionIDs: %v", err)
 				return
 			}
@@ -584,7 +587,7 @@ func HandleMarkerInfo(ctx context.Context, tx *pgx.Tx, teacherID int64, req Hand
 	for _, info := range markInfos {
 		var id null.Int
 		err = (*tx).QueryRow(ctx, insertQuery, info.ExamSessionID, info.PracticeID, info.MarkTeacherID, info.MarkCount, info.QuestionIds, info.MarkExamineeIds, info.Creator, info.CreateTime, info.UpdatedBy, info.UpdateTime, info.Addi, info.Status).Scan(&id)
-		if err != nil {
+		if err != nil || forceErr == "HandleMarkerInfo-tx.QueryRow" {
 			err = fmt.Errorf("exec insert query error: %v", err)
 			z.Error(err.Error())
 			return
@@ -598,6 +601,7 @@ func HandleMarkerInfo(ctx context.Context, tx *pgx.Tx, teacherID int64, req Hand
 func SaveMarkingResults(ctx context.Context) {
 	q := cmn.GetCtxValue(ctx)
 	z.Info("---->" + cmn.FncName())
+	forceErr, _ := ctx.Value(ForceErrKey).(string) // 用于强制执行错误处理代码
 	method := strings.ToLower(q.R.Method)
 	if method != "post" {
 		q.Err = fmt.Errorf("please call /api/mark/getMarkingDetails with http post method")
@@ -609,17 +613,18 @@ func SaveMarkingResults(ctx context.Context) {
 	// 从body中获取
 	var buf []byte
 	buf, q.Err = io.ReadAll(q.R.Body)
-	if q.Err != nil {
+	if q.Err != nil || forceErr == "io.ReadAll" {
+		q.Err = fmt.Errorf("failed to read request body: %w", q.Err)
 		z.Error(q.Err.Error())
 		q.RespErr()
 		return
 	}
+
 	defer func() {
 		err := q.R.Body.Close()
-		if err != nil {
-			q.Err = err
-			z.Error(q.Err.Error())
-			q.RespErr()
+		if err != nil || forceErr == "io.Close" {
+			err = fmt.Errorf("failed to close request body: %w", err)
+			z.Error(err.Error())
 			return
 		}
 	}()
@@ -674,6 +679,7 @@ func SaveMarkingResults(ctx context.Context) {
 }
 
 func MarkObjectiveQuestionAnswers(ctx context.Context, cond QueryCondition) (err error) {
+	forceErr, _ := ctx.Value(ForceErrKey).(string)
 	err = cmn.Validate(cond)
 	if err != nil {
 		err = fmt.Errorf("invalid query condition: %v", err)
@@ -756,7 +762,7 @@ func MarkObjectiveQuestionAnswers(ctx context.Context, cond QueryCondition) (err
 			return
 		}
 
-		if len(answers.Answer) == len(standardAnswers) && CompareSlices(answers.Answer, standardAnswers) {
+		if CompareSlices(answers.Answer, standardAnswers) {
 			mark.Score = null.FloatFrom(studentAnswer.QuestionScore.Float64)
 		}
 
@@ -769,7 +775,7 @@ func MarkObjectiveQuestionAnswers(ctx context.Context, cond QueryCondition) (err
 		})
 
 		mark.MarkDetails, err = json.Marshal(markDetails)
-		if err != nil {
+		if err != nil || forceErr == "MarkObjectiveQuestionAnswers-json.Marshal" {
 			err = fmt.Errorf("failed to marshal mark details: %v", err)
 			z.Error(err.Error())
 			return
@@ -810,7 +816,7 @@ func MarkObjectiveQuestionAnswers(ctx context.Context, cond QueryCondition) (err
 	pgxConn := cmn.GetPgxConn()
 
 	err = pgxConn.QueryRow(ctx, querySubjectiveQuestionCounts).Scan(&subjectiveQustionCounts)
-	if err != nil {
+	if err != nil || forceErr == "MarkObjectiveQuestionAnswers-pgxConn.QueryRow" {
 		err = fmt.Errorf("failed to query subjective question counts: %v", err)
 		z.Error(err.Error())
 		return
@@ -825,14 +831,14 @@ func MarkObjectiveQuestionAnswers(ctx context.Context, cond QueryCondition) (err
 	z.Info("---------->no subjective question found, auto submit")
 	var tx pgx.Tx
 	tx, err = pgxConn.Begin(ctx)
-	if err != nil {
+	if err != nil || forceErr == "MarkObjectiveQuestionAnswers-pgxConn.Begin" {
 		err = fmt.Errorf("begin transaction error: %v", err)
 		z.Error(err.Error())
 		return err
 	}
 
 	defer func() {
-		if err != nil {
+		if err != nil || forceErr == "MarkObjectiveQuestionAnswers-tx.Rollback" {
 			err_ := tx.Rollback(ctx)
 			if err_ != nil {
 				z.Error(err_.Error())
@@ -860,7 +866,7 @@ func MarkObjectiveQuestionAnswers(ctx context.Context, cond QueryCondition) (err
 	}
 
 	err = tx.Commit(ctx)
-	if err != nil {
+	if err != nil || forceErr == "MarkObjectiveQuestionAnswers-tx.Commit" {
 		err = fmt.Errorf("commit tx error: %v", err)
 		z.Error(err.Error())
 		return
@@ -869,6 +875,7 @@ func MarkObjectiveQuestionAnswers(ctx context.Context, cond QueryCondition) (err
 	return
 }
 
+// AutoMark 自动批改处理函数
 func AutoMark(ctx context.Context, cond QueryCondition) (err error) {
 	if cond.ExamSessionID <= 0 && cond.PracticeID <= 0 {
 		err = fmt.Errorf("invalid params: exam session id or practice id must be greater than zero")
