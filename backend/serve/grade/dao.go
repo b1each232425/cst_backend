@@ -33,7 +33,7 @@ func gradeListExam(ctx context.Context, args *GradeListArgs) ([]GradeExam, int64
 
 	// 分页参数: Page PageSize
 	// 数据库查询必需参数: TeacherID ExamID
-	// 可选参数: Name Type Submitted
+	// 可选筛选条件参数: Name Type Submitted
 
 	if args.Page <= 0 {
 		err = fmt.Errorf("无效页码: 页码必须为正整数")
@@ -190,7 +190,7 @@ func gradeListPractice(ctx context.Context, args *GradeListArgs) ([]GradePractic
 
 	// 分页参数: Page PageSize
 	// 数据库查询必需参数: TeacherID PracticeID
-	// 可选参数: Name
+	// 可选筛选参数: Name
 
 	if args.Page <= 0 {
 		err = fmt.Errorf("无效页码: 页码必须为正整数")
@@ -330,8 +330,18 @@ func setExamGradeSubmitted(ctx context.Context, args *GradeSubmitArgs) (int64, e
 	}
 	z.Debug(forceErr)
 
+	if args.TeacherID <= 0 {
+		err = fmt.Errorf("无效教师ID")
+		z.Error(err.Error())
+		return 0, err
+	}
 	teacherID := args.TeacherID
 
+	if len(args.ExamIDs) <= 0 {
+		err = fmt.Errorf("无效考试ID，长度为0")
+		z.Error(err.Error())
+		return 0, err
+	}
 	examIDs := args.ExamIDs
 
 	conn := cmn.GetPgxConn()
@@ -352,12 +362,21 @@ func setExamGradeSubmitted(ctx context.Context, args *GradeSubmitArgs) (int64, e
 	// 标记事务是否成功，默认失败
 	txSuccess := false
 	defer func() {
+		// 事务回滚
 		if !txSuccess || forceErr == "txSuccess must fail" {
 			rollbackErr := tx.Rollback(context.Background())
 			if rollbackErr != nil {
 				err = fmt.Errorf("提交考试成绩失败: 回滚事务失败: %w", rollbackErr)
 				z.Error(err.Error())
 			}
+			return
+		}
+		// 提交事务
+		err = tx.Commit(context.Background())
+		if err != nil || forceErr == "tx commit fail" {
+			err = fmt.Errorf("提交考试成绩失败: %w", err)
+			z.Error(err.Error())
+			return
 		}
 	}()
 
@@ -434,13 +453,6 @@ func setExamGradeSubmitted(ctx context.Context, args *GradeSubmitArgs) (int64, e
 		rowsAffected = commandTag.RowsAffected()
 	}
 
-	// 提交事务
-	err = tx.Commit(context.Background())
-	if err != nil || forceErr == "tx commit fail" {
-		err = fmt.Errorf("提交考试成绩失败: %w", err)
-		z.Error(err.Error())
-		return 0, err
-	}
 	txSuccess = true
 
 	return rowsAffected, nil

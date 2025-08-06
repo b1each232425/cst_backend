@@ -89,7 +89,6 @@ func gradeListH(ctx context.Context) {
 	if val := ctx.Value("force-error"); val != nil {
 		forceErr = val.(string)
 	}
-	z.Debug(forceErr)
 
 	q := cmn.GetCtxValue(ctx)
 
@@ -114,7 +113,7 @@ func gradeListH(ctx context.Context) {
 
 		if category = queryParams.Get("category"); category == "" {
 			q.Err = fmt.Errorf("不支持的类型: %s", req.Category)
-			z.Warn(q.Err.Error())
+			z.Error(q.Err.Error())
 			q.RespErr()
 			return
 		}
@@ -122,13 +121,13 @@ func gradeListH(ctx context.Context) {
 
 		if page = queryParams.Get("page"); page == "" {
 			q.Err = fmt.Errorf("页码为空: %s", page)
-			z.Warn(q.Err.Error())
+			z.Error(q.Err.Error())
 			q.RespErr()
 			return
 		}
 		if p, err = strconv.Atoi(page); err != nil {
 			q.Err = fmt.Errorf("无效页码: %s", page)
-			z.Warn(q.Err.Error())
+			z.Error(q.Err.Error())
 			q.RespErr()
 			return
 		}
@@ -136,13 +135,13 @@ func gradeListH(ctx context.Context) {
 
 		if pageSize = queryParams.Get("pageSize"); pageSize == "" {
 			q.Err = fmt.Errorf("每页数量为空: %s", pageSize)
-			z.Warn(q.Err.Error())
+			z.Error(q.Err.Error())
 			q.RespErr()
 			return
 		}
 		if p, err = strconv.Atoi(pageSize); err != nil {
 			q.Err = fmt.Errorf("无效每页数量: %s", pageSize)
-			z.Warn(q.Err.Error())
+			z.Error(q.Err.Error())
 			q.RespErr()
 			return
 		}
@@ -151,19 +150,18 @@ func gradeListH(ctx context.Context) {
 		// 用户身份
 		if q.SysUser == nil || forceErr == "q.SysUser nil" {
 			q.Err = fmt.Errorf("非法请求，鉴权用户失败")
-			z.Warn(q.Err.Error())
+			z.Error(q.Err.Error())
 			q.RespErr()
 			return
 		}
 		req.TeacherID = q.SysUser.ID.Int64
-
 		// 管理员实现全部教师数据展示
 		teacherID := queryParams.Get("teacherID")
 		if teacherID != "" {
 			p, err := strconv.ParseInt(teacherID, 10, 64)
 			if err != nil {
 				q.Err = fmt.Errorf("无效教师ID: %s", teacherID)
-				z.Warn(q.Err.Error())
+				z.Error(q.Err.Error())
 				q.RespErr()
 				return
 			}
@@ -180,7 +178,7 @@ func gradeListH(ctx context.Context) {
 				p, err := strconv.Atoi(examID)
 				if err != nil {
 					q.Err = fmt.Errorf("无效考试ID: %s", examID)
-					z.Warn(q.Err.Error())
+					z.Error(q.Err.Error())
 					q.RespErr()
 					return
 				}
@@ -201,7 +199,7 @@ func gradeListH(ctx context.Context) {
 				req.Filter.Submitted = -1
 			default:
 				q.Err = fmt.Errorf("无效提交状态: %s", submitted)
-				z.Warn(q.Err.Error())
+				z.Error(q.Err.Error())
 				q.RespErr()
 				return
 			}
@@ -214,7 +212,6 @@ func gradeListH(ctx context.Context) {
 			result, rowCount, err = gradeListExam(dmlCtx, &req)
 			if err != nil {
 				q.Err = fmt.Errorf("获取考试成绩列表失败 错误信息:%w", err)
-				z.Error(q.Err.Error())
 				q.RespErr()
 				return
 			}
@@ -223,15 +220,13 @@ func gradeListH(ctx context.Context) {
 				data, _ = json.Marshal(result)
 			}
 
-			// z.Debug("gradeListExam", zap.Any("result", result))
-
 		case "practice":
 			// 练习ID
 			if practiceID := queryParams.Get("practiceID"); practiceID != "" {
 				p, err := strconv.Atoi(practiceID)
 				if err != nil {
 					q.Err = fmt.Errorf("无效练习ID: %s", practiceID)
-					z.Warn(q.Err.Error())
+					z.Error(q.Err.Error())
 					q.RespErr()
 					return
 				}
@@ -246,7 +241,6 @@ func gradeListH(ctx context.Context) {
 			result, rowCount, err = gradeListPractice(dmlCtx, &req)
 			if err != nil {
 				q.Err = fmt.Errorf("获取练习成绩列表失败 错误信息:%w", err)
-				z.Error(q.Err.Error())
 				q.RespErr()
 				return
 			}
@@ -257,7 +251,7 @@ func gradeListH(ctx context.Context) {
 
 		default:
 			q.Err = fmt.Errorf("不支持的类型: %s", req.Category)
-			z.Warn(q.Err.Error())
+			z.Error(q.Err.Error())
 			q.RespErr()
 			return
 		}
@@ -268,14 +262,14 @@ func gradeListH(ctx context.Context) {
 		q.Err = nil
 		q.Msg.Status = 0
 		q.Msg.Msg = "success"
-		q.Resp()
 
 	default:
 		q.Err = fmt.Errorf("不支持的请求方法: %s", method)
-		z.Warn(q.Err.Error())
+		z.Error(q.Err.Error())
 		q.RespErr()
 		return
 	}
+	q.Resp()
 }
 
 func gradeSubmissionH(ctx context.Context) {
@@ -285,7 +279,6 @@ func gradeSubmissionH(ctx context.Context) {
 	if val := ctx.Value("force-error"); val != nil {
 		forceErr = val.(string)
 	}
-	z.Debug(forceErr)
 
 	q := cmn.GetCtxValue(ctx)
 
@@ -359,23 +352,22 @@ func gradeSubmissionH(ctx context.Context) {
 
 		rowsAffected, err := setExamGradeSubmitted(dmlCtx, &args)
 		if forceErr == "setExamGradeSubmitted fail" {
-			err = fmt.Errorf(forceErr)
+			err = errors.New(forceErr)
 		}
 		if err != nil {
 			q.Err = err
-			z.Error(q.Err.Error())
 			q.RespErr()
 			return
 		}
 		q.Err = nil
 		q.Msg.Status = 0
 		q.Msg.Msg = fmt.Sprintf("success rowsAffected:%v", rowsAffected)
-		q.Resp()
 
 	default:
 		q.Err = fmt.Errorf("不支持的请求方法: %s", method)
-		z.Warn(q.Err.Error())
+		z.Error(q.Err.Error())
 		q.RespErr()
 		return
 	}
+	q.Resp()
 }
