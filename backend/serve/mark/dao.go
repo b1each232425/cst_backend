@@ -84,38 +84,31 @@ type QuestionDetails struct {
 }
 
 type QuestionSet struct {
-	ID        int64       `json:"id"`        // 题组id
-	Name      string      `json:"name"`      // 题组名称
-	Order     int         `json:"order"`     // 题组序号
-	Questions []*Question `json:"questions"` // 题目
-	Score     float64     `json:"score"`
+	cmn.TExamPaperGroup
+	Score     float64                   `json:"Score"`     // 题组分数
+	Questions []*cmn.TExamPaperQuestion `json:"Questions"` // 题目
 }
 
 // Question 题目
-type Question struct {
-	ID               int64              `json:"id"`
-	Analyze          string             `json:"analyze"`
-	MarkRole         string             `json:"mark_role"`
-	StandardAnswers  []*StandardAnswer  `json:"standard_answers"`
-	ObjectiveAnswers []string           `json:"objective_answers"`
-	Details          []*QuestionDetails `json:"details"`
-	OrderNum         int                `json:"order_num"`
-	Type             string             `json:"type"` // 00:单选题  02:多选题 04:判断题 06:填空题 08:简答题 10:编程题
-	Score            float64            `json:"score"`
-}
+//type Question struct {
+//	ID               int64              `json:"id"`
+//	Analyze          string             `json:"analyze"`
+//	MarkRole         string             `json:"mark_role"`
+//	StandardAnswers  []*StandardAnswer  `json:"standard_answers"`
+//	ObjectiveAnswers []string           `json:"objective_answers"`
+//	Details          []*QuestionDetails `json:"details"`
+//	OrderNum         int                `json:"order_num"`
+//	Type             string             `json:"type"` // 00:单选题  02:多选题 04:判断题 06:填空题 08:简答题 10:编程题
+//	Score            float64            `json:"score"`
+//}
 
-// 简答题、填空题答案
-type StandardAnswer struct {
-	// 追加答案
-	AlternativeAnswer []string `json:"alternative_answer"`
-	// 答案
-	Answer string `json:"answer"`
-	// 批改规则/提示词
-	GradingRule string `json:"grading_rule"`
-	// 答案索引
-	Index int64 `json:"index"`
-	// 该答案的分数
-	Score int64 `json:"score"`
+// SubjectiveAnswer 主观题答案结构
+type SubjectiveAnswer struct {
+	Index             int      `json:"index"`              // 答案索引
+	Answer            string   `json:"answer"`             // 答案
+	AlternativeAnswer []string `json:"alternative_answer"` // 备选答案
+	Score             float64  `json:"score"`              // 分数
+	GradingRule       string   `json:"grading_rule"`       // 评分规则
 }
 
 type Student struct {
@@ -130,19 +123,23 @@ type Student struct {
 	IdType              string  `json:"id_type"`
 	IdNumber            string  `json:"id_number"`
 	ExamAdmissionNumber string  `json:"exam_admission_number"`
+
+	cmn.TUser
+	cmn.TVExamineeInfo
 }
 
 // QueryExamList 获取考试列表 管理员查询全部列表，教师查询与其有关的考试列表
 func QueryExamList(ctx context.Context, req GetExamListReq) (examList []Exam, rowCount int, err error) {
+	forceErr, _ := ctx.Value(ForceErrKey).(string)
 	err = cmn.Validate(req)
 	if err != nil {
-		err = fmt.Errorf("invalid query condition: %s", err.Error())
+		err = fmt.Errorf("invalid query condition: %v", err)
 		z.Error(err.Error())
 		return nil, -1, err
 	}
 
 	teacherID := req.User.ID
-	z.Sugar().Infof("teacherID: %d", teacherID)
+	//z.Sugar().Infof("teacherID: %d", teacherID)
 
 	examListQuery := `	SELECT
 						e.id AS exam_id, 
@@ -214,8 +211,8 @@ func QueryExamList(ctx context.Context, req GetExamListReq) (examList []Exam, ro
 
 	pgxConn := cmn.GetPgxConn()
 	err = pgxConn.QueryRow(ctx, getExamCountQuery, countArgs...).Scan(&rowCount)
-	if err != nil {
-		err = fmt.Errorf("getExamList count SQL error: %s", err.Error())
+	if err != nil || forceErr == "QueryExamList-pgxConn.QueryRow" {
+		err = fmt.Errorf("getExamList count SQL error: %v", err)
 		z.Error(err.Error())
 		return nil, -1, err
 	}
@@ -242,6 +239,7 @@ func QueryExamList(ctx context.Context, req GetExamListReq) (examList []Exam, ro
 	}
 
 	if !req.User.IsAdmin {
+		// 普通批阅员，非管理员
 		whereClause = append(whereClause, fmt.Sprintf(" AND mi.mark_teacher_id = $%d ", argIdx))
 		args = append(args, teacherID)
 		argIdx++
@@ -250,8 +248,9 @@ func QueryExamList(ctx context.Context, req GetExamListReq) (examList []Exam, ro
 	examListQuery = fmt.Sprintf(examListQuery, strings.Join(whereClause, " "))
 
 	rows, err := pgxConn.Query(ctx, examListQuery, args...)
-	if err != nil {
-		err = fmt.Errorf("getExamList SQL error: %s", err.Error())
+	defer rows.Close()
+	if err != nil || forceErr == "QueryExamList-pgxConn.Query" {
+		err = fmt.Errorf("getExamList SQL error: %v", err)
 		z.Error(err.Error())
 		return nil, -1, err
 	}
@@ -288,8 +287,8 @@ func QueryExamList(ctx context.Context, req GetExamListReq) (examList []Exam, ro
 			&totalUnmarkedStudentCount,
 			&markedStudentCount,
 		)
-		if err != nil {
-			err = fmt.Errorf("scan getExamList SQL result error: %s", err.Error())
+		if err != nil || forceErr == "QueryExamList-rows.Scan" {
+			err = fmt.Errorf("scan getExamList SQL result error: %v", err)
 			z.Error(err.Error())
 			return nil, -1, err
 		}
@@ -307,22 +306,21 @@ func QueryExamList(ctx context.Context, req GetExamListReq) (examList []Exam, ro
 
 		// TODO
 		unMarkedStudentCount := 0
-		if !req.User.IsAdmin && session.MarkMode.String == "04" {
-			// 非管理员下的试卷分配模式
-			var examineeIDs []int64
-			if err = json.Unmarshal(markExamineeIds, &examineeIDs); err != nil {
-				//m.l.Errorf("Unable to unmarshal markExamineeIDs:%s", err)
-				err = fmt.Errorf("unable to unmarshal markExamineeIDs: %s", err.Error())
-				z.Error(err.Error())
-				return nil, -1, err
-			}
-
-			unMarkedStudentCount = len(examineeIDs) - int(markedStudentCount.Int64)
-		} else if req.User.IsAdmin {
-			unMarkedStudentCount = int(totalUnmarkedStudentCount.Int64)
-		} else {
-			unMarkedStudentCount = int(respondentCount.Int64 - markedStudentCount.Int64)
-		}
+		//if !req.User.IsAdmin && session.MarkMode.String == "04" {
+		//	// 非管理员下的试卷分配模式
+		//	var examineeIDs []int64
+		//	if err = json.Unmarshal(markExamineeIds, &examineeIDs); err != nil {
+		//		err = fmt.Errorf("unable to unmarshal markExamineeIDs: %v", err)
+		//		z.Error(err.Error())
+		//		return nil, -1, err
+		//	}
+		//
+		//	unMarkedStudentCount = len(examineeIDs) - int(markedStudentCount.Int64)
+		//} else if req.User.IsAdmin {
+		//	unMarkedStudentCount = int(totalUnmarkedStudentCount.Int64)
+		//} else {
+		//	unMarkedStudentCount = int(respondentCount.Int64 - markedStudentCount.Int64)
+		//}
 
 		//m.l.Info("----------->..", session.ID.Int64, respondentCount.Int64, markedStudentCount.Int64, unMarkedStudentCount)
 
@@ -347,12 +345,6 @@ func QueryExamList(ctx context.Context, req GetExamListReq) (examList []Exam, ro
 
 	}
 
-	if err = rows.Err(); err != nil {
-		err = fmt.Errorf("error while scanning rows: %s", err.Error())
-		z.Error(err.Error())
-		return nil, -1, err
-	}
-
 	for _, key := range examsMapKeys {
 		examList = append(examList, *examsMap[key])
 	}
@@ -361,9 +353,10 @@ func QueryExamList(ctx context.Context, req GetExamListReq) (examList []Exam, ro
 }
 
 func QueryMarkingResults(ctx context.Context, cond QueryCondition) (markingResults []*cmn.TMark, err error) {
+	forceErr, _ := ctx.Value(ForceErrKey).(string)
 	err = cmn.Validate(cond)
 	if err != nil {
-		err = fmt.Errorf("invalid query condition: %s", err.Error())
+		err = fmt.Errorf("invalid query condition: %v", err)
 		z.Error(err.Error())
 		return
 	}
@@ -403,8 +396,9 @@ func QueryMarkingResults(ctx context.Context, cond QueryCondition) (markingResul
 	getMarkingResultQuery = fmt.Sprintf(getMarkingResultQuery, strings.Join(whereClause, " "))
 
 	rows, err := pgxConn.Query(ctx, getMarkingResultQuery, args...)
-	if err != nil {
-		err = fmt.Errorf("exec getMarkingResults SQL error: %s", err.Error())
+	defer rows.Close()
+	if err != nil || forceErr == "QueryMarkingResults-pgxConn.Query" {
+		err = fmt.Errorf("exec getMarkingResults SQL error: %v", err)
 		z.Error(err.Error())
 		return nil, err
 	}
@@ -412,25 +406,19 @@ func QueryMarkingResults(ctx context.Context, cond QueryCondition) (markingResul
 	for rows.Next() {
 		var row cmn.TMark
 		err = rows.Scan(&row.TeacherID, &row.ExamineeID, &row.QuestionID, &row.MarkDetails, &row.Score)
-		if err != nil {
-			err = fmt.Errorf("scan rows error: %s", err.Error())
+		if err != nil || forceErr == "QueryMarkingResults-rows.Scan" {
+			err = fmt.Errorf("unable to scan row data: %v", err)
 			z.Error(err.Error())
 			return nil, err
 		}
 
 		markingResults = append(markingResults, &row)
 	}
-
-	if rows.Err() != nil {
-		err = fmt.Errorf("error while scanning rows: %s", rows.Err())
-		z.Error(err.Error())
-		return nil, err
-	}
-
 	return
 }
 
 func QueryMarkerInfo(ctx context.Context, cond QueryCondition) (markerInfo MarkerInfo, err error) {
+	forceErr, _ := ctx.Value(ForceErrKey).(string)
 	// 参数校验
 	if cond.ExamSessionID == 0 && cond.PracticeID == 0 {
 		err = fmt.Errorf("invalid params: either exam session id or practice id is required")
@@ -464,12 +452,12 @@ func QueryMarkerInfo(ctx context.Context, cond QueryCondition) (markerInfo Marke
 
 	pgxConn := cmn.GetPgxConn()
 	rows, err := pgxConn.Query(ctx, query, queryParams...)
-	if err != nil {
-		err = fmt.Errorf("exec QueryMarkerInfo SQL error: %s", err.Error())
+	defer rows.Close()
+	if err != nil || forceErr == "QueryMarkerInfo-pgxConn.Query" {
+		err = fmt.Errorf("exec QueryMarkerInfo SQL error: %v", err)
 		z.Error(err.Error())
 		return
 	}
-	defer rows.Close()
 
 	var (
 		markMode   null.String
@@ -491,8 +479,8 @@ func QueryMarkerInfo(ctx context.Context, cond QueryCondition) (markerInfo Marke
 		}
 
 		err = rows.Scan(scanVars...)
-		if err != nil {
-			err = fmt.Errorf("unable to scan row data:%s", err)
+		if err != nil || forceErr == "QueryMarkerInfo-rows.Scan" {
+			err = fmt.Errorf("unable to scan row data: %v", err)
 			z.Error(err.Error())
 			return
 		}
@@ -512,9 +500,10 @@ func QueryMarkerInfo(ctx context.Context, cond QueryCondition) (markerInfo Marke
 }
 
 func QueryStudentAnswersByMarkMode(ctx context.Context, answerType string, cond QueryCondition, markerInfo MarkerInfo) (studentAnswers []*cmn.TVStudentAnswerQuestion, err error) {
+	forceErr, _ := ctx.Value(ForceErrKey).(string)
 	err = cmn.Validate(cond)
 	if err != nil {
-		err = fmt.Errorf("invalid query condition: %s", err.Error())
+		err = fmt.Errorf("invalid query condition: %v", err)
 		z.Error(err.Error())
 		return
 	}
@@ -578,6 +567,7 @@ func QueryStudentAnswersByMarkMode(ctx context.Context, answerType string, cond 
 		break
 	case "06":
 		whereClause = append(whereClause, fmt.Sprintf(" AND question_id = ANY($%d) ", argIdx))
+		argIdx++
 
 		var questionIDs []int64
 		err = json.Unmarshal(markerInfo.MarkInfos[0].QuestionIds, &questionIDs)
@@ -609,7 +599,8 @@ func QueryStudentAnswersByMarkMode(ctx context.Context, answerType string, cond 
 
 	pgxConn := cmn.GetPgxConn()
 	rows, err := pgxConn.Query(ctx, query, args...)
-	if err != nil {
+	defer rows.Close()
+	if err != nil || forceErr == "QueryStudentAnswersByMarkMode-pgxConn.Query" {
 		err = fmt.Errorf("exec getStudentAnswersByMarkMode SQL error: %v", err)
 		z.Error(err.Error())
 		return
@@ -631,8 +622,8 @@ func QueryStudentAnswersByMarkMode(ctx context.Context, answerType string, cond 
 			&row.ExamineeID,
 			&row.PracticeSubmissionID,
 		)
-		if err != nil {
-			err = fmt.Errorf("unable to scan row data:%s", err)
+		if err != nil || forceErr == "rows.Scan" {
+			err = fmt.Errorf("unable to scan row data: %v", err)
 			z.Error(err.Error())
 			return nil, err
 		}
@@ -641,20 +632,14 @@ func QueryStudentAnswersByMarkMode(ctx context.Context, answerType string, cond 
 
 	}
 
-	if rows.Err() != nil {
-		err = fmt.Errorf("error while scanning rows: %v", rows.Err())
-		z.Error(err.Error())
-		return
-	}
-
 	return
-
 }
 
 func QueryExamQuestionsByMarkMode(ctx context.Context, cond QueryCondition, markerInfo MarkerInfo) (questionSets []*QuestionSet, err error) {
+	forceErr, _ := ctx.Value(ForceErrKey).(string)
 	err = cmn.Validate(cond)
 	if err != nil {
-		err = fmt.Errorf("invalid query condition: %s", err.Error())
+		err = fmt.Errorf("invalid query condition: %v", err)
 		z.Error(err.Error())
 		return
 	}
@@ -674,13 +659,11 @@ func QueryExamQuestionsByMarkMode(ctx context.Context, cond QueryCondition, mark
 		return
 	}
 
-	getQuestionsQuery := `	SELECT g.id, g.name, g."order", q.id, q.score, q.type, q."order", q.group_id, q.content, q.options, 
-								   q.answers, q.analysis, q.title, 
-								   q.input, q.output, q.example, q.repo, q.commit_id 
+	getQuestionsQuery := `	SELECT pg.id, pg.name, pg."order", q.id, q.score, q.type, q."order", q.group_id, q.content, q.options, 
+								   q.answers, q.analysis, q.title 
 							FROM t_exam_paper p
 							JOIN t_exam_paper_group pg ON pg.exam_paper_id = p.id 
-							JOIN t_exam_paper_question q ON q.group_id = pg.id 
-							JOIN t_paper_group g ON q.group_id = g.id 
+							JOIN t_exam_paper_question q ON q.group_id = pg.id
 							WHERE p.status != '04' AND p.status IS NOT NULL 
 							  AND p.exam_session_id = $1 
 							  AND q.status != '04' AND q.status IS NOT NULL 
@@ -706,7 +689,7 @@ func QueryExamQuestionsByMarkMode(ctx context.Context, cond QueryCondition, mark
 		var questionIDs []int64
 		err = markerInfo.MarkInfos[0].QuestionIds.Unmarshal(&questionIDs)
 		if err != nil {
-			err = fmt.Errorf("unable to unmarshal question groups: %v", err)
+			err = fmt.Errorf("unable to unmarshal question ids: %v", err)
 			z.Error(err.Error())
 			return nil, err
 		}
@@ -719,20 +702,21 @@ func QueryExamQuestionsByMarkMode(ctx context.Context, cond QueryCondition, mark
 
 	pgxConn := cmn.GetPgxConn()
 	rows, err := pgxConn.Query(ctx, getQuestionsQuery, args...)
-	if err != nil {
-		err = fmt.Errorf("exec getQuestionsQuery SQL error: %s", err.Error())
+	defer rows.Close()
+	if err != nil || forceErr == "QueryExamQuestionsByMarkMode-pgxConn.Query" {
+		err = fmt.Errorf("exec getQuestionsQuery SQL error: %v", err)
 		z.Error(err.Error())
 		return
 	}
 
-	var questionSetsMap map[int64]*QuestionSet
+	questionSetsMap := make(map[int64]*QuestionSet)
 
 	for rows.Next() {
 		var question cmn.TExamPaperQuestion
-		var questionGroup cmn.TPaperGroup
-		err = rows.Scan(&questionGroup.ID, &questionGroup.Name, &questionGroup.Order, &question.ID, &question.Score, &question.Type, &question.Order, &question.GroupID, &question.Content, &question.Options, &question.Answers, &question.Analysis, &question.Title, &question.Input, &question.Output, &question.Example, &question.Repo, &question.CommitID)
-		if err != nil {
-			err = fmt.Errorf("unable to scan row data: %s", err)
+		var questionGroup cmn.TExamPaperGroup
+		err = rows.Scan(&questionGroup.ID, &questionGroup.Name, &questionGroup.Order, &question.ID, &question.Score, &question.Type, &question.Order, &question.GroupID, &question.Content, &question.Options, &question.Answers, &question.Analysis, &question.Title)
+		if err != nil || forceErr == "QueryExamQuestionsByMarkMode-rows.Scan" {
+			err = fmt.Errorf("unable to scan row data: %v", err)
 			z.Error(err.Error())
 			return
 		}
@@ -740,47 +724,24 @@ func QueryExamQuestionsByMarkMode(ctx context.Context, cond QueryCondition, mark
 		set, exist := questionSetsMap[question.GroupID.Int64]
 		if !exist {
 			set = &QuestionSet{
-				ID:        question.GroupID.Int64,
-				Name:      questionGroup.Name.String,
-				Order:     int(questionGroup.Order.Int64),
-				Questions: []*Question{},
+				TExamPaperGroup: questionGroup,
+				Score:           0.0,
+				Questions:       []*cmn.TExamPaperQuestion{},
 			}
 			questionSetsMap[question.GroupID.Int64] = set
 		}
 
-		var standardAnswers []*StandardAnswer
-		standardAnswers, _, err = ConvertRawStandardAnswerData(question.Answers, question.Type.String)
+		var standardAnswers []*SubjectiveAnswer
+		//standardAnswers, _, err = ConvertRawStandardAnswerData(question.Answers, question.Type.String)
+		err = json.Unmarshal(question.Answers, &standardAnswers)
 		if err != nil {
 			err = fmt.Errorf("unable to convert raw standard answer data: %v", err)
 			z.Error(err.Error())
-			standardAnswers = []*StandardAnswer{}
-		}
-
-		var analyze string
-
-		if len(standardAnswers) > 1 {
-			for i, standardAnswer := range standardAnswers {
-				analyze += fmt.Sprintf("（%d）%s\n", i+1, standardAnswer.GradingRule)
-			}
-		} else if len(standardAnswers) == 1 {
-			analyze = standardAnswers[0].GradingRule
-		} else {
-			analyze = ""
+			standardAnswers = []*SubjectiveAnswer{}
 		}
 
 		set.Score += question.Score.Float64
-		set.Questions = append(set.Questions, &Question{
-			ID:      question.ID.Int64,
-			Analyze: analyze,
-			Details: []*QuestionDetails{
-				{Content: question.Content.String, Score: question.Score.Float64},
-			},
-			MarkRole:        analyze,
-			OrderNum:        int(question.Order.Int64),
-			Score:           question.Score.Float64,
-			StandardAnswers: standardAnswers,
-			Type:            question.Type.String,
-		})
+		set.Questions = append(set.Questions, &question)
 
 	}
 
@@ -792,25 +753,25 @@ func QueryExamQuestionsByMarkMode(ctx context.Context, cond QueryCondition, mark
 
 }
 
-func QueryExamineeInfo(ctx context.Context, cond QueryCondition) (students []Student, err error) {
+func QueryExamineeInfo(ctx context.Context, cond QueryCondition) (examineeInfos []*cmn.TVExamineeInfo, err error) {
+	forceErr, _ := ctx.Value(ForceErrKey).(string)
 	err = cmn.Validate(cond)
 	if err != nil {
-		err = fmt.Errorf("invalid query condition: %s", err.Error())
+		err = fmt.Errorf("invalid query condition: %v", err)
 		z.Error(err.Error())
 		return
 	}
 
-	query := `SELECT u.official_name, u.nickname, u.id, e.id, e.serial_number
-							FROM t_examinee e
-							LEFT JOIN t_user u ON e.student_id = u.id
-							WHERE e.exam_session_id = $1 AND e.status = '10' %s -- 动态插入s
-							ORDER BY e.serial_number`
+	query := `	SELECT official_name, id, serial_number
+				FROM v_examinee_info
+				WHERE exam_session_id = $1 AND examinee_status = '10' %s -- 动态拼接where条件
+				ORDER BY serial_number`
 
 	var args []interface{}
 	args = append(args, cond.ExamSessionID)
 
 	if cond.ExamineeID > 0 {
-		query = fmt.Sprintf(query, " AND e.id = $2")
+		query = fmt.Sprintf(query, " AND id = $2 ")
 		args = append(args, cond.ExamineeID)
 	} else {
 		query = fmt.Sprintf(query, "")
@@ -818,37 +779,29 @@ func QueryExamineeInfo(ctx context.Context, cond QueryCondition) (students []Stu
 
 	pgxConn := cmn.GetPgxConn()
 	rows, err := pgxConn.Query(ctx, query, args...)
-	if err != nil {
-		err = fmt.Errorf("exec query examinee info SQL error: %s", err.Error())
+	defer rows.Close()
+	if err != nil || forceErr == "QueryExamineeInfo-pgxConn.Query" {
+		err = fmt.Errorf("exec query examinee info SQL error: %v", err)
 		z.Error(err.Error())
 		return
 	}
 
 	for rows.Next() {
-		var officialName null.String
-		var nickname null.String
-		var studentID null.Int
-		var orderNumber null.Int
-		var examineeID null.Int
-		err = rows.Scan(&officialName, &nickname, &studentID, &examineeID, &orderNumber)
-		if err != nil {
-			err = fmt.Errorf("unable to scan row data:%s", err)
+		var examineeInfo cmn.TVExamineeInfo
+		err = rows.Scan(&examineeInfo.OfficialName, &examineeInfo.ID, &examineeInfo.SerialNumber)
+		if err != nil || forceErr == "QueryExamineeInfo-rows.Scan" {
+			err = fmt.Errorf("unable to scan row data: %v", err)
 			z.Error(err.Error())
 			return
 		}
-		students = append(students, Student{
-			Name:       officialName.String,
-			Nickname:   nickname.String,
-			Number:     int(orderNumber.Int64),
-			StudentID:  studentID.Int64,
-			ExamineeID: examineeID.Int64,
-		})
+		examineeInfos = append(examineeInfos, &examineeInfo)
 	}
 
 	return
 }
 
 func UpdateMarkerInfoState(ctx context.Context, tx *pgx.Tx, teacherID int64, ids []int64, mode string) (targetIDs []int64, err error) {
+	forceErr, _ := ctx.Value(ForceErrKey).(string)
 	if teacherID <= 0 {
 		err = fmt.Errorf("invalid teacher ID param")
 		z.Error(err.Error())
@@ -884,7 +837,8 @@ func UpdateMarkerInfoState(ctx context.Context, tx *pgx.Tx, teacherID int64, ids
 	updateQuery = fmt.Sprintf(updateQuery, strings.Join(whereClause, " "))
 
 	rows, err := (*tx).Query(ctx, updateQuery, pq.Array(ids), "04", teacherID, time.Now().UnixMilli())
-	if err != nil {
+	defer rows.Close()
+	if err != nil || forceErr == "tx.Query" {
 		err = fmt.Errorf("exec update query error: %v", err)
 		z.Error(err.Error())
 		return
@@ -893,7 +847,7 @@ func UpdateMarkerInfoState(ctx context.Context, tx *pgx.Tx, teacherID int64, ids
 	for rows.Next() {
 		var id null.Int
 		err = rows.Scan(&id)
-		if err != nil {
+		if err != nil || forceErr == "rows.Scan" {
 			err = fmt.Errorf("unable to scan row data: %v", err)
 			z.Error(err.Error())
 			return
@@ -905,6 +859,7 @@ func UpdateMarkerInfoState(ctx context.Context, tx *pgx.Tx, teacherID int64, ids
 }
 
 func InsertOrUpdateMarkingResults(ctx context.Context, markingResults []*cmn.TMark) (targetIDs []int64, err error) {
+	forceErr, _ := ctx.Value(ForceErrKey).(string) // 用于强制执行错误处理代码
 	// 不存在则插入，否则更新，需要索引
 	upsertMarkQuery := `
 						INSERT INTO t_mark 
@@ -921,16 +876,17 @@ func InsertOrUpdateMarkingResults(ctx context.Context, markingResults []*cmn.TMa
 	pgxConn := cmn.GetPgxConn()
 
 	tx, err := pgxConn.Begin(ctx)
-	if err != nil {
-		err = fmt.Errorf("begin transaction error: %s", err.Error())
+	if err != nil || forceErr == "pgxConn.Begin" {
+		err = fmt.Errorf("begin transaction error: %w", err)
 		z.Error(err.Error())
 		return
 	}
 
 	defer func() {
-		if err != nil {
+		if err != nil || forceErr == "tx.Rollback" {
 			err_ := tx.Rollback(ctx)
 			if err_ != nil {
+				err_ = fmt.Errorf("rollback tx error: %w", err_)
 				z.Error(err_.Error())
 				return
 			}
@@ -974,8 +930,8 @@ func InsertOrUpdateMarkingResults(ctx context.Context, markingResults []*cmn.TMa
 		var id null.Int
 
 		err = tx.QueryRow(ctx, upsertMarkQuery, mark.ExamineeID, mark.QuestionID, mark.TeacherID, mark.ExamSessionID, mark.MarkDetails, mark.Score, time.Now().UnixMilli(), mark.Creator, mark.Status, mark.UpdatedBy, mark.UpdateTime, mark.PracticeSubmissionID, mark.PracticeID).Scan(&id)
-		if err != nil {
-			err = fmt.Errorf("exec upsertMark query error: %s", err.Error())
+		if err != nil || forceErr == "tx.QueryRow" {
+			err = fmt.Errorf("exec upsertMark query error: %v", err)
 			z.Error(err.Error())
 			return
 		}
@@ -983,8 +939,8 @@ func InsertOrUpdateMarkingResults(ctx context.Context, markingResults []*cmn.TMa
 	}
 
 	err = tx.Commit(ctx)
-	if err != nil {
-		err = fmt.Errorf("commit transaction error: %s", err.Error())
+	if err != nil || forceErr == "tx.Commit" {
+		err = fmt.Errorf("commit transaction error: %w", err)
 		z.Error(err.Error())
 		return
 	}
@@ -993,6 +949,7 @@ func InsertOrUpdateMarkingResults(ctx context.Context, markingResults []*cmn.TMa
 }
 
 func updateStudentAnswerScore(ctx context.Context, markingResults []*cmn.TMark, cond QueryCondition) (targetIDs []int64, err error) {
+	forceErr, _ := ctx.Value(ForceErrKey).(string)
 	if len(markingResults) == 0 {
 		err = fmt.Errorf("no marking results for update")
 		z.Error(err.Error())
@@ -1026,14 +983,14 @@ func updateStudentAnswerScore(ctx context.Context, markingResults []*cmn.TMark, 
 
 	pgxConn := cmn.GetPgxConn()
 	tx, err := pgxConn.Begin(ctx)
-	if err != nil {
+	if err != nil || forceErr == "updateStudentAnswerScore-pgxConn.Begin" {
 		err = fmt.Errorf("begin transaction error: %v", err)
 		z.Error(err.Error())
 		return
 	}
 
 	defer func() {
-		if err != nil {
+		if err != nil || forceErr == "tx.Rollback" {
 			err_ := tx.Rollback(ctx)
 			if err_ != nil {
 				z.Error(err_.Error())
@@ -1079,10 +1036,10 @@ func updateStudentAnswerScore(ctx context.Context, markingResults []*cmn.TMark, 
 			args = append(args, mark.PracticeSubmissionID.Int64)
 		}
 
-		z.Sugar().Infof("--> %v", args)
+		//z.Sugar().Infof("--> %v", args)
 
 		err = tx.QueryRow(ctx, updateQuery, args...).Scan(&targetID)
-		if err != nil {
+		if err != nil || forceErr == "tx.QueryRow" {
 			err = fmt.Errorf("exec updateStudentAnswerScore sql error: %v", err)
 			z.Error(err.Error())
 			return
@@ -1092,7 +1049,7 @@ func updateStudentAnswerScore(ctx context.Context, markingResults []*cmn.TMark, 
 	}
 
 	err = tx.Commit(ctx)
-	if err != nil {
+	if err != nil || forceErr == "tx.Commit" {
 		err = fmt.Errorf("commit tx error: %v", err)
 		z.Error(err.Error())
 		return
@@ -1101,6 +1058,7 @@ func updateStudentAnswerScore(ctx context.Context, markingResults []*cmn.TMark, 
 }
 
 func updateExamSessionOrPracticeSubmissionState(ctx context.Context, tx *pgx.Tx, teacherID int64, examSessionIDs []int64, practiceSubmissionIDs []int64, status string) (targetIDs []int64, err error) {
+	forceErr, _ := ctx.Value(ForceErrKey).(string)
 	if teacherID <= 0 {
 		err = fmt.Errorf("invalid params: teacher_id is required")
 		z.Error(err.Error())
@@ -1144,16 +1102,18 @@ func updateExamSessionOrPracticeSubmissionState(ctx context.Context, tx *pgx.Tx,
 	}
 
 	rows, err := (*tx).Query(ctx, updateQuery, pq.Array(ids), status, teacherID, time.Now().UnixMilli())
-	if err != nil {
+	if err != nil || forceErr == "updateExamSessionOrPracticeSubmissionState-tx.Query" {
 		err = fmt.Errorf("exec updateExamSessionState sql error: %v", err)
 		z.Error(err.Error())
 		return
 	}
 
+	defer rows.Close()
+
 	for rows.Next() {
 		var id int64
 		err = rows.Scan(&id)
-		if err != nil {
+		if err != nil || forceErr == "rows.Scan" {
 			err = fmt.Errorf("unable to scan row data: %v", err)
 			z.Error(err.Error())
 			return
