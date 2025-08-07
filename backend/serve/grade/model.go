@@ -6,7 +6,7 @@ import (
 	"w2w.io/null"
 )
 
-// ExamGrade 是考试成绩数据
+// 成绩列表查询参数
 type GradeListArgs struct {
 	Category   string `json:"category"`
 	Page       int    `json:"page"`
@@ -21,7 +21,7 @@ type GradeListArgs struct {
 	}
 }
 
-// ExamSession 是考试场次数据
+// 考试场次数据
 type ExamSessionInfo struct {
 	ExamID             null.Int    `json:"exam_id"`             // 考试id
 	ExamSessionID      null.Int    `json:"exam_session_id"`     // 考试场次id
@@ -36,7 +36,7 @@ type ExamSessionInfo struct {
 	PassExaminees      null.Int    `json:"pass_examinees"`      // 及格人数
 }
 
-// GradeExam 是考试成绩数据
+// 考试成绩数据
 type GradeExam struct {
 	ID        null.Int          `json:"id"`        // 考试id
 	Name      null.String       `json:"name"`      // 考试名称
@@ -45,7 +45,7 @@ type GradeExam struct {
 	Submitted null.Bool         `json:"submitted"` // 是否已提交成绩
 }
 
-// GradePractice 是练习成绩数据
+// 练习成绩数据
 type GradePractice struct {
 	ID                null.Int    `json:"id"`                 // 练习id
 	Name              null.String `json:"name"`               // 练习名称
@@ -55,6 +55,7 @@ type GradePractice struct {
 	PassedStudents    null.Int    `json:"passed_students"`    // 通过人数
 }
 
+// 成绩提交参数
 type GradeSubmitArgs struct {
 	TeacherID int64 `json:"teacherID"`
 	ExamIDs   []int `json:"examIDs"`
