@@ -1,6 +1,6 @@
 /*==============================================================*/
 /* DBMS name:      PostgreSQL 9.x                               */
-/* Created on:     2025/8/3 21:35:42                            */
+/* Created on:     2025/8/7 16:43:00                            */
 /*==============================================================*/
 
 
@@ -1079,8 +1079,12 @@ insert into t_domain(id,name, domain, creator,priority) values
 (10112,'考试系统.教务员','assess.academicAffair^admin',1000,1095),
 (10114,'考试系统.教师','assess^teacher',1000,1097),
 (10116,'考试系统.监考员','assess^examSupervisor',1000,1099),
-(10118,'考试系统.运维','assess^maintain',1000,1111), -- 平台维护角色
-(10120,'考试系统.学生','assess^student',1000,1113),
+(10118,'考试系统.批阅员','assess^examGrader', 1000, 1111),
+(10120,'考试系统.核分员','assess^scoreChecker', 1000, 1113),
+(10122,'考试系统.考点','assess.examSite', 1000, 1115),
+(10124,'考试系统.考点负责人','assess.examSite^Admin', 1000, 1117),
+(10126,'考试系统.运维','assess^maintain',1000,1119), -- 平台维护角色
+(10128,'考试系统.学生','assess^student',1000,1121),
 
 
 (10200,'教学系统','course',1000,0),
@@ -2151,7 +2155,9 @@ create table if not exists  t_exam_site (
    update_time          TIMESTAMP            null,
    status               VARCHAR(150)         null default '0',
    addi                 JSONB                null,
-   admin                bigint               null,
+   admin                INT8                 null,
+   sys_user             INT8                 null,
+   domain_id            INT8                 null,
    constraint PK_T_EXAM_SITE primary key (id)
 );
 
@@ -2190,6 +2196,12 @@ comment on column t_exam_site.addi is
 
 comment on column t_exam_site.admin is
 '考点负责人';
+
+comment on column t_exam_site.sys_user is
+'考点服务器系统账号ID';
+
+comment on column t_exam_site.domain_id is
+'数据所属域';
 
 /*==============================================================*/
 /* Table: t_examinee                                            */
@@ -9189,9 +9201,12 @@ comment on column t_sys_ver.status is
 ALTER SEQUENCE t_sys_ver_id_seq RESTART WITH 20000;
 
 insert into t_sys_ver(id,name,ver,create_time,update_time,remark)
-  values(1000,'业务模型','3.1.0.0',
-  '2016年12月5日 9:52:53','2025年8月3日 21:35:37',
-  '3.1.0.0
+  values(1000,'业务模型','3.1.1.0',
+  '2016年12月5日 9:52:53','2025年8月7日 16:42:56',
+  '3.1.1.0
+为v_examinee_info添加serial_num,以及为t_exam_site添加了domain_id和sys_user
+
+3.1.0.0
 添加考试系统的表和视图
 
 3.0.0.1
@@ -11104,7 +11119,8 @@ create or replace view v_examinee_info as
     COALESCE(exam_sessions.end_time - exam_sessions.early_submission_time * 60 * 1000, exam_sessions.end_time) AS allow_submit_time,
     exam_infos.mode,
     examinees.end_time AS examinee_end_time,
-    examinees.start_time AS examinee_start_time
+    examinees.start_time AS examinee_start_time,
+    examinees.serial_number
    FROM t_examinee examinees
      JOIN t_exam_session exam_sessions ON exam_sessions.id = examinees.exam_session_id
      JOIN t_exam_info exam_infos ON exam_infos.id = exam_sessions.exam_id
@@ -11113,7 +11129,7 @@ create or replace view v_examinee_info as
      JOIN t_user users ON users.id = examinees.student_id
      LEFT JOIN LATERAL ( SELECT exam_sessions_1.start_time
            FROM t_exam_session exam_sessions_1
-          WHERE exam_sessions_1.exam_id = exam_infos.id AND exam_sessions_1.start_time::bigint > (exam_sessions.end_time::bigint + examinees.extra_time::bigint)
+          WHERE exam_sessions_1.exam_id = exam_infos.id AND exam_sessions_1.start_time > (exam_sessions.end_time + examinees.extra_time)
           ORDER BY exam_sessions_1.start_time
          LIMIT 1) next_sessions ON true
   GROUP BY examinees.id, exam_sessions.id, exam_infos.id, exam_papers.id, exam_rooms.id, users.id, exam_sessions.start_time, exam_sessions.end_time, examinees.extra_time, next_sessions.start_time
