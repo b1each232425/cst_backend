@@ -58,6 +58,8 @@ func UpdatePractice(ctx context.Context, p *cmn.TPractice, ps []int64, uid int64
 		z.Error(err.Error())
 		return err
 	}
+	// 用于测试，强制执行某些错误分支
+	forceErr, _ := ctx.Value("force-error").(string)
 	now := time.Now().UnixMilli()
 	p.UpdatedBy = null.IntFrom(uid)
 	p.UpdateTime = null.IntFrom(now)
@@ -90,7 +92,7 @@ func UpdatePractice(ctx context.Context, p *cmn.TPractice, ps []int64, uid int64
 	z.Sugar().Debugf("update args:%v", args)
 	sqlxDB := cmn.GetDbConn()
 	_, err := sqlxDB.ExecContext(ctx, query, args...)
-	if err != nil {
+	if err != nil || forceErr == "query" {
 		err = fmt.Errorf("updatePractice call failed:%v", err)
 		z.Error(err.Error())
 		return err
@@ -114,11 +116,13 @@ func AddPractice(ctx context.Context, p *cmn.TPractice, ps []int64, uid int64) e
 	var id int64
 	now := time.Now().UnixMilli()
 	sqlxDB := cmn.GetDbConn()
+	// 用于测试，强制执行某些错误分支
+	forceErr, _ := ctx.Value("force-error").(string)
 	s := `
 	INSERT INTO assessuser.t_practice (name,correct_mode,creator,create_time, update_time, addi,allowed_attempts,type,paper_id)
 	VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`
 	err := sqlxDB.QueryRowxContext(ctx, s, p.Name, p.CorrectMode, uid, now, now, p.Addi, p.AllowedAttempts, p.Type, p.PaperID).Scan(&id)
-	if err != nil {
+	if err != nil || forceErr == "query" {
 		err = fmt.Errorf("addPractice call failed:%v", err)
 		z.Error(err.Error())
 		return err
@@ -172,16 +176,10 @@ func UpsertPracticeStudent(ctx context.Context, pid, uid int64, ps []int64) erro
 	defer func() {
 		if err != nil || forceErr == "Rollback" {
 			// 操作失败回滚
-			err = tx.Rollback()
-			if err != nil {
-				z.Error(err.Error())
-			}
+			_ = tx.Rollback()
 		} else {
 			// 无错误则提交
-			err = tx.Commit()
-			if err != nil {
-				z.Error(err.Error())
-			}
+			_ = tx.Commit()
 		}
 	}()
 
@@ -212,7 +210,8 @@ func UpsertPracticeStudent(ctx context.Context, pid, uid int64, ps []int64) erro
 	z.Sugar().Debugf("打印输出一下增加SQL语句:%v", addPQuery)
 	z.Sugar().Debugf("打印输出一下增加SQL参数:%v", args...)
 	_, err = tx.ExecContext(ctx, addPQuery, args...)
-	if err != nil {
+	if err != nil || forceErr == "query1" {
+		err = fmt.Errorf("add PracticeStudent call failed:%v", err)
 		z.Error(err.Error())
 		return err
 	}
@@ -239,7 +238,8 @@ func UpsertPracticeStudent(ctx context.Context, pid, uid int64, ps []int64) erro
 	z.Sugar().Debugf("打印输出一下删除SQL语句:%v", s2)
 	z.Sugar().Debugf("打印输出一下删除SQL参数:%v", delPArgs...)
 	_, err = tx.ExecContext(ctx, s2, delPArgs...)
-	if err != nil {
+	if err != nil || forceErr == "query2" {
+		err = fmt.Errorf("delete PracticeStudent call failed:%v", err)
 		z.Error(err.Error())
 		return err
 	}
@@ -250,6 +250,12 @@ func UpsertPracticeStudent(ctx context.Context, pid, uid int64, ps []int64) erro
 /*
 关键参数说明：
 	pid 要查询的练习ID
+
+返回参数说明：
+	1、练习信息
+	2、练习绑定的试卷名
+	3、练习参与学生数量
+	4、可能出现的错误
 */
 func LoadPracticeById(ctx context.Context, pid int64) (*cmn.TPractice, string, int, error) {
 	if pid <= 0 {
@@ -257,9 +263,8 @@ func LoadPracticeById(ctx context.Context, pid int64) (*cmn.TPractice, string, i
 		z.Error(err.Error())
 		return &cmn.TPractice{}, "", 0, err
 	}
-	TEST := "test"
-	//查看是否需要返回mock的数据
-	test, _ := ctx.Value(TEST).(string)
+	// 用于测试，强制执行某些错误分支
+	forceErr, _ := ctx.Value("force-error").(string)
 	s := `
 	select p.id, p.name, p.correct_mode,p.addi,p.status,p.type,
 			COALESCE(tp.name, '') as paper_name,p.allowed_attempts,p.paper_id,p.exam_paper_id,
@@ -270,7 +275,7 @@ func LoadPracticeById(ctx context.Context, pid int64) (*cmn.TPractice, string, i
 	limit 1`
 	sqlxDB := cmn.GetDbConn()
 	var stmt *sqlx.Stmt
-	if test == "prepare" {
+	if forceErr == "prepare" {
 		s = `
 	select p.id, p.name, p.correct_mode,p.addi,p.status,p.type,
 			COALESCE(tp.name, '') as paper_name,p.allowed_attempts,p.paper_id,p.exam_paper_id,
@@ -281,13 +286,15 @@ func LoadPracticeById(ctx context.Context, pid int64) (*cmn.TPractice, string, i
 	}
 	stmt, err := sqlxDB.Preparex(s)
 	if err != nil {
+		err = fmt.Errorf("prepare sql err:%v", err)
 		z.Error(err.Error())
 		return &cmn.TPractice{}, "", 0, err
 	}
 
 	defer func() {
 		err = stmt.Close()
-		if err != nil {
+		if err != nil || forceErr == "close" {
+			err = fmt.Errorf("*sqlx.Stmt close failed:%v", err)
 			z.Error(err.Error())
 			return
 		}
@@ -302,7 +309,7 @@ func LoadPracticeById(ctx context.Context, pid int64) (*cmn.TPractice, string, i
 		err = fmt.Errorf("非法practiceID ， 无该练习记录:%v", err)
 		z.Error(err.Error())
 		return &cmn.TPractice{}, "", 0, err
-	} else if err != nil {
+	} else if err != nil || forceErr == "query" {
 		err = fmt.Errorf("LoadPracticeById call failed：%v", err)
 		z.Error(err.Error())
 		return &cmn.TPractice{}, "", 0, err
@@ -418,6 +425,8 @@ func ListPracticeS(ctx context.Context, pType, name, difficulty string, orderBy 
 */
 func ListPracticeT(ctx context.Context, name, pType, status string, orderBy []string, page, pageSize int, uid int64) ([]Map, int, error) {
 	result := make([]Map, 0)
+	// 用于测试，强制执行某些错误分支
+	forceErr, _ := ctx.Value("force-error").(string)
 	// 查询条件
 	var clauses []string
 	// 占位符
@@ -455,16 +464,12 @@ func ListPracticeT(ctx context.Context, name, pType, status string, orderBy []st
 		s += " ORDER BY " + strings.Join(orderBy, ", ")
 	}
 	// 添加分页参数
-	if pageSize > 0 && pageSize <= 999 {
-		s += fmt.Sprintf(" LIMIT $%d", len(args)+1)
-		args = append(args, pageSize)
-	}
+	s += fmt.Sprintf(" LIMIT $%d", len(args)+1)
+	args = append(args, pageSize)
 
-	if page > 0 {
-		offset := (page - 1) * pageSize
-		s += fmt.Sprintf(" OFFSET $%d", len(args)+1)
-		args = append(args, offset)
-	}
+	offset := (page - 1) * pageSize
+	s += fmt.Sprintf(" OFFSET $%d", len(args)+1)
+	args = append(args, offset)
 
 	z.Sugar().Debugf("打印输出一下这个操作语句：%v", s)
 	z.Sugar().Debugf("打印输出一下参数表：%v", args)
@@ -472,13 +477,14 @@ func ListPracticeT(ctx context.Context, name, pType, status string, orderBy []st
 	// 这些实体查询的每个函数之间作用都不一样，需要花时间去了解这个函数的具体用处了
 	sqlxDB := cmn.GetDbConn()
 	rows, err := sqlxDB.QueryxContext(ctx, s, args...)
-	if err != nil {
+	if err != nil || forceErr == "query" {
+		err = fmt.Errorf("search practice failed:%v", err)
 		z.Error(err.Error())
 		return nil, 0, err
 	}
 	defer func() {
 		err = rows.Close()
-		if err != nil {
+		if err != nil || forceErr == "row close" {
 			z.Error(err.Error())
 			return
 		}
@@ -491,7 +497,7 @@ func ListPracticeT(ctx context.Context, name, pType, status string, orderBy []st
 		err = rows.Scan(&p.ID, &p.Name, &p.CorrectMode, &p.Type, &p.Creator,
 			&p.CreateTime, &p.UpdatedBy, &p.UpdateTime, &p.Addi, &p.Status, &p.AllowedAttempts, &studentCount,
 		)
-		if err != nil {
+		if err != nil || forceErr == "scan" {
 			err = fmt.Errorf("解析练习数据失败:%v", err)
 			z.Error(err.Error())
 			return nil, 0, err
@@ -576,16 +582,10 @@ func OperatePracticeStatus(ctx context.Context, pid int64, status string, uid in
 	defer func() {
 		if err != nil || forceErr == "Rollback" {
 			// 操作失败回滚
-			err = tx.Rollback(ctx)
-			if err != nil {
-				z.Error(err.Error())
-			}
+			_ = tx.Rollback(ctx)
 		} else {
 			// 无错误则提交
-			err = tx.Commit(ctx)
-			if err != nil {
-				z.Error(err.Error())
-			}
+			_ = tx.Commit(ctx)
 		}
 	}()
 	if status == PracticeStatus.Released {
@@ -599,8 +599,7 @@ func OperatePracticeStatus(ctx context.Context, pid int64, status string, uid in
 			z.Error(err.Error())
 			return err
 		}
-		// 目前无论这个考卷之前有没有生成，均生成新的
-		// TODO 对考卷的生成进行判断，如果之前生成过，就沿用
+		// 无论考卷之前有没有生成，均生成新的
 		examPaperId, _, err := examPaper.GenerateExamPaper(ctx, tx, examPaper.PaperCategory.Practice, p.PaperID.Int64, pid, 0, uid, false)
 		if err != nil {
 			return err
@@ -642,6 +641,15 @@ func OperatePracticeStatus(ctx context.Context, pid int64, status string, uid in
 		_, err = tx.Exec(ctx, s, status, now, uid, pid)
 		if err != nil {
 			err = fmt.Errorf("OperatePracticeStatus to pendingRelease failed:%v", err)
+			z.Error(err.Error())
+			return err
+		}
+
+		// 更改practice_submission练习学生的提交状态及其练习次数，将本次练习附带的所有次数均变为无效
+		s = `UPDATE assessuser.t_practice_submissions SET status = $1,update_time = $2,updated_by = $3 , attempt = $4 WHERE practice_id = $5`
+		_, err = tx.Exec(ctx, s, PracticeSubmissionStatus.Deleted, now, uid, -1, pid)
+		if err != nil {
+			err = fmt.Errorf("OperatePracticeSubmissionStatus to pendingRelease failed:%v", err)
 			z.Error(err.Error())
 			return err
 		}

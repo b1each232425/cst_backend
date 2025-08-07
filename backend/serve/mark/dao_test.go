@@ -2,11 +2,13 @@ package mark
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"github.com/jackc/pgx/v5"
 	"github.com/jmoiron/sqlx/types"
 	"github.com/stretchr/testify/assert"
 	"testing"
+	"time"
 	"w2w.io/cmn"
 	"w2w.io/null"
 )
@@ -26,6 +28,7 @@ func TestQueryStudentAnswersByMarkMode(t *testing.T) {
 		answerType     string
 		cond           QueryCondition
 		markerInfo     MarkerInfo
+		forceErr       string
 		expectedErrStr string
 	}{
 		{
@@ -187,11 +190,54 @@ func TestQueryStudentAnswersByMarkMode(t *testing.T) {
 			},
 			expectedErrStr: "unable to unmarshal question_ids",
 		},
+		{
+			name:       "invalid practice_submission_id with markMode:12（查询单个练习学生）",
+			answerType: "02",
+			cond: QueryCondition{
+				PracticeID: 21,
+				TeacherID:  testedTeacherID,
+			},
+			markerInfo: MarkerInfo{
+				MarkMode: "12",
+				MarkerID: testedTeacherID,
+			},
+			expectedErrStr: "invalid practice_submission_id",
+		},
+		{
+			name:       "exec getStudentAnswersByMarkMode SQL error",
+			answerType: "02",
+			cond: QueryCondition{
+				ExamSessionID: 101,
+				TeacherID:     testedTeacherID,
+			},
+			markerInfo: MarkerInfo{
+				MarkerID: testedTeacherID,
+			},
+			forceErr:       "QueryStudentAnswersByMarkMode-pgxConn.Query",
+			expectedErrStr: "exec getStudentAnswersByMarkMode SQL error",
+		},
+		{
+			name:       "unable to scan row data",
+			answerType: "02",
+			cond: QueryCondition{
+				ExamSessionID: 101,
+				TeacherID:     testedTeacherID,
+			},
+			markerInfo: MarkerInfo{
+				MarkerID: testedTeacherID,
+			},
+			forceErr:       "rows.Scan",
+			expectedErrStr: "unable to scan row data",
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			ctx := context.Background()
+			if tt.forceErr != "" {
+				ctx = context.WithValue(ctx, ForceErrKey, tt.forceErr)
+			}
+
 			_, err := QueryStudentAnswersByMarkMode(ctx, tt.answerType, tt.cond, tt.markerInfo)
 			if err != nil {
 				if tt.expectedErrStr == "" {
@@ -215,6 +261,7 @@ func TestUpdateStudentAnswerScore(t *testing.T) {
 		name           string
 		markingResults []*cmn.TMark
 		cond           QueryCondition
+		forceErr       string
 		expectedErrStr string
 	}{
 		{
@@ -334,11 +381,82 @@ func TestUpdateStudentAnswerScore(t *testing.T) {
 			},
 			expectedErrStr: "practice_submission_id is required where practice_id is specified",
 		},
+		{
+			name: "begin transaction error",
+			markingResults: []*cmn.TMark{
+				{
+					QuestionID: null.IntFrom(401),
+					TeacherID:  null.IntFrom(testedTeacherID),
+					Score:      null.FloatFrom(2.5),
+					ExamineeID: null.IntFrom(2201),
+				},
+			},
+			cond: QueryCondition{
+				TeacherID:     testedTeacherID,
+				ExamSessionID: 101,
+			},
+			forceErr:       "updateStudentAnswerScore-pgxConn.Begin",
+			expectedErrStr: "begin transaction error",
+		},
+		{
+			name: "begin transaction error",
+			markingResults: []*cmn.TMark{
+				{
+					QuestionID: null.IntFrom(401),
+					TeacherID:  null.IntFrom(testedTeacherID),
+					Score:      null.FloatFrom(2.5),
+					ExamineeID: null.IntFrom(2201),
+				},
+			},
+			cond: QueryCondition{
+				TeacherID:     testedTeacherID,
+				ExamSessionID: 101,
+			},
+			forceErr: "tx.Rollback",
+		},
+		{
+			name: "exec updateStudentAnswerScore sql error",
+			markingResults: []*cmn.TMark{
+				{
+					QuestionID: null.IntFrom(401),
+					TeacherID:  null.IntFrom(testedTeacherID),
+					Score:      null.FloatFrom(2.5),
+					ExamineeID: null.IntFrom(2201),
+				},
+			},
+			cond: QueryCondition{
+				TeacherID:     testedTeacherID,
+				ExamSessionID: 101,
+			},
+			forceErr:       "tx.QueryRow",
+			expectedErrStr: "exec updateStudentAnswerScore sql error",
+		},
+		{
+			name: "exec updateStudentAnswerScore sql error",
+			markingResults: []*cmn.TMark{
+				{
+					QuestionID: null.IntFrom(401),
+					TeacherID:  null.IntFrom(testedTeacherID),
+					Score:      null.FloatFrom(2.5),
+					ExamineeID: null.IntFrom(2201),
+				},
+			},
+			cond: QueryCondition{
+				TeacherID:     testedTeacherID,
+				ExamSessionID: 101,
+			},
+			forceErr:       "tx.Commit",
+			expectedErrStr: "commit tx error",
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			ctx := context.Background()
+			if tt.forceErr != "" {
+				ctx = context.WithValue(context.Background(), ForceErrKey, tt.forceErr)
+			}
+
 			_, err := updateStudentAnswerScore(ctx, tt.markingResults, tt.cond)
 			if err != nil {
 				if tt.expectedErrStr == "" {
@@ -364,6 +482,7 @@ func TestUpdateExamSessionOrPracticeSubmissionState(t *testing.T) {
 		examSessionIDs        []int64
 		practiceSubmissionIDs []int64
 		status                string
+		forceErr              string
 		expectedErrStr        string
 	}{
 		{
@@ -408,11 +527,31 @@ func TestUpdateExamSessionOrPracticeSubmissionState(t *testing.T) {
 			status:         "10",
 			expectedErrStr: "invalid params: teacher_id is required",
 		},
+		{
+			name:           "exec updateExamSessionState sql error",
+			teacherID:      testedTeacherID,
+			examSessionIDs: []int64{101},
+			status:         "10",
+			forceErr:       "updateExamSessionOrPracticeSubmissionState-tx.Query",
+			expectedErrStr: "exec updateExamSessionState sql error",
+		},
+		{
+			name:           "unable to scan row data",
+			teacherID:      testedTeacherID,
+			examSessionIDs: []int64{101},
+			status:         "10",
+			forceErr:       "rows.Scan",
+			expectedErrStr: "unable to scan row data",
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			ctx := context.Background()
+			if tt.forceErr != "" {
+				ctx = context.WithValue(context.Background(), ForceErrKey, tt.forceErr)
+			}
+
 			pgxConn := cmn.GetPgxConn()
 			var tx pgx.Tx
 			var err error
@@ -459,6 +598,7 @@ func TestUpdateMarkerInfoState(t *testing.T) {
 		teacherID      int64
 		ids            []int64
 		mode           string
+		forceErr       string
 		expectedErrStr string
 	}{
 		{
@@ -493,11 +633,30 @@ func TestUpdateMarkerInfoState(t *testing.T) {
 			mode:           "abc",
 			expectedErrStr: "invalid update mode",
 		},
+		{
+			name:           "exec update query error",
+			teacherID:      testedTeacherID,
+			ids:            []int64{101},
+			mode:           "00",
+			forceErr:       "tx.Query",
+			expectedErrStr: "exec update query error",
+		},
+		{
+			name:           "unable to scan row data",
+			teacherID:      testedTeacherID,
+			ids:            []int64{101},
+			mode:           "00",
+			forceErr:       "rows.Scan",
+			expectedErrStr: "unable to scan row data",
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			ctx := context.Background()
+			if tt.forceErr != "" {
+				ctx = context.WithValue(context.Background(), ForceErrKey, tt.forceErr)
+			}
 			pgxConn := cmn.GetPgxConn()
 			var tx pgx.Tx
 			var err error
@@ -542,6 +701,7 @@ func TestQueryMarkerInfo(t *testing.T) {
 	tests := []struct {
 		name           string
 		cond           QueryCondition
+		forceErr       string
 		expectedErrStr string
 	}{
 		{
@@ -565,11 +725,32 @@ func TestQueryMarkerInfo(t *testing.T) {
 			},
 			expectedErrStr: "invalid params: either exam session id or practice id is required",
 		},
+		{
+			name: "exec QueryMarkerInfo SQL error",
+			cond: QueryCondition{
+				TeacherID:     testedTeacherID,
+				ExamSessionID: 101,
+			},
+			forceErr:       "QueryMarkerInfo-pgxConn.Query",
+			expectedErrStr: "exec QueryMarkerInfo SQL error",
+		},
+		{
+			name: "unable to scan row data",
+			cond: QueryCondition{
+				TeacherID:     testedTeacherID,
+				ExamSessionID: 101,
+			},
+			forceErr:       "QueryMarkerInfo-rows.Scan",
+			expectedErrStr: "unable to scan row data",
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			ctx := context.Background()
+			if tt.forceErr != "" {
+				ctx = context.WithValue(context.Background(), ForceErrKey, tt.forceErr)
+			}
 
 			result, err := QueryMarkerInfo(ctx, tt.cond)
 			z.Sugar().Infof("result: %+v", result.MarkInfos)
@@ -587,31 +768,516 @@ func TestQueryMarkerInfo(t *testing.T) {
 	}
 }
 
-//func TestInsertMarkerInfo(t *testing.T) {
-//	cleanTestData()
-//	initTestData()
-//	defer cleanTestData()
-//
-//	tests := []struct {
-//		name           string
-//		markInfo       []cmn.TMarkInfo
-//		expectedErrStr string
-//	}{
-//		{
-//			name:     "success",
-//			markInfo: []cmn.TMarkInfo{
-//				{
-//					MarkTeacherID: 1101,
-//					MarkCount:     1,
-//					MarkQuestionGroups: []examPaper.SubjectiveQuestionGroup{
-//						{
-//							GroupID:     1,
-//							QuestionIDs: []int64{1},
-//						},
-//					},
-//					MarkExamineeIds: []int64{1},
-//				},
-//			},
-//		},
-//	}
-//}
+func TestQueryExamList(t *testing.T) {
+	cleanTestData()
+	initTestData()
+	defer cleanTestData()
+
+	tests := []struct {
+		name             string
+		req              GetExamListReq
+		forceErr         string
+		expectedList     []Exam
+		expectedRowCount int
+		expectedErrStr   string
+	}{
+		{
+			name: "success",
+			req: GetExamListReq{
+				User: &User{
+					ID:      testedTeacherID,
+					IsAdmin: false,
+				},
+				Limit:  10,
+				Offset: 0,
+			},
+		},
+		{
+			name: "success with filter:exam name",
+			req: GetExamListReq{
+				User: &User{
+					ID:      testedTeacherID,
+					IsAdmin: false,
+				},
+				Limit:    10,
+				Offset:   0,
+				ExamName: "exam 1",
+			},
+		},
+		{
+			name: "success with filter:exam name",
+			req: GetExamListReq{
+				User: &User{
+					ID:      testedTeacherID,
+					IsAdmin: false,
+				},
+				Limit:    10,
+				Offset:   0,
+				ExamName: "exam 2",
+			},
+			expectedRowCount: 0,
+		},
+		{
+			name: "success with filter:start_time && end_time",
+			req: GetExamListReq{
+				User: &User{
+					ID:      testedTeacherID,
+					IsAdmin: false,
+				},
+				Limit:     10,
+				Offset:    0,
+				StartTime: time.Now().Add(-22 * time.Hour),
+				EndTime:   time.Now().Add(-20 * time.Hour),
+			},
+		},
+		{
+			name: "invalid query condition(limit==0)",
+			req: GetExamListReq{
+				User: &User{
+					ID:      testedTeacherID,
+					IsAdmin: false,
+				},
+				Limit:  0,
+				Offset: 0,
+			},
+			expectedErrStr: "invalid query condition",
+		},
+		{
+			name: "invalid query condition(limit<0)",
+			req: GetExamListReq{
+				User: &User{
+					ID:      testedTeacherID,
+					IsAdmin: false,
+				},
+				Limit:  -3,
+				Offset: 0,
+			},
+			expectedErrStr: "invalid query condition",
+		},
+		{
+			name: "invalid query condition(limit>1000)",
+			req: GetExamListReq{
+				User: &User{
+					ID:      testedTeacherID,
+					IsAdmin: false,
+				},
+				Limit:  1001,
+				Offset: 0,
+			},
+			expectedErrStr: "invalid query condition",
+		},
+		{
+			name: "invalid query condition(offset<0)",
+			req: GetExamListReq{
+				User: &User{
+					ID:      testedTeacherID,
+					IsAdmin: false,
+				},
+				Limit:  10,
+				Offset: -3,
+			},
+			expectedErrStr: "invalid query condition",
+		},
+		{
+			name: "getExamList count SQL error",
+			req: GetExamListReq{
+				User: &User{
+					ID:      testedTeacherID,
+					IsAdmin: false,
+				},
+				Limit:  10,
+				Offset: 0,
+			},
+			forceErr:       "QueryExamList-pgxConn.QueryRow",
+			expectedErrStr: "getExamList count SQL error",
+		},
+		{
+			name: "getExamList SQL error",
+			req: GetExamListReq{
+				User: &User{
+					ID:      testedTeacherID,
+					IsAdmin: false,
+				},
+				Limit:  10,
+				Offset: 0,
+			},
+			forceErr:       "QueryExamList-pgxConn.Query",
+			expectedErrStr: "getExamList SQL error",
+		},
+		{
+			name: "scan getExamList SQL result error",
+			req: GetExamListReq{
+				User: &User{
+					ID:      testedTeacherID,
+					IsAdmin: false,
+				},
+				Limit:  10,
+				Offset: 0,
+			},
+			forceErr:       "QueryExamList-rows.Scan",
+			expectedErrStr: "scan getExamList SQL result error",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := context.Background()
+			if tt.forceErr != "" {
+				ctx = context.WithValue(context.Background(), ForceErrKey, tt.forceErr)
+			}
+
+			list, rowCount, err := QueryExamList(ctx, tt.req)
+			z.Sugar().Infof("-->(%d)list: %+v", rowCount, list)
+
+			if err != nil {
+				if tt.expectedErrStr == "" {
+					t.Errorf("expected success, but got error: %v", err.Error())
+				} else {
+					assert.Contains(t, err.Error(), tt.expectedErrStr)
+				}
+			} else if tt.expectedErrStr != "" {
+				t.Errorf("expected error: %s, but got success", tt.expectedErrStr)
+			}
+		})
+	}
+}
+
+func TestQueryExamineeInfo(t *testing.T) {
+	cleanTestData()
+	initTestData()
+	//defer cleanTestData()
+
+	tests := []struct {
+		name           string
+		cond           QueryCondition
+		forceErr       string
+		expectedList   []Student
+		expectedErrStr string
+	}{
+		{
+			name: "success",
+			cond: QueryCondition{
+				TeacherID:     testedTeacherID,
+				ExamSessionID: 101,
+			},
+		},
+		{
+			name: "success with filter:examinee_id",
+			cond: QueryCondition{
+				TeacherID:     testedTeacherID,
+				ExamSessionID: 101,
+				ExamineeID:    2201,
+			},
+		},
+		{
+			name: "invalid query condition",
+			cond: QueryCondition{
+				ExamSessionID: 101,
+			},
+			expectedErrStr: "invalid query condition",
+		},
+		{
+			name: "exec query examinee info SQL error",
+			cond: QueryCondition{
+				TeacherID:     testedTeacherID,
+				ExamSessionID: 101,
+			},
+			forceErr:       "QueryExamineeInfo-pgxConn.Query",
+			expectedErrStr: "exec query examinee info SQL error",
+		},
+		{
+			name: "unable to scan row data",
+			cond: QueryCondition{
+				TeacherID:     testedTeacherID,
+				ExamSessionID: 101,
+			},
+			forceErr:       "QueryExamineeInfo-rows.Scan",
+			expectedErrStr: "unable to scan row data",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := context.Background()
+			if tt.forceErr != "" {
+				ctx = context.WithValue(context.Background(), ForceErrKey, tt.forceErr)
+			}
+
+			list, err := QueryExamineeInfo(ctx, tt.cond)
+			z.Sugar().Infof("-->(%d)list: %+v", len(list), list)
+
+			if err != nil {
+				if tt.expectedErrStr == "" {
+					t.Errorf("expected success, but got error: %v", err.Error())
+				} else {
+					assert.Contains(t, err.Error(), tt.expectedErrStr)
+				}
+			} else if tt.expectedErrStr != "" {
+				t.Errorf("expected error: %s, but got success", tt.expectedErrStr)
+			}
+		})
+	}
+}
+
+func TestQueryMarkingResults(t *testing.T) {
+	cleanTestData()
+	initTestData()
+	defer cleanTestData()
+
+	tests := []struct {
+		name           string
+		cond           QueryCondition
+		forceErr       string
+		expectedList   []Student
+		expectedErrStr string
+	}{
+		{
+			name: "success",
+			cond: QueryCondition{
+				TeacherID:     testedTeacherID,
+				ExamSessionID: 101,
+			},
+		},
+		{
+			name: "success with filter:examinee_id",
+			cond: QueryCondition{
+				TeacherID:     testedTeacherID,
+				ExamSessionID: 102,
+				ExamineeID:    2205,
+			},
+		},
+		{
+			name: "invalid query condition",
+			cond: QueryCondition{
+				ExamSessionID: 101,
+			},
+			expectedErrStr: "invalid query condition",
+		},
+		{
+			name: "invalid exam_session_id",
+			cond: QueryCondition{
+				TeacherID: testedTeacherID,
+			},
+			expectedErrStr: "invalid exam_session_id",
+		},
+		{
+			name: "exec getMarkingResults SQL error",
+			cond: QueryCondition{
+				TeacherID:     testedTeacherID,
+				ExamSessionID: 101,
+			},
+			forceErr:       "QueryMarkingResults-pgxConn.Query",
+			expectedErrStr: "exec getMarkingResults SQL error",
+		},
+		{
+			name: "unable to scan row data",
+			cond: QueryCondition{
+				TeacherID:     testedTeacherID,
+				ExamSessionID: 102,
+			},
+			forceErr:       "QueryMarkingResults-rows.Scan",
+			expectedErrStr: "unable to scan row data",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := context.Background()
+			if tt.forceErr != "" {
+				ctx = context.WithValue(context.Background(), ForceErrKey, tt.forceErr)
+			}
+
+			list, err := QueryMarkingResults(ctx, tt.cond)
+			z.Sugar().Infof("-->(%d)list: %+v", len(list), list)
+
+			if err != nil {
+				if tt.expectedErrStr == "" {
+					t.Errorf("expected success, but got error: %v", err.Error())
+				} else {
+					assert.Contains(t, err.Error(), tt.expectedErrStr)
+				}
+			} else if tt.expectedErrStr != "" {
+				t.Errorf("expected error: %s, but got success", tt.expectedErrStr)
+			}
+		})
+	}
+}
+
+func TestQueryExamQuestionsByMarkMode(t *testing.T) {
+	cleanTestData()
+	initTestData()
+	//defer cleanTestData()
+
+	tests := []struct {
+		name           string
+		cond           QueryCondition
+		markerInfo     MarkerInfo
+		forceErr       string
+		expectedList   []Student
+		expectedErrStr string
+	}{
+		{
+			name: "success",
+			cond: QueryCondition{
+				TeacherID:     testedTeacherID,
+				ExamSessionID: 102,
+			},
+			markerInfo: MarkerInfo{
+				MarkerID:   testedTeacherID,
+				MarkMode:   "10",
+				MarkMethod: "00",
+			},
+		},
+		{
+			name: "success with markMode:06",
+			cond: QueryCondition{
+				TeacherID:     testedTeacherID,
+				ExamSessionID: 102,
+			},
+			markerInfo: MarkerInfo{
+				MarkerID:   testedTeacherID,
+				MarkMode:   "06",
+				MarkMethod: "00",
+				MarkInfos: []cmn.TMarkInfo{
+					{
+						QuestionIds: types.JSONText(`[405]`),
+					},
+				},
+			},
+		},
+		{
+			name: "invalid query condition",
+			cond: QueryCondition{
+				ExamSessionID: 102,
+			},
+			markerInfo: MarkerInfo{
+				MarkerID:   testedTeacherID,
+				MarkMode:   "10",
+				MarkMethod: "00",
+			},
+			expectedErrStr: "invalid query condition",
+		},
+		{
+			name: "invalid mark mode or mark method",
+			cond: QueryCondition{
+				TeacherID:     testedTeacherID,
+				ExamSessionID: 102,
+			},
+			markerInfo: MarkerInfo{
+				MarkerID: testedTeacherID,
+			},
+			expectedErrStr: "invalid mark mode or mark method",
+		},
+		{
+			name: "invalid mark mode",
+			cond: QueryCondition{
+				TeacherID:     testedTeacherID,
+				ExamSessionID: 102,
+			},
+			markerInfo: MarkerInfo{
+				MarkerID:   testedTeacherID,
+				MarkMode:   "07",
+				MarkMethod: "00",
+			},
+			expectedErrStr: "invalid mark mode",
+		},
+		{
+			name: "invalid markInfos",
+			cond: QueryCondition{
+				TeacherID:     testedTeacherID,
+				ExamSessionID: 102,
+			},
+			markerInfo: MarkerInfo{
+				MarkerID:   testedTeacherID,
+				MarkMode:   "06",
+				MarkMethod: "00",
+			},
+			expectedErrStr: "invalid markInfos",
+		},
+		{
+			name: "unable to unmarshal question ids",
+			cond: QueryCondition{
+				TeacherID:     testedTeacherID,
+				ExamSessionID: 102,
+			},
+			markerInfo: MarkerInfo{
+				MarkerID:   testedTeacherID,
+				MarkMode:   "06",
+				MarkMethod: "00",
+				MarkInfos: []cmn.TMarkInfo{
+					{
+						QuestionIds: types.JSONText(`[405`),
+					},
+				},
+			},
+			expectedErrStr: "unable to unmarshal question ids",
+		},
+		{
+			name: "exec getQuestionsQuery SQL error",
+			cond: QueryCondition{
+				TeacherID:     testedTeacherID,
+				ExamSessionID: 102,
+			},
+			markerInfo: MarkerInfo{
+				MarkerID:   testedTeacherID,
+				MarkMode:   "10",
+				MarkMethod: "00",
+			},
+			forceErr:       "QueryExamQuestionsByMarkMode-pgxConn.Query",
+			expectedErrStr: "exec getQuestionsQuery SQL error",
+		},
+		{
+			name: "unable to scan row data",
+			cond: QueryCondition{
+				TeacherID:     testedTeacherID,
+				ExamSessionID: 102,
+			},
+			markerInfo: MarkerInfo{
+				MarkerID:   testedTeacherID,
+				MarkMode:   "10",
+				MarkMethod: "00",
+			},
+			forceErr:       "QueryExamQuestionsByMarkMode-rows.Scan",
+			expectedErrStr: "unable to scan row data",
+		},
+		{
+			name: "unable to convert raw standard answer data",
+			cond: QueryCondition{
+				TeacherID:     testedTeacherID,
+				ExamSessionID: 103,
+			},
+			markerInfo: MarkerInfo{
+				MarkerID:   testedTeacherID,
+				MarkMode:   "10",
+				MarkMethod: "00",
+			},
+			expectedErrStr: "unable to convert raw standard answer data",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := context.Background()
+			if tt.forceErr != "" {
+				ctx = context.WithValue(context.Background(), ForceErrKey, tt.forceErr)
+			}
+
+			list, err := QueryExamQuestionsByMarkMode(ctx, tt.cond, tt.markerInfo)
+			data, e := json.Marshal(list)
+			if e != nil {
+				t.Errorf("unable to marshal list: %v", err.Error())
+			}
+			z.Sugar().Infof("-->(%d)list: %+v", len(list), string(data))
+
+			if err != nil {
+				if tt.expectedErrStr == "" {
+					t.Errorf("expected success, but got error: %v", err.Error())
+				} else {
+					assert.Contains(t, err.Error(), tt.expectedErrStr)
+				}
+			} else if tt.expectedErrStr != "" {
+				t.Errorf("expected error: %s, but got success", tt.expectedErrStr)
+			}
+		})
+	}
+}
