@@ -39,6 +39,7 @@ type AddQuestionsRequest struct {
 	TempID         string    `json:"temp_id" validate:"required,startswith=temp_question"` // 客户端生成的唯一标识(如UUID)
 	GroupID        int64     `json:"group_id" validate:"omitempty"`
 	Order          int64     `json:"order" validate:"required,gt=0"`
+	Type           string    `json:"type" validate:"required,oneof=00 02 04 06 08"`
 	BankQuestionID int64     `json:"bank_question_id" validate:"required,min=1"`
 	Score          float64   `json:"score" validate:"required,min=1"`
 	SubScore       []float64 `json:"sub_score" validate:"omitempty,dive,min=1"`
@@ -60,8 +61,8 @@ type UpdatePaperBasicInfoRequest struct {
 	Name        string   `json:"name,omitempty" validate:"omitempty,min=2,max=50"`
 	Category    string   `json:"category,omitempty" validate:"omitempty,oneof=00 02"`
 	Level       string   `json:"level,omitempty" validate:"omitempty,oneof=00 02 04"`
-	Duration    int      `json:"duration,omitempty" validate:"omitempty,min=0"`
-	Description string   `json:"description,omitempty" validate:"omitempty,max=500"`
+	Duration    *int     `json:"duration,omitempty" validate:"omitempty,min=0"`
+	Description *string  `json:"description,omitempty" validate:"omitempty,max=500"`
 	Tags        []string `json:"tags,omitempty" validate:"omitempty,min=1,dive,min=1,max=20"`
 }
 

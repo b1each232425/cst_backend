@@ -24,7 +24,9 @@ import (
 const (
 	initQuestionUserID = 9999999
 	teacherRoleID      = int64(2003)
+	studentRoleID      = int64(2008)
 	resourceDomainID   = int64(1999)
+	superAdminRoleID   = int64(2000)
 )
 
 var (
@@ -188,6 +190,25 @@ func cleanupTestPaperData(t *testing.T, paperIDs []int64) {
 	_, _ = txn.Exec(ctx, `DELETE FROM t_paper_group WHERE paper_id = ANY($1)`, paperIDs)
 	// 3. 删除 t_paper
 	_, _ = txn.Exec(ctx, `DELETE FROM t_paper WHERE id = ANY($1)`, paperIDs)
+	_ = txn.Commit(ctx)
+}
+
+// cleanupTestPaperDataByUserID 清理测试插入的paper、group、question等数据
+func cleanupTestPaperDataByUserID(t *testing.T, userID int64) {
+	db := cmn.GetPgxConn()
+	ctx := context.Background()
+	txn, err := db.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.Serializable})
+	if err != nil {
+		t.Logf("[cleanup] begin tx failed: %v", err)
+		return
+	}
+	defer txn.Rollback(ctx)
+	// 1. 删除 t_paper_question
+	_, _ = txn.Exec(ctx, `DELETE FROM t_paper_question WHERE creator = $1`, userID)
+	// 2. 删除 t_paper_group
+	_, _ = txn.Exec(ctx, `DELETE FROM t_paper_group WHERE creator = $1`, userID)
+	// 3. 删除 t_paper
+	_, _ = txn.Exec(ctx, `DELETE FROM t_paper WHERE creator = $1`, userID)
 	_ = txn.Commit(ctx)
 }
 
@@ -395,7 +416,6 @@ func TestPaperListGetMethod(t *testing.T) {
 	db := cmn.GetPgxConn()
 	ctx := context.Background()
 	userID := int64(90002)
-	otherUserID := int64(90099)
 	teacherRoleID := int64(2003) // 教师角色ID
 
 	tests := []struct {
@@ -464,7 +484,10 @@ func TestPaperListGetMethod(t *testing.T) {
 			roleID:        teacherRoleID,
 			forceError:    "",
 			setup: func() []int64 {
-				id := createTestPaper(ctx, "分类试卷", userID)
+				var id int64
+				_ = db.QueryRow(ctx,
+					`INSERT INTO t_paper (name, category,tags, creator, create_time, updated_by, update_time, status, domain_id) 
+	VALUES ('唯一名试卷', '02',$3, $1, $2, $1, $2, '00', $4) RETURNING id`, userID, time.Now().UnixMilli(), types.JSONText(`["vue"]`), resourceDomainID).Scan(&id)
 				return []int64{id}
 			},
 		},
@@ -489,6 +512,7 @@ func TestPaperListGetMethod(t *testing.T) {
 			expectedCount: 0,
 			wantError:     false,
 			userID:        userID,
+			roleID:        teacherRoleID,
 			forceError:    "",
 			setup: func() []int64 {
 				var ids []int64
@@ -505,6 +529,7 @@ func TestPaperListGetMethod(t *testing.T) {
 			expectedCount: 10, // 默认page=1,pageSize=10
 			wantError:     false,
 			userID:        userID,
+			roleID:        teacherRoleID,
 			forceError:    "",
 			setup: func() []int64 {
 				var ids []int64
@@ -521,13 +546,20 @@ func TestPaperListGetMethod(t *testing.T) {
 			expectedCount: 1,
 			wantError:     false,
 			userID:        userID,
+			roleID:        teacherRoleID,
 			forceError:    "",
 			setup: func() []int64 {
+				var ids []int64
+				for i := 0; i < 3; i++ {
+					id := createTestPaper(ctx, fmt.Sprintf("测试试卷%d", i+1), userID)
+					ids = append(ids, id)
+				}
 				var id int64
 				_ = db.QueryRow(ctx,
 					`INSERT INTO t_paper (name, category,tags, creator, create_time, updated_by, update_time, status,domain_id) 
 	VALUES ('组合试卷', '02',$3, $1, $2, $1, $2, '00', $4) RETURNING id`, userID, time.Now().UnixMilli(), types.JSONText(`["go"]`), resourceDomainID).Scan(&id)
-				return []int64{id}
+				ids = append(ids, id)
+				return ids
 			},
 		},
 		{
@@ -536,6 +568,7 @@ func TestPaperListGetMethod(t *testing.T) {
 			expectedCount: 5,
 			wantError:     false,
 			userID:        userID,
+			roleID:        teacherRoleID,
 			forceError:    "",
 			setup: func() []int64 {
 				var ids []int64
@@ -552,6 +585,7 @@ func TestPaperListGetMethod(t *testing.T) {
 			expectedCount: 0,
 			wantError:     false,
 			userID:        userID,
+			roleID:        teacherRoleID,
 			forceError:    "",
 			setup: func() []int64 {
 				var ids []int64
@@ -563,23 +597,12 @@ func TestPaperListGetMethod(t *testing.T) {
 			},
 		},
 		{
-			name:          "非创建者权限",
-			query:         "",
-			expectedCount: 0,
-			wantError:     false,
-			userID:        otherUserID,
-			forceError:    "",
-			setup: func() []int64 {
-				id := createTestPaper(ctx, "非创建者试卷", userID)
-				return []int64{id}
-			},
-		},
-		{
 			name:          "无数据",
 			query:         "name=不存在的试卷",
 			expectedCount: 0,
 			wantError:     false,
 			userID:        userID,
+			roleID:        teacherRoleID,
 			forceError:    "",
 			setup:         func() []int64 { return nil },
 		},
@@ -588,8 +611,19 @@ func TestPaperListGetMethod(t *testing.T) {
 			query:         "",
 			wantError:     true,
 			userID:        0,
+			roleID:        teacherRoleID,
 			forceError:    "",
-			expectedError: "Invalid UserID",
+			expectedError: ErrInvalidUserID.Error(),
+			setup:         func() []int64 { return nil },
+		},
+		{
+			name:          "当前角色用户不能获取试卷列表",
+			query:         "",
+			wantError:     true,
+			userID:        userID,
+			roleID:        studentRoleID,
+			forceError:    "",
+			expectedError: ErrWithoutPermission.Error(),
 			setup:         func() []int64 { return nil },
 		},
 		{
@@ -609,11 +643,13 @@ func TestPaperListGetMethod(t *testing.T) {
 			setup:      func() []int64 { return nil },
 		},
 		{
-			name:       "RowScan",
-			query:      "",
-			wantError:  true,
-			userID:     userID,
-			forceError: "getPaperList-RowScan-err",
+			name:          "getPaperList-RowScan-err",
+			query:         "",
+			wantError:     true,
+			userID:        userID,
+			forceError:    "getPaperList-RowScan-err",
+			expectedError: "getPaperList-RowScan-err",
+			roleID:        teacherRoleID,
 			setup: func() []int64 {
 				var ids []int64
 				for i := 0; i < 3; i++ {
@@ -624,11 +660,132 @@ func TestPaperListGetMethod(t *testing.T) {
 			},
 		},
 		{
-			name:       "RowScan",
-			query:      "",
-			wantError:  true,
-			userID:     userID,
-			forceError: "getPaperList-RowErr-err",
+			name:          "getPaperList-RowErr-err",
+			query:         "",
+			wantError:     true,
+			userID:        userID,
+			forceError:    "getPaperList-RowErr-err",
+			expectedError: "getPaperList-RowErr-err",
+			roleID:        teacherRoleID,
+			setup: func() []int64 {
+				var ids []int64
+				for i := 0; i < 3; i++ {
+					id := createTestPaper(ctx, fmt.Sprintf("测试试卷%d", i+1), userID)
+					ids = append(ids, id)
+				}
+				return ids
+			},
+		},
+		{
+			name:          "tx.QueryRow-err",
+			query:         "",
+			wantError:     true,
+			userID:        userID,
+			roleID:        teacherRoleID,
+			forceError:    "tx.QueryRow-err",
+			expectedError: "tx.QueryRow-err",
+			setup: func() []int64 {
+				var ids []int64
+				for i := 0; i < 3; i++ {
+					id := createTestPaper(ctx, fmt.Sprintf("测试试卷%d", i+1), userID)
+					ids = append(ids, id)
+				}
+				return ids
+			},
+		},
+		{
+			name:          "无效的试卷分类",
+			query:         "category=04",
+			wantError:     true,
+			userID:        userID,
+			roleID:        teacherRoleID,
+			forceError:    "",
+			expectedError: "无效的试卷分类",
+			setup: func() []int64 {
+				var ids []int64
+				for i := 0; i < 3; i++ {
+					id := createTestPaper(ctx, fmt.Sprintf("测试试卷%d", i+1), userID)
+					ids = append(ids, id)
+				}
+				return ids
+			},
+		},
+		{
+			name:          "页数小于等于0",
+			query:         "page=-1",
+			wantError:     true,
+			userID:        userID,
+			roleID:        teacherRoleID,
+			forceError:    "",
+			expectedError: "页数小于等于0",
+			setup: func() []int64 {
+				var ids []int64
+				for i := 0; i < 3; i++ {
+					id := createTestPaper(ctx, fmt.Sprintf("测试试卷%d", i+1), userID)
+					ids = append(ids, id)
+				}
+				return ids
+			},
+		},
+		{
+			name:          "无效的页大小",
+			query:         "pageSize=15",
+			wantError:     true,
+			userID:        userID,
+			roleID:        teacherRoleID,
+			forceError:    "",
+			expectedError: "无效的页大小",
+			setup: func() []int64 {
+				var ids []int64
+				for i := 0; i < 3; i++ {
+					id := createTestPaper(ctx, fmt.Sprintf("测试试卷%d", i+1), userID)
+					ids = append(ids, id)
+				}
+				return ids
+			},
+		},
+		{
+			name:          "查询试卷名称过长，最大长度为",
+			query:         "name=descdescdescdescdescdescdescdescdescdescdescdescdescdescdescdescdescdescdescddescdescdescdescdescdescdescdescdescdescdescdescdescdescdescdescdescdescdescd",
+			wantError:     true,
+			userID:        userID,
+			roleID:        teacherRoleID,
+			forceError:    "",
+			expectedError: "查询试卷名称过长，最大长度为",
+			setup: func() []int64 {
+				var ids []int64
+				for i := 0; i < 3; i++ {
+					id := createTestPaper(ctx, fmt.Sprintf("测试试卷%d", i+1), userID)
+					ids = append(ids, id)
+				}
+				return ids
+			},
+		},
+		{
+			name:          "getPaperList-QueryRowCount-err",
+			query:         "",
+			wantError:     true,
+			userID:        userID,
+			roleID:        teacherRoleID,
+			forceError:    "getPaperList-QueryRowCount-err",
+			expectedError: "getPaperList-QueryRowCount-err",
+			setup: func() []int64 {
+				var ids []int64
+				for i := 0; i < 3; i++ {
+					id := createTestPaper(ctx, fmt.Sprintf("测试试卷%d", i+1), userID)
+					ids = append(ids, id)
+				}
+				return ids
+			},
+		},
+		{
+			name:          "getPaperList-QueryRow-err",
+			query:         "",
+			wantError:     true,
+			userID:        userID,
+			roleID:        teacherRoleID,
+			forceError:    "getPaperList-QueryRow-err",
+			expectedError: "getPaperList-QueryRow-err",
 			setup: func() []int64 {
 				var ids []int64
 				for i := 0; i < 3; i++ {
@@ -704,12 +861,46 @@ func TestPaperListDeleteMethod(t *testing.T) {
 			},
 		},
 		{
-			name:       "部分ID无效",
-			deleteIDs:  nil, // setup生成+1个不存在的ID
+			name:       "超级管理员正常批量删除",
+			deleteIDs:  nil, // 由setup生成
 			wantError:  false,
 			userID:     userID,
-			roleID:     teacherRoleID,
+			roleID:     superAdminRoleID,
 			forceError: "",
+			setup: func() []int64 {
+				var ids []int64
+				for i := 0; i < 2; i++ {
+					id := createTestPaper(ctx, fmt.Sprintf("待删除试卷%d", i+1), userID)
+					ids = append(ids, id)
+				}
+				return ids
+			},
+		},
+		{
+			name:          "superAdmin-tx.QueryRow-err",
+			deleteIDs:     nil, // 由setup生成
+			wantError:     true,
+			userID:        userID,
+			roleID:        superAdminRoleID,
+			forceError:    "superAdmin-tx.QueryRow-err",
+			expectedError: "superAdmin-tx.QueryRow-err",
+			setup: func() []int64 {
+				var ids []int64
+				for i := 0; i < 2; i++ {
+					id := createTestPaper(ctx, fmt.Sprintf("待删除试卷%d", i+1), userID)
+					ids = append(ids, id)
+				}
+				return ids
+			},
+		},
+		{
+			name:          "批量删除的试卷不存在",
+			deleteIDs:     nil, // setup生成+1个不存在的ID
+			wantError:     true,
+			userID:        userID,
+			roleID:        teacherRoleID,
+			forceError:    "",
+			expectedError: "试卷 \"99999999\" 不存在",
 			setup: func() []int64 {
 				var ids []int64
 				for i := 0; i < 1; i++ {
@@ -721,33 +912,62 @@ func TestPaperListDeleteMethod(t *testing.T) {
 			},
 		},
 		{
-			name:       "无效用户ID",
-			deleteIDs:  nil,
-			wantError:  true,
-			userID:     0,
-			roleID:     teacherRoleID, // 添加角色ID
-			forceError: "",
+			name:          "无效用户ID",
+			deleteIDs:     nil,
+			wantError:     true,
+			userID:        0,
+			roleID:        teacherRoleID, // 添加角色ID
+			forceError:    "",
+			expectedError: ErrInvalidUserID.Error(),
 			setup: func() []int64 {
 				id := createTestPaper(ctx, "无效用户试卷", 1) // 使用一个有效用户ID
 				return []int64{id}
 			},
 		},
 		{
-			name:       "io.ReadAll-err",
-			deleteIDs:  nil,
-			wantError:  true,
-			userID:     userID,
-			roleID:     teacherRoleID, // 添加角色ID
-			forceError: "PaperList-delete-io.ReadAll-err",
-			setup:      func() []int64 { return nil },
+			name:          "无效角色ID",
+			deleteIDs:     nil,
+			wantError:     true,
+			userID:        userID,
+			roleID:        -1, // 添加角色ID
+			forceError:    "",
+			expectedError: ErrInvalidRoleID.Error(),
+			setup: func() []int64 {
+				id := createTestPaper(ctx, "无效用户试卷", userID) // 使用一个有效用户ID
+				return []int64{id}
+			},
 		},
 		{
-			name:       "Body.Close-err",
-			deleteIDs:  nil,
-			wantError:  false,
-			userID:     userID,
-			roleID:     teacherRoleID, // 添加角色ID
-			forceError: "PaperList-delete-Body.Close-err",
+			name:          "用户角色无权限访问",
+			deleteIDs:     nil,
+			wantError:     true,
+			userID:        userID,
+			roleID:        studentRoleID, // 添加角色ID
+			forceError:    "",
+			expectedError: ErrWithoutPermission.Error(),
+			setup: func() []int64 {
+				id := createTestPaper(ctx, "无效用户试卷", userID) // 使用一个有效用户ID
+				return []int64{id}
+			},
+		},
+		{
+			name:          "io.ReadAll-err",
+			deleteIDs:     nil,
+			wantError:     true,
+			userID:        userID,
+			roleID:        teacherRoleID, // 添加角色ID
+			forceError:    "PaperList-delete-io.ReadAll-err",
+			expectedError: "PaperList-delete-io.ReadAll-err",
+			setup:         func() []int64 { return nil },
+		},
+		{
+			name:          "Body.Close-err",
+			deleteIDs:     nil,
+			wantError:     false,
+			userID:        userID,
+			roleID:        teacherRoleID, // 添加角色ID
+			forceError:    "PaperList-delete-Body.Close-err",
+			expectedError: "PaperList-delete-Body.Close-err",
 			setup: func() []int64 {
 				var ids []int64
 				for i := 0; i < 2; i++ {
@@ -758,11 +978,13 @@ func TestPaperListDeleteMethod(t *testing.T) {
 			},
 		},
 		{
-			name:       "json.Unmarshal1-err",
-			deleteIDs:  nil,
-			wantError:  true,
-			userID:     userID,
-			forceError: "PaperList-delete-json.Unmarshal1-err",
+			name:          "json.Unmarshal1-err",
+			deleteIDs:     nil,
+			wantError:     true,
+			userID:        userID,
+			forceError:    "PaperList-delete-json.Unmarshal1-err",
+			expectedError: "PaperList-delete-json.Unmarshal1-err",
+			roleID:        teacherRoleID,
 			setup: func() []int64 {
 				var ids []int64
 				for i := 0; i < 2; i++ {
@@ -773,11 +995,13 @@ func TestPaperListDeleteMethod(t *testing.T) {
 			},
 		},
 		{
-			name:       "json.Unmarshal2-err",
-			deleteIDs:  nil,
-			wantError:  true,
-			userID:     userID,
-			forceError: "PaperList-delete-json.Unmarshal2-err",
+			name:          "json.Unmarshal2-err",
+			deleteIDs:     nil,
+			wantError:     true,
+			userID:        userID,
+			forceError:    "PaperList-delete-json.Unmarshal2-err",
+			expectedError: "PaperList-delete-json.Unmarshal2-err",
+			roleID:        teacherRoleID,
 			setup: func() []int64 {
 				var ids []int64
 				for i := 0; i < 2; i++ {
@@ -788,11 +1012,13 @@ func TestPaperListDeleteMethod(t *testing.T) {
 			},
 		},
 		{
-			name:       "BeginTx-err",
-			deleteIDs:  nil,
-			wantError:  true,
-			userID:     userID,
-			forceError: "PaperList-delete-BeginTx-err",
+			name:          "BeginTx-err",
+			deleteIDs:     nil,
+			wantError:     true,
+			userID:        userID,
+			forceError:    "PaperList-delete-BeginTx-err",
+			expectedError: "PaperList-delete-BeginTx-err",
+			roleID:        teacherRoleID,
 			setup: func() []int64 {
 				var ids []int64
 				for i := 0; i < 2; i++ {
@@ -803,11 +1029,13 @@ func TestPaperListDeleteMethod(t *testing.T) {
 			},
 		},
 		{
-			name:       "Commit-err",
-			deleteIDs:  nil,
-			wantError:  true,
-			userID:     userID,
-			forceError: "PaperList-delete-Commit-err",
+			name:          "Commit-err",
+			deleteIDs:     nil,
+			wantError:     false,
+			userID:        userID,
+			forceError:    "PaperList-delete-Commit-err",
+			expectedError: "success",
+			roleID:        teacherRoleID,
 			setup: func() []int64 {
 				var ids []int64
 				for i := 0; i < 2; i++ {
@@ -818,36 +1046,37 @@ func TestPaperListDeleteMethod(t *testing.T) {
 			},
 		},
 		{
-			name:       "Rollback-err",
-			deleteIDs:  nil,
-			wantError:  false,
-			userID:     userID,
-			forceError: "PaperList-delete-Rollback-err",
+			name:          "Rollback-err",
+			deleteIDs:     nil,
+			wantError:     true,
+			userID:        userID,
+			roleID:        teacherRoleID,
+			forceError:    "PaperList-delete-Rollback-err",
+			expectedError: "试卷 \"99999999\" 不存在\n试卷 \"8888888\" 不存在",
 			setup: func() []int64 {
-				var ids []int64
-				for i := 0; i < 2; i++ {
-					id := createTestPaper(ctx, fmt.Sprintf("待删除试卷%d", i+1), userID)
-					ids = append(ids, id)
-				}
-				return ids
+				return []int64{99999999, 8888888}
 			},
 		},
 		{
-			name:       "空试卷ID",
-			deleteIDs:  nil,
-			wantError:  true,
-			userID:     userID,
-			forceError: "",
+			name:          "空试卷ID",
+			deleteIDs:     nil,
+			wantError:     true,
+			userID:        userID,
+			roleID:        teacherRoleID,
+			forceError:    "",
+			expectedError: "ID List cannot be empty",
 			setup: func() []int64 {
 				return nil
 			},
 		},
 		{
-			name:       "deletePapers-exec-err",
-			deleteIDs:  nil,
-			wantError:  true,
-			userID:     userID,
-			forceError: "deletePapers-exec-err",
+			name:          "tx.QueryRow-err",
+			deleteIDs:     nil,
+			wantError:     true,
+			userID:        userID,
+			roleID:        teacherRoleID,
+			forceError:    "tx.QueryRow-err",
+			expectedError: "tx.QueryRow-err",
 			setup: func() []int64 {
 				var ids []int64
 				for i := 0; i < 2; i++ {
@@ -858,11 +1087,13 @@ func TestPaperListDeleteMethod(t *testing.T) {
 			},
 		},
 		{
-			name:       "deletePapersgroups-exec-err",
-			deleteIDs:  nil,
-			wantError:  true,
-			userID:     userID,
-			forceError: "deletePapersgroups-exec-err",
+			name:          "normaluser-tx.QueryRow-err",
+			deleteIDs:     nil,
+			wantError:     true,
+			userID:        userID,
+			roleID:        teacherRoleID,
+			forceError:    "normaluser-tx.QueryRow-err",
+			expectedError: "normaluser-tx.QueryRow-err",
 			setup: func() []int64 {
 				var ids []int64
 				for i := 0; i < 2; i++ {
@@ -873,11 +1104,64 @@ func TestPaperListDeleteMethod(t *testing.T) {
 			},
 		},
 		{
-			name:       "deletePapersquestions-exec-err",
-			deleteIDs:  nil,
-			wantError:  true,
-			userID:     userID,
-			forceError: "deletePapersquestions-exec-err",
+			name:          "deletePapers-exec-err",
+			deleteIDs:     nil,
+			wantError:     true,
+			userID:        userID,
+			roleID:        teacherRoleID,
+			forceError:    "deletePapers-exec-err",
+			expectedError: "deletePapers-exec-err",
+			setup: func() []int64 {
+				var ids []int64
+				for i := 0; i < 2; i++ {
+					id := createTestPaper(ctx, fmt.Sprintf("待删除试卷%d", i+1), userID)
+					ids = append(ids, id)
+				}
+				return ids
+			},
+		},
+		{
+			name:          "deletePapersgroups-exec-err",
+			deleteIDs:     nil,
+			wantError:     true,
+			userID:        userID,
+			roleID:        teacherRoleID,
+			forceError:    "deletePapersgroups-exec-err",
+			expectedError: "deletePapersgroups-exec-err",
+			setup: func() []int64 {
+				var ids []int64
+				for i := 0; i < 2; i++ {
+					id := createTestPaper(ctx, fmt.Sprintf("待删除试卷%d", i+1), userID)
+					ids = append(ids, id)
+				}
+				return ids
+			},
+		},
+		{
+			name:          "deletePapersquestions-exec-err",
+			deleteIDs:     nil,
+			wantError:     true,
+			userID:        userID,
+			roleID:        teacherRoleID,
+			forceError:    "deletePapersquestions-exec-err",
+			expectedError: "deletePapersquestions-exec-err",
+			setup: func() []int64 {
+				var ids []int64
+				for i := 0; i < 2; i++ {
+					id := createTestPaper(ctx, fmt.Sprintf("待删除试卷%d", i+1), userID)
+					ids = append(ids, id)
+				}
+				return ids
+			},
+		},
+		{
+			name:          "PaperList-delete-Rollback-panic",
+			deleteIDs:     nil,
+			wantError:     true,
+			userID:        userID,
+			roleID:        teacherRoleID,
+			forceError:    "PaperList-delete-Rollback-panic",
+			expectedError: "PaperList-delete-Rollback-panic",
 			setup: func() []int64 {
 				var ids []int64
 				for i := 0; i < 2; i++ {
@@ -891,6 +1175,15 @@ func TestPaperListDeleteMethod(t *testing.T) {
 
 	t.Run("buf is nil", func(t *testing.T) {
 		ctxDel := createMockContextWithBody("DELETE", "/paper", nil, "", userID, teacherRoleID)
+		PaperList(ctxDel)
+		q := cmn.GetCtxValue(ctxDel)
+		if q.Msg.Status == 0 {
+			t.Errorf("期望错误, 实际无错: %+v", q.Msg)
+		}
+	})
+
+	t.Run("unsupport method", func(t *testing.T) {
+		ctxDel := createMockContextWithBody("PATCH", "/paper", nil, "", userID, teacherRoleID)
 		PaperList(ctxDel)
 		q := cmn.GetCtxValue(ctxDel)
 		if q.Msg.Status == 0 {
@@ -913,8 +1206,8 @@ func TestPaperListDeleteMethod(t *testing.T) {
 			PaperList(ctxDel)
 			q := cmn.GetCtxValue(ctxDel)
 			if tt.wantError {
-				if q.Msg.Status == 0 {
-					t.Errorf("期望错误, 实际无错: %+v", q.Msg)
+				if q.Msg.Status == 0 || !strings.Contains(q.Msg.Msg, tt.expectedError) {
+					t.Errorf("期望错误信息包含'%s', 实际: %+v", tt.expectedError, q.Msg)
 				}
 			} else {
 				if q.Msg.Status != 0 || q.Msg.Msg != "success" {
@@ -944,8 +1237,6 @@ func TestManualPaperPostMethod(t *testing.T) {
 	ctx := context.Background()
 	userID := int64(91001)
 
-	const teacherRoleID = int64(2003) // 教师角色ID
-
 	tests := []struct {
 		name          string
 		wantError     bool
@@ -968,7 +1259,7 @@ func TestManualPaperPostMethod(t *testing.T) {
 			wantError:     true,
 			userID:        0,
 			forceError:    "",
-			expectedError: "无效用户ID",
+			expectedError: ErrInvalidUserID.Error(),
 			setup:         func() []int64 { return nil },
 		},
 		{
@@ -982,7 +1273,7 @@ func TestManualPaperPostMethod(t *testing.T) {
 		},
 		{
 			name:          "recover-err",
-			wantError:     false,
+			wantError:     true,
 			userID:        userID,
 			roleID:        teacherRoleID,
 			forceError:    "recover-err",
@@ -1008,12 +1299,21 @@ func TestManualPaperPostMethod(t *testing.T) {
 			setup:         func() []int64 { return nil },
 		},
 		{
-			name:          "tx.QueryRow-err",
+			name:          "tx.QueryRow1-err",
 			wantError:     true,
 			userID:        userID,
 			roleID:        teacherRoleID,
-			forceError:    "tx.QueryRow-err",
-			expectedError: "tx.QueryRow-err",
+			forceError:    "tx.QueryRow1-err",
+			expectedError: "tx.QueryRow1-err",
+			setup:         func() []int64 { return nil },
+		},
+		{
+			name:          "tx.QueryRow2-err",
+			wantError:     true,
+			userID:        userID,
+			roleID:        teacherRoleID,
+			forceError:    "tx.QueryRow2-err",
+			expectedError: "tx.QueryRow2-err",
 			setup:         func() []int64 { return nil },
 		},
 		{
@@ -1043,21 +1343,35 @@ func TestManualPaperPostMethod(t *testing.T) {
 			expectedError: "rows.Err-err",
 			setup:         func() []int64 { return nil },
 		},
+		{
+			name:          "Invalid roleID",
+			wantError:     true,
+			userID:        userID,
+			roleID:        -1,
+			forceError:    "",
+			expectedError: ErrInvalidRoleID.Error(),
+			setup:         func() []int64 { return nil },
+		},
+		{
+			name:          "当前用户角色没有权限",
+			wantError:     true,
+			userID:        userID,
+			roleID:        studentRoleID,
+			forceError:    "",
+			expectedError: ErrWithoutPermission.Error(),
+			setup:         func() []int64 { return nil },
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			var paperIDs []int64
-			if tt.setup != nil {
-				paperIDs = tt.setup()
-				t.Cleanup(func() { cleanupTestPaperData(t, paperIDs) })
-			}
+			t.Cleanup(func() { cleanupTestPaperDataByUserID(t, tt.userID) })
 			ctxPost := createMockContextWithBody("POST", "/paper/manual", "", tt.forceError, tt.userID, tt.roleID)
 			ManualPaper(ctxPost)
 			q := cmn.GetCtxValue(ctxPost)
 			if tt.wantError {
-				if q.Msg.Status == 0 {
-					t.Errorf("期望错误, 实际无错: %+v", q.Msg)
+				if q.Msg.Status == 0 || !strings.Contains(q.Msg.Msg, tt.expectedError) {
+					t.Errorf("期望错误信息包含'%s', 实际: %+v", tt.expectedError, q.Msg)
 				}
 			} else {
 				if q.Msg.Status != 0 {
@@ -1109,7 +1423,7 @@ func TestManualPaperPutMethod(t *testing.T) {
 					{
 						Action: "update_info",
 						Payload: json.RawMessage(`{  
-                        "Name": "单元测试试卷",
+                        "name": "单元测试试卷",
                         "category": "02",
                         "level": "04",
                         "duration": 60,
@@ -1136,6 +1450,102 @@ func TestManualPaperPutMethod(t *testing.T) {
 			},
 		},
 		{
+			name: "tag-json.Marshal-err",
+			reqBody: &UpdateManualPaperRequest{
+				[]UpdateManualPaperAction{
+					{
+						Action: "update_info",
+						Payload: json.RawMessage(`{  
+                        "name": "单元测试试卷",
+                        "category": "02",
+                        "level": "04",
+                        "duration": 60,
+                        "description": "desc",
+                        "tags": ["tag1", "tag2"]
+                    }`),
+					},
+				},
+			},
+			wantError:     true,
+			userID:        userID,
+			roleID:        teacherRoleID,
+			forceError:    "tag-json.Marshal-err",
+			expectedError: "tag-json.Marshal-err",
+			setup: func() (int64, []int64) {
+				id := createTestPaper(ctx, "待更新试卷", userID)
+				return id, []int64{id}
+			},
+			validate: func(t *testing.T, ctx context.Context, q *cmn.ServiceCtx, paperID int64) {
+				var name, category, level, desc string
+				_ = db.QueryRow(ctx, "SELECT name, category, level, description FROM t_paper WHERE id=$1", paperID).Scan(&name, &category, &level, &desc)
+				if name != "单元测试试卷" || category != "02" || level != "04" || desc != "desc" {
+					t.Errorf("PUT后数据库字段未正确更新: got %s %s %s %s", name, category, level, desc)
+				}
+			},
+		},
+		{
+			name: "超级管理员正常更新试卷",
+			reqBody: &UpdateManualPaperRequest{
+				[]UpdateManualPaperAction{
+					{
+						Action: "update_info",
+						Payload: json.RawMessage(`{  
+                        "Name": "单元测试试卷",
+                        "category": "02",
+                        "level": "04",
+                        "duration": 60,
+                        "description": "desc",
+                        "tags": ["tag1", "tag2"]
+                    }`),
+					},
+				},
+			},
+			wantError:  false,
+			userID:     userID,
+			roleID:     superAdminRoleID,
+			forceError: "",
+			setup: func() (int64, []int64) {
+				id := createTestPaper(ctx, "待更新试卷", userID)
+				return id, []int64{id}
+			},
+			validate: func(t *testing.T, ctx context.Context, q *cmn.ServiceCtx, paperID int64) {
+				var name, category, level, desc string
+				_ = db.QueryRow(ctx, "SELECT name, category, level, description FROM t_paper WHERE id=$1", paperID).Scan(&name, &category, &level, &desc)
+				if name != "单元测试试卷" || category != "02" || level != "04" || desc != "desc" {
+					t.Errorf("PUT后数据库字段未正确更新: got %s %s %s %s", name, category, level, desc)
+				}
+			},
+		},
+		{
+			name: "用户不是创建者且没有管理员权限",
+			reqBody: &UpdateManualPaperRequest{
+				[]UpdateManualPaperAction{
+					{
+						Action: "update_info",
+						Payload: json.RawMessage(`{  
+                        "Name": "单元测试试卷",
+                        "category": "02",
+                        "level": "04",
+                        "duration": 60,
+                        "description": "desc",
+                        "tags": ["tag1", "tag2"]
+                    }`),
+					},
+				},
+			},
+			wantError:     true,
+			userID:        userID,
+			roleID:        teacherRoleID,
+			forceError:    "",
+			expectedError: "无权更新试卷",
+			setup: func() (int64, []int64) {
+				id := createTestPaper(ctx, "待更新试卷", 1)
+				return id, []int64{id}
+			},
+			validate: func(t *testing.T, ctx context.Context, q *cmn.ServiceCtx, paperID int64) {
+			},
+		},
+		{
 			name: "无效用户ID",
 			reqBody: &UpdateManualPaperRequest{
 				[]UpdateManualPaperAction{
@@ -1154,11 +1564,92 @@ func TestManualPaperPutMethod(t *testing.T) {
 			},
 			wantError:     true,
 			userID:        0,
+			roleID:        teacherRoleID,
 			forceError:    "",
-			expectedError: "无效用户ID",
+			expectedError: ErrInvalidUserID.Error(),
 			setup: func() (int64, []int64) {
 				id := createTestPaper(ctx, "无效用户试卷", 1)
 				return id, []int64{id}
+			},
+		},
+		{
+			name: "无效角色ID",
+			reqBody: &UpdateManualPaperRequest{
+				[]UpdateManualPaperAction{
+					{
+						Action: "update_info",
+						Payload: json.RawMessage(`{  
+                        "Name": "单元测试试卷",
+                        "category": "02",
+                        "level": "04",
+                        "duration": 60,
+                        "description": "desc",
+                        "tags": ["tag1", "tag2"]
+                    }`),
+					},
+				},
+			},
+			wantError:     true,
+			userID:        userID,
+			roleID:        -1,
+			forceError:    "",
+			expectedError: ErrInvalidRoleID.Error(),
+			setup: func() (int64, []int64) {
+				id := createTestPaper(ctx, "无效用户试卷", userID)
+				return id, []int64{id}
+			},
+		},
+		{
+			name: "用户角色没有权限",
+			reqBody: &UpdateManualPaperRequest{
+				[]UpdateManualPaperAction{
+					{
+						Action: "update_info",
+						Payload: json.RawMessage(`{  
+                        "Name": "单元测试试卷",
+                        "category": "02",
+                        "level": "04",
+                        "duration": 60,
+                        "description": "desc",
+                        "tags": ["tag1", "tag2"]
+                    }`),
+					},
+				},
+			},
+			wantError:     true,
+			userID:        userID,
+			roleID:        studentRoleID,
+			forceError:    "",
+			expectedError: ErrWithoutPermission.Error(),
+			setup: func() (int64, []int64) {
+				id := createTestPaper(ctx, "无效用户试卷", userID)
+				return id, []int64{id}
+			},
+		},
+		{
+			name: "当前试卷不存在，触发没有权限",
+			reqBody: &UpdateManualPaperRequest{
+				[]UpdateManualPaperAction{
+					{
+						Action: "update_info",
+						Payload: json.RawMessage(`{  
+                        "Name": "单元测试试卷",
+                        "category": "02",
+                        "level": "04",
+                        "duration": 60,
+                        "description": "desc",
+                        "tags": ["tag1", "tag2"]
+                    }`),
+					},
+				},
+			},
+			wantError:     true,
+			userID:        userID,
+			roleID:        teacherRoleID,
+			forceError:    "",
+			expectedError: "无权更新试卷",
+			setup: func() (int64, []int64) {
+				return -1, nil
 			},
 		},
 		{
@@ -1180,6 +1671,7 @@ func TestManualPaperPutMethod(t *testing.T) {
 			},
 			wantError:     true,
 			userID:        userID,
+			roleID:        teacherRoleID,
 			forceError:    "",
 			expectedError: "invalid syntax",
 			setup: func() (int64, []int64) {
@@ -1268,7 +1760,7 @@ func TestManualPaperPutMethod(t *testing.T) {
 			},
 		},
 		{
-			name: "validate-err",
+			name: "未提供任何操作",
 			reqBody: &UpdateManualPaperRequest{
 				[]UpdateManualPaperAction{},
 			},
@@ -1276,14 +1768,14 @@ func TestManualPaperPutMethod(t *testing.T) {
 			userID:        userID,
 			roleID:        teacherRoleID,
 			forceError:    "",
-			expectedError: "Field validation for 'Actions' failed on the 'min' tag",
+			expectedError: "未提供任何操作",
 			setup: func() (int64, []int64) {
 				id := createTestPaper(ctx, "待更新试卷", userID)
 				return id, []int64{id}
 			},
 		},
 		{
-			name: "无效的试卷ID",
+			name: "isPaperCreator-QueryRow-err",
 			reqBody: &UpdateManualPaperRequest{
 				[]UpdateManualPaperAction{
 					{
@@ -1302,37 +1794,11 @@ func TestManualPaperPutMethod(t *testing.T) {
 			wantError:     true,
 			userID:        userID,
 			roleID:        teacherRoleID,
-			forceError:    "",
-			expectedError: "no rows in result",
-			setup: func() (int64, []int64) {
-				return -1, []int64{}
-			},
-		},
-		{
-			name: "unexists paper",
-			reqBody: &UpdateManualPaperRequest{
-				[]UpdateManualPaperAction{
-					{
-						Action: "update_info",
-						Payload: json.RawMessage(`{  
-                        "Name": "单元测试试卷",
-                        "category": "02",
-                        "level": "04",
-                        "duration": 60,
-                        "description": "desc",
-                        "tags": ["tag1", "tag2"]
-                    }`),
-					},
-				},
-			},
-			wantError:     true,
-			userID:        userID,
-			roleID:        teacherRoleID,
-			forceError:    "",
-			expectedError: "no rows in result",
+			forceError:    "isPaperCreator-QueryRow-err",
+			expectedError: "isPaperCreator-QueryRow-err",
 			setup: func() (int64, []int64) {
 				id := createTestPaper(ctx, "待更新试卷", userID)
-				return 99999999, []int64{id}
+				return id, []int64{id}
 			},
 		},
 		//测试updateManualPaper函数
@@ -1409,6 +1875,7 @@ func TestManualPaperPutMethod(t *testing.T) {
 			},
 			wantError:     true,
 			userID:        userID,
+			roleID:        teacherRoleID,
 			forceError:    "",
 			expectedError: "unsupported action type",
 			setup: func() (int64, []int64) {
@@ -1442,6 +1909,7 @@ func TestManualPaperPutMethod(t *testing.T) {
 			},
 			wantError:     true,
 			userID:        userID,
+			roleID:        teacherRoleID,
 			forceError:    "Rollback-err",
 			expectedError: "Rollback-err",
 			setup: func() (int64, []int64) {
@@ -1475,6 +1943,7 @@ func TestManualPaperPutMethod(t *testing.T) {
 			},
 			wantError:     true,
 			userID:        userID,
+			roleID:        teacherRoleID,
 			forceError:    "Commit-err",
 			expectedError: "Commit-err",
 			setup: func() (int64, []int64) {
@@ -1483,6 +1952,179 @@ func TestManualPaperPutMethod(t *testing.T) {
 			},
 		},
 		//update_info
+		{
+			name: "设置试卷不是考试或练习类型",
+			reqBody: &UpdateManualPaperRequest{
+				[]UpdateManualPaperAction{
+					{
+						Action: "update_info",
+						Payload: json.RawMessage(`{  
+                        "name": "单元测试试卷",
+                        "category": "06",
+                        "level": "04",
+                        "duration": 60,
+                        "description": "desc",
+                        "tags": ["tag1", "tag2"]
+                    }`),
+					},
+				},
+			},
+			wantError:     true,
+			userID:        userID,
+			roleID:        teacherRoleID,
+			forceError:    "",
+			expectedError: "试卷分类不合法",
+			setup: func() (int64, []int64) {
+				id := createTestPaper(ctx, "待更新试卷", userID)
+				return id, []int64{id}
+			},
+			validate: func(t *testing.T, ctx context.Context, q *cmn.ServiceCtx, paperID int64) {
+			},
+		},
+		{
+			name: "试卷难度不合法",
+			reqBody: &UpdateManualPaperRequest{
+				[]UpdateManualPaperAction{
+					{
+						Action: "update_info",
+						Payload: json.RawMessage(`{  
+                        "name": "单元测试试卷",
+                        "category": "00",
+                        "level": "08",
+                        "duration": 60,
+                        "description": "desc",
+                        "tags": ["tag1", "tag2"]
+                    }`),
+					},
+				},
+			},
+			wantError:     true,
+			userID:        userID,
+			roleID:        teacherRoleID,
+			forceError:    "",
+			expectedError: "试卷难度不合法",
+			setup: func() (int64, []int64) {
+				id := createTestPaper(ctx, "待更新试卷", userID)
+				return id, []int64{id}
+			},
+			validate: func(t *testing.T, ctx context.Context, q *cmn.ServiceCtx, paperID int64) {
+			},
+		},
+		{
+			name: "试卷建议时长不能小于0",
+			reqBody: &UpdateManualPaperRequest{
+				[]UpdateManualPaperAction{
+					{
+						Action: "update_info",
+						Payload: json.RawMessage(`{  
+                        "name": "单元测试试卷",
+                        "category": "00",
+                        "level": "04",
+                        "duration": -1,
+                        "description": "desc",
+                        "tags": ["tag1", "tag2"]
+                    }`),
+					},
+				},
+			},
+			wantError:     true,
+			userID:        userID,
+			roleID:        teacherRoleID,
+			forceError:    "",
+			expectedError: "试卷建议时长不能小于0",
+			setup: func() (int64, []int64) {
+				id := createTestPaper(ctx, "待更新试卷", userID)
+				return id, []int64{id}
+			},
+			validate: func(t *testing.T, ctx context.Context, q *cmn.ServiceCtx, paperID int64) {
+			},
+		},
+		{
+			name: "试卷描述长度超出限制",
+			reqBody: &UpdateManualPaperRequest{
+				[]UpdateManualPaperAction{
+					{
+						Action: "update_info",
+						Payload: json.RawMessage(`{  
+                        "name": "单元测试试卷",
+                        "category": "00",
+                        "level": "04",
+                        "duration": 60,
+                        "description": "descdescdescdescdescdescdescdescdescdescdescdescdescdescdescdescdescdescdescdescdescdescdescdescdescdescdescdescdescdescdescdescdescdescdescdescdescdescdescdescdescdescdescdescdescdescdescdescdescdescdescdescdescdescdescdescdescdescdescdescdescdescdescdescdescdescdescdescdescdescdescdescdescdescdescdescdescdescdescdescdescdescdescdescdescdescdescdescdescdescdescdescdescdescdescdescdescdescdescdescdescdescdescdescdescdescdescdescdescdescdescdescdescdescdescdescdescdescdescdescdescdescdescdescdescc",
+                        "tags": ["tag1", "tag2"]
+                    }`),
+					},
+				},
+			},
+			wantError:     true,
+			userID:        userID,
+			roleID:        teacherRoleID,
+			forceError:    "",
+			expectedError: "试卷描述长度超出限制",
+			setup: func() (int64, []int64) {
+				id := createTestPaper(ctx, "待更新试卷", userID)
+				return id, []int64{id}
+			},
+			validate: func(t *testing.T, ctx context.Context, q *cmn.ServiceCtx, paperID int64) {
+			},
+		},
+		{
+			name: "试卷名字过长",
+			reqBody: &UpdateManualPaperRequest{
+				[]UpdateManualPaperAction{
+					{
+						Action: "update_info",
+						Payload: json.RawMessage(`{  
+                        "name": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                        "category": "02",
+                        "level": "04",
+                        "duration": 60,
+                        "description": "desc",
+                        "tags": ["tag1", "tag2"]
+                    }`),
+					},
+				},
+			},
+			wantError:     true,
+			userID:        userID,
+			roleID:        teacherRoleID,
+			forceError:    "",
+			expectedError: "试卷名称长度超出限制",
+			setup: func() (int64, []int64) {
+				id := createTestPaper(ctx, "待更新试卷", userID)
+				return id, []int64{id}
+			},
+			validate: func(t *testing.T, ctx context.Context, q *cmn.ServiceCtx, paperID int64) {
+			},
+		},
+		{
+			name: "只更新试卷名称",
+			reqBody: &UpdateManualPaperRequest{
+				[]UpdateManualPaperAction{
+					{
+						Action: "update_info",
+						Payload: json.RawMessage(`{  
+                        "name": "只修改试卷名称"
+                    }`),
+					},
+				},
+			},
+			wantError:  false,
+			userID:     userID,
+			roleID:     teacherRoleID,
+			forceError: "",
+			setup: func() (int64, []int64) {
+				id := createTestPaper(ctx, "待更新试卷", userID)
+				return id, []int64{id}
+			},
+			validate: func(t *testing.T, ctx context.Context, q *cmn.ServiceCtx, paperID int64) {
+				var name, category, level, desc string
+				_ = db.QueryRow(ctx, "SELECT name, category, level, description FROM t_paper WHERE id=$1", paperID).Scan(&name, &category, &level, &desc)
+				if name != "只修改试卷名称" {
+					t.Errorf("PUT后数据库字段未正确更新: got %s", name)
+				}
+			},
+		},
 		{
 			name: "update_info-json.Unmarshal-err",
 			reqBody: &UpdateManualPaperRequest{
@@ -1495,6 +2137,7 @@ func TestManualPaperPutMethod(t *testing.T) {
 			},
 			wantError:     true,
 			userID:        userID,
+			roleID:        teacherRoleID,
 			forceError:    "",
 			expectedError: "cannot unmarshal array into Go value of type paper.UpdatePaperBasicInfoRequest",
 			setup: func() (int64, []int64) {
@@ -1521,7 +2164,43 @@ func TestManualPaperPutMethod(t *testing.T) {
 			},
 			wantError:  false,
 			userID:     userID,
+			roleID:     teacherRoleID,
 			forceError: "",
+			setup: func() (int64, []int64) {
+				id := createTestPaper(ctx, "待更新试卷", userID)
+				return id, []int64{id}
+			},
+			validate: func(t *testing.T, ctx context.Context, q *cmn.ServiceCtx, paperID int64) {
+				var name, category, level, desc string
+				var updateTime int64
+				_ = db.QueryRow(ctx, "SELECT name, category, level, description, update_time FROM t_paper WHERE id=$1", paperID).Scan(&name, &category, &level, &desc, &updateTime)
+				if name != "待更新试卷" || category != "00" || level != "" || desc != "" {
+					t.Errorf("空更新后数据库字段被修改: name=%s category=%s level=%s desc=%s", name, category, level, desc)
+				}
+			},
+		},
+		{
+			name: "update_info validate error",
+			reqBody: &UpdateManualPaperRequest{
+				[]UpdateManualPaperAction{
+					{
+						Action: "update_info",
+						Payload: json.RawMessage(`{  
+                        "name": "单元测试试卷",
+                        "category": "04",
+                        "level": "04",
+                        "duration": 60,
+                        "description": "desc",
+                        "tags": ["tag1", "tag2"]
+                    }`),
+					},
+				},
+			},
+			wantError:     true,
+			userID:        userID,
+			roleID:        teacherRoleID,
+			forceError:    "",
+			expectedError: "试卷分类不合法",
 			setup: func() (int64, []int64) {
 				id := createTestPaper(ctx, "待更新试卷", userID)
 				return id, []int64{id}
@@ -1542,7 +2221,7 @@ func TestManualPaperPutMethod(t *testing.T) {
 					{
 						Action: "update_info",
 						Payload: json.RawMessage(`{  
-                        "Name": "单元测试试卷",
+                        "name": "单元测试试卷",
                         "category": "02",
                         "level": "04",
                         "duration": 60,
@@ -1554,6 +2233,7 @@ func TestManualPaperPutMethod(t *testing.T) {
 			},
 			wantError:     true,
 			userID:        userID,
+			roleID:        teacherRoleID,
 			forceError:    "tx.Exec-err",
 			expectedError: "tx.Exec-err",
 			setup: func() (int64, []int64) {
@@ -1581,7 +2261,37 @@ func TestManualPaperPutMethod(t *testing.T) {
 			},
 			wantError:     true,
 			userID:        userID,
+			roleID:        teacherRoleID,
 			expectedError: "cannot unmarshal array into Go value of type paper.AddQuestionGroupRequest",
+			setup: func() (int64, []int64) {
+				id := createTestPaper(ctx, "待更新试卷", userID)
+				return id, []int64{id}
+			},
+			validate: func(t *testing.T, ctx context.Context, q *cmn.ServiceCtx, paperID int64) {
+				var name, category string
+				_ = db.QueryRow(ctx, "SELECT name, category FROM t_paper WHERE id=$1", paperID).Scan(&name, &category)
+				if name != "待更新试卷" || category != "00" {
+					t.Errorf("非法JSON反序列化错误后数据被修改: name=%s category=%s", name, category)
+				}
+			},
+		},
+		{
+			name: "题组名称长度超出限制",
+			reqBody: &UpdateManualPaperRequest{
+				[]UpdateManualPaperAction{
+					{
+						Action: "add_group",
+						Payload: json.RawMessage(`{
+                            "name": "descdescdescdescdescdescdescdescdescdescdescdescdescdescdescdescdescdescdescddescdescdescdescdescdescdescdescdescdescdescdescdescdescdescdescdescdescdescd",
+                            "order": 1
+                        }`),
+					},
+				},
+			},
+			wantError:     true,
+			userID:        userID,
+			roleID:        teacherRoleID,
+			expectedError: "题组名称长度超出限制",
 			setup: func() (int64, []int64) {
 				id := createTestPaper(ctx, "待更新试卷", userID)
 				return id, []int64{id}
@@ -1609,9 +2319,127 @@ func TestManualPaperPutMethod(t *testing.T) {
 			},
 			wantError:  false,
 			userID:     userID,
+			roleID:     teacherRoleID,
 			forceError: "",
 			setup: func() (int64, []int64) {
 				id := createTestPaper(ctx, "待更新试卷", userID)
+				return id, []int64{id}
+			},
+			validate: func(t *testing.T, ctx context.Context, q *cmn.ServiceCtx, paperID int64) {
+				// 从响应中获取新建的题组ID
+				var results []ActionResult
+				err := json.Unmarshal(q.Msg.Data, &results)
+				if err != nil {
+					t.Fatalf("解析响应失败: %v", err)
+				}
+
+				// 将 result.Result 从 float64 转换为 int64
+				resultFloat, ok := results[0].Result.(float64)
+				if !ok {
+					t.Fatalf("无法将result转换为float64,实际类型=%T", results[0].Result)
+				}
+				GroupID := int64(resultFloat)
+
+				// 验证题组是否被正确创建
+				var name string
+				var order int
+				err = db.QueryRow(ctx, `SELECT name, "order" FROM t_paper_group WHERE id=$1 AND paper_id=$2`,
+					GroupID, paperID).Scan(&name, &order)
+
+				if err != nil {
+					t.Fatalf("查询题组失败: %v", err)
+				}
+
+				// 验证字段值
+				if name != "一、单选题" {
+					t.Errorf("题组名称错误,期望='一、单选题',实际=%s", name)
+				}
+				if order != 1 {
+					t.Errorf("题组顺序错误,期望=1,实际=%d", order)
+				}
+			},
+		},
+		{
+			name: "handleAddGroup-tx.QueryRow-err",
+			reqBody: &UpdateManualPaperRequest{
+				[]UpdateManualPaperAction{
+					{
+						Action: "add_group",
+						Payload: json.RawMessage(`{
+                            "name": "一、单选题",
+                            "order": 1
+                        }`),
+					},
+				},
+			},
+			wantError:     true,
+			userID:        userID,
+			roleID:        teacherRoleID,
+			forceError:    "handleAddGroup-tx.QueryRow-err",
+			expectedError: "handleAddGroup-tx.QueryRow-err",
+			setup: func() (int64, []int64) {
+				id := createTestPaper(ctx, "待更新试卷", userID)
+				return id, []int64{id}
+			},
+			validate: func(t *testing.T, ctx context.Context, q *cmn.ServiceCtx, paperID int64) {
+				// 从响应中获取新建的题组ID
+				var results []ActionResult
+				err := json.Unmarshal(q.Msg.Data, &results)
+				if err != nil {
+					t.Fatalf("解析响应失败: %v", err)
+				}
+
+				// 将 result.Result 从 float64 转换为 int64
+				resultFloat, ok := results[0].Result.(float64)
+				if !ok {
+					t.Fatalf("无法将result转换为float64,实际类型=%T", results[0].Result)
+				}
+				GroupID := int64(resultFloat)
+
+				// 验证题组是否被正确创建
+				var name string
+				var order int
+				err = db.QueryRow(ctx, `SELECT name, "order" FROM t_paper_group WHERE id=$1 AND paper_id=$2`,
+					GroupID, paperID).Scan(&name, &order)
+
+				if err != nil {
+					t.Fatalf("查询题组失败: %v", err)
+				}
+
+				// 验证字段值
+				if name != "一、单选题" {
+					t.Errorf("题组名称错误,期望='一、单选题',实际=%s", name)
+				}
+				if order != 1 {
+					t.Errorf("题组顺序错误,期望=1,实际=%d", order)
+				}
+			},
+		},
+		{
+			name: "题组名称已存在",
+			reqBody: &UpdateManualPaperRequest{
+				[]UpdateManualPaperAction{
+					{
+						Action: "add_group",
+						Payload: json.RawMessage(`{
+                            "name": "待删除题组",
+                            "order": 1
+                        }`),
+					},
+				},
+			},
+			wantError:     true,
+			userID:        userID,
+			roleID:        teacherRoleID,
+			forceError:    "",
+			expectedError: "题组名称已存在",
+			setup: func() (int64, []int64) {
+				id := createTestPaper(ctx, "待更新试卷", userID)
+				var groupID int64
+				// 创建一个题组以便删除
+				_ = db.QueryRow(ctx, `INSERT INTO t_paper_group (paper_id, name, "order", creator, create_time, updated_by, update_time) 
+					VALUES ($1, '待删除题组', 1, $2, $3, $2, $3) RETURNING id`,
+					id, userID, time.Now().UnixMilli()).Scan(&groupID)
 				return id, []int64{id}
 			},
 			validate: func(t *testing.T, ctx context.Context, q *cmn.ServiceCtx, paperID int64) {
@@ -1663,6 +2491,7 @@ func TestManualPaperPutMethod(t *testing.T) {
 			},
 			wantError:     true,
 			userID:        userID,
+			roleID:        teacherRoleID,
 			forceError:    "tx.QueryRow-err",
 			expectedError: "tx.QueryRow-err",
 			setup: func() (int64, []int64) {
@@ -1687,7 +2516,7 @@ func TestManualPaperPutMethod(t *testing.T) {
 			},
 		},
 		{
-			name: "add_group-validate-err",
+			name: "题组顺序不能小于0",
 			reqBody: &UpdateManualPaperRequest{
 				[]UpdateManualPaperAction{
 					{
@@ -1701,8 +2530,9 @@ func TestManualPaperPutMethod(t *testing.T) {
 			},
 			wantError:     true,
 			userID:        userID,
+			roleID:        teacherRoleID,
 			forceError:    "",
-			expectedError: "Field validation for 'Name' failed on the 'required' tag",
+			expectedError: "题组顺序不能小于0",
 			setup: func() (int64, []int64) {
 				id := createTestPaper(ctx, "待更新试卷", userID)
 				return id, []int64{id}
@@ -1723,6 +2553,7 @@ func TestManualPaperPutMethod(t *testing.T) {
 			},
 			wantError:     true,
 			userID:        userID,
+			roleID:        teacherRoleID,
 			forceError:    "",
 			expectedError: "cannot unmarshal string into Go value of type int64",
 			setup: func() (int64, []int64) {
@@ -1750,6 +2581,7 @@ func TestManualPaperPutMethod(t *testing.T) {
 			},
 			wantError:     true,
 			userID:        userID,
+			roleID:        teacherRoleID,
 			forceError:    "",
 			expectedError: "cannot unmarshal string into Go value of type []paper.AddQuestionsRequest",
 			setup: func() (int64, []int64) {
@@ -1777,6 +2609,7 @@ func TestManualPaperPutMethod(t *testing.T) {
 			},
 			wantError:     true,
 			userID:        userID,
+			roleID:        teacherRoleID,
 			forceError:    "",
 			expectedError: "cannot unmarshal string into Go value of type []int64",
 			setup: func() (int64, []int64) {
@@ -1860,6 +2693,7 @@ func TestManualPaperPutMethod(t *testing.T) {
 			},
 			wantError:     true,
 			userID:        userID,
+			roleID:        teacherRoleID,
 			forceError:    "",
 			expectedError: "cannot unmarshal string into Go value of type []int64",
 			setup: func() (int64, []int64) {
@@ -1887,6 +2721,7 @@ func TestManualPaperPutMethod(t *testing.T) {
 			},
 			wantError:     true,
 			userID:        userID,
+			roleID:        teacherRoleID,
 			forceError:    "",
 			expectedError: "cannot unmarshal string into Go value of type []int64",
 			setup: func() (int64, []int64) {
@@ -1928,11 +2763,23 @@ func TestManualPaperPutMethod(t *testing.T) {
 		}
 	})
 
+	t.Run("buf is nil", func(t *testing.T) {
+		paperID := createTestPaper(ctx, "待更新试卷", userID)
+		t.Cleanup(func() { cleanupTestPaperData(t, []int64{paperID}) })
+		ctxPut := createMockContextWithBody("PATCH", "/paper/manual?paper_id="+fmt.Sprint(paperID), nil, "", userID, teacherRoleID)
+		qPut := cmn.GetCtxValue(ctxPut)
+		qPut.R.URL.RawQuery = fmt.Sprintf("paper_id=%d", paperID)
+		ManualPaper(ctxPut)
+		if qPut.Msg.Status == 0 || !strings.Contains(qPut.Msg.Msg, "不支持该方法") {
+			t.Errorf("期望错误信息包含'%s', 实际: %+v", "/api/paper/manual with empty body", qPut.Msg)
+		}
+	})
+
 	for _, tt := range tests1 {
 		t.Run(tt.name, func(t *testing.T) {
 			paperID, paperIDs := tt.setup()
 			t.Cleanup(func() { cleanupTestPaperData(t, paperIDs) })
-			ctxPut := createMockContextWithBody("PUT", "/paper/manual?paper_id="+fmt.Sprint(paperID), tt.reqBody, tt.forceError, tt.userID, teacherRoleID)
+			ctxPut := createMockContextWithBody("PUT", "/paper/manual?paper_id="+fmt.Sprint(paperID), tt.reqBody, tt.forceError, tt.userID, tt.roleID)
 			qPut := cmn.GetCtxValue(ctxPut)
 			qPut.R.URL.RawQuery = fmt.Sprintf("paper_id=%d", paperID)
 			if tt.name == "ParseInt-err" {
@@ -2163,6 +3010,342 @@ func TestManualPaperPutMethod(t *testing.T) {
 						TempID:         "temp_question1",
 						GroupID:        groupID,
 						Order:          1,
+						Type:           "06",
+						BankQuestionID: BankQuestionIDs[4],
+						Score:          2,
+						SubScore:       []float64{1, 2, 3},
+					},
+				}
+				jsonPayload, err := json.Marshal(payload)
+				require.NoError(t, err)
+				reqBody := UpdateManualPaperRequest{
+					[]UpdateManualPaperAction{
+						{
+							Action:  "add_question",
+							Payload: json.RawMessage(jsonPayload),
+						},
+					},
+				}
+				return id, reqBody
+			},
+			validate: func(t *testing.T, ctx context.Context, q *cmn.ServiceCtx, paperID int64) {
+				var questionCount int64
+				var groupData types.JSONText
+				err := db.QueryRow(ctx, "SELECT question_count,groups_data FROM v_paper WHERE id=$1", paperID).Scan(&questionCount, &groupData)
+				require.NoError(t, err)
+				require.Equal(t, int64(1), questionCount)
+				var groups []Group
+				err = json.Unmarshal(groupData, &groups)
+				require.NoError(t, err)
+				//解析q中DATA返回的题目ID
+				var results []ActionResult
+				err = json.Unmarshal(q.Msg.Data, &results)
+				require.NoError(t, err)
+				qIDmaps, ok := results[0].Result.(map[string]interface{})
+				require.True(t, ok)
+				qIDFloat64, ok := qIDmaps["temp_question1"].(float64)
+				qID := int64(qIDFloat64)
+				require.True(t, ok)
+				require.Equal(t, len(qIDmaps), 1, "期望题目ID映射长度为1")
+				require.Equal(t, len(groups), 1, "期望题组长度为1")
+				require.Equal(t, groups[0].Questions[0].ID.Int64, qID, "期望题目ID与映射一致")
+				require.Equal(t, groups[0].Questions[0].Order.Int64, int64(1), "期望题目顺序为1")
+				require.Equal(t, groups[0].Questions[0].Score.Float64, 2.0, "期望题目分数为2")
+				require.Equal(t, groups[0].Questions[0].SubScore, []float64{1, 2, 3}, "期望题目子分数为[1, 2, 3]")
+			},
+		},
+		{
+			name:          "题库题目ID不能为空或小于等于0",
+			reqBody:       nil,
+			wantError:     true,
+			userID:        userID,
+			forceError:    "",
+			expectedError: "题库题目ID不能为空或小于等于0",
+			setup: func(t *testing.T) (int64, any) {
+				var id int64
+				var groupID int64
+				// 创建一个试卷
+				id = createTestPaper(ctx, "待添加题目试卷", userID)
+				// 创建一个题组
+				err := db.QueryRow(ctx, `INSERT INTO t_paper_group (paper_id, name, "order", creator, create_time, updated_by, update_time,status) 
+					VALUES ($1, '待删除题组', 1, $2, $3, $2, $3,'00') RETURNING id`,
+					id, userID, time.Now().UnixMilli()).Scan(&groupID)
+				require.NoError(t, err)
+				// 创建添加题目的结构体
+				payload := []AddQuestionsRequest{
+					{
+						TempID:         "temp_question1",
+						GroupID:        groupID,
+						Order:          1,
+						Type:           "06",
+						BankQuestionID: -1,
+						Score:          2,
+						SubScore:       []float64{1, 2, 3},
+					},
+				}
+				jsonPayload, err := json.Marshal(payload)
+				require.NoError(t, err)
+				reqBody := UpdateManualPaperRequest{
+					[]UpdateManualPaperAction{
+						{
+							Action:  "add_question",
+							Payload: json.RawMessage(jsonPayload),
+						},
+					},
+				}
+				return id, reqBody
+			},
+			validate: func(t *testing.T, ctx context.Context, q *cmn.ServiceCtx, paperID int64) {
+				var questionCount int64
+				var groupData types.JSONText
+				err := db.QueryRow(ctx, "SELECT question_count,groups_data FROM v_paper WHERE id=$1", paperID).Scan(&questionCount, &groupData)
+				require.NoError(t, err)
+				require.Equal(t, int64(1), questionCount)
+				var groups []Group
+				err = json.Unmarshal(groupData, &groups)
+				require.NoError(t, err)
+				//解析q中DATA返回的题目ID
+				var results []ActionResult
+				err = json.Unmarshal(q.Msg.Data, &results)
+				require.NoError(t, err)
+				qIDmaps, ok := results[0].Result.(map[string]interface{})
+				require.True(t, ok)
+				qIDFloat64, ok := qIDmaps["temp_question1"].(float64)
+				qID := int64(qIDFloat64)
+				require.True(t, ok)
+				require.Equal(t, len(qIDmaps), 1, "期望题目ID映射长度为1")
+				require.Equal(t, len(groups), 1, "期望题组长度为1")
+				require.Equal(t, groups[0].Questions[0].ID.Int64, qID, "期望题目ID与映射一致")
+				require.Equal(t, groups[0].Questions[0].Order.Int64, int64(1), "期望题目顺序为1")
+				require.Equal(t, groups[0].Questions[0].Score.Float64, 2.0, "期望题目分数为2")
+				require.Equal(t, groups[0].Questions[0].SubScore, []float64{1, 2, 3}, "期望题目子分数为[1, 2, 3]")
+			},
+		},
+		{
+			name:          "题组ID不能小于等于0",
+			reqBody:       nil,
+			wantError:     true,
+			userID:        userID,
+			forceError:    "",
+			expectedError: "题组ID不能小于等于0",
+			setup: func(t *testing.T) (int64, any) {
+				var id int64
+				var groupID int64
+				// 创建一个试卷
+				id = createTestPaper(ctx, "待添加题目试卷", userID)
+				// 创建一个题组
+				err := db.QueryRow(ctx, `INSERT INTO t_paper_group (paper_id, name, "order", creator, create_time, updated_by, update_time,status) 
+					VALUES ($1, '待删除题组', 1, $2, $3, $2, $3,'00') RETURNING id`,
+					id, userID, time.Now().UnixMilli()).Scan(&groupID)
+				require.NoError(t, err)
+				// 创建添加题目的结构体
+				payload := []AddQuestionsRequest{
+					{
+						TempID:         "temp_question1",
+						GroupID:        -1,
+						Order:          1,
+						Type:           "06",
+						BankQuestionID: BankQuestionIDs[0],
+						Score:          2,
+						SubScore:       []float64{1, 2, 3},
+					},
+				}
+				jsonPayload, err := json.Marshal(payload)
+				require.NoError(t, err)
+				reqBody := UpdateManualPaperRequest{
+					[]UpdateManualPaperAction{
+						{
+							Action:  "add_question",
+							Payload: json.RawMessage(jsonPayload),
+						},
+					},
+				}
+				return id, reqBody
+			},
+			validate: func(t *testing.T, ctx context.Context, q *cmn.ServiceCtx, paperID int64) {
+				var questionCount int64
+				var groupData types.JSONText
+				err := db.QueryRow(ctx, "SELECT question_count,groups_data FROM v_paper WHERE id=$1", paperID).Scan(&questionCount, &groupData)
+				require.NoError(t, err)
+				require.Equal(t, int64(1), questionCount)
+				var groups []Group
+				err = json.Unmarshal(groupData, &groups)
+				require.NoError(t, err)
+				//解析q中DATA返回的题目ID
+				var results []ActionResult
+				err = json.Unmarshal(q.Msg.Data, &results)
+				require.NoError(t, err)
+				qIDmaps, ok := results[0].Result.(map[string]interface{})
+				require.True(t, ok)
+				qIDFloat64, ok := qIDmaps["temp_question1"].(float64)
+				qID := int64(qIDFloat64)
+				require.True(t, ok)
+				require.Equal(t, len(qIDmaps), 1, "期望题目ID映射长度为1")
+				require.Equal(t, len(groups), 1, "期望题组长度为1")
+				require.Equal(t, groups[0].Questions[0].ID.Int64, qID, "期望题目ID与映射一致")
+				require.Equal(t, groups[0].Questions[0].Order.Int64, int64(1), "期望题目顺序为1")
+				require.Equal(t, groups[0].Questions[0].Score.Float64, 2.0, "期望题目分数为2")
+				require.Equal(t, groups[0].Questions[0].SubScore, []float64{1, 2, 3}, "期望题目子分数为[1, 2, 3]")
+			},
+		},
+		{
+			name:          "题目小题分数只能在简答题和填空题中使用",
+			reqBody:       nil,
+			wantError:     true,
+			userID:        userID,
+			forceError:    "",
+			expectedError: "题目小题分数只能在简答题和填空题中使用",
+			setup: func(t *testing.T) (int64, any) {
+				var id int64
+				var groupID int64
+				// 创建一个试卷
+				id = createTestPaper(ctx, "待添加题目试卷", userID)
+				// 创建一个题组
+				err := db.QueryRow(ctx, `INSERT INTO t_paper_group (paper_id, name, "order", creator, create_time, updated_by, update_time,status) 
+					VALUES ($1, '待删除题组', 1, $2, $3, $2, $3,'00') RETURNING id`,
+					id, userID, time.Now().UnixMilli()).Scan(&groupID)
+				require.NoError(t, err)
+				// 创建添加题目的结构体
+				payload := []AddQuestionsRequest{
+					{
+						TempID:         "temp_question1",
+						GroupID:        groupID,
+						Order:          1,
+						Type:           "02",
+						BankQuestionID: BankQuestionIDs[0],
+						Score:          2,
+						SubScore:       []float64{1, 2, 3},
+					},
+				}
+				jsonPayload, err := json.Marshal(payload)
+				require.NoError(t, err)
+				reqBody := UpdateManualPaperRequest{
+					[]UpdateManualPaperAction{
+						{
+							Action:  "add_question",
+							Payload: json.RawMessage(jsonPayload),
+						},
+					},
+				}
+				return id, reqBody
+			},
+			validate: func(t *testing.T, ctx context.Context, q *cmn.ServiceCtx, paperID int64) {
+				var questionCount int64
+				var groupData types.JSONText
+				err := db.QueryRow(ctx, "SELECT question_count,groups_data FROM v_paper WHERE id=$1", paperID).Scan(&questionCount, &groupData)
+				require.NoError(t, err)
+				require.Equal(t, int64(1), questionCount)
+				var groups []Group
+				err = json.Unmarshal(groupData, &groups)
+				require.NoError(t, err)
+				//解析q中DATA返回的题目ID
+				var results []ActionResult
+				err = json.Unmarshal(q.Msg.Data, &results)
+				require.NoError(t, err)
+				qIDmaps, ok := results[0].Result.(map[string]interface{})
+				require.True(t, ok)
+				qIDFloat64, ok := qIDmaps["temp_question1"].(float64)
+				qID := int64(qIDFloat64)
+				require.True(t, ok)
+				require.Equal(t, len(qIDmaps), 1, "期望题目ID映射长度为1")
+				require.Equal(t, len(groups), 1, "期望题组长度为1")
+				require.Equal(t, groups[0].Questions[0].ID.Int64, qID, "期望题目ID与映射一致")
+				require.Equal(t, groups[0].Questions[0].Order.Int64, int64(1), "期望题目顺序为1")
+				require.Equal(t, groups[0].Questions[0].Score.Float64, 2.0, "期望题目分数为2")
+				require.Equal(t, groups[0].Questions[0].SubScore, []float64{1, 2, 3}, "期望题目子分数为[1, 2, 3]")
+			},
+		},
+		{
+			name:          "题目小题分数不能小于等于0",
+			reqBody:       nil,
+			wantError:     true,
+			userID:        userID,
+			forceError:    "",
+			expectedError: "题目小题分数不能小于等于0",
+			setup: func(t *testing.T) (int64, any) {
+				var id int64
+				var groupID int64
+				// 创建一个试卷
+				id = createTestPaper(ctx, "待添加题目试卷", userID)
+				// 创建一个题组
+				err := db.QueryRow(ctx, `INSERT INTO t_paper_group (paper_id, name, "order", creator, create_time, updated_by, update_time,status) 
+					VALUES ($1, '待删除题组', 1, $2, $3, $2, $3,'00') RETURNING id`,
+					id, userID, time.Now().UnixMilli()).Scan(&groupID)
+				require.NoError(t, err)
+				// 创建添加题目的结构体
+				payload := []AddQuestionsRequest{
+					{
+						TempID:         "temp_question1",
+						GroupID:        groupID,
+						Order:          1,
+						Type:           "06",
+						BankQuestionID: BankQuestionIDs[0],
+						Score:          2,
+						SubScore:       []float64{-1, 2, 3},
+					},
+				}
+				jsonPayload, err := json.Marshal(payload)
+				require.NoError(t, err)
+				reqBody := UpdateManualPaperRequest{
+					[]UpdateManualPaperAction{
+						{
+							Action:  "add_question",
+							Payload: json.RawMessage(jsonPayload),
+						},
+					},
+				}
+				return id, reqBody
+			},
+			validate: func(t *testing.T, ctx context.Context, q *cmn.ServiceCtx, paperID int64) {
+				var questionCount int64
+				var groupData types.JSONText
+				err := db.QueryRow(ctx, "SELECT question_count,groups_data FROM v_paper WHERE id=$1", paperID).Scan(&questionCount, &groupData)
+				require.NoError(t, err)
+				require.Equal(t, int64(1), questionCount)
+				var groups []Group
+				err = json.Unmarshal(groupData, &groups)
+				require.NoError(t, err)
+				//解析q中DATA返回的题目ID
+				var results []ActionResult
+				err = json.Unmarshal(q.Msg.Data, &results)
+				require.NoError(t, err)
+				qIDmaps, ok := results[0].Result.(map[string]interface{})
+				require.True(t, ok)
+				qIDFloat64, ok := qIDmaps["temp_question1"].(float64)
+				qID := int64(qIDFloat64)
+				require.True(t, ok)
+				require.Equal(t, len(qIDmaps), 1, "期望题目ID映射长度为1")
+				require.Equal(t, len(groups), 1, "期望题组长度为1")
+				require.Equal(t, groups[0].Questions[0].ID.Int64, qID, "期望题目ID与映射一致")
+				require.Equal(t, groups[0].Questions[0].Order.Int64, int64(1), "期望题目顺序为1")
+				require.Equal(t, groups[0].Questions[0].Score.Float64, 2.0, "期望题目分数为2")
+				require.Equal(t, groups[0].Questions[0].SubScore, []float64{1, 2, 3}, "期望题目子分数为[1, 2, 3]")
+			},
+		},
+		{
+			name:          "题目小题分数只能在简答题和填空题中使用",
+			reqBody:       nil,
+			wantError:     true,
+			userID:        userID,
+			forceError:    "",
+			expectedError: "题目小题分数只能在简答题和填空题中使用",
+			setup: func(t *testing.T) (int64, any) {
+				var id int64
+				var groupID int64
+				// 创建一个试卷
+				id = createTestPaper(ctx, "待添加题目试卷", userID)
+				// 创建一个题组
+				err := db.QueryRow(ctx, `INSERT INTO t_paper_group (paper_id, name, "order", creator, create_time, updated_by, update_time,status) 
+					VALUES ($1, '待删除题组', 1, $2, $3, $2, $3,'00') RETURNING id`,
+					id, userID, time.Now().UnixMilli()).Scan(&groupID)
+				require.NoError(t, err)
+				// 创建添加题目的结构体
+				payload := []AddQuestionsRequest{
+					{
+						TempID:         "temp_question1",
+						GroupID:        groupID,
+						Order:          1,
+						Type:           "02",
 						BankQuestionID: BankQuestionIDs[0],
 						Score:          2,
 						SubScore:       []float64{1, 2, 3},
@@ -2212,7 +3395,7 @@ func TestManualPaperPutMethod(t *testing.T) {
 			wantError:     true,
 			userID:        userID,
 			forceError:    "",
-			expectedError: "Field validation for 'Score' failed on the 'required' tag",
+			expectedError: "题目分数不能小于等于0",
 			setup: func(t *testing.T) (int64, any) {
 				var id int64
 				var groupID int64
@@ -2229,7 +3412,7 @@ func TestManualPaperPutMethod(t *testing.T) {
 						TempID:         "temp_question1",
 						GroupID:        groupID,
 						Order:          1,
-						BankQuestionID: BankQuestionIDs[0],
+						BankQuestionID: BankQuestionIDs[4],
 						Score:          0,
 						SubScore:       []float64{1, 2, 3},
 					},
@@ -2255,7 +3438,7 @@ func TestManualPaperPutMethod(t *testing.T) {
 			wantError:     true,
 			userID:        userID,
 			forceError:    "",
-			expectedError: "Field validation for 'Order' failed on the 'required' tag",
+			expectedError: "题目顺序不能小于等于0",
 			setup: func(t *testing.T) (int64, any) {
 				var id int64
 				var groupID int64
@@ -2314,6 +3497,7 @@ func TestManualPaperPutMethod(t *testing.T) {
 					{
 						TempID:         "temp_question1",
 						GroupID:        groupID,
+						Type:           "06",
 						Order:          1,
 						BankQuestionID: BankQuestionIDs[0],
 						Score:          2,
@@ -2358,6 +3542,7 @@ func TestManualPaperPutMethod(t *testing.T) {
 						TempID:         "temp_question1",
 						GroupID:        groupID,
 						Order:          1,
+						Type:           "06",
 						BankQuestionID: BankQuestionIDs[0],
 						Score:          2,
 						SubScore:       []float64{1, 2, 3},
@@ -2401,6 +3586,7 @@ func TestManualPaperPutMethod(t *testing.T) {
 						TempID:         "temp_question1",
 						GroupID:        groupID,
 						Order:          1,
+						Type:           "06",
 						BankQuestionID: BankQuestionIDs[0],
 						Score:          2,
 						SubScore:       []float64{1, 2, 3},
@@ -2470,7 +3656,7 @@ func TestManualPaperPutMethod(t *testing.T) {
 			wantError:     true,
 			userID:        userID,
 			forceError:    "",
-			expectedError: "题目数组为空",
+			expectedError: "ID List cannot be empty",
 			setup: func(t *testing.T) (int64, any) {
 				var id int64
 				var groupID int64
@@ -2770,7 +3956,7 @@ func TestManualPaperPutMethod(t *testing.T) {
 			wantError:     true,
 			userID:        userID,
 			forceError:    "",
-			expectedError: "Error:Field validation for 'SubScore[0]' failed on the 'min' tag",
+			expectedError: "题目小题分数不能小于0",
 			setup: func(t *testing.T) (int64, any) {
 				var id int64
 				var groupID int64
@@ -2858,7 +4044,7 @@ func TestManualPaperPutMethod(t *testing.T) {
 			wantError:     true,
 			userID:        userID,
 			forceError:    "r",
-			expectedError: "更新题目没有传入需要更新的字段或传入的字段为零值",
+			expectedError: "更新题目失败: 没有需要更新的字段或所有字段都为零值",
 			setup: func(t *testing.T) (int64, any) {
 				var id int64
 				var groupID int64
@@ -2939,6 +4125,94 @@ func TestManualPaperPutMethod(t *testing.T) {
 			validate: func(t *testing.T, ctx context.Context, q *cmn.ServiceCtx, paperID int64) {
 			},
 		},
+		{
+			name:          "题目ID不能为空或小于等于0",
+			reqBody:       nil,
+			wantError:     true,
+			userID:        userID,
+			forceError:    "",
+			expectedError: "题目ID不能为空或小于等于0",
+			setup: func(t *testing.T) (int64, any) {
+				var id int64
+				var groupID int64
+				var questionID int64
+				// 创建一个试卷
+				id = createTestPaper(ctx, "待更新试卷", userID)
+				// 创建一个题组
+				err := db.QueryRow(ctx, `INSERT INTO t_paper_group (paper_id, name, "order", creator, create_time, updated_by, update_time,status) 
+					VALUES ($1, '待删除题组', 1, $2, $3, $2, $3,'00') RETURNING id`,
+					id, userID, time.Now().UnixMilli()).Scan(&groupID)
+				require.NoError(t, err)
+				// 创建一个题目
+				err = db.QueryRow(ctx, `INSERT INTO t_paper_question (group_id, "order",score,sub_score,bank_question_id, creator, create_time, updated_by, update_time,status) 
+					VALUES ($1, 1, 2,$2, $3,$4, $5, $4, $5,'00') RETURNING id`,
+					groupID, []float64{1, 2, 3}, BankQuestionIDs[0], userID, time.Now().UnixMilli()).Scan(&questionID)
+				require.NoError(t, err)
+				updateReq := []UpdatePaperQuestionRequest{
+					{
+						ID:       -1,
+						SubScore: []float64{1, 2, 3},
+					},
+				}
+				jsondata, err := json.Marshal(updateReq)
+				require.NoError(t, err)
+				reqBody := UpdateManualPaperRequest{
+					[]UpdateManualPaperAction{
+						{
+							Action:  "update_question",
+							Payload: json.RawMessage(jsondata),
+						},
+					},
+				}
+				return id, reqBody
+			},
+			validate: func(t *testing.T, ctx context.Context, q *cmn.ServiceCtx, paperID int64) {
+			},
+		},
+		{
+			name:          "题目ID不能为空或小于等于0",
+			reqBody:       nil,
+			wantError:     true,
+			userID:        userID,
+			forceError:    "",
+			expectedError: "题目ID不能为空或小于等于0",
+			setup: func(t *testing.T) (int64, any) {
+				var id int64
+				var groupID int64
+				var questionID int64
+				// 创建一个试卷
+				id = createTestPaper(ctx, "待更新试卷", userID)
+				// 创建一个题组
+				err := db.QueryRow(ctx, `INSERT INTO t_paper_group (paper_id, name, "order", creator, create_time, updated_by, update_time,status) 
+					VALUES ($1, '待删除题组', 1, $2, $3, $2, $3,'00') RETURNING id`,
+					id, userID, time.Now().UnixMilli()).Scan(&groupID)
+				require.NoError(t, err)
+				// 创建一个题目
+				err = db.QueryRow(ctx, `INSERT INTO t_paper_question (group_id, "order",score,sub_score,bank_question_id, creator, create_time, updated_by, update_time,status) 
+					VALUES ($1, 1, 2,$2, $3,$4, $5, $4, $5,'00') RETURNING id`,
+					groupID, []float64{1, 2, 3}, BankQuestionIDs[0], userID, time.Now().UnixMilli()).Scan(&questionID)
+				require.NoError(t, err)
+				updateReq := []UpdatePaperQuestionRequest{
+					{
+						ID:       -1,
+						SubScore: []float64{1, 2, 3},
+					},
+				}
+				jsondata, err := json.Marshal(updateReq)
+				require.NoError(t, err)
+				reqBody := UpdateManualPaperRequest{
+					[]UpdateManualPaperAction{
+						{
+							Action:  "update_question",
+							Payload: json.RawMessage(jsondata),
+						},
+					},
+				}
+				return id, reqBody
+			},
+			validate: func(t *testing.T, ctx context.Context, q *cmn.ServiceCtx, paperID int64) {
+			},
+		},
 		//update_group
 		{
 			name:       "正常更新题组名称",
@@ -2985,13 +4259,87 @@ func TestManualPaperPutMethod(t *testing.T) {
 			},
 		},
 		{
+			name:          "题组名称长度超出限制",
+			reqBody:       nil,
+			wantError:     true,
+			userID:        userID,
+			roleID:        teacherRoleID,
+			forceError:    "",
+			expectedError: "题组名称长度超出限制",
+			setup: func(t *testing.T) (int64, any) {
+				var id int64
+				var groupID int64
+				// 创建一个试卷
+				id = createTestPaper(ctx, "待更新试卷", userID)
+				// 创建一个题组
+				err := db.QueryRow(ctx, `INSERT INTO t_paper_group (paper_id, name, "order", creator, create_time, updated_by, update_time,status) 
+					VALUES ($1, '待删除题组', 1, $2, $3, $2, $3,'00') RETURNING id`,
+					id, userID, time.Now().UnixMilli()).Scan(&groupID)
+				require.NoError(t, err)
+				updateReq := UpdateQuestionsGroupRequest{
+					ID:   groupID,
+					Name: "descdescdescdescdescdescdescdescdescdescdescdescdescdescdescdescdescdescdescddescdescdescdescdescdescdescdescdescdescdescdescdescdescdescdescdescdescdescd",
+				}
+				jsondata, err := json.Marshal(updateReq)
+				require.NoError(t, err)
+				reqBody := UpdateManualPaperRequest{
+					[]UpdateManualPaperAction{
+						{
+							Action:  "update_group",
+							Payload: json.RawMessage(jsondata),
+						},
+					},
+				}
+				return id, reqBody
+			},
+			validate: func(t *testing.T, ctx context.Context, q *cmn.ServiceCtx, paperID int64) {
+			},
+		},
+		{
+			name:          "题组名称已存在",
+			reqBody:       nil,
+			wantError:     true,
+			userID:        userID,
+			roleID:        teacherRoleID,
+			forceError:    "",
+			expectedError: "题组名称已存在",
+			setup: func(t *testing.T) (int64, any) {
+				var id int64
+				var groupID int64
+				// 创建一个试卷
+				id = createTestPaper(ctx, "待更新试卷", userID)
+				// 创建一个题组
+				err := db.QueryRow(ctx, `INSERT INTO t_paper_group (paper_id, name, "order", creator, create_time, updated_by, update_time,status) 
+					VALUES ($1, '待删除题组', 1, $2, $3, $2, $3,'00') RETURNING id`,
+					id, userID, time.Now().UnixMilli()).Scan(&groupID)
+				require.NoError(t, err)
+				updateReq := UpdateQuestionsGroupRequest{
+					ID:   999999,
+					Name: "待删除题组",
+				}
+				jsondata, err := json.Marshal(updateReq)
+				require.NoError(t, err)
+				reqBody := UpdateManualPaperRequest{
+					[]UpdateManualPaperAction{
+						{
+							Action:  "update_group",
+							Payload: json.RawMessage(jsondata),
+						},
+					},
+				}
+				return id, reqBody
+			},
+			validate: func(t *testing.T, ctx context.Context, q *cmn.ServiceCtx, paperID int64) {
+			},
+		},
+		{
 			name:          "缺少题组ID",
 			reqBody:       nil,
 			wantError:     true,
 			userID:        userID,
 			roleID:        teacherRoleID,
 			forceError:    "",
-			expectedError: "Error:Field validation for 'ID' failed on the 'min' tag",
+			expectedError: "题组ID不能为空或小于等于0",
 			setup: func(t *testing.T) (int64, any) {
 				var id int64
 				var groupID int64
@@ -3027,7 +4375,7 @@ func TestManualPaperPutMethod(t *testing.T) {
 			userID:        userID,
 			roleID:        teacherRoleID,
 			forceError:    "",
-			expectedError: "Error:Field validation for 'Name' failed on the 'required' tag",
+			expectedError: "题组名称不能为空",
 			setup: func(t *testing.T) (int64, any) {
 				var id int64
 				var groupID int64
@@ -3129,6 +4477,42 @@ func TestManualPaperPutMethod(t *testing.T) {
 			validate: func(t *testing.T, ctx context.Context, q *cmn.ServiceCtx, paperID int64) {
 			},
 		},
+		{
+			name:          "handleUpdateGroup-tx.QueryRow-err",
+			reqBody:       nil,
+			wantError:     true,
+			userID:        userID,
+			forceError:    "handleUpdateGroup-tx.QueryRow-err",
+			expectedError: "handleUpdateGroup-tx.QueryRow-err",
+			setup: func(t *testing.T) (int64, any) {
+				var id int64
+				var groupID int64
+				// 创建一个试卷
+				id = createTestPaper(ctx, "待更新试卷", userID)
+				// 创建一个题组
+				err := db.QueryRow(ctx, `INSERT INTO t_paper_group (paper_id, name, "order", creator, create_time, updated_by, update_time,status) 
+					VALUES ($1, '待删除题组', 1, $2, $3, $2, $3,'00') RETURNING id`,
+					id, userID, time.Now().UnixMilli()).Scan(&groupID)
+				require.NoError(t, err)
+				updateReq := UpdateQuestionsGroupRequest{
+					ID:   groupID,
+					Name: "11111",
+				}
+				jsondata, err := json.Marshal(updateReq)
+				require.NoError(t, err)
+				reqBody := UpdateManualPaperRequest{
+					[]UpdateManualPaperAction{
+						{
+							Action:  "update_group",
+							Payload: json.RawMessage(jsondata),
+						},
+					},
+				}
+				return id, reqBody
+			},
+			validate: func(t *testing.T, ctx context.Context, q *cmn.ServiceCtx, paperID int64) {
+			},
+		},
 		//move_question
 		{
 			name:       "正常调整题目位置",
@@ -3194,7 +4578,7 @@ func TestManualPaperPutMethod(t *testing.T) {
 			userID:        userID,
 			roleID:        teacherRoleID,
 			forceError:    "",
-			expectedError: "存在重复ID",
+			expectedError: "Duplicate ID found",
 			setup: func(t *testing.T) (int64, any) {
 				var id int64
 				var groupID int64
@@ -3238,7 +4622,7 @@ func TestManualPaperPutMethod(t *testing.T) {
 			userID:        userID,
 			roleID:        teacherRoleID,
 			forceError:    "",
-			expectedError: "ID必须大于0",
+			expectedError: "ID must be greater than 0",
 			setup: func(t *testing.T) (int64, any) {
 				var id int64
 				var groupID int64
@@ -3281,7 +4665,7 @@ func TestManualPaperPutMethod(t *testing.T) {
 			wantError:     true,
 			userID:        userID,
 			forceError:    "",
-			expectedError: "题目数组为空",
+			expectedError: "ID List cannot be empty",
 			setup: func(t *testing.T) (int64, any) {
 				var id int64
 				var groupID int64
@@ -3548,7 +4932,7 @@ func TestManualPaperPutMethod(t *testing.T) {
 			userID:        userID,
 			roleID:        teacherRoleID,
 			forceError:    "",
-			expectedError: "ID必须大于0",
+			expectedError: "ID must be greater than 0",
 			setup: func(t *testing.T) (int64, any) {
 				var id int64
 				var groupID1, groupID2 int64
@@ -3597,7 +4981,7 @@ func TestManualPaperPutMethod(t *testing.T) {
 			userID:        userID,
 			roleID:        teacherRoleID,
 			forceError:    "",
-			expectedError: "存在重复ID",
+			expectedError: "Duplicate ID found",
 			setup: func(t *testing.T) (int64, any) {
 				var id int64
 				var groupID1, groupID2 int64
@@ -3640,12 +5024,12 @@ func TestManualPaperPutMethod(t *testing.T) {
 			},
 		},
 		{
-			name:          "传入的题目数组为空",
+			name:          "传入的题组数组为空",
 			reqBody:       nil,
 			wantError:     true,
 			userID:        userID,
 			forceError:    "",
-			expectedError: "题组数组为空",
+			expectedError: "ID List cannot be empty",
 			setup: func(t *testing.T) (int64, any) {
 				var id int64
 				var groupID1, groupID2 int64
@@ -3693,7 +5077,7 @@ func TestManualPaperPutMethod(t *testing.T) {
 			wantError:     true,
 			userID:        userID,
 			forceError:    "",
-			expectedError: "数量不匹配",
+			expectedError: "题组数量不匹配",
 			setup: func(t *testing.T) (int64, any) {
 				var id int64
 				var groupID1, groupID2 int64
@@ -3892,7 +5276,7 @@ func TestManualPaperPutMethod(t *testing.T) {
 			ManualPaper(ctxPut)
 			if tt.wantError {
 				if qPut.Msg.Status == 0 || !strings.Contains(qPut.Msg.Msg, tt.expectedError) {
-					t.Errorf("期望错误信息包含'%s', 实际: %+v", tt.expectedError, qPut.Msg)
+					t.Errorf("期望错误信息包含'%s', 实际: %+v", tt.expectedError, qPut.Msg.Msg)
 				}
 			} else {
 				if qPut.Msg.Status != 0 || qPut.Msg.Msg != "success" {
@@ -3931,6 +5315,30 @@ func TestManualPaperGetMethod(t *testing.T) {
 			setup: func() (int64, []int64) {
 				id := createTestPaper(ctx, "测试试卷", userID)
 				return id, []int64{id}
+			},
+		},
+		{
+			name:          "无效试卷ID",
+			wantError:     true,
+			userID:        userID,
+			roleID:        teacherRoleID, // 添加角色ID
+			forceError:    "",
+			expectedError: ErrInvalidPaperID.Error(),
+			setup: func() (int64, []int64) {
+				return -1, nil
+
+			},
+		},
+		{
+			name:          "超级管理员正常获取试卷详情",
+			wantError:     false,
+			userID:        userID,
+			roleID:        superAdminRoleID, // 添加角色ID
+			forceError:    "",
+			expectedError: "",
+			setup: func() (int64, []int64) {
+				id := createTestPaper(ctx, "测试试卷", userID)
+				return id, []int64{id}
 
 			},
 		},
@@ -3940,34 +5348,46 @@ func TestManualPaperGetMethod(t *testing.T) {
 			userID:        0,
 			roleID:        teacherRoleID, // 添加角色ID
 			forceError:    "",
-			expectedError: "无效用户ID",
+			expectedError: ErrInvalidUserID.Error(),
 			setup: func() (int64, []int64) {
 				id := createTestPaper(ctx, "无效用户试卷", 1)
 				return id, []int64{id}
 			},
 		},
 		{
-			name:          "试卷不存在",
+			name:          "无效角色ID",
 			wantError:     true,
 			userID:        userID,
-			roleID:        teacherRoleID, // 添加角色ID
+			roleID:        -1, // 添加角色ID
 			forceError:    "",
-			expectedError: ErrRecordNotFound.Error(),
+			expectedError: ErrInvalidRoleID.Error(),
 			setup: func() (int64, []int64) {
-				id := createTestPaper(ctx, "无效用户试卷", 1)
-				return 9999999, []int64{id}
+				id := createTestPaper(ctx, "无效用户试卷", userID)
+				return id, []int64{id}
 			},
 		},
 		{
-			name:          "试卷ID不合规",
+			name:          "当前用户角色没有权限",
+			wantError:     true,
+			userID:        userID,
+			roleID:        studentRoleID, // 添加角色ID
+			forceError:    "",
+			expectedError: ErrWithoutPermission.Error(),
+			setup: func() (int64, []int64) {
+				id := createTestPaper(ctx, "无效用户试卷", userID)
+				return id, []int64{id}
+			},
+		},
+		{
+			name:          "当前用户不是管理员且不是试卷创建者",
 			wantError:     true,
 			userID:        userID,
 			roleID:        teacherRoleID, // 添加角色ID
 			forceError:    "",
-			expectedError: "试卷ID不合规",
+			expectedError: ErrWithoutPermission.Error(),
 			setup: func() (int64, []int64) {
 				id := createTestPaper(ctx, "无效用户试卷", 1)
-				return -1, []int64{id}
+				return id, []int64{id}
 			},
 		},
 		{
@@ -3978,7 +5398,19 @@ func TestManualPaperGetMethod(t *testing.T) {
 			forceError:    "tx.QueryRow-err",
 			expectedError: "tx.QueryRow-err",
 			setup: func() (int64, []int64) {
-				id := createTestPaper(ctx, "无效用户试卷", 1)
+				id := createTestPaper(ctx, "无效用户试卷", userID)
+				return id, []int64{id}
+			},
+		},
+		{
+			name:          "isPaperCreator-QueryRow-err",
+			wantError:     true,
+			userID:        userID,
+			roleID:        teacherRoleID, // 添加角色ID
+			forceError:    "isPaperCreator-QueryRow-err",
+			expectedError: "isPaperCreator-QueryRow-err",
+			setup: func() (int64, []int64) {
+				id := createTestPaper(ctx, "无效用户试卷", userID)
 				return id, []int64{id}
 			},
 		},
@@ -3998,7 +5430,7 @@ func TestManualPaperGetMethod(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			paperID, paperIDs := tt.setup()
 			t.Cleanup(func() { cleanupTestPaperData(t, paperIDs) })
-			ctxGet := createMockContextWithBody("GET", "/paper/manual?paper_id="+fmt.Sprint(paperID), "", tt.forceError, tt.userID, teacherRoleID)
+			ctxGet := createMockContextWithBody("GET", "/paper/manual?paper_id="+fmt.Sprint(paperID), "", tt.forceError, tt.userID, tt.roleID)
 			qGet := cmn.GetCtxValue(ctxGet)
 			qGet.R.URL.RawQuery = fmt.Sprintf("paper_id=%d", paperID)
 			ManualPaper(ctxGet)
