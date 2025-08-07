@@ -69,6 +69,19 @@ type Details struct {
 	Score   int    `json:"score"`
 }
 
+type HandleMarkerInfoReq struct {
+	Markers        []int64                             `json:"markers"`          // *批改员id数组
+	QuestionGroups []examPaper.SubjectiveQuestionGroup `json:"question_groups"`  // *题组（配置时传入）
+	QuestionIDs    []int64                             `json:"question_ids"`     // 题目id数组
+	ExamineeIDs    []int64                             `json:"examinee_ids"`     // 考生id数组
+	MarkMode       string                              `json:"mark_mode"`        // *批卷模式 00：不需要手动批改  02：全卷多评 04：试卷分配 06：题组专评 08：题目分配 10：单人（人工）批改
+	ExamSessionID  int64                               `json:"exam_session_id"`  // 考试场次id
+	PracticeID     int64                               `json:"practice_id"`      // 练习id
+	Status         string                              `json:"status"`           // *00 插入批改配置 02 删除批改配置
+	ExamSessionIDs []int64                             `json:"exam_session_ids"` // 要删除的考试场次id数组
+	PracticeIDs    []int64                             `json:"practice_ids"`     // 要删除的练习id数组
+}
+
 func Enroll(author string) {
 	z.Info("mark.Enroll called")
 
@@ -84,7 +97,7 @@ func Enroll(author string) {
 	}
 
 	_ = cmn.AddService(&cmn.ServeEndPoint{
-		Fn: GetExamList,
+		Fn: HandleExamList,
 
 		Path: "/mark/exam/list",
 		Name: "mark.get-exam-list",
@@ -98,7 +111,7 @@ func Enroll(author string) {
 	})
 
 	_ = cmn.AddService(&cmn.ServeEndPoint{
-		Fn: GetMarkingDetails,
+		Fn: HandleMarkingDetails,
 
 		Path: "/mark/details",
 		Name: "/mark/details",
@@ -112,7 +125,7 @@ func Enroll(author string) {
 	})
 
 	_ = cmn.AddService(&cmn.ServeEndPoint{
-		Fn: SaveMarkingResults,
+		Fn: HandleMarkingResults,
 
 		Path: "/mark/marking-results",
 		Name: "/mark/marking-results",
@@ -127,7 +140,7 @@ func Enroll(author string) {
 
 }
 
-func GetExamList(ctx context.Context) {
+func HandleExamList(ctx context.Context) {
 	forceErr, _ := ctx.Value(ForceErrKey).(string)
 	q := cmn.GetCtxValue(ctx)
 	z.Info("---->" + cmn.FncName())
@@ -233,7 +246,7 @@ func GetExamList(ctx context.Context) {
 
 	//z.Sugar().Infof("======(%v)===>>: %+v", rowCount, exams)
 
-	if err != nil || forceErr == "GetExamList-json.Marshal" {
+	if err != nil || forceErr == "HandleExamList-json.Marshal" {
 		q.Err = fmt.Errorf("unable to marshal response data: %v", err)
 		z.Error(q.Err.Error())
 		q.RespErr()
@@ -246,7 +259,7 @@ func GetExamList(ctx context.Context) {
 	return
 }
 
-func GetMarkingDetails(ctx context.Context) {
+func HandleMarkingDetails(ctx context.Context) {
 	forceErr, _ := ctx.Value(ForceErrKey).(string)
 	q := cmn.GetCtxValue(ctx)
 	z.Info("---->" + cmn.FncName())
@@ -288,7 +301,7 @@ func GetMarkingDetails(ctx context.Context) {
 		}
 	}
 
-	studentInfos, err := QueryExamineeInfo(ctx, QueryCondition{
+	examineeInfos, err := QueryExamineeInfo(ctx, QueryCondition{
 		ExamSessionID: examSessionID,
 		ExamineeID:    examineeID,
 		TeacherID:     q.SysUser.ID.Int64,
@@ -350,13 +363,12 @@ func GetMarkingDetails(ctx context.Context) {
 	}
 
 	jsonData, err := json.Marshal(map[string]interface{}{
-		"students":        studentInfos,
+		"examinee_infos":  examineeInfos,
 		"student_answers": studentAnswers,
 		"question_sets":   questionSets,
 		"marking_results": markingResults,
-		"student_count":   len(studentInfos),
 	})
-	if err != nil || forceErr == "GetMarkingDetails-json.Marshal" {
+	if err != nil || forceErr == "HandleMarkingDetails-json.Marshal" {
 		q.Err = fmt.Errorf("failed to marshal response data: %v", err)
 		z.Error(q.Err.Error())
 		q.RespErr()
@@ -370,19 +382,6 @@ func GetMarkingDetails(ctx context.Context) {
 	q.Resp()
 	return
 
-}
-
-type HandleMarkerInfoReq struct {
-	Markers        []int64                             `json:"markers"`          // *批改员id数组
-	QuestionGroups []examPaper.SubjectiveQuestionGroup `json:"question_groups"`  // *题组（配置时传入）
-	QuestionIDs    []int64                             `json:"question_ids"`     // 题目id数组
-	ExamineeIDs    []int64                             `json:"examinee_ids"`     // 考生id数组
-	MarkMode       string                              `json:"mark_mode"`        // *批卷模式 00：不需要手动批改  02：全卷多评 04：试卷分配 06：题组专评 08：题目分配 10：单人（人工）批改
-	ExamSessionID  int64                               `json:"exam_session_id"`  // 考试场次id
-	PracticeID     int64                               `json:"practice_id"`      // 练习id
-	Status         string                              `json:"status"`           // *00 插入批改配置 02 删除批改配置
-	ExamSessionIDs []int64                             `json:"exam_session_ids"` // 要删除的考试场次id数组
-	PracticeIDs    []int64                             `json:"practice_ids"`     // 要删除的练习id数组
 }
 
 func HandleMarkerInfo(ctx context.Context, tx *pgx.Tx, teacherID int64, req HandleMarkerInfoReq) (err error) {
@@ -598,13 +597,13 @@ func HandleMarkerInfo(ctx context.Context, tx *pgx.Tx, teacherID int64, req Hand
 	return
 }
 
-func SaveMarkingResults(ctx context.Context) {
+func HandleMarkingResults(ctx context.Context) {
 	q := cmn.GetCtxValue(ctx)
 	z.Info("---->" + cmn.FncName())
 	forceErr, _ := ctx.Value(ForceErrKey).(string) // 用于强制执行错误处理代码
 	method := strings.ToLower(q.R.Method)
 	if method != "post" {
-		q.Err = fmt.Errorf("please call /api/mark/getMarkingDetails with http post method")
+		q.Err = fmt.Errorf("please call /api/mark/marking-results with http post method")
 		z.Error(q.Err.Error())
 		q.RespErr()
 		return

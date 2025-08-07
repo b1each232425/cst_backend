@@ -84,38 +84,31 @@ type QuestionDetails struct {
 }
 
 type QuestionSet struct {
-	ID        int64       `json:"id"`        // 题组id
-	Name      string      `json:"name"`      // 题组名称
-	Order     int         `json:"order"`     // 题组序号
-	Questions []*Question `json:"questions"` // 题目
-	Score     float64     `json:"score"`
+	cmn.TExamPaperGroup
+	Score     float64                   `json:"Score"`     // 题组分数
+	Questions []*cmn.TExamPaperQuestion `json:"Questions"` // 题目
 }
 
 // Question 题目
-type Question struct {
-	ID               int64              `json:"id"`
-	Analyze          string             `json:"analyze"`
-	MarkRole         string             `json:"mark_role"`
-	StandardAnswers  []*StandardAnswer  `json:"standard_answers"`
-	ObjectiveAnswers []string           `json:"objective_answers"`
-	Details          []*QuestionDetails `json:"details"`
-	OrderNum         int                `json:"order_num"`
-	Type             string             `json:"type"` // 00:单选题  02:多选题 04:判断题 06:填空题 08:简答题 10:编程题
-	Score            float64            `json:"score"`
-}
+//type Question struct {
+//	ID               int64              `json:"id"`
+//	Analyze          string             `json:"analyze"`
+//	MarkRole         string             `json:"mark_role"`
+//	StandardAnswers  []*StandardAnswer  `json:"standard_answers"`
+//	ObjectiveAnswers []string           `json:"objective_answers"`
+//	Details          []*QuestionDetails `json:"details"`
+//	OrderNum         int                `json:"order_num"`
+//	Type             string             `json:"type"` // 00:单选题  02:多选题 04:判断题 06:填空题 08:简答题 10:编程题
+//	Score            float64            `json:"score"`
+//}
 
-// 简答题、填空题答案
-type StandardAnswer struct {
-	// 追加答案
-	AlternativeAnswer []string `json:"alternative_answer"`
-	// 答案
-	Answer string `json:"answer"`
-	// 批改规则/提示词
-	GradingRule string `json:"grading_rule"`
-	// 答案索引
-	Index int64 `json:"index"`
-	// 该答案的分数
-	Score int64 `json:"score"`
+// SubjectiveAnswer 主观题答案结构
+type SubjectiveAnswer struct {
+	Index             int      `json:"index"`              // 答案索引
+	Answer            string   `json:"answer"`             // 答案
+	AlternativeAnswer []string `json:"alternative_answer"` // 备选答案
+	Score             float64  `json:"score"`              // 分数
+	GradingRule       string   `json:"grading_rule"`       // 评分规则
 }
 
 type Student struct {
@@ -130,6 +123,9 @@ type Student struct {
 	IdType              string  `json:"id_type"`
 	IdNumber            string  `json:"id_number"`
 	ExamAdmissionNumber string  `json:"exam_admission_number"`
+
+	cmn.TUser
+	cmn.TVExamineeInfo
 }
 
 // QueryExamList 获取考试列表 管理员查询全部列表，教师查询与其有关的考试列表
@@ -664,8 +660,7 @@ func QueryExamQuestionsByMarkMode(ctx context.Context, cond QueryCondition, mark
 	}
 
 	getQuestionsQuery := `	SELECT pg.id, pg.name, pg."order", q.id, q.score, q.type, q."order", q.group_id, q.content, q.options, 
-								   q.answers, q.analysis, q.title, 
-								   q.input, q.output, q.example, q.repo, q.commit_id 
+								   q.answers, q.analysis, q.title 
 							FROM t_exam_paper p
 							JOIN t_exam_paper_group pg ON pg.exam_paper_id = p.id 
 							JOIN t_exam_paper_question q ON q.group_id = pg.id
@@ -719,7 +714,7 @@ func QueryExamQuestionsByMarkMode(ctx context.Context, cond QueryCondition, mark
 	for rows.Next() {
 		var question cmn.TExamPaperQuestion
 		var questionGroup cmn.TExamPaperGroup
-		err = rows.Scan(&questionGroup.ID, &questionGroup.Name, &questionGroup.Order, &question.ID, &question.Score, &question.Type, &question.Order, &question.GroupID, &question.Content, &question.Options, &question.Answers, &question.Analysis, &question.Title, &question.Input, &question.Output, &question.Example, &question.Repo, &question.CommitID)
+		err = rows.Scan(&questionGroup.ID, &questionGroup.Name, &questionGroup.Order, &question.ID, &question.Score, &question.Type, &question.Order, &question.GroupID, &question.Content, &question.Options, &question.Answers, &question.Analysis, &question.Title)
 		if err != nil || forceErr == "QueryExamQuestionsByMarkMode-rows.Scan" {
 			err = fmt.Errorf("unable to scan row data: %v", err)
 			z.Error(err.Error())
@@ -729,48 +724,24 @@ func QueryExamQuestionsByMarkMode(ctx context.Context, cond QueryCondition, mark
 		set, exist := questionSetsMap[question.GroupID.Int64]
 		if !exist {
 			set = &QuestionSet{
-				ID:        question.GroupID.Int64,
-				Name:      questionGroup.Name.String,
-				Order:     int(questionGroup.Order.Int64),
-				Questions: []*Question{},
+				TExamPaperGroup: questionGroup,
+				Score:           0.0,
+				Questions:       []*cmn.TExamPaperQuestion{},
 			}
 			questionSetsMap[question.GroupID.Int64] = set
 		}
 
-		var standardAnswers []*StandardAnswer
+		var standardAnswers []*SubjectiveAnswer
 		//standardAnswers, _, err = ConvertRawStandardAnswerData(question.Answers, question.Type.String)
 		err = json.Unmarshal(question.Answers, &standardAnswers)
 		if err != nil {
 			err = fmt.Errorf("unable to convert raw standard answer data: %v", err)
 			z.Error(err.Error())
-			standardAnswers = []*StandardAnswer{}
-		}
-
-		var analyze string
-
-		if len(standardAnswers) > 1 {
-			for i, standardAnswer := range standardAnswers {
-				analyze += fmt.Sprintf("（%d）%s\n", i+1, standardAnswer.GradingRule)
-			}
-		} else if len(standardAnswers) == 1 {
-			analyze = standardAnswers[0].GradingRule
-		} else {
-			analyze = ""
+			standardAnswers = []*SubjectiveAnswer{}
 		}
 
 		set.Score += question.Score.Float64
-		set.Questions = append(set.Questions, &Question{
-			ID:      question.ID.Int64,
-			Analyze: analyze,
-			Details: []*QuestionDetails{
-				{Content: question.Content.String, Score: question.Score.Float64},
-			},
-			MarkRole:        analyze,
-			OrderNum:        int(question.Order.Int64),
-			Score:           question.Score.Float64,
-			StandardAnswers: standardAnswers,
-			Type:            question.Type.String,
-		})
+		set.Questions = append(set.Questions, &question)
 
 	}
 
@@ -782,7 +753,7 @@ func QueryExamQuestionsByMarkMode(ctx context.Context, cond QueryCondition, mark
 
 }
 
-func QueryExamineeInfo(ctx context.Context, cond QueryCondition) (students []Student, err error) {
+func QueryExamineeInfo(ctx context.Context, cond QueryCondition) (examineeInfos []*cmn.TVExamineeInfo, err error) {
 	forceErr, _ := ctx.Value(ForceErrKey).(string)
 	err = cmn.Validate(cond)
 	if err != nil {
@@ -791,17 +762,16 @@ func QueryExamineeInfo(ctx context.Context, cond QueryCondition) (students []Stu
 		return
 	}
 
-	query := `SELECT u.official_name, u.nickname, u.id, e.id, e.serial_number
-							FROM t_examinee e
-							LEFT JOIN t_user u ON e.student_id = u.id
-							WHERE e.exam_session_id = $1 AND e.status = '10' %s -- 动态插入s
-							ORDER BY e.serial_number`
+	query := `	SELECT official_name, id, serial_number
+				FROM v_examinee_info
+				WHERE exam_session_id = $1 AND examinee_status = '10' %s -- 动态拼接where条件
+				ORDER BY serial_number`
 
 	var args []interface{}
 	args = append(args, cond.ExamSessionID)
 
 	if cond.ExamineeID > 0 {
-		query = fmt.Sprintf(query, " AND e.id = $2 ")
+		query = fmt.Sprintf(query, " AND id = $2 ")
 		args = append(args, cond.ExamineeID)
 	} else {
 		query = fmt.Sprintf(query, "")
@@ -817,24 +787,14 @@ func QueryExamineeInfo(ctx context.Context, cond QueryCondition) (students []Stu
 	}
 
 	for rows.Next() {
-		var officialName null.String
-		var nickname null.String
-		var studentID null.Int
-		var orderNumber null.Int
-		var examineeID null.Int
-		err = rows.Scan(&officialName, &nickname, &studentID, &examineeID, &orderNumber)
+		var examineeInfo cmn.TVExamineeInfo
+		err = rows.Scan(&examineeInfo.OfficialName, &examineeInfo.ID, &examineeInfo.SerialNumber)
 		if err != nil || forceErr == "QueryExamineeInfo-rows.Scan" {
 			err = fmt.Errorf("unable to scan row data: %v", err)
 			z.Error(err.Error())
 			return
 		}
-		students = append(students, Student{
-			Name:       officialName.String,
-			Nickname:   nickname.String,
-			Number:     int(orderNumber.Int64),
-			StudentID:  studentID.Int64,
-			ExamineeID: examineeID.Int64,
-		})
+		examineeInfos = append(examineeInfos, &examineeInfo)
 	}
 
 	return

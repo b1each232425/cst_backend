@@ -591,7 +591,7 @@ func TestGetExamList(t *testing.T) {
 				"exam_name":  "",
 				"status":     "",
 			},
-			forceErr:       "GetExamList-json.Marshal",
+			forceErr:       "HandleExamList-json.Marshal",
 			expectedErrStr: "unable to marshal response data",
 		},
 		{
@@ -622,9 +622,9 @@ func TestGetExamList(t *testing.T) {
 			}
 
 			ctx = context.WithValue(ctx, cmn.QNearKey, newMockServiceCtx(method, tt.params, nil))
-			GetExamList(ctx)
+			HandleExamList(ctx)
 			q := cmn.GetCtxValue(ctx)
-			z.Sugar().Infof("GetExamList: %+v", q.Msg)
+			z.Sugar().Infof("HandleExamList: %+v", q.Msg)
 			if q.Err != nil {
 				if tt.expectedErrStr == "" {
 					t.Errorf("expected success, but got error: %v", q.Err.Error())
@@ -712,7 +712,7 @@ func TestGetMarkingDetails(t *testing.T) {
 				"exam_session_id": "101",
 				"examinee_id":     "",
 			},
-			forceErr:       "GetMarkingDetails-json.Marshal",
+			forceErr:       "HandleMarkingDetails-json.Marshal",
 			expectedErrStr: "failed to marshal response data",
 		},
 		{
@@ -766,7 +766,7 @@ func TestGetMarkingDetails(t *testing.T) {
 				"exam_session_id": "101",
 				"examinee_id":     "",
 			},
-			forceErr:       "GetMarkingDetails-json.Marshal",
+			forceErr:       "HandleMarkingDetails-json.Marshal",
 			expectedErrStr: "failed to marshal response data",
 		},
 	}
@@ -786,7 +786,7 @@ func TestGetMarkingDetails(t *testing.T) {
 			}
 
 			ctx = context.WithValue(ctx, cmn.QNearKey, newMockServiceCtx(method, tt.params, nil))
-			GetMarkingDetails(ctx)
+			HandleMarkingDetails(ctx)
 			q := cmn.GetCtxValue(ctx)
 			if q.Err != nil {
 				if tt.expectedErrStr == "" {
@@ -1396,7 +1396,7 @@ func TestSaveMarkingResults(t *testing.T) {
 		{
 			name:           "method not post",
 			requestMethod:  "GET",
-			expectedErrStr: "please call /api/mark/getMarkingDetails with http post method",
+			expectedErrStr: "please call /api/mark/marking-results with http post method",
 		},
 		{
 			name:           "no requestBody",
@@ -1603,7 +1603,7 @@ func TestSaveMarkingResults(t *testing.T) {
 			}
 
 			ctx = context.WithValue(ctx, cmn.QNearKey, newMockServiceCtx(tt.requestMethod, tt.params, ctxVal))
-			SaveMarkingResults(ctx)
+			HandleMarkingResults(ctx)
 			q := cmn.GetCtxValue(ctx)
 			if q.Err != nil {
 				if tt.expectedErrStr == "" {

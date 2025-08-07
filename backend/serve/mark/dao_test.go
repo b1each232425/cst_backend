@@ -2,6 +2,7 @@ package mark
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"github.com/jackc/pgx/v5"
 	"github.com/jmoiron/sqlx/types"
@@ -944,7 +945,7 @@ func TestQueryExamList(t *testing.T) {
 func TestQueryExamineeInfo(t *testing.T) {
 	cleanTestData()
 	initTestData()
-	defer cleanTestData()
+	//defer cleanTestData()
 
 	tests := []struct {
 		name           string
@@ -1105,7 +1106,7 @@ func TestQueryMarkingResults(t *testing.T) {
 func TestQueryExamQuestionsByMarkMode(t *testing.T) {
 	cleanTestData()
 	initTestData()
-	defer cleanTestData()
+	//defer cleanTestData()
 
 	tests := []struct {
 		name           string
@@ -1262,7 +1263,11 @@ func TestQueryExamQuestionsByMarkMode(t *testing.T) {
 			}
 
 			list, err := QueryExamQuestionsByMarkMode(ctx, tt.cond, tt.markerInfo)
-			z.Sugar().Infof("-->(%d)list: %+v", len(list), list)
+			data, e := json.Marshal(list)
+			if e != nil {
+				t.Errorf("unable to marshal list: %v", err.Error())
+			}
+			z.Sugar().Infof("-->(%d)list: %+v", len(list), string(data))
 
 			if err != nil {
 				if tt.expectedErrStr == "" {
