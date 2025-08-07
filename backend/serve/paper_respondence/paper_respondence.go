@@ -30,39 +30,42 @@ const (
 	LateEntryTimeArrived            // 最迟进入时间已经到达
 	ExamCanBeEnter                  //考试无论什么条件都能进入
 
-	TIMEOUT = 5 * time.Second
+	TIMEOUT     = 5 * time.Second //超时时间
+	LONGTIMEOUT = 20 * time.Second
 
-	AiCorrectMode = "02"
+	ExamModeOnline = "00" //线上考试模式
 
-	ExamModeOnline = "00"
+	ExamTypeFixed    = "00" //固定时间考试模式
+	ExamTypeFlexible = "02" //灵活时间考试模式
 
-	ExamTypeFixed    = "00"
-	ExamTypeFlexible = "02"
+	TestSign = "test" //测试标志
 
-	TestSign = "test"
+	SUBMIT = "0" //用于提交的条件检测
+	INIT   = "1" //用于初始化的条件检测
+	STATUS = "2" //用于查看考试状态的条件检测
+	ALLOW  = "3" //用于允许学生进入考试的条件检测
 
-	SUBMIT = "0"
-	INIT   = "1"
-	STATUS = "2"
-	ALLOW  = "3"
+	ExamOverStatus = "10"
 
-	ExamOverStatus       = "10"
-	QuestionCanNotAnswer = "02"
-	NormalStatus         = "00"
-	CanBeEnterStatus     = "16"
-	ExamineeDeleteStatus = " 08"
-	MakeupExam           = "04"
+	NormalStatus = "00" //正常状态
 
-	//
-	practiceSubmitted = "06"
+	MakeupExam = "04" //补考状态
 
-	ExamType     = "00"
-	PracticeType = "02"
+	CanBeEnterStatus = "16" //学生是被允许进入考试的，即使超过了最迟进入时间
 
-	ForceErr = "forceErr"
+	QuestionCanNotAnswer = "02" //不可作答的状态
 
-	StudentDomainId = 2008
-	ExamInvigilator = 2004
+	practiceSubmitted = "06" //练习提交状态
+
+	ExamType     = "00" //考试类型
+	PracticeType = "02" //练习类型
+
+	ForceErr = "forceErr" //强制错误标记
+
+	StudentDomainId = 2008 //学生域
+	ExamInvigilator = 2004 //监考员域
+
+	PracticeSubmissionDeleteStatus = "04"
 )
 
 var (
@@ -198,6 +201,7 @@ func StudentAnswer(ctx context.Context) {
 	if !ok {
 		forceErr = ""
 	}
+	var result cmn.TStudentAnswers
 	switch method {
 	case "post":
 		var buf []byte
@@ -269,48 +273,34 @@ func StudentAnswer(ctx context.Context) {
 			return
 		}
 		defer func() {
-			q.Err = tx.Rollback(dmlCtx)
-			if forceErr == "rollback-tx" {
-				q.Err = pgx.ErrTxCommitRollback
+			//失败回滚
+			if q.Err != nil {
+				q.Err = tx.Rollback(dmlCtx)
+				if forceErr == "rollback-tx" {
+					q.Err = pgx.ErrTxCommitRollback
+				}
+				if q.Err != nil {
+					z.Error(q.Err.Error())
+				}
+				return
 			}
-			if q.Err != nil && !errors.Is(q.Err, pgx.ErrTxClosed) {
+			//成功提交
+			q.Err = tx.Commit(dmlCtx)
+			if forceErr == "commit-tx" {
+				q.Err = errors.New("commit tx error")
+			}
+			if q.Err != nil {
 				z.Error(q.Err.Error())
-				q.Msg.Data = nil
-				q.RespErr()
 				return
 			}
 		}()
 
-		var result cmn.TStudentAnswers
 		result, q.Err = insertOrUpdateAnswer(dmlCtx, u, tx)
 		if q.Err != nil {
 			q.RespErr()
 			return
 		}
-		//提前回滚使得commit失效
-		if forceErr == "commit-tx" {
-			tx.Rollback(dmlCtx)
-		}
-		//提交
-		if q.Err = tx.Commit(dmlCtx); q.Err != nil {
-			z.Error(q.Err.Error())
-			q.RespErr()
-			return
-		}
-		resultPtr := &result
-		if forceErr == "marshal-Err" {
-			resultPtr = nil
-		}
-		buf, q.Err = cmn.MarshalJSON(resultPtr)
-		if q.Err != nil {
-			q.RespErr()
-			return
-		}
 
-		q.Msg.Data = buf
-		if forceErr != "rollback-tx" {
-			q.Resp()
-		}
 	case "get":
 		//获取题目的id
 		qd := q.R.URL.Query().Get("question_id")
@@ -346,7 +336,7 @@ func StudentAnswer(ctx context.Context) {
 		//表示考生id或者练习的submissionId
 		var id int64
 		//查询sql语句
-		var selectSql string
+		selectSql := `SELECT id, type, examinee_id, question_id, answer, marker, creator, create_time, updated_by, update_time, status,answer_attachments_path FROM assessuser.t_student_answers WHERE `
 		//查看哪个不为空
 		if ed != "" {
 			id, q.Err = strconv.ParseInt(ed, 10, 64)
@@ -355,7 +345,7 @@ func StudentAnswer(ctx context.Context) {
 				q.RespErr()
 				return
 			}
-			selectSql = `SELECT id, type, examinee_id, question_id, answer, marker, creator, create_time, updated_by, update_time, status,answer_attachments_path FROM assessuser.t_student_answers WHERE examinee_id =$1 AND question_id =$2`
+			selectSql += ` examinee_id =$1 AND question_id =$2`
 		} else {
 			id, q.Err = strconv.ParseInt(pd, 10, 64)
 			if q.Err != nil {
@@ -363,39 +353,38 @@ func StudentAnswer(ctx context.Context) {
 				q.RespErr()
 				return
 			}
-			selectSql = `SELECT id, type, examinee_id, question_id, answer, marker, creator, create_time, updated_by, update_time, status,answer_attachments_path FROM assessuser.t_student_answers WHERE practice_submission_id =$1 AND question_id =$2`
+			selectSql += ` practice_submission_id =$1 AND question_id =$2`
 		}
 		//开始查询
-		r := cmn.TStudentAnswers{}
-
-		q.Err = db.QueryRow(ctx, selectSql, id, questionId).Scan(&r.ID, &r.Type, &r.ExamineeID, &r.QuestionID, &r.Answer, &r.Marker, &r.Creator, &r.CreateTime, &r.UpdatedBy, &r.UpdateTime, &r.Status, &r.AnswerAttachmentsPath)
+		q.Err = db.QueryRow(ctx, selectSql, id, questionId).Scan(&result.ID, &result.Type, &result.ExamineeID, &result.QuestionID, &result.Answer, &result.Marker, &result.Creator, &result.CreateTime, &result.UpdatedBy, &result.UpdateTime, &result.Status, &result.AnswerAttachmentsPath)
 		if q.Err != nil {
 			z.Error("error", zap.Error(q.Err))
 			q.RespErr()
 			return
 		}
-		rPtr := &r
-
-		if forceErr == "marshal-err" {
-			rPtr = nil
-		}
-		var buf []byte
-		buf, q.Err = cmn.MarshalJSON(rPtr)
-		if q.Err != nil {
-			q.RespErr()
-			return
-		}
-
-		q.Msg.RowCount = 1
-		q.Msg.Data = buf
-		q.Resp()
 	default:
 		q.Err = fmt.Errorf("unknown method %s", method)
 		z.Error(q.Err.Error())
 		q.RespErr()
 		return
 	}
+	var newBuf []byte
+	resultPtr := &result
+	if forceErr == "marshal-Err" {
+		resultPtr = nil
+	}
+	newBuf, q.Err = cmn.MarshalJSON(resultPtr)
+	if q.Err != nil {
+		q.RespErr()
+		return
+	}
 
+	q.Msg.Data = newBuf
+	q.Msg.Msg = "success"
+	q.Msg.RowCount = 1
+	if forceErr != "rollback-tx" {
+		q.Resp()
+	}
 }
 
 // InitRespondent 作答初始化
@@ -499,14 +488,24 @@ func InitRespondent(ctx context.Context) {
 		return
 	}
 	defer func() {
-		//如果不是tx done错误就返回给前端
-		q.Err = tx.Rollback(dmlCtx)
-		if forceErr == "rollback-tx" {
-			q.Err = pgx.ErrTxCommitRollback
+		if q.Err != nil {
+			q.Err = tx.Rollback(dmlCtx)
+			if forceErr == "rollback-tx" {
+				q.Err = pgx.ErrTxCommitRollback
+			}
+			if q.Err != nil {
+				z.Error(q.Err.Error())
+			}
+			return
 		}
-		if q.Err != nil && !errors.Is(q.Err, pgx.ErrTxClosed) {
-			z.Error(q.Err.Error())
-			q.RespErr()
+
+		//提交事务
+		err := tx.Commit(dmlCtx)
+		if forceErr == "commit-tx" {
+			err = errors.New("commit tx error")
+		}
+		if err != nil {
+			z.Error(err.Error())
 			return
 		}
 	}()
@@ -703,20 +702,8 @@ func InitRespondent(ctx context.Context) {
 		q.RespErr()
 		return
 	}
-	if forceErr == "commit-tx" {
-		tx.Rollback(dmlCtx)
-	}
-	//提交事务
-	if err := tx.Commit(dmlCtx); err != nil {
-		q.Err = err
-		z.Error(err.Error())
-		q.RespErr()
-		return
-	}
+
 	if forceErr == "close body err" {
-		return
-	}
-	if forceErr == "rollback-tx" {
 		return
 	}
 	q.Err = nil
@@ -792,14 +779,24 @@ func CheckExamStatus(ctx context.Context) {
 		return
 	}
 	defer func() {
-		//如果不是tx done错误就返回给前端
-		q.Err = tx.Rollback(dmlCtx)
-		if forceErr == "rollback-tx" {
-			q.Err = pgx.ErrTxCommitRollback
+		if q.Err != nil {
+			//如果不是tx done错误就返回给前端
+			q.Err = tx.Rollback(dmlCtx)
+			if forceErr == "rollback-tx" {
+				q.Err = pgx.ErrTxCommitRollback
+			}
+			if q.Err != nil {
+				z.Error(q.Err.Error())
+			}
+			return
 		}
-		if q.Err != nil && !errors.Is(q.Err, pgx.ErrTxClosed) {
-			z.Error(q.Err.Error())
-			q.RespErr()
+
+		err := tx.Commit(dmlCtx)
+		if forceErr == "commit-tx" {
+			err = errors.New("commit tx error")
+		}
+		if err != nil {
+			z.Error(err.Error())
 			return
 		}
 	}()
@@ -808,18 +805,6 @@ func CheckExamStatus(ctx context.Context) {
 	result, err := checkExamCondition(dmlCtx, examSessionIdInt, studentId, tx, STATUS)
 	if err != nil {
 		q.Err = err
-		q.RespErr()
-		return
-	}
-
-	//提前回滚使得commit失效
-	if forceErr == "commit-tx" {
-		tx.Rollback(dmlCtx)
-	}
-
-	if err := tx.Commit(dmlCtx); err != nil {
-		q.Err = err
-		z.Error(err.Error())
 		q.RespErr()
 		return
 	}
@@ -834,11 +819,10 @@ func CheckExamStatus(ctx context.Context) {
 		q.RespErr()
 		return
 	}
-	if forceErr != "rollback-tx" {
-		q.Msg.Status = 0
-		q.Msg.Data = data
-		q.Resp()
-	}
+
+	q.Msg.Status = 0
+	q.Msg.Data = data
+	q.Resp()
 
 }
 
@@ -936,14 +920,22 @@ func Submit(ctx context.Context) {
 		return
 	}
 	defer func() {
-		q.Err = tx.Rollback(ctx)
-		if forceErr == "rollback-tx" {
-			q.Err = pgx.ErrTxCommitRollback
-		}
-		if q.Err != nil && !errors.Is(q.Err, pgx.ErrTxClosed) {
-			z.Error(q.Err.Error())
-			q.RespErr()
+		if q.Err != nil {
+			q.Err = tx.Rollback(ctx)
+			if forceErr == "rollback-tx" {
+				q.Err = pgx.ErrTxCommitRollback
+			}
+			if q.Err != nil {
+				z.Error(q.Err.Error())
+			}
 			return
+		}
+		q.Err = tx.Commit(ctx)
+		if forceErr == "commit-tx" {
+			q.Err = errors.New("commit-tx-error")
+		}
+		if q.Err != nil {
+			z.Error(q.Err.Error())
 		}
 	}()
 
@@ -1000,30 +992,13 @@ func Submit(ctx context.Context) {
 				return
 			}
 		}
-
-		q.Err = tx.Commit(ctx)
-		if forceErr == "commit-tx" {
-			q.Err = errors.New("commit-tx-error")
-		}
-		if q.Err != nil {
-			z.Error(q.Err.Error())
-			q.RespErr()
-			return
-		}
-
-		markCtx, cancel := context.WithTimeout(ctx, TIMEOUT)
-		defer cancel()
-		q.Err = mark.AutoMark(markCtx, mark.QueryCondition{
-			ExamineeID:    u.ExamineeID,
-			ExamSessionID: u.ExamSessionId,
-		})
-		if forceErr == "mark-err" {
-			q.Err = errors.New("mark-err")
-		}
-		if q.Err != nil {
-			q.RespErr()
-			return
-		}
+		// 异步批改
+		go func() {
+			mark.AutoMark(ctx, mark.QueryCondition{
+				ExamineeID:    u.ExamineeID,
+				ExamSessionID: u.ExamSessionId,
+			})
+		}()
 
 	case PracticeType:
 		if u.PracticeSubmissionID <= 0 || u.PracticeId <= 0 {
@@ -1035,8 +1010,19 @@ func Submit(ctx context.Context) {
 		if forceErr == "setAnswerCanNotUpdate error" {
 			tx.Rollback(dmlCtx)
 		}
+
+		//查看练习是否被其他人删除了
+		q.Err = checkPracticeSubmission(ctx, tx, u.PracticeSubmissionID)
+		if q.Err != nil {
+			q.RespErr()
+			return
+		}
+
 		//将练习置为提交状态
 		q.Err = setAnswerCanNotUpdate(ctx, 0, u.PracticeSubmissionID, u.StudentId, tx)
+		if forceErr == "set answer can not update err" {
+			q.Err = errors.New("set answer can not update err")
+		}
 		if q.Err != nil {
 			q.RespErr()
 			return
@@ -1053,31 +1039,12 @@ func Submit(ctx context.Context) {
 			q.RespErr()
 			return
 		}
-
-		q.Err = tx.Commit(dmlCtx)
-		if forceErr == "commit-tx" {
-			q.Err = errors.New("commit-tx-error")
-		}
-		if q.Err != nil {
-			z.Error(q.Err.Error())
-			q.RespErr()
-			return
-		}
-		markCtx, cancel := context.WithTimeout(ctx, TIMEOUT)
-		defer cancel()
-		q.Err = mark.AutoMark(markCtx, mark.QueryCondition{
-			PracticeSubmissionID: u.PracticeSubmissionID,
-			PracticeID:           u.PracticeId,
-		})
-		if forceErr == "mark-err" {
-			q.Err = errors.New("mark-err")
-		}
-		if q.Err != nil {
-			q.RespErr()
-			return
-		}
+		// 异步批改
 		go func() {
-			//TODO 对接ai批改接口
+			mark.AutoMark(ctx, mark.QueryCondition{
+				PracticeSubmissionID: u.PracticeSubmissionID,
+				PracticeID:           u.PracticeId,
+			})
 		}()
 	default:
 		q.Err = fmt.Errorf("unknown student answer type: %s", u.Type)
@@ -1197,14 +1164,25 @@ func AllowStudentCanBeInExam(ctx context.Context) {
 		return
 	}
 	defer func() {
-		//如果不是tx done错误就返回给前端
-		q.Err = tx.Rollback(dmlCtx)
-		if forceErr == "rollback-tx" {
-			q.Err = pgx.ErrTxCommitRollback
+		if q.Err != nil {
+			q.Err = tx.Rollback(dmlCtx)
+			if forceErr == "rollback-tx" {
+				q.Err = pgx.ErrTxCommitRollback
+			}
+			if q.Err != nil {
+				z.Error(q.Err.Error())
+
+			}
+			return
 		}
-		if q.Err != nil && !errors.Is(q.Err, pgx.ErrTxClosed) {
-			z.Error(q.Err.Error())
-			q.RespErr()
+
+		//提交事务
+		err := tx.Commit(dmlCtx)
+		if forceErr == "commit-tx" {
+			err = errors.New("commit-tx error")
+		}
+		if err != nil {
+			z.Error(err.Error())
 			return
 		}
 	}()
@@ -1237,20 +1215,8 @@ WHERE e.exam_session_id = $3
 		q.RespErr()
 		return
 	}
-	if forceErr == "commit-tx" {
-		tx.Rollback(dmlCtx)
-	}
-	//提交事务
-	if err := tx.Commit(dmlCtx); err != nil {
-		q.Err = err
-		z.Error(err.Error())
-		q.RespErr()
-		return
-	}
+
 	if forceErr == "close body err" {
-		return
-	}
-	if forceErr == "rollback-tx" {
 		return
 	}
 	q.Err = nil
@@ -1469,6 +1435,12 @@ func insertOrUpdateAnswer(ctx context.Context, req SaveOrUpdateStudentAnswerReq,
 	RETURNING id,creator,updated_by
 	`
 	} else if req.PracticeSubmissionId > 0 {
+		//查看练习是否被其他人删除了
+		err := checkPracticeSubmission(ctx, tx, req.PracticeSubmissionId)
+		if err != nil {
+			return cmn.TStudentAnswers{}, err
+		}
+
 		// 直接一条SQL搞定插入或更新，如果是禁止作答的状态，说明已经提交，不能改了
 		sql = `
 	INSERT INTO t_student_answers 
@@ -1580,6 +1552,7 @@ func saveStudentBeginTimeForExam(ctx context.Context, tx pgx.Tx, req InitRespond
 	return nil
 }
 
+// setAnswerCanNotUpdate 设置作答不可作答
 func setAnswerCanNotUpdate(ctx context.Context, examineeId, practiceSubmissionId, userId int64, tx pgx.Tx) error {
 
 	var updateSqlForAnswer string
@@ -1624,4 +1597,27 @@ func saveBeginTimeForPractice(ctx context.Context, tx pgx.Tx, req InitRespondent
 		return err
 	}
 	return nil
+}
+
+// checkPracticeSubmission 查看练习的状态
+func checkPracticeSubmission(ctx context.Context, tx pgx.Tx, practiceSubmissionId int64) error {
+
+	sql := `SELECT EXISTS(
+    SELECT 1
+    FROM t_practice_submissions
+    WHERE id = $1 AND status=$2 AND attempt=-1
+) AS result;`
+	var result null.Bool
+	err := tx.QueryRow(ctx, sql, practiceSubmissionId, PracticeSubmissionDeleteStatus).Scan(&result)
+	if err != nil {
+		z.Error("checkPracticeSubmission error", zap.Error(err))
+		return err
+	}
+	z.Info("result", zap.Bool("result", result.Bool))
+	if !result.Bool {
+		return nil
+	}
+	err = fmt.Errorf("当前练习已经被删除")
+	z.Info(err.Error(), zap.Int64("practiceSubmissionId", practiceSubmissionId))
+	return err
 }

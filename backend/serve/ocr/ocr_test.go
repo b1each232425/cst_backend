@@ -303,16 +303,46 @@ func Test_sendHttpRequest(t *testing.T) {
 			want:    nil,
 			wantErr: true,
 		},
-		//{
-		//	name: "nil file header test",
-		//	args: args{
-		//		ctx:        context.Background(),
-		//		fileHeader: nil,
-		//		url:        "http://example.com",
-		//	},
-		//	want:    nil,
-		//	wantErr: true,
-		//},
+		{
+			name: "create form file err",
+			args: args{
+				ctx:        context.WithValue(context.Background(), ForceErr, "create form file err"),
+				fileHeader: fileHeader,
+				url:        "http://example.com",
+			},
+			want:    nil,
+			wantErr: true,
+		},
+		{
+			name: "copy file err",
+			args: args{
+				ctx:        context.WithValue(context.Background(), ForceErr, "copy file err"),
+				fileHeader: fileHeader,
+				url:        "http://example.com",
+			},
+			want:    nil,
+			wantErr: true,
+		},
+		{
+			name: "close writer err",
+			args: args{
+				ctx:        context.WithValue(context.Background(), ForceErr, "close writer err"),
+				fileHeader: fileHeader,
+				url:        "http://example.com",
+			},
+			want:    nil,
+			wantErr: true,
+		},
+		{
+			name: "unmarshal json err",
+			args: args{
+				ctx:        context.WithValue(context.Background(), ForceErr, "unmarshal json err"),
+				fileHeader: fileHeader,
+				url:        "http://example.com",
+			},
+			want:    nil,
+			wantErr: true,
+		},
 		{
 			name: "empty url test",
 			args: args{
