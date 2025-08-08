@@ -5462,3 +5462,7 @@ func TestManualPaperGetMethod(t *testing.T) {
 		})
 	}
 }
+
+func TestPaperLock(t *testing.T) {
+
+}
