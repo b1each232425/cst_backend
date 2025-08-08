@@ -994,7 +994,7 @@ func gradeSH(ctx context.Context) {
 				return
 			}
 
-			result, err := getScoreS(dmlCtx, tx, studentID, 0, examSessionID)
+			result, err := getScoreS(dmlCtx, tx, studentID, examSessionID, 0)
 			if err != nil {
 				q.Err = err
 				q.RespErr()
@@ -1025,20 +1025,9 @@ func gradeSH(ctx context.Context) {
 				return
 			}
 
-			result, err := getScoreS(dmlCtx, tx, studentID, 0, examSessionID)
+			result, err := getScoreS(dmlCtx, tx, studentID, 0, practiceID)
 			if err != nil {
 				q.Err = err
-				q.RespErr()
-				return
-			}
-
-			dmlCtx, cancel := context.WithTimeout(ctx, TIMEOUT)
-			defer cancel()
-
-			result, err = getScoreS(dmlCtx, tx, studentID, examSessionID, practiceID)
-			if err != nil {
-				q.Err = err
-				z.Error(q.Err.Error())
 				q.RespErr()
 				return
 			}

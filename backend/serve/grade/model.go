@@ -165,8 +165,9 @@ type PracticeAnalysis struct {
 	QuestionGroups       []JSONText                  `json:"question_groups"`        // 题目分组
 }
 
-type Rank struct {
-	Number int     `json:"number"`
-	Name   string  `json:"name"`
-	Score  float64 `json:"score"`
+type ExamSessionScoreRank struct {
+	StudentID    int64       `json:"student_id" db:"student_id"`
+	OfficialName null.String `json:"official_name" db:"official_name"`
+	TotalScore   null.Float  `json:"total_score" db:"total_score"`
+	Rank         null.Int    `json:"rank" db:"rank"`
 }
