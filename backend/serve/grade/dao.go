@@ -2,12 +2,17 @@ package grade
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"go.uber.org/zap"
 	"w2w.io/cmn"
+	"w2w.io/null"
+	"w2w.io/serve/examPaper"
 )
 
 /*
@@ -328,7 +333,6 @@ func setExamGradeSubmitted(ctx context.Context, args *GradeSubmitArgs) (int64, e
 	if val := ctx.Value("force-error"); val != nil {
 		forceErr = val.(string)
 	}
-	z.Debug(forceErr)
 
 	if args.TeacherID <= 0 {
 		err = fmt.Errorf("无效教师ID")
@@ -456,4 +460,1185 @@ func setExamGradeSubmitted(ctx context.Context, args *GradeSubmitArgs) (int64, e
 	txSuccess = true
 
 	return rowsAffected, nil
+}
+
+func GetExamSessionCount(ctx context.Context, examID []int) (int, error) {
+
+	var err error
+
+	z.Info("----->" + cmn.FncName())
+
+	conn := cmn.GetPgxConn()
+	if conn == nil {
+		z.Error("PostgreSQL connection is nil")
+		return 0, ErrNilDBConn
+	}
+
+	placeholders := make([]string, len(examID))
+	params := []any{}
+	for i, id := range examID {
+		placeholders[i] = fmt.Sprintf("$%d", i+1)
+		params = append(params, id)
+	}
+	placeholderStr := strings.Join(placeholders, ", ")
+
+	var count int
+
+	sql := fmt.Sprintf(`SELECT COUNT(id) FROM t_exam_session WHERE exam_id IN (%s)`, placeholderStr)
+
+	err = conn.QueryRow(ctx, sql, params...).Scan(&count)
+	if err != nil {
+		err = fmt.Errorf("scan exam session count(examID:%v) occurred error: %s", examID, err.Error())
+		z.Error(err.Error())
+		return 0, err
+	}
+
+	return count, nil
+}
+
+func GetManualPaperDetailByPaperID(ctx context.Context, paperID int64) (*cmn.TVPaper, error) {
+	if paperID <= 0 {
+		z.Error("无效考试ID")
+		return nil, errors.New("无效考试ID")
+	}
+
+	query := `SELECT
+   id,name,assembly_type,category,level,suggested_duration,description,tags,creator,create_time,update_time,status,total_score,question_count,groups_data
+	FROM v_paper
+	WHERE id = $1
+	LIMIT 1`
+
+	db := cmn.GetDbConn()
+	row := db.QueryRowContext(ctx, query, paperID)
+	var paper cmn.TVPaper
+	err := row.Scan(
+		&paper.ID,
+		&paper.Name,
+		&paper.AssemblyType,
+		&paper.Category,
+		&paper.Level,
+		&paper.SuggestedDuration,
+		&paper.Description,
+		&paper.Tags,
+		&paper.Creator,
+		&paper.CreateTime,
+		&paper.UpdateTime,
+		&paper.Status,
+		&paper.TotalScore,
+		&paper.QuestionCount,
+		&paper.GroupsData,
+	)
+	if err != nil {
+		z.Error(err.Error())
+		return nil, err
+	}
+	return &paper, nil
+}
+
+func GradeDistributionExam(ctx context.Context, args GradeDistributionArgs) (ExamGradeDistribution, error) {
+
+	z.Info("---->" + cmn.FncName())
+
+	var err error
+
+	result := ExamGradeDistribution{}
+
+	if args.ExamID < 0 {
+		err = fmt.Errorf("examID无效")
+		z.Error(err.Error())
+		return result, err
+	}
+
+	if args.ColumnNum < 1 {
+		err = fmt.Errorf("列数无效")
+		z.Error(err.Error())
+		return result, err
+	}
+
+	examID := args.ExamID
+
+	conn := cmn.GetPgxConn()
+	if conn == nil {
+		err = fmt.Errorf("获取数据库连接失败")
+		z.Error(err.Error())
+		return result, err
+	}
+
+	whereClause := " WHERE ei.id = $1 "
+
+	distributions := []string{}
+
+	scoreInterval := 1 / float64(args.ColumnNum)
+
+	initAddiCondition := ""
+
+	if args.ColumnNum == 1 {
+		initAddiCondition = " OR sets.total_score IS NULL "
+	}
+
+	initDistribution := fmt.Sprintf(
+		`SUM (
+			CASE
+				WHEN (sets.total_score >= %f * ep.total_score
+					AND sets.total_score <= %d * ep.total_score)
+					%s
+					THEN 1
+				ELSE 0
+			END
+		)`, scoreInterval*float64(args.ColumnNum-1), 1, initAddiCondition)
+
+	distributions = append(distributions, initDistribution)
+
+	for i := args.ColumnNum - 1; i > 0; i-- {
+
+		addiCondition := ""
+
+		if i == 1 {
+			addiCondition = " OR sets.total_score IS NULL "
+		}
+
+		sqlStr := fmt.Sprintf(
+			`SUM (
+				CASE
+					WHEN (sets.total_score >= %f * exam_papers.total_score
+						AND sets.total_score < %f * exam_papers.total_score)
+						%s
+						THEN 1
+					ELSE 0
+				END
+			)`, scoreInterval*float64(i-1), scoreInterval*float64(i), addiCondition)
+
+		distributions = append(distributions, sqlStr)
+
+	}
+
+	sql := fmt.Sprintf(`WITH exam_session_grades AS (
+		SELECT
+			sets.exam_id AS exam_id,
+			sets.exam_session_id,
+			ep.id AS exam_paper_id,
+			ep.name AS exam_paper_name,
+			ep.total_score AS total_score,
+			COUNT(DISTINCT sets.student_id) AS total,
+			ARRAY[
+				%s
+			] AS score_distribution
+		FROM v_student_exam_total_score sets
+			JOIN v_exam_paper ep ON ep.exam_session_id =  sets.exam_session_id
+		GROUP BY
+			sets.exam_id,
+			sets.exam_session_id,
+			ep.id,
+			ep.name,
+			ep.total_score
+	)
+	SELECT
+		ei.id,
+		ei.name,
+		jsonb_agg(exam_session_grades) AS exam_session_score_distribution
+	FROM t_exam_info ei
+		JOIN exam_session_grades ON exam_session_grades.exam_id = ei.id
+	%s
+	GROUP BY
+		ei.id
+	`, strings.Join(distributions, ", "), whereClause)
+
+	z.Sugar().Debug("sql:%#v", sql)
+
+	err = conn.QueryRow(ctx, sql, examID).Scan(
+		&result.ExamID,
+		&result.ExamName,
+		&result.GradeDistribution,
+	)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			err = fmt.Errorf("%w: no exam found with ID %d", err, examID)
+			z.Error(err.Error())
+			return result, err
+		}
+
+		err = fmt.Errorf("获取考试成绩分布(examID=%d) 错误: %s", examID, err.Error())
+
+		z.Error(err.Error())
+		return result, err
+	}
+
+	return result, err
+}
+
+// // GetPracticeGradeDistribution 将返回指定练习ID的成绩分布信息
+func GradeDistributionPractice(ctx context.Context, args GradeDistributionArgs) (PracticeGradeDistribution, error) {
+
+	z.Info("---->" + cmn.FncName())
+
+	var err error
+
+	result := PracticeGradeDistribution{}
+
+	if args.PracticeID <= 0 {
+		err = fmt.Errorf("练习ID无效")
+		z.Error(err.Error())
+		return result, err
+	}
+
+	if args.ColumnNum < 1 {
+		err = fmt.Errorf("列数无效")
+		z.Error(err.Error())
+		return result, err
+	}
+
+	practiceID := args.PracticeID
+
+	conn := cmn.GetPgxConn()
+	if conn == nil {
+		err = fmt.Errorf("获取数据库连接失败")
+		z.Error(err.Error())
+		return result, err
+	}
+
+	whereClause := " WHERE practices.id = $1 "
+
+	distributions := []string{}
+
+	scoreInterval := 1 / float64(args.ColumnNum)
+
+	initAddiCondition := ""
+
+	if args.ColumnNum == 1 {
+		initAddiCondition = " OR stu_practice_data.avg_score IS NULL "
+	}
+
+	initDistribution := fmt.Sprintf(
+		`SUM (
+			CASE
+				WHEN (stu_practice_data.avg_score >= %f * exam_papers.total_score
+					AND stu_practice_data.avg_score <= %d * exam_papers.total_score)
+					%s
+					THEN 1
+				ELSE 0
+			END
+		)`, scoreInterval*float64(args.ColumnNum-1), 1, initAddiCondition)
+
+	distributions = append(distributions, initDistribution)
+
+	for i := args.ColumnNum - 1; i > 0; i-- {
+
+		addiCondition := ""
+
+		if i == 1 {
+			addiCondition = " OR stu_practice_data.avg_score IS NULL "
+		}
+
+		sqlStr := fmt.Sprintf(
+			`SUM (
+				CASE
+					WHEN (stu_practice_data.avg_score >= %f * exam_papers.total_score
+						AND stu_practice_data.avg_score < %f * exam_papers.total_score)
+						%s
+						THEN 1
+					ELSE 0
+				END
+			)`, scoreInterval*float64(i-1), scoreInterval*float64(i), addiCondition)
+
+		distributions = append(distributions, sqlStr)
+
+	}
+
+	sql := fmt.Sprintf(`WITH stu_practice_data AS (
+		SELECT
+			student_id,
+			practice_id,
+			name,
+			exam_paper_id,
+			COUNT(1) AS attempt,
+			AVG(total_score) AS avg_score,
+			AVG(wrong_count)::integer AS avg_wrong_count,
+			AVG(used_time) AS avg_used_time
+		FROM v_student_practice_total_score
+		GROUP BY
+			student_id,
+			practice_id,
+			name,
+			exam_paper_id
+	)
+	SELECT
+		practices.id AS practice_id,
+		practices.name AS practice_name,
+		COUNT( stu_practice_data.student_id) AS total_stu,
+		exam_papers.total_score AS total_score,
+		ARRAY[
+			%s
+		] AS score_distribution
+
+	FROM t_practice practices
+		JOIN stu_practice_data ON stu_practice_data.practice_id = practices.id
+		JOIN v_exam_paper exam_papers ON exam_papers.id = stu_practice_data.exam_paper_id
+	%s
+	GROUP BY
+		practices.id,
+		exam_papers.total_score
+	`, strings.Join(distributions, ", "), whereClause)
+
+	err = conn.QueryRow(ctx, sql, practiceID).Scan(
+		&result.PracticeID,
+		&result.PracticeName,
+		&result.TotalStudents,
+		&result.TotalScore,
+		&result.GradeDistribution,
+	)
+	if err != nil {
+		// if errors.Is(err, pgx.ErrNoRows) {
+		// 	err = fmt.Errorf("%w: no practice found with ID %d", err, practiceID)
+		// 	z.Error(err.Error())
+		// 	return result, err
+		// }
+
+		err = fmt.Errorf("获取练习成绩分布失败(practiceID=%d) 错误: %s", practiceID, err.Error())
+		z.Error(err.Error())
+		return result, err
+	}
+
+	return result, err
+
+}
+
+func GradeExamineeListExam(ctx context.Context, args GradeExamineeListArgs) ([]ExamExamineeScoreInfo, int64, error) {
+	z.Info("---->" + cmn.FncName())
+	var err error
+
+	forceErr := ""
+	if val := ctx.Value("force-error"); val != nil {
+		forceErr = val.(string)
+	}
+
+	if len(args.ExamID) <= 0 {
+		err = fmt.Errorf("考试ID为空")
+		z.Error(err.Error())
+		return nil, 0, err
+	}
+
+	filter := args.Filter
+
+	params := []any{}
+
+	placeholders := make([]string, len(args.ExamID))
+	for i, id := range args.ExamID {
+		placeholders[i] = fmt.Sprintf("$%d", i+1)
+		params = append(params, id)
+	}
+	placeholderStr := strings.Join(placeholders, ", ")
+	whereClause := fmt.Sprintf("WHERE v_stu_score.exam_id IN (%s) ", placeholderStr)
+
+	if filter.Keyword != "" {
+		whereClause += fmt.Sprintf(" AND (v_examinee_info.official_name::text ILIKE $%d ", len(params)+1)
+		params = append(params, fmt.Sprintf("%%%s%%", filter.Keyword))
+
+		whereClause += fmt.Sprintf(" OR v_examinee_info.mobile_phone::text ILIKE $%d ", len(params)+1)
+		params = append(params, fmt.Sprintf("%%%s%%", filter.Keyword))
+
+		whereClause += fmt.Sprintf(" OR v_examinee_info.account::text ILIKE $%d)", len(params)+1)
+		params = append(params, fmt.Sprintf("%%%s%%", filter.Keyword))
+	}
+
+	sql := fmt.Sprintf(`
+	SELECT
+		v_stu_score.exam_id,
+		v_stu_score.exam_session_id,
+		v_stu_score.student_id AS stu_id,
+		v_examinee_info.mobile_phone AS phone,
+		v_examinee_info.official_name AS name,
+		v_examinee_info.account AS nickname,
+		v_stu_score.total_score AS score,
+		v_stu_score.total_score AS total_score,
+		STRING_AGG(COALESCE(v_examinee_info.remark, ''), '') AS remark
+	FROM v_student_exam_total_score v_stu_score
+		JOIN t_exam_info exam_infos ON exam_infos.id = v_stu_score.exam_id
+		JOIN v_examinee_info ON v_examinee_info.student_id = v_stu_score.student_id
+	%s
+	GROUP BY
+		v_stu_score.exam_id,
+		v_stu_score.exam_session_id,
+		v_stu_score.student_id,
+		v_examinee_info.mobile_phone,
+		v_examinee_info.official_name,
+		v_examinee_info.account,
+		v_stu_score.total_score,
+		exam_infos.id
+	`, whereClause)
+
+	z.Sugar().Debugf("打印sql是什么：%#v", sql)
+
+	var result []ExamExamineeScoreInfo
+	var rowCount int64
+
+	var listSQL string
+	var listParams []any
+
+	if args.Page == -1 && args.PageSize == -1 {
+		listSQL = sql
+		listParams = params
+	} else {
+		if args.Page <= 0 {
+			err = fmt.Errorf("页码无效，期望一个正整数")
+			z.Error(err.Error())
+			return nil, 0, err
+		}
+		if args.PageSize <= 0 {
+			err = fmt.Errorf("每页数量无效，期望一个正整数")
+			z.Error(err.Error())
+			return nil, 0, err
+		}
+
+		examSessionCount, err := GetExamSessionCount(ctx, args.ExamID)
+		if err != nil {
+			z.Error(err.Error())
+			return nil, 0, err
+		}
+
+		listSQL = fmt.Sprintf(`%s
+	ORDER BY exam_infos.id DESC
+	LIMIT $%d OFFSET $%d`,
+			sql, len(params)+1, len(params)+2)
+
+		listParams = append(listParams, args.PageSize*examSessionCount, (args.Page-1)*args.PageSize*examSessionCount)
+	}
+
+	conn := cmn.GetPgxConn()
+	if conn == nil {
+		err = fmt.Errorf("get exam examinee score failed: %w", ErrNilDBConn)
+		z.Error(err.Error())
+		return nil, 0, err
+	}
+
+	rows, err := conn.Query(ctx, listSQL, listParams...)
+	if err != nil {
+		err = fmt.Errorf("get exam examinee score list error: %w", err)
+		z.Error(err.Error())
+		return nil, 0, err
+	}
+
+	defer rows.Close()
+	for rows.Next() {
+		var scoreInfo ExamExamineeScoreInfo
+		err := rows.Scan(
+			&scoreInfo.ExamID,
+			&scoreInfo.ExamSessionID,
+			&scoreInfo.StuID,
+			&scoreInfo.Phone,
+			&scoreInfo.Name,
+			&scoreInfo.Nickname,
+			&scoreInfo.Score,
+			&scoreInfo.TotalScore,
+			&scoreInfo.Remark,
+		)
+		if err != nil {
+			err = fmt.Errorf("scan exam examinee score list error: %w", err)
+			z.Error(err.Error())
+			return nil, 0, err
+		}
+		result = append(result, scoreInfo)
+
+	}
+
+	// 统计SQL
+	countSql := fmt.Sprintf(`SELECT COUNT(1) FROM (%s) AS practice_grade_list_count`, sql)
+	err = conn.QueryRow(ctx, countSql, params...).Scan(&rowCount)
+	if forceErr == "conn.QueryRow fail" {
+		err = errors.New(forceErr)
+	}
+	if err != nil {
+		err = fmt.Errorf("执行查询语句失败: %w", err)
+		z.Error(err.Error())
+		return result, 0, err
+	}
+
+	return result, rowCount, err
+}
+
+func GradeExamineeListPractice(ctx context.Context, args GradeExamineeListArgs) ([]PracticeExamineeScoreInfo, int64, error) {
+	z.Info("---->" + cmn.FncName())
+	var err error
+
+	forceErr := ""
+	if val := ctx.Value("force-error"); val != nil {
+		forceErr = val.(string)
+	}
+
+	if len(args.PracticeID) <= 0 {
+		err = fmt.Errorf("%w: invalid exam ID, expected a positive number, got %d", ErrInvalidID, args.PracticeID)
+		z.Error(err.Error())
+		return nil, 0, err
+	}
+
+	filter := args.Filter
+	params := []any{}
+
+	placeholders := make([]string, len(args.PracticeID))
+	for i, id := range args.PracticeID {
+		placeholders[i] = fmt.Sprintf("$%d", i+1)
+		params = append(params, id)
+	}
+	placeholderStr := strings.Join(placeholders, ", ")
+	whereClause := fmt.Sprintf("WHERE v_stu_score.practice_id IN (%s) ", placeholderStr)
+
+	if filter.Keyword != "" {
+		whereClause += fmt.Sprintf(" AND (v_examinee_info.official_name::text ILIKE $%d ", len(params)+1)
+		params = append(params, fmt.Sprintf("%%%s%%", filter.Keyword))
+
+		whereClause += fmt.Sprintf(" OR v_examinee_info.mobile_phone::text ILIKE $%d ", len(params)+1)
+		params = append(params, fmt.Sprintf("%%%s%%", filter.Keyword))
+
+		whereClause += fmt.Sprintf(" OR v_examinee_info.account::text ILIKE $%d)", len(params)+1)
+		params = append(params, fmt.Sprintf("%%%s%%", filter.Keyword))
+	}
+
+	tPractice := cmn.TPractice{}
+	practiceTableName := tPractice.GetTableName()
+
+	sql := fmt.Sprintf(`
+	SELECT
+		v_stu_score.practice_id,
+		v_stu_score.student_id,
+		v_examinee_info.mobile_phone AS phone,
+		v_examinee_info.official_name AS name,
+		v_examinee_info.account AS nickname,
+		MAX(v_stu_score.total_score) AS highest_score,
+		COUNT(DISTINCT v_stu_score.id) AS submitted_cnt,
+		STRING_AGG(COALESCE(v_examinee_info.remark, ''), '') AS remark
+	FROM v_student_practice_total_score v_stu_score
+		LEFT JOIN %s exam_infos ON exam_infos.id = v_stu_score.practice_id
+		LEFT JOIN v_examinee_info ON v_examinee_info.student_id = v_stu_score.student_id
+	%s
+	GROUP BY v_stu_score.practice_id, v_stu_score.student_id, v_examinee_info.mobile_phone, v_examinee_info.official_name, v_examinee_info.account, exam_infos.id
+		`, practiceTableName, whereClause)
+
+	var result []PracticeExamineeScoreInfo
+	var rowCount int64
+
+	var listSQL string
+	var listParams []any
+
+	if args.Page == -1 && args.PageSize == -1 {
+		listSQL = sql
+		listParams = params
+	} else {
+		if args.Page <= 0 {
+			err = fmt.Errorf("%w: page is invalid, expected a positive number", ErrInvalidPage)
+			z.Error(err.Error())
+			return nil, 0, err
+		}
+		if args.PageSize <= 0 {
+			err = fmt.Errorf("%w: pageSize is invalid, expected a positive number", ErrInvalidPageSize)
+			z.Error(err.Error())
+			return nil, 0, err
+		}
+
+		listSQL = fmt.Sprintf(`%s
+	ORDER BY exam_infos.id DESC
+	LIMIT $%d OFFSET $%d`,
+			sql, len(listParams)+1, len(listParams)+2)
+
+		listParams = append(listParams, args.PageSize, (args.Page-1)*args.PageSize)
+	}
+
+	conn := cmn.GetPgxConn()
+	if conn == nil {
+		err = fmt.Errorf("get exam examinee score failed: %w", ErrNilDBConn)
+		z.Error(err.Error())
+		return nil, 0, err
+	}
+
+	rows, err := conn.Query(ctx, listSQL, listParams...)
+	if err != nil {
+		err = fmt.Errorf("get exam examinee score list error: %w", err)
+		z.Error(err.Error())
+		return nil, 0, err
+	}
+
+	defer rows.Close()
+	for rows.Next() {
+		var scoreInfo PracticeExamineeScoreInfo
+		err := rows.Scan(
+			&scoreInfo.PracticeID,
+			&scoreInfo.StuID,
+			&scoreInfo.Phone,
+			&scoreInfo.Name,
+			&scoreInfo.Nickname,
+			&scoreInfo.HighestScore,
+			&scoreInfo.SubmittedCnt,
+			&scoreInfo.Remark,
+		)
+		z.Debug("exam examinee score info", zap.Any("scoreInfo", scoreInfo))
+		if err != nil {
+			err = fmt.Errorf("scan exam examinee score list error: %w", err)
+			z.Error(err.Error())
+			return nil, 0, err
+		}
+		result = append(result, scoreInfo)
+
+	}
+
+	// 统计SQL
+	countSql := fmt.Sprintf(`SELECT COUNT(1) FROM (%s) AS practice_grade_list_count`, sql)
+	err = conn.QueryRow(ctx, countSql, params...).Scan(&rowCount)
+	if forceErr == "conn.QueryRow fail" {
+		err = errors.New(forceErr)
+	}
+	if err != nil {
+		err = fmt.Errorf("执行查询语句失败: %w", err)
+		z.Error(err.Error())
+		return result, 0, err
+	}
+
+	return result, rowCount, err
+
+}
+
+func GradeAnalysisExam(ctx context.Context, args GradeArgs) (ExamAnalysis, error) {
+	z.Info("---->" + cmn.FncName())
+
+	forceErr := ""
+	if val := ctx.Value("force-error"); val != nil {
+		forceErr = val.(string)
+	}
+
+	var analysis ExamAnalysis
+
+	var err error
+
+	conn := cmn.GetPgxConn()
+	if conn == nil {
+		return analysis, fmt.Errorf("%w: ", ErrNilDBConn)
+	}
+
+	// 从exam_paper表获取paper_id
+	examPaperSql := `
+		SELECT
+			exam_session_id, id AS exam_paper_id
+		FROM t_exam_paper
+		WHERE exam_session_id = $1
+	`
+	examPaperParams := []any{args.ExamSessionID}
+
+	err = conn.QueryRow(ctx, examPaperSql, examPaperParams...).Scan(&analysis.ExamSessionID, &analysis.ExamPaperID)
+	if err != nil {
+		err = fmt.Errorf("get created exam info(examSessionID=%v) occurred error: %s", analysis.ExamSessionID, err.Error())
+		z.Error(err.Error())
+		return analysis, err
+	}
+
+	// for rows.Next() {
+	// 	err := rows.Scan(
+
+	// 	)
+	// 	z.Debug("exam analysis info", zap.Any("analysis", analysis))
+	// 	if err != nil {
+	// 		err = fmt.Errorf("scan created exam info(examSessionID=%v) occurred error: %s", analysis.ExamSessionID, err.Error())
+	// 		z.Error(err.Error())
+	// 		return analysis, err
+	// 	}
+	// }
+
+	var tx pgx.Tx
+	tx, err = conn.Begin(context.Background())
+	if err != nil || forceErr == "conn begin tx fail" {
+		err = fmt.Errorf("开启事务失败: %w", err)
+		z.Error(err.Error())
+		return analysis, err
+	}
+
+	p, pg, pq, err := examPaper.LoadExamPaperDetailsById(ctx, tx, analysis.ExamPaperID, true, true)
+	z.Sugar().Debugf("打印p是什么：%+v", p)
+	z.Sugar().Debugf("打印p是什么：%#v", p)
+	z.Sugar().Debugf("打印pg是什么：%+v", pg)
+	z.Sugar().Debugf("打印pg是什么：%#v", pg)
+	z.Sugar().Debugf("打印pq是什么：%+v", pq)
+	z.Sugar().Debugf("打印pq是什么：%#v", pq)
+	// var examPaper *cmn.TVPaper
+	// examPaper, err = GetManualPaperDetailByPaperID(ctx, analysis.ExamPaperID)
+	// if err != nil {
+	// 	err = fmt.Errorf("get exam paper detail for exam paper ID %d: %w", analysis.ExamPaperID, err)
+	// 	z.Error(err.Error())
+	// 	return analysis, err
+	// }
+	// analysis.ExamPaper = examPaper
+
+	// 从exam_paper_question表获取exam_paper_id对应的题目信息
+	// examPaperQuestionSql := `
+	// 	SELECT id, exam_paper_id, score, type, content, options, answers,
+	// 	       analysis, title, answer_path, test_path, input, output,
+	// 	       example, repo, commit_id, creator, create_time, updated_by,
+	// 	       update_time, addi, status, "order", group_id, question_attachments_path
+	// 	FROM t_exam_paper_question
+	// 	WHERE exam_paper_id = $1`
+	// examPaperQuestionSql := `
+	// 	SELECT id, score, type, content, options, answers,
+	// 	       analysis, title, answer_path, test_path, input, output,
+	// 	       example, repo, commit_id, creator, create_time, updated_by,
+	// 	       update_time, addi, status, "order", group_id, question_attachments_path
+	// 	FROM t_exam_paper_question
+	// 	WHERE exam_paper_id = $1`
+	// rows, err = conn.Query(examPaperQuestionSql, analysis.ExamPaperID)
+	// if err != nil {
+	// 	z.Error("get exam paper questions for exam paper ID", zap.Error(err))
+	// 	return analysis, fmt.Errorf("get exam paper questions for exam paper ID: %w", err)
+	// }
+	// defer rows.Close()
+
+	// // 返回题目信息
+	// var questions []cmn.TExamPaperQuestion
+	// 收集题目ID，用于获取学生答案
+	// var questionIDs []cmn.NullInt
+	var questionIDs []null.Int
+
+	// for rows.Next() {
+	// 	var q cmn.TExamPaperQuestion
+	// 	err := rows.Scan(
+	// 		&q.ID, &q.Score, &q.Type, &q.Content,
+	// 		&q.Options, &q.Answers, &q.Analysis, &q.Title, &q.AnswerPath,
+	// 		&q.TestPath, &q.Input, &q.Output, &q.Example, &q.Repo,
+	// 		&q.CommitID, &q.Creator, &q.CreateTime, &q.UpdatedBy,
+	// 		&q.UpdateTime, &q.Addi, &q.Status, &q.Order, &q.GroupID,
+	// 		&q.QuestionAttachmentsPath)
+	// 	if err != nil {
+	// 		return analysis, fmt.Errorf("scan exam paper question for exam paper ID")
+	// 	}
+	// 	questionIDs = append(questionIDs, q.ID)
+	// 	questions = append(questions, q)
+	// }
+	// if err = rows.Err(); err != nil {
+	// 	return analysis, fmt.Errorf("error occurred while iterating exam paper questions for exam paper ID: %w", err)
+	// }
+
+	// // z.Debug("exam paper questions", zap.Any("questions", questions))
+	// analysis.Questions = questions
+
+	// 拼接 question IDs
+	questionIDsStr := make([]string, len(questionIDs))
+	for i, id := range questionIDs {
+		questionIDsStr[i] = fmt.Sprintf("%d", id.Int64)
+	}
+	questionIDsSql := strings.Join(questionIDsStr, ", ")
+
+	// 获取学生答案统计
+	getStudentAnswerSql := fmt.Sprintf(`
+	SELECT
+		tsa.answer
+	FROM t_student_answers tsa
+	WHERE tsa.question_id IN (%s)
+	`, questionIDsSql)
+
+	rows, err := conn.Query(ctx, getStudentAnswerSql)
+	if err != nil {
+		z.Error("get student answers for question ID", zap.Error(err))
+		return analysis, fmt.Errorf("get student answers for exam paper ID: %w", err)
+	}
+	defer rows.Close()
+
+	// 获取学生答案统计
+	questionAnswersStats := make(map[null.Int]map[string]int)
+
+	for rows.Next() {
+		var Answer JSONText
+		err := rows.Scan(&Answer)
+		if err != nil {
+			z.Error("scan student answer row", zap.Error(err))
+			return analysis, fmt.Errorf("scan student answer row: %w", err)
+		}
+		raw := json.RawMessage(Answer)
+		var ans struct {
+			Type       string   `json:"type"`
+			Ans        []string `json:"answer"`
+			QuestionID null.Int `json:"question_id"`
+		}
+		if err := json.Unmarshal(raw, &ans); err != nil {
+			z.Error("unmarshal group failed", zap.Error(err))
+			return analysis, fmt.Errorf("unmarshal student answer row: %w", err)
+		}
+		switch ans.Type {
+		case "00":
+			if questionAnswersStats[ans.QuestionID] == nil {
+				questionAnswersStats[ans.QuestionID] = make(map[string]int)
+			}
+			for _, answer := range ans.Ans {
+				if _, ok := questionAnswersStats[ans.QuestionID][answer]; !ok {
+					questionAnswersStats[ans.QuestionID][answer] = 0
+				}
+				questionAnswersStats[ans.QuestionID][answer]++
+			}
+		case "02":
+			if questionAnswersStats[ans.QuestionID] == nil {
+				questionAnswersStats[ans.QuestionID] = make(map[string]int)
+			}
+			for _, answer := range ans.Ans {
+				if _, ok := questionAnswersStats[ans.QuestionID][answer]; !ok {
+					questionAnswersStats[ans.QuestionID][answer] = 0
+				}
+				questionAnswersStats[ans.QuestionID][answer]++
+			}
+		case "04":
+			if questionAnswersStats[ans.QuestionID] == nil {
+				questionAnswersStats[ans.QuestionID] = make(map[string]int)
+			}
+			for _, answer := range ans.Ans {
+				if _, ok := questionAnswersStats[ans.QuestionID][answer]; !ok {
+					questionAnswersStats[ans.QuestionID][answer] = 0
+				}
+				questionAnswersStats[ans.QuestionID][answer]++
+			}
+		}
+	}
+	// z.Debug("question answers", zap.Any("questionAnswersStats", questionAnswersStats))
+
+	analysis.QuestionAnswersStats = questionAnswersStats
+
+	// 获取学生主观题得分统计
+	getSubjectiveScoreSql := fmt.Sprintf(`
+	SELECT
+		tm.question_id, AVG(tm.score) AS total_score
+	FROM t_mark tm
+	WHERE tm.question_id IN (%s)
+	GROUP BY tm.question_id
+	`, questionIDsSql)
+
+	rows, err = conn.Query(ctx, getSubjectiveScoreSql)
+	if err != nil {
+		z.Error("get student subjective scores for question ID", zap.Error(err))
+		return analysis, fmt.Errorf("get student subjective scores for exam paper ID: %w", err)
+	}
+	defer rows.Close()
+
+	// 获取学生主观题得分统计
+	subjectiveScores := make(map[null.Int]float64)
+
+	for rows.Next() {
+		var questionID null.Int
+		var totalScore float64
+		err := rows.Scan(&questionID, &totalScore)
+		if err != nil {
+			z.Error("scan student subjective score row", zap.Error(err))
+			return analysis, fmt.Errorf("scan student subjective score row: %w", err)
+		}
+		subjectiveScores[questionID] = totalScore
+	}
+	// z.Debug("subjective scores", zap.Any("subjectiveScores", subjectiveScores))
+
+	analysis.SubjectiveScores = subjectiveScores
+
+	return analysis, nil
+}
+
+func GetAnalysisPractice(ctx context.Context, args GradeArgs) (PracticeAnalysis, error) {
+	var analysis PracticeAnalysis
+
+	z.Info("---->" + cmn.FncName())
+
+	conn := cmn.GetPgxConn()
+	if conn == nil {
+		return analysis, fmt.Errorf("%w: ", ErrNilDBConn)
+	}
+
+	// 通过paperID获取题目
+	examPaperSql := `
+		SELECT
+			id AS exam_paper_id, question_groups
+		FROM t_exam_paper
+		WHERE practice_id = $1
+	`
+	examPaperParams := []any{args.PracticeID}
+
+	rows, err := conn.Query(ctx, examPaperSql, examPaperParams...)
+	if err != nil {
+		err = fmt.Errorf("get created exam info(practiceID=%v) occurred error: %s", args.PracticeID, err.Error())
+		z.Error(err.Error())
+		return analysis, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		err := rows.Scan(
+			&analysis.ExamPaperID,
+			&analysis.QuestionGroups,
+		)
+		// z.Debug("exam analysis info", zap.Any("analysis", analysis))
+		if err != nil {
+			err = fmt.Errorf("scan created exam info(practiceID=%v) occurred error: %s", args.PracticeID, err.Error())
+			z.Error(err.Error())
+			return analysis, err
+		}
+	}
+	// examPaperQuestionSql := `
+	// 	SELECT id, exam_paper_id, score, type, content, options, answers,
+	// 	       analysis, title, answer_path, test_path, input, output,
+	// 	       example, repo, commit_id, creator, create_time, updated_by,
+	// 	       update_time, addi, status, "order", group_id, question_attachments_path
+	// 	FROM t_exam_paper_question
+	// 	WHERE exam_paper_id = $1`
+	examPaperQuestionSql := `
+		SELECT id, score, type, content, options, answers,
+		       analysis, title,  input, output,
+		       example, repo, commit_id, creator, create_time, updated_by,
+		       update_time, addi, status, "order", group_id, question_attachments_path
+		FROM t_exam_paper_question
+		WHERE exam_paper_id = $1`
+
+	rows, err = conn.Query(ctx, examPaperQuestionSql, analysis.ExamPaperID)
+	if err != nil {
+		z.Error("get exam paper questions for exam paper ID", zap.Error(err))
+		return analysis, fmt.Errorf("get exam paper questions for exam paper ID: %w", err)
+	}
+	defer rows.Close()
+
+	// 返回题目信息
+	var questions []cmn.TExamPaperQuestion
+	// 收集题目ID，用于获取学生答案
+	// var questionIDs []cmn.NullInt
+	var questionIDs []null.Int
+
+	for rows.Next() {
+		var q cmn.TExamPaperQuestion
+		err := rows.Scan(
+			&q.ID, &q.Score, &q.Type, &q.Content,
+			&q.Options, &q.Answers, &q.Analysis, &q.Title, &q.Input, &q.Output, &q.Example, &q.Repo,
+			&q.CommitID, &q.Creator, &q.CreateTime, &q.UpdatedBy,
+			&q.UpdateTime, &q.Addi, &q.Status, &q.Order, &q.GroupID,
+			&q.QuestionAttachmentsPath)
+		if err != nil {
+			return analysis, fmt.Errorf("scan exam paper question for exam paper ID")
+		}
+		questionIDs = append(questionIDs, q.ID)
+		questions = append(questions, q)
+	}
+	if err = rows.Err(); err != nil {
+		return analysis, fmt.Errorf("error occurred while iterating exam paper questions for exam paper ID: %w", err)
+	}
+
+	// z.Debug("exam paper questions", zap.Any("questions", questions))
+	analysis.Questions = questions
+
+	// 拼接 question IDs
+	questionIDsStr := make([]string, len(questionIDs))
+	for i, id := range questionIDs {
+		questionIDsStr[i] = fmt.Sprintf("%d", id.Int64)
+	}
+	questionIDsSql := strings.Join(questionIDsStr, ", ")
+
+	// 获取学生答案统计
+	getStudentAnswerSql := fmt.Sprintf(`
+	SELECT
+		tsa.answer
+	FROM t_student_answers tsa
+	WHERE tsa.question_id IN (%s)
+	`, questionIDsSql)
+
+	rows, err = conn.Query(ctx, getStudentAnswerSql)
+	if err != nil {
+		z.Error("get student answers for question ID", zap.Error(err))
+		return analysis, fmt.Errorf("get student answers for exam paper ID: %w", err)
+	}
+	defer rows.Close()
+
+	// 获取学生答案统计
+	questionAnswersStats := make(map[null.Int]map[string]int)
+
+	for rows.Next() {
+		var Answer JSONText
+		err := rows.Scan(&Answer)
+		if err != nil {
+			z.Error("scan student answer row", zap.Error(err))
+			return analysis, fmt.Errorf("scan student answer row: %w", err)
+		}
+		raw := json.RawMessage(Answer)
+		var ans struct {
+			Type       string   `json:"type"`
+			Ans        []string `json:"answer"`
+			QuestionID null.Int `json:"question_id"`
+		}
+		if err := json.Unmarshal(raw, &ans); err != nil {
+			z.Error("unmarshal group failed", zap.Error(err))
+			return analysis, fmt.Errorf("unmarshal student answer row: %w", err)
+		}
+		switch ans.Type {
+		case "00":
+			if questionAnswersStats[ans.QuestionID] == nil {
+				questionAnswersStats[ans.QuestionID] = make(map[string]int)
+			}
+			for _, answer := range ans.Ans {
+				if _, ok := questionAnswersStats[ans.QuestionID][answer]; !ok {
+					questionAnswersStats[ans.QuestionID][answer] = 0
+				}
+				questionAnswersStats[ans.QuestionID][answer]++
+			}
+		case "02":
+			if questionAnswersStats[ans.QuestionID] == nil {
+				questionAnswersStats[ans.QuestionID] = make(map[string]int)
+			}
+			for _, answer := range ans.Ans {
+				if _, ok := questionAnswersStats[ans.QuestionID][answer]; !ok {
+					questionAnswersStats[ans.QuestionID][answer] = 0
+				}
+				questionAnswersStats[ans.QuestionID][answer]++
+			}
+		case "04":
+			if questionAnswersStats[ans.QuestionID] == nil {
+				questionAnswersStats[ans.QuestionID] = make(map[string]int)
+			}
+			for _, answer := range ans.Ans {
+				if _, ok := questionAnswersStats[ans.QuestionID][answer]; !ok {
+					questionAnswersStats[ans.QuestionID][answer] = 0
+				}
+				questionAnswersStats[ans.QuestionID][answer]++
+			}
+		}
+	}
+	// z.Debug("question answers", zap.Any("questionAnswersStats", questionAnswersStats))
+
+	analysis.QuestionAnswersStats = questionAnswersStats
+
+	// 获取学生主观题得分统计
+	getSubjectiveScoreSql := fmt.Sprintf(`
+	SELECT
+		tm.question_id, AVG(tm.score) AS total_score
+	FROM t_mark tm
+	WHERE tm.question_id IN (%s)
+	GROUP BY tm.question_id
+	`, questionIDsSql)
+
+	rows, err = conn.Query(ctx, getSubjectiveScoreSql)
+	if err != nil {
+		z.Error("get student subjective scores for question ID", zap.Error(err))
+		return analysis, fmt.Errorf("get student subjective scores for exam paper ID: %w", err)
+	}
+	defer rows.Close()
+
+	// 获取学生主观题得分统计
+	subjectiveScores := make(map[null.Int]float64)
+
+	for rows.Next() {
+		var questionID null.Int
+		var totalScore float64
+		err := rows.Scan(&questionID, &totalScore)
+		if err != nil {
+			z.Error("scan student subjective score row", zap.Error(err))
+			return analysis, fmt.Errorf("scan student subjective score row: %w", err)
+		}
+		subjectiveScores[questionID] = totalScore
+	}
+	// z.Debug("subjective scores", zap.Any("subjectiveScores", subjectiveScores))
+
+	analysis.SubjectiveScores = subjectiveScores
+
+	return analysis, nil
+}
+
+func getScoreS(ctx context.Context, tx pgx.Tx, studentID int, examSessionID int, practiceID int) (Map, error) {
+	var (
+		epid   int64 // 考卷Id
+		psid   int64 // 练习生提交Id 大于0则查询练习学生试卷
+		eid    int64 // 考生Id 大于0则查询考试学生试卷
+		err    error
+		vep    *cmn.TVExamPaper
+		tepg   map[int64]*cmn.TExamPaperGroup
+		eq     map[int64][]*examPaper.ExamQuestion
+		result Map
+	)
+
+	conn := cmn.GetPgxConn()
+	if conn == nil {
+		return result, fmt.Errorf("%w: ", ErrNilDBConn)
+	}
+
+	if examSessionID <= 0 && practiceID <= 0 {
+		err = fmt.Errorf("exam session id or practice id should be greater than 0")
+		return result, err
+	}
+	var sql string
+	if examSessionID > 0 {
+		sql = `
+	SELECT id, exam_paper_id
+	FROM t_examinee
+    WHERE student_id = $1 AND exam_session_id = $2
+	`
+		err = conn.QueryRow(ctx, sql, studentID, examSessionID).Scan(&eid, &epid)
+		if err != nil {
+			return result, fmt.Errorf("query student exam paper ID: %w", err)
+		}
+	}
+
+	if practiceID > 0 {
+		sql = `
+	SELECT id,exam_paper_id
+	FROM t_practice_submissions
+	WHERE student_id = $1 AND practice_id = $2
+	`
+		err = conn.QueryRow(ctx, sql, studentID, practiceID).Scan(&psid, &epid)
+		if err != nil {
+			return result, fmt.Errorf("query student exam paper ID: %w", err)
+		}
+	}
+
+	z.Sugar().Debug("epid:", epid, "psid:", psid, "eid:", eid)
+
+	vep, tepg, eq, err = examPaper.LoadExamPaperDetailByUserId(ctx, tx, epid, psid, eid, true, true, true)
+	result["vep"] = vep
+	result["tepg"] = tepg
+	result["eq"] = eq
+
+	z.Sugar().Debug("vep:", result["vep"])
+	z.Sugar().Debug("tepg:", result["tepg"])
+	z.Sugar().Debug("eq:", result["eq"])
+
+	rank, err := getRankList(examSessionID)
+
+	result["rank"] = rank
+	z.Sugar().Debug("rank:", result["rank"])
+
+	z.Sugar().Debug("result:", zap.Any("result", result))
+
+	return result, err
+}
+
+func getRankList(sessionID int) ([]Rank, error) {
+
+	var result []Rank
+	var err error
+
+	ctx := context.Background()
+	getRankListQuery := `SELECT u.official_name, u.nickname, v.total_score FROM t_examinee e
+						LEFT JOIN t_user u ON u.id = e.student_id
+						LEFT JOIN v_student_exam_total_score v ON v.student_id = e.student_id AND v.exam_session_id = $1
+                        ORDER BY v.total_score DESC
+						WHERE e.exam_session_id = $1`
+
+	conn := cmn.GetPgxConn()
+	if conn == nil {
+		return result, fmt.Errorf("%w: ", ErrNilDBConn)
+	}
+
+	rows, err := conn.Query(ctx, getRankListQuery, sessionID)
+	if err != nil {
+		z.Error(err.Error())
+		return nil, err
+	}
+
+	number := 0
+
+	for rows.Next() {
+		var officialName string
+		var nickname string
+		var totalScore float64
+		err := rows.Scan(&officialName, &nickname, &totalScore)
+		if err != nil {
+			z.Error(err.Error())
+			return nil, err
+		}
+		number += 1
+		result = append(result, Rank{
+			Name:   officialName,
+			Number: number,
+			Score:  totalScore,
+		})
+	}
+
+	return result, nil
 }

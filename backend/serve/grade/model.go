@@ -6,7 +6,9 @@ import (
 	"w2w.io/null"
 )
 
-// 成绩列表查询参数
+type Map map[string]interface{}
+
+// ********** 成绩列表接口 **********
 type GradeListArgs struct {
 	Category   string `json:"category"`
 	Page       int    `json:"page"`
@@ -20,8 +22,6 @@ type GradeListArgs struct {
 		Submitted int    `json:"submitted"`
 	}
 }
-
-// 考试场次数据
 type ExamSessionInfo struct {
 	ExamID             null.Int    `json:"exam_id"`             // 考试id
 	ExamSessionID      null.Int    `json:"exam_session_id"`     // 考试场次id
@@ -36,7 +36,6 @@ type ExamSessionInfo struct {
 	PassExaminees      null.Int    `json:"pass_examinees"`      // 及格人数
 }
 
-// 考试成绩数据
 type GradeExam struct {
 	ID        null.Int          `json:"id"`        // 考试id
 	Name      null.String       `json:"name"`      // 考试名称
@@ -45,7 +44,6 @@ type GradeExam struct {
 	Submitted null.Bool         `json:"submitted"` // 是否已提交成绩
 }
 
-// 练习成绩数据
 type GradePractice struct {
 	ID                null.Int    `json:"id"`                 // 练习id
 	Name              null.String `json:"name"`               // 练习名称
@@ -55,45 +53,22 @@ type GradePractice struct {
 	PassedStudents    null.Int    `json:"passed_students"`    // 通过人数
 }
 
-// 成绩提交参数
+//  ********** 成绩提交接口 **********
+
 type GradeSubmitArgs struct {
 	TeacherID int64 `json:"teacherID"`
 	ExamIDs   []int `json:"examIDs"`
 }
 
-type GradeDistributionExamArgs struct {
-	ExamID    int // 考试ID
-	ColumnNum int // 分布列数
-}
-
-type GradeDistributionPracticeArgs struct {
+// ********** 成绩分布接口 **********
+type GradeDistributionArgs struct {
+	Category   string
+	ExamID     int // 考试ID
 	PracticeID int // 练习ID
-	ColumnNum  int // 分布列数
+	TeacherID  int64
+	ColumnNum  int
 }
 
-type GradeListExamineeExamArgs struct {
-	ExamID    []int // 考试ID
-	TeacherID int   // 教师ID
-	ClassID   int   // 班级ID
-	Page      int   // 页码
-	PageSize  int   // 每页数量
-	Filter    struct {
-		Keyword string `json:"keyword"`
-	}
-}
-
-type GradeListExamineePracticeArgs struct {
-	PracticeID []int // 练习ID
-	TeacherID  int   // 教师ID
-	ClassID    int   // 班级ID
-	Page       int   // 页码
-	PageSize   int   // 每页数量
-	Filter     struct {
-		Keyword string `json:"keyword"`
-	}
-}
-
-// ExamSessionGradeDistribution 是考试场次成绩分布数据
 type ExamSessionGradeDistribution struct {
 	ExamID            null.Int    `json:"exam_id"`            // 考试ID
 	ExamSessionID     null.Int    `json:"exam_session_id"`    // 考试场次ID
@@ -103,7 +78,6 @@ type ExamSessionGradeDistribution struct {
 	ScoreDistribution []null.Int  `json:"score_distribution"` // 分数分布
 }
 
-// ExamGradeDistribution 是考试成绩分布数据
 type ExamGradeDistribution struct {
 	ExamID            null.Int                       `json:"exam_id"`            // 考试ID
 	ExamName          null.String                    `json:"exam_name"`          // 考试名称
@@ -118,27 +92,42 @@ type PracticeGradeDistribution struct {
 	GradeDistribution []null.Int  `json:"grade_distribution"` // 练习成绩分布
 }
 
+// ********** 考生成绩列表接口 **********
+type GradeExamineeListArgs struct {
+	Category   string
+	ExamID     []int // 考试ID
+	PracticeID []int // 练习ID
+	TeacherID  int64 // 教师ID
+	Page       int   // 页码
+	PageSize   int   // 每页数量
+	Filter     struct {
+		Keyword string `json:"keyword"`
+	}
+}
+
 type ExamExamineeScoreInfo struct {
-	StuID         null.Int    `json:"stu_id"`          // 学生ID
-	Phone         null.String `json:"phone"`           // 学生手机号
-	Name          null.String `json:"name"`            // 学生姓名
-	Nickname      null.String `json:"nickname"`        // 学生昵称
-	Score         null.Float  `json:"score"`           // 成绩
-	TotalScore    null.Float  `json:"total_score"`     // 总分
-	Remark        null.String `json:"remark"`          // 备注
-	ExamID        null.Int    `json:"exam_id"`         // 考试ID
-	ExamSessionID null.Int    `json:"exam_session_id"` // 考试场次ID
+	StuID    null.Int    `json:"stu_id"`   // 学生ID
+	Phone    null.String `json:"phone"`    // 学生手机号
+	Name     null.String `json:"name"`     // 学生姓名
+	Nickname null.String `json:"nickname"` // 学生昵称
+	Remark   null.String `json:"remark"`   // 备注
+
+	Score         null.Float `json:"score"`           // 成绩
+	TotalScore    null.Float `json:"total_score"`     // 总分
+	ExamID        null.Int   `json:"exam_id"`         // 考试ID
+	ExamSessionID null.Int   `json:"exam_session_id"` // 考试场次ID
 }
 
 type PracticeExamineeScoreInfo struct {
-	StuID        null.Int    `json:"stu_id"`        // 学生ID
-	Phone        null.String `json:"phone"`         // 学生手机号
-	Name         null.String `json:"name"`          // 学生姓名
-	Nickname     null.String `json:"nickname"`      // 学生昵称
-	Remark       null.String `json:"remark"`        // 备注
-	PracticeID   null.Int    `json:"practice_id"`   // 练习ID
-	HighestScore null.Float  `json:"highest_score"` // 最高分
-	SubmittedCnt null.Int    `json:"submitted_cnt"` // 提交次数
+	StuID    null.Int    `json:"stu_id"`   // 学生ID
+	Phone    null.String `json:"phone"`    // 学生手机号
+	Name     null.String `json:"name"`     // 学生姓名
+	Nickname null.String `json:"nickname"` // 学生昵称
+	Remark   null.String `json:"remark"`   // 备注
+
+	PracticeID   null.Int   `json:"practice_id"`   // 练习ID
+	HighestScore null.Float `json:"highest_score"` // 最高分
+	SubmittedCnt null.Int   `json:"submitted_cnt"` // 提交次数
 }
 
 type QuestionGroups struct {
@@ -149,17 +138,13 @@ type QuestionGroups struct {
 
 type JSONText = types.JSONText
 
-type GradeAnalysisExamArgs struct {
+// ********** 成绩接口 **********
+type GradeArgs struct {
+	Category      string
 	ExamSessionID int // 考试场次ID
-	TeacherID     int // 教师ID
-	ClassID       int // 班级ID
-}
-
-type GradeAnalysisPracticeArgs struct {
-	PracticeID int // 练习ID
-	PaperID    int // 试卷ID
-	TeacherID  int // 教师ID
-	ClassID    int // 班级ID
+	PracticeID    int // 练习ID
+	// PaperID       int // 试卷ID
+	TeacherID int64 // 教师ID
 }
 
 type ExamAnalysis struct {
@@ -178,4 +163,10 @@ type PracticeAnalysis struct {
 	QuestionAnswersStats map[null.Int]map[string]int `json:"question_answers_stats"` // 试题答案统计
 	SubjectiveScores     map[null.Int]float64        `json:"subjective_scores"`      // 主观题评分列表
 	QuestionGroups       []JSONText                  `json:"question_groups"`        // 题目分组
+}
+
+type Rank struct {
+	Number int     `json:"number"`
+	Name   string  `json:"name"`
+	Score  float64 `json:"score"`
 }

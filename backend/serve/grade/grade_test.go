@@ -21,11 +21,13 @@ func init() {
 func TestGradeListH(t *testing.T) {
 	cmn.ConfigureForTest()
 
+	// 接口参数 需要测试
 	//* @apiParam (200) {String} [category] 	成绩类型
 	//* @apiParam (200) {Number} [page] 	页码
 	//* @apiParam (200) {Number} [pageSize] 每页数量
 	//* @apiParam (200) {Number} [teacherID] 教师ID
 	//* @apiParam (200) {Number} [examID] 考试ID
+	//* @apiParam (200) {Number} [practiceID] 练习ID
 	//* @apiParam (200) {String} [name] 考试名称
 	//* @apiParam (200) {String} [type] 考试类型
 	//* @apiParam (200) {Number} [submitted] 是否已提交
@@ -983,3 +985,4 @@ func createMockContext(t *testing.T, req *http.Request, forceError string, userI
 	//return ctx
 	return context.WithValue(ctx, "force-error", forceError)
 }
+
