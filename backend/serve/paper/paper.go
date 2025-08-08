@@ -410,6 +410,7 @@ RETURNING id`
 		}
 		var rows pgx.Rows
 		rows, q.Err = tx.Query(ctx, groupSql, args...)
+		defer rows.Close()
 		// 强制错误，用于测试
 		if forceError == "tx.Query-err" {
 			q.Err = errors.New(forceError)
@@ -419,7 +420,6 @@ RETURNING id`
 			q.RespErr()
 			return
 		}
-		defer rows.Close()
 		// 扫描返回的分组ID
 		groups := make([]cmn.TPaperGroup, 0, 5)
 		for i := 0; rows.Next(); i++ {
@@ -1726,6 +1726,7 @@ func PaperList(ctx context.Context) {
 		var rows pgx.Rows
 
 		rows, q.Err = db.Query(dmlCtx, listSQLBuilder.String(), dataParams...)
+		defer rows.Close()
 		if val, ok := ctx.Value("force-error").(string); ok && val == "getPaperList-QueryRow-err" {
 			q.Err = errors.New(val)
 		}
@@ -1734,7 +1735,6 @@ func PaperList(ctx context.Context) {
 			q.RespErr()
 			return
 		}
-		defer rows.Close()
 		var papers []cmn.TVPaper
 		for rows.Next() {
 			var paper cmn.TVPaper
