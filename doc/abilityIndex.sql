@@ -1,6 +1,6 @@
 /*==============================================================*/
 /* DBMS name:      PostgreSQL 9.x                               */
-/* Created on:     2025/8/7 16:43:00                            */
+/* Created on:     2025/8/8 15:34:15                            */
 /*==============================================================*/
 
 
@@ -9201,9 +9201,13 @@ comment on column t_sys_ver.status is
 ALTER SEQUENCE t_sys_ver_id_seq RESTART WITH 20000;
 
 insert into t_sys_ver(id,name,ver,create_time,update_time,remark)
-  values(1000,'业务模型','3.1.1.0',
-  '2016年12月5日 9:52:53','2025年8月7日 16:42:56',
-  '3.1.1.0
+  values(1000,'业务模型','3.1.2.0',
+  '2016年12月5日 9:52:53','2025年8月8日 15:34:06',
+  '
+3.1.2.0
+更改v_paper 与v_exam_paper视图生成逻辑
+
+3.1.1.0
 为v_examinee_info添加serial_num,以及为t_exam_site添加了domain_id和sys_user
 
 3.1.0.0
@@ -10958,9 +10962,79 @@ create table if not exists t_v_domain_user as select * from v_domain_user;
 /* View: v_exam_paper                                           */
 /*==============================================================*/
 create or replace view v_exam_paper as
-SELECT 
+WITH
+question_agg AS(
+	SELECT 
+    	group_id,-- 组合数据时，根据group_id找到对应的题目数组
+    	jsonb_agg(
+        	jsonb_build_object(
+            	'id', id,
+                'type', type,
+                'content', content,
+                'options', options,
+                'answers', answers,
+                'score', score, 
+                'analysis', analysis,
+                'title', title,
+                'answer_file_path', answer_file_path,
+                'test_file_path', test_file_path,
+                'input', input,
+                'output', output,
+                'example', example,
+                'repo', repo,
+                'order', "order", 
+                'group_id', group_id,
+                'status', status,
+                'question_attachments_path', question_attachments_path
+            ) ORDER BY "order" -- 在构成json，就是插入数组的过程，就需要顺序判别
+        )AS questions -- 起别名，能取出数组
+    FROM t_exam_paper_question
+    WHERE status = '00'
+    GROUP BY group_id
+),
+-- 构建题组数据
+group_data AS (
+	SELECT 
+    	pg.id,
+        pg.name,
+        pg."order",
+        pg.creator,
+        pg.create_time,
+        pg.updated_by,
+        pg.update_time,
+        pg.status,
+        pg.addi,
+        pg.exam_paper_id,
+        COALESCE(qa.questions, '[]'::jsonb) AS questions -- 取出前面阶段构建好的题目
+    FROM t_exam_paper_group pg
+    LEFT JOIN question_agg qa ON qa.group_id = pg.id
+    WHERE pg.status != '02'
+),
+
+-- 聚合题组数据为json
+paper_groups AS (
+	SELECT 
+    	exam_paper_id,
+    	jsonb_agg(
+        	jsonb_build_object(
+            	'id',id,
+    			'name',name,
+                'order',"order",
+                'creator',creator,
+                'create_time',create_time,
+                'updated_by',updated_by,
+                'update_time',update_time,
+                'status',status,
+                'addi',addi,
+                'questions',questions
+            ) ORDER BY "order"
+        ) AS groups_data
+    FROM group_data
+    GROUP BY exam_paper_id
+)
+SELECT 	
 	p.id,
-    p.exam_session_id,
+	p.exam_session_id,
     p.practice_id,
 	p.name,
 	p.creator,
@@ -10968,64 +11042,16 @@ SELECT
 	p.updated_by,
 	p.update_time,
 	p.status,
-	COALESCE(SUM(q.score), 0) AS total_score,
-   	COUNT(q.id) AS question_count,
+	COALESCE(SUM(pq.score), 0) AS total_score,
+    COUNT(pq.id) AS question_count,
     COUNT(DISTINCT pg.id) AS group_count,
-	 -- 修复的子查询结构
-    (
-        SELECT json_agg(group_obj)  -- 添加了group_obj别名
-        FROM (
-            SELECT 
-                pg.id,
-                pg.name,
-                pg."order",
-                pg.creator,
-                pg.create_time,
-                pg.updated_by,
-                pg.update_time,
-                pg.status,
-                pg.addi,
-                COALESCE(qdata.questions, '[]'::json) AS questions
-            FROM t_exam_paper_group pg
-            LEFT JOIN (
-                SELECT 
-                    q.group_id,
-                    json_agg(
-                        jsonb_build_object(
-                            'id', q.id,
-                            'type', q.type,
-                            'content', q.content,
-                            'options', q.options,
-                            'answers', q.answers,
-                            'score', q.score, 
-                            'analysis', q.analysis,
-                            'title', q.title,
-                            'answer_file_path', q.answer_file_path,
-                            'test_file_path', q.test_file_path,
-                            'input', q.input,
-                            'output', q.output,
-                            'example', q.example,
-                            'repo', q.repo,
-                            'order', q."order", 
-                            'group_id',q.group_id,
-                            'status', q.status,
-                            'question_attachments_path', q.question_attachments_path
-                        ) ORDER BY q."order"
-                    ) AS questions
-                FROM t_exam_paper_question q
-                WHERE q.status = '00'
-                GROUP BY q.group_id
-            ) qdata ON qdata.group_id = pg.id
-            WHERE pg.exam_paper_id = p.id
-            AND pg.status != '02'
-            ORDER BY pg."order"
-        ) AS group_obj  -- 必须为子查询结果命名
-    ) AS groups_data
+    COALESCE(pgrp.groups_data, '[]'::jsonb) AS groups_data
 FROM t_exam_paper p 
 LEFT JOIN t_exam_paper_group pg ON pg.exam_paper_id = p.id AND pg.status != '02'
-LEFT JOIN t_exam_paper_question q ON q.group_id = pg.id AND q.status = '00'
+LEFT JOIN t_exam_paper_question pq ON pq.group_id = pg.id AND pq.status = '00'
+LEFT JOIN paper_groups pgrp ON pgrp.exam_paper_id = p.id
 WHERE p.status = '00'
-GROUP BY p.id;
+GROUP BY p.id,p.exam_session_id,p.practice_id,pgrp.groups_data,p.status;
 
 comment on view v_exam_paper is
 '考卷';
@@ -13029,7 +13055,84 @@ create table t_v_order_sum as select * from v_order_sum limit 1;
 /* View: v_paper                                                */
 /*==============================================================*/
 create or replace view v_paper as
- SELECT p.id,
+WITH
+question_agg AS (
+    SELECT 
+        pq.group_id,
+        jsonb_agg(
+            jsonb_build_object(
+                'id', pq.id,
+                'bank_question_id', q.id,
+                'type', q.type,
+                'content', q.content,
+                'options', q.options,
+                'answers', q.answers,
+                'score', pq.score,
+                'sub_score', pq.sub_score,
+                'difficulty', q.difficulty,
+                'tags', q.tags,
+                'analysis', q.analysis,
+                'title', q.title,
+                'answer_file_path', q.answer_file_path,
+                'test_file_path', q.test_file_path,
+                'input', q.input,
+                'output', q.output,
+                'example', q.example,
+                'repo', q.repo,
+                'order', pq."order",
+                'group_id', pq.group_id,
+                'status', q.status,
+                'question_attachments_path', q.question_attachments_path
+            ) ORDER BY pq."order"
+        ) AS questions
+    FROM t_paper_question pq
+    JOIN t_question q ON pq.bank_question_id = q.id
+    WHERE pq.status != '02' AND q.status = '00'
+    GROUP BY pq.group_id
+),
+
+group_data AS (
+    SELECT 
+        pg.id,
+        pg.name,
+        pg."order",
+        pg.creator,
+        pg.create_time,
+        pg.updated_by,
+        pg.update_time,
+        pg.status,
+        pg.addi,
+        pg.paper_id,
+        COALESCE(qa.questions, '[]'::jsonb) AS questions
+    FROM t_paper_group pg
+    LEFT JOIN question_agg qa ON qa.group_id = pg.id
+    WHERE pg.status != '02'
+),
+
+paper_groups AS (
+    SELECT 
+        paper_id,
+        jsonb_agg(
+            jsonb_build_object(
+                'id', id,
+                'name', name,
+                'order', "order",
+                'creator', creator,
+                'create_time', create_time,
+                'updated_by', updated_by,
+                'update_time', update_time,
+                'status', status,
+                'addi', addi,
+                'questions', questions
+            ) ORDER BY "order"
+        ) AS groups_data
+    FROM group_data
+    GROUP BY paper_id
+)
+
+-- 主查询
+SELECT 
+    p.id,
     p.domain_id,
     p.name,
     p.assembly_type,
@@ -13040,44 +13143,41 @@ create or replace view v_paper as
     p.tags,
     p.config,
     p.creator,
-    jsonb_build_object('id', u.id, 'official_name', u.official_name, 'account', u.account, 'mobile_phone', u.mobile_phone, 'email', u.email) AS creator_info,
+    jsonb_build_object(
+        'id', u.id,
+        'official_name', u.official_name,
+        'account', u.account,
+        'mobile_phone', u.mobile_phone,
+        'email', u.email
+    ) AS creator_info,
     p.create_time,
     p.updated_by,
     p.update_time,
     p.status,
     p.access_mode,
-    COALESCE(sum(pq.score), 0::double precision) AS total_score,
-    count(pq.id) AS question_count,
-    count(DISTINCT pg.id) AS group_count,
-    ( SELECT json_agg(group_obj.*) AS json_agg
-           FROM ( SELECT pg_1.id,
-                    pg_1.name,
-                    pg_1."order",
-                    pg_1.creator,
-                    pg_1.create_time,
-                    pg_1.updated_by,
-                    pg_1.update_time,
-                    pg_1.status,
-                    pg_1.addi,
-                    COALESCE(qdata.questions, '[]'::json) AS questions
-                   FROM t_paper_group pg_1
-                     LEFT JOIN ( SELECT pq_1.group_id,
-                            json_agg(jsonb_build_object('id', pq_1.id, 'bank_question_id', q.id, 'type', q.type, 'content', q.content, 'options', q.options, 'answers', q.answers, 'score', pq_1.score, 'sub_score', pq_1.sub_score, 'difficulty', q.difficulty, 'tags', q.tags, 'analysis', q.analysis, 'title', q.title, 'answer_file_path', q.answer_file_path, 'test_file_path', q.test_file_path, 'input', q.input, 'output', q.output, 'example', q.example, 'repo', q.repo, 'order', pq_1."order", 'group_id', pq_1.group_id, 'status', q.status, 'question_attachments_path', q.question_attachments_path) ORDER BY pq_1."order") AS questions
-                           FROM t_paper_question pq_1
-                             JOIN t_question q ON pq_1.bank_question_id = q.id AND q.status::text = '00'::text
-                          WHERE pq_1.status::text <> '02'::text
-                          GROUP BY pq_1.group_id) qdata ON qdata.group_id = pg_1.id
-                  WHERE pg_1.paper_id = p.id AND pg_1.status::text <> '02'::text
-                  ORDER BY pg_1."order") group_obj) AS groups_data
-   FROM t_paper p
-     LEFT JOIN t_user u ON p.creator = u.id
-     LEFT JOIN t_paper_group pg ON pg.paper_id = p.id AND pg.status::text <> '02'::text
-     LEFT JOIN t_paper_question pq ON pq.group_id = pg.id AND pq.status::text <> '02'::text
-  WHERE p.status::text = '00'::text
-  GROUP BY p.id,p.domain_id,u.id;
+    COALESCE(SUM(pq.score), 0::double precision) AS total_score,
+    COUNT(pq.id) AS question_count,
+    COUNT(DISTINCT pg.id) AS group_count,
+    COALESCE(pgrp.groups_data, '[]'::jsonb) AS groups_data
+FROM t_paper p
+LEFT JOIN t_user u ON p.creator = u.id
+LEFT JOIN t_paper_group pg 
+    ON pg.paper_id = p.id 
+    AND pg.status != '02'
+LEFT JOIN t_paper_question pq 
+    ON pq.group_id = pg.id 
+    AND pq.status != '02'
+LEFT JOIN paper_groups pgrp ON pgrp.paper_id = p.id
+WHERE p.status = '00'
+GROUP BY 
+    p.id, 
+    p.domain_id,
+    u.id,  
+    p.status,
+    pgrp.groups_data;
 
 comment on view v_paper is
-'考卷';
+'试卷';
 
 drop table if exists t_v_paper;
 
