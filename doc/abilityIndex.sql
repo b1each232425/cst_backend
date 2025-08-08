@@ -1,10 +1,14 @@
 /*==============================================================*/
 /* DBMS name:      PostgreSQL 9.x                               */
-/* Created on:     2025/8/8 16:17:33                            */
+/* Created on:     2025/8/8 16:44:24                            */
 /*==============================================================*/
 
 
 drop view if exists v_z_practice_summary;
+
+drop view if exists v_z_grade_practice_statistics;
+
+drop view if exists v_z_grade_exam_session_info;
 
 drop view if exists v_y_max_submitted_view;
 
@@ -71,10 +75,6 @@ drop view if exists v_insurance_type;
 drop view if exists v_insurance_policy2;
 
 drop view if exists v_insurance_policy;
-
-drop view if exists v_grade_practice_statistics;
-
-drop view if exists v_grade_exam_session_info;
 
 drop view if exists v_examinee_info;
 
@@ -11121,109 +11121,6 @@ drop table if exists t_v_examinee_info;
 create table t_v_examinee_info as select * from v_examinee_info;
 
 /*==============================================================*/
-/* View: v_grade_exam_session_info                              */
-/*==============================================================*/
-create or replace view v_grade_exam_session_info as
-WITH pass_examinee AS (
-    SELECT
-        ets.exam_session_id,
-        COUNT(DISTINCT ets.student_id) AS pass_examinees,
-        vep.total_score
-    FROM v_student_exam_total_score ets                                                           -- 展示学生考试成绩视图：考试场次ID 学生ID
-        JOIN v_exam_paper vep ON vep.exam_session_id = ets.exam_session_id                        -- 该考试场次的成绩 v_exam_paper
-    WHERE ets.total_score >= 0.6 * vep.total_score
-    GROUP BY
-        ets.exam_session_id,
-        vep.id,
-        vep.total_score
-    ), examinee AS (
-        SELECT
-            exam_session_id,                                                                          -- 考试场次ID  
-            COUNT(DISTINCT student_id) AS scheduled_examinees,                                        -- 计划参加考试的考生人数
-            COUNT(
-                CASE
-                    WHEN status != '02' AND student_id IS NOT NULL THEN 1
-                    ELSE NULL::integer
-                END) AS actual_examinees                                                              -- 实际参加考试的考生人数
-        FROM t_examinee                                                                               -- 从考生表：考试场次ID 计划参加考试的考生人数 实际参加考试的考生人数
-        WHERE status <> '08'
-        GROUP BY
-            exam_session_id
-        ORDER BY
-            exam_session_id DESC
-    )
-SELECT
-    es.exam_id,
-    es.id AS exam_session_id,
-    AVG(ets.total_score) AS average_score,
-    es.start_time AS start_time,
-    es.end_time AS end_time,
-    es.mark_mode AS mark_mode,
-    vep.id AS exam_paper_id,
-    vep.name AS paper_name,
-    vep.total_score AS total_score,
-    ee.actual_examinees,
-    ee.scheduled_examinees,
-    ps.pass_examinees
-FROM t_exam_session es                                                     -- 展示学生考试成绩视图：考试场次ID 学生ID 考试成绩 
-    LEFT JOIN v_student_exam_total_score ets ON es.id = ets.exam_session_id                          -- 考试场次表：开始时间 结束时间 批改模式
-    LEFT JOIN v_exam_paper vep ON vep.exam_session_id = es.id              -- 考试考卷表：试卷ID 试卷名称 试卷总分
-    LEFT JOIN pass_examinee ps ON ps.exam_session_id = es.id
-    LEFT JOIN examinee ee ON ee.exam_session_id = es.id                       -- 该考试场次的计划参加考试的考生人数 实际参加考试的考生人数
-    GROUP BY
-        ets.exam_id,
-        ets.exam_session_id,
-        es.id,
-        vep.id,
-        vep.name,
-        vep.total_score,
-        ee.actual_examinees,
-        ee.scheduled_examinees,
-        ps.pass_examinees
-ORDER BY
-    es.start_time DESC;
-
-comment on view v_grade_exam_session_info is
-'v_grade_exam_session_info';
-
-/*==============================================================*/
-/* View: v_grade_practice_statistics                            */
-/*==============================================================*/
-create or replace view v_grade_practice_statistics as
-WITH pass_examinee AS (
-    SELECT
-        pts.practice_id,
-        COUNT(DISTINCT pts.student_id) AS pass_num
-    FROM v_student_practice_total_score pts                                 -- 展示学生成绩：练习ID 通过人数
-        LEFT JOIN v_exam_paper vep ON vep.practice_id = pts.practice_id     -- 该练习的总分
-    WHERE pts.total_score >= 0.6 * vep.total_score::integer
-    GROUP BY
-        pts.practice_id,
-        vep.total_score
-)
-SELECT
-    p.id AS practice_id,
-    p.name AS practice_name,
-    p.creator AS creator,
-    vep.total_score AS total_score,
-    ps.pass_num AS pass_student,
-    AVG(pts.total_score) AS averge_score,
-    COUNT(DISTINCT pts.student_id) AS actual_completer
-FROM t_practice p                                                            -- 展示练习列表：练习ID 名字
-    LEFT JOIN v_student_practice_total_score pts ON pts.practice_id = p.id   -- 该练习的平均成绩、完成人数
-    LEFT JOIN v_exam_paper vep ON vep.practice_id = p.id                     -- 该练习的总分
-    LEFT JOIN pass_examinee ps ON ps.practice_id = p.id                      -- 该练习的通过人数
-GROUP BY
-    p.id,
-    p.name,
-    p.creator,
-    vep.total_score,
-    ps.pass_num;
-
-comment on view v_grade_practice_statistics is
-'v_grade_practice_statistics';
-
-/*==============================================================*/
 /* View: v_insurance_policy                                     */
 /*==============================================================*/
 create or replace view v_insurance_policy as
@@ -13110,8 +13007,7 @@ create table t_v_order_sum as select * from v_order_sum limit 1;
 /* View: v_paper                                                */
 /*==============================================================*/
 create or replace view v_paper as
-create or replace view v_paper as
- WITH paper_basic AS (
+WITH paper_basic AS (
          SELECT p_1.id AS paper_id,
             p_1.domain_id,
             p_1.name,
@@ -13550,7 +13446,7 @@ create or replace view v_student_practice_total_score as
     ps.status,
     count(
         CASE
-            WHEN a.answer_score &lt;&gt; epq.score THEN 1
+            WHEN a.answer_score <> epq.score THEN 1
             ELSE NULL::integer
         END) AS wrong_count,
     (ps.end_time - ps.start_time) AS used_time
@@ -13759,6 +13655,109 @@ comment on view v_y_max_submitted_view is
 
  drop table if exists t_v_max_submitted_view;
 create table t_v_max_submitted_view as select * from v_y_max_submitted_view;
+
+/*==============================================================*/
+/* View: v_z_grade_exam_session_info                            */
+/*==============================================================*/
+create or replace view v_z_grade_exam_session_info as
+WITH pass_examinee AS (
+    SELECT
+        ets.exam_session_id,
+        COUNT(DISTINCT ets.student_id) AS pass_examinees,
+        vep.total_score
+    FROM v_student_exam_total_score ets                                                           -- 展示学生考试成绩视图：考试场次ID 学生ID
+        JOIN v_exam_paper vep ON vep.exam_session_id = ets.exam_session_id                        -- 该考试场次的成绩 v_exam_paper
+    WHERE ets.total_score >= 0.6 * vep.total_score
+    GROUP BY
+        ets.exam_session_id,
+        vep.id,
+        vep.total_score
+    ), examinee AS (
+        SELECT
+            exam_session_id,                                                                          -- 考试场次ID  
+            COUNT(DISTINCT student_id) AS scheduled_examinees,                                        -- 计划参加考试的考生人数
+            COUNT(
+                CASE
+                    WHEN status != '02' AND student_id IS NOT NULL THEN 1
+                    ELSE NULL::integer
+                END) AS actual_examinees                                                              -- 实际参加考试的考生人数
+        FROM t_examinee                                                                               -- 从考生表：考试场次ID 计划参加考试的考生人数 实际参加考试的考生人数
+        WHERE status <> '08'
+        GROUP BY
+            exam_session_id
+        ORDER BY
+            exam_session_id DESC
+    )
+SELECT
+    es.exam_id,
+    es.id AS exam_session_id,
+    AVG(ets.total_score) AS average_score,
+    es.start_time AS start_time,
+    es.end_time AS end_time,
+    es.mark_mode AS mark_mode,
+    vep.id AS exam_paper_id,
+    vep.name AS paper_name,
+    vep.total_score AS total_score,
+    ee.actual_examinees,
+    ee.scheduled_examinees,
+    ps.pass_examinees
+FROM t_exam_session es                                                     -- 展示学生考试成绩视图：考试场次ID 学生ID 考试成绩 
+    LEFT JOIN v_student_exam_total_score ets ON es.id = ets.exam_session_id                          -- 考试场次表：开始时间 结束时间 批改模式
+    LEFT JOIN v_exam_paper vep ON vep.exam_session_id = es.id              -- 考试考卷表：试卷ID 试卷名称 试卷总分
+    LEFT JOIN pass_examinee ps ON ps.exam_session_id = es.id
+    LEFT JOIN examinee ee ON ee.exam_session_id = es.id                       -- 该考试场次的计划参加考试的考生人数 实际参加考试的考生人数
+    GROUP BY
+        ets.exam_id,
+        ets.exam_session_id,
+        es.id,
+        vep.id,
+        vep.name,
+        vep.total_score,
+        ee.actual_examinees,
+        ee.scheduled_examinees,
+        ps.pass_examinees
+ORDER BY
+    es.start_time DESC;
+
+comment on view v_z_grade_exam_session_info is
+'v_z_grade_exam_session_info';
+
+/*==============================================================*/
+/* View: v_z_grade_practice_statistics                          */
+/*==============================================================*/
+create or replace view v_z_grade_practice_statistics as
+WITH pass_examinee AS (
+    SELECT
+        pts.practice_id,
+        COUNT(DISTINCT pts.student_id) AS pass_num
+    FROM v_student_practice_total_score pts                                 -- 展示学生成绩：练习ID 通过人数
+        LEFT JOIN v_exam_paper vep ON vep.practice_id = pts.practice_id     -- 该练习的总分
+    WHERE pts.total_score >= 0.6 * vep.total_score::integer
+    GROUP BY
+        pts.practice_id,
+        vep.total_score
+)
+SELECT
+    p.id AS practice_id,
+    p.name AS practice_name,
+    p.creator AS creator,
+    vep.total_score AS total_score,
+    ps.pass_num AS pass_student,
+    AVG(pts.total_score) AS averge_score,
+    COUNT(DISTINCT pts.student_id) AS actual_completer
+FROM t_practice p                                                            -- 展示练习列表：练习ID 名字
+    LEFT JOIN v_student_practice_total_score pts ON pts.practice_id = p.id   -- 该练习的平均成绩、完成人数
+    LEFT JOIN v_exam_paper vep ON vep.practice_id = p.id                     -- 该练习的总分
+    LEFT JOIN pass_examinee ps ON ps.practice_id = p.id                      -- 该练习的通过人数
+GROUP BY
+    p.id,
+    p.name,
+    p.creator,
+    vep.total_score,
+    ps.pass_num;
+
+comment on view v_z_grade_practice_statistics is
+'v_z_grade_practice_statistics';
 
 /*==============================================================*/
 /* View: v_z_practice_summary                                   */
