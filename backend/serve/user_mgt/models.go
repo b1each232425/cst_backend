@@ -41,15 +41,12 @@ var domainSet = func() map[string]struct{} {
 
 // QueryUsersFilter 查询用户列表的过滤条件
 type QueryUsersFilter struct {
-	ID         null.Int    `json:"id"`         // 用户ID
-	Account    null.String `json:"account"`    // 用户账号
-	Name       null.String `json:"name"`       // 用户姓名
-	Phone      null.String `json:"phone"`      // 用户电话
-	Email      null.String `json:"email"`      // 用户邮箱
-	Gender     null.String `json:"gender"`     // 用户性别
-	Status     null.String `json:"status"`     // 用户状态
-	CreateTime null.Int    `json:"createTime"` // 用户创建时间
-	Domain     null.String `json:"domain"`     // 用户所属域
+	FuzzyCondition null.String `json:"fuzzyCondition"` // 模糊查询条件
+	ID             null.Int    `json:"id"`             // 用户ID
+	Gender         null.String `json:"gender"`         // 用户性别
+	Status         null.String `json:"status"`         // 用户状态
+	CreateTime     null.Int    `json:"createTime"`     // 用户创建时间
+	Domain         null.String `json:"domain"`         // 用户所属域
 }
 
 // InvalidUser 不能被插入的无效用户
