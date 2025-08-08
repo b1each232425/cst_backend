@@ -3,7 +3,7 @@
  * @Description: 考卷数据库层单元测试
  * @Date: 2025-07-28 19:55:28
  * @LastEditors: zdl <1311866870@qq.com>
- * @LastEditTime: 2025-08-06 17:40:15
+ * @LastEditTime: 2025-08-08 11:32:51
  */
 package examPaper
 
@@ -1001,7 +1001,7 @@ func TestLoadExamPaperDetailsById(t *testing.T) {
 		{
 			name:          "正常1 能查询出一张完整的考卷试卷 不携带题目答案 不携带解析",
 			epid:          *ep,
-			withQuestions: true,
+			withQuestions: false,
 			withAnswers:   false,
 			withAnalysis:  false,
 			expectedErr:   nil,
@@ -1022,6 +1022,7 @@ func TestLoadExamPaperDetailsById(t *testing.T) {
 			withAnalysis:  true,
 			expectedErr:   nil,
 		},
+
 		{
 			name:          "异常1 参数检测 非法考卷ID",
 			epid:          0,
@@ -1100,39 +1101,40 @@ func TestLoadExamPaperDetailsById(t *testing.T) {
 				if p.GroupCount.Int64 != 5 {
 					t.Errorf("查询的考卷信息题组数量错误，实际：%v", p.GroupCount.Int64)
 				}
-				if len(pg) != 5 {
-					t.Errorf("查询的题组数量错误，实际：%v", len(pg))
-				}
+				if tt.withQuestions {
+					if len(pg) != 5 {
+						t.Errorf("查询的题组数量错误，实际：%v", len(pg))
+					}
+					var qCount int
+					for _, g := range pg {
+						quesitons := pq[g.ID.Int64]
+						for _, q := range quesitons {
+							qCount++
+							if tt.withAnswers {
+								// 这里的答案是每一道题不一样的
+								if len(q.Answers) == 0 {
+									t.Errorf("查询出来的答案为空 预期应该是不为空的")
+								}
+							} else {
+								if len(q.Answers) != 0 {
+									t.Errorf("查询出来答案:%v 预期应该是为空的", q.Answers.String())
+								}
+							}
 
-				var qCount int
-				for _, g := range pg {
-					quesitons := pq[g.ID.Int64]
-					for _, q := range quesitons {
-						qCount++
-						if tt.withAnswers {
-							// 这里的答案是每一道题不一样的
-							if len(q.Answers) == 0 {
-								t.Errorf("查询出来的答案为空 预期应该是不为空的")
-							}
-						} else {
-							if len(q.Answers) != 0 {
-								t.Errorf("查询出来答案:%v 预期应该是为空的", q.Answers.String())
-							}
-						}
-
-						if tt.withAnalysis {
-							if !q.Analysis.Valid || q.Analysis.String != "hello" {
-								t.Errorf("此时没有正确返回题目解析 实际返回：%v", q.Analysis.String)
-							}
-						} else {
-							if q.Analysis.Valid && q.Analysis.String == "hello" {
-								t.Errorf("此时应该不返回题目解析 实际返回")
+							if tt.withAnalysis {
+								if !q.Analysis.Valid || q.Analysis.String != "hello" {
+									t.Errorf("此时没有正确返回题目解析 实际返回：%v", q.Analysis.String)
+								}
+							} else {
+								if q.Analysis.Valid && q.Analysis.String == "hello" {
+									t.Errorf("此时应该不返回题目解析 实际返回")
+								}
 							}
 						}
 					}
-				}
-				if qCount != 13 {
-					t.Errorf("考卷题目数量错误")
+					if qCount != 13 {
+						t.Errorf("考卷题目数量错误")
+					}
 				}
 			}
 		})

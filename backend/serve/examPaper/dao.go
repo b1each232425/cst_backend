@@ -3,7 +3,7 @@
  * @Description: 考卷-答卷数据库层
  * @Date: 2025-07-21 13:14:34
  * @LastEditors: zdl <1311866870@qq.com>
- * @LastEditTime: 2025-08-06 16:58:29
+ * @LastEditTime: 2025-08-08 08:35:41
  */
 package examPaper
 
@@ -67,64 +67,65 @@ func LoadExamPaperDetailsById(ctx context.Context, tx pgx.Tx, epid int64, withQu
 		z.Error(err.Error())
 		return nil, nil, nil, err
 	}
-	if withQuestions && len(ep.GroupsData) > 0 {
-		var groupData []ExamGroup
-		if forceErr == "json" {
-			ep.GroupsData = types.JSONText(`invalid json: missing closing brace`)
+	if !withQuestions || len(ep.GroupsData) == 0 {
+		return &ep, nil, nil, nil
+	}
+	var groupData []ExamGroup
+	if forceErr == "json" {
+		ep.GroupsData = types.JSONText(`invalid json: missing closing brace`)
+	}
+	if forceErr == "jsonA" {
+		ep.GroupsData = types.JSONText(`[]`) // 空数组
+	}
+	err = json.Unmarshal(ep.GroupsData, &groupData)
+	if err != nil {
+		err = fmt.Errorf("unmarshal group data failed:%v", err)
+		z.Error(err.Error())
+		return nil, nil, nil, err
+	}
+	if len(groupData) == 0 {
+		err = fmt.Errorf("empty examPaper groups data")
+		z.Error(err.Error())
+		return &ep, nil, nil, err
+	}
+	for _, v := range groupData {
+		examGroups = append(examGroups, &cmn.TExamPaperGroup{
+			ID:          v.ID,
+			ExamPaperID: v.ExamPaperID,
+			Name:        v.Name,
+			Order:       v.Order,
+			Creator:     v.Creator,
+			CreateTime:  v.CreateTime,
+			UpdatedBy:   v.UpdatedBy,
+			UpdateTime:  v.UpdateTime,
+			Addi:        v.Addi,
+			Status:      v.Status,
+		})
+		if _, exists := examQuestions[v.ID.Int64]; !exists {
+			examQuestions[v.ID.Int64] = make([]*ExamQuestion, 0)
 		}
-		if forceErr == "jsonA" {
-			ep.GroupsData = types.JSONText(`[]`) // 空数组
-		}
-		err = json.Unmarshal(ep.GroupsData, &groupData)
-		if err != nil {
-			err = fmt.Errorf("unmarshal group data failed:%v", err)
-			z.Error(err.Error())
-			return nil, nil, nil, err
-		}
-		if len(groupData) == 0 {
-			err = fmt.Errorf("empty examPaper groups data")
-			z.Error(err.Error())
-			return &ep, nil, nil, err
-		}
-		for _, v := range groupData {
-			examGroups = append(examGroups, &cmn.TExamPaperGroup{
-				ID:          v.ID,
-				ExamPaperID: v.ExamPaperID,
-				Name:        v.Name,
-				Order:       v.Order,
-				Creator:     v.Creator,
-				CreateTime:  v.CreateTime,
-				UpdatedBy:   v.UpdatedBy,
-				UpdateTime:  v.UpdateTime,
-				Addi:        v.Addi,
-				Status:      v.Status,
-			})
-			if _, exists := examQuestions[v.ID.Int64]; !exists {
-				examQuestions[v.ID.Int64] = make([]*ExamQuestion, 0)
+		// 保留答案与解析
+		for idx := range v.Questions {
+			q := v.Questions[idx]
+			var answersSlice []interface{}
+			if len(q.Answers) > 0 {
+				if forceErr == "jsonB" {
+					q.Answers = types.JSONText(`invalid json: missing closing brace`)
+				}
+				if err = json.Unmarshal(q.Answers, &answersSlice); err != nil {
+					err = fmt.Errorf("failed to unmarshal Answers questionId:%v for:%v", q.ID.Int64, err)
+					z.Error(err.Error())
+					return &ep, nil, nil, err
+				}
 			}
-			// 保留答案与解析
-			for idx := range v.Questions {
-				q := v.Questions[idx]
-				var answersSlice []interface{}
-				if len(q.Answers) > 0 {
-					if forceErr == "jsonB" {
-						q.Answers = types.JSONText(`invalid json: missing closing brace`)
-					}
-					if err = json.Unmarshal(q.Answers, &answersSlice); err != nil {
-						err = fmt.Errorf("failed to unmarshal Answers questionId:%v for:%v", q.ID.Int64, err)
-						z.Error(err.Error())
-						return &ep, nil, nil, err
-					}
-				}
-				q.AnswerNum = len(answersSlice)
-				if !withAnalysis {
-					q.Analysis = null.String{}
-				}
-				if !withAnswers {
-					q.Answers = nil
-				}
-				examQuestions[v.ID.Int64] = append(examQuestions[v.ID.Int64], &q)
+			q.AnswerNum = len(answersSlice)
+			if !withAnalysis {
+				q.Analysis = null.String{}
 			}
+			if !withAnswers {
+				q.Answers = nil
+			}
+			examQuestions[v.ID.Int64] = append(examQuestions[v.ID.Int64], &q)
 		}
 	}
 	// 信息已经取出，直接清除
@@ -285,39 +286,40 @@ func LoadPaperTemplateById(ctx context.Context, paperId int64, withQuestions boo
 		z.Error(err.Error())
 		return nil, nil, nil, err
 	}
-	if withQuestions && len(p.GroupsData) > 0 {
-		var groupData []Group
-		if forceErr == "json" {
-			p.GroupsData = types.JSONText(`invalid json: missing closing brace`)
-		}
-		if err := json.Unmarshal(p.GroupsData, &groupData); err != nil {
-			err = fmt.Errorf("unmarshal group data failed:%v", err)
-			z.Error(err.Error())
-			return nil, nil, nil, err
-		}
-		for _, v := range groupData {
-			groups = append(groups, &cmn.TPaperGroup{
-				ID:         v.ID,
-				PaperID:    v.PaperID,
-				Name:       v.Name,
-				Order:      v.Order,
-				Creator:    v.Creator,
-				CreateTime: v.CreateTime,
-				UpdatedBy:  v.UpdatedBy,
-				UpdateTime: v.UpdateTime,
-				Addi:       v.Addi,
-				Status:     v.Status,
-			})
+	if !withQuestions || len(p.GroupsData) == 0 {
+		return &p, nil, nil, nil
+	}
+	var groupData []Group
+	if forceErr == "json" {
+		p.GroupsData = types.JSONText(`invalid json: missing closing brace`)
+	}
+	if err := json.Unmarshal(p.GroupsData, &groupData); err != nil {
+		err = fmt.Errorf("unmarshal group data failed:%v", err)
+		z.Error(err.Error())
+		return nil, nil, nil, err
+	}
+	for _, v := range groupData {
+		groups = append(groups, &cmn.TPaperGroup{
+			ID:         v.ID,
+			PaperID:    v.PaperID,
+			Name:       v.Name,
+			Order:      v.Order,
+			Creator:    v.Creator,
+			CreateTime: v.CreateTime,
+			UpdatedBy:  v.UpdatedBy,
+			UpdateTime: v.UpdateTime,
+			Addi:       v.Addi,
+			Status:     v.Status,
+		})
 
-			if _, exists := questions[v.ID.Int64]; !exists {
-				questions[v.ID.Int64] = make([]*Question, 0)
-			}
+		if _, exists := questions[v.ID.Int64]; !exists {
+			questions[v.ID.Int64] = make([]*Question, 0)
+		}
 
-			// 安全追加题目（避免指针重用）
-			for idx := range v.Questions {
-				q := v.Questions[idx] // 创建副本
-				questions[v.ID.Int64] = append(questions[v.ID.Int64], &q)
-			}
+		// 安全追加题目（避免指针重用）
+		for idx := range v.Questions {
+			q := v.Questions[idx] // 创建副本
+			questions[v.ID.Int64] = append(questions[v.ID.Int64], &q)
 		}
 	}
 	// 释放题组JSON实体内存
@@ -625,28 +627,27 @@ func GenerateExamPaper(ctx context.Context, tx pgx.Tx, category string, paperId,
 		}
 	}
 
+	if !genMarkInfo {
+		return &ep.ID.Int64, nil, nil
+	}
 	// 批改配置变量
 	var groups []SubjectiveQuestionGroup
-
-	// 如果需要AI批改配置
-	if genMarkInfo {
-		groupQuestions := make(map[int64][]int64)
-		for _, question := range tqs {
-			if question.Type.String != QuestionCategory.FillInBlank &&
-				question.Type.String != QuestionCategory.ShortAnswer {
-				continue
-			}
-
-			groupID := question.GroupID.Int64
-			groupQuestions[groupID] = append(groupQuestions[groupID], question.ID.Int64)
+	groupQuestions := make(map[int64][]int64)
+	for _, question := range tqs {
+		if question.Type.String != QuestionCategory.FillInBlank &&
+			question.Type.String != QuestionCategory.ShortAnswer {
+			continue
 		}
 
-		for groupID, questionIDs := range groupQuestions {
-			groups = append(groups, SubjectiveQuestionGroup{
-				GroupID:     groupID,
-				QuestionIDs: questionIDs,
-			})
-		}
+		groupID := question.GroupID.Int64
+		groupQuestions[groupID] = append(groupQuestions[groupID], question.ID.Int64)
+	}
+
+	for groupID, questionIDs := range groupQuestions {
+		groups = append(groups, SubjectiveQuestionGroup{
+			GroupID:     groupID,
+			QuestionIDs: questionIDs,
+		})
 	}
 	return &ep.ID.Int64, groups, nil
 }
