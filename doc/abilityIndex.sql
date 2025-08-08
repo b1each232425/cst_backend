@@ -1,6 +1,6 @@
 /*==============================================================*/
 /* DBMS name:      PostgreSQL 9.x                               */
-/* Created on:     2025/8/8 16:08:43                            */
+/* Created on:     2025/8/8 16:17:33                            */
 /*==============================================================*/
 
 
@@ -9151,9 +9151,11 @@ comment on column t_sys_ver.status is
 ALTER SEQUENCE t_sys_ver_id_seq RESTART WITH 20000;
 
 insert into t_sys_ver(id,name,ver,create_time,update_time,remark)
-  values(1000,'业务模型','3.1.2.0',
-  '2016年12月5日 9:52:53','2025年8月8日 16:08:35',
-  '
+  values(1000,'业务模型','3.1.3.0',
+  '2016年12月5日 9:52:53','2025年8月8日 16:17:16',
+  '3.1.3.0
+优化v_paper视图逻辑，添加v_grade_exam_session_info和v_grade_practice_statistics,删除v_paper_share和t_resource_share表,补充v_student_practice_total_score的usedtime字段
+
 3.1.2.0
 更改v_paper 与v_exam_paper视图生成逻辑
 
@@ -13548,15 +13550,16 @@ create or replace view v_student_practice_total_score as
     ps.status,
     count(
         CASE
-            WHEN a.answer_score <> epq.score THEN 1
+            WHEN a.answer_score &lt;&gt; epq.score THEN 1
             ELSE NULL::integer
-        END) AS wrong_count
+        END) AS wrong_count,
+    (ps.end_time - ps.start_time) AS used_time
    FROM t_practice_submissions ps
      JOIN t_student_answers a ON ps.id = a.practice_submission_id
      JOIN t_exam_paper_question epq ON a.question_id = epq.id
      JOIN t_practice p ON ps.practice_id = p.id
   WHERE ps.status::text = '08'::text
-  GROUP BY ps.id, p.id, ps.attempt, ps.student_id;
+  GROUP BY ps.id, p.id, ps.attempt, ps.student_id, ps.end_time, ps.start_time;
 
 comment on view v_student_practice_total_score is
 '展示学生练习成绩视图                      ';
