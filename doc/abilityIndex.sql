@@ -1,6 +1,6 @@
 /*==============================================================*/
 /* DBMS name:      PostgreSQL 9.x                               */
-/* Created on:     2025/8/8 15:15:13                            */
+/* Created on:     2025/8/8 15:34:15                            */
 /*==============================================================*/
 
 
@@ -9201,9 +9201,13 @@ comment on column t_sys_ver.status is
 ALTER SEQUENCE t_sys_ver_id_seq RESTART WITH 20000;
 
 insert into t_sys_ver(id,name,ver,create_time,update_time,remark)
-  values(1000,'业务模型','3.1.1.0',
-  '2016年12月5日 9:52:53','2025年8月8日 15:15:08',
-  '3.1.1.0
+  values(1000,'业务模型','3.1.2.0',
+  '2016年12月5日 9:52:53','2025年8月8日 15:34:06',
+  '
+3.1.2.0
+更改v_paper 与v_exam_paper视图生成逻辑
+
+3.1.1.0
 为v_examinee_info添加serial_num,以及为t_exam_site添加了domain_id和sys_user
 
 3.1.0.0
