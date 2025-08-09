@@ -231,6 +231,9 @@ func teardown() {
 	}
 }
 
+// 测试questionBanks接口
+func TestQuestionBanks(t *testing.T) {}
+
 // 查询题库测试
 func TestBankGetMethod(t *testing.T) {
 	z.Info("TestBankGetMethod is running...")
@@ -442,6 +445,281 @@ func TestBankGetMethod(t *testing.T) {
 	}
 }
 
+// 添加题库测试
+func TestBankPostMethod(t *testing.T) {
+	z.Info("TestBankPostMethod is running...")
+	testCases := []struct {
+		name             string
+		description      string
+		requestBody      string
+		forceError       string
+		expectedError    bool
+		expectedErrorMsg string
+		userID           int64
+		userRole         int64
+	}{
+		{
+			name:        "有权限-管理员角色",
+			description: "正常添加题库-管理员角色",
+			requestBody: `{
+				"data": {
+					"name": "测试综合题库",
+					"type": "00",
+					"tags": [
+						"数据结构",
+						"算法",
+						"操作系统",
+						"计算机网络"
+					]
+				}
+			}`,
+			forceError:    "",
+			expectedError: false,
+			userID:        testUserID1,
+			userRole:      RoleAdmin,
+		},
+		{
+			name:        "有权限-教师角色",
+			description: "正常添加题库-教师角色",
+			requestBody: `{
+				"data": {
+					"name": "测试综合题库",
+					"type": "00",
+					"tags": [
+						"数据结构",
+						"算法",
+						"操作系统",
+						"计算机网络"
+					]
+				}
+			}`,
+			forceError:    "",
+			expectedError: false,
+			userID:        testUserID1,
+			userRole:      RoleTeacher,
+		},
+		{
+			name:        "无权限-学生角色",
+			description: "正常添加题库-学生角色，期望失败",
+			requestBody: `{
+				"data": {
+					"name": "测试综合题库",
+					"type": "00",
+					"tags": [
+						"数据结构",
+						"算法",
+						"操作系统",
+						"计算机网络"
+					]
+				}
+			}`,
+			forceError:       "",
+			expectedError:    true,
+			expectedErrorMsg: fmt.Errorf("domain %d is not allowed", RoleStudent).Error(),
+			userID:           testUserID1,
+			userRole:         RoleStudent,
+		},
+		{
+			name:             "body为空",
+			description:      "body为空，期望失败",
+			requestBody:      "",
+			forceError:       "",
+			expectedError:    true,
+			expectedErrorMsg: fmt.Errorf("call /api/question-banks with empty body").Error(),
+			userID:           testUserID1,
+			userRole:         RoleTeacher,
+		},
+		{
+			name:          "json格式错误",
+			description:   "json格式错误，期望失败",
+			requestBody:   `not json`,
+			forceError:    "",
+			expectedError: true,
+			userID:        testUserID1,
+			userRole:      RoleTeacher,
+		},
+		{
+			name:        "data.name为空",
+			description: "data.name为空，期望失败",
+			requestBody: `{
+				"data": {
+					"type": "00",
+					"tags": [
+						"数据结构",
+						"算法",
+						"操作系统",
+						"计算机网络"
+					]
+				}
+			}`,
+			forceError:       "",
+			expectedError:    true,
+			expectedErrorMsg: fmt.Errorf("call /api/question-banks with empty question bank name").Error(),
+			userID:           testUserID1,
+			userRole:         RoleTeacher,
+		},
+		{
+			name:        "data.type为空",
+			description: "data.type为空，期望失败",
+			requestBody: `{
+				"data": {
+					"name": "测试综合题库",
+					"tags": [
+						"数据结构",
+						"算法",
+						"操作系统",
+						"计算机网络"
+					]
+				}
+			}`,
+			forceError:       "",
+			expectedError:    true,
+			expectedErrorMsg: fmt.Errorf("call /api/question-banks with empty question bank type").Error(),
+			userID:           testUserID1,
+			userRole:         RoleTeacher,
+		},
+		{
+			name:        "data结构转换为题库格式失败",
+			description: "body中的data结构，在转换为题库格式失败，原因为tags类型错误，期望失败",
+			requestBody: `{
+				"data": {
+					"name": "测试综合题库",
+					"type": "00",
+					"tags": "数据结构"
+				}
+			}`,
+			forceError:    "",
+			expectedError: true,
+			userID:        testUserID1,
+			userRole:      RoleTeacher,
+		},
+		{
+			name:        "创建者为空",
+			description: "创建者的值小于0，是不合法的，期望失败",
+			requestBody: `{
+				"data": {
+					"name": "测试综合题库",
+					"type": "00",
+					"tags": [
+						"数据结构",
+						"算法",
+						"操作系统",
+						"计算机网络"
+					]
+				}
+			}`,
+			forceError:       "",
+			expectedError:    true,
+			expectedErrorMsg: fmt.Errorf("invalid userID").Error(),
+			userID:           -1,
+			userRole:         RoleTeacher,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := createMockContextWithBody("POST", "/api/exam", tc.requestBody, tc.forceError, tc.userID, tc.userRole)
+
+			func() {
+				defer func() {
+					if r := recover(); r != nil {
+						t.Errorf("questionBanks 意外panic: %v", r)
+					}
+				}()
+
+				questionBanks(ctx)
+			}()
+
+			// 获取ServiceCtx以检查结果
+			serviceCtx := ctx.Value(cmn.QNearKey).(*cmn.ServiceCtx)
+
+			if tc.expectedError {
+				// 期望有错误
+				if serviceCtx.Err == nil {
+					t.Errorf("questionBanks测试期望返回错误，但实际成功")
+					return
+				}
+
+			} else {
+				// 期望成功
+				if serviceCtx.Err != nil {
+					t.Errorf("questionBanks测试期望成功，但返回错误: %v", serviceCtx.Err)
+				}
+			}
+
+			// 错误信息检查
+			if serviceCtx.Err != nil && tc.expectedErrorMsg != serviceCtx.Err.Error() {
+				t.Errorf("questionBanks测试期望错误信息为:%s，实际错误信息为:%s", tc.expectedErrorMsg, serviceCtx.Err.Error())
+			}
+		})
+	}
+}
+
+// // 测试查询题目
+//
+//	func TestQuestionGetMethod(t *testing.T) {
+//		testCases := []struct {
+//			name             string
+//			description      string
+//			query            string
+//			forceError       string
+//			expectedError    bool
+//			expectedErrorMsg string
+//			expectedRow      null.Int
+//			userID           int64
+//			userRole         int64
+//		}{
+//			{
+//				name:             "无权限访问-学生角色",
+//				description:      "使用学生身份访问时，应该返回无权限的错误",
+//				query:            "",
+//				forceError:       "",
+//				expectedError:    true,
+//				expectedErrorMsg: fmt.Errorf("domain %s is not allowed", RoleStudent).Error(),
+//				userID:           testUserID1,
+//				userRole:         RoleStudent,
+//			},
+//			{
+//				name:          "有权限访问-教务员角色",
+//				description:   "使用教务员身份访问时，返回正确结果",
+//				query:         fmt.Sprintf("bankID=%d", testBankID),
+//				forceError:    "",
+//				expectedError: false,
+//				expectedRow:   null.IntFrom(25),
+//				userID:        testUserID1,
+//				userRole:      RoleAdmin,
+//			},
+//			{
+//				name:          "有权限访问-教师角色",
+//				description:   "使用教师身份访问时，返回正确结果",
+//				query:         fmt.Sprintf("bankID=%d", testBankID),
+//				forceError:    "",
+//				expectedError: false,
+//				expectedRow:   null.IntFrom(25),
+//				userID:        testUserID1,
+//				userRole:      RoleTeacher,
+//			},
+//			{
+//				name:             "缺少bankID",
+//				query:            "",
+//				forceError:       "",
+//				expectedError:    true,
+//				expectedErrorMsg: fmt.Errorf("bankID is empty").Error(),
+//				userID:           testUserID1,
+//				userRole:         RoleTeacher,
+//			},
+//			{
+//				name:             "无效的bankID",
+//				query:            "bankID=-1",
+//				forceError:       "",
+//				expectedError:    true,
+//				expectedErrorMsg: fmt.Errorf("invalid bankID").Error(),
+//				userID:           testUserID1,
+//				userRole:         RoleTeacher,
+//			},
+//			{},
+//		}
+//	}
 func TestMain(m *testing.M) {
 	cmn.ConfigureForTest()
 	setup()
