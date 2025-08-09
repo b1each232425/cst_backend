@@ -1,6 +1,6 @@
 /*==============================================================*/
 /* DBMS name:      PostgreSQL 9.x                               */
-/* Created on:     2025/8/8 16:44:24                            */
+/* Created on:     2025/8/9 11:15:15                            */
 /*==============================================================*/
 
 
@@ -1783,7 +1783,7 @@ comment on column t_exam_paper.status is
 /* Table: t_exam_paper_group                                    */
 /*==============================================================*/
 create table if not exists  t_exam_paper_group (
-   id                   SERIAL               not null,
+   id                   INT4                 not null,
    exam_paper_id        INT8                 not null,
    name                 TEXT                 null,
    "order"              INT4                 null,
@@ -7541,9 +7541,9 @@ create table if not exists  t_question (
    repo                 JSONB                null,
    "order"              INT8                 null,
    creator              INT8                 not null,
-   create_time          TIMESTAMP            not null default CURRENT_TIMESTAMP,
+   create_time          INT8                 not null,
    updated_by           INT8                 not null,
-   update_time          TIMESTAMP            not null default CURRENT_TIMESTAMP,
+   update_time          INT8                 not null,
    addi                 JSONB                null,
    status               VARCHAR(64)          not null default '00',
    question_attachments_path JSONB                null,
@@ -7659,9 +7659,9 @@ create table if not exists  t_question_bank (
    repos                JSONB                null,
    default_repo         VARCHAR(64)          null,
    creator              INT8                 not null,
-   create_time          TIMESTAMP            not null default CURRENT_TIMESTAMP,
+   create_time          INT8                 not null,
    updated_by           INT8                 not null,
-   update_time          TIMESTAMP            not null default CURRENT_TIMESTAMP,
+   update_time          INT8                 not null,
    remark               VARCHAR(128)         null,
    addi                 JSONB                null,
    status               VARCHAR(64)          not null default '00',
@@ -7740,9 +7740,9 @@ create table if not exists  t_question_bank_share (
    bank_id              INT8                 not null,
    user_id              INT8                 not null,
    creator              INT8                 not null,
-   create_time          TIMESTAMP            not null default CURRENT_TIMESTAMP,
+   create_time          INT8                 not null,
    updated_by           INT8                 not null,
-   update_time          TIMESTAMP            not null default CURRENT_TIMESTAMP,
+   update_time          INT8                 not null,
    status               VARCHAR(4)           not null default '00',
    constraint PK_T_QUESTION_BANK_SHARE primary key (bank_id, user_id)
 );
@@ -9013,7 +9013,7 @@ open_id
 /* Table: t_student_answers                                     */
 /*==============================================================*/
 create table if not exists  t_student_answers (
-   id                   SERIAL               not null,
+   id                   INT4                 not null,
    type                 VARCHAR(128)         null,
    examinee_id          INT8                 null,
    practice_submission_id INT8                 null,
@@ -9151,10 +9151,13 @@ comment on column t_sys_ver.status is
 ALTER SEQUENCE t_sys_ver_id_seq RESTART WITH 20000;
 
 insert into t_sys_ver(id,name,ver,create_time,update_time,remark)
-  values(1000,'业务模型','3.1.3.0',
-  '2016年12月5日 9:52:53','2025年8月8日 16:17:16',
-  '3.1.3.0
-优化v_paper视图逻辑，添加v_grade_exam_session_info和v_grade_practice_statistics,删除v_paper_share和t_resource_share表,补充v_student_practice_total_score的usedtime字段
+  values(1000,'业务模型','3.1.4.0',
+  '2016年12月5日 9:52:53','2025年8月9日 11:14:56',
+  '3.1.4.0
+增加考卷、考卷题组、考卷题目、学生答卷外键 + 级联删除 修改题库、题目、共享题目表关于时间字段的属性为int8
+
+3.1.3.0
+优化v_paper视图逻辑，添加v_z_grade_exam_session_info和v_z_grade_practice_statistics,删除v_paper_share和t_resource_share表,补充v_student_practice_total_score的usedtime字段
 
 3.1.2.0
 更改v_paper 与v_exam_paper视图生成逻辑
@@ -13813,10 +13816,25 @@ alter table t_domain_api
       references t_api (id)
       on delete restrict on update restrict;
 
+alter table t_exam_paper_group
+   add constraint FK_exam_group_paper foreign key (exam_paper_id)
+      references t_exam_paper (id)
+      on delete cascade;
+
+alter table t_exam_paper_question
+   add constraint FK_exam_question_group foreign key (group_id)
+      references t_exam_paper_group (id)
+      on delete cascade;
+
 alter table t_insure_attach
    add constraint FK_T_INSURE_REF_T_USER foreign key (t_u_id)
       references t_user (id)
       on delete restrict on update restrict;
+
+alter table t_student_answers
+   add constraint FK_exam_answer_question foreign key (question_id)
+      references t_exam_paper_question (id)
+      on delete cascade;
 
 alter table t_user_domain
    add constraint fk_user_domain_uid_REF_USER_id foreign key (sys_user)
