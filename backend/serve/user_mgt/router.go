@@ -11,6 +11,11 @@ import (
 
 var z *zap.Logger
 
+const (
+	AccountLength = 12          // 账号长度
+	InitialPwd    = "abc123456" // 初始密码
+)
+
 func init() {
 	//Setup package scope variables, just like logger, db connector, configure parameters, etc.
 	cmn.PackageStarters = append(cmn.PackageStarters, func() {
@@ -38,7 +43,71 @@ func Enroll(author string) {
 		Fn: handler.HandleUser,
 
 		Path: "/user",
-		Name: "user",
+		Name: "User Management Service",
+
+		Developer: developer,
+		WhiteList: true,
+
+		//DomainID 创建该API的账号归属的domain
+		DomainID: int64(cmn.CDomainSys),
+
+		//DefaultDomain 该API将默认授权给的用户
+		DefaultDomain: int64(cmn.CDomainSys),
+	})
+
+	_ = cmn.AddService(&cmn.ServeEndPoint{
+		Fn: handler.HandleGetNewAccount,
+
+		Path: "/user/new-account",
+		Name: "Get New Account",
+
+		Developer: developer,
+		WhiteList: true,
+
+		//DomainID 创建该API的账号归属的domain
+		DomainID: int64(cmn.CDomainSys),
+
+		//DefaultDomain 该API将默认授权给的用户
+		DefaultDomain: int64(cmn.CDomainSys),
+	})
+
+	_ = cmn.AddService(&cmn.ServeEndPoint{
+		Fn: handler.HandleQueryMyInfo,
+
+		Path: "/user/me",
+		Name: "Query My Info",
+
+		Developer: developer,
+		WhiteList: true,
+
+		//DomainID 创建该API的账号归属的domain
+		DomainID: int64(cmn.CDomainSys),
+
+		//DefaultDomain 该API将默认授权给的用户
+		DefaultDomain: int64(cmn.CDomainSys),
+	})
+
+	_ = cmn.AddService(&cmn.ServeEndPoint{
+		Fn: handler.HandleSelectLoginDomain,
+
+		Path: "/user/login-domain",
+		Name: "Select Login Domain",
+
+		Developer: developer,
+		WhiteList: true,
+
+		//DomainID 创建该API的账号归属的domain
+		DomainID: int64(cmn.CDomainSys),
+
+		//DefaultDomain 该API将默认授权给的用户
+		DefaultDomain: int64(cmn.CDomainSys),
+	})
+
+	_ = cmn.AddService(&cmn.ServeEndPoint{
+		Fn: handler.HandleValidateUserToBeInsert,
+
+		Path: "/user/validate",
+		Name: "Validate User Info To be Insert",
 
 		Developer: developer,
 		WhiteList: true,

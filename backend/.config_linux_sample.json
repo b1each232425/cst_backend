@@ -88,7 +88,11 @@
     }
   },
   "ocr": {
-    "apiHost": "127.0.0.1:6268",
+    "apiHost": "app_model:6268",
     "ocrApiPath": "/api/idCardRecognition"
+  },
+  "timeSync":{
+    "timeSyncInterval":5000,
+    "poolInitialSize":100
   }
 }

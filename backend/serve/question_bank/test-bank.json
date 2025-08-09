@@ -1,0 +1,40 @@
+{
+    "ID": 1001,
+    "Type": "00",
+    "Name": "test-综合题库",
+    "Tags": [
+        "数据结构",
+        "算法",
+        "操作系统",
+        "计算机网络",
+        "数据库",
+        "软件工程",
+        "设计模式",
+        "计算机组成原理",
+        "操作系统进程线程",
+        "TCP/IP",
+        "SQL",
+        "编译原理",
+        "离散数学",
+        "时间复杂度",
+        "内存管理",
+        "并发编程"
+    ],
+    "Repos": [
+        "git@repo.com:comp-c.git"
+    ],
+    "DefaultRepo": "git@repo.com:comp-c.git",
+    "Creator": 11,
+    "CreateTime": 1722000200000,
+    "UpdatedBy": 11,
+    "UpdateTime": 1722100200000,
+    "Remark": "test",
+    "Addi": {
+        "difficulty": "hard",
+        "description": "本题库综合涵盖计算机核心课程知识，适用于校招、笔试与面试准备。",
+        "target_audience": "计算机专业学生、软件开发从业者"
+    },
+    "Status": "00",
+    "QuestionCount": 25,
+    "AccessMode": "00"
+}

@@ -31,80 +31,129 @@ type CDomain int64
 // 例如，表示角色(domain)中的系统(sys)角色，使用 CDomainSys作为名称
 const (
 	//CDomainSys domain constants
-	CDomainSys                 CDomain = 322   //sys  系统
-	CDomainSysAdmin            CDomain = 333   //sys^admin  系统.管理
-	CDomainSysMaintain         CDomain = 366   //sys^maintain  系统.运维
-	CDomainSysUser             CDomain = 377   //sys^user  系统.用户
-	CDomainSysAnonymous        CDomain = 388   //sys^anonymous  系统.匿名
-	CDomainSysPromotion        CDomain = 561   //sys^promotion  系统.运营
-	CDomainSysSale             CDomain = 563   //sys^sale  系统.销售
-	CDomainSysTrial            CDomain = 566   //sys^trial  系统.测试
-	CDomainAdmin               CDomain = 567   //^admin  管理
-	CDomainMaintain            CDomain = 569   //^maintain  运维
-	CDomainUser                CDomain = 671   //^user  用户
-	CDomainAnonymous           CDomain = 673   //^anonymous  匿名
-	CDomainPromotion           CDomain = 675   //^promotion  运营
-	CDomainSale                CDomain = 677   //^sale  销售
-	CDomainTrial               CDomain = 679   //^trial  测试
-	CDomainQNear               CDomain = 1077  //qnear  近邻科技
-	CDomainQNearAdmin          CDomain = 1079  //qnear^admin  近邻科技.管理
-	CDomainAbilityIdx          CDomain = 1177  //abilityIdx  能力索引
-	CDomainAbilityIdxAdmin     CDomain = 1179  //abilityIdx^admin  能力索引.管理
-	CDomainForeseeLab          CDomain = 1277  //foreseeLab  IT双创精英孵化实训室
-	CDomainForeseeLabAdmin     CDomain = 1279  //foreseeLab^admin  IT双创精英孵化实训室.管理
-	CDomainRecruitMgr          CDomain = 1377  //recruitMgr  人才引进
-	CDomainRecruitMgrAdmin     CDomain = 1379  //recruitMgr^admin  人才引进.管理
-	CDomainJXDD                CDomain = 1477  //jxdd  教学督导
-	CDomainJXDDAdmin           CDomain = 1479  //jxdd^admin  教学督导.管理
-	CDomainDonate              CDomain = 1577  //donate  校友会小额捐献
-	CDomainDonateAdmin         CDomain = 1579  //donate^admin  校友会小额捐献.管理
-	CDomainXKB                 CDomain = 10002 //xkb  校快保
-	CDomainXKBAdmin            CDomain = 10004 //xkb^admin  校快保.管理
-	CDomainXKBSale             CDomain = 10006 //xkb^sale  校快保.销售经理
-	CDomainXKBSchoolAdmin      CDomain = 10008 //xkb.school^admin  校快保.学校管理员
-	CDomainXKBSchoolStatistics CDomain = 10010 //xkb.school^statistics  校快保.学校统计员
-	CDomainXKBUser             CDomain = 10012 //xkb^user  校快保.客户
-	CDomainXKBPromotion        CDomain = 10016 //xkb^promotion  校快保.运营
-	CDomainXKBFE               CDomain = 10020 //xkb^fe  校快保.前台
-	CDomainXKBBE               CDomain = 10030 //xkb^be  校快保.后台
+	CDomainSys                       CDomain = 322   //sys  系统
+	CDomainSysAdmin                  CDomain = 333   //sys^admin  系统.管理
+	CDomainSysMaintain               CDomain = 366   //sys^maintain  系统.运维
+	CDomainSysUser                   CDomain = 377   //sys^user  系统.用户
+	CDomainSysAnonymous              CDomain = 388   //sys^anonymous  系统.匿名
+	CDomainSysPromotion              CDomain = 561   //sys^promotion  系统.运营
+	CDomainSysSale                   CDomain = 563   //sys^sale  系统.销售
+	CDomainSysTrial                  CDomain = 566   //sys^trial  系统.测试
+	CDomainAdmin                     CDomain = 567   //^admin  管理
+	CDomainMaintain                  CDomain = 569   //^maintain  运维
+	CDomainUser                      CDomain = 671   //^user  用户
+	CDomainAnonymous                 CDomain = 673   //^anonymous  匿名
+	CDomainPromotion                 CDomain = 675   //^promotion  运营
+	CDomainSale                      CDomain = 677   //^sale  销售
+	CDomainTrial                     CDomain = 679   //^trial  测试
+	CDomainQNear                     CDomain = 1077  //qnear  近邻科技
+	CDomainQNearAdmin                CDomain = 1079  //qnear^admin  近邻科技.管理
+	CDomainAbilityIdx                CDomain = 1177  //abilityIdx  能力索引
+	CDomainAbilityIdxAdmin           CDomain = 1179  //abilityIdx^admin  能力索引.管理
+	CDomainForeseeLab                CDomain = 1277  //foreseeLab  IT双创精英孵化实训室
+	CDomainForeseeLabAdmin           CDomain = 1279  //foreseeLab^admin  IT双创精英孵化实训室.管理
+	CDomainRecruitMgr                CDomain = 1377  //recruitMgr  人才引进
+	CDomainRecruitMgrAdmin           CDomain = 1379  //recruitMgr^admin  人才引进.管理
+	CDomainJXDD                      CDomain = 1477  //jxdd  教学督导
+	CDomainJXDDAdmin                 CDomain = 1479  //jxdd^admin  教学督导.管理
+	CDomainDonate                    CDomain = 1577  //donate  校友会小额捐献
+	CDomainDonateAdmin               CDomain = 1579  //donate^admin  校友会小额捐献.管理
+	CDomainXKB                       CDomain = 10002 //xkb  校快保
+	CDomainXKBAdmin                  CDomain = 10004 //xkb^admin  校快保.管理
+	CDomainXKBSale                   CDomain = 10006 //xkb^sale  校快保.销售经理
+	CDomainXKBSchoolAdmin            CDomain = 10008 //xkb.school^admin  校快保.学校管理员
+	CDomainXKBSchoolStatistics       CDomain = 10010 //xkb.school^statistics  校快保.学校统计员
+	CDomainXKBUser                   CDomain = 10012 //xkb^user  校快保.客户
+	CDomainXKBPromotion              CDomain = 10016 //xkb^promotion  校快保.运营
+	CDomainXKBFE                     CDomain = 10020 //xkb^fe  校快保.前台
+	CDomainXKBBE                     CDomain = 10030 //xkb^be  校快保.后台
+	CDomainAssess                    CDomain = 10098 //assess 考试系统
+	CDomainAssessAdmin               CDomain = 10100 //assess^admin 考试系统.学校管理员
+	CDomainAssessLeader              CDomain = 10102 //assess^leader 考试系统.学校领导
+	CDomainAssessFacultyAdmin        CDomain = 10104 //assess.faculty^admin 考试系统.学院管理员
+	CDomainAssessAcademicAffairDean  CDomain = 10106 //assess.academicAffair^dean 考试系统.教务处领导
+	CDomainAssessStudentAffairDean   CDomain = 10108 //assess.studentAffair^dean 考试系统.学生处领导
+	CDomainAssessFacultyLeader       CDomain = 10110 //assess.faculty^leader 考试系统.学院领导
+	CDomainAssessAcademicAffairAdmin CDomain = 10112 //assess.academicAffair^admin 考试系统.教务员
+	CDomainAssessTeacher             CDomain = 10114 //assess^teacher 考试系统.教师
+	CDomainAssessExamSupervisor      CDomain = 10116 //assess^examSupervisor 考试系统.监考员
+	CDomainAssessExamGrader          CDomain = 10118 //assess^examGrader 考试系统.批阅员
+	CDomainAssessScoreChecker        CDomain = 10120 //assess^scoreChecker 考试系统.核分员
+	CDomainAssessExamSite            CDomain = 10122 //assess.examSite 考试系统.考点
+	CDomainAssessExamSiteAdmin       CDomain = 10124 //assess.examSite^admin 考试系统.考点负责人
+	CDomainAssessMaintain            CDomain = 10126 //assess^maintain 考试系统.运维
+	CDomainAssessStudent             CDomain = 10128 //assess^student 考试系统.学生
+	CDomainCourse                    CDomain = 10200 //course 教学系统
+	CDomainCourseAdmin               CDomain = 10202 //course^admin 教学系统.管理员
+	CDomainCourseMaintain            CDomain = 10204 //course^maintain 教学系统.运维
+	CDomainCoursePromotion           CDomain = 10206 //course^promotion 教学系统.运营
+	CDomainCourseTeacher             CDomain = 10208 //course^teacher 教学系统.教师
+	CDomainCourseTeachingAssistant   CDomain = 10210 //course^teachingAssistant 教学系统.助教
+	CDomainCourseClassRepresentative CDomain = 10212 //course^classRepresentative 教学系统.班长
+	CDomainCourseStudent             CDomain = 10214 //course^student 教学系统.学生
+
 )
 
 var roleToName = map[CDomain]string{
-	CDomainSysAdmin:            "sys^admin",
-	CDomainSysMaintain:         "sys^maintain",
-	CDomainSysUser:             "sys^user",
-	CDomainSysAnonymous:        "sys^anonymous",
-	CDomainSysPromotion:        "sys^promotion",
-	CDomainSysSale:             "sys^sale",
-	CDomainSysTrial:            "sys^trial",
-	CDomainAdmin:               "^admin",
-	CDomainMaintain:            "^maintain",
-	CDomainUser:                "^user",
-	CDomainAnonymous:           "^anonymous",
-	CDomainPromotion:           "^promotion",
-	CDomainSale:                "^sale",
-	CDomainTrial:               "^trial",
-	CDomainQNear:               "qnear",
-	CDomainQNearAdmin:          "qnear^admin",
-	CDomainAbilityIdx:          "abilityIdx",
-	CDomainAbilityIdxAdmin:     "abilityIdx^admin",
-	CDomainForeseeLab:          "foreseeLab",
-	CDomainForeseeLabAdmin:     "foreseeLab^admin",
-	CDomainRecruitMgr:          "recruitMgr",
-	CDomainRecruitMgrAdmin:     "recruitMgr^admin",
-	CDomainJXDD:                "jxdd",
-	CDomainJXDDAdmin:           "jxdd^admin",
-	CDomainDonate:              "donate",
-	CDomainDonateAdmin:         "donate^admin",
-	CDomainXKB:                 "xkb",
-	CDomainXKBAdmin:            "xkb^admin",
-	CDomainXKBSale:             "xkb^sale",
-	CDomainXKBSchoolAdmin:      "xkb.school^admin",
-	CDomainXKBSchoolStatistics: "xkb.school^statistics",
-	CDomainXKBUser:             "xkb^user",
-	CDomainXKBPromotion:        "xkb^promotion",
-	CDomainXKBFE:               "xkb^fe",
-	CDomainXKBBE:               "xkb^be",
+	CDomainSysAdmin:                  "sys^admin",
+	CDomainSysMaintain:               "sys^maintain",
+	CDomainSysUser:                   "sys^user",
+	CDomainSysAnonymous:              "sys^anonymous",
+	CDomainSysPromotion:              "sys^promotion",
+	CDomainSysSale:                   "sys^sale",
+	CDomainSysTrial:                  "sys^trial",
+	CDomainAdmin:                     "^admin",
+	CDomainMaintain:                  "^maintain",
+	CDomainUser:                      "^user",
+	CDomainAnonymous:                 "^anonymous",
+	CDomainPromotion:                 "^promotion",
+	CDomainSale:                      "^sale",
+	CDomainTrial:                     "^trial",
+	CDomainQNear:                     "qnear",
+	CDomainQNearAdmin:                "qnear^admin",
+	CDomainAbilityIdx:                "abilityIdx",
+	CDomainAbilityIdxAdmin:           "abilityIdx^admin",
+	CDomainForeseeLab:                "foreseeLab",
+	CDomainForeseeLabAdmin:           "foreseeLab^admin",
+	CDomainRecruitMgr:                "recruitMgr",
+	CDomainRecruitMgrAdmin:           "recruitMgr^admin",
+	CDomainJXDD:                      "jxdd",
+	CDomainJXDDAdmin:                 "jxdd^admin",
+	CDomainDonate:                    "donate",
+	CDomainDonateAdmin:               "donate^admin",
+	CDomainXKB:                       "xkb",
+	CDomainXKBAdmin:                  "xkb^admin",
+	CDomainXKBSale:                   "xkb^sale",
+	CDomainXKBSchoolAdmin:            "xkb.school^admin",
+	CDomainXKBSchoolStatistics:       "xkb.school^statistics",
+	CDomainXKBUser:                   "xkb^user",
+	CDomainXKBPromotion:              "xkb^promotion",
+	CDomainXKBFE:                     "xkb^fe",
+	CDomainXKBBE:                     "xkb^be",
+	CDomainAssess:                    "assess",
+	CDomainAssessAdmin:               "assess^admin",
+	CDomainAssessLeader:              "assess^leader",
+	CDomainAssessFacultyAdmin:        "assess.faculty^admin",
+	CDomainAssessAcademicAffairDean:  "assess.academicAffair^dean",
+	CDomainAssessStudentAffairDean:   "assess.studentAffair^dean",
+	CDomainAssessFacultyLeader:       "assess.faculty^leader",
+	CDomainAssessAcademicAffairAdmin: "assess.academicAffair^admin",
+	CDomainAssessTeacher:             "assess^teacher",
+	CDomainAssessExamSupervisor:      "assess^examSupervisor",
+	CDomainAssessExamGrader:          "assess^examGrader",
+	CDomainAssessScoreChecker:        "assess^scoreChecker",
+	CDomainAssessExamSite:            "assess.examSite",
+	CDomainAssessExamSiteAdmin:       "assess.examSite^admin",
+	CDomainAssessMaintain:            "assess^maintain",
+	CDomainAssessStudent:             "assess^student",
+	CDomainCourse:                    "course",
+	CDomainCourseAdmin:               "course^admin",
+	CDomainCourseMaintain:            "course^maintain",
+	CDomainCoursePromotion:           "course^promotion",
+	CDomainCourseTeacher:             "course^teacher",
+	CDomainCourseTeachingAssistant:   "course^teachingAssistant",
+	CDomainCourseClassRepresentative: "course^classRepresentative",
+	CDomainCourseStudent:             "course^student",
 }
 
 func RoleName(roleID CDomain) (s string) {

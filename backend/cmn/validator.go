@@ -1,6 +1,9 @@
 package cmn
 
-import "github.com/go-playground/validator/v10"
+import (
+	"fmt"
+	"github.com/go-playground/validator/v10"
+)
 
 var validate *validator.Validate = validator.New()
 
@@ -8,7 +11,8 @@ var validate *validator.Validate = validator.New()
 func Validate(instance interface{}) error {
 	err := validate.Struct(instance)
 	if err != nil {
-		z.Error("validation fail:" + err.Error())
+		err = fmt.Errorf("validation failed:%v", err)
+		z.Error(err.Error())
 	}
 	return err
 }

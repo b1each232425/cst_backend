@@ -495,6 +495,27 @@
       "Status": "02"
     }
   ],
+  "user_domains": [
+    {
+      "Account": "zhangsan",
+      "Domains": [
+        "cst.school^teacher",
+        "cst.school^admin"
+      ]
+    },
+    {
+      "Account": "lisi",
+      "Domains": [
+        "cst.school^superAdmin"
+      ]
+    },
+    {
+      "Account": "anonymous_4",
+      "Domains": [
+        "cst.school^student"
+      ]
+    }
+  ],
   "metadata": {
     "total_count": 12,
     "generated_at": 1703147400000,

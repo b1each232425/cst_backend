@@ -4,9 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"time"
 
-	"github.com/gomodule/redigo/redis"
+	"github.com/redis/go-redis/v9"
 )
 
 const (
@@ -53,12 +54,11 @@ end`
 // 返回值：
 //
 //	bool  —— 是否成功获取锁
-//	int64 —— 如果锁被占用，返回当前持有者ID，否则为 -1
 //	error —— 错误信息（如参数非法、Redis 操作失败等）
 //
 // 注意：
 //   - 若锁已被当前 holderID 持有，则自动刷新锁并返回 true。
-//   - 若锁被其他用户持有，返回 false、持有者ID 和错误信息。
+//   - 若锁被其他用户持有，返回 false和错误信息。
 //   - 若 resourceID 或 holderID 非正数，直接返回错误。
 func TryLock(ctx context.Context, resourceID, holderID int64, keyPrefix string, expiration time.Duration) (bool, error) {
 	// 参数校验，resourceID 和 holderID 必须为正数
@@ -93,10 +93,10 @@ func TryLock(ctx context.Context, resourceID, holderID int64, keyPrefix string, 
 		z.Error(err.Error())
 		return false, err
 	}
-	if v, ok := res.(int); ok && v == 1 {
+	v, ok := res.(int64)
+	if ok && v == 1 {
 		return true, nil
 	}
-
 	err = fmt.Errorf("key %s is locked", key)
 	z.Error(err.Error())
 	return false, err
@@ -129,7 +129,7 @@ func ReleaseLock(ctx context.Context, resourceID, holderID int64, keyPrefix stri
 		return err
 	}
 
-	if v, ok := res.(int); ok && v == 0 {
+	if v, ok := res.(int64); ok && v == 0 {
 		return errors.New("lock not held by current client")
 	}
 
@@ -173,19 +173,26 @@ func RefreshLock(ctx context.Context,
 			holderID,                  // ARGV[1]
 			int(expiration.Seconds()), // ARGV[2]
 		).Result()
-	v, ok := res.(int)
-	switch {
-	case err != nil:
+	if err != nil {
 		z.Error("RefreshLock eval error:" + err.Error())
 		return err
-	case ok && v == 0:
+	}
+	v, ok := res.(int64)
+	if !ok {
+		err := fmt.Errorf("key %s value is not int64", key)
+		z.Error(err.Error())
+		return err
+	}
+
+	if v == 0 {
 		// 两种情况：锁不存在，或者持有者不匹配
 		err = fmt.Errorf("RefreshLock: lock not exist or not held by %d", holderID)
 		z.Info(err.Error())
 		return err
-	default:
-		return nil
 	}
+
+	return nil
+
 }
 
 // GetLockHolder 获取指定资源锁的当前持有者ID。
@@ -209,22 +216,28 @@ func GetLockHolder(ctx context.Context, resourceID int64, keyPrefix string) (int
 
 	// 查询锁持有者ID
 	holder, err := q.RedisClient.Do(ctx, "GET", key).Result()
-	v, ok := holder.(int64)
 
 	if err != nil {
 		// 锁不存在，直接返回 redis.ErrNil
-		if errors.Is(err, redis.ErrNil) {
+		if errors.Is(err, redis.Nil) {
 			z.Info(err.Error())
 			return -1, err
 		}
 		z.Error(err.Error())
 		return -1, err
 	}
+	v, ok := holder.(string)
 	if !ok {
-		err = fmt.Errorf("holder should be int")
+		err = fmt.Errorf("holder should be string")
 		z.Error(err.Error())
 		return -1, err
 	}
 
-	return v, nil
+	i, err := strconv.ParseInt(v, 10, 64)
+	if err != nil {
+		z.Error(err.Error())
+		return -1, err
+	}
+
+	return i, nil
 }

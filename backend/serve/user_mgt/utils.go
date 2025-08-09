@@ -1,6 +1,7 @@
 package user_mgt
 
 import (
+	"regexp"
 	"strconv"
 	"strings"
 	"unicode"
@@ -35,4 +36,27 @@ func NullableIntFromStr(s string) null.Int {
 	}
 
 	return null.NewInt(i, true)
+}
+
+// IsValidEmail 判断邮箱地址是否合法
+func IsValidEmail(email string) bool {
+	// RFC 5322 标准的简化版正则表达式
+	var emailRegex = regexp.MustCompile(`^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$`)
+	return emailRegex.MatchString(email)
+}
+
+// IsDomainExist 判断角色是否合法
+func IsDomainExist(domain string) bool {
+	_, ok := domainSet[domain]
+	return ok
+}
+
+// Contains 泛型函数，判断元素是否存在于切片中
+func Contains[T comparable](item T, list []T) bool {
+	for _, v := range list {
+		if v == item {
+			return true
+		}
+	}
+	return false
 }
