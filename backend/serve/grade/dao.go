@@ -106,7 +106,7 @@ func gradeListExam(ctx context.Context, args *GradeListArgs) ([]GradeExam, int64
 		jsonb_agg(esi) AS exam_session_info,
 		ei.submitted AS submitted
 	FROM t_exam_info ei     
-		LEFT JOIN v_grade_exam_session_info esi ON esi.exam_id = ei.id
+		LEFT JOIN v_z_grade_exam_session_info esi ON esi.exam_id = ei.id
 	%s
 	GROUP BY ei.id
 	`, whereClause)
@@ -248,7 +248,7 @@ func gradeListPractice(ctx context.Context, args *GradeListArgs) ([]GradePractic
 		p.averge_score,
 		p.actual_completer,
 		p.pass_student
-	FROM v_grade_practice_statistics p 
+	FROM v_z_grade_practice_statistics p 
 	%s
 	GROUP BY
 		p.practice_id, p.practice_name, p.total_score, p.averge_score, p.actual_completer, p.pass_student
