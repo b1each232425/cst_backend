@@ -692,7 +692,6 @@ func gradeExamineeListH(ctx context.Context) {
 			result, rowCount, err = GradeExamineeListExam(dmlCtx, req)
 			if err != nil {
 				q.Err = err
-				z.Error(q.Err.Error())
 				q.RespErr()
 				return
 			}

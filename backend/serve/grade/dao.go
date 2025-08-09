@@ -866,8 +866,6 @@ func GradeExamineeListExam(ctx context.Context, args GradeExamineeListArgs) ([]E
 		exam_infos.id
 	`, whereClause)
 
-	z.Sugar().Debugf("打印sql是什么：%#v", sql)
-
 	var result []ExamExamineeScoreInfo
 	var rowCount int64
 
@@ -895,24 +893,26 @@ func GradeExamineeListExam(ctx context.Context, args GradeExamineeListArgs) ([]E
 			z.Error(err.Error())
 			return nil, 0, err
 		}
-
 		var examSessionCount int
 
-		placeholders := make([]string, len(args.ExamID))
-		params := []any{}
-		for i, id := range args.ExamID {
-			placeholders[i] = fmt.Sprintf("$%d", i+1)
-			params = append(params, id)
-		}
-		placeholderStr := strings.Join(placeholders, ", ")
+		{
 
-		sql := fmt.Sprintf(`SELECT COUNT(id) FROM t_exam_session WHERE exam_id IN (%s)`, placeholderStr)
+			placeholders := make([]string, len(args.ExamID))
+			examSessionCountParams := []any{}
+			for i, id := range args.ExamID {
+				placeholders[i] = fmt.Sprintf("$%d", i+1)
+				params = append(params, id)
+			}
+			placeholderStr := strings.Join(placeholders, ", ")
 
-		err = conn.QueryRow(ctx, sql, params...).Scan(&examSessionCount)
-		if err != nil {
-			err = fmt.Errorf("scan exam session count(examID:%v) occurred error: %s", args.ExamID, err.Error())
-			z.Error(err.Error())
-			return result, 0, err
+			examSessionCountSql := fmt.Sprintf(`SELECT COUNT(id) FROM t_exam_session WHERE exam_id IN (%s)`, placeholderStr)
+
+			err = conn.QueryRow(ctx, examSessionCountSql, examSessionCountParams...).Scan(&examSessionCount)
+			if err != nil {
+				err = fmt.Errorf("scan exam session count(examID:%v) occurred error: %s", args.ExamID, err.Error())
+				z.Error(err.Error())
+				return result, 0, err
+			}
 		}
 
 		listSQL = fmt.Sprintf(`%s
@@ -922,6 +922,10 @@ func GradeExamineeListExam(ctx context.Context, args GradeExamineeListArgs) ([]E
 
 		listParams = append(listParams, args.PageSize*examSessionCount, (args.Page-1)*args.PageSize*examSessionCount)
 	}
+
+	z.Sugar().Debug("打印sql是什么：%#v", sql)
+	z.Sugar().Debug("打印listsql是什么：%#v", listSQL)
+	z.Sugar().Debug("打印listParams是什么：%#v", listParams)
 
 	rows, err := conn.Query(ctx, listSQL, listParams...)
 	if err != nil {
