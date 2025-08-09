@@ -3,7 +3,7 @@
  * @Description: 考卷数据库层单元测试
  * @Date: 2025-07-28 19:55:28
  * @LastEditors: zdl <1311866870@qq.com>
- * @LastEditTime: 2025-08-08 11:32:51
+ * @LastEditTime: 2025-08-08 16:17:30
  */
 package examPaper
 
@@ -2839,4 +2839,17 @@ func initPaper(t *testing.T, tx *pgxpool.Pool) {
 	if err != nil {
 		t.Fatal(err)
 	}
+}
+
+func TestInitData(t *testing.T) {
+	t.Run("c直接生成数据", func(t *testing.T) {
+		if z == nil {
+			cmn.ConfigureForTest()
+		}
+		conn := cmn.GetPgxConn()
+
+		initQuestion(t, conn)
+
+		initPaper(t, conn)
+	})
 }

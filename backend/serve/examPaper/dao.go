@@ -3,7 +3,7 @@
  * @Description: 考卷-答卷数据库层
  * @Date: 2025-07-21 13:14:34
  * @LastEditors: zdl <1311866870@qq.com>
- * @LastEditTime: 2025-08-08 08:35:41
+ * @LastEditTime: 2025-08-09 09:23:55
  */
 package examPaper
 
@@ -23,7 +23,7 @@ import (
 // LoadExamPaperDetailsById 获取完整考卷信息（包括试卷信息、题组信息、题目信息） 支持根据参数的传入决定是否需要查询题组题目、去除答案等 用于生成与绑定学生答卷
 /*
 关键参数说明：
-	epid 考卷Id
+	examPaperId 考卷Id
 	withQuestions 是否查询题组及题目信息 对应返回体[]*cmn.TExamPaperGroup、map[int64][]*ExamQuestion
 	withAnswers 题目是否需要携带答案
 	withAnalysis 题目是否需要携带解析
@@ -33,9 +33,9 @@ import (
 	3、考卷题目信息
 	4、可能返回的错误
 */
-func LoadExamPaperDetailsById(ctx context.Context, tx pgx.Tx, epid int64, withQuestions, withAnswers, withAnalysis bool) (*cmn.TVExamPaper, []*cmn.TExamPaperGroup, map[int64][]*ExamQuestion, error) {
+func LoadExamPaperDetailsById(ctx context.Context, tx pgx.Tx, examPaperId int64, withQuestions, withAnswers, withAnalysis bool) (*cmn.TVExamPaper, []*cmn.TExamPaperGroup, map[int64][]*ExamQuestion, error) {
 	var err error
-	if epid <= 0 {
+	if examPaperId <= 0 {
 		err = fmt.Errorf("invalid examPaper ID param")
 		z.Error(err.Error())
 		return nil, nil, nil, err
@@ -61,7 +61,7 @@ func LoadExamPaperDetailsById(ctx context.Context, tx pgx.Tx, epid int64, withQu
 	}
 	s := fmt.Sprintf("SELECT %s FROM v_exam_paper WHERE id=$1 AND status=$2", strings.Join(fields, ","))
 	z.Sugar().Debugf("打印输出sql查询语句：%v", s)
-	err = tx.QueryRow(ctx, s, epid, PaperStatus.Normal).Scan(scanArgs...)
+	err = tx.QueryRow(ctx, s, examPaperId, PaperStatus.Normal).Scan(scanArgs...)
 	if err != nil {
 		err = fmt.Errorf("select examPaper failed:%v", err)
 		z.Error(err.Error())
@@ -866,3 +866,7 @@ func LoadExamPaperDetailByUserId(ctx context.Context, tx pgx.Tx, examPaperId, pS
 	}
 	return p, groupMap, pq, nil
 }
+
+// DeleteExamPaperById 物理删除孤数据：考卷、考卷题组、考卷题目、学生答题情况 ： 使用级联删除
+/*
+ */

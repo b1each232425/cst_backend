@@ -3,7 +3,7 @@
  * @Description: 练习管理数据库层函数逻辑测试
  * @Date: 2025-07-24 14:51:50
  * @LastEditors: zdl <1311866870@qq.com>
- * @LastEditTime: 2025-08-08 14:08:25
+ * @LastEditTime: 2025-08-09 21:41:29
  */
 package practice_mgt
 
@@ -556,6 +556,140 @@ func TestLoadPracticeById(t *testing.T) {
 			// 这里再删除这个练习，随后再重新创建
 			s = `DELETE FROM assessuser.t_paper WHERE name = $1`
 			_, err = conn.Exec(ctx, s, paperName)
+			if err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+
+}
+
+// 仅仅是获取这个练习信息
+func TestLoadPracticeByIDs(t *testing.T) {
+	if z == nil {
+		cmn.ConfigureForTest()
+	}
+	conn := cmn.GetPgxConn()
+	var practiceName1, practiceName2, practiceName3 string
+	practiceName1 = "单元测试练习名1"
+	practiceName2 = "单元测试练习名2"
+	practiceName3 = "单元测试练习名3"
+	var uid int64
+	uid = 10086
+	s := `DELETE FROM t_practice`
+	_, err := conn.Exec(ctx, s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// 这里再删除掉练习学生名单的数据
+	s = `DELETE FROM assessuser.t_practice_student`
+	_, err = conn.Exec(ctx, s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// 先创建这个数据，最后测试完毕再删掉
+	s = `INSERT INTO t_practice (id,name,correct_mode,creator,allowed_attempts,type,paper_id,exam_paper_id)
+	VALUES ($1, $2, $3, $4, $5, $6, $7,$8),($9,$10,$11,$12,$13,$14,$15,$16),($17,$18,$19,$20,$21,$22,$23,$24)`
+	_, err = conn.Exec(ctx, s, 10086, practiceName1, "00", uid, 10086, "00", 10086, 10086, 10087, practiceName2, "00", uid, 10087, "00", 10087, 10087, 10088, practiceName3, "00", uid, 10088, "00", 10088, 10088)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	s = `UPDATE t_practice SET status = $1 , addi = $2`
+	_, err = conn.Exec(ctx, s, PracticeStatus.PendingRelease, types.JSONText(`[]`))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// 这里去更新一下的
+	s = `UPDATE t_practice SET status = $1 WHERE name = $2`
+	_, err = conn.Exec(ctx, s, PracticeStatus.Deleted, practiceName3)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	pids := []int64{10086, 10087, 10088}
+	// 这里准备几个猜测是用例
+
+	tests := []struct {
+		name        string
+		ids         []int64
+		expectedErr error
+	}{
+		{
+			name:        "正常查询1 能返回两个数据",
+			ids:         pids,
+			expectedErr: nil,
+		},
+		{
+			name:        "异常1 非法练习ID数组",
+			ids:         []int64{},
+			expectedErr: errors.New("非法practiceIDs"),
+		},
+		{
+			name:        "异常2 强制触发查询失败",
+			ids:         pids,
+			expectedErr: errors.New("批量查询练习数据失败"),
+		},
+		{
+			name:        "异常3 强制触发查询成功后扫描失败",
+			ids:         pids,
+			expectedErr: errors.New("批量解析练习数据失败"),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+
+			ctx = context.Background()
+			// 这里去准备这个语句
+			if containsString(tt.name, "异常2") {
+				ctx = context.WithValue(ctx, "force-error", "lQuery")
+			} else if containsString(tt.name, "异常3") {
+				ctx = context.WithValue(ctx, "force-error", "lScan")
+			} else {
+				ctx = context.Background()
+			}
+
+			ps, err := LoadPracticeByIDs(ctx, tt.ids)
+			if tt.expectedErr != nil {
+				if !containsString(err.Error(), tt.expectedErr.Error()) {
+					t.Errorf("%v报错与预期：%v", err, tt.expectedErr)
+				}
+			} else {
+				if err != nil {
+					t.Errorf("UpdatePractice() 期望没有错误，但返回错误: %v", err)
+					return
+				}
+
+				if len(ps) != 2 {
+					// 数量
+					t.Errorf("查询出来的数量与预期不符 实际%v", len(ps))
+				}
+				// 这里能成功拿到之后，就需要遍历这个数量
+				for id, p := range ps {
+					if id != p.ID.Int64 {
+						t.Errorf("映射的练习ID错误")
+					}
+					// 判断这些数据是否与预期一致
+					if p.AllowedAttempts.Int64 != p.ID.Int64 {
+						t.Errorf("查询的允许作答次数与预期不符 实际：%v", p.AllowedAttempts.Int64)
+					}
+					if p.PaperID.Int64 != p.ID.Int64 {
+						t.Errorf("查询的试卷ID与预期不符 实际：%v", p.PaperID.Int64)
+					}
+					if p.ExamPaperID.Int64 != p.ID.Int64 {
+						t.Errorf("查询的考卷ID与预期不符 实际：%v", p.ExamPaperID.Int64)
+					}
+				}
+
+			}
+		})
+
+		t.Cleanup(func() {
+			// 清理数据
+			s := `DELETE FROM t_practice`
+			_, err := conn.Exec(ctx, s)
 			if err != nil {
 				t.Fatal(err)
 			}
