@@ -36,6 +36,15 @@ type ExamSession struct {
 	MarkStatus           string `json:"mark_status"`
 }
 
+type Practice struct {
+	ID                   int64  `json:"id"`                     //练习id
+	Name                 string `json:"name"`                   // 练习名称
+	MarkMode             string `json:"mark_mode"`              // 批阅方式
+	Type                 string `json:"type"`                   // 练习类型
+	RespondentCount      int    `json:"respondent_count"`       // 作答人数
+	UnMarkedStudentCount int    `json:"unmarked_student_count"` // 未批阅人数
+}
+
 type QueryCondition struct {
 	TeacherID            int64 `json:"teacher_id" validate:"required,gt=0"`
 	ExamSessionID        int64 `json:"exam_session_id" validate:"gte=0"`
@@ -50,37 +59,6 @@ type MarkerInfo struct {
 	MarkMode           string          `json:"mark_mode"` // 00：不需要手动批改  02：全卷多评 04：试卷分配 06：题组专评 08：题目分配 10：单人（人工）批改 12：批改单个练习学生
 	MarkMethod         string          `json:"mark_method"`
 	MarkedStudentNames []string        `json:"marked_student_names"`
-}
-
-// Answer 作答
-type Answer struct {
-	Details        []*AnswerDetails `json:"details"`
-	QuestionNumber int              `json:"question_number"`
-	QuestionID     int64            `json:"question_id"`
-	QuestionScore  float64          `json:"question_score"`
-	AnswersJson    types.JSONText   `json:"answers_json"`
-	ActualOptions  []string         `json:"actual_options"`
-	ActualAnswers  []string         `json:"actual_answers"`
-}
-
-type RawAnswer struct {
-	QuestionID int      `json:"question_id"`
-	SubAnswers []string `json:"answer"`
-	Answer     []struct {
-		Answer string `json:"answer"`
-	} `json:"sub_answers"`
-}
-
-type AnswerDetails struct {
-	Index   int    `json:"index"`
-	Type    string `json:"type"` // 回答的类型 如 链接、文本
-	Content string `json:"content"`
-}
-
-type QuestionDetails struct {
-	Content string  `json:"content"`
-	Score   float64 `json:"score"`
-	Index   int     `json:"index"`
 }
 
 type QuestionSet struct {
@@ -111,25 +89,15 @@ type SubjectiveAnswer struct {
 	GradingRule       string   `json:"grading_rule"`       // 评分规则
 }
 
-type Student struct {
-	Name                string  `json:"name"`
-	Nickname            string  `json:"nickname"`
-	Number              int     `json:"number"` // 考生序号
-	Phone               string  `json:"phone"`
-	Score               float64 `json:"score"`
-	Status              string  `json:"status"`
-	StudentID           int64   `json:"student_id"`
-	ExamineeID          int64   `json:"examinee_id"`
-	IdType              string  `json:"id_type"`
-	IdNumber            string  `json:"id_number"`
-	ExamAdmissionNumber string  `json:"exam_admission_number"`
-
-	cmn.TUser
-	cmn.TVExamineeInfo
+type StudentInfo struct {
+	OfficialName         null.String `json:"OfficialName"`
+	SerialNumber         null.Int    `json:"SerialNumber"`
+	ExamineeID           null.Int    `json:"ExamineeID"`
+	PracticeSubmissionID null.Int    `json:"PracticeSubmissionID"`
 }
 
 // QueryExamList 获取考试列表 管理员查询全部列表，教师查询与其有关的考试列表
-func QueryExamList(ctx context.Context, req GetExamListReq) (examList []Exam, rowCount int, err error) {
+func QueryExamList(ctx context.Context, req QueryMarkingListReq) (examList []Exam, rowCount int, err error) {
 	forceErr, _ := ctx.Value(ForceErrKey).(string)
 	err = cmn.Validate(req)
 	if err != nil {
@@ -352,17 +320,140 @@ func QueryExamList(ctx context.Context, req GetExamListReq) (examList []Exam, ro
 	return
 }
 
-func QueryMarkingResults(ctx context.Context, cond QueryCondition) (markingResults []*cmn.TMark, err error) {
+// QueryPracticeList 获取练习列表 管理员查询全部列表，教师查询与其有关的练习列表
+func QueryPracticeList(ctx context.Context, req QueryMarkingListReq) (practices []Practice, rowCount int, err error) {
 	forceErr, _ := ctx.Value(ForceErrKey).(string)
-	err = cmn.Validate(cond)
+	err = cmn.Validate(req)
 	if err != nil {
 		err = fmt.Errorf("invalid query condition: %v", err)
+		z.Error(err.Error())
+		return nil, -1, err
+	}
+
+	teacherID := req.User.ID
+
+	listQuery := `	SELECT p.id, 
+						   p.name, 
+						   p.correct_mode, 
+						   p.type, 
+						   COALESCE(rc.respondent_count, 0) AS respondent_count, 
+						   COALESCE(usc.unmarked_count, 0)   AS unmarked_count 
+					FROM t_practice p 
+							 LEFT JOIN (SELECT ps.practice_id, 
+											   COUNT(*) AS respondent_count 
+										FROM t_practice_submissions ps 
+										WHERE ps.status != '04' 
+										GROUP BY ps.practice_id) rc ON rc.practice_id = p.id 
+							 LEFT JOIN v_practice_unmarked_student_cnt usc ON usc.practice_id = p.id 
+							 LEFT JOIN t_mark_info mi ON mi.practice_id = p.id AND mi.status != '04'
+					WHERE p.status != '04' %s -- 动态拼接
+					ORDER BY p.create_time DESC, p.id DESC 
+					LIMIT $1 OFFSET $2;`
+
+	rowCountQuery := `	SELECT COUNT(*) AS practice_count
+								FROM t_practice p
+								LEFT JOIN t_mark_info mi ON mi.practice_id = p.id AND mi.status != '04' 
+								WHERE p.status != '04' %s -- 动态拼接`
+
+	var (
+		countArgs           []interface{}
+		rowCountWhereClause []string
+		countArgIdx         = 1
+	)
+
+	if req.PracticeName != "" {
+		rowCountWhereClause = append(rowCountWhereClause, fmt.Sprintf(" AND p.name ILIKE $%d ", countArgIdx))
+		countArgs = append(countArgs, "%"+req.PracticeName+"%")
+		countArgIdx++
+	}
+
+	// 普通批阅员
+	if !req.User.IsAdmin {
+		rowCountWhereClause = append(rowCountWhereClause, fmt.Sprintf(" AND mi.mark_teacher_id = $%d ", countArgIdx))
+		countArgs = append(countArgs, teacherID)
+		countArgIdx++
+	}
+
+	rowCountQuery = fmt.Sprintf(rowCountQuery, strings.Join(rowCountWhereClause, " "))
+
+	pgxConn := cmn.GetPgxConn()
+	err = pgxConn.QueryRow(ctx, rowCountQuery, countArgs...).Scan(&rowCount)
+	if err != nil || forceErr == "QueryPracticeList-pgxConn.QueryRow" {
+		err = fmt.Errorf("QueryPracticeList row count SQL error: %v", err)
+		z.Error(err.Error())
+		return nil, -1, err
+	}
+
+	// 条件动态拼接
+	var (
+		whereClause []string
+		args        []interface{}
+		argIdx      = 1
+	)
+	args = append(args, req.Limit, req.Offset)
+	argIdx = 3
+
+	if req.PracticeName != "" {
+		whereClause = append(whereClause, fmt.Sprintf(" AND p.name ILIKE $%d ", argIdx))
+		args = append(args, "%"+req.PracticeName+"%")
+		argIdx++
+	}
+
+	if !req.User.IsAdmin {
+		// 普通批阅员，非管理员
+		whereClause = append(whereClause, fmt.Sprintf(" AND mi.mark_teacher_id = $%d ", argIdx))
+		args = append(args, teacherID)
+		argIdx++
+	}
+
+	listQuery = fmt.Sprintf(listQuery, strings.Join(whereClause, " "))
+
+	rows, err := pgxConn.Query(ctx, listQuery, args...)
+	defer rows.Close()
+	if err != nil || forceErr == "QueryPracticeList-pgxConn.Query" {
+		err = fmt.Errorf("QueryPracticeList SQL error: %v", err)
+		z.Error(err.Error())
+		return nil, -1, err
+	}
+
+	for rows.Next() {
+		var practice Practice
+		var row cmn.TPractice
+		err = rows.Scan(&row.ID, &row.Name, &row.CorrectMode, &row.Type, &practice.RespondentCount, &practice.UnMarkedStudentCount)
+		if err != nil || forceErr == "QueryPracticeList-rows.Scan" {
+			err = fmt.Errorf("扫描解析练习数据失败:%v", err)
+			return nil, -1, err
+		}
+
+		practice.MarkMode = row.CorrectMode.String
+		practice.Type = row.Type.String
+		practice.Name = row.Name.String
+		practice.ID = row.ID.Int64
+
+		practices = append(practices, practice)
+
+	}
+
+	return
+}
+
+// QueryMarkingResults 查询某教师的阅卷结果
+func QueryMarkingResults(ctx context.Context, cond QueryCondition) (markingResults []*cmn.TMark, err error) {
+	forceErr, _ := ctx.Value(ForceErrKey).(string)
+	if cond.TeacherID <= 0 {
+		err = fmt.Errorf("invalid params: 请求参数必须包含教师ID")
 		z.Error(err.Error())
 		return
 	}
 
-	if cond.ExamSessionID <= 0 {
-		err = fmt.Errorf("invalid exam_session_id")
+	if cond.ExamSessionID <= 0 && cond.PracticeID <= 0 {
+		err = fmt.Errorf("invalid params: 请求参数必须包含考试场次ID或者练习ID中的一个")
+		z.Error(err.Error())
+		return
+	}
+
+	if cond.PracticeID > 0 && cond.ExamSessionID > 0 {
+		err = fmt.Errorf("invalid params: 请求参数不能同时包含练习ID和考试场次ID")
 		z.Error(err.Error())
 		return
 	}
@@ -373,24 +464,42 @@ func QueryMarkingResults(ctx context.Context, cond QueryCondition) (markingResul
 	)
 	var argIndex = 2
 
-	args = append(args, cond.ExamSessionID)
-	if cond.ExamineeID > 0 {
-		// 获取单个考生的阅卷结果
-		whereClause = append(whereClause, fmt.Sprintf(" AND m.examinee_id = $%d ", argIndex))
-		args = append(args, cond.ExamineeID)
+	// 获取当前教师批阅的所有阅卷结果
+	args = append(args, cond.TeacherID)
+
+	if cond.ExamSessionID > 0 {
+		// 获取考试场次下的阅卷结果
+		whereClause = append(whereClause, fmt.Sprintf(" AND m.exam_session_id = $%d ", argIndex))
+		args = append(args, cond.ExamSessionID)
 		argIndex++
-	} else {
-		// 获取当前教师批阅的所有阅卷结果
-		whereClause = append(whereClause, fmt.Sprintf(" AND m.teacher_id = $%d ", argIndex))
-		args = append(args, cond.TeacherID)
-		argIndex++
+
+		if cond.ExamineeID > 0 {
+			// 获取单个考生的阅卷结果
+			whereClause = append(whereClause, fmt.Sprintf(" AND m.examinee_id = $%d ", argIndex))
+			args = append(args, cond.ExamineeID)
+			argIndex++
+		}
 	}
 
-	getMarkingResultQuery := `	SELECT m.teacher_id, m.examinee_id, m.question_id, m.mark_details, m.score
+	if cond.PracticeID > 0 {
+		// 获取练习下的阅卷结果
+		whereClause = append(whereClause, fmt.Sprintf(" AND m.practice_id = $%d ", argIndex))
+		args = append(args, cond.PracticeID)
+		argIndex++
+
+		if cond.PracticeSubmissionID > 0 {
+			// 获取单个提交下的阅卷结果
+			whereClause = append(whereClause, fmt.Sprintf(" AND m.practice_submission_id = $%d ", argIndex))
+			args = append(args, cond.PracticeSubmissionID)
+			argIndex++
+		}
+	}
+
+	getMarkingResultQuery := `	SELECT m.teacher_id, m.examinee_id, m.practice_submission_id, m.question_id, m.mark_details, m.score
 								FROM t_mark m
 								JOIN t_exam_paper_question q ON q.status != '04' AND q.id = m.question_id
-								WHERE m.exam_session_id = $1 AND q.type IN ('06', '08') %s -- 动态拼接where条件
-								ORDER BY m.examinee_id, q.order`
+								WHERE m.teacher_id = $1 AND q.type IN ('06', '08') %s -- 动态拼接where条件
+								ORDER BY m.examinee_id, m.practice_submission_id, q.order`
 	pgxConn := cmn.GetPgxConn()
 
 	getMarkingResultQuery = fmt.Sprintf(getMarkingResultQuery, strings.Join(whereClause, " "))
@@ -405,11 +514,17 @@ func QueryMarkingResults(ctx context.Context, cond QueryCondition) (markingResul
 
 	for rows.Next() {
 		var row cmn.TMark
-		err = rows.Scan(&row.TeacherID, &row.ExamineeID, &row.QuestionID, &row.MarkDetails, &row.Score)
+		err = rows.Scan(&row.TeacherID, &row.ExamineeID, &row.PracticeSubmissionID, &row.QuestionID, &row.MarkDetails, &row.Score)
 		if err != nil || forceErr == "QueryMarkingResults-rows.Scan" {
 			err = fmt.Errorf("unable to scan row data: %v", err)
 			z.Error(err.Error())
 			return nil, err
+		}
+
+		if cond.ExamSessionID > 0 {
+			row.ExamSessionID = null.IntFrom(cond.ExamSessionID)
+		} else {
+			row.PracticeID = null.IntFrom(cond.PracticeID)
 		}
 
 		markingResults = append(markingResults, &row)
@@ -491,9 +606,6 @@ func QueryMarkerInfo(ctx context.Context, cond QueryCondition) (markerInfo Marke
 		}
 	}
 
-	if cond.ExamSessionID != 0 {
-		markerInfo.MarkMethod = markMethod.String
-	}
 	markerInfo.MarkMode = markMode.String
 
 	return markerInfo, nil
@@ -635,7 +747,7 @@ func QueryStudentAnswersByMarkMode(ctx context.Context, answerType string, cond 
 	return
 }
 
-func QueryExamQuestionsByMarkMode(ctx context.Context, cond QueryCondition, markerInfo MarkerInfo) (questionSets []*QuestionSet, err error) {
+func QueryQuestionsByMarkMode(ctx context.Context, cond QueryCondition, markerInfo MarkerInfo) (questionSets []*QuestionSet, err error) {
 	forceErr, _ := ctx.Value(ForceErrKey).(string)
 	err = cmn.Validate(cond)
 	if err != nil {
@@ -644,11 +756,22 @@ func QueryExamQuestionsByMarkMode(ctx context.Context, cond QueryCondition, mark
 		return
 	}
 
-	markMode := markerInfo.MarkMode
-	markMethod := markerInfo.MarkMethod
+	if cond.PracticeID <= 0 && cond.ExamSessionID <= 0 {
+		err = fmt.Errorf("invalid params: 请求参数必须包含练习ID和考试ID中的一个")
+		z.Error(err.Error())
+		return
+	}
 
-	if markMode == "" || markMethod == "" {
-		err = fmt.Errorf("invalid mark mode or mark method")
+	if cond.PracticeID > 0 && cond.ExamSessionID > 0 {
+		err = fmt.Errorf("invalid params: 请求参数不能同时包含练习ID和考试ID")
+		z.Error(err.Error())
+		return
+	}
+
+	markMode := markerInfo.MarkMode
+
+	if markMode == "" {
+		err = fmt.Errorf("invalid mark mode")
 		z.Error(err.Error())
 		return
 	}
@@ -665,17 +788,22 @@ func QueryExamQuestionsByMarkMode(ctx context.Context, cond QueryCondition, mark
 							JOIN t_exam_paper_group pg ON pg.exam_paper_id = p.id 
 							JOIN t_exam_paper_question q ON q.group_id = pg.id
 							WHERE p.status != '04' AND p.status IS NOT NULL 
-							  AND p.exam_session_id = $1 
 							  AND q.status != '04' AND q.status IS NOT NULL 
 							  AND q.type IN ('06', '08', '10') 
 							  %s -- 动态拼接where条件`
 
 	var whereClause []string
 	var args []interface{}
-	var argIndex int
+	var argIndex = 1
 
-	args = append(args, cond.ExamSessionID)
-	argIndex = 2
+	if cond.ExamSessionID > 0 {
+		whereClause = append(whereClause, fmt.Sprintf(" AND p.exam_session_id = $%d ", argIndex))
+		args = append(args, cond.ExamSessionID)
+	} else {
+		whereClause = append(whereClause, fmt.Sprintf(" AND p.practice_id = $%d ", argIndex))
+		args = append(args, cond.PracticeID)
+	}
+	argIndex++
 
 	if markMode == "06" {
 		if markerInfo.MarkInfos == nil || len(markerInfo.MarkInfos) == 0 {
@@ -703,7 +831,7 @@ func QueryExamQuestionsByMarkMode(ctx context.Context, cond QueryCondition, mark
 	pgxConn := cmn.GetPgxConn()
 	rows, err := pgxConn.Query(ctx, getQuestionsQuery, args...)
 	defer rows.Close()
-	if err != nil || forceErr == "QueryExamQuestionsByMarkMode-pgxConn.Query" {
+	if err != nil || forceErr == "QueryQuestionsByMarkMode-pgxConn.Query" {
 		err = fmt.Errorf("exec getQuestionsQuery SQL error: %v", err)
 		z.Error(err.Error())
 		return
@@ -715,7 +843,7 @@ func QueryExamQuestionsByMarkMode(ctx context.Context, cond QueryCondition, mark
 		var question cmn.TExamPaperQuestion
 		var questionGroup cmn.TExamPaperGroup
 		err = rows.Scan(&questionGroup.ID, &questionGroup.Name, &questionGroup.Order, &question.ID, &question.Score, &question.Type, &question.Order, &question.GroupID, &question.Content, &question.Options, &question.Answers, &question.Analysis, &question.Title)
-		if err != nil || forceErr == "QueryExamQuestionsByMarkMode-rows.Scan" {
+		if err != nil || forceErr == "QueryQuestionsByMarkMode-rows.Scan" {
 			err = fmt.Errorf("unable to scan row data: %v", err)
 			z.Error(err.Error())
 			return
@@ -795,6 +923,84 @@ func QueryExamineeInfo(ctx context.Context, cond QueryCondition) (examineeInfos 
 			return
 		}
 		examineeInfos = append(examineeInfos, &examineeInfo)
+	}
+
+	return
+}
+
+func QueryStudentsInfo(ctx context.Context, cond QueryCondition) (studentInfos []*StudentInfo, err error) {
+	forceErr, _ := ctx.Value(ForceErrKey).(string)
+	if cond.TeacherID <= 0 {
+		err = fmt.Errorf("invalid params: 请求参数必须包含教师ID")
+		z.Error(err.Error())
+		return
+	}
+
+	if cond.PracticeID <= 0 && cond.ExamSessionID <= 0 {
+		err = fmt.Errorf("invalid params: 请求参数必须包含考试场次ID或者练习ID中的一个")
+		z.Error(err.Error())
+		return
+	}
+
+	if cond.PracticeID > 0 && cond.ExamSessionID > 0 {
+		err = fmt.Errorf("invalid params: 请求参数不能同时包含练习ID和考试场次ID")
+		z.Error(err.Error())
+		return
+	}
+
+	var query string
+	var args []interface{}
+	var whereClause = ""
+	if cond.ExamSessionID > 0 {
+		query = `	SELECT official_name, id, serial_number
+					FROM v_examinee_info
+					WHERE exam_session_id = $1 AND examinee_status = '10' %s -- 动态拼接where条件
+					ORDER BY serial_number`
+		args = append(args, cond.ExamSessionID)
+		if cond.ExamineeID > 0 {
+			whereClause = " AND id = $2 "
+			args = append(args, cond.ExamineeID)
+		}
+	} else {
+		query = `	SELECT u.official_name, ps.id
+					FROM t_practice_submissions ps
+					JOIN t_user u ON ps.student_id = u.id
+					WHERE ps.practice_id = $1 AND ps.status != '04' %s -- 动态插入s
+					ORDER BY ps.id`
+		args = append(args, cond.PracticeID)
+		if cond.PracticeSubmissionID > 0 {
+			whereClause = " AND ps.id = $2 "
+			args = append(args, cond.PracticeSubmissionID)
+		}
+	}
+
+	query = fmt.Sprintf(query, whereClause)
+
+	pgxConn := cmn.GetPgxConn()
+	rows, err := pgxConn.Query(ctx, query, args...)
+	defer rows.Close()
+	if err != nil || forceErr == "QueryStudentInfo-pgxConn.Query" {
+		err = fmt.Errorf("exec query student info SQL error: %v", err)
+		z.Error(err.Error())
+		return
+	}
+
+	for rows.Next() {
+		var info StudentInfo
+		var scanVars []interface{}
+		if cond.ExamSessionID > 0 {
+			scanVars = []interface{}{&info.OfficialName, &info.ExamineeID, &info.SerialNumber}
+		} else {
+			scanVars = []interface{}{&info.OfficialName, &info.PracticeSubmissionID}
+		}
+
+		err = rows.Scan(scanVars...)
+		if err != nil || forceErr == "QueryStudentsInfo-rows.Scan" {
+			err = fmt.Errorf("unable to scan row data: %v", err)
+			z.Error(err.Error())
+			return
+		}
+		studentInfos = append(studentInfos, &info)
 	}
 
 	return
