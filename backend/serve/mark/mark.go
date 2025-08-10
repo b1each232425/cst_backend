@@ -112,7 +112,7 @@ func Enroll(author string) {
 	})
 
 	_ = cmn.AddService(&cmn.ServeEndPoint{
-		Fn: HandleExamList,
+		Fn: HandlePracticeList,
 
 		Path: "/mark/practice",
 		Name: "mark.get-practice-list",
