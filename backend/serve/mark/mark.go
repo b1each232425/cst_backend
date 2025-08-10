@@ -112,6 +112,20 @@ func Enroll(author string) {
 	})
 
 	_ = cmn.AddService(&cmn.ServeEndPoint{
+		Fn: HandleExamList,
+
+		Path: "/mark/practice",
+		Name: "mark.get-practice-list",
+
+		Developer: developer,
+		WhiteList: true,
+
+		DomainID: int64(cmn.CDomainSys),
+
+		DefaultDomain: int64(cmn.CDomainSys),
+	})
+
+	_ = cmn.AddService(&cmn.ServeEndPoint{
 		Fn: HandleMarkingDetails,
 
 		Path: "/mark/details",
@@ -130,6 +144,20 @@ func Enroll(author string) {
 
 		Path: "/mark/marking-results",
 		Name: "/mark/marking-results",
+
+		Developer: developer,
+		WhiteList: true,
+
+		DomainID: int64(cmn.CDomainSys),
+
+		DefaultDomain: int64(cmn.CDomainSys),
+	})
+
+	_ = cmn.AddService(&cmn.ServeEndPoint{
+		Fn: HandleResultsSubmission,
+
+		Path: "/mark/results-submission",
+		Name: "/mark/results-submission",
 
 		Developer: developer,
 		WhiteList: true,
@@ -818,6 +846,130 @@ func HandleMarkingResults(ctx context.Context) {
 	q.Resp()
 	return
 
+}
+
+func HandleResultsSubmission(ctx context.Context) {
+	q := cmn.GetCtxValue(ctx)
+	z.Info("---->" + cmn.FncName())
+	forceErr, _ := ctx.Value(ForceErrKey).(string) // 用于强制执行错误处理代码
+	method := strings.ToLower(q.R.Method)
+	if method != "patch" {
+		q.Err = fmt.Errorf("please call /api/mark/results-submission with http patch method")
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+
+	queryParams := q.R.URL.Query()
+
+	examSessionIDStr := queryParams.Get("exam_session_id")
+	practiceIDStr := queryParams.Get("practice_id")
+	practiceSubmissionIDStr := queryParams.Get("practice_submission_id")
+
+	if examSessionIDStr == "" && practiceIDStr == "" {
+		q.Err = fmt.Errorf("请求参数必须包含练习ID或者考试场次ID中的一个")
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+
+	if examSessionIDStr != "" && practiceIDStr != "" {
+		q.Err = fmt.Errorf("请求参数不能同时包含练习ID和考试场次ID")
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+
+	var examSessionID int64
+	var practiceID int64
+	var practiceSubmissionID int64
+	var err error
+
+	if examSessionIDStr != "" {
+		examSessionID, err = strconv.ParseInt(examSessionIDStr, 10, 64)
+		if err != nil {
+			q.Err = fmt.Errorf("error parsing exam_session_id: %v", err)
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+	}
+
+	if practiceIDStr != "" {
+		practiceID, err = strconv.ParseInt(practiceIDStr, 10, 64)
+		if err != nil {
+			q.Err = fmt.Errorf("error parsing practice_id: %v", err)
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		if practiceSubmissionIDStr != "" {
+			practiceSubmissionID, err = strconv.ParseInt(practiceSubmissionIDStr, 10, 64)
+			if err != nil {
+				q.Err = fmt.Errorf("error parsing practice_submission_id: %v", err)
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+		}
+	}
+
+	cond := QueryCondition{
+		ExamSessionID:        examSessionID,
+		PracticeID:           practiceID,
+		PracticeSubmissionID: practiceSubmissionID,
+		TeacherID:            q.SysUser.ID.Int64,
+	}
+
+	results, err := QueryMarkingResults(ctx, cond)
+	if err != nil {
+		q.Err = err
+		q.RespErr()
+		return
+	}
+
+	_, err = updateStudentAnswerScore(ctx, results, cond)
+	if err != nil {
+		q.Err = err
+		q.RespErr()
+		return
+	}
+
+	var status string
+	var examSessionIDs []int64
+	var practiceSubmissionIDs []int64
+	if cond.ExamSessionID > 0 {
+		status = "10"
+		examSessionIDs = []int64{cond.ExamSessionID}
+	} else if cond.PracticeSubmissionID > 0 {
+		status = "08"
+		practiceSubmissionIDs = []int64{cond.PracticeSubmissionID}
+	}
+
+	pgxConn := cmn.GetPgxConn()
+
+	tx, err := pgxConn.Begin(ctx)
+	defer func() {
+		if err != nil {
+			err_ := tx.Rollback(ctx)
+			if err_ != nil || forceErr == "HandleResultsSubmission-tx.Rollback" {
+				z.Sugar().Error(err_)
+			}
+		} else {
+			err_ := tx.Commit(ctx)
+			if err_ != nil || forceErr == "HandleResultsSubmission-tx.Commit" {
+				z.Sugar().Error(err_)
+			}
+		}
+	}()
+
+	_, err = updateExamSessionOrPracticeSubmissionState(ctx, &tx, cond.TeacherID, examSessionIDs, practiceSubmissionIDs, status)
+	if err != nil {
+		q.Err = err
+		q.RespErr()
+		return
+	}
 }
 
 func MarkObjectiveQuestionAnswers(ctx context.Context, cond QueryCondition) (err error) {

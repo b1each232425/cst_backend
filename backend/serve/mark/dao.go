@@ -931,19 +931,19 @@ func QueryExamineeInfo(ctx context.Context, cond QueryCondition) (examineeInfos 
 func QueryStudentsInfo(ctx context.Context, cond QueryCondition) (studentInfos []*StudentInfo, err error) {
 	forceErr, _ := ctx.Value(ForceErrKey).(string)
 	if cond.TeacherID <= 0 {
-		err = fmt.Errorf("invalid params: 教师ID为非法值")
+		err = fmt.Errorf("invalid params: 请求参数必须包含教师ID")
 		z.Error(err.Error())
 		return
 	}
 
 	if cond.PracticeID <= 0 && cond.ExamSessionID <= 0 {
-		err = fmt.Errorf("invalid params: 请求参数必须包含练习ID和考试ID中的一个")
+		err = fmt.Errorf("invalid params: 请求参数必须包含考试场次ID或者练习ID中的一个")
 		z.Error(err.Error())
 		return
 	}
 
 	if cond.PracticeID > 0 && cond.ExamSessionID > 0 {
-		err = fmt.Errorf("invalid params: 请求参数不能同时包含练习ID和考试ID")
+		err = fmt.Errorf("invalid params: 请求参数不能同时包含练习ID和考试场次ID")
 		z.Error(err.Error())
 		return
 	}
