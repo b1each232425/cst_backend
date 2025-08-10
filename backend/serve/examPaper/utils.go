@@ -3,7 +3,7 @@
  * @Description: 请在此填写文件描述
  * @Date: 2025-07-23 14:19:00
  * @LastEditors: zdl <1311866870@qq.com>
- * @LastEditTime: 2025-07-30 15:53:29
+ * @LastEditTime: 2025-08-05 23:42:54
  */
 package examPaper
 
@@ -27,36 +27,40 @@ func shuffleOptionsAndMapAnswers(r *rand.Rand, qid int64, Options, Answers []byt
 		return nil, nil, fmt.Errorf("考题ID：%v的选项反序列化失败: %w", qid, err)
 	}
 
-	//初始化双向映射
-	oldToNew := make(map[int]int)
-	for i := range options {
-		oldToNew[i] = i
+	labelToValue := make(map[string]string)
+	for _, opt := range options {
+		labelToValue[opt.Label] = opt.Value
 	}
 
-	r.Shuffle(len(options), func(i, j int) {
-		options[i].Value, options[j].Value = options[j].Value, options[i].Value
-		// 更新映射表
-		oldToNew[i], oldToNew[j] = oldToNew[j], oldToNew[i]
+	values := make([]string, len(options))
+	for i, opt := range options {
+		values[i] = opt.Value
+	}
+	r.Shuffle(len(values), func(i, j int) {
+		values[i], values[j] = values[j], values[i]
 	})
+
+	for i := range options {
+		options[i].Value = values[i] // 仅替换值，标签不变
+	}
 
 	var originalAnswers []string
 	if err := json.Unmarshal(Answers, &originalAnswers); err != nil {
-		return nil, nil, fmt.Errorf("考题ID:%v中答案反序列化失败: %w", qid, err)
+		return nil, nil, fmt.Errorf("考题ID:%v答案反序列化失败: %w", qid, err)
 	}
 
-	newAnswers := make([]string, 0)
-	for _, originalLabel := range originalAnswers {
-		for oldPo, opt := range options {
-			if opt.Label == originalLabel {
-				newPos := oldToNew[oldPo]
-				newAnswers = append(newAnswers, options[newPos].Label)
+	newAnswers := make([]string, 0, len(originalAnswers))
+	for _, origLabel := range originalAnswers {
+		originalValue := labelToValue[origLabel]
+		for _, opt := range options {
+			if opt.Value == originalValue {
+				newAnswers = append(newAnswers, opt.Label)
 				break
 			}
 		}
 	}
 
-	// 序列化存储
-	newanswers, _ := json.Marshal(newAnswers)
-	newoptions, _ := json.Marshal(options)
-	return newanswers, newoptions, nil
+	newOptionsJSON, _ := json.Marshal(options)
+	newAnswersJSON, _ := json.Marshal(newAnswers)
+	return newAnswersJSON, newOptionsJSON, nil
 }
