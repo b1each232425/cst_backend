@@ -1714,6 +1714,59 @@ func TestInitRespondent(t *testing.T) {
 			},
 		},
 		{
+			name:   "POST 请求 - 考试为灵活考试时段",
+			method: "POST",
+			role:   2008,
+			Domain: []cmn.TDomain{
+				{ID: null.IntFrom(StudentDomainId)},
+			},
+			url:             "/api/respondent",
+			expectSuccess:   true,
+			expectedMessage: "",
+			userId:          1623,
+			reqBody: &cmn.ReqProto{
+				Data: json.RawMessage(`{
+					"type": "00",
+					"exam_id": 111,
+					"exam_session_id": 155
+				}`),
+			},
+			setupDB: func(t *testing.T, tx pgx.Tx) error {
+				now := time.Now().UnixMilli()
+				_, err := tx.Exec(ctx, `
+						UPDATE t_examinee 
+						SET status = '00', 
+						    start_time=NULL,
+						    end_time = NULL 
+						WHERE exam_session_id = 155 AND student_id = 1623
+					`)
+				if err != nil {
+					return err
+				}
+
+				// 更新考试会话的时间
+				_, err = tx.Exec(ctx, `
+						UPDATE t_exam_session 
+						SET start_time = $1, 
+						    end_time = $2 ,
+						    late_entry_time = $3,
+						    period_mode='02'
+						WHERE id = 155
+					`, now-5, now+36000, 3) // 开始时间为1小时前，结束时间为1小时后
+				return err
+			},
+			clean: func(t *testing.T, tx pgx.Tx) error {
+
+				// 更新考试会话的时间
+				_, err = tx.Exec(ctx, `
+						UPDATE t_exam_session 
+						SET period_mode='00'
+						WHERE id = 155
+					`) // 开始时间为1小时前，结束时间为1小时后
+				return err
+			},
+		},
+		{
 			name:   "POST 请求 - 不存在的exam_session_id",
 			method: "POST",
 			role:   2008,
