@@ -2813,14 +2813,6 @@ func examList(ctx context.Context) {
 	}
 }
 
-// 考试批阅员
-// func examReviewer(ctx context.Context) {
-// 	q := cmn.GetCtxValue(ctx)
-// 	z.Info("---->" + cmn.FncName())
-// 	q.Msg.Msg = cmn.FncName()
-// 	q.Resp()
-// }
-
 // 考试考生
 func examinee(ctx context.Context) {
 	q := cmn.GetCtxValue(ctx)
@@ -3382,6 +3374,9 @@ func examStatus(ctx context.Context) {
 			// TODO: 删除考卷
 
 			q.Err = updateExamStatus(ctx, tx, "00", userID, examIDs...)
+			if forceErr == "updateExamStatus" {
+				q.Err = fmt.Errorf("强制更新考试状态错误")
+			}
 			if q.Err != nil {
 				z.Error(q.Err.Error())
 				q.RespErr()
@@ -3389,6 +3384,9 @@ func examStatus(ctx context.Context) {
 			}
 
 			q.Err = updateExamSessionStatus(ctx, tx, "00", userID, examIDs...)
+			if forceErr == "updateExamSessionStatus" {
+				q.Err = fmt.Errorf("强制更新考试场次状态错误")
+			}
 			if q.Err != nil {
 				z.Error(q.Err.Error())
 				q.RespErr()
@@ -3397,6 +3395,9 @@ func examStatus(ctx context.Context) {
 
 			for _, examID := range examIDs {
 				q.Err = exam_service.CancelExamTimers(ctx, examID)
+				if forceErr == "exam_service.CancelExamTimers" {
+					q.Err = fmt.Errorf("强制取消考试定时器错误")
+				}
 				if q.Err != nil {
 					z.Error(q.Err.Error())
 					q.RespErr()
