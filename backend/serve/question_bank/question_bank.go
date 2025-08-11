@@ -11,9 +11,12 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/jmoiron/sqlx/types"
 	"github.com/lib/pq"
+	"github.com/pkg/errors"
 	"github.com/tidwall/gjson"
 	"go.uber.org/zap"
 	"w2w.io/cmn"
@@ -176,7 +179,6 @@ func getQuestionBankList(ctx context.Context, conn *pgxpool.Pool, params QueryQu
 			update_time,
 			remark,
 			status,
-			question_count,
 			access_mode
 		FROM t_question_bank
 		%s
@@ -208,7 +210,6 @@ func getQuestionBankList(ctx context.Context, conn *pgxpool.Pool, params QueryQu
 			&q.UpdateTime,
 			&q.Remark,
 			&q.Status,
-			&q.QuestionCount,
 			&q.AccessMode,
 		)
 		if err != nil {
@@ -341,7 +342,6 @@ func questionBanks(ctx context.Context) {
 		q.Msg.Data = jsonData
 		q.Msg.Msg = "success"
 		q.Msg.RowCount = rowCount
-		q.Resp()
 
 	case "post":
 		var buf []byte
@@ -445,7 +445,6 @@ func questionBanks(ctx context.Context) {
 
 		q.Msg.Data = buf
 		q.Msg.Msg = "success"
-		q.Resp()
 
 	case "put":
 		var buf []byte
@@ -547,15 +546,202 @@ func questionBanks(ctx context.Context) {
 
 		q.Msg.Data = types.JSONText(fmt.Sprintf(`{"RowAffected":%d}`, rowAffected))
 		q.Msg.Msg = "success"
-		q.Resp()
 		return
 
+	case "delete":
+		// 设置创建者
+		userID := q.SysUser.ID.Int64
+		if userID <= 0 {
+			q.Err = fmt.Errorf("invalid userID: %d", userID)
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+		var buf []byte
+		buf, q.Err = io.ReadAll(q.R.Body)
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+		defer func() {
+			q.Err = q.R.Body.Close()
+			if q.Err != nil {
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+		}()
+
+		if len(buf) == 0 {
+			q.Err = fmt.Errorf("call /api/question-banks with empty body")
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		var qry cmn.ReqProto
+		q.Err = json.Unmarshal(buf, &qry)
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+		var deleteBankIDs []int64
+		q.Err = json.Unmarshal(qry.Data, &deleteBankIDs)
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+		//检测ID数组
+		q.Err = validateIDs(deleteBankIDs)
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+		//执行删除操作
+		//首先先检测被删除的题库里面的题库题目是否被t_paper_question引用，引用的话则进行软删除，更新状态为已删除，没有引用的话则硬删除
+		//然后题库本身也进行删除操作
+		//以上操作需要在数据库事务中进行且需要确保原子性
+		//如果其中任何一步失败，则整个事务回滚
+		//删除的时候需要判断是否是题库创建者
+		var tx pgx.Tx
+		tx, q.Err = conn.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead})
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+		defer func() {
+			if p := recover(); p != nil {
+				err := tx.Rollback(ctx)
+				if err != nil {
+					z.Error(err.Error())
+				}
+				q.Err = fmt.Errorf("panic occurred: %v", p)
+				z.Error(q.Err.Error())
+			}
+			if q.Err != nil {
+				err := tx.Rollback(ctx)
+				if err != nil && errors.Is(q.Err, pgx.ErrTxClosed) {
+					z.Error(err.Error())
+				}
+			} else {
+				err := tx.Commit(ctx)
+				if err != nil {
+					z.Error(err.Error())
+				}
+			}
+		}()
+		// 这里是执行具体的删除操作
+		// 1. 检查题库是否存在
+		// 检查每个试卷的权限
+		var checkSQL string
+		var errorMessages []string
+		checkSQL = `
+			SELECT COALESCE(array_agg(
+				CASE 
+					WHEN tqb.id IS NULL THEN '题库(' || ids.id || ')不存在'
+					WHEN tqb.creator != $2 THEN '题库(' || COALESCE(tqb.name, '未知') || ')非题库创建者，无删除权限'
+					ELSE NULL 
+				END
+			) FILTER (WHERE CASE 
+					WHEN tqb.id IS NULL THEN '题库(' || ids.id || ')不存在'
+					WHEN tqb.creator != $2 THEN '题库(' || COALESCE(tqb.name, '未知') || ')非题库创建者，无删除权限'
+					ELSE NULL 
+				END IS NOT NULL), ARRAY[]::text[]) as error_messages
+			FROM unnest($1::bigint[]) AS ids(id)
+			LEFT JOIN t_question_bank tqb ON tqb.id = ids.id
+			WHERE tqb.id IS NULL OR tqb.creator != $2`
+		q.Err = tx.QueryRow(ctx, checkSQL, deleteBankIDs, userID).Scan(&errorMessages)
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+		// 移除空错误消息并在每个错误前添加换行符
+		var validErrors strings.Builder
+		for i, msg := range errorMessages {
+			if msg != "" {
+				// 不是第一个错误时，先添加换行符
+				if i > 0 {
+					validErrors.WriteString("\n")
+				}
+				validErrors.WriteString(msg)
+			}
+		}
+
+		// 如果有任何不能删除的题库，返回错误
+		if validErrors.Len() > 0 {
+			q.Msg.Status = -1
+			q.Err = errors.New(validErrors.String())
+			q.RespErr()
+			return
+		}
+		updatetime := cmn.GetNowInMS()
+		// 2. 删除题库题目(存在引用软删除，不存在硬删除)
+		// 2.1 首先更新题目状态
+		updateQuestionSQL := `
+			WITH question_ids AS (
+				SELECT id FROM t_question 
+				WHERE belong_to = ANY($1::bigint[])
+			),
+			referenced_questions AS (
+				SELECT DISTINCT bank_question_id
+				FROM t_paper_question
+				WHERE bank_question_id IN (SELECT id FROM question_ids)
+			)
+			UPDATE t_question SET 
+				status = CASE 
+					WHEN id IN (SELECT bank_question_id FROM referenced_questions) THEN '02'  -- 软删除
+					ELSE '06'  -- 硬删除标记
+				END,
+				updated_by = $2,
+				update_time = $3
+			WHERE belong_to = ANY($1::bigint[])
+		`
+		_, q.Err = tx.Exec(ctx, updateQuestionSQL, deleteBankIDs, userID, updatetime)
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		// 2.2 然后删除标记为硬删除的题目
+		deleteQuestionSQL := `
+			DELETE FROM t_question 
+			WHERE belong_to = ANY($1::bigint[])
+			AND status = '06'  -- 删除被标记为硬删除的题目
+		`
+		_, q.Err = tx.Exec(ctx, deleteQuestionSQL, deleteBankIDs)
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+		// 3. 删除题库
+		//直接硬删除题库，关联的题目在删除后belong会被设置为null，所以不用管
+		deleteBankSQL := `
+			DELETE FROM t_question_bank
+			WHERE id = ANY($1::bigint[])
+		`
+		_, q.Err = tx.Exec(ctx, deleteBankSQL, deleteBankIDs)
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+		q.Msg.Status = 0
+		q.Msg.Msg = "success"
 	default:
 		q.Err = fmt.Errorf("unsupported method: %s", method)
 		z.Warn(q.Err.Error())
 		q.RespErr()
 		return
 	}
+	q.Resp()
 }
 
 /*
@@ -578,7 +764,6 @@ func questionBanks(ctx context.Context) {
 		 * @apiSuccess {String} data.creator_name 创建者名称
 		 * @apiSuccess {String} data.create_time 创建时间(时间戳字符串)
 		 * @apiSuccess {String} data.updated_time 更新时间(时间戳字符串)
-		 * @apiSuccess {Number} data.question_count 题目数量
 		 * @apiSuccess {String[]} data.question_types 题目类型代码数组
 		 * @apiSuccess {String[]} data.question_tags 题目标签数组
 		 * @apiSuccess {Number[]} data.question_difficulties 题目难度数组(1-简单,2-中等,3-困难)
@@ -601,7 +786,6 @@ func questionBanks(ctx context.Context) {
 		 *             "creator_name": "超级管理员",
 		 *             "create_time": "1754045506881",
 		 *             "updated_time": "1754046073204",
-		 *             "question_count": 25,
 		 *             "question_types": [
 		 *               "06",
 		 *               "04",
@@ -709,22 +893,44 @@ func questionBankDetail(ctx context.Context) {
 
 	// 获取题库信息
 	s1 := `
-		SELECT
-			b.id,
-			b.name,
-			b.type,
-			b.tags,
-			b.creator,
-			u.official_name,
-			b.create_time,
-			b.update_time,
-			b.question_count
-		FROM
-			t_question_bank b
-		LEFT JOIN 
-			t_user u ON b.creator = u.id
-		WHERE
-			b.id = $1 AND b.status = '00'
+		WITH bank_info AS (
+			SELECT
+				b.id,
+				b.name,
+				b.type,
+				b.tags,
+				b.creator,
+				u.official_name,
+				b.create_time,
+				b.update_time,
+				COUNT(DISTINCT q.id) AS question_count,
+				COALESCE(array_agg(DISTINCT q.type) FILTER (WHERE q.type IS NOT NULL), ARRAY[]::text[]) as question_types,
+				COALESCE(array_agg(DISTINCT q.difficulty) FILTER (WHERE q.difficulty IS NOT NULL), ARRAY[]::bigint[]) as question_difficulties,
+				COALESCE(
+					array_agg(DISTINCT tag) FILTER (WHERE tag IS NOT NULL), 
+					ARRAY[]::text[]
+				) as question_tags
+			FROM
+				t_question_bank b
+			LEFT JOIN 
+				t_user u ON b.creator = u.id
+			LEFT JOIN
+				t_question q ON b.id = q.belong_to AND q.status = '00'
+			LEFT JOIN LATERAL
+				jsonb_array_elements_text(q.tags) as tag ON true
+			WHERE
+				b.id = $1 AND b.status = '00'
+			GROUP BY
+				b.id,
+				b.name,
+				b.type,
+				b.tags,
+				b.creator,
+				u.official_name,
+				b.create_time,
+				b.update_time
+		)
+		SELECT * FROM bank_info
 	`
 	err = conn.QueryRow(ctx, s1, bankID).Scan(
 		&BankDetail.ID,
@@ -736,82 +942,15 @@ func questionBankDetail(ctx context.Context) {
 		&BankDetail.CreateTime,
 		&BankDetail.UpdatedTime,
 		&BankDetail.QuestionCount,
+		&BankDetail.QuestionTypes,
+		&BankDetail.QuestionDifficulties,
+		&BankDetail.QuestionTags,
 	)
 	if err != nil {
 		q.Err = fmt.Errorf("获取题库信息失败: %v", err)
 		z.Error(q.Err.Error())
 		q.RespErr()
 		return
-	}
-
-	// 获取题目类型信息
-	rows, err := conn.Query(ctx, `
-	SELECT DISTINCT type
-		FROM t_question
-		WHERE belong_to = $1`, bankID)
-	if err != nil {
-		q.Err = fmt.Errorf("获取题库下题目难度类型失败: %v", err)
-		z.Error(q.Err.Error())
-		q.RespErr()
-		return
-	}
-	defer rows.Close()
-	for rows.Next() {
-		var t string
-		err = rows.Scan(&t)
-		if err != nil {
-			q.Err = fmt.Errorf("获取题库下题目类型信息失败: %v", err)
-			z.Error(q.Err.Error())
-			q.RespErr()
-			return
-		}
-		BankDetail.QuestionTypes = append(BankDetail.QuestionTypes, t)
-	}
-
-	// 获取题目难度信息
-	rows, err = conn.Query(ctx, `
-		SELECT DISTINCT difficulty
-		FROM t_question
-		WHERE belong_to = $1`, bankID)
-	if err != nil {
-		q.Err = fmt.Errorf("获取题库下题目难度类型失败: %v", err)
-		z.Error(q.Err.Error())
-		q.RespErr()
-		return
-	}
-	defer rows.Close()
-	for rows.Next() {
-		var d int64
-		if err := rows.Scan(&d); err != nil {
-			q.Err = fmt.Errorf("获取题库下题目难度信息失败: %v", err)
-			z.Error(q.Err.Error())
-			q.RespErr()
-			return
-		}
-		BankDetail.QuestionDifficulties = append(BankDetail.QuestionDifficulties, d)
-	}
-
-	// 获取题目标签信息
-	rows, err = conn.Query(ctx, `
-		SELECT DISTINCT jsonb_array_elements_text(tags) AS tag
-		FROM t_question
-		WHERE belong_to = $1`, bankID)
-	if err != nil {
-		q.Err = fmt.Errorf("获取题库下题目标签信息失败: %v", err)
-		z.Error(q.Err.Error())
-		q.RespErr()
-		return
-	}
-	defer rows.Close()
-	for rows.Next() {
-		var tag string
-		if err := rows.Scan(&tag); err != nil {
-			q.Err = fmt.Errorf("获取题库下题目标签信息失败: %v", err)
-			z.Error(q.Err.Error())
-			q.RespErr()
-			return
-		}
-		BankDetail.QuestionTags = append(BankDetail.QuestionTags, tag)
 	}
 
 	jsonData, err := json.Marshal(BankDetail)
@@ -894,49 +1033,6 @@ func validateQuestion(question *cmn.TQuestion) (valid bool, err error) {
 
 	return true, nil
 }
-
-func updateBankQuestionCount(ctx context.Context, conn *pgxpool.Pool, questionBankID int64, count int64, updatedBy int64) error {
-	if ctx == nil {
-		err := fmt.Errorf("ctx is nil")
-		z.Error(err.Error())
-		return err
-	}
-	if conn == nil {
-		err := fmt.Errorf("conn is nil")
-		z.Error(err.Error())
-		return err
-	}
-	if questionBankID <= 0 {
-		err := fmt.Errorf("questionBankID must be greater than zero")
-		z.Error(err.Error())
-		return err
-	}
-	if count <= 0 {
-		err := fmt.Errorf("count must be greater than zero")
-		z.Error(err.Error())
-		return err
-	}
-	if updatedBy <= 0 {
-		err := fmt.Errorf("updatedBy must be greater than zero")
-		z.Error(err.Error())
-		return err
-	}
-	t := cmn.GetNowInMS()
-	UpdateTime := null.NewInt(t, true)
-
-	s := `
-	UPDATE t_question_bank
-	SET question_count = $1, updated_by = $2, update_time = $3
-	WHERE id = $4
-	`
-	_, err := conn.Exec(ctx, s, count, updatedBy, UpdateTime, questionBankID)
-	if err != nil {
-		z.Error(err.Error())
-		return err
-	}
-	return nil
-}
-
 func getQuestionList(ctx context.Context, conn *pgxpool.Pool, params QueryQuestionsParams) (list []cmn.TQuestion, rowCount int64, err error) {
 	if ctx == nil {
 		err := fmt.Errorf("ctx is nil")
@@ -964,11 +1060,11 @@ func getQuestionList(ctx context.Context, conn *pgxpool.Pool, params QueryQuesti
 	args = append(args, params.BankID)
 	argIndex += 1
 
-	// 名称过滤
-	if params.Name != "" {
-		c := fmt.Sprintf("(name LIKE $%d)", argIndex)
+	// 题目内容过滤
+	if params.Content != "" {
+		c := fmt.Sprintf("(content ILIKE $%d)", argIndex)
 		conditions = append(conditions, c)
-		args = append(args, "%"+params.Name+"%")
+		args = append(args, "%"+params.Content+"%")
 		argIndex += 1
 	}
 
@@ -1003,23 +1099,25 @@ func getQuestionList(ctx context.Context, conn *pgxpool.Pool, params QueryQuesti
 
 	// 难度过滤
 	if len(params.Difficulty) > 0 {
-		// 校验合法性
+		validDifficulties := make([]int64, 0)
+		// 校验合法性并只添加有效的难度值
 		for _, d := range params.Difficulty {
-			if _, ok := QuestionDifficulty[d]; !ok {
-				err = fmt.Errorf("invalid difficulty: %d", d)
-				z.Error(err.Error())
-				return nil, 0, err
+			if _, ok := QuestionDifficulty[d]; ok {
+				validDifficulties = append(validDifficulties, d)
 			}
 		}
 
-		placeholders := make([]string, len(params.Difficulty))
-		for i := range params.Difficulty {
-			placeholders[i] = fmt.Sprintf("$%d", argIndex)
-			args = append(args, params.Difficulty[i])
-			argIndex++
+		// 只有在有有效难度值时才添加条件
+		if len(validDifficulties) > 0 {
+			placeholders := make([]string, len(validDifficulties))
+			for i := range validDifficulties {
+				placeholders[i] = fmt.Sprintf("$%d", argIndex)
+				args = append(args, validDifficulties[i])
+				argIndex++
+			}
+			c := fmt.Sprintf("(difficulty IN (%s))", strings.Join(placeholders, ","))
+			conditions = append(conditions, c)
 		}
-		c := fmt.Sprintf("(difficulty IN (%s))", strings.Join(placeholders, ","))
-		conditions = append(conditions, c)
 	}
 
 	// 构建完整的WHERE子句
@@ -1150,6 +1248,15 @@ func questions(ctx context.Context) {
 		q.RespErr()
 		return
 	}
+
+	userID := q.SysUser.ID.Int64
+	if userID <= 0 {
+		q.Err = fmt.Errorf("无效的用户ID: %d", userID)
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+
 	conn := cmn.GetPgxConn()
 
 	z.Info("---->" + cmn.FncName())
@@ -1161,7 +1268,7 @@ func questions(ctx context.Context) {
 		pageStr := q.R.URL.Query().Get("page")
 		pageSizeStr := q.R.URL.Query().Get("pageSize")
 		bankIDStr := q.R.URL.Query().Get("bankID")
-		name := q.R.URL.Query().Get("name")
+		content := q.R.URL.Query().Get("content")
 		tagsParams := q.R.URL.Query()["tags"] // 允许获取多个tag参数
 		var tags []string
 		for _, t := range tagsParams {
@@ -1180,14 +1287,19 @@ func questions(ctx context.Context) {
 		difficultyStrs := q.R.URL.Query()["difficulty"] // 允许获取多个difficulty参数
 
 		var difficultyList []int64
-		for _, d := range difficultyStrs {
-			val, err := strconv.ParseInt(d, 10, 64)
-			if err != nil {
-				q.Err = fmt.Errorf("invalid difficulty: %v", d)
-				q.RespErr()
-				return
+		// 只有当传入difficulty参数时才进行解析
+		if len(difficultyStrs) > 0 {
+			for _, d := range difficultyStrs {
+				if d != "" { // 跳过空值
+					val, err := strconv.ParseInt(d, 10, 64)
+					if err != nil {
+						q.Err = fmt.Errorf("invalid difficulty: %v", d)
+						q.RespErr()
+						return
+					}
+					difficultyList = append(difficultyList, val)
+				}
 			}
-			difficultyList = append(difficultyList, val)
 		}
 
 		if bankIDStr == "" {
@@ -1226,7 +1338,7 @@ func questions(ctx context.Context) {
 
 		params := QueryQuestionsParams{
 			BankID:     bankID,
-			Name:       name,
+			Content:    content,
 			Tags:       tags,
 			Type:       questionTypes,
 			Difficulty: difficultyList,
@@ -1252,8 +1364,6 @@ func questions(ctx context.Context) {
 		q.Msg.Data = jsonData
 		q.Msg.Msg = "success"
 		q.Msg.RowCount = rowCount
-		q.Resp()
-
 	case "post":
 		// 处理 POST 请求
 		var buf []byte
@@ -1290,14 +1400,6 @@ func questions(ctx context.Context) {
 		var questions []cmn.TQuestion
 		q.Err = json.Unmarshal(qry.Data, &questions)
 		if q.Err != nil {
-			z.Error(q.Err.Error())
-			q.RespErr()
-			return
-		}
-
-		userID := q.SysUser.ID.Int64
-		if userID <= 0 {
-			q.Err = fmt.Errorf("无效的用户ID: %d", userID)
 			z.Error(q.Err.Error())
 			q.RespErr()
 			return
@@ -1342,16 +1444,6 @@ func questions(ctx context.Context) {
 			insertQuestions = append(insertQuestions, question)
 		}
 
-		// 同步更新对于题库
-		count := int64(len(insertQuestions))
-		bankID := insertQuestions[0].BelongTo.Int64
-		q.Err = updateBankQuestionCount(ctx, conn, bankID, count, userID)
-		if q.Err != nil {
-			z.Error(q.Err.Error())
-			q.RespErr()
-			return
-		}
-
 		var result []json.RawMessage
 		for _, Q := range insertQuestions {
 			b, err := cmn.MarshalJSON(&Q)
@@ -1372,7 +1464,242 @@ func questions(ctx context.Context) {
 		}
 		q.Msg.Data = buf
 		q.Msg.Msg = "success"
-		q.Resp()
+	case "put":
+		// 处理 POST 请求
+		var buf []byte
+		buf, q.Err = io.ReadAll(q.R.Body)
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+		defer func() {
+			q.Err = q.R.Body.Close()
+			if q.Err != nil {
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+		}()
+
+		if len(buf) == 0 {
+			q.Err = fmt.Errorf("call /api/questions with empty body")
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+		var req cmn.ReqProto
+		q.Err = json.Unmarshal(buf, &req)
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+		var question cmn.TQuestion
+		q.Err = json.Unmarshal(req.Data, &question)
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+		valid, err := validateQuestion(&question)
+		if !valid && err != nil {
+			q.Err = err
+			q.RespErr()
+			return
+		}
+		now := cmn.GetNowInMS()
+		updateSQL := `
+			UPDATE t_question
+			SET content = $1,
+			options = $2,
+			answers = $3,
+			score = $4,
+			difficulty = $5,
+			tags = $6,
+			analysis = $7,
+			updated_by = $8,
+			update_time = $9
+			WHERE id = $10
+		`
+		// 执行更新操作
+		var commandTag pgconn.CommandTag
+		commandTag, q.Err = conn.Exec(ctx, updateSQL, question.Content, question.Options, question.Answers, question.Score, question.Difficulty, question.Tags, question.Analysis, now, now, question.ID)
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+		if commandTag.RowsAffected() == 0 {
+			q.Err = fmt.Errorf("no rows updated")
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+		q.Msg.Status = 0
+		q.Msg.Msg = "success"
+	case "delete":
+		// 设置创建者
+		userID := q.SysUser.ID.Int64
+		if userID <= 0 {
+			q.Err = fmt.Errorf("invalid userID: %d", userID)
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+		var buf []byte
+		buf, q.Err = io.ReadAll(q.R.Body)
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+		defer func() {
+			q.Err = q.R.Body.Close()
+			if q.Err != nil {
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+		}()
+
+		if len(buf) == 0 {
+			q.Err = fmt.Errorf("call /api/question-banks with empty body")
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		var qry cmn.ReqProto
+		q.Err = json.Unmarshal(buf, &qry)
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+		var deleteQuestionIDs []int64
+		q.Err = json.Unmarshal(qry.Data, &deleteQuestionIDs)
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+		//检测ID数组
+		q.Err = validateIDs(deleteQuestionIDs)
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+		//执行删除操作
+		//首先检测被删除的题目是否被t_paper_question引用，引用的话则进行软删除，没有引用的话则硬删除
+		//以上操作需要在数据库事务中进行且需要确保原子性
+		//如果其中任何一步失败，则整个事务回滚
+		var tx pgx.Tx
+		tx, q.Err = conn.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead})
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+		defer func() {
+			if p := recover(); p != nil {
+				err := tx.Rollback(ctx)
+				if err != nil {
+					z.Error(err.Error())
+				}
+				q.Err = fmt.Errorf("panic occurred: %v", p)
+				z.Error(q.Err.Error())
+			}
+			if q.Err != nil {
+				err := tx.Rollback(ctx)
+				if err != nil {
+					z.Error(err.Error())
+				}
+			}
+			err := tx.Commit(ctx)
+			if err != nil {
+				z.Error(err.Error())
+			}
+		}()
+		// 这里是执行具体的删除操作
+		var checkSQL string
+		var errorMessages []string
+		//检查题目是否存在且是否有权限删除
+		checkSQL = `
+			SELECT COALESCE(array_agg(
+				CASE 
+					WHEN tq.id IS NULL THEN '题目(' || ids.id || ')不存在'
+					ELSE NULL 
+				END
+			) FILTER (WHERE CASE 
+					WHEN tq.id IS NULL THEN '题目(' || ids.id || ')不存在'
+					ELSE NULL 
+				END IS NOT NULL), ARRAY[]::text[]) as error_messages
+			FROM unnest($1::bigint[]) AS ids(id)
+			LEFT JOIN t_question tq ON tq.id = ids.id
+			WHERE tq.id IS NULL OR tq.creator != $2`
+		q.Err = tx.QueryRow(ctx, checkSQL, deleteQuestionIDs, userID).Scan(&errorMessages)
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+		// 移除空错误消息并在每个错误前添加换行符
+		var validErrors strings.Builder
+		for i, msg := range errorMessages {
+			if msg != "" {
+				// 不是第一个错误时，先添加换行符
+				if i > 0 {
+					validErrors.WriteString("\n")
+				}
+				validErrors.WriteString(msg)
+			}
+		}
+
+		// 如果有任何不能删除的题目，返回错误
+		if validErrors.Len() > 0 {
+			q.Msg.Status = -1
+			q.Err = errors.New(validErrors.String())
+			q.RespErr()
+			return
+		}
+		updatetime := cmn.GetNowInMS()
+		// 删除题目 - 如果被试卷引用则软删除，否则硬删除
+		// 1. 首先标记题目状态
+		updateSQL := `
+			WITH referenced_questions AS (
+				SELECT DISTINCT bank_question_id 
+				FROM t_paper_question 
+				WHERE bank_question_id = ANY($1::bigint[])
+			)
+			UPDATE t_question SET 
+				status = CASE 
+					WHEN id IN (SELECT bank_question_id FROM referenced_questions) THEN '02'  -- 软删除
+					ELSE '06'  -- 硬删除标记
+				END,
+				updated_by = $2,
+				update_time = $3
+			WHERE id = ANY($1::bigint[])`
+		_, q.Err = tx.Exec(ctx, updateSQL, deleteQuestionIDs, userID, updatetime)
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		// 2. 然后删除标记为硬删除的题目
+		deleteSQL := `
+			DELETE FROM t_question 
+			WHERE id = ANY($1::bigint[])
+			AND status = '06'  -- 删除被标记为硬删除的题目
+		`
+		_, q.Err = tx.Exec(ctx, deleteSQL, deleteQuestionIDs)
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
 
 	default:
 		q.Err = fmt.Errorf("unsupported method: %s", method)
@@ -1380,4 +1707,5 @@ func questions(ctx context.Context) {
 		q.RespErr()
 		return
 	}
+	q.Resp()
 }

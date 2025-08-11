@@ -21,6 +21,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
 	"w2w.io/serve/examPaper"
 
 	"github.com/jackc/pgx/v5"
@@ -2007,13 +2008,17 @@ func PaperList(ctx context.Context) {
 		if role == "superAdmin" {
 			// 管理员检查试卷存在性和域
 			checkSQL = `
-				SELECT array_agg(
+				SELECT COALESCE(array_agg(
 					CASE 
-						WHEN p.id IS NULL THEN '试卷 "' || ids.id || '" 不存在'
-						WHEN p.domain_id != $2 THEN '试卷 "' || COALESCE(p.name, '未知') || '" 不在当前域范围内'
+						WHEN p.id IS NULL THEN '试卷（' || ids.id || '）不存在'
+						WHEN p.domain_id != $2 THEN '试卷（' || COALESCE(p.name, '未知') || '）不在当前域范围内'
 						ELSE NULL 
 					END
-				) as error_messages
+				) FILTER (WHERE CASE 
+						WHEN p.id IS NULL THEN '试卷（' || ids.id || '）不存在'
+						WHEN p.domain_id != $2 THEN '试卷（' || COALESCE(p.name, '未知') || '）不在当前域范围内'
+						ELSE NULL 
+					END IS NOT NULL), ARRAY[]::text[]) as error_messages
 				FROM unnest($1::bigint[]) AS ids(id)
 				LEFT JOIN t_paper p ON p.id = ids.id
 				WHERE p.id IS NULL OR p.domain_id != $2`
@@ -2029,14 +2034,19 @@ func PaperList(ctx context.Context) {
 		} else {
 			// 普通用户检查试卷存在性、域和创建者
 			checkSQL = `
-				SELECT array_agg(
+				SELECT COALESCE(array_agg(
 					CASE 
-						WHEN p.id IS NULL THEN '试卷 "' || ids.id || '" 不存在'
-						WHEN p.domain_id != $2 THEN '试卷 "' || COALESCE(p.name, '未知') || '" 不在当前域范围内'
-						WHEN p.creator != $3 THEN '试卷 "' || COALESCE(p.name, '未知') || '" 非试卷创建者，无删除权限'
+						WHEN p.id IS NULL THEN '试卷（' || ids.id || '）不存在'
+						WHEN p.domain_id != $2 THEN '试卷（' || COALESCE(p.name, '未知') || '）不在当前域范围内'
+						WHEN p.creator != $3 THEN '试卷（' || COALESCE(p.name, '未知') || '）非试卷创建者，无删除权限'
 						ELSE NULL 
 					END
-				) as error_messages
+				) FILTER (WHERE CASE 
+						WHEN p.id IS NULL THEN '试卷（' || ids.id || '）不存在'
+						WHEN p.domain_id != $2 THEN '试卷（' || COALESCE(p.name, '未知') || '）不在当前域范围内'
+						WHEN p.creator != $3 THEN '试卷（' || COALESCE(p.name, '未知') || '）非试卷创建者，无删除权限'
+						ELSE NULL 
+					END IS NOT NULL), ARRAY[]::text[]) as error_messages
 				FROM unnest($1::bigint[]) AS ids(id)
 				LEFT JOIN t_paper p ON p.id = ids.id
 				WHERE p.id IS NULL OR p.domain_id != $2 OR p.creator != $3`
@@ -2065,12 +2075,12 @@ func PaperList(ctx context.Context) {
 
 		// 如果有任何不能删除的试卷，返回错误
 		if validErrors.Len() > 0 {
-			q.Msg.Msg = validErrors.String()
 			q.Msg.Status = -1
-			q.Err = errors.New("部分试卷无法删除")
+			q.Err = errors.New(validErrors.String())
+			q.RespErr()
 			return
 		}
-		now := time.Now().UnixMilli()
+		now := cmn.GetNowInMS()
 		// 1. 软删除 t_paper
 		paperSQL := `UPDATE t_paper SET status = $2, updated_by = $3, update_time = $4 WHERE id = ANY($1)`
 		_, q.Err = tx.Exec(dmlCtx, paperSQL, paperIDs, StatusUnNormal, userID, now)
