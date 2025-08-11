@@ -25,6 +25,7 @@ const (
 	TIMEOUT    = 10 * time.Second
 	TEST       = "test"
 	TESTRESULT = "test_result"
+	ForceErr   = "forceErr"
 )
 
 var z *zap.Logger
@@ -84,7 +85,7 @@ func ocr(ctx context.Context) {
 		return
 	}
 	r := q.R
-
+	// 允许处理文件的时候最大占用10MB
 	err := r.ParseMultipartForm(1024 * 1024 * 10)
 	if err != nil {
 		q.Err = err
@@ -171,6 +172,12 @@ func sendHttpRequest(ctx context.Context, fileHeader *multipart.FileHeader, url 
 			return nil, errors.New("sendHttpRequest error")
 		}
 	}
+	//强制错误，用于使得难以触发的错误强制它报错
+	forceErr := ""
+	forceErr, ok = ctx.Value(ForceErr).(string)
+	if !ok {
+		forceErr = ""
+	}
 
 	if url == "" {
 		url = "http://127.0.0.1:6268/api/idCardRecognition"
@@ -189,6 +196,9 @@ func sendHttpRequest(ctx context.Context, fileHeader *multipart.FileHeader, url 
 
 	// 创建 form file 字段
 	part, err := writer.CreateFormFile("file", fileHeader.Filename)
+	if forceErr == "create form file err" {
+		err = errors.New("create form file err")
+	}
 	if err != nil {
 		z.Error("create form file error", zap.Error(err))
 		return nil, err
@@ -196,6 +206,9 @@ func sendHttpRequest(ctx context.Context, fileHeader *multipart.FileHeader, url 
 
 	// 将文件内容写入 part
 	_, err = io.Copy(part, file)
+	if forceErr == "copy file err" {
+		err = errors.New("copy file err")
+	}
 	if err != nil {
 		z.Error("copy file content error", zap.Error(err))
 		return nil, err
@@ -203,6 +216,9 @@ func sendHttpRequest(ctx context.Context, fileHeader *multipart.FileHeader, url 
 
 	// 关闭 writer 以写入结尾 boundary
 	err = writer.Close()
+	if forceErr == "close writer err" {
+		err = errors.New("close writer err")
+	}
 	if err != nil {
 		z.Error("close writer error", zap.Error(err))
 		return nil, err
@@ -243,6 +259,9 @@ func sendHttpRequest(ctx context.Context, fileHeader *multipart.FileHeader, url 
 		}
 	} else {
 		err = json.Unmarshal(resp.Body(), &result)
+		if forceErr == "unmarshal json err" {
+			err = errors.New("unmarshal json err")
+		}
 		if err != nil {
 			z.Error("unmarshal json error", zap.Error(err))
 			return nil, err

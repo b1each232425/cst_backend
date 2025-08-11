@@ -1,6 +1,7 @@
 package exam_mgt
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"time"
@@ -96,6 +97,12 @@ func validateExamData(examData ExamData, isUpdate bool) error {
 			return err
 		}
 
+		if examSession.StartTime.Int64 < time.Now().UnixMilli() {
+			err := fmt.Errorf("考试场次的开始时间晚于当前时间")
+			z.Error(err.Error())
+			return err
+		}
+
 		//检查设定的考试时长是否大于考试总时长
 		startTime := time.UnixMilli(examSession.StartTime.Int64)
 		endTime := time.UnixMilli(examSession.EndTime.Int64)
@@ -114,15 +121,18 @@ func validateExamData(examData ExamData, isUpdate bool) error {
 	return nil
 }
 
-func validateUserForExamCreate(domain string) bool {
+func validateUserForExamCreateOrUpdate(domain string) bool {
 	z.Info("---->" + cmn.FncName())
 
-	// 检查域名是否包含 cst 前缀和 ^admin 权限标识
-	if !strings.HasPrefix(domain, "cst") {
+	// 检查域名是否包含 academicAffair 前缀和 ^admin 权限标识
+	// if !strings.HasPrefix(domain, "academicAffair") {
+	// 	return false
+	// }
+	if strings.Contains(domain, "^student") {
 		return false
 	}
 
-	if !strings.Contains(domain, "^admin") && !strings.Contains(domain, "^superAdmin") {
+	if !strings.Contains(domain, "^admin") && !strings.Contains(domain, "^superAdmin") && !strings.Contains(domain, "^teacher") {
 		return false
 	}
 
@@ -148,4 +158,61 @@ func getDomainByUserRole(userRole int64, userDomains []cmn.TDomain) (string, err
 func getDomainPrefix(domain string) string {
 	parts := strings.Split(domain, "^")
 	return parts[0]
+}
+
+func getQuestionShuffledMode(mode string) (isQuestionRandom, isOptionRandom bool) {
+
+	isOptionRandom = false
+	isQuestionRandom = false
+
+	switch mode {
+	case "00": // 既有试题乱序也有选项乱序
+		isQuestionRandom = true
+		isOptionRandom = true
+	case "02": // 选项乱序
+		isQuestionRandom = false
+		isOptionRandom = true
+	case "04": // 试题乱序
+		isQuestionRandom = true
+		isOptionRandom = false
+	case "06": // 都不选择
+		isQuestionRandom = false
+		isOptionRandom = false
+	}
+
+	return
+}
+
+// convertToInt64Array 将interface{}转换为[]int64数组
+func convertToInt64Array(ctx context.Context, data interface{}) ([]int64, error) {
+	if data == nil {
+		return []int64{}, nil
+	}
+
+	// 如果已经是[]int64类型，直接返回
+	if int64Array, ok := data.([]int64); ok {
+		return int64Array, nil
+	}
+
+	// 如果是[]interface{}类型，需要转换每个元素
+	if interfaceArray, ok := data.([]interface{}); ok {
+		result := make([]int64, len(interfaceArray))
+		for i, item := range interfaceArray {
+			switch v := item.(type) {
+			case int64:
+				result[i] = v
+			case float64:
+				result[i] = int64(v)
+			case int:
+				result[i] = int64(v)
+			case int32:
+				result[i] = int64(v)
+			default:
+				return nil, fmt.Errorf("unsupported type in array: %T", v)
+			}
+		}
+		return result, nil
+	}
+
+	return nil, fmt.Errorf("unsupported data type: %T", data)
 }

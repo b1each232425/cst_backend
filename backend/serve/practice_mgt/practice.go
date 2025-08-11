@@ -230,13 +230,22 @@ func practiceH(ctx context.Context) {
 						}
 					}()
 					if len(buf) == 0 {
-						q.Err = fmt.Errorf("Call /api/upLogin with  empty body")
+						q.Err = fmt.Errorf("Call /api/practice with  empty body")
 						z.Error(q.Err.Error())
 						q.RespErr()
 						return
 					}
+					//获取请求的结构体
+					var qry cmn.ReqProto
+					q.Err = json.Unmarshal(buf, &qry)
+					if q.Err != nil {
+						z.Error(q.Err.Error())
+						q.RespErr()
+						return
+					}
+
 					var p practiceInfo
-					q.Err = json.Unmarshal(buf, &p)
+					q.Err = json.Unmarshal(qry.Data, &p)
 					if q.Err != nil {
 						z.Error(q.Err.Error())
 						q.RespErr()
@@ -414,8 +423,7 @@ func practiceStudentListH(ctx context.Context) {
 		}
 	}
 	if domainID != 0 && domainID == PracticeDomainID.Student {
-		warn := "检测到学生权限，无法操作学生名单"
-		z.Warn(warn)
+		warn := "当前权限无法操作学生名单"
 		q.Err = errors.New(warn)
 		z.Error(q.Err.Error())
 		q.RespErr()
@@ -559,8 +567,17 @@ func practiceStudentListH(ctx context.Context) {
 				q.RespErr()
 				return
 			}
+
+			//获取请求的结构体
+			var qry cmn.ReqProto
+			q.Err = json.Unmarshal(buf, &qry)
+			if q.Err != nil {
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
 			var p practiceStudent
-			q.Err = json.Unmarshal(buf, &p)
+			q.Err = json.Unmarshal(qry.Data, &p)
 			if q.Err != nil {
 				z.Error(q.Err.Error())
 				q.RespErr()
