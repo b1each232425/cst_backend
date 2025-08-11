@@ -384,8 +384,9 @@ func setExamGradeSubmitted(ctx context.Context, args *GradeSubmitArgs) (int64, e
 		}
 	}()
 
+	examSessions := []cmn.TExamSession{}
+
 	for _, examID := range examIDs {
-		examSessions := []cmn.TExamSession{}
 
 		querySql := `
 			SELECT
@@ -406,7 +407,7 @@ func setExamGradeSubmitted(ctx context.Context, args *GradeSubmitArgs) (int64, e
 		defer es_rows.Close()
 		for es_rows.Next() {
 			var es cmn.TExamSession
-			err := es_rows.Scan(
+			err = es_rows.Scan(
 				&es.ID,
 				&es.EndTime,
 			)
@@ -419,6 +420,8 @@ func setExamGradeSubmitted(ctx context.Context, args *GradeSubmitArgs) (int64, e
 			}
 			examSessions = append(examSessions, es)
 		}
+
+		z.Sugar().Debug("examSessions", zap.Any("examSessions", examSessions))
 
 		currTime := time.Now()
 
@@ -729,7 +732,7 @@ func GradeDistributionPractice(ctx context.Context, args GradeDistributionArgs) 
 
 }
 
-func GradeExamineeListExam(ctx context.Context, args GradeExamineeListArgs) ([]ExamExamineeScoreInfo, int64, error) {
+func GradeExamineeListExam(ctx context.Context, args GradeExamineeListArgs) ([]StudentExamScoreInfo, int64, error) {
 	z.Info("---->" + cmn.FncName())
 	var err error
 
@@ -767,37 +770,34 @@ func GradeExamineeListExam(ctx context.Context, args GradeExamineeListArgs) ([]E
 		params = append(params, fmt.Sprintf("%%%s%%", filter.Keyword))
 	}
 
-	tExamInfo := cmn.TExamInfo{}
-
-	examInfoTableName := tExamInfo.GetTableName()
-
 	sql := fmt.Sprintf(`
 SELECT
-	v_stu_score.exam_id,
-	v_stu_score.exam_session_id,
-	v_stu_score.student_id AS stu_id,
-	v_examinee_info.mobile_phone AS phone,
-	v_examinee_info.official_name AS name,
-	v_examinee_info.account AS nickname,
-	v_stu_score.total_score AS score,
-	v_stu_score.total_score AS total_score,
-	STRING_AGG(COALESCE(v_examinee_info.remark, ''), '') AS remark
+    v_examinee_info.student_id,
+    v_examinee_info.mobile_phone AS phone,
+    v_examinee_info.official_name AS name,
+    v_examinee_info.account AS nickname,
+    STRING_AGG(COALESCE(v_examinee_info.remark, ''), '') AS remark,
+    jsonb_agg(
+        jsonb_build_object(
+            'exam_id', v_stu_score.exam_id,
+            'exam_session_id', v_stu_score.exam_session_id,
+            'score', v_stu_score.total_score
+        )
+    ) AS exam_sessions
 FROM v_student_exam_total_score v_stu_score
-	JOIN %s exam_infos ON exam_infos.id = v_stu_score.exam_id
+	JOIN t_exam_info exam_infos ON exam_infos.id = v_stu_score.exam_id
 	JOIN v_examinee_info ON v_examinee_info.student_id = v_stu_score.student_id
 %s
 GROUP BY
-	v_stu_score.exam_id,
-	v_stu_score.exam_session_id,
-	v_stu_score.student_id,
-	v_examinee_info.mobile_phone,
-	v_examinee_info.official_name,
-	v_examinee_info.account,
-	v_stu_score.total_score,
+    v_examinee_info.student_id,
+    v_examinee_info.mobile_phone,
+    v_examinee_info.official_name,
+    v_examinee_info.account,
 	exam_infos.id
-	`, examInfoTableName, whereClause)
+	`, whereClause)
 
-	var result []ExamExamineeScoreInfo
+	// var result []ExamExamineeScoreInfo
+	var result []StudentExamScoreInfo
 	var rowCount int64
 
 	var listSQL string
@@ -824,43 +824,39 @@ GROUP BY
 			z.Error(err.Error())
 			return nil, 0, err
 		}
-		// examSessionCount, err := GetExamSessionCount(ctx, args.ExamID)
 
 		var examSessionCount int
-		examID := args.ExamID
-		placeholders := make([]string, len(examID))
-		examSessionParams := []any{}
-		for i, id := range examID {
-			placeholders[i] = fmt.Sprintf("$%d", i+1)
-			examSessionParams = append(examSessionParams, id)
-		}
-		placeholderStr := strings.Join(placeholders, ", ")
-		examSessionSql := fmt.Sprintf(`SELECT COUNT(id) FROM t_exam_session WHERE exam_id IN (%s)`, placeholderStr)
-		err = conn.QueryRow(ctx, examSessionSql, examSessionParams...).Scan(&examSessionCount)
-		if err != nil {
-			err = fmt.Errorf("scan exam session count(examID:%v) occurred error: %s", args.ExamID, err.Error())
-			z.Error(err.Error())
-			return result, 0, err
+		{
+			examID := args.ExamID
+			placeholders := make([]string, len(examID))
+			examSessionParams := []any{}
+			for i, id := range examID {
+				placeholders[i] = fmt.Sprintf("$%d", i+1)
+				examSessionParams = append(examSessionParams, id)
+			}
+			examSessionPlaceholderStr := strings.Join(placeholders, ", ")
+
+			examSessionSql := fmt.Sprintf(`SELECT COUNT(id) FROM t_exam_session WHERE exam_id IN (%s)`, examSessionPlaceholderStr)
+
+			err = conn.QueryRow(ctx, examSessionSql, examSessionParams...).Scan(&examSessionCount)
+			if err != nil {
+				err = fmt.Errorf("scan exam session count(examID:%v) occurred error: %s", args.ExamID, err.Error())
+				z.Error(err.Error())
+				return result, 0, err
+			}
 		}
 
-		if err != nil {
-			z.Error(err.Error())
-			return result, 0, err
-		}
-
+		listParams = params
+		z.Sugar().Debug("打印examSessionCount是什么：", examSessionCount)
+		z.Sugar().Debug("listParams", listParams)
 		listSQL = fmt.Sprintf(`%s
 	ORDER BY exam_infos.id DESC
 	LIMIT $%d OFFSET $%d`,
-			sql, len(params)+1, len(params)+2)
-		listParams = params
+			sql, len(listParams)+1, len(listParams)+2)
+		z.Sugar().Debug("listSQL", listSQL)
 		listParams = append(listParams, args.PageSize*examSessionCount, (args.Page-1)*args.PageSize*examSessionCount)
+		z.Sugar().Debug("listParams", listParams)
 	}
-
-	z.Sugar().Debug("打印sql是什么：", sql)
-	z.Sugar().Debug("打印params是什么：", params)
-
-	z.Sugar().Debug("打印listsql是什么：", listSQL)
-	z.Sugar().Debug("打印listParams是什么：", listParams)
 
 	rows, err := conn.Query(ctx, listSQL, listParams...)
 	if err != nil {
@@ -871,24 +867,22 @@ GROUP BY
 
 	defer rows.Close()
 	for rows.Next() {
-		var scoreInfo ExamExamineeScoreInfo
+
+		var s2 StudentExamScoreInfo
 		err = rows.Scan(
-			&scoreInfo.ExamID,
-			&scoreInfo.ExamSessionID,
-			&scoreInfo.StuID,
-			&scoreInfo.Phone,
-			&scoreInfo.Name,
-			&scoreInfo.Nickname,
-			&scoreInfo.Score,
-			&scoreInfo.TotalScore,
-			&scoreInfo.Remark,
+			&s2.StudentID,
+			&s2.Phone,
+			&s2.Name,
+			&s2.Nickname,
+			&s2.Remark,
+			&s2.ExamSessions,
 		)
 		if err != nil {
 			err = fmt.Errorf("scan exam examinee score list error: %w", err)
 			z.Error(err.Error())
 			return nil, 0, err
 		}
-		result = append(result, scoreInfo)
+		result = append(result, s2)
 
 	}
 
@@ -925,12 +919,15 @@ func GradeExamineeListPractice(ctx context.Context, args GradeExamineeListArgs) 
 	filter := args.Filter
 	params := []any{}
 
+	z.Sugar().Debug("PracticeID", zap.Any("PracticeID", args.PracticeID))
+
 	placeholders := make([]string, len(args.PracticeID))
 	for i, id := range args.PracticeID {
 		placeholders[i] = fmt.Sprintf("$%d", i+1)
 		params = append(params, id)
 	}
 	placeholderStr := strings.Join(placeholders, ", ")
+	z.Sugar().Debug("placeholderStr:", placeholderStr)
 	whereClause := fmt.Sprintf("WHERE v_stu_score.practice_id IN (%s) ", placeholderStr)
 
 	if filter.Keyword != "" {
@@ -944,9 +941,6 @@ func GradeExamineeListPractice(ctx context.Context, args GradeExamineeListArgs) 
 		params = append(params, fmt.Sprintf("%%%s%%", filter.Keyword))
 	}
 
-	tPractice := cmn.TPractice{}
-	practiceTableName := tPractice.GetTableName()
-
 	sql := fmt.Sprintf(`
 	SELECT
 		v_stu_score.practice_id,
@@ -955,14 +949,17 @@ func GradeExamineeListPractice(ctx context.Context, args GradeExamineeListArgs) 
 		v_examinee_info.official_name AS name,
 		v_examinee_info.account AS nickname,
 		MAX(v_stu_score.total_score) AS highest_score,
-		COUNT(DISTINCT v_stu_score.id) AS submitted_cnt,
-		STRING_AGG(COALESCE(v_examinee_info.remark, ''), '') AS remark
+		COUNT(DISTINCT v_stu_score.id) AS submitted_cnt
 	FROM v_student_practice_total_score v_stu_score
-		LEFT JOIN %s exam_infos ON exam_infos.id = v_stu_score.practice_id
 		LEFT JOIN v_examinee_info ON v_examinee_info.student_id = v_stu_score.student_id
 	%s
-	GROUP BY v_stu_score.practice_id, v_stu_score.student_id, v_examinee_info.mobile_phone, v_examinee_info.official_name, v_examinee_info.account, exam_infos.id
-		`, practiceTableName, whereClause)
+	GROUP BY 
+	v_stu_score.practice_id, 
+	v_stu_score.student_id, 
+	v_examinee_info.mobile_phone, 
+	v_examinee_info.official_name, 
+	v_examinee_info.account
+		`, whereClause)
 
 	var result []PracticeExamineeScoreInfo
 	var rowCount int64
@@ -985,14 +982,16 @@ func GradeExamineeListPractice(ctx context.Context, args GradeExamineeListArgs) 
 			return nil, 0, err
 		}
 
+		listParams = params
 		listSQL = fmt.Sprintf(`%s
-	ORDER BY exam_infos.id DESC
 	LIMIT $%d OFFSET $%d`,
 			sql, len(listParams)+1, len(listParams)+2)
 
-		listParams = params
 		listParams = append(listParams, args.PageSize, (args.Page-1)*args.PageSize)
 	}
+
+	z.Sugar().Debug("listSQL", zap.Any("listSQL", listSQL))
+	z.Sugar().Debug("listParams", zap.Any("listParams", listParams))
 
 	conn := cmn.GetPgxConn()
 	if conn == nil {
@@ -1011,7 +1010,7 @@ func GradeExamineeListPractice(ctx context.Context, args GradeExamineeListArgs) 
 	defer rows.Close()
 	for rows.Next() {
 		var scoreInfo PracticeExamineeScoreInfo
-		err := rows.Scan(
+		err = rows.Scan(
 			&scoreInfo.PracticeID,
 			&scoreInfo.StuID,
 			&scoreInfo.Phone,
@@ -1019,7 +1018,6 @@ func GradeExamineeListPractice(ctx context.Context, args GradeExamineeListArgs) 
 			&scoreInfo.Nickname,
 			&scoreInfo.HighestScore,
 			&scoreInfo.SubmittedCnt,
-			&scoreInfo.Remark,
 		)
 		z.Debug("exam examinee score info", zap.Any("scoreInfo", scoreInfo))
 		if err != nil {
@@ -1031,8 +1029,8 @@ func GradeExamineeListPractice(ctx context.Context, args GradeExamineeListArgs) 
 
 	}
 
-	z.Debug("listSQL", zap.Any("listSQL", listSQL))
-	z.Debug("listParams", zap.Any("listParams", listParams))
+	z.Sugar().Debug("listSQL", zap.Any("listSQL", listSQL))
+	z.Sugar().Debug("listParams", zap.Any("listParams", listParams))
 
 	// 统计SQL
 	countSql := fmt.Sprintf(`SELECT COUNT(1) FROM (%s) AS practice_grade_list_count`, sql)

@@ -130,10 +130,28 @@ type PracticeExamineeScoreInfo struct {
 	SubmittedCnt null.Int   `json:"submitted_cnt"` // 提交次数
 }
 
-type QuestionGroups struct {
-	ID    int64  `json:"id"`
-	Name  string `json:"name"`
-	Order int    `json:"order"`
+// type QuestionGroups struct {
+// 	ID    int64  `json:"id"`
+// 	Name  string `json:"name"`
+// 	Order int    `json:"order"`
+// }
+
+type StudentExamScoreInfo struct {
+	StudentID    int64              `json:"student_id"`    // 学生ID
+	Phone        null.String        `json:"phone"`         // 学生手机号
+	Name         null.String        `json:"name"`          // 学生姓名
+	Nickname     null.String        `json:"nickname"`      // 学生昵称
+	Remark       null.String        `json:"remark"`        // 备注
+	ExamSessions []ExamSessionScore `json:"exam_sessions"` // 学生在各场次的成绩
+}
+
+type ExamSessionScore struct {
+	ExamID        int64       `json:"exam_id"`         // 考试ID
+	ExamSessionID int64       `json:"exam_session_id"` // 考试场次ID
+	PaperName     null.String `json:"paper_name"`      // 试卷名称
+	Score         null.Float  `json:"score"`           // 学生得分
+	TotalScore    null.Float  `json:"total_score"`     // 试卷总分
+	SessionNum    int64       `json:"session_num"`     // 场次序号
 }
 
 type JSONText = types.JSONText

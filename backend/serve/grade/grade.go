@@ -696,7 +696,8 @@ func gradeExamineeListH(ctx context.Context) {
 			req.ExamID = examID
 			z.Sugar().Debug("examID:", req.ExamID)
 
-			var result []ExamExamineeScoreInfo
+			// var result []ExamExamineeScoreInfo
+			var result []StudentExamScoreInfo
 
 			result, rowCount, err = GradeExamineeListExam(dmlCtx, req)
 			if err != nil {
@@ -727,6 +728,7 @@ func gradeExamineeListH(ctx context.Context) {
 				practiceID = intSlice
 			}
 			req.PracticeID = practiceID
+			z.Sugar().Debug("practiceID:", req.PracticeID)
 
 			var result []PracticeExamineeScoreInfo
 
