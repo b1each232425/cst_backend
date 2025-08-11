@@ -319,7 +319,6 @@ func LoadPaperTemplateById(ctx context.Context, paperId int64, withQuestions boo
 		// 安全追加题目（避免指针重用）
 		for idx := range v.Questions {
 			q := v.Questions[idx] // 创建副本
-			q.AnswerNum = len(q.SubScore)
 			questions[v.ID.Int64] = append(questions[v.ID.Int64], &q)
 		}
 	}
