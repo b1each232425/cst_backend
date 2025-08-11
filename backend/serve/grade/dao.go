@@ -111,7 +111,7 @@ func gradeListExam(ctx context.Context, args *GradeListArgs) ([]GradeExam, int64
 		jsonb_agg(esi) AS exam_session_info,
 		ei.submitted AS submitted
 	FROM t_exam_info ei     
-		LEFT JOIN v_grade_exam_session_info esi ON esi.exam_id = ei.id
+		LEFT JOIN v_z_grade_exam_session_info esi ON esi.exam_id = ei.id
 	%s
 	GROUP BY ei.id
 	`, whereClause)
@@ -253,7 +253,7 @@ func gradeListPractice(ctx context.Context, args *GradeListArgs) ([]GradePractic
 		p.averge_score,
 		p.actual_completer,
 		p.pass_student
-	FROM v_grade_practice_statistics p 
+	FROM v_z_grade_practice_statistics p 
 	%s
 	GROUP BY
 		p.practice_id, p.practice_name, p.total_score, p.averge_score, p.actual_completer, p.pass_student
@@ -461,79 +461,6 @@ func setExamGradeSubmitted(ctx context.Context, args *GradeSubmitArgs) (int64, e
 
 	return rowsAffected, nil
 }
-
-func GetExamSessionCount(ctx context.Context, examID []int) (int, error) {
-
-	var err error
-
-	z.Info("----->" + cmn.FncName())
-
-	conn := cmn.GetPgxConn()
-	if conn == nil {
-		z.Error("PostgreSQL connection is nil")
-		return 0, ErrNilDBConn
-	}
-
-	placeholders := make([]string, len(examID))
-	params := []any{}
-	for i, id := range examID {
-		placeholders[i] = fmt.Sprintf("$%d", i+1)
-		params = append(params, id)
-	}
-	placeholderStr := strings.Join(placeholders, ", ")
-
-	var count int
-
-	sql := fmt.Sprintf(`SELECT COUNT(id) FROM t_exam_session WHERE exam_id IN (%s)`, placeholderStr)
-
-	err = conn.QueryRow(ctx, sql, params...).Scan(&count)
-	if err != nil {
-		err = fmt.Errorf("scan exam session count(examID:%v) occurred error: %s", examID, err.Error())
-		z.Error(err.Error())
-		return 0, err
-	}
-
-	return count, nil
-}
-
-//func GetManualPaperDetailByPaperID(ctx context.Context, paperID int64) (*cmn.TVPaper, error) {
-//	if paperID <= 0 {
-//		z.Error("无效考试ID")
-//		return nil, errors.New("无效考试ID")
-//	}
-//
-//	query := `SELECT
-//   id,name,assembly_type,category,level,suggested_duration,description,tags,creator,create_time,update_time,status,total_score,question_count,groups_data
-//	FROM v_paper
-//	WHERE id = $1
-//	LIMIT 1`
-//
-//	db := cmn.GetDbConn()
-//	row := db.QueryRowContext(ctx, query, paperID)
-//	var paper cmn.TVPaper
-//	err := row.Scan(
-//		&paper.ID,
-//		&paper.Name,
-//		&paper.AssemblyType,
-//		&paper.Category,
-//		&paper.Level,
-//		&paper.SuggestedDuration,
-//		&paper.Description,
-//		&paper.Tags,
-//		&paper.Creator,
-//		&paper.CreateTime,
-//		&paper.UpdateTime,
-//		&paper.Status,
-//		&paper.TotalScore,
-//		&paper.QuestionCount,
-//		&paper.GroupsData,
-//	)
-//	if err != nil {
-//		z.Error(err.Error())
-//		return nil, err
-//	}
-//	return &paper, nil
-//}
 
 func GradeDistributionExam(ctx context.Context, args GradeDistributionArgs) (ExamGradeDistribution, error) {
 
@@ -840,31 +767,35 @@ func GradeExamineeListExam(ctx context.Context, args GradeExamineeListArgs) ([]E
 		params = append(params, fmt.Sprintf("%%%s%%", filter.Keyword))
 	}
 
+	tExamInfo := cmn.TExamInfo{}
+
+	examInfoTableName := tExamInfo.GetTableName()
+
 	sql := fmt.Sprintf(`
-	SELECT
-		v_stu_score.exam_id,
-		v_stu_score.exam_session_id,
-		v_stu_score.student_id AS stu_id,
-		v_examinee_info.mobile_phone AS phone,
-		v_examinee_info.official_name AS name,
-		v_examinee_info.account AS nickname,
-		v_stu_score.total_score AS score,
-		v_stu_score.total_score AS total_score,
-		STRING_AGG(COALESCE(v_examinee_info.remark, ''), '') AS remark
-	FROM v_student_exam_total_score v_stu_score
-		JOIN t_exam_info exam_infos ON exam_infos.id = v_stu_score.exam_id
-		JOIN v_examinee_info ON v_examinee_info.student_id = v_stu_score.student_id
-	%s
-	GROUP BY
-		v_stu_score.exam_id,
-		v_stu_score.exam_session_id,
-		v_stu_score.student_id,
-		v_examinee_info.mobile_phone,
-		v_examinee_info.official_name,
-		v_examinee_info.account,
-		v_stu_score.total_score,
-		exam_infos.id
-	`, whereClause)
+SELECT
+	v_stu_score.exam_id,
+	v_stu_score.exam_session_id,
+	v_stu_score.student_id AS stu_id,
+	v_examinee_info.mobile_phone AS phone,
+	v_examinee_info.official_name AS name,
+	v_examinee_info.account AS nickname,
+	v_stu_score.total_score AS score,
+	v_stu_score.total_score AS total_score,
+	STRING_AGG(COALESCE(v_examinee_info.remark, ''), '') AS remark
+FROM v_student_exam_total_score v_stu_score
+	JOIN %s exam_infos ON exam_infos.id = v_stu_score.exam_id
+	JOIN v_examinee_info ON v_examinee_info.student_id = v_stu_score.student_id
+%s
+GROUP BY
+	v_stu_score.exam_id,
+	v_stu_score.exam_session_id,
+	v_stu_score.student_id,
+	v_examinee_info.mobile_phone,
+	v_examinee_info.official_name,
+	v_examinee_info.account,
+	v_stu_score.total_score,
+	exam_infos.id
+	`, examInfoTableName, whereClause)
 
 	var result []ExamExamineeScoreInfo
 	var rowCount int64
@@ -893,43 +824,47 @@ func GradeExamineeListExam(ctx context.Context, args GradeExamineeListArgs) ([]E
 			z.Error(err.Error())
 			return nil, 0, err
 		}
+		// examSessionCount, err := GetExamSessionCount(ctx, args.ExamID)
+
 		var examSessionCount int
+		examID := args.ExamID
+		placeholders := make([]string, len(examID))
+		examSessionParams := []any{}
+		for i, id := range examID {
+			placeholders[i] = fmt.Sprintf("$%d", i+1)
+			examSessionParams = append(examSessionParams, id)
+		}
+		placeholderStr := strings.Join(placeholders, ", ")
+		examSessionSql := fmt.Sprintf(`SELECT COUNT(id) FROM t_exam_session WHERE exam_id IN (%s)`, placeholderStr)
+		err = conn.QueryRow(ctx, examSessionSql, examSessionParams...).Scan(&examSessionCount)
+		if err != nil {
+			err = fmt.Errorf("scan exam session count(examID:%v) occurred error: %s", args.ExamID, err.Error())
+			z.Error(err.Error())
+			return result, 0, err
+		}
 
-		{
-
-			placeholders := make([]string, len(args.ExamID))
-			examSessionCountParams := []any{}
-			for i, id := range args.ExamID {
-				placeholders[i] = fmt.Sprintf("$%d", i+1)
-				params = append(params, id)
-			}
-			placeholderStr := strings.Join(placeholders, ", ")
-
-			examSessionCountSql := fmt.Sprintf(`SELECT COUNT(id) FROM t_exam_session WHERE exam_id IN (%s)`, placeholderStr)
-
-			err = conn.QueryRow(ctx, examSessionCountSql, examSessionCountParams...).Scan(&examSessionCount)
-			if err != nil {
-				err = fmt.Errorf("scan exam session count(examID:%v) occurred error: %s", args.ExamID, err.Error())
-				z.Error(err.Error())
-				return result, 0, err
-			}
+		if err != nil {
+			z.Error(err.Error())
+			return result, 0, err
 		}
 
 		listSQL = fmt.Sprintf(`%s
 	ORDER BY exam_infos.id DESC
 	LIMIT $%d OFFSET $%d`,
 			sql, len(params)+1, len(params)+2)
-
+		listParams = params
 		listParams = append(listParams, args.PageSize*examSessionCount, (args.Page-1)*args.PageSize*examSessionCount)
 	}
 
-	z.Sugar().Debug("打印sql是什么：%#v", sql)
-	z.Sugar().Debug("打印listsql是什么：%#v", listSQL)
-	z.Sugar().Debug("打印listParams是什么：%#v", listParams)
+	z.Sugar().Debug("打印sql是什么：", sql)
+	z.Sugar().Debug("打印params是什么：", params)
+
+	z.Sugar().Debug("打印listsql是什么：", listSQL)
+	z.Sugar().Debug("打印listParams是什么：", listParams)
 
 	rows, err := conn.Query(ctx, listSQL, listParams...)
 	if err != nil {
-		err = fmt.Errorf("get exam examinee score list error: %w", err)
+		err = fmt.Errorf("查询考试考生成绩列表失败 错误: %s", err.Error())
 		z.Error(err.Error())
 		return nil, 0, err
 	}
@@ -937,7 +872,7 @@ func GradeExamineeListExam(ctx context.Context, args GradeExamineeListArgs) ([]E
 	defer rows.Close()
 	for rows.Next() {
 		var scoreInfo ExamExamineeScoreInfo
-		err := rows.Scan(
+		err = rows.Scan(
 			&scoreInfo.ExamID,
 			&scoreInfo.ExamSessionID,
 			&scoreInfo.StuID,
@@ -1055,6 +990,7 @@ func GradeExamineeListPractice(ctx context.Context, args GradeExamineeListArgs) 
 	LIMIT $%d OFFSET $%d`,
 			sql, len(listParams)+1, len(listParams)+2)
 
+		listParams = params
 		listParams = append(listParams, args.PageSize, (args.Page-1)*args.PageSize)
 	}
 
@@ -1094,6 +1030,9 @@ func GradeExamineeListPractice(ctx context.Context, args GradeExamineeListArgs) 
 		result = append(result, scoreInfo)
 
 	}
+
+	z.Debug("listSQL", zap.Any("listSQL", listSQL))
+	z.Debug("listParams", zap.Any("listParams", listParams))
 
 	// 统计SQL
 	countSql := fmt.Sprintf(`SELECT COUNT(1) FROM (%s) AS practice_grade_list_count`, sql)

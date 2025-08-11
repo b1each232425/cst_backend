@@ -9,11 +9,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/jackc/pgx/v5"
 	"io"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/jackc/pgx/v5"
 
 	"github.com/tidwall/gjson"
 	"go.uber.org/zap"
@@ -681,11 +682,19 @@ func gradeExamineeListH(ctx context.Context) {
 						q.RespErr()
 						return
 					}
+					if intValue <= 0 {
+						q.Err = fmt.Errorf("无效考试ID: %d", intValue)
+						z.Error(q.Err.Error())
+						q.RespErr()
+						return
+					}
+
 					intSlice = append(intSlice, intValue)
 				}
 				examID = intSlice
 			}
 			req.ExamID = examID
+			z.Sugar().Debug("examID:", req.ExamID)
 
 			var result []ExamExamineeScoreInfo
 
