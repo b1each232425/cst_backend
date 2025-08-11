@@ -3,7 +3,7 @@
  * @Description: 考卷-答卷数据库层
  * @Date: 2025-07-21 13:14:34
  * @LastEditors: zdl <1311866870@qq.com>
- * @LastEditTime: 2025-08-11 14:30:13
+ * @LastEditTime: 2025-08-11 21:22:15
  */
 package examPaper
 
@@ -872,6 +872,43 @@ func LoadExamPaperDetailByUserId(ctx context.Context, tx pgx.Tx, examPaperId, pS
 	return p, groupMap, pq, nil
 }
 
-// DeleteExamPaperById 物理删除孤数据：考卷、考卷题组、考卷题目、学生答题情况 ： 使用级联删除
+// DeleteExamPaperById 物理删除孤数据：考卷、考卷题组、考卷题目、学生答题情况 ： 使用级联删除 待测试
 /*
  */
+func DeleteExamPaperById(ctx context.Context, tx pgx.Tx, examSessionIDs, practiceIDs []int64) error {
+	var err error
+	forceErr, _ := ctx.Value("force-error").(string)
+	if len(examSessionIDs) == 0 || len(practiceIDs) == 0 {
+		err = fmt.Errorf("invalid examSessionIDs or practiceIDs param")
+		z.Error(err.Error())
+		return err
+	}
+	invalidIDs := []int64{}
+	// 这里有一个非法的名单，然后需要返回给前端
+	for _, s := range examSessionIDs {
+		// 这里如果
+		if s <= 0 {
+			invalidIDs = append(invalidIDs, s)
+		}
+	}
+	for _, p := range practiceIDs {
+		// 这里如果
+		if p <= 0 {
+			invalidIDs = append(invalidIDs, p)
+		}
+	}
+
+	if len(invalidIDs) != 0 {
+		err = fmt.Errorf("要删除的考试场次或者练习考卷信息的ID非法 错误如下：%v", invalidIDs)
+		z.Error(err.Error())
+		return err
+	}
+	s := `DELETE FROM t_exam_paper WHERE exam_session_id = ANY($1) OR practice_id = ANY($2)`
+	_, err = tx.Exec(ctx, s, examSessionIDs, practiceIDs)
+	if err != nil || forceErr == "delete" {
+		err = fmt.Errorf("级联删除对应考试场次与练习考卷、学生答卷数据失败：%v", err)
+		z.Error(err.Error())
+		return err
+	}
+	return nil
+}

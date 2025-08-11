@@ -104,23 +104,6 @@ func Enroll(author string) {
 		//DefaultDomain 该API将默认授权给的用户
 		DefaultDomain: int64(cmn.CDomainSys),
 	})
-
-	_ = cmn.AddService(&cmn.ServeEndPoint{
-		Fn: deletePaper,
-
-		Path: "/practiceDelete",
-		Name: "practiceDelete",
-
-		Developer: developer,
-		WhiteList: true,
-
-		//DomainID 创建该API的账号归属的domain
-		DomainID: int64(cmn.CDomainSys),
-
-		//DefaultDomain 该API将默认授权给的用户
-		DefaultDomain: int64(cmn.CDomainSys),
-	})
-
 }
 
 // 整合为一个接口
@@ -386,21 +369,57 @@ func practiceH(ctx context.Context) {
 					return
 				}
 			case "patch":
-
 				{
-					// 更新练习状态，对练习进行发布、取消操作
+					// 更新练习状态，对练习进行发布、取消、删除操作
 					idStr := q.R.URL.Query().Get("id")
 					status := q.R.URL.Query().Get("status")
 
-					var id int64
-					id, q.Err = strconv.ParseInt(idStr, 10, 64)
-					if q.Err != nil {
-						q.Err = fmt.Errorf("练习ID解析失败：%v", q.Err.Error())
+					// 这里去获取ID数组
+					if idStr == "" {
+						q.Err = fmt.Errorf("请传入要操作的练习ID")
 						z.Error(q.Err.Error())
 						q.RespErr()
 						return
 					}
-					q.Err = OperatePracticeStatus(ctx, id, status, userID)
+
+					// 以逗号分隔
+					idArray := strings.Split(idStr, ",")
+
+					var ids []int64
+					var invalidValues []string
+
+					for _, s := range idArray {
+						// 这里就取出每一个以逗号分隔的个体
+						c := strings.TrimSpace(s)
+						if c == "" {
+							continue
+						}
+
+						id, err := strconv.ParseInt(c, 10, 64)
+						if err != nil {
+							invalidValues = append(invalidValues, s)
+							continue
+						}
+						ids = append(ids, id)
+					}
+
+					if len(invalidValues) > 0 {
+						// 这里就要返回了
+						q.Err = fmt.Errorf("传入的练习ID中存在非法值：%v", invalidValues)
+						z.Error(q.Err.Error())
+						q.RespErr()
+						return
+					}
+
+					if len(ids) == 0 {
+						q.Err = fmt.Errorf("请传入有效的需要操作的练习ID")
+						z.Error(q.Err.Error())
+						q.RespErr()
+						return
+					}
+
+					// 批量操作练习状态V2
+					q.Err = OperatePracticeStatusV2(ctx, ids, status, userID)
 					if q.Err != nil {
 						q.RespErr()
 						return
@@ -774,85 +793,3 @@ func getPracticePaper(ctx context.Context) {
 	q.Resp()
 	return
 }
-
-func deletePaper(ctx context.Context) {
-	q := cmn.GetCtxValue(ctx)
-	var userID int64
-	userID = 10086
-
-	{
-		// 更新练习状态，对练习进行发布、取消、删除操作
-		idStr := q.R.URL.Query().Get("id")
-		status := q.R.URL.Query().Get("status")
-
-		// 这里去获取ID数组
-		if idStr == "" {
-			q.Err = fmt.Errorf("请传入要操作的练习ID")
-			z.Error(q.Err.Error())
-			q.RespErr()
-			return
-		}
-
-		// 以逗号分隔
-		idArray := strings.Split(idStr, ",")
-
-		var ids []int64
-		var invalidValues []string
-
-		for _, s := range idArray {
-			// 这里就取出每一个以逗号分隔的个体
-			c := strings.TrimSpace(s)
-			if c == "" {
-				continue
-			}
-
-			id, err := strconv.ParseInt(c, 10, 64)
-			if err != nil {
-				invalidValues = append(invalidValues, s)
-				continue
-			}
-			ids = append(ids, id)
-		}
-
-		if len(invalidValues) > 0 {
-			// 这里就要返回了
-			q.Err = fmt.Errorf("传入的练习ID中存在非法值：%v", invalidValues)
-			z.Error(q.Err.Error())
-			q.RespErr()
-			return
-		}
-
-		if len(ids) == 0 {
-			q.Err = fmt.Errorf("请传入有效的需要操作的练习ID")
-			z.Error(q.Err.Error())
-			q.RespErr()
-			return
-		}
-
-		q.Err = OperatePracticeStatusV2(ctx, ids, status, userID)
-		if q.Err != nil {
-			q.RespErr()
-			return
-		}
-		z.Info("---->" + cmn.FncName())
-		q.Msg.Status = 0
-		q.Msg.Msg = "OK"
-		q.Resp()
-		return
-	}
-}
-
-//{
-//// TODO 将这个测试用例放在URL测试上
-//name: "期望正常3 有练习信息 但无学生名单,前端没有传空数组  这个不能放在这里测，只能放在http请求那里测的",
-//p: &cmn.TPractice{
-//PaperID:         null.IntFrom(101),
-//Name:            null.StringFrom("英语期末考试"),
-//CorrectMode:     null.StringFrom("00"), // 批改模式
-//Type:            null.StringFrom("00"), // 练习类型（试卷）
-//AllowedAttempts: null.IntFrom(3),
-//},
-//ps:            []int64{},
-//uid:           int64(1),
-//expectedError: false,
-//},

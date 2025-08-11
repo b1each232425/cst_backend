@@ -3,7 +3,7 @@
  * @Description: 考卷-答卷模型
  * @Date: 2025-07-21 13:14:44
  * @LastEditors: zdl <1311866870@qq.com>
- * @LastEditTime: 2025-08-11 14:24:47
+ * @LastEditTime: 2025-08-11 15:42:07
  */
 package examPaper
 
@@ -81,9 +81,9 @@ type Group struct {
 */
 type Question struct {
 	cmn.TQuestion
-	SubScore       []float64 `json:"SubScore" db:"sub_score,true,integer"`
+	SubScore       []float64 `json:"sub_score" db:"sub_score,false,jsonb"`
 	AnswerNum      int       `json:"AnswerNum"`
-	BankQuestionID null.Int  `json:"BankQuestionID,omitempty" db:"bank_question_id,true,integer"`
+	BankQuestionID null.Int  `json:"BankQuestionID,omitempty" db:"bank_question_id,false,bigint"`
 }
 
 // ExamGroup 学生试卷题题组结构（考卷模块自用：解析存储在视图的JSON实体）
