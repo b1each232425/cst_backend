@@ -1,6 +1,6 @@
 /*==============================================================*/
 /* DBMS name:      PostgreSQL 9.x                               */
-/* Created on:     2025/8/11 21:24:15                           */
+/* Created on:     2025/8/11 21:44:31                           */
 /*==============================================================*/
 
 
@@ -5529,7 +5529,6 @@ create table if not exists  t_paper (
    create_time          INT8                 null,
    updated_by           INT8                 null,
    update_time          INT8                 null,
-   access_mode          VARCHAR(4)           not null default '00',
    addi                 JSONB                null,
    status               VARCHAR(10)          null default '00',
    constraint PK_T_PAPER primary key (id)
@@ -5579,9 +5578,6 @@ comment on column t_paper.updated_by is
 
 comment on column t_paper.update_time is
 '更新时间';
-
-comment on column t_paper.access_mode is
-'试卷访问权限，00私有 02共享 04公开';
 
 comment on column t_paper.addi is
 '附加信息';
@@ -9109,9 +9105,12 @@ comment on column t_sys_ver.status is
 ALTER SEQUENCE t_sys_ver_id_seq RESTART WITH 20000;
 
 insert into t_sys_ver(id,name,ver,create_time,update_time,remark)
-  values(1000,'业务模型','3.1.4.0',
-  '2016年12月5日 9:52:53','2025年8月11日 21:19:11',
-  '3.1.4.0
+  values(1000,'业务模型','3.1.5.0',
+  '2016年12月5日 9:52:53','2025年8月11日 21:29:05',
+  '3.1.5.0
+去除题库表题目数量字段，建立题库与题库题目、试卷题目与题库题目、试卷和试卷题组和试卷题目的外键，去除题库共享表，添加v_question_bank视图
+
+3.1.4.0
 增加考卷、考卷题组、考卷题目、学生答卷外键 + 级联删除 修改题库、题目、共享题目表关于时间字段的属性为int8
 
 3.1.3.0
@@ -12985,8 +12984,7 @@ WITH paper_basic AS (
             p_1.create_time,
             p_1.updated_by,
             p_1.update_time,
-            p_1.status AS paper_status,
-            p_1.access_mode
+            p_1.status AS paper_status
            FROM t_paper p_1
              LEFT JOIN t_user u ON p_1.creator = u.id
           WHERE p_1.status::text = '00'::text
@@ -13083,7 +13081,6 @@ WITH paper_basic AS (
     p.updated_by,
     p.update_time,
     p.paper_status AS status,
-    p.access_mode,
     s.total_score,
     s.question_count,
     s.group_count,
