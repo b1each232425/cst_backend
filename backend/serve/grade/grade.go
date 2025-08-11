@@ -730,9 +730,10 @@ func gradeExamineeListH(ctx context.Context) {
 			req.PracticeID = practiceID
 			z.Sugar().Debug("practiceID:", req.PracticeID)
 
-			var result []PracticeExamineeScoreInfo
+			// var result []PracticeExamineeScoreInfo
 
-			result, rowCount, err = GradeExamineeListPractice(dmlCtx, req)
+			// result, rowCount, err = GradeExamineeListPractice(dmlCtx, req)
+			result, err := GradeExamineeListPracticeGrouped(dmlCtx, req)
 			if err != nil {
 				q.Err = err
 				z.Error(q.Err.Error())
@@ -742,9 +743,9 @@ func gradeExamineeListH(ctx context.Context) {
 
 			z.Debug("gradeListExamineePractice", zap.Any("result", result))
 
-			if result != nil {
-				data, _ = json.Marshal(result)
-			}
+			// if result != nil {
+			data, _ = json.Marshal(result)
+			// }
 
 		default:
 			q.Err = fmt.Errorf("不支持的类型: %s", req.Category)

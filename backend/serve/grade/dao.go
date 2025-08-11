@@ -1127,7 +1127,7 @@ func GradeExamineeListPractice(ctx context.Context, args GradeExamineeListArgs) 
 	LIMIT $%d OFFSET $%d`,
 			sql, len(listParams)+1, len(listParams)+2)
 
-		listParams = append(listParams, args.PageSize, (args.Page-1)*args.PageSize)
+		listParams = append(listParams, int32(args.PageSize), int32((args.Page-1)*args.PageSize))
 	}
 
 	z.Sugar().Debug("listSQL", zap.Any("listSQL", listSQL))
@@ -1186,6 +1186,171 @@ func GradeExamineeListPractice(ctx context.Context, args GradeExamineeListArgs) 
 
 	return result, rowCount, err
 
+}
+
+// GradeExamineeListPracticeGrouped 按练习ID分类返回考生练习成绩列表，支持导出功能
+func GradeExamineeListPracticeGrouped(ctx context.Context, args GradeExamineeListArgs) (PracticeScoreExportResponse, error) {
+	z.Info("---->" + cmn.FncName())
+	var err error
+	var response PracticeScoreExportResponse
+
+	forceErr := ""
+	if val := ctx.Value("force-error"); val != nil {
+		forceErr = val.(string)
+	}
+
+	if len(args.PracticeID) <= 0 {
+		err = fmt.Errorf("%w: invalid practice ID, expected a positive number, got %d", ErrInvalidID, args.PracticeID)
+		z.Error(err.Error())
+		return response, err
+	}
+
+	filter := args.Filter
+	params := []any{}
+
+	z.Sugar().Debug("PracticeID", zap.Any("PracticeID", args.PracticeID))
+
+	placeholders := make([]string, len(args.PracticeID))
+	for i, id := range args.PracticeID {
+		placeholders[i] = fmt.Sprintf("$%d", i+1)
+		params = append(params, id)
+	}
+	placeholderStr := strings.Join(placeholders, ", ")
+	z.Sugar().Debug("placeholderStr:", placeholderStr)
+	whereClause := fmt.Sprintf("WHERE v_stu_score.practice_id IN (%s) ", placeholderStr)
+
+	if filter.Keyword != "" {
+		whereClause += fmt.Sprintf(" AND (v_examinee_info.official_name::text ILIKE $%d ", len(params)+1)
+		params = append(params, fmt.Sprintf("%%%s%%", filter.Keyword))
+
+		whereClause += fmt.Sprintf(" OR v_examinee_info.mobile_phone::text ILIKE $%d ", len(params)+1)
+		params = append(params, fmt.Sprintf("%%%s%%", filter.Keyword))
+
+		whereClause += fmt.Sprintf(" OR v_examinee_info.account::text ILIKE $%d)", len(params)+1)
+		params = append(params, fmt.Sprintf("%%%s%%", filter.Keyword))
+	}
+
+	sql := fmt.Sprintf(`
+	SELECT
+		v_stu_score.practice_id,
+		practice_infos.name AS practice_name,
+		v_stu_score.student_id,
+		v_examinee_info.mobile_phone AS phone,
+		v_examinee_info.official_name AS name,
+		v_examinee_info.account AS nickname,
+		MAX(v_stu_score.total_score) AS highest_score,
+		COUNT(DISTINCT v_stu_score.id) AS submitted_cnt
+	FROM v_student_practice_total_score v_stu_score
+		LEFT JOIN v_examinee_info ON v_examinee_info.student_id = v_stu_score.student_id
+		LEFT JOIN t_practice practice_infos ON practice_infos.id = v_stu_score.practice_id
+	%s
+	GROUP BY 
+	v_stu_score.practice_id, 
+	practice_infos.name,
+	v_stu_score.student_id, 
+	v_examinee_info.mobile_phone, 
+	v_examinee_info.official_name, 
+	v_examinee_info.account
+	ORDER BY v_stu_score.practice_id, v_stu_score.student_id
+		`, whereClause)
+
+	var listSQL string
+	var listParams []any
+
+	if args.Page == -1 && args.PageSize == -1 {
+		listSQL = sql
+		listParams = params
+	} else {
+		if args.Page <= 0 {
+			err = fmt.Errorf("%w: page is invalid, expected a positive number", ErrInvalidPage)
+			z.Error(err.Error())
+			return response, err
+		}
+		if args.PageSize <= 0 {
+			err = fmt.Errorf("%w: pageSize is invalid, expected a positive number", ErrInvalidPageSize)
+			z.Error(err.Error())
+			return response, err
+		}
+
+		listParams = params
+		listSQL = fmt.Sprintf(`%s
+	LIMIT $%d OFFSET $%d`,
+			sql, len(listParams)+1, len(listParams)+2)
+
+		listParams = append(listParams, int32(args.PageSize), int32((args.Page-1)*args.PageSize))
+	}
+
+	z.Sugar().Debug("listSQL", zap.Any("listSQL", listSQL))
+	z.Sugar().Debug("listParams", zap.Any("listParams", listParams))
+
+	conn := cmn.GetPgxConn()
+	if conn == nil {
+		err = fmt.Errorf("get practice examinee score failed: %w", ErrNilDBConn)
+		z.Error(err.Error())
+		return response, err
+	}
+
+	rows, err := conn.Query(ctx, listSQL, listParams...)
+	if err != nil {
+		err = fmt.Errorf("get practice examinee score list error: %w", err)
+		z.Error(err.Error())
+		return response, err
+	}
+
+	defer rows.Close()
+	practiceMap := make(map[int64]*PracticeScoreExportData)
+
+	for rows.Next() {
+		var practiceID int64
+		var practiceName null.String
+		var scoreInfo PracticeExamineeScoreInfo
+		err = rows.Scan(
+			&practiceID,
+			&practiceName,
+			&scoreInfo.StuID,
+			&scoreInfo.Phone,
+			&scoreInfo.Name,
+			&scoreInfo.Nickname,
+			&scoreInfo.HighestScore,
+			&scoreInfo.SubmittedCnt,
+		)
+		if err != nil {
+			err = fmt.Errorf("scan practice examinee score list error: %w", err)
+			z.Error(err.Error())
+			return response, err
+		}
+
+		scoreInfo.PracticeID = null.IntFrom(practiceID)
+
+		if practiceData, exists := practiceMap[practiceID]; exists {
+			practiceData.StudentScores = append(practiceData.StudentScores, scoreInfo)
+		} else {
+			practiceMap[practiceID] = &PracticeScoreExportData{
+				PracticeID:    practiceID,
+				PracticeName:  practiceName,
+				StudentScores: []PracticeExamineeScoreInfo{scoreInfo},
+			}
+		}
+	}
+
+	// 将map转换为slice
+	for _, practiceData := range practiceMap {
+		response.Practices = append(response.Practices, *practiceData)
+	}
+
+	// 统计总数
+	countSql := fmt.Sprintf(`SELECT COUNT(1) FROM (%s) AS practice_grade_list_count`, sql)
+	err = conn.QueryRow(ctx, countSql, params...).Scan(&response.Total)
+	if forceErr == "conn.QueryRow fail" {
+		err = errors.New(forceErr)
+	}
+	if err != nil {
+		err = fmt.Errorf("执行查询语句失败: %w", err)
+		z.Error(err.Error())
+		return response, err
+	}
+
+	return response, err
 }
 
 func GradeAnalysisExam(ctx context.Context, args GradeArgs) (ExamAnalysis, error) {

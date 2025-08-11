@@ -201,3 +201,15 @@ type ExamScoreExportResponse struct {
 	Total int64                 `json:"total"` // 总记录数
 	Exams []ExamScoreExportData `json:"exams"` // 按考试ID分类的数据
 }
+
+// ********** 按练习ID分类的导出数据结构 **********
+type PracticeScoreExportData struct {
+	PracticeID    int64                       `json:"practice_id"`    // 练习ID
+	PracticeName  null.String                 `json:"practice_name"`  // 练习名称
+	StudentScores []PracticeExamineeScoreInfo `json:"student_scores"` // 学生成绩列表
+}
+
+type PracticeScoreExportResponse struct {
+	Total     int64                     `json:"total"`     // 总记录数
+	Practices []PracticeScoreExportData `json:"practices"` // 按练习ID分类的数据
+}
