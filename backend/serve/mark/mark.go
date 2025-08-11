@@ -339,49 +339,18 @@ func HandlePracticeList(ctx context.Context) {
 		return
 	}
 
-	examName := queryParams.Get("exam_name")
-	examStatus := queryParams.Get("status")
-	startTimeStr := queryParams.Get("start_time")
-	endTimeStr := queryParams.Get("end_time")
-
-	var startTime, endTime time.Time
-	if startTimeStr != "" && endTimeStr != "" {
-		//z.Sugar().Infof("start_time: %s, end_time: %s", startTimeStr, endTimeStr)
-
-		startTimeInt64, err := strconv.ParseInt(startTimeStr, 10, 64)
-		if err != nil {
-			q.Err = fmt.Errorf("error parsing start time: %v", err)
-			z.Error(q.Err.Error())
-			q.RespErr()
-			return
-		}
-
-		endTimeInt64, err := strconv.ParseInt(endTimeStr, 10, 64)
-		if err != nil {
-			q.Err = fmt.Errorf("error parsing end time: %v", err)
-			z.Error(q.Err.Error())
-			q.RespErr()
-			return
-		}
-
-		startTime = time.UnixMilli(startTimeInt64)
-		endTime = time.UnixMilli(endTimeInt64)
-
-	}
+	practiceName := queryParams.Get("practice_name")
 
 	req := QueryMarkingListReq{
 		User: &User{
 			ID: q.SysUser.ID.Int64,
 		},
-		ExamName:  examName,
-		Limit:     pageSize,
-		Offset:    pageSize * (pageIndex - 1),
-		StartTime: startTime,
-		EndTime:   endTime,
-		Status:    examStatus,
+		PracticeName: practiceName,
+		Limit:        pageSize,
+		Offset:       pageSize * (pageIndex - 1),
 	}
 
-	exams, rowCount, err := QueryExamList(ctx, req)
+	practices, rowCount, err := QueryPracticeList(ctx, req)
 	if err != nil {
 		q.Err = err
 		q.RespErr()
@@ -389,12 +358,9 @@ func HandlePracticeList(ctx context.Context) {
 	}
 
 	jsonData, err := json.Marshal(map[string]interface{}{
-		"exam_list": exams,
+		"practice_list": practices,
 	})
-
-	//z.Sugar().Infof("======(%v)===>>: %+v", rowCount, exams)
-
-	if err != nil || forceErr == "HandleExamList-json.Marshal" {
+	if err != nil || forceErr == "HandlePracticeList-json.Marshal" {
 		q.Err = fmt.Errorf("unable to marshal response data: %v", err)
 		z.Error(q.Err.Error())
 		q.RespErr()
