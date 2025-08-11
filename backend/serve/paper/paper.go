@@ -21,6 +21,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
 	"w2w.io/serve/examPaper"
 
 	"github.com/jackc/pgx/v5"
@@ -335,9 +336,9 @@ func ManualPaper(ctx context.Context) {
 		now := time.Now().UnixMilli()
 		initPaperSql := `
 INSERT INTO t_paper 
-    (name, assembly_type, category, level, suggested_duration, tags, creator, create_time, updated_by, update_time, status, access_mode,domain_id) 
+    (name, assembly_type, category, level, suggested_duration, tags, creator, create_time, updated_by, update_time, status,domain_id) 
 VALUES 
-    ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11,$12,$13) 
+    ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11,$12) 
 RETURNING id`
 
 		paper := cmn.TPaper{
@@ -352,7 +353,6 @@ RETURNING id`
 			UpdatedBy:         null.IntFrom(userID),
 			UpdateTime:        null.IntFrom(now),
 			Status:            null.NewString(StatusNormal, true),
-			AccessMode:        null.NewString(PaperShareStatusPrivate, true),
 			DomainID:          null.IntFrom(resourceID),
 		}
 		q.Err = tx.QueryRow(ctx, initPaperSql,
@@ -367,7 +367,6 @@ RETURNING id`
 			paper.UpdatedBy.Int64,
 			paper.UpdateTime.Int64,
 			paper.Status.String,
-			paper.AccessMode.String,
 			paper.DomainID.Int64,
 		).Scan(&paper.ID)
 		// 强制错误，用于测试
@@ -1685,22 +1684,6 @@ func PaperList(ctx context.Context) {
 		//	paramCount++
 		//}
 
-		//// 权限控制
-		//accessControlClause := fmt.Sprintf(`(
-		//	p.creator = $%d
-		//	OR p.access_mode = '04'
-		//	OR (
-		//		p.access_mode = '02'
-		//		AND EXISTS (
-		//			SELECT 1 FROM t_resource_share s
-		//			WHERE s.type = $%d AND s.resource_id = p.id AND s.user_id = $%d AND s.status = '00'
-		//		)
-		//	)
-		//)`, paramCount, paramCount+1, paramCount+2)
-		//whereClauses = append(whereClauses, accessControlClause)
-		//params = append(params, userID, PaperResourceShareType, userID)
-		//paramCount += 3
-
 		// 用途精确查询
 		if req.Category != "" {
 			var categoryClause strings.Builder
@@ -1768,7 +1751,7 @@ func PaperList(ctx context.Context) {
 		// 查询分页数据
 		var listSQLBuilder strings.Builder
 		listSQLBuilder.WriteString(`
-		SELECT p.id, p.name, p.assembly_type, p.category, p.level, p.suggested_duration, p.total_score, p.question_count, p.tags, p.create_time, p.update_time, p.status, p.creator, p.creator_info, p.access_mode
+		SELECT p.id, p.name, p.assembly_type, p.category, p.level, p.suggested_duration, p.total_score, p.question_count, p.tags, p.create_time, p.update_time, p.status, p.creator, p.creator_info
 		FROM v_paper p
 		`)
 		listSQLBuilder.WriteString(whereClause)
@@ -1794,7 +1777,7 @@ func PaperList(ctx context.Context) {
 		var papers []cmn.TVPaper
 		for rows.Next() {
 			var paper cmn.TVPaper
-			q.Err = rows.Scan(&paper.ID, &paper.Name, &paper.AssemblyType, &paper.Category, &paper.Level, &paper.SuggestedDuration, &paper.TotalScore, &paper.QuestionCount, &paper.Tags, &paper.CreateTime, &paper.UpdateTime, &paper.Status, &paper.Creator, &paper.CreatorInfo, &paper.AccessMode)
+			q.Err = rows.Scan(&paper.ID, &paper.Name, &paper.AssemblyType, &paper.Category, &paper.Level, &paper.SuggestedDuration, &paper.TotalScore, &paper.QuestionCount, &paper.Tags, &paper.CreateTime, &paper.UpdateTime, &paper.Status, &paper.Creator, &paper.CreatorInfo)
 			if val, ok := ctx.Value("force-error").(string); ok && val == "getPaperList-RowScan-err" {
 				q.Err = errors.New(val)
 			}
@@ -2007,13 +1990,17 @@ func PaperList(ctx context.Context) {
 		if role == "superAdmin" {
 			// 管理员检查试卷存在性和域
 			checkSQL = `
-				SELECT array_agg(
+				SELECT COALESCE(array_agg(
 					CASE 
-						WHEN p.id IS NULL THEN '试卷 "' || ids.id || '" 不存在'
-						WHEN p.domain_id != $2 THEN '试卷 "' || COALESCE(p.name, '未知') || '" 不在当前域范围内'
+						WHEN p.id IS NULL THEN '试卷（' || ids.id || '）不存在'
+						WHEN p.domain_id != $2 THEN '试卷（' || COALESCE(p.name, '未知') || '）不在当前域范围内'
 						ELSE NULL 
 					END
-				) as error_messages
+				) FILTER (WHERE CASE 
+						WHEN p.id IS NULL THEN '试卷（' || ids.id || '）不存在'
+						WHEN p.domain_id != $2 THEN '试卷（' || COALESCE(p.name, '未知') || '）不在当前域范围内'
+						ELSE NULL 
+					END IS NOT NULL), ARRAY[]::text[]) as error_messages
 				FROM unnest($1::bigint[]) AS ids(id)
 				LEFT JOIN t_paper p ON p.id = ids.id
 				WHERE p.id IS NULL OR p.domain_id != $2`
@@ -2029,14 +2016,19 @@ func PaperList(ctx context.Context) {
 		} else {
 			// 普通用户检查试卷存在性、域和创建者
 			checkSQL = `
-				SELECT array_agg(
+				SELECT COALESCE(array_agg(
 					CASE 
-						WHEN p.id IS NULL THEN '试卷 "' || ids.id || '" 不存在'
-						WHEN p.domain_id != $2 THEN '试卷 "' || COALESCE(p.name, '未知') || '" 不在当前域范围内'
-						WHEN p.creator != $3 THEN '试卷 "' || COALESCE(p.name, '未知') || '" 非试卷创建者，无删除权限'
+						WHEN p.id IS NULL THEN '试卷（' || ids.id || '）不存在'
+						WHEN p.domain_id != $2 THEN '试卷（' || COALESCE(p.name, '未知') || '）不在当前域范围内'
+						WHEN p.creator != $3 THEN '试卷（' || COALESCE(p.name, '未知') || '）非试卷创建者，无删除权限'
 						ELSE NULL 
 					END
-				) as error_messages
+				) FILTER (WHERE CASE 
+						WHEN p.id IS NULL THEN '试卷（' || ids.id || '）不存在'
+						WHEN p.domain_id != $2 THEN '试卷（' || COALESCE(p.name, '未知') || '）不在当前域范围内'
+						WHEN p.creator != $3 THEN '试卷（' || COALESCE(p.name, '未知') || '）非试卷创建者，无删除权限'
+						ELSE NULL 
+					END IS NOT NULL), ARRAY[]::text[]) as error_messages
 				FROM unnest($1::bigint[]) AS ids(id)
 				LEFT JOIN t_paper p ON p.id = ids.id
 				WHERE p.id IS NULL OR p.domain_id != $2 OR p.creator != $3`
@@ -2065,12 +2057,12 @@ func PaperList(ctx context.Context) {
 
 		// 如果有任何不能删除的试卷，返回错误
 		if validErrors.Len() > 0 {
-			q.Msg.Msg = validErrors.String()
 			q.Msg.Status = -1
-			q.Err = errors.New("部分试卷无法删除")
+			q.Err = errors.New(validErrors.String())
+			q.RespErr()
 			return
 		}
-		now := time.Now().UnixMilli()
+		now := cmn.GetNowInMS()
 		// 1. 软删除 t_paper
 		paperSQL := `UPDATE t_paper SET status = $2, updated_by = $3, update_time = $4 WHERE id = ANY($1)`
 		_, q.Err = tx.Exec(dmlCtx, paperSQL, paperIDs, StatusUnNormal, userID, now)
