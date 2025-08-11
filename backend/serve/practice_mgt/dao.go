@@ -363,9 +363,14 @@ func LoadPracticeByIDs(ctx context.Context, ids []int64) (map[int64]*cmn.TPracti
 		}
 		result[p.ID.Int64] = p
 	}
+	if len(result) == 0 {
+		// 这里就直接报错
+		err = fmt.Errorf("批量查询练习记录失败，记录为空")
+		z.Error(err.Error())
+		return nil, err
+	}
 
 	return result, nil
-
 }
 
 // ListPracticeS 学生权限及以下获取练习列表
@@ -723,10 +728,21 @@ func OperatePracticeStatusV2(ctx context.Context, ids []int64, status string, ui
 		}
 
 	}()
+	// TODO 此时需要判断所有的练习的状态是否都是一致的 如果不是一致的话，不允许操作 数据不统一
+	signStatus := ""
+	for _, p := range ps {
+		if signStatus == "" {
+			signStatus = p.Status.String
+		}
+		if p.Status.String != signStatus {
+			err = fmt.Errorf("此时要批量操作的练习状态不一，无法进行批量操作")
+			z.Error(err.Error())
+			return err
+		}
+	}
 	if status == PracticeStatus.Released {
 		// 批量操作
 		for pid, p := range ps {
-			// 遍历了
 			// 无论考卷之前有没有生成，均生成新的
 			examPaperId, _, err := examPaper.GenerateExamPaper(ctx, tx, examPaper.PaperCategory.Practice, p.PaperID.Int64, pid, 0, uid, false)
 			if err != nil {
@@ -741,7 +757,7 @@ func OperatePracticeStatusV2(ctx context.Context, ids []int64, status string, ui
 			s := `UPDATE assessuser.t_practice SET status = $1,update_time = $2, updated_by = $3 ,exam_paper_id = $4 WHERE id = $5`
 			_, err = tx.Exec(ctx, s, PracticeStatus.Released, now, uid, examPaperId, pid)
 			if err != nil || forceErr == "pQuery1" {
-				err = fmt.Errorf("更新练习状态 发布->未发布 失败:%v", err)
+				err = fmt.Errorf("更新练习状态 未发布->发布 失败:%v", err)
 				z.Error(err.Error())
 				return err
 			}
@@ -754,11 +770,14 @@ func OperatePracticeStatusV2(ctx context.Context, ids []int64, status string, ui
 			}
 
 			err = mark.HandleMarkerInfo(ctx, &tx, uid, req)
-			if err != nil || forceErr == "mark" {
+			if forceErr == "mark" {
+				err = fmt.Errorf("新增练习批改配置失败")
+			}
+			if err != nil {
 				return err
 			}
-			return nil
 		}
+		return nil
 	} else if status == PracticeStatus.PendingRelease || status == PracticeStatus.Deleted {
 
 		// 进行批量操作
@@ -790,7 +809,6 @@ func OperatePracticeStatusV2(ctx context.Context, ids []int64, status string, ui
 			z.Error(err.Error())
 			return err
 		}
-
 		// 清除批改配置信息
 		req := mark.HandleMarkerInfoReq{
 			Status:      "02",
@@ -798,17 +816,18 @@ func OperatePracticeStatusV2(ctx context.Context, ids []int64, status string, ui
 		}
 
 		err = mark.HandleMarkerInfo(ctx, &tx, uid, req)
-		if err != nil || forceErr == "mark1" {
+		if forceErr == "mark1" {
+			err = fmt.Errorf("清除批改配置失败")
+		}
+		if err != nil {
 			return err
 		}
 		return nil
-
 	} else {
 		err = fmt.Errorf("传入要更换的练习status:%v 非法,请传入合法的练习状态", status)
 		z.Error(err.Error())
 		return err
 	}
-	return fmt.Errorf("正常不可能到达这里")
 }
 
 // EnterPracticeGetPaperDetails 学生进入练习作答所需试卷信息、练习基本信息

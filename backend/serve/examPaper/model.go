@@ -3,7 +3,7 @@
  * @Description: 考卷-答卷模型
  * @Date: 2025-07-21 13:14:44
  * @LastEditors: zdl <1311866870@qq.com>
- * @LastEditTime: 2025-07-27 22:26:27
+ * @LastEditTime: 2025-08-11 14:24:47
  */
 package examPaper
 
@@ -81,7 +81,8 @@ type Group struct {
 */
 type Question struct {
 	cmn.TQuestion
-	SubScore       []float64 `json:"sub_score" db:"sub_score,true,integer"`
+	SubScore       []float64 `json:"SubScore" db:"sub_score,true,integer"`
+	AnswerNum      int       `json:"AnswerNum"`
 	BankQuestionID null.Int  `json:"BankQuestionID,omitempty" db:"bank_question_id,true,integer"`
 }
 

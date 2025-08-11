@@ -3,7 +3,7 @@
  * @Description: 考卷-答卷数据库层
  * @Date: 2025-07-21 13:14:34
  * @LastEditors: zdl <1311866870@qq.com>
- * @LastEditTime: 2025-08-09 09:23:55
+ * @LastEditTime: 2025-08-11 14:30:13
  */
 package examPaper
 
@@ -319,6 +319,11 @@ func LoadPaperTemplateById(ctx context.Context, paperId int64, withQuestions boo
 		// 安全追加题目（避免指针重用）
 		for idx := range v.Questions {
 			q := v.Questions[idx] // 创建副本
+			answerNum := 0
+			if q.SubScore != nil && len(q.SubScore) > 0 {
+				answerNum = len(q.SubScore)
+			}
+			q.AnswerNum = answerNum
 			questions[v.ID.Int64] = append(questions[v.ID.Int64], &q)
 		}
 	}
