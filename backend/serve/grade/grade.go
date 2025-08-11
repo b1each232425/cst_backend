@@ -696,10 +696,10 @@ func gradeExamineeListH(ctx context.Context) {
 			req.ExamID = examID
 			z.Sugar().Debug("examID:", req.ExamID)
 
-			// var result []ExamExamineeScoreInfo
-			var result []StudentExamScoreInfo
+			// var result []StudentExamScoreInfo
 
-			result, rowCount, err = GradeExamineeListExam(dmlCtx, req)
+			// result, rowCount, err = GradeExamineeListExam(dmlCtx, req)
+			result, err := GradeExamineeListExamGrouped(dmlCtx, req)
 			if err != nil {
 				q.Err = err
 				q.RespErr()
@@ -708,9 +708,9 @@ func gradeExamineeListH(ctx context.Context) {
 
 			z.Debug("gradeListExamineeExam", zap.Any("result", result))
 
-			if result != nil {
-				data, _ = json.Marshal(result)
-			}
+			// if result != nil {
+			data, _ = json.Marshal(result)
+			// }
 
 		case "practice":
 			if practiceIDs := queryParams.Get("practiceID"); practiceIDs != "" {

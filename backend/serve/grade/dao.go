@@ -732,6 +732,139 @@ func GradeDistributionPractice(ctx context.Context, args GradeDistributionArgs) 
 
 }
 
+// GradeExamineeListExamGrouped 按examID分类返回考生成绩列表，支持导出功能
+func GradeExamineeListExamGrouped(ctx context.Context, args GradeExamineeListArgs) (ExamScoreExportResponse, error) {
+	z.Info("---->" + cmn.FncName())
+	var err error
+	var response ExamScoreExportResponse
+
+	// forceErr := ""
+	// if val := ctx.Value("force-error"); val != nil {
+	// 	forceErr = val.(string)
+	// }
+
+	if len(args.ExamID) <= 0 {
+		err = fmt.Errorf("考试ID为空")
+		z.Error(err.Error())
+		return response, err
+	}
+
+	filter := args.Filter
+	params := []any{}
+
+	placeholders := make([]string, len(args.ExamID))
+	for i, id := range args.ExamID {
+		placeholders[i] = fmt.Sprintf("$%d", i+1)
+		params = append(params, id)
+	}
+	placeholderStr := strings.Join(placeholders, ", ")
+	whereClause := fmt.Sprintf("WHERE v_stu_score.exam_id IN (%s) ", placeholderStr)
+
+	if filter.Keyword != "" {
+		whereClause += fmt.Sprintf(" AND (v_examinee_info.official_name::text ILIKE $%d ", len(params)+1)
+		params = append(params, fmt.Sprintf("%%%s%%", filter.Keyword))
+
+		whereClause += fmt.Sprintf(" OR v_examinee_info.mobile_phone::text ILIKE $%d ", len(params)+1)
+		params = append(params, fmt.Sprintf("%%%s%%", filter.Keyword))
+
+		whereClause += fmt.Sprintf(" OR v_examinee_info.account::text ILIKE $%d)", len(params)+1)
+		params = append(params, fmt.Sprintf("%%%s%%", filter.Keyword))
+	}
+
+	sql := fmt.Sprintf(`
+SELECT
+    v_stu_score.exam_id,
+    exam_infos.name AS exam_name,
+    v_examinee_info.student_id,
+    v_examinee_info.mobile_phone AS phone,
+    v_examinee_info.official_name AS name,
+    v_examinee_info.account AS nickname,
+    STRING_AGG(COALESCE(v_examinee_info.remark, ''), '') AS remark,
+    jsonb_agg(
+        jsonb_build_object(
+            'exam_id', v_stu_score.exam_id,
+            'exam_session_id', v_stu_score.exam_session_id,
+            'score', v_stu_score.total_score
+        ) ORDER BY v_stu_score.exam_session_id
+    ) AS exam_sessions
+FROM v_student_exam_total_score v_stu_score
+	JOIN t_exam_info exam_infos ON exam_infos.id = v_stu_score.exam_id
+	JOIN v_examinee_info ON v_examinee_info.student_id = v_stu_score.student_id
+%s
+GROUP BY
+    v_stu_score.exam_id,
+    exam_infos.name,
+    v_examinee_info.student_id,
+    v_examinee_info.mobile_phone,
+    v_examinee_info.official_name,
+    v_examinee_info.account
+ORDER BY
+    v_stu_score.exam_id,
+    v_examinee_info.official_name
+	`, whereClause)
+
+	conn := cmn.GetPgxConn()
+	if conn == nil {
+		err = fmt.Errorf("get exam examinee score failed: %w", ErrNilDBConn)
+		z.Error(err.Error())
+		return response, err
+	}
+
+	rows, err := conn.Query(ctx, sql, params...)
+	if err != nil {
+		err = fmt.Errorf("查询考试考生成绩列表失败 错误: %s", err.Error())
+		z.Error(err.Error())
+		return response, err
+	}
+	defer rows.Close()
+
+	// 用于按examID分组的map
+	examMap := make(map[int64]*ExamScoreExportData)
+	totalCount := int64(0)
+
+	for rows.Next() {
+		var examID int64
+		var examName null.String
+		var student StudentExamScoreInfo
+
+		err = rows.Scan(
+			&examID,
+			&examName,
+			&student.StudentID,
+			&student.Phone,
+			&student.Name,
+			&student.Nickname,
+			&student.Remark,
+			&student.ExamSessions,
+		)
+		if err != nil {
+			err = fmt.Errorf("scan exam examinee score list error: %w", err)
+			z.Error(err.Error())
+			return response, err
+		}
+
+		// 按examID分组
+		if examData, exists := examMap[examID]; exists {
+			examData.StudentScores = append(examData.StudentScores, student)
+		} else {
+			examMap[examID] = &ExamScoreExportData{
+				ExamID:        examID,
+				ExamName:      examName,
+				StudentScores: []StudentExamScoreInfo{student},
+			}
+		}
+		totalCount++
+	}
+
+	// 将map转换为slice
+	for _, examData := range examMap {
+		response.Exams = append(response.Exams, *examData)
+	}
+
+	response.Total = totalCount
+	return response, nil
+}
+
 func GradeExamineeListExam(ctx context.Context, args GradeExamineeListArgs) ([]StudentExamScoreInfo, int64, error) {
 	z.Info("---->" + cmn.FncName())
 	var err error
@@ -772,6 +905,8 @@ func GradeExamineeListExam(ctx context.Context, args GradeExamineeListArgs) ([]S
 
 	sql := fmt.Sprintf(`
 SELECT
+    v_stu_score.exam_id,
+    exam_infos.name AS exam_name,
     v_examinee_info.student_id,
     v_examinee_info.mobile_phone AS phone,
     v_examinee_info.official_name AS name,
@@ -782,18 +917,22 @@ SELECT
             'exam_id', v_stu_score.exam_id,
             'exam_session_id', v_stu_score.exam_session_id,
             'score', v_stu_score.total_score
-        )
+        ) ORDER BY v_stu_score.exam_session_id
     ) AS exam_sessions
 FROM v_student_exam_total_score v_stu_score
 	JOIN t_exam_info exam_infos ON exam_infos.id = v_stu_score.exam_id
 	JOIN v_examinee_info ON v_examinee_info.student_id = v_stu_score.student_id
 %s
 GROUP BY
+    v_stu_score.exam_id,
+    exam_infos.name,
     v_examinee_info.student_id,
     v_examinee_info.mobile_phone,
     v_examinee_info.official_name,
-    v_examinee_info.account,
-	exam_infos.id
+    v_examinee_info.account
+ORDER BY
+    v_stu_score.exam_id,
+    v_examinee_info.official_name
 	`, whereClause)
 
 	// var result []ExamExamineeScoreInfo
@@ -850,7 +989,6 @@ GROUP BY
 		z.Sugar().Debug("打印examSessionCount是什么：", examSessionCount)
 		z.Sugar().Debug("listParams", listParams)
 		listSQL = fmt.Sprintf(`%s
-	ORDER BY exam_infos.id DESC
 	LIMIT $%d OFFSET $%d`,
 			sql, len(listParams)+1, len(listParams)+2)
 		z.Sugar().Debug("listSQL", listSQL)
@@ -867,9 +1005,12 @@ GROUP BY
 
 	defer rows.Close()
 	for rows.Next() {
-
+		var examID int64
+		var examName null.String
 		var s2 StudentExamScoreInfo
 		err = rows.Scan(
+			&examID,
+			&examName,
 			&s2.StudentID,
 			&s2.Phone,
 			&s2.Name,
@@ -883,7 +1024,6 @@ GROUP BY
 			return nil, 0, err
 		}
 		result = append(result, s2)
-
 	}
 
 	// 统计SQL

@@ -13,9 +13,9 @@ type GradeListArgs struct {
 	Category   string `json:"category"`
 	Page       int    `json:"page"`
 	PageSize   int    `json:"pageSize"`
-	TeacherID  int64  `json:"teacherID"`
-	ExamID     int    `json:"examID"`
-	PracticeID int    `json:"practiceID"`
+	TeacherID  int64
+	ExamID     int `json:"examID"`
+	PracticeID int `json:"practiceID"`
 	Filter     struct {
 		Name      string `json:"name"`
 		Type      string `json:"type"`
@@ -188,4 +188,16 @@ type ExamSessionScoreRank struct {
 	OfficialName null.String `json:"official_name" db:"official_name"`
 	TotalScore   null.Float  `json:"total_score" db:"total_score"`
 	Rank         null.Int    `json:"rank" db:"rank"`
+}
+
+// ********** 按考试ID分类的导出数据结构 **********
+type ExamScoreExportData struct {
+	ExamID        int64                  `json:"exam_id"`        // 考试ID
+	ExamName      null.String            `json:"exam_name"`      // 考试名称
+	StudentScores []StudentExamScoreInfo `json:"student_scores"` // 学生成绩列表
+}
+
+type ExamScoreExportResponse struct {
+	Total int64                 `json:"total"` // 总记录数
+	Exams []ExamScoreExportData `json:"exams"` // 按考试ID分类的数据
 }
