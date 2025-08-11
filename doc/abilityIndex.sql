@@ -1,6 +1,6 @@
 /*==============================================================*/
 /* DBMS name:      PostgreSQL 9.x                               */
-/* Created on:     2025/8/9 11:15:15                            */
+/* Created on:     2025/8/11 21:44:31                           */
 /*==============================================================*/
 
 
@@ -37,6 +37,8 @@ drop view if exists v_student_exam_total_score;
 drop view if exists v_student_answer_question;
 
 drop view if exists v_region;
+
+drop view if exists v_question_bank;
 
 drop view if exists v_practice_unmarked_student_cnt;
 
@@ -277,8 +279,6 @@ drop index if exists  idx_question_bank_id_creator;
 drop index if exists  idx_question_bank_id;
 
 drop table if exists t_question_bank;
-
-drop table if exists t_question_bank_share;
 
 drop index if exists  idx_region_name;
 
@@ -5529,7 +5529,6 @@ create table if not exists  t_paper (
    create_time          INT8                 null,
    updated_by           INT8                 null,
    update_time          INT8                 null,
-   access_mode          VARCHAR(4)           not null default '00',
    addi                 JSONB                null,
    status               VARCHAR(10)          null default '00',
    constraint PK_T_PAPER primary key (id)
@@ -5579,9 +5578,6 @@ comment on column t_paper.updated_by is
 
 comment on column t_paper.update_time is
 '更新时间';
-
-comment on column t_paper.access_mode is
-'试卷访问权限，00私有 02共享 04公开';
 
 comment on column t_paper.addi is
 '附加信息';
@@ -7523,7 +7519,7 @@ comment on column t_qualification.create_time is
 /* Table: t_question                                            */
 /*==============================================================*/
 create table if not exists  t_question (
-   id                   INT4                 not null,
+   id                   SERIAL               not null,
    type                 VARCHAR(64)          not null,
    content              TEXT                 null,
    options              JSONB                null,
@@ -7653,6 +7649,7 @@ create unique index if not exists  idx_question_id_creator on t_question (
 /*==============================================================*/
 create table if not exists  t_question_bank (
    id                   SERIAL               not null,
+   domain_id            INT8                 not null,
    type                 VARCHAR(64)          not null,
    name                 VARCHAR(64)          not null default '未命名题库',
    tags                 JSONB                null,
@@ -7665,8 +7662,6 @@ create table if not exists  t_question_bank (
    remark               VARCHAR(128)         null,
    addi                 JSONB                null,
    status               VARCHAR(64)          not null default '00',
-   question_count       INT8                 not null default 0,
-   access_mode          VARCHAR(4)           not null default '00',
    constraint PK_T_QUESTION_BANK primary key (id)
 );
 
@@ -7675,6 +7670,9 @@ comment on table t_question_bank is
 
 comment on column t_question_bank.id is
 '编号';
+
+comment on column t_question_bank.domain_id is
+'所属域ID';
 
 comment on column t_question_bank.type is
 '类型： 00:理论题库，02:编程题库';
@@ -7712,12 +7710,6 @@ comment on column t_question_bank.addi is
 comment on column t_question_bank.status is
 '状态，00:正常 02:作废 04:异常';
 
-comment on column t_question_bank.question_count is
-'题库题目数量';
-
-comment on column t_question_bank.access_mode is
-'题库访问权限，00私有 02共享 04公开';
-
 /*==============================================================*/
 /* Index: idx_question_bank_id                                  */
 /*==============================================================*/
@@ -7732,44 +7724,6 @@ create unique index if not exists  idx_question_bank_id_creator on t_question_ba
 id,
 creator
 );
-
-/*==============================================================*/
-/* Table: t_question_bank_share                                 */
-/*==============================================================*/
-create table if not exists  t_question_bank_share (
-   bank_id              INT8                 not null,
-   user_id              INT8                 not null,
-   creator              INT8                 not null,
-   create_time          INT8                 not null,
-   updated_by           INT8                 not null,
-   update_time          INT8                 not null,
-   status               VARCHAR(4)           not null default '00',
-   constraint PK_T_QUESTION_BANK_SHARE primary key (bank_id, user_id)
-);
-
-comment on table t_question_bank_share is
-'题库共享表';
-
-comment on column t_question_bank_share.bank_id is
-'被分享题库';
-
-comment on column t_question_bank_share.user_id is
-'被分享者';
-
-comment on column t_question_bank_share.creator is
-'创建者';
-
-comment on column t_question_bank_share.create_time is
-'创建时间';
-
-comment on column t_question_bank_share.updated_by is
-'更新者';
-
-comment on column t_question_bank_share.update_time is
-'更新时间';
-
-comment on column t_question_bank_share.status is
-'状态：00正常 02废除';
 
 /*==============================================================*/
 /* Table: t_region                                              */
@@ -9151,9 +9105,12 @@ comment on column t_sys_ver.status is
 ALTER SEQUENCE t_sys_ver_id_seq RESTART WITH 20000;
 
 insert into t_sys_ver(id,name,ver,create_time,update_time,remark)
-  values(1000,'业务模型','3.1.4.0',
-  '2016年12月5日 9:52:53','2025年8月9日 11:14:56',
-  '3.1.4.0
+  values(1000,'业务模型','3.1.5.0',
+  '2016年12月5日 9:52:53','2025年8月11日 21:29:05',
+  '3.1.5.0
+去除题库表题目数量字段，建立题库与题库题目、试卷题目与题库题目、试卷和试卷题组和试卷题目的外键，去除题库共享表，添加v_question_bank视图
+
+3.1.4.0
 增加考卷、考卷题组、考卷题目、学生答卷外键 + 级联删除 修改题库、题目、共享题目表关于时间字段的属性为int8
 
 3.1.3.0
@@ -13027,8 +12984,7 @@ WITH paper_basic AS (
             p_1.create_time,
             p_1.updated_by,
             p_1.update_time,
-            p_1.status AS paper_status,
-            p_1.access_mode
+            p_1.status AS paper_status
            FROM t_paper p_1
              LEFT JOIN t_user u ON p_1.creator = u.id
           WHERE p_1.status::text = '00'::text
@@ -13125,7 +13081,6 @@ WITH paper_basic AS (
     p.updated_by,
     p.update_time,
     p.paper_status AS status,
-    p.access_mode,
     s.total_score,
     s.question_count,
     s.group_count,
@@ -13220,6 +13175,56 @@ comment on view v_practice_unmarked_student_cnt is
 drop table if exists t_v_practice_unmarked_student_cnt;
 
 create table t_v_practice_unmarked_student_cnt as select * from v_practice_unmarked_student_cnt;
+
+/*==============================================================*/
+/* View: v_question_bank                                        */
+/*==============================================================*/
+create or replace view v_question_bank as
+SELECT
+    b.id,
+    b.domain_id,
+    b.name,
+    b.type,
+    b.tags,
+    b.creator,
+    u.official_name,
+    b.create_time,
+    b.update_time,
+    COUNT(DISTINCT q.id) AS question_count,
+    COALESCE(array_agg(DISTINCT q.type) FILTER (WHERE q.type IS NOT NULL), ARRAY[]::text[]) as question_types,
+    COALESCE(array_agg(DISTINCT q.difficulty) FILTER (WHERE q.difficulty IS NOT NULL), ARRAY[]::bigint[]) as question_difficulties,
+    COALESCE(
+        array_agg(DISTINCT tag) FILTER (WHERE tag IS NOT NULL),
+        ARRAY[]::text[]
+    ) as question_tags
+FROM
+    t_question_bank b
+LEFT JOIN
+    t_user u ON b.creator = u.id
+LEFT JOIN
+    t_question q ON b.id = q.belong_to AND q.status = '00'
+LEFT JOIN LATERAL
+    jsonb_array_elements_text(q.tags) as tag ON true
+WHERE
+    b.status = '00'
+GROUP BY
+    -- 所有非聚合字段都必须出现在这里
+    b.id,
+    b.domain_id,
+    b.name,
+    b.type,
+    b.tags,
+    b.creator,
+    u.official_name,  -- 添加遗漏的u.official_name
+    b.create_time,    -- 添加遗漏的b.create_time
+    b.update_time;
+
+comment on view v_question_bank is
+'v_question_bank';
+
+drop table if exists t_v_question_bank;
+
+create table t_v_question_bank as select * from v_question_bank;
 
 /*==============================================================*/
 /* View: v_region                                               */
@@ -13830,6 +13835,26 @@ alter table t_insure_attach
    add constraint FK_T_INSURE_REF_T_USER foreign key (t_u_id)
       references t_user (id)
       on delete restrict on update restrict;
+
+alter table t_paper_group
+   add constraint FK_PAPER_GROUP_T_PAPER foreign key (paper_id)
+      references t_paper (id)
+      on delete cascade on update cascade;
+
+alter table t_paper_question
+   add constraint FK_T_PAPER__FK_PAPER__T_QUESTI foreign key (bank_question_id)
+      references t_question (id)
+      on delete restrict on update restrict;
+
+alter table t_paper_question
+   add constraint FK_PAPER_QUESTION_PAPER foreign key (group_id)
+      references t_paper_group (id)
+      on delete cascade on update cascade;
+
+alter table t_question
+   add constraint FK_question_question_bank foreign key (belong_to)
+      references t_question_bank (id)
+      on delete set null on update restrict;
 
 alter table t_student_answers
    add constraint FK_exam_answer_question foreign key (question_id)
