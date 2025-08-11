@@ -800,6 +800,12 @@ RETURNING id`
 			q.Msg.Data = data
 			q.Msg.Msg = "success"
 			q.Msg.Status = 0
+		default:
+			// 默认操作，返回错误信息
+			q.Err = fmt.Errorf("不支持当前mode: %s", mode)
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
 		}
 
 	default:
