@@ -112,4 +112,5 @@ type Question struct {
 	cmn.TQuestion
 	BankQuestionID null.Int  `json:"bank_question_id"`
 	SubScore       []float64 `json:"sub_score"`
+	AnswerNum      int64     `json:"answer_num"`
 }

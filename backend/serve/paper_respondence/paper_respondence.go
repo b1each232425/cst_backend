@@ -543,7 +543,7 @@ func InitRespondent(ctx context.Context) {
 			return
 		}
 		//获取场次信息
-		examSessions, err := exam_mgt.GetExamSessions(dmlCtx, u.ExamId, role.String)
+		examSessions, err := exam_mgt.GetExamSessions(dmlCtx, role.String, u.ExamId)
 		if forceErr == "get sessions err" {
 			err = errors.New("get sessions err")
 		}

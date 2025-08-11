@@ -1,8 +1,16 @@
 /*==============================================================*/
 /* DBMS name:      PostgreSQL 9.x                               */
-/* Created on:     7/30/2025 9:15:10 AM                         */
+/* Created on:     2025/8/9 11:15:15                            */
 /*==============================================================*/
 
+
+drop view if exists v_z_practice_summary;
+
+drop view if exists v_z_grade_practice_statistics;
+
+drop view if exists v_z_grade_exam_session_info;
+
+drop view if exists v_y_max_submitted_view;
 
 drop view if exists v_report_claims;
 
@@ -14,17 +22,29 @@ drop view if exists v_xkb_user;
 
 drop view if exists v_xkb_school_layout;
 
+drop view if exists v_x_grade_list;
+
 drop view if exists v_user_domain_api;
 
 drop view if exists v_user_domain;
 
 drop view if exists v_user;
 
+drop view if exists v_student_practice_total_score;
+
+drop view if exists v_student_exam_total_score;
+
+drop view if exists v_student_answer_question;
+
 drop view if exists v_region;
+
+drop view if exists v_practice_unmarked_student_cnt;
 
 drop view if exists v_payment;
 
 drop view if exists v_param;
+
+drop view if exists v_paper;
 
 drop view if exists v_order_sum;
 
@@ -35,6 +55,14 @@ drop view if exists v_order;
 drop view if exists v_mistake_correct_show;
 
 drop view if exists v_manager_school;
+
+drop view if exists v_latest_unsubmitted_practice;
+
+drop view if exists v_latest_submitted_practice;
+
+drop view if exists v_latest_pending_mark_practice;
+
+drop view if exists v_invigilation_info;
 
 drop view if exists v_insurer;
 
@@ -47,6 +75,16 @@ drop view if exists v_insurance_type;
 drop view if exists v_insurance_policy2;
 
 drop view if exists v_insurance_policy;
+
+drop view if exists v_examinee_info;
+
+drop view if exists v_exam_unmarked_student_count;
+
+drop view if exists v_exam_teacher_marked_count;
+
+drop view if exists v_exam_respondent_count;
+
+drop view if exists v_exam_paper;
 
 drop view if exists v_domain_user;
 
@@ -96,6 +134,24 @@ drop index if exists  domain_asset_relation;
 
 drop table if exists t_domain_asset;
 
+drop table if exists t_exam_info;
+
+drop table if exists t_exam_paper;
+
+drop table if exists t_exam_paper_group;
+
+drop table if exists t_exam_paper_question;
+
+drop table if exists t_exam_record;
+
+drop table if exists t_exam_room;
+
+drop table if exists t_exam_session;
+
+drop table if exists t_exam_site;
+
+drop table if exists t_examinee;
+
 drop table if exists t_expertise;
 
 drop table if exists t_external_domain_conf;
@@ -142,6 +198,8 @@ drop table if exists t_insured_detail;
 
 drop table if exists t_insured_terms;
 
+drop table if exists t_invigilation;
+
 drop table if exists t_judge;
 
 drop index if exists  idx_t_log_base;
@@ -149,6 +207,10 @@ drop index if exists  idx_t_log_base;
 drop index if exists  t_log_PK;
 
 drop table if exists t_log;
+
+drop table if exists t_mark;
+
+drop table if exists t_mark_info;
 
 drop table if exists t_mistake_correct;
 
@@ -170,6 +232,12 @@ drop index if exists  idx_t_order_trade_no2;
 
 drop table if exists t_order;
 
+drop table if exists t_paper;
+
+drop table if exists t_paper_group;
+
+drop table if exists t_paper_question;
+
 drop index if exists  t_param_full_idx;
 
 drop table if exists t_param;
@@ -182,6 +250,12 @@ drop table if exists t_pay_account;
 
 drop table if exists t_payment;
 
+drop table if exists t_practice;
+
+drop table if exists t_practice_student;
+
+drop table if exists t_practice_submissions;
+
 drop table if exists t_price;
 
 drop table if exists t_prj;
@@ -191,6 +265,20 @@ drop table if exists t_proof;
 drop table if exists t_prove;
 
 drop table if exists t_qualification;
+
+drop index if exists  idx_question_id_creator;
+
+drop index if exists  idx_question_id;
+
+drop table if exists t_question;
+
+drop index if exists  idx_question_bank_id_creator;
+
+drop index if exists  idx_question_bank_id;
+
+drop table if exists t_question_bank;
+
+drop table if exists t_question_bank_share;
 
 drop index if exists  idx_region_name;
 
@@ -230,9 +318,13 @@ drop index if exists  special_order_prj_id;
 
 drop table if exists t_special_order;
 
+drop table if exists t_student_answers;
+
 drop table if exists t_sys_ver;
 
 drop table if exists t_tdc;
+
+drop table if exists t_teacher_student;
 
 drop table if exists t_undertaker;
 
@@ -987,8 +1079,12 @@ insert into t_domain(id,name, domain, creator,priority) values
 (10112,'考试系统.教务员','assess.academicAffair^admin',1000,1095),
 (10114,'考试系统.教师','assess^teacher',1000,1097),
 (10116,'考试系统.监考员','assess^examSupervisor',1000,1099),
-(10118,'考试系统.运维','assess^maintain',1000,1111), -- 平台维护角色
-(10120,'考试系统.学生','assess^student',1000,1113),
+(10118,'考试系统.批阅员','assess^examGrader', 1000, 1111),
+(10120,'考试系统.核分员','assess^scoreChecker', 1000, 1113),
+(10122,'考试系统.考点','assess.examSite', 1000, 1115),
+(10124,'考试系统.考点负责人','assess.examSite^Admin', 1000, 1117),
+(10126,'考试系统.运维','assess^maintain',1000,1119), -- 平台维护角色
+(10128,'考试系统.学生','assess^student',1000,1121),
 
 
 (10200,'教学系统','course',1000,0),
@@ -1558,6 +1654,628 @@ domain_id,
 asset_id,
 id_on_domain
 );
+
+/*==============================================================*/
+/* Table: t_exam_info                                           */
+/*==============================================================*/
+create table if not exists  t_exam_info (
+   id                   SERIAL               not null,
+   name                 VARCHAR(150)         null default '未命名考试',
+   rules                TEXT                 null,
+   type                 VARCHAR(50)          null,
+   mode                 VARCHAR(50)          null,
+   files                JSONB                null,
+   submitted            BOOL                 null,
+   creator              INT8                 not null,
+   create_time          INT8                 null,
+   updated_by           INT8                 null,
+   update_time          INT8                 null,
+   status               VARCHAR(150)         null,
+   addi                 JSONB                null,
+   exam_room_ids        bigint[]             null,
+   exam_room_invigilator_count JSONB                null,
+   domain_id            INT8                 null,
+   constraint PK_T_EXAM_INFO primary key (id)
+);
+
+comment on table t_exam_info is
+'考试信息表';
+
+comment on column t_exam_info.id is
+'考试编号';
+
+comment on column t_exam_info.name is
+'考试名称';
+
+comment on column t_exam_info.rules is
+'考试规则';
+
+comment on column t_exam_info.type is
+'考试类型 00：平时考试 02：期末成绩考试  04：资格证考试';
+
+comment on column t_exam_info.mode is
+'考试方式 00：线上考试  02：线下考试';
+
+comment on column t_exam_info.files is
+'考试附件资料';
+
+comment on column t_exam_info.submitted is
+'考试成绩是否已提交';
+
+comment on column t_exam_info.creator is
+'创建者';
+
+comment on column t_exam_info.create_time is
+'创建时间';
+
+comment on column t_exam_info.updated_by is
+'更新者';
+
+comment on column t_exam_info.update_time is
+'更新时间';
+
+comment on column t_exam_info.status is
+'状态  00：未发布 02：待开始  04：进行中 06：已结束 08：已归档 10：考试异常 12：已删除';
+
+comment on column t_exam_info.addi is
+'附加信息';
+
+comment on column t_exam_info.exam_room_ids is
+'考场id数组';
+
+comment on column t_exam_info.exam_room_invigilator_count is
+'记录当前每个考场的所需监考员数量，例：[{exam_room_id:1,invigilator_count:1}]';
+
+comment on column t_exam_info.domain_id is
+'domain_id';
+
+/*==============================================================*/
+/* Table: t_exam_paper                                          */
+/*==============================================================*/
+create table if not exists  t_exam_paper (
+   id                   SERIAL               not null,
+   exam_session_id      INT8                 null,
+   practice_id          INT8                 null,
+   name                 VARCHAR(256)         null,
+   creator              INT8                 not null,
+   create_time          INT8                 null,
+   updated_by           INT8                 null,
+   update_time          INT8                 null,
+   addi                 JSONB                null,
+   status               VARCHAR(10)          null default '00',
+   constraint PK_T_EXAM_PAPER primary key (id)
+);
+
+comment on table t_exam_paper is
+'考卷';
+
+comment on column t_exam_paper.id is
+'考卷ID';
+
+comment on column t_exam_paper.exam_session_id is
+'考试场次ID，标识考卷用于哪一场考试场次';
+
+comment on column t_exam_paper.practice_id is
+'练习ID，标识考卷用于哪一个练习';
+
+comment on column t_exam_paper.name is
+'考卷名称';
+
+comment on column t_exam_paper.creator is
+'创建者';
+
+comment on column t_exam_paper.create_time is
+'创建时间';
+
+comment on column t_exam_paper.updated_by is
+'更新者';
+
+comment on column t_exam_paper.update_time is
+'更新时间';
+
+comment on column t_exam_paper.addi is
+'附加信息';
+
+comment on column t_exam_paper.status is
+'状态 00：使用中，02：归档，04：废弃';
+
+/*==============================================================*/
+/* Table: t_exam_paper_group                                    */
+/*==============================================================*/
+create table if not exists  t_exam_paper_group (
+   id                   INT4                 not null,
+   exam_paper_id        INT8                 not null,
+   name                 TEXT                 null,
+   "order"              INT4                 null,
+   creator              INT8                 not null,
+   create_time          INT8                 null,
+   updated_by           INT8                 null,
+   update_time          INT8                 null,
+   addi                 JSONB                null,
+   status               VARCHAR(10)          null default '00',
+   constraint PK_T_EXAM_PAPER_GROUP primary key (id)
+);
+
+comment on table t_exam_paper_group is
+'学生考卷题组';
+
+comment on column t_exam_paper_group.id is
+'答卷题组id';
+
+comment on column t_exam_paper_group.exam_paper_id is
+'学生答卷ID';
+
+comment on column t_exam_paper_group.name is
+'题组名称';
+
+comment on column t_exam_paper_group."order" is
+'题组排序';
+
+comment on column t_exam_paper_group.creator is
+'创建者';
+
+comment on column t_exam_paper_group.create_time is
+'创建时间';
+
+comment on column t_exam_paper_group.updated_by is
+'更新者';
+
+comment on column t_exam_paper_group.update_time is
+'更新时间';
+
+comment on column t_exam_paper_group.addi is
+'附加信息';
+
+comment on column t_exam_paper_group.status is
+'状态 00：正常， 02：异常';
+
+/*==============================================================*/
+/* Table: t_exam_paper_question                                 */
+/*==============================================================*/
+create table if not exists  t_exam_paper_question (
+   id                   SERIAL               not null,
+   group_id             INT8                 null,
+   score                FLOAT8               null,
+   "order"              INT4                 null,
+   type                 VARCHAR(128)         null,
+   content              TEXT                 null,
+   options              JSONB                null,
+   answers              JSONB                null,
+   analysis             TEXT                 null,
+   title                TEXT                 null,
+   answer_file_path     JSONB                null,
+   test_file_path       JSONB                null,
+   input                VARCHAR(255)         null,
+   output               VARCHAR(255)         null,
+   example              JSONB                null,
+   repo                 JSONB                null,
+   commit_id            JSONB                null,
+   creator              INT8                 not null,
+   create_time          INT8                 null,
+   updated_by           INT8                 null,
+   update_time          INT8                 null,
+   addi                 JSONB                null,
+   status               VARCHAR(10)          null default '00',
+   question_attachments_path JSONB                null,
+   constraint PK_T_EXAM_PAPER_QUESTION primary key (id)
+);
+
+comment on table t_exam_paper_question is
+'考卷题目';
+
+comment on column t_exam_paper_question.id is
+'考卷题目ID';
+
+comment on column t_exam_paper_question.group_id is
+'所属题组ID';
+
+comment on column t_exam_paper_question.score is
+'题目分值';
+
+comment on column t_exam_paper_question."order" is
+'原始考卷的题目初始顺序';
+
+comment on column t_exam_paper_question.type is
+'题目类型 "00":单选题 "02":多选题 "04": 判断题 "06": 填空题 "08": 简答题 "10": 编程题';
+
+comment on column t_exam_paper_question.content is
+'理论题目内容';
+
+comment on column t_exam_paper_question.options is
+'理论题目选项填空项';
+
+comment on column t_exam_paper_question.answers is
+'理论题目答案';
+
+comment on column t_exam_paper_question.analysis is
+'理论题目解析';
+
+comment on column t_exam_paper_question.title is
+'编程题目题干';
+
+comment on column t_exam_paper_question.answer_file_path is
+'编程题目答案文件路径';
+
+comment on column t_exam_paper_question.test_file_path is
+'编程题目测试文件路径';
+
+comment on column t_exam_paper_question.input is
+'编程题目输入';
+
+comment on column t_exam_paper_question.output is
+'编程题目输出';
+
+comment on column t_exam_paper_question.example is
+'编程题目示例';
+
+comment on column t_exam_paper_question.repo is
+'仓库';
+
+comment on column t_exam_paper_question.commit_id is
+'编程题提交ID，用来当版本号';
+
+comment on column t_exam_paper_question.creator is
+'创建者';
+
+comment on column t_exam_paper_question.create_time is
+'创建时间';
+
+comment on column t_exam_paper_question.updated_by is
+'更新者';
+
+comment on column t_exam_paper_question.update_time is
+'更新时间';
+
+comment on column t_exam_paper_question.addi is
+'附加信息';
+
+comment on column t_exam_paper_question.status is
+'状态 ：00：使用中，02：归档，04：废弃';
+
+comment on column t_exam_paper_question.question_attachments_path is
+'题目附件url数组';
+
+/*==============================================================*/
+/* Table: t_exam_record                                         */
+/*==============================================================*/
+create table if not exists  t_exam_record (
+   id                   INT4                 not null,
+   exam_room            int8                 not null,
+   exam_session         int8                 not null,
+   content              varchar(5000)        null,
+   basic_eval           VARCHAR(150)         null,
+   creator              INT8                 not null,
+   create_time          timestamp            null,
+   updated_by           INT8                 null,
+   update_time          timestamp            null,
+   addi                 jsonb                null,
+   status               varchar(150)         null,
+   constraint PK_T_EXAM_RECORD primary key (id)
+);
+
+comment on table t_exam_record is
+'考场记录表';
+
+comment on column t_exam_record.id is
+'记录ID';
+
+comment on column t_exam_record.exam_room is
+'考场ID';
+
+comment on column t_exam_record.exam_session is
+'考试场次ID';
+
+comment on column t_exam_record.content is
+'记录内容';
+
+comment on column t_exam_record.basic_eval is
+'基本情况评估 00: 良好 02: 一般 04: 较差';
+
+comment on column t_exam_record.creator is
+'创建者';
+
+comment on column t_exam_record.create_time is
+'创建时间';
+
+comment on column t_exam_record.updated_by is
+'最近一次的更新者';
+
+comment on column t_exam_record.update_time is
+'最近一次更新的时间';
+
+comment on column t_exam_record.addi is
+'附加信息';
+
+comment on column t_exam_record.status is
+'状态码 00:正常 02:失效(删除)';
+
+/*==============================================================*/
+/* Table: t_exam_room                                           */
+/*==============================================================*/
+create table if not exists  t_exam_room (
+   id                   SERIAL               not null,
+   exam_site            INT8                 not null,
+   name                 VARCHAR(150)         null,
+   capacity             INT4                 null,
+   creator              INT8                 not null,
+   create_time          TIMESTAMP            null,
+   updated_by           INT8                 null,
+   update_time          TIMESTAMP            null,
+   status               VARCHAR(150)         null default '0',
+   addi                 JSONB                null,
+   constraint PK_T_EXAM_ROOM primary key (id)
+);
+
+comment on table t_exam_room is
+'考场表';
+
+comment on column t_exam_room.id is
+'考场编号';
+
+comment on column t_exam_room.exam_site is
+'考点编号';
+
+comment on column t_exam_room.name is
+'考场名字';
+
+comment on column t_exam_room.capacity is
+'考场容量';
+
+comment on column t_exam_room.creator is
+'创建者';
+
+comment on column t_exam_room.create_time is
+'创建时间';
+
+comment on column t_exam_room.updated_by is
+'更新者';
+
+comment on column t_exam_room.update_time is
+'更新时间';
+
+comment on column t_exam_room.status is
+'考场状态 00：正常 02：故障 04：占用 06：已删除';
+
+comment on column t_exam_room.addi is
+'附加信息';
+
+/*==============================================================*/
+/* Table: t_exam_session                                        */
+/*==============================================================*/
+create table if not exists  t_exam_session (
+   id                   SERIAL               not null,
+   exam_id              INT8                 not null,
+   paper_id             INT8                 not null,
+   session_num          INT8                 null,
+   mark_method          VARCHAR(50)          not null,
+   period_mode          VARCHAR(50)          null,
+   start_time           INT8                 null,
+   end_time             INT8                 null,
+   duration             INT4                 null,
+   question_shuffled_mode VARCHAR(50)          null,
+   mark_mode            VARCHAR(100)         null,
+   name_visibility_in   BOOL                 null,
+   creator              INT8                 not null,
+   create_time          INT8                 null,
+   updated_by           INT8                 null,
+   update_time          INT8                 null,
+   status               VARCHAR(150)         null,
+   addi                 JSONB                null,
+   late_entry_time      INT8                 null,
+   early_submission_time INT8                 null,
+   reviewer_ids         bigint[]             null,
+   basic_eval           VARCHAR(150)         null,
+   record               VARCHAR(1500)        null,
+   constraint PK_T_EXAM_SESSION primary key (id)
+);
+
+comment on table t_exam_session is
+'考试场次表';
+
+comment on column t_exam_session.id is
+'编号';
+
+comment on column t_exam_session.exam_id is
+'考试编号';
+
+comment on column t_exam_session.paper_id is
+'试卷编号';
+
+comment on column t_exam_session.session_num is
+'考试场次序号标识（试卷1,试卷2...)';
+
+comment on column t_exam_session.mark_method is
+'批卷方式 00：人工批卷 02：自动批卷 04：ai批卷';
+
+comment on column t_exam_session.period_mode is
+'考试时段模式 00：固定时段考试 02：灵活时段考试';
+
+comment on column t_exam_session.start_time is
+'考试开始时间';
+
+comment on column t_exam_session.end_time is
+'考试结束时间';
+
+comment on column t_exam_session.duration is
+'考试时长';
+
+comment on column t_exam_session.question_shuffled_mode is
+'乱序方式 00：既有试题乱序也有选项乱序 02：选项乱序 04：试题乱序 06：都不选择';
+
+comment on column t_exam_session.mark_mode is
+'批改配置，包括批卷模式 00：不需要批改  02：全卷多评 04：试卷分配 06：题组专评 08：逐卷批改 10：逐题批改';
+
+comment on column t_exam_session.name_visibility_in is
+'当需要人工批卷时，是否需要在批改中显示学生姓名';
+
+comment on column t_exam_session.creator is
+'创建者';
+
+comment on column t_exam_session.create_time is
+'创建时间';
+
+comment on column t_exam_session.updated_by is
+'更新者';
+
+comment on column t_exam_session.update_time is
+'更新时间';
+
+comment on column t_exam_session.status is
+'状态 00：未发布 02：待开始  04：进行中 06：已结束  08：批改中 10：已批改 12：已提交 14：已删除';
+
+comment on column t_exam_session.addi is
+'附加信息';
+
+comment on column t_exam_session.late_entry_time is
+'考试开始后最晚能进入考场的时间，如考试开始后30分钟内可进入考场';
+
+comment on column t_exam_session.early_submission_time is
+'考试结束前x分钟可交卷';
+
+comment on column t_exam_session.reviewer_ids is
+'批阅员ID数组';
+
+comment on column t_exam_session.basic_eval is
+'基本情况评估 00: 良好 02: 一般 04: 较差';
+
+comment on column t_exam_session.record is
+'考试场次记录，可用于保存本考试场次中的异常情况记录';
+
+/*==============================================================*/
+/* Table: t_exam_site                                           */
+/*==============================================================*/
+create table if not exists  t_exam_site (
+   id                   SERIAL               not null,
+   name                 VARCHAR(150)         null,
+   address              VARCHAR(100)         null,
+   server_host          VARCHAR(100)         null,
+   creator              INT8                 not null,
+   create_time          TIMESTAMP            null,
+   updated_by           INT8                 null,
+   update_time          TIMESTAMP            null,
+   status               VARCHAR(150)         null default '0',
+   addi                 JSONB                null,
+   admin                INT8                 null,
+   sys_user             INT8                 null,
+   domain_id            INT8                 null,
+   constraint PK_T_EXAM_SITE primary key (id)
+);
+
+comment on table t_exam_site is
+'考点表';
+
+comment on column t_exam_site.id is
+'考点编号';
+
+comment on column t_exam_site.name is
+'考点名字';
+
+comment on column t_exam_site.address is
+'考点地址';
+
+comment on column t_exam_site.server_host is
+'考点服务器地址(包含端口)';
+
+comment on column t_exam_site.creator is
+'创建者';
+
+comment on column t_exam_site.create_time is
+'创建时间';
+
+comment on column t_exam_site.updated_by is
+'更新者';
+
+comment on column t_exam_site.update_time is
+'更新时间';
+
+comment on column t_exam_site.status is
+'考点状态 00：空闲 02：故障 04：删除';
+
+comment on column t_exam_site.addi is
+'附加信息';
+
+comment on column t_exam_site.admin is
+'考点负责人';
+
+comment on column t_exam_site.sys_user is
+'考点服务器系统账号ID';
+
+comment on column t_exam_site.domain_id is
+'数据所属域';
+
+/*==============================================================*/
+/* Table: t_examinee                                            */
+/*==============================================================*/
+create table if not exists  t_examinee (
+   id                   SERIAL               not null,
+   student_id           INT8                 null,
+   serial_number        INT4                 null,
+   exam_room            INT8                 null,
+   exam_session_id      INT8                 null,
+   examinee_number      character varying    null,
+   start_time           INT8                 null,
+   end_time             INT8                 null,
+   remark               VARCHAR              null,
+   creator              INT8                 not null,
+   create_time          INT8                 null,
+   updated_by           INT8                 null,
+   update_time          INT8                 null,
+   status               VARCHAR(150)         null,
+   addi                 JSONB                null,
+   extra_time           bigint               null default '0',
+   constraint PK_T_EXAMINEE primary key (id)
+);
+
+comment on table t_examinee is
+'考生表';
+
+comment on column t_examinee.id is
+'id';
+
+comment on column t_examinee.student_id is
+'学生ID';
+
+comment on column t_examinee.serial_number is
+'考生序号';
+
+comment on column t_examinee.exam_room is
+'考场信息';
+
+comment on column t_examinee.exam_session_id is
+'考试场次编号';
+
+comment on column t_examinee.examinee_number is
+'考生准考证号';
+
+comment on column t_examinee.start_time is
+'start_time';
+
+comment on column t_examinee.end_time is
+'end_time';
+
+comment on column t_examinee.remark is
+'remark';
+
+comment on column t_examinee.creator is
+'创建者';
+
+comment on column t_examinee.create_time is
+'创建时间';
+
+comment on column t_examinee.updated_by is
+'更新者';
+
+comment on column t_examinee.update_time is
+'更新时间';
+
+comment on column t_examinee.status is
+'状态 00：正常考 02：缺考 04：补考 06：作弊 08：已删除 10：已交卷 12：待同步 14：考试异常';
+
+comment on column t_examinee.addi is
+'附加信息(备注),可以保存考试异常的原因等';
+
+comment on column t_examinee.extra_time is
+'考试延长时间(毫秒).考试实际结束时间=当前考试结束时间+延长时间';
 
 /*==============================================================*/
 /* Table: t_expertise                                           */
@@ -3267,6 +3985,52 @@ comment on column t_insured_terms.status is
 ALTER SEQUENCE t_insured_terms_id_seq RESTART WITH 20000;
 
 /*==============================================================*/
+/* Table: t_invigilation                                        */
+/*==============================================================*/
+create table if not exists  t_invigilation (
+   id                   INT4                 not null,
+   exam_session_id      INT8                 null,
+   invigilator          INT8                 null,
+   exam_room            INT8                 null,
+   creator              INT8                 not null,
+   create_time          TIMESTAMP            null,
+   updated_by           INT8                 null,
+   update_time          TIMESTAMP            null,
+   addi                 JSONB                null,
+   constraint PK_T_INVIGILATION primary key (id)
+);
+
+comment on table t_invigilation is
+'监考安排表';
+
+comment on column t_invigilation.id is
+'编号';
+
+comment on column t_invigilation.exam_session_id is
+'考试场次id';
+
+comment on column t_invigilation.invigilator is
+'监考员id';
+
+comment on column t_invigilation.exam_room is
+'考场id';
+
+comment on column t_invigilation.creator is
+'创建者';
+
+comment on column t_invigilation.create_time is
+'创建时间';
+
+comment on column t_invigilation.updated_by is
+'更新者';
+
+comment on column t_invigilation.update_time is
+'更新时间';
+
+comment on column t_invigilation.addi is
+'附加信息';
+
+/*==============================================================*/
 /* Table: t_judge                                               */
 /*==============================================================*/
 create table if not exists  t_judge (
@@ -3376,6 +4140,142 @@ grade,
 create_time,
 login_user_id
 );
+
+/*==============================================================*/
+/* Table: t_mark                                                */
+/*==============================================================*/
+create table if not exists  t_mark (
+   id                   INT4                 not null,
+   teacher_id           INT8                 null,
+   question_id          INT8                 null,
+   examinee_id          INT8                 null,
+   practice_submissions_id INT8                 null,
+   practice_id          INT8                 null,
+   exam_session_id      INT8                 null,
+   mark_details         jsonb                null,
+   status               VARCHAR(4)           null,
+   addi                 jsonb                null,
+   creator              INT8                 not null,
+   create_time          INT8                 null,
+   updated_by           INT8                 null,
+   update_time          INT8                 null,
+   score                double precision     null,
+   constraint PK_T_MARK primary key (id)
+);
+
+comment on table t_mark is
+'批改结果表';
+
+comment on column t_mark.id is
+'id';
+
+comment on column t_mark.teacher_id is
+'批阅教师id';
+
+comment on column t_mark.question_id is
+'题目id';
+
+comment on column t_mark.examinee_id is
+'批改的学生id';
+
+comment on column t_mark.practice_submissions_id is
+'练习提交id';
+
+comment on column t_mark.practice_id is
+'练习id';
+
+comment on column t_mark.exam_session_id is
+'考试场次id';
+
+comment on column t_mark.mark_details is
+'批改结果';
+
+comment on column t_mark.status is
+'状态 00:正常 02';
+
+comment on column t_mark.addi is
+'附加信息';
+
+comment on column t_mark.creator is
+'创建者';
+
+comment on column t_mark.create_time is
+'创建时间';
+
+comment on column t_mark.updated_by is
+'更新者';
+
+comment on column t_mark.update_time is
+'更新时间';
+
+comment on column t_mark.score is
+'分数';
+
+/*==============================================================*/
+/* Table: t_mark_info                                           */
+/*==============================================================*/
+create table if not exists  t_mark_info (
+   id                   SERIAL               not null,
+   exam_session_id      INT8                 null,
+   practice_id          INT8                 null,
+   mark_teacher_id      INT8                 null,
+   mark_count           INT4                 null,
+   mark_question_groups JSONB                null,
+   mark_examinee_ids    JSONB                null,
+   creator              INT8                 not null,
+   create_time          INT8                 null,
+   updated_by           INT8                 null,
+   update_time          INT8                 null,
+   addi                 JSONB                null,
+   status               VARCHAR(8)           null,
+   question_ids         jsonb                null,
+   constraint PK_T_MARK_INFO primary key (id)
+);
+
+comment on table t_mark_info is
+'批改信息配置表';
+
+comment on column t_mark_info.id is
+'id';
+
+comment on column t_mark_info.exam_session_id is
+'考试场次id';
+
+comment on column t_mark_info.practice_id is
+'练习id';
+
+comment on column t_mark_info.mark_teacher_id is
+'批改员id';
+
+comment on column t_mark_info.mark_count is
+'批改份数';
+
+comment on column t_mark_info.mark_question_groups is
+'批改题组';
+
+comment on column t_mark_info.mark_examinee_ids is
+'批改的学生数组';
+
+comment on column t_mark_info.creator is
+'创建者';
+
+comment on column t_mark_info.create_time is
+'创建时间';
+
+comment on column t_mark_info.updated_by is
+'更新者';
+
+comment on column t_mark_info.update_time is
+'更新时间';
+
+comment on column t_mark_info.addi is
+'附加信息';
+
+comment on column t_mark_info.status is
+'数据状态';
+
+comment on column t_mark_info.question_ids is
+'批改的题目集';
 
 /*==============================================================*/
 /* Table: t_mistake_correct                                     */
@@ -4612,6 +5512,192 @@ agency_id
 );
 
 /*==============================================================*/
+/* Table: t_paper                                               */
+/*==============================================================*/
+create table if not exists  t_paper (
+   id                   SERIAL               not null,
+   domain_id            INT8                 not null,
+   name                 VARCHAR(256)         null,
+   assembly_type        VARCHAR(10)          null,
+   category             VARCHAR(10)          null,
+   level                VARCHAR(10)          null,
+   suggested_duration   INT4                 null,
+   description          TEXT                 null,
+   tags                 JSONB                null,
+   config               JSONB                null,
+   creator              INT8                 null,
+   create_time          INT8                 null,
+   updated_by           INT8                 null,
+   update_time          INT8                 null,
+   access_mode          VARCHAR(4)           not null default '00',
+   addi                 JSONB                null,
+   status               VARCHAR(10)          null default '00',
+   constraint PK_T_PAPER primary key (id)
+);
+
+comment on table t_paper is
+'试卷';
+
+comment on column t_paper.id is
+'试卷ID';
+
+comment on column t_paper.domain_id is
+'所属域ID';
+
+comment on column t_paper.name is
+'试卷名称';
+
+comment on column t_paper.assembly_type is
+'组卷方式 00：自定义组卷 02：随机组卷 04：智能刷题';
+
+comment on column t_paper.category is
+'试卷用途 00：考试 02：练习';
+
+comment on column t_paper.level is
+'试卷难度 00：简单 02：中等 04：困难';
+
+comment on column t_paper.suggested_duration is
+'建议时长，单位为分钟';
+
+comment on column t_paper.description is
+'试卷说明，介绍整张试卷';
+
+comment on column t_paper.tags is
+'试卷标签';
+
+comment on column t_paper.config is
+'随机组卷或智能刷题配置';
+
+comment on column t_paper.creator is
+'创建者';
+
+comment on column t_paper.create_time is
+'创建时间';
+
+comment on column t_paper.updated_by is
+'更新者';
+
+comment on column t_paper.update_time is
+'更新时间';
+
+comment on column t_paper.access_mode is
+'试卷访问权限，00私有 02共享 04公开';
+
+comment on column t_paper.addi is
+'附加信息';
+
+comment on column t_paper.status is
+'状态 00：正常， 02：异常';
+
+/*==============================================================*/
+/* Table: t_paper_group                                         */
+/*==============================================================*/
+create table if not exists  t_paper_group (
+   id                   SERIAL               not null,
+   paper_id             INT8                 not null,
+   name                 TEXT                 null,
+   "order"              INT4                 null,
+   creator              INT8                 null,
+   create_time          INT8                 null,
+   updated_by           INT8                 null,
+   update_time          INT8                 null,
+   addi                 JSONB                null,
+   status               VARCHAR(10)          null default '00',
+   constraint PK_T_PAPER_GROUP primary key (id)
+);
+
+comment on table t_paper_group is
+'试卷题组';
+
+comment on column t_paper_group.id is
+'题组ID';
+
+comment on column t_paper_group.paper_id is
+'试卷ID';
+
+comment on column t_paper_group.name is
+'题组名称';
+
+comment on column t_paper_group."order" is
+'题组排序';
+
+comment on column t_paper_group.creator is
+'创建者';
+
+comment on column t_paper_group.create_time is
+'创建时间';
+
+comment on column t_paper_group.updated_by is
+'更新者';
+
+comment on column t_paper_group.update_time is
+'更新时间';
+
+comment on column t_paper_group.addi is
+'附加信息';
+
+comment on column t_paper_group.status is
+'状态 00：正常， 02：异常';
+
+/*==============================================================*/
+/* Table: t_paper_question                                      */
+/*==============================================================*/
+create table if not exists  t_paper_question (
+   id                   SERIAL               not null,
+   bank_question_id     INT8                 not null,
+   "order"              INT4                 null,
+   group_id             INT8                 null,
+   score                FLOAT8               null,
+   sub_score            JSONB                null,
+   creator              INT8                 not null,
+   create_time          INT8                 null,
+   updated_by           INT8                 null,
+   update_time          INT8                 null,
+   addi                 JSONB                null,
+   status               VARCHAR(10)          null default '00',
+   constraint PK_T_PAPER_QUESTION primary key (id)
+);
+
+comment on table t_paper_question is
+'试卷题目';
+
+comment on column t_paper_question.id is
+'试卷题目ID';
+
+comment on column t_paper_question.bank_question_id is
+'题库题目ID';
+
+comment on column t_paper_question."order" is
+'题目序号';
+
+comment on column t_paper_question.group_id is
+'所在题组ID';
+
+comment on column t_paper_question.score is
+'在试卷中的分值';
+
+comment on column t_paper_question.sub_score is
+'主观题小题分 [1,2,3] 分别存储主观题每小题分数';
+
+comment on column t_paper_question.creator is
+'创建者';
+
+comment on column t_paper_question.create_time is
+'创建时间';
+
+comment on column t_paper_question.updated_by is
+'更新者';
+
+comment on column t_paper_question.update_time is
+'更新时间';
+
+comment on column t_paper_question.addi is
+'附加信息';
+
+comment on column t_paper_question.status is
+'状态 00：正常 02：异常';
+
+/*==============================================================*/
 /* Table: t_param                                               */
 /*==============================================================*/
 create table if not exists  t_param (
@@ -5510,6 +6596,197 @@ comment on column t_payment.status is
 '状态, 未缴费: 0, 已缴费: 2, 作废: 4';
 
 /*==============================================================*/
+/* Table: t_practice                                            */
+/*==============================================================*/
+create table if not exists  t_practice (
+   id                   SERIAL not null,
+   paper_id             INT8                 null,
+   exam_paper_id        INT8                 null,
+   name                 VARCHAR(100)         null,
+   correct_mode         VARCHAR(50)          null
+      constraint CK_CORRECT_MODE check (correct_mode is null or (correct_mode IN ('00','02'))),
+   type                 VARCHAR(50)          null
+      constraint CK_TYPE check (type is null or (type IN ('00','02', '04'))),
+   creator              INT8                 not null,
+   create_time          INT8                 null,
+   updated_by           INT8                 null,
+   update_time          INT8                 null,
+   addi                 JSONB                null,
+   status               VARCHAR(50)          null
+      constraint CK_STATUS check (status is null or (status IN ('00','02', '04'))),
+   allowed_attempts     INT4                 null,
+   constraint PK_T_PRACTICE primary key (id)
+);
+
+comment on table t_practice is
+'练习表';
+
+comment on column t_practice.id is
+'练习ID';
+
+comment on column t_practice.paper_id is
+'练习选定的试卷ID';
+
+comment on column t_practice.exam_paper_id is
+'考卷ID';
+
+comment on column t_practice.name is
+'练习名称';
+
+comment on column t_practice.correct_mode is
+'批改方式，00：自动（AI）  10：手动';
+
+comment on column t_practice.type is
+'练习类型，00：经典  02：常练  04：智能';
+
+comment on column t_practice.creator is
+'创建者';
+
+comment on column t_practice.create_time is
+'创建时间';
+
+comment on column t_practice.updated_by is
+'更新者';
+
+comment on column t_practice.update_time is
+'更新时间';
+
+comment on column t_practice.addi is
+'附加信息';
+
+comment on column t_practice.status is
+'状态， 00：未发布  02：未发布  04：已删除';
+
+comment on column t_practice.allowed_attempts is
+'可作答的次数，0：不限制次数 大于0：相应的次数';
+
+ALTER SEQUENCE t_practice_id_seq RESTART WITH 2000;
+
+/*==============================================================*/
+/* Table: t_practice_student                                    */
+/*==============================================================*/
+create table if not exists  t_practice_student (
+   id                   INT4                 not null,
+   practice_id          INT4                 not null,
+   student_id           INT4                 not null,
+   addi                 JSONB                null,
+   creator              INT4                 null,
+   updated_by           INT4                 null,
+   create_time          INT8                 null,
+   update_time          INT8                 null,
+   status               VARCHAR(128)         null,
+   constraint PK_T_PRACTICE_STUDENT primary key (id)
+);
+
+comment on table t_practice_student is
+'t_practice_student';
+
+comment on column t_practice_student.id is
+'主键';
+
+comment on column t_practice_student.practice_id is
+'practice_id';
+
+comment on column t_practice_student.student_id is
+'学生id';
+
+comment on column t_practice_student.addi is
+'addi';
+
+comment on column t_practice_student.creator is
+'creator';
+
+comment on column t_practice_student.updated_by is
+'updated_by';
+
+comment on column t_practice_student.create_time is
+'create_time';
+
+comment on column t_practice_student.update_time is
+'update_time';
+
+comment on column t_practice_student.status is
+'00：正常 02：被删除';
+
+/*==============================================================*/
+/* Table: t_practice_submissions                                */
+/*==============================================================*/
+create table if not exists  t_practice_submissions (
+   id                   SERIAL               not null,
+   exam_paper_id        INT8                 null,
+   student_id           bigint               null,
+   practice_id          bigint               null,
+   start_time           INT8                 null,
+   end_time             INT8                 null,
+   last_start_time      INT8                 null,
+   last_end_time        INT8                 null,
+   elapsed_seconds      INT8                 null,
+   attempt              INT4                 null,
+   remark               VARCHAR              null,
+   creator              INT8                 not null,
+   create_time          INT8                 null,
+   updated_by           INT8                 null,
+   update_time          INT8                 null,
+   status               VARCHAR              null default '00',
+   addi                 JSONB                null,
+   constraint PK_T_PRACTICE_SUBMISSIONS primary key (id)
+);
+
+comment on table t_practice_submissions is
+'t_student_practice';
+
+comment on column t_practice_submissions.id is
+'学生练习ID';
+
+comment on column t_practice_submissions.exam_paper_id is
+'考卷ID';
+
+comment on column t_practice_submissions.student_id is
+'学生ID';
+
+comment on column t_practice_submissions.practice_id is
+'练习ID';
+
+comment on column t_practice_submissions.start_time is
+'开始答题时间';
+
+comment on column t_practice_submissions.end_time is
+'结束答题时间';
+
+comment on column t_practice_submissions.last_start_time is
+'最近一次进入作答的时间';
+
+comment on column t_practice_submissions.last_end_time is
+'最近一次退出作答页面的时间（未提交）';
+
+comment on column t_practice_submissions.elapsed_seconds is
+'这一次练习过去了的时间';
+
+comment on column t_practice_submissions.attempt is
+'当前是第几次作答这个练习';
+
+comment on column t_practice_submissions.remark is
+'备注';
+
+comment on column t_practice_submissions.creator is
+'创建者';
+
+comment on column t_practice_submissions.create_time is
+'创建时间';
+
+comment on column t_practice_submissions.updated_by is
+'更新者';
+
+comment on column t_practice_submissions.update_time is
+'更新时间';
+
+comment on column t_practice_submissions.status is
+'状态 00：允许作答 02 ：不允许作答 04：删除  06：已提交 08：已批改';
+
+comment on column t_practice_submissions.addi is
+'附加信息';
+
+/*==============================================================*/
 /* Table: t_price                                               */
 /*==============================================================*/
 create table if not exists  t_price (
@@ -6241,6 +7518,258 @@ comment on column t_qualification.expertise_id is
 
 comment on column t_qualification.create_time is
 '创建时间';
+
+/*==============================================================*/
+/* Table: t_question                                            */
+/*==============================================================*/
+create table if not exists  t_question (
+   id                   INT4                 not null,
+   type                 VARCHAR(64)          not null,
+   content              TEXT                 null,
+   options              JSONB                null,
+   answers              JSONB                null,
+   score                FLOAT8               null,
+   difficulty           INT4                 not null,
+   tags                 JSONB                null,
+   analysis             TEXT                 null,
+   title                TEXT                 null,
+   answer_file_path     JSONB                null,
+   test_file_path       JSONB                null,
+   input                VARCHAR(128)         null,
+   output               VARCHAR(128)         null,
+   example              JSONB                null,
+   repo                 JSONB                null,
+   "order"              INT8                 null,
+   creator              INT8                 not null,
+   create_time          INT8                 not null,
+   updated_by           INT8                 not null,
+   update_time          INT8                 not null,
+   addi                 JSONB                null,
+   status               VARCHAR(64)          not null default '00',
+   question_attachments_path JSONB                null,
+   access_mode          VARCHAR(4)           not null default '00',
+   belong_to            INT8                 null,
+   constraint PK_T_QUESTION primary key (id)
+);
+
+comment on table t_question is
+'题目表';
+
+comment on column t_question.id is
+'编号';
+
+comment on column t_question.type is
+'类型  00:单选题  02:多选题 04:判断题 06:填空题 08:简答题 10:编程题';
+
+comment on column t_question.content is
+'题目内容';
+
+comment on column t_question.options is
+'题目选项';
+
+comment on column t_question.answers is
+'题目答案';
+
+comment on column t_question.score is
+'题目分值';
+
+comment on column t_question.difficulty is
+'题目难度 1:简单  2:中等 3:困难';
+
+comment on column t_question.tags is
+'题目标签';
+
+comment on column t_question.analysis is
+'题目解析';
+
+comment on column t_question.title is
+'编程题目题干';
+
+comment on column t_question.answer_file_path is
+'答案文件路径';
+
+comment on column t_question.test_file_path is
+'测试文件路径';
+
+comment on column t_question.input is
+'输入';
+
+comment on column t_question.output is
+'输出';
+
+comment on column t_question.example is
+'示例';
+
+comment on column t_question.repo is
+'仓库';
+
+comment on column t_question."order" is
+'顺序';
+
+comment on column t_question.creator is
+'创建者';
+
+comment on column t_question.create_time is
+'创建时间';
+
+comment on column t_question.updated_by is
+'更新者';
+
+comment on column t_question.update_time is
+'更新时间';
+
+comment on column t_question.addi is
+'附加信息';
+
+comment on column t_question.status is
+'状态，00:正常 02:作废 04:异常';
+
+comment on column t_question.question_attachments_path is
+'题目附件url数组';
+
+comment on column t_question.access_mode is
+'题目访问权限，00私有 02共享 04公开';
+
+comment on column t_question.belong_to is
+'归属于某个题库';
+
+/*==============================================================*/
+/* Index: idx_question_id                                       */
+/*==============================================================*/
+create unique index if not exists  idx_question_id on t_question (
+id
+);
+
+/*==============================================================*/
+/* Index: idx_question_id_creator                               */
+/*==============================================================*/
+create unique index if not exists  idx_question_id_creator on t_question (
+( id ),
+( creator )
+);
+
+/*==============================================================*/
+/* Table: t_question_bank                                       */
+/*==============================================================*/
+create table if not exists  t_question_bank (
+   id                   SERIAL               not null,
+   type                 VARCHAR(64)          not null,
+   name                 VARCHAR(64)          not null default '未命名题库',
+   tags                 JSONB                null,
+   repos                JSONB                null,
+   default_repo         VARCHAR(64)          null,
+   creator              INT8                 not null,
+   create_time          INT8                 not null,
+   updated_by           INT8                 not null,
+   update_time          INT8                 not null,
+   remark               VARCHAR(128)         null,
+   addi                 JSONB                null,
+   status               VARCHAR(64)          not null default '00',
+   question_count       INT8                 not null default 0,
+   access_mode          VARCHAR(4)           not null default '00',
+   constraint PK_T_QUESTION_BANK primary key (id)
+);
+
+comment on table t_question_bank is
+'题库表';
+
+comment on column t_question_bank.id is
+'编号';
+
+comment on column t_question_bank.type is
+'类型： 00:理论题库，02:编程题库';
+
+comment on column t_question_bank.name is
+'名字';
+
+comment on column t_question_bank.tags is
+'标签';
+
+comment on column t_question_bank.repos is
+'仓库';
+
+comment on column t_question_bank.default_repo is
+'题库git repo';
+
+comment on column t_question_bank.creator is
+'创建者';
+
+comment on column t_question_bank.create_time is
+'创建时间';
+
+comment on column t_question_bank.updated_by is
+'更新者';
+
+comment on column t_question_bank.update_time is
+'更新时间';
+
+comment on column t_question_bank.remark is
+'备注';
+
+comment on column t_question_bank.addi is
+'附加信息';
+
+comment on column t_question_bank.status is
+'状态，00:正常 02:作废 04:异常';
+
+comment on column t_question_bank.question_count is
+'题库题目数量';
+
+comment on column t_question_bank.access_mode is
+'题库访问权限，00私有 02共享 04公开';
+
+/*==============================================================*/
+/* Index: idx_question_bank_id                                  */
+/*==============================================================*/
+create unique index if not exists  idx_question_bank_id on t_question_bank (
+id
+);
+
+/*==============================================================*/
+/* Index: idx_question_bank_id_creator                          */
+/*==============================================================*/
+create unique index if not exists  idx_question_bank_id_creator on t_question_bank (
+id,
+creator
+);
+
+/*==============================================================*/
+/* Table: t_question_bank_share                                 */
+/*==============================================================*/
+create table if not exists  t_question_bank_share (
+   bank_id              INT8                 not null,
+   user_id              INT8                 not null,
+   creator              INT8                 not null,
+   create_time          INT8                 not null,
+   updated_by           INT8                 not null,
+   update_time          INT8                 not null,
+   status               VARCHAR(4)           not null default '00',
+   constraint PK_T_QUESTION_BANK_SHARE primary key (bank_id, user_id)
+);
+
+comment on table t_question_bank_share is
+'题库共享表';
+
+comment on column t_question_bank_share.bank_id is
+'被分享题库';
+
+comment on column t_question_bank_share.user_id is
+'被分享者';
+
+comment on column t_question_bank_share.creator is
+'创建者';
+
+comment on column t_question_bank_share.create_time is
+'创建时间';
+
+comment on column t_question_bank_share.updated_by is
+'更新者';
+
+comment on column t_question_bank_share.update_time is
+'更新时间';
+
+comment on column t_question_bank_share.status is
+'状态：00正常 02废除';
 
 /*==============================================================*/
 /* Table: t_region                                              */
@@ -7481,6 +9010,92 @@ open_id
 );
 
 /*==============================================================*/
+/* Table: t_student_answers                                     */
+/*==============================================================*/
+create table if not exists  t_student_answers (
+   id                   INT4                 not null,
+   type                 VARCHAR(128)         null,
+   examinee_id          INT8                 null,
+   practice_submission_id INT8                 null,
+   question_id          INT8                 null,
+   answer               JSONB                not null,
+   answer_score         FLOAT8               null,
+   marker               JSONB                null,
+   "order"              INT4                 null,
+   group_id             INT8                 null,
+   actual_options       JSONB                null,
+   actual_answers       JSONB                null,
+   answer_attach        JSONB                null,
+   creator              INT8                 not null,
+   create_time          INT8                 null,
+   updated_by           INT8                 null,
+   update_time          INT8                 null,
+   addi                 JSONB                null,
+   status               VARCHAR(64)          null default '0',
+   constraint PK_T_STUDENT_ANSWERS primary key (id, answer)
+);
+
+comment on table t_student_answers is
+'考卷题目得分表';
+
+comment on column t_student_answers.id is
+'编号';
+
+comment on column t_student_answers.type is
+'类型, 00:考试  02:练习';
+
+comment on column t_student_answers.examinee_id is
+'学生考试ID';
+
+comment on column t_student_answers.practice_submission_id is
+'学生练习ID';
+
+comment on column t_student_answers.question_id is
+'考卷题目ID';
+
+comment on column t_student_answers.answer is
+'学生答案';
+
+comment on column t_student_answers.answer_score is
+'学生答案得分';
+
+comment on column t_student_answers.marker is
+'题目批阅信息';
+
+comment on column t_student_answers."order" is
+'题目排序';
+
+comment on column t_student_answers.group_id is
+'所在题组ID';
+
+comment on column t_student_answers.actual_options is
+'实际题目的选项';
+
+comment on column t_student_answers.actual_answers is
+'实际题目客观题答案';
+
+comment on column t_student_answers.answer_attach is
+'考试附件路径';
+
+comment on column t_student_answers.creator is
+'创建者';
+
+comment on column t_student_answers.create_time is
+'创建时间';
+
+comment on column t_student_answers.updated_by is
+'更新者';
+
+comment on column t_student_answers.update_time is
+'更新时间';
+
+comment on column t_student_answers.addi is
+'附加信息';
+
+comment on column t_student_answers.status is
+'数据状态';
+
+/*==============================================================*/
 /* Table: t_sys_ver                                             */
 /*==============================================================*/
 create table if not exists  t_sys_ver (
@@ -7536,9 +9151,24 @@ comment on column t_sys_ver.status is
 ALTER SEQUENCE t_sys_ver_id_seq RESTART WITH 20000;
 
 insert into t_sys_ver(id,name,ver,create_time,update_time,remark)
-  values(1000,'业务模型','3.0.0.1',
-  'Monday, December 5, 2016 9:52:53 AM','Wednesday, July 30, 2025 9:14:55 AM',
-  '3.0.0.1
+  values(1000,'业务模型','3.1.4.0',
+  '2016年12月5日 9:52:53','2025年8月9日 11:14:56',
+  '3.1.4.0
+增加考卷、考卷题组、考卷题目、学生答卷外键 + 级联删除 修改题库、题目、共享题目表关于时间字段的属性为int8
+
+3.1.3.0
+优化v_paper视图逻辑，添加v_z_grade_exam_session_info和v_z_grade_practice_statistics,删除v_paper_share和t_resource_share表,补充v_student_practice_total_score的usedtime字段
+
+3.1.2.0
+更改v_paper 与v_exam_paper视图生成逻辑
+
+3.1.1.0
+为v_examinee_info添加serial_num,以及为t_exam_site添加了domain_id和sys_user
+
+3.1.0.0
+添加考试系统的表和视图
+
+3.0.0.1
 重构表t_user/t_domain/t_user_doman的初始化数据
 
 2.8.2.1
@@ -8354,6 +9984,44 @@ disabled,无效
 expired,过期、无效';
 
 ALTER SEQUENCE t_tdc_id_seq RESTART WITH 10000;
+
+/*==============================================================*/
+/* Table: t_teacher_student                                     */
+/*==============================================================*/
+create table if not exists  t_teacher_student (
+   id                   SERIAL               not null,
+   creator              INT8                 not null,
+   create_time          TIMESTAMP            null,
+   updated_by           INT8                 null,
+   update_time          TIMESTAMP            null,
+   status               VARCHAR(150)         null,
+   addi                 JSONB                null,
+   constraint PK_T_TEACHER_STUDENT primary key (id)
+);
+
+comment on table t_teacher_student is
+'学生教师关联表';
+
+comment on column t_teacher_student.id is
+'表主键ID';
+
+comment on column t_teacher_student.creator is
+'创建者';
+
+comment on column t_teacher_student.create_time is
+'创建时间';
+
+comment on column t_teacher_student.updated_by is
+'更新者';
+
+comment on column t_teacher_student.update_time is
+'更新时间';
+
+comment on column t_teacher_student.status is
+'状态 00：正常  02：异常';
+
+comment on column t_teacher_student.addi is
+'附加信息';
 
 /*==============================================================*/
 /* Table: t_undertaker                                          */
@@ -9246,6 +10914,216 @@ drop table if exists t_v_domain_user;
 create table if not exists t_v_domain_user as select * from v_domain_user;
 
 /*==============================================================*/
+/* View: v_exam_paper                                           */
+/*==============================================================*/
+create or replace view v_exam_paper as
+WITH
+question_agg AS(
+	SELECT 
+    	group_id,-- 组合数据时，根据group_id找到对应的题目数组
+    	jsonb_agg(
+        	jsonb_build_object(
+            	'id', id,
+                'type', type,
+                'content', content,
+                'options', options,
+                'answers', answers,
+                'score', score, 
+                'analysis', analysis,
+                'title', title,
+                'answer_file_path', answer_file_path,
+                'test_file_path', test_file_path,
+                'input', input,
+                'output', output,
+                'example', example,
+                'repo', repo,
+                'order', "order", 
+                'group_id', group_id,
+                'status', status,
+                'question_attachments_path', question_attachments_path
+            ) ORDER BY "order" -- 在构成json，就是插入数组的过程，就需要顺序判别
+        )AS questions -- 起别名，能取出数组
+    FROM t_exam_paper_question
+    WHERE status = '00'
+    GROUP BY group_id
+),
+-- 构建题组数据
+group_data AS (
+	SELECT 
+    	pg.id,
+        pg.name,
+        pg."order",
+        pg.creator,
+        pg.create_time,
+        pg.updated_by,
+        pg.update_time,
+        pg.status,
+        pg.addi,
+        pg.exam_paper_id,
+        COALESCE(qa.questions, '[]'::jsonb) AS questions -- 取出前面阶段构建好的题目
+    FROM t_exam_paper_group pg
+    LEFT JOIN question_agg qa ON qa.group_id = pg.id
+    WHERE pg.status != '02'
+),
+
+-- 聚合题组数据为json
+paper_groups AS (
+	SELECT 
+    	exam_paper_id,
+    	jsonb_agg(
+        	jsonb_build_object(
+            	'id',id,
+    			'name',name,
+                'order',"order",
+                'creator',creator,
+                'create_time',create_time,
+                'updated_by',updated_by,
+                'update_time',update_time,
+                'status',status,
+                'addi',addi,
+                'questions',questions
+            ) ORDER BY "order"
+        ) AS groups_data
+    FROM group_data
+    GROUP BY exam_paper_id
+)
+SELECT 	
+	p.id,
+	p.exam_session_id,
+    p.practice_id,
+	p.name,
+	p.creator,
+	p.create_time,
+	p.updated_by,
+	p.update_time,
+	p.status,
+	COALESCE(SUM(pq.score), 0) AS total_score,
+    COUNT(pq.id) AS question_count,
+    COUNT(DISTINCT pg.id) AS group_count,
+    COALESCE(pgrp.groups_data, '[]'::jsonb) AS groups_data
+FROM t_exam_paper p 
+LEFT JOIN t_exam_paper_group pg ON pg.exam_paper_id = p.id AND pg.status != '02'
+LEFT JOIN t_exam_paper_question pq ON pq.group_id = pg.id AND pq.status = '00'
+LEFT JOIN paper_groups pgrp ON pgrp.exam_paper_id = p.id
+WHERE p.status = '00'
+GROUP BY p.id,p.exam_session_id,p.practice_id,pgrp.groups_data,p.status;
+
+comment on view v_exam_paper is
+'考卷';
+
+drop table if exists t_v_exam_paper;
+
+create table t_v_exam_paper as select * from v_exam_paper;
+
+/*==============================================================*/
+/* View: v_exam_respondent_count                                */
+/*==============================================================*/
+create or replace view v_exam_respondent_count as
+SELECT es.id                                     AS exam_session_id,
+       COALESCE(count(DISTINCT e.id), 0::bigint) AS respondent_count
+FROM t_exam_session es
+         LEFT JOIN t_examinee e ON es.id = e.exam_session_id AND e.status::text = '10'::text
+GROUP BY es.id;
+
+comment on view v_exam_respondent_count is
+'考试作答人数统计视图';
+
+drop table if exists t_v_exam_respondent_count;
+
+create table t_v_exam_respondent_count as select * from v_exam_respondent_count;
+
+/*==============================================================*/
+/* View: v_exam_teacher_marked_count                            */
+/*==============================================================*/
+create or replace view v_exam_teacher_marked_count as
+ SELECT e.exam_session_id,
+    m.teacher_id,
+    COALESCE(count(DISTINCT e.id), 0::bigint) AS marked_count
+   FROM t_mark m
+     LEFT JOIN t_examinee e ON m.examinee_id = e.id AND e.status::text = '10'::text
+  WHERE m.score IS NOT NULL
+  GROUP BY e.exam_session_id, m.teacher_id;
+
+comment on view v_exam_teacher_marked_count is
+'某场考试教师已批改的学生人数统计视图';
+
+drop table if exists t_v_exam_teacher_marked_count;
+
+create table t_v_exam_teacher_marked_count as select * from v_exam_teacher_marked_count;
+
+/*==============================================================*/
+/* View: v_exam_unmarked_student_count                          */
+/*==============================================================*/
+create or replace view v_exam_unmarked_student_count as
+SELECT e.exam_session_id,
+       COALESCE(count(DISTINCT sa.examinee_id), 0::bigint) AS unmarked_student_count
+FROM t_examinee e
+         LEFT JOIN t_student_answers sa ON sa.examinee_id = e.id AND sa.answer_score IS NULL
+WHERE e.status::text = '10'::text
+GROUP BY e.exam_session_id;
+
+comment on view v_exam_unmarked_student_count is
+'考试待批改人数统计视图';
+
+drop table if exists t_v_exam_unmarked_student_count;
+
+create table t_v_exam_unmarked_student_count as select * from v_exam_unmarked_student_count;
+
+/*==============================================================*/
+/* View: v_examinee_info                                        */
+/*==============================================================*/
+create or replace view v_examinee_info as
+ SELECT DISTINCT examinees.id,
+    examinees.student_id,
+    users.account,
+    users.mobile_phone,
+    users.user_token,
+    users.official_name,
+    users.id_card_no,
+    examinees.examinee_number,
+    exam_infos.id AS exam_id,
+    exam_infos.name AS exam_name,
+    exam_sessions.id AS exam_session_id,
+    exam_papers.id AS exam_paper_id,
+    exam_papers.name AS exam_paper_name,
+    examinees.exam_room AS exam_room_id,
+    exam_rooms.name AS exam_room_name,
+    examinees.extra_time,
+    COALESCE(next_sessions.start_time - (exam_sessions.end_time + examinees.extra_time), (24 * 60 * 60 * 1000)::bigint) AS extendable_time,
+    exam_sessions.start_time,
+    exam_sessions.end_time,
+    COALESCE(exam_sessions.end_time + examinees.extra_time, exam_sessions.end_time) AS actual_end_time,
+    examinees.status AS examinee_status,
+    examinees.remark,
+    exam_sessions.period_mode,
+    COALESCE(exam_sessions.start_time + exam_sessions.late_entry_time * 60 * 1000, exam_sessions.start_time) AS allow_entry_time,
+    COALESCE(exam_sessions.end_time - exam_sessions.early_submission_time * 60 * 1000, exam_sessions.end_time) AS allow_submit_time,
+    exam_infos.mode,
+    examinees.end_time AS examinee_end_time,
+    examinees.start_time AS examinee_start_time,
+    examinees.serial_number
+   FROM t_examinee examinees
+     JOIN t_exam_session exam_sessions ON exam_sessions.id = examinees.exam_session_id
+     JOIN t_exam_info exam_infos ON exam_infos.id = exam_sessions.exam_id
+     JOIN t_exam_paper exam_papers ON exam_papers.exam_session_id = exam_sessions.id
+     LEFT JOIN t_exam_room exam_rooms ON exam_rooms.id = examinees.exam_room
+     JOIN t_user users ON users.id = examinees.student_id
+     LEFT JOIN LATERAL ( SELECT exam_sessions_1.start_time
+           FROM t_exam_session exam_sessions_1
+          WHERE exam_sessions_1.exam_id = exam_infos.id AND exam_sessions_1.start_time > (exam_sessions.end_time + examinees.extra_time)
+          ORDER BY exam_sessions_1.start_time
+         LIMIT 1) next_sessions ON true
+  GROUP BY examinees.id, exam_sessions.id, exam_infos.id, exam_papers.id, exam_rooms.id, users.id, exam_sessions.start_time, exam_sessions.end_time, examinees.extra_time, next_sessions.start_time
+  ORDER BY examinees.id DESC;
+
+comment on view v_examinee_info is
+'考生视图';
+
+drop table if exists t_v_examinee_info;
+
+create table t_v_examinee_info as select * from v_examinee_info;
+
+/*==============================================================*/
 /* View: v_insurance_policy                                     */
 /*==============================================================*/
 create or replace view v_insurance_policy as
@@ -10065,6 +11943,132 @@ comment on view v_insurer is
 
 drop table if exists t_v_insurer;
 create table t_v_insurer as select * from v_insurer limit 1;
+
+/*==============================================================*/
+/* View: v_invigilation_info                                    */
+/*==============================================================*/
+create or replace view v_invigilation_info as
+ WITH invigilation_statistics AS (
+         SELECT examinees.exam_session_id,
+            examinees.exam_room AS exam_room_id,
+            count(DISTINCT examinees.student_id) AS examinee_num,
+            sum(
+                CASE
+                    WHEN examinees.status::text = '02'::text THEN 1
+                    ELSE 0
+                END) AS absentee_num,
+            sum(
+                CASE
+                    WHEN examinees.status::text = '06'::text THEN 1
+                    ELSE 0
+                END) AS cheater_num,
+            sum(
+                CASE
+                    WHEN examinees.status::text = '14'::text THEN 1
+                    ELSE 0
+                END) AS abnormal_examinee_num,
+            sum(
+                CASE
+                    WHEN examinees.extra_time > 0 THEN 1
+                    ELSE 0
+                END) AS extended_time_num
+           FROM t_examinee examinees
+          GROUP BY examinees.exam_session_id, examinees.exam_room
+        )
+ SELECT array_agg(DISTINCT users.id) AS invigilator_ids,
+    array_agg(users.official_name) AS invigilator_names,
+    count(invigilations.id) AS invigilator_num,
+    exam_infos.id AS exam_id,
+    exam_infos.type AS exam_type,
+    exam_infos.mode AS exam_mode,
+    exam_sessions.id AS exam_session_id,
+    exam_sessions.start_time,
+    exam_sessions.end_time,
+    exam_sessions.status,
+    exam_sites.id AS exam_site_id,
+    exam_sites.name AS exam_site_name,
+    exam_rooms.id AS exam_room_id,
+    exam_rooms.name AS exam_room_name,
+    exam_rooms.capacity AS exam_room_capacity,
+    exam_papers.name AS exam_session_name,
+    exam_records.content AS record,
+    exam_records.basic_eval,
+    invi_stat.examinee_num,
+    invi_stat.absentee_num,
+    invi_stat.cheater_num,
+    invi_stat.abnormal_examinee_num,
+    invi_stat.extended_time_num
+   FROM t_exam_session exam_sessions
+     LEFT JOIN t_invigilation invigilations ON invigilations.exam_session_id = exam_sessions.id
+     LEFT JOIN t_exam_room exam_rooms ON invigilations.exam_room = exam_rooms.id
+     JOIN t_exam_info exam_infos ON exam_infos.id = exam_sessions.exam_id
+     LEFT JOIN t_user users ON users.id = invigilations.invigilator
+     LEFT JOIN t_exam_paper exam_papers ON exam_papers.exam_session_id = exam_sessions.id
+     LEFT JOIN t_exam_site exam_sites ON exam_sites.id = exam_rooms.exam_site
+     LEFT JOIN t_exam_record exam_records ON exam_records.exam_session = invigilations.exam_session_id AND exam_records.exam_room = invigilations.exam_room
+     LEFT JOIN invigilation_statistics invi_stat ON invi_stat.exam_session_id = exam_sessions.id AND (exam_infos.mode::text = '00'::text OR exam_infos.mode::text = '02'::text AND invi_stat.exam_room_id = exam_rooms.id)
+  GROUP BY exam_sessions.id, exam_infos.id, exam_sites.id, exam_rooms.id, exam_papers.name, exam_records.content, exam_records.basic_eval, invi_stat.examinee_num, invi_stat.absentee_num, invi_stat.cheater_num, invi_stat.abnormal_examinee_num, invi_stat.extended_time_num
+  ORDER BY exam_sessions.start_time DESC;
+
+comment on view v_invigilation_info is
+'监考视图';
+
+drop table if exists t_v_invigilation_info;
+create table t_v_invigilation_info as select * from v_invigilation_info;
+
+/*==============================================================*/
+/* View: v_latest_pending_mark_practice                         */
+/*==============================================================*/
+create or replace view v_latest_pending_mark_practice as
+ SELECT DISTINCT ON (practice_id, student_id) id AS submission_id,
+    practice_id,
+    student_id,
+    attempt
+   FROM t_practice_submissions
+  WHERE ((status)::text = '06'::text)
+  ORDER BY practice_id, student_id, attempt DESC;
+
+comment on view v_latest_pending_mark_practice is
+'v_latest_pending_mark_practice';
+
+ drop table if exists t_v_latest_pending_mark_practice;
+create table t_v_latest_pending_mark_practice as select * from v_latest_pending_mark_practice;
+
+/*==============================================================*/
+/* View: v_latest_submitted_practice                            */
+/*==============================================================*/
+create or replace view v_latest_submitted_practice as
+ SELECT DISTINCT ON (practice_id, student_id) id AS submission_id,
+    practice_id,
+    student_id,
+    attempt
+   FROM t_practice_submissions
+  WHERE ((status)::text = '08'::text)
+  ORDER BY practice_id, student_id, attempt DESC;
+
+comment on view v_latest_submitted_practice is
+'v_latest_submitted_practice';
+
+ drop table if exists t_v_latest_submitted_practice;
+create table t_v_latest_submitted_practice as select * from v_latest_submitted_practice;
+
+/*==============================================================*/
+/* View: v_latest_unsubmitted_practice                          */
+/*==============================================================*/
+create or replace view v_latest_unsubmitted_practice as
+ SELECT DISTINCT ON (practice_id, student_id) id AS submission_id,
+    practice_id,
+    student_id,
+    attempt
+   FROM t_practice_submissions
+  WHERE ((status)::text = '00'::text)
+  ORDER BY practice_id, student_id, attempt DESC;
+
+comment on view v_latest_unsubmitted_practice is
+'v_latest_unsubmitted_practice';
+
+ drop table if exists t_v_latest_unsubmitted_practice;
+create table t_v_latest_unsubmitted_practice as select * from v_latest_unsubmitted_practice;
 
 /*==============================================================*/
 /* View: v_manager_school                                       */
@@ -11003,6 +13007,143 @@ drop table if exists t_v_order_sum;
 create table t_v_order_sum as select * from v_order_sum limit 1;
 
 /*==============================================================*/
+/* View: v_paper                                                */
+/*==============================================================*/
+create or replace view v_paper as
+WITH paper_basic AS (
+         SELECT p_1.id AS paper_id,
+            p_1.domain_id,
+            p_1.name,
+            p_1.assembly_type,
+            p_1.category,
+            p_1.level,
+            p_1.suggested_duration,
+            p_1.description,
+            p_1.tags,
+            p_1.config,
+            p_1.creator,
+            -- 保持 jsonb_build_object（生成 jsonb 类型）
+            jsonb_build_object('id', u.id, 'official_name', u.official_name, 'account', u.account, 'mobile_phone', u.mobile_phone, 'email', u.email) AS creator_info,
+            p_1.create_time,
+            p_1.updated_by,
+            p_1.update_time,
+            p_1.status AS paper_status,
+            p_1.access_mode
+           FROM t_paper p_1
+             LEFT JOIN t_user u ON p_1.creator = u.id
+          WHERE p_1.status::text = '00'::text
+        ), paper_valid_groups AS (
+         SELECT pg.id AS group_id,
+            pg.paper_id,
+            pg.name AS group_name,
+            pg."order" AS group_order,
+            pg.creator AS group_creator,
+            pg.create_time AS group_create_time,
+            pg.updated_by AS group_updated_by,
+            pg.update_time AS group_update_time,
+            pg.status AS group_status,
+            pg.addi
+           FROM t_paper_group pg
+          WHERE pg.status::text <> '02'::text
+        ), group_valid_questions AS (
+         SELECT pq.group_id,
+            -- 将 json_agg 改为 jsonb_agg（生成 jsonb 数组）
+            jsonb_agg(
+                jsonb_build_object(
+                    'id', pq.id, 
+                    'bank_question_id', q.id, 
+                    'type', q.type, 
+                    'content', q.content, 
+                    'options', q.options, 
+                    'answers', q.answers, 
+                    'score', pq.score, 
+                    'sub_score', pq.sub_score, 
+                    'difficulty', q.difficulty, 
+                    'tags', q.tags, 
+                    'analysis', q.analysis, 
+                    'title', q.title, 
+                    'answer_file_path', q.answer_file_path, 
+                    'test_file_path', q.test_file_path, 
+                    'input', q.input, 
+                    'output', q.output, 
+                    'example', q.example, 
+                    'repo', q.repo, 
+                    'order', pq."order", 
+                    'group_id', pq.group_id, 
+                    'status', q.status, 
+                    'question_attachments_path', q.question_attachments_path
+                ) ORDER BY pq."order"
+            ) AS questions
+           FROM t_paper_question pq
+             JOIN t_question q ON pq.bank_question_id = q.id AND q.status::text = '00'::text
+          WHERE pq.status::text <> '02'::text
+          GROUP BY pq.group_id
+        ), group_with_questions AS (
+         SELECT g_1.paper_id,
+            -- 将 json_agg 改为 jsonb_agg（生成 jsonb 数组）
+            jsonb_agg(
+                jsonb_build_object(
+                    'id', g_1.group_id, 
+                    'name', g_1.group_name, 
+                    'order', g_1.group_order, 
+                    'creator', g_1.group_creator, 
+                    'create_time', g_1.group_create_time, 
+                    'updated_by', g_1.group_updated_by, 
+                    'update_time', g_1.group_update_time, 
+                    'status', g_1.group_status, 
+                    'addi', g_1.addi, 
+                    -- COALESCE 默认值改为 jsonb 类型
+                    'questions', COALESCE(q.questions, '[]'::jsonb)
+                ) ORDER BY g_1.group_order
+            ) AS groups_data
+           FROM paper_valid_groups g_1
+             LEFT JOIN group_valid_questions q ON g_1.group_id = q.group_id
+          GROUP BY g_1.paper_id
+        ), paper_stats AS (
+         SELECT p_1.paper_id,
+            COALESCE(sum(pq.score), 0::double precision) AS total_score,
+            count(pq.id) AS question_count,
+            count(DISTINCT g_1.group_id) AS group_count
+           FROM paper_basic p_1
+             LEFT JOIN paper_valid_groups g_1 ON p_1.paper_id = g_1.paper_id
+             LEFT JOIN t_paper_question pq ON g_1.group_id = pq.group_id AND pq.status::text <> '02'::text
+          GROUP BY p_1.paper_id
+        )
+ SELECT p.paper_id AS id,
+    p.domain_id,
+    p.name,
+    p.assembly_type,
+    p.category,
+    p.level,
+    p.suggested_duration,
+    p.description,
+    p.tags,
+    p.config,
+    p.creator,
+    p.creator_info,
+    p.create_time,
+    p.updated_by,
+    p.update_time,
+    p.paper_status AS status,
+    p.access_mode,
+    s.total_score,
+    s.question_count,
+    s.group_count,
+    -- COALESCE 默认值改为 jsonb 类型
+    COALESCE(g.groups_data, '[]'::jsonb) AS groups_data
+   FROM paper_basic p
+     JOIN paper_stats s ON p.paper_id = s.paper_id
+     LEFT JOIN group_with_questions g ON p.paper_id = g.paper_id
+  ORDER BY p.domain_id, p.update_time;
+
+comment on view v_paper is
+'试卷';
+
+drop table if exists t_v_paper;
+
+create table t_v_paper as select * from v_paper;
+
+/*==============================================================*/
 /* View: v_param                                                */
 /*==============================================================*/
 create or replace view v_param as
@@ -11062,6 +13203,23 @@ comment on view v_payment is
 
 drop table if exists t_v_payment;
 create table t_v_payment as select * from v_payment limit 1;
+
+/*==============================================================*/
+/* View: v_practice_unmarked_student_cnt                        */
+/*==============================================================*/
+create or replace view v_practice_unmarked_student_cnt as
+SELECT p.id                                       AS practice_id,
+       COALESCE(count(DISTINCT ps.id), 0::bigint) AS unmarked_count
+FROM t_practice p
+         LEFT JOIN t_practice_submissions ps ON ps.practice_id = p.id AND ps.status::text = '06'::text
+GROUP BY p.id;
+
+comment on view v_practice_unmarked_student_cnt is
+'练习待批改人数统计视图';
+
+drop table if exists t_v_practice_unmarked_student_cnt;
+
+create table t_v_practice_unmarked_student_cnt as select * from v_practice_unmarked_student_cnt;
 
 /*==============================================================*/
 /* View: v_region                                               */
@@ -11216,6 +13374,99 @@ drop table if exists t_v_report_claims;
 create table t_v_report_claims as select * from v_report_claims limit 1;
 
 /*==============================================================*/
+/* View: v_student_answer_question                              */
+/*==============================================================*/
+create or replace view v_student_answer_question as
+SELECT p.exam_session_id,
+       p.practice_id,
+       q.id  AS question_id,
+       q."order",
+       q.type,
+       sa.answer,
+       sa.answer_score,
+       sa.actual_answers,
+       sa.actual_options,
+       e.id  AS examinee_id,
+       ps.id AS practice_submission_id
+FROM t_student_answers sa
+         LEFT JOIN t_examinee e ON e.id = sa.examinee_id
+         LEFT JOIN t_practice_submissions ps ON ps.id = sa.practice_submission_id
+         JOIN t_exam_paper p ON p.exam_session_id = e.exam_session_id OR p.practice_id = ps.practice_id
+         JOIN t_paper_group pg ON pg.paper_id = p.id
+         JOIN t_exam_paper_question q ON q.group_id = p.id
+WHERE e.status::text = '10'::text
+   OR ps.status::text <> '04'::text;
+
+comment on view v_student_answer_question is
+'考试/练习-学生作答题目视图';
+
+drop table if exists t_v_student_answer_question;
+
+create table t_v_student_answer_question as select * from v_student_answer_question;
+
+/*==============================================================*/
+/* View: v_student_exam_total_score                             */
+/*==============================================================*/
+create or replace view v_student_exam_total_score as
+ SELECT te.student_id,
+    te.id AS examinee_id,
+    te.exam_session_id,
+    es.exam_id,
+    e.name,
+    e.submitted,
+    es.start_time,
+    es.end_time,
+    sum(ta.answer_score) AS total_score,
+    es.status
+   FROM t_examinee te
+     JOIN t_student_answers ta ON te.id = ta.examinee_id
+     JOIN t_exam_session es ON te.exam_session_id = es.id
+     JOIN t_exam_info e ON es.exam_id = e.id
+  WHERE ta.type::text = '00'::text
+  GROUP BY e.name, te.student_id, te.exam_session_id, es.exam_id, e.submitted, es.start_time, es.end_time, es.status, te.id;
+
+comment on view v_student_exam_total_score is
+'学生考试成绩视图';
+
+drop table if exists t_v_student_exam_total_score;
+create table t_v_student_exam_total_score as select * from v_student_exam_total_score;
+
+/*==============================================================*/
+/* View: v_student_practice_total_score                         */
+/*==============================================================*/
+create or replace view v_student_practice_total_score as
+ SELECT DISTINCT ps.id,
+    ps.practice_id,
+    p.name,
+    ps.student_id,
+    ps.exam_paper_id,
+        CASE
+            WHEN bool_or(a.answer_score IS NULL) THEN NULL::double precision
+            ELSE sum(a.answer_score)
+        END AS total_score,
+    p.type,
+    ps.attempt,
+    ps.status,
+    count(
+        CASE
+            WHEN a.answer_score <> epq.score THEN 1
+            ELSE NULL::integer
+        END) AS wrong_count,
+    (ps.end_time - ps.start_time) AS used_time
+   FROM t_practice_submissions ps
+     JOIN t_student_answers a ON ps.id = a.practice_submission_id
+     JOIN t_exam_paper_question epq ON a.question_id = epq.id
+     JOIN t_practice p ON ps.practice_id = p.id
+  WHERE ps.status::text = '08'::text
+  GROUP BY ps.id, p.id, ps.attempt, ps.student_id, ps.end_time, ps.start_time;
+
+comment on view v_student_practice_total_score is
+'展示学生练习成绩视图                      ';
+
+drop table if exists t_v_student_practice_total_score;
+create table t_v_student_practice_total_score as select * from v_student_practice_total_score;
+
+/*==============================================================*/
 /* View: v_user                                                 */
 /*==============================================================*/
 create or replace view v_user as
@@ -11364,6 +13615,197 @@ comment on view v_user_domain_api is
 drop table if exists t_v_user_domain_api;
 create table if not exists t_v_user_domain_api as select * from v_user_domain_api limit 1;
 
+/*==============================================================*/
+/* View: v_x_grade_list                                         */
+/*==============================================================*/
+create or replace view v_x_grade_list as
+ SELECT ei.id AS exam_id,
+    ei.name AS exam_name,
+    ei.type AS exam_type,
+    ets.exam_session_id,
+    ets.total_score,
+    es.start_time,
+    es.end_time,
+    es.mark_mode,
+    ep.id AS exam_paper_id,
+    ep.name AS paper_name
+   FROM t_exam_info ei
+     JOIN v_student_exam_total_score ets ON ei.id = ets.exam_id
+     LEFT JOIN t_exam_session es ON es.id = ets.exam_session_id
+     LEFT JOIN t_exam_paper ep ON ep.exam_session_id = ets.exam_session_id;
+
+comment on view v_x_grade_list is
+'v_x_grade_list';
+
+drop table if exists t_v_grade_list;
+create table t_v_grade_list as select * from v_x_grade_list;
+
+/*==============================================================*/
+/* View: v_y_max_submitted_view                                 */
+/*==============================================================*/
+create or replace view v_y_max_submitted_view as
+ SELECT DISTINCT ON (practice_id, student_id) id,
+    student_id,
+    attempt,
+    wrong_count,
+    total_score,
+    practice_id
+   FROM v_student_practice_total_score
+  ORDER BY practice_id, student_id, attempt DESC;
+
+comment on view v_y_max_submitted_view is
+'v_y_max_submitted_view';
+
+ drop table if exists t_v_max_submitted_view;
+create table t_v_max_submitted_view as select * from v_y_max_submitted_view;
+
+/*==============================================================*/
+/* View: v_z_grade_exam_session_info                            */
+/*==============================================================*/
+create or replace view v_z_grade_exam_session_info as
+WITH pass_examinee AS (
+    SELECT
+        ets.exam_session_id,
+        COUNT(DISTINCT ets.student_id) AS pass_examinees,
+        vep.total_score
+    FROM v_student_exam_total_score ets                                                           -- 展示学生考试成绩视图：考试场次ID 学生ID
+        JOIN v_exam_paper vep ON vep.exam_session_id = ets.exam_session_id                        -- 该考试场次的成绩 v_exam_paper
+    WHERE ets.total_score >= 0.6 * vep.total_score
+    GROUP BY
+        ets.exam_session_id,
+        vep.id,
+        vep.total_score
+    ), examinee AS (
+        SELECT
+            exam_session_id,                                                                          -- 考试场次ID  
+            COUNT(DISTINCT student_id) AS scheduled_examinees,                                        -- 计划参加考试的考生人数
+            COUNT(
+                CASE
+                    WHEN status != '02' AND student_id IS NOT NULL THEN 1
+                    ELSE NULL::integer
+                END) AS actual_examinees                                                              -- 实际参加考试的考生人数
+        FROM t_examinee                                                                               -- 从考生表：考试场次ID 计划参加考试的考生人数 实际参加考试的考生人数
+        WHERE status <> '08'
+        GROUP BY
+            exam_session_id
+        ORDER BY
+            exam_session_id DESC
+    )
+SELECT
+    es.exam_id,
+    es.id AS exam_session_id,
+    AVG(ets.total_score) AS average_score,
+    es.start_time AS start_time,
+    es.end_time AS end_time,
+    es.mark_mode AS mark_mode,
+    vep.id AS exam_paper_id,
+    vep.name AS paper_name,
+    vep.total_score AS total_score,
+    ee.actual_examinees,
+    ee.scheduled_examinees,
+    ps.pass_examinees
+FROM t_exam_session es                                                     -- 展示学生考试成绩视图：考试场次ID 学生ID 考试成绩 
+    LEFT JOIN v_student_exam_total_score ets ON es.id = ets.exam_session_id                          -- 考试场次表：开始时间 结束时间 批改模式
+    LEFT JOIN v_exam_paper vep ON vep.exam_session_id = es.id              -- 考试考卷表：试卷ID 试卷名称 试卷总分
+    LEFT JOIN pass_examinee ps ON ps.exam_session_id = es.id
+    LEFT JOIN examinee ee ON ee.exam_session_id = es.id                       -- 该考试场次的计划参加考试的考生人数 实际参加考试的考生人数
+    GROUP BY
+        ets.exam_id,
+        ets.exam_session_id,
+        es.id,
+        vep.id,
+        vep.name,
+        vep.total_score,
+        ee.actual_examinees,
+        ee.scheduled_examinees,
+        ps.pass_examinees
+ORDER BY
+    es.start_time DESC;
+
+comment on view v_z_grade_exam_session_info is
+'v_z_grade_exam_session_info';
+
+/*==============================================================*/
+/* View: v_z_grade_practice_statistics                          */
+/*==============================================================*/
+create or replace view v_z_grade_practice_statistics as
+WITH pass_examinee AS (
+    SELECT
+        pts.practice_id,
+        COUNT(DISTINCT pts.student_id) AS pass_num
+    FROM v_student_practice_total_score pts                                 -- 展示学生成绩：练习ID 通过人数
+        LEFT JOIN v_exam_paper vep ON vep.practice_id = pts.practice_id     -- 该练习的总分
+    WHERE pts.total_score >= 0.6 * vep.total_score::integer
+    GROUP BY
+        pts.practice_id,
+        vep.total_score
+)
+SELECT
+    p.id AS practice_id,
+    p.name AS practice_name,
+    p.creator AS creator,
+    vep.total_score AS total_score,
+    ps.pass_num AS pass_student,
+    AVG(pts.total_score) AS averge_score,
+    COUNT(DISTINCT pts.student_id) AS actual_completer
+FROM t_practice p                                                            -- 展示练习列表：练习ID 名字
+    LEFT JOIN v_student_practice_total_score pts ON pts.practice_id = p.id   -- 该练习的平均成绩、完成人数
+    LEFT JOIN v_exam_paper vep ON vep.practice_id = p.id                     -- 该练习的总分
+    LEFT JOIN pass_examinee ps ON ps.practice_id = p.id                      -- 该练习的通过人数
+GROUP BY
+    p.id,
+    p.name,
+    p.creator,
+    vep.total_score,
+    ps.pass_num;
+
+comment on view v_z_grade_practice_statistics is
+'v_z_grade_practice_statistics';
+
+/*==============================================================*/
+/* View: v_z_practice_summary                                   */
+/*==============================================================*/
+create or replace view v_z_practice_summary as
+ SELECT DISTINCT ON (ts.practice_id, ts.student_id) p.id,
+    p.name,
+    ts.student_id,
+    p.status AS practice_status,
+    ts.status AS practice_student_status,
+    COALESCE(p.allowed_attempts, 0) AS allowed_attempts,
+    COALESCE(tp.level, '00'::character varying) AS difficulty,
+    vep.question_count,
+    COALESCE(vs.wrong_count, 0::bigint) AS wrong_count,
+    vs.total_score,
+    COALESCE(( SELECT max(vs2.total_score) AS max
+           FROM v_student_practice_total_score vs2
+          WHERE vs2.practice_id = p.id AND vs2.student_id = ts.student_id), 0::double precision) AS highest_score,
+    COALESCE(vs.attempt, 0) AS attempt_count,
+    COALESCE(lus.submission_id, 0) AS latest_unsubmitted_id,
+    COALESCE(ls.submission_id, 0) AS latest_submitted_id,
+    COALESCE(pm.submission_id, 0) AS pending_mark_id,
+    ts.create_time,
+    p.type,
+    p.paper_id,
+    COALESCE(tp.name , '') as paper_name,
+    vep.total_score AS paper_total_score,
+    p.exam_paper_id AS exam_paper_id,
+    tp.suggested_duration AS suggested_duration
+   FROM t_practice_student ts
+     JOIN t_practice p ON ts.practice_id = p.id
+     JOIN t_paper tp ON p.paper_id = tp.id
+     JOIN v_exam_paper vep ON p.exam_paper_id = vep.id
+     LEFT JOIN v_y_max_submitted_view vs ON vs.practice_id = p.id AND vs.student_id = ts.student_id
+     LEFT JOIN v_latest_unsubmitted_practice lus ON lus.practice_id = ts.practice_id AND lus.student_id = ts.student_id
+     LEFT JOIN v_latest_submitted_practice ls ON ls.practice_id = ts.practice_id AND ls.student_id = ts.student_id
+     LEFT JOIN v_latest_pending_mark_practice pm ON pm.practice_id = ts.practice_id AND pm.student_id = ts.student_id
+  ORDER BY ts.practice_id, ts.student_id, ts.create_time DESC;
+
+comment on view v_z_practice_summary is
+'v_z_practice_summary';
+
+drop table if exists t_v_practice_summary;
+create table t_v_practice_summary as select * from v_z_practice_summary;
+
 alter table t_domain_api
    add constraint FK_ACT_REF_DOMAIN foreign key (domain)
       references t_domain (id)
@@ -11374,10 +13816,25 @@ alter table t_domain_api
       references t_api (id)
       on delete restrict on update restrict;
 
+alter table t_exam_paper_group
+   add constraint FK_exam_group_paper foreign key (exam_paper_id)
+      references t_exam_paper (id)
+      on delete cascade;
+
+alter table t_exam_paper_question
+   add constraint FK_exam_question_group foreign key (group_id)
+      references t_exam_paper_group (id)
+      on delete cascade;
+
 alter table t_insure_attach
    add constraint FK_T_INSURE_REF_T_USER foreign key (t_u_id)
       references t_user (id)
       on delete restrict on update restrict;
+
+alter table t_student_answers
+   add constraint FK_exam_answer_question foreign key (question_id)
+      references t_exam_paper_question (id)
+      on delete cascade;
 
 alter table t_user_domain
    add constraint fk_user_domain_uid_REF_USER_id foreign key (sys_user)

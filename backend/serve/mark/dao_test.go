@@ -775,7 +775,7 @@ func TestQueryExamList(t *testing.T) {
 
 	tests := []struct {
 		name             string
-		req              GetExamListReq
+		req              QueryMarkingListReq
 		forceErr         string
 		expectedList     []Exam
 		expectedRowCount int
@@ -783,7 +783,7 @@ func TestQueryExamList(t *testing.T) {
 	}{
 		{
 			name: "success",
-			req: GetExamListReq{
+			req: QueryMarkingListReq{
 				User: &User{
 					ID:      testedTeacherID,
 					IsAdmin: false,
@@ -794,7 +794,7 @@ func TestQueryExamList(t *testing.T) {
 		},
 		{
 			name: "success with filter:exam name",
-			req: GetExamListReq{
+			req: QueryMarkingListReq{
 				User: &User{
 					ID:      testedTeacherID,
 					IsAdmin: false,
@@ -806,7 +806,7 @@ func TestQueryExamList(t *testing.T) {
 		},
 		{
 			name: "success with filter:exam name",
-			req: GetExamListReq{
+			req: QueryMarkingListReq{
 				User: &User{
 					ID:      testedTeacherID,
 					IsAdmin: false,
@@ -819,7 +819,7 @@ func TestQueryExamList(t *testing.T) {
 		},
 		{
 			name: "success with filter:start_time && end_time",
-			req: GetExamListReq{
+			req: QueryMarkingListReq{
 				User: &User{
 					ID:      testedTeacherID,
 					IsAdmin: false,
@@ -832,7 +832,7 @@ func TestQueryExamList(t *testing.T) {
 		},
 		{
 			name: "invalid query condition(limit==0)",
-			req: GetExamListReq{
+			req: QueryMarkingListReq{
 				User: &User{
 					ID:      testedTeacherID,
 					IsAdmin: false,
@@ -844,7 +844,7 @@ func TestQueryExamList(t *testing.T) {
 		},
 		{
 			name: "invalid query condition(limit<0)",
-			req: GetExamListReq{
+			req: QueryMarkingListReq{
 				User: &User{
 					ID:      testedTeacherID,
 					IsAdmin: false,
@@ -856,7 +856,7 @@ func TestQueryExamList(t *testing.T) {
 		},
 		{
 			name: "invalid query condition(limit>1000)",
-			req: GetExamListReq{
+			req: QueryMarkingListReq{
 				User: &User{
 					ID:      testedTeacherID,
 					IsAdmin: false,
@@ -868,7 +868,7 @@ func TestQueryExamList(t *testing.T) {
 		},
 		{
 			name: "invalid query condition(offset<0)",
-			req: GetExamListReq{
+			req: QueryMarkingListReq{
 				User: &User{
 					ID:      testedTeacherID,
 					IsAdmin: false,
@@ -880,7 +880,7 @@ func TestQueryExamList(t *testing.T) {
 		},
 		{
 			name: "getExamList count SQL error",
-			req: GetExamListReq{
+			req: QueryMarkingListReq{
 				User: &User{
 					ID:      testedTeacherID,
 					IsAdmin: false,
@@ -893,7 +893,7 @@ func TestQueryExamList(t *testing.T) {
 		},
 		{
 			name: "getExamList SQL error",
-			req: GetExamListReq{
+			req: QueryMarkingListReq{
 				User: &User{
 					ID:      testedTeacherID,
 					IsAdmin: false,
@@ -906,7 +906,7 @@ func TestQueryExamList(t *testing.T) {
 		},
 		{
 			name: "scan getExamList SQL result error",
-			req: GetExamListReq{
+			req: QueryMarkingListReq{
 				User: &User{
 					ID:      testedTeacherID,
 					IsAdmin: false,
@@ -942,6 +942,178 @@ func TestQueryExamList(t *testing.T) {
 	}
 }
 
+func TestQueryPracticeList(t *testing.T) {
+	cleanTestData()
+	initTestData()
+	defer cleanTestData()
+
+	tests := []struct {
+		name             string
+		req              QueryMarkingListReq
+		forceErr         string
+		expectedList     []Practice
+		expectedRowCount int
+		expectedErrStr   string
+	}{
+		{
+			name: "success",
+			req: QueryMarkingListReq{
+				User: &User{
+					ID:      testedTeacherID,
+					IsAdmin: false,
+				},
+				Limit:  10,
+				Offset: 0,
+			},
+		},
+		{
+			name: "success-admin",
+			req: QueryMarkingListReq{
+				User: &User{
+					ID:      testedTeacherID,
+					IsAdmin: true,
+				},
+				Limit:  10,
+				Offset: 0,
+			},
+		},
+		{
+			name: "success with filter:practice name",
+			req: QueryMarkingListReq{
+				User: &User{
+					ID:      testedTeacherID,
+					IsAdmin: false,
+				},
+				Limit:        10,
+				Offset:       0,
+				PracticeName: "practice 1",
+			},
+		},
+		{
+			name: "success with filter:practice name",
+			req: QueryMarkingListReq{
+				User: &User{
+					ID:      testedTeacherID,
+					IsAdmin: false,
+				},
+				Limit:    10,
+				Offset:   0,
+				ExamName: "test",
+			},
+			expectedRowCount: 0,
+		},
+		{
+			name: "invalid query condition(limit==0)",
+			req: QueryMarkingListReq{
+				User: &User{
+					ID:      testedTeacherID,
+					IsAdmin: false,
+				},
+				Limit:  0,
+				Offset: 0,
+			},
+			expectedErrStr: "invalid query condition",
+		},
+		{
+			name: "invalid query condition(limit<0)",
+			req: QueryMarkingListReq{
+				User: &User{
+					ID:      testedTeacherID,
+					IsAdmin: false,
+				},
+				Limit:  -3,
+				Offset: 0,
+			},
+			expectedErrStr: "invalid query condition",
+		},
+		{
+			name: "invalid query condition(limit>1000)",
+			req: QueryMarkingListReq{
+				User: &User{
+					ID:      testedTeacherID,
+					IsAdmin: false,
+				},
+				Limit:  1001,
+				Offset: 0,
+			},
+			expectedErrStr: "invalid query condition",
+		},
+		{
+			name: "invalid query condition(offset<0)",
+			req: QueryMarkingListReq{
+				User: &User{
+					ID:      testedTeacherID,
+					IsAdmin: false,
+				},
+				Limit:  10,
+				Offset: -3,
+			},
+			expectedErrStr: "invalid query condition",
+		},
+		{
+			name: "QueryPracticeList row count SQL error",
+			req: QueryMarkingListReq{
+				User: &User{
+					ID:      testedTeacherID,
+					IsAdmin: false,
+				},
+				Limit:  10,
+				Offset: 0,
+			},
+			forceErr:       "QueryPracticeList-pgxConn.QueryRow",
+			expectedErrStr: "QueryPracticeList row count SQL error",
+		},
+		{
+			name: "QueryPracticeList SQL error",
+			req: QueryMarkingListReq{
+				User: &User{
+					ID:      testedTeacherID,
+					IsAdmin: false,
+				},
+				Limit:  10,
+				Offset: 0,
+			},
+			forceErr:       "QueryPracticeList-pgxConn.Query",
+			expectedErrStr: "QueryPracticeList SQL error",
+		},
+		{
+			name: "扫描解析练习数据失败",
+			req: QueryMarkingListReq{
+				User: &User{
+					ID:      testedTeacherID,
+					IsAdmin: false,
+				},
+				Limit:  10,
+				Offset: 0,
+			},
+			forceErr:       "QueryPracticeList-rows.Scan",
+			expectedErrStr: "扫描解析练习数据失败",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := context.Background()
+			if tt.forceErr != "" {
+				ctx = context.WithValue(context.Background(), ForceErrKey, tt.forceErr)
+			}
+
+			list, rowCount, err := QueryPracticeList(ctx, tt.req)
+			z.Sugar().Infof("-->(%d)list: %+v", rowCount, list)
+
+			if err != nil {
+				if tt.expectedErrStr == "" {
+					t.Errorf("expected success, but got error: %v", err.Error())
+				} else {
+					assert.Contains(t, err.Error(), tt.expectedErrStr)
+				}
+			} else if tt.expectedErrStr != "" {
+				t.Errorf("expected error: %s, but got success", tt.expectedErrStr)
+			}
+		})
+	}
+}
+
 func TestQueryExamineeInfo(t *testing.T) {
 	cleanTestData()
 	initTestData()
@@ -951,7 +1123,6 @@ func TestQueryExamineeInfo(t *testing.T) {
 		name           string
 		cond           QueryCondition
 		forceErr       string
-		expectedList   []Student
 		expectedErrStr string
 	}{
 		{
@@ -1028,7 +1199,6 @@ func TestQueryMarkingResults(t *testing.T) {
 		name           string
 		cond           QueryCondition
 		forceErr       string
-		expectedList   []Student
 		expectedErrStr string
 	}{
 		{
@@ -1047,18 +1217,42 @@ func TestQueryMarkingResults(t *testing.T) {
 			},
 		},
 		{
-			name: "invalid query condition",
+			name: "success-practice",
+			cond: QueryCondition{
+				TeacherID:  testedTeacherID,
+				PracticeID: 22,
+			},
+		},
+		{
+			name: "success-practice with filter: practice_submission_id",
+			cond: QueryCondition{
+				TeacherID:            testedTeacherID,
+				PracticeID:           22,
+				PracticeSubmissionID: 2404,
+			},
+		},
+		{
+			name: "invalid params: 请求参数必须包含教师ID",
 			cond: QueryCondition{
 				ExamSessionID: 101,
 			},
-			expectedErrStr: "invalid query condition",
+			expectedErrStr: "invalid params",
 		},
 		{
-			name: "invalid exam_session_id",
+			name: "invalid params: 请求参数必须包含考试场次ID或者练习ID中的一个",
 			cond: QueryCondition{
 				TeacherID: testedTeacherID,
 			},
-			expectedErrStr: "invalid exam_session_id",
+			expectedErrStr: "invalid params: 请求参数必须包含考试场次ID或者练习ID中的一个",
+		},
+		{
+			name: "invalid params: 请求参数不能同时包含练习ID和考试场次ID",
+			cond: QueryCondition{
+				TeacherID:     testedTeacherID,
+				ExamSessionID: 101,
+				PracticeID:    21,
+			},
+			expectedErrStr: "invalid params: 请求参数不能同时包含练习ID和考试场次ID",
 		},
 		{
 			name: "exec getMarkingResults SQL error",
@@ -1088,7 +1282,14 @@ func TestQueryMarkingResults(t *testing.T) {
 			}
 
 			list, err := QueryMarkingResults(ctx, tt.cond)
-			z.Sugar().Infof("-->(%d)list: %+v", len(list), list)
+
+			data, e := json.Marshal(list)
+			if e != nil {
+				panic(e)
+				return
+			}
+
+			z.Sugar().Infof("-->(%d)list: %+v", len(list), string(data))
 
 			if err != nil {
 				if tt.expectedErrStr == "" {
@@ -1103,7 +1304,7 @@ func TestQueryMarkingResults(t *testing.T) {
 	}
 }
 
-func TestQueryExamQuestionsByMarkMode(t *testing.T) {
+func TestQueryQuestionsByMarkMode(t *testing.T) {
 	cleanTestData()
 	initTestData()
 	//defer cleanTestData()
@@ -1113,7 +1314,6 @@ func TestQueryExamQuestionsByMarkMode(t *testing.T) {
 		cond           QueryCondition
 		markerInfo     MarkerInfo
 		forceErr       string
-		expectedList   []Student
 		expectedErrStr string
 	}{
 		{
@@ -1121,6 +1321,18 @@ func TestQueryExamQuestionsByMarkMode(t *testing.T) {
 			cond: QueryCondition{
 				TeacherID:     testedTeacherID,
 				ExamSessionID: 102,
+			},
+			markerInfo: MarkerInfo{
+				MarkerID:   testedTeacherID,
+				MarkMode:   "10",
+				MarkMethod: "00",
+			},
+		},
+		{
+			name: "success-practice",
+			cond: QueryCondition{
+				TeacherID:  testedTeacherID,
+				PracticeID: 22,
 			},
 			markerInfo: MarkerInfo{
 				MarkerID:   testedTeacherID,
@@ -1158,7 +1370,33 @@ func TestQueryExamQuestionsByMarkMode(t *testing.T) {
 			expectedErrStr: "invalid query condition",
 		},
 		{
-			name: "invalid mark mode or mark method",
+			name: "invalid params: 请求参数必须包含练习ID和考试ID中的一个",
+			cond: QueryCondition{
+				TeacherID: testedTeacherID,
+			},
+			markerInfo: MarkerInfo{
+				MarkerID:   testedTeacherID,
+				MarkMode:   "10",
+				MarkMethod: "00",
+			},
+			expectedErrStr: "invalid params: 请求参数必须包含练习ID和考试ID中的一个",
+		},
+		{
+			name: "invalid params: 请求参数不能同时包含练习ID和考试ID",
+			cond: QueryCondition{
+				TeacherID:     testedTeacherID,
+				PracticeID:    22,
+				ExamSessionID: 102,
+			},
+			markerInfo: MarkerInfo{
+				MarkerID:   testedTeacherID,
+				MarkMode:   "10",
+				MarkMethod: "00",
+			},
+			expectedErrStr: "invalid params: 请求参数不能同时包含练习ID和考试ID",
+		},
+		{
+			name: "invalid mark mode",
 			cond: QueryCondition{
 				TeacherID:     testedTeacherID,
 				ExamSessionID: 102,
@@ -1166,7 +1404,7 @@ func TestQueryExamQuestionsByMarkMode(t *testing.T) {
 			markerInfo: MarkerInfo{
 				MarkerID: testedTeacherID,
 			},
-			expectedErrStr: "invalid mark mode or mark method",
+			expectedErrStr: "invalid mark mode",
 		},
 		{
 			name: "invalid mark mode",
@@ -1223,7 +1461,7 @@ func TestQueryExamQuestionsByMarkMode(t *testing.T) {
 				MarkMode:   "10",
 				MarkMethod: "00",
 			},
-			forceErr:       "QueryExamQuestionsByMarkMode-pgxConn.Query",
+			forceErr:       "QueryQuestionsByMarkMode-pgxConn.Query",
 			expectedErrStr: "exec getQuestionsQuery SQL error",
 		},
 		{
@@ -1237,7 +1475,7 @@ func TestQueryExamQuestionsByMarkMode(t *testing.T) {
 				MarkMode:   "10",
 				MarkMethod: "00",
 			},
-			forceErr:       "QueryExamQuestionsByMarkMode-rows.Scan",
+			forceErr:       "QueryQuestionsByMarkMode-rows.Scan",
 			expectedErrStr: "unable to scan row data",
 		},
 		{
@@ -1262,11 +1500,125 @@ func TestQueryExamQuestionsByMarkMode(t *testing.T) {
 				ctx = context.WithValue(context.Background(), ForceErrKey, tt.forceErr)
 			}
 
-			list, err := QueryExamQuestionsByMarkMode(ctx, tt.cond, tt.markerInfo)
+			list, err := QueryQuestionsByMarkMode(ctx, tt.cond, tt.markerInfo)
 			data, e := json.Marshal(list)
 			if e != nil {
 				t.Errorf("unable to marshal list: %v", err.Error())
 			}
+			z.Sugar().Infof("-->(%d)list: %+v", len(list), string(data))
+
+			if err != nil {
+				if tt.expectedErrStr == "" {
+					t.Errorf("expected success, but got error: %v", err.Error())
+				} else {
+					assert.Contains(t, err.Error(), tt.expectedErrStr)
+				}
+			} else if tt.expectedErrStr != "" {
+				t.Errorf("expected error: %s, but got success", tt.expectedErrStr)
+			}
+		})
+	}
+}
+
+func TestQueryStudentsInfo(t *testing.T) {
+	cleanTestData()
+	initTestData()
+	defer cleanTestData()
+
+	tests := []struct {
+		name           string
+		cond           QueryCondition
+		forceErr       string
+		expectedErrStr string
+	}{
+		{
+			name: "success",
+			cond: QueryCondition{
+				TeacherID:     testedTeacherID,
+				ExamSessionID: 101,
+			},
+		},
+		{
+			name: "success with filter:examinee_id",
+			cond: QueryCondition{
+				TeacherID:     testedTeacherID,
+				ExamSessionID: 102,
+				ExamineeID:    2205,
+			},
+		},
+		{
+			name: "success-practice",
+			cond: QueryCondition{
+				TeacherID:  testedTeacherID,
+				PracticeID: 22,
+			},
+		},
+		{
+			name: "success-practice with filter: practice_submission_id",
+			cond: QueryCondition{
+				TeacherID:            testedTeacherID,
+				PracticeID:           22,
+				PracticeSubmissionID: 2404,
+			},
+		},
+		{
+			name: "invalid params: 请求参数必须包含教师ID",
+			cond: QueryCondition{
+				ExamSessionID: 101,
+			},
+			expectedErrStr: "invalid params",
+		},
+		{
+			name: "invalid params: 请求参数必须包含考试场次ID或者练习ID中的一个",
+			cond: QueryCondition{
+				TeacherID: testedTeacherID,
+			},
+			expectedErrStr: "invalid params: 请求参数必须包含考试场次ID或者练习ID中的一个",
+		},
+		{
+			name: "invalid params: 请求参数不能同时包含练习ID和考试场次ID",
+			cond: QueryCondition{
+				TeacherID:     testedTeacherID,
+				ExamSessionID: 101,
+				PracticeID:    21,
+			},
+			expectedErrStr: "invalid params: 请求参数不能同时包含练习ID和考试场次ID",
+		},
+		{
+			name: "exec getMarkingResults SQL error",
+			cond: QueryCondition{
+				TeacherID:     testedTeacherID,
+				ExamSessionID: 101,
+			},
+			forceErr:       "QueryStudentInfo-pgxConn.Query",
+			expectedErrStr: "exec query student info SQL error",
+		},
+		{
+			name: "unable to scan row data",
+			cond: QueryCondition{
+				TeacherID:     testedTeacherID,
+				ExamSessionID: 101,
+			},
+			forceErr:       "QueryStudentsInfo-rows.Scan",
+			expectedErrStr: "unable to scan row data",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := context.Background()
+			if tt.forceErr != "" {
+				ctx = context.WithValue(context.Background(), ForceErrKey, tt.forceErr)
+			}
+
+			list, err := QueryStudentsInfo(ctx, tt.cond)
+
+			data, e := json.Marshal(list)
+			if e != nil {
+				panic(e)
+				return
+			}
+
 			z.Sugar().Infof("-->(%d)list: %+v", len(list), string(data))
 
 			if err != nil {

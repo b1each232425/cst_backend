@@ -38,14 +38,15 @@ type User struct {
 	IsAdmin bool   `json:"is_admin"`
 }
 
-type GetExamListReq struct {
-	User      *User     `json:"user" validate:"required"`
-	ExamName  string    `json:"exam_name" validate:"max=999"`
-	Limit     int       `json:"limit" validate:"required,gt=0,lte=1000"`
-	Offset    int       `json:"offset" validate:"gte=0"`
-	StartTime time.Time `json:"start_time"`
-	EndTime   time.Time `json:"end_time"`
-	Status    string    `json:"status"`
+type QueryMarkingListReq struct {
+	User         *User     `json:"user" validate:"required"`
+	ExamName     string    `json:"exam_name" validate:"max=999"`
+	PracticeName string    `json:"practice_name" validate:"max=999"`
+	Limit        int       `json:"limit" validate:"required,gt=0,lte=1000"`
+	Offset       int       `json:"offset" validate:"gte=0"`
+	StartTime    time.Time `json:"start_time"`
+	EndTime      time.Time `json:"end_time"`
+	Status       string    `json:"status"`
 }
 
 type MarkingResult struct {
@@ -99,8 +100,22 @@ func Enroll(author string) {
 	_ = cmn.AddService(&cmn.ServeEndPoint{
 		Fn: HandleExamList,
 
-		Path: "/mark/exam/list",
+		Path: "/mark/exam",
 		Name: "mark.get-exam-list",
+
+		Developer: developer,
+		WhiteList: true,
+
+		DomainID: int64(cmn.CDomainSys),
+
+		DefaultDomain: int64(cmn.CDomainSys),
+	})
+
+	_ = cmn.AddService(&cmn.ServeEndPoint{
+		Fn: HandlePracticeList,
+
+		Path: "/mark/practice",
+		Name: "mark.get-practice-list",
 
 		Developer: developer,
 		WhiteList: true,
@@ -138,6 +153,20 @@ func Enroll(author string) {
 		DefaultDomain: int64(cmn.CDomainSys),
 	})
 
+	_ = cmn.AddService(&cmn.ServeEndPoint{
+		Fn: HandleResultsSubmission,
+
+		Path: "/mark/results-submission",
+		Name: "/mark/results-submission",
+
+		Developer: developer,
+		WhiteList: true,
+
+		DomainID: int64(cmn.CDomainSys),
+
+		DefaultDomain: int64(cmn.CDomainSys),
+	})
+
 }
 
 func HandleExamList(ctx context.Context) {
@@ -146,7 +175,7 @@ func HandleExamList(ctx context.Context) {
 	z.Info("---->" + cmn.FncName())
 	method := strings.ToLower(q.R.Method)
 	if method != "get" {
-		q.Err = fmt.Errorf("please call /api/mark/getExamList with http GET method")
+		q.Err = fmt.Errorf("please call /api/mark/exam with http GET method")
 		z.Error(q.Err.Error())
 		q.RespErr()
 		return
@@ -221,7 +250,7 @@ func HandleExamList(ctx context.Context) {
 
 	}
 
-	req := GetExamListReq{
+	req := QueryMarkingListReq{
 		User: &User{
 			ID: q.SysUser.ID.Int64,
 		},
@@ -259,13 +288,98 @@ func HandleExamList(ctx context.Context) {
 	return
 }
 
+func HandlePracticeList(ctx context.Context) {
+	forceErr, _ := ctx.Value(ForceErrKey).(string)
+	q := cmn.GetCtxValue(ctx)
+	z.Info("---->" + cmn.FncName())
+	method := strings.ToLower(q.R.Method)
+	if method != "get" {
+		q.Err = fmt.Errorf("please call /api/mark/practice with http GET method")
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+
+	queryParams := q.R.URL.Query()
+
+	pageIndexStr := queryParams.Get("page_index")
+	if pageIndexStr == "" {
+		pageIndexStr = "1"
+	}
+	pageIndex, err := strconv.Atoi(pageIndexStr)
+	if err != nil {
+		q.Err = fmt.Errorf("error parsing page index: %v", err)
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+
+	if pageIndex < 1 {
+		q.Err = fmt.Errorf("page index must be greater than 0")
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+
+	pageSizeStr := queryParams.Get("page_size")
+	if pageSizeStr == "" {
+		pageSizeStr = "10"
+	}
+	pageSize, err := strconv.Atoi(pageSizeStr)
+	if err != nil {
+		q.Err = fmt.Errorf("error parsing page size: %v", err)
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+	if pageSize < 1 || pageSize > 1000 {
+		q.Err = fmt.Errorf("page size must be between 1 and 1000")
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+
+	practiceName := queryParams.Get("practice_name")
+
+	req := QueryMarkingListReq{
+		User: &User{
+			ID: q.SysUser.ID.Int64,
+		},
+		PracticeName: practiceName,
+		Limit:        pageSize,
+		Offset:       pageSize * (pageIndex - 1),
+	}
+
+	practices, rowCount, err := QueryPracticeList(ctx, req)
+	if err != nil {
+		q.Err = err
+		q.RespErr()
+		return
+	}
+
+	jsonData, err := json.Marshal(map[string]interface{}{
+		"practice_list": practices,
+	})
+	if err != nil || forceErr == "HandlePracticeList-json.Marshal" {
+		q.Err = fmt.Errorf("unable to marshal response data: %v", err)
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+	q.Msg.Data = jsonData
+	q.Msg.RowCount = int64(rowCount)
+	q.Err = nil
+	q.Resp()
+	return
+}
+
 func HandleMarkingDetails(ctx context.Context) {
 	forceErr, _ := ctx.Value(ForceErrKey).(string)
 	q := cmn.GetCtxValue(ctx)
 	z.Info("---->" + cmn.FncName())
 	method := strings.ToLower(q.R.Method)
 	if method != "get" {
-		q.Err = fmt.Errorf("please call /api/mark/getMarkingDetails with http GET method")
+		q.Err = fmt.Errorf("please call /api/mark/details with http GET method")
 		z.Error(q.Err.Error())
 		q.RespErr()
 		return
@@ -274,19 +388,42 @@ func HandleMarkingDetails(ctx context.Context) {
 	queryParams := q.R.URL.Query()
 
 	examSessionIDStr := queryParams.Get("exam_session_id")
-	if examSessionIDStr == "" {
-		q.Err = fmt.Errorf("exam_session_id is required")
+	practiceIDStr := queryParams.Get("practice_id")
+	if examSessionIDStr == "" && practiceIDStr == "" {
+		q.Err = fmt.Errorf("请求参数必须包含练习ID或者考试场次ID中的一个")
 		z.Error(q.Err.Error())
 		q.RespErr()
 		return
 	}
 
-	examSessionID, err := strconv.ParseInt(examSessionIDStr, 10, 64)
-	if err != nil {
-		q.Err = fmt.Errorf("error parsing exam_session_id: %v", err)
+	if practiceIDStr != "" && examSessionIDStr != "" {
+		q.Err = fmt.Errorf("请求参数不能同时包含练习ID和考试场次ID")
 		z.Error(q.Err.Error())
 		q.RespErr()
 		return
+	}
+
+	var examSessionID int64
+	var practiceID int64
+	var err error
+	if examSessionIDStr != "" {
+		examSessionID, err = strconv.ParseInt(examSessionIDStr, 10, 64)
+		if err != nil {
+			q.Err = fmt.Errorf("error parsing exam_session_id: %v", err)
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+	}
+
+	if practiceIDStr != "" {
+		practiceID, err = strconv.ParseInt(practiceIDStr, 10, 64)
+		if err != nil {
+			q.Err = fmt.Errorf("error parsing practice_id: %v", err)
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
 	}
 
 	examineeIDStr := queryParams.Get("examinee_id")
@@ -301,33 +438,41 @@ func HandleMarkingDetails(ctx context.Context) {
 		}
 	}
 
-	examineeInfos, err := QueryExamineeInfo(ctx, QueryCondition{
-		ExamSessionID: examSessionID,
-		ExamineeID:    examineeID,
-		TeacherID:     q.SysUser.ID.Int64,
-	})
+	practiceSubmissionIDStr := queryParams.Get("practice_submission_id")
+	var practiceSubmissionID int64
+	if practiceSubmissionIDStr != "" {
+		practiceSubmissionID, err = strconv.ParseInt(practiceSubmissionIDStr, 10, 64)
+		if err != nil {
+			q.Err = fmt.Errorf("error parsing practice_submission_id: %v", err)
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+	}
+
+	cond := QueryCondition{
+		TeacherID:            q.SysUser.ID.Int64,
+		ExamSessionID:        examSessionID,
+		ExamineeID:           examineeID,
+		PracticeID:           practiceID,
+		PracticeSubmissionID: practiceSubmissionID,
+	}
+
+	studentInfos, err := QueryStudentsInfo(ctx, cond)
 	if err != nil {
 		q.Err = err
 		q.RespErr()
 		return
 	}
 
-	markingResults, err := QueryMarkingResults(ctx, QueryCondition{
-		TeacherID:     q.SysUser.ID.Int64,
-		ExamSessionID: examSessionID,
-		ExamineeID:    examineeID,
-	})
+	markingResults, err := QueryMarkingResults(ctx, cond)
 	if err != nil {
 		q.Err = err
 		q.RespErr()
 		return
 	}
 
-	markerInfo, err := QueryMarkerInfo(ctx, QueryCondition{
-		TeacherID:     q.SysUser.ID.Int64,
-		ExamSessionID: examSessionID,
-		ExamineeID:    examineeID,
-	})
+	markerInfo, err := QueryMarkerInfo(ctx, cond)
 	if err != nil {
 		q.Err = err
 		q.RespErr()
@@ -340,22 +485,14 @@ func HandleMarkingDetails(ctx context.Context) {
 		return
 	}
 
-	questionSets, err := QueryExamQuestionsByMarkMode(ctx, QueryCondition{
-		TeacherID:     q.SysUser.ID.Int64,
-		ExamSessionID: examSessionID,
-		ExamineeID:    examineeID,
-	}, markerInfo)
+	questionSets, err := QueryQuestionsByMarkMode(ctx, cond, markerInfo)
 	if err != nil {
 		q.Err = err
 		q.RespErr()
 		return
 	}
 
-	studentAnswers, err := QueryStudentAnswersByMarkMode(ctx, "00", QueryCondition{
-		TeacherID:     q.SysUser.ID.Int64,
-		ExamSessionID: examSessionID,
-		ExamineeID:    examineeID,
-	}, markerInfo)
+	studentAnswers, err := QueryStudentAnswersByMarkMode(ctx, "00", cond, markerInfo)
 	if err != nil {
 		q.Err = err
 		q.RespErr()
@@ -363,7 +500,7 @@ func HandleMarkingDetails(ctx context.Context) {
 	}
 
 	jsonData, err := json.Marshal(map[string]interface{}{
-		"examinee_infos":  examineeInfos,
+		"student_infos":   studentInfos,
 		"student_answers": studentAnswers,
 		"question_sets":   questionSets,
 		"marking_results": markingResults,
@@ -675,6 +812,130 @@ func HandleMarkingResults(ctx context.Context) {
 	q.Resp()
 	return
 
+}
+
+func HandleResultsSubmission(ctx context.Context) {
+	q := cmn.GetCtxValue(ctx)
+	z.Info("---->" + cmn.FncName())
+	forceErr, _ := ctx.Value(ForceErrKey).(string) // 用于强制执行错误处理代码
+	method := strings.ToLower(q.R.Method)
+	if method != "patch" {
+		q.Err = fmt.Errorf("please call /api/mark/results-submission with http patch method")
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+
+	queryParams := q.R.URL.Query()
+
+	examSessionIDStr := queryParams.Get("exam_session_id")
+	practiceIDStr := queryParams.Get("practice_id")
+	practiceSubmissionIDStr := queryParams.Get("practice_submission_id")
+
+	if examSessionIDStr == "" && practiceIDStr == "" {
+		q.Err = fmt.Errorf("请求参数必须包含练习ID或者考试场次ID中的一个")
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+
+	if examSessionIDStr != "" && practiceIDStr != "" {
+		q.Err = fmt.Errorf("请求参数不能同时包含练习ID和考试场次ID")
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+
+	var examSessionID int64
+	var practiceID int64
+	var practiceSubmissionID int64
+	var err error
+
+	if examSessionIDStr != "" {
+		examSessionID, err = strconv.ParseInt(examSessionIDStr, 10, 64)
+		if err != nil {
+			q.Err = fmt.Errorf("error parsing exam_session_id: %v", err)
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+	}
+
+	if practiceIDStr != "" {
+		practiceID, err = strconv.ParseInt(practiceIDStr, 10, 64)
+		if err != nil {
+			q.Err = fmt.Errorf("error parsing practice_id: %v", err)
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		if practiceSubmissionIDStr != "" {
+			practiceSubmissionID, err = strconv.ParseInt(practiceSubmissionIDStr, 10, 64)
+			if err != nil {
+				q.Err = fmt.Errorf("error parsing practice_submission_id: %v", err)
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+		}
+	}
+
+	cond := QueryCondition{
+		ExamSessionID:        examSessionID,
+		PracticeID:           practiceID,
+		PracticeSubmissionID: practiceSubmissionID,
+		TeacherID:            q.SysUser.ID.Int64,
+	}
+
+	results, err := QueryMarkingResults(ctx, cond)
+	if err != nil {
+		q.Err = err
+		q.RespErr()
+		return
+	}
+
+	_, err = updateStudentAnswerScore(ctx, results, cond)
+	if err != nil {
+		q.Err = err
+		q.RespErr()
+		return
+	}
+
+	var status string
+	var examSessionIDs []int64
+	var practiceSubmissionIDs []int64
+	if cond.ExamSessionID > 0 {
+		status = "10"
+		examSessionIDs = []int64{cond.ExamSessionID}
+	} else if cond.PracticeSubmissionID > 0 {
+		status = "08"
+		practiceSubmissionIDs = []int64{cond.PracticeSubmissionID}
+	}
+
+	pgxConn := cmn.GetPgxConn()
+
+	tx, err := pgxConn.Begin(ctx)
+	defer func() {
+		if err != nil {
+			err_ := tx.Rollback(ctx)
+			if err_ != nil || forceErr == "HandleResultsSubmission-tx.Rollback" {
+				z.Sugar().Error(err_)
+			}
+		} else {
+			err_ := tx.Commit(ctx)
+			if err_ != nil || forceErr == "HandleResultsSubmission-tx.Commit" {
+				z.Sugar().Error(err_)
+			}
+		}
+	}()
+
+	_, err = updateExamSessionOrPracticeSubmissionState(ctx, &tx, cond.TeacherID, examSessionIDs, practiceSubmissionIDs, status)
+	if err != nil {
+		q.Err = err
+		q.RespErr()
+		return
+	}
 }
 
 func MarkObjectiveQuestionAnswers(ctx context.Context, cond QueryCondition) (err error) {
