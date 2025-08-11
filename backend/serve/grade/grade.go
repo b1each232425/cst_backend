@@ -45,9 +45,7 @@ func Enroll(author string) {
 		developer = &d
 	}
 
-	// --------------------------------------------------
-	//                     成绩列表接口                  |
-	// --------------------------------------------------
+	//  ********** 成绩列表接口 **********
 	_ = cmn.AddService(&cmn.ServeEndPoint{
 		Fn: gradeListH,
 
@@ -64,9 +62,7 @@ func Enroll(author string) {
 		DefaultDomain: int64(cmn.CDomainSys),
 	})
 
-	// --------------------------------------------------
-	//                     成绩提交接口                  |
-	// --------------------------------------------------
+	//  ********** 成绩提交接口 **********
 	_ = cmn.AddService(&cmn.ServeEndPoint{
 		Fn: gradeSubmissionH,
 
@@ -83,152 +79,12 @@ func Enroll(author string) {
 		DefaultDomain: int64(cmn.CDomainSys),
 	})
 
-	// // --------------------------------------------------
-	// //                     成绩分布接口                  |
-	// // --------------------------------------------------
-	// // gradeDistribution
-	// _ = cmn.AddService(&cmn.ServeEndPoint{
-	// 	Fn: gradeDistribution,
-
-	// 	Path: "/grade/distribution",
-	// 	Name: "grade/distribution",
-
-	// 	Developer: developer,
-	// 	WhiteList: true,
-
-	// 	//DomainID 创建该API的账号归属的domain
-	// 	DomainID: int64(cmn.CDomainSys),
-
-	// 	//DefaultDomain 该API将默认授权给的用户
-	// 	DefaultDomain: int64(cmn.CDomainSys),
-	// })
-
-	// // --------------------------------------------------
-	// //                  考生成绩列表接口                 |
-	// // --------------------------------------------------
-	// // gradeListExamineeExam
-	// _ = cmn.AddService(&cmn.ServeEndPoint{
-	// 	Fn: gradeListExamineeExam,
-
-	// 	Path: "/grade/list/examinee/exam",
-	// 	Name: "grade/list/examinee/exam",
-
-	// 	Developer: developer,
-	// 	WhiteList: true,
-
-	// 	//DomainID 创建该API的账号归属的domain
-	// 	DomainID: int64(cmn.CDomainSys),
-
-	// 	//DefaultDomain 该API将默认授权给的用户
-	// 	DefaultDomain: int64(cmn.CDomainSys),
-	// })
-
-	// // gradeListExamineePractice
-	// _ = cmn.AddService(&cmn.ServeEndPoint{
-	// 	Fn: gradeListExamineePractice,
-
-	// 	Path: "/grade/list/examinee/practice",
-	// 	Name: "grade/list/examinee/practice",
-
-	// 	Developer: developer,
-	// 	WhiteList: true,
-
-	// 	//DomainID 创建该API的账号归属的domain
-	// 	DomainID: int64(cmn.CDomainSys),
-
-	// 	//DefaultDomain 该API将默认授权给的用户
-	// 	DefaultDomain: int64(cmn.CDomainSys),
-	// })
-
-	// // --------------------------------------------------
-	// //                     成绩分析接口                  |
-	// // --------------------------------------------------
-	// // gradeAnalysisExam
-	// _ = cmn.AddService(&cmn.ServeEndPoint{
-	// 	Fn: gradeAnalysisExam,
-
-	// 	Path: "/grade/analysis/exam",
-	// 	Name: "grade/analysis/exam",
-
-	// 	Developer: developer,
-	// 	WhiteList: true,
-
-	// 	//DomainID 创建该API的账号归属的domain
-	// 	DomainID: int64(cmn.CDomainSys),
-
-	// 	//DefaultDomain 该API将默认授权给的用户
-	// 	DefaultDomain: int64(cmn.CDomainSys),
-	// })
-
-	// // gradeAnalysisPractice
-	// _ = cmn.AddService(&cmn.ServeEndPoint{
-	// 	Fn: gradeAnalysisPractice,
-
-	// 	Path: "/grade/analysis/practice",
-	// 	Name: "grade/analysis/practice",
-
-	// 	Developer: developer,
-	// 	WhiteList: true,
-
-	// 	//DomainID 创建该API的账号归属的domain
-	// 	DomainID: int64(cmn.CDomainSys),
-
-	// 	//DefaultDomain 该API将默认授权给的用户
-	// 	DefaultDomain: int64(cmn.CDomainSys),
-	// })
-
 }
 
-/*
-*
-	*
-	* @api {GET} /api/grade/list gradeListH 获取成绩列表
-	* @apiDescription 获取成绩列表
-	* @apiName gradeListH
-	* @apiGroup Grade
-	*
-	* @apiParam (200) {String} [category] 	成绩类型
-	* @apiParam (200) {Number} [page] 	页码
-	* @apiParam (200) {Number} [pageSize] 每页数量
-	* @apiParam (200) {Number} [submitted] 是否已提交
-	* @apiParam (200) {Number} [teacherID] 教师ID
-	* @apiParam (200) {Number} [examID] 考试ID
-	* @apiParam (200) {String} [name] 考试名称
-	* @apiParam (200) {String} [type] 考试类型
-	*
-	* @apiParamExample  {type} Request-Example:
-	* {
-	*   "category": "exam",
-	*   "page": 1,
-	*   "pageSize": 10,
-	*   "teacherID": 0,
-	*   "examID": 0,
-	*   "name": "",
-	*   "type": "",
-	*   "submitted": 0
-	* }
-	*
-	* @apiParamExample  {type} Request-Example:
-	* {
-	*   "category": "practice",
-	*   "page": 1,
-	*   "pageSize": 10,
-	*   "teacherID": 0,
-	*   "practice": 0,
-	*   "name": ""
-	* }
-	*
-	*
-	* @apiSuccessExample {type} Success-Response:
-	* {
-	*
-	* }
-	*
-	*
-*/
 func gradeListH(ctx context.Context) {
 	z.Info("---->" + cmn.FncName())
 
+	// 测试使用强行触发错误
 	forceErr := ""
 	if val := ctx.Value("force-error"); val != nil {
 		forceErr = val.(string)
@@ -249,15 +105,15 @@ func gradeListH(ctx context.Context) {
 
 			// 必需参数集
 			req      GradeListArgs
-			category string
+			category string // 类别：exam practice
 			page     string
 			pageSize string
-			p        int
 		)
+		var p int
 
 		if category = queryParams.Get("category"); category == "" {
 			q.Err = fmt.Errorf("不支持的类型: %s", req.Category)
-			z.Warn(q.Err.Error())
+			z.Error(q.Err.Error())
 			q.RespErr()
 			return
 		}
@@ -265,13 +121,13 @@ func gradeListH(ctx context.Context) {
 
 		if page = queryParams.Get("page"); page == "" {
 			q.Err = fmt.Errorf("页码为空: %s", page)
-			z.Warn(q.Err.Error())
+			z.Error(q.Err.Error())
 			q.RespErr()
 			return
 		}
 		if p, err = strconv.Atoi(page); err != nil {
 			q.Err = fmt.Errorf("无效页码: %s", page)
-			z.Warn(q.Err.Error())
+			z.Error(q.Err.Error())
 			q.RespErr()
 			return
 		}
@@ -279,37 +135,37 @@ func gradeListH(ctx context.Context) {
 
 		if pageSize = queryParams.Get("pageSize"); pageSize == "" {
 			q.Err = fmt.Errorf("每页数量为空: %s", pageSize)
-			z.Warn(q.Err.Error())
+			z.Error(q.Err.Error())
 			q.RespErr()
 			return
 		}
 		if p, err = strconv.Atoi(pageSize); err != nil {
 			q.Err = fmt.Errorf("无效每页数量: %s", pageSize)
-			z.Warn(q.Err.Error())
+			z.Error(q.Err.Error())
 			q.RespErr()
 			return
 		}
 		req.PageSize = p
 
+		// 用户身份
+		if q.SysUser == nil || forceErr == "q.SysUser nil" {
+			q.Err = fmt.Errorf("非法请求，鉴权用户失败")
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+		req.TeacherID = q.SysUser.ID.Int64
+		// 管理员实现全部教师数据展示
 		teacherID := queryParams.Get("teacherID")
 		if teacherID != "" {
 			p, err := strconv.ParseInt(teacherID, 10, 64)
 			if err != nil {
 				q.Err = fmt.Errorf("无效教师ID: %s", teacherID)
-				z.Warn(q.Err.Error())
+				z.Error(q.Err.Error())
 				q.RespErr()
 				return
 			}
 			req.TeacherID = p
-		} else {
-			if q.SysUser == nil || forceErr == "q.SysUser nil" {
-				q.Err = fmt.Errorf("非法请求，鉴权用户失败")
-				z.Warn(q.Err.Error())
-				q.RespErr()
-				return
-			}
-			userID := q.SysUser.ID.Int64
-			req.TeacherID = userID
 		}
 
 		if name := queryParams.Get("name"); name != "" {
@@ -322,7 +178,7 @@ func gradeListH(ctx context.Context) {
 				p, err := strconv.Atoi(examID)
 				if err != nil {
 					q.Err = fmt.Errorf("无效考试ID: %s", examID)
-					z.Warn(q.Err.Error())
+					z.Error(q.Err.Error())
 					q.RespErr()
 					return
 				}
@@ -343,7 +199,7 @@ func gradeListH(ctx context.Context) {
 				req.Filter.Submitted = -1
 			default:
 				q.Err = fmt.Errorf("无效提交状态: %s", submitted)
-				z.Warn(q.Err.Error())
+				z.Error(q.Err.Error())
 				q.RespErr()
 				return
 			}
@@ -353,28 +209,16 @@ func gradeListH(ctx context.Context) {
 
 			// 调用数据库层处理
 			var result []GradeExam
-			result, rowCount, err = GradeListExam(dmlCtx, &req)
+			result, rowCount, err = gradeListExam(dmlCtx, &req)
 			if err != nil {
 				q.Err = fmt.Errorf("获取考试成绩列表失败 错误信息:%w", err)
-				z.Error(q.Err.Error())
 				q.RespErr()
 				return
 			}
 
 			if result != nil {
-				data, err = json.Marshal(result)
-				if forceErr == "json.Marshal fail" {
-					err = fmt.Errorf("force error: %s", forceErr)
-				}
-				if err != nil {
-					q.Err = fmt.Errorf("json格式化失败 错误信息:%w", err)
-					z.Error(q.Err.Error())
-					q.RespErr()
-					return
-				}
+				data, _ = json.Marshal(result)
 			}
-
-			// z.Debug("gradeListExam", zap.Any("result", result))
 
 		case "practice":
 			// 练习ID
@@ -382,7 +226,7 @@ func gradeListH(ctx context.Context) {
 				p, err := strconv.Atoi(practiceID)
 				if err != nil {
 					q.Err = fmt.Errorf("无效练习ID: %s", practiceID)
-					z.Warn(q.Err.Error())
+					z.Error(q.Err.Error())
 					q.RespErr()
 					return
 				}
@@ -394,30 +238,20 @@ func gradeListH(ctx context.Context) {
 
 			// 调用数据库层处理
 			var result []GradePractice
-			result, rowCount, err = GradeListPractice(dmlCtx, &req)
+			result, rowCount, err = gradeListPractice(dmlCtx, &req)
 			if err != nil {
 				q.Err = fmt.Errorf("获取练习成绩列表失败 错误信息:%w", err)
-				z.Error(q.Err.Error())
 				q.RespErr()
 				return
 			}
 
 			if result != nil {
-				data, err = json.Marshal(result)
-				if forceErr == "json.Marshal fail" {
-					err = fmt.Errorf("force error: %s", forceErr)
-				}
-				if err != nil {
-					q.Err = fmt.Errorf("json格式化失败 错误信息:%w", err)
-					z.Error(q.Err.Error())
-					q.RespErr()
-					return
-				}
+				data, _ = json.Marshal(result)
 			}
 
 		default:
 			q.Err = fmt.Errorf("不支持的类型: %s", req.Category)
-			z.Warn(q.Err.Error())
+			z.Error(q.Err.Error())
 			q.RespErr()
 			return
 		}
@@ -428,48 +262,16 @@ func gradeListH(ctx context.Context) {
 		q.Err = nil
 		q.Msg.Status = 0
 		q.Msg.Msg = "success"
-		q.Resp()
 
 	default:
 		q.Err = fmt.Errorf("不支持的请求方法: %s", method)
-		z.Warn(q.Err.Error())
+		z.Error(q.Err.Error())
 		q.RespErr()
 		return
 	}
+	q.Resp()
 }
 
-/*
-*
-
-	*
-	* @api {GET} /api/grade/submission gradeSubmissionH 获取成绩提交列表
-	* @apiDescription 提交成绩
-	* @apiName gradeSubmissionH
-	* @apiGroup Grade
-	*
-	* @apiParam (200) {Number} [teacher_id] 	教师ID
-	* @apiParam (200) {Array}  [exam_ids] 	    考试ID
-	*
-	* @apiParamExample  {type} Request-Example:
-	* {
-	*   "teacher_id": 1,
-	*   "exam_ids": [1],
-	* }
-	*
-	* @apiParamExample  {type} Request-Example:
-	* {
-	*   "category": "practice",
-	*   "page": 1,
-	* }
-	*
-	*
-	* @apiSuccessExample {type} Success-Response:
-	* {
-	*
-	* }
-	*
-	*
-*/
 func gradeSubmissionH(ctx context.Context) {
 	z.Info("---->" + cmn.FncName())
 
@@ -501,7 +303,10 @@ func gradeSubmissionH(ctx context.Context) {
 
 		defer func() {
 			err := q.R.Body.Close()
-			if err != nil || forceErr == "q.R.Body.Close() fail" {
+			if forceErr == "q.R.Body.Close-fail" {
+				err = errors.New(forceErr)
+			}
+			if err != nil {
 				z.Error(err.Error())
 			}
 		}()
@@ -513,6 +318,7 @@ func gradeSubmissionH(ctx context.Context) {
 			return
 		}
 
+		// 用户身份校验
 		if q.SysUser == nil || forceErr == "q.SysUser nil" {
 			q.Err = fmt.Errorf("非法请求，鉴权用户失败")
 			z.Error(q.Err.Error())
@@ -530,482 +336,38 @@ func gradeSubmissionH(ctx context.Context) {
 		}
 		var examIDs []int
 		for _, examIDQuery := range examIDQuerys {
-			examIDs = append(examIDs, int(examIDQuery.Num))
+			id := int(examIDQuery.Num)
+			if id <= 0 {
+				q.Err = fmt.Errorf("请求存在非法examID")
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+			examIDs = append(examIDs, id)
 		}
 		args.ExamIDs = examIDs
 
-		rowsAffected, err := SetExamGradeSubmitted(ctx, &args)
-		if forceErr == "SetExamGradeSubmitted fail" {
-			err = fmt.Errorf(forceErr)
+		dmlCtx, cancel := context.WithTimeout(ctx, TIMEOUT)
+		defer cancel()
+
+		rowsAffected, err := setExamGradeSubmitted(dmlCtx, &args)
+		if forceErr == "setExamGradeSubmitted fail" {
+			err = errors.New(forceErr)
 		}
 		if err != nil {
-			err = fmt.Errorf("提交考试(教师ID:%v) 错误信息:%s", args.TeacherID, err.Error())
-			if forceErr == "exam has not ended yet" {
-				err = ErrExamIsNotOver
-			}
-			if errors.Is(err, ErrExamIsNotOver) {
-				q.Msg.Msg = "当前选择提交的考试存在未结束的考试"
-			} else {
-				q.Msg.Msg = fmt.Sprintf("提交考试(教师ID:%v) 错误信息:%s", args.TeacherID, err.Error())
-			}
 			q.Err = err
-			z.Error(q.Err.Error())
 			q.RespErr()
 			return
 		}
 		q.Err = nil
 		q.Msg.Status = 0
 		q.Msg.Msg = fmt.Sprintf("success rowsAffected:%v", rowsAffected)
-		q.Resp()
 
 	default:
 		q.Err = fmt.Errorf("不支持的请求方法: %s", method)
-		z.Warn(q.Err.Error())
+		z.Error(q.Err.Error())
 		q.RespErr()
 		return
 	}
+	q.Resp()
 }
-
-// func gradeDistribution(ctx context.Context) {
-// 	q := cmn.GetCtxValue(ctx)
-// 	z.Info("---->" + cmn.FncName())
-// 	method := strings.ToLower(q.R.Method)
-// 	switch method {
-// 	case "get":
-// 		// /teacher/exam-grade/distribution?examID=%d&columnNum=%d
-// 		/*
-// 			apiParam:
-// 				examID
-// 				columnNum
-// 		*/
-// 		var req GradeDistributionExamArgs
-// 		queryParams := q.R.URL.Query()
-
-// 		if examID := queryParams.Get("examID"); examID != "" {
-// 			if c, err := strconv.Atoi(examID); err == nil {
-// 				req.ExamID = c
-// 			}
-// 		}
-
-// 		if columnNum := queryParams.Get("columnNum"); columnNum != "" {
-// 			if c, err := strconv.Atoi(columnNum); err == nil {
-// 				req.ColumnNum = c
-// 			}
-// 		}
-
-// 		dmlCtx, cancel := context.WithTimeout(ctx, TIMEOUT)
-// 		defer cancel()
-
-// 		var err error
-// 		var result ExamGradeDistribution
-
-// 		result, err = GradeDistributionExam(dmlCtx, req)
-// 		if err != nil {
-// 			q.Err = err
-// 			z.Error(q.Err.Error())
-// 			q.RespErr()
-// 			return
-// 		}
-
-// 		z.Debug("gradeDistributionExam", zap.Any("result", result))
-
-// 		data, err := json.Marshal(result)
-// 		if err != nil {
-// 			q.Err = fmt.Errorf("failed to marshal result: %v", err)
-// 			z.Error(q.Err.Error())
-// 			q.RespErr()
-// 			return
-// 		}
-
-// 		q.Msg.Data = data
-
-// 		q.Err = nil
-// 		q.Msg.Status = 0
-// 		q.Msg.RowCount = 1 // since this is a single record query
-// 		q.Msg.Msg = "success"
-// 		q.Resp()
-// 	default:
-// 		q.Err = fmt.Errorf("unsupported method: %s", method)
-// 		z.Warn(q.Err.Error())
-// 		q.RespErr()
-// 		return
-// 	}
-// }
-
-// func gradeDistributionPractice(ctx context.Context) {
-// 	q := cmn.GetCtxValue(ctx)
-// 	z.Info("---->" + cmn.FncName())
-// 	method := strings.ToLower(q.R.Method)
-// 	switch method {
-// 	case "get":
-// 		// /teacher/practice-grade/distribution?practiceID=%d&columnNum=%d
-// 		/*
-// 			apiParam:
-// 				practiceID
-// 				columnNum
-// 		*/
-// 		var req GradeDistributionPracticeArgs
-// 		queryParams := q.R.URL.Query()
-
-// 		if practiceID := queryParams.Get("practiceID"); practiceID != "" {
-// 			if c, err := strconv.Atoi(practiceID); err == nil {
-// 				req.PracticeID = c
-// 			}
-// 		}
-
-// 		if columnNum := queryParams.Get("columnNum"); columnNum != "" {
-// 			if c, err := strconv.Atoi(columnNum); err == nil {
-// 				req.ColumnNum = c
-// 			}
-// 		}
-
-// 		dmlCtx, cancel := context.WithTimeout(ctx, TIMEOUT)
-// 		defer cancel()
-
-// 		result, err := GradeDistributionPractice(dmlCtx, req)
-// 		if err != nil {
-// 			q.Err = err
-// 			z.Error(q.Err.Error())
-// 			q.RespErr()
-// 			return
-// 		}
-
-// 		z.Debug("gradeDistributionPractice", zap.Any("result", result))
-
-// 		data, err := json.Marshal(result)
-// 		if err != nil {
-// 			q.Err = fmt.Errorf("failed to marshal result: %v", err)
-// 			z.Error(q.Err.Error())
-// 			q.RespErr()
-// 			return
-// 		}
-
-// 		q.Msg.Data = data
-
-// 		q.Err = nil
-// 		q.Msg.Status = 0
-// 		q.Msg.RowCount = 1 // since this is a single record query
-// 		q.Msg.Msg = "success"
-// 		q.Resp()
-// 	default:
-// 		q.Err = fmt.Errorf("unsupported method: %s", method)
-// 		z.Warn(q.Err.Error())
-// 		q.RespErr()
-// 		return
-// 	}
-// }
-
-// func gradeListExamineeExam(ctx context.Context) {
-// 	q := cmn.GetCtxValue(ctx)
-
-// 	z.Info("---->" + cmn.FncName())
-
-// 	method := strings.ToLower(q.R.Method)
-// 	switch method {
-// 	case "get":
-// 		// /teacher/exam-grade/examinee-grade-list?page=%v&pageSize=%v&examID=%s&keyword=%s
-// 		/*
-// 			apiParam:
-// 				ExamID
-// 				TeacherID
-// 				ClassID
-// 				Page
-// 				PageSize
-// 				Keyword
-// 		*/
-// 		var req GradeListExamineeExamArgs
-// 		queryParams := q.R.URL.Query()
-
-// 		req.Page = 1
-// 		if page := queryParams.Get("page"); page != "" {
-// 			if c, err := strconv.Atoi(page); err == nil {
-// 				req.Page = c
-// 			}
-// 		}
-
-// 		req.PageSize = 10
-// 		if pageSize := queryParams.Get("pageSize"); pageSize != "" {
-// 			if c, err := strconv.Atoi(pageSize); err == nil {
-// 				req.PageSize = c
-// 			}
-// 		}
-
-// 		if examIDs := queryParams.Get("examID"); examIDs != "" {
-// 			var intSlice []int
-// 			for _, examID := range bytes.Split([]byte(examIDs), []byte(",")) {
-// 				intValue, err := strconv.Atoi(string(examID))
-// 				if err != nil {
-// 					q.Err = err
-// 					z.Error(q.Err.Error())
-// 					q.RespErr()
-// 					return
-// 				}
-// 				intSlice = append(intSlice, intValue)
-// 			}
-// 			req.ExamID = intSlice
-// 		}
-
-// 		if keyword := queryParams.Get("keyword"); keyword != "" {
-// 			req.Filter.Keyword = keyword
-// 		}
-
-// 		if teacherID := queryParams.Get("teacherID"); teacherID != "" {
-// 			if c, err := strconv.Atoi(teacherID); err == nil {
-// 				req.TeacherID = c
-// 			}
-// 		}
-
-// 		if classID := queryParams.Get("classID"); classID != "" {
-// 			if c, err := strconv.Atoi(classID); err == nil {
-// 				req.ClassID = c
-// 			}
-// 		}
-
-// 		dmlCtx, cancel := context.WithTimeout(ctx, TIMEOUT)
-// 		defer cancel()
-
-// 		result, rowCount, err := GradeListExamineeExam(dmlCtx, req)
-// 		if err != nil {
-// 			q.Err = err
-// 			z.Error(q.Err.Error())
-// 			q.RespErr()
-// 			return
-// 		}
-
-// 		z.Debug("gradeListExamineeExam", zap.Any("result", result))
-
-// 		var data []byte
-// 		if result != nil {
-// 			data, _ = json.Marshal(result)
-// 		}
-
-// 		q.Msg.Data = data
-
-// 		q.Err = nil
-// 		q.Msg.Status = 0
-// 		q.Msg.RowCount = rowCount
-// 		q.Msg.Msg = "success"
-// 		q.Resp()
-// 	default:
-// 		q.Err = fmt.Errorf("unsupported method: %s", method)
-// 		z.Warn(q.Err.Error())
-// 		q.RespErr()
-// 		return
-// 	}
-// }
-
-// func gradeListExamineePractice(ctx context.Context) {
-// 	q := cmn.GetCtxValue(ctx)
-
-// 	z.Info("---->" + cmn.FncName())
-
-// 	method := strings.ToLower(q.R.Method)
-// 	switch method {
-// 	case "get":
-// 		// teacher/exam-grade/examinee-grade-list?page=%v&pageSize=%v&examID=%s&keyword=%s?classID=%s&teacherID=%s
-// 		/*
-// 			apiParam:
-// 				PracticeID
-// 				TeacherID
-// 				ClassID
-// 				Page
-// 				PageSize
-// 				Keyword
-// 		*/
-// 		var req GradeListExamineePracticeArgs
-// 		queryParams := q.R.URL.Query()
-
-// 		req.Page = 1
-// 		if page := queryParams.Get("page"); page != "" {
-// 			if c, err := strconv.Atoi(page); err == nil {
-// 				req.Page = c
-// 			}
-// 		}
-
-// 		req.PageSize = 10
-// 		if pageSize := queryParams.Get("pageSize"); pageSize != "" {
-// 			if c, err := strconv.Atoi(pageSize); err == nil {
-// 				req.PageSize = c
-// 			}
-// 		}
-
-// 		if practiceIDs := queryParams.Get("practiceID"); practiceIDs != "" {
-// 			var intSlice []int
-// 			for _, practiceID := range bytes.Split([]byte(practiceIDs), []byte(",")) {
-// 				intValue, err := strconv.Atoi(string(practiceID))
-// 				if err != nil {
-// 					q.Err = err
-// 					z.Error(q.Err.Error())
-// 					q.RespErr()
-// 					return
-// 				}
-// 				intSlice = append(intSlice, intValue)
-// 			}
-// 			req.PracticeID = intSlice
-// 		}
-
-// 		if classID := queryParams.Get("classID"); classID != "" {
-// 			if c, err := strconv.Atoi(classID); err == nil {
-// 				req.ClassID = c
-// 			}
-// 		}
-
-// 		if teacherID := queryParams.Get("teacherID"); teacherID != "" {
-// 			if c, err := strconv.Atoi(teacherID); err == nil {
-// 				req.TeacherID = c
-// 			}
-// 		}
-
-// 		if keyword := queryParams.Get("keyword"); keyword != "" {
-// 			req.Filter.Keyword = keyword
-// 		}
-
-// 		dmlCtx, cancel := context.WithTimeout(ctx, TIMEOUT)
-// 		defer cancel()
-
-// 		result, rowCount, err := GradeListExamineePractice(dmlCtx, req)
-// 		if err != nil {
-// 			q.Err = err
-// 			z.Error(q.Err.Error())
-// 			q.RespErr()
-// 			return
-// 		}
-
-// 		z.Debug("gradeListExamineePractice", zap.Any("result", result))
-
-// 		var data []byte
-// 		if result != nil {
-// 			data, _ = json.Marshal(result)
-// 		}
-
-// 		q.Msg.Data = data
-
-// 		q.Err = nil
-// 		q.Msg.Status = 0
-// 		q.Msg.RowCount = rowCount
-// 		q.Msg.Msg = "success"
-// 		q.Resp()
-// 	default:
-// 		q.Err = fmt.Errorf("unsupported method: %s", method)
-// 		z.Warn(q.Err.Error())
-// 		q.RespErr()
-// 		return
-// 	}
-// }
-
-// func gradeAnalysisExam(ctx context.Context) {
-// 	q := cmn.GetCtxValue(ctx)
-
-// 	z.Info("---->" + cmn.FncName())
-
-// 	method := strings.ToLower(q.R.Method)
-// 	switch method {
-// 	case "get":
-// 		// teacher/exam-analysis?examSessionID=%d
-// 		/*
-// 			apiParam:
-// 				examSessionID
-// 		*/
-// 		var req GradeAnalysisExamArgs
-// 		queryParams := q.R.URL.Query()
-
-// 		if examSessionID := queryParams.Get("examSessionID"); examSessionID != "" {
-// 			if c, err := strconv.Atoi(examSessionID); err == nil {
-// 				req.ExamSessionID = c
-// 			}
-// 		}
-
-// 		dmlCtx, cancel := context.WithTimeout(ctx, TIMEOUT)
-// 		defer cancel()
-
-// 		result, err := GradeAnalysisExam(dmlCtx, req)
-// 		if err != nil {
-// 			q.Err = err
-// 			z.Error(q.Err.Error())
-// 			q.RespErr()
-// 			return
-// 		}
-
-// 		z.Debug("gradeAnalysisExam", zap.Any("result", result))
-
-// 		var data []byte
-// 		data, err = json.Marshal(result)
-// 		if err != nil {
-// 			q.Err = fmt.Errorf("failed to marshal result: %v", err)
-// 			z.Error(q.Err.Error())
-// 			q.RespErr()
-// 			return
-// 		}
-
-// 		q.Msg.Data = data
-
-// 		q.Err = nil
-// 		q.Msg.Status = 0
-// 		q.Msg.RowCount = 1 // since this is a single record query
-// 		q.Msg.Msg = "success"
-// 		q.Resp()
-// 	default:
-// 		q.Err = fmt.Errorf("unsupported method: %s", method)
-// 		z.Warn(q.Err.Error())
-// 		q.RespErr()
-// 		return
-// 	}
-// }
-
-// func gradeAnalysisPractice(ctx context.Context) {
-// 	q := cmn.GetCtxValue(ctx)
-
-// 	z.Info("---->" + cmn.FncName())
-
-// 	method := strings.ToLower(q.R.Method)
-// 	switch method {
-// 	case "get":
-// 		// teacher/practice-analysis?practiceID=%d
-// 		/*
-// 			apiParam:
-// 				practiceID
-// 		*/
-// 		var req GradeAnalysisPracticeArgs
-// 		queryParams := q.R.URL.Query()
-
-// 		if practiceID := queryParams.Get("practiceID"); practiceID != "" {
-// 			if c, err := strconv.Atoi(practiceID); err == nil {
-// 				req.PracticeID = c
-// 			}
-// 		}
-
-// 		dmlCtx, cancel := context.WithTimeout(ctx, TIMEOUT)
-// 		defer cancel()
-
-// 		result, err := GetAnalysisPractice(dmlCtx, req)
-// 		if err != nil {
-// 			q.Err = err
-// 			z.Error(q.Err.Error())
-// 			q.RespErr()
-// 			return
-// 		}
-
-// 		z.Debug("gradeAnalysisPractice", zap.Any("result", result))
-
-// 		var data []byte
-// 		data, err = json.Marshal(result)
-// 		if err != nil {
-// 			q.Err = fmt.Errorf("failed to marshal result: %v", err)
-// 			z.Error(q.Err.Error())
-// 			q.RespErr()
-// 			return
-// 		}
-// 		q.Msg.Data = data
-
-// 		q.Err = nil
-// 		q.Msg.Status = 0
-// 		q.Msg.RowCount = 1 // since this is a single record query
-// 		q.Msg.Msg = "success"
-// 		q.Resp()
-// 	default:
-// 		q.Err = fmt.Errorf("unsupported method: %s", method)
-// 		z.Warn(q.Err.Error())
-// 		q.RespErr()
-// 		return
-// 	}
-// }

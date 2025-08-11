@@ -1,9 +1,6 @@
 package mark
 
 import (
-	"encoding/json"
-	"fmt"
-	"github.com/jmoiron/sqlx/types"
 	"math/rand"
 	"time"
 )
@@ -35,11 +32,6 @@ func CompareSlices(a, b []string) bool {
 		countB[v]++
 	}
 
-	// 比较两个 map
-	if len(countA) != len(countB) {
-		return false
-	}
-
 	for k, v := range countA {
 		if countB[k] != v {
 			return false
@@ -47,27 +39,6 @@ func CompareSlices(a, b []string) bool {
 	}
 
 	return true
-}
-
-func ConvertRawStandardAnswerData(raw types.JSONText, type_ string) ([]*StandardAnswer, []string, error) {
-	if type_ == "06" || type_ == "08" {
-		var resp []*StandardAnswer
-		err := json.Unmarshal(raw, &resp)
-		if err != nil {
-			return nil, nil, err
-		}
-		return resp, nil, nil
-	} else if type_ == "00" || type_ == "02" || type_ == "04" {
-		var resp []string
-		err := json.Unmarshal(raw, &resp)
-		if err != nil {
-			return nil, nil, err
-		}
-		return nil, resp, nil
-	} else {
-		return nil, nil, fmt.Errorf("unknown question type")
-	}
-
 }
 
 // 随机打乱切片（Fisher-Yates 算法）
