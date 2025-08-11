@@ -83,6 +83,7 @@ type Question struct {
 	cmn.TQuestion
 	SubScore       []float64 `json:"sub_score" db:"sub_score,true,integer"`
 	BankQuestionID null.Int  `json:"BankQuestionID,omitempty" db:"bank_question_id,true,integer"`
+	AnswerNum      int       `json:"AnswerNum"`
 }
 
 // ExamGroup 学生试卷题题组结构（考卷模块自用：解析存储在视图的JSON实体）

@@ -21,6 +21,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"w2w.io/serve/examPaper"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -643,6 +644,12 @@ RETURNING id`
 			q.RespErr()
 		}
 
+		//解析获取试卷详情后模式（编辑或预览）
+		mode := q.R.URL.Query().Get("mode")
+		if mode == "" {
+			mode = "edit"
+		}
+
 		// 获取并验证用户ID
 		userID := q.SysUser.ID.Int64
 		if userID <= 0 {
@@ -707,51 +714,94 @@ RETURNING id`
 			q.RespErr()
 			return
 		}
-
-		// 获取数据库连接
-		db := cmn.GetPgxConn()
 		dmlCtx, cancel := context.WithTimeout(ctx, TIMEOUT)
 		defer cancel()
+		switch mode {
+		case "edit":
+			// 获取数据库连接
+			db := cmn.GetPgxConn()
 
-		query := `SELECT 
+			query := `SELECT 
     id,name,assembly_type,category,level,suggested_duration,description,tags,creator,create_time,update_time,status,total_score,question_count,groups_data
 	FROM v_paper
 	WHERE id = $1
 	LIMIT 1`
 
-		// 执行查询
-		var paper cmn.TVPaper
-		q.Err = db.QueryRow(dmlCtx, query, paperID).Scan(
-			&paper.ID,
-			&paper.Name,
-			&paper.AssemblyType,
-			&paper.Category,
-			&paper.Level,
-			&paper.SuggestedDuration,
-			&paper.Description,
-			&paper.Tags,
-			&paper.Creator,
-			&paper.CreateTime,
-			&paper.UpdateTime,
-			&paper.Status,
-			&paper.TotalScore,
-			&paper.QuestionCount,
-			&paper.GroupsData,
-		)
-		if forceError == "tx.QueryRow-err" {
-			q.Err = errors.New(forceError)
+			// 执行查询
+			var paper cmn.TVPaper
+			q.Err = db.QueryRow(dmlCtx, query, paperID).Scan(
+				&paper.ID,
+				&paper.Name,
+				&paper.AssemblyType,
+				&paper.Category,
+				&paper.Level,
+				&paper.SuggestedDuration,
+				&paper.Description,
+				&paper.Tags,
+				&paper.Creator,
+				&paper.CreateTime,
+				&paper.UpdateTime,
+				&paper.Status,
+				&paper.TotalScore,
+				&paper.QuestionCount,
+				&paper.GroupsData,
+			)
+			if forceError == "tx.QueryRow-err" {
+				q.Err = errors.New(forceError)
+			}
+			if q.Err != nil {
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+			// 包装响应体
+			data, _ := json.Marshal(paper)
+			q.Msg.Data = data
+			q.Err = nil
+			q.Msg.Status = 0
+			q.Msg.Msg = "success"
+		case "preview":
+			var paper *cmn.TVPaper
+			var groups []*cmn.TPaperGroup
+			var questions map[int64][]*examPaper.Question
+			paper, groups, questions, q.Err = examPaper.LoadPaperTemplateById(dmlCtx, paperID, true)
+			if q.Err != nil {
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+			// 构建前端需要的题组结构体
+			groupMap := make(map[int64]*cmn.TPaperGroup)
+			for _, g := range groups {
+				groupMap[g.ID.Int64] = g
+			}
+			//定义结构体用于整合数据发送给前端
+			type Msg struct {
+				Paper             *cmn.TVPaper
+				QuestionGroupInfo map[int64]*cmn.TPaperGroup
+				Questions         map[int64][]*examPaper.Question
+			}
+
+			msg := Msg{
+				Paper:             paper,
+				QuestionGroupInfo: groupMap,
+				Questions:         questions,
+			}
+			var data []byte
+			data, q.Err = json.Marshal(&msg)
+			if forceError == "json.Marshal" {
+				q.Err = errors.New("marshal err")
+			}
+			if q.Err != nil {
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+			q.Msg.Data = data
+			q.Msg.Msg = "success"
+			q.Msg.Status = 0
 		}
-		if q.Err != nil {
-			z.Error(q.Err.Error())
-			q.RespErr()
-			return
-		}
-		// 包装响应体
-		data, _ := json.Marshal(paper)
-		q.Msg.Data = data
-		q.Err = nil
-		q.Msg.Status = 0
-		q.Msg.Msg = "success"
+
 	default:
 		// 默认操作，返回错误信息
 		q.Err = fmt.Errorf("不支持该方法: %s", method)
