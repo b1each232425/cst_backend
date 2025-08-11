@@ -336,9 +336,9 @@ func ManualPaper(ctx context.Context) {
 		now := time.Now().UnixMilli()
 		initPaperSql := `
 INSERT INTO t_paper 
-    (name, assembly_type, category, level, suggested_duration, tags, creator, create_time, updated_by, update_time, status, access_mode,domain_id) 
+    (name, assembly_type, category, level, suggested_duration, tags, creator, create_time, updated_by, update_time, status,domain_id) 
 VALUES 
-    ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11,$12,$13) 
+    ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11,$12) 
 RETURNING id`
 
 		paper := cmn.TPaper{
@@ -353,7 +353,6 @@ RETURNING id`
 			UpdatedBy:         null.IntFrom(userID),
 			UpdateTime:        null.IntFrom(now),
 			Status:            null.NewString(StatusNormal, true),
-			AccessMode:        null.NewString(PaperShareStatusPrivate, true),
 			DomainID:          null.IntFrom(resourceID),
 		}
 		q.Err = tx.QueryRow(ctx, initPaperSql,
@@ -368,7 +367,6 @@ RETURNING id`
 			paper.UpdatedBy.Int64,
 			paper.UpdateTime.Int64,
 			paper.Status.String,
-			paper.AccessMode.String,
 			paper.DomainID.Int64,
 		).Scan(&paper.ID)
 		// 强制错误，用于测试
@@ -1686,22 +1684,6 @@ func PaperList(ctx context.Context) {
 		//	paramCount++
 		//}
 
-		//// 权限控制
-		//accessControlClause := fmt.Sprintf(`(
-		//	p.creator = $%d
-		//	OR p.access_mode = '04'
-		//	OR (
-		//		p.access_mode = '02'
-		//		AND EXISTS (
-		//			SELECT 1 FROM t_resource_share s
-		//			WHERE s.type = $%d AND s.resource_id = p.id AND s.user_id = $%d AND s.status = '00'
-		//		)
-		//	)
-		//)`, paramCount, paramCount+1, paramCount+2)
-		//whereClauses = append(whereClauses, accessControlClause)
-		//params = append(params, userID, PaperResourceShareType, userID)
-		//paramCount += 3
-
 		// 用途精确查询
 		if req.Category != "" {
 			var categoryClause strings.Builder
@@ -1769,7 +1751,7 @@ func PaperList(ctx context.Context) {
 		// 查询分页数据
 		var listSQLBuilder strings.Builder
 		listSQLBuilder.WriteString(`
-		SELECT p.id, p.name, p.assembly_type, p.category, p.level, p.suggested_duration, p.total_score, p.question_count, p.tags, p.create_time, p.update_time, p.status, p.creator, p.creator_info, p.access_mode
+		SELECT p.id, p.name, p.assembly_type, p.category, p.level, p.suggested_duration, p.total_score, p.question_count, p.tags, p.create_time, p.update_time, p.status, p.creator, p.creator_info
 		FROM v_paper p
 		`)
 		listSQLBuilder.WriteString(whereClause)
@@ -1795,7 +1777,7 @@ func PaperList(ctx context.Context) {
 		var papers []cmn.TVPaper
 		for rows.Next() {
 			var paper cmn.TVPaper
-			q.Err = rows.Scan(&paper.ID, &paper.Name, &paper.AssemblyType, &paper.Category, &paper.Level, &paper.SuggestedDuration, &paper.TotalScore, &paper.QuestionCount, &paper.Tags, &paper.CreateTime, &paper.UpdateTime, &paper.Status, &paper.Creator, &paper.CreatorInfo, &paper.AccessMode)
+			q.Err = rows.Scan(&paper.ID, &paper.Name, &paper.AssemblyType, &paper.Category, &paper.Level, &paper.SuggestedDuration, &paper.TotalScore, &paper.QuestionCount, &paper.Tags, &paper.CreateTime, &paper.UpdateTime, &paper.Status, &paper.Creator, &paper.CreatorInfo)
 			if val, ok := ctx.Value("force-error").(string); ok && val == "getPaperList-RowScan-err" {
 				q.Err = errors.New(val)
 			}

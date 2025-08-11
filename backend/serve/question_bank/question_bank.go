@@ -178,8 +178,7 @@ func getQuestionBankList(ctx context.Context, conn *pgxpool.Pool, params QueryQu
 			updated_by,
 			update_time,
 			remark,
-			status,
-			access_mode
+			status
 		FROM t_question_bank
 		%s
 		ORDER BY id DESC
@@ -210,7 +209,6 @@ func getQuestionBankList(ctx context.Context, conn *pgxpool.Pool, params QueryQu
 			&q.UpdateTime,
 			&q.Remark,
 			&q.Status,
-			&q.AccessMode,
 		)
 		if err != nil {
 			err = fmt.Errorf("rows.Scan error: %s", err.Error())
@@ -415,6 +413,9 @@ func questionBanks(ctx context.Context) {
 			return
 		}
 		bank.Creator = null.IntFrom(userID)
+
+		//设置所属域
+		bank.DomainID = null.IntFrom(1999)
 
 		// 写库
 		qry.Action = "insert"
@@ -889,48 +890,25 @@ func questionBankDetail(ctx context.Context) {
 		return
 	}
 
-	var BankDetail QuestionBankDetail
+	var BankDetail cmn.TVQuestionBank
 
 	// 获取题库信息
 	s1 := `
-		WITH bank_info AS (
-			SELECT
-				b.id,
-				b.name,
-				b.type,
-				b.tags,
-				b.creator,
-				u.official_name,
-				b.create_time,
-				b.update_time,
-				COUNT(DISTINCT q.id) AS question_count,
-				COALESCE(array_agg(DISTINCT q.type) FILTER (WHERE q.type IS NOT NULL), ARRAY[]::text[]) as question_types,
-				COALESCE(array_agg(DISTINCT q.difficulty) FILTER (WHERE q.difficulty IS NOT NULL), ARRAY[]::bigint[]) as question_difficulties,
-				COALESCE(
-					array_agg(DISTINCT tag) FILTER (WHERE tag IS NOT NULL), 
-					ARRAY[]::text[]
-				) as question_tags
-			FROM
-				t_question_bank b
-			LEFT JOIN 
-				t_user u ON b.creator = u.id
-			LEFT JOIN
-				t_question q ON b.id = q.belong_to AND q.status = '00'
-			LEFT JOIN LATERAL
-				jsonb_array_elements_text(q.tags) as tag ON true
-			WHERE
-				b.id = $1 AND b.status = '00'
-			GROUP BY
-				b.id,
-				b.name,
-				b.type,
-				b.tags,
-				b.creator,
-				u.official_name,
-				b.create_time,
-				b.update_time
-		)
-		SELECT * FROM bank_info
+		SELECT
+			id,
+			name,
+			type,
+			tags,
+			creator,
+			official_name AS creator_name,
+			create_time,
+			update_time,
+			question_count,
+			question_types,
+			question_difficulties,
+			question_tags
+		FROM v_question_bank
+		WHERE id = $1
 	`
 	err = conn.QueryRow(ctx, s1, bankID).Scan(
 		&BankDetail.ID,
@@ -938,9 +916,9 @@ func questionBankDetail(ctx context.Context) {
 		&BankDetail.Type,
 		&BankDetail.Tags,
 		&BankDetail.Creator,
-		&BankDetail.CreatorName,
+		&BankDetail.OfficialName,
 		&BankDetail.CreateTime,
-		&BankDetail.UpdatedTime,
+		&BankDetail.UpdateTime,
 		&BankDetail.QuestionCount,
 		&BankDetail.QuestionTypes,
 		&BankDetail.QuestionDifficulties,
