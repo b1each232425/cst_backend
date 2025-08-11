@@ -3,7 +3,7 @@
  * @Description: 考卷数据库层单元测试
  * @Date: 2025-07-28 19:55:28
  * @LastEditors: zdl <1311866870@qq.com>
- * @LastEditTime: 2025-08-08 11:32:51
+ * @LastEditTime: 2025-08-11 16:58:01
  */
 package examPaper
 
@@ -2618,6 +2618,11 @@ func TestLoadExamPaperDetailByUserId(t *testing.T) {
 
 }
 
+// 测试级联是否成功的，前置条件，需要设置好数据库考卷、考卷题组、考卷题目、学生作答的外键约束及其级联条件
+func TestDeleteExamPaperById(t *testing.T) {
+
+}
+
 func containsString(s, substr string) bool {
 	return strings.Contains(s, substr)
 }
@@ -2839,4 +2844,17 @@ func initPaper(t *testing.T, tx *pgxpool.Pool) {
 	if err != nil {
 		t.Fatal(err)
 	}
+}
+
+func TestInitData(t *testing.T) {
+	t.Run("c直接生成数据", func(t *testing.T) {
+		if z == nil {
+			cmn.ConfigureForTest()
+		}
+		conn := cmn.GetPgxConn()
+
+		initQuestion(t, conn)
+
+		initPaper(t, conn)
+	})
 }
