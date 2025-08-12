@@ -882,6 +882,60 @@ func updateExamSessionStatus(ctx context.Context, tx pgx.Tx, newStatus string, u
 	return nil
 }
 
+func updateExamineeStatus(ctx context.Context, tx pgx.Tx, newStatus string, userID int64, examIDs ...int64) error {
+	z.Info("---->" + cmn.FncName())
+
+	forceErr := ""
+	if val := ctx.Value("force-error"); val != nil {
+		forceErr = val.(string)
+	}
+
+	if len(examIDs) == 0 {
+		err := fmt.Errorf("考试ID数组不能为空")
+		z.Error(err.Error())
+		return err
+	}
+
+	for _, examID := range examIDs {
+		if examID <= 0 {
+			err := fmt.Errorf("无效的考试ID: %d", examID)
+			z.Error(err.Error())
+			return err
+		}
+	}
+
+	if userID <= 0 {
+		err := fmt.Errorf("无效的用户ID: %d", userID)
+		z.Error(err.Error())
+		return err
+	}
+
+	if newStatus == "" {
+		err := fmt.Errorf("更新状态不能为空")
+		z.Error(err.Error())
+		return err
+	}
+
+	_, err := tx.Exec(ctx, `
+		UPDATE t_examinee 
+		SET status = $1, update_time = $2, updated_by = $3
+		FROM t_examinee e
+		JOIN t_exam_session es ON e.exam_session_id = es.id
+		WHERE t_examinee.id = e.id
+		AND es.exam_id = ANY($4) 
+		AND t_examinee.status != '08'
+	`, newStatus, time.Now().UnixMilli(), userID, examIDs)
+	if forceErr == "updateExamineeStatus.Exec" {
+		err = fmt.Errorf("force error: %s", forceErr)
+	}
+	if err != nil {
+		z.Error(err.Error())
+		return err
+	}
+
+	return nil
+}
+
 // 创建/更新/获取考试信息
 func exam(ctx context.Context) {
 	q := cmn.GetCtxValue(ctx)
@@ -2241,6 +2295,34 @@ func exam(ctx context.Context) {
 			}
 		}()
 
+		// 只有未发布的考试才允许删除
+		checkSQL := `
+			SELECT COUNT(*) = $2 AS all_exist
+			FROM t_exam_info 
+			WHERE id = ANY($1) AND status IN ('00', '12')
+		`
+		var canBeDeleted bool
+		q.Err = conn.QueryRow(ctx, checkSQL, examIDs, len(examIDs)).Scan(&canBeDeleted)
+		if forceErr == "checkExam" {
+			q.Err = fmt.Errorf("强制检查考试存在错误")
+		}
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		if !canBeDeleted {
+			if len(examIDs) == 1 {
+				q.Err = fmt.Errorf("考试无法删除")
+			} else {
+				q.Err = fmt.Errorf("部分考试无法删除")
+			}
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
 		if forceErr == "cmn.ReleaseLock" {
 			return
 		}
@@ -3222,7 +3304,6 @@ func examStatus(ctx context.Context) {
 		}
 
 		if !allExist {
-			z.Sugar().Infof("考试数量: %d", len(examIDs))
 			if len(examIDs) == 1 {
 				q.Err = fmt.Errorf("考试不存在或已被删除")
 			} else {
@@ -3296,8 +3377,8 @@ func examStatus(ctx context.Context) {
 		}
 
 		switch status {
-		case "00":
-			// 检查是否有考试的状态不满足取消考试
+		case "16":
+			// 检查是否有考试的状态不满足作废考试
 			checkSQL := `
 				SELECT EXISTS(
 					SELECT 1 FROM t_exam_info 
@@ -3316,7 +3397,7 @@ func examStatus(ctx context.Context) {
 			}
 
 			if result {
-				q.Err = fmt.Errorf("尝试取消不属于待开始状态的考试，无法执行取消操作")
+				q.Err = fmt.Errorf("尝试作废不属于待开始状态的考试，无法执行作废操作")
 				z.Error(q.Err.Error())
 				q.RespErr()
 				return
@@ -3357,7 +3438,8 @@ func examStatus(ctx context.Context) {
 				return
 			}
 
-			q.Err = updateExamStatus(ctx, tx, "00", userID, examIDs...)
+			// 作废考试
+			q.Err = updateExamStatus(ctx, tx, "16", userID, examIDs...)
 			if forceErr == "updateExamStatus" {
 				q.Err = fmt.Errorf("强制更新考试状态错误")
 			}
@@ -3366,9 +3448,18 @@ func examStatus(ctx context.Context) {
 				return
 			}
 
-			q.Err = updateExamSessionStatus(ctx, tx, "00", userID, examIDs...)
+			q.Err = updateExamSessionStatus(ctx, tx, "16", userID, examIDs...)
 			if forceErr == "updateExamSessionStatus" {
 				q.Err = fmt.Errorf("强制更新考试场次状态错误")
+			}
+			if q.Err != nil {
+				q.RespErr()
+				return
+			}
+
+			q.Err = updateExamineeStatus(ctx, tx, "16", userID, examIDs...)
+			if forceErr == "updateExamineeStatus" {
+				q.Err = fmt.Errorf("强制更新考生状态错误")
 			}
 			if q.Err != nil {
 				q.RespErr()
@@ -3378,7 +3469,7 @@ func examStatus(ctx context.Context) {
 			for _, examID := range examIDs {
 				q.Err = exam_service.CancelExamTimers(ctx, examID)
 				if forceErr == "exam_service.CancelExamTimers" {
-					q.Err = fmt.Errorf("强制取消考试定时器错误")
+					q.Err = fmt.Errorf("强制作废考试定时器错误")
 				}
 				if q.Err != nil {
 					q.RespErr()
@@ -3604,14 +3695,15 @@ func examStatus(ctx context.Context) {
 				}
 			}
 
-			q.Resp()
-			return
 		default:
 			q.Err = fmt.Errorf("不支持更新的考试状态: %s", status)
 			z.Error(q.Err.Error())
 			q.RespErr()
 			return
 		}
+
+		q.Resp()
+		return
 
 	default:
 		q.Err = fmt.Errorf("unsupported method: %s", method)
