@@ -22,6 +22,8 @@ import (
 	"strings"
 	"time"
 
+	"w2w.io/serve/examPaper"
+
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 
@@ -82,6 +84,10 @@ const (
 	//试卷长度限制
 	MaxDescription = 500
 	MaxPaperName   = 50
+
+	//试卷编辑锁前缀
+	REDIS_LOCK_PREFIX     = "paper_lock:"
+	REDIS_LOCK_EXPRIATION = 5 * time.Minute
 )
 
 // 全局日志对象
@@ -129,6 +135,22 @@ func Enroll(author string) {
 
 		Path: "/paper",
 		Name: "paper",
+
+		Developer: developer,
+		WhiteList: true,
+
+		//DomainID 创建该API的账号归属的domain
+		DomainID: int64(cmn.CDomainSys),
+
+		//DefaultDomain 该API将默认授权给的用户
+		DefaultDomain: int64(cmn.CDomainSys),
+	})
+
+	_ = cmn.AddService(&cmn.ServeEndPoint{
+		Fn: PaperLock,
+
+		Path: "/paper/lock",
+		Name: "paper_lock",
 
 		Developer: developer,
 		WhiteList: true,
@@ -314,9 +336,9 @@ func ManualPaper(ctx context.Context) {
 		now := time.Now().UnixMilli()
 		initPaperSql := `
 INSERT INTO t_paper 
-    (name, assembly_type, category, level, suggested_duration, tags, creator, create_time, updated_by, update_time, status, access_mode,domain_id) 
+    (name, assembly_type, category, level, suggested_duration, tags, creator, create_time, updated_by, update_time, status,domain_id) 
 VALUES 
-    ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11,$12,$13) 
+    ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11,$12) 
 RETURNING id`
 
 		paper := cmn.TPaper{
@@ -331,7 +353,6 @@ RETURNING id`
 			UpdatedBy:         null.IntFrom(userID),
 			UpdateTime:        null.IntFrom(now),
 			Status:            null.NewString(StatusNormal, true),
-			AccessMode:        null.NewString(PaperShareStatusPrivate, true),
 			DomainID:          null.IntFrom(resourceID),
 		}
 		q.Err = tx.QueryRow(ctx, initPaperSql,
@@ -346,7 +367,6 @@ RETURNING id`
 			paper.UpdatedBy.Int64,
 			paper.UpdateTime.Int64,
 			paper.Status.String,
-			paper.AccessMode.String,
 			paper.DomainID.Int64,
 		).Scan(&paper.ID)
 		// 强制错误，用于测试
@@ -390,6 +410,7 @@ RETURNING id`
 		}
 		var rows pgx.Rows
 		rows, q.Err = tx.Query(ctx, groupSql, args...)
+		defer rows.Close()
 		// 强制错误，用于测试
 		if forceError == "tx.Query-err" {
 			q.Err = errors.New(forceError)
@@ -399,7 +420,6 @@ RETURNING id`
 			q.RespErr()
 			return
 		}
-		defer rows.Close()
 		// 扫描返回的分组ID
 		groups := make([]cmn.TPaperGroup, 0, 5)
 		for i := 0; rows.Next(); i++ {
@@ -623,6 +643,12 @@ RETURNING id`
 			q.RespErr()
 		}
 
+		//解析获取试卷详情后模式（编辑或预览）
+		mode := q.R.URL.Query().Get("mode")
+		if mode == "" {
+			mode = "edit"
+		}
+
 		// 获取并验证用户ID
 		userID := q.SysUser.ID.Int64
 		if userID <= 0 {
@@ -687,51 +713,100 @@ RETURNING id`
 			q.RespErr()
 			return
 		}
-
-		// 获取数据库连接
-		db := cmn.GetPgxConn()
 		dmlCtx, cancel := context.WithTimeout(ctx, TIMEOUT)
 		defer cancel()
+		switch mode {
+		case "edit":
+			// 获取数据库连接
+			db := cmn.GetPgxConn()
 
-		query := `SELECT 
+			query := `SELECT 
     id,name,assembly_type,category,level,suggested_duration,description,tags,creator,create_time,update_time,status,total_score,question_count,groups_data
 	FROM v_paper
 	WHERE id = $1
 	LIMIT 1`
 
-		// 执行查询
-		var paper cmn.TVPaper
-		q.Err = db.QueryRow(dmlCtx, query, paperID).Scan(
-			&paper.ID,
-			&paper.Name,
-			&paper.AssemblyType,
-			&paper.Category,
-			&paper.Level,
-			&paper.SuggestedDuration,
-			&paper.Description,
-			&paper.Tags,
-			&paper.Creator,
-			&paper.CreateTime,
-			&paper.UpdateTime,
-			&paper.Status,
-			&paper.TotalScore,
-			&paper.QuestionCount,
-			&paper.GroupsData,
-		)
-		if forceError == "tx.QueryRow-err" {
-			q.Err = errors.New(forceError)
-		}
-		if q.Err != nil {
+			// 执行查询
+			var paper cmn.TVPaper
+			q.Err = db.QueryRow(dmlCtx, query, paperID).Scan(
+				&paper.ID,
+				&paper.Name,
+				&paper.AssemblyType,
+				&paper.Category,
+				&paper.Level,
+				&paper.SuggestedDuration,
+				&paper.Description,
+				&paper.Tags,
+				&paper.Creator,
+				&paper.CreateTime,
+				&paper.UpdateTime,
+				&paper.Status,
+				&paper.TotalScore,
+				&paper.QuestionCount,
+				&paper.GroupsData,
+			)
+			if forceError == "tx.QueryRow-err" {
+				q.Err = errors.New(forceError)
+			}
+			if q.Err != nil {
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+			// 包装响应体
+			data, _ := json.Marshal(paper)
+			q.Msg.Data = data
+			q.Err = nil
+			q.Msg.Status = 0
+			q.Msg.Msg = "success"
+		case "preview":
+			var paper *cmn.TVPaper
+			var groups []*cmn.TPaperGroup
+			var questions map[int64][]*examPaper.Question
+			paper, groups, questions, q.Err = examPaper.LoadPaperTemplateById(dmlCtx, paperID, true)
+			if q.Err != nil {
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+			// 构建前端需要的题组结构体
+			groupMap := make(map[int64]*cmn.TPaperGroup)
+			for _, g := range groups {
+				groupMap[g.ID.Int64] = g
+			}
+			//定义结构体用于整合数据发送给前端
+			type Msg struct {
+				Paper             *cmn.TVPaper
+				QuestionGroupInfo map[int64]*cmn.TPaperGroup
+				Questions         map[int64][]*examPaper.Question
+			}
+
+			msg := Msg{
+				Paper:             paper,
+				QuestionGroupInfo: groupMap,
+				Questions:         questions,
+			}
+			var data []byte
+			data, q.Err = json.Marshal(&msg)
+			if forceError == "json.Marshal" {
+				q.Err = errors.New("marshal err")
+			}
+			if q.Err != nil {
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+			q.Msg.Data = data
+			q.Msg.Msg = "success"
+			q.Msg.Status = 0
+		default:
+			// 默认操作，返回错误信息
+			q.Err = fmt.Errorf("不支持当前mode: %s", mode)
 			z.Error(q.Err.Error())
 			q.RespErr()
 			return
 		}
-		// 包装响应体
-		data, _ := json.Marshal(paper)
-		q.Msg.Data = data
-		q.Err = nil
-		q.Msg.Status = 0
-		q.Msg.Msg = "success"
+
 	default:
 		// 默认操作，返回错误信息
 		q.Err = fmt.Errorf("不支持该方法: %s", method)
@@ -741,607 +816,6 @@ RETURNING id`
 	}
 	q.Resp()
 
-}
-
-// 试卷首页  列表获取\删除试卷
-// PaperList 处理试卷列表相关的HTTP请求
-// 支持以下操作:
-// - GET: 分页获取试卷列表,支持按名称、状态等条件筛选
-// - DELETE: 批量删除试卷
-func PaperList(ctx context.Context) {
-	q := cmn.GetCtxValue(ctx)
-	z.Info("---->" + cmn.FncName())
-
-	forceError := ""
-	if val, ok := ctx.Value("force-error").(string); ok {
-		forceError = val
-	}
-
-	method := strings.ToLower(q.R.Method)
-	switch method {
-	case "get":
-		//获取用户ID
-		userID := q.SysUser.ID.Int64
-		if userID <= 0 {
-			q.Err = ErrInvalidUserID
-			z.Error(q.Err.Error())
-			q.RespErr()
-			return
-		}
-
-		//获取用户角色
-		roleID := q.SysUser.Role.Int64
-		if roleID <= 0 {
-			q.Err = fmt.Errorf("invalid role: %d", userID)
-			z.Error(q.Err.Error())
-			q.RespErr()
-			return
-		}
-		//判断用户是否有权限获取试卷列表
-		var role string
-		var resourceDomain string
-		// 从q.Domains找到当前用户角色的角色名称
-		for _, domain := range q.Domains {
-			if domain.ID.Int64 == roleID {
-				//拆出domain的名称前缀，确认资源范围
-				resources := strings.Split(domain.Domain, "^")
-				resourceDomain = resources[0]
-				parts := strings.Split(resourceDomain, ".")
-				if len(parts) >= 2 {
-					resourceDomain = strings.Join(parts[:2], ".")
-				}
-				role = resources[1]
-				break
-			}
-		}
-
-		// 检查用户角色
-		// 只有教师、超级管理员和管理员可以获取试卷列表
-		if role != "teacher" && role != "superAdmin" && role != "admin" {
-			q.Err = ErrWithoutPermission
-			z.Error(q.Err.Error())
-			q.RespErr()
-			return
-		}
-
-		// 获取数据库连接
-		db := cmn.GetPgxConn()
-		// 创建带超时的上下文
-		dmlCtx, cancel := context.WithTimeout(ctx, TIMEOUT)
-		defer cancel()
-
-		resourceIDSql := `SELECT id FROM t_domain WHERE domain = $1`
-		var resourceID int64
-		q.Err = db.QueryRow(dmlCtx, resourceIDSql, resourceDomain).Scan(&resourceID)
-		if forceError == "tx.QueryRow-err" {
-			q.Err = errors.New(forceError)
-		}
-		if q.Err != nil {
-			z.Error(q.Err.Error())
-			q.RespErr()
-			return
-		}
-
-		//创建请求体并绑定参数
-		var req PaperListRequest
-		queryParams := q.R.URL.Query()
-
-		// 解析查询参数
-		if name := queryParams.Get("name"); name != "" {
-			req.Name = name
-		}
-		if tags := queryParams.Get("tags"); tags != "" {
-			req.Tags = tags
-		}
-		if category := queryParams.Get("category"); category != "" {
-			req.Category = category
-		}
-		req.Page = 1
-		if page := queryParams.Get("page"); page != "" {
-			if p, err := strconv.Atoi(page); err == nil {
-				req.Page = p
-			}
-		}
-		req.PageSize = 10
-		if pageSize := queryParams.Get("pageSize"); pageSize != "" {
-			if p, err := strconv.Atoi(pageSize); err == nil {
-				req.PageSize = p
-			}
-		}
-
-		//req.Self = false
-		//if self := queryParams.Get("self"); self != "" {
-		//	if s, err := strconv.ParseBool(self); err == nil {
-		//		req.Self = s
-		//	}
-		//}
-
-		// 参数校验
-		if req.Page <= 0 {
-			q.Err = fmt.Errorf("页数小于等于0: %d", req.Page)
-			z.Error(q.Err.Error())
-			q.RespErr()
-			return
-		}
-		if req.PageSize != 5 && req.PageSize != 10 && req.PageSize != 20 {
-			q.Err = fmt.Errorf("无效的页大小: %d", req.PageSize)
-			z.Error(q.Err.Error())
-			q.RespErr()
-			return
-		}
-		if req.Category != PaperCategoryExam && req.Category != PaperCategoryPractice && req.Category != "" {
-			q.Err = fmt.Errorf("无效的试卷分类: %s", req.Category)
-			z.Error(q.Err.Error())
-			q.RespErr()
-			return
-		}
-		if req.Name != "" && len(req.Name) > MaxPaperName {
-			q.Err = fmt.Errorf("查询试卷名称过长，最大长度为: %d", MaxPaperName)
-			z.Error(q.Err.Error())
-			q.RespErr()
-			return
-		}
-
-		// 构建查询条件
-		var totalCount int64
-		offset := (req.Page - 1) * req.PageSize
-		// 构建动态查询条件
-		var whereClauses []string
-		var params []interface{}
-		paramCount := 1
-
-		// 基础条件：状态为有效
-		whereClauses = append(whereClauses, "p.status = '00'")
-
-		// 资源范围
-		var resourceClause strings.Builder
-		resourceClause.WriteString("p.domain_id = $")
-		resourceClause.WriteString(strconv.Itoa(paramCount))
-		whereClauses = append(whereClauses, resourceClause.String())
-		params = append(params, resourceID)
-		paramCount++
-		//// 如果设置了self，则只查询当前用户创建的试卷
-		//if req.Self {
-		//	var creatorClause strings.Builder
-		//	creatorClause.WriteString("p.creator = $")
-		//	creatorClause.WriteString(strconv.Itoa(paramCount))
-		//	whereClauses = append(whereClauses, creatorClause.String())
-		//	params = append(params, userID)
-		//	paramCount++
-		//}
-
-		//// 权限控制
-		//accessControlClause := fmt.Sprintf(`(
-		//	p.creator = $%d
-		//	OR p.access_mode = '04'
-		//	OR (
-		//		p.access_mode = '02'
-		//		AND EXISTS (
-		//			SELECT 1 FROM t_resource_share s
-		//			WHERE s.type = $%d AND s.resource_id = p.id AND s.user_id = $%d AND s.status = '00'
-		//		)
-		//	)
-		//)`, paramCount, paramCount+1, paramCount+2)
-		//whereClauses = append(whereClauses, accessControlClause)
-		//params = append(params, userID, PaperResourceShareType, userID)
-		//paramCount += 3
-
-		// 用途精确查询
-		if req.Category != "" {
-			var categoryClause strings.Builder
-			categoryClause.WriteString("p.category = $")
-			categoryClause.WriteString(strconv.Itoa(paramCount))
-			whereClauses = append(whereClauses, categoryClause.String())
-			params = append(params, req.Category)
-			paramCount++
-		}
-
-		// 名称模糊查询
-		if req.Name != "" {
-			var nameClause strings.Builder
-			nameClause.WriteString("p.name ILIKE $")
-			nameClause.WriteString(strconv.Itoa(paramCount))
-			whereClauses = append(whereClauses, nameClause.String())
-			params = append(params, "%"+req.Name+"%")
-			paramCount++
-		}
-
-		// 标签过滤
-		var tags []string
-		if req.Tags != "" {
-			tags = strings.Split(req.Tags, ",")
-			var cleanedTags []string
-			for _, tag := range tags {
-				trimmedTag := strings.TrimSpace(tag)
-				if trimmedTag != "" {
-					cleanedTags = append(cleanedTags, trimmedTag)
-				}
-			}
-			tags = cleanedTags
-		}
-		// 如果tags不为空，则添加到查询条件
-		if len(tags) > 0 {
-			var tagsClause strings.Builder
-			tagsClause.WriteString("p.tags @> $")
-			tagsClause.WriteString(strconv.Itoa(paramCount))
-			whereClauses = append(whereClauses, tagsClause.String())
-			tagsJSON, _ := json.Marshal(tags)
-			params = append(params, tagsJSON)
-			paramCount++
-		}
-
-		// 构建WHERE子句
-		var whereClause string
-		if len(whereClauses) > 0 {
-			whereClause = "WHERE " + strings.Join(whereClauses, " AND ")
-		}
-
-		// 查询总数
-		var countSQLBuilder strings.Builder
-		countSQLBuilder.WriteString("SELECT COUNT(*) FROM v_paper p ")
-		countSQLBuilder.WriteString(whereClause)
-		q.Err = db.QueryRow(ctx, countSQLBuilder.String(), params...).Scan(&totalCount)
-		if val, ok := ctx.Value("force-error").(string); ok && val == "getPaperList-QueryRowCount-err" {
-			q.Err = errors.New(val)
-		}
-		if q.Err != nil {
-			z.Error(q.Err.Error())
-			q.RespErr()
-			return
-		}
-
-		// 查询分页数据
-		var listSQLBuilder strings.Builder
-		listSQLBuilder.WriteString(`
-		SELECT p.id, p.name, p.assembly_type, p.category, p.level, p.suggested_duration, p.total_score, p.question_count, p.tags, p.create_time, p.update_time, p.status, p.creator, p.creator_info, p.access_mode
-		FROM v_paper p
-		`)
-		listSQLBuilder.WriteString(whereClause)
-		listSQLBuilder.WriteString(`
-		ORDER BY p.update_time DESC
-		LIMIT $`)
-		listSQLBuilder.WriteString(strconv.Itoa(paramCount))
-		listSQLBuilder.WriteString(" OFFSET $")
-		listSQLBuilder.WriteString(strconv.Itoa(paramCount + 1))
-		dataParams := append(params, req.PageSize, offset)
-		var rows pgx.Rows
-
-		rows, q.Err = db.Query(dmlCtx, listSQLBuilder.String(), dataParams...)
-		if val, ok := ctx.Value("force-error").(string); ok && val == "getPaperList-QueryRow-err" {
-			q.Err = errors.New(val)
-		}
-		if q.Err != nil {
-			z.Error(q.Err.Error())
-			q.RespErr()
-			return
-		}
-		defer rows.Close()
-		var papers []cmn.TVPaper
-		for rows.Next() {
-			var paper cmn.TVPaper
-			q.Err = rows.Scan(&paper.ID, &paper.Name, &paper.AssemblyType, &paper.Category, &paper.Level, &paper.SuggestedDuration, &paper.TotalScore, &paper.QuestionCount, &paper.Tags, &paper.CreateTime, &paper.UpdateTime, &paper.Status, &paper.Creator, &paper.CreatorInfo, &paper.AccessMode)
-			if val, ok := ctx.Value("force-error").(string); ok && val == "getPaperList-RowScan-err" {
-				q.Err = errors.New(val)
-			}
-			if q.Err != nil {
-				z.Error(q.Err.Error())
-				q.RespErr()
-				return
-			}
-			papers = append(papers, paper)
-		}
-		q.Err = rows.Err()
-		if val, ok := ctx.Value("force-error").(string); ok && val == "getPaperList-RowErr-err" {
-			q.Err = errors.New(val)
-		}
-		if q.Err != nil {
-			z.Error(q.Err.Error())
-			q.RespErr()
-			return
-		}
-
-		// 返回结果
-		data, _ := json.Marshal(papers)
-		q.Msg.Data = data
-		q.Err = nil
-		q.Msg.Status = 0
-		q.Msg.RowCount = totalCount
-		q.Msg.Msg = "success"
-		q.Resp()
-	case "delete":
-		// 获取并验证用户ID
-		userID := q.SysUser.ID.Int64
-		if userID <= 0 {
-			q.Err = ErrInvalidUserID
-			z.Error(q.Err.Error())
-			q.RespErr()
-			return
-		}
-
-		//获取用户角色
-		roleID := q.SysUser.Role.Int64
-		if roleID <= 0 {
-			q.Err = ErrInvalidRoleID
-			z.Error(q.Err.Error())
-			q.RespErr()
-			return
-		}
-
-		//判断用户是否有权限获取试卷列表
-		var role string
-		var resourceDomain string
-		// 从q.Domains找到当前用户角色的角色名称
-		for _, domain := range q.Domains {
-			if domain.ID.Int64 == roleID {
-				//拆出domain的名称前缀，确认资源范围
-				resources := strings.Split(domain.Domain, "^")
-				resourceDomain = resources[0]
-				parts := strings.Split(resourceDomain, ".")
-				if len(parts) >= 2 {
-					resourceDomain = strings.Join(parts[:2], ".")
-				}
-				role = resources[1]
-				break
-			}
-		}
-
-		// 检查用户角色
-		// 只有教师、超级管理员和管理员可以删除试卷
-		if role != "teacher" && role != "superAdmin" && role != "admin" {
-			q.Err = ErrWithoutPermission
-			z.Error(q.Err.Error())
-			q.RespErr()
-			return
-		}
-
-		// 读取请求体
-		var buf []byte
-		buf, q.Err = io.ReadAll(q.R.Body)
-		if forceError == "PaperList-delete-io.ReadAll-err" {
-			q.Err = errors.New(forceError)
-		}
-		if q.Err != nil {
-			z.Error(q.Err.Error())
-			q.RespErr()
-			return
-		}
-		defer func() {
-			err := q.R.Body.Close()
-			if forceError == "PaperList-delete-Body.Close-err" {
-				err = errors.New(forceError)
-			}
-			if err != nil {
-				z.Error(err.Error())
-				return
-			}
-		}()
-
-		// 检查请求体是否为空
-		// 如果请求体为空，则返回错误
-		if len(buf) == 0 {
-			q.Err = fmt.Errorf("call /api/paper/manual by delete with empty body")
-			z.Error(q.Err.Error())
-			q.RespErr()
-			return
-		}
-		//获取请求的结构体
-		var qry cmn.ReqProto
-		q.Err = json.Unmarshal(buf, &qry)
-		if forceError == "PaperList-delete-json.Unmarshal1-err" {
-			q.Err = errors.New(forceError)
-		}
-		if q.Err != nil {
-			z.Error(q.Err.Error())
-			q.RespErr()
-			return
-		}
-		//获取需要保存到数据库的数据
-		var paperIDs []int64
-		q.Err = json.Unmarshal(qry.Data, &paperIDs)
-		if forceError == "PaperList-delete-json.Unmarshal2-err" {
-			q.Err = errors.New(forceError)
-		}
-		if q.Err != nil {
-			z.Error(q.Err.Error())
-			q.RespErr()
-			return
-		}
-
-		//参数校验
-		q.Err = validateIDs(paperIDs)
-		if q.Err != nil {
-			q.Err = fmt.Errorf("invalid paper IDs: %v", q.Err)
-			z.Error(q.Err.Error())
-			q.RespErr()
-			return
-		}
-
-		// 检查试卷ID是否为空
-		db := cmn.GetPgxConn()
-		dmlCtx, cancel := context.WithTimeout(ctx, TIMEOUT)
-		defer cancel()
-
-		// 获取资源ID
-		resourceIDSql := `SELECT id FROM t_domain WHERE domain = $1`
-		var resourceID int64
-		q.Err = db.QueryRow(ctx, resourceIDSql, resourceDomain).Scan(&resourceID)
-		if forceError == "tx.QueryRow-err" {
-			q.Err = errors.New(forceError)
-		}
-		if q.Err != nil {
-			z.Error(q.Err.Error())
-			q.RespErr()
-			return
-		}
-
-		// 开启事务
-		var tx pgx.Tx
-		tx, q.Err = db.BeginTx(ctx, pgx.TxOptions{
-			IsoLevel: pgx.RepeatableRead,
-		})
-		if forceError == "PaperList-delete-BeginTx-err" {
-			q.Err = errors.New(forceError)
-		}
-		if q.Err != nil {
-			z.Error(q.Err.Error())
-			q.RespErr()
-			return
-		}
-
-		// 确保事务结束时回滚
-		defer func() {
-			p := recover()
-			if p != nil {
-				err := tx.Rollback(ctx)
-				if forceError == "PaperList-delete-Rollback-panic" {
-					err = errors.New(forceError)
-					q.Err = err
-					q.RespErr()
-				}
-				if err != nil {
-					z.Error(err.Error())
-					return
-				}
-			}
-			if q.Err != nil {
-				err := tx.Rollback(ctx)
-				if forceError == "PaperList-delete-Rollback-err" {
-					err = errors.New(forceError)
-				}
-				if err != nil && !errors.Is(err, pgx.ErrTxClosed) {
-					z.Error(err.Error())
-					return
-				}
-			}
-			// 提交事务
-			err := tx.Commit(ctx)
-			if forceError == "PaperList-delete-Commit-err" {
-				err = errors.New(forceError)
-			}
-			if err != nil {
-				z.Error(err.Error())
-				return
-			}
-		}()
-		if forceError == "PaperList-delete-Rollback-panic" {
-			panic(errors.New(forceError))
-		}
-
-		// 检查每个试卷的权限
-		var checkSQL string
-		var errorMessages []string
-		if role == "superAdmin" {
-			// 管理员检查试卷存在性和域
-			checkSQL = `
-				SELECT array_agg(
-					CASE 
-						WHEN p.id IS NULL THEN '试卷 "' || ids.id || '" 不存在'
-						WHEN p.domain_id != $2 THEN '试卷 "' || COALESCE(p.name, '未知') || '" 不在当前域范围内'
-						ELSE NULL 
-					END
-				) as error_messages
-				FROM unnest($1::bigint[]) AS ids(id)
-				LEFT JOIN t_paper p ON p.id = ids.id
-				WHERE p.id IS NULL OR p.domain_id != $2`
-			q.Err = tx.QueryRow(ctx, checkSQL, paperIDs, resourceID).Scan(&errorMessages)
-			if forceError == "superAdmin-tx.QueryRow-err" {
-				q.Err = errors.New(forceError)
-			}
-			if q.Err != nil {
-				z.Error(q.Err.Error())
-				q.RespErr()
-				return
-			}
-		} else {
-			// 普通用户检查试卷存在性、域和创建者
-			checkSQL = `
-				SELECT array_agg(
-					CASE 
-						WHEN p.id IS NULL THEN '试卷 "' || ids.id || '" 不存在'
-						WHEN p.domain_id != $2 THEN '试卷 "' || COALESCE(p.name, '未知') || '" 不在当前域范围内'
-						WHEN p.creator != $3 THEN '试卷 "' || COALESCE(p.name, '未知') || '" 非试卷创建者，无删除权限'
-						ELSE NULL 
-					END
-				) as error_messages
-				FROM unnest($1::bigint[]) AS ids(id)
-				LEFT JOIN t_paper p ON p.id = ids.id
-				WHERE p.id IS NULL OR p.domain_id != $2 OR p.creator != $3`
-			q.Err = tx.QueryRow(ctx, checkSQL, paperIDs, resourceID, userID).Scan(&errorMessages)
-			if forceError == "normaluser-tx.QueryRow-err" {
-				q.Err = errors.New(forceError)
-			}
-			if q.Err != nil {
-				z.Error(q.Err.Error())
-				q.RespErr()
-				return
-			}
-		}
-
-		// 移除空错误消息并在每个错误前添加换行符
-		var validErrors strings.Builder
-		for i, msg := range errorMessages {
-			if msg != "" {
-				// 不是第一个错误时，先添加换行符
-				if i > 0 {
-					validErrors.WriteString("\n")
-				}
-				validErrors.WriteString(msg)
-			}
-		}
-
-		// 如果有任何不能删除的试卷，返回错误
-		if validErrors.Len() > 0 {
-			q.Msg.Msg = validErrors.String()
-			q.Msg.Status = -1
-			q.Err = errors.New("部分试卷无法删除")
-			return
-		}
-		now := time.Now().UnixMilli()
-		// 1. 软删除 t_paper
-		paperSQL := `UPDATE t_paper SET status = $2, updated_by = $3, update_time = $4 WHERE id = ANY($1)`
-		_, q.Err = tx.Exec(dmlCtx, paperSQL, paperIDs, StatusUnNormal, userID, now)
-		if val, ok := ctx.Value("force-error").(string); ok && val == "deletePapers-exec-err" {
-			q.Err = errors.New(val)
-		}
-		if q.Err != nil {
-			z.Error(q.Err.Error())
-			q.RespErr()
-			return
-		}
-
-		// 2. 软删除 t_paper_group
-		groupSQL := `UPDATE t_paper_group SET status = $2, updated_by = $3, update_time = $4 WHERE paper_id = ANY($1)`
-		_, q.Err = tx.Exec(ctx, groupSQL, paperIDs, StatusUnNormal, userID, now)
-		if val, ok := ctx.Value("force-error").(string); ok && val == "deletePapersgroups-exec-err" {
-			q.Err = errors.New(val)
-		}
-		if q.Err != nil {
-			z.Error(q.Err.Error())
-			q.RespErr()
-			return
-		}
-
-		// 3. 软删除 t_paper_question
-		questionSQL := `UPDATE t_paper_question SET status = $2, updated_by = $3, update_time = $4 WHERE group_id IN (SELECT id FROM t_paper_group WHERE paper_id = ANY($1))`
-		_, q.Err = tx.Exec(ctx, questionSQL, paperIDs, StatusUnNormal, userID, now)
-		if val, ok := ctx.Value("force-error").(string); ok && val == "deletePapersquestions-exec-err" {
-			q.Err = errors.New(val)
-		}
-		if q.Err != nil {
-			z.Error(q.Err.Error())
-			q.RespErr()
-			return
-		}
-		q.Msg.Status = 0
-		q.Msg.Msg = "success"
-	default:
-		// 处理其他方法
-		q.Err = fmt.Errorf("不支持该方法: %s", method)
-		z.Error(q.Err.Error())
-		q.RespErr()
-		return
-	}
-	q.Resp()
 }
 
 // 更新试卷流程
@@ -2041,6 +1515,713 @@ WHERE id = $4`
 	}
 
 	return
+}
+
+// 试卷首页  列表获取\删除试卷
+// PaperList 处理试卷列表相关的HTTP请求
+// 支持以下操作:
+// - GET: 分页获取试卷列表,支持按名称、状态等条件筛选
+// - DELETE: 批量删除试卷
+func PaperList(ctx context.Context) {
+	q := cmn.GetCtxValue(ctx)
+	z.Info("---->" + cmn.FncName())
+
+	forceError := ""
+	if val, ok := ctx.Value("force-error").(string); ok {
+		forceError = val
+	}
+
+	method := strings.ToLower(q.R.Method)
+	switch method {
+	case "get":
+		//获取用户ID
+		userID := q.SysUser.ID.Int64
+		if userID <= 0 {
+			q.Err = ErrInvalidUserID
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		//获取用户角色
+		roleID := q.SysUser.Role.Int64
+		if roleID <= 0 {
+			q.Err = fmt.Errorf("invalid role: %d", userID)
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+		//判断用户是否有权限获取试卷列表
+		var role string
+		var resourceDomain string
+		// 从q.Domains找到当前用户角色的角色名称
+		for _, domain := range q.Domains {
+			if domain.ID.Int64 == roleID {
+				//拆出domain的名称前缀，确认资源范围
+				resources := strings.Split(domain.Domain, "^")
+				resourceDomain = resources[0]
+				parts := strings.Split(resourceDomain, ".")
+				if len(parts) >= 2 {
+					resourceDomain = strings.Join(parts[:2], ".")
+				}
+				role = resources[1]
+				break
+			}
+		}
+
+		// 检查用户角色
+		// 只有教师、超级管理员和管理员可以获取试卷列表
+		if role != "teacher" && role != "superAdmin" && role != "admin" {
+			q.Err = ErrWithoutPermission
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		// 获取数据库连接
+		db := cmn.GetPgxConn()
+		// 创建带超时的上下文
+		dmlCtx, cancel := context.WithTimeout(ctx, TIMEOUT)
+		defer cancel()
+
+		resourceIDSql := `SELECT id FROM t_domain WHERE domain = $1`
+		var resourceID int64
+		q.Err = db.QueryRow(dmlCtx, resourceIDSql, resourceDomain).Scan(&resourceID)
+		if forceError == "tx.QueryRow-err" {
+			q.Err = errors.New(forceError)
+		}
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		//创建请求体并绑定参数
+		var req PaperListRequest
+		queryParams := q.R.URL.Query()
+
+		// 解析查询参数
+		if name := queryParams.Get("name"); name != "" {
+			req.Name = name
+		}
+		if tags := queryParams.Get("tags"); tags != "" {
+			req.Tags = tags
+		}
+		if category := queryParams.Get("category"); category != "" {
+			req.Category = category
+		}
+		req.Page = 1
+		if page := queryParams.Get("page"); page != "" {
+			if p, err := strconv.Atoi(page); err == nil {
+				req.Page = p
+			}
+		}
+		req.PageSize = 10
+		if pageSize := queryParams.Get("pageSize"); pageSize != "" {
+			if p, err := strconv.Atoi(pageSize); err == nil {
+				req.PageSize = p
+			}
+		}
+
+		//req.Self = false
+		//if self := queryParams.Get("self"); self != "" {
+		//	if s, err := strconv.ParseBool(self); err == nil {
+		//		req.Self = s
+		//	}
+		//}
+
+		// 参数校验
+		if req.Page <= 0 {
+			q.Err = fmt.Errorf("页数小于等于0: %d", req.Page)
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+		if req.PageSize != 5 && req.PageSize != 10 && req.PageSize != 20 {
+			q.Err = fmt.Errorf("无效的页大小: %d", req.PageSize)
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+		if req.Category != PaperCategoryExam && req.Category != PaperCategoryPractice && req.Category != "" {
+			q.Err = fmt.Errorf("无效的试卷分类: %s", req.Category)
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+		if req.Name != "" && len(req.Name) > MaxPaperName {
+			q.Err = fmt.Errorf("查询试卷名称过长，最大长度为: %d", MaxPaperName)
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		// 构建查询条件
+		var totalCount int64
+		offset := (req.Page - 1) * req.PageSize
+		// 构建动态查询条件
+		var whereClauses []string
+		var params []interface{}
+		paramCount := 1
+
+		// 基础条件：状态为有效
+		whereClauses = append(whereClauses, "p.status = '00'")
+
+		// 资源范围
+		var resourceClause strings.Builder
+		resourceClause.WriteString("p.domain_id = $")
+		resourceClause.WriteString(strconv.Itoa(paramCount))
+		whereClauses = append(whereClauses, resourceClause.String())
+		params = append(params, resourceID)
+		paramCount++
+		//// 如果设置了self，则只查询当前用户创建的试卷
+		//if req.Self {
+		//	var creatorClause strings.Builder
+		//	creatorClause.WriteString("p.creator = $")
+		//	creatorClause.WriteString(strconv.Itoa(paramCount))
+		//	whereClauses = append(whereClauses, creatorClause.String())
+		//	params = append(params, userID)
+		//	paramCount++
+		//}
+
+		// 用途精确查询
+		if req.Category != "" {
+			var categoryClause strings.Builder
+			categoryClause.WriteString("p.category = $")
+			categoryClause.WriteString(strconv.Itoa(paramCount))
+			whereClauses = append(whereClauses, categoryClause.String())
+			params = append(params, req.Category)
+			paramCount++
+		}
+
+		// 名称模糊查询
+		if req.Name != "" {
+			var nameClause strings.Builder
+			nameClause.WriteString("p.name ILIKE $")
+			nameClause.WriteString(strconv.Itoa(paramCount))
+			whereClauses = append(whereClauses, nameClause.String())
+			params = append(params, "%"+req.Name+"%")
+			paramCount++
+		}
+
+		// 标签过滤
+		var tags []string
+		if req.Tags != "" {
+			tags = strings.Split(req.Tags, ",")
+			var cleanedTags []string
+			for _, tag := range tags {
+				trimmedTag := strings.TrimSpace(tag)
+				if trimmedTag != "" {
+					cleanedTags = append(cleanedTags, trimmedTag)
+				}
+			}
+			tags = cleanedTags
+		}
+		// 如果tags不为空，则添加到查询条件
+		if len(tags) > 0 {
+			var tagsClause strings.Builder
+			tagsClause.WriteString("p.tags @> $")
+			tagsClause.WriteString(strconv.Itoa(paramCount))
+			whereClauses = append(whereClauses, tagsClause.String())
+			tagsJSON, _ := json.Marshal(tags)
+			params = append(params, tagsJSON)
+			paramCount++
+		}
+
+		// 构建WHERE子句
+		var whereClause string
+		if len(whereClauses) > 0 {
+			whereClause = "WHERE " + strings.Join(whereClauses, " AND ")
+		}
+
+		// 查询总数
+		var countSQLBuilder strings.Builder
+		countSQLBuilder.WriteString("SELECT COUNT(*) FROM v_paper p ")
+		countSQLBuilder.WriteString(whereClause)
+		q.Err = db.QueryRow(ctx, countSQLBuilder.String(), params...).Scan(&totalCount)
+		if val, ok := ctx.Value("force-error").(string); ok && val == "getPaperList-QueryRowCount-err" {
+			q.Err = errors.New(val)
+		}
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		// 查询分页数据
+		var listSQLBuilder strings.Builder
+		listSQLBuilder.WriteString(`
+		SELECT p.id, p.name, p.assembly_type, p.category, p.level, p.suggested_duration, p.total_score, p.question_count, p.tags, p.create_time, p.update_time, p.status, p.creator, p.creator_info
+		FROM v_paper p
+		`)
+		listSQLBuilder.WriteString(whereClause)
+		listSQLBuilder.WriteString(`
+		ORDER BY p.update_time DESC
+		LIMIT $`)
+		listSQLBuilder.WriteString(strconv.Itoa(paramCount))
+		listSQLBuilder.WriteString(" OFFSET $")
+		listSQLBuilder.WriteString(strconv.Itoa(paramCount + 1))
+		dataParams := append(params, req.PageSize, offset)
+		var rows pgx.Rows
+
+		rows, q.Err = db.Query(dmlCtx, listSQLBuilder.String(), dataParams...)
+		defer rows.Close()
+		if val, ok := ctx.Value("force-error").(string); ok && val == "getPaperList-QueryRow-err" {
+			q.Err = errors.New(val)
+		}
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+		var papers []cmn.TVPaper
+		for rows.Next() {
+			var paper cmn.TVPaper
+			q.Err = rows.Scan(&paper.ID, &paper.Name, &paper.AssemblyType, &paper.Category, &paper.Level, &paper.SuggestedDuration, &paper.TotalScore, &paper.QuestionCount, &paper.Tags, &paper.CreateTime, &paper.UpdateTime, &paper.Status, &paper.Creator, &paper.CreatorInfo)
+			if val, ok := ctx.Value("force-error").(string); ok && val == "getPaperList-RowScan-err" {
+				q.Err = errors.New(val)
+			}
+			if q.Err != nil {
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+			papers = append(papers, paper)
+		}
+		q.Err = rows.Err()
+		if val, ok := ctx.Value("force-error").(string); ok && val == "getPaperList-RowErr-err" {
+			q.Err = errors.New(val)
+		}
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		// 返回结果
+		data, _ := json.Marshal(papers)
+		q.Msg.Data = data
+		q.Err = nil
+		q.Msg.Status = 0
+		q.Msg.RowCount = totalCount
+		q.Msg.Msg = "success"
+		q.Resp()
+	case "delete":
+		// 获取并验证用户ID
+		userID := q.SysUser.ID.Int64
+		if userID <= 0 {
+			q.Err = ErrInvalidUserID
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		//获取用户角色
+		roleID := q.SysUser.Role.Int64
+		if roleID <= 0 {
+			q.Err = ErrInvalidRoleID
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		//判断用户是否有权限获取试卷列表
+		var role string
+		var resourceDomain string
+		// 从q.Domains找到当前用户角色的角色名称
+		for _, domain := range q.Domains {
+			if domain.ID.Int64 == roleID {
+				//拆出domain的名称前缀，确认资源范围
+				resources := strings.Split(domain.Domain, "^")
+				resourceDomain = resources[0]
+				parts := strings.Split(resourceDomain, ".")
+				if len(parts) >= 2 {
+					resourceDomain = strings.Join(parts[:2], ".")
+				}
+				role = resources[1]
+				break
+			}
+		}
+
+		// 检查用户角色
+		// 只有教师、超级管理员和管理员可以删除试卷
+		if role != "teacher" && role != "superAdmin" && role != "admin" {
+			q.Err = ErrWithoutPermission
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		// 读取请求体
+		var buf []byte
+		buf, q.Err = io.ReadAll(q.R.Body)
+		if forceError == "PaperList-delete-io.ReadAll-err" {
+			q.Err = errors.New(forceError)
+		}
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+		defer func() {
+			err := q.R.Body.Close()
+			if forceError == "PaperList-delete-Body.Close-err" {
+				err = errors.New(forceError)
+			}
+			if err != nil {
+				z.Error(err.Error())
+				return
+			}
+		}()
+
+		// 检查请求体是否为空
+		// 如果请求体为空，则返回错误
+		if len(buf) == 0 {
+			q.Err = fmt.Errorf("call /api/paper/manual by delete with empty body")
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+		//获取请求的结构体
+		var qry cmn.ReqProto
+		q.Err = json.Unmarshal(buf, &qry)
+		if forceError == "PaperList-delete-json.Unmarshal1-err" {
+			q.Err = errors.New(forceError)
+		}
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+		//获取需要保存到数据库的数据
+		var paperIDs []int64
+		q.Err = json.Unmarshal(qry.Data, &paperIDs)
+		if forceError == "PaperList-delete-json.Unmarshal2-err" {
+			q.Err = errors.New(forceError)
+		}
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		//参数校验
+		q.Err = validateIDs(paperIDs)
+		if q.Err != nil {
+			q.Err = fmt.Errorf("invalid paper IDs: %v", q.Err)
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		// 检查试卷ID是否为空
+		db := cmn.GetPgxConn()
+		dmlCtx, cancel := context.WithTimeout(ctx, TIMEOUT)
+		defer cancel()
+
+		// 获取资源ID
+		resourceIDSql := `SELECT id FROM t_domain WHERE domain = $1`
+		var resourceID int64
+		q.Err = db.QueryRow(ctx, resourceIDSql, resourceDomain).Scan(&resourceID)
+		if forceError == "tx.QueryRow-err" {
+			q.Err = errors.New(forceError)
+		}
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		// 开启事务
+		var tx pgx.Tx
+		tx, q.Err = db.BeginTx(ctx, pgx.TxOptions{
+			IsoLevel: pgx.RepeatableRead,
+		})
+		if forceError == "PaperList-delete-BeginTx-err" {
+			q.Err = errors.New(forceError)
+		}
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		// 确保事务结束时回滚
+		defer func() {
+			if p := recover(); p != nil {
+				err := tx.Rollback(ctx)
+				if forceError == "PaperList-delete-Rollback-panic" {
+					err = errors.New(forceError)
+					q.Err = err
+					q.RespErr()
+				}
+				if err != nil {
+					z.Error(err.Error())
+					return
+				}
+			}
+			if q.Err != nil {
+				err := tx.Rollback(ctx)
+				if forceError == "PaperList-delete-Rollback-err" {
+					err = errors.New(forceError)
+				}
+				if err != nil && !errors.Is(err, pgx.ErrTxClosed) {
+					z.Error(err.Error())
+					return
+				}
+			}
+			// 提交事务
+			err := tx.Commit(ctx)
+			if forceError == "PaperList-delete-Commit-err" {
+				err = errors.New(forceError)
+			}
+			if err != nil {
+				z.Error(err.Error())
+				return
+			}
+		}()
+		if forceError == "PaperList-delete-Rollback-panic" {
+			panic(errors.New(forceError))
+		}
+
+		// 检查每个试卷的权限
+		var checkSQL string
+		var errorMessages []string
+		if role == "superAdmin" {
+			// 管理员检查试卷存在性和域
+			checkSQL = `
+				SELECT COALESCE(array_agg(
+					CASE 
+						WHEN p.id IS NULL THEN '试卷（' || ids.id || '）不存在'
+						WHEN p.domain_id != $2 THEN '试卷（' || COALESCE(p.name, '未知') || '）不在当前域范围内'
+						ELSE NULL 
+					END
+				) FILTER (WHERE CASE 
+						WHEN p.id IS NULL THEN '试卷（' || ids.id || '）不存在'
+						WHEN p.domain_id != $2 THEN '试卷（' || COALESCE(p.name, '未知') || '）不在当前域范围内'
+						ELSE NULL 
+					END IS NOT NULL), ARRAY[]::text[]) as error_messages
+				FROM unnest($1::bigint[]) AS ids(id)
+				LEFT JOIN t_paper p ON p.id = ids.id
+				WHERE p.id IS NULL OR p.domain_id != $2`
+			q.Err = tx.QueryRow(ctx, checkSQL, paperIDs, resourceID).Scan(&errorMessages)
+			if forceError == "superAdmin-tx.QueryRow-err" {
+				q.Err = errors.New(forceError)
+			}
+			if q.Err != nil {
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+		} else {
+			// 普通用户检查试卷存在性、域和创建者
+			checkSQL = `
+				SELECT COALESCE(array_agg(
+					CASE 
+						WHEN p.id IS NULL THEN '试卷（' || ids.id || '）不存在'
+						WHEN p.domain_id != $2 THEN '试卷（' || COALESCE(p.name, '未知') || '）不在当前域范围内'
+						WHEN p.creator != $3 THEN '试卷（' || COALESCE(p.name, '未知') || '）非试卷创建者，无删除权限'
+						ELSE NULL 
+					END
+				) FILTER (WHERE CASE 
+						WHEN p.id IS NULL THEN '试卷（' || ids.id || '）不存在'
+						WHEN p.domain_id != $2 THEN '试卷（' || COALESCE(p.name, '未知') || '）不在当前域范围内'
+						WHEN p.creator != $3 THEN '试卷（' || COALESCE(p.name, '未知') || '）非试卷创建者，无删除权限'
+						ELSE NULL 
+					END IS NOT NULL), ARRAY[]::text[]) as error_messages
+				FROM unnest($1::bigint[]) AS ids(id)
+				LEFT JOIN t_paper p ON p.id = ids.id
+				WHERE p.id IS NULL OR p.domain_id != $2 OR p.creator != $3`
+			q.Err = tx.QueryRow(ctx, checkSQL, paperIDs, resourceID, userID).Scan(&errorMessages)
+			if forceError == "normaluser-tx.QueryRow-err" {
+				q.Err = errors.New(forceError)
+			}
+			if q.Err != nil {
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+		}
+
+		// 移除空错误消息并在每个错误前添加换行符
+		var validErrors strings.Builder
+		for i, msg := range errorMessages {
+			if msg != "" {
+				// 不是第一个错误时，先添加换行符
+				if i > 0 {
+					validErrors.WriteString("\n")
+				}
+				validErrors.WriteString(msg)
+			}
+		}
+
+		// 如果有任何不能删除的试卷，返回错误
+		if validErrors.Len() > 0 {
+			q.Msg.Status = -1
+			q.Err = errors.New(validErrors.String())
+			q.RespErr()
+			return
+		}
+		now := cmn.GetNowInMS()
+		// 1. 软删除 t_paper
+		paperSQL := `UPDATE t_paper SET status = $2, updated_by = $3, update_time = $4 WHERE id = ANY($1)`
+		_, q.Err = tx.Exec(dmlCtx, paperSQL, paperIDs, StatusUnNormal, userID, now)
+		if val, ok := ctx.Value("force-error").(string); ok && val == "deletePapers-exec-err" {
+			q.Err = errors.New(val)
+		}
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		// 2. 软删除 t_paper_group
+		groupSQL := `UPDATE t_paper_group SET status = $2, updated_by = $3, update_time = $4 WHERE paper_id = ANY($1)`
+		_, q.Err = tx.Exec(ctx, groupSQL, paperIDs, StatusUnNormal, userID, now)
+		if val, ok := ctx.Value("force-error").(string); ok && val == "deletePapersgroups-exec-err" {
+			q.Err = errors.New(val)
+		}
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		// 3. 软删除 t_paper_question
+		questionSQL := `UPDATE t_paper_question SET status = $2, updated_by = $3, update_time = $4 WHERE group_id IN (SELECT id FROM t_paper_group WHERE paper_id = ANY($1))`
+		_, q.Err = tx.Exec(ctx, questionSQL, paperIDs, StatusUnNormal, userID, now)
+		if val, ok := ctx.Value("force-error").(string); ok && val == "deletePapersquestions-exec-err" {
+			q.Err = errors.New(val)
+		}
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+		q.Msg.Status = 0
+		q.Msg.Msg = "success"
+	default:
+		// 处理其他方法
+		q.Err = fmt.Errorf("不支持该方法: %s", method)
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+	q.Resp()
+}
+
+// 试卷锁 获取锁\延长锁\释放锁
+// PaperLock 处理试卷编辑锁相关的HTTP请求
+func PaperLock(ctx context.Context) {
+	q := cmn.GetCtxValue(ctx)
+	z.Info("---->" + cmn.FncName())
+
+	//forceError := ""
+	//if val, ok := ctx.Value("force-error").(string); ok {
+	//	forceError = val
+	//}
+
+	//获取用户ID
+	userID := q.SysUser.ID.Int64
+	if userID <= 0 {
+		q.Err = ErrInvalidUserID
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+
+	method := strings.ToLower(q.R.Method)
+	switch method {
+	case "get":
+		// 解析并验证试卷ID
+		paperIDStr := q.R.URL.Query().Get("paper_id")
+		var paperID int64
+		paperID, q.Err = strconv.ParseInt(paperIDStr, 10, 64)
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+		if paperID <= 0 {
+			q.Err = ErrInvalidPaperID
+			z.Error(q.Err.Error())
+			q.RespErr()
+		}
+
+		//尝试获取试卷锁REDIS_LOCK_PREFIX
+		var success bool
+		success, q.Err = cmn.TryLock(ctx, paperID, userID, REDIS_LOCK_PREFIX, REDIS_LOCK_EXPRIATION)
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+		if !success {
+			q.Err = fmt.Errorf("当前试卷正在被其他用户编辑")
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+		q.Msg.Msg = "success"
+		q.Msg.Status = 0
+	case "put":
+		// 解析并验证试卷ID
+		paperIDStr := q.R.URL.Query().Get("paper_id")
+		var paperID int64
+		paperID, q.Err = strconv.ParseInt(paperIDStr, 10, 64)
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+		if paperID <= 0 {
+			q.Err = ErrInvalidPaperID
+			z.Error(q.Err.Error())
+			q.RespErr()
+		}
+
+		//尝试获取试卷锁REDIS_LOCK_PREFIX
+		q.Err = cmn.RefreshLock(ctx, paperID, userID, REDIS_LOCK_PREFIX, REDIS_LOCK_EXPRIATION)
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+		q.Msg.Msg = "success"
+		q.Msg.Status = 0
+	case "delete":
+		// 解析并验证试卷ID
+		paperIDStr := q.R.URL.Query().Get("paper_id")
+		var paperID int64
+		paperID, q.Err = strconv.ParseInt(paperIDStr, 10, 64)
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+		if paperID <= 0 {
+			q.Err = ErrInvalidPaperID
+			z.Error(q.Err.Error())
+			q.RespErr()
+		}
+
+		//尝试获取试卷锁REDIS_LOCK_PREFIX
+		q.Err = cmn.ReleaseLock(ctx, paperID, userID, REDIS_LOCK_PREFIX)
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+		q.Msg.Msg = "success"
+		q.Msg.Status = 0
+	default:
+		// 处理其他方法
+		q.Err = fmt.Errorf("不支持该方法: %s", method)
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+	q.Resp()
 }
 
 // isPaperCreator 检查用户是否为试卷的创建者

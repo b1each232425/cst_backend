@@ -558,7 +558,7 @@ func handleExamSessionEndBatch(ctx context.Context, events []ExamEvent) {
 			UPDATE t_exam_session 
 			SET status = '06', -- 已结束
 				update_time = $1
-			WHERE id = ANY($2) AND status = '04'
+			WHERE id = ANY($2) AND status IN ('02','04')
 		`
 		_, err := pgxConn.Exec(ctx, sessionEndQuery, now, readyToEndExamSessions)
 		if forceErr == "updateSessionEndStatus" {
@@ -577,7 +577,7 @@ func handleExamSessionEndBatch(ctx context.Context, events []ExamEvent) {
 			WHERE ei.status = '04'
 				AND NOT EXISTS (
 					SELECT 1 FROM t_exam_session es
-					WHERE es.exam_id = ei.id AND es.status = '04'
+					WHERE es.exam_id = ei.id AND es.status IN ('02','04')
 				)
 				AND EXISTS (
 					SELECT 1 FROM t_exam_session es2

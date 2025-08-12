@@ -1519,3 +1519,117 @@ func TestQueryQuestionsByMarkMode(t *testing.T) {
 		})
 	}
 }
+
+func TestQueryStudentsInfo(t *testing.T) {
+	cleanTestData()
+	initTestData()
+	defer cleanTestData()
+
+	tests := []struct {
+		name           string
+		cond           QueryCondition
+		forceErr       string
+		expectedErrStr string
+	}{
+		{
+			name: "success",
+			cond: QueryCondition{
+				TeacherID:     testedTeacherID,
+				ExamSessionID: 101,
+			},
+		},
+		{
+			name: "success with filter:examinee_id",
+			cond: QueryCondition{
+				TeacherID:     testedTeacherID,
+				ExamSessionID: 102,
+				ExamineeID:    2205,
+			},
+		},
+		{
+			name: "success-practice",
+			cond: QueryCondition{
+				TeacherID:  testedTeacherID,
+				PracticeID: 22,
+			},
+		},
+		{
+			name: "success-practice with filter: practice_submission_id",
+			cond: QueryCondition{
+				TeacherID:            testedTeacherID,
+				PracticeID:           22,
+				PracticeSubmissionID: 2404,
+			},
+		},
+		{
+			name: "invalid params: 请求参数必须包含教师ID",
+			cond: QueryCondition{
+				ExamSessionID: 101,
+			},
+			expectedErrStr: "invalid params",
+		},
+		{
+			name: "invalid params: 请求参数必须包含考试场次ID或者练习ID中的一个",
+			cond: QueryCondition{
+				TeacherID: testedTeacherID,
+			},
+			expectedErrStr: "invalid params: 请求参数必须包含考试场次ID或者练习ID中的一个",
+		},
+		{
+			name: "invalid params: 请求参数不能同时包含练习ID和考试场次ID",
+			cond: QueryCondition{
+				TeacherID:     testedTeacherID,
+				ExamSessionID: 101,
+				PracticeID:    21,
+			},
+			expectedErrStr: "invalid params: 请求参数不能同时包含练习ID和考试场次ID",
+		},
+		{
+			name: "exec getMarkingResults SQL error",
+			cond: QueryCondition{
+				TeacherID:     testedTeacherID,
+				ExamSessionID: 101,
+			},
+			forceErr:       "QueryStudentInfo-pgxConn.Query",
+			expectedErrStr: "exec query student info SQL error",
+		},
+		{
+			name: "unable to scan row data",
+			cond: QueryCondition{
+				TeacherID:     testedTeacherID,
+				ExamSessionID: 101,
+			},
+			forceErr:       "QueryStudentsInfo-rows.Scan",
+			expectedErrStr: "unable to scan row data",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := context.Background()
+			if tt.forceErr != "" {
+				ctx = context.WithValue(context.Background(), ForceErrKey, tt.forceErr)
+			}
+
+			list, err := QueryStudentsInfo(ctx, tt.cond)
+
+			data, e := json.Marshal(list)
+			if e != nil {
+				panic(e)
+				return
+			}
+
+			z.Sugar().Infof("-->(%d)list: %+v", len(list), string(data))
+
+			if err != nil {
+				if tt.expectedErrStr == "" {
+					t.Errorf("expected success, but got error: %v", err.Error())
+				} else {
+					assert.Contains(t, err.Error(), tt.expectedErrStr)
+				}
+			} else if tt.expectedErrStr != "" {
+				t.Errorf("expected error: %s, but got success", tt.expectedErrStr)
+			}
+		})
+	}
+}

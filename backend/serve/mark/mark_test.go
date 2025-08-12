@@ -446,7 +446,7 @@ func TestCleanTestData(t *testing.T) {
 	})
 }
 
-func TestGetExamList(t *testing.T) {
+func TestHandleExamList(t *testing.T) {
 	z := cmn.GetLogger()
 	cleanTestData()
 	z.Info("starting mark Test")
@@ -607,6 +607,136 @@ func TestGetExamList(t *testing.T) {
 
 			ctx = context.WithValue(ctx, cmn.QNearKey, newMockServiceCtx(method, tt.params, nil))
 			HandleExamList(ctx)
+			q := cmn.GetCtxValue(ctx)
+			z.Sugar().Infof("HandleExamList: %+v", q.Msg)
+			if q.Err != nil {
+				if tt.expectedErrStr == "" {
+					t.Errorf("expected success, but got error: %v", q.Err.Error())
+				} else {
+					assert.Contains(t, q.Err.Error(), tt.expectedErrStr)
+				}
+			} else if tt.expectedErrStr != "" {
+				t.Errorf("expected error: %s, but got success", tt.expectedErrStr)
+			}
+
+			if q.Msg.Status != 0 {
+				t.Logf("unexpected status: %d", q.Msg.Status)
+			}
+
+			//assert.Equal(t, tt.expectedMsg, q.Msg)
+		})
+	}
+}
+
+func TestHandlePracticeList(t *testing.T) {
+	z := cmn.GetLogger()
+	cleanTestData()
+	z.Info("starting mark Test")
+	initTestData()
+	defer cleanTestData()
+
+	tests := []struct {
+		name             string
+		params           map[string]string
+		requestMethod    string
+		forceErr         string
+		expectedErrStr   string
+		expectedMsg      *cmn.ReplyProto
+		expectedRowCount int
+	}{
+		{
+			name: "success",
+			params: map[string]string{
+				"page_index": "1",
+				"page_size":  "10",
+			},
+		},
+		{
+			name: "success with default params",
+			params: map[string]string{
+				"page_index": "",
+				"page_size":  "",
+			},
+		},
+		{
+			name: "method not get",
+			params: map[string]string{
+				"page_index": "1",
+				"page_size":  "10",
+			},
+			requestMethod:  "POST",
+			expectedErrStr: "please call /api/mark/practice with http GET method",
+		},
+		{
+			name: "invalid_params(page_index)",
+			params: map[string]string{
+				"page_index": "abc",
+				"page_size":  "10",
+			},
+			expectedErrStr: "error parsing page index",
+		},
+		{
+			name: "invalid_params(page_index)",
+			params: map[string]string{
+				"page_index": "-1",
+				"page_size":  "10",
+			},
+			expectedErrStr: "page index must be greater than 0",
+		},
+		{
+			name: "invalid_params(page_size)",
+			params: map[string]string{
+				"page_index": "2",
+				"page_size":  "-2",
+			},
+			expectedErrStr: "page size must be between 1 and 1000",
+		},
+		{
+			name: "invalid_params(page_size)",
+			params: map[string]string{
+				"page_index": "2",
+				"page_size":  "abc",
+			},
+			expectedErrStr: "error parsing page size",
+		},
+		{
+			name: "unable to marshal response data",
+			params: map[string]string{
+				"page_index": "1",
+				"page_size":  "10",
+			},
+			forceErr:       "HandlePracticeList-json.Marshal",
+			expectedErrStr: "unable to marshal response data",
+		},
+		{
+			name: "QueryPracticeList row count SQL error",
+			params: map[string]string{
+				"page_index": "1",
+				"page_size":  "10",
+				"exam_name":  "",
+				"status":     "",
+			},
+			forceErr:       "QueryPracticeList-pgxConn.QueryRow",
+			expectedErrStr: "QueryPracticeList row count SQL error",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var method string
+			if tt.requestMethod != "" {
+				method = tt.requestMethod
+			} else {
+				method = "GET"
+			}
+
+			ctx := context.Background()
+			if tt.forceErr != "" {
+				ctx = context.WithValue(ctx, ForceErrKey, tt.forceErr)
+			}
+
+			ctx = context.WithValue(ctx, cmn.QNearKey, newMockServiceCtx(method, tt.params, nil))
+			HandlePracticeList(ctx)
 			q := cmn.GetCtxValue(ctx)
 			z.Sugar().Infof("HandleExamList: %+v", q.Msg)
 			if q.Err != nil {
@@ -1727,6 +1857,149 @@ func TestAutoMark(t *testing.T) {
 				}
 			} else if tt.expectedErrStr != "" {
 				t.Errorf("expected error: %s, but got success", tt.expectedErrStr)
+			}
+		})
+	}
+}
+
+func TestHandleResultsSubmission(t *testing.T) {
+	cleanTestData()
+	initTestData()
+	//defer cleanTestData()
+
+	tests := []struct {
+		name             string
+		params           map[string]string
+		requestMethod    string
+		forceErr         string
+		expectedErrStr   string
+		expectedMsg      *cmn.ReplyProto
+		expectedRowCount int
+	}{
+		{
+			name: "success",
+			params: map[string]string{
+				"exam_session_id": "102",
+			},
+		},
+		{
+			name: "success-practice with practice_submission_id",
+			params: map[string]string{
+				"practice_id":            "22",
+				"practice_submission_id": "2404",
+			},
+		},
+		{
+			name: "method not patch",
+			params: map[string]string{
+				"exam_session_id": "101",
+			},
+			requestMethod:  "POST",
+			expectedErrStr: "please call /api/mark/results-submission with http patch method",
+		},
+		{
+			name:           "请求参数必须包含练习ID或者考试场次ID中的一个",
+			params:         map[string]string{},
+			expectedErrStr: "请求参数必须包含练习ID或者考试场次ID中的一个",
+		},
+		{
+			name: "请求参数不能同时包含练习ID和考试场次ID",
+			params: map[string]string{
+				"exam_session_id": "102",
+				"practice_id":     "22",
+			},
+			expectedErrStr: "请求参数不能同时包含练习ID和考试场次ID",
+		},
+		{
+			name: "error parsing exam_session_id",
+			params: map[string]string{
+				"exam_session_id": "abc",
+			},
+			expectedErrStr: "error parsing exam_session_id",
+		},
+		{
+			name: "error parsing practice_id",
+			params: map[string]string{
+				"practice_id": "abc",
+			},
+			expectedErrStr: "error parsing practice_id",
+		},
+		{
+			name: "error parsing practice_submission_id",
+			params: map[string]string{
+				"practice_id":            "22",
+				"practice_submission_id": "abc",
+			},
+			expectedErrStr: "error parsing practice_submission_id",
+		},
+		{
+			name: "QueryMarkingResults-error",
+			params: map[string]string{
+				"exam_session_id": "102",
+			},
+			forceErr:       "QueryMarkingResults-pgxConn.Query",
+			expectedErrStr: "exec getMarkingResults SQL error",
+		},
+		{
+			name: "updateStudentAnswerScore-error",
+			params: map[string]string{
+				"exam_session_id": "101",
+			},
+			expectedErrStr: "no marking results for update",
+		},
+		{
+			name: "updateExamSessionOrPracticeSubmissionState-error",
+			params: map[string]string{
+				"exam_session_id": "102",
+			},
+			forceErr:       "updateExamSessionOrPracticeSubmissionState-tx.Query",
+			expectedErrStr: "exec updateExamSessionState sql error",
+		},
+		{
+			name: "HandleResultsSubmission-tx.Rollback",
+			params: map[string]string{
+				"exam_session_id": "102",
+			},
+			forceErr: "HandleResultsSubmission-tx.Rollback",
+		},
+		{
+			name: "HandleResultsSubmission-tx.Commit",
+			params: map[string]string{
+				"exam_session_id": "102",
+			},
+			forceErr: "HandleResultsSubmission-tx.Commit",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var method string
+			if tt.requestMethod != "" {
+				method = tt.requestMethod
+			} else {
+				method = "PATCH"
+			}
+
+			ctx := context.Background()
+			if tt.forceErr != "" {
+				ctx = context.WithValue(ctx, ForceErrKey, tt.forceErr)
+			}
+
+			ctx = context.WithValue(ctx, cmn.QNearKey, newMockServiceCtx(method, tt.params, nil))
+			HandleResultsSubmission(ctx)
+			q := cmn.GetCtxValue(ctx)
+			if q.Err != nil {
+				if tt.expectedErrStr == "" {
+					t.Errorf("expected success, but got error: %v", q.Err.Error())
+				} else {
+					assert.Contains(t, q.Err.Error(), tt.expectedErrStr)
+				}
+			} else if tt.expectedErrStr != "" {
+				t.Errorf("expected error: %s, but got success", tt.expectedErrStr)
+			}
+
+			if q.Msg.Status != 0 {
+				t.Logf("unexpected status: %d", q.Msg.Status)
 			}
 		})
 	}

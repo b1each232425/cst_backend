@@ -246,7 +246,7 @@ func UpsertPracticeStudent(ctx context.Context, pid, uid int64, ps []int64) erro
 	return nil
 }
 
-// LoadPracticeById 获取练习详情 其中不需要查询学生具体信息
+// LoadPracticeById 获取单个练习详情 其中不需要查询学生具体信息
 /*
 关键参数说明：
 	pid 要查询的练习ID
@@ -316,6 +316,61 @@ func LoadPracticeById(ctx context.Context, pid int64) (*cmn.TPractice, string, i
 	} else {
 		return &p, paperName, studentCount, nil
 	}
+}
+
+// LoadPracticeByIDs 批量获取练习详情
+/*
+关键参数说明：
+	ids 要查询的练习ID数组
+返回参数说明：
+	1、以练习ID为key，练习信息为value的map
+	4、可能出现的错误
+*/
+func LoadPracticeByIDs(ctx context.Context, ids []int64) (map[int64]*cmn.TPractice, error) {
+	if len(ids) == 0 {
+		err := fmt.Errorf("非法practiceIDs:%v", ids)
+		z.Error(err.Error())
+		return nil, err
+	}
+	conn := cmn.GetPgxConn()
+	result := make(map[int64]*cmn.TPractice)
+	// 用于测试，强制执行某些错误分支
+	forceErr, _ := ctx.Value("force-error").(string)
+	s := `
+	select p.id, p.name, p.correct_mode,p.addi,p.status,p.type,
+			p.allowed_attempts,p.paper_id,p.exam_paper_id
+	from assessuser.t_practice p
+	where p.id = ANY($1) AND p.status != $2`
+	rows, err := conn.Query(ctx, s, ids, PracticeStatus.Deleted)
+	if err != nil || forceErr == "lQuery" {
+		err = fmt.Errorf("批量查询练习数据失败：%v", err)
+		z.Error(err.Error())
+		return nil, err
+	}
+
+	defer func() {
+		rows.Close()
+	}()
+
+	for rows.Next() {
+		// 遍历，就需要创建了
+		p := &cmn.TPractice{}
+		err = rows.Scan(&p.ID, &p.Name, &p.CorrectMode, &p.Addi, &p.Status, &p.Type, &p.AllowedAttempts, &p.PaperID, &p.ExamPaperID)
+		if err != nil || forceErr == "lScan" {
+			err = fmt.Errorf("批量解析练习数据失败：%v", err)
+			z.Error(err.Error())
+			return nil, err
+		}
+		result[p.ID.Int64] = p
+	}
+	if len(result) == 0 {
+		// 这里就直接报错
+		err = fmt.Errorf("批量查询练习记录失败，记录为空")
+		z.Error(err.Error())
+		return nil, err
+	}
+
+	return result, nil
 }
 
 // ListPracticeS 学生权限及以下获取练习列表
@@ -388,6 +443,7 @@ func ListPracticeS(ctx context.Context, pType, name, difficulty string, orderBy 
 	sqlxDB := cmn.GetDbConn()
 	rows, err := sqlxDB.QueryxContext(ctx, s, args...)
 	if err != nil || forceErr == "sQuery1" {
+		err = fmt.Errorf("查询学生权限练习列表失败：%v", err)
 		z.Error(err.Error())
 		return nil, 0, err
 	}
@@ -620,6 +676,142 @@ func OperatePracticeStatus(ctx context.Context, pid int64, status string, uid in
 
 		err = mark.HandleMarkerInfo(ctx, &tx, uid, req)
 		if err != nil || forceErr == "mark1" {
+			return err
+		}
+		return nil
+	} else {
+		err = fmt.Errorf("传入要更换的练习status:%v 非法,请传入合法的练习状态", status)
+		z.Error(err.Error())
+		return err
+	}
+}
+
+// OperatePracticeStatusV2 教师及以上权限批量操作练习发布状态 控制学生能否作答、能否在列表中查看到该练习 并配置批改信息
+/*
+关键参数：
+	ids 练习ID数组
+	status 想要切换的状态
+	uid 操作者
+*/
+// OperatePracticeStatus 操作练习的发布状态 取消/发布/删除 练习
+func OperatePracticeStatusV2(ctx context.Context, ids []int64, status string, uid int64) error {
+	var err error
+	// 用于测试，强制执行某些错误分支
+	forceErr, _ := ctx.Value("force-error").(string)
+	conn := cmn.GetPgxConn()
+	now := time.Now().UnixMilli()
+	ps, err := LoadPracticeByIDs(ctx, ids)
+	if err != nil {
+		return err
+	}
+	tx, err := conn.Begin(ctx)
+	if err != nil || forceErr == "beginTx" {
+		err = fmt.Errorf("beginTx called failed:%v", err)
+		z.Error(err.Error())
+		return err
+	}
+	defer func() {
+		if err != nil || forceErr == "rollback" {
+			// 操作失败回滚
+			err = tx.Rollback(ctx)
+			if err != nil || forceErr == "rollbackFail" {
+				err = fmt.Errorf("rollback failed:%v", err)
+				z.Error(err.Error())
+			}
+			return
+		}
+		// 无错误则提交
+		err = tx.Commit(ctx)
+		if err != nil || forceErr == "commit" {
+			err = fmt.Errorf("commit failed:%v", err)
+			z.Error(err.Error())
+		}
+
+	}()
+	// TODO 此时需要判断所有的练习的状态是否都是一致的 如果不是一致的话，不允许操作 数据不统一
+	signStatus := ""
+	for _, p := range ps {
+		if signStatus == "" {
+			signStatus = p.Status.String
+		}
+		if p.Status.String != signStatus {
+			err = fmt.Errorf("此时要批量操作的练习状态不一，无法进行批量操作")
+			z.Error(err.Error())
+			return err
+		}
+	}
+	if status == PracticeStatus.Released {
+		// 批量操作
+		for pid, p := range ps {
+			// 无论考卷之前有没有生成，均生成新的
+			examPaperId, _, err := examPaper.GenerateExamPaper(ctx, tx, examPaper.PaperCategory.Practice, p.PaperID.Int64, pid, 0, uid, false)
+			if err != nil {
+				return err
+			}
+			if examPaperId == nil || forceErr == "empty" {
+				err = fmt.Errorf("生成练习考卷返回的考卷ID为空")
+				z.Error(err.Error())
+				return err
+			}
+
+			s := `UPDATE assessuser.t_practice SET status = $1,update_time = $2, updated_by = $3 ,exam_paper_id = $4 WHERE id = $5`
+			_, err = tx.Exec(ctx, s, PracticeStatus.Released, now, uid, examPaperId, pid)
+			if err != nil || forceErr == "pQuery1" {
+				err = fmt.Errorf("更新练习状态 未发布->发布 失败:%v", err)
+				z.Error(err.Error())
+				return err
+			}
+			// 生成批改配置信息
+			req := mark.HandleMarkerInfoReq{
+				PracticeID: pid,
+				MarkMode:   p.CorrectMode.String,
+				Markers:    []int64{uid},
+				Status:     "00",
+			}
+
+			err = mark.HandleMarkerInfo(ctx, &tx, uid, req)
+			if forceErr == "mark" {
+				err = fmt.Errorf("新增练习批改配置失败")
+			}
+			if err != nil {
+				return err
+			}
+		}
+		return nil
+	} else if status == PracticeStatus.PendingRelease || status == PracticeStatus.Deleted {
+
+		// 进行批量操作
+		// 若练习已经发布了，无法被删除，必须先回退为待发布状态后才能被删除 但是此时你无法通过LoadPracticeById这个函数去查询到已被删除的
+		s := `UPDATE assessuser.t_practice SET status = $1,update_time = $2, updated_by = $3  WHERE id = ANY($4)`
+		_, err = tx.Exec(ctx, s, status, now, uid, ids)
+		if err != nil || forceErr == "pQuery2" {
+			err = fmt.Errorf("更新练习状态 发布-> 未发布 或 未发布-> 删除 失败:%v", err)
+			z.Error(err.Error())
+			return err
+		}
+		// 更改practice_submission练习学生的提交状态及其练习次数，将本次练习附带的所有次数均变为无效
+		s = `UPDATE assessuser.t_practice_submissions SET status = $1,update_time = $2,updated_by = $3 , attempt = $4 WHERE practice_id = ANY($5)`
+		_, err = tx.Exec(ctx, s, PracticeSubmissionStatus.Deleted, now, uid, -1, ids)
+		if err != nil || forceErr == "pQuery3" {
+			err = fmt.Errorf("批量重置学生练习提交记录信息失败：%v", err)
+			z.Error(err.Error())
+			return err
+		}
+		err = examPaper.DeleteExamPaperById(ctx, tx, nil, ids)
+		if err != nil {
+			return err
+		}
+		// 清除批改配置信息
+		req := mark.HandleMarkerInfoReq{
+			Status:      "02",
+			PracticeIDs: ids,
+		}
+
+		err = mark.HandleMarkerInfo(ctx, &tx, uid, req)
+		if forceErr == "mark1" {
+			err = fmt.Errorf("清除批改配置失败")
+		}
+		if err != nil {
 			return err
 		}
 		return nil
