@@ -1136,7 +1136,7 @@ func gradeAnalysisByID(ctx context.Context, esid int64, pid int64) (Analysis, er
 	}
 
 	// 第二步：通过考卷ID获取考卷内容，考卷信息，考卷题组，考卷题目
-	analysis.ExamPaper, analysis.ExamPaperGroup, analysis.ExamPaperQuestion, err = examPaper.LoadExamPaperDetailsById(ctx, tx, analysis.ExamPaperID, true, true)
+	analysis.ExamPaper, analysis.ExamPaperGroup, analysis.ExamPaperQuestion, err = examPaper.LoadExamPaperDetailsById(ctx, tx, analysis.ExamPaperID, true, true, true)
 	if err != nil {
 		err = fmt.Errorf("获取考卷内容失败: %w,(examSessionID=%v),(practiceID=%v),(examPaperID=%v)", err, esid, pid, analysis.ExamPaperID)
 		z.Error(err.Error())
