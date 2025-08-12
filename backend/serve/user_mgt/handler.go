@@ -5,10 +5,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/jackc/pgx/v5"
 	"io"
 	"strconv"
 	"strings"
+
+	"github.com/jackc/pgx/v5"
 	"w2w.io/cmn"
 	"w2w.io/null"
 )
@@ -192,13 +193,15 @@ func (h *handler) HandleUser(ctx context.Context) {
 		}
 		defer func() {
 			if err != nil {
-				_ = tx.Rollback(ctx)
-				z.Error("transaction rolled back due to error: " + err.Error())
-			} else {
-				err = tx.Commit(ctx)
-				if err != nil || forceErr == "tx.Commit" {
-					z.Error("failed to commit transaction: " + err.Error())
+				err = tx.Rollback(ctx)
+				if err != nil || forceErr == "tx.Rollback" {
+					z.Error("transaction rolled back due to error: " + err.Error())
+					return
 				}
+			}
+			err = tx.Commit(ctx)
+			if err != nil || forceErr == "tx.Commit" {
+				z.Error("failed to commit transaction: " + err.Error())
 			}
 		}()
 
@@ -212,15 +215,7 @@ func (h *handler) HandleUser(ctx context.Context) {
 			return
 		}
 
-		if len(validUsers) > 0 {
-			err = h.srv.InsertUsers(ctx, tx, validUsers)
-			if err != nil {
-				q.Err = fmt.Errorf("failed to insert users: %w", err)
-				q.RespErr()
-				return
-			}
-		}
-
+		// 若存在不合法用户，则直接返回，不执行插入操作
 		if len(invalidUsers) != 0 {
 			invalidUsersBytes, err := json.Marshal(invalidUsers)
 			if err != nil || forceErr == "json.Marshal" {
@@ -237,8 +232,27 @@ func (h *handler) HandleUser(ctx context.Context) {
 			return
 		}
 
+		var insertedUsers []User
+		if len(validUsers) > 0 {
+			insertedUsers, err = h.srv.InsertUsers(ctx, tx, validUsers)
+			if err != nil {
+				q.Err = fmt.Errorf("failed to insert users: %w", err)
+				q.RespErr()
+				return
+			}
+		}
+
+		insertedUsersJson, err := json.Marshal(insertedUsers)
+		if err != nil || forceErr == "json.Marshal" {
+			q.Err = fmt.Errorf("failed to marshal valid users: %w", err)
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
 		q.Msg.Status = 0
 		q.Msg.Msg = "success"
+		q.Msg.Data = insertedUsersJson
 		q.Resp()
 		return
 
