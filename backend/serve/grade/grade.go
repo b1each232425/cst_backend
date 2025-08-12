@@ -513,7 +513,7 @@ func gradeDistributionH(ctx context.Context) {
 
 			var result ExamGradeDistribution
 
-			result, err = GradeDistributionExam(dmlCtx, req)
+			result, err = gradeDistributionExam(dmlCtx, req)
 			if err != nil {
 				q.Err = err
 				q.RespErr()
@@ -545,7 +545,7 @@ func gradeDistributionH(ctx context.Context) {
 			}
 			req.PracticeID = practiceID
 
-			result, err := GradeDistributionPractice(dmlCtx, req)
+			result, err := gradeDistributionPractice(dmlCtx, req)
 			if err != nil {
 				q.Err = err
 				q.RespErr()
@@ -699,7 +699,8 @@ func gradeExamineeListH(ctx context.Context) {
 			// var result []StudentExamScoreInfo
 
 			// result, rowCount, err = GradeExamineeListExam(dmlCtx, req)
-			result, err := GradeExamineeListExamGrouped(dmlCtx, req)
+			var result ExamScoreExportResponse
+			result, rowCount, err = gradeExamineeListExamGrouped(dmlCtx, req)
 			if err != nil {
 				q.Err = err
 				q.RespErr()
@@ -731,9 +732,10 @@ func gradeExamineeListH(ctx context.Context) {
 			z.Sugar().Debug("practiceID:", req.PracticeID)
 
 			// var result []PracticeExamineeScoreInfo
+			var result PracticeScoreExportResponse
 
 			// result, rowCount, err = GradeExamineeListPractice(dmlCtx, req)
-			result, err := GradeExamineeListPracticeGrouped(dmlCtx, req)
+			result, rowCount, err = gradeExamineeListPracticeGrouped(dmlCtx, req)
 			if err != nil {
 				q.Err = err
 				z.Error(q.Err.Error())
@@ -836,7 +838,7 @@ func gradeH(ctx context.Context) {
 			dmlCtx, cancel := context.WithTimeout(ctx, TIMEOUT)
 			defer cancel()
 
-			result, err := GradeAnalysisExam(dmlCtx, req)
+			result, err := gradeAnalysisExam(dmlCtx, req)
 			if err != nil {
 				q.Err = err
 				q.RespErr()
@@ -871,7 +873,7 @@ func gradeH(ctx context.Context) {
 			dmlCtx, cancel := context.WithTimeout(ctx, TIMEOUT)
 			defer cancel()
 
-			result, err := GetAnalysisPractice(dmlCtx, req)
+			result, err := getAnalysisPractice(dmlCtx, req)
 			if err != nil {
 				q.Err = err
 				z.Error(q.Err.Error())

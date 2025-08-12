@@ -4,6 +4,7 @@ import (
 	"github.com/jmoiron/sqlx/types"
 	"w2w.io/cmn"
 	"w2w.io/null"
+	"w2w.io/serve/examPaper"
 )
 
 type Map map[string]interface{}
@@ -166,21 +167,27 @@ type GradeArgs struct {
 }
 
 type ExamAnalysis struct {
-	ExamSessionID        null.Int                    `json:"exam_session_id"`        // 考试场次ID
-	ExamPaperID          int64                       `json:"exam_paper_id"`          // 考试试卷ID
-	QuestionGroups       []JSONText                  `json:"question_groups"`        // 题目分组
-	Questions            []cmn.TExamPaperQuestion    `json:"questions"`              // 试题分析列表
-	ExamPaper            *cmn.TVPaper                `json:"exam_paper"`             // 试卷详情
-	QuestionAnswersStats map[null.Int]map[string]int `json:"question_answers_stats"` // 试题答案统计
-	SubjectiveScores     map[null.Int]float64        `json:"subjective_scores"`      // 主观题评分列表
+	ExamSessionID  null.Int   `json:"exam_session_id"` // 考试场次ID
+	ExamPaperID    int64      `json:"exam_paper_id"`   // 考试试卷ID
+	QuestionGroups []JSONText `json:"question_groups"` // 题目分组
+	// Questions      []cmn.TExamPaperQuestion `json:"questions"`       // 试题分析列表
+	// ExamPaper            *cmn.TVPaper                        `json:"exam_paper"`             // 试卷详情
+	QuestionAnswersStats map[null.Int]map[string]int         `json:"question_answers_stats"` // 试题答案统计
+	SubjectiveScores     map[null.Int]float64                `json:"subjective_scores"`      // 主观题评分列表
+	P                    *cmn.TVExamPaper                    `json:"exam_paper"`
+	PG                   []*cmn.TExamPaperGroup              `json:"exam_paper_groups"`
+	PQ                   map[int64][]*examPaper.ExamQuestion `json:"exam_paper_questions"`
 }
 
 type PracticeAnalysis struct {
-	ExamPaperID          null.Int                    `json:"exam_paper_id"`          // 考试试卷ID
-	Questions            []cmn.TExamPaperQuestion    `json:"questions"`              // 试题分析列表
-	QuestionAnswersStats map[null.Int]map[string]int `json:"question_answers_stats"` // 试题答案统计
-	SubjectiveScores     map[null.Int]float64        `json:"subjective_scores"`      // 主观题评分列表
-	QuestionGroups       []JSONText                  `json:"question_groups"`        // 题目分组
+	ExamPaperID null.Int `json:"exam_paper_id"` // 考试试卷ID
+	// Questions            []cmn.TExamPaperQuestion            `json:"questions"`              // 试题分析列表
+	QuestionAnswersStats map[null.Int]map[string]int         `json:"question_answers_stats"` // 试题答案统计
+	SubjectiveScores     map[null.Int]float64                `json:"subjective_scores"`      // 主观题评分列表
+	QuestionGroups       []JSONText                          `json:"question_groups"`        // 题目分组
+	P                    *cmn.TVExamPaper                    `json:"exam_paper"`
+	PG                   []*cmn.TExamPaperGroup              `json:"exam_paper_groups"`
+	PQ                   map[int64][]*examPaper.ExamQuestion `json:"exam_paper_questions"`
 }
 
 type ExamSessionScoreRank struct {
