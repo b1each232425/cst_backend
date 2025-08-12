@@ -134,36 +134,23 @@ type PracticeScoreExportResponse struct {
 }
 
 type GradeExamineeListReq struct {
-	ExamID     []int // 考试ID
-	PracticeID []int // 练习ID
-	Page       int   // 页码
-	PageSize   int   // 每页数量
+	ExamID     []int64 // 考试ID
+	PracticeID []int64 // 练习ID
+	Page       int     // 页码
+	PageSize   int     // 每页数量
 	Filter     struct {
-		Keyword string `json:"keyword"`
+		Keyword string `json:"keyword"` // 关键字:姓名,昵称,电话
 	}
 }
 
-// type ExamExamineeScoreInfo struct {
-// 	StuID    null.Int    `json:"stu_id"`   // 学生ID
-// 	Phone    null.String `json:"phone"`    // 学生手机号
-// 	Name     null.String `json:"name"`     // 学生姓名
-// 	Nickname null.String `json:"nickname"` // 学生昵称
-// 	Remark   null.String `json:"remark"`   // 备注
-
-// 	ExamID        null.Int   `json:"exam_id"`         // 考试ID
-// 	ExamSessionID null.Int   `json:"exam_session_id"` // 考试场次ID
-// 	Score         null.Float `json:"score"`           // 成绩
-// 	TotalScore    null.Float `json:"total_score"`     // 总分
-// }
-
 // ********** 成绩接口 **********
-type ExamAnalysis struct {
+type Analysis struct {
 	ExamPaperID          int64                               `json:"exam_paper_id"`          // 考试试卷ID
+	ExamPaper            *cmn.TVExamPaper                    `json:"exam_paper"`             // 考卷
+	ExamPaperGroup       []*cmn.TExamPaperGroup              `json:"exam_paper_groups"`      // 考卷题组
+	ExamPaperQuestion    map[int64][]*examPaper.ExamQuestion `json:"exam_paper_questions"`   // 考卷题目
 	QuestionAnswersStats map[null.Int]map[string]int         `json:"question_answers_stats"` // 试题答案统计
 	SubjectiveScores     map[null.Int]float64                `json:"subjective_scores"`      // 主观题评分列表
-	ExamPaper            *cmn.TVExamPaper                    `json:"exam_paper"`
-	ExamPaperGroup       []*cmn.TExamPaperGroup              `json:"exam_paper_groups"`
-	ExamPaperQuestion    map[int64][]*examPaper.ExamQuestion `json:"exam_paper_questions"`
 }
 
 type ExamSessionScoreRank struct {

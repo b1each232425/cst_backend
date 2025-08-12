@@ -604,14 +604,14 @@ func gradeExamineeListH(ctx context.Context) {
 			page       string
 			pageSize   string
 			keyword    string
-			examID     []int
-			practiceID []int
+			examID     []int64
+			practiceID []int64
 		)
 		var p int
 		queryParams := q.R.URL.Query()
 
 		if category = queryParams.Get("category"); category == "" {
-			q.Err = fmt.Errorf("不支持的类型: %s", category)
+			q.Err = fmt.Errorf("类别为空")
 			z.Error(q.Err.Error())
 			q.RespErr()
 			return
@@ -624,7 +624,7 @@ func gradeExamineeListH(ctx context.Context) {
 			return
 		}
 		if p, err = strconv.Atoi(page); err != nil {
-			q.Err = fmt.Errorf("无效页码: %s", page)
+			q.Err = fmt.Errorf("传入无效页码: %s", page)
 			z.Error(q.Err.Error())
 			q.RespErr()
 			return
@@ -638,7 +638,7 @@ func gradeExamineeListH(ctx context.Context) {
 			return
 		}
 		if p, err = strconv.Atoi(pageSize); err != nil {
-			q.Err = fmt.Errorf("无效每页数量: %s", pageSize)
+			q.Err = fmt.Errorf("传入无效每页数量: %s", pageSize)
 			z.Error(q.Err.Error())
 			q.RespErr()
 			return
@@ -657,7 +657,6 @@ func gradeExamineeListH(ctx context.Context) {
 		// 	return
 		// }
 		// userID = q.SysUser.ID.Int64
-		// userID = 1681
 
 		dmlCtx, cancel := context.WithTimeout(ctx, TIMEOUT)
 		defer cancel()
@@ -665,69 +664,57 @@ func gradeExamineeListH(ctx context.Context) {
 		switch category {
 		case "exam":
 			if examIDs := queryParams.Get("examID"); examIDs != "" {
-				var intSlice []int
-				for _, examID := range bytes.Split([]byte(examIDs), []byte(",")) {
-					intValue, err := strconv.Atoi(string(examID))
+				var eids []int64
+				for _, eid := range bytes.Split([]byte(examIDs), []byte(",")) {
+					e, err := strconv.ParseInt(string(eid), 10, 64)
 					if err != nil {
 						q.Err = err
 						z.Error(q.Err.Error())
 						q.RespErr()
 						return
 					}
-					if intValue <= 0 {
-						q.Err = fmt.Errorf("无效考试ID: %d", intValue)
+					if e <= 0 {
+						q.Err = fmt.Errorf("传入考试ID存在非正整数: %d", e)
 						z.Error(q.Err.Error())
 						q.RespErr()
 						return
 					}
-
-					intSlice = append(intSlice, intValue)
+					eids = append(eids, e)
 				}
-				examID = intSlice
+				examID = eids
 			}
 			req.ExamID = examID
-			z.Sugar().Debug("examID:", req.ExamID)
 
-			// var result []StudentExamScoreInfo
-
-			// result, rowCount, err = GradeExamineeListExam(dmlCtx, req)
 			var result ExamScoreExportResponse
-			result, rowCount, err = gradeExamineeListExamGrouped(dmlCtx, req)
+			result, rowCount, err = gradeExamineeListExam(dmlCtx, req)
 			if err != nil {
 				q.Err = err
 				q.RespErr()
 				return
 			}
 
-			z.Debug("gradeListExamineeExam", zap.Any("result", result))
-
-			// if result != nil {
 			data, _ = json.Marshal(result)
-			// }
 
 		case "practice":
 			if practiceIDs := queryParams.Get("practiceID"); practiceIDs != "" {
-				var intSlice []int
-				for _, practiceID := range bytes.Split([]byte(practiceIDs), []byte(",")) {
-					intValue, err := strconv.Atoi(string(practiceID))
+				var pids []int64
+				for _, pid := range bytes.Split([]byte(practiceIDs), []byte(",")) {
+					p, err := strconv.ParseInt(string(pid), 10, 64)
 					if err != nil {
 						q.Err = err
 						z.Error(q.Err.Error())
 						q.RespErr()
 						return
 					}
-					intSlice = append(intSlice, intValue)
+					pids = append(pids, p)
 				}
-				practiceID = intSlice
+				practiceID = pids
 			}
 			req.PracticeID = practiceID
-			z.Sugar().Debug("practiceID:", req.PracticeID)
 
-			// var result []PracticeExamineeScoreInfo
 			var result PracticeScoreExportResponse
 
-			// result, rowCount, err = GradeExamineeListPractice(dmlCtx, req)
-			result, rowCount, err = gradeExamineeListPracticeGrouped(dmlCtx, req)
+			result, rowCount, err = gradeExamineeListPractice(dmlCtx, req)
 			if err != nil {
 				q.Err = err
 				z.Error(q.Err.Error())
@@ -735,12 +722,7 @@ func gradeExamineeListH(ctx context.Context) {
 				return
 			}
 
-			z.Debug("gradeListExamineePractice", zap.Any("result", result))
-
-			// if result != nil {
 			data, _ = json.Marshal(result)
-			// }
-
 		default:
 			q.Err = fmt.Errorf("不支持的类型: %s", category)
 			z.Error(q.Err.Error())
@@ -784,22 +766,20 @@ func gradeH(ctx context.Context) {
 			data []byte
 
 			// 必需参数集
-			category         string // 类别：exam practice
-			examSessionIDStr string
-			examSessionID    int
-			practiceIDStr    string
-			practiceID       int
+			category      string // 类别：exam practice
+			examSessionID int64  // 考试场次ID
+			practiceID    int64  // 练习ID
 		)
 		queryParams := q.R.URL.Query()
 
 		if category = queryParams.Get("category"); category == "" {
-			q.Err = fmt.Errorf("不支持的类型: %s", category)
+			q.Err = errors.New("传入类别参数为空")
 			z.Error(q.Err.Error())
 			q.RespErr()
 			return
 		}
 
-		// // 用户身份
+		// 用户身份
 		// if q.SysUser == nil || !q.SysUser.ID.Valid || forceErr == "q.SysUser nil" {
 		// 	q.Err = fmt.Errorf("非法请求，鉴权用户失败")
 		// 	z.Error(q.Err.Error())
@@ -807,69 +787,65 @@ func gradeH(ctx context.Context) {
 		// 	return
 		// }
 		// userID = q.SysUser.ID.Int64
-		// userID = 1681
+
+		dmlCtx, cancel := context.WithTimeout(ctx, TIMEOUT)
+		defer cancel()
 
 		switch category {
 		case "exam":
-			if examSessionIDStr = queryParams.Get("examSessionID"); examSessionIDStr == "" {
-				q.Err = fmt.Errorf("examSessionID为空: %s", examSessionIDStr)
+			esidStr := queryParams.Get("examSessionID")
+			if esidStr == "" {
+				q.Err = fmt.Errorf("examSessionID为空: %s", esidStr)
 				z.Error(q.Err.Error())
 				q.RespErr()
 				return
 			}
-			if examSessionID, err = strconv.Atoi(examSessionIDStr); err != nil {
-				q.Err = fmt.Errorf("examSessionID无效: %d", examSessionID)
+			examSessionID, err = strconv.ParseInt(esidStr, 10, 64)
+			if err != nil {
+				q.Err = fmt.Errorf("examSessionID无效, 传入:%s", esidStr)
 				z.Error(q.Err.Error())
 				q.RespErr()
 				return
 			}
 
-			dmlCtx, cancel := context.WithTimeout(ctx, TIMEOUT)
-			defer cancel()
-
-			result, err := gradeAnalysisExam(dmlCtx, examSessionID, 0)
+			result, err := gradeAnalysisByID(dmlCtx, examSessionID, 0)
 			if err != nil {
 				q.Err = err
 				q.RespErr()
 				return
 			}
 
-			// z.Debug("gradeAnalysisExam", zap.Any("result", result))
-
 			data, err = json.Marshal(result)
 			if err != nil {
-				q.Err = fmt.Errorf("json序列化失败: %v", err)
+				q.Err = fmt.Errorf("结果json序列化失败: %v", err)
 				z.Error(q.Err.Error())
 				q.RespErr()
 				return
 			}
 
 		case "practice":
-			if practiceIDStr = queryParams.Get("practiceID"); practiceIDStr == "" {
-				q.Err = fmt.Errorf("practiceID为空: %s", practiceIDStr)
+			pidStr := queryParams.Get("practiceID")
+			if pidStr == "" {
+				q.Err = fmt.Errorf("practiceID为空: %s", pidStr)
 				z.Error(q.Err.Error())
 				q.RespErr()
 				return
 			}
-			if practiceID, err = strconv.Atoi(practiceIDStr); err != nil {
-				q.Err = fmt.Errorf("practiceID无效: %d", practiceID)
+			practiceID, err = strconv.ParseInt(pidStr, 10, 64)
+			if err != nil {
+				q.Err = fmt.Errorf("传入practiceID无效: %s", pidStr)
 				z.Error(q.Err.Error())
 				q.RespErr()
 				return
 			}
 
-			dmlCtx, cancel := context.WithTimeout(ctx, TIMEOUT)
-			defer cancel()
-
-			result, err := gradeAnalysisExam(dmlCtx, 0, practiceID)
+			result, err := gradeAnalysisByID(dmlCtx, 0, practiceID)
 			if err != nil {
 				q.Err = err
 				z.Error(q.Err.Error())
 				q.RespErr()
 				return
 			}
-
-			// z.Debug("gradeAnalysisPractice", zap.Any("result", result))
 
 			data, err = json.Marshal(result)
 			if err != nil {

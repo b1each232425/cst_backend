@@ -768,7 +768,7 @@ func gradeDistributionPractice(ctx context.Context, practiceID int, columnNum in
 
 }
 
-// gradeExamineeListExamGrouped 按考试ID分类返回考生成绩列表，支持导出功能
+// gradeExamineeListExam 按考试ID分类返回考生成绩列表，支持导出功能
 /*
 * 关键参数说明：
 *  req 成绩列表请求参数
@@ -780,94 +780,116 @@ func gradeDistributionPractice(ctx context.Context, practiceID int, columnNum in
 	filter.Keyword 关键词
 * return 考试成绩导出响应 错误信息
 */
-func gradeExamineeListExamGrouped(ctx context.Context, req GradeExamineeListReq) (ExamScoreExportResponse, int64, error) {
+func gradeExamineeListExam(ctx context.Context, req GradeExamineeListReq) (ExamScoreExportResponse, int64, error) {
 	z.Info("---->" + cmn.FncName())
-	var err error
-	var response ExamScoreExportResponse
 
 	// forceErr := ""
 	// if val := ctx.Value("force-error"); val != nil {
 	// 	forceErr = val.(string)
 	// }
 
-	if len(req.ExamID) <= 0 {
-		err = fmt.Errorf("考试ID为空")
-		z.Error(err.Error())
-		return response, response.Total, err
-	}
+	var err error
+	var response ExamScoreExportResponse
 
+	examID := req.ExamID
+	page := req.Page
+	pageSize := req.PageSize
 	filter := req.Filter
 	params := []any{}
+	totalCount := int64(0)
 
-	placeholders := make([]string, len(req.ExamID))
-	for i, id := range req.ExamID {
-		placeholders[i] = fmt.Sprintf("$%d", i+1)
+	if len(examID) <= 0 {
+		err = fmt.Errorf("考试ID长度小于等于0")
+		z.Error(err.Error())
+		return response, totalCount, err
+	}
+	if page <= 0 {
+		err = fmt.Errorf("页码小于等于0")
+		z.Error(err.Error())
+		return response, totalCount, err
+	}
+	if pageSize <= 0 {
+		err = fmt.Errorf("每页数量小于等于0")
+		z.Error(err.Error())
+		return response, totalCount, err
+	}
+
+	// 多个考试ID
+	placeholders := make([]string, len(examID))
+	for i, id := range examID {
+		placeholders[i] = fmt.Sprintf("$%d", len(params)+1)
 		params = append(params, id)
 	}
 	placeholderStr := strings.Join(placeholders, ", ")
-	whereClause := fmt.Sprintf("WHERE v_stu_score.exam_id IN (%s) ", placeholderStr)
+	whereClause := fmt.Sprintf("WHERE ets.exam_id IN (%s) ", placeholderStr)
 
+	// 姓名,昵称,电话模糊搜索
 	if filter.Keyword != "" {
-		whereClause += fmt.Sprintf(" AND (v_examinee_info.official_name::text ILIKE $%d ", len(params)+1)
+		whereClause += fmt.Sprintf(" AND (e.official_name::text ILIKE $%d ", len(params)+1)
 		params = append(params, fmt.Sprintf("%%%s%%", filter.Keyword))
 
-		whereClause += fmt.Sprintf(" OR v_examinee_info.mobile_phone::text ILIKE $%d ", len(params)+1)
+		whereClause += fmt.Sprintf(" OR e.mobile_phone::text ILIKE $%d ", len(params)+1)
 		params = append(params, fmt.Sprintf("%%%s%%", filter.Keyword))
 
-		whereClause += fmt.Sprintf(" OR v_examinee_info.account::text ILIKE $%d)", len(params)+1)
+		whereClause += fmt.Sprintf(" OR e.account::text ILIKE $%d)", len(params)+1)
 		params = append(params, fmt.Sprintf("%%%s%%", filter.Keyword))
 	}
 
 	sql := fmt.Sprintf(`
-SELECT
-    v_stu_score.exam_id,
-    exam_infos.name AS exam_name,
-    v_examinee_info.student_id,
-    v_examinee_info.mobile_phone AS phone,
-    v_examinee_info.official_name AS name,
-    v_examinee_info.account AS nickname,
-    STRING_AGG(COALESCE(v_examinee_info.remark, ''), '') AS remark,
-    jsonb_agg(
-        jsonb_build_object(
-            'exam_id', v_stu_score.exam_id,
-            'exam_session_id', v_stu_score.exam_session_id,
-            'score', v_stu_score.total_score
-        ) ORDER BY v_stu_score.exam_session_id
-    ) AS exam_sessions
-FROM v_student_exam_total_score v_stu_score
-	JOIN t_exam_info exam_infos ON exam_infos.id = v_stu_score.exam_id
-	JOIN v_examinee_info ON v_examinee_info.student_id = v_stu_score.student_id
-%s
-GROUP BY
-    v_stu_score.exam_id,
-    exam_infos.name,
-    v_examinee_info.student_id,
-    v_examinee_info.mobile_phone,
-    v_examinee_info.official_name,
-    v_examinee_info.account
-ORDER BY
-    v_stu_score.exam_id,
-    v_examinee_info.official_name
+	SELECT
+		ets.exam_id,
+		ei.name AS exam_name,
+		e.student_id,
+		e.mobile_phone AS phone,
+		e.official_name AS name,
+		e.account AS nickname,
+		STRING_AGG(COALESCE(e.remark, ''), '') AS remark,
+		jsonb_agg(jsonb_build_object(
+				'exam_id', ets.exam_id,
+				'exam_session_id', ets.exam_session_id,
+				'score', ets.total_score
+			) ORDER BY ets.exam_session_id) AS exam_sessions
+	FROM v_student_exam_total_score ets
+		JOIN t_exam_info ei ON ei.id = ets.exam_id
+		JOIN v_examinee_info e ON e.student_id = ets.student_id
+	%s
+	GROUP BY
+		ets.exam_id, ei.name, e.student_id, e.mobile_phone, e.official_name, e.account
+	ORDER BY
+		ets.exam_id, e.official_name
 	`, whereClause)
+
+	var listSQL string
+	var listParams []any
+
+	if page == -1 && pageSize == -1 {
+		listSQL = sql
+		listParams = params
+	} else {
+		listParams = params
+		listSQL = fmt.Sprintf(`%s
+		LIMIT $%d OFFSET $%d`,
+			sql, len(listParams)+1, len(listParams)+2)
+		listParams = append(listParams, int32(pageSize), int32((page-1)*pageSize))
+	}
 
 	conn := cmn.GetPgxConn()
 	if conn == nil {
-		err = fmt.Errorf("get exam examinee score failed: %w", "获取数据库连接为空")
+		err = fmt.Errorf("获取数据库连接为空")
 		z.Error(err.Error())
-		return response, response.Total, err
+		return response, totalCount, err
 	}
 
-	rows, err := conn.Query(ctx, sql, params...)
+	rows, err := conn.Query(ctx, listSQL, listParams...)
 	if err != nil {
 		err = fmt.Errorf("查询考试考生成绩列表失败 错误: %s", err.Error())
 		z.Error(err.Error())
-		return response, response.Total, err
+		return response, totalCount, err
 	}
 	defer rows.Close()
 
-	// 用于按examID分组的map
+	// 按examID分组
 	examMap := make(map[int64]*ExamScoreExportData)
-	totalCount := int64(0)
 
 	for rows.Next() {
 		var examID int64
@@ -885,9 +907,9 @@ ORDER BY
 			&student.ExamSessions,
 		)
 		if err != nil {
-			err = fmt.Errorf("scan exam examinee score list error: %w", err)
+			err = fmt.Errorf("扫描考试考生成绩列表失败 错误: %w", err)
 			z.Error(err.Error())
-			return response, response.Total, err
+			return response, totalCount, err
 		}
 
 		// 按examID分组
@@ -903,16 +925,15 @@ ORDER BY
 		totalCount++
 	}
 
-	// 将map转换为slice
 	for _, examData := range examMap {
 		response.Exams = append(response.Exams, *examData)
 	}
-
 	response.Total = totalCount
-	return response, response.Total, nil
+
+	return response, totalCount, nil
 }
 
-// gradeExamineeListPracticeGrouped 按练习ID分类返回考生练习成绩列表，支持导出功能
+// gradeExamineeListPractice 按练习ID分类返回考生练习成绩列表，支持导出功能
 /*
 关键参数说明：
 	req 成绩列表请求参数
@@ -923,69 +944,77 @@ ORDER BY
 	filter.Keyword 关键词
 return 练习成绩导出响应 错误信息
 */
-func gradeExamineeListPracticeGrouped(ctx context.Context, req GradeExamineeListReq) (PracticeScoreExportResponse, int64, error) {
+func gradeExamineeListPractice(ctx context.Context, req GradeExamineeListReq) (PracticeScoreExportResponse, int64, error) {
 	z.Info("---->" + cmn.FncName())
+
 	var err error
 	var response PracticeScoreExportResponse
 
-	forceErr := ""
-	if val := ctx.Value("force-error"); val != nil {
-		forceErr = val.(string)
-	}
-
-	if len(req.PracticeID) <= 0 {
-		err = fmt.Errorf("%w: invalid practice ID, expected a positive number, got %d", ErrInvalidID, req.PracticeID)
-		z.Error(err.Error())
-		return response, response.Total, err
-	}
-
+	practiceID := req.PracticeID
+	page := req.Page
+	pageSize := req.PageSize
 	filter := req.Filter
 	params := []any{}
+	totalCount := int64(0)
 
-	z.Sugar().Debug("PracticeID", zap.Any("PracticeID", req.PracticeID))
+	// forceErr := ""
+	// if val := ctx.Value("force-error"); val != nil {
+	// 	forceErr = val.(string)
+	// }
 
-	placeholders := make([]string, len(req.PracticeID))
-	for i, id := range req.PracticeID {
+	if len(practiceID) <= 0 {
+		err = fmt.Errorf("练习ID列表为空")
+		z.Error(err.Error())
+		return response, totalCount, err
+	}
+	if page <= 0 {
+		err = fmt.Errorf("页码小于等于0")
+		z.Error(err.Error())
+		return response, totalCount, err
+	}
+	if pageSize <= 0 {
+		err = fmt.Errorf("每页数量小于等于0")
+		z.Error(err.Error())
+		return response, totalCount, err
+	}
+
+	// 多个练习ID
+	placeholders := make([]string, len(practiceID))
+	for i, id := range practiceID {
 		placeholders[i] = fmt.Sprintf("$%d", i+1)
 		params = append(params, id)
 	}
 	placeholderStr := strings.Join(placeholders, ", ")
-	z.Sugar().Debug("placeholderStr:", placeholderStr)
-	whereClause := fmt.Sprintf("WHERE v_stu_score.practice_id IN (%s) ", placeholderStr)
+	whereClause := fmt.Sprintf("WHERE pts.practice_id IN (%s) ", placeholderStr)
 
+	// 关键词过滤
 	if filter.Keyword != "" {
-		whereClause += fmt.Sprintf(" AND (v_examinee_info.official_name::text ILIKE $%d ", len(params)+1)
+		whereClause += fmt.Sprintf(" AND (ei.official_name::text ILIKE $%d ", len(params)+1)
 		params = append(params, fmt.Sprintf("%%%s%%", filter.Keyword))
 
-		whereClause += fmt.Sprintf(" OR v_examinee_info.mobile_phone::text ILIKE $%d ", len(params)+1)
+		whereClause += fmt.Sprintf(" OR ei.mobile_phone::text ILIKE $%d ", len(params)+1)
 		params = append(params, fmt.Sprintf("%%%s%%", filter.Keyword))
 
-		whereClause += fmt.Sprintf(" OR v_examinee_info.account::text ILIKE $%d)", len(params)+1)
+		whereClause += fmt.Sprintf(" OR ei.account::text ILIKE $%d)", len(params)+1)
 		params = append(params, fmt.Sprintf("%%%s%%", filter.Keyword))
 	}
 
 	sql := fmt.Sprintf(`
 	SELECT
-		v_stu_score.practice_id,
-		practice_infos.name AS practice_name,
-		v_stu_score.student_id,
-		v_examinee_info.mobile_phone AS phone,
-		v_examinee_info.official_name AS name,
-		v_examinee_info.account AS nickname,
-		MAX(v_stu_score.total_score) AS highest_score,
-		COUNT(DISTINCT v_stu_score.id) AS submitted_cnt
-	FROM v_student_practice_total_score v_stu_score
-		LEFT JOIN v_examinee_info ON v_examinee_info.student_id = v_stu_score.student_id
-		LEFT JOIN t_practice practice_infos ON practice_infos.id = v_stu_score.practice_id
+		pts.practice_id,
+		p.name AS practice_name,
+		pts.student_id,
+		ei.mobile_phone AS phone,
+		ei.official_name AS name,
+		ei.account AS nickname,
+		MAX(pts.total_score) AS highest_score,
+		COUNT(DISTINCT pts.id) AS submitted_cnt
+	FROM v_student_practice_total_score pts
+		LEFT JOIN v_examinee_info ei ON ei.student_id = pts.student_id
+		LEFT JOIN t_practice p ON p.id = pts.practice_id
 	%s
-	GROUP BY 
-	v_stu_score.practice_id, 
-	practice_infos.name,
-	v_stu_score.student_id, 
-	v_examinee_info.mobile_phone, 
-	v_examinee_info.official_name, 
-	v_examinee_info.account
-	ORDER BY v_stu_score.practice_id, v_stu_score.student_id
+	GROUP BY pts.practice_id, p.name, pts.student_id, ei.mobile_phone, ei.official_name, ei.account
+	ORDER BY pts.practice_id, pts.student_id
 		`, whereClause)
 
 	var listSQL string
@@ -995,40 +1024,25 @@ func gradeExamineeListPracticeGrouped(ctx context.Context, req GradeExamineeList
 		listSQL = sql
 		listParams = params
 	} else {
-		if req.Page <= 0 {
-			err = fmt.Errorf("%w: page is invalid, expected a positive number", ErrInvalidPage)
-			z.Error(err.Error())
-			return response, response.Total, err
-		}
-		if req.PageSize <= 0 {
-			err = fmt.Errorf("%w: pageSize is invalid, expected a positive number", ErrInvalidPageSize)
-			z.Error(err.Error())
-			return response, response.Total, err
-		}
-
 		listParams = params
 		listSQL = fmt.Sprintf(`%s
 	LIMIT $%d OFFSET $%d`,
 			sql, len(listParams)+1, len(listParams)+2)
-
 		listParams = append(listParams, int32(req.PageSize), int32((req.Page-1)*req.PageSize))
 	}
 
-	z.Sugar().Debug("listSQL", zap.Any("listSQL", listSQL))
-	z.Sugar().Debug("listParams", zap.Any("listParams", listParams))
-
 	conn := cmn.GetPgxConn()
 	if conn == nil {
-		err = fmt.Errorf("get practice examinee score failed: %w", "获取数据库连接为空")
+		err = fmt.Errorf("获取数据库连接为空")
 		z.Error(err.Error())
-		return response, response.Total, err
+		return response, totalCount, err
 	}
 
 	rows, err := conn.Query(ctx, listSQL, listParams...)
 	if err != nil {
-		err = fmt.Errorf("get practice examinee score list error: %w", err)
+		err = fmt.Errorf("查询练习考生成绩列表失败 错误: %w", err)
 		z.Error(err.Error())
-		return response, response.Total, err
+		return response, totalCount, err
 	}
 
 	defer rows.Close()
@@ -1049,9 +1063,9 @@ func gradeExamineeListPracticeGrouped(ctx context.Context, req GradeExamineeList
 			&scoreInfo.SubmittedCnt,
 		)
 		if err != nil {
-			err = fmt.Errorf("scan practice examinee score list error: %w", err)
+			err = fmt.Errorf("查询练习考生成绩列表失败 错误: %w", err)
 			z.Error(err.Error())
-			return response, response.Total, err
+			return response, totalCount, err
 		}
 
 		scoreInfo.PracticeID = null.IntFrom(practiceID)
@@ -1067,34 +1081,21 @@ func gradeExamineeListPracticeGrouped(ctx context.Context, req GradeExamineeList
 		}
 	}
 
-	// 将map转换为slice
 	for _, practiceData := range practiceMap {
 		response.Practices = append(response.Practices, *practiceData)
 	}
 
-	// 统计总数
-	countSql := fmt.Sprintf(`SELECT COUNT(1) FROM (%s) AS practice_grade_list_count`, sql)
-	err = conn.QueryRow(ctx, countSql, params...).Scan(&response.Total)
-	if forceErr == "conn.QueryRow fail" {
-		err = errors.New(forceErr)
-	}
-	if err != nil {
-		err = fmt.Errorf("执行查询语句失败: %w", err)
-		z.Error(err.Error())
-		return response, response.Total, err
-	}
-
-	return response, response.Total, err
+	return response, totalCount, err
 }
 
-// gradeAnalysisExam
+// gradeAnalysis 获取考卷分析
 /*
 	关键参数说明：
-		examSessionID 考试场次ID
-	return 考试分析响应 错误信息
-
+		esid 考试场次ID
+		pid 练习ID
+	返回参数说明: 试卷分析 错误信息
 */
-func gradeAnalysisExam(ctx context.Context, examSessionID int, practiceID int) (ExamAnalysis, error) {
+func gradeAnalysisByID(ctx context.Context, esid int64, pid int64) (Analysis, error) {
 	z.Info("---->" + cmn.FncName())
 
 	forceErr := ""
@@ -1102,48 +1103,18 @@ func gradeAnalysisExam(ctx context.Context, examSessionID int, practiceID int) (
 		forceErr = val.(string)
 	}
 
-	var analysis ExamAnalysis
+	var analysis Analysis
 	var err error
 
-	if examSessionID <= 0 && practiceID <= 0 {
-		err = fmt.Errorf("%s: ", "考试场次ID 或 练习ID 不能为空")
+	if esid <= 0 && pid <= 0 {
+		err = fmt.Errorf("考试场次ID 和 练习ID 不能同时为非正整数, (examSessionID=%v),(practiceID=%v)", esid, pid)
 		z.Error(err.Error())
 		return analysis, err
 	}
 
 	conn := cmn.GetPgxConn()
 	if conn == nil {
-		err = fmt.Errorf("%s: ", "获取数据库连接为空")
-		z.Error(err.Error())
-		return analysis, err
-	}
-
-	var examPaperParams []any
-	var examPaperSql string
-	// 第一步：从exam_paper表获取paper_id
-	if practiceID > 0 {
-		examPaperSql = `
-		SELECT
-			id AS exam_paper_id
-		FROM t_exam_paper
-		WHERE practice_id = $1
-		`
-		examPaperParams = []any{practiceID}
-	}
-	if examSessionID > 0 {
-		examPaperSql = `
-		SELECT
-			id AS exam_paper_id
-		FROM t_exam_paper
-		WHERE exam_session_id = $1
-	`
-		examPaperParams = []any{examSessionID}
-
-	}
-
-	err = conn.QueryRow(ctx, examPaperSql, examPaperParams...).Scan(&analysis.ExamPaperID)
-	if err != nil {
-		err = fmt.Errorf("get created exam info(examSessionID=%v) occurred error: %s", examSessionID, err.Error())
+		err = fmt.Errorf("获取数据库连接为空")
 		z.Error(err.Error())
 		return analysis, err
 	}
@@ -1156,174 +1127,143 @@ func gradeAnalysisExam(ctx context.Context, examSessionID int, practiceID int) (
 		return analysis, err
 	}
 
-	p, pg, pq, err := examPaper.LoadExamPaperDetailsById(ctx, tx, analysis.ExamPaperID, true, true)
-	if err != nil {
-		z.Error("get student answers for question ID", zap.Error(err))
-		return analysis, fmt.Errorf("get student answers for exam paper ID: %w", err)
+	// 第一步：获取要分析的考卷ID，exam_paper_id
+	var id int64
+	var epSql string
+	if pid > 0 {
+		epSql = `SELECT id AS exam_paper_id FROM t_exam_paper WHERE practice_id = $1`
+		id = pid
 	}
-	z.Sugar().Debug("打印p是什么：", p)
-	z.Sugar().Debug("打印pg是什么：", pg)
-	z.Sugar().Debug("打印pq是什么：", pq)
-	analysis.ExamPaper = p
-	analysis.ExamPaperGroup = pg
-	analysis.ExamPaperQuestion = pq
+	if esid > 0 {
+		epSql = `SELECT id AS exam_paper_id FROM t_exam_paper WHERE exam_session_id = $1`
+		id = esid
+	}
 
-	var questionIDs []null.Int
+	err = conn.QueryRow(ctx, epSql, id).Scan(&analysis.ExamPaperID)
+	if err != nil {
+		err = fmt.Errorf("获取考卷ID失败: %w,(examSessionID=%v),(practiceID=%v)", err, esid, pid)
+		z.Error(err.Error())
+		return analysis, err
+	}
 
-	for _, v := range pq {
+	// 第二步：通过考卷ID获取考卷内容，考卷信息，考卷题组，考卷题目
+	analysis.ExamPaper, analysis.ExamPaperGroup, analysis.ExamPaperQuestion, err = examPaper.LoadExamPaperDetailsById(ctx, tx, analysis.ExamPaperID, true, true)
+	if err != nil {
+		err = fmt.Errorf("获取考卷内容失败: %w,(examSessionID=%v),(practiceID=%v),(examPaperID=%v)", err, esid, pid, analysis.ExamPaperID)
+		z.Error(err.Error())
+		return analysis, err
+	}
+
+	// 第三步：获取考卷所有的题目序号，用于获取考生作答答案
+	var qids []null.Int
+	for _, v := range analysis.ExamPaperQuestion {
 		for _, q := range v {
-			questionIDs = append(questionIDs, q.ID)
+			qids = append(qids, q.ID)
 		}
 	}
-
-	z.Sugar().Debug("打印questionIDs是什么：%#v", questionIDs)
-
-	// 第四步
-	// 拼接 question IDs
-	questionIDsStr := make([]string, len(questionIDs))
-	for i, id := range questionIDs {
-		questionIDsStr[i] = fmt.Sprintf("%d", id.Int64)
+	qidsStr := make([]string, len(qids))
+	for i, id := range qids {
+		qidsStr[i] = fmt.Sprintf("%d", id.Int64)
 	}
-	questionIDsSql := strings.Join(questionIDsStr, ", ")
-	z.Sugar().Debug("打印questionIDsSql是什么：%#v", questionIDsSql)
+	qidsSql := strings.Join(qidsStr, ", ")
 
-	// 获取学生答案统计
-	getStudentAnswerSql := fmt.Sprintf(`
+	// 获取学生答案
+	studentAnswerSql := fmt.Sprintf(`
 	SELECT
 		type, answer, question_id
 	FROM t_student_answers tsa
 	WHERE question_id IN (%s)
-	`, questionIDsSql)
-	z.Sugar().Debug("打印getStudentAnswerSql是什么：%#v", getStudentAnswerSql)
+	`, qidsSql)
 
-	rows, err := conn.Query(ctx, getStudentAnswerSql)
+	rows, err := conn.Query(ctx, studentAnswerSql)
 	if err != nil {
-		z.Error("get student answers for question ID", zap.Error(err))
-		return analysis, fmt.Errorf("get student answers for exam paper ID: %w", err)
+		err = fmt.Errorf("查询学生答案失败: %w,(examSessionID=%v),(practiceID=%v),(examPaperID=%v),(qids=%s)", err, esid, pid, analysis.ExamPaperID, qidsStr)
+		z.Error(err.Error())
+		return analysis, err
 	}
 	defer rows.Close()
 
-	// 获取学生答案统计
+	// 第四步:从学生选择题答案中进行统计
 	questionAnswersStats := make(map[null.Int]map[string]int)
-
-	type AnswerData struct {
-		Answer []string `json:"answer"`
-	}
 	for rows.Next() {
 		var ans struct {
-			Type       string   `json:"type"`
-			Ans        JSONText `json:"answer"`
+			Type       string `json:"type"`
+			AnsJson    JSONText
+			Answer     []string `json:"answer"`
 			QuestionID null.Int `json:"question_id"`
 		}
 
-		err = rows.Scan(&ans.Type, &ans.Ans, &ans.QuestionID)
+		err = rows.Scan(&ans.Type, &ans.AnsJson, &ans.QuestionID)
 		if err != nil {
-			z.Error("scan student answer row", zap.Error(err))
-			return analysis, fmt.Errorf("scan student answer row: %w", err)
+			err = fmt.Errorf("查询学生答案失败: %w,(examSessionID=%v),(practiceID=%v),(examPaperID=%v),(qids=%s)", err, esid, pid, analysis.ExamPaperID, qidsStr)
+			z.Error(err.Error())
+			return analysis, err
 		}
 
-		if ans.Ans == nil {
-			z.Sugar().Debug("ans.Ans为空")
+		// 不是单选、多选、判断题型
+		if ans.Type != "00" && ans.Type != "02" && ans.Type != "04" {
 			continue
 		}
 
-		switch ans.Type {
-		case "00":
-			if questionAnswersStats[ans.QuestionID] == nil {
-				questionAnswersStats[ans.QuestionID] = make(map[string]int)
-			}
-			z.Sugar().Debug(ans.Ans)
-
-			var answerData AnswerData
-			err = json.Unmarshal(ans.Ans, &answerData)
-			if err != nil {
-				return analysis, fmt.Errorf("unmarshal student answer: %w", err)
-			}
-			z.Sugar().Debug("answerData", answerData)
-
-			for _, answer := range answerData.Answer {
-				if _, ok := questionAnswersStats[ans.QuestionID][answer]; !ok {
-					questionAnswersStats[ans.QuestionID][answer] = 0
-				}
-				questionAnswersStats[ans.QuestionID][answer]++
-			}
-			z.Sugar().Debug("questionAnswersStats", questionAnswersStats)
-		case "02":
-			if questionAnswersStats[ans.QuestionID] == nil {
-				questionAnswersStats[ans.QuestionID] = make(map[string]int)
-			}
-			z.Sugar().Debug(ans.Ans)
-
-			var answerData AnswerData
-			err = json.Unmarshal(ans.Ans, &answerData)
-			if err != nil {
-				return analysis, fmt.Errorf("unmarshal student answer: %w", err)
-			}
-			z.Sugar().Debug("answerData", answerData)
-
-			for _, answer := range answerData.Answer {
-				if _, ok := questionAnswersStats[ans.QuestionID][answer]; !ok {
-					questionAnswersStats[ans.QuestionID][answer] = 0
-				}
-				questionAnswersStats[ans.QuestionID][answer]++
-			}
-			z.Sugar().Debug("questionAnswersStats", questionAnswersStats)
-		case "04":
-			if questionAnswersStats[ans.QuestionID] == nil {
-				questionAnswersStats[ans.QuestionID] = make(map[string]int)
-			}
-			z.Sugar().Debug(ans.Ans)
-
-			var answerData AnswerData
-			err = json.Unmarshal(ans.Ans, &answerData)
-			if err != nil {
-				return analysis, fmt.Errorf("unmarshal student answer: %w", err)
-			}
-			z.Sugar().Debug("answerData", answerData)
-
-			for _, answer := range answerData.Answer {
-				if _, ok := questionAnswersStats[ans.QuestionID][answer]; !ok {
-					questionAnswersStats[ans.QuestionID][answer] = 0
-				}
-				questionAnswersStats[ans.QuestionID][answer]++
-			}
-			z.Sugar().Debug("questionAnswersStats", questionAnswersStats)
+		// 数据库存储学生答案为空
+		if ans.AnsJson == nil {
+			z.Warn("数据库存储学生答案为空, 请检查")
+			continue
 		}
 
-	}
+		err = json.Unmarshal(ans.AnsJson, &ans.Answer)
+		if err != nil {
+			err = fmt.Errorf("反序列化学生答案失败: %w,(examSessionID=%v),(practiceID=%v),(examPaperID=%v),(qids=%s),(ans=%s)", err, esid, pid, analysis.ExamPaperID, qidsStr, ans.AnsJson)
+			z.Error(err.Error())
+			return analysis, err
+		}
 
+		// 该题目答案还没有出现过
+		if questionAnswersStats[ans.QuestionID] == nil {
+			questionAnswersStats[ans.QuestionID] = make(map[string]int)
+		}
+
+		// 统计答案
+		// 说明:选择题答案是数组形式的选项
+		for _, answer := range ans.Answer {
+			if _, ok := questionAnswersStats[ans.QuestionID][answer]; !ok {
+				questionAnswersStats[ans.QuestionID][answer] = 0
+			}
+			questionAnswersStats[ans.QuestionID][answer]++
+		}
+	}
 	analysis.QuestionAnswersStats = questionAnswersStats
 
-	// 获取学生主观题得分统计
+	// 获取考生得分统计
 	getSubjectiveScoreSql := fmt.Sprintf(`
 	SELECT
 		tm.question_id, AVG(tm.score) AS total_score
 	FROM t_mark tm
 	WHERE tm.question_id IN (%s)
 	GROUP BY tm.question_id
-	`, questionIDsSql)
+	`, qidsSql)
 
 	rows, err = conn.Query(ctx, getSubjectiveScoreSql)
 	if err != nil {
-		z.Error("get student subjective scores for question ID", zap.Error(err))
-		return analysis, fmt.Errorf("get student subjective scores for exam paper ID: %w", err)
+		err = fmt.Errorf("获取考卷平均分失败: %w,(examSessionID=%v),(practiceID=%v),(examPaperID=%v),(qids=%s)", err, esid, pid, analysis.ExamPaperID, qidsStr)
+		z.Error(err.Error())
+		return analysis, err
 	}
 	defer rows.Close()
 
-	// 获取学生主观题得分统计
+	// 第五步:从学生题目得分中统计平均分
 	subjectiveScores := make(map[null.Int]float64)
-
 	for rows.Next() {
-		var questionID null.Int
-		var totalScore float64
-		err := rows.Scan(&questionID, &totalScore)
+		var qid null.Int
+		var avgScore float64
+		err := rows.Scan(&qid, &avgScore)
 		if err != nil {
-			z.Error("scan student subjective score row", zap.Error(err))
-			return analysis, fmt.Errorf("scan student subjective score row: %w", err)
+			err = fmt.Errorf("获取考卷平均分失败: %w,(examSessionID=%v),(practiceID=%v),(examPaperID=%v),(qids=%s),(qid=%v)", err, esid, pid, analysis.ExamPaperID, qidsStr, qid)
+			z.Error(err.Error())
+			return analysis, err
 		}
-		subjectiveScores[questionID] = totalScore
+		subjectiveScores[qid] = avgScore
 	}
-
 	analysis.SubjectiveScores = subjectiveScores
 
 	return analysis, nil
@@ -1395,14 +1335,10 @@ func getScoreS(ctx context.Context, tx pgx.Tx, studentID int64, examSessionID in
 	z.Sugar().Debug("vep:", vep)
 	z.Sugar().Debug("tepg:", tepg)
 	z.Sugar().Debug("eq:", eq)
-	//result["vep"] = vep
-	//result["tepg"] = tepg
-	//result["eq"] = eq
 	result = Map{}
 	result["exam_paper"] = vep
 	result["exam_paper_group"] = tepg
 	result["exam_question"] = eq
-	//rank, err := getRankList(examSessionID)
 
 	rank, err := getSessionScoreRank(ctx, int64(examSessionID))
 	result["rank"] = rank
