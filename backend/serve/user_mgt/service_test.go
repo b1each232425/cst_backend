@@ -1035,7 +1035,7 @@ func TestService_InsertUsers(t *testing.T) {
 			t.Logf("开始测试: %s", tt.desc)
 
 			// 执行插入操作
-			err := repo.InsertUsers(tt.ctx, nil, tt.users)
+			insertedUsers, err := repo.InsertUsers(tt.ctx, nil, tt.users)
 
 			// 验证错误
 			if (err != nil) != tt.wantErr {
@@ -1051,7 +1051,7 @@ func TestService_InsertUsers(t *testing.T) {
 
 			// 验证插入成功的情况
 			if err == nil && len(tt.users) > 0 {
-				t.Logf("成功插入 %d 个用户", len(tt.users))
+				t.Logf("成功插入 %d 个用户", len(insertedUsers))
 
 				// 验证插入的数据是否可以查询到（可选验证）
 				for _, user := range tt.users {
@@ -1167,7 +1167,7 @@ func TestService_InsertUsers_WithTransaction(t *testing.T) {
 			t.Logf("开始测试: %s", tt.desc)
 
 			// 执行插入操作
-			err := repo.InsertUsers(ctx, tx, tt.users)
+			insertedUsers, err := repo.InsertUsers(ctx, tx, tt.users)
 
 			// 验证错误
 			if (err != nil) != tt.wantErr {
@@ -1176,7 +1176,7 @@ func TestService_InsertUsers_WithTransaction(t *testing.T) {
 			}
 
 			if !tt.wantErr {
-				t.Logf("事务中成功插入 %d 个用户", len(tt.users))
+				t.Logf("事务中成功插入 %d 个用户", len(insertedUsers))
 			}
 		})
 	}
@@ -1211,7 +1211,7 @@ func TestService_InsertUsers_Performance(t *testing.T) {
 			}
 
 			start := time.Now()
-			err := repo.InsertUsers(ctx, nil, users)
+			_, err := repo.InsertUsers(ctx, nil, users)
 			duration := time.Since(start)
 
 			if err != nil {
@@ -1247,7 +1247,7 @@ func BenchmarkInsertUsers(b *testing.B) {
 				},
 			},
 		}
-		err := repo.InsertUsers(ctx, nil, users)
+		_, err := repo.InsertUsers(ctx, nil, users)
 		if err != nil {
 			b.Errorf("InsertUsers() error = %v", err)
 		}
@@ -1273,7 +1273,7 @@ func BenchmarkInsertUsersBatch(b *testing.B) {
 				},
 			}
 		}
-		err := repo.InsertUsers(ctx, nil, users)
+		_, err := repo.InsertUsers(ctx, nil, users)
 		if err != nil {
 			b.Errorf("InsertUsers() error = %v", err)
 		}

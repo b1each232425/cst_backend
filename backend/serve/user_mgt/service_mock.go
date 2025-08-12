@@ -2,6 +2,7 @@ package user_mgt
 
 import (
 	"context"
+
 	"github.com/jackc/pgx/v5"
 	"w2w.io/null"
 )
@@ -25,13 +26,13 @@ func (m *MockService) QueryUsers(ctx context.Context, tx pgx.Tx, page, pageSize 
 	return m.users, m.totalRows, nil
 }
 
-func (m *MockService) InsertUsers(ctx context.Context, tx pgx.Tx, users []User) error {
+func (m *MockService) InsertUsers(ctx context.Context, tx pgx.Tx, users []User) ([]User, error) {
 	if m.err != nil {
-		return m.err
+		return []User{}, m.err
 	}
 	m.users = append(m.users, users...)
 	m.totalRows += int64(len(users))
-	return nil
+	return users, nil
 }
 
 func (m *MockService) InsertUsersWithAccount(ctx context.Context, tx pgx.Tx, users []User) error {
