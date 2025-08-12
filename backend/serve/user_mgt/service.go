@@ -4,19 +4,21 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
 	"math/rand"
 	"time"
+
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"w2w.io/null"
 
 	"strings"
+
 	"w2w.io/cmn"
 )
 
 type Service interface {
 	QueryUsers(ctx context.Context, tx pgx.Tx, page, pageSize int64, filter QueryUsersFilter) ([]User, int64, error)
-	InsertUsers(ctx context.Context, tx pgx.Tx, users []User) error
+	InsertUsers(ctx context.Context, tx pgx.Tx, users []User) ([]User, error)
 	InsertUsersWithAccount(ctx context.Context, tx pgx.Tx, users []User) error
 	CheckTUserFieldExists(ctx context.Context, tx pgx.Tx, field string, value any) (bool, error)
 	CheckTUserRowExists(ctx context.Context, tx pgx.Tx, fields map[string]any) (bool, error)
@@ -235,7 +237,8 @@ func (r *service) QueryUsers(ctx context.Context, tx pgx.Tx, page, pageSize int6
 // InsertUsers 批量插入用户数据
 // 必要字段: account, category
 // 请不要轻易调用该方法插入用户，该方法不会对用户信息做全面的校验
-func (r *service) InsertUsers(ctx context.Context, tx pgx.Tx, users []User) error {
+// 返回值: 成功插入的用户列表（包含生成的ID）、错误
+func (r *service) InsertUsers(ctx context.Context, tx pgx.Tx, users []User) ([]User, error) {
 	z.Info("---->" + cmn.FncName())
 
 	forceErr, _ := ctx.Value("force-error").(string)
@@ -245,19 +248,22 @@ func (r *service) InsertUsers(ctx context.Context, tx pgx.Tx, users []User) erro
 	if len(users) == 0 {
 		e := fmt.Errorf("no users to insert")
 		z.Error(e.Error())
-		return e
+		return []User{}, e
 	}
+
+	// 用于存储成功插入的用户
+	var insertedUsers []User
 
 	for i := range users {
 		if users[i].Account == "" {
 			e := fmt.Errorf("user account is required")
 			z.Error(e.Error())
-			return e
+			return []User{}, e
 		}
 		if users[i].Category == "" {
 			e := fmt.Errorf("user category is required")
 			z.Error(e.Error())
-			return e
+			return []User{}, e
 		}
 
 		if !users[i].IDCardNo.Valid && !users[i].MobilePhone.Valid && !users[i].Email.Valid {
@@ -331,7 +337,7 @@ func (r *service) InsertUsers(ctx context.Context, tx pgx.Tx, users []User) erro
 		if err != nil || forceErr == "Exec" {
 			e := fmt.Errorf("failed to insert user %s: %w", users[i].Account, err)
 			z.Error(e.Error())
-			return e
+			return []User{}, e
 		}
 
 		// 读取用户ID
@@ -344,8 +350,13 @@ func (r *service) InsertUsers(ctx context.Context, tx pgx.Tx, users []User) erro
 		if err != nil || forceErr == "QueryUserID" {
 			e := fmt.Errorf("failed to retrieve user ID for %s: %w", users[i].Account, err)
 			z.Error(e.Error())
-			return e
+			return []User{}, e
 		}
+
+		// 设置用户ID并添加到成功插入的用户列表
+		users[i].ID = null.IntFrom(userID)
+		users[i].CreateTime = null.IntFrom(time.Now().UnixMilli())
+		users[i].UpdateTime = null.IntFrom(time.Now().UnixMilli())
 
 		// 插入用户角色到 t_user_domain
 		if len(users[i].Domains) > 0 {
@@ -362,13 +373,16 @@ func (r *service) InsertUsers(ctx context.Context, tx pgx.Tx, users []User) erro
 				if err != nil || forceErr == "InsertUserDomain" {
 					e := fmt.Errorf("failed to insert user domain %s for user %s: %w", domain.String, users[i].Account, err)
 					z.Error(e.Error())
-					return e
+					return []User{}, e
 				}
 			}
 		}
+
+		// 将成功插入的用户添加到结果列表
+		insertedUsers = append(insertedUsers, users[i])
 	}
 
-	return nil
+	return insertedUsers, nil
 }
 
 // InsertUsersWithAccount 批量插入用户数据，并为每个用户生成唯一账号
@@ -388,7 +402,7 @@ func (r *service) InsertUsersWithAccount(ctx context.Context, tx pgx.Tx, users [
 		}
 	}
 
-	err = r.InsertUsers(ctx, tx, users)
+	_, err = r.InsertUsers(ctx, tx, users)
 	if err != nil || forceErr == "InsertUsers" {
 		e := fmt.Errorf("failed to insert users with generated accounts: %w", err)
 		return e

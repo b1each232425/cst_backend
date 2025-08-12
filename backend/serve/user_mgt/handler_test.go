@@ -4,12 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/jackc/pgx/v5"
 	"net/http/httptest"
 	"net/url"
 	"strconv"
 	"testing"
 	"time"
+
+	"github.com/jackc/pgx/v5"
 	"w2w.io/cmn"
 	"w2w.io/null"
 )
@@ -1506,6 +1507,19 @@ func Test_handler_HandleUser(t *testing.T) {
 					"Account": "new_user_001",
 					"OfficialName": "新用户001"
 				}]`, "tx.Begin"),
+			},
+			wantErr: true,
+		},
+		{
+			name: "触发json.Marshal错误",
+			fields: fields{
+				srv: &MockService{},
+			},
+			args: args{
+				ctx: createMockContextWithBody("POST", "/api/user", `[{
+					"Account": "new_user_001",
+					"OfficialName": "新用户001"
+				}]`, "json.Marshal"),
 			},
 			wantErr: true,
 		},
