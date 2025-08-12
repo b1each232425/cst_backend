@@ -236,15 +236,14 @@ func CreateTestPaperWithGroupsAndQuestions(ctx context.Context, bankQuestionIDs 
 		UpdateTime:        null.IntFrom(now),
 		Status:            null.StringFrom("00"),
 		Tags:              types.JSONText(`["test", "unit"]`),
-		AccessMode:        null.StringFrom("00"), // 默认访问模式
 	}
 
 	//初始化一张空试卷
 	err = tx.QueryRow(ctx, `
 		INSERT INTO t_paper 
-			(name, assembly_type, category, level, suggested_duration, tags, creator, create_time, updated_by, update_time, status, access_mode,domain_id) 
+			(name, assembly_type, category, level, suggested_duration, tags, creator, create_time, updated_by, update_time, status,domain_id) 
 		VALUES 
-			($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12,$13) 
+			($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) 
 		RETURNING id`,
 		paper.Name.String,
 		paper.AssemblyType.String,
@@ -257,7 +256,6 @@ func CreateTestPaperWithGroupsAndQuestions(ctx context.Context, bankQuestionIDs 
 		paper.UpdatedBy.Int64,
 		paper.UpdateTime.Int64,
 		paper.Status.String,
-		paper.AccessMode.String,
 		resourceDomainID,
 	).Scan(&paperID)
 
@@ -390,9 +388,9 @@ func initTestQuestionBankData() error {
 		_ = tx.Commit(ctx)
 	}()
 
-	qb := `INSERT INTO t_question_bank  (type,name,creator,create_time,status,access_mode) VALUES($1, $2, $3, $4, $5, $6) RETURNING id`
+	qb := `INSERT INTO t_question_bank  (type,name,creator,create_time,status) VALUES($1, $2, $3, $4, $5) RETURNING id`
 	var qbID int64
-	_ = tx.QueryRow(ctx, qb, "00", "考卷测试题库", initQuestionUserID, time.Now().UnixMilli(), "00", "00").Scan(&qbID)
+	_ = tx.QueryRow(ctx, qb, "00", "考卷测试题库", initQuestionUserID, time.Now().UnixMilli(), "00").Scan(&qbID)
 
 	// 五道题
 	q := `INSERT INTO t_question (id,type,content,options,answers,score,analysis,title,creator,status,belong_to,difficulty) VALUES ($1, $2, $3, $4, $5, $6,$7,$8,$9,$10,$11,$12)`
