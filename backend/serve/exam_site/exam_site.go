@@ -9,12 +9,18 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
+	"sync"
 
 	"crypto/rand"
 	"database/sql"
 
+	"github.com/spf13/viper"
 	"github.com/tidwall/gjson"
+
 	// "github.com/tidwall/sjson"
 
 	"go.uber.org/zap"
@@ -22,7 +28,10 @@ import (
 	"w2w.io/null"
 )
 
-var z *zap.Logger
+var (
+	z                *zap.Logger
+	createPgpassOnce sync.Once
+)
 
 type (
 	txCtxKeyStr  string
@@ -31,10 +40,10 @@ type (
 
 type examSiteInfo struct {
 	ID          null.Int    `json:"id"`
-	Name        string `json:"name" validate:"required"`
-	Address     string `json:"address" validate:"required"`
+	Name        string      `json:"name" validate:"required"`
+	Address     string      `json:"address" validate:"required"`
 	ServerHost  null.String `json:"server_host"`
-	Admin       int64    `json:"admin" validate:"required"`
+	Admin       int64       `json:"admin" validate:"required"`
 	AdminName   null.String `json:"admin_name"`
 	RoomCount   null.Int    `json:"room_count"`
 	AccessToken null.String `json:"access_token"`
@@ -96,6 +105,20 @@ func Enroll(author string) {
 
 		//DefaultDomain 该API将默认授权给的用户
 		DefaultDomain: int64(cmn.CDomainAssessExamSiteAdmin),
+	})
+
+	_ = cmn.AddService(&cmn.ServeEndPoint{
+		Fn: examSiteSync,
+
+		Path: "/exam-site/sync",
+		Name: "exam-site-sync",
+
+		Developer: developer,
+		WhiteList: false,
+
+		DomainID: int64(cmn.CDomainAssessExamSite),
+
+		DefaultDomain: int64(cmn.CDomainAssessExamSite),
 	})
 }
 
@@ -340,6 +363,7 @@ func examSiteList(ctx context.Context) {
 
 	dbConn := cmn.GetDbConn()
 
+MethodSwitch:
 	switch q.R.Method {
 
 	case "GET":
@@ -373,8 +397,8 @@ func examSiteList(ctx context.Context) {
 			break
 		}
 
-		if req.Page < 1 {
-			q.Err = fmt.Errorf("页码不能小于1")
+		if req.Page < 0 {
+			q.Err = fmt.Errorf("页码不能小于0")
 			z.Error(q.Err.Error())
 			break
 		}
@@ -397,7 +421,6 @@ func examSiteList(ctx context.Context) {
 
 		orderByList := []string{}
 
-	OrderByLoop:
 		for _, o := range req.OrderBy {
 			for k, v := range o {
 
@@ -410,15 +433,11 @@ func examSiteList(ctx context.Context) {
 				if v != "ASC" && v != "DESC" {
 					q.Err = fmt.Errorf("不支持的排序方式: %s key: %s", v, k)
 					z.Error(q.Err.Error())
-					break OrderByLoop
+					break MethodSwitch
 				}
 
 				orderByList = append(orderByList, fmt.Sprintf("%s %s", k, v))
 			}
-		}
-
-		if q.Err != nil {
-			break
 		}
 
 		if len(orderByList) > 0 {
@@ -484,7 +503,7 @@ func examSiteList(ctx context.Context) {
 		}
 
 		s = fmt.Sprintf(`%s
-		LIMIT %d OFFSET %d`, s, req.PageSize, (req.Page-1)*req.PageSize)
+		LIMIT %d OFFSET %d`, s, req.PageSize, req.Page*req.PageSize)
 
 		stmt, q.Err = dbConn.Prepare(s)
 		if q.Err != nil || (cmn.InDebugMode && q.Tag["prepareErr2"] != nil) {
@@ -515,7 +534,6 @@ func examSiteList(ctx context.Context) {
 
 		result := []examSiteInfo{}
 
-	RowLoop:
 		for rows.Next() {
 			var item examSiteInfo
 			q.Err = rows.Scan(
@@ -528,20 +546,16 @@ func examSiteList(ctx context.Context) {
 				&item.RoomCount,
 			)
 			if q.Err != nil || (cmn.InDebugMode && q.Tag["scanErr"] != nil) {
-				
+
 				if q.Err == nil {
 					q.Err = q.Tag["scanErr"].(error)
 				}
 
 				z.Error(q.Err.Error())
-				break RowLoop
+				break MethodSwitch
 			}
 
 			result = append(result, item)
-		}
-
-		if q.Err != nil {
-			break
 		}
 
 		q.Msg.Data, q.Err = json.Marshal(result)
@@ -555,6 +569,261 @@ func examSiteList(ctx context.Context) {
 			break
 		}
 
+	default:
+		q.Err = fmt.Errorf("不支持的HTTP方法: %s", q.R.Method)
+		z.Error(q.Err.Error())
+	}
+
+	if q.Err != nil {
+		q.RespErr()
+		return
+	}
+
+	q.Resp()
+
+}
+
+func examSiteSync(ctx context.Context) {
+
+	q := cmn.GetCtxValue(ctx)
+
+	z.Info("---->" + cmn.FncName())
+
+	q.Msg.Msg = cmn.FncName()
+
+	// 考点服务器系统账号ID
+	userID := q.SysUser.ID.Int64
+
+	dbAddr := viper.GetString("dbms.postgresql.addr")
+
+	dbPort := viper.GetInt("dbms.postgresql.port")
+
+	dbName := viper.GetString("dbms.postgresql.db")
+
+	dbUser := viper.GetString("dbms.postgresql.user")
+
+	dbPwd := viper.GetString("dbms.postgresql.pwd")
+
+	pgpassFullPath := filepath.Join(os.Getenv("HOME"), ".pgpass")
+
+	// 创建.pgpass文件
+	createPgpassOnce.Do(func() {
+
+		var f *os.File
+		f, q.Err = os.Create(pgpassFullPath)
+		if q.Err != nil || (cmn.InDebugMode && q.Tag["createPgpassErr"] != nil) {
+
+			if q.Err == nil {
+				q.Err = q.Tag["createPgpassErr"].(error)
+			}
+
+			z.Error(q.Err.Error())
+			return
+		}
+
+		defer func() {
+			err := f.Close()
+			if err != nil || (cmn.InDebugMode && q.Tag["closePgpassErr"] != nil) {
+
+				q.Err = err
+
+				if q.Err == nil {
+					q.Err = q.Tag["closePgpassErr"].(error)
+				}
+
+				z.Error(q.Err.Error())
+				return
+			}
+		}()
+
+		_, q.Err = f.WriteString(fmt.Sprintf("%s:%d:%s:%s:%s",
+			dbAddr,
+			dbPort,
+			dbName,
+			dbUser,
+			dbPwd,
+		))
+		if q.Err != nil || (cmn.InDebugMode && q.Tag["writePgpassErr"] != nil) {
+
+			if q.Err == nil {
+				q.Err = q.Tag["writePgpassErr"].(error)
+			}
+
+			z.Error(q.Err.Error())
+			return
+		}
+
+		q.Err = f.Chmod(0600)
+		if q.Err != nil || (cmn.InDebugMode && q.Tag["chmodPgpassErr"] != nil) {
+
+			if q.Err == nil {
+				q.Err = q.Tag["chmodPgpassErr"].(error)
+			}
+
+			z.Error(q.Err.Error())
+			return
+		}
+	})
+
+	if q.Err != nil {
+		q.RespErr()
+		return
+	}
+
+MethodSwitch:
+	switch q.R.Method {
+
+	case "GET":
+
+		action := q.R.URL.Query().Get("action")
+
+		switch action {
+
+		case "0":
+			// 准备考点数据
+
+			b := make([]byte, 16)
+
+			_, q.Err = rand.Read(b)
+			if q.Err != nil || (cmn.InDebugMode && q.Tag["generateRandByteErr"] != nil){
+
+				if q.Err == nil {
+					q.Err = q.Tag["generateRandByteErr"].(error)
+				}
+
+				z.Error(q.Err.Error())
+				break MethodSwitch
+			}
+
+			folderFullPath := filepath.Join(os.Getenv("PWD"), fmt.Sprintf("/data/tmp/%x", b))
+
+			q.Err = os.MkdirAll(folderFullPath, 0755)
+			if q.Err != nil || (cmn.InDebugMode && q.Tag["mkdirAllErr"] != nil) {
+
+				if q.Err == nil {
+					q.Err = q.Tag["mkdirAllErr"].(error)
+				}
+
+				z.Error(q.Err.Error())
+				break MethodSwitch
+			}
+
+			defer func() {
+				if q.Err == nil {
+					return
+				}
+
+				// 当发生错误时，清理临时目录
+				err := os.RemoveAll(folderFullPath)
+				if err != nil || (cmn.InDebugMode && q.Tag["removeTmpDirErr"] != nil) {
+
+					q.Err = err
+
+					if q.Err == nil {
+						q.Err = q.Tag["removeTmpDirErr"].(error)
+					}
+
+					z.Error(q.Err.Error())
+					return
+				}
+			}()
+
+			if cmn.InDebugMode && q.Tag["removeTmpDirErr"] != nil {
+				q.Err = q.Tag["removeTmpDirErr"].(error)
+				return
+			}
+
+			// 导出数据库模式结构
+			cmd := fmt.Sprintf(`PGPASSFILE=%s pg_dump --file "%s" --host "%s" --port "%d" --username "%s" -w --format=c --large-objects --encoding "UTF8" --schema-only --clean --if-exists --verbose --schema "%s" "%s"`,
+				pgpassFullPath,
+				filepath.Join(folderFullPath, "schema.sql"),
+				dbAddr,
+				dbPort,
+				dbUser,
+				dbUser,
+				dbName,
+			)
+
+			var o []byte
+			o, q.Err = exec.CommandContext(ctx, "bash", "-c", cmd).CombinedOutput()
+			if q.Err != nil || (cmn.InDebugMode && q.Tag["pgDumpErr"] != nil) {
+
+				if q.Err == nil {
+					q.Err = q.Tag["pgDumpErr"].(error)
+					cmd = ""
+					o = []byte("")
+				}
+
+				q.Err = fmt.Errorf("COMMAND: %s\t ERR: %w\t DETAIL: %s", cmd, q.Err, string(o))
+				z.Error(q.Err.Error())
+				break MethodSwitch
+			}
+
+			var tableFileList []string
+			fileName := "export_script.sql"
+
+			if cmn.InDebugMode && q.Tag["createExportScriptFileErr"] != nil {
+				fileName = q.Tag["createExportScriptFileErr"].(error).Error()
+			}
+
+			if cmn.InDebugMode && q.Tag["writeExportScriptFileErr"] != nil {
+				fileName = q.Tag["writeExportScriptFileErr"].(error).Error()
+			}
+
+			tableFileList, q.Err = generateExportScriptsCentralSide(userID, folderFullPath, fileName)
+			if q.Err != nil {
+				break MethodSwitch
+			}
+
+			cmd = fmt.Sprintf("PGPASSFILE=%s psql -h %s -p %d -U %s -d %s -f %s",
+				pgpassFullPath,
+				dbAddr,
+				dbPort,
+				dbUser,
+				dbName,
+				filepath.Join(folderFullPath, fileName),
+			)
+			o, q.Err = exec.CommandContext(ctx, "bash", "-c", cmd).CombinedOutput()
+			if q.Err != nil || (cmn.InDebugMode && q.Tag["psqlErr"] != nil) {
+
+				if q.Err == nil {
+					q.Err = q.Tag["psqlErr"].(error)
+					cmd = ""
+					o = []byte("")
+				}
+
+				q.Err = fmt.Errorf("COMMAND: %s\t ERR: %w\t DETAIL: %s", cmd, q.Err, string(o))
+				z.Error(q.Err.Error())
+				break MethodSwitch
+			}
+
+			d := struct {
+				Path     string   `json:"path"`
+				TableFileList []string `json:"tableFileList"`
+			}{
+				Path:     folderFullPath,
+				TableFileList: tableFileList,
+			}
+
+			q.Msg.Data, q.Err = json.Marshal(d)
+			if q.Err != nil || (cmn.InDebugMode && q.Tag["jsonMarshalErr"] != nil) {
+
+				if q.Err == nil {
+					q.Err = q.Tag["jsonMarshalErr"].(error)
+				}
+
+				z.Error(q.Err.Error())
+				break MethodSwitch
+			}
+
+		case "1":
+			// 同步考点数据
+
+		default:
+			q.Err = fmt.Errorf("不支持的同步操作: %s", action)
+			z.Error(q.Err.Error())
+			break MethodSwitch
+		}
 
 	default:
 		q.Err = fmt.Errorf("不支持的HTTP方法: %s", q.R.Method)
