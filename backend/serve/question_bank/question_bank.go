@@ -106,7 +106,7 @@ func Enroll(author string) {
 }
 
 // 获取题库列表
-func getQuestionBankList(ctx context.Context, conn *pgxpool.Pool, params QueryQuestionBankParams) (list []cmn.TQuestionBank, rowCount int64, err error) {
+func getQuestionBankList(ctx context.Context, conn *pgxpool.Pool, params QueryQuestionBankParams) (list []cmn.TVQuestionBank, rowCount int64, err error) {
 	if ctx == nil {
 		err := fmt.Errorf("ctx is nil")
 		z.Error(err.Error())
@@ -168,23 +168,23 @@ func getQuestionBankList(ctx context.Context, conn *pgxpool.Pool, params QueryQu
 	s2 := fmt.Sprintf(`
 		SELECT
 			id,
-			type,
 			name,
+			type,
 			tags,
-			repos,
-			default_repo,
 			creator,
+			official_name,
 			create_time,
-			updated_by,
 			update_time,
-			remark,
+			question_count,
+			question_types,
+			question_difficulties,
+			question_tags,
 			status
-		FROM t_question_bank
+		FROM v_question_bank
 		%s
 		ORDER BY id DESC
 		LIMIT $%d OFFSET $%d
 	`, whereClause, argIndex, argIndex+1)
-
 	offset := (params.Page - 1) * params.PageSize
 	args = append(args, params.PageSize, offset)
 	rows, err := conn.Query(ctx, s2, args...)
@@ -195,19 +195,20 @@ func getQuestionBankList(ctx context.Context, conn *pgxpool.Pool, params QueryQu
 	defer rows.Close()
 
 	for rows.Next() {
-		var q cmn.TQuestionBank
+		var q cmn.TVQuestionBank
 		err = rows.Scan(
 			&q.ID,
-			&q.Type,
 			&q.Name,
+			&q.Type,
 			&q.Tags,
-			&q.Repos,
-			&q.DefaultRepo,
 			&q.Creator,
+			&q.OfficialName,
 			&q.CreateTime,
-			&q.UpdatedBy,
 			&q.UpdateTime,
-			&q.Remark,
+			&q.QuestionCount,
+			&q.QuestionTypes,
+			&q.QuestionDifficulties,
+			&q.QuestionTags,
 			&q.Status,
 		)
 		if err != nil {
@@ -1443,7 +1444,7 @@ func questions(ctx context.Context) {
 		q.Msg.Data = buf
 		q.Msg.Msg = "success"
 	case "put":
-		// 处理 POST 请求
+		// 处理 PUT 请求
 		var buf []byte
 		buf, q.Err = io.ReadAll(q.R.Body)
 		if q.Err != nil {
@@ -1514,6 +1515,9 @@ func questions(ctx context.Context) {
 			q.RespErr()
 			return
 		}
+
+		//检测当前题目是否被试卷引用，如果被引用，且题目为填空题和简答题，需重设试卷题目的小题分值，并提醒 TODO
+
 		q.Msg.Status = 0
 		q.Msg.Msg = "success"
 	case "delete":

@@ -23887,6 +23887,7 @@ type TVQuestionBank struct {
 	QuestionTypes        interface{}    `json:"QuestionTypes,omitempty" db:"question_types,false,character varying[]"`    /* question_types question_types */
 	QuestionDifficulties interface{}    `json:"QuestionDifficulties,omitempty" db:"question_difficulties,false,bigint[]"` /* question_difficulties question_difficulties */
 	QuestionTags         interface{}    `json:"QuestionTags,omitempty" db:"question_tags,false,text[]"`                   /* question_tags question_tags */
+	Status               null.String    `json:"Status,omitempty" db:"status,false,character varying"`                     /* status status */
 	Filter               `json:"-"`     // build DML where clause
 }
 
@@ -23905,6 +23906,7 @@ var TVQuestionBankFields = []string{
 	"QuestionTypes",
 	"QuestionDifficulties",
 	"QuestionTags",
+	"Status",
 }
 
 // TVQuestionBankColumns full column list for default query
@@ -23922,6 +23924,7 @@ var TVQuestionBankColumns = []string{
 	"question_types",
 	"question_difficulties",
 	"question_tags",
+	"status",
 }
 
 // TVQuestionBankColumnsDataTypes full column data types for default query
@@ -23939,6 +23942,7 @@ var TVQuestionBankColumnsDataTypes = map[string]string{
 	"question_types":        "character varying[]",
 	"question_difficulties": "bigint[]",
 	"question_tags":         "text[]",
+	"status":                "character varying",
 }
 
 // GetFieldsMap returns a map of field names to their values.
@@ -23957,6 +23961,7 @@ func (r *TVQuestionBank) GetFieldsMap() map[string]any {
 		"QuestionTypes":        r.QuestionTypes,
 		"QuestionDifficulties": r.QuestionDifficulties,
 		"QuestionTags":         r.QuestionTags,
+		"Status":               r.Status,
 	}
 }
 
@@ -23976,6 +23981,7 @@ func (r *TVQuestionBank) GetColumnsMap() map[string]any {
 		"question_types":        r.QuestionTypes,
 		"question_difficulties": r.QuestionDifficulties,
 		"question_tags":         r.QuestionTags,
+		"status":                r.Status,
 	}
 }
 
@@ -23997,8 +24003,8 @@ func (r *TVQuestionBank) GetTableName() string {
 // Create inserts the TVQuestionBank to the database.
 func (r *TVQuestionBank) Create(db Queryer) error {
 	_, err := db.Exec(
-		`INSERT INTO t_v_question_bank (id, domain_id, name, type, tags, creator, official_name, create_time, update_time, question_count, question_types, question_difficulties, question_tags) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
-		&r.ID, &r.DomainID, &r.Name, &r.Type, &r.Tags, &r.Creator, &r.OfficialName, &r.CreateTime, &r.UpdateTime, &r.QuestionCount, &r.QuestionTypes, &r.QuestionDifficulties, &r.QuestionTags)
+		`INSERT INTO t_v_question_bank (id, domain_id, name, type, tags, creator, official_name, create_time, update_time, question_count, question_types, question_difficulties, question_tags, status) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
+		&r.ID, &r.DomainID, &r.Name, &r.Type, &r.Tags, &r.Creator, &r.OfficialName, &r.CreateTime, &r.UpdateTime, &r.QuestionCount, &r.QuestionTypes, &r.QuestionDifficulties, &r.QuestionTags, &r.Status)
 	if err != nil {
 		return errors.Wrap(err, "failed to insert t_v_question_bank")
 	}
@@ -24011,8 +24017,8 @@ func GetTVQuestionBankByPk(db Queryer) (*TVQuestionBank, error) {
 
 	var r TVQuestionBank
 	err := db.QueryRow(
-		`SELECT id, domain_id, name, type, tags, creator, official_name, create_time, update_time, question_count, question_types, question_difficulties, question_tags FROM t_v_question_bank`,
-	).Scan(&r.ID, &r.DomainID, &r.Name, &r.Type, &r.Tags, &r.Creator, &r.OfficialName, &r.CreateTime, &r.UpdateTime, &r.QuestionCount, &r.QuestionTypes, &r.QuestionDifficulties, &r.QuestionTags)
+		`SELECT id, domain_id, name, type, tags, creator, official_name, create_time, update_time, question_count, question_types, question_difficulties, question_tags, status FROM t_v_question_bank`,
+	).Scan(&r.ID, &r.DomainID, &r.Name, &r.Type, &r.Tags, &r.Creator, &r.OfficialName, &r.CreateTime, &r.UpdateTime, &r.QuestionCount, &r.QuestionTypes, &r.QuestionDifficulties, &r.QuestionTags, &r.Status)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to select t_v_question_bank")
 	}
