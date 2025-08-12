@@ -173,8 +173,9 @@ func gradeListH(ctx context.Context) {
 			rowCount int64
 
 			// 必需参数集
-			req      GradeListArgs
+			req      GradeListReq
 			category string // 类别：exam practice
+			userID   int64
 			page     string
 			pageSize string
 		)
@@ -186,7 +187,6 @@ func gradeListH(ctx context.Context) {
 			q.RespErr()
 			return
 		}
-		req.Category = category
 
 		if page = queryParams.Get("page"); page == "" {
 			q.Err = fmt.Errorf("页码为空: %s", page)
@@ -223,14 +223,14 @@ func gradeListH(ctx context.Context) {
 		// 	q.RespErr()
 		// 	return
 		// }
-		// req.TeacherID = q.SysUser.ID.Int64
-		req.TeacherID = 1681
+		// userID = q.SysUser.ID.Int64
+		userID = 1681
 
 		if name := queryParams.Get("name"); name != "" {
 			req.Filter.Name = name
 		}
 
-		switch req.Category {
+		switch category {
 		case "exam":
 			if examID := queryParams.Get("examID"); examID != "" {
 				p, err := strconv.Atoi(examID)
@@ -267,7 +267,7 @@ func gradeListH(ctx context.Context) {
 
 			// 调用数据库层处理
 			var result []GradeExam
-			result, rowCount, err = gradeListExam(dmlCtx, &req)
+			result, rowCount, err = gradeListExam(dmlCtx, userID, &req)
 			if err != nil {
 				q.Err = fmt.Errorf("获取考试成绩列表失败 错误信息:%w", err)
 				q.RespErr()
@@ -296,7 +296,7 @@ func gradeListH(ctx context.Context) {
 
 			// 调用数据库层处理
 			var result []GradePractice
-			result, rowCount, err = gradeListPractice(dmlCtx, &req)
+			result, rowCount, err = gradeListPractice(dmlCtx, userID, &req)
 			if err != nil {
 				q.Err = fmt.Errorf("获取练习成绩列表失败 错误信息:%w", err)
 				q.RespErr()
@@ -308,7 +308,7 @@ func gradeListH(ctx context.Context) {
 			}
 
 		default:
-			q.Err = fmt.Errorf("不支持的类型: %s", req.Category)
+			q.Err = fmt.Errorf("不支持的类型: %s", category)
 			z.Error(q.Err.Error())
 			q.RespErr()
 			return
@@ -345,7 +345,6 @@ func gradeSubmissionH(ctx context.Context) {
 	case "patch":
 
 		var err error
-		var args GradeSubmitArgs
 
 		var buf []byte
 		buf, err = io.ReadAll(q.R.Body)
@@ -376,6 +375,9 @@ func gradeSubmissionH(ctx context.Context) {
 			return
 		}
 
+		var userID int64
+		var examIDs []int
+
 		// // 用户身份校验
 		// if q.SysUser == nil || !q.SysUser.ID.Valid || forceErr == "q.SysUser nil" {
 		// 	q.Err = fmt.Errorf("非法请求，鉴权用户失败")
@@ -383,8 +385,8 @@ func gradeSubmissionH(ctx context.Context) {
 		// 	q.RespErr()
 		// 	return
 		// }
-		// args.TeacherID = q.SysUser.ID.Int64
-		args.TeacherID = 1681
+		// userID := q.SysUser.ID.Int64
+		userID = 1681
 
 		examIDQuerys := gjson.GetBytes(buf, "data.exam_ids").Array()
 		if len(examIDQuerys) <= 0 {
@@ -393,7 +395,6 @@ func gradeSubmissionH(ctx context.Context) {
 			q.RespErr()
 			return
 		}
-		var examIDs []int
 		for _, examIDQuery := range examIDQuerys {
 			id := int(examIDQuery.Num)
 			if id <= 0 {
@@ -404,12 +405,11 @@ func gradeSubmissionH(ctx context.Context) {
 			}
 			examIDs = append(examIDs, id)
 		}
-		args.ExamIDs = examIDs
 
 		dmlCtx, cancel := context.WithTimeout(ctx, TIMEOUT)
 		defer cancel()
 
-		rowsAffected, err := setExamGradeSubmitted(dmlCtx, &args)
+		rowsAffected, err := setExamGradeSubmitted(dmlCtx, userID, examIDs)
 		if forceErr == "setExamGradeSubmitted fail" {
 			err = errors.New(forceErr)
 		}
@@ -452,7 +452,6 @@ func gradeDistributionH(ctx context.Context) {
 
 			// 必需参数集
 			category      string // 类别：exam practice
-			req           GradeDistributionArgs
 			columnNumStr  string
 			columnNum     int
 			examIDStr     string
@@ -481,7 +480,6 @@ func gradeDistributionH(ctx context.Context) {
 			q.RespErr()
 			return
 		}
-		req.ColumnNum = columnNum
 
 		// 用户身份
 		// if q.SysUser == nil || !q.SysUser.ID.Valid || forceErr == "q.SysUser nil" {
@@ -490,7 +488,8 @@ func gradeDistributionH(ctx context.Context) {
 		// 	q.RespErr()
 		// 	return
 		// }
-		// req.TeacherID = q.SysUser.ID.Int64
+		// userID = q.SysUser.ID.Int64
+		// userID = 1681
 
 		dmlCtx, cancel := context.WithTimeout(ctx, TIMEOUT)
 		defer cancel()
@@ -509,18 +508,15 @@ func gradeDistributionH(ctx context.Context) {
 				q.RespErr()
 				return
 			}
-			req.ExamID = examID
 
 			var result ExamGradeDistribution
 
-			result, err = gradeDistributionExam(dmlCtx, req)
+			result, err = gradeDistributionExam(dmlCtx, examID, columnNum)
 			if err != nil {
 				q.Err = err
 				q.RespErr()
 				return
 			}
-
-			// z.Debug("gradeDistributionExam", zap.Any("result", result))
 
 			data, err = json.Marshal(result)
 			if err != nil {
@@ -543,16 +539,13 @@ func gradeDistributionH(ctx context.Context) {
 				q.RespErr()
 				return
 			}
-			req.PracticeID = practiceID
 
-			result, err := gradeDistributionPractice(dmlCtx, req)
+			result, err := gradeDistributionPractice(dmlCtx, practiceID, columnNum)
 			if err != nil {
 				q.Err = err
 				q.RespErr()
 				return
 			}
-
-			// z.Debug("gradeDistributionPractice", zap.Any("result", result))
 
 			data, err = json.Marshal(result)
 			if err != nil {
@@ -563,7 +556,7 @@ func gradeDistributionH(ctx context.Context) {
 			}
 
 		default:
-			q.Err = fmt.Errorf("不支持的类型: %s", req.Category)
+			q.Err = fmt.Errorf("不支持的类型: %s", category)
 			z.Error(q.Err.Error())
 			q.RespErr()
 			return
@@ -604,7 +597,7 @@ func gradeExamineeListH(ctx context.Context) {
 			data     []byte
 			rowCount int64
 
-			req GradeExamineeListArgs
+			req GradeExamineeListReq
 
 			// 必需参数集
 			category   string // 类别：exam practice
@@ -623,7 +616,6 @@ func gradeExamineeListH(ctx context.Context) {
 			q.RespErr()
 			return
 		}
-		req.Category = category
 
 		if page = queryParams.Get("page"); page == "" {
 			q.Err = fmt.Errorf("页码为空: %s", page)
@@ -664,8 +656,8 @@ func gradeExamineeListH(ctx context.Context) {
 		// 	q.RespErr()
 		// 	return
 		// }
-		// req.TeacherID = q.SysUser.ID.Int64
-		req.TeacherID = 1681
+		// userID = q.SysUser.ID.Int64
+		// userID = 1681
 
 		dmlCtx, cancel := context.WithTimeout(ctx, TIMEOUT)
 		defer cancel()
@@ -750,7 +742,7 @@ func gradeExamineeListH(ctx context.Context) {
 			// }
 
 		default:
-			q.Err = fmt.Errorf("不支持的类型: %s", req.Category)
+			q.Err = fmt.Errorf("不支持的类型: %s", category)
 			z.Error(q.Err.Error())
 			q.RespErr()
 			return
@@ -792,7 +784,6 @@ func gradeH(ctx context.Context) {
 			data []byte
 
 			// 必需参数集
-			req              GradeArgs
 			category         string // 类别：exam practice
 			examSessionIDStr string
 			examSessionID    int
@@ -807,7 +798,6 @@ func gradeH(ctx context.Context) {
 			q.RespErr()
 			return
 		}
-		req.Category = category
 
 		// // 用户身份
 		// if q.SysUser == nil || !q.SysUser.ID.Valid || forceErr == "q.SysUser nil" {
@@ -816,8 +806,8 @@ func gradeH(ctx context.Context) {
 		// 	q.RespErr()
 		// 	return
 		// }
-		// req.TeacherID = q.SysUser.ID.Int64
-		req.TeacherID = 1681
+		// userID = q.SysUser.ID.Int64
+		// userID = 1681
 
 		switch category {
 		case "exam":
@@ -833,12 +823,11 @@ func gradeH(ctx context.Context) {
 				q.RespErr()
 				return
 			}
-			req.ExamSessionID = examSessionID
 
 			dmlCtx, cancel := context.WithTimeout(ctx, TIMEOUT)
 			defer cancel()
 
-			result, err := gradeAnalysisExam(dmlCtx, req)
+			result, err := gradeAnalysisExam(dmlCtx, examSessionID, 0)
 			if err != nil {
 				q.Err = err
 				q.RespErr()
@@ -868,12 +857,11 @@ func gradeH(ctx context.Context) {
 				q.RespErr()
 				return
 			}
-			req.PracticeID = practiceID
 
 			dmlCtx, cancel := context.WithTimeout(ctx, TIMEOUT)
 			defer cancel()
 
-			result, err := getAnalysisPractice(dmlCtx, req)
+			result, err := gradeAnalysisExam(dmlCtx, 0, practiceID)
 			if err != nil {
 				q.Err = err
 				z.Error(q.Err.Error())
@@ -892,7 +880,7 @@ func gradeH(ctx context.Context) {
 			}
 
 		default:
-			q.Err = fmt.Errorf("不支持的类型: %s", req.Category)
+			q.Err = fmt.Errorf("不支持的类型: %s", category)
 			z.Error(q.Err.Error())
 			q.RespErr()
 			return
@@ -932,10 +920,10 @@ func gradeSH(ctx context.Context) {
 			data []byte
 
 			// 必需参数集
-			req              GradeArgs
-			category         string // 类别：exam practice
-			studentIDStr     string
-			studentID        int
+			category string // 类别：exam practice
+			// studentIDStr     string
+			userID           int64
+			studentID        int64
 			examSessionIDStr string
 			examSessionID    int
 			practiceIDStr    string
@@ -949,7 +937,6 @@ func gradeSH(ctx context.Context) {
 			q.RespErr()
 			return
 		}
-		req.Category = category
 
 		// // 用户身份
 		// if q.SysUser == nil || !q.SysUser.ID.Valid || forceErr == "q.SysUser nil" {
@@ -958,21 +945,21 @@ func gradeSH(ctx context.Context) {
 		// 	q.RespErr()
 		// 	return
 		// }
-		// req.TeacherID = q.SysUser.ID.Int64
-		req.TeacherID = 1681
-
-		if studentIDStr = queryParams.Get("studentID"); studentIDStr == "" {
-			q.Err = fmt.Errorf("学生ID为空：: %s", studentIDStr)
-			z.Error(q.Err.Error())
-			q.RespErr()
-			return
-		}
-		if studentID, err = strconv.Atoi(studentIDStr); err != nil {
-			q.Err = fmt.Errorf("无效学生ID: %d", studentID)
-			z.Error(q.Err.Error())
-			q.RespErr()
-			return
-		}
+		// userID = q.SysUser.ID.Int64
+		userID = 1681
+		studentID = userID
+		// if studentIDStr = queryParams.Get("studentID"); studentIDStr == "" {
+		// 	q.Err = fmt.Errorf("学生ID为空：: %s", studentIDStr)
+		// 	z.Error(q.Err.Error())
+		// 	q.RespErr()
+		// 	return
+		// }
+		// if studentID, err = strconv.Atoi(studentIDStr); err != nil {
+		// 	q.Err = fmt.Errorf("无效学生ID: %d", studentID)
+		// 	z.Error(q.Err.Error())
+		// 	q.RespErr()
+		// 	return
+		// }
 
 		dmlCtx, cancel := context.WithTimeout(ctx, TIMEOUT)
 		defer cancel()
@@ -1056,7 +1043,7 @@ func gradeSH(ctx context.Context) {
 			}
 
 		default:
-			q.Err = fmt.Errorf("不支持的类型: %s", req.Category)
+			q.Err = fmt.Errorf("不支持的类型: %s", category)
 			z.Error(q.Err.Error())
 			q.RespErr()
 			return

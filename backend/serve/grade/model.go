@@ -8,13 +8,12 @@ import (
 )
 
 type Map map[string]interface{}
+type JSONText = types.JSONText
 
 // ********** 成绩列表接口 **********
-type GradeListArgs struct {
-	Category   string `json:"category"`
-	Page       int    `json:"page"`
-	PageSize   int    `json:"pageSize"`
-	TeacherID  int64
+type GradeListReq struct {
+	Page       int `json:"page"`
+	PageSize   int `json:"pageSize"`
 	ExamID     int `json:"examID"`
 	PracticeID int `json:"practiceID"`
 	Filter     struct {
@@ -23,6 +22,7 @@ type GradeListArgs struct {
 		Submitted int    `json:"submitted"`
 	}
 }
+
 type ExamSessionInfo struct {
 	ExamID             null.Int    `json:"exam_id"`             // 考试id
 	ExamSessionID      null.Int    `json:"exam_session_id"`     // 考试场次id
@@ -54,22 +54,7 @@ type GradePractice struct {
 	PassedStudents    null.Int    `json:"passed_students"`    // 通过人数
 }
 
-//  ********** 成绩提交接口 **********
-
-type GradeSubmitArgs struct {
-	TeacherID int64 `json:"teacherID"`
-	ExamIDs   []int `json:"examIDs"`
-}
-
 // ********** 成绩分布接口 **********
-type GradeDistributionArgs struct {
-	Category   string
-	ExamID     int // 考试ID
-	PracticeID int // 练习ID
-	TeacherID  int64
-	ColumnNum  int
-}
-
 type ExamSessionGradeDistribution struct {
 	ExamID            null.Int    `json:"exam_id"`            // 考试ID
 	ExamSessionID     null.Int    `json:"exam_session_id"`    // 考试场次ID
@@ -94,48 +79,15 @@ type PracticeGradeDistribution struct {
 }
 
 // ********** 考生成绩列表接口 **********
-type GradeExamineeListArgs struct {
-	Category   string
-	ExamID     []int // 考试ID
-	PracticeID []int // 练习ID
-	TeacherID  int64 // 教师ID
-	Page       int   // 页码
-	PageSize   int   // 每页数量
-	Filter     struct {
-		Keyword string `json:"keyword"`
-	}
+// ********** 按考试ID分类的导出数据结构 **********
+type ExamSessionScore struct {
+	ExamID        int64       `json:"exam_id"`         // 考试ID
+	ExamSessionID int64       `json:"exam_session_id"` // 考试场次ID
+	PaperName     null.String `json:"paper_name"`      // 试卷名称
+	Score         null.Float  `json:"score"`           // 学生得分
+	TotalScore    null.Float  `json:"total_score"`     // 试卷总分
+	SessionNum    int64       `json:"session_num"`     // 场次序号
 }
-
-type ExamExamineeScoreInfo struct {
-	StuID    null.Int    `json:"stu_id"`   // 学生ID
-	Phone    null.String `json:"phone"`    // 学生手机号
-	Name     null.String `json:"name"`     // 学生姓名
-	Nickname null.String `json:"nickname"` // 学生昵称
-	Remark   null.String `json:"remark"`   // 备注
-
-	Score         null.Float `json:"score"`           // 成绩
-	TotalScore    null.Float `json:"total_score"`     // 总分
-	ExamID        null.Int   `json:"exam_id"`         // 考试ID
-	ExamSessionID null.Int   `json:"exam_session_id"` // 考试场次ID
-}
-
-type PracticeExamineeScoreInfo struct {
-	StuID    null.Int    `json:"stu_id"`   // 学生ID
-	Phone    null.String `json:"phone"`    // 学生手机号
-	Name     null.String `json:"name"`     // 学生姓名
-	Nickname null.String `json:"nickname"` // 学生昵称
-	Remark   null.String `json:"remark"`   // 备注
-
-	PracticeID   null.Int   `json:"practice_id"`   // 练习ID
-	HighestScore null.Float `json:"highest_score"` // 最高分
-	SubmittedCnt null.Int   `json:"submitted_cnt"` // 提交次数
-}
-
-// type QuestionGroups struct {
-// 	ID    int64  `json:"id"`
-// 	Name  string `json:"name"`
-// 	Order int    `json:"order"`
-// }
 
 type StudentExamScoreInfo struct {
 	StudentID    int64              `json:"student_id"`    // 学生ID
@@ -146,58 +98,6 @@ type StudentExamScoreInfo struct {
 	ExamSessions []ExamSessionScore `json:"exam_sessions"` // 学生在各场次的成绩
 }
 
-type ExamSessionScore struct {
-	ExamID        int64       `json:"exam_id"`         // 考试ID
-	ExamSessionID int64       `json:"exam_session_id"` // 考试场次ID
-	PaperName     null.String `json:"paper_name"`      // 试卷名称
-	Score         null.Float  `json:"score"`           // 学生得分
-	TotalScore    null.Float  `json:"total_score"`     // 试卷总分
-	SessionNum    int64       `json:"session_num"`     // 场次序号
-}
-
-type JSONText = types.JSONText
-
-// ********** 成绩接口 **********
-type GradeArgs struct {
-	Category      string
-	ExamSessionID int // 考试场次ID
-	PracticeID    int // 练习ID
-	// PaperID       int // 试卷ID
-	TeacherID int64 // 教师ID
-}
-
-type ExamAnalysis struct {
-	ExamSessionID  null.Int   `json:"exam_session_id"` // 考试场次ID
-	ExamPaperID    int64      `json:"exam_paper_id"`   // 考试试卷ID
-	QuestionGroups []JSONText `json:"question_groups"` // 题目分组
-	// Questions      []cmn.TExamPaperQuestion `json:"questions"`       // 试题分析列表
-	// ExamPaper            *cmn.TVPaper                        `json:"exam_paper"`             // 试卷详情
-	QuestionAnswersStats map[null.Int]map[string]int         `json:"question_answers_stats"` // 试题答案统计
-	SubjectiveScores     map[null.Int]float64                `json:"subjective_scores"`      // 主观题评分列表
-	P                    *cmn.TVExamPaper                    `json:"exam_paper"`
-	PG                   []*cmn.TExamPaperGroup              `json:"exam_paper_groups"`
-	PQ                   map[int64][]*examPaper.ExamQuestion `json:"exam_paper_questions"`
-}
-
-type PracticeAnalysis struct {
-	ExamPaperID null.Int `json:"exam_paper_id"` // 考试试卷ID
-	// Questions            []cmn.TExamPaperQuestion            `json:"questions"`              // 试题分析列表
-	QuestionAnswersStats map[null.Int]map[string]int         `json:"question_answers_stats"` // 试题答案统计
-	SubjectiveScores     map[null.Int]float64                `json:"subjective_scores"`      // 主观题评分列表
-	QuestionGroups       []JSONText                          `json:"question_groups"`        // 题目分组
-	P                    *cmn.TVExamPaper                    `json:"exam_paper"`
-	PG                   []*cmn.TExamPaperGroup              `json:"exam_paper_groups"`
-	PQ                   map[int64][]*examPaper.ExamQuestion `json:"exam_paper_questions"`
-}
-
-type ExamSessionScoreRank struct {
-	StudentID    int64       `json:"student_id" db:"student_id"`
-	OfficialName null.String `json:"official_name" db:"official_name"`
-	TotalScore   null.Float  `json:"total_score" db:"total_score"`
-	Rank         null.Int    `json:"rank" db:"rank"`
-}
-
-// ********** 按考试ID分类的导出数据结构 **********
 type ExamScoreExportData struct {
 	ExamID        int64                  `json:"exam_id"`        // 考试ID
 	ExamName      null.String            `json:"exam_name"`      // 考试名称
@@ -210,6 +110,18 @@ type ExamScoreExportResponse struct {
 }
 
 // ********** 按练习ID分类的导出数据结构 **********
+type PracticeExamineeScoreInfo struct {
+	StuID    null.Int    `json:"stu_id"`   // 学生ID
+	Phone    null.String `json:"phone"`    // 学生手机号
+	Name     null.String `json:"name"`     // 学生姓名
+	Nickname null.String `json:"nickname"` // 学生昵称
+	Remark   null.String `json:"remark"`   // 备注
+
+	PracticeID   null.Int   `json:"practice_id"`   // 练习ID
+	HighestScore null.Float `json:"highest_score"` // 最高分
+	SubmittedCnt null.Int   `json:"submitted_cnt"` // 提交次数
+}
+
 type PracticeScoreExportData struct {
 	PracticeID    int64                       `json:"practice_id"`    // 练习ID
 	PracticeName  null.String                 `json:"practice_name"`  // 练习名称
@@ -219,4 +131,44 @@ type PracticeScoreExportData struct {
 type PracticeScoreExportResponse struct {
 	Total     int64                     `json:"total"`     // 总记录数
 	Practices []PracticeScoreExportData `json:"practices"` // 按练习ID分类的数据
+}
+
+type GradeExamineeListReq struct {
+	ExamID     []int // 考试ID
+	PracticeID []int // 练习ID
+	Page       int   // 页码
+	PageSize   int   // 每页数量
+	Filter     struct {
+		Keyword string `json:"keyword"`
+	}
+}
+
+// type ExamExamineeScoreInfo struct {
+// 	StuID    null.Int    `json:"stu_id"`   // 学生ID
+// 	Phone    null.String `json:"phone"`    // 学生手机号
+// 	Name     null.String `json:"name"`     // 学生姓名
+// 	Nickname null.String `json:"nickname"` // 学生昵称
+// 	Remark   null.String `json:"remark"`   // 备注
+
+// 	ExamID        null.Int   `json:"exam_id"`         // 考试ID
+// 	ExamSessionID null.Int   `json:"exam_session_id"` // 考试场次ID
+// 	Score         null.Float `json:"score"`           // 成绩
+// 	TotalScore    null.Float `json:"total_score"`     // 总分
+// }
+
+// ********** 成绩接口 **********
+type ExamAnalysis struct {
+	ExamPaperID          int64                               `json:"exam_paper_id"`          // 考试试卷ID
+	QuestionAnswersStats map[null.Int]map[string]int         `json:"question_answers_stats"` // 试题答案统计
+	SubjectiveScores     map[null.Int]float64                `json:"subjective_scores"`      // 主观题评分列表
+	ExamPaper            *cmn.TVExamPaper                    `json:"exam_paper"`
+	ExamPaperGroup       []*cmn.TExamPaperGroup              `json:"exam_paper_groups"`
+	ExamPaperQuestion    map[int64][]*examPaper.ExamQuestion `json:"exam_paper_questions"`
+}
+
+type ExamSessionScoreRank struct {
+	StudentID    int64       `json:"student_id" db:"student_id"`
+	OfficialName null.String `json:"official_name" db:"official_name"`
+	TotalScore   null.Float  `json:"total_score" db:"total_score"`
+	Rank         null.Int    `json:"rank" db:"rank"`
 }
