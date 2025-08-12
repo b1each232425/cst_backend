@@ -797,16 +797,8 @@ func OperatePracticeStatusV2(ctx context.Context, ids []int64, status string, ui
 			z.Error(err.Error())
 			return err
 		}
-		examPaperIDs := []int64{}
-		for _, p := range ps {
-			examPaperIDs = append(examPaperIDs, p.ExamPaperID.Int64)
-		}
-		// TODO 这里要补充对于考卷、学生答卷的物理删除 进行物理联表 级联删除
-		s = `DELETE FROM t_exam_paper WHERE id = ANY($1)`
-		_, err = tx.Exec(ctx, s, examPaperIDs)
-		if err != nil || forceErr == "pQuery4" {
-			err = fmt.Errorf("级联删除考卷 - 学生答卷 失败:%v", err)
-			z.Error(err.Error())
+		err = examPaper.DeleteExamPaperById(ctx, tx, nil, ids)
+		if err != nil {
 			return err
 		}
 		// 清除批改配置信息
