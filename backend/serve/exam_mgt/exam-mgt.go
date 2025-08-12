@@ -51,6 +51,7 @@ type ExamSession struct {
 	StartTime      int64   `json:"start_time"` //场次开始时间
 	EndTime        int64   `json:"end_time"`   //场次结束时间
 	SessionNum     int64   `json:"session_num"`
+	PaperID        int64   `json:"paper_id"`
 	PaperName      string  `json:"paper_name"`
 	Status         string  `json:"status"`
 	ExamineeStatus string  `json:"examinee_status"`
@@ -2706,6 +2707,7 @@ func examList(ctx context.Context) {
 				es.end_time, 
 				es.duration, 
 				es.session_num, 
+				es.paper_id,
 				ei.update_time,
 				COALESCE(
 					(SELECT COUNT(*) 
@@ -2759,12 +2761,13 @@ func examList(ctx context.Context) {
 					end_time       null.Int
 					duration       null.Int
 					sessionNum     null.Int
+					paperID        null.Int
 					updateTime     int64
 					numOfExaminees int64
 				)
 				q.Err = rows.Scan(
 					&id, &name, &typ, &mode, &status,
-					&start_time, &end_time, &duration, &sessionNum, &updateTime, &numOfExaminees,
+					&start_time, &end_time, &duration, &sessionNum, &paperID, &updateTime, &numOfExaminees,
 				)
 				if forceErr == "rows.Scan" {
 					q.Err = fmt.Errorf("强制扫描考试列表错误")
@@ -2793,6 +2796,7 @@ func examList(ctx context.Context) {
 					StartTime:  start_time.Int64,
 					EndTime:    end_time.Int64,
 					SessionNum: sessionNum.Int64,
+					PaperID:    paperID.Int64,
 				})
 				item.Duration += duration.Int64
 			}
