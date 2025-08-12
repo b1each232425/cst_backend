@@ -3,7 +3,7 @@
  * @Description: 练习管理数据库层函数逻辑测试
  * @Date: 2025-07-24 14:51:50
  * @LastEditors: zdl <1311866870@qq.com>
- * @LastEditTime: 2025-08-11 21:27:59
+ * @LastEditTime: 2025-08-12 09:49:02
  */
 package practice_mgt
 
@@ -1090,7 +1090,7 @@ func TestValidatePractice(t *testing.T) {
 				PaperID:         null.IntFrom(102),
 				Name:            null.StringFrom("化学期末考试"),
 				CorrectMode:     null.StringFrom("异常批改数据"), // 批改模式
-				Type:            null.StringFrom("02"),     // 练习类型（试卷）
+				Type:            null.StringFrom("02"),           // 练习类型（试卷）
 				AllowedAttempts: null.IntFrom(10),
 			},
 			ps:            nil,
@@ -1112,7 +1112,7 @@ func TestValidatePractice(t *testing.T) {
 			p: &cmn.TPractice{
 				PaperID:         null.IntFrom(102),
 				Name:            null.StringFrom("化学期末考试"),
-				CorrectMode:     null.StringFrom("00"),     // 批改模式
+				CorrectMode:     null.StringFrom("00"),           // 批改模式
 				Type:            null.StringFrom("异常练习类型"), // 练习类型（试卷）
 				AllowedAttempts: null.IntFrom(10),
 			},
@@ -2523,10 +2523,10 @@ VALUES
 			expectedError: errors.New("批量重置学生练习提交记录信息失败："),
 		},
 		{
-			name:          "异常9 取消发布/删除 触发批量删除考卷、学生答卷错误 pQuery4 Released",
+			name:          "异常9 取消发布/删除 触发批量删除考卷、学生答卷错误 delete Released",
 			status:        PracticeStatus.PendingRelease,
 			pids:          []int64{10087, 10090},
-			expectedError: errors.New("级联删除考卷 - 学生答卷 失败"),
+			expectedError: errors.New("级联删除对应考试场次与练习考卷、学生答卷数据失败"),
 		},
 		{
 			name:          "异常10 取消发布/删除 触发批量清除批改配置失败 mark1 Released",
@@ -2572,7 +2572,7 @@ VALUES
 			} else if containsString(tt.name, "异常8") {
 				ctx = context.WithValue(ctx, "force-error", "pQuery3")
 			} else if containsString(tt.name, "异常9") {
-				ctx = context.WithValue(ctx, "force-error", "pQuery4")
+				ctx = context.WithValue(ctx, "force-error", "delete")
 			} else if containsString(tt.name, "异常10") {
 				ctx = context.WithValue(ctx, "force-error", "mark1")
 			} else if containsString(tt.name, "异常13") {

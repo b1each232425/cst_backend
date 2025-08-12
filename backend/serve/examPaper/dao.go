@@ -3,7 +3,7 @@
  * @Description: 考卷-答卷数据库层
  * @Date: 2025-07-21 13:14:34
  * @LastEditors: zdl <1311866870@qq.com>
- * @LastEditTime: 2025-08-11 21:22:15
+ * @LastEditTime: 2025-08-12 08:41:23
  */
 package examPaper
 
@@ -878,7 +878,7 @@ func LoadExamPaperDetailByUserId(ctx context.Context, tx pgx.Tx, examPaperId, pS
 func DeleteExamPaperById(ctx context.Context, tx pgx.Tx, examSessionIDs, practiceIDs []int64) error {
 	var err error
 	forceErr, _ := ctx.Value("force-error").(string)
-	if len(examSessionIDs) == 0 || len(practiceIDs) == 0 {
+	if len(examSessionIDs) == 0 && len(practiceIDs) == 0 {
 		err = fmt.Errorf("invalid examSessionIDs or practiceIDs param")
 		z.Error(err.Error())
 		return err
