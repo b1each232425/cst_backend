@@ -504,8 +504,7 @@ func gradeDistributionExam(ctx context.Context, examID int, columnNum int) (Exam
 	z.Info("---->" + cmn.FncName())
 
 	var err error
-
-	result := ExamGradeDistribution{}
+	var result ExamGradeDistribution
 
 	if examID < 0 {
 		err = fmt.Errorf("examID无效")
@@ -529,11 +528,9 @@ func gradeDistributionExam(ctx context.Context, examID int, columnNum int) (Exam
 	whereClause := " WHERE ei.id = $1 "
 
 	distributions := []string{}
-
 	scoreInterval := 1 / float64(columnNum)
 
 	initAddiCondition := ""
-
 	if columnNum == 1 {
 		initAddiCondition = " OR sets.total_score IS NULL "
 	}
@@ -548,13 +545,10 @@ func gradeDistributionExam(ctx context.Context, examID int, columnNum int) (Exam
 				ELSE 0
 			END
 		)`, scoreInterval*float64(columnNum-1), 1, initAddiCondition)
-
 	distributions = append(distributions, initDistribution)
 
 	for i := columnNum - 1; i > 0; i-- {
-
 		addiCondition := ""
-
 		if i == 1 {
 			addiCondition = " OR sets.total_score IS NULL "
 		}
@@ -574,8 +568,8 @@ func gradeDistributionExam(ctx context.Context, examID int, columnNum int) (Exam
 
 	}
 
-	sql := fmt.Sprintf(`WITH exam_session_grades AS (
-		SELECT
+	sql := fmt.Sprintf(`
+	WITH exam_session_grades AS ( SELECT
 			sets.exam_id AS exam_id,
 			sets.exam_session_id,
 			ep.id AS exam_paper_id,
@@ -587,12 +581,7 @@ func gradeDistributionExam(ctx context.Context, examID int, columnNum int) (Exam
 			] AS score_distribution
 		FROM v_student_exam_total_score sets
 			JOIN v_exam_paper ep ON ep.exam_session_id =  sets.exam_session_id
-		GROUP BY
-			sets.exam_id,
-			sets.exam_session_id,
-			ep.id,
-			ep.name,
-			ep.total_score
+		GROUP BY sets.exam_id, sets.exam_session_id, ep.id, ep.name, ep.total_score
 	)
 	SELECT
 		ei.id,
@@ -601,8 +590,7 @@ func gradeDistributionExam(ctx context.Context, examID int, columnNum int) (Exam
 	FROM t_exam_info ei
 		JOIN exam_session_grades ON exam_session_grades.exam_id = ei.id
 	%s
-	GROUP BY
-		ei.id
+	GROUP BY ei.id
 	`, strings.Join(distributions, ", "), whereClause)
 
 	z.Sugar().Debug("sql:%#v", sql)
@@ -1079,6 +1067,7 @@ func gradeExamineeListPractice(ctx context.Context, req GradeExamineeListReq) (P
 				StudentScores: []PracticeExamineeScoreInfo{scoreInfo},
 			}
 		}
+		totalCount++
 	}
 
 	for _, practiceData := range practiceMap {
@@ -1184,12 +1173,14 @@ func gradeAnalysisByID(ctx context.Context, esid int64, pid int64) (Analysis, er
 	defer rows.Close()
 
 	// 第四步:从学生选择题答案中进行统计
+	type AnswerData struct {
+		Answer []string `json:"answer"`
+	}
 	questionAnswersStats := make(map[null.Int]map[string]int)
 	for rows.Next() {
 		var ans struct {
-			Type       string `json:"type"`
-			AnsJson    JSONText
-			Answer     []string `json:"answer"`
+			Type       string   `json:"type"`
+			AnsJson    JSONText `json:"answer"`
 			QuestionID null.Int `json:"question_id"`
 		}
 
@@ -1211,7 +1202,12 @@ func gradeAnalysisByID(ctx context.Context, esid int64, pid int64) (Analysis, er
 			continue
 		}
 
-		err = json.Unmarshal(ans.AnsJson, &ans.Answer)
+		var answerData AnswerData
+		err = json.Unmarshal(ans.AnsJson, &answerData)
+		if err != nil {
+			return analysis, fmt.Errorf("unmarshal student answer: %w", err)
+		}
+
 		if err != nil {
 			err = fmt.Errorf("反序列化学生答案失败: %w,(examSessionID=%v),(practiceID=%v),(examPaperID=%v),(qids=%s),(ans=%s)", err, esid, pid, analysis.ExamPaperID, qidsStr, ans.AnsJson)
 			z.Error(err.Error())
@@ -1225,7 +1221,7 @@ func gradeAnalysisByID(ctx context.Context, esid int64, pid int64) (Analysis, er
 
 		// 统计答案
 		// 说明:选择题答案是数组形式的选项
-		for _, answer := range ans.Answer {
+		for _, answer := range answerData.Answer {
 			if _, ok := questionAnswersStats[ans.QuestionID][answer]; !ok {
 				questionAnswersStats[ans.QuestionID][answer] = 0
 			}
