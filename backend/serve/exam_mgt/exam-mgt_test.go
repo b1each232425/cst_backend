@@ -267,15 +267,14 @@ func CreateTestPaperWithGroupsAndQuestions(ctx context.Context, tx pgx.Tx, bankQ
 		UpdateTime:        null.IntFrom(now),
 		Status:            null.StringFrom("00"),
 		Tags:              types.JSONText(`["test", "unit"]`),
-		AccessMode:        null.StringFrom("00"), // 默认访问模式
 	}
 
 	//初始化一张空试卷
 	err = tx.QueryRow(ctx, `
 		INSERT INTO t_paper 
-			(id, name, assembly_type, category, level, suggested_duration, tags, creator, create_time, updated_by, update_time, status, access_mode) 
+			(id, name, assembly_type, category, level, suggested_duration, tags, creator, create_time, updated_by, update_time, status) 
 		VALUES 
-			($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) 
+			($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) 
 		RETURNING id`,
 		testPaperToPublishID,
 		paper.Name.String,
@@ -289,7 +288,6 @@ func CreateTestPaperWithGroupsAndQuestions(ctx context.Context, tx pgx.Tx, bankQ
 		paper.UpdatedBy.Int64,
 		paper.UpdateTime.Int64,
 		paper.Status.String,
-		paper.AccessMode.String,
 	).Scan(&paperID)
 
 	if err != nil {
@@ -2747,6 +2745,21 @@ func TestExamPutMethod(t *testing.T) {
 				return data
 			}(),
 			expectedError: false,
+		},
+		{
+			name:        "更新考试失败-已发布状态",
+			description: "强制删除考卷失败",
+			userID:      testAcademicAffair,
+			userRole:    2002,
+			requestBody: func() ExamData {
+				data := validExamData
+				data.ExamInfo.ID = null.IntFrom(testPublishedExamID) // 使用测试数据中已发布的考试
+				data.ExamSessions[0].PaperID = null.IntFrom(testPaperToPublishID)
+				return data
+			}(),
+			expectedError: true,
+			forceError:    "examPaper.DeleteExamPaperById",
+			errorContains: "强制删除考卷和答卷错误",
 		},
 		{
 			name:        "更新考试失败-已发布状态下强制转换批改员ID失败",
@@ -5352,6 +5365,17 @@ func TestExamStatus(t *testing.T) {
 		expectedStatus string
 	}{
 		{
+			name:          "取消考试时删除考卷失败",
+			description:   "取消考试时删除考卷失败",
+			examID:        testPublishedExamID,
+			userID:        testAcademicAffair,
+			userRole:      2002,
+			queryParams:   fmt.Sprintf(`q={"data":{"IDs":[%d],"Status":"00"}}`, testPublishedExamID),
+			expectSuccess: false,
+			forceError:    "examPaper.DeleteExamPaperById",
+			errorContains: "强制删除考卷和答卷错误",
+		},
+		{
 			name:           "正常的取消请求",
 			description:    "正常的取消请求",
 			examID:         testPublishedExamID,
@@ -6667,6 +6691,16 @@ func TestExamDeleteMethod(t *testing.T) {
 			errorContains: "强制删除考试场次错误",
 		},
 		{
+			name:          "强制删除考卷错误",
+			description:   "模拟删除考卷失败",
+			userID:        testAcademicAffair,
+			userRole:      2002,
+			requestBody:   []int64{testNormalExamID},
+			forceError:    "examPaper.DeleteExamPaperById",
+			expectedError: true,
+			errorContains: "强制删除考卷和答卷错误",
+		},
+		{
 			name:          "强制删除考试信息错误",
 			description:   "模拟软删除考试信息失败",
 			userID:        testAcademicAffair,
@@ -6818,6 +6852,354 @@ func TestExamDeleteMethod(t *testing.T) {
 			// 执行数据库状态验证
 			if tt.verifyFunc != nil && !tt.expectedError {
 				tt.verifyFunc(t)
+			}
+
+			t.Logf("%s: 测试完成 - %s", tt.name, tt.description)
+		})
+	}
+}
+
+// TestExamLock 测试考试锁功能
+func TestExamLock(t *testing.T) {
+	// 确保logger和数据库连接已初始化
+	if z == nil {
+		cmn.ConfigureForTest()
+	}
+
+	// 设置测试数据
+	CleanTestExamData(t)
+	CreateTestExamData(t)
+
+	// 清理函数
+	t.Cleanup(func() {
+		CleanTestExamData(t)
+	})
+
+	tests := []struct {
+		name          string
+		method        string
+		queryParams   string
+		forceError    string
+		expectedError bool
+		errorContains string
+		expectedMsg   string
+		description   string
+		userID        int64
+		userRole      int64
+	}{
+		// GET 方法测试（获取考试锁）
+		{
+			name:          "GET-正常获取考试锁-教务员角色",
+			method:        "GET",
+			queryParams:   fmt.Sprintf("exam_id=%d", testNormalExamID),
+			forceError:    "",
+			expectedError: false,
+			expectedMsg:   "成功获取考试锁",
+			description:   "教务员角色正常获取考试锁",
+			userID:        testAcademicAffair,
+			userRole:      2002,
+		},
+		{
+			name:          "GET-无效考试ID-空参数",
+			method:        "GET",
+			queryParams:   "exam_id=",
+			forceError:    "",
+			expectedError: true,
+			errorContains: "无效的考试ID",
+			description:   "空考试ID参数",
+			userID:        testAcademicAffair,
+			userRole:      2002,
+		},
+		{
+			name:          "GET-无效考试ID-非数字",
+			method:        "GET",
+			queryParams:   "exam_id=abc",
+			forceError:    "",
+			expectedError: true,
+			errorContains: "无效的考试ID",
+			description:   "非数字考试ID",
+			userID:        testAcademicAffair,
+			userRole:      2002,
+		},
+		{
+			name:          "GET-无效考试ID-零值",
+			method:        "GET",
+			queryParams:   "exam_id=0",
+			forceError:    "",
+			expectedError: true,
+			errorContains: "无效的考试ID",
+			description:   "零值考试ID",
+			userID:        testAcademicAffair,
+			userRole:      2002,
+		},
+		{
+			name:          "GET-无效考试ID-负数",
+			method:        "GET",
+			queryParams:   "exam_id=-1",
+			forceError:    "",
+			expectedError: true,
+			errorContains: "无效的考试ID",
+			description:   "负数考试ID",
+			userID:        testAcademicAffair,
+			userRole:      2002,
+		},
+		{
+			name:          "GET-无效用户ID",
+			method:        "GET",
+			queryParams:   fmt.Sprintf("exam_id=%d", testNormalExamID),
+			forceError:    "",
+			expectedError: true,
+			errorContains: "无效的用户ID",
+			description:   "用户ID为0",
+			userID:        0,
+			userRole:      2002,
+		},
+		{
+			name:          "GET-无效用户域",
+			method:        "GET",
+			queryParams:   fmt.Sprintf("exam_id=%d", testNormalExamID),
+			forceError:    "",
+			expectedError: true,
+			errorContains: "未找到角色ID",
+			description:   "无效用户域",
+			userID:        0,
+			userRole:      9999,
+		},
+		{
+			name:          "GET-用户权限验证失败",
+			method:        "GET",
+			queryParams:   fmt.Sprintf("exam_id=%d", testNormalExamID),
+			forceError:    "validateUserExamPermission",
+			expectedError: true,
+			errorContains: "强制验证用户考试权限错误",
+			description:   "强制用户权限验证错误",
+			userID:        testAcademicAffair,
+			userRole:      2002,
+		},
+		{
+			name:          "GET-用户无权限访问考试",
+			method:        "GET",
+			queryParams:   fmt.Sprintf("exam_id=%d", testNormalExamID),
+			forceError:    "validateUserExamPermissionFailed",
+			expectedError: true,
+			errorContains: "无权访问该考试",
+			description:   "用户无权限访问该考试",
+			userID:        testAcademicAffair,
+			userRole:      2002,
+		},
+		{
+			name:          "GET-尝试获取锁失败",
+			method:        "GET",
+			queryParams:   fmt.Sprintf("exam_id=%d", testNormalExamID),
+			forceError:    "cmn.TryLock",
+			expectedError: true,
+			errorContains: "强制尝试获取考试锁错误",
+			description:   "强制尝试获取锁失败",
+			userID:        testAcademicAffair,
+			userRole:      2002,
+		},
+		{
+			name:          "GET-考试正在被其他用户编辑",
+			method:        "GET",
+			queryParams:   fmt.Sprintf("exam_id=%d", testNormalExamID),
+			forceError:    "cmn.TryLockFailed",
+			expectedError: true,
+			errorContains: "考试正在被其他用户编辑",
+			description:   "考试正在被其他用户编辑",
+			userID:        testAcademicAffair,
+			userRole:      2002,
+		},
+
+		// PUT 方法测试（刷新考试锁）
+		{
+			name:          "PUT-正常刷新考试锁-教务员角色",
+			method:        "PUT",
+			queryParams:   fmt.Sprintf("exam_id=%d", testNormalExamID),
+			forceError:    "",
+			expectedError: false,
+			expectedMsg:   "成功刷新考试锁",
+			description:   "教务员角色正常刷新考试锁",
+			userID:        testAcademicAffair,
+			userRole:      2002,
+		},
+		{
+			name:          "PUT-无效考试ID-空参数",
+			method:        "PUT",
+			queryParams:   "exam_id=",
+			forceError:    "",
+			expectedError: true,
+			errorContains: "无效的考试ID",
+			description:   "空考试ID参数",
+			userID:        testAcademicAffair,
+			userRole:      2002,
+		},
+		{
+			name:          "PUT-无效用户ID",
+			method:        "PUT",
+			queryParams:   fmt.Sprintf("exam_id=%d", testNormalExamID),
+			forceError:    "",
+			expectedError: true,
+			errorContains: "无效的用户ID",
+			description:   "用户ID为0",
+			userID:        0,
+			userRole:      2002,
+		},
+		{
+			name:          "PUT-用户权限验证失败",
+			method:        "PUT",
+			queryParams:   fmt.Sprintf("exam_id=%d", testNormalExamID),
+			forceError:    "validateUserExamPermission",
+			expectedError: true,
+			errorContains: "强制验证用户考试权限错误",
+			description:   "强制用户权限验证错误",
+			userID:        testAcademicAffair,
+			userRole:      2002,
+		},
+		{
+			name:          "PUT-用户无权限访问考试",
+			method:        "PUT",
+			queryParams:   fmt.Sprintf("exam_id=%d", testNormalExamID),
+			forceError:    "validateUserExamPermissionFailed",
+			expectedError: true,
+			errorContains: "无权访问该考试",
+			description:   "用户无权限访问该考试",
+			userID:        testAcademicAffair,
+			userRole:      2002,
+		},
+		{
+			name:          "PUT-刷新锁失败",
+			method:        "PUT",
+			queryParams:   fmt.Sprintf("exam_id=%d", testNormalExamID),
+			forceError:    "cmn.RefreshLock",
+			expectedError: true,
+			errorContains: "强制刷新考试锁错误",
+			description:   "强制刷新锁失败",
+			userID:        testAcademicAffair,
+			userRole:      2002,
+		},
+
+		// DELETE 方法测试（释放考试锁）
+		{
+			name:          "DELETE-正常释放考试锁-教务员角色",
+			method:        "DELETE",
+			queryParams:   fmt.Sprintf("exam_id=%d", testNormalExamID),
+			forceError:    "",
+			expectedError: false,
+			expectedMsg:   "成功清除考试锁",
+			description:   "教务员角色正常释放考试锁",
+			userID:        testAcademicAffair,
+			userRole:      2002,
+		},
+		{
+			name:          "DELETE-无效考试ID-空参数",
+			method:        "DELETE",
+			queryParams:   "exam_id=",
+			forceError:    "",
+			expectedError: true,
+			errorContains: "无效的考试ID",
+			description:   "空考试ID参数",
+			userID:        testAcademicAffair,
+			userRole:      2002,
+		},
+		{
+			name:          "DELETE-无效用户ID",
+			method:        "DELETE",
+			queryParams:   fmt.Sprintf("exam_id=%d", testNormalExamID),
+			forceError:    "",
+			expectedError: true,
+			errorContains: "无效的用户ID",
+			description:   "用户ID为0",
+			userID:        0,
+			userRole:      2002,
+		},
+		{
+			name:          "DELETE-用户权限验证失败",
+			method:        "DELETE",
+			queryParams:   fmt.Sprintf("exam_id=%d", testNormalExamID),
+			forceError:    "validateUserExamPermission",
+			expectedError: true,
+			errorContains: "强制验证用户考试权限错误",
+			description:   "强制用户权限验证错误",
+			userID:        testAcademicAffair,
+			userRole:      2002,
+		},
+		{
+			name:          "DELETE-用户无权限访问考试",
+			method:        "DELETE",
+			queryParams:   fmt.Sprintf("exam_id=%d", testNormalExamID),
+			forceError:    "validateUserExamPermissionFailed",
+			expectedError: true,
+			errorContains: "无权访问该考试",
+			description:   "用户无权限访问该考试",
+			userID:        testAcademicAffair,
+			userRole:      2002,
+		},
+		{
+			name:          "DELETE-释放锁失败",
+			method:        "DELETE",
+			queryParams:   fmt.Sprintf("exam_id=%d", testNormalExamID),
+			forceError:    "cmn.ReleaseLock",
+			expectedError: true,
+			errorContains: "强制释放考试锁错误",
+			description:   "强制释放锁失败",
+			userID:        testAcademicAffair,
+			userRole:      2002,
+		},
+
+		// 不支持的方法测试
+		{
+			name:          "PATCH-不支持的方法",
+			method:        "PATCH",
+			queryParams:   fmt.Sprintf("exam_id=%d", testNormalExamID),
+			forceError:    "",
+			expectedError: true,
+			errorContains: "unsupported method: patch",
+			description:   "不支持的HTTP方法",
+			userID:        testAcademicAffair,
+			userRole:      2002,
+		},
+		{
+			name:          "POST-不支持的方法",
+			method:        "POST",
+			queryParams:   fmt.Sprintf("exam_id=%d", testNormalExamID),
+			forceError:    "",
+			expectedError: true,
+			errorContains: "unsupported method: post",
+			description:   "不支持的HTTP方法",
+			userID:        testAcademicAffair,
+			userRole:      2002,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Logf("%s: 开始测试 - %s", tt.name, tt.description)
+
+			// 创建查询参数
+			queryParams, _ := url.ParseQuery(tt.queryParams)
+
+			// 创建模拟上下文
+			ctx := createMockContextWithRole(tt.method, "/exam/lock", queryParams, tt.forceError, tt.userID, tt.userRole)
+
+			// 调用函数
+			examLock(ctx)
+
+			// 获取响应
+			q := cmn.GetCtxValue(ctx)
+
+			// 验证结果
+			if tt.expectedError {
+				assert.Error(t, q.Err, tt.description)
+				if tt.errorContains != "" {
+					assert.Contains(t, q.Err.Error(), tt.errorContains, tt.description)
+				}
+				t.Logf("%s: 正确收到期望的错误: %v", tt.name, q.Err)
+			} else {
+				assert.NoError(t, q.Err, tt.description)
+				if tt.expectedMsg != "" {
+					assert.Contains(t, q.Msg.Msg, tt.expectedMsg, tt.description)
+				}
+				t.Logf("%s: 操作成功完成，响应消息: %s", tt.name, q.Msg.Msg)
 			}
 
 			t.Logf("%s: 测试完成 - %s", tt.name, tt.description)
