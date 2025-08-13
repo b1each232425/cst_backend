@@ -3,7 +3,7 @@
  * @Description: 练习管理数据库层函数逻辑测试
  * @Date: 2025-07-24 14:51:50
  * @LastEditors: zdl <1311866870@qq.com>
- * @LastEditTime: 2025-08-13 11:59:49
+ * @LastEditTime: 2025-08-13 14:34:33
  */
 package practice_mgt
 
@@ -1180,7 +1180,7 @@ func TestValidatePractice(t *testing.T) {
 				PaperID:         null.IntFrom(102),
 				Name:            null.StringFrom("化学期末考试"),
 				CorrectMode:     null.StringFrom("异常批改数据"), // 批改模式
-				Type:            null.StringFrom("02"),     // 练习类型（试卷）
+				Type:            null.StringFrom("02"),           // 练习类型（试卷）
 				AllowedAttempts: null.IntFrom(10),
 			},
 			ps:            nil,
@@ -1202,7 +1202,7 @@ func TestValidatePractice(t *testing.T) {
 			p: &cmn.TPractice{
 				PaperID:         null.IntFrom(102),
 				Name:            null.StringFrom("化学期末考试"),
-				CorrectMode:     null.StringFrom("00"),     // 批改模式
+				CorrectMode:     null.StringFrom("00"),           // 批改模式
 				Type:            null.StringFrom("异常练习类型"), // 练习类型（试卷）
 				AllowedAttempts: null.IntFrom(10),
 			},
@@ -1365,15 +1365,13 @@ func TestUpsertPracticeStudent(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			if containsString(tt.name, "强制异常4") {
-				ctx = context.WithValue(ctx, "force-error", "Rollback")
+				ctx = context.WithValue(ctx, "force-error", "rollback")
 			} else if containsString(tt.name, "强制异常3") {
 				ctx = context.WithValue(ctx, "force-error", "query2")
 			} else if containsString(tt.name, "强制异常2") {
 				ctx = context.WithValue(ctx, "force-error", "query1")
 			} else if containsString(tt.name, "强制异常1") {
 				ctx = context.WithValue(ctx, "force-error", "beginTx")
-			} else if containsString(tt.name, "强制异常4") {
-				ctx = context.WithValue(ctx, "force-error", "rollback")
 			} else if containsString(tt.name, "强制异常5") {
 				ctx = context.WithValue(ctx, "force-error", "commit")
 			} else {
