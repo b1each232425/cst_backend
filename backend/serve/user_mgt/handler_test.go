@@ -215,8 +215,8 @@ func Test_handler_HandleValidateUserToBeInsert(t *testing.T) {
 			name: "成功验证用户信息 - 所有用户有效",
 			fields: fields{
 				srv: &MockService{
-					ValidateUserFunc: func(ctx context.Context, tx pgx.Tx, users []User) ([]User, []InvalidUser, error) {
-						return users, []InvalidUser{}, nil
+					ValidateUserFunc: func(ctx context.Context, tx pgx.Tx, users []User) ([]User, []User, []User, error) {
+						return users, []User{}, []User{}, nil
 					},
 				},
 			},
@@ -242,7 +242,7 @@ func Test_handler_HandleValidateUserToBeInsert(t *testing.T) {
 			name: "成功验证用户信息 - 部分用户无效",
 			fields: fields{
 				srv: &MockService{
-					ValidateUserFunc: func(ctx context.Context, tx pgx.Tx, users []User) ([]User, []InvalidUser, error) {
+					ValidateUserFunc: func(ctx context.Context, tx pgx.Tx, users []User) ([]User, []User, []User, error) {
 						return []User{
 								{
 									TUser: cmn.TUser{
@@ -250,16 +250,18 @@ func Test_handler_HandleValidateUserToBeInsert(t *testing.T) {
 										OfficialName: null.NewString("有效用户", true),
 									},
 								},
-							}, []InvalidUser{
+							}, []User{
 								{
-									Account:      null.NewString("invalid_user", true),
-									OfficialName: null.NewString("无效用户", true),
+									TUser: cmn.TUser{
+										Account:      "invalid_user",
+										OfficialName: null.NewString("无效用户", true),
+									},
 									ErrorMsg: []null.String{
 										null.NewString("账号已存在", true),
 										null.NewString("邮箱格式不正确", true),
 									},
 								},
-							}, nil
+							}, []User{}, nil
 					},
 				},
 			},
@@ -321,8 +323,8 @@ func Test_handler_HandleValidateUserToBeInsert(t *testing.T) {
 			name: "HTTP方法大小写不敏感 - post",
 			fields: fields{
 				srv: &MockService{
-					ValidateUserFunc: func(ctx context.Context, tx pgx.Tx, users []User) ([]User, []InvalidUser, error) {
-						return users, []InvalidUser{}, nil
+					ValidateUserFunc: func(ctx context.Context, tx pgx.Tx, users []User) ([]User, []User, []User, error) {
+						return users, []User{}, []User{}, nil
 					},
 				},
 			},
@@ -340,8 +342,8 @@ func Test_handler_HandleValidateUserToBeInsert(t *testing.T) {
 			name: "HTTP方法大小写不敏感 - Post",
 			fields: fields{
 				srv: &MockService{
-					ValidateUserFunc: func(ctx context.Context, tx pgx.Tx, users []User) ([]User, []InvalidUser, error) {
-						return users, []InvalidUser{}, nil
+					ValidateUserFunc: func(ctx context.Context, tx pgx.Tx, users []User) ([]User, []User, []User, error) {
+						return users, []User{}, []User{}, nil
 					},
 				},
 			},
@@ -421,8 +423,8 @@ func Test_handler_HandleValidateUserToBeInsert(t *testing.T) {
 			name: "ValidateUserToBeInsert服务错误",
 			fields: fields{
 				srv: &MockService{
-					ValidateUserFunc: func(ctx context.Context, tx pgx.Tx, users []User) ([]User, []InvalidUser, error) {
-						return nil, nil, fmt.Errorf("数据库连接失败")
+					ValidateUserFunc: func(ctx context.Context, tx pgx.Tx, users []User) ([]User, []User, []User, error) {
+						return nil, nil, nil, fmt.Errorf("数据库连接失败")
 					},
 				},
 			},
@@ -440,16 +442,18 @@ func Test_handler_HandleValidateUserToBeInsert(t *testing.T) {
 			name: "json.Marshal强制错误 - 无效用户序列化",
 			fields: fields{
 				srv: &MockService{
-					ValidateUserFunc: func(ctx context.Context, tx pgx.Tx, users []User) ([]User, []InvalidUser, error) {
-						return []User{}, []InvalidUser{
+					ValidateUserFunc: func(ctx context.Context, tx pgx.Tx, users []User) ([]User, []User, []User, error) {
+						return []User{}, []User{
 							{
-								Account:      null.NewString("invalid_user", true),
-								OfficialName: null.NewString("无效用户", true),
+								TUser: cmn.TUser{
+									Account:      "invalid_user",
+									OfficialName: null.NewString("无效用户", true),
+								},
 								ErrorMsg: []null.String{
 									null.NewString("账号已存在", true),
 								},
 							},
-						}, nil
+						}, []User{}, nil
 					},
 				},
 			},
@@ -467,8 +471,8 @@ func Test_handler_HandleValidateUserToBeInsert(t *testing.T) {
 			name: "复杂用户数据验证",
 			fields: fields{
 				srv: &MockService{
-					ValidateUserFunc: func(ctx context.Context, tx pgx.Tx, users []User) ([]User, []InvalidUser, error) {
-						return users, []InvalidUser{}, nil
+					ValidateUserFunc: func(ctx context.Context, tx pgx.Tx, users []User) ([]User, []User, []User, error) {
+						return users, []User{}, []User{}, nil
 					},
 				},
 			},
@@ -496,27 +500,31 @@ func Test_handler_HandleValidateUserToBeInsert(t *testing.T) {
 			name: "多个无效用户的详细错误信息",
 			fields: fields{
 				srv: &MockService{
-					ValidateUserFunc: func(ctx context.Context, tx pgx.Tx, users []User) ([]User, []InvalidUser, error) {
-						return []User{}, []InvalidUser{
+					ValidateUserFunc: func(ctx context.Context, tx pgx.Tx, users []User) ([]User, []User, []User, error) {
+						return []User{}, []User{
 							{
-								Account:      null.NewString("user1", true),
-								OfficialName: null.NewString("用户1", true),
-								Email:        null.NewString("invalid-email", true),
+								TUser: cmn.TUser{
+									Account:      "user1",
+									OfficialName: null.NewString("用户1", true),
+									Email:        null.NewString("invalid-email", true),
+								},
 								ErrorMsg: []null.String{
 									null.NewString("邮箱格式不正确", true),
 									null.NewString("角色不能为空", true),
 								},
 							},
 							{
-								Account:      null.NewString("user2", true),
-								OfficialName: null.NewString("用户2", true),
-								MobilePhone:  null.NewString("invalid-phone", true),
+								TUser: cmn.TUser{
+									Account:      "user2",
+									OfficialName: null.NewString("用户2", true),
+									MobilePhone:  null.NewString("invalid-phone", true),
+								},
 								ErrorMsg: []null.String{
 									null.NewString("手机号格式不正确", true),
 									null.NewString("账号已存在", true),
 								},
 							},
-						}, nil
+						}, []User{}, nil
 					},
 				},
 			},
@@ -540,8 +548,8 @@ func Test_handler_HandleValidateUserToBeInsert(t *testing.T) {
 			name: "边界情况 - 单个用户",
 			fields: fields{
 				srv: &MockService{
-					ValidateUserFunc: func(ctx context.Context, tx pgx.Tx, users []User) ([]User, []InvalidUser, error) {
-						return users, []InvalidUser{}, nil
+					ValidateUserFunc: func(ctx context.Context, tx pgx.Tx, users []User) ([]User, []User, []User, error) {
+						return users, []User{}, []User{}, nil
 					},
 				},
 			},
@@ -559,8 +567,8 @@ func Test_handler_HandleValidateUserToBeInsert(t *testing.T) {
 			name: "边界情况 - 大量用户",
 			fields: fields{
 				srv: &MockService{
-					ValidateUserFunc: func(ctx context.Context, tx pgx.Tx, users []User) ([]User, []InvalidUser, error) {
-						return users, []InvalidUser{}, nil
+					ValidateUserFunc: func(ctx context.Context, tx pgx.Tx, users []User) ([]User, []User, []User, error) {
+						return users, []User{}, []User{}, nil
 					},
 				},
 			},
@@ -1303,14 +1311,14 @@ func Test_handler_HandleUser(t *testing.T) {
 			fields: fields{
 				srv: &MockService{
 					err: fmt.Errorf("数据库连接失败"),
-					ValidateUserFunc: func(ctx context.Context, tx pgx.Tx, users []User) ([]User, []InvalidUser, error) {
+					ValidateUserFunc: func(ctx context.Context, tx pgx.Tx, users []User) ([]User, []User, []User, error) {
 						return []User{
 							{
 								TUser: cmn.TUser{
 									Account: "test_user",
 								},
 							},
-						}, nil, nil
+						}, []User{}, []User{}, nil
 					},
 				},
 			},
@@ -1401,7 +1409,7 @@ func Test_handler_HandleUser(t *testing.T) {
 			fields: fields{
 				srv: &MockService{
 					err: fmt.Errorf("插入用户失败"),
-					ValidateUserFunc: func(ctx context.Context, tx pgx.Tx, users []User) ([]User, []InvalidUser, error) {
+					ValidateUserFunc: func(ctx context.Context, tx pgx.Tx, users []User) ([]User, []User, []User, error) {
 						return []User{
 							{
 								TUser: cmn.TUser{
@@ -1409,7 +1417,7 @@ func Test_handler_HandleUser(t *testing.T) {
 									OfficialName: null.NewString("新用户001", true),
 								},
 							},
-						}, nil, nil
+						}, []User{}, []User{}, nil
 					},
 				},
 			},
@@ -1425,8 +1433,8 @@ func Test_handler_HandleUser(t *testing.T) {
 			name: "验证用户信息时发生错误",
 			fields: fields{
 				srv: &MockService{
-					ValidateUserFunc: func(ctx context.Context, tx pgx.Tx, users []User) ([]User, []InvalidUser, error) {
-						return nil, nil, fmt.Errorf("验证用户信息失败")
+					ValidateUserFunc: func(ctx context.Context, tx pgx.Tx, users []User) ([]User, []User, []User, error) {
+						return nil, nil, nil, fmt.Errorf("验证用户信息失败")
 					},
 				},
 			},
@@ -1442,15 +1450,17 @@ func Test_handler_HandleUser(t *testing.T) {
 			name: "存在不合法的无法被插入的用户",
 			fields: fields{
 				srv: &MockService{
-					ValidateUserFunc: func(ctx context.Context, tx pgx.Tx, users []User) ([]User, []InvalidUser, error) {
-						return nil, []InvalidUser{
+					ValidateUserFunc: func(ctx context.Context, tx pgx.Tx, users []User) ([]User, []User, []User, error) {
+						return []User{}, []User{
 							{
-								Account: null.NewString("new_user_001", true),
+								TUser: cmn.TUser{
+									Account: "new_user_001",
+								},
 								ErrorMsg: []null.String{
 									null.NewString("账号已存在", true),
 								},
 							},
-						}, nil
+						}, []User{}, nil
 					},
 				},
 			},
@@ -1466,15 +1476,17 @@ func Test_handler_HandleUser(t *testing.T) {
 			name: "触发json.Marshal错误",
 			fields: fields{
 				srv: &MockService{
-					ValidateUserFunc: func(ctx context.Context, tx pgx.Tx, users []User) ([]User, []InvalidUser, error) {
-						return nil, []InvalidUser{
+					ValidateUserFunc: func(ctx context.Context, tx pgx.Tx, users []User) ([]User, []User, []User, error) {
+						return []User{}, []User{
 							{
-								Account: null.NewString("new_user_001", true),
+								TUser: cmn.TUser{
+									Account: "new_user_001",
+								},
 								ErrorMsg: []null.String{
 									null.NewString("账号已存在", true),
 								},
 							},
-						}, nil
+						}, []User{}, nil
 					},
 				},
 			},
@@ -1490,15 +1502,17 @@ func Test_handler_HandleUser(t *testing.T) {
 			name: "触发开启事务错误",
 			fields: fields{
 				srv: &MockService{
-					ValidateUserFunc: func(ctx context.Context, tx pgx.Tx, users []User) ([]User, []InvalidUser, error) {
-						return nil, []InvalidUser{
+					ValidateUserFunc: func(ctx context.Context, tx pgx.Tx, users []User) ([]User, []User, []User, error) {
+						return []User{}, []User{
 							{
-								Account: null.NewString("new_user_001", true),
+								TUser: cmn.TUser{
+									Account: "new_user_001",
+								},
 								ErrorMsg: []null.String{
 									null.NewString("账号已存在", true),
 								},
 							},
-						}, nil
+						}, []User{}, nil
 					},
 				},
 			},

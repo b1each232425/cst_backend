@@ -1820,7 +1820,7 @@ func Test_service_CheckTUserRowExists(t *testing.T) {
 			args: args{
 				ctx: context.WithValue(context.Background(), "force-error", "tx.QueryRow"),
 				fields: map[string]any{
-					"account": "test_user",
+					"account": "zhangsan",
 				},
 			},
 			want:    false,
@@ -1843,7 +1843,7 @@ func Test_service_CheckTUserRowExists(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := srv.CheckTUserRowExists(tt.args.ctx, nil, tt.args.fields)
+			got, _, err := srv.CheckTUserRowExists(tt.args.ctx, nil, tt.args.fields)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("CheckTUserRowExists() error = %v, wantErr %v", err, tt.wantErr)
 				return
@@ -1939,7 +1939,7 @@ func Test_service_CheckTUserRowExists_WithTransaction(t *testing.T) {
 			args: args{
 				ctx: context.WithValue(context.Background(), "force-error", "tx.QueryRow"),
 				fields: map[string]any{
-					"account": "test_user",
+					"account": "zhangsan",
 				},
 			},
 			want:    false,
@@ -1962,7 +1962,7 @@ func Test_service_CheckTUserRowExists_WithTransaction(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := srv.CheckTUserRowExists(tt.args.ctx, tx, tt.args.fields)
+			got, _, err := srv.CheckTUserRowExists(tt.args.ctx, tx, tt.args.fields)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("CheckTUserRowExists() error = %v, wantErr %v", err, tt.wantErr)
 				return
@@ -2174,7 +2174,7 @@ func Test_service_GenerateUniqueAccount_WithTransaction(t *testing.T) {
 	}
 }
 
-// Test_service_ValidateUser 测试ValidateUser方法
+// Test_service_ValidateUser 测试ValidateUserToBeInsert方法
 func Test_service_ValidateUser(t *testing.T) {
 	srv := NewService()
 
@@ -2183,11 +2183,12 @@ func Test_service_ValidateUser(t *testing.T) {
 		users []User
 	}
 	tests := []struct {
-		name        string
-		args        args
-		wantValid   []User
-		wantInvalid []InvalidUser
-		wantErr     bool
+		name         string
+		args         args
+		wantValid    []User
+		wantInvalid  []User
+		wantExisting []User
+		wantErr      bool
 	}{
 		{
 			name: "所有用户都有效",
@@ -2232,8 +2233,9 @@ func Test_service_ValidateUser(t *testing.T) {
 					},
 				},
 			},
-			wantInvalid: nil,
-			wantErr:     false,
+			wantInvalid:  nil,
+			wantExisting: nil,
+			wantErr:      false,
 		},
 		{
 			name: "存在无效用户",
@@ -2248,16 +2250,19 @@ func Test_service_ValidateUser(t *testing.T) {
 				},
 			},
 			wantValid: nil,
-			wantInvalid: []InvalidUser{
+			wantInvalid: []User{
 				{
-					Account: null.NewString("zhangsan", true),
+					TUser: cmn.TUser{
+						Account: "zhangsan",
+					},
 					ErrorMsg: []null.String{
 						null.NewString("账号已存在", true),
 						null.NewString("角色不能为空", true),
 					},
 				},
 			},
-			wantErr: false,
+			wantExisting: []User{},
+			wantErr:      false,
 		},
 		{
 			name: "尝试插入超级管理员用户",
@@ -2275,16 +2280,19 @@ func Test_service_ValidateUser(t *testing.T) {
 				},
 			},
 			wantValid: nil,
-			wantInvalid: []InvalidUser{
+			wantInvalid: []User{
 				{
-					Account: null.NewString("zhangsan", true),
+					TUser: cmn.TUser{
+						Account: "zhangsan",
+					},
 					ErrorMsg: []null.String{
 						null.NewString("账号已存在", true),
 						null.NewString("不允许为超级管理员角色", true),
 					},
 				},
 			},
-			wantErr: false,
+			wantExisting: []User{},
+			wantErr:      false,
 		},
 		{
 			name: "邮箱地址不合法",
@@ -2303,16 +2311,19 @@ func Test_service_ValidateUser(t *testing.T) {
 				},
 			},
 			wantValid: nil,
-			wantInvalid: []InvalidUser{
+			wantInvalid: []User{
 				{
-					Account: null.NewString("zhangsanyes", true),
-					Email:   null.NewString("invalid-email", true),
+					TUser: cmn.TUser{
+						Account: "zhangsanyes",
+						Email:   null.NewString("invalid-email", true),
+					},
 					ErrorMsg: []null.String{
 						null.NewString("邮箱格式不正确", true),
 					},
 				},
 			},
-			wantErr: false,
+			wantExisting: []User{},
+			wantErr:      false,
 		},
 		{
 			name: "空用户列表",
@@ -2320,9 +2331,10 @@ func Test_service_ValidateUser(t *testing.T) {
 				ctx:   context.Background(),
 				users: []User{},
 			},
-			wantValid:   nil,
-			wantInvalid: []InvalidUser{},
-			wantErr:     true,
+			wantValid:    nil,
+			wantInvalid:  []User{},
+			wantExisting: []User{},
+			wantErr:      true,
 		},
 		{
 			name: "检查用户存在性时出错",
@@ -2336,9 +2348,10 @@ func Test_service_ValidateUser(t *testing.T) {
 					},
 				},
 			},
-			wantValid:   nil,
-			wantInvalid: []InvalidUser{},
-			wantErr:     true,
+			wantValid:    nil,
+			wantInvalid:  []User{},
+			wantExisting: []User{},
+			wantErr:      true,
 		},
 		{
 			name: "混合有效和无效用户",
@@ -2373,9 +2386,11 @@ func Test_service_ValidateUser(t *testing.T) {
 					},
 				},
 			},
-			wantInvalid: []InvalidUser{
+			wantInvalid: []User{
 				{
-					Account: null.NewString("invalid_user", true),
+					TUser: cmn.TUser{
+						Account: "invalid_user",
+					},
 					ErrorMsg: []null.String{
 						null.NewString("邮箱已存在", true),
 						null.NewString("角色不能为空", true),
@@ -2403,9 +2418,11 @@ func Test_service_ValidateUser(t *testing.T) {
 				},
 			},
 			wantValid: nil,
-			wantInvalid: []InvalidUser{
+			wantInvalid: []User{
 				{
-					Account: null.NewString("lisi", true),
+					TUser: cmn.TUser{
+						Account: "lisi",
+					},
 					ErrorMsg: []null.String{
 						null.NewString("账号已存在", true),
 						null.NewString("邮箱已存在", true),
@@ -2444,7 +2461,27 @@ func Test_service_ValidateUser(t *testing.T) {
 			},
 			wantValid:   nil,
 			wantInvalid: nil,
-			wantErr:     false,
+			wantExisting: []User{
+				{
+					TUser: cmn.TUser{
+						Account:      "lisi",
+						OfficialName: null.NewString("李四", true),
+						Email:        null.NewString("lisi@example.com", true),
+						MobilePhone:  null.NewString("13900139002", true),
+						IDCardNo:     null.NewString("110101199502021234", true),
+					},
+				},
+				{
+					TUser: cmn.TUser{
+						Account:      "zhangsan",
+						OfficialName: null.NewString("张三", true),
+						Email:        null.NewString("zhangsan@example.com", true),
+						MobilePhone:  null.NewString("13800138001", true),
+						IDCardNo:     null.NewString("440106199001011234", true),
+					},
+				},
+			},
+			wantErr: false,
 		},
 		{
 			name: "检查Account字段失败",
@@ -2462,9 +2499,10 @@ func Test_service_ValidateUser(t *testing.T) {
 					},
 				},
 			},
-			wantValid:   nil,
-			wantInvalid: nil,
-			wantErr:     true,
+			wantValid:    nil,
+			wantInvalid:  nil,
+			wantExisting: nil,
+			wantErr:      true,
 		},
 		{
 			name: "检查MobilePhone字段失败",
@@ -2482,9 +2520,10 @@ func Test_service_ValidateUser(t *testing.T) {
 					},
 				},
 			},
-			wantValid:   nil,
-			wantInvalid: nil,
-			wantErr:     true,
+			wantValid:    nil,
+			wantInvalid:  nil,
+			wantExisting: nil,
+			wantErr:      true,
 		},
 		{
 			name: "检查Email字段失败",
@@ -2502,9 +2541,10 @@ func Test_service_ValidateUser(t *testing.T) {
 					},
 				},
 			},
-			wantValid:   nil,
-			wantInvalid: nil,
-			wantErr:     true,
+			wantValid:    nil,
+			wantInvalid:  nil,
+			wantExisting: nil,
+			wantErr:      true,
 		},
 		{
 			name: "检查IDCardNo字段失败",
@@ -2522,14 +2562,15 @@ func Test_service_ValidateUser(t *testing.T) {
 					},
 				},
 			},
-			wantValid:   nil,
-			wantInvalid: nil,
-			wantErr:     true,
+			wantValid:    nil,
+			wantInvalid:  nil,
+			wantExisting: nil,
+			wantErr:      true,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			gotValid, gotInvalid, err := srv.ValidateUserToBeInsert(tt.args.ctx, nil, tt.args.users)
+			gotValid, gotInvalid, gotExisting, err := srv.ValidateUserToBeInsert(tt.args.ctx, nil, tt.args.users)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("ValidateUserToBeInsert() error = %v, wantErr %v", err, tt.wantErr)
 				return
@@ -2552,18 +2593,29 @@ func Test_service_ValidateUser(t *testing.T) {
 				return
 			}
 			for i, user := range gotInvalid {
-				if user.Account.String != tt.wantInvalid[i].Account.String {
-					t.Errorf("ValidateUserToBeInsert() gotInvalid[%d].Account = %v, want %v", i, user.Account.String, tt.wantInvalid[i].Account.String)
+				if user.Account != tt.wantInvalid[i].Account {
+					t.Errorf("ValidateUserToBeInsert() gotInvalid[%d].Account = %v, want %v", i, user.Account, tt.wantInvalid[i].Account)
 				}
 				if len(user.ErrorMsg) != len(tt.wantInvalid[i].ErrorMsg) {
 					t.Errorf("ValidateUserToBeInsert() gotInvalid[%d].ErrorMsg length = %v, want %v", i, len(user.ErrorMsg), len(tt.wantInvalid[i].ErrorMsg))
+				}
+			}
+
+			// 比较已存在用户列表
+			if len(gotExisting) != len(tt.wantExisting) {
+				t.Errorf("ValidateUserToBeInsert() gotExisting length = %v, want %v", len(gotExisting), len(tt.wantExisting))
+				return
+			}
+			for i, user := range gotExisting {
+				if user.Account != tt.wantExisting[i].Account {
+					t.Errorf("ValidateUserToBeInsert() gotExisting[%d].Account = %v, want %v", i, user.Account, tt.wantExisting[i].Account)
 				}
 			}
 		})
 	}
 }
 
-// Test_service_ValidateUser_WithTransaction 测试ValidateUser方法（启用事务）
+// Test_service_ValidateUser_WithTransaction 测试ValidateUserToBeInsert方法（启用事务）
 func Test_service_ValidateUser_WithTransaction(t *testing.T) {
 	srv := NewService()
 
@@ -2592,11 +2644,12 @@ func Test_service_ValidateUser_WithTransaction(t *testing.T) {
 		users []User
 	}
 	tests := []struct {
-		name        string
-		args        args
-		wantValid   []User
-		wantInvalid []InvalidUser
-		wantErr     bool
+		name         string
+		args         args
+		wantValid    []User
+		wantInvalid  []User
+		wantExisting []User
+		wantErr      bool
 	}{
 		{
 			name: "所有用户都有效",
@@ -2641,30 +2694,35 @@ func Test_service_ValidateUser_WithTransaction(t *testing.T) {
 					},
 				},
 			},
-			wantInvalid: nil,
-			wantErr:     false,
+			wantInvalid:  nil,
+			wantExisting: []User{},
+			wantErr:      false,
 		},
 		{
-			name: "存在无效用户",
+			name: "存在已存在用户",
 			args: args{
 				ctx: context.Background(),
 				users: []User{
 					{
 						TUser: cmn.TUser{
-							Account: "zhangsan",
-						},
-						Domains: []null.String{
-							null.NewString("cst.school^teacher", true),
+							OfficialName: null.NewString("张三", true),
+							MobilePhone:  null.NewString("13800138001", true),
+							Email:        null.NewString("zhangsan@example.com", true),
+							IDCardNo:     null.NewString("440106199001011234", true),
 						},
 					},
 				},
 			},
-			wantValid: nil,
-			wantInvalid: []InvalidUser{
+			wantValid:   nil,
+			wantInvalid: []User{},
+			wantExisting: []User{
 				{
-					Account: null.NewString("zhangsan", true),
-					ErrorMsg: []null.String{
-						null.NewString("账号已存在", true),
+					TUser: cmn.TUser{
+						Account:      "zhangsan",
+						OfficialName: null.NewString("zhangsan", true),
+						MobilePhone:  null.NewString("13800138001", true),
+						Email:        null.NewString("zhangsan@example.com", true),
+						IDCardNo:     null.NewString("440106199001011234", true),
 					},
 				},
 			},
@@ -2676,9 +2734,10 @@ func Test_service_ValidateUser_WithTransaction(t *testing.T) {
 				ctx:   context.Background(),
 				users: []User{},
 			},
-			wantValid:   nil,
-			wantInvalid: []InvalidUser{},
-			wantErr:     true,
+			wantValid:    nil,
+			wantInvalid:  []User{},
+			wantExisting: []User{},
+			wantErr:      true,
 		},
 		{
 			name: "检查用户存在性时出错",
@@ -2692,9 +2751,10 @@ func Test_service_ValidateUser_WithTransaction(t *testing.T) {
 					},
 				},
 			},
-			wantValid:   nil,
-			wantInvalid: []InvalidUser{},
-			wantErr:     true,
+			wantValid:    nil,
+			wantInvalid:  []User{},
+			wantExisting: []User{},
+			wantErr:      true,
 		},
 		{
 			name: "混合有效和无效用户",
@@ -2726,16 +2786,19 @@ func Test_service_ValidateUser_WithTransaction(t *testing.T) {
 					},
 				},
 			},
-			wantInvalid: []InvalidUser{
+			wantInvalid: []User{
 				{
-					Account: null.NewString("invalid_user", true),
+					TUser: cmn.TUser{
+						Account: "invalid_user",
+					},
 					ErrorMsg: []null.String{
 						null.NewString("邮箱已存在", true),
 						null.NewString("角色不能为空", true),
 					},
 				},
 			},
-			wantErr: false,
+			wantExisting: []User{},
+			wantErr:      false,
 		},
 		{
 			name: "多个错误信息的无效用户",
@@ -2752,9 +2815,11 @@ func Test_service_ValidateUser_WithTransaction(t *testing.T) {
 				},
 			},
 			wantValid: nil,
-			wantInvalid: []InvalidUser{
+			wantInvalid: []User{
 				{
-					Account: null.NewString("lisi", true),
+					TUser: cmn.TUser{
+						Account: "lisi",
+					},
 					ErrorMsg: []null.String{
 						null.NewString("账号已存在", true),
 						null.NewString("邮箱已存在", true),
@@ -2763,12 +2828,13 @@ func Test_service_ValidateUser_WithTransaction(t *testing.T) {
 					},
 				},
 			},
-			wantErr: false,
+			wantExisting: []User{},
+			wantErr:      false,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			gotValid, gotInvalid, err := srv.ValidateUserToBeInsert(tt.args.ctx, tx, tt.args.users)
+			gotValid, gotInvalid, gotExisting, err := srv.ValidateUserToBeInsert(tt.args.ctx, tx, tt.args.users)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("ValidateUserToBeInsert() error = %v, wantErr %v", err, tt.wantErr)
 				return
@@ -2791,11 +2857,22 @@ func Test_service_ValidateUser_WithTransaction(t *testing.T) {
 				return
 			}
 			for i, user := range gotInvalid {
-				if user.Account.String != tt.wantInvalid[i].Account.String {
-					t.Errorf("ValidateUserToBeInsert() gotInvalid[%d].Account = %v, want %v", i, user.Account.String, tt.wantInvalid[i].Account.String)
+				if user.Account != tt.wantInvalid[i].Account {
+					t.Errorf("ValidateUserToBeInsert() gotInvalid[%d].Account = %v, want %v", i, user.Account, tt.wantInvalid[i].Account)
 				}
 				if len(user.ErrorMsg) != len(tt.wantInvalid[i].ErrorMsg) {
 					t.Errorf("ValidateUserToBeInsert() gotInvalid[%d].ErrorMsg length = %v, want %v", i, len(user.ErrorMsg), len(tt.wantInvalid[i].ErrorMsg))
+				}
+			}
+
+			// 比较已存在用户列表
+			if len(gotExisting) != len(tt.wantExisting) {
+				t.Errorf("ValidateUserToBeInsert() gotExisting length = %v, want %v", len(gotExisting), len(tt.wantExisting))
+				return
+			}
+			for i, user := range gotExisting {
+				if user.Account != tt.wantExisting[i].Account {
+					t.Errorf("ValidateUserToBeInsert() gotExisting[%d].Account = %v, want %v", i, user.Account, tt.wantExisting[i].Account)
 				}
 			}
 		})

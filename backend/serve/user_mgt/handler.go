@@ -207,8 +207,8 @@ func (h *handler) HandleUser(ctx context.Context) {
 
 		// 验证用户信息
 		var validUsers []User
-		var invalidUsers []InvalidUser
-		validUsers, invalidUsers, err = h.srv.ValidateUserToBeInsert(ctx, tx, users)
+		var invalidUsers []User
+		validUsers, invalidUsers, _, err = h.srv.ValidateUserToBeInsert(ctx, tx, users)
 		if err != nil {
 			q.Err = fmt.Errorf("failed to validate users: %w", err)
 			q.RespErr()
@@ -474,6 +474,7 @@ func (h *handler) HandleQueryMyInfo(ctx context.Context) {
 	return
 }
 
+// HandleValidateUserToBeInsert 验证用户信息是否可以插入
 func (h *handler) HandleValidateUserToBeInsert(ctx context.Context) {
 	q := cmn.GetCtxValue(ctx)
 	z.Info("---->" + cmn.FncName())
@@ -538,33 +539,41 @@ func (h *handler) HandleValidateUserToBeInsert(ctx context.Context) {
 		return
 	}
 
+	var validUsers = make([]User, len(users))
+	var invalidUsers = make([]User, len(users))
+	var existUsers = make([]User, len(users))
+
 	// 验证用户信息
-	var invalidUsers []InvalidUser
-	_, invalidUsers, err = h.srv.ValidateUserToBeInsert(ctx, nil, users)
+	validUsers, invalidUsers, existUsers, err = h.srv.ValidateUserToBeInsert(ctx, nil, users)
 	if err != nil {
 		q.Err = fmt.Errorf("failed to validate users: %w", err)
 		q.RespErr()
 		return
 	}
 
-	if len(invalidUsers) != 0 {
-		invalidUsersBytes, err := json.Marshal(invalidUsers)
-		if err != nil || forceErr == "json.Marshal" {
-			q.Err = fmt.Errorf("failed to marshal invalid users: %w", err)
-			z.Error(q.Err.Error())
-			q.RespErr()
-			return
-		}
+	type RespData struct {
+		ValidUsers   []User `json:"validUsers"`
+		InvalidUsers []User `json:"invalidUsers"`
+		ExistUsers   []User `json:"existingUsers"`
+	}
 
-		q.Msg.Status = 405
-		q.Msg.Msg = "some users are invalid and cannot be inserted"
-		q.Msg.Data = invalidUsersBytes
-		q.Resp()
+	respData := RespData{
+		ValidUsers:   validUsers,
+		InvalidUsers: invalidUsers,
+		ExistUsers:   existUsers,
+	}
+
+	respDataJson, err := json.Marshal(respData)
+	if err != nil || forceErr == "json.Marshal" {
+		q.Err = fmt.Errorf("failed to marshal response data: %w", err)
+		z.Error(q.Err.Error())
+		q.RespErr()
 		return
 	}
 
 	q.Msg.Status = 0
 	q.Msg.Msg = "success"
+	q.Msg.Data = respDataJson
 	q.Resp()
 	return
 }
