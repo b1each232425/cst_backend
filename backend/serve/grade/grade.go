@@ -894,9 +894,9 @@ func gradeSH(ctx context.Context) {
 			studentIDStr     string
 			studentID        int64
 			examSessionIDStr string
-			examSessionID    int
+			examSessionID    int64
 			practiceIDStr    string
-			practiceID       int
+			practiceID       int64
 		)
 		queryParams := q.R.URL.Query()
 
@@ -958,7 +958,7 @@ func gradeSH(ctx context.Context) {
 				q.RespErr()
 				return
 			}
-			if examSessionID, err = strconv.Atoi(examSessionIDStr); err != nil {
+			if examSessionID, err = strconv.ParseInt(examSessionIDStr, 10, 64); err != nil {
 				q.Err = fmt.Errorf("examSessionID无效: %d", examSessionID)
 				z.Error(q.Err.Error())
 				q.RespErr()
@@ -987,14 +987,14 @@ func gradeSH(ctx context.Context) {
 				q.RespErr()
 				return
 			}
-			if practiceID, err = strconv.Atoi(practiceIDStr); err != nil {
+			if practiceID, err = strconv.ParseInt(practiceIDStr, 10, 64); err != nil {
 				q.Err = fmt.Errorf("practiceID无效: %d", practiceID)
 				z.Error(q.Err.Error())
 				q.RespErr()
 				return
 			}
 
-			result, err := getScoreS(dmlCtx, tx, studentID, 0, practiceID)
+			result, err := getScoreSPractice(dmlCtx, tx, studentID, 0, practiceID)
 			if err != nil {
 				q.Err = err
 				q.RespErr()
