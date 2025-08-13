@@ -3,7 +3,7 @@
  * @Description: 考卷数据库层单元测试
  * @Date: 2025-07-28 19:55:28
  * @LastEditors: zdl <1311866870@qq.com>
- * @LastEditTime: 2025-08-12 09:35:48
+ * @LastEditTime: 2025-08-12 22:14:11
  */
 package examPaper
 
@@ -85,7 +85,6 @@ func TestLoadPaperTemplateById(t *testing.T) {
 		UpdateTime:        null.IntFrom(now),
 		Status:            null.StringFrom("00"),
 		Tags:              types.JSONText(`["test", "unit"]`),
-		AccessMode:        null.StringFrom("00"), // 默认访问模式
 	}
 	groupNames := []string{"一、单选题", "二、多选题", "三、判断题", "四、填空题", "五、简答题"}
 
@@ -3649,12 +3648,11 @@ func initPaper(t *testing.T, tx *pgxpool.Pool) {
 		UpdateTime:        null.IntFrom(now),
 		Status:            null.StringFrom("00"),
 		Tags:              types.JSONText(`["test", "unit"]`),
-		AccessMode:        null.StringFrom("00"), // 默认访问模式
 	}
 	p := `INSERT INTO t_paper
-			(id,name, assembly_type, category, level, suggested_duration, tags, creator, create_time, updated_by, update_time, status, access_mode)
+			(id,name, assembly_type, category, level, suggested_duration, tags, creator, create_time, updated_by, update_time, status)
 		VALUES
-			($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12,$13)`
+			($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`
 	_, err := tx.Exec(ctx, p, uid, paper.Name.String,
 		paper.AssemblyType.String,
 		paper.Category.String,
@@ -3666,7 +3664,6 @@ func initPaper(t *testing.T, tx *pgxpool.Pool) {
 		paper.UpdatedBy.Int64,
 		paper.UpdateTime.Int64,
 		paper.Status.String,
-		paper.AccessMode.String,
 	)
 	if err != nil {
 		t.Errorf("创建试卷失败：%v", err)
