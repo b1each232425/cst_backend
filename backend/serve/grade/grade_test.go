@@ -21,11 +21,13 @@ func init() {
 func TestGradeListH(t *testing.T) {
 	cmn.ConfigureForTest()
 
+	// 接口参数 需要测试
 	//* @apiParam (200) {String} [category] 	成绩类型
 	//* @apiParam (200) {Number} [page] 	页码
 	//* @apiParam (200) {Number} [pageSize] 每页数量
 	//* @apiParam (200) {Number} [teacherID] 教师ID
 	//* @apiParam (200) {Number} [examID] 考试ID
+	//* @apiParam (200) {Number} [practiceID] 练习ID
 	//* @apiParam (200) {String} [name] 考试名称
 	//* @apiParam (200) {String} [type] 考试类型
 	//* @apiParam (200) {Number} [submitted] 是否已提交
@@ -982,4 +984,261 @@ func createMockContext(t *testing.T, req *http.Request, forceError string, userI
 	}
 	//return ctx
 	return context.WithValue(ctx, "force-error", forceError)
+}
+
+func TestGradeDistributionH(t *testing.T) {
+	// 测试gradeDistributionH函数
+	// 定义测试用例
+	testCases := []struct {
+		name            string
+		method          string
+		url             string
+		expectSuccess   bool
+		expectedStatus  int
+		expectedMessage string
+	}{
+		{
+			name:            "有效考试ID",
+			method:          "GET",
+			url:             "/api/grade/distribution?category=exam&examID=1&columnNum=5",
+			expectSuccess:   true,
+			expectedStatus:  0,
+			expectedMessage: "success",
+		},
+		{
+			name:            "缺少examID参数",
+			method:          "GET",
+			url:             "/api/grade/distribution?category=exam&columnNum=5",
+			expectSuccess:   false,
+			expectedStatus:  -1,
+			expectedMessage: "examID无效",
+		},
+		{
+			name:            "examID为空字符串",
+			method:          "GET",
+			url:             "/api/grade/distribution?category=exam&examID=&columnNum=5",
+			expectSuccess:   false,
+			expectedStatus:  -1,
+			expectedMessage: "examID无效",
+		},
+		{
+			name:            "columnNum为零",
+			method:          "GET",
+			url:             "/api/grade/distribution?category=exam&examID=1&columnNum=0",
+			expectSuccess:   false,
+			expectedStatus:  -1,
+			expectedMessage: "columnNum无效",
+		},
+		{
+			name:            "category为未支持类型",
+			method:          "GET",
+			url:             "/api/grade/distribution?category=unknown&examID=1&columnNum=5",
+			expectSuccess:   false,
+			expectedStatus:  -1,
+			expectedMessage: "不支持的类型",
+		},
+		{
+			name:            "columnNum为负数",
+			method:          "GET",
+			url:             "/api/grade/distribution?category=exam&examID=1&columnNum=-5",
+			expectSuccess:   false,
+			expectedStatus:  -1,
+			expectedMessage: "columnNum无效",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			req, err := http.NewRequest(tc.method, tc.url, nil)
+			if err != nil {
+				t.Fatalf("创建请求失败: %v", err)
+			}
+
+			ctx := createMockContext(t, req, "", 1)
+			gradeDistributionH(ctx)
+
+			q := cmn.GetCtxValue(ctx)
+			if tc.expectSuccess {
+				assert.Equal(t, tc.expectedStatus, q.Msg.Status)
+				assert.Equal(t, tc.expectedMessage, q.Msg.Msg)
+			} else {
+				assert.NotEqual(t, 0, q.Msg.Status)
+				assert.Contains(t, q.Msg.Msg, tc.expectedMessage)
+			}
+		})
+	}
+}
+
+func TestGradeExamineeListH(t *testing.T) {
+	// 测试gradeExamineeListH函数
+	// 定义测试用例
+	testCases := []struct {
+		name            string
+		method          string
+		url             string
+		expectSuccess   bool
+		expectedStatus  int
+		expectedMessage string
+	}{
+		{
+			name:            "有效考试ID",
+			method:          "GET",
+			url:             "/api/grade/examinee/list?category=exam&page=1&pageSize=10",
+			expectSuccess:   true,
+			expectedStatus:  0,
+			expectedMessage: "success",
+		},
+		{
+			name:            "无效考试ID",
+			method:          "GET",
+			url:             "/api/grade/examinee/list?category=exam&examID=-1&page=1&pageSize=10",
+			expectSuccess:   false,
+			expectedStatus:  -1,
+			expectedMessage: "无效考试ID",
+		},
+		{
+			name:            "page为负数",
+			method:          "GET",
+			url:             "/api/grade/examinee/list?category=exam&examID=1&page=-1&pageSize=10",
+			expectSuccess:   false,
+			expectedStatus:  -1,
+			expectedMessage: "分页参数无效",
+		},
+		{
+			name:            "pageSize为0",
+			method:          "GET",
+			url:             "/api/grade/examinee/list?category=exam&examID=1&page=1&pageSize=0",
+			expectSuccess:   false,
+			expectedStatus:  -1,
+			expectedMessage: "分页参数无效",
+		},
+		{
+			name:            "page为极大值",
+			method:          "GET",
+			url:             "/api/grade/examinee/list?category=exam&examID=999999999&page=1&pageSize=10",
+			expectSuccess:   true,
+			expectedStatus:  0,
+			expectedMessage: "success",
+		},
+		{
+			name:            "examID为非数字字符串",
+			method:          "GET",
+			url:             "/api/grade/examinee/list?category=exam&examID=abc&page=1&pageSize=10",
+			expectSuccess:   false,
+			expectedStatus:  -1,
+			expectedMessage: "无效考试ID",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			req, err := http.NewRequest(tc.method, tc.url, nil)
+			if err != nil {
+				t.Fatalf("创建请求失败: %v", err)
+			}
+
+			ctx := createMockContext(t, req, "", 1)
+			gradeExamineeListH(ctx)
+
+			q := cmn.GetCtxValue(ctx)
+			if tc.expectSuccess {
+				assert.Equal(t, tc.expectedStatus, q.Msg.Status)
+				assert.Equal(t, tc.expectedMessage, q.Msg.Msg)
+			} else {
+				assert.NotEqual(t, 0, q.Msg.Status)
+				assert.Contains(t, q.Msg.Msg, tc.expectedMessage)
+			}
+		})
+	}
+}
+
+func TestGradeH(t *testing.T) {
+	// 测试gradeH函数
+	// 定义测试用例
+	testCases := []struct {
+		name            string
+		method          string
+		url             string
+		expectSuccess   bool
+		expectedStatus  int
+		expectedMessage string
+	}{
+		{
+			name:            "有效考试场次ID",
+			method:          "GET",
+			url:             "/api/grade?category=exam&examSessionID=1",
+			expectSuccess:   true,
+			expectedStatus:  0,
+			expectedMessage: "success",
+		},
+		{
+			name:            "缺少examID参数",
+			method:          "GET",
+			url:             "/api/grade?category=exam",
+			expectSuccess:   false,
+			expectedStatus:  -1,
+			expectedMessage: "examID无效",
+		},
+		{
+			name:            "examID为非数字",
+			method:          "GET",
+			url:             "/api/grade?category=exam&examID=abc",
+			expectSuccess:   false,
+			expectedStatus:  -1,
+			expectedMessage: "examID无效",
+		},
+		{
+			name:            "缺少examSessionID参数",
+			method:          "GET",
+			url:             "/api/grade?category=exam",
+			expectSuccess:   false,
+			expectedStatus:  -1,
+			expectedMessage: "examSessionID无效",
+		},
+		{
+			name:            "examSessionID为空字符串",
+			method:          "GET",
+			url:             "/api/grade?category=exam&examSessionID=",
+			expectSuccess:   false,
+			expectedStatus:  -1,
+			expectedMessage: "examSessionID无效",
+		},
+		{
+			name:            "category为未支持类型",
+			method:          "GET",
+			url:             "/api/grade?category=unknown&examSessionID=1",
+			expectSuccess:   false,
+			expectedStatus:  -1,
+			expectedMessage: "不支持的类型",
+		},
+		{
+			name:            "examSessionID为极大值",
+			method:          "GET",
+			url:             "/api/grade?category=exam&examSessionID=999999999999",
+			expectSuccess:   true,
+			expectedStatus:  0,
+			expectedMessage: "success",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			req, err := http.NewRequest(tc.method, tc.url, nil)
+			if err != nil {
+				t.Fatalf("创建请求失败: %v", err)
+			}
+
+			ctx := createMockContext(t, req, "", 1)
+			gradeH(ctx)
+
+			q := cmn.GetCtxValue(ctx)
+			if tc.expectSuccess {
+				assert.Equal(t, tc.expectedStatus, q.Msg.Status)
+				assert.Equal(t, tc.expectedMessage, q.Msg.Msg)
+			} else {
+				assert.NotEqual(t, 0, q.Msg.Status)
+				assert.Contains(t, q.Msg.Msg, tc.expectedMessage)
+			}
+		})
+	}
 }
