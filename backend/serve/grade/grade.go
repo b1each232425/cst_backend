@@ -153,11 +153,11 @@ func Enroll(author string) {
 func gradeListH(ctx context.Context) {
 	z.Info("---->" + cmn.FncName())
 
-	// // 测试使用强行触发错误
-	// forceErr := ""
-	// if val := ctx.Value("force-error"); val != nil {
-	// 	forceErr = val.(string)
-	// }
+	// 测试使用强行触发错误
+	forceErr := ""
+	if val := ctx.Value("force-error"); val != nil {
+		forceErr = val.(string)
+	}
 
 	q := cmn.GetCtxValue(ctx)
 
@@ -173,11 +173,12 @@ func gradeListH(ctx context.Context) {
 			rowCount int64
 
 			// 必需参数集
-			req      GradeListReq
-			category string // 类别：exam practice
-			userID   int64
-			page     string
-			pageSize string
+			req       GradeListReq
+			category  string // 类别：exam practice
+			userID    int64
+			page      string
+			pageSize  string
+			submitted int
 		)
 		var p int
 
@@ -217,14 +218,13 @@ func gradeListH(ctx context.Context) {
 		req.PageSize = p
 
 		// 用户身份
-		// if q.SysUser == nil || !q.SysUser.ID.Valid || forceErr == "q.SysUser nil" {
-		// 	q.Err = fmt.Errorf("非法请求，鉴权用户失败")
-		// 	z.Error(q.Err.Error())
-		// 	q.RespErr()
-		// 	return
-		// }
-		// userID = q.SysUser.ID.Int64
-		userID = 1681
+		if q.SysUser == nil || !q.SysUser.ID.Valid || forceErr == "q.SysUser nil" {
+			q.Err = fmt.Errorf("非法请求，鉴权用户失败")
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+		userID = q.SysUser.ID.Int64
 
 		if name := queryParams.Get("name"); name != "" {
 			req.Filter.Name = name
@@ -233,7 +233,7 @@ func gradeListH(ctx context.Context) {
 		switch category {
 		case "exam":
 			if examID := queryParams.Get("examID"); examID != "" {
-				p, err := strconv.Atoi(examID)
+				p, err = strconv.Atoi(examID)
 				if err != nil {
 					q.Err = fmt.Errorf("无效考试ID: %s", examID)
 					z.Error(q.Err.Error())
@@ -247,20 +247,14 @@ func gradeListH(ctx context.Context) {
 				req.Filter.Type = examType
 			}
 
-			submitted := queryParams.Get("submitted")
-			switch submitted {
-			case "0":
-				req.Filter.Submitted = 0
-			case "1":
-				req.Filter.Submitted = 1
-			case "-1":
-				req.Filter.Submitted = -1
-			default:
-				q.Err = fmt.Errorf("无效提交状态: %s", submitted)
+			submitted, err = strconv.Atoi(queryParams.Get("submitted"))
+			if err != nil || submitted != 0 && submitted != 1 && submitted != -1 {
+				q.Err = fmt.Errorf("无效提交状态: %d", submitted)
 				z.Error(q.Err.Error())
 				q.RespErr()
 				return
 			}
+			req.Filter.Submitted = submitted
 
 			dmlCtx, cancel := context.WithTimeout(ctx, TIMEOUT)
 			defer cancel()
@@ -378,15 +372,14 @@ func gradeSubmissionH(ctx context.Context) {
 		var userID int64
 		var examIDs []int
 
-		// // 用户身份校验
-		// if q.SysUser == nil || !q.SysUser.ID.Valid || forceErr == "q.SysUser nil" {
-		// 	q.Err = fmt.Errorf("非法请求，鉴权用户失败")
-		// 	z.Error(q.Err.Error())
-		// 	q.RespErr()
-		// 	return
-		// }
-		// userID := q.SysUser.ID.Int64
-		userID = 1681
+		// 用户身份校验
+		if q.SysUser == nil || !q.SysUser.ID.Valid || forceErr == "q.SysUser nil" {
+			q.Err = fmt.Errorf("非法请求，鉴权用户失败")
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+		userID = q.SysUser.ID.Int64
 
 		examIDQuerys := gjson.GetBytes(buf, "data.exam_ids").Array()
 		if len(examIDQuerys) <= 0 {
@@ -434,11 +427,11 @@ func gradeSubmissionH(ctx context.Context) {
 func gradeDistributionH(ctx context.Context) {
 	z.Info("---->" + cmn.FncName())
 
-	// // 测试使用强行触发错误
-	// forceErr := ""
-	// if val := ctx.Value("force-error"); val != nil {
-	// 	forceErr = val.(string)
-	// }
+	// 测试使用强行触发错误
+	forceErr := ""
+	if val := ctx.Value("force-error"); val != nil {
+		forceErr = val.(string)
+	}
 
 	q := cmn.GetCtxValue(ctx)
 
@@ -451,7 +444,8 @@ func gradeDistributionH(ctx context.Context) {
 			data []byte
 
 			// 必需参数集
-			category      string // 类别：exam practice
+			category string // 类别：exam practice
+			// userID        int64
 			columnNumStr  string
 			columnNum     int
 			examIDStr     string
@@ -482,14 +476,13 @@ func gradeDistributionH(ctx context.Context) {
 		}
 
 		// 用户身份
-		// if q.SysUser == nil || !q.SysUser.ID.Valid || forceErr == "q.SysUser nil" {
-		// 	q.Err = fmt.Errorf("非法请求，鉴权用户失败")
-		// 	z.Error(q.Err.Error())
-		// 	q.RespErr()
-		// 	return
-		// }
+		if q.SysUser == nil || !q.SysUser.ID.Valid || forceErr == "q.SysUser nil" {
+			q.Err = fmt.Errorf("非法请求，鉴权用户失败")
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
 		// userID = q.SysUser.ID.Int64
-		// userID = 1681
 
 		dmlCtx, cancel := context.WithTimeout(ctx, TIMEOUT)
 		defer cancel()
@@ -897,8 +890,8 @@ func gradeSH(ctx context.Context) {
 
 			// 必需参数集
 			category string // 类别：exam practice
-			// studentIDStr     string
-			userID           int64
+			// userID           int64
+			studentIDStr     string
 			studentID        int64
 			examSessionIDStr string
 			examSessionID    int
@@ -922,20 +915,22 @@ func gradeSH(ctx context.Context) {
 		// 	return
 		// }
 		// userID = q.SysUser.ID.Int64
-		userID = 1681
-		studentID = userID
-		// if studentIDStr = queryParams.Get("studentID"); studentIDStr == "" {
-		// 	q.Err = fmt.Errorf("学生ID为空：: %s", studentIDStr)
-		// 	z.Error(q.Err.Error())
-		// 	q.RespErr()
-		// 	return
-		// }
-		// if studentID, err = strconv.Atoi(studentIDStr); err != nil {
-		// 	q.Err = fmt.Errorf("无效学生ID: %d", studentID)
-		// 	z.Error(q.Err.Error())
-		// 	q.RespErr()
-		// 	return
-		// }
+		// studentID = userID
+
+		// TODO：不支持传入ID
+		if studentIDStr = queryParams.Get("studentID"); studentIDStr == "" {
+			q.Err = fmt.Errorf("学生ID为空：: %s", studentIDStr)
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+		if studentID, err = strconv.ParseInt(studentIDStr, 10, 64); err != nil {
+			q.Err = fmt.Errorf("无效学生ID: %s", studentIDStr)
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+		z.Sugar().Debug("studentID: %d", studentID)
 
 		dmlCtx, cancel := context.WithTimeout(ctx, TIMEOUT)
 		defer cancel()
@@ -977,8 +972,6 @@ func gradeSH(ctx context.Context) {
 				return
 			}
 
-			z.Debug("gradeAnalysisExam", zap.Any("result", result))
-
 			data, err = json.Marshal(result)
 			if err != nil {
 				q.Err = fmt.Errorf("json序列化失败: %v", err)
@@ -1007,8 +1000,6 @@ func gradeSH(ctx context.Context) {
 				q.RespErr()
 				return
 			}
-
-			// z.Debug("gradeAnalysisPractice", zap.Any("result", result))
 
 			data, err = json.Marshal(result)
 			if err != nil {
