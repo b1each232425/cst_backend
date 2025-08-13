@@ -1,3 +1,12 @@
+/*
+ * @Author: Mayux dbs45412@163.com
+ * @Date: 2025-08-07 10:55:33
+ * @LastEditors: Mayux dbs45412@163.com
+ * @LastEditTime: 2025-08-13 18:41:50
+ * @FilePath: \assess\backend\serve\exam_mgt\exam-mgt_test.go
+ * @Description:
+ * Copyright (c) 2025 by ${git_name}, All Rights Reserved.
+ */
 package exam_mgt
 
 //annotation:exam_mgt
