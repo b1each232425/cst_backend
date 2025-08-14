@@ -174,12 +174,27 @@ func UpsertPracticeStudent(ctx context.Context, pid, uid int64, ps []int64) erro
 		return err
 	}
 	defer func() {
-		if err != nil || forceErr == "Rollback" {
+		if forceErr == "rollback" {
+			err = fmt.Errorf("触发回滚")
+		}
+		if err != nil {
 			// 操作失败回滚
-			_ = tx.Rollback()
-		} else {
-			// 无错误则提交
-			_ = tx.Commit()
+			err = tx.Rollback()
+			if forceErr == "rollback" {
+				err = fmt.Errorf("触发回滚")
+			}
+			if err != nil {
+				z.Error(err.Error())
+				return
+			}
+		}
+		// 无错误则提交
+		err = tx.Commit()
+		if forceErr == "commit" {
+			err = fmt.Errorf("commit failed")
+		}
+		if err != nil {
+			z.Error(err.Error())
 		}
 	}()
 
@@ -449,7 +464,10 @@ func ListPracticeS(ctx context.Context, pType, name, difficulty string, orderBy 
 	}
 	defer func() {
 		err = rows.Close()
-		if err != nil || forceErr == "row close" {
+		if forceErr == "row close" {
+			err = fmt.Errorf("关闭数据库连接数据失败")
+		}
+		if err != nil {
 			z.Error(err.Error())
 			return
 		}
@@ -598,19 +616,26 @@ func OperatePracticeStatus(ctx context.Context, pid int64, status string, uid in
 		return err
 	}
 	defer func() {
-		if err != nil || forceErr == "rollback" {
+		if forceErr == "rollback" {
+			err = fmt.Errorf("触发回滚")
+		}
+		if err != nil {
 			// 操作失败回滚
 			err = tx.Rollback(ctx)
-			if err != nil || forceErr == "rollbackFail" {
-				err = fmt.Errorf("rollback failed:%v", err)
-				z.Error(err.Error())
+			if forceErr == "rollback" {
+				err = fmt.Errorf("触发回滚")
 			}
-			return
+			if err != nil {
+				z.Error(err.Error())
+				return
+			}
 		}
 		// 无错误则提交
 		err = tx.Commit(ctx)
-		if err != nil || forceErr == "commit" {
-			err = fmt.Errorf("commit failed:%v", err)
+		if forceErr == "commit" {
+			err = fmt.Errorf("commit failed")
+		}
+		if err != nil {
 			z.Error(err.Error())
 		}
 
@@ -648,6 +673,11 @@ func OperatePracticeStatus(ctx context.Context, pid int64, status string, uid in
 		}
 		return nil
 	} else if status == PracticeStatus.PendingRelease || status == PracticeStatus.Deleted {
+		if p.Status.String == PracticeStatus.Released && status == PracticeStatus.Deleted {
+			err = fmt.Errorf("目前操作的练习状态为发布状态，无法切换至删除状态，请先取消发布")
+			z.Error(err.Error())
+			return err
+		}
 		// 若练习已经发布了，无法被删除，必须先回退为待发布状态后才能被删除 但是此时你无法通过LoadPracticeById这个函数去查询到已被删除的
 		s := `UPDATE assessuser.t_practice SET status = $1,update_time = $2, updated_by = $3  WHERE id = $4`
 		_, err = tx.Exec(ctx, s, status, now, uid, pid)
@@ -711,24 +741,30 @@ func OperatePracticeStatusV2(ctx context.Context, ids []int64, status string, ui
 		return err
 	}
 	defer func() {
-		if err != nil || forceErr == "rollback" {
+		if forceErr == "rollback" {
+			err = fmt.Errorf("触发回滚")
+		}
+		if err != nil {
 			// 操作失败回滚
 			err = tx.Rollback(ctx)
-			if err != nil || forceErr == "rollbackFail" {
-				err = fmt.Errorf("rollback failed:%v", err)
-				z.Error(err.Error())
+			if forceErr == "rollback" {
+				err = fmt.Errorf("触发回滚")
 			}
-			return
+			if err != nil {
+				z.Error(err.Error())
+				return
+			}
 		}
 		// 无错误则提交
 		err = tx.Commit(ctx)
-		if err != nil || forceErr == "commit" {
-			err = fmt.Errorf("commit failed:%v", err)
+		if forceErr == "commit" {
+			err = fmt.Errorf("commit failed")
+		}
+		if err != nil {
 			z.Error(err.Error())
 		}
 
 	}()
-	// TODO 此时需要判断所有的练习的状态是否都是一致的 如果不是一致的话，不允许操作 数据不统一
 	signStatus := ""
 	for _, p := range ps {
 		if signStatus == "" {
@@ -782,6 +818,14 @@ func OperatePracticeStatusV2(ctx context.Context, ids []int64, status string, ui
 
 		// 进行批量操作
 		// 若练习已经发布了，无法被删除，必须先回退为待发布状态后才能被删除 但是此时你无法通过LoadPracticeById这个函数去查询到已被删除的
+		for _, p := range ps {
+			if p.Status.String == PracticeStatus.Released && status == PracticeStatus.Deleted {
+				err = fmt.Errorf("目前批量操作的练习状态为发布状态，无法切换至删除状态，请先取消发布")
+				z.Error(err.Error())
+				return err
+			}
+		}
+
 		s := `UPDATE assessuser.t_practice SET status = $1,update_time = $2, updated_by = $3  WHERE id = ANY($4)`
 		_, err = tx.Exec(ctx, s, status, now, uid, ids)
 		if err != nil || forceErr == "pQuery2" {

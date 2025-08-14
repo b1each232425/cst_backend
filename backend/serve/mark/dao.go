@@ -137,7 +137,7 @@ func QueryExamList(ctx context.Context, req QueryMarkingListReq) (examList []Exa
 					LEFT JOIN v_exam_unmarked_student_count umc ON umc.exam_session_id = es.id 
 					LEFT JOIN v_exam_teacher_marked_count mc ON mc.exam_session_id = es.id 
 					LEFT JOIN t_mark_info mi ON es.id = mi.exam_session_id AND mi.status != '04' 
-					WHERE es.status IS NOT NULL AND es.status != '06' %s -- 动态插入where条件
+					WHERE es.status IS NOT NULL AND es.status != '14' %s -- 动态插入where条件
 					ORDER BY
 						e.create_time DESC, e.id DESC 
 					LIMIT $1 OFFSET $2;`
@@ -148,7 +148,7 @@ func QueryExamList(ctx context.Context, req QueryMarkingListReq) (examList []Exa
 							JOIN t_exam_paper ep ON es.id = ep.exam_session_id AND ep.status != '04'
 							LEFT JOIN t_mark_info mi ON es.id = mi.exam_session_id AND mi.status != '04'
 							WHERE es.status IS NOT NULL
-							  AND es.status != '06' %s -- 动态关联where条件`
+							  AND es.status != '14' %s -- 动态关联where条件`
 
 	var (
 		countArgs           []interface{}

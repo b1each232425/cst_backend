@@ -1,3 +1,12 @@
+/*
+ * @Author: Mayux dbs45412@163.com
+ * @Date: 2025-08-07 10:55:33
+ * @LastEditors: Mayux dbs45412@163.com
+ * @LastEditTime: 2025-08-13 18:41:50
+ * @FilePath: \assess\backend\serve\exam_mgt\exam-mgt_test.go
+ * @Description:
+ * Copyright (c) 2025 by ${git_name}, All Rights Reserved.
+ */
 package exam_mgt
 
 //annotation:exam_mgt
@@ -272,9 +281,9 @@ func CreateTestPaperWithGroupsAndQuestions(ctx context.Context, tx pgx.Tx, bankQ
 	//初始化一张空试卷
 	err = tx.QueryRow(ctx, `
 		INSERT INTO t_paper 
-			(id, name, assembly_type, category, level, suggested_duration, tags, creator, create_time, updated_by, update_time, status) 
+			(id, name, assembly_type, category, level, suggested_duration, tags, creator, create_time, updated_by, update_time, status, domain_id) 
 		VALUES 
-			($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) 
+			($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) 
 		RETURNING id`,
 		testPaperToPublishID,
 		paper.Name.String,
@@ -288,6 +297,7 @@ func CreateTestPaperWithGroupsAndQuestions(ctx context.Context, tx pgx.Tx, bankQ
 		paper.UpdatedBy.Int64,
 		paper.UpdateTime.Int64,
 		paper.Status.String,
+		2000,
 	).Scan(&paperID)
 
 	if err != nil {

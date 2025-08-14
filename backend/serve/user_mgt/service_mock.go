@@ -10,9 +10,10 @@ import (
 // MockService 模拟 Service 接口
 type MockService struct {
 	GenerateUniqueAccountFunc func(ctx context.Context, tx pgx.Tx, length int, maxAttempts int) (string, error)
-	ValidateUserFunc          func(ctx context.Context, tx pgx.Tx, users []User) ([]User, []InvalidUser, error)
+	ValidateUserFunc          func(ctx context.Context, tx pgx.Tx, users []User) ([]User, []User, []User, error)
 	QueryUserCurrentRoleFunc  func(ctx context.Context, userId null.Int) (null.Int, null.String, error)
 
+	user      User
 	users     []User
 	totalRows int64
 	Exist     bool
@@ -51,11 +52,11 @@ func (m *MockService) CheckTUserFieldExists(ctx context.Context, tx pgx.Tx, fiel
 	return m.Exist, nil
 }
 
-func (m *MockService) CheckTUserRowExists(ctx context.Context, tx pgx.Tx, fields map[string]any) (bool, error) {
+func (m *MockService) CheckTUserRowExists(ctx context.Context, tx pgx.Tx, fields map[string]any) (bool, *User, error) {
 	if m.err != nil {
-		return false, m.err
+		return false, nil, m.err
 	}
-	return m.Exist, nil
+	return m.Exist, &m.user, nil
 }
 
 func (m *MockService) GenerateUniqueAccount(ctx context.Context, tx pgx.Tx, length int, maxAttempts int) (string, error) {
@@ -65,11 +66,11 @@ func (m *MockService) GenerateUniqueAccount(ctx context.Context, tx pgx.Tx, leng
 	return "", nil // 默认返回空字符串和 nil 错误
 }
 
-func (m *MockService) ValidateUserToBeInsert(ctx context.Context, tx pgx.Tx, users []User) ([]User, []InvalidUser, error) {
+func (m *MockService) ValidateUserToBeInsert(ctx context.Context, tx pgx.Tx, users []User) ([]User, []User, []User, error) {
 	if m.ValidateUserFunc != nil {
 		return m.ValidateUserFunc(ctx, tx, users)
 	}
-	return nil, nil, nil // 默认返回空切片和 nil 错误
+	return nil, nil, nil, nil // 默认返回空切片和 nil 错误
 }
 
 func (m *MockService) QueryUserCurrentRole(ctx context.Context, userId null.Int) (null.Int, null.String, error) {

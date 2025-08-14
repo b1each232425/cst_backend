@@ -41,3 +41,9 @@ var QuestionDifficulty = map[int64]string{
 	2: "中等",
 	3: "困难",
 }
+
+const (
+	// 记录状态定义
+	StatusNormal   = "00" // 正常状态
+	StatusUnNormal = "02" // 已删除(软删除)
+)
