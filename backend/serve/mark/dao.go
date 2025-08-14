@@ -1106,9 +1106,8 @@ func InsertOrUpdateMarkingResults(ctx context.Context, markingResults []*cmn.TMa
 		}
 
 		if mark.TeacherID.Int64 == 0 {
-			err = fmt.Errorf("teacherID is required for mark")
-			z.Error(err.Error())
-			return
+			q := cmn.GetCtxValue(ctx)
+			mark.TeacherID = null.IntFrom(q.SysUser.ID.Int64)
 		}
 
 		if mark.Creator.Int64 <= 0 {
