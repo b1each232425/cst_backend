@@ -1,6 +1,6 @@
 /*==============================================================*/
 /* DBMS name:      PostgreSQL 9.x                               */
-/* Created on:     2025/8/11 21:44:31                           */
+/* Created on:     2025/8/14 18:01:41                           */
 /*==============================================================*/
 
 
@@ -9105,9 +9105,12 @@ comment on column t_sys_ver.status is
 ALTER SEQUENCE t_sys_ver_id_seq RESTART WITH 20000;
 
 insert into t_sys_ver(id,name,ver,create_time,update_time,remark)
-  values(1000,'业务模型','3.1.5.0',
-  '2016年12月5日 9:52:53','2025年8月11日 21:29:05',
-  '3.1.5.0
+  values(1000,'业务模型','3.1.6.0',
+  '2016年12月5日 9:52:53','2025年8月14日 17:13:44',
+  '3.1.6.0
+增加考试信息表、考试场次表和考生表之间的外键依赖，修改v_examinee_info视图中对于灵活时段考试方式的actual_end_time计算方式
+
+3.1.5.0
 去除题库表题目数量字段，建立题库与题库题目、试卷题目与题库题目、试卷和试卷题组和试卷题目的外键，去除题库共享表，添加v_question_bank视图
 
 3.1.4.0
@@ -11049,7 +11052,11 @@ create or replace view v_examinee_info as
     COALESCE(next_sessions.start_time - (exam_sessions.end_time + examinees.extra_time), (24 * 60 * 60 * 1000)::bigint) AS extendable_time,
     exam_sessions.start_time,
     exam_sessions.end_time,
-    COALESCE(exam_sessions.end_time + examinees.extra_time, exam_sessions.end_time) AS actual_end_time,
+    CASE 
+        WHEN exam_sessions.period_mode = '02' AND examinees.start_time IS NOT NULL 
+            THEN examinees.start_time + (exam_sessions.duration * 60 * 1000)
+        ELSE COALESCE(exam_sessions.end_time + examinees.extra_time, exam_sessions.end_time)
+    END AS actual_end_time,
     examinees.status AS examinee_status,
     examinees.remark,
     exam_sessions.period_mode,
@@ -13829,6 +13836,16 @@ alter table t_exam_paper_group
 alter table t_exam_paper_question
    add constraint FK_exam_question_group foreign key (group_id)
       references t_exam_paper_group (id)
+      on delete cascade;
+
+alter table t_exam_session
+   add constraint fk_t_exam_session_exam_info foreign key (exam_id)
+      references t_exam_info (id)
+      on delete cascade;
+
+alter table t_examinee
+   add constraint fk_t_examinee_exam_session foreign key (exam_session_id)
+      references t_exam_session (id)
       on delete cascade;
 
 alter table t_insure_attach
