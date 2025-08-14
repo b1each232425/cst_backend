@@ -35,19 +35,31 @@ var (
 	testErrorExamSessionToPublishID = int64(99910) // 用于测试考试发布错误 - 时间不符合要求
 	testPublishedExamSessionID      = int64(99911) // 已发布的考试场次
 
-	testAcademicAffair                       = int64(99901)
-	testStudent1                             = int64(99902)
-	testGrader                               = int64(99903) // 用于考试批阅员
-	testExamSession1StartTime                = time.Now().Add(10 * time.Minute).UnixMilli()
-	testExamSession1EndTime                  = time.Now().Add(20 * time.Minute).UnixMilli()
-	testExamSession2StartTime                = time.Now().Add(20 * time.Minute).UnixMilli()
-	testExamSession2EndTime                  = time.Now().Add(30 * time.Minute).UnixMilli()
-	testDeleteExamSessionStartTime           = time.Now().Add(30 * time.Minute).UnixMilli()
-	testDeleteExamSessionEndTime             = time.Now().Add(40 * time.Minute).UnixMilli()
-	testExamSessionToPublishID1StartTime     = time.Now().Add(10 * time.Minute).UnixMilli()
-	testExamSessionToPublishID1EndTime       = time.Now().Add(20 * time.Minute).UnixMilli()
-	testExamSessionToPublishID2StartTime     = time.Now().Add(20 * time.Minute).UnixMilli()
-	testExamSessionToPublishID2EndTime       = time.Now().Add(30 * time.Minute).UnixMilli()
+	testAcademicAffair                   = int64(99901)
+	testStudent1                         = int64(99902)
+	testGrader                           = int64(99903) // 用于考试批阅员
+	testExamSession1StartTime            = time.Now().Add(-20 * time.Minute).UnixMilli()
+	testExamSession1EndTime              = time.Now().Add(-10 * time.Minute).UnixMilli()
+	testExamSession2StartTime            = time.Now().Add(-20 * time.Minute).UnixMilli()
+	testExamSession2EndTime              = time.Now().Add(30 * time.Minute).UnixMilli()
+	testDeleteExamSessionStartTime       = time.Now().Add(30 * time.Minute).UnixMilli()
+	testDeleteExamSessionEndTime         = time.Now().Add(40 * time.Minute).UnixMilli()
+	testExamSessionToPublishID1StartTime = time.Now().Add(10 * time.Minute).UnixMilli()
+	testExamSessionToPublishID1EndTime   = time.Now().Add(20 * time.Minute).UnixMilli()
+	testExamSessionToPublishID2StartTime = time.Now().Add(20 * time.Minute).UnixMilli()
+	testExamSessionToPublishID2EndTime   = time.Now().Add(30 * time.Minute).UnixMilli()
+
+	// 测试考试场次开始和结束事件的相关变量
+	testSessionStartID                       = int64(99950) // 用于测试场次开始事件
+	testSessionEndID                         = int64(99951) // 用于测试场次结束事件
+	testSessionNoExamineeID                  = int64(99952) // 用于测试没有考生的场次
+	testSessionEndWithUnfinishedID           = int64(99953) // 用于测试有未完成考生的场次结束
+	testExamForSessionStart                  = int64(99950) // 用于场次开始测试的考试
+	testExamForSessionEnd                    = int64(99951) // 用于场次结束测试的考试
+	testExamineeForSessionStart1             = int64(99950) // 用于测试的考生1
+	testExamineeForSessionStart2             = int64(99951) // 用于测试的考生2
+	testExamineeForSessionEnd1               = int64(99952) // 用于测试结束的考生1
+	testExamineeForSessionEnd2               = int64(99953) // 用于测试结束的考生2
 	testExamSessionToPublishID3StartTime     = time.Now().Add(30 * time.Minute).UnixMilli()
 	testExamSessionToPublishID3EndTime       = time.Now().Add(40 * time.Minute).UnixMilli()
 	testExamSessionToPublishID4StartTime     = time.Now().Add(40 * time.Minute).UnixMilli()
@@ -87,9 +99,9 @@ func CreateTestPaperWithGroupsAndQuestions(ctx context.Context, tx pgx.Tx, bankQ
 	//初始化一张空试卷
 	err = tx.QueryRow(ctx, `
 		INSERT INTO t_paper 
-			(id, name, assembly_type, category, level, suggested_duration, tags, creator, create_time, updated_by, update_time, status) 
+			(id, name, assembly_type, category, level, suggested_duration, tags, creator, create_time, updated_by, update_time, status, domain_id) 
 		VALUES 
-			($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) 
+			($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) 
 		RETURNING id`,
 		testPaperToPublishID,
 		paper.Name.String,
@@ -103,6 +115,7 @@ func CreateTestPaperWithGroupsAndQuestions(ctx context.Context, tx pgx.Tx, bankQ
 		paper.UpdatedBy.Int64,
 		paper.UpdateTime.Int64,
 		paper.Status.String,
+		2000,
 	).Scan(&paperID)
 
 	if err != nil {
@@ -260,8 +273,8 @@ func CreateTestExamData(t *testing.T) {
 
 	// 创建测试试卷
 	_, err = tx.Exec(ctx, `
-		INSERT INTO t_paper (id, name, category, creator, status) 
-		VALUES ($1, '测试试卷', '00', $2, '00') `, testPaperID, testAcademicAffair)
+		INSERT INTO t_paper (id, name, category, creator, status, domain_id) 
+		VALUES ($1, '测试试卷', '00', $2, '00', 2000) `, testPaperID, testAcademicAffair)
 	if err != nil {
 		tx.Rollback(ctx)
 		t.Fatalf("创建测试试卷失败: %v", err)
@@ -270,7 +283,7 @@ func CreateTestExamData(t *testing.T) {
 	// 插入考试信息
 	_, err = tx.Exec(ctx, `
 		INSERT INTO t_exam_info (id, name, type, mode, status, creator, create_time, updated_by, update_time, domain_id)
-		VALUES ($1, '测试正常考试', '00', '00', '00', $2, $3, $2, $3, $4), 
+		VALUES ($1, '测试正常考试', '00', '00', '02', $2, $3, $2, $3, $4), 
 		($5, '测试已删除的考试', '00', '00', '12', $2, $3, $2, $3, $4),
 		($6, '测试正常考试2', '00', '00', '02', $2, $3, $2, $3, $4),
 		($7, '测试发布考试', '00', '00', '00', $2, $3, $2, $3, $4),
@@ -308,6 +321,8 @@ func CreateTestExamData(t *testing.T) {
 		t.Fatalf("插入测试场次数据失败: %v", err)
 	}
 
+	t.Log(testExamSession1StartTime, testExamSession1EndTime)
+
 	// 插入要发布的考试场次数据
 	_, err = tx.Exec(ctx, `
 		INSERT INTO t_exam_session (id, exam_id, paper_id, reviewer_ids, mark_mode, mark_method, session_num, status, creator, create_time, updated_by, update_time, start_time, end_time, period_mode, duration, question_shuffled_mode)
@@ -342,6 +357,16 @@ func CreateTestExamData(t *testing.T) {
 	if err != nil {
 		tx.Rollback(ctx)
 		t.Fatalf("插入测试考生数据失败: %v", err)
+	}
+
+	// 插入考卷数据
+	_, err = tx.Exec(ctx, `
+		INSERT INTO t_exam_paper (id, exam_session_id, name, creator, status)
+		VALUES ($1, $2, $3, $4, $5)
+	`, testExamSessionID1, testExamSessionID1, "testPaper", testAcademicAffair, "00")
+	if err != nil {
+		tx.Rollback(ctx)
+		t.Fatalf("插入测试考卷数据失败: %v", err)
 	}
 
 	return
@@ -448,6 +473,11 @@ func CleanTestExamData(t *testing.T) {
 		tx.Rollback(ctx)
 		t.Fatalf("删除测试试卷数据失败: %v", err)
 	}
+
+	// 删除考卷数据
+	_, err = tx.Exec(ctx, `
+		DELETE FROM t_exam_paper WHERE creator = $1
+	`, testAcademicAffair)
 
 	// 删除题库数据
 	_, err = tx.Exec(ctx, `
@@ -725,6 +755,307 @@ func TestCancelExamTimers(t *testing.T) {
 					t.Logf("取消定时器后，剩余定时器数量: %d", finalTimerCount)
 				}
 			}
+		})
+	}
+}
+
+// 测试考试场次开始事件处理
+func TestHandleExamSessionStart(t *testing.T) {
+	cmn.ConfigureForTest()
+
+	// 准备测试数据
+	CleanTestExamData(t)
+	CreateTestExamData(t)
+	defer CleanTestExamData(t)
+
+	tests := []struct {
+		name               string
+		event              ExamEvent
+		expectError        bool
+		expectedStatus     string
+		expectedCount      int
+		forceError         string
+		checkExamStatus    bool
+		expectedExamStatus string
+	}{
+		{
+			name: "正常场次开始-有考生",
+			event: ExamEvent{
+				Type:          EVENT_TYPE_EXAM_SESSION_START,
+				ExamID:        testNormalExamID,
+				ExamSessionID: testExamSessionID1,
+			},
+			expectError:        false,
+			expectedStatus:     "04", // 进行中
+			expectedCount:      1,    // 1个考生
+			checkExamStatus:    true,
+			expectedExamStatus: "04", // 考试进行中
+		},
+		{
+			name: "开启事务失败",
+			event: ExamEvent{
+				Type:          EVENT_TYPE_EXAM_SESSION_START,
+				ExamID:        testNormalExamID2,
+				ExamSessionID: testExamSessionID1,
+			},
+			expectError: true,
+			forceError:  "beginTx",
+		},
+		{
+			name: "查询场次信息失败",
+			event: ExamEvent{
+				Type:          EVENT_TYPE_EXAM_SESSION_START,
+				ExamID:        testNormalExamID2,
+				ExamSessionID: testExamSessionID1,
+			},
+			expectError: true,
+			forceError:  "queryExamSessionInfo",
+		},
+		{
+			name: "更新考试状态失败",
+			event: ExamEvent{
+				Type:          EVENT_TYPE_EXAM_SESSION_START,
+				ExamID:        testNormalExamID2,
+				ExamSessionID: testExamSessionID1,
+			},
+			expectError: true,
+			forceError:  "updateExam",
+		},
+		{
+			name: "更新场次状态失败",
+			event: ExamEvent{
+				Type:          EVENT_TYPE_EXAM_SESSION_START,
+				ExamID:        testNormalExamID2,
+				ExamSessionID: testExamSessionID1,
+			},
+			expectError: true,
+			forceError:  "updateExamSession",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := context.Background()
+			if tt.forceError != "" {
+				ctx = context.WithValue(ctx, "handleExamSessionStart-force-error", tt.forceError)
+			}
+
+			// 执行测试
+			err := handleExamSessionStart(ctx, tt.event)
+
+			// 验证错误
+			if tt.expectError {
+				if err == nil {
+					t.Errorf("期望错误，但没有返回错误")
+				}
+				return
+			}
+
+			if err != nil {
+				t.Errorf("不期望错误，但得到错误: %v", err)
+				return
+			}
+
+			// 验证场次状态
+			var sessionStatus string
+			conn := cmn.GetPgxConn()
+			err = conn.QueryRow(ctx, `
+				SELECT status FROM t_exam_session WHERE id = $1
+			`, tt.event.ExamSessionID).Scan(&sessionStatus)
+
+			if err != nil {
+				t.Errorf("查询场次状态失败: %v", err)
+				return
+			}
+
+			if sessionStatus != tt.expectedStatus {
+				t.Errorf("期望场次状态为 %s，但得到: %s", tt.expectedStatus, sessionStatus)
+			}
+
+			// 验证考试状态
+			if tt.checkExamStatus {
+				var examStatus string
+				err = conn.QueryRow(ctx, `
+					SELECT status FROM t_exam_info WHERE id = $1
+				`, tt.event.ExamID).Scan(&examStatus)
+
+				if err != nil {
+					t.Errorf("查询考试状态失败: %v", err)
+				} else if examStatus != tt.expectedExamStatus {
+					t.Errorf("期望考试状态为 %s，但得到: %s", tt.expectedExamStatus, examStatus)
+				}
+			}
+
+			// 验证考生数量
+			var actualCount int
+			err = conn.QueryRow(ctx, `
+				SELECT COUNT(*) FROM t_examinee 
+				WHERE exam_session_id = $1 AND status != '08'
+			`, tt.event.ExamSessionID).Scan(&actualCount)
+
+			if err != nil {
+				t.Errorf("查询考生数量失败: %v", err)
+			} else if actualCount != tt.expectedCount {
+				t.Errorf("期望考生数量为 %d，但得到: %d", tt.expectedCount, actualCount)
+			}
+
+			t.Logf("场次 %d 状态: %s, 考生数量: %d", tt.event.ExamSessionID, sessionStatus, actualCount)
+		})
+	}
+}
+
+// 测试考试场次结束事件处理
+func TestHandleExamSessionEnd(t *testing.T) {
+	cmn.ConfigureForTest()
+
+	// 准备测试数据
+	CleanTestExamData(t)
+	CreateTestExamData(t)
+	defer CleanTestExamData(t)
+
+	tests := []struct {
+		name             string
+		event            ExamEvent
+		expectError      bool
+		expectedStatus   string
+		expectDelayTimer bool
+		forceError       string
+		checkExamStatus  bool
+	}{
+		{
+			name: "正常场次结束-有考生",
+			event: ExamEvent{
+				Type:          EVENT_TYPE_EXAM_SESSION_END,
+				ExamID:        testNormalExamID,
+				ExamSessionID: testExamSessionID1,
+			},
+			expectError:      false,
+			expectedStatus:   "06", // 已结束
+			expectDelayTimer: false,
+			checkExamStatus:  false,
+		},
+		{
+			name: "开启事务失败",
+			event: ExamEvent{
+				Type:          EVENT_TYPE_EXAM_SESSION_END,
+				ExamID:        testNormalExamID,
+				ExamSessionID: testExamSessionID1,
+			},
+			expectError: true,
+			forceError:  "beginTx",
+		},
+		{
+			name: "更新考生状态失败",
+			event: ExamEvent{
+				Type:          EVENT_TYPE_EXAM_SESSION_END,
+				ExamID:        testNormalExamID,
+				ExamSessionID: testExamSessionID1,
+			},
+			expectError: true,
+			forceError:  "updateExaminees",
+		},
+		{
+			name: "检查未完成考生失败",
+			event: ExamEvent{
+				Type:          EVENT_TYPE_EXAM_SESSION_END,
+				ExamID:        testNormalExamID,
+				ExamSessionID: testExamSessionID1,
+			},
+			expectError: true,
+			forceError:  "scanUnfinishedExaminees",
+		},
+		{
+			name: "更新场次状态失败",
+			event: ExamEvent{
+				Type:          EVENT_TYPE_EXAM_SESSION_END,
+				ExamID:        testNormalExamID,
+				ExamSessionID: testExamSessionID1,
+			},
+			expectError: true,
+			forceError:  "updateSessionEndStatus",
+		},
+		{
+			name: "处理过程中发生panic",
+			event: ExamEvent{
+				Type:          EVENT_TYPE_EXAM_SESSION_END,
+				ExamID:        testNormalExamID,
+				ExamSessionID: testExamSessionID1,
+			},
+			expectError: false,
+			forceError:  "panic",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := context.Background()
+			if tt.forceError != "" {
+				ctx = context.WithValue(ctx, "handleExamSessionEnd-force-error", tt.forceError)
+			}
+
+			// 初始化定时器管理器
+			examTimerMgr = NewExamTimerManager(ctx)
+			defer examTimerMgr.StopAll()
+
+			// 执行测试
+			err := handleExamSessionEnd(ctx, tt.event)
+
+			// 验证错误
+			if tt.expectError {
+				if err == nil {
+					t.Errorf("期望错误，但没有返回错误")
+				}
+				return
+			}
+
+			if err != nil {
+				t.Errorf("不期望错误，但得到错误: %v", err)
+				return
+			}
+
+			// 验证场次状态
+			var sessionStatus string
+			conn := cmn.GetPgxConn()
+			err = conn.QueryRow(ctx, `
+				SELECT status FROM t_exam_session WHERE id = $1
+			`, tt.event.ExamSessionID).Scan(&sessionStatus)
+
+			if err != nil {
+				t.Errorf("查询场次状态失败: %v", err)
+				return
+			}
+
+			if sessionStatus != tt.expectedStatus {
+				t.Errorf("期望场次状态为 %s，但得到: %s", tt.expectedStatus, sessionStatus)
+			}
+
+			// 验证考试状态
+			if tt.checkExamStatus {
+				var examStatus string
+				err = conn.QueryRow(ctx, `
+					SELECT status FROM t_exam_info WHERE id = $1
+				`, tt.event.ExamID).Scan(&examStatus)
+
+				if err != nil {
+					t.Errorf("查询考试状态失败: %v", err)
+				} else if examStatus != "06" {
+					t.Errorf("期望考试状态为已结束(06)，但得到: %s", examStatus)
+				}
+			}
+
+			// 验证延迟定时器
+			if tt.expectDelayTimer {
+				examTimerMgr.mutex.Lock()
+				delayTimerKey := fmt.Sprintf("%s_%d", EVENT_TYPE_EXAM_SESSION_END, tt.event.ExamSessionID)
+				_, hasDelayTimer := examTimerMgr.timers[delayTimerKey]
+				examTimerMgr.mutex.Unlock()
+
+				if !hasDelayTimer {
+					t.Error("期望设置延迟定时器，但未找到")
+				}
+			}
+
+			t.Logf("场次 %d 状态: %s", tt.event.ExamSessionID, sessionStatus)
 		})
 	}
 }

@@ -281,9 +281,9 @@ func CreateTestPaperWithGroupsAndQuestions(ctx context.Context, tx pgx.Tx, bankQ
 	//初始化一张空试卷
 	err = tx.QueryRow(ctx, `
 		INSERT INTO t_paper 
-			(id, name, assembly_type, category, level, suggested_duration, tags, creator, create_time, updated_by, update_time, status) 
+			(id, name, assembly_type, category, level, suggested_duration, tags, creator, create_time, updated_by, update_time, status, domain_id) 
 		VALUES 
-			($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) 
+			($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) 
 		RETURNING id`,
 		testPaperToPublishID,
 		paper.Name.String,
@@ -297,6 +297,7 @@ func CreateTestPaperWithGroupsAndQuestions(ctx context.Context, tx pgx.Tx, bankQ
 		paper.UpdatedBy.Int64,
 		paper.UpdateTime.Int64,
 		paper.Status.String,
+		2000,
 	).Scan(&paperID)
 
 	if err != nil {
