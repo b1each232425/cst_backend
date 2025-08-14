@@ -85,10 +85,11 @@ type GradeExamineeListReq struct {
 	Page       int     // 页码
 	PageSize   int     // 每页数量
 	Filter     struct {
-		Keyword string `json:"keyword"` // 关键字:姓名,昵称,电话
+		Keyword string // 关键字:姓名,昵称,电话
 	}
 }
 
+// ********** 考试 **********
 type ExamSessionScore struct {
 	ExamID        int64       `json:"exam_id"`         // 考试ID
 	ExamSessionID int64       `json:"exam_session_id"` // 考试场次ID
@@ -113,7 +114,7 @@ type ExamineeScoreList struct {
 	StudentScores []StudentExamScore `json:"student_scores"` // 学生成绩列表
 }
 
-// ********** 按练习ID分类的导出数据结构 **********
+// ********** 练习 **********
 type PracticeExamineeScoreInfo struct {
 	StuID        null.Int    `json:"stu_id"`        // 学生ID
 	Phone        null.String `json:"phone"`         // 学生手机号
@@ -140,9 +141,18 @@ type Analysis struct {
 	SubjectiveScores     map[null.Int]float64                `json:"subjective_scores"`      // 主观题评分列表
 }
 
+// ********** 学生成绩接口 **********
 type ExamSessionScoreRank struct {
-	StudentID    int64       `json:"student_id" db:"student_id"`
-	OfficialName null.String `json:"official_name" db:"official_name"`
-	TotalScore   null.Float  `json:"total_score" db:"total_score"`
-	Rank         null.Int    `json:"rank" db:"rank"`
+	StudentID    int64       `json:"student_id"`
+	OfficialName null.String `json:"official_name"`
+	TotalScore   null.Float  `json:"total_score"`
+	Rank         null.Int    `json:"rank"`
+}
+
+type SessionInfo struct {
+	ID         null.Int `json:"ID,omitempty"`
+	PaperID    null.Int `json:"PaperID,omitempty"`
+	Duration   null.Int `json:"Duration,omitempty"`
+	SessionNum null.Int `json:"SessionNum,omitempty"`
+	ExamineeID null.Int `json:"ExamineeID,omitempty"`
 }
