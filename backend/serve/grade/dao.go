@@ -184,7 +184,6 @@ func gradeListExam(ctx context.Context, userID int64, req *GradeListReq) ([]Grad
 		}
 		result = append(result, grade)
 	}
-	err = rows.Err()
 
 	return result, rowCount, nil
 }
@@ -517,7 +516,6 @@ func gradeDistributionExam(ctx context.Context, examID int, columnNum int) (Exam
 		z.Error(err.Error())
 		return result, err
 	}
-
 	// 检查分布列数是否合法
 	if columnNum <= 0 {
 		err = fmt.Errorf("列数无效(columnNum=%v)", columnNum)
@@ -1568,100 +1566,51 @@ func getScorePractice(ctx context.Context, tx pgx.Tx, studentID int64, practiceI
 	}
 	practiceInfoMap["SuggestTime"] = suggestDuration
 
-	// 获取学生练习的作答信息
-	practiceAnswerInfo, err := getPracticeAnswerInfoByPracticeIDOrderAttempt(ctx, practiceID, studentID)
-	if err != nil {
-		z.Sugar().Errorf("getPracticeAnswerInfoByPracticeIDOrderAttempt call failed:%v", err)
-		return nil, fmt.Errorf("getPracticeAnswerInfoByPracticeIDOrderAttempt call failed:%v", err)
-	}
-	// 学生本次练习时长
-	practiceInfoMap["AnswerTime"] = math.Ceil(practiceAnswerInfo.UsedTime.Float64)
-
-	result["practiceInfo"] = practiceInfoMap
-
-	return result, err
-}
-
-type PracticeInfo struct {
-	ID          null.Int
-	ExamPaperID null.Int
-	TotalScore  null.Float
-	UsedTime    null.Float
-}
-
-func getPracticeAnswerInfoByPracticeIDOrderAttempt(ctx context.Context, practiceID, studentID int64) (PracticeInfo, error) {
-	var err error
-
+	var usedTime null.Float
 	// 这里搜索视图中的数据 并且需要根据尝试次数进行排序
-	selectSql := `WITH filtered_data AS (
-    SELECT DISTINCT ps.id,
-        ps.practice_id,
-        p.name,
-        ps.student_id, 
-        ps.exam_paper_id,
-        CASE
-            WHEN bool_or(a.answer_score IS NULL) THEN NULL::double precision
-            ELSE sum(a.answer_score)
-        END AS total_score,
-        p.type,
+	selectSql = `WITH filtered_data AS (
+    SELECT 
         ps.attempt,
         ps.status,
-        count(
-            CASE
-                WHEN a.answer_score <> epq.score THEN 1
-                ELSE NULL::integer
-            END) AS wrong_count,
-        ps.end_time - ps.start_time AS used_time  -- 修正这里
+        ps.end_time - ps.start_time AS used_time 
     FROM t_practice_submissions ps
-    JOIN t_student_answers a ON ps.id = a.practice_submission_id
-    JOIN t_exam_paper_question epq ON a.question_id = epq.id
-    JOIN t_practice p ON ps.practice_id = p.id
     WHERE ps.practice_id = $1
         AND ps.student_id = $2
-    GROUP BY ps.id, p.id, ps.attempt, ps.student_id
+    GROUP BY ps.id, ps.attempt, ps.student_id
 )
 SELECT 
-    id,
-    exam_paper_id,
-    total_score,
 	used_time
-FROM (
-    SELECT 
-        *,
-        ROW_NUMBER() OVER (
-            ORDER BY 
-                CASE 
-                    WHEN status = '06' THEN 1  -- 优先选择状态为'06'的记录
-                    ELSE 2 
-                END,
-                attempt DESC  -- 相同状态下按提交次数倒序
-        ) AS rn
-    FROM filtered_data
-) ranked
+	FROM (
+		SELECT 
+			*,
+			ROW_NUMBER() OVER (
+				ORDER BY 
+					CASE 
+						WHEN status = '06' THEN 1  -- 优先选择状态为'06'的记录
+						ELSE 2 
+					END,
+					attempt DESC                   -- 相同状态下按提交次数倒序
+			) AS rn
+		FROM filtered_data
+	) ranked
 WHERE rn = 1;`
 
-	conn := cmn.GetPgxConn()
-	if conn == nil {
-		err = fmt.Errorf("获取数据库连接为空")
-		z.Error(err.Error())
-		return PracticeInfo{}, err
-	}
-
-	var practiceInfo PracticeInfo
 	err = conn.QueryRow(ctx, selectSql, practiceID, studentID).Scan(
-		&practiceInfo.ID,
-		&practiceInfo.ExamPaperID,
-		&practiceInfo.TotalScore,
-		&practiceInfo.UsedTime,
+		&usedTime,
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			// 没有找到记录
 			z.Error("getPracticeInfoByPracticeIDOrderAttempt invalid data request", zap.Error(err))
-			return PracticeInfo{}, nil
+			return result, nil
 		}
 		z.Error("getPracticeInfoByPracticeIDOrderAttempt error", zap.Error(err))
-		return PracticeInfo{}, err
+		return result, err
 	}
-	return practiceInfo, nil
+	// 学生本次练习时长
+	practiceInfoMap["AnswerTime"] = math.Ceil(usedTime.Float64)
+
+	result["practiceInfo"] = practiceInfoMap
+
+	return result, err
 }
