@@ -10558,7 +10558,7 @@ func (r *TQuestion) GetTableName() string {
 // Create inserts the TQuestion to the database.
 func (r *TQuestion) Create(db Queryer) error {
 	err := db.QueryRow(
-		`INSERT INTO t_question (type, content, options, answers, score, difficulty, tags, analysis, title, answer_file_path, test_file_path, input, output, example, repo, order, creator, create_time, updated_by, update_time, addi, status, question_attachments_path, access_mode, belong_to) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25) RETURNING id`,
+		`INSERT INTO t_question (type, content, options, answers, score, difficulty, tags, analysis, title, answer_file_path, test_file_path, input, output, example, repo, "order", creator, create_time, updated_by, update_time, addi, status, question_attachments_path, access_mode, belong_to) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25) RETURNING id`,
 		&r.Type, &r.Content, &r.Options, &r.Answers, &r.Score, &r.Difficulty, &r.Tags, &r.Analysis, &r.Title, &r.AnswerFilePath, &r.TestFilePath, &r.Input, &r.Output, &r.Example, &r.Repo, &r.Order, &r.Creator, &r.CreateTime, &r.UpdatedBy, &r.UpdateTime, &r.Addi, &r.Status, &r.QuestionAttachmentsPath, &r.AccessMode, &r.BelongTo).Scan(&r.ID)
 	if err != nil {
 		return errors.Wrap(err, "failed to insert t_question")
