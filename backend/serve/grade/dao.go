@@ -1474,206 +1474,12 @@ func getScoreExam(ctx context.Context, tx pgx.Tx, studentID, examSessionID int64
 	return result, err
 }
 
-// getSessionScoreRank 获取某一场次的考生成绩排行榜 完成
-// func getSessionScoreRank(ctx context.Context, examSessionID int64) ([]ExamSessionScoreRank, error) {
-
-// 	rank := make([]ExamSessionScoreRank, 0)
-// 	var err error
-
-// 	selectSql := `SELECT
-// 	vs.student_id,
-//     u.official_name,
-//     COALESCE(vs.total_score, 0) AS total_score,
-//     RANK() OVER (ORDER BY COALESCE(vs.total_score, 0) DESC) AS rank
-// FROM v_student_exam_total_score vs
-// JOIN t_user u ON vs.student_id = u.id
-// WHERE vs.exam_session_id = $1
-// ORDER BY
-//     COALESCE(vs.total_score, 0) DESC; `
-
-// 	conn := cmn.GetPgxConn()
-// 	if conn == nil {
-// 		err = fmt.Errorf("获取数据库连接为空")
-// 		z.Error(err.Error())
-// 		return rank, err
-// 	}
-
-// 	rows, err := conn.Query(ctx, selectSql, examSessionID)
-// 	if err != nil {
-// 		err = fmt.Errorf("查询考试场次成绩失败: %w", err)
-// 		z.Error(err.Error())
-// 		return rank, err
-// 	}
-// 	defer rows.Close()
-// 	// 这里要返回这个自己定义的结构体
-
-// 	// 这里会一直遍历，直到取出所有结果集
-// 	for rows.Next() {
-// 		var r ExamSessionScoreRank
-// 		err = rows.Scan(&r.StudentID, &r.OfficialName, &r.TotalScore, &r.Rank)
-// 		if err != nil {
-// 			err = fmt.Errorf("扫描考试场次成绩失败: %w", err)
-// 			z.Error(err.Error())
-// 			return rank, err
-// 		}
-// 		rank = append(rank, r)
-// 	}
-// 	if err = rows.Err(); err != nil {
-// 		err = fmt.Errorf("遍历考试场次成绩失败: %w", err)
-// 		z.Error(err.Error())
-// 		return rank, err
-// 	}
-
-// 	return rank, nil
-// }
-
-// 获取学生本张试卷的学生的作答情况答案及其分数
-// func getStudentExamDoneAnswer(ctx context.Context, examineeID int64) ([]cmn.TStudentAnswers, error) {
-// 	var AllAnswers []cmn.TStudentAnswers
-
-// 	selectSql := `SELECT id, type ,question_id,answer,answer_score,addi,status FROM t_student_answers WHERE examinee_id = $1`
-
-// 	//根据考生ID去查询此时的数据
-// 	rows, err := conn.Query(ctx, selectSql, examineeID)
-// 	if err != nil {
-// 		z.Error("student_exam_answer/service SaveStudentExamAnswer", zap.Error(err))
-// 		return nil, err
-// 	}
-// 	defer rows.Close()
-
-// 	// 一个答案算一次,插入到这个结构体数组中
-// 	for rows.Next() {
-// 		var r cmn.TStudentAnswers
-// 		err := rows.Scan(&r.ID, &r.Type, &r.QuestionID, &r.Answer, &r.AnswerScore, &r.Addi, &r.Status)
-// 		if err != nil {
-// 			z.Error("student_exam_answer/service SaveStudentExamAnswer getAnswerByExamineeID error", zap.Error(err))
-// 			return nil, err
-// 		}
-// 		AllAnswers = append(AllAnswers, r)
-// 	}
-// 	return AllAnswers, nil
-// }
-
-// func getExamineeAnswerTime(ctx context.Context, examineeID int64) (int64, error) {
-// 	var err error
-
-// 	if examineeID <= 0 {
-// 		z.Warn("invalid input params examineeID")
-// 		return -1, errors.New("invalid input params examineeID")
-// 	}
-// 	// selectSql := `SELECT
-// 	// start_time,end_time
-// 	// FROM t_examinee
-// 	// WHERE id = $1
-// 	// `
-// 	// conn := cmn.GetPgxConn()
-// 	// if conn == nil {
-// 	// 	err = fmt.Errorf("获取数据库连接为空")
-// 	// 	z.Error(err.Error())
-// 	// 	return -1, err
-// 	// }
-
-// 	// var start, end null.Int
-// 	// err = conn.QueryRow(ctx, selectSql, examineeID).Scan(&start, &end)
-// 	// if err != nil {
-// 	// 	z.Sugar().Errorf("query examinee answer time failed:%v", err)
-// 	// 	return -1, fmt.Errorf("query examinee answer time failed:%v", err)
-// 	// }
-// 	// if !start.Valid || !end.Valid {
-// 	// 	z.Warn("student answer time is NULL ;data is invalid")
-// 	// 	return 0, nil
-// 	// }
-// 	// answerTime := end.Int64 - start.Int64
-// 	return answerTime, nil
-
-// }
-
-// 根据考试ID与学生ID，获取本次考试的很多信息了；包括试卷id，考生id，场次顺序等等；并且这些都应该是已批改的状态;这里面包含的信息，取出其中一个
-// func getExamSessionInfo(ctx context.Context, examSessionID int64, studentID int64) ([]ExamSessionReflect, error) {
-
-// 	// var err error
-// 	// if examSessionID <= 0 {
-// 	// 	z.Error("examID is nil")
-// 	// 	return nil, errors.New("examID is nil")
-// 	// }
-
-// 	// if studentID <= 0 {
-// 	// 	z.Error("studentID is nil")
-// 	// 	return nil, errors.New("studentID is nil")
-// 	// }
-
-// 	// conn := cmn.GetPgxConn()
-// 	// if conn == nil {
-// 	// 	err = fmt.Errorf("获取数据库连接为空")
-// 	// 	z.Error(err.Error())
-// 	// 	return []ExamSessionReflect{}, err
-// 	// }
-
-// 	// 取出examID
-// 	examSql := `
-// 	SELECT es.exam_id
-// 	FROM t_exam_session es
-// 	WHERE es.id = $1
-// 	`
-
-// 	var examID int64
-// 	err = conn.QueryRow(ctx, examSql, examSessionID).Scan(&examID)
-// 	if err != nil {
-// 		z.Sugar().Errorf("failed to query exam ID: %s", err.Error())
-// 		return nil, fmt.Errorf("failed to query exam ID: %s", err.Error())
-// 	}
-
-// 	query := `
-// 		SELECT
-// 			es.id, e.exam_paper_id ,es.duration,
-// 			e.id as examinee_id,
-// 			e.start_time,
-// 			e.end_time,
-// 			es.session_num
-// 		FROM t_exam_session es
-// 		LEFT JOIN t_examinee e ON es.id = e.exam_session_id AND e.student_id = $1 AND e.status != $2
-// 		WHERE es.exam_id = $3 AND es.status != $4
-// 		ORDER BY es.session_num
-// 	`
-
-// 	rows, err := conn.Query(ctx, query, studentID, "08", examID, "06")
-// 	if err != nil {
-// 		z.Sugar().Errorf("failed to query exam sessions: %s", err.Error())
-// 		return nil, fmt.Errorf("failed to query exam sessions: %s", err.Error())
-// 	}
-// 	defer rows.Close()
-
-// 	var sessions []ExamSessionReflect
-
-// 	// 由于本身就已经带有排序了的，所以第一次直接选取第一个paperID，examineeID即可
-// 	for rows.Next() {
-// 		var session ExamSessionReflect
-// 		err := rows.Scan(
-// 			&session.ID,
-// 			&session.PaperID,
-// 			&session.Duration,
-// 			&session.ExamineeID,
-// 			&session.SessionNum,
-// 		)
-// 		if err != nil {
-// 			z.Sugar().Errorf("failed to scan exam session row: %s", err.Error())
-// 			return nil, fmt.Errorf("failed to scan exam session row: %s", err.Error())
-// 		}
-// 		sessions = append(sessions, session)
-// 	}
-// 	if rows.Err() != nil {
-// 		z.Sugar().Errorf("row iteration error: %s", rows.Err().Error())
-// 		return nil, fmt.Errorf("row iteration error: %s", rows.Err().Error())
-// 	}
-
-// 	return sessions, nil
-// }
-
 func getScorePractice(ctx context.Context, tx pgx.Tx, studentID int64, practiceID int64) (Map, error) {
 	var (
-		epid            int64 // 考卷Id
-		psid            int64 // 练习生提交Id 大于0则查询练习学生试卷
-		eid             int64 // 考生Id 大于0则查询考试学生试卷
+		epid int64 // 考卷Id
+		psid int64 // 练习生提交Id 大于0则查询练习学生试卷
+		eid  int64 // 考生Id 大于0则查询考试学生试卷
+
 		err             error
 		vep             *cmn.TVExamPaper
 		tepg            map[int64]*cmn.TExamPaperGroup
@@ -1703,8 +1509,7 @@ func getScorePractice(ctx context.Context, tx pgx.Tx, studentID int64, practiceI
 		return result, err
 	}
 
-	// 第一步：获取考卷ID和考试ID/练习ID
-
+	// 第一步：获取考卷ID和练习ID
 	epSql := `
 	SELECT id,exam_paper_id
 	FROM t_practice_submissions
@@ -1724,27 +1529,44 @@ func getScorePractice(ctx context.Context, tx pgx.Tx, studentID int64, practiceI
 		z.Error(err.Error())
 		return result, err
 	}
-
 	result["exam_paper"] = vep
 	result["exam_paper_group"] = tepg
 	result["exam_question"] = eq
 
-	answerNum, err := getStudentPracticeAnswerByPracticeID(ctx, psid, studentID)
-	if err != nil {
-		z.Sugar().Errorf("getStudentPracticeAnswerByPracticeID call failed:%v", err)
-		return nil, fmt.Errorf("getStudentPracticeAnswerByPracticeID call failed:%v", err)
+	// 第三步：获取学生总分
+	var totalScore float64
+	for _, q := range eq {
+		for _, q2 := range q {
+			totalScore += q2.StudentScore.Float64
+		}
 	}
-	// 学生作答题目总数
-	practiceInfoMap["AnswerNum"] = len(answerNum)
+	practiceInfoMap["StudentScore"] = totalScore
 
-	// 获取练习本身的试卷信息
-	practiceInfo, err := getPracticeRecord(ctx, psid, studentID)
+	selectSql := `SELECT COUNT(*) FROM t_student_answers WHERE practice_submission_id = $1`
+	var answerNum int
+	err = conn.QueryRow(ctx, selectSql, psid).Scan(&answerNum)
 	if err != nil {
-		z.Sugar().Errorf("getPracticeRecord call failed:%v", err)
-		return nil, fmt.Errorf("getPracticeRecord call failed:%v", err)
+		err = fmt.Errorf("获取失败")
+		z.Error(err.Error())
+		return nil, err
 	}
+	practiceInfoMap["AnswerNum"] = answerNum
+
 	// 练习建议时长
-	practiceInfoMap["SuggestTime"] = practiceInfo.Duration.ValueOrZero()
+	durationSql := `SELECT 
+			tp.suggested_duration
+		FROM t_practice p
+		JOIN t_practice_submissions ps ON p.id = ps.practice_id
+		LEFT JOIN t_paper tp ON tp.id = p.paper_id        
+		    -- WHERE ps.id=$1 AND p.status = $2 AND ps.status = $3 AND ps.student_id = $4 
+		WHERE ps.id=$1 AND p.status = $2 AND ps.student_id = $3`
+	var suggestDuration null.Int
+	err = conn.QueryRow(ctx, durationSql, psid, "02", studentID).Scan(&suggestDuration)
+	if err != nil {
+		z.Error("query row err", zap.Error(err))
+		return result, err
+	}
+	practiceInfoMap["SuggestTime"] = suggestDuration
 
 	// 获取学生练习的作答信息
 	practiceAnswerInfo, err := getPracticeAnswerInfoByPracticeIDOrderAttempt(ctx, practiceID, studentID)
@@ -1755,20 +1577,9 @@ func getScorePractice(ctx context.Context, tx pgx.Tx, studentID int64, practiceI
 	// 学生本次练习时长
 	practiceInfoMap["AnswerTime"] = math.Ceil(practiceAnswerInfo.UsedTime.Float64)
 
-	var totalScore float64
-	// 学生本次练习得分
-	for _, v := range eq {
-		for _, v2 := range v {
-			totalScore += v2.StudentScore.Float64
-		}
-
-	}
-	practiceInfoMap["StudentScore"] = totalScore
-
 	result["practiceInfo"] = practiceInfoMap
 
 	return result, err
-
 }
 
 type PracticeInfo struct {
@@ -1853,122 +1664,4 @@ WHERE rn = 1;`
 		return PracticeInfo{}, err
 	}
 	return practiceInfo, nil
-}
-
-func getStudentPracticeAnswerByPracticeID(ctx context.Context, practiceSubmissionID, studentID int64) ([]cmn.TStudentAnswers, error) {
-	if practiceSubmissionID <= 0 {
-		z.Warn("invalid input params practiceSubmissionID")
-		return nil, errors.New("invalid input params practiceSubmissionID")
-	}
-	if studentID <= 0 {
-		z.Warn("invalid input params studentId")
-		return nil, errors.New("invalid input params studentId")
-	}
-
-	var err error
-	var AllAnswers []cmn.TStudentAnswers
-
-	conn := cmn.GetPgxConn()
-	if conn == nil {
-		err = fmt.Errorf("获取数据库连接为空")
-		z.Error(err.Error())
-		return nil, err
-	}
-	selectSql := `SELECT id, type ,question_id,answer,answer_score,addi,status FROM t_student_answers WHERE practice_submission_id = $1`
-	//根据考生ID去查询此时的数据
-	rows, err := conn.Query(ctx, selectSql, practiceSubmissionID)
-	if err != nil {
-		err = fmt.Errorf("获取失败")
-		z.Error(err.Error())
-		return nil, err
-	}
-	defer rows.Close()
-
-	// 一个答案算一次,插入到这个结构体数组中
-	for rows.Next() {
-		var r cmn.TStudentAnswers
-		err := rows.Scan(&r.ID, &r.Type, &r.QuestionID, &r.Answer, &r.AnswerScore, &r.Addi, &r.Status)
-		if err != nil {
-			z.Error("student_exam_answer/service GetStudentPracticeAnswer getAnswerByExamineeID error", zap.Error(err))
-			return nil, err
-		}
-		AllAnswers = append(AllAnswers, r)
-	}
-	return AllAnswers, nil
-}
-
-type PracticeRecord struct {
-	ID                null.Int    `json:"id,omitempty"`                   // 练习 ID
-	Type              null.String `json:"type,omitempty"`                 // 练习类型
-	Name              null.String `json:"name,omitempty"`                 // 练习名称
-	AttemptCount      null.Int    `json:"attempt_count,omitempty"`        // 尝试次数
-	Difficulty        null.String `json:"difficulty,omitempty"`           // 难度
-	QuestionCount     null.Int    `json:"question_count,omitempty"`       // 题目数量
-	WrongCount        null.Int    `json:"wrong_count,omitempty"`          // 错题数量
-	TotalScore        null.Float  `json:"total_score,omitempty"`          // 学生得分
-	HighestScore      null.Float  `json:"highest_score,omitempty"`        // 最高分
-	Creator           null.Int    `json:"creator,omitempty"`              // 创建者ID
-	CreateTime        null.Int    `json:"create_time,omitempty"`          // 创建时间
-	UpdatedBy         null.Int    `json:"updated_by,omitempty"`           // 更新者ID
-	UpdateTime        null.Int    `json:"update_time,omitempty"`          // 更新时间
-	Status            null.String `json:"status,omitempty"`               // 状态
-	AllowedAttempts   null.Int    `json:"allowed_attempts,omitempty"`     //可作答次数，如果为0，则说明是无限次数
-	Duration          null.Int    `json:"duration,omitempty"`             //建议时长
-	LastUnSubmittedId null.Int    `json:"last_un_submitted_id,omitempty"` //最近一次的未提交的练习id
-	StartTime         null.Int    `json:"start_time,omitempty"`
-	EndTime           null.Int    `json:"end_time,omitempty"`
-}
-
-func getPracticeRecord(ctx context.Context, practiceSubmissionID, studentId int64) (PracticeRecord, error) {
-	var err error
-
-	selectSql := `SELECT 
-			p.type,
-			p.name,
-			COALESCE(tp.level, '00') AS difficulty,
-			ps.creator,
-			ps.create_time,
-			ps.updated_by,
-			ps.update_time,
-			ps.status,
-			p.allowed_attempts,
-			tp.suggested_duration,
-			ps.start_time,
-			ps.end_time
-		FROM assessuser.t_practice p
-		JOIN assessuser.t_practice_submissions ps ON p.id = ps.practice_id
-		LEFT JOIN assessuser.t_paper tp ON tp.id = p.paper_id
-		-- WHERE ps.id=$1 AND p.status = $2 AND ps.status = $3 AND ps.student_id = $4 
-		WHERE ps.id=$1 AND p.status = $2 AND ps.student_id = $3`
-
-	conn := cmn.GetPgxConn()
-	if conn == nil {
-		err = fmt.Errorf("获取数据库连接为空")
-		z.Error(err.Error())
-		return PracticeRecord{}, err
-	}
-
-	var practice PracticeRecord
-	var suggestDuration null.Int
-	err = conn.QueryRow(ctx, selectSql, practiceSubmissionID, "02", studentId).Scan(
-		&practice.Type,
-		&practice.Name,
-		&practice.Difficulty,
-		&practice.Creator,
-		&practice.CreateTime,
-		&practice.UpdatedBy,
-		&practice.UpdateTime,
-		&practice.Status,
-		&practice.AllowedAttempts,
-		&suggestDuration,
-		&practice.StartTime,
-		&practice.EndTime)
-	if err != nil {
-		z.Error("query row err", zap.Error(err))
-		return PracticeRecord{}, err
-	}
-
-	practice.Duration = suggestDuration
-
-	return practice, nil
 }
