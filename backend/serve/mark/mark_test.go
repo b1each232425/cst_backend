@@ -1525,6 +1525,21 @@ func TestSaveMarkingResults(t *testing.T) {
 			},
 		},
 		{
+			name:          "success-insert-practice",
+			requestMethod: "POST",
+			requestData: []*cmn.TMark{
+				{
+					TeacherID:            null.IntFrom(testedTeacherID),
+					PracticeID:           null.IntFrom(22),
+					PracticeSubmissionID: null.IntFrom(2404),
+					QuestionID:           null.IntFrom(427),
+					Score:                null.FloatFrom(3),
+					MarkDetails:          make(types.JSONText, 0),
+					Creator:              null.IntFrom(testedTeacherID),
+				},
+			},
+		},
+		{
 			name:          "success-insert with auto creator",
 			requestMethod: "POST",
 			requestData: []*cmn.TMark{

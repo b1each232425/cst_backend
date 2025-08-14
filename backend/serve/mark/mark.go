@@ -936,6 +936,10 @@ func HandleResultsSubmission(ctx context.Context) {
 		q.RespErr()
 		return
 	}
+
+	q.Err = nil
+	q.Resp()
+	return
 }
 
 func MarkObjectiveQuestionAnswers(ctx context.Context, cond QueryCondition) (err error) {
