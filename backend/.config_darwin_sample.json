@@ -91,5 +91,16 @@
   "timeSync":{
     "timeSyncInterval":5000,
     "poolInitialSize":100
+  },
+  "examSiteServerSync":{
+    "sysUser": "1622",
+    "accessToken": "cst4Ever",
+    "centralServerUrl": "",
+    "centralServerSSH": {
+      "user": "root",
+      "host": "localhost",
+      "port": 22
+    },
+    "timeout":  1800
   }
 }

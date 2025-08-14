@@ -20,6 +20,7 @@ import (
 
 	"github.com/spf13/viper"
 	"github.com/tidwall/gjson"
+	"github.com/valyala/fasthttp"
 
 	// "github.com/tidwall/sjson"
 
@@ -28,9 +29,14 @@ import (
 	"w2w.io/null"
 )
 
+const (
+	IP_ADDR_REGEXP = `^((25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])\.){3}(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])(:(\d{1,5}))?$`
+)
+
 var (
 	z                *zap.Logger
 	createPgpassOnce sync.Once
+	sessionCookie    string
 )
 
 type (
@@ -47,6 +53,11 @@ type examSiteInfo struct {
 	AdminName   null.String `json:"admin_name"`
 	RoomCount   null.Int    `json:"room_count"`
 	AccessToken null.String `json:"access_token"`
+}
+
+type syncInfo struct {
+	Path          string   `json:"path"`
+	TableFileList []string `json:"tableFileList"`
 }
 
 const (
@@ -74,6 +85,10 @@ func Enroll(author string) {
 		}
 		developer = &d
 	}
+
+	ctx := context.WithValue(context.Background(), cmn.QNearKey, &cmn.ServiceCtx{})
+
+	examSiteSyncInit(ctx)
 
 	_ = cmn.AddService(&cmn.ServeEndPoint{
 		Fn: examSite,
@@ -583,16 +598,9 @@ MethodSwitch:
 
 }
 
-func examSiteSync(ctx context.Context) {
+func examSiteSyncInit(ctx context.Context) {
 
 	q := cmn.GetCtxValue(ctx)
-
-	z.Info("---->" + cmn.FncName())
-
-	q.Msg.Msg = cmn.FncName()
-
-	// 考点服务器系统账号ID
-	userID := q.SysUser.ID.Int64
 
 	dbAddr := viper.GetString("dbms.postgresql.addr")
 
@@ -666,9 +674,223 @@ func examSiteSync(ctx context.Context) {
 	})
 
 	if q.Err != nil {
-		q.RespErr()
 		return
 	}
+
+	centralServerUrl := viper.GetString("examSiteServerSync.centralServerUrl")
+
+	if centralServerUrl == "" {
+		return
+	}
+
+	// 如果中心服务器地址不为空，则当前以考点服务器运行
+	// 进行服务器登录验证
+
+	cli := fasthttp.Client{}
+
+	reqBody := []byte(fmt.Sprintf(`{ "name": "%s", "cert": "%s" }`,
+		viper.GetString("examSiteServerSync.sysUser"),
+		viper.GetString("examSiteServerSync.accessToken"),
+	))
+
+	req := fasthttp.AcquireRequest()
+	defer fasthttp.ReleaseRequest(req)
+
+	resp := fasthttp.AcquireResponse()
+	defer fasthttp.ReleaseResponse(resp)
+
+	req.SetRequestURI(fmt.Sprintf("%s/api/login", centralServerUrl))
+	req.Header.SetMethod("POST")
+	req.Header.SetContentType("application/json")
+	req.SetBody(reqBody)
+
+	q.Err = cli.Do(req, resp)
+	if q.Err != nil {
+		z.Error(q.Err.Error())
+		return
+	}
+
+	q.Err = json.Unmarshal(resp.Body(), &q.Msg)
+	if q.Err != nil {
+		z.Error(q.Err.Error())
+		return
+	}
+
+	if q.Msg.Status != 0 {
+		q.Err = fmt.Errorf("%s", q.Msg.Msg)
+		z.Error(q.Err.Error())
+		return
+	}
+
+	// 只获取 "qNearSessions" 的cookie值
+	for _, c := range resp.Header.PeekAll("Set-Cookie") {
+		cookieStr := string(c)
+		if strings.HasPrefix(cookieStr, "qNearSessions=") {
+			sessionCookie = strings.TrimPrefix(cookieStr, "qNearSessions=")
+			break
+		}
+	}
+
+	// 发送同步通知
+
+	req.Reset()
+
+	req.Header.SetCookie("qNearSessions", sessionCookie)
+
+	req.SetRequestURI(fmt.Sprintf("%s/api/exam-site/sync?action=0", centralServerUrl))
+	req.Header.SetMethod("GET")
+
+	resp.Reset()
+
+	q.Err = cli.Do(req, resp)
+	if q.Err != nil {
+		z.Error(q.Err.Error())
+		return
+	}
+
+	q.Err = json.Unmarshal(resp.Body(), &q.Msg)
+	if q.Err != nil {
+		z.Error(q.Err.Error())
+		return
+	}
+
+	if q.Err != nil {
+		z.Error(q.Err.Error())
+		return
+	}
+
+	if q.Msg.Status != 0 {
+		q.Err = fmt.Errorf("%s", q.Msg.Msg)
+		z.Error(q.Err.Error())
+		return
+	}
+
+	var i syncInfo
+	q.Err = json.Unmarshal(q.Msg.Data, &i)
+	if q.Err != nil {
+		z.Error(q.Err.Error())
+		return
+	}
+
+	// rsync 拉取考点数据
+	
+	source := fmt.Sprintf("%s@%s:%s", 
+		viper.GetString("examSiteServerSync.centralServerSSH.user"),
+		viper.GetString("examSiteServerSync.centralServerSSH.host"),
+		i.Path,
+	)
+
+	b := make([]byte, 16)
+	_, q.Err = rand.Read(b)
+	if q.Err != nil || (cmn.InDebugMode && q.Tag["generateRandByteErr"] != nil) {
+		if q.Err == nil {
+			q.Err = q.Tag["generateRandByteErr"].(error)
+		}
+
+		z.Error(q.Err.Error())
+		return
+	}
+
+	dest := filepath.Join(os.Getenv("PWD"), fmt.Sprintf("data/tmp/exam-site-%s/%x", 
+		viper.GetString("examSiteServerSync.sysUser"), b))
+
+	cmd := fmt.Sprintf(`rsync -avz -e "ssh -p %d" --delete %s/* %s`, 
+		viper.GetInt("examSiteServerSync.centralServerSSH.port"), 
+		source, dest)
+
+	var o []byte
+	o, q.Err = exec.CommandContext(ctx, "bash", "-c", cmd).CombinedOutput()
+	if q.Err != nil || (cmn.InDebugMode && q.Tag["rsyncErr"] != nil) {
+		
+		if q.Err == nil {
+			q.Err = q.Tag["rsyncErr"].(error)
+			cmd = ""
+			o = []byte("")
+		}
+
+		q.Err = fmt.Errorf("COMMAND: %s\t ERR: %w\t DETAIL: %s", cmd, q.Err, string(o))
+
+		z.Error(q.Err.Error())
+		return
+	}
+
+	q.Err = generateImportScriptForSubServer(i.TableFileList, dest, "import_script.sql")
+	if q.Err != nil {
+		return
+	}
+
+	// create schema
+	dbConn := cmn.GetDbConn()
+
+	_, q.Err = dbConn.ExecContext(ctx, fmt.Sprintf(`CREATE SCHEMA IF NOT EXISTS %s`, dbUser))
+	if q.Err != nil {
+		z.Error(q.Err.Error())
+		return
+	}
+
+	// pg_restore
+	cmd = fmt.Sprintf(`PGPASSFILE=%s pg_restore --host "%s" --port "%d" --username "%s" -w --dbname "%s" --clean --if-exists --single-transaction --schema-only "%s"`,
+		pgpassFullPath,
+		dbAddr,
+		dbPort,
+		dbUser,
+		dbName,
+		filepath.Join(dest, "schema.sql"),
+	)
+
+	o, q.Err = exec.CommandContext(ctx, "bash", "-c", cmd).CombinedOutput()
+	if q.Err != nil || (cmn.InDebugMode && q.Tag["pgRestoreErr"] != nil) {
+
+		if q.Err == nil {
+			q.Err = q.Tag["pgRestoreErr"].(error)
+			cmd = ""
+			o = []byte("")
+		}
+
+		q.Err = fmt.Errorf("COMMAND: %s\t ERR: %w\t DETAIL: %s", cmd, q.Err, string(o))
+		z.Error(q.Err.Error())
+		return
+	}
+
+	cmd = fmt.Sprintf("PGPASSFILE=%s psql -h %s -p %d -U %s -d %s -f %s",
+		pgpassFullPath,
+		dbAddr,
+		dbPort,
+		dbUser,
+		dbName,
+		filepath.Join(dest, "import_script.sql"),
+	)
+
+	o, q.Err = exec.CommandContext(ctx, "bash", "-c", cmd).CombinedOutput()
+	if q.Err != nil {
+
+		q.Err = fmt.Errorf("COMMAND: %s\t ERR: %w\t DETAIL: %s", cmd, q.Err, string(o))
+		z.Error(q.Err.Error())
+		return
+	}
+
+}
+
+func examSiteSync(ctx context.Context) {
+
+	q := cmn.GetCtxValue(ctx)
+
+	z.Info("---->" + cmn.FncName())
+
+	q.Msg.Msg = cmn.FncName()
+
+	// 考点服务器系统账号ID
+	userID := q.SysUser.ID.Int64
+
+	dbAddr := viper.GetString("dbms.postgresql.addr")
+
+	dbPort := viper.GetInt("dbms.postgresql.port")
+
+	dbName := viper.GetString("dbms.postgresql.db")
+
+	dbUser := viper.GetString("dbms.postgresql.user")
+
+	pgpassFullPath := filepath.Join(os.Getenv("HOME"), ".pgpass")
 
 MethodSwitch:
 	switch q.R.Method {
@@ -685,7 +907,7 @@ MethodSwitch:
 			b := make([]byte, 16)
 
 			_, q.Err = rand.Read(b)
-			if q.Err != nil || (cmn.InDebugMode && q.Tag["generateRandByteErr"] != nil){
+			if q.Err != nil || (cmn.InDebugMode && q.Tag["generateRandByteErr"] != nil) {
 
 				if q.Err == nil {
 					q.Err = q.Tag["generateRandByteErr"].(error)
@@ -695,7 +917,7 @@ MethodSwitch:
 				break MethodSwitch
 			}
 
-			folderFullPath := filepath.Join(os.Getenv("PWD"), fmt.Sprintf("/data/tmp/%x", b))
+			folderFullPath := filepath.Join(os.Getenv("PWD"), fmt.Sprintf("/data/tmp/exam-site-%d/%x", userID, b))
 
 			q.Err = os.MkdirAll(folderFullPath, 0755)
 			if q.Err != nil || (cmn.InDebugMode && q.Tag["mkdirAllErr"] != nil) {
@@ -770,7 +992,7 @@ MethodSwitch:
 				fileName = q.Tag["writeExportScriptFileErr"].(error).Error()
 			}
 
-			tableFileList, q.Err = generateExportScriptsCentralSide(userID, folderFullPath, fileName)
+			tableFileList, q.Err = generateExportScriptForCentralServer(userID, folderFullPath, fileName)
 			if q.Err != nil {
 				break MethodSwitch
 			}
@@ -797,11 +1019,8 @@ MethodSwitch:
 				break MethodSwitch
 			}
 
-			d := struct {
-				Path     string   `json:"path"`
-				TableFileList []string `json:"tableFileList"`
-			}{
-				Path:     folderFullPath,
+			d := syncInfo{
+				Path:          folderFullPath,
 				TableFileList: tableFileList,
 			}
 
@@ -817,7 +1036,7 @@ MethodSwitch:
 			}
 
 		case "1":
-			// 同步考点数据
+			// TODO: 同步考点数据
 
 		default:
 			q.Err = fmt.Errorf("不支持的同步操作: %s", action)

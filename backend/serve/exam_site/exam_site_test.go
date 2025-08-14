@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"os"
@@ -15,10 +17,16 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gorilla/sessions"
+	"github.com/spf13/viper"
 	"github.com/tidwall/gjson"
 
 	"w2w.io/cmn"
 	"w2w.io/null"
+)
+
+var (
+	store = sessions.NewCookieStore([]byte("secret-key"))
 )
 
 func TestMain(m *testing.M) {
@@ -66,7 +74,7 @@ func TestExamSite(t *testing.T) {
 		errWanted    string
 		setup        func()
 		cleanup      func()
-		check func(q *cmn.ServiceCtx, passExpected bool)
+		check        func(q *cmn.ServiceCtx, passExpected bool)
 	}{
 
 		{
@@ -2972,6 +2980,168 @@ func TestExamSiteList(t *testing.T) {
 
 }
 
+func TestExamSiteSyncInit(t *testing.T) {
+
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		
+		var respBody cmn.ReplyProto
+
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Errorf("failed to read request body: %v", err)
+			return
+		}
+
+		q := &cmn.ServiceCtx{
+			SysUser: &cmn.TUser{
+				ID: null.IntFrom(1622),
+			},
+			R: r,
+			W: w,
+			Msg: &cmn.ReplyProto{},
+		}
+
+		ctx := context.WithValue(context.Background(), cmn.QNearKey, q)
+
+		switch r.URL.Path {
+
+		case "/api/login":
+
+			session, err := store.Get(r, "qNearSessions")
+			if err != nil {
+				t.Errorf("%s",err.Error())
+				return
+			}
+
+			session.Values["loginType"] = "upLogin"
+			session.Values["ID"] = 1000
+			session.Values["Account"] = "test_account"
+			session.Values["Role"] = "test_role"
+			session.Values["Authenticated"] = true
+			err = session.Save(r, w)
+			if err != nil {
+				t.Errorf("failed to save session: %v", err)
+				return
+			}
+
+			respBody = cmn.ReplyProto{
+				Status: 0,
+				Data:   body,
+			}
+
+		case "/api/exam-site/sync":
+			
+			examSiteSync(ctx)
+			return
+
+		default:
+			t.Errorf("unexpected request path: %s", r.URL.Path)
+			respBody = cmn.ReplyProto{
+				Status: -1,
+				Msg:   "unexpected request path: " + r.URL.Path,
+			}
+		}
+
+		b, err := json.Marshal(respBody)
+		if err != nil {
+			t.Errorf("failed to marshal response body: %v", err)
+			return
+		}
+
+		http.SetCookie(w, &http.Cookie{
+			Name:     "debug",
+			Value:    "1",
+			Expires:  time.Now().Add(60 * 2 * time.Second),
+			SameSite: http.SameSiteLaxMode,
+		})
+		
+		w.WriteHeader(http.StatusOK)
+		w.Write(b)
+
+		
+	}))
+
+	viper.Set("examSiteServerSync.centralServerUrl", server.URL)
+
+	defer func(){
+		server.Close()
+		
+		err := os.RemoveAll(filepath.Join(os.Getenv("PWD"), "data/tmp"))
+		if err != nil {
+			t.Errorf("failed to remove test directory: %v", err)
+		}
+
+	}()
+
+	tests := []struct {
+		name         string
+		q            *cmn.ServiceCtx
+		passExpected bool
+		errWanted    string
+		setup        func()
+		cleanup      func()
+	}{
+		{
+			name:         "同步初始化成功",
+			q:            &cmn.ServiceCtx{},
+			passExpected: true,
+			errWanted:    "",
+			setup: func() {
+
+				// 重置 createPgpassOnce
+				createPgpassOnce = sync.Once{}
+
+			},
+			cleanup: func() {
+
+			},
+		},
+	}
+
+	for _, tt := range tests {
+
+		t.Run(tt.name, func(t *testing.T) {
+
+			if tt.setup != nil {
+				tt.setup()
+			}
+
+			defer func() {
+				if tt.cleanup != nil {
+					tt.cleanup()
+				}
+			}()
+
+			ctx := context.WithValue(context.Background(), cmn.QNearKey, tt.q)
+
+			examSiteSyncInit(ctx)
+
+			if tt.q.Err != nil || !tt.passExpected {
+
+				if tt.q.Err == nil {
+					tt.q.Err = fmt.Errorf(tt.q.Msg.Msg)
+				}
+
+				if !tt.passExpected && tt.q.Err.Error() != tt.errWanted {
+					t.Errorf("expected error: %s, got: %s", tt.errWanted, tt.q.Err.Error())
+					return
+				}
+
+				if tt.passExpected {
+					t.Errorf("expected no error, got: %s", tt.q.Err.Error())
+					return
+				}
+
+				return
+			}
+
+		})
+
+	}
+
+}
+
 func TestExamSiteSync(t *testing.T) {
 
 	nowTime := time.Now().Unix()
@@ -3043,77 +3213,6 @@ func TestExamSiteSync(t *testing.T) {
 				createPgpassOnce = sync.Once{}
 			},
 			cleanup: func() {
-			},
-		},
-		{
-			name: "考点同步失败-强制创建.pgpass文件失败",
-			q: &cmn.ServiceCtx{
-				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-site/sync?action=%s`, url.QueryEscape(`0`)), nil),
-				W: httptest.NewRecorder(),
-				Msg: &cmn.ReplyProto{
-					API:    "/api/exam-site/sync",
-					Method: "GET",
-				},
-				BeginTime: time.Now(),
-				SysUser: &cmn.TUser{
-					ID:   null.NewInt(2025, true),
-					Role: null.NewInt(int64(cmn.CDomainAssessExamSite), true),
-				},
-				Domains: []cmn.TDomain{
-					{
-						ID: null.IntFrom(int64(cmn.CDomainAssessExamSite)),
-					},
-				},
-				RedisClient: cmn.GetRedisConn(),
-				Tag: map[string]interface{}{
-					"createPgpassErr": fmt.Errorf("forced create .pgpass file err"),
-				},
-			},
-			passExpected: false,
-			errWanted:    "forced create .pgpass file err",
-			setup: func() {
-
-				// 重置 createPgpassOnce
-				createPgpassOnce = sync.Once{}
-
-				dbConn := cmn.GetDbConn()
-
-				_, err := dbConn.Exec(fmt.Sprintf(`INSERT INTO t_exam_site (id, name,creator,server_host,address,admin,sys_user) VALUES 
-					(%d,'test-site-%d', 1622, 'localhost','address','1622','2025')`, nowTime, nowTime))
-				if err != nil {
-					t.Fatalf("failed to insert test data: %v", err)
-					return
-				}
-
-			},
-			cleanup: func() {
-
-				dbConn := cmn.GetDbConn()
-
-				r, err := dbConn.Exec(fmt.Sprintf(`DELETE FROM t_exam_site WHERE name = 'test-site-%d'`, nowTime))
-				if err != nil {
-					t.Fatalf("failed to delete test data: %v", err)
-					return
-				}
-
-				c, err := r.RowsAffected()
-				if err != nil {
-					t.Fatalf("failed to get affected rows: %v", err)
-					return
-				}
-
-				t.Logf("Have already cleaned up %d rows from t_exam_site", c)
-
-				folderFullPath := path.Join(os.Getenv("PWD"), "/data/tmp/")
-
-				o, err := exec.Command("rm", "-rvf", folderFullPath).CombinedOutput()
-				if err != nil {
-					t.Fatalf("failed to remove folder: %v, output: %s", err, string(o))
-					return
-				}
-
-				t.Logf("Successfully cleaned up folder: %s output: %x", folderFullPath, o)
-
 			},
 		},
 
@@ -3218,219 +3317,6 @@ func TestExamSiteSync(t *testing.T) {
 			},
 			passExpected: false,
 			errWanted:    "invalid sysUser: -2025",
-			setup: func() {
-
-				// 重置 createPgpassOnce
-				createPgpassOnce = sync.Once{}
-
-				dbConn := cmn.GetDbConn()
-
-				_, err := dbConn.Exec(fmt.Sprintf(`INSERT INTO t_exam_site (id, name,creator,server_host,address,admin,sys_user) VALUES 
-					(%d,'test-site-%d', 1622, 'localhost','address','1622','2025')`, nowTime, nowTime))
-				if err != nil {
-					t.Fatalf("failed to insert test data: %v", err)
-					return
-				}
-
-			},
-			cleanup: func() {
-
-				dbConn := cmn.GetDbConn()
-
-				r, err := dbConn.Exec(fmt.Sprintf(`DELETE FROM t_exam_site WHERE name = 'test-site-%d'`, nowTime))
-				if err != nil {
-					t.Fatalf("failed to delete test data: %v", err)
-					return
-				}
-
-				c, err := r.RowsAffected()
-				if err != nil {
-					t.Fatalf("failed to get affected rows: %v", err)
-					return
-				}
-
-				t.Logf("Have already cleaned up %d rows from t_exam_site", c)
-
-				folderFullPath := path.Join(os.Getenv("PWD"), "/data/tmp/")
-
-				o, err := exec.Command("rm", "-rvf", folderFullPath).CombinedOutput()
-				if err != nil {
-					t.Fatalf("failed to remove folder: %v, output: %s", err, string(o))
-					return
-				}
-
-				t.Logf("Successfully cleaned up folder: %s output: %x", folderFullPath, o)
-
-			},
-		},
-		{
-			name: "准备数据失败-强制写入.pgpass文件失败",
-			q: &cmn.ServiceCtx{
-				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-site/sync?action=%s`, url.QueryEscape(`0`)), nil),
-				W: httptest.NewRecorder(),
-				Msg: &cmn.ReplyProto{
-					API:    "/api/exam-site/sync",
-					Method: "GET",
-				},
-				BeginTime: time.Now(),
-				SysUser: &cmn.TUser{
-					ID:   null.NewInt(2025, true),
-					Role: null.NewInt(int64(cmn.CDomainAssessExamSite), true),
-				},
-				Domains: []cmn.TDomain{
-					{
-						ID: null.IntFrom(int64(cmn.CDomainAssessExamSite)),
-					},
-				},
-				RedisClient: cmn.GetRedisConn(),
-				Tag: map[string]interface{}{
-					"writePgpassErr": fmt.Errorf("forced write .pgpass file err"),
-				},
-			},
-			passExpected: false,
-			errWanted:    "forced write .pgpass file err",
-			setup: func() {
-
-				// 重置 createPgpassOnce
-				createPgpassOnce = sync.Once{}
-
-				dbConn := cmn.GetDbConn()
-
-				_, err := dbConn.Exec(fmt.Sprintf(`INSERT INTO t_exam_site (id, name,creator,server_host,address,admin,sys_user) VALUES 
-					(%d,'test-site-%d', 1622, 'localhost','address','1622','2025')`, nowTime, nowTime))
-				if err != nil {
-					t.Fatalf("failed to insert test data: %v", err)
-					return
-				}
-
-			},
-			cleanup: func() {
-
-				dbConn := cmn.GetDbConn()
-
-				r, err := dbConn.Exec(fmt.Sprintf(`DELETE FROM t_exam_site WHERE name = 'test-site-%d'`, nowTime))
-				if err != nil {
-					t.Fatalf("failed to delete test data: %v", err)
-					return
-				}
-
-				c, err := r.RowsAffected()
-				if err != nil {
-					t.Fatalf("failed to get affected rows: %v", err)
-					return
-				}
-
-				t.Logf("Have already cleaned up %d rows from t_exam_site", c)
-
-				folderFullPath := path.Join(os.Getenv("PWD"), "/data/tmp/")
-
-				o, err := exec.Command("rm", "-rvf", folderFullPath).CombinedOutput()
-				if err != nil {
-					t.Fatalf("failed to remove folder: %v, output: %s", err, string(o))
-					return
-				}
-
-				t.Logf("Successfully cleaned up folder: %s output: %x", folderFullPath, o)
-
-			},
-		},
-		{
-			name: "准备数据失败-强制更改.pgpass权限失败",
-			q: &cmn.ServiceCtx{
-				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-site/sync?action=%s`, url.QueryEscape(`0`)), nil),
-				W: httptest.NewRecorder(),
-				Msg: &cmn.ReplyProto{
-					API:    "/api/exam-site/sync",
-					Method: "GET",
-				},
-				BeginTime: time.Now(),
-				SysUser: &cmn.TUser{
-					ID:   null.NewInt(2025, true),
-					Role: null.NewInt(int64(cmn.CDomainAssessExamSite), true),
-				},
-				Domains: []cmn.TDomain{
-					{
-						ID: null.IntFrom(int64(cmn.CDomainAssessExamSite)),
-					},
-				},
-				RedisClient: cmn.GetRedisConn(),
-				Tag: map[string]interface{}{
-					"chmodPgpassErr": fmt.Errorf("forced chmod .pgpass file err"),
-				},
-			},
-			passExpected: false,
-			errWanted:    "forced chmod .pgpass file err",
-			setup: func() {
-
-				// 重置 createPgpassOnce
-				createPgpassOnce = sync.Once{}
-
-				dbConn := cmn.GetDbConn()
-
-				_, err := dbConn.Exec(fmt.Sprintf(`INSERT INTO t_exam_site (id, name,creator,server_host,address,admin,sys_user) VALUES 
-					(%d,'test-site-%d', 1622, 'localhost','address','1622','2025')`, nowTime, nowTime))
-				if err != nil {
-					t.Fatalf("failed to insert test data: %v", err)
-					return
-				}
-
-			},
-			cleanup: func() {
-
-				dbConn := cmn.GetDbConn()
-
-				r, err := dbConn.Exec(fmt.Sprintf(`DELETE FROM t_exam_site WHERE name = 'test-site-%d'`, nowTime))
-				if err != nil {
-					t.Fatalf("failed to delete test data: %v", err)
-					return
-				}
-
-				c, err := r.RowsAffected()
-				if err != nil {
-					t.Fatalf("failed to get affected rows: %v", err)
-					return
-				}
-
-				t.Logf("Have already cleaned up %d rows from t_exam_site", c)
-
-				folderFullPath := path.Join(os.Getenv("PWD"), "/data/tmp/")
-
-				o, err := exec.Command("rm", "-rvf", folderFullPath).CombinedOutput()
-				if err != nil {
-					t.Fatalf("failed to remove folder: %v, output: %s", err, string(o))
-					return
-				}
-
-				t.Logf("Successfully cleaned up folder: %s output: %x", folderFullPath, o)
-
-			},
-		},
-		{
-			name: "准备数据失败-强制关闭.pgpass文件失败",
-			q: &cmn.ServiceCtx{
-				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-site/sync?action=%s`, url.QueryEscape(`0`)), nil),
-				W: httptest.NewRecorder(),
-				Msg: &cmn.ReplyProto{
-					API:    "/api/exam-site/sync",
-					Method: "GET",
-				},
-				BeginTime: time.Now(),
-				SysUser: &cmn.TUser{
-					ID:   null.NewInt(2025, true),
-					Role: null.NewInt(int64(cmn.CDomainAssessExamSite), true),
-				},
-				Domains: []cmn.TDomain{
-					{
-						ID: null.IntFrom(int64(cmn.CDomainAssessExamSite)),
-					},
-				},
-				RedisClient: cmn.GetRedisConn(),
-				Tag: map[string]interface{}{
-					"closePgpassErr": fmt.Errorf("forced close .pgpass file err"),
-				},
-			},
-			passExpected: false,
-			errWanted:    "forced close .pgpass file err",
 			setup: func() {
 
 				// 重置 createPgpassOnce
@@ -3852,7 +3738,7 @@ func TestExamSiteSync(t *testing.T) {
 				},
 				RedisClient: cmn.GetRedisConn(),
 				Tag: map[string]interface{}{
-					"jsonMarshalErr": fmt.Errorf("forced json marshal err"),
+					"jsonMarshalErr":  fmt.Errorf("forced json marshal err"),
 					"removeTmpDirErr": fmt.Errorf("forced remove tmp dir err"),
 				},
 			},
@@ -3924,11 +3810,11 @@ func TestExamSiteSync(t *testing.T) {
 				},
 				RedisClient: cmn.GetRedisConn(),
 				Tag: map[string]interface{}{
-					"createExportScriptFileErr": fmt.Errorf("force-create-export-script-file-err"),
+					"createExportScriptFileErr": fmt.Errorf("force-create-export-script-file-err-^a1^2*zc$32h@g4"),
 				},
 			},
 			passExpected: false,
-			errWanted:    "force-create-export-script-file-err",
+			errWanted:    "force-create-export-script-file-err-^a1^2*zc$32h@g4",
 			setup: func() {
 
 				// 重置 createPgpassOnce
@@ -3995,11 +3881,11 @@ func TestExamSiteSync(t *testing.T) {
 				},
 				RedisClient: cmn.GetRedisConn(),
 				Tag: map[string]interface{}{
-					"writeExportScriptFileErr": fmt.Errorf("force-write-export-script-file-err"),
+					"writeExportScriptFileErr": fmt.Errorf("force-write-export-script-file-err-^a1^2*zc$32h@g4"),
 				},
 			},
 			passExpected: false,
-			errWanted:    "force-write-export-script-file-err",
+			errWanted:    "force-write-export-script-file-err-^a1^2*zc$32h@g4",
 			setup: func() {
 
 				// 重置 createPgpassOnce
@@ -4093,11 +3979,8 @@ func TestExamSiteSync(t *testing.T) {
 				return
 			}
 
-			d := struct {
-				Path     string   `json:"path"`
-				TableFileList []string `json:"tableFileList"`
-			}{
-				Path:     "",
+			d := syncInfo{
+				Path:          "",
 				TableFileList: []string{},
 			}
 
