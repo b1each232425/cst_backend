@@ -24,7 +24,7 @@ var serveCmd = &cobra.Command{
 func serve(cmd *cobra.Command, args []string) {
 	go service.WebServe(cmd, args)
 	go sckserve.SocketServe(cmd, args)
-	exam_service.ExamMaintainService()
+	go exam_service.ExamMaintainService()
 
 	z.Info("serve gate started")
 	_ = <-cmn.GetTerminateSignal()
