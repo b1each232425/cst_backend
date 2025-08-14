@@ -1437,35 +1437,35 @@ func getScoreExam(ctx context.Context, tx pgx.Tx, studentID, examSessionID int64
 	result["examSessionInfo"] = examSessionInfoMap
 
 	// 第六步：获取考试答题信息
-	var AllAnswers []cmn.TStudentAnswers
-	selectSql := `SELECT id, answer FROM t_student_answers WHERE examinee_id = $1`
-	//根据考生ID去查询此时的数据
-	rows, err = conn.Query(ctx, selectSql, eid)
+	ansNumSql := `SELECT COUNT(*) FROM t_student_answers WHERE examinee_id = $1`
+	var answerNum int
+	err = conn.QueryRow(ctx, ansNumSql, eid).Scan(&answerNum)
 	if err != nil {
-		z.Error("student_exam_answer/service SaveStudentExamAnswer", zap.Error(err))
-		return nil, err
-	}
-	defer rows.Close()
-	// 一个答案算一次,插入到这个结构体数组中
-	for rows.Next() {
-		var r cmn.TStudentAnswers
-		err = rows.Scan(&r.ID, &r.Type, &r.QuestionID, &r.Answer, &r.AnswerScore, &r.Addi, &r.Status)
-		if err != nil {
-			z.Error("student_exam_answer/service SaveStudentExamAnswer getAnswerByExamineeID error", zap.Error(err))
-			return nil, err
-		}
-		AllAnswers = append(AllAnswers, r)
-	}
-
-	examInfoMap["AnswerNum"] = len(AllAnswers)
-
-	answerTime, err := getExamineeAnswerTime(ctx, eid)
-	if err != nil {
-		err = fmt.Errorf("getExamineeAnswerTime 失败:%w", err)
+		err = fmt.Errorf("学生ID不能为空(studentID=%v)", studentID)
 		z.Error(err.Error())
 		return result, err
-
 	}
+	examInfoMap["AnswerNum"] = answerNum
+
+	ansTimeSql := `SELECT
+	start_time,end_time
+	FROM t_examinee
+	WHERE id = $1
+	`
+
+	var start, end null.Int
+	err = conn.QueryRow(ctx, ansTimeSql, eid).Scan(&start, &end)
+	if err != nil {
+		err = fmt.Errorf("查询考试场次时间失败: %w", err)
+		z.Error(err.Error())
+		return result, err
+	}
+	if !start.Valid || !end.Valid {
+		err = fmt.Errorf("考试场次时间为空")
+		z.Warn(err.Error())
+		return result, err
+	}
+	answerTime := end.Int64 - start.Int64
 	examInfoMap["AnswerTime"] = answerTime
 
 	result["examInfo"] = examInfoMap
@@ -1554,39 +1554,39 @@ func getScoreExam(ctx context.Context, tx pgx.Tx, studentID, examSessionID int64
 // 	return AllAnswers, nil
 // }
 
-func getExamineeAnswerTime(ctx context.Context, examineeID int64) (int64, error) {
-	var err error
+// func getExamineeAnswerTime(ctx context.Context, examineeID int64) (int64, error) {
+// 	var err error
 
-	if examineeID <= 0 {
-		z.Warn("invalid input params examineeID")
-		return -1, errors.New("invalid input params examineeID")
-	}
-	selectSql := `SELECT
-	start_time,end_time
-	FROM t_examinee
-	WHERE id = $1
-	`
-	conn := cmn.GetPgxConn()
-	if conn == nil {
-		err = fmt.Errorf("获取数据库连接为空")
-		z.Error(err.Error())
-		return -1, err
-	}
+// 	if examineeID <= 0 {
+// 		z.Warn("invalid input params examineeID")
+// 		return -1, errors.New("invalid input params examineeID")
+// 	}
+// 	// selectSql := `SELECT
+// 	// start_time,end_time
+// 	// FROM t_examinee
+// 	// WHERE id = $1
+// 	// `
+// 	// conn := cmn.GetPgxConn()
+// 	// if conn == nil {
+// 	// 	err = fmt.Errorf("获取数据库连接为空")
+// 	// 	z.Error(err.Error())
+// 	// 	return -1, err
+// 	// }
 
-	var start, end null.Int
-	err = conn.QueryRow(ctx, selectSql, examineeID).Scan(&start, &end)
-	if err != nil {
-		z.Sugar().Errorf("query examinee answer time failed:%v", err)
-		return -1, fmt.Errorf("query examinee answer time failed:%v", err)
-	}
-	if !start.Valid || !end.Valid {
-		z.Warn("student answer time is NULL ;data is invalid")
-		return 0, nil
-	}
-	answerTime := end.Int64 - start.Int64
-	return answerTime, nil
+// 	// var start, end null.Int
+// 	// err = conn.QueryRow(ctx, selectSql, examineeID).Scan(&start, &end)
+// 	// if err != nil {
+// 	// 	z.Sugar().Errorf("query examinee answer time failed:%v", err)
+// 	// 	return -1, fmt.Errorf("query examinee answer time failed:%v", err)
+// 	// }
+// 	// if !start.Valid || !end.Valid {
+// 	// 	z.Warn("student answer time is NULL ;data is invalid")
+// 	// 	return 0, nil
+// 	// }
+// 	// answerTime := end.Int64 - start.Int64
+// 	return answerTime, nil
 
-}
+// }
 
 // 根据考试ID与学生ID，获取本次考试的很多信息了；包括试卷id，考生id，场次顺序等等；并且这些都应该是已批改的状态;这里面包含的信息，取出其中一个
 // func getExamSessionInfo(ctx context.Context, examSessionID int64, studentID int64) ([]ExamSessionReflect, error) {
