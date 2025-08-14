@@ -1539,6 +1539,19 @@ func TestSaveMarkingResults(t *testing.T) {
 			},
 		},
 		{
+			name:          "success-insert with teacher id in ctx",
+			requestMethod: "POST",
+			requestData: []*cmn.TMark{
+				{
+					ExamSessionID: null.IntFrom(103),
+					ExamineeID:    null.IntFrom(2203),
+					QuestionID:    null.IntFrom(10001),
+					Score:         null.FloatFrom(3),
+					MarkDetails:   make(types.JSONText, 0),
+				},
+			},
+		},
+		{
 			name:           "method not post",
 			requestMethod:  "GET",
 			expectedErrStr: "please call /api/mark/marking-results with http post method",
@@ -1567,21 +1580,6 @@ func TestSaveMarkingResults(t *testing.T) {
 			isInvalidReqProto: true,
 			bodyStr:           "{",
 			expectedErrStr:    "failed to unmarshal request body",
-		},
-		{
-			name:          "invalid insert(no teacher id)",
-			requestMethod: "POST",
-			requestData: []*cmn.TMark{
-				{
-					ExamSessionID: null.IntFrom(103),
-					ExamineeID:    null.IntFrom(2203),
-					QuestionID:    null.IntFrom(10001),
-					Score:         null.FloatFrom(3),
-					MarkDetails:   make(types.JSONText, 0),
-					Creator:       null.IntFrom(testedTeacherID),
-				},
-			},
-			expectedErrStr: "teacherID is required",
 		},
 		{
 			name:          "invalid insert(no question id)",
