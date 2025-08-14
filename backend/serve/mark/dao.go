@@ -1071,7 +1071,7 @@ func InsertOrUpdateMarkingResults(ctx context.Context, markingResults []*cmn.TMa
 						INSERT INTO t_mark 
 							(examinee_id, question_id, teacher_id, exam_session_id, mark_details, score, create_time, creator, status, updated_by, update_time, practice_submission_id, practice_id)
 						VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-						ON CONFLICT (examinee_id, question_id, teacher_id, exam_session_id, practice_id, practice_submission_id) 
+						ON CONFLICT %s -- 约束条件 
 						DO UPDATE SET
 							mark_details = EXCLUDED.mark_details,
 							score = EXCLUDED.score,
@@ -1079,6 +1079,10 @@ func InsertOrUpdateMarkingResults(ctx context.Context, markingResults []*cmn.TMa
 							updated_by = EXCLUDED.updated_by
 						RETURNING id
 						`
+
+	upsertExamMarkQuery := fmt.Sprintf(upsertMarkQuery, `(examinee_id, question_id, teacher_id, exam_session_id)`)
+	upsertPracticeMarkQuery := fmt.Sprintf(upsertMarkQuery, `(question_id, teacher_id, practice_id, practice_submission_id)`)
+
 	pgxConn := cmn.GetPgxConn()
 
 	tx, err := pgxConn.Begin(ctx)
@@ -1132,9 +1136,16 @@ func InsertOrUpdateMarkingResults(ctx context.Context, markingResults []*cmn.TMa
 			return
 		}
 
+		var query string
+		if validExam {
+			query = upsertExamMarkQuery
+		} else {
+			query = upsertPracticeMarkQuery
+		}
+
 		var id null.Int
 
-		err = tx.QueryRow(ctx, upsertMarkQuery, mark.ExamineeID, mark.QuestionID, mark.TeacherID, mark.ExamSessionID, mark.MarkDetails, mark.Score, time.Now().UnixMilli(), mark.Creator, mark.Status, mark.UpdatedBy, mark.UpdateTime, mark.PracticeSubmissionID, mark.PracticeID).Scan(&id)
+		err = tx.QueryRow(ctx, query, mark.ExamineeID, mark.QuestionID, mark.TeacherID, mark.ExamSessionID, mark.MarkDetails, mark.Score, time.Now().UnixMilli(), mark.Creator, mark.Status, mark.UpdatedBy, mark.UpdateTime, mark.PracticeSubmissionID, mark.PracticeID).Scan(&id)
 		if err != nil || forceErr == "tx.QueryRow" {
 			err = fmt.Errorf("exec upsertMark query error: %v", err)
 			z.Error(err.Error())
