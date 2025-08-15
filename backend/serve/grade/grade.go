@@ -928,12 +928,20 @@ func gradeSH(ctx context.Context) {
 		}
 
 		var tx pgx.Tx
-		tx, err = conn.Begin(context.Background())
+		tx, err = conn.Begin(dmlCtx)
 		if err != nil || forceErr == "conn begin tx fail" {
 			err = fmt.Errorf("开启事务失败: %w", err)
 			z.Error(err.Error())
 			return
 		}
+
+		defer func() {
+			if err != nil {
+				tx.Rollback(ctx)
+			} else {
+				tx.Commit(ctx)
+			}
+		}()
 
 		if category = queryParams.Get("category"); category == "" {
 			q.Err = fmt.Errorf("不支持的类型: %s", category)
