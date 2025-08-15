@@ -773,7 +773,6 @@ func examSiteSyncInit(ctx context.Context) {
 	}
 
 	// rsync 拉取考点数据
-	
 	source := fmt.Sprintf("%s@%s:%s", 
 		viper.GetString("examSiteServerSync.centralServerSSH.user"),
 		viper.GetString("examSiteServerSync.centralServerSSH.host"),
@@ -852,6 +851,7 @@ func examSiteSyncInit(ctx context.Context) {
 		return
 	}
 
+	// 执行导入脚本
 	cmd = fmt.Sprintf("PGPASSFILE=%s psql -h %s -p %d -U %s -d %s -f %s",
 		pgpassFullPath,
 		dbAddr,

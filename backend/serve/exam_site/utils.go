@@ -16,7 +16,7 @@ type copyInfo struct {
 }
 
 
-// 生成导出脚本文件(中心服务器方调用)
+// generateExportScriptForCentralServer 生成导出脚本文件(中心服务器方调用)
 // sysUser 为考点服务器系统账号ID
 // destDir 为数据保存目录
 // fileName 为脚本文件名
@@ -227,7 +227,7 @@ GROUP BY
 	return
 }
 
-// 生成导入脚本文件(考点服务器方调用)
+// generateImportScriptForSubServer 生成导入脚本文件(考点服务器方调用)
 func generateImportScriptForSubServer(tableFileList []string, destDir string, fileName string) (err error) {
 
 	f, err := os.Create(filepath.Join(destDir, fileName))
@@ -240,10 +240,9 @@ func generateImportScriptForSubServer(tableFileList []string, destDir string, fi
 
 	for _, fName := range tableFileList {
 
-		// FIXME: 处理 t_{name_part1}_{name_part2}_{编号} 形式的文件
-		// fName 格式为 t_{name}_{编号}
+		// fName 格式为 t_{name_part1}_{name_part2}_{编号}
 		// 将fName转为 t_{name} 表格名称格式
-		re := regexp.MustCompile(`^(t_[a-zA-Z0-9]+)_\d+\.csv$`)
+		re := regexp.MustCompile(`^(t_[a-zA-Z0-9_]+)_\d+\.csv$`)
 		matches := re.FindStringSubmatch(fName)
 		tableName := fName
 		if len(matches) == 2 {
