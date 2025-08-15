@@ -184,7 +184,6 @@ func gradeListExam(ctx context.Context, userID int64, req *GradeListReq) ([]Grad
 		}
 		result = append(result, grade)
 	}
-	err = rows.Err()
 
 	return result, rowCount, nil
 }
@@ -277,8 +276,7 @@ func gradeListPractice(ctx context.Context, userID int64, req *GradeListReq) ([]
 	SELECT practice_id, practice_name, total_score, averge_score, actual_completer, pass_student
 	FROM v_z_grade_practice_statistics p 
 	%s
-	-- GROUP BY p.practice_id, p.practice_name, p.total_score, p.averge_score, p.actual_completer, p.pass_student
-	GROUP BY practice_id
+	GROUP BY p.practice_id, p.practice_name, p.total_score, p.averge_score, p.actual_completer, p.pass_student
 		`, whereClause)
 
 	conn := cmn.GetPgxConn()
@@ -383,7 +381,7 @@ func setExamGradeSubmitted(ctx context.Context, userID int64, examIDs []int) (in
 	}
 
 	var tx pgx.Tx
-	tx, err = conn.Begin(context.Background())
+	tx, err = conn.Begin(ctx)
 	if err != nil || forceErr == "conn begin tx fail" {
 		err = fmt.Errorf("开启事务失败: %w", err)
 		z.Error(err.Error())
@@ -395,7 +393,7 @@ func setExamGradeSubmitted(ctx context.Context, userID int64, examIDs []int) (in
 	defer func() {
 		// 事务回滚
 		if !txSuccess || forceErr == "txSuccess must fail" {
-			rollbackErr := tx.Rollback(context.Background())
+			rollbackErr := tx.Rollback(ctx)
 			if rollbackErr != nil {
 				err = fmt.Errorf("提交考试成绩失败: 回滚事务失败: %w", rollbackErr)
 				z.Error(err.Error())
@@ -403,7 +401,7 @@ func setExamGradeSubmitted(ctx context.Context, userID int64, examIDs []int) (in
 			return
 		}
 		// 提交事务
-		err = tx.Commit(context.Background())
+		err = tx.Commit(ctx)
 		if err != nil || forceErr == "tx commit fail" {
 			err = fmt.Errorf("提交考试成绩失败: %w", err)
 			z.Error(err.Error())
@@ -422,7 +420,7 @@ func setExamGradeSubmitted(ctx context.Context, userID int64, examIDs []int) (in
 			ORDER BY start_time ASC`
 
 		var es_rows pgx.Rows
-		es_rows, err := conn.Query(context.Background(), querySql, examID)
+		es_rows, err := conn.Query(ctx, querySql, examID)
 		if forceErr == "conn query fail" {
 			err = errors.New(forceErr)
 		}
@@ -517,7 +515,6 @@ func gradeDistributionExam(ctx context.Context, examID int, columnNum int) (Exam
 		z.Error(err.Error())
 		return result, err
 	}
-
 	// 检查分布列数是否合法
 	if columnNum <= 0 {
 		err = fmt.Errorf("列数无效(columnNum=%v)", columnNum)
@@ -1097,12 +1094,20 @@ func gradeAnalysisByID(ctx context.Context, esid int64, pid int64) (Analysis, er
 	}
 
 	var tx pgx.Tx
-	tx, err = conn.Begin(context.Background())
+	tx, err = conn.Begin(ctx)
 	if err != nil || forceErr == "conn begin tx fail" {
 		err = fmt.Errorf("开启事务失败: %w", err)
 		z.Error(err.Error())
 		return analysis, err
 	}
+
+	defer func() {
+		if err != nil {
+			tx.Rollback(ctx)
+		} else {
+			tx.Commit(ctx)
+		}
+	}()
 
 	// 第一步：从考试场次或练习ID获取要分析的考卷ID，exam_paper_id
 	var id int64
@@ -1447,11 +1452,214 @@ func getScoreExam(ctx context.Context, tx pgx.Tx, studentID, examSessionID int64
 	}
 	examInfoMap["AnswerNum"] = answerNum
 
-	ansTimeSql := `SELECT
-	start_time,end_time
+	ansTimeSql := `SELECT start_time,end_time FROM t_examinee WHERE id = $1`
+
+	var start, end null.Int
+	err = conn.QueryRow(ctx, ansTimeSql, eid).Scan(&start, &end)
+	if err != nil {
+		err = fmt.Errorf("查询考试场次时间失败: %w", err)
+		z.Error(err.Error())
+		return result, err
+	}
+	if !start.Valid || !end.Valid {
+		err = fmt.Errorf("考试场次时间为空")
+		z.Warn(err.Error())
+		return result, err
+	}
+	answerTime := end.Int64 - start.Int64
+	examInfoMap["AnswerTime"] = answerTime
+
+	result["examInfo"] = examInfoMap
+	result["examSessionInfo"] = examSessionInfoMap
+
+	return result, err
+}
+
+func getScoreExamv2(ctx context.Context, tx pgx.Tx, studentID, examSessionID int64) (Map, error) {
+	z.Info("---->" + cmn.FncName())
+
+	var (
+		epid int64 // 考卷Id
+		psid int64 // 练习生提交Id 大于0则查询练习学生试卷
+		eid  int64 // 考生Id 大于0则查询考试学生试卷
+
+		err                error
+		vep                *cmn.TVExamPaper
+		tepg               map[int64]*cmn.TExamPaperGroup
+		eq                 map[int64][]*examPaper.ExamQuestion
+		result             Map
+		examInfoMap        Map
+		examSessionInfoMap []Map
+	)
+	result = Map{}
+	examInfoMap = Map{}
+
+	conn := cmn.GetPgxConn()
+	if conn == nil {
+		err = fmt.Errorf("获取数据库连接为空")
+		z.Error(err.Error())
+		return result, err
+	}
+
+	// 校验
+	if examSessionID <= 0 {
+		err = fmt.Errorf("考试场次ID不能为空(examSessionID=%v)", examSessionID)
+		z.Error(err.Error())
+		return result, err
+	}
+	if studentID <= 0 {
+		err = fmt.Errorf("学生ID不能为空(studentID=%v)", studentID)
+		z.Error(err.Error())
+		return result, err
+	}
+
+	// 第一步：获取考生ID和考卷ID
+	epSql := `
+	SELECT id, exam_paper_id
 	FROM t_examinee
-	WHERE id = $1
+    WHERE student_id = $1 AND exam_session_id = $2
 	`
+	err = conn.QueryRow(ctx, epSql, studentID, examSessionID).Scan(&eid, &epid)
+	if err != nil {
+		err = fmt.Errorf("查询考试学生试卷ID失败: (examSessionID=%v, studentID=%v) %w", examSessionID, studentID, err)
+		z.Error(err.Error())
+		return result, err
+	}
+
+	// 第二步：获取考卷信息：考卷、题组、题目
+	vep, tepg, eq, err = examPaper.LoadExamPaperDetailByUserId(ctx, tx, epid, psid, eid, true, true, true)
+	if err != nil {
+		err = fmt.Errorf("调用LoadExamPaperDetailByUserId失败:%w", err)
+		z.Error(err.Error())
+		return result, err
+	}
+	result["exam_paper"] = vep
+	result["exam_paper_group"] = tepg
+	result["exam_question"] = eq
+
+	// 第三步：获取考试场次成绩排行榜
+	rank := make([]ExamSessionScoreRank, 0)
+
+	rankSql := `SELECT
+	ets.student_id, u.official_name, COALESCE(ets.total_score, 0) AS total_score,  RANK() OVER (ORDER BY COALESCE(ets.total_score, 0) DESC) AS rank  
+	FROM v_student_exam_total_score ets
+	JOIN t_user u ON ets.student_id = u.id
+	WHERE ets.exam_session_id = $1  
+	ORDER BY COALESCE(ets.total_score, 0) DESC; `
+
+	rows, err := conn.Query(ctx, rankSql, examSessionID)
+	if err != nil {
+		err = fmt.Errorf("查询考试场次成绩失败: %w", err)
+		z.Error(err.Error())
+		return result, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var r ExamSessionScoreRank
+		err = rows.Scan(&r.StudentID, &r.OfficialName, &r.TotalScore, &r.Rank)
+		if err != nil {
+			err = fmt.Errorf("扫描考试场次成绩失败: %w", err)
+			z.Error(err.Error())
+			return result, err
+		}
+		rank = append(rank, r)
+	}
+	if err = rows.Err(); err != nil {
+		err = fmt.Errorf("遍历考试场次成绩失败: %w", err)
+		z.Error(err.Error())
+		return result, err
+	}
+	result["rank"] = rank
+
+	// 第四步：获取学生ID，学生考试总分
+	for _, v := range rank {
+		if v.StudentID == studentID {
+			//  存储考试基本信息：学生总分
+			examInfoMap["StudentScore"] = v.TotalScore
+			result["student_id"] = v.StudentID
+			break
+		}
+	}
+
+	// 第五步：获取考试场次信息，根据考试ID与学生ID，获取本次考试的信息；包括试卷id，考生id，场次顺序；筛选已批改的状态
+	// 取出examID
+	eiSql := `
+	SELECT es.exam_id
+	FROM t_exam_session es
+	WHERE es.id = $1
+	`
+
+	var examID int64
+	err = conn.QueryRow(ctx, eiSql, examSessionID).Scan(&examID)
+	if err != nil {
+		err = fmt.Errorf("查询考试场次ID失败: %w", err)
+		z.Error(err.Error())
+		return nil, err
+	}
+
+	// TODO: 筛选状态调整
+	esiSql := `
+		SELECT 
+			es.id, e.exam_paper_id, es.duration, e.id as examinee_id, es.session_num
+		FROM t_exam_session es
+		LEFT JOIN t_examinee e ON es.id = e.exam_session_id AND e.student_id = $1 AND e.status != $2
+		WHERE es.exam_id = $3 AND es.status != $4
+		ORDER BY es.session_num
+	`
+	rows, err = conn.Query(ctx, esiSql, studentID, "08", examID, "06")
+	if err != nil {
+		err = fmt.Errorf("查询考试场次失败: %w", err)
+		z.Error(err.Error())
+		return nil, err
+	}
+	defer rows.Close()
+
+	var sessionInfo []SessionInfo
+	for rows.Next() {
+		var session SessionInfo
+		err = rows.Scan(
+			&session.ID,
+			&session.PaperID,
+			&session.Duration,
+			&session.ExamineeID,
+			&session.SessionNum,
+		)
+		if err != nil {
+			err = fmt.Errorf("扫描考试场次失败: %w", err)
+			z.Error(err.Error())
+			return nil, err
+		}
+		sessionInfo = append(sessionInfo, session)
+	}
+	if rows.Err() != nil {
+		err = fmt.Errorf("遍历考试场次失败: %w", err)
+		z.Error(err.Error())
+		return nil, err
+	}
+	for _, v := range sessionInfo {
+		examInfo := Map{
+			"ID":         v.ID.ValueOrZero(),
+			"PaperID":    v.PaperID.ValueOrZero(),
+			"ExamTime":   v.Duration.ValueOrZero(),
+			"ExamineeID": v.ExamineeID.ValueOrZero(),
+			"SessionNum": v.SessionNum.ValueOrZero(),
+		}
+		examSessionInfoMap = append(examSessionInfoMap, examInfo)
+	}
+	result["examSessionInfo"] = examSessionInfoMap
+
+	// 第六步：获取考试答题信息
+	ansNumSql := `SELECT COUNT(*) FROM t_student_answers WHERE examinee_id = $1`
+	var answerNum int
+	err = conn.QueryRow(ctx, ansNumSql, eid).Scan(&answerNum)
+	if err != nil {
+		err = fmt.Errorf("学生ID不能为空(studentID=%v)", studentID)
+		z.Error(err.Error())
+		return result, err
+	}
+	examInfoMap["AnswerNum"] = answerNum
+
+	ansTimeSql := `SELECT start_time,end_time FROM t_examinee WHERE id = $1`
 
 	var start, end null.Int
 	err = conn.QueryRow(ctx, ansTimeSql, eid).Scan(&start, &end)
@@ -1568,100 +1776,51 @@ func getScorePractice(ctx context.Context, tx pgx.Tx, studentID int64, practiceI
 	}
 	practiceInfoMap["SuggestTime"] = suggestDuration
 
-	// 获取学生练习的作答信息
-	practiceAnswerInfo, err := getPracticeAnswerInfoByPracticeIDOrderAttempt(ctx, practiceID, studentID)
-	if err != nil {
-		z.Sugar().Errorf("getPracticeAnswerInfoByPracticeIDOrderAttempt call failed:%v", err)
-		return nil, fmt.Errorf("getPracticeAnswerInfoByPracticeIDOrderAttempt call failed:%v", err)
-	}
-	// 学生本次练习时长
-	practiceInfoMap["AnswerTime"] = math.Ceil(practiceAnswerInfo.UsedTime.Float64)
-
-	result["practiceInfo"] = practiceInfoMap
-
-	return result, err
-}
-
-type PracticeInfo struct {
-	ID          null.Int
-	ExamPaperID null.Int
-	TotalScore  null.Float
-	UsedTime    null.Float
-}
-
-func getPracticeAnswerInfoByPracticeIDOrderAttempt(ctx context.Context, practiceID, studentID int64) (PracticeInfo, error) {
-	var err error
-
+	var usedTime null.Float
 	// 这里搜索视图中的数据 并且需要根据尝试次数进行排序
-	selectSql := `WITH filtered_data AS (
-    SELECT DISTINCT ps.id,
-        ps.practice_id,
-        p.name,
-        ps.student_id, 
-        ps.exam_paper_id,
-        CASE
-            WHEN bool_or(a.answer_score IS NULL) THEN NULL::double precision
-            ELSE sum(a.answer_score)
-        END AS total_score,
-        p.type,
+	selectSql = `WITH filtered_data AS (
+    SELECT 
         ps.attempt,
         ps.status,
-        count(
-            CASE
-                WHEN a.answer_score <> epq.score THEN 1
-                ELSE NULL::integer
-            END) AS wrong_count,
-        ps.end_time - ps.start_time AS used_time  -- 修正这里
+        ps.end_time - ps.start_time AS used_time 
     FROM t_practice_submissions ps
-    JOIN t_student_answers a ON ps.id = a.practice_submission_id
-    JOIN t_exam_paper_question epq ON a.question_id = epq.id
-    JOIN t_practice p ON ps.practice_id = p.id
     WHERE ps.practice_id = $1
         AND ps.student_id = $2
-    GROUP BY ps.id, p.id, ps.attempt, ps.student_id
+    GROUP BY ps.id, ps.attempt, ps.student_id
 )
 SELECT 
-    id,
-    exam_paper_id,
-    total_score,
 	used_time
-FROM (
-    SELECT 
-        *,
-        ROW_NUMBER() OVER (
-            ORDER BY 
-                CASE 
-                    WHEN status = '06' THEN 1  -- 优先选择状态为'06'的记录
-                    ELSE 2 
-                END,
-                attempt DESC  -- 相同状态下按提交次数倒序
-        ) AS rn
-    FROM filtered_data
-) ranked
+	FROM (
+		SELECT 
+			*,
+			ROW_NUMBER() OVER (
+				ORDER BY 
+					CASE 
+						WHEN status = '06' THEN 1  -- 优先选择状态为'06'的记录
+						ELSE 2 
+					END,
+					attempt DESC                   -- 相同状态下按提交次数倒序
+			) AS rn
+		FROM filtered_data
+	) ranked
 WHERE rn = 1;`
 
-	conn := cmn.GetPgxConn()
-	if conn == nil {
-		err = fmt.Errorf("获取数据库连接为空")
-		z.Error(err.Error())
-		return PracticeInfo{}, err
-	}
-
-	var practiceInfo PracticeInfo
 	err = conn.QueryRow(ctx, selectSql, practiceID, studentID).Scan(
-		&practiceInfo.ID,
-		&practiceInfo.ExamPaperID,
-		&practiceInfo.TotalScore,
-		&practiceInfo.UsedTime,
+		&usedTime,
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			// 没有找到记录
 			z.Error("getPracticeInfoByPracticeIDOrderAttempt invalid data request", zap.Error(err))
-			return PracticeInfo{}, nil
+			return result, nil
 		}
 		z.Error("getPracticeInfoByPracticeIDOrderAttempt error", zap.Error(err))
-		return PracticeInfo{}, err
+		return result, err
 	}
-	return practiceInfo, nil
+	// 学生本次练习时长
+	practiceInfoMap["AnswerTime"] = math.Ceil(usedTime.Float64)
+
+	result["practiceInfo"] = practiceInfoMap
+
+	return result, err
 }
