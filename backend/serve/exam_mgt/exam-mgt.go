@@ -2346,7 +2346,7 @@ func examList(ctx context.Context) {
 				FROM (
 					SELECT ei.id, ei.name, ei.update_time, ei.submitted
 					FROM t_exam_info ei
-					WHERE ei.status NOT IN ('00','10','12') ` + conditionBuilder.String() + `
+					WHERE ei.status NOT IN ('00','10','12','14','16') ` + conditionBuilder.String() + `
 					ORDER BY ei.update_time DESC, ei.id DESC
 					LIMIT $` + strconv.Itoa(argIdx) + ` OFFSET $` + strconv.Itoa(argIdx+1) + `
 				) ei
@@ -2463,7 +2463,7 @@ func examList(ctx context.Context) {
 			LEFT JOIN t_domain d ON
 				ei.domain_id = d.id
 			WHERE 
-				ei.status != '12' ` + conditionBuilder.String() + ` 
+				ei.status NOT IN ('12','14') ` + conditionBuilder.String() + ` 
 			ORDER BY 
 				ei.update_time DESC, 
 				ei.id DESC, 
