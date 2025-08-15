@@ -1375,7 +1375,7 @@ func exam(ctx context.Context) {
 		}
 
 		if !exists {
-			q.Err = fmt.Errorf("考试不存在")
+			q.Err = fmt.Errorf("考试不存在，请重新创建")
 			z.Error(q.Err.Error())
 			q.RespErr()
 			return
