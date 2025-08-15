@@ -479,13 +479,28 @@ func (r *service) CheckTUserRowExists(ctx context.Context, tx pgx.Tx, fields map
 	var args []any
 	argIndex := 1
 
+	emptyNullStrCount := 0
+	totalFields := len(fields)
+
 	for field, value := range fields {
 		if !allowedFields[field] {
 			return false, nil, fmt.Errorf("field '%s' is not allowed to be queried", field)
 		}
-		whereClauses = append(whereClauses, fmt.Sprintf("%s = $%d", field, argIndex))
-		args = append(args, value)
-		argIndex++
+		// 检查是否为 null.String 类型的空值
+		if nullStr, ok := value.(null.String); ok && !nullStr.Valid {
+			emptyNullStrCount++
+			whereClauses = append(whereClauses, fmt.Sprintf("%s IS NULL", field))
+			// 不添加到 args 中，因为 IS NULL 不需要参数
+		} else {
+			whereClauses = append(whereClauses, fmt.Sprintf("%s = $%d", field, argIndex))
+			args = append(args, value)
+			argIndex++
+		}
+	}
+
+	// 如果所有字段都是空的 null.String，直接返回无数据
+	if emptyNullStrCount == totalFields {
+		return false, nil, nil
 	}
 
 	querySQL := fmt.Sprintf(
@@ -510,7 +525,7 @@ func (r *service) CheckTUserRowExists(ctx context.Context, tx pgx.Tx, fields map
 		return false, nil, e
 	}
 
-	if !userId.Valid {
+	if !userId.Valid || forceErr == "InvalidUserID" {
 		return false, nil, nil
 	}
 
