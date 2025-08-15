@@ -167,6 +167,20 @@ func Enroll(author string) {
 		DefaultDomain: int64(cmn.CDomainSys),
 	})
 
+	_ = cmn.AddService(&cmn.ServeEndPoint{
+		Fn: HandleMarkingState,
+
+		Path: "/mark/state",
+		Name: "/mark/state",
+
+		Developer: developer,
+		WhiteList: true,
+
+		DomainID: int64(cmn.CDomainSys),
+
+		DefaultDomain: int64(cmn.CDomainSys),
+	})
+
 }
 
 func HandleExamList(ctx context.Context) {
