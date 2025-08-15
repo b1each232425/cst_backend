@@ -1,12 +1,3 @@
-/*
- * @Author: Mayux dbs45412@163.com
- * @Date: 2025-08-07 10:55:33
- * @LastEditors: Mayux dbs45412@163.com
- * @LastEditTime: 2025-08-15 12:08:16
- * @FilePath: \assess\backend\serve\exam_mgt\exam-mgt_test.go
- * @Description:
- * Copyright (c) 2025 by ${git_name}, All Rights Reserved.
- */
 package exam_mgt
 
 //annotation:exam_mgt
@@ -2430,6 +2421,22 @@ func TestExamPutMethod(t *testing.T) {
 			checkResult:   true,
 		},
 		{
+			name:        "更新已发布考试失败-rows.ScanExamineeID",
+			description: "更新已发布考试失败-rows.ScanExamineeID",
+			userID:      testAcademicAffair,
+			userRole:    2002,
+			requestBodyGen: func() interface{} {
+				data := validExamData
+				data.ExamInfo.ID = null.IntFrom(testPublishedExamID)
+				data.ExamSessions[0].PaperID = null.IntFrom(testPaperToPublishID)
+				return data
+			},
+			forceError:    "rows.ScanExamineeID",
+			expectedError: true,
+			errorContains: "强制获取考生ID错误",
+			checkResult:   false,
+		},
+		{
 			name:        "成功更新已发布考试",
 			description: "成功更新处于已发布状态的考试",
 			userID:      testAcademicAffair,
@@ -2441,7 +2448,37 @@ func TestExamPutMethod(t *testing.T) {
 				return data
 			},
 			expectedError: false,
-			checkResult:   false, // 已发布考试逻辑复杂，暂不检查详细结果
+			checkResult:   false,
+		},
+		{
+			name:        "成功更新已发布考试2",
+			description: "成功更新处于已发布状态的考试",
+			userID:      testAcademicAffair,
+			userRole:    2002,
+			requestBodyGen: func() interface{} {
+				data := validExamData
+				data.ExamInfo.ID = null.IntFrom(testPublishedExamID)
+				data.ExamSessions[0].PaperID = null.IntFrom(testPaperToPublishID)
+				data.ExamineeIDs = []int64{}
+				return data
+			},
+			expectedError: false,
+			checkResult:   false,
+		},
+		{
+			name:        "成功更新已发布考试3",
+			description: "成功更新处于已发布状态的考试",
+			userID:      testAcademicAffair,
+			userRole:    2002,
+			requestBodyGen: func() interface{} {
+				data := validExamData
+				data.ExamInfo.ID = null.IntFrom(testPublishedExamID)
+				data.ExamSessions[0].PaperID = null.IntFrom(testPaperToPublishID)
+				data.ExamSessions[0].ReviewerIds = []int64{}
+				return data
+			},
+			expectedError: false,
+			checkResult:   false,
 		},
 		{
 			name:        "权限验证失败-学生角色",
@@ -7481,6 +7518,26 @@ func TestExamUser(t *testing.T) {
 			expectedError: true,
 			errorContains: "强制获取用户信息错误",
 			description:   "模拟数据库查询错误",
+		},
+		{
+			name:          "获取用户域失败",
+			method:        "GET",
+			queryParams:   fmt.Sprintf(`q={"data":{"IDs":[%d]}}`, 99901),
+			userID:        testAcademicAffair,
+			userRole:      9999,
+			expectedError: true,
+			errorContains: "未找到角色ID",
+			description:   "获取用户域失败",
+		},
+		{
+			name:          "无权限访问",
+			method:        "GET",
+			queryParams:   fmt.Sprintf(`q={"data":{"IDs":[%d]}}`, 99901),
+			userID:        testAcademicAffair,
+			userRole:      2008,
+			expectedError: true,
+			errorContains: "无权限访问",
+			description:   "无权限访问",
 		},
 	}
 
