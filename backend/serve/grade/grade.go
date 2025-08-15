@@ -24,7 +24,7 @@ import (
 var z *zap.Logger
 
 const (
-	TIMEOUT = 10 * time.Second
+	TIMEOUT = 60 * time.Second
 )
 
 func init() {
@@ -890,8 +890,8 @@ func gradeSH(ctx context.Context) {
 			data []byte
 
 			// 必需参数集
-			category string // 类别：exam practice
-			// userID           int64
+			category      string // 类别：exam practice
+			userID        int64
 			studentID     int64
 			examSessionID int64
 			practiceID    int64
@@ -899,31 +899,24 @@ func gradeSH(ctx context.Context) {
 		var p string
 		queryParams := q.R.URL.Query()
 
-		// // 用户身份
-		// if q.SysUser == nil || !q.SysUser.ID.Valid || forceErr == "q.SysUser nil" {
-		// 	q.Err = fmt.Errorf("非法请求，鉴权用户失败")
-		// 	z.Error(q.Err.Error())
-		// 	q.RespErr()
-		// 	return
-		// }
-		// userID = q.SysUser.ID.Int64
-		// studentID = userID
-
 		// TODO：不支持传入ID
-		if p = queryParams.Get("studentID"); p == "" {
-			q.Err = fmt.Errorf("学生ID为空：: %s", p)
-			z.Error(q.Err.Error())
-			q.RespErr()
-			return
+		if p = queryParams.Get("studentID"); p != "" {
+			if studentID, err = strconv.ParseInt(p, 10, 64); err != nil {
+				q.Err = fmt.Errorf("无效学生ID: %s", p)
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+		} else {
+			if q.SysUser == nil || !q.SysUser.ID.Valid || forceErr == "q.SysUser nil" {
+				q.Err = fmt.Errorf("非法请求，鉴权用户失败")
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+			userID = q.SysUser.ID.Int64
+			studentID = userID
 		}
-		if studentID, err = strconv.ParseInt(p, 10, 64); err != nil {
-			q.Err = fmt.Errorf("无效学生ID: %s", p)
-			z.Error(q.Err.Error())
-			q.RespErr()
-			return
-		}
-		z.Sugar().Debug("studentID: %d", studentID)
-
 		dmlCtx, cancel := context.WithTimeout(ctx, TIMEOUT)
 		defer cancel()
 
@@ -935,12 +928,20 @@ func gradeSH(ctx context.Context) {
 		}
 
 		var tx pgx.Tx
-		tx, err = conn.Begin(context.Background())
+		tx, err = conn.Begin(dmlCtx)
 		if err != nil || forceErr == "conn begin tx fail" {
 			err = fmt.Errorf("开启事务失败: %w", err)
 			z.Error(err.Error())
 			return
 		}
+
+		defer func() {
+			if err != nil {
+				tx.Rollback(ctx)
+			} else {
+				tx.Commit(ctx)
+			}
+		}()
 
 		if category = queryParams.Get("category"); category == "" {
 			q.Err = fmt.Errorf("不支持的类型: %s", category)
