@@ -1294,7 +1294,6 @@ func updateExamSessionOrPracticeSubmissionState(ctx context.Context, tx *pgx.Tx,
 	}
 
 	if status == "" {
-		// 考试：10， 练习提交：08
 		err = fmt.Errorf("invalid params: status is required")
 		z.Error(err.Error())
 		return
