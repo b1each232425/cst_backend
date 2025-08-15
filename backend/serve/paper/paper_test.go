@@ -388,10 +388,12 @@ func initTestQuestionBankData() error {
 		_ = tx.Commit(ctx)
 	}()
 
-	qb := `INSERT INTO t_question_bank  (type,name,creator,create_time,status) VALUES($1, $2, $3, $4, $5) RETURNING id`
+	qb := `INSERT INTO t_question_bank  (type,name,creator,create_time,status,domain_id) VALUES($1, $2, $3, $4, $5,$6) RETURNING id`
 	var qbID int64
-	_ = tx.QueryRow(ctx, qb, "00", "考卷测试题库", initQuestionUserID, time.Now().UnixMilli(), "00").Scan(&qbID)
-
+	err = tx.QueryRow(ctx, qb, "00", "考卷测试题库", initQuestionUserID, time.Now().UnixMilli(), "00", resourceDomainID).Scan(&qbID)
+	if err != nil {
+		return fmt.Errorf("创建题库失败: %v", err)
+	}
 	// 五道题
 	q := `INSERT INTO t_question (id,type,content,options,answers,score,analysis,title,creator,status,belong_to,difficulty) VALUES ($1, $2, $3, $4, $5, $6,$7,$8,$9,$10,$11,$12)`
 	qArgs := [][]interface{}{
@@ -545,8 +547,7 @@ func TestPaperListGetMethod(t *testing.T) {
 	cmn.ConfigureForTest()
 	db := cmn.GetPgxConn()
 	ctx := context.Background()
-	userID := int64(90002)
-	teacherRoleID := int64(2003) // 教师角色ID
+	userID := int64(90002) // 教师角色ID
 
 	tests := []struct {
 		name          string
@@ -561,7 +562,7 @@ func TestPaperListGetMethod(t *testing.T) {
 	}{
 		{
 			name:          "正常分页查询",
-			query:         "page=1&pageSize=10",
+			query:         "page=1&pageSize=10&name=正常分页查询测试试卷",
 			expectedCount: 3,
 			wantError:     false,
 			userID:        userID,
@@ -570,7 +571,7 @@ func TestPaperListGetMethod(t *testing.T) {
 			setup: func(t *testing.T) []int64 {
 				var ids []int64
 				for i := 0; i < 3; i++ {
-					id, _ := createTestPaper(ctx, t, fmt.Sprintf("测试试卷%d", i+1), userID)
+					id, _ := createTestPaper(ctx, t, fmt.Sprintf("正常分页查询测试试卷%d", i+1), userID)
 					ids = append(ids, id)
 				}
 				return ids
@@ -607,7 +608,7 @@ func TestPaperListGetMethod(t *testing.T) {
 		},
 		{
 			name:          "分类过滤",
-			query:         "category=02",
+			query:         "category=02&name=分类过滤试卷",
 			expectedCount: 1,
 			wantError:     false,
 			userID:        userID,
@@ -617,7 +618,7 @@ func TestPaperListGetMethod(t *testing.T) {
 				var id int64
 				_ = db.QueryRow(ctx,
 					`INSERT INTO t_paper (name, category,tags, creator, create_time, updated_by, update_time, status, domain_id) 
-	VALUES ('唯一名试卷', '02',$3, $1, $2, $1, $2, '00', $4) RETURNING id`, userID, time.Now().UnixMilli(), types.JSONText(`["vue"]`), resourceDomainID).Scan(&id)
+	VALUES ('分类过滤试卷', '02',$3, $1, $2, $1, $2, '00', $4) RETURNING id`, userID, time.Now().UnixMilli(), types.JSONText(`["vue"]`), resourceDomainID).Scan(&id)
 				return []int64{id}
 			},
 		},
@@ -638,7 +639,7 @@ func TestPaperListGetMethod(t *testing.T) {
 		},
 		{
 			name:          "分页边界-第二页无数据",
-			query:         "page=2&pageSize=5",
+			query:         "page=2&pageSize=5&name=分页试卷",
 			expectedCount: 0,
 			wantError:     false,
 			userID:        userID,
@@ -695,14 +696,14 @@ func TestPaperListGetMethod(t *testing.T) {
 		{
 			name:          "空参数-默认分页",
 			query:         "",
-			expectedCount: 5,
+			expectedCount: 10,
 			wantError:     false,
 			userID:        userID,
 			roleID:        teacherRoleID,
 			forceError:    "",
 			setup: func(t *testing.T) []int64 {
 				var ids []int64
-				for i := 0; i < 5; i++ {
+				for i := 0; i < 10; i++ {
 					id, _ := createTestPaper(ctx, t, fmt.Sprintf("默认分页试卷%d", i+1), userID)
 					ids = append(ids, id)
 				}
@@ -1030,7 +1031,7 @@ func TestPaperListDeleteMethod(t *testing.T) {
 			userID:        userID,
 			roleID:        teacherRoleID,
 			forceError:    "",
-			expectedError: "试卷 \"99999999\" 不存在",
+			expectedError: "试卷（99999999）不存在",
 			setup: func(t *testing.T) []int64 {
 				var ids []int64
 				for i := 0; i < 1; i++ {
@@ -1182,7 +1183,7 @@ func TestPaperListDeleteMethod(t *testing.T) {
 			userID:        userID,
 			roleID:        teacherRoleID,
 			forceError:    "PaperList-delete-Rollback-err",
-			expectedError: "试卷 \"99999999\" 不存在\n试卷 \"8888888\" 不存在",
+			expectedError: "试卷（99999999）不存在\n试卷（8888888）不存在",
 			setup: func(t *testing.T) []int64 {
 				return []int64{99999999, 8888888}
 			},

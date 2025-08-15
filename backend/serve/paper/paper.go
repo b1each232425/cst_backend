@@ -2,7 +2,7 @@
  * @Author: wusaber33
  * @Date: 2025-08-03 21:39:33
  * @LastEditors: wusaber33
- * @LastEditTime: 2025-08-07 17:02:57
+ * @LastEditTime: 2025-08-13 18:58:24
  * @FilePath: \assess\backend\serve\paper\paper.go
  * @Description:
  * Copyright (c) 2025 by wusaber33, All Rights Reserved.
@@ -57,7 +57,6 @@ const (
 	// 记录状态定义
 	StatusNormal   = "00" // 正常状态
 	StatusUnNormal = "02" // 已删除(软删除)
-	StatusDeleted  = "04" // 彻底删除
 
 	// 试卷分类
 	PaperCategoryExam     = "00" // 考试试卷
@@ -288,6 +287,7 @@ func ManualPaper(ctx context.Context) {
 		// 强制错误，用于测试
 		if forceError == "BeginTx-err" {
 			q.Err = errors.New(forceError)
+			_ = tx.Rollback(ctx)
 		}
 		if q.Err != nil {
 			z.Error(q.Err.Error())
@@ -299,6 +299,8 @@ func ManualPaper(ctx context.Context) {
 			// 如果发生panic或错误，尝试回滚事务
 			p := recover()
 			if p != nil {
+				panicErr := fmt.Errorf("panic occurred: %v", p)
+				z.Error(panicErr.Error())
 				err := tx.Rollback(ctx)
 				// 强制错误，用于测试
 				if forceError == "recover-err" {
@@ -327,9 +329,21 @@ func ManualPaper(ctx context.Context) {
 					z.Error(err.Error())
 				}
 			}
+			// 提交事务
+			err := tx.Commit(ctx)
+			if forceError == "Commit-err" {
+				err = errors.New(forceError)
+			}
+			if err != nil {
+				z.Error(err.Error())
+				return
+			}
 		}()
 		if forceError == "recover-err" {
 			panic(errors.New(forceError))
+		}
+		if forceError == "Commit-err" {
+			return
 		}
 
 		//初始化一张空试卷SQL
@@ -453,16 +467,6 @@ RETURNING id`
 		}
 		if q.Err != nil {
 			z.Error("rows error", zap.Error(q.Err))
-			q.RespErr()
-			return
-		}
-		// 提交事务
-		q.Err = tx.Commit(ctx)
-		if forceError == "Commit-err" {
-			q.Err = errors.New(forceError)
-		}
-		if q.Err != nil {
-			z.Error(q.Err.Error())
 			q.RespErr()
 			return
 		}
@@ -833,6 +837,7 @@ func updateManualPaper(ctx context.Context, paperID, userID int64, req UpdateMan
 	// 如果强制错误为"BeginTx-err"，则模拟事务启动错误
 	if forceError == "BeginTx-err" {
 		err = errors.New(forceError)
+		_ = tx.Rollback(ctx)
 	}
 	if err != nil {
 		z.Error("start transaction failed: " + err.Error())
@@ -842,7 +847,8 @@ func updateManualPaper(ctx context.Context, paperID, userID int64, req UpdateMan
 	defer func() {
 		// 如果发生panic或错误，尝试回滚事务
 		if p := recover(); p != nil {
-			err = errors.New(fmt.Sprint(p))
+			panicErr := fmt.Errorf("panic occurred: %v", p)
+			z.Error(panicErr.Error())
 			rollbackErr := tx.Rollback(ctx)
 			if forceError == "recover-err" {
 				rollbackErr = errors.New(forceError)
@@ -852,6 +858,7 @@ func updateManualPaper(ctx context.Context, paperID, userID int64, req UpdateMan
 				z.Error(rollbackErr.Error())
 				return
 			}
+			return
 		}
 		// 如果有错误，尝试回滚事务，否则提交事务
 		if err != nil {
@@ -1939,6 +1946,7 @@ func PaperList(ctx context.Context) {
 		})
 		if forceError == "PaperList-delete-BeginTx-err" {
 			q.Err = errors.New(forceError)
+			_ = tx.Rollback(ctx)
 		}
 		if q.Err != nil {
 			z.Error(q.Err.Error())
@@ -1949,6 +1957,8 @@ func PaperList(ctx context.Context) {
 		// 确保事务结束时回滚
 		defer func() {
 			if p := recover(); p != nil {
+				panicErr := fmt.Errorf("panic occurred: %v", p)
+				z.Error(panicErr.Error())
 				err := tx.Rollback(ctx)
 				if forceError == "PaperList-delete-Rollback-panic" {
 					err = errors.New(forceError)
@@ -1959,6 +1969,7 @@ func PaperList(ctx context.Context) {
 					z.Error(err.Error())
 					return
 				}
+				return
 			}
 			if q.Err != nil {
 				err := tx.Rollback(ctx)

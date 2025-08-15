@@ -24,7 +24,7 @@ import (
 var z *zap.Logger
 
 const (
-	TIMEOUT = 10 * time.Second
+	TIMEOUT = 60 * time.Second
 )
 
 func init() {
@@ -153,11 +153,11 @@ func Enroll(author string) {
 func gradeListH(ctx context.Context) {
 	z.Info("---->" + cmn.FncName())
 
-	// // 测试使用强行触发错误
-	// forceErr := ""
-	// if val := ctx.Value("force-error"); val != nil {
-	// 	forceErr = val.(string)
-	// }
+	// 测试使用强行触发错误
+	forceErr := ""
+	if val := ctx.Value("force-error"); val != nil {
+		forceErr = val.(string)
+	}
 
 	q := cmn.GetCtxValue(ctx)
 
@@ -173,13 +173,55 @@ func gradeListH(ctx context.Context) {
 			rowCount int64
 
 			// 必需参数集
-			req      GradeListReq
-			category string // 类别：exam practice
-			userID   int64
-			page     string
-			pageSize string
+			req       GradeListReq
+			category  string // 类别：exam practice
+			userID    int64
+			page      int
+			pageSize  int
+			submitted int
 		)
-		var p int
+		var p string
+
+		if p = queryParams.Get("page"); p == "" {
+			q.Err = fmt.Errorf("页码为空: %s", p)
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+		if page, err = strconv.Atoi(p); err != nil {
+			q.Err = fmt.Errorf("无效页码: %s", p)
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+		req.Page = page
+
+		if p = queryParams.Get("pageSize"); p == "" {
+			q.Err = fmt.Errorf("每页数量为空: %s", p)
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+		if pageSize, err = strconv.Atoi(p); err != nil {
+			q.Err = fmt.Errorf("无效每页数量: %s", p)
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+		req.PageSize = pageSize
+
+		// 用户身份
+		if q.SysUser == nil || !q.SysUser.ID.Valid || forceErr == "q.SysUser nil" {
+			q.Err = fmt.Errorf("非法请求，鉴权用户失败")
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+		userID = q.SysUser.ID.Int64
+
+		if name := queryParams.Get("name"); name != "" {
+			req.Filter.Name = name
+		}
 
 		if category = queryParams.Get("category"); category == "" {
 			q.Err = fmt.Errorf("不支持的类型: %s", category)
@@ -188,79 +230,31 @@ func gradeListH(ctx context.Context) {
 			return
 		}
 
-		if page = queryParams.Get("page"); page == "" {
-			q.Err = fmt.Errorf("页码为空: %s", page)
-			z.Error(q.Err.Error())
-			q.RespErr()
-			return
-		}
-		if p, err = strconv.Atoi(page); err != nil {
-			q.Err = fmt.Errorf("无效页码: %s", page)
-			z.Error(q.Err.Error())
-			q.RespErr()
-			return
-		}
-		req.Page = p
-
-		if pageSize = queryParams.Get("pageSize"); pageSize == "" {
-			q.Err = fmt.Errorf("每页数量为空: %s", pageSize)
-			z.Error(q.Err.Error())
-			q.RespErr()
-			return
-		}
-		if p, err = strconv.Atoi(pageSize); err != nil {
-			q.Err = fmt.Errorf("无效每页数量: %s", pageSize)
-			z.Error(q.Err.Error())
-			q.RespErr()
-			return
-		}
-		req.PageSize = p
-
-		// 用户身份
-		// if q.SysUser == nil || !q.SysUser.ID.Valid || forceErr == "q.SysUser nil" {
-		// 	q.Err = fmt.Errorf("非法请求，鉴权用户失败")
-		// 	z.Error(q.Err.Error())
-		// 	q.RespErr()
-		// 	return
-		// }
-		// userID = q.SysUser.ID.Int64
-		userID = 1681
-
-		if name := queryParams.Get("name"); name != "" {
-			req.Filter.Name = name
-		}
-
 		switch category {
 		case "exam":
-			if examID := queryParams.Get("examID"); examID != "" {
-				p, err := strconv.Atoi(examID)
+			if p = queryParams.Get("examID"); p != "" {
+				examID, err := strconv.ParseInt(p, 10, 64)
 				if err != nil {
-					q.Err = fmt.Errorf("无效考试ID: %s", examID)
+					q.Err = fmt.Errorf("无效考试ID: %s", p)
 					z.Error(q.Err.Error())
 					q.RespErr()
 					return
 				}
-				req.ExamID = p
+				req.ExamID = examID
 			}
 
 			if examType := queryParams.Get("type"); examType != "" {
 				req.Filter.Type = examType
 			}
 
-			submitted := queryParams.Get("submitted")
-			switch submitted {
-			case "0":
-				req.Filter.Submitted = 0
-			case "1":
-				req.Filter.Submitted = 1
-			case "-1":
-				req.Filter.Submitted = -1
-			default:
-				q.Err = fmt.Errorf("无效提交状态: %s", submitted)
+			submitted, err = strconv.Atoi(queryParams.Get("submitted"))
+			if err != nil || submitted != 0 && submitted != 1 && submitted != -1 {
+				q.Err = fmt.Errorf("无效提交状态: %d", submitted)
 				z.Error(q.Err.Error())
 				q.RespErr()
 				return
 			}
+			req.Filter.Submitted = submitted
 
 			dmlCtx, cancel := context.WithTimeout(ctx, TIMEOUT)
 			defer cancel()
@@ -280,15 +274,15 @@ func gradeListH(ctx context.Context) {
 
 		case "practice":
 			// 练习ID
-			if practiceID := queryParams.Get("practiceID"); practiceID != "" {
-				p, err := strconv.Atoi(practiceID)
+			if p := queryParams.Get("practiceID"); p != "" {
+				practiceID, err := strconv.ParseInt(p, 10, 64)
 				if err != nil {
-					q.Err = fmt.Errorf("无效练习ID: %s", practiceID)
+					q.Err = fmt.Errorf("无效练习ID: %s", p)
 					z.Error(q.Err.Error())
 					q.RespErr()
 					return
 				}
-				req.PracticeID = p
+				req.PracticeID = practiceID
 			}
 
 			dmlCtx, cancel := context.WithTimeout(ctx, TIMEOUT)
@@ -359,7 +353,7 @@ func gradeSubmissionH(ctx context.Context) {
 		}
 
 		defer func() {
-			err := q.R.Body.Close()
+			err = q.R.Body.Close()
 			if forceErr == "q.R.Body.Close-fail" {
 				err = errors.New(forceErr)
 			}
@@ -378,15 +372,14 @@ func gradeSubmissionH(ctx context.Context) {
 		var userID int64
 		var examIDs []int
 
-		// // 用户身份校验
-		// if q.SysUser == nil || !q.SysUser.ID.Valid || forceErr == "q.SysUser nil" {
-		// 	q.Err = fmt.Errorf("非法请求，鉴权用户失败")
-		// 	z.Error(q.Err.Error())
-		// 	q.RespErr()
-		// 	return
-		// }
-		// userID := q.SysUser.ID.Int64
-		userID = 1681
+		// 用户身份校验
+		if q.SysUser == nil || !q.SysUser.ID.Valid || forceErr == "q.SysUser nil" {
+			q.Err = fmt.Errorf("非法请求，鉴权用户失败")
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+		userID = q.SysUser.ID.Int64
 
 		examIDQuerys := gjson.GetBytes(buf, "data.exam_ids").Array()
 		if len(examIDQuerys) <= 0 {
@@ -420,7 +413,7 @@ func gradeSubmissionH(ctx context.Context) {
 		}
 		q.Err = nil
 		q.Msg.Status = 0
-		q.Msg.Msg = fmt.Sprintf("success rowsAffected:%v", rowsAffected)
+		q.Msg.Msg = fmt.Sprintf("成功提交%v条数据", rowsAffected)
 
 	default:
 		q.Err = fmt.Errorf("不支持的请求方法: %s", method)
@@ -451,15 +444,39 @@ func gradeDistributionH(ctx context.Context) {
 			data []byte
 
 			// 必需参数集
-			category      string // 类别：exam practice
-			columnNumStr  string
-			columnNum     int
-			examIDStr     string
-			examID        int
-			practiceIDStr string
-			practiceID    int
+			category   string // 类别：exam practice
+			columnNum  int
+			examID     int
+			practiceID int
 		)
+		var p string
+
 		queryParams := q.R.URL.Query()
+
+		// 列数
+		if p = queryParams.Get("columnNum"); p == "" {
+			q.Err = fmt.Errorf("列数为空: %s", p)
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+		if columnNum, err = strconv.Atoi(p); err != nil {
+			q.Err = fmt.Errorf("列数无效: %d", columnNum)
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		// // 用户身份
+		// if q.SysUser == nil || !q.SysUser.ID.Valid || forceErr == "q.SysUser nil" {
+		// 	q.Err = fmt.Errorf("非法请求，鉴权用户失败")
+		// 	z.Error(q.Err.Error())
+		// 	q.RespErr()
+		// 	return
+		// }
+
+		dmlCtx, cancel := context.WithTimeout(ctx, TIMEOUT)
+		defer cancel()
 
 		if category = queryParams.Get("category"); category == "" {
 			q.Err = fmt.Errorf("类型为空: %s", category)
@@ -468,41 +485,16 @@ func gradeDistributionH(ctx context.Context) {
 			return
 		}
 
-		if columnNumStr = queryParams.Get("columnNum"); columnNumStr == "" {
-			q.Err = fmt.Errorf("列数为空: %s", columnNumStr)
-			z.Error(q.Err.Error())
-			q.RespErr()
-			return
-		}
-		if columnNum, err = strconv.Atoi(columnNumStr); err != nil {
-			q.Err = fmt.Errorf("列数无效: %d", columnNum)
-			z.Error(q.Err.Error())
-			q.RespErr()
-			return
-		}
-
-		// 用户身份
-		// if q.SysUser == nil || !q.SysUser.ID.Valid || forceErr == "q.SysUser nil" {
-		// 	q.Err = fmt.Errorf("非法请求，鉴权用户失败")
-		// 	z.Error(q.Err.Error())
-		// 	q.RespErr()
-		// 	return
-		// }
-		// userID = q.SysUser.ID.Int64
-		// userID = 1681
-
-		dmlCtx, cancel := context.WithTimeout(ctx, TIMEOUT)
-		defer cancel()
-
 		switch category {
 		case "exam":
-			if examIDStr = queryParams.Get("examID"); examIDStr == "" {
-				q.Err = fmt.Errorf("考试ID为空: %s", examIDStr)
+			// 考试ID - 涉及多场次
+			if p = queryParams.Get("examID"); p == "" {
+				q.Err = fmt.Errorf("考试ID为空: %s", p)
 				z.Error(q.Err.Error())
 				q.RespErr()
 				return
 			}
-			if examID, err = strconv.Atoi(examIDStr); err != nil {
+			if examID, err = strconv.Atoi(p); err != nil {
 				q.Err = fmt.Errorf("无效考试ID: %d", examID)
 				z.Error(q.Err.Error())
 				q.RespErr()
@@ -527,13 +519,14 @@ func gradeDistributionH(ctx context.Context) {
 			}
 
 		case "practice":
-			if practiceIDStr = queryParams.Get("practiceID"); practiceIDStr == "" {
-				q.Err = fmt.Errorf("练习ID为空: %s", practiceIDStr)
+			// 练习ID
+			if p = queryParams.Get("practiceID"); p == "" {
+				q.Err = fmt.Errorf("练习ID为空: %s", p)
 				z.Error(q.Err.Error())
 				q.RespErr()
 				return
 			}
-			if practiceID, err = strconv.Atoi(practiceIDStr); err != nil {
+			if practiceID, err = strconv.Atoi(p); err != nil {
 				q.Err = fmt.Errorf("无效练习ID: %d", practiceID)
 				z.Error(q.Err.Error())
 				q.RespErr()
@@ -601,49 +594,42 @@ func gradeExamineeListH(ctx context.Context) {
 
 			// 必需参数集
 			category   string // 类别：exam practice
-			page       string
-			pageSize   string
+			page       int
+			pageSize   int
 			keyword    string
 			examID     []int64
 			practiceID []int64
 		)
-		var p int
+		var p string
 		queryParams := q.R.URL.Query()
 
-		if category = queryParams.Get("category"); category == "" {
-			q.Err = fmt.Errorf("类别为空")
+		if p = queryParams.Get("page"); p == "" {
+			q.Err = fmt.Errorf("页码为空: %s", p)
 			z.Error(q.Err.Error())
 			q.RespErr()
 			return
 		}
+		if page, err = strconv.Atoi(p); err != nil {
+			q.Err = fmt.Errorf("传入无效页码: %s", p)
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+		req.Page = page
 
-		if page = queryParams.Get("page"); page == "" {
-			q.Err = fmt.Errorf("页码为空: %s", page)
+		if p = queryParams.Get("pageSize"); p == "" {
+			q.Err = fmt.Errorf("每页数量为空: %s", p)
 			z.Error(q.Err.Error())
 			q.RespErr()
 			return
 		}
-		if p, err = strconv.Atoi(page); err != nil {
-			q.Err = fmt.Errorf("传入无效页码: %s", page)
+		if pageSize, err = strconv.Atoi(p); err != nil {
+			q.Err = fmt.Errorf("传入无效每页数量: %s", p)
 			z.Error(q.Err.Error())
 			q.RespErr()
 			return
 		}
-		req.Page = p
-
-		if pageSize = queryParams.Get("pageSize"); pageSize == "" {
-			q.Err = fmt.Errorf("每页数量为空: %s", pageSize)
-			z.Error(q.Err.Error())
-			q.RespErr()
-			return
-		}
-		if p, err = strconv.Atoi(pageSize); err != nil {
-			q.Err = fmt.Errorf("传入无效每页数量: %s", pageSize)
-			z.Error(q.Err.Error())
-			q.RespErr()
-			return
-		}
-		req.PageSize = p
+		req.PageSize = pageSize
 
 		if keyword = queryParams.Get("keyword"); keyword != "" {
 			req.Filter.Keyword = keyword
@@ -656,7 +642,13 @@ func gradeExamineeListH(ctx context.Context) {
 		// 	q.RespErr()
 		// 	return
 		// }
-		// userID = q.SysUser.ID.Int64
+
+		if category = queryParams.Get("category"); category == "" {
+			q.Err = fmt.Errorf("类别为空")
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
 
 		dmlCtx, cancel := context.WithTimeout(ctx, TIMEOUT)
 		defer cancel()
@@ -685,7 +677,7 @@ func gradeExamineeListH(ctx context.Context) {
 			}
 			req.ExamID = examID
 
-			var result ExamScoreExportResponse
+			var result []ExamineeScoreList
 			result, rowCount, err = gradeExamineeListExam(dmlCtx, req)
 			if err != nil {
 				q.Err = err
@@ -712,12 +704,11 @@ func gradeExamineeListH(ctx context.Context) {
 			}
 			req.PracticeID = practiceID
 
-			var result PracticeScoreExportResponse
+			var result []PracticeScoreList
 
 			result, rowCount, err = gradeExamineeListPractice(dmlCtx, req)
 			if err != nil {
 				q.Err = err
-				z.Error(q.Err.Error())
 				q.RespErr()
 				return
 			}
@@ -770,6 +761,7 @@ func gradeH(ctx context.Context) {
 			examSessionID int64  // 考试场次ID
 			practiceID    int64  // 练习ID
 		)
+		var p string
 		queryParams := q.R.URL.Query()
 
 		if category = queryParams.Get("category"); category == "" {
@@ -793,22 +785,24 @@ func gradeH(ctx context.Context) {
 
 		switch category {
 		case "exam":
-			esidStr := queryParams.Get("examSessionID")
-			if esidStr == "" {
-				q.Err = fmt.Errorf("examSessionID为空: %s", esidStr)
+			p = queryParams.Get("examSessionID")
+			if p == "" {
+				q.Err = fmt.Errorf("examSessionID为空: %s", p)
 				z.Error(q.Err.Error())
 				q.RespErr()
 				return
 			}
-			examSessionID, err = strconv.ParseInt(esidStr, 10, 64)
+			examSessionID, err = strconv.ParseInt(p, 10, 64)
 			if err != nil {
-				q.Err = fmt.Errorf("examSessionID无效, 传入:%s", esidStr)
+				q.Err = fmt.Errorf("examSessionID无效, 传入:%s", p)
 				z.Error(q.Err.Error())
 				q.RespErr()
 				return
 			}
 
-			result, err := gradeAnalysisByID(dmlCtx, examSessionID, 0)
+			var result Analysis
+
+			result, err = gradeAnalysisByID(dmlCtx, examSessionID, 0)
 			if err != nil {
 				q.Err = err
 				q.RespErr()
@@ -824,22 +818,22 @@ func gradeH(ctx context.Context) {
 			}
 
 		case "practice":
-			pidStr := queryParams.Get("practiceID")
-			if pidStr == "" {
-				q.Err = fmt.Errorf("practiceID为空: %s", pidStr)
+			if p = queryParams.Get("practiceID"); p == "" {
+				q.Err = fmt.Errorf("practiceID为空: %s", p)
 				z.Error(q.Err.Error())
 				q.RespErr()
 				return
 			}
-			practiceID, err = strconv.ParseInt(pidStr, 10, 64)
-			if err != nil {
-				q.Err = fmt.Errorf("传入practiceID无效: %s", pidStr)
+			if practiceID, err = strconv.ParseInt(p, 10, 64); err != nil {
+				q.Err = fmt.Errorf("传入practiceID无效: %s", p)
 				z.Error(q.Err.Error())
 				q.RespErr()
 				return
 			}
 
-			result, err := gradeAnalysisByID(dmlCtx, 0, practiceID)
+			var result Analysis
+
+			result, err = gradeAnalysisByID(dmlCtx, 0, practiceID)
 			if err != nil {
 				q.Err = err
 				z.Error(q.Err.Error())
@@ -896,47 +890,33 @@ func gradeSH(ctx context.Context) {
 			data []byte
 
 			// 必需参数集
-			category string // 类别：exam practice
-			// studentIDStr     string
-			userID           int64
-			studentID        int64
-			examSessionIDStr string
-			examSessionID    int
-			practiceIDStr    string
-			practiceID       int
+			category      string // 类别：exam practice
+			userID        int64
+			studentID     int64
+			examSessionID int64
+			practiceID    int64
 		)
+		var p string
 		queryParams := q.R.URL.Query()
 
-		if category = queryParams.Get("category"); category == "" {
-			q.Err = fmt.Errorf("不支持的类型: %s", category)
-			z.Error(q.Err.Error())
-			q.RespErr()
-			return
+		// TODO：不支持传入ID
+		if p = queryParams.Get("studentID"); p != "" {
+			if studentID, err = strconv.ParseInt(p, 10, 64); err != nil {
+				q.Err = fmt.Errorf("无效学生ID: %s", p)
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+		} else {
+			if q.SysUser == nil || !q.SysUser.ID.Valid || forceErr == "q.SysUser nil" {
+				q.Err = fmt.Errorf("非法请求，鉴权用户失败")
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+			userID = q.SysUser.ID.Int64
+			studentID = userID
 		}
-
-		// // 用户身份
-		// if q.SysUser == nil || !q.SysUser.ID.Valid || forceErr == "q.SysUser nil" {
-		// 	q.Err = fmt.Errorf("非法请求，鉴权用户失败")
-		// 	z.Error(q.Err.Error())
-		// 	q.RespErr()
-		// 	return
-		// }
-		// userID = q.SysUser.ID.Int64
-		userID = 1681
-		studentID = userID
-		// if studentIDStr = queryParams.Get("studentID"); studentIDStr == "" {
-		// 	q.Err = fmt.Errorf("学生ID为空：: %s", studentIDStr)
-		// 	z.Error(q.Err.Error())
-		// 	q.RespErr()
-		// 	return
-		// }
-		// if studentID, err = strconv.Atoi(studentIDStr); err != nil {
-		// 	q.Err = fmt.Errorf("无效学生ID: %d", studentID)
-		// 	z.Error(q.Err.Error())
-		// 	q.RespErr()
-		// 	return
-		// }
-
 		dmlCtx, cancel := context.WithTimeout(ctx, TIMEOUT)
 		defer cancel()
 
@@ -948,36 +928,51 @@ func gradeSH(ctx context.Context) {
 		}
 
 		var tx pgx.Tx
-		tx, err = conn.Begin(context.Background())
+		tx, err = conn.Begin(dmlCtx)
 		if err != nil || forceErr == "conn begin tx fail" {
 			err = fmt.Errorf("开启事务失败: %w", err)
 			z.Error(err.Error())
 			return
 		}
 
+		defer func() {
+			if err != nil {
+				tx.Rollback(ctx)
+			} else {
+				tx.Commit(ctx)
+			}
+		}()
+
+		if category = queryParams.Get("category"); category == "" {
+			q.Err = fmt.Errorf("不支持的类型: %s", category)
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
 		switch category {
 		case "exam":
-			if examSessionIDStr = queryParams.Get("examSessionID"); examSessionIDStr == "" {
-				q.Err = fmt.Errorf("examSessionID为空: %s", examSessionIDStr)
+			if p = queryParams.Get("examSessionID"); p == "" {
+				q.Err = fmt.Errorf("examSessionID为空: %s", p)
 				z.Error(q.Err.Error())
 				q.RespErr()
 				return
 			}
-			if examSessionID, err = strconv.Atoi(examSessionIDStr); err != nil {
+			if examSessionID, err = strconv.ParseInt(p, 10, 64); err != nil {
 				q.Err = fmt.Errorf("examSessionID无效: %d", examSessionID)
 				z.Error(q.Err.Error())
 				q.RespErr()
 				return
 			}
 
-			result, err := getScoreS(dmlCtx, tx, studentID, examSessionID, 0)
+			var result Map
+
+			result, err = getScoreExam(dmlCtx, tx, studentID, examSessionID)
 			if err != nil {
 				q.Err = err
 				q.RespErr()
 				return
 			}
-
-			z.Debug("gradeAnalysisExam", zap.Any("result", result))
 
 			data, err = json.Marshal(result)
 			if err != nil {
@@ -988,27 +983,27 @@ func gradeSH(ctx context.Context) {
 			}
 
 		case "practice":
-			if practiceIDStr = queryParams.Get("practiceID"); practiceIDStr == "" {
-				q.Err = fmt.Errorf("practiceID为空: %s", practiceIDStr)
+			if p = queryParams.Get("practiceID"); p == "" {
+				q.Err = fmt.Errorf("practiceID为空: %s", p)
 				z.Error(q.Err.Error())
 				q.RespErr()
 				return
 			}
-			if practiceID, err = strconv.Atoi(practiceIDStr); err != nil {
-				q.Err = fmt.Errorf("practiceID无效: %d", practiceID)
+			if practiceID, err = strconv.ParseInt(p, 10, 64); err != nil {
+				q.Err = fmt.Errorf("practiceID无效: %s", p)
 				z.Error(q.Err.Error())
 				q.RespErr()
 				return
 			}
 
-			result, err := getScoreS(dmlCtx, tx, studentID, 0, practiceID)
+			var result Map
+
+			result, err = getScorePractice(dmlCtx, tx, studentID, practiceID)
 			if err != nil {
 				q.Err = err
 				q.RespErr()
 				return
 			}
-
-			// z.Debug("gradeAnalysisPractice", zap.Any("result", result))
 
 			data, err = json.Marshal(result)
 			if err != nil {
