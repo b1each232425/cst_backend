@@ -24,7 +24,7 @@ import (
 var z *zap.Logger
 
 const (
-	TIMEOUT = 10 * time.Second
+	TIMEOUT = 60 * time.Second
 )
 
 func init() {
