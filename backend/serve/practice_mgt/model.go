@@ -3,7 +3,7 @@
  * @Description: 练习管理所需模型
  * @Date: 2025-07-15 19:59:25
  * @LastEditors: zdl <1311866870@qq.com>
- * @LastEditTime: 2025-08-12 22:51:41
+ * @LastEditTime: 2025-08-14 20:28:08
  */
 package practice_mgt
 
@@ -41,12 +41,14 @@ var PracticeSubmissionStatus = struct {
 	Deleted   string // 删除 04
 	Submitted string // 已提交 06
 	Marked    string // 已批改出分 08
+	Disabled  string // 作废状态 10
 }{
 	Allow:     "00",
 	Forbid:    "02",
 	Deleted:   "04",
 	Submitted: "06",
 	Marked:    "08",
+	Disabled:  "10",
 }
 
 var StudentSubmissionStatus = struct {
@@ -64,10 +66,12 @@ var PracticeStatus = struct {
 	PendingRelease string // 未发布 00
 	Released       string // 已发布 02
 	Deleted        string // 已删除 04
+	Disabled       string // 已作废 06
 }{
 	PendingRelease: "00",
 	Released:       "02",
 	Deleted:        "04",
+	Disabled:       "06",
 }
 
 // MarkMode 练习批改模式

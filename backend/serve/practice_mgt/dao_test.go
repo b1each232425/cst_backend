@@ -3,7 +3,7 @@
  * @Description: 练习管理数据库层函数逻辑测试
  * @Date: 2025-07-24 14:51:50
  * @LastEditors: zdl <1311866870@qq.com>
- * @LastEditTime: 2025-08-13 14:34:33
+ * @LastEditTime: 2025-08-15 13:24:23
  */
 package practice_mgt
 
@@ -1180,7 +1180,7 @@ func TestValidatePractice(t *testing.T) {
 				PaperID:         null.IntFrom(102),
 				Name:            null.StringFrom("化学期末考试"),
 				CorrectMode:     null.StringFrom("异常批改数据"), // 批改模式
-				Type:            null.StringFrom("02"),           // 练习类型（试卷）
+				Type:            null.StringFrom("02"),     // 练习类型（试卷）
 				AllowedAttempts: null.IntFrom(10),
 			},
 			ps:            nil,
@@ -1202,7 +1202,7 @@ func TestValidatePractice(t *testing.T) {
 			p: &cmn.TPractice{
 				PaperID:         null.IntFrom(102),
 				Name:            null.StringFrom("化学期末考试"),
-				CorrectMode:     null.StringFrom("00"),           // 批改模式
+				CorrectMode:     null.StringFrom("00"),     // 批改模式
 				Type:            null.StringFrom("异常练习类型"), // 练习类型（试卷）
 				AllowedAttempts: null.IntFrom(10),
 			},
@@ -2417,29 +2417,33 @@ func TestOperatePracticeStatus(t *testing.T) {
 
 	// 然后就是操作他变成待发布与删除状态
 	tests := []struct {
-		name          string
-		pid           int64
-		status        string
-		expectedError error
+		name                     string
+		pid                      int64
+		status                   string
+		expectedSubmissionStatus string
+		expectedError            error
 	}{
 		// 当前name加上，当前我应该准备一个当前新增练习应该处理的状态
 		{
-			name:          "正常1 将待发布练习调整为发布状态 PendingRelease",
-			pid:           uid.Int64,
-			status:        PracticeStatus.Released,
-			expectedError: nil,
+			name:                     "正常1 将待发布练习调整为发布状态 PendingRelease",
+			pid:                      uid.Int64,
+			status:                   PracticeStatus.Released,
+			expectedSubmissionStatus: PracticeSubmissionStatus.Allow,
+			expectedError:            nil,
 		},
 		{
-			name:          "正常2 将已经发布练习调整为待发布状态 Released",
-			pid:           uid.Int64,
-			status:        PracticeStatus.PendingRelease,
-			expectedError: nil,
+			name:                     "正常2 将已经发布练习调整为作废 Released",
+			pid:                      uid.Int64,
+			status:                   PracticeStatus.Disabled,
+			expectedSubmissionStatus: PracticeSubmissionStatus.Disabled,
+			expectedError:            nil,
 		},
 		{
-			name:          "正常3 将待发布练习调整为删除状态 PendingRelease",
-			pid:           uid.Int64,
-			status:        PracticeStatus.Deleted,
-			expectedError: nil,
+			name:                     "正常3 将发布练习调整为删除状态 Released",
+			pid:                      uid.Int64,
+			status:                   PracticeStatus.Deleted,
+			expectedSubmissionStatus: PracticeSubmissionStatus.Deleted,
+			expectedError:            nil,
 		},
 		{
 			name:          "异常1 触发LoadPracticeById错误 不存在的练习ID PendingRelease",
@@ -2458,24 +2462,6 @@ func TestOperatePracticeStatus(t *testing.T) {
 			pid:           uid.Int64,
 			status:        PracticeStatus.Released,
 			expectedError: errors.New("beginTx called failed"),
-		},
-		{
-			name:          "异常4 触发rollback PendingRelease",
-			pid:           uid.Int64,
-			status:        PracticeStatus.Released,
-			expectedError: nil,
-		},
-		{
-			name:          "异常5 触发rollbackFail PendingRelease",
-			pid:           uid.Int64,
-			status:        PracticeStatus.Released,
-			expectedError: nil,
-		},
-		{
-			name:          "异常6 触发 commit  PendingRelease",
-			pid:           uid.Int64,
-			status:        PracticeStatus.Released,
-			expectedError: nil,
 		},
 		{
 			name:          "异常9 触发GenerateExamPaper错误  pg PendingRelease",
@@ -2502,21 +2488,39 @@ func TestOperatePracticeStatus(t *testing.T) {
 			expectedError: nil,
 		},
 		{
-			name:          "异常14 更新发布练习信息错误 query2 Released",
+			name:          "异常21 强制获取到学生作答 pQuery2 Released",
 			pid:           uid.Int64,
-			status:        PracticeStatus.PendingRelease,
-			expectedError: errors.New("更新练习状态 发布-> 未发布 或 未发布-> 删除 失败"),
+			status:        PracticeStatus.Deleted,
+			expectedError: errors.New("遍历查询是否有学生作答记录失败"),
 		},
 		{
-			name:          "异常15 更新发布练习信息错误 query3 Released",
+			name:          "异常24 强制获取到有学生曾经作答过练习 Released",
 			pid:           uid.Int64,
-			status:        PracticeStatus.PendingRelease,
-			expectedError: errors.New("重置学生练习提交记录信息失败"),
+			status:        PracticeStatus.Deleted,
+			expectedError: errors.New("练习已有学生参与作答，不能删除"),
+		},
+		{
+			name:          "异常22 强制更新练习失败 pQuery3 Released",
+			pid:           uid.Int64,
+			status:        PracticeStatus.Deleted,
+			expectedError: errors.New("更新练习状态 发布-> 未发布 或 未发布-> 删除 失败"),
+		},
+		//{
+		//	name:          "异常23 强制更新练习提交失败 pQuery4 Released",
+		//	pid:           uid.Int64,
+		//	status:        PracticeStatus.Deleted,
+		//	expectedError: errors.New("重置学生练习提交记录信息失败"),
+		//},
+		{
+			name:          "异常29 强制触发删除考卷失败 delete Released",
+			pid:           uid.Int64,
+			status:        PracticeStatus.Deleted,
+			expectedError: errors.New("级联删除对应考试场次与练习考卷、学生答卷数据失败"),
 		},
 		{
 			name:          "异常16 触发清除批改配置错误 mark1 Released",
 			pid:           uid.Int64,
-			status:        PracticeStatus.PendingRelease,
+			status:        PracticeStatus.Deleted,
 			expectedError: nil,
 		},
 		{
@@ -2524,12 +2528,6 @@ func TestOperatePracticeStatus(t *testing.T) {
 			pid:           uid.Int64,
 			status:        "08",
 			expectedError: errors.New("非法,请传入合法的练习状态"),
-		},
-		{
-			name:          "异常18 直接从发布状态切换至删除状态 Released",
-			pid:           uid.Int64,
-			status:        PracticeStatus.Deleted,
-			expectedError: errors.New("目前操作的练习状态为发布状态，无法切换至删除状态，请先取消发布"),
 		},
 		{
 			name:          "异常19 强制触发回滚 rollback PendingRelease",
@@ -2543,6 +2541,30 @@ func TestOperatePracticeStatus(t *testing.T) {
 			status:        PracticeStatus.Released,
 			expectedError: nil,
 		},
+		{
+			name:          "异常25 强制触发更新练习信息失败 pQuery5 Released",
+			pid:           uid.Int64,
+			status:        PracticeStatus.Disabled,
+			expectedError: errors.New("更新练习状态 发布-> 作废失败"),
+		},
+		{
+			name:          "异常26 强制触发更新练习提交信息失败 pQuery6 Released",
+			pid:           uid.Int64,
+			status:        PracticeStatus.Disabled,
+			expectedError: errors.New("重置学生练习提交记录信息失败"),
+		},
+		{
+			name:          "异常27 强制触发更新练习提交信息失败 delete Released",
+			pid:           uid.Int64,
+			status:        PracticeStatus.Disabled,
+			expectedError: errors.New("级联删除对应考试场次与练习考卷、学生答卷数据失败"),
+		},
+		{
+			name:          "异常28 触发清除批改配置错误 mark2 Released",
+			pid:           uid.Int64,
+			status:        PracticeStatus.Disabled,
+			expectedError: nil,
+		},
 	}
 
 	for _, tt := range tests {
@@ -2550,12 +2572,6 @@ func TestOperatePracticeStatus(t *testing.T) {
 			ctx = context.Background()
 			if containsString(tt.name, "异常3") {
 				ctx = context.WithValue(ctx, "force-error", "beginTx")
-			} else if containsString(tt.name, "异常4") {
-				ctx = context.WithValue(ctx, "force-error", "rollback")
-			} else if containsString(tt.name, "异常5") {
-				ctx = context.WithValue(ctx, "force-error", "rollbackFail")
-			} else if containsString(tt.name, "异常6") {
-				ctx = context.WithValue(ctx, "force-error", "commit")
 			} else if containsString(tt.name, "异常9") {
 				ctx = context.WithValue(ctx, "force-error", "pg")
 			} else if containsString(tt.name, "异常10") {
@@ -2564,12 +2580,22 @@ func TestOperatePracticeStatus(t *testing.T) {
 				ctx = context.WithValue(ctx, "force-error", "pQuery1")
 			} else if containsString(tt.name, "异常12") {
 				ctx = context.WithValue(ctx, "force-error", "mark")
-			} else if containsString(tt.name, "异常14") {
+			} else if containsString(tt.name, "异常21") {
 				ctx = context.WithValue(ctx, "force-error", "pQuery2")
-			} else if containsString(tt.name, "异常15") {
+			} else if containsString(tt.name, "异常22") {
 				ctx = context.WithValue(ctx, "force-error", "pQuery3")
+			} else if containsString(tt.name, "异常29") {
+				ctx = context.WithValue(ctx, "force-error", "delete")
 			} else if containsString(tt.name, "异常16") {
 				ctx = context.WithValue(ctx, "force-error", "mark1")
+			} else if containsString(tt.name, "异常25") {
+				ctx = context.WithValue(ctx, "force-error", "pQuery5")
+			} else if containsString(tt.name, "异常26") {
+				ctx = context.WithValue(ctx, "force-error", "pQuery6")
+			} else if containsString(tt.name, "异常27") {
+				ctx = context.WithValue(ctx, "force-error", "delete")
+			} else if containsString(tt.name, "异常28") {
+				ctx = context.WithValue(ctx, "force-error", "mark2")
 			} else if containsString(tt.name, "异常19") {
 				ctx = context.WithValue(ctx, "force-error", "rollback")
 			} else if containsString(tt.name, "异常20") {
@@ -2615,14 +2641,16 @@ func TestOperatePracticeStatus(t *testing.T) {
 
 			// 然后 要准备多个情况 去测试状态是否满足 这里我优先准备 两三个数据 练习提交记录，用于删除或者取消发布操作查看是否真的全部清除
 			// 这里也要生成对应的practice_submission记录的
-			s = `INSERT INTO assessuser.t_practice_submissions (id,practice_id,student_id,exam_paper_id,creator,attempt,status) VALUES (
+			if !containsString(tt.name, "正常3") && !containsString(tt.name, "异常22") && !containsString(tt.name, "异常23") && !containsString(tt.name, "异常29") && !containsString(tt.name, "异常16") {
+				s = `INSERT INTO assessuser.t_practice_submissions (id,practice_id,student_id,exam_paper_id,creator,attempt,status) VALUES (
 				$1,$2,$3,$4,$5,$6,$7
 			),($8,$9,$10,$11,$12,$13,$14)`
-			_, err = tx1.Exec(ctx, s, 10086, uid, 1, *examPaperID1, uid, 1, "00", 10087, uid, 2, *examPaperID1, uid, 1, "00")
-			if err != nil {
-				t.Error(err)
+				_, err = tx1.Exec(ctx, s, 10086, uid, 1, *examPaperID1, uid, 1, "00", 10087, uid, 2, *examPaperID1, uid, 1, "00")
+				if err != nil {
+					t.Error(err)
+				}
+				// 这里定义了两个这种状态，就代表已经提交跟已作答但是未提交的状态了
 			}
-			// 这里定义了两个这种状态，就代表已经提交跟已作答但是未提交的状态了
 
 			err = tx1.Commit(context.Background())
 			if err != nil {
@@ -2639,7 +2667,7 @@ func TestOperatePracticeStatus(t *testing.T) {
 					t.Errorf("OperatePracticeStatus() 期望没有错误，但返回错误: %v", err)
 					return
 				}
-				if !containsString(tt.name, "异常19") && !containsString(tt.name, "异常20") {
+				if !containsString(tt.name, "异常19") && !containsString(tt.name, "异常20") && !containsString(tt.name, "异常28") {
 
 					// 这里没错的话，就需要去查询一下当前的数据了
 					if tt.status == PracticeStatus.Released {
@@ -2662,18 +2690,30 @@ func TestOperatePracticeStatus(t *testing.T) {
 
 					} else {
 						// 这里需要判断一下这个
-						nowA := 0
-						nowS := PracticeSubmissionStatus.Allow
-						s = `SELECT attempt,status FROM t_practice_submissions WHERE practice_id = $1 LIMIT 1`
-						err = conn.QueryRow(ctx, s, uid).Scan(&nowA, &nowS)
+						if tt.status == PracticeStatus.Disabled {
+							nowA := 0
+							nowS := PracticeSubmissionStatus.Allow
+							s = `SELECT attempt,status FROM t_practice_submissions WHERE practice_id = $1 LIMIT 1`
+							err = conn.QueryRow(ctx, s, uid).Scan(&nowA, &nowS)
+							if err != nil {
+								t.Error(err)
+							}
+							if nowA != 1 {
+								t.Errorf("当前的练习提交记录的尝试次数数量不为1：实际为：%v", nowA)
+							}
+							if nowS != tt.expectedSubmissionStatus {
+								t.Errorf("当前的练习提交记录的状态不为预期：%v：实际为：%v", tt.expectedSubmissionStatus, nowS)
+							}
+						}
+						// 如果是这个删除的话，那就考卷咯？
+						s = `SELECT COUNT(*) FROM  assessuser.t_exam_paper`
+						pCount := -1
+						err = conn.QueryRow(ctx, s).Scan(&pCount)
 						if err != nil {
 							t.Error(err)
 						}
-						if nowA != -1 {
-							t.Errorf("当前的练习提交记录的尝试次数数量不为-1：实际为：%v", nowA)
-						}
-						if nowS != PracticeSubmissionStatus.Deleted {
-							t.Errorf("当前的练习提交记录的状态不为删除：实际为：%v", nowS)
+						if pCount != 0 {
+							t.Errorf("当前考卷数量不为预期：%v：实际为：%v", 0, pCount)
 						}
 					}
 				}
@@ -2883,7 +2923,7 @@ func TestOperatePracticeStatusV2(t *testing.T) {
 	// 给已发布的2个练习各自创建考卷、创建练习提交记录、创建学生答卷
 	// 剩下的两种状态 不创建考卷与练习提交 记录
 
-	var practiceName1, practiceName2, practiceName3, practiceName4, practiceName5, practiceName6 string
+	var practiceName1, practiceName2, practiceName3, practiceName4, practiceName5, practiceName6, practiceName7 string
 
 	practiceName1 = "单元测试待发布练习"
 	practiceName2 = "单元测试发布练习"
@@ -2891,6 +2931,7 @@ func TestOperatePracticeStatusV2(t *testing.T) {
 	practiceName4 = "单元测试待发布练习1"
 	practiceName5 = "单元测试发布练习1"
 	practiceName6 = "单元测试删除练习1"
+	practiceName7 = "单元测试作废练习1"
 
 	// 先创建数据，不管到底是不是这个测试用例需要的 三种练习状态 然后还有状态不一的练习
 	// 删除 exam_paper_id 字段后，每组数据保留 8 个字段，调整占位符编号
@@ -2901,7 +2942,8 @@ VALUES
 ($17, $18, $19, $20, $21, $22, $23, $24),
 ($25, $26, $27, $28, $29, $30, $31, $32),
 ($33, $34, $35, $36, $37, $38, $39, $40),
-($41, $42, $43, $44, $45, $46, $47, $48)`
+($41, $42, $43, $44, $45, $46, $47, $48),
+($49 ,$50, $51, $52, $53, $54, $55, $56)`
 
 	_, err = tx.Exec(ctx, s,
 		// 第 1 组数据
@@ -2916,7 +2958,22 @@ VALUES
 		10090, practiceName5, "00", uid, 10087, "00", 10086, PracticeStatus.Released,
 		// 第 6 组数据
 		10091, practiceName6, "00", uid, 10088, "00", 10086, PracticeStatus.Deleted,
+		// 第 7 组数据
+		10092, practiceName7, "00", uid, 10089, "00", 10089, PracticeStatus.Disabled,
 	)
+	if err != nil {
+		t.Errorf("插入练习失败：%v", err)
+	}
+
+	s = `SELECT COUNT(*) FROM t_practice`
+	tCount := 0
+	err = tx.QueryRow(ctx, s).Scan(&tCount)
+	if err != nil {
+		t.Errorf("无法查询此时练习数量:%v", err)
+	}
+	if tCount != 7 {
+		t.Errorf("此时练习数量不为7，实际为：%v", tCount)
+	}
 
 	// 这里也随便插入已发布练习的几个学生
 	s = `INSERT INTO t_practice_student (student_id , practice_id,creator,status)VALUES($1,$2,$3,$4),($5,$6,$7,$8),($9,$10,$11,$12),($13,$14,$15,$16)`
@@ -3112,6 +3169,25 @@ VALUES
 
 	}
 
+	s = `SELECT practice_id FROM t_exam_paper `
+	rows, err := tx.Query(ctx, s)
+	if err != nil {
+		t.Errorf("查询考卷失败：%v", err)
+	}
+	var ids []int64
+	for rows.Next() {
+		var id int64
+		err = rows.Scan(&id)
+		ids = append(ids, id)
+		if err != nil {
+			t.Errorf("查询考卷失败：%v", err)
+		}
+	}
+	if len(ids) == 0 {
+		t.Errorf("此时查询考卷的数量为0")
+	}
+	t.Logf("打印一下此时考卷携带的练习ID：%v", ids)
+
 	err = tx.Commit(ctx)
 	if err != nil {
 		t.Errorf("事务提交失败：%v", err)
@@ -3139,22 +3215,22 @@ VALUES
 			expectedError: nil,
 		},
 		{
-			name:           "正常2 单一 将已经发布练习调整为待发布状态 Released",
-			status:         PracticeStatus.PendingRelease,
+			name:           "正常2 单一 将已经发布练习调整为作废状态 Released",
+			status:         PracticeStatus.Disabled,
 			pids:           []int64{10087},
 			subMissionsNum: 4,
-			pNum:           3,
+			pNum:           2,
 			epNum:          0,
 			expectedError:  nil,
 		},
 		{
 			// 不涉及到任何的考卷信息增删的 因为我这里根本都没有给这两种练习创建记录
-			name:           "正常3 单一 将待发布练习调整为删除状态 PendingRelease",
+			name:           "正常3 单一 将发布练习调整为删除状态 Released",
 			status:         PracticeStatus.Deleted,
-			pids:           []int64{10086},
-			subMissionsNum: 0,
+			pids:           []int64{10087},
+			subMissionsNum: 0, // 这里的0 是因为如果是删除的话，不可能有学生作答了
 			pNum:           3,
-			epNum:          2,
+			epNum:          0,
 			expectedError:  nil,
 		},
 		{
@@ -3166,21 +3242,21 @@ VALUES
 			expectedError: nil,
 		},
 		{
-			name:           "正常5 批量 2个 将已经发布练习调整为待发布状态 Released",
-			status:         PracticeStatus.PendingRelease,
+			name:           "正常5 批量 2个 将已经发布练习调整为作废状态 Released",
+			status:         PracticeStatus.Disabled,
 			pids:           []int64{10087, 10090},
 			subMissionsNum: 8,
-			pNum:           4,
+			pNum:           3,
 			epNum:          0,
 			expectedError:  nil,
 		},
 		{
-			name:           "正常6 批量 2个 将待发布练习调整为删除状态 PendingRelease",
+			name:           "正常6 批量 2个 将发布练习调整为删除状态 Released",
 			status:         PracticeStatus.Deleted,
-			pids:           []int64{10086, 10089},
+			pids:           []int64{10087, 10090},
 			subMissionsNum: 0,
 			pNum:           4,
-			epNum:          2,
+			epNum:          0,
 			expectedError:  nil,
 		},
 		{
@@ -3190,7 +3266,7 @@ VALUES
 			expectedError: errors.New("非法practiceIDs"),
 		},
 		{
-			name:          "异常2 触发事务开启错误 beginTx  PendingRelease",
+			name:          "异常9 触发事务开启错误 beginTx  PendingRelease",
 			status:        PracticeStatus.Deleted,
 			pids:          []int64{10086, 10089},
 			expectedError: errors.New("beginTx called failed"),
@@ -3202,10 +3278,26 @@ VALUES
 			expectedError: errors.New("此时要批量操作的练习状态不一，无法进行批量操作"),
 		},
 		{
+			name:          "异常17 触发操作已作废练习 Disabled",
+			status:        PracticeStatus.Released,
+			pids:          []int64{10092},
+			pNum:          3,
+			epNum:         3,
+			expectedError: errors.New("不能操作已作废的练习"),
+		},
+		{
 			name:          "异常4 发布练习 触发生成考卷失败 pg PendingRelease",
 			status:        PracticeStatus.Released,
 			pids:          []int64{10086},
 			expectedError: errors.New("invalid paper question group"),
+		},
+		{
+			name:          "异常18 触发操作生成的考卷ID为空 empty PendingRelease",
+			status:        PracticeStatus.Released,
+			pids:          []int64{10086},
+			pNum:          3,
+			epNum:         3,
+			expectedError: errors.New("生成练习考卷返回的考卷ID为空"),
 		},
 		{
 			name:          "异常5 发布练习 触发生成更新练习信息错误 pQuery1 PendingRelease",
@@ -3220,26 +3312,74 @@ VALUES
 			expectedError: errors.New("新增练习批改配置失败"),
 		},
 		{
-			name:          "异常7 取消发布/删除 触发更新练习错误 pQuery2 Released",
-			status:        PracticeStatus.PendingRelease,
+			name:          "异常7 删除练习 触发查询练习是否有学生作答失败 pQuery2 Released",
+			status:        PracticeStatus.Deleted,
 			pids:          []int64{10087, 10090},
-			expectedError: errors.New("更新练习状态 发布-> 未发布 或 未发布-> 删除 失败"),
+			expectedError: errors.New("遍历查询是否有学生作答记录失败"),
 		},
 		{
-			name:          "异常8 取消发布/删除 触发更新练习提交记录错误 pQuery3 Released",
-			status:        PracticeStatus.PendingRelease,
+			name:          "异常19 删除练习 触发查询练习已有学生作答 Released",
+			status:        PracticeStatus.Deleted,
 			pids:          []int64{10087, 10090},
-			expectedError: errors.New("批量重置学生练习提交记录信息失败："),
+			pNum:          3,
+			epNum:         3,
+			expectedError: errors.New("的练习已有学生参与作答，不能删除"),
 		},
 		{
-			name:          "异常9 取消发布/删除 触发批量删除考卷、学生答卷错误 delete Released",
-			status:        PracticeStatus.PendingRelease,
+			name:          "异常8 删除练习 触发更新练习错误 pQuery3 Released",
+			status:        PracticeStatus.Deleted,
+			pids:          []int64{10087, 10090},
+			expectedError: errors.New("更新练习状态 发布-> 删除 失败"),
+		},
+		{
+			name:          "异常20 删除练习 触发查询练习已有学生作答 pQuery4 Released",
+			status:        PracticeStatus.Deleted,
+			pids:          []int64{10087, 10090},
+			pNum:          3,
+			epNum:         3,
+			expectedError: errors.New("批量重置学生练习提交记录信息失"),
+		},
+		{
+			name:          "异常23 删除练习 触发删除考卷失败 delete Released",
+			status:        PracticeStatus.Deleted,
+			pids:          []int64{10087, 10090},
+			pNum:          3,
+			epNum:         3,
+			expectedError: errors.New("级联删除对应考试场次与练习考卷、学生答卷数据失败"),
+		},
+		{
+			name:          "异常24 删除练习 触发清除批改配置 mark1 Released",
+			status:        PracticeStatus.Deleted,
+			pids:          []int64{10087, 10090},
+			pNum:          3,
+			epNum:         3,
+			expectedError: errors.New("清除批改配置失败"),
+		},
+		{
+			name:          "异常21 作废练习  pQuery5 Released",
+			status:        PracticeStatus.Disabled,
+			pids:          []int64{10087, 10090},
+			pNum:          3,
+			epNum:         3,
+			expectedError: errors.New("更新练习状态 发布->作废 失败"),
+		},
+		{
+			name:          "异常22 作废练习  pQuery6 Released",
+			status:        PracticeStatus.Disabled,
+			pids:          []int64{10087, 10090},
+			pNum:          3,
+			epNum:         3,
+			expectedError: errors.New("批量重置学生练习提交记录信息失败"),
+		},
+		{
+			name:          "异常109 作废 触发批量删除考卷、学生答卷错误 delete Released",
+			status:        PracticeStatus.Disabled,
 			pids:          []int64{10087, 10090},
 			expectedError: errors.New("级联删除对应考试场次与练习考卷、学生答卷数据失败"),
 		},
 		{
-			name:          "异常10 取消发布/删除 触发批量清除批改配置失败 mark1 Released",
-			status:        PracticeStatus.PendingRelease,
+			name:          "异常10 取消发布/删除 触发批量清除批改配置失败 mark2 Released",
+			status:        PracticeStatus.Disabled,
 			pids:          []int64{10087, 10090},
 			expectedError: errors.New("清除批改配置失败"),
 		},
@@ -3254,18 +3394,6 @@ VALUES
 			status:        PracticeStatus.PendingRelease,
 			pids:          []int64{10088, 10091},
 			expectedError: errors.New("批量查询练习记录失败，记录为空"),
-		},
-		{
-			name:          "异常13 生成考卷返回的考卷ID为空指针 Deleted",
-			status:        PracticeStatus.Released,
-			pids:          []int64{10086},
-			expectedError: errors.New("生成练习考卷返回的考卷ID为空"),
-		},
-		{
-			name:          "异常14 批量将已发布的练习直接修改成删除状态 Released",
-			status:        PracticeStatus.Deleted,
-			pids:          []int64{10087, 10090},
-			expectedError: errors.New("无法切换至删除状态，请先取消发布"),
 		},
 		{
 			name:          "异常15 强制触发回滚 rollback PendingRelease",
@@ -3290,7 +3418,7 @@ VALUES
 
 			// 构建对应上下文
 			ctx = context.Background()
-			if containsString(tt.name, "异常2") {
+			if containsString(tt.name, "异常9") {
 				ctx = context.WithValue(ctx, "force-error", "beginTx")
 			} else if containsString(tt.name, "异常4") {
 				ctx = context.WithValue(ctx, "force-error", "pg")
@@ -3302,16 +3430,28 @@ VALUES
 				ctx = context.WithValue(ctx, "force-error", "pQuery2")
 			} else if containsString(tt.name, "异常8") {
 				ctx = context.WithValue(ctx, "force-error", "pQuery3")
-			} else if containsString(tt.name, "异常9") {
+			} else if containsString(tt.name, "异常109") {
 				ctx = context.WithValue(ctx, "force-error", "delete")
 			} else if containsString(tt.name, "异常10") {
-				ctx = context.WithValue(ctx, "force-error", "mark1")
+				ctx = context.WithValue(ctx, "force-error", "mark2")
 			} else if containsString(tt.name, "异常13") {
 				ctx = context.WithValue(ctx, "force-error", "empty")
 			} else if containsString(tt.name, "异常15") {
 				ctx = context.WithValue(ctx, "force-error", "rollback")
 			} else if containsString(tt.name, "异常16") {
 				ctx = context.WithValue(ctx, "force-error", "commit")
+			} else if containsString(tt.name, "异常18") {
+				ctx = context.WithValue(ctx, "force-error", "empty")
+			} else if containsString(tt.name, "异常20") {
+				ctx = context.WithValue(ctx, "force-error", "pQuery4")
+			} else if containsString(tt.name, "异常21") {
+				ctx = context.WithValue(ctx, "force-error", "pQuery5")
+			} else if containsString(tt.name, "异常22") {
+				ctx = context.WithValue(ctx, "force-error", "pQuery6")
+			} else if containsString(tt.name, "异常23") {
+				ctx = context.WithValue(ctx, "force-error", "delete")
+			} else if containsString(tt.name, "异常24") {
+				ctx = context.WithValue(ctx, "force-error", "mark1")
 			} else {
 				ctx = context.Background()
 			}
@@ -3337,6 +3477,14 @@ VALUES
 				_, err = conn.Exec(ctx, s, needDid)
 				if err != nil {
 					t.Errorf("删除对应练习失败：%v", err)
+				}
+			}
+
+			if containsString(tt.name, "正常6") || containsString(tt.name, "正常3") || containsString(tt.name, "异常8") || containsString(tt.name, "异常20") || containsString(tt.name, "异常23") || containsString(tt.name, "异常24") {
+				s = `DELETE FROM t_practice_submissions`
+				_, err = conn.Exec(ctx, s)
+				if err != nil {
+					t.Errorf("删除对应练习学生提交记录失败：%v", err)
 				}
 			}
 
@@ -3485,14 +3633,43 @@ VALUES
 								}
 							}
 						}
+					} else if tt.status == PracticeStatus.Disabled {
+						var count int
+						s = `SELECT COUNT(*) FROM t_practice_submissions WHERE status = $1`
+						err = conn.QueryRow(ctx, s, PracticeSubmissionStatus.Disabled).Scan(&count)
+						if err != nil {
+							t.Errorf("查询练习提交记录失败：%v", err)
+						}
+						if count != tt.subMissionsNum {
+							t.Errorf("返回的符合要求的练习记录数量不为%v 实际返回：%v", tt.subMissionsNum, count)
+						}
+						s = `SELECT COUNT(*) FROM t_practice WHERE status = $1`
+						err = conn.QueryRow(ctx, s, tt.status).Scan(&count)
+						if err != nil {
+							t.Errorf("查询练习记录失败：%v", err)
+						}
+						if count != tt.pNum {
+							t.Errorf("返回的符合要求的练习记录数量不为%v 实际返回：%v", tt.pNum, count)
+						}
+
+						// 这里看一下练习的考卷ID
+						s = `SELECT COUNT(*) FROM t_exam_paper`
+						err = conn.QueryRow(ctx, s).Scan(&count)
+						if err != nil {
+							t.Errorf("查询考卷记录失败：%v", err)
+						}
+						// 这里原本是只有2张考卷的 然后删除之后，应该只剩1张 但是这里的状态从
+						if count != tt.epNum {
+							t.Errorf("批量删除后 查询返回的符合要求的考卷数量不为%v 实际返回：%v", tt.epNum, count)
+						}
 					} else {
 						// 这里是取消发布与设置为待发布的 需要删除考卷的，那就是需要统计现在的考卷与学生答卷的
 						// 这里是删除或者是待发布状态
 						// 这里要对生成的考卷跟练习提交记录进行状态
 
 						var count int
-						s = `SELECT COUNT(*) FROM t_practice_submissions WHERE status = $1 AND attempt = $2`
-						err = conn.QueryRow(ctx, s, PracticeSubmissionStatus.Deleted, -1).Scan(&count)
+						s = `SELECT COUNT(*) FROM t_practice_submissions WHERE status = $1`
+						err = conn.QueryRow(ctx, s, PracticeSubmissionStatus.Deleted).Scan(&count)
 						if err != nil {
 							t.Errorf("查询练习提交记录失败：%v", err)
 						}
@@ -3506,46 +3683,6 @@ VALUES
 						}
 						if count != tt.pNum {
 							t.Errorf("返回的符合要求的练习记录数量不为%v 实际返回：%v", tt.pNum, count)
-						}
-
-						if containsString(tt.name, "正常5") {
-							examPaperIDs := []int64{}
-
-							ps, err := LoadPracticeByIDs(ctx, tt.pids)
-							if err != nil {
-								t.Errorf("无法成功查询到已发布练习的考卷ID:%v", err)
-							}
-
-							oriExamPaperIDs := []int64{}
-							for _, p := range ps {
-								oriExamPaperIDs = append(oriExamPaperIDs, p.ExamPaperID.Int64)
-							}
-							t.Logf("打印输出一下这个考卷ID：%v", oriExamPaperIDs)
-							s = `SELECT exam_paper_id FROM t_practice WHERE id = ANY($1)`
-							rows, err := conn.Query(ctx, s, tt.pids)
-							if err != nil {
-								t.Errorf("无法成功查询到已发布练习的考卷ID")
-							}
-							for rows.Next() {
-								var id int64
-								err = rows.Scan(&id)
-								if err != nil {
-									t.Errorf("无法成功查询到已发布练习的考卷ID:%v", err)
-								}
-								examPaperIDs = append(examPaperIDs, id)
-							}
-
-							t.Logf("打印输出一下这个考卷ID：%v", examPaperIDs)
-
-							s = `SELECT COUNT(*) FROM t_exam_paper WHERE id = ANY($1)`
-							err = conn.QueryRow(ctx, s, examPaperIDs).Scan(&count)
-							if err != nil {
-								t.Errorf("查询考卷记录失败：%v", err)
-							}
-							// 这里原本是只有2张考卷的 然后删除之后，应该只剩1张 但是这里的状态从
-							if count != tt.epNum {
-								t.Errorf("批量删除后 查询返回的符合要求的考卷数量不为%v 实际返回：%v", tt.epNum, count)
-							}
 						}
 
 						// 这里看一下练习的考卷ID
@@ -3611,7 +3748,7 @@ VALUES
 
 				tx1, _ := conn.Begin(ctx)
 
-				var practiceName1, practiceName2, practiceName3, practiceName4, practiceName5, practiceName6 string
+				var practiceName1, practiceName2, practiceName3, practiceName4, practiceName5, practiceName6, practiceName7 string
 
 				practiceName1 = "单元测试待发布练习"
 				practiceName2 = "单元测试发布练习"
@@ -3619,17 +3756,19 @@ VALUES
 				practiceName4 = "单元测试待发布练习1"
 				practiceName5 = "单元测试发布练习1"
 				practiceName6 = "单元测试删除练习1"
+				practiceName7 = "单元测试作废练习1"
 
 				// 先创建数据，不管到底是不是这个测试用例需要的 三种练习状态 然后还有状态不一的练习
 				// 删除 exam_paper_id 字段后，每组数据保留 8 个字段，调整占位符编号
 				s = `INSERT INTO t_practice (id,name,correct_mode,creator,allowed_attempts,type,paper_id,status)
-VALUES 
-($1, $2, $3, $4, $5, $6, $7, $8),
-($9, $10, $11, $12, $13, $14, $15, $16),
-($17, $18, $19, $20, $21, $22, $23, $24),
-($25, $26, $27, $28, $29, $30, $31, $32),
-($33, $34, $35, $36, $37, $38, $39, $40),
-($41, $42, $43, $44, $45, $46, $47, $48)`
+			VALUES
+			($1, $2, $3, $4, $5, $6, $7, $8),
+			($9, $10, $11, $12, $13, $14, $15, $16),
+			($17, $18, $19, $20, $21, $22, $23, $24),
+			($25, $26, $27, $28, $29, $30, $31, $32),
+			($33, $34, $35, $36, $37, $38, $39, $40),
+			($41, $42, $43, $44, $45, $46, $47, $48),
+			($49 ,$50, $51, $52, $53, $54, $55, $56)`
 
 				_, err = tx1.Exec(ctx, s,
 					// 第 1 组数据
@@ -3644,7 +3783,22 @@ VALUES
 					10090, practiceName5, "00", uid, 10087, "00", 10086, PracticeStatus.Released,
 					// 第 6 组数据
 					10091, practiceName6, "00", uid, 10088, "00", 10086, PracticeStatus.Deleted,
+					// 第 7 组数据
+					10092, practiceName7, "00", uid, 10089, "00", 10089, PracticeStatus.Disabled,
 				)
+				if err != nil {
+					t.Errorf("插入练习失败：%v", err)
+				}
+
+				s = `SELECT COUNT(*) FROM t_practice`
+				tCount := 0
+				err = tx1.QueryRow(ctx, s).Scan(&tCount)
+				if err != nil {
+					t.Errorf("无法查询此时练习数量:%v", err)
+				}
+				if tCount != 7 {
+					t.Errorf("此时练习数量不为7，实际为：%v", tCount)
+				}
 
 				// 这里也随便插入已发布练习的几个学生
 				s = `INSERT INTO t_practice_student (student_id , practice_id,creator,status)VALUES($1,$2,$3,$4),($5,$6,$7,$8),($9,$10,$11,$12),($13,$14,$15,$16)`
@@ -3709,8 +3863,8 @@ VALUES
 					// 这里给
 					// 这里要对应创建学生提交记录 给已经发布的练习创建练习提交记录 这里需要分为两种情况：已经提交的，还有已经作答了没有提交的 每一种
 					s = `INSERT INTO assessuser.t_practice_submissions (practice_id,student_id,exam_paper_id,creator,attempt,status) VALUES (
-				$1,$2,$3,$4,$5,$6
-			) returning id`
+							$1,$2,$3,$4,$5,$6
+						) returning id`
 					err = tx1.QueryRow(ctx, s,
 						practiceID, 1, examPaperID, uid, 1, "08").Scan(&id)
 					if err != nil {
@@ -3719,8 +3873,8 @@ VALUES
 
 					// 这里要对应创建学生提交记录 给已经发布的练习创建练习提交记录 这里需要分为两种情况：已经提交的，还有已经作答了没有提交的 每一种
 					s = `INSERT INTO assessuser.t_practice_submissions (practice_id,student_id,exam_paper_id,creator,attempt,status) VALUES (
-				$1,$2,$3,$4,$5,$6
-			) returning id`
+							$1,$2,$3,$4,$5,$6
+						) returning id`
 					err = tx1.QueryRow(ctx, s,
 						practiceID, 1, examPaperID, uid, 2, "00").Scan(&id)
 					if err != nil {
@@ -3729,8 +3883,8 @@ VALUES
 
 					// 这里要对应创建学生提交记录 给已经发布的练习创建练习提交记录 这里需要分为两种情况：已经提交的，还有已经作答了没有提交的 每一种
 					s = `INSERT INTO assessuser.t_practice_submissions (practice_id,student_id,exam_paper_id,creator,attempt,status) VALUES (
-				$1,$2,$3,$4,$5,$6
-			) returning id`
+							$1,$2,$3,$4,$5,$6
+						) returning id`
 					err = tx1.QueryRow(ctx, s,
 						practiceID, 2, examPaperID, uid, 1, "08").Scan(&id)
 					if err != nil {
@@ -3739,8 +3893,8 @@ VALUES
 
 					// 这里要对应创建学生提交记录 给已经发布的练习创建练习提交记录 这里需要分为两种情况：已经提交的，还有已经作答了没有提交的 每一种
 					s = `INSERT INTO assessuser.t_practice_submissions (practice_id,student_id,exam_paper_id,creator,attempt,status) VALUES (
-				$1,$2,$3,$4,$5,$6
-			) returning id`
+							$1,$2,$3,$4,$5,$6
+						) returning id`
 					err = tx1.QueryRow(ctx, s,
 						practiceID, 2, examPaperID, uid, 2, "00").Scan(&id)
 					if err != nil {
@@ -3796,12 +3950,12 @@ VALUES
 						batchStudentAnswers := Answers[i:end]
 						// 执行单次操作语句
 						query := `
-		INSERT INTO assessuser.t_student_answers (
-			type, examinee_id, practice_submission_id, question_id,
-			creator, create_time, update_time, group_id, "order",
-			actual_options, actual_answers
-		) VALUES %s
-	`
+					INSERT INTO assessuser.t_student_answers (
+						type, examinee_id, practice_submission_id, question_id,
+						creator, create_time, update_time, group_id, "order",
+						actual_options, actual_answers
+					) VALUES %s
+				`
 						values := make([]string, 0, len(batchStudentAnswers))
 						args := make([]interface{}, 0, len(batchStudentAnswers)*11) // 11个字段
 						idx := 1

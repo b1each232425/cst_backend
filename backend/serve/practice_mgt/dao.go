@@ -653,7 +653,7 @@ func OperatePracticeStatus(ctx context.Context, pid int64, status string, uid in
 		}
 
 		s := `UPDATE assessuser.t_practice SET status = $1,update_time = $2, updated_by = $3 ,exam_paper_id = $4 WHERE id = $5`
-		_, err = tx.Exec(ctx, s, PracticeStatus.Released, now, uid, examPaperId, pid)
+		_, err = tx.Exec(ctx, s, status, now, uid, examPaperId, pid)
 		if err != nil || forceErr == "pQuery1" {
 			err = fmt.Errorf("更新练习状态 发布->未发布 失败:%v", err)
 			z.Error(err.Error())
@@ -672,31 +672,34 @@ func OperatePracticeStatus(ctx context.Context, pid int64, status string, uid in
 			return err
 		}
 		return nil
-	} else if status == PracticeStatus.PendingRelease || status == PracticeStatus.Deleted {
-		if p.Status.String == PracticeStatus.Released && status == PracticeStatus.Deleted {
-			err = fmt.Errorf("目前操作的练习状态为发布状态，无法切换至删除状态，请先取消发布")
+	} else if status == PracticeStatus.Deleted {
+		isAnswer := false
+		s := `SELECT EXISTS(SELECT 1 FROM assessuser.t_practice_submissions WHERE practice_id = $1)`
+		err = tx.QueryRow(ctx, s, p.ID.Int64).Scan(&isAnswer)
+		if err != nil || forceErr == "pQuery2" {
+			err = fmt.Errorf("遍历查询是否有学生作答记录失败：%v", err)
 			z.Error(err.Error())
 			return err
 		}
+		if isAnswer {
+			err = fmt.Errorf("此时练习名称为：%v的练习已有学生参与作答，不能删除", p.Name.String)
+			z.Error(err.Error())
+			return err
+		}
+
 		// 若练习已经发布了，无法被删除，必须先回退为待发布状态后才能被删除 但是此时你无法通过LoadPracticeById这个函数去查询到已被删除的
-		s := `UPDATE assessuser.t_practice SET status = $1,update_time = $2, updated_by = $3  WHERE id = $4`
+		s = `UPDATE assessuser.t_practice SET status = $1,update_time = $2, updated_by = $3  WHERE id = $4`
 		_, err = tx.Exec(ctx, s, status, now, uid, pid)
-		if err != nil || forceErr == "pQuery2" {
+		if err != nil || forceErr == "pQuery3" {
 			err = fmt.Errorf("更新练习状态 发布-> 未发布 或 未发布-> 删除 失败:%v", err)
 			z.Error(err.Error())
 			return err
 		}
 
-		// 更改practice_submission练习学生的提交状态及其练习次数，将本次练习附带的所有次数均变为无效
-		s = `UPDATE assessuser.t_practice_submissions SET status = $1,update_time = $2,updated_by = $3 , attempt = $4 WHERE practice_id = $5`
-		_, err = tx.Exec(ctx, s, PracticeSubmissionStatus.Deleted, now, uid, -1, pid)
-		if err != nil || forceErr == "pQuery3" {
-			err = fmt.Errorf("重置学生练习提交记录信息失败：%v", err)
-			z.Error(err.Error())
+		err = examPaper.DeleteExamPaperById(ctx, tx, nil, []int64{p.ID.Int64})
+		if err != nil {
 			return err
 		}
-
-		// TODO 这里要补充对于学生答卷的软删除
 
 		// 清除批改配置信息
 		req := mark.HandleMarkerInfoReq{
@@ -706,6 +709,39 @@ func OperatePracticeStatus(ctx context.Context, pid int64, status string, uid in
 
 		err = mark.HandleMarkerInfo(ctx, &tx, uid, req)
 		if err != nil || forceErr == "mark1" {
+			return err
+		}
+		return nil
+	} else if status == PracticeStatus.Disabled {
+		s := `UPDATE assessuser.t_practice SET status = $1,update_time = $2, updated_by = $3  WHERE id = $4`
+		_, err = tx.Exec(ctx, s, status, now, uid, pid)
+		if err != nil || forceErr == "pQuery5" {
+			err = fmt.Errorf("更新练习状态 发布-> 作废失败:%v", err)
+			z.Error(err.Error())
+			return err
+		}
+
+		// 更改practice_submission练习学生的提交状态及其练习次数，将本次练习附带的所有次数均变为无效
+		s = `UPDATE assessuser.t_practice_submissions SET status = $1,update_time = $2,updated_by = $3 WHERE practice_id = $4`
+		_, err = tx.Exec(ctx, s, PracticeSubmissionStatus.Disabled, now, uid, pid)
+		if err != nil || forceErr == "pQuery6" {
+			err = fmt.Errorf("重置学生练习提交记录信息失败：%v", err)
+			z.Error(err.Error())
+			return err
+		}
+		err = examPaper.DeleteExamPaperById(ctx, tx, nil, []int64{pid})
+		if err != nil {
+			return err
+		}
+
+		// 清除批改配置信息
+		req := mark.HandleMarkerInfoReq{
+			Status:      "02",
+			PracticeIDs: []int64{p.ID.Int64},
+		}
+
+		err = mark.HandleMarkerInfo(ctx, &tx, uid, req)
+		if err != nil || forceErr == "mark2" {
 			return err
 		}
 		return nil
@@ -775,6 +811,11 @@ func OperatePracticeStatusV2(ctx context.Context, ids []int64, status string, ui
 			z.Error(err.Error())
 			return err
 		}
+		if p.Status.String == PracticeStatus.Disabled {
+			err = fmt.Errorf("不能操作已作废的练习")
+			z.Error(err.Error())
+			return err
+		}
 	}
 	if status == PracticeStatus.Released {
 		// 批量操作
@@ -791,7 +832,7 @@ func OperatePracticeStatusV2(ctx context.Context, ids []int64, status string, ui
 			}
 
 			s := `UPDATE assessuser.t_practice SET status = $1,update_time = $2, updated_by = $3 ,exam_paper_id = $4 WHERE id = $5`
-			_, err = tx.Exec(ctx, s, PracticeStatus.Released, now, uid, examPaperId, pid)
+			_, err = tx.Exec(ctx, s, status, now, uid, examPaperId, pid)
 			if err != nil || forceErr == "pQuery1" {
 				err = fmt.Errorf("更新练习状态 未发布->发布 失败:%v", err)
 				z.Error(err.Error())
@@ -814,29 +855,41 @@ func OperatePracticeStatusV2(ctx context.Context, ids []int64, status string, ui
 			}
 		}
 		return nil
-	} else if status == PracticeStatus.PendingRelease || status == PracticeStatus.Deleted {
-
+	} else if status == PracticeStatus.Deleted {
 		// 进行批量操作
-		// 若练习已经发布了，无法被删除，必须先回退为待发布状态后才能被删除 但是此时你无法通过LoadPracticeById这个函数去查询到已被删除的
+		tempIsAnswer := false
+		var invalidName []string
 		for _, p := range ps {
-			if p.Status.String == PracticeStatus.Released && status == PracticeStatus.Deleted {
-				err = fmt.Errorf("目前批量操作的练习状态为发布状态，无法切换至删除状态，请先取消发布")
+			s := `SELECT EXISTS(SELECT 1 FROM assessuser.t_practice_submissions WHERE practice_id = $1)`
+			err = tx.QueryRow(ctx, s, p.ID.Int64).Scan(&tempIsAnswer)
+			if err != nil || forceErr == "pQuery2" {
+				err = fmt.Errorf("遍历查询是否有学生作答记录失败：%v", err)
 				z.Error(err.Error())
 				return err
 			}
+			// 就代表此时有学生作答过，就不能进行删除操作（包括批量删除）
+			if tempIsAnswer {
+				invalidName = append(invalidName, p.Name.String)
+			}
+		}
+
+		if len(invalidName) > 0 {
+			err = fmt.Errorf("此时练习名称为：%v的练习已有学生参与作答，不能删除", invalidName)
+			z.Error(err.Error())
+			return err
 		}
 
 		s := `UPDATE assessuser.t_practice SET status = $1,update_time = $2, updated_by = $3  WHERE id = ANY($4)`
 		_, err = tx.Exec(ctx, s, status, now, uid, ids)
-		if err != nil || forceErr == "pQuery2" {
-			err = fmt.Errorf("更新练习状态 发布-> 未发布 或 未发布-> 删除 失败:%v", err)
+		if err != nil || forceErr == "pQuery3" {
+			err = fmt.Errorf("更新练习状态 发布-> 删除 失败:%v", err)
 			z.Error(err.Error())
 			return err
 		}
 		// 更改practice_submission练习学生的提交状态及其练习次数，将本次练习附带的所有次数均变为无效
-		s = `UPDATE assessuser.t_practice_submissions SET status = $1,update_time = $2,updated_by = $3 , attempt = $4 WHERE practice_id = ANY($5)`
-		_, err = tx.Exec(ctx, s, PracticeSubmissionStatus.Deleted, now, uid, -1, ids)
-		if err != nil || forceErr == "pQuery3" {
+		s = `UPDATE assessuser.t_practice_submissions SET status = $1,update_time = $2,updated_by = $3  WHERE practice_id = ANY($4)`
+		_, err = tx.Exec(ctx, s, PracticeSubmissionStatus.Deleted, now, uid, ids)
+		if err != nil || forceErr == "pQuery4" {
 			err = fmt.Errorf("批量重置学生练习提交记录信息失败：%v", err)
 			z.Error(err.Error())
 			return err
@@ -859,6 +912,41 @@ func OperatePracticeStatusV2(ctx context.Context, ids []int64, status string, ui
 			return err
 		}
 		return nil
+	} else if status == PracticeStatus.Disabled {
+		s := `UPDATE assessuser.t_practice SET status = $1,update_time = $2, updated_by = $3  WHERE id = ANY($4)`
+		_, err = tx.Exec(ctx, s, status, now, uid, ids)
+		if err != nil || forceErr == "pQuery5" {
+			err = fmt.Errorf("更新练习状态 发布->作废 失败:%v", err)
+			z.Error(err.Error())
+			return err
+		}
+		// 更改practice_submission练习学生的提交状态及其练习次数，将本次练习附带的所有次数均变为无效
+		s = `UPDATE assessuser.t_practice_submissions SET status = $1,update_time = $2,updated_by = $3  WHERE practice_id = ANY($4)`
+		_, err = tx.Exec(ctx, s, PracticeSubmissionStatus.Disabled, now, uid, ids)
+		if err != nil || forceErr == "pQuery6" {
+			err = fmt.Errorf("批量重置学生练习提交记录信息失败：%v", err)
+			z.Error(err.Error())
+			return err
+		}
+		err = examPaper.DeleteExamPaperById(ctx, tx, nil, ids)
+		if err != nil {
+			return err
+		}
+		// 清除批改配置信息
+		req := mark.HandleMarkerInfoReq{
+			Status:      "02",
+			PracticeIDs: ids,
+		}
+
+		err = mark.HandleMarkerInfo(ctx, &tx, uid, req)
+		if forceErr == "mark2" {
+			err = fmt.Errorf("清除批改配置失败")
+		}
+		if err != nil {
+			return err
+		}
+		return nil
+
 	} else {
 		err = fmt.Errorf("传入要更换的练习status:%v 非法,请传入合法的练习状态", status)
 		z.Error(err.Error())
