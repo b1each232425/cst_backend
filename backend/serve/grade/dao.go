@@ -530,7 +530,7 @@ func gradeDistributionExam(ctx context.Context, examID int, columnNum int) (Exam
 	}
 
 	// 筛选考试ID
-	whereClause := " WHERE ei.id = $1 "
+	whereClause := ""
 
 	// 用于存放各分数段统计SQL
 	distributionsSql := []string{}
@@ -574,21 +574,22 @@ func gradeDistributionExam(ctx context.Context, examID int, columnNum int) (Exam
 
 		// 添加到分布统计数组
 		distributionsSql = append(distributionsSql, distribution)
-
 	}
 
-	sql := fmt.Sprintf(`
-	WITH session_grades AS ( SELECT
-		ets.exam_id AS exam_id, ets.exam_session_id, ep.id AS exam_paper_id, ep.name AS exam_paper_name, ep.total_score AS total_score, COUNT(DISTINCT ets.student_id) AS total, ARRAY[ %s ] AS score_distribution
-	FROM v_student_exam_total_score ets
-		JOIN v_exam_paper ep ON ep.exam_session_id =  ets.exam_session_id
-	GROUP BY ets.exam_id, ets.exam_session_id, ep.id, ep.name, ep.total_score )
-	SELECT ei.id, ei.name, jsonb_agg(session_grades) AS grade_distribution
-	FROM t_exam_info ei
-		JOIN session_grades ON session_grades.exam_id = ei.id
-	%s
-	GROUP BY ei.id
-	`, strings.Join(distributionsSql, ", "), whereClause)
+	sql := fmt.Sprintf(`SELECT 
+									ei.id, 
+									ei.name, 
+									jsonb_agg(session_grades)
+								FROM t_exam_info ei
+									JOIN (SELECT
+										ets.exam_id AS exam_id, ets.exam_session_id, ep.id AS exam_paper_id, ep.name AS exam_paper_name, ep.total_score AS total_score, 
+										COUNT(DISTINCT ets.student_id) AS total, ARRAY[ %s ] AS score_distribution
+										FROM v_student_exam_total_score ets
+											JOIN v_exam_paper ep ON ep.exam_session_id =  ets.exam_session_id
+										GROUP BY ets.exam_id, ets.exam_session_id, ep.id, ep.name, ep.total_score ) session_grades ON session_grades.exam_id = ei.id
+								WHERE ei.id = $1 %s
+								GROUP BY ei.id
+										`, strings.Join(distributionsSql, ", "), whereClause)
 
 	// 执行SQL查询并扫描结果
 	err = conn.QueryRow(ctx, sql, examID).Scan(
@@ -599,7 +600,7 @@ func gradeDistributionExam(ctx context.Context, examID int, columnNum int) (Exam
 	if err != nil {
 		// 未查到考试ID
 		if errors.Is(err, pgx.ErrNoRows) {
-			err = fmt.Errorf("该考试还不能统计分布(examID=%v):err:%w", examID, err)
+			err = fmt.Errorf("该考试还不能统计分布(examID=%v)", examID)
 			z.Error(err.Error())
 			return result, err
 		}
@@ -654,7 +655,7 @@ func gradeDistributionPractice(ctx context.Context, practiceID int, columnNum in
 	}
 
 	// 筛选练习ID
-	whereClause := " WHERE p.id = $1 "
+	whereClause := ""
 
 	// 用于存放各分数段统计SQL
 	distributionsSql := []string{}
@@ -702,17 +703,21 @@ func gradeDistributionPractice(ctx context.Context, practiceID int, columnNum in
 	}
 
 	// 拼接完整SQL语句
-	sql := fmt.Sprintf(`WITH stu_practice AS (
-		SELECT student_id, practice_id, name, exam_paper_id, COUNT(1) AS attempt, AVG(total_score) AS avg_score, AVG(wrong_count)::integer AS avg_wrong_count, AVG(used_time) AS avg_used_time
-		FROM v_student_practice_total_score
-		GROUP BY student_id, practice_id, name, exam_paper_id )
-	SELECT p.id AS practice_id, p.name AS practice_name, COUNT(sp.student_id) AS total_stu, ep.total_score AS total_score, ARRAY[ %s ] AS score_distribution
-	FROM t_practice p
-		JOIN stu_practice sp ON sp.practice_id = p.id
-		JOIN v_exam_paper ep ON ep.id = sp.exam_paper_id
-	%s
-	GROUP BY p.id, ep.total_score
-	`, strings.Join(distributionsSql, ", "), whereClause)
+	sql := fmt.Sprintf(`SELECT 
+									p.id, 
+									p.name, 
+									COUNT(sp.student_id), 
+									ep.total_score, 
+									ARRAY[ %s ]
+								FROM t_practice p
+									JOIN (SELECT student_id, practice_id, name, exam_paper_id, COUNT(1) AS attempt, 
+										         AVG(total_score) AS avg_score, AVG(wrong_count)::integer AS avg_wrong_count, AVG(used_time) AS avg_used_time
+										  FROM v_student_practice_total_score
+										  GROUP BY student_id, practice_id, name, exam_paper_id ) sp ON sp.practice_id = p.id
+									JOIN v_exam_paper ep ON ep.id = sp.exam_paper_id
+								WHERE p.id = $1 %s
+								GROUP BY p.id, ep.total_score
+								`, strings.Join(distributionsSql, ", "), whereClause)
 
 	// 执行SQL查询并扫描结果
 	err = conn.QueryRow(ctx, sql, practiceID).Scan(
@@ -725,7 +730,7 @@ func gradeDistributionPractice(ctx context.Context, practiceID int, columnNum in
 	if err != nil {
 		// 未查到练习ID
 		if errors.Is(err, pgx.ErrNoRows) {
-			err = fmt.Errorf("该练习还不能统计分布(practiceID=%d):err:%w", practiceID, err)
+			err = fmt.Errorf("该练习还不能统计分布(practiceID=%d)", practiceID)
 			z.Error(err.Error())
 			return result, err
 		}
