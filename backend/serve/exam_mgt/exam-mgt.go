@@ -1697,7 +1697,6 @@ func exam(ctx context.Context) {
 					err = fmt.Errorf("强制获取考生ID错误")
 				}
 				if err != nil {
-					rows.Close() // 确保在错误时关闭
 					q.Err = fmt.Errorf("获取考生ID失败: %s", err.Error())
 					z.Error(q.Err.Error())
 					q.RespErr()
@@ -2308,7 +2307,7 @@ func examList(ctx context.Context) {
 			argIdx += 2
 		}
 
-		countSQL := "SELECT COUNT(ei.id) FROM t_exam_info ei LEFT JOIN t_domain d ON ei.domain_id = d.id WHERE ei.status!='12' " + conditionBuilder.String()
+		countSQL := "SELECT COUNT(ei.id) FROM t_exam_info ei LEFT JOIN t_domain d ON ei.domain_id = d.id WHERE ei.status NOT IN ('12', '14')" + conditionBuilder.String()
 
 		var rowCount int64
 		q.Err = conn.QueryRow(ctx, countSQL, args...).Scan(&rowCount)
