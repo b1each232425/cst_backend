@@ -13,7 +13,6 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
@@ -35,10 +34,136 @@ func TestMain(m *testing.M) {
 
 	z = cmn.GetLogger()
 
+	dbConn := cmn.GetPgxConn()
+
+	config := dbConn.Config().ConnConfig
+
+	dbAddr = config.Host
+
+	dbPort = int(config.Port)
+
+	dbName = config.Database
+
+	dbUser = config.User
+
+	dbPwd = config.Password
+
+	sysUser = viper.GetString("examSiteServerSync.sysUser")
+
+	accessToken = viper.GetString("examSiteServerSync.accessToken")
+
+	maxRetry = viper.GetInt("examSiteServerSync.maxRetry")
+
+	centralServerUrl = viper.GetString("examSiteServerSync.centralServerUrl")
+
+	sshUser = viper.GetString("examSiteServerSync.centralServerSSH.user")
+
+	sshHost = viper.GetString("examSiteServerSync.centralServerSSH.host")
+	
+	sshPort = viper.GetInt("examSiteServerSync.centralServerSSH.port")
+
 	m.Run()
 }
 
 func TestEnroll(t *testing.T) {
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+
+		var respBody cmn.ReplyProto
+
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Errorf("failed to read request body: %v", err)
+			return
+		}
+
+		q := &cmn.ServiceCtx{
+			SysUser: &cmn.TUser{
+				ID: null.IntFrom(1622),
+			},
+			R:   r,
+			W:   w,
+			Msg: &cmn.ReplyProto{},
+		}
+
+		ctx := context.WithValue(context.Background(), cmn.QNearKey, q)
+
+		switch r.URL.Path {
+
+		case "/api/login":
+
+			session, err := store.Get(r, "qNearSessions")
+			if err != nil {
+				t.Errorf("%s", err.Error())
+				return
+			}
+
+			session.Values["loginType"] = "upLogin"
+			session.Values["ID"] = 1000
+			session.Values["Account"] = "test_account"
+			session.Values["Role"] = "test_role"
+			session.Values["Authenticated"] = true
+			err = session.Save(r, w)
+			if err != nil {
+				t.Errorf("failed to save session: %v", err)
+				return
+			}
+
+			respBody = cmn.ReplyProto{
+				Status: 0,
+				Data:   body,
+			}
+
+		case "/api/exam-site/sync":
+
+			examSiteSync(ctx)
+			return
+
+		default:
+			t.Errorf("unexpected request path: %s", r.URL.Path)
+			respBody = cmn.ReplyProto{
+				Status: -1,
+				Msg:    "unexpected request path: " + r.URL.Path,
+			}
+		}
+
+		b, err := json.Marshal(respBody)
+		if err != nil {
+			t.Errorf("failed to marshal response body: %v", err)
+			return
+		}
+
+		http.SetCookie(w, &http.Cookie{
+			Name:     "debug",
+			Value:    "1",
+			Expires:  time.Now().Add(60 * 2 * time.Second),
+			SameSite: http.SameSiteLaxMode,
+		})
+
+		w.WriteHeader(http.StatusOK)
+		w.Write(b)
+
+	}))
+
+	viper.Set("examSiteServerSync.centralServerUrl", server.URL)
+
+	defer func() {
+		server.Close()
+
+		err := os.RemoveAll(filepath.Join(os.Getenv("PWD"), "data/tmp"))
+		if err != nil {
+			t.Errorf("failed to remove test directory: %v", err)
+		}
+
+	}()
+
+	viper.Set("examSiteServerSync.maxRetry", 1)
+
+	_, err := cmn.GetRedisConn().Set(context.Background(), SyncStatusKey, PUSHED, 0).Result()
+	if err != nil {
+		t.Fatalf("failed to set sync status: %v", err)
+		return
+	}
 
 	tests := []struct {
 		name   string
@@ -1135,7 +1260,7 @@ func TestExamSite(t *testing.T) {
 
 			examSite(ctx)
 
-			if tt.q.Err != nil || !tt.passExpected {
+			if tt.q.Err != nil || (tt.passExpected && tt.q.Msg.Status != 0) || !tt.passExpected {
 
 				if tt.q.Err == nil {
 					tt.q.Err = fmt.Errorf(tt.q.Msg.Msg)
@@ -2900,7 +3025,7 @@ func TestExamSiteList(t *testing.T) {
 
 			examSiteList(ctx)
 
-			if tt.q.Err != nil || !tt.passExpected {
+			if tt.q.Err != nil || (tt.passExpected && tt.q.Msg.Status != 0) || !tt.passExpected {
 
 				if tt.q.Err == nil {
 					tt.q.Err = fmt.Errorf(tt.q.Msg.Msg)
@@ -2982,9 +3107,8 @@ func TestExamSiteList(t *testing.T) {
 
 func TestExamSiteSyncInit(t *testing.T) {
 
-
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		
+
 		var respBody cmn.ReplyProto
 
 		body, err := io.ReadAll(r.Body)
@@ -2997,9 +3121,10 @@ func TestExamSiteSyncInit(t *testing.T) {
 			SysUser: &cmn.TUser{
 				ID: null.IntFrom(1622),
 			},
-			R: r,
-			W: w,
+			R:   r,
+			W:   w,
 			Msg: &cmn.ReplyProto{},
+			RedisClient: cmn.GetRedisConn(),
 		}
 
 		ctx := context.WithValue(context.Background(), cmn.QNearKey, q)
@@ -3010,7 +3135,7 @@ func TestExamSiteSyncInit(t *testing.T) {
 
 			session, err := store.Get(r, "qNearSessions")
 			if err != nil {
-				t.Errorf("%s",err.Error())
+				t.Errorf("%s", err.Error())
 				return
 			}
 
@@ -3031,7 +3156,7 @@ func TestExamSiteSyncInit(t *testing.T) {
 			}
 
 		case "/api/exam-site/sync":
-			
+
 			examSiteSync(ctx)
 			return
 
@@ -3039,7 +3164,7 @@ func TestExamSiteSyncInit(t *testing.T) {
 			t.Errorf("unexpected request path: %s", r.URL.Path)
 			respBody = cmn.ReplyProto{
 				Status: -1,
-				Msg:   "unexpected request path: " + r.URL.Path,
+				Msg:    "unexpected request path: " + r.URL.Path,
 			}
 		}
 
@@ -3055,18 +3180,17 @@ func TestExamSiteSyncInit(t *testing.T) {
 			Expires:  time.Now().Add(60 * 2 * time.Second),
 			SameSite: http.SameSiteLaxMode,
 		})
-		
+
 		w.WriteHeader(http.StatusOK)
 		w.Write(b)
 
-		
 	}))
 
 	viper.Set("examSiteServerSync.centralServerUrl", server.URL)
 
-	defer func(){
+	defer func() {
 		server.Close()
-		
+
 		err := os.RemoveAll(filepath.Join(os.Getenv("PWD"), "data/tmp"))
 		if err != nil {
 			t.Errorf("failed to remove test directory: %v", err)
@@ -3080,21 +3204,76 @@ func TestExamSiteSyncInit(t *testing.T) {
 		passExpected bool
 		errWanted    string
 		setup        func()
+		check        func(q *cmn.ServiceCtx) (err error)
 		cleanup      func()
 	}{
 		{
-			name:         "同步初始化成功",
-			q:            &cmn.ServiceCtx{},
+			name: "同步初始化成功",
+			q: &cmn.ServiceCtx{
+				RedisClient: cmn.GetRedisConn(),
+				Tag: map[string]interface{}{
+					"endMsgListen": make(chan int),
+				},
+			},
 			passExpected: true,
 			errWanted:    "",
 			setup: func() {
 
-				// 重置 createPgpassOnce
-				createPgpassOnce = sync.Once{}
+				viper.Set("examSiteServerSync.maxRetry", 1)
+
+				_, err := cmn.GetRedisConn().Set(context.Background(), SyncStatusKey, PUSHED, 0).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
 
 			},
+			check: func(q *cmn.ServiceCtx) (err error) {
+				return
+			},
 			cleanup: func() {
+				close(pullChan)
+				close(pushChan)
+			},
+		},
+		{
+			name: "同步初始化成功后发送拉取通知成功",
+			q: &cmn.ServiceCtx{
+				RedisClient: cmn.GetRedisConn(),
+				Tag: map[string]interface{}{
+					"endMsgListen": make(chan int),
+				},
+			},
+			passExpected: true,
+			errWanted:    "",
+			setup: func() {
 
+				viper.Set("examSiteServerSync.maxRetry", 1)
+
+				_, err := cmn.GetRedisConn().Set(context.Background(), SyncStatusKey, PUSHED, 0).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
+
+			},
+			check: func(q *cmn.ServiceCtx) (err error) {
+
+				_, err = cmn.GetRedisConn().Set(context.Background(), SyncStatusKey, PUSHED, 0).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
+
+				SendPullMsg()
+
+				<-q.Tag["endMsgListen"].(chan int)
+
+				return
+			},
+			cleanup: func() {
+				close(pullChan)
+				close(pushChan)
 			},
 		},
 	}
@@ -3117,7 +3296,15 @@ func TestExamSiteSyncInit(t *testing.T) {
 
 			examSiteSyncInit(ctx)
 
-			if tt.q.Err != nil || !tt.passExpected {
+			if tt.check != nil {
+				err := tt.check(tt.q)
+				if err != nil {
+					t.Errorf("execute after fun failed: %s", err.Error())
+					return
+				}
+			}
+
+			if tt.q.Err != nil || (tt.passExpected && tt.q.Msg.Status != 0) || !tt.passExpected {
 
 				if tt.q.Err == nil {
 					tt.q.Err = fmt.Errorf(tt.q.Msg.Msg)
@@ -3142,7 +3329,7 @@ func TestExamSiteSyncInit(t *testing.T) {
 
 }
 
-func TestExamSiteSync(t *testing.T) {
+func TestExamSiteSyncApi(t *testing.T) {
 
 	nowTime := time.Now().Unix()
 
@@ -3152,6 +3339,7 @@ func TestExamSiteSync(t *testing.T) {
 		passExpected bool
 		errWanted    string
 		setup        func()
+		check        func(q *cmn.ServiceCtx) (err error)
 		cleanup      func()
 	}{
 
@@ -3179,8 +3367,6 @@ func TestExamSiteSync(t *testing.T) {
 			passExpected: false,
 			errWanted:    "不支持的HTTP方法: Unknown255",
 			setup: func() {
-				// 重置 createPgpassOnce
-				createPgpassOnce = sync.Once{}
 			},
 			cleanup: func() {
 			},
@@ -3209,8 +3395,6 @@ func TestExamSiteSync(t *testing.T) {
 			passExpected: false,
 			errWanted:    "不支持的同步操作: a",
 			setup: func() {
-				// 重置 createPgpassOnce
-				createPgpassOnce = sync.Once{}
 			},
 			cleanup: func() {
 			},
@@ -3250,9 +3434,6 @@ func TestExamSiteSync(t *testing.T) {
 			passExpected: true,
 			errWanted:    "",
 			setup: func() {
-
-				// 重置 createPgpassOnce
-				createPgpassOnce = sync.Once{}
 
 				dbConn := cmn.GetDbConn()
 
@@ -3318,9 +3499,6 @@ func TestExamSiteSync(t *testing.T) {
 			passExpected: false,
 			errWanted:    "invalid sysUser: -2025",
 			setup: func() {
-
-				// 重置 createPgpassOnce
-				createPgpassOnce = sync.Once{}
 
 				dbConn := cmn.GetDbConn()
 
@@ -3390,9 +3568,6 @@ func TestExamSiteSync(t *testing.T) {
 			errWanted:    "forced generate rand byte err",
 			setup: func() {
 
-				// 重置 createPgpassOnce
-				createPgpassOnce = sync.Once{}
-
 				dbConn := cmn.GetDbConn()
 
 				_, err := dbConn.Exec(fmt.Sprintf(`INSERT INTO t_exam_site (id, name,creator,server_host,address,admin,sys_user) VALUES 
@@ -3460,9 +3635,6 @@ func TestExamSiteSync(t *testing.T) {
 			passExpected: false,
 			errWanted:    "forced mkdir all err",
 			setup: func() {
-
-				// 重置 createPgpassOnce
-				createPgpassOnce = sync.Once{}
 
 				dbConn := cmn.GetDbConn()
 
@@ -3532,9 +3704,6 @@ func TestExamSiteSync(t *testing.T) {
 			errWanted:    fmt.Sprintf("COMMAND: %s\t ERR: %s\t DETAIL: %s", "", "forced pg_dump err", ""),
 			setup: func() {
 
-				// 重置 createPgpassOnce
-				createPgpassOnce = sync.Once{}
-
 				dbConn := cmn.GetDbConn()
 
 				_, err := dbConn.Exec(fmt.Sprintf(`INSERT INTO t_exam_site (id, name,creator,server_host,address,admin,sys_user) VALUES 
@@ -3603,9 +3772,6 @@ func TestExamSiteSync(t *testing.T) {
 			errWanted:    fmt.Sprintf("COMMAND: %s\t ERR: %s\t DETAIL: %s", "", "forced psql err", ""),
 			setup: func() {
 
-				// 重置 createPgpassOnce
-				createPgpassOnce = sync.Once{}
-
 				dbConn := cmn.GetDbConn()
 
 				_, err := dbConn.Exec(fmt.Sprintf(`INSERT INTO t_exam_site (id, name,creator,server_host,address,admin,sys_user) VALUES 
@@ -3673,9 +3839,6 @@ func TestExamSiteSync(t *testing.T) {
 			passExpected: false,
 			errWanted:    "forced json marshal err",
 			setup: func() {
-
-				// 重置 createPgpassOnce
-				createPgpassOnce = sync.Once{}
 
 				dbConn := cmn.GetDbConn()
 
@@ -3746,9 +3909,6 @@ func TestExamSiteSync(t *testing.T) {
 			errWanted:    "forced remove tmp dir err",
 			setup: func() {
 
-				// 重置 createPgpassOnce
-				createPgpassOnce = sync.Once{}
-
 				dbConn := cmn.GetDbConn()
 
 				_, err := dbConn.Exec(fmt.Sprintf(`INSERT INTO t_exam_site (id, name,creator,server_host,address,admin,sys_user) VALUES 
@@ -3816,9 +3976,6 @@ func TestExamSiteSync(t *testing.T) {
 			passExpected: false,
 			errWanted:    "force-create-export-script-file-err-^a1^2*zc$32h@g4",
 			setup: func() {
-
-				// 重置 createPgpassOnce
-				createPgpassOnce = sync.Once{}
 
 				dbConn := cmn.GetDbConn()
 
@@ -3888,8 +4045,7 @@ func TestExamSiteSync(t *testing.T) {
 			errWanted:    "force-write-export-script-file-err-^a1^2*zc$32h@g4",
 			setup: func() {
 
-				// 重置 createPgpassOnce
-				createPgpassOnce = sync.Once{}
+				
 
 				dbConn := cmn.GetDbConn()
 
@@ -3960,7 +4116,7 @@ func TestExamSiteSync(t *testing.T) {
 
 			examSiteSync(ctx)
 
-			if tt.q.Err != nil || !tt.passExpected {
+			if tt.q.Err != nil || (tt.passExpected && tt.q.Msg.Status != 0) || !tt.passExpected {
 
 				if tt.q.Err == nil {
 					tt.q.Err = fmt.Errorf(tt.q.Msg.Msg)
@@ -3977,6 +4133,14 @@ func TestExamSiteSync(t *testing.T) {
 				}
 
 				return
+			}
+
+			if tt.check != nil {
+				err := tt.check(tt.q)
+				if err != nil {
+					t.Errorf("check err: %s", err.Error())
+					return
+				}
 			}
 
 			d := syncInfo{

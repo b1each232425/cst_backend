@@ -101,6 +101,7 @@
       "host": "localhost",
       "port": 22
     },
-    "timeout":  1800
+    "timeout":  1800,
+    "maxRetry": 3
   }
 }

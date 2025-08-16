@@ -7,6 +7,7 @@ package exam_site
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -14,10 +15,12 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	"crypto/rand"
 	"database/sql"
 
+	"github.com/redis/go-redis/v9"
 	"github.com/spf13/viper"
 	"github.com/tidwall/gjson"
 	"github.com/valyala/fasthttp"
@@ -30,14 +33,44 @@ import (
 )
 
 const (
-	IP_ADDR_REGEXP = `^((25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])\.){3}(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])(:(\d{1,5}))?$`
+	IP_ADDR_REGEXP     = `^((25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])\.){3}(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])(:(\d{1,5}))?$`
+	ExamSitePrefix     = "examSite:"
+	ExamSiteSyncPrefix = "examSiteSync:"
+	SyncStatusKey      = "examSiteSync:SyncStatus"
+	PULLING            = "Pulling"
+	PULLED             = "Pulled"
+	PUSHING            = "Pushing"
+	PUSHED             = "Pushed"
 )
 
 var (
-	z                *zap.Logger
-	createPgpassOnce sync.Once
-	sessionCookie    string
+	z *zap.Logger
+
+	syncLock   sync.Mutex
+	syncStatus string
+
+	pullChan chan int
+	pushChan chan int
+
+	centralServerUrl = "http://localhost:6610"
+	sysUser          = ""
+	accessToken      = ""
+	sshUser          = "root"
+	sshHost          = "localhost"
+	sshPort          = 22
+	dbAddr           = "postgres"
+	dbPort           = 6900
+	dbName           = "assessdb"
+	dbUser           = "assessuser"
+	dbPwd            = "postgres"
+	maxRetry         = 3
 )
+
+type sysUserInfo struct {
+	Name        string
+	Session     string
+	AccessToken string
+}
 
 type (
 	txCtxKeyStr  string
@@ -86,7 +119,9 @@ func Enroll(author string) {
 		developer = &d
 	}
 
-	ctx := context.WithValue(context.Background(), cmn.QNearKey, &cmn.ServiceCtx{})
+	ctx := context.WithValue(context.Background(), cmn.QNearKey, &cmn.ServiceCtx{
+		RedisClient: cmn.GetRedisConn(),
+	})
 
 	examSiteSyncInit(ctx)
 
@@ -135,6 +170,337 @@ func Enroll(author string) {
 
 		DefaultDomain: int64(cmn.CDomainAssessExamSite),
 	})
+}
+
+// login 登录中心服务器进行身份验证
+func login(ctx context.Context) (info sysUserInfo) {
+
+	q := cmn.GetCtxValue(ctx)
+
+	cli := fasthttp.Client{}
+
+	info.Name = sysUser
+
+	info.AccessToken = accessToken
+
+	reqBody := []byte(fmt.Sprintf(`{ "name": "%s", "cert": "%s" }`,
+		info.Name,
+		info.AccessToken,
+	))
+
+	req := fasthttp.AcquireRequest()
+	defer fasthttp.ReleaseRequest(req)
+
+	resp := fasthttp.AcquireResponse()
+	defer fasthttp.ReleaseResponse(resp)
+
+	req.SetRequestURI(fmt.Sprintf("%s/api/login", centralServerUrl))
+	req.Header.SetMethod("POST")
+	req.Header.SetContentType("application/json")
+	req.SetBody(reqBody)
+
+	q.Err = cli.Do(req, resp)
+	if q.Err != nil {
+		z.Error(q.Err.Error())
+		return
+	}
+
+	var msg cmn.ReplyProto
+
+	q.Err = json.Unmarshal(resp.Body(), &msg)
+	if q.Err != nil {
+		z.Error(q.Err.Error())
+		return
+	}
+
+	if msg.Status != 0 {
+		q.Err = fmt.Errorf("%s", msg.Msg)
+		z.Error(q.Err.Error())
+		return
+	}
+
+	// 只获取 "qNearSessions" 的cookie值
+	for _, c := range resp.Header.PeekAll("Set-Cookie") {
+		cookieStr := string(c)
+		if strings.HasPrefix(cookieStr, "qNearSessions=") {
+			info.Session = strings.TrimPrefix(cookieStr, "qNearSessions=")
+			break
+		}
+	}
+
+	return
+}
+
+// Pull 从中心服务器拉取数据并同步, 中间如果发生任何错误都会进行重试
+//
+// ctx 中必须包含 QNearKey 上下文
+//
+// retryCount 重试次数, 若值为 -1 ,则无限次重试, 直至成功为止
+func Pull(ctx context.Context, retryCount int) {
+
+	q := cmn.GetCtxValue(ctx)
+
+	dbConn := cmn.GetPgxConn()
+
+	defer func() {
+
+		if q.Err == nil || retryCount == 0 {
+			return
+		}
+
+		n := 999
+		if retryCount > 0 {
+			retryCount--
+			n = retryCount
+		}
+
+		z.Sugar().Warnf("Pull operation failed, retrying in 3 seconds, remaining retry times: %d", n)
+
+		time.Sleep(3 * time.Second)
+
+		// retry when occurred err
+		Pull(ctx, retryCount)
+	}()
+
+	z.Info("try lock")
+	syncLock.Lock()
+	z.Info("got lock")
+	defer func() {
+		syncLock.Unlock()
+		z.Info("release lock")
+	}()
+
+	syncStatus, q.Err = q.RedisClient.Get(ctx, SyncStatusKey).Result()
+	if q.Err != nil || (cmn.InDebugMode && q.Tag["getSyncStatusErr"] != nil) {
+
+		if q.Err == nil {
+			q.Err = q.Tag["getSyncStatusErr"].(error)
+		}
+
+		z.Error(q.Err.Error())
+		return
+	}
+
+	switch syncStatus {
+
+	case PULLING:
+		q.Err = fmt.Errorf("当前正在拉取数据中, 不允许重复拉取")
+		z.Error(q.Err.Error())
+		return
+
+	case PULLED:
+		q.Err = fmt.Errorf("当前数据尚未推送, 请先进行推送")
+		z.Error(q.Err.Error())
+		return
+
+	case PUSHING:
+		q.Err = fmt.Errorf("当前正在推送数据中，不允许进行拉取")
+		z.Error(q.Err.Error())
+		return
+	}
+
+	_, q.Err = q.RedisClient.Set(ctx, SyncStatusKey, PULLING, 0).Result()
+	if q.Err != nil {
+		z.Error(q.Err.Error())
+		return
+	}
+
+	defer func() {
+		if q.Err != nil {
+			_, err := q.RedisClient.Set(ctx, SyncStatusKey, PUSHED, 0).Result()
+			if err != nil {
+				z.Error(err.Error())
+			}
+
+			return
+		}
+
+		_, q.Err = q.RedisClient.Set(ctx, SyncStatusKey, PULLED, 0).Result()
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+		}
+
+	}()
+
+	// 登录验证
+	info := login(ctx)
+	if q.Err != nil {
+		return
+	}
+
+	// 发送同步通知
+	cli := fasthttp.Client{}
+
+	req := fasthttp.AcquireRequest()
+	defer fasthttp.ReleaseRequest(req)
+
+	resp := fasthttp.AcquireResponse()
+	defer fasthttp.ReleaseResponse(resp)
+
+	req.Header.SetCookie("qNearSessions", info.Session)
+
+	req.SetRequestURI(fmt.Sprintf("%s/api/exam-site/sync?action=0", centralServerUrl))
+	req.Header.SetMethod("GET")
+
+	q.Err = cli.DoTimeout(req, resp, 30*time.Minute)
+	if q.Err != nil {
+		z.Error(q.Err.Error())
+		return
+	}
+
+	q.Err = json.Unmarshal(resp.Body(), &q.Msg)
+	if q.Err != nil {
+		z.Error(q.Err.Error())
+		return
+	}
+
+	if q.Msg.Status != 0 {
+		q.Err = fmt.Errorf("%s", q.Msg.Msg)
+		z.Error(q.Err.Error())
+		return
+	}
+
+	var i syncInfo
+	q.Err = json.Unmarshal(q.Msg.Data, &i)
+	if q.Err != nil {
+		z.Error(q.Err.Error())
+		return
+	}
+
+	// rsync 拉取考点数据
+
+	source := fmt.Sprintf("%s@%s:%s",
+		sshUser,
+		sshHost,
+		i.Path,
+	)
+
+	b := make([]byte, 16)
+	_, q.Err = rand.Read(b)
+	if q.Err != nil || (cmn.InDebugMode && q.Tag["generateRandByteErr"] != nil) {
+		if q.Err == nil {
+			q.Err = q.Tag["generateRandByteErr"].(error)
+		}
+
+		z.Error(q.Err.Error())
+		return
+	}
+
+	dest := filepath.Join(os.Getenv("PWD"), fmt.Sprintf("data/tmp/exam-site-%s/%x",
+		sysUser, b))
+
+	cmd := fmt.Sprintf(`rsync -avz -e "ssh -p %d" --delete %s/* %s`,
+		sshPort,
+		source, dest)
+
+	var o []byte
+	o, q.Err = exec.CommandContext(ctx, "bash", "-c", cmd).CombinedOutput()
+	if q.Err != nil || (cmn.InDebugMode && q.Tag["rsyncErr"] != nil) {
+
+		if q.Err == nil {
+			q.Err = q.Tag["rsyncErr"].(error)
+			cmd = ""
+			o = []byte("")
+		}
+
+		q.Err = fmt.Errorf("COMMAND: %s\t ERR: %w\t DETAIL: %s", cmd, q.Err, string(o))
+
+		z.Error(q.Err.Error())
+		return
+	}
+
+	q.Err = generateImportScriptForSubServer(i.TableFileList, dest, "import_script.sql")
+	if q.Err != nil {
+		return
+	}
+
+	pgpassFullPath := filepath.Join(os.Getenv("HOME"), ".pgpass")
+
+	_, q.Err = dbConn.Exec(ctx, fmt.Sprintf(`CREATE SCHEMA IF NOT EXISTS %s`, dbUser))
+	if q.Err != nil {
+		z.Error(q.Err.Error())
+		return
+	}
+
+	// pg_restore
+	cmd = fmt.Sprintf(`PGPASSFILE=%s pg_restore --host "%s" --port "%d" --username "%s" -w --dbname "%s" --clean --if-exists --single-transaction --schema-only "%s"`,
+		pgpassFullPath,
+		dbAddr,
+		dbPort,
+		dbUser,
+		dbName,
+		filepath.Join(dest, "schema.sql"),
+	)
+
+	o, q.Err = exec.CommandContext(ctx, "bash", "-c", cmd).CombinedOutput()
+	if q.Err != nil || (cmn.InDebugMode && q.Tag["pgRestoreErr"] != nil) {
+
+		if q.Err == nil {
+			q.Err = q.Tag["pgRestoreErr"].(error)
+			cmd = ""
+			o = []byte("")
+		}
+
+		q.Err = fmt.Errorf("COMMAND: %s\t ERR: %w\t DETAIL: %s", cmd, q.Err, string(o))
+		z.Error(q.Err.Error())
+		return
+	}
+
+	// 执行导入脚本
+	cmd = fmt.Sprintf("PGPASSFILE=%s psql -h %s -p %d -U %s -d %s -f %s",
+		pgpassFullPath,
+		dbAddr,
+		dbPort,
+		dbUser,
+		dbName,
+		filepath.Join(dest, "import_script.sql"),
+	)
+
+	o, q.Err = exec.CommandContext(ctx, "bash", "-c", cmd).CombinedOutput()
+	if q.Err != nil {
+		q.Err = fmt.Errorf("COMMAND: %s\t ERR: %w\t DETAIL: %s", cmd, q.Err, string(o))
+		z.Error(q.Err.Error())
+		return
+	}
+
+}
+
+// Push 将数据推送到中心服务器, 中间如果发生任何错误都会进行重试
+//
+// ctx 必须包含 QNearKey 上下文
+//
+// retryCount 重试次数, 若值为 -1, 则无限次重试, 直至成功为止
+func Push(ctx context.Context, retryCount int) (err error) {
+
+	z.Info("try lock")
+	syncLock.Lock()
+	z.Info("got lock")
+	defer func() {
+		syncLock.Unlock()
+		z.Info("release lock")
+	}()
+
+	return
+}
+
+// GetMaxRetry 获取同步重试最大次数
+func GetMaxRetry() int {
+
+	if viper.IsSet("examSiteServerSync.maxRetry") {
+		maxRetry = viper.GetInt("examSiteServerSync.maxRetry")
+	}
+
+	return maxRetry
+}
+
+// SendPullMsg 发送拉取同步消息
+func SendPullMsg() {
+	pullChan <- 1
+}
+
+// SendPushMsg 发送推送同步消息
+func SendPushMsg() {
+	pushChan <- 1
 }
 
 func examSite(ctx context.Context) {
@@ -251,11 +617,10 @@ func examSite(ctx context.Context) {
 
 		b2 := make([]byte, 32)
 
-		// 该Read从不返回错误，一旦发生错误就直接Panic， 所以这里就不需要接收err
-		// 并且始终填充 b
-		_, _ = rand.Read(b1)
+		// 该Read从不返回错误，并且始终填充 b, 一旦发生错误就直接Panic， 所以这里就不需要接收err
+		rand.Read(b1)
 
-		_, _ = rand.Read(b2)
+		rand.Read(b2)
 
 		account = fmt.Sprintf("exam-site-%x", b1)
 
@@ -602,272 +967,177 @@ func examSiteSyncInit(ctx context.Context) {
 
 	q := cmn.GetCtxValue(ctx)
 
-	dbAddr := viper.GetString("dbms.postgresql.addr")
+	dbConn := cmn.GetPgxConn()
 
-	dbPort := viper.GetInt("dbms.postgresql.port")
+	config := dbConn.Config().ConnConfig
 
-	dbName := viper.GetString("dbms.postgresql.db")
+	dbAddr = config.Host
 
-	dbUser := viper.GetString("dbms.postgresql.user")
+	dbPort = int(config.Port)
 
-	dbPwd := viper.GetString("dbms.postgresql.pwd")
+	dbName = config.Database
+
+	dbUser = config.User
+
+	dbPwd = config.Password
 
 	pgpassFullPath := filepath.Join(os.Getenv("HOME"), ".pgpass")
 
+	if viper.IsSet("examSiteServerSync.sysUser") {
+		sysUser = viper.GetString("examSiteServerSync.sysUser")
+	}
+
+	if viper.IsSet("examSiteServerSync.accessToken") {
+		accessToken = viper.GetString("examSiteServerSync.accessToken")
+	}
+
 	// 创建.pgpass文件
-	createPgpassOnce.Do(func() {
+	var f *os.File
+	f, q.Err = os.Create(pgpassFullPath)
+	if q.Err != nil || (cmn.InDebugMode && q.Tag["createPgpassErr"] != nil) {
 
-		var f *os.File
-		f, q.Err = os.Create(pgpassFullPath)
-		if q.Err != nil || (cmn.InDebugMode && q.Tag["createPgpassErr"] != nil) {
+		if q.Err == nil {
+			q.Err = q.Tag["createPgpassErr"].(error)
+		}
+
+		z.Error(q.Err.Error())
+		return
+	}
+
+	defer func() {
+		err := f.Close()
+		if err != nil || (cmn.InDebugMode && q.Tag["closePgpassErr"] != nil) {
+
+			q.Err = err
 
 			if q.Err == nil {
-				q.Err = q.Tag["createPgpassErr"].(error)
+				q.Err = q.Tag["closePgpassErr"].(error)
 			}
 
 			z.Error(q.Err.Error())
 			return
 		}
+	}()
 
-		defer func() {
-			err := f.Close()
-			if err != nil || (cmn.InDebugMode && q.Tag["closePgpassErr"] != nil) {
+	_, q.Err = f.WriteString(fmt.Sprintf("%s:%d:%s:%s:%s",
+		dbAddr,
+		dbPort,
+		dbName,
+		dbUser,
+		dbPwd,
+	))
+	if q.Err != nil || (cmn.InDebugMode && q.Tag["writePgpassErr"] != nil) {
 
-				q.Err = err
-
-				if q.Err == nil {
-					q.Err = q.Tag["closePgpassErr"].(error)
-				}
-
-				z.Error(q.Err.Error())
-				return
-			}
-		}()
-
-		_, q.Err = f.WriteString(fmt.Sprintf("%s:%d:%s:%s:%s",
-			dbAddr,
-			dbPort,
-			dbName,
-			dbUser,
-			dbPwd,
-		))
-		if q.Err != nil || (cmn.InDebugMode && q.Tag["writePgpassErr"] != nil) {
-
-			if q.Err == nil {
-				q.Err = q.Tag["writePgpassErr"].(error)
-			}
-
-			z.Error(q.Err.Error())
-			return
+		if q.Err == nil {
+			q.Err = q.Tag["writePgpassErr"].(error)
 		}
 
-		q.Err = f.Chmod(0600)
-		if q.Err != nil || (cmn.InDebugMode && q.Tag["chmodPgpassErr"] != nil) {
+		z.Error(q.Err.Error())
+		return
+	}
 
-			if q.Err == nil {
-				q.Err = q.Tag["chmodPgpassErr"].(error)
-			}
+	q.Err = f.Chmod(0600)
+	if q.Err != nil || (cmn.InDebugMode && q.Tag["chmodPgpassErr"] != nil) {
 
-			z.Error(q.Err.Error())
-			return
+		if q.Err == nil {
+			q.Err = q.Tag["chmodPgpassErr"].(error)
 		}
-	})
+
+		z.Error(q.Err.Error())
+		return
+	}
 
 	if q.Err != nil {
 		return
 	}
 
-	centralServerUrl := viper.GetString("examSiteServerSync.centralServerUrl")
+	centralServerUrl = viper.GetString("examSiteServerSync.centralServerUrl")
 
 	if centralServerUrl == "" {
 		return
 	}
 
-	// 如果中心服务器地址不为空，则当前以考点服务器运行
-	// 进行服务器登录验证
+	// 如果中心服务器地址不为空，则当前以考点服务器运行和同步数据
 
-	cli := fasthttp.Client{}
+	maxRetry = GetMaxRetry()
 
-	reqBody := []byte(fmt.Sprintf(`{ "name": "%s", "cert": "%s" }`,
-		viper.GetString("examSiteServerSync.sysUser"),
-		viper.GetString("examSiteServerSync.accessToken"),
-	))
-
-	req := fasthttp.AcquireRequest()
-	defer fasthttp.ReleaseRequest(req)
-
-	resp := fasthttp.AcquireResponse()
-	defer fasthttp.ReleaseResponse(resp)
-
-	req.SetRequestURI(fmt.Sprintf("%s/api/login", centralServerUrl))
-	req.Header.SetMethod("POST")
-	req.Header.SetContentType("application/json")
-	req.SetBody(reqBody)
-
-	q.Err = cli.Do(req, resp)
-	if q.Err != nil {
+	var v string
+	v, q.Err = q.RedisClient.Get(ctx, SyncStatusKey).Result()
+	if q.Err != nil && !errors.Is(q.Err, redis.Nil) {
 		z.Error(q.Err.Error())
 		return
 	}
 
-	q.Err = json.Unmarshal(resp.Body(), &q.Msg)
-	if q.Err != nil {
-		z.Error(q.Err.Error())
-		return
-	}
-
-	if q.Msg.Status != 0 {
-		q.Err = fmt.Errorf("%s", q.Msg.Msg)
-		z.Error(q.Err.Error())
-		return
-	}
-
-	// 只获取 "qNearSessions" 的cookie值
-	for _, c := range resp.Header.PeekAll("Set-Cookie") {
-		cookieStr := string(c)
-		if strings.HasPrefix(cookieStr, "qNearSessions=") {
-			sessionCookie = strings.TrimPrefix(cookieStr, "qNearSessions=")
-			break
+	if v == "" || errors.Is(q.Err, redis.Nil) {
+		_, q.Err = q.RedisClient.Set(ctx, SyncStatusKey, "true", 0).Result()
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			return
 		}
 	}
 
-	// 发送同步通知
-
-	req.Reset()
-
-	req.Header.SetCookie("qNearSessions", sessionCookie)
-
-	req.SetRequestURI(fmt.Sprintf("%s/api/exam-site/sync?action=0", centralServerUrl))
-	req.Header.SetMethod("GET")
-
-	resp.Reset()
-
-	q.Err = cli.Do(req, resp)
-	if q.Err != nil {
-		z.Error(q.Err.Error())
-		return
+	if q.Tag == nil {
+		q.Tag = make(map[string]interface{})
 	}
 
-	q.Err = json.Unmarshal(resp.Body(), &q.Msg)
-	if q.Err != nil {
-		z.Error(q.Err.Error())
-		return
-	}
-
-	if q.Err != nil {
-		z.Error(q.Err.Error())
-		return
-	}
-
-	if q.Msg.Status != 0 {
-		q.Err = fmt.Errorf("%s", q.Msg.Msg)
-		z.Error(q.Err.Error())
-		return
-	}
-
-	var i syncInfo
-	q.Err = json.Unmarshal(q.Msg.Data, &i)
-	if q.Err != nil {
-		z.Error(q.Err.Error())
-		return
-	}
-
-	// rsync 拉取考点数据
-	source := fmt.Sprintf("%s@%s:%s", 
-		viper.GetString("examSiteServerSync.centralServerSSH.user"),
-		viper.GetString("examSiteServerSync.centralServerSSH.host"),
-		i.Path,
-	)
-
-	b := make([]byte, 16)
-	_, q.Err = rand.Read(b)
-	if q.Err != nil || (cmn.InDebugMode && q.Tag["generateRandByteErr"] != nil) {
-		if q.Err == nil {
-			q.Err = q.Tag["generateRandByteErr"].(error)
-		}
-
-		z.Error(q.Err.Error())
-		return
-	}
-
-	dest := filepath.Join(os.Getenv("PWD"), fmt.Sprintf("data/tmp/exam-site-%s/%x", 
-		viper.GetString("examSiteServerSync.sysUser"), b))
-
-	cmd := fmt.Sprintf(`rsync -avz -e "ssh -p %d" --delete %s/* %s`, 
-		viper.GetInt("examSiteServerSync.centralServerSSH.port"), 
-		source, dest)
-
-	var o []byte
-	o, q.Err = exec.CommandContext(ctx, "bash", "-c", cmd).CombinedOutput()
-	if q.Err != nil || (cmn.InDebugMode && q.Tag["rsyncErr"] != nil) {
-		
-		if q.Err == nil {
-			q.Err = q.Tag["rsyncErr"].(error)
-			cmd = ""
-			o = []byte("")
-		}
-
-		q.Err = fmt.Errorf("COMMAND: %s\t ERR: %w\t DETAIL: %s", cmd, q.Err, string(o))
-
-		z.Error(q.Err.Error())
-		return
-	}
-
-	q.Err = generateImportScriptForSubServer(i.TableFileList, dest, "import_script.sql")
-	if q.Err != nil {
-		return
-	}
-
-	// create schema
-	dbConn := cmn.GetDbConn()
-
-	_, q.Err = dbConn.ExecContext(ctx, fmt.Sprintf(`CREATE SCHEMA IF NOT EXISTS %s`, dbUser))
-	if q.Err != nil {
-		z.Error(q.Err.Error())
-		return
-	}
-
-	// pg_restore
-	cmd = fmt.Sprintf(`PGPASSFILE=%s pg_restore --host "%s" --port "%d" --username "%s" -w --dbname "%s" --clean --if-exists --single-transaction --schema-only "%s"`,
-		pgpassFullPath,
-		dbAddr,
-		dbPort,
-		dbUser,
-		dbName,
-		filepath.Join(dest, "schema.sql"),
-	)
-
-	o, q.Err = exec.CommandContext(ctx, "bash", "-c", cmd).CombinedOutput()
-	if q.Err != nil || (cmn.InDebugMode && q.Tag["pgRestoreErr"] != nil) {
+	syncStatus, q.Err = q.RedisClient.Get(ctx, SyncStatusKey).Result()
+	if q.Err != nil || (cmn.InDebugMode && q.Tag["getSyncStatusErr"] != nil) {
 
 		if q.Err == nil {
-			q.Err = q.Tag["pgRestoreErr"].(error)
-			cmd = ""
-			o = []byte("")
+			q.Err = q.Tag["getSyncStatusErr"].(error)
 		}
 
-		q.Err = fmt.Errorf("COMMAND: %s\t ERR: %w\t DETAIL: %s", cmd, q.Err, string(o))
 		z.Error(q.Err.Error())
 		return
 	}
 
-	// 执行导入脚本
-	cmd = fmt.Sprintf("PGPASSFILE=%s psql -h %s -p %d -U %s -d %s -f %s",
-		pgpassFullPath,
-		dbAddr,
-		dbPort,
-		dbUser,
-		dbName,
-		filepath.Join(dest, "import_script.sql"),
-	)
+	switch syncStatus {
 
-	o, q.Err = exec.CommandContext(ctx, "bash", "-c", cmd).CombinedOutput()
-	if q.Err != nil {
+	case PULLING:
 
-		q.Err = fmt.Errorf("COMMAND: %s\t ERR: %w\t DETAIL: %s", cmd, q.Err, string(o))
-		z.Error(q.Err.Error())
+		// 如果上一次没有完成拉取, 则重置为未拉取的状态
+		_, q.Err = q.RedisClient.Set(ctx, SyncStatusKey, PUSHED, 0).Result()
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			return
+		}
+
+	case PUSHING:
+
+		// 如果上一次没有完成推送, 则重置为未推送的状态, 然后重新推送
+		_, q.Err = q.RedisClient.Set(ctx, SyncStatusKey, PULLED, 0).Result()
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			return
+		}
+
+		Push(ctx, maxRetry)
 		return
 	}
+
+	Pull(ctx, maxRetry)
+
+	pullChan = make(chan int)
+	pushChan = make(chan int)
+
+	go func() {
+		for {
+			select {
+
+			case <-pullChan:
+				Pull(ctx, maxRetry)
+
+			case <-pushChan:
+				Push(ctx, maxRetry)
+
+			}
+
+			if cmn.InDebugMode && q.Tag["endMsgListen"] != nil {
+				q.Tag["endMsgListen"].(chan int) <- 1
+				return
+			}
+		}
+	}()
 
 }
 
@@ -882,13 +1152,17 @@ func examSiteSync(ctx context.Context) {
 	// 考点服务器系统账号ID
 	userID := q.SysUser.ID.Int64
 
-	dbAddr := viper.GetString("dbms.postgresql.addr")
+	if viper.IsSet("examSiteServerSync.centralServerSSH.user") {
+		sshUser = viper.GetString("examSiteServerSync.centralServerSSH.user")
+	}
 
-	dbPort := viper.GetInt("dbms.postgresql.port")
+	if viper.IsSet("examSiteServerSync.centralServerSSH.host") {
+		sshHost = viper.GetString("examSiteServerSync.centralServerSSH.host")
+	}
 
-	dbName := viper.GetString("dbms.postgresql.db")
-
-	dbUser := viper.GetString("dbms.postgresql.user")
+	if viper.IsSet("examSiteServerSync.centralServerSSH.port") {
+		sshPort = viper.GetInt("examSiteServerSync.centralServerSSH.port")
+	}
 
 	pgpassFullPath := filepath.Join(os.Getenv("HOME"), ".pgpass")
 
@@ -902,6 +1176,49 @@ MethodSwitch:
 		switch action {
 
 		case "0":
+
+			var info syncInfo
+			var s string
+
+			k := fmt.Sprintf("%s:%d", ExamSiteSyncPrefix, userID)
+
+			s, q.Err = q.RedisClient.Get(ctx, k).Result()
+			if q.Err != nil && !errors.Is(q.Err, redis.Nil) {
+				z.Error(q.Err.Error())
+				break MethodSwitch
+			}
+
+			if s != "" {
+
+				// 如果同步数据信息快照存在，则直接返回
+
+				// 验证数据有效性
+				q.Err = json.Unmarshal([]byte(s), &info)
+				if q.Err != nil {
+					z.Error(q.Err.Error())
+					break MethodSwitch
+				}
+
+				for _, f := range info.TableFileList {
+
+					_, q.Err = os.Stat(filepath.Join(info.Path, f))
+					if q.Err != nil {
+						z.Error(q.Err.Error())
+						break
+					}
+
+				}
+
+				if q.Err == nil {
+					q.Msg.Data = []byte(s)
+					break MethodSwitch
+				}
+
+				q.Err = fmt.Errorf("过往已准备的数据已失效, Path: %s, TabelFileList: %s", info.Path, strings.Join(info.TableFileList, ", "))
+
+				z.Warn(q.Err.Error())
+			}
+
 			// 准备考点数据
 
 			b := make([]byte, 16)
@@ -1019,12 +1336,14 @@ MethodSwitch:
 				break MethodSwitch
 			}
 
-			d := syncInfo{
+			info = syncInfo{
 				Path:          folderFullPath,
 				TableFileList: tableFileList,
 			}
 
-			q.Msg.Data, q.Err = json.Marshal(d)
+			var data []byte
+
+			data, q.Err = json.Marshal(info)
 			if q.Err != nil || (cmn.InDebugMode && q.Tag["jsonMarshalErr"] != nil) {
 
 				if q.Err == nil {
@@ -1034,6 +1353,15 @@ MethodSwitch:
 				z.Error(q.Err.Error())
 				break MethodSwitch
 			}
+
+			// 保存同步数据信息快照
+			_, q.Err = q.RedisClient.Set(ctx, k, data, 0).Result()
+			if q.Err != nil {
+				z.Error(q.Err.Error())
+				break MethodSwitch
+			}
+
+			q.Msg.Data = data
 
 		case "1":
 			// TODO: 同步考点数据

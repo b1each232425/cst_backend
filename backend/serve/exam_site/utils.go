@@ -10,11 +10,12 @@ import (
 	"w2w.io/cmn"
 )
 
+
+
 type copyInfo struct {
 	Sql   string
 	Table string
 }
-
 
 // generateExportScriptForCentralServer 生成导出脚本文件(中心服务器方调用)
 // sysUser 为考点服务器系统账号ID
