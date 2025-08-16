@@ -9,11 +9,14 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/spf13/viper"
 	"github.com/tidwall/gjson"
 	"go.uber.org/zap"
 	"w2w.io/cmn"
@@ -23,7 +26,10 @@ import (
 	"w2w.io/serve/mark"
 )
 
-var z *zap.Logger
+var (
+	z         *zap.Logger
+	uploadDir string
+)
 
 const (
 	TEST              = "test"
@@ -43,6 +49,7 @@ type ExamData struct {
 	ExamRooms      []ExamRoomConfig   `json:"examRooms"`
 	InvigilatorIDs []int64            `json:"invigilators"`
 	TimeStamp      int64              `json:"timeStamp"` //时间戳
+	Files          []ExamFile         `json:"files"`
 }
 
 // 考试场次时间
@@ -89,6 +96,13 @@ type ExamUserInfo struct {
 	Gender      string      `json:"gender"`
 }
 
+type ExamFile struct {
+	ExamID   int64  `json:"exam_id"`
+	CheckSum string `json:"checksum"`
+	Name     string `json:"name"`
+	Size     int64  `json:"size"`
+}
+
 func init() {
 	cmn.PackageStarters = append(cmn.PackageStarters, func() {
 		z = cmn.GetLogger()
@@ -98,6 +112,17 @@ func init() {
 
 func Enroll(author string) {
 	z.Info("exam_mgt.Enroll called")
+
+	key := "tusd.fileStorePath"
+	uploadDir = "./uploads"
+	if viper.IsSet(key) {
+		uploadDir = viper.GetString(key)
+	}
+	var err error
+	uploadDir, err = filepath.Abs(uploadDir)
+	if err != nil {
+		z.Fatal(fmt.Sprintf("Unable to make absolute path: %s", err))
+	}
 
 	var developer *cmn.ModuleAuthor
 	if author != "" {
@@ -246,45 +271,6 @@ func examExists(ctx context.Context, examID int64) (bool, error) {
 	return exists, nil
 }
 
-// // 获取考场容量
-// func getExamRoomCapacity(roomIDs []int64) ([]cmn.TExamRoom, error) {
-// 	z.Info("---->" + cmn.FncName())
-
-// 	if len(roomIDs) == 0 {
-// 		return nil, nil
-// 	}
-
-// 	conn := cmn.GetPgxConn()
-// 	query := `
-// 		SELECT
-// 			id, capacity
-// 		FROM t_exam_room
-// 		WHERE id = ANY($1) AND status != '06'
-// 		ORDER BY id
-// 	`
-// 	rows, err := conn.Query(context.Background(), query, roomIDs)
-// 	if err != nil {
-// 		z.Error(err.Error())
-// 		return nil, err
-// 	}
-// 	defer rows.Close()
-
-// 	var examRooms []cmn.TExamRoom
-// 	for rows.Next() {
-// 		var room cmn.TExamRoom
-// 		if err := rows.Scan(
-// 			&room.ID,
-// 			&room.Capacity,
-// 		); err != nil {
-// 			z.Error(err.Error())
-// 			return nil, err
-// 		}
-// 		examRooms = append(examRooms, room)
-// 	}
-
-// 	return examRooms, nil
-// }
-
 // 生成准考证号
 func generateExamineeNumber(serialNumber int64, examInfo cmn.TExamInfo, examSessions []cmn.TExamSession) string {
 
@@ -319,6 +305,98 @@ func generateExamineeNumber(serialNumber int64, examInfo cmn.TExamInfo, examSess
 
 	// 拼接准考证号
 	return examYear + examIDStr + serialNumStr
+}
+
+func handleDeleteExamFile(ctx context.Context, tx pgx.Tx, fileID int64) error {
+	z.Info("---->" + cmn.FncName())
+
+	forceErr := ""
+	if val := ctx.Value("force-error"); val != nil {
+		forceErr = val.(string)
+	}
+
+	// 查看数据库中记录的该文件ID的信息
+	var count int
+	var digest, filePath string
+	err := tx.QueryRow(ctx, "SELECT count, digest, path FROM t_file WHERE id = $1", fileID).Scan(
+		&count, &digest, &filePath)
+	if forceErr == "handleDeleteExamFile.tx.QueryRow" {
+		err = fmt.Errorf("强制查询文件信息错误")
+	}
+	if err != nil {
+		z.Error(err.Error())
+		return err
+	}
+
+	if count > 1 {
+		// 减少引用计数
+		_, err = tx.Exec(ctx, "UPDATE t_file SET count = count - 1 WHERE id = $1", fileID)
+		if forceErr == "handleDeleteExamFile.tx.UpdateCount" {
+			err = fmt.Errorf("强制更新文件引用计数错误")
+		}
+		if err != nil {
+			z.Error(err.Error())
+			return err
+		}
+		return nil
+	}
+
+	// count = 1，删除该行
+	_, err = tx.Exec(ctx, "DELETE FROM t_file WHERE id = $1", fileID)
+	if forceErr == "handleDeleteExamFile.tx.DeleteFile" {
+		err = fmt.Errorf("强制删除文件记录错误")
+	}
+	if err != nil {
+		z.Error(err.Error())
+		return err
+	}
+
+	// 检查是否还有其他相同digest的文件
+	var digestCount int
+	err = tx.QueryRow(ctx, "SELECT COUNT(*) FROM t_file WHERE digest = $1", digest).Scan(&digestCount)
+	if forceErr == "handleDeleteExamFile.tx.CountDigest" {
+		err = fmt.Errorf("强制统计相同digest文件错误")
+	}
+	if err != nil {
+		z.Error(err.Error())
+		return err
+	}
+
+	// 如果没有其他相同digest的文件记录，从文件系统删除该文件
+	if digestCount == 0 {
+		var infoFilePath string
+		infoFilePath = filePath + ".info"
+
+		err := os.Remove(filePath)
+		if forceErr == "handleDeleteExamFile.deleteFileFromFilesystem" {
+			err = fmt.Errorf("强制从文件系统删除文件错误")
+		}
+		if err != nil {
+			if os.IsNotExist(err) {
+				z.Info(fmt.Sprintf("要删除的文件不存在: %s, digest: %s", filePath, digest))
+			} else {
+				z.Error(fmt.Sprintf("从文件系统删除文件失败: %s, digest: %s, error: %v",
+					filePath, digest, err))
+				return err
+			}
+		}
+
+		err = os.Remove(infoFilePath)
+		if forceErr == "handleDeleteExamFile.deleteInfoFileFromFilesystem" {
+			err = fmt.Errorf("强制从文件系统删除.info文件错误")
+		}
+		if err != nil {
+			if os.IsNotExist(err) {
+				z.Warn(fmt.Sprintf("要删除的.info文件不存在: %s, digest: %s", infoFilePath, digest))
+			} else {
+				z.Error(fmt.Sprintf("从文件系统删除.info文件失败: %s, digest: %s, error: %v",
+					infoFilePath, digest, err))
+				return err
+			}
+		}
+	}
+
+	return nil
 }
 
 // 获取考试信息
@@ -1196,6 +1274,37 @@ func exam(ctx context.Context) {
 			examineeIDs = append(examineeIDs, examineeID)
 		}
 
+		// 获取考试附件信息
+		var examFiles []ExamFile
+		queryExamFilesSQL := `
+			SELECT digest, file_name
+			FROM v_exam_file
+			WHERE exam_id = $1
+		`
+		var examFilesRows pgx.Rows
+		examFilesRows, q.Err = conn.Query(context.Background(), queryExamFilesSQL, examID)
+		defer examFilesRows.Close()
+		if forceErr == "conn.QueryExamFilesRows" {
+			q.Err = fmt.Errorf("强制查询错误")
+		}
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+		defer examFilesRows.Close()
+
+		for examFilesRows.Next() {
+			var ef ExamFile
+			q.Err = examFilesRows.Scan(&ef.CheckSum, &ef.Name)
+			if q.Err != nil {
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+			examFiles = append(examFiles, ef)
+		}
+
 		// // 获取监考员信息
 		// var invigilatorIDs []int64
 		// var examSessionIDs []int64
@@ -1276,6 +1385,7 @@ func exam(ctx context.Context) {
 			ExamineeIDs:    examineeIDs,
 			InvigilatorIDs: nil,
 			ExamRooms:      nil,
+			Files:          examFiles,
 		}
 
 		var jsonData []byte
@@ -3001,21 +3111,21 @@ func examStatus(ctx context.Context) {
 		defer func() {
 			if q.Err != nil {
 				rollbackErr := tx.Rollback(context.Background())
-				z.Info(forceErr)
 				if forceErr == "tx.Rollback" {
 					rollbackErr = fmt.Errorf("强制回滚事务错误")
 				}
 				if rollbackErr != nil {
 					z.Error(fmt.Sprintf("failed to rollback transaction: %s", rollbackErr.Error()))
 				}
-			} else {
-				commitErr := tx.Commit(context.Background())
-				if forceErr == "tx.Commit" {
-					commitErr = fmt.Errorf("强制提交事务错误")
-				}
-				if commitErr != nil {
-					z.Error(fmt.Sprintf("failed to commit transaction: %s", commitErr.Error()))
-				}
+				return
+			}
+
+			commitErr := tx.Commit(context.Background())
+			if forceErr == "tx.Commit" {
+				commitErr = fmt.Errorf("强制提交事务错误")
+			}
+			if commitErr != nil {
+				z.Error(fmt.Sprintf("failed to commit transaction: %s", commitErr.Error()))
 			}
 		}()
 
@@ -3483,6 +3593,533 @@ func examUser(ctx context.Context) {
 		q.Msg.Data, q.Err = json.Marshal(userInfos)
 		if forceErr == "json.Marshal2" {
 			q.Err = fmt.Errorf("强制JSON序列化错误2")
+			q.Msg.Data = nil
+		}
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		q.Resp()
+		return
+
+	default:
+		q.Err = fmt.Errorf("unsupported method: %s", method)
+		z.Warn(q.Err.Error())
+		q.RespErr()
+		return
+	}
+}
+
+// 处理考试相关的附件上传逻辑
+func examFile(ctx context.Context) {
+	q := cmn.GetCtxValue(ctx)
+	z.Info("---->" + cmn.FncName())
+	forceErr := ""
+	if val := ctx.Value("force-error"); val != nil {
+		forceErr = val.(string)
+	}
+
+	conn := cmn.GetPgxConn()
+
+	userID := q.SysUser.ID.Int64
+	if userID <= 0 {
+		q.Err = fmt.Errorf("无效的用户ID: %d", userID)
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+
+	// 用户拥有的域
+	userDomains := q.Domains
+
+	// 当前用户登录选择的域
+	userRole := q.SysUser.Role.Int64
+
+	var userDomain string
+	userDomain, q.Err = getDomainByUserRole(userRole, userDomains)
+	if q.Err != nil {
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+
+	// 检查是否具备更新考试的权限
+	var result bool
+	result = validateUserForExamCreateOrUpdate(userDomain)
+
+	if !result {
+		q.Err = fmt.Errorf("用户没有考试相关的权限")
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+
+	currentTime := time.Now().UnixMilli()
+
+	// 开启事务
+	var tx pgx.Tx
+	tx, q.Err = conn.Begin(ctx)
+	if forceErr == "tx.Begin" {
+		q.Err = fmt.Errorf("强制开始事务错误")
+	}
+	if q.Err != nil {
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+	defer func() {
+		if q.Err != nil {
+			rollbackErr := tx.Rollback(context.Background())
+			if forceErr == "tx.Rollback" {
+				rollbackErr = fmt.Errorf("强制回滚事务错误")
+			}
+			if rollbackErr != nil {
+				z.Error(fmt.Sprintf("failed to rollback transaction: %s", rollbackErr.Error()))
+			}
+			return
+		}
+
+		commitErr := tx.Commit(context.Background())
+		if forceErr == "tx.Commit" {
+			commitErr = fmt.Errorf("强制提交事务错误")
+		}
+		if commitErr != nil {
+			z.Error(fmt.Sprintf("failed to commit transaction: %s", commitErr.Error()))
+		}
+	}()
+
+	method := strings.ToLower(q.R.Method)
+	switch method {
+	case "post":
+		// 更新考试附件
+		var buf []byte
+		buf, q.Err = io.ReadAll(q.R.Body)
+		if forceErr == "io.ReadAll" {
+			q.Err = fmt.Errorf("强制读取请求体错误")
+		}
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		defer func() {
+			err := q.R.Body.Close()
+			if forceErr == "io.Close" {
+				err = fmt.Errorf("强制关闭IO错误")
+			}
+			if err != nil {
+				z.Error(err.Error())
+			}
+		}()
+
+		if len(buf) == 0 {
+			q.Err = fmt.Errorf("请求体为空")
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		var qry cmn.ReqProto
+		q.Err = json.Unmarshal(buf, &qry)
+		if forceErr == "json.Unmarshal" {
+			q.Err = fmt.Errorf("强制JSON解析错误")
+		}
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		var examFile ExamFile
+		q.Err = json.Unmarshal(qry.Data, &examFile)
+		if forceErr == "json.Unmarshal2" {
+			q.Err = fmt.Errorf("强制第二次JSON解析错误")
+		}
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		z.Sugar().Infof("examID: %d", examFile.ExamID)
+
+		// 检查考试是否存在
+		checkExistsSQL := `
+			SELECT EXISTS (
+				SELECT 1
+				FROM t_exam_info
+				WHERE id = $1 AND status != '12'
+			)
+		`
+		var examExist bool
+		q.Err = conn.QueryRow(ctx, checkExistsSQL, examFile.ExamID).Scan(&examExist)
+		if forceErr == "checkExamExists" {
+			q.Err = fmt.Errorf("强制检查考试存在错误")
+		}
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		if !examExist {
+			q.Err = fmt.Errorf("考试不存在")
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		var filePath string
+		filePath = filepath.Join(uploadDir, fmt.Sprintf("%s", examFile.CheckSum))
+
+		var fileID int64
+		var digest string
+
+		// 标记是否为新文件
+		var isNew bool
+		isNew = false
+
+		// 查询是否已存在
+		err := tx.QueryRow(ctx, `
+			SELECT id, digest FROM t_file
+			WHERE digest = $1 AND file_name = $2 AND creator = $3
+			LIMIT 1
+		`, examFile.CheckSum, examFile.Name, userID).Scan(&fileID, &digest)
+
+		// 如果查询失败，则标记为新文件
+		if err == pgx.ErrNoRows {
+			isNew = true
+		}
+		if err != pgx.ErrNoRows && err != nil {
+			q.Err = fmt.Errorf("查询文件失败: %v", err)
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		// 不存在则插入
+		if isNew {
+			q.Err = tx.QueryRow(ctx, `
+				INSERT INTO t_file (digest, file_name, path, belongto_path, size, count, creator, create_time)
+				VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+				RETURNING id, digest
+			`, examFile.CheckSum, examFile.Name, filePath, filePath, examFile.Size, 1, userID, currentTime).Scan(&fileID, &digest)
+			if q.Err != nil {
+				q.Err = fmt.Errorf("插入文件信息失败: %v", q.Err)
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+		}
+
+		// 获取该考试的所有附件，并检查是否有digest相同的文件
+		var examFiles []cmn.TVExamFile
+		getExamFilesSQL := `
+			SELECT file_id, digest, file_name
+			FROM v_exam_file
+			WHERE exam_id = $1
+		`
+		var examFileRows pgx.Rows
+		examFileRows, q.Err = tx.Query(ctx, getExamFilesSQL, examFile.ExamID)
+		defer examFileRows.Close()
+		if forceErr == "examFiles.tx.Query" {
+			q.Err = fmt.Errorf("强制查询考试文件错误")
+		}
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		for examFileRows.Next() {
+			var examFile cmn.TVExamFile
+			q.Err = examFileRows.Scan(&examFile.FileID, &examFile.Digest, &examFile.FileName)
+			if forceErr == "examFiles.rows.Scan" {
+				q.Err = fmt.Errorf("强制扫描考试文件行错误")
+			}
+			if q.Err != nil {
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+			examFiles = append(examFiles, examFile)
+		}
+
+		var handleCase string
+		handleCase = "new_file"
+
+		var replacedFileID int64
+
+		// 如果存在相同digest，则查看ID和file_name是否一致
+		for i := 0; i < len(examFiles); i++ {
+
+			// 如果file_name不一致，则算作新增
+			if examFiles[i].Digest.String == examFile.CheckSum && examFiles[i].FileName.String != examFile.Name {
+				handleCase = "new_file"
+			}
+
+			// 如果ID和file_name都一致，则不用做任何处理
+			if examFiles[i].Digest.String == examFile.CheckSum && examFiles[i].FileName.String == examFile.Name && examFiles[i].FileID.Int64 == fileID {
+				handleCase = "no_change"
+				break
+			}
+
+			// 如果只有ID不一致，则替换该ID，减少被替换的文件的引用计数，并更新files字段
+			if examFiles[i].Digest.String == examFile.CheckSum && examFiles[i].FileName.String == examFile.Name && examFiles[i].FileID.Int64 != fileID {
+				replacedFileID = examFiles[i].FileID.Int64
+				examFiles[i].FileID = null.IntFrom(fileID)
+				handleCase = "replace_id"
+				break
+			}
+		}
+
+		// 拿到新的考试附件ID数组
+		var examFileIDs []int64
+		for i := 0; i < len(examFiles); i++ {
+			examFileIDs = append(examFileIDs, examFiles[i].FileID.Int64)
+		}
+
+		// 组装返回给前端的文件信息
+		var examFileReply []ExamFile
+		for i := 0; i < len(examFiles); i++ {
+			var fileInfo ExamFile
+			fileInfo.CheckSum = examFiles[i].Digest.String
+			fileInfo.Name = examFiles[i].FileName.String
+			examFileReply = append(examFileReply, fileInfo)
+		}
+
+		if handleCase == "new_file" {
+
+			// 在考试附件数组中增加新文件ID
+			examFileIDs = append(examFileIDs, fileID)
+			examFileReply = append(examFileReply, examFile)
+		}
+
+		if handleCase == "replace_id" {
+
+			// 处理被替换的文件
+			_ = replacedFileID
+			q.Err = handleDeleteExamFile(ctx, tx, replacedFileID)
+			if forceErr == "handleDeleteExamFile.tx.Exec" {
+				q.Err = fmt.Errorf("强制删除考试文件错误")
+			}
+			if q.Err != nil {
+				q.RespErr()
+				return
+			}
+		}
+
+		// 更新考试附件字段
+		if handleCase != "no_change" {
+
+			// 如果该文件不是新上传的，则增加引用计数
+			if !isNew {
+				_, q.Err = tx.Exec(ctx, `
+					UPDATE t_file
+					SET count = count + 1
+					WHERE id = $1
+				`, fileID)
+				if forceErr == "examFile.tx.UpdateFileCount" {
+					q.Err = fmt.Errorf("强制更新文件引用计数错误")
+				}
+				if q.Err != nil {
+					z.Error(q.Err.Error())
+					q.RespErr()
+					return
+				}
+			}
+
+			var filesJSON []byte
+			filesJSON, q.Err = json.Marshal(examFileIDs)
+			if forceErr == "examFiles.json.Marshal" {
+				q.Err = fmt.Errorf("强制序列化考试附件ID数组错误")
+				q.Msg.Data = nil
+			}
+			if q.Err != nil {
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+			_, q.Err = tx.Exec(ctx, `
+				UPDATE t_exam_info
+				SET files = $1
+				WHERE id = $2
+			`, filesJSON, examFile.ExamID)
+			if forceErr == "examInfo.tx.UpdateFiles" {
+				q.Err = fmt.Errorf("强制更新考试附件字段错误")
+			}
+			if q.Err != nil {
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+		}
+
+		q.Msg.Data, q.Err = json.Marshal(examFileReply)
+		if forceErr == "examFiles.json.Marshal2" {
+			q.Err = fmt.Errorf("强制序列化考试文件回复错误")
+			q.Msg.Data = nil
+		}
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		q.Resp()
+		return
+
+	case "delete":
+
+		var buf []byte
+		buf, q.Err = io.ReadAll(q.R.Body)
+		if forceErr == "io.ReadAll" {
+			q.Err = fmt.Errorf("强制读取请求体错误")
+		}
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		defer func() {
+			err := q.R.Body.Close()
+			if forceErr == "io.Close" {
+				err = fmt.Errorf("强制关闭IO错误")
+			}
+			if err != nil {
+				z.Error(err.Error())
+			}
+		}()
+
+		if len(buf) == 0 {
+			q.Err = fmt.Errorf("请求体为空")
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		var qry cmn.ReqProto
+		q.Err = json.Unmarshal(buf, &qry)
+		if forceErr == "json.Unmarshal" {
+			q.Err = fmt.Errorf("强制JSON解析错误")
+		}
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		var examFile ExamFile
+		q.Err = json.Unmarshal(qry.Data, &examFile)
+		if forceErr == "json.Unmarshal2" {
+			q.Err = fmt.Errorf("强制第二次JSON解析错误")
+		}
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		// 检查考试是否存在
+		checkExistsSQL := `
+			SELECT EXISTS (
+				SELECT 1
+				FROM t_exam_info
+				WHERE id = $1 AND status != '12'
+			)
+		`
+		var examExist bool
+		q.Err = tx.QueryRow(ctx, checkExistsSQL, examFile.ExamID).Scan(&examExist)
+		if forceErr == "checkExamExists" {
+			q.Err = fmt.Errorf("强制检查考试存在错误")
+		}
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		if !examExist {
+			q.Err = fmt.Errorf("考试不存在")
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		// 获取考试附件信息
+		getExamFilesSQL := `
+			SELECT file_id, digest, file_name
+			FROM v_exam_file
+			WHERE exam_id = $1
+		`
+		var examFiles []cmn.TVExamFile
+		var examFileRows pgx.Rows
+		examFileRows, q.Err = tx.Query(ctx, getExamFilesSQL, examFile.ExamID)
+		defer examFileRows.Close()
+		if forceErr == "getExamFiles" {
+			q.Err = fmt.Errorf("强制获取考试附件信息错误")
+		}
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		for examFileRows.Next() {
+			var examFile cmn.TVExamFile
+			if err := examFileRows.Scan(&examFile.FileID, &examFile.Digest, &examFile.FileName); err != nil {
+				q.Err = fmt.Errorf("强制扫描考试附件信息错误: %w", err)
+			}
+			examFiles = append(examFiles, examFile)
+		}
+
+		// 检查该考试附件是否存在于考试中
+		var deleteFileID int64
+		deleteFileID = -1
+		deleteIndex := -1
+		for i, examFileInfo := range examFiles {
+			if examFileInfo.Digest.String == examFile.CheckSum && examFileInfo.FileName.String == examFile.Name {
+
+				// 找到匹配的考试附件
+				deleteFileID = examFileInfo.FileID.Int64
+				deleteIndex = i
+				break
+			}
+		}
+
+		if deleteIndex != -1 {
+			// 删除考试附件
+			examFiles = append(examFiles[:deleteIndex], examFiles[deleteIndex+1:]...)
+		}
+
+		// 组装返回给前端的文件信息
+		var examFileReply []ExamFile
+		for i := 0; i < len(examFiles); i++ {
+			var fileInfo ExamFile
+			fileInfo.CheckSum = examFiles[i].Digest.String
+			fileInfo.Name = examFiles[i].FileName.String
+			examFileReply = append(examFileReply, fileInfo)
+		}
+
+		if deleteFileID != -1 {
+			q.Err = handleDeleteExamFile(ctx, tx, deleteFileID)
+			if forceErr == "handleDeleteExamFile" {
+				q.Err = fmt.Errorf("强制删除考试附件错误")
+			}
+			if q.Err != nil {
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+		}
+
+		q.Msg.Data, q.Err = json.Marshal(examFileReply)
+		if forceErr == "examFiles.json.Marshal" {
+			q.Err = fmt.Errorf("强制序列化考试文件错误")
 			q.Msg.Data = nil
 		}
 		if q.Err != nil {
