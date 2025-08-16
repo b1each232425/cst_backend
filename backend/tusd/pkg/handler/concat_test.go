@@ -148,6 +148,14 @@ func TestConcat(t *testing.T) {
 				BasePath:              "files",
 				StoreComposer:         composer,
 				NotifyCompleteUploads: true,
+				PreFinishResponseCallback: func(hook HookEvent) (HTTPResponse, error) {
+					a.Equal("foo", hook.Upload.ID)
+					return HTTPResponse{
+						Header: HTTPHeader{
+							"X-Custom-Resp-Header": "hello",
+						},
+					}, nil
+				},
 			})
 
 			c := make(chan HookEvent, 1)
@@ -160,10 +168,13 @@ func TestConcat(t *testing.T) {
 					// A space between `final;` and the first URL should be allowed due to
 					// compatibility reasons, even if the specification does not define
 					// it. Therefore this character is included in this test case.
-					"Upload-Concat":   "final; http://tus.io/files/a /files/b/",
-					"X-Custom-Header": "tada",
+					"Upload-Concat":       "final; http://tus.io/files/a /files/b/",
+					"X-Custom-Req-Header": "tada",
 				},
 				Code: http.StatusCreated,
+				ResHeader: map[string]string{
+					"X-Custom-Resp-Header": "hello",
+				},
 			}).Run(handler, t)
 
 			event := <-c
@@ -178,7 +189,7 @@ func TestConcat(t *testing.T) {
 			req := event.HTTPRequest
 			a.Equal("POST", req.Method)
 			a.Equal("", req.URI)
-			a.Equal("tada", req.Header.Get("X-Custom-Header"))
+			a.Equal("tada", req.Header.Get("X-Custom-Req-Header"))
 		})
 
 		SubTest(t, "Status", func(t *testing.T, store *MockFullDataStore, composer *StoreComposer) {
@@ -326,5 +337,78 @@ func TestConcat(t *testing.T) {
 				Code: http.StatusBadRequest,
 			}).Run(handler, t)
 		})
+
+		// Test that we can concatenate uploads, whose IDs contain slashes.
+		SubTest(t, "UploadIDsWithSlashes", func(t *testing.T, store *MockFullDataStore, composer *StoreComposer) {
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+			uploadA := NewMockFullUpload(ctrl)
+			uploadB := NewMockFullUpload(ctrl)
+			uploadC := NewMockFullUpload(ctrl)
+
+			gomock.InOrder(
+				store.EXPECT().GetUpload(gomock.Any(), "aaa/123").Return(uploadA, nil),
+				uploadA.EXPECT().GetInfo(gomock.Any()).Return(FileInfo{
+					IsPartial: true,
+					Size:      5,
+					Offset:    5,
+				}, nil),
+				store.EXPECT().GetUpload(gomock.Any(), "bbb/123").Return(uploadB, nil),
+				uploadB.EXPECT().GetInfo(gomock.Any()).Return(FileInfo{
+					IsPartial: true,
+					Size:      5,
+					Offset:    5,
+				}, nil),
+				store.EXPECT().NewUpload(gomock.Any(), FileInfo{
+					Size:           10,
+					IsPartial:      false,
+					IsFinal:        true,
+					PartialUploads: []string{"aaa/123", "bbb/123"},
+					MetaData:       make(map[string]string),
+				}).Return(uploadC, nil),
+				uploadC.EXPECT().GetInfo(gomock.Any()).Return(FileInfo{
+					ID:             "foo",
+					Size:           10,
+					IsPartial:      false,
+					IsFinal:        true,
+					PartialUploads: []string{"aaa/123", "bbb/123"},
+					MetaData:       make(map[string]string),
+				}, nil),
+				store.EXPECT().AsConcatableUpload(uploadC).Return(uploadC),
+				uploadC.EXPECT().ConcatUploads(gomock.Any(), []Upload{uploadA, uploadB}).Return(nil),
+			)
+
+			handler, _ := NewHandler(Config{
+				BasePath:      "files",
+				StoreComposer: composer,
+			})
+
+			(&httpTest{
+				Method: "POST",
+				ReqHeader: map[string]string{
+					"Tus-Resumable": "1.0.0",
+					"Upload-Concat": "final; http://tus.io/files/aaa/123 /files/bbb/123",
+				},
+				Code: http.StatusCreated,
+			}).Run(handler, t)
+		})
+	})
+
+	SubTest(t, "DisableConcatenation", func(t *testing.T, store *MockFullDataStore, composer *StoreComposer) {
+		handler, _ := NewHandler(Config{
+			BasePath:             "files",
+			StoreComposer:        composer,
+			DisableConcatenation: true,
+		})
+
+		(&httpTest{
+			Method: "POST",
+			ReqHeader: map[string]string{
+				"Tus-Resumable": "1.0.0",
+				"Upload-Concat": "final; http://tus.io/files/aaa/123 /files/bbb/123",
+			},
+			Code:    http.StatusBadRequest,
+			ResBody: "ERR_CONCATENATION_UNSUPPORTED: Upload-Concat header is not supported by server\n",
+		}).Run(handler, t)
 	})
 }
