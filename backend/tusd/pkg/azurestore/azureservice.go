@@ -18,34 +18,26 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/binary"
-	"errors"
 	"fmt"
 	"io"
+	"net/url"
 	"sort"
 	"strings"
 
-	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
-	"github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
-	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
-	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
-	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob"
-	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/blob"
-	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/bloberror"
-	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/blockblob"
-	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/container"
+	"github.com/Azure/azure-storage-blob-go/azblob"
 	"w2w.io/tusd/pkg/handler"
 )
 
 const (
 	InfoBlobSuffix        string = ".info"
-	MaxBlockBlobSize      int64  = blockblob.MaxBlocks * blockblob.MaxStageBlockBytes
-	MaxBlockBlobChunkSize int64  = blockblob.MaxStageBlockBytes
+	MaxBlockBlobSize      int64  = azblob.BlockBlobMaxBlocks * azblob.BlockBlobMaxStageBlockBytes
+	MaxBlockBlobChunkSize int64  = azblob.BlockBlobMaxStageBlockBytes
 )
 
 type azService struct {
-	ContainerClient *container.Client
-	ContainerName   string
-	BlobAccessTier  *blob.AccessTier
+	BlobAccessTier azblob.AccessTierType
+	ContainerURL   *azblob.ContainerURL
+	ContainerName  string
 }
 
 type AzService interface {
@@ -75,102 +67,87 @@ type AzBlob interface {
 }
 
 type BlockBlob struct {
-	BlobClient     *blockblob.Client
-	Indexes        []int
-	BlobAccessTier *blob.AccessTier
+	Blob       *azblob.BlockBlobURL
+	AccessTier azblob.AccessTierType
+	Indexes    []int
 }
 
 type InfoBlob struct {
-	BlobClient *blockblob.Client
+	Blob *azblob.BlockBlobURL
 }
 
 // New Azure service for communication to Azure BlockBlob Storage API
 func NewAzureService(config *AzConfig) (AzService, error) {
-
-	serviceURL := fmt.Sprintf("%s/%s", config.Endpoint, config.ContainerName)
-	clientOptions := &container.ClientOptions{
-		ClientOptions: azcore.ClientOptions{
-			Retry: policy.RetryOptions{
-				MaxRetries:    5,
-				RetryDelay:    100,  // Retry after 100ms initially
-				MaxRetryDelay: 5000, // Max retry delay 5 seconds
-			},
-		},
-	}
-	var containerClient *container.Client
-	if config.AccountKey != "" {
-		cred, err := azblob.NewSharedKeyCredential(config.AccountName, config.AccountKey)
-		if err != nil {
-			return nil, err
-		}
-		containerClient, err = container.NewClientWithSharedKeyCredential(serviceURL, cred, clientOptions)
-		if err != nil {
-			return nil, err
-		}
-	} else {
-		cred, err := azidentity.NewDefaultAzureCredential(nil)
-		if err != nil {
-			return nil, err
-		}
-		containerClient, err = container.NewClient(serviceURL, cred, clientOptions)
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	containerCreateOptions := &container.CreateOptions{}
-	switch config.ContainerAccessType {
-	case "container":
-		containerCreateOptions.Access = to.Ptr(container.PublicAccessTypeContainer)
-	case "blob":
-		containerCreateOptions.Access = to.Ptr(container.PublicAccessTypeBlob)
-	default:
-		// Leaving Access nil will default to private access
-	}
-
-	_, err := containerClient.Create(context.Background(), containerCreateOptions)
-	if err != nil && !strings.Contains(err.Error(), "ContainerAlreadyExists") {
+	// struct to store your credentials.
+	credential, err := azblob.NewSharedKeyCredential(config.AccountName, config.AccountKey)
+	if err != nil {
 		return nil, err
 	}
 
-	// Does not support the premium access tiers yet.
-	var blobAccessTier *blob.AccessTier
-	switch config.BlobAccessTier {
-	case "archive":
-		blobAccessTier = to.Ptr(blob.AccessTierArchive)
-	case "cool":
-		blobAccessTier = to.Ptr(blob.AccessTierCool)
-	case "hot":
-		blobAccessTier = to.Ptr(blob.AccessTierHot)
+	// Might be limited by the storage account
+	// "" or default inherits the access type from the Storage Account
+	var containerAccessType azblob.PublicAccessType
+	switch config.ContainerAccessType {
+	case "container":
+		containerAccessType = azblob.PublicAccessContainer
+	case "blob":
+		containerAccessType = azblob.PublicAccessBlob
+	case "":
+	default:
+		containerAccessType = azblob.PublicAccessNone
 	}
 
+	// Does not support the premium access tiers
+	var blobAccessTierType azblob.AccessTierType
+	switch config.BlobAccessTier {
+	case "archive":
+		blobAccessTierType = azblob.AccessTierArchive
+	case "cool":
+		blobAccessTierType = azblob.AccessTierCool
+	case "hot":
+		blobAccessTierType = azblob.AccessTierHot
+	case "":
+	default:
+		blobAccessTierType = azblob.DefaultAccessTier
+	}
+
+	// The pipeline specifies things like retry policies, logging, deserialization of HTTP response payloads, and more.
+	p := azblob.NewPipeline(credential, azblob.PipelineOptions{})
+	cURL, _ := url.Parse(fmt.Sprintf("%s/%s", config.Endpoint, config.ContainerName))
+
+	// Get the ContainerURL URL
+	containerURL := azblob.NewContainerURL(*cURL, p)
+	// Do not care about response since it will fail if container exists and create if it does not.
+	_, _ = containerURL.Create(context.Background(), azblob.Metadata{}, containerAccessType)
+
 	return &azService{
-		ContainerClient: containerClient,
-		ContainerName:   config.ContainerName,
-		BlobAccessTier:  blobAccessTier,
+		BlobAccessTier: blobAccessTierType,
+		ContainerURL:   &containerURL,
+		ContainerName:  config.ContainerName,
 	}, nil
 }
 
 // Determine if we return a InfoBlob or BlockBlob, based on the name
 func (service *azService) NewBlob(ctx context.Context, name string) (AzBlob, error) {
-	blobClient := service.ContainerClient.NewBlockBlobClient(name)
+	var fileBlob AzBlob
+	bb := service.ContainerURL.NewBlockBlobURL(name)
 	if strings.HasSuffix(name, InfoBlobSuffix) {
-		return &InfoBlob{BlobClient: blobClient}, nil
+		fileBlob = &InfoBlob{
+			Blob: &bb,
+		}
+	} else {
+		fileBlob = &BlockBlob{
+			Blob:       &bb,
+			Indexes:    []int{},
+			AccessTier: service.BlobAccessTier,
+		}
 	}
-	return &BlockBlob{
-		BlobClient:     blobClient,
-		Indexes:        []int{},
-		BlobAccessTier: service.BlobAccessTier,
-	}, nil
+	return fileBlob, nil
 }
 
 // Delete the blockBlob from Azure Blob Storage
 func (blockBlob *BlockBlob) Delete(ctx context.Context) error {
-	// Specify that you want to delete both the blob and its snapshots
-	deleteOptions := &azblob.DeleteBlobOptions{
-		DeleteSnapshots: to.Ptr(azblob.DeleteSnapshotsOptionTypeInclude),
-	}
-	_, err := blockBlob.BlobClient.Delete(ctx, deleteOptions)
+	_, err := blockBlob.Blob.Delete(ctx, azblob.DeleteSnapshotsOptionInclude, azblob.BlobAccessConditions{})
 	return err
 }
 
@@ -184,19 +161,31 @@ func (blockBlob *BlockBlob) Upload(ctx context.Context, body io.ReadSeeker) erro
 		index = blockBlob.Indexes[len(blockBlob.Indexes)-1] + 1
 	}
 	blockBlob.Indexes = append(blockBlob.Indexes, index)
-	blockID := blockIDIntToBase64(index)
-	readSeekCloserBody := readSeekCloser{body}
-	_, err := blockBlob.BlobClient.StageBlock(ctx, blockID, readSeekCloserBody, nil)
-	return err
+
+	_, err := blockBlob.Blob.StageBlock(ctx, blockIDIntToBase64(index), body, azblob.LeaseAccessConditions{}, nil, azblob.ClientProvidedKeyOptions{})
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 // Download the blockBlob from Azure Blob Storage
 func (blockBlob *BlockBlob) Download(ctx context.Context) (io.ReadCloser, error) {
-	resp, err := blockBlob.BlobClient.DownloadStream(ctx, nil)
-	if err != nil {
-		return nil, checkForNotFoundError(err)
+	downloadResponse, err := blockBlob.Blob.Download(ctx, 0, azblob.CountToEnd, azblob.BlobAccessConditions{}, false, azblob.ClientProvidedKeyOptions{})
+
+	// If the file does not exist, it will not return an error, but a 404 status and body
+	if downloadResponse != nil && downloadResponse.StatusCode() == 404 {
+		return nil, handler.ErrNotFound
 	}
-	return resp.Body, nil
+	if err != nil {
+		// This might occur when the blob is being uploaded, but a block list has not been committed yet
+		if isAzureError(err, "BlobNotFound") {
+			err = handler.ErrNotFound
+		}
+		return nil, err
+	}
+
+	return downloadResponse.Body(azblob.RetryReaderOptions{MaxRetryRequests: 20}), nil
 }
 
 func (blockBlob *BlockBlob) GetOffset(ctx context.Context) (int64, error) {
@@ -205,14 +194,24 @@ func (blockBlob *BlockBlob) GetOffset(ctx context.Context) (int64, error) {
 	var indexes []int
 	var offset int64
 
-	resp, err := blockBlob.BlobClient.GetBlockList(ctx, blockblob.BlockListTypeUncommitted, nil)
+	getBlock, err := blockBlob.Blob.GetBlockList(ctx, azblob.BlockListAll, azblob.LeaseAccessConditions{})
 	if err != nil {
-		return 0, checkForNotFoundError(err)
+		if isAzureError(err, "BlobNotFound") {
+			err = handler.ErrNotFound
+		}
+
+		return 0, err
+	}
+
+	// Need committed blocks to be added to offset to know how big the file really is
+	for _, block := range getBlock.CommittedBlocks {
+		offset += int64(block.Size)
+		indexes = append(indexes, blockIDBase64ToInt(block.Name))
 	}
 
 	// Need to get the uncommitted blocks so that we can commit them
-	for _, block := range resp.UncommittedBlocks {
-		offset += *block.Size
+	for _, block := range getBlock.UncommittedBlocks {
+		offset += int64(block.Size)
 		indexes = append(indexes, blockIDBase64ToInt(block.Name))
 	}
 
@@ -227,19 +226,17 @@ func (blockBlob *BlockBlob) GetOffset(ctx context.Context) (int64, error) {
 // After all the blocks have been uploaded, we commit the unstaged blocks by sending a Block List
 func (blockBlob *BlockBlob) Commit(ctx context.Context) error {
 	base64BlockIDs := make([]string, len(blockBlob.Indexes))
-	for i, id := range blockBlob.Indexes {
-		base64BlockIDs[i] = blockIDIntToBase64(id)
+	for index, id := range blockBlob.Indexes {
+		base64BlockIDs[index] = blockIDIntToBase64(id)
 	}
 
-	_, err := blockBlob.BlobClient.CommitBlockList(ctx, base64BlockIDs, &blockblob.CommitBlockListOptions{
-		Tier: blockBlob.BlobAccessTier,
-	})
+	_, err := blockBlob.Blob.CommitBlockList(ctx, base64BlockIDs, azblob.BlobHTTPHeaders{}, azblob.Metadata{}, azblob.BlobAccessConditions{}, blockBlob.AccessTier, nil, azblob.ClientProvidedKeyOptions{}, azblob.ImmutabilityPolicyOptions{})
 	return err
 }
 
 // Delete the infoBlob from Azure Blob Storage
 func (infoBlob *InfoBlob) Delete(ctx context.Context) error {
-	_, err := infoBlob.BlobClient.Delete(ctx, nil)
+	_, err := infoBlob.Blob.Delete(ctx, azblob.DeleteSnapshotsOptionInclude, azblob.BlobAccessConditions{})
 	return err
 }
 
@@ -247,17 +244,26 @@ func (infoBlob *InfoBlob) Delete(ctx context.Context) error {
 // Because the info file is presumed to be smaller than azblob.BlockBlobMaxUploadBlobBytes (256MiB), we can upload it all in one go
 // New uploaded data will create a new, or overwrite the existing block blob
 func (infoBlob *InfoBlob) Upload(ctx context.Context, body io.ReadSeeker) error {
-	_, err := infoBlob.BlobClient.UploadStream(ctx, body, nil)
+	_, err := infoBlob.Blob.Upload(ctx, body, azblob.BlobHTTPHeaders{}, azblob.Metadata{}, azblob.BlobAccessConditions{}, azblob.DefaultAccessTier, nil, azblob.ClientProvidedKeyOptions{}, azblob.ImmutabilityPolicyOptions{})
 	return err
 }
 
 // Download the infoBlob from Azure Blob Storage
 func (infoBlob *InfoBlob) Download(ctx context.Context) (io.ReadCloser, error) {
-	resp, err := infoBlob.BlobClient.DownloadStream(ctx, nil)
-	if err != nil {
-		return nil, checkForNotFoundError(err)
+	downloadResponse, err := infoBlob.Blob.Download(ctx, 0, azblob.CountToEnd, azblob.BlobAccessConditions{}, false, azblob.ClientProvidedKeyOptions{})
+
+	// If the file does not exist, it will not return an error, but a 404 status and body
+	if downloadResponse != nil && downloadResponse.StatusCode() == 404 {
+		return nil, fmt.Errorf("file %s does not exist", infoBlob.Blob.ToBlockBlobURL())
 	}
-	return resp.Body, nil
+	if err != nil {
+		if isAzureError(err, "BlobNotFound") {
+			err = handler.ErrNotFound
+		}
+		return nil, err
+	}
+
+	return downloadResponse.Body(azblob.RetryReaderOptions{MaxRetryRequests: 20}), nil
 }
 
 // infoBlob does not utilise offset, so just return 0, nil
@@ -277,8 +283,8 @@ func blockIDBinaryToBase64(blockID []byte) string {
 	return base64.StdEncoding.EncodeToString(blockID)
 }
 
-func blockIDBase64ToBinary(blockID *string) []byte {
-	binary, _ := base64.StdEncoding.DecodeString(*blockID)
+func blockIDBase64ToBinary(blockID string) []byte {
+	binary, _ := base64.StdEncoding.DecodeString(blockID)
 	return binary
 }
 
@@ -289,30 +295,14 @@ func blockIDIntToBase64(blockID int) string {
 	return blockIDBinaryToBase64(binaryBlockID)
 }
 
-func blockIDBase64ToInt(blockID *string) int {
+func blockIDBase64ToInt(blockID string) int {
 	blockIDBase64ToBinary(blockID)
 	return int(binary.LittleEndian.Uint32(blockIDBase64ToBinary(blockID)))
 }
 
-// readSeekCloser is a wrapper that adds a no-op Close method to an io.ReadSeeker.
-type readSeekCloser struct {
-	io.ReadSeeker
-}
-
-// Close implements io.Closer for readSeekCloser.
-func (rsc readSeekCloser) Close() error {
-	return nil
-}
-
-// checkForNotFoundError checks if the error indicates that a resource was not found.
-// If so, we return the corresponding tusd error.
-func checkForNotFoundError(err error) error {
-	var azureError *azcore.ResponseError
-	if errors.As(err, &azureError) {
-		code := bloberror.Code(azureError.ErrorCode)
-		if code == bloberror.BlobNotFound || azureError.StatusCode == 404 {
-			return handler.ErrNotFound
-		}
+func isAzureError(err error, code string) bool {
+	if err, ok := err.(azblob.StorageError); ok && string(err.ServiceCode()) == code {
+		return true
 	}
-	return err
+	return false
 }

@@ -4,7 +4,6 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"io"
-
 	"w2w.io/tusd/pkg/handler"
 )
 

@@ -8,7 +8,7 @@ import (
 	"io"
 	"testing"
 
-	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/bloberror"
+	"github.com/Azure/azure-storage-blob-go/azblob"
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
 	"w2w.io/tusd/pkg/azurestore"
@@ -216,7 +216,7 @@ func TestGetUploadNotFound(t *testing.T) {
 	ctx := context.Background()
 	gomock.InOrder(
 		service.EXPECT().NewBlob(ctx, mockID+".info").Return(infoBlob, nil).Times(1),
-		infoBlob.EXPECT().Download(ctx).Return(nil, errors.New(string(bloberror.BlobNotFound))).Times(1),
+		infoBlob.EXPECT().Download(ctx).Return(nil, errors.New(string(azblob.StorageErrorCodeBlobNotFound))).Times(1),
 	)
 
 	_, err := store.GetUpload(context.Background(), mockID)
@@ -290,12 +290,7 @@ func TestWriteChunk(t *testing.T) {
 		infoBlob.EXPECT().Download(ctx).Return(newReadCloser(data), nil).Times(1),
 		service.EXPECT().NewBlob(ctx, mockID).Return(blockBlob, nil).Times(1),
 		blockBlob.EXPECT().GetOffset(ctx).Return(offset, nil).Times(1),
-		blockBlob.EXPECT().Upload(ctx, gomock.Any()).DoAndReturn(func(_ context.Context, reader io.ReadSeeker) error {
-			actual, err := io.ReadAll(reader)
-			assert.Nil(err)
-			assert.Equal(mockReaderData, string(actual))
-			return nil
-		}).Times(1),
+		blockBlob.EXPECT().Upload(ctx, bytes.NewReader([]byte(mockReaderData))).Return(nil).Times(1),
 	)
 
 	upload, err := store.GetUpload(ctx, mockID)

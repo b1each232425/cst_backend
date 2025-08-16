@@ -44,36 +44,12 @@ func _() {
 	_ = x[CDomainXKBPromotion-10016]
 	_ = x[CDomainXKBFE-10020]
 	_ = x[CDomainXKBBE-10030]
-	_ = x[CDomainAssess-10098]
-	_ = x[CDomainAssessAdmin-10100]
-	_ = x[CDomainAssessLeader-10102]
-	_ = x[CDomainAssessFacultyAdmin-10104]
-	_ = x[CDomainAssessAcademicAffairDean-10106]
-	_ = x[CDomainAssessStudentAffairDean-10108]
-	_ = x[CDomainAssessFacultyLeader-10110]
-	_ = x[CDomainAssessAcademicAffairAdmin-10112]
-	_ = x[CDomainAssessTeacher-10114]
-	_ = x[CDomainAssessExamSupervisor-10116]
-	_ = x[CDomainAssessExamGrader-10118]
-	_ = x[CDomainAssessScoreChecker-10120]
-	_ = x[CDomainAssessExamSite-10122]
-	_ = x[CDomainAssessExamSiteAdmin-10124]
-	_ = x[CDomainAssessMaintain-10126]
-	_ = x[CDomainAssessStudent-10128]
-	_ = x[CDomainCourse-10200]
-	_ = x[CDomainCourseAdmin-10202]
-	_ = x[CDomainCourseMaintain-10204]
-	_ = x[CDomainCoursePromotion-10206]
-	_ = x[CDomainCourseTeacher-10208]
-	_ = x[CDomainCourseTeachingAssistant-10210]
-	_ = x[CDomainCourseClassRepresentative-10212]
-	_ = x[CDomainCourseStudent-10214]
 	_ = x[CUserDefaultCreator-1000]
 	_ = x[CUserDefaultMaintainer-1000]
 	_ = x[CUserDefaultDomainID-333]
 }
 
-const _CDomain_name = "CDomainSysCDomainSysAdminCDomainSysMaintainCDomainSysUserCDomainSysAnonymousCDomainSysPromotionCDomainSysSaleCDomainSysTrialCDomainAdminCDomainMaintainCDomainUserCDomainAnonymousCDomainPromotionCDomainSaleCDomainTrialCUserDefaultCreatorCDomainQNearCDomainQNearAdminCDomainAbilityIdxCDomainAbilityIdxAdminCDomainForeseeLabCDomainForeseeLabAdminCDomainRecruitMgrCDomainRecruitMgrAdminCDomainJXDDCDomainJXDDAdminCDomainDonateCDomainDonateAdminCDomainXKBCDomainXKBAdminCDomainXKBSaleCDomainXKBSchoolAdminCDomainXKBSchoolStatisticsCDomainXKBUserCDomainXKBPromotionCDomainXKBFECDomainXKBBECDomainAssessCDomainAssessAdminCDomainAssessLeaderCDomainAssessFacultyAdminCDomainAssessAcademicAffairDeanCDomainAssessStudentAffairDeanCDomainAssessFacultyLeaderCDomainAssessAcademicAffairAdminCDomainAssessTeacherCDomainAssessExamSupervisorCDomainAssessExamGraderCDomainAssessScoreCheckerCDomainAssessExamSiteCDomainAssessExamSiteAdminCDomainAssessMaintainCDomainAssessStudentCDomainCourseCDomainCourseAdminCDomainCourseMaintainCDomainCoursePromotionCDomainCourseTeacherCDomainCourseTeachingAssistantCDomainCourseClassRepresentativeCDomainCourseStudent"
+const _CDomain_name = "CDomainSysCDomainSysAdminCDomainSysMaintainCDomainSysUserCDomainSysAnonymousCDomainSysPromotionCDomainSysSaleCDomainSysTrialCDomainAdminCDomainMaintainCDomainUserCDomainAnonymousCDomainPromotionCDomainSaleCDomainTrialCUserDefaultCreatorCDomainQNearCDomainQNearAdminCDomainAbilityIdxCDomainAbilityIdxAdminCDomainForeseeLabCDomainForeseeLabAdminCDomainRecruitMgrCDomainRecruitMgrAdminCDomainJXDDCDomainJXDDAdminCDomainDonateCDomainDonateAdminCDomainXKBCDomainXKBAdminCDomainXKBSaleCDomainXKBSchoolAdminCDomainXKBSchoolStatisticsCDomainXKBUserCDomainXKBPromotionCDomainXKBFECDomainXKBBE"
 
 var _CDomain_map = map[CDomain]string{
 	322:   _CDomain_name[0:10],
@@ -113,30 +89,6 @@ var _CDomain_map = map[CDomain]string{
 	10016: _CDomain_name[540:559],
 	10020: _CDomain_name[559:571],
 	10030: _CDomain_name[571:583],
-	10098: _CDomain_name[583:596],
-	10100: _CDomain_name[596:614],
-	10102: _CDomain_name[614:633],
-	10104: _CDomain_name[633:658],
-	10106: _CDomain_name[658:689],
-	10108: _CDomain_name[689:719],
-	10110: _CDomain_name[719:745],
-	10112: _CDomain_name[745:777],
-	10114: _CDomain_name[777:797],
-	10116: _CDomain_name[797:824],
-	10118: _CDomain_name[824:847],
-	10120: _CDomain_name[847:872],
-	10122: _CDomain_name[872:893],
-	10124: _CDomain_name[893:919],
-	10126: _CDomain_name[919:940],
-	10128: _CDomain_name[940:960],
-	10200: _CDomain_name[960:973],
-	10202: _CDomain_name[973:991],
-	10204: _CDomain_name[991:1012],
-	10206: _CDomain_name[1012:1034],
-	10208: _CDomain_name[1034:1054],
-	10210: _CDomain_name[1054:1084],
-	10212: _CDomain_name[1084:1116],
-	10214: _CDomain_name[1116:1136],
 }
 
 func (i CDomain) String() string {

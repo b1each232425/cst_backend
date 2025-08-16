@@ -18,17 +18,16 @@ package filelocker
 
 import (
 	"context"
-	"errors"
-	"io/fs"
+	"w2w.io/lockfile"
+
 	"os"
 	"path/filepath"
 	"time"
 
-	"w2w.io/lockfile"
 	"w2w.io/tusd/pkg/handler"
 )
 
-// See the handler.DataStore interface for documentation about the different
+// FileLocker see the handler.DataStore interface for documentation about the different
 // methods.
 type FileLocker struct {
 	// Relative or absolute path to store files in. FileStore does not check
@@ -91,7 +90,7 @@ func (lock fileUploadLock) Lock(ctx context.Context, requestRelease func()) erro
 	for {
 		err := lock.file.TryLock()
 		if err == nil {
-			// Lock has been aquired, so we are good to go.
+			// Lock has been acquired, so we are good to go.
 			break
 		}
 		if err == lockfile.ErrNotExist {
@@ -105,19 +104,8 @@ func (lock fileUploadLock) Lock(ctx context.Context, requestRelease func()) erro
 				continue
 			}
 		}
-		// If the upload ID uses a folder structure (e.g. projectA/upload1), the directory
-		// (e.g. projectA) might not exist, if no such upload exists already. In those cases,
-		// we just return ErrNotFound because no such upload exists anyways.
-		// TODO: This assumes that filelocker is used mostly with filestore, which is likely
-		// true, but does not have to be. If another storage backend is used, we cannot make
-		// any assumption about the folder structure. As an alternative, we should consider
-		// normalizing the upload ID to remove the folder structure as well an turn projectA/upload1
-		// into projectA-upload1.
-		if errors.Is(err, fs.ErrNotExist) {
-			return handler.ErrNotFound
-		}
 		if err != lockfile.ErrBusy {
-			// If we get something different than ErrBusy, bubble the error up.
+			// If we get something different from ErrBusy, bubble the error up.
 			return err
 		}
 
@@ -127,7 +115,7 @@ func (lock fileUploadLock) Lock(ctx context.Context, requestRelease func()) erro
 		if err != nil {
 			return err
 		}
-		defer file.Close()
+		defer func() { _ = file.Close() }()
 
 		select {
 		case <-ctx.Done():

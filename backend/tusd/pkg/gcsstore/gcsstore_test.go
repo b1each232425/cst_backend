@@ -104,29 +104,27 @@ func TestNewUploadWithPrefix(t *testing.T) {
 	assert.NotNil(upload)
 }
 
-// MockReader is an implementation of GCSReader.
-type MockReader struct {
-	reader *bytes.Reader
-}
+type MockGetInfoReader struct{}
 
-func (r MockReader) Close() error {
+func (r MockGetInfoReader) Close() error {
 	return nil
 }
 
-func (r MockReader) ContentType() string {
+func (r MockGetInfoReader) ContentType() string {
 	return "text/plain; charset=utf-8"
 }
 
-func (r MockReader) Read(p []byte) (int, error) {
-	return r.reader.Read(p)
+func (r MockGetInfoReader) Read(p []byte) (int, error) {
+	copy(p, mockTusdInfoJson)
+	return len(p), nil
 }
 
-func (r MockReader) Remain() int64 {
-	return int64(r.reader.Len())
+func (r MockGetInfoReader) Remain() int64 {
+	return int64(len(mockTusdInfoJson))
 }
 
-func (r MockReader) Size() int64 {
-	return r.reader.Size()
+func (r MockGetInfoReader) Size() int64 {
+	return int64(len(mockTusdInfoJson))
 }
 
 func TestGetInfo(t *testing.T) {
@@ -144,9 +142,7 @@ func TestGetInfo(t *testing.T) {
 		ID:     fmt.Sprintf("%s.info", mockID),
 	}
 
-	r := MockReader{
-		bytes.NewReader([]byte(mockTusdInfoJson)),
-	}
+	r := MockGetInfoReader{}
 
 	filterParams := gcsstore.GCSFilterParams{
 		Bucket: store.Bucket,
@@ -225,6 +221,29 @@ func TestGetInfoNotFound(t *testing.T) {
 	assert.Equal(handler.ErrNotFound, err)
 }
 
+type MockGetReader struct{}
+
+func (r MockGetReader) Close() error {
+	return nil
+}
+
+func (r MockGetReader) ContentType() string {
+	return "text/plain; charset=utf-8"
+}
+
+func (r MockGetReader) Read(p []byte) (int, error) {
+	copy(p, mockReaderData)
+	return len(p), nil
+}
+
+func (r MockGetReader) Remain() int64 {
+	return int64(len(mockReaderData))
+}
+
+func (r MockGetReader) Size() int64 {
+	return int64(len(mockReaderData))
+}
+
 func TestGetReader(t *testing.T) {
 	mockCtrl := gomock.NewController(t)
 	defer mockCtrl.Finish()
@@ -240,9 +259,7 @@ func TestGetReader(t *testing.T) {
 		ID:     mockID,
 	}
 
-	r := MockReader{
-		bytes.NewReader([]byte(mockReaderData)),
-	}
+	r := MockGetReader{}
 
 	ctx := context.Background()
 	service.EXPECT().ReadObject(ctx, params).Return(r, nil)
@@ -316,9 +333,7 @@ func TestFinishUpload(t *testing.T) {
 		ID:     fmt.Sprintf("%s.info", mockID),
 	}
 
-	r := MockReader{
-		bytes.NewReader([]byte(mockTusdInfoJson)),
-	}
+	r := MockGetInfoReader{}
 
 	mockObjectParams0 := gcsstore.GCSObjectParams{
 		Bucket: store.Bucket,
