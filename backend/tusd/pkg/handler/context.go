@@ -3,9 +3,10 @@ package handler
 import (
 	"context"
 	"errors"
-	"log/slog"
 	"net/http"
 	"time"
+
+	"golang.org/x/exp/slog"
 )
 
 // httpContext is wrapper around context.Context that also carries the
@@ -33,7 +34,7 @@ type httpContext struct {
 
 // newContext constructs a new httpContext for the given request. This should only be done once
 // per request and the context should be stored in the request, so it can be fetched with getContext.
-func (handler *UnroutedHandler) newContext(w http.ResponseWriter, r *http.Request) *httpContext {
+func (h UnroutedHandler) newContext(w http.ResponseWriter, r *http.Request) *httpContext {
 	// requestCtx is the context from the native request instance. It gets cancelled
 	// if the connection closes, the request is cancelled (HTTP/2), ServeHTTP returns
 	// or the server's base context is cancelled.
@@ -43,8 +44,8 @@ func (handler *UnroutedHandler) newContext(w http.ResponseWriter, r *http.Reques
 	cancellableCtx, cancelHandling := context.WithCancelCause(requestCtx)
 	// On top of cancellableCtx, we construct a new context which gets cancelled with a delay.
 	// See HookEvent.Context for more details, but the gist is that we want to give data stores
-	// some more time to finish their business.
-	delayedCtx := newDelayedContext(cancellableCtx, handler.config.GracefulRequestCompletionTimeout)
+	// some more time to finish their buisness.
+	delayedCtx := newDelayedContext(cancellableCtx, h.config.GracefulRequestCompletionTimeout)
 
 	ctx := &httpContext{
 		Context: delayedCtx,
@@ -53,7 +54,7 @@ func (handler *UnroutedHandler) newContext(w http.ResponseWriter, r *http.Reques
 		req:     r,
 		body:    nil, // body can be filled later for PATCH requests
 		cancel:  cancelHandling,
-		log:     handler.logger.With("method", r.Method, "path", r.URL.Path, "requestId", getRequestId(r)),
+		log:     h.logger.With("method", r.Method, "path", r.URL.Path, "requestId", getRequestId(r)),
 	}
 
 	go func() {
@@ -70,10 +71,10 @@ func (handler *UnroutedHandler) newContext(w http.ResponseWriter, r *http.Reques
 }
 
 // getContext tries to retrieve a httpContext from the request or constructs a new one.
-func (handler *UnroutedHandler) getContext(w http.ResponseWriter, r *http.Request) *httpContext {
+func (h UnroutedHandler) getContext(w http.ResponseWriter, r *http.Request) *httpContext {
 	c, ok := r.Context().(*httpContext)
 	if !ok {
-		c = handler.newContext(w, r)
+		c = h.newContext(w, r)
 	}
 
 	return c
