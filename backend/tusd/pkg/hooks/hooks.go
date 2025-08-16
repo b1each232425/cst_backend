@@ -1,6 +1,6 @@
 // Package hooks allows you to execute hooks based on events emitted from the tusd handler
 // using the callbacks and notification channels. The actual hook systems are implemented
-// in the subpackages and this package provides the glue between the tusd handler and the hook
+// in the subpackages and this package provides the glue betwen the tusd handler and the hook
 // system. For example, to use the HTTP-based hook system:
 //
 //	import (
@@ -19,15 +19,16 @@ package hooks
 
 import (
 	"fmt"
+
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/exp/slices"
 	"golang.org/x/exp/slog"
 	"w2w.io/tusd/pkg/handler"
 )
 
-// HookHandler is the main interface to be implemented by all hook backends.
+// HookHandler is the main inferface to be implemented by all hook backends.
 type HookHandler interface {
-	// Setup is invoked once the hook backend is initialized.
+	// Setup is invoked once the hook backend is initalized.
 	Setup() error
 	// InvokeHook is invoked for every hook that is executed. req contains the
 	// corresponding information about the hook type, the involved upload, and
@@ -67,6 +68,12 @@ type HookResponse struct {
 	// to the client.
 	RejectUpload bool
 
+	// RejectTermination will cause the termination of the upload to be rejected, keeping the upload.
+	// This value is only respected for pre-terminate hooks. For other hooks,
+	// it is ignored. Use the HTTPResponse field to send details about the rejection
+	// to the client.
+	RejectTermination bool
+
 	// ChangeFileInfo can be set to change selected properties of an upload before
 	// it has been created. See the handler.FileInfoChanges type for more details.
 	// Changes are applied on a per-property basis, meaning that specifying just
@@ -90,11 +97,11 @@ const (
 	HookPostCreate    HookType = "post-create"
 	HookPreCreate     HookType = "pre-create"
 	HookPreFinish     HookType = "pre-finish"
+	HookPreTerminate  HookType = "pre-terminate"
 )
 
 // AvailableHooks is a slice of all hooks that are implemented by tusd.
-var AvailableHooks = []HookType{HookPreCreate, HookPostCreate,
-	HookPostReceive, HookPostTerminate, HookPostFinish, HookPreFinish}
+var AvailableHooks []HookType = []HookType{HookPreCreate, HookPostCreate, HookPostReceive, HookPreTerminate, HookPostTerminate, HookPostFinish, HookPreFinish}
 
 func preCreateCallback(event handler.HookEvent, hookHandler HookHandler) (handler.HTTPResponse, handler.FileInfoChanges, error) {
 	ok, hookRes, err := invokeHookSync(HookPreCreate, event, hookHandler)
@@ -125,6 +132,26 @@ func preFinishCallback(event handler.HookEvent, hookHandler HookHandler) (handle
 	}
 
 	httpRes := hookRes.HTTPResponse
+	return httpRes, nil
+}
+
+func preTerminateCallback(event handler.HookEvent, hookHandler HookHandler) (handler.HTTPResponse, error) {
+	ok, hookRes, err := invokeHookSync(HookPreTerminate, event, hookHandler)
+	if !ok || err != nil {
+		return handler.HTTPResponse{}, err
+	}
+
+	httpRes := hookRes.HTTPResponse
+
+	// If the hook response includes the instruction to reject the termination, reuse the error code
+	// and message from ErrUploadTerminationRejected, but also include custom HTTP response values.
+	if hookRes.RejectTermination {
+		err := handler.ErrUploadTerminationRejected
+		err.HTTPResponse = err.HTTPResponse.MergeWith(httpRes)
+
+		return handler.HTTPResponse{}, err
+	}
+
 	return httpRes, nil
 }
 
@@ -166,12 +193,14 @@ func SetupHookMetrics() {
 	MetricsHookErrorsTotal.WithLabelValues(string(HookPostCreate)).Add(0)
 	MetricsHookErrorsTotal.WithLabelValues(string(HookPreCreate)).Add(0)
 	MetricsHookErrorsTotal.WithLabelValues(string(HookPreFinish)).Add(0)
+	MetricsHookErrorsTotal.WithLabelValues(string(HookPreTerminate)).Add(0)
 	MetricsHookInvocationsTotal.WithLabelValues(string(HookPostFinish)).Add(0)
 	MetricsHookInvocationsTotal.WithLabelValues(string(HookPostTerminate)).Add(0)
 	MetricsHookInvocationsTotal.WithLabelValues(string(HookPostReceive)).Add(0)
 	MetricsHookInvocationsTotal.WithLabelValues(string(HookPostCreate)).Add(0)
 	MetricsHookInvocationsTotal.WithLabelValues(string(HookPreCreate)).Add(0)
 	MetricsHookInvocationsTotal.WithLabelValues(string(HookPreFinish)).Add(0)
+	MetricsHookInvocationsTotal.WithLabelValues(string(HookPreTerminate)).Add(0)
 }
 
 func invokeHookAsync(typ HookType, event handler.HookEvent, hookHandler HookHandler) {
@@ -211,7 +240,7 @@ func invokeHookSync(typ HookType, event handler.HookEvent, hookHandler HookHandl
 	return true, res, nil
 }
 
-// NewHandlerWithHooks creates a tusd request handler, whose notification channels and callbacks are configured to
+// NewHandlerWithHooks creates a tusd request handler, whose notifcation channels and callbacks are configured to
 // emit the hooks on the provided hook handler. NewHandlerWithHooks will overwrite the `config.Notify*` and `config.*Callback`
 // fields depending on the enabled hooks. These can be controlled via the `enabledHooks` slice. Non-enabled hooks will
 // not be emitted.
@@ -222,12 +251,12 @@ func invokeHookSync(typ HookType, event handler.HookEvent, hookHandler HookHandl
 //	routedHandler := hooks.NewHandlerWithHooks(...)
 //	unroutedHandler := routedHandler.UnroutedHandler
 //
-// Note: NewHandlerWithHooks sets up a goroutine to consume the notification channels (CompleteUploads, TerminatedUploads,
+// Note: NewHandlerWithHooks sets up a goroutine to consume the notfication channels (CompleteUploads, TerminatedUploads,
 // CreatedUploads, UploadProgress) on the created handler. These channels must not be consumed by the caller or otherwise
 // events might not be passed to the hook handler.
 func NewHandlerWithHooks(config *handler.Config, hookHandler HookHandler, enabledHooks []HookType) (*handler.Handler, error) {
 	if err := hookHandler.Setup(); err != nil {
-		return nil, fmt.Errorf("unable to setup hooks for newHandler: %s", err)
+		return nil, fmt.Errorf("unable to setup hooks for handler: %s", err)
 	}
 
 	// Activate notifications for post-* hooks
@@ -248,8 +277,14 @@ func NewHandlerWithHooks(config *handler.Config, hookHandler HookHandler, enable
 		}
 	}
 
-	// Create newHandler
-	newHandler, err := handler.NewHandler(*config)
+	if slices.Contains(enabledHooks, HookPreTerminate) {
+		config.PreUploadTerminateCallback = func(event handler.HookEvent) (handler.HTTPResponse, error) {
+			return preTerminateCallback(event, hookHandler)
+		}
+	}
+
+	// Create handler
+	handler, err := handler.NewHandler(*config)
 	if err != nil {
 		return nil, err
 	}
@@ -258,17 +293,17 @@ func NewHandlerWithHooks(config *handler.Config, hookHandler HookHandler, enable
 	go func() {
 		for {
 			select {
-			case event := <-newHandler.CompleteUploads:
+			case event := <-handler.CompleteUploads:
 				invokeHookAsync(HookPostFinish, event, hookHandler)
-			case event := <-newHandler.TerminatedUploads:
+			case event := <-handler.TerminatedUploads:
 				invokeHookAsync(HookPostTerminate, event, hookHandler)
-			case event := <-newHandler.CreatedUploads:
+			case event := <-handler.CreatedUploads:
 				invokeHookAsync(HookPostCreate, event, hookHandler)
-			case event := <-newHandler.UploadProgress:
+			case event := <-handler.UploadProgress:
 				go postReceiveCallback(event, hookHandler)
 			}
 		}
 	}()
 
-	return newHandler, nil
+	return handler, nil
 }

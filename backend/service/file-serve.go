@@ -2,221 +2,136 @@ package service
 
 import (
 	"fmt"
-	"github.com/spf13/viper"
+	"log"
+	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
+
+	"github.com/spf13/viper"
+
 	"w2w.io/mux"
-	"w2w.io/tusd/pkg/filelocker"
+	"w2w.io/tusd/filelocker"
 	"w2w.io/tusd/pkg/filestore"
-	"w2w.io/tusd/pkg/handler"
-	"w2w.io/tusd/pkg/hooks"
+	tusd "w2w.io/tusd/pkg/handler"
 )
 
-var Flags = struct {
-	HttpHost  string
-	HttpPort  string
-	HttpSock  string
-	MaxSize   int64
-	UploadDir string
-	BasePath  string
+type TraceHandler struct {
+	Handler *tusd.Handler
 
-	ShowGreeting bool
+	TusdBasePath string
+	tusdApiRegex *regexp.Regexp
 
-	DisableDownload    bool
-	DisableTermination bool
-
-	Timeout  int64
-	S3Bucket string
-
-	S3Endpoint string
-	S3PartSize int64
-
-	S3ObjectPrefix string
-	S3DisableSSL   bool
-
-	S3DisableContentHashes bool
-	S3TransferAcceleration bool
-
-	GCSBucket       string
-	GCSObjectPrefix string
-
-	AzStorage string
-
-	AzContainerAccessType string
-
-	AzBlobAccessTier   string
-	AzObjectPrefix     string
-	AzEndpoint         string
-	EnabledHooksString string
-	FileHooksDir       string
-	HttpHooksEndpoint  string
-
-	HttpHooksForwardHeaders string
-
-	HttpHooksRetry    int
-	HttpHooksBackoff  int
-	GrpcHooksEndpoint string
-	GrpcHooksRetry    int
-	GrpcHooksBackoff  int
-
-	HooksStopUploadCode int
-
-	PluginHookPath string
-
-	EnabledHooks []hooks.HookType
-
-	ShowVersion   bool
-	ExposeMetrics bool
-	MetricsPath   string
-	BehindProxy   bool
-	VerboseOutput bool
-
-	TLSCertFile string
-	TLSKeyFile  string
-	TLSMode     string
-
-	CPUProfile string
-}{
-	HttpHost: "0.0.0.0", HttpPort: "1080", HttpSock: "",
-	MaxSize: 0, UploadDir: "./data", BasePath: "/api/file/",
-	ShowGreeting: true, DisableDownload: false, DisableTermination: false, Timeout: 6 * 1000,
-	S3Bucket: "", S3ObjectPrefix: "", S3Endpoint: "", S3PartSize: 50 * 1024 * 1024,
-	S3DisableContentHashes: false, S3DisableSSL: false, S3TransferAcceleration: false,
-	GCSBucket: "", GCSObjectPrefix: "",
-	AzStorage: "", AzContainerAccessType: "", AzBlobAccessTier: "", AzObjectPrefix: "", AzEndpoint: "",
-	EnabledHooksString: "pre-create,post-create,post-receive,post-terminate,post-finish",
-	FileHooksDir:       "",
-	HttpHooksEndpoint:  "", HttpHooksForwardHeaders: "", HttpHooksRetry: 3, HttpHooksBackoff: 1,
-	GrpcHooksEndpoint: "", GrpcHooksRetry: 3, GrpcHooksBackoff: 1,
-	HooksStopUploadCode: 0, PluginHookPath: "", ShowVersion: false, ExposeMetrics: true, MetricsPath: "/metrics",
-	BehindProxy: false, VerboseOutput: true, TLSCertFile: "", TLSKeyFile: "", TLSMode: "tls12", CPUProfile: "",
+	TusdUploadStorePath string
 }
 
-var Composer *handler.StoreComposer
-
-func CreateComposer() {
-	defer func() {
-		z.Info(fmt.Sprintf("Using %.2fMB as maximum size.\n", float64(Flags.MaxSize)/1024/1024))
-	}()
-
-	key := "webServe.fileStorePath"
-	if viper.IsSet(key) {
-		Flags.UploadDir = viper.GetString(key)
+func (h *TraceHandler) Middleware(handler http.Handler) http.Handler {
+	if h.Handler == nil {
+		z.Fatal("TraceHandler is nil")
+	}
+	if h.TusdBasePath == "" {
+		z.Fatal("TusdBasePath is empty")
+	}
+	if h.tusdApiRegex == nil {
+		z.Fatal("tusdApiRegex is nil")
+	}
+	if h.TusdUploadStorePath == "" {
+		z.Fatal("TusdUploadStorePath is empty")
 	}
 
-	uploadDir, err := filepath.Abs(Flags.UploadDir)
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !h.tusdApiRegex.Match([]byte(r.URL.Path)) {
+			handler.ServeHTTP(w, r)
+			return
+		}
+
+		p := strings.TrimPrefix(r.URL.Path, h.TusdBasePath)
+		if len(p) > 0 && p[0] == '/' {
+			p = p[1:]
+		}
+		rp := strings.TrimPrefix(r.URL.RawPath, h.TusdBasePath)
+		if len(rp) > 0 && rp[0] == '/' {
+			rp = rp[1:]
+		}
+
+		r2 := new(http.Request)
+		if len(p) < len(r.URL.Path) && (r.URL.RawPath == "" || len(rp) < len(r.URL.RawPath)) {
+			*r2 = *r
+			r2.URL = new(url.URL)
+			*r2.URL = *r.URL
+			r2.URL.Path = p
+			r2.URL.RawPath = rp
+			//h.ServeHTTP(w, r2)
+		} else {
+			http.NotFound(w, r)
+			return
+		}
+
+		method := strings.ToLower(r2.Method)
+		if method == "post" {
+			v := r2.Header.Get("Upload-Metadata")
+			metadata := r2.URL.Query().Get("metadata")
+			if v == "" && metadata != "" {
+				r2.Header.Set("Upload-Metadata", metadata)
+			}
+		}
+
+		h.Handler.ServeHTTP(w, r2)
+	})
+}
+
+func tusdSetup(r *mux.Router) (err error) {
+	key := "tusd.fileStorePath"
+	uploadDir := "./uploads"
+	if viper.IsSet(key) {
+		uploadDir = viper.GetString(key)
+	}
+	uploadDir, err = filepath.Abs(uploadDir)
 	if err != nil {
 		z.Fatal(fmt.Sprintf("Unable to make absolute path: %s", err))
 	}
 
-	z.Info(fmt.Sprintf("Using '%s' as directory storage.\n", uploadDir))
+	z.Info(fmt.Sprintf("Using '%s' as file store directory.\n", uploadDir))
 	if err := os.MkdirAll(uploadDir, os.FileMode(0774)); err != nil {
 		z.Fatal(fmt.Sprintf("Unable to ensure directory exists: %s", err))
 	}
 
-	Composer = handler.NewStoreComposer()
 	store := filestore.New(uploadDir)
-	store.UseIn(Composer)
-
 	locker := filelocker.New(uploadDir)
-	locker.UseIn(Composer)
 
-}
+	composer := tusd.NewStoreComposer()
+	store.UseIn(composer)
+	locker.UseIn(composer)
 
-func uploadEventProc(h handler.HookEvent, action string) {
-	z.Info(action)
-}
-
-func setupFileServeHandler(r *mux.Router) (err error) {
-	fileServeEP := "(?i)/api/file(?:/.*)?$"
-
-	key := "webServe.fileServeEP"
+	basePath := "/api/file"
+	key = "tusd.basePath"
 	if viper.IsSet(key) {
-		fileServeEP = viper.GetString(key)
+		basePath = viper.GetString(key)
 	}
 
-	var behindProxy bool
-	key = "webServe.behindProxy"
-	if viper.IsSet(key) {
-		behindProxy = viper.GetBool(key)
-	}
+	handler, err := tusd.NewHandler(tusd.Config{
+		BasePath: basePath,
 
-	if Composer == nil {
-		CreateComposer()
-	}
+		DisableDownload:      false,
+		DisableTermination:   false,
+		DisableConcatenation: false,
 
-	config := handler.Config{
-		RegExpFileServeEP: regexp.MustCompile(fileServeEP),
+		StoreComposer: composer,
 
-		MaxSize:  Flags.MaxSize,
-		BasePath: Flags.BasePath,
-
-		RespectForwardedHeaders: behindProxy,
-
-		DisableDownload:    Flags.DisableDownload,
-		DisableTermination: Flags.DisableTermination,
-
-		StoreComposer: Composer,
-
-		NotifyCompleteUploads:   true,
-		NotifyTerminatedUploads: true,
-		NotifyUploadProgress:    true,
-		NotifyCreatedUploads:    true,
-
-		PreUploadCreateCallback:   handler.PreUploadCreateCB,
-		PreFinishResponseCallback: handler.PreFinishRespCB,
-	}
-
-	//if err = SetupPreHooks(&config); err != nil {
-	//	z.Fatal(fmt.Sprintf("Unable to setup hooks for urHandler: %s", err))
-	//}
-
-	urHandler, err := handler.NewUnroutedHandler(config)
+		RespectForwardedHeaders:   true,
+		PreFinishResponseCallback: tusd.PreFinishRespCB,
+	})
 	if err != nil {
-		z.Fatal(fmt.Sprintf("Unable to create urHandler: %s", err))
+		log.Fatalf("unable to create handler: %s", err)
 	}
 
-	z.Info(fmt.Sprintf("Using %s as the base path.\n", fileServeEP))
+	traceHandler := &TraceHandler{Handler: handler}
+	traceHandler.TusdBasePath = basePath
+	traceHandler.TusdUploadStorePath = uploadDir
+	traceHandler.tusdApiRegex = regexp.MustCompile("(?i)" + basePath + "(?:/.*)?$")
 
-	//SetupPostHooks(urHandler)
-
-	r.Use(urHandler.Middleware)
-
-	r.PathPrefix(fileServeEP).Methods("POST").HandlerFunc(urHandler.PostFile)
-	r.PathPrefix(fileServeEP).Methods("HEAD").HandlerFunc(urHandler.HeadFile)
-	r.PathPrefix(fileServeEP).Methods("PATCH").HandlerFunc(urHandler.PatchFile)
-	r.PathPrefix(fileServeEP).Methods("GET").HandlerFunc(urHandler.GetFile)
-	r.PathPrefix(fileServeEP).Methods("DELETE").HandlerFunc(urHandler.DelFile)
-
-	go func() {
-		for {
-			ev := <-urHandler.CompleteUploads
-			uploadEventProc(ev, "complete")
-		}
-	}()
-	go func() {
-		for {
-			ev := <-urHandler.TerminatedUploads
-			uploadEventProc(ev, "terminated")
-		}
-	}()
-
-	go func() {
-		for {
-			ev := <-urHandler.UploadProgress
-			uploadEventProc(ev, "progress")
-		}
-	}()
-
-	go func() {
-		for {
-			ev := <-urHandler.CreatedUploads
-			uploadEventProc(ev, "created")
-		}
-	}()
-
-	z.Info(fmt.Sprintf("Supported tus extensions: %s\n",
-		urHandler.SupportedExtensions()))
+	r.Use(traceHandler.Middleware)
 	return
 }
