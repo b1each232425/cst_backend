@@ -1,6 +1,6 @@
 /*==============================================================*/
 /* DBMS name:      PostgreSQL 9.x                               */
-/* Created on:     2025/8/14 18:01:41                           */
+/* Created on:     2025/8/16 15:52:51                           */
 /*==============================================================*/
 
 
@@ -87,6 +87,8 @@ drop view if exists v_exam_teacher_marked_count;
 drop view if exists v_exam_respondent_count;
 
 drop view if exists v_exam_paper;
+
+drop view if exists v_exam_file;
 
 drop view if exists v_domain_user;
 
@@ -1715,7 +1717,8 @@ comment on column t_exam_info.update_time is
 '更新时间';
 
 comment on column t_exam_info.status is
-'状态  00：未发布 02：待开始  04：进行中 06：已结束 08：已归档 10：考试异常 12：已删除';
+'状态  00：未发布 02：待开始  04：进行中 06：已结束 08：已归档 10：考试异常 12：已删除
+14：临时  16：已作废';
 
 comment on column t_exam_info.addi is
 '附加信息';
@@ -2121,7 +2124,7 @@ comment on column t_exam_session.update_time is
 '更新时间';
 
 comment on column t_exam_session.status is
-'状态 00：未发布 02：待开始  04：进行中 06：已结束  08：批改中 10：已批改 12：已提交 14：已删除';
+'状态 00：未发布 02：待开始  04：进行中 06：已结束  08：批改中 10：已批改 12：已提交 14：已删除 16：已作废';
 
 comment on column t_exam_session.addi is
 '附加信息';
@@ -2223,6 +2226,7 @@ create table if not exists  t_examinee (
    status               VARCHAR(150)         null,
    addi                 JSONB                null,
    extra_time           bigint               null default '0',
+   exam_paper_id        bigint               null,
    constraint PK_T_EXAMINEE primary key (id)
 );
 
@@ -2269,13 +2273,16 @@ comment on column t_examinee.update_time is
 '更新时间';
 
 comment on column t_examinee.status is
-'状态 00：正常考 02：缺考 04：补考 06：作弊 08：已删除 10：已交卷 12：待同步 14：考试异常';
+'状态 00：正常考 02：缺考 04：补考 06：作弊 08：已删除 10：已交卷 12：待同步 14：考试异常 16：已作废';
 
 comment on column t_examinee.addi is
 '附加信息(备注),可以保存考试异常的原因等';
 
 comment on column t_examinee.extra_time is
 '考试延长时间(毫秒).考试实际结束时间=当前考试结束时间+延长时间';
+
+comment on column t_examinee.exam_paper_id is
+'考卷ID';
 
 /*==============================================================*/
 /* Table: t_expertise                                           */
@@ -9106,8 +9113,11 @@ ALTER SEQUENCE t_sys_ver_id_seq RESTART WITH 20000;
 
 insert into t_sys_ver(id,name,ver,create_time,update_time,remark)
   values(1000,'业务模型','3.1.6.0',
-  '2016年12月5日 9:52:53','2025年8月14日 17:13:44',
-  '3.1.6.0
+  '2016年12月5日 9:52:53','2025年8月16日 15:50:18',
+  '3.1.7.0
+增加视图v_exam_file，为t_examinee补充exam_paper_id字段
+
+3.1.6.0
 增加考试信息表、考试场次表和考生表之间的外键依赖，修改v_examinee_info视图中对于灵活时段考试方式的actual_end_time计算方式
 
 3.1.5.0
@@ -10872,6 +10882,31 @@ comment on view v_domain_user is
 
 drop table if exists t_v_domain_user;
 create table if not exists t_v_domain_user as select * from v_domain_user;
+
+/*==============================================================*/
+/* View: v_exam_file                                            */
+/*==============================================================*/
+create or replace view v_exam_file as
+ SELECT ei.id AS exam_id,
+    f.id AS file_id,
+    f.digest,
+    f.file_name,
+    f.size,
+    f.path,
+    f.domain_id AS file_domain_id,
+    f.creator AS file_creator,
+    ei.creator AS exam_creator
+   FROM t_exam_info ei
+     CROSS JOIN LATERAL jsonb_array_elements_text(ei.files) file_id_text(value)
+     JOIN t_file f ON f.id = file_id_text.value::bigint
+  WHERE ei.files IS NOT NULL AND jsonb_typeof(ei.files) = 'array'::text AND ei.status::text != '12'::text AND f.status::text != '02'::text;
+
+comment on view v_exam_file is
+'v_exam_file';
+
+drop table if exists t_v_exam_file;
+
+create table if not exists t_v_exam_file as select * from v_exam_file;
 
 /*==============================================================*/
 /* View: v_exam_paper                                           */
