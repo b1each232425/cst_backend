@@ -14,16 +14,9 @@ type StoreComposer struct {
 	Concater           ConcaterDataStore
 	UsesLengthDeferrer bool
 	LengthDeferrer     LengthDeferrerDataStore
-	ContentServer      ContentServerDataStore
-	UsesContentServer  bool
 
 	UsesChecksum bool
 	Checksum     ChecksumDataStore
-}
-
-func (store *StoreComposer) UseChecksum(ext ChecksumDataStore) {
-	store.UsesChecksum = ext != nil
-	store.Checksum = ext
 }
 
 // NewStoreComposer creates a new and empty store composer.
@@ -76,6 +69,11 @@ func (store *StoreComposer) UseCore(core DataStore) {
 	store.Core = core
 }
 
+func (store *StoreComposer) UseChecksum(ext ChecksumDataStore) {
+	store.UsesChecksum = ext != nil
+	store.Checksum = ext
+}
+
 func (store *StoreComposer) UseTerminater(ext TerminaterDataStore) {
 	store.UsesTerminater = ext != nil
 	store.Terminater = ext
@@ -94,9 +92,4 @@ func (store *StoreComposer) UseConcater(ext ConcaterDataStore) {
 func (store *StoreComposer) UseLengthDeferrer(ext LengthDeferrerDataStore) {
 	store.UsesLengthDeferrer = ext != nil
 	store.LengthDeferrer = ext
-}
-
-func (store *StoreComposer) UseContentServer(ext ContentServerDataStore) {
-	store.UsesContentServer = ext != nil
-	store.ContentServer = ext
 }

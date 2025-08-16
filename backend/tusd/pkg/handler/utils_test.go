@@ -132,32 +132,3 @@ func (m readerMatcher) Matches(x interface{}) bool {
 func (m readerMatcher) String() string {
 	return fmt.Sprintf("reads to %s", m.expect)
 }
-
-// addIETFUploadCompleteHeader writes the Upload-Complete or Upload-Incomplete header depending on the interop version.
-func addIETFUploadCompleteHeader(header map[string]string, isComplete bool, interopVersion string) map[string]string {
-	switch interopVersion {
-	case "3":
-		if isComplete {
-			header["Upload-Incomplete"] = "?0"
-		} else {
-			header["Upload-Incomplete"] = "?1"
-		}
-	case "4", "5", "6":
-		if isComplete {
-			header["Upload-Complete"] = "?1"
-		} else {
-			header["Upload-Complete"] = "?0"
-		}
-	}
-
-	return header
-}
-
-// addIETFContentTypeHeader writes the Content-Type header depending on the interop version.
-func addIETFContentTypeHeader(header map[string]string, interopVersion string) map[string]string {
-	switch interopVersion {
-	case "6":
-		header["Content-Type"] = "application/partial-upload"
-	}
-	return header
-}

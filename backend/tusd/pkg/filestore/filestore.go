@@ -6,16 +6,11 @@
 // `[id]` files without an extension contain the raw binary data uploaded.
 // No cleanup is performed so you may want to run a cronjob to ensure your disk
 // is not filled up with old and finished uploads.
-//
-// Related to the filestore is the package filelocker, which provides a file-based
-// locking mechanism. The use of some locking method is recommended and further
-// explained in https://tus.github.io/tusd/advanced-topics/locks/.
 package filestore
 
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -23,23 +18,15 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
-
 	"w2w.io/null"
+
 	"w2w.io/tusd/internal/uid"
 	"w2w.io/tusd/pkg/handler"
 )
 
 var defaultFilePerm = os.FileMode(0664)
-var defaultDirectoryPerm = os.FileMode(0754)
 
-const (
-	// StorageKeyPath is the key of the path of uploaded file in handler.FileInfo.Storage
-	StorageKeyPath = "Path"
-	// StorageKeyInfoPath is the key of the path of .info file in handler.FileInfo.Storage
-	StorageKeyInfoPath = "InfoPath"
-)
-
-// See the handler.DataStore interface for documentation about the different
+// FileStore see the handler.DataStore interface for documentation about the different
 // methods.
 type FileStore struct {
 	// Relative or absolute path to store files in. FileStore does not check
@@ -50,6 +37,7 @@ type FileStore struct {
 // New creates a new file based storage backend. The directory specified will
 // be used as the only storage entry. This method does not check
 // whether the path exists, use os.MkdirAll to ensure.
+// In addition, a locking mechanism is provided.
 func New(path string) FileStore {
 	return FileStore{path}
 }
@@ -61,7 +49,6 @@ func (store FileStore) UseIn(composer *handler.StoreComposer) {
 	composer.UseTerminater(store)
 	composer.UseConcater(store)
 	composer.UseLengthDeferrer(store)
-	composer.UseContentServer(store)
 	composer.UseChecksum(store)
 }
 
@@ -69,43 +56,34 @@ func (store FileStore) NewUpload(ctx context.Context, info handler.FileInfo) (ha
 	if info.ID == "" {
 		info.ID = uid.FileID(info)
 	}
-
-	// The .info file's location can directly be deduced from the upload ID
-	infoPath := store.infoPath(info.ID)
-	// The binary file's location might be modified by the pre-create hook.
-	var binPath string
-	if info.Storage != nil && info.Storage[StorageKeyPath] != "" {
-		// filepath.Join treats absolute and relative paths the same, so we must
-		// handle them on our own. Absolute paths get used as-is, while relative
-		// paths are joined to the storage path.
-		if filepath.IsAbs(info.Storage[StorageKeyPath]) {
-			binPath = info.Storage[StorageKeyPath]
-		} else {
-			binPath = filepath.Join(store.Path, info.Storage[StorageKeyPath])
-		}
-	} else {
-		binPath = store.defaultBinPath(info.ID)
-	}
-
+	binPath := store.binPath(info.ID)
 	info.Storage = map[string]string{
-		"Type":             "filestore",
-		StorageKeyPath:     binPath,
-		StorageKeyInfoPath: infoPath,
+		"Type": "filestore",
+		"Path": binPath,
 	}
 
 	// Create binary file with no content
-	if err := createFile(binPath, nil); err != nil {
+	file, err := os.OpenFile(binPath, os.O_CREATE|os.O_WRONLY, defaultFilePerm)
+	if err != nil {
+		if os.IsNotExist(err) {
+			err = fmt.Errorf("upload directory does not exist: %s", store.Path)
+		}
+		return nil, err
+	}
+	err = file.Close()
+	if err != nil {
 		return nil, err
 	}
 
 	upload := &fileUpload{
 		info:     info,
-		infoPath: infoPath,
+		infoPath: store.infoPath(info.ID),
 		binPath:  binPath,
 	}
 
 	// writeInfo creates the file by itself if necessary
-	if err := upload.writeInfo(); err != nil {
+	err = upload.writeInfo()
+	if err != nil {
 		return nil, err
 	}
 
@@ -113,8 +91,8 @@ func (store FileStore) NewUpload(ctx context.Context, info handler.FileInfo) (ha
 }
 
 func (store FileStore) GetUpload(ctx context.Context, id string) (handler.Upload, error) {
-	infoPath := store.infoPath(id)
-	data, err := os.ReadFile(infoPath)
+	info := handler.FileInfo{}
+	data, err := os.ReadFile(store.infoPath(id))
 	if err != nil {
 		if os.IsNotExist(err) {
 			// Interpret os.ErrNotExist as 404 Not Found
@@ -122,23 +100,12 @@ func (store FileStore) GetUpload(ctx context.Context, id string) (handler.Upload
 		}
 		return nil, err
 	}
-	var info handler.FileInfo
 	if err := json.Unmarshal(data, &info); err != nil {
 		return nil, err
 	}
 
-	// If the info file contains a custom path to the binary file, we use that. If not, we
-	// fall back to the default value (although the Path property should always be set in recent
-	// tusd versions).
-	var binPath string
-	if info.Storage != nil && info.Storage[StorageKeyPath] != "" {
-		// No filepath.Join here because the joining already happened in NewUpload. Duplicate joining
-		// with relative paths lead to incorrect paths
-		binPath = info.Storage[StorageKeyPath]
-	} else {
-		binPath = store.defaultBinPath(info.ID)
-	}
-
+	binPath := store.binPath(id)
+	infoPath := store.infoPath(id)
 	stat, err := os.Stat(binPath)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -157,6 +124,10 @@ func (store FileStore) GetUpload(ctx context.Context, id string) (handler.Upload
 	}, nil
 }
 
+func (store FileStore) AsChecksumableUpload(upload handler.Upload) handler.ChecksumableUpload {
+	return upload.(*fileUpload)
+}
+
 func (store FileStore) AsTerminatableUpload(upload handler.Upload) handler.TerminatableUpload {
 	return upload.(*fileUpload)
 }
@@ -169,13 +140,8 @@ func (store FileStore) AsConcatableUpload(upload handler.Upload) handler.Concata
 	return upload.(*fileUpload)
 }
 
-func (store FileStore) AsServableUpload(upload handler.Upload) handler.ServableUpload {
-	return upload.(*fileUpload)
-}
-
-// defaultBinPath returns the path to the file storing the binary data, if it is
-// not customized using the pre-create hook.
-func (store FileStore) defaultBinPath(id string) string {
+// binPath returns the path to the file storing the binary data.
+func (store FileStore) binPath(id string) string {
 	return filepath.Join(store.Path, id)
 }
 
@@ -219,20 +185,27 @@ func (upload *fileUpload) GetReader(ctx context.Context) (io.ReadCloser, error) 
 	return os.Open(upload.binPath)
 }
 
+func (upload *fileUpload) Checksum(ctx context.Context, w http.ResponseWriter, r *http.Request) error {
+	v := r.Header.Get("Upload-Checksum")
+	fmt.Println(v)
+	//Upload-Checksum
+	//upload.
+	//if err := os.Remove(upload.infoPath); err != nil {
+	//	return err
+	//}
+	//if err := os.Remove(upload.binPath); err != nil {
+	//	return err
+	//}
+	return nil
+}
+
 func (upload *fileUpload) Terminate(ctx context.Context) error {
-	// We ignore errors indicating that the files cannot be found because we want
-	// to delete them anyways. The files might be removed by a cron job for cleaning up
-	// or some file might have been removed when tusd crashed during the termination.
-	err := os.Remove(upload.binPath)
-	if err != nil && !errors.Is(err, os.ErrNotExist) {
+	if err := os.Remove(upload.infoPath); err != nil {
 		return err
 	}
-
-	err = os.Remove(upload.infoPath)
-	if err != nil && !errors.Is(err, os.ErrNotExist) {
+	if err := os.Remove(upload.binPath); err != nil {
 		return err
 	}
-
 	return nil
 }
 
@@ -251,26 +224,19 @@ func (upload *fileUpload) ConcatUploads(ctx context.Context, uploads []handler.U
 	}()
 
 	for _, partialUpload := range uploads {
-		if err := partialUpload.(*fileUpload).appendTo(file); err != nil {
+		fileUpload := partialUpload.(*fileUpload)
+
+		src, err := os.Open(fileUpload.binPath)
+		if err != nil {
+			return err
+		}
+
+		if _, err := io.Copy(file, src); err != nil {
 			return err
 		}
 	}
 
 	return
-}
-
-func (upload *fileUpload) appendTo(file *os.File) error {
-	src, err := os.Open(upload.binPath)
-	if err != nil {
-		return err
-	}
-
-	if _, err := io.Copy(file, src); err != nil {
-		src.Close()
-		return err
-	}
-
-	return src.Close()
 }
 
 func (upload *fileUpload) DeclareLength(ctx context.Context, length int64) error {
@@ -285,58 +251,10 @@ func (upload *fileUpload) writeInfo() error {
 	if err != nil {
 		return err
 	}
-	return createFile(upload.infoPath, data)
+	return os.WriteFile(upload.infoPath, data, defaultFilePerm)
 }
 
 func (upload *fileUpload) FinishUpload(ctx context.Context) error {
-	return nil
-}
-
-func (upload *fileUpload) ServeContent(ctx context.Context, w http.ResponseWriter, r *http.Request) error {
-	http.ServeFile(w, r, upload.binPath)
-
-	return nil
-}
-
-// createFile creates the file with the content. If the corresponding directory does not exist,
-// it is created. If the file already exists, its content is removed.
-func createFile(path string, content []byte) error {
-	file, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, defaultFilePerm)
-	if err != nil {
-		if os.IsNotExist(err) {
-			// An upload ID containing slashes is mapped onto different directories on disk,
-			// for example, `myproject/uploadA` should be put into a folder called `myproject`.
-			// If we get an error indicating that a directory is missing, we try to create it.
-			if err := os.MkdirAll(filepath.Dir(path), defaultDirectoryPerm); err != nil {
-				return fmt.Errorf("failed to create directory for %s: %s", path, err)
-			}
-
-			// Try creating the file again.
-			file, err = os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, defaultFilePerm)
-			if err != nil {
-				// If that still doesn't work, error out.
-				return err
-			}
-		} else {
-			return err
-		}
-	}
-
-	if content != nil {
-		if _, err := file.Write(content); err != nil {
-			return err
-		}
-	}
-
-	return file.Close()
-}
-
-func (store FileStore) AsChecksumableUpload(upload handler.Upload) handler.ChecksumableUpload {
-	return upload.(*fileUpload)
-}
-
-func (upload *fileUpload) Checksum(ctx context.Context, w http.ResponseWriter, r *http.Request) error {
-	//v := r.Header.Get("Upload-Checksum")
 	return nil
 }
 

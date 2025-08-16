@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"os"
 	"strings"
-	"sync"
 	"sync/atomic"
 	"time"
 )
@@ -29,11 +28,8 @@ type bodyReader struct {
 	bytesCounter int64
 	ctx          *httpContext
 	reader       io.ReadCloser
+	err          error
 	onReadDone   func()
-
-	// lock protects concurrent access to err.
-	lock sync.RWMutex
-	err  error
 }
 
 func newBodyReader(c *httpContext, maxSize int64) *bodyReader {
@@ -45,10 +41,7 @@ func newBodyReader(c *httpContext, maxSize int64) *bodyReader {
 }
 
 func (r *bodyReader) Read(b []byte) (int, error) {
-	r.lock.RLock()
-	hasErrored := r.err != nil
-	r.lock.RUnlock()
-	if hasErrored {
+	if r.err != nil {
 		return 0, io.EOF
 	}
 
@@ -61,28 +54,16 @@ func (r *bodyReader) Read(b []byte) (int, error) {
 
 	}
 	if err != nil {
-		// Note: if an error occurs while reading the body, we must set `r.err` (either in here
-		// or somewhere else, such as in closeWithError). Otherwise, the PATCH handler might not know
-		// that an error occurred and assumes that a request was transferred succesfully even though
-		// it was interrupted. This leads to problems with the RUFH draft.
-
-		// io.EOF means that the request body was fully read and does not represent an error.
-		if err == io.EOF {
-			return n, io.EOF
-		}
-
-		// http.ErrBodyReadAfterClose means that the bodyReader closed the request body because the upload is
-		// is stopped or the server shuts down. In this case, the closeWithError method already
-		// set `r.err` and thus we don't overerwrite it here but just return.
-		if err == http.ErrBodyReadAfterClose {
-			return n, io.EOF
-		}
-
-		// All of the following errors can be understood as the input stream ending too soon:
+		// We can ignore some of these errors:
+		// - io.EOF means that the request body was fully read
+		// - io.ErrBodyReadAfterClose means that the bodyReader closed the request body because the upload is
+		//   is stopped or the server shuts down.
 		// - io.ErrClosedPipe is returned in the package's unit test with io.Pipe()
 		// - io.UnexpectedEOF means that the client aborted the request.
-		if err == io.ErrClosedPipe || err == io.ErrUnexpectedEOF {
-			err = ErrUnexpectedEOF
+		// In all of those cases, we do not forward the error to the storage,
+		// but act like the body just ended naturally.
+		if err == io.EOF || err == io.ErrClosedPipe || err == http.ErrBodyReadAfterClose || err == io.ErrUnexpectedEOF {
+			return n, io.EOF
 		}
 
 		// Connection resets are not dropped silently, but responded to the client.
@@ -106,26 +87,20 @@ func (r *bodyReader) Read(b []byte) (int, error) {
 
 		// Other errors are stored for retrival with hasError, but is not returned
 		// to the consumer. We do not overwrite an error if it has been set already.
-		r.lock.Lock()
 		if r.err == nil {
 			r.err = err
 		}
-		r.lock.Unlock()
 	}
 
 	return n, nil
 }
 
-func (r *bodyReader) hasError() error {
-	r.lock.RLock()
-	err := r.err
-	r.lock.RUnlock()
-
-	if err == io.EOF {
+func (r bodyReader) hasError() error {
+	if r.err == io.EOF {
 		return nil
 	}
 
-	return err
+	return r.err
 }
 
 func (r *bodyReader) bytesRead() int64 {
@@ -133,9 +108,7 @@ func (r *bodyReader) bytesRead() int64 {
 }
 
 func (r *bodyReader) closeWithError(err error) {
-	r.lock.Lock()
 	r.err = err
-	r.lock.Unlock()
 
 	// SetReadDeadline with the current time causes concurrent reads to the body to time out,
 	// so the body will be closed sooner with less delay.

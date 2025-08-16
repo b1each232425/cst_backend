@@ -109,10 +109,7 @@ func (spp *s3PartProducer) nextPart(size int64) (fileChunk, bool, error) {
 		spp.diskWriteDurationMetric.Observe(ms)
 
 		// Seek to the beginning of the file
-		if _, err := file.Seek(0, 0); err != nil {
-			cleanUpTempFile(file)
-			return fileChunk{}, false, err
-		}
+		file.Seek(0, 0)
 
 		return fileChunk{
 			reader: file,

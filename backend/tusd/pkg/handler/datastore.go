@@ -52,12 +52,9 @@ func (f FileInfo) StopUpload(response HTTPResponse) {
 }
 
 // FileInfoChanges collects changes the should be made to a FileInfo struct. This
-// can be done using the PreUploadCreateCallback to modify certain properties before
+// can be done using the PreUploadCreateCB to modify certain properties before
 // an upload is created. Properties which should not be modified (e.g. Size or Offset)
 // are intentionally left out here.
-//
-// Please also consult the documentation for the `ChangeFileInfo` property at
-// https://tus.github.io/tusd/advanced-topics/hooks/#hook-requests-and-responses.
 type FileInfoChanges struct {
 	// If ID is not empty, it will be passed to the data store, allowing
 	// hooks to influence the upload ID. Be aware that a data store is not required to
@@ -111,8 +108,6 @@ type Upload interface {
 // Note: the context values passed to all functions is not the request's context,
 // but a similar context. See HookEvent.Context for more details.
 type DataStore interface {
-	Query(ctx context.Context, criteria string) (result []byte, err error)
-
 	// Create a new upload using the size as the file's length. The method must
 	// return an unique id which is used to identify the upload. If no backend
 	// (e.g. Riak) specifes the id you may want to use the uid package to
@@ -122,6 +117,18 @@ type DataStore interface {
 	// GetUpload fetches the upload with a given ID. If no such upload can be found,
 	// ErrNotFound must be returned.
 	GetUpload(ctx context.Context, id string) (upload Upload, err error)
+
+	Query(ctx context.Context, criteria string) (result []byte, err error)
+}
+
+type ChecksumableUpload interface {
+	// Checksum .
+	Checksum(ctx context.Context, w http.ResponseWriter, r *http.Request) error
+}
+
+// ChecksumDataStore .
+type ChecksumDataStore interface {
+	AsChecksumableUpload(upload Upload) ChecksumableUpload
 }
 
 type TerminatableUpload interface {
@@ -193,32 +200,4 @@ type Lock interface {
 	Lock(ctx context.Context, requestUnlock func()) error
 	// Unlock releases an existing lock for the given upload.
 	Unlock() error
-}
-
-type ServableUpload interface {
-	// ServeContent serves the uploaded data as specified by the GET request.
-	// It allows data stores to delegate the handling of range requests and conditional
-	// requests to their underlying providers.
-	// The tusd handler will set the Content-Type and Content-Disposition headers
-	// before calling ServeContent, but the implementation can override them.
-	// After calling ServeContent, the handler will not take any further action
-	// other than handling a potential error.
-	ServeContent(ctx context.Context, w http.ResponseWriter, r *http.Request) error
-}
-
-// ContentServerDataStore is the interface for DataStores that can serve content directly.
-// When the handler serves a GET request, it will pass the request to ServeContent
-// and delegate its handling to the DataStore, instead of using GetReader to obtain the content.
-type ContentServerDataStore interface {
-	AsServableUpload(upload Upload) ServableUpload
-}
-
-type ChecksumableUpload interface {
-	// Checksum .
-	Checksum(ctx context.Context, w http.ResponseWriter, r *http.Request) error
-}
-
-// ChecksumDataStore .
-type ChecksumDataStore interface {
-	AsChecksumableUpload(upload Upload) ChecksumableUpload
 }
