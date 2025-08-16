@@ -13,7 +13,7 @@ import (
 func validateExamData(examData ExamData, isUpdate bool) error {
 	z.Info("---->" + cmn.FncName())
 	if isUpdate && examData.ExamInfo.ID.Int64 <= 0 {
-		err := fmt.Errorf("更新考试时传入的考试ID无效: %d", examData.ExamInfo.ID.Int64)
+		err := fmt.Errorf("无效的考试ID: %d", examData.ExamInfo.ID.Int64)
 		z.Error(err.Error())
 		return err
 	}

@@ -3,25 +3,28 @@ package user_mgt
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
 	"math/rand"
 	"time"
+
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"w2w.io/null"
 
 	"strings"
+
 	"w2w.io/cmn"
 )
 
 type Service interface {
 	QueryUsers(ctx context.Context, tx pgx.Tx, page, pageSize int64, filter QueryUsersFilter) ([]User, int64, error)
-	InsertUsers(ctx context.Context, tx pgx.Tx, users []User) error
+	InsertUsers(ctx context.Context, tx pgx.Tx, users []User) ([]User, error)
 	InsertUsersWithAccount(ctx context.Context, tx pgx.Tx, users []User) error
 	CheckTUserFieldExists(ctx context.Context, tx pgx.Tx, field string, value any) (bool, error)
-	CheckTUserRowExists(ctx context.Context, tx pgx.Tx, fields map[string]any) (bool, error)
+	CheckTUserRowExists(ctx context.Context, tx pgx.Tx, fields map[string]any) (bool, *User, error)
 	GenerateUniqueAccount(ctx context.Context, tx pgx.Tx, length int, maxAttempts int) (string, error)
-	ValidateUserToBeInsert(ctx context.Context, tx pgx.Tx, users []User) ([]User, []InvalidUser, error)
+	ValidateUserToBeInsert(ctx context.Context, tx pgx.Tx, users []User) ([]User, []User, []User, error)
 	QueryUserCurrentRole(ctx context.Context, userId null.Int) (null.Int, null.String, error)
 }
 
@@ -235,7 +238,8 @@ func (r *service) QueryUsers(ctx context.Context, tx pgx.Tx, page, pageSize int6
 // InsertUsers 批量插入用户数据
 // 必要字段: account, category
 // 请不要轻易调用该方法插入用户，该方法不会对用户信息做全面的校验
-func (r *service) InsertUsers(ctx context.Context, tx pgx.Tx, users []User) error {
+// 返回值: 成功插入的用户列表（包含生成的ID）、错误
+func (r *service) InsertUsers(ctx context.Context, tx pgx.Tx, users []User) ([]User, error) {
 	z.Info("---->" + cmn.FncName())
 
 	forceErr, _ := ctx.Value("force-error").(string)
@@ -245,19 +249,22 @@ func (r *service) InsertUsers(ctx context.Context, tx pgx.Tx, users []User) erro
 	if len(users) == 0 {
 		e := fmt.Errorf("no users to insert")
 		z.Error(e.Error())
-		return e
+		return []User{}, e
 	}
+
+	// 用于存储成功插入的用户
+	var insertedUsers []User
 
 	for i := range users {
 		if users[i].Account == "" {
 			e := fmt.Errorf("user account is required")
 			z.Error(e.Error())
-			return e
+			return []User{}, e
 		}
 		if users[i].Category == "" {
 			e := fmt.Errorf("user category is required")
 			z.Error(e.Error())
-			return e
+			return []User{}, e
 		}
 
 		if !users[i].IDCardNo.Valid && !users[i].MobilePhone.Valid && !users[i].Email.Valid {
@@ -331,7 +338,7 @@ func (r *service) InsertUsers(ctx context.Context, tx pgx.Tx, users []User) erro
 		if err != nil || forceErr == "Exec" {
 			e := fmt.Errorf("failed to insert user %s: %w", users[i].Account, err)
 			z.Error(e.Error())
-			return e
+			return []User{}, e
 		}
 
 		// 读取用户ID
@@ -344,8 +351,13 @@ func (r *service) InsertUsers(ctx context.Context, tx pgx.Tx, users []User) erro
 		if err != nil || forceErr == "QueryUserID" {
 			e := fmt.Errorf("failed to retrieve user ID for %s: %w", users[i].Account, err)
 			z.Error(e.Error())
-			return e
+			return []User{}, e
 		}
+
+		// 设置用户ID并添加到成功插入的用户列表
+		users[i].ID = null.IntFrom(userID)
+		users[i].CreateTime = null.IntFrom(time.Now().UnixMilli())
+		users[i].UpdateTime = null.IntFrom(time.Now().UnixMilli())
 
 		// 插入用户角色到 t_user_domain
 		if len(users[i].Domains) > 0 {
@@ -362,13 +374,16 @@ func (r *service) InsertUsers(ctx context.Context, tx pgx.Tx, users []User) erro
 				if err != nil || forceErr == "InsertUserDomain" {
 					e := fmt.Errorf("failed to insert user domain %s for user %s: %w", domain.String, users[i].Account, err)
 					z.Error(e.Error())
-					return e
+					return []User{}, e
 				}
 			}
 		}
+
+		// 将成功插入的用户添加到结果列表
+		insertedUsers = append(insertedUsers, users[i])
 	}
 
-	return nil
+	return insertedUsers, nil
 }
 
 // InsertUsersWithAccount 批量插入用户数据，并为每个用户生成唯一账号
@@ -388,7 +403,7 @@ func (r *service) InsertUsersWithAccount(ctx context.Context, tx pgx.Tx, users [
 		}
 	}
 
-	err = r.InsertUsers(ctx, tx, users)
+	_, err = r.InsertUsers(ctx, tx, users)
 	if err != nil || forceErr == "InsertUsers" {
 		e := fmt.Errorf("failed to insert users with generated accounts: %w", err)
 		return e
@@ -440,13 +455,13 @@ func (r *service) CheckTUserFieldExists(ctx context.Context, tx pgx.Tx, field st
 }
 
 // CheckTUserRowExists 检查 t_user 表中是否存在满足所有字段值的行
-func (r *service) CheckTUserRowExists(ctx context.Context, tx pgx.Tx, fields map[string]any) (bool, error) {
+func (r *service) CheckTUserRowExists(ctx context.Context, tx pgx.Tx, fields map[string]any) (bool, *User, error) {
 	z.Info("---->" + cmn.FncName())
 
 	forceErr, _ := ctx.Value("force-error").(string)
 
 	if len(fields) == 0 {
-		return false, fmt.Errorf("fields cannot be empty")
+		return false, nil, fmt.Errorf("fields cannot be empty")
 	}
 
 	// 字段白名单，防止 SQL 注入
@@ -464,35 +479,64 @@ func (r *service) CheckTUserRowExists(ctx context.Context, tx pgx.Tx, fields map
 	var args []any
 	argIndex := 1
 
+	emptyNullStrCount := 0
+	totalFields := len(fields)
+
 	for field, value := range fields {
 		if !allowedFields[field] {
-			return false, fmt.Errorf("field '%s' is not allowed to be queried", field)
+			return false, nil, fmt.Errorf("field '%s' is not allowed to be queried", field)
 		}
-		whereClauses = append(whereClauses, fmt.Sprintf("%s = $%d", field, argIndex))
-		args = append(args, value)
-		argIndex++
+		// 检查是否为 null.String 类型的空值
+		if nullStr, ok := value.(null.String); ok && !nullStr.Valid {
+			emptyNullStrCount++
+			whereClauses = append(whereClauses, fmt.Sprintf("%s IS NULL", field))
+			// 不添加到 args 中，因为 IS NULL 不需要参数
+		} else {
+			whereClauses = append(whereClauses, fmt.Sprintf("%s = $%d", field, argIndex))
+			args = append(args, value)
+			argIndex++
+		}
+	}
+
+	// 如果所有字段都是空的 null.String，直接返回无数据
+	if emptyNullStrCount == totalFields {
+		return false, nil, nil
 	}
 
 	querySQL := fmt.Sprintf(
-		`SELECT EXISTS(SELECT 1 FROM t_user WHERE %s)`,
+		`SELECT id FROM t_user WHERE %s LIMIT 1`,
 		strings.Join(whereClauses, " AND "),
 	)
 
-	var exists bool
+	var userId null.Int
 	var err error
 	if tx != nil {
-		err = tx.QueryRow(ctx, querySQL, args...).Scan(&exists)
+		err = tx.QueryRow(ctx, querySQL, args...).Scan(&userId)
 	} else {
-		err = r.pgxConn.QueryRow(ctx, querySQL, args...).Scan(&exists)
+		err = r.pgxConn.QueryRow(ctx, querySQL, args...).Scan(&userId)
 	}
 
 	if err != nil || forceErr == "tx.QueryRow" {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return false, nil, nil // 没查到返回 0 和 nil
+		}
 		e := fmt.Errorf("failed to check if row exists: %w", err)
 		z.Error(e.Error())
-		return false, e
+		return false, nil, e
 	}
 
-	return exists, nil
+	if !userId.Valid || forceErr == "InvalidUserID" {
+		return false, nil, nil
+	}
+
+	// 查询该用户信息
+	user, _, err := r.QueryUsers(ctx, tx, 1, 1, QueryUsersFilter{ID: userId})
+	if err != nil || forceErr == "QueryUsers" {
+		e := fmt.Errorf("failed to query user details: %w", err)
+		return false, nil, e
+	}
+
+	return true, &user[0], nil
 }
 
 func (r *service) orDefault(s null.String, def string) string {
@@ -544,19 +588,20 @@ func (r *service) GenerateUniqueAccount(ctx context.Context, tx pgx.Tx, length i
 }
 
 // ValidateUserToBeInsert 验证即将被插入数据库的用户信息
-// 返回 允许插入的有效用户列表 和 不允许插入的不合法用户列表
+// 返回 允许插入的有效用户列表 和 不允许插入的不合法用户列表 和 已存在的用户列表
 // 会使用用户已有的信息（除了帐号）检索这个用户是否存在，已存在的用户会被跳过，既不会被归为有效用户，也不会被归为无效用户
-func (r *service) ValidateUserToBeInsert(ctx context.Context, tx pgx.Tx, users []User) ([]User, []InvalidUser, error) {
+func (r *service) ValidateUserToBeInsert(ctx context.Context, tx pgx.Tx, users []User) ([]User, []User, []User, error) {
 	if len(users) == 0 {
 		e := fmt.Errorf("users cannot be empty")
 		z.Error(e.Error())
-		return nil, []InvalidUser{}, e
+		return []User{}, []User{}, []User{}, e
 	}
 
 	forceErr, _ := ctx.Value("force-error").(string)
 
-	invalidUsers := make([]InvalidUser, 0)
-	validUsers := make([]User, 0)
+	invalidUsers := make([]User, 0)  // 不允许被插入的无效用户列表
+	validUsers := make([]User, 0)    // 允许被插入的有效用户列表
+	existingUsers := make([]User, 0) // 已存在的用户列表
 
 	// 构造错误信息map
 	errorMessages := map[string]string{
@@ -573,17 +618,18 @@ func (r *service) ValidateUserToBeInsert(ctx context.Context, tx pgx.Tx, users [
 	for i := range users {
 
 		// 用当前用户有的信息（除了帐号）检索这个用户实例是否已存在
-		userExist, err := r.CheckTUserRowExists(ctx, tx, map[string]any{
+		userExist, existUserInfo, err := r.CheckTUserRowExists(ctx, tx, map[string]any{
 			"official_name": users[i].OfficialName,
 			"mobile_phone":  users[i].MobilePhone,
 			"email":         users[i].Email,
 			"id_card_no":    users[i].IDCardNo,
 		})
 		if err != nil || forceErr == "CheckTUserRowExists" {
-			return nil, []InvalidUser{}, fmt.Errorf("error checking user existence: %w", err)
+			return []User{}, []User{}, []User{}, fmt.Errorf("error checking user existence: %w", err)
 		}
 		if userExist {
 			// 如果用户实例已存在，则跳过，不需要重复插入
+			existingUsers = append(existingUsers, *existUserInfo)
 			continue
 		}
 
@@ -596,7 +642,7 @@ func (r *service) ValidateUserToBeInsert(ctx context.Context, tx pgx.Tx, users [
 			// 检查帐号是否已存在
 			exist, err := r.CheckTUserFieldExists(ctx, tx, "account", users[i].Account)
 			if err != nil || forceErr == "CheckTUserFieldExists_account" {
-				return nil, []InvalidUser{}, fmt.Errorf("error checking account existence: %w", err)
+				return []User{}, []User{}, []User{}, fmt.Errorf("error checking account existence: %w", err)
 			}
 			if exist {
 				errorCount++
@@ -608,7 +654,7 @@ func (r *service) ValidateUserToBeInsert(ctx context.Context, tx pgx.Tx, users [
 			// 检查手机号是否已存在
 			exist, err := r.CheckTUserFieldExists(ctx, tx, "mobile_phone", users[i].MobilePhone)
 			if err != nil || forceErr == "CheckTUserFieldExists_mobile_phone" {
-				return nil, []InvalidUser{}, fmt.Errorf("error checking mobile phone existence: %w", err)
+				return []User{}, []User{}, []User{}, fmt.Errorf("error checking mobile phone existence: %w", err)
 			}
 			if exist {
 				errorCount++
@@ -625,7 +671,7 @@ func (r *service) ValidateUserToBeInsert(ctx context.Context, tx pgx.Tx, users [
 			// 检查邮箱是否已存在
 			exist, err := r.CheckTUserFieldExists(ctx, tx, "email", users[i].Email)
 			if err != nil || forceErr == "CheckTUserFieldExists_email" {
-				return nil, []InvalidUser{}, fmt.Errorf("error checking email existence: %w", err)
+				return []User{}, []User{}, []User{}, fmt.Errorf("error checking email existence: %w", err)
 			}
 			if exist {
 				errorCount++
@@ -637,7 +683,7 @@ func (r *service) ValidateUserToBeInsert(ctx context.Context, tx pgx.Tx, users [
 			// 检查证件号是否已存在
 			exist, err := r.CheckTUserFieldExists(ctx, tx, "id_card_no", users[i].IDCardNo)
 			if err != nil || forceErr == "CheckTUserFieldExists_id_card_no" {
-				return nil, []InvalidUser{}, fmt.Errorf("error checking ID card number existence: %w", err)
+				return []User{}, []User{}, []User{}, fmt.Errorf("error checking ID card number existence: %w", err)
 			}
 			if exist {
 				errorCount++
@@ -668,13 +714,15 @@ func (r *service) ValidateUserToBeInsert(ctx context.Context, tx pgx.Tx, users [
 
 		if errorCount > 0 {
 			// 如果有错误，则将用户添加到无效列表
-			invalidUsers = append(invalidUsers, InvalidUser{
-				Account:      NullableString(users[i].Account),
-				OfficialName: users[i].OfficialName,
-				MobilePhone:  users[i].MobilePhone,
-				Email:        users[i].Email,
-				IDCardNo:     users[i].IDCardNo,
-				ErrorMsg:     errorMessage,
+			invalidUsers = append(invalidUsers, User{
+				TUser: cmn.TUser{
+					Account:      users[i].Account,
+					OfficialName: users[i].OfficialName,
+					MobilePhone:  users[i].MobilePhone,
+					Email:        users[i].Email,
+					IDCardNo:     users[i].IDCardNo,
+				},
+				ErrorMsg: errorMessage,
 			})
 		}
 
@@ -684,7 +732,7 @@ func (r *service) ValidateUserToBeInsert(ctx context.Context, tx pgx.Tx, users [
 		}
 	}
 
-	return validUsers, invalidUsers, nil
+	return validUsers, invalidUsers, existingUsers, nil
 }
 
 // QueryUserCurrentRole 查询用户当前角色

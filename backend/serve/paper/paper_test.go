@@ -388,10 +388,12 @@ func initTestQuestionBankData() error {
 		_ = tx.Commit(ctx)
 	}()
 
-	qb := `INSERT INTO t_question_bank  (type,name,creator,create_time,status) VALUES($1, $2, $3, $4, $5) RETURNING id`
+	qb := `INSERT INTO t_question_bank  (type,name,creator,create_time,status,domain_id) VALUES($1, $2, $3, $4, $5,$6) RETURNING id`
 	var qbID int64
-	_ = tx.QueryRow(ctx, qb, "00", "考卷测试题库", initQuestionUserID, time.Now().UnixMilli(), "00").Scan(&qbID)
-
+	err = tx.QueryRow(ctx, qb, "00", "考卷测试题库", initQuestionUserID, time.Now().UnixMilli(), "00", resourceDomainID).Scan(&qbID)
+	if err != nil {
+		return fmt.Errorf("创建题库失败: %v", err)
+	}
 	// 五道题
 	q := `INSERT INTO t_question (id,type,content,options,answers,score,analysis,title,creator,status,belong_to,difficulty) VALUES ($1, $2, $3, $4, $5, $6,$7,$8,$9,$10,$11,$12)`
 	qArgs := [][]interface{}{
@@ -545,8 +547,7 @@ func TestPaperListGetMethod(t *testing.T) {
 	cmn.ConfigureForTest()
 	db := cmn.GetPgxConn()
 	ctx := context.Background()
-	userID := int64(90002)
-	teacherRoleID := int64(2003) // 教师角色ID
+	userID := int64(90002) // 教师角色ID
 
 	tests := []struct {
 		name          string
@@ -561,7 +562,7 @@ func TestPaperListGetMethod(t *testing.T) {
 	}{
 		{
 			name:          "正常分页查询",
-			query:         "page=1&pageSize=10",
+			query:         "page=1&pageSize=10&name=正常分页查询测试试卷",
 			expectedCount: 3,
 			wantError:     false,
 			userID:        userID,
@@ -570,7 +571,7 @@ func TestPaperListGetMethod(t *testing.T) {
 			setup: func(t *testing.T) []int64 {
 				var ids []int64
 				for i := 0; i < 3; i++ {
-					id, _ := createTestPaper(ctx, t, fmt.Sprintf("测试试卷%d", i+1), userID)
+					id, _ := createTestPaper(ctx, t, fmt.Sprintf("正常分页查询测试试卷%d", i+1), userID)
 					ids = append(ids, id)
 				}
 				return ids
@@ -607,7 +608,7 @@ func TestPaperListGetMethod(t *testing.T) {
 		},
 		{
 			name:          "分类过滤",
-			query:         "category=02",
+			query:         "category=02&name=分类过滤试卷",
 			expectedCount: 1,
 			wantError:     false,
 			userID:        userID,
@@ -617,7 +618,7 @@ func TestPaperListGetMethod(t *testing.T) {
 				var id int64
 				_ = db.QueryRow(ctx,
 					`INSERT INTO t_paper (name, category,tags, creator, create_time, updated_by, update_time, status, domain_id) 
-	VALUES ('唯一名试卷', '02',$3, $1, $2, $1, $2, '00', $4) RETURNING id`, userID, time.Now().UnixMilli(), types.JSONText(`["vue"]`), resourceDomainID).Scan(&id)
+	VALUES ('分类过滤试卷', '02',$3, $1, $2, $1, $2, '00', $4) RETURNING id`, userID, time.Now().UnixMilli(), types.JSONText(`["vue"]`), resourceDomainID).Scan(&id)
 				return []int64{id}
 			},
 		},
@@ -638,7 +639,7 @@ func TestPaperListGetMethod(t *testing.T) {
 		},
 		{
 			name:          "分页边界-第二页无数据",
-			query:         "page=2&pageSize=5",
+			query:         "page=2&pageSize=5&name=分页试卷",
 			expectedCount: 0,
 			wantError:     false,
 			userID:        userID,
@@ -695,14 +696,14 @@ func TestPaperListGetMethod(t *testing.T) {
 		{
 			name:          "空参数-默认分页",
 			query:         "",
-			expectedCount: 5,
+			expectedCount: 10,
 			wantError:     false,
 			userID:        userID,
 			roleID:        teacherRoleID,
 			forceError:    "",
 			setup: func(t *testing.T) []int64 {
 				var ids []int64
-				for i := 0; i < 5; i++ {
+				for i := 0; i < 10; i++ {
 					id, _ := createTestPaper(ctx, t, fmt.Sprintf("默认分页试卷%d", i+1), userID)
 					ids = append(ids, id)
 				}
@@ -1030,7 +1031,7 @@ func TestPaperListDeleteMethod(t *testing.T) {
 			userID:        userID,
 			roleID:        teacherRoleID,
 			forceError:    "",
-			expectedError: "试卷 \"99999999\" 不存在",
+			expectedError: "试卷（99999999）不存在",
 			setup: func(t *testing.T) []int64 {
 				var ids []int64
 				for i := 0; i < 1; i++ {
@@ -1182,7 +1183,7 @@ func TestPaperListDeleteMethod(t *testing.T) {
 			userID:        userID,
 			roleID:        teacherRoleID,
 			forceError:    "PaperList-delete-Rollback-err",
-			expectedError: "试卷 \"99999999\" 不存在\n试卷 \"8888888\" 不存在",
+			expectedError: "试卷（99999999）不存在\n试卷（8888888）不存在",
 			setup: func(t *testing.T) []int64 {
 				return []int64{99999999, 8888888}
 			},
@@ -1412,7 +1413,7 @@ func TestManualPaperPostMethod(t *testing.T) {
 		},
 		{
 			name:          "Rollback-err",
-			wantError:     false,
+			wantError:     true,
 			userID:        userID,
 			roleID:        teacherRoleID, // 添加角色ID
 			forceError:    "Rollback-err",
@@ -3119,7 +3120,7 @@ func TestManualPaperPutMethod(t *testing.T) {
 				// 创建添加题目的结构体
 				payload := []AddQuestionsRequest{
 					{
-						TempID:         "temp_question1",
+						TempID:         -1,
 						GroupID:        groupIDs[0],
 						Order:          1,
 						Type:           "06",
@@ -3155,7 +3156,8 @@ func TestManualPaperPutMethod(t *testing.T) {
 				require.NoError(t, err)
 				qIDmaps, ok := results[0].Result.(map[string]interface{})
 				require.True(t, ok)
-				qIDFloat64, ok := qIDmaps["temp_question1"].(float64)
+				// 由于TempID是int64(-1)，所以映射的键应该是"-1"
+				qIDFloat64, ok := qIDmaps["-1"].(float64)
 				qID := int64(qIDFloat64)
 				require.True(t, ok)
 				require.Equal(t, len(qIDmaps), 1, "期望题目ID映射长度为1")
@@ -3163,6 +3165,101 @@ func TestManualPaperPutMethod(t *testing.T) {
 				require.Equal(t, groups[0].Questions[0].Order.Int64, int64(1), "期望题目顺序为1")
 				require.Equal(t, groups[0].Questions[0].Score.Float64, 2.0, "期望题目分数为2")
 				require.Equal(t, groups[0].Questions[0].SubScore, []float64{1, 2, 3}, "期望题目子分数为[1, 2, 3]")
+			},
+		},
+		//add_question
+		{
+			name:       "正常添加题目后移动题目顺序",
+			reqBody:    nil,
+			wantError:  false,
+			userID:     userID,
+			forceError: "",
+			setup: func(t *testing.T) (int64, any) {
+				var id int64
+				var groupIDs []int64
+				var questionID int64
+				// 创建一个试卷
+				id, groupIDs = createTestPaper(ctx, t, "待添加题目试卷", userID)
+				// 创建一个题目
+				err := db.QueryRow(ctx, `INSERT INTO t_paper_question (group_id, "order",score,bank_question_id, creator, create_time, updated_by, update_time,status) 
+					VALUES ($1, 1, 2, $4,$2, $3, $2, $3,'00') RETURNING id`,
+					groupIDs[0], userID, time.Now().UnixMilli(), BankQuestionIDs[0]).Scan(&questionID)
+				require.NoError(t, err)
+				// 创建添加题目的结构体
+				payload := []AddQuestionsRequest{
+					{
+						TempID:         -1,
+						GroupID:        groupIDs[0],
+						Order:          1,
+						Type:           "02",
+						BankQuestionID: BankQuestionIDs[4],
+						Score:          2,
+					},
+				}
+				jsonPayload, err := json.Marshal(payload)
+				require.NoError(t, err)
+				// 创建题目排序后数组
+				ids := []int64{-1, questionID}
+				jsonIDs, err := json.Marshal(ids)
+				require.NoError(t, err)
+				reqBody := UpdateManualPaperRequest{
+					[]UpdateManualPaperAction{
+						{
+							Action:  "add_question",
+							Payload: json.RawMessage(jsonPayload),
+						},
+						{
+							Action:  "move_question",
+							Payload: jsonIDs,
+						},
+					},
+				}
+				return id, reqBody
+			},
+			validate: func(t *testing.T, ctx context.Context, q *cmn.ServiceCtx, paperID int64) {
+				var questionCount int64
+				var groupData types.JSONText
+				err := db.QueryRow(ctx, "SELECT question_count,groups_data FROM v_paper WHERE id=$1", paperID).Scan(&questionCount, &groupData)
+				require.NoError(t, err)
+				require.Equal(t, int64(2), questionCount, "期望总共有2个题目")
+
+				var groups []Group
+				err = json.Unmarshal(groupData, &groups)
+				require.NoError(t, err)
+				require.Equal(t, 5, len(groups), "期望有5个题组")
+				require.Equal(t, 2, len(groups[0].Questions), "期望第一个题组有2个题目")
+
+				// 解析返回的题目ID映射
+				var results []ActionResult
+				err = json.Unmarshal(q.Msg.Data, &results)
+				require.NoError(t, err)
+				require.Equal(t, 1, len(results), "期望有1个action的结果")
+
+				// 验证第一个action（添加新题目）的结果
+				firstActionResult, ok := results[0].Result.(map[string]interface{})
+				require.True(t, ok, "第一个action应该返回ID映射")
+				require.Equal(t, 1, len(firstActionResult), "期望第一个action添加了1个题目")
+
+				// 获取新添加题目的数据库ID
+				newQuestionIDFloat, ok := firstActionResult["-1"].(float64)
+				require.True(t, ok, "期望能获取到新题目的ID")
+				newQuestionID := int64(newQuestionIDFloat)
+
+				// 验证题目顺序：新添加的题目应该在第1位，原有题目在第2位
+				questions := groups[0].Questions
+
+				// 第1个题目应该是新添加的填空题（BankQuestionIDs[4]）
+				require.Equal(t, int64(1), questions[0].Order.Int64, "第1个题目顺序应该是1")
+				require.Equal(t, newQuestionID, questions[0].ID.Int64, "第1个题目应该是新添加的题目")
+				require.Equal(t, BankQuestionIDs[4], questions[0].BankQuestionID.Int64, "第1个题目应该是BankQuestionIDs[4]")
+				require.Equal(t, 2.0, questions[0].Score.Float64, "新添加题目的分数应该是2")
+				require.Equal(t, "02", questions[0].Type, "新添加题目的类型应该是多选题")
+
+				// 第2个题目应该是原有的题目（BankQuestionIDs[0]）
+				require.Equal(t, int64(2), questions[1].Order.Int64, "第2个题目顺序应该是2")
+				require.Equal(t, BankQuestionIDs[0], questions[1].BankQuestionID.Int64, "第2个题目应该是原有的BankQuestionIDs[0]")
+				require.Equal(t, 2.0, questions[1].Score.Float64, "原有题目的分数应该是2")
+
 			},
 		},
 		{
@@ -3180,7 +3277,7 @@ func TestManualPaperPutMethod(t *testing.T) {
 				// 创建添加题目的结构体
 				payload := []AddQuestionsRequest{
 					{
-						TempID:         "temp_question1",
+						TempID:         -1,
 						GroupID:        groupIDs[0],
 						Order:          1,
 						Type:           "06",
@@ -3241,7 +3338,7 @@ func TestManualPaperPutMethod(t *testing.T) {
 				// 创建添加题目的结构体
 				payload := []AddQuestionsRequest{
 					{
-						TempID:         "temp_question1",
+						TempID:         -1,
 						GroupID:        -1,
 						Order:          1,
 						Type:           "06",
@@ -3303,7 +3400,7 @@ func TestManualPaperPutMethod(t *testing.T) {
 				// 创建添加题目的结构体
 				payload := []AddQuestionsRequest{
 					{
-						TempID:         "temp_question1",
+						TempID:         -1,
 						GroupID:        groupIDs[0],
 						Order:          1,
 						Type:           "02",
@@ -3365,7 +3462,7 @@ func TestManualPaperPutMethod(t *testing.T) {
 				// 创建添加题目的结构体
 				payload := []AddQuestionsRequest{
 					{
-						TempID:         "temp_question1",
+						TempID:         -1,
 						GroupID:        groupIDs[0],
 						Order:          1,
 						Type:           "06",
@@ -3427,7 +3524,7 @@ func TestManualPaperPutMethod(t *testing.T) {
 				// 创建添加题目的结构体
 				payload := []AddQuestionsRequest{
 					{
-						TempID:         "temp_question1",
+						TempID:         -1,
 						GroupID:        groupIDs[0],
 						Order:          1,
 						Type:           "02",
@@ -3489,7 +3586,7 @@ func TestManualPaperPutMethod(t *testing.T) {
 				// 创建添加题目的结构体
 				payload := []AddQuestionsRequest{
 					{
-						TempID:         "temp_question1",
+						TempID:         -1,
 						GroupID:        groupIDs[0],
 						Order:          1,
 						BankQuestionID: BankQuestionIDs[4],
@@ -3527,7 +3624,7 @@ func TestManualPaperPutMethod(t *testing.T) {
 				// 创建添加题目的结构体
 				payload := []AddQuestionsRequest{
 					{
-						TempID:         "temp_question1",
+						TempID:         -1,
 						GroupID:        groupIDs[0],
 						Order:          0,
 						BankQuestionID: BankQuestionIDs[0],
@@ -3551,12 +3648,12 @@ func TestManualPaperPutMethod(t *testing.T) {
 			},
 		},
 		{
-			name:          "tx.Query-err",
+			name:          "batch.SendBatch-err",
 			reqBody:       nil,
 			wantError:     true,
 			userID:        userID,
-			forceError:    "tx.Query-err",
-			expectedError: "tx.Query-err",
+			forceError:    "batch.SendBatch-err",
+			expectedError: "batch.SendBatch-err",
 			setup: func(t *testing.T) (int64, any) {
 				var id int64
 				var groupIDs []int64
@@ -3565,7 +3662,7 @@ func TestManualPaperPutMethod(t *testing.T) {
 				// 创建添加题目的结构体
 				payload := []AddQuestionsRequest{
 					{
-						TempID:         "temp_question1",
+						TempID:         -1,
 						GroupID:        groupIDs[0],
 						Type:           "06",
 						Order:          1,
@@ -3590,12 +3687,12 @@ func TestManualPaperPutMethod(t *testing.T) {
 			},
 		},
 		{
-			name:          "rows.Scan-err",
+			name:          "batchResults.Scan-err",
 			reqBody:       nil,
 			wantError:     true,
 			userID:        userID,
-			forceError:    "rows.Scan-err",
-			expectedError: "rows.Scan-err",
+			forceError:    "batchResults.Scan-err",
+			expectedError: "batchResults.Scan-err",
 			setup: func(t *testing.T) (int64, any) {
 				var id int64
 				var groupIDs []int64
@@ -3604,7 +3701,7 @@ func TestManualPaperPutMethod(t *testing.T) {
 				// 创建添加题目的结构体
 				payload := []AddQuestionsRequest{
 					{
-						TempID:         "temp_question1",
+						TempID:         -1,
 						GroupID:        groupIDs[0],
 						Order:          1,
 						Type:           "06",
@@ -3629,12 +3726,12 @@ func TestManualPaperPutMethod(t *testing.T) {
 			},
 		},
 		{
-			name:          "rows.Err-err",
+			name:          "batchResults.Close-err",
 			reqBody:       nil,
 			wantError:     true,
 			userID:        userID,
-			forceError:    "rows.Err-err",
-			expectedError: "rows.Err-err",
+			forceError:    "batchResults.Close-err",
+			expectedError: "batchResults.Close-err",
 			setup: func(t *testing.T) (int64, any) {
 				var id int64
 				var groupIDs []int64
@@ -3643,7 +3740,7 @@ func TestManualPaperPutMethod(t *testing.T) {
 				// 创建添加题目的结构体
 				payload := []AddQuestionsRequest{
 					{
-						TempID:         "temp_question1",
+						TempID:         -1,
 						GroupID:        groupIDs[0],
 						Order:          1,
 						Type:           "06",

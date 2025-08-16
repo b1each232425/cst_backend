@@ -4,6 +4,7 @@ package grade
 //author:{"name":"txl","tel":"19832706790", "email":"188306257@qq.com"}
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -13,6 +14,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jackc/pgx/v5"
+
 	"github.com/tidwall/gjson"
 	"go.uber.org/zap"
 	"w2w.io/cmn"
@@ -21,7 +24,7 @@ import (
 var z *zap.Logger
 
 const (
-	TIMEOUT = 10 * time.Second
+	TIMEOUT = 60 * time.Second
 )
 
 func init() {
@@ -79,6 +82,72 @@ func Enroll(author string) {
 		DefaultDomain: int64(cmn.CDomainSys),
 	})
 
+	//  ********** 成绩分布接口 **********
+	_ = cmn.AddService(&cmn.ServeEndPoint{
+		Fn: gradeDistributionH,
+
+		Path: "/grade/distribution",
+		Name: "grade/distribution",
+
+		Developer: developer,
+		WhiteList: true,
+
+		//DomainID 创建该API的账号归属的domain
+		DomainID: int64(cmn.CDomainSys),
+
+		//DefaultDomain 该API将默认授权给的用户
+		DefaultDomain: int64(cmn.CDomainSys),
+	})
+
+	//  ********** 考生成绩列表接口 **********
+	_ = cmn.AddService(&cmn.ServeEndPoint{
+		Fn: gradeExamineeListH,
+
+		Path: "/grade/examinee/list",
+		Name: "grade/examinee/list",
+
+		Developer: developer,
+		WhiteList: true,
+
+		//DomainID 创建该API的账号归属的domain
+		DomainID: int64(cmn.CDomainSys),
+
+		//DefaultDomain 该API将默认授权给的用户
+		DefaultDomain: int64(cmn.CDomainSys),
+	})
+
+	//  ********** 成绩接口 **********
+	_ = cmn.AddService(&cmn.ServeEndPoint{
+		Fn: gradeH,
+
+		Path: "/grade",
+		Name: "grade",
+
+		Developer: developer,
+		WhiteList: true,
+
+		//DomainID 创建该API的账号归属的domain
+		DomainID: int64(cmn.CDomainSys),
+
+		//DefaultDomain 该API将默认授权给的用户
+		DefaultDomain: int64(cmn.CDomainSys),
+	})
+
+	_ = cmn.AddService(&cmn.ServeEndPoint{
+		Fn: gradeSH,
+
+		Path: "/grades",
+		Name: "grades",
+
+		Developer: developer,
+		WhiteList: true,
+
+		//DomainID 创建该API的账号归属的domain
+		DomainID: int64(cmn.CDomainSys),
+
+		//DefaultDomain 该API将默认授权给的用户
+		DefaultDomain: int64(cmn.CDomainSys),
+	})
 }
 
 func gradeListH(ctx context.Context) {
@@ -104,112 +173,95 @@ func gradeListH(ctx context.Context) {
 			rowCount int64
 
 			// 必需参数集
-			req      GradeListArgs
-			category string // 类别：exam practice
-			page     string
-			pageSize string
+			req       GradeListReq
+			category  string // 类别：exam practice
+			userID    int64
+			page      int
+			pageSize  int
+			submitted int
 		)
-		var p int
+		var p string
 
-		if category = queryParams.Get("category"); category == "" {
-			q.Err = fmt.Errorf("不支持的类型: %s", req.Category)
+		if p = queryParams.Get("page"); p == "" {
+			q.Err = fmt.Errorf("页码为空: %s", p)
 			z.Error(q.Err.Error())
 			q.RespErr()
 			return
 		}
-		req.Category = category
+		if page, err = strconv.Atoi(p); err != nil {
+			q.Err = fmt.Errorf("无效页码: %s", p)
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+		req.Page = page
 
-		if page = queryParams.Get("page"); page == "" {
-			q.Err = fmt.Errorf("页码为空: %s", page)
+		if p = queryParams.Get("pageSize"); p == "" {
+			q.Err = fmt.Errorf("每页数量为空: %s", p)
 			z.Error(q.Err.Error())
 			q.RespErr()
 			return
 		}
-		if p, err = strconv.Atoi(page); err != nil {
-			q.Err = fmt.Errorf("无效页码: %s", page)
+		if pageSize, err = strconv.Atoi(p); err != nil {
+			q.Err = fmt.Errorf("无效每页数量: %s", p)
 			z.Error(q.Err.Error())
 			q.RespErr()
 			return
 		}
-		req.Page = p
-
-		if pageSize = queryParams.Get("pageSize"); pageSize == "" {
-			q.Err = fmt.Errorf("每页数量为空: %s", pageSize)
-			z.Error(q.Err.Error())
-			q.RespErr()
-			return
-		}
-		if p, err = strconv.Atoi(pageSize); err != nil {
-			q.Err = fmt.Errorf("无效每页数量: %s", pageSize)
-			z.Error(q.Err.Error())
-			q.RespErr()
-			return
-		}
-		req.PageSize = p
+		req.PageSize = pageSize
 
 		// 用户身份
-		if q.SysUser == nil || forceErr == "q.SysUser nil" {
+		if q.SysUser == nil || !q.SysUser.ID.Valid || forceErr == "q.SysUser nil" {
 			q.Err = fmt.Errorf("非法请求，鉴权用户失败")
 			z.Error(q.Err.Error())
 			q.RespErr()
 			return
 		}
-		req.TeacherID = q.SysUser.ID.Int64
-		// 管理员实现全部教师数据展示
-		teacherID := queryParams.Get("teacherID")
-		if teacherID != "" {
-			p, err := strconv.ParseInt(teacherID, 10, 64)
-			if err != nil {
-				q.Err = fmt.Errorf("无效教师ID: %s", teacherID)
-				z.Error(q.Err.Error())
-				q.RespErr()
-				return
-			}
-			req.TeacherID = p
-		}
+		userID = q.SysUser.ID.Int64
 
 		if name := queryParams.Get("name"); name != "" {
 			req.Filter.Name = name
 		}
 
-		switch req.Category {
+		if category = queryParams.Get("category"); category == "" {
+			q.Err = fmt.Errorf("不支持的类型: %s", category)
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		switch category {
 		case "exam":
-			if examID := queryParams.Get("examID"); examID != "" {
-				p, err := strconv.Atoi(examID)
+			if p = queryParams.Get("examID"); p != "" {
+				examID, err := strconv.ParseInt(p, 10, 64)
 				if err != nil {
-					q.Err = fmt.Errorf("无效考试ID: %s", examID)
+					q.Err = fmt.Errorf("无效考试ID: %s", p)
 					z.Error(q.Err.Error())
 					q.RespErr()
 					return
 				}
-				req.ExamID = p
+				req.ExamID = examID
 			}
 
 			if examType := queryParams.Get("type"); examType != "" {
 				req.Filter.Type = examType
 			}
 
-			submitted := queryParams.Get("submitted")
-			switch submitted {
-			case "0":
-				req.Filter.Submitted = 0
-			case "1":
-				req.Filter.Submitted = 1
-			case "-1":
-				req.Filter.Submitted = -1
-			default:
-				q.Err = fmt.Errorf("无效提交状态: %s", submitted)
+			submitted, err = strconv.Atoi(queryParams.Get("submitted"))
+			if err != nil || submitted != 0 && submitted != 1 && submitted != -1 {
+				q.Err = fmt.Errorf("无效提交状态: %d", submitted)
 				z.Error(q.Err.Error())
 				q.RespErr()
 				return
 			}
+			req.Filter.Submitted = submitted
 
 			dmlCtx, cancel := context.WithTimeout(ctx, TIMEOUT)
 			defer cancel()
 
 			// 调用数据库层处理
 			var result []GradeExam
-			result, rowCount, err = gradeListExam(dmlCtx, &req)
+			result, rowCount, err = gradeListExam(dmlCtx, userID, &req)
 			if err != nil {
 				q.Err = fmt.Errorf("获取考试成绩列表失败 错误信息:%w", err)
 				q.RespErr()
@@ -222,15 +274,15 @@ func gradeListH(ctx context.Context) {
 
 		case "practice":
 			// 练习ID
-			if practiceID := queryParams.Get("practiceID"); practiceID != "" {
-				p, err := strconv.Atoi(practiceID)
+			if p := queryParams.Get("practiceID"); p != "" {
+				practiceID, err := strconv.ParseInt(p, 10, 64)
 				if err != nil {
-					q.Err = fmt.Errorf("无效练习ID: %s", practiceID)
+					q.Err = fmt.Errorf("无效练习ID: %s", p)
 					z.Error(q.Err.Error())
 					q.RespErr()
 					return
 				}
-				req.PracticeID = p
+				req.PracticeID = practiceID
 			}
 
 			dmlCtx, cancel := context.WithTimeout(ctx, TIMEOUT)
@@ -238,7 +290,7 @@ func gradeListH(ctx context.Context) {
 
 			// 调用数据库层处理
 			var result []GradePractice
-			result, rowCount, err = gradeListPractice(dmlCtx, &req)
+			result, rowCount, err = gradeListPractice(dmlCtx, userID, &req)
 			if err != nil {
 				q.Err = fmt.Errorf("获取练习成绩列表失败 错误信息:%w", err)
 				q.RespErr()
@@ -250,7 +302,7 @@ func gradeListH(ctx context.Context) {
 			}
 
 		default:
-			q.Err = fmt.Errorf("不支持的类型: %s", req.Category)
+			q.Err = fmt.Errorf("不支持的类型: %s", category)
 			z.Error(q.Err.Error())
 			q.RespErr()
 			return
@@ -287,12 +339,11 @@ func gradeSubmissionH(ctx context.Context) {
 	case "patch":
 
 		var err error
-		var args GradeSubmitArgs
 
 		var buf []byte
 		buf, err = io.ReadAll(q.R.Body)
 		if forceErr == "io.ReadAll fail" {
-			err = fmt.Errorf(forceErr)
+			err = errors.New(forceErr)
 		}
 		if err != nil {
 			q.Err = err
@@ -302,7 +353,7 @@ func gradeSubmissionH(ctx context.Context) {
 		}
 
 		defer func() {
-			err := q.R.Body.Close()
+			err = q.R.Body.Close()
 			if forceErr == "q.R.Body.Close-fail" {
 				err = errors.New(forceErr)
 			}
@@ -318,14 +369,17 @@ func gradeSubmissionH(ctx context.Context) {
 			return
 		}
 
+		var userID int64
+		var examIDs []int
+
 		// 用户身份校验
-		if q.SysUser == nil || forceErr == "q.SysUser nil" {
+		if q.SysUser == nil || !q.SysUser.ID.Valid || forceErr == "q.SysUser nil" {
 			q.Err = fmt.Errorf("非法请求，鉴权用户失败")
 			z.Error(q.Err.Error())
 			q.RespErr()
 			return
 		}
-		args.TeacherID = q.SysUser.ID.Int64
+		userID = q.SysUser.ID.Int64
 
 		examIDQuerys := gjson.GetBytes(buf, "data.exam_ids").Array()
 		if len(examIDQuerys) <= 0 {
@@ -334,7 +388,6 @@ func gradeSubmissionH(ctx context.Context) {
 			q.RespErr()
 			return
 		}
-		var examIDs []int
 		for _, examIDQuery := range examIDQuerys {
 			id := int(examIDQuery.Num)
 			if id <= 0 {
@@ -345,12 +398,11 @@ func gradeSubmissionH(ctx context.Context) {
 			}
 			examIDs = append(examIDs, id)
 		}
-		args.ExamIDs = examIDs
 
 		dmlCtx, cancel := context.WithTimeout(ctx, TIMEOUT)
 		defer cancel()
 
-		rowsAffected, err := setExamGradeSubmitted(dmlCtx, &args)
+		rowsAffected, err := setExamGradeSubmitted(dmlCtx, userID, examIDs)
 		if forceErr == "setExamGradeSubmitted fail" {
 			err = errors.New(forceErr)
 		}
@@ -361,11 +413,621 @@ func gradeSubmissionH(ctx context.Context) {
 		}
 		q.Err = nil
 		q.Msg.Status = 0
-		q.Msg.Msg = fmt.Sprintf("success rowsAffected:%v", rowsAffected)
+		q.Msg.Msg = fmt.Sprintf("成功提交%v条数据", rowsAffected)
 
 	default:
 		q.Err = fmt.Errorf("不支持的请求方法: %s", method)
 		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+	q.Resp()
+}
+
+func gradeDistributionH(ctx context.Context) {
+	z.Info("---->" + cmn.FncName())
+
+	// // 测试使用强行触发错误
+	// forceErr := ""
+	// if val := ctx.Value("force-error"); val != nil {
+	// 	forceErr = val.(string)
+	// }
+
+	q := cmn.GetCtxValue(ctx)
+
+	method := strings.ToLower(q.R.Method)
+	switch method {
+	case "get":
+		var (
+			// 结果集
+			err  error
+			data []byte
+
+			// 必需参数集
+			category   string // 类别：exam practice
+			columnNum  int
+			examID     int
+			practiceID int
+		)
+		var p string
+
+		queryParams := q.R.URL.Query()
+
+		// 列数
+		if p = queryParams.Get("columnNum"); p == "" {
+			q.Err = fmt.Errorf("列数为空: %s", p)
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+		if columnNum, err = strconv.Atoi(p); err != nil {
+			q.Err = fmt.Errorf("列数无效: %d", columnNum)
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		// // 用户身份
+		// if q.SysUser == nil || !q.SysUser.ID.Valid || forceErr == "q.SysUser nil" {
+		// 	q.Err = fmt.Errorf("非法请求，鉴权用户失败")
+		// 	z.Error(q.Err.Error())
+		// 	q.RespErr()
+		// 	return
+		// }
+
+		dmlCtx, cancel := context.WithTimeout(ctx, TIMEOUT)
+		defer cancel()
+
+		if category = queryParams.Get("category"); category == "" {
+			q.Err = fmt.Errorf("类型为空: %s", category)
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		switch category {
+		case "exam":
+			// 考试ID - 涉及多场次
+			if p = queryParams.Get("examID"); p == "" {
+				q.Err = fmt.Errorf("考试ID为空: %s", p)
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+			if examID, err = strconv.Atoi(p); err != nil {
+				q.Err = fmt.Errorf("无效考试ID: %d", examID)
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+
+			var result ExamGradeDistribution
+
+			result, err = gradeDistributionExam(dmlCtx, examID, columnNum)
+			if err != nil {
+				q.Err = err
+				q.RespErr()
+				return
+			}
+
+			data, err = json.Marshal(result)
+			if err != nil {
+				q.Err = fmt.Errorf("json序列化失败: %v", err)
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+
+		case "practice":
+			// 练习ID
+			if p = queryParams.Get("practiceID"); p == "" {
+				q.Err = fmt.Errorf("练习ID为空: %s", p)
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+			if practiceID, err = strconv.Atoi(p); err != nil {
+				q.Err = fmt.Errorf("无效练习ID: %d", practiceID)
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+
+			result, err := gradeDistributionPractice(dmlCtx, practiceID, columnNum)
+			if err != nil {
+				q.Err = err
+				q.RespErr()
+				return
+			}
+
+			data, err = json.Marshal(result)
+			if err != nil {
+				q.Err = fmt.Errorf("json序列化失败: %v", err)
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+
+		default:
+			q.Err = fmt.Errorf("不支持的类型: %s", category)
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		q.Msg.Data = data
+
+		q.Err = nil
+		q.Msg.Status = 0
+		q.Msg.Msg = "success"
+
+	default:
+		q.Err = fmt.Errorf("unsupported method: %s", method)
+		z.Warn(q.Err.Error())
+		q.RespErr()
+		return
+	}
+	q.Resp()
+}
+
+func gradeExamineeListH(ctx context.Context) {
+	z.Info("---->" + cmn.FncName())
+
+	// 测试使用强行触发错误
+	// forceErr := ""
+	// if val := ctx.Value("force-error"); val != nil {
+	// 	forceErr = val.(string)
+	// }
+
+	q := cmn.GetCtxValue(ctx)
+
+	method := strings.ToLower(q.R.Method)
+	switch method {
+	case "get":
+		var (
+			// 结果集
+			err      error
+			data     []byte
+			rowCount int64
+
+			req GradeExamineeListReq
+
+			// 必需参数集
+			category   string // 类别：exam practice
+			page       int
+			pageSize   int
+			keyword    string
+			examID     []int64
+			practiceID []int64
+		)
+		var p string
+		queryParams := q.R.URL.Query()
+
+		if p = queryParams.Get("page"); p == "" {
+			q.Err = fmt.Errorf("页码为空: %s", p)
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+		if page, err = strconv.Atoi(p); err != nil {
+			q.Err = fmt.Errorf("传入无效页码: %s", p)
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+		req.Page = page
+
+		if p = queryParams.Get("pageSize"); p == "" {
+			q.Err = fmt.Errorf("每页数量为空: %s", p)
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+		if pageSize, err = strconv.Atoi(p); err != nil {
+			q.Err = fmt.Errorf("传入无效每页数量: %s", p)
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+		req.PageSize = pageSize
+
+		if keyword = queryParams.Get("keyword"); keyword != "" {
+			req.Filter.Keyword = keyword
+		}
+
+		// 用户身份
+		// if q.SysUser == nil || !q.SysUser.ID.Valid || forceErr == "q.SysUser nil" {
+		// 	q.Err = fmt.Errorf("非法请求，鉴权用户失败")
+		// 	z.Error(q.Err.Error())
+		// 	q.RespErr()
+		// 	return
+		// }
+
+		if category = queryParams.Get("category"); category == "" {
+			q.Err = fmt.Errorf("类别为空")
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		dmlCtx, cancel := context.WithTimeout(ctx, TIMEOUT)
+		defer cancel()
+
+		switch category {
+		case "exam":
+			if examIDs := queryParams.Get("examID"); examIDs != "" {
+				var eids []int64
+				for _, eid := range bytes.Split([]byte(examIDs), []byte(",")) {
+					e, err := strconv.ParseInt(string(eid), 10, 64)
+					if err != nil {
+						q.Err = err
+						z.Error(q.Err.Error())
+						q.RespErr()
+						return
+					}
+					if e <= 0 {
+						q.Err = fmt.Errorf("传入考试ID存在非正整数: %d", e)
+						z.Error(q.Err.Error())
+						q.RespErr()
+						return
+					}
+					eids = append(eids, e)
+				}
+				examID = eids
+			}
+			req.ExamID = examID
+
+			var result []ExamineeScoreList
+			result, rowCount, err = gradeExamineeListExam(dmlCtx, req)
+			if err != nil {
+				q.Err = err
+				q.RespErr()
+				return
+			}
+
+			data, _ = json.Marshal(result)
+
+		case "practice":
+			if practiceIDs := queryParams.Get("practiceID"); practiceIDs != "" {
+				var pids []int64
+				for _, pid := range bytes.Split([]byte(practiceIDs), []byte(",")) {
+					p, err := strconv.ParseInt(string(pid), 10, 64)
+					if err != nil {
+						q.Err = err
+						z.Error(q.Err.Error())
+						q.RespErr()
+						return
+					}
+					pids = append(pids, p)
+				}
+				practiceID = pids
+			}
+			req.PracticeID = practiceID
+
+			var result []PracticeScoreList
+
+			result, rowCount, err = gradeExamineeListPractice(dmlCtx, req)
+			if err != nil {
+				q.Err = err
+				q.RespErr()
+				return
+			}
+
+			data, _ = json.Marshal(result)
+		default:
+			q.Err = fmt.Errorf("不支持的类型: %s", category)
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		q.Msg.Data = data
+		q.Msg.RowCount = rowCount
+
+		q.Err = nil
+		q.Msg.Status = 0
+		q.Msg.Msg = "success"
+
+	default:
+		q.Err = fmt.Errorf("unsupported method: %s", method)
+		z.Warn(q.Err.Error())
+		q.RespErr()
+		return
+	}
+	q.Resp()
+}
+
+func gradeH(ctx context.Context) {
+	z.Info("---->" + cmn.FncName())
+
+	// // 测试使用强行触发错误
+	// forceErr := ""
+	// if val := ctx.Value("force-error"); val != nil {
+	// 	forceErr = val.(string)
+	// }
+
+	q := cmn.GetCtxValue(ctx)
+
+	method := strings.ToLower(q.R.Method)
+	switch method {
+	case "get":
+		var (
+			// 结果集
+			err  error
+			data []byte
+
+			// 必需参数集
+			category      string // 类别：exam practice
+			examSessionID int64  // 考试场次ID
+			practiceID    int64  // 练习ID
+		)
+		var p string
+		queryParams := q.R.URL.Query()
+
+		if category = queryParams.Get("category"); category == "" {
+			q.Err = errors.New("传入类别参数为空")
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		// 用户身份
+		// if q.SysUser == nil || !q.SysUser.ID.Valid || forceErr == "q.SysUser nil" {
+		// 	q.Err = fmt.Errorf("非法请求，鉴权用户失败")
+		// 	z.Error(q.Err.Error())
+		// 	q.RespErr()
+		// 	return
+		// }
+		// userID = q.SysUser.ID.Int64
+
+		dmlCtx, cancel := context.WithTimeout(ctx, TIMEOUT)
+		defer cancel()
+
+		switch category {
+		case "exam":
+			p = queryParams.Get("examSessionID")
+			if p == "" {
+				q.Err = fmt.Errorf("examSessionID为空: %s", p)
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+			examSessionID, err = strconv.ParseInt(p, 10, 64)
+			if err != nil {
+				q.Err = fmt.Errorf("examSessionID无效, 传入:%s", p)
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+
+			var result Analysis
+
+			result, err = gradeAnalysisByID(dmlCtx, examSessionID, 0)
+			if err != nil {
+				q.Err = err
+				q.RespErr()
+				return
+			}
+
+			data, err = json.Marshal(result)
+			if err != nil {
+				q.Err = fmt.Errorf("结果json序列化失败: %v", err)
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+
+		case "practice":
+			if p = queryParams.Get("practiceID"); p == "" {
+				q.Err = fmt.Errorf("practiceID为空: %s", p)
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+			if practiceID, err = strconv.ParseInt(p, 10, 64); err != nil {
+				q.Err = fmt.Errorf("传入practiceID无效: %s", p)
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+
+			var result Analysis
+
+			result, err = gradeAnalysisByID(dmlCtx, 0, practiceID)
+			if err != nil {
+				q.Err = err
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+
+			data, err = json.Marshal(result)
+			if err != nil {
+				q.Err = fmt.Errorf("json序列化失败: %v", err)
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+
+		default:
+			q.Err = fmt.Errorf("不支持的类型: %s", category)
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+		q.Msg.Data = data
+
+		q.Err = nil
+		q.Msg.Status = 0
+		q.Msg.Msg = "success"
+
+	default:
+		q.Err = fmt.Errorf("unsupported method: %s", method)
+		z.Warn(q.Err.Error())
+		q.RespErr()
+		return
+	}
+	q.Resp()
+}
+
+func gradeSH(ctx context.Context) {
+	z.Info("---->" + cmn.FncName())
+
+	// 测试使用强行触发错误
+	forceErr := ""
+	if val := ctx.Value("force-error"); val != nil {
+		forceErr = val.(string)
+	}
+
+	q := cmn.GetCtxValue(ctx)
+
+	method := strings.ToLower(q.R.Method)
+	switch method {
+	case "get":
+		var (
+			// 结果集
+			err  error
+			data []byte
+
+			// 必需参数集
+			category      string // 类别：exam practice
+			userID        int64
+			studentID     int64
+			examSessionID int64
+			practiceID    int64
+		)
+		var p string
+		queryParams := q.R.URL.Query()
+
+		// TODO：不支持传入ID
+		if p = queryParams.Get("studentID"); p != "" {
+			if studentID, err = strconv.ParseInt(p, 10, 64); err != nil {
+				q.Err = fmt.Errorf("无效学生ID: %s", p)
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+		} else {
+			if q.SysUser == nil || !q.SysUser.ID.Valid || forceErr == "q.SysUser nil" {
+				q.Err = fmt.Errorf("非法请求，鉴权用户失败")
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+			userID = q.SysUser.ID.Int64
+			studentID = userID
+		}
+		dmlCtx, cancel := context.WithTimeout(ctx, TIMEOUT)
+		defer cancel()
+
+		conn := cmn.GetPgxConn()
+		if conn == nil || forceErr == "conn nil" {
+			err = fmt.Errorf("查询练习成绩列表获取数据库连接失败")
+			z.Error(err.Error())
+			return
+		}
+
+		var tx pgx.Tx
+		tx, err = conn.Begin(dmlCtx)
+		if err != nil || forceErr == "conn begin tx fail" {
+			err = fmt.Errorf("开启事务失败: %w", err)
+			z.Error(err.Error())
+			return
+		}
+
+		defer func() {
+			if err != nil {
+				tx.Rollback(ctx)
+			} else {
+				tx.Commit(ctx)
+			}
+		}()
+
+		if category = queryParams.Get("category"); category == "" {
+			q.Err = fmt.Errorf("不支持的类型: %s", category)
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		switch category {
+		case "exam":
+			if p = queryParams.Get("examSessionID"); p == "" {
+				q.Err = fmt.Errorf("examSessionID为空: %s", p)
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+			if examSessionID, err = strconv.ParseInt(p, 10, 64); err != nil {
+				q.Err = fmt.Errorf("examSessionID无效: %d", examSessionID)
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+
+			var result Map
+
+			result, err = getScoreExam(dmlCtx, tx, studentID, examSessionID)
+			if err != nil {
+				q.Err = err
+				q.RespErr()
+				return
+			}
+
+			data, err = json.Marshal(result)
+			if err != nil {
+				q.Err = fmt.Errorf("json序列化失败: %v", err)
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+
+		case "practice":
+			if p = queryParams.Get("practiceID"); p == "" {
+				q.Err = fmt.Errorf("practiceID为空: %s", p)
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+			if practiceID, err = strconv.ParseInt(p, 10, 64); err != nil {
+				q.Err = fmt.Errorf("practiceID无效: %s", p)
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+
+			var result Map
+
+			result, err = getScorePractice(dmlCtx, tx, studentID, practiceID)
+			if err != nil {
+				q.Err = err
+				q.RespErr()
+				return
+			}
+
+			data, err = json.Marshal(result)
+			if err != nil {
+				q.Err = fmt.Errorf("json序列化失败: %v", err)
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+
+		default:
+			q.Err = fmt.Errorf("不支持的类型: %s", category)
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+		q.Msg.Data = data
+
+		q.Err = nil
+		q.Msg.Status = 0
+		q.Msg.Msg = "success"
+
+	default:
+		q.Err = fmt.Errorf("unsupported method: %s", method)
+		z.Warn(q.Err.Error())
 		q.RespErr()
 		return
 	}

@@ -167,6 +167,20 @@ func Enroll(author string) {
 		DefaultDomain: int64(cmn.CDomainSys),
 	})
 
+	_ = cmn.AddService(&cmn.ServeEndPoint{
+		Fn: HandleMarkingState,
+
+		Path: "/mark/state",
+		Name: "/mark/state",
+
+		Developer: developer,
+		WhiteList: true,
+
+		DomainID: int64(cmn.CDomainSys),
+
+		DefaultDomain: int64(cmn.CDomainSys),
+	})
+
 }
 
 func HandleExamList(ctx context.Context) {
@@ -183,7 +197,7 @@ func HandleExamList(ctx context.Context) {
 
 	queryParams := q.R.URL.Query()
 
-	pageIndexStr := queryParams.Get("page_index")
+	pageIndexStr := queryParams.Get("page")
 	if pageIndexStr == "" {
 		pageIndexStr = "1"
 	}
@@ -302,7 +316,7 @@ func HandlePracticeList(ctx context.Context) {
 
 	queryParams := q.R.URL.Query()
 
-	pageIndexStr := queryParams.Get("page_index")
+	pageIndexStr := queryParams.Get("page")
 	if pageIndexStr == "" {
 		pageIndexStr = "1"
 	}
@@ -814,6 +828,72 @@ func HandleMarkingResults(ctx context.Context) {
 
 }
 
+func HandleMarkingState(ctx context.Context) {
+	q := cmn.GetCtxValue(ctx)
+	z.Info("---->" + cmn.FncName())
+	forceErr, _ := ctx.Value(ForceErrKey).(string) // 用于强制执行错误处理代码
+	method := strings.ToLower(q.R.Method)
+	if method != "patch" {
+		q.Err = fmt.Errorf("please call /api/mark/state with http patch method")
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+
+	queryParams := q.R.URL.Query()
+
+	examSessionIDStr := queryParams.Get("exam_session_id")
+	if examSessionIDStr == "" {
+		q.Err = fmt.Errorf("exam_session_id is required")
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+
+	examSessionID, err := strconv.ParseInt(examSessionIDStr, 10, 64)
+	if err != nil {
+		q.Err = fmt.Errorf("error parsing exam_session_id: %v", err)
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+
+	pgxConn := cmn.GetPgxConn()
+	tx, err := pgxConn.Begin(ctx)
+	if err != nil || forceErr == "HandleMarkingState-pgxConn.Begin" {
+		q.Err = fmt.Errorf("begin transaction error: %v", err)
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+
+	defer func() {
+		if err != nil {
+			err_ := tx.Rollback(ctx)
+			if err_ != nil || forceErr == "HandleMarkingState-tx.Rollback" {
+				z.Sugar().Error(err_)
+			}
+		} else {
+			err_ := tx.Commit(ctx)
+			if err_ != nil || forceErr == "HandleMarkingState-tx.Commit" {
+				z.Sugar().Error(err_)
+			}
+		}
+	}()
+
+	_, err = updateExamSessionOrPracticeSubmissionState(ctx, &tx, q.SysUser.ID.Int64, []int64{examSessionID}, nil, "08")
+	if err != nil {
+		q.Err = err
+		q.RespErr()
+		return
+	}
+
+	q.Err = nil
+	q.Resp()
+	return
+
+}
+
 func HandleResultsSubmission(ctx context.Context) {
 	q := cmn.GetCtxValue(ctx)
 	z.Info("---->" + cmn.FncName())
@@ -905,6 +985,7 @@ func HandleResultsSubmission(ctx context.Context) {
 	var status string
 	var examSessionIDs []int64
 	var practiceSubmissionIDs []int64
+	// 考试：10， 练习提交：08
 	if cond.ExamSessionID > 0 {
 		status = "10"
 		examSessionIDs = []int64{cond.ExamSessionID}
@@ -916,6 +997,13 @@ func HandleResultsSubmission(ctx context.Context) {
 	pgxConn := cmn.GetPgxConn()
 
 	tx, err := pgxConn.Begin(ctx)
+	if err != nil || forceErr == "HandleResultsSubmission-pgxConn.Begin" {
+		q.Err = fmt.Errorf("begin transaction error: %v", err)
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+
 	defer func() {
 		if err != nil {
 			err_ := tx.Rollback(ctx)
@@ -936,6 +1024,10 @@ func HandleResultsSubmission(ctx context.Context) {
 		q.RespErr()
 		return
 	}
+
+	q.Err = nil
+	q.Resp()
+	return
 }
 
 func MarkObjectiveQuestionAnswers(ctx context.Context, cond QueryCondition) (err error) {
@@ -1110,6 +1202,7 @@ func MarkObjectiveQuestionAnswers(ctx context.Context, cond QueryCondition) (err
 	var status string
 	var examSessionIDs []int64
 	var practiceSubmissionIDs []int64
+	// 考试：10， 练习提交：08
 	if cond.ExamSessionID > 0 {
 		status = "10"
 		examSessionIDs = []int64{cond.ExamSessionID}
