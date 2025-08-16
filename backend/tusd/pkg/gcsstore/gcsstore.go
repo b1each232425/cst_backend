@@ -42,11 +42,6 @@ type GCSStore struct {
 	Service GCSAPI
 }
 
-func (store GCSStore) Query(ctx context.Context, criteria string) (result []byte, err error) {
-	//TODO implement me
-	panic("implement me")
-}
-
 // New constructs a new GCS storage backend using the supplied GCS bucket name
 // and service object.
 func New(bucket string, service GCSAPI) GCSStore {
@@ -157,9 +152,9 @@ func (upload gcsUpload) GetInfo(ctx context.Context) (handler.FileInfo, error) {
 		}
 		return info, err
 	}
+	defer r.Close()
 
-	buf := make([]byte, r.Size())
-	_, err = r.Read(buf)
+	buf, err := io.ReadAll(r)
 	if err != nil {
 		return info, err
 	}
@@ -348,4 +343,9 @@ func (store GCSStore) keyWithPrefix(key string) string {
 		prefix += "/"
 	}
 	return prefix + key
+}
+
+func (store GCSStore) Query(ctx context.Context, criteria string) (result []byte, err error) {
+	//TODO implement me
+	panic("implement me")
 }
