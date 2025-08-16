@@ -1109,10 +1109,7 @@ func gradeAnalysisByID(ctx context.Context, esid int64, pid int64) (Analysis, er
 
 	var tx pgx.Tx
 	tx, err = conn.Begin(ctx)
-	if forceErr == "conn begin tx fail" {
-		err = errors.New("conn begin tx fail")
-	}
-	if err != nil {
+	if err != nil || forceErr == "conn begin tx fail" {
 		err = fmt.Errorf("开启事务失败: %w", err)
 		z.Error(err.Error())
 		return analysis, err
@@ -1352,10 +1349,7 @@ func getScoreExam(ctx context.Context, studentID, examSessionID int64) (Map, err
 
 	var tx pgx.Tx
 	tx, err = conn.Begin(ctx)
-	if forceErr == "conn begin tx fail" {
-		err = errors.New("conn begin tx fail")
-	}
-	if err != nil {
+	if err != nil || forceErr == "conn begin tx fail" {
 		err = fmt.Errorf("开启事务失败: %w", err)
 		z.Error(err.Error())
 		return result, err
@@ -1367,7 +1361,7 @@ func getScoreExam(ctx context.Context, studentID, examSessionID int64) (Map, err
 		if !txSuccess || forceErr == "txSuccess must fail" {
 			rollbackErr := tx.Rollback(ctx)
 			if rollbackErr != nil || forceErr == "tx rollback fail" {
-				err = fmt.Errorf("提交考试成绩失败: 回滚事务失败: %w", rollbackErr)
+				err = fmt.Errorf("回滚事务失败: %w", rollbackErr)
 				z.Error(err.Error())
 			}
 			return
@@ -1375,7 +1369,7 @@ func getScoreExam(ctx context.Context, studentID, examSessionID int64) (Map, err
 		// 提交事务
 		err = tx.Commit(ctx)
 		if err != nil || forceErr == "tx commit fail" {
-			err = fmt.Errorf("提交考试成绩失败: %w", err)
+			err = fmt.Errorf("查询学生成绩失败: %w", err)
 			z.Error(err.Error())
 			return
 		}
