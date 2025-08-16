@@ -2,13 +2,11 @@ package exam_service
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
+	"sync"
 	"time"
 
-	// "github.com/gomodule/redigo/redis"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
 	"w2w.io/cmn"
 )
@@ -16,14 +14,21 @@ import (
 //annotation:exam_service
 //author:{"name":"Ma Yuxin","tel":"13824087366", "email":"dbs45412@163.com"}
 
-// 基于Redis有序集合的考试状态维护服务
+// 基于Go原生定时器的考试状态维护服务
 
 const (
-	EXAM_TIMER_SET_KEY = "exam:timers"
-
 	// 事件类型
 	EVENT_TYPE_EXAM_SESSION_START = "exam_session_start"
 	EVENT_TYPE_EXAM_SESSION_END   = "exam_session_end"
+
+	// 默认最大并发数
+	DEFAULT_MAX_WORKERS = 10
+)
+
+var (
+	z            *zap.Logger
+	pgxConn      *pgxpool.Pool
+	examTimerMgr *ExamTimerManager
 )
 
 // 事件数据结构
@@ -33,564 +38,138 @@ type ExamEvent struct {
 	ExamSessionID int64  `json:"exam_session_id,omitempty"`
 }
 
-var (
-	z           *zap.Logger
-	pgxConn     *pgxpool.Pool
-	redisClient *redis.Client
-)
+// 定时器管理器
+type ExamTimerManager struct {
+	timers     map[string]*time.Timer // key: "type_sessionID", value: timer
+	mutex      sync.Mutex
+	ctx        context.Context
+	cancel     context.CancelFunc
+	eventQueue chan ExamEvent
+	maxWorkers int // 最大并发worker数量
+}
 
 func init() {
 	cmn.PackageStarters = append(cmn.PackageStarters, func() {
 		z = cmn.GetLogger()
 		pgxConn = cmn.GetPgxConn()
-		redisClient = cmn.GetRedisConn()
-
 		z.Info("exam_service zLogger settled")
 	})
 }
 
-// 初始化现有考试的Redis定时器
-func initializeExamTimers(ctx context.Context) {
+// 创建定时器管理器的方法
+func NewExamTimerManager(ctx context.Context, cancel context.CancelFunc) *ExamTimerManager {
 	z.Info("---->" + cmn.FncName())
+	maxWorkers := DEFAULT_MAX_WORKERS
 
-	forceErr := ""
-	if val := ctx.Value("initializeExamTimers-force-error"); val != nil {
-		forceErr = val.(string)
+	tm := &ExamTimerManager{
+		timers:     make(map[string]*time.Timer),
+		ctx:        ctx,
+		cancel:     cancel,
+		eventQueue: make(chan ExamEvent, maxWorkers*15),
+		maxWorkers: maxWorkers,
 	}
 
-	defer func() {
-		r := recover()
-		if forceErr == "panic" {
-			r = fmt.Errorf("panic") // 强制触发的panic错误
-		}
-		if r != nil {
-			z.Error("Panic recovered in initializeExamTimers",
-				zap.Any("panic", r),
-				zap.Stack("stack"))
-		}
-	}()
+	// 启动固定数量的worker协程
+	tm.startEventWorkers()
 
-	now := time.Now().UnixMilli()
-
-	// 查询场次信息
-	query := `
-        SELECT
-            es.id as session_id,
-            es.exam_id,
-            es.start_time,
-            es.end_time
-        FROM t_exam_info ei
-        JOIN t_exam_session es ON ei.id = es.exam_id
-        WHERE ei.status IN ('02', '04') -- 待开始或进行中的考试
-            AND es.status != '14' -- 未删除的场次
-            AND (es.start_time > $1 OR es.end_time > $1)
-        ORDER BY es.exam_id, es.id
-    `
-	rows, err := pgxConn.Query(ctx, query, now)
-	if forceErr == "queryExamSessions" {
-		err = fmt.Errorf("强制查询考试场次信息错误")
-	}
-	if err != nil {
-		z.Error("查询考试场次信息失败", zap.Error(err))
-		return
-	}
-	defer rows.Close()
-
-	sessionCount := 0
-	z.Info(forceErr)
-
-	// 设置场次定时器
-	for rows.Next() {
-		var examSessionID, examID, startTime, endTime int64
-		err := rows.Scan(&examSessionID, &examID, &startTime, &endTime)
-		z.Info("", zap.Int64("exam_session_id", examSessionID),
-			zap.Int64("exam_id", examID),
-		)
-		z.Info(forceErr)
-		if forceErr == "scanExamSessionInfo" {
-			err = fmt.Errorf("强制获取考试场次信息错误")
-		}
-		if err != nil {
-			z.Error("获取考试场次信息失败", zap.Error(err))
-			return
-		}
-
-		// 场次开始定时器
-		if startTime > now {
-			setRedisTimer(EVENT_TYPE_EXAM_SESSION_START, examSessionID, startTime, ExamEvent{
-				ExamSessionID: examSessionID,
-				ExamID:        examID,
-			})
-		}
-
-		// 场次结束定时器
-		if endTime > now {
-			setRedisTimer(EVENT_TYPE_EXAM_SESSION_END, examSessionID, endTime, ExamEvent{
-				ExamSessionID: examSessionID,
-				ExamID:        examID,
-			})
-		}
-		sessionCount++
-	}
-
-	return
+	return tm
 }
 
-// 轮询Redis有序集合检查到期事件
-func pollRedisTimers(ctx context.Context) {
+// 启动固定数量的事件处理协程
+func (tm *ExamTimerManager) startEventWorkers() {
 	z.Info("---->" + cmn.FncName())
-
-	forceErr := ""
-	if val := ctx.Value("pollRedisTimers-force-error"); val != nil {
-		forceErr = val.(string)
-	}
-	_ = forceErr
-
-	defer func() {
-		if r := recover(); r != nil {
-			z.Error("Panic recovered in pollRedisTimers",
-				zap.Any("panic", r),
-				zap.Stack("stack"))
-
-			// 重新启动轮询
-			time.Sleep(5 * time.Second)
-			go pollRedisTimers(ctx)
-		}
-	}()
-
-	// 计算到下一个整分钟的等待时间
-	now := time.Now()
-	nextMinute := now.Truncate(time.Minute).Add(time.Minute)
-	waitDuration := nextMinute.Sub(now)
-	time.Sleep(waitDuration)
-
-	luaScript := `
-		local scheduled_key = KEYS[1]
-		local now = tonumber(ARGV[1])
-		local limit = tonumber(ARGV[2])
-
-		-- 获取到期的事件
-		local events = redis.call("ZRANGEBYSCORE", scheduled_key, 0, now, "LIMIT", 0, limit)
-		
-		if #events > 0 then
-			-- 从有序集合中删除这些事件
-			for i = 1, #events do
-				redis.call("ZREM", scheduled_key, events[i])
-			end
-		end
-		
-		return events
-	`
-
-	for {
-		now := time.Now()
-
-		func() {
-			// 获取并删除到期事件
-			result := redisClient.Eval(ctx, luaScript, []string{EXAM_TIMER_SET_KEY}, now.UnixMilli(), 100)
-			if result.Err() != nil || forceErr == "luaScriptError" {
-				err := result.Err()
-				if forceErr == "luaScriptError" {
-					err = fmt.Errorf("强制Lua脚本错误")
+	for i := 0; i < tm.maxWorkers; i++ {
+		go func(workerID int) {
+			for {
+				select {
+				case <-tm.ctx.Done():
+					return
+				case event := <-tm.eventQueue:
+					tm.processEvent(event, workerID)
 				}
-				z.Error("Failed to execute Lua script for timer events", zap.Error(err))
-				return
 			}
-
-			events, err := result.StringSlice()
-			if forceErr == "luaScriptResult" {
-				err = fmt.Errorf("强制Lua脚本结果错误")
-			}
-			if err != nil {
-				z.Error("Failed to convert Lua script result", zap.Error(err))
-				return
-			}
-
-			// 处理到期事件
-			if len(events) > 0 {
-				handleTimerEventsBatch(ctx, events)
-			}
-		}()
-
-		nextMinute := now.Truncate(time.Minute).Add(time.Minute)
-		waitDuration := nextMinute.Sub(now)
-		time.Sleep(waitDuration)
+		}(i)
 	}
 }
 
-// 批量处理定时器事件
-func handleTimerEventsBatch(ctx context.Context, eventStrs []string) {
+// 处理单个事件
+func (tm *ExamTimerManager) processEvent(event ExamEvent, workerID int) {
 	z.Info("---->" + cmn.FncName())
-
-	forceErr := ""
-	if val := ctx.Value("handleTimerEventsBatch-force-error"); val != nil {
-		forceErr = val.(string)
+	switch event.Type {
+	case "exam_session_start":
+		handleExamSessionStart(tm.ctx, event)
+	case "exam_session_end":
+		handleExamSessionEnd(tm.ctx, event)
+	default:
+		z.Warn("未知事件类型",
+			zap.String("event_type", event.Type),
+			zap.Int64("session_id", event.ExamSessionID))
 	}
-
-	defer func() {
-		r := recover()
-		if forceErr == "panic" {
-			r = fmt.Errorf("强制panic触发")
-		}
-		if r != nil {
-			z.Error("Panic recovered in handleTimerEventsBatch",
-				zap.Any("panic", r),
-				zap.Stack("stack"))
-		}
-	}()
-
-	// 分类事件
-	var sessionStartEvents []ExamEvent
-	var sessionEndEvents []ExamEvent
-
-	for _, eventStr := range eventStrs {
-		var event ExamEvent
-		if err := json.Unmarshal([]byte(eventStr), &event); err != nil || forceErr == "unmarshalEvent" {
-			z.Error("Failed to unmarshal event", zap.Error(err))
-			continue
-		}
-
-		switch event.Type {
-		case EVENT_TYPE_EXAM_SESSION_START:
-			sessionStartEvents = append(sessionStartEvents, event)
-		case EVENT_TYPE_EXAM_SESSION_END:
-			sessionEndEvents = append(sessionEndEvents, event)
-		default:
-			z.Warn("未知的事件类型", zap.String("type", event.Type))
-		}
-	}
-
-	// 批量处理开始事件
-	if len(sessionStartEvents) > 0 {
-		handleExamSessionStartBatch(ctx, sessionStartEvents)
-	}
-
-	// 批量处理结束事件
-	if len(sessionEndEvents) > 0 {
-		handleExamSessionEndBatch(ctx, sessionEndEvents)
-	}
-
-	return
 }
 
-// 批量处理考试场次开始事件
-func handleExamSessionStartBatch(ctx context.Context, events []ExamEvent) {
+// 设置定时器
+func (tm *ExamTimerManager) SetTimer(examSessionID int64, triggerTime int64, event ExamEvent) {
 	z.Info("---->" + cmn.FncName())
+	tm.mutex.Lock()
+	defer tm.mutex.Unlock()
 
-	forceErr := ""
-	if val := ctx.Value("handleExamSessionStartBatch-force-error"); val != nil {
-		forceErr = val.(string)
+	timerKey := fmt.Sprintf("%s_%d", event.Type, examSessionID)
+
+	// 如果已存在同类型的定时器，先停止它
+	if existingTimer, exists := tm.timers[timerKey]; exists {
+		existingTimer.Stop()
+		delete(tm.timers, timerKey)
 	}
 
-	defer func() {
-		r := recover()
-		if forceErr == "panic" {
-			r = fmt.Errorf("强制panic触发")
+	// 计算延迟时间
+	delay := time.Duration(triggerTime-time.Now().UnixMilli()) * time.Millisecond
+
+	// 如果时间已过，立即将事件添加到处理队列
+	if delay <= 0 {
+		select {
+		case tm.eventQueue <- event:
+		case <-tm.ctx.Done():
+			return
 		}
-		if r != nil {
-			z.Error("Panic recovered in handleExamSessionStartBatch",
-				zap.Any("panic", r),
-				zap.Stack("stack"))
-		}
-	}()
-
-	now := time.Now().UnixMilli()
-
-	examSessionIDs := make([]int64, 0, len(events))
-	for _, event := range events {
-		examSessionIDs = append(examSessionIDs, event.ExamSessionID)
-	}
-
-	// 批量查询场次信息和考生数量
-	query := `
-		SELECT 
-			es.id as session_id,
-			es.exam_id,
-			COALESCE(e_count.count, 0) as examinee_count
-		FROM t_exam_session es
-		LEFT JOIN (
-			SELECT exam_session_id, COUNT(*) as count
-			FROM t_examinee 
-			WHERE status != '08' AND exam_session_id = ANY($1)
-			GROUP BY exam_session_id
-		) e_count ON es.id = e_count.exam_session_id
-		WHERE es.id = ANY($1) AND es.status != '14'
-	`
-
-	rows, err := pgxConn.Query(ctx, query, examSessionIDs)
-	if err != nil || forceErr == "queryExamSessions" {
-		z.Error("批量查询场次信息失败", zap.Error(err))
 		return
 	}
-	defer rows.Close()
 
-	// 收集需要处理的数据
-	type examSessionInfo struct {
-		examSessionID int64
-		ExamID        int64
-		ExamineeCount int
-	}
-
-	sessionMap := make(map[int64]examSessionInfo)
-	var abnormalExamIDs []int64
-	var normalExamSessions []examSessionInfo
-
-	for rows.Next() {
-		var info examSessionInfo
-		err := rows.Scan(&info.examSessionID, &info.ExamID, &info.ExamineeCount)
-		if err != nil || forceErr == "scanExamSessionInfo" {
-			z.Error("扫描场次信息失败", zap.Error(err))
+	// 创建新的定时器
+	timer := time.AfterFunc(delay, func() {
+		// 将事件添加到队列
+		select {
+		case tm.eventQueue <- event:
+		case <-tm.ctx.Done():
 			return
 		}
 
-		sessionMap[info.examSessionID] = info
+		// 从map中移除定时器
+		tm.mutex.Lock()
+		delete(tm.timers, timerKey)
+		tm.mutex.Unlock()
+	})
 
-		if info.ExamineeCount == 0 {
-			// 没有考生的考试需要设为异常状态
-			abnormalExamIDs = append(abnormalExamIDs, info.ExamID)
-		} else {
-			// 有考生的场次正常开始
-			normalExamSessions = append(normalExamSessions, info)
-		}
-	}
+	tm.timers[timerKey] = timer
 
-	// 批量处理异常考试
-	if len(abnormalExamIDs) > 0 {
-		abnormalQuery := `
-			UPDATE t_exam_info
-			SET status = '10', -- 考试异常
-				update_time = $1
-			WHERE id = ANY($2)
-		`
-		_, err := pgxConn.Exec(ctx, abnormalQuery, now, abnormalExamIDs)
-		if err != nil || forceErr == "updateAbnormalExams" {
-			z.Error("批量更新考试为异常状态失败", zap.Error(err))
-			return
-		}
-
-		// 取消异常考试的定时器
-		for _, examID := range abnormalExamIDs {
-			err := CancelExamTimers(ctx, examID)
-			if err != nil || forceErr == "cancelAbnormalExamTimers" {
-				z.Error("取消考试定时器失败", zap.Int64("exam_id", examID), zap.Error(err))
-				return
-			}
-		}
-	}
-
-	// 批量处理正常开始的场次
-	if len(normalExamSessions) > 0 {
-		normalExamSessionIDs := make([]int64, 0, len(normalExamSessions))
-		examIDSet := make(map[int64]bool)
-
-		for _, info := range normalExamSessions {
-			normalExamSessionIDs = append(normalExamSessionIDs, info.examSessionID)
-			examIDSet[info.ExamID] = true
-		}
-
-		// 批量更新场次状态
-		sessionUpdateQuery := `
-			UPDATE t_exam_session 
-			SET status = '04', -- 进行中
-				update_time = $1
-			WHERE id = ANY($2) AND status = '02'
-		`
-		_, err := pgxConn.Exec(ctx, sessionUpdateQuery, now, normalExamSessionIDs)
-		if err != nil || forceErr == "updateNormalExamSessions" {
-			z.Error("批量更新场次状态失败", zap.Error(err))
-			return
-		}
-
-		// 批量更新考试状态
-		examIDs := make([]int64, 0, len(examIDSet))
-		for examID := range examIDSet {
-			examIDs = append(examIDs, examID)
-		}
-
-		examUpdateQuery := `
-			UPDATE t_exam_info 
-			SET status = '04', -- 进行中
-				update_time = $1
-			WHERE id = ANY($2) AND status = '02'
-		`
-		_, err = pgxConn.Exec(ctx, examUpdateQuery, now, examIDs)
-		if err != nil || forceErr == "updateNormalExams" {
-			z.Error("批量更新考试状态失败", zap.Error(err))
-			return
-		}
-	}
-
-	return
+	z.Info("设置定时器",
+		zap.String("event_type", event.Type),
+		zap.Int64("exam_session_id", examSessionID),
+		zap.Duration("delay", delay))
 }
 
-// 批量处理考试场次结束事件
-func handleExamSessionEndBatch(ctx context.Context, events []ExamEvent) {
+// 取消定时器
+func (tm *ExamTimerManager) CancelTimer(eventType string, examSessionID int64) {
 	z.Info("---->" + cmn.FncName())
+	tm.mutex.Lock()
+	defer tm.mutex.Unlock()
 
-	forceErr := ""
-	if val := ctx.Value("handleExamSessionEndBatch-force-error"); val != nil {
-		forceErr = val.(string)
-	}
-
-	defer func() {
-		r := recover()
-		if forceErr == "panic" {
-			r = fmt.Errorf("强制触发的panic错误")
-		}
-		if r != nil {
-			z.Error("Panic recovered in handleExamSessionEndBatch",
-				zap.Any("panic", r),
-				zap.Stack("stack"))
-		}
-	}()
-
-	now := time.Now().UnixMilli()
-
-	// 提取所有场次ID
-	examSessionIDs := make([]int64, 0, len(events))
-	for _, event := range events {
-		examSessionIDs = append(examSessionIDs, event.ExamSessionID)
-	}
-
-	// 批量更新考生状态
-	updateExamineesQuery := `
-		WITH examinee_to_update AS (
-			SELECT 
-				e.id,
-				CASE
-					WHEN e.start_time IS NOT NULL THEN '10' -- 如果该场考试考生有开始时间，设为已交卷
-					ELSE '02' -- 如果该场考试考生没有开始时间，设为已缺考
-				END AS new_status,
-				CASE
-					WHEN e.start_time IS NOT NULL THEN v.actual_end_time
-					ELSE NULL
-				END AS new_end_time
-			FROM t_examinee e
-			JOIN v_examinee_info v ON e.id = v.id
-			JOIN t_exam_session es ON e.exam_session_id = es.id
-			JOIN t_exam_info ei ON es.exam_id = ei.id
-			WHERE e.exam_session_id = ANY($1)
-				AND v.actual_end_time <= $2
-				AND e.status IN ('00', '16') -- 只更新处于正常考和监考员允许进入考试状态的考生
-				AND ei.status IN ('04', '06')
-		)
-		UPDATE t_examinee te
-		SET status = u.new_status,
-			end_time = COALESCE(u.new_end_time, te.end_time),
-			update_time = $2
-		FROM examinee_to_update u
-		WHERE te.id = u.id
-	`
-
-	_, err := pgxConn.Exec(ctx, updateExamineesQuery, examSessionIDs, now)
-	if err != nil || forceErr == "updateExaminees" {
-		z.Error("批量更新考生状态失败", zap.Error(err))
-	}
-	// 检查每个场次是否还有未结束的考生
-	checkQuery := `
-		SELECT 
-			es.id as session_id,
-			es.exam_id,
-			COALESCE(unfinished.count, 0) as unfinished_count
-		FROM t_exam_session es
-		LEFT JOIN (
-			SELECT exam_session_id, COUNT(*) as count
-			FROM t_examinee 
-			WHERE status NOT IN ('02', '06', '08', '10', '12') 
-				AND exam_session_id = ANY($1)
-			GROUP BY exam_session_id
-		) unfinished ON es.id = unfinished.exam_session_id
-		WHERE es.id = ANY($1)
-	`
-
-	rows, err := pgxConn.Query(ctx, checkQuery, examSessionIDs)
-	if err != nil || forceErr == "checkUnfinishedExaminees" {
-		z.Error("批量检查未结束考生失败", zap.Error(err))
-		return
-	}
-	defer rows.Close()
-
-	var readyToEndExamSessions []int64
-	var delayedExamSessions []struct {
-		ExamSessionID int64
-		ExamID        int64
-	}
-
-	for rows.Next() {
-		var examSessionID, examID int64
-		var unfinishedCount int
-		err := rows.Scan(&examSessionID, &examID, &unfinishedCount)
-		if forceErr == "scanUnfinishedExaminees" {
-			err = fmt.Errorf("强制获取未结束考生数量错误")
-		}
-		if err != nil {
-			z.Error("获取未结束的考生数量失败", zap.Error(err))
-			return
-		}
-
-		if unfinishedCount > 0 {
-			// 还有考生未结束，需要延迟处理
-			delayedExamSessions = append(delayedExamSessions, struct {
-				ExamSessionID int64
-				ExamID        int64
-			}{examSessionID, examID})
-		} else {
-			// 可以结束的场次
-			readyToEndExamSessions = append(readyToEndExamSessions, examSessionID)
-		}
-	}
-
-	// 处理延迟的场次
-	if len(delayedExamSessions) > 0 {
-		delayedEndTime := now + 60*1000
-		for _, delayed := range delayedExamSessions {
-			setRedisTimer(EVENT_TYPE_EXAM_SESSION_END, delayed.ExamSessionID, delayedEndTime, ExamEvent{
-				ExamSessionID: delayed.ExamSessionID,
-				ExamID:        delayed.ExamID,
-			})
-		}
-	}
-
-	// 处理可以结束的场次
-	if len(readyToEndExamSessions) > 0 {
-		// 更新场次状态为已结束
-		sessionEndQuery := `
-			UPDATE t_exam_session 
-			SET status = '06', -- 已结束
-				update_time = $1
-			WHERE id = ANY($2) AND status = '04'
-		`
-		_, err := pgxConn.Exec(ctx, sessionEndQuery, now, readyToEndExamSessions)
-		if forceErr == "updateSessionEndStatus" {
-			err = fmt.Errorf("强制更新场次状态为已结束错误")
-		}
-		if err != nil {
-			z.Error("批量更新场次状态为已结束失败", zap.Error(err))
-			return
-		}
-
-		// 检查并更新考试状态
-		examUpdateQuery := `
-			UPDATE t_exam_info ei
-			SET status = '06', -- 已结束
-				update_time = $1
-			WHERE ei.status = '04'
-				AND NOT EXISTS (
-					SELECT 1 FROM t_exam_session es
-					WHERE es.exam_id = ei.id AND es.status = '04'
-				)
-				AND EXISTS (
-					SELECT 1 FROM t_exam_session es2
-					WHERE es2.exam_id = ei.id AND es2.id = ANY($2)
-				)
-		`
-		_, err = pgxConn.Exec(ctx, examUpdateQuery, now, readyToEndExamSessions)
-		if forceErr == "updateExamEndStatus" {
-			err = fmt.Errorf("强制更新考试状态为已结束错误")
-		}
-		if err != nil {
-			z.Error("批量更新考试状态为已结束失败", zap.Error(err))
-		}
+	timerKey := fmt.Sprintf("%s_%d", eventType, examSessionID)
+	if timer, exists := tm.timers[timerKey]; exists {
+		timer.Stop()
+		delete(tm.timers, timerKey)
+		z.Info("取消定时器",
+			zap.String("event_type", eventType),
+			zap.Int64("exam_session_id", examSessionID))
 	}
 }
 
@@ -610,7 +189,7 @@ func SetExamTimers(ctx context.Context, examID int64) error {
 			es.start_time,
 			es.end_time
 		FROM t_exam_session es
-		WHERE es.exam_id = $1 AND es.status != '14'
+		WHERE es.exam_id = $1 AND es.status NOT IN ('14', '16')
 	`
 
 	rows, err := pgxConn.Query(ctx, query, examID)
@@ -651,17 +230,25 @@ func SetExamTimers(ctx context.Context, examID int64) error {
 			StartTime:     startTime,
 			EndTime:       endTime,
 		})
+
+		z.Info("查询到考试场次信息",
+			zap.Int64("exam_id", examID),
+			zap.Int64("exam_session_id", sessionID),
+			zap.Int64("start_time", startTime),
+			zap.Int64("end_time", endTime))
 	}
 
 	for _, examSession := range examSessionInfo {
 		// 设置场次开始定时器
-		setRedisTimer(EVENT_TYPE_EXAM_SESSION_START, examSession.ExamSessionID, examSession.StartTime, ExamEvent{
+		examTimerMgr.SetTimer(examSession.ExamSessionID, examSession.StartTime, ExamEvent{
+			Type:          EVENT_TYPE_EXAM_SESSION_START,
 			ExamSessionID: examSession.ExamSessionID,
 			ExamID:        examID,
 		})
 
 		// 设置场次结束定时器
-		setRedisTimer(EVENT_TYPE_EXAM_SESSION_END, examSession.ExamSessionID, examSession.EndTime, ExamEvent{
+		examTimerMgr.SetTimer(examSession.ExamSessionID, examSession.EndTime, ExamEvent{
+			Type:          EVENT_TYPE_EXAM_SESSION_END,
 			ExamSessionID: examSession.ExamSessionID,
 			ExamID:        examID,
 		})
@@ -670,9 +257,8 @@ func SetExamTimers(ctx context.Context, examID int64) error {
 	return nil
 }
 
-// 取消考试相关的定时器
+// 取消考试的所有定时器
 func CancelExamTimers(ctx context.Context, examID int64) error {
-	z.Info("---->" + cmn.FncName())
 
 	forceErr := ""
 	if val := ctx.Value("CancelExamTimers-force-error"); val != nil {
@@ -681,101 +267,497 @@ func CancelExamTimers(ctx context.Context, examID int64) error {
 
 	// 查询该考试的所有场次
 	examSessionRows, err := pgxConn.Query(ctx, `
-		SELECT id FROM t_exam_session WHERE exam_id = $1 AND status != '14'
+		SELECT id FROM t_exam_session WHERE exam_id = $1 AND status NOT IN ('14', '16')
 	`, examID)
-	if forceErr == "queryExamSessions" {
+	if forceErr == "CancelExamTimers-force-error" {
 		err = fmt.Errorf("强制查询考试场次信息错误")
 	}
+
+	defer examSessionRows.Close()
 	if err != nil {
 		z.Error("Failed to query sessions for timer cancellation", zap.Error(err))
 		return err
 	}
-	defer examSessionRows.Close()
 
-	// 收集所有场次ID
-	var sessionIDs []int64
+	// 收集所有场次ID并取消对应的定时器
+	cancelCount := 0
 	for examSessionRows.Next() {
 		var sessionID int64
 		if examSessionRows.Scan(&sessionID) == nil {
-			sessionIDs = append(sessionIDs, sessionID)
+			examTimerMgr.CancelTimer(EVENT_TYPE_EXAM_SESSION_START, sessionID)
+			examTimerMgr.CancelTimer(EVENT_TYPE_EXAM_SESSION_END, sessionID)
+			cancelCount++
 		}
-	}
-
-	if len(sessionIDs) == 0 || forceErr == "noSessionIDs" {
-		z.Info("没有需要取消的定时器", zap.Int64("exam_id", examID))
-		return nil
-	}
-
-	// 删除指定场次的所有事件
-	luaScript := `
-		local timer_key = KEYS[1]
-		local session_ids = {}
-		
-		-- 将参数转换为场次ID集合
-		for i = 1, #ARGV do
-			session_ids[tonumber(ARGV[i])] = true
-		end
-		
-		-- 获取所有定时器事件
-		local all_events = redis.call("ZRANGE", timer_key, 0, -1)
-		local removed_count = 0
-		
-		-- 遍历所有事件，删除匹配的场次事件
-		for i = 1, #all_events do
-			local event_str = all_events[i]
-			local event = cjson.decode(event_str)
-			
-			-- 检查是否是目标场次的事件
-			if event.exam_session_id and session_ids[tonumber(event.exam_session_id)] then
-				redis.call("ZREM", timer_key, event_str)
-				removed_count = removed_count + 1
-			end
-		end
-		
-		return removed_count
-	`
-
-	evalCtx := context.Background()
-
-	args := make([]interface{}, 0, len(sessionIDs))
-	for _, sessionID := range sessionIDs {
-		args = append(args, sessionID)
-	}
-
-	result := redisClient.Eval(evalCtx, luaScript, []string{EXAM_TIMER_SET_KEY}, args...)
-	if result.Err() != nil || forceErr == "evalLuaScriptError" {
-		err = result.Err()
-		if forceErr == "evalLuaScriptError" {
-			err = fmt.Errorf("强制执行Lua脚本错误")
-		}
-		z.Error("Failed to execute Lua script for timer cancellation", zap.Error(err))
-		return err
-	}
-
-	removedCount, err := result.Int()
-	if forceErr == "getRemovedCountError" {
-		err = fmt.Errorf("强制获取已删除计时器数量错误")
-	}
-	if err != nil {
-		z.Error("Failed to get removed count", zap.Error(err))
-		return err
 	}
 
 	z.Info("成功取消考试定时器",
 		zap.Int64("exam_id", examID),
-		zap.Int("session_count", len(sessionIDs)),
-		zap.Int("removed_timers", removedCount))
+		zap.Int("cancelled_sessions", cancelCount))
 
 	return nil
 }
 
+// 停止所有定时器
+func (tm *ExamTimerManager) StopAll() {
+	tm.mutex.Lock()
+	defer tm.mutex.Unlock()
+
+	// 停止所有定时器
+	for key, timer := range tm.timers {
+		timer.Stop()
+		delete(tm.timers, key)
+	}
+
+	tm.cancel()
+}
+
+// 初始化现有考试的定时器
+func InitializeExamTimers(ctx context.Context) {
+	z.Info("---->" + cmn.FncName())
+
+	forceErr := ""
+	if val := ctx.Value("initializeExamTimers-force-error"); val != nil {
+		forceErr = val.(string)
+	}
+
+	defer func() {
+		r := recover()
+		if forceErr == "panic" {
+			r = fmt.Errorf("panic") // 强制触发的panic错误
+		}
+		if r != nil {
+			z.Error("Panic recovered in initializeExamTimers",
+				zap.Any("panic", r),
+				zap.Stack("stack"))
+		}
+	}()
+
+	// 查询场次信息
+	query := `
+        SELECT
+            es.id as session_id,
+            es.exam_id,
+            es.start_time,
+            es.end_time
+        FROM t_exam_info ei
+        JOIN t_exam_session es ON ei.id = es.exam_id
+        WHERE ei.status IN ('02', '04') -- 待开始或进行中的考试
+            AND es.status NOT IN ('14', '16') -- 未删除的场次
+        ORDER BY es.exam_id, es.id
+    `
+	rows, err := pgxConn.Query(ctx, query)
+	if forceErr == "queryExamSessions" {
+		err = fmt.Errorf("强制查询考试场次信息错误")
+	}
+	if err != nil {
+		z.Error("查询考试场次信息失败", zap.Error(err))
+		return
+	}
+	defer rows.Close()
+
+	// 设置场次定时器
+	for rows.Next() {
+		var examSessionID, examID, startTime, endTime int64
+		err := rows.Scan(&examSessionID, &examID, &startTime, &endTime)
+		if forceErr == "scanExamSessionInfo" {
+			err = fmt.Errorf("强制获取考试场次信息错误")
+		}
+		if err != nil {
+			z.Error("获取考试场次信息失败", zap.Error(err))
+			return
+		}
+
+		// 场次开始定时器
+		examTimerMgr.SetTimer(examSessionID, startTime, ExamEvent{
+			Type:          EVENT_TYPE_EXAM_SESSION_START,
+			ExamSessionID: examSessionID,
+			ExamID:        examID,
+		})
+
+		// 场次结束定时器
+		examTimerMgr.SetTimer(examSessionID, endTime, ExamEvent{
+			Type:          EVENT_TYPE_EXAM_SESSION_END,
+			ExamSessionID: examSessionID,
+			ExamID:        examID,
+		})
+	}
+}
+
+// 处理考试场次开始事件
+func handleExamSessionStart(ctx context.Context, event ExamEvent) error {
+	z.Info("---->" + cmn.FncName())
+
+	forceErr := ""
+	if val := ctx.Value("handleExamSessionStart-force-error"); val != nil {
+		forceErr = val.(string)
+	}
+
+	tx, err := pgxConn.Begin(ctx)
+	if forceErr == "beginTx" {
+		err = fmt.Errorf("强制开启事务错误")
+	}
+	if err != nil {
+		z.Error("开启事务失败", zap.Error(err))
+		return err
+	}
+
+	defer func() {
+		r := recover()
+		if forceErr == "panic" {
+			r = fmt.Errorf("强制panic触发")
+		}
+		if r != nil {
+			z.Error("Panic recovered in handleExamSessionStart",
+				zap.Any("panic", r),
+				zap.Stack("stack"))
+			return
+		}
+
+		if err != nil {
+			rbErr := tx.Rollback(ctx)
+			if rbErr != nil {
+				z.Error("事务回滚失败", zap.Error(rbErr))
+			}
+			return
+		}
+
+		cmErr := tx.Commit(ctx)
+		if cmErr != nil {
+			z.Error("事务提交失败", zap.Error(cmErr))
+		}
+	}()
+
+	now := time.Now().UnixMilli()
+
+	// 查询场次信息和考生数量
+	query := `
+		SELECT 
+			es.id as session_id,
+			es.exam_id,
+			COALESCE(e_count.count, 0) as examinee_count
+		FROM t_exam_session es
+		LEFT JOIN (
+			SELECT exam_session_id, COUNT(*) as count
+			FROM t_examinee 
+			WHERE status != '08' AND exam_session_id = $1
+			GROUP BY exam_session_id
+		) e_count ON es.id = e_count.exam_session_id
+		WHERE es.id = $1 AND es.status NOT IN ('14', '16')
+	`
+
+	var examSessionID, examID int64
+	var examineeCount int
+	err = tx.QueryRow(ctx, query, event.ExamSessionID).Scan(&examSessionID, &examID, &examineeCount)
+	if forceErr == "queryExamSessionInfo" {
+		err = fmt.Errorf("强制获取考试场次信息错误")
+	}
+	if err != nil {
+		z.Error("查询场次信息失败", zap.Error(err),
+			zap.Int64("exam_id", examID),
+			zap.Int64("exam_session_id", examSessionID))
+		return err
+	}
+
+	if examineeCount == 0 {
+		// 没有考生的考试需要设为异常状态
+		_, err := tx.Exec(ctx, `
+			UPDATE t_exam_info
+			SET status = '10', -- 考试异常
+				update_time = $1
+			WHERE id = $2
+		`, now, examID)
+		if forceErr == "updateAbnormalExam" {
+			err = fmt.Errorf("强制更新考试为异常状态错误")
+		}
+		if err != nil {
+			z.Error("更新考试为异常状态失败", zap.Error(err),
+				zap.Int64("exam_id", examID),
+				zap.Int64("exam_session_id", examSessionID))
+			return err
+		}
+
+		// 取消该考试的所有定时器
+		err = CancelExamTimers(ctx, examID)
+		if err != nil || forceErr == "cancelAbnormalExamTimers" {
+			z.Error("取消考试定时器失败", zap.Error(err),
+				zap.Int64("exam_id", examID),
+				zap.Int64("exam_session_id", examSessionID))
+		}
+	} else {
+		// 有考生的场次正常开始
+		_, err := tx.Exec(ctx, `
+			UPDATE t_exam_session 
+			SET status = '04', -- 进行中
+				update_time = $1
+			WHERE id = $2 AND status = '02'
+		`, now, examSessionID)
+		if forceErr == "updateExamSession" {
+			err = fmt.Errorf("强制更新场次状态错误")
+		}
+		if err != nil {
+			z.Error("更新场次状态失败", zap.Error(err),
+				zap.Int64("exam_id", examID),
+				zap.Int64("exam_session_id", examSessionID))
+			return err
+		}
+
+		// 更新考试状态
+		_, err = tx.Exec(ctx, `
+			UPDATE t_exam_info 
+			SET status = '04', -- 进行中
+				update_time = $1
+			WHERE id = $2 AND status = '02'
+		`, now, examID)
+		if forceErr == "updateExam" {
+			err = fmt.Errorf("强制更新考试状态错误")
+		}
+		if err != nil {
+			z.Error("更新考试状态失败", zap.Error(err),
+				zap.Int64("exam_id", examID),
+				zap.Int64("exam_session_id", examSessionID))
+			return err
+		}
+	}
+
+	z.Info("考试场次开始事件处理",
+		zap.Int64("exam_id", examID),
+		zap.Int64("exam_session_id", examSessionID))
+
+	return nil
+}
+
+// 处理考试场次结束事件
+func handleExamSessionEnd(ctx context.Context, event ExamEvent) error {
+	z.Info("---->" + cmn.FncName())
+
+	forceErr := ""
+	if val := ctx.Value("handleExamSessionEnd-force-error"); val != nil {
+		forceErr = val.(string)
+	}
+
+	tx, err := pgxConn.Begin(ctx)
+	if forceErr == "beginTx" {
+		err = fmt.Errorf("强制开启事务错误")
+	}
+	if err != nil {
+		z.Error("开启事务失败", zap.Error(err))
+		return err
+	}
+
+	defer func() {
+		r := recover()
+		if forceErr == "panic" {
+			r = fmt.Errorf("强制触发的panic错误")
+		}
+		if r != nil {
+			z.Error("Panic recovered in handleExamSessionEnd",
+				zap.Any("panic", r),
+				zap.Stack("stack"))
+			return
+		}
+
+		if err != nil {
+			rbErr := tx.Rollback(ctx)
+			if rbErr != nil {
+				z.Error("事务回滚失败", zap.Error(rbErr))
+			}
+			return
+		}
+
+		cmErr := tx.Commit(ctx)
+		if cmErr != nil {
+			z.Error("事务提交失败", zap.Error(cmErr))
+		}
+	}()
+
+	now := time.Now().UnixMilli()
+
+	// 更新考生状态
+	updateExamineesQuery := `
+		WITH examinee_to_update AS (
+			SELECT 
+				e.id,
+				CASE
+					WHEN e.start_time IS NOT NULL THEN '10' -- 如果该场考试考生有开始时间，设为已交卷
+					ELSE '02' -- 如果该场考试考生没有开始时间，设为已缺考
+				END AS new_status,
+				CASE
+					WHEN e.start_time IS NOT NULL THEN v.actual_end_time
+					ELSE NULL
+				END AS new_end_time
+			FROM t_examinee e
+			JOIN v_examinee_info v ON e.id = v.id
+			JOIN t_exam_info ei ON v.exam_id = ei.id
+			WHERE e.exam_session_id = $1
+				AND v.actual_end_time <= $2
+				AND e.status IN ('00', '16') -- 只更新处于正常考和监考员允许进入考试状态的考生
+				AND ei.status IN ('02', '04', '06')
+		)
+		UPDATE t_examinee te
+		SET status = u.new_status,
+			end_time = COALESCE(u.new_end_time, te.end_time),
+			update_time = $2
+		FROM examinee_to_update u
+		WHERE te.id = u.id
+	`
+
+	_, err = tx.Exec(ctx, updateExamineesQuery, event.ExamSessionID, now)
+	if forceErr == "updateExaminees" {
+		err = fmt.Errorf("强制更新考生状态错误")
+	}
+	if err != nil {
+		z.Error("更新考生状态失败", zap.Error(err),
+			zap.Int64("exam_id", event.ExamID),
+			zap.Int64("exam_session_id", event.ExamSessionID))
+		return err
+	}
+
+	// 检查场次是否还有未结束的考生
+	checkQuery := `
+		SELECT 
+			es.id as session_id,
+			es.exam_id,
+			COALESCE(unfinished.count, 0) as unfinished_count
+		FROM t_exam_session es
+		LEFT JOIN (
+			SELECT exam_session_id, COUNT(*) as count
+			FROM t_examinee 
+			WHERE status NOT IN ('02', '06', '08', '10', '12') 
+				AND exam_session_id = $1
+			GROUP BY exam_session_id
+		) unfinished ON es.id = unfinished.exam_session_id
+		WHERE es.id = $1
+	`
+
+	var examSessionID, examID int64
+	var unfinishedCount int
+	err = tx.QueryRow(ctx, checkQuery, event.ExamSessionID).Scan(&examSessionID, &examID, &unfinishedCount)
+	if forceErr == "scanUnfinishedExaminees" {
+		err = fmt.Errorf("强制获取未结束考生数量错误")
+	}
+	if err != nil {
+		z.Error("获取未结束的考生数量失败", zap.Error(err))
+		return err
+	}
+
+	if unfinishedCount > 0 {
+		// 还有考生未结束，延迟1分钟后重新处理
+		delayedEndTime := now + 60*1000
+		examTimerMgr.SetTimer(examSessionID, delayedEndTime, ExamEvent{
+			Type:          EVENT_TYPE_EXAM_SESSION_END,
+			ExamSessionID: examSessionID,
+			ExamID:        examID,
+		})
+		return nil
+	}
+
+	// 更新场次状态为已结束
+	_, err = tx.Exec(ctx, `
+		UPDATE t_exam_session 
+		SET status = '06', -- 已结束
+			update_time = $1
+		WHERE id = $2 AND status IN ('02','04')
+	`, now, examSessionID)
+	if forceErr == "updateSessionEndStatus" {
+		err = fmt.Errorf("强制更新场次状态为已结束错误")
+	}
+	if err != nil {
+		z.Error("更新场次状态为已结束失败", zap.Error(err),
+			zap.Int64("exam_id", examID),
+			zap.Int64("exam_session_id", examSessionID))
+		return err
+	}
+
+	// 检查并更新考试状态
+	_, err = tx.Exec(ctx, `
+		UPDATE t_exam_info ei
+		SET status = '06', -- 已结束
+			update_time = $1
+		WHERE ei.status IN ('02','04')
+			AND NOT EXISTS (
+				SELECT 1 FROM t_exam_session es
+				WHERE es.exam_id = ei.id AND es.status IN ('02','04')
+			)
+			AND ei.id = $2
+	`, now, examID)
+	if forceErr == "updateExamEndStatus" {
+		err = fmt.Errorf("强制更新考试状态为已结束错误")
+	}
+	if err != nil {
+		z.Error("更新考试状态为已结束失败", zap.Error(err),
+			zap.Int64("exam_id", examID),
+			zap.Int64("exam_session_id", examSessionID))
+		return err
+	}
+
+	z.Info("考试场次结束事件处理",
+		zap.Int64("exam_id", examID),
+		zap.Int64("exam_session_id", examSessionID))
+
+	return nil
+}
+
+func cleanupTempExams(ctx context.Context) {
+	z.Info("---->" + cmn.FncName())
+
+	forceErr := ""
+	if val := ctx.Value("cleanupTempExams-force-error"); val != nil {
+		forceErr = val.(string)
+	}
+
+	// 计算24小时前的时间戳
+	cutoffTime := time.Now().Add(-24 * time.Hour).UnixMilli()
+
+	conn := cmn.GetPgxConn()
+
+	// 删除临时考试记录
+	examResult, err := conn.Exec(ctx, `
+        DELETE FROM t_exam_info 
+        WHERE status = '14' AND create_time < $1
+    `, cutoffTime)
+	if forceErr == "deleteTempExams" {
+		err = fmt.Errorf("强制删除临时考试错误")
+	}
+	if err != nil {
+		z.Error("删除临时考试记录失败", zap.Error(err))
+		return
+	}
+
+	// 获取删除的记录数量
+	examsDeleted := examResult.RowsAffected()
+
+	z.Info("临时考试清理完成",
+		zap.Int64("deleted_exams", examsDeleted),
+		zap.Int64("cutoff_time", cutoffTime))
+}
+
+func startTempExamCleanup(ctx context.Context) {
+	z.Info("---->" + cmn.FncName())
+
+	// 创建24小时的定时器
+	ticker := time.NewTicker(24 * time.Hour)
+	defer ticker.Stop()
+
+	// 启动时执行一次清理
+	cleanupTempExams(ctx)
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			cleanupTempExams(ctx)
+		}
+	}
+}
+
 func ExamMaintainService() {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
-	ctx := context.Background()
+	examTimerMgr = NewExamTimerManager(ctx, cancel)
 
-	// 重新初始化定时器
-	initializeExamTimers(ctx)
-
-	// 启动Redis定时器轮询
-	pollRedisTimers(ctx)
+	// 初始化定时器
+	InitializeExamTimers(ctx)
+	startTempExamCleanup(ctx)
 }

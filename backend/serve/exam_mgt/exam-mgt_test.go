@@ -19,6 +19,7 @@ import (
 	"github.com/jmoiron/sqlx/types"
 	"github.com/stretchr/testify/assert"
 	"w2w.io/cmn"
+	"w2w.io/exam_service"
 	"w2w.io/null"
 )
 
@@ -267,13 +268,12 @@ func CreateTestPaperWithGroupsAndQuestions(ctx context.Context, tx pgx.Tx, bankQ
 		UpdateTime:        null.IntFrom(now),
 		Status:            null.StringFrom("00"),
 		Tags:              types.JSONText(`["test", "unit"]`),
-		AccessMode:        null.StringFrom("00"), // 默认访问模式
 	}
 
 	//初始化一张空试卷
 	err = tx.QueryRow(ctx, `
 		INSERT INTO t_paper 
-			(id, name, assembly_type, category, level, suggested_duration, tags, creator, create_time, updated_by, update_time, status, access_mode) 
+			(id, name, assembly_type, category, level, suggested_duration, tags, creator, create_time, updated_by, update_time, status, domain_id) 
 		VALUES 
 			($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) 
 		RETURNING id`,
@@ -289,7 +289,7 @@ func CreateTestPaperWithGroupsAndQuestions(ctx context.Context, tx pgx.Tx, bankQ
 		paper.UpdatedBy.Int64,
 		paper.UpdateTime.Int64,
 		paper.Status.String,
-		paper.AccessMode.String,
+		2000,
 	).Scan(&paperID)
 
 	if err != nil {
@@ -388,27 +388,27 @@ func CreateTestExamData(t *testing.T) {
 
 	// 插入测试教务员数据
 	_, err = tx.Exec(ctx, `
-		INSERT INTO t_user (id, category, official_name, account, role) 
-		VALUES ($1, $2, $3, $4, $5)
-		ON CONFLICT (id) DO NOTHING`, testAcademicAffair, "sys^admin", "测试用户", "test_user", 2002)
+		INSERT INTO t_user (id, category, official_name, account, role, status) 
+		VALUES ($1, $2, $3, $4, $5, $6)
+		ON CONFLICT (id) DO NOTHING`, testAcademicAffair, "sys^admin", "测试用户", "test_user", 2002, "00")
 	if err != nil {
 		t.Fatalf("创建测试用户失败: %v", err)
 	}
 
 	// 插入测试批阅员数据
 	_, err = tx.Exec(ctx, `
-		INSERT INTO t_user (id, category, official_name, account, role) 
-		VALUES ($1, $2, $3, $4, $5)
-		ON CONFLICT (id) DO NOTHING`, testGrader, "sys^admin", "测试批阅员", "test_grader", 2005)
+		INSERT INTO t_user (id, category, official_name, account, role, status) 
+		VALUES ($1, $2, $3, $4, $5, $6)
+		ON CONFLICT (id) DO NOTHING`, testGrader, "sys^admin", "测试批阅员", "test_grader", 2005, "00")
 	if err != nil {
 		t.Fatalf("创建测试批阅员失败: %v", err)
 	}
 
 	// 插入测试学生数据
 	_, err = tx.Exec(ctx, `
-		INSERT INTO t_user (id, category, official_name, account, role) 
-		VALUES ($1, $2, $3, $4, $5)
-		ON CONFLICT (id) DO NOTHING`, testStudent1, "sys^student", "测试学生", "test_student", 2008)
+		INSERT INTO t_user (id, category, official_name, account, role,status) 
+		VALUES ($1, $2, $3, $4, $5,$6)
+		ON CONFLICT (id) DO NOTHING`, testStudent1, "sys^student", "测试学生", "test_student", 2008, "00")
 	if err != nil {
 		t.Fatalf("创建测试学生失败: %v", err)
 	}
@@ -430,9 +430,9 @@ func CreateTestExamData(t *testing.T) {
 	}
 	for _, q := range questions {
 		_, err = tx.Exec(ctx, `
-			INSERT INTO assessuser.t_question (id, type, difficulty, creator,status)
-			VALUES ($1, $2, $3, $4, $5)
-		`, q.id, q.qtype, q.difficulty, q.creator, q.status)
+			INSERT INTO assessuser.t_question (id, type, difficulty, creator,create_time,updated_by,update_time,status)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		`, q.id, q.qtype, q.difficulty, q.creator, time.Now().UnixMilli(), q.creator, time.Now().UnixMilli(), q.status)
 		if err != nil {
 			t.Fatalf("插入测试题目数据失败: %v", err)
 		}
@@ -447,8 +447,8 @@ func CreateTestExamData(t *testing.T) {
 
 	// 创建测试试卷
 	_, err = tx.Exec(ctx, `
-		INSERT INTO t_paper (id, name, category, creator, status) 
-		VALUES ($1, '测试试卷', '00', $2, '00') `, testPaperID, testAcademicAffair)
+		INSERT INTO t_paper (id, name, category, creator, status, domain_id) 
+		VALUES ($1, '测试试卷', '00', $2, '00', 2000) `, testPaperID, testAcademicAffair)
 	if err != nil {
 		tx.Rollback(ctx)
 		t.Fatalf("创建测试试卷失败: %v", err)
@@ -457,7 +457,7 @@ func CreateTestExamData(t *testing.T) {
 	// 插入考试信息
 	_, err = tx.Exec(ctx, `
 		INSERT INTO t_exam_info (id, name, type, mode, status, creator, create_time, updated_by, update_time, domain_id)
-		VALUES ($1, '测试正常考试', '00', '00', '02', $2, $3, $2, $3, $4), 
+		VALUES ($1, '测试正常考试', '00', '00', '00', $2, $3, $2, $3, $4), 
 		($5, '测试已删除的考试', '00', '00', '12', $2, $3, $2, $3, $4),
 		($6, '测试正常考试2', '00', '00', '02', $2, $3, $2, $3, $4),
 		($7, '测试发布考试', '00', '00', '00', $2, $3, $2, $3, $4),
@@ -966,7 +966,7 @@ func TestValidateExamData(t *testing.T) {
 			},
 			isUpdate:  true,
 			wantError: true,
-			errorMsg:  "更新考试时传入的考试ID无效",
+			errorMsg:  "无效的考试ID",
 		},
 		{
 			name: "考试名称为空",
@@ -1481,7 +1481,7 @@ func TestValidateExamData(t *testing.T) {
 			},
 			isUpdate:  true,
 			wantError: true,
-			errorMsg:  "更新考试时传入的考试ID无效",
+			errorMsg:  "无效的考试ID",
 		},
 		{
 			name: "负数的试卷ID",
@@ -1805,13 +1805,14 @@ func cleanTestUser(t *testing.T, userID int64) {
 	}
 }
 
+// TestExamPostMethod 测试 exam 函数的 POST 方法（创建临时考试）
 func TestExamPostMethod(t *testing.T) {
 	// 确保logger和数据库连接已初始化
 	if z == nil {
 		cmn.ConfigureForTest()
 	}
-	userID := int64(99999)
 
+	userID := int64(99999)
 	var creators []int64
 	creators = append(creators, userID)
 
@@ -1823,506 +1824,117 @@ func TestExamPostMethod(t *testing.T) {
 
 	tests := []struct {
 		name          string
-		requestBody   string
 		forceError    string
 		expectedError bool
 		errorContains string
 		description   string
 		userID        int64
 		userRole      int64
+		checkResult   bool // 是否检查返回结果
 	}{
 		{
-			name: "有效的考试创建请求",
-			requestBody: `{
-				"examInfo": {
-					"Name": "期末考试",
-					"Type": "02",
-					"Mode": "00",
-					"Rules": "考试规则",
-					"Status": "00"
-				},
-				"examSessions": [{
-					"SessionNum": 1,
-					"PaperID": 123,
-					"StartTime": ` + strconv.FormatInt(time.Now().Add(24*time.Hour).UnixMilli(), 10) + `,
-					"EndTime": ` + strconv.FormatInt(time.Now().Add(26*time.Hour).UnixMilli(), 10) + `,
-					"Duration": 120,
-					"QuestionShuffledMode": "00",
-					"NameVisibilityIn": true,
-					"MarkMethod": "00",
-					"MarkMode": "00",
-					"PeriodMode": "00",
-					"LateEntryTime": 0,
-					"EarliestSubmissionTime": 0
-				}],
-				"examinee": [1001, 1002, 1003],
-				"examRooms": [],
-				"invigilators": []
-			}`,
+			name:          "成功创建临时考试-教务员权限",
 			forceError:    "",
 			expectedError: false,
-			description:   "正常的考试创建请求",
+			description:   "教务员角色成功创建临时考试",
+			userID:        userID,
+			userRole:      2002,
+			checkResult:   true,
+		},
+		{
+			name:          "成功创建临时考试-超级管理员权限",
+			forceError:    "",
+			expectedError: false,
+			description:   "超级管理员角色成功创建临时考试",
+			userID:        userID,
+			userRole:      2001,
+			checkResult:   true,
+		},
+		{
+			name:          "成功创建临时考试-教师权限",
+			forceError:    "",
+			expectedError: false,
+			description:   "教师角色成功创建临时考试",
 			userID:        userID,
 			userRole:      2003,
+			checkResult:   true,
 		},
 		{
-			name: "无权限的考试创建请求",
-			requestBody: `{
-				"examInfo": {
-					"Name": "期末考试",
-					"Type": "02",
-					"Mode": "00",
-					"Rules": "考试规则",
-					"Status": "00"
-				},
-				"examSessions": [{
-					"SessionNum": 1,
-					"PaperID": 123,
-					"StartTime": ` + strconv.FormatInt(time.Now().Add(24*time.Hour).UnixMilli(), 10) + `,
-					"EndTime": ` + strconv.FormatInt(time.Now().Add(26*time.Hour).UnixMilli(), 10) + `,
-					"Duration": 120,
-					"QuestionShuffledMode": "00",
-					"NameVisibilityIn": true,
-					"MarkMethod": "00",
-					"MarkMode": "00",
-					"PeriodMode": "00",
-					"LateEntryTime": 0,
-					"EarliestSubmissionTime": 0
-				}],
-				"examinee": [1001, 1002, 1003],
-				"examRooms": [],
-				"invigilators": []
-			}`,
+			name:          "权限不足-学生角色",
 			forceError:    "",
 			expectedError: true,
-			description:   "无权限的考试创建请求",
+			errorContains: "用户没有创建考试的权限",
+			description:   "学生角色不能创建考试",
 			userID:        userID,
 			userRole:      2008,
+			checkResult:   false,
 		},
 		{
-			name: "无法正确获取domain",
-			requestBody: `{
-				"examInfo": {
-					"Name": "期末考试",
-					"Type": "02",
-					"Mode": "00",
-					"Rules": "考试规则",
-					"Status": "00"
-				},
-				"examSessions": [{
-					"SessionNum": 1,
-					"PaperID": 123,
-					"StartTime": ` + strconv.FormatInt(time.Now().Add(24*time.Hour).UnixMilli(), 10) + `,
-					"EndTime": ` + strconv.FormatInt(time.Now().Add(26*time.Hour).UnixMilli(), 10) + `,
-					"Duration": 120,
-					"QuestionShuffledMode": "00",
-					"NameVisibilityIn": true,
-					"MarkMethod": "00",
-					"MarkMode": "00",
-					"PeriodMode": "00",
-					"LateEntryTime": 0,
-					"EarliestSubmissionTime": 0
-				}],
-				"examinee": [1001, 1002, 1003],
-				"examRooms": [],
-				"invigilators": []
-			}`,
+			name:          "权限不足-无权限角色",
 			forceError:    "",
 			expectedError: true,
-			description:   "无权限的考试创建请求",
+			errorContains: "未找到角色ID",
+			description:   "无权限角色不能创建考试",
 			userID:        userID,
-			userRole:      0,
+			userRole:      9999,
+			checkResult:   false,
 		},
 		{
-			name:          "空请求体",
-			requestBody:   "",
+			name:          "无效用户ID-零值",
 			forceError:    "",
 			expectedError: true,
-			errorContains: "请求体为空",
-			description:   "请求体为空时应该返回错误",
-			userID:        userID,
-			userRole:      2002,
-		},
-		{
-			name: "考试名称为空",
-			requestBody: `{
-				"examInfo": {
-					"Name": "",
-					"Type": "00",
-					"Mode": "00"
-				},
-				"examSessions": [{
-					"SessionNum": 1,
-					"PaperID": 123,
-					"StartTime": ` + strconv.FormatInt(time.Now().Add(24*time.Hour).UnixMilli(), 10) + `,
-					"EndTime": ` + strconv.FormatInt(time.Now().Add(26*time.Hour).UnixMilli(), 10) + `,
-					"Duration": 120,
-					"QuestionShuffledMode": "00",
-					"MarkMethod": "00",
-					"MarkMode": "00",
-					"PeriodMode": "00"
-				}],
-				"examinee": [1001]
-			}`,
-			forceError:    "",
-			expectedError: true,
-			errorContains: "考试名称不能为空",
-			description:   "考试名称为空时应该返回验证错误",
-			userID:        userID,
-			userRole:      2002,
-		},
-		{
-			name: "强制JSON解析错误",
-			requestBody: `{
-				"examInfo": {
-					"Name": "测试考试",
-					"Type": "00",
-					"Mode": "00"
-				},
-				"examSessions": [{
-					"SessionNum": 1,
-					"PaperID": 123,
-					"StartTime": ` + strconv.FormatInt(time.Now().Add(24*time.Hour).UnixMilli(), 10) + `,
-					"EndTime": ` + strconv.FormatInt(time.Now().Add(26*time.Hour).UnixMilli(), 10) + `,
-					"Duration": 120,
-					"QuestionShuffledMode": "00",
-					"MarkMethod": "00",
-					"MarkMode": "00",
-					"PeriodMode": "00"
-				}],
-				"examinee": [1001]
-			}`,
-			forceError:    "json.Unmarshal",
-			expectedError: true,
-			description:   "模拟JSON解析失败",
-			userID:        userID,
-			userRole:      2002,
-		},
-		{
-			name: "强制JSON解析错误",
-			requestBody: `{
-				"examInfo": {
-					"Name": "测试考试",
-					"Type": "00",
-					"Mode": "00"
-				},
-				"examSessions": [{
-					"SessionNum": 1,
-					"PaperID": 123,
-					"StartTime": ` + strconv.FormatInt(time.Now().Add(24*time.Hour).UnixMilli(), 10) + `,
-					"EndTime": ` + strconv.FormatInt(time.Now().Add(26*time.Hour).UnixMilli(), 10) + `,
-					"Duration": 120,
-					"QuestionShuffledMode": "00",
-					"MarkMethod": "00",
-					"MarkMode": "00",
-					"PeriodMode": "00"
-				}],
-				"examinee": [1001]
-			}`,
-			forceError:    "json.Unmarshal2",
-			expectedError: true,
-			description:   "模拟JSON解析失败2",
-			userID:        userID,
-			userRole:      2002,
-		},
-		{
-			name: "强制事务开始失败",
-			requestBody: `{
-				"examInfo": {
-					"Name": "期末考试",
-					"Type": "02",
-					"Mode": "00",
-					"Rules": "考试规则",
-					"Status": "00"
-				},
-				"examSessions": [{
-					"SessionNum": 1,
-					"PaperID": 123,
-					"StartTime": ` + strconv.FormatInt(time.Now().Add(24*time.Hour).UnixMilli(), 10) + `,
-					"EndTime": ` + strconv.FormatInt(time.Now().Add(26*time.Hour).UnixMilli(), 10) + `,
-					"Duration": 120,
-					"QuestionShuffledMode": "00",
-					"NameVisibilityIn": true,
-					"MarkMethod": "00",
-					"MarkMode": "00",
-					"PeriodMode": "00",
-					"LateEntryTime": 0,
-					"EarliestSubmissionTime": 0
-				}],
-				"examinee": [1001, 1002, 1003],
-				"examRooms": [],
-				"invigilators": []
-			}`,
-			forceError:    "tx.Begin",
-			expectedError: true,
-			description:   "模拟事务开始失败",
-			userID:        userID,
-			userRole:      2002,
-		},
-		{
-			name: "强制事务回滚失败",
-			requestBody: `{
-				"examInfo": {
-					"Name": "期末考试",
-					"Type": "02",
-					"Mode": "00",
-					"Rules": "考试规则",
-					"Status": "00"
-				},
-				"examSessions": [{
-					"SessionNum": 1,
-					"PaperID": 123,
-					"StartTime": ` + strconv.FormatInt(time.Now().Add(24*time.Hour).UnixMilli(), 10) + `,
-					"EndTime": ` + strconv.FormatInt(time.Now().Add(26*time.Hour).UnixMilli(), 10) + `,
-					"Duration": 120,
-					"QuestionShuffledMode": "00",
-					"NameVisibilityIn": true,
-					"MarkMethod": "00",
-					"MarkMode": "00",
-					"PeriodMode": "00",
-					"LateEntryTime": 0,
-					"EarliestSubmissionTime": 0
-				}],
-				"examinee": [1001, 1002, 1003],
-				"examRooms": [],
-				"invigilators": []
-			}`,
-			forceError:    "tx.Rollback",
-			expectedError: false,
-			description:   "模拟事务回滚失败（通过验证失败触发回滚）",
-			userID:        userID,
-			userRole:      2002,
-		},
-		{
-			name: "强制事务提交失败",
-			requestBody: `{
-				"examInfo": {
-					"Name": "期末考试",
-					"Type": "02",
-					"Mode": "00",
-					"Rules": "考试规则",
-					"Status": "00"
-				},
-				"examSessions": [{
-					"SessionNum": 1,
-					"PaperID": 123,
-					"StartTime": ` + strconv.FormatInt(time.Now().Add(24*time.Hour).UnixMilli(), 10) + `,
-					"EndTime": ` + strconv.FormatInt(time.Now().Add(26*time.Hour).UnixMilli(), 10) + `,
-					"Duration": 120,
-					"QuestionShuffledMode": "00",
-					"NameVisibilityIn": true,
-					"MarkMethod": "00",
-					"MarkMode": "00",
-					"PeriodMode": "00",
-					"LateEntryTime": 0,
-					"EarliestSubmissionTime": 0
-				}],
-				"examinee": [1001, 1002, 1003],
-				"examRooms": [],
-				"invigilators": []
-			}`,
-			forceError:    "tx.Commit",
-			expectedError: false,
-			description:   "模拟事务提交失败",
-			userID:        userID,
-			userRole:      2002,
-		},
-		{
-			name: "无效的UserID",
-			requestBody: `{
-				"examInfo": {
-					"Name": "",
-					"Type": "00",
-					"Mode": "00"
-				},
-				"examSessions": [{
-					"SessionNum": 1,
-					"PaperID": 123,
-					"StartTime": ` + strconv.FormatInt(time.Now().Add(24*time.Hour).UnixMilli(), 10) + `,
-					"EndTime": ` + strconv.FormatInt(time.Now().Add(26*time.Hour).UnixMilli(), 10) + `,
-					"Duration": 120,
-					"QuestionShuffledMode": "00",
-					"MarkMethod": "00",
-					"MarkMode": "00",
-					"PeriodMode": "00"
-				}],
-				"examinee": [1001]
-			}`,
-			forceError:    "",
-			expectedError: true,
-			description:   "无效的UserID",
+			errorContains: "无效的用户ID",
+			description:   "用户ID为0时应返回错误",
 			userID:        0,
 			userRole:      2002,
+			checkResult:   false,
 		},
 		{
-			name: "读取请求体错误",
-			requestBody: `{
-				"examInfo": {
-					"Name": "",
-					"Type": "00",
-					"Mode": "00"
-				},
-				"examSessions": [{
-					"SessionNum": 1,
-					"PaperID": 123,
-					"StartTime": ` + strconv.FormatInt(time.Now().Add(24*time.Hour).UnixMilli(), 10) + `,
-					"EndTime": ` + strconv.FormatInt(time.Now().Add(26*time.Hour).UnixMilli(), 10) + `,
-					"Duration": 120,
-					"QuestionShuffledMode": "00",
-					"MarkMethod": "00",
-					"MarkMode": "00",
-					"PeriodMode": "00"
-				}],
-				"examinee": [1001]
-			}`,
-			forceError:    "io.ReadAll",
+			name:          "无效用户ID-负值",
+			forceError:    "",
 			expectedError: true,
-			description:   "读取请求体错误",
-			userID:        userID,
+			errorContains: "无效的用户ID",
+			description:   "用户ID为负值时应返回错误",
+			userID:        -1,
 			userRole:      2002,
+			checkResult:   false,
 		},
 		{
-			name: "关闭IO错误",
-			requestBody: `{
-				"examInfo": {
-					"Name": "期末考试",
-					"Type": "02",
-					"Mode": "00",
-					"Rules": "考试规则",
-					"Status": "00"
-				},
-				"examSessions": [{
-					"SessionNum": 1,
-					"PaperID": 123,
-					"StartTime": ` + strconv.FormatInt(time.Now().Add(24*time.Hour).UnixMilli(), 10) + `,
-					"EndTime": ` + strconv.FormatInt(time.Now().Add(26*time.Hour).UnixMilli(), 10) + `,
-					"Duration": 120,
-					"QuestionShuffledMode": "00",
-					"NameVisibilityIn": true,
-					"MarkMethod": "00",
-					"MarkMode": "00",
-					"PeriodMode": "00",
-					"LateEntryTime": 0,
-					"EarliestSubmissionTime": 0
-				}],
-				"examinee": [1001, 1002, 1003],
-				"examRooms": [],
-				"invigilators": []
-			}`,
-			forceError:    "io.Close",
-			expectedError: false,
-			description:   "关闭IO错误",
+			name:          "获取用户域失败",
+			forceError:    "",
+			expectedError: true,
+			description:   "无法获取用户域时应返回错误",
 			userID:        userID,
-			userRole:      2002,
+			userRole:      0, // 无效角色
+			checkResult:   false,
 		},
 		{
-			name: "QueryRow错误1",
-			requestBody: `{
-				"examInfo": {
-					"Name": "期末考试",
-					"Type": "02",
-					"Mode": "00",
-					"Rules": "考试规则",
-					"Status": "00"
-				},
-				"examSessions": [{
-					"SessionNum": 1,
-					"PaperID": 123,
-					"StartTime": ` + strconv.FormatInt(time.Now().Add(24*time.Hour).UnixMilli(), 10) + `,
-					"EndTime": ` + strconv.FormatInt(time.Now().Add(26*time.Hour).UnixMilli(), 10) + `,
-					"Duration": 120,
-					"QuestionShuffledMode": "00",
-					"NameVisibilityIn": true,
-					"MarkMethod": "00",
-					"MarkMode": "00",
-					"PeriodMode": "00",
-					"LateEntryTime": 0,
-					"EarliestSubmissionTime": 0
-				}],
-				"examinee": [1001, 1002, 1003],
-				"examRooms": [],
-				"invigilators": []
-			}`,
+			name:          "强制数据库插入错误",
 			forceError:    "tx.QueryRow1",
 			expectedError: true,
-			description:   "tx.QueryRow错误1",
+			errorContains: "强制查询错误",
+			description:   "模拟数据库插入失败",
 			userID:        userID,
 			userRole:      2002,
+			checkResult:   false,
 		},
 		{
-			name: "QueryRow错误2",
-			requestBody: `{
-				"examInfo": {
-					"Name": "期末考试",
-					"Type": "02",
-					"Mode": "00",
-					"Rules": "考试规则",
-					"Status": "00"
-				},
-				"examSessions": [{
-					"SessionNum": 1,
-					"PaperID": 123,
-					"StartTime": ` + strconv.FormatInt(time.Now().Add(24*time.Hour).UnixMilli(), 10) + `,
-					"EndTime": ` + strconv.FormatInt(time.Now().Add(26*time.Hour).UnixMilli(), 10) + `,
-					"Duration": 120,
-					"QuestionShuffledMode": "00",
-					"NameVisibilityIn": true,
-					"MarkMethod": "00",
-					"MarkMode": "00",
-					"PeriodMode": "00",
-					"LateEntryTime": 0,
-					"EarliestSubmissionTime": 0
-				}],
-				"examinee": [1001, 1002, 1003],
-				"examRooms": [],
-				"invigilators": []
-			}`,
-			forceError:    "tx.QueryRow2",
+			name:          "强制JSON序列化错误",
+			forceError:    "json.Marshal",
 			expectedError: true,
-			description:   "tx.QueryRow错误2",
+			errorContains: "强制json.Marshal错误",
+			description:   "模拟JSON序列化失败",
 			userID:        userID,
 			userRole:      2002,
-		},
-		{
-			name: "Exec错误",
-			requestBody: `{
-				"examInfo": {
-					"Name": "期末考试",
-					"Type": "02",
-					"Mode": "00",
-					"Rules": "考试规则",
-					"Status": "00"
-				},
-				"examSessions": [{
-					"SessionNum": 1,
-					"PaperID": 123,
-					"StartTime": ` + strconv.FormatInt(time.Now().Add(24*time.Hour).UnixMilli(), 10) + `,
-					"EndTime": ` + strconv.FormatInt(time.Now().Add(26*time.Hour).UnixMilli(), 10) + `,
-					"Duration": 120,
-					"QuestionShuffledMode": "00",
-					"NameVisibilityIn": true,
-					"MarkMethod": "00",
-					"MarkMode": "00",
-					"PeriodMode": "00",
-					"LateEntryTime": 0,
-					"EarliestSubmissionTime": 0
-				}],
-				"examinee": [1001, 1002, 1003],
-				"examRooms": [],
-				"invigilators": []
-			}`,
-			forceError:    "tx.Exec",
-			expectedError: true,
-			description:   "tx.Exec错误",
-			userID:        userID,
-			userRole:      2002,
+			checkResult:   false,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// 创建模拟上下文
-			ctx := createMockContextWithBody("POST", "/api/exam", tt.requestBody, tt.forceError, tt.userID, tt.userRole)
+			// 创建模拟上下文 - POST 方法不需要请求体
+			queryParams := url.Values{}
+			ctx := createMockContextWithRole("POST", "/api/exam", queryParams, tt.forceError, tt.userID, tt.userRole)
 
 			func() {
 				defer func() {
@@ -2354,6 +1966,47 @@ func TestExamPostMethod(t *testing.T) {
 				// 期望成功
 				if serviceCtx.Err != nil {
 					t.Errorf("exam() 期望成功，但返回错误: %v", serviceCtx.Err)
+					return
+				}
+
+				// 检查返回结果
+				if tt.checkResult {
+					if serviceCtx.Msg.Data == nil {
+						t.Errorf("exam() 期望返回数据，但数据为空")
+						return
+					}
+
+					// 解析返回的考试ID
+					var result struct {
+						ID int64 `json:"id"`
+					}
+					if err := json.Unmarshal(serviceCtx.Msg.Data, &result); err != nil {
+						t.Errorf("exam() 返回数据格式错误: %v", err)
+						return
+					}
+
+					// 验证返回的ID有效
+					if result.ID <= 0 {
+						t.Errorf("exam() 返回的考试ID无效: %d", result.ID)
+						return
+					}
+
+					// 验证数据库中确实创建了考试
+					conn := cmn.GetPgxConn()
+					var status string
+					err := conn.QueryRow(context.Background(),
+						"SELECT status FROM t_exam_info WHERE id = $1", result.ID).Scan(&status)
+					if err != nil {
+						t.Errorf("验证创建的考试失败: %v", err)
+						return
+					}
+
+					// 验证状态为临时状态
+					if status != "14" {
+						t.Errorf("创建的考试状态错误，期望 '14'，实际 '%s'", status)
+					}
+
+					t.Logf("成功创建临时考试，ID: %d, 状态: %s", result.ID, status)
 				}
 			}
 		})
@@ -2678,17 +2331,19 @@ func TestExamPutMethod(t *testing.T) {
 		CleanTestExamData(t)
 	})
 
-	// 创建测试用的考试数据
+	go exam_service.ExamMaintainService()
+
+	// 创建有效的考试数据模板
 	validExamData := ExamData{
 		ExamInfo: cmn.TExamInfo{
 			ID:        null.IntFrom(testNormalExamID),
 			Name:      null.StringFrom("更新的考试名称"),
 			Rules:     null.StringFrom("更新的考试规则"),
 			Type:      null.StringFrom("00"),
-			Mode:      null.StringFrom("00"), // 线上考试
+			Mode:      null.StringFrom("00"),
 			Files:     types.JSONText(`{}`),
 			Submitted: null.BoolFrom(false),
-			Status:    null.StringFrom("00"), // 未发布状态
+			Status:    null.StringFrom("00"),
 			Addi:      types.JSONText(`{}`),
 		},
 		ExamSessions: []cmn.TExamSession{
@@ -2697,14 +2352,14 @@ func TestExamPutMethod(t *testing.T) {
 				PaperID:              null.IntFrom(testPaperToPublishID),
 				StartTime:            null.IntFrom(time.Now().Add(24 * time.Hour).UnixMilli()),
 				EndTime:              null.IntFrom(time.Now().Add(25 * time.Hour).UnixMilli()),
-				Duration:             null.IntFrom(60),      // 1小时
-				QuestionShuffledMode: null.StringFrom("06"), // 都不选择
+				Duration:             null.IntFrom(60),
+				QuestionShuffledMode: null.StringFrom("06"),
 				NameVisibilityIn:     null.BoolFrom(true),
 				MarkMethod:           "00",
 				MarkMode:             null.StringFrom("10"),
 				PeriodMode:           null.StringFrom("00"),
-				LateEntryTime:        null.IntFrom(10), // 10分钟
-				EarlySubmissionTime:  null.IntFrom(5),  // 5分钟
+				LateEntryTime:        null.IntFrom(10),
+				EarlySubmissionTime:  null.IntFrom(5),
 				ReviewerIds:          []int64{testGrader},
 			},
 		},
@@ -2712,498 +2367,593 @@ func TestExamPutMethod(t *testing.T) {
 	}
 
 	tests := []struct {
-		name          string
-		description   string
-		userID        int64
-		userRole      int64
-		requestBody   interface{}
-		forceError    string
-		expectedError bool
-		errorContains string
-		setupFunc     func(t *testing.T) // 测试前的数据准备
-		cleanupFunc   func(t *testing.T) // 测试后的清理
+		name           string
+		description    string
+		userID         int64
+		userRole       int64
+		requestBodyGen func() interface{} // 生成请求体的函数
+		forceError     string
+		expectedError  bool
+		errorContains  string
+		checkResult    bool // 是否检查更新结果
 	}{
 		{
-			name:        "成功更新考试-未发布状态",
+			name:        "成功更新未发布考试",
 			description: "成功更新处于未发布状态的考试",
 			userID:      testAcademicAffair,
 			userRole:    2002,
-			requestBody: func() ExamData {
+			requestBodyGen: func() interface{} {
 				data := validExamData
-				data.ExamInfo.ID = null.IntFrom(testExamToPublishID) // 使用测试数据中未发布的考试
+				data.ExamInfo.ID = null.IntFrom(testExamToPublishID)
 				return data
-			}(),
+			},
 			expectedError: false,
+			checkResult:   true,
 		},
 		{
-			name:        "成功更新考试-已发布状态",
+			name:        "成功更新临时考试状态为14",
+			description: "成功更新处于临时状态(14)的考试，应同时更新creator和create_time",
+			userID:      testAcademicAffair,
+			userRole:    2002,
+			requestBodyGen: func() interface{} {
+				// 先创建一个临时考试
+				conn := cmn.GetPgxConn()
+				ctx := context.Background()
+				var tempExamID int64
+
+				err := conn.QueryRow(ctx, `
+					INSERT INTO t_exam_info (
+						creator, create_time, updated_by, update_time, status, domain_id
+					) VALUES (
+						$1, $2, $3, $4, $5, $6
+					) RETURNING id
+				`, int64(99999), time.Now().UnixMilli(), int64(99999), time.Now().UnixMilli(), "14", int64(2000)).Scan(&tempExamID)
+
+				if err != nil {
+					t.Fatalf("创建临时考试失败: %v", err)
+				}
+
+				data := validExamData
+				data.ExamInfo.ID = null.IntFrom(tempExamID)
+				return data
+			},
+			expectedError: false,
+			checkResult:   true,
+		},
+		{
+			name:        "更新已发布考试失败-rows.ScanExamineeID",
+			description: "更新已发布考试失败-rows.ScanExamineeID",
+			userID:      testAcademicAffair,
+			userRole:    2002,
+			requestBodyGen: func() interface{} {
+				data := validExamData
+				data.ExamInfo.ID = null.IntFrom(testPublishedExamID)
+				data.ExamSessions[0].PaperID = null.IntFrom(testPaperToPublishID)
+				return data
+			},
+			forceError:    "rows.ScanExamineeID",
+			expectedError: true,
+			errorContains: "强制获取考生ID错误",
+			checkResult:   false,
+		},
+		{
+			name:        "成功更新已发布考试",
 			description: "成功更新处于已发布状态的考试",
 			userID:      testAcademicAffair,
 			userRole:    2002,
-			requestBody: func() ExamData {
+			requestBodyGen: func() interface{} {
 				data := validExamData
-				data.ExamInfo.ID = null.IntFrom(testPublishedExamID) // 使用测试数据中已发布的考试
+				data.ExamInfo.ID = null.IntFrom(testPublishedExamID)
 				data.ExamSessions[0].PaperID = null.IntFrom(testPaperToPublishID)
 				return data
-			}(),
+			},
 			expectedError: false,
+			checkResult:   false,
 		},
 		{
-			name:        "更新考试失败-已发布状态下强制转换批改员ID失败",
-			description: "更新处于已发布状态的考试时，强制转换批改员ID失败",
+			name:        "成功更新已发布考试2",
+			description: "成功更新处于已发布状态的考试",
 			userID:      testAcademicAffair,
 			userRole:    2002,
-			requestBody: func() ExamData {
+			requestBodyGen: func() interface{} {
 				data := validExamData
-				data.ExamInfo.ID = null.IntFrom(testPublishedExamID) // 使用测试数据中已发布的考试
+				data.ExamInfo.ID = null.IntFrom(testPublishedExamID)
+				data.ExamSessions[0].PaperID = null.IntFrom(testPaperToPublishID)
+				data.ExamineeIDs = []int64{}
 				return data
-			}(),
-			expectedError: true,
-			forceError:    "convertToInt64Array",
-			errorContains: "转换批改员ID失败",
-		},
-		{
-			name:        "更新考试失败-强制更新考生考卷ID错误",
-			description: "更新处于已发布状态的考试时，强制更新考生考卷ID错误",
-			userID:      testAcademicAffair,
-			userRole:    2002,
-			requestBody: func() ExamData {
-				data := validExamData
-				data.ExamInfo.ID = null.IntFrom(testPublishedExamID) // 使用测试数据中已发布的考试
-				return data
-			}(),
-			expectedError: true,
-			forceError:    "tx.UpdateExamineeExamPaperID",
-			errorContains: "强制更新考生考卷ID错误",
-		},
-		{
-			name:        "更新考试失败-强制查询考试创建者错误",
-			description: "更新处于已发布状态的考试时，强制查询考试创建者错误",
-			userID:      testAcademicAffair,
-			userRole:    2002,
-			requestBody: func() ExamData {
-				data := validExamData
-				data.ExamInfo.ID = null.IntFrom(testPublishedExamID) // 使用测试数据中已发布的考试
-				return data
-			}(),
-			expectedError: true,
-			forceError:    "tx.SearchExamCreator",
-			errorContains: "强制查询考试创建者错误",
-		},
-		{
-			name:        "更新考试失败-强制获取考生ID错误",
-			description: "更新处于已发布状态的考试时，强制获取考生ID错误",
-			userID:      testAcademicAffair,
-			userRole:    2002,
-			requestBody: func() ExamData {
-				data := validExamData
-				data.ExamInfo.ID = null.IntFrom(testPublishedExamID) // 使用测试数据中已发布的考试
-				return data
-			}(),
-			expectedError: true,
-			forceError:    "rows.ScanExamineeID",
-			errorContains: "强制获取考生ID错误",
-		},
-		{
-			name:        "更新考试-无考生",
-			description: "更新处于已发布状态的考试时，无考生",
-			userID:      testAcademicAffair,
-			userRole:    2002,
-			requestBody: func() ExamData {
-				data := validExamData
-				data.ExamInfo.ID = null.IntFrom(testPublishedExamID) // 使用测试数据中已发布的考试
-				data.ExamineeIDs = nil                               // 无考生
-				return data
-			}(),
+			},
 			expectedError: false,
+			checkResult:   false,
 		},
 		{
-			name:        "更新考试失败-强制生成考卷错误",
-			description: "更新处于已发布状态的考试时，强制生成考卷错误",
+			name:        "成功更新已发布考试3",
+			description: "成功更新处于已发布状态的考试",
 			userID:      testAcademicAffair,
 			userRole:    2002,
-			requestBody: func() ExamData {
+			requestBodyGen: func() interface{} {
 				data := validExamData
-				data.ExamInfo.ID = null.IntFrom(testPublishedExamID) // 使用测试数据中已发布的考试
+				data.ExamInfo.ID = null.IntFrom(testPublishedExamID)
+				data.ExamSessions[0].PaperID = null.IntFrom(testPaperToPublishID)
+				data.ExamSessions[0].ReviewerIds = []int64{}
 				return data
-			}(),
-			expectedError: true,
-			forceError:    "examPaper.GenerateExamPaper",
-			errorContains: "强制生成考卷错误",
-		},
-		{
-			name:        "更新考试失败-强制生成答卷错误",
-			description: "更新处于已发布状态的考试时，强制生成答卷错误",
-			userID:      testAcademicAffair,
-			userRole:    2002,
-			requestBody: func() ExamData {
-				data := validExamData
-				data.ExamInfo.ID = null.IntFrom(testPublishedExamID) // 使用测试数据中已发布的考试
-				return data
-			}(),
-			expectedError: true,
-			forceError:    "examPaper.GenerateAnswerQuestion",
-			errorContains: "强制生成答卷错误",
-		},
-		{
-			name:        "更新考试成功-未指定批阅员",
-			description: "更新处于已发布状态的考试时，未指定批阅员",
-			userID:      testAcademicAffair,
-			userRole:    2002,
-			requestBody: func() ExamData {
-				data := validExamData
-				data.ExamInfo.ID = null.IntFrom(testPublishedExamID) // 使用测试数据中已发布的考试
-				data.ExamSessions[0].ReviewerIds = nil               // 不指定批阅员
-				return data
-			}(),
+			},
 			expectedError: false,
+			checkResult:   false,
 		},
 		{
-			name:        "更新考试失败-强制处理批改员信息错误2",
-			description: "更新处于已发布状态的考试时，强制处理批改员信息错误2",
-			userID:      testAcademicAffair,
-			userRole:    2002,
-			requestBody: func() ExamData {
-				data := validExamData
-				data.ExamInfo.ID = null.IntFrom(testPublishedExamID) // 使用测试数据中已发布的考试
-				return data
-			}(),
+			name:        "权限验证失败-学生角色",
+			description: "学生角色不能更新考试",
+			userID:      testStudent1,
+			userRole:    2008,
+			requestBodyGen: func() interface{} {
+				return validExamData
+			},
 			expectedError: true,
-			forceError:    "mark.HandleMarkerInfo2",
-			errorContains: "强制处理批改员信息错误",
+			errorContains: "用户没有考试相关的权限",
+			checkResult:   false,
 		},
 		{
-			name:        "更新考试失败-强制设置考试计时器错误",
-			description: "更新处于已发布状态的考试时，强制设置考试计时器错误",
+			name:        "考试数据验证失败",
+			description: "考试数据不符合验证规则",
 			userID:      testAcademicAffair,
 			userRole:    2002,
-			requestBody: func() ExamData {
+			requestBodyGen: func() interface{} {
 				data := validExamData
-				data.ExamInfo.ID = null.IntFrom(testPublishedExamID) // 使用测试数据中已发布的考试
+				data.ExamInfo.ID = null.IntFrom(0) // 无效的考试ID
 				return data
-			}(),
-			expectedError: true,
-			forceError:    "exam_service.SetExamTimers",
-			errorContains: "强制设置考试计时器错误",
-		},
-		{
-			name:        "更新考试失败-已发布状态下删除批阅员失败",
-			description: "更新处于已发布状态的考试时，删除批阅员失败",
-			userID:      testAcademicAffair,
-			userRole:    2002,
-			requestBody: func() ExamData {
-				data := validExamData
-				data.ExamInfo.ID = null.IntFrom(testPublishedExamID) // 使用测试数据中已发布的考试
-				return data
-			}(),
-			expectedError: true,
-			forceError:    "mark.HandleMarkerInfo",
-			errorContains: "强制处理批改信息错误",
-		},
-		{
-			name:        "更新考试失败-强制查询考生错误",
-			description: "更新处于已发布状态的考试时，查询考生信息失败",
-			userID:      testAcademicAffair,
-			userRole:    2002,
-			requestBody: func() ExamData {
-				data := validExamData
-				data.ExamInfo.ID = null.IntFrom(testPublishedExamID) // 使用测试数据中已发布的考试
-				return data
-			}(),
-			expectedError: true,
-			forceError:    "tx.SearchExaminee",
-			errorContains: "查询考生失败",
-		},
-		{
-			name:        "无法更新考试-未通过校验",
-			description: "无法更新考试-未通过校验",
-			userID:      testAcademicAffair,
-			userRole:    2002,
-			requestBody: func() ExamData {
-				data := validExamData
-				data.ExamInfo.ID = null.IntFrom(0)
-				return data
-			}(),
+			},
 			expectedError: true,
 			errorContains: "",
+			checkResult:   false,
 		},
 		{
-			name:        "强制关闭IO错误",
-			description: "成功更新处于未发布状态的考试",
+			name:        "考试不存在",
+			description: "更新不存在的考试",
 			userID:      testAcademicAffair,
 			userRole:    2002,
-			requestBody: func() ExamData {
+			requestBodyGen: func() interface{} {
 				data := validExamData
-				data.ExamInfo.ID = null.IntFrom(testExamToPublishID) // 使用测试数据中未发布的考试
+				data.ExamInfo.ID = null.IntFrom(999999)
 				return data
-			}(),
-			expectedError: false,
-			forceError:    "io.Close",
-		},
-		{
-			name:          "空请求体错误",
-			description:   "请求体为空时应返回错误",
-			userID:        testAcademicAffair,
-			userRole:      2002,
-			requestBody:   "",
-			expectedError: true,
-			errorContains: "请求体为空",
-		},
-		{
-			name:          "权限不足错误",
-			description:   "学生角色不能更新考试",
-			userID:        testStudent1,
-			userRole:      2008, // 学生角色
-			requestBody:   validExamData,
-			expectedError: true,
-			errorContains: "用户没有创建考试的权限",
-		},
-		{
-			name:        "JSON解析错误",
-			description: "无效的JSON格式应返回错误",
-			userID:      testAcademicAffair,
-			userRole:    2002,
-			requestBody: func() ExamData {
-				data := validExamData
-				data.ExamInfo.ID = null.IntFrom(testExamToPublishID) // 使用测试数据中未发布的考试
-				return data
-			}(),
-			expectedError: true,
-			errorContains: "JSON",
-			forceError:    "json.Unmarshal",
-		},
-		{
-			name:        "JSON解析错误2",
-			description: "无效的JSON格式应返回错误",
-			userID:      testAcademicAffair,
-			userRole:    2002,
-			requestBody: func() ExamData {
-				data := validExamData
-				data.ExamInfo.ID = null.IntFrom(testExamToPublishID) // 使用测试数据中未发布的考试
-				return data
-			}(),
-			expectedError: true,
-			errorContains: "JSON",
-			forceError:    "json.Unmarshal2",
-		},
-		{
-			name:        "获取旧考试场次ID错误",
-			description: "获取旧考试场次ID时返回错误",
-			userID:      testAcademicAffair,
-			userRole:    2002,
-			requestBody: func() ExamData {
-				data := validExamData
-				data.ExamInfo.ID = null.IntFrom(testExamToPublishID) // 使用测试数据中未发布的考试
-				return data
-			}(),
-			expectedError: true,
-			errorContains: "强制获取旧考试场次ID错误",
-			forceError:    "getExamSessionIDs",
-		},
-		{
-			name:        "考试不存在错误",
-			description: "更新不存在的考试应返回错误",
-			userID:      testAcademicAffair,
-			userRole:    2002,
-			requestBody: func() ExamData {
-				data := validExamData
-				data.ExamInfo.ID = null.IntFrom(999999) // 不存在的考试ID
-				return data
-			}(),
+			},
 			expectedError: true,
 			errorContains: "考试不存在",
+			checkResult:   false,
 		},
 		{
 			name:        "考试状态不允许更新",
 			description: "已结束的考试不能更新",
 			userID:      testAcademicAffair,
 			userRole:    2002,
-			requestBody: func() ExamData {
+			requestBodyGen: func() interface{} {
 				data := validExamData
-				data.ExamInfo.ID = null.IntFrom(testEndExamID) // 使用已结束状态的考试
+				data.ExamInfo.ID = null.IntFrom(testEndExamID)
 				return data
-			}(),
+			},
 			expectedError: true,
 			errorContains: "当前考试状态不允许更新",
+			checkResult:   false,
 		},
 		{
-			name:          "强制IO读取错误",
-			description:   "模拟IO读取错误",
-			userID:        testAcademicAffair,
-			userRole:      2002,
-			requestBody:   validExamData,
+			name:           "空请求体",
+			description:    "请求体为空",
+			userID:         testAcademicAffair,
+			userRole:       2002,
+			requestBodyGen: func() interface{} { return "" },
+			expectedError:  true,
+			errorContains:  "请求体为空",
+			checkResult:    false,
+		},
+		{
+			name:        "无效用户ID",
+			description: "用户ID为0",
+			userID:      0,
+			userRole:    2002,
+			requestBodyGen: func() interface{} {
+				return validExamData
+			},
+			expectedError: true,
+			errorContains: "无效的用户ID",
+			checkResult:   false,
+		},
+		{
+			name:        "无效用户角色",
+			description: "用户角色无效",
+			userID:      testAcademicAffair,
+			userRole:    0,
+			requestBodyGen: func() interface{} {
+				return validExamData
+			},
+			expectedError: true,
+			checkResult:   false,
+		},
+		// 强制错误测试用例
+		{
+			name:        "强制IO读取错误",
+			description: "模拟IO读取错误",
+			userID:      testAcademicAffair,
+			userRole:    2002,
+			requestBodyGen: func() interface{} {
+				return validExamData
+			},
 			forceError:    "io.ReadAll",
 			expectedError: true,
 			errorContains: "强制读取请求体错误",
+			checkResult:   false,
 		},
 		{
-			name:        "强制事务开启错误",
-			description: "模拟事务开启错误",
+			name:        "强制IO关闭错误",
+			description: "模拟IO关闭错误",
 			userID:      testAcademicAffair,
 			userRole:    2002,
-			requestBody: func() ExamData {
+			requestBodyGen: func() interface{} {
 				data := validExamData
 				data.ExamInfo.ID = null.IntFrom(testExamToPublishID)
 				return data
-			}(),
-			forceError:    "tx.Begin",
+			},
+			forceError:    "io.Close",
+			expectedError: false,
+			checkResult:   false,
+		},
+		{
+			name:        "强制JSON解析错误1",
+			description: "模拟第一次JSON解析失败",
+			userID:      testAcademicAffair,
+			userRole:    2002,
+			requestBodyGen: func() interface{} {
+				return validExamData
+			},
+			forceError:    "json.Unmarshal",
 			expectedError: true,
-			errorContains: "强制开启事务错误",
+			errorContains: "强制JSON解析错误",
+			checkResult:   false,
 		},
 		{
-			name:        "强制事务回滚错误",
-			description: "模拟事务回滚错误",
+			name:        "强制JSON解析错误2",
+			description: "模拟第二次JSON解析失败",
 			userID:      testAcademicAffair,
 			userRole:    2002,
-			requestBody: func() ExamData {
-				data := validExamData
-				data.ExamInfo.ID = null.IntFrom(testExamToPublishID)
-				return data
-			}(),
-			forceError:    "tx.Rollback",
-			expectedError: false,
-		},
-		{
-			name:        "强制事务提交错误",
-			description: "模拟事务提交错误",
-			userID:      testAcademicAffair,
-			userRole:    2002,
-			requestBody: func() ExamData {
-				data := validExamData
-				data.ExamInfo.ID = null.IntFrom(testExamToPublishID)
-				return data
-			}(),
-			forceError:    "tx.Commit",
-			expectedError: false,
+			requestBodyGen: func() interface{} {
+				return validExamData
+			},
+			forceError:    "json.Unmarshal2",
+			expectedError: true,
+			errorContains: "强制第二次JSON解析错误",
+			checkResult:   false,
 		},
 		{
 			name:        "强制考试存在检查错误",
-			description: "模拟考试存在检查错误",
+			description: "模拟考试存在检查失败",
 			userID:      testAcademicAffair,
 			userRole:    2002,
-			requestBody: func() ExamData {
+			requestBodyGen: func() interface{} {
 				data := validExamData
 				data.ExamInfo.ID = null.IntFrom(testExamToPublishID)
 				return data
-			}(),
+			},
 			forceError:    "examExists",
 			expectedError: true,
 			errorContains: "强制检查考试存在错误",
+			checkResult:   false,
 		},
 		{
 			name:        "强制查询当前状态错误",
-			description: "模拟查询当前考试状态错误",
+			description: "模拟查询当前考试状态失败",
 			userID:      testAcademicAffair,
 			userRole:    2002,
-			requestBody: func() ExamData {
+			requestBodyGen: func() interface{} {
 				data := validExamData
 				data.ExamInfo.ID = null.IntFrom(testExamToPublishID)
 				return data
-			}(),
+			},
 			forceError:    "conn.QueryRow",
 			expectedError: true,
 			errorContains: "强制查询当前考试状态错误",
+			checkResult:   false,
+		},
+		{
+			name:        "强制获取旧考试场次ID错误",
+			description: "模拟获取旧考试场次ID失败",
+			userID:      testAcademicAffair,
+			userRole:    2002,
+			requestBodyGen: func() interface{} {
+				data := validExamData
+				data.ExamInfo.ID = null.IntFrom(testExamToPublishID)
+				return data
+			},
+			forceError:    "getExamSessionIDs",
+			expectedError: true,
+			errorContains: "强制获取旧考试场次ID错误",
+			checkResult:   false,
+		},
+		{
+			name:        "强制事务开启错误",
+			description: "模拟事务开启失败",
+			userID:      testAcademicAffair,
+			userRole:    2002,
+			requestBodyGen: func() interface{} {
+				data := validExamData
+				data.ExamInfo.ID = null.IntFrom(testExamToPublishID)
+				return data
+			},
+			forceError:    "tx.Begin",
+			expectedError: true,
+			errorContains: "强制开启事务错误",
+			checkResult:   false,
+		},
+		{
+			name:        "强制事务回滚错误",
+			description: "模拟事务回滚失败",
+			userID:      testAcademicAffair,
+			userRole:    2002,
+			requestBodyGen: func() interface{} {
+				data := validExamData
+				data.ExamInfo.ID = null.IntFrom(testExamToPublishID)
+				return data
+			},
+			forceError:    "tx.Rollback",
+			expectedError: false,
+			checkResult:   false,
+		},
+		{
+			name:        "强制事务提交错误",
+			description: "模拟事务提交失败",
+			userID:      testAcademicAffair,
+			userRole:    2002,
+			requestBodyGen: func() interface{} {
+				data := validExamData
+				data.ExamInfo.ID = null.IntFrom(testExamToPublishID)
+				return data
+			},
+			forceError:    "tx.Commit",
+			expectedError: false,
+			checkResult:   false,
 		},
 		{
 			name:        "强制更新考试信息错误",
-			description: "模拟更新考试信息错误",
+			description: "模拟更新考试信息失败",
 			userID:      testAcademicAffair,
 			userRole:    2002,
-			requestBody: func() ExamData {
+			requestBodyGen: func() interface{} {
 				data := validExamData
 				data.ExamInfo.ID = null.IntFrom(testExamToPublishID)
 				return data
-			}(),
+			},
 			forceError:    "tx.UpdateExamInfo",
 			expectedError: true,
 			errorContains: "强制更新考试信息错误",
+			checkResult:   false,
 		},
 		{
 			name:        "强制软删除考试场次错误",
-			description: "模拟软删除考试场次错误",
+			description: "模拟软删除考试场次失败",
 			userID:      testAcademicAffair,
 			userRole:    2002,
-			requestBody: func() ExamData {
+			requestBodyGen: func() interface{} {
 				data := validExamData
 				data.ExamInfo.ID = null.IntFrom(testExamToPublishID)
 				return data
-			}(),
+			},
 			forceError:    "tx.SoftDeleteExamSessions",
 			expectedError: true,
 			errorContains: "强制删除考试场次错误",
+			checkResult:   false,
 		},
 		{
 			name:        "强制软删除考生错误",
-			description: "模拟软删除考生错误",
+			description: "模拟软删除考生失败",
 			userID:      testAcademicAffair,
 			userRole:    2002,
-			requestBody: func() ExamData {
+			requestBodyGen: func() interface{} {
 				data := validExamData
 				data.ExamInfo.ID = null.IntFrom(testExamToPublishID)
 				return data
-			}(),
+			},
 			forceError:    "tx.SoftDeleteExaminee",
 			expectedError: true,
 			errorContains: "强制删除考生错误",
+			checkResult:   false,
 		},
 		{
 			name:        "强制插入考试场次错误",
-			description: "模拟插入考试场次错误",
+			description: "模拟插入考试场次失败",
 			userID:      testAcademicAffair,
 			userRole:    2002,
-			requestBody: func() ExamData {
+			requestBodyGen: func() interface{} {
 				data := validExamData
 				data.ExamInfo.ID = null.IntFrom(testExamToPublishID)
 				return data
-			}(),
+			},
 			forceError:    "tx.QueryExamSession",
 			expectedError: true,
 			errorContains: "强制查询错误",
+			checkResult:   false,
 		},
 		{
-			name:        "强制插入考生错误",
-			description: "模拟批量插入考生错误",
+			name:        "强制批量插入考生错误",
+			description: "模拟批量插入考生失败",
 			userID:      testAcademicAffair,
 			userRole:    2002,
-			requestBody: func() ExamData {
+			requestBodyGen: func() interface{} {
 				data := validExamData
 				data.ExamInfo.ID = null.IntFrom(testExamToPublishID)
 				return data
-			}(),
+			},
 			forceError:    "tx.InsertExaminees",
 			expectedError: true,
 			errorContains: "强制执行批量插入考生错误",
+			checkResult:   false,
+		},
+		// 已发布考试的特殊错误测试
+		{
+			name:        "已发布考试-强制删除考卷错误",
+			description: "更新已发布考试时删除考卷失败",
+			userID:      testAcademicAffair,
+			userRole:    2002,
+			requestBodyGen: func() interface{} {
+				data := validExamData
+				data.ExamInfo.ID = null.IntFrom(testPublishedExamID)
+				return data
+			},
+			forceError:    "examPaper.DeleteExamPaperById",
+			expectedError: true,
+			errorContains: "强制删除考卷和答卷错误",
+			checkResult:   false,
+		},
+		{
+			name:        "已发布考试-强制处理批改信息错误",
+			description: "更新已发布考试时处理批改信息失败",
+			userID:      testAcademicAffair,
+			userRole:    2002,
+			requestBodyGen: func() interface{} {
+				data := validExamData
+				data.ExamInfo.ID = null.IntFrom(testPublishedExamID)
+				return data
+			},
+			forceError:    "mark.HandleMarkerInfo",
+			expectedError: true,
+			errorContains: "强制处理批改信息错误",
+			checkResult:   false,
+		},
+		{
+			name:        "已发布考试-强制查询考生错误",
+			description: "更新已发布考试时查询考生失败",
+			userID:      testAcademicAffair,
+			userRole:    2002,
+			requestBodyGen: func() interface{} {
+				data := validExamData
+				data.ExamInfo.ID = null.IntFrom(testPublishedExamID)
+				return data
+			},
+			forceError:    "tx.SearchExaminee",
+			expectedError: true,
+			errorContains: "查询考生失败",
+			checkResult:   false,
+		},
+		{
+			name:        "已发布考试-强制生成考卷错误",
+			description: "更新已发布考试时生成考卷失败",
+			userID:      testAcademicAffair,
+			userRole:    2002,
+			requestBodyGen: func() interface{} {
+				data := validExamData
+				data.ExamInfo.ID = null.IntFrom(testPublishedExamID)
+				return data
+			},
+			forceError:    "examPaper.GenerateExamPaper",
+			expectedError: true,
+			errorContains: "强制生成考卷错误",
+			checkResult:   false,
+		},
+		{
+			name:        "已发布考试-强制生成答卷错误",
+			description: "更新已发布考试时生成答卷失败",
+			userID:      testAcademicAffair,
+			userRole:    2002,
+			requestBodyGen: func() interface{} {
+				data := validExamData
+				data.ExamInfo.ID = null.IntFrom(testPublishedExamID)
+				return data
+			},
+			forceError:    "examPaper.GenerateAnswerQuestion",
+			expectedError: true,
+			errorContains: "强制生成答卷错误",
+			checkResult:   false,
+		},
+		{
+			name:        "已发布考试-强制更新考生考卷ID错误",
+			description: "更新已发布考试时更新考生考卷ID失败",
+			userID:      testAcademicAffair,
+			userRole:    2002,
+			requestBodyGen: func() interface{} {
+				data := validExamData
+				data.ExamInfo.ID = null.IntFrom(testPublishedExamID)
+				return data
+			},
+			forceError:    "tx.UpdateExamineeExamPaperID",
+			expectedError: true,
+			errorContains: "强制更新考生考卷ID错误",
+			checkResult:   false,
+		},
+		{
+			name:        "已发布考试-强制转换批改员ID错误",
+			description: "更新已发布考试时转换批改员ID失败",
+			userID:      testAcademicAffair,
+			userRole:    2002,
+			requestBodyGen: func() interface{} {
+				data := validExamData
+				data.ExamInfo.ID = null.IntFrom(testPublishedExamID)
+				return data
+			},
+			forceError:    "convertToInt64Array",
+			expectedError: true,
+			errorContains: "转换批改员ID失败",
+			checkResult:   false,
+		},
+		{
+			name:        "已发布考试-强制查询考试创建者错误",
+			description: "更新已发布考试时查询创建者失败",
+			userID:      testAcademicAffair,
+			userRole:    2002,
+			requestBodyGen: func() interface{} {
+				data := validExamData
+				data.ExamInfo.ID = null.IntFrom(testPublishedExamID)
+				return data
+			},
+			forceError:    "tx.SearchExamCreator",
+			expectedError: true,
+			errorContains: "强制查询考试创建者错误",
+			checkResult:   false,
+		},
+		{
+			name:        "已发布考试-强制处理批改员信息错误2",
+			description: "更新已发布考试时处理批改员信息失败2",
+			userID:      testAcademicAffair,
+			userRole:    2002,
+			requestBodyGen: func() interface{} {
+				data := validExamData
+				data.ExamInfo.ID = null.IntFrom(testPublishedExamID)
+				return data
+			},
+			forceError:    "mark.HandleMarkerInfo2",
+			expectedError: true,
+			errorContains: "强制处理批改员信息错误",
+			checkResult:   false,
+		},
+		{
+			name:        "已发布考试-强制设置考试计时器错误",
+			description: "更新已发布考试时设置计时器失败",
+			userID:      testAcademicAffair,
+			userRole:    2002,
+			requestBodyGen: func() interface{} {
+				data := validExamData
+				data.ExamInfo.ID = null.IntFrom(testPublishedExamID)
+				return data
+			},
+			forceError:    "exam_service.SetExamTimers",
+			expectedError: true,
+			errorContains: "强制设置考试计时器错误",
+			checkResult:   false,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// 执行测试前的准备工作
-			if tt.setupFunc != nil {
-				tt.setupFunc(t)
-			}
+			// 生成请求体
+			requestBody := tt.requestBodyGen()
+			var requestBodyStr string
 
-			// 执行测试后的清理工作
-			if tt.cleanupFunc != nil {
-				defer tt.cleanupFunc(t)
-			}
-
-			// 准备请求体
-			var requestBody string
-			if tt.requestBody != nil {
-				switch body := tt.requestBody.(type) {
-				case string:
-					requestBody = body
-				case ExamData:
-					requestBody = string(mustMarshal(t, body))
-				default:
-					t.Fatalf("不支持的请求体类型: %T", tt.requestBody)
-				}
+			switch body := requestBody.(type) {
+			case string:
+				requestBodyStr = body
+			case ExamData:
+				requestBodyStr = string(mustMarshal(t, body))
+			default:
+				t.Fatalf("不支持的请求体类型: %T", requestBody)
 			}
 
 			// 创建模拟上下文
-			ctx := createMockContextWithBody("PUT", "/api/exam",
-				requestBody, tt.forceError, tt.userID, tt.userRole)
+			ctx := createMockContextWithBody("PUT", "/api/exam", requestBodyStr, tt.forceError, tt.userID, tt.userRole)
 
 			func() {
 				defer func() {
@@ -3232,6 +2982,31 @@ func TestExamPutMethod(t *testing.T) {
 				// 期望成功
 				if serviceCtx.Err != nil {
 					t.Errorf("exam() 期望成功，但返回错误: %v", serviceCtx.Err)
+					return
+				}
+
+				// 检查更新结果
+				if tt.checkResult {
+					// 验证考试信息确实被更新
+					conn := cmn.GetPgxConn()
+					var examInfo struct {
+						Name    string
+						Status  string
+						Creator int64
+					}
+
+					examID := requestBody.(ExamData).ExamInfo.ID.Int64
+					err := conn.QueryRow(context.Background(),
+						"SELECT name, status, creator FROM t_exam_info WHERE id = $1", examID).Scan(
+						&examInfo.Name, &examInfo.Status, &examInfo.Creator)
+
+					if err != nil {
+						t.Errorf("验证更新的考试失败: %v", err)
+						return
+					}
+
+					t.Logf("考试更新成功，ID: %d, 名称: %s, 状态: %s, 创建者: %d",
+						examID, examInfo.Name, examInfo.Status, examInfo.Creator)
 				}
 			}
 		})
@@ -4406,7 +4181,7 @@ func TestUpdateExamSessionStatus(t *testing.T) {
 			wantError: false, // SQL执行成功但影响行数为0
 		},
 		{
-			name:         "更新为取消状态",
+			name:         "更新为作废状态",
 			examIDs:      []int64{testNormalExamID},
 			newStatus:    "00",
 			userID:       testAcademicAffair,
@@ -5338,6 +5113,8 @@ func TestExamStatus(t *testing.T) {
 		CleanTestExamData(t)
 	})
 
+	go exam_service.ExamMaintainService()
+
 	tests := []struct {
 		name           string
 		description    string
@@ -5352,27 +5129,59 @@ func TestExamStatus(t *testing.T) {
 		expectedStatus string
 	}{
 		{
-			name:           "正常的取消请求",
-			description:    "正常的取消请求",
-			examID:         testPublishedExamID,
-			userID:         testAcademicAffair,
-			userRole:       2002,
-			queryParams:    fmt.Sprintf(`q={"data":{"IDs":[%d],"Status":"00"}}`, testPublishedExamID),
-			expectSuccess:  true,
-			method:         "PUT",
-			expectedStatus: "00",
+			name:          "非00状态考试发布",
+			description:   "已发布的考试不能再次发布",
+			examID:        testPublishedExamID,
+			userID:        testAcademicAffair,
+			userRole:      2002,
+			queryParams:   fmt.Sprintf(`q={"data":{"IDs":[%d],"Status":"02"}}`, testPublishedExamID),
+			expectSuccess: false,
+			errorContains: "尝试发布不属于未发布状态的考试",
 		},
 		{
-			name:          "取消发布时强制查询错误",
+			name:          "作废考试时删除考卷失败",
+			description:   "作废考试时删除考卷失败",
+			examID:        testPublishedExamID,
+			userID:        testAcademicAffair,
+			userRole:      2002,
+			queryParams:   fmt.Sprintf(`q={"data":{"IDs":[%d],"Status":"16"}}`, testPublishedExamID),
+			expectSuccess: false,
+			forceError:    "examPaper.DeleteExamPaperById",
+			errorContains: "强制删除考卷和答卷错误",
+		},
+		{
+			name:          "作废考试时更新考生状态失败",
+			description:   "作废考试时更新考生状态失败",
+			examID:        testPublishedExamID,
+			userID:        testAcademicAffair,
+			userRole:      2002,
+			queryParams:   fmt.Sprintf(`q={"data":{"IDs":[%d],"Status":"16"}}`, testPublishedExamID),
+			expectSuccess: false,
+			forceError:    "updateExamineeStatus",
+			errorContains: "强制更新考生状态错误",
+		},
+		{
+			name:          "作废发布时强制查询错误",
 			description:   "强制查询错误",
 			examID:        testPublishedExamID,
 			userID:        testAcademicAffair,
 			userRole:      2002,
-			queryParams:   fmt.Sprintf(`q={"data":{"IDs":[%d],"Status":"00"}}`, testPublishedExamID),
+			queryParams:   fmt.Sprintf(`q={"data":{"IDs":[%d],"Status":"16"}}`, testPublishedExamID),
 			expectSuccess: false,
 			method:        "PUT",
 			forceError:    "QueryRow.CheckStatus",
 			errorContains: "强制查询错误",
+		},
+		{
+			name:           "正常的作废请求",
+			description:    "正常的作废请求",
+			examID:         testPublishedExamID,
+			userID:         testAcademicAffair,
+			userRole:       2002,
+			queryParams:    fmt.Sprintf(`q={"data":{"IDs":[%d],"Status":"16"}}`, testPublishedExamID),
+			expectSuccess:  true,
+			method:         "PUT",
+			expectedStatus: "16",
 		},
 		{
 			name:          "强制获取考试场次ID错误",
@@ -5380,7 +5189,7 @@ func TestExamStatus(t *testing.T) {
 			examID:        testPublishedExamID,
 			userID:        testAcademicAffair,
 			userRole:      2002,
-			queryParams:   fmt.Sprintf(`q={"data":{"IDs":[%d],"Status":"00"}}`, testPublishedExamID),
+			queryParams:   fmt.Sprintf(`q={"data":{"IDs":[%d],"Status":"16"}}`, testPublishedExamID),
 			expectSuccess: false,
 			method:        "PUT",
 			forceError:    "GetExamSessionIDs",
@@ -5392,7 +5201,7 @@ func TestExamStatus(t *testing.T) {
 			examID:        testPublishedExamID,
 			userID:        testAcademicAffair,
 			userRole:      2002,
-			queryParams:   fmt.Sprintf(`q={"data":{"IDs":[%d],"Status":"00"}}`, testPublishedExamID),
+			queryParams:   fmt.Sprintf(`q={"data":{"IDs":[%d],"Status":"16"}}`, testPublishedExamID),
 			expectSuccess: false,
 			method:        "PUT",
 			forceError:    "mark.HandleMarkerInfo",
@@ -5404,7 +5213,7 @@ func TestExamStatus(t *testing.T) {
 			examID:        testPublishedExamID,
 			userID:        testAcademicAffair,
 			userRole:      2002,
-			queryParams:   fmt.Sprintf(`q={"data":{"IDs":[%d],"Status":"00"}}`, testPublishedExamID),
+			queryParams:   fmt.Sprintf(`q={"data":{"IDs":[%d],"Status":"16"}}`, testPublishedExamID),
 			expectSuccess: false,
 			method:        "PUT",
 			forceError:    "updateExamStatus",
@@ -5416,23 +5225,23 @@ func TestExamStatus(t *testing.T) {
 			examID:        testPublishedExamID,
 			userID:        testAcademicAffair,
 			userRole:      2002,
-			queryParams:   fmt.Sprintf(`q={"data":{"IDs":[%d],"Status":"00"}}`, testPublishedExamID),
+			queryParams:   fmt.Sprintf(`q={"data":{"IDs":[%d],"Status":"16"}}`, testPublishedExamID),
 			expectSuccess: false,
 			method:        "PUT",
 			forceError:    "updateExamSessionStatus",
 			errorContains: "强制更新考试场次状态错误",
 		},
 		{
-			name:          "强制取消考试定时器错误",
-			description:   "强制取消考试定时器错误",
+			name:          "强制作废考试定时器错误",
+			description:   "强制作废考试定时器错误",
 			examID:        testPublishedExamID,
 			userID:        testAcademicAffair,
 			userRole:      2002,
-			queryParams:   fmt.Sprintf(`q={"data":{"IDs":[%d],"Status":"00"}}`, testPublishedExamID),
+			queryParams:   fmt.Sprintf(`q={"data":{"IDs":[%d],"Status":"16"}}`, testPublishedExamID),
 			expectSuccess: false,
 			method:        "PUT",
 			forceError:    "exam_service.CancelExamTimers",
-			errorContains: "强制取消考试定时器错误",
+			errorContains: "强制作废考试定时器错误",
 		},
 		{
 			name:          "强制处理批改信息错误",
@@ -5440,22 +5249,22 @@ func TestExamStatus(t *testing.T) {
 			examID:        testPublishedExamID,
 			userID:        testAcademicAffair,
 			userRole:      2002,
-			queryParams:   fmt.Sprintf(`q={"data":{"IDs":[%d],"Status":"00"}}`, testPublishedExamID),
+			queryParams:   fmt.Sprintf(`q={"data":{"IDs":[%d],"Status":"16"}}`, testPublishedExamID),
 			expectSuccess: false,
 			method:        "PUT",
 			forceError:    "mark.HandleMarkerInfo",
 			errorContains: "强制处理批改信息错误",
 		},
 		{
-			name:          "尝试取消不属于待开始状态的考试，无法执行取消操作",
-			description:   "尝试取消不属于待开始状态的考试，无法执行取消操作",
+			name:          "尝试作废不属于待开始状态的考试，无法执行作废操作",
+			description:   "尝试作废不属于待开始状态的考试，无法执行作废操作",
 			examID:        testExamToPublishID,
 			userID:        testAcademicAffair,
 			userRole:      2002,
-			queryParams:   fmt.Sprintf(`q={"data":{"IDs":[%d],"Status":"00"}}`, testExamToPublishID),
+			queryParams:   fmt.Sprintf(`q={"data":{"IDs":[%d],"Status":"16"}}`, testExamToPublishID),
 			expectSuccess: false,
 			method:        "PUT",
-			errorContains: "尝试取消不属于待开始状态的考试，无法执行取消操作",
+			errorContains: "尝试作废不属于待开始状态的考试，无法执行作废操作",
 		},
 		{
 			name:          "无效的请求方法",
@@ -5800,16 +5609,6 @@ func TestExamStatus(t *testing.T) {
 			queryParams:   fmt.Sprintf(`q={"data":{"IDs":[%d]}}`, testExamToPublishID),
 			expectSuccess: false,
 			errorContains: "请指定更新参数data.Status",
-		},
-		{
-			name:          "非00状态考试发布",
-			description:   "已发布的考试不能再次发布",
-			examID:        testNormalExamID, // 这个考试状态已经是02
-			userID:        testAcademicAffair,
-			userRole:      2002,
-			queryParams:   fmt.Sprintf(`q={"data":{"IDs":[%d],"Status":"02"}}`, testNormalExamID),
-			expectSuccess: false,
-			errorContains: "尝试发布不属于未发布状态的考试",
 		},
 		{
 			name:          "无效用户ID",
@@ -6587,6 +6386,35 @@ func TestExamDeleteMethod(t *testing.T) {
 			errorContains: "exam-delete-json.Unmarshal2-err",
 		},
 		{
+			name:          "强制检查考试是否能删除错误",
+			description:   "强制检查考试是否能删除错误",
+			userID:        testAcademicAffair,
+			userRole:      2002,
+			requestBody:   []int64{testNormalExamID},
+			forceError:    "checkExam",
+			expectedError: true,
+			errorContains: "强制检查考试存在错误",
+		},
+		{
+			name:          "无法删除考试",
+			description:   "无法删除考试",
+			userID:        testAcademicAffair,
+			userRole:      2002,
+			requestBody:   []int64{testPublishedExamID},
+			expectedError: true,
+			errorContains: "考试无法删除",
+		},
+		{
+			name:          "无法删除考试2",
+			description:   "无法删除考试2",
+			userID:        testAcademicAffair,
+			userRole:      2002,
+			requestBody:   []int64{testPublishedExamID, testEndExamID},
+			expectedError: true,
+			errorContains: "部分考试无法删除",
+		},
+
+		{
 			name:          "强制读取请求体错误",
 			description:   "模拟读取请求体失败",
 			userID:        testAcademicAffair,
@@ -6667,6 +6495,16 @@ func TestExamDeleteMethod(t *testing.T) {
 			errorContains: "强制删除考试场次错误",
 		},
 		{
+			name:          "强制删除考卷错误",
+			description:   "模拟删除考卷失败",
+			userID:        testAcademicAffair,
+			userRole:      2002,
+			requestBody:   []int64{testNormalExamID},
+			forceError:    "examPaper.DeleteExamPaperById",
+			expectedError: true,
+			errorContains: "强制删除考卷和答卷错误",
+		},
+		{
 			name:          "强制删除考试信息错误",
 			description:   "模拟软删除考试信息失败",
 			userID:        testAcademicAffair,
@@ -6711,14 +6549,14 @@ func TestExamDeleteMethod(t *testing.T) {
 			description:   "成功删除多个考试及其相关数据",
 			userID:        testAcademicAffair,
 			userRole:      2002,
-			requestBody:   []int64{testPublishedExamID, testNormalExamID2},
+			requestBody:   []int64{testDeleteExamID, testExamToPublishID},
 			expectedError: false,
 			verifyFunc: func(t *testing.T) {
 				conn := cmn.GetPgxConn()
 				ctx := context.Background()
 
 				// 检查所有考试状态已更新为12（删除状态）
-				for _, examID := range []int64{testPublishedExamID, testNormalExamID2} {
+				for _, examID := range []int64{testDeleteExamID, testExamToPublishID} {
 					var examStatus string
 					err := conn.QueryRow(ctx, "SELECT status FROM t_exam_info WHERE id=$1", examID).Scan(&examStatus)
 					assert.Nil(t, err)
@@ -6805,7 +6643,7 @@ func TestExamDeleteMethod(t *testing.T) {
 				if tt.errorContains != "" {
 					assert.Contains(t, q.Err.Error(), tt.errorContains, "%s: 错误消息不匹配", tt.description)
 				}
-				t.Logf("%s: 正确收到期望的错误: %v", tt.name, q.Err)
+				t.Logf("%s: 收到期望的错误: %v", tt.name, q.Err)
 			} else {
 				if q.Err != nil {
 					t.Errorf("%s: 意外错误: %v", tt.description, q.Err)
@@ -6821,6 +6659,937 @@ func TestExamDeleteMethod(t *testing.T) {
 			}
 
 			t.Logf("%s: 测试完成 - %s", tt.name, tt.description)
+		})
+	}
+}
+
+// TestExamLock 测试考试锁功能
+func TestExamLock(t *testing.T) {
+	// 确保logger和数据库连接已初始化
+	if z == nil {
+		cmn.ConfigureForTest()
+	}
+
+	// 设置测试数据
+	CleanTestExamData(t)
+	CreateTestExamData(t)
+
+	// 清理函数
+	t.Cleanup(func() {
+		CleanTestExamData(t)
+	})
+
+	tests := []struct {
+		name          string
+		method        string
+		queryParams   string
+		forceError    string
+		expectedError bool
+		errorContains string
+		expectedMsg   string
+		description   string
+		userID        int64
+		userRole      int64
+	}{
+		// GET 方法测试（获取考试锁）
+		{
+			name:          "GET-正常获取考试锁-教务员角色",
+			method:        "GET",
+			queryParams:   fmt.Sprintf("exam_id=%d", testNormalExamID),
+			forceError:    "",
+			expectedError: false,
+			expectedMsg:   "成功获取考试锁",
+			description:   "教务员角色正常获取考试锁",
+			userID:        testAcademicAffair,
+			userRole:      2002,
+		},
+		{
+			name:          "GET-无效考试ID-空参数",
+			method:        "GET",
+			queryParams:   "exam_id=",
+			forceError:    "",
+			expectedError: true,
+			errorContains: "无效的考试ID",
+			description:   "空考试ID参数",
+			userID:        testAcademicAffair,
+			userRole:      2002,
+		},
+		{
+			name:          "GET-无效考试ID-非数字",
+			method:        "GET",
+			queryParams:   "exam_id=abc",
+			forceError:    "",
+			expectedError: true,
+			errorContains: "无效的考试ID",
+			description:   "非数字考试ID",
+			userID:        testAcademicAffair,
+			userRole:      2002,
+		},
+		{
+			name:          "GET-无效考试ID-零值",
+			method:        "GET",
+			queryParams:   "exam_id=0",
+			forceError:    "",
+			expectedError: true,
+			errorContains: "无效的考试ID",
+			description:   "零值考试ID",
+			userID:        testAcademicAffair,
+			userRole:      2002,
+		},
+		{
+			name:          "GET-无效考试ID-负数",
+			method:        "GET",
+			queryParams:   "exam_id=-1",
+			forceError:    "",
+			expectedError: true,
+			errorContains: "无效的考试ID",
+			description:   "负数考试ID",
+			userID:        testAcademicAffair,
+			userRole:      2002,
+		},
+		{
+			name:          "GET-无效用户ID",
+			method:        "GET",
+			queryParams:   fmt.Sprintf("exam_id=%d", testNormalExamID),
+			forceError:    "",
+			expectedError: true,
+			errorContains: "无效的用户ID",
+			description:   "用户ID为0",
+			userID:        0,
+			userRole:      2002,
+		},
+		{
+			name:          "GET-无效用户域",
+			method:        "GET",
+			queryParams:   fmt.Sprintf("exam_id=%d", testNormalExamID),
+			forceError:    "",
+			expectedError: true,
+			errorContains: "未找到角色ID",
+			description:   "无效用户域",
+			userID:        testAcademicAffair,
+			userRole:      9999,
+		},
+		{
+			name:          "GET-用户权限验证失败",
+			method:        "GET",
+			queryParams:   fmt.Sprintf("exam_id=%d", testNormalExamID),
+			forceError:    "validateUserExamPermission",
+			expectedError: true,
+			errorContains: "强制验证用户考试权限错误",
+			description:   "强制用户权限验证错误",
+			userID:        testAcademicAffair,
+			userRole:      2002,
+		},
+		{
+			name:          "GET-用户无权限访问考试",
+			method:        "GET",
+			queryParams:   fmt.Sprintf("exam_id=%d", testNormalExamID),
+			forceError:    "validateUserExamPermissionFailed",
+			expectedError: true,
+			errorContains: "无权访问该考试",
+			description:   "用户无权限访问该考试",
+			userID:        testAcademicAffair,
+			userRole:      2002,
+		},
+		{
+			name:          "GET-尝试获取锁失败",
+			method:        "GET",
+			queryParams:   fmt.Sprintf("exam_id=%d", testNormalExamID),
+			forceError:    "cmn.TryLock",
+			expectedError: true,
+			errorContains: "强制尝试获取考试锁错误",
+			description:   "强制尝试获取锁失败",
+			userID:        testAcademicAffair,
+			userRole:      2002,
+		},
+		{
+			name:          "GET-考试正在被其他用户编辑",
+			method:        "GET",
+			queryParams:   fmt.Sprintf("exam_id=%d", testNormalExamID),
+			forceError:    "cmn.TryLockFailed",
+			expectedError: true,
+			errorContains: "考试正在被其他用户编辑",
+			description:   "考试正在被其他用户编辑",
+			userID:        testAcademicAffair,
+			userRole:      2002,
+		},
+
+		// PUT 方法测试（刷新考试锁）
+		{
+			name:          "PUT-正常刷新考试锁-教务员角色",
+			method:        "PUT",
+			queryParams:   fmt.Sprintf("exam_id=%d", testNormalExamID),
+			forceError:    "",
+			expectedError: false,
+			expectedMsg:   "成功刷新考试锁",
+			description:   "教务员角色正常刷新考试锁",
+			userID:        testAcademicAffair,
+			userRole:      2002,
+		},
+		{
+			name:          "PUT-无效考试ID-空参数",
+			method:        "PUT",
+			queryParams:   "exam_id=",
+			forceError:    "",
+			expectedError: true,
+			errorContains: "无效的考试ID",
+			description:   "空考试ID参数",
+			userID:        testAcademicAffair,
+			userRole:      2002,
+		},
+		{
+			name:          "PUT-无效用户ID",
+			method:        "PUT",
+			queryParams:   fmt.Sprintf("exam_id=%d", testNormalExamID),
+			forceError:    "",
+			expectedError: true,
+			errorContains: "无效的用户ID",
+			description:   "用户ID为0",
+			userID:        0,
+			userRole:      2002,
+		},
+		{
+			name:          "PUT-用户权限验证失败",
+			method:        "PUT",
+			queryParams:   fmt.Sprintf("exam_id=%d", testNormalExamID),
+			forceError:    "validateUserExamPermission",
+			expectedError: true,
+			errorContains: "强制验证用户考试权限错误",
+			description:   "强制用户权限验证错误",
+			userID:        testAcademicAffair,
+			userRole:      2002,
+		},
+		{
+			name:          "PUT-用户无权限访问考试",
+			method:        "PUT",
+			queryParams:   fmt.Sprintf("exam_id=%d", testNormalExamID),
+			forceError:    "validateUserExamPermissionFailed",
+			expectedError: true,
+			errorContains: "无权访问该考试",
+			description:   "用户无权限访问该考试",
+			userID:        testAcademicAffair,
+			userRole:      2002,
+		},
+		{
+			name:          "PUT-刷新锁失败",
+			method:        "PUT",
+			queryParams:   fmt.Sprintf("exam_id=%d", testNormalExamID),
+			forceError:    "cmn.RefreshLock",
+			expectedError: true,
+			errorContains: "强制刷新考试锁错误",
+			description:   "强制刷新锁失败",
+			userID:        testAcademicAffair,
+			userRole:      2002,
+		},
+
+		// DELETE 方法测试（释放考试锁）
+		{
+			name:          "DELETE-正常释放考试锁-教务员角色",
+			method:        "DELETE",
+			queryParams:   fmt.Sprintf("exam_id=%d", testNormalExamID),
+			forceError:    "",
+			expectedError: false,
+			expectedMsg:   "成功清除考试锁",
+			description:   "教务员角色正常释放考试锁",
+			userID:        testAcademicAffair,
+			userRole:      2002,
+		},
+		{
+			name:          "DELETE-无效考试ID-空参数",
+			method:        "DELETE",
+			queryParams:   "exam_id=",
+			forceError:    "",
+			expectedError: true,
+			errorContains: "无效的考试ID",
+			description:   "空考试ID参数",
+			userID:        testAcademicAffair,
+			userRole:      2002,
+		},
+		{
+			name:          "DELETE-无效用户ID",
+			method:        "DELETE",
+			queryParams:   fmt.Sprintf("exam_id=%d", testNormalExamID),
+			forceError:    "",
+			expectedError: true,
+			errorContains: "无效的用户ID",
+			description:   "用户ID为0",
+			userID:        0,
+			userRole:      2002,
+		},
+		{
+			name:          "DELETE-用户权限验证失败",
+			method:        "DELETE",
+			queryParams:   fmt.Sprintf("exam_id=%d", testNormalExamID),
+			forceError:    "validateUserExamPermission",
+			expectedError: true,
+			errorContains: "强制验证用户考试权限错误",
+			description:   "强制用户权限验证错误",
+			userID:        testAcademicAffair,
+			userRole:      2002,
+		},
+		{
+			name:          "DELETE-用户无权限访问考试",
+			method:        "DELETE",
+			queryParams:   fmt.Sprintf("exam_id=%d", testNormalExamID),
+			forceError:    "validateUserExamPermissionFailed",
+			expectedError: true,
+			errorContains: "无权访问该考试",
+			description:   "用户无权限访问该考试",
+			userID:        testAcademicAffair,
+			userRole:      2002,
+		},
+		{
+			name:          "DELETE-释放锁失败",
+			method:        "DELETE",
+			queryParams:   fmt.Sprintf("exam_id=%d", testNormalExamID),
+			forceError:    "cmn.ReleaseLock",
+			expectedError: true,
+			errorContains: "强制释放考试锁错误",
+			description:   "强制释放锁失败",
+			userID:        testAcademicAffair,
+			userRole:      2002,
+		},
+
+		// 不支持的方法测试
+		{
+			name:          "PATCH-不支持的方法",
+			method:        "PATCH",
+			queryParams:   fmt.Sprintf("exam_id=%d", testNormalExamID),
+			forceError:    "",
+			expectedError: true,
+			errorContains: "unsupported method: patch",
+			description:   "不支持的HTTP方法",
+			userID:        testAcademicAffair,
+			userRole:      2002,
+		},
+		{
+			name:          "POST-不支持的方法",
+			method:        "POST",
+			queryParams:   fmt.Sprintf("exam_id=%d", testNormalExamID),
+			forceError:    "",
+			expectedError: true,
+			errorContains: "unsupported method: post",
+			description:   "不支持的HTTP方法",
+			userID:        testAcademicAffair,
+			userRole:      2002,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Logf("%s: 开始测试 - %s", tt.name, tt.description)
+
+			// 创建查询参数
+			queryParams, _ := url.ParseQuery(tt.queryParams)
+
+			// 创建模拟上下文
+			ctx := createMockContextWithRole(tt.method, "/exam/lock", queryParams, tt.forceError, tt.userID, tt.userRole)
+
+			// 调用函数
+			examLock(ctx)
+
+			// 获取响应
+			q := cmn.GetCtxValue(ctx)
+
+			// 验证结果
+			if tt.expectedError {
+				assert.Error(t, q.Err, tt.description)
+				if tt.errorContains != "" {
+					assert.Contains(t, q.Err.Error(), tt.errorContains, tt.description)
+				}
+				t.Logf("%s: 正确收到期望的错误: %v", tt.name, q.Err)
+			} else {
+				assert.NoError(t, q.Err, tt.description)
+				if tt.expectedMsg != "" {
+					assert.Contains(t, q.Msg.Msg, tt.expectedMsg, tt.description)
+				}
+				t.Logf("%s: 操作成功完成，响应消息: %s", tt.name, q.Msg.Msg)
+			}
+
+			t.Logf("%s: 测试完成 - %s", tt.name, tt.description)
+		})
+	}
+}
+
+// TestUpdateExamineeStatus 测试更新考生状态功能
+func TestUpdateExamineeStatus(t *testing.T) {
+	// 确保logger和数据库连接已初始化
+	if z == nil {
+		cmn.ConfigureForTest()
+	}
+
+	// 设置测试数据
+	CleanTestExamData(t)
+	CreateTestExamData(t)
+
+	// 清理函数
+	t.Cleanup(func() {
+		CleanTestExamData(t)
+	})
+
+	// 获取数据库连接
+	conn := cmn.GetPgxConn()
+	ctx := context.Background()
+
+	tests := []struct {
+		name          string
+		newStatus     string
+		userID        int64
+		examIDs       []int64
+		forceError    string
+		expectedError bool
+		errorContains string
+		description   string
+		verifyFunc    func(t *testing.T)
+	}{
+		{
+			name:          "正常更新考生状态-单个考试",
+			newStatus:     "02",
+			userID:        testAcademicAffair,
+			examIDs:       []int64{testNormalExamID},
+			forceError:    "",
+			expectedError: false,
+			description:   "正常更新单个考试的考生状态",
+			verifyFunc: func(t *testing.T) {
+				// 验证状态是否正确更新
+				var count int
+				err := conn.QueryRow(ctx, `
+					SELECT COUNT(*) FROM t_examinee e
+					JOIN t_exam_session es ON e.exam_session_id = es.id
+					WHERE es.exam_id = $1 AND e.status = '02' AND e.updated_by = $2
+				`, testNormalExamID, testAcademicAffair).Scan(&count)
+				assert.NoError(t, err)
+				assert.Greater(t, count, 0, "应该有考生状态被更新")
+			},
+		},
+		{
+			name:          "正常更新考生状态-多个考试",
+			newStatus:     "03",
+			userID:        testAcademicAffair,
+			examIDs:       []int64{testNormalExamID, testNormalExamID2},
+			forceError:    "",
+			expectedError: false,
+			description:   "正常更新多个考试的考生状态",
+			verifyFunc: func(t *testing.T) {
+				// 验证状态是否正确更新
+				var count int
+				err := conn.QueryRow(ctx, `
+					SELECT COUNT(*) FROM t_examinee e
+					JOIN t_exam_session es ON e.exam_session_id = es.id
+					WHERE es.exam_id IN ($1, $2) AND e.status = '03' AND e.updated_by = $3
+				`, testNormalExamID, testNormalExamID2, testAcademicAffair).Scan(&count)
+				assert.NoError(t, err)
+				assert.Greater(t, count, 0, "应该有考生状态被更新")
+			},
+		},
+		{
+			name:          "考试ID数组为空",
+			newStatus:     "02",
+			userID:        testAcademicAffair,
+			examIDs:       []int64{},
+			forceError:    "",
+			expectedError: true,
+			errorContains: "考试ID数组不能为空",
+			description:   "考试ID数组为空应该返回错误",
+		},
+		{
+			name:          "无效的考试ID-零值",
+			newStatus:     "02",
+			userID:        testAcademicAffair,
+			examIDs:       []int64{0},
+			forceError:    "",
+			expectedError: true,
+			errorContains: "无效的考试ID: 0",
+			description:   "零值考试ID应该返回错误",
+		},
+		{
+			name:          "无效的考试ID-负数",
+			newStatus:     "02",
+			userID:        testAcademicAffair,
+			examIDs:       []int64{-1},
+			forceError:    "",
+			expectedError: true,
+			errorContains: "无效的考试ID: -1",
+			description:   "负数考试ID应该返回错误",
+		},
+		{
+			name:          "无效的考试ID-混合有效无效",
+			newStatus:     "02",
+			userID:        testAcademicAffair,
+			examIDs:       []int64{testNormalExamID, 0},
+			forceError:    "",
+			expectedError: true,
+			errorContains: "无效的考试ID: 0",
+			description:   "包含无效考试ID的数组应该返回错误",
+		},
+		{
+			name:          "无效的用户ID-零值",
+			newStatus:     "02",
+			userID:        0,
+			examIDs:       []int64{testNormalExamID},
+			forceError:    "",
+			expectedError: true,
+			errorContains: "无效的用户ID: 0",
+			description:   "零值用户ID应该返回错误",
+		},
+		{
+			name:          "无效的用户ID-负数",
+			newStatus:     "02",
+			userID:        -1,
+			examIDs:       []int64{testNormalExamID},
+			forceError:    "",
+			expectedError: true,
+			errorContains: "无效的用户ID: -1",
+			description:   "负数用户ID应该返回错误",
+		},
+		{
+			name:          "更新状态为空",
+			newStatus:     "",
+			userID:        testAcademicAffair,
+			examIDs:       []int64{testNormalExamID},
+			forceError:    "",
+			expectedError: true,
+			errorContains: "更新状态不能为空",
+			description:   "空状态应该返回错误",
+		},
+		{
+			name:          "数据库执行错误",
+			newStatus:     "02",
+			userID:        testAcademicAffair,
+			examIDs:       []int64{testNormalExamID},
+			forceError:    "updateExamineeStatus.Exec",
+			expectedError: true,
+			errorContains: "force error: updateExamineeStatus.Exec",
+			description:   "强制数据库执行错误",
+		},
+		{
+			name:          "不更新状态为08的考生",
+			newStatus:     "04",
+			userID:        testAcademicAffair,
+			examIDs:       []int64{testNormalExamID},
+			forceError:    "",
+			expectedError: false,
+			description:   "不应该更新状态为08的考生",
+			verifyFunc: func(t *testing.T) {
+				// 首先设置一个考生状态为08
+				tx, err := conn.Begin(ctx)
+				if err != nil {
+					t.Fatalf("开始事务失败: %v", err)
+				}
+
+				// 更新一个考生状态为08
+				_, err = tx.Exec(ctx, `
+					UPDATE t_examinee 
+					SET status = '08'
+					WHERE exam_session_id IN (
+						SELECT id FROM t_exam_session WHERE exam_id = $1
+					)
+				`, testNormalExamID)
+				if err != nil {
+					tx.Rollback(ctx)
+					t.Fatalf("设置考生状态为08失败: %v", err)
+				}
+
+				err = tx.Commit(ctx)
+				if err != nil {
+					t.Fatalf("提交事务失败: %v", err)
+				}
+
+				// 验证状态为08的考生数量
+				var count08Before int
+				err = conn.QueryRow(ctx, `
+					SELECT COUNT(*) FROM t_examinee e
+					JOIN t_exam_session es ON e.exam_session_id = es.id
+					WHERE es.exam_id = $1 AND e.status = '08'
+				`, testNormalExamID).Scan(&count08Before)
+				assert.NoError(t, err)
+				assert.Greater(t, count08Before, 0, "应该有状态为08的考生")
+
+				// 执行更新操作
+				tx2, err := conn.Begin(ctx)
+				if err != nil {
+					t.Fatalf("开始事务失败: %v", err)
+				}
+
+				err = updateExamineeStatus(ctx, tx2, "04", testAcademicAffair, testNormalExamID)
+				assert.NoError(t, err)
+
+				err = tx2.Commit(ctx)
+				assert.NoError(t, err)
+
+				// 验证状态为08的考生数量没有变化
+				var count08After int
+				err = conn.QueryRow(ctx, `
+					SELECT COUNT(*) FROM t_examinee e
+					JOIN t_exam_session es ON e.exam_session_id = es.id
+					WHERE es.exam_id = $1 AND e.status = '08'
+				`, testNormalExamID).Scan(&count08After)
+				assert.NoError(t, err)
+				assert.Equal(t, count08Before, count08After, "状态为08的考生数量不应该改变")
+			},
+		},
+		{
+			name:          "更新不存在场次的考试",
+			newStatus:     "02",
+			userID:        testAcademicAffair,
+			examIDs:       []int64{99999},
+			forceError:    "",
+			expectedError: false,
+			description:   "更新不存在场次的考试不应该报错，但也不会更新任何记录",
+			verifyFunc: func(t *testing.T) {
+				// 验证没有记录被更新
+				var count int
+				err := conn.QueryRow(ctx, `
+					SELECT COUNT(*) FROM t_examinee e
+					JOIN t_exam_session es ON e.exam_session_id = es.id
+					WHERE es.exam_id = 99999 AND e.updated_by = $1
+				`, testAcademicAffair).Scan(&count)
+				assert.NoError(t, err)
+				assert.Equal(t, 0, count, "不应该有任何记录被更新")
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Logf("%s: 开始测试 - %s", tt.name, tt.description)
+
+			// 创建带强制错误的上下文
+			testCtx := ctx
+			if tt.forceError != "" {
+				testCtx = context.WithValue(ctx, "force-error", tt.forceError)
+			}
+
+			// 开始事务
+			tx, err := conn.Begin(testCtx)
+			if err != nil {
+				t.Fatalf("开始事务失败: %v", err)
+			}
+
+			// 调用被测试的函数
+			err = updateExamineeStatus(testCtx, tx, tt.newStatus, tt.userID, tt.examIDs...)
+
+			// 验证结果
+			if tt.expectedError {
+				assert.Error(t, err, tt.description)
+				if tt.errorContains != "" {
+					assert.Contains(t, err.Error(), tt.errorContains, tt.description)
+				}
+				t.Logf("%s: 正确收到期望的错误: %v", tt.name, err)
+				tx.Rollback(testCtx)
+			} else {
+				assert.NoError(t, err, tt.description)
+
+				// 提交事务以便验证函数
+				err = tx.Commit(testCtx)
+				assert.NoError(t, err, "提交事务应该成功")
+
+				// 执行验证函数
+				if tt.verifyFunc != nil {
+					tt.verifyFunc(t)
+				}
+
+				t.Logf("%s: 操作成功完成", tt.name)
+			}
+
+			t.Logf("%s: 测试完成 - %s", tt.name, tt.description)
+		})
+	}
+}
+
+// TestExamUser 测试examUser函数
+func TestExamUser(t *testing.T) {
+	// 确保logger和数据库连接已初始化
+	if z == nil {
+		cmn.ConfigureForTest()
+	}
+
+	// 准备测试数据
+	CleanTestExamData(t)
+	CreateTestExamData(t)
+	defer func() {
+		CleanTestExamData(t)
+	}()
+
+	tests := []struct {
+		name          string
+		method        string
+		queryParams   string
+		userID        int64
+		userRole      int64
+		forceError    string
+		expectedError bool
+		errorContains string
+		checkResult   func(t *testing.T, serviceCtx *cmn.ServiceCtx)
+		description   string
+	}{
+		{
+			name:          "成功查询单个用户",
+			method:        "GET",
+			queryParams:   fmt.Sprintf(`q={"data":{"IDs":[%d]}}`, 99901),
+			userID:        testAcademicAffair,
+			userRole:      2002,
+			expectedError: false,
+			description:   "查询单个用户的基本信息",
+			checkResult: func(t *testing.T, serviceCtx *cmn.ServiceCtx) {
+				if serviceCtx.Msg.Data == nil {
+					t.Error("期望返回数据，但数据为空")
+					return
+				}
+				var userInfos []ExamUserInfo
+				if err := json.Unmarshal(serviceCtx.Msg.Data, &userInfos); err != nil {
+					t.Errorf("解析返回数据失败: %v", err)
+					return
+				}
+				if len(userInfos) != 1 {
+					t.Errorf("期望返回1个用户信息，实际返回%d个", len(userInfos))
+					return
+				}
+				user := userInfos[0]
+				if user.ID != 99901 {
+					t.Errorf("用户ID不匹配: got %d, want 99901", user.ID)
+				}
+				if user.Name != "测试用户" {
+					t.Errorf("用户名称不匹配: got %s, want 测试用户", user.Name)
+				}
+
+			},
+		},
+		{
+			name:          "成功查询多个用户",
+			method:        "GET",
+			queryParams:   fmt.Sprintf(`q={"data":{"IDs":[%d,%d]}}`, 99901, 99902),
+			userID:        testAcademicAffair,
+			userRole:      2002,
+			expectedError: false,
+			description:   "查询多个用户的基本信息",
+			checkResult: func(t *testing.T, serviceCtx *cmn.ServiceCtx) {
+				if serviceCtx.Msg.Data == nil {
+					t.Error("期望返回数据，但数据为空")
+					return
+				}
+				var userInfos []ExamUserInfo
+				if err := json.Unmarshal(serviceCtx.Msg.Data, &userInfos); err != nil {
+					t.Errorf("解析返回数据失败: %v", err)
+					return
+				}
+				if len(userInfos) != 2 {
+					t.Errorf("期望返回2个用户信息，实际返回%d个", len(userInfos))
+					return
+				}
+				// 检查用户信息
+				userMap := make(map[int64]ExamUserInfo)
+				for _, user := range userInfos {
+					userMap[user.ID] = user
+				}
+				if user, ok := userMap[99901]; ok {
+					if user.Name != "测试用户" {
+						t.Errorf("用户99901名称不匹配: got %s, want 测试用户", user.Name)
+					}
+				} else {
+					t.Error("未找到用户99901")
+				}
+				if user, ok := userMap[99902]; ok {
+					if user.Name != "测试学生" {
+						t.Errorf("用户99902名称不匹配: got %s, want 测试学生", user.Name)
+					}
+				} else {
+					t.Error("未找到用户99902")
+				}
+			},
+		},
+		{
+			name:          "缺少查询参数q",
+			method:        "GET",
+			queryParams:   "",
+			userID:        testAcademicAffair,
+			userRole:      2002,
+			expectedError: true,
+			errorContains: "请指定参数q",
+			description:   "缺少查询参数q应返回错误",
+		},
+		{
+			name:          "不支持的HTTP方法-POST",
+			method:        "POST",
+			queryParams:   "",
+			userID:        testAcademicAffair,
+			userRole:      2002,
+			expectedError: true,
+			errorContains: "unsupported method: post",
+			description:   "POST方法应返回不支持的错误",
+		},
+		{
+			name:          "查询不存在的用户",
+			method:        "GET",
+			queryParams:   fmt.Sprintf(`q={"data":{"IDs":[%d]}}`, 99999),
+			userID:        testAcademicAffair,
+			userRole:      2002,
+			expectedError: false,
+			description:   "查询不存在的用户应返回空列表",
+			checkResult: func(t *testing.T, serviceCtx *cmn.ServiceCtx) {
+				if serviceCtx.Msg.Data == nil {
+					t.Error("期望返回数据，但数据为空")
+					return
+				}
+				var userInfos []ExamUserInfo
+				if err := json.Unmarshal(serviceCtx.Msg.Data, &userInfos); err != nil {
+					t.Errorf("解析返回数据失败: %v", err)
+					return
+				}
+				if len(userInfos) != 0 {
+					t.Errorf("期望返回0个用户信息，实际返回%d个", len(userInfos))
+				}
+			},
+		},
+		{
+			name:          "空的用户ID列表",
+			method:        "GET",
+			queryParams:   fmt.Sprintf(`q={"data":{"IDs":[]}}`),
+			userID:        testAcademicAffair,
+			userRole:      2002,
+			expectedError: false,
+			description:   "空的用户ID列表应返回空结果",
+			checkResult: func(t *testing.T, serviceCtx *cmn.ServiceCtx) {
+				if serviceCtx.Msg.Data == nil {
+					t.Error("期望返回数据，但数据为空")
+					return
+				}
+				var userInfos []ExamUserInfo
+				if err := json.Unmarshal(serviceCtx.Msg.Data, &userInfos); err != nil {
+					t.Errorf("解析返回数据失败: %v", err)
+					return
+				}
+				if len(userInfos) != 0 {
+					t.Errorf("期望返回0个用户信息，实际返回%d个", len(userInfos))
+				}
+			},
+		},
+		{
+			name:          "json.Marshal1",
+			method:        "GET",
+			queryParams:   fmt.Sprintf(`q={"data":{"IDs":[]}}`),
+			userID:        testAcademicAffair,
+			userRole:      2002,
+			forceError:    "json.Marshal1",
+			expectedError: true,
+			errorContains: "强制JSON序列化错误",
+			description:   "强制JSON序列化错误",
+		},
+		{
+			name:          "json.Marshal2",
+			method:        "GET",
+			queryParams:   fmt.Sprintf(`q={"data":{"IDs":[%d]}}`, 99901),
+			userID:        testAcademicAffair,
+			userRole:      2002,
+			forceError:    "json.Marshal2",
+			expectedError: true,
+			errorContains: "强制JSON序列化错误",
+			description:   "强制JSON序列化错误",
+		},
+		{
+			name:          "notArray",
+			method:        "GET",
+			queryParams:   fmt.Sprintf(`q={"data":{"IDs":[%d]}}`, 99901),
+			userID:        testAcademicAffair,
+			userRole:      2002,
+			forceError:    "notArray",
+			expectedError: true,
+			errorContains: "data.IDs必须是数组格式",
+			description:   "data.IDs必须是数组格式",
+		},
+		{
+			name:          "模拟数据库查询错误",
+			method:        "GET",
+			queryParams:   fmt.Sprintf(`q={"data":{"IDs":[%d]}}`, 99901),
+			userID:        testAcademicAffair,
+			userRole:      2002,
+			forceError:    "conn.Query",
+			expectedError: true,
+			errorContains: "强制查询用户信息错误",
+			description:   "模拟数据库查询错误",
+		},
+		{
+			name:          "模拟数据库查询错误2",
+			method:        "GET",
+			queryParams:   fmt.Sprintf(`q={"data":{"IDs":[%d]}}`, 99901),
+			userID:        testAcademicAffair,
+			userRole:      2002,
+			forceError:    "rows.Scan",
+			expectedError: true,
+			errorContains: "强制获取用户信息错误",
+			description:   "模拟数据库查询错误",
+		},
+		{
+			name:          "获取用户域失败",
+			method:        "GET",
+			queryParams:   fmt.Sprintf(`q={"data":{"IDs":[%d]}}`, 99901),
+			userID:        testAcademicAffair,
+			userRole:      9999,
+			expectedError: true,
+			errorContains: "未找到角色ID",
+			description:   "获取用户域失败",
+		},
+		{
+			name:          "无权限访问",
+			method:        "GET",
+			queryParams:   fmt.Sprintf(`q={"data":{"IDs":[%d]}}`, 99901),
+			userID:        testAcademicAffair,
+			userRole:      2008,
+			expectedError: true,
+			errorContains: "无权限访问",
+			description:   "无权限访问",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+
+			queryParams := url.Values{}
+			if tt.queryParams != "" {
+				queryParams.Add("q", strings.TrimPrefix(tt.queryParams, "q="))
+			}
+
+			// 创建模拟上下文
+			ctx := createMockContextWithRole(tt.method, "/api/examuser", queryParams, tt.forceError, tt.userID, tt.userRole)
+
+			func() {
+				defer func() {
+					if r := recover(); r != nil {
+						// 如果有panic，检查是否是预期的
+						if !tt.expectedError {
+							t.Errorf("examUser() 意外panic: %v", r)
+						}
+					}
+				}()
+
+				examUser(ctx)
+			}()
+
+			// 获取ServiceCtx以检查结果
+			serviceCtx := ctx.Value(cmn.QNearKey).(*cmn.ServiceCtx)
+
+			if tt.expectedError {
+				// 期望有错误
+				if serviceCtx.Err == nil {
+					t.Errorf("examUser() 期望返回错误，但实际成功")
+					return
+				}
+
+				if tt.errorContains != "" && !containsString(serviceCtx.Err.Error(), tt.errorContains) {
+					t.Errorf("examUser() 错误信息 = %v, 期望包含 %v", serviceCtx.Err.Error(), tt.errorContains)
+				}
+			} else {
+				// 期望成功
+				if serviceCtx.Err != nil {
+					t.Errorf("examUser() 期望成功，但返回错误: %v", serviceCtx.Err)
+					return
+				}
+
+				// 检查结果
+				if tt.checkResult != nil {
+					tt.checkResult(t, serviceCtx)
+				}
+			}
 		})
 	}
 }

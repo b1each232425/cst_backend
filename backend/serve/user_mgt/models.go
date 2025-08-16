@@ -49,18 +49,9 @@ type QueryUsersFilter struct {
 	Domain         null.String `json:"domain"`         // 用户所属域
 }
 
-// InvalidUser 不能被插入的无效用户
-type InvalidUser struct {
-	Account      null.String   `json:"account"`      // 用户账号
-	OfficialName null.String   `json:"officialName"` // 用户姓名
-	MobilePhone  null.String   `json:"mobilePhone"`  // 用户电话
-	Email        null.String   `json:"email"`        // 用户邮箱
-	IDCardNo     null.String   `json:"idCardNo"`     // 用户证件号
-	ErrorMsg     []null.String `json:"errorMsg"`     // 错误信息
-}
-
 type User struct {
 	cmn.TUser
-	Domains []null.String         `json:"Domains"`
-	APIs    []cmn.TVUserDomainAPI `json:"APIs"`
+	Domains  []null.String         `json:"Domains"`
+	APIs     []cmn.TVUserDomainAPI `json:"APIs"`
+	ErrorMsg []null.String         `json:"ErrorMsg"` // 错误信息
 }
