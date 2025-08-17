@@ -835,10 +835,10 @@ func gradeExamineeListExam(ctx context.Context, req GradeExamineeListReq) ([]Exa
 		jsonb_agg(jsonb_build_object('exam_id', ets.exam_id, 'exam_session_id', ets.exam_session_id, 'score', ets.total_score) ORDER BY ets.exam_session_id) AS exam_sessions
 	FROM v_student_exam_total_score ets
 		JOIN t_exam_info ei ON ei.id = ets.exam_id
-		JOIN v_examinee_info e ON e.student_id = ets.student_id
+		JOIN v_examinee_info e ON e.student_id = ets.student_id AND e.id = ets.examinee_id AND e.exam_id = ets.exam_id AND e.exam_session_id = ets.exam_session_id
 	%s
 	GROUP BY ets.exam_id, ei.name, e.student_id, e.mobile_phone, e.official_name, e.account
-	ORDER BY ets.exam_id, e.official_name
+	ORDER BY ets.total_score DESC, ets.exam_id, e.official_name
 	`, whereClause)
 
 	conn := cmn.GetPgxConn()
@@ -994,15 +994,22 @@ func gradeExamineeListPractice(ctx context.Context, req GradeExamineeListReq) ([
 	}
 
 	sql = fmt.Sprintf(`
-	SELECT
-		pts.practice_id, p.name AS practice_name, pts.student_id, ei.mobile_phone AS phone, ei.official_name AS name, ei.account AS nickname, MAX(pts.total_score) AS highest_score, COUNT(DISTINCT pts.id) AS submitted_cnt
-	FROM v_student_practice_total_score pts
-		LEFT JOIN v_examinee_info ei ON ei.student_id = pts.student_id
-		LEFT JOIN t_practice p ON p.id = pts.practice_id
-	%s
-	GROUP BY pts.practice_id, p.name, pts.student_id, ei.mobile_phone, ei.official_name, ei.account
-	ORDER BY pts.practice_id, pts.student_id
-		`, whereClause)
+								SELECT
+									pts.practice_id, 
+									p.name, 
+									pts.student_id, 
+									ei.mobile_phone, 
+									ei.official_name, 
+									ei.account AS nickname, 
+									MAX(pts.total_score), 
+									COUNT(DISTINCT pts.id)
+								FROM v_student_practice_total_score pts
+									LEFT JOIN t_user ei ON ei.id = pts.student_id -- 考生信息
+									LEFT JOIN t_practice p ON p.id = pts.practice_id  -- 练习信息
+								%s
+								GROUP BY pts.practice_id, p.name, pts.student_id, ei.mobile_phone, ei.official_name, ei.account
+								ORDER BY pts.practice_id, pts.student_id
+									`, whereClause)
 
 	var listSQL string
 	var listParams []any
@@ -1513,7 +1520,7 @@ func getScoreExam(ctx context.Context, studentID, examSessionID int64) (Map, err
 		return result, err
 	}
 	answerTime := end.Int64 - start.Int64
-	examInfoMap["AnswerTime"] = answerTime
+	examInfoMap["AnswerTime"] = answerTime / 3600
 
 	result["examInfo"] = examInfoMap
 	result["examSessionInfo"] = examSessionInfoMap
@@ -1703,7 +1710,7 @@ WHERE rn = 1;`
 		return result, err
 	}
 	// 学生本次练习时长
-	practiceInfoMap["AnswerTime"] = math.Ceil(usedTime.Float64)
+	practiceInfoMap["AnswerTime"] = math.Ceil(usedTime.Float64) / 3600
 
 	result["practiceInfo"] = practiceInfoMap
 
