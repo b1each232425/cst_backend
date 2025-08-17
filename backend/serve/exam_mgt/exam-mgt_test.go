@@ -1193,6 +1193,114 @@ func TestValidateExamData(t *testing.T) {
 			wantError: false,
 		},
 		{
+			name: "最迟进入考试时间大于总时长",
+			examData: ExamData{
+				ExamInfo: cmn.TExamInfo{
+					ID:   null.IntFrom(123),
+					Name: null.StringFrom("期中考试"),
+					Type: null.StringFrom("00"), // 平时考试
+					Mode: null.StringFrom("02"), // 线下考试
+				},
+				ExamSessions: []cmn.TExamSession{
+					{
+						PaperID:              null.IntFrom(2),
+						MarkMethod:           "02",                  // 自动批卷
+						PeriodMode:           null.StringFrom("02"), // 灵活时段
+						Duration:             null.IntFrom(90),      // 90分钟
+						QuestionShuffledMode: null.StringFrom("02"), // 选项乱序
+						MarkMode:             null.StringFrom("02"), // 全卷多评
+						StartTime:            null.IntFrom(time.Now().Add(1 * time.Hour).UnixMilli()),
+						EndTime:              null.IntFrom(time.Now().Add(150 * time.Minute).UnixMilli()),
+						LateEntryTime:        null.IntFrom(100),
+					},
+				},
+			},
+			isUpdate:  true,
+			wantError: true,
+			errorMsg:  "设定的最迟进入考试时长",
+		},
+		{
+			name: "最迟进入考试时间小于0",
+			examData: ExamData{
+				ExamInfo: cmn.TExamInfo{
+					ID:   null.IntFrom(123),
+					Name: null.StringFrom("期中考试"),
+					Type: null.StringFrom("00"), // 平时考试
+					Mode: null.StringFrom("02"), // 线下考试
+				},
+				ExamSessions: []cmn.TExamSession{
+					{
+						PaperID:              null.IntFrom(2),
+						MarkMethod:           "02",                  // 自动批卷
+						PeriodMode:           null.StringFrom("02"), // 灵活时段
+						Duration:             null.IntFrom(90),      // 90分钟
+						QuestionShuffledMode: null.StringFrom("02"), // 选项乱序
+						MarkMode:             null.StringFrom("02"), // 全卷多评
+						StartTime:            null.IntFrom(time.Now().Add(1 * time.Hour).UnixMilli()),
+						EndTime:              null.IntFrom(time.Now().Add(150 * time.Minute).UnixMilli()),
+						LateEntryTime:        null.IntFrom(-1),
+					},
+				},
+			},
+			isUpdate:  true,
+			wantError: true,
+			errorMsg:  "设定的最迟进入考试时长",
+		},
+		{
+			name: "最早交卷时间小于0",
+			examData: ExamData{
+				ExamInfo: cmn.TExamInfo{
+					ID:   null.IntFrom(123),
+					Name: null.StringFrom("期中考试"),
+					Type: null.StringFrom("00"), // 平时考试
+					Mode: null.StringFrom("02"), // 线下考试
+				},
+				ExamSessions: []cmn.TExamSession{
+					{
+						PaperID:              null.IntFrom(2),
+						MarkMethod:           "02",                  // 自动批卷
+						PeriodMode:           null.StringFrom("02"), // 灵活时段
+						Duration:             null.IntFrom(90),      // 90分钟
+						QuestionShuffledMode: null.StringFrom("02"), // 选项乱序
+						MarkMode:             null.StringFrom("02"), // 全卷多评
+						StartTime:            null.IntFrom(time.Now().Add(1 * time.Hour).UnixMilli()),
+						EndTime:              null.IntFrom(time.Now().Add(150 * time.Minute).UnixMilli()),
+						EarlySubmissionTime:  null.IntFrom(-1),
+					},
+				},
+			},
+			isUpdate:  true,
+			wantError: true,
+			errorMsg:  "设定的最早交卷时间",
+		},
+		{
+			name: "最早交卷时间大于总时长",
+			examData: ExamData{
+				ExamInfo: cmn.TExamInfo{
+					ID:   null.IntFrom(123),
+					Name: null.StringFrom("期中考试"),
+					Type: null.StringFrom("00"), // 平时考试
+					Mode: null.StringFrom("02"), // 线下考试
+				},
+				ExamSessions: []cmn.TExamSession{
+					{
+						PaperID:              null.IntFrom(2),
+						MarkMethod:           "02",                  // 自动批卷
+						PeriodMode:           null.StringFrom("02"), // 灵活时段
+						Duration:             null.IntFrom(90),      // 90分钟
+						QuestionShuffledMode: null.StringFrom("02"), // 选项乱序
+						MarkMode:             null.StringFrom("02"), // 全卷多评
+						StartTime:            null.IntFrom(time.Now().Add(1 * time.Hour).UnixMilli()),
+						EndTime:              null.IntFrom(time.Now().Add(150 * time.Minute).UnixMilli()),
+						EarlySubmissionTime:  null.IntFrom(100),
+					},
+				},
+			},
+			isUpdate:  true,
+			wantError: true,
+			errorMsg:  "设定的最早交卷时间",
+		},
+		{
 			name: "更新时考试ID无效",
 			examData: ExamData{
 				ExamInfo: cmn.TExamInfo{
