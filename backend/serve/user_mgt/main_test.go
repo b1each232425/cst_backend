@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/pkg/errors"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -12,6 +11,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/pkg/errors"
 	w2wSrv "w2w.io/service"
 
 	"w2w.io/cmn"
