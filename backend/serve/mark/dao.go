@@ -128,7 +128,7 @@ func QueryExamList(ctx context.Context, req QueryMarkingListReq) (examList []Exa
 						COALESCE(mc.marked_count, 0) AS marked_student_count 
 					FROM
 						 t_exam_session es 
-					JOIN t_exam_info e ON e.id = es.exam_id AND e.status !='12'
+					JOIN t_exam_info e ON e.id = es.exam_id AND e.status !='12' AND e.status != '14' AND e.status != '16' 
 					JOIN t_exam_paper ep 
 						ON ep.exam_session_id = es.id 
 						AND ep.status IS NOT NULL 
@@ -144,7 +144,7 @@ func QueryExamList(ctx context.Context, req QueryMarkingListReq) (examList []Exa
 
 	getExamCountQuery := `	SELECT COUNT(DISTINCT es.exam_id) AS total_exams
 							FROM t_exam_session es
-							JOIN t_exam_info ei ON es.exam_id = ei.id AND ei.status != '12'
+							JOIN t_exam_info ei ON es.exam_id = ei.id AND ei.status != '12' AND ei.status != '14' AND ei.status != '16' 
 							JOIN t_exam_paper ep ON es.id = ep.exam_session_id AND ep.status != '04'
 							LEFT JOIN t_mark_info mi ON es.id = mi.exam_session_id AND mi.status != '04'
 							WHERE es.status IS NOT NULL
@@ -273,7 +273,7 @@ func QueryExamList(ctx context.Context, req QueryMarkingListReq) (examList []Exa
 		}
 
 		// TODO
-		unMarkedStudentCount := 0
+		//unMarkedStudentCount := 0
 		//if !req.User.IsAdmin && session.MarkMode.String == "04" {
 		//	// 非管理员下的试卷分配模式
 		//	var examineeIDs []int64
@@ -298,7 +298,7 @@ func QueryExamList(ctx context.Context, req QueryMarkingListReq) (examList []Exa
 				Name:                 fmt.Sprint(session.SessionNum.Int64),
 				PaperName:            paperName.String,
 				RespondentCount:      int(respondentCount.Int64),
-				UnMarkedStudentCount: unMarkedStudentCount,
+				UnMarkedStudentCount: int(totalUnmarkedStudentCount.Int64),
 				Status:               session.Status.String,
 				MarkStatus:           markStatus.String,
 				MarkMethod:           session.MarkMethod,
