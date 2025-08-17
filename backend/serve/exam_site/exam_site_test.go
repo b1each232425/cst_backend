@@ -159,7 +159,7 @@ func TestEnroll(t *testing.T) {
 
 	viper.Set("examSiteServerSync.maxRetry", 1)
 
-	_, err := cmn.GetRedisConn().Set(context.Background(), SyncStatusKey, PUSHED, 0).Result()
+	_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
 	if err != nil {
 		t.Fatalf("failed to set sync status: %v", err)
 		return
@@ -3111,15 +3111,15 @@ func TestExamSiteSyncInit(t *testing.T) {
 
 		var respBody cmn.ReplyProto
 
-		body, err := io.ReadAll(r.Body)
-		if err != nil {
-			t.Errorf("failed to read request body: %v", err)
-			return
-		}
+		// body, err := io.ReadAll(r.Body)
+		// if err != nil {
+		// 	t.Errorf("failed to read request body: %v", err)
+		// 	return
+		// }
 
 		q := &cmn.ServiceCtx{
 			SysUser: &cmn.TUser{
-				ID: null.IntFrom(1622),
+				ID: null.IntFrom(2025),
 			},
 			R:   r,
 			W:   w,
@@ -3150,9 +3150,14 @@ func TestExamSiteSyncInit(t *testing.T) {
 				return
 			}
 
-			respBody = cmn.ReplyProto{
-				Status: 0,
-				Data:   body,
+			respBody.Status = 0
+
+			respBody.Data, err = json.Marshal(cmn.TUser{
+				ID: null.IntFrom(2025),
+			})
+			if err != nil {
+				respBody.Status = -1
+				respBody.Msg = "failed to marshal user data: " + err.Error()
 			}
 
 		case "/api/exam-site/sync":
@@ -3214,6 +3219,7 @@ func TestExamSiteSyncInit(t *testing.T) {
 				Tag: map[string]interface{}{
 					"endMsgListen": make(chan int),
 				},
+				Msg: &cmn.ReplyProto{},
 			},
 			passExpected: true,
 			errWanted:    "",
@@ -3221,7 +3227,7 @@ func TestExamSiteSyncInit(t *testing.T) {
 
 				viper.Set("examSiteServerSync.maxRetry", 1)
 
-				_, err := cmn.GetRedisConn().Set(context.Background(), SyncStatusKey, PUSHED, 0).Result()
+				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
 				if err != nil {
 					t.Fatalf("failed to set sync status: %v", err)
 					return
@@ -3243,6 +3249,7 @@ func TestExamSiteSyncInit(t *testing.T) {
 				Tag: map[string]interface{}{
 					"endMsgListen": make(chan int),
 				},
+				Msg: &cmn.ReplyProto{},
 			},
 			passExpected: true,
 			errWanted:    "",
@@ -3250,7 +3257,7 @@ func TestExamSiteSyncInit(t *testing.T) {
 
 				viper.Set("examSiteServerSync.maxRetry", 1)
 
-				_, err := cmn.GetRedisConn().Set(context.Background(), SyncStatusKey, PUSHED, 0).Result()
+				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
 				if err != nil {
 					t.Fatalf("failed to set sync status: %v", err)
 					return
@@ -3259,13 +3266,59 @@ func TestExamSiteSyncInit(t *testing.T) {
 			},
 			check: func(q *cmn.ServiceCtx) (err error) {
 
-				_, err = cmn.GetRedisConn().Set(context.Background(), SyncStatusKey, PUSHED, 0).Result()
+				_, err = cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
 				if err != nil {
 					t.Fatalf("failed to set sync status: %v", err)
 					return
 				}
 
 				SendPullMsg()
+
+				<-q.Tag["endMsgListen"].(chan int)
+
+				return
+			},
+			cleanup: func() {
+				close(pullChan)
+				close(pushChan)
+			},
+		},
+		{
+			name: "同步初始化成功并完成一次完整的同步",
+			q: &cmn.ServiceCtx{
+				RedisClient: cmn.GetRedisConn(),
+				Tag: map[string]interface{}{
+					"endMsgListen": make(chan int, 1),
+					"pullDone": make(chan int),
+				},
+				Msg: &cmn.ReplyProto{},
+			},
+			passExpected: true,
+			errWanted:    "",
+			setup: func() {
+
+				viper.Set("examSiteServerSync.maxRetry", 1)
+
+				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
+
+			},
+			check: func(q *cmn.ServiceCtx) (err error) {
+
+				_, err = cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
+
+				SendPullMsg()
+
+				<- q.Tag["pullDone"].(chan int)
+
+				SendPushMsg()
 
 				<-q.Tag["endMsgListen"].(chan int)
 
@@ -3333,6 +3386,8 @@ func TestExamSiteSyncApi(t *testing.T) {
 
 	nowTime := time.Now().Unix()
 
+	
+
 	tests := []struct {
 		name         string
 		q            *cmn.ServiceCtx
@@ -3346,7 +3401,7 @@ func TestExamSiteSyncApi(t *testing.T) {
 		{
 			name: "考点同步失败-无效的HTTP方法",
 			q: &cmn.ServiceCtx{
-				R: httptest.NewRequest("Unknown255", fmt.Sprintf(`/api/exam-site/sync?action=%s`, url.QueryEscape(`0`)), nil),
+				R: httptest.NewRequest("Unknown255", "/api/exam-site/sync", nil),
 				W: httptest.NewRecorder(),
 				Msg: &cmn.ReplyProto{
 					API:    "/api/exam-site/sync",
@@ -3372,9 +3427,9 @@ func TestExamSiteSyncApi(t *testing.T) {
 			},
 		},
 		{
-			name: "考点同步失败-无效的同步操作",
+			name: "准备数据失败-强制读取请求体失败",
 			q: &cmn.ServiceCtx{
-				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-site/sync?action=%s`, url.QueryEscape(`a`)), nil),
+				R: httptest.NewRequest("GET", "/api/exam-site/sync", nil),
 				W: httptest.NewRecorder(),
 				Msg: &cmn.ReplyProto{
 					API:    "/api/exam-site/sync",
@@ -3391,29 +3446,67 @@ func TestExamSiteSyncApi(t *testing.T) {
 					},
 				},
 				RedisClient: cmn.GetRedisConn(),
+				Tag: map[string]interface{}{
+					"readBodyErr": fmt.Errorf("forced read body err"),
+				},
 			},
 			passExpected: false,
-			errWanted:    "不支持的同步操作: a",
+			errWanted:    "forced read body err",
 			setup: func() {
+
+				dbConn := cmn.GetDbConn()
+
+				_, err := dbConn.Exec(fmt.Sprintf(`INSERT INTO t_exam_site (id, name,creator,server_host,address,admin,sys_user) VALUES 
+					(%d,'test-site-%d', 1622, 'localhost','address','1622','2025')`, nowTime, nowTime))
+				if err != nil {
+					t.Fatalf("failed to insert test data: %v", err)
+					return
+				}
+
 			},
 			cleanup: func() {
+
+				dbConn := cmn.GetDbConn()
+
+				r, err := dbConn.Exec(fmt.Sprintf(`DELETE FROM t_exam_site WHERE name = 'test-site-%d'`, nowTime))
+				if err != nil {
+					t.Fatalf("failed to delete test data: %v", err)
+					return
+				}
+
+				c, err := r.RowsAffected()
+				if err != nil {
+					t.Fatalf("failed to get affected rows: %v", err)
+					return
+				}
+
+				t.Logf("Have already cleaned up %d rows from t_exam_site", c)
+
+				folderFullPath := path.Join(os.Getenv("PWD"), "/data/tmp/")
+
+				o, err := exec.Command("rm", "-rvf", folderFullPath).CombinedOutput()
+				if err != nil {
+					t.Fatalf("failed to remove folder: %v, output: %s", err, string(o))
+					return
+				}
+
+				t.Logf("Successfully cleaned up folder: %s output: %x", folderFullPath, o)
+
 			},
 		},
 
 		// ===========准备考点数据测试============
-		// ooooooooo.
-		// `888   `Y88.
-		//  888   .d88' oooo d8b  .ooooo.  oo.ooooo.   .oooo.   oooo d8b  .ooooo.
-		//  888ooo88P'  `888""8P d88' `88b  888' `88b `P  )88b  `888""8P d88' `88b
-		//  888          888     888ooo888  888   888  .oP"888   888     888ooo888
-		//  888          888     888    .o  888   888 d8(  888   888     888    .o
-		// o888o        d888b    `Y8bod8P'  888bod8P' `Y888""8o d888b    `Y8bod8P'
-		//                                  888
-		//                                 o888o
+		//   .oooooo.    oooooooooooo ooooooooooooo 
+		//  d8P'  `Y8b   `888'     `8 8'   888   `8 
+		// 888            888              888      
+		// 888            888oooo8         888      
+		// 888     ooooo  888    "         888      
+		// `88.    .88'   888       o      888      
+		//  `Y8bood8P'   o888ooooood8     o888o                              
 		{
 			name: "准备数据成功",
 			q: &cmn.ServiceCtx{
-				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-site/sync?action=%s`, url.QueryEscape(`0`)), nil),
+				R: httptest.NewRequest("GET", "/api/exam-site/sync", nil),
 				W: httptest.NewRecorder(),
 				Msg: &cmn.ReplyProto{
 					API:    "/api/exam-site/sync",
@@ -3478,7 +3571,7 @@ func TestExamSiteSyncApi(t *testing.T) {
 		{
 			name: "准备数据失败-无效的账号ID",
 			q: &cmn.ServiceCtx{
-				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-site/sync?action=%s`, url.QueryEscape(`0`)), nil),
+				R: httptest.NewRequest("GET", "/api/exam-site/sync", nil),
 				W: httptest.NewRecorder(),
 				Msg: &cmn.ReplyProto{
 					API:    "/api/exam-site/sync",
@@ -3509,6 +3602,31 @@ func TestExamSiteSyncApi(t *testing.T) {
 					return
 				}
 
+			},
+			check: func(q *cmn.ServiceCtx)(err error) {
+				d := syncInfo{
+					Path:          "",
+					TableFileList: []string{},
+				}
+
+				err = json.Unmarshal(q.Msg.Data, &d)
+				if err != nil {
+					t.Errorf("failed to unmarshal data: %v", err)
+					return
+				}
+
+				// 检查目录下是否有相应的文件
+				for _, f := range d.TableFileList {
+
+					_, err = os.Stat(filepath.Join(d.Path, f))
+					if err != nil {
+						t.Errorf("failed to stat file while it shouldn't: %v", err)
+						return
+					}
+
+				}
+
+				return
 			},
 			cleanup: func() {
 
@@ -3541,9 +3659,9 @@ func TestExamSiteSyncApi(t *testing.T) {
 			},
 		},
 		{
-			name: "准备数据失败-强制生成随机字节失败",
+			name: "准备数据失败-强制获取同步信息快照失败",
 			q: &cmn.ServiceCtx{
-				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-site/sync?action=%s`, url.QueryEscape(`0`)), nil),
+				R: httptest.NewRequest("GET", "/api/exam-site/sync", nil),
 				W: httptest.NewRecorder(),
 				Msg: &cmn.ReplyProto{
 					API:    "/api/exam-site/sync",
@@ -3561,11 +3679,11 @@ func TestExamSiteSyncApi(t *testing.T) {
 				},
 				RedisClient: cmn.GetRedisConn(),
 				Tag: map[string]interface{}{
-					"generateRandByteErr": fmt.Errorf("forced generate rand byte err"),
+					"getSyncInfoSnapshotErr": fmt.Errorf("forced get sync info snapshot err"),
 				},
 			},
 			passExpected: false,
-			errWanted:    "forced generate rand byte err",
+			errWanted:    "forced get sync info snapshot err",
 			setup: func() {
 
 				dbConn := cmn.GetDbConn()
@@ -3577,6 +3695,31 @@ func TestExamSiteSyncApi(t *testing.T) {
 					return
 				}
 
+			},
+			check: func(q *cmn.ServiceCtx)(err error) {
+				d := syncInfo{
+					Path:          "",
+					TableFileList: []string{},
+				}
+
+				err = json.Unmarshal(q.Msg.Data, &d)
+				if err != nil {
+					t.Errorf("failed to unmarshal data: %v", err)
+					return
+				}
+
+				// 检查目录下是否有相应的文件
+				for _, f := range d.TableFileList {
+
+					_, err = os.Stat(filepath.Join(d.Path, f))
+					if err != nil {
+						t.Errorf("failed to stat file while it shouldn't: %v", err)
+						return
+					}
+
+				}
+
+				return
 			},
 			cleanup: func() {
 
@@ -3611,7 +3754,7 @@ func TestExamSiteSyncApi(t *testing.T) {
 		{
 			name: "准备数据失败-强制创建临时目录失败",
 			q: &cmn.ServiceCtx{
-				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-site/sync?action=%s`, url.QueryEscape(`0`)), nil),
+				R: httptest.NewRequest("GET", "/api/exam-site/sync", nil),
 				W: httptest.NewRecorder(),
 				Msg: &cmn.ReplyProto{
 					API:    "/api/exam-site/sync",
@@ -3646,6 +3789,31 @@ func TestExamSiteSyncApi(t *testing.T) {
 				}
 
 			},
+			check: func(q *cmn.ServiceCtx)(err error) {
+				d := syncInfo{
+					Path:          "",
+					TableFileList: []string{},
+				}
+
+				err = json.Unmarshal(q.Msg.Data, &d)
+				if err != nil {
+					t.Errorf("failed to unmarshal data: %v", err)
+					return
+				}
+
+				// 检查目录下是否有相应的文件
+				for _, f := range d.TableFileList {
+
+					_, err = os.Stat(filepath.Join(d.Path, f))
+					if err != nil {
+						t.Errorf("failed to stat file while it shouldn't: %v", err)
+						return
+					}
+
+				}
+
+				return
+			},
 			cleanup: func() {
 
 				dbConn := cmn.GetDbConn()
@@ -3679,7 +3847,7 @@ func TestExamSiteSyncApi(t *testing.T) {
 		{
 			name: "准备数据失败-强制执行 pg_dump 失败",
 			q: &cmn.ServiceCtx{
-				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-site/sync?action=%s`, url.QueryEscape(`0`)), nil),
+				R: httptest.NewRequest("GET", "/api/exam-site/sync", nil),
 				W: httptest.NewRecorder(),
 				Msg: &cmn.ReplyProto{
 					API:    "/api/exam-site/sync",
@@ -3714,6 +3882,31 @@ func TestExamSiteSyncApi(t *testing.T) {
 				}
 
 			},
+			check: func(q *cmn.ServiceCtx)(err error) {
+				d := syncInfo{
+					Path:          "",
+					TableFileList: []string{},
+				}
+
+				err = json.Unmarshal(q.Msg.Data, &d)
+				if err != nil {
+					t.Errorf("failed to unmarshal data: %v", err)
+					return
+				}
+
+				// 检查目录下是否有相应的文件
+				for _, f := range d.TableFileList {
+
+					_, err = os.Stat(filepath.Join(d.Path, f))
+					if err != nil {
+						t.Errorf("failed to stat file while it shouldn't: %v", err)
+						return
+					}
+
+				}
+
+				return
+			},
 			cleanup: func() {
 
 				dbConn := cmn.GetDbConn()
@@ -3747,7 +3940,7 @@ func TestExamSiteSyncApi(t *testing.T) {
 		{
 			name: "准备数据失败-强制执行 psql 失败",
 			q: &cmn.ServiceCtx{
-				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-site/sync?action=%s`, url.QueryEscape(`0`)), nil),
+				R: httptest.NewRequest("GET", "/api/exam-site/sync", nil),
 				W: httptest.NewRecorder(),
 				Msg: &cmn.ReplyProto{
 					API:    "/api/exam-site/sync",
@@ -3782,6 +3975,31 @@ func TestExamSiteSyncApi(t *testing.T) {
 				}
 
 			},
+			check: func(q *cmn.ServiceCtx)(err error) {
+				d := syncInfo{
+					Path:          "",
+					TableFileList: []string{},
+				}
+
+				err = json.Unmarshal(q.Msg.Data, &d)
+				if err != nil {
+					t.Errorf("failed to unmarshal data: %v", err)
+					return
+				}
+
+				// 检查目录下是否有相应的文件
+				for _, f := range d.TableFileList {
+
+					_, err = os.Stat(filepath.Join(d.Path, f))
+					if err != nil {
+						t.Errorf("failed to stat file while it shouldn't: %v", err)
+						return
+					}
+
+				}
+
+				return
+			},
 			cleanup: func() {
 
 				dbConn := cmn.GetDbConn()
@@ -3815,7 +4033,7 @@ func TestExamSiteSyncApi(t *testing.T) {
 		{
 			name: "准备数据失败-强制json marshal 失败",
 			q: &cmn.ServiceCtx{
-				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-site/sync?action=%s`, url.QueryEscape(`0`)), nil),
+				R: httptest.NewRequest("GET", "/api/exam-site/sync", nil),
 				W: httptest.NewRecorder(),
 				Msg: &cmn.ReplyProto{
 					API:    "/api/exam-site/sync",
@@ -3850,6 +4068,31 @@ func TestExamSiteSyncApi(t *testing.T) {
 				}
 
 			},
+			check: func(q *cmn.ServiceCtx)(err error) {
+				d := syncInfo{
+					Path:          "",
+					TableFileList: []string{},
+				}
+
+				err = json.Unmarshal(q.Msg.Data, &d)
+				if err != nil {
+					t.Errorf("failed to unmarshal data: %v", err)
+					return
+				}
+
+				// 检查目录下是否有相应的文件
+				for _, f := range d.TableFileList {
+
+					_, err = os.Stat(filepath.Join(d.Path, f))
+					if err != nil {
+						t.Errorf("failed to stat file while it shouldn't: %v", err)
+						return
+					}
+
+				}
+
+				return
+			},
 			cleanup: func() {
 
 				dbConn := cmn.GetDbConn()
@@ -3883,7 +4126,7 @@ func TestExamSiteSyncApi(t *testing.T) {
 		{
 			name: "准备数据失败-强制清除临时目录失败",
 			q: &cmn.ServiceCtx{
-				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-site/sync?action=%s`, url.QueryEscape(`0`)), nil),
+				R: httptest.NewRequest("GET", "/api/exam-site/sync", nil),
 				W: httptest.NewRecorder(),
 				Msg: &cmn.ReplyProto{
 					API:    "/api/exam-site/sync",
@@ -3919,6 +4162,31 @@ func TestExamSiteSyncApi(t *testing.T) {
 				}
 
 			},
+			check: func(q *cmn.ServiceCtx)(err error) {
+				d := syncInfo{
+					Path:          "",
+					TableFileList: []string{},
+				}
+
+				err = json.Unmarshal(q.Msg.Data, &d)
+				if err != nil {
+					t.Errorf("failed to unmarshal data: %v", err)
+					return
+				}
+
+				// 检查目录下是否有相应的文件
+				for _, f := range d.TableFileList {
+
+					_, err = os.Stat(filepath.Join(d.Path, f))
+					if err != nil {
+						t.Errorf("failed to stat file while it shouldn't: %v", err)
+						return
+					}
+
+				}
+
+				return
+			},
 			cleanup: func() {
 
 				dbConn := cmn.GetDbConn()
@@ -3952,7 +4220,7 @@ func TestExamSiteSyncApi(t *testing.T) {
 		{
 			name: "准备数据失败-强制创建导出脚本失败",
 			q: &cmn.ServiceCtx{
-				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-site/sync?action=%s`, url.QueryEscape(`0`)), nil),
+				R: httptest.NewRequest("GET", "/api/exam-site/sync", nil),
 				W: httptest.NewRecorder(),
 				Msg: &cmn.ReplyProto{
 					API:    "/api/exam-site/sync",
@@ -3987,6 +4255,31 @@ func TestExamSiteSyncApi(t *testing.T) {
 				}
 
 			},
+			check: func(q *cmn.ServiceCtx)(err error) {
+				d := syncInfo{
+					Path:          "",
+					TableFileList: []string{},
+				}
+
+				err = json.Unmarshal(q.Msg.Data, &d)
+				if err != nil {
+					t.Errorf("failed to unmarshal data: %v", err)
+					return
+				}
+
+				// 检查目录下是否有相应的文件
+				for _, f := range d.TableFileList {
+
+					_, err = os.Stat(filepath.Join(d.Path, f))
+					if err != nil {
+						t.Errorf("failed to stat file while it shouldn't: %v", err)
+						return
+					}
+
+				}
+
+				return
+			},
 			cleanup: func() {
 
 				dbConn := cmn.GetDbConn()
@@ -4020,7 +4313,7 @@ func TestExamSiteSyncApi(t *testing.T) {
 		{
 			name: "准备数据失败-强制写入导出脚本失败",
 			q: &cmn.ServiceCtx{
-				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-site/sync?action=%s`, url.QueryEscape(`0`)), nil),
+				R: httptest.NewRequest("GET", "/api/exam-site/sync", nil),
 				W: httptest.NewRecorder(),
 				Msg: &cmn.ReplyProto{
 					API:    "/api/exam-site/sync",
@@ -4057,7 +4350,233 @@ func TestExamSiteSyncApi(t *testing.T) {
 				}
 
 			},
+			check: func(q *cmn.ServiceCtx)(err error) {
+				d := syncInfo{
+					Path:          "",
+					TableFileList: []string{},
+				}
+
+				err = json.Unmarshal(q.Msg.Data, &d)
+				if err != nil {
+					t.Errorf("failed to unmarshal data: %v", err)
+					return
+				}
+
+				// 检查目录下是否有相应的文件
+				for _, f := range d.TableFileList {
+
+					_, err = os.Stat(filepath.Join(d.Path, f))
+					if err != nil {
+						t.Errorf("failed to stat file while it shouldn't: %v", err)
+						return
+					}
+
+				}
+
+				return
+			},
 			cleanup: func() {
+
+				dbConn := cmn.GetDbConn()
+
+				r, err := dbConn.Exec(fmt.Sprintf(`DELETE FROM t_exam_site WHERE name = 'test-site-%d'`, nowTime))
+				if err != nil {
+					t.Fatalf("failed to delete test data: %v", err)
+					return
+				}
+
+				c, err := r.RowsAffected()
+				if err != nil {
+					t.Fatalf("failed to get affected rows: %v", err)
+					return
+				}
+
+				t.Logf("Have already cleaned up %d rows from t_exam_site", c)
+
+				folderFullPath := path.Join(os.Getenv("PWD"), "/data/tmp/")
+
+				o, err := exec.Command("rm", "-rvf", folderFullPath).CombinedOutput()
+				if err != nil {
+					t.Fatalf("failed to remove folder: %v, output: %s", err, string(o))
+					return
+				}
+
+				t.Logf("Successfully cleaned up folder: %s output: %x", folderFullPath, o)
+
+			},
+		},
+		{
+			name: "准备数据失败-强制保存同步信息快照失败",
+			q: &cmn.ServiceCtx{
+				R: httptest.NewRequest("GET", "/api/exam-site/sync", nil),
+				W: httptest.NewRecorder(),
+				Msg: &cmn.ReplyProto{
+					API:    "/api/exam-site/sync",
+					Method: "GET",
+				},
+				BeginTime: time.Now(),
+				SysUser: &cmn.TUser{
+					ID:   null.NewInt(2025, true),
+					Role: null.NewInt(int64(cmn.CDomainAssessExamSite), true),
+				},
+				Domains: []cmn.TDomain{
+					{
+						ID: null.IntFrom(int64(cmn.CDomainAssessExamSite)),
+					},
+				},
+				RedisClient: cmn.GetRedisConn(),
+				Tag: map[string]interface{}{
+					"saveSyncInfoSnapshotErr": fmt.Errorf("forced save sync info snapshot err"),
+				},
+			},
+			passExpected: false,
+			errWanted:    "forced save sync info snapshot err",
+			setup: func() {
+
+				dbConn := cmn.GetDbConn()
+
+				_, err := dbConn.Exec(fmt.Sprintf(`INSERT INTO t_exam_site (id, name,creator,server_host,address,admin,sys_user) VALUES 
+					(%d,'test-site-%d', 1622, 'localhost','address','1622','2025')`, nowTime, nowTime))
+				if err != nil {
+					t.Fatalf("failed to insert test data: %v", err)
+					return
+				}
+
+			},
+			check: func(q *cmn.ServiceCtx)(err error) {
+				d := syncInfo{
+					Path:          "",
+					TableFileList: []string{},
+				}
+
+				err = json.Unmarshal(q.Msg.Data, &d)
+				if err != nil {
+					t.Errorf("failed to unmarshal data: %v", err)
+					return
+				}
+
+				// 检查目录下是否有相应的文件
+				for _, f := range d.TableFileList {
+
+					_, err = os.Stat(filepath.Join(d.Path, f))
+					if err != nil {
+						t.Errorf("failed to stat file while it shouldn't: %v", err)
+						return
+					}
+
+				}
+
+				return
+			},
+			cleanup: func() {
+
+				dbConn := cmn.GetDbConn()
+
+				r, err := dbConn.Exec(fmt.Sprintf(`DELETE FROM t_exam_site WHERE name = 'test-site-%d'`, nowTime))
+				if err != nil {
+					t.Fatalf("failed to delete test data: %v", err)
+					return
+				}
+
+				c, err := r.RowsAffected()
+				if err != nil {
+					t.Fatalf("failed to get affected rows: %v", err)
+					return
+				}
+
+				t.Logf("Have already cleaned up %d rows from t_exam_site", c)
+
+				folderFullPath := path.Join(os.Getenv("PWD"), "/data/tmp/")
+
+				o, err := exec.Command("rm", "-rvf", folderFullPath).CombinedOutput()
+				if err != nil {
+					t.Fatalf("failed to remove folder: %v, output: %s", err, string(o))
+					return
+				}
+
+				t.Logf("Successfully cleaned up folder: %s output: %x", folderFullPath, o)
+
+			},
+		},
+		{
+			name: "准备数据失败-无效的同步信息快照",
+			q: &cmn.ServiceCtx{
+				R: httptest.NewRequest("GET", "/api/exam-site/sync", nil),
+				W: httptest.NewRecorder(),
+				Msg: &cmn.ReplyProto{
+					API:    "/api/exam-site/sync",
+					Method: "GET",
+				},
+				BeginTime: time.Now(),
+				SysUser: &cmn.TUser{
+					ID:   null.NewInt(2025, true),
+					Role: null.NewInt(int64(cmn.CDomainAssessExamSite), true),
+				},
+				Domains: []cmn.TDomain{
+					{
+						ID: null.IntFrom(int64(cmn.CDomainAssessExamSite)),
+					},
+				},
+				RedisClient: cmn.GetRedisConn(),
+				Tag: map[string]interface{}{
+				},
+			},
+			passExpected: false,
+			errWanted:    "unexpected end of JSON input",
+			setup: func() {
+
+				redisConn := cmn.GetRedisConn()
+
+				_, err := redisConn.Set(context.Background(), fmt.Sprintf("%s:%d", ExamSiteSyncPrefix, 2025), "{", 0).Result()
+				if err != nil {
+					t.Fatalf("failed to set redis key: %v", err)
+					return
+				}
+
+				dbConn := cmn.GetDbConn()
+
+				_, err = dbConn.Exec(fmt.Sprintf(`INSERT INTO t_exam_site (id, name,creator,server_host,address,admin,sys_user) VALUES 
+					(%d,'test-site-%d', 1622, 'localhost','address','1622','2025')`, nowTime, nowTime))
+				if err != nil {
+					t.Fatalf("failed to insert test data: %v", err)
+					return
+				}
+
+			},
+			check: func(q *cmn.ServiceCtx)(err error) {
+				d := syncInfo{
+					Path:          "",
+					TableFileList: []string{},
+				}
+
+				err = json.Unmarshal(q.Msg.Data, &d)
+				if err != nil {
+					t.Errorf("failed to unmarshal data: %v", err)
+					return
+				}
+
+				// 检查目录下是否有相应的文件
+				for _, f := range d.TableFileList {
+
+					_, err = os.Stat(filepath.Join(d.Path, f))
+					if err != nil {
+						t.Errorf("failed to stat file while it shouldn't: %v", err)
+						return
+					}
+
+				}
+
+				return
+			},
+			cleanup: func() {
+
+				redisConn := cmn.GetRedisConn()
+
+				_, err := redisConn.Del(context.Background(), fmt.Sprintf("%s:%d", ExamSiteSyncPrefix, 2025)).Result()
+				if err != nil {
+					t.Fatalf("failed to delete redis key: %v", err)
+					return
+				}
 
 				dbConn := cmn.GetDbConn()
 
@@ -4089,6 +4608,112 @@ func TestExamSiteSyncApi(t *testing.T) {
 		},
 
 		// ======================================
+
+
+		// =============反向同步测试==============
+		// ooooooooo.     .oooooo.    .oooooo..o ooooooooooooo 
+		// `888   `Y88.  d8P'  `Y8b  d8P'    `Y8 8'   888   `8 
+		//  888   .d88' 888      888 Y88bo.           888      
+		//  888ooo88P'  888      888  `"Y8888o.       888      
+		//  888         888      888      `"Y88b      888      
+		//  888         `88b    d88' oo     .d8P      888      
+		// o888o         `Y8bood8P'  8""88888P'      o888o     
+		//                                                     
+        {
+			name: "反向同步成功",
+			q: &cmn.ServiceCtx{
+				R: httptest.NewRequest("POST", "/api/exam-site/sync", strings.NewReader(fmt.Sprintf(`{
+					"data": {
+						"path": "%s",
+						"tableFileList": []
+					}
+				}`, filepath.Join(os.Getenv("PWD"), "data/tmp")))),
+				W: httptest.NewRecorder(),
+				Msg: &cmn.ReplyProto{
+					API:    "/api/exam-site/sync",
+					Method: "POST",
+				},
+				BeginTime: time.Now(),
+				SysUser: &cmn.TUser{
+					ID:   null.NewInt(2025, true),
+					Role: null.NewInt(int64(cmn.CDomainAssessExamSite), true),
+				},
+				Domains: []cmn.TDomain{
+					{
+						ID: null.IntFrom(int64(cmn.CDomainAssessExamSite)),
+					},
+				},
+				RedisClient: cmn.GetRedisConn(),
+			},
+			passExpected: true,
+			errWanted:    "",
+			setup: func() {
+
+				dbConn := cmn.GetDbConn()
+
+				_, err := dbConn.Exec(fmt.Sprintf(`INSERT INTO t_exam_site (id, name,creator,server_host,address,admin,sys_user) VALUES 
+					(%d,'test-site-%d', 1622, 'localhost','address','1622','2025')`, nowTime, nowTime))
+				if err != nil {
+					t.Fatalf("failed to insert test data: %v", err)
+					return
+				}
+
+				folderPath := filepath.Join(os.Getenv("PWD"), "data/tmp")
+
+				err = os.MkdirAll(folderPath, 0755)
+				if err != nil {
+					t.Fatalf("failed to mkdir: %v", err)
+					return
+				}
+
+				err = os.WriteFile(filepath.Join(folderPath, "import_script.sql"), []byte("SELECT * FROM t_exam_site"), 0755)
+				if err != nil {
+					t.Fatalf("failed to create test sql file: %v", err)
+					return
+				}
+
+			},
+			cleanup: func() {
+
+				dbConn := cmn.GetDbConn()
+
+				r, err := dbConn.Exec(fmt.Sprintf(`DELETE FROM t_exam_site WHERE name = 'test-site-%d'`, nowTime))
+				if err != nil {
+					t.Fatalf("failed to delete test data: %v", err)
+					return
+				}
+
+				c, err := r.RowsAffected()
+				if err != nil {
+					t.Fatalf("failed to get affected rows: %v", err)
+					return
+				}
+
+				t.Logf("Have already cleaned up %d rows from t_exam_site", c)
+
+				folderFullPath := path.Join(os.Getenv("PWD"), "/data/tmp/")
+
+				o, err := exec.Command("rm", "-rvf", folderFullPath).CombinedOutput()
+				if err != nil {
+					t.Fatalf("failed to remove folder: %v, output: %s", err, string(o))
+					return
+				}
+
+				t.Logf("Successfully cleaned up folder: %s output: %x", folderFullPath, o)
+
+				filePath := filepath.Join(os.Getenv("PWD"), "import_script.sql")
+
+				err = os.RemoveAll(filePath)
+				if err != nil {
+					t.Fatalf("failed to remove test sql file: %v", err)
+					return
+				}
+
+			},
+		},
+		
+		// ======================================
+
 	}
 
 	// ooooooooo.   ooooo     ooo ooooo      ooo
@@ -4141,28 +4766,6 @@ func TestExamSiteSyncApi(t *testing.T) {
 					t.Errorf("check err: %s", err.Error())
 					return
 				}
-			}
-
-			d := syncInfo{
-				Path:          "",
-				TableFileList: []string{},
-			}
-
-			err := json.Unmarshal(tt.q.Msg.Data, &d)
-			if err != nil {
-				t.Errorf("failed to unmarshal data: %v", err)
-				return
-			}
-
-			// 检查目录下是否有相应的文件
-			for _, f := range d.TableFileList {
-
-				_, err := os.Stat(filepath.Join(d.Path, f))
-				if err != nil {
-					t.Errorf("failed to stat file while it shouldn't: %v", err)
-					return
-				}
-
 			}
 
 		})

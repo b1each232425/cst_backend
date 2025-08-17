@@ -34,8 +34,8 @@ import (
 
 const (
 	IP_ADDR_REGEXP     = `^((25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])\.){3}(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])(:(\d{1,5}))?$`
-	ExamSitePrefix     = "examSite:"
-	ExamSiteSyncPrefix = "examSiteSync:"
+	ExamSitePrefix     = "examSite"
+	ExamSiteSyncPrefix = "examSiteSync"
 	SyncStatusKey      = "examSiteSync:SyncStatus"
 	PULLING            = "Pulling"
 	PULLED             = "Pulled"
@@ -53,7 +53,7 @@ var (
 	pushChan chan int
 
 	centralServerUrl = "http://localhost:6610"
-	sysUser          = ""
+	sysUser          = "" // 登录账号/邮箱/手机号等
 	accessToken      = ""
 	sshUser          = "root"
 	sshHost          = "localhost"
@@ -68,6 +68,7 @@ var (
 
 type sysUserInfo struct {
 	Name        string
+	ID          int64
 	Session     string
 	AccessToken string
 }
@@ -89,8 +90,8 @@ type examSiteInfo struct {
 }
 
 type syncInfo struct {
-	Path          string   `json:"path"`
-	TableFileList []string `json:"tableFileList"`
+	Path          string   `json:"path" validate:"required"`
+	TableFileList []string `json:"tableFileList" validate:"required"`
 }
 
 const (
@@ -121,6 +122,7 @@ func Enroll(author string) {
 
 	ctx := context.WithValue(context.Background(), cmn.QNearKey, &cmn.ServiceCtx{
 		RedisClient: cmn.GetRedisConn(),
+		Msg: &cmn.ReplyProto{},
 	})
 
 	examSiteSyncInit(ctx)
@@ -177,11 +179,19 @@ func login(ctx context.Context) (info sysUserInfo) {
 
 	q := cmn.GetCtxValue(ctx)
 
-	cli := fasthttp.Client{}
+	if viper.IsSet("examSiteServerSync.sysUser") {
+		sysUser = viper.GetString("examSiteServerSync.sysUser")
+	}
+
+	if viper.IsSet("examSiteServerSync.accessToken") {
+		accessToken = viper.GetString("examSiteServerSync.accessToken")
+	}
 
 	info.Name = sysUser
 
 	info.AccessToken = accessToken
+
+	cli := fasthttp.Client{}
 
 	reqBody := []byte(fmt.Sprintf(`{ "name": "%s", "cert": "%s" }`,
 		info.Name,
@@ -219,6 +229,15 @@ func login(ctx context.Context) (info sysUserInfo) {
 		return
 	}
 
+	var data cmn.TUser
+	q.Err = json.Unmarshal(msg.Data, &data)
+	if q.Err != nil {
+		z.Error(q.Err.Error())
+		return
+	}
+
+	info.ID = data.ID.Int64
+
 	// 只获取 "qNearSessions" 的cookie值
 	for _, c := range resp.Header.PeekAll("Set-Cookie") {
 		cookieStr := string(c)
@@ -254,9 +273,14 @@ func Pull(ctx context.Context, retryCount int) {
 			n = retryCount
 		}
 
-		z.Sugar().Warnf("Pull operation failed, retrying in 3 seconds, remaining retry times: %d", n)
+		interval := 0
+		if retryCount == -1 {
+			interval = 3
+		}
 
-		time.Sleep(3 * time.Second)
+		z.Sugar().Warnf("Pull operation failed, retrying in %d seconds, remaining retry times: %d", interval, n)
+
+		time.Sleep(time.Duration(interval) * time.Second)
 
 		// retry when occurred err
 		Pull(ctx, retryCount)
@@ -271,7 +295,7 @@ func Pull(ctx context.Context, retryCount int) {
 	}()
 
 	syncStatus, q.Err = q.RedisClient.Get(ctx, SyncStatusKey).Result()
-	if q.Err != nil || (cmn.InDebugMode && q.Tag["getSyncStatusErr"] != nil) {
+	if (q.Err != nil && !errors.Is(q.Err, redis.Nil)) || (cmn.InDebugMode && q.Tag["getSyncStatusErr"] != nil) {
 
 		if q.Err == nil {
 			q.Err = q.Tag["getSyncStatusErr"].(error)
@@ -286,16 +310,19 @@ func Pull(ctx context.Context, retryCount int) {
 	case PULLING:
 		q.Err = fmt.Errorf("当前正在拉取数据中, 不允许重复拉取")
 		z.Error(q.Err.Error())
+		retryCount = 0
 		return
 
 	case PULLED:
 		q.Err = fmt.Errorf("当前数据尚未推送, 请先进行推送")
 		z.Error(q.Err.Error())
+		retryCount = 0
 		return
 
 	case PUSHING:
 		q.Err = fmt.Errorf("当前正在推送数据中，不允许进行拉取")
 		z.Error(q.Err.Error())
+		retryCount = 0
 		return
 	}
 
@@ -339,7 +366,7 @@ func Pull(ctx context.Context, retryCount int) {
 
 	req.Header.SetCookie("qNearSessions", info.Session)
 
-	req.SetRequestURI(fmt.Sprintf("%s/api/exam-site/sync?action=0", centralServerUrl))
+	req.SetRequestURI(fmt.Sprintf("%s/api/exam-site/sync", centralServerUrl))
 	req.Header.SetMethod("GET")
 
 	q.Err = cli.DoTimeout(req, resp, 30*time.Minute)
@@ -367,6 +394,13 @@ func Pull(ctx context.Context, retryCount int) {
 		return
 	}
 
+	k := fmt.Sprintf("%s:%d", ExamSiteSyncPrefix, info.ID)
+	_, q.Err = q.RedisClient.Set(ctx, k, []byte(q.Msg.Data), 0).Result()
+	if q.Err != nil {
+		z.Error(q.Err.Error())
+		return
+	}
+
 	// rsync 拉取考点数据
 
 	source := fmt.Sprintf("%s@%s:%s",
@@ -376,18 +410,22 @@ func Pull(ctx context.Context, retryCount int) {
 	)
 
 	b := make([]byte, 16)
-	_, q.Err = rand.Read(b)
-	if q.Err != nil || (cmn.InDebugMode && q.Tag["generateRandByteErr"] != nil) {
-		if q.Err == nil {
-			q.Err = q.Tag["generateRandByteErr"].(error)
-		}
+	rand.Read(b)
 
+	dest := filepath.Join(os.Getenv("PWD"), fmt.Sprintf("data/tmp/exam-site-%d/%x",
+		info.ID, b))
+
+	q.Err = os.MkdirAll(dest, 0755)
+	if q.Err != nil {
 		z.Error(q.Err.Error())
 		return
 	}
-
-	dest := filepath.Join(os.Getenv("PWD"), fmt.Sprintf("data/tmp/exam-site-%s/%x",
-		sysUser, b))
+	defer func() {
+		err := os.RemoveAll(dest)
+		if err != nil {
+			z.Error(err.Error())
+		}
+	}()
 
 	cmd := fmt.Sprintf(`rsync -avz -e "ssh -p %d" --delete %s/* %s`,
 		sshPort,
@@ -409,7 +447,7 @@ func Pull(ctx context.Context, retryCount int) {
 		return
 	}
 
-	q.Err = generateImportScriptForSubServer(i.TableFileList, dest, "import_script.sql")
+	q.Err = generateImportScript(i.TableFileList, dest, "import_script.sql", true)
 	if q.Err != nil {
 		return
 	}
@@ -470,7 +508,34 @@ func Pull(ctx context.Context, retryCount int) {
 // ctx 必须包含 QNearKey 上下文
 //
 // retryCount 重试次数, 若值为 -1, 则无限次重试, 直至成功为止
-func Push(ctx context.Context, retryCount int) (err error) {
+func Push(ctx context.Context, retryCount int) {
+
+	q := cmn.GetCtxValue(ctx)
+
+	defer func() {
+
+		if q.Err == nil || retryCount == 0 {
+			return
+		}
+
+		n := 999
+		if retryCount > 0 {
+			retryCount--
+			n = retryCount
+		}
+
+		interval := 0
+		if retryCount == -1 {
+			interval = 3
+		}
+
+		z.Sugar().Warnf("Push operation failed, retrying in %d seconds, remaining retry times: %d", interval, n)
+
+		time.Sleep(time.Duration(interval) * time.Second)
+
+		// retry when occurred err
+		Push(ctx, retryCount)
+	}()
 
 	z.Info("try lock")
 	syncLock.Lock()
@@ -480,7 +545,218 @@ func Push(ctx context.Context, retryCount int) (err error) {
 		z.Info("release lock")
 	}()
 
-	return
+	syncStatus, q.Err = q.RedisClient.Get(ctx, SyncStatusKey).Result()
+	if q.Err != nil || (cmn.InDebugMode && q.Tag["getSyncStatusErr"] != nil) {
+
+		if q.Err == nil {
+			q.Err = q.Tag["getSyncStatusErr"].(error)
+		}
+
+		z.Error(q.Err.Error())
+		return
+	}
+
+	switch syncStatus {
+
+	case PULLING:
+		q.Err = fmt.Errorf("当前正在拉取数据中, 不允许进行推送")
+		z.Error(q.Err.Error())
+		retryCount = 0
+		return
+
+	case PUSHING:
+		q.Err = fmt.Errorf("当前正在推送数据中，不允许重复推送")
+		z.Error(q.Err.Error())
+		retryCount = 0
+		return
+
+	case PUSHED:
+		q.Err = fmt.Errorf("当前不允许推送数据,请先进行拉取同步数据")
+		z.Error(q.Err.Error())
+		retryCount = 0
+		return
+
+	}
+
+	_, q.Err = q.RedisClient.Set(ctx, SyncStatusKey, PUSHING, 0).Result()
+	if q.Err != nil {
+		z.Error(q.Err.Error())
+		return
+	}
+
+	defer func() {
+		if q.Err != nil && !errors.Is(q.Err, redis.Nil) {
+			_, err := q.RedisClient.Set(ctx, SyncStatusKey, PULLED, 0).Result()
+			if err != nil {
+				z.Error(err.Error())
+			}
+
+			return
+		}
+
+		_, q.Err = q.RedisClient.Set(ctx, SyncStatusKey, PUSHED, 0).Result()
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+		}
+
+	}()
+
+	var sInfo syncInfo
+	var s string
+
+	// 登录验证
+	uInfo := login(ctx)
+	if q.Err != nil {
+		return
+	}
+
+	k := fmt.Sprintf("%s:%d", ExamSiteSyncPrefix, uInfo.ID)
+	s, q.Err = q.RedisClient.Get(ctx, k).Result()
+	if q.Err != nil {
+
+		if errors.Is(q.Err, redis.Nil) {
+			q.Err = fmt.Errorf("没有找到同步信息, 请先进行拉取操作, err: %w", q.Err)
+			retryCount = 0
+		}
+
+		z.Error(q.Err.Error())
+		return
+	}
+
+	q.Err = json.Unmarshal([]byte(s), &sInfo)
+	if q.Err != nil {
+		z.Error(q.Err.Error())
+		return
+	}
+
+	b := make([]byte, 16)
+
+	rand.Read(b)
+
+	source := filepath.Join(os.Getenv("PWD"), fmt.Sprintf("data/tmp/exam-site-%d/%x",
+		uInfo.ID, b))
+
+	dest := fmt.Sprintf("%s@%s:%s",
+		sshUser,
+		sshHost,
+		sInfo.Path,
+	)
+
+	q.Err = os.MkdirAll(source, 0755)
+	if q.Err != nil {
+		z.Error(q.Err.Error())
+		return
+	}
+	defer func() {
+		err := os.RemoveAll(source)
+		if err != nil {
+			z.Error(err.Error())
+		}
+	}()
+
+	sInfo.TableFileList, q.Err = generateExportScript(uInfo.ID, source, "export_script.sql", true)
+	if q.Err != nil {
+		z.Error(q.Err.Error())
+		return
+	}
+
+	pgpassFullPath := filepath.Join(os.Getenv("HOME"), ".pgpass")
+
+	// 执行导出脚本
+	cmd := fmt.Sprintf("PGPASSFILE=%s psql -h %s -p %d -U %s -d %s -f %s",
+		pgpassFullPath,
+		dbAddr,
+		dbPort,
+		dbUser,
+		dbName,
+		filepath.Join(source, "export_script.sql"),
+	)
+
+	var o []byte
+	o, q.Err = exec.CommandContext(ctx, "bash", "-c", cmd).CombinedOutput()
+	if q.Err != nil {
+
+		q.Err = fmt.Errorf("COMMAND: %s\t ERR: %w\t DETAIL: %s", cmd, q.Err, string(o))
+		z.Error(q.Err.Error())
+		return
+
+	}
+
+	cmd = fmt.Sprintf(`rsync -avz -e "ssh -p %d" --delete %s/* %s`,
+		sshPort,
+		source, dest)
+
+	o, q.Err = exec.CommandContext(ctx, "bash", "-c", cmd).CombinedOutput()
+	if q.Err != nil {
+		q.Err = fmt.Errorf("COMMAND: %s\t ERR: %w\t DETAIL: %s", cmd, q.Err, string(o))
+		z.Error(q.Err.Error())
+		return
+	}
+
+	// 发送反向同步通知
+
+	cli := fasthttp.Client{}
+
+	var reqBody []byte
+	var reqData []byte
+
+	reqData, q.Err = json.Marshal(&sInfo)
+	if q.Err != nil {
+		z.Error(q.Err.Error())
+		return
+	}
+
+	reqBody, q.Err = json.Marshal(&cmn.ReqProto{
+		Data: reqData,
+	})
+	if q.Err != nil {
+		z.Error(q.Err.Error())
+		return
+	}
+
+	req := fasthttp.AcquireRequest()
+	defer fasthttp.ReleaseRequest(req)
+
+	resp := fasthttp.AcquireResponse()
+	defer fasthttp.ReleaseResponse(resp)
+
+	req.SetRequestURI(fmt.Sprintf("%s/api/exam-site/sync", centralServerUrl))
+	req.Header.SetMethod("POST")
+	req.Header.SetContentType("application/json")
+	req.SetBody(reqBody)
+
+	q.Err = cli.Do(req, resp)
+	if q.Err != nil {
+		z.Error(q.Err.Error())
+		return
+	}
+
+	var msg cmn.ReplyProto
+
+	q.Err = json.Unmarshal(resp.Body(), &msg)
+	if q.Err != nil {
+		z.Error(q.Err.Error())
+		return
+	}
+
+	if msg.Status != 0 {
+		q.Err = fmt.Errorf("%s", msg.Msg)
+		z.Error(q.Err.Error())
+		return
+	}
+
+	// 清理已同步的数据
+	retryCount = 0
+	err := q.RedisClient.Del(ctx, k).Err()
+	if err != nil {
+		z.Error(err.Error())
+	}
+
+	err = os.RemoveAll(source)
+	if err != nil {
+		z.Error(err.Error())
+	}
+
 }
 
 // GetMaxRetry 获取同步重试最大次数
@@ -589,6 +865,9 @@ func examSite(ctx context.Context) {
 	var req cmn.ReqProto
 
 	q.Err = json.Unmarshal(bodyBuf, &req)
+	if q.Err != nil {
+		z.Warn(q.Err.Error())
+	}
 
 	switch q.R.Method {
 
@@ -600,6 +879,7 @@ func examSite(ctx context.Context) {
 
 		q.Err = json.Unmarshal(req.Data, &info)
 		if q.Err != nil {
+			z.Error(q.Err.Error())
 			break
 		}
 
@@ -983,14 +1263,6 @@ func examSiteSyncInit(ctx context.Context) {
 
 	pgpassFullPath := filepath.Join(os.Getenv("HOME"), ".pgpass")
 
-	if viper.IsSet("examSiteServerSync.sysUser") {
-		sysUser = viper.GetString("examSiteServerSync.sysUser")
-	}
-
-	if viper.IsSet("examSiteServerSync.accessToken") {
-		accessToken = viper.GetString("examSiteServerSync.accessToken")
-	}
-
 	// 创建.pgpass文件
 	var f *os.File
 	f, q.Err = os.Create(pgpassFullPath)
@@ -1116,6 +1388,9 @@ func examSiteSyncInit(ctx context.Context) {
 	}
 
 	Pull(ctx, maxRetry)
+	if q.Err != nil {
+		z.Error("初始化拉取同步数据失败")
+	}
 
 	pullChan = make(chan int)
 	pushChan = make(chan int)
@@ -1124,10 +1399,25 @@ func examSiteSyncInit(ctx context.Context) {
 		for {
 			select {
 
-			case <-pullChan:
+			case _, ok := <-pullChan:
+
+				if !ok {
+					return
+				}
+
 				Pull(ctx, maxRetry)
 
-			case <-pushChan:
+				if cmn.InDebugMode && q.Tag["pullDone"] != nil {
+					q.Tag["pullDone"].(chan int) <- 1
+					continue
+				}
+
+			case _, ok := <-pushChan:
+
+				if !ok {
+					return
+				}
+
 				Push(ctx, maxRetry)
 
 			}
@@ -1166,210 +1456,276 @@ func examSiteSync(ctx context.Context) {
 
 	pgpassFullPath := filepath.Join(os.Getenv("HOME"), ".pgpass")
 
+	var bodyBuf []byte
+	bodyBuf, q.Err = io.ReadAll(q.R.Body)
+	if q.Err != nil || (cmn.InDebugMode && q.Tag["readBodyErr"] != nil) {
+
+		if q.Err == nil {
+			q.Err = q.Tag["readBodyErr"].(error)
+		}
+
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+
+	var req cmn.ReqProto
+
+	q.Err = json.Unmarshal(bodyBuf, &req)
+	if q.Err != nil {
+		z.Warn(q.Err.Error())
+	}
+
+	syncInfoSnapshotKey := fmt.Sprintf("%s:%d", ExamSiteSyncPrefix, userID)
+
 MethodSwitch:
 	switch q.R.Method {
 
 	case "GET":
 
-		action := q.R.URL.Query().Get("action")
+		// 返回考点数据
 
-		switch action {
+		var s string
+		var info syncInfo
 
-		case "0":
+		s, q.Err = q.RedisClient.Get(ctx, syncInfoSnapshotKey).Result()
+		if (q.Err != nil && !errors.Is(q.Err, redis.Nil)) || (cmn.InDebugMode && q.Tag["getSyncInfoSnapshotErr"] != nil) {
 
-			var info syncInfo
-			var s string
+			if q.Err == nil {
+				q.Err = q.Tag["getSyncInfoSnapshotErr"].(error)
+			}
 
-			k := fmt.Sprintf("%s:%d", ExamSiteSyncPrefix, userID)
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
 
-			s, q.Err = q.RedisClient.Get(ctx, k).Result()
-			if q.Err != nil && !errors.Is(q.Err, redis.Nil) {
+		if s != "" {
+
+			// 如果同步数据信息快照存在，则直接返回
+
+			// 验证数据有效性
+			q.Err = json.Unmarshal([]byte(s), &info)
+			if q.Err != nil {
 				z.Error(q.Err.Error())
 				break MethodSwitch
 			}
 
-			if s != "" {
+			for _, f := range info.TableFileList {
 
-				// 如果同步数据信息快照存在，则直接返回
-
-				// 验证数据有效性
-				q.Err = json.Unmarshal([]byte(s), &info)
+				_, q.Err = os.Stat(filepath.Join(info.Path, f))
 				if q.Err != nil {
 					z.Error(q.Err.Error())
-					break MethodSwitch
+					break
 				}
 
-				for _, f := range info.TableFileList {
-
-					_, q.Err = os.Stat(filepath.Join(info.Path, f))
-					if q.Err != nil {
-						z.Error(q.Err.Error())
-						break
-					}
-
-				}
-
-				if q.Err == nil {
-					q.Msg.Data = []byte(s)
-					break MethodSwitch
-				}
-
-				q.Err = fmt.Errorf("过往已准备的数据已失效, Path: %s, TabelFileList: %s", info.Path, strings.Join(info.TableFileList, ", "))
-
-				z.Warn(q.Err.Error())
 			}
 
-			// 准备考点数据
-
-			b := make([]byte, 16)
-
-			_, q.Err = rand.Read(b)
-			if q.Err != nil || (cmn.InDebugMode && q.Tag["generateRandByteErr"] != nil) {
-
-				if q.Err == nil {
-					q.Err = q.Tag["generateRandByteErr"].(error)
-				}
-
-				z.Error(q.Err.Error())
+			if q.Err == nil {
+				q.Msg.Data = []byte(s)
 				break MethodSwitch
 			}
 
-			folderFullPath := filepath.Join(os.Getenv("PWD"), fmt.Sprintf("/data/tmp/exam-site-%d/%x", userID, b))
+			q.Err = fmt.Errorf("过往已准备的数据已失效, Path: %s, TabelFileList: %s", info.Path, strings.Join(info.TableFileList, ", "))
 
-			q.Err = os.MkdirAll(folderFullPath, 0755)
-			if q.Err != nil || (cmn.InDebugMode && q.Tag["mkdirAllErr"] != nil) {
+			z.Warn(q.Err.Error())
+		}
 
-				if q.Err == nil {
-					q.Err = q.Tag["mkdirAllErr"].(error)
-				}
+		// 准备考点数据
 
-				z.Error(q.Err.Error())
-				break MethodSwitch
+		b := make([]byte, 16)
+
+		rand.Read(b)
+
+		folderFullPath := filepath.Join(os.Getenv("PWD"), fmt.Sprintf("/data/tmp/exam-site-%d/%x", userID, b))
+
+		q.Err = os.MkdirAll(folderFullPath, 0755)
+		if q.Err != nil || (cmn.InDebugMode && q.Tag["mkdirAllErr"] != nil) {
+
+			if q.Err == nil {
+				q.Err = q.Tag["mkdirAllErr"].(error)
 			}
 
-			defer func() {
-				if q.Err == nil {
-					return
-				}
+			z.Error(q.Err.Error())
+			break MethodSwitch
+		}
 
-				// 当发生错误时，清理临时目录
-				err := os.RemoveAll(folderFullPath)
-				if err != nil || (cmn.InDebugMode && q.Tag["removeTmpDirErr"] != nil) {
-
-					q.Err = err
-
-					if q.Err == nil {
-						q.Err = q.Tag["removeTmpDirErr"].(error)
-					}
-
-					z.Error(q.Err.Error())
-					return
-				}
-			}()
-
-			if cmn.InDebugMode && q.Tag["removeTmpDirErr"] != nil {
-				q.Err = q.Tag["removeTmpDirErr"].(error)
+		defer func() {
+			if q.Err == nil {
 				return
 			}
 
-			// 导出数据库模式结构
-			cmd := fmt.Sprintf(`PGPASSFILE=%s pg_dump --file "%s" --host "%s" --port "%d" --username "%s" -w --format=c --large-objects --encoding "UTF8" --schema-only --clean --if-exists --verbose --schema "%s" "%s"`,
-				pgpassFullPath,
-				filepath.Join(folderFullPath, "schema.sql"),
-				dbAddr,
-				dbPort,
-				dbUser,
-				dbUser,
-				dbName,
-			)
+			// 当发生错误时，清理临时目录
+			err := os.RemoveAll(folderFullPath)
+			if err != nil || (cmn.InDebugMode && q.Tag["removeTmpDirErr"] != nil) {
 
-			var o []byte
-			o, q.Err = exec.CommandContext(ctx, "bash", "-c", cmd).CombinedOutput()
-			if q.Err != nil || (cmn.InDebugMode && q.Tag["pgDumpErr"] != nil) {
+				q.Err = err
 
 				if q.Err == nil {
-					q.Err = q.Tag["pgDumpErr"].(error)
-					cmd = ""
-					o = []byte("")
-				}
-
-				q.Err = fmt.Errorf("COMMAND: %s\t ERR: %w\t DETAIL: %s", cmd, q.Err, string(o))
-				z.Error(q.Err.Error())
-				break MethodSwitch
-			}
-
-			var tableFileList []string
-			fileName := "export_script.sql"
-
-			if cmn.InDebugMode && q.Tag["createExportScriptFileErr"] != nil {
-				fileName = q.Tag["createExportScriptFileErr"].(error).Error()
-			}
-
-			if cmn.InDebugMode && q.Tag["writeExportScriptFileErr"] != nil {
-				fileName = q.Tag["writeExportScriptFileErr"].(error).Error()
-			}
-
-			tableFileList, q.Err = generateExportScriptForCentralServer(userID, folderFullPath, fileName)
-			if q.Err != nil {
-				break MethodSwitch
-			}
-
-			cmd = fmt.Sprintf("PGPASSFILE=%s psql -h %s -p %d -U %s -d %s -f %s",
-				pgpassFullPath,
-				dbAddr,
-				dbPort,
-				dbUser,
-				dbName,
-				filepath.Join(folderFullPath, fileName),
-			)
-			o, q.Err = exec.CommandContext(ctx, "bash", "-c", cmd).CombinedOutput()
-			if q.Err != nil || (cmn.InDebugMode && q.Tag["psqlErr"] != nil) {
-
-				if q.Err == nil {
-					q.Err = q.Tag["psqlErr"].(error)
-					cmd = ""
-					o = []byte("")
-				}
-
-				q.Err = fmt.Errorf("COMMAND: %s\t ERR: %w\t DETAIL: %s", cmd, q.Err, string(o))
-				z.Error(q.Err.Error())
-				break MethodSwitch
-			}
-
-			info = syncInfo{
-				Path:          folderFullPath,
-				TableFileList: tableFileList,
-			}
-
-			var data []byte
-
-			data, q.Err = json.Marshal(info)
-			if q.Err != nil || (cmn.InDebugMode && q.Tag["jsonMarshalErr"] != nil) {
-
-				if q.Err == nil {
-					q.Err = q.Tag["jsonMarshalErr"].(error)
+					q.Err = q.Tag["removeTmpDirErr"].(error)
 				}
 
 				z.Error(q.Err.Error())
-				break MethodSwitch
+				return
+			}
+		}()
+
+		if cmn.InDebugMode && q.Tag["removeTmpDirErr"] != nil {
+			q.Err = q.Tag["removeTmpDirErr"].(error)
+			return
+		}
+
+		// 导出数据库模式结构
+		cmd := fmt.Sprintf(`PGPASSFILE=%s pg_dump --file "%s" --host "%s" --port "%d" --username "%s" -w --format=c --large-objects --encoding "UTF8" --schema-only --clean --if-exists --verbose --schema "%s" "%s"`,
+			pgpassFullPath,
+			filepath.Join(folderFullPath, "schema.sql"),
+			dbAddr,
+			dbPort,
+			dbUser,
+			dbUser,
+			dbName,
+		)
+
+		var o []byte
+		o, q.Err = exec.CommandContext(ctx, "bash", "-c", cmd).CombinedOutput()
+		if q.Err != nil || (cmn.InDebugMode && q.Tag["pgDumpErr"] != nil) {
+
+			if q.Err == nil {
+				q.Err = q.Tag["pgDumpErr"].(error)
+				cmd = ""
+				o = []byte("")
 			}
 
-			// 保存同步数据信息快照
-			_, q.Err = q.RedisClient.Set(ctx, k, data, 0).Result()
-			if q.Err != nil {
-				z.Error(q.Err.Error())
-				break MethodSwitch
-			}
-
-			q.Msg.Data = data
-
-		case "1":
-			// TODO: 同步考点数据
-
-		default:
-			q.Err = fmt.Errorf("不支持的同步操作: %s", action)
+			q.Err = fmt.Errorf("COMMAND: %s\t ERR: %w\t DETAIL: %s", cmd, q.Err, string(o))
 			z.Error(q.Err.Error())
 			break MethodSwitch
+		}
+
+		var tableFileList []string
+		fileName := "export_script.sql"
+
+		if cmn.InDebugMode && q.Tag["createExportScriptFileErr"] != nil {
+			fileName = q.Tag["createExportScriptFileErr"].(error).Error()
+		}
+
+		if cmn.InDebugMode && q.Tag["writeExportScriptFileErr"] != nil {
+			fileName = q.Tag["writeExportScriptFileErr"].(error).Error()
+		}
+
+		tableFileList, q.Err = generateExportScript(userID, folderFullPath, fileName, false)
+		if q.Err != nil {
+			break MethodSwitch
+		}
+
+		cmd = fmt.Sprintf("PGPASSFILE=%s psql -h %s -p %d -U %s -d %s -f %s",
+			pgpassFullPath,
+			dbAddr,
+			dbPort,
+			dbUser,
+			dbName,
+			filepath.Join(folderFullPath, fileName),
+		)
+		o, q.Err = exec.CommandContext(ctx, "bash", "-c", cmd).CombinedOutput()
+		if q.Err != nil || (cmn.InDebugMode && q.Tag["psqlErr"] != nil) {
+
+			if q.Err == nil {
+				q.Err = q.Tag["psqlErr"].(error)
+				cmd = ""
+				o = []byte("")
+			}
+
+			q.Err = fmt.Errorf("COMMAND: %s\t ERR: %w\t DETAIL: %s", cmd, q.Err, string(o))
+			z.Error(q.Err.Error())
+			break MethodSwitch
+		}
+
+		info = syncInfo{
+			Path:          folderFullPath,
+			TableFileList: tableFileList,
+		}
+
+		var data []byte
+
+		data, q.Err = json.Marshal(info)
+		if q.Err != nil || (cmn.InDebugMode && q.Tag["jsonMarshalErr"] != nil) {
+
+			if q.Err == nil {
+				q.Err = q.Tag["jsonMarshalErr"].(error)
+			}
+
+			z.Error(q.Err.Error())
+			break MethodSwitch
+		}
+
+		// 保存同步数据信息快照
+		_, q.Err = q.RedisClient.Set(ctx, syncInfoSnapshotKey, data, 0).Result()
+		if q.Err != nil || (cmn.InDebugMode && q.Tag["saveSyncInfoSnapshotErr"] != nil) {
+
+			if q.Err == nil {
+				q.Err = q.Tag["saveSyncInfoSnapshotErr"].(error)
+			}
+
+			z.Error(q.Err.Error())
+			break MethodSwitch
+		}
+
+		q.Msg.Data = data
+	
+	case "POST":
+
+		// 同步考点数据
+
+		var sInfo syncInfo
+
+		q.Err = json.Unmarshal(req.Data, &sInfo)
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			break MethodSwitch
+		}
+
+		q.Err = cmn.Validate(&sInfo)
+		if q.Err != nil {
+			break MethodSwitch
+		}
+
+		q.Err = generateImportScript(sInfo.TableFileList, sInfo.Path, "import_script.sql", false)
+		if q.Err != nil {
+			break MethodSwitch
+		}
+
+		cmd := fmt.Sprintf(`PGPASSFILE=%s psql -h %s -p %d -U %s -d %s -f %s`,
+			pgpassFullPath,
+			dbAddr,
+			dbPort,
+			dbUser,
+			dbName,
+			filepath.Join(sInfo.Path, "import_script.sql"),
+		)
+
+		var o []byte
+		o, q.Err = exec.CommandContext(ctx, "bash", "-c", cmd).CombinedOutput()
+		if q.Err != nil || (cmn.InDebugMode && q.Tag["psqlErr"] != nil) {
+
+			if q.Err == nil {
+				q.Err = q.Tag["psqlErr"].(error)
+				cmd = ""
+				o = []byte("")
+			}
+
+			q.Err = fmt.Errorf("COMMAND: %s\t ERR: %w\t DETAIL: %s", cmd, q.Err, string(o))
+			z.Error(q.Err.Error())
+			break MethodSwitch
+		}
+
+		// 清理已同步的数据
+		_, err := q.RedisClient.Del(ctx, syncInfoSnapshotKey).Result()
+		if err != nil {
+			z.Error(err.Error())
+		}
+
+		err = os.RemoveAll(sInfo.Path)
+		if err != nil {
+			z.Error(err.Error())
 		}
 
 	default:
