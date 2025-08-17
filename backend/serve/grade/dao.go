@@ -1322,31 +1322,6 @@ func getScoreExam(ctx context.Context, studentID, examSessionID int64) (Map, err
 		return result, err
 	}
 
-	// 校验
-	if examSessionID <= 0 {
-		err = fmt.Errorf("考试场次ID无效(examSessionID=%v)", examSessionID)
-		z.Error(err.Error())
-		return result, err
-	}
-	if studentID <= 0 {
-		err = fmt.Errorf("学生ID无效(studentID=%v)", studentID)
-		z.Error(err.Error())
-		return result, err
-	}
-
-	// 第一步：获取考生ID和考卷ID
-	epSql := `
-	SELECT id, exam_paper_id
-	FROM t_examinee
-    WHERE student_id = $1 AND exam_session_id = $2
-	`
-	err = conn.QueryRow(ctx, epSql, studentID, examSessionID).Scan(&eid, &epid)
-	if err != nil {
-		err = fmt.Errorf("查询考试学生试卷ID失败: (examSessionID=%v, studentID=%v) %w", examSessionID, studentID, err)
-		z.Error(err.Error())
-		return result, err
-	}
-
 	var tx pgx.Tx
 	tx, err = conn.Begin(ctx)
 	if err != nil || forceErr == "conn begin tx fail" {
@@ -1375,6 +1350,31 @@ func getScoreExam(ctx context.Context, studentID, examSessionID int64) (Map, err
 		}
 	}()
 
+	// 校验
+	if examSessionID <= 0 {
+		err = fmt.Errorf("考试场次ID无效(examSessionID=%v)", examSessionID)
+		z.Error(err.Error())
+		return result, err
+	}
+	if studentID <= 0 {
+		err = fmt.Errorf("学生ID无效(studentID=%v)", studentID)
+		z.Error(err.Error())
+		return result, err
+	}
+
+	// 第一步：获取考生ID和考卷ID
+	epSql := `
+	SELECT id, exam_paper_id
+	FROM t_examinee
+    WHERE student_id = $1 AND exam_session_id = $2
+	`
+	err = tx.QueryRow(ctx, epSql, studentID, examSessionID).Scan(&eid, &epid)
+	if err != nil || forceErr == "ep conn queryrow" {
+		err = fmt.Errorf("查询考试学生试卷ID失败: (examSessionID=%v, studentID=%v) %w", examSessionID, studentID, err)
+		z.Error(err.Error())
+		return result, err
+	}
+
 	// 第二步：获取考卷信息：考卷、题组、题目
 	vep, tepg, eq, err = examPaper.LoadExamPaperDetailByUserId(ctx, tx, epid, psid, eid, true, true, true)
 	if err != nil || forceErr == "LoadExamPaperDetailByUserId fail" {
@@ -1396,7 +1396,7 @@ func getScoreExam(ctx context.Context, studentID, examSessionID int64) (Map, err
 	WHERE ets.exam_session_id = $1  
 	ORDER BY COALESCE(ets.total_score, 0) DESC; `
 
-	rows, err := conn.Query(ctx, rankSql, examSessionID)
+	rows, err := tx.Query(ctx, rankSql, examSessionID)
 	if err != nil || forceErr == "rks conn Query fail" {
 		err = fmt.Errorf("查询考试场次成绩失败: %w", err)
 		z.Error(err.Error())
@@ -1434,7 +1434,7 @@ func getScoreExam(ctx context.Context, studentID, examSessionID int64) (Map, err
 	`
 
 	var examID int64
-	err = conn.QueryRow(ctx, eiSql, examSessionID).Scan(&examID)
+	err = tx.QueryRow(ctx, eiSql, examSessionID).Scan(&examID)
 	if err != nil || forceErr == "ei conn Query fail" {
 		err = fmt.Errorf("查询考试场次ID失败: %w", err)
 		z.Error(err.Error())
@@ -1450,7 +1450,7 @@ func getScoreExam(ctx context.Context, studentID, examSessionID int64) (Map, err
 		WHERE es.exam_id = $3 AND es.status != $4
 		ORDER BY es.session_num
 	`
-	rows, err = conn.Query(ctx, esiSql, studentID, "08", examID, "06")
+	rows, err = tx.Query(ctx, esiSql, studentID, "08", examID, "06")
 	if err != nil || forceErr == "esi conn Query fail" {
 		err = fmt.Errorf("查询考试场次失败: %w", err)
 		z.Error(err.Error())
@@ -1490,7 +1490,7 @@ func getScoreExam(ctx context.Context, studentID, examSessionID int64) (Map, err
 	// 第六步：获取考试答题信息
 	ansNumSql := `SELECT COUNT(*) FROM t_student_answers WHERE examinee_id = $1`
 	var answerNum int
-	err = conn.QueryRow(ctx, ansNumSql, eid).Scan(&answerNum)
+	err = tx.QueryRow(ctx, ansNumSql, eid).Scan(&answerNum)
 	if err != nil || forceErr == "ansNum conn Query fail" {
 		err = fmt.Errorf("学生ID不能为空(studentID=%v)", studentID)
 		z.Error(err.Error())
@@ -1501,7 +1501,7 @@ func getScoreExam(ctx context.Context, studentID, examSessionID int64) (Map, err
 	ansTimeSql := `SELECT start_time,end_time FROM t_examinee WHERE id = $1`
 
 	var start, end null.Int
-	err = conn.QueryRow(ctx, ansTimeSql, eid).Scan(&start, &end)
+	err = tx.QueryRow(ctx, ansTimeSql, eid).Scan(&start, &end)
 	if err != nil || forceErr == "ansTime conn Query fail" {
 		err = fmt.Errorf("查询考试场次时间失败: %w", err)
 		z.Error(err.Error())
