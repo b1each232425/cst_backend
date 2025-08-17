@@ -1160,7 +1160,7 @@ func MarkObjectiveQuestionAnswers(ctx context.Context, cond QueryCondition) (err
 	if cond.ExamSessionID > 0 {
 		whereClause = append(whereClause, fmt.Sprintf(" AND es.id = %d", cond.ExamSessionID))
 	} else if cond.PracticeID > 0 {
-		whereClause = append(whereClause, fmt.Sprintf(" AND p.id = %d", cond.PracticeID))
+		whereClause = append(whereClause, fmt.Sprintf(" AND pra.id = %d", cond.PracticeID))
 	}
 
 	querySubjectiveQuestionCounts = fmt.Sprintf(querySubjectiveQuestionCounts, strings.Join(whereClause, " "))
