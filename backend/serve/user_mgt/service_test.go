@@ -2,8 +2,10 @@ package user_mgt
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -1028,9 +1030,128 @@ func TestService_InsertUsers(t *testing.T) {
 			wantErr: true,
 			desc:    "测试插入角色错误",
 		},
+		{
+			name: "手机号valid=true但为空字符串",
+			ctx:  context.Background(),
+			users: []User{
+				{
+					TUser: cmn.TUser{
+						Account:     "aweqwevdft421",
+						MobilePhone: null.NewString("", true),
+						Category:    "normal",
+						Creator:     null.NewInt(1, true),
+						Remark:      null.NewString("test", true),
+					},
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "手机号为E.164格式｜格式合法",
+			ctx:  context.Background(),
+			users: []User{
+				{
+					TUser: cmn.TUser{
+						Account:     "aweqwevdft421",
+						MobilePhone: null.NewString("+85366123456", true),
+						Category:    "normal",
+						Creator:     null.NewInt(1, true),
+						Remark:      null.NewString("test", true),
+					},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "手机号为E.164格式｜含特殊字符串",
+			ctx:  context.Background(),
+			users: []User{
+				{
+					TUser: cmn.TUser{
+						Account:     "aweqwevdft421",
+						MobilePhone: null.NewString("+85366*1234%56", true),
+						Category:    "normal",
+						Creator:     null.NewInt(1, true),
+						Remark:      null.NewString("test", true),
+					},
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "手机号为E.164格式｜含空格",
+			ctx:  context.Background(),
+			users: []User{
+				{
+					TUser: cmn.TUser{
+						Account:     "aweqwevdft421",
+						MobilePhone: null.NewString("+853 6612 3456", true),
+						Category:    "normal",
+						Creator:     null.NewInt(1, true),
+						Remark:      null.NewString("test", true),
+					},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "手机号为E.164格式｜含短横线",
+			ctx:  context.Background(),
+			users: []User{
+				{
+					TUser: cmn.TUser{
+						Account:     "aweqwevdft421",
+						MobilePhone: null.NewString("+853-6612-3456", true),
+						Category:    "normal",
+						Creator:     null.NewInt(1, true),
+						Remark:      null.NewString("test", true),
+					},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "手机号为E.164格式｜格式合法｜不是有效手机号",
+			ctx:  context.Background(),
+			users: []User{
+				{
+					TUser: cmn.TUser{
+						Account:     "aweqwevdft421",
+						MobilePhone: null.NewString("+85300000001", true),
+						Category:    "normal",
+						Creator:     null.NewInt(1, true),
+						Remark:      null.NewString("test", true),
+					},
+				},
+			},
+			wantErr: true,
+		},
+	}
+
+	// 读取测试数据
+	testDataFile := "test-data.json"
+	data, err := os.ReadFile(testDataFile)
+	if err != nil {
+		e := fmt.Sprintf("Failed to read test data file %s: %v", testDataFile, err)
+		z.Fatal(e)
+	}
+
+	var testData struct {
+		Users       []map[string]interface{} `json:"users"`
+		UserDomains []struct {
+			Account string   `json:"Account"`
+			Domains []string `json:"Domains"`
+		} `json:"user_domains"`
+	}
+
+	err = json.Unmarshal(data, &testData)
+	if err != nil {
+		e := fmt.Sprintf("Failed to unmarshal test data from %s: %v", testDataFile, err)
+		z.Fatal(e)
 	}
 
 	for _, tt := range tests {
+
 		t.Run(tt.name, func(t *testing.T) {
 			t.Logf("开始测试: %s", tt.desc)
 
@@ -1084,6 +1205,31 @@ func TestService_InsertUsers(t *testing.T) {
 				}
 			}
 		})
+
+		// 清理测试数据
+		pgxConn := cmn.GetPgxConn()
+		clearSqlTUserDomain := "DELETE FROM t_user_domain"
+		_, err := pgxConn.Exec(context.Background(), clearSqlTUserDomain)
+		if err != nil {
+			e := fmt.Sprintf("Failed to clear user domain data: %v", err)
+			z.Warn(e)
+		}
+		clearSqlTUser := "DELETE FROM t_user WHERE remark = 'test'"
+		_, err = pgxConn.Exec(context.Background(), clearSqlTUser)
+		if err != nil {
+			e := fmt.Sprintf("Failed to clear test data: %v", err)
+			z.Warn(e)
+		}
+
+		// 插入测试数据到数据库
+		for _, userData := range testData.Users {
+			user := convertMapToTUser(userData)
+			err = createTUser(cmn.GetDbConn(), user)
+			if err != nil {
+				e := fmt.Sprintf("Failed to create user %v: %v", user.ID.Int64, err)
+				z.Warn(e)
+			}
+		}
 	}
 }
 

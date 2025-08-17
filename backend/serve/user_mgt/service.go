@@ -237,7 +237,7 @@ func (r *service) QueryUsers(ctx context.Context, tx pgx.Tx, page, pageSize int6
 
 // InsertUsers 批量插入用户数据
 // 必要字段: account, category
-// 请不要轻易调用该方法插入用户，该方法不会对用户信息做全面的校验
+// 请不要轻易调用该方法插入用户，该方法不会对用户信息做全面的校验，需要先调用 ValidateUserToBeInsert 方法验证用户信息的合法性
 // 返回值: 成功插入的用户列表（包含生成的ID）、错误
 func (r *service) InsertUsers(ctx context.Context, tx pgx.Tx, users []User) ([]User, error) {
 	z.Info("---->" + cmn.FncName())
@@ -265,6 +265,36 @@ func (r *service) InsertUsers(ctx context.Context, tx pgx.Tx, users []User) ([]U
 			e := fmt.Errorf("user category is required")
 			z.Error(e.Error())
 			return []User{}, e
+		}
+
+		if users[i].MobilePhone.Valid {
+			// 将手机号格式化为无空格无特殊字符的E.164标准格式
+			number := strings.TrimSpace(users[i].MobilePhone.String)
+			if number == "" {
+				e := fmt.Errorf("mobile phone cannot be empty")
+				z.Error(e.Error())
+				return []User{}, e
+			}
+
+			region := strings.ToUpper(strings.TrimSpace(DefaultRegion))
+			parseRegion := region
+			if strings.HasPrefix(number, "+") {
+				parseRegion = "" // 已含国家码
+			}
+
+			num, err := phonenumbers.Parse(number, parseRegion)
+			if err != nil {
+				e := fmt.Errorf("failed to parse mobile phone %s: %w", number, err)
+				z.Error(e.Error())
+				return []User{}, e
+			}
+			if !phonenumbers.IsPossibleNumber(num) || !phonenumbers.IsValidNumber(num) {
+				e := fmt.Errorf("mobile phone %s is not a valid number", number)
+				z.Error(e.Error())
+				return []User{}, e
+			}
+
+			users[i].MobilePhone = null.StringFrom(phonenumbers.Format(num, phonenumbers.E164))
 		}
 
 		if !users[i].IDCardNo.Valid && !users[i].MobilePhone.Valid && !users[i].Email.Valid {
