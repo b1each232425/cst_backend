@@ -1555,10 +1555,7 @@ func getScorePractice(ctx context.Context, studentID int64, practiceID int64) (M
 
 	var tx pgx.Tx
 	tx, err = conn.Begin(ctx)
-	if forceErr == "conn begin tx fail" {
-		err = errors.New("conn begin tx fail")
-	}
-	if err != nil {
+	if err != nil || forceErr == "conn begin tx fail" {
 		err = fmt.Errorf("开启事务失败: %w", err)
 		z.Error(err.Error())
 		return result, err
