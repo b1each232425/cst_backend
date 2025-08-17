@@ -2353,6 +2353,336 @@ func Test_service_ValidateUser(t *testing.T) {
 			wantErr:      false,
 		},
 		{
+			name: "手机号不符合E.164标准",
+			args: args{
+				ctx: context.Background(),
+				users: []User{
+					{
+						TUser: cmn.TUser{
+							Account:     "zhangsanyes",
+							MobilePhone: null.NewString("+113900139000", true),
+						},
+						Domains: []null.String{
+							null.NewString("cst.school^teacher", true),
+						},
+					},
+				},
+			},
+			wantValid: nil,
+			wantInvalid: []User{
+				{
+					TUser: cmn.TUser{
+						Account:     "zhangsanyes",
+						MobilePhone: null.NewString("+113900139000", true),
+					},
+					ErrorMsg: []null.String{
+						null.NewString("手机号格式不符合E.164标准", true),
+					},
+				},
+			},
+			wantExisting: []User{},
+			wantErr:      false,
+		},
+		{
+			name: "E.164标准的澳门手机号",
+			args: args{
+				ctx: context.Background(),
+				users: []User{
+					{
+						TUser: cmn.TUser{
+							Account:     "zhangsanyes",
+							MobilePhone: null.NewString("+85366123456", true),
+						},
+						Domains: []null.String{
+							null.NewString("cst.school^teacher", true),
+						},
+					},
+				},
+			},
+			wantValid: []User{
+				{
+					TUser: cmn.TUser{
+						Account:     "zhangsanyes",
+						MobilePhone: null.NewString("+85366123456", true),
+					},
+					ErrorMsg: []null.String{},
+				},
+			},
+			wantInvalid:  nil,
+			wantExisting: []User{},
+			wantErr:      false,
+		},
+		{
+			name: "E.164标准的澳门手机号｜带特殊符号",
+			args: args{
+				ctx: context.Background(),
+				users: []User{
+					{
+						TUser: cmn.TUser{
+							Account:     "zhangsanyes",
+							MobilePhone: null.NewString("+853*&6612@3456", true),
+						},
+						Domains: []null.String{
+							null.NewString("cst.school^teacher", true),
+						},
+					},
+				},
+			},
+			wantValid: nil,
+			wantInvalid: []User{
+				{
+					TUser: cmn.TUser{
+						Account:     "zhangsanyes",
+						MobilePhone: null.NewString("+85366123456", true),
+					},
+					ErrorMsg: []null.String{
+						null.NewString("手机号格式不符合E.164标准", true),
+					},
+				},
+			},
+			wantExisting: []User{},
+			wantErr:      false,
+		},
+		{
+			name: "E.164标准的澳门手机号｜带空格",
+			args: args{
+				ctx: context.Background(),
+				users: []User{
+					{
+						TUser: cmn.TUser{
+							Account:     "zhangsanyes",
+							MobilePhone: null.NewString("+853 661 234 56", true),
+						},
+						Domains: []null.String{
+							null.NewString("cst.school^teacher", true),
+						},
+					},
+				},
+			},
+			wantValid: []User{
+				{
+					TUser: cmn.TUser{
+						Account:     "zhangsanyes",
+						MobilePhone: null.NewString("+853 661 234 56", true),
+					},
+					ErrorMsg: []null.String{},
+				},
+			},
+			wantInvalid:  nil,
+			wantExisting: []User{},
+			wantErr:      false,
+		},
+		{
+			name: "E.164标准的澳门手机号｜带短横线",
+			args: args{
+				ctx: context.Background(),
+				users: []User{
+					{
+						TUser: cmn.TUser{
+							Account:     "zhangsanyes",
+							MobilePhone: null.NewString("+853-661-234-56", true),
+						},
+						Domains: []null.String{
+							null.NewString("cst.school^teacher", true),
+						},
+					},
+				},
+			},
+			wantValid: []User{
+				{
+					TUser: cmn.TUser{
+						Account:     "zhangsanyes",
+						MobilePhone: null.NewString("+853-661-234-56", true),
+					},
+					ErrorMsg: []null.String{},
+				},
+			},
+			wantInvalid:  nil,
+			wantExisting: []User{},
+			wantErr:      false,
+		},
+		{
+			name: "不带+的默认地区手机号｜不符合E.164标准",
+			args: args{
+				ctx: context.Background(),
+				users: []User{
+					{
+						TUser: cmn.TUser{
+							Account:     "zhangsanyes",
+							MobilePhone: null.NewString("085366123456", true),
+						},
+						Domains: []null.String{
+							null.NewString("cst.school^teacher", true),
+						},
+					},
+				},
+			},
+			wantValid: nil,
+			wantInvalid: []User{
+				{
+					TUser: cmn.TUser{
+						Account:     "zhangsanyes",
+						MobilePhone: null.NewString("085366123456", true),
+					},
+					ErrorMsg: []null.String{
+						null.NewString("手机号格式不符合E.164标准", true),
+					},
+				},
+			},
+			wantExisting: []User{},
+			wantErr:      false,
+		},
+		{
+			name: "不带+的默认地区手机号｜不符合E.164标准|带特殊符号",
+			args: args{
+				ctx: context.Background(),
+				users: []User{
+					{
+						TUser: cmn.TUser{
+							Account:     "zhangsanyes",
+							MobilePhone: null.NewString("08536¥%612*3456", true),
+						},
+						Domains: []null.String{
+							null.NewString("cst.school^teacher", true),
+						},
+					},
+				},
+			},
+			wantValid: nil,
+			wantInvalid: []User{
+				{
+					TUser: cmn.TUser{
+						Account:     "zhangsanyes",
+						MobilePhone: null.NewString("08536¥%612*3456", true),
+					},
+					ErrorMsg: []null.String{
+						null.NewString("手机号格式不符合E.164标准", true),
+					},
+				},
+			},
+			wantExisting: []User{},
+			wantErr:      false,
+		},
+		{
+			name: "不带+的默认地区手机号｜符合E.164标准",
+			args: args{
+				ctx: context.Background(),
+				users: []User{
+					{
+						TUser: cmn.TUser{
+							Account:     "zhangsanyes",
+							MobilePhone: null.NewString("13928163728", true),
+						},
+						Domains: []null.String{
+							null.NewString("cst.school^teacher", true),
+						},
+					},
+				},
+			},
+			wantValid: []User{
+				{
+					TUser: cmn.TUser{
+						Account:     "zhangsanyes",
+						MobilePhone: null.NewString("13928163728", true),
+					},
+					ErrorMsg: []null.String{},
+				},
+			},
+			wantInvalid:  nil,
+			wantExisting: []User{},
+			wantErr:      false,
+		},
+		{
+			name: "不带+的默认地区手机号｜符合E.164标准｜带空格",
+			args: args{
+				ctx: context.Background(),
+				users: []User{
+					{
+						TUser: cmn.TUser{
+							Account:     "zhangsanyes",
+							MobilePhone: null.NewString("13 9281 637 28", true),
+						},
+						Domains: []null.String{
+							null.NewString("cst.school^teacher", true),
+						},
+					},
+				},
+			},
+			wantValid: []User{
+				{
+					TUser: cmn.TUser{
+						Account:     "zhangsanyes",
+						MobilePhone: null.NewString("13 9281 637 28", true),
+					},
+					ErrorMsg: []null.String{},
+				},
+			},
+			wantInvalid:  nil,
+			wantExisting: []User{},
+			wantErr:      false,
+		},
+		{
+			name: "不带+的默认地区手机号｜符合E.164标准｜带短横线",
+			args: args{
+				ctx: context.Background(),
+				users: []User{
+					{
+						TUser: cmn.TUser{
+							Account:     "zhangsanyes",
+							MobilePhone: null.NewString("139-2816-3728", true),
+						},
+						Domains: []null.String{
+							null.NewString("cst.school^teacher", true),
+						},
+					},
+				},
+			},
+			wantValid: []User{
+				{
+					TUser: cmn.TUser{
+						Account:     "zhangsanyes",
+						MobilePhone: null.NewString("139-2816-3728", true),
+					},
+					ErrorMsg: []null.String{},
+				},
+			},
+			wantInvalid:  nil,
+			wantExisting: []User{},
+			wantErr:      false,
+		},
+		{
+			name: "手机号valid=true但为空字符串",
+			args: args{
+				ctx: context.Background(),
+				users: []User{
+					{
+						TUser: cmn.TUser{
+							Account:     "zhangsanyes",
+							MobilePhone: null.NewString("", true),
+						},
+						Domains: []null.String{
+							null.NewString("cst.school^teacher", true),
+						},
+					},
+				},
+			},
+			wantValid: nil,
+			wantInvalid: []User{
+				{
+					TUser: cmn.TUser{
+						Account:     "zhangsanyes",
+						MobilePhone: null.NewString("", true),
+					},
+					ErrorMsg: []null.String{
+						null.NewString("无法检测到手机号", true),
+						null.NewString("手机号格式不符合E.164标准", true),
+					},
+				},
+			},
+			wantExisting: []User{},
+			wantErr:      false,
+		},
+		{
 			name: "空用户列表",
 			args: args{
 				ctx:   context.Background(),
@@ -2625,6 +2955,10 @@ func Test_service_ValidateUser(t *testing.T) {
 				}
 				if len(user.ErrorMsg) != len(tt.wantInvalid[i].ErrorMsg) {
 					t.Errorf("ValidateUserToBeInsert() gotInvalid[%d].ErrorMsg length = %v, want %v", i, len(user.ErrorMsg), len(tt.wantInvalid[i].ErrorMsg))
+					// 输出错误信息
+					for j, errMsg := range user.ErrorMsg {
+						t.Errorf("Got invalid user error message[%d]: %v", j, errMsg.String)
+					}
 				}
 			}
 

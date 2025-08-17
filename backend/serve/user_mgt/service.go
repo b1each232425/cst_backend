@@ -6,15 +6,15 @@ import (
 	"errors"
 	"fmt"
 	"math/rand"
+	"strings"
 	"time"
+
+	"w2w.io/cmn"
+	"w2w.io/null"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"w2w.io/null"
-
-	"strings"
-
-	"w2w.io/cmn"
+	"github.com/nyaruka/phonenumbers"
 )
 
 type Service interface {
@@ -613,6 +613,8 @@ func (r *service) ValidateUserToBeInsert(ctx context.Context, tx pgx.Tx, users [
 		"invalid_domain":        "角色不合法",
 		"empty_domain":          "角色不能为空",
 		"can_not_be_superAdmin": "不允许为超级管理员角色",
+		"empty_mobile_phone":    "无法检测到手机号",
+		"mobile_not_e164":       "手机号格式不符合E.164标准",
 	}
 
 	for i := range users {
@@ -651,6 +653,47 @@ func (r *service) ValidateUserToBeInsert(ctx context.Context, tx pgx.Tx, users [
 		}
 
 		if users[i].MobilePhone.Valid {
+			// 检测手机号格式是否符合E.164标准
+			number := strings.TrimSpace(users[i].MobilePhone.String)
+			if number == "" {
+				errorCount++
+				errorMessage = append(errorMessage, null.StringFrom(errorMessages["empty_mobile_phone"]))
+			}
+
+			region := strings.ToUpper(strings.TrimSpace(DefaultRegion))
+			if region == "" {
+				region = "CN" // 默认地区为中国
+			}
+
+			switch strings.HasPrefix(number, "+") {
+			case true:
+				// 如果传入的手机号有 + 前缀，则按国际格式处理
+				num, err := phonenumbers.Parse(number, "")
+				if err != nil {
+					errorCount++
+					errorMessage = append(errorMessage, null.StringFrom(errorMessages["mobile_not_e164"]))
+					break
+				}
+				if !phonenumbers.IsValidNumber(num) {
+					errorCount++
+					errorMessage = append(errorMessage, null.StringFrom(errorMessages["mobile_not_e164"]))
+					break
+				}
+			case false:
+				// 如果没有 + 前缀，则按默认地区处理
+				num, err := phonenumbers.Parse(number, region)
+				if err != nil {
+					errorCount++
+					errorMessage = append(errorMessage, null.StringFrom(errorMessages["mobile_not_e164"]))
+					break
+				}
+				if !phonenumbers.IsValidNumber(num) {
+					errorCount++
+					errorMessage = append(errorMessage, null.StringFrom(errorMessages["mobile_not_e164"]))
+					break
+				}
+			}
+
 			// 检查手机号是否已存在
 			exist, err := r.CheckTUserFieldExists(ctx, tx, "mobile_phone", users[i].MobilePhone)
 			if err != nil || forceErr == "CheckTUserFieldExists_mobile_phone" {

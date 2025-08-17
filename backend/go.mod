@@ -20,7 +20,6 @@ require (
 	github.com/georgysavva/scany/v2 v2.1.4
 	github.com/go-playground/validator/v10 v10.27.0
 	github.com/golang/mock v1.6.0
-	github.com/gomodule/redigo v1.9.2
 	github.com/gorilla/mux v1.8.1
 	github.com/gorilla/sessions v1.4.0
 	github.com/gorilla/websocket v1.5.3
@@ -32,6 +31,7 @@ require (
 	github.com/klauspost/compress v1.18.0
 	github.com/lib/pq v1.10.9
 	github.com/mohae/deepcopy v0.0.0-20170929034955-c48cc78d4826
+	github.com/nyaruka/phonenumbers v1.6.5
 	github.com/panjf2000/ants/v2 v2.11.3
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.22.0
