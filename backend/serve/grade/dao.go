@@ -1146,7 +1146,7 @@ func gradeAnalysisByID(ctx context.Context, esid int64, pid int64) (Analysis, er
 		epSql = `SELECT id AS exam_paper_id FROM t_exam_paper WHERE exam_session_id = $1`
 		id = esid
 	}
-	err = conn.QueryRow(ctx, epSql, id).Scan(&analysis.ExamPaperID)
+	err = tx.QueryRow(ctx, epSql, id).Scan(&analysis.ExamPaperID)
 	if err != nil || forceErr == "ep conn QueryRow fail" {
 		err = fmt.Errorf("获取考卷ID失败: %w,(examSessionID=%v),(practiceID=%v)", err, esid, pid)
 		z.Error(err.Error())
@@ -1182,7 +1182,7 @@ func gradeAnalysisByID(ctx context.Context, esid int64, pid int64) (Analysis, er
 	WHERE question_id IN (%s)
 	`, qidsSql)
 
-	rows, err := conn.Query(ctx, studentAnswerSql)
+	rows, err := tx.Query(ctx, studentAnswerSql)
 	if err != nil || forceErr == "sa conn Query fail" {
 		err = fmt.Errorf("查询学生答案失败: %w,(examSessionID=%v),(practiceID=%v),(examPaperID=%v),(qids=%s)", err, esid, pid, analysis.ExamPaperID, qidsStr)
 		z.Error(err.Error())
@@ -1252,7 +1252,7 @@ func gradeAnalysisByID(ctx context.Context, esid int64, pid int64) (Analysis, er
 	GROUP BY tm.question_id
 	`, qidsSql)
 
-	rows, err = conn.Query(ctx, getSubjectiveScoreSql)
+	rows, err = tx.Query(ctx, getSubjectiveScoreSql)
 	if err != nil || forceErr == "sjs conn Query fail" {
 		err = fmt.Errorf("获取考卷平均分失败: %w,(examSessionID=%v),(practiceID=%v),(examPaperID=%v),(qids=%s)", err, esid, pid, analysis.ExamPaperID, qidsStr)
 		z.Error(err.Error())
