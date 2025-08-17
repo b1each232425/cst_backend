@@ -122,7 +122,7 @@ func gradeListExam(ctx context.Context, userID int64, req *GradeListReq) ([]Grad
 		SELECT ei.id AS id, ei.name AS exam_name, ei.type AS exam_type, jsonb_agg(esi) AS exam_session_info, ei.submitted AS submitted
 		FROM t_exam_info ei     
 			LEFT JOIN v_z_grade_exam_session_info esi ON esi.exam_id = ei.id
-		WHERE 1=1 %s
+		WHERE ei.status !='12' AND ei.status != '14' AND ei.status != '16' %s
 		GROUP BY ei.id
 		`, whereClause)
 
