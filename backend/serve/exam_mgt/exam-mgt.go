@@ -222,7 +222,7 @@ func Enroll(author string) {
 		Name: "examUser",
 
 		Developer: developer,
-		WhiteList: false,
+		WhiteList: true,
 
 		//DomainID 创建该API的账号归属的domain
 		DomainID: int64(cmn.CDomainSys),
@@ -3649,6 +3649,9 @@ func examFile(ctx context.Context) {
 	var result bool
 	result = validateUserForExamCreateOrUpdate(userDomain)
 
+	if forceErr == "examFile.NoPermission" {
+		result = false
+	}
 	if !result {
 		q.Err = fmt.Errorf("用户没有考试相关的权限")
 		z.Error(q.Err.Error())
@@ -3670,7 +3673,7 @@ func examFile(ctx context.Context) {
 		return
 	}
 	defer func() {
-		if q.Err != nil {
+		if q.Err != nil || forceErr == "tx.Rollback" {
 			rollbackErr := tx.Rollback(context.Background())
 			if forceErr == "tx.Rollback" {
 				rollbackErr = fmt.Errorf("强制回滚事务错误")
@@ -3793,6 +3796,9 @@ func examFile(ctx context.Context) {
 		if err == pgx.ErrNoRows {
 			isNew = true
 		}
+		if forceErr == "examFile.tx.QueryRow1" {
+			q.Err = fmt.Errorf("强制查询文件错误")
+		}
 		if err != pgx.ErrNoRows && err != nil {
 			q.Err = fmt.Errorf("查询文件失败: %v", err)
 			z.Error(q.Err.Error())
@@ -3807,6 +3813,9 @@ func examFile(ctx context.Context) {
 				VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 				RETURNING id, digest
 			`, examFile.CheckSum, examFile.Name, filePath, filePath, examFile.Size, 1, userID, currentTime).Scan(&fileID, &digest)
+			if forceErr == "examFile.tx.QueryRow2" {
+				q.Err = fmt.Errorf("强制插入文件信息错误")
+			}
 			if q.Err != nil {
 				q.Err = fmt.Errorf("插入文件信息失败: %v", q.Err)
 				z.Error(q.Err.Error())

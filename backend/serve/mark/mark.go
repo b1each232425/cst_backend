@@ -1160,7 +1160,7 @@ func MarkObjectiveQuestionAnswers(ctx context.Context, cond QueryCondition) (err
 	if cond.ExamSessionID > 0 {
 		whereClause = append(whereClause, fmt.Sprintf(" AND es.id = %d", cond.ExamSessionID))
 	} else if cond.PracticeID > 0 {
-		whereClause = append(whereClause, fmt.Sprintf(" AND p.id = %d", cond.PracticeID))
+		whereClause = append(whereClause, fmt.Sprintf(" AND pra.id = %d", cond.PracticeID))
 	}
 
 	querySubjectiveQuestionCounts = fmt.Sprintf(querySubjectiveQuestionCounts, strings.Join(whereClause, " "))
@@ -1259,17 +1259,20 @@ func AutoMark(ctx context.Context, cond QueryCondition) (err error) {
 		return
 	}
 
+	cond.TeacherID = markerInfo.MarkInfos[0].MarkTeacherID.Int64
+
+	// 自动批改客观题
+	err = MarkObjectiveQuestionAnswers(ctx, cond)
+	if err != nil {
+		return
+	}
+
 	if markerInfo.MarkMode != "00" {
 		// 不需要自动批改
 		return nil
 	}
 
-	cond.TeacherID = markerInfo.MarkInfos[0].MarkTeacherID.Int64
-
-	err = MarkObjectiveQuestionAnswers(ctx, cond)
-	if err != nil {
-		return
-	}
+	//TODO 自动(AI)批改主观题
 
 	return
 }
