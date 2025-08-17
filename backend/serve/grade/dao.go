@@ -1553,31 +1553,6 @@ func getScorePractice(ctx context.Context, studentID int64, practiceID int64) (M
 		return result, err
 	}
 
-	// 校验
-	if practiceID <= 0 {
-		err = fmt.Errorf("练习ID无效(practiceID=%v)", practiceID)
-		z.Error(err.Error())
-		return result, err
-	}
-	if studentID <= 0 {
-		err = fmt.Errorf("学生ID无效(studentID=%v)", studentID)
-		z.Error(err.Error())
-		return result, err
-	}
-
-	// 第一步：获取考卷ID和练习ID
-	epSql := `
-	SELECT id,exam_paper_id
-	FROM t_practice_submissions
-	WHERE student_id = $1 AND practice_id = $2
-	`
-	err = conn.QueryRow(ctx, epSql, studentID, practiceID).Scan(&psid, &epid)
-	if err != nil || forceErr == "ep conn QueryRow fail" {
-		err = fmt.Errorf("查询练习学生试卷ID失败: %w", err)
-		z.Error(err.Error())
-		return result, err
-	}
-
 	var tx pgx.Tx
 	tx, err = conn.Begin(ctx)
 	if forceErr == "conn begin tx fail" {
@@ -1609,6 +1584,31 @@ func getScorePractice(ctx context.Context, studentID int64, practiceID int64) (M
 		}
 	}()
 
+	// 校验
+	if practiceID <= 0 {
+		err = fmt.Errorf("练习ID无效(practiceID=%v)", practiceID)
+		z.Error(err.Error())
+		return result, err
+	}
+	if studentID <= 0 {
+		err = fmt.Errorf("学生ID无效(studentID=%v)", studentID)
+		z.Error(err.Error())
+		return result, err
+	}
+
+	// 第一步：获取考卷ID和练习ID
+	epSql := `
+	SELECT id,exam_paper_id
+	FROM t_practice_submissions
+	WHERE student_id = $1 AND practice_id = $2
+	`
+	err = tx.QueryRow(ctx, epSql, studentID, practiceID).Scan(&psid, &epid)
+	if err != nil || forceErr == "ep conn QueryRow fail" {
+		err = fmt.Errorf("查询练习学生试卷ID失败: %w", err)
+		z.Error(err.Error())
+		return result, err
+	}
+
 	// 第二步：获取考卷信息：考卷、题组、题目
 	vep, tepg, eq, err = examPaper.LoadExamPaperDetailByUserId(ctx, tx, epid, psid, eid, true, true, true)
 	if err != nil || forceErr == "LoadExamPaperDetailByUserId fail" {
@@ -1631,7 +1631,7 @@ func getScorePractice(ctx context.Context, studentID int64, practiceID int64) (M
 
 	selectSql := `SELECT COUNT(*) FROM t_student_answers WHERE practice_submission_id = $1`
 	var answerNum int
-	err = conn.QueryRow(ctx, selectSql, psid).Scan(&answerNum)
+	err = tx.QueryRow(ctx, selectSql, psid).Scan(&answerNum)
 	if err != nil || forceErr == "ansNum conn QueryRow fail" {
 		err = fmt.Errorf("查询学生答案失败,psid=%v,err=%w", psid, err)
 		z.Error(err.Error())
@@ -1648,7 +1648,7 @@ func getScorePractice(ctx context.Context, studentID int64, practiceID int64) (M
 		    -- WHERE ps.id=$1 AND p.status = $2 AND ps.status = $3 AND ps.student_id = $4 
 		WHERE ps.id=$1 AND p.status = $2 AND ps.student_id = $3`
 	var suggestDuration null.Int
-	err = conn.QueryRow(ctx, durationSql, psid, "02", studentID).Scan(&suggestDuration)
+	err = tx.QueryRow(ctx, durationSql, psid, "02", studentID).Scan(&suggestDuration)
 	if err != nil || forceErr == "duration conn QueryRow fail" {
 		err = fmt.Errorf("查询学生建议时长失败,psid=%v,err=%w", psid, err)
 		z.Error(err.Error())
@@ -1685,7 +1685,7 @@ SELECT
 	) ranked
 WHERE rn = 1;`
 
-	err = conn.QueryRow(ctx, selectSql, practiceID, studentID).Scan(
+	err = tx.QueryRow(ctx, selectSql, practiceID, studentID).Scan(
 		&usedTime,
 	)
 	if forceErr == "usedTime conn QueryRow fail" {
