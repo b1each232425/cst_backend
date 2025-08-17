@@ -645,6 +645,8 @@ func (r *service) ValidateUserToBeInsert(ctx context.Context, tx pgx.Tx, users [
 		"can_not_be_superAdmin": "不允许为超级管理员角色",
 		"empty_mobile_phone":    "无法检测到手机号",
 		"mobile_not_e164":       "手机号格式不符合E.164标准",
+		"id_card_type_invalid":  "证件类型不合法",
+		"empty_id_card_type":    "证件类型不能为空",
 	}
 
 	for i := range users {
@@ -753,6 +755,18 @@ func (r *service) ValidateUserToBeInsert(ctx context.Context, tx pgx.Tx, users [
 		}
 
 		if users[i].IDCardNo.Valid {
+			// 如果有证件号，则必须有证件号类型
+			if !users[i].IDCardType.Valid {
+				errorCount++
+				errorMessage = append(errorMessage, null.StringFrom(errorMessages["empty_id_card_type"]))
+			} else {
+				// 检查证件号类型是否合法
+				if !cmn.CheckIDCardTypeValid(users[i].IDCardType.String) {
+					errorCount++
+					errorMessage = append(errorMessage, null.StringFrom(errorMessages["id_card_type_invalid"]))
+				}
+			}
+
 			// 检查证件号是否已存在
 			exist, err := r.CheckTUserFieldExists(ctx, tx, "id_card_no", users[i].IDCardNo)
 			if err != nil || forceErr == "CheckTUserFieldExists_id_card_no" {

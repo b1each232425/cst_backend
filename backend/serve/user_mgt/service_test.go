@@ -2499,6 +2499,39 @@ func Test_service_ValidateUser(t *testing.T) {
 			wantErr:      false,
 		},
 		{
+			name: "证件类型不合法",
+			args: args{
+				ctx: context.Background(),
+				users: []User{
+					{
+						TUser: cmn.TUser{
+							Account:    "zhangsanyes",
+							IDCardNo:   null.NewString("2324332423412", true),
+							IDCardType: null.NewString("高中毕业证", true),
+						},
+						Domains: []null.String{
+							null.NewString("cst.school^teacher", true),
+						},
+					},
+				},
+			},
+			wantValid: nil,
+			wantInvalid: []User{
+				{
+					TUser: cmn.TUser{
+						Account:    "zhangsanyes",
+						IDCardNo:   null.NewString("2324332423412", true),
+						IDCardType: null.NewString("高中毕业证", true),
+					},
+					ErrorMsg: []null.String{
+						null.NewString("证件类型不合法", true),
+					},
+				},
+			},
+			wantExisting: []User{},
+			wantErr:      false,
+		},
+		{
 			name: "手机号不符合E.164标准",
 			args: args{
 				ctx: context.Background(),
@@ -2931,6 +2964,7 @@ func Test_service_ValidateUser(t *testing.T) {
 						null.NewString("邮箱已存在", true),
 						null.NewString("手机号已存在", true),
 						null.NewString("证件号已存在", true),
+						null.NewString("证件类型不能为空", true),
 						null.NewString("角色不合法", true),
 					},
 				},
