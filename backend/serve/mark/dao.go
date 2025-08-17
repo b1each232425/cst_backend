@@ -273,7 +273,8 @@ func QueryExamList(ctx context.Context, req QueryMarkingListReq) (examList []Exa
 		}
 
 		// TODO
-		//unMarkedStudentCount := 0
+		unMarkedStudentCount := 0
+		unMarkedStudentCount = int(respondentCount.Int64 - markedStudentCount.Int64)
 		//if !req.User.IsAdmin && session.MarkMode.String == "04" {
 		//	// 非管理员下的试卷分配模式
 		//	var examineeIDs []int64
@@ -298,7 +299,7 @@ func QueryExamList(ctx context.Context, req QueryMarkingListReq) (examList []Exa
 				Name:                 fmt.Sprint(session.SessionNum.Int64),
 				PaperName:            paperName.String,
 				RespondentCount:      int(respondentCount.Int64),
-				UnMarkedStudentCount: int(totalUnmarkedStudentCount.Int64),
+				UnMarkedStudentCount: unMarkedStudentCount,
 				Status:               session.Status.String,
 				MarkStatus:           markStatus.String,
 				MarkMethod:           session.MarkMethod,
@@ -340,7 +341,7 @@ func QueryPracticeList(ctx context.Context, req QueryMarkingListReq) (practices 
 						   COALESCE(usc.unmarked_count, 0)   AS unmarked_count 
 					FROM t_practice p 
 							 LEFT JOIN (SELECT ps.practice_id, 
-											   COUNT(*) AS respondent_count 
+										   COUNT(DISTINCT ps.student_id) AS respondent_count 
 										FROM t_practice_submissions ps 
 										WHERE ps.status != '04' 
 										GROUP BY ps.practice_id) rc ON rc.practice_id = p.id 
@@ -492,14 +493,19 @@ func QueryMarkingResults(ctx context.Context, cond QueryCondition) (markingResul
 			whereClause = append(whereClause, fmt.Sprintf(" AND m.practice_submission_id = $%d ", argIndex))
 			args = append(args, cond.PracticeSubmissionID)
 			argIndex++
+		} else {
+			// 在不指定提交id的情况下保证获取的是最新的提交
+			whereClause = append(whereClause, " AND mp.submission_id IS NOT NULL ")
 		}
 	}
 
 	getMarkingResultQuery := `	SELECT m.teacher_id, m.examinee_id, m.practice_submission_id, m.question_id, m.mark_details, m.score
 								FROM t_mark m
 								JOIN t_exam_paper_question q ON q.status != '04' AND q.id = m.question_id
+								LEFT JOIN v_latest_pending_mark_practice mp ON mp.practice_id = m.practice_id AND mp.submission_id = m.practice_submission_id 
 								WHERE m.teacher_id = $1 AND q.type IN ('06', '08') %s -- 动态拼接where条件
 								ORDER BY m.examinee_id, m.practice_submission_id, q.order`
+
 	pgxConn := cmn.GetPgxConn()
 
 	getMarkingResultQuery = fmt.Sprintf(getMarkingResultQuery, strings.Join(whereClause, " "))
@@ -962,14 +968,15 @@ func QueryStudentsInfo(ctx context.Context, cond QueryCondition) (studentInfos [
 			args = append(args, cond.ExamineeID)
 		}
 	} else {
-		query = `	SELECT u.official_name, ps.id
-					FROM t_practice_submissions ps
-					JOIN t_user u ON ps.student_id = u.id
-					WHERE ps.practice_id = $1 AND ps.status != '04' %s -- 动态插入s
-					ORDER BY ps.id`
+		// 获取需要批改的练习人员信息
+		query = `	SELECT u.official_name, mp.submission_id 
+					FROM v_latest_pending_mark_practice mp 
+					JOIN t_user u ON mp.student_id = u.id 
+					WHERE mp.practice_id = $1 %s -- 动态插入s
+					ORDER BY mp.submission_id`
 		args = append(args, cond.PracticeID)
 		if cond.PracticeSubmissionID > 0 {
-			whereClause = " AND ps.id = $2 "
+			whereClause = " AND mp.submission_id = $2 "
 			args = append(args, cond.PracticeSubmissionID)
 		}
 	}
