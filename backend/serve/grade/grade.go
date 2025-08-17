@@ -14,8 +14,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/jackc/pgx/v5"
-
 	"github.com/tidwall/gjson"
 	"go.uber.org/zap"
 	"w2w.io/cmn"
@@ -427,11 +425,11 @@ func gradeSubmissionH(ctx context.Context) {
 func gradeDistributionH(ctx context.Context) {
 	z.Info("---->" + cmn.FncName())
 
-	// // 测试使用强行触发错误
-	// forceErr := ""
-	// if val := ctx.Value("force-error"); val != nil {
-	// 	forceErr = val.(string)
-	// }
+	//// 测试使用强行触发错误
+	//forceErr := ""
+	//if val := ctx.Value("force-error"); val != nil {
+	//	forceErr = val.(string)
+	//}
 
 	q := cmn.GetCtxValue(ctx)
 
@@ -461,7 +459,7 @@ func gradeDistributionH(ctx context.Context) {
 			return
 		}
 		if columnNum, err = strconv.Atoi(p); err != nil {
-			q.Err = fmt.Errorf("列数无效: %d", columnNum)
+			q.Err = fmt.Errorf("列数无效: %s", p)
 			z.Error(q.Err.Error())
 			q.RespErr()
 			return
@@ -479,7 +477,7 @@ func gradeDistributionH(ctx context.Context) {
 		defer cancel()
 
 		if category = queryParams.Get("category"); category == "" {
-			q.Err = fmt.Errorf("类型为空: %s", category)
+			q.Err = fmt.Errorf("类型为空 %s", category)
 			z.Error(q.Err.Error())
 			q.RespErr()
 			return
@@ -510,13 +508,7 @@ func gradeDistributionH(ctx context.Context) {
 				return
 			}
 
-			data, err = json.Marshal(result)
-			if err != nil {
-				q.Err = fmt.Errorf("json序列化失败: %v", err)
-				z.Error(q.Err.Error())
-				q.RespErr()
-				return
-			}
+			data, _ = json.Marshal(result)
 
 		case "practice":
 			// 练习ID
@@ -540,13 +532,7 @@ func gradeDistributionH(ctx context.Context) {
 				return
 			}
 
-			data, err = json.Marshal(result)
-			if err != nil {
-				q.Err = fmt.Errorf("json序列化失败: %v", err)
-				z.Error(q.Err.Error())
-				q.RespErr()
-				return
-			}
+			data, _ = json.Marshal(result)
 
 		default:
 			q.Err = fmt.Errorf("不支持的类型: %s", category)
@@ -780,8 +766,8 @@ func gradeH(ctx context.Context) {
 		// }
 		// userID = q.SysUser.ID.Int64
 
-		dmlCtx, cancel := context.WithTimeout(ctx, TIMEOUT)
-		defer cancel()
+		//dmlCtx, cancel := context.WithTimeout(ctx, TIMEOUT)
+		//defer cancel()
 
 		switch category {
 		case "exam":
@@ -802,20 +788,14 @@ func gradeH(ctx context.Context) {
 
 			var result Analysis
 
-			result, err = gradeAnalysisByID(dmlCtx, examSessionID, 0)
+			result, err = gradeAnalysisByID(ctx, examSessionID, 0)
 			if err != nil {
 				q.Err = err
 				q.RespErr()
 				return
 			}
 
-			data, err = json.Marshal(result)
-			if err != nil {
-				q.Err = fmt.Errorf("结果json序列化失败: %v", err)
-				z.Error(q.Err.Error())
-				q.RespErr()
-				return
-			}
+			data, _ = json.Marshal(result)
 
 		case "practice":
 			if p = queryParams.Get("practiceID"); p == "" {
@@ -833,21 +813,14 @@ func gradeH(ctx context.Context) {
 
 			var result Analysis
 
-			result, err = gradeAnalysisByID(dmlCtx, 0, practiceID)
+			result, err = gradeAnalysisByID(ctx, 0, practiceID)
 			if err != nil {
 				q.Err = err
-				z.Error(q.Err.Error())
 				q.RespErr()
 				return
 			}
 
-			data, err = json.Marshal(result)
-			if err != nil {
-				q.Err = fmt.Errorf("json序列化失败: %v", err)
-				z.Error(q.Err.Error())
-				q.RespErr()
-				return
-			}
+			data, _ = json.Marshal(result)
 
 		default:
 			q.Err = fmt.Errorf("不支持的类型: %s", category)
@@ -917,31 +890,16 @@ func gradeSH(ctx context.Context) {
 			userID = q.SysUser.ID.Int64
 			studentID = userID
 		}
-		dmlCtx, cancel := context.WithTimeout(ctx, TIMEOUT)
-		defer cancel()
+		//dmlCtx, cancel := context.WithTimeout(ctx, TIMEOUT)
+		//defer cancel()
 
 		conn := cmn.GetPgxConn()
 		if conn == nil || forceErr == "conn nil" {
 			err = fmt.Errorf("查询练习成绩列表获取数据库连接失败")
 			z.Error(err.Error())
+			q.RespErr()
 			return
 		}
-
-		var tx pgx.Tx
-		tx, err = conn.Begin(dmlCtx)
-		if err != nil || forceErr == "conn begin tx fail" {
-			err = fmt.Errorf("开启事务失败: %w", err)
-			z.Error(err.Error())
-			return
-		}
-
-		defer func() {
-			if err != nil {
-				tx.Rollback(ctx)
-			} else {
-				tx.Commit(ctx)
-			}
-		}()
 
 		if category = queryParams.Get("category"); category == "" {
 			q.Err = fmt.Errorf("不支持的类型: %s", category)
@@ -967,20 +925,17 @@ func gradeSH(ctx context.Context) {
 
 			var result Map
 
-			result, err = getScoreExam(dmlCtx, tx, studentID, examSessionID)
+			result, err = getScoreExam(ctx, studentID, examSessionID)
+			if forceErr == "get score exam fail" {
+				err = errors.New("get score exam fail")
+			}
 			if err != nil {
 				q.Err = err
 				q.RespErr()
 				return
 			}
 
-			data, err = json.Marshal(result)
-			if err != nil {
-				q.Err = fmt.Errorf("json序列化失败: %v", err)
-				z.Error(q.Err.Error())
-				q.RespErr()
-				return
-			}
+			data, _ = json.Marshal(result)
 
 		case "practice":
 			if p = queryParams.Get("practiceID"); p == "" {
@@ -998,20 +953,17 @@ func gradeSH(ctx context.Context) {
 
 			var result Map
 
-			result, err = getScorePractice(dmlCtx, tx, studentID, practiceID)
+			result, err = getScorePractice(ctx, studentID, practiceID)
+			if forceErr == "get score practice fail" {
+				err = errors.New("get score practice fail")
+			}
 			if err != nil {
 				q.Err = err
 				q.RespErr()
 				return
 			}
 
-			data, err = json.Marshal(result)
-			if err != nil {
-				q.Err = fmt.Errorf("json序列化失败: %v", err)
-				z.Error(q.Err.Error())
-				q.RespErr()
-				return
-			}
+			data, _ = json.Marshal(result)
 
 		default:
 			q.Err = fmt.Errorf("不支持的类型: %s", category)

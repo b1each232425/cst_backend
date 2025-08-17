@@ -16,11 +16,16 @@ func (store zeroStore) GetUpload(ctx context.Context, id string) (Upload, error)
 	return nil, nil
 }
 
+func (store zeroStore) Query(ctx context.Context, criteria string) (result []byte, err error) {
+	//TODO implement me
+	panic("implement me")
+}
+
 func TestConfig(t *testing.T) {
 	a := assert.New(t)
 
 	composer := NewStoreComposer()
-	//composer.UseCore(zeroStore{})
+	composer.UseCore(zeroStore{})
 
 	config := Config{
 		StoreComposer: composer,

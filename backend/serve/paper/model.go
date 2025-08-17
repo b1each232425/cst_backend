@@ -36,7 +36,7 @@ type UpdateManualPaperResponse struct {
 }
 
 type AddQuestionsRequest struct {
-	TempID         string    `json:"temp_id" validate:"required,startswith=temp_question"` // 客户端生成的唯一标识(如UUID)
+	TempID         int64     `json:"temp_id" validate:"required"` // 客户端生成的唯一标识(如UUID)
 	GroupID        int64     `json:"group_id" validate:"omitempty"`
 	Order          int64     `json:"order" validate:"required,gt=0"`
 	Type           string    `json:"type" validate:"required,oneof=00 02 04 06 08"`

@@ -783,23 +783,28 @@ func validateQuestion(question *cmn.TQuestion) (valid bool, err error) {
 		z.Error(err.Error())
 		return false, err
 	}
+
+	// 基础字段验证
 	_, ok := QuestionTypes[question.Type]
 	if !ok {
 		err = fmt.Errorf("unsupported question type: %s", question.Type)
 		z.Error(err.Error())
 		return false, err
 	}
+
 	_, ok = QuestionDifficulty[question.Difficulty.Int64]
 	if !ok {
 		err = fmt.Errorf("unsupported question difficulty: %v", question.Difficulty)
 		z.Error(err.Error())
 		return false, err
 	}
+
 	if question.Score.Float64 <= 0 {
 		err = fmt.Errorf("question score must be greater than zero")
 		z.Error(err.Error())
 		return false, err
 	}
+
 	if question.BelongTo.Int64 <= 0 {
 		err = fmt.Errorf("question belongTo must be greater than zero")
 		z.Error(err.Error())
@@ -813,43 +818,47 @@ func validateQuestion(question *cmn.TQuestion) (valid bool, err error) {
 		return false, err
 	}
 
-	switch question.Type {
-	case "00", "02", "04":
-		var options []QuestionOption
-		err = json.Unmarshal(question.Options, &options)
+	if len(question.Tags) > 0 {
+		var tags []string
+		err = json.Unmarshal(question.Tags, &tags)
 		if err != nil {
+			err = fmt.Errorf("question tags format invalid: %v", err)
 			z.Error(err.Error())
 			return false, err
 		}
-		if len(options) < 2 {
-			err = fmt.Errorf("question options must have at least two options")
+
+		if len(tags) == 0 {
+			err = fmt.Errorf("question must have at least one tag")
 			z.Error(err.Error())
 			return false, err
 		}
-		for _, option := range options {
-			if option.Label == "" || option.Value == "" {
-				err = fmt.Errorf("question options must have non-empty label and value")
-				z.Error(err.Error())
-				return false, err
-			}
-		}
-	case "06", "08":
-		var answers []SubjectiveAnswer
-		err = json.Unmarshal(question.Options, &answers)
-		if err != nil {
-			z.Error(err.Error())
-			return false, err
-		}
-		for _, answer := range answers {
-			if answer.Index < 1 || answer.Score <= 0 || answer.Answer == "" || answer.GradingRule == "" {
-				err = fmt.Errorf("subjective question must have non-empty index, score, answer and grading rule")
+
+		for _, tag := range tags {
+			if strings.TrimSpace(tag) == "" {
+				err = fmt.Errorf("question tags cannot contain empty values")
 				z.Error(err.Error())
 				return false, err
 			}
 		}
 	}
 
-	return true, nil
+	// 根据题型进行细化验证
+	switch question.Type {
+	case QuestionTypeSingleChoice: // 单选题
+		return validateSingleChoiceQuestion(question)
+	case QuestionTypeMultipleChoice: // 多选题
+		return validateMultipleChoiceQuestion(question)
+	case QuestionTypeTrueFalse: // 判断题
+		return validateTrueFalseQuestion(question)
+	case QuestionTypeFillInBlank: // 填空题
+		return validateFillInBlankQuestion(question)
+	case QuestionTypeEssay: // 简答题
+		return validateEssayQuestion(question)
+	default:
+		err = fmt.Errorf("unsupported question type for validation: %s", question.Type)
+		z.Error(err.Error())
+		return false, err
+	}
 }
 
 // Questions 接口
@@ -960,12 +969,14 @@ func questions(ctx context.Context) {
 			q.Err = fmt.Errorf("invalid page: %v", err)
 			z.Error(q.Err.Error())
 			q.RespErr()
+			return
 		}
 		pageSize, err := strconv.ParseInt(pageSizeStr, 10, 64)
 		if err != nil {
 			q.Err = fmt.Errorf("invalid pageSize: %v", err)
 			z.Error(q.Err.Error())
 			q.RespErr()
+			return
 		}
 
 		params := QueryQuestionsParams{
@@ -1064,6 +1075,9 @@ func questions(ctx context.Context) {
 		// 总数查询
 		s1 := "SELECT COUNT(*) FROM t_question" + whereClause
 		q.Err = conn.QueryRow(ctx, s1, args...).Scan(&rowCount)
+		if forceError == "questions.conn.QueryRow" {
+			q.Err = errors.New(forceError)
+		}
 		if q.Err != nil {
 			z.Error(q.Err.Error())
 			q.RespErr()
@@ -1110,6 +1124,9 @@ func questions(ctx context.Context) {
 		var rows pgx.Rows
 		rows, q.Err = conn.Query(ctx, s2, args...)
 		defer rows.Close()
+		if forceError == "questions.conn.Query" {
+			q.Err = errors.New(forceError)
+		}
 		if q.Err != nil {
 			z.Error(q.Err.Error())
 			q.RespErr()
@@ -1146,6 +1163,9 @@ func questions(ctx context.Context) {
 				&question.AccessMode,
 				&question.BelongTo,
 			)
+			if forceError == "questions.rows.Scan" {
+				q.Err = errors.New(forceError)
+			}
 			if q.Err != nil {
 				z.Error(q.Err.Error())
 				q.RespErr()
@@ -1155,6 +1175,9 @@ func questions(ctx context.Context) {
 		}
 
 		q.Err = rows.Err()
+		if forceError == "questions.rows.Err()" {
+			q.Err = errors.New(forceError)
+		}
 		if q.Err != nil {
 			z.Error(q.Err.Error())
 			q.RespErr()
@@ -1163,6 +1186,9 @@ func questions(ctx context.Context) {
 
 		var jsonData []byte
 		jsonData, q.Err = json.Marshal(list)
+		if forceError == "questions.json.Marshal" {
+			q.Err = errors.New(forceError)
+		}
 		if q.Err != nil {
 			z.Error(q.Err.Error())
 			q.RespErr()
@@ -1238,6 +1264,9 @@ func questions(ctx context.Context) {
 			question.Creator = null.IntFrom(userID)
 
 			q.Err = cmn.InvalidEmptyNullValue(&question)
+			if forceError == "cmn.InvalidEmptyNullValue" {
+				q.Err = errors.New(forceError)
+			}
 			if q.Err != nil {
 				z.Error(q.Err.Error())
 				q.RespErr()
@@ -1248,12 +1277,19 @@ func questions(ctx context.Context) {
 			qry.Action = "insert"
 			qry.Data, _ = json.Marshal(question)
 			q.Err = cmn.DML(&question.Filter, &qry)
+			if forceError == "cmn.DML" {
+				q.Err = errors.New(forceError)
+			}
 			if q.Err != nil {
+				z.Error(q.Err.Error())
 				q.RespErr()
 				return
 			}
 
 			ID, ok := question.QryResult.(int64)
+			if forceError == "QryResult.(int64)" {
+				ok = false
+			}
 			if !ok {
 				q.Err = fmt.Errorf("qryResult should be int64")
 				z.Error(q.Err.Error())
@@ -1267,10 +1303,13 @@ func questions(ctx context.Context) {
 
 		var result []json.RawMessage
 		for _, Q := range insertQuestions {
-			b, err := cmn.MarshalJSON(&Q)
-			if err != nil {
-				z.Error(err.Error())
-				q.Err = err
+			var b json.RawMessage
+			b, q.Err = cmn.MarshalJSON(&Q)
+			if forceError == "cmn.MarshalJSON" {
+				q.Err = errors.New(forceError)
+			}
+			if q.Err != nil {
+				z.Error(q.Err.Error())
 				q.RespErr()
 				return
 			}
@@ -1278,6 +1317,9 @@ func questions(ctx context.Context) {
 		}
 		// 返回插入后的所有记录
 		buf, q.Err = json.Marshal(result)
+		if forceError == "json.Marshal" {
+			q.Err = errors.New(forceError)
+		}
 		if q.Err != nil {
 			z.Error(q.Err.Error())
 			q.RespErr()
