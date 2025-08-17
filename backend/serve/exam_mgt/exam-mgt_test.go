@@ -8055,6 +8055,9 @@ func TestExamFile(t *testing.T) {
 		errorContains string
 		checkResult   func(t *testing.T, responseData []byte)
 		description   string
+		userID        int64
+		userRole      int64
+		nilReq        bool
 	}{
 		{
 			name:   "POST-添加新考试文件",
@@ -8086,6 +8089,23 @@ func TestExamFile(t *testing.T) {
 				assert.True(t, found, "新添加的文件应该在返回的列表中")
 			},
 			description: "成功添加新考试文件",
+			userID:      testAcademicAffair,
+			userRole:    2002,
+		},
+		{
+			name:   "POST-io关闭错误",
+			method: "POST",
+			examFile: ExamFile{
+				ExamID:   testNormalExamID,
+				CheckSum: testFile1CheckSum,
+				Name:     "新考试文件.txt",
+				Size:     int64(len(testFile1Content)),
+			},
+			forceError:  "io.Close",
+			expectError: false,
+			description: "io关闭错误",
+			userID:      testAcademicAffair,
+			userRole:    2002,
 		},
 		{
 			name:   "POST-添加已存在的文件(相同checksum和name)",
@@ -8105,6 +8125,8 @@ func TestExamFile(t *testing.T) {
 				// 应该不会重复添加
 			},
 			description: "添加已存在的文件应该不会重复",
+			userID:      testAcademicAffair,
+			userRole:    2002,
 		},
 		{
 			name:   "DELETE-删除考试文件",
@@ -8132,6 +8154,8 @@ func TestExamFile(t *testing.T) {
 				assert.False(t, found, "删除的文件不应该在返回的列表中")
 			},
 			description: "成功删除考试文件",
+			userID:      testAcademicAffair,
+			userRole:    2002,
 		},
 		{
 			name:   "POST-考试不存在时返回错误",
@@ -8144,8 +8168,22 @@ func TestExamFile(t *testing.T) {
 			},
 			forceError:    "",
 			expectError:   true,
+			userID:        testAcademicAffair,
+			userRole:      2002,
 			errorContains: "考试不存在",
 			description:   "当考试不存在时应该返回错误",
+		},
+		{
+			name:          "POST-请求体为空",
+			method:        "POST",
+			examFile:      ExamFile{},
+			nilReq:        true,
+			forceError:    "",
+			expectError:   true,
+			userID:        testAcademicAffair,
+			userRole:      2002,
+			errorContains: "请求体为空",
+			description:   "请求体为空",
 		},
 		{
 			name:   "DELETE-考试不存在时返回错误",
@@ -8156,6 +8194,8 @@ func TestExamFile(t *testing.T) {
 				Name:     testFile1Name,
 			},
 			forceError:    "",
+			userID:        testAcademicAffair,
+			userRole:      2002,
 			expectError:   true,
 			errorContains: "考试不存在",
 			description:   "删除文件时考试不存在应该返回错误",
@@ -8165,6 +8205,8 @@ func TestExamFile(t *testing.T) {
 			method:        "POST",
 			examFile:      ExamFile{ExamID: testNormalExamID, CheckSum: testFile1CheckSum, Name: "test.txt", Size: 100},
 			forceError:    "tx.Begin",
+			userID:        testAcademicAffair,
+			userRole:      2002,
 			expectError:   true,
 			errorContains: "强制开始事务错误",
 			description:   "测试开始事务时的错误处理",
@@ -8174,6 +8216,8 @@ func TestExamFile(t *testing.T) {
 			method:        "POST",
 			examFile:      ExamFile{ExamID: testNormalExamID, CheckSum: testFile1CheckSum, Name: "test.txt", Size: 100},
 			forceError:    "io.ReadAll",
+			userID:        testAcademicAffair,
+			userRole:      2002,
 			expectError:   true,
 			errorContains: "强制读取请求体错误",
 			description:   "测试读取请求体时的错误处理",
@@ -8183,8 +8227,21 @@ func TestExamFile(t *testing.T) {
 			method:        "POST",
 			examFile:      ExamFile{ExamID: testNormalExamID, CheckSum: testFile1CheckSum, Name: "test.txt", Size: 100},
 			forceError:    "json.Unmarshal",
+			userID:        testAcademicAffair,
+			userRole:      2002,
 			expectError:   true,
 			errorContains: "强制JSON解析错误",
+			description:   "测试JSON解析时的错误处理",
+		},
+		{
+			name:          "POST-强制错误-JSON解析2",
+			method:        "POST",
+			examFile:      ExamFile{ExamID: testNormalExamID, CheckSum: testFile1CheckSum, Name: "test.txt", Size: 100},
+			forceError:    "json.Unmarshal2",
+			userID:        testAcademicAffair,
+			userRole:      2002,
+			expectError:   true,
+			errorContains: "强制第二次JSON解析错误",
 			description:   "测试JSON解析时的错误处理",
 		},
 		{
@@ -8192,6 +8249,8 @@ func TestExamFile(t *testing.T) {
 			method:        "POST",
 			examFile:      ExamFile{ExamID: testNormalExamID, CheckSum: testFile1CheckSum, Name: "test.txt", Size: 100},
 			forceError:    "checkExamExists",
+			userID:        testAcademicAffair,
+			userRole:      2002,
 			expectError:   true,
 			errorContains: "强制检查考试存在错误",
 			description:   "测试检查考试存在时的错误处理",
@@ -8201,6 +8260,8 @@ func TestExamFile(t *testing.T) {
 			method:        "DELETE",
 			examFile:      ExamFile{ExamID: testNormalExamID, CheckSum: testFile1CheckSum, Name: testFile3Name},
 			forceError:    "getExamFiles",
+			userID:        testAcademicAffair,
+			userRole:      2002,
 			expectError:   true,
 			errorContains: "强制获取考试附件信息错误",
 			description:   "测试获取考试附件信息时的错误处理",
@@ -8209,6 +8270,8 @@ func TestExamFile(t *testing.T) {
 			name:        "DELETE-真删除考试文件",
 			method:      "DELETE",
 			examFile:    ExamFile{ExamID: testNormalExamID, CheckSum: testFile3CheckSum, Name: testFile3Name},
+			userID:      testAcademicAffair,
+			userRole:    2002,
 			expectError: false,
 			description: "DELETE-真删除考试文件",
 		},
@@ -8217,9 +8280,62 @@ func TestExamFile(t *testing.T) {
 			method:        "DELETE",
 			examFile:      ExamFile{ExamID: testNormalExamID, CheckSum: testFile3CheckSum, Name: testFile3Name},
 			forceError:    "handleDeleteExamFile",
+			userID:        testAcademicAffair,
+			userRole:      2002,
 			expectError:   true,
 			errorContains: "强制删除考试附件错误",
 			description:   "测试删除考试文件时的错误处理",
+		},
+		{
+			name:          "DELETE-无效的用户ID",
+			method:        "DELETE",
+			examFile:      ExamFile{ExamID: testNormalExamID, CheckSum: testFile3CheckSum, Name: testFile3Name},
+			expectError:   true,
+			userID:        0, // 无效的用户ID
+			userRole:      2002,
+			errorContains: "无效的用户ID",
+			description:   "无效的用户ID",
+		},
+		{
+			name:          "DELETE-无权限访问",
+			method:        "DELETE",
+			examFile:      ExamFile{ExamID: testNormalExamID, CheckSum: testFile3CheckSum, Name: testFile3Name},
+			forceError:    "examFile.NoPermission",
+			expectError:   true,
+			userID:        testAcademicAffair,
+			userRole:      2002,
+			errorContains: "用户没有考试相关的权限",
+			description:   "无权限访问",
+		},
+		{
+			name:        "DELETE-回滚失败",
+			method:      "DELETE",
+			examFile:    ExamFile{ExamID: testNormalExamID, CheckSum: testFile3CheckSum, Name: testFile3Name},
+			forceError:  "tx.Rollback",
+			userID:      testAcademicAffair,
+			userRole:    2002,
+			expectError: false,
+			description: "DELETE-回滚失败",
+		},
+		{
+			name:        "DELETE-提交失败",
+			method:      "DELETE",
+			examFile:    ExamFile{ExamID: testNormalExamID, CheckSum: testFile3CheckSum, Name: testFile3Name},
+			forceError:  "tx.Commit",
+			userID:      testAcademicAffair,
+			userRole:    2002,
+			expectError: false,
+			description: "DELETE-提交失败",
+		},
+		{
+			name:          "DELETE-未找到角色ID对应的域",
+			method:        "DELETE",
+			examFile:      ExamFile{ExamID: testNormalExamID, CheckSum: testFile3CheckSum, Name: testFile3Name},
+			userID:        testAcademicAffair,
+			userRole:      9999,
+			expectError:   true,
+			errorContains: "未找到角色ID",
+			description:   "未找到角色ID对应的域",
 		},
 	}
 
@@ -8236,8 +8352,14 @@ func TestExamFile(t *testing.T) {
 
 			assert.Nil(t, err)
 
+			var testCtx context.Context
+
+			if tt.nilReq {
+				examFileData = nil
+			}
+
 			// 创建模拟上下文
-			testCtx := createMockContextWithBody(tt.method, "/api/exam/file", string(examFileData), tt.forceError, testAcademicAffair, 2002)
+			testCtx = createMockContextWithBody(tt.method, "/api/exam/file", string(examFileData), tt.forceError, tt.userID, tt.userRole)
 
 			// 调用被测试的函数
 			examFile(testCtx)
