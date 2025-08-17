@@ -4,17 +4,22 @@ package exam_mgt
 //author:{"name":"Ma Yuxin","tel":"13824087366", "email":"dbs45412@163.com"}
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/cespare/xxhash/v2"
 	"github.com/jackc/pgx/v5"
 	"github.com/jmoiron/sqlx/types"
 	"github.com/stretchr/testify/assert"
@@ -67,7 +72,70 @@ var (
 	testErrorExamSessionToPublishIDStartTime = time.Now().Add(-10 * time.Minute).UnixMilli()
 	testErrorExamSessionToPublishIDEndTime   = time.Now().UnixMilli()
 	BankQuestionIDs                          = []int64{10000001, 10000002, 10000003, 10000004, 10000005}
+
+	testFile1ID       = int64(99901)
+	testFile2ID       = int64(99902)
+	testFile1CheckSum = "bc8e94630e020929"
+	testFile2CheckSum = "94195fd3746f1460"
+	testFile1Name     = "testFile1.txt"
+	testFile2Name     = "testFile2.txt"
+	testFile1Content  = "This is the content of testFile1."
+	testFile2Content  = "This is the content of testFile2."
+
+	testFileID3          = int64(99903)
+	testSameFileID       = int64(99904)
+	testFile3CheckSum    = "2bbd5436cae65e1e"
+	testSameFileCheckSum = "bc8e94630e020929"
+	testFile3Name        = "testFile3.txt"
+	testSameFileName     = "testFile4.txt"
+	testFile3Content     = "This is the content of testFile3."
+	testSameFileContent  = "This is the content of testFile1."
+
+	notExistsFileID      = int64(99905)
+	notExistFileName     = "notExistsFile.txt"
+	notExistFileCheckSum = "notExists"
 )
+
+// 生成文件的 XXHash64 校验和
+func FastDigest(filePath string) (string, error) {
+	file, err := os.Open(filePath)
+	if err != nil {
+		return "", err
+	}
+	defer file.Close()
+
+	// 创建 XXHash64 hasher
+	hasher := xxhash.New()
+
+	// 使用缓冲读取，提高性能
+	reader := bufio.NewReader(file)
+	buffer := make([]byte, 4*1024*1024) // 4MB 块大小，与前端保持一致
+
+	for {
+		n, err := reader.Read(buffer)
+		if n > 0 {
+			hasher.Write(buffer[:n])
+		}
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return "", err
+		}
+	}
+
+	// 获取最终哈希值并转换为十六进制字符串
+	hashSum := hasher.Sum64()
+	return fmt.Sprintf("%016x", hashSum), nil
+}
+
+// 计算内容的 XXHash64 校验和
+func calculateContentCheckSum(content []byte) string {
+	hasher := xxhash.New()
+	hasher.Write(content)
+	hashSum := hasher.Sum64()
+	return fmt.Sprintf("%016x", hashSum)
+}
 
 // createMockContextWithRole 创建带用户角色的模拟上下文
 func createMockContextWithRole(method, path string, queryParams url.Values, forceError string, userID, userRole int64) context.Context {
@@ -456,14 +524,14 @@ func CreateTestExamData(t *testing.T) {
 
 	// 插入考试信息
 	_, err = tx.Exec(ctx, `
-		INSERT INTO t_exam_info (id, name, type, mode, status, creator, create_time, updated_by, update_time, domain_id)
-		VALUES ($1, '测试正常考试', '00', '00', '00', $2, $3, $2, $3, $4), 
-		($5, '测试已删除的考试', '00', '00', '12', $2, $3, $2, $3, $4),
-		($6, '测试正常考试2', '00', '00', '02', $2, $3, $2, $3, $4),
-		($7, '测试发布考试', '00', '00', '00', $2, $3, $2, $3, $4),
-		($8, '测试发布错误考试', '00', '00', '00', $2, $3, $2, $3, $4),
-		($9, '测试已结束的考试', '00', '00', '06', $2, $3, $2, $3, $4),
-		($10, '测试已发布的考试', '00', '00', '02', $2, $3, $2, $3, $4)
+		INSERT INTO t_exam_info (id, name, type, mode, status, creator, create_time, updated_by, update_time, domain_id, files)
+		VALUES ($1, '测试正常考试', '00', '00', '00', $2, $3, $2, $3, $4, '[99903]'), 
+		($5, '测试已删除的考试', '00', '00', '12', $2, $3, $2, $3, $4, '[]'),
+		($6, '测试正常考试2', '00', '00', '02', $2, $3, $2, $3, $4, '[]'),
+		($7, '测试发布考试', '00', '00', '00', $2, $3, $2, $3, $4, '[]'),
+		($8, '测试发布错误考试', '00', '00', '00', $2, $3, $2, $3, $4, '[]'),
+		($9, '测试已结束的考试', '00', '00', '06', $2, $3, $2, $3, $4, '[]'),
+		($10, '测试已发布的考试', '00', '00', '02', $2, $3, $2, $3, $4, '{}')
 	`, testNormalExamID, testAcademicAffair, time.Now().UnixMilli(), 2002, testDeleteExamID,
 		testNormalExamID2, testExamToPublishID, testErrorExamToPublishID1, testEndExamID, testPublishedExamID)
 	if err != nil {
@@ -529,6 +597,117 @@ func CreateTestExamData(t *testing.T) {
 	if err != nil {
 		tx.Rollback(ctx)
 		t.Fatalf("插入测试考生数据失败: %v", err)
+	}
+
+	// 创建文件
+	uploadDir := "./uploads" // 或者从配置中获取
+
+	// 确保上传目录存在
+	err = os.MkdirAll(uploadDir, 0755)
+	if err != nil {
+		t.Fatalf("创建上传目录失败: %v", err)
+	}
+
+	// 计算文件内容的校验和
+	testFile1CheckSum = calculateContentCheckSum([]byte(testFile1Content))
+	testFile2CheckSum = calculateContentCheckSum([]byte(testFile2Content))
+	testFile3CheckSum = calculateContentCheckSum([]byte(testFile3Content))
+	testSameFileCheckSum = calculateContentCheckSum([]byte(testSameFileContent))
+
+	// 以校验和作为文件名创建文件
+	testFile1Path := filepath.Join(uploadDir, testFile1CheckSum)
+	err = os.WriteFile(testFile1Path, []byte(testFile1Content), 0644)
+	if err != nil {
+		t.Fatalf("创建测试文件1失败: %v", err)
+	}
+
+	testFile2Path := filepath.Join(uploadDir, testFile2CheckSum)
+	err = os.WriteFile(testFile2Path, []byte(testFile2Content), 0644)
+	if err != nil {
+		t.Fatalf("创建测试文件2失败: %v", err)
+	}
+
+	testFile3Path := filepath.Join(uploadDir, testFile3CheckSum)
+	err = os.WriteFile(testFile3Path, []byte(testFile3Content), 0644)
+	if err != nil {
+		t.Fatalf("创建测试文件3失败: %v", err)
+	}
+
+	testSameFilePath := filepath.Join(uploadDir, testSameFileCheckSum)
+	err = os.WriteFile(testSameFilePath, []byte(testSameFileContent), 0644)
+	if err != nil {
+		t.Fatalf("创建测试文件4失败: %v", err)
+	}
+
+	// 创建对应的.info文件
+	testFile1InfoPath := testFile1Path + ".info"
+	err = os.WriteFile(testFile1InfoPath, []byte(fmt.Sprintf(`{"name":"%s","size":%d}`, testFile1Name, len(testFile1Content))), 0644)
+	if err != nil {
+		t.Fatalf("创建测试文件1信息文件失败: %v", err)
+	}
+
+	testFile2InfoPath := testFile2Path + ".info"
+	err = os.WriteFile(testFile2InfoPath, []byte(fmt.Sprintf(`{"name":"%s","size":%d}`, testFile2Name, len(testFile2Content))), 0644)
+	if err != nil {
+		t.Fatalf("创建测试文件2信息文件失败: %v", err)
+	}
+
+	testFile3InfoPath := testFile3Path + ".info"
+	err = os.WriteFile(testFile3InfoPath, []byte(fmt.Sprintf(`{"name":"%s","size":%d}`, testFile3Name, len(testFile3Content))), 0644)
+	if err != nil {
+		t.Fatalf("创建测试文件3信息文件失败: %v", err)
+	}
+
+	testSameFileInfoPath := testSameFilePath + ".info"
+	err = os.WriteFile(testSameFileInfoPath, []byte(fmt.Sprintf(`{"name":"%s","size":%d}`, testSameFileName, len(testSameFileContent))), 0644)
+	if err != nil {
+		t.Fatalf("创建测试文件4信息文件失败: %v", err)
+	}
+
+	// 插入文件记录到数据库
+	err = tx.QueryRow(ctx, `
+        INSERT INTO t_file (id, digest, file_name, path, belongto_path, size, count, creator, create_time, domain_id, status)
+        VALUES ($1, $2, $3, $4, $5, $6, 1, $7, $8, 2000, '0')
+        RETURNING id
+    `, testFile1ID, testFile1CheckSum, testFile1Name, testFile1Path, "/test/files", len(testFile1Content), testAcademicAffair, time.Now().UnixMilli()).Scan(&testFile1ID)
+	if err != nil {
+		t.Fatalf("插入测试文件1记录失败: %v", err)
+	}
+
+	err = tx.QueryRow(ctx, `
+        INSERT INTO t_file (id, digest, file_name, path, belongto_path, size, count, creator, create_time, domain_id, status)
+        VALUES ($1, $2, $3, $4, $5, $6, 2, $7, $8, 2000, '0')
+        RETURNING id
+    `, testFile2ID, testFile2CheckSum, testFile2Name, testFile2Path, "/test/files", len(testFile2Content), testAcademicAffair, time.Now().UnixMilli()).Scan(&testFile2ID)
+	if err != nil {
+		t.Fatalf("插入测试文件2记录失败: %v", err)
+	}
+
+	err = tx.QueryRow(ctx, `
+        INSERT INTO t_file (id, digest, file_name, path, belongto_path, size, count, creator, create_time, domain_id, status)
+        VALUES ($1, $2, $3, $4, $5, $6, 1, $7, $8, 2000, '0')
+        RETURNING id
+    `, testFileID3, testFile3CheckSum, testFile3Name, testFile3Path, "/test/files", len(testFile3Content), testAcademicAffair, time.Now().UnixMilli()).Scan(&testFileID3)
+	if err != nil {
+		t.Fatalf("插入测试文件3记录失败: %v", err)
+	}
+
+	err = tx.QueryRow(ctx, `
+        INSERT INTO t_file (id, digest, file_name, path, belongto_path, size, count, creator, create_time, domain_id, status)
+        VALUES ($1, $2, $3, $4, $5, $6, 1, $7, $8, 2000, '0')
+        RETURNING id
+    `, testSameFileID, testSameFileCheckSum, testSameFileName, testSameFilePath, "/test/files", len(testSameFileContent), testAcademicAffair, time.Now().UnixMilli()).Scan(&testSameFileID)
+	if err != nil {
+		t.Fatalf("插入测试文件4记录失败: %v", err)
+	}
+
+	err = tx.QueryRow(ctx, `
+        INSERT INTO t_file (id, digest, file_name, path, belongto_path, size, count, creator, create_time, domain_id, status)
+        VALUES ($1, $2, $3, $4, $5, $6, 1, $7, $8, 2000, '0')
+        RETURNING id
+    `, notExistsFileID, notExistFileCheckSum, notExistFileName, "/test/files", "/test/files", len(testSameFileContent), testAcademicAffair, time.Now().UnixMilli()).Scan(&notExistsFileID)
+	if err != nil {
+		t.Fatalf("插入测试文件4记录失败: %v", err)
 	}
 
 	return
@@ -703,6 +882,77 @@ func CleanTestExamData(t *testing.T) {
 	if err != nil {
 		tx.Rollback(ctx)
 		t.Fatalf("删除测试用户数据失败: %v", err)
+	}
+
+	_, err = tx.Exec(ctx, `
+        DELETE FROM t_file WHERE id = ANY($1)
+    `, []int64{testFile1ID, testFile2ID, testFileID3, testSameFileID, notExistsFileID})
+	if err != nil {
+		t.Logf("删除测试文件记录失败: %v", err)
+	}
+
+	_, err = tx.Exec(ctx, `
+        DELETE FROM t_file WHERE creator = $1
+    `, testAcademicAffair)
+	if err != nil {
+		t.Logf("删除测试文件记录失败: %v", err)
+	}
+
+	// 删除实际的测试文件
+	uploadDir := "./uploads"
+
+	// 计算校验和
+	file1CheckSum := calculateContentCheckSum([]byte(testFile1Content))
+	file2CheckSum := calculateContentCheckSum([]byte(testFile2Content))
+	file3CheckSum := calculateContentCheckSum([]byte(testFile3Content))
+	sameFileCheckSum := calculateContentCheckSum([]byte(testSameFileContent))
+
+	// 以校验和命名的文件路径
+	testFile1Path := filepath.Join(uploadDir, file1CheckSum)
+	testFile2Path := filepath.Join(uploadDir, file2CheckSum)
+	testFile3Path := filepath.Join(uploadDir, file3CheckSum)
+	testSameFilePath := filepath.Join(uploadDir, sameFileCheckSum)
+
+	t.Logf("删除测试文件1: %s", testFile1Path)
+	t.Logf("删除测试文件2: %s", testFile2Path)
+	t.Logf("删除测试文件3: %s", testFile3Path)
+	t.Logf("删除测试文件4: %s", testSameFilePath)
+	if err := os.Remove(testFile1Path); err != nil && !os.IsNotExist(err) {
+		t.Logf("删除测试文件1失败: %v", err)
+	}
+
+	if err := os.Remove(testFile2Path); err != nil && !os.IsNotExist(err) {
+		t.Logf("删除测试文件2失败: %v", err)
+	}
+
+	if err := os.Remove(testFile3Path); err != nil && !os.IsNotExist(err) {
+		t.Logf("删除测试文件3失败: %v", err)
+	}
+
+	if err := os.Remove(testSameFilePath); err != nil && !os.IsNotExist(err) {
+		t.Logf("删除测试文件4失败: %v", err)
+	}
+
+	// 删除对应的.info文件（如果存在）
+	infoFile1Path := testFile1Path + ".info"
+	infoFile2Path := testFile2Path + ".info"
+	infoFile3Path := testFile3Path + ".info"
+	infoSameFilePath := testSameFilePath + ".info"
+
+	if err := os.Remove(infoFile1Path); err != nil && !os.IsNotExist(err) {
+		t.Logf("删除测试文件1信息文件失败: %v", err)
+	}
+
+	if err := os.Remove(infoFile2Path); err != nil && !os.IsNotExist(err) {
+		t.Logf("删除测试文件2信息文件失败: %v", err)
+	}
+
+	if err := os.Remove(infoFile3Path); err != nil && !os.IsNotExist(err) {
+		t.Logf("删除测试文件3信息文件失败: %v", err)
+	}
+
+	if err := os.Remove(infoSameFilePath); err != nil && !os.IsNotExist(err) {
+		t.Logf("删除测试文件4信息文件失败: %v", err)
 	}
 
 }
@@ -941,6 +1191,114 @@ func TestValidateExamData(t *testing.T) {
 			},
 			isUpdate:  true,
 			wantError: false,
+		},
+		{
+			name: "最迟进入考试时间大于总时长",
+			examData: ExamData{
+				ExamInfo: cmn.TExamInfo{
+					ID:   null.IntFrom(123),
+					Name: null.StringFrom("期中考试"),
+					Type: null.StringFrom("00"), // 平时考试
+					Mode: null.StringFrom("02"), // 线下考试
+				},
+				ExamSessions: []cmn.TExamSession{
+					{
+						PaperID:              null.IntFrom(2),
+						MarkMethod:           "02",                  // 自动批卷
+						PeriodMode:           null.StringFrom("02"), // 灵活时段
+						Duration:             null.IntFrom(90),      // 90分钟
+						QuestionShuffledMode: null.StringFrom("02"), // 选项乱序
+						MarkMode:             null.StringFrom("02"), // 全卷多评
+						StartTime:            null.IntFrom(time.Now().Add(1 * time.Hour).UnixMilli()),
+						EndTime:              null.IntFrom(time.Now().Add(150 * time.Minute).UnixMilli()),
+						LateEntryTime:        null.IntFrom(100),
+					},
+				},
+			},
+			isUpdate:  true,
+			wantError: true,
+			errorMsg:  "设定的最迟进入考试时长",
+		},
+		{
+			name: "最迟进入考试时间小于0",
+			examData: ExamData{
+				ExamInfo: cmn.TExamInfo{
+					ID:   null.IntFrom(123),
+					Name: null.StringFrom("期中考试"),
+					Type: null.StringFrom("00"), // 平时考试
+					Mode: null.StringFrom("02"), // 线下考试
+				},
+				ExamSessions: []cmn.TExamSession{
+					{
+						PaperID:              null.IntFrom(2),
+						MarkMethod:           "02",                  // 自动批卷
+						PeriodMode:           null.StringFrom("02"), // 灵活时段
+						Duration:             null.IntFrom(90),      // 90分钟
+						QuestionShuffledMode: null.StringFrom("02"), // 选项乱序
+						MarkMode:             null.StringFrom("02"), // 全卷多评
+						StartTime:            null.IntFrom(time.Now().Add(1 * time.Hour).UnixMilli()),
+						EndTime:              null.IntFrom(time.Now().Add(150 * time.Minute).UnixMilli()),
+						LateEntryTime:        null.IntFrom(-1),
+					},
+				},
+			},
+			isUpdate:  true,
+			wantError: true,
+			errorMsg:  "设定的最迟进入考试时长",
+		},
+		{
+			name: "最早交卷时间小于0",
+			examData: ExamData{
+				ExamInfo: cmn.TExamInfo{
+					ID:   null.IntFrom(123),
+					Name: null.StringFrom("期中考试"),
+					Type: null.StringFrom("00"), // 平时考试
+					Mode: null.StringFrom("02"), // 线下考试
+				},
+				ExamSessions: []cmn.TExamSession{
+					{
+						PaperID:              null.IntFrom(2),
+						MarkMethod:           "02",                  // 自动批卷
+						PeriodMode:           null.StringFrom("02"), // 灵活时段
+						Duration:             null.IntFrom(90),      // 90分钟
+						QuestionShuffledMode: null.StringFrom("02"), // 选项乱序
+						MarkMode:             null.StringFrom("02"), // 全卷多评
+						StartTime:            null.IntFrom(time.Now().Add(1 * time.Hour).UnixMilli()),
+						EndTime:              null.IntFrom(time.Now().Add(150 * time.Minute).UnixMilli()),
+						EarlySubmissionTime:  null.IntFrom(-1),
+					},
+				},
+			},
+			isUpdate:  true,
+			wantError: true,
+			errorMsg:  "设定的最早交卷时间",
+		},
+		{
+			name: "最早交卷时间大于总时长",
+			examData: ExamData{
+				ExamInfo: cmn.TExamInfo{
+					ID:   null.IntFrom(123),
+					Name: null.StringFrom("期中考试"),
+					Type: null.StringFrom("00"), // 平时考试
+					Mode: null.StringFrom("02"), // 线下考试
+				},
+				ExamSessions: []cmn.TExamSession{
+					{
+						PaperID:              null.IntFrom(2),
+						MarkMethod:           "02",                  // 自动批卷
+						PeriodMode:           null.StringFrom("02"), // 灵活时段
+						Duration:             null.IntFrom(90),      // 90分钟
+						QuestionShuffledMode: null.StringFrom("02"), // 选项乱序
+						MarkMode:             null.StringFrom("02"), // 全卷多评
+						StartTime:            null.IntFrom(time.Now().Add(1 * time.Hour).UnixMilli()),
+						EndTime:              null.IntFrom(time.Now().Add(150 * time.Minute).UnixMilli()),
+						EarlySubmissionTime:  null.IntFrom(100),
+					},
+				},
+			},
+			isUpdate:  true,
+			wantError: true,
+			errorMsg:  "设定的最早交卷时间",
 		},
 		{
 			name: "更新时考试ID无效",
@@ -1788,7 +2146,7 @@ func createTestUser(t *testing.T, userID int64, role int64) {
 	_, err := conn.Exec(ctx, `
 		INSERT INTO t_user (id, category, official_name, account, role) 
 		VALUES ($1, $2, $3, $4, $5)
-		ON CONFLICT (id) DO NOTHING`, userID, "sys^admin", "测试用户", "test_user", role)
+		ON CONFLICT (id) DO NOTHING`, userID, "sys^admin", "测试用户", "test_user1", role)
 	if err != nil {
 		t.Fatalf("创建测试用户失败: %v", err)
 	}
@@ -7588,6 +7946,548 @@ func TestExamUser(t *testing.T) {
 				// 检查结果
 				if tt.checkResult != nil {
 					tt.checkResult(t, serviceCtx)
+				}
+			}
+		})
+	}
+}
+
+func TestHandleDeleteExamFile(t *testing.T) {
+	// 确保logger已初始化
+	if z == nil {
+		cmn.ConfigureForTest()
+	}
+
+	conn := cmn.GetPgxConn()
+	ctx := context.Background()
+
+	tests := []struct {
+		name          string
+		fileID        int64
+		forceError    string
+		expectError   bool
+		errorContains string
+		setupData     bool
+		checkResult   func(t *testing.T, tx pgx.Tx)
+		description   string
+	}{
+		{
+			name:        "count大于1时减少引用计数",
+			fileID:      testFile2ID, // 使用现有的testFile2ID，它的count是2
+			forceError:  "",
+			expectError: false,
+			setupData:   false, // 使用现有数据，不需要重新设置
+			checkResult: func(t *testing.T, tx pgx.Tx) {
+				var count int
+				err := tx.QueryRow(ctx, "SELECT count FROM t_file WHERE id = $1", testFile2ID).Scan(&count)
+				assert.Nil(t, err)
+				assert.Equal(t, 1, count, "count应该从2减少到1")
+			},
+			description: "当文件引用计数大于1时，应该减少引用计数而不删除文件",
+		},
+		{
+			name:        "count等于1且无相同digest时删除记录和文件",
+			fileID:      testFileID3,
+			forceError:  "",
+			expectError: false,
+			setupData:   false,
+			checkResult: func(t *testing.T, tx pgx.Tx) {
+				var count int
+				err := tx.QueryRow(ctx, "SELECT COUNT(*) FROM t_file WHERE id = $1", testFileID3).Scan(&count)
+				assert.Nil(t, err)
+				assert.Equal(t, 0, count, "文件记录应该被删除")
+
+				// 检查物理文件是否被删除
+				filePath := filepath.Join("./uploads", testFile3CheckSum)
+				_, err = os.Stat(filePath)
+				assert.True(t, os.IsNotExist(err), "物理文件应该被删除")
+
+				// 检查.info文件是否被删除
+				infoFilePath := filePath + ".info"
+				_, err = os.Stat(infoFilePath)
+				assert.True(t, os.IsNotExist(err), ".info文件应该被删除")
+			},
+			description: "当引用计数为1且无其他相同digest文件时，应该删除记录和文件",
+		},
+		{
+			name:        "count等于1但有相同digest时只删除记录",
+			fileID:      testFile1ID, // testFileID1和testSameFileID有相同的digest
+			forceError:  "",
+			expectError: false,
+			setupData:   false,
+			checkResult: func(t *testing.T, tx pgx.Tx) {
+				var count int
+				err := tx.QueryRow(ctx, "SELECT COUNT(*) FROM t_file WHERE id = $1", testFile1ID).Scan(&count)
+				assert.Nil(t, err)
+				assert.Equal(t, 0, count, "testFile1ID记录应该被删除")
+
+				err = tx.QueryRow(ctx, "SELECT COUNT(*) FROM t_file WHERE digest = $1", testSameFileCheckSum).Scan(&count)
+				assert.Nil(t, err)
+				assert.Equal(t, 1, count, "相同digest的其他文件记录应该还存在")
+
+				// 检查物理文件应该还存在（因为有相同digest的其他文件）
+				filePath := filepath.Join("./uploads", testSameFileCheckSum)
+				_, err = os.Stat(filePath)
+				assert.Nil(t, err, "物理文件应该还存在")
+			},
+			description: "当引用计数为1但有其他相同digest文件时，应该只删除记录不删除文件",
+		},
+		{
+			name:          "文件不存在时返回错误",
+			fileID:        999999,
+			forceError:    "",
+			expectError:   true,
+			errorContains: "no rows",
+			setupData:     false,
+			description:   "当文件ID不存在时，应该返回错误",
+		},
+		{
+			name:          "强制错误-查询文件信息",
+			fileID:        testFile1ID,
+			forceError:    "handleDeleteExamFile.tx.QueryRow",
+			expectError:   true,
+			errorContains: "强制查询文件信息错误",
+			setupData:     false,
+			description:   "测试查询文件信息时的错误处理",
+		},
+		{
+			name:          "强制错误-更新引用计数",
+			fileID:        testFile2ID, // count > 1
+			forceError:    "handleDeleteExamFile.tx.UpdateCount",
+			expectError:   true,
+			errorContains: "强制更新文件引用计数错误",
+			setupData:     false,
+			description:   "测试更新引用计数时的错误处理",
+		},
+		{
+			name:          "强制错误-删除文件记录",
+			fileID:        testFile1ID, // count = 1
+			forceError:    "handleDeleteExamFile.tx.DeleteFile",
+			expectError:   true,
+			errorContains: "强制删除文件记录错误",
+			setupData:     false,
+			description:   "测试删除文件记录时的错误处理",
+		},
+		{
+			name:          "强制错误-统计相同digest文件",
+			fileID:        testFile1ID,
+			forceError:    "handleDeleteExamFile.tx.CountDigest",
+			expectError:   true,
+			errorContains: "强制统计相同digest文件错误",
+			setupData:     false,
+			description:   "测试统计相同digest文件时的错误处理",
+		},
+		{
+			name:          "强制错误-从文件系统删除文件",
+			fileID:        testFileID3,
+			forceError:    "handleDeleteExamFile.deleteFileFromFilesystem",
+			expectError:   true,
+			errorContains: "强制从文件系统删除文件错误",
+			setupData:     false,
+			description:   "测试从文件系统删除文件时的错误处理",
+		},
+		{
+			name:          "强制错误-从文件系统删除信息文件",
+			fileID:        testFileID3,
+			forceError:    "handleDeleteExamFile.deleteInfoFileFromFilesystem",
+			expectError:   true,
+			errorContains: "强制从文件系统删除.info文件错误",
+			setupData:     false,
+			description:   "测试从文件系统删除信息文件时的错误处理",
+		},
+		{
+			name:        "未实际存在的文件",
+			fileID:      notExistsFileID,
+			expectError: false,
+			setupData:   false,
+			description: "测试从文件系统删除未实际存在的文件时的错误处理",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// 每个测试都重新创建测试数据以确保隔离性
+			CleanTestExamData(t)
+			CreateTestExamData(t)
+			defer CleanTestExamData(t)
+
+			// 创建上下文
+			testCtx := ctx
+			if tt.forceError != "" {
+				testCtx = context.WithValue(ctx, "force-error", tt.forceError)
+			}
+
+			// 开始事务
+			tx, err := conn.Begin(testCtx)
+			if err != nil {
+				t.Fatalf("开始事务失败: %v", err)
+			}
+			defer tx.Rollback(testCtx)
+
+			// 执行被测试的函数
+			err = handleDeleteExamFile(testCtx, tx, tt.fileID)
+			t.Logf("handleDeleteExamFile() 返回错误: %v", err)
+
+			// 验证结果
+			if tt.expectError {
+				assert.NotNil(t, err, tt.description)
+				if tt.errorContains != "" && err != nil {
+					assert.Contains(t, err.Error(), tt.errorContains, tt.description)
+				}
+			} else {
+				assert.Nil(t, err, tt.description)
+				if tt.checkResult != nil {
+					tt.checkResult(t, tx)
+				}
+				// 如果测试成功，提交事务以持久化更改
+				err = tx.Commit(testCtx)
+				assert.Nil(t, err, "提交事务应该成功")
+			}
+		})
+	}
+}
+
+// TestExamFile 测试 examFile 函数
+func TestExamFile(t *testing.T) {
+	// 确保logger已初始化
+	if z == nil {
+		cmn.ConfigureForTest()
+	}
+
+	tests := []struct {
+		name          string
+		method        string
+		examFile      ExamFile
+		forceError    string
+		expectError   bool
+		errorContains string
+		checkResult   func(t *testing.T, responseData []byte)
+		description   string
+		userID        int64
+		userRole      int64
+		nilReq        bool
+	}{
+		{
+			name:   "POST-添加新考试文件",
+			method: "POST",
+			examFile: ExamFile{
+				ExamID:   testNormalExamID,
+				CheckSum: testFile1CheckSum,
+				Name:     "新考试文件.txt",
+				Size:     int64(len(testFile1Content)),
+			},
+			forceError:  "",
+			expectError: false,
+			checkResult: func(t *testing.T, responseData []byte) {
+				var files []ExamFile
+				err := json.Unmarshal(responseData, &files)
+				assert.Nil(t, err)
+				assert.Greater(t, len(files), 0, "应该返回文件列表")
+
+				t.Logf("返回的文件列表: %+v", files)
+
+				// 检查新文件是否在列表中
+				found := false
+				for _, file := range files {
+					if file.CheckSum == testFile1CheckSum && file.Name == "新考试文件.txt" {
+						found = true
+						break
+					}
+				}
+				assert.True(t, found, "新添加的文件应该在返回的列表中")
+			},
+			description: "成功添加新考试文件",
+			userID:      testAcademicAffair,
+			userRole:    2002,
+		},
+		{
+			name:   "POST-io关闭错误",
+			method: "POST",
+			examFile: ExamFile{
+				ExamID:   testNormalExamID,
+				CheckSum: testFile1CheckSum,
+				Name:     "新考试文件.txt",
+				Size:     int64(len(testFile1Content)),
+			},
+			forceError:  "io.Close",
+			expectError: false,
+			description: "io关闭错误",
+			userID:      testAcademicAffair,
+			userRole:    2002,
+		},
+		{
+			name:   "POST-添加已存在的文件(相同checksum和name)",
+			method: "POST",
+			examFile: ExamFile{
+				ExamID:   testNormalExamID,
+				CheckSum: testFile1CheckSum,
+				Name:     testFile1Name,
+				Size:     int64(len(testFile1Content)),
+			},
+			forceError:  "",
+			expectError: false,
+			checkResult: func(t *testing.T, responseData []byte) {
+				var files []ExamFile
+				err := json.Unmarshal(responseData, &files)
+				assert.Nil(t, err)
+				// 应该不会重复添加
+			},
+			description: "添加已存在的文件应该不会重复",
+			userID:      testAcademicAffair,
+			userRole:    2002,
+		},
+		{
+			name:   "DELETE-删除考试文件",
+			method: "DELETE",
+			examFile: ExamFile{
+				ExamID:   testNormalExamID,
+				CheckSum: testFile1CheckSum,
+				Name:     testFile1Name,
+			},
+			forceError:  "",
+			expectError: false,
+			checkResult: func(t *testing.T, responseData []byte) {
+				var files []ExamFile
+				err := json.Unmarshal(responseData, &files)
+				assert.Nil(t, err)
+
+				// 检查文件是否已被删除
+				found := false
+				for _, file := range files {
+					if file.CheckSum == testFile1CheckSum && file.Name == testFile1Name {
+						found = true
+						break
+					}
+				}
+				assert.False(t, found, "删除的文件不应该在返回的列表中")
+			},
+			description: "成功删除考试文件",
+			userID:      testAcademicAffair,
+			userRole:    2002,
+		},
+		{
+			name:   "POST-考试不存在时返回错误",
+			method: "POST",
+			examFile: ExamFile{
+				ExamID:   999999,
+				CheckSum: testFile1CheckSum,
+				Name:     "测试文件.txt",
+				Size:     int64(len(testFile1Content)),
+			},
+			forceError:    "",
+			expectError:   true,
+			userID:        testAcademicAffair,
+			userRole:      2002,
+			errorContains: "考试不存在",
+			description:   "当考试不存在时应该返回错误",
+		},
+		{
+			name:          "POST-请求体为空",
+			method:        "POST",
+			examFile:      ExamFile{},
+			nilReq:        true,
+			forceError:    "",
+			expectError:   true,
+			userID:        testAcademicAffair,
+			userRole:      2002,
+			errorContains: "请求体为空",
+			description:   "请求体为空",
+		},
+		{
+			name:   "DELETE-考试不存在时返回错误",
+			method: "DELETE",
+			examFile: ExamFile{
+				ExamID:   999999,
+				CheckSum: testFile1CheckSum,
+				Name:     testFile1Name,
+			},
+			forceError:    "",
+			userID:        testAcademicAffair,
+			userRole:      2002,
+			expectError:   true,
+			errorContains: "考试不存在",
+			description:   "删除文件时考试不存在应该返回错误",
+		},
+		{
+			name:          "POST-强制错误-开始事务",
+			method:        "POST",
+			examFile:      ExamFile{ExamID: testNormalExamID, CheckSum: testFile1CheckSum, Name: "test.txt", Size: 100},
+			forceError:    "tx.Begin",
+			userID:        testAcademicAffair,
+			userRole:      2002,
+			expectError:   true,
+			errorContains: "强制开始事务错误",
+			description:   "测试开始事务时的错误处理",
+		},
+		{
+			name:          "POST-强制错误-读取请求体",
+			method:        "POST",
+			examFile:      ExamFile{ExamID: testNormalExamID, CheckSum: testFile1CheckSum, Name: "test.txt", Size: 100},
+			forceError:    "io.ReadAll",
+			userID:        testAcademicAffair,
+			userRole:      2002,
+			expectError:   true,
+			errorContains: "强制读取请求体错误",
+			description:   "测试读取请求体时的错误处理",
+		},
+		{
+			name:          "POST-强制错误-JSON解析",
+			method:        "POST",
+			examFile:      ExamFile{ExamID: testNormalExamID, CheckSum: testFile1CheckSum, Name: "test.txt", Size: 100},
+			forceError:    "json.Unmarshal",
+			userID:        testAcademicAffair,
+			userRole:      2002,
+			expectError:   true,
+			errorContains: "强制JSON解析错误",
+			description:   "测试JSON解析时的错误处理",
+		},
+		{
+			name:          "POST-强制错误-JSON解析2",
+			method:        "POST",
+			examFile:      ExamFile{ExamID: testNormalExamID, CheckSum: testFile1CheckSum, Name: "test.txt", Size: 100},
+			forceError:    "json.Unmarshal2",
+			userID:        testAcademicAffair,
+			userRole:      2002,
+			expectError:   true,
+			errorContains: "强制第二次JSON解析错误",
+			description:   "测试JSON解析时的错误处理",
+		},
+		{
+			name:          "POST-强制错误-检查考试存在",
+			method:        "POST",
+			examFile:      ExamFile{ExamID: testNormalExamID, CheckSum: testFile1CheckSum, Name: "test.txt", Size: 100},
+			forceError:    "checkExamExists",
+			userID:        testAcademicAffair,
+			userRole:      2002,
+			expectError:   true,
+			errorContains: "强制检查考试存在错误",
+			description:   "测试检查考试存在时的错误处理",
+		},
+		{
+			name:          "DELETE-强制错误-获取考试附件信息",
+			method:        "DELETE",
+			examFile:      ExamFile{ExamID: testNormalExamID, CheckSum: testFile1CheckSum, Name: testFile3Name},
+			forceError:    "getExamFiles",
+			userID:        testAcademicAffair,
+			userRole:      2002,
+			expectError:   true,
+			errorContains: "强制获取考试附件信息错误",
+			description:   "测试获取考试附件信息时的错误处理",
+		},
+		{
+			name:        "DELETE-真删除考试文件",
+			method:      "DELETE",
+			examFile:    ExamFile{ExamID: testNormalExamID, CheckSum: testFile3CheckSum, Name: testFile3Name},
+			userID:      testAcademicAffair,
+			userRole:    2002,
+			expectError: false,
+			description: "DELETE-真删除考试文件",
+		},
+		{
+			name:          "DELETE-强制错误-删除考试文件",
+			method:        "DELETE",
+			examFile:      ExamFile{ExamID: testNormalExamID, CheckSum: testFile3CheckSum, Name: testFile3Name},
+			forceError:    "handleDeleteExamFile",
+			userID:        testAcademicAffair,
+			userRole:      2002,
+			expectError:   true,
+			errorContains: "强制删除考试附件错误",
+			description:   "测试删除考试文件时的错误处理",
+		},
+		{
+			name:          "DELETE-无效的用户ID",
+			method:        "DELETE",
+			examFile:      ExamFile{ExamID: testNormalExamID, CheckSum: testFile3CheckSum, Name: testFile3Name},
+			expectError:   true,
+			userID:        0, // 无效的用户ID
+			userRole:      2002,
+			errorContains: "无效的用户ID",
+			description:   "无效的用户ID",
+		},
+		{
+			name:          "DELETE-无权限访问",
+			method:        "DELETE",
+			examFile:      ExamFile{ExamID: testNormalExamID, CheckSum: testFile3CheckSum, Name: testFile3Name},
+			forceError:    "examFile.NoPermission",
+			expectError:   true,
+			userID:        testAcademicAffair,
+			userRole:      2002,
+			errorContains: "用户没有考试相关的权限",
+			description:   "无权限访问",
+		},
+		{
+			name:        "DELETE-回滚失败",
+			method:      "DELETE",
+			examFile:    ExamFile{ExamID: testNormalExamID, CheckSum: testFile3CheckSum, Name: testFile3Name},
+			forceError:  "tx.Rollback",
+			userID:      testAcademicAffair,
+			userRole:    2002,
+			expectError: false,
+			description: "DELETE-回滚失败",
+		},
+		{
+			name:        "DELETE-提交失败",
+			method:      "DELETE",
+			examFile:    ExamFile{ExamID: testNormalExamID, CheckSum: testFile3CheckSum, Name: testFile3Name},
+			forceError:  "tx.Commit",
+			userID:      testAcademicAffair,
+			userRole:    2002,
+			expectError: false,
+			description: "DELETE-提交失败",
+		},
+		{
+			name:          "DELETE-未找到角色ID对应的域",
+			method:        "DELETE",
+			examFile:      ExamFile{ExamID: testNormalExamID, CheckSum: testFile3CheckSum, Name: testFile3Name},
+			userID:        testAcademicAffair,
+			userRole:      9999,
+			expectError:   true,
+			errorContains: "未找到角色ID",
+			description:   "未找到角色ID对应的域",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// 每个测试都重新创建测试数据以确保隔离性
+			CleanTestExamData(t)
+			CreateTestExamData(t)
+			defer CleanTestExamData(t)
+
+			// 创建请求数据
+			examFileData, err := json.Marshal(tt.examFile)
+			assert.Nil(t, err)
+
+			assert.Nil(t, err)
+
+			var testCtx context.Context
+
+			if tt.nilReq {
+				examFileData = nil
+			}
+
+			// 创建模拟上下文
+			testCtx = createMockContextWithBody(tt.method, "/api/exam/file", string(examFileData), tt.forceError, tt.userID, tt.userRole)
+
+			// 调用被测试的函数
+			examFile(testCtx)
+
+			// 获取服务上下文
+			serviceCtx := testCtx.Value(cmn.QNearKey).(*cmn.ServiceCtx)
+
+			// 验证结果
+			if tt.expectError {
+				assert.NotNil(t, serviceCtx.Err, tt.description)
+				if tt.errorContains != "" && serviceCtx.Err != nil {
+					assert.Contains(t, serviceCtx.Err.Error(), tt.errorContains, tt.description)
+				}
+			} else {
+				if serviceCtx.Err != nil {
+					t.Logf("意外的错误: %v", serviceCtx.Err)
+				}
+				assert.Nil(t, serviceCtx.Err, tt.description)
+				if tt.checkResult != nil && serviceCtx.Msg != nil {
+					tt.checkResult(t, serviceCtx.Msg.Data)
 				}
 			}
 		})
