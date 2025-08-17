@@ -1567,7 +1567,7 @@ func getScorePractice(ctx context.Context, studentID int64, practiceID int64) (M
 		if !txSuccess || forceErr == "txSuccess must fail" {
 			rollbackErr := tx.Rollback(ctx)
 			if rollbackErr != nil || forceErr == "tx rollback fail" {
-				err = fmt.Errorf("提交考试成绩失败: 回滚事务失败: %w", rollbackErr)
+				err = fmt.Errorf(" 回滚事务失败: %w", rollbackErr)
 				z.Error(err.Error())
 			}
 			return
@@ -1575,7 +1575,7 @@ func getScorePractice(ctx context.Context, studentID int64, practiceID int64) (M
 		// 提交事务
 		err = tx.Commit(ctx)
 		if err != nil || forceErr == "tx commit fail" {
-			err = fmt.Errorf("提交考试成绩失败: %w", err)
+			err = fmt.Errorf("事务提交失败: %w", err)
 			z.Error(err.Error())
 			return
 		}
