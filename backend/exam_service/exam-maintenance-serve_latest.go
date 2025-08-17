@@ -57,10 +57,8 @@ func init() {
 }
 
 // 创建定时器管理器的方法
-func NewExamTimerManager(ctx context.Context) *ExamTimerManager {
+func NewExamTimerManager(ctx context.Context, cancel context.CancelFunc) *ExamTimerManager {
 	z.Info("---->" + cmn.FncName())
-	var cancel context.CancelFunc
-	ctx, cancel = context.WithCancel(ctx)
 	maxWorkers := DEFAULT_MAX_WORKERS
 
 	tm := &ExamTimerManager{
@@ -454,7 +452,9 @@ func handleExamSessionStart(ctx context.Context, event ExamEvent) error {
 		err = fmt.Errorf("强制获取考试场次信息错误")
 	}
 	if err != nil {
-		z.Error("查询场次信息失败", zap.Error(err))
+		z.Error("查询场次信息失败", zap.Error(err),
+			zap.Int64("exam_id", examID),
+			zap.Int64("exam_session_id", examSessionID))
 		return err
 	}
 
@@ -470,18 +470,21 @@ func handleExamSessionStart(ctx context.Context, event ExamEvent) error {
 			err = fmt.Errorf("强制更新考试为异常状态错误")
 		}
 		if err != nil {
-			z.Error("更新考试为异常状态失败", zap.Error(err))
+			z.Error("更新考试为异常状态失败", zap.Error(err),
+				zap.Int64("exam_id", examID),
+				zap.Int64("exam_session_id", examSessionID))
 			return err
 		}
 
 		// 取消该考试的所有定时器
 		err = CancelExamTimers(ctx, examID)
 		if err != nil || forceErr == "cancelAbnormalExamTimers" {
-			z.Error("取消考试定时器失败", zap.Int64("exam_id", examID), zap.Error(err))
+			z.Error("取消考试定时器失败", zap.Error(err),
+				zap.Int64("exam_id", examID),
+				zap.Int64("exam_session_id", examSessionID))
 		}
 	} else {
 		// 有考生的场次正常开始
-		// 更新场次状态
 		_, err := tx.Exec(ctx, `
 			UPDATE t_exam_session 
 			SET status = '04', -- 进行中
@@ -492,7 +495,9 @@ func handleExamSessionStart(ctx context.Context, event ExamEvent) error {
 			err = fmt.Errorf("强制更新场次状态错误")
 		}
 		if err != nil {
-			z.Error("更新场次状态失败", zap.Error(err))
+			z.Error("更新场次状态失败", zap.Error(err),
+				zap.Int64("exam_id", examID),
+				zap.Int64("exam_session_id", examSessionID))
 			return err
 		}
 
@@ -507,14 +512,16 @@ func handleExamSessionStart(ctx context.Context, event ExamEvent) error {
 			err = fmt.Errorf("强制更新考试状态错误")
 		}
 		if err != nil {
-			z.Error("更新考试状态失败", zap.Error(err))
+			z.Error("更新考试状态失败", zap.Error(err),
+				zap.Int64("exam_id", examID),
+				zap.Int64("exam_session_id", examSessionID))
 			return err
 		}
 	}
 
 	z.Info("考试场次开始事件处理",
-		zap.Int64("exam_session_id", examSessionID),
-		zap.Int64("exam_id", examID))
+		zap.Int64("exam_id", examID),
+		zap.Int64("exam_session_id", examSessionID))
 
 	return nil
 }
@@ -599,7 +606,9 @@ func handleExamSessionEnd(ctx context.Context, event ExamEvent) error {
 		err = fmt.Errorf("强制更新考生状态错误")
 	}
 	if err != nil {
-		z.Error("更新考生状态失败", zap.Error(err))
+		z.Error("更新考生状态失败", zap.Error(err),
+			zap.Int64("exam_id", event.ExamID),
+			zap.Int64("exam_session_id", event.ExamSessionID))
 		return err
 	}
 
@@ -653,7 +662,9 @@ func handleExamSessionEnd(ctx context.Context, event ExamEvent) error {
 		err = fmt.Errorf("强制更新场次状态为已结束错误")
 	}
 	if err != nil {
-		z.Error("更新场次状态为已结束失败", zap.Error(err))
+		z.Error("更新场次状态为已结束失败", zap.Error(err),
+			zap.Int64("exam_id", examID),
+			zap.Int64("exam_session_id", examSessionID))
 		return err
 	}
 
@@ -673,22 +684,80 @@ func handleExamSessionEnd(ctx context.Context, event ExamEvent) error {
 		err = fmt.Errorf("强制更新考试状态为已结束错误")
 	}
 	if err != nil {
-		z.Error("更新考试状态为已结束失败", zap.Error(err))
+		z.Error("更新考试状态为已结束失败", zap.Error(err),
+			zap.Int64("exam_id", examID),
+			zap.Int64("exam_session_id", examSessionID))
 		return err
 	}
 
 	z.Info("考试场次结束事件处理",
-		zap.Int64("exam_session_id", examSessionID),
-		zap.Int64("exam_id", examID))
+		zap.Int64("exam_id", examID),
+		zap.Int64("exam_session_id", examSessionID))
 
 	return nil
 }
 
-func ExamMaintainService() {
-	ctx := context.Background()
+func cleanupTempExams(ctx context.Context) {
+	z.Info("---->" + cmn.FncName())
 
-	examTimerMgr = NewExamTimerManager(ctx)
+	forceErr := ""
+	if val := ctx.Value("cleanupTempExams-force-error"); val != nil {
+		forceErr = val.(string)
+	}
+
+	// 计算24小时前的时间戳
+	cutoffTime := time.Now().Add(-24 * time.Hour).UnixMilli()
+
+	conn := cmn.GetPgxConn()
+
+	// 删除临时考试记录
+	examResult, err := conn.Exec(ctx, `
+        DELETE FROM t_exam_info 
+        WHERE status = '14' AND create_time < $1
+    `, cutoffTime)
+	if forceErr == "deleteTempExams" {
+		err = fmt.Errorf("强制删除临时考试错误")
+	}
+	if err != nil {
+		z.Error("删除临时考试记录失败", zap.Error(err))
+		return
+	}
+
+	// 获取删除的记录数量
+	examsDeleted := examResult.RowsAffected()
+
+	z.Info("临时考试清理完成",
+		zap.Int64("deleted_exams", examsDeleted),
+		zap.Int64("cutoff_time", cutoffTime))
+}
+
+func startTempExamCleanup(ctx context.Context) {
+	z.Info("---->" + cmn.FncName())
+
+	// 创建间隔为24小时的定时器
+	ticker := time.NewTicker(24 * time.Hour)
+	defer ticker.Stop()
+
+	// 启动时执行一次清理
+	cleanupTempExams(ctx)
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			cleanupTempExams(ctx)
+		}
+	}
+}
+
+func ExamMaintainService() {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	examTimerMgr = NewExamTimerManager(ctx, cancel)
 
 	// 初始化定时器
 	InitializeExamTimers(ctx)
+	startTempExamCleanup(ctx)
 }

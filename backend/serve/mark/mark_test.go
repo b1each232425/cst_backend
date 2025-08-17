@@ -466,25 +466,25 @@ func TestHandleExamList(t *testing.T) {
 		{
 			name: "success",
 			params: map[string]string{
-				"page_index": "1",
-				"page_size":  "10",
-				"exam_name":  "",
-				"status":     "",
+				"page":      "1",
+				"page_size": "10",
+				"exam_name": "",
+				"status":    "",
 			},
 		},
 		{
 			name: "success with default params",
 			params: map[string]string{
-				"page_index": "",
-				"page_size":  "",
-				"exam_name":  "",
-				"status":     "",
+				"page":      "",
+				"page_size": "",
+				"exam_name": "",
+				"status":    "",
 			},
 		},
 		{
 			name: "success with time filter",
 			params: map[string]string{
-				"page_index": "1",
+				"page":       "1",
 				"page_size":  "10",
 				"exam_name":  "",
 				"status":     "",
@@ -495,10 +495,10 @@ func TestHandleExamList(t *testing.T) {
 		{
 			name: "method not get",
 			params: map[string]string{
-				"page_index": "2",
-				"page_size":  "10",
-				"exam_name":  "",
-				"status":     "",
+				"page":      "2",
+				"page_size": "10",
+				"exam_name": "",
+				"status":    "",
 			},
 			requestMethod:  "POST",
 			expectedErrStr: "please call /api/mark/exam with http GET method",
@@ -506,7 +506,7 @@ func TestHandleExamList(t *testing.T) {
 		{
 			name: "invalid_params(start_time)",
 			params: map[string]string{
-				"page_index": "1",
+				"page":       "1",
 				"page_size":  "10",
 				"exam_name":  "",
 				"status":     "",
@@ -518,7 +518,7 @@ func TestHandleExamList(t *testing.T) {
 		{
 			name: "invalid_params(end_time)",
 			params: map[string]string{
-				"page_index": "1",
+				"page":       "1",
 				"page_size":  "10",
 				"exam_name":  "",
 				"status":     "",
@@ -528,52 +528,52 @@ func TestHandleExamList(t *testing.T) {
 			expectedErrStr: "error parsing end time",
 		},
 		{
-			name: "invalid_params(page_index)",
+			name: "invalid_params(page)",
 			params: map[string]string{
-				"page_index": "abc",
-				"page_size":  "10",
-				"exam_name":  "",
-				"status":     "",
+				"page":      "abc",
+				"page_size": "10",
+				"exam_name": "",
+				"status":    "",
 			},
 			expectedErrStr: "error parsing page index",
 		},
 		{
-			name: "invalid_params(page_index)",
+			name: "invalid_params(page)",
 			params: map[string]string{
-				"page_index": "-1",
-				"page_size":  "10",
-				"exam_name":  "",
-				"status":     "",
+				"page":      "-1",
+				"page_size": "10",
+				"exam_name": "",
+				"status":    "",
 			},
 			expectedErrStr: "page index must be greater than 0",
 		},
 		{
 			name: "invalid_params(page_size)",
 			params: map[string]string{
-				"page_index": "2",
-				"page_size":  "-2",
-				"exam_name":  "",
-				"status":     "",
+				"page":      "2",
+				"page_size": "-2",
+				"exam_name": "",
+				"status":    "",
 			},
 			expectedErrStr: "page size must be between 1 and 1000",
 		},
 		{
 			name: "invalid_params(page_size)",
 			params: map[string]string{
-				"page_index": "2",
-				"page_size":  "abc",
-				"exam_name":  "",
-				"status":     "",
+				"page":      "2",
+				"page_size": "abc",
+				"exam_name": "",
+				"status":    "",
 			},
 			expectedErrStr: "error parsing page size",
 		},
 		{
 			name: "unable to marshal response data",
 			params: map[string]string{
-				"page_index": "1",
-				"page_size":  "10",
-				"exam_name":  "",
-				"status":     "",
+				"page":      "1",
+				"page_size": "10",
+				"exam_name": "",
+				"status":    "",
 			},
 			forceErr:       "HandleExamList-json.Marshal",
 			expectedErrStr: "unable to marshal response data",
@@ -581,10 +581,10 @@ func TestHandleExamList(t *testing.T) {
 		{
 			name: "getExamList count SQL error",
 			params: map[string]string{
-				"page_index": "1",
-				"page_size":  "10",
-				"exam_name":  "",
-				"status":     "",
+				"page":      "1",
+				"page_size": "10",
+				"exam_name": "",
+				"status":    "",
 			},
 			forceErr:       "QueryExamList-pgxConn.QueryRow",
 			expectedErrStr: "getExamList count SQL error",
@@ -647,63 +647,63 @@ func TestHandlePracticeList(t *testing.T) {
 		{
 			name: "success",
 			params: map[string]string{
-				"page_index": "1",
-				"page_size":  "10",
+				"page":      "1",
+				"page_size": "10",
 			},
 		},
 		{
 			name: "success with default params",
 			params: map[string]string{
-				"page_index": "",
-				"page_size":  "",
+				"page":      "",
+				"page_size": "",
 			},
 		},
 		{
 			name: "method not get",
 			params: map[string]string{
-				"page_index": "1",
-				"page_size":  "10",
+				"page":      "1",
+				"page_size": "10",
 			},
 			requestMethod:  "POST",
 			expectedErrStr: "please call /api/mark/practice with http GET method",
 		},
 		{
-			name: "invalid_params(page_index)",
+			name: "invalid_params(page)",
 			params: map[string]string{
-				"page_index": "abc",
-				"page_size":  "10",
+				"page":      "abc",
+				"page_size": "10",
 			},
 			expectedErrStr: "error parsing page index",
 		},
 		{
-			name: "invalid_params(page_index)",
+			name: "invalid_params(page)",
 			params: map[string]string{
-				"page_index": "-1",
-				"page_size":  "10",
+				"page":      "-1",
+				"page_size": "10",
 			},
 			expectedErrStr: "page index must be greater than 0",
 		},
 		{
 			name: "invalid_params(page_size)",
 			params: map[string]string{
-				"page_index": "2",
-				"page_size":  "-2",
+				"page":      "2",
+				"page_size": "-2",
 			},
 			expectedErrStr: "page size must be between 1 and 1000",
 		},
 		{
 			name: "invalid_params(page_size)",
 			params: map[string]string{
-				"page_index": "2",
-				"page_size":  "abc",
+				"page":      "2",
+				"page_size": "abc",
 			},
 			expectedErrStr: "error parsing page size",
 		},
 		{
 			name: "unable to marshal response data",
 			params: map[string]string{
-				"page_index": "1",
-				"page_size":  "10",
+				"page":      "1",
+				"page_size": "10",
 			},
 			forceErr:       "HandlePracticeList-json.Marshal",
 			expectedErrStr: "unable to marshal response data",
@@ -711,10 +711,10 @@ func TestHandlePracticeList(t *testing.T) {
 		{
 			name: "QueryPracticeList row count SQL error",
 			params: map[string]string{
-				"page_index": "1",
-				"page_size":  "10",
-				"exam_name":  "",
-				"status":     "",
+				"page":      "1",
+				"page_size": "10",
+				"exam_name": "",
+				"status":    "",
 			},
 			forceErr:       "QueryPracticeList-pgxConn.QueryRow",
 			expectedErrStr: "QueryPracticeList row count SQL error",
@@ -1525,11 +1525,39 @@ func TestSaveMarkingResults(t *testing.T) {
 			},
 		},
 		{
+			name:          "success-insert-practice",
+			requestMethod: "POST",
+			requestData: []*cmn.TMark{
+				{
+					TeacherID:            null.IntFrom(testedTeacherID),
+					PracticeID:           null.IntFrom(22),
+					PracticeSubmissionID: null.IntFrom(2404),
+					QuestionID:           null.IntFrom(427),
+					Score:                null.FloatFrom(3),
+					MarkDetails:          make(types.JSONText, 0),
+					Creator:              null.IntFrom(testedTeacherID),
+				},
+			},
+		},
+		{
 			name:          "success-insert with auto creator",
 			requestMethod: "POST",
 			requestData: []*cmn.TMark{
 				{
 					TeacherID:     null.IntFrom(testedTeacherID),
+					ExamSessionID: null.IntFrom(103),
+					ExamineeID:    null.IntFrom(2203),
+					QuestionID:    null.IntFrom(10001),
+					Score:         null.FloatFrom(3),
+					MarkDetails:   make(types.JSONText, 0),
+				},
+			},
+		},
+		{
+			name:          "success-insert with teacher id in ctx",
+			requestMethod: "POST",
+			requestData: []*cmn.TMark{
+				{
 					ExamSessionID: null.IntFrom(103),
 					ExamineeID:    null.IntFrom(2203),
 					QuestionID:    null.IntFrom(10001),
@@ -1567,21 +1595,6 @@ func TestSaveMarkingResults(t *testing.T) {
 			isInvalidReqProto: true,
 			bodyStr:           "{",
 			expectedErrStr:    "failed to unmarshal request body",
-		},
-		{
-			name:          "invalid insert(no teacher id)",
-			requestMethod: "POST",
-			requestData: []*cmn.TMark{
-				{
-					ExamSessionID: null.IntFrom(103),
-					ExamineeID:    null.IntFrom(2203),
-					QuestionID:    null.IntFrom(10001),
-					Score:         null.FloatFrom(3),
-					MarkDetails:   make(types.JSONText, 0),
-					Creator:       null.IntFrom(testedTeacherID),
-				},
-			},
-			expectedErrStr: "teacherID is required",
 		},
 		{
 			name:          "invalid insert(no question id)",
@@ -1956,6 +1969,14 @@ func TestHandleResultsSubmission(t *testing.T) {
 			expectedErrStr: "exec updateExamSessionState sql error",
 		},
 		{
+			name: "HandleResultsSubmission-pgxConn.Begin",
+			params: map[string]string{
+				"exam_session_id": "102",
+			},
+			forceErr:       "HandleResultsSubmission-pgxConn.Begin",
+			expectedErrStr: "begin transaction error",
+		},
+		{
 			name: "HandleResultsSubmission-tx.Rollback",
 			params: map[string]string{
 				"exam_session_id": "102",
@@ -1987,6 +2008,112 @@ func TestHandleResultsSubmission(t *testing.T) {
 
 			ctx = context.WithValue(ctx, cmn.QNearKey, newMockServiceCtx(method, tt.params, nil))
 			HandleResultsSubmission(ctx)
+			q := cmn.GetCtxValue(ctx)
+			if q.Err != nil {
+				if tt.expectedErrStr == "" {
+					t.Errorf("expected success, but got error: %v", q.Err.Error())
+				} else {
+					assert.Contains(t, q.Err.Error(), tt.expectedErrStr)
+				}
+			} else if tt.expectedErrStr != "" {
+				t.Errorf("expected error: %s, but got success", tt.expectedErrStr)
+			}
+
+			if q.Msg.Status != 0 {
+				t.Logf("unexpected status: %d", q.Msg.Status)
+			}
+		})
+	}
+}
+
+func TestHandleMarkingState(t *testing.T) {
+	cleanTestData()
+	initTestData()
+	//defer cleanTestData()
+
+	tests := []struct {
+		name             string
+		params           map[string]string
+		requestMethod    string
+		forceErr         string
+		expectedErrStr   string
+		expectedMsg      *cmn.ReplyProto
+		expectedRowCount int
+	}{
+		{
+			name: "success",
+			params: map[string]string{
+				"exam_session_id": "102",
+			},
+		},
+		{
+			name: "method not patch",
+			params: map[string]string{
+				"exam_session_id": "101",
+			},
+			requestMethod:  "POST",
+			expectedErrStr: "please call /api/mark/state with http patch method",
+		},
+		{
+			name:           "exam_session_id is required",
+			params:         map[string]string{},
+			expectedErrStr: "exam_session_id is required",
+		},
+		{
+			name: "error parsing exam_session_id",
+			params: map[string]string{
+				"exam_session_id": "abc",
+			},
+			expectedErrStr: "error parsing exam_session_id",
+		},
+		{
+			name: "updateExamSessionOrPracticeSubmissionState-error",
+			params: map[string]string{
+				"exam_session_id": "102",
+			},
+			forceErr:       "updateExamSessionOrPracticeSubmissionState-tx.Query",
+			expectedErrStr: "exec updateExamSessionState sql error",
+		},
+		{
+			name: "HandleMarkingState-pgxConn.Begin",
+			params: map[string]string{
+				"exam_session_id": "102",
+			},
+			forceErr:       "HandleMarkingState-pgxConn.Begin",
+			expectedErrStr: "begin transaction error",
+		},
+		{
+			name: "HandleMarkingState-tx.Rollback",
+			params: map[string]string{
+				"exam_session_id": "102",
+			},
+			forceErr: "HandleMarkingState-tx.Rollback",
+		},
+		{
+			name: "HandleMarkingState-tx.Commit",
+			params: map[string]string{
+				"exam_session_id": "102",
+			},
+			forceErr: "HandleMarkingState-tx.Commit",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var method string
+			if tt.requestMethod != "" {
+				method = tt.requestMethod
+			} else {
+				method = "PATCH"
+			}
+
+			ctx := context.Background()
+			if tt.forceErr != "" {
+				ctx = context.WithValue(ctx, ForceErrKey, tt.forceErr)
+			}
+
+			ctx = context.WithValue(ctx, cmn.QNearKey, newMockServiceCtx(method, tt.params, nil))
+			HandleMarkingState(ctx)
 			q := cmn.GetCtxValue(ctx)
 			if q.Err != nil {
 				if tt.expectedErrStr == "" {

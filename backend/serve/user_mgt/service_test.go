@@ -1840,6 +1840,34 @@ func Test_service_CheckTUserRowExists(t *testing.T) {
 			want:    true,
 			wantErr: false,
 		},
+		{
+			name: "触发查询出来的用户ID不合法错误",
+			args: args{
+				ctx: context.WithValue(context.Background(), "force-error", "InvalidUserID"),
+				fields: map[string]any{
+					"official_name": "张三",
+					"mobile_phone":  "13800138001",
+					"email":         "zhangsan@example.com",
+					"id_card_no":    "440106199001011234",
+				},
+			},
+			want:    false,
+			wantErr: false,
+		},
+		{
+			name: "触发查用户数据错误",
+			args: args{
+				ctx: context.WithValue(context.Background(), "force-error", "QueryUsers"),
+				fields: map[string]any{
+					"official_name": "张三",
+					"mobile_phone":  "13800138001",
+					"email":         "zhangsan@example.com",
+					"id_card_no":    "440106199001011234",
+				},
+			},
+			want:    false,
+			wantErr: true,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -2271,7 +2299,7 @@ func Test_service_ValidateUser(t *testing.T) {
 				users: []User{
 					{
 						TUser: cmn.TUser{
-							Account: "zhangsan",
+							Account: "zhangsan000",
 						},
 						Domains: []null.String{
 							null.NewString("cst.school^superAdmin", true),
@@ -2283,10 +2311,9 @@ func Test_service_ValidateUser(t *testing.T) {
 			wantInvalid: []User{
 				{
 					TUser: cmn.TUser{
-						Account: "zhangsan",
+						Account: "zhangsan000",
 					},
 					ErrorMsg: []null.String{
-						null.NewString("账号已存在", true),
 						null.NewString("不允许为超级管理员角色", true),
 					},
 				},

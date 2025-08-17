@@ -40,7 +40,7 @@ var (
 	testGrader                           = int64(99903) // 用于考试批阅员
 	testExamSession1StartTime            = time.Now().Add(-20 * time.Minute).UnixMilli()
 	testExamSession1EndTime              = time.Now().Add(-10 * time.Minute).UnixMilli()
-	testExamSession2StartTime            = time.Now().Add(-20 * time.Minute).UnixMilli()
+	testExamSession2StartTime            = time.Now().Add(20 * time.Minute).UnixMilli()
 	testExamSession2EndTime              = time.Now().Add(30 * time.Minute).UnixMilli()
 	testDeleteExamSessionStartTime       = time.Now().Add(30 * time.Minute).UnixMilli()
 	testDeleteExamSessionEndTime         = time.Now().Add(40 * time.Minute).UnixMilli()
@@ -320,8 +320,6 @@ func CreateTestExamData(t *testing.T) {
 		tx.Rollback(ctx)
 		t.Fatalf("插入测试场次数据失败: %v", err)
 	}
-
-	t.Log(testExamSession1StartTime, testExamSession1EndTime)
 
 	// 插入要发布的考试场次数据
 	_, err = tx.Exec(ctx, `
@@ -606,13 +604,15 @@ func TestSetExamTimers(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 
 			ctx := context.Background()
+			ctx, cancel := context.WithCancel(ctx)
+			defer cancel()
 			if tt.forceError != "" {
 				// 强制模拟错误
 				ctx = context.WithValue(ctx, "SetExamTimers-force-error", tt.forceError)
 			}
 
 			// 初始化全局定时器管理器
-			examTimerMgr = NewExamTimerManager(ctx)
+			examTimerMgr = NewExamTimerManager(ctx, cancel)
 			defer examTimerMgr.StopAll()
 
 			// 执行测试
@@ -634,8 +634,8 @@ func TestSetExamTimers(t *testing.T) {
 			// 验证定时器设置
 			if tt.checkTimers && !tt.expectError {
 				examTimerMgr.mutex.Lock()
-				startTimerKey := fmt.Sprintf("%s_%d", EVENT_TYPE_EXAM_SESSION_START, testExamSessionID1)
-				endTimerKey := fmt.Sprintf("%s_%d", EVENT_TYPE_EXAM_SESSION_END, testExamSessionID1)
+				startTimerKey := fmt.Sprintf("%s_%d", EVENT_TYPE_EXAM_SESSION_START, testExamSessionID2)
+				endTimerKey := fmt.Sprintf("%s_%d", EVENT_TYPE_EXAM_SESSION_END, testExamSessionID2)
 
 				if _, exists := examTimerMgr.timers[startTimerKey]; !exists {
 					t.Error("考试场次开始定时器未设置")
@@ -693,13 +693,15 @@ func TestCancelExamTimers(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			ctx := context.Background()
+			ctx, cancel := context.WithCancel(ctx)
+			defer cancel()
 			if tt.forceError != "" {
 				// 强制模拟错误
 				ctx = context.WithValue(ctx, "CancelExamTimers-force-error", tt.forceError)
 			}
 
 			// 初始化全局定时器管理器
-			examTimerMgr = NewExamTimerManager(ctx)
+			examTimerMgr = NewExamTimerManager(ctx, cancel)
 			defer examTimerMgr.StopAll()
 
 			// 如果需要，先设置定时器
@@ -989,12 +991,14 @@ func TestHandleExamSessionEnd(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			ctx := context.Background()
+			ctx, cancel := context.WithCancel(ctx)
+			defer cancel()
 			if tt.forceError != "" {
 				ctx = context.WithValue(ctx, "handleExamSessionEnd-force-error", tt.forceError)
 			}
 
 			// 初始化定时器管理器
-			examTimerMgr = NewExamTimerManager(ctx)
+			examTimerMgr = NewExamTimerManager(ctx, cancel)
 			defer examTimerMgr.StopAll()
 
 			// 执行测试
@@ -1025,7 +1029,7 @@ func TestHandleExamSessionEnd(t *testing.T) {
 				return
 			}
 
-			if sessionStatus != tt.expectedStatus {
+			if sessionStatus != tt.expectedStatus && tt.expectedStatus != "" {
 				t.Errorf("期望场次状态为 %s，但得到: %s", tt.expectedStatus, sessionStatus)
 			}
 
@@ -1058,4 +1062,226 @@ func TestHandleExamSessionEnd(t *testing.T) {
 			t.Logf("场次 %d 状态: %s", tt.event.ExamSessionID, sessionStatus)
 		})
 	}
+}
+
+// TestCleanupTempExams 测试cleanupTempExams函数
+func TestCleanupTempExams(t *testing.T) {
+	// 确保logger和数据库连接已初始化
+	if z == nil {
+		cmn.ConfigureForTest()
+	}
+
+	// 临时考试ID列表
+	tempExamIDs := []int64{99990, 99991, 99992, 99993, 99994}
+	testUserID := int64(99990)
+
+	// 准备测试数据
+	t.Cleanup(func() {
+		cleanupTempExamTestData(t, tempExamIDs, testUserID)
+	})
+
+	// 创建测试数据
+	setupTempExamTestData(t, tempExamIDs, testUserID)
+
+	tests := []struct {
+		name          string
+		forceError    string
+		expectedError bool
+		description   string
+		checkDeletion bool
+		expectedCount int64 // 期望删除的记录数
+	}{
+		{
+			name:          "成功清理过期临时考试",
+			forceError:    "",
+			expectedError: false,
+			description:   "正常清理24小时前创建的临时考试",
+			checkDeletion: true,
+			expectedCount: 3, // 3个过期的临时考试
+		},
+		{
+			name:          "数据库删除操作失败",
+			forceError:    "deleteTempExams",
+			expectedError: true,
+			description:   "模拟数据库删除操作失败",
+			checkDeletion: false,
+			expectedCount: 0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// 创建包含强制错误的上下文
+			ctx := context.Background()
+			if tt.forceError != "" {
+				ctx = context.WithValue(ctx, "cleanupTempExams-force-error", tt.forceError)
+			}
+
+			// 记录清理前的临时考试数量
+			var beforeCount int64
+			err := pgxConn.QueryRow(ctx, `
+				SELECT COUNT(*) FROM t_exam_info 
+				WHERE status = '14' AND create_time < $1
+			`, time.Now().Add(-24*time.Hour).UnixMilli()).Scan(&beforeCount)
+			if err != nil {
+				t.Fatalf("查询清理前临时考试数量失败: %v", err)
+			}
+
+			// 执行清理函数
+			func() {
+				defer func() {
+					if r := recover(); r != nil {
+						if !tt.expectedError {
+							t.Errorf("cleanupTempExams() 意外panic: %v", r)
+						}
+					}
+				}()
+
+				cleanupTempExams(ctx)
+			}()
+
+			if tt.checkDeletion {
+				// 验证清理后的临时考试数量
+				var afterCount int64
+				err := pgxConn.QueryRow(context.Background(), `
+					SELECT COUNT(*) FROM t_exam_info 
+					WHERE status = '14' AND create_time < $1
+				`, time.Now().Add(-24*time.Hour).UnixMilli()).Scan(&afterCount)
+				if err != nil {
+					t.Fatalf("查询清理后临时考试数量失败: %v", err)
+				}
+
+				deletedCount := beforeCount - afterCount
+				if deletedCount != tt.expectedCount {
+					t.Errorf("期望删除 %d 个临时考试，实际删除 %d 个", tt.expectedCount, deletedCount)
+				}
+
+				// 验证未过期的临时考试仍然存在
+				var recentCount int64
+				err = pgxConn.QueryRow(context.Background(), `
+					SELECT COUNT(*) FROM t_exam_info 
+					WHERE status = '14' AND create_time >= $1
+				`, time.Now().Add(-24*time.Hour).UnixMilli()).Scan(&recentCount)
+				if err != nil {
+					t.Fatalf("查询未过期临时考试数量失败: %v", err)
+				}
+
+				if recentCount != 2 { // 应该还有2个未过期的临时考试
+					t.Errorf("期望保留 2 个未过期的临时考试，实际保留 %d 个", recentCount)
+				}
+			}
+
+			t.Logf("测试完成: %s", tt.description)
+		})
+	}
+}
+
+// setupTempExamTestData 创建临时考试测试数据
+func setupTempExamTestData(t *testing.T, tempExamIDs []int64, testUserID int64) {
+	conn := cmn.GetPgxConn()
+	ctx := context.Background()
+
+	tx, err := conn.Begin(ctx)
+	if err != nil {
+		t.Fatalf("开始事务失败: %v", err)
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			tx.Rollback(ctx)
+			t.Fatalf("事务回滚: %v", r)
+		} else {
+			if err != nil {
+				tx.Rollback(ctx)
+				t.Fatalf("事务回滚: %v", err)
+			} else {
+				err = tx.Commit(ctx)
+				if err != nil {
+					t.Fatalf("事务提交失败: %v", err)
+				}
+			}
+		}
+	}()
+
+	// 创建测试用户
+	_, err = tx.Exec(ctx, `
+		INSERT INTO t_user (id, category, official_name, account, role) 
+		VALUES ($1, $2, $3, $4, $5)
+		ON CONFLICT (id) DO NOTHING`, testUserID, "sys^admin", "临时考试测试用户", "temp_exam_test_user", 2002)
+	if err != nil {
+		t.Fatalf("创建测试用户失败: %v", err)
+	}
+
+	hour25Ago := time.Now().Add(-25 * time.Hour).UnixMilli() // 25小时前，应该被清理
+	hour26Ago := time.Now().Add(-26 * time.Hour).UnixMilli() // 26小时前，应该被清理
+	hour27Ago := time.Now().Add(-27 * time.Hour).UnixMilli() // 27小时前，应该被清理
+	hour23Ago := time.Now().Add(-23 * time.Hour).UnixMilli() // 23小时前，不应该被清理
+	hour22Ago := time.Now().Add(-22 * time.Hour).UnixMilli() // 22小时前，不应该被清理
+
+	// 创建临时考试数据
+	examData := []struct {
+		id          int64
+		name        string
+		createTime  int64
+		status      string
+		shouldClean bool
+	}{
+		{tempExamIDs[0], "过期临时考试1", hour25Ago, "14", true},   // 应该被清理
+		{tempExamIDs[1], "过期临时考试2", hour26Ago, "14", true},   // 应该被清理
+		{tempExamIDs[2], "过期临时考试3", hour27Ago, "14", true},   // 应该被清理
+		{tempExamIDs[3], "未过期临时考试1", hour23Ago, "14", false}, // 不应该被清理
+		{tempExamIDs[4], "未过期临时考试2", hour22Ago, "14", false}, // 不应该被清理
+	}
+
+	for _, exam := range examData {
+		_, err = tx.Exec(ctx, `
+			INSERT INTO t_exam_info (id, name, type, mode, status, creator, create_time, updated_by, update_time, domain_id)
+			VALUES ($1, $2, '00', '00', $3, $4, $5, $4, $5, 2000)
+		`, exam.id, exam.name, exam.status, testUserID, exam.createTime)
+		if err != nil {
+			t.Fatalf("创建临时考试数据失败 (ID: %d): %v", exam.id, err)
+		}
+	}
+
+	t.Logf("成功创建 %d 个临时考试测试数据", len(examData))
+}
+
+// cleanupTempExamTestData 清理临时考试测试数据
+func cleanupTempExamTestData(t *testing.T, tempExamIDs []int64, testUserID int64) {
+	conn := cmn.GetPgxConn()
+	ctx := context.Background()
+
+	tx, err := conn.Begin(ctx)
+	if err != nil {
+		t.Logf("开始清理事务失败: %v", err)
+		return
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			tx.Rollback(ctx)
+			t.Logf("清理事务回滚: %v", r)
+		} else {
+			if err != nil {
+				tx.Rollback(ctx)
+				t.Logf("清理事务回滚: %v", err)
+			} else {
+				tx.Commit(ctx)
+			}
+		}
+	}()
+
+	// 删除临时考试数据
+	for _, examID := range tempExamIDs {
+		_, err = tx.Exec(ctx, `DELETE FROM t_exam_info WHERE id = $1`, examID)
+		if err != nil {
+			t.Logf("删除临时考试数据失败 (ID: %d): %v", examID, err)
+		}
+	}
+
+	// 删除测试用户
+	_, err = tx.Exec(ctx, `DELETE FROM t_user WHERE id = $1`, testUserID)
+	if err != nil {
+		t.Logf("删除测试用户失败: %v", err)
+	}
+
+	t.Logf("清理临时考试测试数据完成")
 }

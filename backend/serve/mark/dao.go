@@ -128,7 +128,7 @@ func QueryExamList(ctx context.Context, req QueryMarkingListReq) (examList []Exa
 						COALESCE(mc.marked_count, 0) AS marked_student_count 
 					FROM
 						 t_exam_session es 
-					JOIN t_exam_info e ON e.id = es.exam_id AND e.status !='12'
+					JOIN t_exam_info e ON e.id = es.exam_id AND e.status !='12' AND e.status != '14' AND e.status != '16' 
 					JOIN t_exam_paper ep 
 						ON ep.exam_session_id = es.id 
 						AND ep.status IS NOT NULL 
@@ -144,7 +144,7 @@ func QueryExamList(ctx context.Context, req QueryMarkingListReq) (examList []Exa
 
 	getExamCountQuery := `	SELECT COUNT(DISTINCT es.exam_id) AS total_exams
 							FROM t_exam_session es
-							JOIN t_exam_info ei ON es.exam_id = ei.id AND ei.status != '12'
+							JOIN t_exam_info ei ON es.exam_id = ei.id AND ei.status != '12' AND ei.status != '14' AND ei.status != '16' 
 							JOIN t_exam_paper ep ON es.id = ep.exam_session_id AND ep.status != '04'
 							LEFT JOIN t_mark_info mi ON es.id = mi.exam_session_id AND mi.status != '04'
 							WHERE es.status IS NOT NULL
@@ -273,7 +273,7 @@ func QueryExamList(ctx context.Context, req QueryMarkingListReq) (examList []Exa
 		}
 
 		// TODO
-		unMarkedStudentCount := 0
+		//unMarkedStudentCount := 0
 		//if !req.User.IsAdmin && session.MarkMode.String == "04" {
 		//	// 非管理员下的试卷分配模式
 		//	var examineeIDs []int64
@@ -298,7 +298,7 @@ func QueryExamList(ctx context.Context, req QueryMarkingListReq) (examList []Exa
 				Name:                 fmt.Sprint(session.SessionNum.Int64),
 				PaperName:            paperName.String,
 				RespondentCount:      int(respondentCount.Int64),
-				UnMarkedStudentCount: unMarkedStudentCount,
+				UnMarkedStudentCount: int(totalUnmarkedStudentCount.Int64),
 				Status:               session.Status.String,
 				MarkStatus:           markStatus.String,
 				MarkMethod:           session.MarkMethod,
@@ -1071,7 +1071,7 @@ func InsertOrUpdateMarkingResults(ctx context.Context, markingResults []*cmn.TMa
 						INSERT INTO t_mark 
 							(examinee_id, question_id, teacher_id, exam_session_id, mark_details, score, create_time, creator, status, updated_by, update_time, practice_submission_id, practice_id)
 						VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-						ON CONFLICT (examinee_id, question_id, teacher_id, exam_session_id, practice_id, practice_submission_id) 
+						ON CONFLICT %s -- 约束条件 
 						DO UPDATE SET
 							mark_details = EXCLUDED.mark_details,
 							score = EXCLUDED.score,
@@ -1079,6 +1079,10 @@ func InsertOrUpdateMarkingResults(ctx context.Context, markingResults []*cmn.TMa
 							updated_by = EXCLUDED.updated_by
 						RETURNING id
 						`
+
+	upsertExamMarkQuery := fmt.Sprintf(upsertMarkQuery, `(examinee_id, question_id, teacher_id, exam_session_id)`)
+	upsertPracticeMarkQuery := fmt.Sprintf(upsertMarkQuery, `(question_id, teacher_id, practice_id, practice_submission_id)`)
+
 	pgxConn := cmn.GetPgxConn()
 
 	tx, err := pgxConn.Begin(ctx)
@@ -1106,9 +1110,8 @@ func InsertOrUpdateMarkingResults(ctx context.Context, markingResults []*cmn.TMa
 		}
 
 		if mark.TeacherID.Int64 == 0 {
-			err = fmt.Errorf("teacherID is required for mark")
-			z.Error(err.Error())
-			return
+			q := cmn.GetCtxValue(ctx)
+			mark.TeacherID = null.IntFrom(q.SysUser.ID.Int64)
 		}
 
 		if mark.Creator.Int64 <= 0 {
@@ -1133,9 +1136,16 @@ func InsertOrUpdateMarkingResults(ctx context.Context, markingResults []*cmn.TMa
 			return
 		}
 
+		var query string
+		if validExam {
+			query = upsertExamMarkQuery
+		} else {
+			query = upsertPracticeMarkQuery
+		}
+
 		var id null.Int
 
-		err = tx.QueryRow(ctx, upsertMarkQuery, mark.ExamineeID, mark.QuestionID, mark.TeacherID, mark.ExamSessionID, mark.MarkDetails, mark.Score, time.Now().UnixMilli(), mark.Creator, mark.Status, mark.UpdatedBy, mark.UpdateTime, mark.PracticeSubmissionID, mark.PracticeID).Scan(&id)
+		err = tx.QueryRow(ctx, query, mark.ExamineeID, mark.QuestionID, mark.TeacherID, mark.ExamSessionID, mark.MarkDetails, mark.Score, time.Now().UnixMilli(), mark.Creator, mark.Status, mark.UpdatedBy, mark.UpdateTime, mark.PracticeSubmissionID, mark.PracticeID).Scan(&id)
 		if err != nil || forceErr == "tx.QueryRow" {
 			err = fmt.Errorf("exec upsertMark query error: %v", err)
 			z.Error(err.Error())
@@ -1284,7 +1294,6 @@ func updateExamSessionOrPracticeSubmissionState(ctx context.Context, tx *pgx.Tx,
 	}
 
 	if status == "" {
-		// 考试：10， 练习提交：08
 		err = fmt.Errorf("invalid params: status is required")
 		z.Error(err.Error())
 		return
