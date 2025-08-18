@@ -559,7 +559,14 @@ func InitRespondent(ctx context.Context) {
 			q.RespErr()
 			return
 		}
-
+		// 有值说明是已经提交了的
+		if examineeInfo.ExamineeEndTime.Valid {
+			err := fmt.Errorf("当前已经提交作答，作答结束")
+			z.Error(err.Error(), zap.Int64("examinee id", examineeInfo.ID.Int64))
+			q.Err = err
+			q.RespErr()
+			return
+		}
 		//如果是监考员设置了学生可以进入考试的话，就不需要检查条件
 		if examineeInfo.ExamineeStatus.String != CanBeEnterStatus {
 			// 查考当前是否符合条件去初始化
@@ -570,6 +577,7 @@ func InitRespondent(ctx context.Context) {
 				return
 			}
 		}
+
 		u.ExamineeID = examineeInfo.ID.Int64
 
 		//保存开始时间

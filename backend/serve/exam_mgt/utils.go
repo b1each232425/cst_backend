@@ -116,6 +116,30 @@ func validateExamData(examData ExamData, isUpdate bool) error {
 		if examSession.MarkMethod != "00" {
 			examSession.MarkMode.String = "00"
 		}
+
+		if examSession.LateEntryTime.Int64 > int64(totalDuration) {
+			err := fmt.Errorf("设定的最迟进入考试时长: %d 不能大于等于总时长: %f", examSession.LateEntryTime.Int64, totalDuration)
+			z.Error(err.Error())
+			return err
+		}
+
+		if examSession.EarlySubmissionTime.Int64 > int64(totalDuration) {
+			err := fmt.Errorf("设定的最早交卷时间: %d 不能大于等于总时长: %f", examSession.EarlySubmissionTime.Int64, totalDuration)
+			z.Error(err.Error())
+			return err
+		}
+
+		if examSession.LateEntryTime.Int64 < 0 {
+			err := fmt.Errorf("设定的最迟进入考试时长: %d 不能小于0", examSession.LateEntryTime.Int64)
+			z.Error(err.Error())
+			return err
+		}
+
+		if examSession.EarlySubmissionTime.Int64 < 0 {
+			err := fmt.Errorf("设定的最早交卷时间: %d 不能小于0", examSession.EarlySubmissionTime.Int64)
+			z.Error(err.Error())
+			return err
+		}
 	}
 
 	return nil

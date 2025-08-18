@@ -8,6 +8,15 @@ const (
 )
 
 const (
+	// Question types
+	QuestionTypeSingleChoice   = "00" // 单选题
+	QuestionTypeMultipleChoice = "02" // 多选题
+	QuestionTypeTrueFalse      = "04" // 判断题
+	QuestionTypeFillInBlank    = "06" // 填空题
+	QuestionTypeEssay          = "08" // 简答题
+)
+
+const (
 	// allowDomain
 	DomainSuperAdmin          = "cst.school^superAdmin"           // 超级管理员
 	DomainAdmin               = "cst.school^admin"                // 管理员
@@ -29,11 +38,12 @@ func isAllowedDomain(domain string) bool {
 }
 
 var QuestionTypes = map[string]string{
-	"00": "单选题",
-	"02": "多选题",
-	"04": "判断题",
-	"06": "填空题",
-	"08": "简答题",
+	QuestionTypeSingleChoice:   "单选题",
+	QuestionTypeMultipleChoice: "多选题",
+	QuestionTypeTrueFalse:      "判断题",
+	QuestionTypeFillInBlank:    "填空题",
+	QuestionTypeEssay:          "简答题",
+	"test":                     "测试所用",
 }
 
 var QuestionDifficulty = map[int64]string{

@@ -3,10 +3,14 @@ package handler
 import (
 	"errors"
 	"fmt"
-	"github.com/cespare/xxhash/v2"
 	"log/slog"
+	"net/http"
 	"os"
+	"path/filepath"
+	"reflect"
 	"strconv"
+
+	"github.com/cespare/xxhash/v2"
 )
 
 func PreFinishRespCB(evt HookEvent) (resp HTTPResponse, err error) {
@@ -107,8 +111,65 @@ func PreFinishRespCB(evt HookEvent) (resp HTTPResponse, err error) {
 }
 
 func PreUploadCreateCB(evt HookEvent) (resp HTTPResponse, fic FileInfoChanges, err error) {
-	for k, v := range evt.Upload.MetaData {
-		slog.Info("--", k, v)
+	// while fileInfo.Size() < evt.Upload.Size continue to upload
+	return
+}
+
+func (handler *UnroutedHandler) IsDuplicate(w http.ResponseWriter, r *http.Request) (duplicated bool, err error) {
+	metadata := ParseMetadataHeader(r.Header.Get("Upload-Metadata"))
+	if metadata == nil {
+		return
 	}
+	checksum, hasChecksum := metadata["checksum"]
+
+	if !hasChecksum || checksum == "" {
+		// 如果没有提供 checksum，按正常流程处理
+		return
+	}
+
+	v := reflect.ValueOf(handler.composer.Core)
+	storePath := v.FieldByName("Path").String()
+	if storePath == "" {
+		err = errors.New("fileStore.Path")
+		slog.Error(err.Error())
+		return
+	}
+
+	fileInfo, err := os.Stat(filepath.Join(storePath, checksum))
+	if os.IsNotExist(err) {
+		err = nil
+		return
+	}
+	
+	if err != nil {
+		slog.Error(err.Error())
+		return
+	}
+
+	s, ok := metadata["filesize"]
+	if !ok || s == "" {
+		err = errors.New(`metadata["filesize"] isn't set`)
+		slog.Error(err.Error())
+		return
+	}
+	expectFileSize, err := strconv.ParseInt(s, 10, 64)
+	if err != nil {
+		slog.Error(err.Error())
+		return
+	}
+
+	if fileInfo.Size() == expectFileSize {
+		duplicated = true
+		return
+	}
+
+	if fileInfo.Size() > expectFileSize {
+		err = fmt.Errorf("警告: 文件 %s(%s) 存在但大小不匹配 (已存在: %d, 上传大小: %d), 但checksum竟然相同，难道是sha64不靠谱？",
+			metadata["filename"], checksum, fileInfo.Size(), expectFileSize)
+		slog.Error(err.Error())
+		return
+	}
+
+	// while fileInfo.Size() < evt.Upload.Size continue to upload
 	return
 }

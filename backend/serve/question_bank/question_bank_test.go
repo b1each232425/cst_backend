@@ -2167,6 +2167,421 @@ func TestQuestionGetMethod(t *testing.T) {
 				// 不需要验证，因为应该返回错误
 			},
 		},
+		{
+			name:          "按单个标签过滤题目",
+			query:         "/questions?bankID=" + fmt.Sprintf("%d", bankID) + "&tags=数据结构",
+			expectedCount: 3,
+			wantError:     false,
+			userID:        userID,
+			roleID:        teacherRoleID,
+			forceError:    "",
+			validate: func(t *testing.T, ctx context.Context, q *cmn.ServiceCtx) {
+				var questions []cmn.TQuestion
+				err := json.Unmarshal(q.Msg.Data, &questions)
+				require.NoError(t, err, "应能正确解析题目列表")
+
+				// 验证所有返回的题目都包含指定标签
+				for _, question := range questions {
+					var tags []string
+					err := json.Unmarshal(question.Tags, &tags)
+					require.NoError(t, err, "应能正确解析题目标签")
+					require.Contains(t, tags, "数据结构", "题目标签应包含'数据结构'")
+				}
+			},
+		},
+		{
+			name:          "按多个标签过滤题目",
+			query:         "/questions?bankID=" + fmt.Sprintf("%d", bankID) + "&tags=数据结构&tags=算法",
+			expectedCount: 2,
+			wantError:     false,
+			userID:        userID,
+			roleID:        teacherRoleID,
+			forceError:    "",
+			validate: func(t *testing.T, ctx context.Context, q *cmn.ServiceCtx) {
+				var questions []cmn.TQuestion
+				err := json.Unmarshal(q.Msg.Data, &questions)
+				require.NoError(t, err, "应能正确解析题目列表")
+
+				// 验证所有返回的题目都包含指定标签中的至少一个
+				for _, question := range questions {
+					var tags []string
+					err := json.Unmarshal(question.Tags, &tags)
+					require.NoError(t, err, "应能正确解析题目标签")
+
+					hasTargetTag := false
+					for _, tag := range tags {
+						if tag == "数据结构" || tag == "算法" {
+							hasTargetTag = true
+							break
+						}
+					}
+					require.True(t, hasTargetTag, "题目应包含'数据结构'或'算法'标签")
+				}
+			},
+		},
+		{
+			name:          "按多个题目类型过滤",
+			query:         "/questions?bankID=" + fmt.Sprintf("%d", bankID) + "&type=00&type=02",
+			expectedCount: 10,
+			wantError:     false,
+			userID:        userID,
+			roleID:        teacherRoleID,
+			forceError:    "",
+			validate: func(t *testing.T, ctx context.Context, q *cmn.ServiceCtx) {
+				var questions []cmn.TQuestion
+				err := json.Unmarshal(q.Msg.Data, &questions)
+				require.NoError(t, err, "应能正确解析题目列表")
+
+				// 验证所有返回的题目都是指定类型之一
+				for _, question := range questions {
+					require.True(t, question.Type == "00" || question.Type == "02",
+						"题目类型应为单选题(00)或多选题(02)")
+				}
+			},
+		},
+		{
+			name:          "按多个难度过滤题目",
+			query:         "/questions?bankID=" + fmt.Sprintf("%d", bankID) + "&difficulty=1&difficulty=3",
+			expectedCount: 4,
+			wantError:     false,
+			userID:        userID,
+			roleID:        teacherRoleID,
+			forceError:    "",
+			validate: func(t *testing.T, ctx context.Context, q *cmn.ServiceCtx) {
+				var questions []cmn.TQuestion
+				err := json.Unmarshal(q.Msg.Data, &questions)
+				require.NoError(t, err, "应能正确解析题目列表")
+
+				// 验证所有返回的题目都是指定难度之一
+				for _, question := range questions {
+					require.True(t, question.Difficulty.Int64 == 1 || question.Difficulty.Int64 == 3,
+						"题目难度应为简单(1)或困难(3)")
+				}
+			},
+		},
+		{
+			name:          "多条件组合过滤-类型+难度",
+			query:         "/questions?bankID=" + fmt.Sprintf("%d", bankID) + "&type=00&difficulty=2",
+			expectedCount: 3,
+			wantError:     false,
+			userID:        userID,
+			roleID:        teacherRoleID,
+			forceError:    "",
+			validate: func(t *testing.T, ctx context.Context, q *cmn.ServiceCtx) {
+				var questions []cmn.TQuestion
+				err := json.Unmarshal(q.Msg.Data, &questions)
+				require.NoError(t, err, "应能正确解析题目列表")
+
+				// 验证所有返回的题目都满足组合条件
+				for _, question := range questions {
+					require.Equal(t, "00", question.Type, "题目类型应为单选题")
+					require.Equal(t, int64(2), question.Difficulty.Int64, "题目难度应为中等")
+				}
+			},
+		},
+		{
+			name:          "多条件组合过滤-类型+标签+难度",
+			query:         "/questions?bankID=" + fmt.Sprintf("%d", bankID) + "&type=00&tags=数据结构&difficulty=1&difficulty=2",
+			expectedCount: 2,
+			wantError:     false,
+			userID:        userID,
+			roleID:        teacherRoleID,
+			forceError:    "",
+			validate: func(t *testing.T, ctx context.Context, q *cmn.ServiceCtx) {
+				var questions []cmn.TQuestion
+				err := json.Unmarshal(q.Msg.Data, &questions)
+				require.NoError(t, err, "应能正确解析题目列表")
+
+				// 验证所有返回的题目都满足组合条件
+				for _, question := range questions {
+					require.Equal(t, "00", question.Type, "题目类型应为单选题")
+					require.True(t, question.Difficulty.Int64 == 1 || question.Difficulty.Int64 == 2,
+						"题目难度应为简单或中等")
+
+					var tags []string
+					err := json.Unmarshal(question.Tags, &tags)
+					require.NoError(t, err, "应能正确解析题目标签")
+					require.Contains(t, tags, "数据结构", "题目应包含'数据结构'标签")
+				}
+			},
+		},
+		{
+			name:          "多条件组合过滤-内容+类型+标签",
+			query:         "/questions?bankID=" + fmt.Sprintf("%d", bankID) + "&content=数据&type=00&type=02&tags=数据结构",
+			expectedCount: 1,
+			wantError:     false,
+			userID:        userID,
+			roleID:        teacherRoleID,
+			forceError:    "",
+			validate: func(t *testing.T, ctx context.Context, q *cmn.ServiceCtx) {
+				var questions []cmn.TQuestion
+				err := json.Unmarshal(q.Msg.Data, &questions)
+				require.NoError(t, err, "应能正确解析题目列表")
+
+				// 验证所有返回的题目都满足组合条件
+				for _, question := range questions {
+					require.Contains(t, question.Content.String, "数据", "题目内容应包含'数据'")
+					require.True(t, question.Type == "00" || question.Type == "02",
+						"题目类型应为单选题或多选题")
+
+					var tags []string
+					err := json.Unmarshal(question.Tags, &tags)
+					require.NoError(t, err, "应能正确解析题目标签")
+					require.Contains(t, tags, "数据结构", "题目应包含'数据结构'标签")
+				}
+			},
+		},
+		{
+			name:          "不支持的题目类型",
+			query:         "/questions?bankID=" + fmt.Sprintf("%d", bankID) + "&type=99",
+			expectedCount: 0,
+			wantError:     true,
+			userID:        userID,
+			roleID:        teacherRoleID,
+			forceError:    "",
+			expectedError: "invalid type: 99",
+			validate: func(t *testing.T, ctx context.Context, q *cmn.ServiceCtx) {
+				// 不需要验证，因为应该返回错误
+			},
+		},
+		{
+			name:          "混合支持和不支持的题目类型",
+			query:         "/questions?bankID=" + fmt.Sprintf("%d", bankID) + "&type=00&type=99",
+			expectedCount: 0,
+			wantError:     true,
+			userID:        userID,
+			roleID:        teacherRoleID,
+			forceError:    "",
+			expectedError: "invalid type: 99",
+			validate: func(t *testing.T, ctx context.Context, q *cmn.ServiceCtx) {
+				// 不需要验证，因为应该返回错误
+			},
+		},
+		{
+			name:          "无效难度值会被忽略",
+			query:         "/questions?bankID=" + fmt.Sprintf("%d", bankID) + "&difficulty=1&difficulty=99",
+			expectedCount: 7, // 只返回难度为1的题目
+			wantError:     false,
+			userID:        userID,
+			roleID:        teacherRoleID,
+			forceError:    "",
+			validate: func(t *testing.T, ctx context.Context, q *cmn.ServiceCtx) {
+				var questions []cmn.TQuestion
+				err := json.Unmarshal(q.Msg.Data, &questions)
+				require.NoError(t, err, "应能正确解析题目列表")
+
+				// 验证所有返回的题目难度都为1（无效难度值被忽略）
+				for _, question := range questions {
+					require.Equal(t, int64(1), question.Difficulty.Int64, "题目难度应为简单(1)")
+				}
+			},
+		},
+		{
+			name:          "按不存在的标签过滤",
+			query:         "/questions?bankID=" + fmt.Sprintf("%d", bankID) + "&tags=不存在的标签",
+			expectedCount: 0,
+			wantError:     false,
+			userID:        userID,
+			roleID:        teacherRoleID,
+			forceError:    "",
+			validate: func(t *testing.T, ctx context.Context, q *cmn.ServiceCtx) {
+				var questions []cmn.TQuestion
+				err := json.Unmarshal(q.Msg.Data, &questions)
+				require.NoError(t, err, "应能正确解析题目列表")
+				require.Empty(t, questions, "不存在的标签应返回空结果")
+			},
+		},
+		{
+			name:          "复杂多条件过滤-所有参数",
+			query:         "/questions?bankID=" + fmt.Sprintf("%d", bankID) + "&content=网络&type=00&tags=计算机网络&difficulty=2&page=1&pageSize=5",
+			expectedCount: 1,
+			wantError:     false,
+			userID:        userID,
+			roleID:        teacherRoleID,
+			forceError:    "",
+			validate: func(t *testing.T, ctx context.Context, q *cmn.ServiceCtx) {
+				var questions []cmn.TQuestion
+				err := json.Unmarshal(q.Msg.Data, &questions)
+				require.NoError(t, err, "应能正确解析题目列表")
+
+				// 验证所有返回的题目都满足复杂组合条件
+				for _, question := range questions {
+					require.Contains(t, question.Content.String, "网络", "题目内容应包含'网络'")
+					require.Equal(t, "00", question.Type, "题目类型应为单选题")
+					require.Equal(t, int64(2), question.Difficulty.Int64, "题目难度应为中等")
+
+					var tags []string
+					err := json.Unmarshal(question.Tags, &tags)
+					require.NoError(t, err, "应能正确解析题目标签")
+					require.Contains(t, tags, "计算机网络", "题目应包含'计算机网络'标签")
+				}
+				require.LessOrEqual(t, len(questions), 5, "分页应限制结果数量")
+			},
+		},
+		{
+			name:          "空标签参数",
+			query:         "/questions?bankID=" + fmt.Sprintf("%d", bankID) + "&tags=",
+			expectedCount: 25, // 应返回所有题目
+			wantError:     false,
+			userID:        userID,
+			roleID:        teacherRoleID,
+			forceError:    "",
+			validate: func(t *testing.T, ctx context.Context, q *cmn.ServiceCtx) {
+				var questions []cmn.TQuestion
+				err := json.Unmarshal(q.Msg.Data, &questions)
+				require.NoError(t, err, "应能正确解析题目列表")
+				require.NotEmpty(t, questions, "空标签参数应返回所有题目")
+			},
+		},
+		{
+			name:          "空类型参数",
+			query:         "/questions?bankID=" + fmt.Sprintf("%d", bankID) + "&type=",
+			expectedCount: 25, // 应返回所有题目
+			wantError:     false,
+			userID:        userID,
+			roleID:        teacherRoleID,
+			forceError:    "",
+			validate: func(t *testing.T, ctx context.Context, q *cmn.ServiceCtx) {
+				var questions []cmn.TQuestion
+				err := json.Unmarshal(q.Msg.Data, &questions)
+				require.NoError(t, err, "应能正确解析题目列表")
+				require.NotEmpty(t, questions, "空类型参数应返回所有题目")
+			},
+		},
+		{
+			name:          "只有无效难度值",
+			query:         "/questions?bankID=" + fmt.Sprintf("%d", bankID) + "&difficulty=99&difficulty=100",
+			expectedCount: 25, // 无效难度被忽略，应返回所有题目
+			wantError:     false,
+			userID:        userID,
+			roleID:        teacherRoleID,
+			forceError:    "",
+			validate: func(t *testing.T, ctx context.Context, q *cmn.ServiceCtx) {
+				var questions []cmn.TQuestion
+				err := json.Unmarshal(q.Msg.Data, &questions)
+				require.NoError(t, err, "应能正确解析题目列表")
+				require.NotEmpty(t, questions, "无效难度值被忽略，应返回所有题目")
+			},
+		},
+		// 错误覆盖测试用例 - 用于提高代码覆盖率
+		{
+			name:          "强制总数查询错误-questions.conn.QueryRow",
+			query:         "/questions?bankID=" + fmt.Sprintf("%d", bankID),
+			expectedCount: 0,
+			wantError:     true,
+			userID:        userID,
+			roleID:        teacherRoleID,
+			forceError:    "questions.conn.QueryRow",
+			expectedError: "questions.conn.QueryRow",
+			validate: func(t *testing.T, ctx context.Context, q *cmn.ServiceCtx) {
+				// 不需要验证，因为应该返回错误
+			},
+		},
+		{
+			name:          "强制数据查询错误-questions.conn.Query",
+			query:         "/questions?bankID=" + fmt.Sprintf("%d", bankID),
+			expectedCount: 0,
+			wantError:     true,
+			userID:        userID,
+			roleID:        teacherRoleID,
+			forceError:    "questions.conn.Query",
+			expectedError: "questions.conn.Query",
+			validate: func(t *testing.T, ctx context.Context, q *cmn.ServiceCtx) {
+				// 不需要验证，因为应该返回错误
+			},
+		},
+		{
+			name:          "强制行扫描错误-questions.rows.Scan",
+			query:         "/questions?bankID=" + fmt.Sprintf("%d", bankID),
+			expectedCount: 0,
+			wantError:     true,
+			userID:        userID,
+			roleID:        teacherRoleID,
+			forceError:    "questions.rows.Scan",
+			expectedError: "questions.rows.Scan",
+			validate: func(t *testing.T, ctx context.Context, q *cmn.ServiceCtx) {
+				// 不需要验证，因为应该返回错误
+			},
+		},
+		{
+			name:          "强制行错误检查-questions.rows.Err()",
+			query:         "/questions?bankID=" + fmt.Sprintf("%d", bankID),
+			expectedCount: 0,
+			wantError:     true,
+			userID:        userID,
+			roleID:        teacherRoleID,
+			forceError:    "questions.rows.Err()",
+			expectedError: "questions.rows.Err()",
+			validate: func(t *testing.T, ctx context.Context, q *cmn.ServiceCtx) {
+				// 不需要验证，因为应该返回错误
+			},
+		},
+		{
+			name:          "强制JSON序列化错误-questions.json.Marshal",
+			query:         "/questions?bankID=" + fmt.Sprintf("%d", bankID),
+			expectedCount: 0,
+			wantError:     true,
+			userID:        userID,
+			roleID:        teacherRoleID,
+			forceError:    "questions.json.Marshal",
+			expectedError: "questions.json.Marshal",
+			validate: func(t *testing.T, ctx context.Context, q *cmn.ServiceCtx) {
+				// 不需要验证，因为应该返回错误
+			},
+		},
+		// 参数解析错误覆盖测试用例
+		{
+			name:          "无效的bankID参数",
+			query:         "/questions?bankID=invalid_bank_id",
+			expectedCount: 0,
+			wantError:     true,
+			userID:        userID,
+			roleID:        teacherRoleID,
+			forceError:    "",
+			expectedError: "invalid bankID",
+			validate: func(t *testing.T, ctx context.Context, q *cmn.ServiceCtx) {
+				// 不需要验证，因为应该返回错误
+			},
+		},
+		{
+			name:          "无效的page参数",
+			query:         "/questions?bankID=" + fmt.Sprintf("%d", bankID) + "&page=invalid_page",
+			expectedCount: 0,
+			wantError:     true,
+			userID:        userID,
+			roleID:        teacherRoleID,
+			forceError:    "",
+			expectedError: "invalid page",
+			validate: func(t *testing.T, ctx context.Context, q *cmn.ServiceCtx) {
+				// 不需要验证，因为应该返回错误
+			},
+		},
+		{
+			name:          "无效的pageSize参数",
+			query:         "/questions?bankID=" + fmt.Sprintf("%d", bankID) + "&pageSize=invalid_pagesize",
+			expectedCount: 0,
+			wantError:     true,
+			userID:        userID,
+			roleID:        teacherRoleID,
+			forceError:    "",
+			expectedError: "invalid pageSize",
+			validate: func(t *testing.T, ctx context.Context, q *cmn.ServiceCtx) {
+				// 不需要验证，因为应该返回错误
+			},
+		},
+		{
+			name:          "无效的difficulty参数",
+			query:         "/questions?bankID=" + fmt.Sprintf("%d", bankID) + "&difficulty=invalid_difficulty",
+			expectedCount: 0,
+			wantError:     true,
+			userID:        userID,
+			roleID:        teacherRoleID,
+			forceError:    "",
+			expectedError: "invalid difficulty",
+			validate: func(t *testing.T, ctx context.Context, q *cmn.ServiceCtx) {
+				// 不需要验证，因为应该返回错误
+			},
+		},
 	}
 
 	// 执行测试用例
@@ -2442,7 +2857,7 @@ func TestQuestionPostMethod(t *testing.T) {
 			userID:        testUserID,
 			roleID:        teacherRoleID,
 			forceError:    "",
-			expectedError: "question options must have at least two options",
+			expectedError: "single choice question must have at least 2 options",
 			validate: func(t *testing.T, ctx context.Context, q *cmn.ServiceCtx) {
 				// 不需要验证，因为应该返回错误
 			},
@@ -2453,9 +2868,9 @@ func TestQuestionPostMethod(t *testing.T) {
 				{
 					Type:       "06",
 					Difficulty: null.IntFrom(1),
-					Content:    null.StringFrom("<p>这是一道填空题，____是答案</p>"),
+					Content:    null.StringFrom(`<p>这是一道填空题，<span class="blank-item">____</span>是答案</p>`),
 					Tags:       types.JSONText(`["测试"]`),
-					Options: types.JSONText(`[
+					Answers: types.JSONText(`[
 						{
 							"index": 1,
 							"answer": "",
@@ -2463,7 +2878,6 @@ func TestQuestionPostMethod(t *testing.T) {
 							"grading_rule": ""
 						}
 					]`), // 缺少必需的字段值
-					Answers:  types.JSONText(`["答案"]`),
 					Score:    null.FloatFrom(2),
 					BelongTo: null.IntFrom(bankID),
 				},
@@ -2472,7 +2886,7 @@ func TestQuestionPostMethod(t *testing.T) {
 			userID:        testUserID,
 			roleID:        teacherRoleID,
 			forceError:    "",
-			expectedError: "subjective question must have non-empty index, score, answer and grading rule",
+			expectedError: "fill-in-blank question answer content cannot be empty for index 1",
 			validate: func(t *testing.T, ctx context.Context, q *cmn.ServiceCtx) {
 				// 不需要验证，因为应该返回错误
 			},
@@ -2485,7 +2899,7 @@ func TestQuestionPostMethod(t *testing.T) {
 					Difficulty: null.IntFrom(1),
 					Content:    null.StringFrom("<p>这是一道简答题</p>"),
 					Tags:       types.JSONText(`["测试"]`),
-					Options: types.JSONText(`[
+					Answers: types.JSONText(`[
 						{
 							"index": 1,
 							"answer": "答案内容",
@@ -2493,7 +2907,6 @@ func TestQuestionPostMethod(t *testing.T) {
 							"grading_rule": "keyword_match"
 						}
 					]`), // 分数为0
-					Answers:  types.JSONText(`["答案内容"]`),
 					Score:    null.FloatFrom(5),
 					BelongTo: null.IntFrom(bankID),
 				},
@@ -2502,7 +2915,7 @@ func TestQuestionPostMethod(t *testing.T) {
 			userID:        testUserID,
 			roleID:        teacherRoleID,
 			forceError:    "",
-			expectedError: "subjective question must have non-empty index, score, answer and grading rule",
+			expectedError: "essay question answer score must be greater than 0, got: 0.000000",
 			validate: func(t *testing.T, ctx context.Context, q *cmn.ServiceCtx) {
 				// 不需要验证，因为应该返回错误
 			},
@@ -2573,9 +2986,9 @@ func TestQuestionPostMethod(t *testing.T) {
 				{
 					Type:       "06",
 					Difficulty: null.IntFrom(2),
-					Content:    null.StringFrom("<p>请填写Go语言的关键字：____是用来声明变量的关键字，____是用来声明常量的关键字。</p>"),
+					Content:    null.StringFrom(`<p>请填写Go语言的关键字：<span class="blank-item">____</span>是用来声明变量的关键字，<span class="blank-item">____</span>是用来声明常量的关键字。</p>`),
 					Tags:       types.JSONText(`["填空", "Go语言"]`),
-					Options: types.JSONText(`[
+					Answers: types.JSONText(`[
 						{
 							"index": 1,
 							"answer": "var",
@@ -2591,7 +3004,6 @@ func TestQuestionPostMethod(t *testing.T) {
 							"grading_rule": "exact_match"
 						}
 					]`), // 填空题使用SubjectiveAnswer格式
-					Answers:                 types.JSONText(`["var", "const"]`), // 填空答案
 					Score:                   null.FloatFrom(4),
 					Analysis:                null.StringFrom("<p>var用于声明变量，const用于声明常量</p>"),
 					QuestionAttachmentsPath: types.JSONText(`[]`),
@@ -2610,12 +3022,12 @@ func TestQuestionPostMethod(t *testing.T) {
 				require.Equal(t, "06", questions[0].Type, "题目类型应为填空题")
 
 				// 验证填空题的答案格式
-				var answers []string
+				var answers []SubjectiveAnswer
 				err = json.Unmarshal(questions[0].Answers, &answers)
 				require.NoError(t, err, "应能正确解析填空题答案")
 				require.Len(t, answers, 2, "填空题应有2个答案")
-				require.Equal(t, "var", answers[0], "第一个答案应为var")
-				require.Equal(t, "const", answers[1], "第二个答案应为const")
+				require.Equal(t, "var", answers[0].Answer, "第一个答案应为var")
+				require.Equal(t, "const", answers[1].Answer, "第二个答案应为const")
 			},
 		},
 		{
@@ -2626,7 +3038,7 @@ func TestQuestionPostMethod(t *testing.T) {
 					Difficulty: null.IntFrom(3),
 					Content:    null.StringFrom("<p>请简述Go语言中goroutine的工作原理以及它与传统线程的区别。</p>"),
 					Tags:       types.JSONText(`["简答", "Go语言", "并发"]`),
-					Options: types.JSONText(`[
+					Answers: types.JSONText(`[
 						{
 							"index": 1,
 							"answer": "goroutine是Go语言中的轻量级线程，由Go运行时管理。与传统操作系统线程相比，goroutine具有更小的内存占用、更快的创建和销毁速度、以及由Go调度器管理的协作式调度特性。",
@@ -2635,7 +3047,6 @@ func TestQuestionPostMethod(t *testing.T) {
 							"grading_rule": "keyword_match"
 						}
 					]`), // 简答题使用SubjectiveAnswer格式
-					Answers:                 types.JSONText(`["goroutine是Go语言中的轻量级线程，由Go运行时管理。与传统操作系统线程相比，goroutine具有更小的内存占用、更快的创建和销毁速度、以及由Go调度器管理的协作式调度特性。"]`),
 					Score:                   null.FloatFrom(10),
 					Analysis:                null.StringFrom("<p>考查对Go语言并发机制的理解，重点是goroutine的特点和优势</p>"),
 					QuestionAttachmentsPath: types.JSONText(`[]`),
@@ -2662,9 +3073,9 @@ func TestQuestionPostMethod(t *testing.T) {
 				{
 					Type:       "06", // 填空题
 					Difficulty: null.IntFrom(1),
-					Content:    null.StringFrom("<p>Go语言的包管理工具是____</p>"),
+					Content:    null.StringFrom(`<p>Go语言的包管理工具是<span class="blank-item">____</span></p>`),
 					Tags:       types.JSONText(`["填空", "基础"]`),
-					Options: types.JSONText(`[
+					Answers: types.JSONText(`[
 						{
 							"index": 1,
 							"answer": "go mod",
@@ -2673,7 +3084,6 @@ func TestQuestionPostMethod(t *testing.T) {
 							"grading_rule": "exact_match"
 						}
 					]`),
-					Answers:                 types.JSONText(`["go mod"]`),
 					Score:                   null.FloatFrom(2),
 					Analysis:                null.StringFrom("<p>go mod是Go语言的官方包管理工具</p>"),
 					QuestionAttachmentsPath: types.JSONText(`[]`),
@@ -2684,7 +3094,7 @@ func TestQuestionPostMethod(t *testing.T) {
 					Difficulty: null.IntFrom(2),
 					Content:    null.StringFrom("<p>请解释Go语言中interface{}的作用</p>"),
 					Tags:       types.JSONText(`["简答", "接口"]`),
-					Options: types.JSONText(`[
+					Answers: types.JSONText(`[
 						{
 							"index": 1,
 							"answer": "interface{}是Go语言中的空接口，可以接受任何类型的值，常用于需要处理未知类型数据的场景。",
@@ -2693,7 +3103,6 @@ func TestQuestionPostMethod(t *testing.T) {
 							"grading_rule": "keyword_match"
 						}
 					]`),
-					Answers:                 types.JSONText(`["interface{}是Go语言中的空接口，可以接受任何类型的值，常用于需要处理未知类型数据的场景。"]`),
 					Score:                   null.FloatFrom(5),
 					Analysis:                null.StringFrom("<p>考查对Go语言接口机制的理解</p>"),
 					QuestionAttachmentsPath: types.JSONText(`[]`),
@@ -2861,6 +3270,180 @@ func TestQuestionPostMethod(t *testing.T) {
 			roleID:        teacherRoleID,
 			forceError:    "json.Unmarshal",
 			expectedError: "json.Unmarshal",
+			validate: func(t *testing.T, ctx context.Context, q *cmn.ServiceCtx) {
+			},
+		},
+		{
+			name: "cmn.InvalidEmptyNullValue",
+			reqBody: []cmn.TQuestion{
+				{
+					Type:       "00",
+					Difficulty: null.IntFrom(1),
+					Content:    null.StringFrom("<p><span style=\"font-size: 12pt\">这是一道单选题测试</span></p>"),
+					Tags:       types.JSONText(`["测试"]`),
+					Options: types.JSONText(`[
+						{ "label": "A", "value": "<p><span style=\"font-size: 12pt\">选项A</span></p>" },
+						{ "label": "B", "value": "<p><span style=\"font-size: 12pt\">选项B</span></p>" },
+						{ "label": "C", "value": "<p><span style=\"font-size: 12pt\">选项C</span></p>" },
+						{ "label": "D", "value": "<p><span style=\"font-size: 12pt\">选项D</span></p>" }
+					]`),
+					Answers:                 types.JSONText(`["A"]`),
+					Score:                   null.FloatFrom(2),
+					Analysis:                null.StringFrom("<p>这是解析</p>"),
+					QuestionAttachmentsPath: types.JSONText(`[]`),
+					BelongTo:                null.IntFrom(bankID),
+				},
+			},
+			wantError:     true,
+			userID:        testUserID,
+			roleID:        teacherRoleID,
+			forceError:    "cmn.InvalidEmptyNullValue",
+			expectedError: "cmn.InvalidEmptyNullValue",
+			validate: func(t *testing.T, ctx context.Context, q *cmn.ServiceCtx) {
+			},
+		},
+		{
+			name: "cmn.DML",
+			reqBody: []cmn.TQuestion{
+				{
+					Type:       "00",
+					Difficulty: null.IntFrom(1),
+					Content:    null.StringFrom("<p><span style=\"font-size: 12pt\">这是一道单选题测试</span></p>"),
+					Tags:       types.JSONText(`["测试"]`),
+					Options: types.JSONText(`[
+						{ "label": "A", "value": "<p><span style=\"font-size: 12pt\">选项A</span></p>" },
+						{ "label": "B", "value": "<p><span style=\"font-size: 12pt\">选项B</span></p>" },
+						{ "label": "C", "value": "<p><span style=\"font-size: 12pt\">选项C</span></p>" },
+						{ "label": "D", "value": "<p><span style=\"font-size: 12pt\">选项D</span></p>" }
+					]`),
+					Answers:                 types.JSONText(`["A"]`),
+					Score:                   null.FloatFrom(2),
+					Analysis:                null.StringFrom("<p>这是解析</p>"),
+					QuestionAttachmentsPath: types.JSONText(`[]`),
+					BelongTo:                null.IntFrom(bankID),
+				},
+			},
+			wantError:     true,
+			userID:        testUserID,
+			roleID:        teacherRoleID,
+			forceError:    "cmn.DML",
+			expectedError: "cmn.DML",
+			validate: func(t *testing.T, ctx context.Context, q *cmn.ServiceCtx) {
+			},
+		},
+		{
+			name: "QryResult.(int64)",
+			reqBody: []cmn.TQuestion{
+				{
+					Type:       "00",
+					Difficulty: null.IntFrom(1),
+					Content:    null.StringFrom("<p><span style=\"font-size: 12pt\">这是一道单选题测试</span></p>"),
+					Tags:       types.JSONText(`["测试"]`),
+					Options: types.JSONText(`[
+						{ "label": "A", "value": "<p><span style=\"font-size: 12pt\">选项A</span></p>" },
+						{ "label": "B", "value": "<p><span style=\"font-size: 12pt\">选项B</span></p>" },
+						{ "label": "C", "value": "<p><span style=\"font-size: 12pt\">选项C</span></p>" },
+						{ "label": "D", "value": "<p><span style=\"font-size: 12pt\">选项D</span></p>" }
+					]`),
+					Answers:                 types.JSONText(`["A"]`),
+					Score:                   null.FloatFrom(2),
+					Analysis:                null.StringFrom("<p>这是解析</p>"),
+					QuestionAttachmentsPath: types.JSONText(`[]`),
+					BelongTo:                null.IntFrom(bankID),
+				},
+			},
+			wantError:     true,
+			userID:        testUserID,
+			roleID:        teacherRoleID,
+			forceError:    "QryResult.(int64)",
+			expectedError: "qryResult should be int64",
+			validate: func(t *testing.T, ctx context.Context, q *cmn.ServiceCtx) {
+			},
+		},
+		{
+			name: "cmn.MarshalJSON",
+			reqBody: []cmn.TQuestion{
+				{
+					Type:       "00",
+					Difficulty: null.IntFrom(1),
+					Content:    null.StringFrom("<p><span style=\"font-size: 12pt\">这是一道单选题测试</span></p>"),
+					Tags:       types.JSONText(`["测试"]`),
+					Options: types.JSONText(`[
+						{ "label": "A", "value": "<p><span style=\"font-size: 12pt\">选项A</span></p>" },
+						{ "label": "B", "value": "<p><span style=\"font-size: 12pt\">选项B</span></p>" },
+						{ "label": "C", "value": "<p><span style=\"font-size: 12pt\">选项C</span></p>" },
+						{ "label": "D", "value": "<p><span style=\"font-size: 12pt\">选项D</span></p>" }
+					]`),
+					Answers:                 types.JSONText(`["A"]`),
+					Score:                   null.FloatFrom(2),
+					Analysis:                null.StringFrom("<p>这是解析</p>"),
+					QuestionAttachmentsPath: types.JSONText(`[]`),
+					BelongTo:                null.IntFrom(bankID),
+				},
+			},
+			wantError:     true,
+			userID:        testUserID,
+			roleID:        teacherRoleID,
+			forceError:    "cmn.MarshalJSON",
+			expectedError: "cmn.MarshalJSON",
+			validate: func(t *testing.T, ctx context.Context, q *cmn.ServiceCtx) {
+			},
+		},
+		{
+			name: "json.Marshal",
+			reqBody: []cmn.TQuestion{
+				{
+					Type:       "00",
+					Difficulty: null.IntFrom(1),
+					Content:    null.StringFrom("<p><span style=\"font-size: 12pt\">这是一道单选题测试</span></p>"),
+					Tags:       types.JSONText(`["测试"]`),
+					Options: types.JSONText(`[
+						{ "label": "A", "value": "<p><span style=\"font-size: 12pt\">选项A</span></p>" },
+						{ "label": "B", "value": "<p><span style=\"font-size: 12pt\">选项B</span></p>" },
+						{ "label": "C", "value": "<p><span style=\"font-size: 12pt\">选项C</span></p>" },
+						{ "label": "D", "value": "<p><span style=\"font-size: 12pt\">选项D</span></p>" }
+					]`),
+					Answers:                 types.JSONText(`["A"]`),
+					Score:                   null.FloatFrom(2),
+					Analysis:                null.StringFrom("<p>这是解析</p>"),
+					QuestionAttachmentsPath: types.JSONText(`[]`),
+					BelongTo:                null.IntFrom(bankID),
+				},
+			},
+			wantError:     true,
+			userID:        testUserID,
+			roleID:        teacherRoleID,
+			forceError:    "json.Marshal",
+			expectedError: "json.Marshal",
+			validate: func(t *testing.T, ctx context.Context, q *cmn.ServiceCtx) {
+			},
+		},
+		{
+			name: "json.Marshal",
+			reqBody: []cmn.TQuestion{
+				{
+					Type:       "00",
+					Difficulty: null.IntFrom(1),
+					Content:    null.StringFrom("<p><span style=\"font-size: 12pt\">这是一道单选题测试</span></p>"),
+					Tags:       types.JSONText(`["测试"]`),
+					Options: types.JSONText(`[
+						{ "label": "A", "value": "<p><span style=\"font-size: 12pt\">选项A</span></p>" },
+						{ "label": "B", "value": "<p><span style=\"font-size: 12pt\">选项B</span></p>" },
+						{ "label": "C", "value": "<p><span style=\"font-size: 12pt\">选项C</span></p>" },
+						{ "label": "D", "value": "<p><span style=\"font-size: 12pt\">选项D</span></p>" }
+					]`),
+					Answers:                 types.JSONText(`["A"]`),
+					Score:                   null.FloatFrom(2),
+					Analysis:                null.StringFrom("<p>这是解析</p>"),
+					QuestionAttachmentsPath: types.JSONText(`[]`),
+					BelongTo:                null.IntFrom(bankID),
+				},
+			},
+			wantError:     true,
+			userID:        testUserID,
+			roleID:        teacherRoleID,
+			forceError:    "json.Marshal",
+			expectedError: "json.Marshal",
 			validate: func(t *testing.T, ctx context.Context, q *cmn.ServiceCtx) {
 			},
 		},

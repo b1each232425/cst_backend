@@ -2,7 +2,7 @@
  * @Author: wusaber33
  * @Date: 2025-08-03 21:39:33
  * @LastEditors: wusaber33
- * @LastEditTime: 2025-08-13 18:58:24
+ * @LastEditTime: 2025-08-16 17:06:31
  * @FilePath: \assess\backend\serve\paper\paper.go
  * @Description:
  * Copyright (c) 2025 by wusaber33, All Rights Reserved.
@@ -32,61 +32,6 @@ import (
 
 	"go.uber.org/zap"
 	"w2w.io/cmn"
-)
-
-// actionsWithResult 定义需要返回结果的操作类型集合
-var actionsWithResult = map[string]bool{
-	"add_question": true, // 添加试题操作需返回新试题ID
-	"add_group":    true, // 添加分组操作需返回新分组ID
-}
-
-// Constants 定义HTTP请求超时时间
-const (
-	TIMEOUT = 5 * time.Second // HTTP请求处理超时时间
-)
-
-// Constants 定义试卷相关的业务常量
-const (
-	// 默认分组名称
-	DefaultGroup1Name = "一、单选题"
-	DefaultGroup2Name = "二、多选题"
-	DefaultGroup3Name = "三、判断题"
-	DefaultGroup4Name = "四、填空题"
-	DefaultGroup5Name = "五、简答题"
-
-	// 记录状态定义
-	StatusNormal   = "00" // 正常状态
-	StatusUnNormal = "02" // 已删除(软删除)
-
-	// 试卷分类
-	PaperCategoryExam     = "00" // 考试试卷
-	PaperCategoryPractice = "02" // 练习试卷
-
-	// 题目类型定义
-	QuestionTypeMultiChoice  = "00" // 多选题
-	QuestionTypeSingleChoice = "02" // 单选题
-	QuestionTypeJudgement    = "04" // 判断题
-	QuestionTypeFillBlank    = "06" // 填空题
-	QuestionTypeShortAnswer  = "08" // 简答题
-
-	// 试卷难度等级
-	Simple = "00" // 简单
-	Medium = "02" // 中等
-	Hard   = "04" // 困难
-
-	// 默认配置项
-	DefaultSuggestedDuration                                                = 120    // 默认答题时长(分钟)
-	DefaultPaperName                                                        = "新建试卷" // 默认试卷名称
-	PaperShareStatusPrivate, PaperShareStatusShared, PaperShareStatusPublic = "00", "02", "04"
-	ManualAssemblyType                                                      = "00"
-
-	//试卷长度限制
-	MaxDescription = 500
-	MaxPaperName   = 50
-
-	//试卷编辑锁前缀
-	REDIS_LOCK_PREFIX     = "paper_lock:"
-	REDIS_LOCK_EXPRIATION = 5 * time.Minute
 )
 
 // 全局日志对象
@@ -324,8 +269,9 @@ func ManualPaper(ctx context.Context) {
 				// 强制错误，用于测试
 				if forceError == "Rollback-err" {
 					err = errors.New(forceError)
+					q.RespErr()
 				}
-				if err != nil && err != pgx.ErrTxClosed {
+				if err != nil && !errors.Is(err, pgx.ErrTxClosed) {
 					z.Error(err.Error())
 				}
 			}
@@ -333,6 +279,8 @@ func ManualPaper(ctx context.Context) {
 			err := tx.Commit(ctx)
 			if forceError == "Commit-err" {
 				err = errors.New(forceError)
+				q.Err = err
+				q.RespErr()
 			}
 			if err != nil {
 				z.Error(err.Error())
@@ -343,6 +291,10 @@ func ManualPaper(ctx context.Context) {
 			panic(errors.New(forceError))
 		}
 		if forceError == "Commit-err" {
+			return
+		}
+		if forceError == "Rollback-err" {
+			q.Err = errors.New(forceError)
 			return
 		}
 
@@ -856,7 +808,6 @@ func updateManualPaper(ctx context.Context, paperID, userID int64, req UpdateMan
 			}
 			if rollbackErr != nil {
 				z.Error(rollbackErr.Error())
-				return
 			}
 			return
 		}
@@ -887,6 +838,8 @@ func updateManualPaper(ctx context.Context, paperID, userID int64, req UpdateMan
 	if forceError == "recover-err" {
 		panic(errors.New(forceError))
 	}
+	// 使用一个map来存储题目ID，之后可以通过临时ID来映射真实ID，然后再执行移动题目
+	var tempIDMap = make(map[int64]int64)
 	// 执行请求的操作
 	for _, act := range req.Actions {
 		// 存储操作结果
@@ -1101,16 +1054,16 @@ func updateManualPaper(ctx context.Context, paperID, userID int64, req UpdateMan
 				z.Error(err.Error())
 				return
 			}
-			// 验证请求体
-			const batchInsertPaperQuestionsSQL = `INSERT INTO t_paper_question 
-    (bank_question_id, group_id, "order", score,sub_score, creator, create_time, updated_by, update_time, status) 
-VALUES %s RETURNING id`
-			// 生成占位符和参数
-			var placeholders []string
-			var args []interface{}
-			paramIndex := 1
+			// 验证请求体和准备批量插入
 			now := time.Now().UnixMilli()
-			// 生成插入语句的占位符和参数
+
+			// 使用 pgx.Batch 进行高性能批量插入
+			batch := &pgx.Batch{}
+			const insertSQL = `INSERT INTO t_paper_question 
+    (bank_question_id, group_id, "order", score, sub_score, creator, create_time, updated_by, update_time, status) 
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id`
+
+			// 验证每个题目数据并添加到批处理中
 			for _, q := range req {
 				// 验证题目数据
 				if q.BankQuestionID <= 0 {
@@ -1147,62 +1100,55 @@ VALUES %s RETURNING id`
 						}
 					}
 				}
-				placeholders = append(placeholders, fmt.Sprintf(
-					"($%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d)",
-					paramIndex, paramIndex+1, paramIndex+2, paramIndex+3, paramIndex+4,
-					paramIndex+5, paramIndex+6, paramIndex+7, paramIndex+8, paramIndex+9,
-				))
-				args = append(args,
+
+				// 将插入语句添加到批处理中
+				batch.Queue(insertSQL,
 					q.BankQuestionID, q.GroupID, q.Order, q.Score, q.SubScore,
-					userID, now, userID, now, StatusNormal,
-				)
-				paramIndex += 10
+					userID, now, userID, now, StatusNormal)
 			}
 
-			// 使用参数化查询
-			query := fmt.Sprintf(batchInsertPaperQuestionsSQL,
-				strings.Join(placeholders, ","))
-			var rows pgx.Rows
-			rows, err = tx.Query(ctx, query, args...)
-			defer rows.Close()
-			if forceError == "tx.Query-err" {
+			// 执行批量操作
+			batchResults := tx.SendBatch(ctx, batch)
+			if forceError == "batch.SendBatch-err" {
 				err = errors.New(forceError)
+				batchResults.Close()
+				return nil, fmt.Errorf("批量插入题目失败 [错误:%v]", err)
 			}
-			if err != nil {
-				z.Error(err.Error())
-				return nil, err
-			}
+			defer batchResults.Close()
+
 			// 直接构建临时ID到数据库ID的映射
-			idMapping := make(map[string]int64, len(req))
-			i := 0
+			idMapping := make(map[int64]int64, len(req))
+
 			// 处理数据库返回的自增ID并构建映射关系
-			for rows.Next() {
+			for i := 0; i < len(req); i++ {
 				var id int64
-				err = rows.Scan(&id)
-				if forceError == "rows.Scan-err" {
+				err = batchResults.QueryRow().Scan(&id)
+				if forceError == "batchResults.Scan-err" {
 					err = errors.New(forceError)
 				}
 				if err != nil {
-					z.Error("error occurred while scanning returned ID", zap.Error(err))
+					z.Error("error occurred while scanning returned ID", zap.Error(err), zap.Int("index", i))
 					return nil, fmt.Errorf("扫描返回ID失败 [错误:%v]", err)
 				}
 
 				// 直接将数据库返回的ID与请求中的临时ID对应
 				idMapping[req[i].TempID] = id
-				i++
 			}
 
-			// 检查迭代过程中的错误
-			err = rows.Err()
-			if forceError == "rows.Err-err" {
+			// 检查批量操作是否有错误
+			err = batchResults.Close()
+			if forceError == "batchResults.Close-err" {
 				err = errors.New(forceError)
 			}
 			if err != nil {
-				z.Error("error occurred while getting returned ID", zap.Error(err))
-				return nil, fmt.Errorf("获取返回ID过程出错 [错误:%v]", err)
+				z.Error("error occurred while closing batch results", zap.Error(err))
+				return nil, fmt.Errorf("关闭批量结果时出错 [错误:%v]", err)
 			}
+
 			// 将ID映射结果存储到结果中
 			result = idMapping
+			// 清理临时ID映射
+			tempIDMap = idMapping
 		case "delete_question":
 			//解析结构体
 			var questionIDs []int64
@@ -1395,6 +1341,12 @@ WHERE id = $4`
 			if err != nil {
 				z.Error(err.Error())
 				return
+			}
+			// 替换题目ID数组中的临时ID（有些题目可能刚刚才创建）
+			for i, id := range orders {
+				if newID, ok := tempIDMap[id]; ok {
+					orders[i] = newID
+				}
 			}
 			// 验证题目ID
 			if err = validateIDs(orders); err != nil {

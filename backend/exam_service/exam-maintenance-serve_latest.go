@@ -734,7 +734,7 @@ func cleanupTempExams(ctx context.Context) {
 func startTempExamCleanup(ctx context.Context) {
 	z.Info("---->" + cmn.FncName())
 
-	// 创建24小时的定时器
+	// 创建间隔为24小时的定时器
 	ticker := time.NewTicker(24 * time.Hour)
 	defer ticker.Stop()
 

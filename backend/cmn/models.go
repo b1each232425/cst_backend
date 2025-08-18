@@ -3,10 +3,10 @@ package cmn
 import (
 	"context"
 	"database/sql"
-	"github.com/pkg/errors"
 	"regexp"
 
 	"github.com/jmoiron/sqlx/types"
+	"github.com/pkg/errors"
 	"w2w.io/null"
 )
 

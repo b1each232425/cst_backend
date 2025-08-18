@@ -134,7 +134,7 @@ func WebServe(_ *cobra.Command, _ []string) {
 		z.Fatal(err.Error())
 	}
 
-	err = setupFileServeHandler(router)
+	err = tusdSetup(router)
 	if err != nil {
 		z.Fatal(err.Error())
 	}
