@@ -1,6 +1,6 @@
 /*==============================================================*/
 /* DBMS name:      PostgreSQL 9.x                               */
-/* Created on:     2025/8/18 16:38:02                           */
+/* Created on:     2025/8/18 17:00:13                           */
 /*==============================================================*/
 
 
@@ -13986,12 +13986,10 @@ JOIN t_practice p ON ts.practice_id = p.id
 JOIN t_paper tp ON p.paper_id = tp.id
 JOIN v_exam_paper vep ON p.exam_paper_id = vep.id
 LEFT JOIN (
-    SELECT
-        student_id,
-        practice_id,
-        MAX(attempt) OVER (PARTITION BY student_id, practice_id) AS attempt_count
+    SELECT student_id, practice_id, MAX(attempt) AS attempt_count
     FROM t_practice_submissions
-) psub_max ON psub_max.student_id = ts.id AND psub_max.practice_id = ts.practice_id
+    GROUP BY student_id, practice_id
+) psub_max ON psub_max.student_id = ts.student_id AND psub_max.practice_id = ts.practice_id
 LEFT JOIN v_y_max_submitted_view vs ON vs.practice_id = p.id AND vs.student_id = ts.student_id
 LEFT JOIN v_latest_unsubmitted_practice lus ON lus.practice_id = ts.practice_id AND lus.student_id = ts.student_id
 LEFT JOIN v_latest_submitted_practice ls ON ls.practice_id = ts.practice_id AND ls.student_id = ts.student_id

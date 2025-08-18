@@ -60708,7 +60708,7 @@ LABL 0 Arial,8,N</a:FontList>
 <a:Code>id</a:Code>
 <a:CreationDate>1753948214</a:CreationDate>
 <a:Creator>Zpekii</a:Creator>
-<a:ModificationDate>1755506272</a:ModificationDate>
+<a:ModificationDate>1755507244</a:ModificationDate>
 <a:Modifier>zdlff</a:Modifier>
 <a:Comment>主键</a:Comment>
 <a:DataType>INT4</a:DataType>
@@ -60733,7 +60733,7 @@ LABL 0 Arial,8,N</a:FontList>
 <a:Code>student_id</a:Code>
 <a:CreationDate>1753948214</a:CreationDate>
 <a:Creator>Zpekii</a:Creator>
-<a:ModificationDate>1755505605</a:ModificationDate>
+<a:ModificationDate>1755507244</a:ModificationDate>
 <a:Modifier>zdlff</a:Modifier>
 <a:Comment>学生id</a:Comment>
 <a:DataType>INT4</a:DataType>
@@ -64751,7 +64751,7 @@ group by
 <a:Code>v_z_practice_summary</a:Code>
 <a:CreationDate>1753948214</a:CreationDate>
 <a:Creator>Zpekii</a:Creator>
-<a:ModificationDate>1755506272</a:ModificationDate>
+<a:ModificationDate>1755507244</a:ModificationDate>
 <a:Modifier>zdlff</a:Modifier>
 <a:EndScript>drop table if exists t_v_practice_summary;
 create table t_v_practice_summary as select * from v_z_practice_summary;</a:EndScript>
@@ -64785,12 +64785,10 @@ JOIN t_practice p ON ts.practice_id = p.id
 JOIN t_paper tp ON p.paper_id = tp.id
 JOIN v_exam_paper vep ON p.exam_paper_id = vep.id
 LEFT JOIN (
-    SELECT
-        student_id,
-        practice_id,
-        MAX(attempt) OVER (PARTITION BY student_id, practice_id) AS attempt_count
+    SELECT student_id, practice_id, MAX(attempt) AS attempt_count
     FROM t_practice_submissions
-) psub_max ON psub_max.student_id = ts.id AND psub_max.practice_id = ts.practice_id
+    GROUP BY student_id, practice_id
+) psub_max ON psub_max.student_id = ts.student_id AND psub_max.practice_id = ts.practice_id
 LEFT JOIN v_y_max_submitted_view vs ON vs.practice_id = p.id AND vs.student_id = ts.student_id
 LEFT JOIN v_latest_unsubmitted_practice lus ON lus.practice_id = ts.practice_id AND lus.student_id = ts.student_id
 LEFT JOIN v_latest_submitted_practice ls ON ls.practice_id = ts.practice_id AND ls.student_id = ts.student_id
@@ -64824,7 +64822,7 @@ from
    JOIN [{F6063EF0-FEE9-4FEC-A10C-5340AC0880B4}=t_practice] p on  ts.[{1A5EDE55-5F5B-4B59-A5D9-9A6732658B97}=practice_id] = p.id
    JOIN [{83F34F2A-F05B-4B64-B2F6-E928350D68EE}=t_paper] tp on  p.[{E96AE47D-116C-4F24-AFC7-F7EBF900031F}=paper_id] = tp.id
    JOIN [{27B2ECB8-84C7-4ED9-B1D9-251ED874C9E2}=v_exam_paper] vep on  p.[{1A46B790-1187-4ADC-9CFD-3BAC9B3E9692}=exam_paper_id] = vep.id
-   LEFT JOIN ( SELECT student_id, practice_id, MAX(attempt) OVER (PARTITION BY student_id, practice_id) AS attempt_count FROM t_practice_submissions ) psub_max on  psub_max.student_id = ts.[{FC1F76D3-6785-4942-9691-C0D8C6EFE8A7}=id] AND psub_max.practice_id = ts.[{1A5EDE55-5F5B-4B59-A5D9-9A6732658B97}=practice_id]
+   LEFT JOIN ( SELECT student_id, practice_id, MAX(attempt) AS attempt_count FROM t_practice_submissions GROUP BY student_id, practice_id ) psub_max on  psub_max.student_id = ts.[{EF09549E-846D-4860-9686-2D7B6BA4B036}=student_id] AND psub_max.practice_id = ts.[{1A5EDE55-5F5B-4B59-A5D9-9A6732658B97}=practice_id]
    LEFT JOIN [{5B771340-FB03-402D-8822-523C7B1AE4A7}=v_y_max_submitted_view] vs on  vs.[{C90A4DE6-E1EE-4ED1-8ECB-ED76E99D35B4}=practice_id] = p.id AND vs.[{67DECE69-5397-499C-969E-399733F0CC1B}=student_id] = ts.[{EF09549E-846D-4860-9686-2D7B6BA4B036}=student_id]
    LEFT JOIN [{E5EDAEC2-B3C0-4146-B5F7-DA0344644C90}=v_latest_unsubmitted_practice] lus on  lus.[{6538B332-CD37-425A-84C6-3B0305C6A107}=practice_id] = ts.[{1A5EDE55-5F5B-4B59-A5D9-9A6732658B97}=practice_id] AND lus.[{13F48CBF-1DDD-4319-B960-4A80786A8946}=student_id] = ts.[{EF09549E-846D-4860-9686-2D7B6BA4B036}=student_id]
    LEFT JOIN [{AD254765-3AFA-4607-9350-57D731DF1419}=v_latest_submitted_practice] ls on  ls.[{4B28C0F3-8C1A-4706-B713-3A2A14C0DC40}=practice_id] = ts.[{1A5EDE55-5F5B-4B59-A5D9-9A6732658B97}=practice_id] AND ls.[{90D80C0C-FCDB-4559-9659-98AE4748821F}=student_id] = ts.[{EF09549E-846D-4860-9686-2D7B6BA4B036}=student_id]
