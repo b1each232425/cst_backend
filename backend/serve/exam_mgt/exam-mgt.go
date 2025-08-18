@@ -1052,12 +1052,11 @@ func updateExamineeStatus(ctx context.Context, tx pgx.Tx, newStatus string, user
 
 	_, err := tx.Exec(ctx, `
 		UPDATE t_examinee 
-		SET status = $1, update_time = $2, updated_by = $3
-		FROM t_examinee e
-		JOIN t_exam_session es ON e.exam_session_id = es.id
-		WHERE t_examinee.id = e.id
-		AND es.exam_id = ANY($4) 
-		AND t_examinee.status != '08'
+        SET status = $1, update_time = $2, updated_by = $3
+        FROM t_exam_session es
+        WHERE t_examinee.exam_session_id = es.id
+        AND es.exam_id = ANY($4) 
+        AND t_examinee.status != '08'
 	`, newStatus, time.Now().UnixMilli(), userID, examIDs)
 	if forceErr == "updateExamineeStatus.Exec" {
 		err = fmt.Errorf("force error: %s", forceErr)
@@ -1656,11 +1655,11 @@ func exam(ctx context.Context) {
 		}
 
 		deleteExamineeSQL := `
-		UPDATE t_examinee SET status = '08', updated_by = $1,
-		update_time = $2
-		FROM t_examinee e
-		JOIN t_exam_session es ON e.exam_session_id = es.id
-		WHERE es.exam_id = $3 AND e.status != '08'`
+		UPDATE t_examinee SET status = '08', updated_by = $1, update_time = $2
+		FROM t_exam_session es 
+		WHERE t_examinee.exam_session_id = es.id 
+		AND es.exam_id = $3 
+		AND t_examinee.status != '08'`
 		_, q.Err = tx.Exec(ctx, deleteExamineeSQL, userID, currentTime, ExamData.ExamInfo.ID.Int64)
 		if forceErr == "tx.SoftDeleteExaminee" {
 			q.Err = fmt.Errorf("强制删除考生错误")
@@ -2174,11 +2173,11 @@ func exam(ctx context.Context) {
 		}
 
 		deleteExamineeSQL := `
-		UPDATE t_examinee SET status = '08', updated_by = $1,
-		update_time = $2
-		FROM t_examinee e
-		JOIN t_exam_session es ON e.exam_session_id = es.id
-		WHERE es.exam_id = ANY($3) AND e.status != '08'`
+		UPDATE t_examinee SET status = '08', updated_by = $1, update_time = $2
+		FROM t_exam_session es 
+		WHERE t_examinee.exam_session_id = es.id 
+		AND es.exam_id = ANY($3) 
+		AND t_examinee.status != '08'`
 		_, q.Err = tx.Exec(ctx, deleteExamineeSQL, userID, currentTime, examIDs)
 		if forceErr == "tx.SoftDeleteExaminee" {
 			q.Err = fmt.Errorf("强制删除考生错误")
