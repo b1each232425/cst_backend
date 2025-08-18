@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/gorilla/sessions"
+	"github.com/redis/go-redis/v9"
 	"github.com/spf13/viper"
 	"github.com/tidwall/gjson"
 
@@ -59,7 +60,7 @@ func TestMain(m *testing.M) {
 	sshUser = viper.GetString("examSiteServerSync.centralServerSSH.user")
 
 	sshHost = viper.GetString("examSiteServerSync.centralServerSSH.host")
-	
+
 	sshPort = viper.GetInt("examSiteServerSync.centralServerSSH.port")
 
 	m.Run()
@@ -3107,6 +3108,8 @@ func TestExamSiteList(t *testing.T) {
 
 func TestExamSiteSyncInit(t *testing.T) {
 
+	var serverCtx *cmn.ServiceCtx
+
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 
 		var respBody cmn.ReplyProto
@@ -3121,10 +3124,14 @@ func TestExamSiteSyncInit(t *testing.T) {
 			SysUser: &cmn.TUser{
 				ID: null.IntFrom(2025),
 			},
-			R:   r,
-			W:   w,
-			Msg: &cmn.ReplyProto{},
+			R:           r,
+			W:           w,
+			Msg:         &cmn.ReplyProto{},
 			RedisClient: cmn.GetRedisConn(),
+		}
+
+		if serverCtx != nil {
+			q = serverCtx
 		}
 
 		ctx := context.WithValue(context.Background(), cmn.QNearKey, q)
@@ -3187,6 +3194,7 @@ func TestExamSiteSyncInit(t *testing.T) {
 		})
 
 		w.WriteHeader(http.StatusOK)
+
 		w.Write(b)
 
 	}))
@@ -3213,7 +3221,38 @@ func TestExamSiteSyncInit(t *testing.T) {
 		cleanup      func()
 	}{
 		{
-			name: "同步初始化成功",
+			name: "同步初始化成功-中心服务器",
+			q: &cmn.ServiceCtx{
+				RedisClient: cmn.GetRedisConn(),
+				Tag: map[string]interface{}{
+					"endMsgListen": make(chan int),
+				},
+				Msg: &cmn.ReplyProto{},
+			},
+			passExpected: true,
+			errWanted:    "",
+			setup: func() {
+
+				viper.Set("examSiteServerSync.centralServerUrl", "")
+
+				viper.Set("examSiteServerSync.maxRetry", 1)
+
+				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
+
+			},
+			check: func(q *cmn.ServiceCtx) (err error) {
+				return
+			},
+			cleanup: func() {
+				viper.Set("examSiteServerSync.centralServerUrl", server.URL)
+			},
+		},
+		{
+			name: "同步初始化成功-考点服务器",
 			q: &cmn.ServiceCtx{
 				RedisClient: cmn.GetRedisConn(),
 				Tag: map[string]interface{}{
@@ -3238,8 +3277,16 @@ func TestExamSiteSyncInit(t *testing.T) {
 				return
 			},
 			cleanup: func() {
-				close(pullChan)
-				close(pushChan)
+				if pullChan != nil {
+					close(pullChan)
+				}
+
+				if pushChan != nil {
+					close(pushChan)
+				}
+
+				pullChan = nil
+				pushChan = nil
 			},
 		},
 		{
@@ -3279,8 +3326,16 @@ func TestExamSiteSyncInit(t *testing.T) {
 				return
 			},
 			cleanup: func() {
-				close(pullChan)
-				close(pushChan)
+				if pullChan != nil {
+					close(pullChan)
+				}
+
+				if pushChan != nil {
+					close(pushChan)
+				}
+
+				pullChan = nil
+				pushChan = nil
 			},
 		},
 		{
@@ -3289,7 +3344,7 @@ func TestExamSiteSyncInit(t *testing.T) {
 				RedisClient: cmn.GetRedisConn(),
 				Tag: map[string]interface{}{
 					"endMsgListen": make(chan int, 1),
-					"pullDone": make(chan int),
+					"pullDone":     make(chan int),
 				},
 				Msg: &cmn.ReplyProto{},
 			},
@@ -3316,7 +3371,7 @@ func TestExamSiteSyncInit(t *testing.T) {
 
 				SendPullMsg()
 
-				<- q.Tag["pullDone"].(chan int)
+				<-q.Tag["pullDone"].(chan int)
 
 				SendPushMsg()
 
@@ -3325,8 +3380,2514 @@ func TestExamSiteSyncInit(t *testing.T) {
 				return
 			},
 			cleanup: func() {
+
+				if pushChan != nil {
+					close(pushChan)
+				}
+
+				if pullChan != nil {
+					close(pullChan)
+				}
+
+				pullChan = nil
+				pushChan = nil
+			},
+		},
+		{
+			name: "同步初始化失败-强制创建 .pgpass 文件失败",
+			q: &cmn.ServiceCtx{
+				RedisClient: cmn.GetRedisConn(),
+				Tag: map[string]interface{}{
+					"endMsgListen":    make(chan int, 1),
+					"pullDone":        make(chan int),
+					"createPgpassErr": fmt.Errorf("forced create .pgpass file err"),
+				},
+				Msg: &cmn.ReplyProto{},
+			},
+			passExpected: false,
+			errWanted:    "forced create .pgpass file err",
+			setup: func() {
+
+				viper.Set("examSiteServerSync.maxRetry", 0)
+
+				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
+
+			},
+			check: func(q *cmn.ServiceCtx) (err error) {
+				return
+			},
+			cleanup: func() {
+
+				if pullChan != nil {
+					close(pullChan)
+				}
+
+				if pushChan != nil {
+					close(pushChan)
+				}
+
+				pullChan = nil
+				pushChan = nil
+
+			},
+		},
+		{
+			name: "同步初始化失败-强制写入 .pgpass 文件失败",
+			q: &cmn.ServiceCtx{
+				RedisClient: cmn.GetRedisConn(),
+				Tag: map[string]interface{}{
+					"endMsgListen":   make(chan int, 1),
+					"pullDone":       make(chan int),
+					"writePgpassErr": fmt.Errorf("forced write .pgpass file err"),
+				},
+				Msg: &cmn.ReplyProto{},
+			},
+			passExpected: false,
+			errWanted:    "forced write .pgpass file err",
+			setup: func() {
+
+				viper.Set("examSiteServerSync.maxRetry", 0)
+
+				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
+
+			},
+			check: func(q *cmn.ServiceCtx) (err error) {
+				return
+			},
+			cleanup: func() {
+
+				if pullChan != nil {
+					close(pullChan)
+				}
+
+				if pushChan != nil {
+					close(pushChan)
+				}
+
+				pullChan = nil
+				pushChan = nil
+
+			},
+		},
+		{
+			name: "同步初始化失败-强制更改 .pgpass 文件权限失败",
+			q: &cmn.ServiceCtx{
+				RedisClient: cmn.GetRedisConn(),
+				Tag: map[string]interface{}{
+					"endMsgListen":   make(chan int, 1),
+					"pullDone":       make(chan int),
+					"chmodPgpassErr": fmt.Errorf("forced chmod .pgpass file err"),
+				},
+				Msg: &cmn.ReplyProto{},
+			},
+			passExpected: false,
+			errWanted:    "forced chmod .pgpass file err",
+			setup: func() {
+
+				viper.Set("examSiteServerSync.maxRetry", 0)
+
+				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
+
+			},
+			check: func(q *cmn.ServiceCtx) (err error) {
+				return
+			},
+			cleanup: func() {
+
+				if pullChan != nil {
+					close(pullChan)
+				}
+
+				if pushChan != nil {
+					close(pushChan)
+				}
+
+				pullChan = nil
+				pushChan = nil
+
+			},
+		},
+		{
+			name: "同步初始化失败-强制关闭 .pgpass 文件失败",
+			q: &cmn.ServiceCtx{
+				RedisClient: cmn.GetRedisConn(),
+				Tag: map[string]interface{}{
+					"endMsgListen":   make(chan int, 1),
+					"pullDone":       make(chan int),
+					"closePgpassErr": fmt.Errorf("forced close .pgpass file err"),
+				},
+				Msg: &cmn.ReplyProto{},
+			},
+			passExpected: false,
+			errWanted:    "forced close .pgpass file err",
+			setup: func() {
+
+				viper.Set("examSiteServerSync.maxRetry", 0)
+
+				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
+
+			},
+			check: func(q *cmn.ServiceCtx) (err error) {
+				return
+			},
+			cleanup: func() {
+
+				if pullChan != nil {
+					close(pullChan)
+				}
+
+				if pushChan != nil {
+					close(pushChan)
+				}
+
+				pullChan = nil
+				pushChan = nil
+
+			},
+		},
+		{
+			name: "同步初始化失败-强制获取同步状态失败",
+			q: &cmn.ServiceCtx{
+				RedisClient: cmn.GetRedisConn(),
+				Tag: map[string]interface{}{
+					"endMsgListen":     make(chan int, 1),
+					"pullDone":         make(chan int),
+					"getSyncStatusErr": fmt.Errorf("forced get sync status err"),
+				},
+				Msg: &cmn.ReplyProto{},
+			},
+			passExpected: false,
+			errWanted:    "forced get sync status err",
+			setup: func() {
+
+				viper.Set("examSiteServerSync.maxRetry", 0)
+
+				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
+
+			},
+			check: func(q *cmn.ServiceCtx) (err error) {
+				return
+			},
+			cleanup: func() {
+
+				if pullChan != nil {
+					close(pullChan)
+				}
+
+				if pushChan != nil {
+					close(pushChan)
+				}
+
+				pullChan = nil
+				pushChan = nil
+
+			},
+		},
+		{
+			name: "同步初始化失败-强制设置同步状态失败",
+			q: &cmn.ServiceCtx{
+				RedisClient: cmn.GetRedisConn(),
+				Tag: map[string]interface{}{
+					"endMsgListen":     make(chan int, 1),
+					"pullDone":         make(chan int),
+					"setSyncStatusErr": fmt.Errorf("forced set sync status err"),
+				},
+				Msg: &cmn.ReplyProto{},
+			},
+			passExpected: false,
+			errWanted:    "forced set sync status err",
+			setup: func() {
+
+				viper.Set("examSiteServerSync.maxRetry", 0)
+
+				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
+
+			},
+			check: func(q *cmn.ServiceCtx) (err error) {
+				return
+			},
+			cleanup: func() {
+
+				if pullChan != nil {
+					close(pullChan)
+				}
+
+				if pushChan != nil {
+					close(pushChan)
+				}
+
+				pullChan = nil
+				pushChan = nil
+
+			},
+		},
+		{
+			name: "同步初始化失败-在Pull中获取同步状态Key值失败",
+			q: &cmn.ServiceCtx{
+				RedisClient: cmn.GetRedisConn(),
+				Tag: map[string]interface{}{
+					"endMsgListen":           make(chan int, 1),
+					"pullDone":               make(chan int),
+					"getSyncStatusErrInPull": fmt.Errorf("forced get sync status err in pull"),
+				},
+				Msg: &cmn.ReplyProto{},
+			},
+			passExpected: false,
+			errWanted:    "forced get sync status err in pull",
+			setup: func() {
+
+				viper.Set("examSiteServerSync.maxRetry", 0)
+
+				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
+
+			},
+			check: func(q *cmn.ServiceCtx) (err error) {
+				return
+			},
+			cleanup: func() {
+
+				if pullChan != nil {
+					close(pullChan)
+				}
+
+				if pushChan != nil {
+					close(pushChan)
+				}
+
+				pullChan = nil
+				pushChan = nil
+
+			},
+		},
+		{
+			name: "同步初始化成功-初始化前处于 PULLING 状态",
+			q: &cmn.ServiceCtx{
+				RedisClient: cmn.GetRedisConn(),
+				Tag:         map[string]interface{}{},
+				Msg:         &cmn.ReplyProto{},
+			},
+			passExpected: true,
+			errWanted:    "",
+			setup: func() {
+
+				viper.Set("examSiteServerSync.maxRetry", 0)
+
+				_, err := cmn.GetRedisConn().Set(context.Background(), SyncStatusKey, PULLING, 0).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
+
+			},
+			check: func(q *cmn.ServiceCtx) (err error) {
+
+				r, err := cmn.GetRedisConn().Get(context.Background(), SyncStatusKey).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
+
+				if r != PULLED {
+					err = fmt.Errorf("expect syncStatus is %s, got %s", PULLED, r)
+				}
+
+				return
+			},
+			cleanup: func() {
+
+				if pullChan != nil {
+					close(pullChan)
+				}
+
+				if pushChan != nil {
+					close(pushChan)
+				}
+
+				pullChan = nil
+				pushChan = nil
+
+			},
+		},
+		{
+			name: "同步初始化失败-初始化前处于 PULLED 状态",
+			q: &cmn.ServiceCtx{
+				RedisClient: cmn.GetRedisConn(),
+				Tag:         map[string]interface{}{},
+				Msg:         &cmn.ReplyProto{},
+			},
+			passExpected: false,
+			errWanted:    "当前数据尚未推送, 请先进行推送",
+			setup: func() {
+
+				viper.Set("examSiteServerSync.maxRetry", 0)
+
+				_, err := cmn.GetRedisConn().Set(context.Background(), SyncStatusKey, PULLED, 0).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
+
+			},
+			check: func(q *cmn.ServiceCtx) (err error) {
+
+				r, err := cmn.GetRedisConn().Get(context.Background(), SyncStatusKey).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
+
+				if r != PULLED {
+					err = fmt.Errorf("expect syncStatus is %s, got %s", PULLED, r)
+				}
+
+				return
+			},
+			cleanup: func() {
+
+				if pullChan != nil {
+					close(pullChan)
+				}
+
+				if pushChan != nil {
+					close(pushChan)
+				}
+
+				pullChan = nil
+				pushChan = nil
+
+			},
+		},
+		{
+			name: "同步初始化成功-初始化前处于 PUSHING 状态",
+			q: &cmn.ServiceCtx{
+				RedisClient: cmn.GetRedisConn(),
+				Tag:         map[string]interface{}{},
+				Msg:         &cmn.ReplyProto{},
+			},
+			passExpected: true,
+			errWanted:    "",
+			setup: func() {
+
+				viper.Set("examSiteServerSync.maxRetry", 0)
+
+				_, err := cmn.GetRedisConn().Set(context.Background(), SyncStatusKey, PUSHING, 0).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
+
+			},
+			check: func(q *cmn.ServiceCtx) (err error) {
+
+				r, err := cmn.GetRedisConn().Get(context.Background(), SyncStatusKey).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
+
+				if r != PUSHED {
+					err = fmt.Errorf("expected get syncStatus is %s, got %s", PUSHED, r)
+				}
+
+				return
+			},
+			cleanup: func() {
+
+				if pullChan != nil {
+					close(pullChan)
+				}
+
+				if pushChan != nil {
+					close(pushChan)
+				}
+
+				pullChan = nil
+				pushChan = nil
+
+			},
+		},
+		{
+			name: "同步初始化失败-初始化前处于 PULLING 状态但设置为 PUSHED 状态失败",
+			q: &cmn.ServiceCtx{
+				RedisClient: cmn.GetRedisConn(),
+				Tag: map[string]interface{}{
+					"setPushedStatusErr": fmt.Errorf("forced set pushed status err"),
+				},
+				Msg: &cmn.ReplyProto{},
+			},
+			passExpected: false,
+			errWanted:    "forced set pushed status err",
+			setup: func() {
+
+				viper.Set("examSiteServerSync.maxRetry", 0)
+
+				_, err := cmn.GetRedisConn().Set(context.Background(), SyncStatusKey, PULLING, 0).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
+
+			},
+			check: func(q *cmn.ServiceCtx) (err error) {
+				return
+			},
+			cleanup: func() {
+
+				if pullChan != nil {
+					close(pullChan)
+				}
+
+				if pushChan != nil {
+					close(pushChan)
+				}
+
+				pullChan = nil
+				pushChan = nil
+
+			},
+		},
+		{
+			name: "同步初始化失败-初始化前处于 PUSHING 状态但设置为 PULLED 状态失败",
+			q: &cmn.ServiceCtx{
+				RedisClient: cmn.GetRedisConn(),
+				Tag: map[string]interface{}{
+					"setPulledStatusErr": fmt.Errorf("forced set pulled status err"),
+				},
+				Msg: &cmn.ReplyProto{},
+			},
+			passExpected: false,
+			errWanted:    "forced set pulled status err",
+			setup: func() {
+
+				viper.Set("examSiteServerSync.maxRetry", 0)
+
+				_, err := cmn.GetRedisConn().Set(context.Background(), SyncStatusKey, PUSHING, 0).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
+
+			},
+			check: func(q *cmn.ServiceCtx) (err error) {
+				return
+			},
+			cleanup: func() {
+
+				if pushChan != nil {
+					close(pushChan)
+				}
+
+				if pullChan != nil {
+					close(pullChan)
+				}
+
+				pullChan = nil
+				pushChan = nil
+
+			},
+		},
+		{
+			name: "强制关闭Pull管道和Push管道",
+			q: &cmn.ServiceCtx{
+				RedisClient: cmn.GetRedisConn(),
+				Tag: map[string]interface{}{
+					"closeChan": make(chan int, 1),
+				},
+				Msg: &cmn.ReplyProto{},
+			},
+			passExpected: true,
+			errWanted:    "",
+			setup: func() {
+
+				viper.Set("examSiteServerSync.maxRetry", 0)
+
+				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
+
+			},
+			check: func(q *cmn.ServiceCtx) (err error) {
+
+				_, err = cmn.GetRedisConn().Set(context.Background(), SyncStatusKey, PUSHED, 0).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
+
 				close(pullChan)
+
 				close(pushChan)
+
+				<-q.Tag["closeChan"].(chan int)
+
+				t.Log("got end msg listen")
+
+				return
+			},
+			cleanup: func() {
+
+				if pushChan != nil {
+					close(pushChan)
+				}
+
+				if pullChan != nil {
+					close(pullChan)
+				}
+
+				pullChan = nil
+				pushChan = nil
+
+			},
+		},
+		{
+			name: "Pull拉取数据同步失败-当前处于 PULLING 状态",
+			q: &cmn.ServiceCtx{
+				RedisClient: cmn.GetRedisConn(),
+				Tag: map[string]interface{}{
+					"pullDone": make(chan int),
+				},
+				Msg: &cmn.ReplyProto{},
+			},
+			passExpected: false,
+			errWanted:    "当前正在拉取数据中, 不允许重复拉取",
+			setup: func() {
+
+				viper.Set("examSiteServerSync.maxRetry", 0)
+
+				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
+
+			},
+			check: func(q *cmn.ServiceCtx) (err error) {
+
+				_, err = cmn.GetRedisConn().Set(context.Background(), SyncStatusKey, PULLING, 0).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
+
+				SendPullMsg()
+
+				<-q.Tag["pullDone"].(chan int)
+
+				return
+			},
+			cleanup: func() {
+
+				if pushChan != nil {
+					close(pushChan)
+				}
+
+				if pullChan != nil {
+					close(pullChan)
+				}
+
+				pullChan = nil
+				pushChan = nil
+
+			},
+		},
+		{
+			name: "Pull拉取数据同步失败-当前处于 PULLED 状态",
+			q: &cmn.ServiceCtx{
+				RedisClient: cmn.GetRedisConn(),
+				Tag: map[string]interface{}{
+					"pullDone": make(chan int),
+				},
+				Msg: &cmn.ReplyProto{},
+			},
+			passExpected: false,
+			errWanted:    "当前数据尚未推送, 请先进行推送",
+			setup: func() {
+
+				viper.Set("examSiteServerSync.maxRetry", 0)
+
+				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
+
+			},
+			check: func(q *cmn.ServiceCtx) (err error) {
+
+				_, err = cmn.GetRedisConn().Set(context.Background(), SyncStatusKey, PULLED, 0).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
+
+				SendPullMsg()
+
+				<-q.Tag["pullDone"].(chan int)
+
+				return
+			},
+			cleanup: func() {
+
+				if pushChan != nil {
+					close(pushChan)
+				}
+
+				if pullChan != nil {
+					close(pullChan)
+				}
+
+				pullChan = nil
+				pushChan = nil
+
+			},
+		},
+		{
+			name: "Pull拉取数据同步失败-当前处于 PUSHING 状态",
+			q: &cmn.ServiceCtx{
+				RedisClient: cmn.GetRedisConn(),
+				Tag: map[string]interface{}{
+					"pullDone": make(chan int),
+				},
+				Msg: &cmn.ReplyProto{},
+			},
+			passExpected: false,
+			errWanted:    "当前正在推送数据中, 不允许进行拉取",
+			setup: func() {
+
+				viper.Set("examSiteServerSync.maxRetry", 0)
+
+				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
+
+			},
+			check: func(q *cmn.ServiceCtx) (err error) {
+
+				_, err = cmn.GetRedisConn().Set(context.Background(), SyncStatusKey, PUSHING, 0).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
+
+				SendPullMsg()
+
+				<-q.Tag["pullDone"].(chan int)
+
+				return
+			},
+			cleanup: func() {
+
+				if pushChan != nil {
+					close(pushChan)
+				}
+
+				if pullChan != nil {
+					close(pullChan)
+				}
+
+				pullChan = nil
+				pushChan = nil
+
+			},
+		},
+		{
+			name: "Pull拉取数据同步失败-强制 PULLING 状态设置失败",
+			q: &cmn.ServiceCtx{
+				RedisClient: cmn.GetRedisConn(),
+				Tag: map[string]interface{}{
+					"pullDone":                  make(chan int),
+					"setPullingStatusErrInPull": fmt.Errorf("forced set pulling status err"),
+				},
+				Msg: &cmn.ReplyProto{},
+			},
+			passExpected: false,
+			errWanted:    "forced set pulling status err",
+			setup: func() {
+
+				viper.Set("examSiteServerSync.maxRetry", 0)
+
+				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
+
+			},
+			check: func(q *cmn.ServiceCtx) (err error) {
+
+				_, err = cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
+
+				SendPullMsg()
+
+				<-q.Tag["pullDone"].(chan int)
+
+				return
+			},
+			cleanup: func() {
+
+				if pushChan != nil {
+					close(pushChan)
+				}
+
+				if pullChan != nil {
+					close(pullChan)
+				}
+
+				pullChan = nil
+				pushChan = nil
+
+			},
+		},
+		{
+			name: "Pull拉取数据同步失败-强制 PULLED 状态设置失败",
+			q: &cmn.ServiceCtx{
+				RedisClient: cmn.GetRedisConn(),
+				Tag: map[string]interface{}{
+					"pullDone":                 make(chan int),
+					"setPulledStatusErrInPull": fmt.Errorf("forced set pulled status err"),
+				},
+				Msg: &cmn.ReplyProto{},
+			},
+			passExpected: false,
+			errWanted:    "forced set pulled status err",
+			setup: func() {
+
+				viper.Set("examSiteServerSync.maxRetry", 0)
+
+				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
+
+			},
+			check: func(q *cmn.ServiceCtx) (err error) {
+
+				_, err = cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
+
+				SendPullMsg()
+
+				<-q.Tag["pullDone"].(chan int)
+
+				return
+			},
+			cleanup: func() {
+
+				if pushChan != nil {
+					close(pushChan)
+				}
+
+				if pullChan != nil {
+					close(pullChan)
+				}
+
+				pullChan = nil
+				pushChan = nil
+
+			},
+		},
+		{
+			name: "Pull拉取数据同步失败-强制 rsync 失败",
+			q: &cmn.ServiceCtx{
+				RedisClient: cmn.GetRedisConn(),
+				Tag: map[string]interface{}{
+					"pullDone":       make(chan int),
+					"rsyncErrInPull": fmt.Errorf("forced rsync err"),
+				},
+				Msg: &cmn.ReplyProto{},
+			},
+			passExpected: false,
+			errWanted:    fmt.Sprintf("COMMAND: %s\t ERR: %s\t DETAIL: %s", "", "forced rsync err", ""),
+			setup: func() {
+
+				viper.Set("examSiteServerSync.maxRetry", 0)
+
+				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
+
+			},
+			check: func(q *cmn.ServiceCtx) (err error) {
+
+				_, err = cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
+
+				SendPullMsg()
+
+				<-q.Tag["pullDone"].(chan int)
+
+				return
+			},
+			cleanup: func() {
+
+				if pushChan != nil {
+					close(pushChan)
+				}
+
+				if pullChan != nil {
+					close(pullChan)
+				}
+
+				pullChan = nil
+				pushChan = nil
+
+			},
+		},
+		{
+			name: "Pull拉取数据同步失败-强制 PUSHED 状态设置失败",
+			q: &cmn.ServiceCtx{
+				RedisClient: cmn.GetRedisConn(),
+				Tag: map[string]interface{}{
+					"pullDone":                 make(chan int),
+					"rsyncErrInPull":           fmt.Errorf("forced rsync err in pull"),
+					"setPushedStatusErrInPull": fmt.Errorf("forced set pushed status err"),
+				},
+				Msg: &cmn.ReplyProto{},
+			},
+			passExpected: false,
+			errWanted:    "forced set pushed status err",
+			setup: func() {
+
+				viper.Set("examSiteServerSync.maxRetry", 0)
+
+				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
+
+			},
+			check: func(q *cmn.ServiceCtx) (err error) {
+
+				_, err = cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
+
+				SendPullMsg()
+
+				<-q.Tag["pullDone"].(chan int)
+
+				return
+			},
+			cleanup: func() {
+
+				if pushChan != nil {
+					close(pushChan)
+				}
+
+				if pullChan != nil {
+					close(pullChan)
+				}
+
+				pullChan = nil
+				pushChan = nil
+
+			},
+		},
+		{
+			name: "Pull拉取数据同步失败-强制登录请求发送错误",
+			q: &cmn.ServiceCtx{
+				RedisClient: cmn.GetRedisConn(),
+				Tag: map[string]interface{}{
+					"pullDone":    make(chan int),
+					"loginReqErr": fmt.Errorf("forced login req err"),
+				},
+				Msg: &cmn.ReplyProto{},
+			},
+			passExpected: false,
+			errWanted:    "forced login req err",
+			setup: func() {
+
+				viper.Set("examSiteServerSync.maxRetry", 0)
+
+				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
+
+			},
+			check: func(q *cmn.ServiceCtx) (err error) {
+
+				_, err = cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
+
+				SendPullMsg()
+
+				<-q.Tag["pullDone"].(chan int)
+
+				return
+			},
+			cleanup: func() {
+
+				if pushChan != nil {
+					close(pushChan)
+				}
+
+				if pullChan != nil {
+					close(pullChan)
+				}
+
+				pullChan = nil
+				pushChan = nil
+
+			},
+		},
+		{
+			name: "Pull拉取数据同步失败-强制登录请求体解析错误",
+			q: &cmn.ServiceCtx{
+				RedisClient: cmn.GetRedisConn(),
+				Tag: map[string]interface{}{
+					"pullDone":              make(chan int),
+					"loginBodyUnmarshalErr": fmt.Errorf("forced login body unmarshal err"),
+				},
+				Msg: &cmn.ReplyProto{},
+			},
+			passExpected: false,
+			errWanted:    "forced login body unmarshal err",
+			setup: func() {
+
+				viper.Set("examSiteServerSync.maxRetry", 0)
+
+				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
+
+			},
+			check: func(q *cmn.ServiceCtx) (err error) {
+
+				_, err = cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
+
+				SendPullMsg()
+
+				<-q.Tag["pullDone"].(chan int)
+
+				return
+			},
+			cleanup: func() {
+
+				if pushChan != nil {
+					close(pushChan)
+				}
+
+				if pullChan != nil {
+					close(pullChan)
+				}
+
+				pullChan = nil
+				pushChan = nil
+
+			},
+		},
+		{
+			name: "Pull拉取数据同步失败-强制登录请求状态错误",
+			q: &cmn.ServiceCtx{
+				RedisClient: cmn.GetRedisConn(),
+				Tag: map[string]interface{}{
+					"pullDone":           make(chan int),
+					"loginRespStatusErr": fmt.Errorf("forced login status err"),
+				},
+				Msg: &cmn.ReplyProto{},
+			},
+			passExpected: false,
+			errWanted:    "forced login status err",
+			setup: func() {
+
+				viper.Set("examSiteServerSync.maxRetry", 0)
+
+				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
+
+			},
+			check: func(q *cmn.ServiceCtx) (err error) {
+
+				_, err = cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
+
+				SendPullMsg()
+
+				<-q.Tag["pullDone"].(chan int)
+
+				return
+			},
+			cleanup: func() {
+
+				if pushChan != nil {
+					close(pushChan)
+				}
+
+				if pullChan != nil {
+					close(pullChan)
+				}
+
+				pullChan = nil
+				pushChan = nil
+
+			},
+		},
+		{
+			name: "Pull拉取数据同步失败-强制登录请求体Data解析错误",
+			q: &cmn.ServiceCtx{
+				RedisClient: cmn.GetRedisConn(),
+				Tag: map[string]interface{}{
+					"pullDone":                  make(chan int),
+					"loginRespDataUnmarshalErr": fmt.Errorf("forced login resp data unmarshal err"),
+				},
+				Msg: &cmn.ReplyProto{},
+			},
+			passExpected: false,
+			errWanted:    "forced login resp data unmarshal err",
+			setup: func() {
+
+				viper.Set("examSiteServerSync.maxRetry", 0)
+
+				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
+
+			},
+			check: func(q *cmn.ServiceCtx) (err error) {
+
+				_, err = cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
+
+				SendPullMsg()
+
+				<-q.Tag["pullDone"].(chan int)
+
+				return
+			},
+			cleanup: func() {
+
+				if pushChan != nil {
+					close(pushChan)
+				}
+
+				if pullChan != nil {
+					close(pullChan)
+				}
+
+				pullChan = nil
+				pushChan = nil
+
+			},
+		},
+		{
+			name: "Pull拉取数据同步失败-强制同步请求体解析错误",
+			q: &cmn.ServiceCtx{
+				RedisClient: cmn.GetRedisConn(),
+				Tag: map[string]interface{}{
+					"pullDone":                 make(chan int),
+					"pullRespBodyUnmarshalErr": fmt.Errorf("forced sync resp body unmarshal err"),
+				},
+				Msg: &cmn.ReplyProto{},
+			},
+			passExpected: false,
+			errWanted:    "forced sync resp body unmarshal err",
+			setup: func() {
+
+				viper.Set("examSiteServerSync.maxRetry", 0)
+
+				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
+
+			},
+			check: func(q *cmn.ServiceCtx) (err error) {
+
+				_, err = cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
+
+				SendPullMsg()
+
+				<-q.Tag["pullDone"].(chan int)
+
+				return
+			},
+			cleanup: func() {
+
+				if pushChan != nil {
+					close(pushChan)
+				}
+
+				if pullChan != nil {
+					close(pullChan)
+				}
+
+				pullChan = nil
+				pushChan = nil
+
+			},
+		},
+		{
+			name: "Pull拉取数据同步失败-强制同步请求状态错误",
+			q: &cmn.ServiceCtx{
+				RedisClient: cmn.GetRedisConn(),
+				Tag: map[string]interface{}{
+					"pullDone":          make(chan int),
+					"pullRespStatusErr": fmt.Errorf("forced sync resp status err"),
+				},
+				Msg: &cmn.ReplyProto{},
+			},
+			passExpected: false,
+			errWanted:    "forced sync resp status err",
+			setup: func() {
+
+				viper.Set("examSiteServerSync.maxRetry", 0)
+
+				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
+
+			},
+			check: func(q *cmn.ServiceCtx) (err error) {
+
+				_, err = cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
+
+				SendPullMsg()
+
+				<-q.Tag["pullDone"].(chan int)
+
+				return
+			},
+			cleanup: func() {
+
+				if pushChan != nil {
+					close(pushChan)
+				}
+
+				if pullChan != nil {
+					close(pullChan)
+				}
+
+				pullChan = nil
+				pushChan = nil
+
+			},
+		},
+		{
+			name: "Pull拉取数据同步失败-强制同步请求体 data 解析错误",
+			q: &cmn.ServiceCtx{
+				RedisClient: cmn.GetRedisConn(),
+				Tag: map[string]interface{}{
+					"pullDone":                 make(chan int),
+					"pullRespDataUnmarshalErr": fmt.Errorf("forced sync resp data unmarshal err"),
+				},
+				Msg: &cmn.ReplyProto{},
+			},
+			passExpected: false,
+			errWanted:    "forced sync resp data unmarshal err",
+			setup: func() {
+
+				viper.Set("examSiteServerSync.maxRetry", 0)
+
+				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
+
+			},
+			check: func(q *cmn.ServiceCtx) (err error) {
+
+				_, err = cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
+
+				SendPullMsg()
+
+				<-q.Tag["pullDone"].(chan int)
+
+				return
+			},
+			cleanup: func() {
+
+				if pushChan != nil {
+					close(pushChan)
+				}
+
+				if pullChan != nil {
+					close(pullChan)
+				}
+
+				pullChan = nil
+				pushChan = nil
+
+			},
+		},
+		{
+			name: "Pull拉取数据同步失败-强制设置同步信息快照失败",
+			q: &cmn.ServiceCtx{
+				RedisClient: cmn.GetRedisConn(),
+				Tag: map[string]interface{}{
+					"pullDone":                   make(chan int),
+					"pullSetSyncInfoSnapShotErr": fmt.Errorf("forced set sync info snapshot err"),
+				},
+				Msg: &cmn.ReplyProto{},
+			},
+			passExpected: false,
+			errWanted:    "forced set sync info snapshot err",
+			setup: func() {
+
+				viper.Set("examSiteServerSync.maxRetry", 0)
+
+				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
+
+			},
+			check: func(q *cmn.ServiceCtx) (err error) {
+
+				_, err = cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
+
+				SendPullMsg()
+
+				<-q.Tag["pullDone"].(chan int)
+
+				return
+			},
+			cleanup: func() {
+
+				if pushChan != nil {
+					close(pushChan)
+				}
+
+				if pullChan != nil {
+					close(pullChan)
+				}
+
+				pullChan = nil
+				pushChan = nil
+
+			},
+		},
+		{
+			name: "Pull拉取数据同步失败-强制创建同步数据报错目录失败",
+			q: &cmn.ServiceCtx{
+				RedisClient: cmn.GetRedisConn(),
+				Tag: map[string]interface{}{
+					"pullDone":               make(chan int),
+					"pullMkdirAllDestDirErr": fmt.Errorf("forced create sync data error dir err"),
+				},
+				Msg: &cmn.ReplyProto{},
+			},
+			passExpected: false,
+			errWanted:    "forced create sync data error dir err",
+			setup: func() {
+
+				viper.Set("examSiteServerSync.maxRetry", 0)
+
+				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
+
+			},
+			check: func(q *cmn.ServiceCtx) (err error) {
+
+				_, err = cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
+
+				SendPullMsg()
+
+				<-q.Tag["pullDone"].(chan int)
+
+				return
+			},
+			cleanup: func() {
+
+				if pushChan != nil {
+					close(pushChan)
+				}
+
+				if pullChan != nil {
+					close(pullChan)
+				}
+
+				pullChan = nil
+				pushChan = nil
+
+			},
+		},
+		{
+			name: "Pull拉取数据同步失败-强制清除已同步的数据目录失败",
+			q: &cmn.ServiceCtx{
+				RedisClient: cmn.GetRedisConn(),
+				Tag: map[string]interface{}{
+					"pullDone":                make(chan int),
+					"pullRemoveAllDestDirErr": fmt.Errorf("forced remove all destination dir err"),
+				},
+				Msg: &cmn.ReplyProto{},
+			},
+			passExpected: false,
+			errWanted:    "forced remove all destination dir err",
+			setup: func() {
+
+				viper.Set("examSiteServerSync.maxRetry", 0)
+
+				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
+
+			},
+			check: func(q *cmn.ServiceCtx) (err error) {
+
+				_, err = cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
+
+				SendPullMsg()
+
+				<-q.Tag["pullDone"].(chan int)
+
+				return
+			},
+			cleanup: func() {
+
+				if pushChan != nil {
+					close(pushChan)
+				}
+
+				if pullChan != nil {
+					close(pullChan)
+				}
+
+				pullChan = nil
+				pushChan = nil
+
+			},
+		},
+		{
+			name: "Pull拉取数据同步失败-强制创建模式失败",
+			q: &cmn.ServiceCtx{
+				RedisClient: cmn.GetRedisConn(),
+				Tag: map[string]interface{}{
+					"pullDone":                make(chan int),
+					"pullCreateSchemaErr": fmt.Errorf("forced create schema err"),
+				},
+				Msg: &cmn.ReplyProto{},
+			},
+			passExpected: false,
+			errWanted:    "forced create schema err",
+			setup: func() {
+
+				viper.Set("examSiteServerSync.maxRetry", 0)
+
+				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
+
+			},
+			check: func(q *cmn.ServiceCtx) (err error) {
+
+				_, err = cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
+
+				SendPullMsg()
+
+				<-q.Tag["pullDone"].(chan int)
+
+				return
+			},
+			cleanup: func() {
+
+				if pushChan != nil {
+					close(pushChan)
+				}
+
+				if pullChan != nil {
+					close(pullChan)
+				}
+
+				pullChan = nil
+				pushChan = nil
+
+			},
+		},
+		
+		{
+			name: "Pull拉取数据同步失败-强制执行 pg_restore 失败",
+			q: &cmn.ServiceCtx{
+				RedisClient: cmn.GetRedisConn(),
+				Tag: map[string]interface{}{
+					"pullDone":                make(chan int),
+					"pgRestoreErrInPull": fmt.Errorf("forced pg_restore err"),
+				},
+				Msg: &cmn.ReplyProto{},
+			},
+			passExpected: false,
+			errWanted:    fmt.Sprintf("COMMAND: %s\t ERR: %s\t DETAIL: %s", "", "forced pg_restore err", ""),
+			setup: func() {
+
+				viper.Set("examSiteServerSync.maxRetry", 0)
+
+				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
+
+			},
+			check: func(q *cmn.ServiceCtx) (err error) {
+
+				_, err = cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
+
+				SendPullMsg()
+
+				<-q.Tag["pullDone"].(chan int)
+
+				return
+			},
+			cleanup: func() {
+
+				if pushChan != nil {
+					close(pushChan)
+				}
+
+				if pullChan != nil {
+					close(pullChan)
+				}
+
+				pullChan = nil
+				pushChan = nil
+
+			},
+		},
+		{
+			name: "Pull拉取数据同步失败-强制执行 psql 导入脚本失败",
+			q: &cmn.ServiceCtx{
+				RedisClient: cmn.GetRedisConn(),
+				Tag: map[string]interface{}{
+					"pullDone":                make(chan int),
+					"psqlImportScriptInPullErr": fmt.Errorf("forced psql import script err"),
+				},
+				Msg: &cmn.ReplyProto{},
+			},
+			passExpected: false,
+			errWanted:    fmt.Sprintf("COMMAND: %s\t ERR: %s\t DETAIL: %s", "", "forced psql import script err", ""),
+			setup: func() {
+
+				viper.Set("examSiteServerSync.maxRetry", 0)
+
+				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
+
+			},
+			check: func(q *cmn.ServiceCtx) (err error) {
+
+				_, err = cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
+
+				SendPullMsg()
+
+				<-q.Tag["pullDone"].(chan int)
+
+				return
+			},
+			cleanup: func() {
+
+				if pushChan != nil {
+					close(pushChan)
+				}
+
+				if pullChan != nil {
+					close(pullChan)
+				}
+
+				pullChan = nil
+				pushChan = nil
+
+			},
+		},
+		{
+			name: "Push推送数据同步失败-强制获取同步状态失败",
+			q: &cmn.ServiceCtx{
+				RedisClient: cmn.GetRedisConn(),
+				Tag: map[string]interface{}{
+					"endMsgListen":                make(chan int, 1),
+					"getSyncStatusErrInPush": fmt.Errorf("forced get sync status err"),
+				},
+				Msg: &cmn.ReplyProto{},
+			},
+			passExpected: false,
+			errWanted:    "forced get sync status err",
+			setup: func() {
+
+				viper.Set("examSiteServerSync.maxRetry", 1)
+
+				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
+
+			},
+			check: func(q *cmn.ServiceCtx) (err error) {
+
+				_, err = cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
+
+				SendPushMsg()
+
+				<-q.Tag["endMsgListen"].(chan int)
+
+				return
+			},
+			cleanup: func() {
+
+				if pushChan != nil {
+					close(pushChan)
+				}
+
+				if pullChan != nil {
+					close(pullChan)
+				}
+
+				pullChan = nil
+				pushChan = nil
+
+			},
+		},
+		{
+			name: "Push推送数据同步失败-当前处于 PULLING 状态",
+			q: &cmn.ServiceCtx{
+				RedisClient: cmn.GetRedisConn(),
+				Tag: map[string]interface{}{
+					"endMsgListen":                make(chan int, 1),
+				},
+				Msg: &cmn.ReplyProto{},
+			},
+			passExpected: false,
+			errWanted:    "当前正在拉取数据中, 不允许进行推送",
+			setup: func() {
+
+				viper.Set("examSiteServerSync.maxRetry", 0)
+
+				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
+
+			},
+			check: func(q *cmn.ServiceCtx) (err error) {
+
+				_, err = cmn.GetRedisConn().Set(context.Background(), SyncStatusKey, PULLING, 0).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
+
+				SendPushMsg()
+
+				<-q.Tag["endMsgListen"].(chan int)
+
+				return
+			},
+			cleanup: func() {
+
+				if pushChan != nil {
+					close(pushChan)
+				}
+
+				if pullChan != nil {
+					close(pullChan)
+				}
+
+				pullChan = nil
+				pushChan = nil
+
+			},
+		},
+		{
+			name: "Push推送数据同步失败-当前处于 PUSHING 状态",
+			q: &cmn.ServiceCtx{
+				RedisClient: cmn.GetRedisConn(),
+				Tag: map[string]interface{}{
+					"endMsgListen":                make(chan int, 1),
+				},
+				Msg: &cmn.ReplyProto{},
+			},
+			passExpected: false,
+			errWanted:    "当前正在推送数据中，不允许重复推送",
+			setup: func() {
+
+				viper.Set("examSiteServerSync.maxRetry", 0)
+
+				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
+
+			},
+			check: func(q *cmn.ServiceCtx) (err error) {
+
+				_, err = cmn.GetRedisConn().Set(context.Background(), SyncStatusKey, PUSHING, 0).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
+
+				SendPushMsg()
+
+				<-q.Tag["endMsgListen"].(chan int)
+
+				return
+			},
+			cleanup: func() {
+
+				if pushChan != nil {
+					close(pushChan)
+				}
+
+				if pullChan != nil {
+					close(pullChan)
+				}
+
+				pullChan = nil
+				pushChan = nil
+
+			},
+		},
+		{
+			name: "Push推送数据同步失败-当前处于 PUSHED 状态",
+			q: &cmn.ServiceCtx{
+				RedisClient: cmn.GetRedisConn(),
+				Tag: map[string]interface{}{
+					"endMsgListen":                make(chan int, 1),
+				},
+				Msg: &cmn.ReplyProto{},
+			},
+			passExpected: false,
+			errWanted:    "当前不允许推送数据,请先进行拉取同步数据",
+			setup: func() {
+
+				viper.Set("examSiteServerSync.maxRetry", 0)
+
+				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
+
+			},
+			check: func(q *cmn.ServiceCtx) (err error) {
+
+				_, err = cmn.GetRedisConn().Set(context.Background(), SyncStatusKey, PUSHED, 0).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
+
+				SendPushMsg()
+
+				<-q.Tag["endMsgListen"].(chan int)
+
+				return
+			},
+			cleanup: func() {
+
+				if pushChan != nil {
+					close(pushChan)
+				}
+
+				if pullChan != nil {
+					close(pullChan)
+				}
+
+				pullChan = nil
+				pushChan = nil
+
+			},
+		},
+		{
+			name: "Push推送数据同步失败-强制设置 PUSHING 失败",
+			q: &cmn.ServiceCtx{
+				RedisClient: cmn.GetRedisConn(),
+				Tag: map[string]interface{}{
+					"endMsgListen":                make(chan int, 1),
+					"SetPushingStatusErrInPush": fmt.Errorf("forced set pushing status err"),
+				},
+				Msg: &cmn.ReplyProto{},
+			},
+			passExpected: false,
+			errWanted:    "forced set pushing status err",
+			setup: func() {
+
+				viper.Set("examSiteServerSync.maxRetry", 0)
+
+				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
+
+			},
+			check: func(q *cmn.ServiceCtx) (err error) {
+
+				_, err = cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
+
+				SendPushMsg()
+
+				<-q.Tag["endMsgListen"].(chan int)
+
+				return
+			},
+			cleanup: func() {
+
+				if pushChan != nil {
+					close(pushChan)
+				}
+
+				if pullChan != nil {
+					close(pullChan)
+				}
+
+				pullChan = nil
+				pushChan = nil
+
+			},
+		},
+		{
+			name: "Push推送数据同步失败-强制登录失败",
+			q: &cmn.ServiceCtx{
+				RedisClient: cmn.GetRedisConn(),
+				Tag: map[string]interface{}{
+					"endMsgListen":                make(chan int, 1),
+					"loginRespDataUnmarshalErr": fmt.Errorf("forced login resp data unmarshal err"),
+				},
+				Msg: &cmn.ReplyProto{},
+			},
+			passExpected: false,
+			errWanted:    "forced login resp data unmarshal err",
+			setup: func() {
+
+				viper.Set("examSiteServerSync.maxRetry", 0)
+
+				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
+
+			},
+			check: func(q *cmn.ServiceCtx) (err error) {
+
+				_, err = cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
+
+				SendPushMsg()
+
+				<-q.Tag["endMsgListen"].(chan int)
+
+				return
+			},
+			cleanup: func() {
+
+				if pushChan != nil {
+					close(pushChan)
+				}
+
+				if pullChan != nil {
+					close(pullChan)
+				}
+
+				pullChan = nil
+				pushChan = nil
+
+			},
+		},
+		{
+			name: "Push推送数据同步失败-强制设置 PULLED 状态失败",
+			q: &cmn.ServiceCtx{
+				RedisClient: cmn.GetRedisConn(),
+				Tag: map[string]interface{}{
+					"endMsgListen":                make(chan int, 1),
+					"loginRespDataUnmarshalErr": fmt.Errorf("forced login resp data unmarshal err"),
+					"setPulledStatusErrInPush": fmt.Errorf("forced set pulled status err"),
+				},
+				Msg: &cmn.ReplyProto{},
+			},
+			passExpected: false,
+			errWanted:    "forced set pulled status err",
+			setup: func() {
+
+				viper.Set("examSiteServerSync.maxRetry", 0)
+
+				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
+
+			},
+			check: func(q *cmn.ServiceCtx) (err error) {
+
+				_, err = cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
+
+				SendPushMsg()
+
+				<-q.Tag["endMsgListen"].(chan int)
+
+				return
+			},
+			cleanup: func() {
+
+				if pushChan != nil {
+					close(pushChan)
+				}
+
+				if pullChan != nil {
+					close(pullChan)
+				}
+
+				pullChan = nil
+				pushChan = nil
+
+			},
+		},
+		{
+			name: "Push推送数据同步失败-强制设置 PULLED 状态失败",
+			q: &cmn.ServiceCtx{
+				RedisClient: cmn.GetRedisConn(),
+				Tag: map[string]interface{}{
+					"endMsgListen":                make(chan int, 1),
+					"setPushedStatusErrInPush": fmt.Errorf("forced set pushed status err"),
+				},
+				Msg: &cmn.ReplyProto{},
+			},
+			passExpected: false,
+			errWanted:    "forced set pushed status err",
+			setup: func() {
+
+				viper.Set("examSiteServerSync.maxRetry", 0)
+
+				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
+
+			},
+			check: func(q *cmn.ServiceCtx) (err error) {
+
+				_, err = cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
+
+				SendPushMsg()
+
+				<-q.Tag["endMsgListen"].(chan int)
+
+				return
+			},
+			cleanup: func() {
+
+				if pushChan != nil {
+					close(pushChan)
+				}
+
+				if pullChan != nil {
+					close(pullChan)
+				}
+
+				pullChan = nil
+				pushChan = nil
+
+			},
+		},
+		{
+			name: "Push推送数据同步失败-强制获取同步信息快照失败",
+			q: &cmn.ServiceCtx{
+				RedisClient: cmn.GetRedisConn(),
+				Tag: map[string]interface{}{
+					"endMsgListen":                make(chan int, 1),
+					"getSyncInfoErrInPush": fmt.Errorf("forced get sync info err: %w", redis.Nil),
+				},
+				Msg: &cmn.ReplyProto{},
+			},
+			passExpected: false,
+			errWanted:    fmt.Sprintf("没有找到同步信息, 请先进行拉取操作, err: %s", fmt.Errorf("forced get sync info err: %w", redis.Nil).Error()),
+			setup: func() {
+
+				viper.Set("examSiteServerSync.maxRetry", 0)
+
+				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
+
+			},
+			check: func(q *cmn.ServiceCtx) (err error) {
+
+				_, err = cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
+
+				SendPushMsg()
+
+				<-q.Tag["endMsgListen"].(chan int)
+
+				return
+			},
+			cleanup: func() {
+
+				if pushChan != nil {
+					close(pushChan)
+				}
+
+				if pullChan != nil {
+					close(pullChan)
+				}
+
+				pullChan = nil
+				pushChan = nil
+
+			},
+		},
+		{
+			name: "Push推送数据同步失败-强制解析同步信息快照失败",
+			q: &cmn.ServiceCtx{
+				RedisClient: cmn.GetRedisConn(),
+				Tag: map[string]interface{}{
+					"endMsgListen":                make(chan int, 1),
+					"unmarshalSyncInfoErrInPush": fmt.Errorf("forced unmarshal sync info err"),
+				},
+				Msg: &cmn.ReplyProto{},
+			},
+			passExpected: false,
+			errWanted:    "forced unmarshal sync info err",
+			setup: func() {
+
+				viper.Set("examSiteServerSync.maxRetry", 0)
+
+				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
+
+			},
+			check: func(q *cmn.ServiceCtx) (err error) {
+
+				_, err = cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
+
+				SendPushMsg()
+
+				<-q.Tag["endMsgListen"].(chan int)
+
+				return
+			},
+			cleanup: func() {
+
+				if pushChan != nil {
+					close(pushChan)
+				}
+
+				if pullChan != nil {
+					close(pullChan)
+				}
+
+				pullChan = nil
+				pushChan = nil
+
+			},
+		},
+		{
+			name: "Push推送数据同步失败-强制创建源目录失败",
+			q: &cmn.ServiceCtx{
+				RedisClient: cmn.GetRedisConn(),
+				Tag: map[string]interface{}{
+					"endMsgListen":                make(chan int, 1),
+					"mkdirAllSourceInPush": fmt.Errorf("forced mkdirAll source dir err"),
+				},
+				Msg: &cmn.ReplyProto{},
+			},
+			passExpected: false,
+			errWanted:    "forced mkdirAll source dir err",
+			setup: func() {
+
+				viper.Set("examSiteServerSync.maxRetry", 0)
+
+				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
+
+			},
+			check: func(q *cmn.ServiceCtx) (err error) {
+
+				_, err = cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
+
+				SendPushMsg()
+
+				<-q.Tag["endMsgListen"].(chan int)
+
+				return
+			},
+			cleanup: func() {
+
+				if pushChan != nil {
+					close(pushChan)
+				}
+
+				if pullChan != nil {
+					close(pullChan)
+				}
+
+				pullChan = nil
+				pushChan = nil
+
+			},
+		},
+		{
+			name: "Push推送数据同步失败-强制移除源目录失败",
+			q: &cmn.ServiceCtx{
+				RedisClient: cmn.GetRedisConn(),
+				Tag: map[string]interface{}{
+					"endMsgListen":                make(chan int, 1),
+					"removeAllSourceInPush": fmt.Errorf("forced removeAll source dir err"),
+				},
+				Msg: &cmn.ReplyProto{},
+			},
+			passExpected: false,
+			errWanted:    "forced removeAll source dir err",
+			setup: func() {
+
+				viper.Set("examSiteServerSync.maxRetry", 0)
+
+				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
+
+			},
+			check: func(q *cmn.ServiceCtx) (err error) {
+
+				_, err = cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
+
+				SendPushMsg()
+
+				<-q.Tag["endMsgListen"].(chan int)
+
+				return
+			},
+			cleanup: func() {
+
+				if pushChan != nil {
+					close(pushChan)
+				}
+
+				if pullChan != nil {
+					close(pullChan)
+				}
+
+				pullChan = nil
+				pushChan = nil
+
+			},
+		},
+		{
+			name: "Push推送数据同步失败-强制执行 psql 导出脚本失败 ",
+			q: &cmn.ServiceCtx{
+				RedisClient: cmn.GetRedisConn(),
+				Tag: map[string]interface{}{
+					"endMsgListen":                make(chan int, 1),
+					"psqlExportScriptErrInPush": fmt.Errorf("forced psql export script err"),
+				},
+				Msg: &cmn.ReplyProto{},
+			},
+			passExpected: false,
+			errWanted:    fmt.Sprintf("COMMAND: %s\t ERR: %s\t DETAIL: %s", "", "forced psql export script err", ""),
+			setup: func() {
+
+				viper.Set("examSiteServerSync.maxRetry", 0)
+
+				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
+
+			},
+			check: func(q *cmn.ServiceCtx) (err error) {
+
+				_, err = cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
+
+				SendPushMsg()
+
+				<-q.Tag["endMsgListen"].(chan int)
+
+				return
+			},
+			cleanup: func() {
+
+				if pushChan != nil {
+					close(pushChan)
+				}
+
+				if pullChan != nil {
+					close(pullChan)
+				}
+
+				pullChan = nil
+				pushChan = nil
+
+			},
+		},
+		{
+			name: "Push推送数据同步失败-强制发送同步请求失败",
+			q: &cmn.ServiceCtx{
+				RedisClient: cmn.GetRedisConn(),
+				Tag: map[string]interface{}{
+					"endMsgListen":                make(chan int, 1),
+					"syncReqErrInPush": fmt.Errorf("forced send sync req err"),
+				},
+				Msg: &cmn.ReplyProto{},
+			},
+			passExpected: false,
+			errWanted:    "forced send sync req err",
+			setup: func() {
+
+				viper.Set("examSiteServerSync.maxRetry", 0)
+
+				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
+
+			},
+			check: func(q *cmn.ServiceCtx) (err error) {
+
+				_, err = cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
+
+				SendPushMsg()
+
+				<-q.Tag["endMsgListen"].(chan int)
+
+				return
+			},
+			cleanup: func() {
+
+				if pushChan != nil {
+					close(pushChan)
+				}
+
+				if pullChan != nil {
+					close(pullChan)
+				}
+
+				pullChan = nil
+				pushChan = nil
+
+			},
+		},
+		{
+			name: "Push推送数据同步失败-强制解析同步响应体失败",
+			q: &cmn.ServiceCtx{
+				RedisClient: cmn.GetRedisConn(),
+				Tag: map[string]interface{}{
+					"endMsgListen":                make(chan int, 1),
+					"syncReqBodyUnmarshalErrInPush": fmt.Errorf("forced unmarshal sync resp err"),
+				},
+				Msg: &cmn.ReplyProto{},
+			},
+			passExpected: false,
+			errWanted:    "forced unmarshal sync resp err",
+			setup: func() {
+
+				viper.Set("examSiteServerSync.maxRetry", 0)
+
+				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
+
+			},
+			check: func(q *cmn.ServiceCtx) (err error) {
+
+				_, err = cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
+
+				SendPushMsg()
+
+				<-q.Tag["endMsgListen"].(chan int)
+
+				return
+			},
+			cleanup: func() {
+
+				if pushChan != nil {
+					close(pushChan)
+				}
+
+				if pullChan != nil {
+					close(pullChan)
+				}
+
+				pullChan = nil
+				pushChan = nil
+
+			},
+		},
+		{
+			name: "Push推送数据同步失败-强制同步响应状态失败",
+			q: &cmn.ServiceCtx{
+				RedisClient: cmn.GetRedisConn(),
+				Tag: map[string]interface{}{
+					"endMsgListen":                make(chan int, 1),
+					"syncReqStatusErrInPush": fmt.Errorf("forced sync resp status err"),
+				},
+				Msg: &cmn.ReplyProto{},
+			},
+			passExpected: false,
+			errWanted:    "forced sync resp status err",
+			setup: func() {
+
+				viper.Set("examSiteServerSync.maxRetry", 0)
+
+				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
+
+			},
+			check: func(q *cmn.ServiceCtx) (err error) {
+
+				_, err = cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
+
+				SendPushMsg()
+
+				<-q.Tag["endMsgListen"].(chan int)
+
+				return
+			},
+			cleanup: func() {
+
+				if pushChan != nil {
+					close(pushChan)
+				}
+
+				if pullChan != nil {
+					close(pullChan)
+				}
+
+				pullChan = nil
+				pushChan = nil
+
+			},
+		},
+		{
+			name: "Push推送数据同步失败-强制删除同步信息快照失败",
+			q: &cmn.ServiceCtx{
+				RedisClient: cmn.GetRedisConn(),
+				Tag: map[string]interface{}{
+					"endMsgListen":                make(chan int, 1),
+					"delSyncInfoSnapShotErrInPush": fmt.Errorf("forced delete sync info snapshot err"),
+				},
+				Msg: &cmn.ReplyProto{},
+			},
+			passExpected: false,
+			errWanted:    "forced delete sync info snapshot err",
+			setup: func() {
+
+				viper.Set("examSiteServerSync.maxRetry", 0)
+
+				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
+
+			},
+			check: func(q *cmn.ServiceCtx) (err error) {
+
+				_, err = cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
+
+				SendPushMsg()
+
+				<-q.Tag["endMsgListen"].(chan int)
+
+				return
+			},
+			cleanup: func() {
+
+				if pushChan != nil {
+					close(pushChan)
+				}
+
+				if pullChan != nil {
+					close(pullChan)
+				}
+
+				pullChan = nil
+				pushChan = nil
+
 			},
 		},
 	}
@@ -3385,8 +5946,6 @@ func TestExamSiteSyncInit(t *testing.T) {
 func TestExamSiteSyncApi(t *testing.T) {
 
 	nowTime := time.Now().Unix()
-
-	
 
 	tests := []struct {
 		name         string
@@ -3496,13 +6055,13 @@ func TestExamSiteSyncApi(t *testing.T) {
 		},
 
 		// ===========准备考点数据测试============
-		//   .oooooo.    oooooooooooo ooooooooooooo 
-		//  d8P'  `Y8b   `888'     `8 8'   888   `8 
-		// 888            888              888      
-		// 888            888oooo8         888      
-		// 888     ooooo  888    "         888      
-		// `88.    .88'   888       o      888      
-		//  `Y8bood8P'   o888ooooood8     o888o                              
+		//   .oooooo.    oooooooooooo ooooooooooooo
+		//  d8P'  `Y8b   `888'     `8 8'   888   `8
+		// 888            888              888
+		// 888            888oooo8         888
+		// 888     ooooo  888    "         888
+		// `88.    .88'   888       o      888
+		//  `Y8bood8P'   o888ooooood8     o888o
 		{
 			name: "准备数据成功",
 			q: &cmn.ServiceCtx{
@@ -3603,7 +6162,7 @@ func TestExamSiteSyncApi(t *testing.T) {
 				}
 
 			},
-			check: func(q *cmn.ServiceCtx)(err error) {
+			check: func(q *cmn.ServiceCtx) (err error) {
 				d := syncInfo{
 					Path:          "",
 					TableFileList: []string{},
@@ -3696,7 +6255,7 @@ func TestExamSiteSyncApi(t *testing.T) {
 				}
 
 			},
-			check: func(q *cmn.ServiceCtx)(err error) {
+			check: func(q *cmn.ServiceCtx) (err error) {
 				d := syncInfo{
 					Path:          "",
 					TableFileList: []string{},
@@ -3789,7 +6348,7 @@ func TestExamSiteSyncApi(t *testing.T) {
 				}
 
 			},
-			check: func(q *cmn.ServiceCtx)(err error) {
+			check: func(q *cmn.ServiceCtx) (err error) {
 				d := syncInfo{
 					Path:          "",
 					TableFileList: []string{},
@@ -3882,7 +6441,7 @@ func TestExamSiteSyncApi(t *testing.T) {
 				}
 
 			},
-			check: func(q *cmn.ServiceCtx)(err error) {
+			check: func(q *cmn.ServiceCtx) (err error) {
 				d := syncInfo{
 					Path:          "",
 					TableFileList: []string{},
@@ -3975,7 +6534,7 @@ func TestExamSiteSyncApi(t *testing.T) {
 				}
 
 			},
-			check: func(q *cmn.ServiceCtx)(err error) {
+			check: func(q *cmn.ServiceCtx) (err error) {
 				d := syncInfo{
 					Path:          "",
 					TableFileList: []string{},
@@ -4068,7 +6627,7 @@ func TestExamSiteSyncApi(t *testing.T) {
 				}
 
 			},
-			check: func(q *cmn.ServiceCtx)(err error) {
+			check: func(q *cmn.ServiceCtx) (err error) {
 				d := syncInfo{
 					Path:          "",
 					TableFileList: []string{},
@@ -4162,7 +6721,7 @@ func TestExamSiteSyncApi(t *testing.T) {
 				}
 
 			},
-			check: func(q *cmn.ServiceCtx)(err error) {
+			check: func(q *cmn.ServiceCtx) (err error) {
 				d := syncInfo{
 					Path:          "",
 					TableFileList: []string{},
@@ -4255,7 +6814,7 @@ func TestExamSiteSyncApi(t *testing.T) {
 				}
 
 			},
-			check: func(q *cmn.ServiceCtx)(err error) {
+			check: func(q *cmn.ServiceCtx) (err error) {
 				d := syncInfo{
 					Path:          "",
 					TableFileList: []string{},
@@ -4338,8 +6897,6 @@ func TestExamSiteSyncApi(t *testing.T) {
 			errWanted:    "force-write-export-script-file-err-^a1^2*zc$32h@g4",
 			setup: func() {
 
-				
-
 				dbConn := cmn.GetDbConn()
 
 				_, err := dbConn.Exec(fmt.Sprintf(`INSERT INTO t_exam_site (id, name,creator,server_host,address,admin,sys_user) VALUES 
@@ -4350,7 +6907,7 @@ func TestExamSiteSyncApi(t *testing.T) {
 				}
 
 			},
-			check: func(q *cmn.ServiceCtx)(err error) {
+			check: func(q *cmn.ServiceCtx) (err error) {
 				d := syncInfo{
 					Path:          "",
 					TableFileList: []string{},
@@ -4443,7 +7000,7 @@ func TestExamSiteSyncApi(t *testing.T) {
 				}
 
 			},
-			check: func(q *cmn.ServiceCtx)(err error) {
+			check: func(q *cmn.ServiceCtx) (err error) {
 				d := syncInfo{
 					Path:          "",
 					TableFileList: []string{},
@@ -4518,8 +7075,7 @@ func TestExamSiteSyncApi(t *testing.T) {
 					},
 				},
 				RedisClient: cmn.GetRedisConn(),
-				Tag: map[string]interface{}{
-				},
+				Tag:         map[string]interface{}{},
 			},
 			passExpected: false,
 			errWanted:    "unexpected end of JSON input",
@@ -4543,7 +7099,7 @@ func TestExamSiteSyncApi(t *testing.T) {
 				}
 
 			},
-			check: func(q *cmn.ServiceCtx)(err error) {
+			check: func(q *cmn.ServiceCtx) (err error) {
 				d := syncInfo{
 					Path:          "",
 					TableFileList: []string{},
@@ -4609,17 +7165,16 @@ func TestExamSiteSyncApi(t *testing.T) {
 
 		// ======================================
 
-
 		// =============反向同步测试==============
-		// ooooooooo.     .oooooo.    .oooooo..o ooooooooooooo 
-		// `888   `Y88.  d8P'  `Y8b  d8P'    `Y8 8'   888   `8 
-		//  888   .d88' 888      888 Y88bo.           888      
-		//  888ooo88P'  888      888  `"Y8888o.       888      
-		//  888         888      888      `"Y88b      888      
-		//  888         `88b    d88' oo     .d8P      888      
-		// o888o         `Y8bood8P'  8""88888P'      o888o     
-		//                                                     
-        {
+		// ooooooooo.     .oooooo.    .oooooo..o ooooooooooooo
+		// `888   `Y88.  d8P'  `Y8b  d8P'    `Y8 8'   888   `8
+		//  888   .d88' 888      888 Y88bo.           888
+		//  888ooo88P'  888      888  `"Y8888o.       888
+		//  888         888      888      `"Y88b      888
+		//  888         `88b    d88' oo     .d8P      888
+		// o888o         `Y8bood8P'  8""88888P'      o888o
+		//
+		{
 			name: "反向同步成功",
 			q: &cmn.ServiceCtx{
 				R: httptest.NewRequest("POST", "/api/exam-site/sync", strings.NewReader(fmt.Sprintf(`{
@@ -4711,7 +7266,566 @@ func TestExamSiteSyncApi(t *testing.T) {
 
 			},
 		},
-		
+		{
+			name: "反向同步失败-无效的请求data",
+			q: &cmn.ServiceCtx{
+				R: httptest.NewRequest("POST", "/api/exam-site/sync", strings.NewReader(fmt.Sprintf(`{
+					"data": {
+						"path": "%s",
+						"tableFileList": 123
+					}
+				}`, filepath.Join(os.Getenv("PWD"), "data/tmp")))),
+				W: httptest.NewRecorder(),
+				Msg: &cmn.ReplyProto{
+					API:    "/api/exam-site/sync",
+					Method: "POST",
+				},
+				BeginTime: time.Now(),
+				SysUser: &cmn.TUser{
+					ID:   null.NewInt(2025, true),
+					Role: null.NewInt(int64(cmn.CDomainAssessExamSite), true),
+				},
+				Domains: []cmn.TDomain{
+					{
+						ID: null.IntFrom(int64(cmn.CDomainAssessExamSite)),
+					},
+				},
+				RedisClient: cmn.GetRedisConn(),
+			},
+			passExpected: false,
+			errWanted:    "json: cannot unmarshal number into Go struct field syncInfo.tableFileList of type []string",
+			setup: func() {
+
+				dbConn := cmn.GetDbConn()
+
+				_, err := dbConn.Exec(fmt.Sprintf(`INSERT INTO t_exam_site (id, name,creator,server_host,address,admin,sys_user) VALUES 
+					(%d,'test-site-%d', 1622, 'localhost','address','1622','2025')`, nowTime, nowTime))
+				if err != nil {
+					t.Fatalf("failed to insert test data: %v", err)
+					return
+				}
+
+				folderPath := filepath.Join(os.Getenv("PWD"), "data/tmp")
+
+				err = os.MkdirAll(folderPath, 0755)
+				if err != nil {
+					t.Fatalf("failed to mkdir: %v", err)
+					return
+				}
+
+				err = os.WriteFile(filepath.Join(folderPath, "import_script.sql"), []byte("SELECT * FROM t_exam_site"), 0755)
+				if err != nil {
+					t.Fatalf("failed to create test sql file: %v", err)
+					return
+				}
+
+			},
+			cleanup: func() {
+
+				dbConn := cmn.GetDbConn()
+
+				r, err := dbConn.Exec(fmt.Sprintf(`DELETE FROM t_exam_site WHERE name = 'test-site-%d'`, nowTime))
+				if err != nil {
+					t.Fatalf("failed to delete test data: %v", err)
+					return
+				}
+
+				c, err := r.RowsAffected()
+				if err != nil {
+					t.Fatalf("failed to get affected rows: %v", err)
+					return
+				}
+
+				t.Logf("Have already cleaned up %d rows from t_exam_site", c)
+
+				folderFullPath := path.Join(os.Getenv("PWD"), "/data/tmp/")
+
+				o, err := exec.Command("rm", "-rvf", folderFullPath).CombinedOutput()
+				if err != nil {
+					t.Fatalf("failed to remove folder: %v, output: %s", err, string(o))
+					return
+				}
+
+				t.Logf("Successfully cleaned up folder: %s output: %x", folderFullPath, o)
+
+				filePath := filepath.Join(os.Getenv("PWD"), "import_script.sql")
+
+				err = os.RemoveAll(filePath)
+				if err != nil {
+					t.Fatalf("failed to remove test sql file: %v", err)
+					return
+				}
+
+			},
+		},
+		{
+			name: "反向同步失败-请求data缺少必要数据",
+			q: &cmn.ServiceCtx{
+				R: httptest.NewRequest("POST", "/api/exam-site/sync", strings.NewReader(fmt.Sprintf(`{
+					"data": {
+						"path": "%s"
+					}
+				}`, filepath.Join(os.Getenv("PWD"), "data/tmp")))),
+				W: httptest.NewRecorder(),
+				Msg: &cmn.ReplyProto{
+					API:    "/api/exam-site/sync",
+					Method: "POST",
+				},
+				BeginTime: time.Now(),
+				SysUser: &cmn.TUser{
+					ID:   null.NewInt(2025, true),
+					Role: null.NewInt(int64(cmn.CDomainAssessExamSite), true),
+				},
+				Domains: []cmn.TDomain{
+					{
+						ID: null.IntFrom(int64(cmn.CDomainAssessExamSite)),
+					},
+				},
+				RedisClient: cmn.GetRedisConn(),
+			},
+			passExpected: false,
+			errWanted:    "validation failed:Key: 'syncInfo.TableFileList' Error:Field validation for 'TableFileList' failed on the 'required' tag",
+			setup: func() {
+
+				dbConn := cmn.GetDbConn()
+
+				_, err := dbConn.Exec(fmt.Sprintf(`INSERT INTO t_exam_site (id, name,creator,server_host,address,admin,sys_user) VALUES 
+					(%d,'test-site-%d', 1622, 'localhost','address','1622','2025')`, nowTime, nowTime))
+				if err != nil {
+					t.Fatalf("failed to insert test data: %v", err)
+					return
+				}
+
+				folderPath := filepath.Join(os.Getenv("PWD"), "data/tmp")
+
+				err = os.MkdirAll(folderPath, 0755)
+				if err != nil {
+					t.Fatalf("failed to mkdir: %v", err)
+					return
+				}
+
+				err = os.WriteFile(filepath.Join(folderPath, "import_script.sql"), []byte("SELECT * FROM t_exam_site"), 0755)
+				if err != nil {
+					t.Fatalf("failed to create test sql file: %v", err)
+					return
+				}
+
+			},
+			cleanup: func() {
+
+				dbConn := cmn.GetDbConn()
+
+				r, err := dbConn.Exec(fmt.Sprintf(`DELETE FROM t_exam_site WHERE name = 'test-site-%d'`, nowTime))
+				if err != nil {
+					t.Fatalf("failed to delete test data: %v", err)
+					return
+				}
+
+				c, err := r.RowsAffected()
+				if err != nil {
+					t.Fatalf("failed to get affected rows: %v", err)
+					return
+				}
+
+				t.Logf("Have already cleaned up %d rows from t_exam_site", c)
+
+				folderFullPath := path.Join(os.Getenv("PWD"), "/data/tmp/")
+
+				o, err := exec.Command("rm", "-rvf", folderFullPath).CombinedOutput()
+				if err != nil {
+					t.Fatalf("failed to remove folder: %v, output: %s", err, string(o))
+					return
+				}
+
+				t.Logf("Successfully cleaned up folder: %s output: %x", folderFullPath, o)
+
+				filePath := filepath.Join(os.Getenv("PWD"), "import_script.sql")
+
+				err = os.RemoveAll(filePath)
+				if err != nil {
+					t.Fatalf("failed to remove test sql file: %v", err)
+					return
+				}
+
+			},
+		},
+		{
+			name: "反向同步失败-请求data中的path为不存在",
+			q: &cmn.ServiceCtx{
+				R: httptest.NewRequest("POST", "/api/exam-site/sync", strings.NewReader(fmt.Sprintf(`{
+					"data": {
+						"path": "%s",
+						"tableFileList": []
+					}
+				}`, filepath.Join(os.Getenv("PWD"), "data/tmp/123123/456456")))),
+				W: httptest.NewRecorder(),
+				Msg: &cmn.ReplyProto{
+					API:    "/api/exam-site/sync",
+					Method: "POST",
+				},
+				BeginTime: time.Now(),
+				SysUser: &cmn.TUser{
+					ID:   null.NewInt(2025, true),
+					Role: null.NewInt(int64(cmn.CDomainAssessExamSite), true),
+				},
+				Domains: []cmn.TDomain{
+					{
+						ID: null.IntFrom(int64(cmn.CDomainAssessExamSite)),
+					},
+				},
+				RedisClient: cmn.GetRedisConn(),
+			},
+			passExpected: false,
+			errWanted:    fmt.Sprintf("open %s: no such file or directory", filepath.Join(os.Getenv("PWD"), "data/tmp/123123/456456/import_script.sql")),
+			setup: func() {
+
+				dbConn := cmn.GetDbConn()
+
+				_, err := dbConn.Exec(fmt.Sprintf(`INSERT INTO t_exam_site (id, name,creator,server_host,address,admin,sys_user) VALUES 
+					(%d,'test-site-%d', 1622, 'localhost','address','1622','2025')`, nowTime, nowTime))
+				if err != nil {
+					t.Fatalf("failed to insert test data: %v", err)
+					return
+				}
+
+				folderPath := filepath.Join(os.Getenv("PWD"), "data/tmp")
+
+				err = os.MkdirAll(folderPath, 0755)
+				if err != nil {
+					t.Fatalf("failed to mkdir: %v", err)
+					return
+				}
+
+				err = os.WriteFile(filepath.Join(folderPath, "import_script.sql"), []byte("SELECT * FROM t_exam_site"), 0755)
+				if err != nil {
+					t.Fatalf("failed to create test sql file: %v", err)
+					return
+				}
+
+			},
+			cleanup: func() {
+
+				dbConn := cmn.GetDbConn()
+
+				r, err := dbConn.Exec(fmt.Sprintf(`DELETE FROM t_exam_site WHERE name = 'test-site-%d'`, nowTime))
+				if err != nil {
+					t.Fatalf("failed to delete test data: %v", err)
+					return
+				}
+
+				c, err := r.RowsAffected()
+				if err != nil {
+					t.Fatalf("failed to get affected rows: %v", err)
+					return
+				}
+
+				t.Logf("Have already cleaned up %d rows from t_exam_site", c)
+
+				folderFullPath := path.Join(os.Getenv("PWD"), "/data/tmp/")
+
+				o, err := exec.Command("rm", "-rvf", folderFullPath).CombinedOutput()
+				if err != nil {
+					t.Fatalf("failed to remove folder: %v, output: %s", err, string(o))
+					return
+				}
+
+				t.Logf("Successfully cleaned up folder: %s output: %x", folderFullPath, o)
+
+				filePath := filepath.Join(os.Getenv("PWD"), "import_script.sql")
+
+				err = os.RemoveAll(filePath)
+				if err != nil {
+					t.Fatalf("failed to remove test sql file: %v", err)
+					return
+				}
+
+			},
+		},
+		{
+			name: "反向同步失败-强制执行psql失败",
+			q: &cmn.ServiceCtx{
+				R: httptest.NewRequest("POST", "/api/exam-site/sync", strings.NewReader(fmt.Sprintf(`{
+					"data": {
+						"path": "%s",
+						"tableFileList": []
+					}
+				}`, filepath.Join(os.Getenv("PWD"), "data/tmp")))),
+				W: httptest.NewRecorder(),
+				Msg: &cmn.ReplyProto{
+					API:    "/api/exam-site/sync",
+					Method: "POST",
+				},
+				BeginTime: time.Now(),
+				SysUser: &cmn.TUser{
+					ID:   null.NewInt(2025, true),
+					Role: null.NewInt(int64(cmn.CDomainAssessExamSite), true),
+				},
+				Domains: []cmn.TDomain{
+					{
+						ID: null.IntFrom(int64(cmn.CDomainAssessExamSite)),
+					},
+				},
+				RedisClient: cmn.GetRedisConn(),
+				Tag: map[string]interface{}{
+					"psqlErr": fmt.Errorf("forced psql err"),
+				},
+			},
+			passExpected: false,
+			errWanted:    fmt.Sprintf("COMMAND: %s\t ERR: %s\t DETAIL: %s", "", "forced psql err", ""),
+			setup: func() {
+
+				dbConn := cmn.GetDbConn()
+
+				_, err := dbConn.Exec(fmt.Sprintf(`INSERT INTO t_exam_site (id, name,creator,server_host,address,admin,sys_user) VALUES 
+					(%d,'test-site-%d', 1622, 'localhost','address','1622','2025')`, nowTime, nowTime))
+				if err != nil {
+					t.Fatalf("failed to insert test data: %v", err)
+					return
+				}
+
+				folderPath := filepath.Join(os.Getenv("PWD"), "data/tmp")
+
+				err = os.MkdirAll(folderPath, 0755)
+				if err != nil {
+					t.Fatalf("failed to mkdir: %v", err)
+					return
+				}
+
+				err = os.WriteFile(filepath.Join(folderPath, "import_script.sql"), []byte("SELECT * FROM t_exam_site"), 0755)
+				if err != nil {
+					t.Fatalf("failed to create test sql file: %v", err)
+					return
+				}
+
+			},
+			cleanup: func() {
+
+				dbConn := cmn.GetDbConn()
+
+				r, err := dbConn.Exec(fmt.Sprintf(`DELETE FROM t_exam_site WHERE name = 'test-site-%d'`, nowTime))
+				if err != nil {
+					t.Fatalf("failed to delete test data: %v", err)
+					return
+				}
+
+				c, err := r.RowsAffected()
+				if err != nil {
+					t.Fatalf("failed to get affected rows: %v", err)
+					return
+				}
+
+				t.Logf("Have already cleaned up %d rows from t_exam_site", c)
+
+				folderFullPath := path.Join(os.Getenv("PWD"), "/data/tmp/")
+
+				o, err := exec.Command("rm", "-rvf", folderFullPath).CombinedOutput()
+				if err != nil {
+					t.Fatalf("failed to remove folder: %v, output: %s", err, string(o))
+					return
+				}
+
+				t.Logf("Successfully cleaned up folder: %s output: %x", folderFullPath, o)
+
+				filePath := filepath.Join(os.Getenv("PWD"), "import_script.sql")
+
+				err = os.RemoveAll(filePath)
+				if err != nil {
+					t.Fatalf("failed to remove test sql file: %v", err)
+					return
+				}
+
+			},
+		},
+		{
+			name: "反向同步失败-强制删除同步信息快照key失败",
+			q: &cmn.ServiceCtx{
+				R: httptest.NewRequest("POST", "/api/exam-site/sync", strings.NewReader(fmt.Sprintf(`{
+					"data": {
+						"path": "%s",
+						"tableFileList": []
+					}
+				}`, filepath.Join(os.Getenv("PWD"), "data/tmp")))),
+				W: httptest.NewRecorder(),
+				Msg: &cmn.ReplyProto{
+					API:    "/api/exam-site/sync",
+					Method: "POST",
+				},
+				BeginTime: time.Now(),
+				SysUser: &cmn.TUser{
+					ID:   null.NewInt(2025, true),
+					Role: null.NewInt(int64(cmn.CDomainAssessExamSite), true),
+				},
+				Domains: []cmn.TDomain{
+					{
+						ID: null.IntFrom(int64(cmn.CDomainAssessExamSite)),
+					},
+				},
+				RedisClient: cmn.GetRedisConn(),
+				Tag: map[string]interface{}{
+					"deleteKeyErr": fmt.Errorf("forced delete key err"),
+				},
+			},
+			passExpected: false,
+			errWanted:    "forced delete key err",
+			setup: func() {
+
+				dbConn := cmn.GetDbConn()
+
+				_, err := dbConn.Exec(fmt.Sprintf(`INSERT INTO t_exam_site (id, name,creator,server_host,address,admin,sys_user) VALUES 
+					(%d,'test-site-%d', 1622, 'localhost','address','1622','2025')`, nowTime, nowTime))
+				if err != nil {
+					t.Fatalf("failed to insert test data: %v", err)
+					return
+				}
+
+				folderPath := filepath.Join(os.Getenv("PWD"), "data/tmp")
+
+				err = os.MkdirAll(folderPath, 0755)
+				if err != nil {
+					t.Fatalf("failed to mkdir: %v", err)
+					return
+				}
+
+				err = os.WriteFile(filepath.Join(folderPath, "import_script.sql"), []byte("SELECT * FROM t_exam_site"), 0755)
+				if err != nil {
+					t.Fatalf("failed to create test sql file: %v", err)
+					return
+				}
+
+			},
+			cleanup: func() {
+
+				dbConn := cmn.GetDbConn()
+
+				r, err := dbConn.Exec(fmt.Sprintf(`DELETE FROM t_exam_site WHERE name = 'test-site-%d'`, nowTime))
+				if err != nil {
+					t.Fatalf("failed to delete test data: %v", err)
+					return
+				}
+
+				c, err := r.RowsAffected()
+				if err != nil {
+					t.Fatalf("failed to get affected rows: %v", err)
+					return
+				}
+
+				t.Logf("Have already cleaned up %d rows from t_exam_site", c)
+
+				folderFullPath := path.Join(os.Getenv("PWD"), "/data/tmp/")
+
+				o, err := exec.Command("rm", "-rvf", folderFullPath).CombinedOutput()
+				if err != nil {
+					t.Fatalf("failed to remove folder: %v, output: %s", err, string(o))
+					return
+				}
+
+				t.Logf("Successfully cleaned up folder: %s output: %x", folderFullPath, o)
+
+				filePath := filepath.Join(os.Getenv("PWD"), "import_script.sql")
+
+				err = os.RemoveAll(filePath)
+				if err != nil {
+					t.Fatalf("failed to remove test sql file: %v", err)
+					return
+				}
+
+			},
+		},
+		{
+			name: "反向同步失败-强制删除已同步的数据所在目录失败",
+			q: &cmn.ServiceCtx{
+				R: httptest.NewRequest("POST", "/api/exam-site/sync", strings.NewReader(fmt.Sprintf(`{
+					"data": {
+						"path": "%s",
+						"tableFileList": []
+					}
+				}`, filepath.Join(os.Getenv("PWD"), "data/tmp")))),
+				W: httptest.NewRecorder(),
+				Msg: &cmn.ReplyProto{
+					API:    "/api/exam-site/sync",
+					Method: "POST",
+				},
+				BeginTime: time.Now(),
+				SysUser: &cmn.TUser{
+					ID:   null.NewInt(2025, true),
+					Role: null.NewInt(int64(cmn.CDomainAssessExamSite), true),
+				},
+				Domains: []cmn.TDomain{
+					{
+						ID: null.IntFrom(int64(cmn.CDomainAssessExamSite)),
+					},
+				},
+				RedisClient: cmn.GetRedisConn(),
+				Tag: map[string]interface{}{
+					"removeAllErr": fmt.Errorf("forced remove all err"),
+				},
+			},
+			passExpected: false,
+			errWanted:    "forced remove all err",
+			setup: func() {
+
+				dbConn := cmn.GetDbConn()
+
+				_, err := dbConn.Exec(fmt.Sprintf(`INSERT INTO t_exam_site (id, name,creator,server_host,address,admin,sys_user) VALUES 
+					(%d,'test-site-%d', 1622, 'localhost','address','1622','2025')`, nowTime, nowTime))
+				if err != nil {
+					t.Fatalf("failed to insert test data: %v", err)
+					return
+				}
+
+				folderPath := filepath.Join(os.Getenv("PWD"), "data/tmp")
+
+				err = os.MkdirAll(folderPath, 0755)
+				if err != nil {
+					t.Fatalf("failed to mkdir: %v", err)
+					return
+				}
+
+				err = os.WriteFile(filepath.Join(folderPath, "import_script.sql"), []byte("SELECT * FROM t_exam_site"), 0755)
+				if err != nil {
+					t.Fatalf("failed to create test sql file: %v", err)
+					return
+				}
+
+			},
+			cleanup: func() {
+
+				dbConn := cmn.GetDbConn()
+
+				r, err := dbConn.Exec(fmt.Sprintf(`DELETE FROM t_exam_site WHERE name = 'test-site-%d'`, nowTime))
+				if err != nil {
+					t.Fatalf("failed to delete test data: %v", err)
+					return
+				}
+
+				c, err := r.RowsAffected()
+				if err != nil {
+					t.Fatalf("failed to get affected rows: %v", err)
+					return
+				}
+
+				t.Logf("Have already cleaned up %d rows from t_exam_site", c)
+
+				folderFullPath := path.Join(os.Getenv("PWD"), "/data/tmp/")
+
+				o, err := exec.Command("rm", "-rvf", folderFullPath).CombinedOutput()
+				if err != nil {
+					t.Fatalf("failed to remove folder: %v, output: %s", err, string(o))
+					return
+				}
+
+				t.Logf("Successfully cleaned up folder: %s output: %x", folderFullPath, o)
+
+				filePath := filepath.Join(os.Getenv("PWD"), "import_script.sql")
+
+				err = os.RemoveAll(filePath)
+				if err != nil {
+					t.Fatalf("failed to remove test sql file: %v", err)
+					return
+				}
+
+			},
+		},
 		// ======================================
 
 	}

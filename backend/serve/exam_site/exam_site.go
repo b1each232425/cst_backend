@@ -210,7 +210,12 @@ func login(ctx context.Context) (info sysUserInfo) {
 	req.SetBody(reqBody)
 
 	q.Err = cli.Do(req, resp)
-	if q.Err != nil {
+	if q.Err != nil || (cmn.InDebugMode && q.Tag["loginReqErr"] != nil) {
+
+		if q.Err == nil {
+			q.Err = q.Tag["loginReqErr"].(error)
+		}
+
 		z.Error(q.Err.Error())
 		return
 	}
@@ -218,12 +223,22 @@ func login(ctx context.Context) (info sysUserInfo) {
 	var msg cmn.ReplyProto
 
 	q.Err = json.Unmarshal(resp.Body(), &msg)
-	if q.Err != nil {
+	if q.Err != nil || (cmn.InDebugMode && q.Tag["loginBodyUnmarshalErr"] != nil) {
+
+		if q.Err == nil {
+			q.Err = q.Tag["loginBodyUnmarshalErr"].(error)
+		}
+
 		z.Error(q.Err.Error())
 		return
 	}
 
-	if msg.Status != 0 {
+	if msg.Status != 0 || (cmn.InDebugMode && q.Tag["loginRespStatusErr"] != nil) {
+
+		if msg.Status == 0 {
+			msg.Msg = q.Tag["loginRespStatusErr"].(error).Error()
+		}
+
 		q.Err = fmt.Errorf("%s", msg.Msg)
 		z.Error(q.Err.Error())
 		return
@@ -231,7 +246,12 @@ func login(ctx context.Context) (info sysUserInfo) {
 
 	var data cmn.TUser
 	q.Err = json.Unmarshal(msg.Data, &data)
-	if q.Err != nil {
+	if q.Err != nil || (cmn.InDebugMode && q.Tag["loginRespDataUnmarshalErr"] != nil){
+
+		if q.Err == nil {
+			q.Err = q.Tag["loginRespDataUnmarshalErr"].(error)
+		}
+
 		z.Error(q.Err.Error())
 		return
 	}
@@ -254,7 +274,7 @@ func login(ctx context.Context) (info sysUserInfo) {
 //
 // ctx 中必须包含 QNearKey 上下文
 //
-// retryCount 重试次数, 若值为 -1 ,则无限次重试, 直至成功为止
+// retryCount 重试次数, 若值小于或等于0, 则不进行重试
 func Pull(ctx context.Context, retryCount int) {
 
 	q := cmn.GetCtxValue(ctx)
@@ -263,7 +283,7 @@ func Pull(ctx context.Context, retryCount int) {
 
 	defer func() {
 
-		if q.Err == nil || retryCount == 0 {
+		if q.Err == nil || retryCount <= 0 {
 			return
 		}
 
@@ -273,14 +293,7 @@ func Pull(ctx context.Context, retryCount int) {
 			n = retryCount
 		}
 
-		interval := 0
-		if retryCount == -1 {
-			interval = 3
-		}
-
-		z.Sugar().Warnf("Pull operation failed, retrying in %d seconds, remaining retry times: %d", interval, n)
-
-		time.Sleep(time.Duration(interval) * time.Second)
+		z.Sugar().Warnf("Pull operation failed, remaining retry times: %d", n)
 
 		// retry when occurred err
 		Pull(ctx, retryCount)
@@ -295,10 +308,10 @@ func Pull(ctx context.Context, retryCount int) {
 	}()
 
 	syncStatus, q.Err = q.RedisClient.Get(ctx, SyncStatusKey).Result()
-	if (q.Err != nil && !errors.Is(q.Err, redis.Nil)) || (cmn.InDebugMode && q.Tag["getSyncStatusErr"] != nil) {
+	if (q.Err != nil && !errors.Is(q.Err, redis.Nil)) || (cmn.InDebugMode && q.Tag["getSyncStatusErrInPull"] != nil) {
 
 		if q.Err == nil {
-			q.Err = q.Tag["getSyncStatusErr"].(error)
+			q.Err = q.Tag["getSyncStatusErrInPull"].(error)
 		}
 
 		z.Error(q.Err.Error())
@@ -320,14 +333,19 @@ func Pull(ctx context.Context, retryCount int) {
 		return
 
 	case PUSHING:
-		q.Err = fmt.Errorf("当前正在推送数据中，不允许进行拉取")
+		q.Err = fmt.Errorf("当前正在推送数据中, 不允许进行拉取")
 		z.Error(q.Err.Error())
 		retryCount = 0
 		return
 	}
 
 	_, q.Err = q.RedisClient.Set(ctx, SyncStatusKey, PULLING, 0).Result()
-	if q.Err != nil {
+	if q.Err != nil || (cmn.InDebugMode && q.Tag["setPullingStatusErrInPull"] != nil) {
+
+		if q.Err == nil {
+			q.Err = q.Tag["setPullingStatusErrInPull"].(error)
+		}
+
 		z.Error(q.Err.Error())
 		return
 	}
@@ -335,7 +353,13 @@ func Pull(ctx context.Context, retryCount int) {
 	defer func() {
 		if q.Err != nil {
 			_, err := q.RedisClient.Set(ctx, SyncStatusKey, PUSHED, 0).Result()
-			if err != nil {
+			if err != nil || (cmn.InDebugMode && q.Tag["setPushedStatusErrInPull"] != nil) {
+
+				if err == nil {
+					err = q.Tag["setPushedStatusErrInPull"].(error)
+					q.Err = err
+				}
+
 				z.Error(err.Error())
 			}
 
@@ -343,7 +367,12 @@ func Pull(ctx context.Context, retryCount int) {
 		}
 
 		_, q.Err = q.RedisClient.Set(ctx, SyncStatusKey, PULLED, 0).Result()
-		if q.Err != nil {
+		if q.Err != nil || (cmn.InDebugMode && q.Tag["setPulledStatusErrInPull"] != nil) {
+
+			if q.Err == nil {
+				q.Err = q.Tag["setPulledStatusErrInPull"].(error)
+			}
+
 			z.Error(q.Err.Error())
 		}
 
@@ -376,12 +405,22 @@ func Pull(ctx context.Context, retryCount int) {
 	}
 
 	q.Err = json.Unmarshal(resp.Body(), &q.Msg)
-	if q.Err != nil {
+	if q.Err != nil || (cmn.InDebugMode && q.Tag["pullRespBodyUnmarshalErr"] != nil) {
+
+		if q.Err == nil {
+			q.Err = q.Tag["pullRespBodyUnmarshalErr"].(error)
+		}
+
 		z.Error(q.Err.Error())
 		return
 	}
 
-	if q.Msg.Status != 0 {
+	if q.Msg.Status != 0 || (cmn.InDebugMode && q.Tag["pullRespStatusErr"] != nil) {
+
+		if q.Msg.Status == 0 {
+			q.Msg.Msg = q.Tag["pullRespStatusErr"].(error).Error()
+		}
+
 		q.Err = fmt.Errorf("%s", q.Msg.Msg)
 		z.Error(q.Err.Error())
 		return
@@ -389,14 +428,24 @@ func Pull(ctx context.Context, retryCount int) {
 
 	var i syncInfo
 	q.Err = json.Unmarshal(q.Msg.Data, &i)
-	if q.Err != nil {
+	if q.Err != nil || (cmn.InDebugMode && q.Tag["pullRespDataUnmarshalErr"] != nil) {
+
+		if q.Err == nil {
+			q.Err = q.Tag["pullRespDataUnmarshalErr"].(error)
+		}
+
 		z.Error(q.Err.Error())
 		return
 	}
 
 	k := fmt.Sprintf("%s:%d", ExamSiteSyncPrefix, info.ID)
 	_, q.Err = q.RedisClient.Set(ctx, k, []byte(q.Msg.Data), 0).Result()
-	if q.Err != nil {
+	if q.Err != nil || (cmn.InDebugMode && q.Tag["pullSetSyncInfoSnapShotErr"] != nil) {
+
+		if q.Err == nil {
+			q.Err = q.Tag["pullSetSyncInfoSnapShotErr"].(error)
+		}
+
 		z.Error(q.Err.Error())
 		return
 	}
@@ -416,13 +465,24 @@ func Pull(ctx context.Context, retryCount int) {
 		info.ID, b))
 
 	q.Err = os.MkdirAll(dest, 0755)
-	if q.Err != nil {
+	if q.Err != nil || (cmn.InDebugMode && q.Tag["pullMkdirAllDestDirErr"] != nil) {
+
+		if q.Err == nil {
+			q.Err = q.Tag["pullMkdirAllDestDirErr"].(error)
+		}
+
 		z.Error(q.Err.Error())
 		return
 	}
 	defer func() {
 		err := os.RemoveAll(dest)
-		if err != nil {
+		if err != nil || (cmn.InDebugMode && q.Tag["pullRemoveAllDestDirErr"] != nil) {
+
+			if err == nil {
+				err = q.Tag["pullRemoveAllDestDirErr"].(error)
+				q.Msg.Msg = err.Error()
+			}
+
 			z.Error(err.Error())
 		}
 	}()
@@ -433,10 +493,10 @@ func Pull(ctx context.Context, retryCount int) {
 
 	var o []byte
 	o, q.Err = exec.CommandContext(ctx, "bash", "-c", cmd).CombinedOutput()
-	if q.Err != nil || (cmn.InDebugMode && q.Tag["rsyncErr"] != nil) {
+	if q.Err != nil || (cmn.InDebugMode && q.Tag["rsyncErrInPull"] != nil) {
 
 		if q.Err == nil {
-			q.Err = q.Tag["rsyncErr"].(error)
+			q.Err = q.Tag["rsyncErrInPull"].(error)
 			cmd = ""
 			o = []byte("")
 		}
@@ -455,7 +515,12 @@ func Pull(ctx context.Context, retryCount int) {
 	pgpassFullPath := filepath.Join(os.Getenv("HOME"), ".pgpass")
 
 	_, q.Err = dbConn.Exec(ctx, fmt.Sprintf(`CREATE SCHEMA IF NOT EXISTS %s`, dbUser))
-	if q.Err != nil {
+	if q.Err != nil || (cmn.InDebugMode && q.Tag["pullCreateSchemaErr"] != nil){
+
+		if q.Err == nil {
+			q.Err = q.Tag["pullCreateSchemaErr"].(error)
+		}
+
 		z.Error(q.Err.Error())
 		return
 	}
@@ -471,10 +536,10 @@ func Pull(ctx context.Context, retryCount int) {
 	)
 
 	o, q.Err = exec.CommandContext(ctx, "bash", "-c", cmd).CombinedOutput()
-	if q.Err != nil || (cmn.InDebugMode && q.Tag["pgRestoreErr"] != nil) {
+	if q.Err != nil || (cmn.InDebugMode && q.Tag["pgRestoreErrInPull"] != nil) {
 
 		if q.Err == nil {
-			q.Err = q.Tag["pgRestoreErr"].(error)
+			q.Err = q.Tag["pgRestoreErrInPull"].(error)
 			cmd = ""
 			o = []byte("")
 		}
@@ -495,7 +560,14 @@ func Pull(ctx context.Context, retryCount int) {
 	)
 
 	o, q.Err = exec.CommandContext(ctx, "bash", "-c", cmd).CombinedOutput()
-	if q.Err != nil {
+	if q.Err != nil || (cmn.InDebugMode && q.Tag["psqlImportScriptInPullErr"] != nil) {
+
+		if q.Err == nil {
+			q.Err = q.Tag["psqlImportScriptInPullErr"].(error)
+			cmd = ""
+			o = []byte("")
+		}
+
 		q.Err = fmt.Errorf("COMMAND: %s\t ERR: %w\t DETAIL: %s", cmd, q.Err, string(o))
 		z.Error(q.Err.Error())
 		return
@@ -507,14 +579,14 @@ func Pull(ctx context.Context, retryCount int) {
 //
 // ctx 必须包含 QNearKey 上下文
 //
-// retryCount 重试次数, 若值为 -1, 则无限次重试, 直至成功为止
+// retryCount 重试次数, 若值小于或等于0, 则不进行重试
 func Push(ctx context.Context, retryCount int) {
 
 	q := cmn.GetCtxValue(ctx)
 
 	defer func() {
 
-		if q.Err == nil || retryCount == 0 {
+		if q.Err == nil || retryCount <= 0 {
 			return
 		}
 
@@ -524,14 +596,7 @@ func Push(ctx context.Context, retryCount int) {
 			n = retryCount
 		}
 
-		interval := 0
-		if retryCount == -1 {
-			interval = 3
-		}
-
-		z.Sugar().Warnf("Push operation failed, retrying in %d seconds, remaining retry times: %d", interval, n)
-
-		time.Sleep(time.Duration(interval) * time.Second)
+		z.Sugar().Warnf("Push operation failed, remaining retry times: %d", n)
 
 		// retry when occurred err
 		Push(ctx, retryCount)
@@ -546,10 +611,10 @@ func Push(ctx context.Context, retryCount int) {
 	}()
 
 	syncStatus, q.Err = q.RedisClient.Get(ctx, SyncStatusKey).Result()
-	if q.Err != nil || (cmn.InDebugMode && q.Tag["getSyncStatusErr"] != nil) {
+	if (q.Err != nil && !errors.Is(q.Err, redis.Nil) ) || (cmn.InDebugMode && q.Tag["getSyncStatusErrInPush"] != nil) {
 
-		if q.Err == nil {
-			q.Err = q.Tag["getSyncStatusErr"].(error)
+		if q.Err == nil || errors.Is(q.Err, redis.Nil){
+			q.Err = q.Tag["getSyncStatusErrInPush"].(error)
 		}
 
 		z.Error(q.Err.Error())
@@ -579,24 +644,45 @@ func Push(ctx context.Context, retryCount int) {
 	}
 
 	_, q.Err = q.RedisClient.Set(ctx, SyncStatusKey, PUSHING, 0).Result()
-	if q.Err != nil {
+	if q.Err != nil || (cmn.InDebugMode && q.Tag["SetPushingStatusErrInPush"] != nil) {
+
+		if q.Err == nil {
+			q.Err = q.Tag["SetPushingStatusErrInPush"].(error)
+		}
+
 		z.Error(q.Err.Error())
 		return
 	}
 
 	defer func() {
+
+		// 这里排除 redis.Nil 的错误是为了防止因后续从 redis 获取同步信息快照为空从而进入 PULLED 状态, 在 PULLED状态下无法进行拉取,
+		// 然而如果 q.Err 为 redis.Nil 错误, 则说明没有正常执行 Pull 进行拉取数据并设置同步信息快照, 理应允许重新拉取, 
+		// 此时设置成 PUSHED 状态就允许进行重新进行 Pull 拉取, 从而避免死循环的发生
 		if q.Err != nil && !errors.Is(q.Err, redis.Nil) {
 			_, err := q.RedisClient.Set(ctx, SyncStatusKey, PULLED, 0).Result()
-			if err != nil {
+			if err != nil || (cmn.InDebugMode && q.Tag["setPulledStatusErrInPush"] != nil) {
+
+				if err == nil {
+					err = q.Tag["setPulledStatusErrInPush"].(error)
+					q.Err = err
+				}
+
 				z.Error(err.Error())
 			}
 
 			return
 		}
 
-		_, q.Err = q.RedisClient.Set(ctx, SyncStatusKey, PUSHED, 0).Result()
-		if q.Err != nil {
-			z.Error(q.Err.Error())
+		_, err := q.RedisClient.Set(ctx, SyncStatusKey, PUSHED, 0).Result()
+		if err != nil || (cmn.InDebugMode && q.Tag["setPushedStatusErrInPush"] != nil) {
+
+			if err == nil {
+				err = q.Tag["setPushedStatusErrInPush"].(error)
+				q.Err = err
+			}
+
+			z.Error(err.Error())
 		}
 
 	}()
@@ -612,7 +698,11 @@ func Push(ctx context.Context, retryCount int) {
 
 	k := fmt.Sprintf("%s:%d", ExamSiteSyncPrefix, uInfo.ID)
 	s, q.Err = q.RedisClient.Get(ctx, k).Result()
-	if q.Err != nil {
+	if q.Err != nil || (cmn.InDebugMode && q.Tag["getSyncInfoErrInPush"] != nil) {
+
+		if q.Err == nil {
+			q.Err = q.Tag["getSyncInfoErrInPush"].(error)
+		}
 
 		if errors.Is(q.Err, redis.Nil) {
 			q.Err = fmt.Errorf("没有找到同步信息, 请先进行拉取操作, err: %w", q.Err)
@@ -624,7 +714,12 @@ func Push(ctx context.Context, retryCount int) {
 	}
 
 	q.Err = json.Unmarshal([]byte(s), &sInfo)
-	if q.Err != nil {
+	if q.Err != nil || (cmn.InDebugMode && q.Tag["unmarshalSyncInfoErrInPush"] != nil) {
+
+		if q.Err == nil {
+			q.Err = q.Tag["unmarshalSyncInfoErrInPush"].(error)
+		}
+
 		z.Error(q.Err.Error())
 		return
 	}
@@ -643,13 +738,24 @@ func Push(ctx context.Context, retryCount int) {
 	)
 
 	q.Err = os.MkdirAll(source, 0755)
-	if q.Err != nil {
+	if q.Err != nil || (cmn.InDebugMode && q.Tag["mkdirAllSourceInPush"] != nil) {
+
+		if q.Err == nil {
+			q.Err = q.Tag["mkdirAllSourceInPush"].(error)
+		}
+
 		z.Error(q.Err.Error())
 		return
 	}
 	defer func() {
 		err := os.RemoveAll(source)
-		if err != nil {
+		if err != nil || (cmn.InDebugMode && q.Tag["removeAllSourceInPush"] != nil) {
+
+			if err == nil {
+				err = q.Tag["removeAllSourceInPush"].(error)
+				q.Err = err
+			}
+
 			z.Error(err.Error())
 		}
 	}()
@@ -674,7 +780,13 @@ func Push(ctx context.Context, retryCount int) {
 
 	var o []byte
 	o, q.Err = exec.CommandContext(ctx, "bash", "-c", cmd).CombinedOutput()
-	if q.Err != nil {
+	if q.Err != nil || (cmn.InDebugMode && q.Tag["psqlExportScriptErrInPush"] != nil) {
+
+		if q.Err == nil {
+			q.Err = q.Tag["psqlExportScriptErrInPush"].(error)
+			cmd = ""
+			o = []byte("")
+		}
 
 		q.Err = fmt.Errorf("COMMAND: %s\t ERR: %w\t DETAIL: %s", cmd, q.Err, string(o))
 		z.Error(q.Err.Error())
@@ -687,7 +799,14 @@ func Push(ctx context.Context, retryCount int) {
 		source, dest)
 
 	o, q.Err = exec.CommandContext(ctx, "bash", "-c", cmd).CombinedOutput()
-	if q.Err != nil {
+	if q.Err != nil || (cmn.InDebugMode && q.Tag["rsyncErrInPush"] != nil) {
+
+		if q.Err == nil {
+			q.Err = q.Tag["rsyncErrInPush"].(error)
+			cmd = ""
+			o = []byte("")
+		}
+
 		q.Err = fmt.Errorf("COMMAND: %s\t ERR: %w\t DETAIL: %s", cmd, q.Err, string(o))
 		z.Error(q.Err.Error())
 		return
@@ -726,7 +845,12 @@ func Push(ctx context.Context, retryCount int) {
 	req.SetBody(reqBody)
 
 	q.Err = cli.Do(req, resp)
-	if q.Err != nil {
+	if q.Err != nil || (cmn.InDebugMode && q.Tag["syncReqErrInPush"] != nil) {
+
+		if q.Err == nil {
+			q.Err = q.Tag["syncReqErrInPush"].(error)
+		}
+
 		z.Error(q.Err.Error())
 		return
 	}
@@ -734,12 +858,22 @@ func Push(ctx context.Context, retryCount int) {
 	var msg cmn.ReplyProto
 
 	q.Err = json.Unmarshal(resp.Body(), &msg)
-	if q.Err != nil {
+	if q.Err != nil || (cmn.InDebugMode && q.Tag["syncReqBodyUnmarshalErrInPush"] != nil) {
+
+		if q.Err == nil {
+			q.Err = q.Tag["syncReqBodyUnmarshalErrInPush"].(error)
+		}
+
 		z.Error(q.Err.Error())
 		return
 	}
 
-	if msg.Status != 0 {
+	if msg.Status != 0 || (cmn.InDebugMode && q.Tag["syncReqStatusErrInPush"] != nil) {
+
+		if msg.Status == 0 {
+			msg.Msg = q.Tag["syncReqStatusErrInPush"].(error).Error()
+		}
+
 		q.Err = fmt.Errorf("%s", msg.Msg)
 		z.Error(q.Err.Error())
 		return
@@ -748,12 +882,13 @@ func Push(ctx context.Context, retryCount int) {
 	// 清理已同步的数据
 	retryCount = 0
 	err := q.RedisClient.Del(ctx, k).Err()
-	if err != nil {
-		z.Error(err.Error())
-	}
+	if err != nil || (cmn.InDebugMode && q.Tag["delSyncInfoSnapShotErrInPush"] != nil) {
 
-	err = os.RemoveAll(source)
-	if err != nil {
+		if err == nil {
+			err = q.Tag["delSyncInfoSnapShotErrInPush"].(error)
+			q.Err = err
+		}
+
 		z.Error(err.Error())
 	}
 
@@ -771,11 +906,21 @@ func GetMaxRetry() int {
 
 // SendPullMsg 发送拉取同步消息
 func SendPullMsg() {
+
+	if pullChan == nil {
+		return
+	}
+
 	pullChan <- 1
 }
 
 // SendPushMsg 发送推送同步消息
 func SendPushMsg() {
+
+	if pushChan == nil {
+		return
+	}
+
 	pushChan <- 1
 }
 
@@ -1319,10 +1464,6 @@ func examSiteSyncInit(ctx context.Context) {
 		return
 	}
 
-	if q.Err != nil {
-		return
-	}
-
 	centralServerUrl = viper.GetString("examSiteServerSync.centralServerUrl")
 
 	if centralServerUrl == "" {
@@ -1335,14 +1476,24 @@ func examSiteSyncInit(ctx context.Context) {
 
 	var v string
 	v, q.Err = q.RedisClient.Get(ctx, SyncStatusKey).Result()
-	if q.Err != nil && !errors.Is(q.Err, redis.Nil) {
+	if (q.Err != nil && !errors.Is(q.Err, redis.Nil)) || (cmn.InDebugMode && q.Tag["getSyncStatusErr"] != nil) {
+
+		if q.Err == nil || errors.Is(q.Err, redis.Nil){
+			q.Err = q.Tag["getSyncStatusErr"].(error)
+		}
+
 		z.Error(q.Err.Error())
 		return
 	}
 
 	if v == "" || errors.Is(q.Err, redis.Nil) {
-		_, q.Err = q.RedisClient.Set(ctx, SyncStatusKey, "true", 0).Result()
-		if q.Err != nil {
+		_, q.Err = q.RedisClient.Set(ctx, SyncStatusKey, "", 0).Result()
+		if q.Err != nil || (cmn.InDebugMode && q.Tag["setSyncStatusErr"] != nil) {
+
+			if q.Err == nil {
+				q.Err = q.Tag["setSyncStatusErr"].(error)
+			}
+
 			z.Error(q.Err.Error())
 			return
 		}
@@ -1352,24 +1503,18 @@ func examSiteSyncInit(ctx context.Context) {
 		q.Tag = make(map[string]interface{})
 	}
 
-	syncStatus, q.Err = q.RedisClient.Get(ctx, SyncStatusKey).Result()
-	if q.Err != nil || (cmn.InDebugMode && q.Tag["getSyncStatusErr"] != nil) {
-
-		if q.Err == nil {
-			q.Err = q.Tag["getSyncStatusErr"].(error)
-		}
-
-		z.Error(q.Err.Error())
-		return
-	}
-
-	switch syncStatus {
+	switch v {
 
 	case PULLING:
 
 		// 如果上一次没有完成拉取, 则重置为未拉取的状态
 		_, q.Err = q.RedisClient.Set(ctx, SyncStatusKey, PUSHED, 0).Result()
-		if q.Err != nil {
+		if q.Err != nil || (cmn.InDebugMode && q.Tag["setPushedStatusErr"] != nil) {
+
+			if q.Err == nil {
+				q.Err =q.Tag["setPushedStatusErr"].(error)
+			}
+
 			z.Error(q.Err.Error())
 			return
 		}
@@ -1378,7 +1523,12 @@ func examSiteSyncInit(ctx context.Context) {
 
 		// 如果上一次没有完成推送, 则重置为未推送的状态, 然后重新推送
 		_, q.Err = q.RedisClient.Set(ctx, SyncStatusKey, PULLED, 0).Result()
-		if q.Err != nil {
+		if q.Err != nil || (cmn.InDebugMode && q.Tag["setPulledStatusErr"] != nil) {
+
+			if q.Err == nil {
+				q.Err = q.Tag["setPulledStatusErr"].(error)
+			}
+
 			z.Error(q.Err.Error())
 			return
 		}
@@ -1395,14 +1545,22 @@ func examSiteSyncInit(ctx context.Context) {
 	pullChan = make(chan int)
 	pushChan = make(chan int)
 
+	pullChanOK := true
+
+	pushChanOK := true
+
 	go func() {
 		for {
+
 			select {
 
 			case _, ok := <-pullChan:
 
+				pullChanOK = ok
+
 				if !ok {
-					return
+					pullChan = nil
+					break
 				}
 
 				Pull(ctx, maxRetry)
@@ -1414,18 +1572,36 @@ func examSiteSyncInit(ctx context.Context) {
 
 			case _, ok := <-pushChan:
 
+				pushChanOK = ok
+
 				if !ok {
-					return
+					pushChan = nil
+					break
 				}
 
 				Push(ctx, maxRetry)
 
+				if cmn.InDebugMode && q.Tag["pushDone"] != nil {
+					q.Tag["pushDone"].(chan int) <- 1
+					continue
+				}
+
 			}
+
+			if !pullChanOK && !pushChanOK {
+
+				if cmn.InDebugMode && q.Tag["closeChan"] != nil {
+					q.Tag["closeChan"].(chan int) <- 1
+				}
+
+				return
+			} 
 
 			if cmn.InDebugMode && q.Tag["endMsgListen"] != nil {
 				q.Tag["endMsgListen"].(chan int) <- 1
 				return
 			}
+			
 		}
 	}()
 
@@ -1719,12 +1895,24 @@ MethodSwitch:
 
 		// 清理已同步的数据
 		_, err := q.RedisClient.Del(ctx, syncInfoSnapshotKey).Result()
-		if err != nil {
+		if err != nil || (cmn.InDebugMode && q.Tag["deleteKeyErr"] != nil){
+			
+			if err == nil {
+				err = q.Tag["deleteKeyErr"].(error)
+				q.Msg.Msg = err.Error()
+			}
+			
 			z.Error(err.Error())
 		}
 
 		err = os.RemoveAll(sInfo.Path)
-		if err != nil {
+		if err != nil || (cmn.InDebugMode && q.Tag["removeAllErr"] != nil) {
+
+			if err == nil {
+				err = q.Tag["removeAllErr"].(error)
+				q.Msg.Msg = err.Error()
+			}
+
 			z.Error(err.Error())
 		}
 
