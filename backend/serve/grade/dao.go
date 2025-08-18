@@ -119,10 +119,10 @@ func gradeListExam(ctx context.Context, userID int64, req *GradeListReq) ([]Grad
 
 	// 视图SQL
 	sql := fmt.Sprintf(`
-		SELECT ei.id AS id, ei.name AS exam_name, ei.type AS exam_type, jsonb_agg(esi) AS exam_session_info, ei.submitted AS submitted
+		SELECT ei.id, ei.name, ei.type, jsonb_agg(esi) AS exam_session_info, ei.submitted, ei.status
 		FROM t_exam_info ei     
 			LEFT JOIN v_z_grade_exam_session_info esi ON esi.exam_id = ei.id
-		WHERE 1=1 %s
+		WHERE ei.status !='12' AND ei.status != '14' AND ei.status != '16' %s
 		GROUP BY ei.id
 		`, whereClause)
 
@@ -170,6 +170,7 @@ func gradeListExam(ctx context.Context, userID int64, req *GradeListReq) ([]Grad
 			&grade.Type,
 			&grade.Sessions,
 			&grade.Submitted,
+			&grade.Status,
 		)
 		if forceErr == "rows scan fail" {
 			err = errors.New(forceErr)
@@ -272,8 +273,8 @@ func gradeListPractice(ctx context.Context, userID int64, req *GradeListReq) ([]
 	sql := fmt.Sprintf(`
 	SELECT practice_id, practice_name, total_score, averge_score, actual_completer, pass_student
 	FROM v_z_grade_practice_statistics p 
-	WHERE 1=1 %s
-	GROUP BY p.practice_id, p.practice_name, p.total_score, p.averge_score, p.actual_completer, p.pass_student
+	WHERE p.status != '04' %s
+	GROUP BY p.practice_id, p.practice_name, p.total_score, p.averge_score, p.actual_completer, p.pass_student, p.status
 		`, whereClause)
 
 	conn := cmn.GetPgxConn()
@@ -448,7 +449,7 @@ func setExamGradeSubmitted(ctx context.Context, userID int64, examIDs []int) (in
 			// 检查 EndTime 是否有效
 			if !examSession.EndTime.Valid || forceErr == "examSession endTime invalid" {
 				// 如果 EndTime 无效，则认为考试未结束
-				err = fmt.Errorf("提交考试成绩失败: %w: 考试场次(examSession=%v)没有有效结束时间", ErrExamIsNotOver, examSession.ID.Int64)
+				err = fmt.Errorf("提交考试成绩失败,考试未结束: 考试场次(examSession=%v)没有有效结束时间", examSession.ID.Int64)
 				z.Error(err.Error())
 				return 0, err
 			}
@@ -456,7 +457,7 @@ func setExamGradeSubmitted(ctx context.Context, userID int64, examIDs []int) (in
 			endTime := time.UnixMilli(examSession.EndTime.Int64)
 			if endTime.After(currTime) || forceErr == "endTime after currTime" {
 				// 考试结束时间未过，不可提交
-				err = fmt.Errorf("提交考试成绩失败: %w: 考试场次(examSession=%v)还未结束", ErrExamIsNotOver, examSession.ID.Int64)
+				err = fmt.Errorf("提交考试成绩失败,考试未结束: 考试场次(examSession=%v)还未结束", examSession.ID.Int64)
 				z.Error(err.Error())
 				return 0, err
 			}
@@ -830,16 +831,22 @@ func gradeExamineeListExam(ctx context.Context, req GradeExamineeListReq) ([]Exa
 	}
 
 	sql = fmt.Sprintf(`
-	SELECT
-		ets.exam_id, ei.name AS exam_name, e.student_id, e.mobile_phone AS phone, e.official_name AS name, e.account AS nickname, STRING_AGG(COALESCE(e.remark, ''), '') AS remark, 
-		jsonb_agg(jsonb_build_object('exam_id', ets.exam_id, 'exam_session_id', ets.exam_session_id, 'score', ets.total_score) ORDER BY ets.exam_session_id) AS exam_sessions
-	FROM v_student_exam_total_score ets
-		JOIN t_exam_info ei ON ei.id = ets.exam_id
-		JOIN v_examinee_info e ON e.student_id = ets.student_id
-	%s
-	GROUP BY ets.exam_id, ei.name, e.student_id, e.mobile_phone, e.official_name, e.account
-	ORDER BY ets.exam_id, e.official_name
-	`, whereClause)
+							SELECT
+								ets.exam_id, 
+								ei.name AS exam_name, 
+								e.student_id, 
+								e.mobile_phone AS phone, 
+								e.official_name AS name, 
+								e.account AS nickname, 
+								STRING_AGG(COALESCE(e.remark, ''), '') AS remark, 
+								jsonb_agg(jsonb_build_object('exam_id', ets.exam_id, 'exam_session_id', ets.exam_session_id, 'score', COALESCE(ets.total_score, 0)) ORDER BY ets.exam_session_id) AS exam_sessions
+							FROM v_student_exam_total_score ets
+								JOIN t_exam_info ei ON ei.id = ets.exam_id
+								JOIN v_examinee_info e ON e.student_id = ets.student_id AND e.id = ets.examinee_id AND e.exam_id = ets.exam_id AND e.exam_session_id = ets.exam_session_id
+							%s
+							GROUP BY ets.exam_id, ei.name, e.student_id, e.mobile_phone, e.official_name, e.account
+							ORDER BY ets.exam_id, e.official_name
+							`, whereClause)
 
 	conn := cmn.GetPgxConn()
 	if conn == nil || forceErr == "conn nil" {
@@ -897,6 +904,10 @@ func gradeExamineeListExam(ctx context.Context, req GradeExamineeListReq) ([]Exa
 			return result, totalCount, err
 		}
 
+		for _, session := range student.ExamSessions {
+			student.TotalScore += session.Score.ValueOr(0)
+		}
+
 		// 按examID分组，将学生成绩归类到对应考试
 		if examData, exists := examMap[examID]; exists {
 			// 如果该examID已存在，则将当前学生成绩添加到该考试下
@@ -909,11 +920,22 @@ func gradeExamineeListExam(ctx context.Context, req GradeExamineeListReq) ([]Exa
 				StudentScores: []StudentExamScore{student}, // 当前学生成绩
 			}
 		}
-		totalCount++ // 累加总人数计数
 	}
 
 	for _, examData := range examMap {
 		result = append(result, *examData)
+	}
+
+	// 统计SQL
+	countSql := fmt.Sprintf(`SELECT COUNT(1) FROM (%s)`, sql)
+	err = conn.QueryRow(ctx, countSql, params...).Scan(&totalCount)
+	if forceErr == "conn.QueryRow fail" {
+		err = errors.New(forceErr)
+	}
+	if err != nil {
+		err = fmt.Errorf("执行查询语句失败: %w", err)
+		z.Error(err.Error())
+		return result, 0, err
 	}
 
 	return result, totalCount, nil
@@ -994,15 +1016,22 @@ func gradeExamineeListPractice(ctx context.Context, req GradeExamineeListReq) ([
 	}
 
 	sql = fmt.Sprintf(`
-	SELECT
-		pts.practice_id, p.name AS practice_name, pts.student_id, ei.mobile_phone AS phone, ei.official_name AS name, ei.account AS nickname, MAX(pts.total_score) AS highest_score, COUNT(DISTINCT pts.id) AS submitted_cnt
-	FROM v_student_practice_total_score pts
-		LEFT JOIN v_examinee_info ei ON ei.student_id = pts.student_id
-		LEFT JOIN t_practice p ON p.id = pts.practice_id
-	%s
-	GROUP BY pts.practice_id, p.name, pts.student_id, ei.mobile_phone, ei.official_name, ei.account
-	ORDER BY pts.practice_id, pts.student_id
-		`, whereClause)
+								SELECT
+									pts.practice_id, 
+									p.name, 
+									pts.student_id, 
+									u.mobile_phone, 
+									u.official_name, 
+									u.account AS nickname, 
+									MAX(pts.total_score), 
+									COUNT(DISTINCT pts.id)
+								FROM v_student_practice_total_score pts
+									LEFT JOIN t_user u ON u.id = pts.student_id -- 考生信息
+									LEFT JOIN t_practice p ON p.id = pts.practice_id  -- 练习信息
+								%s
+								GROUP BY pts.practice_id, p.name, pts.student_id, u.mobile_phone, u.official_name, u.account
+								ORDER BY pts.practice_id, pts.student_id
+									`, whereClause)
 
 	var listSQL string
 	var listParams []any
@@ -1444,7 +1473,7 @@ func getScoreExam(ctx context.Context, studentID, examSessionID int64) (Map, err
 	// TODO: 筛选状态调整
 	esiSql := `
 		SELECT 
-			es.id, e.exam_paper_id, es.duration, e.id as examinee_id, es.session_num
+			es.id, e.exam_paper_id, es.duration, e.id as examinee_id, es.session_num, es.end_time-es.start_time
 		FROM t_exam_session es
 		LEFT JOIN t_examinee e ON es.id = e.exam_session_id AND e.student_id = $1 AND e.status != $2
 		WHERE es.exam_id = $3 AND es.status != $4
@@ -1467,6 +1496,7 @@ func getScoreExam(ctx context.Context, studentID, examSessionID int64) (Map, err
 			&session.Duration,
 			&session.ExamineeID,
 			&session.SessionNum,
+			&session.DurationTime,
 		)
 		if err != nil || forceErr == "esi rows Scan fail" {
 			err = fmt.Errorf("扫描考试场次失败: %w", err)
@@ -1477,11 +1507,12 @@ func getScoreExam(ctx context.Context, studentID, examSessionID int64) (Map, err
 	}
 	for _, v := range sessionInfo {
 		examInfo := Map{
-			"ID":         v.ID.ValueOrZero(),
-			"PaperID":    v.PaperID.ValueOrZero(),
-			"ExamTime":   v.Duration.ValueOrZero(),
-			"ExamineeID": v.ExamineeID.ValueOrZero(),
-			"SessionNum": v.SessionNum.ValueOrZero(),
+			"ID":           v.ID.ValueOrZero(),
+			"PaperID":      v.PaperID.ValueOrZero(),
+			"ExamTime":     v.Duration.ValueOrZero(),
+			"ExamineeID":   v.ExamineeID.ValueOrZero(),
+			"SessionNum":   v.SessionNum.ValueOrZero(),
+			"DurationTime": v.DurationTime.ValueOrZero() / 3600,
 		}
 		examSessionInfoMap = append(examSessionInfoMap, examInfo)
 	}
@@ -1513,7 +1544,7 @@ func getScoreExam(ctx context.Context, studentID, examSessionID int64) (Map, err
 		return result, err
 	}
 	answerTime := end.Int64 - start.Int64
-	examInfoMap["AnswerTime"] = answerTime
+	examInfoMap["AnswerTime"] = math.Ceil(float64(answerTime / 3600))
 
 	result["examInfo"] = examInfoMap
 	result["examSessionInfo"] = examSessionInfoMap
@@ -1651,7 +1682,7 @@ func getScorePractice(ctx context.Context, studentID int64, practiceID int64) (M
 		z.Error(err.Error())
 		return result, err
 	}
-	practiceInfoMap["SuggestTime"] = suggestDuration
+	practiceInfoMap["DurationTime"] = suggestDuration
 
 	var usedTime null.Float
 	// 这里搜索视图中的数据 并且需要根据尝试次数进行排序
@@ -1703,7 +1734,7 @@ WHERE rn = 1;`
 		return result, err
 	}
 	// 学生本次练习时长
-	practiceInfoMap["AnswerTime"] = math.Ceil(usedTime.Float64)
+	practiceInfoMap["AnswerTime"] = math.Ceil(usedTime.Float64) / 3600
 
 	result["practiceInfo"] = practiceInfoMap
 

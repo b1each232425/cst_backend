@@ -6,15 +6,15 @@ import (
 	"errors"
 	"fmt"
 	"math/rand"
+	"strings"
 	"time"
+
+	"w2w.io/cmn"
+	"w2w.io/null"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"w2w.io/null"
-
-	"strings"
-
-	"w2w.io/cmn"
+	"github.com/nyaruka/phonenumbers"
 )
 
 type Service interface {
@@ -237,7 +237,7 @@ func (r *service) QueryUsers(ctx context.Context, tx pgx.Tx, page, pageSize int6
 
 // InsertUsers 批量插入用户数据
 // 必要字段: account, category
-// 请不要轻易调用该方法插入用户，该方法不会对用户信息做全面的校验
+// 请不要轻易调用该方法插入用户，该方法不会对用户信息做全面的校验，需要先调用 ValidateUserToBeInsert 方法验证用户信息的合法性
 // 返回值: 成功插入的用户列表（包含生成的ID）、错误
 func (r *service) InsertUsers(ctx context.Context, tx pgx.Tx, users []User) ([]User, error) {
 	z.Info("---->" + cmn.FncName())
@@ -265,6 +265,58 @@ func (r *service) InsertUsers(ctx context.Context, tx pgx.Tx, users []User) ([]U
 			e := fmt.Errorf("user category is required")
 			z.Error(e.Error())
 			return []User{}, e
+		}
+
+		if users[i].MobilePhone.Valid {
+			// 将手机号格式化为无空格无特殊字符的E.164标准格式
+			number := strings.TrimSpace(users[i].MobilePhone.String)
+			if number == "" {
+				e := fmt.Errorf("mobile phone cannot be empty")
+				z.Error(e.Error())
+				return []User{}, e
+			}
+
+			region := strings.ToUpper(strings.TrimSpace(DefaultRegion))
+			parseRegion := region
+			if strings.HasPrefix(number, "+") {
+				parseRegion = "" // 已含国家码
+			}
+
+			num, err := phonenumbers.Parse(number, parseRegion)
+			if err != nil {
+				e := fmt.Errorf("failed to parse mobile phone %s: %w", number, err)
+				z.Error(e.Error())
+				return []User{}, e
+			}
+			if !phonenumbers.IsPossibleNumber(num) || !phonenumbers.IsValidNumber(num) {
+				e := fmt.Errorf("mobile phone %s is not a valid number", number)
+				z.Error(e.Error())
+				return []User{}, e
+			}
+
+			users[i].MobilePhone = null.StringFrom(phonenumbers.Format(num, phonenumbers.E164))
+		}
+
+		if users[i].IDCardNo.Valid {
+			// 如果有证件号，则必须有证件号类型
+			if !users[i].IDCardType.Valid {
+				e := fmt.Errorf("id_card_type is required when id_card_no is provided")
+				z.Error(e.Error())
+				return []User{}, e
+			}
+
+			// 检查证件号格式是否有效
+			switch users[i].IDCardType.String {
+			case cmn.CIDCardTypeResidentIdentityCard:
+				formattedIDNo, err := NormalizeAndValidateCNID(users[i].IDCardNo.String)
+				if err != nil {
+					e := fmt.Errorf("invalid id_card_no %s: %w", users[i].IDCardNo.String, err)
+					z.Error(e.Error())
+					return []User{}, e
+				}
+				users[i].IDCardNo = null.StringFrom(formattedIDNo)
+				break
+			}
 		}
 
 		if !users[i].IDCardNo.Valid && !users[i].MobilePhone.Valid && !users[i].Email.Valid {
@@ -613,6 +665,11 @@ func (r *service) ValidateUserToBeInsert(ctx context.Context, tx pgx.Tx, users [
 		"invalid_domain":        "角色不合法",
 		"empty_domain":          "角色不能为空",
 		"can_not_be_superAdmin": "不允许为超级管理员角色",
+		"empty_mobile_phone":    "无法检测到手机号",
+		"mobile_not_e164":       "手机号格式不符合E.164标准",
+		"id_card_type_invalid":  "证件类型不合法",
+		"empty_id_card_type":    "证件类型不能为空",
+		"not_valid_id_card_no":  "非有效证件号",
 	}
 
 	for i := range users {
@@ -651,6 +708,47 @@ func (r *service) ValidateUserToBeInsert(ctx context.Context, tx pgx.Tx, users [
 		}
 
 		if users[i].MobilePhone.Valid {
+			// 检测手机号格式是否符合E.164标准
+			number := strings.TrimSpace(users[i].MobilePhone.String)
+			if number == "" {
+				errorCount++
+				errorMessage = append(errorMessage, null.StringFrom(errorMessages["empty_mobile_phone"]))
+			}
+
+			region := strings.ToUpper(strings.TrimSpace(DefaultRegion))
+			if region == "" {
+				region = "CN" // 默认地区为中国
+			}
+
+			switch strings.HasPrefix(number, "+") {
+			case true:
+				// 如果传入的手机号有 + 前缀，则按国际格式处理
+				num, err := phonenumbers.Parse(number, "")
+				if err != nil {
+					errorCount++
+					errorMessage = append(errorMessage, null.StringFrom(errorMessages["mobile_not_e164"]))
+					break
+				}
+				if !phonenumbers.IsValidNumber(num) {
+					errorCount++
+					errorMessage = append(errorMessage, null.StringFrom(errorMessages["mobile_not_e164"]))
+					break
+				}
+			case false:
+				// 如果没有 + 前缀，则按默认地区处理
+				num, err := phonenumbers.Parse(number, region)
+				if err != nil {
+					errorCount++
+					errorMessage = append(errorMessage, null.StringFrom(errorMessages["mobile_not_e164"]))
+					break
+				}
+				if !phonenumbers.IsValidNumber(num) {
+					errorCount++
+					errorMessage = append(errorMessage, null.StringFrom(errorMessages["mobile_not_e164"]))
+					break
+				}
+			}
+
 			// 检查手机号是否已存在
 			exist, err := r.CheckTUserFieldExists(ctx, tx, "mobile_phone", users[i].MobilePhone)
 			if err != nil || forceErr == "CheckTUserFieldExists_mobile_phone" {
@@ -680,8 +778,31 @@ func (r *service) ValidateUserToBeInsert(ctx context.Context, tx pgx.Tx, users [
 		}
 
 		if users[i].IDCardNo.Valid {
+			// 如果有证件号，则必须有证件号类型
+			if !users[i].IDCardType.Valid {
+				errorCount++
+				errorMessage = append(errorMessage, null.StringFrom(errorMessages["empty_id_card_type"]))
+			} else {
+				// 检查证件号类型是否合法
+				if !cmn.CheckIDCardTypeValid(users[i].IDCardType.String) {
+					errorCount++
+					errorMessage = append(errorMessage, null.StringFrom(errorMessages["id_card_type_invalid"]))
+				}
+			}
+
+			// 检查证件号格式是否有效
+			switch users[i].IDCardType.String {
+			case cmn.CIDCardTypeResidentIdentityCard:
+				_, err = NormalizeAndValidateCNID(users[i].IDCardNo.String)
+				if err != nil {
+					errorCount++
+					errorMessage = append(errorMessage, null.StringFrom(errorMessages["not_valid_id_card_no"]))
+				}
+				break
+			}
+
 			// 检查证件号是否已存在
-			exist, err := r.CheckTUserFieldExists(ctx, tx, "id_card_no", users[i].IDCardNo)
+			exist, err := r.CheckTUserFieldExists(ctx, tx, "id_card_no", users[i].IDCardNo.String)
 			if err != nil || forceErr == "CheckTUserFieldExists_id_card_no" {
 				return []User{}, []User{}, []User{}, fmt.Errorf("error checking ID card number existence: %w", err)
 			}
