@@ -1251,7 +1251,7 @@ func gradeAnalysisByID(ctx context.Context, esid int64, pid int64) (Analysis, er
 		var answerData AnswerData
 		err = json.Unmarshal(ans.AnsJson, &answerData)
 		if err != nil || forceErr == "Unmarshal fail" {
-			err = fmt.Errorf("反序列化学生答案失败: %w", err)
+			err = fmt.Errorf("反序列化学生答案失败: %w，学生答案:%s", err, ans.AnsJson)
 			z.Error(err.Error())
 			return analysis, err
 		}
