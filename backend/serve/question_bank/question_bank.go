@@ -826,20 +826,16 @@ func validateQuestion(question *cmn.TQuestion) (valid bool, err error) {
 			z.Error(err.Error())
 			return false, err
 		}
-
-		if len(tags) == 0 {
-			err = fmt.Errorf("question must have at least one tag")
-			z.Error(err.Error())
-			return false, err
-		}
-
-		for _, tag := range tags {
-			if strings.TrimSpace(tag) == "" {
-				err = fmt.Errorf("question tags cannot contain empty values")
-				z.Error(err.Error())
-				return false, err
+		if len(tags) > 0 {
+			for _, tag := range tags {
+				if strings.TrimSpace(tag) == "" {
+					err = fmt.Errorf("question tags cannot contain empty values")
+					z.Error(err.Error())
+					return false, err
+				}
 			}
 		}
+
 	}
 
 	// 根据题型进行细化验证
