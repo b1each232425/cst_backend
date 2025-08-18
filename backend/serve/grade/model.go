@@ -152,9 +152,10 @@ type ExamSessionScoreRank struct {
 }
 
 type SessionInfo struct {
-	ID         null.Int `json:"ID,omitempty"`
-	PaperID    null.Int `json:"PaperID,omitempty"`
-	Duration   null.Int `json:"Duration,omitempty"`
-	SessionNum null.Int `json:"SessionNum,omitempty"`
-	ExamineeID null.Int `json:"ExamineeID,omitempty"`
+	ID           null.Int `json:"ID,omitempty"`
+	PaperID      null.Int `json:"PaperID,omitempty"`
+	Duration     null.Int `json:"Duration,omitempty"`
+	SessionNum   null.Int `json:"SessionNum,omitempty"`
+	ExamineeID   null.Int `json:"ExamineeID,omitempty"`
+	DurationTime null.Int `json:"DurationTime,omitempty"`
 }

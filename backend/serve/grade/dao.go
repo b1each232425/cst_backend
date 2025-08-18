@@ -1473,7 +1473,7 @@ func getScoreExam(ctx context.Context, studentID, examSessionID int64) (Map, err
 	// TODO: 筛选状态调整
 	esiSql := `
 		SELECT 
-			es.id, e.exam_paper_id, es.duration, e.id as examinee_id, es.session_num
+			es.id, e.exam_paper_id, es.duration, e.id as examinee_id, es.session_num, es.end_time-es.start_time
 		FROM t_exam_session es
 		LEFT JOIN t_examinee e ON es.id = e.exam_session_id AND e.student_id = $1 AND e.status != $2
 		WHERE es.exam_id = $3 AND es.status != $4
@@ -1496,6 +1496,7 @@ func getScoreExam(ctx context.Context, studentID, examSessionID int64) (Map, err
 			&session.Duration,
 			&session.ExamineeID,
 			&session.SessionNum,
+			&session.DurationTime,
 		)
 		if err != nil || forceErr == "esi rows Scan fail" {
 			err = fmt.Errorf("扫描考试场次失败: %w", err)
@@ -1506,11 +1507,12 @@ func getScoreExam(ctx context.Context, studentID, examSessionID int64) (Map, err
 	}
 	for _, v := range sessionInfo {
 		examInfo := Map{
-			"ID":         v.ID.ValueOrZero(),
-			"PaperID":    v.PaperID.ValueOrZero(),
-			"ExamTime":   v.Duration.ValueOrZero(),
-			"ExamineeID": v.ExamineeID.ValueOrZero(),
-			"SessionNum": v.SessionNum.ValueOrZero(),
+			"ID":           v.ID.ValueOrZero(),
+			"PaperID":      v.PaperID.ValueOrZero(),
+			"ExamTime":     v.Duration.ValueOrZero(),
+			"ExamineeID":   v.ExamineeID.ValueOrZero(),
+			"SessionNum":   v.SessionNum.ValueOrZero(),
+			"DurationTime": v.DurationTime.ValueOrZero() / 3600,
 		}
 		examSessionInfoMap = append(examSessionInfoMap, examInfo)
 	}
@@ -1542,7 +1544,7 @@ func getScoreExam(ctx context.Context, studentID, examSessionID int64) (Map, err
 		return result, err
 	}
 	answerTime := end.Int64 - start.Int64
-	examInfoMap["AnswerTime"] = answerTime / 3600
+	examInfoMap["AnswerTime"] = math.Ceil(float64(answerTime / 3600))
 
 	result["examInfo"] = examInfoMap
 	result["examSessionInfo"] = examSessionInfoMap
@@ -1680,7 +1682,7 @@ func getScorePractice(ctx context.Context, studentID int64, practiceID int64) (M
 		z.Error(err.Error())
 		return result, err
 	}
-	practiceInfoMap["SuggestTime"] = suggestDuration
+	practiceInfoMap["DurationTime"] = suggestDuration
 
 	var usedTime null.Float
 	// 这里搜索视图中的数据 并且需要根据尝试次数进行排序
