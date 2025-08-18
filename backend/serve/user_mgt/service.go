@@ -297,6 +297,28 @@ func (r *service) InsertUsers(ctx context.Context, tx pgx.Tx, users []User) ([]U
 			users[i].MobilePhone = null.StringFrom(phonenumbers.Format(num, phonenumbers.E164))
 		}
 
+		if users[i].IDCardNo.Valid {
+			// 如果有证件号，则必须有证件号类型
+			if !users[i].IDCardType.Valid {
+				e := fmt.Errorf("id_card_type is required when id_card_no is provided")
+				z.Error(e.Error())
+				return []User{}, e
+			}
+
+			// 检查证件号格式是否有效
+			switch users[i].IDCardType.String {
+			case cmn.CIDCardTypeResidentIdentityCard:
+				formattedIDNo, err := NormalizeAndValidateCNID(users[i].IDCardNo.String)
+				if err != nil {
+					e := fmt.Errorf("invalid id_card_no %s: %w", users[i].IDCardNo.String, err)
+					z.Error(e.Error())
+					return []User{}, e
+				}
+				users[i].IDCardNo = null.StringFrom(formattedIDNo)
+				break
+			}
+		}
+
 		if !users[i].IDCardNo.Valid && !users[i].MobilePhone.Valid && !users[i].Email.Valid {
 			users[i].Type = null.StringFrom("00") // 匿名用户
 		} else {
@@ -647,6 +669,7 @@ func (r *service) ValidateUserToBeInsert(ctx context.Context, tx pgx.Tx, users [
 		"mobile_not_e164":       "手机号格式不符合E.164标准",
 		"id_card_type_invalid":  "证件类型不合法",
 		"empty_id_card_type":    "证件类型不能为空",
+		"not_valid_id_card_no":  "非有效证件号",
 	}
 
 	for i := range users {
@@ -767,8 +790,19 @@ func (r *service) ValidateUserToBeInsert(ctx context.Context, tx pgx.Tx, users [
 				}
 			}
 
+			// 检查证件号格式是否有效
+			switch users[i].IDCardType.String {
+			case cmn.CIDCardTypeResidentIdentityCard:
+				_, err = NormalizeAndValidateCNID(users[i].IDCardNo.String)
+				if err != nil {
+					errorCount++
+					errorMessage = append(errorMessage, null.StringFrom(errorMessages["not_valid_id_card_no"]))
+				}
+				break
+			}
+
 			// 检查证件号是否已存在
-			exist, err := r.CheckTUserFieldExists(ctx, tx, "id_card_no", users[i].IDCardNo)
+			exist, err := r.CheckTUserFieldExists(ctx, tx, "id_card_no", users[i].IDCardNo.String)
 			if err != nil || forceErr == "CheckTUserFieldExists_id_card_no" {
 				return []User{}, []User{}, []User{}, fmt.Errorf("error checking ID card number existence: %w", err)
 			}
