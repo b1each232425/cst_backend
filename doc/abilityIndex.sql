@@ -1,8 +1,10 @@
 /*==============================================================*/
 /* DBMS name:      PostgreSQL 9.x                               */
-/* Created on:     2025/8/17 18:14:17                           */
+/* Created on:     2025/8/18 17:00:13                           */
 /*==============================================================*/
 
+
+drop view if exists v_z_practice_wrong_collection;
 
 drop view if exists v_z_practice_summary;
 
@@ -39,8 +41,6 @@ drop view if exists v_student_answer_question;
 drop view if exists v_region;
 
 drop view if exists v_question_bank;
-
-drop view if exists v_practice_wrong_collection;
 
 drop view if exists v_practice_unmarked_student_cnt;
 
@@ -9130,9 +9130,12 @@ comment on column t_sys_ver.status is
 ALTER SEQUENCE t_sys_ver_id_seq RESTART WITH 20000;
 
 insert into t_sys_ver(id,name,ver,create_time,update_time,remark)
-  values(1000,'业务模型','3.1.9.0',
-  '2016年12月5日 9:52:53','2025年8月17日 18:12:30',
-  '3.1.9.0
+  values(1000,'业务模型','3.1.10.0',
+  '2016年12月5日 9:52:53','2025年8月18日 16:29:26',
+  '3.1.10.0
+优化练习错题集视图SQL生成语句 优化practice_summary 视图attempt_count字段获取方式
+
+3.1.9.0
 优化试卷视图区分发布前后查询，添加试卷表exampaper_id及version字段
 
 3.1.8.0
@@ -13359,121 +13362,6 @@ drop table if exists t_v_practice_unmarked_student_cnt;
 create table t_v_practice_unmarked_student_cnt as select * from v_practice_unmarked_student_cnt;
 
 /*==============================================================*/
-/* View: v_practice_wrong_collection                            */
-/*==============================================================*/
-create or replace view v_practice_wrong_collection as
-WITH 
-wrong_questions AS (
-    SELECT 
-        tsa.question_id
-    FROM t_student_answers tsa
-    JOIN t_practice_submissions tps
-        ON tsa.practice_submission_id = tps.id 
-        AND tsa.wrong_attempt = tps.wrong_attempt
-    JOIN t_exam_paper_question tepq ON tsa.question_id = tepq.id
-    WHERE tsa.answer_score < tepq.score AND tsa.status = '0'
-),
-question_agg AS (
-    SELECT 
-        tepq.group_id,
-        jsonb_agg(
-            jsonb_build_object(
-                'id', tepq.id,
-                'type', tepq.type,
-                'content', tepq.content,
-                'options', tepq.options,
-                'answers', tepq.answers,
-                'score', tepq.score, 
-                'analysis', tepq.analysis,
-                'title', tepq.title,
-                'answer_file_path', tepq.answer_file_path,
-                'test_file_path', tepq.test_file_path,
-                'input', tepq.input,
-                'output', tepq.output,
-                'example', tepq.example,
-                'repo', tepq.repo,
-                'order', tepq."order", 
-                'group_id', tepq.group_id,
-                'status', tepq.status,
-                'question_attachments_path', tepq.question_attachments_path
-            ) ORDER BY tepq."order"
-        ) AS questions,
-        SUM(tepq.score) AS group_total_score,
-        COUNT(tepq.id) AS group_question_count
-    FROM t_exam_paper_question tepq
-    JOIN wrong_questions wq ON tepq.id = wq.question_id
-    WHERE tepq.status = '00'
-    GROUP BY tepq.group_id
-),
-group_data AS (
-    SELECT 
-        pg.id,
-        pg.name,
-        pg."order",
-        pg.creator,
-        pg.create_time,
-        pg.updated_by,
-        pg.update_time,
-        pg.status,
-        pg.addi,
-        pg.exam_paper_id,
-        COALESCE(qa.questions, '[]'::jsonb) AS questions,
-        COALESCE(qa.group_total_score, 0) AS group_total_score,
-        COALESCE(qa.group_question_count, 0) AS group_question_count
-    FROM t_exam_paper_group pg
-    LEFT JOIN question_agg qa ON qa.group_id = pg.id
-    WHERE pg.status != '02'
-),
-paper_groups AS (
-    SELECT 
-        exam_paper_id,
-        jsonb_agg(
-            jsonb_build_object(
-                'id', id,
-                'name', name,
-                'order', "order",
-                'creator', creator,
-                'create_time', create_time,
-                'updated_by', updated_by,
-                'update_time', update_time,
-                'status', status,
-                'addi', addi,
-                'questions', questions
-            ) ORDER BY "order"
-        ) AS groups_data,
-        SUM(group_total_score) AS total_score,
-        SUM(group_question_count) AS question_count,
-        COUNT(*) AS group_count
-    FROM group_data
-    WHERE questions <> '[]'::jsonb
-    GROUP BY exam_paper_id
-)
-SELECT 	
-    p.id,
-    p.exam_session_id,
-    p.practice_id,
-    p.name,
-    p.creator,
-    p.create_time,
-    p.updated_by,
-    p.update_time,
-    p.status,
-    COALESCE(pgrp.total_score, 0) AS total_score,
-    COALESCE(pgrp.question_count, 0) AS question_count,
-    COALESCE(pgrp.group_count, 0) AS group_count,
-    COALESCE(pgrp.groups_data, '[]'::jsonb) AS groups_data
-FROM t_exam_paper p 
-LEFT JOIN paper_groups pgrp ON pgrp.exam_paper_id = p.id
-WHERE p.status = '00';
-
-comment on view v_practice_wrong_collection is
-'学生某次练习提交错题集视图';
-
-drop table if exists t_v_practice_wrong_collection;
-
-create table t_v_practice_wrong_collection as select * from v_practice_wrong_collection;
-
-/*==============================================================*/
 /* View: v_question_bank                                        */
 /*==============================================================*/
 create or replace view v_question_bank as
@@ -14068,7 +13956,8 @@ comment on view v_z_grade_practice_statistics is
 /* View: v_z_practice_summary                                   */
 /*==============================================================*/
 create or replace view v_z_practice_summary as
- SELECT DISTINCT ON (ts.practice_id, ts.student_id) p.id,
+SELECT DISTINCT ON (ts.practice_id, ts.student_id)
+    p.id,
     p.name,
     ts.student_id,
     p.status AS practice_status,
@@ -14078,10 +13967,10 @@ create or replace view v_z_practice_summary as
     vep.question_count,
     COALESCE(vs.wrong_count, 0::bigint) AS wrong_count,
     vs.total_score,
-    COALESCE(( SELECT max(vs2.total_score) AS max
-           FROM v_student_practice_total_score vs2
-          WHERE vs2.practice_id = p.id AND vs2.student_id = ts.student_id), 0::double precision) AS highest_score,
-    COALESCE(vs.attempt, 0) AS attempt_count,
+    COALESCE((SELECT max(vs2.total_score)
+              FROM v_student_practice_total_score vs2
+              WHERE vs2.practice_id = p.id AND vs2.student_id = ts.student_id), 0::double precision) AS highest_score,
+    COALESCE(psub_max.attempt_count, 0) AS attempt_count,
     COALESCE(lus.submission_id, 0) AS latest_unsubmitted_id,
     COALESCE(ls.submission_id, 0) AS latest_submitted_id,
     COALESCE(pm.submission_id, 0) AS pending_mark_id,
@@ -14092,21 +13981,154 @@ create or replace view v_z_practice_summary as
     vep.total_score AS paper_total_score,
     p.exam_paper_id AS exam_paper_id,
     tp.suggested_duration AS suggested_duration
-   FROM t_practice_student ts
-     JOIN t_practice p ON ts.practice_id = p.id
-     JOIN t_paper tp ON p.paper_id = tp.id
-     JOIN v_exam_paper vep ON p.exam_paper_id = vep.id
-     LEFT JOIN v_y_max_submitted_view vs ON vs.practice_id = p.id AND vs.student_id = ts.student_id
-     LEFT JOIN v_latest_unsubmitted_practice lus ON lus.practice_id = ts.practice_id AND lus.student_id = ts.student_id
-     LEFT JOIN v_latest_submitted_practice ls ON ls.practice_id = ts.practice_id AND ls.student_id = ts.student_id
-     LEFT JOIN v_latest_pending_mark_practice pm ON pm.practice_id = ts.practice_id AND pm.student_id = ts.student_id
-  ORDER BY ts.practice_id, ts.student_id, ts.create_time DESC;
+FROM t_practice_student ts
+JOIN t_practice p ON ts.practice_id = p.id
+JOIN t_paper tp ON p.paper_id = tp.id
+JOIN v_exam_paper vep ON p.exam_paper_id = vep.id
+LEFT JOIN (
+    SELECT student_id, practice_id, MAX(attempt) AS attempt_count
+    FROM t_practice_submissions
+    GROUP BY student_id, practice_id
+) psub_max ON psub_max.student_id = ts.student_id AND psub_max.practice_id = ts.practice_id
+LEFT JOIN v_y_max_submitted_view vs ON vs.practice_id = p.id AND vs.student_id = ts.student_id
+LEFT JOIN v_latest_unsubmitted_practice lus ON lus.practice_id = ts.practice_id AND lus.student_id = ts.student_id
+LEFT JOIN v_latest_submitted_practice ls ON ls.practice_id = ts.practice_id AND ls.student_id = ts.student_id
+LEFT JOIN v_latest_pending_mark_practice pm ON pm.practice_id = ts.practice_id AND pm.student_id = ts.student_id
+ORDER BY ts.practice_id, ts.student_id, ts.create_time DESC;
 
 comment on view v_z_practice_summary is
 'v_z_practice_summary';
 
 drop table if exists t_v_practice_summary;
 create table t_v_practice_summary as select * from v_z_practice_summary;
+
+/*==============================================================*/
+/* View: v_z_practice_wrong_collection                          */
+/*==============================================================*/
+create or replace view v_z_practice_wrong_collection as
+WITH 
+latest_submission AS(
+    SELECT 
+        v.id AS practice_submission_id,
+        v.student_id,
+        v.practice_id,
+        tps.wrong_attempt,
+        tps.exam_paper_id
+     FROM v_y_max_submitted_view v
+     JOIN t_practice_submissions tps ON v.id = tps.id
+     WHERE tps.status = '08'
+),
+wrong_questions AS (
+    SELECT 
+        tsa.question_id
+    FROM t_student_answers tsa
+    JOIN latest_submission ls
+        ON tsa.practice_submission_id = ls.practice_submission_id 
+        AND tsa.wrong_attempt = ls.wrong_attempt
+    JOIN t_exam_paper_question tepq ON tsa.question_id = tepq.id
+    WHERE tsa.answer_score < tepq.score
+),
+question_agg AS (
+    SELECT 
+        tepq.group_id,
+        jsonb_agg(
+            jsonb_build_object(
+                'id', tepq.id,
+                'type', tepq.type,
+                'content', tepq.content,
+                'options', tepq.options,
+                'answers', tepq.answers,
+                'score', tepq.score, 
+                'analysis', tepq.analysis,
+                'title', tepq.title,
+                'answer_file_path', tepq.answer_file_path,
+                'test_file_path', tepq.test_file_path,
+                'input', tepq.input,
+                'output', tepq.output,
+                'example', tepq.example,
+                'repo', tepq.repo,
+                'order', tepq."order", 
+                'group_id', tepq.group_id,
+                'status', tepq.status,
+                'question_attachments_path', tepq.question_attachments_path
+            ) ORDER BY tepq."order"
+        ) AS questions,
+        SUM(tepq.score) AS group_total_score,
+        COUNT(tepq.id) AS group_question_count
+    FROM t_exam_paper_question tepq
+    JOIN wrong_questions wq ON tepq.id = wq.question_id
+    WHERE tepq.status = '00'
+    GROUP BY tepq.group_id
+),
+group_data AS (
+    SELECT 
+        pg.id,
+        pg.name,
+        pg."order",
+        pg.creator,
+        pg.create_time,
+        pg.updated_by,
+        pg.update_time,
+        pg.status,
+        pg.addi,
+        pg.exam_paper_id,
+        COALESCE(qa.questions, '[]'::jsonb) AS questions,
+        COALESCE(qa.group_total_score, 0) AS group_total_score,
+        COALESCE(qa.group_question_count, 0) AS group_question_count
+    FROM t_exam_paper_group pg
+    JOIN question_agg qa ON qa.group_id = pg.id
+    WHERE pg.status != '02'
+),
+paper_groups AS (
+    SELECT 
+        exam_paper_id,
+        jsonb_agg(
+            jsonb_build_object(
+                'id', id,
+                'name', name,
+                'order', "order",
+                'creator', creator,
+                'create_time', create_time,
+                'updated_by', updated_by,
+                'update_time', update_time,
+                'status', status,
+                'addi', addi,
+                'questions', questions
+            ) ORDER BY "order"
+        ) AS groups_data,
+        SUM(group_total_score) AS total_score,
+        SUM(group_question_count) AS question_count,
+        COUNT(*) AS group_count
+    FROM group_data
+    WHERE questions <> '[]'::jsonb
+    GROUP BY exam_paper_id
+)
+SELECT 	
+    p.id,
+    p.name,
+    ls.student_id,
+    ls.practice_id,
+    ls.practice_submission_id AS practice_submission_id,
+    p.creator,
+    p.create_time,
+    p.updated_by,
+    p.update_time,
+    p.status,
+    COALESCE(pgrp.total_score, 0) AS total_score,
+    COALESCE(pgrp.question_count, 0) AS question_count,
+    COALESCE(pgrp.group_count, 0) AS group_count,
+    COALESCE(pgrp.groups_data, '[]'::jsonb) AS groups_data
+FROM t_exam_paper p 
+JOIN paper_groups pgrp ON pgrp.exam_paper_id = p.id
+JOIN latest_submission ls ON ls.exam_paper_id = p.id
+WHERE p.status = '00';
+
+comment on view v_z_practice_wrong_collection is
+'学生某次练习提交错题集视图';
+
+drop table if exists t_v_practice_wrong_collection;
+
+create table t_v_practice_wrong_collection as select * from v_z_practice_wrong_collection;
 
 alter table t_domain_api
    add constraint FK_ACT_REF_DOMAIN foreign key (domain)
