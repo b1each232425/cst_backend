@@ -3822,10 +3822,10 @@ func examFile(ctx context.Context) {
 		// 不存在则插入
 		if isNew {
 			q.Err = tx.QueryRow(ctx, `
-				INSERT INTO t_file (digest, file_name, path, belongto_path, size, count, creator, create_time)
-				VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+				INSERT INTO t_file (digest, file_name, path, belongto_path, size, count, creator, create_time, status)
+				VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 				RETURNING id, digest
-			`, examFile.CheckSum, examFile.Name, filePath, filePath, examFile.Size, 1, userID, currentTime).Scan(&fileID, &digest)
+			`, examFile.CheckSum, examFile.Name, filePath, filePath, examFile.Size, 1, userID, currentTime, "0").Scan(&fileID, &digest)
 			if forceErr == "examFile.tx.QueryRow2" {
 				q.Err = fmt.Errorf("强制插入文件信息错误")
 			}
