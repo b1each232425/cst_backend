@@ -1542,7 +1542,19 @@ func getScoreExam(ctx context.Context, studentID, examSessionID int64) (Map, err
 		return result, err
 	}
 	answerTime := end.Int64 - start.Int64
-	examInfoMap["AnswerTime"] = answerTime / 3600
+	examInfoMap["AnswerTime"] = math.Ceil(float64(answerTime / 3600))
+
+	// 第七步：获取考试时间
+	examTimeSql := `SELECT end_time-start_time FROM t_exam_session WHERE id = $1`
+	var examTime null.Int64
+	err = tx.QueryRow(ctx, examTimeSql, examSessionID).Scan(&examTime)
+	if err != nil || forceErr == "examTime conn Query fail" {
+		err = fmt.Errorf("查询考试场次时间失败: %w", err)
+		z.Error(err.Error())
+		return result, err
+	}
+
+	examInfoMap["DurationTime"] = math.Ceil(float64(examTime.ValueOrZero() / 3600))
 
 	result["examInfo"] = examInfoMap
 	result["examSessionInfo"] = examSessionInfoMap
@@ -1680,7 +1692,7 @@ func getScorePractice(ctx context.Context, studentID int64, practiceID int64) (M
 		z.Error(err.Error())
 		return result, err
 	}
-	practiceInfoMap["SuggestTime"] = suggestDuration
+	practiceInfoMap["DurationTime"] = suggestDuration
 
 	var usedTime null.Float
 	// 这里搜索视图中的数据 并且需要根据尝试次数进行排序
