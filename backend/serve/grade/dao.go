@@ -1512,7 +1512,7 @@ func getScoreExam(ctx context.Context, studentID, examSessionID int64) (Map, err
 			"ExamTime":     v.Duration.ValueOrZero(),
 			"ExamineeID":   v.ExamineeID.ValueOrZero(),
 			"SessionNum":   v.SessionNum.ValueOrZero(),
-			"DurationTime": v.DurationTime.ValueOrZero() / 3600,
+			"DurationTime": math.Ceil(float64(v.DurationTime.ValueOrZero() / 3600000)),
 		}
 		examSessionInfoMap = append(examSessionInfoMap, examInfo)
 	}
@@ -1544,7 +1544,7 @@ func getScoreExam(ctx context.Context, studentID, examSessionID int64) (Map, err
 		return result, err
 	}
 	answerTime := end.Int64 - start.Int64
-	examInfoMap["AnswerTime"] = math.Ceil(float64(answerTime / 3600))
+	examInfoMap["AnswerTime"] = math.Ceil(float64(answerTime / 3600000))
 
 	result["examInfo"] = examInfoMap
 	result["examSessionInfo"] = examSessionInfoMap
@@ -1734,7 +1734,7 @@ WHERE rn = 1;`
 		return result, err
 	}
 	// 学生本次练习时长
-	practiceInfoMap["AnswerTime"] = math.Ceil(usedTime.Float64) / 3600
+	practiceInfoMap["AnswerTime"] = math.Ceil(usedTime.Float64) / 3600000
 
 	result["practiceInfo"] = practiceInfoMap
 
