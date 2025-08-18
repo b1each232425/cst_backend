@@ -1512,7 +1512,7 @@ func getScoreExam(ctx context.Context, studentID, examSessionID int64) (Map, err
 			"ExamTime":     v.Duration.ValueOrZero(),
 			"ExamineeID":   v.ExamineeID.ValueOrZero(),
 			"SessionNum":   v.SessionNum.ValueOrZero(),
-			"DurationTime": math.Ceil(float64(v.DurationTime.ValueOrZero() / 3600000)),
+			"DurationTime": math.Ceil(float64(v.DurationTime.ValueOrZero()/3600000) + 0.5),
 		}
 		examSessionInfoMap = append(examSessionInfoMap, examInfo)
 	}
@@ -1538,13 +1538,9 @@ func getScoreExam(ctx context.Context, studentID, examSessionID int64) (Map, err
 		z.Error(err.Error())
 		return result, err
 	}
-	if !start.Valid || !end.Valid || forceErr == "ansTime invalid" {
-		err = fmt.Errorf("考试场次时间为空")
-		z.Warn(err.Error())
-		return result, err
-	}
 	answerTime := end.Int64 - start.Int64
-	examInfoMap["AnswerTime"] = math.Ceil(float64(answerTime / 3600000))
+	// 不足一分钟按一分钟计算
+	examInfoMap["AnswerTime"] = math.Ceil(float64(answerTime/3600000) + 0.5)
 
 	result["examInfo"] = examInfoMap
 	result["examSessionInfo"] = examSessionInfoMap
@@ -1734,7 +1730,7 @@ WHERE rn = 1;`
 		return result, err
 	}
 	// 学生本次练习时长
-	practiceInfoMap["AnswerTime"] = math.Ceil(usedTime.Float64) / 3600000
+	practiceInfoMap["AnswerTime"] = math.Ceil(usedTime.Float64/3600000 + 0.5)
 
 	result["practiceInfo"] = practiceInfoMap
 
