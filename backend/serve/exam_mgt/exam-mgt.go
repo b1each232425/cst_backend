@@ -1225,6 +1225,37 @@ func exam(ctx context.Context) {
 			return
 		}
 
+		// 获取考试附件信息
+		var examFiles []ExamFile
+		queryExamFilesSQL := `
+			SELECT digest, file_name
+			FROM v_exam_file
+			WHERE exam_id = $1
+		`
+		var examFilesRows pgx.Rows
+		examFilesRows, q.Err = conn.Query(context.Background(), queryExamFilesSQL, examID)
+		defer examFilesRows.Close()
+		if forceErr == "conn.QueryExamFilesRows" {
+			q.Err = fmt.Errorf("强制查询错误")
+		}
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+		defer examFilesRows.Close()
+
+		for examFilesRows.Next() {
+			var ef ExamFile
+			q.Err = examFilesRows.Scan(&ef.CheckSum, &ef.Name)
+			if q.Err != nil {
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+			examFiles = append(examFiles, ef)
+		}
+
 		if strings.Contains(userDomain, "^student") {
 			examData := ExamData{
 				ExamInfo:       ei,
@@ -1233,6 +1264,7 @@ func exam(ctx context.Context) {
 				InvigilatorIDs: nil,
 				ExamRooms:      nil,
 				TimeStamp:      currentTime,
+				Files:          examFiles,
 			}
 
 			var jsonData []byte
@@ -1287,37 +1319,6 @@ func exam(ctx context.Context) {
 				return
 			}
 			examineeIDs = append(examineeIDs, examineeID)
-		}
-
-		// 获取考试附件信息
-		var examFiles []ExamFile
-		queryExamFilesSQL := `
-			SELECT digest, file_name
-			FROM v_exam_file
-			WHERE exam_id = $1
-		`
-		var examFilesRows pgx.Rows
-		examFilesRows, q.Err = conn.Query(context.Background(), queryExamFilesSQL, examID)
-		defer examFilesRows.Close()
-		if forceErr == "conn.QueryExamFilesRows" {
-			q.Err = fmt.Errorf("强制查询错误")
-		}
-		if q.Err != nil {
-			z.Error(q.Err.Error())
-			q.RespErr()
-			return
-		}
-		defer examFilesRows.Close()
-
-		for examFilesRows.Next() {
-			var ef ExamFile
-			q.Err = examFilesRows.Scan(&ef.CheckSum, &ef.Name)
-			if q.Err != nil {
-				z.Error(q.Err.Error())
-				q.RespErr()
-				return
-			}
-			examFiles = append(examFiles, ef)
 		}
 
 		// // 获取监考员信息
