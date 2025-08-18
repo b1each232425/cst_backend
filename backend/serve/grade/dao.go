@@ -272,8 +272,8 @@ func gradeListPractice(ctx context.Context, userID int64, req *GradeListReq) ([]
 	sql := fmt.Sprintf(`
 	SELECT practice_id, practice_name, total_score, averge_score, actual_completer, pass_student
 	FROM v_z_grade_practice_statistics p 
-	WHERE 1=1 %s
-	GROUP BY p.practice_id, p.practice_name, p.total_score, p.averge_score, p.actual_completer, p.pass_student
+	WHERE p.status != '04' %s
+	GROUP BY p.practice_id, p.practice_name, p.total_score, p.averge_score, p.actual_completer, p.pass_student, p.status
 		`, whereClause)
 
 	conn := cmn.GetPgxConn()
