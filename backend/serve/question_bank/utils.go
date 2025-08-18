@@ -375,13 +375,6 @@ func validateEssayQuestion(question *cmn.TQuestion) (bool, error) {
 		return false, err
 	}
 
-	// 验证分析是否存在
-	if !question.Analysis.Valid || strings.TrimSpace(question.Analysis.String) == "" {
-		err = fmt.Errorf("essay question must have analysis")
-		z.Error(err.Error())
-		return false, err
-	}
-
 	return true, nil
 }
 
