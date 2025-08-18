@@ -119,7 +119,7 @@ func gradeListExam(ctx context.Context, userID int64, req *GradeListReq) ([]Grad
 
 	// 视图SQL
 	sql := fmt.Sprintf(`
-		SELECT ei.id AS id, ei.name AS exam_name, ei.type AS exam_type, jsonb_agg(esi) AS exam_session_info, ei.submitted AS submitted
+		SELECT ei.id, ei.name, ei.type, jsonb_agg(esi) AS exam_session_info, ei.submitted, ei.status
 		FROM t_exam_info ei     
 			LEFT JOIN v_z_grade_exam_session_info esi ON esi.exam_id = ei.id
 		WHERE ei.status !='12' AND ei.status != '14' AND ei.status != '16' %s
@@ -170,6 +170,7 @@ func gradeListExam(ctx context.Context, userID int64, req *GradeListReq) ([]Grad
 			&grade.Type,
 			&grade.Sessions,
 			&grade.Submitted,
+			&grade.Status,
 		)
 		if forceErr == "rows scan fail" {
 			err = errors.New(forceErr)

@@ -29,6 +29,7 @@ type ExamSessionInfo struct {
 	PaperName          null.String `json:"paper_name"`          // 考卷名称
 	StartTime          null.Int    `json:"start_time"`          // 考试开始时间
 	EndTime            null.Int    `json:"end_time"`            // 考试结束时间
+	Status             null.String `json:"status"`              // 考试状态
 	MarkMode           null.String `json:"mark_mode"`           // 阅卷方式
 	TotalScore         null.Float  `json:"total_score"`         // 试卷总分
 	AverageScore       null.Float  `json:"average_score"`       // 平均分
@@ -43,6 +44,7 @@ type GradeExam struct {
 	Type      null.String       `json:"type"`      // 考试类型
 	Sessions  []ExamSessionInfo `json:"sessions"`  // 考试场次列表
 	Submitted null.Bool         `json:"submitted"` // 是否已提交成绩
+	Status    null.String       `json:"status"`    // 考试状态
 }
 
 type GradePractice struct {
