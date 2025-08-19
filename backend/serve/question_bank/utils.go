@@ -146,12 +146,6 @@ func validateMultipleChoiceQuestion(question *cmn.TQuestion) (bool, error) {
 		return false, err
 	}
 
-	if len(answers) < 2 {
-		err = fmt.Errorf("multiple choice question must have at least 2 correct answers, got %d", len(answers))
-		z.Error(err.Error())
-		return false, err
-	}
-
 	if len(answers) >= len(options) {
 		err = fmt.Errorf("multiple choice question cannot have all options as correct answers")
 		z.Error(err.Error())
