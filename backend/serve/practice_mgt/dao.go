@@ -26,7 +26,7 @@ import (
 	ps 参与练习的学生ID数组
 	uid 操作人
 */
-func UpsertPractice(ctx context.Context, p *cmn.TPractice, ps []int64, uid int64) error {
+func UpsertPractice(ctx context.Context, p *cmn.TPractice, ps []int64, uid int64, isClearStudent bool) error {
 	if uid <= 0 {
 		err := fmt.Errorf("invalid updator ID param")
 		z.Error(err.Error())
@@ -42,7 +42,7 @@ func UpsertPractice(ctx context.Context, p *cmn.TPractice, ps []int64, uid int64
 	if p2.Status.String == PracticeStatus.Released {
 		return fmt.Errorf("练习已经发布，不可修改练习信息")
 	}
-	return UpdatePractice(ctx, p, ps, uid, false)
+	return UpdatePractice(ctx, p, ps, uid, false, isClearStudent)
 
 }
 
@@ -53,8 +53,9 @@ func UpsertPractice(ctx context.Context, p *cmn.TPractice, ps []int64, uid int64
 	ps 参与练习的学生ID数组 为空或者长度为0则不更新学生名单 否则就更新
 	uid 操作人
 	isOperate 是否通过operate操作函数调用的：是则允许更新status字段，否则不允许更新status字段
+	isClear 是否清除学生名单
 */
-func UpdatePractice(ctx context.Context, p *cmn.TPractice, ps []int64, uid int64, isOperate bool) error {
+func UpdatePractice(ctx context.Context, p *cmn.TPractice, ps []int64, uid int64, isOperate, isClear bool) error {
 	if uid <= 0 {
 		err := fmt.Errorf("invalid updator ID param")
 		z.Error(err.Error())
@@ -98,6 +99,9 @@ func UpdatePractice(ctx context.Context, p *cmn.TPractice, ps []int64, uid int64
 		err = fmt.Errorf("updatePractice call failed:%v", err)
 		z.Error(err.Error())
 		return err
+	}
+	if !isClear && len(ps) == 0 {
+		return nil
 	}
 	err = UpsertPracticeStudentV2(ctx, p.ID.Int64, uid, ps)
 	if err != nil {

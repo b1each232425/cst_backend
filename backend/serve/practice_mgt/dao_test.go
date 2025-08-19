@@ -3,7 +3,7 @@
  * @Description: 练习管理数据库层函数逻辑测试
  * @Date: 2025-07-24 14:51:50
  * @LastEditors: zdl <1311866870@qq.com>
- * @LastEditTime: 2025-08-19 12:47:09
+ * @LastEditTime: 2025-08-19 13:17:34
  */
 package practice_mgt
 
@@ -262,6 +262,7 @@ func TestUpdatePractice(t *testing.T) {
 		p             *cmn.TPractice
 		ps            []int64
 		uid           int64
+		isClear       bool
 		expectedError error
 		Ostatus       bool
 	}{
@@ -385,7 +386,7 @@ func TestUpdatePractice(t *testing.T) {
 			} else {
 				ctx = context.Background()
 			}
-			err := UpdatePractice(ctx, tt.p, tt.ps, tt.uid, tt.Ostatus)
+			err := UpdatePractice(ctx, tt.p, tt.ps, tt.uid, tt.Ostatus, tt.isClear)
 			if tt.expectedError != nil {
 				if !containsString(err.Error(), tt.expectedError.Error()) {
 					t.Errorf("%v报错与预期：%v", err, tt.expectedError)
@@ -944,6 +945,7 @@ func TestUpsertPractice(t *testing.T) {
 		uid           int64
 		expectedError error
 		create        bool
+		isClear       bool
 	}{
 		{
 			name: "参数异常1 非法uid",
@@ -1025,7 +1027,7 @@ func TestUpsertPractice(t *testing.T) {
 					t.Errorf("无法让测试用例更新异常触发练习已经发布状态")
 				}
 			}
-			err := UpsertPractice(context.Background(), tt.p, tt.ps, tt.uid)
+			err := UpsertPractice(context.Background(), tt.p, tt.ps, tt.uid, tt.isClear)
 			if tt.expectedError != nil {
 				if !containsString(err.Error(), tt.expectedError.Error()) {
 					t.Errorf("%v报错与预期：%v", err, tt.expectedError)
