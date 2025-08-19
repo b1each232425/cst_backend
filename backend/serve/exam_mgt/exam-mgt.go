@@ -2431,7 +2431,13 @@ func examList(ctx context.Context) {
 			argIdx += 2
 		}
 
-		countSQL := "SELECT COUNT(ei.id) FROM t_exam_info ei LEFT JOIN t_domain d ON ei.domain_id = d.id WHERE ei.status NOT IN ('12', '14')" + conditionBuilder.String()
+		var countSQL string
+
+		if strings.Contains(userDomain, "^student") {
+			countSQL = "SELECT COUNT(ei.id) FROM t_exam_info ei LEFT JOIN t_domain d ON ei.domain_id = d.id WHERE ei.status NOT IN ('12', '14', '16')" + conditionBuilder.String()
+		} else {
+			countSQL = "SELECT COUNT(ei.id) FROM t_exam_info ei LEFT JOIN t_domain d ON ei.domain_id = d.id WHERE ei.status NOT IN ('12', '14')" + conditionBuilder.String()
+		}
 
 		var rowCount int64
 		q.Err = conn.QueryRow(ctx, countSQL, args...).Scan(&rowCount)
