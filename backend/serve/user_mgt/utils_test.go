@@ -746,8 +746,8 @@ func TestNormalizeAndValidateCNID(t *testing.T) {
 		// 真实有效身份证号码测试（使用公开的测试用身份证号码）
 		{
 			name:        "真实格式18位身份证-1",
-			input:       "310107196503251267",
-			expected:    "310107196503251267",
+			input:       "310104199708156970",
+			expected:    "310104199708156970",
 			expectError: false,
 		},
 		{
