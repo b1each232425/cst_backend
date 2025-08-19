@@ -1052,12 +1052,11 @@ func updateExamineeStatus(ctx context.Context, tx pgx.Tx, newStatus string, user
 
 	_, err := tx.Exec(ctx, `
 		UPDATE t_examinee 
-		SET status = $1, update_time = $2, updated_by = $3
-		FROM t_examinee e
-		JOIN t_exam_session es ON e.exam_session_id = es.id
-		WHERE t_examinee.id = e.id
-		AND es.exam_id = ANY($4) 
-		AND t_examinee.status != '08'
+        SET status = $1, update_time = $2, updated_by = $3
+        FROM t_exam_session es
+        WHERE t_examinee.exam_session_id = es.id
+        AND es.exam_id = ANY($4) 
+        AND t_examinee.status != '08'
 	`, newStatus, time.Now().UnixMilli(), userID, examIDs)
 	if forceErr == "updateExamineeStatus.Exec" {
 		err = fmt.Errorf("force error: %s", forceErr)
@@ -1226,6 +1225,37 @@ func exam(ctx context.Context) {
 			return
 		}
 
+		// 获取考试附件信息
+		var examFiles []ExamFile
+		queryExamFilesSQL := `
+			SELECT digest, file_name
+			FROM v_exam_file
+			WHERE exam_id = $1
+		`
+		var examFilesRows pgx.Rows
+		examFilesRows, q.Err = conn.Query(context.Background(), queryExamFilesSQL, examID)
+		defer examFilesRows.Close()
+		if forceErr == "conn.QueryExamFilesRows" {
+			q.Err = fmt.Errorf("强制查询错误")
+		}
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+		defer examFilesRows.Close()
+
+		for examFilesRows.Next() {
+			var ef ExamFile
+			q.Err = examFilesRows.Scan(&ef.CheckSum, &ef.Name)
+			if q.Err != nil {
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+			examFiles = append(examFiles, ef)
+		}
+
 		if strings.Contains(userDomain, "^student") {
 			examData := ExamData{
 				ExamInfo:       ei,
@@ -1234,6 +1264,7 @@ func exam(ctx context.Context) {
 				InvigilatorIDs: nil,
 				ExamRooms:      nil,
 				TimeStamp:      currentTime,
+				Files:          examFiles,
 			}
 
 			var jsonData []byte
@@ -1288,37 +1319,6 @@ func exam(ctx context.Context) {
 				return
 			}
 			examineeIDs = append(examineeIDs, examineeID)
-		}
-
-		// 获取考试附件信息
-		var examFiles []ExamFile
-		queryExamFilesSQL := `
-			SELECT digest, file_name
-			FROM v_exam_file
-			WHERE exam_id = $1
-		`
-		var examFilesRows pgx.Rows
-		examFilesRows, q.Err = conn.Query(context.Background(), queryExamFilesSQL, examID)
-		defer examFilesRows.Close()
-		if forceErr == "conn.QueryExamFilesRows" {
-			q.Err = fmt.Errorf("强制查询错误")
-		}
-		if q.Err != nil {
-			z.Error(q.Err.Error())
-			q.RespErr()
-			return
-		}
-		defer examFilesRows.Close()
-
-		for examFilesRows.Next() {
-			var ef ExamFile
-			q.Err = examFilesRows.Scan(&ef.CheckSum, &ef.Name)
-			if q.Err != nil {
-				z.Error(q.Err.Error())
-				q.RespErr()
-				return
-			}
-			examFiles = append(examFiles, ef)
 		}
 
 		// // 获取监考员信息
@@ -1611,21 +1611,19 @@ func exam(ctx context.Context) {
 			rules = COALESCE(NULLIF($2, ''), rules),
 			type = COALESCE(NULLIF($3, ''), type),
 			mode = COALESCE(NULLIF($4, ''), mode),
-			files = COALESCE(NULLIF($5, '{}'::jsonb), files),
-			submitted = COALESCE($6, submitted),
-			creator = CASE WHEN status = '14' THEN $7 ELSE creator END,
-			create_time = CASE WHEN status = '14' THEN $8 ELSE create_time END,
-			updated_by = $7,
-			update_time = $8,
-			status = COALESCE(NULLIF($9, ''), status),
-			addi = COALESCE(NULLIF($10, '{}'::jsonb), addi)
-		WHERE id = $11 AND status != '12'`
+			submitted = COALESCE($5, submitted),
+			creator = CASE WHEN status = '14' THEN $6 ELSE creator END,
+			create_time = CASE WHEN status = '14' THEN $7 ELSE create_time END,
+			updated_by = $6,
+			update_time = $7,
+			status = COALESCE(NULLIF($8, ''), status),
+			addi = COALESCE(NULLIF($9, '{}'::jsonb), addi)
+		WHERE id = $10 AND status != '12'`
 		_, q.Err = tx.Exec(ctx, updateExamSQL,
 			ExamData.ExamInfo.Name.String,
 			ExamData.ExamInfo.Rules.String,
 			ExamData.ExamInfo.Type.String,
 			ExamData.ExamInfo.Mode.String,
-			ExamData.ExamInfo.Files,
 			ExamData.ExamInfo.Submitted.Bool,
 			userID,
 			currentTime,
@@ -1656,11 +1654,11 @@ func exam(ctx context.Context) {
 		}
 
 		deleteExamineeSQL := `
-		UPDATE t_examinee SET status = '08', updated_by = $1,
-		update_time = $2
-		FROM t_examinee e
-		JOIN t_exam_session es ON e.exam_session_id = es.id
-		WHERE es.exam_id = $3 AND e.status != '08'`
+		UPDATE t_examinee SET status = '08', updated_by = $1, update_time = $2
+		FROM t_exam_session es 
+		WHERE t_examinee.exam_session_id = es.id 
+		AND es.exam_id = $3 
+		AND t_examinee.status != '08'`
 		_, q.Err = tx.Exec(ctx, deleteExamineeSQL, userID, currentTime, ExamData.ExamInfo.ID.Int64)
 		if forceErr == "tx.SoftDeleteExaminee" {
 			q.Err = fmt.Errorf("强制删除考生错误")
@@ -2174,11 +2172,11 @@ func exam(ctx context.Context) {
 		}
 
 		deleteExamineeSQL := `
-		UPDATE t_examinee SET status = '08', updated_by = $1,
-		update_time = $2
-		FROM t_examinee e
-		JOIN t_exam_session es ON e.exam_session_id = es.id
-		WHERE es.exam_id = ANY($3) AND e.status != '08'`
+		UPDATE t_examinee SET status = '08', updated_by = $1, update_time = $2
+		FROM t_exam_session es 
+		WHERE t_examinee.exam_session_id = es.id 
+		AND es.exam_id = ANY($3) 
+		AND t_examinee.status != '08'`
 		_, q.Err = tx.Exec(ctx, deleteExamineeSQL, userID, currentTime, examIDs)
 		if forceErr == "tx.SoftDeleteExaminee" {
 			q.Err = fmt.Errorf("强制删除考生错误")
@@ -3825,10 +3823,10 @@ func examFile(ctx context.Context) {
 		// 不存在则插入
 		if isNew {
 			q.Err = tx.QueryRow(ctx, `
-				INSERT INTO t_file (digest, file_name, path, belongto_path, size, count, creator, create_time)
-				VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+				INSERT INTO t_file (digest, file_name, path, belongto_path, size, count, creator, create_time, status)
+				VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 				RETURNING id, digest
-			`, examFile.CheckSum, examFile.Name, filePath, filePath, examFile.Size, 1, userID, currentTime).Scan(&fileID, &digest)
+			`, examFile.CheckSum, examFile.Name, filePath, filePath, examFile.Size, 1, userID, currentTime, "0").Scan(&fileID, &digest)
 			if forceErr == "examFile.tx.QueryRow2" {
 				q.Err = fmt.Errorf("强制插入文件信息错误")
 			}

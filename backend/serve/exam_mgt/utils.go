@@ -142,6 +142,14 @@ func validateExamData(examData ExamData, isUpdate bool) error {
 		}
 	}
 
+	for _, examinee := range examData.ExamineeIDs {
+		if examinee <= 0 {
+			err := fmt.Errorf("部分学生ID无效: %d", examinee)
+			z.Error(err.Error())
+			return err
+		}
+	}
+
 	return nil
 }
 

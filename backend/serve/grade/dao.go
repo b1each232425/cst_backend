@@ -1251,7 +1251,7 @@ func gradeAnalysisByID(ctx context.Context, esid int64, pid int64) (Analysis, er
 		var answerData AnswerData
 		err = json.Unmarshal(ans.AnsJson, &answerData)
 		if err != nil || forceErr == "Unmarshal fail" {
-			err = fmt.Errorf("反序列化学生答案失败: %w", err)
+			err = fmt.Errorf("反序列化学生答案失败: %w，学生答案:%s", err, ans.AnsJson)
 			z.Error(err.Error())
 			return analysis, err
 		}
@@ -1512,7 +1512,7 @@ func getScoreExam(ctx context.Context, studentID, examSessionID int64) (Map, err
 			"ExamTime":     v.Duration.ValueOrZero(),
 			"ExamineeID":   v.ExamineeID.ValueOrZero(),
 			"SessionNum":   v.SessionNum.ValueOrZero(),
-			"DurationTime": v.DurationTime.ValueOrZero() / 3600,
+			"DurationTime": int(math.Ceil(float64(v.DurationTime.ValueOrZero()/3600000) + 0.5)),
 		}
 		examSessionInfoMap = append(examSessionInfoMap, examInfo)
 	}
@@ -1538,13 +1538,9 @@ func getScoreExam(ctx context.Context, studentID, examSessionID int64) (Map, err
 		z.Error(err.Error())
 		return result, err
 	}
-	if !start.Valid || !end.Valid || forceErr == "ansTime invalid" {
-		err = fmt.Errorf("考试场次时间为空")
-		z.Warn(err.Error())
-		return result, err
-	}
 	answerTime := end.Int64 - start.Int64
-	examInfoMap["AnswerTime"] = math.Ceil(float64(answerTime / 3600))
+	// 不足一分钟按一分钟计算
+	examInfoMap["AnswerTime"] = int(math.Ceil(float64(answerTime/3600000) + 0.5))
 
 	result["examInfo"] = examInfoMap
 	result["examSessionInfo"] = examSessionInfoMap
@@ -1628,7 +1624,9 @@ func getScorePractice(ctx context.Context, studentID int64, practiceID int64) (M
 	epSql := `
 	SELECT id,exam_paper_id
 	FROM t_practice_submissions
-	WHERE student_id = $1 AND practice_id = $2
+	WHERE student_id = $1 AND practice_id = $2 AND status = '08'
+	ORDER BY id DESC
+	LIMIT 1
 	`
 	err = tx.QueryRow(ctx, epSql, studentID, practiceID).Scan(&psid, &epid)
 	if err != nil || forceErr == "ep conn QueryRow fail" {
@@ -1734,7 +1732,7 @@ WHERE rn = 1;`
 		return result, err
 	}
 	// 学生本次练习时长
-	practiceInfoMap["AnswerTime"] = math.Ceil(usedTime.Float64) / 3600
+	practiceInfoMap["AnswerTime"] = int(math.Ceil(usedTime.Float64/3600000 + 0.5))
 
 	result["practiceInfo"] = practiceInfoMap
 
