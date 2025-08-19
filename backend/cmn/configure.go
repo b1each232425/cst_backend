@@ -4,24 +4,28 @@ import (
 	"context"
 	"encoding/gob"
 	"fmt"
+
 	"github.com/asdine/storm/v3"
+
 	//"github.com/gomodule/redigo/redis"
+	"io"
+	"runtime"
+
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	_ "github.com/jackc/pgx/v5/stdlib"
-	"io"
-	"runtime"
 	"w2w.io/null"
 
 	//"github.com/gomodule/redigo/redis"
-	"github.com/jmoiron/sqlx"
-	"github.com/redis/go-redis/v9"
-	"github.com/spf13/viper"
-	bolt "go.etcd.io/bbolt"
 	"log"
 	"os"
 	"path/filepath"
 	"time"
+
+	"github.com/jmoiron/sqlx"
+	"github.com/redis/go-redis/v9"
+	"github.com/spf13/viper"
+	bolt "go.etcd.io/bbolt"
 )
 
 type (
@@ -285,6 +289,14 @@ func GetPgxConn() *pgxpool.Pool {
 	if pgxConn == nil {
 		D.Fatal("pgxConn is nil")
 	}
+
+	stats := pgxConn.Stat()
+	z.Sugar().Infof("连接池状态 - 总连接数:%d, 空闲连接数:%d, 已获取连接数:%d, 构造中连接数:%d, 最大连接数:%d",
+		stats.TotalConns(),
+		stats.IdleConns(),
+		stats.AcquiredConns(),
+		stats.ConstructingConns(),
+		stats.MaxConns())
 
 	return pgxConn
 }
