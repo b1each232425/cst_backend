@@ -3106,6 +3106,665 @@ func TestExamSiteList(t *testing.T) {
 
 }
 
+func TestExamRoom(t *testing.T) {
+
+	nowTime := time.Now().Unix()
+
+	dbConn := cmn.GetDbConn()
+
+	tests := []struct {
+		name         string
+		q            *cmn.ServiceCtx
+		passExpected bool
+		errWanted    string
+		setup        func()
+		cleanup      func()
+		check        func(q *cmn.ServiceCtx, passExpected bool) (err error)
+	}{
+
+		{
+			name:  "不支持的Http方法",
+			setup: func() {},
+			q: &cmn.ServiceCtx{
+				R: httptest.NewRequest("Unknown255", "/api/exam-room", strings.NewReader(fmt.Sprintf(`{
+					"data": {
+						"name": "test-room-%d",
+						"capacity": 10,
+						"exam_site_id": %d
+					}
+				}`, nowTime, nowTime))),
+				W: httptest.NewRecorder(),
+				Msg: &cmn.ReplyProto{
+					API:    "/api/exam-room",
+					Method: "POST",
+				},
+				BeginTime: time.Now(),
+				SysUser: &cmn.TUser{
+					ID:   null.NewInt(1622, true),
+					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+				},
+				Domains: []cmn.TDomain{
+					{
+						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+					},
+				},
+				RedisClient: cmn.GetRedisConn(),
+			},
+			passExpected: false,
+			errWanted:    "不支持的HTTP方法: Unknown255",
+			cleanup: func() {
+			},
+		},
+		{
+			name:  "强制开启事务失败",
+			setup: func() {},
+			q: &cmn.ServiceCtx{
+				R: httptest.NewRequest("Unknown255", "/api/exam-room", strings.NewReader(fmt.Sprintf(`{
+					"data": {
+						"name": "test-room-%d",
+						"capacity": 10,
+						"exam_site_id": %d
+					}
+				}`, nowTime, nowTime))),
+				W: httptest.NewRecorder(),
+				Msg: &cmn.ReplyProto{
+					API:    "/api/exam-room",
+					Method: "POST",
+				},
+				BeginTime: time.Now(),
+				SysUser: &cmn.TUser{
+					ID:   null.NewInt(1622, true),
+					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+				},
+				Domains: []cmn.TDomain{
+					{
+						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+					},
+				},
+				RedisClient: cmn.GetRedisConn(),
+				Tag: map[string]interface{}{
+					"txBeginErr": fmt.Errorf("force begin tx err"),
+				},
+			},
+			passExpected: false,
+			errWanted:    "force begin tx err",
+			cleanup: func() {
+			},
+		},
+		{
+			name: "强制提交事务失败",
+			q: &cmn.ServiceCtx{
+				R: httptest.NewRequest("POST", "/api/exam-site", strings.NewReader(fmt.Sprintf(`{
+					"data": {
+						"name": "test-room-%d",
+						"capacity": 30,
+						"exam_site_id": %d
+					}
+				}`, nowTime, nowTime))),
+				W: httptest.NewRecorder(),
+				Msg: &cmn.ReplyProto{
+					API:    "/api/exam-site",
+					Method: "POST",
+				},
+				BeginTime: time.Now(),
+				SysUser: &cmn.TUser{
+					ID:   null.NewInt(1622, true),
+					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+				},
+				Domains: []cmn.TDomain{
+					{
+						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+					},
+				},
+				RedisClient: cmn.GetRedisConn(),
+				Tag: map[string]interface{}{
+					"commitErr": fmt.Errorf("force commit tx err"),
+				},
+			},
+			passExpected: false,
+			errWanted:    "force commit tx err",
+			setup: func() {
+
+				_, err := dbConn.Exec(fmt.Sprintf(`INSERT INTO t_exam_site (id, creator) VALUES (%d, 1000)`, nowTime))
+				if err != nil {
+					t.Fatalf("failed create exam sit: %v", err)
+					return
+				}
+
+			},
+			cleanup: func() {
+
+				r, err := dbConn.Exec(fmt.Sprintf(`DELETE FROM t_exam_room WHERE name='test-room-%d'`, nowTime))
+				if err != nil {
+					t.Fatalf("failed delete exam sit: %v", err)
+					return
+				}
+
+				c, err := r.RowsAffected()
+				if err != nil {
+					t.Fatalf("failed get affected rows: %v", err)
+					return
+				}
+
+				t.Logf("Have already cleaned up %d row from t_exam_room", c)
+
+				r, err = dbConn.Exec(fmt.Sprintf(`DELETE FROM t_exam_site WHERE id=%d`, nowTime))
+				if err != nil {
+					t.Fatalf("failed delete exam sit: %v", err)
+					return
+				}
+
+				c, err = r.RowsAffected()
+				if err != nil {
+					t.Fatalf("failed get affected rows: %v", err)
+					return
+				}
+
+				t.Logf("Have already cleaned up %d row from t_exam_site", c)
+
+			},
+		},
+		{
+			name:  "强制解析请求体失败",
+			setup: func() {},
+			q: &cmn.ServiceCtx{
+				R: httptest.NewRequest("Unknown255", "/api/exam-room", strings.NewReader(fmt.Sprintf(`{
+					"data": {
+						"name": "test-room-%d",
+						"capacity": 10,
+						"exam_site_id": %d
+					}
+				}`, nowTime, nowTime))),
+				W: httptest.NewRecorder(),
+				Msg: &cmn.ReplyProto{
+					API:    "/api/exam-room",
+					Method: "POST",
+				},
+				BeginTime: time.Now(),
+				SysUser: &cmn.TUser{
+					ID:   null.NewInt(1622, true),
+					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+				},
+				Domains: []cmn.TDomain{
+					{
+						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+					},
+				},
+				RedisClient: cmn.GetRedisConn(),
+				Tag: map[string]interface{}{
+					"readBodyErr": fmt.Errorf("force unmarshal req body err"),
+				},
+			},
+			passExpected: false,
+			errWanted:    "force unmarshal req body err",
+			cleanup: func() {
+			},
+		},
+		{
+			name:  "强制解析请求体失败并触发回滚事务失败",
+			setup: func() {},
+			q: &cmn.ServiceCtx{
+				R: httptest.NewRequest("Unknown255", "/api/exam-room", strings.NewReader(fmt.Sprintf(`{
+					"data": {
+						"name": "test-room-%d",
+						"capacity": 10,
+						"exam_site_id": %d
+					}
+				}`, nowTime, nowTime))),
+				W: httptest.NewRecorder(),
+				Msg: &cmn.ReplyProto{
+					API:    "/api/exam-room",
+					Method: "POST",
+				},
+				BeginTime: time.Now(),
+				SysUser: &cmn.TUser{
+					ID:   null.NewInt(1622, true),
+					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+				},
+				Domains: []cmn.TDomain{
+					{
+						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+					},
+				},
+				RedisClient: cmn.GetRedisConn(),
+				Tag: map[string]interface{}{
+					"readBodyErr": fmt.Errorf("force unmarshal req body err"),
+					"rollbackErr": fmt.Errorf("force rollback tx err"),
+				},
+			},
+			passExpected: false,
+			errWanted:    "force rollback tx err",
+			cleanup: func() {
+			},
+		},
+
+		// 添加考场测试
+		//       .o.       oooooooooo.   oooooooooo.
+		//      .888.      `888'   `Y8b  `888'   `Y8b
+		//     .8"888.      888      888  888      888
+		//    .8' `888.     888      888  888      888
+		//   .88ooo8888.    888      888  888      888
+		//  .8'     `888.   888     d88'  888     d88'
+		// o88o     o8888o o888bood8P'   o888bood8P'
+		//
+		//
+		//
+		{
+			name: "添加考场成功",
+			q: &cmn.ServiceCtx{
+				R: httptest.NewRequest("POST", "/api/exam-site", strings.NewReader(fmt.Sprintf(`{
+					"data": {
+						"name": "test-room-%d",
+						"capacity": 30,
+						"exam_site_id": %d
+					}
+				}`, nowTime, nowTime))),
+				W: httptest.NewRecorder(),
+				Msg: &cmn.ReplyProto{
+					API:    "/api/exam-site",
+					Method: "POST",
+				},
+				BeginTime: time.Now(),
+				SysUser: &cmn.TUser{
+					ID:   null.NewInt(1622, true),
+					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+				},
+				Domains: []cmn.TDomain{
+					{
+						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+					},
+				},
+				RedisClient: cmn.GetRedisConn(),
+			},
+			passExpected: true,
+			errWanted:    "",
+			setup: func() {
+
+				_, err := dbConn.Exec(fmt.Sprintf(`INSERT INTO t_exam_site (id, creator) VALUES (%d, 1000)`, nowTime))
+				if err != nil {
+					t.Fatalf("failed create exam sit: %v", err)
+					return
+				}
+
+			},
+			cleanup: func() {
+
+				r, err := dbConn.Exec(fmt.Sprintf(`DELETE FROM t_exam_room WHERE name='test-room-%d'`, nowTime))
+				if err != nil {
+					t.Fatalf("failed delete exam sit: %v", err)
+					return
+				}
+
+				c, err := r.RowsAffected()
+				if err != nil {
+					t.Fatalf("failed get affected rows: %v", err)
+					return
+				}
+
+				t.Logf("Have already cleaned up %d row from t_exam_room", c)
+
+				r, err = dbConn.Exec(fmt.Sprintf(`DELETE FROM t_exam_site WHERE id=%d`, nowTime))
+				if err != nil {
+					t.Fatalf("failed delete exam sit: %v", err)
+					return
+				}
+
+				c, err = r.RowsAffected()
+				if err != nil {
+					t.Fatalf("failed get affected rows: %v", err)
+					return
+				}
+
+				t.Logf("Have already cleaned up %d row from t_exam_site", c)
+
+			},
+		},
+		{
+			name: "添加考场失败-解析请求体Data失败",
+			q: &cmn.ServiceCtx{
+				R: httptest.NewRequest("POST", "/api/exam-site", strings.NewReader(fmt.Sprintf(`{
+					"data": {
+						"name": "test-room-%d",
+						"capacity": 30,
+						"exam_site_id": %d
+					
+				}`, nowTime, nowTime))),
+				W: httptest.NewRecorder(),
+				Msg: &cmn.ReplyProto{
+					API:    "/api/exam-site",
+					Method: "POST",
+				},
+				BeginTime: time.Now(),
+				SysUser: &cmn.TUser{
+					ID:   null.NewInt(1622, true),
+					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+				},
+				Domains: []cmn.TDomain{
+					{
+						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+					},
+				},
+				RedisClient: cmn.GetRedisConn(),
+				Tag:         map[string]interface{}{},
+			},
+			passExpected: false,
+			errWanted:    "unexpected end of JSON input",
+			setup: func() {
+
+				_, err := dbConn.Exec(fmt.Sprintf(`INSERT INTO t_exam_site (id, creator) VALUES (%d, 1000)`, nowTime))
+				if err != nil {
+					t.Fatalf("failed create exam sit: %v", err)
+					return
+				}
+
+			},
+			cleanup: func() {
+
+				r, err := dbConn.Exec(fmt.Sprintf(`DELETE FROM t_exam_room WHERE name='test-room-%d'`, nowTime))
+				if err != nil {
+					t.Fatalf("failed delete exam sit: %v", err)
+					return
+				}
+
+				c, err := r.RowsAffected()
+				if err != nil {
+					t.Fatalf("failed get affected rows: %v", err)
+					return
+				}
+
+				t.Logf("Have already cleaned up %d row from t_exam_room", c)
+
+				r, err = dbConn.Exec(fmt.Sprintf(`DELETE FROM t_exam_site WHERE id=%d`, nowTime))
+				if err != nil {
+					t.Fatalf("failed delete exam sit: %v", err)
+					return
+				}
+
+				c, err = r.RowsAffected()
+				if err != nil {
+					t.Fatalf("failed get affected rows: %v", err)
+					return
+				}
+
+				t.Logf("Have already cleaned up %d row from t_exam_site", c)
+
+			},
+		},
+		{
+			name: "添加考场失败-缺少必要参数",
+			q: &cmn.ServiceCtx{
+				R: httptest.NewRequest("POST", "/api/exam-site", strings.NewReader(fmt.Sprintf(`{
+					"data": {
+						"name": "test-room-%d",
+						"capacity": 30
+					}
+				}`, nowTime))),
+				W: httptest.NewRecorder(),
+				Msg: &cmn.ReplyProto{
+					API:    "/api/exam-site",
+					Method: "POST",
+				},
+				BeginTime: time.Now(),
+				SysUser: &cmn.TUser{
+					ID:   null.NewInt(1622, true),
+					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+				},
+				Domains: []cmn.TDomain{
+					{
+						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+					},
+				},
+				RedisClient: cmn.GetRedisConn(),
+				Tag:         map[string]interface{}{},
+			},
+			passExpected: false,
+			errWanted:    "validation failed:Key: 'examRoomInfo.ExamSiteID' Error:Field validation for 'ExamSiteID' failed on the 'required' tag",
+			setup: func() {
+
+				_, err := dbConn.Exec(fmt.Sprintf(`INSERT INTO t_exam_site (id, creator) VALUES (%d, 1000)`, nowTime))
+				if err != nil {
+					t.Fatalf("failed create exam sit: %v", err)
+					return
+				}
+
+			},
+			cleanup: func() {
+
+				r, err := dbConn.Exec(fmt.Sprintf(`DELETE FROM t_exam_room WHERE name='test-room-%d'`, nowTime))
+				if err != nil {
+					t.Fatalf("failed delete exam sit: %v", err)
+					return
+				}
+
+				c, err := r.RowsAffected()
+				if err != nil {
+					t.Fatalf("failed get affected rows: %v", err)
+					return
+				}
+
+				t.Logf("Have already cleaned up %d row from t_exam_room", c)
+
+				r, err = dbConn.Exec(fmt.Sprintf(`DELETE FROM t_exam_site WHERE id=%d`, nowTime))
+				if err != nil {
+					t.Fatalf("failed delete exam sit: %v", err)
+					return
+				}
+
+				c, err = r.RowsAffected()
+				if err != nil {
+					t.Fatalf("failed get affected rows: %v", err)
+					return
+				}
+
+				t.Logf("Have already cleaned up %d row from t_exam_site", c)
+
+			},
+		},
+		{
+			name: "添加考场失败-强制准备SQL失败",
+			q: &cmn.ServiceCtx{
+				R: httptest.NewRequest("POST", "/api/exam-site", strings.NewReader(fmt.Sprintf(`{
+					"data": {
+						"name": "test-room-%d",
+						"capacity": 30,
+						"exam_site_id": %d
+					}
+				}`, nowTime, nowTime))),
+				W: httptest.NewRecorder(),
+				Msg: &cmn.ReplyProto{
+					API:    "/api/exam-site",
+					Method: "POST",
+				},
+				BeginTime: time.Now(),
+				SysUser: &cmn.TUser{
+					ID:   null.NewInt(1622, true),
+					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+				},
+				Domains: []cmn.TDomain{
+					{
+						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+					},
+				},
+				RedisClient: cmn.GetRedisConn(),
+				Tag: map[string]interface{}{
+					"prepareStmtErr": fmt.Errorf("force prepare sql err"),
+				},
+			},
+			passExpected: false,
+			errWanted:    "force prepare sql err",
+			setup: func() {
+
+				_, err := dbConn.Exec(fmt.Sprintf(`INSERT INTO t_exam_site (id, creator) VALUES (%d, 1000)`, nowTime))
+				if err != nil {
+					t.Fatalf("failed create exam sit: %v", err)
+					return
+				}
+
+			},
+			cleanup: func() {
+
+				r, err := dbConn.Exec(fmt.Sprintf(`DELETE FROM t_exam_room WHERE name='test-room-%d'`, nowTime))
+				if err != nil {
+					t.Fatalf("failed delete exam sit: %v", err)
+					return
+				}
+
+				c, err := r.RowsAffected()
+				if err != nil {
+					t.Fatalf("failed get affected rows: %v", err)
+					return
+				}
+
+				t.Logf("Have already cleaned up %d row from t_exam_room", c)
+
+				r, err = dbConn.Exec(fmt.Sprintf(`DELETE FROM t_exam_site WHERE id=%d`, nowTime))
+				if err != nil {
+					t.Fatalf("failed delete exam sit: %v", err)
+					return
+				}
+
+				c, err = r.RowsAffected()
+				if err != nil {
+					t.Fatalf("failed get affected rows: %v", err)
+					return
+				}
+
+				t.Logf("Have already cleaned up %d row from t_exam_site", c)
+
+			},
+		},
+		{
+			name: "添加考场失败-强制执行SQL失败",
+			q: &cmn.ServiceCtx{
+				R: httptest.NewRequest("POST", "/api/exam-site", strings.NewReader(fmt.Sprintf(`{
+					"data": {
+						"name": "test-room-%d",
+						"capacity": 30,
+						"exam_site_id": %d
+					}
+				}`, nowTime, nowTime))),
+				W: httptest.NewRecorder(),
+				Msg: &cmn.ReplyProto{
+					API:    "/api/exam-site",
+					Method: "POST",
+				},
+				BeginTime: time.Now(),
+				SysUser: &cmn.TUser{
+					ID:   null.NewInt(1622, true),
+					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+				},
+				Domains: []cmn.TDomain{
+					{
+						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+					},
+				},
+				RedisClient: cmn.GetRedisConn(),
+				Tag: map[string]interface{}{
+					"execSQLErr": fmt.Errorf("force exec sql err"),
+				},
+			},
+			passExpected: false,
+			errWanted:    "force exec sql err",
+			setup: func() {
+
+				_, err := dbConn.Exec(fmt.Sprintf(`INSERT INTO t_exam_site (id, creator) VALUES (%d, 1000)`, nowTime))
+				if err != nil {
+					t.Fatalf("failed create exam sit: %v", err)
+					return
+				}
+
+			},
+			cleanup: func() {
+
+				r, err := dbConn.Exec(fmt.Sprintf(`DELETE FROM t_exam_room WHERE name='test-room-%d'`, nowTime))
+				if err != nil {
+					t.Fatalf("failed delete exam sit: %v", err)
+					return
+				}
+
+				c, err := r.RowsAffected()
+				if err != nil {
+					t.Fatalf("failed get affected rows: %v", err)
+					return
+				}
+
+				t.Logf("Have already cleaned up %d row from t_exam_room", c)
+
+				r, err = dbConn.Exec(fmt.Sprintf(`DELETE FROM t_exam_site WHERE id=%d`, nowTime))
+				if err != nil {
+					t.Fatalf("failed delete exam sit: %v", err)
+					return
+				}
+
+				c, err = r.RowsAffected()
+				if err != nil {
+					t.Fatalf("failed get affected rows: %v", err)
+					return
+				}
+
+				t.Logf("Have already cleaned up %d row from t_exam_site", c)
+
+			},
+		},
+	}
+
+	for _, tt := range tests {
+
+		t.Run(tt.name, func(t *testing.T) {
+
+			if tt.setup != nil {
+				tt.setup()
+			}
+
+			defer func() {
+				if tt.cleanup != nil {
+					tt.cleanup()
+				}
+			}()
+
+			ctx := context.WithValue(context.Background(), cmn.QNearKey, tt.q)
+
+			examRoom(ctx)
+
+			if tt.q.Err != nil || (tt.passExpected && tt.q.Msg.Status != 0) || !tt.passExpected {
+
+				if tt.q.Err == nil {
+					tt.q.Err = fmt.Errorf(tt.q.Msg.Msg)
+				}
+
+				if !tt.passExpected && tt.q.Err.Error() != tt.errWanted {
+					t.Errorf("expected error: %s, got: %s", tt.errWanted, tt.q.Err.Error())
+					return
+				}
+
+				if tt.passExpected {
+					t.Errorf("expected no error, got: %s", tt.q.Err.Error())
+					return
+				}
+
+				return
+			}
+
+			if tt.check != nil {
+				tt.check(tt.q, tt.passExpected)
+			}
+
+		})
+
+	}
+
+}
+
 func TestExamSiteSyncInit(t *testing.T) {
 
 	var serverCtx *cmn.ServiceCtx
@@ -4856,7 +5515,7 @@ func TestExamSiteSyncInit(t *testing.T) {
 			q: &cmn.ServiceCtx{
 				RedisClient: cmn.GetRedisConn(),
 				Tag: map[string]interface{}{
-					"pullDone":                make(chan int),
+					"pullDone":            make(chan int),
 					"pullCreateSchemaErr": fmt.Errorf("forced create schema err"),
 				},
 				Msg: &cmn.ReplyProto{},
@@ -4903,13 +5562,13 @@ func TestExamSiteSyncInit(t *testing.T) {
 
 			},
 		},
-		
+
 		{
 			name: "Pull拉取数据同步失败-强制执行 pg_restore 失败",
 			q: &cmn.ServiceCtx{
 				RedisClient: cmn.GetRedisConn(),
 				Tag: map[string]interface{}{
-					"pullDone":                make(chan int),
+					"pullDone":           make(chan int),
 					"pgRestoreErrInPull": fmt.Errorf("forced pg_restore err"),
 				},
 				Msg: &cmn.ReplyProto{},
@@ -4961,7 +5620,7 @@ func TestExamSiteSyncInit(t *testing.T) {
 			q: &cmn.ServiceCtx{
 				RedisClient: cmn.GetRedisConn(),
 				Tag: map[string]interface{}{
-					"pullDone":                make(chan int),
+					"pullDone":                  make(chan int),
 					"psqlImportScriptInPullErr": fmt.Errorf("forced psql import script err"),
 				},
 				Msg: &cmn.ReplyProto{},
@@ -5013,7 +5672,7 @@ func TestExamSiteSyncInit(t *testing.T) {
 			q: &cmn.ServiceCtx{
 				RedisClient: cmn.GetRedisConn(),
 				Tag: map[string]interface{}{
-					"endMsgListen":                make(chan int, 1),
+					"endMsgListen":           make(chan int, 1),
 					"getSyncStatusErrInPush": fmt.Errorf("forced get sync status err"),
 				},
 				Msg: &cmn.ReplyProto{},
@@ -5065,7 +5724,7 @@ func TestExamSiteSyncInit(t *testing.T) {
 			q: &cmn.ServiceCtx{
 				RedisClient: cmn.GetRedisConn(),
 				Tag: map[string]interface{}{
-					"endMsgListen":                make(chan int, 1),
+					"endMsgListen": make(chan int, 1),
 				},
 				Msg: &cmn.ReplyProto{},
 			},
@@ -5116,7 +5775,7 @@ func TestExamSiteSyncInit(t *testing.T) {
 			q: &cmn.ServiceCtx{
 				RedisClient: cmn.GetRedisConn(),
 				Tag: map[string]interface{}{
-					"endMsgListen":                make(chan int, 1),
+					"endMsgListen": make(chan int, 1),
 				},
 				Msg: &cmn.ReplyProto{},
 			},
@@ -5167,7 +5826,7 @@ func TestExamSiteSyncInit(t *testing.T) {
 			q: &cmn.ServiceCtx{
 				RedisClient: cmn.GetRedisConn(),
 				Tag: map[string]interface{}{
-					"endMsgListen":                make(chan int, 1),
+					"endMsgListen": make(chan int, 1),
 				},
 				Msg: &cmn.ReplyProto{},
 			},
@@ -5218,7 +5877,7 @@ func TestExamSiteSyncInit(t *testing.T) {
 			q: &cmn.ServiceCtx{
 				RedisClient: cmn.GetRedisConn(),
 				Tag: map[string]interface{}{
-					"endMsgListen":                make(chan int, 1),
+					"endMsgListen":              make(chan int, 1),
 					"SetPushingStatusErrInPush": fmt.Errorf("forced set pushing status err"),
 				},
 				Msg: &cmn.ReplyProto{},
@@ -5270,7 +5929,7 @@ func TestExamSiteSyncInit(t *testing.T) {
 			q: &cmn.ServiceCtx{
 				RedisClient: cmn.GetRedisConn(),
 				Tag: map[string]interface{}{
-					"endMsgListen":                make(chan int, 1),
+					"endMsgListen":              make(chan int, 1),
 					"loginRespDataUnmarshalErr": fmt.Errorf("forced login resp data unmarshal err"),
 				},
 				Msg: &cmn.ReplyProto{},
@@ -5322,9 +5981,9 @@ func TestExamSiteSyncInit(t *testing.T) {
 			q: &cmn.ServiceCtx{
 				RedisClient: cmn.GetRedisConn(),
 				Tag: map[string]interface{}{
-					"endMsgListen":                make(chan int, 1),
+					"endMsgListen":              make(chan int, 1),
 					"loginRespDataUnmarshalErr": fmt.Errorf("forced login resp data unmarshal err"),
-					"setPulledStatusErrInPush": fmt.Errorf("forced set pulled status err"),
+					"setPulledStatusErrInPush":  fmt.Errorf("forced set pulled status err"),
 				},
 				Msg: &cmn.ReplyProto{},
 			},
@@ -5371,11 +6030,11 @@ func TestExamSiteSyncInit(t *testing.T) {
 			},
 		},
 		{
-			name: "Push推送数据同步失败-强制设置 PULLED 状态失败",
+			name: "Push推送数据同步失败-强制设置 PUSHED 状态失败",
 			q: &cmn.ServiceCtx{
 				RedisClient: cmn.GetRedisConn(),
 				Tag: map[string]interface{}{
-					"endMsgListen":                make(chan int, 1),
+					"endMsgListen":             make(chan int, 1),
 					"setPushedStatusErrInPush": fmt.Errorf("forced set pushed status err"),
 				},
 				Msg: &cmn.ReplyProto{},
@@ -5427,7 +6086,7 @@ func TestExamSiteSyncInit(t *testing.T) {
 			q: &cmn.ServiceCtx{
 				RedisClient: cmn.GetRedisConn(),
 				Tag: map[string]interface{}{
-					"endMsgListen":                make(chan int, 1),
+					"endMsgListen":         make(chan int, 1),
 					"getSyncInfoErrInPush": fmt.Errorf("forced get sync info err: %w", redis.Nil),
 				},
 				Msg: &cmn.ReplyProto{},
@@ -5479,7 +6138,7 @@ func TestExamSiteSyncInit(t *testing.T) {
 			q: &cmn.ServiceCtx{
 				RedisClient: cmn.GetRedisConn(),
 				Tag: map[string]interface{}{
-					"endMsgListen":                make(chan int, 1),
+					"endMsgListen":               make(chan int, 1),
 					"unmarshalSyncInfoErrInPush": fmt.Errorf("forced unmarshal sync info err"),
 				},
 				Msg: &cmn.ReplyProto{},
@@ -5531,7 +6190,7 @@ func TestExamSiteSyncInit(t *testing.T) {
 			q: &cmn.ServiceCtx{
 				RedisClient: cmn.GetRedisConn(),
 				Tag: map[string]interface{}{
-					"endMsgListen":                make(chan int, 1),
+					"endMsgListen":         make(chan int, 1),
 					"mkdirAllSourceInPush": fmt.Errorf("forced mkdirAll source dir err"),
 				},
 				Msg: &cmn.ReplyProto{},
@@ -5583,7 +6242,7 @@ func TestExamSiteSyncInit(t *testing.T) {
 			q: &cmn.ServiceCtx{
 				RedisClient: cmn.GetRedisConn(),
 				Tag: map[string]interface{}{
-					"endMsgListen":                make(chan int, 1),
+					"endMsgListen":          make(chan int, 1),
 					"removeAllSourceInPush": fmt.Errorf("forced removeAll source dir err"),
 				},
 				Msg: &cmn.ReplyProto{},
@@ -5635,7 +6294,7 @@ func TestExamSiteSyncInit(t *testing.T) {
 			q: &cmn.ServiceCtx{
 				RedisClient: cmn.GetRedisConn(),
 				Tag: map[string]interface{}{
-					"endMsgListen":                make(chan int, 1),
+					"endMsgListen":              make(chan int, 1),
 					"psqlExportScriptErrInPush": fmt.Errorf("forced psql export script err"),
 				},
 				Msg: &cmn.ReplyProto{},
@@ -5687,7 +6346,7 @@ func TestExamSiteSyncInit(t *testing.T) {
 			q: &cmn.ServiceCtx{
 				RedisClient: cmn.GetRedisConn(),
 				Tag: map[string]interface{}{
-					"endMsgListen":                make(chan int, 1),
+					"endMsgListen":     make(chan int, 1),
 					"syncReqErrInPush": fmt.Errorf("forced send sync req err"),
 				},
 				Msg: &cmn.ReplyProto{},
@@ -5739,7 +6398,7 @@ func TestExamSiteSyncInit(t *testing.T) {
 			q: &cmn.ServiceCtx{
 				RedisClient: cmn.GetRedisConn(),
 				Tag: map[string]interface{}{
-					"endMsgListen":                make(chan int, 1),
+					"endMsgListen":                  make(chan int, 1),
 					"syncReqBodyUnmarshalErrInPush": fmt.Errorf("forced unmarshal sync resp err"),
 				},
 				Msg: &cmn.ReplyProto{},
@@ -5791,7 +6450,7 @@ func TestExamSiteSyncInit(t *testing.T) {
 			q: &cmn.ServiceCtx{
 				RedisClient: cmn.GetRedisConn(),
 				Tag: map[string]interface{}{
-					"endMsgListen":                make(chan int, 1),
+					"endMsgListen":           make(chan int, 1),
 					"syncReqStatusErrInPush": fmt.Errorf("forced sync resp status err"),
 				},
 				Msg: &cmn.ReplyProto{},
@@ -5843,7 +6502,7 @@ func TestExamSiteSyncInit(t *testing.T) {
 			q: &cmn.ServiceCtx{
 				RedisClient: cmn.GetRedisConn(),
 				Tag: map[string]interface{}{
-					"endMsgListen":                make(chan int, 1),
+					"endMsgListen":                 make(chan int, 1),
 					"delSyncInfoSnapShotErrInPush": fmt.Errorf("forced delete sync info snapshot err"),
 				},
 				Msg: &cmn.ReplyProto{},

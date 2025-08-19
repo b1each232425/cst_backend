@@ -86,7 +86,15 @@ type examSiteInfo struct {
 	Admin       int64       `json:"admin" validate:"required"`
 	AdminName   null.String `json:"admin_name"`
 	RoomCount   null.Int    `json:"room_count"`
+	Account     null.String `json:"account"`
 	AccessToken null.String `json:"access_token"`
+}
+
+type examRoomInfo struct {
+	ID         null.Int `json:"id"`
+	ExamSiteID int `json:"exam_site_id" validate:"required"`
+	Name       string   `json:"name" validate:"required"`
+	Capacity   int `json:"capacity" validate:"required"`
 }
 
 type syncInfo struct {
@@ -122,7 +130,7 @@ func Enroll(author string) {
 
 	ctx := context.WithValue(context.Background(), cmn.QNearKey, &cmn.ServiceCtx{
 		RedisClient: cmn.GetRedisConn(),
-		Msg: &cmn.ReplyProto{},
+		Msg:         &cmn.ReplyProto{},
 	})
 
 	examSiteSyncInit(ctx)
@@ -246,7 +254,7 @@ func login(ctx context.Context) (info sysUserInfo) {
 
 	var data cmn.TUser
 	q.Err = json.Unmarshal(msg.Data, &data)
-	if q.Err != nil || (cmn.InDebugMode && q.Tag["loginRespDataUnmarshalErr"] != nil){
+	if q.Err != nil || (cmn.InDebugMode && q.Tag["loginRespDataUnmarshalErr"] != nil) {
 
 		if q.Err == nil {
 			q.Err = q.Tag["loginRespDataUnmarshalErr"].(error)
@@ -515,7 +523,7 @@ func Pull(ctx context.Context, retryCount int) {
 	pgpassFullPath := filepath.Join(os.Getenv("HOME"), ".pgpass")
 
 	_, q.Err = dbConn.Exec(ctx, fmt.Sprintf(`CREATE SCHEMA IF NOT EXISTS %s`, dbUser))
-	if q.Err != nil || (cmn.InDebugMode && q.Tag["pullCreateSchemaErr"] != nil){
+	if q.Err != nil || (cmn.InDebugMode && q.Tag["pullCreateSchemaErr"] != nil) {
 
 		if q.Err == nil {
 			q.Err = q.Tag["pullCreateSchemaErr"].(error)
@@ -611,9 +619,9 @@ func Push(ctx context.Context, retryCount int) {
 	}()
 
 	syncStatus, q.Err = q.RedisClient.Get(ctx, SyncStatusKey).Result()
-	if (q.Err != nil && !errors.Is(q.Err, redis.Nil) ) || (cmn.InDebugMode && q.Tag["getSyncStatusErrInPush"] != nil) {
+	if (q.Err != nil && !errors.Is(q.Err, redis.Nil)) || (cmn.InDebugMode && q.Tag["getSyncStatusErrInPush"] != nil) {
 
-		if q.Err == nil || errors.Is(q.Err, redis.Nil){
+		if q.Err == nil || errors.Is(q.Err, redis.Nil) {
 			q.Err = q.Tag["getSyncStatusErrInPush"].(error)
 		}
 
@@ -657,7 +665,7 @@ func Push(ctx context.Context, retryCount int) {
 	defer func() {
 
 		// 这里排除 redis.Nil 的错误是为了防止因后续从 redis 获取同步信息快照为空从而进入 PULLED 状态, 在 PULLED状态下无法进行拉取,
-		// 然而如果 q.Err 为 redis.Nil 错误, 则说明没有正常执行 Pull 进行拉取数据并设置同步信息快照, 理应允许重新拉取, 
+		// 然而如果 q.Err 为 redis.Nil 错误, 则说明没有正常执行 Pull 进行拉取数据并设置同步信息快照, 理应允许重新拉取,
 		// 此时设置成 PUSHED 状态就允许进行重新进行 Pull 拉取, 从而避免死循环的发生
 		if q.Err != nil && !errors.Is(q.Err, redis.Nil) {
 			_, err := q.RedisClient.Set(ctx, SyncStatusKey, PULLED, 0).Result()
@@ -924,6 +932,17 @@ func SendPushMsg() {
 	pushChan <- 1
 }
 
+/* 考点基础业务 */
+// oooooooooo.
+// `888'   `Y8b
+//  888     888  .oooo.    .oooo.o  .ooooo.
+//  888oooo888' `P  )88b  d88(  "8 d88' `88b
+//  888    `88b  .oP"888  `"Y88b.  888ooo888
+//  888    .88P d8(  888  o.  )88b 888    .o
+// o888bood8P'  `Y888""8o 8""888P' `Y8bod8P'
+//
+
+// examSite 处理考点相关请求
 func examSite(ctx context.Context) {
 
 	q := cmn.GetCtxValue(ctx)
@@ -1114,6 +1133,7 @@ func examSite(ctx context.Context) {
 			break
 		}
 
+		info.Account =  null.StringFrom(account)
 		info.AccessToken = null.StringFrom(userToken)
 
 		q.Msg.Data, q.Err = json.Marshal(info)
@@ -1144,6 +1164,7 @@ func examSite(ctx context.Context) {
 	q.Resp()
 }
 
+// examSiteList 处理考点列表相关请求
 func examSiteList(ctx context.Context) {
 
 	q := cmn.GetCtxValue(ctx)
@@ -1388,6 +1409,164 @@ MethodSwitch:
 
 }
 
+// examRoom 处理考场相关请求
+func examRoom(ctx context.Context) {
+	q := cmn.GetCtxValue(ctx)
+
+	z.Info("---->" + cmn.FncName())
+
+	q.Msg.Msg = cmn.FncName()
+
+	userID := q.SysUser.ID.Int64
+
+	dbConn := cmn.GetDbConn()
+
+	var tx *sql.Tx
+
+	tx, q.Err = dbConn.Begin()
+	if q.Err != nil || (cmn.InDebugMode && q.Tag["txBeginErr"] != nil) {
+
+		if q.Err == nil {
+			q.Err = q.Tag["txBeginErr"].(error)
+		}
+
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+
+	defer func() {
+		if q.Err != nil {
+			err := tx.Rollback()
+			if err != nil || (cmn.InDebugMode && q.Tag["rollbackErr"] != nil) {
+
+				if err == nil {
+					q.Err = q.Tag["rollbackErr"].(error)
+					err = q.Err
+				}
+
+				z.Error(err.Error())
+			}
+			return
+		}
+
+		err := tx.Commit()
+		if err != nil || (cmn.InDebugMode && q.Tag["commitErr"] != nil) {
+
+			if err == nil {
+				q.Err = q.Tag["commitErr"].(error)
+				err = q.Err
+			}
+
+			z.Error(err.Error())
+		}
+
+	}()
+
+	ctx = context.WithValue(ctx, dbConnKey, dbConn)
+
+	ctx = context.WithValue(ctx, txCtxKey, tx)
+
+	var bodyBuf []byte
+	bodyBuf, q.Err = io.ReadAll(q.R.Body)
+	if q.Err != nil || (cmn.InDebugMode && q.Tag["readBodyErr"] != nil) {
+
+		if q.Err == nil {
+			q.Err = q.Tag["readBodyErr"].(error)
+		}
+
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+
+	var req cmn.ReqProto
+
+	q.Err = json.Unmarshal(bodyBuf, &req)
+	if q.Err != nil {
+		z.Warn(q.Err.Error())
+	}
+
+	switch q.R.Method {
+
+	case "GET":
+
+	case "POST":
+
+		var info examRoomInfo
+
+		q.Err = json.Unmarshal(req.Data, &info)
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			break
+		}
+
+		q.Err = cmn.Validate(&info)
+		if q.Err != nil {
+			break
+		}
+
+		sqlStr := `INSERT INTO t_exam_room (exam_site, name, capacity, creator, updated_by)
+		VALUES ($1, $2, $3, $4, $5)`
+
+		var stmt1 *sql.Stmt
+		stmt1, q.Err = tx.Prepare(sqlStr)
+		if q.Err != nil || (cmn.InDebugMode && q.Tag["prepareStmtErr"] != nil) {
+
+			if q.Err == nil {
+				q.Err = q.Tag["prepareStmtErr"].(error)
+			}
+
+			z.Error(q.Err.Error())
+			break
+		}
+
+		defer stmt1.Close()
+
+		_, q.Err = stmt1.ExecContext(ctx, info.ExamSiteID, info.Name, info.Capacity, userID, userID)
+		if q.Err != nil || (cmn.InDebugMode && q.Tag["execSQLErr"] != nil) {
+
+			if q.Err == nil {
+				q.Err = q.Tag["execSQLErr"].(error)
+			}
+
+			z.Error(q.Err.Error())
+			break
+		}
+
+	case "PATCH":
+
+	case "DELETE":
+
+	default:
+		q.Err = fmt.Errorf("不支持的HTTP方法: %s", q.R.Method)
+		z.Error(q.Err.Error())
+	}
+
+	if q.Err != nil {
+		q.RespErr()
+		return
+	}
+
+	q.Resp()
+
+}
+
+/* 考点同步相关 */
+//  .oooooo..o
+// d8P'    `Y8
+// Y88bo.      oooo    ooo ooo. .oo.    .ooooo.
+//  `"Y8888o.   `88.  .8'  `888P"Y88b  d88' `"Y8
+//      `"Y88b   `88..8'    888   888  888
+// oo     .d8P    `888'     888   888  888   .o8
+// 8""88888P'      .8'     o888o o888o `Y8bod8P'
+//             .o..P'
+//             `Y8P'
+//
+
+// examSiteSyncInit 考点同步初始化
+//
+// 如果中心服务器Url配置(centralServerUrl)不为空, 则以考点服务器运行, 否则以中心服务器运行
 func examSiteSyncInit(ctx context.Context) {
 
 	q := cmn.GetCtxValue(ctx)
@@ -1478,7 +1657,7 @@ func examSiteSyncInit(ctx context.Context) {
 	v, q.Err = q.RedisClient.Get(ctx, SyncStatusKey).Result()
 	if (q.Err != nil && !errors.Is(q.Err, redis.Nil)) || (cmn.InDebugMode && q.Tag["getSyncStatusErr"] != nil) {
 
-		if q.Err == nil || errors.Is(q.Err, redis.Nil){
+		if q.Err == nil || errors.Is(q.Err, redis.Nil) {
 			q.Err = q.Tag["getSyncStatusErr"].(error)
 		}
 
@@ -1512,7 +1691,7 @@ func examSiteSyncInit(ctx context.Context) {
 		if q.Err != nil || (cmn.InDebugMode && q.Tag["setPushedStatusErr"] != nil) {
 
 			if q.Err == nil {
-				q.Err =q.Tag["setPushedStatusErr"].(error)
+				q.Err = q.Tag["setPushedStatusErr"].(error)
 			}
 
 			z.Error(q.Err.Error())
@@ -1595,18 +1774,23 @@ func examSiteSyncInit(ctx context.Context) {
 				}
 
 				return
-			} 
+			}
 
 			if cmn.InDebugMode && q.Tag["endMsgListen"] != nil {
 				q.Tag["endMsgListen"].(chan int) <- 1
 				return
 			}
-			
+
 		}
 	}()
 
 }
 
+// examSiteSync 处理考点同步相关请求
+//
+// 当Http Method 为 GET 时, 为考点服务器向中心服务器获取同步数据
+//
+// 当Http Method 为 POST 时, 为考点服务器向中心服务器推送同步数据
 func examSiteSync(ctx context.Context) {
 
 	q := cmn.GetCtxValue(ctx)
@@ -1846,7 +2030,7 @@ MethodSwitch:
 		}
 
 		q.Msg.Data = data
-	
+
 	case "POST":
 
 		// 同步考点数据
@@ -1895,13 +2079,13 @@ MethodSwitch:
 
 		// 清理已同步的数据
 		_, err := q.RedisClient.Del(ctx, syncInfoSnapshotKey).Result()
-		if err != nil || (cmn.InDebugMode && q.Tag["deleteKeyErr"] != nil){
-			
+		if err != nil || (cmn.InDebugMode && q.Tag["deleteKeyErr"] != nil) {
+
 			if err == nil {
 				err = q.Tag["deleteKeyErr"].(error)
 				q.Msg.Msg = err.Error()
 			}
-			
+
 			z.Error(err.Error())
 		}
 
