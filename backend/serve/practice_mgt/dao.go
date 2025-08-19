@@ -5,10 +5,12 @@ package practice_mgt
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"github.com/jackc/pgx/v5"
 	"github.com/jmoiron/sqlx"
+	"github.com/jmoiron/sqlx/types"
 	"strings"
 	"time"
 	"w2w.io/cmn"
@@ -431,7 +433,7 @@ func ListPracticeS(ctx context.Context, pType, name, difficulty string, orderBy 
 
 	s := `SELECT
 		id,name,type,attempt_count,difficulty,allowed_attempts,question_count,wrong_count,
-		total_score,highest_score,paper_total_score,paper_id,latest_unsubmitted_id,latest_submitted_id
+		total_score,highest_score,paper_total_score,paper_id,latest_unsubmitted_id,latest_submitted_id,pending_mark_id
 		FROM assessuser.v_practice_summary`
 
 	if len(clauses) > 0 {
@@ -477,7 +479,7 @@ func ListPracticeS(ctx context.Context, pType, name, difficulty string, orderBy 
 		var p cmn.TVPracticeSummary
 		err = rows.Scan(&p.ID, &p.Name, &p.Type, &p.AttemptCount, &p.Difficulty, &p.AllowedAttempts,
 			&p.QuestionCount, &p.WrongCount, &p.TotalScore, &p.HighestScore, &p.PaperTotalScore,
-			&p.PaperID, &p.LatestUnsubmittedID, &p.LatestSubmittedID)
+			&p.PaperID, &p.LatestUnsubmittedID, &p.LatestSubmittedID, &p.PendingMarkID)
 		if err != nil || forceErr == "sQuery2" {
 			err = fmt.Errorf("解析练习数据失败:%v", err)
 			z.Error(err.Error())
@@ -1224,10 +1226,10 @@ func EnterPracticeGetPaperDetails(ctx context.Context, tx pgx.Tx, pid int64, uid
 				return nil, nil, nil, err
 			}
 			newAttempt := ps.AttemptCount.Int64 + 1
-			s := `INSERT INTO assessuser.t_practice_submissions (practice_id,student_id,exam_paper_id,creator,create_time,update_time,attempt) VALUES (
-			$1,$2,$3,$4,$5,$6,$7	
+			s := `INSERT INTO assessuser.t_practice_submissions (practice_id,student_id,exam_paper_id,creator,create_time,update_time,attempt,wrong_attempt) VALUES (
+			$1,$2,$3,$4,$5,$6,$7,$8	
 		) RETURNING id`
-			err = tx.QueryRow(ctx, s, pid, uid, ps.ExamPaperID, uid, now, now, newAttempt).Scan(&pSubmissionID)
+			err = tx.QueryRow(ctx, s, pid, uid, ps.ExamPaperID, uid, now, now, newAttempt, 0).Scan(&pSubmissionID)
 			if err != nil || forceErr == "pQuery1" {
 				err = fmt.Errorf("新增一个学生二次练习作答记录失败:%v", err)
 				z.Error(err.Error())
@@ -1304,4 +1306,147 @@ func EnterPracticeGetPaperDetails(ctx context.Context, tx pgx.Tx, pid int64, uid
 
 	return &epInfo, pg, pq, nil
 
+}
+
+// EnterPracticeWrongCollection 学生进入错题集详情 练习最近的一次练习提交做错的题目
+/*
+关键参数说明：
+	pid 练习唯一ID
+	uid 用户唯一ID（学生唯一ID）
+处理情况如下：
+	在同一个练习的前提下，学生每作答一次，就会生成一次新的错题集；
+	在同一个练习提交中的错题集，学生，每进入一次重新练习错题集，所做对的题目，都会从错题集中移除
+
+处理逻辑包括：
+	获取本次应该练习的错题集 生成一张错题卷子
+	更新练习提交记录的进入错题集的次数为n
+	生成本次练习题目对应的答卷，并将次数调整为n
+
+返回参数说明：
+	1、练习基本信息、试卷题目题组基本信息
+	2、考卷题组信息 以题组ID分组（利用哈希表快速查询题目所在题组）
+	3、根据题组ID分组的题目数组
+*/
+func EnterPracticeWrongCollection(ctx context.Context, tx pgx.Tx, pid, uid int64) (*EnterPracticeInfo, map[int64]*cmn.TExamPaperGroup, map[int64][]*examPaper.ExamQuestion, error) {
+	if pid <= 0 || uid <= 0 {
+		err := fmt.Errorf("invalid practiceID | uid param")
+		z.Error(err.Error())
+		return nil, nil, nil, err
+	}
+	// 用于测试，强制执行某些错误分支
+	forceErr, _ := ctx.Value("force-error").(string)
+	// 这里要先获取 ，并不需要获取了，直接查这个视图，获取里面的错题 但是需要进行参数检测，假设他没有错题的话，或者是此时都没有进行作答的话呢？那就不需要了
+	//所以需要先查询一下 practice_summary了，去看看是否已经提交了
+	s := `SELECT latest_unsubmitted_id,pending_mark_id
+	 FROM assessuser.v_practice_summary 
+	 WHERE id = $1 AND student_id = $2`
+
+	var ps cmn.TVPracticeSummary
+	err := tx.QueryRow(ctx, s, pid, uid).Scan(&ps.LatestUnsubmittedID, &ps.PendingMarkID)
+	if err != nil || forceErr == "cQuery1" {
+		err = fmt.Errorf("查询学生练习记录信息失败：%v", err)
+		z.Error(err.Error())
+		return nil, nil, nil, err
+	}
+
+	if ps.LatestUnsubmittedID.Int64 > 0 || ps.PendingMarkID.Int64 > 0 {
+		// 这里就不能让他进入错题集
+		err = fmt.Errorf("数据错误！此时无法操作查询学生错题集")
+		z.Error(err.Error())
+		return nil, nil, nil, err
+	}
+
+	//TODO 查询错题集试题 但不携带答案与解析
+	return nil, nil, nil, nil
+}
+
+//TODO 完善查询错题集视图的语句 控制可用范围
+
+// LoadErrorCollectionDetailsById 获取错题集的试题 包括是否包含答案、解析等
+func LoadErrorCollectionDetailsById(ctx context.Context, tx pgx.Tx, pid, uid int64, withQuestions, withAnswers, withAnalysis bool) (*cmn.TVExamPaper, []*cmn.TExamPaperGroup, map[int64][]*examPaper.ExamQuestion, error) {
+	var err error
+	if pid <= 0 || uid <= 0 {
+		err = fmt.Errorf("invalid pid or uid param")
+		z.Error(err.Error())
+		return nil, nil, nil, err
+	}
+	//查看是否需要返回mock的数据
+	forceErr, _ := ctx.Value("force-error").(string)
+	// 一张考卷卷拥有的题组map
+	var examGroups []*cmn.TExamPaperGroup
+	// 一个题组下拥有的题目数组
+	examQuestions := make(map[int64][]*examPaper.ExamQuestion)
+	var ep cmn.TVExamPaper
+	var ec cmn.TVPracticeWrongCollection
+	s := `SELECT id,name,total_score,question_count,group_count,groups_data  FROM assessuser.v_practice_wrong_collection WHERE practice_id = $1 AND student_id = $2`
+	err = tx.QueryRow(ctx, s, pid, uid).Scan(&ec.ID, &ec.Name, &ec.TotalScore, &ec.QuestionCount, &ec.GroupCount, &ec.GroupsData)
+	if err != nil || forceErr == "cQuery2" {
+		err = fmt.Errorf("查询学生错题集信息失败：%v", err)
+		z.Error(err.Error())
+		return nil, nil, nil, err
+	}
+	if !withQuestions || len(ep.GroupsData) == 0 {
+		return &ep, nil, nil, nil
+	}
+	var groupData []examPaper.ExamGroup
+	if forceErr == "json" {
+		ep.GroupsData = types.JSONText(`invalid json: missing closing brace`)
+	}
+	if forceErr == "jsonA" {
+		ep.GroupsData = types.JSONText(`[]`) // 空数组
+	}
+	err = json.Unmarshal(ep.GroupsData, &groupData)
+	if err != nil {
+		err = fmt.Errorf("unmarshal group data failed:%v", err)
+		z.Error(err.Error())
+		return nil, nil, nil, err
+	}
+	if len(groupData) == 0 {
+		err = fmt.Errorf("empty examPaper groups data")
+		z.Error(err.Error())
+		return &ep, nil, nil, err
+	}
+	for _, v := range groupData {
+		examGroups = append(examGroups, &cmn.TExamPaperGroup{
+			ID:          v.ID,
+			ExamPaperID: v.ExamPaperID,
+			Name:        v.Name,
+			Order:       v.Order,
+			Creator:     v.Creator,
+			CreateTime:  v.CreateTime,
+			UpdatedBy:   v.UpdatedBy,
+			UpdateTime:  v.UpdateTime,
+			Addi:        v.Addi,
+			Status:      v.Status,
+		})
+		if _, exists := examQuestions[v.ID.Int64]; !exists {
+			examQuestions[v.ID.Int64] = make([]*examPaper.ExamQuestion, 0)
+		}
+		// 保留答案与解析
+		for idx := range v.Questions {
+			q := v.Questions[idx]
+			var answersSlice []interface{}
+			if len(q.Answers) > 0 {
+				if forceErr == "jsonB" {
+					q.Answers = types.JSONText(`invalid json: missing closing brace`)
+				}
+				if err = json.Unmarshal(q.Answers, &answersSlice); err != nil {
+					err = fmt.Errorf("failed to unmarshal Answers questionId:%v for:%v", q.ID.Int64, err)
+					z.Error(err.Error())
+					return &ep, nil, nil, err
+				}
+			}
+			q.AnswerNum = len(answersSlice)
+			if !withAnalysis {
+				q.Analysis = null.String{}
+			}
+			if !withAnswers {
+				q.Answers = nil
+			}
+			examQuestions[v.ID.Int64] = append(examQuestions[v.ID.Int64], &q)
+		}
+	}
+	// 信息已经取出，直接清除
+	ep.GroupsData = nil
+	return &ep, examGroups, examQuestions, nil
 }
