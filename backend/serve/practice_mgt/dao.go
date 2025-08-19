@@ -99,7 +99,7 @@ func UpdatePractice(ctx context.Context, p *cmn.TPractice, ps []int64, uid int64
 		z.Error(err.Error())
 		return err
 	}
-	err = UpsertPracticeStudent(ctx, p.ID.Int64, uid, ps)
+	err = UpsertPracticeStudentV2(ctx, p.ID.Int64, uid, ps)
 	if err != nil {
 		return err
 	}
@@ -130,7 +130,10 @@ func AddPractice(ctx context.Context, p *cmn.TPractice, ps []int64, uid int64) e
 		return err
 	}
 	p.ID = null.IntFrom(id)
-	err = UpsertPracticeStudent(ctx, id, uid, ps)
+	if ps == nil || len(ps) == 0 {
+		return nil
+	}
+	err = UpsertPracticeStudentV2(ctx, id, uid, ps)
 	if err != nil {
 		return err
 	}
@@ -256,6 +259,128 @@ func UpsertPracticeStudent(ctx context.Context, pid, uid int64, ps []int64) erro
 	z.Sugar().Debugf("打印输出一下删除SQL参数:%v", delPArgs...)
 	_, err = tx.ExecContext(ctx, s2, delPArgs...)
 	if err != nil || forceErr == "query2" {
+		err = fmt.Errorf("delete PracticeStudent call failed:%v", err)
+		z.Error(err.Error())
+		return err
+	}
+	return nil
+}
+
+func UpsertPracticeStudentV2(ctx context.Context, pid, uid int64, ps []int64) error {
+
+	if pid <= 0 {
+		err := fmt.Errorf("invalid practiceId param")
+		z.Error(err.Error())
+		return err
+	}
+	if uid <= 0 {
+		err := fmt.Errorf("invalid uid param")
+		z.Error(err.Error())
+		return err
+	}
+	forceErr, _ := ctx.Value("force-error").(string)
+	now := time.Now().UnixMilli()
+	sqlxDB := cmn.GetDbConn()
+	tx, err := sqlxDB.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelRepeatableRead})
+	if err != nil || forceErr == "beginTx" {
+		err = fmt.Errorf("beginTx called failed:%v", err)
+		z.Error(err.Error())
+		return err
+	}
+	defer func() {
+		if forceErr == "rollback" {
+			err = fmt.Errorf("触发回滚")
+		}
+		if err != nil {
+			_ = tx.Rollback()
+			if forceErr == "rollback" {
+				err = fmt.Errorf("触发回滚")
+			}
+			if err != nil {
+				z.Error(err.Error())
+				return
+			}
+		}
+		_ = tx.Commit()
+		if forceErr == "commit" {
+			err = fmt.Errorf("commit failed")
+		}
+		if err != nil {
+			z.Error(err.Error())
+		}
+	}()
+
+	if ps == nil || len(ps) == 0 {
+		// 清空该练习下所有学生
+		delSQL := `
+            UPDATE assessuser.t_practice_student
+            SET status = $1, update_time = $2, updated_by = $3
+            WHERE practice_id = $4 AND status != $1
+        `
+		_, err = tx.ExecContext(ctx, delSQL, PracticeStudentStatus.Deleted, now, uid, pid)
+		if err != nil || forceErr == "query1" {
+			err = fmt.Errorf("clear PracticeStudent call failed:%v", err)
+			z.Error(err.Error())
+			return err
+		}
+		return nil
+	}
+
+	// upsert名单
+	addPStr := strings.Repeat("(?,?,?,?,?,?,?),", len(ps)-1) + "(?,?,?,?,?,?,?)"
+	addPArgs := make([]interface{}, 0, len(ps)*7+1)
+	for _, sid := range ps {
+		addPArgs = append(addPArgs,
+			sid, pid, uid, now, uid, now, PracticeStudentStatus.Normal,
+		)
+	}
+	addPArgs = append(addPArgs, PracticeStudentStatus.Normal)
+	t := `
+        INSERT INTO assessuser.t_practice_student 
+            (student_id, practice_id, creator, create_time, updated_by, update_time, status) 
+        VALUES %s
+        ON CONFLICT (student_id, practice_id)
+        DO UPDATE SET
+            status = EXCLUDED.status,
+            updated_by = EXCLUDED.updated_by,
+            update_time = EXCLUDED.update_time
+        WHERE assessuser.t_practice_student.status IS DISTINCT FROM ?
+    `
+	s1 := fmt.Sprintf(t, addPStr)
+	addPQuery, args, _ := sqlx.In(s1, addPArgs...)
+	addPQuery = sqlx.Rebind(sqlx.DOLLAR, addPQuery)
+	z.Sugar().Debugf("打印输出一下增加SQL语句:%v", addPQuery)
+	z.Sugar().Debugf("打印输出一下增加SQL参数:%v", args...)
+	_, err = tx.ExecContext(ctx, addPQuery, args...)
+	if err != nil || forceErr == "query2" {
+		err = fmt.Errorf("add PracticeStudent call failed:%v", err)
+		z.Error(err.Error())
+		return err
+	}
+
+	// 删除不在名单上的学生
+	var valueExpr []string
+	var delPArgs []interface{}
+	delPArgs = append(delPArgs, PracticeStudentStatus.Deleted, now, uid, pid)
+	for _, sid := range ps {
+		valueExpr = append(valueExpr, fmt.Sprintf("($%d::bigint)", len(delPArgs)+1))
+		delPArgs = append(delPArgs, sid)
+	}
+	t2 := `
+        UPDATE assessuser.t_practice_student t
+        SET status = $1, update_time = $2, updated_by = $3
+        WHERE t.practice_id = $4
+            AND NOT EXISTS (
+                SELECT 1 
+                FROM (VALUES %s) AS excluded(sid)
+                WHERE t.student_id = excluded.sid
+            )
+    `
+	s2 := fmt.Sprintf(t2, strings.Join(valueExpr, ", "))
+	z.Sugar().Debugf("打印输出一下删除SQL语句:%v", s2)
+	z.Sugar().Debugf("打印输出一下删除SQL参数:%v", delPArgs...)
+	_, err = tx.ExecContext(ctx, s2, delPArgs...)
+	if err != nil || forceErr == "query3" {
 		err = fmt.Errorf("delete PracticeStudent call failed:%v", err)
 		z.Error(err.Error())
 		return err
@@ -1250,7 +1375,7 @@ func EnterPracticeGetPaperDetails(ctx context.Context, tx pgx.Tx, pid int64, uid
 			}
 			withStudentAnswer = false
 		}
-		//第一次进入练习 没有任何练习提交记录
+		//第一次进入练习 没有任何练习提交记录  第一次进入就可以拿到
 	case StudentSubmissionStatus.NeverAnswer:
 		{
 			//在创建记录之前，需要先加载一下练习的基本信息
@@ -1261,10 +1386,10 @@ func EnterPracticeGetPaperDetails(ctx context.Context, tx pgx.Tx, pid int64, uid
 			if err != nil {
 				return nil, nil, nil, err
 			}
-			s := `INSERT INTO assessuser.t_practice_submissions (practice_id,student_id,exam_paper_id,creator,create_time,update_time,attempt) VALUES (
-					$1,$2,$3,$4,$5,$6,$7	
+			s := `INSERT INTO assessuser.t_practice_submissions (practice_id,student_id,exam_paper_id,creator,create_time,update_time,attempt,wrong_attempt) VALUES (
+					$1,$2,$3,$4,$5,$6,$7,$8	
 				  ) RETURNING id`
-			err = tx.QueryRow(ctx, s, pid, uid, p.ExamPaperID, uid, now, now, 1).Scan(&pSubmissionID)
+			err = tx.QueryRow(ctx, s, pid, uid, p.ExamPaperID, uid, now, now, 1, 0).Scan(&pSubmissionID)
 			if err != nil || forceErr == "pQuery2" {
 				err = fmt.Errorf("初始化一个学生练习作答记录失败:%v", err)
 				z.Error(err.Error())

@@ -627,7 +627,7 @@ func practiceStudentListH(ctx context.Context) {
 				q.RespErr()
 				return
 			}
-			q.Err = UpsertPracticeStudent(ctx, p.Pid, userID, p.Student)
+			q.Err = UpsertPracticeStudentV2(ctx, p.Pid, userID, p.Student)
 			if q.Err != nil {
 				q.RespErr()
 				return
