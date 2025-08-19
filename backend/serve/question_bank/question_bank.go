@@ -7,11 +7,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/lib/pq"
 	"io"
 	"strconv"
 	"strings"
-
-	"github.com/lib/pq"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"

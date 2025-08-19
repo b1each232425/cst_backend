@@ -2,7 +2,7 @@
  * @Author: wusaber33
  * @Date: 2025-08-16 16:30:00
  * @LastEditors: wusaber33
- * @LastEditTime: 2025-08-16 16:30:00
+ * @LastEditTime: 2025-08-18 23:46:22
  * @FilePath: \assess\backend\serve\paper\global.go
  * @Description: Paper module global constants and variables
  * Copyright (c) 2025 by wusaber33, All Rights Reserved.
@@ -34,8 +34,11 @@ const (
 	DefaultGroup5Name = "五、简答题"
 
 	// 记录状态定义
-	StatusNormal   = "00" // 正常状态
-	StatusUnNormal = "02" // 已删除(软删除)
+	StatusUnPublished = "00" // 未发布状态
+	StatusPublished   = "06" // 已发布状态
+	StatusNormal      = "00" // 正常状态
+	StatusDeleted     = "02" // 删除状态
+	StatusUnNormal    = "04" // 异常状态
 
 	// 试卷分类
 	PaperCategoryExam     = "00" // 考试试卷

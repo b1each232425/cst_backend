@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -358,131 +359,96 @@ func cleanupTestBankQuestions() {
 
 func TestMain(m *testing.M) {
 	cmn.ConfigureForTest()
-	err := initTestQuestionBankData()
-	if err != nil {
-		panic(fmt.Sprintf("Failed to initialize test question bank data: %v", err)) // 如果初始化失败，直接 panic
-	}
+	initTestQuestionBankAndQuestion()
 	m.Run()
 	cleanupTestBankQuestions()
 
 }
 
 // initTestQuestionBankData 初始化题库题目数据
-func initTestQuestionBankData() error {
-	db := cmn.GetPgxConn()
-	if db == nil {
-		return fmt.Errorf("数据库连接为空")
-	}
-	ctx := context.Background()
-	// 1. 开启事务（不忽略错误）
-	tx, err := db.BeginTx(ctx, pgx.TxOptions{})
+func initTestQuestionBankAndQuestion() {
+	userID := TestUserIDs[0]
+	// 提前准备好测试数据
+	testBankFilePath := "test-bank.json"
+	testQuestionFilePath := "test-question.json"
+
+	bankBytes, err := os.ReadFile(testBankFilePath)
 	if err != nil {
-		return fmt.Errorf("开启事务失败: %v", err)
+		fmt.Printf("Failed to read test bank file: %v\n", err)
+		return
 	}
-
-	defer func() {
-		// 若后续操作失败，回滚事务
-		if r := recover(); r != nil || err != nil {
-			_ = tx.Rollback(ctx)
-		}
-		_ = tx.Commit(ctx)
-	}()
-
-	qb := `INSERT INTO t_question_bank  (type,name,creator,create_time,status,domain_id) VALUES($1, $2, $3, $4, $5,$6) RETURNING id`
-	var qbID int64
-	err = tx.QueryRow(ctx, qb, "00", "考卷测试题库", initQuestionUserID, time.Now().UnixMilli(), "00", resourceDomainID).Scan(&qbID)
+	questionBytes, err := os.ReadFile(testQuestionFilePath)
 	if err != nil {
-		return fmt.Errorf("创建题库失败: %v", err)
-	}
-	// 五道题
-	q := `INSERT INTO t_question (id,type,content,options,answers,score,analysis,title,creator,status,belong_to,difficulty) VALUES ($1, $2, $3, $4, $5, $6,$7,$8,$9,$10,$11,$12)`
-	qArgs := [][]interface{}{
-		{BankQuestionIDs[0], "00", "<p><span style=\"font-family: 等线; font-size: 12pt\">具有风险分析的软件生命周期模型是</span><span style=\"font-family: Aptos, sans-serif; font-size: 12pt\">()</span></p>",
-			`[
-				{
-            		"label": "A",
-            		"value": "<p><span style=\"font-family: 等线; font-size: 12pt\">瀑布模型</span></p>"
-        		},
-        		{
-            		"label": "B",
-            		"value": "<p><span style=\"font-family: 等线; font-size: 12pt\">喷泉模型</span></p>"
-        		},
-        		{
-            		"label": "C",
-            		"value": "<p><span style=\"font-family: 等线; font-size: 12pt\">螺旋模型</span></p>"
-        		},
-        		{
-            		"label": "D",
-            		"value": "<p><span style=\"font-family: 等线; font-size: 12pt\">增量模型</span></p>"
-        		}
-			]`,
-			`["A", "D"]`, 2, "hello", nil, initQuestionUserID, "00", qbID, 1,
-		},
-		{BankQuestionIDs[1], "00", "<p><span style=\"font-size: 12pt\">H3C公司的总部位于哪个城市？</span></p>",
-			`[{"label": "A", "value": "<p><span style=\"font-size: 12pt\">2</span></p>"}, {"label": "B", "value": "<p><span style=\"font-size: 12pt\">3</span></p>"}, {"label": "C", "value": "<p><span style=\"font-size: 12pt\">4</span></p>"}, {"label": "D", "value": "<p><span style=\"font-size: 12pt\">5</span></p>"}]`,
-			`["A", "D"]`, 2, "hello", nil, initQuestionUserID, "00", qbID, 1,
-		},
-		{BankQuestionIDs[2], "02", "<p><span style=\"font-size: 12pt\">H3C公司的分部遍布哪个城市？</span></p>",
-			`[{"label": "A", "value": "<p><span style=\"font-size: 12pt\">广州</span></p>"}, {"label": "B", "value": "<p><span style=\"font-size: 12pt\">上海</span></p>"}, {"label": "C", "value": "<p><span style=\"font-size: 12pt\">北京</span></p>"}, {"label": "D", "value": "<p><span style=\"font-size: 12pt\">深圳</span></p>"}]`,
-			`["A", "B","C","D"]`, 5, "hello", nil, initQuestionUserID, "00", qbID, 1,
-		},
-		{BankQuestionIDs[3], "02", "<p><span style=\"font-size: 12pt\"> 以下哪些是常见的网络设备品牌？</p>",
-			`[{"label": "A", "value": "<p><span style=\"font-size: 12pt\">华为</span></p>"}, {"label": "B", "value": "<p><span style=\"font-size: 12pt\">思科</span></p>"}, {"label": "C", "value": "<p><span style=\"font-size: 12pt\"> Juniper</span></p>"}, {"label": "D", "value": "<p><span style=\"font-size: 12pt\">中兴</span></p>"}]`,
-			`["A", "B"]`, 5, "hello", nil, initQuestionUserID, "00", qbID, 1,
-		},
-		{BankQuestionIDs[4], "02", "<p><span style=\"font-size: 12pt\">以下属于H3C主要产品线的有哪些？</span></p>",
-			`[{"label": "A", "value": "<p><span style=\"font-size: 12pt\">路由器</span></p>"}, {"label": "B", "value": "<p><span style=\"font-size: 12pt\">交换机</span></p>"}, {"label": "C", "value": "<p><span style=\"font-size: 12pt\">防火墙</span></p>"}, {"label": "D", "value": "<p><span style=\"font-size: 12pt\">服务器</span></p>"}]`,
-			`["A","B","C"]`, 5, "hello", nil, initQuestionUserID, "00", qbID, 1,
-		},
-		{BankQuestionIDs[5], "00", "<p><span style=\"font-size: 12pt\">以下哪些属于H3C的核心技术领域？</span></p>",
-			`[{"label": "A", "value": "<p><span style=\"font-size: 12pt\">云计算</span></p>"}, {"label": "B", "value": "<p><span style=\"font-size: 12pt\">大数据</span></p>"}, {"label": "C", "value": "<p><span style=\"font-size: 12pt\">人工智能</span></p>"}, {"label": "D", "value": "<p><span style=\"font-size: 12pt\">物联网</span></p>"}]`,
-			`["A"]`, 2, "hello", nil, initQuestionUserID, "00", qbID, 1,
-		},
-		{BankQuestionIDs[6], "04", "<p><span style=\"font-size: 12pt\">在H3C设备上，'undo shutdown'命令可以启用一个物理接口。</span></p>",
-			`[{"Label": "A", "Value": "<p><span style=\"font-size: 12pt\">正确</span></p>"}, {"Label": "B", "Value": "<p><span style=\"font-size: 12pt\">错误</span></p>"}]`,
-			`["A"]`, 2, "hello", nil, initQuestionUserID, "00", qbID, 1,
-		},
-		{BankQuestionIDs[7], "04", "<p><span style=\"font-size: 12pt\">H3C交换机的默认管理VLAN编号是1。</span></p>",
-			`[{"Label": "A", "Value": "<p><span style=\"font-size: 12pt\">正确</span></p>"}, {"Label": "B", "Value": "<p><span style=\"font-size: 12pt\">错误</span></p>"}]`,
-			`["A"]`, 2, "hello", nil, initQuestionUserID, "00", qbID, 1,
-		},
-		{BankQuestionIDs[8], "06", "<p><span style=\"font-family: 等线; font-size: 12pt\">具有风险分析的软件生命周期模型是</span><span style=\"font-family: Aptos, sans-serif; font-size: 12pt\">()</span></p>",
-			nil, `[{"index": 1,"score": 5,"answer": "螺旋模型","grading_rule": "答案必须准确匹配“螺旋模型”","alternative_answers": []}]`, 5, "hello", nil, initQuestionUserID, "00", qbID, 1,
-		},
-		{BankQuestionIDs[9], "06", "<p><span style=\"font-family: 等线; font-size: 12pt\">软件开发中，用于描述系统功能的文档是</span><span style=\"font-family: Aptos, sans-serif; font-size: 12pt\">()</span></p>",
-			nil, `[{"index": 1,"score": 5,"answer": "需求规格说明书","grading_rule": "答案必须准确匹配“需求规格说明书”","alternative_answers": []}]`, 5, "hello", nil, initQuestionUserID, "00", qbID, 1,
-		},
-		{BankQuestionIDs[10], "06", "<p><span style=\"font-family: 等线; font-size: 12pt\">面向对象编程的三大基本特性分别是</span><span style=\"font-family: Aptos, sans-serif; font-size: 12pt\">()</span></p>",
-			nil, `[{"index": 1,"score": 1,"answer": "封装","grading_rule": "顺序不限，必须包含三个特性","alternative_answers": []},{"index": 2,"score": 1,"answer": "继承","grading_rule": "顺序不限，必须包含三个特性","alternative_answers": []},{"index": 3,"score": 1,"answer": "多态","grading_rule": "顺序不限，必须包含三个特性","alternative_answers": []}]`,
-			3, "hello", nil, initQuestionUserID, "00", qbID, 1,
-		},
-		{BankQuestionIDs[11], "08", "<p>简述计算机病毒的传播途径。</p>", nil, `[{"index": 1,"score": 5,"answer": "通过网络下载、移动存储设备、电子邮件等方式传播","grading_rule": "答出3种主要传播方式即可得满分","alternative_answers": []}]`,
-			5, "hello", nil, initQuestionUserID, "00", qbID, 1,
-		},
-		{BankQuestionIDs[12], "08", "<p>简述操作系统的主要功能。</p>", nil, `[{"index": 1,"score": 5,"answer": "进程管理、内存管理、文件管理、设备管理、作业管理","grading_rule": "答出3种主要功能即可得满分","alternative_answers": []}]`,
-			5, "hello", nil, initQuestionUserID, "00", qbID, 1,
-		},
+		fmt.Printf("Failed to read test question file: %v\n", err)
+		return
 	}
 
-	// 2. 批量插入
-	batch := &pgx.Batch{}
-	for _, args := range qArgs {
-		batch.Queue(q, args...)
+	var testBankData cmn.TQuestionBank
+	var testQuestionData []cmn.TQuestion
+
+	err = json.Unmarshal(bankBytes, &testBankData)
+	if err != nil {
+		fmt.Printf("Failed to unmarshal test bank data: %v\n", err)
+		return
+	}
+	err = json.Unmarshal(questionBytes, &testQuestionData)
+	if err != nil {
+		fmt.Printf("Failed to unmarshal test question data: %v\n", err)
+		return
 	}
 
-	br := tx.SendBatch(ctx, batch)
-	defer br.Close()
+	// 数据库连接
+	db := cmn.GetDbConn()
 
-	// 3. 检查每条插入结果（关键：捕获单条错误）
-	for i := 0; i < batch.Len(); i++ {
-		_, err = br.Exec()
+	// 插入题库并记录映射
+	testBankData.Creator = null.NewInt(userID, true)
+	err = testBankData.Create(db)
+	if err != nil {
+		fmt.Printf("Failed to create test bank: %v\n", err)
+		return
+	}
+	testBankID := testBankData.ID.Int64
+	fmt.Printf("Created question bank with ID: %v\n", testBankID)
+
+	// 插入该题库下的所有题目
+	var questionIDs []int64
+	for _, question := range testQuestionData {
+		// 设置题目id归属
+		question.BelongTo = null.NewInt(testBankID, true)
+		question.Creator = null.NewInt(userID, true)
+
+		// 将 Tags 序列化为 JSON
+		tagsJSON, err := json.Marshal(question.Tags)
 		if err != nil {
-			return fmt.Errorf("第%d条数据插入失败: %v, 参数: %v", i, err, qArgs[i])
+			fmt.Printf("Failed to marshal question tags: %v\n", err)
+			continue
 		}
+
+		// 直接执行 SQL 插入
+		err = db.QueryRowx(`
+			INSERT INTO t_question (
+				type, content, options, answers, score, difficulty, tags, analysis,
+				title, answer_file_path, test_file_path, input, output, example, 
+				repo, "order", creator, create_time, status, belong_to
+			) VALUES (
+				$1, $2, $3, $4, $5, $6, $7, $8,
+				$9, $10, $11, $12, $13, $14, 
+				$15, $16, $17, $18, $19, $20
+			) RETURNING id`,
+			question.Type, question.Content, question.Options, question.Answers,
+			question.Score, question.Difficulty, tagsJSON, question.Analysis,
+			question.Title, question.AnswerFilePath, question.TestFilePath,
+			question.Input, question.Output, question.Example,
+			question.Repo, question.Order, question.Creator, time.Now().UnixMilli(),
+			"00", question.BelongTo,
+		).Scan(&question.ID)
+		if err != nil {
+			fmt.Printf("Failed to insert question: %v\n", err)
+			continue
+		}
+		questionIDs = append(questionIDs, question.ID.Int64)
 	}
-
-	return nil
-
+	BankQuestionIDs = questionIDs
 }
 
 // createTestPaper 创建一个测试试卷并返回其ID
