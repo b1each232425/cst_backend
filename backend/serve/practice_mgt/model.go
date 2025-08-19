@@ -3,7 +3,7 @@
  * @Description: 练习管理所需模型
  * @Date: 2025-07-15 19:59:25
  * @LastEditors: zdl <1311866870@qq.com>
- * @LastEditTime: 2025-08-14 20:28:08
+ * @LastEditTime: 2025-08-19 16:48:29
  */
 package practice_mgt
 
@@ -112,7 +112,7 @@ type practiceInfo struct {
 
 type practiceStudent struct {
 	Pid     int64   `json:"practice_id" validate:"required,gt=0"`
-	Student []int64 `json:"student" validate:"required,min=1,dive,gt=0"`
+	Student []int64 `json:"student" `
 }
 
 type EnterPracticeInfo struct {
