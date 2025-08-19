@@ -1818,7 +1818,7 @@ func Test_service_CheckTUserFieldExists(t *testing.T) {
 			args: args{
 				ctx:   context.Background(),
 				field: "mobile_phone",
-				value: "13800138001",
+				value: "+8613800138001",
 			},
 			want:    true,
 			wantErr: false,
@@ -1937,7 +1937,7 @@ func Test_service_CheckTUserFieldExists_WithTransaction(t *testing.T) {
 			args: args{
 				ctx:   context.Background(),
 				field: "mobile_phone",
-				value: "13800138001",
+				value: "+8613800138001",
 			},
 			want:    true,
 			wantErr: false,
@@ -2043,7 +2043,7 @@ func Test_service_CheckTUserRowExists(t *testing.T) {
 				ctx: context.Background(),
 				fields: map[string]any{
 					"official_name": "张三",
-					"mobile_phone":  "13800138001",
+					"mobile_phone":  "+8613800138001",
 					"email":         "zhangsan@example.com",
 					"id_card_no":    "440106199001011234",
 				},
@@ -2071,7 +2071,7 @@ func Test_service_CheckTUserRowExists(t *testing.T) {
 				ctx: context.WithValue(context.Background(), "force-error", "QueryUsers"),
 				fields: map[string]any{
 					"official_name": "张三",
-					"mobile_phone":  "13800138001",
+					"mobile_phone":  "+8613800138001",
 					"email":         "zhangsan@example.com",
 					"id_card_no":    "440106199001011234",
 				},
@@ -2190,7 +2190,7 @@ func Test_service_CheckTUserRowExists_WithTransaction(t *testing.T) {
 				ctx: context.Background(),
 				fields: map[string]any{
 					"official_name": "张三",
-					"mobile_phone":  "13800138001",
+					"mobile_phone":  "+8613800138001",
 					"email":         "zhangsan@example.com",
 					"id_card_no":    "440106199001011234",
 				},
@@ -2620,7 +2620,7 @@ func Test_service_ValidateUser(t *testing.T) {
 						MobilePhone: null.NewString("+113900139000", true),
 					},
 					ErrorMsg: []null.String{
-						null.NewString("手机号格式不符合E.164标准", true),
+						null.NewString("手机号格式非法", true),
 					},
 				},
 			},
@@ -2680,7 +2680,8 @@ func Test_service_ValidateUser(t *testing.T) {
 						MobilePhone: null.NewString("+85366123456", true),
 					},
 					ErrorMsg: []null.String{
-						null.NewString("手机号格式不符合E.164标准", true),
+						null.NewString("手机号格式非法", true),
+						null.NewString("手机号不符合地区规则", true),
 					},
 				},
 			},
@@ -2769,7 +2770,7 @@ func Test_service_ValidateUser(t *testing.T) {
 						MobilePhone: null.NewString("085366123456", true),
 					},
 					ErrorMsg: []null.String{
-						null.NewString("手机号格式不符合E.164标准", true),
+						null.NewString("手机号格式非法", true),
 					},
 				},
 			},
@@ -2800,7 +2801,8 @@ func Test_service_ValidateUser(t *testing.T) {
 						MobilePhone: null.NewString("08536¥%612*3456", true),
 					},
 					ErrorMsg: []null.String{
-						null.NewString("手机号格式不符合E.164标准", true),
+						null.NewString("手机号格式非法", true),
+						null.NewString("手机号不符合地区规则", true),
 					},
 				},
 			},
@@ -2919,7 +2921,8 @@ func Test_service_ValidateUser(t *testing.T) {
 					},
 					ErrorMsg: []null.String{
 						null.NewString("无法检测到手机号", true),
-						null.NewString("手机号格式不符合E.164标准", true),
+						null.NewString("手机号格式非法", true),
+						null.NewString("手机号不符合地区规则", true),
 					},
 				},
 			},

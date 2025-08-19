@@ -242,6 +242,10 @@ func practiceH(ctx context.Context) {
 						q.RespErr()
 						return
 					}
+					var isClear bool
+					if qry.Action == "clear" {
+						isClear = true
+					}
 
 					var p practiceInfo
 					q.Err = json.Unmarshal(qry.Data, &p)
@@ -256,7 +260,7 @@ func practiceH(ctx context.Context) {
 						q.RespErr()
 						return
 					}
-					err := UpsertPractice(ctx, &p.Practice, p.Student, userID)
+					err := UpsertPractice(ctx, &p.Practice, p.Student, userID, isClear)
 					if err != nil {
 						q.Err = err
 						q.RespErr()
@@ -627,7 +631,7 @@ func practiceStudentListH(ctx context.Context) {
 				q.RespErr()
 				return
 			}
-			q.Err = UpsertPracticeStudent(ctx, p.Pid, userID, p.Student)
+			q.Err = UpsertPracticeStudentV2(ctx, p.Pid, userID, p.Student)
 			if q.Err != nil {
 				q.RespErr()
 				return
