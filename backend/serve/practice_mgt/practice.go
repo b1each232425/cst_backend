@@ -242,9 +242,9 @@ func practiceH(ctx context.Context) {
 						q.RespErr()
 						return
 					}
-					var clearStr bool
+					var isClear bool
 					if qry.Action == "clear" {
-						clearStr = true
+						isClear = true
 					}
 
 					var p practiceInfo
@@ -260,7 +260,7 @@ func practiceH(ctx context.Context) {
 						q.RespErr()
 						return
 					}
-					err := UpsertPractice(ctx, &p.Practice, p.Student, userID, clearStr)
+					err := UpsertPractice(ctx, &p.Practice, p.Student, userID, isClear)
 					if err != nil {
 						q.Err = err
 						q.RespErr()
