@@ -1624,7 +1624,7 @@ func getScorePractice(ctx context.Context, studentID int64, practiceID int64) (M
 	epSql := `
 	SELECT id,exam_paper_id
 	FROM t_practice_submissions
-	WHERE student_id = $1 AND practice_id = $2
+	WHERE student_id = $1 AND practice_id = $2 AND status = "08"
 	ORDER BY id DESC
 	LIMIT 1
 	`
