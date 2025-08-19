@@ -3,7 +3,7 @@
  * @Description: 考卷数据库层单元测试
  * @Date: 2025-07-28 19:55:28
  * @LastEditors: zdl <1311866870@qq.com>
- * @LastEditTime: 2025-08-12 22:14:11
+ * @LastEditTime: 2025-08-19 11:46:02
  */
 package examPaper
 
@@ -3540,8 +3540,8 @@ func containsString(s, substr string) bool {
 
 // 这里初始化题目，到达其他的函数，我这里一样可以进行删除
 func initQuestion(t *testing.T, tx *pgxpool.Pool) {
-	qb := `INSERT INTO t_question_bank  (id,type,name,creator,create_time,status,access_mode) VALUES($1, $2, $3, $4, $5, $6,$7)`
-	_, err := tx.Exec(ctx, qb, uid, "00", "考卷单元测试题库", uid, now, "00", "00")
+	qb := `INSERT INTO t_question_bank  (id,type,name,creator,create_time,status) VALUES($1, $2, $3, $4, $5, $6)`
+	_, err := tx.Exec(ctx, qb, uid, "00", "考卷单元测试题库", uid, now, "00")
 	if err != nil {
 		t.Fatal(err)
 	}
