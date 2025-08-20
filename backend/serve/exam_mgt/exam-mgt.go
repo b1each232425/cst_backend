@@ -2375,9 +2375,10 @@ func examList(ctx context.Context) {
 				LEFT JOIN v_student_exam_total_score sc
 					ON sc.exam_session_id = es.id
 					AND sc.student_id = $` + strconv.Itoa(argIdx+2) + `
-				ORDER BY es.session_num,
+				ORDER BY
 					ei.update_time DESC, 
-					ei.id DESC
+					ei.id DESC,
+					es.session_num
 			`
 			var rows pgx.Rows
 			rows, q.Err = conn.Query(ctx, searchSQL, append(args, req.PageSize, offset, userID)...)
