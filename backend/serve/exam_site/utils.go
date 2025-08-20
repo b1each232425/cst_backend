@@ -326,7 +326,7 @@ func generateImportScript(tableFileList []string, destDir string, fileName strin
 	content := ""
 	end := "\n"
 	if !isSubServerSide {
-		content = "BEGIN\n"
+		content = "BEGIN;\n"
 		end  = "\nCOMMIT;"
 	}
 
