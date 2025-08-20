@@ -1355,10 +1355,10 @@ func EnterPracticeGetPaperDetails(ctx context.Context, tx pgx.Tx, pid int64, uid
 				return nil, nil, nil, err
 			}
 			newAttempt := ps.AttemptCount.Int64 + 1
-			s := `INSERT INTO assessuser.t_practice_submissions (practice_id,student_id,exam_paper_id,creator,create_time,update_time,attempt,wrong_attempt) VALUES (
-			$1,$2,$3,$4,$5,$6,$7,$8	
+			s := `INSERT INTO assessuser.t_practice_submissions (practice_id,student_id,exam_paper_id,creator,create_time,update_time,attempt) VALUES (
+			$1,$2,$3,$4,$5,$6,$7
 		) RETURNING id`
-			err = tx.QueryRow(ctx, s, pid, uid, ps.ExamPaperID, uid, now, now, newAttempt, 0).Scan(&pSubmissionID)
+			err = tx.QueryRow(ctx, s, pid, uid, ps.ExamPaperID, uid, now, now, newAttempt).Scan(&pSubmissionID)
 			if err != nil || forceErr == "pQuery1" {
 				err = fmt.Errorf("新增一个学生二次练习作答记录失败:%v", err)
 				z.Error(err.Error())
@@ -1390,10 +1390,10 @@ func EnterPracticeGetPaperDetails(ctx context.Context, tx pgx.Tx, pid int64, uid
 			if err != nil {
 				return nil, nil, nil, err
 			}
-			s := `INSERT INTO assessuser.t_practice_submissions (practice_id,student_id,exam_paper_id,creator,create_time,update_time,attempt,wrong_attempt) VALUES (
-					$1,$2,$3,$4,$5,$6,$7,$8	
+			s := `INSERT INTO assessuser.t_practice_submissions (practice_id,student_id,exam_paper_id,creator,create_time,update_time,attempt) VALUES (
+					$1,$2,$3,$4,$5,$6,$7
 				  ) RETURNING id`
-			err = tx.QueryRow(ctx, s, pid, uid, p.ExamPaperID, uid, now, now, 1, 0).Scan(&pSubmissionID)
+			err = tx.QueryRow(ctx, s, pid, uid, p.ExamPaperID, uid, now, now, 1).Scan(&pSubmissionID)
 			if err != nil || forceErr == "pQuery2" {
 				err = fmt.Errorf("初始化一个学生练习作答记录失败:%v", err)
 				z.Error(err.Error())
@@ -1437,7 +1437,7 @@ func EnterPracticeGetPaperDetails(ctx context.Context, tx pgx.Tx, pid int64, uid
 
 }
 
-// EnterPracticeWrongCollection 学生进入错题集详情 练习最近的一次练习提交做错的题目
+// EnterPracticeWrongCollection 学生进入错题集详情 练习最近的一次练习提交做错的题目 有可能也是要获取这个当前已经作答过的记录的
 /*
 关键参数说明：
 	pid 练习唯一ID
@@ -1478,10 +1478,53 @@ func EnterPracticeWrongCollection(ctx context.Context, tx pgx.Tx, pid, uid int64
 		return nil, nil, nil, err
 	}
 	// 进入这个分支就代表此时学生已经开启了一次新的练习提交记录了 因此不允许再次进入错题集
-	if ps.LatestUnsubmittedID.Int64 > 0 || ps.PendingMarkID.Int64 > 0 {
-		err = fmt.Errorf("数据错误！此时无法操作查询学生错题集")
+	if ps.LatestSubmittedID.Int64 == 0 || ps.LatestUnsubmittedID.Int64 > 0 || ps.PendingMarkID.Int64 > 0 {
+		err = fmt.Errorf("请求学生错题集失败 , 此时学生拥有未提交或者待批改的练习记录或者没有提交过练习")
 		z.Error(err.Error())
 		return nil, nil, nil, err
+	}
+	// 这里如果存在了的话，那就是第一层，能够获取到的练习提交作答记录，从而能组成第一层视图的错题集
+	// 这需要再次检查这个错题集的提交记录，是否已经是已经批改的状态
+	s = `SELECT 
+    		pws.id AS wrong_submission_id,
+    		pws.attempt,
+    		pws.status AS wrong_status,
+		FROM t_practice_wrong_submissions pws
+		JOIN t_practice_submissions ps ON pws.practice_submission_id = ps.id
+		WHERE ps.student_id = $1 
+			AND ps.practice_id = $2
+			AND ps.status = $3
+			AND pws.status = ANY($4) -- 可作答、已提交
+		ORDER BY ps.attempt DESC, pws.attempt DESC
+		LIMIT 1
+     )`
+	var wsId, wsAttempt null.Int
+	var wsStatus null.String
+	haveEnterWrongPractice := false
+	err = tx.QueryRow(ctx, s, uid, pid, PracticeSubmissionStatus.Marked, []string{WrongSubmissionStatus.Submitted, WrongSubmissionStatus.Allow}).Scan(&wsId, &wsAttempt, &wsStatus)
+	if errors.Is(err, sql.ErrNoRows) {
+		// 如果都根本查询不到这个行，那就是这个学生没有进入过这个错题集的练习 ， 那此时应该从下面这个分支拿错题 ，那还有一种情况，那就是作答过，但是没有提交批改，此时还是从下面分支拿错题
+		haveEnterWrongPractice = false
+	} else if err != nil || forceErr == "cQuery2" {
+		err = fmt.Errorf("查询学生是否有作答错题集失败:%v", err)
+		z.Error(err.Error())
+		return nil, nil, nil, err
+	} else if wsStatus.String == WrongSubmissionStatus.Submitted {
+		// 这个分支代表的是 有过练习错题集的记录，但是还是没有提交，此时需要重新获取
+		haveEnterWrongPractice = false
+	} else {
+
+	}
+	// TODO 这个分支是去查询错题集中的学生作答错题的
+	if haveEnterWrongPractice {
+		//var pwc cmn.TVPracticeWrongCollection
+		// 然后这里面还是一样，需要先看看此时学生到底是处于什么状态去获取到这个错题集信息的，是继续作答呢？还是首次作答
+	} else {
+		// TODO 这个分支是去查询来自学生最新一次练习提交作答错题 这里是有这个LatestSubmittedID 就可以根据这个拿到对应的学生作答了 但是此时应该是 这里有
+		//var fwc cmn.TVZFirstWrongCollection
+
+		//s = `SELECT id , name,practice_submission_id,total_score,question_count,group_count,groups_data`
+
 	}
 
 	ecInfo, pg, pq, err := LoadErrorCollectionDetailsById(ctx, tx, pid, uid, false, false)
