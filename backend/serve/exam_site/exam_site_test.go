@@ -3995,6 +3995,12 @@ func TestExamSiteSyncInit(t *testing.T) {
 
 				pullChan = nil
 				pushChan = nil
+
+				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
 			},
 		},
 		{
@@ -4050,6 +4056,12 @@ func TestExamSiteSyncInit(t *testing.T) {
 
 				pullChan = nil
 				pushChan = nil
+
+				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
 			},
 		},
 		{
@@ -4091,6 +4103,12 @@ func TestExamSiteSyncInit(t *testing.T) {
 
 				pullChan = nil
 				pushChan = nil
+
+				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
 
 			},
 		},
@@ -4134,6 +4152,11 @@ func TestExamSiteSyncInit(t *testing.T) {
 				pullChan = nil
 				pushChan = nil
 
+				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
 			},
 		},
 		{
@@ -4176,6 +4199,11 @@ func TestExamSiteSyncInit(t *testing.T) {
 				pullChan = nil
 				pushChan = nil
 
+				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
 			},
 		},
 		{
@@ -4218,6 +4246,11 @@ func TestExamSiteSyncInit(t *testing.T) {
 				pullChan = nil
 				pushChan = nil
 
+				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
 			},
 		},
 		{
@@ -4260,6 +4293,11 @@ func TestExamSiteSyncInit(t *testing.T) {
 				pullChan = nil
 				pushChan = nil
 
+				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
 			},
 		},
 		{
@@ -4302,6 +4340,11 @@ func TestExamSiteSyncInit(t *testing.T) {
 				pullChan = nil
 				pushChan = nil
 
+				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
 			},
 		},
 		{
@@ -4344,6 +4387,11 @@ func TestExamSiteSyncInit(t *testing.T) {
 				pullChan = nil
 				pushChan = nil
 
+				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
 			},
 		},
 		{
@@ -4393,6 +4441,11 @@ func TestExamSiteSyncInit(t *testing.T) {
 				pullChan = nil
 				pushChan = nil
 
+				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
 			},
 		},
 		{
@@ -4442,6 +4495,11 @@ func TestExamSiteSyncInit(t *testing.T) {
 				pullChan = nil
 				pushChan = nil
 
+				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
 			},
 		},
 		{
@@ -4491,6 +4549,11 @@ func TestExamSiteSyncInit(t *testing.T) {
 				pullChan = nil
 				pushChan = nil
 
+				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
 			},
 		},
 		{
@@ -4531,6 +4594,11 @@ func TestExamSiteSyncInit(t *testing.T) {
 				pullChan = nil
 				pushChan = nil
 
+				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
 			},
 		},
 		{
@@ -4570,6 +4638,12 @@ func TestExamSiteSyncInit(t *testing.T) {
 
 				pullChan = nil
 				pushChan = nil
+
+				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
 
 			},
 		},
@@ -4626,6 +4700,12 @@ func TestExamSiteSyncInit(t *testing.T) {
 				pullChan = nil
 				pushChan = nil
 
+				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
+
 			},
 		},
 		{
@@ -4676,6 +4756,12 @@ func TestExamSiteSyncInit(t *testing.T) {
 
 				pullChan = nil
 				pushChan = nil
+
+				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
 
 			},
 		},
@@ -4728,6 +4814,12 @@ func TestExamSiteSyncInit(t *testing.T) {
 				pullChan = nil
 				pushChan = nil
 
+				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
+
 			},
 		},
 		{
@@ -4778,6 +4870,12 @@ func TestExamSiteSyncInit(t *testing.T) {
 
 				pullChan = nil
 				pushChan = nil
+
+				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
 
 			},
 		},
@@ -4831,6 +4929,12 @@ func TestExamSiteSyncInit(t *testing.T) {
 				pullChan = nil
 				pushChan = nil
 
+				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
+
 			},
 		},
 		{
@@ -4883,6 +4987,12 @@ func TestExamSiteSyncInit(t *testing.T) {
 				pullChan = nil
 				pushChan = nil
 
+				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
+
 			},
 		},
 		{
@@ -4934,6 +5044,12 @@ func TestExamSiteSyncInit(t *testing.T) {
 
 				pullChan = nil
 				pushChan = nil
+
+				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
 
 			},
 		},
@@ -4988,6 +5104,12 @@ func TestExamSiteSyncInit(t *testing.T) {
 				pullChan = nil
 				pushChan = nil
 
+				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
+
 			},
 		},
 		{
@@ -5039,6 +5161,12 @@ func TestExamSiteSyncInit(t *testing.T) {
 
 				pullChan = nil
 				pushChan = nil
+
+				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
 
 			},
 		},
@@ -5092,6 +5220,12 @@ func TestExamSiteSyncInit(t *testing.T) {
 				pullChan = nil
 				pushChan = nil
 
+				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
+
 			},
 		},
 		{
@@ -5143,6 +5277,12 @@ func TestExamSiteSyncInit(t *testing.T) {
 
 				pullChan = nil
 				pushChan = nil
+
+				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
 
 			},
 		},
@@ -5196,6 +5336,12 @@ func TestExamSiteSyncInit(t *testing.T) {
 				pullChan = nil
 				pushChan = nil
 
+				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
+
 			},
 		},
 		{
@@ -5247,6 +5393,12 @@ func TestExamSiteSyncInit(t *testing.T) {
 
 				pullChan = nil
 				pushChan = nil
+
+				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
 
 			},
 		},
@@ -5300,6 +5452,12 @@ func TestExamSiteSyncInit(t *testing.T) {
 				pullChan = nil
 				pushChan = nil
 
+				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
+
 			},
 		},
 		{
@@ -5351,6 +5509,12 @@ func TestExamSiteSyncInit(t *testing.T) {
 
 				pullChan = nil
 				pushChan = nil
+
+				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
 
 			},
 		},
@@ -5404,6 +5568,12 @@ func TestExamSiteSyncInit(t *testing.T) {
 				pullChan = nil
 				pushChan = nil
 
+				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
+
 			},
 		},
 		{
@@ -5455,6 +5625,12 @@ func TestExamSiteSyncInit(t *testing.T) {
 
 				pullChan = nil
 				pushChan = nil
+
+				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
 
 			},
 		},
@@ -5508,6 +5684,12 @@ func TestExamSiteSyncInit(t *testing.T) {
 				pullChan = nil
 				pushChan = nil
 
+				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
+
 			},
 		},
 		{
@@ -5559,6 +5741,12 @@ func TestExamSiteSyncInit(t *testing.T) {
 
 				pullChan = nil
 				pushChan = nil
+
+				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
 
 			},
 		},
@@ -5613,6 +5801,12 @@ func TestExamSiteSyncInit(t *testing.T) {
 				pullChan = nil
 				pushChan = nil
 
+				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
+
 			},
 		},
 		{
@@ -5664,6 +5858,12 @@ func TestExamSiteSyncInit(t *testing.T) {
 
 				pullChan = nil
 				pushChan = nil
+
+				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
 
 			},
 		},
@@ -5717,6 +5917,12 @@ func TestExamSiteSyncInit(t *testing.T) {
 				pullChan = nil
 				pushChan = nil
 
+				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
+
 			},
 		},
 		{
@@ -5767,6 +5973,12 @@ func TestExamSiteSyncInit(t *testing.T) {
 
 				pullChan = nil
 				pushChan = nil
+
+				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
 
 			},
 		},
@@ -5819,6 +6031,12 @@ func TestExamSiteSyncInit(t *testing.T) {
 				pullChan = nil
 				pushChan = nil
 
+				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
+
 			},
 		},
 		{
@@ -5869,6 +6087,12 @@ func TestExamSiteSyncInit(t *testing.T) {
 
 				pullChan = nil
 				pushChan = nil
+
+				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
 
 			},
 		},
@@ -5922,6 +6146,12 @@ func TestExamSiteSyncInit(t *testing.T) {
 				pullChan = nil
 				pushChan = nil
 
+				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
+
 			},
 		},
 		{
@@ -5973,6 +6203,12 @@ func TestExamSiteSyncInit(t *testing.T) {
 
 				pullChan = nil
 				pushChan = nil
+
+				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
 
 			},
 		},
@@ -6027,6 +6263,12 @@ func TestExamSiteSyncInit(t *testing.T) {
 				pullChan = nil
 				pushChan = nil
 
+				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
+
 			},
 		},
 		{
@@ -6078,6 +6320,12 @@ func TestExamSiteSyncInit(t *testing.T) {
 
 				pullChan = nil
 				pushChan = nil
+
+				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
 
 			},
 		},
@@ -6131,6 +6379,12 @@ func TestExamSiteSyncInit(t *testing.T) {
 				pullChan = nil
 				pushChan = nil
 
+				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
+
 			},
 		},
 		{
@@ -6182,6 +6436,12 @@ func TestExamSiteSyncInit(t *testing.T) {
 
 				pullChan = nil
 				pushChan = nil
+
+				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
 
 			},
 		},
@@ -6235,6 +6495,12 @@ func TestExamSiteSyncInit(t *testing.T) {
 				pullChan = nil
 				pushChan = nil
 
+				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
+
 			},
 		},
 		{
@@ -6286,6 +6552,12 @@ func TestExamSiteSyncInit(t *testing.T) {
 
 				pullChan = nil
 				pushChan = nil
+
+				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
 
 			},
 		},
@@ -6339,6 +6611,12 @@ func TestExamSiteSyncInit(t *testing.T) {
 				pullChan = nil
 				pushChan = nil
 
+				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
+
 			},
 		},
 		{
@@ -6390,6 +6668,12 @@ func TestExamSiteSyncInit(t *testing.T) {
 
 				pullChan = nil
 				pushChan = nil
+
+				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
 
 			},
 		},
@@ -6443,6 +6727,12 @@ func TestExamSiteSyncInit(t *testing.T) {
 				pullChan = nil
 				pushChan = nil
 
+				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
+
 			},
 		},
 		{
@@ -6495,6 +6785,12 @@ func TestExamSiteSyncInit(t *testing.T) {
 				pullChan = nil
 				pushChan = nil
 
+				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
+
 			},
 		},
 		{
@@ -6546,6 +6842,12 @@ func TestExamSiteSyncInit(t *testing.T) {
 
 				pullChan = nil
 				pushChan = nil
+
+				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
+				if err != nil {
+					t.Fatalf("failed to set sync status: %v", err)
+					return
+				}
 
 			},
 		},

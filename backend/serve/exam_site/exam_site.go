@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -41,6 +42,7 @@ const (
 	PULLED             = "Pulled"
 	PUSHING            = "Pushing"
 	PUSHED             = "Pushed"
+	QNearSessionsKey   = "qNearSessions"
 )
 
 var (
@@ -52,8 +54,8 @@ var (
 	pullChan chan int
 	pushChan chan int
 
-	centralServerUrl = "http://localhost:6610"
-	sysUser          = "" // 登录账号/邮箱/手机号等
+	centralServerUrl = ""
+	sysUser          = "" // 登录账号/邮箱/手机号等唯一身份标识
 	accessToken      = ""
 	sshUser          = "root"
 	sshHost          = "localhost"
@@ -92,9 +94,9 @@ type examSiteInfo struct {
 
 type examRoomInfo struct {
 	ID         null.Int `json:"id"`
-	ExamSiteID int `json:"exam_site_id" validate:"required"`
+	ExamSiteID int      `json:"exam_site_id" validate:"required"`
 	Name       string   `json:"name" validate:"required"`
-	Capacity   int `json:"capacity" validate:"required"`
+	Capacity   int      `json:"capacity" validate:"required"`
 }
 
 type syncInfo struct {
@@ -267,11 +269,12 @@ func login(ctx context.Context) (info sysUserInfo) {
 	info.ID = data.ID.Int64
 
 	// 只获取 "qNearSessions" 的cookie值
-	for _, c := range resp.Header.PeekAll("Set-Cookie") {
-		cookieStr := string(c)
-		if strings.HasPrefix(cookieStr, "qNearSessions=") {
-			info.Session = strings.TrimPrefix(cookieStr, "qNearSessions=")
-			break
+	re := regexp.MustCompile(fmt.Sprintf(`%s=([^;]+)`, QNearSessionsKey))
+	cookies := resp.Header.Peek("Set-Cookie")
+	matches := re.FindAllSubmatch(cookies, -1)
+	for _, m := range matches {
+		if len(m) > 1 {
+			info.Session = string(m[1])
 		}
 	}
 
@@ -401,7 +404,7 @@ func Pull(ctx context.Context, retryCount int) {
 	resp := fasthttp.AcquireResponse()
 	defer fasthttp.ReleaseResponse(resp)
 
-	req.Header.SetCookie("qNearSessions", info.Session)
+	req.Header.SetCookie(QNearSessionsKey, info.Session)
 
 	req.SetRequestURI(fmt.Sprintf("%s/api/exam-site/sync", centralServerUrl))
 	req.Header.SetMethod("GET")
@@ -848,6 +851,7 @@ func Push(ctx context.Context, retryCount int) {
 	defer fasthttp.ReleaseResponse(resp)
 
 	req.SetRequestURI(fmt.Sprintf("%s/api/exam-site/sync", centralServerUrl))
+	req.Header.SetCookie(QNearSessionsKey, uInfo.Session)
 	req.Header.SetMethod("POST")
 	req.Header.SetContentType("application/json")
 	req.SetBody(reqBody)
@@ -1133,7 +1137,7 @@ func examSite(ctx context.Context) {
 			break
 		}
 
-		info.Account =  null.StringFrom(account)
+		info.Account = null.StringFrom(account)
 		info.AccessToken = null.StringFrom(userToken)
 
 		q.Msg.Data, q.Err = json.Marshal(info)
@@ -1571,6 +1575,19 @@ func examSiteSyncInit(ctx context.Context) {
 
 	q := cmn.GetCtxValue(ctx)
 
+	
+	if viper.IsSet("examSiteServerSync.centralServerSSH.user") {
+		sshUser = viper.GetString("examSiteServerSync.centralServerSSH.user")
+	}
+
+	if viper.IsSet("examSiteServerSync.centralServerSSH.host") {
+		sshHost = viper.GetString("examSiteServerSync.centralServerSSH.host")
+	}
+
+	if viper.IsSet("examSiteServerSync.centralServerSSH.port") {
+		sshPort = viper.GetInt("examSiteServerSync.centralServerSSH.port")
+	}
+
 	dbConn := cmn.GetPgxConn()
 
 	config := dbConn.Config().ConnConfig
@@ -1802,18 +1819,6 @@ func examSiteSync(ctx context.Context) {
 	// 考点服务器系统账号ID
 	userID := q.SysUser.ID.Int64
 
-	if viper.IsSet("examSiteServerSync.centralServerSSH.user") {
-		sshUser = viper.GetString("examSiteServerSync.centralServerSSH.user")
-	}
-
-	if viper.IsSet("examSiteServerSync.centralServerSSH.host") {
-		sshHost = viper.GetString("examSiteServerSync.centralServerSSH.host")
-	}
-
-	if viper.IsSet("examSiteServerSync.centralServerSSH.port") {
-		sshPort = viper.GetInt("examSiteServerSync.centralServerSSH.port")
-	}
-
 	pgpassFullPath := filepath.Join(os.Getenv("HOME"), ".pgpass")
 
 	var bodyBuf []byte
@@ -1842,6 +1847,24 @@ MethodSwitch:
 	switch q.R.Method {
 
 	case "GET":
+
+		if centralServerUrl != "" {
+
+			action := q.R.URL.Query().Get("action")
+
+			switch action {
+
+			case "pull":
+				Pull(ctx, maxRetry)
+			case "push":
+				Push(ctx, maxRetry)
+			default:
+				q.Err = fmt.Errorf("不支持的同步操作: %s", action)
+				z.Error(q.Err.Error())
+			}
+			
+			break MethodSwitch
+		}
 
 		// 返回考点数据
 
