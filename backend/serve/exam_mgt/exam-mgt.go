@@ -4042,6 +4042,36 @@ func examFile(ctx context.Context) {
 				q.RespErr()
 				return
 			}
+
+			var examFileIDs []int64
+			for i := 0; i < len(examFiles); i++ {
+				examFileIDs = append(examFileIDs, examFiles[i].FileID.Int64)
+			}
+
+			var filesJSON []byte
+			filesJSON, q.Err = json.Marshal(examFileIDs)
+			if forceErr == "examFiles.json.Marshal.Delete" {
+				q.Err = fmt.Errorf("强制序列化考试附件ID数组错误")
+			}
+			if q.Err != nil {
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+
+			_, q.Err = tx.Exec(ctx, `
+				UPDATE t_exam_info
+				SET files = $1
+				WHERE id = $2
+			`, filesJSON, examFile.ExamID)
+			if forceErr == "examInfo.tx.UpdateFiles.Delete" {
+				q.Err = fmt.Errorf("强制更新考试附件字段错误")
+			}
+			if q.Err != nil {
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
 		}
 
 		q.Msg.Data, q.Err = json.Marshal(examFileReply)
