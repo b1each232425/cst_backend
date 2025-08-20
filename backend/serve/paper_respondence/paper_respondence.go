@@ -1368,8 +1368,8 @@ func checkExamCondition(ctx context.Context, examSession, studentID int64, tx pg
 		if examineeInfo.ExamineeStatus.String == CanBeEnterStatus || examineeInfo.ExamineeStartTime.Valid {
 			return ExamCanBeEnter, nil
 		}
-		//线上需要查考最迟进入时间
-		if now.UnixMilli() > examineeInfo.AllowEntryTime.Int64 && examineeInfo.Mode.String == ExamModeOnline {
+		//线上需要查考最迟进入时间，如果当前时间超过最迟进入时间并且为固定考试模式以及线上考试，才能返回LateEntryTimeArrived
+		if now.UnixMilli() > examineeInfo.AllowEntryTime.Int64 && examineeInfo.PeriodMode.String == ExamTypeFixed && examineeInfo.Mode.String == ExamModeOnline {
 			return LateEntryTimeArrived, nil
 		}
 		return ExamCanBeEnter, nil
