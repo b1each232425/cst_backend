@@ -3,7 +3,7 @@
  * @Description: 考卷-答卷数据库层
  * @Date: 2025-07-21 13:14:34
  * @LastEditors: zdl <1311866870@qq.com>
- * @LastEditTime: 2025-08-17 09:45:50
+ * @LastEditTime: 2025-08-20 13:45:31
  */
 package examPaper
 
@@ -177,7 +177,6 @@ func GenerateAnswerQuestion(ctx context.Context, tx pgx.Tx, req GenerateAnswerQu
 				}
 				if req.Category == PaperCategory.Practice {
 					answer.PracticeSubmissionID = null.IntFrom(id)
-					answer.WrongAttempt = null.IntFrom(0) // 赋予练习初值，用于学生初次查询某一次练习提交记录的错题集
 				}
 				actualAnswers := q.Answers
 				actualOptions := q.Options
@@ -210,22 +209,22 @@ func GenerateAnswerQuestion(ctx context.Context, tx pgx.Tx, req GenerateAnswerQu
 		INSERT INTO assessuser.t_student_answers (
 			type, examinee_id, practice_submission_id, question_id,
 			creator, create_time, update_time, group_id, "order",
-			actual_options, actual_answers,wrong_attempt
+			actual_options, actual_answers
 		) VALUES %s
 	`
 		values := make([]string, 0, len(batchStudentAnswers))
-		args := make([]interface{}, 0, len(batchStudentAnswers)*12) // 11个字段
+		args := make([]interface{}, 0, len(batchStudentAnswers)*11) // 11个字段
 		idx := 1
 		for _, a := range batchStudentAnswers {
-			placeholders := make([]string, 12)
-			for i := 0; i < 12; i++ {
+			placeholders := make([]string, 11)
+			for i := 0; i < 11; i++ {
 				placeholders[i] = fmt.Sprintf("$%d", idx)
 				idx++
 			}
 			values = append(values, "("+strings.Join(placeholders, ",")+")")
 			args = append(args,
 				req.Category, a.ExamineeID, a.PracticeSubmissionID, a.QuestionID,
-				uid, now, now, a.GroupID, a.Order, a.ActualOptions, a.ActualAnswers, a.WrongAttempt,
+				uid, now, now, a.GroupID, a.Order, a.ActualOptions, a.ActualAnswers,
 			)
 		}
 		insertQuery := fmt.Sprintf(query, strings.Join(values, ","))
