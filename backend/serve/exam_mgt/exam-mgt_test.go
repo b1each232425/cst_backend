@@ -600,7 +600,7 @@ func CreateTestExamData(t *testing.T) {
 	}
 
 	// 创建文件
-	uploadDir := "./uploads" // 或者从配置中获取
+	uploadDir := "./uploads"
 
 	// 确保上传目录存在
 	err = os.MkdirAll(uploadDir, 0755)
@@ -2430,6 +2430,24 @@ func TestExamGetMethod(t *testing.T) {
 			forceError:    "",
 			expectedError: false,
 			description:   "教务员角色正常获取考试信息",
+			userID:        testAcademicAffair,
+			userRole:      2002,
+		},
+		{
+			name:          "获取考试信息-教务员角色-conn.QueryExamFilesRows",
+			queryParams:   fmt.Sprintf("exam_id=%d", testNormalExamID),
+			forceError:    "conn.QueryExamFilesRows",
+			expectedError: true,
+			description:   "强制查询错误",
+			userID:        testAcademicAffair,
+			userRole:      2002,
+		},
+		{
+			name:          "获取考试信息-教务员角色-examFilesRows.Scan",
+			queryParams:   fmt.Sprintf("exam_id=%d", testNormalExamID),
+			forceError:    "examFilesRows.Scan",
+			expectedError: true,
+			description:   "强制获取考试文件错误",
 			userID:        testAcademicAffair,
 			userRole:      2002,
 		},
@@ -6890,6 +6908,16 @@ func TestExamDeleteMethod(t *testing.T) {
 			errorContains: "强制删除考卷和答卷错误",
 		},
 		{
+			name:          "强制删除考试定时器错误",
+			description:   "强制删除考试定时器错误",
+			userID:        testAcademicAffair,
+			userRole:      2002,
+			requestBody:   []int64{testNormalExamID},
+			forceError:    "exam_service.CancelExamTimers",
+			expectedError: true,
+			errorContains: "强制删除考试定时器错误",
+		},
+		{
 			name:          "强制删除考试信息错误",
 			description:   "模拟软删除考试信息失败",
 			userID:        testAcademicAffair,
@@ -8152,7 +8180,7 @@ func TestHandleDeleteExamFile(t *testing.T) {
 			defer tx.Rollback(testCtx)
 
 			// 执行被测试的函数
-			err = handleDeleteExamFile(testCtx, tx, tt.fileID)
+			err = handleDeleteExamFile(testCtx, tx, tt.fileID, 1)
 			t.Logf("handleDeleteExamFile() 返回错误: %v", err)
 
 			// 验证结果
