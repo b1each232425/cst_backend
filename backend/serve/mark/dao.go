@@ -134,7 +134,7 @@ func QueryExamList(ctx context.Context, req QueryMarkingListReq) (examList []Exa
 						mi.status, 
 						COALESCE(rc.respondent_count, 0) AS respondent_count, 
 						COALESCE(umc.unmarked_student_count, 0) AS unmarked_student_count, 
-						COALESCE(mc.marked_count, 0) AS marked_student_count 
+						COALESCE(mc.marked_count, -1) AS marked_student_count 
 					FROM
 						 t_exam_session es 
 					JOIN t_exam_info e ON e.id = es.exam_id AND e.status !='12' AND e.status != '14' AND e.status != '16' 
@@ -286,7 +286,13 @@ func QueryExamList(ctx context.Context, req QueryMarkingListReq) (examList []Exa
 
 		// TODO
 		unMarkedStudentCount := 0
-		unMarkedStudentCount = int(respondentCount.Int64 - markedStudentCount.Int64)
+
+		if markedStudentCount.Int64 == -1 {
+			// 说明无主观题目需要批改
+			unMarkedStudentCount = 0
+		} else {
+			unMarkedStudentCount = int(respondentCount.Int64 - markedStudentCount.Int64)
+		}
 		//if !req.User.IsAdmin && session.MarkMode.String == "04" {
 		//	// 非管理员下的试卷分配模式
 		//	var examineeIDs []int64
