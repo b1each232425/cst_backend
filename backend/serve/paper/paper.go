@@ -17,6 +17,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/jackc/pgx/v5"
 	"io"
 	"strconv"
 	"strings"
@@ -24,7 +25,6 @@ import (
 
 	"w2w.io/serve/examPaper"
 
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/jmoiron/sqlx/types"
@@ -144,7 +144,7 @@ func Enroll(author string) {
 // 支持以下操作:
 // - POST: 创建新的空白试卷
 // - PUT: 更新试卷内容和结构
-// - GET: 获取试卷详细信息
+// - GET: 获取试卷详细信息/预览
 func ManualPaper(ctx context.Context) {
 	q := cmn.GetCtxValue(ctx)
 	z.Info("---->" + cmn.FncName())
@@ -650,25 +650,25 @@ RETURNING id`
 			return
 		}
 
-		var hasPermission bool
-		// 如果是超级管理员，则直接拥有权限
-		if role == "superAdmin" {
-			hasPermission = true
-		} else {
-			hasPermission, q.Err = isPaperCreator(ctx, paperID, userID)
-			if q.Err != nil {
-				z.Error(q.Err.Error())
-				q.RespErr()
-				return
-			}
-		}
-
-		if !hasPermission {
-			q.Err = ErrWithoutPermission
-			z.Error(q.Err.Error())
-			q.RespErr()
-			return
-		}
+		//var hasPermission bool
+		//// 如果是超级管理员，则直接拥有权限
+		//if role == "superAdmin" {
+		//	hasPermission = true
+		//} else {
+		//	hasPermission, q.Err = isPaperCreator(ctx, paperID, userID)
+		//	if q.Err != nil {
+		//		z.Error(q.Err.Error())
+		//		q.RespErr()
+		//		return
+		//	}
+		//}
+		//
+		//if !hasPermission {
+		//	q.Err = ErrWithoutPermission
+		//	z.Error(q.Err.Error())
+		//	q.RespErr()
+		//	return
+		//}
 		dmlCtx, cancel := context.WithTimeout(ctx, TIMEOUT)
 		defer cancel()
 		switch mode {
@@ -2063,6 +2063,8 @@ func PaperList(ctx context.Context) {
 		}
 		q.Msg.Status = 0
 		q.Msg.Msg = "success"
+	case "post":
+		// todo 发布试卷
 	default:
 		// 处理其他方法
 		q.Err = fmt.Errorf("不支持该方法: %s", method)

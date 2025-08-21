@@ -54,6 +54,7 @@ type GradePractice struct {
 	AverageScore      null.Float  `json:"average_score"`      // 平均分
 	CompletedStudents null.Int    `json:"completed_students"` // 完成练习人数
 	PassedStudents    null.Int    `json:"passed_students"`    // 通过人数
+	MarkMode          null.String `json:"mark_mode"`          // 阅卷方式
 }
 
 // ********** 成绩分布接口 **********

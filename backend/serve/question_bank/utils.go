@@ -146,12 +146,6 @@ func validateMultipleChoiceQuestion(question *cmn.TQuestion) (bool, error) {
 		return false, err
 	}
 
-	if len(answers) < 2 {
-		err = fmt.Errorf("multiple choice question must have at least 2 correct answers, got %d", len(answers))
-		z.Error(err.Error())
-		return false, err
-	}
-
 	if len(answers) >= len(options) {
 		err = fmt.Errorf("multiple choice question cannot have all options as correct answers")
 		z.Error(err.Error())
@@ -371,13 +365,6 @@ func validateEssayQuestion(question *cmn.TQuestion) (bool, error) {
 	// 验证总分数是否匹配
 	if totalScore != question.Score.Float64 {
 		err = fmt.Errorf("essay question total answer score (%f) must match question score (%f)", totalScore, question.Score.Float64)
-		z.Error(err.Error())
-		return false, err
-	}
-
-	// 验证分析是否存在
-	if !question.Analysis.Valid || strings.TrimSpace(question.Analysis.String) == "" {
-		err = fmt.Errorf("essay question must have analysis")
 		z.Error(err.Error())
 		return false, err
 	}

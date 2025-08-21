@@ -840,6 +840,7 @@ func TestService_InsertUsers(t *testing.T) {
 						Category:     "normal",
 						OfficialName: null.NewString("批量用户2", true),
 						Gender:       null.NewString("M", true),
+						IDCardType:   null.NewString("港澳通行证", true),
 						IDCardNo:     null.NewString("110101199001011234", true),
 						Creator:      null.NewInt(1, true),
 						Remark:       null.NewString("test", true),
@@ -1125,6 +1126,69 @@ func TestService_InsertUsers(t *testing.T) {
 				},
 			},
 			wantErr: true,
+		},
+		{
+			name: "有证件号但缺少证件类型",
+			ctx:  context.Background(),
+			users: []User{
+				{
+					TUser: cmn.TUser{
+						Account:  "aweqwevdft421",
+						IDCardNo: null.NewString("123123123123", true),
+						Remark:   null.NewString("test", true),
+						Category: "normal",
+					},
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "中国大陆证件号格式非法",
+			ctx:  context.Background(),
+			users: []User{
+				{
+					TUser: cmn.TUser{
+						Account:    "aweqwevdft421",
+						IDCardType: null.NewString("居民身份证", true),
+						IDCardNo:   null.NewString("123123123123", true),
+						Remark:     null.NewString("test", true),
+						Category:   "normal",
+					},
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "中国大陆证件号格式合法",
+			ctx:  context.Background(),
+			users: []User{
+				{
+					TUser: cmn.TUser{
+						Account:    "aweqwevdft421",
+						IDCardType: null.NewString("居民身份证", true),
+						IDCardNo:   null.NewString("310107196503251267", true),
+						Remark:     null.NewString("test", true),
+						Category:   "normal",
+					},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "非中国大陆证件号暂时不检测",
+			ctx:  context.Background(),
+			users: []User{
+				{
+					TUser: cmn.TUser{
+						Account:    "aweqwevdft421",
+						IDCardType: null.NewString("港澳回乡证", true),
+						IDCardNo:   null.NewString("3101X0719650325126P", true),
+						Remark:     null.NewString("test", true),
+						Category:   "normal",
+					},
+				},
+			},
+			wantErr: false,
 		},
 	}
 
@@ -1475,6 +1539,7 @@ func TestService_InsertUsersWithAccount(t *testing.T) {
 						Category:     "normal",
 						OfficialName: null.NewString("批量用户22", true),
 						Gender:       null.NewString("M", true),
+						IDCardType:   null.NewString("港澳通行证", true),
 						IDCardNo:     null.NewString("110101199003011234", true),
 						Creator:      null.NewInt(1, true),
 						Remark:       null.NewString("test", true),
@@ -1753,7 +1818,7 @@ func Test_service_CheckTUserFieldExists(t *testing.T) {
 			args: args{
 				ctx:   context.Background(),
 				field: "mobile_phone",
-				value: "13800138001",
+				value: "+8613800138001",
 			},
 			want:    true,
 			wantErr: false,
@@ -1872,7 +1937,7 @@ func Test_service_CheckTUserFieldExists_WithTransaction(t *testing.T) {
 			args: args{
 				ctx:   context.Background(),
 				field: "mobile_phone",
-				value: "13800138001",
+				value: "+8613800138001",
 			},
 			want:    true,
 			wantErr: false,
@@ -1978,7 +2043,7 @@ func Test_service_CheckTUserRowExists(t *testing.T) {
 				ctx: context.Background(),
 				fields: map[string]any{
 					"official_name": "张三",
-					"mobile_phone":  "13800138001",
+					"mobile_phone":  "+8613800138001",
 					"email":         "zhangsan@example.com",
 					"id_card_no":    "440106199001011234",
 				},
@@ -2006,7 +2071,7 @@ func Test_service_CheckTUserRowExists(t *testing.T) {
 				ctx: context.WithValue(context.Background(), "force-error", "QueryUsers"),
 				fields: map[string]any{
 					"official_name": "张三",
-					"mobile_phone":  "13800138001",
+					"mobile_phone":  "+8613800138001",
 					"email":         "zhangsan@example.com",
 					"id_card_no":    "440106199001011234",
 				},
@@ -2125,7 +2190,7 @@ func Test_service_CheckTUserRowExists_WithTransaction(t *testing.T) {
 				ctx: context.Background(),
 				fields: map[string]any{
 					"official_name": "张三",
-					"mobile_phone":  "13800138001",
+					"mobile_phone":  "+8613800138001",
 					"email":         "zhangsan@example.com",
 					"id_card_no":    "440106199001011234",
 				},
@@ -2555,7 +2620,7 @@ func Test_service_ValidateUser(t *testing.T) {
 						MobilePhone: null.NewString("+113900139000", true),
 					},
 					ErrorMsg: []null.String{
-						null.NewString("手机号格式不符合E.164标准", true),
+						null.NewString("手机号格式非法", true),
 					},
 				},
 			},
@@ -2615,7 +2680,8 @@ func Test_service_ValidateUser(t *testing.T) {
 						MobilePhone: null.NewString("+85366123456", true),
 					},
 					ErrorMsg: []null.String{
-						null.NewString("手机号格式不符合E.164标准", true),
+						null.NewString("手机号格式非法", true),
+						null.NewString("手机号不符合地区规则", true),
 					},
 				},
 			},
@@ -2704,7 +2770,7 @@ func Test_service_ValidateUser(t *testing.T) {
 						MobilePhone: null.NewString("085366123456", true),
 					},
 					ErrorMsg: []null.String{
-						null.NewString("手机号格式不符合E.164标准", true),
+						null.NewString("手机号格式非法", true),
 					},
 				},
 			},
@@ -2735,7 +2801,8 @@ func Test_service_ValidateUser(t *testing.T) {
 						MobilePhone: null.NewString("08536¥%612*3456", true),
 					},
 					ErrorMsg: []null.String{
-						null.NewString("手机号格式不符合E.164标准", true),
+						null.NewString("手机号格式非法", true),
+						null.NewString("手机号不符合地区规则", true),
 					},
 				},
 			},
@@ -2854,7 +2921,8 @@ func Test_service_ValidateUser(t *testing.T) {
 					},
 					ErrorMsg: []null.String{
 						null.NewString("无法检测到手机号", true),
-						null.NewString("手机号格式不符合E.164标准", true),
+						null.NewString("手机号格式非法", true),
+						null.NewString("手机号不符合地区规则", true),
 					},
 				},
 			},
@@ -3103,6 +3171,72 @@ func Test_service_ValidateUser(t *testing.T) {
 			wantInvalid:  nil,
 			wantExisting: nil,
 			wantErr:      true,
+		},
+		{
+			name: "非有效证件号",
+			args: args{
+				ctx: context.Background(),
+				users: []User{
+					{
+						TUser: cmn.TUser{
+							Account:    "zhangsanyes",
+							IDCardNo:   null.NewString("440106190001011234P", true),
+							IDCardType: null.NewString("居民身份证", true),
+						},
+						Domains: []null.String{
+							null.NewString("cst.school^teacher", true),
+						},
+					},
+				},
+			},
+			wantValid: nil,
+			wantInvalid: []User{
+				{
+					TUser: cmn.TUser{
+						Account:    "zhangsanyes",
+						IDCardNo:   null.NewString("440106190001011234P", true),
+						IDCardType: null.NewString("居民身份证", true),
+					},
+					ErrorMsg: []null.String{
+						null.NewString("非有效证件号", true),
+					},
+				},
+			},
+			wantExisting: []User{},
+			wantErr:      false,
+		},
+		{
+			name: "科学计数法表示的非有效证件号",
+			args: args{
+				ctx: context.Background(),
+				users: []User{
+					{
+						TUser: cmn.TUser{
+							Account:    "zhangsanyes",
+							IDCardNo:   null.NewString("4.41322E+17", true),
+							IDCardType: null.NewString("居民身份证", true),
+						},
+						Domains: []null.String{
+							null.NewString("cst.school^teacher", true),
+						},
+					},
+				},
+			},
+			wantValid: nil,
+			wantInvalid: []User{
+				{
+					TUser: cmn.TUser{
+						Account:    "zhangsanyes",
+						IDCardNo:   null.NewString("4.41322E+17", true),
+						IDCardType: null.NewString("居民身份证", true),
+					},
+					ErrorMsg: []null.String{
+						null.NewString("非有效证件号", true),
+					},
+				},
+			},
+			wantExisting: []User{},
+			wantErr:      false,
 		},
 	}
 	for _, tt := range tests {

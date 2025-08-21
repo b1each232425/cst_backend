@@ -25,7 +25,7 @@
       "DevID": "ios_device_001",
       "DevUserID": "apple_id_001",
       "DevAccount": "zhangsan@icloud.com",
-      "Role": 1,
+      "Role": 2003,
       "Grp": 1,
       "IP": "192.168.1.100",
       "Port": "8080",
