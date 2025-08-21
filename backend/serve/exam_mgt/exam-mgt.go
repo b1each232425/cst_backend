@@ -3665,8 +3665,6 @@ func examFile(ctx context.Context) {
 			return
 		}
 
-		z.Sugar().Infof("examID: %d", examFile.ExamID)
-
 		// 检查考试是否存在
 		checkExistsSQL := `
 			SELECT EXISTS (
@@ -3822,11 +3820,13 @@ func examFile(ctx context.Context) {
 		q.Msg.Data, q.Err = json.Marshal(examFileReply)
 		if forceErr == "json.Marshal2" {
 			q.Err = fmt.Errorf("强制JSON序列化错误")
+			q.Msg.Data = nil
 		}
 		if q.Err != nil {
 			q.RespErr()
 			return
 		}
+
 		q.Resp()
 		return
 
