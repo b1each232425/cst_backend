@@ -92,8 +92,8 @@ func GetUserAuthority(ctx context.Context) (a *Authority, err error) {
 		return nil, e
 	}
 
-	// 根据用户角色优先级获取可读域列表
-	readableDomains, err := getReadableDomains(ctx, pgConn, role, domain)
+	// 根据用户角色优先级获取可访问域列表
+	accessibleDomains, err := getAccessibleDomains(ctx, pgConn, role, domain)
 	if err != nil || forceErr == "QueryReadableDomains" {
 		e := fmt.Errorf("failed to get readable domains: %w", err)
 		z.Error(e.Error())
@@ -101,17 +101,17 @@ func GetUserAuthority(ctx context.Context) (a *Authority, err error) {
 	}
 
 	a = &Authority{
-		Role:            role,
-		Domain:          domain,
-		APIs:            apis,
-		ReadableDomains: readableDomains,
+		Role:              role,
+		Domain:            domain,
+		APIs:              apis,
+		AccessibleDomains: accessibleDomains,
 	}
 
 	return a, nil
 }
 
-// getReadableDomains 根据用户角色优先级获取可读域列表
-func getReadableDomains(ctx context.Context, pgConn *pgxpool.Pool, role cmn.TDomain, currentDomain cmn.TDomain) ([]int64, error) {
+// getAccessibleDomains 根据用户角色优先级获取可访问域列表
+func getAccessibleDomains(ctx context.Context, pgConn *pgxpool.Pool, role cmn.TDomain, currentDomain cmn.TDomain) ([]int64, error) {
 	var domains []cmn.TDomain
 	var readableDomains []int64
 
@@ -289,6 +289,8 @@ func CheckUserAPIAccessible(ctx context.Context, authority *Authority, apiPath s
 		return CheckUserAPIWritable(ctx, a, apiPath)
 	case CDataAccessModeRead:
 		return CheckUserAPIReadable(ctx, a, apiPath)
+	case CDataAccessModeEdit:
+		return CheckUserAPIEditable(ctx, a, apiPath)
 	case CDataAccessModeFull:
 		writable, err := CheckUserAPIWritable(ctx, a, apiPath)
 		if err != nil {
@@ -298,7 +300,11 @@ func CheckUserAPIAccessible(ctx context.Context, authority *Authority, apiPath s
 		if err != nil {
 			return false, err
 		}
-		return writable && readable, nil
+		editable, err := CheckUserAPIEditable(ctx, a, apiPath)
+		if err != nil {
+			return false, err
+		}
+		return writable && readable && editable, nil
 	default:
 		e := fmt.Errorf("invalid access mode: %s", accessMode)
 		z.Error(e.Error())
@@ -341,6 +347,27 @@ func CheckUserAPIReadable(ctx context.Context, authority *Authority, apiPath str
 
 	for _, api := range authority.APIs {
 		if strings.EqualFold(api.ExposePath.String, apiPath) && (api.DataAccessMode.String == CDataAccessModeFull || api.DataAccessMode.String == CDataAccessModeRead) {
+			return true, nil
+		}
+	}
+
+	return false, nil
+}
+
+// CheckUserAPIEditable 检查用户对特定API是否有编辑权限
+func CheckUserAPIEditable(ctx context.Context, authority *Authority, apiPath string) (bool, error) {
+	z.Info("---->" + cmn.FncName())
+
+	forceErr, _ := ctx.Value("force-error").(string) // 用于强制执行错误处理代码
+
+	if authority == nil || forceErr == "CheckUserAPIEditable.authority.nil" {
+		e := fmt.Errorf("authority is nil")
+		z.Error(e.Error())
+		return false, e
+	}
+
+	for _, api := range authority.APIs {
+		if strings.EqualFold(api.ExposePath.String, apiPath) && (api.DataAccessMode.String == CDataAccessModeFull || api.DataAccessMode.String == CDataAccessModeEdit) {
 			return true, nil
 		}
 	}
