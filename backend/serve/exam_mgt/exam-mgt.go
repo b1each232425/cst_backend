@@ -2375,9 +2375,10 @@ func examList(ctx context.Context) {
 				LEFT JOIN v_student_exam_total_score sc
 					ON sc.exam_session_id = es.id
 					AND sc.student_id = $` + strconv.Itoa(argIdx+2) + `
-				ORDER BY es.session_num,
+				ORDER BY
 					ei.update_time DESC, 
-					ei.id DESC
+					ei.id DESC,
+					es.session_num
 			`
 			var rows pgx.Rows
 			rows, q.Err = conn.Query(ctx, searchSQL, append(args, req.PageSize, offset, userID)...)
@@ -4036,6 +4037,36 @@ func examFile(ctx context.Context) {
 			q.Err = handleDeleteExamFile(ctx, tx, deleteFileID, 1)
 			if forceErr == "handleDeleteExamFile" {
 				q.Err = fmt.Errorf("强制删除考试附件错误")
+			}
+			if q.Err != nil {
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+
+			var examFileIDs []int64
+			for i := 0; i < len(examFiles); i++ {
+				examFileIDs = append(examFileIDs, examFiles[i].FileID.Int64)
+			}
+
+			var filesJSON []byte
+			filesJSON, q.Err = json.Marshal(examFileIDs)
+			if forceErr == "examFiles.json.Marshal.Delete" {
+				q.Err = fmt.Errorf("强制序列化考试附件ID数组错误")
+			}
+			if q.Err != nil {
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+
+			_, q.Err = tx.Exec(ctx, `
+				UPDATE t_exam_info
+				SET files = $1
+				WHERE id = $2
+			`, filesJSON, examFile.ExamID)
+			if forceErr == "examInfo.tx.UpdateFiles.Delete" {
+				q.Err = fmt.Errorf("强制更新考试附件字段错误")
 			}
 			if q.Err != nil {
 				z.Error(q.Err.Error())
