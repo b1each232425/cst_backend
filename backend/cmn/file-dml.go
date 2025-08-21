@@ -37,10 +37,32 @@ func initFileDeleteWorkers() {
 	})
 }
 
-func deleteFileAsync(filePath, digest string) {
+func deleteFileAsync(ctx context.Context, filePath, digest string) {
 	infoFilePath := filePath + ".info"
 
-	err := os.Remove(filePath)
+	var forceResult string
+	if val := ctx.Value("deleteFileAsync-force-result"); val != nil {
+		forceResult = val.(string)
+	}
+
+	conn := GetPgxConn()
+	var count int
+	err := conn.QueryRow(context.Background(), "SELECT COUNT(*) FROM t_file WHERE digest = $1", digest).Scan(&count)
+	if forceResult == "QueryRow" {
+		err = fmt.Errorf("强制查询文件记录错误")
+	}
+	if err != nil {
+		z.Error(fmt.Sprintf("检查digest是否还存在失败: %s, digest: %s, error: %v", filePath, digest, err))
+		return
+	}
+
+	// 有其他引用，不删物理文件
+	if count > 0 {
+		z.Info(fmt.Sprintf("文件未删除，digest仍有引用: %s", filePath))
+		return
+	}
+
+	err = os.Remove(filePath)
 	if err != nil && !os.IsNotExist(err) {
 		z.Error(fmt.Sprintf("异步删除文件失败: %s, digest: %s, error: %v",
 			filePath, digest, err))
@@ -55,16 +77,14 @@ func deleteFileAsync(filePath, digest string) {
 
 func fileDeleteWorker() {
 	for task := range fileDeleteChan {
-		deleteFileAsync(task.FilePath, task.Digest)
+		deleteFileAsync(context.Background(), task.FilePath, task.Digest)
 	}
 }
 
 // NewFileRecord 创建文件记录
 //
-// 该函数实现文件记录的 UPSERT 操作：
-// 1. 首先根据文件摘要、文件名、创建者和域ID查询文件记录是否已存在
-// 2. 如果文件已存在，直接返回现有文件的ID，exists=true
-// 3. 如果文件不存在，插入新的文件记录并返回新文件的ID，exists=false
+// 该函数实现文件记录的 INSERT 操作：
+//   - 插入新的文件记录并返回新文件的ID
 //
 // 参数：
 //   - ctx: 上下文
@@ -77,7 +97,6 @@ func fileDeleteWorker() {
 //
 // 返回值：
 //
-//   - exists: 文件是否已存在，true表示文件已存在，false表示是新插入的文件
 //   - fileID: 文件记录的ID，无论是已存在还是新创建的文件
 //   - err: 错误信息，操作成功时为nil
 //
@@ -86,16 +105,11 @@ func fileDeleteWorker() {
 //
 // 使用示例：
 //
-//	err, exists, fileID := NewFileRecord(ctx, tx, "abc123", "test.pdf", 1024, 1, 100)
+//	fileID, err := NewFileRecord(ctx, tx, "abc123", "test.pdf", 1024, 1, 100)
 //	if err != nil {
 //	    // 处理错误
 //	}
-//	if exists {
-//	    // 文件已存在，fileID是现有文件的ID
-//	} else {
-//	    // 文件是新创建的，fileID是新文件的ID
-//	}
-func NewFileRecord(ctx context.Context, tx pgx.Tx, fileDigest string, fileName string, fileSize int64, domainID int64, creator int64) (exists bool, fileID int64, err error) {
+func NewFileRecord(ctx context.Context, tx pgx.Tx, fileDigest string, fileName string, fileSize int64, domainID int64, creator int64) (fileID int64, err error) {
 
 	var forceResult string
 	if val := ctx.Value("NewFileRecord-force-result"); val != nil {
@@ -103,15 +117,15 @@ func NewFileRecord(ctx context.Context, tx pgx.Tx, fileDigest string, fileName s
 	}
 
 	if forceResult == "returnTrue" {
-		return true, 99999, nil
+		return 99999, nil
 	}
 
 	if forceResult == "returnFalse" {
-		return false, 99999, nil
+		return 99999, nil
 	}
 
 	if forceResult == "returnError" {
-		return false, 0, fmt.Errorf("强制返回错误")
+		return 0, fmt.Errorf("强制返回错误")
 	}
 
 	if fileDigest == "" {
@@ -177,37 +191,6 @@ func NewFileRecord(ctx context.Context, tx pgx.Tx, fileDigest string, fileName s
 		}()
 	}
 
-	exists = true
-	z.Info(forceResult)
-
-	// 查询是否已存在
-	err = tx.QueryRow(ctx, `
-			SELECT id FROM t_file
-			WHERE digest = $1 
-			AND file_name = $2 
-			AND creator = $3
-			AND domain_id = $4
-			LIMIT 1
-		`, fileDigest, fileName, creator, domainID).Scan(&fileID)
-
-	// 如果查询失败，则标记为新文件
-	if err == pgx.ErrNoRows {
-		exists = false
-	}
-	if forceResult == "tx.QueryRow1" {
-		err = fmt.Errorf("强制查询文件错误")
-	}
-	if err != pgx.ErrNoRows && err != nil {
-		err = fmt.Errorf("查询文件失败: %v", err)
-		z.Error(err.Error())
-		return
-	}
-
-	// 如果该文件已存在，则返回该文件ID，不做任何操作
-	if exists {
-		return
-	}
-
 	key := "tusd.fileStorePath"
 	uploadDir := "./uploads"
 	if viper.IsSet(key) {
@@ -228,7 +211,7 @@ func NewFileRecord(ctx context.Context, tx pgx.Tx, fileDigest string, fileName s
 
 	var currentTime = time.Now().UnixMilli()
 
-	// 如果该文件不存在，则插入新记录
+	// 插入新记录
 	err = tx.QueryRow(ctx, `
 		INSERT INTO t_file (digest, file_name, path, belongto_path, size, count, creator, create_time, status)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
@@ -246,49 +229,31 @@ func NewFileRecord(ctx context.Context, tx pgx.Tx, fileDigest string, fileName s
 	return
 }
 
-// ChangeFileReferenceCount 修改文件引用计数
+// DeleteFileRecord 删除文件记录并处理物理文件删除任务
 //
-// 该函数用于管理文件记录的引用计数，支持增加或减少引用计数：
-// 1. 当 count > 0 时，增加文件的引用计数
-// 2. 当 count < 0 时，减少文件的引用计数
-// 3. 当引用计数减少到 0 或以下时，删除文件记录
-// 4. 当没有其他相同 digest 的文件时，从文件系统中删除物理文件
+// 该函数用于彻底删除指定文件ID的数据库记录，并在无其他引用时异步删除物理文件。
+//
+// 删除流程：
+//  1. 查询文件摘要和存储路径。
+//  2. 删除数据库中的文件记录。
+//  3. 查询是否还有其他相同 digest 的文件记录。
+//  4. 若无其他引用，则删除物理文件及对应的 .info 文件。
 //
 // 参数：
-//   - ctx: 上下文
-//   - tx: 数据库事务，如果为 nil 则函数内部会创建新事务
-//   - fileID: 要修改引用计数的文件ID
-//   - count: 引用计数变化量，正数表示增加，负数表示减少，不能为0
+//   - ctx: 上下文。
+//   - tx: 数据库事务，为 nil 时自动创建新事务。
+//   - fileID: 要删除的文件记录主键ID。
 //
 // 返回值：
-//   - err: 错误信息，操作成功时为 nil
-//
-// 处理逻辑：
-//   - count > 0: 直接增加 t_file 表中的 count 字段
-//   - count < 0:
-//   - 如果剩余引用数 > count，则减少引用计数
-//   - 如果剩余引用数 <= count，则删除文件记录
-//   - 检查是否还有相同 digest 的其他文件
-//   - 如果没有，则从文件系统删除物理文件和对应的 .info 文件
+//   - err: 操作结果错误，成功时为 nil，失败时为具体错误信息。
 //
 // 补充：
-//   - 该函数可能涉及文件删除操作，不可回滚，尽量在业务逻辑的末端使用
-//   - 该函数的文件删除为异步操作，不会阻塞，同时如果删除文件报错也不会返回错误
-//
-// 使用示例：
-//
-//	// 增加引用计数
-//	err := ChangeFileReferenceCount(ctx, tx, fileID, 1)
-//
-//	// 减少引用计数
-//	err := ChangeFileReferenceCount(ctx, tx, fileID, -1)
-//
-//	// 减少多个引用
-//	err := ChangeFileReferenceCount(ctx, tx, fileID, -3)
-func ChangeFileReferenceCount(ctx context.Context, tx pgx.Tx, fileID int64, count int64) (err error) {
+//   - 文件删除为异步操作，不阻塞，也不影响事务回滚与返回值。
+//   - 推荐在业务末端调用，避免回滚后物理文件已被删除。
+func DeleteFileRecord(ctx context.Context, tx pgx.Tx, fileID int64) (err error) {
 
 	var forceResult string
-	if val := ctx.Value("ChangeFileReferenceCount-force-result"); val != nil {
+	if val := ctx.Value("DeleteFileRecord-force-result"); val != nil {
 		forceResult = val.(string)
 	}
 
@@ -302,12 +267,6 @@ func ChangeFileReferenceCount(ctx context.Context, tx pgx.Tx, fileID int64, coun
 
 	if fileID <= 0 {
 		err = fmt.Errorf("fileID 不能为空")
-		z.Error(err.Error())
-		return
-	}
-
-	if count == 0 {
-		err = fmt.Errorf("count 不能为空")
 		z.Error(err.Error())
 		return
 	}
@@ -345,28 +304,10 @@ func ChangeFileReferenceCount(ctx context.Context, tx pgx.Tx, fileID int64, coun
 		}()
 	}
 
-	// 如果变化的引用计数大于0，则增加t_file表中的引用计数
-	if count > 0 {
-		_, err = tx.Exec(ctx, `
-			UPDATE t_file SET count = count + $1 WHERE id = $2
-		`, count, fileID)
-		if forceResult == "tx.UpdateCount" {
-			err = fmt.Errorf("强制更新文件引用计数错误")
-		}
-		if err != nil {
-			err = fmt.Errorf("更新文件引用计数失败: %v", err)
-			z.Error(err.Error())
-			return
-		}
-
-		return
-	}
-
-	// 如果变化的引用计数小于0，则根据t_file表中的引用计数进行判断
-	var refCount int64
+	// 拿到digest和文件存储路径
 	var digest, filePath string
-	err = tx.QueryRow(ctx, "SELECT count, digest, path FROM t_file WHERE id = $1", fileID).Scan(
-		&refCount, &digest, &filePath)
+	err = tx.QueryRow(ctx, "SELECT digest, path FROM t_file WHERE id = $1", fileID).Scan(
+		&digest, &filePath)
 	if forceResult == "tx.QueryRow" {
 		err = fmt.Errorf("强制查询文件信息错误")
 	}
@@ -375,21 +316,7 @@ func ChangeFileReferenceCount(ctx context.Context, tx pgx.Tx, fileID int64, coun
 		return err
 	}
 
-	// 如果剩余的引用次数多余要减少的引用计数，则直接更新
-	if refCount > -count {
-		_, err = tx.Exec(ctx, "UPDATE t_file SET count = count + $1 WHERE id = $2", count, fileID)
-		if forceResult == "tx.UpdateCount" {
-			err = fmt.Errorf("强制更新文件引用计数错误")
-		}
-		if err != nil {
-			z.Error(err.Error())
-			return err
-		}
-
-		return
-	}
-
-	// 如果剩余引用次数不足，则删除该文件记录
+	// 删除该文件记录
 	_, err = tx.Exec(ctx, "DELETE FROM t_file WHERE id = $1", fileID)
 	if forceResult == "tx.DeleteFile" {
 		err = fmt.Errorf("强制删除文件记录错误")

@@ -77,7 +77,7 @@ func createTestData(t *testing.T) {
 
 	err = tx.QueryRow(ctx, `
         INSERT INTO t_file (id, digest, file_name, path, belongto_path, size, count, creator, create_time, domain_id, status)
-        VALUES ($1, $2, $3, $4, $5, $6, 2, $7, $8, 2000, '0')
+        VALUES ($1, $2, $3, $4, $5, $6, 1, $7, $8, 2000, '0')
         RETURNING id
     `, fileID2, fileID2Digest, fileID2Name, fileID2Path, "/test/files", fileID2Size, 99999, time.Now().UnixMilli()).Scan(&fileID2)
 	if err != nil {
@@ -277,21 +277,6 @@ func TestNewFileRecord(t *testing.T) {
 			wantErr:    false,
 		},
 		{
-			name: "文件已存在 - 返回现有文件ID",
-			args: args{
-				ctx:        context.Background(),
-				tx:         nil,
-				fileDigest: fileID1Digest,
-				fileName:   fileID1Name,
-				fileSize:   fileID1Size,
-				domainID:   2000,
-				creator:    99999,
-			},
-			wantExists: true,
-			wantFileID: fileID1,
-			wantErr:    false,
-		},
-		{
 			name: "不同creator的相同文件 - 创建新记录",
 			args: args{
 				ctx:        context.Background(),
@@ -413,21 +398,6 @@ func TestNewFileRecord(t *testing.T) {
 			wantErr:    false,
 		},
 		{
-			name: "ForceResult - tx.QueryRow1错误",
-			args: args{
-				ctx:        context.WithValue(context.Background(), "NewFileRecord-force-result", "tx.QueryRow1"),
-				tx:         nil,
-				fileDigest: "testdigest123",
-				fileName:   "test.txt",
-				fileSize:   1024,
-				domainID:   2000,
-				creator:    99999,
-			},
-			wantExists: false,
-			wantFileID: 0,
-			wantErr:    true,
-		},
-		{
 			name: "ForceResult - tx.QueryRow2错误",
 			args: args{
 				ctx:        context.WithValue(context.Background(), "NewFileRecord-force-result", "tx.QueryRow2"),
@@ -460,13 +430,10 @@ func TestNewFileRecord(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			gotExists, gotFileID, err := NewFileRecord(tt.args.ctx, tt.args.tx, tt.args.fileDigest, tt.args.fileName, tt.args.fileSize, tt.args.domainID, tt.args.creator)
+			gotFileID, err := NewFileRecord(tt.args.ctx, tt.args.tx, tt.args.fileDigest, tt.args.fileName, tt.args.fileSize, tt.args.domainID, tt.args.creator)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("NewFileRecord() error = %v, wantErr %v", err, tt.wantErr)
 				return
-			}
-			if gotExists != tt.wantExists {
-				t.Errorf("NewFileRecord() gotExists = %v, want %v", gotExists, tt.wantExists)
 			}
 
 			if tt.wantErr {
@@ -495,10 +462,8 @@ func TestNewFileRecord(t *testing.T) {
 	}
 }
 
-func TestChangeFileReferenceCount(t *testing.T) {
-
+func TestDeleteFileRecord(t *testing.T) {
 	ConfigureForTest()
-
 	cleanTestData(t)
 	createTestData(t)
 	t.Cleanup(func() {
@@ -509,7 +474,6 @@ func TestChangeFileReferenceCount(t *testing.T) {
 		ctx    context.Context
 		tx     pgx.Tx
 		fileID int64
-		count  int64
 	}
 	tests := []struct {
 		name    string
@@ -517,153 +481,110 @@ func TestChangeFileReferenceCount(t *testing.T) {
 		wantErr bool
 	}{
 		{
+			name: "正常删除文件记录",
+			args: args{
+				ctx:    context.Background(),
+				tx:     nil,
+				fileID: fileID1,
+			},
+			wantErr: false,
+		},
+		{
 			name: "参数验证 - fileID小于等于0",
 			args: args{
 				ctx:    context.Background(),
 				tx:     nil,
 				fileID: 0,
-				count:  1,
 			},
 			wantErr: true,
 		},
-		{
-			name: "参数验证 - count为0",
-			args: args{
-				ctx:    context.Background(),
-				tx:     nil,
-				fileID: fileID1,
-				count:  0,
-			},
-			wantErr: true,
-		},
-		{
-			name: "成功增加引用计数",
-			args: args{
-				ctx:    context.Background(),
-				tx:     nil,
-				fileID: fileID1,
-				count:  1,
-			},
-			wantErr: false,
-		},
-		{
-			name: "成功减少引用计数(不删除)",
-			args: args{
-				ctx:    context.Background(),
-				tx:     nil,
-				fileID: fileID2, // 测试数据中fileID2的count为2
-				count:  -1,
-			},
-			wantErr: false,
-		},
-		{
-			name: "减少引用计数导致删除文件记录",
-			args: args{
-				ctx:    context.Background(),
-				tx:     nil,
-				fileID: fileID3, // 测试数据中fileID3的count为1
-				count:  -1,
-			},
-			wantErr: false,
-		},
-		// ForceResult 测试用例
 		{
 			name: "ForceResult - returnError",
 			args: args{
-				ctx:    context.WithValue(context.Background(), "ChangeFileReferenceCount-force-result", "returnError"),
+				ctx:    context.WithValue(context.Background(), "DeleteFileRecord-force-result", "returnError"),
 				tx:     nil,
-				fileID: fileID1,
-				count:  1,
+				fileID: fileID2,
 			},
 			wantErr: true,
 		},
 		{
 			name: "ForceResult - returnNil",
 			args: args{
-				ctx:    context.WithValue(context.Background(), "ChangeFileReferenceCount-force-result", "returnNil"),
+				ctx:    context.WithValue(context.Background(), "DeleteFileRecord-force-result", "returnNil"),
 				tx:     nil,
-				fileID: fileID1,
-				count:  1,
+				fileID: fileID2,
 			},
 			wantErr: false,
 		},
 		{
 			name: "ForceResult - tx.Begin错误",
 			args: args{
-				ctx:    context.WithValue(context.Background(), "ChangeFileReferenceCount-force-result", "tx.Begin"),
+				ctx:    context.WithValue(context.Background(), "DeleteFileRecord-force-result", "tx.Begin"),
 				tx:     nil,
-				fileID: fileID1,
-				count:  1,
-			},
-			wantErr: true,
-		},
-		{
-			name: "ForceResult - tx.Rollback错误",
-			args: args{
-				ctx:    context.WithValue(context.Background(), "ChangeFileReferenceCount-force-result", "tx.Rollback"),
-				tx:     nil,
-				fileID: fileID1,
-				count:  1,
-			},
-			wantErr: false,
-		},
-		{
-			name: "ForceResult - tx.Commit错误",
-			args: args{
-				ctx:    context.WithValue(context.Background(), "ChangeFileReferenceCount-force-result", "tx.Commit"),
-				tx:     nil,
-				fileID: fileID1,
-				count:  1,
-			},
-			wantErr: false,
-		},
-		{
-			name: "ForceResult - tx.QueryRow错误",
-			args: args{
-				ctx:    context.WithValue(context.Background(), "ChangeFileReferenceCount-force-result", "tx.QueryRow"),
-				tx:     nil,
-				fileID: fileID1,
-				count:  -1,
-			},
-			wantErr: true,
-		},
-		{
-			name: "ForceResult - tx.UpdateCount错误(增加计数)",
-			args: args{
-				ctx:    context.WithValue(context.Background(), "ChangeFileReferenceCount-force-result", "tx.UpdateCount"),
-				tx:     nil,
-				fileID: fileID1,
-				count:  1, // 正数，会触发增加引用计数的UpdateCount
-			},
-			wantErr: true,
-		},
-		{
-			name: "ForceResult - tx.UpdateCount错误(减少计数)",
-			args: args{
-				ctx:    context.WithValue(context.Background(), "ChangeFileReferenceCount-force-result", "tx.UpdateCount"),
-				tx:     nil,
-				fileID: fileID2, // 测试数据中fileID2的count为2，减1后不会删除
-				count:  -1,
+				fileID: fileID2,
 			},
 			wantErr: true,
 		},
 		{
 			name: "ForceResult - tx.DeleteFile错误",
 			args: args{
-				ctx:    context.WithValue(context.Background(), "ChangeFileReferenceCount-force-result", "tx.DeleteFile"),
+				ctx:    context.WithValue(context.Background(), "DeleteFileRecord-force-result", "tx.DeleteFile"),
 				tx:     nil,
-				fileID: fileID4, // 测试数据中fileID4的count为1，减1后会删除
-				count:  -1,
+				fileID: fileID2,
 			},
 			wantErr: true,
 		},
 		{
 			name: "ForceResult - tx.CountDigest错误",
 			args: args{
-				ctx:    context.WithValue(context.Background(), "ChangeFileReferenceCount-force-result", "tx.CountDigest"),
+				ctx:    context.WithValue(context.Background(), "DeleteFileRecord-force-result", "tx.CountDigest"),
 				tx:     nil,
-				fileID: fileID4, // 先创建一个新的测试文件ID
-				count:  -1,
+				fileID: fileID2,
+			},
+			wantErr: true,
+		},
+		{
+			name: "ForceResult - tx.Rollback错误",
+			args: args{
+				ctx:    context.WithValue(context.Background(), "DeleteFileRecord-force-result", "tx.Rollback"),
+				tx:     nil,
+				fileID: fileID2,
+			},
+			wantErr: false,
+		},
+		{
+			name: "ForceResult - tx.Commit错误",
+			args: args{
+				ctx:    context.WithValue(context.Background(), "DeleteFileRecord-force-result", "tx.Commit"),
+				tx:     nil,
+				fileID: fileID2,
+			},
+			wantErr: false,
+		},
+		{
+			name: "ForceResult - tx.QueryRow错误",
+			args: args{
+				ctx:    context.WithValue(context.Background(), "DeleteFileRecord-force-result", "tx.QueryRow"),
+				tx:     nil,
+				fileID: fileID2,
+			},
+			wantErr: true,
+		},
+		{
+			name: "ForceResult - tx.DeleteFile错误",
+			args: args{
+				ctx:    context.WithValue(context.Background(), "DeleteFileRecord-force-result", "tx.DeleteFile"),
+				tx:     nil,
+				fileID: fileID2,
+			},
+			wantErr: true,
+		},
+		{
+			name: "ForceResult - tx.CountDigest错误",
+			args: args{
+				ctx:    context.WithValue(context.Background(), "DeleteFileRecord-force-result", "tx.CountDigest"),
+				tx:     nil,
+				fileID: fileID2,
 			},
 			wantErr: true,
 		},
@@ -671,26 +592,16 @@ func TestChangeFileReferenceCount(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// 对于会删除文件的测试，需要重新创建测试数据
-			if tt.name == "减少引用计数导致删除文件记录" {
-				cleanTestData(t)
-				createTestData(t)
-			}
-			if tt.name == "ForceResult - tx.DeleteFile错误" || tt.name == "ForceResult - tx.CountDigest错误" {
-				cleanTestData(t)
-				createTestData(t)
-			}
-
-			err := ChangeFileReferenceCount(tt.args.ctx, tt.args.tx, tt.args.fileID, tt.args.count)
+			err := DeleteFileRecord(tt.args.ctx, tt.args.tx, tt.args.fileID)
 			if (err != nil) != tt.wantErr {
-				t.Errorf("ChangeFileReferenceCount() error = %v, wantErr %v", err, tt.wantErr)
+				t.Errorf("DeleteFileRecord() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})
 	}
 }
 
-// TestChangeFileReferenceCount_QueueFull 测试文件删除队列已满的情况
-func TestChangeFileReferenceCount_QueueFull(t *testing.T) {
+// TestDeleteFileRecord_QueueFull 测试文件删除队列已满的情况
+func TestDeleteFileRecord_QueueFull(t *testing.T) {
 	ConfigureForTest()
 	cleanTestData(t)
 	createTestData(t)
@@ -711,9 +622,9 @@ func TestChangeFileReferenceCount_QueueFull(t *testing.T) {
 	}()
 
 	// 测试：减少引用计数导致删除文件记录，此时队列已满会触发default分支
-	err := ChangeFileReferenceCount(context.Background(), nil, fileID4, -1)
+	err := DeleteFileRecord(context.Background(), nil, fileID4)
 	if err != nil {
-		t.Errorf("ChangeFileReferenceCount() error = %v, wantErr false", err)
+		t.Errorf("DeleteFileRecord() error = %v, wantErr false", err)
 	}
 }
 
@@ -730,7 +641,17 @@ func Test_deleteFileAsync(t *testing.T) {
 
 	// 测试1: 删除不存在的文件(不会产生错误日志)
 	t.Run("删除不存在的文件(不会产生错误日志)", func(t *testing.T) {
-		deleteFileAsync("./test_files/nonexistent_file.txt", "test_digest_1")
+		deleteFileAsync(context.Background(), "./test_files/nonexistent_file.txt", "test_digest_1")
+		// 验证文件确实不存在
+		if _, err := os.Stat("./test_files/nonexistent_file.txt"); !os.IsNotExist(err) {
+			t.Errorf("文件应该不存在")
+		}
+	})
+
+	t.Run("触发错误分支", func(t *testing.T) {
+		var ctx context.Context
+		ctx = context.WithValue(context.Background(), "deleteFileAsync-force-result", "QueryRow")
+		deleteFileAsync(ctx, "./test_files/nonexistent_file.txt", "test_digest_1")
 		// 验证文件确实不存在
 		if _, err := os.Stat("./test_files/nonexistent_file.txt"); !os.IsNotExist(err) {
 			t.Errorf("文件应该不存在")
@@ -756,7 +677,7 @@ func Test_deleteFileAsync(t *testing.T) {
 		defer file.Close() // 确保测试结束后关闭
 
 		// 尝试删除正在使用的文件
-		deleteFileAsync(lockedFile, "test_digest_2")
+		deleteFileAsync(context.Background(), lockedFile, "test_digest_2")
 	})
 
 	// 测试3: 删除正在使用中的.info文件
@@ -785,6 +706,6 @@ func Test_deleteFileAsync(t *testing.T) {
 		defer file.Close() // 确保测试结束后关闭
 
 		// 尝试删除，主文件应该成功，.info文件应该失败并产生错误日志
-		deleteFileAsync(normalFile, "test_digest_3")
+		deleteFileAsync(context.Background(), normalFile, "test_digest_3")
 	})
 }

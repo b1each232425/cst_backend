@@ -7417,6 +7417,15 @@ func TestExamLock(t *testing.T) {
 					assert.Contains(t, q.Msg.Msg, tt.expectedMsg, tt.description)
 				}
 				t.Logf("%s: 操作成功完成，响应消息: %s", tt.name, q.Msg.Msg)
+
+				// 如果是成功的GET操作（获取锁），需要在测试后立即释放锁
+				if tt.method == "GET" && !tt.expectedError {
+					examIDStr := queryParams.Get("exam_id")
+					if examID, err := strconv.ParseInt(examIDStr, 10, 64); err == nil && examID > 0 {
+						_ = cmn.ReleaseLock(ctx, examID, tt.userID, REDIS_LOCK_PREFIX)
+						t.Logf("%s: 已释放测试中获取的锁，考试ID: %d", tt.name, examID)
+					}
+				}
 			}
 
 			t.Logf("%s: 测试完成 - %s", tt.name, tt.description)
@@ -8007,201 +8016,6 @@ func TestExamUser(t *testing.T) {
 	}
 }
 
-func TestHandleDeleteExamFile(t *testing.T) {
-	// 确保logger已初始化
-	if z == nil {
-		cmn.ConfigureForTest()
-	}
-
-	conn := cmn.GetPgxConn()
-	ctx := context.Background()
-
-	tests := []struct {
-		name          string
-		fileID        int64
-		forceError    string
-		expectError   bool
-		errorContains string
-		setupData     bool
-		checkResult   func(t *testing.T, tx pgx.Tx)
-		description   string
-	}{
-		{
-			name:        "count大于1时减少引用计数",
-			fileID:      testFile2ID, // 使用现有的testFile2ID，它的count是2
-			forceError:  "",
-			expectError: false,
-			setupData:   false, // 使用现有数据，不需要重新设置
-			checkResult: func(t *testing.T, tx pgx.Tx) {
-				var count int
-				err := tx.QueryRow(ctx, "SELECT count FROM t_file WHERE id = $1", testFile2ID).Scan(&count)
-				assert.Nil(t, err)
-				assert.Equal(t, 1, count, "count应该从2减少到1")
-			},
-			description: "当文件引用计数大于1时，应该减少引用计数而不删除文件",
-		},
-		{
-			name:        "count等于1且无相同digest时删除记录和文件",
-			fileID:      testFileID3,
-			forceError:  "",
-			expectError: false,
-			setupData:   false,
-			checkResult: func(t *testing.T, tx pgx.Tx) {
-				var count int
-				err := tx.QueryRow(ctx, "SELECT COUNT(*) FROM t_file WHERE id = $1", testFileID3).Scan(&count)
-				assert.Nil(t, err)
-				assert.Equal(t, 0, count, "文件记录应该被删除")
-
-				// 检查物理文件是否被删除
-				filePath := filepath.Join("./uploads", testFile3CheckSum)
-				_, err = os.Stat(filePath)
-				assert.True(t, os.IsNotExist(err), "物理文件应该被删除")
-
-				// 检查.info文件是否被删除
-				infoFilePath := filePath + ".info"
-				_, err = os.Stat(infoFilePath)
-				assert.True(t, os.IsNotExist(err), ".info文件应该被删除")
-			},
-			description: "当引用计数为1且无其他相同digest文件时，应该删除记录和文件",
-		},
-		{
-			name:        "count等于1但有相同digest时只删除记录",
-			fileID:      testFile1ID, // testFileID1和testSameFileID有相同的digest
-			forceError:  "",
-			expectError: false,
-			setupData:   false,
-			checkResult: func(t *testing.T, tx pgx.Tx) {
-				var count int
-				err := tx.QueryRow(ctx, "SELECT COUNT(*) FROM t_file WHERE id = $1", testFile1ID).Scan(&count)
-				assert.Nil(t, err)
-				assert.Equal(t, 0, count, "testFile1ID记录应该被删除")
-
-				err = tx.QueryRow(ctx, "SELECT COUNT(*) FROM t_file WHERE digest = $1", testSameFileCheckSum).Scan(&count)
-				assert.Nil(t, err)
-				assert.Equal(t, 1, count, "相同digest的其他文件记录应该还存在")
-
-				// 检查物理文件应该还存在（因为有相同digest的其他文件）
-				filePath := filepath.Join("./uploads", testSameFileCheckSum)
-				_, err = os.Stat(filePath)
-				assert.Nil(t, err, "物理文件应该还存在")
-			},
-			description: "当引用计数为1但有其他相同digest文件时，应该只删除记录不删除文件",
-		},
-		{
-			name:          "文件不存在时返回错误",
-			fileID:        999999,
-			forceError:    "",
-			expectError:   true,
-			errorContains: "no rows",
-			setupData:     false,
-			description:   "当文件ID不存在时，应该返回错误",
-		},
-		{
-			name:          "强制错误-查询文件信息",
-			fileID:        testFile1ID,
-			forceError:    "handleDeleteExamFile.tx.QueryRow",
-			expectError:   true,
-			errorContains: "强制查询文件信息错误",
-			setupData:     false,
-			description:   "测试查询文件信息时的错误处理",
-		},
-		{
-			name:          "强制错误-更新引用计数",
-			fileID:        testFile2ID, // count > 1
-			forceError:    "handleDeleteExamFile.tx.UpdateCount",
-			expectError:   true,
-			errorContains: "强制更新文件引用计数错误",
-			setupData:     false,
-			description:   "测试更新引用计数时的错误处理",
-		},
-		{
-			name:          "强制错误-删除文件记录",
-			fileID:        testFile1ID, // count = 1
-			forceError:    "handleDeleteExamFile.tx.DeleteFile",
-			expectError:   true,
-			errorContains: "强制删除文件记录错误",
-			setupData:     false,
-			description:   "测试删除文件记录时的错误处理",
-		},
-		{
-			name:          "强制错误-统计相同digest文件",
-			fileID:        testFile1ID,
-			forceError:    "handleDeleteExamFile.tx.CountDigest",
-			expectError:   true,
-			errorContains: "强制统计相同digest文件错误",
-			setupData:     false,
-			description:   "测试统计相同digest文件时的错误处理",
-		},
-		{
-			name:          "强制错误-从文件系统删除文件",
-			fileID:        testFileID3,
-			forceError:    "handleDeleteExamFile.deleteFileFromFilesystem",
-			expectError:   true,
-			errorContains: "强制从文件系统删除文件错误",
-			setupData:     false,
-			description:   "测试从文件系统删除文件时的错误处理",
-		},
-		{
-			name:          "强制错误-从文件系统删除信息文件",
-			fileID:        testFileID3,
-			forceError:    "handleDeleteExamFile.deleteInfoFileFromFilesystem",
-			expectError:   true,
-			errorContains: "强制从文件系统删除.info文件错误",
-			setupData:     false,
-			description:   "测试从文件系统删除信息文件时的错误处理",
-		},
-		{
-			name:        "未实际存在的文件",
-			fileID:      notExistsFileID,
-			expectError: false,
-			setupData:   false,
-			description: "测试从文件系统删除未实际存在的文件时的错误处理",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			// 每个测试都重新创建测试数据以确保隔离性
-			CleanTestExamData(t)
-			CreateTestExamData(t)
-			defer CleanTestExamData(t)
-
-			// 创建上下文
-			testCtx := ctx
-			if tt.forceError != "" {
-				testCtx = context.WithValue(ctx, "force-error", tt.forceError)
-			}
-
-			// 开始事务
-			tx, err := conn.Begin(testCtx)
-			if err != nil {
-				t.Fatalf("开始事务失败: %v", err)
-			}
-			defer tx.Rollback(testCtx)
-
-			// 执行被测试的函数
-			err = handleDeleteExamFile(testCtx, tx, tt.fileID, 1)
-			t.Logf("handleDeleteExamFile() 返回错误: %v", err)
-
-			// 验证结果
-			if tt.expectError {
-				assert.NotNil(t, err, tt.description)
-				if tt.errorContains != "" && err != nil {
-					assert.Contains(t, err.Error(), tt.errorContains, tt.description)
-				}
-			} else {
-				assert.Nil(t, err, tt.description)
-				if tt.checkResult != nil {
-					tt.checkResult(t, tx)
-				}
-				// 如果测试成功，提交事务以持久化更改
-				err = tx.Commit(testCtx)
-				assert.Nil(t, err, "提交事务应该成功")
-			}
-		})
-	}
-}
-
 // TestExamFile 测试 examFile 函数
 func TestExamFile(t *testing.T) {
 	// 确保logger已初始化
@@ -8267,6 +8081,81 @@ func TestExamFile(t *testing.T) {
 			forceError:  "io.Close",
 			expectError: false,
 			description: "io关闭错误",
+			userID:      testAcademicAffair,
+			userRole:    2002,
+		},
+		{
+			name:   "POST-强制查询考试文件错误",
+			method: "POST",
+			examFile: ExamFile{
+				ExamID:   testNormalExamID,
+				CheckSum: testFile1CheckSum,
+				Name:     "新考试文件.txt",
+				Size:     int64(len(testFile1Content)),
+			},
+			forceError:  "examFiles.tx.Query",
+			expectError: true,
+			description: "强制查询考试文件错误",
+			userID:      testAcademicAffair,
+			userRole:    2002,
+		},
+		{
+			name:   "POST-强制扫描考试文件行错误",
+			method: "POST",
+			examFile: ExamFile{
+				ExamID:   testNormalExamID,
+				CheckSum: testFile1CheckSum,
+				Name:     "新考试文件.txt",
+				Size:     int64(len(testFile1Content)),
+			},
+			forceError:  "examFiles.rows.Scan",
+			expectError: true,
+			description: "强制扫描考试文件行错误",
+			userID:      testAcademicAffair,
+			userRole:    2002,
+		},
+		{
+			name:   "POST-强制JSON序列化错误",
+			method: "POST",
+			examFile: ExamFile{
+				ExamID:   testNormalExamID,
+				CheckSum: testFile1CheckSum,
+				Name:     "新考试文件.txt",
+				Size:     int64(len(testFile1Content)),
+			},
+			forceError:  "json.Marshal",
+			expectError: true,
+			description: "强制JSON序列化错误",
+			userID:      testAcademicAffair,
+			userRole:    2002,
+		},
+		{
+			name:   "POST-强制JSON序列化错误2",
+			method: "POST",
+			examFile: ExamFile{
+				ExamID:   testNormalExamID,
+				CheckSum: testFile1CheckSum,
+				Name:     "新考试文件.txt",
+				Size:     int64(len(testFile1Content)),
+			},
+			forceError:  "json.Marshal2",
+			expectError: true,
+			description: "强制JSON序列化错误",
+			userID:      testAcademicAffair,
+			userRole:    2002,
+		},
+		{
+			name:   "POST-强制更新考试信息错误",
+			method: "POST",
+			examFile: ExamFile{
+				ExamID:   testNormalExamID,
+				CheckSum: testFile1CheckSum,
+				Name:     "新考试文件.txt",
+				Size:     int64(len(testFile1Content)),
+			},
+			forceError:  "tx.Exec",
+			expectError: true,
+			description: "强制更新考试信息错误",
 			userID:      testAcademicAffair,
 			userRole:    2002,
 		},
