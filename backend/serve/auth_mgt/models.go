@@ -6,6 +6,7 @@ const (
 	CDataAccessModeFull  = "full"  // API完全访问
 	CDataAccessModeRead  = "read"  // API只读访问
 	CDataAccessModeWrite = "write" // API只写访问
+	CDataAccessModeEdit  = "edit"  // API编辑访问
 
 	CDomainRelationshipSelf   = "self"    // 域关系：自身域
 	CDomainRelationshipParent = "parent"  // 域关系：父域
@@ -18,8 +19,8 @@ const (
 )
 
 type Authority struct {
-	Role            cmn.TDomain       // 用户角色
-	APIs            []cmn.TVDomainAPI // 用户可访问的API列表
-	Domain          cmn.TDomain       // 用户所在域
-	ReadableDomains []int64           // 用户可读域列表
+	Role              cmn.TDomain       // 用户角色
+	APIs              []cmn.TVDomainAPI // 用户的API列表
+	Domain            cmn.TDomain       // 用户所在域
+	AccessibleDomains []int64           // 用户可访问域列表
 }
