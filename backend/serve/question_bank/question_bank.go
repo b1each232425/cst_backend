@@ -7,10 +7,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/lib/pq"
 	"io"
 	"strconv"
 	"strings"
+
+	"github.com/lib/pq"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -1326,6 +1327,9 @@ func questions(ctx context.Context) {
 		// 处理 PUT 请求
 		var buf []byte
 		buf, q.Err = io.ReadAll(q.R.Body)
+		if forceError == "io.ReadAll" {
+			q.Err = errors.New(forceError)
+		}
 		if q.Err != nil {
 			z.Error(q.Err.Error())
 			q.RespErr()
@@ -1333,12 +1337,18 @@ func questions(ctx context.Context) {
 		}
 		defer func() {
 			q.Err = q.R.Body.Close()
+			if forceError == "q.R.Body.Close()" {
+				q.Err = errors.New(forceError)
+			}
 			if q.Err != nil {
 				z.Error(q.Err.Error())
 				q.RespErr()
 				return
 			}
 		}()
+		if forceError == "q.R.Body.Close()" {
+			return
+		}
 
 		if len(buf) == 0 {
 			q.Err = fmt.Errorf("call /api/questions with empty body")
@@ -1348,6 +1358,9 @@ func questions(ctx context.Context) {
 		}
 		var req cmn.ReqProto
 		q.Err = json.Unmarshal(buf, &req)
+		if forceError == "reqproto-json.Unmarshal" {
+			q.Err = errors.New(forceError)
+		}
 		if q.Err != nil {
 			z.Error(q.Err.Error())
 			q.RespErr()
@@ -1355,6 +1368,9 @@ func questions(ctx context.Context) {
 		}
 		var question cmn.TQuestion
 		q.Err = json.Unmarshal(req.Data, &question)
+		if forceError == "cmn.TQuestion-json.Unmarshal" {
+			q.Err = errors.New(forceError)
+		}
 		if q.Err != nil {
 			z.Error(q.Err.Error())
 			q.RespErr()
@@ -1383,6 +1399,9 @@ func questions(ctx context.Context) {
 		// 执行更新操作
 		var commandTag pgconn.CommandTag
 		commandTag, q.Err = conn.Exec(ctx, updateSQL, question.Content, question.Options, question.Answers, question.Score, question.Difficulty, question.Tags, question.Analysis, now, now, question.ID)
+		if forceError == "conn.Exec" {
+			q.Err = errors.New(forceError)
+		}
 		if q.Err != nil {
 			z.Error(q.Err.Error())
 			q.RespErr()
@@ -1398,16 +1417,11 @@ func questions(ctx context.Context) {
 		q.Msg.Status = 0
 		q.Msg.Msg = "success"
 	case "delete":
-		// 设置创建者
-		userID := q.SysUser.ID.Int64
-		if userID <= 0 {
-			q.Err = fmt.Errorf("invalid userID: %d", userID)
-			z.Error(q.Err.Error())
-			q.RespErr()
-			return
-		}
 		var buf []byte
 		buf, q.Err = io.ReadAll(q.R.Body)
+		if forceError == "io.ReadAll" {
+			q.Err = errors.New(forceError)
+		}
 		if q.Err != nil {
 			z.Error(q.Err.Error())
 			q.RespErr()
@@ -1415,12 +1429,18 @@ func questions(ctx context.Context) {
 		}
 		defer func() {
 			q.Err = q.R.Body.Close()
+			if forceError == "q.R.Body.Close()" {
+				q.Err = errors.New(forceError)
+			}
 			if q.Err != nil {
 				z.Error(q.Err.Error())
 				q.RespErr()
 				return
 			}
 		}()
+		if forceError == "q.R.Body.Close()" {
+			return
+		}
 
 		if len(buf) == 0 {
 			q.Err = fmt.Errorf("call /api/question-banks with empty body")
@@ -1438,6 +1458,9 @@ func questions(ctx context.Context) {
 		}
 		var deleteQuestionIDs []int64
 		q.Err = json.Unmarshal(qry.Data, &deleteQuestionIDs)
+		if forceError == "json.Unmarshal" {
+			q.Err = errors.New(forceError)
+		}
 		if q.Err != nil {
 			z.Error(q.Err.Error())
 			q.RespErr()
@@ -1456,6 +1479,9 @@ func questions(ctx context.Context) {
 		//如果其中任何一步失败，则整个事务回滚
 		var tx pgx.Tx
 		tx, q.Err = conn.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead})
+		if forceError == "conn.BeginTx" {
+			q.Err = errors.New(forceError)
+		}
 		if q.Err != nil {
 			z.Error(q.Err.Error())
 			q.RespErr()
@@ -1464,23 +1490,48 @@ func questions(ctx context.Context) {
 		defer func() {
 			if p := recover(); p != nil {
 				err := tx.Rollback(ctx)
+				if forceError == "recover" {
+					err = errors.New(forceError)
+					q.Err = err
+					q.RespErr()
+				}
 				if err != nil {
 					z.Error(err.Error())
 				}
-				q.Err = fmt.Errorf("panic occurred: %v", p)
-				z.Error(q.Err.Error())
+				err = fmt.Errorf("panic occurred: %v", p)
+				z.Error(err.Error())
 			}
 			if q.Err != nil {
 				err := tx.Rollback(ctx)
+				if forceError == "tx.Rollback" {
+					err = errors.New(forceError)
+					q.Err = err
+					q.RespErr()
+				}
 				if err != nil {
 					z.Error(err.Error())
 				}
 			}
 			err := tx.Commit(ctx)
+			if forceError == "tx.Commit" {
+				err = errors.New(forceError)
+				q.Err = err
+				q.RespErr()
+			}
 			if err != nil {
 				z.Error(err.Error())
 			}
 		}()
+		if forceError == "recover" {
+			panic(errors.New(forceError))
+		}
+		if forceError == "tx.Commit" {
+			return
+		}
+		if forceError == "tx.Rollback" {
+			q.Err = errors.New(forceError)
+			return
+		}
 		// 这里是执行具体的删除操作
 		var checkSQL string
 		var errorMessages []string
@@ -1499,6 +1550,9 @@ func questions(ctx context.Context) {
 			LEFT JOIN t_question tq ON tq.id = ids.id
 			WHERE tq.id IS NULL OR tq.creator != $2`
 		q.Err = tx.QueryRow(ctx, checkSQL, deleteQuestionIDs, userID).Scan(&errorMessages)
+		if forceError == "tx.QueryRow" {
+			q.Err = errors.New(forceError)
+		}
 		if q.Err != nil {
 			z.Error(q.Err.Error())
 			q.RespErr()
@@ -1530,6 +1584,9 @@ func questions(ctx context.Context) {
 			WHERE id = ANY($1::bigint[])
 		`
 		_, q.Err = tx.Exec(ctx, deleteSQL, deleteQuestionIDs)
+		if forceError == "tx.Exec" {
+			q.Err = errors.New(forceError)
+		}
 		if q.Err != nil {
 			z.Error(q.Err.Error())
 			q.RespErr()

@@ -2,7 +2,7 @@
  * @Author: wusaber33
  * @Date: 2025-08-03 21:39:33
  * @LastEditors: wusaber33
- * @LastEditTime: 2025-08-19 20:24:08
+ * @LastEditTime: 2025-08-21 00:56:41
  * @FilePath: \assess\backend\serve\paper\paper.go
  * @Description:
  * Copyright (c) 2025 by wusaber33, All Rights Reserved.
@@ -34,6 +34,14 @@ import (
 	"go.uber.org/zap"
 	"w2w.io/cmn"
 )
+
+// 任务载荷结构体
+type PaperTaskPayload struct {
+	PaperID   int64  `json:"paper_id"`
+	PaperName string `json:"paper_name"`
+	UserID    int64  `json:"user_id"`
+	Action    string `json:"action"`
+}
 
 // 全局日志对象
 var z *zap.Logger
@@ -1420,7 +1428,7 @@ func PaperList(ctx context.Context) {
 	//获取用户角色
 	roleID := q.SysUser.Role.Int64
 	if roleID <= 0 {
-		q.Err = fmt.Errorf("invalid role: %d", userID)
+		q.Err = fmt.Errorf("invalid role: %d", roleID)
 		z.Error(q.Err.Error())
 		q.RespErr()
 		return
@@ -1496,6 +1504,12 @@ func PaperList(ctx context.Context) {
 		if pageSize := queryParams.Get("pageSize"); pageSize != "" {
 			if p, err := strconv.Atoi(pageSize); err == nil {
 				req.PageSize = p
+			}
+		}
+		req.Published = false
+		if published := queryParams.Get("published"); published != "" {
+			if p, err := strconv.ParseBool(published); err == nil {
+				req.Published = p
 			}
 		}
 
@@ -1658,7 +1672,7 @@ func PaperList(ctx context.Context) {
 		for rows.Next() {
 			var paper cmn.TVPaper
 			// todo 补充试卷视图考卷ID和版本号
-			q.Err = rows.Scan(&paper.ID, &paper.Name, &paper.AssemblyType, &paper.Category, &paper.Level, &paper.SuggestedDuration, &paper.TotalScore, &paper.QuestionCount, &paper.Tags, &paper.CreateTime, &paper.UpdateTime, &paper.Status, &paper.Creator, &paper.CreatorInfo)
+			q.Err = rows.Scan(&paper.ID, &paper.ExampaperID, &paper.Name, &paper.AssemblyType, &paper.Category, &paper.Level, &paper.SuggestedDuration, &paper.TotalScore, &paper.QuestionCount, &paper.Tags, &paper.CreateTime, &paper.UpdateTime, &paper.Status, &paper.Creator, &paper.CreatorInfo)
 			if val, ok := ctx.Value("force-error").(string); ok && val == "getPaperList-RowScan-err" {
 				q.Err = errors.New(val)
 			}
@@ -1905,7 +1919,7 @@ func PaperList(ctx context.Context) {
 		now := cmn.GetNowInMS()
 		//1. 软删除 t_paper
 		paperSQL := `UPDATE t_paper SET status = $2, updated_by = $3, update_time = $4 WHERE id = ANY($1)`
-		_, q.Err = tx.Exec(dmlCtx, paperSQL, paperIDs, StatusUnNormal, userID, now)
+		_, q.Err = tx.Exec(dmlCtx, paperSQL, paperIDs, StatusDeleted, userID, now)
 		if val, ok := ctx.Value("force-error").(string); ok && val == "deletePapers-exec-err" {
 			q.Err = errors.New(val)
 		}
@@ -1917,7 +1931,7 @@ func PaperList(ctx context.Context) {
 
 		//2. 软删除 t_paper_group
 		groupSQL := `UPDATE t_paper_group SET status = $2, updated_by = $3, update_time = $4 WHERE paper_id = ANY($1)`
-		_, q.Err = tx.Exec(ctx, groupSQL, paperIDs, StatusUnNormal, userID, now)
+		_, q.Err = tx.Exec(ctx, groupSQL, paperIDs, StatusDeleted, userID, now)
 		if val, ok := ctx.Value("force-error").(string); ok && val == "deletePapersgroups-exec-err" {
 			q.Err = errors.New(val)
 		}
@@ -1929,7 +1943,7 @@ func PaperList(ctx context.Context) {
 
 		//3. 软删除 t_paper_question
 		questionSQL := `UPDATE t_paper_question SET status = $2, updated_by = $3, update_time = $4 WHERE group_id IN (SELECT id FROM t_paper_group WHERE paper_id = ANY($1))`
-		_, q.Err = tx.Exec(ctx, questionSQL, paperIDs, StatusUnNormal, userID, now)
+		_, q.Err = tx.Exec(ctx, questionSQL, paperIDs, StatusDeleted, userID, now)
 		if val, ok := ctx.Value("force-error").(string); ok && val == "deletePapersquestions-exec-err" {
 			q.Err = errors.New(val)
 		}
@@ -1998,7 +2012,6 @@ func PaperList(ctx context.Context) {
 				}
 				if err != nil {
 					z.Error(err.Error())
-					return
 				}
 				return
 			}
@@ -2027,7 +2040,7 @@ func PaperList(ctx context.Context) {
 		}
 		// 检测试卷是否已发布
 		var paper cmn.TPaper
-		q.Err = tx.QueryRow(dmlCtx, `SELECT version,category,status FROM t_paper WHERE id = $1`, paperID).Scan(&paper)
+		q.Err = tx.QueryRow(dmlCtx, `SELECT category,status FROM t_paper WHERE id = $1`, paperID).Scan(&paper.Category, &paper.Status)
 		if q.Err != nil {
 			z.Error(q.Err.Error())
 			q.RespErr()
@@ -2188,30 +2201,6 @@ func PaperLock(ctx context.Context) {
 		return
 	}
 	q.Resp()
-}
-
-// isPaperCreator 检查用户是否为试卷的创建者
-func isPaperCreator(ctx context.Context, paperID, userID int64) (bool, error) {
-	forceError := ""
-	if val, ok := ctx.Value("force-error").(string); ok {
-		forceError = val
-	}
-	// 获取数据库连接
-	db := cmn.GetPgxConn()
-	var isCreator bool
-	err := db.QueryRow(ctx, `
-	SELECT EXISTS (
-		SELECT 1 FROM t_paper 
-		WHERE id = $1 AND creator = $2 AND status != '02'
-	)`, paperID, userID).Scan(&isCreator)
-	if forceError == "isPaperCreator-QueryRow-err" {
-		err = errors.New(forceError)
-	}
-	if err != nil {
-		z.Error("failed to check if user is paper creator: " + err.Error())
-		return false, err
-	}
-	return isCreator, nil
 }
 
 // getPaperStatusAndCreator 获取试卷状态和创建者信息
