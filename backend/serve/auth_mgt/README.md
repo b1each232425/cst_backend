@@ -192,7 +192,53 @@ func main() {
 }
 ```
 
-### 5. GetDomainRelationship
+### 5. CheckUserAPIEditable
+
+**功能描述：** 检查用户对特定API是否有读权限。
+
+**函数签名：**
+```go
+func CheckUserAPIEditable(ctx context.Context, authority *Authority, apiPath string) (bool, error)
+```
+
+**参数说明：**
+- `ctx`: 上下文对象
+- `authority`: 用户权限信息
+- `apiPath`: API路径
+
+**返回值：**
+- `bool`: 是否有读权限
+- `error`: 错误信息
+
+**调用示例：**
+```go
+package main
+
+import (
+    "context"
+    "fmt"
+    "w2w.io/serve/auth_mgt"
+)
+
+func main() {
+    ctx := context.Background()
+    authority, _ := auth_mgt.GetUserAuthority(ctx)
+    
+    readable, err := auth_mgt.CheckUserAPIEditable(ctx, authority, "/api/users")
+    if err != nil {
+        fmt.Printf("检查API编辑权限失败: %v\n", err)
+        return
+    }
+    
+    if readable {
+        fmt.Println("用户对 /api/users 有编辑权限")
+    } else {
+        fmt.Println("用户对 /api/users 没有编辑权限")
+    }
+}
+```
+
+### 6. GetDomainRelationship
 
 **功能描述：** 获得用户所在域与目标域的关系，判断目标域是用户所在域的什么关系域。
 
@@ -251,10 +297,10 @@ func main() {
 
 ```go
 type Authority struct {
-    Role            cmn.TDomain      // 用户角色信息
-    Domain          cmn.TDomain      // 用户所在域信息
-    APIs            []cmn.TVDomainAPI // 用户可访问的API列表
-    ReadableDomains []int64          // 用户可读域ID列表，可直接拼接到数据查询SQL
+    Role                cmn.TDomain         // 用户角色信息
+    Domain              cmn.TDomain         // 用户所在域信息
+    APIs                []cmn.TVDomainAPI   // 用户的API列表
+    AccessibleDomains   []int64             // 用户可访问域ID数组（可访问代表既可读也可编辑，查询数据时可以直接将该ID数组拼接到查询SQL，用户要编辑已有数据时需要先检查目标数据的域是否在这之中）
 }
 ```
 
@@ -263,6 +309,7 @@ type Authority struct {
 ### 访问模式常量
 - `CDataAccessModeRead`: 读权限
 - `CDataAccessModeWrite`: 写权限
+- `CDataAccessModeEdit`: 编辑权限
 - `CDataAccessModeFull`: 完全权限
 
 ### 域关系常量
