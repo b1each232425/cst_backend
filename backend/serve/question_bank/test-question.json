@@ -27,6 +27,7 @@
         "Score": 2,
         "Difficulty": 2,
         "Tags": [
+            "test",
             "计算机网络",
             "传输层",
             "TCP/IP"
@@ -39,7 +40,6 @@
         "Output": "",
         "Example": [],
         "Repo": [],
-        "Order": null,
         "Creator": 11,
         "CreateTime": 1722000200000,
         "UpdatedBy": 11,

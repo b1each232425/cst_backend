@@ -5,10 +5,12 @@ package practice_mgt
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"github.com/jackc/pgx/v5"
 	"github.com/jmoiron/sqlx"
+	"github.com/jmoiron/sqlx/types"
 	"strings"
 	"time"
 	"w2w.io/cmn"
@@ -24,7 +26,7 @@ import (
 	ps 参与练习的学生ID数组
 	uid 操作人
 */
-func UpsertPractice(ctx context.Context, p *cmn.TPractice, ps []int64, uid int64) error {
+func UpsertPractice(ctx context.Context, p *cmn.TPractice, ps []int64, uid int64, isClearStudent bool) error {
 	if uid <= 0 {
 		err := fmt.Errorf("invalid updator ID param")
 		z.Error(err.Error())
@@ -40,7 +42,7 @@ func UpsertPractice(ctx context.Context, p *cmn.TPractice, ps []int64, uid int64
 	if p2.Status.String == PracticeStatus.Released {
 		return fmt.Errorf("练习已经发布，不可修改练习信息")
 	}
-	return UpdatePractice(ctx, p, ps, uid, false)
+	return UpdatePractice(ctx, p, ps, uid, false, isClearStudent)
 
 }
 
@@ -51,8 +53,9 @@ func UpsertPractice(ctx context.Context, p *cmn.TPractice, ps []int64, uid int64
 	ps 参与练习的学生ID数组 为空或者长度为0则不更新学生名单 否则就更新
 	uid 操作人
 	isOperate 是否通过operate操作函数调用的：是则允许更新status字段，否则不允许更新status字段
+	isClear 是否清除学生名单
 */
-func UpdatePractice(ctx context.Context, p *cmn.TPractice, ps []int64, uid int64, isOperate bool) error {
+func UpdatePractice(ctx context.Context, p *cmn.TPractice, ps []int64, uid int64, isOperate, isClear bool) error {
 	if uid <= 0 {
 		err := fmt.Errorf("invalid updator ID param")
 		z.Error(err.Error())
@@ -97,7 +100,10 @@ func UpdatePractice(ctx context.Context, p *cmn.TPractice, ps []int64, uid int64
 		z.Error(err.Error())
 		return err
 	}
-	err = UpsertPracticeStudent(ctx, p.ID.Int64, uid, ps)
+	if !isClear && len(ps) == 0 {
+		return nil
+	}
+	err = UpsertPracticeStudentV2(ctx, p.ID.Int64, uid, ps)
 	if err != nil {
 		return err
 	}
@@ -128,7 +134,10 @@ func AddPractice(ctx context.Context, p *cmn.TPractice, ps []int64, uid int64) e
 		return err
 	}
 	p.ID = null.IntFrom(id)
-	err = UpsertPracticeStudent(ctx, id, uid, ps)
+	if ps == nil || len(ps) == 0 {
+		return nil
+	}
+	err = UpsertPracticeStudentV2(ctx, id, uid, ps)
 	if err != nil {
 		return err
 	}
@@ -174,12 +183,27 @@ func UpsertPracticeStudent(ctx context.Context, pid, uid int64, ps []int64) erro
 		return err
 	}
 	defer func() {
-		if err != nil || forceErr == "Rollback" {
+		if forceErr == "rollback" {
+			err = fmt.Errorf("触发回滚")
+		}
+		if err != nil {
 			// 操作失败回滚
-			_ = tx.Rollback()
-		} else {
-			// 无错误则提交
-			_ = tx.Commit()
+			err = tx.Rollback()
+			if forceErr == "rollback" {
+				err = fmt.Errorf("触发回滚")
+			}
+			if err != nil {
+				z.Error(err.Error())
+				return
+			}
+		}
+		// 无错误则提交
+		err = tx.Commit()
+		if forceErr == "commit" {
+			err = fmt.Errorf("commit failed")
+		}
+		if err != nil {
+			z.Error(err.Error())
 		}
 	}()
 
@@ -246,7 +270,129 @@ func UpsertPracticeStudent(ctx context.Context, pid, uid int64, ps []int64) erro
 	return nil
 }
 
-// LoadPracticeById 获取练习详情 其中不需要查询学生具体信息
+func UpsertPracticeStudentV2(ctx context.Context, pid, uid int64, ps []int64) error {
+
+	if pid <= 0 {
+		err := fmt.Errorf("invalid practiceId param")
+		z.Error(err.Error())
+		return err
+	}
+	if uid <= 0 {
+		err := fmt.Errorf("invalid uid param")
+		z.Error(err.Error())
+		return err
+	}
+	forceErr, _ := ctx.Value("force-error").(string)
+	now := time.Now().UnixMilli()
+	sqlxDB := cmn.GetDbConn()
+	tx, err := sqlxDB.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelRepeatableRead})
+	if err != nil || forceErr == "beginTx" {
+		err = fmt.Errorf("beginTx called failed:%v", err)
+		z.Error(err.Error())
+		return err
+	}
+	defer func() {
+		if forceErr == "rollback" {
+			err = fmt.Errorf("触发回滚")
+		}
+		if err != nil {
+			_ = tx.Rollback()
+			if forceErr == "rollback" {
+				err = fmt.Errorf("触发回滚")
+			}
+			if err != nil {
+				z.Error(err.Error())
+				return
+			}
+		}
+		_ = tx.Commit()
+		if forceErr == "commit" {
+			err = fmt.Errorf("commit failed")
+		}
+		if err != nil {
+			z.Error(err.Error())
+		}
+	}()
+
+	if ps == nil || len(ps) == 0 {
+		// 清空该练习下所有学生
+		delSQL := `
+            UPDATE assessuser.t_practice_student
+            SET status = $1, update_time = $2, updated_by = $3
+            WHERE practice_id = $4 AND status != $1
+        `
+		_, err = tx.ExecContext(ctx, delSQL, PracticeStudentStatus.Deleted, now, uid, pid)
+		if err != nil || forceErr == "query1" {
+			err = fmt.Errorf("clear PracticeStudent call failed:%v", err)
+			z.Error(err.Error())
+			return err
+		}
+		return nil
+	}
+
+	// upsert名单
+	addPStr := strings.Repeat("(?,?,?,?,?,?,?),", len(ps)-1) + "(?,?,?,?,?,?,?)"
+	addPArgs := make([]interface{}, 0, len(ps)*7+1)
+	for _, sid := range ps {
+		addPArgs = append(addPArgs,
+			sid, pid, uid, now, uid, now, PracticeStudentStatus.Normal,
+		)
+	}
+	addPArgs = append(addPArgs, PracticeStudentStatus.Normal)
+	t := `
+        INSERT INTO assessuser.t_practice_student 
+            (student_id, practice_id, creator, create_time, updated_by, update_time, status) 
+        VALUES %s
+        ON CONFLICT (student_id, practice_id)
+        DO UPDATE SET
+            status = EXCLUDED.status,
+            updated_by = EXCLUDED.updated_by,
+            update_time = EXCLUDED.update_time
+        WHERE assessuser.t_practice_student.status IS DISTINCT FROM ?
+    `
+	s1 := fmt.Sprintf(t, addPStr)
+	addPQuery, args, _ := sqlx.In(s1, addPArgs...)
+	addPQuery = sqlx.Rebind(sqlx.DOLLAR, addPQuery)
+	z.Sugar().Debugf("打印输出一下增加SQL语句:%v", addPQuery)
+	z.Sugar().Debugf("打印输出一下增加SQL参数:%v", args...)
+	_, err = tx.ExecContext(ctx, addPQuery, args...)
+	if err != nil || forceErr == "query2" {
+		err = fmt.Errorf("add PracticeStudent call failed:%v", err)
+		z.Error(err.Error())
+		return err
+	}
+
+	// 删除不在名单上的学生
+	var valueExpr []string
+	var delPArgs []interface{}
+	delPArgs = append(delPArgs, PracticeStudentStatus.Deleted, now, uid, pid)
+	for _, sid := range ps {
+		valueExpr = append(valueExpr, fmt.Sprintf("($%d::bigint)", len(delPArgs)+1))
+		delPArgs = append(delPArgs, sid)
+	}
+	t2 := `
+        UPDATE assessuser.t_practice_student t
+        SET status = $1, update_time = $2, updated_by = $3
+        WHERE t.practice_id = $4
+            AND NOT EXISTS (
+                SELECT 1 
+                FROM (VALUES %s) AS excluded(sid)
+                WHERE t.student_id = excluded.sid
+            )
+    `
+	s2 := fmt.Sprintf(t2, strings.Join(valueExpr, ", "))
+	z.Sugar().Debugf("打印输出一下删除SQL语句:%v", s2)
+	z.Sugar().Debugf("打印输出一下删除SQL参数:%v", delPArgs...)
+	_, err = tx.ExecContext(ctx, s2, delPArgs...)
+	if err != nil || forceErr == "query3" {
+		err = fmt.Errorf("delete PracticeStudent call failed:%v", err)
+		z.Error(err.Error())
+		return err
+	}
+	return nil
+}
+
+// LoadPracticeById 获取单个练习详情 其中不需要查询学生具体信息
 /*
 关键参数说明：
 	pid 要查询的练习ID
@@ -318,6 +464,61 @@ func LoadPracticeById(ctx context.Context, pid int64) (*cmn.TPractice, string, i
 	}
 }
 
+// LoadPracticeByIDs 批量获取练习详情
+/*
+关键参数说明：
+	ids 要查询的练习ID数组
+返回参数说明：
+	1、以练习ID为key，练习信息为value的map
+	4、可能出现的错误
+*/
+func LoadPracticeByIDs(ctx context.Context, ids []int64) (map[int64]*cmn.TPractice, error) {
+	if len(ids) == 0 {
+		err := fmt.Errorf("非法practiceIDs:%v", ids)
+		z.Error(err.Error())
+		return nil, err
+	}
+	conn := cmn.GetPgxConn()
+	result := make(map[int64]*cmn.TPractice)
+	// 用于测试，强制执行某些错误分支
+	forceErr, _ := ctx.Value("force-error").(string)
+	s := `
+	select p.id, p.name, p.correct_mode,p.addi,p.status,p.type,
+			p.allowed_attempts,p.paper_id,p.exam_paper_id
+	from assessuser.t_practice p
+	where p.id = ANY($1) AND p.status != $2`
+	rows, err := conn.Query(ctx, s, ids, PracticeStatus.Deleted)
+	if err != nil || forceErr == "lQuery" {
+		err = fmt.Errorf("批量查询练习数据失败：%v", err)
+		z.Error(err.Error())
+		return nil, err
+	}
+
+	defer func() {
+		rows.Close()
+	}()
+
+	for rows.Next() {
+		// 遍历，就需要创建了
+		p := &cmn.TPractice{}
+		err = rows.Scan(&p.ID, &p.Name, &p.CorrectMode, &p.Addi, &p.Status, &p.Type, &p.AllowedAttempts, &p.PaperID, &p.ExamPaperID)
+		if err != nil || forceErr == "lScan" {
+			err = fmt.Errorf("批量解析练习数据失败：%v", err)
+			z.Error(err.Error())
+			return nil, err
+		}
+		result[p.ID.Int64] = p
+	}
+	if len(result) == 0 {
+		// 这里就直接报错
+		err = fmt.Errorf("批量查询练习记录失败，记录为空")
+		z.Error(err.Error())
+		return nil, err
+	}
+
+	return result, nil
+}
+
 // ListPracticeS 学生权限及以下获取练习列表
 /*
 关键参数说明：条件查询
@@ -361,7 +562,7 @@ func ListPracticeS(ctx context.Context, pType, name, difficulty string, orderBy 
 
 	s := `SELECT
 		id,name,type,attempt_count,difficulty,allowed_attempts,question_count,wrong_count,
-		total_score,highest_score,paper_total_score,paper_id,latest_unsubmitted_id,latest_submitted_id
+		total_score,highest_score,paper_total_score,paper_id,latest_unsubmitted_id,latest_submitted_id,pending_mark_id
 		FROM assessuser.v_practice_summary`
 
 	if len(clauses) > 0 {
@@ -388,12 +589,16 @@ func ListPracticeS(ctx context.Context, pType, name, difficulty string, orderBy 
 	sqlxDB := cmn.GetDbConn()
 	rows, err := sqlxDB.QueryxContext(ctx, s, args...)
 	if err != nil || forceErr == "sQuery1" {
+		err = fmt.Errorf("查询学生权限练习列表失败：%v", err)
 		z.Error(err.Error())
 		return nil, 0, err
 	}
 	defer func() {
 		err = rows.Close()
-		if err != nil || forceErr == "row close" {
+		if forceErr == "row close" {
+			err = fmt.Errorf("关闭数据库连接数据失败")
+		}
+		if err != nil {
 			z.Error(err.Error())
 			return
 		}
@@ -403,7 +608,7 @@ func ListPracticeS(ctx context.Context, pType, name, difficulty string, orderBy 
 		var p cmn.TVPracticeSummary
 		err = rows.Scan(&p.ID, &p.Name, &p.Type, &p.AttemptCount, &p.Difficulty, &p.AllowedAttempts,
 			&p.QuestionCount, &p.WrongCount, &p.TotalScore, &p.HighestScore, &p.PaperTotalScore,
-			&p.PaperID, &p.LatestUnsubmittedID, &p.LatestSubmittedID)
+			&p.PaperID, &p.LatestUnsubmittedID, &p.LatestSubmittedID, &p.PendingMarkID)
 		if err != nil || forceErr == "sQuery2" {
 			err = fmt.Errorf("解析练习数据失败:%v", err)
 			z.Error(err.Error())
@@ -542,19 +747,26 @@ func OperatePracticeStatus(ctx context.Context, pid int64, status string, uid in
 		return err
 	}
 	defer func() {
-		if err != nil || forceErr == "rollback" {
+		if forceErr == "rollback" {
+			err = fmt.Errorf("触发回滚")
+		}
+		if err != nil {
 			// 操作失败回滚
 			err = tx.Rollback(ctx)
-			if err != nil || forceErr == "rollbackFail" {
-				err = fmt.Errorf("rollback failed:%v", err)
-				z.Error(err.Error())
+			if forceErr == "rollback" {
+				err = fmt.Errorf("触发回滚")
 			}
-			return
+			if err != nil {
+				z.Error(err.Error())
+				return
+			}
 		}
 		// 无错误则提交
 		err = tx.Commit(ctx)
-		if err != nil || forceErr == "commit" {
-			err = fmt.Errorf("commit failed:%v", err)
+		if forceErr == "commit" {
+			err = fmt.Errorf("commit failed")
+		}
+		if err != nil {
 			z.Error(err.Error())
 		}
 
@@ -572,7 +784,7 @@ func OperatePracticeStatus(ctx context.Context, pid int64, status string, uid in
 		}
 
 		s := `UPDATE assessuser.t_practice SET status = $1,update_time = $2, updated_by = $3 ,exam_paper_id = $4 WHERE id = $5`
-		_, err = tx.Exec(ctx, s, PracticeStatus.Released, now, uid, examPaperId, pid)
+		_, err = tx.Exec(ctx, s, status, now, uid, examPaperId, pid)
 		if err != nil || forceErr == "pQuery1" {
 			err = fmt.Errorf("更新练习状态 发布->未发布 失败:%v", err)
 			z.Error(err.Error())
@@ -591,26 +803,34 @@ func OperatePracticeStatus(ctx context.Context, pid int64, status string, uid in
 			return err
 		}
 		return nil
-	} else if status == PracticeStatus.PendingRelease || status == PracticeStatus.Deleted {
-		// 若练习已经发布了，无法被删除，必须先回退为待发布状态后才能被删除 但是此时你无法通过LoadPracticeById这个函数去查询到已被删除的
-		s := `UPDATE assessuser.t_practice SET status = $1,update_time = $2, updated_by = $3  WHERE id = $4`
-		_, err = tx.Exec(ctx, s, status, now, uid, pid)
+	} else if status == PracticeStatus.Deleted {
+		isAnswer := false
+		s := `SELECT EXISTS(SELECT 1 FROM assessuser.t_practice_submissions WHERE practice_id = $1)`
+		err = tx.QueryRow(ctx, s, p.ID.Int64).Scan(&isAnswer)
 		if err != nil || forceErr == "pQuery2" {
+			err = fmt.Errorf("遍历查询是否有学生作答记录失败：%v", err)
+			z.Error(err.Error())
+			return err
+		}
+		if isAnswer {
+			err = fmt.Errorf("此时练习名称为：%v的练习已有学生参与作答，不能删除", p.Name.String)
+			z.Error(err.Error())
+			return err
+		}
+
+		// 若练习已经发布了，无法被删除，必须先回退为待发布状态后才能被删除 但是此时你无法通过LoadPracticeById这个函数去查询到已被删除的
+		s = `UPDATE assessuser.t_practice SET status = $1,update_time = $2, updated_by = $3  WHERE id = $4`
+		_, err = tx.Exec(ctx, s, status, now, uid, pid)
+		if err != nil || forceErr == "pQuery3" {
 			err = fmt.Errorf("更新练习状态 发布-> 未发布 或 未发布-> 删除 失败:%v", err)
 			z.Error(err.Error())
 			return err
 		}
 
-		// 更改practice_submission练习学生的提交状态及其练习次数，将本次练习附带的所有次数均变为无效
-		s = `UPDATE assessuser.t_practice_submissions SET status = $1,update_time = $2,updated_by = $3 , attempt = $4 WHERE practice_id = $5`
-		_, err = tx.Exec(ctx, s, PracticeSubmissionStatus.Deleted, now, uid, -1, pid)
-		if err != nil || forceErr == "pQuery3" {
-			err = fmt.Errorf("重置学生练习提交记录信息失败：%v", err)
-			z.Error(err.Error())
+		err = examPaper.DeleteExamPaperById(ctx, tx, nil, []int64{p.ID.Int64})
+		if err != nil {
 			return err
 		}
-
-		// TODO 这里要补充对于学生答卷的软删除
 
 		// 清除批改配置信息
 		req := mark.HandleMarkerInfoReq{
@@ -623,6 +843,241 @@ func OperatePracticeStatus(ctx context.Context, pid int64, status string, uid in
 			return err
 		}
 		return nil
+	} else if status == PracticeStatus.Disabled {
+		s := `UPDATE assessuser.t_practice SET status = $1,update_time = $2, updated_by = $3  WHERE id = $4`
+		_, err = tx.Exec(ctx, s, status, now, uid, pid)
+		if err != nil || forceErr == "pQuery5" {
+			err = fmt.Errorf("更新练习状态 发布-> 作废失败:%v", err)
+			z.Error(err.Error())
+			return err
+		}
+
+		// 更改practice_submission练习学生的提交状态及其练习次数，将本次练习附带的所有次数均变为无效
+		s = `UPDATE assessuser.t_practice_submissions SET status = $1,update_time = $2,updated_by = $3 WHERE practice_id = $4`
+		_, err = tx.Exec(ctx, s, PracticeSubmissionStatus.Disabled, now, uid, pid)
+		if err != nil || forceErr == "pQuery6" {
+			err = fmt.Errorf("重置学生练习提交记录信息失败：%v", err)
+			z.Error(err.Error())
+			return err
+		}
+		err = examPaper.DeleteExamPaperById(ctx, tx, nil, []int64{pid})
+		if err != nil {
+			return err
+		}
+
+		// 清除批改配置信息
+		req := mark.HandleMarkerInfoReq{
+			Status:      "02",
+			PracticeIDs: []int64{p.ID.Int64},
+		}
+
+		err = mark.HandleMarkerInfo(ctx, &tx, uid, req)
+		if err != nil || forceErr == "mark2" {
+			return err
+		}
+		return nil
+	} else {
+		err = fmt.Errorf("传入要更换的练习status:%v 非法,请传入合法的练习状态", status)
+		z.Error(err.Error())
+		return err
+	}
+}
+
+// OperatePracticeStatusV2 教师及以上权限批量操作练习发布状态 控制学生能否作答、能否在列表中查看到该练习 并配置批改信息
+/*
+关键参数：
+	ids 练习ID数组
+	status 想要切换的状态
+	uid 操作者
+*/
+// OperatePracticeStatus 操作练习的发布状态 取消/发布/删除 练习
+func OperatePracticeStatusV2(ctx context.Context, ids []int64, status string, uid int64) error {
+	var err error
+	// 用于测试，强制执行某些错误分支
+	forceErr, _ := ctx.Value("force-error").(string)
+	conn := cmn.GetPgxConn()
+	now := time.Now().UnixMilli()
+	ps, err := LoadPracticeByIDs(ctx, ids)
+	if err != nil {
+		return err
+	}
+	tx, err := conn.Begin(ctx)
+	if err != nil || forceErr == "beginTx" {
+		err = fmt.Errorf("beginTx called failed:%v", err)
+		z.Error(err.Error())
+		return err
+	}
+	defer func() {
+		if forceErr == "rollback" {
+			err = fmt.Errorf("触发回滚")
+		}
+		if err != nil {
+			// 操作失败回滚
+			err = tx.Rollback(ctx)
+			if forceErr == "rollback" {
+				err = fmt.Errorf("触发回滚")
+			}
+			if err != nil {
+				z.Error(err.Error())
+				return
+			}
+		}
+		// 无错误则提交
+		err = tx.Commit(ctx)
+		if forceErr == "commit" {
+			err = fmt.Errorf("commit failed")
+		}
+		if err != nil {
+			z.Error(err.Error())
+		}
+
+	}()
+	signStatus := ""
+	for _, p := range ps {
+		if signStatus == "" {
+			signStatus = p.Status.String
+		}
+		if p.Status.String != signStatus {
+			err = fmt.Errorf("此时要批量操作的练习状态不一，无法进行批量操作")
+			z.Error(err.Error())
+			return err
+		}
+		if p.Status.String == PracticeStatus.Disabled {
+			err = fmt.Errorf("不能操作已作废的练习")
+			z.Error(err.Error())
+			return err
+		}
+	}
+	if status == PracticeStatus.Released {
+		// 批量操作
+		for pid, p := range ps {
+			// 无论考卷之前有没有生成，均生成新的
+			examPaperId, _, err := examPaper.GenerateExamPaper(ctx, tx, examPaper.PaperCategory.Practice, p.PaperID.Int64, pid, 0, uid, false)
+			if err != nil {
+				return err
+			}
+			if examPaperId == nil || forceErr == "empty" {
+				err = fmt.Errorf("生成练习考卷返回的考卷ID为空")
+				z.Error(err.Error())
+				return err
+			}
+
+			s := `UPDATE assessuser.t_practice SET status = $1,update_time = $2, updated_by = $3 ,exam_paper_id = $4 WHERE id = $5`
+			_, err = tx.Exec(ctx, s, status, now, uid, examPaperId, pid)
+			if err != nil || forceErr == "pQuery1" {
+				err = fmt.Errorf("更新练习状态 未发布->发布 失败:%v", err)
+				z.Error(err.Error())
+				return err
+			}
+			// 生成批改配置信息
+			req := mark.HandleMarkerInfoReq{
+				PracticeID: pid,
+				MarkMode:   p.CorrectMode.String,
+				Markers:    []int64{uid},
+				Status:     "00",
+			}
+
+			err = mark.HandleMarkerInfo(ctx, &tx, uid, req)
+			if forceErr == "mark" {
+				err = fmt.Errorf("新增练习批改配置失败")
+			}
+			if err != nil {
+				return err
+			}
+		}
+		return nil
+	} else if status == PracticeStatus.Deleted {
+		// 进行批量操作
+		tempIsAnswer := false
+		var invalidName []string
+		for _, p := range ps {
+			s := `SELECT EXISTS(SELECT 1 FROM assessuser.t_practice_submissions WHERE practice_id = $1)`
+			err = tx.QueryRow(ctx, s, p.ID.Int64).Scan(&tempIsAnswer)
+			if err != nil || forceErr == "pQuery2" {
+				err = fmt.Errorf("遍历查询是否有学生作答记录失败：%v", err)
+				z.Error(err.Error())
+				return err
+			}
+			// 就代表此时有学生作答过，就不能进行删除操作（包括批量删除）
+			if tempIsAnswer {
+				invalidName = append(invalidName, p.Name.String)
+			}
+		}
+
+		if len(invalidName) > 0 {
+			err = fmt.Errorf("此时练习名称为：%v的练习已有学生参与作答，不能删除", invalidName)
+			z.Error(err.Error())
+			return err
+		}
+
+		s := `UPDATE assessuser.t_practice SET status = $1,update_time = $2, updated_by = $3  WHERE id = ANY($4)`
+		_, err = tx.Exec(ctx, s, status, now, uid, ids)
+		if err != nil || forceErr == "pQuery3" {
+			err = fmt.Errorf("更新练习状态 发布-> 删除 失败:%v", err)
+			z.Error(err.Error())
+			return err
+		}
+		// 更改practice_submission练习学生的提交状态及其练习次数，将本次练习附带的所有次数均变为无效
+		s = `UPDATE assessuser.t_practice_submissions SET status = $1,update_time = $2,updated_by = $3  WHERE practice_id = ANY($4)`
+		_, err = tx.Exec(ctx, s, PracticeSubmissionStatus.Deleted, now, uid, ids)
+		if err != nil || forceErr == "pQuery4" {
+			err = fmt.Errorf("批量重置学生练习提交记录信息失败：%v", err)
+			z.Error(err.Error())
+			return err
+		}
+		err = examPaper.DeleteExamPaperById(ctx, tx, nil, ids)
+		if err != nil {
+			return err
+		}
+		// 清除批改配置信息
+		req := mark.HandleMarkerInfoReq{
+			Status:      "02",
+			PracticeIDs: ids,
+		}
+
+		err = mark.HandleMarkerInfo(ctx, &tx, uid, req)
+		if forceErr == "mark1" {
+			err = fmt.Errorf("清除批改配置失败")
+		}
+		if err != nil {
+			return err
+		}
+		return nil
+	} else if status == PracticeStatus.Disabled {
+		s := `UPDATE assessuser.t_practice SET status = $1,update_time = $2, updated_by = $3  WHERE id = ANY($4)`
+		_, err = tx.Exec(ctx, s, status, now, uid, ids)
+		if err != nil || forceErr == "pQuery5" {
+			err = fmt.Errorf("更新练习状态 发布->作废 失败:%v", err)
+			z.Error(err.Error())
+			return err
+		}
+		// 更改practice_submission练习学生的提交状态及其练习次数，将本次练习附带的所有次数均变为无效
+		s = `UPDATE assessuser.t_practice_submissions SET status = $1,update_time = $2,updated_by = $3  WHERE practice_id = ANY($4)`
+		_, err = tx.Exec(ctx, s, PracticeSubmissionStatus.Disabled, now, uid, ids)
+		if err != nil || forceErr == "pQuery6" {
+			err = fmt.Errorf("批量重置学生练习提交记录信息失败：%v", err)
+			z.Error(err.Error())
+			return err
+		}
+		err = examPaper.DeleteExamPaperById(ctx, tx, nil, ids)
+		if err != nil {
+			return err
+		}
+		// 清除批改配置信息
+		req := mark.HandleMarkerInfoReq{
+			Status:      "02",
+			PracticeIDs: ids,
+		}
+
+		err = mark.HandleMarkerInfo(ctx, &tx, uid, req)
+		if forceErr == "mark2" {
+			err = fmt.Errorf("清除批改配置失败")
+		}
+		if err != nil {
+			return err
+		}
+		return nil
+
 	} else {
 		err = fmt.Errorf("传入要更换的练习status:%v 非法,请传入合法的练习状态", status)
 		z.Error(err.Error())
@@ -901,7 +1356,7 @@ func EnterPracticeGetPaperDetails(ctx context.Context, tx pgx.Tx, pid int64, uid
 			}
 			newAttempt := ps.AttemptCount.Int64 + 1
 			s := `INSERT INTO assessuser.t_practice_submissions (practice_id,student_id,exam_paper_id,creator,create_time,update_time,attempt) VALUES (
-			$1,$2,$3,$4,$5,$6,$7	
+			$1,$2,$3,$4,$5,$6,$7
 		) RETURNING id`
 			err = tx.QueryRow(ctx, s, pid, uid, ps.ExamPaperID, uid, now, now, newAttempt).Scan(&pSubmissionID)
 			if err != nil || forceErr == "pQuery1" {
@@ -924,7 +1379,7 @@ func EnterPracticeGetPaperDetails(ctx context.Context, tx pgx.Tx, pid int64, uid
 			}
 			withStudentAnswer = false
 		}
-		//第一次进入练习 没有任何练习提交记录
+		//第一次进入练习 没有任何练习提交记录  第一次进入就可以拿到
 	case StudentSubmissionStatus.NeverAnswer:
 		{
 			//在创建记录之前，需要先加载一下练习的基本信息
@@ -936,7 +1391,7 @@ func EnterPracticeGetPaperDetails(ctx context.Context, tx pgx.Tx, pid int64, uid
 				return nil, nil, nil, err
 			}
 			s := `INSERT INTO assessuser.t_practice_submissions (practice_id,student_id,exam_paper_id,creator,create_time,update_time,attempt) VALUES (
-					$1,$2,$3,$4,$5,$6,$7	
+					$1,$2,$3,$4,$5,$6,$7
 				  ) RETURNING id`
 			err = tx.QueryRow(ctx, s, pid, uid, p.ExamPaperID, uid, now, now, 1).Scan(&pSubmissionID)
 			if err != nil || forceErr == "pQuery2" {
@@ -981,3 +1436,202 @@ func EnterPracticeGetPaperDetails(ctx context.Context, tx pgx.Tx, pid int64, uid
 	return &epInfo, pg, pq, nil
 
 }
+
+// EnterPracticeWrongCollection 学生进入错题集详情 练习最近的一次练习提交做错的题目 有可能也是要获取这个当前已经作答过的记录的
+/*
+关键参数说明：
+	pid 练习唯一ID
+	uid 用户唯一ID（学生唯一ID）
+处理情况如下：
+	在同一个练习的前提下，学生每作答一次，就会生成一次新的错题集；
+	在同一个练习提交中的错题集，学生，每进入一次重新练习错题集，所做对的题目，都会从错题集中移除
+
+处理逻辑包括：
+	获取本次应该练习的错题集 生成一张错题卷子
+	更新练习提交记录的进入错题集的次数为n
+	生成本次练习题目对应的答卷，并将次数调整为n
+
+返回参数说明：
+	1、练习基本信息、试卷题目题组基本信息
+	2、考卷题组信息 以题组ID分组（利用哈希表快速查询题目所在题组）
+	3、根据题组ID分组的题目数组
+*/
+func EnterPracticeWrongCollection(ctx context.Context, tx pgx.Tx, pid, uid int64) (*EnterPracticeInfo, map[int64]*cmn.TExamPaperGroup, map[int64][]*examPaper.ExamQuestion, error) {
+	if pid <= 0 || uid <= 0 {
+		err := fmt.Errorf("invalid practiceID | uid param")
+		z.Error(err.Error())
+		return nil, nil, nil, err
+	}
+	// 用于测试，强制执行某些错误分支
+	forceErr, _ := ctx.Value("force-error").(string)
+	// 这里要先获取 ，并不需要获取了，直接查这个视图，获取里面的错题 但是需要进行参数检测，假设他没有错题的话，或者是此时都没有进行作答的话呢？那就不需要了
+	//所以需要先查询一下 practice_summary了，去看看是否已经提交了
+	s := `SELECT latest_submitted_id,latest_unsubmitted_id,pending_mark_id
+	 FROM assessuser.v_practice_summary 
+	 WHERE id = $1 AND student_id = $2`
+
+	var ps cmn.TVPracticeSummary
+	err := tx.QueryRow(ctx, s, pid, uid).Scan(&ps.LatestSubmittedID, &ps.LatestUnsubmittedID, &ps.PendingMarkID)
+	if err != nil || forceErr == "cQuery1" {
+		err = fmt.Errorf("查询学生练习记录信息失败：%v", err)
+		z.Error(err.Error())
+		return nil, nil, nil, err
+	}
+	// 进入这个分支就代表此时学生已经开启了一次新的练习提交记录了 因此不允许再次进入错题集
+	if ps.LatestSubmittedID.Int64 == 0 || ps.LatestUnsubmittedID.Int64 > 0 || ps.PendingMarkID.Int64 > 0 {
+		err = fmt.Errorf("请求学生错题集失败 , 此时学生拥有未提交或者待批改的练习记录或者没有提交过练习")
+		z.Error(err.Error())
+		return nil, nil, nil, err
+	}
+	// 这里如果存在了的话，那就是第一层，能够获取到的练习提交作答记录，从而能组成第一层视图的错题集
+	// 这需要再次检查这个错题集的提交记录，是否已经是已经批改的状态
+	s = `SELECT 
+    		pws.id AS wrong_submission_id,
+    		pws.attempt,
+    		pws.status AS wrong_status,
+		FROM t_practice_wrong_submissions pws
+		JOIN t_practice_submissions ps ON pws.practice_submission_id = ps.id
+		WHERE ps.student_id = $1 
+			AND ps.practice_id = $2
+			AND ps.status = $3
+			AND pws.status = ANY($4) -- 可作答、已提交
+		ORDER BY ps.attempt DESC, pws.attempt DESC
+		LIMIT 1
+     )`
+	var wsId, wsAttempt null.Int
+	var wsStatus null.String
+	haveEnterWrongPractice := false
+	err = tx.QueryRow(ctx, s, uid, pid, PracticeSubmissionStatus.Marked, []string{WrongSubmissionStatus.Submitted, WrongSubmissionStatus.Allow}).Scan(&wsId, &wsAttempt, &wsStatus)
+	if errors.Is(err, sql.ErrNoRows) {
+		// 如果都根本查询不到这个行，那就是这个学生没有进入过这个错题集的练习 ， 那此时应该从下面这个分支拿错题 ，那还有一种情况，那就是作答过，但是没有提交批改，此时还是从下面分支拿错题
+		haveEnterWrongPractice = false
+	} else if err != nil || forceErr == "cQuery2" {
+		err = fmt.Errorf("查询学生是否有作答错题集失败:%v", err)
+		z.Error(err.Error())
+		return nil, nil, nil, err
+	} else if wsStatus.String == WrongSubmissionStatus.Submitted {
+		// 这个分支代表的是 有过练习错题集的记录，但是还是没有提交，此时需要重新获取
+		haveEnterWrongPractice = false
+	} else {
+
+	}
+	// TODO 这个分支是去查询错题集中的学生作答错题的
+	if haveEnterWrongPractice {
+		//var pwc cmn.TVPracticeWrongCollection
+		// 然后这里面还是一样，需要先看看此时学生到底是处于什么状态去获取到这个错题集信息的，是继续作答呢？还是首次作答
+	} else {
+		// TODO 这个分支是去查询来自学生最新一次练习提交作答错题 这里是有这个LatestSubmittedID 就可以根据这个拿到对应的学生作答了 但是此时应该是 这里有
+		//var fwc cmn.TVZFirstWrongCollection
+
+		//s = `SELECT id , name,practice_submission_id,total_score,question_count,group_count,groups_data`
+
+	}
+
+	ecInfo, pg, pq, err := LoadErrorCollectionDetailsById(ctx, tx, pid, uid, false, false)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	epInfo := &EnterPracticeInfo{
+		PracticeSubmissionID: ps.LatestSubmittedID.Int64,
+		PaperName:            ecInfo.Name.String,
+		TotalScore:           ecInfo.TotalScore.Float64,
+		GroupCount:           ecInfo.GroupCount.Int64,
+		QuestionCount:        int64(ecInfo.QuestionCount.Float64),
+	}
+
+	// 构建前端需要的题组结构体
+	groupMap := make(map[int64]*cmn.TExamPaperGroup)
+	for _, g := range pg {
+		groupMap[g.ID.Int64] = g
+	}
+	return epInfo, groupMap, pq, nil
+}
+
+// LoadErrorCollectionDetailsById 获取错题集的试题 包括是否包含答案、解析等
+func LoadErrorCollectionDetailsById(ctx context.Context, tx pgx.Tx, pid, uid int64, withAnswers, withAnalysis bool) (*cmn.TVPracticeWrongCollection, []*cmn.TExamPaperGroup, map[int64][]*examPaper.ExamQuestion, error) {
+	var err error
+	if pid <= 0 || uid <= 0 {
+		err = fmt.Errorf("invalid pid or uid param")
+		z.Error(err.Error())
+		return nil, nil, nil, err
+	}
+	//查看是否需要返回mock的数据
+	forceErr, _ := ctx.Value("force-error").(string)
+	// 一张考卷卷拥有的题组map
+	var examGroups []*cmn.TExamPaperGroup
+	// 一个题组下拥有的题目数组
+	examQuestions := make(map[int64][]*examPaper.ExamQuestion)
+	var ec cmn.TVPracticeWrongCollection
+	s := `SELECT id,name,total_score,question_count,group_count,groups_data  FROM assessuser.v_practice_wrong_collection WHERE practice_id = $1 AND student_id = $2`
+	err = tx.QueryRow(ctx, s, pid, uid).Scan(&ec.ID, &ec.Name, &ec.TotalScore, &ec.QuestionCount, &ec.GroupCount, &ec.GroupsData)
+	if err != nil || forceErr == "cQuery1" {
+		err = fmt.Errorf("查询学生错题集信息失败：%v", err)
+		z.Error(err.Error())
+		return nil, nil, nil, err
+	}
+	var groupData []examPaper.ExamGroup
+	if forceErr == "json" {
+		ec.GroupsData = types.JSONText(`invalid json: missing closing brace`)
+	}
+	if forceErr == "jsonA" {
+		ec.GroupsData = types.JSONText(`[]`) // 空数组
+	}
+	err = json.Unmarshal(ec.GroupsData, &groupData)
+	if err != nil {
+		err = fmt.Errorf("unmarshal group data failed:%v", err)
+		z.Error(err.Error())
+		return nil, nil, nil, err
+	}
+	if len(groupData) == 0 {
+		err = fmt.Errorf("empty examPaper groups data")
+		z.Error(err.Error())
+		return nil, nil, nil, err
+	}
+	for _, v := range groupData {
+		examGroups = append(examGroups, &cmn.TExamPaperGroup{
+			ID:          v.ID,
+			ExamPaperID: v.ExamPaperID,
+			Name:        v.Name,
+			Order:       v.Order,
+			Creator:     v.Creator,
+			CreateTime:  v.CreateTime,
+			UpdatedBy:   v.UpdatedBy,
+			UpdateTime:  v.UpdateTime,
+			Addi:        v.Addi,
+			Status:      v.Status,
+		})
+		if _, exists := examQuestions[v.ID.Int64]; !exists {
+			examQuestions[v.ID.Int64] = make([]*examPaper.ExamQuestion, 0)
+		}
+		// 保留答案与解析
+		for idx := range v.Questions {
+			q := v.Questions[idx]
+			var answersSlice []interface{}
+			if len(q.Answers) > 0 {
+				if forceErr == "jsonB" {
+					q.Answers = types.JSONText(`invalid json: missing closing brace`)
+				}
+				if err = json.Unmarshal(q.Answers, &answersSlice); err != nil {
+					err = fmt.Errorf("failed to unmarshal Answers questionId:%v for:%v", q.ID.Int64, err)
+					z.Error(err.Error())
+					return nil, nil, nil, err
+				}
+			}
+			q.AnswerNum = len(answersSlice)
+			if !withAnalysis {
+				q.Analysis = null.String{}
+			}
+			if !withAnswers {
+				q.Answers = nil
+			}
+			examQuestions[v.ID.Int64] = append(examQuestions[v.ID.Int64], &q)
+		}
+	}
+	// 信息已经取出，直接清除
+	ec.GroupsData = nil
+	return &ec, examGroups, examQuestions, nil
+}
+
+// LoadErrorCollectionDetailsByUserId 这里是去获取最新一次错题集练习的作答记录的，此时需要这个wrong_attempt字段约束找到对应的学生作答
+func LoadErrorCollectionDetailsByUserId(ctx context.Context, tx pgx.Tx, pid, uid int64) {}

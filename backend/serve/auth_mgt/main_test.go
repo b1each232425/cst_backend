@@ -1,26 +1,17 @@
-package user_mgt
+package auth_mgt
 
 import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"net/http"
-	"net/http/httptest"
-	"net/url"
 	"os"
-	"strings"
 	"testing"
-	"time"
 
 	"github.com/pkg/errors"
-	w2wSrv "w2w.io/service"
-
 	"w2w.io/cmn"
 	"w2w.io/null"
+	w2wSrv "w2w.io/service"
 )
-
-// 确保MockRepo实现了Repo接口
-var _ Service = (*MockService)(nil)
 
 // TestMain 在测试开始前插入测试数据
 func TestMain(m *testing.M) {
@@ -125,116 +116,6 @@ func createTUser(db cmn.Queryer, r cmn.TUser) error {
 		return errors.Wrap(err, "failed to insert t_user")
 	}
 	return nil
-}
-
-// createMockContext 创建符合GetCtxValue要求的mock context
-func createMockContext(method, path string, queryParams url.Values, forceError string) context.Context {
-	// 创建mock HTTP请求
-	req := httptest.NewRequest(method, path, nil)
-	req.URL.RawQuery = queryParams.Encode()
-
-	// 创建mock HTTP响应
-	w := httptest.NewRecorder()
-
-	// 创建ServiceCtx
-	serviceCtx := &cmn.ServiceCtx{
-		R: req,
-		W: w,
-		Msg: &cmn.ReplyProto{
-			API:    path,
-			Method: method,
-		},
-		BeginTime: time.Now(),
-		Tag:       make(map[string]interface{}),
-		SysUser: &cmn.TUser{
-			ID: null.NewInt(54242, true), // 请求用户ID
-		},
-	}
-
-	ctx := context.WithValue(context.Background(), cmn.QNearKey, serviceCtx)
-
-	// 使用QNearKey将ServiceCtx设置到context中
-	return context.WithValue(ctx, "force-error", forceError)
-}
-
-// createMockContextWithoutUser 创建不包含用户信息的mock上下文（用于测试未登录状态）
-func createMockContextWithoutUser(method, path string, queryParams string, forceError string) context.Context {
-	// 创建mock HTTP请求
-	req := httptest.NewRequest(method, path, nil)
-	if queryParams != "" {
-		req.URL.RawQuery = queryParams
-	}
-
-	// 创建mock HTTP响应
-	w := httptest.NewRecorder()
-
-	// 创建ServiceCtx，但不设置SysUser字段
-	serviceCtx := &cmn.ServiceCtx{
-		R: req,
-		W: w,
-		Msg: &cmn.ReplyProto{
-			API:    path,
-			Method: method,
-		},
-		BeginTime: time.Now(),
-		Tag:       make(map[string]interface{}),
-		// SysUser 字段为nil，模拟未登录状态
-	}
-
-	ctx := context.WithValue(context.Background(), cmn.QNearKey, serviceCtx)
-
-	// 使用QNearKey将ServiceCtx设置到context中
-	return context.WithValue(ctx, "force-error", forceError)
-}
-
-// createMockContextWithBody 创建带有请求体数据的mock上下文
-// 参数data应该是有效的JSON字符串，将作为ReqProto的Data字段
-func createMockContextWithBody(method, path string, data string, forceError string) context.Context {
-	var req *http.Request
-
-	if data != "" {
-		// 创建ReqProto结构体，Data字段使用json.RawMessage类型
-		body := &cmn.ReqProto{
-			Data: json.RawMessage(data),
-		}
-
-		// 将请求体转换为JSON字符串
-		bodyBytes, err := json.Marshal(body)
-		if err != nil {
-			e := fmt.Sprintf("Failed to marshal request data: %v", err)
-			z.Fatal(e)
-		}
-
-		// 创建mock HTTP请求
-		req = httptest.NewRequest(method, path, strings.NewReader(string(bodyBytes)))
-	} else {
-		req = httptest.NewRequest(method, path, nil)
-	}
-
-	req.Header.Set("Content-Type", "application/json")
-
-	// 创建mock HTTP响应
-	w := httptest.NewRecorder()
-
-	// 创建ServiceCtx
-	serviceCtx := &cmn.ServiceCtx{
-		R: req,
-		W: w,
-		Msg: &cmn.ReplyProto{
-			API:    path,
-			Method: method,
-		},
-		BeginTime: time.Now(),
-		Tag:       make(map[string]interface{}),
-		SysUser: &cmn.TUser{
-			ID: null.NewInt(54242, true), // 请求用户ID
-		},
-	}
-
-	ctx := context.WithValue(context.Background(), cmn.QNearKey, serviceCtx)
-
-	// 使用QNearKey将ServiceCtx设置到context中
-	return context.WithValue(ctx, "force-error", forceError)
 }
 
 // convertMapToTUser 将map数据转换为TUser结构体
@@ -462,4 +343,17 @@ func convertMapToTUser(data map[string]interface{}) cmn.TUser {
 	}
 
 	return user
+}
+
+// createMockContext 创建符合GetCtxValue要求的mock context
+func createMockContext(sysUser cmn.TUser, forceError string) context.Context {
+	// 创建ServiceCtx
+	serviceCtx := &cmn.ServiceCtx{
+		SysUser: &sysUser,
+	}
+
+	ctx := context.WithValue(context.Background(), cmn.QNearKey, serviceCtx)
+
+	// 使用QNearKey将ServiceCtx设置到context中
+	return context.WithValue(ctx, "force-error", forceError)
 }

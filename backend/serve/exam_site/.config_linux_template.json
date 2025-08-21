@@ -19,17 +19,19 @@
     },
     "postgresql": {
       "addr": "postgres",
-      "db": "assessdb_p",
+      "db": "assessdb",
       "enable": true,
       "port": 6900,
       "pwd": "as142857",
-      "user": "assessuser"
+      "user": "assessuser",
+      "sslmode": "disable",
+      "pgpass": "/var/data/backup/export/.pgpass"
     },
     "redis": {
-      "addr": "redis",
+      "addr": "3min-redis",
       "init": false,
-      "cert": "QDD2S23SDVasdfQQDFAS23SDVasdfQWFAS5E262A29282628295E_7B7Ddasdfasdflc2Cvsdffffdfdazzxcvnm3Fasdf21235E262A2829_2B7C7D7BPOIUYTREWQ3ALKJHGFDSA3F3E3CMNBVCXZqwertyuiopasdfghjklzxcvbnm2C2F5B5D5C1234567890_3DadfdsdfWDFSwfdFSFA4023235E2628262A2829JHKljkL3ANM3C3EVBNMaEFesvrgwRTHDFGNBasdfWSVSDFSDVXCVXGDFGDFGSFWVFWFAS5E262A29282628295E_7B7Ddasdfasdflc2Cvsdffffdfdazzxcvnm3Fasdf21235E262A2829_2B7C7D7BPOIUYTREWQ3ALKJHGFDSA3F3E3CMNBVCXZqwertyuiopasdfghjklzxcvbnm2C2F5B5D5C1234567890_3DadfdsdfWDFSwfdFSFA4023235E2628372A2829JHKljkL3ANM3C3EVBNMaEFesvrgwRTHDFGNBasdfWSVSDFSV8XCVXGDFGDFGSFWVF",
-      "port": 6910
+      "cert": "QDFAS23SDVasdfQWFAS5E262A29282628295E_7B7Ddasdfasdflc2Cvsdffffdfdazzxcvnm3Fasdf21235E262A2829_2B7C7D7BPOIUYTREWQ3ALKJHGFDSA3F3E3CMNBVCXZqwertyuiopasdfghjklzxcvbnm2C2F5B5D5C1234567890_3DadfdsdfWDFSwfdFSFA4023235E2628262A2829JHKljkL3ANM3C3EVBNMaEFesvrgwRTHDFGNBasdfWSVSDFSDVXCVXGDFGDFGSFWVF",
+      "port": 6379
     }
   },
   "debug": {
@@ -58,12 +60,13 @@
     "multiFilesUpload": false,
     "arenaRoot": "/Users/kzz/KUser/goUser/src/kzz.io/f/trial/",
     "autoCert": false,
-    "home": "/var/deploy/i3l/f",
-    "feDocRoot": "/var/deploy/i3l/f",
-    "fileStorePath": "/var/deploy/i3l/uploadFiles",
+    "home": "/var/deploy/devmentor/fe",
+    "feDocRoot": "/var/deploy/devmentor/f",
+    "fileStorePath": "/var/prj/be/assess/backend/data/tmp",
+    "fileServeEP": "/api/file",
     "hostVerifyRoot": "/Users/kzz/KUser/goUser/src/kzz.io/f/hostVerifyRoot/",
     "hostWhiteList": "qnear.cn,www.qnear.cn,api.qnear.cn,ci.qnear.cn,f.qnear.cn,m.qnear.cn",
-    "httpListenPort": 6612,
+    "httpListenPort": 6610,
     "httpsListenPort": 6442,
     "index": "/Users/kzz/kUser/jsUser/abilityIdx/dist/index.html",
     "maxUploadFileSize": 2097152,
@@ -88,23 +91,18 @@
     }
   },
   "ocr": {
-    "apiHost": "app_model:6268",
+    "apiHost": "127.0.0.1:6268",
     "ocrApiPath": "/api/idCardRecognition"
-  },
-  "timeSync":{
-    "timeSyncInterval":5000,
-    "poolInitialSize":100
   },
   "examSiteServerSync":{
     "sysUser": "1622",
     "accessToken": "cst4Ever",
-    "centralServerUrl": "",
+    "centralServerUrl": "http://localhost:6610",
     "centralServerSSH": {
       "user": "root",
-      "host": "localhost",
+      "host": "devserver",
       "port": 22
     },
-    "timeout":  1800,
-    "maxRetry": 3
+    "timeout":  1800
   }
 }

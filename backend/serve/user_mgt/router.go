@@ -5,6 +5,7 @@ package user_mgt
 
 import (
 	"encoding/json"
+
 	"go.uber.org/zap"
 	"w2w.io/cmn"
 )
@@ -14,6 +15,7 @@ var z *zap.Logger
 const (
 	AccountLength = 12          // 账号长度
 	InitialPwd    = "abc123456" // 初始密码
+	DefaultRegion = "CN"        // 默认地区
 )
 
 func init() {

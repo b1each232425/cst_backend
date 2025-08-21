@@ -3,7 +3,7 @@
  * @Description: 练习管理所需模型
  * @Date: 2025-07-15 19:59:25
  * @LastEditors: zdl <1311866870@qq.com>
- * @LastEditTime: 2025-08-01 16:25:45
+ * @LastEditTime: 2025-08-20 10:29:20
  */
 package practice_mgt
 
@@ -36,13 +36,31 @@ var PracticeDifficulty = struct {
 
 // PracticeSubmissionStatus 练习状态
 var PracticeSubmissionStatus = struct {
-	Allow   string // 允许作答 00
-	Forbid  string // 不允许作答 02
-	Deleted string // 删除 04
+	Allow     string // 允许作答 00
+	Forbid    string // 不允许作答 02
+	Deleted   string // 删除 04
+	Submitted string // 已提交 06
+	Marked    string // 已批改出分 08
+	Disabled  string // 作废状态 10
 }{
-	Allow:   "00",
-	Forbid:  "02",
-	Deleted: "04",
+	Allow:     "00",
+	Forbid:    "02",
+	Deleted:   "04",
+	Submitted: "06",
+	Marked:    "08",
+	Disabled:  "10",
+}
+
+var WrongSubmissionStatus = struct {
+	Allow     string // 允许作答 00
+	Forbid    string // 不允许作答 02
+	Submitted string // 已提交 04
+	Deleted   string // 已删除 06
+}{
+	Allow:     "00",
+	Forbid:    "02",
+	Submitted: "04",
+	Deleted:   "06",
 }
 
 var StudentSubmissionStatus = struct {
@@ -60,10 +78,12 @@ var PracticeStatus = struct {
 	PendingRelease string // 未发布 00
 	Released       string // 已发布 02
 	Deleted        string // 已删除 04
+	Disabled       string // 已作废 06
 }{
 	PendingRelease: "00",
 	Released:       "02",
 	Deleted:        "04",
+	Disabled:       "06",
 }
 
 // MarkMode 练习批改模式
@@ -104,7 +124,7 @@ type practiceInfo struct {
 
 type practiceStudent struct {
 	Pid     int64   `json:"practice_id" validate:"required,gt=0"`
-	Student []int64 `json:"student" validate:"required,min=1,dive,gt=0"`
+	Student []int64 `json:"student" `
 }
 
 type EnterPracticeInfo struct {

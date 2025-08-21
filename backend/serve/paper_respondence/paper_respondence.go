@@ -543,7 +543,7 @@ func InitRespondent(ctx context.Context) {
 			return
 		}
 		//获取场次信息
-		examSessions, err := exam_mgt.GetExamSessions(dmlCtx, u.ExamId, role.String)
+		examSessions, err := exam_mgt.GetExamSessions(dmlCtx, role.String, u.ExamId)
 		if forceErr == "get sessions err" {
 			err = errors.New("get sessions err")
 		}
@@ -559,7 +559,14 @@ func InitRespondent(ctx context.Context) {
 			q.RespErr()
 			return
 		}
-
+		// 有值说明是已经提交了的
+		if examineeInfo.ExamineeEndTime.Valid {
+			err := fmt.Errorf("当前已经提交作答，作答结束")
+			z.Error(err.Error(), zap.Int64("examinee id", examineeInfo.ID.Int64))
+			q.Err = err
+			q.RespErr()
+			return
+		}
 		//如果是监考员设置了学生可以进入考试的话，就不需要检查条件
 		if examineeInfo.ExamineeStatus.String != CanBeEnterStatus {
 			// 查考当前是否符合条件去初始化
@@ -570,6 +577,7 @@ func InitRespondent(ctx context.Context) {
 				return
 			}
 		}
+
 		u.ExamineeID = examineeInfo.ID.Int64
 
 		//保存开始时间
@@ -1360,8 +1368,8 @@ func checkExamCondition(ctx context.Context, examSession, studentID int64, tx pg
 		if examineeInfo.ExamineeStatus.String == CanBeEnterStatus || examineeInfo.ExamineeStartTime.Valid {
 			return ExamCanBeEnter, nil
 		}
-		//线上需要查考最迟进入时间
-		if now.UnixMilli() > examineeInfo.AllowEntryTime.Int64 && examineeInfo.Mode.String == ExamModeOnline {
+		//线上需要查考最迟进入时间，如果当前时间超过最迟进入时间并且为固定考试模式以及线上考试，才能返回LateEntryTimeArrived
+		if now.UnixMilli() > examineeInfo.AllowEntryTime.Int64 && examineeInfo.PeriodMode.String == ExamTypeFixed && examineeInfo.Mode.String == ExamModeOnline {
 			return LateEntryTimeArrived, nil
 		}
 		return ExamCanBeEnter, nil

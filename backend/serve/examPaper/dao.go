@@ -3,7 +3,7 @@
  * @Description: 考卷-答卷数据库层
  * @Date: 2025-07-21 13:14:34
  * @LastEditors: zdl <1311866870@qq.com>
- * @LastEditTime: 2025-08-08 08:35:41
+ * @LastEditTime: 2025-08-20 13:45:31
  */
 package examPaper
 
@@ -23,7 +23,7 @@ import (
 // LoadExamPaperDetailsById 获取完整考卷信息（包括试卷信息、题组信息、题目信息） 支持根据参数的传入决定是否需要查询题组题目、去除答案等 用于生成与绑定学生答卷
 /*
 关键参数说明：
-	epid 考卷Id
+	examPaperId 考卷Id
 	withQuestions 是否查询题组及题目信息 对应返回体[]*cmn.TExamPaperGroup、map[int64][]*ExamQuestion
 	withAnswers 题目是否需要携带答案
 	withAnalysis 题目是否需要携带解析
@@ -33,9 +33,9 @@ import (
 	3、考卷题目信息
 	4、可能返回的错误
 */
-func LoadExamPaperDetailsById(ctx context.Context, tx pgx.Tx, epid int64, withQuestions, withAnswers, withAnalysis bool) (*cmn.TVExamPaper, []*cmn.TExamPaperGroup, map[int64][]*ExamQuestion, error) {
+func LoadExamPaperDetailsById(ctx context.Context, tx pgx.Tx, examPaperId int64, withQuestions, withAnswers, withAnalysis bool) (*cmn.TVExamPaper, []*cmn.TExamPaperGroup, map[int64][]*ExamQuestion, error) {
 	var err error
-	if epid <= 0 {
+	if examPaperId <= 0 {
 		err = fmt.Errorf("invalid examPaper ID param")
 		z.Error(err.Error())
 		return nil, nil, nil, err
@@ -61,7 +61,7 @@ func LoadExamPaperDetailsById(ctx context.Context, tx pgx.Tx, epid int64, withQu
 	}
 	s := fmt.Sprintf("SELECT %s FROM v_exam_paper WHERE id=$1 AND status=$2", strings.Join(fields, ","))
 	z.Sugar().Debugf("打印输出sql查询语句：%v", s)
-	err = tx.QueryRow(ctx, s, epid, PaperStatus.Normal).Scan(scanArgs...)
+	err = tx.QueryRow(ctx, s, examPaperId, PaperStatus.Normal).Scan(scanArgs...)
 	if err != nil {
 		err = fmt.Errorf("select examPaper failed:%v", err)
 		z.Error(err.Error())
@@ -319,6 +319,11 @@ func LoadPaperTemplateById(ctx context.Context, paperId int64, withQuestions boo
 		// 安全追加题目（避免指针重用）
 		for idx := range v.Questions {
 			q := v.Questions[idx] // 创建副本
+			answerNum := 0
+			if q.SubScore != nil && len(q.SubScore) > 0 {
+				answerNum = len(q.SubScore)
+			}
+			q.AnswerNum = answerNum
 			questions[v.ID.Int64] = append(questions[v.ID.Int64], &q)
 		}
 	}
@@ -772,7 +777,6 @@ func LoadExamPaperDetailByUserId(ctx context.Context, tx pgx.Tx, examPaperId, pS
 	s = `SELECT 
 			sa.question_id,
 			sa."order",
-			sa.group_id,
 			CASE WHEN $2 THEN sa.answer ELSE NULL END AS answer,
         	CASE WHEN $3 THEN sa.answer_score ELSE NULL END AS answer_score,
             CASE WHEN $4 THEN 
@@ -808,7 +812,7 @@ func LoadExamPaperDetailByUserId(ctx context.Context, tx pgx.Tx, examPaperId, pS
 	for rows.Next() {
 		var a cmn.TStudentAnswers
 		// 将属于这个学生的真正题目、学生作答等信息获取出来，解析在答卷结构体中，最后经过循环遍历，嵌入成一个完整的题目
-		err = rows.Scan(&a.QuestionID, &a.Order, &a.GroupID, &a.Answer, &a.AnswerScore, &a.ActualAnswers, &a.ActualOptions)
+		err = rows.Scan(&a.QuestionID, &a.Order, &a.Answer, &a.AnswerScore, &a.ActualAnswers, &a.ActualOptions)
 		if err != nil || forceErr == "scan" {
 			err = fmt.Errorf("scan student answer failed:%v", err)
 			z.Error(err.Error())
@@ -846,7 +850,6 @@ func LoadExamPaperDetailByUserId(ctx context.Context, tx pgx.Tx, examPaperId, pS
 			z.Error(err.Error())
 			return nil, nil, nil, err
 		}
-		tq.GroupID = sa.GroupID
 		// 赋值学生作答情况
 		tq.StudentAnswer = sa.Answer
 		tq.StudentScore = sa.AnswerScore
@@ -865,4 +868,45 @@ func LoadExamPaperDetailByUserId(ctx context.Context, tx pgx.Tx, examPaperId, pS
 		groupMap[g.ID.Int64] = g
 	}
 	return p, groupMap, pq, nil
+}
+
+// DeleteExamPaperById 物理删除孤数据：考卷、考卷题组、考卷题目、学生答题情况 ： 使用级联删除 待测试
+/*
+ */
+func DeleteExamPaperById(ctx context.Context, tx pgx.Tx, examSessionIDs, practiceIDs []int64) error {
+	var err error
+	forceErr, _ := ctx.Value("force-error").(string)
+	if len(examSessionIDs) == 0 && len(practiceIDs) == 0 {
+		err = fmt.Errorf("invalid examSessionIDs or practiceIDs param")
+		z.Error(err.Error())
+		return err
+	}
+	invalidIDs := []int64{}
+	// 这里有一个非法的名单，然后需要返回给前端
+	for _, s := range examSessionIDs {
+		// 这里如果
+		if s <= 0 {
+			invalidIDs = append(invalidIDs, s)
+		}
+	}
+	for _, p := range practiceIDs {
+		// 这里如果
+		if p <= 0 {
+			invalidIDs = append(invalidIDs, p)
+		}
+	}
+
+	if len(invalidIDs) != 0 {
+		err = fmt.Errorf("要删除的考试场次或者练习考卷信息的ID非法 错误如下：%v", invalidIDs)
+		z.Error(err.Error())
+		return err
+	}
+	s := `DELETE FROM t_exam_paper WHERE exam_session_id = ANY($1) OR practice_id = ANY($2)`
+	_, err = tx.Exec(ctx, s, examSessionIDs, practiceIDs)
+	if err != nil || forceErr == "delete" {
+		err = fmt.Errorf("级联删除对应考试场次与练习考卷、学生答卷数据失败：%v", err)
+		z.Error(err.Error())
+		return err
+	}
+	return nil
 }
