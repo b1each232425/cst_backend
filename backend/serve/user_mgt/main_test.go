@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gorilla/sessions"
 	"github.com/pkg/errors"
 	w2wSrv "w2w.io/service"
 
@@ -462,4 +463,55 @@ func convertMapToTUser(data map[string]interface{}) cmn.TUser {
 	}
 
 	return user
+}
+
+// createMockContextWithCookies 创建带有cookies的mock context，专门用于测试退出登录功能
+// sessionValue 参数用于设置 qNearSessions cookie 的值
+func createMockContextWithCookies(method, path string, queryParams url.Values, sessionValue string, forceError string) context.Context {
+	// 创建mock HTTP请求
+	req := httptest.NewRequest(method, path, nil)
+	req.URL.RawQuery = queryParams.Encode()
+
+	// 创建mock HTTP响应
+	w := httptest.NewRecorder()
+
+	// 创建 gorilla/sessions store 和 session 实例
+	store := sessions.NewCookieStore([]byte("test-secret-key"))
+	session, err := store.Get(req, "qNearSessions")
+	if err != nil {
+		// 如果获取失败，创建一个新的 session
+		session = sessions.NewSession(store, "qNearSessions")
+		session.IsNew = true
+	}
+
+	// 如果提供了 sessionValue，设置到 session 中
+	if sessionValue != "" {
+		// 模拟一些常见的 session 值
+		session.Values["ID"] = int64(54242)
+		session.Values["Account"] = "test-user"
+		session.Values["Authenticated"] = true
+		session.Values["sessionData"] = sessionValue
+		session.IsNew = false
+	}
+
+	// 创建ServiceCtx
+	serviceCtx := &cmn.ServiceCtx{
+		R:       req,
+		W:       w,
+		Session: session, // 设置真正的 gorilla/sessions 实例
+		Msg: &cmn.ReplyProto{
+			API:    path,
+			Method: method,
+		},
+		BeginTime: time.Now(),
+		Tag:       make(map[string]interface{}),
+		SysUser: &cmn.TUser{
+			ID: null.NewInt(54242, true), // 请求用户ID
+		},
+	}
+
+	ctx := context.WithValue(context.Background(), cmn.QNearKey, serviceCtx)
+
+	// 使用QNearKey将ServiceCtx设置到context中
+	return context.WithValue(ctx, "force-error", forceError)
 }
