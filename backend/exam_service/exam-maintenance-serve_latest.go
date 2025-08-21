@@ -3,7 +3,6 @@ package exam_service
 import (
 	"context"
 	"fmt"
-	"os"
 	"sync"
 	"time"
 
@@ -740,100 +739,6 @@ func handleExamSessionEnd(ctx context.Context, event ExamEvent) error {
 	return nil
 }
 
-func handleDeleteExamFile(ctx context.Context, fileID int64, fileCount int64) error {
-	z.Info("---->" + cmn.FncName())
-
-	forceErr := ""
-	if val := ctx.Value("force-error"); val != nil {
-		forceErr = val.(string)
-	}
-
-	conn := cmn.GetPgxConn()
-
-	// 查看数据库中记录的该文件ID的信息
-	var count int64
-	var digest, filePath string
-	err := conn.QueryRow(ctx, "SELECT count, digest, path FROM t_file WHERE id = $1", fileID).Scan(
-		&count, &digest, &filePath)
-	if forceErr == "handleDeleteExamFile.tx.QueryRow" {
-		err = fmt.Errorf("强制查询文件信息错误")
-	}
-	if err != nil {
-		z.Error(err.Error())
-		return err
-	}
-
-	if count > fileCount {
-		// 减少引用计数
-		_, err = conn.Exec(ctx, "UPDATE t_file SET count = count - $1 WHERE id = $2", fileCount, fileID)
-		if forceErr == "handleDeleteExamFile.tx.UpdateCount" {
-			err = fmt.Errorf("强制更新文件引用计数错误")
-		}
-		if err != nil {
-			z.Error(err.Error())
-			return err
-		}
-		return nil
-	}
-
-	// count <= fileCount，删除该行
-	_, err = conn.Exec(ctx, "DELETE FROM t_file WHERE id = $1", fileID)
-	if forceErr == "handleDeleteExamFile.tx.DeleteFile" {
-		err = fmt.Errorf("强制删除文件记录错误")
-	}
-	if err != nil {
-		z.Error(err.Error())
-		return err
-	}
-
-	// 检查是否还有其他相同digest的文件
-	var digestCount int
-	err = conn.QueryRow(ctx, "SELECT COUNT(*) FROM t_file WHERE digest = $1", digest).Scan(&digestCount)
-	if forceErr == "handleDeleteExamFile.tx.CountDigest" {
-		err = fmt.Errorf("强制统计相同digest文件错误")
-	}
-	if err != nil {
-		z.Error(err.Error())
-		return err
-	}
-
-	// 如果没有其他相同digest的文件记录，从文件系统删除该文件
-	if digestCount == 0 {
-		var infoFilePath string
-		infoFilePath = filePath + ".info"
-
-		err := os.Remove(filePath)
-		if forceErr == "handleDeleteExamFile.deleteFileFromFilesystem" {
-			err = fmt.Errorf("强制从文件系统删除文件错误")
-		}
-		if err != nil {
-			if os.IsNotExist(err) {
-				z.Info(fmt.Sprintf("要删除的文件不存在: %s, digest: %s", filePath, digest))
-			} else {
-				z.Error(fmt.Sprintf("从文件系统删除文件失败: %s, digest: %s, error: %v",
-					filePath, digest, err))
-				return err
-			}
-		}
-
-		err = os.Remove(infoFilePath)
-		if forceErr == "handleDeleteExamFile.deleteInfoFileFromFilesystem" {
-			err = fmt.Errorf("强制从文件系统删除.info文件错误")
-		}
-		if err != nil {
-			if os.IsNotExist(err) {
-				z.Warn(fmt.Sprintf("要删除的.info文件不存在: %s, digest: %s", infoFilePath, digest))
-			} else {
-				z.Error(fmt.Sprintf("从文件系统删除.info文件失败: %s, digest: %s, error: %v",
-					infoFilePath, digest, err))
-				return err
-			}
-		}
-	}
-
-	return nil
-}
-
 func cleanupTempExams(ctx context.Context) error {
 	z.Info("---->" + cmn.FncName())
 
@@ -867,7 +772,7 @@ func cleanupTempExams(ctx context.Context) error {
 	}
 
 	// 统计文件ID出现次数
-	fileCountMap := make(map[int64]int64)
+	var allFileIDs []int64
 	var examsDeleted int64 = 0
 
 	for rows.Next() {
@@ -885,14 +790,12 @@ func cleanupTempExams(ctx context.Context) error {
 		examsDeleted++
 
 		// 统计每个文件ID的出现次数
-		for _, fileID := range files {
-			fileCountMap[fileID]++
-		}
+		allFileIDs = append(allFileIDs, files...)
 	}
 
 	// 处理文件删除
-	for fileID, count := range fileCountMap {
-		err := handleDeleteExamFile(ctx, fileID, count)
+	for _, fileID := range allFileIDs {
+		err := cmn.DeleteFileRecord(ctx, nil, fileID)
 		if forceErr == "handleDeleteExamFile" {
 			err = fmt.Errorf("强制处理删除考试文件错误")
 		}
