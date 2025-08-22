@@ -1355,10 +1355,10 @@ func EnterPracticeGetPaperDetails(ctx context.Context, tx pgx.Tx, pid int64, uid
 				return nil, nil, nil, err
 			}
 			newAttempt := ps.AttemptCount.Int64 + 1
-			s := `INSERT INTO assessuser.t_practice_submissions (practice_id,student_id,exam_paper_id,creator,create_time,update_time,attempt,wrong_attempt) VALUES (
-			$1,$2,$3,$4,$5,$6,$7,$8	
+			s := `INSERT INTO assessuser.t_practice_submissions (practice_id,student_id,exam_paper_id,creator,create_time,update_time,attempt) VALUES (
+			$1,$2,$3,$4,$5,$6,$7
 		) RETURNING id`
-			err = tx.QueryRow(ctx, s, pid, uid, ps.ExamPaperID, uid, now, now, newAttempt, 0).Scan(&pSubmissionID)
+			err = tx.QueryRow(ctx, s, pid, uid, ps.ExamPaperID, uid, now, now, newAttempt).Scan(&pSubmissionID)
 			if err != nil || forceErr == "pQuery1" {
 				err = fmt.Errorf("新增一个学生二次练习作答记录失败:%v", err)
 				z.Error(err.Error())
@@ -1390,10 +1390,10 @@ func EnterPracticeGetPaperDetails(ctx context.Context, tx pgx.Tx, pid int64, uid
 			if err != nil {
 				return nil, nil, nil, err
 			}
-			s := `INSERT INTO assessuser.t_practice_submissions (practice_id,student_id,exam_paper_id,creator,create_time,update_time,attempt,wrong_attempt) VALUES (
-					$1,$2,$3,$4,$5,$6,$7,$8	
+			s := `INSERT INTO assessuser.t_practice_submissions (practice_id,student_id,exam_paper_id,creator,create_time,update_time,attempt) VALUES (
+					$1,$2,$3,$4,$5,$6,$7
 				  ) RETURNING id`
-			err = tx.QueryRow(ctx, s, pid, uid, p.ExamPaperID, uid, now, now, 1, 0).Scan(&pSubmissionID)
+			err = tx.QueryRow(ctx, s, pid, uid, p.ExamPaperID, uid, now, now, 1).Scan(&pSubmissionID)
 			if err != nil || forceErr == "pQuery2" {
 				err = fmt.Errorf("初始化一个学生练习作答记录失败:%v", err)
 				z.Error(err.Error())
@@ -1437,7 +1437,7 @@ func EnterPracticeGetPaperDetails(ctx context.Context, tx pgx.Tx, pid int64, uid
 
 }
 
-// EnterPracticeWrongCollection 学生进入错题集详情 练习最近的一次练习提交做错的题目
+// EnterPracticeWrongCollection 学生进入错题集详情 练习最近的一次练习提交做错的题目 有可能也是要获取这个当前已经作答过的记录的
 /*
 关键参数说明：
 	pid 练习唯一ID
@@ -1466,33 +1466,90 @@ func EnterPracticeWrongCollection(ctx context.Context, tx pgx.Tx, pid, uid int64
 	forceErr, _ := ctx.Value("force-error").(string)
 	// 这里要先获取 ，并不需要获取了，直接查这个视图，获取里面的错题 但是需要进行参数检测，假设他没有错题的话，或者是此时都没有进行作答的话呢？那就不需要了
 	//所以需要先查询一下 practice_summary了，去看看是否已经提交了
-	s := `SELECT latest_unsubmitted_id,pending_mark_id
+	s := `SELECT latest_submitted_id,latest_unsubmitted_id,pending_mark_id
 	 FROM assessuser.v_practice_summary 
 	 WHERE id = $1 AND student_id = $2`
 
 	var ps cmn.TVPracticeSummary
-	err := tx.QueryRow(ctx, s, pid, uid).Scan(&ps.LatestUnsubmittedID, &ps.PendingMarkID)
+	err := tx.QueryRow(ctx, s, pid, uid).Scan(&ps.LatestSubmittedID, &ps.LatestUnsubmittedID, &ps.PendingMarkID)
 	if err != nil || forceErr == "cQuery1" {
 		err = fmt.Errorf("查询学生练习记录信息失败：%v", err)
 		z.Error(err.Error())
 		return nil, nil, nil, err
 	}
-
-	if ps.LatestUnsubmittedID.Int64 > 0 || ps.PendingMarkID.Int64 > 0 {
-		// 这里就不能让他进入错题集
-		err = fmt.Errorf("数据错误！此时无法操作查询学生错题集")
+	// 进入这个分支就代表此时学生已经开启了一次新的练习提交记录了 因此不允许再次进入错题集
+	if ps.LatestSubmittedID.Int64 == 0 || ps.LatestUnsubmittedID.Int64 > 0 || ps.PendingMarkID.Int64 > 0 {
+		err = fmt.Errorf("请求学生错题集失败 , 此时学生拥有未提交或者待批改的练习记录或者没有提交过练习")
 		z.Error(err.Error())
 		return nil, nil, nil, err
 	}
+	// 这里如果存在了的话，那就是第一层，能够获取到的练习提交作答记录，从而能组成第一层视图的错题集
+	// 这需要再次检查这个错题集的提交记录，是否已经是已经批改的状态
+	s = `SELECT 
+    		pws.id AS wrong_submission_id,
+    		pws.attempt,
+    		pws.status AS wrong_status,
+		FROM t_practice_wrong_submissions pws
+		JOIN t_practice_submissions ps ON pws.practice_submission_id = ps.id
+		WHERE ps.student_id = $1 
+			AND ps.practice_id = $2
+			AND ps.status = $3
+			AND pws.status = ANY($4) -- 可作答、已提交
+		ORDER BY ps.attempt DESC, pws.attempt DESC
+		LIMIT 1
+     )`
+	var wsId, wsAttempt null.Int
+	var wsStatus null.String
+	haveEnterWrongPractice := false
+	err = tx.QueryRow(ctx, s, uid, pid, PracticeSubmissionStatus.Marked, []string{WrongSubmissionStatus.Submitted, WrongSubmissionStatus.Allow}).Scan(&wsId, &wsAttempt, &wsStatus)
+	if errors.Is(err, sql.ErrNoRows) {
+		// 如果都根本查询不到这个行，那就是这个学生没有进入过这个错题集的练习 ， 那此时应该从下面这个分支拿错题 ，那还有一种情况，那就是作答过，但是没有提交批改，此时还是从下面分支拿错题
+		haveEnterWrongPractice = false
+	} else if err != nil || forceErr == "cQuery2" {
+		err = fmt.Errorf("查询学生是否有作答错题集失败:%v", err)
+		z.Error(err.Error())
+		return nil, nil, nil, err
+	} else if wsStatus.String == WrongSubmissionStatus.Submitted {
+		// 这个分支代表的是 有过练习错题集的记录，但是还是没有提交，此时需要重新获取
+		haveEnterWrongPractice = false
+	} else {
 
-	//TODO 查询错题集试题 但不携带答案与解析
-	return nil, nil, nil, nil
+	}
+	// TODO 这个分支是去查询错题集中的学生作答错题的
+	if haveEnterWrongPractice {
+		//var pwc cmn.TVPracticeWrongCollection
+		// 然后这里面还是一样，需要先看看此时学生到底是处于什么状态去获取到这个错题集信息的，是继续作答呢？还是首次作答
+	} else {
+		// TODO 这个分支是去查询来自学生最新一次练习提交作答错题 这里是有这个LatestSubmittedID 就可以根据这个拿到对应的学生作答了 但是此时应该是 这里有
+		//var fwc cmn.TVZFirstWrongCollection
+
+		//s = `SELECT id , name,practice_submission_id,total_score,question_count,group_count,groups_data`
+
+	}
+
+	ecInfo, pg, pq, err := LoadErrorCollectionDetailsById(ctx, tx, pid, uid, false, false)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	epInfo := &EnterPracticeInfo{
+		PracticeSubmissionID: ps.LatestSubmittedID.Int64,
+		PaperName:            ecInfo.Name.String,
+		TotalScore:           ecInfo.TotalScore.Float64,
+		GroupCount:           ecInfo.GroupCount.Int64,
+		QuestionCount:        int64(ecInfo.QuestionCount.Float64),
+	}
+
+	// 构建前端需要的题组结构体
+	groupMap := make(map[int64]*cmn.TExamPaperGroup)
+	for _, g := range pg {
+		groupMap[g.ID.Int64] = g
+	}
+	return epInfo, groupMap, pq, nil
 }
 
-//TODO 完善查询错题集视图的语句 控制可用范围
-
 // LoadErrorCollectionDetailsById 获取错题集的试题 包括是否包含答案、解析等
-func LoadErrorCollectionDetailsById(ctx context.Context, tx pgx.Tx, pid, uid int64, withQuestions, withAnswers, withAnalysis bool) (*cmn.TVExamPaper, []*cmn.TExamPaperGroup, map[int64][]*examPaper.ExamQuestion, error) {
+func LoadErrorCollectionDetailsById(ctx context.Context, tx pgx.Tx, pid, uid int64, withAnswers, withAnalysis bool) (*cmn.TVPracticeWrongCollection, []*cmn.TExamPaperGroup, map[int64][]*examPaper.ExamQuestion, error) {
 	var err error
 	if pid <= 0 || uid <= 0 {
 		err = fmt.Errorf("invalid pid or uid param")
@@ -1505,26 +1562,22 @@ func LoadErrorCollectionDetailsById(ctx context.Context, tx pgx.Tx, pid, uid int
 	var examGroups []*cmn.TExamPaperGroup
 	// 一个题组下拥有的题目数组
 	examQuestions := make(map[int64][]*examPaper.ExamQuestion)
-	var ep cmn.TVExamPaper
 	var ec cmn.TVPracticeWrongCollection
 	s := `SELECT id,name,total_score,question_count,group_count,groups_data  FROM assessuser.v_practice_wrong_collection WHERE practice_id = $1 AND student_id = $2`
 	err = tx.QueryRow(ctx, s, pid, uid).Scan(&ec.ID, &ec.Name, &ec.TotalScore, &ec.QuestionCount, &ec.GroupCount, &ec.GroupsData)
-	if err != nil || forceErr == "cQuery2" {
+	if err != nil || forceErr == "cQuery1" {
 		err = fmt.Errorf("查询学生错题集信息失败：%v", err)
 		z.Error(err.Error())
 		return nil, nil, nil, err
 	}
-	if !withQuestions || len(ep.GroupsData) == 0 {
-		return &ep, nil, nil, nil
-	}
 	var groupData []examPaper.ExamGroup
 	if forceErr == "json" {
-		ep.GroupsData = types.JSONText(`invalid json: missing closing brace`)
+		ec.GroupsData = types.JSONText(`invalid json: missing closing brace`)
 	}
 	if forceErr == "jsonA" {
-		ep.GroupsData = types.JSONText(`[]`) // 空数组
+		ec.GroupsData = types.JSONText(`[]`) // 空数组
 	}
-	err = json.Unmarshal(ep.GroupsData, &groupData)
+	err = json.Unmarshal(ec.GroupsData, &groupData)
 	if err != nil {
 		err = fmt.Errorf("unmarshal group data failed:%v", err)
 		z.Error(err.Error())
@@ -1533,7 +1586,7 @@ func LoadErrorCollectionDetailsById(ctx context.Context, tx pgx.Tx, pid, uid int
 	if len(groupData) == 0 {
 		err = fmt.Errorf("empty examPaper groups data")
 		z.Error(err.Error())
-		return &ep, nil, nil, err
+		return nil, nil, nil, err
 	}
 	for _, v := range groupData {
 		examGroups = append(examGroups, &cmn.TExamPaperGroup{
@@ -1562,7 +1615,7 @@ func LoadErrorCollectionDetailsById(ctx context.Context, tx pgx.Tx, pid, uid int
 				if err = json.Unmarshal(q.Answers, &answersSlice); err != nil {
 					err = fmt.Errorf("failed to unmarshal Answers questionId:%v for:%v", q.ID.Int64, err)
 					z.Error(err.Error())
-					return &ep, nil, nil, err
+					return nil, nil, nil, err
 				}
 			}
 			q.AnswerNum = len(answersSlice)
@@ -1576,6 +1629,9 @@ func LoadErrorCollectionDetailsById(ctx context.Context, tx pgx.Tx, pid, uid int
 		}
 	}
 	// 信息已经取出，直接清除
-	ep.GroupsData = nil
-	return &ep, examGroups, examQuestions, nil
+	ec.GroupsData = nil
+	return &ec, examGroups, examQuestions, nil
 }
+
+// LoadErrorCollectionDetailsByUserId 这里是去获取最新一次错题集练习的作答记录的，此时需要这个wrong_attempt字段约束找到对应的学生作答
+func LoadErrorCollectionDetailsByUserId(ctx context.Context, tx pgx.Tx, pid, uid int64) {}

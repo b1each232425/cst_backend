@@ -3,7 +3,7 @@
  * @Description: 练习管理所需模型
  * @Date: 2025-07-15 19:59:25
  * @LastEditors: zdl <1311866870@qq.com>
- * @LastEditTime: 2025-08-14 20:28:08
+ * @LastEditTime: 2025-08-20 10:29:20
  */
 package practice_mgt
 
@@ -49,6 +49,18 @@ var PracticeSubmissionStatus = struct {
 	Submitted: "06",
 	Marked:    "08",
 	Disabled:  "10",
+}
+
+var WrongSubmissionStatus = struct {
+	Allow     string // 允许作答 00
+	Forbid    string // 不允许作答 02
+	Submitted string // 已提交 04
+	Deleted   string // 已删除 06
+}{
+	Allow:     "00",
+	Forbid:    "02",
+	Submitted: "04",
+	Deleted:   "06",
 }
 
 var StudentSubmissionStatus = struct {
@@ -112,7 +124,7 @@ type practiceInfo struct {
 
 type practiceStudent struct {
 	Pid     int64   `json:"practice_id" validate:"required,gt=0"`
-	Student []int64 `json:"student" validate:"required,min=1,dive,gt=0"`
+	Student []int64 `json:"student" `
 }
 
 type EnterPracticeInfo struct {

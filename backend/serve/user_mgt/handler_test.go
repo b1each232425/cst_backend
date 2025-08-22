@@ -1955,3 +1955,152 @@ func Test_handler_HandleSelectLoginDomain(t *testing.T) {
 		})
 	}
 }
+
+// Test_handler_HandleLogout 测试HandleLogout方法
+func Test_handler_HandleLogout(t *testing.T) {
+	sessions := "MTc1NTI1MDE5OXwwOVRlOFNCdm8zckEyZFhKbVlZaUtOenpPQklJMmxVclFpN1lYY3NxVXRJU2ZoeTQ0WGtEUm8xTVhJM3VxdEVlT2QySDRYUHhTZmdjQzFNNDdiTExHc18yLTZ5c0lzSmdiTnlCMnBjemhnakpsSzJCWlY1Y1dDeUwtMmxNQ25jUU8teGdLV2pXTXRUQzhtYk1abnpuNEg3dlFQVTFGS3BCMGZBT2dkVXdScGhOYjluWGluSnZvTDRtRTF4aTI3ODhiNnR1U1NGdFhVVjQ1ZjByTlBlOEtsWVJGNUU5YThJNGp4d20zbjhpeFpPM1pDNzl6Zz09fAvTfSoTSNw9r8DWBE85ebenOV18Rc4535CX266U0HLS"
+
+	type fields struct {
+		srv Service
+	}
+	type args struct {
+		ctx context.Context
+	}
+	tests := []struct {
+		name    string
+		fields  fields
+		args    args
+		wantErr bool
+	}{
+		{
+			name: "成功退出登录",
+			fields: fields{
+				srv: &MockService{},
+			},
+			args: args{
+				ctx: createMockContextWithCookies("POST", "/api/user/logout", url.Values{}, sessions, ""),
+			},
+			wantErr: false,
+		},
+		{
+			name: "HTTP方法大小写不敏感 - post",
+			fields: fields{
+				srv: &MockService{},
+			},
+			args: args{
+				ctx: createMockContextWithCookies("post", "/api/user/logout", url.Values{}, sessions, ""),
+			},
+			wantErr: false,
+		},
+		{
+			name: "HTTP方法大小写不敏感 - Post",
+			fields: fields{
+				srv: &MockService{},
+			},
+			args: args{
+				ctx: createMockContextWithCookies("Post", "/api/user/logout", url.Values{}, sessions, ""),
+			},
+			wantErr: false,
+		},
+		{
+			name: "用户未登录状态退出登录",
+			fields: fields{
+				srv: &MockService{},
+			},
+			args: args{
+				ctx: createMockContextWithoutUser("POST", "/api/user/logout", "", ""),
+			},
+			wantErr: false,
+		},
+		{
+			name: "session保存失败",
+			fields: fields{
+				srv: &MockService{},
+			},
+			args: args{
+				ctx: createMockContextWithCookies("POST", "/api/user/logout", url.Values{}, sessions, "Session.Save"),
+			},
+			wantErr: true,
+		},
+		{
+			name: "带查询参数的退出登录",
+			fields: fields{
+				srv: &MockService{},
+			},
+			args: args{
+				ctx: createMockContextWithCookies("POST", "/api/user/logout", url.Values{
+					"redirect": []string{"/login"},
+					"source":   []string{"web"},
+				}, "test-session-with-params", ""),
+			},
+			wantErr: false,
+		},
+		{
+			name: "PATCH方法退出登录",
+			fields: fields{
+				srv: &MockService{},
+			},
+			args: args{
+				ctx: createMockContextWithCookies("PATCH", "/api/user/logout", url.Values{}, sessions, ""),
+			},
+			wantErr: false,
+		},
+		{
+			name: "OPTIONS方法退出登录",
+			fields: fields{
+				srv: &MockService{},
+			},
+			args: args{
+				ctx: createMockContextWithCookies("OPTIONS", "/api/user/logout", url.Values{}, sessions, ""),
+			},
+			wantErr: false,
+		},
+		{
+			name: "HEAD方法退出登录",
+			fields: fields{
+				srv: &MockService{},
+			},
+			args: args{
+				ctx: createMockContextWithCookies("HEAD", "/api/user/logout", url.Values{}, sessions, ""),
+			},
+			wantErr: false,
+		},
+		{
+			name: "无cookies的退出登录",
+			fields: fields{
+				srv: &MockService{},
+			},
+			args: args{
+				ctx: createMockContextWithCookies("POST", "/api/user/logout", url.Values{}, sessions, ""),
+			},
+			wantErr: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			h := &handler{
+				srv: tt.fields.srv,
+			}
+			h.HandleLogout(tt.args.ctx)
+
+			// 获取ServiceCtx以检查结果
+			q := cmn.GetCtxValue(tt.args.ctx)
+			if tt.wantErr {
+				if q.Err == nil {
+					t.Errorf("HandleLogout() 期望有错误，但没有错误")
+				}
+			} else {
+				if q.Err != nil {
+					t.Errorf("HandleLogout() 不期望有错误，但出现错误: %v", q.Err)
+				}
+				// 检查成功响应
+				if q.Msg.Status != 0 {
+					t.Errorf("HandleLogout() 期望状态码为 0，实际为 %d", q.Msg.Status)
+				}
+				if q.Msg.Msg != "logout success" {
+					t.Errorf("HandleLogout() 期望消息为 'logout success'，实际为 '%s'", q.Msg.Msg)
+				}
+			}
+		})
+	}
+}

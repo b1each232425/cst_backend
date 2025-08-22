@@ -1,14 +1,20 @@
 package exam_service
 
 import (
+	"bufio"
 	"context"
 	"fmt"
+	"io"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/cespare/xxhash/v2"
 	"github.com/jackc/pgx/v5"
 	"github.com/jmoiron/sqlx/types"
+	"github.com/stretchr/testify/assert"
 	"w2w.io/cmn"
 	"w2w.io/null"
 )
@@ -69,7 +75,70 @@ var (
 	testErrorExamSessionToPublishIDStartTime = time.Now().Add(-10 * time.Minute).UnixMilli()
 	testErrorExamSessionToPublishIDEndTime   = time.Now().UnixMilli()
 	BankQuestionIDs                          = []int64{10000001, 10000002, 10000003, 10000004, 10000005}
+
+	testFile1ID       = int64(99901)
+	testFile2ID       = int64(99902)
+	testFile1CheckSum = "bc8e94630e020929"
+	testFile2CheckSum = "94195fd3746f1460"
+	testFile1Name     = "testFile1.txt"
+	testFile2Name     = "testFile2.txt"
+	testFile1Content  = "This is the content of testFile1."
+	testFile2Content  = "This is the content of testFile2."
+
+	testFileID3          = int64(99903)
+	testSameFileID       = int64(99904)
+	testFile3CheckSum    = "2bbd5436cae65e1e"
+	testSameFileCheckSum = "bc8e94630e020929"
+	testFile3Name        = "testFile3.txt"
+	testSameFileName     = "testFile4.txt"
+	testFile3Content     = "This is the content of testFile3."
+	testSameFileContent  = "This is the content of testFile1."
+
+	notExistsFileID      = int64(99905)
+	notExistFileName     = "notExistsFile.txt"
+	notExistFileCheckSum = "notExists"
 )
+
+// 生成文件的 XXHash64 校验和
+func FastDigest(filePath string) (string, error) {
+	file, err := os.Open(filePath)
+	if err != nil {
+		return "", err
+	}
+	defer file.Close()
+
+	// 创建 XXHash64 hasher
+	hasher := xxhash.New()
+
+	// 使用缓冲读取，提高性能
+	reader := bufio.NewReader(file)
+	buffer := make([]byte, 4*1024*1024) // 4MB 块大小，与前端保持一致
+
+	for {
+		n, err := reader.Read(buffer)
+		if n > 0 {
+			hasher.Write(buffer[:n])
+		}
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return "", err
+		}
+	}
+
+	// 获取最终哈希值并转换为十六进制字符串
+	hashSum := hasher.Sum64()
+	return fmt.Sprintf("%016x", hashSum), nil
+}
+
+// 计算内容的 XXHash64 校验和
+func calculateContentCheckSum(content []byte) string {
+	hasher := xxhash.New()
+	hasher.Write(content)
+	hashSum := hasher.Sum64()
+	return fmt.Sprintf("%016x", hashSum)
+}
 
 // 定义自定义类型用于 context key，避免键冲突
 type contextKey string
@@ -282,14 +351,14 @@ func CreateTestExamData(t *testing.T) {
 
 	// 插入考试信息
 	_, err = tx.Exec(ctx, `
-		INSERT INTO t_exam_info (id, name, type, mode, status, creator, create_time, updated_by, update_time, domain_id)
-		VALUES ($1, '测试正常考试', '00', '00', '02', $2, $3, $2, $3, $4), 
-		($5, '测试已删除的考试', '00', '00', '12', $2, $3, $2, $3, $4),
-		($6, '测试正常考试2', '00', '00', '02', $2, $3, $2, $3, $4),
-		($7, '测试发布考试', '00', '00', '00', $2, $3, $2, $3, $4),
-		($8, '测试发布错误考试', '00', '00', '00', $2, $3, $2, $3, $4),
-		($9, '测试已结束的考试', '00', '00', '06', $2, $3, $2, $3, $4),
-		($10, '测试已发布的考试', '00', '00', '02', $2, $3, $2, $3, $4)
+		INSERT INTO t_exam_info (id, name, type, mode, status, creator, create_time, updated_by, update_time, domain_id, files)
+		VALUES ($1, '测试正常考试', '00', '00', '02', $2, $3, $2, $3, $4, '[99903]'), 
+		($5, '测试已删除的考试', '00', '00', '12', $2, $3, $2, $3, $4, '[]'),
+		($6, '测试正常考试2', '00', '00', '02', $2, $3, $2, $3, $4, '[]'),
+		($7, '测试发布考试', '00', '00', '00', $2, $3, $2, $3, $4, '[]'),
+		($8, '测试发布错误考试', '00', '00', '00', $2, $3, $2, $3, $4, '[]'),
+		($9, '测试已结束的考试', '00', '00', '06', $2, $3, $2, $3, $4, '[]'),
+		($10, '测试已发布的考试', '00', '00', '02', $2, $3, $2, $3, $4, '[]')
 	`, testNormalExamID, testAcademicAffair, time.Now().UnixMilli(), 2002, testDeleteExamID,
 		testNormalExamID2, testExamToPublishID, testErrorExamToPublishID1, testEndExamID, testPublishedExamID)
 	if err != nil {
@@ -365,6 +434,117 @@ func CreateTestExamData(t *testing.T) {
 	if err != nil {
 		tx.Rollback(ctx)
 		t.Fatalf("插入测试考卷数据失败: %v", err)
+	}
+
+	// 创建文件
+	uploadDir := "./uploads"
+
+	// 确保上传目录存在
+	err = os.MkdirAll(uploadDir, 0755)
+	if err != nil {
+		t.Fatalf("创建上传目录失败: %v", err)
+	}
+
+	// 计算文件内容的校验和
+	testFile1CheckSum = calculateContentCheckSum([]byte(testFile1Content))
+	testFile2CheckSum = calculateContentCheckSum([]byte(testFile2Content))
+	testFile3CheckSum = calculateContentCheckSum([]byte(testFile3Content))
+	testSameFileCheckSum = calculateContentCheckSum([]byte(testSameFileContent))
+
+	// 以校验和作为文件名创建文件
+	testFile1Path := filepath.Join(uploadDir, testFile1CheckSum)
+	err = os.WriteFile(testFile1Path, []byte(testFile1Content), 0644)
+	if err != nil {
+		t.Fatalf("创建测试文件1失败: %v", err)
+	}
+
+	testFile2Path := filepath.Join(uploadDir, testFile2CheckSum)
+	err = os.WriteFile(testFile2Path, []byte(testFile2Content), 0644)
+	if err != nil {
+		t.Fatalf("创建测试文件2失败: %v", err)
+	}
+
+	testFile3Path := filepath.Join(uploadDir, testFile3CheckSum)
+	err = os.WriteFile(testFile3Path, []byte(testFile3Content), 0644)
+	if err != nil {
+		t.Fatalf("创建测试文件3失败: %v", err)
+	}
+
+	testSameFilePath := filepath.Join(uploadDir, testSameFileCheckSum)
+	err = os.WriteFile(testSameFilePath, []byte(testSameFileContent), 0644)
+	if err != nil {
+		t.Fatalf("创建测试文件4失败: %v", err)
+	}
+
+	// 创建对应的.info文件
+	testFile1InfoPath := testFile1Path + ".info"
+	err = os.WriteFile(testFile1InfoPath, []byte(fmt.Sprintf(`{"name":"%s","size":%d}`, testFile1Name, len(testFile1Content))), 0644)
+	if err != nil {
+		t.Fatalf("创建测试文件1信息文件失败: %v", err)
+	}
+
+	testFile2InfoPath := testFile2Path + ".info"
+	err = os.WriteFile(testFile2InfoPath, []byte(fmt.Sprintf(`{"name":"%s","size":%d}`, testFile2Name, len(testFile2Content))), 0644)
+	if err != nil {
+		t.Fatalf("创建测试文件2信息文件失败: %v", err)
+	}
+
+	testFile3InfoPath := testFile3Path + ".info"
+	err = os.WriteFile(testFile3InfoPath, []byte(fmt.Sprintf(`{"name":"%s","size":%d}`, testFile3Name, len(testFile3Content))), 0644)
+	if err != nil {
+		t.Fatalf("创建测试文件3信息文件失败: %v", err)
+	}
+
+	testSameFileInfoPath := testSameFilePath + ".info"
+	err = os.WriteFile(testSameFileInfoPath, []byte(fmt.Sprintf(`{"name":"%s","size":%d}`, testSameFileName, len(testSameFileContent))), 0644)
+	if err != nil {
+		t.Fatalf("创建测试文件4信息文件失败: %v", err)
+	}
+
+	// 插入文件记录到数据库
+	err = tx.QueryRow(ctx, `
+        INSERT INTO t_file (id, digest, file_name, path, belongto_path, size, count, creator, create_time, domain_id, status)
+        VALUES ($1, $2, $3, $4, $5, $6, 1, $7, $8, 2000, '0')
+        RETURNING id
+    `, testFile1ID, testFile1CheckSum, testFile1Name, testFile1Path, "/test/files", len(testFile1Content), testAcademicAffair, time.Now().UnixMilli()).Scan(&testFile1ID)
+	if err != nil {
+		t.Fatalf("插入测试文件1记录失败: %v", err)
+	}
+
+	err = tx.QueryRow(ctx, `
+        INSERT INTO t_file (id, digest, file_name, path, belongto_path, size, count, creator, create_time, domain_id, status)
+        VALUES ($1, $2, $3, $4, $5, $6, 2, $7, $8, 2000, '0')
+        RETURNING id
+    `, testFile2ID, testFile2CheckSum, testFile2Name, testFile2Path, "/test/files", len(testFile2Content), testAcademicAffair, time.Now().UnixMilli()).Scan(&testFile2ID)
+	if err != nil {
+		t.Fatalf("插入测试文件2记录失败: %v", err)
+	}
+
+	err = tx.QueryRow(ctx, `
+        INSERT INTO t_file (id, digest, file_name, path, belongto_path, size, count, creator, create_time, domain_id, status)
+        VALUES ($1, $2, $3, $4, $5, $6, 1, $7, $8, 2000, '0')
+        RETURNING id
+    `, testFileID3, testFile3CheckSum, testFile3Name, testFile3Path, "/test/files", len(testFile3Content), testAcademicAffair, time.Now().UnixMilli()).Scan(&testFileID3)
+	if err != nil {
+		t.Fatalf("插入测试文件3记录失败: %v", err)
+	}
+
+	err = tx.QueryRow(ctx, `
+        INSERT INTO t_file (id, digest, file_name, path, belongto_path, size, count, creator, create_time, domain_id, status)
+        VALUES ($1, $2, $3, $4, $5, $6, 1, $7, $8, 2000, '0')
+        RETURNING id
+    `, testSameFileID, testSameFileCheckSum, testSameFileName, testSameFilePath, "/test/files", len(testSameFileContent), testAcademicAffair, time.Now().UnixMilli()).Scan(&testSameFileID)
+	if err != nil {
+		t.Fatalf("插入测试文件4记录失败: %v", err)
+	}
+
+	err = tx.QueryRow(ctx, `
+        INSERT INTO t_file (id, digest, file_name, path, belongto_path, size, count, creator, create_time, domain_id, status)
+        VALUES ($1, $2, $3, $4, $5, $6, 1, $7, $8, 2000, '0')
+        RETURNING id
+    `, notExistsFileID, notExistFileCheckSum, notExistFileName, "/test/files", "/test/files", len(testSameFileContent), testAcademicAffair, time.Now().UnixMilli()).Scan(&notExistsFileID)
+	if err != nil {
+		t.Fatalf("插入测试文件4记录失败: %v", err)
 	}
 
 	return
@@ -544,6 +724,77 @@ func CleanTestExamData(t *testing.T) {
 	if err != nil {
 		tx.Rollback(ctx)
 		t.Fatalf("删除测试用户数据失败: %v", err)
+	}
+
+	_, err = tx.Exec(ctx, `
+        DELETE FROM t_file WHERE id = ANY($1)
+    `, []int64{testFile1ID, testFile2ID, testFileID3, testSameFileID, notExistsFileID})
+	if err != nil {
+		t.Logf("删除测试文件记录失败: %v", err)
+	}
+
+	_, err = tx.Exec(ctx, `
+        DELETE FROM t_file WHERE creator = $1
+    `, testAcademicAffair)
+	if err != nil {
+		t.Logf("删除测试文件记录失败: %v", err)
+	}
+
+	// 删除实际的测试文件
+	uploadDir := "./uploads"
+
+	// 计算校验和
+	file1CheckSum := calculateContentCheckSum([]byte(testFile1Content))
+	file2CheckSum := calculateContentCheckSum([]byte(testFile2Content))
+	file3CheckSum := calculateContentCheckSum([]byte(testFile3Content))
+	sameFileCheckSum := calculateContentCheckSum([]byte(testSameFileContent))
+
+	// 以校验和命名的文件路径
+	testFile1Path := filepath.Join(uploadDir, file1CheckSum)
+	testFile2Path := filepath.Join(uploadDir, file2CheckSum)
+	testFile3Path := filepath.Join(uploadDir, file3CheckSum)
+	testSameFilePath := filepath.Join(uploadDir, sameFileCheckSum)
+
+	t.Logf("删除测试文件1: %s", testFile1Path)
+	t.Logf("删除测试文件2: %s", testFile2Path)
+	t.Logf("删除测试文件3: %s", testFile3Path)
+	t.Logf("删除测试文件4: %s", testSameFilePath)
+	if err := os.Remove(testFile1Path); err != nil && !os.IsNotExist(err) {
+		t.Logf("删除测试文件1失败: %v", err)
+	}
+
+	if err := os.Remove(testFile2Path); err != nil && !os.IsNotExist(err) {
+		t.Logf("删除测试文件2失败: %v", err)
+	}
+
+	if err := os.Remove(testFile3Path); err != nil && !os.IsNotExist(err) {
+		t.Logf("删除测试文件3失败: %v", err)
+	}
+
+	if err := os.Remove(testSameFilePath); err != nil && !os.IsNotExist(err) {
+		t.Logf("删除测试文件4失败: %v", err)
+	}
+
+	// 删除对应的.info文件（如果存在）
+	infoFile1Path := testFile1Path + ".info"
+	infoFile2Path := testFile2Path + ".info"
+	infoFile3Path := testFile3Path + ".info"
+	infoSameFilePath := testSameFilePath + ".info"
+
+	if err := os.Remove(infoFile1Path); err != nil && !os.IsNotExist(err) {
+		t.Logf("删除测试文件1信息文件失败: %v", err)
+	}
+
+	if err := os.Remove(infoFile2Path); err != nil && !os.IsNotExist(err) {
+		t.Logf("删除测试文件2信息文件失败: %v", err)
+	}
+
+	if err := os.Remove(infoFile3Path); err != nil && !os.IsNotExist(err) {
+		t.Logf("删除测试文件3信息文件失败: %v", err)
+	}
+
+	if err := os.Remove(infoSameFilePath); err != nil && !os.IsNotExist(err) {
+		t.Logf("删除测试文件4信息文件失败: %v", err)
 	}
 
 }
@@ -794,6 +1045,47 @@ func TestHandleExamSessionStart(t *testing.T) {
 			expectedExamStatus: "04", // 考试进行中
 		},
 		{
+			name: "场次开始-无考生-强制更新考试为异常状态错误",
+			event: ExamEvent{
+				Type:          EVENT_TYPE_EXAM_SESSION_START,
+				ExamID:        testPublishedExamID,
+				ExamSessionID: testPublishedExamSessionID,
+			},
+			expectError:        true,
+			expectedStatus:     "02",
+			expectedCount:      0, // 0个考生
+			checkExamStatus:    true,
+			expectedExamStatus: "10",
+			forceError:         "updateAbnormalExam",
+		},
+		{
+			name: "场次开始-无考生-取消考试定时器失败",
+			event: ExamEvent{
+				Type:          EVENT_TYPE_EXAM_SESSION_START,
+				ExamID:        testPublishedExamID,
+				ExamSessionID: testPublishedExamSessionID,
+			},
+			expectError:        true,
+			expectedStatus:     "02",
+			expectedCount:      0, // 0个考生
+			checkExamStatus:    true,
+			expectedExamStatus: "10",
+			forceError:         "cancelAbnormalExamTimers",
+		},
+		{
+			name: "正常场次开始-无考生",
+			event: ExamEvent{
+				Type:          EVENT_TYPE_EXAM_SESSION_START,
+				ExamID:        testPublishedExamID,
+				ExamSessionID: testPublishedExamSessionID,
+			},
+			expectError:        false,
+			expectedStatus:     "02",
+			expectedCount:      0, // 0个考生
+			checkExamStatus:    true,
+			expectedExamStatus: "10",
+		},
+		{
 			name: "开启事务失败",
 			event: ExamEvent{
 				Type:          EVENT_TYPE_EXAM_SESSION_START,
@@ -833,14 +1125,47 @@ func TestHandleExamSessionStart(t *testing.T) {
 			expectError: true,
 			forceError:  "updateExamSession",
 		},
+		{
+			name: "处理过程中发生panic",
+			event: ExamEvent{
+				Type:          EVENT_TYPE_EXAM_SESSION_START,
+				ExamID:        testNormalExamID2,
+				ExamSessionID: testExamSessionID1,
+			},
+			expectError: false,
+			forceError:  "panic",
+		},
+		{
+			name: "事务回滚失败",
+			event: ExamEvent{
+				Type:          EVENT_TYPE_EXAM_SESSION_START,
+				ExamID:        testNormalExamID2,
+				ExamSessionID: testExamSessionID1,
+			},
+			expectError: false,
+			forceError:  "rollback",
+		},
+		{
+			name: "强制提交错误",
+			event: ExamEvent{
+				Type:          EVENT_TYPE_EXAM_SESSION_START,
+				ExamID:        testNormalExamID2,
+				ExamSessionID: testExamSessionID1,
+			},
+			expectError: false,
+			forceError:  "commit",
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			ctx := context.Background()
+			ctx, cancel := context.WithCancel(ctx)
 			if tt.forceError != "" {
 				ctx = context.WithValue(ctx, "handleExamSessionStart-force-error", tt.forceError)
 			}
+
+			examTimerMgr = NewExamTimerManager(ctx, cancel)
 
 			// 执行测试
 			err := handleExamSessionStart(ctx, tt.event)
@@ -850,6 +1175,10 @@ func TestHandleExamSessionStart(t *testing.T) {
 				if err == nil {
 					t.Errorf("期望错误，但没有返回错误")
 				}
+				return
+			}
+
+			if tt.forceError != "" {
 				return
 			}
 
@@ -911,9 +1240,9 @@ func TestHandleExamSessionEnd(t *testing.T) {
 	cmn.ConfigureForTest()
 
 	// 准备测试数据
+	defer CleanTestExamData(t)
 	CleanTestExamData(t)
 	CreateTestExamData(t)
-	defer CleanTestExamData(t)
 
 	tests := []struct {
 		name             string
@@ -925,6 +1254,19 @@ func TestHandleExamSessionEnd(t *testing.T) {
 		checkExamStatus  bool
 	}{
 		{
+			name: "强制更新考试状态为已结束错误",
+			event: ExamEvent{
+				Type:          EVENT_TYPE_EXAM_SESSION_END,
+				ExamID:        testNormalExamID,
+				ExamSessionID: testExamSessionID1,
+			},
+			expectError:      true,
+			expectedStatus:   "06", // 已结束
+			expectDelayTimer: false,
+			checkExamStatus:  false,
+			forceError:       "updateExamEndStatus",
+		},
+		{
 			name: "正常场次结束-有考生",
 			event: ExamEvent{
 				Type:          EVENT_TYPE_EXAM_SESSION_END,
@@ -935,6 +1277,30 @@ func TestHandleExamSessionEnd(t *testing.T) {
 			expectedStatus:   "06", // 已结束
 			expectDelayTimer: false,
 			checkExamStatus:  false,
+		},
+		{
+			name: "事务回滚失败",
+			event: ExamEvent{
+				Type:          EVENT_TYPE_EXAM_SESSION_END,
+				ExamID:        testNormalExamID,
+				ExamSessionID: testExamSessionID1,
+			},
+			expectError:      false,
+			expectDelayTimer: false,
+			checkExamStatus:  false,
+			forceError:       "rollback",
+		},
+		{
+			name: "事务提交失败",
+			event: ExamEvent{
+				Type:          EVENT_TYPE_EXAM_SESSION_END,
+				ExamID:        testNormalExamID,
+				ExamSessionID: testExamSessionID1,
+			},
+			expectError:      false,
+			expectDelayTimer: false,
+			checkExamStatus:  false,
+			forceError:       "commit",
 		},
 		{
 			name: "开启事务失败",
@@ -1072,16 +1438,13 @@ func TestCleanupTempExams(t *testing.T) {
 	}
 
 	// 临时考试ID列表
-	tempExamIDs := []int64{99990, 99991, 99992, 99993, 99994}
-	testUserID := int64(99990)
+	tempExamIDs := []int64{89990, 89991, 89992, 89993, 89994}
+	testUserID := int64(89990)
 
 	// 准备测试数据
 	t.Cleanup(func() {
 		cleanupTempExamTestData(t, tempExamIDs, testUserID)
 	})
-
-	// 创建测试数据
-	setupTempExamTestData(t, tempExamIDs, testUserID)
 
 	tests := []struct {
 		name          string
@@ -1107,27 +1470,54 @@ func TestCleanupTempExams(t *testing.T) {
 			checkDeletion: false,
 			expectedCount: 0,
 		},
+		{
+			name:          "强制处理删除考试文件错误",
+			forceError:    "handleDeleteExamFile",
+			expectedError: true,
+			description:   "强制处理删除考试文件错误",
+			checkDeletion: false,
+			expectedCount: 0,
+		},
+		{
+			name:          "扫描文件数组失败",
+			forceError:    "scanFiles",
+			expectedError: true,
+			description:   "模拟扫描文件数组失败",
+			checkDeletion: false,
+			expectedCount: 0,
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+
+			cleanupTempExamTestData(t, tempExamIDs, testUserID)
+
+			// 创建测试数据
+			setupTempExamTestData(t, tempExamIDs, testUserID)
+
 			// 创建包含强制错误的上下文
 			ctx := context.Background()
 			if tt.forceError != "" {
-				ctx = context.WithValue(ctx, "cleanupTempExams-force-error", tt.forceError)
+				if tt.forceError == "handleDeleteExamFile.tx.QueryRow" {
+					ctx = context.WithValue(ctx, "force-error", tt.forceError)
+				} else {
+					ctx = context.WithValue(ctx, "cleanupTempExams-force-error", tt.forceError)
+				}
 			}
 
 			// 记录清理前的临时考试数量
 			var beforeCount int64
 			err := pgxConn.QueryRow(ctx, `
 				SELECT COUNT(*) FROM t_exam_info 
-				WHERE status = '14' AND create_time < $1
-			`, time.Now().Add(-24*time.Hour).UnixMilli()).Scan(&beforeCount)
+				WHERE status = '14' AND create_time < $1 AND id = ANY($2)
+			`, time.Now().Add(-24*time.Hour).UnixMilli(), tempExamIDs).Scan(&beforeCount)
 			if err != nil {
 				t.Fatalf("查询清理前临时考试数量失败: %v", err)
 			}
 
 			// 执行清理函数
+			var cleanupErr error
 			func() {
 				defer func() {
 					if r := recover(); r != nil {
@@ -1137,16 +1527,26 @@ func TestCleanupTempExams(t *testing.T) {
 					}
 				}()
 
-				cleanupTempExams(ctx)
+				cleanupErr = cleanupTempExams(ctx)
 			}()
+
+			// 验证错误
+			if tt.expectedError {
+				assert.Error(t, cleanupErr, "期望出现错误，但函数成功执行")
+				if cleanupErr != nil {
+					t.Logf("预期错误: %v", cleanupErr)
+				}
+			} else {
+				assert.NoError(t, cleanupErr, "不期望出现错误，但函数执行失败")
+			}
 
 			if tt.checkDeletion {
 				// 验证清理后的临时考试数量
 				var afterCount int64
 				err := pgxConn.QueryRow(context.Background(), `
 					SELECT COUNT(*) FROM t_exam_info 
-					WHERE status = '14' AND create_time < $1
-				`, time.Now().Add(-24*time.Hour).UnixMilli()).Scan(&afterCount)
+					WHERE status = '14' AND create_time < $1 AND id = ANY($2)
+				`, time.Now().Add(-24*time.Hour).UnixMilli(), tempExamIDs).Scan(&afterCount)
 				if err != nil {
 					t.Fatalf("查询清理后临时考试数量失败: %v", err)
 				}
@@ -1160,8 +1560,8 @@ func TestCleanupTempExams(t *testing.T) {
 				var recentCount int64
 				err = pgxConn.QueryRow(context.Background(), `
 					SELECT COUNT(*) FROM t_exam_info 
-					WHERE status = '14' AND create_time >= $1
-				`, time.Now().Add(-24*time.Hour).UnixMilli()).Scan(&recentCount)
+					WHERE status = '14' AND create_time >= $1 AND id = ANY($2)
+				`, time.Now().Add(-24*time.Hour).UnixMilli(), []int64{tempExamIDs[3], tempExamIDs[4]}).Scan(&recentCount)
 				if err != nil {
 					t.Fatalf("查询未过期临时考试数量失败: %v", err)
 				}
@@ -1223,23 +1623,36 @@ func setupTempExamTestData(t *testing.T, tempExamIDs []int64, testUserID int64) 
 		name        string
 		createTime  int64
 		status      string
+		files       string
 		shouldClean bool
 	}{
-		{tempExamIDs[0], "过期临时考试1", hour25Ago, "14", true},   // 应该被清理
-		{tempExamIDs[1], "过期临时考试2", hour26Ago, "14", true},   // 应该被清理
-		{tempExamIDs[2], "过期临时考试3", hour27Ago, "14", true},   // 应该被清理
-		{tempExamIDs[3], "未过期临时考试1", hour23Ago, "14", false}, // 不应该被清理
-		{tempExamIDs[4], "未过期临时考试2", hour22Ago, "14", false}, // 不应该被清理
+		{tempExamIDs[0], "过期临时考试1", hour25Ago, "14", "[99901]", true}, // 应该被清理
+		{tempExamIDs[1], "过期临时考试2", hour26Ago, "14", "[]", true},      // 应该被清理
+		{tempExamIDs[2], "过期临时考试3", hour27Ago, "14", "[]", true},      // 应该被清理
+		{tempExamIDs[3], "未过期临时考试1", hour23Ago, "14", "[]", false},    // 不应该被清理
+		{tempExamIDs[4], "未过期临时考试2", hour22Ago, "14", "[]", false},    // 不应该被清理
 	}
 
 	for _, exam := range examData {
 		_, err = tx.Exec(ctx, `
-			INSERT INTO t_exam_info (id, name, type, mode, status, creator, create_time, updated_by, update_time, domain_id)
-			VALUES ($1, $2, '00', '00', $3, $4, $5, $4, $5, 2000)
-		`, exam.id, exam.name, exam.status, testUserID, exam.createTime)
+			INSERT INTO t_exam_info (id, name, type, mode, status, creator, create_time, updated_by, update_time, domain_id, files)
+			VALUES ($1, $2, '00', '00', $3, $4, $5, $4, $5, 2000, $6)
+		`, exam.id, exam.name, exam.status, testUserID, exam.createTime, exam.files)
 		if err != nil {
 			t.Fatalf("创建临时考试数据失败 (ID: %d): %v", exam.id, err)
 		}
+	}
+
+	// 插入文件记录到数据库
+	uploadDir := "./uploads"
+	testFile1Path := filepath.Join(uploadDir, testFile1CheckSum)
+	err = tx.QueryRow(ctx, `
+        INSERT INTO t_file (id, digest, file_name, path, belongto_path, size, count, creator, create_time, domain_id, status)
+        VALUES ($1, $2, $3, $4, $5, $6, 1, $7, $8, 2000, '0')
+        RETURNING id
+    `, testFile1ID, testFile1CheckSum, testFile1Name, testFile1Path, "/test/files", len(testFile1Content), testAcademicAffair, time.Now().UnixMilli()).Scan(&testFile1ID)
+	if err != nil {
+		t.Fatalf("插入测试文件1记录失败: %v", err)
 	}
 
 	t.Logf("成功创建 %d 个临时考试测试数据", len(examData))
@@ -1283,5 +1696,163 @@ func cleanupTempExamTestData(t *testing.T, tempExamIDs []int64, testUserID int64
 		t.Logf("删除测试用户失败: %v", err)
 	}
 
+	_, err = tx.Exec(ctx, `
+        DELETE FROM t_file WHERE id = ANY($1)
+    `, []int64{testFile1ID, testFile2ID, testFileID3, testSameFileID, notExistsFileID})
+	if err != nil {
+		t.Logf("删除测试文件记录失败: %v", err)
+	}
+
 	t.Logf("清理临时考试测试数据完成")
+}
+
+// TestInitializeExamTimers 测试InitializeExamTimers函数
+func TestInitializeExamTimers(t *testing.T) {
+	// 确保logger和数据库连接已初始化
+	if z == nil {
+		cmn.ConfigureForTest()
+	}
+
+	tests := []struct {
+		name           string
+		forceError     string
+		expectedError  bool
+		description    string
+		checkTimers    bool
+		expectedTimers int // 期望设置的定时器数量
+	}{
+		{
+			name:           "成功初始化考试定时器",
+			forceError:     "",
+			expectedError:  false,
+			description:    "正常初始化现有考试的定时器",
+			checkTimers:    false,
+			expectedTimers: 4, // 每个考试场次2个定时器（开始+结束）
+		},
+		{
+			name:          "查询考试场次信息失败",
+			forceError:    "queryExamSessions",
+			expectedError: true,
+			description:   "模拟查询考试场次信息失败",
+			checkTimers:   false,
+		},
+		{
+			name:          "扫描考试场次信息失败",
+			forceError:    "scanExamSessionInfo",
+			expectedError: true,
+			description:   "模拟扫描考试场次信息失败",
+			checkTimers:   false,
+		},
+		{
+			name:          "强制触发panic",
+			forceError:    "panic",
+			expectedError: false, // panic被recover，不返回error
+			description:   "测试panic处理机制",
+			checkTimers:   false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// 每个子测试都重新创建和清理数据
+			CleanTestExamData(t)
+			CreateTestExamData(t)
+			defer CleanTestExamData(t)
+
+			// 创建带超时的上下文，防止无限阻塞
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+
+			if tt.forceError != "" {
+				ctx = context.WithValue(ctx, "initializeExamTimers-force-error", tt.forceError)
+			}
+
+			// 初始化定时器管理器
+			examTimerMgr = NewExamTimerManager(ctx, cancel)
+			defer func() {
+				// 确保定时器管理器被正确停止
+				if examTimerMgr != nil {
+					examTimerMgr.StopAll()
+				}
+			}()
+
+			// 执行测试
+			var err error
+			func() {
+				defer func() {
+					if r := recover(); r != nil {
+						if !tt.expectedError && tt.forceError != "panic" {
+							t.Errorf("InitializeExamTimers() 意外panic: %v", r)
+						}
+					}
+				}()
+
+				err = InitializeExamTimers(ctx)
+			}()
+
+			// 验证错误
+			if tt.expectedError {
+				assert.Error(t, err, "期望出现错误，但函数成功执行")
+				if err != nil {
+					t.Logf("预期错误: %v", err)
+				}
+				return
+			}
+
+			assert.NoError(t, err, "不期望出现错误，但函数执行失败")
+
+			// 验证定时器设置
+			if tt.checkTimers {
+				examTimerMgr.mutex.Lock()
+				timerCount := len(examTimerMgr.timers)
+				examTimerMgr.mutex.Unlock()
+
+				if timerCount != tt.expectedTimers {
+					t.Errorf("期望设置 %d 个定时器，实际设置 %d 个", tt.expectedTimers, timerCount)
+				}
+
+				// 验证定时器类型
+				examTimerMgr.mutex.Lock()
+				startTimers := 0
+				endTimers := 0
+				for key := range examTimerMgr.timers {
+					if strings.Contains(key, EVENT_TYPE_EXAM_SESSION_START) {
+						startTimers++
+					}
+					if strings.Contains(key, EVENT_TYPE_EXAM_SESSION_END) {
+						endTimers++
+					}
+				}
+				examTimerMgr.mutex.Unlock()
+
+				expectedSessionTimers := tt.expectedTimers / 2
+				if startTimers != expectedSessionTimers {
+					t.Errorf("期望设置 %d 个开始定时器，实际设置 %d 个", expectedSessionTimers, startTimers)
+				}
+				if endTimers != expectedSessionTimers {
+					t.Errorf("期望设置 %d 个结束定时器，实际设置 %d 个", expectedSessionTimers, endTimers)
+				}
+
+				t.Logf("成功设置定时器: 开始定时器=%d, 结束定时器=%d", startTimers, endTimers)
+			}
+
+			t.Logf("测试完成: %s", tt.description)
+		})
+	}
+}
+
+func TestProcessEventDefaultCase(t *testing.T) {
+	// 确保logger和数据库连接已初始化
+	if z == nil {
+		cmn.ConfigureForTest()
+	}
+
+	// 测试默认事件处理
+	event := ExamEvent{
+		Type:          "unknown_event",
+		ExamSessionID: 123,
+		ExamID:        456,
+	}
+	err := examTimerMgr.processEvent(event, 1)
+	assert.Error(t, err, "期望处理未知事件时返回错误")
 }
