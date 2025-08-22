@@ -1,6 +1,6 @@
 /*==============================================================*/
 /* DBMS name:      PostgreSQL 9.x                               */
-/* Created on:     2025/8/22 14:55:23                           */
+/* Created on:     2025/8/22 18:39:49                           */
 /*==============================================================*/
 
 
@@ -5547,7 +5547,6 @@ create table if not exists  t_paper (
    create_time          INT8                 null,
    updated_by           INT8                 null,
    update_time          INT8                 null,
-   version              INT8                 not null default 1,
    addi                 JSONB                null,
    status               VARCHAR(10)          null default '00',
    constraint PK_T_PAPER primary key (id)
@@ -5601,14 +5600,11 @@ comment on column t_paper.updated_by is
 comment on column t_paper.update_time is
 '更新时间';
 
-comment on column t_paper.version is
-'版本号';
-
 comment on column t_paper.addi is
 '附加信息';
 
 comment on column t_paper.status is
-'状态 00：未发布， 02：已发布 04：作废 06：异常';
+'状态 00：未发布， 02：已删除 04：作废 06：已发布';
 
 /*==============================================================*/
 /* Table: t_paper_group                                         */
@@ -9195,9 +9191,12 @@ comment on column t_sys_ver.status is
 ALTER SEQUENCE t_sys_ver_id_seq RESTART WITH 20000;
 
 insert into t_sys_ver(id,name,ver,create_time,update_time,remark)
-  values(1000,'业务模型','3.1.11.0',
-  '2016年12月5日 9:52:53','2025年8月22日 14:08:43',
-  '3.1.11.1
+  values(1000,'业务模型','3.1.11.2',
+  '2016年12月5日 9:52:53','2025年8月22日 18:39:43',
+  '3.1.11.2
+删除t_paper的version字段，同步更改v_paper视图
+
+3.1.11.1
 删除t_student_answers的attach_path字段；给t_exam_room增加一个domain_id字段
 
 3.1.11.0
@@ -13128,7 +13127,6 @@ WITH paper_basic AS (
             p.create_time,
             p.updated_by,
             p.update_time,
-            p.version,
             p.status AS paper_status
            FROM t_paper p
              LEFT JOIN t_user u ON p.creator = u.id
@@ -13336,7 +13334,6 @@ WITH paper_basic AS (
     p.create_time,
     p.updated_by,
     p.update_time,
-    p.version,
     p.paper_status AS status,
     s.total_score,
     s.question_count,
