@@ -399,14 +399,14 @@ func CreateTestExamData(t *testing.T) {
 		($14, $2, $3, $24, '00', '00', 4, '00', $4, $5, $4, $5, $15, $16, '00', 10, '06'),
 		($17, $2, $3, $23, '00', '00', 5, '00', $4, $5, $4, $5, $18, $19, '00', 10, '08'),
 		($20, $25, $3, $23, '00', '00', 6, '00', $4, $5, $4, $5, $21, $22, '00', 10, '10'),
-		($26, $27, $3, $23, '00', '00', 7, '02', $4, $5, $4, $5, $6, $7, '00', 10, '12')
+		($26, $27, $3, $23, '00', '00', 7, '02', $4, $5, $4, $5, $28, $29, '00', 10, '12')
 	`, testExamSessionToPublishID1, testExamToPublishID, testPaperToPublishID, testAcademicAffair, time.Now().UnixMilli(), testExamSessionToPublishID1StartTime, testExamSessionToPublishID1EndTime,
 		testExamSessionToPublishID2, testExamSessionToPublishID2StartTime, testExamSessionToPublishID2EndTime,
 		testExamSessionToPublishID3, testExamSessionToPublishID3StartTime, testExamSessionToPublishID3EndTime,
 		testExamSessionToPublishID4, testExamSessionToPublishID4StartTime, testExamSessionToPublishID4EndTime,
 		testExamSessionToPublishID5, testExamSessionToPublishID5StartTime, testExamSessionToPublishID5EndTime,
 		testErrorExamSessionToPublishID, testErrorExamSessionToPublishIDStartTime, testErrorExamSessionToPublishIDEndTime,
-		reviewerIDs, nilReviewerIDs, testErrorExamToPublishID1, testPublishedExamSessionID, testPublishedExamID)
+		reviewerIDs, nilReviewerIDs, testErrorExamToPublishID1, testPublishedExamSessionID, testPublishedExamID, testExamSession1StartTime, testExamSession1EndTime)
 
 	// 插入考生数据
 	_, err = tx.Exec(ctx, `
@@ -1032,6 +1032,34 @@ func TestHandleExamSessionStart(t *testing.T) {
 		expectedExamStatus string
 	}{
 		{
+			name: "场次开始-有考生-乐观锁",
+			event: ExamEvent{
+				Type:          EVENT_TYPE_EXAM_SESSION_START,
+				ExamID:        testNormalExamID,
+				ExamSessionID: testExamSessionID1,
+			},
+			expectError:        true,
+			expectedStatus:     "02",
+			expectedCount:      1, // 1个考生
+			checkExamStatus:    false,
+			expectedExamStatus: "02",
+			forceError:         "updateExamSession.RowsAffected",
+		},
+		{
+			name: "场次开始-有考生-更新考试状态失败",
+			event: ExamEvent{
+				Type:          EVENT_TYPE_EXAM_SESSION_START,
+				ExamID:        testNormalExamID,
+				ExamSessionID: testExamSessionID1,
+			},
+			expectError:        true,
+			expectedStatus:     "02",
+			expectedCount:      1, // 1个考生
+			checkExamStatus:    false,
+			expectedExamStatus: "02",
+			forceError:         "updateExam",
+		},
+		{
 			name: "正常场次开始-有考生",
 			event: ExamEvent{
 				Type:          EVENT_TYPE_EXAM_SESSION_START,
@@ -1057,6 +1085,20 @@ func TestHandleExamSessionStart(t *testing.T) {
 			checkExamStatus:    true,
 			expectedExamStatus: "10",
 			forceError:         "updateAbnormalExam",
+		},
+		{
+			name: "场次开始-无考生-乐观锁",
+			event: ExamEvent{
+				Type:          EVENT_TYPE_EXAM_SESSION_START,
+				ExamID:        testPublishedExamID,
+				ExamSessionID: testPublishedExamSessionID,
+			},
+			expectError:        true,
+			expectedStatus:     "02",
+			expectedCount:      0, // 0个考生
+			checkExamStatus:    true,
+			expectedExamStatus: "10",
+			forceError:         "updateAbnormalExam.RowsAffected",
 		},
 		{
 			name: "场次开始-无考生-取消考试定时器失败",
