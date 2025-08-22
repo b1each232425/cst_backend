@@ -1,0 +1,20 @@
+{
+    "ID": 1001,
+    "Type": "00",
+    "Name": "test-综合题库",
+    "Tags": [
+        "数据结构",
+        "算法"
+    ],
+    "Creator": 11,
+    "CreateTime": 1722000200000,
+    "UpdatedBy": 11,
+    "UpdateTime": 1722100200000,
+    "Addi": {
+        "difficulty": "hard",
+        "description": "本题库综合涵盖计算机核心课程知识，适用于校招、笔试与面试准备。",
+        "target_audience": "计算机专业学生、软件开发从业者"
+    },
+    "Status": "00",
+    "DomainID": "1999"
+}
