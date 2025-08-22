@@ -1,6 +1,6 @@
 /*==============================================================*/
 /* DBMS name:      PostgreSQL 9.x                               */
-/* Created on:     2025/8/20 0:44:54                            */
+/* Created on:     2025/8/22 14:08:47                           */
 /*==============================================================*/
 
 
@@ -2006,6 +2006,7 @@ create table if not exists  t_exam_room (
    exam_site            INT8                 not null,
    name                 VARCHAR(150)         null,
    capacity             INT4                 null,
+   domain_id            INT8                 null,
    creator              INT8                 not null,
    create_time          TIMESTAMP            null,
    updated_by           INT8                 null,
@@ -2029,6 +2030,9 @@ comment on column t_exam_room.name is
 
 comment on column t_exam_room.capacity is
 '考场容量';
+
+comment on column t_exam_room.domain_id is
+'domain_id';
 
 comment on column t_exam_room.creator is
 '创建者';
@@ -9066,7 +9070,6 @@ create table if not exists  t_student_answers (
    group_id             INT8                 null,
    actual_options       JSONB                null,
    actual_answers       JSONB                null,
-   answer_attach        JSONB                null,
    creator              INT8                 not null,
    create_time          INT8                 null,
    updated_by           INT8                 null,
@@ -9117,9 +9120,6 @@ comment on column t_student_answers.actual_options is
 
 comment on column t_student_answers.actual_answers is
 '实际题目客观题答案';
-
-comment on column t_student_answers.answer_attach is
-'考试附件路径';
 
 comment on column t_student_answers.creator is
 '创建者';
@@ -9196,8 +9196,11 @@ ALTER SEQUENCE t_sys_ver_id_seq RESTART WITH 20000;
 
 insert into t_sys_ver(id,name,ver,create_time,update_time,remark)
   values(1000,'业务模型','3.1.11.0',
-  '2016年12月5日 9:52:53','2025年8月20日 0:35:54',
-  '3.1.11.0
+  '2016年12月5日 9:52:53','2025年8月22日 14:08:43',
+  '3.1.11.1
+删除t_student_answers的attach_path字段；给t_exam_room增加一个domain_id字段
+
+3.1.11.0
 删除原有错题集视图，构建错题集提交记录表t_practice_wrong_submissions  构建视图1：错题集中构建错题集试卷、视图2：从最新一次提交记录构建错题集试卷
 
 3.1.10.0
