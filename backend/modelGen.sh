@@ -1,6 +1,6 @@
 #!/bin/sh
 
-dgw --schema="assessuser" \
+./dgw --schema="assessuser" \
   --package="cmn" \
   --output cmn/models.go \
   --template=tmpl/struct.tmpl \
