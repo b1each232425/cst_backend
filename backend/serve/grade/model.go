@@ -29,6 +29,7 @@ type ExamSessionInfo struct {
 	PaperName          null.String `json:"paper_name"`          // 考卷名称
 	StartTime          null.Int    `json:"start_time"`          // 考试开始时间
 	EndTime            null.Int    `json:"end_time"`            // 考试结束时间
+	Status             null.String `json:"status"`              // 考试状态
 	MarkMode           null.String `json:"mark_mode"`           // 阅卷方式
 	TotalScore         null.Float  `json:"total_score"`         // 试卷总分
 	AverageScore       null.Float  `json:"average_score"`       // 平均分
@@ -43,6 +44,7 @@ type GradeExam struct {
 	Type      null.String       `json:"type"`      // 考试类型
 	Sessions  []ExamSessionInfo `json:"sessions"`  // 考试场次列表
 	Submitted null.Bool         `json:"submitted"` // 是否已提交成绩
+	Status    null.String       `json:"status"`    // 考试状态
 }
 
 type GradePractice struct {
@@ -52,6 +54,7 @@ type GradePractice struct {
 	AverageScore      null.Float  `json:"average_score"`      // 平均分
 	CompletedStudents null.Int    `json:"completed_students"` // 完成练习人数
 	PassedStudents    null.Int    `json:"passed_students"`    // 通过人数
+	MarkMode          null.String `json:"mark_mode"`          // 阅卷方式
 }
 
 // ********** 成绩分布接口 **********
@@ -95,7 +98,6 @@ type ExamSessionScore struct {
 	ExamSessionID int64       `json:"exam_session_id"` // 考试场次ID
 	PaperName     null.String `json:"paper_name"`      // 试卷名称
 	Score         null.Float  `json:"score"`           // 学生得分
-	TotalScore    null.Float  `json:"total_score"`     // 试卷总分
 	SessionNum    int64       `json:"session_num"`     // 场次序号
 }
 
@@ -105,6 +107,7 @@ type StudentExamScore struct {
 	Name         null.String        `json:"name"`          // 学生姓名
 	Nickname     null.String        `json:"nickname"`      // 学生昵称
 	Remark       null.String        `json:"remark"`        // 备注
+	TotalScore   float64            `json:"total_score"`   // 总得分
 	ExamSessions []ExamSessionScore `json:"exam_sessions"` // 学生在各场次的成绩
 }
 
@@ -150,9 +153,10 @@ type ExamSessionScoreRank struct {
 }
 
 type SessionInfo struct {
-	ID         null.Int `json:"ID,omitempty"`
-	PaperID    null.Int `json:"PaperID,omitempty"`
-	Duration   null.Int `json:"Duration,omitempty"`
-	SessionNum null.Int `json:"SessionNum,omitempty"`
-	ExamineeID null.Int `json:"ExamineeID,omitempty"`
+	ID           null.Int `json:"ID,omitempty"`
+	PaperID      null.Int `json:"PaperID,omitempty"`
+	Duration     null.Int `json:"Duration,omitempty"`
+	SessionNum   null.Int `json:"SessionNum,omitempty"`
+	ExamineeID   null.Int `json:"ExamineeID,omitempty"`
+	DurationTime null.Int `json:"DurationTime,omitempty"`
 }

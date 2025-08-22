@@ -20,6 +20,7 @@ type Handler interface {
 	HandleSelectLoginDomain(ctx context.Context)
 	HandleQueryMyInfo(ctx context.Context)
 	HandleValidateUserToBeInsert(ctx context.Context)
+	HandleLogout(ctx context.Context)
 }
 
 type handler struct {
@@ -576,4 +577,31 @@ func (h *handler) HandleValidateUserToBeInsert(ctx context.Context) {
 	q.Msg.Data = respDataJson
 	q.Resp()
 	return
+}
+
+// HandleLogout 处理用户退出登录请求
+func (h *handler) HandleLogout(ctx context.Context) {
+	q := cmn.GetCtxValue(ctx)
+	z.Info("---->" + cmn.FncName())
+
+	forceErr, _ := ctx.Value("force-error").(string) // 用于强制执行错误处理代码
+
+	if q.Session != nil {
+		q.Session.Options.MaxAge = -1
+		for k := range q.Session.Values {
+			delete(q.Session.Values, k)
+		}
+		err := q.Session.Save(q.R, q.W)
+		if err != nil || forceErr == "Session.Save" {
+			q.Err = fmt.Errorf("failed to save session: %w", err)
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+	}
+
+	// 返回成功响应
+	q.Msg.Status = 0
+	q.Msg.Msg = "logout success"
+	q.Resp()
 }

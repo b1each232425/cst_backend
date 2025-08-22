@@ -9,7 +9,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -230,6 +229,22 @@ func Enroll(author string) {
 		//DefaultDomain 该API将默认授权给的用户
 		DefaultDomain: int64(cmn.CDomainSys),
 	})
+
+	_ = cmn.AddService(&cmn.ServeEndPoint{
+		Fn: examFile,
+
+		Path: "/exam/file",
+		Name: "examFile",
+
+		Developer: developer,
+		WhiteList: true,
+
+		//DomainID 创建该API的账号归属的domain
+		DomainID: int64(cmn.CDomainSys),
+
+		//DefaultDomain 该API将默认授权给的用户
+		DefaultDomain: int64(cmn.CDomainSys),
+	})
 }
 
 // 检查考试是否存在
@@ -305,98 +320,6 @@ func generateExamineeNumber(serialNumber int64, examInfo cmn.TExamInfo, examSess
 
 	// 拼接准考证号
 	return examYear + examIDStr + serialNumStr
-}
-
-func handleDeleteExamFile(ctx context.Context, tx pgx.Tx, fileID int64) error {
-	z.Info("---->" + cmn.FncName())
-
-	forceErr := ""
-	if val := ctx.Value("force-error"); val != nil {
-		forceErr = val.(string)
-	}
-
-	// 查看数据库中记录的该文件ID的信息
-	var count int
-	var digest, filePath string
-	err := tx.QueryRow(ctx, "SELECT count, digest, path FROM t_file WHERE id = $1", fileID).Scan(
-		&count, &digest, &filePath)
-	if forceErr == "handleDeleteExamFile.tx.QueryRow" {
-		err = fmt.Errorf("强制查询文件信息错误")
-	}
-	if err != nil {
-		z.Error(err.Error())
-		return err
-	}
-
-	if count > 1 {
-		// 减少引用计数
-		_, err = tx.Exec(ctx, "UPDATE t_file SET count = count - 1 WHERE id = $1", fileID)
-		if forceErr == "handleDeleteExamFile.tx.UpdateCount" {
-			err = fmt.Errorf("强制更新文件引用计数错误")
-		}
-		if err != nil {
-			z.Error(err.Error())
-			return err
-		}
-		return nil
-	}
-
-	// count = 1，删除该行
-	_, err = tx.Exec(ctx, "DELETE FROM t_file WHERE id = $1", fileID)
-	if forceErr == "handleDeleteExamFile.tx.DeleteFile" {
-		err = fmt.Errorf("强制删除文件记录错误")
-	}
-	if err != nil {
-		z.Error(err.Error())
-		return err
-	}
-
-	// 检查是否还有其他相同digest的文件
-	var digestCount int
-	err = tx.QueryRow(ctx, "SELECT COUNT(*) FROM t_file WHERE digest = $1", digest).Scan(&digestCount)
-	if forceErr == "handleDeleteExamFile.tx.CountDigest" {
-		err = fmt.Errorf("强制统计相同digest文件错误")
-	}
-	if err != nil {
-		z.Error(err.Error())
-		return err
-	}
-
-	// 如果没有其他相同digest的文件记录，从文件系统删除该文件
-	if digestCount == 0 {
-		var infoFilePath string
-		infoFilePath = filePath + ".info"
-
-		err := os.Remove(filePath)
-		if forceErr == "handleDeleteExamFile.deleteFileFromFilesystem" {
-			err = fmt.Errorf("强制从文件系统删除文件错误")
-		}
-		if err != nil {
-			if os.IsNotExist(err) {
-				z.Info(fmt.Sprintf("要删除的文件不存在: %s, digest: %s", filePath, digest))
-			} else {
-				z.Error(fmt.Sprintf("从文件系统删除文件失败: %s, digest: %s, error: %v",
-					filePath, digest, err))
-				return err
-			}
-		}
-
-		err = os.Remove(infoFilePath)
-		if forceErr == "handleDeleteExamFile.deleteInfoFileFromFilesystem" {
-			err = fmt.Errorf("强制从文件系统删除.info文件错误")
-		}
-		if err != nil {
-			if os.IsNotExist(err) {
-				z.Warn(fmt.Sprintf("要删除的.info文件不存在: %s, digest: %s", infoFilePath, digest))
-			} else {
-				z.Error(fmt.Sprintf("从文件系统删除.info文件失败: %s, digest: %s, error: %v",
-					infoFilePath, digest, err))
-				return err
-			}
-		}
-	}
-
-	return nil
 }
 
 // 获取考试信息
@@ -1036,12 +959,11 @@ func updateExamineeStatus(ctx context.Context, tx pgx.Tx, newStatus string, user
 
 	_, err := tx.Exec(ctx, `
 		UPDATE t_examinee 
-		SET status = $1, update_time = $2, updated_by = $3
-		FROM t_examinee e
-		JOIN t_exam_session es ON e.exam_session_id = es.id
-		WHERE t_examinee.id = e.id
-		AND es.exam_id = ANY($4) 
-		AND t_examinee.status != '08'
+        SET status = $1, update_time = $2, updated_by = $3
+        FROM t_exam_session es
+        WHERE t_examinee.exam_session_id = es.id
+        AND es.exam_id = ANY($4) 
+        AND t_examinee.status != '08'
 	`, newStatus, time.Now().UnixMilli(), userID, examIDs)
 	if forceErr == "updateExamineeStatus.Exec" {
 		err = fmt.Errorf("force error: %s", forceErr)
@@ -1210,6 +1132,40 @@ func exam(ctx context.Context) {
 			return
 		}
 
+		// 获取考试附件信息
+		var examFiles []ExamFile
+		queryExamFilesSQL := `
+			SELECT digest, file_name
+			FROM v_exam_file
+			WHERE exam_id = $1
+		`
+		var examFilesRows pgx.Rows
+		examFilesRows, q.Err = conn.Query(context.Background(), queryExamFilesSQL, examID)
+		defer examFilesRows.Close()
+		if forceErr == "conn.QueryExamFilesRows" {
+			q.Err = fmt.Errorf("强制查询错误")
+		}
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+		defer examFilesRows.Close()
+
+		for examFilesRows.Next() {
+			var ef ExamFile
+			q.Err = examFilesRows.Scan(&ef.CheckSum, &ef.Name)
+			if forceErr == "examFilesRows.Scan" {
+				q.Err = fmt.Errorf("强制获取考试文件错误")
+			}
+			if q.Err != nil {
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+			examFiles = append(examFiles, ef)
+		}
+
 		if strings.Contains(userDomain, "^student") {
 			examData := ExamData{
 				ExamInfo:       ei,
@@ -1218,6 +1174,7 @@ func exam(ctx context.Context) {
 				InvigilatorIDs: nil,
 				ExamRooms:      nil,
 				TimeStamp:      currentTime,
+				Files:          examFiles,
 			}
 
 			var jsonData []byte
@@ -1272,37 +1229,6 @@ func exam(ctx context.Context) {
 				return
 			}
 			examineeIDs = append(examineeIDs, examineeID)
-		}
-
-		// 获取考试附件信息
-		var examFiles []ExamFile
-		queryExamFilesSQL := `
-			SELECT digest, file_name
-			FROM v_exam_file
-			WHERE exam_id = $1
-		`
-		var examFilesRows pgx.Rows
-		examFilesRows, q.Err = conn.Query(context.Background(), queryExamFilesSQL, examID)
-		defer examFilesRows.Close()
-		if forceErr == "conn.QueryExamFilesRows" {
-			q.Err = fmt.Errorf("强制查询错误")
-		}
-		if q.Err != nil {
-			z.Error(q.Err.Error())
-			q.RespErr()
-			return
-		}
-		defer examFilesRows.Close()
-
-		for examFilesRows.Next() {
-			var ef ExamFile
-			q.Err = examFilesRows.Scan(&ef.CheckSum, &ef.Name)
-			if q.Err != nil {
-				z.Error(q.Err.Error())
-				q.RespErr()
-				return
-			}
-			examFiles = append(examFiles, ef)
 		}
 
 		// // 获取监考员信息
@@ -1595,21 +1521,19 @@ func exam(ctx context.Context) {
 			rules = COALESCE(NULLIF($2, ''), rules),
 			type = COALESCE(NULLIF($3, ''), type),
 			mode = COALESCE(NULLIF($4, ''), mode),
-			files = COALESCE(NULLIF($5, '{}'::jsonb), files),
-			submitted = COALESCE($6, submitted),
-			creator = CASE WHEN status = '14' THEN $7 ELSE creator END,
-			create_time = CASE WHEN status = '14' THEN $8 ELSE create_time END,
-			updated_by = $7,
-			update_time = $8,
-			status = COALESCE(NULLIF($9, ''), status),
-			addi = COALESCE(NULLIF($10, '{}'::jsonb), addi)
-		WHERE id = $11 AND status != '12'`
+			submitted = COALESCE($5, submitted),
+			creator = CASE WHEN status = '14' THEN $6 ELSE creator END,
+			create_time = CASE WHEN status = '14' THEN $7 ELSE create_time END,
+			updated_by = $6,
+			update_time = $7,
+			status = COALESCE(NULLIF($8, ''), status),
+			addi = COALESCE(NULLIF($9, '{}'::jsonb), addi)
+		WHERE id = $10 AND status != '12'`
 		_, q.Err = tx.Exec(ctx, updateExamSQL,
 			ExamData.ExamInfo.Name.String,
 			ExamData.ExamInfo.Rules.String,
 			ExamData.ExamInfo.Type.String,
 			ExamData.ExamInfo.Mode.String,
-			ExamData.ExamInfo.Files,
 			ExamData.ExamInfo.Submitted.Bool,
 			userID,
 			currentTime,
@@ -1640,11 +1564,11 @@ func exam(ctx context.Context) {
 		}
 
 		deleteExamineeSQL := `
-		UPDATE t_examinee SET status = '08', updated_by = $1,
-		update_time = $2
-		FROM t_examinee e
-		JOIN t_exam_session es ON e.exam_session_id = es.id
-		WHERE es.exam_id = $3 AND e.status != '08'`
+		UPDATE t_examinee SET status = '08', updated_by = $1, update_time = $2
+		FROM t_exam_session es 
+		WHERE t_examinee.exam_session_id = es.id 
+		AND es.exam_id = $3 
+		AND t_examinee.status != '08'`
 		_, q.Err = tx.Exec(ctx, deleteExamineeSQL, userID, currentTime, ExamData.ExamInfo.ID.Int64)
 		if forceErr == "tx.SoftDeleteExaminee" {
 			q.Err = fmt.Errorf("强制删除考生错误")
@@ -1788,7 +1712,11 @@ func exam(ctx context.Context) {
 					SELECT id FROM t_examinee WHERE exam_session_id = $1 AND status = '00'
 				`
 			rows, err := tx.Query(ctx, examinee_query, examSession.ID.Int64)
-			defer rows.Close()
+			defer func() {
+				if rows != nil {
+					rows.Close()
+				}
+			}()
 			if forceErr == "tx.SearchExaminee" {
 				err = fmt.Errorf("强制查询考生错误")
 			}
@@ -2158,11 +2086,11 @@ func exam(ctx context.Context) {
 		}
 
 		deleteExamineeSQL := `
-		UPDATE t_examinee SET status = '08', updated_by = $1,
-		update_time = $2
-		FROM t_examinee e
-		JOIN t_exam_session es ON e.exam_session_id = es.id
-		WHERE es.exam_id = ANY($3) AND e.status != '08'`
+		UPDATE t_examinee SET status = '08', updated_by = $1, update_time = $2
+		FROM t_exam_session es 
+		WHERE t_examinee.exam_session_id = es.id 
+		AND es.exam_id = ANY($3) 
+		AND t_examinee.status != '08'`
 		_, q.Err = tx.Exec(ctx, deleteExamineeSQL, userID, currentTime, examIDs)
 		if forceErr == "tx.SoftDeleteExaminee" {
 			q.Err = fmt.Errorf("强制删除考生错误")
@@ -2200,47 +2128,16 @@ func exam(ctx context.Context) {
 			return
 		}
 
-		// // 删除考生信息
-		// deleteExamineeSQL := `
-		// 	DELETE FROM t_examinee WHERE exam_session_id = ANY($1)
-		// `
-		// _, q.Err = tx.Exec(ctx, deleteExamineeSQL, examSessionIDs)
-		// if forceErr == "tx.DeleteExaminee" {
-		// 	q.Err = fmt.Errorf("强制删除考生信息错误")
-		// }
-		// if q.Err != nil {
-		// 	z.Error(q.Err.Error())
-		// 	q.RespErr()
-		// 	return
-		// }
-
-		// // 删除考试场次
-		// deleteExamSessionSQL := `
-		// 	DELETE FROM t_exam_session WHERE id = ANY($1)
-		// `
-		// _, q.Err = tx.Exec(ctx, deleteExamSessionSQL, examSessionIDs)
-		// if forceErr == "tx.DeleteExamSession" {
-		// 	q.Err = fmt.Errorf("强制删除考试场次错误")
-		// }
-		// if q.Err != nil {
-		// 	z.Error(q.Err.Error())
-		// 	q.RespErr()
-		// 	return
-		// }
-
-		// // 删除考试信息
-		// deleteExamInfoSQL := `
-		// 	DELETE FROM t_exam_info WHERE id = ANY($1) AND status != '14'
-		// `
-		// _, q.Err = tx.Exec(ctx, deleteExamInfoSQL, examIDs)
-		// if forceErr == "tx.DeleteExamInfo" {
-		// 	q.Err = fmt.Errorf("强制删除考试信息错误")
-		// }
-		// if q.Err != nil {
-		// 	z.Error(q.Err.Error())
-		// 	q.RespErr()
-		// 	return
-		// }
+		for _, examID := range examIDs {
+			q.Err = exam_service.CancelExamTimers(ctx, examID)
+			if forceErr == "exam_service.CancelExamTimers" {
+				q.Err = fmt.Errorf("强制删除考试定时器错误")
+			}
+			if q.Err != nil {
+				q.RespErr()
+				return
+			}
+		}
 
 		q.Resp()
 		return
@@ -2417,7 +2314,13 @@ func examList(ctx context.Context) {
 			argIdx += 2
 		}
 
-		countSQL := "SELECT COUNT(ei.id) FROM t_exam_info ei LEFT JOIN t_domain d ON ei.domain_id = d.id WHERE ei.status NOT IN ('12', '14')" + conditionBuilder.String()
+		var countSQL string
+
+		if strings.Contains(userDomain, "^student") {
+			countSQL = "SELECT COUNT(ei.id) FROM t_exam_info ei LEFT JOIN t_domain d ON ei.domain_id = d.id WHERE ei.status NOT IN ('12', '14', '16')" + conditionBuilder.String()
+		} else {
+			countSQL = "SELECT COUNT(ei.id) FROM t_exam_info ei LEFT JOIN t_domain d ON ei.domain_id = d.id WHERE ei.status NOT IN ('12', '14')" + conditionBuilder.String()
+		}
 
 		var rowCount int64
 		q.Err = conn.QueryRow(ctx, countSQL, args...).Scan(&rowCount)
@@ -2472,13 +2375,18 @@ func examList(ctx context.Context) {
 				LEFT JOIN v_student_exam_total_score sc
 					ON sc.exam_session_id = es.id
 					AND sc.student_id = $` + strconv.Itoa(argIdx+2) + `
-				ORDER BY es.session_num,
+				ORDER BY 
 					ei.update_time DESC, 
-					ei.id DESC
+					ei.id DESC,
+					es.session_num
 			`
 			var rows pgx.Rows
 			rows, q.Err = conn.Query(ctx, searchSQL, append(args, req.PageSize, offset, userID)...)
-			defer rows.Close()
+			defer func() {
+				if rows != nil {
+					rows.Close()
+				}
+			}()
 			if forceErr == "conn.Query" {
 				q.Err = fmt.Errorf("强制查询考试列表错误")
 			}
@@ -2581,7 +2489,11 @@ func examList(ctx context.Context) {
 
 			var rows pgx.Rows
 			rows, q.Err = conn.Query(ctx, searchSQL, append(args, req.PageSize, offset)...)
-			defer rows.Close()
+			defer func() {
+				if rows != nil {
+					rows.Close()
+				}
+			}()
 			if forceErr == "conn.Query" {
 				q.Err = fmt.Errorf("强制查询考试列表错误")
 			}
@@ -2752,6 +2664,11 @@ func examinee(ctx context.Context) {
 
 		var rows pgx.Rows
 		rows, q.Err = cmn.GetPgxConn().Query(ctx, query, examID)
+		defer func() {
+			if rows != nil {
+				rows.Close()
+			}
+		}()
 		if forceErr == "conn.Query" {
 			q.Err = fmt.Errorf("force error: %s", forceErr)
 		}
@@ -2760,7 +2677,6 @@ func examinee(ctx context.Context) {
 			q.RespErr()
 			return
 		}
-		defer rows.Close()
 
 		var examinees []Examinee
 		for rows.Next() {
@@ -3559,7 +3475,11 @@ func examUser(ctx context.Context) {
 
 		var rows pgx.Rows
 		rows, q.Err = conn.Query(context.Background(), query, userIDs)
-		defer rows.Close()
+		defer func() {
+			if rows != nil {
+				rows.Close()
+			}
+		}()
 		if forceErr == "conn.Query" {
 			q.Err = fmt.Errorf("强制查询用户信息错误")
 		}
@@ -3659,8 +3579,6 @@ func examFile(ctx context.Context) {
 		return
 	}
 
-	currentTime := time.Now().UnixMilli()
-
 	// 开启事务
 	var tx pgx.Tx
 	tx, q.Err = conn.Begin(ctx)
@@ -3747,8 +3665,6 @@ func examFile(ctx context.Context) {
 			return
 		}
 
-		z.Sugar().Infof("examID: %d", examFile.ExamID)
-
 		// 检查考试是否存在
 		checkExistsSQL := `
 			SELECT EXISTS (
@@ -3775,59 +3691,12 @@ func examFile(ctx context.Context) {
 			return
 		}
 
-		var filePath string
-		filePath = filepath.Join(uploadDir, fmt.Sprintf("%s", examFile.CheckSum))
-
 		var fileID int64
-		var digest string
-
-		// 标记是否为新文件
-		var isNew bool
-		isNew = false
-
-		// 查询是否已存在
-		err := tx.QueryRow(ctx, `
-			SELECT id, digest FROM t_file
-			WHERE digest = $1 AND file_name = $2 AND creator = $3
-			LIMIT 1
-		`, examFile.CheckSum, examFile.Name, userID).Scan(&fileID, &digest)
-
-		// 如果查询失败，则标记为新文件
-		if err == pgx.ErrNoRows {
-			isNew = true
-		}
-		if forceErr == "examFile.tx.QueryRow1" {
-			q.Err = fmt.Errorf("强制查询文件错误")
-		}
-		if err != pgx.ErrNoRows && err != nil {
-			q.Err = fmt.Errorf("查询文件失败: %v", err)
-			z.Error(q.Err.Error())
-			q.RespErr()
-			return
-		}
-
-		// 不存在则插入
-		if isNew {
-			q.Err = tx.QueryRow(ctx, `
-				INSERT INTO t_file (digest, file_name, path, belongto_path, size, count, creator, create_time)
-				VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-				RETURNING id, digest
-			`, examFile.CheckSum, examFile.Name, filePath, filePath, examFile.Size, 1, userID, currentTime).Scan(&fileID, &digest)
-			if forceErr == "examFile.tx.QueryRow2" {
-				q.Err = fmt.Errorf("强制插入文件信息错误")
-			}
-			if q.Err != nil {
-				q.Err = fmt.Errorf("插入文件信息失败: %v", q.Err)
-				z.Error(q.Err.Error())
-				q.RespErr()
-				return
-			}
-		}
 
 		// 获取该考试的所有附件，并检查是否有digest相同的文件
 		var examFiles []cmn.TVExamFile
 		getExamFilesSQL := `
-			SELECT file_id, digest, file_name
+			SELECT file_id, digest, file_name, file_domain_id, file_creator
 			FROM v_exam_file
 			WHERE exam_id = $1
 		`
@@ -3844,8 +3713,8 @@ func examFile(ctx context.Context) {
 		}
 
 		for examFileRows.Next() {
-			var examFile cmn.TVExamFile
-			q.Err = examFileRows.Scan(&examFile.FileID, &examFile.Digest, &examFile.FileName)
+			var vExamFile cmn.TVExamFile
+			q.Err = examFileRows.Scan(&vExamFile.FileID, &vExamFile.Digest, &vExamFile.FileName, &vExamFile.FileDomainID, &vExamFile.FileCreator)
 			if forceErr == "examFiles.rows.Scan" {
 				q.Err = fmt.Errorf("强制扫描考试文件行错误")
 			}
@@ -3854,111 +3723,83 @@ func examFile(ctx context.Context) {
 				q.RespErr()
 				return
 			}
-			examFiles = append(examFiles, examFile)
+			examFiles = append(examFiles, vExamFile)
 		}
 
-		var handleCase string
-		handleCase = "new_file"
+		var needUpdate bool = true
+		var replacedFileID int64 = -1
 
-		var replacedFileID int64
-
-		// 如果存在相同digest，则查看ID和file_name是否一致
+		// 如果现有的考试附件存在相同digest，则查看文件ID，文件名是否一致
 		for i := 0; i < len(examFiles); i++ {
 
-			// 如果file_name不一致，则算作新增
-			if examFiles[i].Digest.String == examFile.CheckSum && examFiles[i].FileName.String != examFile.Name {
-				handleCase = "new_file"
+			// 如果digest和文件名不同，则算作新增文件
+			if examFiles[i].Digest.String != examFile.CheckSum || examFiles[i].FileName.String != examFile.Name {
+				continue
 			}
 
-			// 如果ID和file_name都一致，则不用做任何处理
-			if examFiles[i].Digest.String == examFile.CheckSum && examFiles[i].FileName.String == examFile.Name && examFiles[i].FileID.Int64 == fileID {
-				handleCase = "no_change"
+			// 文件名、创建者、domainID都一致，则不用做任何处理
+			if examFiles[i].FileCreator.Int64 == userID && examFiles[i].FileDomainID.Int64 == userRole {
+				needUpdate = false
 				break
 			}
 
-			// 如果只有ID不一致，则替换该ID，减少被替换的文件的引用计数，并更新files字段
-			if examFiles[i].Digest.String == examFile.CheckSum && examFiles[i].FileName.String == examFile.Name && examFiles[i].FileID.Int64 != fileID {
-				replacedFileID = examFiles[i].FileID.Int64
-				examFiles[i].FileID = null.IntFrom(fileID)
-				handleCase = "replace_id"
-				break
-			}
+			// 如果创建者、domainID有一个不一致，则替换该ID，删除原来的文件记录，并更新files字段
+			replacedFileID = examFiles[i].FileID.Int64
+			break
 		}
 
-		// 拿到新的考试附件ID数组
-		var examFileIDs []int64
-		for i := 0; i < len(examFiles); i++ {
-			examFileIDs = append(examFileIDs, examFiles[i].FileID.Int64)
-		}
-
-		// 组装返回给前端的文件信息
-		var examFileReply []ExamFile
-		for i := 0; i < len(examFiles); i++ {
-			var fileInfo ExamFile
-			fileInfo.CheckSum = examFiles[i].Digest.String
-			fileInfo.Name = examFiles[i].FileName.String
-			examFileReply = append(examFileReply, fileInfo)
-		}
-
-		if handleCase == "new_file" {
-
-			// 在考试附件数组中增加新文件ID
-			examFileIDs = append(examFileIDs, fileID)
-			examFileReply = append(examFileReply, examFile)
-		}
-
-		if handleCase == "replace_id" {
-
-			// 处理被替换的文件
-			_ = replacedFileID
-			q.Err = handleDeleteExamFile(ctx, tx, replacedFileID)
-			if forceErr == "handleDeleteExamFile.tx.Exec" {
-				q.Err = fmt.Errorf("强制删除考试文件错误")
-			}
+		// 如果附件有更新，则创建新文件记录，并更新考试附件列表
+		if needUpdate {
+			fileID, q.Err = cmn.NewFileRecord(ctx, tx, examFile.CheckSum, examFile.Name, examFile.Size, userRole, userID)
 			if q.Err != nil {
 				q.RespErr()
 				return
 			}
-		}
 
-		// 更新考试附件字段
-		if handleCase != "no_change" {
-
-			// 如果该文件不是新上传的，则增加引用计数
-			if !isNew {
-				_, q.Err = tx.Exec(ctx, `
-					UPDATE t_file
-					SET count = count + 1
-					WHERE id = $1
-				`, fileID)
-				if forceErr == "examFile.tx.UpdateFileCount" {
-					q.Err = fmt.Errorf("强制更新文件引用计数错误")
-				}
+			// 如果是替换，删除旧文件
+			if replacedFileID != -1 {
+				q.Err = cmn.DeleteFileRecord(ctx, tx, replacedFileID)
 				if q.Err != nil {
-					z.Error(q.Err.Error())
 					q.RespErr()
 					return
 				}
+				// 更新examFiles数组中对应的fileID
+				for i := range examFiles {
+					if examFiles[i].FileID.Int64 == replacedFileID {
+						examFiles[i].FileID = null.IntFrom(fileID)
+						break
+					}
+				}
+			} else {
+				// 新增文件，添加到数组
+				newFile := cmn.TVExamFile{
+					FileID:   null.IntFrom(fileID),
+					Digest:   null.StringFrom(examFile.CheckSum),
+					FileName: null.StringFrom(examFile.Name),
+				}
+				examFiles = append(examFiles, newFile)
+			}
+
+			// 更新考试的files字段
+			var examFileIDs []int64
+			for _, ef := range examFiles {
+				examFileIDs = append(examFileIDs, ef.FileID.Int64)
 			}
 
 			var filesJSON []byte
 			filesJSON, q.Err = json.Marshal(examFileIDs)
-			if forceErr == "examFiles.json.Marshal" {
-				q.Err = fmt.Errorf("强制序列化考试附件ID数组错误")
-				q.Msg.Data = nil
+			if forceErr == "json.Marshal" {
+				q.Err = fmt.Errorf("强制JSON序列化错误")
 			}
 			if q.Err != nil {
 				z.Error(q.Err.Error())
 				q.RespErr()
 				return
 			}
-			_, q.Err = tx.Exec(ctx, `
-				UPDATE t_exam_info
-				SET files = $1
-				WHERE id = $2
-			`, filesJSON, examFile.ExamID)
-			if forceErr == "examInfo.tx.UpdateFiles" {
-				q.Err = fmt.Errorf("强制更新考试附件字段错误")
+
+			_, q.Err = tx.Exec(ctx, `UPDATE t_exam_info SET files = $1 WHERE id = $2`, filesJSON, examFile.ExamID)
+			if forceErr == "tx.Exec" {
+				q.Err = fmt.Errorf("强制更新考试信息错误")
 			}
 			if q.Err != nil {
 				z.Error(q.Err.Error())
@@ -3967,13 +3808,21 @@ func examFile(ctx context.Context) {
 			}
 		}
 
+		// 构造返回数据
+		var examFileReply []ExamFile
+		for _, ef := range examFiles {
+			examFileReply = append(examFileReply, ExamFile{
+				CheckSum: ef.Digest.String,
+				Name:     ef.FileName.String,
+			})
+		}
+
 		q.Msg.Data, q.Err = json.Marshal(examFileReply)
-		if forceErr == "examFiles.json.Marshal2" {
-			q.Err = fmt.Errorf("强制序列化考试文件回复错误")
+		if forceErr == "json.Marshal2" {
+			q.Err = fmt.Errorf("强制JSON序列化错误")
 			q.Msg.Data = nil
 		}
 		if q.Err != nil {
-			z.Error(q.Err.Error())
 			q.RespErr()
 			return
 		}
@@ -4080,8 +3929,14 @@ func examFile(ctx context.Context) {
 
 		for examFileRows.Next() {
 			var examFile cmn.TVExamFile
-			if err := examFileRows.Scan(&examFile.FileID, &examFile.Digest, &examFile.FileName); err != nil {
-				q.Err = fmt.Errorf("强制扫描考试附件信息错误: %w", err)
+			q.Err = examFileRows.Scan(&examFile.FileID, &examFile.Digest, &examFile.FileName)
+			if forceErr == "scanExamFile" {
+				q.Err = fmt.Errorf("强制获取考试附件信息错误")
+			}
+			if q.Err != nil {
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
 			}
 			examFiles = append(examFiles, examFile)
 		}
@@ -4091,13 +3946,13 @@ func examFile(ctx context.Context) {
 		deleteFileID = -1
 		deleteIndex := -1
 		for i, examFileInfo := range examFiles {
-			if examFileInfo.Digest.String == examFile.CheckSum && examFileInfo.FileName.String == examFile.Name {
-
-				// 找到匹配的考试附件
-				deleteFileID = examFileInfo.FileID.Int64
-				deleteIndex = i
-				break
+			if examFileInfo.Digest.String != examFile.CheckSum || examFileInfo.FileName.String != examFile.Name {
+				continue
 			}
+
+			// 找到匹配的考试附件
+			deleteFileID = examFileInfo.FileID.Int64
+			deleteIndex = i
 		}
 
 		if deleteIndex != -1 {
@@ -4115,9 +3970,39 @@ func examFile(ctx context.Context) {
 		}
 
 		if deleteFileID != -1 {
-			q.Err = handleDeleteExamFile(ctx, tx, deleteFileID)
+			q.Err = cmn.DeleteFileRecord(ctx, tx, deleteFileID)
 			if forceErr == "handleDeleteExamFile" {
 				q.Err = fmt.Errorf("强制删除考试附件错误")
+			}
+			if q.Err != nil {
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+
+			var examFileIDs []int64
+			for i := 0; i < len(examFiles); i++ {
+				examFileIDs = append(examFileIDs, examFiles[i].FileID.Int64)
+			}
+
+			var filesJSON []byte
+			filesJSON, q.Err = json.Marshal(examFileIDs)
+			if forceErr == "examFiles.json.Marshal.Delete" {
+				q.Err = fmt.Errorf("强制序列化考试附件ID数组错误")
+			}
+			if q.Err != nil {
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+
+			_, q.Err = tx.Exec(ctx, `
+				UPDATE t_exam_info
+				SET files = $1
+				WHERE id = $2
+			`, filesJSON, examFile.ExamID)
+			if forceErr == "examInfo.tx.UpdateFiles.Delete" {
+				q.Err = fmt.Errorf("强制更新考试附件字段错误")
 			}
 			if q.Err != nil {
 				z.Error(q.Err.Error())

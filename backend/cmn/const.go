@@ -232,3 +232,27 @@ func ReqFnTypeString(reqFnType int) (s string) {
 	}
 	return
 }
+
+// 证件类型
+const (
+	CIDCardTypeResidentIdentityCard         = "居民身份证"
+	CIDCardTypePassport                     = "护照"
+	CIDCardTypeHongKongAndMacauPass         = "港澳通行证"
+	CIDCardTypeHongKongAndMacauReturnPermit = "港澳回乡证"
+	CIDCardTypeTaiwanCompatriotPass         = "台胞证"
+	CIDCardTypeExamCard                     = "准考证"
+)
+
+func CheckIDCardTypeValid(idCardType string) bool {
+	switch idCardType {
+	case CIDCardTypeResidentIdentityCard,
+		CIDCardTypePassport,
+		CIDCardTypeHongKongAndMacauPass,
+		CIDCardTypeHongKongAndMacauReturnPermit,
+		CIDCardTypeTaiwanCompatriotPass,
+		CIDCardTypeExamCard:
+		return true
+	default:
+		return false
+	}
+}

@@ -3,7 +3,7 @@
  * @Description: 考卷-答卷数据库层
  * @Date: 2025-07-21 13:14:34
  * @LastEditors: zdl <1311866870@qq.com>
- * @LastEditTime: 2025-08-12 08:41:23
+ * @LastEditTime: 2025-08-20 13:45:31
  */
 package examPaper
 
@@ -777,7 +777,6 @@ func LoadExamPaperDetailByUserId(ctx context.Context, tx pgx.Tx, examPaperId, pS
 	s = `SELECT 
 			sa.question_id,
 			sa."order",
-			sa.group_id,
 			CASE WHEN $2 THEN sa.answer ELSE NULL END AS answer,
         	CASE WHEN $3 THEN sa.answer_score ELSE NULL END AS answer_score,
             CASE WHEN $4 THEN 
@@ -813,7 +812,7 @@ func LoadExamPaperDetailByUserId(ctx context.Context, tx pgx.Tx, examPaperId, pS
 	for rows.Next() {
 		var a cmn.TStudentAnswers
 		// 将属于这个学生的真正题目、学生作答等信息获取出来，解析在答卷结构体中，最后经过循环遍历，嵌入成一个完整的题目
-		err = rows.Scan(&a.QuestionID, &a.Order, &a.GroupID, &a.Answer, &a.AnswerScore, &a.ActualAnswers, &a.ActualOptions)
+		err = rows.Scan(&a.QuestionID, &a.Order, &a.Answer, &a.AnswerScore, &a.ActualAnswers, &a.ActualOptions)
 		if err != nil || forceErr == "scan" {
 			err = fmt.Errorf("scan student answer failed:%v", err)
 			z.Error(err.Error())
@@ -851,7 +850,6 @@ func LoadExamPaperDetailByUserId(ctx context.Context, tx pgx.Tx, examPaperId, pS
 			z.Error(err.Error())
 			return nil, nil, nil, err
 		}
-		tq.GroupID = sa.GroupID
 		// 赋值学生作答情况
 		tq.StudentAnswer = sa.Answer
 		tq.StudentScore = sa.AnswerScore
