@@ -1,6 +1,6 @@
 /*==============================================================*/
 /* DBMS name:      PostgreSQL 9.x                               */
-/* Created on:     2025/8/22 18:39:49                           */
+/* Created on:     2025/8/22 23:59:33                           */
 /*==============================================================*/
 
 
@@ -9192,8 +9192,11 @@ ALTER SEQUENCE t_sys_ver_id_seq RESTART WITH 20000;
 
 insert into t_sys_ver(id,name,ver,create_time,update_time,remark)
   values(1000,'业务模型','3.1.11.2',
-  '2016年12月5日 9:52:53','2025年8月22日 18:39:43',
+  '2016年12月5日 9:52:53','2025年8月22日 23:59:11',
   '3.1.11.2
+试卷视图给题目添加所属题库字段，便于试卷编辑题目
+
+3.1.11.2
 删除t_paper的version字段，同步更改v_paper视图
 
 3.1.11.1
@@ -13174,7 +13177,8 @@ WITH paper_basic AS (
                     'order', pq."order", 
                     'group_id', pq.group_id, 
                     'status', q.status, 
-                    'question_attachments_path', q.question_attachments_path
+                    'question_attachments_path', q.question_attachments_path,
+                    'belong_to',q.belong_to
                 ) ORDER BY pq."order"
             ) AS questions
            FROM t_paper_question pq
