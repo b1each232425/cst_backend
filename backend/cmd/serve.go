@@ -25,9 +25,13 @@ func serve(cmd *cobra.Command, args []string) {
 	go service.WebServe(cmd, args)
 	go sckserve.SocketServe(cmd, args)
 	go exam_service.ExamMaintainService()
-
+	cmn.StartAsynqService()
 	z.Info("serve gate started")
 	_ = <-cmn.GetTerminateSignal()
+
+	// 停止 asynq 服务
+	cmn.StopAsynqService()
+
 	fmt.Println("service stopped")
 }
 
