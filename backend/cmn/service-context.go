@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"reflect"
+	"runtime"
 
 	"github.com/redis/go-redis/v9"
 
@@ -319,6 +321,35 @@ func ApiList() (data []byte, err error) {
 	return
 }
 
+func getPkgName(fn interface{}) string {
+	funcValue := reflect.ValueOf(fn)
+	if funcValue.Kind() != reflect.Func {
+		return ""
+	}
+
+	funcPtr := funcValue.Pointer()
+	funcForPC := runtime.FuncForPC(funcPtr)
+	if funcForPC == nil {
+		return ""
+	}
+
+	fullName := funcForPC.Name()
+
+	// 移除路径部分
+	lastSlash := strings.LastIndex(fullName, "/")
+	if lastSlash >= 0 {
+		fullName = fullName[lastSlash+1:]
+	}
+
+	// 找到最后一个点，分离包名和函数名
+	lastDot := strings.LastIndex(fullName, ".")
+	if lastDot >= 0 {
+		return fullName[:lastDot]
+	}
+
+	return ""
+}
+
 func AddService(ep *ServeEndPoint) (err error) {
 	for {
 		if ep == nil {
@@ -354,6 +385,7 @@ func AddService(ep *ServeEndPoint) (err error) {
 			if !rIsAPI.MatchString(ep.Path) {
 				ep.Path = strings.ReplaceAll("/api/"+ep.Path, "//", "/")
 			}
+			ep.PkgName = getPkgName(ep.Fn)
 		}
 
 		if ep.Name == "" {
