@@ -838,7 +838,6 @@ func TestStudentAnswer(t *testing.T) {
 					assert.Equal(t, expected.ExamineeID, result.ExamineeID)
 					assert.JSONEq(t, expected.Answer.String(), expected.Answer.String())
 					assert.Equal(t, expected.QuestionID, result.QuestionID)
-					assert.JSONEq(t, expected.AnswerAttachmentsPath.String(), result.AnswerAttachmentsPath.String())
 					assert.Equal(t, resp.Status, 0)
 
 				case "GET":
@@ -856,7 +855,6 @@ func TestStudentAnswer(t *testing.T) {
 					assert.JSONEq(t, expected.Answer.String(), expected.Answer.String())
 					assert.Equal(t, expected.QuestionID, result.QuestionID)
 
-					assert.JSONEq(t, expected.AnswerAttachmentsPath.String(), result.AnswerAttachmentsPath.String())
 					assert.Equal(t, resp.Status, 0)
 				}
 			} else {

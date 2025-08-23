@@ -40,16 +40,16 @@ func equalAuthority(a1, a2 *Authority) bool {
 	}
 
 	// 比较ReadableDomains字段（不关注元素顺序）
-	if len(a1.ReadableDomains) != len(a2.ReadableDomains) {
+	if len(a1.AccessibleDomains) != len(a2.AccessibleDomains) {
 		return false
 	}
 	// 将a2的ReadableDomains转换为map以便快速查找
 	a2DomainsMap := make(map[int64]bool)
-	for _, domain := range a2.ReadableDomains {
+	for _, domain := range a2.AccessibleDomains {
 		a2DomainsMap[domain] = true
 	}
 	// 检查a1中的每个域是否都存在于a2中
-	for _, domain := range a1.ReadableDomains {
+	for _, domain := range a1.AccessibleDomains {
 		if !a2DomainsMap[domain] {
 			return false
 		}
@@ -202,7 +202,7 @@ func TestGetUserAuthority(t *testing.T) {
 						GrantSource:        null.StringFrom("api"),
 					},
 				},
-				ReadableDomains: []int64{1999, 1998},
+				AccessibleDomains: []int64{1999, 1998},
 			},
 			wantErr: false,
 		},
@@ -314,7 +314,7 @@ func TestGetUserAuthority(t *testing.T) {
 						GrantSource:        null.StringFrom("api"),
 					},
 				},
-				ReadableDomains: []int64{1998, 1999, 2009, 2011, 2013},
+				AccessibleDomains: []int64{1998, 1999, 2009, 2011, 2013},
 			},
 			wantErr: false,
 		},
@@ -340,8 +340,8 @@ func TestGetUserAuthority(t *testing.T) {
 					Domain:   "cst.school.examSite",
 					Priority: null.IntFrom(0),
 				},
-				APIs:            []cmn.TVDomainAPI{},
-				ReadableDomains: []int64{1998, 1999, 2009, 2013},
+				APIs:              []cmn.TVDomainAPI{},
+				AccessibleDomains: []int64{1998, 1999, 2009, 2013},
 			},
 			wantErr: false,
 		},
@@ -582,7 +582,7 @@ func TestGetUserAuthority(t *testing.T) {
 						GrantSource:        null.StringFrom("api"),
 					},
 				},
-				ReadableDomains: []int64{1999},
+				AccessibleDomains: []int64{1999},
 			},
 			wantErr: false,
 		},
@@ -790,14 +790,14 @@ func TestGetUserAuthority(t *testing.T) {
 
 					// ReadableDomains详细比对
 					t.Logf("\n=== 可读域列表比对 ===")
-					if len(gotA.ReadableDomains) != len(tt.wantA.ReadableDomains) {
-						t.Errorf("❌ 可读域数量不匹配: 实际=%d, 期望=%d", len(gotA.ReadableDomains), len(tt.wantA.ReadableDomains))
+					if len(gotA.AccessibleDomains) != len(tt.wantA.AccessibleDomains) {
+						t.Errorf("❌ 可读域数量不匹配: 实际=%d, 期望=%d", len(gotA.AccessibleDomains), len(tt.wantA.AccessibleDomains))
 					} else {
-						t.Logf("✅ 可读域数量匹配: %d", len(gotA.ReadableDomains))
+						t.Logf("✅ 可读域数量匹配: %d", len(gotA.AccessibleDomains))
 
 						// 逐个比对可读域ID
-						for i, gotDomainID := range gotA.ReadableDomains {
-							wantDomainID := tt.wantA.ReadableDomains[i]
+						for i, gotDomainID := range gotA.AccessibleDomains {
+							wantDomainID := tt.wantA.AccessibleDomains[i]
 							if gotDomainID != wantDomainID {
 								t.Errorf("❌ 可读域[%d] ID不匹配: 实际=%d, 期望=%d", i, gotDomainID, wantDomainID)
 							} else {
@@ -805,8 +805,8 @@ func TestGetUserAuthority(t *testing.T) {
 							}
 						}
 					}
-					t.Logf("实际可读域列表: %v", gotA.ReadableDomains)
-					t.Logf("期望可读域列表: %v", tt.wantA.ReadableDomains)
+					t.Logf("实际可读域列表: %v", gotA.AccessibleDomains)
+					t.Logf("期望可读域列表: %v", tt.wantA.AccessibleDomains)
 
 					// 测试结果汇总
 					t.Logf("\n=== 测试结果汇总 ===")
@@ -816,8 +816,8 @@ func TestGetUserAuthority(t *testing.T) {
 					t.Logf("期望域: %v", tt.wantA.Domain.Name)
 					t.Logf("期望API数量: %d", len(tt.wantA.APIs))
 					t.Logf("实际API数量: %d", len(gotA.APIs))
-					t.Logf("期望可读域数量: %d", len(tt.wantA.ReadableDomains))
-					t.Logf("实际可读域数量: %d", len(gotA.ReadableDomains))
+					t.Logf("期望可读域数量: %d", len(tt.wantA.AccessibleDomains))
+					t.Logf("实际可读域数量: %d", len(gotA.AccessibleDomains))
 					t.Logf("===================")
 
 				} else {
@@ -833,8 +833,8 @@ func TestGetUserAuthority(t *testing.T) {
 					for i, api := range gotA.APIs {
 						t.Logf("  API[%d]: %v -> %v", i, api.APIName, api.ExposePath)
 					}
-					t.Logf("可读域数量: %d", len(gotA.ReadableDomains))
-					t.Logf("可读域列表: %v", gotA.ReadableDomains)
+					t.Logf("可读域数量: %d", len(gotA.AccessibleDomains))
+					t.Logf("可读域列表: %v", gotA.AccessibleDomains)
 				}
 			}
 		})
@@ -885,7 +885,7 @@ func TestCheckUserAPIAccessible(t *testing.T) {
 							GrantSource:        null.StringFrom("api"),
 						},
 					},
-					ReadableDomains: []int64{1999, 1998},
+					AccessibleDomains: []int64{1999, 1998},
 				},
 				apiPath:    "/teacher/question-bank",
 				accessMode: CDataAccessModeRead,
@@ -924,7 +924,7 @@ func TestCheckUserAPIAccessible(t *testing.T) {
 							GrantSource:        null.StringFrom("api"),
 						},
 					},
-					ReadableDomains: []int64{1999, 1998},
+					AccessibleDomains: []int64{1999, 1998},
 				},
 				apiPath:    "/teacher/question-bank",
 				accessMode: CDataAccessModeWrite,
@@ -963,7 +963,7 @@ func TestCheckUserAPIAccessible(t *testing.T) {
 							GrantSource:        null.StringFrom("api"),
 						},
 					},
-					ReadableDomains: []int64{1999, 1998},
+					AccessibleDomains: []int64{1999, 1998},
 				},
 				apiPath:    "/teacher/question-bank",
 				accessMode: CDataAccessModeFull,
@@ -1002,7 +1002,7 @@ func TestCheckUserAPIAccessible(t *testing.T) {
 							GrantSource:        null.StringFrom("api"),
 						},
 					},
-					ReadableDomains: []int64{1999, 1998},
+					AccessibleDomains: []int64{1999, 1998},
 				},
 				apiPath:    "/teacher/question-bank",
 				accessMode: CDataAccessModeRead,
@@ -1041,7 +1041,7 @@ func TestCheckUserAPIAccessible(t *testing.T) {
 							GrantSource:        null.StringFrom("api"),
 						},
 					},
-					ReadableDomains: []int64{1999, 1998},
+					AccessibleDomains: []int64{1999, 1998},
 				},
 				apiPath:    "/teacher/question-bank",
 				accessMode: CDataAccessModeWrite,
@@ -1080,7 +1080,7 @@ func TestCheckUserAPIAccessible(t *testing.T) {
 							GrantSource:        null.StringFrom("api"),
 						},
 					},
-					ReadableDomains: []int64{1999, 1998},
+					AccessibleDomains: []int64{1999, 1998},
 				},
 				apiPath:    "/teacher/question-bank",
 				accessMode: CDataAccessModeFull,
@@ -1119,12 +1119,51 @@ func TestCheckUserAPIAccessible(t *testing.T) {
 							GrantSource:        null.StringFrom("api"),
 						},
 					},
-					ReadableDomains: []int64{1999, 1998},
+					AccessibleDomains: []int64{1999, 1998},
 				},
 				apiPath:    "/teacher/question-bank",
 				accessMode: CDataAccessModeRead,
 			},
 			want:    false,
+			wantErr: false,
+		},
+		{
+			name: "edit权限｜API可编辑",
+			args: args{
+				ctx: context.Background(),
+				authority: &Authority{
+					Role: cmn.TDomain{
+						ID:       null.NewInt(2003, true),
+						Name:     "教师",
+						Domain:   "cst.school^teacher",
+						Priority: null.IntFrom(7),
+					},
+					Domain: cmn.TDomain{
+						ID:       null.NewInt(1999, true),
+						Name:     "3min",
+						Domain:   "cst.school",
+						Priority: null.IntFrom(0),
+					},
+					APIs: []cmn.TVDomainAPI{
+						{
+							AuthDomainID:       null.IntFrom(2003),
+							DomainName:         null.StringFrom("教师"),
+							Domain:             null.StringFrom("cst.school^teacher"),
+							Priority:           null.IntFrom(7),
+							APIID:              null.IntFrom(20000),
+							APIName:            null.StringFrom("题库管理模块"),
+							ExposePath:         null.StringFrom("/teacher/question-bank"),
+							AccessControlLevel: null.StringFrom("4"),
+							DataAccessMode:     null.StringFrom("edit"),
+							GrantSource:        null.StringFrom("api"),
+						},
+					},
+					AccessibleDomains: []int64{1999, 1998},
+				},
+				apiPath:    "/teacher/question-bank",
+				accessMode: CDataAccessModeEdit,
+			},
+			want:    true,
 			wantErr: false,
 		},
 		{
@@ -1158,7 +1197,7 @@ func TestCheckUserAPIAccessible(t *testing.T) {
 							GrantSource:        null.StringFrom("api"),
 						},
 					},
-					ReadableDomains: []int64{1999, 1998},
+					AccessibleDomains: []int64{1999, 1998},
 				},
 				apiPath:    "/teacher/question-bank",
 				accessMode: "invalid_mode",
@@ -1208,7 +1247,7 @@ func TestCheckUserAPIAccessible(t *testing.T) {
 							GrantSource:        null.StringFrom("api"),
 						},
 					},
-					ReadableDomains: []int64{1999, 1998},
+					AccessibleDomains: []int64{1999, 1998},
 				},
 				apiPath:    "/teacher/question-bank",
 				accessMode: CDataAccessModeFull,
@@ -1247,7 +1286,46 @@ func TestCheckUserAPIAccessible(t *testing.T) {
 							GrantSource:        null.StringFrom("api"),
 						},
 					},
-					ReadableDomains: []int64{1999, 1998},
+					AccessibleDomains: []int64{1999, 1998},
+				},
+				apiPath:    "/teacher/question-bank",
+				accessMode: CDataAccessModeFull,
+			},
+			want:    false,
+			wantErr: true,
+		},
+		{
+			name: "CheckUserAPIEditable.authority.nil错误",
+			args: args{
+				ctx: createMockContext(cmn.TUser{}, "CheckUserAPIEditable.authority.nil"),
+				authority: &Authority{
+					Role: cmn.TDomain{
+						ID:       null.NewInt(2003, true),
+						Name:     "教师",
+						Domain:   "cst.school^teacher",
+						Priority: null.IntFrom(7),
+					},
+					Domain: cmn.TDomain{
+						ID:       null.NewInt(1999, true),
+						Name:     "3min",
+						Domain:   "cst.school",
+						Priority: null.IntFrom(0),
+					},
+					APIs: []cmn.TVDomainAPI{
+						{
+							AuthDomainID:       null.IntFrom(2003),
+							DomainName:         null.StringFrom("教师"),
+							Domain:             null.StringFrom("cst.school^teacher"),
+							Priority:           null.IntFrom(7),
+							APIID:              null.IntFrom(20000),
+							APIName:            null.StringFrom("题库管理模块"),
+							ExposePath:         null.StringFrom("/teacher/question-bank"),
+							AccessControlLevel: null.StringFrom("4"),
+							DataAccessMode:     null.StringFrom("full"),
+							GrantSource:        null.StringFrom("api"),
+						},
+					},
+					AccessibleDomains: []int64{1999, 1998},
 				},
 				apiPath:    "/teacher/question-bank",
 				accessMode: CDataAccessModeFull,
@@ -1313,7 +1391,7 @@ func TestGetDomainRelationship(t *testing.T) {
 							GrantSource:        null.StringFrom("api"),
 						},
 					},
-					ReadableDomains: []int64{1999, 1998},
+					AccessibleDomains: []int64{1999, 1998},
 				},
 				targetDomain: "cst.school",
 			},
@@ -1351,7 +1429,7 @@ func TestGetDomainRelationship(t *testing.T) {
 							GrantSource:        null.StringFrom("api"),
 						},
 					},
-					ReadableDomains: []int64{1999, 1998},
+					AccessibleDomains: []int64{1999, 1998},
 				},
 				targetDomain: "cst",
 			},
@@ -1389,7 +1467,7 @@ func TestGetDomainRelationship(t *testing.T) {
 							GrantSource:        null.StringFrom("api"),
 						},
 					},
-					ReadableDomains: []int64{1999, 1998},
+					AccessibleDomains: []int64{1999, 1998},
 				},
 				targetDomain: "cst",
 			},
@@ -1427,7 +1505,7 @@ func TestGetDomainRelationship(t *testing.T) {
 							GrantSource:        null.StringFrom("api"),
 						},
 					},
-					ReadableDomains: []int64{1999, 1998},
+					AccessibleDomains: []int64{1999, 1998},
 				},
 				targetDomain: "cst.school.class",
 			},
@@ -1465,7 +1543,7 @@ func TestGetDomainRelationship(t *testing.T) {
 							GrantSource:        null.StringFrom("api"),
 						},
 					},
-					ReadableDomains: []int64{1999, 1998},
+					AccessibleDomains: []int64{1999, 1998},
 				},
 				targetDomain: "cst.school.class.room",
 			},
@@ -1503,7 +1581,7 @@ func TestGetDomainRelationship(t *testing.T) {
 							GrantSource:        null.StringFrom("api"),
 						},
 					},
-					ReadableDomains: []int64{1999, 1998},
+					AccessibleDomains: []int64{1999, 1998},
 				},
 				targetDomain: "cst.school2",
 			},
@@ -1541,7 +1619,7 @@ func TestGetDomainRelationship(t *testing.T) {
 							GrantSource:        null.StringFrom("api"),
 						},
 					},
-					ReadableDomains: []int64{1999, 1998},
+					AccessibleDomains: []int64{1999, 1998},
 				},
 				targetDomain: "cst.school2.class",
 			},
@@ -1579,7 +1657,7 @@ func TestGetDomainRelationship(t *testing.T) {
 							GrantSource:        null.StringFrom("api"),
 						},
 					},
-					ReadableDomains: []int64{1999, 1998},
+					AccessibleDomains: []int64{1999, 1998},
 				},
 				targetDomain: "cst.school2.class^member",
 			},
@@ -1617,7 +1695,7 @@ func TestGetDomainRelationship(t *testing.T) {
 							GrantSource:        null.StringFrom("api"),
 						},
 					},
-					ReadableDomains: []int64{1999, 1998},
+					AccessibleDomains: []int64{1999, 1998},
 				},
 				targetDomain: "cst.school2*class",
 			},
@@ -1655,7 +1733,7 @@ func TestGetDomainRelationship(t *testing.T) {
 							GrantSource:        null.StringFrom("api"),
 						},
 					},
-					ReadableDomains: []int64{1999, 1998},
+					AccessibleDomains: []int64{1999, 1998},
 				},
 				targetDomain: "",
 			},
@@ -1703,7 +1781,7 @@ func TestGetDomainRelationship(t *testing.T) {
 							GrantSource:        null.StringFrom("api"),
 						},
 					},
-					ReadableDomains: []int64{1999, 1998},
+					AccessibleDomains: []int64{1999, 1998},
 				},
 				targetDomain: "cst.school",
 			},
@@ -1741,7 +1819,7 @@ func TestGetDomainRelationship(t *testing.T) {
 							GrantSource:        null.StringFrom("api"),
 						},
 					},
-					ReadableDomains: []int64{1999, 1998},
+					AccessibleDomains: []int64{1999, 1998},
 				},
 				targetDomain: "cst.school.class",
 			},
@@ -1779,7 +1857,7 @@ func TestGetDomainRelationship(t *testing.T) {
 							GrantSource:        null.StringFrom("api"),
 						},
 					},
-					ReadableDomains: []int64{1999, 1998},
+					AccessibleDomains: []int64{1999, 1998},
 				},
 				targetDomain: "cst.school",
 			},

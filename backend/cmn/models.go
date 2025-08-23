@@ -13170,7 +13170,6 @@ var TStudentAnswersFields = []string{
 	"GroupID",
 	"ActualOptions",
 	"ActualAnswers",
-	"AnswerAttachmentsPath",
 	"CreateTime",
 	"UpdateTime",
 	"WrongSubmissionID",
@@ -13194,7 +13193,6 @@ var TStudentAnswersColumns = []string{
 	"group_id",
 	"actual_options",
 	"actual_answers",
-	"answer_attachments_path",
 	"create_time",
 	"update_time",
 	"wrong_submission_id",
@@ -13202,77 +13200,74 @@ var TStudentAnswersColumns = []string{
 
 // TStudentAnswersColumnsDataTypes full column data types for default query
 var TStudentAnswersColumnsDataTypes = map[string]string{
-	"id":                      "integer",
-	"type":                    "character varying",
-	"examinee_id":             "bigint",
-	"practice_submission_id":  "bigint",
-	"question_id":             "bigint",
-	"answer":                  "jsonb",
-	"answer_score":            "double precision",
-	"marker":                  "jsonb",
-	"creator":                 "bigint",
-	"updated_by":              "bigint",
-	"addi":                    "jsonb",
-	"status":                  "character varying",
-	"order":                   "integer",
-	"group_id":                "bigint",
-	"actual_options":          "jsonb",
-	"actual_answers":          "jsonb",
-	"answer_attachments_path": "jsonb",
-	"create_time":             "bigint",
-	"update_time":             "bigint",
-	"wrong_submission_id":     "bigint",
+	"id":                     "integer",
+	"type":                   "character varying",
+	"examinee_id":            "bigint",
+	"practice_submission_id": "bigint",
+	"question_id":            "bigint",
+	"answer":                 "jsonb",
+	"answer_score":           "double precision",
+	"marker":                 "jsonb",
+	"creator":                "bigint",
+	"updated_by":             "bigint",
+	"addi":                   "jsonb",
+	"status":                 "character varying",
+	"order":                  "integer",
+	"group_id":               "bigint",
+	"actual_options":         "jsonb",
+	"actual_answers":         "jsonb",
+	"create_time":            "bigint",
+	"update_time":            "bigint",
+	"wrong_submission_id":    "bigint",
 }
 
 // GetFieldsMap returns a map of field names to their values.
 func (r *TStudentAnswers) GetFieldsMap() map[string]any {
 	return map[string]any{
-		"ID":                    r.ID,
-		"Type":                  r.Type,
-		"ExamineeID":            r.ExamineeID,
-		"PracticeSubmissionID":  r.PracticeSubmissionID,
-		"QuestionID":            r.QuestionID,
-		"Answer":                r.Answer,
-		"AnswerScore":           r.AnswerScore,
-		"Marker":                r.Marker,
-		"Creator":               r.Creator,
-		"UpdatedBy":             r.UpdatedBy,
-		"Addi":                  r.Addi,
-		"Status":                r.Status,
-		"Order":                 r.Order,
-		"GroupID":               r.GroupID,
-		"ActualOptions":         r.ActualOptions,
-		"ActualAnswers":         r.ActualAnswers,
-		"AnswerAttachmentsPath": r.AnswerAttachmentsPath,
-		"CreateTime":            r.CreateTime,
-		"UpdateTime":            r.UpdateTime,
-		"WrongSubmissionID":     r.WrongSubmissionID,
+		"ID":                   r.ID,
+		"Type":                 r.Type,
+		"ExamineeID":           r.ExamineeID,
+		"PracticeSubmissionID": r.PracticeSubmissionID,
+		"QuestionID":           r.QuestionID,
+		"Answer":               r.Answer,
+		"AnswerScore":          r.AnswerScore,
+		"Marker":               r.Marker,
+		"Creator":              r.Creator,
+		"UpdatedBy":            r.UpdatedBy,
+		"Addi":                 r.Addi,
+		"Status":               r.Status,
+		"Order":                r.Order,
+		"GroupID":              r.GroupID,
+		"ActualOptions":        r.ActualOptions,
+		"ActualAnswers":        r.ActualAnswers,
+		"CreateTime":           r.CreateTime,
+		"UpdateTime":           r.UpdateTime,
+		"WrongSubmissionID":    r.WrongSubmissionID,
 	}
 }
 
 // GetColumnsMap returns a map of column names to their values.
 func (r *TStudentAnswers) GetColumnsMap() map[string]any {
 	return map[string]any{
-		"id":                      r.ID,
-		"type":                    r.Type,
-		"examinee_id":             r.ExamineeID,
-		"practice_submission_id":  r.PracticeSubmissionID,
-		"question_id":             r.QuestionID,
-		"answer":                  r.Answer,
-		"answer_score":            r.AnswerScore,
-		"marker":                  r.Marker,
-		"creator":                 r.Creator,
-		"updated_by":              r.UpdatedBy,
-		"addi":                    r.Addi,
-		"status":                  r.Status,
-		"order":                   r.Order,
-		"group_id":                r.GroupID,
-		"actual_options":          r.ActualOptions,
-		"actual_answers":          r.ActualAnswers,
-		"answer_attachments_path": r.AnswerAttachmentsPath,
-		"create_time":             r.CreateTime,
-		"update_time":             r.UpdateTime,
-		"wrong_submission_id":     r.WrongSubmissionID,
+		"id":                     r.ID,
+		"type":                   r.Type,
+		"examinee_id":            r.ExamineeID,
+		"practice_submission_id": r.PracticeSubmissionID,
+		"question_id":            r.QuestionID,
+		"answer":                 r.Answer,
+		"answer_score":           r.AnswerScore,
+		"marker":                 r.Marker,
+		"creator":                r.Creator,
+		"updated_by":             r.UpdatedBy,
+		"addi":                   r.Addi,
+		"status":                 r.Status,
+		"order":                  r.Order,
+		"group_id":               r.GroupID,
+		"actual_options":         r.ActualOptions,
+		"actual_answers":         r.ActualAnswers,
+		"create_time":            r.CreateTime,
+		"update_time":            r.UpdateTime,
+		"wrong_submission_id":    r.WrongSubmissionID,
 	}
 }
 
@@ -13294,8 +13289,8 @@ func (r *TStudentAnswers) GetTableName() string {
 // Create inserts the TStudentAnswers to the database.
 func (r *TStudentAnswers) Create(db Queryer) error {
 	err := db.QueryRow(
-		`INSERT INTO t_student_answers (type, examinee_id, practice_submission_id, question_id, answer, answer_score, marker, creator, updated_by, addi, status, order, group_id, actual_options, actual_answers, answer_attachments_path, create_time, update_time, wrong_submission_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19) RETURNING id`,
-		&r.Type, &r.ExamineeID, &r.PracticeSubmissionID, &r.QuestionID, &r.Answer, &r.AnswerScore, &r.Marker, &r.Creator, &r.UpdatedBy, &r.Addi, &r.Status, &r.Order, &r.GroupID, &r.ActualOptions, &r.ActualAnswers, &r.AnswerAttachmentsPath, &r.CreateTime, &r.UpdateTime, &r.WrongSubmissionID).Scan(&r.ID)
+		`INSERT INTO t_student_answers (type, examinee_id, practice_submission_id, question_id, answer, answer_score, marker, creator, updated_by, addi, status, order, group_id, actual_options, actual_answers, create_time, update_time, wrong_submission_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18) RETURNING id`,
+		&r.Type, &r.ExamineeID, &r.PracticeSubmissionID, &r.QuestionID, &r.Answer, &r.AnswerScore, &r.Marker, &r.Creator, &r.UpdatedBy, &r.Addi, &r.Status, &r.Order, &r.GroupID, &r.ActualOptions, &r.ActualAnswers, &r.CreateTime, &r.UpdateTime, &r.WrongSubmissionID).Scan(&r.ID)
 	if err != nil {
 		return errors.Wrap(err, "failed to insert t_student_answers")
 	}
@@ -13307,8 +13302,8 @@ func GetTStudentAnswersByPk(db Queryer, pk0 null.Int) (*TStudentAnswers, error) 
 
 	var r TStudentAnswers
 	err := db.QueryRow(
-		`SELECT id, type, examinee_id, practice_submission_id, question_id, answer, answer_score, marker, creator, updated_by, addi, status, order, group_id, actual_options, actual_answers, answer_attachments_path, create_time, update_time, wrong_submission_id FROM t_student_answers WHERE id = $1`,
-		pk0).Scan(&r.ID, &r.Type, &r.ExamineeID, &r.PracticeSubmissionID, &r.QuestionID, &r.Answer, &r.AnswerScore, &r.Marker, &r.Creator, &r.UpdatedBy, &r.Addi, &r.Status, &r.Order, &r.GroupID, &r.ActualOptions, &r.ActualAnswers, &r.AnswerAttachmentsPath, &r.CreateTime, &r.UpdateTime, &r.WrongSubmissionID)
+		`SELECT id, type, examinee_id, practice_submission_id, question_id, answer, answer_score, marker, creator, updated_by, addi, status, order, group_id, actual_options, actual_answers, create_time, update_time, wrong_submission_id FROM t_student_answers WHERE id = $1`,
+		pk0).Scan(&r.ID, &r.Type, &r.ExamineeID, &r.PracticeSubmissionID, &r.QuestionID, &r.Answer, &r.AnswerScore, &r.Marker, &r.Creator, &r.UpdatedBy, &r.Addi, &r.Status, &r.Order, &r.GroupID, &r.ActualOptions, &r.ActualAnswers, &r.CreateTime, &r.UpdateTime, &r.WrongSubmissionID)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to select t_student_answers")
 	}
@@ -23412,7 +23407,6 @@ type TVPaper struct {
 	QuestionCount     null.Int       `json:"QuestionCount,omitempty" db:"question_count,false,bigint"`          /* question_count question_count */
 	GroupCount        null.Int       `json:"GroupCount,omitempty" db:"group_count,false,bigint"`                /* group_count group_count */
 	GroupsData        types.JSONText `json:"GroupsData,omitempty" db:"groups_data,false,jsonb"`                 /* groups_data groups_data */
-	ExamPaperID       null.Int       `json:"ExamPaperID,omitempty" db:"exampaper_id,false,integer"`             /* exampaper_id exampaper_id */
 	Filter            `json:"-"`     // build DML where clause
 }
 

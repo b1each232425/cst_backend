@@ -399,14 +399,14 @@ func CreateTestExamData(t *testing.T) {
 		($14, $2, $3, $24, '00', '00', 4, '00', $4, $5, $4, $5, $15, $16, '00', 10, '06'),
 		($17, $2, $3, $23, '00', '00', 5, '00', $4, $5, $4, $5, $18, $19, '00', 10, '08'),
 		($20, $25, $3, $23, '00', '00', 6, '00', $4, $5, $4, $5, $21, $22, '00', 10, '10'),
-		($26, $27, $3, $23, '00', '00', 7, '02', $4, $5, $4, $5, $6, $7, '00', 10, '12')
+		($26, $27, $3, $23, '00', '00', 7, '02', $4, $5, $4, $5, $28, $29, '00', 10, '12')
 	`, testExamSessionToPublishID1, testExamToPublishID, testPaperToPublishID, testAcademicAffair, time.Now().UnixMilli(), testExamSessionToPublishID1StartTime, testExamSessionToPublishID1EndTime,
 		testExamSessionToPublishID2, testExamSessionToPublishID2StartTime, testExamSessionToPublishID2EndTime,
 		testExamSessionToPublishID3, testExamSessionToPublishID3StartTime, testExamSessionToPublishID3EndTime,
 		testExamSessionToPublishID4, testExamSessionToPublishID4StartTime, testExamSessionToPublishID4EndTime,
 		testExamSessionToPublishID5, testExamSessionToPublishID5StartTime, testExamSessionToPublishID5EndTime,
 		testErrorExamSessionToPublishID, testErrorExamSessionToPublishIDStartTime, testErrorExamSessionToPublishIDEndTime,
-		reviewerIDs, nilReviewerIDs, testErrorExamToPublishID1, testPublishedExamSessionID, testPublishedExamID)
+		reviewerIDs, nilReviewerIDs, testErrorExamToPublishID1, testPublishedExamSessionID, testPublishedExamID, testExamSession1StartTime, testExamSession1EndTime)
 
 	// 插入考生数据
 	_, err = tx.Exec(ctx, `
@@ -1032,6 +1032,34 @@ func TestHandleExamSessionStart(t *testing.T) {
 		expectedExamStatus string
 	}{
 		{
+			name: "场次开始-有考生-乐观锁",
+			event: ExamEvent{
+				Type:          EVENT_TYPE_EXAM_SESSION_START,
+				ExamID:        testNormalExamID,
+				ExamSessionID: testExamSessionID1,
+			},
+			expectError:        true,
+			expectedStatus:     "02",
+			expectedCount:      1, // 1个考生
+			checkExamStatus:    false,
+			expectedExamStatus: "02",
+			forceError:         "updateExamSession.RowsAffected",
+		},
+		{
+			name: "场次开始-有考生-更新考试状态失败",
+			event: ExamEvent{
+				Type:          EVENT_TYPE_EXAM_SESSION_START,
+				ExamID:        testNormalExamID,
+				ExamSessionID: testExamSessionID1,
+			},
+			expectError:        true,
+			expectedStatus:     "02",
+			expectedCount:      1, // 1个考生
+			checkExamStatus:    false,
+			expectedExamStatus: "02",
+			forceError:         "updateExam",
+		},
+		{
 			name: "正常场次开始-有考生",
 			event: ExamEvent{
 				Type:          EVENT_TYPE_EXAM_SESSION_START,
@@ -1057,6 +1085,20 @@ func TestHandleExamSessionStart(t *testing.T) {
 			checkExamStatus:    true,
 			expectedExamStatus: "10",
 			forceError:         "updateAbnormalExam",
+		},
+		{
+			name: "场次开始-无考生-乐观锁",
+			event: ExamEvent{
+				Type:          EVENT_TYPE_EXAM_SESSION_START,
+				ExamID:        testPublishedExamID,
+				ExamSessionID: testPublishedExamSessionID,
+			},
+			expectError:        true,
+			expectedStatus:     "02",
+			expectedCount:      0, // 0个考生
+			checkExamStatus:    true,
+			expectedExamStatus: "10",
+			forceError:         "updateAbnormalExam.RowsAffected",
 		},
 		{
 			name: "场次开始-无考生-取消考试定时器失败",
@@ -1704,191 +1746,6 @@ func cleanupTempExamTestData(t *testing.T, tempExamIDs []int64, testUserID int64
 	}
 
 	t.Logf("清理临时考试测试数据完成")
-}
-
-func TestHandleDeleteExamFile(t *testing.T) {
-	// 确保logger已初始化
-	if z == nil {
-		cmn.ConfigureForTest()
-	}
-
-	conn := cmn.GetPgxConn()
-	ctx := context.Background()
-
-	tests := []struct {
-		name          string
-		fileID        int64
-		forceError    string
-		expectError   bool
-		errorContains string
-		setupData     bool
-		checkResult   func(t *testing.T)
-		description   string
-	}{
-		{
-			name:        "count大于1时减少引用计数",
-			fileID:      testFile2ID, // 使用现有的testFile2ID，它的count是2
-			forceError:  "",
-			expectError: false,
-			setupData:   false, // 使用现有数据，不需要重新设置
-			checkResult: func(t *testing.T) {
-				var count int
-				err := conn.QueryRow(ctx, "SELECT count FROM t_file WHERE id = $1", testFile2ID).Scan(&count)
-				assert.Nil(t, err)
-				assert.Equal(t, 1, count, "count应该从2减少到1")
-			},
-			description: "当文件引用计数大于1时，应该减少引用计数而不删除文件",
-		},
-		{
-			name:        "count等于1且无相同digest时删除记录和文件",
-			fileID:      testFileID3,
-			forceError:  "",
-			expectError: false,
-			setupData:   false,
-			checkResult: func(t *testing.T) {
-				var count int
-				err := conn.QueryRow(ctx, "SELECT COUNT(*) FROM t_file WHERE id = $1", testFileID3).Scan(&count)
-				assert.Nil(t, err)
-				assert.Equal(t, 0, count, "文件记录应该被删除")
-
-				// 检查物理文件是否被删除
-				filePath := filepath.Join("./uploads", testFile3CheckSum)
-				_, err = os.Stat(filePath)
-				assert.True(t, os.IsNotExist(err), "物理文件应该被删除")
-
-				// 检查.info文件是否被删除
-				infoFilePath := filePath + ".info"
-				_, err = os.Stat(infoFilePath)
-				assert.True(t, os.IsNotExist(err), ".info文件应该被删除")
-			},
-			description: "当引用计数为1且无其他相同digest文件时，应该删除记录和文件",
-		},
-		{
-			name:        "count等于1但有相同digest时只删除记录",
-			fileID:      testFile1ID, // testFileID1和testSameFileID有相同的digest
-			forceError:  "",
-			expectError: false,
-			setupData:   false,
-			checkResult: func(t *testing.T) {
-				var count int
-				err := conn.QueryRow(ctx, "SELECT COUNT(*) FROM t_file WHERE id = $1", testFile1ID).Scan(&count)
-				assert.Nil(t, err)
-				assert.Equal(t, 0, count, "testFile1ID记录应该被删除")
-
-				err = conn.QueryRow(ctx, "SELECT COUNT(*) FROM t_file WHERE digest = $1", testSameFileCheckSum).Scan(&count)
-				assert.Nil(t, err)
-				assert.Equal(t, 1, count, "相同digest的其他文件记录应该还存在")
-
-				// 检查物理文件应该还存在（因为有相同digest的其他文件）
-				filePath := filepath.Join("./uploads", testSameFileCheckSum)
-				_, err = os.Stat(filePath)
-				assert.Nil(t, err, "物理文件应该还存在")
-			},
-			description: "当引用计数为1但有其他相同digest文件时，应该只删除记录不删除文件",
-		},
-		{
-			name:          "文件不存在时返回错误",
-			fileID:        999999,
-			forceError:    "",
-			expectError:   true,
-			errorContains: "no rows",
-			setupData:     false,
-			description:   "当文件ID不存在时，应该返回错误",
-		},
-		{
-			name:          "强制错误-查询文件信息",
-			fileID:        testFile1ID,
-			forceError:    "handleDeleteExamFile.tx.QueryRow",
-			expectError:   true,
-			errorContains: "强制查询文件信息错误",
-			setupData:     false,
-			description:   "测试查询文件信息时的错误处理",
-		},
-		{
-			name:          "强制错误-更新引用计数",
-			fileID:        testFile2ID, // count > 1
-			forceError:    "handleDeleteExamFile.tx.UpdateCount",
-			expectError:   true,
-			errorContains: "强制更新文件引用计数错误",
-			setupData:     false,
-			description:   "测试更新引用计数时的错误处理",
-		},
-		{
-			name:          "强制错误-删除文件记录",
-			fileID:        testFile1ID, // count = 1
-			forceError:    "handleDeleteExamFile.tx.DeleteFile",
-			expectError:   true,
-			errorContains: "强制删除文件记录错误",
-			setupData:     false,
-			description:   "测试删除文件记录时的错误处理",
-		},
-		{
-			name:          "强制错误-统计相同digest文件",
-			fileID:        testFile1ID,
-			forceError:    "handleDeleteExamFile.tx.CountDigest",
-			expectError:   true,
-			errorContains: "强制统计相同digest文件错误",
-			setupData:     false,
-			description:   "测试统计相同digest文件时的错误处理",
-		},
-		{
-			name:          "强制错误-从文件系统删除文件",
-			fileID:        testFileID3,
-			forceError:    "handleDeleteExamFile.deleteFileFromFilesystem",
-			expectError:   true,
-			errorContains: "强制从文件系统删除文件错误",
-			setupData:     false,
-			description:   "测试从文件系统删除文件时的错误处理",
-		},
-		{
-			name:          "强制错误-从文件系统删除信息文件",
-			fileID:        testFileID3,
-			forceError:    "handleDeleteExamFile.deleteInfoFileFromFilesystem",
-			expectError:   true,
-			errorContains: "强制从文件系统删除.info文件错误",
-			setupData:     false,
-			description:   "测试从文件系统删除信息文件时的错误处理",
-		},
-		{
-			name:        "未实际存在的文件",
-			fileID:      notExistsFileID,
-			expectError: false,
-			setupData:   false,
-			description: "测试从文件系统删除未实际存在的文件时的错误处理",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			// 每个测试都重新创建测试数据以确保隔离性
-			CleanTestExamData(t)
-			CreateTestExamData(t)
-			defer CleanTestExamData(t)
-
-			// 创建上下文
-			testCtx := ctx
-			if tt.forceError != "" {
-				testCtx = context.WithValue(ctx, "force-error", tt.forceError)
-			}
-
-			// 执行被测试的函数
-			err := handleDeleteExamFile(testCtx, tt.fileID, 1)
-			t.Logf("handleDeleteExamFile() 返回错误: %v", err)
-
-			// 验证结果
-			if tt.expectError {
-				assert.NotNil(t, err, tt.description)
-				if tt.errorContains != "" && err != nil {
-					assert.Contains(t, err.Error(), tt.errorContains, tt.description)
-				}
-			} else {
-				assert.Nil(t, err, tt.description)
-				if tt.checkResult != nil {
-					tt.checkResult(t)
-				}
-			}
-		})
-	}
 }
 
 // TestInitializeExamTimers 测试InitializeExamTimers函数
