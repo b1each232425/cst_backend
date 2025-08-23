@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/wneessen/go-mail"
 	"w2w.io/null"
 )
 
@@ -12,6 +13,7 @@ type MockService struct {
 	GenerateUniqueAccountFunc func(ctx context.Context, tx pgx.Tx, length int, maxAttempts int) (string, error)
 	ValidateUserFunc          func(ctx context.Context, tx pgx.Tx, users []User) ([]User, []User, []User, error)
 	QueryUserCurrentRoleFunc  func(ctx context.Context, userId null.Int) (null.Int, null.String, error)
+	SendEmailFunc             func(ctx context.Context, recipient, subject, body string, contentType mail.ContentType) error
 
 	user      User
 	users     []User
@@ -36,13 +38,13 @@ func (m *MockService) InsertUsers(ctx context.Context, tx pgx.Tx, users []User) 
 	return users, nil
 }
 
-func (m *MockService) InsertUsersWithAccount(ctx context.Context, tx pgx.Tx, users []User) error {
+func (m *MockService) InsertUsersWithAccount(ctx context.Context, tx pgx.Tx, users []User) ([]User, error) {
 	if m.err != nil {
-		return m.err
+		return users, m.err
 	}
 	m.users = append(m.users, users...)
 	m.totalRows += int64(len(users))
-	return nil
+	return []User{}, nil
 }
 
 func (m *MockService) CheckTUserFieldExists(ctx context.Context, tx pgx.Tx, field string, value any) (bool, error) {
@@ -78,4 +80,11 @@ func (m *MockService) QueryUserCurrentRole(ctx context.Context, userId null.Int)
 		return null.Int{}, null.NewString("cst.school^superAdmin", true), nil // 默认超级管理员角色
 	}
 	return m.QueryUserCurrentRoleFunc(ctx, userId)
+}
+
+func (m *MockService) SendEmail(ctx context.Context, recipient, subject, body string, contentType mail.ContentType) error {
+	if m.SendEmailFunc != nil {
+		return m.SendEmailFunc(ctx, recipient, subject, body, contentType)
+	}
+	return nil // 默认返回 nil 错误
 }

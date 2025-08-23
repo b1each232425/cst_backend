@@ -2,12 +2,15 @@ package user_mgt
 
 import (
 	"context"
+	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"math/big"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"w2w.io/cmn"
@@ -21,6 +24,8 @@ type Handler interface {
 	HandleQueryMyInfo(ctx context.Context)
 	HandleValidateUserToBeInsert(ctx context.Context)
 	HandleLogout(ctx context.Context)
+	HandleSendValidationCodeEmail(ctx context.Context)
+	HandleRegisterByEmail(ctx context.Context)
 }
 
 type handler struct {
@@ -197,13 +202,14 @@ func (h *handler) HandleUser(ctx context.Context) {
 				err = tx.Rollback(ctx)
 				if err != nil || forceErr == "tx.Rollback" {
 					z.Error("transaction rolled back due to error: " + err.Error())
-					return
 				}
+				return
 			}
 			err = tx.Commit(ctx)
 			if err != nil || forceErr == "tx.Commit" {
 				z.Error("failed to commit transaction: " + err.Error())
 			}
+			return
 		}()
 
 		// 验证用户信息
@@ -604,4 +610,254 @@ func (h *handler) HandleLogout(ctx context.Context) {
 	q.Msg.Status = 0
 	q.Msg.Msg = "logout success"
 	q.Resp()
+}
+
+// HandleSendValidationCodeEmail 处理发送验证代码邮件请求
+func (h *handler) HandleSendValidationCodeEmail(ctx context.Context) {
+	q := cmn.GetCtxValue(ctx)
+	z.Info("---->" + cmn.FncName())
+
+	var err error
+
+	method := strings.ToLower(q.R.Method)
+	if method != "get" {
+		q.Err = fmt.Errorf("不支持的请求方法: %s", method)
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+
+	query := q.R.URL.Query()
+
+	recipient := query.Get("recipient")
+	if recipient == "" {
+		q.Err = fmt.Errorf("缺少电子邮件地址参数")
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+
+	n, err := rand.Int(rand.Reader, big.NewInt(1000000))
+	if err != nil {
+		q.Err = fmt.Errorf("生成验证码失败，请稍后再试: %w", err)
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+	code := fmt.Sprintf("%06d", n.Int64()) // 6位验证码
+
+	fmt.Println("验证码:", code) // 调试输出
+
+	//subject := "3min学习平台 - 验证您的电子邮件地址"
+	//body := fmt.Sprintf(`尊敬的学员，<br><br>
+	//感谢您选择加入「3min学习平台」！为了保障您的账户安全，我们需要验证您的电子邮件地址。<br><br>
+	//您的专属验证码是：<strong>%s</strong><br><br>
+	//该验证码有效期为<strong>%s</strong>分钟，请在验证码有效期内将此验证码输入到平台的验证页面，以完成认证。<br><br>
+	//如果您没有请求此验证码，请忽略此邮件，您的账户信息不会受到影响。<br><br>
+	//如需帮助或有任何疑问，您可以直接回复此邮件与我们联系，我们的客服团队将竭诚为您服务。<br><br>
+	//祝您在「3min学习平台」的学习之旅中收获知识与成长！<br><br>
+	//——3min学习平台团队`, code, "15")
+
+	//err = h.srv.SendEmail(recipient, subject, body, mail.TypeTextHTML)
+	//if err != nil {
+	//	q.Err = fmt.Errorf("发送验证码邮件失败，请稍后再试: %w", err)
+	//	q.RespErr()
+	//	return
+	//}
+
+	// 将验证码保存到redis
+	rdb := cmn.GetRedisConn()
+	key := "verify:email:" + strings.ToLower(recipient)
+	err = rdb.Set(ctx, key, code, 15*time.Minute).Err()
+	if err != nil {
+		q.Err = fmt.Errorf("发送验证码邮件失败，请稍后再试: %w", err)
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+
+	// 返回成功响应
+	q.Msg.Status = 0
+	q.Msg.Msg = "success"
+	q.Resp()
+}
+
+// HandleRegisterByEmail 处理通过邮箱注册新用户请求
+func (h *handler) HandleRegisterByEmail(ctx context.Context) {
+	q := cmn.GetCtxValue(ctx)
+	z.Info("---->" + cmn.FncName())
+
+	forceErr, _ := ctx.Value("force-error").(string) // 用于强制执行错误处理代码
+	var err error
+
+	method := strings.ToLower(q.R.Method)
+	if method != "post" {
+		q.Err = fmt.Errorf("unsupported method: %s", method)
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+
+	var buf []byte
+	buf, err = io.ReadAll(q.R.Body)
+	if err != nil || forceErr == "io.ReadAll" {
+		q.Err = fmt.Errorf("failed to read body: %w", err)
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+	defer func() {
+		err = q.R.Body.Close()
+		if err != nil || forceErr == "io.Close" {
+			e := fmt.Errorf("failed to close request body: %w", err)
+			z.Error(e.Error())
+			return
+		}
+	}()
+
+	if len(buf) == 0 {
+		q.Err = fmt.Errorf("request body cannot be empty")
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+
+	var body cmn.ReqProto
+	err = json.Unmarshal(buf, &body)
+	if err != nil || forceErr == "json.Unmarshal" {
+		q.Err = fmt.Errorf("failed to unmarshal request body: %w", err)
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+
+	var user User
+	err = json.Unmarshal(body.Data, &user)
+	if err != nil || forceErr == "json.UnmarshalUser" {
+		q.Err = fmt.Errorf("failed to unmarshal request json data: %w", err)
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+
+	if !user.Email.Valid {
+		q.Err = fmt.Errorf("注册失败，缺少邮箱地址")
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+
+	if !user.UserToken.Valid {
+		q.Err = fmt.Errorf("注册失败，缺少密码")
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+
+	user.Category = "sys^user"
+	user.Status = null.NewString("00", true)
+	user.Domains = []null.String{null.StringFrom(DomainStudent)}
+
+	pgxConn := cmn.GetPgxConn()
+
+	tx, err := pgxConn.Begin(ctx)
+	if err != nil || forceErr == "tx.Begin" {
+		q.Err = fmt.Errorf("failed to begin transaction: %w", err)
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+	defer func() {
+		if err != nil {
+			err = tx.Rollback(ctx)
+			if err != nil || forceErr == "tx.Rollback" {
+				z.Error("transaction rolled back due to error: " + err.Error())
+			}
+			return
+		}
+		err = tx.Commit(ctx)
+		if err != nil || forceErr == "tx.Commit" {
+			z.Error("failed to commit transaction: " + err.Error())
+		}
+		return
+	}()
+
+	validUser, invalidUser, existUser, err := h.srv.ValidateUserToBeInsert(ctx, tx, []User{user})
+	if err != nil {
+		q.Err = fmt.Errorf("failed to validate user: %w", err)
+		q.RespErr()
+		return
+	}
+
+	// 若存在不合法用户，则直接返回，不执行插入操作
+	if len(invalidUser) != 0 {
+		invalidUserBytes, err := json.Marshal(invalidUser[0])
+		if err != nil || forceErr == "json.Marshal" {
+			q.Err = fmt.Errorf("failed to marshal invalid user: %w", err)
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+		q.Msg.Status = -1
+		q.Msg.Msg = "注册失败，用户信息不合法"
+		q.Msg.Data = invalidUserBytes
+		q.Resp()
+		return
+	}
+
+	// 若用户已存在，则直接返回，不执行插入操作
+	if len(existUser) != 0 {
+		q.Msg.Status = -1
+		q.Msg.Msg = "注册失败，用户已存在"
+		q.Resp()
+		return
+	}
+
+	// 从查询参数验证验证码
+	query := q.R.URL.Query()
+	code := query.Get("verification-code")
+	if code == "" {
+		q.Err = fmt.Errorf("注册失败，缺少验证码参数")
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+
+	// 从redis获取验证码并比对
+	rdb := cmn.GetRedisConn()
+	key := "verify:email:" + strings.ToLower(validUser[0].Email.String)
+	storedCode, err := rdb.Get(ctx, key).Result()
+	if err != nil || forceErr == "rdb.Get" {
+		q.Err = fmt.Errorf("注册失败，验证码已过期，请重新获取")
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+	if storedCode != code {
+		q.Err = fmt.Errorf("注册失败，验证码错误")
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+
+	insertedUser, err := h.srv.InsertUsersWithAccount(ctx, tx, validUser)
+	if err != nil {
+		q.Err = fmt.Errorf("failed to insert user: %w", err)
+		q.RespErr()
+		return
+	}
+
+	insertedUserBytes, err := json.Marshal(insertedUser)
+	if err != nil || forceErr == "json.Marshal" {
+		q.Err = fmt.Errorf("failed to marshal inserted user: %w", err)
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+
+	q.Msg.Status = 0
+	q.Msg.Msg = "注册成功"
+	q.Msg.Data = insertedUserBytes
+	q.Resp()
+	return
 }

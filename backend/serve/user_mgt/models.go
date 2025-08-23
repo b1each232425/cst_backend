@@ -55,3 +55,11 @@ type User struct {
 	APIs     []cmn.TVUserDomainAPI `json:"APIs"`
 	ErrorMsg []null.String         `json:"ErrorMsg"` // 错误信息
 }
+
+type EmailServer struct {
+	Host   string
+	Port   int
+	User   string
+	Pwd    string
+	Sender string
+}

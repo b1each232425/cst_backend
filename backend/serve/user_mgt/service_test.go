@@ -1693,7 +1693,7 @@ func TestService_InsertUsersWithAccount(t *testing.T) {
 			t.Logf("开始测试: %s", tt.desc)
 
 			// 执行插入操作
-			err := srv.InsertUsersWithAccount(tt.ctx, nil, tt.users)
+			_, err := srv.InsertUsersWithAccount(tt.ctx, nil, tt.users)
 
 			// 验证错误
 			if (err != nil) != tt.wantErr {

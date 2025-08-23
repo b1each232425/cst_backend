@@ -15,17 +15,19 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/nyaruka/phonenumbers"
+	"github.com/wneessen/go-mail"
 )
 
 type Service interface {
 	QueryUsers(ctx context.Context, tx pgx.Tx, page, pageSize int64, filter QueryUsersFilter) ([]User, int64, error)
 	InsertUsers(ctx context.Context, tx pgx.Tx, users []User) ([]User, error)
-	InsertUsersWithAccount(ctx context.Context, tx pgx.Tx, users []User) error
+	InsertUsersWithAccount(ctx context.Context, tx pgx.Tx, users []User) ([]User, error)
 	CheckTUserFieldExists(ctx context.Context, tx pgx.Tx, field string, value any) (bool, error)
 	CheckTUserRowExists(ctx context.Context, tx pgx.Tx, fields map[string]any) (bool, *User, error)
 	GenerateUniqueAccount(ctx context.Context, tx pgx.Tx, length int, maxAttempts int) (string, error)
 	ValidateUserToBeInsert(ctx context.Context, tx pgx.Tx, users []User) ([]User, []User, []User, error)
 	QueryUserCurrentRole(ctx context.Context, userId null.Int) (null.Int, null.String, error)
+	SendEmail(ctx context.Context, recipient, subject, body string, contentType mail.ContentType) error
 }
 
 type service struct {
@@ -239,21 +241,16 @@ func (r *service) QueryUsers(ctx context.Context, tx pgx.Tx, page, pageSize int6
 // 必要字段: account, category
 // 请不要轻易调用该方法插入用户，该方法不会对用户信息做全面的校验，需要先调用 ValidateUserToBeInsert 方法验证用户信息的合法性
 // 返回值: 成功插入的用户列表（包含生成的ID）、错误
-func (r *service) InsertUsers(ctx context.Context, tx pgx.Tx, users []User) ([]User, error) {
+func (r *service) InsertUsers(ctx context.Context, tx pgx.Tx, users []User) (insertedUsers []User, err error) {
 	z.Info("---->" + cmn.FncName())
 
 	forceErr, _ := ctx.Value("force-error").(string)
-
-	var err error
 
 	if len(users) == 0 {
 		e := fmt.Errorf("no users to insert")
 		z.Error(e.Error())
 		return []User{}, e
 	}
-
-	// 用于存储成功插入的用户
-	var insertedUsers []User
 
 	for i := range users {
 		if users[i].Account == "" {
@@ -325,6 +322,11 @@ func (r *service) InsertUsers(ctx context.Context, tx pgx.Tx, users []User) ([]U
 			users[i].Type = null.StringFrom("02") // 注册用户
 		}
 
+		pwd := InitialPwd
+		if users[i].UserToken.Valid {
+			pwd = users[i].UserToken.String
+		}
+
 		// 插入用户数据
 		insertSQL := `INSERT INTO t_user (
 			category,
@@ -362,7 +364,7 @@ func (r *service) InsertUsers(ctx context.Context, tx pgx.Tx, users []User) ([]U
 				users[i].Creator.Int64,
 				r.orDefault(users[i].Status, "00"),
 				users[i].Remark,
-				InitialPwd, // 设置初始密码
+				pwd,
 				time.Now().UnixMilli(),
 				time.Now().UnixMilli(),
 			)
@@ -381,7 +383,7 @@ func (r *service) InsertUsers(ctx context.Context, tx pgx.Tx, users []User) ([]U
 				users[i].Creator.Int64,
 				r.orDefault(users[i].Status, "00"),
 				users[i].Remark,
-				InitialPwd, // 设置初始密码
+				pwd,
 				time.Now().UnixMilli(),
 				time.Now().UnixMilli(),
 			)
@@ -440,28 +442,26 @@ func (r *service) InsertUsers(ctx context.Context, tx pgx.Tx, users []User) ([]U
 
 // InsertUsersWithAccount 批量插入用户数据，并为每个用户生成唯一账号
 // 必要字段: category
-func (r *service) InsertUsersWithAccount(ctx context.Context, tx pgx.Tx, users []User) error {
+func (r *service) InsertUsersWithAccount(ctx context.Context, tx pgx.Tx, users []User) (insertedUsers []User, err error) {
 	z.Info("---->" + cmn.FncName())
 
 	forceErr, _ := ctx.Value("force-error").(string)
-
-	var err error
 
 	for i := range users {
 		users[i].Account, err = r.GenerateUniqueAccount(ctx, tx, AccountLength, 20)
 		if err != nil || forceErr == "GenerateUniqueAccount" {
 			e := fmt.Errorf("failed to generate unique account for user %s: %w", users[i].Account, err)
-			return e
+			return []User{}, e
 		}
 	}
 
-	_, err = r.InsertUsers(ctx, tx, users)
+	insertedUsers, err = r.InsertUsers(ctx, tx, users)
 	if err != nil || forceErr == "InsertUsers" {
 		e := fmt.Errorf("failed to insert users with generated accounts: %w", err)
-		return e
+		return []User{}, e
 	}
 
-	return nil
+	return insertedUsers, nil
 }
 
 // CheckTUserFieldExists 检查 t_user 表中指定字段的值是否存在
@@ -896,4 +896,55 @@ func (r *service) QueryUserCurrentRole(ctx context.Context, userId null.Int) (nu
 	}
 
 	return roleId, roleName, nil
+}
+
+// SendEmail 发送邮件
+func (r *service) SendEmail(ctx context.Context, recipient, subject, body string, contentType mail.ContentType) error {
+	if recipient == "" {
+		e := fmt.Errorf("invalid recipient")
+		z.Error(e.Error())
+		return e
+	}
+	if subject == "" {
+		e := fmt.Errorf("invalid subject")
+		z.Error(e.Error())
+		return e
+	}
+	if body == "" {
+		e := fmt.Errorf("invalid body")
+		z.Error(e.Error())
+		return e
+	}
+
+	var err error
+
+	message := mail.NewMsg()
+	err = message.From(mailServer.Sender)
+	if err != nil {
+		e := fmt.Errorf("set sender failed: %w", err)
+		z.Error(e.Error())
+		return e
+	}
+	err = message.To(recipient)
+	if err != nil {
+		e := fmt.Errorf("set recipient failed: %w", err)
+		z.Error(e.Error())
+		return e
+	}
+	message.Subject(subject)
+
+	if contentType == "" {
+		message.SetBodyString(mail.TypeTextPlain, body)
+	} else {
+		message.SetBodyString(contentType, body)
+	}
+
+	err = mailClient.DialAndSend(message)
+	if err != nil {
+		e := fmt.Errorf("send email failed: %w", err)
+		z.Error(e.Error())
+		return e
+	}
+
+	return nil
 }
