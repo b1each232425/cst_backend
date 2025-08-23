@@ -54,6 +54,12 @@ func validateExamData(examData ExamData, isUpdate bool) error {
 		return err
 	}
 
+	if examData.ExamInfo.Mode.String != "00" && examData.ExamInfo.Mode.String != "02" {
+		err := fmt.Errorf("无效的考试方式")
+		z.Error(err.Error())
+		return err
+	}
+
 	for _, examSession := range examData.ExamSessions {
 		if examSession.PaperID.Int64 <= 0 {
 			err := fmt.Errorf("考试场次的试卷ID无效: %d", examSession.PaperID.Int64)
@@ -148,6 +154,29 @@ func validateExamData(examData ExamData, isUpdate bool) error {
 			z.Error(err.Error())
 			return err
 		}
+	}
+
+	if examData.ExamInfo.Mode.String == "02" && len(examData.ExamRooms) == 0 && len(examData.ExamineeIDs) > 0 {
+		err := fmt.Errorf("尚未配置考场")
+		z.Error(err.Error())
+		return err
+	}
+
+	// 获取配置所需的监考员数量
+	var needInvigilatorCount int64
+	for _, examRoom := range examData.ExamRooms {
+		if examRoom.InvigilatorCount <= 0 {
+			err := fmt.Errorf("部分考场配置的监考员数量无效")
+			z.Error(err.Error())
+			return err
+		}
+		needInvigilatorCount += examRoom.InvigilatorCount
+	}
+
+	if len(examData.InvigilatorIDs) != int(needInvigilatorCount) {
+		err := fmt.Errorf("监考教师人数不足: 需要 %d, 实际 %d", needInvigilatorCount, len(examData.InvigilatorIDs))
+		z.Error(err.Error())
+		return err
 	}
 
 	return nil
