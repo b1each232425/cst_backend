@@ -907,6 +907,7 @@ func questions(ctx context.Context) {
 		bankIDStr := q.R.URL.Query().Get("bankID")
 		content := q.R.URL.Query().Get("content")
 		tagsParams := q.R.URL.Query()["tags"] // 允许获取多个tag参数
+		questionIDStr := q.R.URL.Query().Get("questionID")
 		var tags []string
 		for _, t := range tagsParams {
 			if t != "" {
@@ -953,6 +954,17 @@ func questions(ctx context.Context) {
 			return
 		}
 
+		var questionID int64
+		if questionIDStr != "" {
+			questionID, err = strconv.ParseInt(questionIDStr, 10, 64)
+			if err != nil {
+				q.Err = fmt.Errorf("invalid questionID: %v", err)
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+		}
+
 		// 设置默认分页参数
 		if pageStr == "" {
 			pageStr = "1"
@@ -977,6 +989,7 @@ func questions(ctx context.Context) {
 
 		params := QueryQuestionsParams{
 			BankID:     bankID,
+			QuestionID: questionID,
 			Content:    content,
 			Tags:       tags,
 			Type:       questionTypes,
@@ -1000,6 +1013,13 @@ func questions(ctx context.Context) {
 		conditions = append(conditions, c)
 		args = append(args, params.BankID)
 		argIndex += 1
+
+		// 题目ID过滤
+		if params.QuestionID > 0 {
+			conditions = append(conditions, fmt.Sprintf("id = $%d", argIndex))
+			args = append(args, params.QuestionID)
+			argIndex += 1
+		}
 
 		// 题目内容过滤
 		if params.Content != "" {
