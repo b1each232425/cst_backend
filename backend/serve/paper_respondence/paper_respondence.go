@@ -336,7 +336,7 @@ func StudentAnswer(ctx context.Context) {
 		//表示考生id或者练习的submissionId
 		var id int64
 		//查询sql语句
-		selectSql := `SELECT id, type, examinee_id, question_id, answer, marker, creator, create_time, updated_by, update_time, status,answer_attachments_path FROM assessuser.t_student_answers WHERE `
+		selectSql := `SELECT id, type, examinee_id, question_id, answer, marker, creator, create_time, updated_by, update_time, status FROM assessuser.t_student_answers WHERE `
 		//查看哪个不为空
 		if ed != "" {
 			id, q.Err = strconv.ParseInt(ed, 10, 64)
@@ -356,7 +356,7 @@ func StudentAnswer(ctx context.Context) {
 			selectSql += ` practice_submission_id =$1 AND question_id =$2`
 		}
 		//开始查询
-		q.Err = db.QueryRow(ctx, selectSql, id, questionId).Scan(&result.ID, &result.Type, &result.ExamineeID, &result.QuestionID, &result.Answer, &result.Marker, &result.Creator, &result.CreateTime, &result.UpdatedBy, &result.UpdateTime, &result.Status, &result.AnswerAttachmentsPath)
+		q.Err = db.QueryRow(ctx, selectSql, id, questionId).Scan(&result.ID, &result.Type, &result.ExamineeID, &result.QuestionID, &result.Answer, &result.Marker, &result.Creator, &result.CreateTime, &result.UpdatedBy, &result.UpdateTime, &result.Status)
 		if q.Err != nil {
 			z.Error("error", zap.Error(q.Err))
 			q.RespErr()
@@ -1368,8 +1368,8 @@ func checkExamCondition(ctx context.Context, examSession, studentID int64, tx pg
 		if examineeInfo.ExamineeStatus.String == CanBeEnterStatus || examineeInfo.ExamineeStartTime.Valid {
 			return ExamCanBeEnter, nil
 		}
-		//线上需要查考最迟进入时间
-		if now.UnixMilli() > examineeInfo.AllowEntryTime.Int64 && examineeInfo.Mode.String == ExamModeOnline {
+		//线上需要查考最迟进入时间，如果当前时间超过最迟进入时间并且为固定考试模式以及线上考试，才能返回LateEntryTimeArrived
+		if now.UnixMilli() > examineeInfo.AllowEntryTime.Int64 && examineeInfo.PeriodMode.String == ExamTypeFixed && examineeInfo.Mode.String == ExamModeOnline {
 			return LateEntryTimeArrived, nil
 		}
 		return ExamCanBeEnter, nil
@@ -1429,17 +1429,16 @@ func insertOrUpdateAnswer(ctx context.Context, req SaveOrUpdateStudentAnswerReq,
 		// 直接一条SQL搞定插入或更新，如果是禁止作答的状态，说明已经提交，不能改了
 		sql = `
 	INSERT INTO t_student_answers 
-		(type, examinee_id, practice_submission_id, question_id, answer, creator, create_time, updated_by, update_time, status,answer_attachments_path)
+		(type, examinee_id, practice_submission_id, question_id, answer, creator, create_time, updated_by, update_time, status)
 	VALUES
-		($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+		($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 	ON CONFLICT (examinee_id, question_id)
 	DO UPDATE SET
 		type = EXCLUDED.type,
 		answer = EXCLUDED.answer,
-		answer_attachments_path = EXCLUDED.answer_attachments_path,
 		updated_by = EXCLUDED.updated_by,
 		update_time = EXCLUDED.update_time
-	WHERE t_student_answers.status <> $12
+	WHERE t_student_answers.status <> $11
 	RETURNING id,creator,updated_by
 	`
 	} else if req.PracticeSubmissionId > 0 {
@@ -1452,39 +1451,29 @@ func insertOrUpdateAnswer(ctx context.Context, req SaveOrUpdateStudentAnswerReq,
 		// 直接一条SQL搞定插入或更新，如果是禁止作答的状态，说明已经提交，不能改了
 		sql = `
 	INSERT INTO t_student_answers 
-		(type, examinee_id, practice_submission_id, question_id, answer, creator, create_time, updated_by, update_time, status,answer_attachments_path)
+		(type, examinee_id, practice_submission_id, question_id, answer, creator, create_time, updated_by, update_time, status)
 	VALUES
-		($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+		($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 	ON CONFLICT (practice_submission_id, question_id)
 	DO UPDATE SET
 		type = EXCLUDED.type,
 		answer = EXCLUDED.answer,
-		answer_attachments_path = EXCLUDED.answer_attachments_path,
 		updated_by = EXCLUDED.updated_by,
 		update_time = EXCLUDED.update_time
-	WHERE t_student_answers.status <> $12
+	WHERE t_student_answers.status <> $11
 	RETURNING id,creator,updated_by
 	`
 	}
 
-	//如果没有附件，就给个空的切片
-	var AttachmentPaths types.JSONText
-	if req.AttachmentPaths == nil {
-		AttachmentPaths = types.JSONText("[]")
-	} else {
-		AttachmentPaths = types.JSONText(req.AttachmentPaths)
-	}
-	z.Debug("attachment_paths", zap.Any("attachment_paths", AttachmentPaths.String()))
 	studentAnswer := cmn.TStudentAnswers{
-		Type:                  null.NewString(req.Type, true),
-		QuestionID:            null.IntFrom(req.QuestionID),
-		Answer:                types.JSONText(req.Answer),
-		Creator:               null.IntFrom(req.StudentId),
-		CreateTime:            null.IntFrom(time.Now().UnixMilli()),
-		UpdateTime:            null.IntFrom(time.Now().UnixMilli()),
-		UpdatedBy:             null.IntFrom(req.StudentId),
-		Status:                null.NewString("00", true),
-		AnswerAttachmentsPath: AttachmentPaths,
+		Type:       null.NewString(req.Type, true),
+		QuestionID: null.IntFrom(req.QuestionID),
+		Answer:     types.JSONText(req.Answer),
+		Creator:    null.IntFrom(req.StudentId),
+		CreateTime: null.IntFrom(time.Now().UnixMilli()),
+		UpdateTime: null.IntFrom(time.Now().UnixMilli()),
+		UpdatedBy:  null.IntFrom(req.StudentId),
+		Status:     null.NewString("00", true),
 	}
 	//根据type来查看是练习还是考试
 	switch req.Type {
@@ -1511,7 +1500,6 @@ func insertOrUpdateAnswer(ctx context.Context, req SaveOrUpdateStudentAnswerReq,
 		&studentAnswer.UpdatedBy,
 		&studentAnswer.UpdateTime,
 		&studentAnswer.Status,
-		&studentAnswer.AnswerAttachmentsPath,
 		QuestionCanNotAnswer,
 	).Scan(&studentAnswer.ID, &studentAnswer.Creator, &studentAnswer.UpdatedBy)
 

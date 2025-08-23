@@ -3489,3 +3489,811 @@ func TestQuestionPostMethod(t *testing.T) {
 		})
 	}
 }
+
+// TestQuestionPutMethod 测试题目更新方法 (PUT方法)
+func TestQuestionPutMethod(t *testing.T) {
+	cmn.ConfigureForTest()
+	ctx := context.Background()
+	testUserID := TestUserIDs[0]
+
+	// 清理测试环境
+	t.Cleanup(func() {
+		cleanupTestBankQuestions(t)
+	})
+
+	// 先创建一个包含题目的题库，供所有测试用例共享
+	bankID, questionIDs := initTestQuestionBankAndQuestion(t, testUserID, false)
+	require.NotZero(t, bankID, "题库ID不应为0")
+	require.NotEmpty(t, questionIDs, "应创建至少一个题目")
+
+	// 使用第一个题目进行测试
+	testQuestionID := questionIDs[0]
+
+	tests := []struct {
+		name          string
+		reqBody       any
+		wantError     bool
+		userID        int64
+		roleID        int64
+		forceError    string
+		expectedError string
+		validate      func(*testing.T, context.Context, *cmn.ServiceCtx)
+	}{
+		{
+			name: "正常更新题目",
+			reqBody: cmn.TQuestion{
+				ID:         null.IntFrom(testQuestionID),
+				Type:       "00", // 单选题
+				Difficulty: null.IntFrom(2),
+				Content:    null.StringFrom("<p><span style=\"font-size: 12pt\">这是更新后的单选题</span></p>"),
+				Tags:       types.JSONText(`["更新测试", "单选题"]`),
+				Options: types.JSONText(`[
+					{ "label": "A", "value": "<p><span style=\"font-size: 12pt\">更新选项A</span></p>" },
+					{ "label": "B", "value": "<p><span style=\"font-size: 12pt\">更新选项B</span></p>" },
+					{ "label": "C", "value": "<p><span style=\"font-size: 12pt\">更新选项C</span></p>" },
+					{ "label": "D", "value": "<p><span style=\"font-size: 12pt\">更新选项D</span></p>" }
+				]`),
+				Answers:                 types.JSONText(`["B"]`),
+				Score:                   null.FloatFrom(3),
+				Analysis:                null.StringFrom("<p>这是更新后的解析</p>"),
+				QuestionAttachmentsPath: types.JSONText(`[]`),
+				BelongTo:                null.IntFrom(bankID),
+			},
+			wantError:     false,
+			userID:        testUserID,
+			roleID:        teacherRoleID,
+			forceError:    "",
+			expectedError: "",
+			validate: func(t *testing.T, ctx context.Context, q *cmn.ServiceCtx) {
+				// 验证数据库中的题目已被更新
+				db := cmn.GetPgxConn()
+				var content, options, answers, analysis string
+				var score float64
+				var difficulty int64
+				var tags []byte
+
+				err := db.QueryRow(ctx, `
+					SELECT content, options, answers, score, difficulty, tags, analysis
+					FROM t_question 
+					WHERE id = $1
+				`, testQuestionID).Scan(&content, &options, &answers, &score, &difficulty, &tags, &analysis)
+
+				require.NoError(t, err)
+				require.Contains(t, content, "这是更新后的单选题")
+				require.Contains(t, options, "更新选项A")
+				require.Equal(t, `["B"]`, answers)
+				require.Equal(t, float64(3), score)
+				require.Equal(t, int64(2), difficulty)
+				require.Contains(t, analysis, "这是更新后的解析")
+
+				var questionTags []string
+				err = json.Unmarshal(tags, &questionTags)
+				require.NoError(t, err)
+				require.ElementsMatch(t, []string{"更新测试", "单选题"}, questionTags)
+			},
+		},
+		{
+			name: "更新不存在的题目",
+			reqBody: cmn.TQuestion{
+				ID:         null.IntFrom(999999), // 不存在的题目ID
+				Type:       "00",
+				Difficulty: null.IntFrom(1),
+				Content:    null.StringFrom("<p>不存在的题目</p>"),
+				Tags:       types.JSONText(`["测试"]`),
+				Options: types.JSONText(`[
+					{ "label": "A", "value": "<p>选项A</p>" },
+					{ "label": "B", "value": "<p>选项B</p>" }
+				]`),
+				Answers:                 types.JSONText(`["A"]`),
+				Score:                   null.FloatFrom(2),
+				Analysis:                null.StringFrom("<p>解析</p>"),
+				QuestionAttachmentsPath: types.JSONText(`[]`),
+				BelongTo:                null.IntFrom(bankID),
+			},
+			wantError:     true,
+			userID:        testUserID,
+			roleID:        teacherRoleID,
+			forceError:    "",
+			expectedError: "no rows updated",
+			validate:      func(t *testing.T, ctx context.Context, q *cmn.ServiceCtx) {},
+		},
+		{
+			name: "题目内容为空",
+			reqBody: cmn.TQuestion{
+				ID:         null.IntFrom(testQuestionID),
+				Type:       "00",
+				Difficulty: null.IntFrom(1),
+				Content:    null.StringFrom(""), // 空内容
+				Tags:       types.JSONText(`["测试"]`),
+				Options: types.JSONText(`[
+					{ "label": "A", "value": "<p>选项A</p>" },
+					{ "label": "B", "value": "<p>选项B</p>" }
+				]`),
+				Answers:                 types.JSONText(`["A"]`),
+				Score:                   null.FloatFrom(2),
+				Analysis:                null.StringFrom("<p>解析</p>"),
+				QuestionAttachmentsPath: types.JSONText(`[]`),
+				BelongTo:                null.IntFrom(bankID),
+			},
+			wantError:     true,
+			userID:        testUserID,
+			roleID:        teacherRoleID,
+			forceError:    "",
+			expectedError: "question content cannot be empty",
+			validate:      func(t *testing.T, ctx context.Context, q *cmn.ServiceCtx) {},
+		},
+		{
+			name: "无效的题目类型",
+			reqBody: cmn.TQuestion{
+				ID:         null.IntFrom(testQuestionID),
+				Type:       "99", // 无效类型
+				Difficulty: null.IntFrom(1),
+				Content:    null.StringFrom("<p>测试题目</p>"),
+				Tags:       types.JSONText(`["测试"]`),
+				Options: types.JSONText(`[
+					{ "label": "A", "value": "<p>选项A</p>" },
+					{ "label": "B", "value": "<p>选项B</p>" }
+				]`),
+				Answers:                 types.JSONText(`["A"]`),
+				Score:                   null.FloatFrom(2),
+				Analysis:                null.StringFrom("<p>解析</p>"),
+				QuestionAttachmentsPath: types.JSONText(`[]`),
+				BelongTo:                null.IntFrom(bankID),
+			},
+			wantError:     true,
+			userID:        testUserID,
+			roleID:        teacherRoleID,
+			forceError:    "",
+			expectedError: "unsupported question type: 99",
+			validate:      func(t *testing.T, ctx context.Context, q *cmn.ServiceCtx) {},
+		},
+		{
+			name: "无效的难度等级",
+			reqBody: cmn.TQuestion{
+				ID:         null.IntFrom(testQuestionID),
+				Type:       "00",
+				Difficulty: null.IntFrom(99), // 无效难度
+				Content:    null.StringFrom("<p>测试题目</p>"),
+				Tags:       types.JSONText(`["测试"]`),
+				Options: types.JSONText(`[
+					{ "label": "A", "value": "<p>选项A</p>" },
+					{ "label": "B", "value": "<p>选项B</p>" }
+				]`),
+				Answers:                 types.JSONText(`["A"]`),
+				Score:                   null.FloatFrom(2),
+				Analysis:                null.StringFrom("<p>解析</p>"),
+				QuestionAttachmentsPath: types.JSONText(`[]`),
+				BelongTo:                null.IntFrom(bankID),
+			},
+			wantError:     true,
+			userID:        testUserID,
+			roleID:        teacherRoleID,
+			forceError:    "",
+			expectedError: "unsupported question difficulty",
+			validate:      func(t *testing.T, ctx context.Context, q *cmn.ServiceCtx) {},
+		},
+		{
+			name: "分数小于等于0",
+			reqBody: cmn.TQuestion{
+				ID:         null.IntFrom(testQuestionID),
+				Type:       "00",
+				Difficulty: null.IntFrom(1),
+				Content:    null.StringFrom("<p>测试题目</p>"),
+				Tags:       types.JSONText(`["测试"]`),
+				Options: types.JSONText(`[
+					{ "label": "A", "value": "<p>选项A</p>" },
+					{ "label": "B", "value": "<p>选项B</p>" }
+				]`),
+				Answers:                 types.JSONText(`["A"]`),
+				Score:                   null.FloatFrom(0), // 分数为0
+				Analysis:                null.StringFrom("<p>解析</p>"),
+				QuestionAttachmentsPath: types.JSONText(`[]`),
+				BelongTo:                null.IntFrom(bankID),
+			},
+			wantError:     true,
+			userID:        testUserID,
+			roleID:        teacherRoleID,
+			forceError:    "",
+			expectedError: "question score must be greater than zero",
+			validate:      func(t *testing.T, ctx context.Context, q *cmn.ServiceCtx) {},
+		},
+		{
+			name: "所属题库ID无效",
+			reqBody: cmn.TQuestion{
+				ID:         null.IntFrom(testQuestionID),
+				Type:       "00",
+				Difficulty: null.IntFrom(1),
+				Content:    null.StringFrom("<p>测试题目</p>"),
+				Tags:       types.JSONText(`["测试"]`),
+				Options: types.JSONText(`[
+					{ "label": "A", "value": "<p>选项A</p>" },
+					{ "label": "B", "value": "<p>选项B</p>" }
+				]`),
+				Answers:                 types.JSONText(`["A"]`),
+				Score:                   null.FloatFrom(2),
+				Analysis:                null.StringFrom("<p>解析</p>"),
+				QuestionAttachmentsPath: types.JSONText(`[]`),
+				BelongTo:                null.IntFrom(0), // 无效的题库ID
+			},
+			wantError:     true,
+			userID:        testUserID,
+			roleID:        teacherRoleID,
+			forceError:    "",
+			expectedError: "question belongTo must be greater than zero",
+			validate:      func(t *testing.T, ctx context.Context, q *cmn.ServiceCtx) {},
+		},
+		{
+			name: "io.ReadAll错误",
+			reqBody: cmn.TQuestion{
+				ID:         null.IntFrom(testQuestionID),
+				Type:       "00",
+				Difficulty: null.IntFrom(1),
+				Content:    null.StringFrom("<p>测试题目</p>"),
+				Tags:       types.JSONText(`["测试"]`),
+				Options: types.JSONText(`[
+					{ "label": "A", "value": "<p>选项A</p>" },
+					{ "label": "B", "value": "<p>选项B</p>" }
+				]`),
+				Answers:                 types.JSONText(`["A"]`),
+				Score:                   null.FloatFrom(2),
+				Analysis:                null.StringFrom("<p>解析</p>"),
+				QuestionAttachmentsPath: types.JSONText(`[]`),
+				BelongTo:                null.IntFrom(bankID),
+			},
+			wantError:     true,
+			userID:        testUserID,
+			roleID:        teacherRoleID,
+			forceError:    "io.ReadAll",
+			expectedError: "io.ReadAll",
+			validate:      func(t *testing.T, ctx context.Context, q *cmn.ServiceCtx) {},
+		},
+		{
+			name: "q.R.Body.Close()错误",
+			reqBody: cmn.TQuestion{
+				ID:         null.IntFrom(testQuestionID),
+				Type:       "00",
+				Difficulty: null.IntFrom(1),
+				Content:    null.StringFrom("<p>测试题目</p>"),
+				Tags:       types.JSONText(`["测试"]`),
+				Options: types.JSONText(`[
+					{ "label": "A", "value": "<p>选项A</p>" },
+					{ "label": "B", "value": "<p>选项B</p>" }
+				]`),
+				Answers:                 types.JSONText(`["A"]`),
+				Score:                   null.FloatFrom(2),
+				Analysis:                null.StringFrom("<p>解析</p>"),
+				QuestionAttachmentsPath: types.JSONText(`[]`),
+				BelongTo:                null.IntFrom(bankID),
+			},
+			wantError:     true,
+			userID:        testUserID,
+			roleID:        teacherRoleID,
+			forceError:    "q.R.Body.Close()",
+			expectedError: "q.R.Body.Close()",
+			validate:      func(t *testing.T, ctx context.Context, q *cmn.ServiceCtx) {},
+		},
+		{
+			name: "json.Unmarshal错误(ReqProto)",
+			reqBody: cmn.TQuestion{
+				ID:         null.IntFrom(testQuestionID),
+				Type:       "00",
+				Difficulty: null.IntFrom(1),
+				Content:    null.StringFrom("<p>测试题目</p>"),
+				Tags:       types.JSONText(`["测试"]`),
+				Options: types.JSONText(`[
+					{ "label": "A", "value": "<p>选项A</p>" },
+					{ "label": "B", "value": "<p>选项B</p>" }
+				]`),
+				Answers:                 types.JSONText(`["A"]`),
+				Score:                   null.FloatFrom(2),
+				Analysis:                null.StringFrom("<p>解析</p>"),
+				QuestionAttachmentsPath: types.JSONText(`[]`),
+				BelongTo:                null.IntFrom(bankID),
+			},
+			wantError:     true,
+			userID:        testUserID,
+			roleID:        teacherRoleID,
+			forceError:    "reqproto-json.Unmarshal",
+			expectedError: "reqproto-json.Unmarshal",
+			validate:      func(t *testing.T, ctx context.Context, q *cmn.ServiceCtx) {},
+		},
+		{
+			name: "json.Unmarshal错误(cmn.TQuestion)",
+			reqBody: cmn.TQuestion{
+				ID:         null.IntFrom(testQuestionID),
+				Type:       "00",
+				Difficulty: null.IntFrom(1),
+				Content:    null.StringFrom("<p>测试题目</p>"),
+				Tags:       types.JSONText(`["测试"]`),
+				Options: types.JSONText(`[
+					{ "label": "A", "value": "<p>选项A</p>" },
+					{ "label": "B", "value": "<p>选项B</p>" }
+				]`),
+				Answers:                 types.JSONText(`["A"]`),
+				Score:                   null.FloatFrom(2),
+				Analysis:                null.StringFrom("<p>解析</p>"),
+				QuestionAttachmentsPath: types.JSONText(`[]`),
+				BelongTo:                null.IntFrom(bankID),
+			},
+			wantError:     true,
+			userID:        testUserID,
+			roleID:        teacherRoleID,
+			forceError:    "cmn.TQuestion-json.Unmarshal",
+			expectedError: "cmn.TQuestion-json.Unmarshal",
+			validate:      func(t *testing.T, ctx context.Context, q *cmn.ServiceCtx) {},
+		},
+		{
+			name: "conn.Exec错误",
+			reqBody: cmn.TQuestion{
+				ID:         null.IntFrom(testQuestionID),
+				Type:       "00",
+				Difficulty: null.IntFrom(1),
+				Content:    null.StringFrom("<p>测试题目</p>"),
+				Tags:       types.JSONText(`["测试"]`),
+				Options: types.JSONText(`[
+					{ "label": "A", "value": "<p>选项A</p>" },
+					{ "label": "B", "value": "<p>选项B</p>" }
+				]`),
+				Answers:                 types.JSONText(`["A"]`),
+				Score:                   null.FloatFrom(2),
+				Analysis:                null.StringFrom("<p>解析</p>"),
+				QuestionAttachmentsPath: types.JSONText(`[]`),
+				BelongTo:                null.IntFrom(bankID),
+			},
+			wantError:     true,
+			userID:        testUserID,
+			roleID:        teacherRoleID,
+			forceError:    "conn.Exec",
+			expectedError: "conn.Exec",
+			validate:      func(t *testing.T, ctx context.Context, q *cmn.ServiceCtx) {},
+		},
+	}
+
+	t.Run("空请求体", func(t *testing.T) {
+		ctxPut := createMockContextWithUnMarshalBody("PUT", "/questions", "", "", testUserID, teacherRoleID)
+		q := cmn.GetCtxValue(ctxPut)
+		questions(ctxPut)
+		require.Equal(t, -1, q.Msg.Status)
+		require.Equal(t, "call /api/questions with empty body", q.Msg.Msg)
+	})
+
+	t.Run("JSON解析失败", func(t *testing.T) {
+		ctxPut := createMockContextWithUnMarshalBody("PUT", "/questions", "{", "", testUserID, teacherRoleID)
+		q := cmn.GetCtxValue(ctxPut)
+		questions(ctxPut)
+		require.Equal(t, -1, q.Msg.Status)
+		require.Equal(t, "unexpected end of JSON input", q.Msg.Msg)
+	})
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctxPut := createMockContextWithBody("PUT", "/questions", tt.reqBody, tt.forceError, tt.userID, tt.roleID)
+			q := cmn.GetCtxValue(ctxPut)
+			questions(ctxPut)
+
+			if tt.wantError {
+				require.Equal(t, -1, q.Msg.Status, "期望错误状态码为-1")
+				if tt.expectedError != "" {
+					require.Contains(t, q.Msg.Msg, tt.expectedError, "错误信息应包含期望内容")
+				}
+			} else {
+				require.Equal(t, 0, q.Msg.Status, "期望成功状态码为0")
+				require.Equal(t, "success", q.Msg.Msg, "期望成功消息为'success'")
+
+				// 执行测试用例特定的验证
+				if tt.validate != nil {
+					tt.validate(t, ctx, q)
+				}
+			}
+		})
+	}
+}
+
+// TestQuestionDeleteMethod 测试题目删除方法 (DELETE方法)
+func TestQuestionDeleteMethod(t *testing.T) {
+	cmn.ConfigureForTest()
+	ctx := context.Background()
+	testUserID := TestUserIDs[0]
+
+	// 清理测试环境
+	t.Cleanup(func() {
+		cleanupTestBankQuestions(t)
+	})
+
+	tests := []struct {
+		name          string
+		wantError     bool
+		userID        int64
+		roleID        int64
+		forceError    string
+		expectedError string
+		setup         func(*testing.T, context.Context) []int64  // 返回要删除的题目ID列表
+		validate      func(*testing.T, context.Context, []int64) // 验证删除结果
+	}{
+		{
+			name:          "正常删除单个题目",
+			wantError:     false,
+			userID:        testUserID,
+			roleID:        teacherRoleID,
+			forceError:    "",
+			expectedError: "",
+			setup: func(t *testing.T, ctx context.Context) []int64 {
+				// 创建一个包含题目的题库
+				bankID, questionIDs := initTestQuestionBankAndQuestion(t, testUserID, false)
+				require.NotZero(t, bankID, "题库ID不应为0")
+				require.NotEmpty(t, questionIDs, "应创建至少一个题目")
+				return []int64{questionIDs[0]}
+			},
+			validate: func(t *testing.T, ctx context.Context, questionIDs []int64) {
+				// 验证题目是否已删除
+				questions, err := getQuestionsByIDs(ctx, questionIDs)
+				require.NoError(t, err, "查询应该成功执行")
+				require.Empty(t, questions, "题目应该已被删除")
+			},
+		},
+		{
+			name:          "批量删除多个题目",
+			wantError:     false,
+			userID:        testUserID,
+			roleID:        teacherRoleID,
+			forceError:    "",
+			expectedError: "",
+			setup: func(t *testing.T, ctx context.Context) []int64 {
+				// 创建多个题目
+				bankID, questionIDs := initTestQuestionBankAndQuestion(t, testUserID, false) // 创建多个题目
+				require.NotZero(t, bankID, "题库ID不应为0")
+				require.GreaterOrEqual(t, len(questionIDs), 3, "应创建至少3个题目")
+
+				// 返回前3个题目用于删除测试
+				return questionIDs[:3]
+			},
+			validate: func(t *testing.T, ctx context.Context, questionIDs []int64) {
+				// 验证所有题目是否已删除
+				questions, err := getQuestionsByIDs(ctx, questionIDs)
+				require.NoError(t, err, "查询应该成功执行")
+				require.Empty(t, questions, "所有题目应该已被删除")
+			},
+		},
+		{
+			name:          "删除不存在的题目",
+			wantError:     true,
+			userID:        testUserID,
+			roleID:        teacherRoleID,
+			forceError:    "",
+			expectedError: "题目",
+			setup: func(t *testing.T, ctx context.Context) []int64 {
+				// 返回一个不存在的题目ID
+				return []int64{999999}
+			},
+			validate: func(t *testing.T, ctx context.Context, questionIDs []int64) {
+				// 无需验证，因为删除操作应该失败
+			},
+		},
+		{
+			name:          "删除混合存在和不存在的题目",
+			wantError:     true,
+			userID:        testUserID,
+			roleID:        teacherRoleID,
+			forceError:    "",
+			expectedError: "题目",
+			setup: func(t *testing.T, ctx context.Context) []int64 {
+				// 创建一个题目，然后混合存在和不存在的ID
+				bankID, questionIDs := initTestQuestionBankAndQuestion(t, testUserID, false)
+				require.NotZero(t, bankID, "题库ID不应为0")
+				require.NotEmpty(t, questionIDs, "应创建至少一个题目")
+				return []int64{questionIDs[0], 999999, 888888} // 混合存在和不存在的ID
+			},
+			validate: func(t *testing.T, ctx context.Context, questionIDs []int64) {
+				// 验证存在的题目仍然存在（删除操作应该失败）
+				questions, err := getQuestionsByIDs(ctx, []int64{questionIDs[0]})
+				require.NoError(t, err, "查询应该成功执行")
+				require.NotEmpty(t, questions, "存在的题目应该仍然存在")
+			},
+		},
+		{
+			name:          "空的题目ID数组",
+			wantError:     true,
+			userID:        testUserID,
+			roleID:        teacherRoleID,
+			forceError:    "",
+			expectedError: "ID List cannot be empty",
+			setup: func(t *testing.T, ctx context.Context) []int64 {
+				return []int64{} // 空数组
+			},
+			validate: func(t *testing.T, ctx context.Context, questionIDs []int64) {
+				// 无需验证
+			},
+		},
+		{
+			name:          "包含无效ID的数组",
+			wantError:     true,
+			userID:        testUserID,
+			roleID:        teacherRoleID,
+			forceError:    "",
+			expectedError: "ID must be greater than 0: 0",
+			setup: func(t *testing.T, ctx context.Context) []int64 {
+				return []int64{0, -1} // 无效ID
+			},
+			validate: func(t *testing.T, ctx context.Context, questionIDs []int64) {
+				// 无需验证
+			},
+		},
+		{
+			name:          "io.ReadAll",
+			wantError:     true,
+			userID:        testUserID,
+			roleID:        teacherRoleID,
+			forceError:    "io.ReadAll",
+			expectedError: "io.ReadAll",
+			setup: func(t *testing.T, ctx context.Context) []int64 {
+				// 创建一个包含题目的题库
+				bankID, questionIDs := initTestQuestionBankAndQuestion(t, testUserID, false)
+				require.NotZero(t, bankID, "题库ID不应为0")
+				require.NotEmpty(t, questionIDs, "应创建至少一个题目")
+				return []int64{questionIDs[0]}
+			},
+			validate: func(t *testing.T, ctx context.Context, questionIDs []int64) {
+			},
+		},
+		{
+			name:          "q.R.Body.Close()",
+			wantError:     true,
+			userID:        testUserID,
+			roleID:        teacherRoleID,
+			forceError:    "q.R.Body.Close()",
+			expectedError: "q.R.Body.Close()",
+			setup: func(t *testing.T, ctx context.Context) []int64 {
+				// 创建一个包含题目的题库
+				bankID, questionIDs := initTestQuestionBankAndQuestion(t, testUserID, false)
+				require.NotZero(t, bankID, "题库ID不应为0")
+				require.NotEmpty(t, questionIDs, "应创建至少一个题目")
+				return []int64{questionIDs[0]}
+			},
+			validate: func(t *testing.T, ctx context.Context, questionIDs []int64) {
+			},
+		},
+		{
+			name:          "json.Unmarshal",
+			wantError:     true,
+			userID:        testUserID,
+			roleID:        teacherRoleID,
+			forceError:    "json.Unmarshal",
+			expectedError: "json.Unmarshal",
+			setup: func(t *testing.T, ctx context.Context) []int64 {
+				// 创建一个包含题目的题库
+				bankID, questionIDs := initTestQuestionBankAndQuestion(t, testUserID, false)
+				require.NotZero(t, bankID, "题库ID不应为0")
+				require.NotEmpty(t, questionIDs, "应创建至少一个题目")
+				return []int64{questionIDs[0]}
+			},
+			validate: func(t *testing.T, ctx context.Context, questionIDs []int64) {
+			},
+		},
+		{
+			name:          "recover",
+			wantError:     true,
+			userID:        testUserID,
+			roleID:        teacherRoleID,
+			forceError:    "recover",
+			expectedError: "recover",
+			setup: func(t *testing.T, ctx context.Context) []int64 {
+				// 创建一个包含题目的题库
+				bankID, questionIDs := initTestQuestionBankAndQuestion(t, testUserID, false)
+				require.NotZero(t, bankID, "题库ID不应为0")
+				require.NotEmpty(t, questionIDs, "应创建至少一个题目")
+				return []int64{questionIDs[0]}
+			},
+			validate: func(t *testing.T, ctx context.Context, questionIDs []int64) {
+			},
+		},
+		{
+			name:          "tx.Rollback",
+			wantError:     true,
+			userID:        testUserID,
+			roleID:        teacherRoleID,
+			forceError:    "tx.Rollback",
+			expectedError: "tx.Rollback",
+			setup: func(t *testing.T, ctx context.Context) []int64 {
+				// 创建一个包含题目的题库
+				bankID, questionIDs := initTestQuestionBankAndQuestion(t, testUserID, false)
+				require.NotZero(t, bankID, "题库ID不应为0")
+				require.NotEmpty(t, questionIDs, "应创建至少一个题目")
+				return []int64{questionIDs[0]}
+			},
+			validate: func(t *testing.T, ctx context.Context, questionIDs []int64) {
+			},
+		},
+		{
+			name:          "tx.Commit",
+			wantError:     true,
+			userID:        testUserID,
+			roleID:        teacherRoleID,
+			forceError:    "tx.Commit",
+			expectedError: "tx.Commit",
+			setup: func(t *testing.T, ctx context.Context) []int64 {
+				// 创建一个包含题目的题库
+				bankID, questionIDs := initTestQuestionBankAndQuestion(t, testUserID, false)
+				require.NotZero(t, bankID, "题库ID不应为0")
+				require.NotEmpty(t, questionIDs, "应创建至少一个题目")
+				return []int64{questionIDs[0]}
+			},
+			validate: func(t *testing.T, ctx context.Context, questionIDs []int64) {
+			},
+		},
+		{
+			name:          "conn.BeginTx",
+			wantError:     true,
+			userID:        testUserID,
+			roleID:        teacherRoleID,
+			forceError:    "conn.BeginTx",
+			expectedError: "conn.BeginTx",
+			setup: func(t *testing.T, ctx context.Context) []int64 {
+				// 创建一个包含题目的题库
+				bankID, questionIDs := initTestQuestionBankAndQuestion(t, testUserID, false)
+				require.NotZero(t, bankID, "题库ID不应为0")
+				require.NotEmpty(t, questionIDs, "应创建至少一个题目")
+				return []int64{questionIDs[0]}
+			},
+			validate: func(t *testing.T, ctx context.Context, questionIDs []int64) {
+			},
+		},
+		{
+			name:          "tx.QueryRow",
+			wantError:     true,
+			userID:        testUserID,
+			roleID:        teacherRoleID,
+			forceError:    "tx.QueryRow",
+			expectedError: "tx.QueryRow",
+			setup: func(t *testing.T, ctx context.Context) []int64 {
+				// 创建一个包含题目的题库
+				bankID, questionIDs := initTestQuestionBankAndQuestion(t, testUserID, false)
+				require.NotZero(t, bankID, "题库ID不应为0")
+				require.NotEmpty(t, questionIDs, "应创建至少一个题目")
+				return []int64{questionIDs[0]}
+			},
+			validate: func(t *testing.T, ctx context.Context, questionIDs []int64) {
+			},
+		},
+		{
+			name:          "tx.Exec",
+			wantError:     true,
+			userID:        testUserID,
+			roleID:        teacherRoleID,
+			forceError:    "tx.Exec",
+			expectedError: "tx.Exec",
+			setup: func(t *testing.T, ctx context.Context) []int64 {
+				// 创建一个包含题目的题库
+				bankID, questionIDs := initTestQuestionBankAndQuestion(t, testUserID, false)
+				require.NotZero(t, bankID, "题库ID不应为0")
+				require.NotEmpty(t, questionIDs, "应创建至少一个题目")
+				return []int64{questionIDs[0]}
+			},
+			validate: func(t *testing.T, ctx context.Context, questionIDs []int64) {
+			},
+		},
+	}
+
+	// 测试边界情况
+	t.Run("用户ID无效", func(t *testing.T) {
+		ctxDelete := createMockContextWithBody("DELETE", "/questions", []int64{1}, "", 0, teacherRoleID)
+		q := cmn.GetCtxValue(ctxDelete)
+		questions(ctxDelete)
+		require.Equal(t, -1, q.Msg.Status)
+		require.Contains(t, q.Msg.Msg, "无效的用户ID: 0")
+	})
+
+	t.Run("空请求体", func(t *testing.T) {
+		ctxDelete := createMockContextWithUnMarshalBody("DELETE", "/questions", "", "", testUserID, teacherRoleID)
+		q := cmn.GetCtxValue(ctxDelete)
+		questions(ctxDelete)
+		require.Equal(t, -1, q.Msg.Status)
+		require.Equal(t, "call /api/question-banks with empty body", q.Msg.Msg)
+	})
+
+	t.Run("JSON解析失败", func(t *testing.T) {
+		ctxDelete := createMockContextWithUnMarshalBody("DELETE", "/questions", "{", "", testUserID, teacherRoleID)
+		q := cmn.GetCtxValue(ctxDelete)
+		questions(ctxDelete)
+		require.Equal(t, -1, q.Msg.Status)
+		require.Equal(t, "unexpected end of JSON input", q.Msg.Msg)
+	})
+
+	t.Run("不支持的请求方法", func(t *testing.T) {
+		ctxDelete := createMockContextWithUnMarshalBody("PATCH", "/questions", "{", "", testUserID, teacherRoleID)
+		q := cmn.GetCtxValue(ctxDelete)
+		questions(ctxDelete)
+		require.Equal(t, -1, q.Msg.Status)
+		require.Equal(t, "unsupported method: patch", q.Msg.Msg)
+	})
+
+	// 运行主要测试用例
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// 设置测试数据
+			questionIDs := tt.setup(t, ctx)
+
+			// 执行删除操作
+			ctxDelete := createMockContextWithBody("DELETE", "/questions", questionIDs, tt.forceError, tt.userID, tt.roleID)
+			q := cmn.GetCtxValue(ctxDelete)
+			questions(ctxDelete)
+
+			if tt.wantError {
+				require.Equal(t, -1, q.Msg.Status, "期望错误状态码为-1")
+				if tt.expectedError != "" {
+					require.Contains(t, q.Msg.Msg, tt.expectedError, "错误信息应包含期望内容")
+				}
+			} else {
+				require.Equal(t, 0, q.Msg.Status, "期望成功状态码为0")
+				require.Equal(t, "success", q.Msg.Msg, "期望成功消息为'success'")
+			}
+
+			// 执行测试用例特定的验证
+			if tt.validate != nil {
+				tt.validate(t, ctx, questionIDs)
+			}
+		})
+	}
+}
+
+// getQuestionsByIDs 根据题目ID列表查询题目
+func getQuestionsByIDs(ctx context.Context, questionIDs []int64) ([]cmn.TQuestion, error) {
+	if len(questionIDs) == 0 {
+		return []cmn.TQuestion{}, nil
+	}
+
+	db := cmn.GetPgxConn()
+	query := `
+		SELECT id, type, content, options, answers, score, difficulty, tags, 
+		       analysis, title, answer_file_path, test_file_path, input, output, 
+		       example, repo, "order", creator, create_time, updated_by, 
+		       update_time, addi, status, question_attachments_path, 
+		       access_mode, belong_to
+		FROM t_question 
+		WHERE id = ANY($1) AND status = '00'
+	`
+
+	rows, err := db.Query(ctx, query, questionIDs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var questions []cmn.TQuestion
+	for rows.Next() {
+		var question cmn.TQuestion
+		err = rows.Scan(
+			&question.ID,
+			&question.Type,
+			&question.Content,
+			&question.Options,
+			&question.Answers,
+			&question.Score,
+			&question.Difficulty,
+			&question.Tags,
+			&question.Analysis,
+			&question.Title,
+			&question.AnswerFilePath,
+			&question.TestFilePath,
+			&question.Input,
+			&question.Output,
+			&question.Example,
+			&question.Repo,
+			&question.Order,
+			&question.Creator,
+			&question.CreateTime,
+			&question.UpdatedBy,
+			&question.UpdateTime,
+			&question.Addi,
+			&question.Status,
+			&question.QuestionAttachmentsPath,
+			&question.AccessMode,
+			&question.BelongTo,
+		)
+		if err != nil {
+			return nil, err
+		}
+		questions = append(questions, question)
+	}
+
+	return questions, rows.Err()
+}
