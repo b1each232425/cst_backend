@@ -66,6 +66,76 @@ func TestMain(m *testing.M) {
 	m.Run()
 }
 
+func addTestUser(userID int64, domain int64) (err error) {
+
+	dbConn := cmn.GetDbConn()
+
+	tx, err := dbConn.Begin()
+	if err != nil {
+		return
+	}
+
+	defer func() {
+
+		if err != nil {
+			tx.Rollback()
+			return
+		}
+
+		tx.Commit()
+
+	}()
+
+	sql := `INSERT INTO t_user (id, category, account) VALUES ($1, $2, $3) ON CONFLICT (id) DO NOTHING`
+	_, err = tx.Exec(sql, userID, "sys^user", fmt.Sprintf("testuser%d", userID))
+	if err != nil {
+		return
+	}
+
+	sql = `INSERT INTO t_user_domain (sys_user, domain) VALUES ($1, $2)`
+	_, err = tx.Exec(sql, userID, domain)
+	if err != nil {
+		return
+	}
+
+	return
+}
+
+func removeTestUser(userID int64) (err error) {
+
+	dbConn := cmn.GetDbConn()
+
+	tx, err := dbConn.Begin()
+	if err != nil {
+		return
+	}
+
+	defer func() {
+
+		if err != nil {
+			tx.Rollback()
+			return
+		}
+
+		tx.Commit()
+
+	}()
+
+	sql := `DELETE FROM t_user_domain WHERE sys_user = $1`
+	_, err = tx.Exec(sql, userID)
+	if err != nil {
+		return
+	}
+
+	sql = `DELETE FROM t_user WHERE id = $1`
+	_, err = tx.Exec(sql, userID)
+	if err != nil {
+		return
+	}
+
+	return
+}
+
 func TestEnroll(t *testing.T) {
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -193,6 +263,57 @@ func TestExamSite(t *testing.T) {
 
 	nowTime := time.Now().Unix()
 
+	testUserID := nowTime
+
+	defaultSetup := func() {
+		err := addTestUser(testUserID, int64(cmn.CDomainAssessExamSiteAdmin))
+		if err != nil {
+			t.Errorf("failed to add test user: %v", err)
+			return
+		}
+	}
+
+	defaultCheck := func(q *cmn.ServiceCtx, passExpected bool) {
+		var data examSiteInfo
+		err := json.Unmarshal(q.Msg.Data, &data)
+		if err != nil {
+			t.Errorf("failed to unmarshal response data: %v", err)
+			return
+		}
+
+		if data.AccessToken.String == "" && passExpected {
+			t.Errorf("expected non-empty access token, got empty")
+			return
+		}
+
+		if len(data.AccessToken.String) != 64 && passExpected {
+			t.Errorf("expected access token length of 64, got %d", len(data.AccessToken.String))
+			return
+		}
+	}
+
+	defaultCleanup := func() {
+
+		err := removeTestUser(testUserID)
+		if err != nil {
+			t.Fatalf("failed to remove test user: %v", err)
+		}
+
+		dbConn := cmn.GetDbConn()
+
+		r, err := dbConn.Exec(fmt.Sprintf(`DELETE FROM t_exam_site WHERE name = 'test-site-%d'`, nowTime))
+		if err != nil {
+			t.Fatalf("failed to clean up test data: %v", err)
+		}
+
+		c, err := r.RowsAffected()
+		if err != nil {
+			t.Fatalf("failed to get affected rows: %v", err)
+		}
+
+		t.Logf("Have already cleaned up %d rows from t_exam_site", c)
+	}
+
 	tests := []struct {
 		name         string
 		q            *cmn.ServiceCtx
@@ -207,13 +328,16 @@ func TestExamSite(t *testing.T) {
 			name:  "不支持的Http方法",
 			setup: func() {},
 			q: &cmn.ServiceCtx{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-site",
+				},
 				R: httptest.NewRequest("Unknown255", "/api/exam-site", strings.NewReader(fmt.Sprintf(`{
 					"data": {
 						"name": "test-site-%d",
 						"address": "test-site-addr",
-						"admin": 1622
+						"admin": %d
 					}
-				}`, nowTime))),
+				}`, nowTime, testUserID))),
 				W: httptest.NewRecorder(),
 				Msg: &cmn.ReplyProto{
 					API:    "/api/exam-site",
@@ -221,7 +345,7 @@ func TestExamSite(t *testing.T) {
 				},
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
-					ID:   null.NewInt(1622, true),
+					ID:   null.NewInt(testUserID, true),
 					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
@@ -234,23 +358,7 @@ func TestExamSite(t *testing.T) {
 			},
 			passExpected: false,
 			errWanted:    "不支持的HTTP方法: Unknown255",
-			cleanup: func() {
-
-				dbConn := cmn.GetDbConn()
-
-				r, err := dbConn.Exec(fmt.Sprintf(`DELETE FROM t_exam_site WHERE name = 'test-site-%d'`, nowTime))
-				if err != nil {
-					t.Fatalf("failed to clean up test data: %v", err)
-				}
-
-				c, err := r.RowsAffected()
-				if err != nil {
-					t.Fatalf("failed to get affected rows: %v", err)
-				}
-
-				t.Logf("Have already cleaned up %d rows from t_exam_site", c)
-
-			},
+			cleanup:      defaultCleanup,
 		},
 
 		// ==============创建考点测试============= coverage: 100%
@@ -263,17 +371,19 @@ func TestExamSite(t *testing.T) {
 		// o88o     o8888o o888bood8P'   o888bood8P'           8""88888P'  o888o     o888o     o888ooooood8
 
 		{
-			name:  "创建考点成功",
-			setup: func() {},
+			name: "创建考点成功",
 			q: &cmn.ServiceCtx{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-site",
+				},
 				R: httptest.NewRequest("POST", "/api/exam-site", strings.NewReader(fmt.Sprintf(`{
 					"data": {
 						"name": "test-site-%d",
 						"address": "test-site-addr",
 						"server_host": "t.test.top:6443",
-						"admin": 1622
+						"admin": %d
 					}
-				}`, nowTime))),
+				}`, nowTime, testUserID))),
 				W: httptest.NewRecorder(),
 				Msg: &cmn.ReplyProto{
 					API:    "/api/exam-site",
@@ -281,7 +391,7 @@ func TestExamSite(t *testing.T) {
 				},
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
-					ID:   null.NewInt(1622, true),
+					ID:   null.NewInt(testUserID, true),
 					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
@@ -294,53 +404,24 @@ func TestExamSite(t *testing.T) {
 			},
 			passExpected: true,
 			errWanted:    "",
-			cleanup: func() {
-
-				dbConn := cmn.GetDbConn()
-
-				r, err := dbConn.Exec(fmt.Sprintf(`DELETE FROM t_exam_site WHERE name = 'test-site-%d'`, nowTime))
-				if err != nil {
-					t.Fatalf("failed to clean up test data: %v", err)
-				}
-
-				c, err := r.RowsAffected()
-				if err != nil {
-					t.Fatalf("failed to get affected rows: %v", err)
-				}
-
-				t.Logf("Have already cleaned up %d rows from t_exam_site", c)
-
-			},
-			check: func(q *cmn.ServiceCtx, passExpected bool) {
-				var data examSiteInfo
-				err := json.Unmarshal(q.Msg.Data, &data)
-				if err != nil {
-					t.Errorf("failed to unmarshal response data: %v", err)
-					return
-				}
-
-				if data.AccessToken.String == "" && passExpected {
-					t.Errorf("expected non-empty access token, got empty")
-					return
-				}
-
-				if len(data.AccessToken.String) != 64 && passExpected {
-					t.Errorf("expected access token length of 64, got %d", len(data.AccessToken.String))
-					return
-				}
-			},
+			setup:        defaultSetup,
+			cleanup:      defaultCleanup,
+			check:        defaultCheck,
 		},
 		{
 			name:  "创建考点成功-缺少sever_host",
 			setup: func() {},
 			q: &cmn.ServiceCtx{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-site",
+				},
 				R: httptest.NewRequest("POST", "/api/exam-site", strings.NewReader(fmt.Sprintf(`{
 					"data": {
 						"name": "test-site-%d",
 						"address": "test-site-addr",
-						"admin": 1622
+						"admin": %d
 					}
-				}`, nowTime))),
+				}`, nowTime, testUserID))),
 				W: httptest.NewRecorder(),
 				Msg: &cmn.ReplyProto{
 					API:    "/api/exam-site",
@@ -348,7 +429,7 @@ func TestExamSite(t *testing.T) {
 				},
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
-					ID:   null.NewInt(1622, true),
+					ID:   null.NewInt(testUserID, true),
 					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
@@ -361,54 +442,24 @@ func TestExamSite(t *testing.T) {
 			},
 			passExpected: true,
 			errWanted:    "",
-			cleanup: func() {
-
-				dbConn := cmn.GetDbConn()
-
-				r, err := dbConn.Exec(fmt.Sprintf(`DELETE FROM t_exam_site WHERE name = 'test-site-%d'`, nowTime))
-				if err != nil {
-					t.Fatalf("failed to clean up test data: %v", err)
-				}
-
-				c, err := r.RowsAffected()
-				if err != nil {
-					t.Fatalf("failed to get affected rows: %v", err)
-				}
-
-				t.Logf("Have already cleaned up %d rows from t_exam_site", c)
-
-			},
-			check: func(q *cmn.ServiceCtx, passExpected bool) {
-				var data examSiteInfo
-				err := json.Unmarshal(q.Msg.Data, &data)
-				if err != nil {
-					t.Errorf("failed to unmarshal response data: %v", err)
-					return
-				}
-
-				if data.AccessToken.String == "" && passExpected {
-					t.Errorf("expected non-empty access token, got empty")
-					return
-				}
-
-				if len(data.AccessToken.String) != 64 && passExpected {
-					t.Errorf("expected access token length of 64, got %d", len(data.AccessToken.String))
-					return
-				}
-			},
+			cleanup:      defaultCleanup,
+			check:        defaultCheck,
 		},
 		{
 			name:  "创建考点失败-缺少name",
 			setup: func() {},
 			q: &cmn.ServiceCtx{
-				R: httptest.NewRequest("POST", "/api/exam-site", strings.NewReader(`{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-site",
+				},
+				R: httptest.NewRequest("POST", "/api/exam-site", strings.NewReader(fmt.Sprintf(`{
 					"data": {
 						"name": "",
 						"address": "test-site-addr",
 						"server_host": "t.test.top:6443",
-						"admin": 1622
+						"admin": %d
 					}
-				}`)),
+				}`, testUserID))),
 				W: httptest.NewRecorder(),
 				Msg: &cmn.ReplyProto{
 					API:    "/api/exam-site",
@@ -416,7 +467,7 @@ func TestExamSite(t *testing.T) {
 				},
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
-					ID:   null.NewInt(1622, true),
+					ID:   null.NewInt(testUserID, true),
 					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
@@ -429,54 +480,24 @@ func TestExamSite(t *testing.T) {
 			},
 			passExpected: false,
 			errWanted:    "validation failed:Key: 'examSiteInfo.Name' Error:Field validation for 'Name' failed on the 'required' tag",
-			cleanup: func() {
-
-				dbConn := cmn.GetDbConn()
-
-				r, err := dbConn.Exec(fmt.Sprintf(`DELETE FROM t_exam_site WHERE name = 'test-site-%d'`, nowTime))
-				if err != nil {
-					t.Fatalf("failed to clean up test data: %v", err)
-				}
-
-				c, err := r.RowsAffected()
-				if err != nil {
-					t.Fatalf("failed to get affected rows: %v", err)
-				}
-
-				t.Logf("Have already cleaned up %d rows from t_exam_site", c)
-
-			},
-			check: func(q *cmn.ServiceCtx, passExpected bool) {
-				var data examSiteInfo
-				err := json.Unmarshal(q.Msg.Data, &data)
-				if err != nil {
-					t.Errorf("failed to unmarshal response data: %v", err)
-					return
-				}
-
-				if data.AccessToken.String == "" && passExpected {
-					t.Errorf("expected non-empty access token, got empty")
-					return
-				}
-
-				if len(data.AccessToken.String) != 64 && passExpected {
-					t.Errorf("expected access token length of 64, got %d", len(data.AccessToken.String))
-					return
-				}
-			},
+			cleanup:      defaultCleanup,
+			check:        defaultCheck,
 		},
 		{
 			name:  "创建考点失败-name类型为非字符串",
 			setup: func() {},
 			q: &cmn.ServiceCtx{
-				R: httptest.NewRequest("POST", "/api/exam-site", strings.NewReader(`{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-site",
+				},
+				R: httptest.NewRequest("POST", "/api/exam-site", strings.NewReader(fmt.Sprintf(`{
 					"data": {
 						"name": 123,
 						"address": "test-site-addr",
 						"server_host": "t.test.top:6443",
-						"admin": 1622
+						"admin": %d
 					}
-				}`)),
+				}`, testUserID))),
 				W: httptest.NewRecorder(),
 				Msg: &cmn.ReplyProto{
 					API:    "/api/exam-site",
@@ -484,7 +505,7 @@ func TestExamSite(t *testing.T) {
 				},
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
-					ID:   null.NewInt(1622, true),
+					ID:   null.NewInt(testUserID, true),
 					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
@@ -497,52 +518,22 @@ func TestExamSite(t *testing.T) {
 			},
 			passExpected: false,
 			errWanted:    "json: cannot unmarshal number into Go struct field examSiteInfo.name of type string",
-			cleanup: func() {
-
-				dbConn := cmn.GetDbConn()
-
-				r, err := dbConn.Exec(fmt.Sprintf(`DELETE FROM t_exam_site WHERE name = 'test-site-%d'`, nowTime))
-				if err != nil {
-					t.Fatalf("failed to clean up test data: %v", err)
-				}
-
-				c, err := r.RowsAffected()
-				if err != nil {
-					t.Fatalf("failed to get affected rows: %v", err)
-				}
-
-				t.Logf("Have already cleaned up %d rows from t_exam_site", c)
-
-			},
-			check: func(q *cmn.ServiceCtx, passExpected bool) {
-				var data examSiteInfo
-				err := json.Unmarshal(q.Msg.Data, &data)
-				if err != nil {
-					t.Errorf("failed to unmarshal response data: %v", err)
-					return
-				}
-
-				if data.AccessToken.String == "" && passExpected {
-					t.Errorf("expected non-empty access token, got empty")
-					return
-				}
-
-				if len(data.AccessToken.String) != 64 && passExpected {
-					t.Errorf("expected access token length of 64, got %d", len(data.AccessToken.String))
-					return
-				}
-			},
+			cleanup:      defaultCleanup,
+			check:        defaultCheck,
 		},
 		{
 			name:  "创建考点失败-admin为非数字类型",
 			setup: func() {},
 			q: &cmn.ServiceCtx{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-site",
+				},
 				R: httptest.NewRequest("POST", "/api/exam-site", strings.NewReader(`{
 					"data": {
 						"name": "test-site",
 						"address": "test-site-addr",
 						"server_host": "t.test.top:6443",
-						"admin": "1622"
+						"admin": "testUserID"
 					}
 				}`)),
 				W: httptest.NewRecorder(),
@@ -552,7 +543,7 @@ func TestExamSite(t *testing.T) {
 				},
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
-					ID:   null.NewInt(1622, true),
+					ID:   null.NewInt(testUserID, true),
 					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
@@ -565,53 +556,23 @@ func TestExamSite(t *testing.T) {
 			},
 			passExpected: false,
 			errWanted:    "json: cannot unmarshal string into Go struct field examSiteInfo.admin of type int64",
-			cleanup: func() {
-
-				dbConn := cmn.GetDbConn()
-
-				r, err := dbConn.Exec(fmt.Sprintf(`DELETE FROM t_exam_site WHERE name = 'test-site-%d'`, nowTime))
-				if err != nil {
-					t.Fatalf("failed to clean up test data: %v", err)
-				}
-
-				c, err := r.RowsAffected()
-				if err != nil {
-					t.Fatalf("failed to get affected rows: %v", err)
-				}
-
-				t.Logf("Have already cleaned up %d rows from t_exam_site", c)
-
-			},
-			check: func(q *cmn.ServiceCtx, passExpected bool) {
-				var data examSiteInfo
-				err := json.Unmarshal(q.Msg.Data, &data)
-				if err != nil {
-					t.Errorf("failed to unmarshal response data: %v", err)
-					return
-				}
-
-				if data.AccessToken.String == "" && passExpected {
-					t.Errorf("expected non-empty access token, got empty")
-					return
-				}
-
-				if len(data.AccessToken.String) != 64 && passExpected {
-					t.Errorf("expected access token length of 64, got %d", len(data.AccessToken.String))
-					return
-				}
-			},
+			cleanup:      defaultCleanup,
+			check:        defaultCheck,
 		},
 		{
 			name:  "创建考点失败-强制开启事务失败",
 			setup: func() {},
 			q: &cmn.ServiceCtx{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-site",
+				},
 				R: httptest.NewRequest("POST", "/api/exam-site", strings.NewReader(fmt.Sprintf(`{
 					"data": {
 						"name": "test-site-%d",
 						"address": "test-site-addr",
-						"admin": 1622
+						"admin": %d
 					}
-				}`, nowTime))),
+				}`, nowTime, testUserID))),
 				W: httptest.NewRecorder(),
 				Msg: &cmn.ReplyProto{
 					API:    "/api/exam-site",
@@ -619,7 +580,7 @@ func TestExamSite(t *testing.T) {
 				},
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
-					ID:   null.NewInt(1622, true),
+					ID:   null.NewInt(testUserID, true),
 					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
@@ -635,53 +596,23 @@ func TestExamSite(t *testing.T) {
 			},
 			passExpected: false,
 			errWanted:    "force tx begin err",
-			cleanup: func() {
-
-				dbConn := cmn.GetDbConn()
-
-				r, err := dbConn.Exec(fmt.Sprintf(`DELETE FROM t_exam_site WHERE name = 'test-site-%d'`, nowTime))
-				if err != nil {
-					t.Fatalf("failed to clean up test data: %v", err)
-				}
-
-				c, err := r.RowsAffected()
-				if err != nil {
-					t.Fatalf("failed to get affected rows: %v", err)
-				}
-
-				t.Logf("Have already cleaned up %d rows from t_exam_site", c)
-
-			},
-			check: func(q *cmn.ServiceCtx, passExpected bool) {
-				var data examSiteInfo
-				err := json.Unmarshal(q.Msg.Data, &data)
-				if err != nil {
-					t.Errorf("failed to unmarshal response data: %v", err)
-					return
-				}
-
-				if data.AccessToken.String == "" && passExpected {
-					t.Errorf("expected non-empty access token, got empty")
-					return
-				}
-
-				if len(data.AccessToken.String) != 64 && passExpected {
-					t.Errorf("expected access token length of 64, got %d", len(data.AccessToken.String))
-					return
-				}
-			},
+			cleanup:      defaultCleanup,
+			check:        defaultCheck,
 		},
 		{
 			name:  "创建考点失败-强制事务提交失败",
 			setup: func() {},
 			q: &cmn.ServiceCtx{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-site",
+				},
 				R: httptest.NewRequest("POST", "/api/exam-site", strings.NewReader(fmt.Sprintf(`{
 					"data": {
 						"name": "test-site-%d",
 						"address": "test-site-addr",
-						"admin": 1622
+						"admin": %d
 					}
-				}`, nowTime))),
+				}`, nowTime, testUserID))),
 				W: httptest.NewRecorder(),
 				Msg: &cmn.ReplyProto{
 					API:    "/api/exam-site",
@@ -689,7 +620,7 @@ func TestExamSite(t *testing.T) {
 				},
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
-					ID:   null.NewInt(1622, true),
+					ID:   null.NewInt(testUserID, true),
 					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
@@ -705,53 +636,23 @@ func TestExamSite(t *testing.T) {
 			},
 			passExpected: false,
 			errWanted:    "force tx commit err",
-			cleanup: func() {
-
-				dbConn := cmn.GetDbConn()
-
-				r, err := dbConn.Exec(fmt.Sprintf(`DELETE FROM t_exam_site WHERE name = 'test-site-%d'`, nowTime))
-				if err != nil {
-					t.Fatalf("failed to clean up test data: %v", err)
-				}
-
-				c, err := r.RowsAffected()
-				if err != nil {
-					t.Fatalf("failed to get affected rows: %v", err)
-				}
-
-				t.Logf("Have already cleaned up %d rows from t_exam_site", c)
-
-			},
-			check: func(q *cmn.ServiceCtx, passExpected bool) {
-				var data examSiteInfo
-				err := json.Unmarshal(q.Msg.Data, &data)
-				if err != nil {
-					t.Errorf("failed to unmarshal response data: %v", err)
-					return
-				}
-
-				if data.AccessToken.String == "" && passExpected {
-					t.Errorf("expected non-empty access token, got empty")
-					return
-				}
-
-				if len(data.AccessToken.String) != 64 && passExpected {
-					t.Errorf("expected access token length of 64, got %d", len(data.AccessToken.String))
-					return
-				}
-			},
+			cleanup:      defaultCleanup,
+			check:        defaultCheck,
 		},
 		{
 			name:  "创建考点失败-强制事务回滚失败",
 			setup: func() {},
 			q: &cmn.ServiceCtx{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-site",
+				},
 				R: httptest.NewRequest("POST", "/api/exam-site", strings.NewReader(fmt.Sprintf(`{
 					"data": {
 						"name": %d,
 						"address": "test-site-addr",
-						"admin": 1622
+						"admin": %d
 					}
-				}`, nowTime))),
+				}`, nowTime, testUserID))),
 				W: httptest.NewRecorder(),
 				Msg: &cmn.ReplyProto{
 					API:    "/api/exam-site",
@@ -759,7 +660,7 @@ func TestExamSite(t *testing.T) {
 				},
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
-					ID:   null.NewInt(1622, true),
+					ID:   null.NewInt(testUserID, true),
 					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
@@ -775,53 +676,23 @@ func TestExamSite(t *testing.T) {
 			},
 			passExpected: false,
 			errWanted:    "force tx rollback err",
-			cleanup: func() {
-
-				dbConn := cmn.GetDbConn()
-
-				r, err := dbConn.Exec(fmt.Sprintf(`DELETE FROM t_exam_site WHERE name = 'test-site-%d'`, nowTime))
-				if err != nil {
-					t.Fatalf("failed to clean up test data: %v", err)
-				}
-
-				c, err := r.RowsAffected()
-				if err != nil {
-					t.Fatalf("failed to get affected rows: %v", err)
-				}
-
-				t.Logf("Have already cleaned up %d rows from t_exam_site", c)
-
-			},
-			check: func(q *cmn.ServiceCtx, passExpected bool) {
-				var data examSiteInfo
-				err := json.Unmarshal(q.Msg.Data, &data)
-				if err != nil {
-					t.Errorf("failed to unmarshal response data: %v", err)
-					return
-				}
-
-				if data.AccessToken.String == "" && passExpected {
-					t.Errorf("expected non-empty access token, got empty")
-					return
-				}
-
-				if len(data.AccessToken.String) != 64 && passExpected {
-					t.Errorf("expected access token length of 64, got %d", len(data.AccessToken.String))
-					return
-				}
-			},
+			cleanup:      defaultCleanup,
+			check:        defaultCheck,
 		},
 		{
 			name:  "创建考点失败-强制读取Body失败",
 			setup: func() {},
 			q: &cmn.ServiceCtx{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-site",
+				},
 				R: httptest.NewRequest("POST", "/api/exam-site", strings.NewReader(fmt.Sprintf(`{
 					"data": {
 						"name": "test-site-%d",
 						"address": "test-site-addr",
-						"admin": 1622
+						"admin": %d
 					}
-				}`, nowTime))),
+				}`, nowTime, testUserID))),
 				W: httptest.NewRecorder(),
 				Msg: &cmn.ReplyProto{
 					API:    "/api/exam-site",
@@ -829,7 +700,7 @@ func TestExamSite(t *testing.T) {
 				},
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
-					ID:   null.NewInt(1622, true),
+					ID:   null.NewInt(testUserID, true),
 					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
@@ -845,53 +716,23 @@ func TestExamSite(t *testing.T) {
 			},
 			passExpected: false,
 			errWanted:    "force read body err",
-			cleanup: func() {
-
-				dbConn := cmn.GetDbConn()
-
-				r, err := dbConn.Exec(fmt.Sprintf(`DELETE FROM t_exam_site WHERE name = 'test-site-%d'`, nowTime))
-				if err != nil {
-					t.Fatalf("failed to clean up test data: %v", err)
-				}
-
-				c, err := r.RowsAffected()
-				if err != nil {
-					t.Fatalf("failed to get affected rows: %v", err)
-				}
-
-				t.Logf("Have already cleaned up %d rows from t_exam_site", c)
-
-			},
-			check: func(q *cmn.ServiceCtx, passExpected bool) {
-				var data examSiteInfo
-				err := json.Unmarshal(q.Msg.Data, &data)
-				if err != nil {
-					t.Errorf("failed to unmarshal response data: %v", err)
-					return
-				}
-
-				if data.AccessToken.String == "" && passExpected {
-					t.Errorf("expected non-empty access token, got empty")
-					return
-				}
-
-				if len(data.AccessToken.String) != 64 && passExpected {
-					t.Errorf("expected access token length of 64, got %d", len(data.AccessToken.String))
-					return
-				}
-			},
+			cleanup:      defaultCleanup,
+			check:        defaultCheck,
 		},
 		{
 			name:  "创建考点失败-强制添加系统账号SQL Prepare 失败",
 			setup: func() {},
 			q: &cmn.ServiceCtx{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-site",
+				},
 				R: httptest.NewRequest("POST", "/api/exam-site", strings.NewReader(fmt.Sprintf(`{
 					"data": {
 						"name": "test-site-%d",
 						"address": "test-site-addr",
-						"admin": 1622
+						"admin": %d
 					}
-				}`, nowTime))),
+				}`, nowTime, testUserID))),
 				W: httptest.NewRecorder(),
 				Msg: &cmn.ReplyProto{
 					API:    "/api/exam-site",
@@ -899,7 +740,7 @@ func TestExamSite(t *testing.T) {
 				},
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
-					ID:   null.NewInt(1622, true),
+					ID:   null.NewInt(testUserID, true),
 					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
@@ -915,53 +756,23 @@ func TestExamSite(t *testing.T) {
 			},
 			passExpected: false,
 			errWanted:    "force add sys user sql prepare err",
-			cleanup: func() {
-
-				dbConn := cmn.GetDbConn()
-
-				r, err := dbConn.Exec(fmt.Sprintf(`DELETE FROM t_exam_site WHERE name = 'test-site-%d'`, nowTime))
-				if err != nil {
-					t.Fatalf("failed to clean up test data: %v", err)
-				}
-
-				c, err := r.RowsAffected()
-				if err != nil {
-					t.Fatalf("failed to get affected rows: %v", err)
-				}
-
-				t.Logf("Have already cleaned up %d rows from t_exam_site", c)
-
-			},
-			check: func(q *cmn.ServiceCtx, passExpected bool) {
-				var data examSiteInfo
-				err := json.Unmarshal(q.Msg.Data, &data)
-				if err != nil {
-					t.Errorf("failed to unmarshal response data: %v", err)
-					return
-				}
-
-				if data.AccessToken.String == "" && passExpected {
-					t.Errorf("expected non-empty access token, got empty")
-					return
-				}
-
-				if len(data.AccessToken.String) != 64 && passExpected {
-					t.Errorf("expected access token length of 64, got %d", len(data.AccessToken.String))
-					return
-				}
-			},
+			cleanup:      defaultCleanup,
+			check:        defaultCheck,
 		},
 		{
 			name:  "创建考点失败-强制执行添加系统账号sql失败",
 			setup: func() {},
 			q: &cmn.ServiceCtx{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-site",
+				},
 				R: httptest.NewRequest("POST", "/api/exam-site", strings.NewReader(fmt.Sprintf(`{
 					"data": {
 						"name": "test-site-%d",
 						"address": "test-site-addr",
-						"admin": 1622
+						"admin": %d
 					}
-				}`, nowTime))),
+				}`, nowTime, testUserID))),
 				W: httptest.NewRecorder(),
 				Msg: &cmn.ReplyProto{
 					API:    "/api/exam-site",
@@ -969,7 +780,7 @@ func TestExamSite(t *testing.T) {
 				},
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
-					ID:   null.NewInt(1622, true),
+					ID:   null.NewInt(testUserID, true),
 					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
@@ -985,53 +796,23 @@ func TestExamSite(t *testing.T) {
 			},
 			passExpected: false,
 			errWanted:    "force execute add sys user sql err",
-			cleanup: func() {
-
-				dbConn := cmn.GetDbConn()
-
-				r, err := dbConn.Exec(fmt.Sprintf(`DELETE FROM t_exam_site WHERE name = 'test-site-%d'`, nowTime))
-				if err != nil {
-					t.Fatalf("failed to clean up test data: %v", err)
-				}
-
-				c, err := r.RowsAffected()
-				if err != nil {
-					t.Fatalf("failed to get affected rows: %v", err)
-				}
-
-				t.Logf("Have already cleaned up %d rows from t_exam_site", c)
-
-			},
-			check: func(q *cmn.ServiceCtx, passExpected bool) {
-				var data examSiteInfo
-				err := json.Unmarshal(q.Msg.Data, &data)
-				if err != nil {
-					t.Errorf("failed to unmarshal response data: %v", err)
-					return
-				}
-
-				if data.AccessToken.String == "" && passExpected {
-					t.Errorf("expected non-empty access token, got empty")
-					return
-				}
-
-				if len(data.AccessToken.String) != 64 && passExpected {
-					t.Errorf("expected access token length of 64, got %d", len(data.AccessToken.String))
-					return
-				}
-			},
+			cleanup:      defaultCleanup,
+			check:        defaultCheck,
 		},
 		{
 			name:  "创建考点失败-强制添加考点SQL Prepare 失败",
 			setup: func() {},
 			q: &cmn.ServiceCtx{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-site",
+				},
 				R: httptest.NewRequest("POST", "/api/exam-site", strings.NewReader(fmt.Sprintf(`{
 					"data": {
 						"name": "test-site-%d",
 						"address": "test-site-addr",
-						"admin": 1622
+						"admin": %d
 					}
-				}`, nowTime))),
+				}`, nowTime, testUserID))),
 				W: httptest.NewRecorder(),
 				Msg: &cmn.ReplyProto{
 					API:    "/api/exam-site",
@@ -1039,7 +820,7 @@ func TestExamSite(t *testing.T) {
 				},
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
-					ID:   null.NewInt(1622, true),
+					ID:   null.NewInt(testUserID, true),
 					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
@@ -1055,53 +836,23 @@ func TestExamSite(t *testing.T) {
 			},
 			passExpected: false,
 			errWanted:    "force add exam site prepare err",
-			cleanup: func() {
-
-				dbConn := cmn.GetDbConn()
-
-				r, err := dbConn.Exec(fmt.Sprintf(`DELETE FROM t_exam_site WHERE name = 'test-site-%d'`, nowTime))
-				if err != nil {
-					t.Fatalf("failed to clean up test data: %v", err)
-				}
-
-				c, err := r.RowsAffected()
-				if err != nil {
-					t.Fatalf("failed to get affected rows: %v", err)
-				}
-
-				t.Logf("Have already cleaned up %d rows from t_exam_site", c)
-
-			},
-			check: func(q *cmn.ServiceCtx, passExpected bool) {
-				var data examSiteInfo
-				err := json.Unmarshal(q.Msg.Data, &data)
-				if err != nil {
-					t.Errorf("failed to unmarshal response data: %v", err)
-					return
-				}
-
-				if data.AccessToken.String == "" && passExpected {
-					t.Errorf("expected non-empty access token, got empty")
-					return
-				}
-
-				if len(data.AccessToken.String) != 64 && passExpected {
-					t.Errorf("expected access token length of 64, got %d", len(data.AccessToken.String))
-					return
-				}
-			},
+			cleanup:      defaultCleanup,
+			check:        defaultCheck,
 		},
 		{
 			name:  "创建考点失败-强制执行添加考点sql失败",
 			setup: func() {},
 			q: &cmn.ServiceCtx{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-site",
+				},
 				R: httptest.NewRequest("POST", "/api/exam-site", strings.NewReader(fmt.Sprintf(`{
 					"data": {
 						"name": "test-site-%d",
 						"address": "test-site-addr",
-						"admin": 1622
+						"admin": %d
 					}
-				}`, nowTime))),
+				}`, nowTime, testUserID))),
 				W: httptest.NewRecorder(),
 				Msg: &cmn.ReplyProto{
 					API:    "/api/exam-site",
@@ -1109,7 +860,7 @@ func TestExamSite(t *testing.T) {
 				},
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
-					ID:   null.NewInt(1622, true),
+					ID:   null.NewInt(testUserID, true),
 					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
@@ -1125,53 +876,23 @@ func TestExamSite(t *testing.T) {
 			},
 			passExpected: false,
 			errWanted:    "force execute add exam site sql err",
-			cleanup: func() {
-
-				dbConn := cmn.GetDbConn()
-
-				r, err := dbConn.Exec(fmt.Sprintf(`DELETE FROM t_exam_site WHERE name = 'test-site-%d'`, nowTime))
-				if err != nil {
-					t.Fatalf("failed to clean up test data: %v", err)
-				}
-
-				c, err := r.RowsAffected()
-				if err != nil {
-					t.Fatalf("failed to get affected rows: %v", err)
-				}
-
-				t.Logf("Have already cleaned up %d rows from t_exam_site", c)
-
-			},
-			check: func(q *cmn.ServiceCtx, passExpected bool) {
-				var data examSiteInfo
-				err := json.Unmarshal(q.Msg.Data, &data)
-				if err != nil {
-					t.Errorf("failed to unmarshal response data: %v", err)
-					return
-				}
-
-				if data.AccessToken.String == "" && passExpected {
-					t.Errorf("expected non-empty access token, got empty")
-					return
-				}
-
-				if len(data.AccessToken.String) != 64 && passExpected {
-					t.Errorf("expected access token length of 64, got %d", len(data.AccessToken.String))
-					return
-				}
-			},
+			cleanup:      defaultCleanup,
+			check:        defaultCheck,
 		},
 		{
 			name:  "创建考点失败-强制返回json Marshal失败",
 			setup: func() {},
 			q: &cmn.ServiceCtx{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-site",
+				},
 				R: httptest.NewRequest("POST", "/api/exam-site", strings.NewReader(fmt.Sprintf(`{
 					"data": {
 						"name": "test-site-%d",
 						"address": "test-site-addr",
-						"admin": 1622
+						"admin": %d
 					}
-				}`, nowTime))),
+				}`, nowTime, testUserID))),
 				W: httptest.NewRecorder(),
 				Msg: &cmn.ReplyProto{
 					API:    "/api/exam-site",
@@ -1179,7 +900,7 @@ func TestExamSite(t *testing.T) {
 				},
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
-					ID:   null.NewInt(1622, true),
+					ID:   null.NewInt(testUserID, true),
 					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
@@ -1195,41 +916,8 @@ func TestExamSite(t *testing.T) {
 			},
 			passExpected: false,
 			errWanted:    "force marshal return data err",
-			cleanup: func() {
-
-				dbConn := cmn.GetDbConn()
-
-				r, err := dbConn.Exec(fmt.Sprintf(`DELETE FROM t_exam_site WHERE name = 'test-site-%d'`, nowTime))
-				if err != nil {
-					t.Fatalf("failed to clean up test data: %v", err)
-				}
-
-				c, err := r.RowsAffected()
-				if err != nil {
-					t.Fatalf("failed to get affected rows: %v", err)
-				}
-
-				t.Logf("Have already cleaned up %d rows from t_exam_site", c)
-
-			},
-			check: func(q *cmn.ServiceCtx, passExpected bool) {
-				var data examSiteInfo
-				err := json.Unmarshal(q.Msg.Data, &data)
-				if err != nil {
-					t.Errorf("failed to unmarshal response data: %v", err)
-					return
-				}
-
-				if data.AccessToken.String == "" && passExpected {
-					t.Errorf("expected non-empty access token, got empty")
-					return
-				}
-
-				if len(data.AccessToken.String) != 64 && passExpected {
-					t.Errorf("expected access token length of 64, got %d", len(data.AccessToken.String))
-					return
-				}
-			},
+			cleanup:      defaultCleanup,
+			check:        defaultCheck,
 		},
 
 		// ======================================
@@ -1294,6 +982,88 @@ func TestExamSiteList(t *testing.T) {
 
 	nowTime := time.Now().Unix()
 
+	testUserID := nowTime
+
+	defaultSetup := func() {
+
+		err := addTestUser(testUserID, int64(cmn.CDomainAssessExamSiteAdmin))
+		if err != nil {
+			t.Errorf("failed to add test user: %v", err)
+			return
+		}
+
+		dbConn := cmn.GetDbConn()
+
+		siteSets := []string{}
+
+		for i := 0; i < 10; i++ {
+			siteSets = append(siteSets, fmt.Sprintf(`(%d, 'test-site-%d', %d, 'localhost','address', %d)`, nowTime+int64(i), nowTime, testUserID, testUserID))
+		}
+
+		roomSets := []string{}
+
+		for i := 0; i < 10; i++ {
+			for j := 0; j < i; j++ {
+				roomSets = append(roomSets, fmt.Sprintf(`('test-room-%d', %d, %d)`, nowTime, nowTime+int64(i), testUserID))
+			}
+		}
+
+		_, err = dbConn.Exec(fmt.Sprintf(`INSERT INTO t_exam_site (id, name,creator,server_host,address,admin) VALUES %s`, strings.Join(siteSets, ",")))
+		if err != nil {
+			t.Fatalf("failed to insert test data: %v", err)
+			return
+		}
+
+		_, err = dbConn.Exec(fmt.Sprintf(`INSERT INTO t_exam_room (name, exam_site, creator) VALUES %s`, strings.Join(roomSets, ",")))
+		if err != nil {
+			t.Fatalf("failed to insert test data: %v", err)
+			return
+		}
+	}
+
+	// defaultCheck := func() {
+
+	// }
+
+	defaultCleanup := func() {
+
+		err := removeTestUser(testUserID)
+		if err != nil {
+			t.Fatalf("failed to remove test user: %v", err)
+		}
+
+		dbConn := cmn.GetDbConn()
+
+		r, err := dbConn.Exec(fmt.Sprintf(`DELETE FROM t_exam_room WHERE name = 'test-room-%d'`, nowTime))
+		if err != nil {
+			t.Fatalf("failed to delete test data: %v", err)
+			return
+		}
+
+		c, err := r.RowsAffected()
+		if err != nil {
+			t.Fatalf("failed to get affected rows: %v", err)
+			return
+		}
+
+		t.Logf("Have already cleaned up %d rows from t_exam_room", c)
+
+		r, err = dbConn.Exec(fmt.Sprintf(`DELETE FROM t_exam_site WHERE name = 'test-site-%d'`, nowTime))
+		if err != nil {
+			t.Fatalf("failed to delete test data: %v", err)
+			return
+		}
+
+		c, err = r.RowsAffected()
+		if err != nil {
+			t.Fatalf("failed to get affected rows: %v", err)
+			return
+		}
+
+		t.Logf("Have already cleaned up %d rows from t_exam_site", c)
+
+	}
+
 	tests := []struct {
 		name         string
 		q            *cmn.ServiceCtx
@@ -1306,7 +1076,10 @@ func TestExamSiteList(t *testing.T) {
 		{
 			name: "获取考点列表失败-无效的HTTP方法",
 			q: &cmn.ServiceCtx{
-				R: httptest.NewRequest("Unknown255", fmt.Sprintf(`/api/exam-site?q=%s`, url.QueryEscape(`{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-site/list",
+				},
+				R: httptest.NewRequest("Unknown255", fmt.Sprintf(`/api/exam-site/list?q=%s`, url.QueryEscape(`{
 						"page": 0,
 						"pageSize": 10,
 						"orderBy": [
@@ -1326,7 +1099,7 @@ func TestExamSiteList(t *testing.T) {
 				},
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
-					ID:   null.NewInt(1622, true),
+					ID:   null.NewInt(testUserID, true),
 					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
@@ -1339,183 +1112,28 @@ func TestExamSiteList(t *testing.T) {
 			},
 			passExpected: false,
 			errWanted:    "不支持的HTTP方法: Unknown255",
-			setup: func() {
-				dbConn := cmn.GetDbConn()
-
-				siteSets := []string{}
-
-				for i := 0; i < 10; i++ {
-					siteSets = append(siteSets, fmt.Sprintf(`(%d, 'test-site-%d', 1622, 'localhost','address',1622)`, nowTime+int64(i), nowTime))
-				}
-
-				roomSets := []string{}
-
-				for i := 0; i < 10; i++ {
-					for j := 0; j < i; j++ {
-						roomSets = append(roomSets, fmt.Sprintf(`('test-room-%d', %d, 1622)`, nowTime, nowTime+int64(i)))
-					}
-				}
-
-				_, err := dbConn.Exec(fmt.Sprintf(`INSERT INTO t_exam_site (id, name,creator,server_host,address,admin) VALUES %s`, strings.Join(siteSets, ",")))
-				if err != nil {
-					t.Fatalf("failed to insert test data: %v", err)
-					return
-				}
-
-				_, err = dbConn.Exec(fmt.Sprintf(`INSERT INTO t_exam_room (name, exam_site, creator) VALUES %s`, strings.Join(roomSets, ",")))
-				if err != nil {
-					t.Fatalf("failed to insert test data: %v", err)
-					return
-				}
-
-			},
-			cleanup: func() {
-
-				dbConn := cmn.GetDbConn()
-
-				r, err := dbConn.Exec(fmt.Sprintf(`DELETE FROM t_exam_room WHERE name = 'test-room-%d'`, nowTime))
-				if err != nil {
-					t.Fatalf("failed to delete test data: %v", err)
-					return
-				}
-
-				c, err := r.RowsAffected()
-				if err != nil {
-					t.Fatalf("failed to get affected rows: %v", err)
-					return
-				}
-
-				t.Logf("Have already cleaned up %d rows from t_exam_room", c)
-
-				r, err = dbConn.Exec(fmt.Sprintf(`DELETE FROM t_exam_site WHERE name = 'test-site-%d'`, nowTime))
-				if err != nil {
-					t.Fatalf("failed to delete test data: %v", err)
-					return
-				}
-
-				c, err = r.RowsAffected()
-				if err != nil {
-					t.Fatalf("failed to get affected rows: %v", err)
-					return
-				}
-
-				t.Logf("Have already cleaned up %d rows from t_exam_site", c)
-
-			},
+			setup:        defaultSetup,
+			cleanup:      defaultCleanup,
 		},
 
 		// ==============获取考点列表测试=============
-		//   .oooooo.    oooooooooooo ooooooooooooo          .oooooo..o ooooo ooooooooooooo oooooooooooo         ooooo        ooooo  .oooooo..o ooooooooooooo
-		//  d8P'  `Y8b   `888'     `8 8'   888   `8         d8P'    `Y8 `888' 8'   888   `8 `888'     `8         `888'        `888' d8P'    `Y8 8'   888   `8
-		// 888            888              888              Y88bo.       888       888       888                  888          888  Y88bo.           888
-		// 888            888oooo8         888               `"Y8888o.   888       888       888oooo8             888          888   `"Y8888o.       888
-		// 888     ooooo  888    "         888      8888888      `"Y88b  888       888       888    "    8888888  888          888       `"Y88b      888
-		// `88.    .88'   888       o      888              oo     .d8P  888       888       888       o          888       o  888  oo     .d8P      888
-		//  `Y8bood8P'   o888ooooood8     o888o             8""88888P'  o888o     o888o     o888ooooood8         o888ooooood8 o888o 8""88888P'      o888o
-		{
-			name: "以管理员角色获取考点列表成功-无筛选无排序",
-			q: &cmn.ServiceCtx{
-				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-site?q=%s`, url.QueryEscape(`{
-						"page": 0,
-						"pageSize": 10,
-						"orderBy": [
-							{
-								"roomCount": ""
-							}
-						],
-						"filter": {
-							"name": ""
-						}
-					}`,
-				)), nil),
-				W: httptest.NewRecorder(),
-				Msg: &cmn.ReplyProto{
-					API:    "/api/exam-site/list",
-					Method: "GET",
-				},
-				BeginTime: time.Now(),
-				SysUser: &cmn.TUser{
-					ID:   null.NewInt(1622, true),
-					Role: null.NewInt(int64(cmn.CDomainAssessAdmin), true),
-				},
-				Domains: []cmn.TDomain{
-					{
-						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
-						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
-					},
-				},
-				RedisClient: cmn.GetRedisConn(),
-			},
-			passExpected: true,
-			errWanted:    "",
-			setup: func() {
-				dbConn := cmn.GetDbConn()
-
-				siteSets := []string{}
-
-				for i := 0; i < 10; i++ {
-					siteSets = append(siteSets, fmt.Sprintf(`(%d, 'test-site-%d', 1622, 'localhost','address',1622)`, nowTime+int64(i), nowTime))
-				}
-
-				roomSets := []string{}
-
-				for i := 0; i < 10; i++ {
-					for j := 0; j < i; j++ {
-						roomSets = append(roomSets, fmt.Sprintf(`('test-room-%d', %d, 1622)`, nowTime, nowTime+int64(i)))
-					}
-				}
-
-				_, err := dbConn.Exec(fmt.Sprintf(`INSERT INTO t_exam_site (id, name,creator,server_host,address,admin) VALUES %s`, strings.Join(siteSets, ",")))
-				if err != nil {
-					t.Fatalf("failed to insert test data: %v", err)
-					return
-				}
-
-				_, err = dbConn.Exec(fmt.Sprintf(`INSERT INTO t_exam_room (name, exam_site, creator) VALUES %s`, strings.Join(roomSets, ",")))
-				if err != nil {
-					t.Fatalf("failed to insert test data: %v", err)
-					return
-				}
-
-			},
-			cleanup: func() {
-
-				dbConn := cmn.GetDbConn()
-
-				r, err := dbConn.Exec(fmt.Sprintf(`DELETE FROM t_exam_room WHERE name = 'test-room-%d'`, nowTime))
-				if err != nil {
-					t.Fatalf("failed to delete test data: %v", err)
-					return
-				}
-
-				c, err := r.RowsAffected()
-				if err != nil {
-					t.Fatalf("failed to get affected rows: %v", err)
-					return
-				}
-
-				t.Logf("Have already cleaned up %d rows from t_exam_room", c)
-
-				r, err = dbConn.Exec(fmt.Sprintf(`DELETE FROM t_exam_site WHERE name = 'test-site-%d'`, nowTime))
-				if err != nil {
-					t.Fatalf("failed to delete test data: %v", err)
-					return
-				}
-
-				c, err = r.RowsAffected()
-				if err != nil {
-					t.Fatalf("failed to get affected rows: %v", err)
-					return
-				}
-
-				t.Logf("Have already cleaned up %d rows from t_exam_site", c)
-
-			},
-		},
+		//   .oooooo.    oooooooooooo ooooooooooooo
+		//  d8P'  `Y8b   `888'     `8 8'   888   `8
+		// 888            888              888
+		// 888            888oooo8         888
+		// 888     ooooo  888    "         888
+		// `88.    .88'   888       o      888
+		//  `Y8bood8P'   o888ooooood8     o888o
+		//
+		//
+		//
 		{
 			name: "获取考点列表成功-带筛选降序",
 			q: &cmn.ServiceCtx{
-				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-site?q=%s`, url.QueryEscape(`{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-site/list",
+				},
+				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-site/list?q=%s`, url.QueryEscape(`{
 						"page": 0,
 						"pageSize": 10,
 						"orderBy": [
@@ -1535,7 +1153,7 @@ func TestExamSiteList(t *testing.T) {
 				},
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
-					ID:   null.NewInt(1622, true),
+					ID:   null.NewInt(testUserID, true),
 					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
@@ -1548,74 +1166,16 @@ func TestExamSiteList(t *testing.T) {
 			},
 			passExpected: true,
 			errWanted:    "",
-			setup: func() {
-				dbConn := cmn.GetDbConn()
-
-				siteSets := []string{}
-
-				for i := 0; i < 10; i++ {
-					siteSets = append(siteSets, fmt.Sprintf(`(%d, 'test-site-%d', 1622, 'localhost','address',1622)`, nowTime+int64(i), nowTime))
-				}
-
-				roomSets := []string{}
-
-				for i := 0; i < 10; i++ {
-					for j := 0; j < i; j++ {
-						roomSets = append(roomSets, fmt.Sprintf(`('test-room-%d', %d, 1622)`, nowTime, nowTime+int64(i)))
-					}
-				}
-
-				_, err := dbConn.Exec(fmt.Sprintf(`INSERT INTO t_exam_site (id, name,creator,server_host,address,admin) VALUES %s`, strings.Join(siteSets, ",")))
-				if err != nil {
-					t.Fatalf("failed to insert test data: %v", err)
-					return
-				}
-
-				_, err = dbConn.Exec(fmt.Sprintf(`INSERT INTO t_exam_room (name, exam_site, creator) VALUES %s`, strings.Join(roomSets, ",")))
-				if err != nil {
-					t.Fatalf("failed to insert test data: %v", err)
-					return
-				}
-
-			},
-			cleanup: func() {
-
-				dbConn := cmn.GetDbConn()
-
-				r, err := dbConn.Exec(fmt.Sprintf(`DELETE FROM t_exam_room WHERE name = 'test-room-%d'`, nowTime))
-				if err != nil {
-					t.Fatalf("failed to delete test data: %v", err)
-					return
-				}
-
-				c, err := r.RowsAffected()
-				if err != nil {
-					t.Fatalf("failed to get affected rows: %v", err)
-					return
-				}
-
-				t.Logf("Have already cleaned up %d rows from t_exam_room", c)
-
-				r, err = dbConn.Exec(fmt.Sprintf(`DELETE FROM t_exam_site WHERE name = 'test-site-%d'`, nowTime))
-				if err != nil {
-					t.Fatalf("failed to delete test data: %v", err)
-					return
-				}
-
-				c, err = r.RowsAffected()
-				if err != nil {
-					t.Fatalf("failed to get affected rows: %v", err)
-					return
-				}
-
-				t.Logf("Have already cleaned up %d rows from t_exam_site", c)
-
-			},
+			setup:        defaultSetup,
+			cleanup:      defaultCleanup,
 		},
 		{
 			name: "获取考点列表成功-无筛选升序",
 			q: &cmn.ServiceCtx{
-				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-site?q=%s`, url.QueryEscape(`{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-site/list",
+				},
+				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-site/list?q=%s`, url.QueryEscape(`{
 						"page": 0,
 						"pageSize": 10,
 						"orderBy": [
@@ -1632,7 +1192,7 @@ func TestExamSiteList(t *testing.T) {
 				},
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
-					ID:   null.NewInt(1622, true),
+					ID:   null.NewInt(testUserID, true),
 					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
@@ -1645,74 +1205,16 @@ func TestExamSiteList(t *testing.T) {
 			},
 			passExpected: true,
 			errWanted:    "",
-			setup: func() {
-				dbConn := cmn.GetDbConn()
-
-				siteSets := []string{}
-
-				for i := 0; i < 10; i++ {
-					siteSets = append(siteSets, fmt.Sprintf(`(%d, 'test-site-%d', 1622, 'localhost','address',1622)`, nowTime+int64(i), nowTime))
-				}
-
-				roomSets := []string{}
-
-				for i := 0; i < 10; i++ {
-					for j := 0; j < i; j++ {
-						roomSets = append(roomSets, fmt.Sprintf(`('test-room-%d', %d, 1622)`, nowTime, nowTime+int64(i)))
-					}
-				}
-
-				_, err := dbConn.Exec(fmt.Sprintf(`INSERT INTO t_exam_site (id, name,creator,server_host,address,admin) VALUES %s`, strings.Join(siteSets, ",")))
-				if err != nil {
-					t.Fatalf("failed to insert test data: %v", err)
-					return
-				}
-
-				_, err = dbConn.Exec(fmt.Sprintf(`INSERT INTO t_exam_room (name, exam_site, creator) VALUES %s`, strings.Join(roomSets, ",")))
-				if err != nil {
-					t.Fatalf("failed to insert test data: %v", err)
-					return
-				}
-
-			},
-			cleanup: func() {
-
-				dbConn := cmn.GetDbConn()
-
-				r, err := dbConn.Exec(fmt.Sprintf(`DELETE FROM t_exam_room WHERE name = 'test-room-%d'`, nowTime))
-				if err != nil {
-					t.Fatalf("failed to delete test data: %v", err)
-					return
-				}
-
-				c, err := r.RowsAffected()
-				if err != nil {
-					t.Fatalf("failed to get affected rows: %v", err)
-					return
-				}
-
-				t.Logf("Have already cleaned up %d rows from t_exam_room", c)
-
-				r, err = dbConn.Exec(fmt.Sprintf(`DELETE FROM t_exam_site WHERE name = 'test-site-%d'`, nowTime))
-				if err != nil {
-					t.Fatalf("failed to delete test data: %v", err)
-					return
-				}
-
-				c, err = r.RowsAffected()
-				if err != nil {
-					t.Fatalf("failed to get affected rows: %v", err)
-					return
-				}
-
-				t.Logf("Have already cleaned up %d rows from t_exam_site", c)
-
-			},
+			setup:        defaultSetup,
+			cleanup:      defaultCleanup,
 		},
 		{
 			name: "获取考点列表成功-筛选结果为空",
 			q: &cmn.ServiceCtx{
-				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-site?q=%s`, url.QueryEscape(`{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-site/list",
+				},
+				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-site/list?q=%s`, url.QueryEscape(`{
 						"page": 0,
 						"pageSize": 10,
 						"orderBy": [
@@ -1732,7 +1234,7 @@ func TestExamSiteList(t *testing.T) {
 				},
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
-					ID:   null.NewInt(1622, true),
+					ID:   null.NewInt(testUserID, true),
 					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
@@ -1745,74 +1247,55 @@ func TestExamSiteList(t *testing.T) {
 			},
 			passExpected: true,
 			errWanted:    "",
-			setup: func() {
-				dbConn := cmn.GetDbConn()
-
-				siteSets := []string{}
-
-				for i := 0; i < 10; i++ {
-					siteSets = append(siteSets, fmt.Sprintf(`(%d, 'test-site-%d', 1622, 'localhost','address',1622)`, nowTime+int64(i), nowTime))
-				}
-
-				roomSets := []string{}
-
-				for i := 0; i < 10; i++ {
-					for j := 0; j < i; j++ {
-						roomSets = append(roomSets, fmt.Sprintf(`('test-room-%d', %d, 1622)`, nowTime, nowTime+int64(i)))
-					}
-				}
-
-				_, err := dbConn.Exec(fmt.Sprintf(`INSERT INTO t_exam_site (id, name,creator,server_host,address,admin) VALUES %s`, strings.Join(siteSets, ",")))
-				if err != nil {
-					t.Fatalf("failed to insert test data: %v", err)
-					return
-				}
-
-				_, err = dbConn.Exec(fmt.Sprintf(`INSERT INTO t_exam_room (name, exam_site, creator) VALUES %s`, strings.Join(roomSets, ",")))
-				if err != nil {
-					t.Fatalf("failed to insert test data: %v", err)
-					return
-				}
-
+			setup:        defaultSetup,
+			cleanup:      defaultCleanup,
+		},
+		{
+			name: "获取考点列表失败-没有可读权限",
+			q: &cmn.ServiceCtx{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-site/list",
+				},
+				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-site/list?q=%s`, url.QueryEscape(`{
+						"page": 0,
+						"pageSize": 10,
+						"orderBy": [
+							{
+								"roomCount": "ASC"
+							}
+						]
+					}`,
+				)), nil),
+				W: httptest.NewRecorder(),
+				Msg: &cmn.ReplyProto{
+					API:    "/api/exam-site/list",
+					Method: "GET",
+				},
+				BeginTime: time.Now(),
+				SysUser: &cmn.TUser{
+					ID:   null.NewInt(testUserID, true),
+					Role: null.NewInt(int64(cmn.CDomainAssessStudent), true),
+				},
+				Domains: []cmn.TDomain{
+					{
+						ID:     null.IntFrom(int64(cmn.CDomainAssessStudent)),
+						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessStudent)),
+					},
+				},
+				RedisClient: cmn.GetRedisConn(),
 			},
-			cleanup: func() {
-
-				dbConn := cmn.GetDbConn()
-
-				r, err := dbConn.Exec(fmt.Sprintf(`DELETE FROM t_exam_room WHERE name = 'test-room-%d'`, nowTime))
-				if err != nil {
-					t.Fatalf("failed to delete test data: %v", err)
-					return
-				}
-
-				c, err := r.RowsAffected()
-				if err != nil {
-					t.Fatalf("failed to get affected rows: %v", err)
-					return
-				}
-
-				t.Logf("Have already cleaned up %d rows from t_exam_room", c)
-
-				r, err = dbConn.Exec(fmt.Sprintf(`DELETE FROM t_exam_site WHERE name = 'test-site-%d'`, nowTime))
-				if err != nil {
-					t.Fatalf("failed to delete test data: %v", err)
-					return
-				}
-
-				c, err = r.RowsAffected()
-				if err != nil {
-					t.Fatalf("failed to get affected rows: %v", err)
-					return
-				}
-
-				t.Logf("Have already cleaned up %d rows from t_exam_site", c)
-
-			},
+			passExpected: false,
+			errWanted:    "当前用户没有权限获取数据",
+			setup:        defaultCleanup,
+			cleanup:      defaultCleanup,
 		},
 		{
 			name: "获取考点列表失败-无效的排序方式",
 			q: &cmn.ServiceCtx{
-				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-site?q=%s`, url.QueryEscape(`{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-site/list",
+				},
+				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-site/list?q=%s`, url.QueryEscape(`{
 						"page": 0,
 						"pageSize": 10,
 						"orderBy": [
@@ -1832,7 +1315,7 @@ func TestExamSiteList(t *testing.T) {
 				},
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
-					ID:   null.NewInt(1622, true),
+					ID:   null.NewInt(testUserID, true),
 					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
@@ -1845,51 +1328,16 @@ func TestExamSiteList(t *testing.T) {
 			},
 			passExpected: false,
 			errWanted:    "不支持的排序方式: DEC key: roomCount",
-			setup: func() {
-				dbConn := cmn.GetDbConn()
-
-				r, err := dbConn.Exec(fmt.Sprintf(`INSERT INTO t_exam_site (name,creator) VALUES ('test-site-%d', 1622)`, nowTime))
-				if err != nil {
-					t.Fatalf("failed to insert test data: %v", err)
-					return
-				}
-
-				c, err := r.RowsAffected()
-				if err != nil {
-					t.Fatalf("failed to get affected rows: %v", err)
-					return
-				}
-
-				if c < 1 {
-					t.Fatalf("expected 1 affected row, got %d", c)
-					return
-				}
-
-			},
-			cleanup: func() {
-
-				dbConn := cmn.GetDbConn()
-
-				r, err := dbConn.Exec(fmt.Sprintf(`DELETE FROM t_exam_site WHERE name = 'test-site-%d'`, nowTime))
-				if err != nil {
-					t.Fatalf("failed to delete test data: %v", err)
-					return
-				}
-
-				c, err := r.RowsAffected()
-				if err != nil {
-					t.Fatalf("")
-					return
-				}
-
-				t.Logf("Have already cleaned up %d rows from t_exam_site", c)
-
-			},
+			setup:        defaultSetup,
+			cleanup:      defaultCleanup,
 		},
 		{
 			name: "获取考点列表失败-无效的URL参数",
 			q: &cmn.ServiceCtx{
-				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-site?q=%s`, url.QueryEscape(`{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-site/list",
+				},
+				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-site/list?q=%s`, url.QueryEscape(`{
 						"page": 0,
 						"pageSize": 10`,
 				)), nil),
@@ -1900,7 +1348,7 @@ func TestExamSiteList(t *testing.T) {
 				},
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
-					ID:   null.NewInt(1622, true),
+					ID:   null.NewInt(testUserID, true),
 					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
@@ -1913,74 +1361,16 @@ func TestExamSiteList(t *testing.T) {
 			},
 			passExpected: false,
 			errWanted:    "unexpected end of JSON input",
-			setup: func() {
-				dbConn := cmn.GetDbConn()
-
-				siteSets := []string{}
-
-				for i := 0; i < 10; i++ {
-					siteSets = append(siteSets, fmt.Sprintf(`(%d, 'test-site-%d', 1622, 'localhost','address',1622)`, nowTime+int64(i), nowTime))
-				}
-
-				roomSets := []string{}
-
-				for i := 0; i < 10; i++ {
-					for j := 0; j < i; j++ {
-						roomSets = append(roomSets, fmt.Sprintf(`('test-room-%d', %d, 1622)`, nowTime, nowTime+int64(i)))
-					}
-				}
-
-				_, err := dbConn.Exec(fmt.Sprintf(`INSERT INTO t_exam_site (id, name,creator,server_host,address,admin) VALUES %s`, strings.Join(siteSets, ",")))
-				if err != nil {
-					t.Fatalf("failed to insert test data: %v", err)
-					return
-				}
-
-				_, err = dbConn.Exec(fmt.Sprintf(`INSERT INTO t_exam_room (name, exam_site, creator) VALUES %s`, strings.Join(roomSets, ",")))
-				if err != nil {
-					t.Fatalf("failed to insert test data: %v", err)
-					return
-				}
-
-			},
-			cleanup: func() {
-
-				dbConn := cmn.GetDbConn()
-
-				r, err := dbConn.Exec(fmt.Sprintf(`DELETE FROM t_exam_room WHERE name = 'test-room-%d'`, nowTime))
-				if err != nil {
-					t.Fatalf("failed to delete test data: %v", err)
-					return
-				}
-
-				c, err := r.RowsAffected()
-				if err != nil {
-					t.Fatalf("failed to get affected rows: %v", err)
-					return
-				}
-
-				t.Logf("Have already cleaned up %d rows from t_exam_room", c)
-
-				r, err = dbConn.Exec(fmt.Sprintf(`DELETE FROM t_exam_site WHERE name = 'test-site-%d'`, nowTime))
-				if err != nil {
-					t.Fatalf("failed to delete test data: %v", err)
-					return
-				}
-
-				c, err = r.RowsAffected()
-				if err != nil {
-					t.Fatalf("failed to get affected rows: %v", err)
-					return
-				}
-
-				t.Logf("Have already cleaned up %d rows from t_exam_site", c)
-
-			},
+			setup:        defaultSetup,
+			cleanup:      defaultCleanup,
 		},
 		{
 			name: "获取考点列表失败-页码小于0",
 			q: &cmn.ServiceCtx{
-				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-site?q=%s`, url.QueryEscape(`{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-site/list",
+				},
+				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-site/list?q=%s`, url.QueryEscape(`{
 						"page": -10,
 						"pageSize": 10,
 						"orderBy": [
@@ -2000,7 +1390,7 @@ func TestExamSiteList(t *testing.T) {
 				},
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
-					ID:   null.NewInt(1622, true),
+					ID:   null.NewInt(testUserID, true),
 					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
@@ -2013,74 +1403,16 @@ func TestExamSiteList(t *testing.T) {
 			},
 			passExpected: false,
 			errWanted:    "页码不能小于0",
-			setup: func() {
-				dbConn := cmn.GetDbConn()
-
-				siteSets := []string{}
-
-				for i := 0; i < 10; i++ {
-					siteSets = append(siteSets, fmt.Sprintf(`(%d, 'test-site-%d', 1622, 'localhost','address',1622)`, nowTime+int64(i), nowTime))
-				}
-
-				roomSets := []string{}
-
-				for i := 0; i < 10; i++ {
-					for j := 0; j < i; j++ {
-						roomSets = append(roomSets, fmt.Sprintf(`('test-room-%d', %d, 1622)`, nowTime, nowTime+int64(i)))
-					}
-				}
-
-				_, err := dbConn.Exec(fmt.Sprintf(`INSERT INTO t_exam_site (id, name,creator,server_host,address,admin) VALUES %s`, strings.Join(siteSets, ",")))
-				if err != nil {
-					t.Fatalf("failed to insert test data: %v", err)
-					return
-				}
-
-				_, err = dbConn.Exec(fmt.Sprintf(`INSERT INTO t_exam_room (name, exam_site, creator) VALUES %s`, strings.Join(roomSets, ",")))
-				if err != nil {
-					t.Fatalf("failed to insert test data: %v", err)
-					return
-				}
-
-			},
-			cleanup: func() {
-
-				dbConn := cmn.GetDbConn()
-
-				r, err := dbConn.Exec(fmt.Sprintf(`DELETE FROM t_exam_room WHERE name = 'test-room-%d'`, nowTime))
-				if err != nil {
-					t.Fatalf("failed to delete test data: %v", err)
-					return
-				}
-
-				c, err := r.RowsAffected()
-				if err != nil {
-					t.Fatalf("failed to get affected rows: %v", err)
-					return
-				}
-
-				t.Logf("Have already cleaned up %d rows from t_exam_room", c)
-
-				r, err = dbConn.Exec(fmt.Sprintf(`DELETE FROM t_exam_site WHERE name = 'test-site-%d'`, nowTime))
-				if err != nil {
-					t.Fatalf("failed to delete test data: %v", err)
-					return
-				}
-
-				c, err = r.RowsAffected()
-				if err != nil {
-					t.Fatalf("failed to get affected rows: %v", err)
-					return
-				}
-
-				t.Logf("Have already cleaned up %d rows from t_exam_site", c)
-
-			},
+			setup:        defaultSetup,
+			cleanup:      defaultCleanup,
 		},
 		{
 			name: "获取考点列表失败-每页条数小于1",
 			q: &cmn.ServiceCtx{
-				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-site?q=%s`, url.QueryEscape(`{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-site/list",
+				},
+				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-site/list?q=%s`, url.QueryEscape(`{
 						"page": 0,
 						"pageSize": -1,
 						"orderBy": [
@@ -2100,7 +1432,7 @@ func TestExamSiteList(t *testing.T) {
 				},
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
-					ID:   null.NewInt(1622, true),
+					ID:   null.NewInt(testUserID, true),
 					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
@@ -2113,74 +1445,16 @@ func TestExamSiteList(t *testing.T) {
 			},
 			passExpected: false,
 			errWanted:    "每页条数不能小于1",
-			setup: func() {
-				dbConn := cmn.GetDbConn()
-
-				siteSets := []string{}
-
-				for i := 0; i < 10; i++ {
-					siteSets = append(siteSets, fmt.Sprintf(`(%d, 'test-site-%d', 1622, 'localhost','address',1622)`, nowTime+int64(i), nowTime))
-				}
-
-				roomSets := []string{}
-
-				for i := 0; i < 10; i++ {
-					for j := 0; j < i; j++ {
-						roomSets = append(roomSets, fmt.Sprintf(`('test-room-%d', %d, 1622)`, nowTime, nowTime+int64(i)))
-					}
-				}
-
-				_, err := dbConn.Exec(fmt.Sprintf(`INSERT INTO t_exam_site (id, name,creator,server_host,address,admin) VALUES %s`, strings.Join(siteSets, ",")))
-				if err != nil {
-					t.Fatalf("failed to insert test data: %v", err)
-					return
-				}
-
-				_, err = dbConn.Exec(fmt.Sprintf(`INSERT INTO t_exam_room (name, exam_site, creator) VALUES %s`, strings.Join(roomSets, ",")))
-				if err != nil {
-					t.Fatalf("failed to insert test data: %v", err)
-					return
-				}
-
-			},
-			cleanup: func() {
-
-				dbConn := cmn.GetDbConn()
-
-				r, err := dbConn.Exec(fmt.Sprintf(`DELETE FROM t_exam_room WHERE name = 'test-room-%d'`, nowTime))
-				if err != nil {
-					t.Fatalf("failed to delete test data: %v", err)
-					return
-				}
-
-				c, err := r.RowsAffected()
-				if err != nil {
-					t.Fatalf("failed to get affected rows: %v", err)
-					return
-				}
-
-				t.Logf("Have already cleaned up %d rows from t_exam_room", c)
-
-				r, err = dbConn.Exec(fmt.Sprintf(`DELETE FROM t_exam_site WHERE name = 'test-site-%d'`, nowTime))
-				if err != nil {
-					t.Fatalf("failed to delete test data: %v", err)
-					return
-				}
-
-				c, err = r.RowsAffected()
-				if err != nil {
-					t.Fatalf("failed to get affected rows: %v", err)
-					return
-				}
-
-				t.Logf("Have already cleaned up %d rows from t_exam_site", c)
-
-			},
+			setup:        defaultSetup,
+			cleanup:      defaultCleanup,
 		},
 		{
 			name: "获取考点列表失败-页码类型为非数字",
 			q: &cmn.ServiceCtx{
-				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-site?q=%s`, url.QueryEscape(`{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-site/list",
+				},
+				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-site/list?q=%s`, url.QueryEscape(`{
 						"page": "undefined",
 						"pageSize": 10,
 						"orderBy": [
@@ -2200,7 +1474,7 @@ func TestExamSiteList(t *testing.T) {
 				},
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
-					ID:   null.NewInt(1622, true),
+					ID:   null.NewInt(testUserID, true),
 					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
@@ -2213,74 +1487,16 @@ func TestExamSiteList(t *testing.T) {
 			},
 			passExpected: false,
 			errWanted:    "json: cannot unmarshal string into Go struct field ReqProto.page of type int64",
-			setup: func() {
-				dbConn := cmn.GetDbConn()
-
-				siteSets := []string{}
-
-				for i := 0; i < 10; i++ {
-					siteSets = append(siteSets, fmt.Sprintf(`(%d, 'test-site-%d', 1622, 'localhost','address',1622)`, nowTime+int64(i), nowTime))
-				}
-
-				roomSets := []string{}
-
-				for i := 0; i < 10; i++ {
-					for j := 0; j < i; j++ {
-						roomSets = append(roomSets, fmt.Sprintf(`('test-room-%d', %d, 1622)`, nowTime, nowTime+int64(i)))
-					}
-				}
-
-				_, err := dbConn.Exec(fmt.Sprintf(`INSERT INTO t_exam_site (id, name,creator,server_host,address,admin) VALUES %s`, strings.Join(siteSets, ",")))
-				if err != nil {
-					t.Fatalf("failed to insert test data: %v", err)
-					return
-				}
-
-				_, err = dbConn.Exec(fmt.Sprintf(`INSERT INTO t_exam_room (name, exam_site, creator) VALUES %s`, strings.Join(roomSets, ",")))
-				if err != nil {
-					t.Fatalf("failed to insert test data: %v", err)
-					return
-				}
-
-			},
-			cleanup: func() {
-
-				dbConn := cmn.GetDbConn()
-
-				r, err := dbConn.Exec(fmt.Sprintf(`DELETE FROM t_exam_room WHERE name = 'test-room-%d'`, nowTime))
-				if err != nil {
-					t.Fatalf("failed to delete test data: %v", err)
-					return
-				}
-
-				c, err := r.RowsAffected()
-				if err != nil {
-					t.Fatalf("failed to get affected rows: %v", err)
-					return
-				}
-
-				t.Logf("Have already cleaned up %d rows from t_exam_room", c)
-
-				r, err = dbConn.Exec(fmt.Sprintf(`DELETE FROM t_exam_site WHERE name = 'test-site-%d'`, nowTime))
-				if err != nil {
-					t.Fatalf("failed to delete test data: %v", err)
-					return
-				}
-
-				c, err = r.RowsAffected()
-				if err != nil {
-					t.Fatalf("failed to get affected rows: %v", err)
-					return
-				}
-
-				t.Logf("Have already cleaned up %d rows from t_exam_site", c)
-
-			},
+			setup:        defaultSetup,
+			cleanup:      defaultCleanup,
 		},
 		{
 			name: "获取考点列表失败-强制查询数据总行数SQL Prepare失败",
 			q: &cmn.ServiceCtx{
-				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-site?q=%s`, url.QueryEscape(`{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-site/list",
+				},
+				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-site/list?q=%s`, url.QueryEscape(`{
 						"page": 0,
 						"pageSize": 10,
 						"orderBy": [
@@ -2300,7 +1516,7 @@ func TestExamSiteList(t *testing.T) {
 				},
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
-					ID:   null.NewInt(1622, true),
+					ID:   null.NewInt(testUserID, true),
 					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
@@ -2316,74 +1532,16 @@ func TestExamSiteList(t *testing.T) {
 			},
 			passExpected: false,
 			errWanted:    "forced prepare get row count sql err",
-			setup: func() {
-				dbConn := cmn.GetDbConn()
-
-				siteSets := []string{}
-
-				for i := 0; i < 10; i++ {
-					siteSets = append(siteSets, fmt.Sprintf(`(%d, 'test-site-%d', 1622, 'localhost','address',1622)`, nowTime+int64(i), nowTime))
-				}
-
-				roomSets := []string{}
-
-				for i := 0; i < 10; i++ {
-					for j := 0; j < i; j++ {
-						roomSets = append(roomSets, fmt.Sprintf(`('test-room-%d', %d, 1622)`, nowTime, nowTime+int64(i)))
-					}
-				}
-
-				_, err := dbConn.Exec(fmt.Sprintf(`INSERT INTO t_exam_site (id, name,creator,server_host,address,admin) VALUES %s`, strings.Join(siteSets, ",")))
-				if err != nil {
-					t.Fatalf("failed to insert test data: %v", err)
-					return
-				}
-
-				_, err = dbConn.Exec(fmt.Sprintf(`INSERT INTO t_exam_room (name, exam_site, creator) VALUES %s`, strings.Join(roomSets, ",")))
-				if err != nil {
-					t.Fatalf("failed to insert test data: %v", err)
-					return
-				}
-
-			},
-			cleanup: func() {
-
-				dbConn := cmn.GetDbConn()
-
-				r, err := dbConn.Exec(fmt.Sprintf(`DELETE FROM t_exam_room WHERE name = 'test-room-%d'`, nowTime))
-				if err != nil {
-					t.Fatalf("failed to delete test data: %v", err)
-					return
-				}
-
-				c, err := r.RowsAffected()
-				if err != nil {
-					t.Fatalf("failed to get affected rows: %v", err)
-					return
-				}
-
-				t.Logf("Have already cleaned up %d rows from t_exam_room", c)
-
-				r, err = dbConn.Exec(fmt.Sprintf(`DELETE FROM t_exam_site WHERE name = 'test-site-%d'`, nowTime))
-				if err != nil {
-					t.Fatalf("failed to delete test data: %v", err)
-					return
-				}
-
-				c, err = r.RowsAffected()
-				if err != nil {
-					t.Fatalf("failed to get affected rows: %v", err)
-					return
-				}
-
-				t.Logf("Have already cleaned up %d rows from t_exam_site", c)
-
-			},
+			setup:        defaultSetup,
+			cleanup:      defaultCleanup,
 		},
 		{
 			name: "获取考点列表失败-强制查询数据总行数SQL 执行失败",
 			q: &cmn.ServiceCtx{
-				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-site?q=%s`, url.QueryEscape(`{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-site/list",
+				},
+				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-site/list?q=%s`, url.QueryEscape(`{
 						"page": 0,
 						"pageSize": 10,
 						"orderBy": [
@@ -2403,7 +1561,7 @@ func TestExamSiteList(t *testing.T) {
 				},
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
-					ID:   null.NewInt(1622, true),
+					ID:   null.NewInt(testUserID, true),
 					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
@@ -2419,74 +1577,16 @@ func TestExamSiteList(t *testing.T) {
 			},
 			passExpected: false,
 			errWanted:    "forced execute get row count sql err",
-			setup: func() {
-				dbConn := cmn.GetDbConn()
-
-				siteSets := []string{}
-
-				for i := 0; i < 10; i++ {
-					siteSets = append(siteSets, fmt.Sprintf(`(%d, 'test-site-%d', 1622, 'localhost','address',1622)`, nowTime+int64(i), nowTime))
-				}
-
-				roomSets := []string{}
-
-				for i := 0; i < 10; i++ {
-					for j := 0; j < i; j++ {
-						roomSets = append(roomSets, fmt.Sprintf(`('test-room-%d', %d, 1622)`, nowTime, nowTime+int64(i)))
-					}
-				}
-
-				_, err := dbConn.Exec(fmt.Sprintf(`INSERT INTO t_exam_site (id, name,creator,server_host,address,admin) VALUES %s`, strings.Join(siteSets, ",")))
-				if err != nil {
-					t.Fatalf("failed to insert test data: %v", err)
-					return
-				}
-
-				_, err = dbConn.Exec(fmt.Sprintf(`INSERT INTO t_exam_room (name, exam_site, creator) VALUES %s`, strings.Join(roomSets, ",")))
-				if err != nil {
-					t.Fatalf("failed to insert test data: %v", err)
-					return
-				}
-
-			},
-			cleanup: func() {
-
-				dbConn := cmn.GetDbConn()
-
-				r, err := dbConn.Exec(fmt.Sprintf(`DELETE FROM t_exam_room WHERE name = 'test-room-%d'`, nowTime))
-				if err != nil {
-					t.Fatalf("failed to delete test data: %v", err)
-					return
-				}
-
-				c, err := r.RowsAffected()
-				if err != nil {
-					t.Fatalf("failed to get affected rows: %v", err)
-					return
-				}
-
-				t.Logf("Have already cleaned up %d rows from t_exam_room", c)
-
-				r, err = dbConn.Exec(fmt.Sprintf(`DELETE FROM t_exam_site WHERE name = 'test-site-%d'`, nowTime))
-				if err != nil {
-					t.Fatalf("failed to delete test data: %v", err)
-					return
-				}
-
-				c, err = r.RowsAffected()
-				if err != nil {
-					t.Fatalf("failed to get affected rows: %v", err)
-					return
-				}
-
-				t.Logf("Have already cleaned up %d rows from t_exam_site", c)
-
-			},
+			setup:        defaultSetup,
+			cleanup:      defaultCleanup,
 		},
 		{
 			name: "获取考点列表失败-强制获取查询数据总行数SQL Affected Rows失败",
 			q: &cmn.ServiceCtx{
-				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-site?q=%s`, url.QueryEscape(`{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-site/list",
+				},
+				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-site/list?q=%s`, url.QueryEscape(`{
 						"page": 0,
 						"pageSize": 10,
 						"orderBy": [
@@ -2506,7 +1606,7 @@ func TestExamSiteList(t *testing.T) {
 				},
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
-					ID:   null.NewInt(1622, true),
+					ID:   null.NewInt(testUserID, true),
 					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
@@ -2522,74 +1622,16 @@ func TestExamSiteList(t *testing.T) {
 			},
 			passExpected: false,
 			errWanted:    "forced get affected rows err",
-			setup: func() {
-				dbConn := cmn.GetDbConn()
-
-				siteSets := []string{}
-
-				for i := 0; i < 10; i++ {
-					siteSets = append(siteSets, fmt.Sprintf(`(%d, 'test-site-%d', 1622, 'localhost','address',1622)`, nowTime+int64(i), nowTime))
-				}
-
-				roomSets := []string{}
-
-				for i := 0; i < 10; i++ {
-					for j := 0; j < i; j++ {
-						roomSets = append(roomSets, fmt.Sprintf(`('test-room-%d', %d, 1622)`, nowTime, nowTime+int64(i)))
-					}
-				}
-
-				_, err := dbConn.Exec(fmt.Sprintf(`INSERT INTO t_exam_site (id, name,creator,server_host,address,admin) VALUES %s`, strings.Join(siteSets, ",")))
-				if err != nil {
-					t.Fatalf("failed to insert test data: %v", err)
-					return
-				}
-
-				_, err = dbConn.Exec(fmt.Sprintf(`INSERT INTO t_exam_room (name, exam_site, creator) VALUES %s`, strings.Join(roomSets, ",")))
-				if err != nil {
-					t.Fatalf("failed to insert test data: %v", err)
-					return
-				}
-
-			},
-			cleanup: func() {
-
-				dbConn := cmn.GetDbConn()
-
-				r, err := dbConn.Exec(fmt.Sprintf(`DELETE FROM t_exam_room WHERE name = 'test-room-%d'`, nowTime))
-				if err != nil {
-					t.Fatalf("failed to delete test data: %v", err)
-					return
-				}
-
-				c, err := r.RowsAffected()
-				if err != nil {
-					t.Fatalf("failed to get affected rows: %v", err)
-					return
-				}
-
-				t.Logf("Have already cleaned up %d rows from t_exam_room", c)
-
-				r, err = dbConn.Exec(fmt.Sprintf(`DELETE FROM t_exam_site WHERE name = 'test-site-%d'`, nowTime))
-				if err != nil {
-					t.Fatalf("failed to delete test data: %v", err)
-					return
-				}
-
-				c, err = r.RowsAffected()
-				if err != nil {
-					t.Fatalf("failed to get affected rows: %v", err)
-					return
-				}
-
-				t.Logf("Have already cleaned up %d rows from t_exam_site", c)
-
-			},
+			setup:        defaultSetup,
+			cleanup:      defaultCleanup,
 		},
 		{
 			name: "获取考点列表失败-强制查询数据SQL Prepare失败",
 			q: &cmn.ServiceCtx{
-				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-site?q=%s`, url.QueryEscape(`{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-site/list",
+				},
+				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-site/list?q=%s`, url.QueryEscape(`{
 						"page": 0,
 						"pageSize": 10,
 						"orderBy": [
@@ -2609,7 +1651,7 @@ func TestExamSiteList(t *testing.T) {
 				},
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
-					ID:   null.NewInt(1622, true),
+					ID:   null.NewInt(testUserID, true),
 					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
@@ -2625,74 +1667,16 @@ func TestExamSiteList(t *testing.T) {
 			},
 			passExpected: false,
 			errWanted:    "forced prepare get data sql err",
-			setup: func() {
-				dbConn := cmn.GetDbConn()
-
-				siteSets := []string{}
-
-				for i := 0; i < 10; i++ {
-					siteSets = append(siteSets, fmt.Sprintf(`(%d, 'test-site-%d', 1622, 'localhost','address',1622)`, nowTime+int64(i), nowTime))
-				}
-
-				roomSets := []string{}
-
-				for i := 0; i < 10; i++ {
-					for j := 0; j < i; j++ {
-						roomSets = append(roomSets, fmt.Sprintf(`('test-room-%d', %d, 1622)`, nowTime, nowTime+int64(i)))
-					}
-				}
-
-				_, err := dbConn.Exec(fmt.Sprintf(`INSERT INTO t_exam_site (id, name,creator,server_host,address,admin) VALUES %s`, strings.Join(siteSets, ",")))
-				if err != nil {
-					t.Fatalf("failed to insert test data: %v", err)
-					return
-				}
-
-				_, err = dbConn.Exec(fmt.Sprintf(`INSERT INTO t_exam_room (name, exam_site, creator) VALUES %s`, strings.Join(roomSets, ",")))
-				if err != nil {
-					t.Fatalf("failed to insert test data: %v", err)
-					return
-				}
-
-			},
-			cleanup: func() {
-
-				dbConn := cmn.GetDbConn()
-
-				r, err := dbConn.Exec(fmt.Sprintf(`DELETE FROM t_exam_room WHERE name = 'test-room-%d'`, nowTime))
-				if err != nil {
-					t.Fatalf("failed to delete test data: %v", err)
-					return
-				}
-
-				c, err := r.RowsAffected()
-				if err != nil {
-					t.Fatalf("failed to get affected rows: %v", err)
-					return
-				}
-
-				t.Logf("Have already cleaned up %d rows from t_exam_room", c)
-
-				r, err = dbConn.Exec(fmt.Sprintf(`DELETE FROM t_exam_site WHERE name = 'test-site-%d'`, nowTime))
-				if err != nil {
-					t.Fatalf("failed to delete test data: %v", err)
-					return
-				}
-
-				c, err = r.RowsAffected()
-				if err != nil {
-					t.Fatalf("failed to get affected rows: %v", err)
-					return
-				}
-
-				t.Logf("Have already cleaned up %d rows from t_exam_site", c)
-
-			},
+			setup:        defaultSetup,
+			cleanup:      defaultCleanup,
 		},
 		{
 			name: "获取考点列表失败-强制查询数据SQL 执行失败",
 			q: &cmn.ServiceCtx{
-				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-site?q=%s`, url.QueryEscape(`{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-site/list",
+				},
+				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-site/list?q=%s`, url.QueryEscape(`{
 						"page": 0,
 						"pageSize": 10,
 						"orderBy": [
@@ -2712,7 +1696,7 @@ func TestExamSiteList(t *testing.T) {
 				},
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
-					ID:   null.NewInt(1622, true),
+					ID:   null.NewInt(testUserID, true),
 					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
@@ -2728,74 +1712,16 @@ func TestExamSiteList(t *testing.T) {
 			},
 			passExpected: false,
 			errWanted:    "forced sql query err",
-			setup: func() {
-				dbConn := cmn.GetDbConn()
-
-				siteSets := []string{}
-
-				for i := 0; i < 10; i++ {
-					siteSets = append(siteSets, fmt.Sprintf(`(%d, 'test-site-%d', 1622, 'localhost','address',1622)`, nowTime+int64(i), nowTime))
-				}
-
-				roomSets := []string{}
-
-				for i := 0; i < 10; i++ {
-					for j := 0; j < i; j++ {
-						roomSets = append(roomSets, fmt.Sprintf(`('test-room-%d', %d, 1622)`, nowTime, nowTime+int64(i)))
-					}
-				}
-
-				_, err := dbConn.Exec(fmt.Sprintf(`INSERT INTO t_exam_site (id, name,creator,server_host,address,admin) VALUES %s`, strings.Join(siteSets, ",")))
-				if err != nil {
-					t.Fatalf("failed to insert test data: %v", err)
-					return
-				}
-
-				_, err = dbConn.Exec(fmt.Sprintf(`INSERT INTO t_exam_room (name, exam_site, creator) VALUES %s`, strings.Join(roomSets, ",")))
-				if err != nil {
-					t.Fatalf("failed to insert test data: %v", err)
-					return
-				}
-
-			},
-			cleanup: func() {
-
-				dbConn := cmn.GetDbConn()
-
-				r, err := dbConn.Exec(fmt.Sprintf(`DELETE FROM t_exam_room WHERE name = 'test-room-%d'`, nowTime))
-				if err != nil {
-					t.Fatalf("failed to delete test data: %v", err)
-					return
-				}
-
-				c, err := r.RowsAffected()
-				if err != nil {
-					t.Fatalf("failed to get affected rows: %v", err)
-					return
-				}
-
-				t.Logf("Have already cleaned up %d rows from t_exam_room", c)
-
-				r, err = dbConn.Exec(fmt.Sprintf(`DELETE FROM t_exam_site WHERE name = 'test-site-%d'`, nowTime))
-				if err != nil {
-					t.Fatalf("failed to delete test data: %v", err)
-					return
-				}
-
-				c, err = r.RowsAffected()
-				if err != nil {
-					t.Fatalf("failed to get affected rows: %v", err)
-					return
-				}
-
-				t.Logf("Have already cleaned up %d rows from t_exam_site", c)
-
-			},
+			setup:        defaultSetup,
+			cleanup:      defaultCleanup,
 		},
 		{
 			name: "获取考点列表失败-强制Scan数据失败",
 			q: &cmn.ServiceCtx{
-				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-site?q=%s`, url.QueryEscape(`{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-site/list",
+				},
+				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-site/list?q=%s`, url.QueryEscape(`{
 						"page": 0,
 						"pageSize": 10,
 						"orderBy": [
@@ -2815,7 +1741,7 @@ func TestExamSiteList(t *testing.T) {
 				},
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
-					ID:   null.NewInt(1622, true),
+					ID:   null.NewInt(testUserID, true),
 					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
@@ -2831,74 +1757,16 @@ func TestExamSiteList(t *testing.T) {
 			},
 			passExpected: false,
 			errWanted:    "forced scan get data sql err",
-			setup: func() {
-				dbConn := cmn.GetDbConn()
-
-				siteSets := []string{}
-
-				for i := 0; i < 10; i++ {
-					siteSets = append(siteSets, fmt.Sprintf(`(%d, 'test-site-%d', 1622, 'localhost','address',1622)`, nowTime+int64(i), nowTime))
-				}
-
-				roomSets := []string{}
-
-				for i := 0; i < 10; i++ {
-					for j := 0; j < i; j++ {
-						roomSets = append(roomSets, fmt.Sprintf(`('test-room-%d', %d, 1622)`, nowTime, nowTime+int64(i)))
-					}
-				}
-
-				_, err := dbConn.Exec(fmt.Sprintf(`INSERT INTO t_exam_site (id, name,creator,server_host,address,admin) VALUES %s`, strings.Join(siteSets, ",")))
-				if err != nil {
-					t.Fatalf("failed to insert test data: %v", err)
-					return
-				}
-
-				_, err = dbConn.Exec(fmt.Sprintf(`INSERT INTO t_exam_room (name, exam_site, creator) VALUES %s`, strings.Join(roomSets, ",")))
-				if err != nil {
-					t.Fatalf("failed to insert test data: %v", err)
-					return
-				}
-
-			},
-			cleanup: func() {
-
-				dbConn := cmn.GetDbConn()
-
-				r, err := dbConn.Exec(fmt.Sprintf(`DELETE FROM t_exam_room WHERE name = 'test-room-%d'`, nowTime))
-				if err != nil {
-					t.Fatalf("failed to delete test data: %v", err)
-					return
-				}
-
-				c, err := r.RowsAffected()
-				if err != nil {
-					t.Fatalf("failed to get affected rows: %v", err)
-					return
-				}
-
-				t.Logf("Have already cleaned up %d rows from t_exam_room", c)
-
-				r, err = dbConn.Exec(fmt.Sprintf(`DELETE FROM t_exam_site WHERE name = 'test-site-%d'`, nowTime))
-				if err != nil {
-					t.Fatalf("failed to delete test data: %v", err)
-					return
-				}
-
-				c, err = r.RowsAffected()
-				if err != nil {
-					t.Fatalf("failed to get affected rows: %v", err)
-					return
-				}
-
-				t.Logf("Have already cleaned up %d rows from t_exam_site", c)
-
-			},
+			setup:        defaultSetup,
+			cleanup:      defaultCleanup,
 		},
 		{
 			name: "获取考点列表失败-强制Marshal返回的数据失败",
 			q: &cmn.ServiceCtx{
-				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-site?q=%s`, url.QueryEscape(`{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-site/list",
+				},
+				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-site/list?q=%s`, url.QueryEscape(`{
 						"page": 0,
 						"pageSize": 10,
 						"orderBy": [
@@ -2918,7 +1786,7 @@ func TestExamSiteList(t *testing.T) {
 				},
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
-					ID:   null.NewInt(1622, true),
+					ID:   null.NewInt(testUserID, true),
 					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
@@ -2934,69 +1802,8 @@ func TestExamSiteList(t *testing.T) {
 			},
 			passExpected: false,
 			errWanted:    "forced json marshal err",
-			setup: func() {
-				dbConn := cmn.GetDbConn()
-
-				siteSets := []string{}
-
-				for i := 0; i < 10; i++ {
-					siteSets = append(siteSets, fmt.Sprintf(`(%d, 'test-site-%d', 1622, 'localhost','address',1622)`, nowTime+int64(i), nowTime))
-				}
-
-				roomSets := []string{}
-
-				for i := 0; i < 10; i++ {
-					for j := 0; j < i; j++ {
-						roomSets = append(roomSets, fmt.Sprintf(`('test-room-%d', %d, 1622)`, nowTime, nowTime+int64(i)))
-					}
-				}
-
-				_, err := dbConn.Exec(fmt.Sprintf(`INSERT INTO t_exam_site (id, name,creator,server_host,address,admin) VALUES %s`, strings.Join(siteSets, ",")))
-				if err != nil {
-					t.Fatalf("failed to insert test data: %v", err)
-					return
-				}
-
-				_, err = dbConn.Exec(fmt.Sprintf(`INSERT INTO t_exam_room (name, exam_site, creator) VALUES %s`, strings.Join(roomSets, ",")))
-				if err != nil {
-					t.Fatalf("failed to insert test data: %v", err)
-					return
-				}
-
-			},
-			cleanup: func() {
-
-				dbConn := cmn.GetDbConn()
-
-				r, err := dbConn.Exec(fmt.Sprintf(`DELETE FROM t_exam_room WHERE name = 'test-room-%d'`, nowTime))
-				if err != nil {
-					t.Fatalf("failed to delete test data: %v", err)
-					return
-				}
-
-				c, err := r.RowsAffected()
-				if err != nil {
-					t.Fatalf("failed to get affected rows: %v", err)
-					return
-				}
-
-				t.Logf("Have already cleaned up %d rows from t_exam_room", c)
-
-				r, err = dbConn.Exec(fmt.Sprintf(`DELETE FROM t_exam_site WHERE name = 'test-site-%d'`, nowTime))
-				if err != nil {
-					t.Fatalf("failed to delete test data: %v", err)
-					return
-				}
-
-				c, err = r.RowsAffected()
-				if err != nil {
-					t.Fatalf("failed to get affected rows: %v", err)
-					return
-				}
-
-				t.Logf("Have already cleaned up %d rows from t_exam_site", c)
-
-			},
+			setup:        defaultSetup,
+			cleanup:      defaultCleanup,
 		},
 		// ======================================
 	}
@@ -3112,6 +1919,63 @@ func TestExamRoom(t *testing.T) {
 
 	dbConn := cmn.GetDbConn()
 
+	testUserID := nowTime
+
+	defaultSetup := func() {
+		err := addTestUser(testUserID, int64(cmn.CDomainAssessExamSiteAdmin))
+		if err != nil {
+			t.Errorf("failed to add test user: %v", err)
+			return
+		}
+
+		_, err = dbConn.Exec(fmt.Sprintf(`INSERT INTO t_exam_site (id, creator) VALUES (%d, %d)`, nowTime, testUserID))
+		if err != nil {
+			t.Fatalf("failed create exam sit: %v", err)
+			return
+		}
+	}
+
+	// defaultCheck := func() {
+
+	// }
+
+	defaultCleanup := func() {
+
+		r, err := dbConn.Exec(fmt.Sprintf(`DELETE FROM t_exam_room WHERE name='test-room-%d'`, nowTime))
+		if err != nil {
+			t.Fatalf("failed delete exam sit: %v", err)
+			return
+		}
+
+		c, err := r.RowsAffected()
+		if err != nil {
+			t.Fatalf("failed get affected rows: %v", err)
+			return
+		}
+
+		t.Logf("Have already cleaned up %d row from t_exam_room", c)
+
+		r, err = dbConn.Exec(fmt.Sprintf(`DELETE FROM t_exam_site WHERE id=%d`, nowTime))
+		if err != nil {
+			t.Fatalf("failed delete exam sit: %v", err)
+			return
+		}
+
+		c, err = r.RowsAffected()
+		if err != nil {
+			t.Fatalf("failed get affected rows: %v", err)
+			return
+		}
+
+		t.Logf("Have already cleaned up %d row from t_exam_site", c)
+
+		err = removeTestUser(testUserID)
+		if err != nil {
+			t.Fatalf("failed to remove test user: %v", err)
+		}
+
+	}
+
 	tests := []struct {
 		name         string
 		q            *cmn.ServiceCtx
@@ -3126,11 +1990,14 @@ func TestExamRoom(t *testing.T) {
 			name:  "不支持的Http方法",
 			setup: func() {},
 			q: &cmn.ServiceCtx{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-room",
+				},
 				R: httptest.NewRequest("Unknown255", "/api/exam-room", strings.NewReader(fmt.Sprintf(`{
 					"data": {
 						"name": "test-room-%d",
 						"capacity": 10,
-						"exam_site_id": %d
+						"examSiteID": %d
 					}
 				}`, nowTime, nowTime))),
 				W: httptest.NewRecorder(),
@@ -3140,7 +2007,7 @@ func TestExamRoom(t *testing.T) {
 				},
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
-					ID:   null.NewInt(1622, true),
+					ID:   null.NewInt(testUserID, true),
 					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
@@ -3160,11 +2027,14 @@ func TestExamRoom(t *testing.T) {
 			name:  "强制开启事务失败",
 			setup: func() {},
 			q: &cmn.ServiceCtx{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-room",
+				},
 				R: httptest.NewRequest("Unknown255", "/api/exam-room", strings.NewReader(fmt.Sprintf(`{
 					"data": {
 						"name": "test-room-%d",
 						"capacity": 10,
-						"exam_site_id": %d
+						"examSiteID": %d
 					}
 				}`, nowTime, nowTime))),
 				W: httptest.NewRecorder(),
@@ -3174,7 +2044,7 @@ func TestExamRoom(t *testing.T) {
 				},
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
-					ID:   null.NewInt(1622, true),
+					ID:   null.NewInt(testUserID, true),
 					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
@@ -3196,11 +2066,14 @@ func TestExamRoom(t *testing.T) {
 		{
 			name: "强制提交事务失败",
 			q: &cmn.ServiceCtx{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-room",
+				},
 				R: httptest.NewRequest("POST", "/api/exam-site", strings.NewReader(fmt.Sprintf(`{
 					"data": {
 						"name": "test-room-%d",
 						"capacity": 30,
-						"exam_site_id": %d
+						"examSiteID": %d
 					}
 				}`, nowTime, nowTime))),
 				W: httptest.NewRecorder(),
@@ -3210,7 +2083,7 @@ func TestExamRoom(t *testing.T) {
 				},
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
-					ID:   null.NewInt(1622, true),
+					ID:   null.NewInt(testUserID, true),
 					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
@@ -3226,56 +2099,21 @@ func TestExamRoom(t *testing.T) {
 			},
 			passExpected: false,
 			errWanted:    "force commit tx err",
-			setup: func() {
-
-				_, err := dbConn.Exec(fmt.Sprintf(`INSERT INTO t_exam_site (id, creator) VALUES (%d, 1000)`, nowTime))
-				if err != nil {
-					t.Fatalf("failed create exam sit: %v", err)
-					return
-				}
-
-			},
-			cleanup: func() {
-
-				r, err := dbConn.Exec(fmt.Sprintf(`DELETE FROM t_exam_room WHERE name='test-room-%d'`, nowTime))
-				if err != nil {
-					t.Fatalf("failed delete exam sit: %v", err)
-					return
-				}
-
-				c, err := r.RowsAffected()
-				if err != nil {
-					t.Fatalf("failed get affected rows: %v", err)
-					return
-				}
-
-				t.Logf("Have already cleaned up %d row from t_exam_room", c)
-
-				r, err = dbConn.Exec(fmt.Sprintf(`DELETE FROM t_exam_site WHERE id=%d`, nowTime))
-				if err != nil {
-					t.Fatalf("failed delete exam sit: %v", err)
-					return
-				}
-
-				c, err = r.RowsAffected()
-				if err != nil {
-					t.Fatalf("failed get affected rows: %v", err)
-					return
-				}
-
-				t.Logf("Have already cleaned up %d row from t_exam_site", c)
-
-			},
+			setup:        defaultSetup,
+			cleanup:      defaultCleanup,
 		},
 		{
 			name:  "强制解析请求体失败",
 			setup: func() {},
 			q: &cmn.ServiceCtx{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-room",
+				},
 				R: httptest.NewRequest("Unknown255", "/api/exam-room", strings.NewReader(fmt.Sprintf(`{
 					"data": {
 						"name": "test-room-%d",
 						"capacity": 10,
-						"exam_site_id": %d
+						"examSiteID": %d
 					}
 				}`, nowTime, nowTime))),
 				W: httptest.NewRecorder(),
@@ -3285,7 +2123,7 @@ func TestExamRoom(t *testing.T) {
 				},
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
-					ID:   null.NewInt(1622, true),
+					ID:   null.NewInt(testUserID, true),
 					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
@@ -3308,11 +2146,14 @@ func TestExamRoom(t *testing.T) {
 			name:  "强制解析请求体失败并触发回滚事务失败",
 			setup: func() {},
 			q: &cmn.ServiceCtx{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-room",
+				},
 				R: httptest.NewRequest("Unknown255", "/api/exam-room", strings.NewReader(fmt.Sprintf(`{
 					"data": {
 						"name": "test-room-%d",
 						"capacity": 10,
-						"exam_site_id": %d
+						"examSiteID": %d
 					}
 				}`, nowTime, nowTime))),
 				W: httptest.NewRecorder(),
@@ -3322,7 +2163,7 @@ func TestExamRoom(t *testing.T) {
 				},
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
-					ID:   null.NewInt(1622, true),
+					ID:   null.NewInt(testUserID, true),
 					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
@@ -3357,11 +2198,14 @@ func TestExamRoom(t *testing.T) {
 		{
 			name: "添加考场成功",
 			q: &cmn.ServiceCtx{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-room",
+				},
 				R: httptest.NewRequest("POST", "/api/exam-site", strings.NewReader(fmt.Sprintf(`{
 					"data": {
 						"name": "test-room-%d",
 						"capacity": 30,
-						"exam_site_id": %d
+						"examSiteID": %d
 					}
 				}`, nowTime, nowTime))),
 				W: httptest.NewRecorder(),
@@ -3371,7 +2215,7 @@ func TestExamRoom(t *testing.T) {
 				},
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
-					ID:   null.NewInt(1622, true),
+					ID:   null.NewInt(testUserID, true),
 					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
@@ -3384,55 +2228,20 @@ func TestExamRoom(t *testing.T) {
 			},
 			passExpected: true,
 			errWanted:    "",
-			setup: func() {
-
-				_, err := dbConn.Exec(fmt.Sprintf(`INSERT INTO t_exam_site (id, creator) VALUES (%d, 1000)`, nowTime))
-				if err != nil {
-					t.Fatalf("failed create exam sit: %v", err)
-					return
-				}
-
-			},
-			cleanup: func() {
-
-				r, err := dbConn.Exec(fmt.Sprintf(`DELETE FROM t_exam_room WHERE name='test-room-%d'`, nowTime))
-				if err != nil {
-					t.Fatalf("failed delete exam sit: %v", err)
-					return
-				}
-
-				c, err := r.RowsAffected()
-				if err != nil {
-					t.Fatalf("failed get affected rows: %v", err)
-					return
-				}
-
-				t.Logf("Have already cleaned up %d row from t_exam_room", c)
-
-				r, err = dbConn.Exec(fmt.Sprintf(`DELETE FROM t_exam_site WHERE id=%d`, nowTime))
-				if err != nil {
-					t.Fatalf("failed delete exam sit: %v", err)
-					return
-				}
-
-				c, err = r.RowsAffected()
-				if err != nil {
-					t.Fatalf("failed get affected rows: %v", err)
-					return
-				}
-
-				t.Logf("Have already cleaned up %d row from t_exam_site", c)
-
-			},
+			setup:        defaultSetup,
+			cleanup:      defaultCleanup,
 		},
 		{
 			name: "添加考场失败-解析请求体Data失败",
 			q: &cmn.ServiceCtx{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-room",
+				},
 				R: httptest.NewRequest("POST", "/api/exam-site", strings.NewReader(fmt.Sprintf(`{
 					"data": {
 						"name": "test-room-%d",
 						"capacity": 30,
-						"exam_site_id": %d
+						"examSiteID": %d
 					
 				}`, nowTime, nowTime))),
 				W: httptest.NewRecorder(),
@@ -3442,7 +2251,7 @@ func TestExamRoom(t *testing.T) {
 				},
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
-					ID:   null.NewInt(1622, true),
+					ID:   null.NewInt(testUserID, true),
 					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
@@ -3456,50 +2265,15 @@ func TestExamRoom(t *testing.T) {
 			},
 			passExpected: false,
 			errWanted:    "unexpected end of JSON input",
-			setup: func() {
-
-				_, err := dbConn.Exec(fmt.Sprintf(`INSERT INTO t_exam_site (id, creator) VALUES (%d, 1000)`, nowTime))
-				if err != nil {
-					t.Fatalf("failed create exam sit: %v", err)
-					return
-				}
-
-			},
-			cleanup: func() {
-
-				r, err := dbConn.Exec(fmt.Sprintf(`DELETE FROM t_exam_room WHERE name='test-room-%d'`, nowTime))
-				if err != nil {
-					t.Fatalf("failed delete exam sit: %v", err)
-					return
-				}
-
-				c, err := r.RowsAffected()
-				if err != nil {
-					t.Fatalf("failed get affected rows: %v", err)
-					return
-				}
-
-				t.Logf("Have already cleaned up %d row from t_exam_room", c)
-
-				r, err = dbConn.Exec(fmt.Sprintf(`DELETE FROM t_exam_site WHERE id=%d`, nowTime))
-				if err != nil {
-					t.Fatalf("failed delete exam sit: %v", err)
-					return
-				}
-
-				c, err = r.RowsAffected()
-				if err != nil {
-					t.Fatalf("failed get affected rows: %v", err)
-					return
-				}
-
-				t.Logf("Have already cleaned up %d row from t_exam_site", c)
-
-			},
+			setup:        defaultSetup,
+			cleanup:      defaultCleanup,
 		},
 		{
 			name: "添加考场失败-缺少必要参数",
 			q: &cmn.ServiceCtx{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-room",
+				},
 				R: httptest.NewRequest("POST", "/api/exam-site", strings.NewReader(fmt.Sprintf(`{
 					"data": {
 						"name": "test-room-%d",
@@ -3513,7 +2287,7 @@ func TestExamRoom(t *testing.T) {
 				},
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
-					ID:   null.NewInt(1622, true),
+					ID:   null.NewInt(testUserID, true),
 					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
@@ -3527,55 +2301,20 @@ func TestExamRoom(t *testing.T) {
 			},
 			passExpected: false,
 			errWanted:    "validation failed:Key: 'examRoomInfo.ExamSiteID' Error:Field validation for 'ExamSiteID' failed on the 'required' tag",
-			setup: func() {
-
-				_, err := dbConn.Exec(fmt.Sprintf(`INSERT INTO t_exam_site (id, creator) VALUES (%d, 1000)`, nowTime))
-				if err != nil {
-					t.Fatalf("failed create exam sit: %v", err)
-					return
-				}
-
-			},
-			cleanup: func() {
-
-				r, err := dbConn.Exec(fmt.Sprintf(`DELETE FROM t_exam_room WHERE name='test-room-%d'`, nowTime))
-				if err != nil {
-					t.Fatalf("failed delete exam sit: %v", err)
-					return
-				}
-
-				c, err := r.RowsAffected()
-				if err != nil {
-					t.Fatalf("failed get affected rows: %v", err)
-					return
-				}
-
-				t.Logf("Have already cleaned up %d row from t_exam_room", c)
-
-				r, err = dbConn.Exec(fmt.Sprintf(`DELETE FROM t_exam_site WHERE id=%d`, nowTime))
-				if err != nil {
-					t.Fatalf("failed delete exam sit: %v", err)
-					return
-				}
-
-				c, err = r.RowsAffected()
-				if err != nil {
-					t.Fatalf("failed get affected rows: %v", err)
-					return
-				}
-
-				t.Logf("Have already cleaned up %d row from t_exam_site", c)
-
-			},
+			setup:        defaultSetup,
+			cleanup:      defaultCleanup,
 		},
 		{
-			name: "添加考场失败-强制准备SQL失败",
+			name: "添加考场失败-考场容量小于0",
 			q: &cmn.ServiceCtx{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-room",
+				},
 				R: httptest.NewRequest("POST", "/api/exam-site", strings.NewReader(fmt.Sprintf(`{
 					"data": {
 						"name": "test-room-%d",
-						"capacity": 30,
-						"exam_site_id": %d
+						"capacity": -30,
+						"examSiteID": %d
 					}
 				}`, nowTime, nowTime))),
 				W: httptest.NewRecorder(),
@@ -3585,7 +2324,81 @@ func TestExamRoom(t *testing.T) {
 				},
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
-					ID:   null.NewInt(1622, true),
+					ID:   null.NewInt(testUserID, true),
+					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+				},
+				Domains: []cmn.TDomain{
+					{
+						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+					},
+				},
+				RedisClient: cmn.GetRedisConn(),
+				Tag:         map[string]interface{}{},
+			},
+			passExpected: false,
+			errWanted:    "考场容量必须大于0",
+			setup:        defaultSetup,
+			cleanup:      defaultCleanup,
+		},
+		{
+			name: "添加考场失败-数据类型错误",
+			q: &cmn.ServiceCtx{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-room",
+				},
+				R: httptest.NewRequest("POST", "/api/exam-site", strings.NewReader(fmt.Sprintf(`{
+					"data": {
+						"name": "test-room-%d",
+						"capacity": 30,
+						"examSiteID": "undefined"
+					}
+				}`, nowTime))),
+				W: httptest.NewRecorder(),
+				Msg: &cmn.ReplyProto{
+					API:    "/api/exam-site",
+					Method: "POST",
+				},
+				BeginTime: time.Now(),
+				SysUser: &cmn.TUser{
+					ID:   null.NewInt(testUserID, true),
+					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+				},
+				Domains: []cmn.TDomain{
+					{
+						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+					},
+				},
+				RedisClient: cmn.GetRedisConn(),
+				Tag:         map[string]interface{}{},
+			},
+			passExpected: false,
+			errWanted:    "json: cannot unmarshal string into Go struct field examRoomInfo.examSiteID of type int",
+			setup:        defaultSetup,
+			cleanup:      defaultCleanup,
+		},
+		{
+			name: "添加考场失败-强制准备SQL失败",
+			q: &cmn.ServiceCtx{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-room",
+				},
+				R: httptest.NewRequest("POST", "/api/exam-site", strings.NewReader(fmt.Sprintf(`{
+					"data": {
+						"name": "test-room-%d",
+						"capacity": 30,
+						"examSiteID": %d
+					}
+				}`, nowTime, nowTime))),
+				W: httptest.NewRecorder(),
+				Msg: &cmn.ReplyProto{
+					API:    "/api/exam-site",
+					Method: "POST",
+				},
+				BeginTime: time.Now(),
+				SysUser: &cmn.TUser{
+					ID:   null.NewInt(testUserID, true),
 					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
@@ -3601,55 +2414,20 @@ func TestExamRoom(t *testing.T) {
 			},
 			passExpected: false,
 			errWanted:    "force prepare sql err",
-			setup: func() {
-
-				_, err := dbConn.Exec(fmt.Sprintf(`INSERT INTO t_exam_site (id, creator) VALUES (%d, 1000)`, nowTime))
-				if err != nil {
-					t.Fatalf("failed create exam sit: %v", err)
-					return
-				}
-
-			},
-			cleanup: func() {
-
-				r, err := dbConn.Exec(fmt.Sprintf(`DELETE FROM t_exam_room WHERE name='test-room-%d'`, nowTime))
-				if err != nil {
-					t.Fatalf("failed delete exam sit: %v", err)
-					return
-				}
-
-				c, err := r.RowsAffected()
-				if err != nil {
-					t.Fatalf("failed get affected rows: %v", err)
-					return
-				}
-
-				t.Logf("Have already cleaned up %d row from t_exam_room", c)
-
-				r, err = dbConn.Exec(fmt.Sprintf(`DELETE FROM t_exam_site WHERE id=%d`, nowTime))
-				if err != nil {
-					t.Fatalf("failed delete exam sit: %v", err)
-					return
-				}
-
-				c, err = r.RowsAffected()
-				if err != nil {
-					t.Fatalf("failed get affected rows: %v", err)
-					return
-				}
-
-				t.Logf("Have already cleaned up %d row from t_exam_site", c)
-
-			},
+			setup:        defaultSetup,
+			cleanup:      defaultCleanup,
 		},
 		{
 			name: "添加考场失败-强制执行SQL失败",
 			q: &cmn.ServiceCtx{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-room",
+				},
 				R: httptest.NewRequest("POST", "/api/exam-site", strings.NewReader(fmt.Sprintf(`{
 					"data": {
 						"name": "test-room-%d",
 						"capacity": 30,
-						"exam_site_id": %d
+						"examSiteID": %d
 					}
 				}`, nowTime, nowTime))),
 				W: httptest.NewRecorder(),
@@ -3659,7 +2437,7 @@ func TestExamRoom(t *testing.T) {
 				},
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
-					ID:   null.NewInt(1622, true),
+					ID:   null.NewInt(testUserID, true),
 					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
@@ -3675,46 +2453,8 @@ func TestExamRoom(t *testing.T) {
 			},
 			passExpected: false,
 			errWanted:    "force exec sql err",
-			setup: func() {
-
-				_, err := dbConn.Exec(fmt.Sprintf(`INSERT INTO t_exam_site (id, creator) VALUES (%d, 1000)`, nowTime))
-				if err != nil {
-					t.Fatalf("failed create exam sit: %v", err)
-					return
-				}
-
-			},
-			cleanup: func() {
-
-				r, err := dbConn.Exec(fmt.Sprintf(`DELETE FROM t_exam_room WHERE name='test-room-%d'`, nowTime))
-				if err != nil {
-					t.Fatalf("failed delete exam sit: %v", err)
-					return
-				}
-
-				c, err := r.RowsAffected()
-				if err != nil {
-					t.Fatalf("failed get affected rows: %v", err)
-					return
-				}
-
-				t.Logf("Have already cleaned up %d row from t_exam_room", c)
-
-				r, err = dbConn.Exec(fmt.Sprintf(`DELETE FROM t_exam_site WHERE id=%d`, nowTime))
-				if err != nil {
-					t.Fatalf("failed delete exam sit: %v", err)
-					return
-				}
-
-				c, err = r.RowsAffected()
-				if err != nil {
-					t.Fatalf("failed get affected rows: %v", err)
-					return
-				}
-
-				t.Logf("Have already cleaned up %d row from t_exam_site", c)
-
-			},
+			setup:        defaultSetup,
+			cleanup:      defaultCleanup,
 		},
 	}
 
@@ -3763,6 +2503,1181 @@ func TestExamRoom(t *testing.T) {
 
 	}
 
+}
+
+func TestExamRoomList(t *testing.T) {
+
+	nowTime := time.Now().Unix()
+
+	dbConn := cmn.GetDbConn()
+
+	testUserID := nowTime
+
+	defaultSetup := func() {
+		err := addTestUser(testUserID, int64(cmn.CDomainAssessExamSiteAdmin))
+		if err != nil {
+			t.Errorf("failed to add test user: %v", err)
+			return
+		}
+
+		_, err = dbConn.Exec(fmt.Sprintf(`INSERT INTO t_exam_site (id, creator) VALUES (%d, %d)`, nowTime, testUserID))
+		if err != nil {
+			t.Fatalf("failed create exam sit: %v", err)
+			return
+		}
+
+		_, err = dbConn.Exec(fmt.Sprintf(`INSERT INTO t_exam_room (name, exam_site, creator, capacity) VALUES ('test-room-%d', %d, %d, %d)`, nowTime, nowTime, testUserID, 30))
+		if err != nil {
+			t.Fatalf("failed create exam room: %v", err)
+			return
+		}
+
+	}
+
+	// defaultCheck := func() {
+
+	// }
+
+	defaultCleanup := func() {
+
+		r, err := dbConn.Exec(fmt.Sprintf(`DELETE FROM t_exam_room WHERE name='test-room-%d'`, nowTime))
+		if err != nil {
+			t.Fatalf("failed delete exam sit: %v", err)
+			return
+		}
+
+		c, err := r.RowsAffected()
+		if err != nil {
+			t.Fatalf("failed get affected rows: %v", err)
+			return
+		}
+
+		t.Logf("Have already cleaned up %d row from t_exam_room", c)
+
+		r, err = dbConn.Exec(fmt.Sprintf(`DELETE FROM t_exam_site WHERE id=%d`, nowTime))
+		if err != nil {
+			t.Fatalf("failed delete exam sit: %v", err)
+			return
+		}
+
+		c, err = r.RowsAffected()
+		if err != nil {
+			t.Fatalf("failed get affected rows: %v", err)
+			return
+		}
+
+		t.Logf("Have already cleaned up %d row from t_exam_site", c)
+
+		err = removeTestUser(testUserID)
+		if err != nil {
+			t.Fatalf("failed to remove test user: %v", err)
+		}
+
+	}
+
+	tests := []struct {
+		name         string
+		q            *cmn.ServiceCtx
+		passExpected bool
+		errWanted    string
+		setup        func()
+		cleanup      func()
+		check        func(q *cmn.ServiceCtx, passExpected bool) (err error)
+	}{
+		{
+			name: "获取考点列表失败-无效的HTTP方法",
+			q: &cmn.ServiceCtx{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-room/list",
+				},
+				R: httptest.NewRequest("Unknown255", fmt.Sprintf(`/api/exam-room/list?q=%s`, url.QueryEscape(fmt.Sprintf(`{
+						"page": 0,
+						"pageSize": 10,
+						"orderBy": [
+							{
+								"capacity": "DESC"
+							}
+						],
+						"data": {
+							"examSiteID": %d
+						},
+						"filter": {
+							"name": "test"
+						}
+					}`, nowTime),
+				)), nil),
+				W: httptest.NewRecorder(),
+				Msg: &cmn.ReplyProto{
+					API:    "/api/exam-site/list",
+					Method: "Unknown255",
+				},
+				BeginTime: time.Now(),
+				SysUser: &cmn.TUser{
+					ID:   null.NewInt(testUserID, true),
+					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+				},
+				Domains: []cmn.TDomain{
+					{
+						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+					},
+				},
+				RedisClient: cmn.GetRedisConn(),
+			},
+			passExpected: false,
+			errWanted:    "不支持的HTTP方法: Unknown255",
+			setup:        defaultSetup,
+			cleanup:      defaultCleanup,
+		},
+
+		// 获取考场列表测试
+		//   .oooooo.    oooooooooooo ooooooooooooo
+		//  d8P'  `Y8b   `888'     `8 8'   888   `8
+		// 888            888              888
+		// 888            888oooo8         888
+		// 888     ooooo  888    "         888
+		// `88.    .88'   888       o      888
+		//  `Y8bood8P'   o888ooooood8     o888o
+		//
+		//
+		//
+		{
+			name: "获取考点列表成功",
+			q: &cmn.ServiceCtx{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-room/list",
+				},
+				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-room/list?q=%s`, url.QueryEscape(fmt.Sprintf(`{
+						"page": 0,
+						"pageSize": 10,
+						"orderBy": [
+							{
+								"capacity": "DESC"
+							}
+						],
+						"data": {
+							"examSiteID": %d
+						},
+						"filter": {
+							"name": "test"
+						}
+					}`, nowTime),
+				)), nil),
+				W: httptest.NewRecorder(),
+				Msg: &cmn.ReplyProto{
+					API:    "/api/exam-site/list",
+					Method: "GET",
+				},
+				BeginTime: time.Now(),
+				SysUser: &cmn.TUser{
+					ID:   null.NewInt(testUserID, true),
+					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+				},
+				Domains: []cmn.TDomain{
+					{
+						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+					},
+				},
+				RedisClient: cmn.GetRedisConn(),
+			},
+			passExpected: true,
+			errWanted:    "",
+			setup:        defaultSetup,
+			cleanup:      defaultCleanup,
+		},
+		{
+			name: "获取考点列表失败-无权获取",
+			q: &cmn.ServiceCtx{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-room/list",
+				},
+				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-room/list?q=%s`, url.QueryEscape(fmt.Sprintf(`{
+						"page": 0,
+						"pageSize": 10,
+						"orderBy": [
+							{
+								"capacity": "DESC"
+							}
+						],
+						"data": {
+							"examSiteID": %d
+						},
+						"filter": {
+							"name": "test"
+						}
+					}`, nowTime),
+				)), nil),
+				W: httptest.NewRecorder(),
+				Msg: &cmn.ReplyProto{
+					API:    "/api/exam-site/list",
+					Method: "GET",
+				},
+				BeginTime: time.Now(),
+				SysUser: &cmn.TUser{
+					ID:   null.NewInt(testUserID, true),
+					Role: null.NewInt(int64(cmn.CDomainAssessStudent), true),
+				},
+				Domains: []cmn.TDomain{
+					{
+						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+					},
+				},
+				RedisClient: cmn.GetRedisConn(),
+			},
+			passExpected: false,
+			errWanted:    "当前无权获取考场列表数据",
+			setup:        defaultSetup,
+			cleanup:      defaultCleanup,
+		},
+		{
+			name: "获取考点列表失败-强制开启事务失败",
+			q: &cmn.ServiceCtx{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-room/list",
+				},
+				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-room/list?q=%s`, url.QueryEscape(fmt.Sprintf(`{
+						"page": 0,
+						"pageSize": 10,
+						"orderBy": [
+							{
+								"capacity": "DESC"
+							}
+						],
+						"data": {
+							"examSiteID": %d
+						},
+						"filter": {
+							"name": "test"
+						}
+					}`, nowTime),
+				)), nil),
+				W: httptest.NewRecorder(),
+				Msg: &cmn.ReplyProto{
+					API:    "/api/exam-site/list",
+					Method: "GET",
+				},
+				BeginTime: time.Now(),
+				SysUser: &cmn.TUser{
+					ID:   null.NewInt(testUserID, true),
+					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+				},
+				Domains: []cmn.TDomain{
+					{
+						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+					},
+				},
+				RedisClient: cmn.GetRedisConn(),
+				Tag: map[string]interface{}{
+					"txBeginErr": fmt.Errorf("forced begin tx err"),
+				},
+			},
+			passExpected: false,
+			errWanted:    "forced begin tx err",
+			setup:        defaultSetup,
+			cleanup:      defaultCleanup,
+		},
+		{
+			name: "获取考点列表失败-强制读取失败",
+			q: &cmn.ServiceCtx{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-room/list",
+				},
+				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-room/list?q=%s`, url.QueryEscape(fmt.Sprintf(`{
+						"page": 0,
+						"pageSize": 10,
+						"orderBy": [
+							{
+								"capacity": "DESC"
+							}
+						],
+						"data": {
+							"examSiteID": %d
+						},
+						"filter": {
+							"name": "test"
+						}
+					}`, nowTime),
+				)), nil),
+				W: httptest.NewRecorder(),
+				Msg: &cmn.ReplyProto{
+					API:    "/api/exam-site/list",
+					Method: "GET",
+				},
+				BeginTime: time.Now(),
+				SysUser: &cmn.TUser{
+					ID:   null.NewInt(testUserID, true),
+					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+				},
+				Domains: []cmn.TDomain{
+					{
+						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+					},
+				},
+				RedisClient: cmn.GetRedisConn(),
+				Tag: map[string]interface{}{
+					"readBodyErr": fmt.Errorf("forced read body err"),
+				},
+			},
+			passExpected: false,
+			errWanted:    "forced read body err",
+			setup:        defaultSetup,
+			cleanup:      defaultCleanup,
+		},
+		{
+			name: "获取考点列表失败-强制解析请求体失败",
+			q: &cmn.ServiceCtx{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-room/list",
+				},
+				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-room/list?q=%s`, url.QueryEscape(fmt.Sprintf(`{
+						"page": 0,
+						"pageSize": 10,
+						"orderBy": [
+							{
+								"capacity": "DESC"
+							}
+						],
+						"data": {
+							"examSiteID": %d
+						},
+						"filter": {
+							"name": "test"
+						
+					}`, nowTime),
+				)), nil),
+				W: httptest.NewRecorder(),
+				Msg: &cmn.ReplyProto{
+					API:    "/api/exam-site/list",
+					Method: "GET",
+				},
+				BeginTime: time.Now(),
+				SysUser: &cmn.TUser{
+					ID:   null.NewInt(testUserID, true),
+					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+				},
+				Domains: []cmn.TDomain{
+					{
+						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+					},
+				},
+				RedisClient: cmn.GetRedisConn(),
+			},
+			passExpected: false,
+			errWanted:    "unexpected end of JSON input",
+			setup:        defaultSetup,
+			cleanup:      defaultCleanup,
+		},
+		{
+			name: "获取考点列表失败-强制回滚失败",
+			q: &cmn.ServiceCtx{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-room/list",
+				},
+				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-room/list?q=%s`, url.QueryEscape(fmt.Sprintf(`{
+						"page": 0,
+						"pageSize": 10,
+						"orderBy": [
+							{
+								"capacity": "DESC"
+							}
+						],
+						"data": {
+							"examSiteID": %d
+						},
+						"filter": {
+							"name": "test"
+						
+					}`, nowTime),
+				)), nil),
+				W: httptest.NewRecorder(),
+				Msg: &cmn.ReplyProto{
+					API:    "/api/exam-site/list",
+					Method: "GET",
+				},
+				BeginTime: time.Now(),
+				SysUser: &cmn.TUser{
+					ID:   null.NewInt(testUserID, true),
+					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+				},
+				Domains: []cmn.TDomain{
+					{
+						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+					},
+				},
+				RedisClient: cmn.GetRedisConn(),
+				Tag: map[string]interface{}{
+					"rollbackErr": fmt.Errorf("forced rollback err"),
+				},
+			},
+			passExpected: false,
+			errWanted:    "forced rollback err",
+			setup:        defaultSetup,
+			cleanup:      defaultCleanup,
+		},
+		{
+			name: "获取考点列表失败-强制提交失败",
+			q: &cmn.ServiceCtx{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-room/list",
+				},
+				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-room/list?q=%s`, url.QueryEscape(fmt.Sprintf(`{
+						"page": 0,
+						"pageSize": 10,
+						"orderBy": [
+							{
+								"": "DESC"
+							}
+						],
+						"data": {
+							"examSiteID": %d
+						},
+						"filter": {
+							"name": "test"
+						}
+					}`, nowTime),
+				)), nil),
+				W: httptest.NewRecorder(),
+				Msg: &cmn.ReplyProto{
+					API:    "/api/exam-site/list",
+					Method: "GET",
+				},
+				BeginTime: time.Now(),
+				SysUser: &cmn.TUser{
+					ID:   null.NewInt(testUserID, true),
+					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+				},
+				Domains: []cmn.TDomain{
+					{
+						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+					},
+				},
+				RedisClient: cmn.GetRedisConn(),
+				Tag: map[string]interface{}{
+					"commitErr": fmt.Errorf("forced commit err"),
+				},
+			},
+			passExpected: false,
+			errWanted:    "forced commit err",
+			setup:        defaultSetup,
+			cleanup:      defaultCleanup,
+		},
+		{
+			name: "获取考点列表失败-当前无权获取该考点数据",
+			q: &cmn.ServiceCtx{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-room/list",
+				},
+				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-room/list?q=%s`, url.QueryEscape(fmt.Sprintf(`{
+						"page": 0,
+						"pageSize": 10,
+						"orderBy": [
+							{
+								"capacity": "DESC"
+							}
+						],
+						"data": {
+							"examSiteID": %d
+						},
+						"filter": {
+							"name": "test"
+						}
+					}`, nowTime),
+				)), nil),
+				W: httptest.NewRecorder(),
+				Msg: &cmn.ReplyProto{
+					API:    "/api/exam-site/list",
+					Method: "GET",
+				},
+				BeginTime: time.Now(),
+				SysUser: &cmn.TUser{
+					ID:   null.NewInt(1000, true),
+					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+				},
+				Domains: []cmn.TDomain{
+					{
+						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+					},
+				},
+				RedisClient: cmn.GetRedisConn(),
+				Tag:         map[string]interface{}{},
+			},
+			passExpected: false,
+			errWanted:    fmt.Sprintf("当前用户无权获取该考点数据, id: %d", nowTime),
+			setup:        defaultSetup,
+			cleanup:      defaultCleanup,
+		},
+		{
+			name: "获取考点列表失败-强制准备检查是否有权获取考点数据SQL失败",
+			q: &cmn.ServiceCtx{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-room/list",
+				},
+				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-room/list?q=%s`, url.QueryEscape(fmt.Sprintf(`{
+						"page": 0,
+						"pageSize": 10,
+						"orderBy": [
+							{
+								"capacity": "DESC"
+							}
+						],
+						"data": {
+							"examSiteID": %d
+						},
+						"filter": {
+							"name": "test"
+						}
+					}`, nowTime),
+				)), nil),
+				W: httptest.NewRecorder(),
+				Msg: &cmn.ReplyProto{
+					API:    "/api/exam-site/list",
+					Method: "GET",
+				},
+				BeginTime: time.Now(),
+				SysUser: &cmn.TUser{
+					ID:   null.NewInt(testUserID, true),
+					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+				},
+				Domains: []cmn.TDomain{
+					{
+						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+					},
+				},
+				RedisClient: cmn.GetRedisConn(),
+				Tag: map[string]interface{}{
+					"prepareCheckAccessSqlErr": fmt.Errorf("forced prepare check sql err"),
+				},
+			},
+			passExpected: false,
+			errWanted:    "forced prepare check sql err",
+			setup:        defaultSetup,
+			cleanup:      defaultCleanup,
+		},
+		{
+			name: "获取考点列表失败-强制执行检查是否有权获取考点数据SQL失败",
+			q: &cmn.ServiceCtx{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-room/list",
+				},
+				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-room/list?q=%s`, url.QueryEscape(fmt.Sprintf(`{
+						"page": 0,
+						"pageSize": 10,
+						"orderBy": [
+							{
+								"capacity": "DESC"
+							}
+						],
+						"data": {
+							"examSiteID": %d
+						},
+						"filter": {
+							"name": "test"
+						}
+					}`, nowTime),
+				)), nil),
+				W: httptest.NewRecorder(),
+				Msg: &cmn.ReplyProto{
+					API:    "/api/exam-site/list",
+					Method: "GET",
+				},
+				BeginTime: time.Now(),
+				SysUser: &cmn.TUser{
+					ID:   null.NewInt(testUserID, true),
+					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+				},
+				Domains: []cmn.TDomain{
+					{
+						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+					},
+				},
+				RedisClient: cmn.GetRedisConn(),
+				Tag: map[string]interface{}{
+					"execCheckAccessSqlErr": fmt.Errorf("forced exec check sql err"),
+				},
+			},
+			passExpected: false,
+			errWanted:    "forced exec check sql err",
+			setup:        defaultSetup,
+			cleanup:      defaultCleanup,
+		},
+		{
+			name: "获取考点列表失败-强制获取检查是否有权获取考点数据结果失败",
+			q: &cmn.ServiceCtx{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-room/list",
+				},
+				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-room/list?q=%s`, url.QueryEscape(fmt.Sprintf(`{
+						"page": 0,
+						"pageSize": 10,
+						"orderBy": [
+							{
+								"capacity": "DESC"
+							}
+						],
+						"data": {
+							"examSiteID": %d
+						},
+						"filter": {
+							"name": "test"
+						}
+					}`, nowTime),
+				)), nil),
+				W: httptest.NewRecorder(),
+				Msg: &cmn.ReplyProto{
+					API:    "/api/exam-site/list",
+					Method: "GET",
+				},
+				BeginTime: time.Now(),
+				SysUser: &cmn.TUser{
+					ID:   null.NewInt(testUserID, true),
+					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+				},
+				Domains: []cmn.TDomain{
+					{
+						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+					},
+				},
+				RedisClient: cmn.GetRedisConn(),
+				Tag: map[string]interface{}{
+					"getCheckAccessResultErr": fmt.Errorf("forced get check result err"),
+				},
+			},
+			passExpected: false,
+			errWanted:    "forced get check result err",
+			setup:        defaultSetup,
+			cleanup:      defaultCleanup,
+		},
+		{
+			name: "获取考点列表失败-页码小于0",
+			q: &cmn.ServiceCtx{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-room/list",
+				},
+				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-room/list?q=%s`, url.QueryEscape(fmt.Sprintf(`{
+						"page": -5,
+						"pageSize": 10,
+						"orderBy": [
+							{
+								"capacity": "DESC"
+							}
+						],
+						"data": {
+							"examSiteID": %d
+						},
+						"filter": {
+							"name": "test"
+						}
+					}`, nowTime),
+				)), nil),
+				W: httptest.NewRecorder(),
+				Msg: &cmn.ReplyProto{
+					API:    "/api/exam-site/list",
+					Method: "GET",
+				},
+				BeginTime: time.Now(),
+				SysUser: &cmn.TUser{
+					ID:   null.NewInt(testUserID, true),
+					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+				},
+				Domains: []cmn.TDomain{
+					{
+						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+					},
+				},
+				RedisClient: cmn.GetRedisConn(),
+				Tag:         map[string]interface{}{},
+			},
+			passExpected: false,
+			errWanted:    "页码不能小于0",
+			setup:        defaultSetup,
+			cleanup:      defaultCleanup,
+		},
+		{
+			name: "获取考点列表失败-页大小小于1",
+			q: &cmn.ServiceCtx{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-room/list",
+				},
+				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-room/list?q=%s`, url.QueryEscape(fmt.Sprintf(`{
+						"page": 0,
+						"pageSize": -10,
+						"orderBy": [
+							{
+								"capacity": "DESC"
+							}
+						],
+						"data": {
+							"examSiteID": %d
+						},
+						"filter": {
+							"name": "test"
+						}
+					}`, nowTime),
+				)), nil),
+				W: httptest.NewRecorder(),
+				Msg: &cmn.ReplyProto{
+					API:    "/api/exam-site/list",
+					Method: "GET",
+				},
+				BeginTime: time.Now(),
+				SysUser: &cmn.TUser{
+					ID:   null.NewInt(testUserID, true),
+					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+				},
+				Domains: []cmn.TDomain{
+					{
+						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+					},
+				},
+				RedisClient: cmn.GetRedisConn(),
+				Tag:         map[string]interface{}{},
+			},
+			passExpected: false,
+			errWanted:    "每页条数不能小于1",
+			setup:        defaultSetup,
+			cleanup:      defaultCleanup,
+		},
+		{
+			name: "获取考点列表失败-不支持的排序",
+			q: &cmn.ServiceCtx{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-room/list",
+				},
+				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-room/list?q=%s`, url.QueryEscape(fmt.Sprintf(`{
+						"page": 0,
+						"pageSize": 10,
+						"orderBy": [
+							{
+								"capacity": "UNKNOWN255"
+							}
+						],
+						"data": {
+							"examSiteID": %d
+						},
+						"filter": {
+							"name": "test"
+						}
+					}`, nowTime),
+				)), nil),
+				W: httptest.NewRecorder(),
+				Msg: &cmn.ReplyProto{
+					API:    "/api/exam-site/list",
+					Method: "GET",
+				},
+				BeginTime: time.Now(),
+				SysUser: &cmn.TUser{
+					ID:   null.NewInt(testUserID, true),
+					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+				},
+				Domains: []cmn.TDomain{
+					{
+						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+					},
+				},
+				RedisClient: cmn.GetRedisConn(),
+				Tag:         map[string]interface{}{},
+			},
+			passExpected: false,
+			errWanted:    fmt.Sprintf("不支持的排序方式: %s key: %s", "UNKNOWN255", "capacity"),
+			setup:        defaultSetup,
+			cleanup:      defaultCleanup,
+		},
+		{
+			name: "获取考点列表失败-强制准备获取考场数据SQL失败",
+			q: &cmn.ServiceCtx{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-room/list",
+				},
+				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-room/list?q=%s`, url.QueryEscape(fmt.Sprintf(`{
+						"page": 0,
+						"pageSize": 10,
+						"orderBy": [
+							{
+								"capacity": "DESC"
+							}
+						],
+						"data": {
+							"examSiteID": %d
+						},
+						"filter": {
+							"name": "test"
+						}
+					}`, nowTime),
+				)), nil),
+				W: httptest.NewRecorder(),
+				Msg: &cmn.ReplyProto{
+					API:    "/api/exam-site/list",
+					Method: "GET",
+				},
+				BeginTime: time.Now(),
+				SysUser: &cmn.TUser{
+					ID:   null.NewInt(testUserID, true),
+					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+				},
+				Domains: []cmn.TDomain{
+					{
+						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+					},
+				},
+				RedisClient: cmn.GetRedisConn(),
+				Tag: map[string]interface{}{
+					"prepareSqlErr1": fmt.Errorf("forced prepare sql err"),
+				},
+			},
+			passExpected: false,
+			errWanted:    "forced prepare sql err",
+			setup:        defaultSetup,
+			cleanup:      defaultCleanup,
+		},
+		{
+			name: "获取考点列表失败-强制执行获取考场总行数 SQL 失败",
+			q: &cmn.ServiceCtx{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-room/list",
+				},
+				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-room/list?q=%s`, url.QueryEscape(fmt.Sprintf(`{
+						"page": 0,
+						"pageSize": 10,
+						"orderBy": [
+							{
+								"capacity": "DESC"
+							}
+						],
+						"data": {
+							"examSiteID": %d
+						},
+						"filter": {
+							"name": "test"
+						}
+					}`, nowTime),
+				)), nil),
+				W: httptest.NewRecorder(),
+				Msg: &cmn.ReplyProto{
+					API:    "/api/exam-site/list",
+					Method: "GET",
+				},
+				BeginTime: time.Now(),
+				SysUser: &cmn.TUser{
+					ID:   null.NewInt(testUserID, true),
+					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+				},
+				Domains: []cmn.TDomain{
+					{
+						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+					},
+				},
+				RedisClient: cmn.GetRedisConn(),
+				Tag: map[string]interface{}{
+					"sqlExecErr1": fmt.Errorf("forced exec sql err"),
+				},
+			},
+			passExpected: false,
+			errWanted:    "forced exec sql err",
+			setup:        defaultSetup,
+			cleanup:      defaultCleanup,
+		},
+		{
+			name: "获取考点列表失败-强制获取考场数据SQL Affected Rows 失败",
+			q: &cmn.ServiceCtx{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-room/list",
+				},
+				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-room/list?q=%s`, url.QueryEscape(fmt.Sprintf(`{
+						"page": 0,
+						"pageSize": 10,
+						"orderBy": [
+							{
+								"capacity": "DESC"
+							}
+						],
+						"data": {
+							"examSiteID": %d
+						},
+						"filter": {
+							"name": "test"
+						}
+					}`, nowTime),
+				)), nil),
+				W: httptest.NewRecorder(),
+				Msg: &cmn.ReplyProto{
+					API:    "/api/exam-site/list",
+					Method: "GET",
+				},
+				BeginTime: time.Now(),
+				SysUser: &cmn.TUser{
+					ID:   null.NewInt(testUserID, true),
+					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+				},
+				Domains: []cmn.TDomain{
+					{
+						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+					},
+				},
+				RedisClient: cmn.GetRedisConn(),
+				Tag: map[string]interface{}{
+					"rowsAffectedErr": fmt.Errorf("forced get affected rows err"),
+				},
+			},
+			passExpected: false,
+			errWanted:    "forced get affected rows err",
+			setup:        defaultSetup,
+			cleanup:      defaultCleanup,
+		},
+		{
+			name: "获取考点列表失败-强制准备获取考场列表数据失败",
+			q: &cmn.ServiceCtx{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-room/list",
+				},
+				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-room/list?q=%s`, url.QueryEscape(fmt.Sprintf(`{
+						"page": 0,
+						"pageSize": 10,
+						"orderBy": [
+							{
+								"capacity": "DESC"
+							}
+						],
+						"data": {
+							"examSiteID": %d
+						},
+						"filter": {
+							"name": "test"
+						}
+					}`, nowTime),
+				)), nil),
+				W: httptest.NewRecorder(),
+				Msg: &cmn.ReplyProto{
+					API:    "/api/exam-site/list",
+					Method: "GET",
+				},
+				BeginTime: time.Now(),
+				SysUser: &cmn.TUser{
+					ID:   null.NewInt(testUserID, true),
+					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+				},
+				Domains: []cmn.TDomain{
+					{
+						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+					},
+				},
+				RedisClient: cmn.GetRedisConn(),
+				Tag: map[string]interface{}{
+					"prepareErr2": fmt.Errorf("forced prepare sql err"),
+				},
+			},
+			passExpected: false,
+			errWanted:    "forced prepare sql err",
+			setup:        defaultSetup,
+			cleanup:      defaultCleanup,
+		},
+		{
+			name: "获取考点列表失败-强制执行查询获取考场列表数据 SQL 失败",
+			q: &cmn.ServiceCtx{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-room/list",
+				},
+				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-room/list?q=%s`, url.QueryEscape(fmt.Sprintf(`{
+						"page": 0,
+						"pageSize": 10,
+						"orderBy": [
+							{
+								"capacity": "DESC"
+							}
+						],
+						"data": {
+							"examSiteID": %d
+						},
+						"filter": {
+							"name": "test"
+						}
+					}`, nowTime),
+				)), nil),
+				W: httptest.NewRecorder(),
+				Msg: &cmn.ReplyProto{
+					API:    "/api/exam-site/list",
+					Method: "GET",
+				},
+				BeginTime: time.Now(),
+				SysUser: &cmn.TUser{
+					ID:   null.NewInt(testUserID, true),
+					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+				},
+				Domains: []cmn.TDomain{
+					{
+						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+					},
+				},
+				RedisClient: cmn.GetRedisConn(),
+				Tag: map[string]interface{}{
+					"queryErr": fmt.Errorf("forced exec sql query err"),
+				},
+			},
+			passExpected: false,
+			errWanted:    "forced exec sql query err",
+			setup:        defaultSetup,
+			cleanup:      defaultCleanup,
+		},
+		{
+			name: "获取考点列表失败-强制执行查询获取考场列表数据 SQL 取值失败",
+			q: &cmn.ServiceCtx{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-room/list",
+				},
+				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-room/list?q=%s`, url.QueryEscape(fmt.Sprintf(`{
+						"page": 0,
+						"pageSize": 10,
+						"orderBy": [
+							{
+								"capacity": "DESC"
+							}
+						],
+						"data": {
+							"examSiteID": %d
+						},
+						"filter": {
+							"name": "test"
+						}
+					}`, nowTime),
+				)), nil),
+				W: httptest.NewRecorder(),
+				Msg: &cmn.ReplyProto{
+					API:    "/api/exam-site/list",
+					Method: "GET",
+				},
+				BeginTime: time.Now(),
+				SysUser: &cmn.TUser{
+					ID:   null.NewInt(testUserID, true),
+					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+				},
+				Domains: []cmn.TDomain{
+					{
+						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+					},
+				},
+				RedisClient: cmn.GetRedisConn(),
+				Tag: map[string]interface{}{
+					"scanErr": fmt.Errorf("forced scan data err"),
+				},
+			},
+			passExpected: false,
+			errWanted:    "forced scan data err",
+			setup:        defaultSetup,
+			cleanup:      defaultCleanup,
+		},
+		{
+			name: "获取考点列表失败-强制 Marshal 查询结果返回失败",
+			q: &cmn.ServiceCtx{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-room/list",
+				},
+				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-room/list?q=%s`, url.QueryEscape(fmt.Sprintf(`{
+						"page": 0,
+						"pageSize": 10,
+						"orderBy": [
+							{
+								"capacity": "DESC"
+							}
+						],
+						"data": {
+							"examSiteID": %d
+						},
+						"filter": {
+							"name": "test"
+						}
+					}`, nowTime),
+				)), nil),
+				W: httptest.NewRecorder(),
+				Msg: &cmn.ReplyProto{
+					API:    "/api/exam-site/list",
+					Method: "GET",
+				},
+				BeginTime: time.Now(),
+				SysUser: &cmn.TUser{
+					ID:   null.NewInt(testUserID, true),
+					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+				},
+				Domains: []cmn.TDomain{
+					{
+						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+					},
+				},
+				RedisClient: cmn.GetRedisConn(),
+				Tag: map[string]interface{}{
+					"jsonMarshal": fmt.Errorf("forced json marshal err"),
+				},
+			},
+			passExpected: false,
+			errWanted:    "forced json marshal err",
+			setup:        defaultSetup,
+			cleanup:      defaultCleanup,
+		},
+	}
+
+	for _, tt := range tests {
+
+		t.Run(tt.name, func(t *testing.T) {
+
+			if tt.setup != nil {
+				tt.setup()
+			}
+
+			defer func() {
+				if tt.cleanup != nil {
+					tt.cleanup()
+				}
+			}()
+
+			ctx := context.WithValue(context.Background(), cmn.QNearKey, tt.q)
+
+			examRoomList(ctx)
+
+			if tt.q.Err != nil || (tt.passExpected && tt.q.Msg.Status != 0) || !tt.passExpected {
+
+				if tt.q.Err == nil {
+					tt.q.Err = fmt.Errorf(tt.q.Msg.Msg)
+				}
+
+				if !tt.passExpected && tt.q.Err.Error() != tt.errWanted {
+					t.Errorf("expected error: %s, got: %s", tt.errWanted, tt.q.Err.Error())
+					return
+				}
+
+				if tt.passExpected {
+					t.Errorf("expected no error, got: %s", tt.q.Err.Error())
+					return
+				}
+
+				return
+			}
+
+			if tt.check != nil {
+				tt.check(tt.q, tt.passExpected)
+			}
+
+		})
+
+	}
 }
 
 func TestExamSiteSyncInit(t *testing.T) {
