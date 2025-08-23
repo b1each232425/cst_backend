@@ -3,8 +3,9 @@ package cmn
 import (
 	"context"
 	"database/sql"
-	"github.com/pkg/errors"
 	"regexp"
+
+	"github.com/pkg/errors"
 
 	"github.com/jmoiron/sqlx/types"
 	"w2w.io/null"
@@ -13128,26 +13129,27 @@ func GetTSpecialOrderByPk(db Queryer, pk0 null.Int) (*TSpecialOrder, error) {
 
 /*TStudentAnswers t_student_answers represents assessuser.t_student_answers */
 type TStudentAnswers struct {
-	ID                   null.Int       `json:"ID,omitempty" db:"id,true,integer"`                                       /* id 编号 */
-	Type                 null.String    `json:"Type,omitempty" db:"type,false,character varying"`                        /* type 类型, 00:考试  02:练习 */
-	ExamineeID           null.Int       `json:"ExamineeID,omitempty" db:"examinee_id,false,bigint"`                      /* examinee_id 学生考试ID */
-	PracticeSubmissionID null.Int       `json:"PracticeSubmissionID,omitempty" db:"practice_submission_id,false,bigint"` /* practice_submission_id 学生练习记录ID(标识是哪一次练习) */
-	QuestionID           null.Int       `json:"QuestionID,omitempty" db:"question_id,false,bigint"`                      /* question_id 考卷题目ID */
-	Answer               types.JSONText `json:"Answer,omitempty" db:"answer,false,jsonb"`                                /* answer 学生答案 */
-	AnswerScore          null.Float     `json:"AnswerScore,omitempty" db:"answer_score,false,double precision"`          /* answer_score 学生答案得分 */
-	Marker               types.JSONText `json:"Marker,omitempty" db:"marker,false,jsonb"`                                /* marker 题目批阅信息 */
-	Creator              null.Int       `json:"Creator,omitempty" db:"creator,false,bigint"`                             /* creator 创建者 */
-	UpdatedBy            null.Int       `json:"UpdatedBy,omitempty" db:"updated_by,false,bigint"`                        /* updated_by 更新者 */
-	Addi                 types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                                    /* addi 附加信息 */
-	Status               null.String    `json:"Status,omitempty" db:"status,false,character varying"`                    /* status 数据状态 00:正常状态 02:不可修改答案 04:记录已经被删除 */
-	Order                null.Int       `json:"Order,omitempty" db:"order,false,integer"`                                /* order 题目排序 */
-	GroupID              null.Int       `json:"GroupID,omitempty" db:"group_id,false,bigint"`                            /* group_id group_id */
-	ActualOptions        types.JSONText `json:"ActualOptions,omitempty" db:"actual_options,false,jsonb"`                 /* actual_options 实际题目的选项 */
-	ActualAnswers        types.JSONText `json:"ActualAnswers,omitempty" db:"actual_answers,false,jsonb"`                 /* actual_answers 实际题目客观题答案 */
-	CreateTime           null.Int       `json:"CreateTime,omitempty" db:"create_time,false,bigint"`                      /* create_time 记录创建时间 */
-	UpdateTime           null.Int       `json:"UpdateTime,omitempty" db:"update_time,false,bigint"`                      /* update_time 记录更新记录时间 */
-	WrongSubmissionID    null.Int       `json:"WrongSubmissionID,omitempty" db:"wrong_submission_id,false,bigint"`       /* wrong_submission_id 学生练习错题集提交ID */
-	Filter               `json:"-"`     // build DML where clause
+	ID                    null.Int       `json:"ID,omitempty" db:"id,true,integer"`                                        /* id 编号 */
+	Type                  null.String    `json:"Type,omitempty" db:"type,false,character varying"`                         /* type 类型, 00:考试  02:练习 */
+	ExamineeID            null.Int       `json:"ExamineeID,omitempty" db:"examinee_id,false,bigint"`                       /* examinee_id 学生考试ID */
+	PracticeSubmissionID  null.Int       `json:"PracticeSubmissionID,omitempty" db:"practice_submission_id,false,bigint"`  /* practice_submission_id 学生练习记录ID(标识是哪一次练习) */
+	QuestionID            null.Int       `json:"QuestionID,omitempty" db:"question_id,false,bigint"`                       /* question_id 考卷题目ID */
+	Answer                types.JSONText `json:"Answer,omitempty" db:"answer,false,jsonb"`                                 /* answer 学生答案 */
+	AnswerScore           null.Float     `json:"AnswerScore,omitempty" db:"answer_score,false,double precision"`           /* answer_score 学生答案得分 */
+	Marker                types.JSONText `json:"Marker,omitempty" db:"marker,false,jsonb"`                                 /* marker 题目批阅信息 */
+	Creator               null.Int       `json:"Creator,omitempty" db:"creator,false,bigint"`                              /* creator 创建者 */
+	UpdatedBy             null.Int       `json:"UpdatedBy,omitempty" db:"updated_by,false,bigint"`                         /* updated_by 更新者 */
+	Addi                  types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                                     /* addi 附加信息 */
+	Status                null.String    `json:"Status,omitempty" db:"status,false,character varying"`                     /* status 数据状态 00:正常状态 02:不可修改答案 04:记录已经被删除 */
+	Order                 null.Int       `json:"Order,omitempty" db:"order,false,integer"`                                 /* order 题目排序 */
+	GroupID               null.Int       `json:"GroupID,omitempty" db:"group_id,false,bigint"`                             /* group_id group_id */
+	ActualOptions         types.JSONText `json:"ActualOptions,omitempty" db:"actual_options,false,jsonb"`                  /* actual_options 实际题目的选项 */
+	ActualAnswers         types.JSONText `json:"ActualAnswers,omitempty" db:"actual_answers,false,jsonb"`                  /* actual_answers 实际题目客观题答案 */
+	AnswerAttachmentsPath types.JSONText `json:"AnswerAttachmentsPath,omitempty" db:"answer_attachments_path,false,jsonb"` /* answer_attachments_path 保存作答中提交的文件附件、图片等的文件路径 */
+	CreateTime            null.Int       `json:"CreateTime,omitempty" db:"create_time,false,bigint"`                       /* create_time 记录创建时间 */
+	UpdateTime            null.Int       `json:"UpdateTime,omitempty" db:"update_time,false,bigint"`                       /* update_time 记录更新记录时间 */
+	WrongSubmissionID     null.Int       `json:"WrongSubmissionID,omitempty" db:"wrong_submission_id,false,bigint"`        /* wrong_submission_id 学生练习错题集提交ID */
+	Filter                `json:"-"`     // build DML where clause
 }
 
 // TStudentAnswersFields full field list for default query
@@ -23405,6 +23407,7 @@ type TVPaper struct {
 	QuestionCount     null.Int       `json:"QuestionCount,omitempty" db:"question_count,false,bigint"`          /* question_count question_count */
 	GroupCount        null.Int       `json:"GroupCount,omitempty" db:"group_count,false,bigint"`                /* group_count group_count */
 	GroupsData        types.JSONText `json:"GroupsData,omitempty" db:"groups_data,false,jsonb"`                 /* groups_data groups_data */
+	ExamPaperID       null.Int       `json:"ExamPaperID,omitempty" db:"exampaper_id,false,integer"`             /* exampaper_id exampaper_id */
 	Filter            `json:"-"`     // build DML where clause
 }
 
@@ -23430,6 +23433,7 @@ var TVPaperFields = []string{
 	"QuestionCount",
 	"GroupCount",
 	"GroupsData",
+	"ExamPaperID",
 }
 
 // TVPaperColumns full column list for default query
@@ -23454,6 +23458,7 @@ var TVPaperColumns = []string{
 	"question_count",
 	"group_count",
 	"groups_data",
+	"exampaper_id",
 }
 
 // TVPaperColumnsDataTypes full column data types for default query
@@ -23478,6 +23483,7 @@ var TVPaperColumnsDataTypes = map[string]string{
 	"question_count":     "bigint",
 	"group_count":        "bigint",
 	"groups_data":        "jsonb",
+	"exampaper_id":       "integer",
 }
 
 // GetFieldsMap returns a map of field names to their values.
@@ -23503,6 +23509,7 @@ func (r *TVPaper) GetFieldsMap() map[string]any {
 		"QuestionCount":     r.QuestionCount,
 		"GroupCount":        r.GroupCount,
 		"GroupsData":        r.GroupsData,
+		"ExamPaperID":       r.ExamPaperID,
 	}
 }
 
@@ -23529,6 +23536,7 @@ func (r *TVPaper) GetColumnsMap() map[string]any {
 		"question_count":     r.QuestionCount,
 		"group_count":        r.GroupCount,
 		"groups_data":        r.GroupsData,
+		"exampaper_id":       r.ExamPaperID,
 	}
 }
 
