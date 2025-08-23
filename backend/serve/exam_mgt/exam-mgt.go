@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/spf13/viper"
 	"github.com/tidwall/gjson"
 	"go.uber.org/zap"
@@ -823,7 +824,7 @@ func validateUserExamPermission(ctx context.Context, userID, examID int64, domai
 // 	return invigilations, nil
 // }
 
-func updateExamStatus(ctx context.Context, tx pgx.Tx, newStatus string, userID int64, examIDs ...int64) error {
+func updateExamStatus(ctx context.Context, tx pgx.Tx, newStatus string, userID int64, updateTimes map[int64]int64) error {
 	z.Info("---->" + cmn.FncName())
 
 	forceErr := ""
@@ -831,13 +832,13 @@ func updateExamStatus(ctx context.Context, tx pgx.Tx, newStatus string, userID i
 		forceErr = val.(string)
 	}
 
-	if len(examIDs) == 0 {
+	if len(updateTimes) == 0 {
 		err := fmt.Errorf("考试ID数组不能为空")
 		z.Error(err.Error())
 		return err
 	}
 
-	for _, examID := range examIDs {
+	for examID, _ := range updateTimes {
 		if examID <= 0 {
 			err := fmt.Errorf("无效的考试ID: %d", examID)
 			z.Error(err.Error())
@@ -857,17 +858,37 @@ func updateExamStatus(ctx context.Context, tx pgx.Tx, newStatus string, userID i
 		return err
 	}
 
-	_, err := tx.Exec(ctx, `
-		UPDATE t_exam_info 
-		SET status = $1, update_time = $2, updated_by = $3
-		WHERE id = ANY($4) AND status != '12'
-	`, newStatus, time.Now().UnixMilli(), userID, examIDs)
-	if forceErr == "tx.Exec" {
-		err = fmt.Errorf("force error: %s", forceErr)
+	now := time.Now().UnixMilli()
+	ids := make([]int64, 0, len(updateTimes))
+	updateTimeArr := make([]int64, 0, len(updateTimes))
+	for examID, updateTime := range updateTimes {
+		ids = append(ids, examID)
+		updateTimeArr = append(updateTimeArr, updateTime)
+	}
+
+	// 用UNNEST参数化批量更新，避免SQL注入
+	sql := `
+        UPDATE t_exam_info
+        SET status = $1, updated_by = $2, update_time = $3
+        WHERE id = ANY($4)
+          AND update_time = ANY($5)
+          AND status != '12'
+    `
+	result, err := tx.Exec(ctx, sql, newStatus, userID, now, ids, updateTimeArr)
+	if forceErr == "UpdateExamStatus" {
+		err = fmt.Errorf("强制更新考试状态失败")
 	}
 	if err != nil {
 		z.Error(err.Error())
 		return err
+	}
+
+	// 加乐观锁是是为了防止用户更新考试状态时与系统内部自动更新冲突，导致并发修改
+	if result.RowsAffected() != int64(len(updateTimes)) || forceErr == "rowsAffected" {
+		if len(updateTimes) == 1 {
+			return fmt.Errorf("考试已被修改，请刷新后重试")
+		}
+		return fmt.Errorf("部分考试已被修改，请刷新后重试")
 	}
 
 	return nil
@@ -1480,6 +1501,17 @@ func exam(ctx context.Context) {
 			}
 		}()
 
+		var currentUpdateTime int64
+		q.Err = tx.QueryRow(ctx, `SELECT update_time FROM t_exam_info WHERE id = $1`, ExamData.ExamInfo.ID).Scan(&currentUpdateTime)
+		if forceErr == "exam.QueryUpdateTime" {
+			q.Err = fmt.Errorf("强制查询当前更新时间错误")
+		}
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
 		// 如果当前考试已经发布（处于待开始状态），则需要先删除已经生成的考卷和答卷以及批改配置
 		if nowStatus == "02" {
 			// 删除考卷、答卷
@@ -1525,7 +1557,6 @@ func exam(ctx context.Context) {
 			creator = CASE WHEN status = '14' THEN $6 ELSE creator END,
 			create_time = CASE WHEN status = '14' THEN $7 ELSE create_time END,
 			updated_by = $6,
-			update_time = $7,
 			status = COALESCE(NULLIF($8, ''), status),
 			addi = COALESCE(NULLIF($9, '{}'::jsonb), addi)
 		WHERE id = $10 AND status != '12'`
@@ -1539,7 +1570,8 @@ func exam(ctx context.Context) {
 			currentTime,
 			updateStatus,
 			ExamData.ExamInfo.Addi,
-			ExamData.ExamInfo.ID.Int64)
+			ExamData.ExamInfo.ID.Int64,
+		)
 		if forceErr == "tx.UpdateExamInfo" {
 			q.Err = fmt.Errorf("强制更新考试信息错误")
 		}
@@ -1851,6 +1883,28 @@ func exam(ctx context.Context) {
 				q.RespErr()
 				return
 			}
+		}
+
+		var commandTag pgconn.CommandTag
+		commandTag, q.Err = tx.Exec(ctx, `
+			UPDATE t_exam_info
+			SET update_time = $1
+			WHERE id = $2 AND update_time = $3
+		`, currentTime, ExamData.ExamInfo.ID.Int64, currentUpdateTime)
+		if forceErr == "tx.UpdateExamInfoUpdateTime" {
+			q.Err = fmt.Errorf("强制更新考试信息更新时间错误")
+		}
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		if commandTag.RowsAffected() == 0 || forceErr == "rowsAffected" {
+			q.Err = fmt.Errorf("考试已被修改，请刷新后重试")
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
 		}
 
 		q.Err = exam_service.SetExamTimers(ctx, ExamData.ExamInfo.ID.Int64)
@@ -3052,6 +3106,35 @@ func examStatus(ctx context.Context) {
 			return
 		}
 
+		// 查询当前该考试的更新时间以作乐观锁
+		updateTimes := make(map[int64]int64)
+		var updateTimeRows pgx.Rows
+		updateTimeRows, q.Err = tx.Query(ctx, `
+			SELECT id, update_time FROM t_exam_info WHERE id = ANY($1)
+		`, examIDs)
+		if forceErr == "QueryExamUpdateTimes" {
+			q.Err = fmt.Errorf("强制查询考试更新时间错误")
+		}
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+		for updateTimeRows.Next() {
+			var id, updateTime int64
+			q.Err = updateTimeRows.Scan(&id, &updateTime)
+			if forceErr == "updateTimeRows.Scan" {
+				q.Err = fmt.Errorf("强制查询考试更新时间错误")
+			}
+			if q.Err != nil {
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+			updateTimes[id] = updateTime
+		}
+		updateTimeRows.Close()
+
 		switch status {
 		case "16":
 			// 检查是否有考试的状态不满足作废考试
@@ -3114,16 +3197,6 @@ func examStatus(ctx context.Context) {
 				return
 			}
 
-			// 作废考试
-			q.Err = updateExamStatus(ctx, tx, "16", userID, examIDs...)
-			if forceErr == "updateExamStatus" {
-				q.Err = fmt.Errorf("强制更新考试状态错误")
-			}
-			if q.Err != nil {
-				q.RespErr()
-				return
-			}
-
 			q.Err = updateExamSessionStatus(ctx, tx, "16", userID, examIDs...)
 			if forceErr == "updateExamSessionStatus" {
 				q.Err = fmt.Errorf("强制更新考试场次状态错误")
@@ -3136,6 +3209,16 @@ func examStatus(ctx context.Context) {
 			q.Err = updateExamineeStatus(ctx, tx, "16", userID, examIDs...)
 			if forceErr == "updateExamineeStatus" {
 				q.Err = fmt.Errorf("强制更新考生状态错误")
+			}
+			if q.Err != nil {
+				q.RespErr()
+				return
+			}
+
+			// 作废考试
+			q.Err = updateExamStatus(ctx, tx, "16", userID, updateTimes)
+			if forceErr == "updateExamStatus" {
+				q.Err = fmt.Errorf("强制更新考试状态错误")
 			}
 			if q.Err != nil {
 				q.RespErr()
@@ -3342,18 +3425,18 @@ func examStatus(ctx context.Context) {
 				}
 			}
 
-			q.Err = updateExamStatus(ctx, tx, "02", userID, examIDs...)
-			if forceErr == "updateExamStatus" {
-				q.Err = fmt.Errorf("强制更新考试状态错误")
+			q.Err = updateExamSessionStatus(ctx, tx, "02", userID, examIDs...)
+			if forceErr == "updateExamSessionStatus" {
+				q.Err = fmt.Errorf("强制更新考试场次状态错误")
 			}
 			if q.Err != nil {
 				q.RespErr()
 				return
 			}
 
-			q.Err = updateExamSessionStatus(ctx, tx, "02", userID, examIDs...)
-			if forceErr == "updateExamSessionStatus" {
-				q.Err = fmt.Errorf("强制更新考试场次状态错误")
+			q.Err = updateExamStatus(ctx, tx, "02", userID, updateTimes)
+			if forceErr == "updateExamStatus" {
+				q.Err = fmt.Errorf("强制更新考试状态错误")
 			}
 			if q.Err != nil {
 				q.RespErr()
