@@ -23407,6 +23407,7 @@ type TVPaper struct {
 	QuestionCount     null.Int       `json:"QuestionCount,omitempty" db:"question_count,false,bigint"`          /* question_count question_count */
 	GroupCount        null.Int       `json:"GroupCount,omitempty" db:"group_count,false,bigint"`                /* group_count group_count */
 	GroupsData        types.JSONText `json:"GroupsData,omitempty" db:"groups_data,false,jsonb"`                 /* groups_data groups_data */
+	ExamPaperID       null.Int       `json:"ExamPaperID,omitempty" db:"exampaper_id,false,integer"`             /* exampaper_id exampaper_id */
 	Filter            `json:"-"`     // build DML where clause
 }
 
@@ -23457,6 +23458,7 @@ var TVPaperColumns = []string{
 	"question_count",
 	"group_count",
 	"groups_data",
+	"exampaper_id",
 }
 
 // TVPaperColumnsDataTypes full column data types for default query
@@ -23481,6 +23483,7 @@ var TVPaperColumnsDataTypes = map[string]string{
 	"question_count":     "bigint",
 	"group_count":        "bigint",
 	"groups_data":        "jsonb",
+	"exampaper_id":       "integer",
 }
 
 // GetFieldsMap returns a map of field names to their values.
@@ -23506,6 +23509,7 @@ func (r *TVPaper) GetFieldsMap() map[string]any {
 		"QuestionCount":     r.QuestionCount,
 		"GroupCount":        r.GroupCount,
 		"GroupsData":        r.GroupsData,
+		"ExamPaperID":       r.ExamPaperID,
 	}
 }
 
@@ -23532,6 +23536,7 @@ func (r *TVPaper) GetColumnsMap() map[string]any {
 		"question_count":     r.QuestionCount,
 		"group_count":        r.GroupCount,
 		"groups_data":        r.GroupsData,
+		"exampaper_id":       r.ExamPaperID,
 	}
 }
 
