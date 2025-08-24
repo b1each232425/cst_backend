@@ -3,9 +3,8 @@ package cmn
 import (
 	"context"
 	"database/sql"
-	"regexp"
-
 	"github.com/pkg/errors"
+	"regexp"
 
 	"github.com/jmoiron/sqlx/types"
 	"w2w.io/null"
@@ -328,6 +327,7 @@ type TAPI struct {
 	Addi       types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                 /* addi 附加信息 */
 	Remark     null.String    `json:"Remark,omitempty" db:"remark,false,character varying"` /* remark 备注 */
 	Status     null.String    `json:"Status,omitempty" db:"status,false,character varying"` /* status 状态，00：草稿，01：有效，02：作废 */
+	Author     types.JSONText `json:"Author,omitempty" db:"author,false,jsonb"`             /* author 接口作者 */
 	Filter     `json:"-"`     // build DML where clause
 }
 
@@ -346,6 +346,7 @@ var TAPIFields = []string{
 	"Addi",
 	"Remark",
 	"Status",
+	"Author",
 }
 
 // TAPIColumns full column list for default query
@@ -363,6 +364,7 @@ var TAPIColumns = []string{
 	"addi",
 	"remark",
 	"status",
+	"author",
 }
 
 // TAPIColumnsDataTypes full column data types for default query
@@ -380,6 +382,7 @@ var TAPIColumnsDataTypes = map[string]string{
 	"addi":                 "jsonb",
 	"remark":               "character varying",
 	"status":               "character varying",
+	"author":               "jsonb",
 }
 
 // GetFieldsMap returns a map of field names to their values.
@@ -398,6 +401,7 @@ func (r *TAPI) GetFieldsMap() map[string]any {
 		"Addi":               r.Addi,
 		"Remark":             r.Remark,
 		"Status":             r.Status,
+		"Author":             r.Author,
 	}
 }
 
@@ -417,6 +421,7 @@ func (r *TAPI) GetColumnsMap() map[string]any {
 		"addi":                 r.Addi,
 		"remark":               r.Remark,
 		"status":               r.Status,
+		"author":               r.Author,
 	}
 }
 
@@ -438,8 +443,8 @@ func (r *TAPI) GetTableName() string {
 // Create inserts the TAPI to the database.
 func (r *TAPI) Create(db Queryer) error {
 	err := db.QueryRow(
-		`INSERT INTO t_api (name, expose_path, maintainer, access_control_level, updated_by, update_time, creator, create_time, domain_id, addi, remark, status) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING id`,
-		&r.Name, &r.ExposePath, &r.Maintainer, &r.AccessControlLevel, &r.UpdatedBy, &r.UpdateTime, &r.Creator, &r.CreateTime, &r.DomainID, &r.Addi, &r.Remark, &r.Status).Scan(&r.ID)
+		`INSERT INTO t_api (name, expose_path, maintainer, access_control_level, updated_by, update_time, creator, create_time, domain_id, addi, remark, status, author) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) RETURNING id`,
+		&r.Name, &r.ExposePath, &r.Maintainer, &r.AccessControlLevel, &r.UpdatedBy, &r.UpdateTime, &r.Creator, &r.CreateTime, &r.DomainID, &r.Addi, &r.Remark, &r.Status, &r.Author).Scan(&r.ID)
 	if err != nil {
 		return errors.Wrap(err, "failed to insert t_api")
 	}
@@ -451,8 +456,8 @@ func GetTAPIByPk(db Queryer, pk0 null.Int) (*TAPI, error) {
 
 	var r TAPI
 	err := db.QueryRow(
-		`SELECT id, name, expose_path, maintainer, access_control_level, updated_by, update_time, creator, create_time, domain_id, addi, remark, status FROM t_api WHERE id = $1`,
-		pk0).Scan(&r.ID, &r.Name, &r.ExposePath, &r.Maintainer, &r.AccessControlLevel, &r.UpdatedBy, &r.UpdateTime, &r.Creator, &r.CreateTime, &r.DomainID, &r.Addi, &r.Remark, &r.Status)
+		`SELECT id, name, expose_path, maintainer, access_control_level, updated_by, update_time, creator, create_time, domain_id, addi, remark, status, author FROM t_api WHERE id = $1`,
+		pk0).Scan(&r.ID, &r.Name, &r.ExposePath, &r.Maintainer, &r.AccessControlLevel, &r.UpdatedBy, &r.UpdateTime, &r.Creator, &r.CreateTime, &r.DomainID, &r.Addi, &r.Remark, &r.Status, &r.Author)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to select t_api")
 	}
@@ -8409,8 +8414,9 @@ type TPaper struct {
 	UpdatedBy         null.Int       `json:"UpdatedBy,omitempty" db:"updated_by,false,bigint"`                  /* updated_by 更新者 */
 	UpdateTime        null.Int       `json:"UpdateTime,omitempty" db:"update_time,false,bigint"`                /* update_time 更新时间 */
 	Addi              types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                              /* addi 附加信息 */
-	Status            null.String    `json:"Status,omitempty" db:"status,false,character varying"`              /* status 状态 00：正常， 02：异常 */
+	Status            null.String    `json:"Status,omitempty" db:"status,false,character varying"`              /* status 状态 00：未发布， 02：已发布 04：作废 06：异常 */
 	DomainID          null.Int       `json:"DomainID,omitempty" db:"domain_id,false,bigint"`                    /* domain_id 所属域ID */
+	ExampaperID       null.Int       `json:"ExampaperID,omitempty" db:"exampaper_id,false,bigint"`              /* exampaper_id 生成的考卷ID（当试卷已发布才会存在，存储试卷不可修改副本的ID值） */
 	Filter            `json:"-"`     // build DML where clause
 }
 
@@ -8432,6 +8438,7 @@ var TPaperFields = []string{
 	"Addi",
 	"Status",
 	"DomainID",
+	"ExampaperID",
 }
 
 // TPaperColumns full column list for default query
@@ -8452,6 +8459,7 @@ var TPaperColumns = []string{
 	"addi",
 	"status",
 	"domain_id",
+	"exampaper_id",
 }
 
 // TPaperColumnsDataTypes full column data types for default query
@@ -8472,6 +8480,7 @@ var TPaperColumnsDataTypes = map[string]string{
 	"addi":               "jsonb",
 	"status":             "character varying",
 	"domain_id":          "bigint",
+	"exampaper_id":       "bigint",
 }
 
 // GetFieldsMap returns a map of field names to their values.
@@ -8493,6 +8502,7 @@ func (r *TPaper) GetFieldsMap() map[string]any {
 		"Addi":              r.Addi,
 		"Status":            r.Status,
 		"DomainID":          r.DomainID,
+		"ExampaperID":       r.ExampaperID,
 	}
 }
 
@@ -8515,6 +8525,7 @@ func (r *TPaper) GetColumnsMap() map[string]any {
 		"addi":               r.Addi,
 		"status":             r.Status,
 		"domain_id":          r.DomainID,
+		"exampaper_id":       r.ExampaperID,
 	}
 }
 
@@ -8536,8 +8547,8 @@ func (r *TPaper) GetTableName() string {
 // Create inserts the TPaper to the database.
 func (r *TPaper) Create(db Queryer) error {
 	err := db.QueryRow(
-		`INSERT INTO t_paper (name, assembly_type, category, level, suggested_duration, description, tags, config, creator, create_time, updated_by, update_time, addi, status, domain_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15) RETURNING id`,
-		&r.Name, &r.AssemblyType, &r.Category, &r.Level, &r.SuggestedDuration, &r.Description, &r.Tags, &r.Config, &r.Creator, &r.CreateTime, &r.UpdatedBy, &r.UpdateTime, &r.Addi, &r.Status, &r.DomainID).Scan(&r.ID)
+		`INSERT INTO t_paper (name, assembly_type, category, level, suggested_duration, description, tags, config, creator, create_time, updated_by, update_time, addi, status, domain_id, exampaper_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16) RETURNING id`,
+		&r.Name, &r.AssemblyType, &r.Category, &r.Level, &r.SuggestedDuration, &r.Description, &r.Tags, &r.Config, &r.Creator, &r.CreateTime, &r.UpdatedBy, &r.UpdateTime, &r.Addi, &r.Status, &r.DomainID, &r.ExampaperID).Scan(&r.ID)
 	if err != nil {
 		return errors.Wrap(err, "failed to insert t_paper")
 	}
@@ -8549,8 +8560,8 @@ func GetTPaperByPk(db Queryer, pk0 null.Int) (*TPaper, error) {
 
 	var r TPaper
 	err := db.QueryRow(
-		`SELECT id, name, assembly_type, category, level, suggested_duration, description, tags, config, creator, create_time, updated_by, update_time, addi, status, domain_id FROM t_paper WHERE id = $1`,
-		pk0).Scan(&r.ID, &r.Name, &r.AssemblyType, &r.Category, &r.Level, &r.SuggestedDuration, &r.Description, &r.Tags, &r.Config, &r.Creator, &r.CreateTime, &r.UpdatedBy, &r.UpdateTime, &r.Addi, &r.Status, &r.DomainID)
+		`SELECT id, name, assembly_type, category, level, suggested_duration, description, tags, config, creator, create_time, updated_by, update_time, addi, status, domain_id, exampaper_id FROM t_paper WHERE id = $1`,
+		pk0).Scan(&r.ID, &r.Name, &r.AssemblyType, &r.Category, &r.Level, &r.SuggestedDuration, &r.Description, &r.Tags, &r.Config, &r.Creator, &r.CreateTime, &r.UpdatedBy, &r.UpdateTime, &r.Addi, &r.Status, &r.DomainID, &r.ExampaperID)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to select t_paper")
 	}
@@ -13129,27 +13140,25 @@ func GetTSpecialOrderByPk(db Queryer, pk0 null.Int) (*TSpecialOrder, error) {
 
 /*TStudentAnswers t_student_answers represents assessuser.t_student_answers */
 type TStudentAnswers struct {
-	ID                    null.Int       `json:"ID,omitempty" db:"id,true,integer"`                                        /* id 编号 */
-	Type                  null.String    `json:"Type,omitempty" db:"type,false,character varying"`                         /* type 类型, 00:考试  02:练习 */
-	ExamineeID            null.Int       `json:"ExamineeID,omitempty" db:"examinee_id,false,bigint"`                       /* examinee_id 学生考试ID */
-	PracticeSubmissionID  null.Int       `json:"PracticeSubmissionID,omitempty" db:"practice_submission_id,false,bigint"`  /* practice_submission_id 学生练习记录ID(标识是哪一次练习) */
-	QuestionID            null.Int       `json:"QuestionID,omitempty" db:"question_id,false,bigint"`                       /* question_id 考卷题目ID */
-	Answer                types.JSONText `json:"Answer,omitempty" db:"answer,false,jsonb"`                                 /* answer 学生答案 */
-	AnswerScore           null.Float     `json:"AnswerScore,omitempty" db:"answer_score,false,double precision"`           /* answer_score 学生答案得分 */
-	Marker                types.JSONText `json:"Marker,omitempty" db:"marker,false,jsonb"`                                 /* marker 题目批阅信息 */
-	Creator               null.Int       `json:"Creator,omitempty" db:"creator,false,bigint"`                              /* creator 创建者 */
-	UpdatedBy             null.Int       `json:"UpdatedBy,omitempty" db:"updated_by,false,bigint"`                         /* updated_by 更新者 */
-	Addi                  types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                                     /* addi 附加信息 */
-	Status                null.String    `json:"Status,omitempty" db:"status,false,character varying"`                     /* status 数据状态 00:正常状态 02:不可修改答案 04:记录已经被删除 */
-	Order                 null.Int       `json:"Order,omitempty" db:"order,false,integer"`                                 /* order 题目排序 */
-	GroupID               null.Int       `json:"GroupID,omitempty" db:"group_id,false,bigint"`                             /* group_id group_id */
-	ActualOptions         types.JSONText `json:"ActualOptions,omitempty" db:"actual_options,false,jsonb"`                  /* actual_options 实际题目的选项 */
-	ActualAnswers         types.JSONText `json:"ActualAnswers,omitempty" db:"actual_answers,false,jsonb"`                  /* actual_answers 实际题目客观题答案 */
-	AnswerAttachmentsPath types.JSONText `json:"AnswerAttachmentsPath,omitempty" db:"answer_attachments_path,false,jsonb"` /* answer_attachments_path 保存作答中提交的文件附件、图片等的文件路径 */
-	CreateTime            null.Int       `json:"CreateTime,omitempty" db:"create_time,false,bigint"`                       /* create_time 记录创建时间 */
-	UpdateTime            null.Int       `json:"UpdateTime,omitempty" db:"update_time,false,bigint"`                       /* update_time 记录更新记录时间 */
-	WrongSubmissionID     null.Int       `json:"WrongSubmissionID,omitempty" db:"wrong_submission_id,false,bigint"`        /* wrong_submission_id 学生练习错题集提交ID */
-	Filter                `json:"-"`     // build DML where clause
+	ID                   null.Int       `json:"ID,omitempty" db:"id,true,integer"`                                       /* id 编号 */
+	Type                 null.String    `json:"Type,omitempty" db:"type,false,character varying"`                        /* type 类型, 00:考试  02:练习 */
+	ExamineeID           null.Int       `json:"ExamineeID,omitempty" db:"examinee_id,false,bigint"`                      /* examinee_id 学生考试ID */
+	PracticeSubmissionID null.Int       `json:"PracticeSubmissionID,omitempty" db:"practice_submission_id,false,bigint"` /* practice_submission_id 学生练习记录ID(标识是哪一次练习) */
+	QuestionID           null.Int       `json:"QuestionID,omitempty" db:"question_id,false,bigint"`                      /* question_id 考卷题目ID */
+	Answer               types.JSONText `json:"Answer,omitempty" db:"answer,false,jsonb"`                                /* answer 学生答案 */
+	AnswerScore          null.Float     `json:"AnswerScore,omitempty" db:"answer_score,false,double precision"`          /* answer_score 学生答案得分 */
+	Marker               types.JSONText `json:"Marker,omitempty" db:"marker,false,jsonb"`                                /* marker 题目批阅信息 */
+	Creator              null.Int       `json:"Creator,omitempty" db:"creator,false,bigint"`                             /* creator 创建者 */
+	UpdatedBy            null.Int       `json:"UpdatedBy,omitempty" db:"updated_by,false,bigint"`                        /* updated_by 更新者 */
+	Addi                 types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                                    /* addi 附加信息 */
+	Status               null.String    `json:"Status,omitempty" db:"status,false,character varying"`                    /* status 数据状态 00:正常状态 02:不可修改答案 04:记录已经被删除 */
+	Order                null.Int       `json:"Order,omitempty" db:"order,false,integer"`                                /* order 题目排序 */
+	GroupID              null.Int       `json:"GroupID,omitempty" db:"group_id,false,bigint"`                            /* group_id group_id */
+	ActualOptions        types.JSONText `json:"ActualOptions,omitempty" db:"actual_options,false,jsonb"`                 /* actual_options 实际题目的选项 */
+	ActualAnswers        types.JSONText `json:"ActualAnswers,omitempty" db:"actual_answers,false,jsonb"`                 /* actual_answers 实际题目客观题答案 */
+	CreateTime           null.Int       `json:"CreateTime,omitempty" db:"create_time,false,bigint"`                      /* create_time 记录创建时间 */
+	UpdateTime           null.Int       `json:"UpdateTime,omitempty" db:"update_time,false,bigint"`                      /* update_time 记录更新记录时间 */
+	Filter               `json:"-"`     // build DML where clause
 }
 
 // TStudentAnswersFields full field list for default query
@@ -13172,7 +13181,6 @@ var TStudentAnswersFields = []string{
 	"ActualAnswers",
 	"CreateTime",
 	"UpdateTime",
-	"WrongSubmissionID",
 }
 
 // TStudentAnswersColumns full column list for default query
@@ -13195,7 +13203,6 @@ var TStudentAnswersColumns = []string{
 	"actual_answers",
 	"create_time",
 	"update_time",
-	"wrong_submission_id",
 }
 
 // TStudentAnswersColumnsDataTypes full column data types for default query
@@ -13218,7 +13225,6 @@ var TStudentAnswersColumnsDataTypes = map[string]string{
 	"actual_answers":         "jsonb",
 	"create_time":            "bigint",
 	"update_time":            "bigint",
-	"wrong_submission_id":    "bigint",
 }
 
 // GetFieldsMap returns a map of field names to their values.
@@ -13242,7 +13248,6 @@ func (r *TStudentAnswers) GetFieldsMap() map[string]any {
 		"ActualAnswers":        r.ActualAnswers,
 		"CreateTime":           r.CreateTime,
 		"UpdateTime":           r.UpdateTime,
-		"WrongSubmissionID":    r.WrongSubmissionID,
 	}
 }
 
@@ -13267,7 +13272,6 @@ func (r *TStudentAnswers) GetColumnsMap() map[string]any {
 		"actual_answers":         r.ActualAnswers,
 		"create_time":            r.CreateTime,
 		"update_time":            r.UpdateTime,
-		"wrong_submission_id":    r.WrongSubmissionID,
 	}
 }
 
@@ -13289,8 +13293,8 @@ func (r *TStudentAnswers) GetTableName() string {
 // Create inserts the TStudentAnswers to the database.
 func (r *TStudentAnswers) Create(db Queryer) error {
 	err := db.QueryRow(
-		`INSERT INTO t_student_answers (type, examinee_id, practice_submission_id, question_id, answer, answer_score, marker, creator, updated_by, addi, status, order, group_id, actual_options, actual_answers, create_time, update_time, wrong_submission_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18) RETURNING id`,
-		&r.Type, &r.ExamineeID, &r.PracticeSubmissionID, &r.QuestionID, &r.Answer, &r.AnswerScore, &r.Marker, &r.Creator, &r.UpdatedBy, &r.Addi, &r.Status, &r.Order, &r.GroupID, &r.ActualOptions, &r.ActualAnswers, &r.CreateTime, &r.UpdateTime, &r.WrongSubmissionID).Scan(&r.ID)
+		`INSERT INTO t_student_answers (type, examinee_id, practice_submission_id, question_id, answer, answer_score, marker, creator, updated_by, addi, status, order, group_id, actual_options, actual_answers, create_time, update_time) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17) RETURNING id`,
+		&r.Type, &r.ExamineeID, &r.PracticeSubmissionID, &r.QuestionID, &r.Answer, &r.AnswerScore, &r.Marker, &r.Creator, &r.UpdatedBy, &r.Addi, &r.Status, &r.Order, &r.GroupID, &r.ActualOptions, &r.ActualAnswers, &r.CreateTime, &r.UpdateTime).Scan(&r.ID)
 	if err != nil {
 		return errors.Wrap(err, "failed to insert t_student_answers")
 	}
@@ -13302,8 +13306,8 @@ func GetTStudentAnswersByPk(db Queryer, pk0 null.Int) (*TStudentAnswers, error) 
 
 	var r TStudentAnswers
 	err := db.QueryRow(
-		`SELECT id, type, examinee_id, practice_submission_id, question_id, answer, answer_score, marker, creator, updated_by, addi, status, order, group_id, actual_options, actual_answers, create_time, update_time, wrong_submission_id FROM t_student_answers WHERE id = $1`,
-		pk0).Scan(&r.ID, &r.Type, &r.ExamineeID, &r.PracticeSubmissionID, &r.QuestionID, &r.Answer, &r.AnswerScore, &r.Marker, &r.Creator, &r.UpdatedBy, &r.Addi, &r.Status, &r.Order, &r.GroupID, &r.ActualOptions, &r.ActualAnswers, &r.CreateTime, &r.UpdateTime, &r.WrongSubmissionID)
+		`SELECT id, type, examinee_id, practice_submission_id, question_id, answer, answer_score, marker, creator, updated_by, addi, status, order, group_id, actual_options, actual_answers, create_time, update_time FROM t_student_answers WHERE id = $1`,
+		pk0).Scan(&r.ID, &r.Type, &r.ExamineeID, &r.PracticeSubmissionID, &r.QuestionID, &r.Answer, &r.AnswerScore, &r.Marker, &r.Creator, &r.UpdatedBy, &r.Addi, &r.Status, &r.Order, &r.GroupID, &r.ActualOptions, &r.ActualAnswers, &r.CreateTime, &r.UpdateTime)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to select t_student_answers")
 	}
@@ -23389,6 +23393,7 @@ func GetTVOrderSumByPk(db Queryer) (*TVOrderSum, error) {
 type TVPaper struct {
 	ID                null.Int       `json:"ID,omitempty" db:"id,false,integer"`                                /* id id */
 	DomainID          null.Int       `json:"DomainID,omitempty" db:"domain_id,false,bigint"`                    /* domain_id domain_id */
+	ExampaperID       null.Int       `json:"ExampaperID,omitempty" db:"exampaper_id,false,bigint"`              /* exampaper_id exampaper_id */
 	Name              null.String    `json:"Name,omitempty" db:"name,false,character varying"`                  /* name name */
 	AssemblyType      null.String    `json:"AssemblyType,omitempty" db:"assembly_type,false,character varying"` /* assembly_type assembly_type */
 	Category          null.String    `json:"Category,omitempty" db:"category,false,character varying"`          /* category category */
@@ -23404,10 +23409,9 @@ type TVPaper struct {
 	UpdateTime        null.Int       `json:"UpdateTime,omitempty" db:"update_time,false,bigint"`                /* update_time update_time */
 	Status            null.String    `json:"Status,omitempty" db:"status,false,character varying"`              /* status status */
 	TotalScore        null.Float     `json:"TotalScore,omitempty" db:"total_score,false,double precision"`      /* total_score total_score */
-	QuestionCount     null.Int       `json:"QuestionCount,omitempty" db:"question_count,false,bigint"`          /* question_count question_count */
+	QuestionCount     null.Float     `json:"QuestionCount,omitempty" db:"question_count,false,numeric"`         /* question_count question_count */
 	GroupCount        null.Int       `json:"GroupCount,omitempty" db:"group_count,false,bigint"`                /* group_count group_count */
 	GroupsData        types.JSONText `json:"GroupsData,omitempty" db:"groups_data,false,jsonb"`                 /* groups_data groups_data */
-	ExamPaperID       null.Int       `json:"ExamPaperID,omitempty" db:"exampaper_id,false,integer"`             /* exampaper_id exampaper_id */
 	Filter            `json:"-"`     // build DML where clause
 }
 
@@ -23415,6 +23419,7 @@ type TVPaper struct {
 var TVPaperFields = []string{
 	"ID",
 	"DomainID",
+	"ExampaperID",
 	"Name",
 	"AssemblyType",
 	"Category",
@@ -23433,13 +23438,13 @@ var TVPaperFields = []string{
 	"QuestionCount",
 	"GroupCount",
 	"GroupsData",
-	"ExamPaperID",
 }
 
 // TVPaperColumns full column list for default query
 var TVPaperColumns = []string{
 	"id",
 	"domain_id",
+	"exampaper_id",
 	"name",
 	"assembly_type",
 	"category",
@@ -23458,13 +23463,13 @@ var TVPaperColumns = []string{
 	"question_count",
 	"group_count",
 	"groups_data",
-	"exampaper_id",
 }
 
 // TVPaperColumnsDataTypes full column data types for default query
 var TVPaperColumnsDataTypes = map[string]string{
 	"id":                 "integer",
 	"domain_id":          "bigint",
+	"exampaper_id":       "bigint",
 	"name":               "character varying",
 	"assembly_type":      "character varying",
 	"category":           "character varying",
@@ -23480,10 +23485,9 @@ var TVPaperColumnsDataTypes = map[string]string{
 	"update_time":        "bigint",
 	"status":             "character varying",
 	"total_score":        "double precision",
-	"question_count":     "bigint",
+	"question_count":     "numeric",
 	"group_count":        "bigint",
 	"groups_data":        "jsonb",
-	"exampaper_id":       "integer",
 }
 
 // GetFieldsMap returns a map of field names to their values.
@@ -23491,6 +23495,7 @@ func (r *TVPaper) GetFieldsMap() map[string]any {
 	return map[string]any{
 		"ID":                r.ID,
 		"DomainID":          r.DomainID,
+		"ExampaperID":       r.ExampaperID,
 		"Name":              r.Name,
 		"AssemblyType":      r.AssemblyType,
 		"Category":          r.Category,
@@ -23509,7 +23514,6 @@ func (r *TVPaper) GetFieldsMap() map[string]any {
 		"QuestionCount":     r.QuestionCount,
 		"GroupCount":        r.GroupCount,
 		"GroupsData":        r.GroupsData,
-		"ExamPaperID":       r.ExamPaperID,
 	}
 }
 
@@ -23518,6 +23522,7 @@ func (r *TVPaper) GetColumnsMap() map[string]any {
 	return map[string]any{
 		"id":                 r.ID,
 		"domain_id":          r.DomainID,
+		"exampaper_id":       r.ExampaperID,
 		"name":               r.Name,
 		"assembly_type":      r.AssemblyType,
 		"category":           r.Category,
@@ -23536,7 +23541,6 @@ func (r *TVPaper) GetColumnsMap() map[string]any {
 		"question_count":     r.QuestionCount,
 		"group_count":        r.GroupCount,
 		"groups_data":        r.GroupsData,
-		"exampaper_id":       r.ExamPaperID,
 	}
 }
 
@@ -23558,8 +23562,8 @@ func (r *TVPaper) GetTableName() string {
 // Create inserts the TVPaper to the database.
 func (r *TVPaper) Create(db Queryer) error {
 	_, err := db.Exec(
-		`INSERT INTO t_v_paper (id, domain_id, name, assembly_type, category, level, suggested_duration, description, tags, config, creator, creator_info, create_time, updated_by, update_time, status, total_score, question_count, group_count, groups_data) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)`,
-		&r.ID, &r.DomainID, &r.Name, &r.AssemblyType, &r.Category, &r.Level, &r.SuggestedDuration, &r.Description, &r.Tags, &r.Config, &r.Creator, &r.CreatorInfo, &r.CreateTime, &r.UpdatedBy, &r.UpdateTime, &r.Status, &r.TotalScore, &r.QuestionCount, &r.GroupCount, &r.GroupsData)
+		`INSERT INTO t_v_paper (id, domain_id, exampaper_id, name, assembly_type, category, level, suggested_duration, description, tags, config, creator, creator_info, create_time, updated_by, update_time, status, total_score, question_count, group_count, groups_data) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)`,
+		&r.ID, &r.DomainID, &r.ExampaperID, &r.Name, &r.AssemblyType, &r.Category, &r.Level, &r.SuggestedDuration, &r.Description, &r.Tags, &r.Config, &r.Creator, &r.CreatorInfo, &r.CreateTime, &r.UpdatedBy, &r.UpdateTime, &r.Status, &r.TotalScore, &r.QuestionCount, &r.GroupCount, &r.GroupsData)
 	if err != nil {
 		return errors.Wrap(err, "failed to insert t_v_paper")
 	}
@@ -23572,8 +23576,8 @@ func GetTVPaperByPk(db Queryer) (*TVPaper, error) {
 
 	var r TVPaper
 	err := db.QueryRow(
-		`SELECT id, domain_id, name, assembly_type, category, level, suggested_duration, description, tags, config, creator, creator_info, create_time, updated_by, update_time, status, total_score, question_count, group_count, groups_data FROM t_v_paper`,
-	).Scan(&r.ID, &r.DomainID, &r.Name, &r.AssemblyType, &r.Category, &r.Level, &r.SuggestedDuration, &r.Description, &r.Tags, &r.Config, &r.Creator, &r.CreatorInfo, &r.CreateTime, &r.UpdatedBy, &r.UpdateTime, &r.Status, &r.TotalScore, &r.QuestionCount, &r.GroupCount, &r.GroupsData)
+		`SELECT id, domain_id, exampaper_id, name, assembly_type, category, level, suggested_duration, description, tags, config, creator, creator_info, create_time, updated_by, update_time, status, total_score, question_count, group_count, groups_data FROM t_v_paper`,
+	).Scan(&r.ID, &r.DomainID, &r.ExampaperID, &r.Name, &r.AssemblyType, &r.Category, &r.Level, &r.SuggestedDuration, &r.Description, &r.Tags, &r.Config, &r.Creator, &r.CreatorInfo, &r.CreateTime, &r.UpdatedBy, &r.UpdateTime, &r.Status, &r.TotalScore, &r.QuestionCount, &r.GroupCount, &r.GroupsData)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to select t_v_paper")
 	}
@@ -24146,153 +24150,6 @@ func GetTVPracticeUnmarkedStudentCntByPk(db Queryer) (*TVPracticeUnmarkedStudent
 	).Scan(&r.PracticeID, &r.UnmarkedCount)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to select t_v_practice_unmarked_student_cnt")
-	}
-	return &r, nil
-}
-
-/*TVPracticeWrongCollection t_v_practice_wrong_collection represents assessuser.t_v_practice_wrong_collection */
-type TVPracticeWrongCollection struct {
-	ID            null.Int       `json:"ID,omitempty" db:"id,false,integer"`                           /* id id */
-	Name          null.String    `json:"Name,omitempty" db:"name,false,character varying"`             /* name name */
-	StudentID     null.Int       `json:"StudentID,omitempty" db:"student_id,false,bigint"`             /* student_id student_id */
-	PracticeID    null.Int       `json:"PracticeID,omitempty" db:"practice_id,false,bigint"`           /* practice_id practice_id */
-	Creator       null.Int       `json:"Creator,omitempty" db:"creator,false,bigint"`                  /* creator creator */
-	CreateTime    null.Int       `json:"CreateTime,omitempty" db:"create_time,false,bigint"`           /* create_time create_time */
-	UpdatedBy     null.Int       `json:"UpdatedBy,omitempty" db:"updated_by,false,bigint"`             /* updated_by updated_by */
-	UpdateTime    null.Int       `json:"UpdateTime,omitempty" db:"update_time,false,bigint"`           /* update_time update_time */
-	Status        null.String    `json:"Status,omitempty" db:"status,false,character varying"`         /* status status */
-	TotalScore    null.Float     `json:"TotalScore,omitempty" db:"total_score,false,double precision"` /* total_score total_score */
-	QuestionCount null.Float     `json:"QuestionCount,omitempty" db:"question_count,false,numeric"`    /* question_count question_count */
-	GroupCount    null.Int       `json:"GroupCount,omitempty" db:"group_count,false,bigint"`           /* group_count group_count */
-	GroupsData    types.JSONText `json:"GroupsData,omitempty" db:"groups_data,false,jsonb"`            /* groups_data groups_data */
-	Filter        `json:"-"`     // build DML where clause
-}
-
-// TVPracticeWrongCollectionFields full field list for default query
-var TVPracticeWrongCollectionFields = []string{
-	"ID",
-	"Name",
-	"StudentID",
-	"PracticeID",
-	"Creator",
-	"CreateTime",
-	"UpdatedBy",
-	"UpdateTime",
-	"Status",
-	"TotalScore",
-	"QuestionCount",
-	"GroupCount",
-	"GroupsData",
-}
-
-// TVPracticeWrongCollectionColumns full column list for default query
-var TVPracticeWrongCollectionColumns = []string{
-	"id",
-	"name",
-	"student_id",
-	"practice_id",
-	"creator",
-	"create_time",
-	"updated_by",
-	"update_time",
-	"status",
-	"total_score",
-	"question_count",
-	"group_count",
-	"groups_data",
-}
-
-// TVPracticeWrongCollectionColumnsDataTypes full column data types for default query
-var TVPracticeWrongCollectionColumnsDataTypes = map[string]string{
-	"id":             "integer",
-	"name":           "character varying",
-	"student_id":     "bigint",
-	"practice_id":    "bigint",
-	"creator":        "bigint",
-	"create_time":    "bigint",
-	"updated_by":     "bigint",
-	"update_time":    "bigint",
-	"status":         "character varying",
-	"total_score":    "double precision",
-	"question_count": "numeric",
-	"group_count":    "bigint",
-	"groups_data":    "jsonb",
-}
-
-// GetFieldsMap returns a map of field names to their values.
-func (r *TVPracticeWrongCollection) GetFieldsMap() map[string]any {
-	return map[string]any{
-		"ID":            r.ID,
-		"Name":          r.Name,
-		"StudentID":     r.StudentID,
-		"PracticeID":    r.PracticeID,
-		"Creator":       r.Creator,
-		"CreateTime":    r.CreateTime,
-		"UpdatedBy":     r.UpdatedBy,
-		"UpdateTime":    r.UpdateTime,
-		"Status":        r.Status,
-		"TotalScore":    r.TotalScore,
-		"QuestionCount": r.QuestionCount,
-		"GroupCount":    r.GroupCount,
-		"GroupsData":    r.GroupsData,
-	}
-}
-
-// GetColumnsMap returns a map of column names to their values.
-func (r *TVPracticeWrongCollection) GetColumnsMap() map[string]any {
-	return map[string]any{
-		"id":             r.ID,
-		"name":           r.Name,
-		"student_id":     r.StudentID,
-		"practice_id":    r.PracticeID,
-		"creator":        r.Creator,
-		"create_time":    r.CreateTime,
-		"updated_by":     r.UpdatedBy,
-		"update_time":    r.UpdateTime,
-		"status":         r.Status,
-		"total_score":    r.TotalScore,
-		"question_count": r.QuestionCount,
-		"group_count":    r.GroupCount,
-		"groups_data":    r.GroupsData,
-	}
-}
-
-// Fields return all fields of struct.
-func (r *TVPracticeWrongCollection) Fields() []string {
-	return TVPracticeWrongCollectionFields
-}
-
-// GetTableName return the associated db table name.
-func (r *TVPracticeWrongCollection) GetTableName() string {
-	var viewNamePattern = regexp.MustCompile(`(?i)^t_v_[a-z0-9_]+$`)
-	tableName := "t_v_practice_wrong_collection"
-	if viewNamePattern.MatchString(tableName) {
-		return tableName[2:]
-	}
-	return tableName
-}
-
-// Create inserts the TVPracticeWrongCollection to the database.
-func (r *TVPracticeWrongCollection) Create(db Queryer) error {
-	_, err := db.Exec(
-		`INSERT INTO t_v_practice_wrong_collection (id, name, student_id, practice_id, creator, create_time, updated_by, update_time, status, total_score, question_count, group_count, groups_data) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
-		&r.ID, &r.Name, &r.StudentID, &r.PracticeID, &r.Creator, &r.CreateTime, &r.UpdatedBy, &r.UpdateTime, &r.Status, &r.TotalScore, &r.QuestionCount, &r.GroupCount, &r.GroupsData)
-	if err != nil {
-		return errors.Wrap(err, "failed to insert t_v_practice_wrong_collection")
-	}
-	return nil
-}
-
-// GetTVPracticeWrongCollectionByPk select the TVPracticeWrongCollection from the database.
-func GetTVPracticeWrongCollectionByPk(db Queryer) (*TVPracticeWrongCollection, error) {
-	// Don't call this function, it is a view and doesn't have a primary key.
-
-	var r TVPracticeWrongCollection
-	err := db.QueryRow(
-		`SELECT id, name, student_id, practice_id, creator, create_time, updated_by, update_time, status, total_score, question_count, group_count, groups_data FROM t_v_practice_wrong_collection`,
-	).Scan(&r.ID, &r.Name, &r.StudentID, &r.PracticeID, &r.Creator, &r.CreateTime, &r.UpdatedBy, &r.UpdateTime, &r.Status, &r.TotalScore, &r.QuestionCount, &r.GroupCount, &r.GroupsData)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to select t_v_practice_wrong_collection")
 	}
 	return &r, nil
 }
@@ -26130,6 +25987,117 @@ func GetTVUserDomainAPIByPk(db Queryer) (*TVUserDomainAPI, error) {
 	return &r, nil
 }
 
+/*TVWPracticeSummary t_v_w_practice_summary represents assessuser.t_v_w_practice_summary */
+type TVWPracticeSummary struct {
+	PracticeSubmissionID null.Int   `json:"PracticeSubmissionID,omitempty" db:"practice_submission_id,false,integer"` /* practice_submission_id practice_submission_id */
+	LatestUnsubmittedID  null.Int   `json:"LatestUnsubmittedID,omitempty" db:"latest_unsubmitted_id,false,integer"`   /* latest_unsubmitted_id latest_unsubmitted_id */
+	LatestSubmittedID    null.Int   `json:"LatestSubmittedID,omitempty" db:"latest_submitted_id,false,integer"`       /* latest_submitted_id latest_submitted_id */
+	MaxAttempt           null.Int   `json:"MaxAttempt,omitempty" db:"max_attempt,false,integer"`                      /* max_attempt max_attempt */
+	StudentID            null.Int   `json:"StudentID,omitempty" db:"student_id,false,bigint"`                         /* student_id student_id */
+	PracticeID           null.Int   `json:"PracticeID,omitempty" db:"practice_id,false,bigint"`                       /* practice_id practice_id */
+	ExamPaperID          null.Int   `json:"ExamPaperID,omitempty" db:"exam_paper_id,false,bigint"`                    /* exam_paper_id exam_paper_id */
+	Filter               `json:"-"` // build DML where clause
+}
+
+// TVWPracticeSummaryFields full field list for default query
+var TVWPracticeSummaryFields = []string{
+	"PracticeSubmissionID",
+	"LatestUnsubmittedID",
+	"LatestSubmittedID",
+	"MaxAttempt",
+	"StudentID",
+	"PracticeID",
+	"ExamPaperID",
+}
+
+// TVWPracticeSummaryColumns full column list for default query
+var TVWPracticeSummaryColumns = []string{
+	"practice_submission_id",
+	"latest_unsubmitted_id",
+	"latest_submitted_id",
+	"max_attempt",
+	"student_id",
+	"practice_id",
+	"exam_paper_id",
+}
+
+// TVWPracticeSummaryColumnsDataTypes full column data types for default query
+var TVWPracticeSummaryColumnsDataTypes = map[string]string{
+	"practice_submission_id": "integer",
+	"latest_unsubmitted_id":  "integer",
+	"latest_submitted_id":    "integer",
+	"max_attempt":            "integer",
+	"student_id":             "bigint",
+	"practice_id":            "bigint",
+	"exam_paper_id":          "bigint",
+}
+
+// GetFieldsMap returns a map of field names to their values.
+func (r *TVWPracticeSummary) GetFieldsMap() map[string]any {
+	return map[string]any{
+		"PracticeSubmissionID": r.PracticeSubmissionID,
+		"LatestUnsubmittedID":  r.LatestUnsubmittedID,
+		"LatestSubmittedID":    r.LatestSubmittedID,
+		"MaxAttempt":           r.MaxAttempt,
+		"StudentID":            r.StudentID,
+		"PracticeID":           r.PracticeID,
+		"ExamPaperID":          r.ExamPaperID,
+	}
+}
+
+// GetColumnsMap returns a map of column names to their values.
+func (r *TVWPracticeSummary) GetColumnsMap() map[string]any {
+	return map[string]any{
+		"practice_submission_id": r.PracticeSubmissionID,
+		"latest_unsubmitted_id":  r.LatestUnsubmittedID,
+		"latest_submitted_id":    r.LatestSubmittedID,
+		"max_attempt":            r.MaxAttempt,
+		"student_id":             r.StudentID,
+		"practice_id":            r.PracticeID,
+		"exam_paper_id":          r.ExamPaperID,
+	}
+}
+
+// Fields return all fields of struct.
+func (r *TVWPracticeSummary) Fields() []string {
+	return TVWPracticeSummaryFields
+}
+
+// GetTableName return the associated db table name.
+func (r *TVWPracticeSummary) GetTableName() string {
+	var viewNamePattern = regexp.MustCompile(`(?i)^t_v_[a-z0-9_]+$`)
+	tableName := "t_v_w_practice_summary"
+	if viewNamePattern.MatchString(tableName) {
+		return tableName[2:]
+	}
+	return tableName
+}
+
+// Create inserts the TVWPracticeSummary to the database.
+func (r *TVWPracticeSummary) Create(db Queryer) error {
+	_, err := db.Exec(
+		`INSERT INTO t_v_w_practice_summary (practice_submission_id, latest_unsubmitted_id, latest_submitted_id, max_attempt, student_id, practice_id, exam_paper_id) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+		&r.PracticeSubmissionID, &r.LatestUnsubmittedID, &r.LatestSubmittedID, &r.MaxAttempt, &r.StudentID, &r.PracticeID, &r.ExamPaperID)
+	if err != nil {
+		return errors.Wrap(err, "failed to insert t_v_w_practice_summary")
+	}
+	return nil
+}
+
+// GetTVWPracticeSummaryByPk select the TVWPracticeSummary from the database.
+func GetTVWPracticeSummaryByPk(db Queryer) (*TVWPracticeSummary, error) {
+	// Don't call this function, it is a view and doesn't have a primary key.
+
+	var r TVWPracticeSummary
+	err := db.QueryRow(
+		`SELECT practice_submission_id, latest_unsubmitted_id, latest_submitted_id, max_attempt, student_id, practice_id, exam_paper_id FROM t_v_w_practice_summary`,
+	).Scan(&r.PracticeSubmissionID, &r.LatestUnsubmittedID, &r.LatestSubmittedID, &r.MaxAttempt, &r.StudentID, &r.PracticeID, &r.ExamPaperID)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to select t_v_w_practice_summary")
+	}
+	return &r, nil
+}
+
 /*TVXkbSchoolLayout t_v_xkb_school_layout represents assessuser.t_v_xkb_school_layout */
 type TVXkbSchoolLayout struct {
 	School     null.String    `json:"School,omitempty" db:"school,false,character varying"` /* school school */
@@ -26568,8 +26536,8 @@ func GetTVXkbUserByPk(db Queryer) (*TVXkbUser, error) {
 	return &r, nil
 }
 
-/*TVZFirstWrongCollection t_v_z_first_wrong_collection represents assessuser.t_v_z_first_wrong_collection */
-type TVZFirstWrongCollection struct {
+/*TVZSubmissionWrongCollection t_v_z_submission_wrong_collection represents assessuser.t_v_z_submission_wrong_collection */
+type TVZSubmissionWrongCollection struct {
 	ID                   null.Int       `json:"ID,omitempty" db:"id,false,integer"`                                       /* id id */
 	Name                 null.String    `json:"Name,omitempty" db:"name,false,character varying"`                         /* name name */
 	StudentID            null.Int       `json:"StudentID,omitempty" db:"student_id,false,bigint"`                         /* student_id student_id */
@@ -26587,8 +26555,8 @@ type TVZFirstWrongCollection struct {
 	Filter               `json:"-"`     // build DML where clause
 }
 
-// TVZFirstWrongCollectionFields full field list for default query
-var TVZFirstWrongCollectionFields = []string{
+// TVZSubmissionWrongCollectionFields full field list for default query
+var TVZSubmissionWrongCollectionFields = []string{
 	"ID",
 	"Name",
 	"StudentID",
@@ -26605,8 +26573,8 @@ var TVZFirstWrongCollectionFields = []string{
 	"GroupsData",
 }
 
-// TVZFirstWrongCollectionColumns full column list for default query
-var TVZFirstWrongCollectionColumns = []string{
+// TVZSubmissionWrongCollectionColumns full column list for default query
+var TVZSubmissionWrongCollectionColumns = []string{
 	"id",
 	"name",
 	"student_id",
@@ -26623,8 +26591,8 @@ var TVZFirstWrongCollectionColumns = []string{
 	"groups_data",
 }
 
-// TVZFirstWrongCollectionColumnsDataTypes full column data types for default query
-var TVZFirstWrongCollectionColumnsDataTypes = map[string]string{
+// TVZSubmissionWrongCollectionColumnsDataTypes full column data types for default query
+var TVZSubmissionWrongCollectionColumnsDataTypes = map[string]string{
 	"id":                     "integer",
 	"name":                   "character varying",
 	"student_id":             "bigint",
@@ -26642,7 +26610,7 @@ var TVZFirstWrongCollectionColumnsDataTypes = map[string]string{
 }
 
 // GetFieldsMap returns a map of field names to their values.
-func (r *TVZFirstWrongCollection) GetFieldsMap() map[string]any {
+func (r *TVZSubmissionWrongCollection) GetFieldsMap() map[string]any {
 	return map[string]any{
 		"ID":                   r.ID,
 		"Name":                 r.Name,
@@ -26662,7 +26630,7 @@ func (r *TVZFirstWrongCollection) GetFieldsMap() map[string]any {
 }
 
 // GetColumnsMap returns a map of column names to their values.
-func (r *TVZFirstWrongCollection) GetColumnsMap() map[string]any {
+func (r *TVZSubmissionWrongCollection) GetColumnsMap() map[string]any {
 	return map[string]any{
 		"id":                     r.ID,
 		"name":                   r.Name,
@@ -26682,188 +26650,41 @@ func (r *TVZFirstWrongCollection) GetColumnsMap() map[string]any {
 }
 
 // Fields return all fields of struct.
-func (r *TVZFirstWrongCollection) Fields() []string {
-	return TVZFirstWrongCollectionFields
+func (r *TVZSubmissionWrongCollection) Fields() []string {
+	return TVZSubmissionWrongCollectionFields
 }
 
 // GetTableName return the associated db table name.
-func (r *TVZFirstWrongCollection) GetTableName() string {
+func (r *TVZSubmissionWrongCollection) GetTableName() string {
 	var viewNamePattern = regexp.MustCompile(`(?i)^t_v_[a-z0-9_]+$`)
-	tableName := "t_v_z_first_wrong_collection"
+	tableName := "t_v_z_submission_wrong_collection"
 	if viewNamePattern.MatchString(tableName) {
 		return tableName[2:]
 	}
 	return tableName
 }
 
-// Create inserts the TVZFirstWrongCollection to the database.
-func (r *TVZFirstWrongCollection) Create(db Queryer) error {
+// Create inserts the TVZSubmissionWrongCollection to the database.
+func (r *TVZSubmissionWrongCollection) Create(db Queryer) error {
 	_, err := db.Exec(
-		`INSERT INTO t_v_z_first_wrong_collection (id, name, student_id, practice_id, practice_submission_id, creator, create_time, updated_by, update_time, status, total_score, question_count, group_count, groups_data) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
+		`INSERT INTO t_v_z_submission_wrong_collection (id, name, student_id, practice_id, practice_submission_id, creator, create_time, updated_by, update_time, status, total_score, question_count, group_count, groups_data) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
 		&r.ID, &r.Name, &r.StudentID, &r.PracticeID, &r.PracticeSubmissionID, &r.Creator, &r.CreateTime, &r.UpdatedBy, &r.UpdateTime, &r.Status, &r.TotalScore, &r.QuestionCount, &r.GroupCount, &r.GroupsData)
 	if err != nil {
-		return errors.Wrap(err, "failed to insert t_v_z_first_wrong_collection")
+		return errors.Wrap(err, "failed to insert t_v_z_submission_wrong_collection")
 	}
 	return nil
 }
 
-// GetTVZFirstWrongCollectionByPk select the TVZFirstWrongCollection from the database.
-func GetTVZFirstWrongCollectionByPk(db Queryer) (*TVZFirstWrongCollection, error) {
+// GetTVZSubmissionWrongCollectionByPk select the TVZSubmissionWrongCollection from the database.
+func GetTVZSubmissionWrongCollectionByPk(db Queryer) (*TVZSubmissionWrongCollection, error) {
 	// Don't call this function, it is a view and doesn't have a primary key.
 
-	var r TVZFirstWrongCollection
+	var r TVZSubmissionWrongCollection
 	err := db.QueryRow(
-		`SELECT id, name, student_id, practice_id, practice_submission_id, creator, create_time, updated_by, update_time, status, total_score, question_count, group_count, groups_data FROM t_v_z_first_wrong_collection`,
+		`SELECT id, name, student_id, practice_id, practice_submission_id, creator, create_time, updated_by, update_time, status, total_score, question_count, group_count, groups_data FROM t_v_z_submission_wrong_collection`,
 	).Scan(&r.ID, &r.Name, &r.StudentID, &r.PracticeID, &r.PracticeSubmissionID, &r.Creator, &r.CreateTime, &r.UpdatedBy, &r.UpdateTime, &r.Status, &r.TotalScore, &r.QuestionCount, &r.GroupCount, &r.GroupsData)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to select t_v_z_first_wrong_collection")
-	}
-	return &r, nil
-}
-
-/*TVZWrongSubmissionCollection t_v_z_wrong_submission_collection represents assessuser.t_v_z_wrong_submission_collection */
-type TVZWrongSubmissionCollection struct {
-	ID                null.Int       `json:"ID,omitempty" db:"id,false,integer"`                                 /* id id */
-	Name              null.String    `json:"Name,omitempty" db:"name,false,character varying"`                   /* name name */
-	StudentID         null.Int       `json:"StudentID,omitempty" db:"student_id,false,bigint"`                   /* student_id student_id */
-	PracticeID        null.Int       `json:"PracticeID,omitempty" db:"practice_id,false,bigint"`                 /* practice_id practice_id */
-	WrongSubmissionID null.Int       `json:"WrongSubmissionID,omitempty" db:"wrong_submission_id,false,integer"` /* wrong_submission_id wrong_submission_id */
-	Creator           null.Int       `json:"Creator,omitempty" db:"creator,false,bigint"`                        /* creator creator */
-	CreateTime        null.Int       `json:"CreateTime,omitempty" db:"create_time,false,bigint"`                 /* create_time create_time */
-	UpdatedBy         null.Int       `json:"UpdatedBy,omitempty" db:"updated_by,false,bigint"`                   /* updated_by updated_by */
-	UpdateTime        null.Int       `json:"UpdateTime,omitempty" db:"update_time,false,bigint"`                 /* update_time update_time */
-	TotalScore        null.Float     `json:"TotalScore,omitempty" db:"total_score,false,double precision"`       /* total_score total_score */
-	QuestionCount     null.Float     `json:"QuestionCount,omitempty" db:"question_count,false,numeric"`          /* question_count question_count */
-	GroupCount        null.Int       `json:"GroupCount,omitempty" db:"group_count,false,bigint"`                 /* group_count group_count */
-	GroupsData        types.JSONText `json:"GroupsData,omitempty" db:"groups_data,false,jsonb"`                  /* groups_data groups_data */
-	Filter            `json:"-"`     // build DML where clause
-}
-
-// TVZWrongSubmissionCollectionFields full field list for default query
-var TVZWrongSubmissionCollectionFields = []string{
-	"ID",
-	"Name",
-	"StudentID",
-	"PracticeID",
-	"WrongSubmissionID",
-	"Creator",
-	"CreateTime",
-	"UpdatedBy",
-	"UpdateTime",
-	"TotalScore",
-	"QuestionCount",
-	"GroupCount",
-	"GroupsData",
-}
-
-// TVZWrongSubmissionCollectionColumns full column list for default query
-var TVZWrongSubmissionCollectionColumns = []string{
-	"id",
-	"name",
-	"student_id",
-	"practice_id",
-	"wrong_submission_id",
-	"creator",
-	"create_time",
-	"updated_by",
-	"update_time",
-	"total_score",
-	"question_count",
-	"group_count",
-	"groups_data",
-}
-
-// TVZWrongSubmissionCollectionColumnsDataTypes full column data types for default query
-var TVZWrongSubmissionCollectionColumnsDataTypes = map[string]string{
-	"id":                  "integer",
-	"name":                "character varying",
-	"student_id":          "bigint",
-	"practice_id":         "bigint",
-	"wrong_submission_id": "integer",
-	"creator":             "bigint",
-	"create_time":         "bigint",
-	"updated_by":          "bigint",
-	"update_time":         "bigint",
-	"total_score":         "double precision",
-	"question_count":      "numeric",
-	"group_count":         "bigint",
-	"groups_data":         "jsonb",
-}
-
-// GetFieldsMap returns a map of field names to their values.
-func (r *TVZWrongSubmissionCollection) GetFieldsMap() map[string]any {
-	return map[string]any{
-		"ID":                r.ID,
-		"Name":              r.Name,
-		"StudentID":         r.StudentID,
-		"PracticeID":        r.PracticeID,
-		"WrongSubmissionID": r.WrongSubmissionID,
-		"Creator":           r.Creator,
-		"CreateTime":        r.CreateTime,
-		"UpdatedBy":         r.UpdatedBy,
-		"UpdateTime":        r.UpdateTime,
-		"TotalScore":        r.TotalScore,
-		"QuestionCount":     r.QuestionCount,
-		"GroupCount":        r.GroupCount,
-		"GroupsData":        r.GroupsData,
-	}
-}
-
-// GetColumnsMap returns a map of column names to their values.
-func (r *TVZWrongSubmissionCollection) GetColumnsMap() map[string]any {
-	return map[string]any{
-		"id":                  r.ID,
-		"name":                r.Name,
-		"student_id":          r.StudentID,
-		"practice_id":         r.PracticeID,
-		"wrong_submission_id": r.WrongSubmissionID,
-		"creator":             r.Creator,
-		"create_time":         r.CreateTime,
-		"updated_by":          r.UpdatedBy,
-		"update_time":         r.UpdateTime,
-		"total_score":         r.TotalScore,
-		"question_count":      r.QuestionCount,
-		"group_count":         r.GroupCount,
-		"groups_data":         r.GroupsData,
-	}
-}
-
-// Fields return all fields of struct.
-func (r *TVZWrongSubmissionCollection) Fields() []string {
-	return TVZWrongSubmissionCollectionFields
-}
-
-// GetTableName return the associated db table name.
-func (r *TVZWrongSubmissionCollection) GetTableName() string {
-	var viewNamePattern = regexp.MustCompile(`(?i)^t_v_[a-z0-9_]+$`)
-	tableName := "t_v_z_wrong_submission_collection"
-	if viewNamePattern.MatchString(tableName) {
-		return tableName[2:]
-	}
-	return tableName
-}
-
-// Create inserts the TVZWrongSubmissionCollection to the database.
-func (r *TVZWrongSubmissionCollection) Create(db Queryer) error {
-	_, err := db.Exec(
-		`INSERT INTO t_v_z_wrong_submission_collection (id, name, student_id, practice_id, wrong_submission_id, creator, create_time, updated_by, update_time, total_score, question_count, group_count, groups_data) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
-		&r.ID, &r.Name, &r.StudentID, &r.PracticeID, &r.WrongSubmissionID, &r.Creator, &r.CreateTime, &r.UpdatedBy, &r.UpdateTime, &r.TotalScore, &r.QuestionCount, &r.GroupCount, &r.GroupsData)
-	if err != nil {
-		return errors.Wrap(err, "failed to insert t_v_z_wrong_submission_collection")
-	}
-	return nil
-}
-
-// GetTVZWrongSubmissionCollectionByPk select the TVZWrongSubmissionCollection from the database.
-func GetTVZWrongSubmissionCollectionByPk(db Queryer) (*TVZWrongSubmissionCollection, error) {
-	// Don't call this function, it is a view and doesn't have a primary key.
-
-	var r TVZWrongSubmissionCollection
-	err := db.QueryRow(
-		`SELECT id, name, student_id, practice_id, wrong_submission_id, creator, create_time, updated_by, update_time, total_score, question_count, group_count, groups_data FROM t_v_z_wrong_submission_collection`,
-	).Scan(&r.ID, &r.Name, &r.StudentID, &r.PracticeID, &r.WrongSubmissionID, &r.Creator, &r.CreateTime, &r.UpdatedBy, &r.UpdateTime, &r.TotalScore, &r.QuestionCount, &r.GroupCount, &r.GroupsData)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to select t_v_z_wrong_submission_collection")
+		return nil, errors.Wrap(err, "failed to select t_v_z_submission_wrong_collection")
 	}
 	return &r, nil
 }
