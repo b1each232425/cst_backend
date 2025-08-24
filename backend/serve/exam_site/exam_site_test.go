@@ -1219,7 +1219,7 @@ func TestExamSiteList(t *testing.T) {
 						"pageSize": 10,
 						"orderBy": [
 							{
-								"roomCount": "DESC"
+								"": "DESC"
 							}
 						],
 						"filter": {
