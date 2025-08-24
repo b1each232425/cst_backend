@@ -2,8 +2,9 @@ package cmn
 
 import (
 	"context"
-	"github.com/jmoiron/sqlx/types"
 	"regexp"
+
+	"github.com/jmoiron/sqlx/types"
 )
 
 // ServeEndPoint define the service
@@ -12,6 +13,8 @@ type ServeEndPoint struct {
 
 	//Path required, the service url must be unique
 	Path string `json:"path,omitempty"`
+
+	PkgName string `json:"pkg_name,omitempty"`
 
 	//Fn process function
 	Fn func(context.Context) `json:"-"`
