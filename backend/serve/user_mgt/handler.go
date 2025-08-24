@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/wneessen/go-mail"
 	"w2w.io/cmn"
 	"w2w.io/null"
 )
@@ -617,6 +618,7 @@ func (h *handler) HandleSendValidationCodeEmail(ctx context.Context) {
 	q := cmn.GetCtxValue(ctx)
 	z.Info("---->" + cmn.FncName())
 
+	forceErr, _ := ctx.Value("force-error").(string) // 用于强制执行错误处理代码
 	var err error
 
 	method := strings.ToLower(q.R.Method)
@@ -638,7 +640,7 @@ func (h *handler) HandleSendValidationCodeEmail(ctx context.Context) {
 	}
 
 	n, err := rand.Int(rand.Reader, big.NewInt(1000000))
-	if err != nil {
+	if err != nil || forceErr == "rand.Int" {
 		q.Err = fmt.Errorf("生成验证码失败，请稍后再试: %w", err)
 		z.Error(q.Err.Error())
 		q.RespErr()
@@ -646,30 +648,28 @@ func (h *handler) HandleSendValidationCodeEmail(ctx context.Context) {
 	}
 	code := fmt.Sprintf("%06d", n.Int64()) // 6位验证码
 
-	fmt.Println("验证码:", code) // 调试输出
+	subject := "3min学习平台 - 验证您的电子邮件地址"
+	body := fmt.Sprintf(`尊敬的学员，<br><br>
+	感谢您选择加入「3min学习平台」！为了保障您的账户安全，我们需要验证您的电子邮件地址。<br><br>
+	您的专属验证码是：<strong>%s</strong><br><br>
+	该验证码有效期为<strong>%s</strong>分钟，请在验证码有效期内将此验证码输入到平台的验证页面，以完成认证。<br><br>
+	如果您没有请求此验证码，请忽略此邮件，您的账户信息不会受到影响。<br><br>
+	如需帮助或有任何疑问，您可以直接回复此邮件与我们联系，我们的客服团队将竭诚为您服务。<br><br>
+	祝您在「3min学习平台」的学习之旅中收获知识与成长！<br><br>
+	——3min学习平台团队`, code, "15")
 
-	//subject := "3min学习平台 - 验证您的电子邮件地址"
-	//body := fmt.Sprintf(`尊敬的学员，<br><br>
-	//感谢您选择加入「3min学习平台」！为了保障您的账户安全，我们需要验证您的电子邮件地址。<br><br>
-	//您的专属验证码是：<strong>%s</strong><br><br>
-	//该验证码有效期为<strong>%s</strong>分钟，请在验证码有效期内将此验证码输入到平台的验证页面，以完成认证。<br><br>
-	//如果您没有请求此验证码，请忽略此邮件，您的账户信息不会受到影响。<br><br>
-	//如需帮助或有任何疑问，您可以直接回复此邮件与我们联系，我们的客服团队将竭诚为您服务。<br><br>
-	//祝您在「3min学习平台」的学习之旅中收获知识与成长！<br><br>
-	//——3min学习平台团队`, code, "15")
-
-	//err = h.srv.SendEmail(recipient, subject, body, mail.TypeTextHTML)
-	//if err != nil {
-	//	q.Err = fmt.Errorf("发送验证码邮件失败，请稍后再试: %w", err)
-	//	q.RespErr()
-	//	return
-	//}
+	err = h.srv.SendEmail(ctx, recipient, subject, body, mail.TypeTextHTML)
+	if err != nil {
+		q.Err = fmt.Errorf("发送验证码邮件失败，请稍后再试: %w", err)
+		q.RespErr()
+		return
+	}
 
 	// 将验证码保存到redis
 	rdb := cmn.GetRedisConn()
 	key := "verify:email:" + strings.ToLower(recipient)
 	err = rdb.Set(ctx, key, code, 15*time.Minute).Err()
-	if err != nil {
+	if err != nil || forceErr == "rdb.Set" {
 		q.Err = fmt.Errorf("发送验证码邮件失败，请稍后再试: %w", err)
 		z.Error(q.Err.Error())
 		q.RespErr()

@@ -916,17 +916,18 @@ func (r *service) SendEmail(ctx context.Context, recipient, subject, body string
 		return e
 	}
 
+	forceErr, _ := ctx.Value("force-error").(string)
 	var err error
 
 	message := mail.NewMsg()
 	err = message.From(mailServer.Sender)
-	if err != nil {
+	if err != nil || forceErr == "message.From" {
 		e := fmt.Errorf("set sender failed: %w", err)
 		z.Error(e.Error())
 		return e
 	}
 	err = message.To(recipient)
-	if err != nil {
+	if err != nil || forceErr == "message.To" {
 		e := fmt.Errorf("set recipient failed: %w", err)
 		z.Error(e.Error())
 		return e
@@ -940,7 +941,7 @@ func (r *service) SendEmail(ctx context.Context, recipient, subject, body string
 	}
 
 	err = mailClient.DialAndSend(message)
-	if err != nil {
+	if err != nil || forceErr == "mailClient.DialAndSend" {
 		e := fmt.Errorf("send email failed: %w", err)
 		z.Error(e.Error())
 		return e
