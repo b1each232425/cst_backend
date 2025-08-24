@@ -3,7 +3,7 @@
  * @Description: 练习管理所需模型
  * @Date: 2025-07-15 19:59:25
  * @LastEditors: zdl <1311866870@qq.com>
- * @LastEditTime: 2025-08-20 10:29:20
+ * @LastEditTime: 2025-08-23 09:49:10
  */
 package practice_mgt
 
@@ -129,6 +129,7 @@ type practiceStudent struct {
 
 type EnterPracticeInfo struct {
 	PracticeSubmissionID int64   `json:"PracticeSubmissionID"`
+	WrongSubmissionID    int64   `json:"WrongSubmissionID"`
 	PaperName            string  `json:"PaperName,omitempty"`
 	Duration             int64   `json:"Duration,omitempty"`
 	TotalScore           float64 `json:"TotalScore,omitempty"`
