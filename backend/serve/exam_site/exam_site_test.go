@@ -2232,6 +2232,196 @@ func TestExamRoom(t *testing.T) {
 			cleanup:      defaultCleanup,
 		},
 		{
+			name: "添加考场失败-没有权限",
+			q: &cmn.ServiceCtx{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-room",
+				},
+				R: httptest.NewRequest("POST", "/api/exam-site", strings.NewReader(fmt.Sprintf(`{
+					"data": {
+						"name": "test-room-%d",
+						"capacity": 30,
+						"examSiteID": %d
+					}
+				}`, nowTime, nowTime))),
+				W: httptest.NewRecorder(),
+				Msg: &cmn.ReplyProto{
+					API:    "/api/exam-site",
+					Method: "POST",
+				},
+				BeginTime: time.Now(),
+				SysUser: &cmn.TUser{
+					ID:   null.NewInt(testUserID, true),
+					Role: null.NewInt(int64(cmn.CDomainAssessStudent), true),
+				},
+				Domains: []cmn.TDomain{
+					{
+						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+					},
+				},
+				RedisClient: cmn.GetRedisConn(),
+			},
+			passExpected: false,
+			errWanted:    "当前用户没有权限创建该数据",
+			setup:        defaultSetup,
+			cleanup:      defaultCleanup,
+		},
+		{
+			name: "添加考场失败-强制准备检查访问权限 SQL 失败",
+			q: &cmn.ServiceCtx{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-room",
+				},
+				R: httptest.NewRequest("POST", "/api/exam-site", strings.NewReader(fmt.Sprintf(`{
+					"data": {
+						"name": "test-room-%d",
+						"capacity": 30,
+						"examSiteID": %d
+					}
+				}`, nowTime, nowTime))),
+				W: httptest.NewRecorder(),
+				Msg: &cmn.ReplyProto{
+					API:    "/api/exam-site",
+					Method: "POST",
+				},
+				BeginTime: time.Now(),
+				SysUser: &cmn.TUser{
+					ID:   null.NewInt(testUserID, true),
+					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+				},
+				Domains: []cmn.TDomain{
+					{
+						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+					},
+				},
+				RedisClient: cmn.GetRedisConn(),
+				Tag: map[string]interface{}{
+					"prepareCheckAccessSqlErr": fmt.Errorf("forced prepare check sql err"),
+				},
+			},
+			passExpected: false,
+			errWanted:    "forced prepare check sql err",
+			setup:        defaultSetup,
+			cleanup:      defaultCleanup,
+		},
+		{
+			name: "添加考场失败-强制执行检查访问权限 SQL 失败",
+			q: &cmn.ServiceCtx{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-room",
+				},
+				R: httptest.NewRequest("POST", "/api/exam-site", strings.NewReader(fmt.Sprintf(`{
+					"data": {
+						"name": "test-room-%d",
+						"capacity": 30,
+						"examSiteID": %d
+					}
+				}`, nowTime, nowTime))),
+				W: httptest.NewRecorder(),
+				Msg: &cmn.ReplyProto{
+					API:    "/api/exam-site",
+					Method: "POST",
+				},
+				BeginTime: time.Now(),
+				SysUser: &cmn.TUser{
+					ID:   null.NewInt(testUserID, true),
+					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+				},
+				Domains: []cmn.TDomain{
+					{
+						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+					},
+				},
+				RedisClient: cmn.GetRedisConn(),
+				Tag: map[string]interface{}{
+					"execCheckAccessSqlErr": fmt.Errorf("forced exec check sql err"),
+				},
+			},
+			passExpected: false,
+			errWanted:    "forced exec check sql err",
+			setup:        defaultSetup,
+			cleanup:      defaultCleanup,
+		},
+		{
+			name: "添加考场失败-强制获取执行检查访问权限 SQL 结果失败",
+			q: &cmn.ServiceCtx{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-room",
+				},
+				R: httptest.NewRequest("POST", "/api/exam-site", strings.NewReader(fmt.Sprintf(`{
+					"data": {
+						"name": "test-room-%d",
+						"capacity": 30,
+						"examSiteID": %d
+					}
+				}`, nowTime, nowTime))),
+				W: httptest.NewRecorder(),
+				Msg: &cmn.ReplyProto{
+					API:    "/api/exam-site",
+					Method: "POST",
+				},
+				BeginTime: time.Now(),
+				SysUser: &cmn.TUser{
+					ID:   null.NewInt(testUserID, true),
+					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+				},
+				Domains: []cmn.TDomain{
+					{
+						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+					},
+				},
+				RedisClient: cmn.GetRedisConn(),
+				Tag: map[string]interface{}{
+					"getCheckAccessResultErr": fmt.Errorf("forced get check sql result err"),
+				},
+			},
+			passExpected: false,
+			errWanted:    "forced get check sql result err",
+			setup:        defaultSetup,
+			cleanup:      defaultCleanup,
+		},
+		{
+			name: "添加考场失败-无权访问考点数据",
+			q: &cmn.ServiceCtx{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-room",
+				},
+				R: httptest.NewRequest("POST", "/api/exam-site", strings.NewReader(fmt.Sprintf(`{
+					"data": {
+						"name": "test-room-%d",
+						"capacity": 30,
+						"examSiteID": %d
+					}
+				}`, nowTime, nowTime))),
+				W: httptest.NewRecorder(),
+				Msg: &cmn.ReplyProto{
+					API:    "/api/exam-site",
+					Method: "POST",
+				},
+				BeginTime: time.Now(),
+				SysUser: &cmn.TUser{
+					ID:   null.NewInt(99999999, true),
+					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+				},
+				Domains: []cmn.TDomain{
+					{
+						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+					},
+				},
+				RedisClient: cmn.GetRedisConn(),
+				Tag: map[string]interface{}{},
+			},
+			passExpected: false,
+			errWanted:    fmt.Sprintf("当前用户无权获取该考点数据, id: %d", nowTime),
+			setup:        defaultSetup,
+			cleanup:      defaultCleanup,
+		},
+		{
 			name: "添加考场失败-解析请求体Data失败",
 			q: &cmn.ServiceCtx{
 				Ep: &cmn.ServeEndPoint{
@@ -2585,7 +2775,7 @@ func TestExamRoomList(t *testing.T) {
 		check        func(q *cmn.ServiceCtx, passExpected bool) (err error)
 	}{
 		{
-			name: "获取考点列表失败-无效的HTTP方法",
+			name: "获取考场列表失败-无效的HTTP方法",
 			q: &cmn.ServiceCtx{
 				Ep: &cmn.ServeEndPoint{
 					Path: "/api/exam-room/list",
@@ -2642,7 +2832,7 @@ func TestExamRoomList(t *testing.T) {
 		//
 		//
 		{
-			name: "获取考点列表成功",
+			name: "获取考场列表成功",
 			q: &cmn.ServiceCtx{
 				Ep: &cmn.ServeEndPoint{
 					Path: "/api/exam-room/list",
@@ -2687,7 +2877,7 @@ func TestExamRoomList(t *testing.T) {
 			cleanup:      defaultCleanup,
 		},
 		{
-			name: "获取考点列表失败-无权获取",
+			name: "获取考场列表失败-无权获取",
 			q: &cmn.ServiceCtx{
 				Ep: &cmn.ServeEndPoint{
 					Path: "/api/exam-room/list",
@@ -2732,7 +2922,7 @@ func TestExamRoomList(t *testing.T) {
 			cleanup:      defaultCleanup,
 		},
 		{
-			name: "获取考点列表失败-强制开启事务失败",
+			name: "获取考场列表失败-强制开启事务失败",
 			q: &cmn.ServiceCtx{
 				Ep: &cmn.ServeEndPoint{
 					Path: "/api/exam-room/list",
@@ -2780,7 +2970,7 @@ func TestExamRoomList(t *testing.T) {
 			cleanup:      defaultCleanup,
 		},
 		{
-			name: "获取考点列表失败-强制读取失败",
+			name: "获取考场列表失败-强制读取失败",
 			q: &cmn.ServiceCtx{
 				Ep: &cmn.ServeEndPoint{
 					Path: "/api/exam-room/list",
@@ -2828,7 +3018,7 @@ func TestExamRoomList(t *testing.T) {
 			cleanup:      defaultCleanup,
 		},
 		{
-			name: "获取考点列表失败-强制解析请求体失败",
+			name: "获取考场列表失败-强制解析请求体失败",
 			q: &cmn.ServiceCtx{
 				Ep: &cmn.ServeEndPoint{
 					Path: "/api/exam-room/list",
@@ -2873,7 +3063,7 @@ func TestExamRoomList(t *testing.T) {
 			cleanup:      defaultCleanup,
 		},
 		{
-			name: "获取考点列表失败-强制回滚失败",
+			name: "获取考场列表失败-强制回滚失败",
 			q: &cmn.ServiceCtx{
 				Ep: &cmn.ServeEndPoint{
 					Path: "/api/exam-room/list",
@@ -2921,7 +3111,7 @@ func TestExamRoomList(t *testing.T) {
 			cleanup:      defaultCleanup,
 		},
 		{
-			name: "获取考点列表失败-强制提交失败",
+			name: "获取考场列表失败-强制提交失败",
 			q: &cmn.ServiceCtx{
 				Ep: &cmn.ServeEndPoint{
 					Path: "/api/exam-room/list",
@@ -2969,7 +3159,7 @@ func TestExamRoomList(t *testing.T) {
 			cleanup:      defaultCleanup,
 		},
 		{
-			name: "获取考点列表失败-当前无权获取该考点数据",
+			name: "获取考场列表失败-当前无权获取该考点数据",
 			q: &cmn.ServiceCtx{
 				Ep: &cmn.ServeEndPoint{
 					Path: "/api/exam-room/list",
@@ -2997,7 +3187,7 @@ func TestExamRoomList(t *testing.T) {
 				},
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
-					ID:   null.NewInt(1000, true),
+					ID:   null.NewInt(99999999, true),
 					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
@@ -3015,7 +3205,7 @@ func TestExamRoomList(t *testing.T) {
 			cleanup:      defaultCleanup,
 		},
 		{
-			name: "获取考点列表失败-强制准备检查是否有权获取考点数据SQL失败",
+			name: "获取考场列表失败-强制准备检查是否有权获取考点数据SQL失败",
 			q: &cmn.ServiceCtx{
 				Ep: &cmn.ServeEndPoint{
 					Path: "/api/exam-room/list",
@@ -3063,7 +3253,7 @@ func TestExamRoomList(t *testing.T) {
 			cleanup:      defaultCleanup,
 		},
 		{
-			name: "获取考点列表失败-强制执行检查是否有权获取考点数据SQL失败",
+			name: "获取考场列表失败-强制执行检查是否有权获取考点数据SQL失败",
 			q: &cmn.ServiceCtx{
 				Ep: &cmn.ServeEndPoint{
 					Path: "/api/exam-room/list",
@@ -3111,7 +3301,7 @@ func TestExamRoomList(t *testing.T) {
 			cleanup:      defaultCleanup,
 		},
 		{
-			name: "获取考点列表失败-强制获取检查是否有权获取考点数据结果失败",
+			name: "获取考场列表失败-强制获取检查是否有权获取考点数据结果失败",
 			q: &cmn.ServiceCtx{
 				Ep: &cmn.ServeEndPoint{
 					Path: "/api/exam-room/list",
@@ -3159,7 +3349,7 @@ func TestExamRoomList(t *testing.T) {
 			cleanup:      defaultCleanup,
 		},
 		{
-			name: "获取考点列表失败-页码小于0",
+			name: "获取考场列表失败-页码小于0",
 			q: &cmn.ServiceCtx{
 				Ep: &cmn.ServeEndPoint{
 					Path: "/api/exam-room/list",
@@ -3205,7 +3395,7 @@ func TestExamRoomList(t *testing.T) {
 			cleanup:      defaultCleanup,
 		},
 		{
-			name: "获取考点列表失败-页大小小于1",
+			name: "获取考场列表失败-页大小小于1",
 			q: &cmn.ServiceCtx{
 				Ep: &cmn.ServeEndPoint{
 					Path: "/api/exam-room/list",
@@ -3251,7 +3441,7 @@ func TestExamRoomList(t *testing.T) {
 			cleanup:      defaultCleanup,
 		},
 		{
-			name: "获取考点列表失败-不支持的排序",
+			name: "获取考场列表失败-不支持的排序",
 			q: &cmn.ServiceCtx{
 				Ep: &cmn.ServeEndPoint{
 					Path: "/api/exam-room/list",
@@ -3297,7 +3487,7 @@ func TestExamRoomList(t *testing.T) {
 			cleanup:      defaultCleanup,
 		},
 		{
-			name: "获取考点列表失败-强制准备获取考场数据SQL失败",
+			name: "获取考场列表失败-强制准备获取考场数据SQL失败",
 			q: &cmn.ServiceCtx{
 				Ep: &cmn.ServeEndPoint{
 					Path: "/api/exam-room/list",
@@ -3345,7 +3535,7 @@ func TestExamRoomList(t *testing.T) {
 			cleanup:      defaultCleanup,
 		},
 		{
-			name: "获取考点列表失败-强制执行获取考场总行数 SQL 失败",
+			name: "获取考场列表失败-强制执行获取考场总行数 SQL 失败",
 			q: &cmn.ServiceCtx{
 				Ep: &cmn.ServeEndPoint{
 					Path: "/api/exam-room/list",
@@ -3393,7 +3583,7 @@ func TestExamRoomList(t *testing.T) {
 			cleanup:      defaultCleanup,
 		},
 		{
-			name: "获取考点列表失败-强制获取考场数据SQL Affected Rows 失败",
+			name: "获取考场列表失败-强制获取考场数据SQL Affected Rows 失败",
 			q: &cmn.ServiceCtx{
 				Ep: &cmn.ServeEndPoint{
 					Path: "/api/exam-room/list",
@@ -3441,7 +3631,7 @@ func TestExamRoomList(t *testing.T) {
 			cleanup:      defaultCleanup,
 		},
 		{
-			name: "获取考点列表失败-强制准备获取考场列表数据失败",
+			name: "获取考场列表失败-强制准备获取考场列表数据失败",
 			q: &cmn.ServiceCtx{
 				Ep: &cmn.ServeEndPoint{
 					Path: "/api/exam-room/list",
@@ -3489,7 +3679,7 @@ func TestExamRoomList(t *testing.T) {
 			cleanup:      defaultCleanup,
 		},
 		{
-			name: "获取考点列表失败-强制执行查询获取考场列表数据 SQL 失败",
+			name: "获取考场列表失败-强制执行查询获取考场列表数据 SQL 失败",
 			q: &cmn.ServiceCtx{
 				Ep: &cmn.ServeEndPoint{
 					Path: "/api/exam-room/list",
@@ -3537,7 +3727,7 @@ func TestExamRoomList(t *testing.T) {
 			cleanup:      defaultCleanup,
 		},
 		{
-			name: "获取考点列表失败-强制执行查询获取考场列表数据 SQL 取值失败",
+			name: "获取考场列表失败-强制执行查询获取考场列表数据 SQL 取值失败",
 			q: &cmn.ServiceCtx{
 				Ep: &cmn.ServeEndPoint{
 					Path: "/api/exam-room/list",
@@ -3585,7 +3775,7 @@ func TestExamRoomList(t *testing.T) {
 			cleanup:      defaultCleanup,
 		},
 		{
-			name: "获取考点列表失败-强制 Marshal 查询结果返回失败",
+			name: "获取考场列表失败-强制 Marshal 查询结果返回失败",
 			q: &cmn.ServiceCtx{
 				Ep: &cmn.ServeEndPoint{
 					Path: "/api/exam-room/list",

@@ -1653,7 +1653,12 @@ func examRoom(ctx context.Context) {
 
 		sqlStr := fmt.Sprintf(`SELECT id FROM t_exam_site WHERE id = $1 AND  (creator = $2 OR %s)`, strings.Join(ss, " OR "))
 		stmt1, q.Err = tx.Prepare(sqlStr)
-		if q.Err != nil {
+		if q.Err != nil || (cmn.InDebugMode && q.Tag["prepareCheckAccessSqlErr"] != nil) {
+
+			if q.Err == nil {
+				q.Err = q.Tag["prepareCheckAccessSqlErr"].(error)
+			}
+
 			z.Error(q.Err.Error())
 			break
 		}
@@ -1662,20 +1667,30 @@ func examRoom(ctx context.Context) {
 
 		var r sql.Result
 		r, q.Err = stmt1.ExecContext(ctx, v...)
-		if q.Err != nil {
+		if q.Err != nil || (cmn.InDebugMode && q.Tag["execCheckAccessSqlErr"] != nil) {
+
+			if q.Err == nil {
+				q.Err = q.Tag["execCheckAccessSqlErr"].(error)
+			}
+
 			z.Error(q.Err.Error())
 			break
 		}
 
 		var c int64
 		c, q.Err = r.RowsAffected()
-		if q.Err != nil {
+		if q.Err != nil || (cmn.InDebugMode && q.Tag["getCheckAccessResultErr"] != nil) {
+
+			if q.Err == nil {
+				q.Err = q.Tag["getCheckAccessResultErr"].(error)
+			}
+
 			z.Error(q.Err.Error())
 			break
 		}
 
 		if c == 0 {
-			q.Err = fmt.Errorf("当前用户无权编辑该考点")
+			q.Err = fmt.Errorf("当前用户无权获取该考点数据, id: %d", info.ExamSiteID)
 			z.Error(q.Err.Error())
 			break
 		}
@@ -1852,6 +1867,7 @@ MethodSwitch:
 
 		var stmt1 *sql.Stmt
 
+		// 检查当前是否有权限访问该考点
 		ss := []string{}
 		v := []interface{}{
 			examSiteID,
