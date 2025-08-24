@@ -1652,7 +1652,7 @@ func LoadErrorCollectionDetailsById(ctx context.Context, tx pgx.Tx, pid, uid int
 	var groupData []examPaper.ExamGroup
 	p := &EnterPracticeInfo{}
 
-	var pwc cmn.TVPracticeWrongCollection
+	var pwc cmn.TVZSubmissionWrongCollection
 	s := `SELECT id,name,total_score,question_count,group_count,groups_data  FROM assessuser.v_z_submission_wrong_collection WHERE practice_id = $1 AND student_id = $2`
 	err = tx.QueryRow(ctx, s, pid, uid).Scan(&pwc.ID, &pwc.Name, &pwc.TotalScore, &pwc.QuestionCount, &pwc.GroupCount, &pwc.GroupsData)
 	if err != nil || forceErr == "ecQuery1" {
