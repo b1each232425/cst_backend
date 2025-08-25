@@ -1207,7 +1207,7 @@ func gradeAnalysisByID(ctx context.Context, esid int64, pid int64) (Analysis, er
 	// 获取学生答案
 	studentAnswerSql := fmt.Sprintf(`
 	SELECT
-		type, answer, question_id
+		answer, question_id
 	FROM t_student_answers tsa
 	WHERE question_id IN (%s)
 	`, qidsSql)
