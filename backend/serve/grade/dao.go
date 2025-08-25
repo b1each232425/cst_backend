@@ -1227,25 +1227,19 @@ func gradeAnalysisByID(ctx context.Context, esid int64, pid int64) (Analysis, er
 	questionAnswersStats := make(map[null.Int]map[string]int)
 	for rows.Next() {
 		var ans struct {
-			Type       string   `json:"type"`
 			AnsJson    JSONText `json:"answer"`
 			QuestionID null.Int `json:"question_id"`
 		}
 
-		err = rows.Scan(&ans.Type, &ans.AnsJson, &ans.QuestionID)
+		err = rows.Scan(&ans.AnsJson, &ans.QuestionID)
 		if err != nil || forceErr == "qas rows Scan fail" {
 			err = fmt.Errorf("查询学生答案失败: %w,(examSessionID=%v),(practiceID=%v),(examPaperID=%v),(qids=%s)", err, esid, pid, analysis.ExamPaperID, qidsStr)
 			z.Error(err.Error())
 			return analysis, err
 		}
 
-		// 不是单选、多选、判断题型
-		if ans.Type != "00" && ans.Type != "02" && ans.Type != "04" || forceErr == "ansType not match" {
-			continue
-		}
-
 		// 数据库存储学生答案为空
-		if ans.AnsJson == nil || forceErr == "ansJson nil" {
+		if ans.AnsJson == nil || ans.AnsJson.String() == "" || forceErr == "ansJson nil" {
 			continue
 		}
 
@@ -1263,7 +1257,6 @@ func gradeAnalysisByID(ctx context.Context, esid int64, pid int64) (Analysis, er
 		}
 
 		// 统计答案
-		// 说明:选择题答案是数组形式的选项
 		for _, answer := range answerData.Answer {
 			if _, ok := questionAnswersStats[ans.QuestionID][answer]; !ok {
 				questionAnswersStats[ans.QuestionID][answer] = 0
@@ -1301,7 +1294,7 @@ func gradeAnalysisByID(ctx context.Context, esid int64, pid int64) (Analysis, er
 			z.Error(err.Error())
 			return analysis, err
 		}
-		subjectiveScores[qid] = avgScore
+		subjectiveScores[qid] = math.Round(avgScore*100) / 100
 	}
 	analysis.SubjectiveScores = subjectiveScores
 
