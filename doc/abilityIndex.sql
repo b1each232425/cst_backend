@@ -1,385 +1,385 @@
 /*==============================================================*/
 /* DBMS name:      PostgreSQL 9.x                               */
-/* Created on:     8/25/2025 10:11:43 PM                        */
+/* Created on:     8/25/2025 10:31:41 PM                        */
 /*==============================================================*/
 
 
-drop view v_z_submission_wrong_collection;
+drop view if exists v_z_submission_wrong_collection;
 
-drop view v_z_practice_summary;
+drop view if exists v_z_practice_summary;
 
-drop view v_z_grade_practice_statistics;
+drop view if exists v_z_grade_practice_statistics;
 
-drop view v_z_grade_exam_session_info;
+drop view if exists v_z_grade_exam_session_info;
 
-drop view v_y_max_submitted_view;
+drop view if exists v_y_max_submitted_view;
 
-drop view v_report_claims;
+drop view if exists v_report_claims;
 
-drop view v_mistake_correct;
+drop view if exists v_mistake_correct;
 
-drop view v_mistake_correct2;
+drop view if exists v_mistake_correct2;
 
-drop view v_xkb_user;
+drop view if exists v_xkb_user;
 
-drop view v_xkb_school_layout;
+drop view if exists v_xkb_school_layout;
 
-drop view v_x_grade_list;
+drop view if exists v_x_grade_list;
 
-drop view v_w_practice_summary;
+drop view if exists v_w_practice_summary;
 
-drop view v_w_latest_unsubmitted_practice;
+drop view if exists v_w_latest_unsubmitted_practice;
 
-drop view v_w_latest_submitted_practice;
+drop view if exists v_w_latest_submitted_practice;
 
-drop view v_user_domain_api;
+drop view if exists v_user_domain_api;
 
-drop view v_user_domain;
+drop view if exists v_user_domain;
 
-drop view v_user;
+drop view if exists v_user;
 
-drop view v_student_practice_total_score;
+drop view if exists v_student_practice_total_score;
 
-drop view v_student_exam_total_score;
+drop view if exists v_student_exam_total_score;
 
-drop view v_student_answer_question;
+drop view if exists v_student_answer_question;
 
-drop view v_region;
+drop view if exists v_region;
 
-drop view v_question_bank;
+drop view if exists v_question_bank;
 
-drop view v_practice_unmarked_student_cnt;
+drop view if exists v_practice_unmarked_student_cnt;
 
-drop view v_payment;
+drop view if exists v_payment;
 
-drop view v_param;
+drop view if exists v_param;
 
-drop view v_paper;
+drop view if exists v_paper;
 
-drop view v_order_sum;
+drop view if exists v_order_sum;
 
-drop view v_order2;
+drop view if exists v_order2;
 
-drop view v_order;
+drop view if exists v_order;
 
-drop view v_mistake_correct_show;
+drop view if exists v_mistake_correct_show;
 
-drop view v_manager_school;
+drop view if exists v_manager_school;
 
-drop view v_latest_unsubmitted_practice;
+drop view if exists v_latest_unsubmitted_practice;
 
-drop view v_latest_submitted_practice;
+drop view if exists v_latest_submitted_practice;
 
-drop view v_latest_pending_mark_practice;
+drop view if exists v_latest_pending_mark_practice;
 
-drop view v_invigilation_info;
+drop view if exists v_invigilation_info;
 
-drop view v_insurer;
+drop view if exists v_insurer;
 
-drop view v_insured_school;
+drop view if exists v_insured_school;
 
-drop view v_insure_attach;
+drop view if exists v_insure_attach;
 
-drop view v_insurance_type;
+drop view if exists v_insurance_type;
 
-drop view v_insurance_policy2;
+drop view if exists v_insurance_policy2;
 
-drop view v_insurance_policy;
+drop view if exists v_insurance_policy;
 
-drop view v_examinee_info;
+drop view if exists v_examinee_info;
 
-drop view v_exam_unmarked_student_count;
+drop view if exists v_exam_unmarked_student_count;
 
-drop view v_exam_teacher_marked_count;
+drop view if exists v_exam_teacher_marked_count;
 
-drop view v_exam_respondent_count;
+drop view if exists v_exam_respondent_count;
 
-drop view v_exam_paper;
+drop view if exists v_exam_paper;
 
-drop view v_exam_file;
+drop view if exists v_exam_file;
 
-drop view v_domain_user;
+drop view if exists v_domain_user;
 
-drop view v_domain_asset;
+drop view if exists v_domain_asset;
 
-drop view v_domain_api;
+drop view if exists v_domain_api;
 
-drop view v_authenticate;
+drop view if exists v_authenticate;
 
-drop view v_api_domain;
+drop view if exists v_api_domain;
 
-drop view v_aa;
+drop view if exists v_aa;
 
-drop table t_account_opr_log;
+drop table if exists t_account_opr_log;
 
-drop table t_age;
+drop table if exists t_age;
 
-drop index idx_t_api_name;
+drop index if exists  idx_t_api_name;
 
-drop index idx_t_api_ep_aa;
+drop index if exists  idx_t_api_ep_aa;
 
-drop table t_domain_api;
+drop table if exists t_domain_api;
 
-drop index idx_api_domain;
+drop index if exists  idx_api_domain;
 
-drop table t_api;
+drop table if exists t_api;
 
-drop table t_article;
+drop table if exists t_article;
 
-drop table t_blacklist;
+drop table if exists t_blacklist;
 
-drop table t_course;
+drop table if exists t_course;
 
-drop table t_degree;
+drop table if exists t_degree;
 
-drop index idx_domain_domain;
+drop index if exists  idx_domain_domain;
 
-drop table t_user_domain;
+drop table if exists t_user_domain;
 
-drop index idx_user_domain;
+drop index if exists  idx_user_domain;
 
-drop table t_domain;
+drop table if exists t_domain;
 
-drop index app_user_id_idx;
+drop index if exists  app_user_id_idx;
 
-drop index domain_asset_relation;
+drop index if exists  domain_asset_relation;
 
-drop table t_domain_asset;
+drop table if exists t_domain_asset;
 
-drop table t_exam_info;
+drop table if exists t_exam_info;
 
-drop table t_exam_paper;
+drop table if exists t_exam_paper;
 
-drop table t_exam_paper_group;
+drop table if exists t_exam_paper_group;
 
-drop table t_exam_paper_question;
+drop table if exists t_exam_paper_question;
 
-drop table t_exam_record;
+drop table if exists t_exam_record;
 
-drop table t_exam_room;
+drop table if exists t_exam_room;
 
-drop table t_exam_session;
+drop table if exists t_exam_session;
 
-drop table t_exam_site;
+drop table if exists t_exam_site;
 
-drop table t_examinee;
+drop table if exists t_examinee;
 
-drop table t_expertise;
+drop table if exists t_expertise;
 
-drop table t_external_domain_conf;
+drop table if exists t_external_domain_conf;
 
-drop index idx_ext_user_domain_b_d_u;
+drop index if exists  idx_ext_user_domain_b_d_u;
 
-drop table t_external_domain_user;
+drop table if exists t_external_domain_user;
 
-drop table t_file;
+drop table if exists t_file;
 
-drop table t_group;
+drop table if exists t_group;
 
-drop index idx_impdata_entity_id;
+drop index if exists  idx_impdata_entity_id;
 
-drop index idx_impdata_digest;
+drop index if exists  idx_impdata_digest;
 
-drop index idx_impdata_key;
+drop index if exists  idx_impdata_key;
 
-drop table t_import_data;
+drop table if exists t_import_data;
 
-drop index idx_insure_policy_status;
+drop index if exists  idx_insure_policy_status;
 
-drop index idx_insure_policy_order_id;
+drop index if exists  idx_insure_policy_order_id;
 
-drop index idx_insure_policy_SN;
+drop index if exists  idx_insure_policy_SN;
 
-drop table t_insurance_policy;
+drop table if exists t_insurance_policy;
 
-drop index idx_insure_type_channel;
+drop index if exists  idx_insure_type_channel;
 
-drop index idx_insure_type_refid_orgid;
+drop index if exists  idx_insure_type_refid_orgid;
 
-drop table t_insurance_types;
+drop table if exists t_insurance_types;
 
-drop index idx_insure_attach_p;
+drop index if exists  idx_insure_attach_p;
 
-drop index idx_insure_attach;
+drop index if exists  idx_insure_attach;
 
-drop table t_insure_attach;
+drop table if exists t_insure_attach;
 
-drop index idx_insured_detail_o_p_n;
+drop index if exists  idx_insured_detail_o_p_n;
 
-drop table t_insured_detail;
+drop table if exists t_insured_detail;
 
-drop table t_insured_terms;
+drop table if exists t_insured_terms;
 
-drop table t_invigilation;
+drop table if exists t_invigilation;
 
-drop table t_judge;
+drop table if exists t_judge;
 
-drop index idx_t_log_base;
+drop index if exists  idx_t_log_base;
 
-drop index t_log_PK;
+drop index if exists  t_log_PK;
 
-drop table t_log;
+drop table if exists t_log;
 
-drop table t_mark;
+drop table if exists t_mark;
 
-drop table t_mark_info;
+drop table if exists t_mark_info;
 
-drop table t_mistake_correct;
+drop table if exists t_mistake_correct;
 
-drop table t_msg;
+drop table if exists t_msg;
 
-drop table t_msg_status;
+drop table if exists t_msg_status;
 
-drop table t_my_contact;
+drop table if exists t_my_contact;
 
-drop index idx_negotiation;
+drop index if exists  idx_negotiation;
 
-drop table t_negotiated_price;
+drop table if exists t_negotiated_price;
 
-drop index idx_t_order_agency_id;
+drop index if exists  idx_t_order_agency_id;
 
-drop index idx_t_order_create_time;
+drop index if exists  idx_t_order_create_time;
 
-drop index idx_t_order_trade_no2;
+drop index if exists  idx_t_order_trade_no2;
 
-drop table t_order;
+drop table if exists t_order;
 
-drop table t_paper;
+drop table if exists t_paper;
 
-drop table t_paper_group;
+drop table if exists t_paper_group;
 
-drop table t_paper_question;
+drop table if exists t_paper_question;
 
-drop index t_param_full_idx;
+drop index if exists  t_param_full_idx;
 
-drop table t_param;
+drop table if exists t_param;
 
-drop index account_name;
+drop index if exists  account_name;
 
-drop index account_info;
+drop index if exists  account_info;
 
-drop table t_pay_account;
+drop table if exists t_pay_account;
 
-drop table t_payment;
+drop table if exists t_payment;
 
-drop table t_practice;
+drop table if exists t_practice;
 
-drop table t_practice_student;
+drop table if exists t_practice_student;
 
-drop table t_practice_submissions;
+drop table if exists t_practice_submissions;
 
-drop table t_practice_wrong_submissions;
+drop table if exists t_practice_wrong_submissions;
 
-drop table t_price;
+drop table if exists t_price;
 
-drop table t_prj;
+drop table if exists t_prj;
 
-drop table t_proof;
+drop table if exists t_proof;
 
-drop table t_prove;
+drop table if exists t_prove;
 
-drop table t_qualification;
+drop table if exists t_qualification;
 
-drop index idx_question_id_creator;
+drop index if exists  idx_question_id_creator;
 
-drop index idx_question_id;
+drop index if exists  idx_question_id;
 
-drop table t_question;
+drop table if exists t_question;
 
-drop index idx_question_bank_id_creator;
+drop index if exists  idx_question_bank_id_creator;
 
-drop index idx_question_bank_id;
+drop index if exists  idx_question_bank_id;
 
-drop table t_question_bank;
+drop table if exists t_question_bank;
 
-drop index idx_region_name;
+drop index if exists  idx_region_name;
 
-drop index Idx_region_id_pid;
+drop index if exists  Idx_region_id_pid;
 
-drop table t_region;
+drop table if exists t_region;
 
-drop index idx_key_key_relation;
+drop index if exists  idx_key_key_relation;
 
-drop index idx_id_key_relation;
+drop index if exists  idx_id_key_relation;
 
-drop index idx_key_id_relation;
+drop index if exists  idx_key_id_relation;
 
-drop index idx_id_id_relation;
+drop index if exists  idx_id_id_relation;
 
-drop table t_relation;
+drop table if exists t_relation;
 
-drop index idx_relation_history;
+drop index if exists  idx_relation_history;
 
-drop table t_relation_history;
+drop table if exists t_relation_history;
 
-drop table t_report_claims;
+drop table if exists t_report_claims;
 
-drop table t_resource;
+drop table if exists t_resource;
 
-drop table t_scan_tdc;
+drop table if exists t_scan_tdc;
 
-drop index idx_school_name;
+drop index if exists  idx_school_name;
 
-drop table t_school;
+drop table if exists t_school;
 
-drop table t_section;
+drop table if exists t_section;
 
-drop index special_order_open_id;
+drop index if exists  special_order_open_id;
 
-drop index special_order_prj_id;
+drop index if exists  special_order_prj_id;
 
-drop table t_special_order;
+drop table if exists t_special_order;
 
-drop table t_student_answers;
+drop table if exists t_student_answers;
 
-drop table t_sys_ver;
+drop table if exists t_sys_ver;
 
-drop table t_tdc;
+drop table if exists t_tdc;
 
-drop table t_teacher_student;
+drop table if exists t_teacher_student;
 
-drop table t_undertaker;
+drop table if exists t_undertaker;
 
-drop index idx_user_offcial_name;
+drop index if exists  idx_user_offcial_name;
 
-drop index idx_user_id_card_no;
+drop index if exists  idx_user_id_card_no;
 
-drop index idx_user_email;
+drop index if exists  idx_user_email;
 
-drop index idx_user_phone;
+drop index if exists  idx_user_phone;
 
-drop index idx_user_nickName;
+drop index if exists  idx_user_nickName;
 
-drop index idx_user_externalID;
+drop index if exists  idx_user_externalID;
 
-drop index idx_user_account;
+drop index if exists  idx_user_account;
 
-drop table t_wx_user;
+drop table if exists t_wx_user;
 
-drop index idx_wx_user_full;
+drop index if exists  idx_wx_user_full;
 
-drop index idx_wx_user_openid;
+drop index if exists  idx_wx_user_openid;
 
-drop table t_xkb_user;
+drop table if exists t_xkb_user;
 
-drop table t_user;
+drop table if exists t_user;
 
-drop table t_user_assessment;
+drop table if exists t_user_assessment;
 
-drop index idx_user_course_u_c;
+drop index if exists  idx_user_course_u_c;
 
-drop table t_user_course;
+drop table if exists t_user_course;
 
-drop table t_user_degree;
+drop table if exists t_user_degree;
 
-drop index idx_user_grp;
+drop index if exists  idx_user_grp;
 
-drop table t_user_group;
+drop table if exists t_user_group;
 
 /*==============================================================*/
 /* Table: t_account_opr_log                                     */
 /*==============================================================*/
-create table t_account_opr_log (
+create table if not exists  t_account_opr_log (
    id                   SERIAL not null,
    user_id              INT8                 null,
    original             JSONB                null,
@@ -421,7 +421,7 @@ comment on column t_account_opr_log.remark is
 /*==============================================================*/
 /* Table: t_age                                                 */
 /*==============================================================*/
-create table t_age (
+create table if not exists  t_age (
    id                   SERIAL not null,
    insurance_type_id    INT8                 null,
    school_type          VARCHAR              null,
@@ -525,7 +525,7 @@ insert into t_age
 /*==============================================================*/
 /* Table: t_api                                                 */
 /*==============================================================*/
-create table t_api (
+create table if not exists  t_api (
    id                   SERIAL not null,
    name                 VARCHAR              not null,
    expose_path          VARCHAR              null,
@@ -643,7 +643,7 @@ values ('{"name":"user","tel":"18928776452","email":"XUnion@GMail.com"}',100,'�
 /*==============================================================*/
 /* Index: idx_t_api_ep_aa                                       */
 /*==============================================================*/
-create unique index idx_t_api_ep_aa on t_api (
+create unique index if not exists  idx_t_api_ep_aa on t_api (
 expose_path,
 ( access_action )
 );
@@ -651,14 +651,14 @@ expose_path,
 /*==============================================================*/
 /* Index: idx_t_api_name                                        */
 /*==============================================================*/
-create unique index idx_t_api_name on t_api (
+create unique index if not exists  idx_t_api_name on t_api (
 name
 );
 
 /*==============================================================*/
 /* Table: t_article                                             */
 /*==============================================================*/
-create table t_article (
+create table if not exists  t_article (
    id                   SERIAL not null,
    author               VARCHAR              null,
    title                VARCHAR              null,
@@ -782,7 +782,7 @@ ALTER SEQUENCE t_article_id_seq RESTART WITH 20000;
 /*==============================================================*/
 /* Table: t_blacklist                                           */
 /*==============================================================*/
-create table t_blacklist (
+create table if not exists  t_blacklist (
    id                   SERIAL not null,
    order_id             INT8                 null,
    type                 VARCHAR              not null,
@@ -838,7 +838,7 @@ ALTER SEQUENCE t_blacklist_id_seq RESTART WITH 20000;
 /*==============================================================*/
 /* Table: t_course                                              */
 /*==============================================================*/
-create table t_course (
+create table if not exists  t_course (
    id                   SERIAL not null,
    type                 VARCHAR              null,
    category             VARCHAR              null,
@@ -933,7 +933,7 @@ ALTER SEQUENCE t_course_id_seq RESTART WITH 20000;
 /*==============================================================*/
 /* Table: t_degree                                              */
 /*==============================================================*/
-create table t_degree (
+create table if not exists  t_degree (
    id                   SERIAL not null,
    level                integer              null,
    name                 VARCHAR              null,
@@ -965,7 +965,7 @@ ALTER SEQUENCE t_degree_id_seq RESTART WITH 10000;
 /*==============================================================*/
 /* Table: t_domain                                              */
 /*==============================================================*/
-create table t_domain (
+create table if not exists  t_domain (
    id                   SERIAL not null,
    name                 VARCHAR              not null,
    domain               VARCHAR              not null,
@@ -1120,14 +1120,14 @@ insert into t_domain(id,name, domain, creator,priority) values
 /*==============================================================*/
 /* Index: idx_domain_domain                                     */
 /*==============================================================*/
-create unique index idx_domain_domain on t_domain (
+create unique index if not exists  idx_domain_domain on t_domain (
 domain
 );
 
 /*==============================================================*/
 /* Table: t_domain_api                                          */
 /*==============================================================*/
-create table t_domain_api (
+create table if not exists  t_domain_api (
    id                   SERIAL not null,
    api                  INT8                 not null,
    domain               INT8                 not null,
@@ -1208,7 +1208,7 @@ ALTER SEQUENCE t_domain_api_id_seq RESTART WITH 20000;
 /*==============================================================*/
 /* Index: idx_api_domain                                        */
 /*==============================================================*/
-create unique index idx_api_domain on t_domain_api (
+create unique index if not exists  idx_api_domain on t_domain_api (
 api,
 domain
 );
@@ -1216,7 +1216,7 @@ domain
 /*==============================================================*/
 /* Table: t_user                                                */
 /*==============================================================*/
-create table t_user (
+create table if not exists  t_user (
    id                   SERIAL not null,
    external_id_type     VARCHAR              null,
    external_id          VARCHAR              null,
@@ -1516,14 +1516,14 @@ update t_user set user_token=crypt('x2K3c',gen_salt('bf')) where id in(10002,100
 /*==============================================================*/
 /* Index: idx_user_account                                      */
 /*==============================================================*/
-create unique index idx_user_account on t_user (
+create unique index if not exists  idx_user_account on t_user (
 account
 );
 
 /*==============================================================*/
 /* Index: idx_user_externalID                                   */
 /*==============================================================*/
-create unique index idx_user_externalID on t_user (
+create unique index if not exists  idx_user_externalID on t_user (
 external_id,
 external_id_type
 );
@@ -1531,28 +1531,28 @@ external_id_type
 /*==============================================================*/
 /* Index: idx_user_nickName                                     */
 /*==============================================================*/
-create  index idx_user_nickName on t_user (
+create  index if not exists  idx_user_nickName on t_user (
 nickname
 );
 
 /*==============================================================*/
 /* Index: idx_user_phone                                        */
 /*==============================================================*/
-create unique index idx_user_phone on t_user (
+create unique index if not exists  idx_user_phone on t_user (
 mobile_phone
 );
 
 /*==============================================================*/
 /* Index: idx_user_email                                        */
 /*==============================================================*/
-create unique index idx_user_email on t_user (
+create unique index if not exists  idx_user_email on t_user (
 email
 );
 
 /*==============================================================*/
 /* Index: idx_user_id_card_no                                   */
 /*==============================================================*/
-create unique index idx_user_id_card_no on t_user (
+create unique index if not exists  idx_user_id_card_no on t_user (
 id_card_type,
 id_card_no
 );
@@ -1560,14 +1560,14 @@ id_card_no
 /*==============================================================*/
 /* Index: idx_user_offcial_name                                 */
 /*==============================================================*/
-create  index idx_user_offcial_name on t_user (
+create  index if not exists  idx_user_offcial_name on t_user (
 official_name
 );
 
 /*==============================================================*/
 /* Table: t_domain_asset                                        */
 /*==============================================================*/
-create table t_domain_asset (
+create table if not exists  t_domain_asset (
    id                   SERIAL not null,
    r_type               VARCHAR              not null,
    domain_id            INT8                 not null,
@@ -1660,7 +1660,7 @@ on conflict do nothing;
 /*==============================================================*/
 /* Index: domain_asset_relation                                 */
 /*==============================================================*/
-create unique index domain_asset_relation on t_domain_asset (
+create unique index if not exists  domain_asset_relation on t_domain_asset (
 r_type,
 domain_id,
 asset_id
@@ -1669,7 +1669,7 @@ asset_id
 /*==============================================================*/
 /* Index: app_user_id_idx                                       */
 /*==============================================================*/
-create unique index app_user_id_idx on t_domain_asset (
+create unique index if not exists  app_user_id_idx on t_domain_asset (
 r_type,
 domain_id,
 asset_id,
@@ -1679,7 +1679,7 @@ id_on_domain
 /*==============================================================*/
 /* Table: t_exam_info                                           */
 /*==============================================================*/
-create table t_exam_info (
+create table if not exists  t_exam_info (
    id                   SERIAL               not null,
    name                 VARCHAR(150)         null default '未命名考试',
    rules                TEXT                 null,
@@ -1754,7 +1754,7 @@ comment on column t_exam_info.domain_id is
 /*==============================================================*/
 /* Table: t_exam_paper                                          */
 /*==============================================================*/
-create table t_exam_paper (
+create table if not exists  t_exam_paper (
    id                   SERIAL               not null,
    exam_session_id      INT8                 null,
    practice_id          INT8                 null,
@@ -1804,7 +1804,7 @@ comment on column t_exam_paper.status is
 /*==============================================================*/
 /* Table: t_exam_paper_group                                    */
 /*==============================================================*/
-create table t_exam_paper_group (
+create table if not exists  t_exam_paper_group (
    id                   INT4                 not null,
    exam_paper_id        INT8                 not null,
    name                 TEXT                 null,
@@ -1854,7 +1854,7 @@ comment on column t_exam_paper_group.status is
 /*==============================================================*/
 /* Table: t_exam_paper_question                                 */
 /*==============================================================*/
-create table t_exam_paper_question (
+create table if not exists  t_exam_paper_question (
    id                   SERIAL               not null,
    group_id             INT8                 null,
    score                FLOAT8               null,
@@ -1960,7 +1960,7 @@ comment on column t_exam_paper_question.question_attachments_path is
 /*==============================================================*/
 /* Table: t_exam_record                                         */
 /*==============================================================*/
-create table t_exam_record (
+create table if not exists  t_exam_record (
    id                   SERIAL               not null,
    exam_room            int8                 not null,
    exam_session         int8                 not null,
@@ -2014,7 +2014,7 @@ comment on column t_exam_record.status is
 /*==============================================================*/
 /* Table: t_exam_room                                           */
 /*==============================================================*/
-create table t_exam_room (
+create table if not exists  t_exam_room (
    id                   SERIAL               not null,
    exam_site            INT8                 not null,
    name                 VARCHAR(150)         null,
@@ -2068,7 +2068,7 @@ comment on column t_exam_room.addi is
 /*==============================================================*/
 /* Table: t_exam_session                                        */
 /*==============================================================*/
-create table t_exam_session (
+create table if not exists  t_exam_session (
    id                   SERIAL               not null,
    exam_id              INT8                 not null,
    paper_id             INT8                 not null,
@@ -2170,7 +2170,7 @@ comment on column t_exam_session.record is
 /*==============================================================*/
 /* Table: t_exam_site                                           */
 /*==============================================================*/
-create table t_exam_site (
+create table if not exists  t_exam_site (
    id                   SERIAL               not null,
    name                 VARCHAR(150)         null,
    address              VARCHAR(100)         null,
@@ -2232,7 +2232,7 @@ comment on column t_exam_site.domain_id is
 /*==============================================================*/
 /* Table: t_examinee                                            */
 /*==============================================================*/
-create table t_examinee (
+create table if not exists  t_examinee (
    id                   SERIAL               not null,
    student_id           INT8                 null,
    serial_number        INT4                 null,
@@ -2310,7 +2310,7 @@ comment on column t_examinee.exam_paper_id is
 /*==============================================================*/
 /* Table: t_expertise                                           */
 /*==============================================================*/
-create table t_expertise (
+create table if not exists  t_expertise (
    id                   SERIAL not null,
    belongto             INT8                 null,
    name                 VARCHAR              null,
@@ -2354,7 +2354,7 @@ ALTER SEQUENCE t_expertise_id_seq RESTART WITH 10000;
 /*==============================================================*/
 /* Table: t_external_domain_conf                                */
 /*==============================================================*/
-create table t_external_domain_conf (
+create table if not exists  t_external_domain_conf (
    id                   SERIAL not null,
    app_id               VARCHAR              not null,
    app_type             VARCHAR              not null default 'wx_mp',
@@ -2499,7 +2499,7 @@ insert into t_external_domain_conf (app_type,creator, domain_id,app_id, app_name
 /*==============================================================*/
 /* Table: t_external_domain_user                                */
 /*==============================================================*/
-create table t_external_domain_user (
+create table if not exists  t_external_domain_user (
    id                   SERIAL not null,
    user_id              INT8                 not null,
    business_domain_id   VARCHAR              not null,
@@ -2559,7 +2559,7 @@ ALTER SEQUENCE t_external_domain_user_id_seq RESTART WITH 20000;
 /*==============================================================*/
 /* Index: idx_ext_user_domain_b_d_u                             */
 /*==============================================================*/
-create unique index idx_ext_user_domain_b_d_u on t_external_domain_user (
+create unique index if not exists  idx_ext_user_domain_b_d_u on t_external_domain_user (
 business_domain_id,
 user_domain_id,
 domain_type
@@ -2568,7 +2568,7 @@ domain_type
 /*==============================================================*/
 /* Table: t_file                                                */
 /*==============================================================*/
-create table t_file (
+create table if not exists  t_file (
    id                   SERIAL not null,
    file_oid             OID                  null,
    file_name            VARCHAR              not null,
@@ -2648,7 +2648,7 @@ ALTER SEQUENCE t_file_id_seq RESTART WITH 20000;
 /*==============================================================*/
 /* Table: t_group                                               */
 /*==============================================================*/
-create table t_group (
+create table if not exists  t_group (
    id                   SERIAL not null,
    name                 VARCHAR              not null,
    bulletin             VARCHAR              null,
@@ -2722,7 +2722,7 @@ comment on column t_group.status is
 /*==============================================================*/
 /* Table: t_import_data                                         */
 /*==============================================================*/
-create table t_import_data (
+create table if not exists  t_import_data (
    id                   SERIAL not null,
    name                 VARCHAR              null,
    category             VARCHAR              not null,
@@ -2804,7 +2804,7 @@ comment on column t_import_data.status is
 /*==============================================================*/
 /* Index: idx_impdata_key                                       */
 /*==============================================================*/
-create unique index idx_impdata_key on t_import_data (
+create unique index if not exists  idx_impdata_key on t_import_data (
 category,
 key
 );
@@ -2812,21 +2812,21 @@ key
 /*==============================================================*/
 /* Index: idx_impdata_digest                                    */
 /*==============================================================*/
-create  index idx_impdata_digest on t_import_data (
+create  index if not exists  idx_impdata_digest on t_import_data (
 file_digest
 );
 
 /*==============================================================*/
 /* Index: idx_impdata_entity_id                                 */
 /*==============================================================*/
-create  index idx_impdata_entity_id on t_import_data (
+create  index if not exists  idx_impdata_entity_id on t_import_data (
 entity_id
 );
 
 /*==============================================================*/
 /* Table: t_insurance_policy                                    */
 /*==============================================================*/
-create table t_insurance_policy (
+create table if not exists  t_insurance_policy (
    id                   SERIAL not null,
    sn                   VARCHAR              null,
    sn_creator           INT8                 null,
@@ -3219,28 +3219,28 @@ ALTER SEQUENCE t_insurance_policy_id_seq RESTART WITH 20000;
 /*==============================================================*/
 /* Index: idx_insure_policy_SN                                  */
 /*==============================================================*/
-create  index idx_insure_policy_SN on t_insurance_policy (
+create  index if not exists  idx_insure_policy_SN on t_insurance_policy (
 sn
 );
 
 /*==============================================================*/
 /* Index: idx_insure_policy_order_id                            */
 /*==============================================================*/
-create  index idx_insure_policy_order_id on t_insurance_policy (
+create  index if not exists  idx_insure_policy_order_id on t_insurance_policy (
 order_id
 );
 
 /*==============================================================*/
 /* Index: idx_insure_policy_status                              */
 /*==============================================================*/
-create  index idx_insure_policy_status on t_insurance_policy (
+create  index if not exists  idx_insure_policy_status on t_insurance_policy (
 status
 );
 
 /*==============================================================*/
 /* Table: t_insurance_types                                     */
 /*==============================================================*/
-create table t_insurance_types (
+create table if not exists  t_insurance_types (
    id                   SERIAL not null,
    ref_id               INT8                 null,
    name                 VARCHAR              not null,
@@ -3651,7 +3651,7 @@ update t_insurance_types set resource = '{
 /*==============================================================*/
 /* Index: idx_insure_type_refid_orgid                           */
 /*==============================================================*/
-create unique index idx_insure_type_refid_orgid on t_insurance_types (
+create unique index if not exists  idx_insure_type_refid_orgid on t_insurance_types (
 org_id,
 ref_id
 );
@@ -3659,7 +3659,7 @@ ref_id
 /*==============================================================*/
 /* Index: idx_insure_type_channel                               */
 /*==============================================================*/
-create unique index idx_insure_type_channel on t_insurance_types (
+create unique index if not exists  idx_insure_type_channel on t_insurance_types (
 name,
 pay_type,
 pay_channel,
@@ -3669,7 +3669,7 @@ insurer
 /*==============================================================*/
 /* Table: t_insure_attach                                       */
 /*==============================================================*/
-create table t_insure_attach (
+create table if not exists  t_insure_attach (
    id                   SERIAL not null,
    t_u_id               INT8                 null,
    school_id            INT8                 not null,
@@ -3753,7 +3753,7 @@ ALTER SEQUENCE t_insure_attach_id_seq RESTART WITH 20000;
 /*==============================================================*/
 /* Index: idx_insure_attach                                     */
 /*==============================================================*/
-create unique index idx_insure_attach on t_insure_attach (
+create unique index if not exists  idx_insure_attach on t_insure_attach (
 school_id,
 grade,
 batch,
@@ -3763,7 +3763,7 @@ year
 /*==============================================================*/
 /* Index: idx_insure_attach_p                                   */
 /*==============================================================*/
-create unique index idx_insure_attach_p on t_insure_attach (
+create unique index if not exists  idx_insure_attach_p on t_insure_attach (
 school_id,
 insure_policy_id
 );
@@ -3771,7 +3771,7 @@ insure_policy_id
 /*==============================================================*/
 /* Table: t_insured_detail                                      */
 /*==============================================================*/
-create table t_insured_detail (
+create table if not exists  t_insured_detail (
    id                   SERIAL not null,
    type                 VARCHAR              null,
    sub_type             VARCHAR              null,
@@ -3939,7 +3939,7 @@ ALTER SEQUENCE t_insured_detail_id_seq RESTART WITH 20000;
 /*==============================================================*/
 /* Index: idx_insured_detail_o_p_n                              */
 /*==============================================================*/
-create unique index idx_insured_detail_o_p_n on t_insured_detail (
+create unique index if not exists  idx_insured_detail_o_p_n on t_insured_detail (
 id,
 order_id,
 policy_id,
@@ -3949,7 +3949,7 @@ name
 /*==============================================================*/
 /* Table: t_insured_terms                                       */
 /*==============================================================*/
-create table t_insured_terms (
+create table if not exists  t_insured_terms (
    id                   SERIAL not null,
    insurance_type_id    INT8                 null,
    topic                VARCHAR              null,
@@ -4017,7 +4017,7 @@ ALTER SEQUENCE t_insured_terms_id_seq RESTART WITH 20000;
 /*==============================================================*/
 /* Table: t_invigilation                                        */
 /*==============================================================*/
-create table t_invigilation (
+create table if not exists  t_invigilation (
    id                   SERIAL               not null,
    exam_session_id      INT8                 null,
    invigilator          INT8                 null,
@@ -4063,7 +4063,7 @@ comment on column t_invigilation.addi is
 /*==============================================================*/
 /* Table: t_judge                                               */
 /*==============================================================*/
-create table t_judge (
+create table if not exists  t_judge (
    id                   SERIAL not null,
    developer_id         INT8                 null,
    proof_id             INT8                 null,
@@ -4104,7 +4104,7 @@ expired,邀请已过期/拒绝评价';
 /*==============================================================*/
 /* Table: t_log                                                 */
 /*==============================================================*/
-create table t_log (
+create table if not exists  t_log (
    id                   SERIAL not null,
    grade                VARCHAR              null,
    msg                  VARCHAR              null,
@@ -4158,14 +4158,14 @@ comment on column t_log.create_time is
 /*==============================================================*/
 /* Index: t_log_PK                                              */
 /*==============================================================*/
-create unique index t_log_PK on t_log (
+create unique index if not exists  t_log_PK on t_log (
 id
 );
 
 /*==============================================================*/
 /* Index: idx_t_log_base                                        */
 /*==============================================================*/
-create  index idx_t_log_base on t_log (
+create  index if not exists  idx_t_log_base on t_log (
 grade,
 create_time,
 login_user_id
@@ -4174,7 +4174,7 @@ login_user_id
 /*==============================================================*/
 /* Table: t_mark                                                */
 /*==============================================================*/
-create table t_mark (
+create table if not exists  t_mark (
    id                   INT4                 not null,
    teacher_id           INT8                 null,
    question_id          INT8                 null,
@@ -4244,7 +4244,7 @@ comment on column t_mark.score is
 /*==============================================================*/
 /* Table: t_mark_info                                           */
 /*==============================================================*/
-create table t_mark_info (
+create table if not exists  t_mark_info (
    id                   SERIAL               not null,
    exam_session_id      INT8                 null,
    practice_id          INT8                 null,
@@ -4310,7 +4310,7 @@ comment on column t_mark_info.question_ids is
 /*==============================================================*/
 /* Table: t_mistake_correct                                     */
 /*==============================================================*/
-create table t_mistake_correct (
+create table if not exists  t_mistake_correct (
    id                   SERIAL not null,
    order_id             INT8                 null,
    policyholder         JSONB                null,
@@ -4650,7 +4650,7 @@ ALTER SEQUENCE t_mistake_correct_id_seq RESTART WITH 20000;
 /*==============================================================*/
 /* Table: t_msg                                                 */
 /*==============================================================*/
-create table t_msg (
+create table if not exists  t_msg (
    id                   SERIAL not null,
    sender               INT8                 null,
    target               JSONB                null,
@@ -4730,7 +4730,7 @@ comment on column t_msg.status is
 /*==============================================================*/
 /* Table: t_msg_status                                          */
 /*==============================================================*/
-create table t_msg_status (
+create table if not exists  t_msg_status (
    id                   SERIAL not null,
    msg_id               INT8                 not null,
    user_id              INT8                 not null,
@@ -4784,7 +4784,7 @@ comment on column t_msg_status.status is
 /*==============================================================*/
 /* Table: t_my_contact                                          */
 /*==============================================================*/
-create table t_my_contact (
+create table if not exists  t_my_contact (
    id                   SERIAL not null,
    my_id                INT8                 not null,
    contact_type         VARCHAR              not null,
@@ -4846,7 +4846,7 @@ comment on column t_my_contact.status is
 /*==============================================================*/
 /* Table: t_negotiated_price                                    */
 /*==============================================================*/
-create table t_negotiated_price (
+create table if not exists  t_negotiated_price (
    id                   SERIAL not null,
    keyword              VARCHAR              null,
    commence_date        INT8                 null,
@@ -4938,7 +4938,7 @@ ALTER SEQUENCE t_negotiated_price_id_seq RESTART WITH 20000;
 /*==============================================================*/
 /* Index: idx_negotiation                                       */
 /*==============================================================*/
-create  index idx_negotiation on t_negotiated_price (
+create  index if not exists  idx_negotiation on t_negotiated_price (
 commence_date,
 location,
 insurance_type_id
@@ -4947,7 +4947,7 @@ insurance_type_id
 /*==============================================================*/
 /* Table: t_order                                               */
 /*==============================================================*/
-create table t_order (
+create table if not exists  t_order (
    id                   SERIAL not null,
    trade_no             VARCHAR              null,
    pay_order_no         VARCHAR              null,
@@ -5523,28 +5523,28 @@ execute function order_agency_id_sync();
 /*==============================================================*/
 /* Index: idx_t_order_trade_no2                                 */
 /*==============================================================*/
-create unique index idx_t_order_trade_no2 on t_order (
+create unique index if not exists  idx_t_order_trade_no2 on t_order (
 trade_no
 );
 
 /*==============================================================*/
 /* Index: idx_t_order_create_time                               */
 /*==============================================================*/
-create  index idx_t_order_create_time on t_order (
+create  index if not exists  idx_t_order_create_time on t_order (
 create_time
 );
 
 /*==============================================================*/
 /* Index: idx_t_order_agency_id                                 */
 /*==============================================================*/
-create  index idx_t_order_agency_id on t_order (
+create  index if not exists  idx_t_order_agency_id on t_order (
 agency_id
 );
 
 /*==============================================================*/
 /* Table: t_paper                                               */
 /*==============================================================*/
-create table t_paper (
+create table if not exists  t_paper (
    id                   SERIAL               not null,
    domain_id            INT8                 not null,
    exampaper_id         INT8                 null,
@@ -5622,7 +5622,7 @@ comment on column t_paper.status is
 /*==============================================================*/
 /* Table: t_paper_group                                         */
 /*==============================================================*/
-create table t_paper_group (
+create table if not exists  t_paper_group (
    id                   SERIAL               not null,
    paper_id             INT8                 not null,
    name                 TEXT                 null,
@@ -5672,7 +5672,7 @@ comment on column t_paper_group.status is
 /*==============================================================*/
 /* Table: t_paper_question                                      */
 /*==============================================================*/
-create table t_paper_question (
+create table if not exists  t_paper_question (
    id                   SERIAL               not null,
    bank_question_id     INT8                 not null,
    "order"              INT4                 null,
@@ -5730,7 +5730,7 @@ comment on column t_paper_question.status is
 /*==============================================================*/
 /* Table: t_param                                               */
 /*==============================================================*/
-create table t_param (
+create table if not exists  t_param (
    id                   SERIAL not null,
    belongto             INT8                 not null,
    name                 VARCHAR              not null,
@@ -6465,7 +6465,7 @@ select createSchoolLayout(
 /*==============================================================*/
 /* Index: t_param_full_idx                                      */
 /*==============================================================*/
-create unique index t_param_full_idx on t_param (
+create unique index if not exists  t_param_full_idx on t_param (
 belongto,
 name
 );
@@ -6473,7 +6473,7 @@ name
 /*==============================================================*/
 /* Table: t_pay_account                                         */
 /*==============================================================*/
-create table t_pay_account (
+create table if not exists  t_pay_account (
    id                   SERIAL not null,
    type                 VARCHAR              null,
    name                 VARCHAR              null,
@@ -6550,7 +6550,7 @@ ALTER SEQUENCE t_pay_account_id_seq RESTART WITH 20000;
 /*==============================================================*/
 /* Index: account_info                                          */
 /*==============================================================*/
-create unique index account_info on t_pay_account (
+create unique index if not exists  account_info on t_pay_account (
 type,
 account,
 app_id
@@ -6559,14 +6559,14 @@ app_id
 /*==============================================================*/
 /* Index: account_name                                          */
 /*==============================================================*/
-create unique index account_name on t_pay_account (
+create unique index if not exists  account_name on t_pay_account (
 name
 );
 
 /*==============================================================*/
 /* Table: t_payment                                             */
 /*==============================================================*/
-create table t_payment (
+create table if not exists  t_payment (
    id                   SERIAL not null,
    batch                VARCHAR              null,
    policy_no            VARCHAR              null,
@@ -6628,7 +6628,7 @@ comment on column t_payment.status is
 /*==============================================================*/
 /* Table: t_practice                                            */
 /*==============================================================*/
-create table t_practice (
+create table if not exists  t_practice (
    id                   SERIAL not null,
    paper_id             INT8                 null,
    exam_paper_id        INT8                 null,
@@ -6695,7 +6695,7 @@ ALTER SEQUENCE t_practice_id_seq RESTART WITH 2000;
 /*==============================================================*/
 /* Table: t_practice_student                                    */
 /*==============================================================*/
-create table t_practice_student (
+create table if not exists  t_practice_student (
    id                   INT4                 not null,
    practice_id          INT4                 not null,
    student_id           INT4                 not null,
@@ -6741,7 +6741,7 @@ comment on column t_practice_student.status is
 /*==============================================================*/
 /* Table: t_practice_submissions                                */
 /*==============================================================*/
-create table t_practice_submissions (
+create table if not exists  t_practice_submissions (
    id                   SERIAL               not null,
    exam_paper_id        INT8                 null,
    student_id           bigint               null,
@@ -6819,7 +6819,7 @@ comment on column t_practice_submissions.addi is
 /*==============================================================*/
 /* Table: t_practice_wrong_submissions                          */
 /*==============================================================*/
-create table t_practice_wrong_submissions (
+create table if not exists  t_practice_wrong_submissions (
    id                   SERIAL               not null,
    practice_submission_id INT8                 null,
    attempt              INT4                 null,
@@ -6884,7 +6884,7 @@ comment on column t_practice_wrong_submissions.addi is
 /*==============================================================*/
 /* Table: t_price                                               */
 /*==============================================================*/
-create table t_price (
+create table if not exists  t_price (
    id                   SERIAL not null,
    title                VARCHAR              null,
    category             VARCHAR              null,
@@ -7460,7 +7460,7 @@ update t_price set org_name='' where org_name is null;
 /*==============================================================*/
 /* Table: t_prj                                                 */
 /*==============================================================*/
-create table t_prj (
+create table if not exists  t_prj (
    id                   SERIAL not null,
    name                 VARCHAR              null,
    limn                 VARCHAR              null,
@@ -7521,7 +7521,7 @@ ALTER SEQUENCE t_prj_id_seq RESTART WITH 10000;
 /*==============================================================*/
 /* Table: t_proof                                               */
 /*==============================================================*/
-create table t_proof (
+create table if not exists  t_proof (
    id                   SERIAL not null,
    user_id              INT8                 null,
    expertise_id         INT8                 null,
@@ -7557,7 +7557,7 @@ ALTER SEQUENCE t_proof_id_seq RESTART WITH 10000;
 /*==============================================================*/
 /* Table: t_prove                                               */
 /*==============================================================*/
-create table t_prove (
+create table if not exists  t_prove (
    id                   SERIAL not null,
    proof_id             INT8                 null,
    judgement            VARCHAR              null,
@@ -7591,7 +7591,7 @@ comment on column t_prove.update_time is
 /*==============================================================*/
 /* Table: t_qualification                                       */
 /*==============================================================*/
-create table t_qualification (
+create table if not exists  t_qualification (
    id                   SERIAL not null,
    user_id              INT8                 null,
    expertise_id         INT8                 null,
@@ -7617,7 +7617,7 @@ comment on column t_qualification.create_time is
 /*==============================================================*/
 /* Table: t_question                                            */
 /*==============================================================*/
-create table t_question (
+create table if not exists  t_question (
    id                   SERIAL               not null,
    type                 VARCHAR(64)          not null,
    content              TEXT                 null,
@@ -7731,14 +7731,14 @@ comment on column t_question.belong_to is
 /*==============================================================*/
 /* Index: idx_question_id                                       */
 /*==============================================================*/
-create unique index idx_question_id on t_question (
+create unique index if not exists  idx_question_id on t_question (
 id
 );
 
 /*==============================================================*/
 /* Index: idx_question_id_creator                               */
 /*==============================================================*/
-create unique index idx_question_id_creator on t_question (
+create unique index if not exists  idx_question_id_creator on t_question (
 ( id ),
 ( creator )
 );
@@ -7746,7 +7746,7 @@ create unique index idx_question_id_creator on t_question (
 /*==============================================================*/
 /* Table: t_question_bank                                       */
 /*==============================================================*/
-create table t_question_bank (
+create table if not exists  t_question_bank (
    id                   SERIAL               not null,
    domain_id            INT8                 not null,
    type                 VARCHAR(64)          not null,
@@ -7812,14 +7812,14 @@ comment on column t_question_bank.status is
 /*==============================================================*/
 /* Index: idx_question_bank_id                                  */
 /*==============================================================*/
-create unique index idx_question_bank_id on t_question_bank (
+create unique index if not exists  idx_question_bank_id on t_question_bank (
 id
 );
 
 /*==============================================================*/
 /* Index: idx_question_bank_id_creator                          */
 /*==============================================================*/
-create unique index idx_question_bank_id_creator on t_question_bank (
+create unique index if not exists  idx_question_bank_id_creator on t_question_bank (
 id,
 creator
 );
@@ -7827,7 +7827,7 @@ creator
 /*==============================================================*/
 /* Table: t_region                                              */
 /*==============================================================*/
-create table t_region (
+create table if not exists  t_region (
    id                   SERIAL not null,
    region_name          VARCHAR              null,
    code                 INT8                 null,
@@ -7885,7 +7885,7 @@ comment on column t_region.status is
 /*==============================================================*/
 /* Index: Idx_region_id_pid                                     */
 /*==============================================================*/
-create  index Idx_region_id_pid on t_region (
+create  index if not exists  Idx_region_id_pid on t_region (
 id,
 parent_id
 );
@@ -7893,14 +7893,14 @@ parent_id
 /*==============================================================*/
 /* Index: idx_region_name                                       */
 /*==============================================================*/
-create  index idx_region_name on t_region (
+create  index if not exists  idx_region_name on t_region (
 region_name
 );
 
 /*==============================================================*/
 /* Table: t_relation                                            */
 /*==============================================================*/
-create table t_relation (
+create table if not exists  t_relation (
    id                   SERIAL not null,
    left_id              INT8                 null,
    left_type            VARCHAR              null,
@@ -8010,7 +8010,7 @@ ALTER SEQUENCE t_relation_id_seq RESTART WITH 20000;
 /*==============================================================*/
 /* Index: idx_id_id_relation                                    */
 /*==============================================================*/
-create unique index idx_id_id_relation on t_relation (
+create unique index if not exists  idx_id_id_relation on t_relation (
 left_id,
 left_type,
 kind,
@@ -8021,7 +8021,7 @@ right_type
 /*==============================================================*/
 /* Index: idx_key_id_relation                                   */
 /*==============================================================*/
-create unique index idx_key_id_relation on t_relation (
+create unique index if not exists  idx_key_id_relation on t_relation (
 left_type,
 left_key,
 kind,
@@ -8032,7 +8032,7 @@ right_type
 /*==============================================================*/
 /* Index: idx_id_key_relation                                   */
 /*==============================================================*/
-create unique index idx_id_key_relation on t_relation (
+create unique index if not exists  idx_id_key_relation on t_relation (
 left_id,
 left_type,
 kind,
@@ -8043,7 +8043,7 @@ right_key
 /*==============================================================*/
 /* Index: idx_key_key_relation                                  */
 /*==============================================================*/
-create unique index idx_key_key_relation on t_relation (
+create unique index if not exists  idx_key_key_relation on t_relation (
 left_type,
 left_key,
 kind,
@@ -8054,7 +8054,7 @@ right_key
 /*==============================================================*/
 /* Table: t_relation_history                                    */
 /*==============================================================*/
-create table t_relation_history (
+create table if not exists  t_relation_history (
    id                   INT8                 not null,
    left_id              INT8                 null,
    left_type            VARCHAR              null,
@@ -8148,7 +8148,7 @@ comment on column t_relation_history.sn is
 /*==============================================================*/
 /* Index: idx_relation_history                                  */
 /*==============================================================*/
-create  index idx_relation_history on t_relation_history (
+create  index if not exists  idx_relation_history on t_relation_history (
 left_id,
 left_key,
 kind,
@@ -8158,7 +8158,7 @@ right_id
 /*==============================================================*/
 /* Table: t_report_claims                                       */
 /*==============================================================*/
-create table t_report_claims (
+create table if not exists  t_report_claims (
    id                   SERIAL not null,
    informant_id         INT8                 null,
    informant            JSONB                null,
@@ -8456,7 +8456,7 @@ ALTER SEQUENCE t_report_claims_id_seq RESTART WITH 20000;
 /*==============================================================*/
 /* Table: t_resource                                            */
 /*==============================================================*/
-create table t_resource (
+create table if not exists  t_resource (
    id                   SERIAL not null,
    insurance_type_id    INT8                 null,
    name                 VARCHAR              null,
@@ -8536,7 +8536,7 @@ ALTER SEQUENCE t_resource_id_seq RESTART WITH 20000;
 /*==============================================================*/
 /* Table: t_scan_tdc                                            */
 /*==============================================================*/
-create table t_scan_tdc (
+create table if not exists  t_scan_tdc (
    id                   SERIAL not null,
    tdc_id               INT8                 null,
    external_id          VARCHAR              null,
@@ -8566,7 +8566,7 @@ comment on column t_scan_tdc.req_src is
 /*==============================================================*/
 /* Table: t_school                                              */
 /*==============================================================*/
-create table t_school (
+create table if not exists  t_school (
    id                   SERIAL not null,
    name                 VARCHAR              not null,
    org_code             VARCHAR              null,
@@ -8859,14 +8859,14 @@ insert into t_school(
 /*==============================================================*/
 /* Index: idx_school_name                                       */
 /*==============================================================*/
-create unique index idx_school_name on t_school (
+create unique index if not exists  idx_school_name on t_school (
 name
 );
 
 /*==============================================================*/
 /* Table: t_section                                             */
 /*==============================================================*/
-create table t_section (
+create table if not exists  t_section (
    id                   SERIAL not null,
    name                 VARCHAR              not null,
    type                 VARCHAR              null,
@@ -8954,7 +8954,7 @@ expired,过期、无效';
 /*==============================================================*/
 /* Table: t_special_order                                       */
 /*==============================================================*/
-create table t_special_order (
+create table if not exists  t_special_order (
    id                   SERIAL not null,
    id_card_no           VARCHAR              not null,
    name                 VARCHAR              not null,
@@ -9050,7 +9050,7 @@ ALTER SEQUENCE t_special_order_id_seq RESTART WITH 20000;
 /*==============================================================*/
 /* Index: special_order_prj_id                                  */
 /*==============================================================*/
-create unique index special_order_prj_id on t_special_order (
+create unique index if not exists  special_order_prj_id on t_special_order (
 id_card_no,
 project
 );
@@ -9058,14 +9058,14 @@ project
 /*==============================================================*/
 /* Index: special_order_open_id                                 */
 /*==============================================================*/
-create  index special_order_open_id on t_special_order (
+create  index if not exists  special_order_open_id on t_special_order (
 open_id
 );
 
 /*==============================================================*/
 /* Table: t_student_answers                                     */
 /*==============================================================*/
-create table t_student_answers (
+create table if not exists  t_student_answers (
    id                   INT4                 not null,
    type                 VARCHAR(128)         null,
    examinee_id          INT8                 null,
@@ -9147,7 +9147,7 @@ comment on column t_student_answers.status is
 /*==============================================================*/
 /* Table: t_sys_ver                                             */
 /*==============================================================*/
-create table t_sys_ver (
+create table if not exists  t_sys_ver (
    id                   SERIAL not null,
    tag                  VARCHAR              null,
    name                 VARCHAR              null,
@@ -9201,7 +9201,7 @@ ALTER SEQUENCE t_sys_ver_id_seq RESTART WITH 20000;
 
 insert into t_sys_ver(id,name,ver,create_time,update_time,remark)
   values(1000,'业务模型','3.1.12.0',
-  'Monday, December 5, 2016 9:52:53 AM','Monday, August 25, 2025 10:11:40 PM',
+  'Monday, December 5, 2016 9:52:53 AM','Monday, August 25, 2025 10:31:37 PM',
   '3.1.12.0
 在t_api新增access_action字段，并将索引idx_t_api_expose_path修改为expose_path字段与access_action字段的联合唯一索引idx_t_api_ep_aa，以实现功能配置需求；修改部分表的create_time与update_time为INT8类型
 
@@ -10003,7 +10003,7 @@ c增加, 表示修正bugs未增加新功能，并与之前兼容');
 /*==============================================================*/
 /* Table: t_tdc                                                 */
 /*==============================================================*/
-create table t_tdc (
+create table if not exists  t_tdc (
    id                   SERIAL not null,
    tdc_id               VARCHAR              null,
    name                 VARCHAR              null,
@@ -10073,7 +10073,7 @@ ALTER SEQUENCE t_tdc_id_seq RESTART WITH 10000;
 /*==============================================================*/
 /* Table: t_teacher_student                                     */
 /*==============================================================*/
-create table t_teacher_student (
+create table if not exists  t_teacher_student (
    id                   SERIAL               not null,
    creator              INT8                 not null,
    create_time          TIMESTAMP            null,
@@ -10111,7 +10111,7 @@ comment on column t_teacher_student.addi is
 /*==============================================================*/
 /* Table: t_undertaker                                          */
 /*==============================================================*/
-create table t_undertaker (
+create table if not exists  t_undertaker (
    id                   SERIAL not null,
    prj_id               INT8                 null,
    developer_id         INT8                 null,
@@ -10160,7 +10160,7 @@ signed, 已签定合同';
 /*==============================================================*/
 /* Table: t_user_assessment                                     */
 /*==============================================================*/
-create table t_user_assessment (
+create table if not exists  t_user_assessment (
    id                   SERIAL not null,
    user_id              INT8                 not null,
    exam_id              INT8                 null,
@@ -10254,7 +10254,7 @@ comment on column t_user_assessment.status is
 /*==============================================================*/
 /* Table: t_user_course                                         */
 /*==============================================================*/
-create table t_user_course (
+create table if not exists  t_user_course (
    id                   SERIAL not null,
    u_id                 INT8                 not null,
    c_id                 INT8                 not null,
@@ -10340,7 +10340,7 @@ comment on column t_user_course.status is
 /*==============================================================*/
 /* Index: idx_user_course_u_c                                   */
 /*==============================================================*/
-create unique index idx_user_course_u_c on t_user_course (
+create unique index if not exists  idx_user_course_u_c on t_user_course (
 u_id,
 c_id
 );
@@ -10348,7 +10348,7 @@ c_id
 /*==============================================================*/
 /* Table: t_user_degree                                         */
 /*==============================================================*/
-create table t_user_degree (
+create table if not exists  t_user_degree (
    id                   SERIAL not null,
    user_id              INT8                 null,
    degree_id            INT8                 null,
@@ -10370,7 +10370,7 @@ comment on column t_user_degree.degree_id is
 /*==============================================================*/
 /* Table: t_user_domain                                         */
 /*==============================================================*/
-create table t_user_domain (
+create table if not exists  t_user_domain (
    id                   SERIAL not null,
    sys_user             INT8                 null,
    id_on_domain         VARCHAR              null,
@@ -10541,7 +10541,7 @@ insert into t_user_domain(sys_user,domain,domain_id,creator) values
 /*==============================================================*/
 /* Index: idx_user_domain                                       */
 /*==============================================================*/
-create unique index idx_user_domain on t_user_domain (
+create unique index if not exists  idx_user_domain on t_user_domain (
 domain,
 sys_user
 );
@@ -10549,7 +10549,7 @@ sys_user
 /*==============================================================*/
 /* Table: t_user_group                                          */
 /*==============================================================*/
-create table t_user_group (
+create table if not exists  t_user_group (
    id                   SERIAL not null,
    user_id              INT8                 not null,
    group_id             INT8                 not null,
@@ -10603,7 +10603,7 @@ comment on column t_user_group.status is
 /*==============================================================*/
 /* Index: idx_user_grp                                          */
 /*==============================================================*/
-create unique index idx_user_grp on t_user_group (
+create unique index if not exists  idx_user_grp on t_user_group (
 user_id,
 group_id
 );
@@ -10611,7 +10611,7 @@ group_id
 /*==============================================================*/
 /* Table: t_wx_user                                             */
 /*==============================================================*/
-create table t_wx_user (
+create table if not exists  t_wx_user (
    id                   INT8                 not null,
    Subscribe            INT4                 null,
    Subscribe_Time       INT4                 null,
@@ -10745,7 +10745,7 @@ comment on column t_wx_user.status is
 /*==============================================================*/
 /* Index: idx_wx_user_full                                      */
 /*==============================================================*/
-create  index idx_wx_user_full on t_wx_user (
+create  index if not exists  idx_wx_user_full on t_wx_user (
 wx_open_id,
 mp_open_id,
 union_ID,
@@ -10756,14 +10756,14 @@ Nickname
 /*==============================================================*/
 /* Index: idx_wx_user_openid                                    */
 /*==============================================================*/
-create unique index idx_wx_user_openid on t_wx_user (
+create unique index if not exists  idx_wx_user_openid on t_wx_user (
 union_ID
 );
 
 /*==============================================================*/
 /* Table: t_xkb_user                                            */
 /*==============================================================*/
-create table t_xkb_user (
+create table if not exists  t_xkb_user (
    id                   INT8                 not null,
    school_id            INT8                 null,
    subdistrict          VARCHAR              null,
