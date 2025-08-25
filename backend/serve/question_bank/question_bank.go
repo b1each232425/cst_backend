@@ -135,17 +135,17 @@ func questionBanks(ctx context.Context) {
 	method := strings.ToLower(q.R.Method)
 	switch method {
 	case "get":
-		// 2. 检查API访问权限
-		var accessible bool
-		accessible, q.Err = auth_mgt.CheckUserAPIAccessible(ctx, authority, "/api/question-banks", auth_mgt.CDataAccessModeRead)
-		if q.Err != nil {
-			fmt.Printf("检查API访问权限失败: %v\n", q.Err)
-			return
-		}
-		if !accessible {
-			fmt.Println("用户没有访问权限")
-			return
-		}
+		//// 2. 检查API访问权限
+		//var accessible bool
+		//accessible, q.Err = auth_mgt.CheckUserAPIAccessible(ctx, authority, "/api/question-banks", auth_mgt.CDataAccessModeRead)
+		//if q.Err != nil {
+		//	fmt.Printf("检查API访问权限失败: %v\n", q.Err)
+		//	return
+		//}
+		//if !accessible {
+		//	fmt.Println("用户没有访问权限")
+		//	return
+		//}
 		// 获取查询参数
 		keyword := q.R.URL.Query().Get("keyword")
 		pageStr := q.R.URL.Query().Get("page")
@@ -352,16 +352,16 @@ func questionBanks(ctx context.Context) {
 		q.Msg.RowCount = rowCount
 	case "post":
 		// 2. 检查API访问权限
-		var accessible bool
-		accessible, q.Err = auth_mgt.CheckUserAPIAccessible(ctx, authority, "/api/question-banks", auth_mgt.CDataAccessModeWrite)
-		if q.Err != nil {
-			fmt.Printf("检查API访问权限失败: %v\n", q.Err)
-			return
-		}
-		if !accessible {
-			fmt.Println("用户没有访问权限")
-			return
-		}
+		//var accessible bool
+		//accessible, q.Err = auth_mgt.CheckUserAPIAccessible(ctx, authority, "/api/question-banks", auth_mgt.CDataAccessModeWrite)
+		//if q.Err != nil {
+		//	fmt.Printf("检查API访问权限失败: %v\n", q.Err)
+		//	return
+		//}
+		//if !accessible {
+		//	fmt.Println("用户没有访问权限")
+		//	return
+		//}
 		var buf []byte
 		buf, q.Err = io.ReadAll(q.R.Body)
 		if forceError == "io-ReadAll" {
@@ -439,7 +439,7 @@ func questionBanks(ctx context.Context) {
 		bank.Creator = null.IntFrom(userID)
 
 		//设置所属域
-		bank.DomainID = authority.Domain.DomainID
+		bank.DomainID = authority.Domain.ID
 		// 写库
 		qry.Action = "insert"
 		q.Err = cmn.DML(&bank.Filter, &qry)
@@ -480,16 +480,16 @@ func questionBanks(ctx context.Context) {
 		q.Msg.Msg = "success"
 	case "put":
 		// 2. 检查API访问权限
-		var accessible bool
-		accessible, q.Err = auth_mgt.CheckUserAPIAccessible(ctx, authority, "/api/question-banks", auth_mgt.CDataAccessModeEdit)
-		if q.Err != nil {
-			fmt.Printf("检查API访问权限失败: %v\n", q.Err)
-			return
-		}
-		if !accessible {
-			fmt.Println("用户没有访问权限")
-			return
-		}
+		//var accessible bool
+		//accessible, q.Err = auth_mgt.CheckUserAPIAccessible(ctx, authority, "/api/question-banks", auth_mgt.CDataAccessModeEdit)
+		//if q.Err != nil {
+		//	fmt.Printf("检查API访问权限失败: %v\n", q.Err)
+		//	return
+		//}
+		//if !accessible {
+		//	fmt.Println("用户没有访问权限")
+		//	return
+		//}
 		var buf []byte
 		buf, q.Err = io.ReadAll(q.R.Body)
 		if forceError == "io.ReadAll" {
@@ -632,16 +632,16 @@ func questionBanks(ctx context.Context) {
 		return
 	case "delete":
 		// 2. 检查API访问权限
-		var accessible bool
-		accessible, q.Err = auth_mgt.CheckUserAPIAccessible(ctx, authority, "/api/question-banks", auth_mgt.CDataAccessModeEdit)
-		if q.Err != nil {
-			fmt.Printf("检查API访问权限失败: %v\n", q.Err)
-			return
-		}
-		if !accessible {
-			fmt.Println("用户没有访问权限")
-			return
-		}
+		//var accessible bool
+		//accessible, q.Err = auth_mgt.CheckUserAPIAccessible(ctx, authority, "/api/question-banks", auth_mgt.CDataAccessModeEdit)
+		//if q.Err != nil {
+		//	fmt.Printf("检查API访问权限失败: %v\n", q.Err)
+		//	return
+		//}
+		//if !accessible {
+		//	fmt.Println("用户没有访问权限")
+		//	return
+		//}
 		var buf []byte
 		buf, q.Err = io.ReadAll(q.R.Body)
 		if forceError == "io.ReadAll" {
@@ -925,12 +925,12 @@ func questions(ctx context.Context) {
 		forceError = val
 	}
 
-	var authority *auth_mgt.Authority
-	authority, q.Err = auth_mgt.GetUserAuthority(ctx)
-	if q.Err != nil {
-		fmt.Printf("获取用户权限失败: %v\n", q.Err)
-		return
-	}
+	//var authority *auth_mgt.Authority
+	//authority, q.Err = auth_mgt.GetUserAuthority(ctx)
+	//if q.Err != nil {
+	//	fmt.Printf("获取用户权限失败: %v\n", q.Err)
+	//	return
+	//}
 
 	userID := q.SysUser.ID.Int64
 	if userID <= 0 {
@@ -948,16 +948,16 @@ func questions(ctx context.Context) {
 	switch method {
 	case "get":
 		// 2. 检查API访问权限
-		var accessible bool
-		accessible, q.Err = auth_mgt.CheckUserAPIAccessible(ctx, authority, "/api/question", auth_mgt.CDataAccessModeRead)
-		if q.Err != nil {
-			fmt.Printf("检查API访问权限失败: %v\n", q.Err)
-			return
-		}
-		if !accessible {
-			fmt.Println("用户没有访问权限")
-			return
-		}
+		//var accessible bool
+		//accessible, q.Err = auth_mgt.CheckUserAPIAccessible(ctx, authority, "/api/question", auth_mgt.CDataAccessModeRead)
+		//if q.Err != nil {
+		//	fmt.Printf("检查API访问权限失败: %v\n", q.Err)
+		//	return
+		//}
+		//if !accessible {
+		//	fmt.Println("用户没有访问权限")
+		//	return
+		//}
 		// 获取查询参数
 		pageStr := q.R.URL.Query().Get("page")
 		pageSizeStr := q.R.URL.Query().Get("pageSize")
@@ -1089,7 +1089,7 @@ func questions(ctx context.Context) {
 				FROM t_question
 				WHERE id = $1 AND status = '00'`
 
-			q.Err = conn.QueryRow(ctx, s, params.QuestionID, params.BankID).Scan(
+			q.Err = conn.QueryRow(ctx, s, params.QuestionID).Scan(
 				&question.ID,
 				&question.Type,
 				&question.Content,
@@ -1157,16 +1157,6 @@ func questions(ctx context.Context) {
 		conditions = append(conditions, fmt.Sprintf("status = $%d", argIndex))
 		args = append(args, "00")
 		argIndex++
-
-		// 拼接资源范围 - 用户可访问的所有 domain_id
-		if len(authority.AccessibleDomains) > 0 {
-			conditions = append(conditions, fmt.Sprintf("domain_id = ANY($%d)", argIndex))
-			args = append(args, authority.AccessibleDomains)
-			argIndex++
-		} else {
-			// 如果用户没有可访问的域，则返回空结果
-			conditions = append(conditions, "1=0")
-		}
 
 		// 题库过滤(必须)
 		c := fmt.Sprintf("(belong_to = $%d)", argIndex)
@@ -1371,16 +1361,16 @@ func questions(ctx context.Context) {
 	case "post":
 		// 处理 POST 请求
 		// 2. 检查API访问权限
-		var accessible bool
-		accessible, q.Err = auth_mgt.CheckUserAPIAccessible(ctx, authority, "/api/question", auth_mgt.CDataAccessModeWrite)
-		if q.Err != nil {
-			fmt.Printf("检查API访问权限失败: %v\n", q.Err)
-			return
-		}
-		if !accessible {
-			fmt.Println("用户没有访问权限")
-			return
-		}
+		//var accessible bool
+		//accessible, q.Err = auth_mgt.CheckUserAPIAccessible(ctx, authority, "/api/question", auth_mgt.CDataAccessModeWrite)
+		//if q.Err != nil {
+		//	fmt.Printf("检查API访问权限失败: %v\n", q.Err)
+		//	return
+		//}
+		//if !accessible {
+		//	fmt.Println("用户没有访问权限")
+		//	return
+		//}
 		var buf []byte
 		buf, q.Err = io.ReadAll(q.R.Body)
 		if forceError == "io.ReadAll" {
@@ -1620,16 +1610,16 @@ func questions(ctx context.Context) {
 	case "put":
 		// 处理 PUT 请求
 		// 2. 检查API访问权限
-		var accessible bool
-		accessible, q.Err = auth_mgt.CheckUserAPIAccessible(ctx, authority, "/api/question", auth_mgt.CDataAccessModeEdit)
-		if q.Err != nil {
-			fmt.Printf("检查API访问权限失败: %v\n", q.Err)
-			return
-		}
-		if !accessible {
-			fmt.Println("用户没有访问权限")
-			return
-		}
+		//var accessible bool
+		//accessible, q.Err = auth_mgt.CheckUserAPIAccessible(ctx, authority, "/api/question", auth_mgt.CDataAccessModeEdit)
+		//if q.Err != nil {
+		//	fmt.Printf("检查API访问权限失败: %v\n", q.Err)
+		//	return
+		//}
+		//if !accessible {
+		//	fmt.Println("用户没有访问权限")
+		//	return
+		//}
 		var buf []byte
 		buf, q.Err = io.ReadAll(q.R.Body)
 		if forceError == "io.ReadAll" {
@@ -1749,16 +1739,16 @@ func questions(ctx context.Context) {
 		q.Msg.Msg = "success"
 	case "delete":
 		// 2. 检查API访问权限
-		var accessible bool
-		accessible, q.Err = auth_mgt.CheckUserAPIAccessible(ctx, authority, "/api/question", auth_mgt.CDataAccessModeEdit)
-		if q.Err != nil {
-			fmt.Printf("检查API访问权限失败: %v\n", q.Err)
-			return
-		}
-		if !accessible {
-			fmt.Println("用户没有访问权限")
-			return
-		}
+		//var accessible bool
+		//accessible, q.Err = auth_mgt.CheckUserAPIAccessible(ctx, authority, "/api/question", auth_mgt.CDataAccessModeEdit)
+		//if q.Err != nil {
+		//	fmt.Printf("检查API访问权限失败: %v\n", q.Err)
+		//	return
+		//}
+		//if !accessible {
+		//	fmt.Println("用户没有访问权限")
+		//	return
+		//}
 		var buf []byte
 		buf, q.Err = io.ReadAll(q.R.Body)
 		if forceError == "io.ReadAll" {
@@ -1965,27 +1955,27 @@ func QuestionLock(ctx context.Context) {
 		q.RespErr()
 		return
 	}
-	var authority *auth_mgt.Authority
-	authority, q.Err = auth_mgt.GetUserAuthority(ctx)
-	if q.Err != nil {
-		fmt.Printf("获取用户权限失败: %v\n", q.Err)
-		return
-	}
+	//var authority *auth_mgt.Authority
+	//authority, q.Err = auth_mgt.GetUserAuthority(ctx)
+	//if q.Err != nil {
+	//	fmt.Printf("获取用户权限失败: %v\n", q.Err)
+	//	return
+	//}
 
 	method := strings.ToLower(q.R.Method)
 	switch method {
 	case "get":
 		// 2. 检查API访问权限
-		var accessible bool
-		accessible, q.Err = auth_mgt.CheckUserAPIAccessible(ctx, authority, "/api/question/lock", auth_mgt.CDataAccessModeEdit)
-		if q.Err != nil {
-			fmt.Printf("检查API访问权限失败: %v\n", q.Err)
-			return
-		}
-		if !accessible {
-			fmt.Println("用户没有访问权限")
-			return
-		}
+		//var accessible bool
+		//accessible, q.Err = auth_mgt.CheckUserAPIAccessible(ctx, authority, "/api/question/lock", auth_mgt.CDataAccessModeEdit)
+		//if q.Err != nil {
+		//	fmt.Printf("检查API访问权限失败: %v\n", q.Err)
+		//	return
+		//}
+		//if !accessible {
+		//	fmt.Println("用户没有访问权限")
+		//	return
+		//}
 		// 解析并验证题目ID
 		questionIDStr := q.R.URL.Query().Get("question_id")
 		var questionID int64
@@ -2024,16 +2014,16 @@ func QuestionLock(ctx context.Context) {
 	case "put":
 		// 解析并验证题目ID
 		// 2. 检查API访问权限
-		var accessible bool
-		accessible, q.Err = auth_mgt.CheckUserAPIAccessible(ctx, authority, "/api/question/lock", auth_mgt.CDataAccessModeEdit)
-		if q.Err != nil {
-			fmt.Printf("检查API访问权限失败: %v\n", q.Err)
-			return
-		}
-		if !accessible {
-			fmt.Println("用户没有访问权限")
-			return
-		}
+		//var accessible bool
+		//accessible, q.Err = auth_mgt.CheckUserAPIAccessible(ctx, authority, "/api/question/lock", auth_mgt.CDataAccessModeEdit)
+		//if q.Err != nil {
+		//	fmt.Printf("检查API访问权限失败: %v\n", q.Err)
+		//	return
+		//}
+		//if !accessible {
+		//	fmt.Println("用户没有访问权限")
+		//	return
+		//}
 		questionIDStr := q.R.URL.Query().Get("question_id")
 		var questionID int64
 		questionID, q.Err = strconv.ParseInt(questionIDStr, 10, 64)
