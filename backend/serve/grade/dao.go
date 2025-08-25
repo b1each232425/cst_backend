@@ -1245,7 +1245,7 @@ func gradeAnalysisByID(ctx context.Context, esid int64, pid int64) (Analysis, er
 		}
 
 		// 数据库存储学生答案为空
-		if ans.AnsJson == nil || forceErr == "ansJson nil" {
+		if ans.AnsJson == nil || ans.AnsJson.String() == "" || forceErr == "ansJson nil" {
 			continue
 		}
 
