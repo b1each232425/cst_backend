@@ -1,6 +1,6 @@
 /*==============================================================*/
 /* DBMS name:      PostgreSQL 9.x                               */
-/* Created on:     2025/8/23 14:26:28                           */
+/* Created on:     8/25/2025 10:31:41 PM                        */
 /*==============================================================*/
 
 
@@ -116,7 +116,7 @@ drop table if exists t_age;
 
 drop index if exists  idx_t_api_name;
 
-drop index if exists  idx_t_api_expose_path;
+drop index if exists  idx_t_api_ep_aa;
 
 drop table if exists t_domain_api;
 
@@ -529,7 +529,9 @@ create table if not exists  t_api (
    id                   SERIAL not null,
    name                 VARCHAR              not null,
    expose_path          VARCHAR              null,
+   author               JSONB                not null,
    maintainer           INT8                 null,
+   access_action        VARCHAR              null,
    access_control_level VARCHAR              not null,
    updated_by           INT8                 null,
    update_time          INT8                 null default (extract(epoch from current_timestamp)*1000)::bigint,
@@ -554,8 +556,14 @@ comment on column t_api.name is
 comment on column t_api.expose_path is
 '访问路径';
 
+comment on column t_api.author is
+'接口作者';
+
 comment on column t_api.maintainer is
 '维护者';
+
+comment on column t_api.access_action is
+'访问操作 full:允许所有操作 query: 查询数据操作 add: 添加数据操作 edit: 编辑数据操作 delete: 删除数据操作';
 
 comment on column t_api.access_control_level is
 '访问控制实现层级
@@ -590,53 +598,54 @@ comment on column t_api.status is
 
 ALTER SEQUENCE t_api_id_seq RESTART WITH 20000;
 /*
-insert into t_api(id,name, expose_path,domain_id, maintainer, access_control_level)
-values (100,'平台.登录','/api/login',177,1000,3),
-(110,'网站图标','/favicon.ico',177,1000,3),
-(200,'平台.登出','/api/logout',177,1000,3),
-(300,'平台.用户管理','/api/user',177,1000,3),
-(400,'校快保.参数','/api/param',10002,1000,3),
-(500,'校快保.学校','/api/school',10002,1000,3),
-(600,'校快保.开放学校列表','/api/openSchools',10002,1000,3),
-(700,'校快保.学校列表','/api/schoolList',10002,1000,3),
-(800,'校快保.用户','/api/xkbUser',10002,1000,3),
-(900,'校快保.我的被保险人','/api/myInsuredList',10002,1000,3),
-(1000,'校快保.订单','/api/order',10002,1000,3),
-(1100,'校快保.微信支付','/api/wxPay',10002,1000,3),
-(1200,'校快保.微信支付回调','/api/wxPaid',10002,1000,3),
-(1300,'平台.时间测试','/api/trialTime',177,1000,3),
-(1400,'校快保.投保规则','/api/purchaseRule',10002,1000,3),
-(1500,'校快保.微信支付参数','/api/wxAppID',10002,1000,3),
-(1600,'校快保.用户状态','/api/status',10002,1000,3),
-(1700,'平台.微信消息响应','/api/wxServe',177,1000,3),
-(1800,'平台.微信登录','/api/wxLogin',177,1000,3),
-(1900,'近邻科技.微信验证域名','/MP_verify_NoNLb44EuoLJ7ybT.txt',1077,1000,3),
-(2000,'校快保.微信验证域名','/MP_verify_87DVhsMdnS64dC0K.txt',10002,1000,3),
-(2100,'平台.基础测试','/trial',177,1000,3),
-(2200,'校快保.学校管理员','/api/schoolManager',10002,1000,3),
-(2300,'校快保.销售管理员','/api/saleManager',10002,1000,3),
-(2400,'校快保.学校相关管理员','/api/manager',10002,1000,3),
-(2500,'校快保.保单','/api/insurancePolicy',10002,1000,3),
-(2600,'校快保.保险单价','/api/insuranceUnitPrice',10002,1000,3),
-(2700,'校快保.保险文档','/api/insuranceDoc',10002,1000,3),
-(2800,'平台.发送短信验证码','/api/sendVerifyCodeBySMS',177,1000,3),
-(2900,'平台.确认短信验证码','/api/verifySMSCode',177,1000,3),
-(3000,'平台.手机是否已被验证','/api/isTelVerified',177,1000,3),
-(3100,'平台.日志','/api/log',177,1000,3),
-(3200,'平台.文件','/api/file',177,1000,3),
-(3300,'校快保.报案理赔','/api/reportClaims',10002,1000,3),
-(3400,'平台.默认页面','/',177,1000,3),
-(3500,'平台.接口测试','/t',177,1000,3),
-(3600,'平台.测试.登录页面','/t/login',177,1000,3),
-(3700,'校快保.前端','/xkb',10002,1000,3),
-(3800,'校快保.前端.登录','/xkb/login',10002,1000,3);
+insert into t_api(author,id,name, expose_path,domain_id, maintainer, access_control_level)
+values ('{"name":"user","tel":"18928776452","email":"XUnion@GMail.com"}',100,'平台.登录','/api/login',177,1000,3),
+('{"name":"user","tel":"18928776452","email":"XUnion@GMail.com"}',110,'网站图标','/favicon.ico',177,1000,3),
+('{"name":"user","tel":"18928776452","email":"XUnion@GMail.com"}',200,'平台.登出','/api/logout',177,1000,3),
+('{"name":"user","tel":"18928776452","email":"XUnion@GMail.com"}',300,'平台.用户管理','/api/user',177,1000,3),
+('{"name":"user","tel":"18928776452","email":"XUnion@GMail.com"}',400,'校快保.参数','/api/param',10002,1000,3),
+('{"name":"user","tel":"18928776452","email":"XUnion@GMail.com"}',500,'校快保.学校','/api/school',10002,1000,3),
+('{"name":"user","tel":"18928776452","email":"XUnion@GMail.com"}','{"name":"user","tel":"18928776452","email":"XUnion@GMail.com"}',600,'校快保.开放学校列表','/api/openSchools',10002,1000,3),
+('{"name":"user","tel":"18928776452","email":"XUnion@GMail.com"}',700,'校快保.学校列表','/api/schoolList',10002,1000,3),
+('{"name":"user","tel":"18928776452","email":"XUnion@GMail.com"}',800,'校快保.用户','/api/xkbUser',10002,1000,3),
+(('{"name":"user","tel":"18928776452","email":"XUnion@GMail.com"}',900,'校快保.我的被保险人','/api/myInsuredList',10002,1000,3),
+('{"name":"user","tel":"18928776452","email":"XUnion@GMail.com"}',1000,'校快保.订单','/api/order',10002,1000,3),
+('{"name":"user","tel":"18928776452","email":"XUnion@GMail.com"}',1100,'校快保.微信支付','/api/wxPay',10002,1000,3),
+('{"name":"user","tel":"18928776452","email":"XUnion@GMail.com"}',1200,'校快保.微信支付回调','/api/wxPaid',10002,1000,3),
+('{"name":"user","tel":"18928776452","email":"XUnion@GMail.com"}',1300,'平台.时间测试','/api/trialTime',177,1000,3),
+('{"name":"tom sawyer","tel":"13580452503", "email":"KManager@GMail.com"}',1400,'校快保.投保规则','/api/purchaseRule',10002,1000,3),
+('{"name":"tom sawyer","tel":"13580452503", "email":"KManager@GMail.com"}',1500,'校快保.微信支付参数','/api/wxAppID',10002,1000,3),
+('{"name":"tom sawyer","tel":"13580452503", "email":"KManager@GMail.com"}',1600,'校快保.用户状态','/api/status',10002,1000,3),
+('{"name":"tom sawyer","tel":"13580452503", "email":"KManager@GMail.com"}',1700,'平台.微信消息响应','/api/wxServe',177,1000,3),
+('{"name":"tom sawyer","tel":"13580452503", "email":"KManager@GMail.com"}',1800,'平台.微信登录','/api/wxLogin',177,1000,3),
+('{"name":"tom sawyer","tel":"13580452503", "email":"KManager@GMail.com"}',1900,'近邻科技.微信验证域名','/MP_verify_NoNLb44EuoLJ7ybT.txt',1077,1000,3),
+('{"name":"tom sawyer","tel":"13580452503", "email":"KManager@GMail.com"}',2000,'校快保.微信验证域名','/MP_verify_87DVhsMdnS64dC0K.txt',10002,1000,3),
+('{"name":"tom sawyer","tel":"13580452503", "email":"KManager@GMail.com"}',2100,'平台.基础测试','/trial',177,1000,3),
+('{"name":"tom sawyer","tel":"13580452503", "email":"KManager@GMail.com"}',2200,'校快保.学校管理员','/api/schoolManager',10002,1000,3),
+('{"name":"tom sawyer","tel":"13580452503", "email":"KManager@GMail.com"}',2300,'校快保.销售管理员','/api/saleManager',10002,1000,3),
+('{"name":"tom sawyer","tel":"13580452503", "email":"KManager@GMail.com"}',2400,'校快保.学校相关管理员','/api/manager',10002,1000,3),
+('{"name":"tom sawyer","tel":"13580452503", "email":"KManager@GMail.com"}',2500,'校快保.保单','/api/insurancePolicy',10002,1000,3),
+('{"name":"tom sawyer","tel":"13580452503", "email":"KManager@GMail.com"}',2600,'校快保.保险单价','/api/insuranceUnitPrice',10002,1000,3),
+('{"name":"tom sawyer","tel":"13580452503", "email":"KManager@GMail.com"}',2700,'校快保.保险文档','/api/insuranceDoc',10002,1000,3),
+('{"name":"tom sawyer","tel":"13580452503", "email":"KManager@GMail.com"}',2800,'平台.发送短信验证码','/api/sendVerifyCodeBySMS',177,1000,3),
+('{"name":"tom sawyer","tel":"13580452503", "email":"KManager@GMail.com"}',2900,'平台.确认短信验证码','/api/verifySMSCode',177,1000,3),
+('{"name":"tom sawyer","tel":"13580452503", "email":"KManager@GMail.com"}',3000,'平台.手机是否已被验证','/api/isTelVerified',177,1000,3),
+('{"name":"tom sawyer","tel":"13580452503", "email":"KManager@GMail.com"}',3100,'平台.日志','/api/log',177,1000,3),
+('{"name":"tom sawyer","tel":"13580452503", "email":"KManager@GMail.com"}',3200,'平台.文件','/api/file',177,1000,3),
+('{"name":"tom sawyer","tel":"13580452503", "email":"KManager@GMail.com"}',3300,'校快保.报案理赔','/api/reportClaims',10002,1000,3),
+('{"name":"tom sawyer","tel":"13580452503", "email":"KManager@GMail.com"}',3400,'平台.默认页面','/',177,1000,3),
+('{"name":"tom sawyer","tel":"13580452503", "email":"KManager@GMail.com"}',3500,'平台.接口测试','/t',177,1000,3),
+('{"name":"tom sawyer","tel":"13580452503", "email":"KManager@GMail.com"}',3600,'平台.测试.登录页面','/t/login',177,1000,3),
+('{"name":"tom sawyer","tel":"13580452503", "email":"KManager@GMail.com"}',3700,'校快保.前端','/xkb',10002,1000,3),
+('{"name":"tom sawyer","tel":"13580452503", "email":"KManager@GMail.com"}',3800,'校快保.前端.登录','/xkb/login',10002,1000,3);
 */
 
 /*==============================================================*/
-/* Index: idx_t_api_expose_path                                 */
+/* Index: idx_t_api_ep_aa                                       */
 /*==============================================================*/
-create unique index if not exists  idx_t_api_expose_path on t_api (
-expose_path
+create unique index if not exists  idx_t_api_ep_aa on t_api (
+expose_path,
+( access_action )
 );
 
 /*==============================================================*/
@@ -1952,15 +1961,15 @@ comment on column t_exam_paper_question.question_attachments_path is
 /* Table: t_exam_record                                         */
 /*==============================================================*/
 create table if not exists  t_exam_record (
-   id                   INT4                 not null,
+   id                   SERIAL               not null,
    exam_room            int8                 not null,
    exam_session         int8                 not null,
    content              varchar(5000)        null,
    basic_eval           VARCHAR(150)         null,
    creator              INT8                 not null,
-   create_time          timestamp            null,
+   create_time          INT8                 null default (extract(epoch from current_timestamp)*1000)::bigint,
    updated_by           INT8                 null,
-   update_time          timestamp            null,
+   update_time          INT8                 null default (extract(epoch from current_timestamp)*1000)::bigint,
    addi                 jsonb                null,
    status               varchar(150)         null,
    constraint PK_T_EXAM_RECORD primary key (id)
@@ -2012,9 +2021,9 @@ create table if not exists  t_exam_room (
    capacity             INT4                 null,
    domain_id            INT8                 null,
    creator              INT8                 not null,
-   create_time          TIMESTAMP            null,
+   create_time          INT8                 null default (extract(epoch from current_timestamp)*1000)::bigint,
    updated_by           INT8                 null,
-   update_time          TIMESTAMP            null,
+   update_time          INT8                 null default (extract(epoch from current_timestamp)*1000)::bigint,
    status               VARCHAR(150)         null default '0',
    addi                 JSONB                null,
    constraint PK_T_EXAM_ROOM primary key (id)
@@ -2167,9 +2176,9 @@ create table if not exists  t_exam_site (
    address              VARCHAR(100)         null,
    server_host          VARCHAR(100)         null,
    creator              INT8                 not null,
-   create_time          TIMESTAMP            null,
+   create_time          INT8                 null default (extract(epoch from current_timestamp)*1000)::bigint,
    updated_by           INT8                 null,
-   update_time          TIMESTAMP            null,
+   update_time          INT8                 null default (extract(epoch from current_timestamp)*1000)::bigint,
    status               VARCHAR(150)         null default '0',
    addi                 JSONB                null,
    admin                INT8                 null,
@@ -4009,14 +4018,14 @@ ALTER SEQUENCE t_insured_terms_id_seq RESTART WITH 20000;
 /* Table: t_invigilation                                        */
 /*==============================================================*/
 create table if not exists  t_invigilation (
-   id                   INT4                 not null,
+   id                   SERIAL               not null,
    exam_session_id      INT8                 null,
    invigilator          INT8                 null,
    exam_room            INT8                 null,
    creator              INT8                 not null,
-   create_time          TIMESTAMP            null,
+   create_time          INT8                 null default (extract(epoch from current_timestamp)*1000)::bigint,
    updated_by           INT8                 null,
-   update_time          TIMESTAMP            null,
+   update_time          INT8                 null default (extract(epoch from current_timestamp)*1000)::bigint,
    addi                 JSONB                null,
    constraint PK_T_INVIGILATION primary key (id)
 );
@@ -9075,7 +9084,7 @@ create table if not exists  t_student_answers (
    update_time          INT8                 null,
    addi                 JSONB                null,
    status               VARCHAR(64)          null default '0',
-   constraint PK_T_STUDENT_ANSWERS primary key (id, answer)
+   constraint PK_T_STUDENT_ANSWERS primary key (id)
 );
 
 comment on table t_student_answers is
@@ -9191,9 +9200,12 @@ comment on column t_sys_ver.status is
 ALTER SEQUENCE t_sys_ver_id_seq RESTART WITH 20000;
 
 insert into t_sys_ver(id,name,ver,create_time,update_time,remark)
-  values(1000,'业务模型','3.1.11.4',
-  '2016年12月5日 9:52:53','2025年8月23日 14:26:22',
-  '3.1.11.4 
+  values(1000,'业务模型','3.1.12.0',
+  'Monday, December 5, 2016 9:52:53 AM','Monday, August 25, 2025 10:31:37 PM',
+  '3.1.12.0
+在t_api新增access_action字段，并将索引idx_t_api_expose_path修改为expose_path字段与access_action字段的联合唯一索引idx_t_api_ep_aa，以实现功能配置需求；修改部分表的create_time与update_time为INT8类型
+
+3.1.11.4 
 删除错题来源于错题集的视图 删除错题设计的wrong_practice_id字段 新增关于错题提交记录判断状态视图
 
 3.1.11.3
@@ -10923,6 +10935,7 @@ select
     a.id as api_id,
     a.name as api_name,
     a.expose_path,
+    a.access_action,
     a.access_control_level,
     da.domain_id, 
     da.grant_source,
