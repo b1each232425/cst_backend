@@ -1,5 +1,7 @@
 package question_bank
 
+import "time"
+
 const (
 
 	// Question bank types
@@ -56,4 +58,10 @@ const (
 	// 记录状态定义
 	StatusNormal   = "00" // 正常状态
 	StatusUnNormal = "02" // 已删除(软删除)
+)
+
+const (
+	// 题目锁相关常量
+	QuestionLockPrefix     = "question_lock:" // 题目锁前缀
+	QuestionLockExpiration = 30 * time.Minute // 题目锁过期时间（秒）
 )

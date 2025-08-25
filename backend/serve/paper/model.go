@@ -73,12 +73,13 @@ type UpdateQuestionsGroupRequest struct {
 
 // 请求试卷列表结构体
 type PaperListRequest struct {
-	Name     string `form:"name" validate:"max=50,omitempty"`
-	Tags     string `form:"tags" validate:"omitempty,max=100"`
-	Page     int    `form:"page" validate:"required,min=1"`
-	PageSize int    `form:"page_size" validate:"required,oneof=5 10 20"`
-	Category string `form:"category" validate:"omitempty,oneof=00 02"`
-	Self     bool   `form:"self" validate:"omitempty"` // 是否只查询当前用户创建的试卷
+	Name      string `form:"name" validate:"max=50,omitempty"`
+	Tags      string `form:"tags" validate:"omitempty,max=100"`
+	Page      int    `form:"page" validate:"required,min=1"`
+	PageSize  int    `form:"page_size" validate:"required,oneof=5 10 20"`
+	Category  string `form:"category" validate:"omitempty,oneof=00 02"`
+	Self      bool   `form:"self" validate:"omitempty"`      // 是否只查询当前用户创建的试卷
+	Published bool   `form:"published" validate:"omitempty"` // 是否只查询已发布的试卷
 }
 
 // --------------------------------------------共享试卷--------------------------------------------

@@ -128,6 +128,8 @@ func WebServe(_ *cobra.Command, _ []string) {
 	cmn.OnlineUsers.Mux = router
 	//-----
 	Enroll()
+	_ = serveEnroll()
+
 	cmn.LoadPayAccount()
 	err := cmn.InitAuth()
 	if err != nil {
