@@ -103,5 +103,12 @@
     },
     "timeout":  1800,
     "maxRetry": 3
+  },
+  "email": {
+    "host": "mail.w2w.io",
+    "port": 587,
+    "user": "zyr@w2w.io",
+    "pwd": "22186448",
+    "sender": "3min@w2w.io"
   }
 }
