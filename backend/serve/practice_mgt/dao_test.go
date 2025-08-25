@@ -3,7 +3,7 @@
  * @Description: 练习管理数据库层函数逻辑测试
  * @Date: 2025-07-24 14:51:50
  * @LastEditors: zdl <1311866870@qq.com>
- * @LastEditTime: 2025-08-25 10:31:28
+ * @LastEditTime: 2025-08-25 10:58:35
  */
 package practice_mgt
 
@@ -1299,7 +1299,7 @@ func TestValidatePractice(t *testing.T) {
 				PaperID:         null.IntFrom(102),
 				Name:            null.StringFrom("化学期末考试"),
 				CorrectMode:     null.StringFrom("异常批改数据"), // 批改模式
-				Type:            null.StringFrom("02"),           // 练习类型（试卷）
+				Type:            null.StringFrom("02"),     // 练习类型（试卷）
 				AllowedAttempts: null.IntFrom(10),
 			},
 			ps:            nil,
@@ -1321,7 +1321,7 @@ func TestValidatePractice(t *testing.T) {
 			p: &cmn.TPractice{
 				PaperID:         null.IntFrom(102),
 				Name:            null.StringFrom("化学期末考试"),
-				CorrectMode:     null.StringFrom("00"),           // 批改模式
+				CorrectMode:     null.StringFrom("00"),     // 批改模式
 				Type:            null.StringFrom("异常练习类型"), // 练习类型（试卷）
 				AllowedAttempts: null.IntFrom(10),
 			},
@@ -3203,7 +3203,7 @@ func TestOperatePracticeStatus(t *testing.T) {
 				t.Errorf("查询此时的试卷模版视图失败:%v", err)
 			}
 			var examPaperID1 *int64
-			examPaperID1, _, err = examPaperService.GenerateExamPaper(context.Background(), tx1, uid.Int64, uid.Int64, false)
+			examPaperID1, err = examPaperService.GenerateExamPaper(context.Background(), tx1, uid.Int64, uid.Int64)
 			if err != nil {
 				t.Errorf("生成考卷逻辑出错：%v", err)
 			}
@@ -3622,7 +3622,7 @@ VALUES
 	// 这里构建一个map，考卷与练习之间映射
 	// 这里还需要创建考卷 但是此时发布的两次练习，使用的都是同一个试卷，但是应该生成两个考卷
 	var examPaperID1 *int64
-	examPaperID1, _, err = examPaperService.GenerateExamPaper(context.Background(), tx, uid.Int64, uid.Int64, false)
+	examPaperID1, err = examPaperService.GenerateExamPaper(context.Background(), tx, uid.Int64, uid.Int64)
 	if err != nil {
 		t.Errorf("生成考卷逻辑出错：%v", err)
 	}
@@ -4422,7 +4422,7 @@ VALUES
 				// 这里构建一个map，考卷与练习之间映射
 				// 这里还需要创建考卷 但是此时发布的两次练习，使用的都是同一个试卷，但是应该生成两个考卷
 				var examPaperID1 *int64
-				examPaperID1, _, err = examPaperService.GenerateExamPaper(context.Background(), tx, uid.Int64, uid.Int64, false)
+				examPaperID1, err = examPaperService.GenerateExamPaper(context.Background(), tx, uid.Int64, uid.Int64)
 				if err != nil {
 					t.Errorf("生成考卷逻辑出错：%v", err)
 				}
@@ -4763,7 +4763,7 @@ func TestEnterPracticeGetPaperDetails(t *testing.T) {
 		t.Fatal(err)
 	}
 	var examPaperID1 *int64
-	examPaperID1, _, err = examPaperService.GenerateExamPaper(context.Background(), tx1, uid.Int64, uid.Int64, false)
+	examPaperID1, err = examPaperService.GenerateExamPaper(context.Background(), tx1, uid.Int64, uid.Int64)
 	if err != nil {
 		t.Fatalf("生成考卷逻辑出错：%v", err)
 	}
@@ -5191,7 +5191,7 @@ func TestEnterPracticeGetPaperDetails(t *testing.T) {
 					t.Fatal(err)
 				}
 				var examPaperID1 *int64
-				examPaperID1, _, err = examPaperService.GenerateExamPaper(context.Background(), tx1, uid.Int64, uid.Int64, false)
+				examPaperID1, err = examPaperService.GenerateExamPaper(context.Background(), tx1, uid.Int64, uid.Int64)
 				if err != nil {
 					t.Fatalf("生成考卷逻辑出错：%v", err)
 				}
@@ -5520,7 +5520,7 @@ func TestEnterPracticeWrongCollection(t *testing.T) {
 		t.Fatal(err)
 	}
 	var examPaperID1 *int64
-	examPaperID1, _, err = examPaperService.GenerateExamPaper(context.Background(), tx1, uid.Int64, uid.Int64, false)
+	examPaperID1, err = examPaperService.GenerateExamPaper(context.Background(), tx1, uid.Int64, uid.Int64)
 	if err != nil {
 		t.Fatalf("生成考卷逻辑出错：%v", err)
 	}
@@ -6042,7 +6042,7 @@ func TestEnterPracticeWrongCollection(t *testing.T) {
 					t.Fatal(err)
 				}
 				var examPaperID1 *int64
-				examPaperID1, _, err = examPaperService.GenerateExamPaper(context.Background(), tx2, uid.Int64, uid.Int64, false)
+				examPaperID1, err = examPaperService.GenerateExamPaper(context.Background(), tx2, uid.Int64, uid.Int64)
 				if err != nil {
 					t.Fatalf("生成考卷逻辑出错：%v", err)
 				}
@@ -6379,7 +6379,7 @@ func TestLoadErrorCollectionDetailsById(t *testing.T) {
 		t.Fatal(err)
 	}
 	var examPaperID1 *int64
-	examPaperID1, _, err = examPaperService.GenerateExamPaper(context.Background(), tx1, uid.Int64, uid.Int64, false)
+	examPaperID1, err = examPaperService.GenerateExamPaper(context.Background(), tx1, uid.Int64, uid.Int64)
 	if err != nil {
 		t.Fatalf("生成考卷逻辑出错：%v", err)
 	}

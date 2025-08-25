@@ -3,7 +3,7 @@
  * @Description: 考卷-答卷数据库层
  * @Date: 2025-07-21 13:14:34
  * @LastEditors: zdl <1311866870@qq.com>
- * @LastEditTime: 2025-08-25 10:21:40
+ * @LastEditTime: 2025-08-25 10:52:51
  */
 package examPaper
 
@@ -340,28 +340,28 @@ func LoadPaperTemplateById(ctx context.Context, paperId int64, withQuestions boo
 	uid 操作人Id
 	genMarkInfo 是否生成批改信息 用于考试创建时配置批改信息 考卷ID与考卷题组的结构
 */
-func GenerateExamPaper(ctx context.Context, tx pgx.Tx, paperId, uid int64, genMarkInfo bool) (*int64, []SubjectiveQuestionGroup, error) {
+func GenerateExamPaper(ctx context.Context, tx pgx.Tx, paperId, uid int64) (*int64, error) {
 	var err error
 	//查看是否需要返回mock的数据
 	forceErr, _ := ctx.Value("force-error").(string)
 	if paperId <= 0 {
 		err = fmt.Errorf("invalid paperId ID param")
 		z.Error(err.Error())
-		return nil, nil, err
+		return nil, err
 	}
 	if uid <= 0 {
 		err = fmt.Errorf("invalid uid ID param")
 		z.Error(err.Error())
-		return nil, nil, err
+		return nil, err
 	}
 	p, pg, pq, err := LoadPaperTemplateById(ctx, paperId, true)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	if len(pg) == 0 || forceErr == "pg" {
 		err = fmt.Errorf("invalid paper question group")
 		z.Error(err.Error())
-		return nil, nil, err
+		return nil, err
 	}
 	now := time.Now().UnixMilli()
 	ep := cmn.TExamPaper{}
@@ -378,7 +378,7 @@ func GenerateExamPaper(ctx context.Context, tx pgx.Tx, paperId, uid int64, genMa
 	if err != nil || forceErr == "query1" {
 		err = fmt.Errorf("插入考卷失败: %w", err)
 		z.Error(err.Error())
-		return nil, nil, err
+		return nil, err
 	}
 
 	// 这里需要返回id + order的顺序
@@ -405,7 +405,7 @@ func GenerateExamPaper(ctx context.Context, tx pgx.Tx, paperId, uid int64, genMa
 	// 执行查询获取新题组信息
 	rows, err := tx.Query(ctx, fullGroupSQL, groupArgs...)
 	if err != nil || forceErr == "query2" {
-		return nil, nil, fmt.Errorf("插入题组失败: %w", err)
+		return nil, fmt.Errorf("插入题组失败: %w", err)
 	}
 	defer rows.Close()
 
@@ -421,7 +421,7 @@ func GenerateExamPaper(ctx context.Context, tx pgx.Tx, paperId, uid int64, genMa
 		if err := rows.Scan(&newGroupID, &order); err != nil || forceErr == "scan" {
 			err = fmt.Errorf("扫描题组信息失败:%v", err)
 			z.Error(err.Error())
-			return nil, nil, err
+			return nil, err
 		}
 
 		orderToNewIDMap[order] = newGroupID
@@ -429,7 +429,7 @@ func GenerateExamPaper(ctx context.Context, tx pgx.Tx, paperId, uid int64, genMa
 	if err := rows.Err(); err != nil || forceErr == "row" {
 		err = fmt.Errorf("遍历扫描题组信息中出错：%v", err)
 		z.Error(err.Error())
-		return nil, nil, err
+		return nil, err
 	}
 
 	// 创建顺序值到原始ID的映射
@@ -454,7 +454,7 @@ func GenerateExamPaper(ctx context.Context, tx pgx.Tx, paperId, uid int64, genMa
 		if !exists {
 			err = fmt.Errorf("无法找到顺序为:%v的题组", origGroup.Order.Int64)
 			z.Error(err.Error())
-			return nil, nil, err
+			return nil, err
 		}
 		// 这里根据旧的题组ID去获取到对应的题目
 		// 获取该题组的题目
@@ -483,10 +483,10 @@ func GenerateExamPaper(ctx context.Context, tx pgx.Tx, paperId, uid int64, genMa
 					q.SubScore = []float64{5.0, 5.0, 5.0}
 				}
 				if err := json.Unmarshal(q.Answers, &answers); err != nil {
-					return nil, nil, fmt.Errorf("解析答案失败: %w", err)
+					return nil, fmt.Errorf("解析答案失败: %w", err)
 				}
 				if len(answers) != len(q.SubScore) {
-					return nil, nil, fmt.Errorf("题目ID：%v中的答案数量(%d)与分数数量(%d)不匹配", q.ID, len(answers), len(q.SubScore))
+					return nil, fmt.Errorf("题目ID：%v中的答案数量(%d)与分数数量(%d)不匹配", q.ID, len(answers), len(q.SubScore))
 				}
 				for i := range answers {
 					answers[i].Score = q.SubScore[i]
@@ -575,7 +575,7 @@ func GenerateExamPaper(ctx context.Context, tx pgx.Tx, paperId, uid int64, genMa
 		if err != nil || forceErr == "query3" {
 			err = fmt.Errorf("插入题目批次 [%d-%d] 失败: %v", start, end-1, err)
 			z.Error(err.Error())
-			return nil, nil, err
+			return nil, err
 		}
 		batchIndex := start
 		for batchRows.Next() {
@@ -584,7 +584,7 @@ func GenerateExamPaper(ctx context.Context, tx pgx.Tx, paperId, uid int64, genMa
 				batchRows.Close()
 				err = fmt.Errorf("扫描题目ID失败 [%d]: %v", batchIndex, err)
 				z.Error(err.Error())
-				return nil, nil, err
+				return nil, err
 			}
 			if batchIndex < len(tqs) {
 				tqs[batchIndex].ID = null.IntFrom(id)
@@ -597,7 +597,7 @@ func GenerateExamPaper(ctx context.Context, tx pgx.Tx, paperId, uid int64, genMa
 		if err := batchRows.Err(); err != nil || forceErr == "row1" {
 			err = fmt.Errorf("读取题目ID失败 [%d-%d]: %v", start, end-1, err)
 			z.Error(err.Error())
-			return nil, nil, err
+			return nil, err
 		}
 		if forceErr == "notMatch" {
 			batchIndex = 1
@@ -606,33 +606,10 @@ func GenerateExamPaper(ctx context.Context, tx pgx.Tx, paperId, uid int64, genMa
 		if batchIndex != end {
 			err = fmt.Errorf("题目ID数量不匹配: 预期%d, 实际%d", end-start, batchIndex-start)
 			z.Error(err.Error())
-			return nil, nil, err
+			return nil, err
 		}
 	}
-
-	if !genMarkInfo {
-		return &ep.ID.Int64, nil, nil
-	}
-	// 批改配置变量
-	var groups []SubjectiveQuestionGroup
-	groupQuestions := make(map[int64][]int64)
-	for _, question := range tqs {
-		if question.Type.String != QuestionCategory.FillInBlank &&
-			question.Type.String != QuestionCategory.ShortAnswer {
-			continue
-		}
-
-		groupID := question.GroupID.Int64
-		groupQuestions[groupID] = append(groupQuestions[groupID], question.ID.Int64)
-	}
-
-	for groupID, questionIDs := range groupQuestions {
-		groups = append(groups, SubjectiveQuestionGroup{
-			GroupID:     groupID,
-			QuestionIDs: questionIDs,
-		})
-	}
-	return &ep.ID.Int64, groups, nil
+	return &ep.ID.Int64, nil
 }
 
 // LoadExamPaperDetailByUserId 考试/练习 考生/练习生获取试卷 可用于获取考试时/练习时的试卷 也可用于查看学生答题情况时的获取试卷
