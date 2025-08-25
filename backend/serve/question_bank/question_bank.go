@@ -124,7 +124,8 @@ func questionBanks(ctx context.Context) {
 	var authority *auth_mgt.Authority
 	authority, q.Err = auth_mgt.GetUserAuthority(ctx)
 	if q.Err != nil {
-		fmt.Printf("获取用户权限失败: %v\n", q.Err)
+		z.Error(q.Err.Error())
+		q.RespErr()
 		return
 	}
 
@@ -209,6 +210,10 @@ func questionBanks(ctx context.Context) {
 		args = append(args, "00")
 		argIndex++
 
+		if forceError == "EmptyDomain" {
+			authority.AccessibleDomains = []int64{}
+		}
+
 		// 拼接资源范围 - 用户可访问的所有 domain_id
 		if len(authority.AccessibleDomains) > 0 {
 			conditions = append(conditions, fmt.Sprintf("domain_id = ANY($%d)", argIndex))
@@ -216,7 +221,9 @@ func questionBanks(ctx context.Context) {
 			argIndex++
 		} else {
 			// 如果用户没有可访问的域，则返回空结果
-			conditions = append(conditions, "1=0")
+			q.Err = errors.New("用户没有可访问的域")
+			q.RespErr()
+			return
 		}
 
 		// 关键词过滤
@@ -1087,9 +1094,9 @@ func questions(ctx context.Context) {
 					access_mode,
 					belong_to
 				FROM t_question
-				WHERE id = $1 AND status = '00'`
+				WHERE status = '00' AND belong_to = $1 AND id = $2`
 
-			q.Err = conn.QueryRow(ctx, s, params.QuestionID).Scan(
+			q.Err = conn.QueryRow(ctx, s, params.BankID, params.QuestionID).Scan(
 				&question.ID,
 				&question.Type,
 				&question.Content,
@@ -1453,6 +1460,8 @@ func questions(ctx context.Context) {
 				err := tx.Rollback(ctx)
 				if forceError == "tx.Rollback" {
 					err = errors.New(forceError)
+					q.Err = err
+					q.RespErr()
 				}
 				if err != nil && !errors.Is(err, pgx.ErrTxClosed) {
 					z.Error(err.Error())
@@ -1472,6 +1481,13 @@ func questions(ctx context.Context) {
 
 		if forceError == "tx.Rollback.panic" {
 			panic(errors.New(forceError))
+		}
+		if forceError == "tx.Commit" {
+			return
+		}
+		if forceError == "tx.Rollback" {
+			q.Err = errors.New(forceError)
+			return
 		}
 
 		// 准备批量插入
@@ -1549,10 +1565,6 @@ func questions(ctx context.Context) {
 		// 执行批量插入
 		var br pgx.BatchResults
 		br = tx.SendBatch(ctx, batch)
-		if forceError == "tx.SendBatch" {
-			q.Err = errors.New(forceError)
-		}
-		defer br.Close()
 
 		var insertQuestions []cmn.TQuestion
 		for i := range validQuestions {
@@ -1672,18 +1684,8 @@ func questions(ctx context.Context) {
 			return
 		}
 		//尝试获取题目锁
-		var success bool
-		success, q.Err = cmn.TryLock(ctx, question.ID.Int64, userID, QuestionLockPrefix, QuestionLockExpiration)
-		if forceError == "cmn.TryLock" {
-			q.Err = errors.New(forceError)
-		}
+		_, q.Err = cmn.TryLock(ctx, question.ID.Int64, userID, QuestionLockPrefix, QuestionLockExpiration)
 		if q.Err != nil {
-			z.Error(q.Err.Error())
-			q.RespErr()
-			return
-		}
-		if !success {
-			q.Err = fmt.Errorf("当前题目正在被其他用户编辑")
 			z.Error(q.Err.Error())
 			q.RespErr()
 			return
@@ -1726,10 +1728,10 @@ func questions(ctx context.Context) {
 			return
 		}
 		//释放题目锁
-		q.Err = cmn.ReleaseLock(ctx, question.ID.Int64, userID, QuestionLockPrefix)
 		if forceError == "cmn.ReleaseLock" {
-			q.Err = errors.New(forceError)
+			_ = cmn.ReleaseLock(ctx, question.ID.Int64, userID, QuestionLockPrefix)
 		}
+		q.Err = cmn.ReleaseLock(ctx, question.ID.Int64, userID, QuestionLockPrefix)
 		if q.Err != nil {
 			z.Error(q.Err.Error())
 			q.RespErr()
@@ -1993,18 +1995,11 @@ func QuestionLock(ctx context.Context) {
 		}
 
 		//尝试获取题目锁
-		var success bool
-		success, q.Err = cmn.TryLock(ctx, questionID, userID, QuestionLockPrefix, QuestionLockExpiration)
+		_, q.Err = cmn.TryLock(ctx, questionID, userID, QuestionLockPrefix, QuestionLockExpiration)
 		if forceError == "cmn.TryLock" {
 			q.Err = errors.New(forceError)
 		}
 		if q.Err != nil {
-			z.Error(q.Err.Error())
-			q.RespErr()
-			return
-		}
-		if !success {
-			q.Err = fmt.Errorf("当前题目正在被其他用户编辑")
 			z.Error(q.Err.Error())
 			q.RespErr()
 			return
