@@ -3,7 +3,7 @@
  * @Description: 考卷-答卷模型
  * @Date: 2025-07-21 13:14:44
  * @LastEditors: zdl <1311866870@qq.com>
- * @LastEditTime: 2025-08-11 15:42:07
+ * @LastEditTime: 2025-08-24 21:14:56
  */
 package examPaper
 
@@ -59,12 +59,16 @@ var PaperCategory = struct {
 }
 
 var PaperStatus = struct {
-	Normal  string // 正常 00
-	Invalid string // 异常 02
+	Normal    string // 正常 00
+	Deleted   string // 删除 02
+	Disabled  string // 作废 04
+	Published string // 已发布 06
 
 }{
-	Normal:  "00",
-	Invalid: "02",
+	Normal:    "00",
+	Deleted:   "02",
+	Disabled:  "04",
+	Published: "06",
 }
 
 // Group 学生试卷模版题组结构（试卷模块自用：解析存储在视图的JSON实体）

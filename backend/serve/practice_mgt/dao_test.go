@@ -3,7 +3,7 @@
  * @Description: 练习管理数据库层函数逻辑测试
  * @Date: 2025-07-24 14:51:50
  * @LastEditors: zdl <1311866870@qq.com>
- * @LastEditTime: 2025-08-24 11:59:11
+ * @LastEditTime: 2025-08-25 10:31:28
  */
 package practice_mgt
 
@@ -1299,7 +1299,7 @@ func TestValidatePractice(t *testing.T) {
 				PaperID:         null.IntFrom(102),
 				Name:            null.StringFrom("化学期末考试"),
 				CorrectMode:     null.StringFrom("异常批改数据"), // 批改模式
-				Type:            null.StringFrom("02"),     // 练习类型（试卷）
+				Type:            null.StringFrom("02"),           // 练习类型（试卷）
 				AllowedAttempts: null.IntFrom(10),
 			},
 			ps:            nil,
@@ -1321,7 +1321,7 @@ func TestValidatePractice(t *testing.T) {
 			p: &cmn.TPractice{
 				PaperID:         null.IntFrom(102),
 				Name:            null.StringFrom("化学期末考试"),
-				CorrectMode:     null.StringFrom("00"),     // 批改模式
+				CorrectMode:     null.StringFrom("00"),           // 批改模式
 				Type:            null.StringFrom("异常练习类型"), // 练习类型（试卷）
 				AllowedAttempts: null.IntFrom(10),
 			},
@@ -2934,10 +2934,6 @@ func TestOperatePracticeStatus(t *testing.T) {
 		z.Fatal(err.Error())
 	}
 
-	initQuestion(t, conn)
-
-	initPaper(t, conn)
-
 	// 初始化题目跟试卷，这个肯定是要有的
 	//tx1, _ := conn.Begin(ctx)
 	//
@@ -3029,17 +3025,17 @@ func TestOperatePracticeStatus(t *testing.T) {
 			status:        PracticeStatus.Released,
 			expectedError: errors.New("beginTx called failed"),
 		},
+		//{
+		//	name:          "异常9 触发GenerateExamPaper错误  pg PendingRelease",
+		//	pid:           uid.Int64,
+		//	status:        PracticeStatus.Released,
+		//	expectedError: errors.New("invalid paper question group"),
+		//},
 		{
-			name:          "异常9 触发GenerateExamPaper错误  pg PendingRelease",
+			name:          "异常10 触发生成考卷错误  PendingRelease",
 			pid:           uid.Int64,
 			status:        PracticeStatus.Released,
-			expectedError: errors.New("invalid paper question group"),
-		},
-		{
-			name:          "异常10 触发生成考卷 empty PendingRelease",
-			pid:           uid.Int64,
-			status:        PracticeStatus.Released,
-			expectedError: errors.New("生成练习考卷返回的考卷ID为空"),
+			expectedError: errors.New("查看练习绑定的试卷中已发布的考卷ID失败"),
 		},
 		{
 			name:          "异常11 更新练习信息错误 pQuery1 PendingRelease",
@@ -3077,12 +3073,12 @@ func TestOperatePracticeStatus(t *testing.T) {
 		//	status:        PracticeStatus.Deleted,
 		//	expectedError: errors.New("重置学生练习提交记录信息失败"),
 		//},
-		{
-			name:          "异常29 强制触发删除考卷失败 delete Released",
-			pid:           uid.Int64,
-			status:        PracticeStatus.Deleted,
-			expectedError: errors.New("级联删除对应考试场次与练习考卷、学生答卷数据失败"),
-		},
+		//{
+		//	name:          "异常29 强制触发删除考卷失败 delete Released",
+		//	pid:           uid.Int64,
+		//	status:        PracticeStatus.Deleted,
+		//	expectedError: errors.New("级联删除对应考试场次与练习考卷、学生答卷数据失败"),
+		//},
 		{
 			name:          "异常16 触发清除批改配置错误 mark1 Released",
 			pid:           uid.Int64,
@@ -3119,12 +3115,12 @@ func TestOperatePracticeStatus(t *testing.T) {
 			status:        PracticeStatus.Disabled,
 			expectedError: errors.New("重置学生练习提交记录信息失败"),
 		},
-		{
-			name:          "异常27 强制触发更新练习提交信息失败 delete Released",
-			pid:           uid.Int64,
-			status:        PracticeStatus.Disabled,
-			expectedError: errors.New("级联删除对应考试场次与练习考卷、学生答卷数据失败"),
-		},
+		//{
+		//	name:          "异常27 强制触发更新练习提交信息失败 delete Released",
+		//	pid:           uid.Int64,
+		//	status:        PracticeStatus.Disabled,
+		//	expectedError: errors.New("级联删除对应考试场次与练习考卷、学生答卷数据失败"),
+		//},
 		{
 			name:          "异常28 触发清除批改配置错误 mark2 Released",
 			pid:           uid.Int64,
@@ -3180,6 +3176,10 @@ func TestOperatePracticeStatus(t *testing.T) {
 			}
 
 			tx1, _ := conn.Begin(context.Background())
+
+			initQuestion(t, conn)
+
+			initPaper(t, conn)
 			// 这里就需要先创建好所需要的练习了
 			var practiceName string
 			practiceName = "单元测试练习名"
@@ -3196,8 +3196,14 @@ func TestOperatePracticeStatus(t *testing.T) {
 			if err != nil {
 				t.Error(err)
 			}
+
+			_, pg, _, err := examPaperService.LoadPaperTemplateById(ctx, uid.Int64, true)
+			if len(pg) == 0 {
+				err = fmt.Errorf("invalid paper question group")
+				t.Errorf("查询此时的试卷模版视图失败:%v", err)
+			}
 			var examPaperID1 *int64
-			examPaperID1, _, err = examPaperService.GenerateExamPaper(context.Background(), tx1, "02", uid.Int64, uid.Int64, 0, uid.Int64, false)
+			examPaperID1, _, err = examPaperService.GenerateExamPaper(context.Background(), tx1, uid.Int64, uid.Int64, false)
 			if err != nil {
 				t.Errorf("生成考卷逻辑出错：%v", err)
 			}
@@ -3205,10 +3211,19 @@ func TestOperatePracticeStatus(t *testing.T) {
 				t.Error("生成考卷逻辑出错,返回考卷ID为空")
 			}
 
+			if !containsString(tt.name, "异常10") {
+				// 这里要插入这个需要更新到那个paper的字段
+				s = `UPDATE t_paper SET exam_paper_id = $1 , status = $2 WHERE id = $3`
+				_, err = tx1.Exec(ctx, s, examPaperID1, examPaperService.PaperStatus.Published, uid.Int64)
+				if err != nil {
+					t.Errorf("更新试卷的考卷ID与状态失败:%v", err)
+				}
+			}
+
 			// 然后 要准备多个情况 去测试状态是否满足 这里我优先准备 两三个数据 练习提交记录，用于删除或者取消发布操作查看是否真的全部清除
 			// 这里也要生成对应的practice_submission记录的
 			if !containsString(tt.name, "正常3") && !containsString(tt.name, "异常22") && !containsString(tt.name, "异常23") && !containsString(tt.name, "异常29") && !containsString(tt.name, "异常16") {
-				s = `INSERT INTO assessuser.t_practice_submissions (id,practice_id,student_id,exam_paper_id,creator,attempt,status) VALUES (
+				s = `INSERT INTO assessuser.t_practice_submissions (id,	practice_id,student_id,exam_paper_id,creator,attempt,status) VALUES (
 				$1,$2,$3,$4,$5,$6,$7
 			),($8,$9,$10,$11,$12,$13,$14)`
 				_, err = tx1.Exec(ctx, s, 10086, uid, 1, *examPaperID1, uid, 1, "00", 10087, uid, 2, *examPaperID1, uid, 1, "00")
@@ -3225,7 +3240,7 @@ func TestOperatePracticeStatus(t *testing.T) {
 
 			err = OperatePracticeStatus(ctx, tt.pid, tt.status, uid.Int64)
 			if tt.expectedError != nil {
-				if !containsString(err.Error(), tt.expectedError.Error()) {
+				if err == nil || !containsString(err.Error(), tt.expectedError.Error()) {
 					t.Errorf("%v报错与预期：%v", err, tt.expectedError)
 				}
 			} else {
@@ -3238,18 +3253,18 @@ func TestOperatePracticeStatus(t *testing.T) {
 					// 这里没错的话，就需要去查询一下当前的数据了
 					if tt.status == PracticeStatus.Released {
 						// 这里应该成功生成了考卷 然后就查询一下是否真的存在 但是此时可能会算上原本的数量的
-						s = `SELECT COUNT(*) FROM t_exam_paper WHERE practice_id=$1`
+						s = `SELECT COUNT(*) FROM t_exam_paper`
 						pCount := 0
-						err = conn.QueryRow(ctx, s, uid).Scan(&pCount)
+						err = conn.QueryRow(ctx, s).Scan(&pCount)
 						if err != nil {
 							t.Error(err)
 						}
 						if containsString(tt.name, "异常4") {
-							if pCount != 1 {
-								t.Errorf("这里rollback之后生成的考卷数量不为1：实际为：%v", pCount)
+							if pCount != 0 {
+								t.Errorf("这里rollback之后生成的考卷数量不为0：实际为：%v", pCount)
 							}
 						} else {
-							if pCount != 2 {
+							if pCount != 1 {
 								t.Errorf("生成的考卷数量不为1：实际为：%v", pCount)
 							}
 						}
@@ -3270,24 +3285,16 @@ func TestOperatePracticeStatus(t *testing.T) {
 							if nowS != tt.expectedSubmissionStatus {
 								t.Errorf("当前的练习提交记录的状态不为预期：%v：实际为：%v", tt.expectedSubmissionStatus, nowS)
 							}
+						} else {
+
 						}
-						// 如果是这个删除的话，那就考卷咯？
-						s = `SELECT COUNT(*) FROM  assessuser.t_exam_paper`
-						pCount := -1
-						err = conn.QueryRow(ctx, s).Scan(&pCount)
-						if err != nil {
-							t.Error(err)
-						}
-						if pCount != 0 {
-							t.Errorf("当前考卷数量不为预期：%v：实际为：%v", 0, pCount)
-						}
+
 					}
 				}
 			}
 
 			t.Cleanup(func() {
-				// 这里需要清楚所有的考卷、练习等资源
-				// 这里需要清除所有考卷信息
+				// 每一个测试用例之间都需要清除掉这个考卷题目信息
 				s = `DELETE FROM assessuser.t_exam_paper_question`
 				_, err = conn.Exec(ctx, s)
 				if err != nil {
@@ -3305,13 +3312,42 @@ func TestOperatePracticeStatus(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
+				// 这里的话先插入准备好的题库、题目跟试卷
+				// 先删除
+				s = `DELETE FROM t_paper_question`
+				_, err = conn.Exec(ctx, s)
+				if err != nil {
+					z.Fatal(err.Error())
+				}
+
+				s = `DELETE FROM t_paper_group`
+				_, err = conn.Exec(ctx, s)
+				if err != nil {
+					z.Fatal(err.Error())
+				}
+
+				s = `DELETE FROM t_paper`
+				_, err = conn.Exec(ctx, s)
+				if err != nil {
+					z.Fatal(err.Error())
+				}
+				s = `DELETE FROM t_question`
+				_, err = conn.Exec(ctx, s)
+				if err != nil {
+					z.Fatal(err.Error())
+				}
+				// 再删除题库
+				s = `DELETE FROM t_question_bank`
+				_, err = conn.Exec(ctx, s)
+				if err != nil {
+					z.Fatal(err.Error())
+				}
 				// 再删除练习
 				s = `DELETE FROM t_practice_submissions`
 				_, err = conn.Exec(ctx, s)
 				if err != nil {
 					z.Fatal(err.Error())
 				}
-
 				// 再删除练习
 				s = `DELETE FROM t_practice_student`
 				_, err = conn.Exec(ctx, s)
@@ -3569,7 +3605,6 @@ VALUES
 	if err != nil {
 		t.Fatal(err)
 	}
-	paperID := []int64{10087, 10090}
 
 	// 这里先查询一下
 	count := 0
@@ -3582,25 +3617,28 @@ VALUES
 		t.Errorf("查询已发布练习失败:实际上：%v", count)
 	}
 	pid2ExamPaperID := make(map[int64]int64)
+	pid2ExamPaperID[10087] = 10087
+	pid2ExamPaperID[10090] = 10090
 	// 这里构建一个map，考卷与练习之间映射
 	// 这里还需要创建考卷 但是此时发布的两次练习，使用的都是同一个试卷，但是应该生成两个考卷
-	for _, id := range paperID {
-		epid, _, err := examPaperService.GenerateExamPaper(ctx, tx, "02", uid.Int64, id, 0, uid.Int64, false)
-		if err != nil {
-			t.Fatal(err)
-		}
-		pid2ExamPaperID[id] = *epid
-
-		// 这里要更新对应的考卷ID
-		s = `UPDATE t_practice SET exam_paper_id = $1 WHERE id = $2`
-		_, err = tx.Exec(ctx, s, *epid, id)
-		if err != nil {
-			t.Fatal(err)
-		}
+	var examPaperID1 *int64
+	examPaperID1, _, err = examPaperService.GenerateExamPaper(context.Background(), tx, uid.Int64, uid.Int64, false)
+	if err != nil {
+		t.Errorf("生成考卷逻辑出错：%v", err)
+	}
+	if examPaperID1 == nil {
+		t.Error("生成考卷逻辑出错,返回考卷ID为空")
 	}
 
-	// 给每一个练习都创建练习提交记录
-	for practiceID, examPaperID := range pid2ExamPaperID {
+	// 这里要插入这个需要更新到那个paper的字段
+	s = `UPDATE t_paper SET exam_paper_id = $1 , status = $2 WHERE id = $3`
+	_, err = tx.Exec(ctx, s, *examPaperID1, examPaperService.PaperStatus.Published, uid.Int64)
+	if err != nil {
+		t.Errorf("更新试卷的考卷ID与状态失败:%v", err)
+	}
+
+	// 给每一个练习都创建练习提交记录 然后对应的插入对应的练习提交记录
+	for practiceID, _ := range pid2ExamPaperID {
 		var id int64
 		PracticeSubmissionsIDs := []int64{}
 
@@ -3610,7 +3648,7 @@ VALUES
 				$1,$2,$3,$4,$5,$6
 			) returning id`
 		err = tx.QueryRow(ctx, s,
-			practiceID, 1, examPaperID, uid, 1, "08").Scan(&id)
+			practiceID, 1, *examPaperID1, uid, 1, "08").Scan(&id)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -3620,18 +3658,7 @@ VALUES
 				$1,$2,$3,$4,$5,$6
 			) returning id`
 		err = tx.QueryRow(ctx, s,
-			practiceID, 1, examPaperID, uid, 2, "00").Scan(&id)
-		if err != nil {
-			t.Fatal(err)
-		}
-		PracticeSubmissionsIDs = append(PracticeSubmissionsIDs, id)
-
-		// 这里要对应创建学生提交记录 给已经发布的练习创建练习提交记录 这里需要分为两种情况：已经提交的，还有已经作答了没有提交的 每一种
-		s = `INSERT INTO assessuser.t_practice_submissions (practice_id,student_id,exam_paper_id,creator,attempt,status) VALUES (
-				$1,$2,$3,$4,$5,$6
-			) returning id`
-		err = tx.QueryRow(ctx, s,
-			practiceID, 2, examPaperID, uid, 1, "08").Scan(&id)
+			practiceID, 1, *examPaperID1, uid, 2, "00").Scan(&id)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -3642,7 +3669,18 @@ VALUES
 				$1,$2,$3,$4,$5,$6
 			) returning id`
 		err = tx.QueryRow(ctx, s,
-			practiceID, 2, examPaperID, uid, 2, "00").Scan(&id)
+			practiceID, 2, *examPaperID1, uid, 1, "08").Scan(&id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		PracticeSubmissionsIDs = append(PracticeSubmissionsIDs, id)
+
+		// 这里要对应创建学生提交记录 给已经发布的练习创建练习提交记录 这里需要分为两种情况：已经提交的，还有已经作答了没有提交的 每一种
+		s = `INSERT INTO assessuser.t_practice_submissions (practice_id,student_id,exam_paper_id,creator,attempt,status) VALUES (
+				$1,$2,$3,$4,$5,$6
+			) returning id`
+		err = tx.QueryRow(ctx, s,
+			practiceID, 2, *examPaperID1, uid, 2, "00").Scan(&id)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -3653,7 +3691,7 @@ VALUES
 		now := time.Now().UnixMilli()
 		r := rand.New(rand.NewSource(now))
 		// 获取考题
-		_, pg, pq, err := examPaperService.LoadExamPaperDetailsById(ctx, tx, examPaperID, true, true, true)
+		_, pg, pq, err := examPaperService.LoadExamPaperDetailsById(ctx, tx, *examPaperID1, true, true, true)
 		if err != nil {
 			t.Fatalf("查询考卷题目错误：%v", err)
 		}
@@ -3735,25 +3773,6 @@ VALUES
 
 	}
 
-	s = `SELECT practice_id FROM t_exam_paper `
-	rows, err := tx.Query(ctx, s)
-	if err != nil {
-		t.Errorf("查询考卷失败：%v", err)
-	}
-	var ids []int64
-	for rows.Next() {
-		var id int64
-		err = rows.Scan(&id)
-		ids = append(ids, id)
-		if err != nil {
-			t.Errorf("查询考卷失败：%v", err)
-		}
-	}
-	if len(ids) == 0 {
-		t.Errorf("此时查询考卷的数量为0")
-	}
-	t.Logf("打印一下此时考卷携带的练习ID：%v", ids)
-
 	err = tx.Commit(ctx)
 	if err != nil {
 		t.Errorf("事务提交失败：%v", err)
@@ -3777,7 +3796,6 @@ VALUES
 			status:        PracticeStatus.Released,
 			pids:          []int64{10086},
 			pNum:          3,
-			epNum:         3,
 			expectedError: nil,
 		},
 		{
@@ -3786,7 +3804,6 @@ VALUES
 			pids:           []int64{10087},
 			subMissionsNum: 4,
 			pNum:           2,
-			epNum:          0,
 			expectedError:  nil,
 		},
 		{
@@ -3796,7 +3813,6 @@ VALUES
 			pids:           []int64{10087},
 			subMissionsNum: 0, // 这里的0 是因为如果是删除的话，不可能有学生作答了
 			pNum:           3,
-			epNum:          0,
 			expectedError:  nil,
 		},
 		{
@@ -3804,7 +3820,6 @@ VALUES
 			status:        PracticeStatus.Released,
 			pids:          []int64{10086, 10089},
 			pNum:          4,
-			epNum:         4,
 			expectedError: nil,
 		},
 		{
@@ -3813,7 +3828,6 @@ VALUES
 			pids:           []int64{10087, 10090},
 			subMissionsNum: 8,
 			pNum:           3,
-			epNum:          0,
 			expectedError:  nil,
 		},
 		{
@@ -3822,7 +3836,6 @@ VALUES
 			pids:           []int64{10087, 10090},
 			subMissionsNum: 0,
 			pNum:           4,
-			epNum:          0,
 			expectedError:  nil,
 		},
 		{
@@ -3848,23 +3861,21 @@ VALUES
 			status:        PracticeStatus.Released,
 			pids:          []int64{10092},
 			pNum:          3,
-			epNum:         3,
 			expectedError: errors.New("不能操作已作废的练习"),
 		},
-		{
-			name:          "异常4 发布练习 触发生成考卷失败 pg PendingRelease",
-			status:        PracticeStatus.Released,
-			pids:          []int64{10086},
-			expectedError: errors.New("invalid paper question group"),
-		},
-		{
-			name:          "异常18 触发操作生成的考卷ID为空 empty PendingRelease",
-			status:        PracticeStatus.Released,
-			pids:          []int64{10086},
-			pNum:          3,
-			epNum:         3,
-			expectedError: errors.New("生成练习考卷返回的考卷ID为空"),
-		},
+		//{
+		//	name:          "异常4 发布练习 触发生成考卷失败 pg PendingRelease",
+		//	status:        PracticeStatus.Released,
+		//	pids:          []int64{10086},
+		//	expectedError: errors.New("invalid paper question group"),
+		//},
+		//{
+		//	name:          "异常18 触发操作生成的考卷ID为空 empty PendingRelease",
+		//	status:        PracticeStatus.Released,
+		//	pids:          []int64{10086},
+		//	pNum:          3,
+		//	expectedError: errors.New("生成练习考卷返回的考卷ID为空"),
+		//},
 		{
 			name:          "异常5 发布练习 触发生成更新练习信息错误 pQuery1 PendingRelease",
 			status:        PracticeStatus.Released,
@@ -3888,7 +3899,6 @@ VALUES
 			status:        PracticeStatus.Deleted,
 			pids:          []int64{10087, 10090},
 			pNum:          3,
-			epNum:         3,
 			expectedError: errors.New("的练习已有学生参与作答，不能删除"),
 		},
 		{
@@ -3902,23 +3912,21 @@ VALUES
 			status:        PracticeStatus.Deleted,
 			pids:          []int64{10087, 10090},
 			pNum:          3,
-			epNum:         3,
 			expectedError: errors.New("批量重置学生练习提交记录信息失"),
 		},
-		{
-			name:          "异常23 删除练习 触发删除考卷失败 delete Released",
-			status:        PracticeStatus.Deleted,
-			pids:          []int64{10087, 10090},
-			pNum:          3,
-			epNum:         3,
-			expectedError: errors.New("级联删除对应考试场次与练习考卷、学生答卷数据失败"),
-		},
+		//{
+		//	name:          "异常23 删除练习 触发删除考卷失败 delete Released",
+		//	status:        PracticeStatus.Deleted,
+		//	pids:          []int64{10087, 10090},
+		//	pNum:          3,
+		//	epNum:         3,
+		//	expectedError: errors.New("级联删除对应考试场次与练习考卷、学生答卷数据失败"),
+		//},
 		{
 			name:          "异常24 删除练习 触发清除批改配置 mark1 Released",
 			status:        PracticeStatus.Deleted,
 			pids:          []int64{10087, 10090},
 			pNum:          3,
-			epNum:         3,
 			expectedError: errors.New("清除批改配置失败"),
 		},
 		{
@@ -3926,7 +3934,6 @@ VALUES
 			status:        PracticeStatus.Disabled,
 			pids:          []int64{10087, 10090},
 			pNum:          3,
-			epNum:         3,
 			expectedError: errors.New("更新练习状态 发布->作废 失败"),
 		},
 		{
@@ -3934,15 +3941,14 @@ VALUES
 			status:        PracticeStatus.Disabled,
 			pids:          []int64{10087, 10090},
 			pNum:          3,
-			epNum:         3,
 			expectedError: errors.New("批量重置学生练习提交记录信息失败"),
 		},
-		{
-			name:          "异常109 作废 触发批量删除考卷、学生答卷错误 delete Released",
-			status:        PracticeStatus.Disabled,
-			pids:          []int64{10087, 10090},
-			expectedError: errors.New("级联删除对应考试场次与练习考卷、学生答卷数据失败"),
-		},
+		//{
+		//	name:          "异常109 作废 触发批量删除考卷、学生答卷错误 delete Released",
+		//	status:        PracticeStatus.Disabled,
+		//	pids:          []int64{10087, 10090},
+		//	expectedError: errors.New("级联删除对应考试场次与练习考卷、学生答卷数据失败"),
+		//},
 		{
 			name:          "异常10 取消发布/删除 触发批量清除批改配置失败 mark2 Released",
 			status:        PracticeStatus.Disabled,
@@ -3966,7 +3972,6 @@ VALUES
 			status:        PracticeStatus.Released,
 			pids:          []int64{10086},
 			pNum:          3,
-			epNum:         3,
 			expectedError: nil,
 		},
 		{
@@ -3974,8 +3979,14 @@ VALUES
 			status:        PracticeStatus.Released,
 			pids:          []int64{10086},
 			pNum:          3,
-			epNum:         3,
 			expectedError: nil,
+		},
+		{
+			name:          "异常29 强制触发发布练习时，查询试卷中考卷为空  PendingRelease",
+			status:        PracticeStatus.Released,
+			pids:          []int64{10086},
+			pNum:          3,
+			expectedError: errors.New("查看练习绑定的试卷中已发布的考卷ID失败"),
 		},
 	}
 
@@ -4034,11 +4045,6 @@ VALUES
 					t.Errorf("删除对应练习学生失败：%v", err)
 				}
 
-				s = `DELETE FROM t_exam_paper WHERE practice_id = $1`
-				_, err = conn.Exec(ctx, s, needDid)
-				if err != nil {
-					t.Errorf("删除对应练习考试失败：%v", err)
-				}
 				s = `DELETE FROM t_practice WHERE id = $1`
 				_, err = conn.Exec(ctx, s, needDid)
 				if err != nil {
@@ -4051,6 +4057,15 @@ VALUES
 				_, err = conn.Exec(ctx, s)
 				if err != nil {
 					t.Errorf("删除对应练习学生提交记录失败：%v", err)
+				}
+			}
+
+			if containsString(tt.name, "异常29") {
+				// 这里应该删掉这个试卷的考卷ID
+				s = `UPDATE t_paper SET status = $1 WHERE id = $2`
+				_, err = conn.Exec(ctx, s, examPaperService.PaperStatus.Disabled, uid.Int64)
+				if err != nil {
+					t.Errorf("更新试卷的考卷ID与状态失败:%v", err)
 				}
 			}
 
@@ -4078,21 +4093,12 @@ VALUES
 						if count != tt.pNum {
 							t.Errorf("返回的成功发布练习返回的数量不为%v：实际为：%v", tt.pNum, count)
 						}
-						// 如果是单一的话，那就是生成的考卷数量就是1
-						s = `SELECT COUNT(*) FROM t_exam_paper`
-						err = conn.QueryRow(ctx, s).Scan(&count)
-						if err != nil {
-							t.Errorf("执行查询失败：%v", err)
-						}
-						if count != tt.epNum {
-							t.Errorf("返回的考卷数量不为%v：实际为：%v", tt.epNum, count)
-						}
 						// 发布状态，那就要看此时是否有生成对应的数据了
 						if containsString(tt.name, "单一") {
 							// 然后查一下这个考卷拥有的题目，看看是否符合要求
-							ep := `SELECT id,name,exam_session_id,practice_id,creator ,total_score,question_count,group_count,groups_data FROM v_exam_paper WHERE practice_id=$1`
+							ep := `SELECT id,name,exam_session_id,practice_id,creator ,total_score,question_count,group_count,groups_data FROM v_exam_paper`
 							examPaper := cmn.TVExamPaper{}
-							err := conn.QueryRow(ctx, ep, tt.pids[0]).Scan(&examPaper.ID, &examPaper.Name, &examPaper.ExamSessionID, &examPaper.PracticeID, &examPaper.Creator, &examPaper.TotalScore,
+							err := conn.QueryRow(ctx, ep).Scan(&examPaper.ID, &examPaper.Name, &examPaper.ExamSessionID, &examPaper.PracticeID, &examPaper.Creator, &examPaper.TotalScore,
 								&examPaper.QuestionCount, &examPaper.GroupCount, &examPaper.GroupsData)
 							if err != nil {
 								t.Fatal(err)
@@ -4144,11 +4150,11 @@ VALUES
 
 						} else {
 							// 这里就是批量了，要是生成的考卷给判别
-							for _, id := range tt.pids {
+							for _, _ = range tt.pids {
 								// 然后查一下这个考卷拥有的题目，看看是否符合要求
-								ep := `SELECT id,name,exam_session_id,practice_id,creator ,total_score,question_count,group_count,groups_data FROM v_exam_paper WHERE practice_id=$1`
+								ep := `SELECT id,name,exam_session_id,practice_id,creator ,total_score,question_count,group_count,groups_data FROM v_exam_paper`
 								examPaper := cmn.TVExamPaper{}
-								err := conn.QueryRow(ctx, ep, id).Scan(&examPaper.ID, &examPaper.Name, &examPaper.ExamSessionID, &examPaper.PracticeID, &examPaper.Creator, &examPaper.TotalScore,
+								err := conn.QueryRow(ctx, ep).Scan(&examPaper.ID, &examPaper.Name, &examPaper.ExamSessionID, &examPaper.PracticeID, &examPaper.Creator, &examPaper.TotalScore,
 									&examPaper.QuestionCount, &examPaper.GroupCount, &examPaper.GroupsData)
 								if err != nil {
 									t.Fatal(err)
@@ -4217,17 +4223,6 @@ VALUES
 						if count != tt.pNum {
 							t.Errorf("返回的符合要求的练习记录数量不为%v 实际返回：%v", tt.pNum, count)
 						}
-
-						// 这里看一下练习的考卷ID
-						s = `SELECT COUNT(*) FROM t_exam_paper`
-						err = conn.QueryRow(ctx, s).Scan(&count)
-						if err != nil {
-							t.Errorf("查询考卷记录失败：%v", err)
-						}
-						// 这里原本是只有2张考卷的 然后删除之后，应该只剩1张 但是这里的状态从
-						if count != tt.epNum {
-							t.Errorf("批量删除后 查询返回的符合要求的考卷数量不为%v 实际返回：%v", tt.epNum, count)
-						}
 					} else {
 						// 这里是取消发布与设置为待发布的 需要删除考卷的，那就是需要统计现在的考卷与学生答卷的
 						// 这里是删除或者是待发布状态
@@ -4251,27 +4246,13 @@ VALUES
 							t.Errorf("返回的符合要求的练习记录数量不为%v 实际返回：%v", tt.pNum, count)
 						}
 
-						// 这里看一下练习的考卷ID
-						s = `SELECT COUNT(*) FROM t_exam_paper`
-						err = conn.QueryRow(ctx, s).Scan(&count)
-						if err != nil {
-							t.Errorf("查询考卷记录失败：%v", err)
-						}
-						// 这里原本是只有2张考卷的 然后删除之后，应该只剩1张 但是这里的状态从
-						if count != tt.epNum {
-							t.Errorf("批量删除后 查询返回的符合要求的考卷数量不为%v 实际返回：%v", tt.epNum, count)
-						}
-
 					}
 				}
 			}
-
 			t.Cleanup(func() {
-				ctx = context.Background()
-				// 这里清除一下创建的测试生成的数据
 
-				s = `DELETE FROM assessuser.t_student_answers`
-				_, err = conn.Exec(ctx, s)
+				s := `DELETE FROM assessuser.t_student_answers`
+				_, err := conn.Exec(ctx, s)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -4292,13 +4273,40 @@ VALUES
 				if err != nil {
 					t.Fatal(err)
 				}
+				s = `DELETE FROM t_paper_question`
+				_, err = conn.Exec(ctx, s)
+				if err != nil {
+					z.Fatal(err.Error())
+				}
+
+				s = `DELETE FROM t_paper_group`
+				_, err = conn.Exec(ctx, s)
+				if err != nil {
+					z.Fatal(err.Error())
+				}
+
+				s = `DELETE FROM t_paper`
+				_, err = conn.Exec(ctx, s)
+				if err != nil {
+					z.Fatal(err.Error())
+				}
+				s = `DELETE FROM t_question`
+				_, err = conn.Exec(ctx, s)
+				if err != nil {
+					z.Fatal(err.Error())
+				}
+				// 再删除题库
+				s = `DELETE FROM t_question_bank`
+				_, err = conn.Exec(ctx, s)
+				if err != nil {
+					z.Fatal(err.Error())
+				}
 				// 再删除练习
 				s = `DELETE FROM t_practice_submissions`
 				_, err = conn.Exec(ctx, s)
 				if err != nil {
 					z.Fatal(err.Error())
 				}
-
 				// 再删除练习
 				s = `DELETE FROM t_practice_student`
 				_, err = conn.Exec(ctx, s)
@@ -4312,8 +4320,11 @@ VALUES
 					z.Fatal(err.Error())
 				}
 
-				tx1, _ := conn.Begin(ctx)
+				tx, _ := conn.Begin(ctx)
 
+				initQuestion(t, conn)
+
+				initPaper(t, conn)
 				var practiceName1, practiceName2, practiceName3, practiceName4, practiceName5, practiceName6, practiceName7 string
 
 				practiceName1 = "单元测试待发布练习"
@@ -4327,16 +4338,16 @@ VALUES
 				// 先创建数据，不管到底是不是这个测试用例需要的 三种练习状态 然后还有状态不一的练习
 				// 删除 exam_paper_id 字段后，每组数据保留 8 个字段，调整占位符编号
 				s = `INSERT INTO t_practice (id,name,correct_mode,creator,allowed_attempts,type,paper_id,status)
-			VALUES
-			($1, $2, $3, $4, $5, $6, $7, $8),
-			($9, $10, $11, $12, $13, $14, $15, $16),
-			($17, $18, $19, $20, $21, $22, $23, $24),
-			($25, $26, $27, $28, $29, $30, $31, $32),
-			($33, $34, $35, $36, $37, $38, $39, $40),
-			($41, $42, $43, $44, $45, $46, $47, $48),
-			($49 ,$50, $51, $52, $53, $54, $55, $56)`
+VALUES 
+($1, $2, $3, $4, $5, $6, $7, $8),
+($9, $10, $11, $12, $13, $14, $15, $16),
+($17, $18, $19, $20, $21, $22, $23, $24),
+($25, $26, $27, $28, $29, $30, $31, $32),
+($33, $34, $35, $36, $37, $38, $39, $40),
+($41, $42, $43, $44, $45, $46, $47, $48),
+($49 ,$50, $51, $52, $53, $54, $55, $56)`
 
-				_, err = tx1.Exec(ctx, s,
+				_, err = tx.Exec(ctx, s,
 					// 第 1 组数据
 					10086, practiceName1, "00", uid, 10086, "00", 10086, PracticeStatus.PendingRelease,
 					// 第 2 组数据
@@ -4358,7 +4369,7 @@ VALUES
 
 				s = `SELECT COUNT(*) FROM t_practice`
 				tCount := 0
-				err = tx1.QueryRow(ctx, s).Scan(&tCount)
+				err = tx.QueryRow(ctx, s).Scan(&tCount)
 				if err != nil {
 					t.Errorf("无法查询此时练习数量:%v", err)
 				}
@@ -4368,7 +4379,7 @@ VALUES
 
 				// 这里也随便插入已发布练习的几个学生
 				s = `INSERT INTO t_practice_student (student_id , practice_id,creator,status)VALUES($1,$2,$3,$4),($5,$6,$7,$8),($9,$10,$11,$12),($13,$14,$15,$16)`
-				_, err = tx1.Exec(ctx, s,
+				_, err = tx.Exec(ctx, s,
 					1, 10086, uid, "00",
 					2, 10086, uid, "00",
 					1, 10090, uid, "00",
@@ -4378,7 +4389,7 @@ VALUES
 				}
 
 				s = `INSERT INTO t_practice_student (student_id , practice_id,creator,status)VALUES($1,$2,$3,$4),($5,$6,$7,$8),($9,$10,$11,$12),($13,$14,$15,$16)`
-				_, err = tx1.Exec(ctx, s,
+				_, err = tx.Exec(ctx, s,
 					1, 10088, uid, "00",
 					2, 10088, uid, "00",
 					1, 10091, uid, "00",
@@ -4387,19 +4398,18 @@ VALUES
 					t.Fatal(err)
 				}
 				s = `INSERT INTO t_practice_student (student_id , practice_id,creator,status)VALUES($1,$2,$3,$4),($5,$6,$7,$8)`
-				_, err = tx1.Exec(ctx, s,
+				_, err = tx.Exec(ctx, s,
 					1, 10087, uid, "00",
 					2, 10087, uid, "00",
 				)
 				if err != nil {
 					t.Fatal(err)
 				}
-				paperID := []int64{10087, 10090}
 
 				// 这里先查询一下
 				count := 0
 				s = `SELECT COUNT(*) FROM t_practice WHERE status = $1`
-				err = tx1.QueryRow(ctx, s, PracticeStatus.Released).Scan(&count)
+				err = tx.QueryRow(ctx, s, PracticeStatus.Released).Scan(&count)
 				if err != nil {
 					t.Errorf("无法查询到当前已经插入的数据：%v", err)
 				}
@@ -4407,74 +4417,81 @@ VALUES
 					t.Errorf("查询已发布练习失败:实际上：%v", count)
 				}
 				pid2ExamPaperID := make(map[int64]int64)
+				pid2ExamPaperID[10087] = 10087
+				pid2ExamPaperID[10090] = 10090
 				// 这里构建一个map，考卷与练习之间映射
 				// 这里还需要创建考卷 但是此时发布的两次练习，使用的都是同一个试卷，但是应该生成两个考卷
-				for _, id := range paperID {
-					epid, _, err := examPaperService.GenerateExamPaper(ctx, tx1, "02", uid.Int64, id, 0, uid.Int64, false)
-					if err != nil {
-						t.Fatal(err)
-					}
-					pid2ExamPaperID[id] = *epid
-					// 这里要更新对应的考卷ID
-					s = `UPDATE t_practice SET exam_paper_id = $1 WHERE id = $2`
-					_, err = tx1.Exec(ctx, s, *epid, id)
-					if err != nil {
-						t.Fatal(err)
-					}
+				var examPaperID1 *int64
+				examPaperID1, _, err = examPaperService.GenerateExamPaper(context.Background(), tx, uid.Int64, uid.Int64, false)
+				if err != nil {
+					t.Errorf("生成考卷逻辑出错：%v", err)
+				}
+				if examPaperID1 == nil {
+					t.Error("生成考卷逻辑出错,返回考卷ID为空")
 				}
 
-				// 给每一个练习都创建练习提交记录
-				for practiceID, examPaperID := range pid2ExamPaperID {
+				// 这里要插入这个需要更新到那个paper的字段
+				s = `UPDATE t_paper SET exam_paper_id = $1 , status = $2 WHERE id = $3`
+				_, err = tx.Exec(ctx, s, *examPaperID1, examPaperService.PaperStatus.Published, uid.Int64)
+				if err != nil {
+					t.Errorf("更新试卷的考卷ID与状态失败:%v", err)
+				}
+
+				// 给每一个练习都创建练习提交记录 然后对应的插入对应的练习提交记录
+				for practiceID, _ := range pid2ExamPaperID {
 					var id int64
+					PracticeSubmissionsIDs := []int64{}
+
 					// 这里给
 					// 这里要对应创建学生提交记录 给已经发布的练习创建练习提交记录 这里需要分为两种情况：已经提交的，还有已经作答了没有提交的 每一种
 					s = `INSERT INTO assessuser.t_practice_submissions (practice_id,student_id,exam_paper_id,creator,attempt,status) VALUES (
-							$1,$2,$3,$4,$5,$6
-						) returning id`
-					err = tx1.QueryRow(ctx, s,
-						practiceID, 1, examPaperID, uid, 1, "08").Scan(&id)
+				$1,$2,$3,$4,$5,$6
+			) returning id`
+					err = tx.QueryRow(ctx, s,
+						practiceID, 1, *examPaperID1, uid, 1, "08").Scan(&id)
 					if err != nil {
 						t.Fatal(err)
 					}
 
 					// 这里要对应创建学生提交记录 给已经发布的练习创建练习提交记录 这里需要分为两种情况：已经提交的，还有已经作答了没有提交的 每一种
 					s = `INSERT INTO assessuser.t_practice_submissions (practice_id,student_id,exam_paper_id,creator,attempt,status) VALUES (
-							$1,$2,$3,$4,$5,$6
-						) returning id`
-					err = tx1.QueryRow(ctx, s,
-						practiceID, 1, examPaperID, uid, 2, "00").Scan(&id)
+				$1,$2,$3,$4,$5,$6
+			) returning id`
+					err = tx.QueryRow(ctx, s,
+						practiceID, 1, *examPaperID1, uid, 2, "00").Scan(&id)
 					if err != nil {
 						t.Fatal(err)
 					}
+					PracticeSubmissionsIDs = append(PracticeSubmissionsIDs, id)
 
 					// 这里要对应创建学生提交记录 给已经发布的练习创建练习提交记录 这里需要分为两种情况：已经提交的，还有已经作答了没有提交的 每一种
 					s = `INSERT INTO assessuser.t_practice_submissions (practice_id,student_id,exam_paper_id,creator,attempt,status) VALUES (
-							$1,$2,$3,$4,$5,$6
-						) returning id`
-					err = tx1.QueryRow(ctx, s,
-						practiceID, 2, examPaperID, uid, 1, "08").Scan(&id)
+				$1,$2,$3,$4,$5,$6
+			) returning id`
+					err = tx.QueryRow(ctx, s,
+						practiceID, 2, *examPaperID1, uid, 1, "08").Scan(&id)
 					if err != nil {
 						t.Fatal(err)
 					}
+					PracticeSubmissionsIDs = append(PracticeSubmissionsIDs, id)
 
 					// 这里要对应创建学生提交记录 给已经发布的练习创建练习提交记录 这里需要分为两种情况：已经提交的，还有已经作答了没有提交的 每一种
 					s = `INSERT INTO assessuser.t_practice_submissions (practice_id,student_id,exam_paper_id,creator,attempt,status) VALUES (
-							$1,$2,$3,$4,$5,$6
-						) returning id`
-					err = tx1.QueryRow(ctx, s,
-						practiceID, 2, examPaperID, uid, 2, "00").Scan(&id)
+				$1,$2,$3,$4,$5,$6
+			) returning id`
+					err = tx.QueryRow(ctx, s,
+						practiceID, 2, *examPaperID1, uid, 2, "00").Scan(&id)
 					if err != nil {
 						t.Fatal(err)
 					}
 
-					PracticeSubmissionsIDs := []int64{}
 					PracticeSubmissionsIDs = append(PracticeSubmissionsIDs, id)
 					// 那这里估计要构建学生答卷 然后是那种有答卷的才对
 					// 第一个是练习，第二个是考试 在这个逻辑就不测试多的情况了
 					now := time.Now().UnixMilli()
 					r := rand.New(rand.NewSource(now))
 					// 获取考题
-					_, pg, pq, err := examPaperService.LoadExamPaperDetailsById(ctx, tx1, examPaperID, true, true, true)
+					_, pg, pq, err := examPaperService.LoadExamPaperDetailsById(ctx, tx, *examPaperID1, true, true, true)
 					if err != nil {
 						t.Fatalf("查询考卷题目错误：%v", err)
 					}
@@ -4516,12 +4533,12 @@ VALUES
 						batchStudentAnswers := Answers[i:end]
 						// 执行单次操作语句
 						query := `
-					INSERT INTO assessuser.t_student_answers (
-						type, examinee_id, practice_submission_id, question_id,
-						creator, create_time, update_time, group_id, "order",
-						actual_options, actual_answers
-					) VALUES %s
-				`
+		INSERT INTO assessuser.t_student_answers (
+			type, examinee_id, practice_submission_id, question_id,
+			creator, create_time, update_time, group_id, "order",
+			actual_options, actual_answers
+		) VALUES %s
+	`
 						values := make([]string, 0, len(batchStudentAnswers))
 						args := make([]interface{}, 0, len(batchStudentAnswers)*11) // 11个字段
 						idx := 1
@@ -4539,7 +4556,7 @@ VALUES
 						}
 						insertQuery := fmt.Sprintf(query, strings.Join(values, ","))
 						t.Logf("打印一下，能成功执行到插入学生作答前")
-						_, err = tx1.Exec(ctx, insertQuery, args...)
+						_, err = tx.Exec(ctx, insertQuery, args...)
 						if err != nil {
 							t.Fatalf("插入学生答卷失败：%v", err)
 						}
@@ -4548,7 +4565,7 @@ VALUES
 						s = `UPDATE assessuser.t_student_answers SET answer = $1, answer_score = $2`
 						answer := JSONText(`"hello"`)
 						answerScore := 2.5
-						_, err = tx1.Exec(ctx, s, answer, answerScore)
+						_, err = tx.Exec(ctx, s, answer, answerScore)
 						if err != nil {
 							t.Fatal(err)
 						}
@@ -4556,10 +4573,11 @@ VALUES
 
 				}
 
-				err = tx1.Commit(ctx)
+				err = tx.Commit(ctx)
 				if err != nil {
 					t.Errorf("事务提交失败：%v", err)
 				}
+
 			})
 		})
 
@@ -4745,12 +4763,18 @@ func TestEnterPracticeGetPaperDetails(t *testing.T) {
 		t.Fatal(err)
 	}
 	var examPaperID1 *int64
-	examPaperID1, _, err = examPaperService.GenerateExamPaper(context.Background(), tx1, "02", uid.Int64, uid.Int64, 0, uid.Int64, false)
+	examPaperID1, _, err = examPaperService.GenerateExamPaper(context.Background(), tx1, uid.Int64, uid.Int64, false)
 	if err != nil {
 		t.Fatalf("生成考卷逻辑出错：%v", err)
 	}
 	if examPaperID1 == nil {
 		t.Fatal("生成考卷逻辑出错,返回考卷ID为空")
+	}
+	// 这里要插入这个需要更新到那个paper的字段
+	s = `UPDATE t_paper SET exam_paper_id = $1 , status = $2 WHERE id = $3`
+	_, err = tx1.Exec(ctx, s, *examPaperID1, examPaperService.PaperStatus.Published, uid.Int64)
+	if err != nil {
+		t.Errorf("更新试卷的考卷ID与状态失败:%v", err)
 	}
 
 	// 这里需要再update一下考卷ID
@@ -5101,6 +5125,35 @@ func TestEnterPracticeGetPaperDetails(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
+
+				s = `DELETE FROM t_paper_question`
+				_, err = conn.Exec(ctx, s)
+				if err != nil {
+					z.Fatal(err.Error())
+				}
+
+				s = `DELETE FROM t_paper_group`
+				_, err = conn.Exec(ctx, s)
+				if err != nil {
+					z.Fatal(err.Error())
+				}
+
+				s = `DELETE FROM t_paper`
+				_, err = conn.Exec(ctx, s)
+				if err != nil {
+					z.Fatal(err.Error())
+				}
+				s = `DELETE FROM t_question`
+				_, err = conn.Exec(ctx, s)
+				if err != nil {
+					z.Fatal(err.Error())
+				}
+				// 再删除题库
+				s = `DELETE FROM t_question_bank`
+				_, err = conn.Exec(ctx, s)
+				if err != nil {
+					z.Fatal(err.Error())
+				}
 				s = `DELETE FROM t_practice_submissions`
 				_, err = conn.Exec(ctx, s)
 				if err != nil {
@@ -5121,6 +5174,9 @@ func TestEnterPracticeGetPaperDetails(t *testing.T) {
 				}
 				// 最后再生成一下
 
+				initQuestion(t, conn)
+
+				initPaper(t, conn)
 				tx1, _ := conn.Begin(ctx)
 				s = `INSERT INTO t_practice (id,name,correct_mode,creator,allowed_attempts,type,paper_id,status)
 	VALUES ($1, $2, $3, $4, $5, $6, $7,$8)`
@@ -5135,12 +5191,18 @@ func TestEnterPracticeGetPaperDetails(t *testing.T) {
 					t.Fatal(err)
 				}
 				var examPaperID1 *int64
-				examPaperID1, _, err = examPaperService.GenerateExamPaper(context.Background(), tx1, "02", uid.Int64, uid.Int64, 0, uid.Int64, false)
+				examPaperID1, _, err = examPaperService.GenerateExamPaper(context.Background(), tx1, uid.Int64, uid.Int64, false)
 				if err != nil {
 					t.Fatalf("生成考卷逻辑出错：%v", err)
 				}
 				if examPaperID1 == nil {
 					t.Fatal("生成考卷逻辑出错,返回考卷ID为空")
+				}
+				// 这里要插入这个需要更新到那个paper的字段
+				s = `UPDATE t_paper SET exam_paper_id = $1 , status = $2 WHERE id = $3`
+				_, err = tx1.Exec(ctx, s, *examPaperID1, examPaperService.PaperStatus.Published, uid.Int64)
+				if err != nil {
+					t.Errorf("更新试卷的考卷ID与状态失败:%v", err)
 				}
 
 				// 这里需要再update一下考卷ID
@@ -5458,12 +5520,18 @@ func TestEnterPracticeWrongCollection(t *testing.T) {
 		t.Fatal(err)
 	}
 	var examPaperID1 *int64
-	examPaperID1, _, err = examPaperService.GenerateExamPaper(context.Background(), tx1, "02", uid.Int64, uid.Int64, 0, uid.Int64, false)
+	examPaperID1, _, err = examPaperService.GenerateExamPaper(context.Background(), tx1, uid.Int64, uid.Int64, false)
 	if err != nil {
 		t.Fatalf("生成考卷逻辑出错：%v", err)
 	}
 	if examPaperID1 == nil {
 		t.Fatal("生成考卷逻辑出错,返回考卷ID为空")
+	}
+	// 这里要插入这个需要更新到那个paper的字段
+	s = `UPDATE t_paper SET exam_paper_id = $1 , status = $2 WHERE id = $3`
+	_, err = tx1.Exec(ctx, s, *examPaperID1, examPaperService.PaperStatus.Published, uid.Int64)
+	if err != nil {
+		t.Errorf("更新试卷的考卷ID与状态失败:%v", err)
 	}
 
 	// 这里需要再update一下考卷ID
@@ -5901,6 +5969,32 @@ func TestEnterPracticeWrongCollection(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
+				s = `DELETE FROM t_paper_question`
+				_, err = conn.Exec(ctx, s)
+				if err != nil {
+					z.Fatal(err.Error())
+				}
+				s = `DELETE FROM t_paper_group`
+				_, err = conn.Exec(ctx, s)
+				if err != nil {
+					z.Fatal(err.Error())
+				}
+				s = `DELETE FROM t_paper`
+				_, err = conn.Exec(ctx, s)
+				if err != nil {
+					z.Fatal(err.Error())
+				}
+				s = `DELETE FROM t_question`
+				_, err = conn.Exec(ctx, s)
+				if err != nil {
+					z.Fatal(err.Error())
+				}
+				// 再删除题库
+				s = `DELETE FROM t_question_bank`
+				_, err = conn.Exec(ctx, s)
+				if err != nil {
+					z.Fatal(err.Error())
+				}
 				// 再删除练习
 				s = `DELETE FROM t_practice_wrong_submissions`
 				_, err = conn.Exec(ctx, s)
@@ -5926,6 +6020,9 @@ func TestEnterPracticeWrongCollection(t *testing.T) {
 					z.Fatal(err.Error())
 				}
 
+				initQuestion(t, conn)
+
+				initPaper(t, conn)
 				// 初始化题目跟试卷，这个肯定是要有的
 				tx2, _ := conn.Begin(ctx)
 
@@ -5945,12 +6042,19 @@ func TestEnterPracticeWrongCollection(t *testing.T) {
 					t.Fatal(err)
 				}
 				var examPaperID1 *int64
-				examPaperID1, _, err = examPaperService.GenerateExamPaper(context.Background(), tx2, "02", uid.Int64, uid.Int64, 0, uid.Int64, false)
+				examPaperID1, _, err = examPaperService.GenerateExamPaper(context.Background(), tx2, uid.Int64, uid.Int64, false)
 				if err != nil {
 					t.Fatalf("生成考卷逻辑出错：%v", err)
 				}
 				if examPaperID1 == nil {
 					t.Fatal("生成考卷逻辑出错,返回考卷ID为空")
+				}
+
+				// 这里要插入这个需要更新到那个paper的字段
+				s = `UPDATE t_paper SET exam_paper_id = $1 , status = $2 WHERE id = $3`
+				_, err = tx2.Exec(ctx, s, *examPaperID1, examPaperService.PaperStatus.Published, uid.Int64)
+				if err != nil {
+					t.Errorf("更新试卷的考卷ID与状态失败:%v", err)
 				}
 
 				// 这里需要再update一下考卷ID
@@ -6275,12 +6379,19 @@ func TestLoadErrorCollectionDetailsById(t *testing.T) {
 		t.Fatal(err)
 	}
 	var examPaperID1 *int64
-	examPaperID1, _, err = examPaperService.GenerateExamPaper(context.Background(), tx1, "02", uid.Int64, uid.Int64, 0, uid.Int64, false)
+	examPaperID1, _, err = examPaperService.GenerateExamPaper(context.Background(), tx1, uid.Int64, uid.Int64, false)
 	if err != nil {
 		t.Fatalf("生成考卷逻辑出错：%v", err)
 	}
 	if examPaperID1 == nil {
 		t.Fatal("生成考卷逻辑出错,返回考卷ID为空")
+	}
+
+	// 这里要插入这个需要更新到那个paper的字段
+	s = `UPDATE t_paper SET exam_paper_id = $1 , status = $2 WHERE id = $3`
+	_, err = tx1.Exec(ctx, s, *examPaperID1, examPaperService.PaperStatus.Published, uid.Int64)
+	if err != nil {
+		t.Errorf("更新试卷的考卷ID与状态失败:%v", err)
 	}
 
 	// 这里需要再update一下考卷ID
@@ -6854,23 +6965,23 @@ func initPaper(t *testing.T, tx *pgxpool.Pool) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = tx.Exec(ctx, pq, 9, groupIDs[3], 9, 5, uid, "00", types.JSONText(`[10]`))
+	_, err = tx.Exec(ctx, pq, 9, groupIDs[3], 9, 5, uid, "00", types.JSONText(`[5]`))
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = tx.Exec(ctx, pq, 10, groupIDs[3], 10, 5, uid, "00", types.JSONText(`[10]`))
+	_, err = tx.Exec(ctx, pq, 10, groupIDs[3], 10, 5, uid, "00", types.JSONText(`[5]`))
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = tx.Exec(ctx, pq, 11, groupIDs[3], 11, 3, uid, "00", types.JSONText(`[3,3,4]`))
+	_, err = tx.Exec(ctx, pq, 11, groupIDs[3], 11, 3, uid, "00", types.JSONText(`[1,1,1]`))
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = tx.Exec(ctx, pq, 12, groupIDs[4], 12, 5, uid, "00", types.JSONText(`[10]`))
+	_, err = tx.Exec(ctx, pq, 12, groupIDs[4], 12, 5, uid, "00", types.JSONText(`[5]`))
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = tx.Exec(ctx, pq, 13, groupIDs[4], 13, 5, uid, "00", types.JSONText(`[10]`))
+	_, err = tx.Exec(ctx, pq, 13, groupIDs[4], 13, 5, uid, "00", types.JSONText(`[5]`))
 	if err != nil {
 		t.Fatal(err)
 	}
