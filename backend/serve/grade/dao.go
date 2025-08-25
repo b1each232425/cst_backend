@@ -1207,7 +1207,7 @@ func gradeAnalysisByID(ctx context.Context, esid int64, pid int64) (Analysis, er
 	// 获取学生答案
 	studentAnswerSql := fmt.Sprintf(`
 	SELECT
-		type, answer, question_id
+		answer, question_id
 	FROM t_student_answers tsa
 	WHERE question_id IN (%s)
 	`, qidsSql)
@@ -1665,7 +1665,6 @@ func getScorePractice(ctx context.Context, studentID int64, practiceID int64) (M
 		FROM t_practice p
 		JOIN t_practice_submissions ps ON p.id = ps.practice_id
 		LEFT JOIN t_paper tp ON tp.id = p.paper_id        
-		    -- WHERE ps.id=$1 AND p.status = $2 AND ps.status = $3 AND ps.student_id = $4 
 		WHERE ps.id=$1 AND p.status = $2 AND ps.student_id = $3`
 	var suggestDuration null.Int
 	err = tx.QueryRow(ctx, durationSql, psid, "02", studentID).Scan(&suggestDuration)
