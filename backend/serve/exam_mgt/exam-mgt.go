@@ -792,6 +792,10 @@ func allocateExamineesToRooms(examinees []cmn.TExaminee, examRooms []cmn.TExamRo
 func allocateInvigilatorsToRooms(examSessionIDs []int64, examRooms []ExamRoomConfig, invigilatorIDs []int64) ([]cmn.TInvigilation, error) {
 	z.Info("---->" + cmn.FncName())
 
+	if len(examSessionIDs) == 0 || len(examRooms) == 0 || len(invigilatorIDs) == 0 {
+		return nil, fmt.Errorf("考试场次、考场或监考员ID不能为空")
+	}
+
 	// 随机打乱监考员顺序
 	rand.Shuffle(len(invigilatorIDs), func(i, j int) {
 		invigilatorIDs[i], invigilatorIDs[j] = invigilatorIDs[j], invigilatorIDs[i]
@@ -801,35 +805,36 @@ func allocateInvigilatorsToRooms(examSessionIDs []int64, examRooms []ExamRoomCon
 	currentInvigilatorIndex := 0
 
 	// 为每个场次的每个考场分配监考员
-	for _, examSessionID := range examSessionIDs {
-		for _, room := range examRooms {
+	for _, room := range examRooms {
 
-			// 为当前考场分配指定数量的监考员
-			for i := int64(0); i < room.InvigilatorCount; i++ {
-				if currentInvigilatorIndex >= len(invigilatorIDs) {
-					return nil, fmt.Errorf("监考员数量不足，需要 %d 名监考员", currentInvigilatorIndex+1)
-				}
-				var esID null.Int
-				esID.Int64 = examSessionID
-				esID.Valid = true
-
-				var er null.Int
-				er.Int64 = room.RoomID
-				er.Valid = true
-
-				var i null.Int
-				i.Int64 = invigilatorIDs[currentInvigilatorIndex]
-				i.Valid = true
-
-				invigilation := cmn.TInvigilation{
-					ExamSessionID: esID,
-					ExamRoom:      er,
-					Invigilator:   i,
-				}
-
-				invigilations = append(invigilations, invigilation)
-				currentInvigilatorIndex++
+		// 为当前考场分配指定数量的监考员
+		for i := int64(0); i < room.InvigilatorCount; i++ {
+			if currentInvigilatorIndex >= len(invigilatorIDs) {
+				return nil, fmt.Errorf("监考员数量不足，需要 %d 名监考员", currentInvigilatorIndex+1)
 			}
+
+			var er null.Int
+			er.Int64 = room.RoomID
+			er.Valid = true
+
+			var i null.Int
+			i.Int64 = invigilatorIDs[currentInvigilatorIndex]
+			i.Valid = true
+
+			invigilation := cmn.TInvigilation{
+				ExamSessionID: null.IntFrom(0),
+				ExamRoom:      er,
+				Invigilator:   i,
+			}
+
+			// 将监考员分配到所有考试场次
+			for _, examSessionID := range examSessionIDs {
+				invigilation.ExamSessionID.Int64 = examSessionID
+				invigilation.ExamSessionID.Valid = true
+				invigilations = append(invigilations, invigilation)
+			}
+
+			currentInvigilatorIndex++
 		}
 	}
 
@@ -837,8 +842,13 @@ func allocateInvigilatorsToRooms(examSessionIDs []int64, examRooms []ExamRoomCon
 }
 
 // 获取考场容量
-func getExamRoomCapacity(roomIDs []int64) ([]cmn.TExamRoom, error) {
+func getExamRoomCapacity(ctx context.Context, roomIDs []int64) ([]cmn.TExamRoom, error) {
 	z.Info("---->" + cmn.FncName())
+
+	var forceErr string
+	if val := ctx.Value("getExamRoomCapacity-force-error"); val != nil {
+		forceErr = val.(string)
+	}
 
 	if len(roomIDs) == 0 {
 		return nil, nil
@@ -853,19 +863,28 @@ func getExamRoomCapacity(roomIDs []int64) ([]cmn.TExamRoom, error) {
 		ORDER BY id
 	`
 	rows, err := conn.Query(context.Background(), query, roomIDs)
+	if rows != nil {
+		defer rows.Close()
+	}
+	if forceErr == "conn.Query" {
+		err = fmt.Errorf("强制查询错误")
+	}
 	if err != nil {
 		z.Error(err.Error())
 		return nil, err
 	}
-	defer rows.Close()
 
 	var examRooms []cmn.TExamRoom
 	for rows.Next() {
 		var room cmn.TExamRoom
-		if err := rows.Scan(
+		err := rows.Scan(
 			&room.ID,
 			&room.Capacity,
-		); err != nil {
+		)
+		if forceErr == "rows.Scan" {
+			err = fmt.Errorf("强制扫描错误")
+		}
+		if err != nil {
 			z.Error(err.Error())
 			return nil, err
 		}
@@ -1038,6 +1057,61 @@ func updateExamineeStatus(ctx context.Context, tx pgx.Tx, newStatus string, user
         AND t_examinee.status != '08'
 	`, newStatus, time.Now().UnixMilli(), userID, examIDs)
 	if forceErr == "updateExamineeStatus.Exec" {
+		err = fmt.Errorf("force error: %s", forceErr)
+	}
+	if err != nil {
+		z.Error(err.Error())
+		return err
+	}
+
+	return nil
+}
+
+func deleteInvigilationAndExamRecordInfo(ctx context.Context, tx pgx.Tx, examSessionIDs ...int64) error {
+	z.Info("---->" + cmn.FncName())
+
+	forceErr := ""
+	if val := ctx.Value("force-error"); val != nil {
+		forceErr = val.(string)
+	}
+
+	if tx == nil {
+		err := fmt.Errorf("事务未初始化")
+		z.Error(err.Error())
+		return err
+	}
+
+	if len(examSessionIDs) == 0 {
+		return nil
+	}
+
+	for _, examSessionID := range examSessionIDs {
+		if examSessionID <= 0 {
+			err := fmt.Errorf("无效的考试场次ID: %d", examSessionID)
+			z.Error(err.Error())
+			return err
+		}
+	}
+
+	// 删除监考安排
+	_, err := tx.Exec(ctx, `
+		DELETE FROM t_invigilation 
+		WHERE exam_session_id = ANY($1)
+	`, examSessionIDs)
+	if forceErr == "deleteInvigilation.Exec" {
+		err = fmt.Errorf("force error: %s", forceErr)
+	}
+	if err != nil {
+		z.Error(err.Error())
+		return err
+	}
+
+	// 删除考试记录
+	_, err = tx.Exec(ctx, `
+		DELETE FROM t_exam_record 
+		WHERE exam_session = ANY($1)
+	`, examSessionIDs)
+	if forceErr == "deleteExamRecord.Exec" {
 		err = fmt.Errorf("force error: %s", forceErr)
 	}
 	if err != nil {
@@ -1303,78 +1377,84 @@ func exam(ctx context.Context) {
 			examineeIDs = append(examineeIDs, examineeID)
 		}
 
-		// // 获取监考员信息
-		// var invigilatorIDs []int64
-		// var examSessionIDs []int64
-		// for _, es := range es_array {
-		// 	examSessionIDs = append(examSessionIDs, es.ID.Int64)
-		// }
+		// 获取监考员信息
+		var invigilatorIDs []int64
+		var examSessionIDs []int64
+		for _, es := range es_array {
+			examSessionIDs = append(examSessionIDs, es.ID.Int64)
+		}
 
-		// invigilator_query := `
-		// 	SELECT DISTINCT i.invigilator
-		// 	FROM t_invigilation i
-		// 	INNER JOIN t_exam_session es ON i.exam_session_id IN ($1)
-		// 	WHERE i.invigilator IS NOT NULL
-		// 	ORDER BY i.invigilator
-		// `
-		// var invigilator_rows pgx.Rows
-		// invigilator_rows, q.Err = conn.Query(context.Background(), invigilator_query, examSessionIDs)
-		// if q.Err != nil {
-		// 	z.Error(q.Err.Error())
-		// 	q.RespErr()
-		// 	return
-		// }
-		// defer invigilator_rows.Close()
+		invigilator_query := `
+			SELECT DISTINCT i.invigilator
+			FROM t_invigilation i
+			INNER JOIN t_exam_session es ON i.exam_session_id = ANY ($1)
+			WHERE i.invigilator IS NOT NULL
+			ORDER BY i.invigilator
+		`
+		var invigilator_rows pgx.Rows
+		invigilator_rows, q.Err = conn.Query(context.Background(), invigilator_query, examSessionIDs)
+		if invigilator_rows != nil {
+			defer invigilator_rows.Close()
+		}
+		if forceErr == "conn.QueryInvigilator" {
+			q.Err = fmt.Errorf("强制查询监考员错误")
+		}
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
 
-		// for invigilator_rows.Next() {
-		// 	var invigilatorID int64
-		// 	q.Err = invigilator_rows.Scan(&invigilatorID)
-		// 	if q.Err != nil {
-		// 		z.Error(q.Err.Error())
-		// 		q.RespErr()
-		// 		return
-		// 	}
-		// 	invigilatorIDs = append(invigilatorIDs, invigilatorID)
-		// }
+		for invigilator_rows.Next() {
+			var invigilatorID int64
+			q.Err = invigilator_rows.Scan(&invigilatorID)
+			if q.Err != nil {
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+			invigilatorIDs = append(invigilatorIDs, invigilatorID)
+		}
 
-		// // 获取考场信息
-		// var examRoomsConfigs []ExamRoomConfig
-		// if ei.ExamRoomInvigilatorCount != nil {
-		// 	if err := json.Unmarshal([]byte(ei.ExamRoomInvigilatorCount), &examRoomsConfigs); err != nil {
-		// 		q.Err = fmt.Errorf("解析考场监考员配置失败: %s", err.Error())
-		// 		z.Error(q.Err.Error())
-		// 		q.RespErr()
-		// 		return
-		// 	}
-		// }
+		// 获取考场信息
+		var examRoomsConfigs []ExamRoomConfig
+		examRoomsConfigs = []ExamRoomConfig{}
+		z.Sugar().Infof("考场监考员配置: %v", ei.ExamRoomInvigilatorCount)
+		if ei.ExamRoomInvigilatorCount != nil {
+			if err := json.Unmarshal(ei.ExamRoomInvigilatorCount, &examRoomsConfigs); err != nil {
+				q.Err = fmt.Errorf("解析考场监考员配置失败: %s", err.Error())
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+		}
 
-		// var examRoomIDs []int64
-		// for _, config := range examRoomsConfigs {
-		// 	examRoomIDs = append(examRoomIDs, config.RoomID)
-		// }
+		var examRoomIDs []int64
+		for _, config := range examRoomsConfigs {
+			examRoomIDs = append(examRoomIDs, config.RoomID)
+		}
 
-		// var examRooms []cmn.TExamRoom
-		// if len(examRoomIDs) > 0 {
-		// 	examRooms, q.Err = getExamRoomCapacity(examRoomIDs)
-		// 	if q.Err != nil {
-		// 		q.RespErr()
-		// 		return
-		// 	}
-		// }
+		var examRooms []cmn.TExamRoom
+		if len(examRoomIDs) > 0 {
+			examRooms, q.Err = getExamRoomCapacity(ctx, examRoomIDs)
+			if q.Err != nil {
+				q.RespErr()
+				return
+			}
+		}
 
-		// // 将考场容量转换为映射
-		// roomCapacityMap := make(map[int64]int64)
-		// for _, room := range examRooms {
-		// 	roomCapacityMap[room.ID.Int64] = room.Capacity.Int64
-		// }
+		roomCapacityMap := make(map[int64]int64)
+		for _, room := range examRooms {
+			roomCapacityMap[room.ID.Int64] = room.Capacity.Int64
+		}
 
-		// // 根据考场ID匹配对应的容量
-		// for i, config := range examRoomsConfigs {
-		// 	if capacity, exists := roomCapacityMap[config.RoomID]; exists {
-		// 		config.Capacity = capacity
-		// 		examRoomsConfigs[i] = config
-		// 	}
-		// }
+		// 根据考场ID匹配对应的容量
+		for i, config := range examRoomsConfigs {
+			if capacity, exists := roomCapacityMap[config.RoomID]; exists {
+				config.Capacity = capacity
+				examRoomsConfigs[i] = config
+			}
+		}
 
 		// 构建返回数据
 		examData := ExamData{
@@ -1382,7 +1462,7 @@ func exam(ctx context.Context) {
 			ExamSessions:   es_array,
 			ExamineeIDs:    examineeIDs,
 			InvigilatorIDs: nil,
-			ExamRooms:      nil,
+			ExamRooms:      examRoomsConfigs,
 			Files:          examFiles,
 		}
 
@@ -1529,7 +1609,7 @@ func exam(ctx context.Context) {
 
 		// 获取考场容量
 		var examRooms []cmn.TExamRoom
-		examRooms, q.Err = getExamRoomCapacity(examRoomIDs)
+		examRooms, q.Err = getExamRoomCapacity(ctx, examRoomIDs)
 		if forceErr == "getExamRoomCapacity" {
 			q.Err = fmt.Errorf("强制获取考场容量错误")
 		}
@@ -1558,6 +1638,9 @@ func exam(ctx context.Context) {
 
 			var err error
 			q.Msg.Data, err = json.Marshal(examErrorResp)
+			if forceErr == "json.Marshal1" {
+				err = fmt.Errorf("强制序列化考场配置错误")
+			}
 			if err != nil {
 				z.Error(err.Error())
 				q.Err = fmt.Errorf("JSON序列化考场容量错误: %s", err.Error())
@@ -1645,6 +1728,18 @@ func exam(ctx context.Context) {
 			updateStatus = nowStatus
 		}
 
+		// 序列化考场配置
+		var examRoomConfigJSON []byte
+		examRoomConfigJSON, q.Err = json.Marshal(ExamData.ExamRooms)
+		if forceErr == "json.Marshal2" {
+			q.Err = fmt.Errorf("强制序列化考场配置错误")
+		}
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
 		// 更新考试信息
 		updateExamSQL := `
 		UPDATE t_exam_info SET
@@ -1657,8 +1752,9 @@ func exam(ctx context.Context) {
 			create_time = CASE WHEN status = '14' THEN $7 ELSE create_time END,
 			updated_by = $6,
 			status = COALESCE(NULLIF($8, ''), status),
-			addi = COALESCE(NULLIF($9, '{}'::jsonb), addi)
-		WHERE id = $10 AND status != '12'`
+			addi = COALESCE(NULLIF($9, '{}'::jsonb), addi),
+			exam_room_invigilator_count = COALESCE(NULLIF($10, '[]'::jsonb), exam_room_invigilator_count)
+		WHERE id = $11 AND status != '12'`
 		_, q.Err = tx.Exec(ctx, updateExamSQL,
 			ExamData.ExamInfo.Name.String,
 			ExamData.ExamInfo.Rules.String,
@@ -1669,6 +1765,7 @@ func exam(ctx context.Context) {
 			currentTime,
 			updateStatus,
 			ExamData.ExamInfo.Addi,
+			examRoomConfigJSON,
 			ExamData.ExamInfo.ID.Int64,
 		)
 		if forceErr == "tx.UpdateExamInfo" {
@@ -1706,6 +1803,15 @@ func exam(ctx context.Context) {
 		}
 		if q.Err != nil {
 			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		q.Err = deleteInvigilationAndExamRecordInfo(ctx, tx, oldExamSessionIDs...)
+		if forceErr == "deleteInvigilationAndExamRecordInfo" {
+			q.Err = fmt.Errorf("强制删除监考安排和考试记录错误")
+		}
+		if q.Err != nil {
 			q.RespErr()
 			return
 		}
@@ -1983,17 +2089,28 @@ func exam(ctx context.Context) {
 				break // 如果没有考生，跳过生成考卷和批改配置
 			}
 
-			var examPaperID *int64
-			var subjectiveQuestionGroups []examPaper.SubjectiveQuestionGroup
-			examPaperID, subjectiveQuestionGroups, q.Err = examPaper.GenerateExamPaper(ctx, tx, "00", examSession.PaperID.Int64, 0, examSession.ID.Int64, userID, true)
-			if forceErr == "examPaper.GenerateExamPaper" {
-				q.Err = fmt.Errorf("强制生成考卷错误")
+			var examPaperID int64
+			queryExamPaperID := `SELECT exampaper_id FROM t_paper WHERE id = $1`
+			q.Err = tx.QueryRow(ctx, queryExamPaperID, examSession.PaperID.Int64).Scan(&examPaperID)
+			if forceErr == "tx.SearchExamPaperID" {
+				q.Err = fmt.Errorf("强制查询考卷ID错误")
 			}
 			if q.Err != nil {
+				q.Err = fmt.Errorf("查询考卷ID失败: %s", q.Err.Error())
+				z.Error(q.Err.Error())
 				q.RespErr()
 				return
 			}
-			_ = subjectiveQuestionGroups
+
+			if forceErr == "invalidExamPaperID" {
+				examPaperID = 0
+			}
+			if examPaperID == 0 {
+				q.Err = fmt.Errorf("考卷ID无效")
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
 
 			var isQuestionRandom, isOptionRandom bool
 			isOptionRandom = false
@@ -2002,7 +2119,7 @@ func exam(ctx context.Context) {
 			isQuestionRandom, isOptionRandom = getQuestionShuffledMode(examSession.QuestionShuffledMode.String)
 
 			var generateAnswerQuestionsRequest examPaper.GenerateAnswerQuestionsRequest
-			generateAnswerQuestionsRequest.ExamPaperID = *examPaperID
+			generateAnswerQuestionsRequest.ExamPaperID = examPaperID
 			generateAnswerQuestionsRequest.ExamineeIDs = examineeIDs
 			generateAnswerQuestionsRequest.IsQuestionRandom = isQuestionRandom
 			generateAnswerQuestionsRequest.IsOptionRandom = isOptionRandom
@@ -2027,7 +2144,7 @@ func exam(ctx context.Context) {
 					WHERE exam_session_id = $4
 					AND status != '08'
 					`
-			_, q.Err = tx.Exec(ctx, assign_query, *examPaperID, userID, currentTime, examSession.ID.Int64)
+			_, q.Err = tx.Exec(ctx, assign_query, examPaperID, userID, currentTime, examSession.ID.Int64)
 			if forceErr == "tx.UpdateExamineeExamPaperID" {
 				q.Err = fmt.Errorf("强制更新考生考卷ID错误")
 			}
@@ -2074,7 +2191,6 @@ func exam(ctx context.Context) {
 			handleMarkerInfoReq.Markers = reviewerIDs
 			handleMarkerInfoReq.ExamineeIDs = examineeIDs
 			handleMarkerInfoReq.MarkMode = examSession.MarkMode.String
-			handleMarkerInfoReq.QuestionGroups = subjectiveQuestionGroups
 			handleMarkerInfoReq.Status = "00"
 
 			q.Err = mark.HandleMarkerInfo(ctx, &tx, userID, handleMarkerInfoReq)
@@ -2316,6 +2432,15 @@ func exam(ctx context.Context) {
 		}()
 
 		if forceErr == "tx.Commit" || forceErr == "tx.Rollback" {
+			return
+		}
+
+		q.Err = deleteInvigilationAndExamRecordInfo(ctx, tx, examSessionIDs...)
+		if forceErr == "deleteInvigilationAndExamRecordInfo" {
+			q.Err = fmt.Errorf("强制删除监考安排和考试记录错误")
+		}
+		if q.Err != nil {
+			q.RespErr()
 			return
 		}
 
@@ -3260,6 +3385,10 @@ func examStatus(ctx context.Context) {
 			}
 		}()
 
+		if forceErr == "cmn.ReleaseLock" {
+			return
+		}
+
 		// 获取要修改的考试状态
 		status := gjson.Get(qry, "data.Status").String()
 		if status == "" {
@@ -3301,6 +3430,10 @@ func examStatus(ctx context.Context) {
 				z.Error(fmt.Sprintf("failed to commit transaction: %s", commitErr.Error()))
 			}
 		}()
+
+		if forceErr == "tx.Commit" {
+			return
+		}
 
 		if forceErr == "tx.Rollback" {
 			q.Err = fmt.Errorf("强制回滚事务错误")
@@ -3373,6 +3506,15 @@ func examStatus(ctx context.Context) {
 			}
 			if q.Err != nil {
 				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+
+			q.Err = deleteInvigilationAndExamRecordInfo(ctx, tx, examSessionIDs...)
+			if forceErr == "deleteInvigilationAndExamRecordInfo" {
+				q.Err = fmt.Errorf("强制删除监考安排和考试记录错误")
+			}
+			if q.Err != nil {
 				q.RespErr()
 				return
 			}
@@ -3527,17 +3669,29 @@ func examStatus(ctx context.Context) {
 					break // 如果没有考生，跳过生成考卷和批改配置
 				}
 
-				var examPaperID *int64
-				var subjectiveQuestionGroups []examPaper.SubjectiveQuestionGroup
-				examPaperID, subjectiveQuestionGroups, q.Err = examPaper.GenerateExamPaper(ctx, tx, "00", examSession.PaperID.Int64, 0, examSession.ID.Int64, userID, true)
-				if forceErr == "examPaper.GenerateExamPaper" {
-					q.Err = fmt.Errorf("强制生成考卷错误")
+				var examPaperID int64
+				queryExamPaperID := `SELECT exampaper_id FROM t_paper WHERE id = $1`
+				q.Err = tx.QueryRow(ctx, queryExamPaperID, examSession.PaperID.Int64).Scan(&examPaperID)
+				if forceErr == "tx.SearchExamPaperID" {
+					q.Err = fmt.Errorf("强制查询考卷ID错误")
 				}
 				if q.Err != nil {
+					q.Err = fmt.Errorf("查询考卷ID失败: %s", q.Err.Error())
+					z.Error(q.Err.Error())
 					q.RespErr()
 					return
 				}
-				_ = subjectiveQuestionGroups
+
+				if forceErr == "InvalidExamPaperID" {
+					examPaperID = 0
+				}
+
+				if examPaperID == 0 {
+					q.Err = fmt.Errorf("考卷ID无效")
+					z.Error(q.Err.Error())
+					q.RespErr()
+					return
+				}
 
 				var isQuestionRandom, isOptionRandom bool
 				isOptionRandom = false
@@ -3546,7 +3700,7 @@ func examStatus(ctx context.Context) {
 				isQuestionRandom, isOptionRandom = getQuestionShuffledMode(examSession.QuestionShuffledMode.String)
 
 				var generateAnswerQuestionsRequest examPaper.GenerateAnswerQuestionsRequest
-				generateAnswerQuestionsRequest.ExamPaperID = *examPaperID
+				generateAnswerQuestionsRequest.ExamPaperID = examPaperID
 				generateAnswerQuestionsRequest.ExamineeIDs = examineeIDs
 				generateAnswerQuestionsRequest.IsQuestionRandom = isQuestionRandom
 				generateAnswerQuestionsRequest.IsOptionRandom = isOptionRandom
@@ -3570,7 +3724,7 @@ func examStatus(ctx context.Context) {
 					WHERE exam_session_id = $4
 					AND status != '08'
 					`
-				_, q.Err = tx.Exec(ctx, assign_query, *examPaperID, userID, now, examSession.ID.Int64)
+				_, q.Err = tx.Exec(ctx, assign_query, examPaperID, userID, now, examSession.ID.Int64)
 				if forceErr == "tx.Exec" {
 					q.Err = fmt.Errorf("强制更新考生考卷ID错误")
 				}
@@ -3615,7 +3769,6 @@ func examStatus(ctx context.Context) {
 				handleMarkerInfoReq.Markers = reviewerIDs
 				handleMarkerInfoReq.ExamineeIDs = examineeIDs
 				handleMarkerInfoReq.MarkMode = examSession.MarkMode.String
-				handleMarkerInfoReq.QuestionGroups = subjectiveQuestionGroups
 				handleMarkerInfoReq.Status = "00"
 
 				q.Err = mark.HandleMarkerInfo(ctx, &tx, userID, handleMarkerInfoReq)

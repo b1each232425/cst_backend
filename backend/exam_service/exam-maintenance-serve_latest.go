@@ -552,7 +552,7 @@ func handleExamSessionStart(ctx context.Context, event ExamEvent) error {
 	}
 
 	if result.RowsAffected() == 0 || forceErr == "updateExamSession.RowsAffected" {
-		err = fmt.Errorf("无法更新考试场次为进行中状态，可能存在并发修改，场次id：%d", examSessionID)
+		err = fmt.Errorf("无法更新考试场次为进行中状态，可能存在并发修改，或者考试已在进行中，场次id：%d", examSessionID)
 		z.Warn(err.Error())
 		return err
 	}
