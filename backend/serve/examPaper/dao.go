@@ -3,7 +3,7 @@
  * @Description: 考卷-答卷数据库层
  * @Date: 2025-07-21 13:14:34
  * @LastEditors: zdl <1311866870@qq.com>
- * @LastEditTime: 2025-08-20 13:45:31
+ * @LastEditTime: 2025-08-25 10:21:40
  */
 package examPaper
 
@@ -280,7 +280,7 @@ func LoadPaperTemplateById(ctx context.Context, paperId int64, withQuestions boo
 		scanArgs = append(scanArgs, &p.GroupsData)
 	}
 	s := fmt.Sprintf("SELECT %s FROM assessuser.v_paper WHERE id=$1 AND status != $2", strings.Join(fields, ","))
-	err = conn.QueryRow(ctx, s, paperId, PaperStatus.Invalid).Scan(scanArgs...)
+	err = conn.QueryRow(ctx, s, paperId, PaperStatus.Deleted).Scan(scanArgs...)
 	if err != nil {
 		err = fmt.Errorf("select paper failed:%v", err)
 		z.Error(err.Error())
@@ -333,21 +333,15 @@ func LoadPaperTemplateById(ctx context.Context, paperId int64, withQuestions boo
 	return &p, groups, questions, nil
 }
 
-// GenerateExamPaper 生成一张可用考卷（包括题组与题目） 占位符最多65535个，优化为同一个事务批量插入考题，避免试卷体量过大而无法一次插入的问题
+// GenerateExamPaper 发布试卷即生成一张可用考卷（包括题组与题目） 占位符最多65535个，优化为同一个事务批量插入考题，避免试卷体量过大而无法一次插入的问题
 /*
 关键参数说明：
-	category 考卷服务类型 00：考试 02：练习
 	paperId 试卷模版Id
-	practiceId 练习Id 若类型为练习必填 否则填0
-	examSessionId 考试场次Id 若类型为考试必填 否则填0
 	uid 操作人Id
 	genMarkInfo 是否生成批改信息 用于考试创建时配置批改信息 考卷ID与考卷题组的结构
 */
-func GenerateExamPaper(ctx context.Context, tx pgx.Tx, category string, paperId, practiceId, examSessionId int64, uid int64, genMarkInfo bool) (*int64, []SubjectiveQuestionGroup, error) {
+func GenerateExamPaper(ctx context.Context, tx pgx.Tx, paperId, uid int64, genMarkInfo bool) (*int64, []SubjectiveQuestionGroup, error) {
 	var err error
-	var esid, pid interface{}
-	esid = examSessionId
-	pid = practiceId
 	//查看是否需要返回mock的数据
 	forceErr, _ := ctx.Value("force-error").(string)
 	if paperId <= 0 {
@@ -355,26 +349,10 @@ func GenerateExamPaper(ctx context.Context, tx pgx.Tx, category string, paperId,
 		z.Error(err.Error())
 		return nil, nil, err
 	}
-	if category != PaperCategory.Exam && category != PaperCategory.Practice {
-		err = fmt.Errorf("invalid category param")
-		z.Error(err.Error())
-		return nil, nil, err
-	}
-	if practiceId <= 0 && examSessionId <= 0 {
-		err = fmt.Errorf("invalid practice or examSession ID param")
-		z.Error(err.Error())
-		return nil, nil, err
-	}
 	if uid <= 0 {
 		err = fmt.Errorf("invalid uid ID param")
 		z.Error(err.Error())
 		return nil, nil, err
-	}
-	if practiceId == 0 {
-		pid = nil
-	}
-	if examSessionId == 0 {
-		esid = nil
 	}
 	p, pg, pq, err := LoadPaperTemplateById(ctx, paperId, true)
 	if err != nil {
@@ -389,13 +367,13 @@ func GenerateExamPaper(ctx context.Context, tx pgx.Tx, category string, paperId,
 	ep := cmn.TExamPaper{}
 	insertPaperSQL := `
 		INSERT INTO assessuser.t_exam_paper 
-			(exam_session_id, practice_id, name, creator, create_time, update_time) 
-		VALUES ($1, $2, $3, $4, $5, $6) 
+			(name, creator, create_time, update_time) 
+		VALUES ($1, $2, $3, $4) 
 		RETURNING id`
 	err = tx.QueryRow(
 		ctx,
 		insertPaperSQL,
-		esid, pid, p.Name, uid, now, now,
+		p.Name, uid, now, now,
 	).Scan(&ep.ID)
 	if err != nil || forceErr == "query1" {
 		err = fmt.Errorf("插入考卷失败: %w", err)

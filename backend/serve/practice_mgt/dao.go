@@ -772,18 +772,17 @@ func OperatePracticeStatus(ctx context.Context, pid int64, status string, uid in
 
 	}()
 	if status == PracticeStatus.Released {
-		// 无论考卷之前有没有生成，均生成新的
-		examPaperId, _, err := examPaper.GenerateExamPaper(ctx, tx, examPaper.PaperCategory.Practice, p.PaperID.Int64, pid, 0, uid, false)
+		// 这里需要重构一下这个东西
+		var examPaperId int64
+		s := `SELECT pa.exam_paper_id FROM t_practice p JOIN t_paper pa ON pa.id = p.paper_id WHERE p.id = $1 AND pa.status = $2`
+		err = tx.QueryRow(ctx, s, pid, examPaper.PaperStatus.Published).Scan(&examPaperId)
 		if err != nil {
-			return err
-		}
-		if examPaperId == nil || forceErr == "empty" {
-			err = fmt.Errorf("生成练习考卷返回的考卷ID为空")
+			err = fmt.Errorf("查看练习绑定的试卷中已发布的考卷ID失败:%v", err)
 			z.Error(err.Error())
 			return err
 		}
 
-		s := `UPDATE assessuser.t_practice SET status = $1,update_time = $2, updated_by = $3 ,exam_paper_id = $4 WHERE id = $5`
+		s = `UPDATE assessuser.t_practice SET status = $1,update_time = $2, updated_by = $3 ,exam_paper_id = $4 WHERE id = $5`
 		_, err = tx.Exec(ctx, s, status, now, uid, examPaperId, pid)
 		if err != nil || forceErr == "pQuery1" {
 			err = fmt.Errorf("更新练习状态 发布->未发布 失败:%v", err)
@@ -827,11 +826,6 @@ func OperatePracticeStatus(ctx context.Context, pid int64, status string, uid in
 			return err
 		}
 
-		err = examPaper.DeleteExamPaperById(ctx, tx, nil, []int64{p.ID.Int64})
-		if err != nil {
-			return err
-		}
-
 		// 清除批改配置信息
 		req := mark.HandleMarkerInfoReq{
 			Status:      "02",
@@ -858,10 +852,6 @@ func OperatePracticeStatus(ctx context.Context, pid int64, status string, uid in
 		if err != nil || forceErr == "pQuery6" {
 			err = fmt.Errorf("重置学生练习提交记录信息失败：%v", err)
 			z.Error(err.Error())
-			return err
-		}
-		err = examPaper.DeleteExamPaperById(ctx, tx, nil, []int64{pid})
-		if err != nil {
 			return err
 		}
 
@@ -951,18 +941,17 @@ func OperatePracticeStatusV2(ctx context.Context, ids []int64, status string, ui
 	if status == PracticeStatus.Released {
 		// 批量操作
 		for pid, p := range ps {
-			// 无论考卷之前有没有生成，均生成新的
-			examPaperId, _, err := examPaper.GenerateExamPaper(ctx, tx, examPaper.PaperCategory.Practice, p.PaperID.Int64, pid, 0, uid, false)
+			// 这里都需要进行查询，需要找到这个practice对应的试卷里面的考卷ID
+			var examPaperId int64
+			s := `SELECT pa.exam_paper_id FROM t_practice p JOIN t_paper pa ON pa.id = p.paper_id WHERE p.id = $1 AND pa.status = $2`
+			err = tx.QueryRow(ctx, s, pid, examPaper.PaperStatus.Published).Scan(&examPaperId)
 			if err != nil {
-				return err
-			}
-			if examPaperId == nil || forceErr == "empty" {
-				err = fmt.Errorf("生成练习考卷返回的考卷ID为空")
+				err = fmt.Errorf("查看练习绑定的试卷中已发布的考卷ID失败:%v", err)
 				z.Error(err.Error())
 				return err
 			}
 
-			s := `UPDATE assessuser.t_practice SET status = $1,update_time = $2, updated_by = $3 ,exam_paper_id = $4 WHERE id = $5`
+			s = `UPDATE assessuser.t_practice SET status = $1,update_time = $2, updated_by = $3 ,exam_paper_id = $4 WHERE id = $5`
 			_, err = tx.Exec(ctx, s, status, now, uid, examPaperId, pid)
 			if err != nil || forceErr == "pQuery1" {
 				err = fmt.Errorf("更新练习状态 未发布->发布 失败:%v", err)
@@ -1025,10 +1014,6 @@ func OperatePracticeStatusV2(ctx context.Context, ids []int64, status string, ui
 			z.Error(err.Error())
 			return err
 		}
-		err = examPaper.DeleteExamPaperById(ctx, tx, nil, ids)
-		if err != nil {
-			return err
-		}
 		// 清除批改配置信息
 		req := mark.HandleMarkerInfoReq{
 			Status:      "02",
@@ -1057,10 +1042,6 @@ func OperatePracticeStatusV2(ctx context.Context, ids []int64, status string, ui
 		if err != nil || forceErr == "pQuery6" {
 			err = fmt.Errorf("批量重置学生练习提交记录信息失败：%v", err)
 			z.Error(err.Error())
-			return err
-		}
-		err = examPaper.DeleteExamPaperById(ctx, tx, nil, ids)
-		if err != nil {
 			return err
 		}
 		// 清除批改配置信息
