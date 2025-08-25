@@ -2030,10 +2030,9 @@ func PaperList(ctx context.Context) {
 			q.RespErr()
 			return
 		}
-		// todo 检测试卷谁有发布权限
 		// 生成考卷并修改试卷状态为已发布
 		var examPaperID *int64
-		examPaperID, _, q.Err = examPaper.GenerateExamPaper(dmlCtx, tx, paper.Category.String, paperID, 0, 0, userID, false)
+		examPaperID, q.Err = examPaper.GenerateExamPaper(dmlCtx, tx, paperID, userID)
 		if q.Err != nil {
 			z.Error(q.Err.Error())
 			q.RespErr()
