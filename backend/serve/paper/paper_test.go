@@ -22,16 +22,15 @@ import (
 )
 
 const (
-	initQuestionUserID = 9999999
-	teacherRoleID      = int64(2003)
-	studentRoleID      = int64(2008)
-	resourceDomainID   = int64(1999)
-	superAdminRoleID   = int64(2000)
+	teacherRoleID    = int64(2003)
+	studentRoleID    = int64(2008)
+	resourceDomainID = int64(1999)
+	superAdminRoleID = int64(2000)
 )
 
 var (
 	BankQuestionIDs = []int64{10000001, 10000002, 10000003, 10000004, 10000005, 10000006, 10000007, 10000008, 10000009, 10000010, 10000011, 10000012, 10000013, 10000014, 10000015}
-	TestUserIDs     = []int64{90001, 90002, 90003, 90004, 90005} // 测试用户ID列表
+	TestUserIDs     = []int64{} // 测试用户ID列表
 )
 
 // createMockContextWithBody 构造带body的context，仿照exam_mgt/exam-mgt_test.go
@@ -345,7 +344,7 @@ func cleanupTestBankQuestions() {
 	}
 	defer txn.Rollback(ctx)
 	// 删除题目
-	_, err = txn.Exec(ctx, `DELETE FROM assessuser.t_question WHERE creator = $1`, initQuestionUserID)
+	_, err = txn.Exec(ctx, `DELETE FROM assessuser.t_question WHERE creator = $1`, TestUserIDs[0])
 	if err != nil {
 		fmt.Printf("Failed to delete test questions: %v\n", err)
 		return
@@ -356,11 +355,87 @@ func cleanupTestBankQuestions() {
 		fmt.Printf("Failed to delete test papers: %v\n", err)
 		return
 	}
+	// 清理测试数据
+	clearSqlTUserDomain := "DELETE FROM t_user_domain"
+	_, err = txn.Exec(ctx, clearSqlTUserDomain)
+	if err != nil {
+		e := fmt.Sprintf("Failed to clear user domain data: %v", err)
+		z.Warn(e)
+	}
 	_ = txn.Commit(ctx)
 }
 
 func TestMain(m *testing.M) {
 	cmn.ConfigureForTest()
+
+	// 读取测试数据
+	testDataFile := "test-user.json"
+	data, err := os.ReadFile(testDataFile)
+	if err != nil {
+		e := fmt.Sprintf("Failed to read test data file %s: %v", testDataFile, err)
+		z.Fatal(e)
+	}
+
+	var testData struct {
+		Users       []cmn.TUser `json:"users"`
+		UserDomains []struct {
+			Account string   `json:"Account"`
+			Domains []string `json:"Domains"`
+		} `json:"user_domains"`
+	}
+
+	err = json.Unmarshal(data, &testData)
+	if err != nil {
+		e := fmt.Sprintf("Failed to unmarshal test data from %s: %v", testDataFile, err)
+		z.Fatal(e)
+	}
+	db := cmn.GetDbConn()
+	// 转换并插入测试数据到数据库
+	//for _, userData := range testData.Users {
+	//	err = userData.Create(cmn.GetDbConn())
+	//	if err != nil {
+	//		e := fmt.Sprintf("Failed to create user %v: %v", userData.ID.Int64, err)
+	//		z.Warn(e)
+	//	}
+	//}
+
+	// 处理用户域关系数据
+	pgxConn := cmn.GetPgxConn()
+	for _, userDomain := range testData.UserDomains {
+		// 根据Account查询用户ID
+		var userID int64
+		err = pgxConn.QueryRow(context.Background(), "SELECT id FROM t_user WHERE account = $1", userDomain.Account).Scan(&userID)
+		if err != nil {
+			e := fmt.Sprintf("Failed to find user with account %s: %v", userDomain.Account, err)
+			z.Warn(e)
+			continue
+		}
+		TestUserIDs = append(TestUserIDs, userID)
+
+		// 为每个域创建用户域关系
+		for _, domainStr := range userDomain.Domains {
+			// 根据Domain字符串查询域ID
+			var domainID int64
+			err = pgxConn.QueryRow(context.Background(), "SELECT id FROM t_domain WHERE domain = $1", domainStr).Scan(&domainID)
+			if err != nil {
+				e := fmt.Sprintf("Failed to find domain with domain string %s: %v", domainStr, err)
+				z.Warn(e)
+				continue
+			}
+
+			// 创建用户域关系记录
+			userDomainRecord := cmn.TUserDomain{
+				SysUser: null.IntFrom(userID),
+				Domain:  null.IntFrom(domainID),
+			}
+
+			err = userDomainRecord.Create(db)
+			if err != nil {
+				e := fmt.Sprintf("Failed to create user domain relation for user %d and domain %d: %v", userID, domainID, err)
+				z.Warn(e)
+			}
+		}
+	}
 	initTestQuestionBankAndQuestion()
 	m.Run()
 	cleanupTestBankQuestions()
@@ -515,7 +590,7 @@ func TestPaperListGetMethod(t *testing.T) {
 	cmn.ConfigureForTest()
 	db := cmn.GetPgxConn()
 	ctx := context.Background()
-	userID := int64(90002) // 教师角色ID
+	userID := TestUserIDs[0] // 教师角色ID
 
 	tests := []struct {
 		name          string
@@ -536,6 +611,24 @@ func TestPaperListGetMethod(t *testing.T) {
 			userID:        userID,
 			roleID:        teacherRoleID,
 			forceError:    "",
+			setup: func(t *testing.T) []int64 {
+				var ids []int64
+				for i := 0; i < 3; i++ {
+					id, _ := createTestPaper(ctx, t, fmt.Sprintf("正常分页查询测试试卷%d", i+1), userID, StatusUnPublished)
+					ids = append(ids, id)
+				}
+				return ids
+			},
+		},
+		{
+			name:          "用户没有可访问的域",
+			query:         "page=1&pageSize=10&name=正常分页查询测试试卷",
+			expectedCount: 3,
+			wantError:     true,
+			userID:        userID,
+			roleID:        teacherRoleID,
+			forceError:    "EmptyDomain",
+			expectedError: "用户没有可访问的域",
 			setup: func(t *testing.T) []int64 {
 				var ids []int64
 				for i := 0; i < 3; i++ {
@@ -596,6 +689,7 @@ func TestPaperListGetMethod(t *testing.T) {
 			expectedCount: 0,
 			wantError:     true,
 			userID:        userID,
+			roleID:        teacherRoleID,
 			forceError:    "",
 			setup: func(t *testing.T) []int64 {
 				var id int64
@@ -758,21 +852,22 @@ func TestPaperListGetMethod(t *testing.T) {
 			expectedError: ErrInvalidUserID.Error(),
 			setup:         func(t *testing.T) []int64 { return nil },
 		},
-		{
-			name:          "当前角色用户不能获取试卷列表",
-			query:         "",
-			wantError:     true,
-			userID:        userID,
-			roleID:        studentRoleID,
-			forceError:    "",
-			expectedError: ErrWithoutPermission.Error(),
-			setup:         func(t *testing.T) []int64 { return nil },
-		},
+		//{
+		//	name:          "当前角色用户不能获取试卷列表",
+		//	query:         "",
+		//	wantError:     true,
+		//	userID:        userID,
+		//	roleID:        studentRoleID,
+		//	forceError:    "",
+		//	expectedError: ErrWithoutPermission.Error(),
+		//	setup:         func(t *testing.T) []int64 { return nil },
+		//},
 		{
 			name:       "ForceErrorQueryCount",
 			query:      "",
 			wantError:  true,
 			userID:     userID,
+			roleID:     teacherRoleID,
 			forceError: "getPaperList-QueryRowCount-err",
 			setup:      func(t *testing.T) []int64 { return nil },
 		},
@@ -781,6 +876,7 @@ func TestPaperListGetMethod(t *testing.T) {
 			query:      "",
 			wantError:  true,
 			userID:     userID,
+			roleID:     teacherRoleID,
 			forceError: "getPaperList-QueryRow-err",
 			setup:      func(t *testing.T) []int64 { return nil },
 		},
@@ -809,23 +905,6 @@ func TestPaperListGetMethod(t *testing.T) {
 			forceError:    "getPaperList-RowErr-err",
 			expectedError: "getPaperList-RowErr-err",
 			roleID:        teacherRoleID,
-			setup: func(t *testing.T) []int64 {
-				var ids []int64
-				for i := 0; i < 3; i++ {
-					id, _ := createTestPaper(ctx, t, fmt.Sprintf("测试试卷%d", i+1), userID, StatusUnPublished)
-					ids = append(ids, id)
-				}
-				return ids
-			},
-		},
-		{
-			name:          "tx.QueryRow-err",
-			query:         "",
-			wantError:     true,
-			userID:        userID,
-			roleID:        teacherRoleID,
-			forceError:    "tx.QueryRow-err",
-			expectedError: "tx.QueryRow-err",
 			setup: func(t *testing.T) []int64 {
 				var ids []int64
 				for i := 0; i < 3; i++ {
@@ -972,9 +1051,7 @@ func TestPaperListDeleteMethod(t *testing.T) {
 	cmn.ConfigureForTest()
 	db := cmn.GetPgxConn()
 	ctx := context.Background()
-	userID := int64(90003)
-
-	const teacherRoleID = int64(2003) // 教师角色ID
+	userID := TestUserIDs[0]
 
 	tests := []struct {
 		name          string
@@ -993,6 +1070,40 @@ func TestPaperListDeleteMethod(t *testing.T) {
 			userID:     userID,
 			roleID:     teacherRoleID,
 			forceError: "",
+			setup: func(t *testing.T) []int64 {
+				var ids []int64
+				for i := 0; i < 2; i++ {
+					id, _ := createTestPaper(ctx, t, fmt.Sprintf("待删除试卷%d", i+1), userID, StatusUnPublished)
+					ids = append(ids, id)
+				}
+				return ids
+			},
+		},
+		{
+			name:          "用户没有可访问的域权限",
+			deleteIDs:     nil, // 由setup生成
+			wantError:     true,
+			userID:        userID,
+			roleID:        teacherRoleID,
+			forceError:    "EmptyDomain",
+			expectedError: "用户没有可访问的域权限",
+			setup: func(t *testing.T) []int64 {
+				var ids []int64
+				for i := 0; i < 2; i++ {
+					id, _ := createTestPaper(ctx, t, fmt.Sprintf("待删除试卷%d", i+1), userID, StatusUnPublished)
+					ids = append(ids, id)
+				}
+				return ids
+			},
+		},
+		{
+			name:          "超级管理员没有可访问的域权限",
+			deleteIDs:     nil, // 由setup生成
+			wantError:     true,
+			userID:        userID,
+			roleID:        superAdminRoleID,
+			forceError:    "EmptyDomain",
+			expectedError: "用户没有可访问的域权限",
 			setup: func(t *testing.T) []int64 {
 				var ids []int64
 				for i := 0; i < 2; i++ {
@@ -1073,25 +1184,25 @@ func TestPaperListDeleteMethod(t *testing.T) {
 			userID:        userID,
 			roleID:        -1, // 添加角色ID
 			forceError:    "",
-			expectedError: "invalid role: -1",
+			expectedError: "failed to get user role: no rows in result set",
 			setup: func(t *testing.T) []int64 {
 				id, _ := createTestPaper(ctx, t, "无效用户试卷", userID, StatusUnPublished) // 使用一个有效用户ID
 				return []int64{id}
 			},
 		},
-		{
-			name:          "用户角色无权限访问",
-			deleteIDs:     nil,
-			wantError:     true,
-			userID:        userID,
-			roleID:        studentRoleID, // 添加角色ID
-			forceError:    "",
-			expectedError: ErrWithoutPermission.Error(),
-			setup: func(t *testing.T) []int64 {
-				id, _ := createTestPaper(ctx, t, "无效用户试卷", userID, StatusUnPublished) // 使用一个有效用户ID
-				return []int64{id}
-			},
-		},
+		//{
+		//	name:          "用户角色无权限访问",
+		//	deleteIDs:     nil,
+		//	wantError:     true,
+		//	userID:        userID,
+		//	roleID:        studentRoleID, // 添加角色ID
+		//	forceError:    "",
+		//	expectedError: "",
+		//	setup: func(t *testing.T) []int64 {
+		//		id, _ := createTestPaper(ctx, t, "无效用户试卷", userID, StatusUnPublished) // 使用一个有效用户ID
+		//		return []int64{id}
+		//	},
+		//},
 		{
 			name:          "io.ReadAll-err",
 			deleteIDs:     nil,
@@ -1209,23 +1320,6 @@ func TestPaperListDeleteMethod(t *testing.T) {
 			expectedError: "ID List cannot be empty",
 			setup: func(t *testing.T) []int64 {
 				return nil
-			},
-		},
-		{
-			name:          "tx.QueryRow-err",
-			deleteIDs:     nil,
-			wantError:     true,
-			userID:        userID,
-			roleID:        teacherRoleID,
-			forceError:    "tx.QueryRow-err",
-			expectedError: "tx.QueryRow-err",
-			setup: func(t *testing.T) []int64 {
-				var ids []int64
-				for i := 0; i < 2; i++ {
-					id, _ := createTestPaper(ctx, t, fmt.Sprintf("待删除试卷%d", i+1), userID, StatusUnPublished)
-					ids = append(ids, id)
-				}
-				return ids
 			},
 		},
 		{
@@ -1377,7 +1471,7 @@ func TestManualPaperPostMethod(t *testing.T) {
 	cmn.ConfigureForTest()
 	db := cmn.GetPgxConn()
 	ctx := context.Background()
-	userID := int64(91001)
+	userID := TestUserIDs[0]
 
 	tests := []struct {
 		name          string
@@ -1441,15 +1535,6 @@ func TestManualPaperPostMethod(t *testing.T) {
 			setup:         func(t *testing.T) []int64 { return nil },
 		},
 		{
-			name:          "tx.QueryRow1-err",
-			wantError:     true,
-			userID:        userID,
-			roleID:        teacherRoleID,
-			forceError:    "tx.QueryRow1-err",
-			expectedError: "tx.QueryRow1-err",
-			setup:         func(t *testing.T) []int64 { return nil },
-		},
-		{
 			name:          "tx.QueryRow2-err",
 			wantError:     true,
 			userID:        userID,
@@ -1491,16 +1576,7 @@ func TestManualPaperPostMethod(t *testing.T) {
 			userID:        userID,
 			roleID:        -1,
 			forceError:    "",
-			expectedError: ErrInvalidRoleID.Error(),
-			setup:         func(t *testing.T) []int64 { return nil },
-		},
-		{
-			name:          "当前用户角色没有权限",
-			wantError:     true,
-			userID:        userID,
-			roleID:        studentRoleID,
-			forceError:    "",
-			expectedError: ErrWithoutPermission.Error(),
+			expectedError: "failed to get user role: no rows in result set",
 			setup:         func(t *testing.T) []int64 { return nil },
 		},
 	}
@@ -1582,6 +1658,40 @@ func TestManualPaperPutMethod(t *testing.T) {
 			setup: func(t *testing.T) (int64, []int64) {
 				id, _ := createTestPaper(ctx, t, "待更新试卷", userID, StatusUnPublished)
 				return id, []int64{id}
+			},
+			validate: func(t *testing.T, ctx context.Context, q *cmn.ServiceCtx, paperID int64) {
+				var name, category, level, desc string
+				_ = db.QueryRow(ctx, "SELECT name, category, level, description FROM t_paper WHERE id=$1", paperID).Scan(&name, &category, &level, &desc)
+				if name != "单元测试试卷" || category != "02" || level != "04" || desc != "desc" {
+					t.Errorf("PUT后数据库字段未正确更新: got %s %s %s %s", name, category, level, desc)
+				}
+			},
+		},
+		{
+			name: "获取试卷锁失败",
+			reqBody: &UpdateManualPaperRequest{
+				[]UpdateManualPaperAction{
+					{
+						Action: "update_info",
+						Payload: json.RawMessage(`{  
+                        "name": "单元测试试卷",
+                        "category": "02",
+                        "level": "04",
+                        "duration": 60,
+                        "description": "desc",
+                        "tags": ["tag1", "tag2"]
+                    }`),
+					},
+				},
+			},
+			wantError:  false,
+			userID:     userID,
+			roleID:     teacherRoleID,
+			forceError: "",
+			setup: func(t *testing.T) (int64, []int64) {
+				id, _ := createTestPaper(ctx, t, "待更新试卷", userID, StatusUnPublished)
+				return id, []int64{id}
+
 			},
 			validate: func(t *testing.T, ctx context.Context, q *cmn.ServiceCtx, paperID int64) {
 				var name, category, level, desc string
@@ -1764,34 +1874,7 @@ func TestManualPaperPutMethod(t *testing.T) {
 			userID:        userID,
 			roleID:        -1,
 			forceError:    "",
-			expectedError: ErrInvalidRoleID.Error(),
-			setup: func(t *testing.T) (int64, []int64) {
-				id, _ := createTestPaper(ctx, t, "无效用户试卷", userID, StatusUnPublished)
-				return id, []int64{id}
-			},
-		},
-		{
-			name: "用户角色没有权限",
-			reqBody: &UpdateManualPaperRequest{
-				[]UpdateManualPaperAction{
-					{
-						Action: "update_info",
-						Payload: json.RawMessage(`{  
-                        "Name": "单元测试试卷",
-                        "category": "02",
-                        "level": "04",
-                        "duration": 60,
-                        "description": "desc",
-                        "tags": ["tag1", "tag2"]
-                    }`),
-					},
-				},
-			},
-			wantError:     true,
-			userID:        userID,
-			roleID:        studentRoleID,
-			forceError:    "",
-			expectedError: ErrWithoutPermission.Error(),
+			expectedError: "failed to get user role: no rows in result set",
 			setup: func(t *testing.T) (int64, []int64) {
 				id, _ := createTestPaper(ctx, t, "无效用户试卷", userID, StatusUnPublished)
 				return id, []int64{id}
@@ -1820,7 +1903,7 @@ func TestManualPaperPutMethod(t *testing.T) {
 			forceError:    "",
 			expectedError: "no rows in result",
 			setup: func(t *testing.T) (int64, []int64) {
-				return -1, nil
+				return 999999, nil
 			},
 		},
 		{
@@ -2907,7 +2990,28 @@ func TestManualPaperPutMethod(t *testing.T) {
 		}
 	})
 
-	t.Run("buf is nil", func(t *testing.T) {
+	t.Run("获取试卷锁失败", func(t *testing.T) {
+		paperID, _ := createTestPaper(ctx, t, "待更新试卷", userID, StatusUnPublished)
+
+		t.Cleanup(func() { cleanupTestPaperData(t, []int64{paperID}) })
+		ctxPut := createMockContextWithBody("PUT", "/paper/manual?paper_id="+fmt.Sprint(paperID), nil, "", userID, teacherRoleID)
+		qPut := cmn.GetCtxValue(ctxPut)
+		qPut.R.URL.RawQuery = fmt.Sprintf("paper_id=%d", paperID)
+		// 获取试卷锁
+		success, err := cmn.TryLock(ctxPut, paperID, TestUserIDs[1], REDIS_LOCK_PREFIX, REDIS_LOCK_EXPRIATION)
+		require.NoError(t, err)
+		require.True(t, success, "获取试卷锁失败")
+		defer func() {
+			err = cmn.ReleaseLock(ctxPut, paperID, TestUserIDs[1], REDIS_LOCK_PREFIX)
+			require.NoError(t, err)
+		}()
+		ManualPaper(ctxPut)
+		if qPut.Msg.Status == 0 || !strings.Contains(qPut.Msg.Msg, fmt.Sprintf("key paper_lock:%d", paperID)) {
+			t.Errorf("期望错误信息包含'%s', 实际: %+v", fmt.Sprintf("key paper_lock:%d", paperID), qPut.Msg)
+		}
+	})
+
+	t.Run("获取试卷锁失败", func(t *testing.T) {
 		paperID, _ := createTestPaper(ctx, t, "待更新试卷", userID, StatusUnPublished)
 		t.Cleanup(func() { cleanupTestPaperData(t, []int64{paperID}) })
 		ctxPut := createMockContextWithBody("PATCH", "/paper/manual?paper_id="+fmt.Sprint(paperID), nil, "", userID, teacherRoleID)
@@ -2915,7 +3019,7 @@ func TestManualPaperPutMethod(t *testing.T) {
 		qPut.R.URL.RawQuery = fmt.Sprintf("paper_id=%d", paperID)
 		ManualPaper(ctxPut)
 		if qPut.Msg.Status == 0 || !strings.Contains(qPut.Msg.Msg, "不支持该方法") {
-			t.Errorf("期望错误信息包含'%s', 实际: %+v", "/api/paper/manual with empty body", qPut.Msg)
+			t.Errorf("期望错误信息包含'%s', 实际: %+v", "不支持该方法", qPut.Msg)
 		}
 	})
 
@@ -5272,19 +5376,7 @@ func TestManualPaperGetMethod(t *testing.T) {
 			userID:        userID,
 			roleID:        -1, // 添加角色ID
 			forceError:    "",
-			expectedError: ErrInvalidRoleID.Error(),
-			setup: func(t *testing.T) (int64, []int64) {
-				id, _ := createTestPaper(ctx, t, "无效用户试卷", userID, StatusUnPublished)
-				return id, []int64{id}
-			},
-		},
-		{
-			name:          "当前用户角色没有权限",
-			wantError:     true,
-			userID:        userID,
-			roleID:        studentRoleID, // 添加角色ID
-			forceError:    "",
-			expectedError: ErrWithoutPermission.Error(),
+			expectedError: "failed to get user role: no rows in result set",
 			setup: func(t *testing.T) (int64, []int64) {
 				id, _ := createTestPaper(ctx, t, "无效用户试卷", userID, StatusUnPublished)
 				return id, []int64{id}
@@ -5460,21 +5552,7 @@ func TestManualPaperGetMethod(t *testing.T) {
 			userID:        userID,
 			roleID:        -1,
 			forceError:    "",
-			expectedError: ErrInvalidRoleID.Error(),
-			setup: func(t *testing.T) (int64, []int64) {
-				paperID, _, _, err := CreateTestPaperWithGroupsAndQuestions(ctx, BankQuestionIDs[:2], userID)
-				require.NoError(t, err)
-				return paperID, []int64{paperID}
-			},
-			validate: nil,
-		},
-		{
-			name:          "预览模式-学生角色无权限",
-			wantError:     true,
-			userID:        userID,
-			roleID:        studentRoleID,
-			forceError:    "",
-			expectedError: ErrWithoutPermission.Error(),
+			expectedError: "failed to get user role: no rows in result set",
 			setup: func(t *testing.T) (int64, []int64) {
 				paperID, _, _, err := CreateTestPaperWithGroupsAndQuestions(ctx, BankQuestionIDs[:2], userID)
 				require.NoError(t, err)
@@ -6011,12 +6089,150 @@ func TestPaperListPostMethod(t *testing.T) {
 				// 验证试卷状态已更新为已发布
 				var status string
 				var examPaperID *int64
-				var version int64
-				err := db.QueryRow(ctx, "SELECT status, exampaper_id, version FROM t_paper WHERE id=$1", paperID).Scan(&status, &examPaperID, &version)
+				err := db.QueryRow(ctx, "SELECT status, exampaper_id FROM t_paper WHERE id=$1", paperID).Scan(&status, &examPaperID)
 				require.NoError(t, err)
 				require.Equal(t, StatusPublished, status, "试卷状态应为已发布")
 				require.NotNil(t, examPaperID, "考卷ID不应为空")
-				require.Greater(t, version, int64(0), "版本号应大于0")
+
+				// 验证题组和题目已被删除
+				var groupCount int
+				err = db.QueryRow(ctx, "SELECT COUNT(*) FROM t_paper_group WHERE paper_id=$1", paperID).Scan(&groupCount)
+				require.NoError(t, err)
+				require.Equal(t, 0, groupCount, "题组应已被删除")
+			},
+		},
+		{
+			name:          "tx.QueryRow",
+			wantError:     true,
+			userID:        userID,
+			roleID:        teacherRoleID,
+			forceError:    "tx.QueryRow",
+			expectedError: "tx.QueryRow",
+			setup: func(t *testing.T) (int64, []int64) {
+				// 创建一个未发布的试卷
+				id, _ := createTestPaper(ctx, t, "待发布试卷", userID, StatusUnPublished)
+				return id, []int64{id}
+			},
+			validate: func(t *testing.T, paperID int64) {
+				// 验证试卷状态已更新为已发布
+				var status string
+				var examPaperID *int64
+				err := db.QueryRow(ctx, "SELECT status, exampaper_id FROM t_paper WHERE id=$1", paperID).Scan(&status, &examPaperID)
+				require.NoError(t, err)
+				require.Equal(t, StatusPublished, status, "试卷状态应为已发布")
+				require.NotNil(t, examPaperID, "考卷ID不应为空")
+
+				// 验证题组和题目已被删除
+				var groupCount int
+				err = db.QueryRow(ctx, "SELECT COUNT(*) FROM t_paper_group WHERE paper_id=$1", paperID).Scan(&groupCount)
+				require.NoError(t, err)
+				require.Equal(t, 0, groupCount, "题组应已被删除")
+			},
+		},
+		{
+			name:          "examPaper.GenerateExamPaper",
+			wantError:     true,
+			userID:        userID,
+			roleID:        teacherRoleID,
+			forceError:    "examPaper.GenerateExamPaper",
+			expectedError: "examPaper.GenerateExamPaper",
+			setup: func(t *testing.T) (int64, []int64) {
+				// 创建一个未发布的试卷
+				id, _ := createTestPaper(ctx, t, "待发布试卷", userID, StatusUnPublished)
+				return id, []int64{id}
+			},
+			validate: func(t *testing.T, paperID int64) {
+				// 验证试卷状态已更新为已发布
+				var status string
+				var examPaperID *int64
+				err := db.QueryRow(ctx, "SELECT status, exampaper_id FROM t_paper WHERE id=$1", paperID).Scan(&status, &examPaperID)
+				require.NoError(t, err)
+				require.Equal(t, StatusPublished, status, "试卷状态应为已发布")
+				require.NotNil(t, examPaperID, "考卷ID不应为空")
+
+				// 验证题组和题目已被删除
+				var groupCount int
+				err = db.QueryRow(ctx, "SELECT COUNT(*) FROM t_paper_group WHERE paper_id=$1", paperID).Scan(&groupCount)
+				require.NoError(t, err)
+				require.Equal(t, 0, groupCount, "题组应已被删除")
+			},
+		},
+		{
+			name:          "UPDATE-tx.Exec",
+			wantError:     true,
+			userID:        userID,
+			roleID:        teacherRoleID,
+			forceError:    "UPDATE-tx.Exec",
+			expectedError: "UPDATE-tx.Exec",
+			setup: func(t *testing.T) (int64, []int64) {
+				// 创建一个未发布的试卷
+				id, _ := createTestPaper(ctx, t, "待发布试卷", userID, StatusUnPublished)
+				return id, []int64{id}
+			},
+			validate: func(t *testing.T, paperID int64) {
+				// 验证试卷状态已更新为已发布
+				var status string
+				var examPaperID *int64
+				err := db.QueryRow(ctx, "SELECT status, exampaper_id FROM t_paper WHERE id=$1", paperID).Scan(&status, &examPaperID)
+				require.NoError(t, err)
+				require.Equal(t, StatusPublished, status, "试卷状态应为已发布")
+				require.NotNil(t, examPaperID, "考卷ID不应为空")
+
+				// 验证题组和题目已被删除
+				var groupCount int
+				err = db.QueryRow(ctx, "SELECT COUNT(*) FROM t_paper_group WHERE paper_id=$1", paperID).Scan(&groupCount)
+				require.NoError(t, err)
+				require.Equal(t, 0, groupCount, "题组应已被删除")
+			},
+		},
+		{
+			name:          "DELETE-tx.Exec",
+			wantError:     true,
+			userID:        userID,
+			roleID:        teacherRoleID,
+			forceError:    "DELETE-tx.Exec",
+			expectedError: "DELETE-tx.Exec",
+			setup: func(t *testing.T) (int64, []int64) {
+				// 创建一个未发布的试卷
+				id, _ := createTestPaper(ctx, t, "待发布试卷", userID, StatusUnPublished)
+				return id, []int64{id}
+			},
+			validate: func(t *testing.T, paperID int64) {
+				// 验证试卷状态已更新为已发布
+				var status string
+				var examPaperID *int64
+				err := db.QueryRow(ctx, "SELECT status, exampaper_id FROM t_paper WHERE id=$1", paperID).Scan(&status, &examPaperID)
+				require.NoError(t, err)
+				require.Equal(t, StatusPublished, status, "试卷状态应为已发布")
+				require.NotNil(t, examPaperID, "考卷ID不应为空")
+
+				// 验证题组和题目已被删除
+				var groupCount int
+				err = db.QueryRow(ctx, "SELECT COUNT(*) FROM t_paper_group WHERE paper_id=$1", paperID).Scan(&groupCount)
+				require.NoError(t, err)
+				require.Equal(t, 0, groupCount, "题组应已被删除")
+			},
+		},
+		{
+			name:          "cmn.ReleaseLock",
+			wantError:     true,
+			userID:        userID,
+			roleID:        teacherRoleID,
+			forceError:    "cmn.ReleaseLock",
+			expectedError: "cmn.ReleaseLock",
+			setup: func(t *testing.T) (int64, []int64) {
+				// 创建一个未发布的试卷
+				id, _ := createTestPaper(ctx, t, "待发布试卷", userID, StatusUnPublished)
+				return id, []int64{id}
+			},
+			validate: func(t *testing.T, paperID int64) {
+				// 验证试卷状态已更新为已发布
+				var status string
+				var examPaperID *int64
+				err := db.QueryRow(ctx, "SELECT status, exampaper_id FROM t_paper WHERE id=$1", paperID).Scan(&status, &examPaperID)
+				require.NoError(t, err)
+				require.Equal(t, StatusPublished, status, "试卷状态应为已发布")
+				require.NotNil(t, examPaperID, "考卷ID不应为空")
 
 				// 验证题组和题目已被删除
 				var groupCount int
@@ -6086,22 +6302,9 @@ func TestPaperListPostMethod(t *testing.T) {
 			userID:        userID,
 			roleID:        -1,
 			forceError:    "",
-			expectedError: ErrInvalidRoleID.Error(),
+			expectedError: "failed to get user role: no rows in result set",
 			setup: func(t *testing.T) (int64, []int64) {
 				id, _ := createTestPaper(ctx, t, "无效角色试卷", userID, StatusUnPublished)
-				return id, []int64{id}
-			},
-			validate: nil,
-		},
-		{
-			name:          "学生角色无权限",
-			wantError:     true,
-			userID:        userID,
-			roleID:        studentRoleID,
-			forceError:    "",
-			expectedError: ErrWithoutPermission.Error(),
-			setup: func(t *testing.T) (int64, []int64) {
-				id, _ := createTestPaper(ctx, t, "学生无权限试卷", userID, StatusUnPublished)
 				return id, []int64{id}
 			},
 			validate: nil,

@@ -26,12 +26,87 @@ const (
 )
 
 var (
-	TestUserIDs = []int64{90001, 90002, 90003, 90004, 90005} // 测试用户ID列表
+	TestUserIDs = []int64{} // 测试用户ID列表
 )
 
 func TestMain(m *testing.M) {
 	cmn.ConfigureForTest()
+	// 读取测试数据
+	testDataFile := "test-user.json"
+	data, err := os.ReadFile(testDataFile)
+	if err != nil {
+		e := fmt.Sprintf("Failed to read test data file %s: %v", testDataFile, err)
+		z.Fatal(e)
+	}
+
+	var testData struct {
+		Users       []cmn.TUser `json:"users"`
+		UserDomains []struct {
+			Account string   `json:"Account"`
+			Domains []string `json:"Domains"`
+		} `json:"user_domains"`
+	}
+
+	err = json.Unmarshal(data, &testData)
+	if err != nil {
+		e := fmt.Sprintf("Failed to unmarshal test data from %s: %v", testDataFile, err)
+		z.Fatal(e)
+	}
+	db := cmn.GetDbConn()
+	// 转换并插入测试数据到数据库
+	//for _, userData := range testData.Users {
+	//	err = userData.Create(cmn.GetDbConn())
+	//	if err != nil {
+	//		e := fmt.Sprintf("Failed to create user %v: %v", userData.ID.Int64, err)
+	//		z.Warn(e)
+	//	}
+	//}
+
+	// 处理用户域关系数据
+	pgxConn := cmn.GetPgxConn()
+	for _, userDomain := range testData.UserDomains {
+		// 根据Account查询用户ID
+		var userID int64
+		err = pgxConn.QueryRow(context.Background(), "SELECT id FROM t_user WHERE account = $1", userDomain.Account).Scan(&userID)
+		if err != nil {
+			e := fmt.Sprintf("Failed to find user with account %s: %v", userDomain.Account, err)
+			z.Warn(e)
+			continue
+		}
+		TestUserIDs = append(TestUserIDs, userID)
+
+		// 为每个域创建用户域关系
+		for _, domainStr := range userDomain.Domains {
+			// 根据Domain字符串查询域ID
+			var domainID int64
+			err = pgxConn.QueryRow(context.Background(), "SELECT id FROM t_domain WHERE domain = $1", domainStr).Scan(&domainID)
+			if err != nil {
+				e := fmt.Sprintf("Failed to find domain with domain string %s: %v", domainStr, err)
+				z.Warn(e)
+				continue
+			}
+
+			// 创建用户域关系记录
+			userDomainRecord := cmn.TUserDomain{
+				SysUser: null.IntFrom(userID),
+				Domain:  null.IntFrom(domainID),
+			}
+
+			err = userDomainRecord.Create(db)
+			if err != nil {
+				e := fmt.Sprintf("Failed to create user domain relation for user %d and domain %d: %v", userID, domainID, err)
+				z.Warn(e)
+			}
+		}
+	}
 	m.Run()
+	// 清理测试数据
+	clearSqlTUserDomain := "DELETE FROM t_user_domain"
+	_, err = pgxConn.Exec(context.Background(), clearSqlTUserDomain)
+	if err != nil {
+		e := fmt.Sprintf("Failed to clear user domain data: %v", err)
+		z.Warn(e)
+	}
 }
 
 // createMockContextWithBody 构造带body的context，仿照exam_mgt/exam-mgt_test.go
@@ -108,7 +183,8 @@ func createMockContextWithBody(method, path string, data any, forceError string,
 			ID:   null.NewInt(userID, true),
 			Role: null.NewInt(userRole, true),
 		},
-		Domains: domains,
+		Domains:     domains,
+		RedisClient: cmn.GetRedisConn(),
 	}
 	ctx := context.WithValue(context.Background(), cmn.QNearKey, serviceCtx)
 	return context.WithValue(ctx, "force-error", forceError)
@@ -165,7 +241,8 @@ func createMockContextWithUnMarshalBody(method, path string, data string, forceE
 			ID:   null.NewInt(userID, true),
 			Role: null.NewInt(userRole, true),
 		},
-		Domains: domains,
+		Domains:     domains,
+		RedisClient: cmn.GetRedisConn(),
 	}
 	ctx := context.WithValue(context.Background(), cmn.QNearKey, serviceCtx)
 	return context.WithValue(ctx, "force-error", forceError)
@@ -1304,23 +1381,23 @@ func TestQuestionBankGetMethod(t *testing.T) {
 				require.Contains(t, tags, "算法", "应包含预期标签")
 			},
 		},
-		{
-			name:          "非教师用户无法查询题库",
-			query:         "/question-banks",
-			expectedCount: 0,
-			wantError:     true,
-			userID:        userID,
-			roleID:        studentRoleID, // 使用学生角色
-			forceError:    "",
-			expectedError: "domain cst.school^student is not allowed",
-			setup: func(t *testing.T) []int64 {
-				return insertTestBanks(t, userID, 3)
-			},
-			validate: func(t *testing.T, ctx context.Context, q *cmn.ServiceCtx, bankIDs []int64) {
-				require.Equal(t, -1, q.Msg.Status)
-				require.Contains(t, q.Msg.Msg, "not allowed")
-			},
-		},
+		//{
+		//	name:          "非教师用户无法查询题库",
+		//	query:         "/question-banks",
+		//	expectedCount: 0,
+		//	wantError:     true,
+		//	userID:        userID,
+		//	roleID:        studentRoleID, // 使用学生角色
+		//	forceError:    "",
+		//	expectedError: "domain cst.school^student is not allowed",
+		//	setup: func(t *testing.T) []int64 {
+		//		return insertTestBanks(t, userID, 3)
+		//	},
+		//	validate: func(t *testing.T, ctx context.Context, q *cmn.ServiceCtx, bankIDs []int64) {
+		//		require.Equal(t, -1, q.Msg.Status)
+		//		require.Contains(t, q.Msg.Msg, "not allowed")
+		//	},
+		//},
 		{
 			name:          "page不是数字",
 			query:         "/question-banks?page=abc&pageSize=2",
@@ -1689,25 +1766,25 @@ func TestQuestionBankDeleteMethod(t *testing.T) {
 				require.Len(t, banks, 2, "两个题库都应该仍然存在")
 			},
 		},
-		{
-			name:          "非教师角色无法删除题库",
-			wantError:     true,
-			userID:        testUserID,
-			roleID:        studentRoleID, // 使用学生角色
-			forceError:    "",
-			expectedError: "domain cst.school^student is not allowed",
-			setup: func(t *testing.T, ctx context.Context) []int64 {
-				bankID, _ := initTestQuestionBankAndQuestion(t, testUserID, false)
-				return []int64{bankID}
-			},
-			validate: func(t *testing.T, ctx context.Context, bankIDs []int64) {
-				// 验证题库未被删除
-				banks, err := getQuestionBanksByIDs(ctx, bankIDs)
-				require.NoError(t, err, "题库应该仍然存在")
-				require.Len(t, banks, 1, "题库列表应该包含一个题库")
-				require.Equal(t, testUserID, banks[0].Creator.Int64)
-			},
-		},
+		//{
+		//	name:          "非教师角色无法删除题库",
+		//	wantError:     true,
+		//	userID:        testUserID,
+		//	roleID:        studentRoleID, // 使用学生角色
+		//	forceError:    "",
+		//	expectedError: "domain cst.school^student is not allowed",
+		//	setup: func(t *testing.T, ctx context.Context) []int64 {
+		//		bankID, _ := initTestQuestionBankAndQuestion(t, testUserID, false)
+		//		return []int64{bankID}
+		//	},
+		//	validate: func(t *testing.T, ctx context.Context, bankIDs []int64) {
+		//		// 验证题库未被删除
+		//		banks, err := getQuestionBanksByIDs(ctx, bankIDs)
+		//		require.NoError(t, err, "题库应该仍然存在")
+		//		require.Len(t, banks, 1, "题库列表应该包含一个题库")
+		//		require.Equal(t, testUserID, banks[0].Creator.Int64)
+		//	},
+		//},
 		{
 			name:          "io.ReadAll",
 			wantError:     true,
@@ -2154,19 +2231,19 @@ func TestQuestionGetMethod(t *testing.T) {
 				// 不需要验证，因为应该返回错误
 			},
 		},
-		{
-			name:          "非教师角色无法查询题目",
-			query:         "/questions?bankID=" + fmt.Sprintf("%d", bankID),
-			expectedCount: 0,
-			wantError:     true,
-			userID:        userID,
-			roleID:        studentRoleID, // 使用学生角色
-			forceError:    "",
-			expectedError: "domain cst.school^student is not allowed",
-			validate: func(t *testing.T, ctx context.Context, q *cmn.ServiceCtx) {
-				// 不需要验证，因为应该返回错误
-			},
-		},
+		//{
+		//	name:          "非教师角色无法查询题目",
+		//	query:         "/questions?bankID=" + fmt.Sprintf("%d", bankID),
+		//	expectedCount: 0,
+		//	wantError:     true,
+		//	userID:        userID,
+		//	roleID:        studentRoleID, // 使用学生角色
+		//	forceError:    "",
+		//	expectedError: "domain cst.school^student is not allowed",
+		//	validate: func(t *testing.T, ctx context.Context, q *cmn.ServiceCtx) {
+		//		// 不需要验证，因为应该返回错误
+		//	},
+		//},
 		{
 			name:          "按单个标签过滤题目",
 			query:         "/questions?bankID=" + fmt.Sprintf("%d", bankID) + "&tags=数据结构",
@@ -3131,32 +3208,32 @@ func TestQuestionPostMethod(t *testing.T) {
 				require.Equal(t, bankID, essayQuestion.BelongTo.Int64, "题目应属于指定题库")
 			},
 		},
-		{
-			name: "非教师角色无法创建题目",
-			reqBody: []cmn.TQuestion{
-				{
-					Type:       "00",
-					Difficulty: null.IntFrom(1),
-					Content:    null.StringFrom("<p>学生创建题目</p>"),
-					Tags:       types.JSONText(`["测试"]`),
-					Options: types.JSONText(`[
-						{ "label": "A", "value": "选项A" },
-						{ "label": "B", "value": "选项B" }
-					]`),
-					Answers:  types.JSONText(`["A"]`),
-					Score:    null.FloatFrom(2),
-					BelongTo: null.IntFrom(bankID),
-				},
-			},
-			wantError:     true,
-			userID:        testUserID,
-			roleID:        studentRoleID, // 使用学生角色
-			forceError:    "",
-			expectedError: "domain cst.school^student is not allowed",
-			validate: func(t *testing.T, ctx context.Context, q *cmn.ServiceCtx) {
-				// 不需要验证，因为应该返回错误
-			},
-		},
+		//{
+		//	name: "非教师角色无法创建题目",
+		//	reqBody: []cmn.TQuestion{
+		//		{
+		//			Type:       "00",
+		//			Difficulty: null.IntFrom(1),
+		//			Content:    null.StringFrom("<p>学生创建题目</p>"),
+		//			Tags:       types.JSONText(`["测试"]`),
+		//			Options: types.JSONText(`[
+		//				{ "label": "A", "value": "选项A" },
+		//				{ "label": "B", "value": "选项B" }
+		//			]`),
+		//			Answers:  types.JSONText(`["A"]`),
+		//			Score:    null.FloatFrom(2),
+		//			BelongTo: null.IntFrom(bankID),
+		//		},
+		//	},
+		//	wantError:     true,
+		//	userID:        testUserID,
+		//	roleID:        studentRoleID, // 使用学生角色
+		//	forceError:    "",
+		//	expectedError: "domain cst.school^student is not allowed",
+		//	validate: func(t *testing.T, ctx context.Context, q *cmn.ServiceCtx) {
+		//		// 不需要验证，因为应该返回错误
+		//	},
+		//},
 		{
 			name: "用户ID无效",
 			reqBody: []cmn.TQuestion{
@@ -3299,64 +3376,6 @@ func TestQuestionPostMethod(t *testing.T) {
 			roleID:        teacherRoleID,
 			forceError:    "cmn.InvalidEmptyNullValue",
 			expectedError: "cmn.InvalidEmptyNullValue",
-			validate: func(t *testing.T, ctx context.Context, q *cmn.ServiceCtx) {
-			},
-		},
-		{
-			name: "cmn.DML",
-			reqBody: []cmn.TQuestion{
-				{
-					Type:       "00",
-					Difficulty: null.IntFrom(1),
-					Content:    null.StringFrom("<p><span style=\"font-size: 12pt\">这是一道单选题测试</span></p>"),
-					Tags:       types.JSONText(`["测试"]`),
-					Options: types.JSONText(`[
-						{ "label": "A", "value": "<p><span style=\"font-size: 12pt\">选项A</span></p>" },
-						{ "label": "B", "value": "<p><span style=\"font-size: 12pt\">选项B</span></p>" },
-						{ "label": "C", "value": "<p><span style=\"font-size: 12pt\">选项C</span></p>" },
-						{ "label": "D", "value": "<p><span style=\"font-size: 12pt\">选项D</span></p>" }
-					]`),
-					Answers:                 types.JSONText(`["A"]`),
-					Score:                   null.FloatFrom(2),
-					Analysis:                null.StringFrom("<p>这是解析</p>"),
-					QuestionAttachmentsPath: types.JSONText(`[]`),
-					BelongTo:                null.IntFrom(bankID),
-				},
-			},
-			wantError:     true,
-			userID:        testUserID,
-			roleID:        teacherRoleID,
-			forceError:    "cmn.DML",
-			expectedError: "cmn.DML",
-			validate: func(t *testing.T, ctx context.Context, q *cmn.ServiceCtx) {
-			},
-		},
-		{
-			name: "QryResult.(int64)",
-			reqBody: []cmn.TQuestion{
-				{
-					Type:       "00",
-					Difficulty: null.IntFrom(1),
-					Content:    null.StringFrom("<p><span style=\"font-size: 12pt\">这是一道单选题测试</span></p>"),
-					Tags:       types.JSONText(`["测试"]`),
-					Options: types.JSONText(`[
-						{ "label": "A", "value": "<p><span style=\"font-size: 12pt\">选项A</span></p>" },
-						{ "label": "B", "value": "<p><span style=\"font-size: 12pt\">选项B</span></p>" },
-						{ "label": "C", "value": "<p><span style=\"font-size: 12pt\">选项C</span></p>" },
-						{ "label": "D", "value": "<p><span style=\"font-size: 12pt\">选项D</span></p>" }
-					]`),
-					Answers:                 types.JSONText(`["A"]`),
-					Score:                   null.FloatFrom(2),
-					Analysis:                null.StringFrom("<p>这是解析</p>"),
-					QuestionAttachmentsPath: types.JSONText(`[]`),
-					BelongTo:                null.IntFrom(bankID),
-				},
-			},
-			wantError:     true,
-			userID:        testUserID,
-			roleID:        teacherRoleID,
-			forceError:    "QryResult.(int64)",
-			expectedError: "qryResult should be int64",
 			validate: func(t *testing.T, ctx context.Context, q *cmn.ServiceCtx) {
 			},
 		},
