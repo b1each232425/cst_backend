@@ -56,7 +56,7 @@ func GetUserAuthority(ctx context.Context) (a *Authority, err error) {
 
 	// 查询用户当前角色的API列表
 	var apis []cmn.TVDomainAPI
-	apiQuery := "SELECT auth_domain_id, domain_name, domain, priority, api_id, api_name, expose_path, access_control_level, data_access_mode, grant_source, data_scope FROM v_domain_api WHERE auth_domain_id = $1 AND status = '01'"
+	apiQuery := "SELECT auth_domain_id, domain_name, domain, priority, api_id, api_name, expose_path, access_action, access_control_level, data_access_mode, grant_source, data_scope FROM v_domain_api WHERE auth_domain_id = $1 AND status = '01'"
 	rows, err := pgConn.Query(ctx, apiQuery, role.ID)
 	if err != nil || forceErr == "QueryAPIs" {
 		e := fmt.Errorf("failed to get user APIs: %w", err)
@@ -74,6 +74,7 @@ func GetUserAuthority(ctx context.Context) (a *Authority, err error) {
 			&api.APIID,
 			&api.APIName,
 			&api.ExposePath,
+			&api.AccessAction,
 			&api.AccessControlLevel,
 			&api.DataAccessMode,
 			&api.GrantSource,
@@ -273,7 +274,7 @@ func getChildDomains(ctx context.Context, pgConn *pgxpool.Pool, domainPath strin
 
 // CheckUserAPIAccessible 检查用户是否可访问特定API
 // authority 参数可以为 nil，如果为 nil，则会自动获取当前用户的权限信息
-func CheckUserAPIAccessible(ctx context.Context, authority *Authority, apiPath string, accessMode string) (bool, error) {
+func CheckUserAPIAccessible(ctx context.Context, authority *Authority, apiPath string, accessAction string) (bool, error) {
 	var err error
 	a := authority
 
@@ -284,90 +285,54 @@ func CheckUserAPIAccessible(ctx context.Context, authority *Authority, apiPath s
 		}
 	}
 
-	switch accessMode {
-	case CDataAccessModeWrite:
-		return CheckUserAPIWritable(ctx, a, apiPath)
-	case CDataAccessModeRead:
-		return CheckUserAPIReadable(ctx, a, apiPath)
-	case CDataAccessModeEdit:
-		return CheckUserAPIEditable(ctx, a, apiPath)
-	case CDataAccessModeFull:
-		writable, err := CheckUserAPIWritable(ctx, a, apiPath)
+	switch accessAction {
+	case CAPIAccessActionAdd:
+		return checkUserAPIAccessible(ctx, a, apiPath, CAPIAccessActionAdd)
+	case CAPIAccessActionQuery:
+		return checkUserAPIAccessible(ctx, a, apiPath, CAPIAccessActionQuery)
+	case CAPIAccessActionEdit:
+		return checkUserAPIAccessible(ctx, a, apiPath, CAPIAccessActionEdit)
+	case CAPIAccessActionDelete:
+		return checkUserAPIAccessible(ctx, a, apiPath, CAPIAccessActionDelete)
+	case CAPIAccessActionFull:
+		writable, err := checkUserAPIAccessible(ctx, a, apiPath, CAPIAccessActionAdd)
 		if err != nil {
 			return false, err
 		}
-		readable, err := CheckUserAPIReadable(ctx, a, apiPath)
+		readable, err := checkUserAPIAccessible(ctx, a, apiPath, CAPIAccessActionQuery)
 		if err != nil {
 			return false, err
 		}
-		editable, err := CheckUserAPIEditable(ctx, a, apiPath)
+		editable, err := checkUserAPIAccessible(ctx, a, apiPath, CAPIAccessActionEdit)
 		if err != nil {
 			return false, err
 		}
-		return writable && readable && editable, nil
+		deleted, err := checkUserAPIAccessible(ctx, a, apiPath, CAPIAccessActionDelete)
+		if err != nil {
+			return false, err
+		}
+		return writable && readable && editable && deleted, nil
 	default:
-		e := fmt.Errorf("invalid access mode: %s", accessMode)
+		e := fmt.Errorf("invalid access mode: %s", accessAction)
 		z.Error(e.Error())
 		return false, e
 	}
 }
 
 // CheckUserAPIWritable 检查用户对特定API是否有写权限
-func CheckUserAPIWritable(ctx context.Context, authority *Authority, apiPath string) (bool, error) {
+func checkUserAPIAccessible(ctx context.Context, authority *Authority, apiPath string, accessAction string) (bool, error) {
 	z.Info("---->" + cmn.FncName())
 
 	forceErr, _ := ctx.Value("force-error").(string) // 用于强制执行错误处理代码
 
-	if authority == nil || forceErr == "CheckUserAPIWritable.authority.nil" {
+	if authority == nil || forceErr == "checkUserAPIAccessible.authority.nil" {
 		e := fmt.Errorf("authority is nil")
 		z.Error(e.Error())
 		return false, e
 	}
 
 	for _, api := range authority.APIs {
-		if strings.EqualFold(api.ExposePath.String, apiPath) && (api.DataAccessMode.String == CDataAccessModeFull || api.DataAccessMode.String == CDataAccessModeWrite) {
-			return true, nil
-		}
-	}
-
-	return false, nil
-}
-
-// CheckUserAPIReadable 检查用户对特定API是否有读权限
-func CheckUserAPIReadable(ctx context.Context, authority *Authority, apiPath string) (bool, error) {
-	z.Info("---->" + cmn.FncName())
-
-	forceErr, _ := ctx.Value("force-error").(string) // 用于强制执行错误处理代码
-
-	if authority == nil || forceErr == "CheckUserAPIReadable.authority.nil" {
-		e := fmt.Errorf("authority is nil")
-		z.Error(e.Error())
-		return false, e
-	}
-
-	for _, api := range authority.APIs {
-		if strings.EqualFold(api.ExposePath.String, apiPath) && (api.DataAccessMode.String == CDataAccessModeFull || api.DataAccessMode.String == CDataAccessModeRead) {
-			return true, nil
-		}
-	}
-
-	return false, nil
-}
-
-// CheckUserAPIEditable 检查用户对特定API是否有编辑权限
-func CheckUserAPIEditable(ctx context.Context, authority *Authority, apiPath string) (bool, error) {
-	z.Info("---->" + cmn.FncName())
-
-	forceErr, _ := ctx.Value("force-error").(string) // 用于强制执行错误处理代码
-
-	if authority == nil || forceErr == "CheckUserAPIEditable.authority.nil" {
-		e := fmt.Errorf("authority is nil")
-		z.Error(e.Error())
-		return false, e
-	}
-
-	for _, api := range authority.APIs {
-		if strings.EqualFold(api.ExposePath.String, apiPath) && (api.DataAccessMode.String == CDataAccessModeFull || api.DataAccessMode.String == CDataAccessModeEdit) {
+		if strings.EqualFold(api.ExposePath.String, apiPath) && (api.AccessAction.String == CAPIAccessActionFull || api.AccessAction.String == accessAction) {
 			return true, nil
 		}
 	}
@@ -434,3 +399,17 @@ func GetDomainRelationship(ctx context.Context, authority *Authority, targetDoma
 
 	return CDomainRelationshipPeer, nil
 }
+
+// querySelectableAPIs 查询可选API列表
+//func querySelectableAPIs(ctx context.Context, parentDomain string) (apis []*SelectableAPI, err error) {
+//	switch DomainLevel(parentDomain) {
+//	case 0: // 不存在父域，判断为机构，可选系统的所有API
+//		// TODO
+//		// 直接从t_api表中查询所有API
+//		break
+//	default: // 存在父域，判断为部门/组/角色，可选父域的API子集
+//		// TODO
+//		// 从v_domain_api视图中查询父域的API列表
+//		break
+//	}
+//}

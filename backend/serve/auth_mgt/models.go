@@ -3,10 +3,11 @@ package auth_mgt
 import "w2w.io/cmn"
 
 const (
-	CDataAccessModeFull  = "full"  // API完全访问
-	CDataAccessModeRead  = "read"  // API只读访问
-	CDataAccessModeWrite = "write" // API只写访问
-	CDataAccessModeEdit  = "edit"  // API编辑访问
+	CAPIAccessActionFull   = "full"   // API访问操作：完全访问
+	CAPIAccessActionQuery  = "query"  // API访问操作：查询数据
+	CAPIAccessActionAdd    = "add"    // API访问操作：添加数据
+	CAPIAccessActionEdit   = "edit"   // API访问操作：编辑数据
+	CAPIAccessActionDelete = "delete" // API访问操作：删除数据
 
 	CDomainRelationshipSelf   = "self"    // 域关系：自身域
 	CDomainRelationshipParent = "parent"  // 域关系：父域
@@ -23,4 +24,9 @@ type Authority struct {
 	APIs              []cmn.TVDomainAPI // 用户的API列表
 	Domain            cmn.TDomain       // 用户所在域
 	AccessibleDomains []int64           // 用户可访问域列表
+}
+
+type SelectableAPI struct {
+	cmn.TAPI
+	Children []*SelectableAPI `json:"children,omitempty"` // 子API列表
 }

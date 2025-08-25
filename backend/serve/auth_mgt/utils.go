@@ -26,3 +26,21 @@ func IsValidDomain(domain string) bool {
 
 	return true
 }
+
+// DomainLevel 解析传入的域并返回层级数
+// 例如：cst.school -> 2，cst.school.class -> 3
+// 如果域不合法则返回0
+func DomainLevel(domain string) int {
+	domain = strings.TrimSpace(domain)
+	if domain == "" {
+		return 0
+	}
+
+	// 先校验合法性
+	if !IsValidDomain(domain) {
+		return 0
+	}
+
+	labels := strings.Split(domain, ".")
+	return len(labels)
+}
