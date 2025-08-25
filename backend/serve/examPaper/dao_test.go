@@ -3,7 +3,7 @@
  * @Description: 考卷数据库层单元测试
  * @Date: 2025-07-28 19:55:28
  * @LastEditors: zdl <1311866870@qq.com>
- * @LastEditTime: 2025-08-24 15:32:06
+ * @LastEditTime: 2025-08-25 11:05:18
  */
 package examPaper
 
@@ -171,8 +171,8 @@ func TestLoadPaperTemplateById(t *testing.T) {
 				if tp.TotalScore.Float64 != 48 {
 					t.Errorf("查询的试卷总分出错 期望%v,实际：%v", 48, tp.TotalScore.Float64)
 				}
-				if int64(tp.QuestionCount.Float64) != 13 {
-					t.Errorf("查询的试卷题目总数出错 期望%v,实际：%v", 13, tp.QuestionCount.Float64)
+				if int64(tp.QuestionCount.Int64) != 13 {
+					t.Errorf("查询的试卷题目总数出错 期望%v,实际：%v", 13, tp.QuestionCount.Int64)
 				}
 				if tp.GroupCount.Int64 != 5 {
 					t.Errorf("查询的试卷题组总数出错 期望%v,实际：%v", 5, tp.GroupCount.Int64)
@@ -219,8 +219,8 @@ func TestLoadPaperTemplateById(t *testing.T) {
 							questionCount++
 						}
 					}
-					if questionCount != int64(tp.QuestionCount.Float64) {
-						t.Errorf("统计的题目数量错误，期望：%v,实际%v", tp.QuestionCount.Float64, questionCount)
+					if questionCount != int64(tp.QuestionCount.Int64) {
+						t.Errorf("统计的题目数量错误，期望：%v,实际%v", tp.QuestionCount.Int64, questionCount)
 					}
 				} else {
 					if len(pg) != 0 {
@@ -646,7 +646,7 @@ func TestGenerateExamPaper(t *testing.T) {
 				ctx = context.Background()
 			}
 
-			epid, mark, err := GenerateExamPaper(ctx, tx, tt.pid, tt.uid, tt.genMarkInfo)
+			epid, err := GenerateExamPaper(ctx, tx, tt.pid, tt.uid)
 			if tt.expectedErr != nil {
 				if err == nil || !containsString(err.Error(), tt.expectedErr.Error()) {
 					t.Errorf("返回的错误不符合预期：%v", err)
@@ -662,10 +662,7 @@ func TestGenerateExamPaper(t *testing.T) {
 				}
 
 				if containsString(tt.name, "异常18") {
-					// 此时的题组应该是0
-					if len(mark) != 0 {
-						t.Errorf("此时返回的批改题组应该是空：实际：%v", len(mark))
-					}
+
 				} else {
 
 					// 这里需要查询一下是否为练习或者是考试，看这个考卷是否成功完成
@@ -721,55 +718,18 @@ func TestGenerateExamPaper(t *testing.T) {
 					if gplen != examPaper.GroupCount.Int64 {
 						t.Errorf("题组数量与查询出来的预期不一致 预期：%v,实际：%v", examPaper.GroupCount.Int64, gplen)
 					}
-					// 这里去解析他，然后导出这个数量来
 					// 如果此时是选择了生成这个的话
-					if tt.genMarkInfo {
-						if len(mark) == 0 {
-							t.Errorf("返回的批改信息为空")
-						}
-						groups := []int64{}
-						questions := []int64{}
-						for _, m := range mark {
-							t.Logf("打印输出一下返回的题组信息%v", m.GroupID)
-							groups = append(groups, m.GroupID)
-							for _, q := range m.QuestionIDs {
-								t.Logf("打印输出一下返回的题目信息%v", q)
-								questions = append(questions, q)
-							}
-						}
-						var pgCount, qCount int
-
-						// 处理题组计数
-						pg := `SELECT COUNT(*) FROM t_exam_paper_group WHERE id = ANY($1)`
-						err = tx.QueryRow(ctx, pg, groups).Scan(&pgCount)
-						if err != nil {
-							t.Fatal(err)
-						}
-
-						// 处理问题计数
-						q := `SELECT COUNT(*) FROM t_exam_paper_question WHERE id = ANY($1)`
-						err = tx.QueryRow(ctx, q, questions).Scan(&qCount)
-						if err != nil {
-							t.Fatal(err)
-						}
-
-						// 这里只会对主观题进行批改的配置
-						if pgCount != 2 || qCount != 5 {
-							t.Errorf("生成的考卷题组与考卷题目数据有误：实际上：题组%v,题目%v", pgCount, qCount)
-						}
-
-					} else {
-						var pgCount, qCount int
-						// 如果没返回这个的话，还是需要去查这个视图，去看这个数量是否一致 如果选择不返回AI批改的配置，则会返回所有题组的信息，因此与批改的数量会不一样
-						v := `SELECT group_count,question_count FROM v_exam_paper WHERE id = $1`
-						err = tx.QueryRow(ctx, v, *epid).Scan(&pgCount, &qCount)
-						if err != nil {
-							t.Fatal(err)
-						}
-						if pgCount != 5 || qCount != 13 {
-							t.Errorf("生成的考卷题组与考卷题目数据有误：实际上：题组%v,题目%v", pgCount, qCount)
-						}
+					var pgCount, qCount int
+					// 如果没返回这个的话，还是需要去查这个视图，去看这个数量是否一致 如果选择不返回AI批改的配置，则会返回所有题组的信息，因此与批改的数量会不一样
+					v := `SELECT group_count,question_count FROM v_exam_paper WHERE id = $1`
+					err = tx.QueryRow(ctx, v, *epid).Scan(&pgCount, &qCount)
+					if err != nil {
+						t.Fatal(err)
 					}
+					if pgCount != 5 || qCount != 13 {
+						t.Errorf("生成的考卷题组与考卷题目数据有误：实际上：题组%v,题目%v", pgCount, qCount)
+					}
+
 				}
 			}
 
@@ -948,7 +908,7 @@ func TestLoadExamPaperDetailsById(t *testing.T) {
 
 	tx1, _ := conn.Begin(ctx)
 	// 这里直接使用函数插入
-	ep, _, err = GenerateExamPaper(context.Background(), tx1, uid.Int64, uid.Int64, false)
+	ep, err = GenerateExamPaper(context.Background(), tx1, uid.Int64, uid.Int64)
 	if err != nil {
 		t.Fatalf("生成考卷逻辑出错：%v", err)
 	}
@@ -1340,7 +1300,7 @@ func TestGenerateAnswerQuestion(t *testing.T) {
 	var examPaperID1, examPaperID2 *int64
 
 	// 这里直接使用函数插入
-	examPaperID1, _, err = GenerateExamPaper(context.Background(), tx1, uid.Int64, uid.Int64, false)
+	examPaperID1, err = GenerateExamPaper(context.Background(), tx1, uid.Int64, uid.Int64)
 	if err != nil {
 		t.Fatalf("生成考卷逻辑出错：%v", err)
 	}
@@ -1348,7 +1308,7 @@ func TestGenerateAnswerQuestion(t *testing.T) {
 		t.Fatal("生成考卷逻辑出错,返回考卷ID为空")
 	}
 
-	examPaperID2, _, err = GenerateExamPaper(context.Background(), tx1, uid.Int64, uid.Int64, false)
+	examPaperID2, err = GenerateExamPaper(context.Background(), tx1, uid.Int64, uid.Int64)
 	if err != nil {
 		t.Fatalf("生成考卷逻辑出错：%v", err)
 	}
@@ -1945,7 +1905,7 @@ func TestLoadExamPaperDetailByUserId(t *testing.T) {
 		t.Fatal(err)
 	}
 	// 这里直接使用函数插入
-	examPaperID1, _, err = GenerateExamPaper(context.Background(), tx1, uid.Int64, uid.Int64, false)
+	examPaperID1, err = GenerateExamPaper(context.Background(), tx1, uid.Int64, uid.Int64)
 	if err != nil {
 		t.Fatalf("生成考卷逻辑出错：%v", err)
 	}
@@ -1953,7 +1913,7 @@ func TestLoadExamPaperDetailByUserId(t *testing.T) {
 		t.Fatal("生成考卷逻辑出错,返回考卷ID为空")
 	}
 
-	examPaperID2, _, err = GenerateExamPaper(context.Background(), tx1, uid.Int64, uid.Int64, false)
+	examPaperID2, err = GenerateExamPaper(context.Background(), tx1, uid.Int64, uid.Int64)
 	if err != nil {
 		t.Fatalf("生成考卷逻辑出错：%v", err)
 	}
