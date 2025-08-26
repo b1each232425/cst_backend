@@ -34,11 +34,6 @@ var allowedDomains = map[string]struct{}{
 	DomainTeacher:             {},
 }
 
-func isAllowedDomain(domain string) bool {
-	_, exists := allowedDomains[domain]
-	return exists
-}
-
 var QuestionTypes = map[string]string{
 	QuestionTypeSingleChoice:   "单选题",
 	QuestionTypeMultipleChoice: "多选题",
