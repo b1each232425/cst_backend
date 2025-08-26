@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"go.uber.org/zap"
 	"w2w.io/cmn"
@@ -451,6 +452,10 @@ func handleExamSessionStart(ctx context.Context, event ExamEvent) error {
 		}
 	}()
 
+	if forceErr == "commit" {
+		return nil
+	}
+
 	now := time.Now().UnixMilli()
 
 	// 查询场次信息和考生数量
@@ -484,12 +489,17 @@ func handleExamSessionStart(ctx context.Context, event ExamEvent) error {
 
 	if examineeCount == 0 {
 		// 没有考生的考试需要设为异常状态
-		_, err := tx.Exec(ctx, `
+		var result pgconn.CommandTag
+		result, err = tx.Exec(ctx, `
 			UPDATE t_exam_info
 			SET status = '10', -- 考试异常
 				update_time = $1
-			WHERE id = $2
-		`, now, examID)
+			FROM t_exam_session es
+			WHERE t_exam_info.id = $2
+			AND t_exam_info.status = '02'
+			AND es.id = $3
+			AND es.start_time <= $4
+		`, now, examID, examSessionID, time.Now().UnixMilli())
 		if forceErr == "updateAbnormalExam" {
 			err = fmt.Errorf("强制更新考试为异常状态错误")
 		}
@@ -498,6 +508,12 @@ func handleExamSessionStart(ctx context.Context, event ExamEvent) error {
 				zap.Int64("exam_id", examID),
 				zap.Int64("exam_session_id", examSessionID))
 
+			return err
+		}
+
+		if result.RowsAffected() == 0 || forceErr == "updateAbnormalExam.RowsAffected" {
+			err = fmt.Errorf("无法更新考试为异常状态，可能存在并发修改，场次id：%d", examSessionID)
+			z.Warn(err.Error())
 			return err
 		}
 
@@ -518,12 +534,13 @@ func handleExamSessionStart(ctx context.Context, event ExamEvent) error {
 	}
 
 	// 有考生的场次正常开始
-	_, err = tx.Exec(ctx, `
+	var result pgconn.CommandTag
+	result, err = tx.Exec(ctx, `
 			UPDATE t_exam_session 
 			SET status = '04', -- 进行中
 				update_time = $1
-			WHERE id = $2 AND status = '02'
-		`, now, examSessionID)
+			WHERE id = $2 AND status = '02' AND start_time <= $3
+		`, now, examSessionID, time.Now().UnixMilli())
 	if forceErr == "updateExamSession" {
 		err = fmt.Errorf("强制更新场次状态错误")
 	}
@@ -534,8 +551,14 @@ func handleExamSessionStart(ctx context.Context, event ExamEvent) error {
 		return err
 	}
 
+	if result.RowsAffected() == 0 || forceErr == "updateExamSession.RowsAffected" {
+		err = fmt.Errorf("无法更新考试场次为进行中状态，可能存在并发修改，或者考试已在进行中，场次id：%d", examSessionID)
+		z.Warn(err.Error())
+		return err
+	}
+
 	// 更新考试状态
-	_, err = tx.Exec(ctx, `
+	result, err = tx.Exec(ctx, `
 			UPDATE t_exam_info 
 			SET status = '04', -- 进行中
 				update_time = $1
@@ -698,8 +721,8 @@ func handleExamSessionEnd(ctx context.Context, event ExamEvent) error {
 		UPDATE t_exam_session 
 		SET status = '06', -- 已结束
 			update_time = $1
-		WHERE id = $2 AND status IN ('02','04')
-	`, now, examSessionID)
+		WHERE id = $2 AND status IN ('02','04') AND end_time <= $3
+	`, now, examSessionID, now)
 	if forceErr == "updateSessionEndStatus" {
 		err = fmt.Errorf("强制更新场次状态为已结束错误")
 	}

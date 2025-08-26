@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -20,6 +21,7 @@ import (
 	"crypto/rand"
 	"database/sql"
 
+	"github.com/jmoiron/sqlx/types"
 	"github.com/redis/go-redis/v9"
 	"github.com/spf13/viper"
 	"github.com/tidwall/gjson"
@@ -28,8 +30,10 @@ import (
 	// "github.com/tidwall/sjson"
 
 	"go.uber.org/zap"
+
 	"w2w.io/cmn"
 	"w2w.io/null"
+	"w2w.io/serve/auth_mgt"
 )
 
 const (
@@ -41,6 +45,7 @@ const (
 	PULLED             = "Pulled"
 	PUSHING            = "Pushing"
 	PUSHED             = "Pushed"
+	QNearSessionsKey   = "qNearSessions"
 )
 
 var (
@@ -52,8 +57,8 @@ var (
 	pullChan chan int
 	pushChan chan int
 
-	centralServerUrl = "http://localhost:6610"
-	sysUser          = "" // 登录账号/邮箱/手机号等
+	centralServerUrl = ""
+	sysUser          = "" // 登录账号/邮箱/手机号等唯一身份标识
 	accessToken      = ""
 	sshUser          = "root"
 	sshHost          = "localhost"
@@ -91,10 +96,12 @@ type examSiteInfo struct {
 }
 
 type examRoomInfo struct {
-	ID         null.Int `json:"id"`
-	ExamSiteID int `json:"exam_site_id" validate:"required"`
-	Name       string   `json:"name" validate:"required"`
-	Capacity   int `json:"capacity" validate:"required"`
+	ID         null.Int       `json:"id"`
+	ExamSiteID int            `json:"examSiteID" validate:"required"`
+	Name       string         `json:"name" validate:"required"`
+	Capacity   int            `json:"capacity" validate:"required"`
+	Available  null.Bool      `json:"available"`
+	RecentExam types.JSONText `json:"recentExam"`
 }
 
 type syncInfo struct {
@@ -156,6 +163,38 @@ func Enroll(author string) {
 
 		Path: "/exam-site/list",
 		Name: "exam-site-list",
+
+		Developer: developer,
+		WhiteList: false,
+
+		//DomainID 创建该API的账号归属的domain
+		DomainID: int64(cmn.CDomainAssessExamSite),
+
+		//DefaultDomain 该API将默认授权给的用户
+		DefaultDomain: int64(cmn.CDomainAssessExamSiteAdmin),
+	})
+
+	_ = cmn.AddService(&cmn.ServeEndPoint{
+		Fn: examRoom,
+
+		Path: "/exam-room",
+		Name: "exam-room",
+
+		Developer: developer,
+		WhiteList: false,
+
+		//DomainID 创建该API的账号归属的domain
+		DomainID: int64(cmn.CDomainAssessExamSite),
+
+		//DefaultDomain 该API将默认授权给的用户
+		DefaultDomain: int64(cmn.CDomainAssessExamSiteAdmin),
+	})
+
+	_ = cmn.AddService(&cmn.ServeEndPoint{
+		Fn: examRoomList,
+
+		Path: "/exam-room/list",
+		Name: "exam-room-list",
 
 		Developer: developer,
 		WhiteList: false,
@@ -267,11 +306,12 @@ func login(ctx context.Context) (info sysUserInfo) {
 	info.ID = data.ID.Int64
 
 	// 只获取 "qNearSessions" 的cookie值
-	for _, c := range resp.Header.PeekAll("Set-Cookie") {
-		cookieStr := string(c)
-		if strings.HasPrefix(cookieStr, "qNearSessions=") {
-			info.Session = strings.TrimPrefix(cookieStr, "qNearSessions=")
-			break
+	re := regexp.MustCompile(fmt.Sprintf(`%s=([^;]+)`, QNearSessionsKey))
+	cookies := resp.Header.Peek("Set-Cookie")
+	matches := re.FindAllSubmatch(cookies, -1)
+	for _, m := range matches {
+		if len(m) > 1 {
+			info.Session = string(m[1])
 		}
 	}
 
@@ -401,7 +441,7 @@ func Pull(ctx context.Context, retryCount int) {
 	resp := fasthttp.AcquireResponse()
 	defer fasthttp.ReleaseResponse(resp)
 
-	req.Header.SetCookie("qNearSessions", info.Session)
+	req.Header.SetCookie(QNearSessionsKey, info.Session)
 
 	req.SetRequestURI(fmt.Sprintf("%s/api/exam-site/sync", centralServerUrl))
 	req.Header.SetMethod("GET")
@@ -848,6 +888,7 @@ func Push(ctx context.Context, retryCount int) {
 	defer fasthttp.ReleaseResponse(resp)
 
 	req.SetRequestURI(fmt.Sprintf("%s/api/exam-site/sync", centralServerUrl))
+	req.Header.SetCookie(QNearSessionsKey, uInfo.Session)
 	req.Header.SetMethod("POST")
 	req.Header.SetContentType("application/json")
 	req.SetBody(reqBody)
@@ -932,6 +973,44 @@ func SendPushMsg() {
 	pushChan <- 1
 }
 
+// getApiPermissions 获取当前用户在使用指定接口时是否可读/可写
+func getApiPermissions(ctx context.Context, apiPath string) (readable, writable, editable bool) {
+
+	q := cmn.GetCtxValue(ctx)
+
+	readable, q.Err = auth_mgt.CheckUserAPIAccessible(ctx, nil, apiPath, auth_mgt.CDataAccessModeRead)
+	if q.Err != nil || (cmn.InDebugMode && q.Tag["checkUserApiReadableErr"] != nil) {
+
+		if q.Err == nil {
+			q.Err = q.Tag["checkUserApiReadableErr"].(error)
+		}
+
+		return
+	}
+
+	writable, q.Err = auth_mgt.CheckUserAPIAccessible(ctx, nil, apiPath, auth_mgt.CDataAccessModeWrite)
+	if q.Err != nil || (cmn.InDebugMode && q.Tag["checkUserApiWritableErr"] != nil) {
+
+		if q.Err == nil {
+			q.Err = q.Tag["checkUserApiWritableErr"].(error)
+		}
+
+		return
+	}
+
+	editable, q.Err = auth_mgt.CheckUserAPIAccessible(ctx, nil, apiPath, auth_mgt.CDataAccessModeEdit)
+	if q.Err != nil || (cmn.InDebugMode && q.Tag["checkUserApiEditableErr"] != nil) {
+
+		if q.Err == nil {
+			q.Err = q.Tag["checkUserApiEditableErr"].(error)
+		}
+
+		return
+	}
+
+	return
+}
+
 /* 考点基础业务 */
 // oooooooooo.
 // `888'   `Y8b
@@ -953,17 +1032,7 @@ func examSite(ctx context.Context) {
 
 	userID := q.SysUser.ID.Int64
 
-	// [ ] 在角色可以进行切换后取消注释
-	// role := q.SysUser.Role.Int64
-
-	// if cmn.CDomain(role) != cmn.CDomainAssessExamSiteAdmin {
-	// 	q.Err = fmt.Errorf("当前登录的用户角色没有权限访问该API")
-	// 	z.Error(q.Err.Error())
-	// 	q.Msg.Msg = q.Err.Error()
-	// 	q.Msg.Status = -1
-	// 	q.Resp()
-	// 	return
-	// }
+	readable, writable, editable := getApiPermissions(ctx, q.Ep.Path)
 
 	dbConn := cmn.GetDbConn()
 
@@ -1037,7 +1106,19 @@ func examSite(ctx context.Context) {
 
 	case "GET":
 
+		if !readable {
+			q.Err = fmt.Errorf("当前用户没有权限获取该数据")
+			z.Error(q.Err.Error())
+			break
+		}
+
 	case "POST":
+
+		if !writable {
+			q.Err = fmt.Errorf("当前用户没有权限创建该数据")
+			z.Error(q.Err.Error())
+			break
+		}
 
 		var info examSiteInfo
 
@@ -1133,7 +1214,7 @@ func examSite(ctx context.Context) {
 			break
 		}
 
-		info.Account =  null.StringFrom(account)
+		info.Account = null.StringFrom(account)
 		info.AccessToken = null.StringFrom(userToken)
 
 		q.Msg.Data, q.Err = json.Marshal(info)
@@ -1149,7 +1230,19 @@ func examSite(ctx context.Context) {
 
 	case "PATCH":
 
+		if !editable {
+			q.Err = fmt.Errorf("当前用户没有权限修改该数据")
+			z.Error(q.Err.Error())
+			break
+		}
+
 	case "DELETE":
+
+		if !writable {
+			q.Err = fmt.Errorf("当前用户没有权限删除该数据")
+			z.Error(q.Err.Error())
+			break
+		}
 
 	default:
 		q.Err = fmt.Errorf("不支持的HTTP方法: %s", q.R.Method)
@@ -1175,17 +1268,15 @@ func examSiteList(ctx context.Context) {
 
 	userID := q.SysUser.ID.Int64
 
-	role := q.SysUser.Role.Int64
+	var authority *auth_mgt.Authority
+	authority, q.Err = auth_mgt.GetUserAuthority(ctx)
+	if q.Err != nil {
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
 
-	// [ ] 在角色可以进行切换后取消注释
-	// if cmn.CDomain(role) != cmn.CDomainAssessExamSiteAdmin || cmn.CDomain(role) != cmn.CDomainAssessAdmin {
-	// 	q.Err = fmt.Errorf("当前登录的用户角色没有权限访问该API")
-	// 	z.Error(q.Err.Error())
-	// 	q.Msg.Msg = q.Err.Error()
-	// 	q.Msg.Status = -1
-	// 	q.Resp()
-	// 	return
-	// }
+	readable, _, _ := getApiPermissions(ctx, q.Ep.Path)
 
 	dbConn := cmn.GetDbConn()
 
@@ -1194,23 +1285,33 @@ MethodSwitch:
 
 	case "GET":
 
-		// 默认获取当前账号创建的考点
+		if !readable {
+			q.Err = fmt.Errorf("当前用户没有权限获取数据")
+			z.Error(q.Err.Error())
+			break
+		}
+
 		keys := []string{
-			"t_exam_site.creator=$1",
 		}
 
 		values := []interface{}{
 			userID,
 		}
 
-		// 如果是管理员角色，则获取所有考点
-		if cmn.CDomain(role) == cmn.CDomainAssessAdmin {
-			keys = []string{
-				"1=$1",
-			}
-			values = []interface{}{
-				1,
-			}
+		// 获取拥有访问权限的域上的数据
+		dks := []string{
+			"t_exam_site.creator=$1",
+		}
+
+		l := len(values)
+
+		for i, d := range authority.AccessibleDomains {
+			dks = append(dks, fmt.Sprintf("t_exam_site.domain_id=$%d", i + l + 1))
+			values = append(values, d)
+		}
+
+		if len(dks) > 0 {
+			keys = append(keys, fmt.Sprintf("(%s)", strings.Join(dks, " OR ")))
 		}
 
 		param := q.R.URL.Query().Get("q")
@@ -1238,7 +1339,7 @@ MethodSwitch:
 		nameFilter := gjson.Get(param, "filter.name").Str
 
 		if nameFilter != "" {
-			i := len(keys) + 1
+			i := len(values) + 1
 			keys = append(keys, fmt.Sprintf(`(t_exam_site.name ILIKE $%d OR t_exam_site.address ILIKE $%d OR t_exam_site.server_host ILIKE $%d)`, i, i, i))
 			values = append(values, fmt.Sprintf("%%%s%%", nameFilter))
 		}
@@ -1250,7 +1351,7 @@ MethodSwitch:
 		for _, o := range req.OrderBy {
 			for k, v := range o {
 
-				if v == "" {
+				if k == "" ||  v == "" {
 					continue
 				}
 
@@ -1411,6 +1512,7 @@ MethodSwitch:
 
 // examRoom 处理考场相关请求
 func examRoom(ctx context.Context) {
+
 	q := cmn.GetCtxValue(ctx)
 
 	z.Info("---->" + cmn.FncName())
@@ -1418,6 +1520,16 @@ func examRoom(ctx context.Context) {
 	q.Msg.Msg = cmn.FncName()
 
 	userID := q.SysUser.ID.Int64
+
+	var authority *auth_mgt.Authority
+	authority, q.Err = auth_mgt.GetUserAuthority(ctx)
+	if q.Err != nil {
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+
+	readable, writable, editable := getApiPermissions(ctx, q.Ep.Path)
 
 	dbConn := cmn.GetDbConn()
 
@@ -1491,7 +1603,19 @@ func examRoom(ctx context.Context) {
 
 	case "GET":
 
+		if !readable {
+			q.Err = fmt.Errorf("当前用户没有权限获取该数据")
+			z.Error(q.Err.Error())
+			break
+		}
+
 	case "POST":
+
+		if !writable {
+			q.Err = fmt.Errorf("当前用户没有权限创建该数据")
+			z.Error(q.Err.Error())
+			break
+		}
 
 		var info examRoomInfo
 
@@ -1506,10 +1630,61 @@ func examRoom(ctx context.Context) {
 			break
 		}
 
-		sqlStr := `INSERT INTO t_exam_room (exam_site, name, capacity, creator, updated_by)
-		VALUES ($1, $2, $3, $4, $5)`
+		if info.Capacity <= 0 {
+			q.Err = fmt.Errorf("考场容量必须大于0")
+			z.Error(q.Err.Error())
+			break
+		}
 
 		var stmt1 *sql.Stmt
+
+		// 检查当前是否有权限访问该考点
+		ss := []string{}
+		v := []interface{}{
+			info.ExamSiteID,
+			userID,
+		}
+
+		l := len(v)
+		for i, d := range authority.AccessibleDomains {
+			ss = append(ss, fmt.Sprintf("domain_id = $%d", i + l + 1))
+			v = append(v, d)
+		}
+
+		sqlStr := fmt.Sprintf(`SELECT id FROM t_exam_site WHERE id = $1 AND  (creator = $2 OR %s)`, strings.Join(ss, " OR "))
+		stmt1, q.Err = tx.Prepare(sqlStr)
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			break
+		}
+
+		defer stmt1.Close()
+
+		var r sql.Result
+		r, q.Err = stmt1.ExecContext(ctx, v...)
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			break
+		}
+
+		var c int64
+		c, q.Err = r.RowsAffected()
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			break
+		}
+
+		if c == 0 {
+			q.Err = fmt.Errorf("当前用户无权编辑该考点")
+			z.Error(q.Err.Error())
+			break
+		}
+
+		// 添加考场
+
+		sqlStr = `INSERT INTO t_exam_room (exam_site, name, capacity, creator, updated_by)
+		VALUES ($1, $2, $3, $4, $5)`
+
 		stmt1, q.Err = tx.Prepare(sqlStr)
 		if q.Err != nil || (cmn.InDebugMode && q.Tag["prepareStmtErr"] != nil) {
 
@@ -1536,7 +1711,367 @@ func examRoom(ctx context.Context) {
 
 	case "PATCH":
 
+		if !editable {
+			q.Err = fmt.Errorf("当前用户没有权限修改该数据")
+			z.Error(q.Err.Error())
+			break
+		}
+
 	case "DELETE":
+
+		if !writable {
+			q.Err = fmt.Errorf("当前用户没有权限删除该数据")
+			z.Error(q.Err.Error())
+			break
+		}
+
+	default:
+		q.Err = fmt.Errorf("不支持的HTTP方法: %s", q.R.Method)
+		z.Error(q.Err.Error())
+	}
+
+	if q.Err != nil {
+		q.RespErr()
+		return
+	}
+
+	q.Resp()
+
+}
+
+func examRoomList(ctx context.Context) {
+
+	q := cmn.GetCtxValue(ctx)
+
+	z.Info("---->" + cmn.FncName())
+
+	q.Msg.Msg = cmn.FncName()
+
+	userID := q.SysUser.ID.Int64
+
+	var authority *auth_mgt.Authority
+	authority, q.Err = auth_mgt.GetUserAuthority(ctx)
+	if q.Err != nil {
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+
+	readable, _, _ := getApiPermissions(ctx, q.Ep.Path)
+
+	dbConn := cmn.GetDbConn()
+
+	var tx *sql.Tx
+
+	tx, q.Err = dbConn.Begin()
+	if q.Err != nil || (cmn.InDebugMode && q.Tag["txBeginErr"] != nil) {
+
+		if q.Err == nil {
+			q.Err = q.Tag["txBeginErr"].(error)
+		}
+
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+
+	defer func() {
+		if q.Err != nil {
+			err := tx.Rollback()
+			if err != nil || (cmn.InDebugMode && q.Tag["rollbackErr"] != nil) {
+
+				if err == nil {
+					q.Err = q.Tag["rollbackErr"].(error)
+					err = q.Err
+				}
+
+				z.Error(err.Error())
+			}
+			return
+		}
+
+		err := tx.Commit()
+		if err != nil || (cmn.InDebugMode && q.Tag["commitErr"] != nil) {
+
+			if err == nil {
+				q.Err = q.Tag["commitErr"].(error)
+				err = q.Err
+			}
+
+			z.Error(err.Error())
+		}
+
+	}()
+
+	ctx = context.WithValue(ctx, dbConnKey, dbConn)
+
+	ctx = context.WithValue(ctx, txCtxKey, tx)
+
+	var bodyBuf []byte
+	bodyBuf, q.Err = io.ReadAll(q.R.Body)
+	if q.Err != nil || (cmn.InDebugMode && q.Tag["readBodyErr"] != nil) {
+
+		if q.Err == nil {
+			q.Err = q.Tag["readBodyErr"].(error)
+		}
+
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+
+	var req cmn.ReqProto
+
+	q.Err = json.Unmarshal(bodyBuf, &req)
+	if q.Err != nil {
+		z.Warn(q.Err.Error())
+	}
+
+MethodSwitch:
+	switch q.R.Method {
+
+	case "GET":
+
+		if !readable {
+			q.Err = fmt.Errorf("当前无权获取考场列表数据")
+			z.Error(q.Err.Error())
+			break
+		}
+
+		param := q.R.URL.Query().Get("q")
+
+		var req cmn.ReqProto
+
+		q.Err = json.Unmarshal([]byte(param), &req)
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			break
+		}
+
+		examSiteID := gjson.Get(param, "data.examSiteID").Int()
+
+		var stmt1 *sql.Stmt
+
+		ss := []string{}
+		v := []interface{}{
+			examSiteID,
+			userID,
+		}
+
+		l := len(v)
+		for i, d := range authority.AccessibleDomains {
+			ss = append(ss, fmt.Sprintf("domain_id = $%d", i + l + 1))
+			v = append(v, d)
+		}
+
+		sqlStr := fmt.Sprintf(`SELECT id FROM t_exam_site WHERE id = $1 AND  (creator = $2 OR %s)`, strings.Join(ss, " OR "))
+		stmt1, q.Err = tx.Prepare(sqlStr)
+		if q.Err != nil || (cmn.InDebugMode && q.Tag["prepareCheckAccessSqlErr"] != nil) {
+
+			if q.Err == nil {
+				q.Err = q.Tag["prepareCheckAccessSqlErr"].(error)
+			}
+
+			z.Error(q.Err.Error())
+			break
+		}
+
+		defer stmt1.Close()
+
+		var r sql.Result
+		r, q.Err = stmt1.ExecContext(ctx, v...)
+		if q.Err != nil || (cmn.InDebugMode && q.Tag["execCheckAccessSqlErr"] != nil) {
+
+			if q.Err == nil {
+				q.Err = q.Tag["execCheckAccessSqlErr"].(error)
+			}
+
+			z.Error(q.Err.Error())
+			break
+		}
+
+		var c int64
+		c, q.Err = r.RowsAffected()
+		if q.Err != nil || (cmn.InDebugMode && q.Tag["getCheckAccessResultErr"] != nil) {
+
+			if q.Err == nil {
+				q.Err = q.Tag["getCheckAccessResultErr"].(error)
+			}
+
+			z.Error(q.Err.Error())
+			break
+		}
+
+		if c == 0 {
+			q.Err = fmt.Errorf("当前用户无权获取该考点数据, id: %d", examSiteID)
+			z.Error(q.Err.Error())
+			break
+		}
+
+		// 获取考场列表数据
+
+		keys := []string{
+			"t_exam_room.exam_site=$1",
+		}
+
+		values := []interface{}{
+			examSiteID,
+		}
+
+		if req.Page < 0 {
+			q.Err = fmt.Errorf("页码不能小于0")
+			z.Error(q.Err.Error())
+			break
+		}
+
+		if req.PageSize < 1 {
+			q.Err = fmt.Errorf("每页条数不能小于1")
+			z.Error(q.Err.Error())
+			break
+		}
+
+		nameFilter := gjson.Get(param, "filter.name").Str
+
+		if nameFilter != "" {
+			i := len(keys) + 1
+			keys = append(keys, fmt.Sprintf(`t_exam_room.name ILIKE $%d`, i))
+			values = append(values, fmt.Sprintf("%%%s%%", nameFilter))
+		}
+
+		orderBy := "t_exam_room.id"
+
+		orderByList := []string{}
+
+		for _, o := range req.OrderBy {
+			for k, v := range o {
+
+				if k == "" ||  v == "" {
+					continue
+				}
+
+				v = strings.ToUpper(v)
+
+				if v != "ASC" && v != "DESC" {
+					q.Err = fmt.Errorf("不支持的排序方式: %s key: %s", v, k)
+					z.Error(q.Err.Error())
+					break MethodSwitch
+				}
+
+				orderByList = append(orderByList, fmt.Sprintf("%s %s", k, v))
+			}
+		}
+
+		if len(orderByList) > 0 {
+			orderBy = strings.Join(orderByList, ", ")
+		}
+
+		sqlStr = fmt.Sprintf(`SELECT 
+			t_exam_room.id,
+			t_exam_room.exam_site AS exam_site_id,
+			t_exam_room.name AS exam_room_name,
+			t_exam_room.capacity
+		FROM t_exam_room
+		WHERE %s
+		ORDER BY
+			%s
+			`, strings.Join(keys, " AND "), orderBy)
+
+		stmt1, q.Err = dbConn.Prepare(sqlStr)
+		if q.Err != nil || (cmn.InDebugMode && q.Tag["prepareSqlErr1"] != nil) {
+
+			if q.Err == nil {
+				q.Err = q.Tag["prepareSqlErr1"].(error)
+			}
+
+			z.Error(q.Err.Error())
+			break
+		}
+
+		r, q.Err = stmt1.ExecContext(ctx, values...)
+		if q.Err != nil || (cmn.InDebugMode && q.Tag["sqlExecErr1"] != nil) {
+
+			if q.Err == nil {
+				q.Err = q.Tag["sqlExecErr1"].(error)
+			}
+
+			z.Error(q.Err.Error())
+			break
+		}
+
+		q.Msg.RowCount, q.Err = r.RowsAffected()
+		if q.Err != nil || (cmn.InDebugMode && q.Tag["rowsAffectedErr"] != nil) {
+
+			if q.Err == nil {
+				q.Err = q.Tag["rowsAffectedErr"].(error)
+			}
+
+			z.Error(q.Err.Error())
+			break
+		}
+
+		sqlStr = fmt.Sprintf(`%s
+		LIMIT %d OFFSET %d`, sqlStr, req.PageSize, req.Page*req.PageSize)
+
+		stmt1, q.Err = dbConn.Prepare(sqlStr)
+		if q.Err != nil || (cmn.InDebugMode && q.Tag["prepareErr2"] != nil) {
+
+			if q.Err == nil {
+				q.Err = q.Tag["prepareErr2"].(error)
+			}
+
+			z.Error(q.Err.Error())
+			break
+		}
+
+		defer stmt1.Close()
+
+		var rows *sql.Rows
+		rows, q.Err = stmt1.QueryContext(ctx, values...)
+		if q.Err != nil || (cmn.InDebugMode && q.Tag["queryErr"] != nil) {
+
+			if q.Err == nil {
+				q.Err = q.Tag["queryErr"].(error)
+			}
+
+			z.Error(q.Err.Error())
+			break
+		}
+
+		defer rows.Close()
+
+		result := []examRoomInfo{}
+
+		for rows.Next() {
+			var item examRoomInfo
+			q.Err = rows.Scan(
+				&item.ID,
+				&item.ExamSiteID,
+				&item.Name,
+				&item.Capacity,
+			)
+			if q.Err != nil || (cmn.InDebugMode && q.Tag["scanErr"] != nil) {
+
+				if q.Err == nil {
+					q.Err = q.Tag["scanErr"].(error)
+				}
+
+				z.Error(q.Err.Error())
+				break MethodSwitch
+			}
+
+			result = append(result, item)
+		}
+
+		q.Msg.Data, q.Err = json.Marshal(result)
+		if q.Err != nil || (cmn.InDebugMode && q.Tag["jsonMarshal"] != nil) {
+
+			if q.Err == nil {
+				q.Err = q.Tag["jsonMarshal"].(error)
+			}
+
+			z.Error(q.Err.Error())
+			break
+		}
 
 	default:
 		q.Err = fmt.Errorf("不支持的HTTP方法: %s", q.R.Method)
@@ -1570,6 +2105,18 @@ func examRoom(ctx context.Context) {
 func examSiteSyncInit(ctx context.Context) {
 
 	q := cmn.GetCtxValue(ctx)
+
+	if viper.IsSet("examSiteServerSync.centralServerSSH.user") {
+		sshUser = viper.GetString("examSiteServerSync.centralServerSSH.user")
+	}
+
+	if viper.IsSet("examSiteServerSync.centralServerSSH.host") {
+		sshHost = viper.GetString("examSiteServerSync.centralServerSSH.host")
+	}
+
+	if viper.IsSet("examSiteServerSync.centralServerSSH.port") {
+		sshPort = viper.GetInt("examSiteServerSync.centralServerSSH.port")
+	}
 
 	dbConn := cmn.GetPgxConn()
 
@@ -1802,18 +2349,6 @@ func examSiteSync(ctx context.Context) {
 	// 考点服务器系统账号ID
 	userID := q.SysUser.ID.Int64
 
-	if viper.IsSet("examSiteServerSync.centralServerSSH.user") {
-		sshUser = viper.GetString("examSiteServerSync.centralServerSSH.user")
-	}
-
-	if viper.IsSet("examSiteServerSync.centralServerSSH.host") {
-		sshHost = viper.GetString("examSiteServerSync.centralServerSSH.host")
-	}
-
-	if viper.IsSet("examSiteServerSync.centralServerSSH.port") {
-		sshPort = viper.GetInt("examSiteServerSync.centralServerSSH.port")
-	}
-
 	pgpassFullPath := filepath.Join(os.Getenv("HOME"), ".pgpass")
 
 	var bodyBuf []byte
@@ -1842,6 +2377,24 @@ MethodSwitch:
 	switch q.R.Method {
 
 	case "GET":
+
+		if centralServerUrl != "" {
+
+			action := q.R.URL.Query().Get("action")
+
+			switch action {
+
+			case "pull":
+				Pull(ctx, maxRetry)
+			case "push":
+				Push(ctx, maxRetry)
+			default:
+				q.Err = fmt.Errorf("不支持的同步操作: %s", action)
+				z.Error(q.Err.Error())
+			}
+
+			break MethodSwitch
+		}
 
 		// 返回考点数据
 
@@ -1998,6 +2551,8 @@ MethodSwitch:
 			z.Error(q.Err.Error())
 			break MethodSwitch
 		}
+
+		z.Info(string(o))
 
 		info = syncInfo{
 			Path:          folderFullPath,

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/wneessen/go-mail"
 	"w2w.io/cmn"
 	"w2w.io/null"
 )
@@ -1693,7 +1694,7 @@ func TestService_InsertUsersWithAccount(t *testing.T) {
 			t.Logf("开始测试: %s", tt.desc)
 
 			// 执行插入操作
-			err := srv.InsertUsersWithAccount(tt.ctx, nil, tt.users)
+			_, err := srv.InsertUsersWithAccount(tt.ctx, nil, tt.users)
 
 			// 验证错误
 			if (err != nil) != tt.wantErr {
@@ -3285,6 +3286,192 @@ func Test_service_ValidateUser(t *testing.T) {
 				if user.Account != tt.wantExisting[i].Account {
 					t.Errorf("ValidateUserToBeInsert() gotExisting[%d].Account = %v, want %v", i, user.Account, tt.wantExisting[i].Account)
 				}
+			}
+		})
+	}
+}
+
+// TestService_SendEmail 测试SendEmail方法
+func TestService_SendEmail(t *testing.T) {
+	// 创建真实的service实例
+	repo := NewService()
+
+	tests := []struct {
+		name        string
+		ctx         context.Context
+		recipient   string
+		subject     string
+		body        string
+		contentType mail.ContentType
+		wantErr     bool
+		desc        string
+	}{
+		{
+			name:        "成功发送纯文本邮件",
+			ctx:         context.Background(),
+			recipient:   "test@example.com",
+			subject:     "测试邮件主题",
+			body:        "这是一封测试邮件的内容",
+			contentType: mail.TypeTextPlain,
+			wantErr:     false,
+			desc:        "测试发送纯文本格式的邮件",
+		},
+		{
+			name:        "成功发送HTML邮件",
+			ctx:         context.Background(),
+			recipient:   "test@example.com",
+			subject:     "HTML测试邮件",
+			body:        "<h1>这是HTML邮件</h1><p>测试内容</p>",
+			contentType: mail.TypeTextHTML,
+			wantErr:     false,
+			desc:        "测试发送HTML格式的邮件",
+		},
+		{
+			name:        "默认内容类型邮件",
+			ctx:         context.Background(),
+			recipient:   "test@example.com",
+			subject:     "默认格式邮件",
+			body:        "默认格式的邮件内容",
+			contentType: "", // 空字符串，应该使用默认的纯文本格式
+			wantErr:     false,
+			desc:        "测试使用默认内容类型发送邮件",
+		},
+		{
+			name:        "收件人为空",
+			ctx:         context.Background(),
+			recipient:   "",
+			subject:     "测试邮件",
+			body:        "测试内容",
+			contentType: mail.TypeTextPlain,
+			wantErr:     true,
+			desc:        "测试收件人为空时应该返回错误",
+		},
+		{
+			name:        "邮件主题为空",
+			ctx:         context.Background(),
+			recipient:   "test@example.com",
+			subject:     "",
+			body:        "测试内容",
+			contentType: mail.TypeTextPlain,
+			wantErr:     true,
+			desc:        "测试邮件主题为空时应该返回错误",
+		},
+		{
+			name:        "邮件内容为空",
+			ctx:         context.Background(),
+			recipient:   "test@example.com",
+			subject:     "测试邮件",
+			body:        "",
+			contentType: mail.TypeTextPlain,
+			wantErr:     true,
+			desc:        "测试邮件内容为空时应该返回错误",
+		},
+		{
+			name:        "强制message.From错误",
+			ctx:         context.WithValue(context.Background(), "force-error", "message.From"),
+			recipient:   "test@example.com",
+			subject:     "测试邮件",
+			body:        "测试内容",
+			contentType: mail.TypeTextPlain,
+			wantErr:     true,
+			desc:        "测试强制message.From错误",
+		},
+		{
+			name:        "强制message.To错误",
+			ctx:         context.WithValue(context.Background(), "force-error", "message.To"),
+			recipient:   "test@example.com",
+			subject:     "测试邮件",
+			body:        "测试内容",
+			contentType: mail.TypeTextPlain,
+			wantErr:     true,
+			desc:        "测试强制message.To错误",
+		},
+		{
+			name:        "强制mailClient.DialAndSend错误",
+			ctx:         context.WithValue(context.Background(), "force-error", "mailClient.DialAndSend"),
+			recipient:   "test@example.com",
+			subject:     "测试邮件",
+			body:        "测试内容",
+			contentType: mail.TypeTextPlain,
+			wantErr:     true,
+			desc:        "测试强制mailClient.DialAndSend错误",
+		},
+		{
+			name:        "复杂邮件内容测试",
+			ctx:         context.Background(),
+			recipient:   "complex@example.com",
+			subject:     "复杂邮件测试 - 包含特殊字符 & 符号 <>",
+			body:        "复杂内容测试\n包含换行符\t制表符\r回车符\"引号\\反斜杠",
+			contentType: mail.TypeTextPlain,
+			wantErr:     false,
+			desc:        "测试包含特殊字符的复杂邮件内容",
+		},
+		{
+			name:        "长邮件内容测试",
+			ctx:         context.Background(),
+			recipient:   "long@example.com",
+			subject:     "长邮件内容测试",
+			body:        strings.Repeat("这是一段很长的邮件内容，用于测试系统对长文本的处理能力。", 100),
+			contentType: mail.TypeTextPlain,
+			wantErr:     false,
+			desc:        "测试发送长内容邮件",
+		},
+		{
+			name:        "多种邮箱格式测试",
+			ctx:         context.Background(),
+			recipient:   "user.name+tag@example-domain.co.uk",
+			subject:     "邮箱格式测试",
+			body:        "测试复杂邮箱格式",
+			contentType: mail.TypeTextPlain,
+			wantErr:     false,
+			desc:        "测试复杂格式的邮箱地址",
+		},
+		{
+			name:        "Unicode字符测试",
+			ctx:         context.Background(),
+			recipient:   "unicode@example.com",
+			subject:     "Unicode测试 🎉 中文主题",
+			body:        "Unicode内容测试 🚀\n中文内容\n日文: こんにちは\n韩文: 안녕하세요\nEmoji: 😀😃😄😁",
+			contentType: mail.TypeTextPlain,
+			wantErr:     false,
+			desc:        "测试包含Unicode字符的邮件",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Logf("开始测试: %s", tt.desc)
+
+			// 执行发送邮件
+			err := repo.SendEmail(tt.ctx, tt.recipient, tt.subject, tt.body, tt.contentType)
+
+			// 验证错误
+			if (err != nil) != tt.wantErr {
+				t.Errorf("SendEmail() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+
+			// 如果期望有错误，验证错误信息
+			if tt.wantErr {
+				if err == nil {
+					t.Error("SendEmail() 期望返回错误，但实际没有错误")
+					return
+				}
+				t.Logf("预期错误已正确返回: %v", err)
+
+				// 验证错误信息的内容
+				errorMsg := err.Error()
+				if tt.recipient == "" && !strings.Contains(errorMsg, "invalid recipient") {
+					t.Errorf("收件人为空时错误信息不正确: %s", errorMsg)
+				}
+				if tt.subject == "" && !strings.Contains(errorMsg, "invalid subject") {
+					t.Errorf("主题为空时错误信息不正确: %s", errorMsg)
+				}
+				if tt.body == "" && !strings.Contains(errorMsg, "invalid body") {
+					t.Errorf("内容为空时错误信息不正确: %s", errorMsg)
+				}
+			} else {
+				t.Logf("邮件发送成功: recipient=%s, subject=%s, contentType=%s", tt.recipient, tt.subject, tt.contentType)
 			}
 		})
 	}

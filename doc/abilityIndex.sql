@@ -1,18 +1,16 @@
 /*==============================================================*/
 /* DBMS name:      PostgreSQL 9.x                               */
-/* Created on:     2025/8/20 0:44:54                            */
+/* Created on:     2025/8/23 14:26:28                           */
 /*==============================================================*/
 
 
-drop view if exists v_z_wrong_submission_collection;
+drop view if exists v_z_submission_wrong_collection;
 
 drop view if exists v_z_practice_summary;
 
 drop view if exists v_z_grade_practice_statistics;
 
 drop view if exists v_z_grade_exam_session_info;
-
-drop view if exists v_z_first_wrong_collection;
 
 drop view if exists v_y_max_submitted_view;
 
@@ -27,6 +25,12 @@ drop view if exists v_xkb_user;
 drop view if exists v_xkb_school_layout;
 
 drop view if exists v_x_grade_list;
+
+drop view if exists v_w_practice_summary;
+
+drop view if exists v_w_latest_unsubmitted_practice;
+
+drop view if exists v_w_latest_submitted_practice;
 
 drop view if exists v_user_domain_api;
 
@@ -2006,6 +2010,7 @@ create table if not exists  t_exam_room (
    exam_site            INT8                 not null,
    name                 VARCHAR(150)         null,
    capacity             INT4                 null,
+   domain_id            INT8                 null,
    creator              INT8                 not null,
    create_time          TIMESTAMP            null,
    updated_by           INT8                 null,
@@ -2029,6 +2034,9 @@ comment on column t_exam_room.name is
 
 comment on column t_exam_room.capacity is
 '考场容量';
+
+comment on column t_exam_room.domain_id is
+'domain_id';
 
 comment on column t_exam_room.creator is
 '创建者';
@@ -5543,7 +5551,6 @@ create table if not exists  t_paper (
    create_time          INT8                 null,
    updated_by           INT8                 null,
    update_time          INT8                 null,
-   version              INT8                 not null default 1,
    addi                 JSONB                null,
    status               VARCHAR(10)          null default '00',
    constraint PK_T_PAPER primary key (id)
@@ -5597,14 +5604,11 @@ comment on column t_paper.updated_by is
 comment on column t_paper.update_time is
 '更新时间';
 
-comment on column t_paper.version is
-'版本号';
-
 comment on column t_paper.addi is
 '附加信息';
 
 comment on column t_paper.status is
-'状态 00：未发布， 02：已发布 04：作废 06：异常';
+'状态 00：未发布， 02：已删除 04：作废 06：已发布';
 
 /*==============================================================*/
 /* Table: t_paper_group                                         */
@@ -9057,7 +9061,6 @@ create table if not exists  t_student_answers (
    type                 VARCHAR(128)         null,
    examinee_id          INT8                 null,
    practice_submission_id INT8                 null,
-   wrong_submission_id  INT8                 null,
    question_id          INT8                 null,
    answer               JSONB                not null,
    answer_score         FLOAT8               null,
@@ -9066,7 +9069,6 @@ create table if not exists  t_student_answers (
    group_id             INT8                 null,
    actual_options       JSONB                null,
    actual_answers       JSONB                null,
-   answer_attach        JSONB                null,
    creator              INT8                 not null,
    create_time          INT8                 null,
    updated_by           INT8                 null,
@@ -9091,9 +9093,6 @@ comment on column t_student_answers.examinee_id is
 comment on column t_student_answers.practice_submission_id is
 '学生练习ID';
 
-comment on column t_student_answers.wrong_submission_id is
-'学生练习错题集ID';
-
 comment on column t_student_answers.question_id is
 '考卷题目ID';
 
@@ -9117,9 +9116,6 @@ comment on column t_student_answers.actual_options is
 
 comment on column t_student_answers.actual_answers is
 '实际题目客观题答案';
-
-comment on column t_student_answers.answer_attach is
-'考试附件路径';
 
 comment on column t_student_answers.creator is
 '创建者';
@@ -9195,9 +9191,21 @@ comment on column t_sys_ver.status is
 ALTER SEQUENCE t_sys_ver_id_seq RESTART WITH 20000;
 
 insert into t_sys_ver(id,name,ver,create_time,update_time,remark)
-  values(1000,'业务模型','3.1.11.0',
-  '2016年12月5日 9:52:53','2025年8月20日 0:35:54',
-  '3.1.11.0
+  values(1000,'业务模型','3.1.11.4',
+  '2016年12月5日 9:52:53','2025年8月23日 14:26:22',
+  '3.1.11.4 
+删除错题来源于错题集的视图 删除错题设计的wrong_practice_id字段 新增关于错题提交记录判断状态视图
+
+3.1.11.3
+试卷视图给题目添加所属题库字段，便于试卷编辑题目
+
+3.1.11.2
+删除t_paper的version字段，同步更改v_paper视图
+
+3.1.11.1
+删除t_student_answers的attach_path字段；给t_exam_room增加一个domain_id字段
+
+3.1.11.0
 删除原有错题集视图，构建错题集提交记录表t_practice_wrong_submissions  构建视图1：错题集中构建错题集试卷、视图2：从最新一次提交记录构建错题集试卷
 
 3.1.10.0
@@ -13125,7 +13133,6 @@ WITH paper_basic AS (
             p.create_time,
             p.updated_by,
             p.update_time,
-            p.version,
             p.status AS paper_status
            FROM t_paper p
              LEFT JOIN t_user u ON p.creator = u.id
@@ -13173,7 +13180,8 @@ WITH paper_basic AS (
                     'order', pq."order", 
                     'group_id', pq.group_id, 
                     'status', q.status, 
-                    'question_attachments_path', q.question_attachments_path
+                    'question_attachments_path', q.question_attachments_path,
+                    'belong_to',q.belong_to
                 ) ORDER BY pq."order"
             ) AS questions
            FROM t_paper_question pq
@@ -13333,7 +13341,6 @@ WITH paper_basic AS (
     p.create_time,
     p.updated_by,
     p.update_time,
-    p.version,
     p.paper_status AS status,
     s.total_score,
     s.question_count,
@@ -13874,6 +13881,35 @@ drop table if exists t_v_user_domain_api;
 create table if not exists t_v_user_domain_api as select * from v_user_domain_api limit 1;
 
 /*==============================================================*/
+/* View: v_w_latest_submitted_practice                          */
+/*==============================================================*/
+create or replace view v_w_latest_submitted_practice as
+SELECT DISTINCT ON (practice_submission_id , attempt)
+    id AS wrong_practice_id,
+    practice_submission_id
+   FROM t_practice_wrong_submissions
+   WHERE ((status)::text = '04'::text)
+   ORDER BY practice_submission_id , attempt DESC;
+
+comment on view v_w_latest_submitted_practice is
+'错题提交记录中，最近一次已经提交了的错题提交记录ID';
+
+/*==============================================================*/
+/* View: v_w_latest_unsubmitted_practice                        */
+/*==============================================================*/
+create or replace view v_w_latest_unsubmitted_practice as
+
+SELECT DISTINCT ON (practice_submission_id , attempt)
+    id AS wrong_practice_id,
+    practice_submission_id
+   FROM t_practice_wrong_submissions
+   WHERE ((status)::text = '00'::text)
+   ORDER BY practice_submission_id , attempt DESC;
+
+comment on view v_w_latest_unsubmitted_practice is
+'根据错题提交记录 找出当前最新一次未提交的错题提交ID';
+
+/*==============================================================*/
 /* View: v_x_grade_list                                         */
 /*==============================================================*/
 create or replace view v_x_grade_list as
@@ -13918,128 +13954,34 @@ comment on view v_y_max_submitted_view is
 create table t_v_max_submitted_view as select * from v_y_max_submitted_view;
 
 /*==============================================================*/
-/* View: v_z_first_wrong_collection                             */
+/* View: v_w_practice_summary                                   */
 /*==============================================================*/
-create or replace view v_z_first_wrong_collection as
-WITH 
-latest_submission AS(
-    SELECT 
+create or replace view v_w_practice_summary as
+ SELECT DISTINCT ON (v.practice_id, v.student_id)
         v.id AS practice_submission_id,
+        COALESCE(lup.wrong_practice_id, 0) AS latest_unsubmitted_id,
+        COALESCE(lsp.wrong_practice_id, 0) AS latest_submitted_id,
+        COALESCE(pws_max.max_attempt, 0) AS max_attempt,
         v.student_id,
         v.practice_id,
         tps.exam_paper_id
      FROM v_y_max_submitted_view v
      JOIN t_practice_submissions tps ON v.id = tps.id
+     LEFT JOIN (
+    SELECT 
+        practice_submission_id,
+        MAX(attempt) AS max_attempt
+    FROM t_practice_wrong_submissions
+    WHERE status != '06' -- 排除状态为'02'的记录（根据您的业务需求调整）
+    GROUP BY practice_submission_id
+) pws_max ON v.id = pws_max.practice_submission_id
+     LEFT JOIN v_w_latest_unsubmitted_practice lup ON v.id = lup.practice_submission_id
+     LEFT JOIN v_w_latest_submitted_practice lsp ON v.id = lsp.practice_submission_id
      WHERE tps.status = '08'
-),
-wrong_questions AS (
-    SELECT 
-        tsa.question_id,tsa.answer_score
-    FROM t_student_answers tsa
-    JOIN latest_submission ls
-        ON tsa.practice_submission_id = ls.practice_submission_id 
-),
-question_agg AS (
-    SELECT 
-        tepq.group_id,
-        jsonb_agg(
-            jsonb_build_object(
-                'id', tepq.id,
-                'type', tepq.type,
-                'content', tepq.content,
-                'options', tepq.options,
-                'answers', tepq.answers,
-                'score', tepq.score, 
-                'analysis', tepq.analysis,
-                'title', tepq.title,
-                'answer_file_path', tepq.answer_file_path,
-                'test_file_path', tepq.test_file_path,
-                'input', tepq.input,
-                'output', tepq.output,
-                'example', tepq.example,
-                'repo', tepq.repo,
-                'order', tepq."order", 
-                'group_id', tepq.group_id,
-                'status', tepq.status,
-                'question_attachments_path', tepq.question_attachments_path
-            ) ORDER BY tepq."order"
-        ) AS questions,
-        SUM(tepq.score) AS group_total_score,
-        COUNT(tepq.id) AS group_question_count
-    FROM t_exam_paper_question tepq
-    JOIN wrong_questions wq ON tepq.id = wq.question_id
-    WHERE tepq.status = '00' AND tepq.score > wq.answer_score
-    GROUP BY tepq.group_id
-),
-group_data AS (
-    SELECT 
-        pg.id,
-        pg.name,
-        pg."order",
-        pg.creator,
-        pg.create_time,
-        pg.updated_by,
-        pg.update_time,
-        pg.status,
-        pg.addi,
-        pg.exam_paper_id,
-        COALESCE(qa.questions, '[]'::jsonb) AS questions,
-        COALESCE(qa.group_total_score, 0) AS group_total_score,
-        COALESCE(qa.group_question_count, 0) AS group_question_count
-    FROM t_exam_paper_group pg
-    JOIN question_agg qa ON qa.group_id = pg.id
-    WHERE pg.status != '02'
-),
-paper_groups AS (
-    SELECT 
-        exam_paper_id,
-        jsonb_agg(
-            jsonb_build_object(
-                'id', id,
-                'name', name,
-                'order', "order",
-                'creator', creator,
-                'create_time', create_time,
-                'updated_by', updated_by,
-                'update_time', update_time,
-                'status', status,
-                'addi', addi,
-                'questions', questions
-            ) ORDER BY "order"
-        ) AS groups_data,
-        SUM(group_total_score) AS total_score,
-        SUM(group_question_count) AS question_count,
-        COUNT(*) AS group_count
-    FROM group_data
-    WHERE questions <> '[]'::jsonb
-    GROUP BY exam_paper_id
-)
-SELECT 	
-    p.id,
-    p.name,
-    ls.student_id,
-    ls.practice_id,
-    ls.practice_submission_id AS practice_submission_id,
-    p.creator,
-    p.create_time,
-    p.updated_by,
-    p.update_time,
-    p.status,
-    COALESCE(pgrp.total_score, 0) AS total_score,
-    COALESCE(pgrp.question_count, 0) AS question_count,
-    COALESCE(pgrp.group_count, 0) AS group_count,
-    COALESCE(pgrp.groups_data, '[]'::jsonb) AS groups_data
-FROM t_exam_paper p 
-JOIN paper_groups pgrp ON pgrp.exam_paper_id = p.id
-JOIN latest_submission ls ON ls.exam_paper_id = p.id
-WHERE p.status = '00';
+     ORDER BY v.practice_id, v.student_id, v.id ,tps.attempt DESC;
 
-comment on view v_z_first_wrong_collection is
-'学生首次练习提交错题集视图';
-
-drop table if exists t_v_z_first_wrong_collection;
-
-create table t_v_z_first_wrong_collection as select * from v_z_first_wrong_collection;
+comment on view v_w_practice_summary is
+'错题视图 查看最新一次错题练习提交状态';
 
 /*==============================================================*/
 /* View: v_z_grade_exam_session_info                            */
@@ -14195,29 +14137,26 @@ drop table if exists t_v_practice_summary;
 create table t_v_practice_summary as select * from v_z_practice_summary;
 
 /*==============================================================*/
-/* View: v_z_wrong_submission_collection                        */
+/* View: v_z_submission_wrong_collection                        */
 /*==============================================================*/
-create or replace view v_z_wrong_submission_collection as
-WITH latest_wrong_submission AS (
-    -- 首先筛选出每个 practice_submission_id 下 attempt 最大的行
-    SELECT DISTINCT ON (pws.practice_submission_id)
-        pws.id AS wrong_submission_id,
-        pws.attempt,
-        ps.student_id,
-        ps.practice_id,
-        ps.exam_paper_id
-    FROM t_practice_wrong_submissions pws
-    JOIN t_practice_submissions ps ON pws.practice_submission_id = ps.id
-    WHERE pws.status = '04' -- 只考虑已经提交了的错题集提交记录
-    ORDER BY pws.practice_submission_id, pws.attempt DESC
+create or replace view v_z_submission_wrong_collection as
+WITH 
+latest_submission AS(
+    SELECT
+        v.id AS practice_submission_id,
+        v.student_id,
+        v.practice_id,
+        tps.exam_paper_id
+     FROM v_y_max_submitted_view v
+     JOIN t_practice_submissions tps ON v.id = tps.id
+     WHERE tps.status = '08'
 ),
--- 这里只获取错题跟
 wrong_questions AS (
     SELECT 
         tsa.question_id,tsa.answer_score
     FROM t_student_answers tsa
-    JOIN latest_wrong_submission lsws
-        ON tsa.wrong_submission_id = lsws.wrong_submission_id
+    JOIN latest_submission ls
+        ON tsa.practice_submission_id = ls.practice_submission_id 
 ),
 question_agg AS (
     SELECT 
@@ -14246,9 +14185,9 @@ question_agg AS (
         ) AS questions,
         SUM(tepq.score) AS group_total_score,
         COUNT(tepq.id) AS group_question_count
-    FROM wrong_questions wq
-    JOIN t_exam_paper_question tepq ON wq.question_id = tepq.id
-    WHERE tepq.status = '00' AND wq.answer_score < tepq.score
+    FROM t_exam_paper_question tepq
+    JOIN wrong_questions wq ON tepq.id = wq.question_id
+    WHERE tepq.status = '00' AND tepq.score > wq.answer_score
     GROUP BY tepq.group_id
 ),
 group_data AS (
@@ -14299,26 +14238,26 @@ SELECT
     p.name,
     ls.student_id,
     ls.practice_id,
-    ls.wrong_submission_id AS wrong_submission_id,
+    ls.practice_submission_id AS practice_submission_id,
     p.creator,
     p.create_time,
     p.updated_by,
     p.update_time,
+    p.status,
     COALESCE(pgrp.total_score, 0) AS total_score,
     COALESCE(pgrp.question_count, 0) AS question_count,
     COALESCE(pgrp.group_count, 0) AS group_count,
     COALESCE(pgrp.groups_data, '[]'::jsonb) AS groups_data
 FROM t_exam_paper p 
 JOIN paper_groups pgrp ON pgrp.exam_paper_id = p.id
-JOIN latest_wrong_submission ls ON ls.exam_paper_id = p.id
+JOIN latest_submission ls ON ls.exam_paper_id = p.id
 WHERE p.status = '00';
 
-comment on view v_z_wrong_submission_collection is
-'学生从错题集中获取错题视图';
+comment on view v_z_submission_wrong_collection is
+'学生练习提交中错题视图 在错题中重新答对的题目，将视为这一次练习提交答对，不重新生成新的作答记录';
 
-drop table if exists t_v_z_wrong_submission_collection;
-
-create table t_v_z_wrong_submission_collection as select * from v_z_wrong_submission_collection;
+ drop table if exists t_v_z_submission_wrong_collection;
+create table t_v_z_submission_wrong_collection as select * from v_z_submission_wrong_collection;
 
 alter table t_domain_api
    add constraint FK_ACT_REF_DOMAIN foreign key (domain)
