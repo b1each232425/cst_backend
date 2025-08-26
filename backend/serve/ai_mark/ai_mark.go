@@ -12,15 +12,23 @@ import (
 	"w2w.io/cmn"
 )
 
+type Service interface {
+	SendChatCompletions(ctx context.Context, messages []Message) (chatResp ChatResponse, err error)
+	AIMark(ctx context.Context, question *QuestionDetails, studentAnswers []*StudentAnswer) (respContent *ResponseContent, err error)
+	AIReview(ctx context.Context, rawContent *ResponseContent) (respContent *ResponseContent, err error)
+	GenerateChatPrompt(question *QuestionDetails) (prompt string)
+}
+
 type ChatModel struct {
-	Model          string
-	Endpoint       string
-	ApiKey         string
-	Prompt         string
-	ReviewPrompt   string
-	activeRequests int32
-	MaxTokens      int            `json:"max_tokens"`
-	ResponseFormat ResponseFormat `json:"response_format"`
+	Model             string
+	Endpoint          string
+	ApiKey            string
+	Prompt            string
+	ReviewPrompt      string
+	TokenizerEndPoint string
+	activeRequests    int32
+	MaxTokens         int            `json:"max_tokens"`
+	ResponseFormat    ResponseFormat `json:"response_format"`
 }
 
 type ChatResponse struct {
@@ -74,6 +82,27 @@ type ResponseFormat struct {
 	Type string `json:"type"`
 }
 
+type TokenizerRequest struct {
+	Model string   `json:"model"`
+	Text  []string `json:"text"`
+}
+
+type TokenizerResponse struct {
+	Object  string             `json:"object"`
+	ID      string             `json:"id"`
+	Model   string             `json:"model"`
+	Data    []TokenizationInfo `json:"data"`
+	Created int                `json:"created"`
+}
+
+type TokenizationInfo struct {
+	Object        string  `json:"object"`
+	Index         int     `json:"index"`
+	TotalTokens   int     `json:"total_tokens"`
+	TokenIDs      []int   `json:"token_ids"`
+	OffsetMapping [][]int `json:"offset_mapping"`
+}
+
 // SubjectiveAnswer 主观题答案结构
 type SubjectiveAnswer struct {
 	Index             int      `json:"index"`              // 答案索引
@@ -88,6 +117,7 @@ type QuestionDetails struct {
 	Index      int     `json:"index"`
 	Score      float64 `json:"score"`
 	Content    string  `json:"question"`
+	Answer     string  `json:"answer"`
 	Rule       string  `json:"rule"`
 	//Prompt       string `json:"prompt"`
 	//ReviewPrompt string `json:"review_prompt"`
@@ -112,25 +142,30 @@ func init() {
 	})
 }
 
-func NewChatModel(model string, endpoint string, apiKey string, prompt string, reviewPrompt string) *ChatModel {
+func NewChatModel(model string, endpoint string, apiKey string, prompt string, reviewPrompt string, tokenizerEndPoint string) *ChatModel {
 	return &ChatModel{
-		Model:          model,
-		Endpoint:       endpoint,
-		ApiKey:         apiKey,
-		activeRequests: 0,
-		MaxTokens:      8192,
-		ResponseFormat: ResponseFormat{Type: "json_object"},
-		Prompt:         prompt,
-		ReviewPrompt:   reviewPrompt,
+		Model:             model,
+		Endpoint:          endpoint,
+		ApiKey:            apiKey,
+		TokenizerEndPoint: tokenizerEndPoint,
+		activeRequests:    0,
+		MaxTokens:         8192,
+		ResponseFormat:    ResponseFormat{Type: "json_object"},
+		Prompt:            prompt,
+		ReviewPrompt:      reviewPrompt,
 	}
 }
 
-func GetChatModel() (*ChatModel, error) {
+func GetChatModel() (Service, error) {
 	if chatModel == nil {
 		err := Init()
 		return chatModel, err
 	}
 	return chatModel, nil
+}
+
+func SetChatModel(c *ChatModel) {
+	chatModel = c
 }
 
 func Init() error {
@@ -141,14 +176,15 @@ func Init() error {
 	apiKey := viper.GetString("chatModel.apiKey")
 	model := viper.GetString("chatModel.model")
 	endPoint := viper.GetString("chatModel.endpoint")
+	tokenizerEndPoint := viper.GetString("chatModel.tokenizer.endpoint")
 
-	if apiKey == "" || model == "" || endPoint == "" {
-		err := fmt.Errorf("从配置文件获取chatModel.model, chatModel.apiKey, chatModel.endpoint失败")
+	if apiKey == "" || model == "" || endPoint == "" || tokenizerEndPoint == "" {
+		err := fmt.Errorf("从配置文件获取chatModel.model, chatModel.apiKey, chatModel.endpoint, chatModel.tokenizer.endpoint 配置项失败")
 		z.Error(err.Error())
 		return err
 	}
 
-	chatModel = NewChatModel(model, endPoint, apiKey, promptTmpl, reviewPrompt)
+	chatModel = NewChatModel(model, endPoint, apiKey, promptTmpl, reviewPrompt, tokenizerEndPoint)
 	return nil
 
 }
@@ -221,67 +257,6 @@ func (c *ChatModel) SendChatCompletions(ctx context.Context, messages []Message)
 	return
 }
 
-//func (c *ChatModel) HandleAIMark(question cmn.TExamPaperQuestion, userID, examSessionID, practiceID int64, studentAnswers []*cmn.TVStudentAnswerQuestion) (markingResults []*cmn.TMark, err error) {
-//	if userID <= 0 {
-//		err = fmt.Errorf("用户ID无效")
-//		z.Error(err.Error())
-//		return
-//	}
-//
-//	if question.ID.Int64 <= 0 {1
-//		err = fmt.Errorf("题目ID无效")
-//		z.Error(err.Error())
-//		return
-//	}
-//
-//	if question.Content.String == "" {
-//		err = fmt.Errorf("题目内容为空")
-//		z.Error(err.Error())
-//		return
-//	}
-//
-//	if examSessionID <= 0 && practiceID <= 0 {
-//		err = fmt.Errorf("请求参数需包含场次id或者练习id")
-//		z.Error(err.Error())
-//		return
-//	}
-//
-//	if examSessionID > 0 && practiceID > 0 {
-//		err = fmt.Errorf("请求参数不能同时包含练习ID和考试场次ID")
-//		z.Error(err.Error())
-//		return
-//	}
-//
-//	var mode string
-//	if examSessionID > 0 {
-//		mode = "00"
-//	} else {
-//		mode = "02"
-//	}
-//
-//	respContent, err := c.AIMark(question, mode, studentAnswers)
-//	if err != nil {
-//		return
-//	}
-//
-//	for _, result := range respContent.MarkResult {
-//		mark := cmn.TMark{
-//			TeacherID:  null.IntFrom(userID),
-//			QuestionID: question.ID,
-//			//ExamineeID:           studentAnswer.ExamineeID,
-//			//ExamSessionID:        studentAnswer.ExamSessionID,
-//			//PracticeID:           studentAnswer.PracticeID,
-//			//PracticeSubmissionID: studentAnswer.PracticeSubmissionID,
-//			Status:     null.StringFrom("00"),
-//			Creator:    null.IntFrom(userID),
-//			CreateTime: null.IntFrom(time.Now().UnixMilli()),
-//			Score:      null.FloatFrom(result.Score),
-//		}
-//
-//	}
-//
-//}
-
 func (c *ChatModel) AIMark(ctx context.Context, question *QuestionDetails, studentAnswers []*StudentAnswer) (respContent *ResponseContent, err error) {
 	forceErr, _ := ctx.Value(ForceErrKey).(string) // 用于强制执行错误处理代码
 	if c.Prompt == "" || c.ReviewPrompt == "" {
@@ -331,7 +306,7 @@ func (c *ChatModel) AIMark(ctx context.Context, question *QuestionDetails, stude
 		return
 	}
 
-	z.Sugar().Infof("Response: %s", chatResp.Choices[0].Message.Content)
+	//z.Sugar().Infof("Response: %s", chatResp.Choices[0].Message.Content)
 
 	var resp ResponseContent
 	err = json.Unmarshal([]byte(chatResp.Choices[0].Message.Content), &resp)
@@ -354,7 +329,7 @@ func (c *ChatModel) AIReview(ctx context.Context, rawContent *ResponseContent) (
 		return
 	}
 
-	z.Sugar().Infof("AIReview request content: %s", string(respJson))
+	//z.Sugar().Infof("AIReview request content: %s", string(respJson))
 
 	messages := []Message{
 		{
@@ -394,11 +369,74 @@ func (c *ChatModel) AIReview(ctx context.Context, rawContent *ResponseContent) (
 	return
 }
 
+func (c *ChatModel) Tokenizer(ctx context.Context, texts []string) (tokenResp TokenizerResponse, err error) {
+	forceErr, _ := ctx.Value(ForceErrKey).(string) // 用于强制执行错误处理代码
+
+	reqBody := TokenizerRequest{
+		Model: c.Model,
+		Text:  texts,
+	}
+
+	jsonData, err := json.Marshal(reqBody)
+	if err != nil || forceErr == "Tokenizer-json.Marshal" {
+		err = fmt.Errorf("构造请求体JSON失败: %v", err)
+		z.Error(err.Error())
+		return
+	}
+
+	req := fasthttp.AcquireRequest()
+	defer fasthttp.ReleaseRequest(req)
+
+	resp := fasthttp.AcquireResponse()
+	defer fasthttp.ReleaseResponse(resp)
+
+	// 设置请求方法和URL
+	req.Header.SetMethod("POST")
+	req.SetRequestURI(c.TokenizerEndPoint)
+
+	// 设置请求头
+	req.Header.Set("Authorization", "Bearer "+c.ApiKey)
+	req.Header.Set("Content-Type", "application/json")
+
+	// 设置请求体
+	req.SetBody(jsonData)
+
+	// 创建客户端并发送请求
+	client := &fasthttp.Client{}
+	// 使用DoTimeout来实现超时控制
+	timeoutDuration := 60 * time.Second
+	fastErr := client.DoTimeout(req, resp, timeoutDuration)
+	if fastErr != nil {
+		err = fmt.Errorf("发送请求失败: %v", fastErr)
+		z.Error(err.Error())
+		return
+	}
+
+	// 检查响应状态码
+	if resp.StatusCode() >= 400 {
+		err = fmt.Errorf("server returned non-2xx status: %d, content: %s", resp.StatusCode(), resp.String())
+		z.Error(err.Error())
+		return
+	}
+
+	// 读取响应体
+	bodyText := resp.Body()
+
+	err = json.Unmarshal(bodyText, &tokenResp)
+	if err != nil || forceErr == "Tokenizer-json.Unmarshal" {
+		err = fmt.Errorf("解析返回的响应体失败: %v, body: %s", err, string(bodyText))
+		z.Error(err.Error())
+		return
+	}
+
+	return
+}
+
 func (c *ChatModel) GenerateChatPrompt(question *QuestionDetails) (prompt string) {
 	scoreTmpl := "<question_data>\n**题目总分：**(score)分\n\n"
-	standardAnswerTmpl := "- **标准答案：**\n    (standard_answer)\n\n </question_data>\n"
+	standardAnswerTmpl := "- **题目标准答案：**\n    (standard_answer)\n\n </question_data>\n"
 	markRoleTmpl := "\n<marking_rules> - **批改规则**：\n   (markRole)\n\n\n </marking_rules>\n"
 
-	sysPrompt := c.Prompt + strings.Replace(scoreTmpl, "(score)", fmt.Sprintf("%f", question.Score), 1) + strings.Replace(standardAnswerTmpl, "(standard_answer)", question.Content, 1) + strings.Replace(markRoleTmpl, "(markRole)", question.Rule, 1)
+	sysPrompt := c.Prompt + strings.Replace(scoreTmpl, "(score)", fmt.Sprintf("%f", question.Score), 1) + strings.Replace(standardAnswerTmpl, "(standard_answer)", question.Answer, 1) + strings.Replace(markRoleTmpl, "(markRole)", question.Rule, 1)
 	return sysPrompt
 }

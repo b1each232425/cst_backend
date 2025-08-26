@@ -17,10 +17,13 @@ func init() {
 	InitViper()
 	z = cmn.GetLogger()
 	var err error
-	defaultChatModel, err = GetChatModel()
+	err = Init()
 	if err != nil {
 		panic(err)
 	}
+
+	defaultChatModel = chatModel
+
 }
 
 func InitViper() {
@@ -61,7 +64,7 @@ func TestChatModel_SendChatCompletions(t *testing.T) {
 			messages: []Message{
 				{
 					Role:    "system",
-					Content: defaultChatModel.GenerateChatPrompt(testedQuestionDetails[0]),
+					Content: defaultChatModel.GenerateChatPrompt(TestedQuestionDetails[0]),
 				},
 				{
 					Role: "user",
@@ -79,7 +82,7 @@ func TestChatModel_SendChatCompletions(t *testing.T) {
 			messages: []Message{
 				{
 					Role:    "system",
-					Content: defaultChatModel.GenerateChatPrompt(testedQuestionDetails[0]),
+					Content: defaultChatModel.GenerateChatPrompt(TestedQuestionDetails[0]),
 				},
 				{
 					Role: "user",
@@ -101,7 +104,7 @@ func TestChatModel_SendChatCompletions(t *testing.T) {
 			messages: []Message{
 				{
 					Role:    "system",
-					Content: defaultChatModel.GenerateChatPrompt(testedQuestionDetails[0]),
+					Content: defaultChatModel.GenerateChatPrompt(TestedQuestionDetails[0]),
 				},
 				{
 					Role: "user",
@@ -119,7 +122,7 @@ func TestChatModel_SendChatCompletions(t *testing.T) {
 			messages: []Message{
 				{
 					Role:    "system",
-					Content: defaultChatModel.GenerateChatPrompt(testedQuestionDetails[0]),
+					Content: defaultChatModel.GenerateChatPrompt(TestedQuestionDetails[0]),
 				},
 				{
 					Role: "user",
@@ -159,7 +162,7 @@ func TestChatModel_SendChatCompletions(t *testing.T) {
 			messages: []Message{
 				{
 					Role:    "system",
-					Content: defaultChatModel.GenerateChatPrompt(testedQuestionDetails[0]),
+					Content: defaultChatModel.GenerateChatPrompt(TestedQuestionDetails[0]),
 				},
 				{
 					Role: "user",
@@ -214,7 +217,7 @@ func TestChatModel_AIReview(t *testing.T) {
 	}{
 		{
 			name:       "success",
-			rawContent: testedRespResults[0],
+			rawContent: TestedRespResults[0],
 			chatModel:  *defaultChatModel,
 			checkedFunc: func(chatResp ResponseContent) (string, bool) {
 				var msg string
@@ -238,28 +241,28 @@ func TestChatModel_AIReview(t *testing.T) {
 		},
 		{
 			name:           "marshal response content error",
-			rawContent:     testedRespResults[0],
+			rawContent:     TestedRespResults[0],
 			chatModel:      *defaultChatModel,
 			forceErr:       "AIReview-json.Marshal",
 			expectedErrStr: "marshal response content error",
 		},
 		{
 			name:           "SendChatCompletions error",
-			rawContent:     testedRespResults[0],
+			rawContent:     TestedRespResults[0],
 			chatModel:      *defaultChatModel,
 			forceErr:       "SendChatCompletions-json.Marshal",
 			expectedErrStr: "构造请求体失败",
 		},
 		{
 			name:           "AIReview-大模型服务端出错",
-			rawContent:     testedRespResults[0],
+			rawContent:     TestedRespResults[0],
 			chatModel:      *defaultChatModel,
 			forceErr:       "AIReview-大模型服务端出错",
 			expectedErrStr: "大模型服务端出错",
 		},
 		{
 			name:           "解析大模型返回消息的json结构失败",
-			rawContent:     testedRespResults[0],
+			rawContent:     TestedRespResults[0],
 			chatModel:      *defaultChatModel,
 			expectedErrStr: "解析大模型返回消息的json结构失败",
 			setup: func() ChatModel {
@@ -318,14 +321,14 @@ func TestChatModel_AIMark(t *testing.T) {
 	}{
 		{
 			name:           "success",
-			question:       testedQuestionDetails[0],
-			studentAnswers: testedStudentAnswers[0],
+			question:       TestedQuestionDetails[0],
+			studentAnswers: TestedStudentAnswers[0],
 			chatModel:      *defaultChatModel,
 		},
 		{
 			name:           "success with default prompt",
-			question:       testedQuestionDetails[0],
-			studentAnswers: testedStudentAnswers[0],
+			question:       TestedQuestionDetails[0],
+			studentAnswers: TestedStudentAnswers[0],
 			chatModel:      *defaultChatModel,
 			setup: func() ChatModel {
 				model := *defaultChatModel
@@ -335,39 +338,39 @@ func TestChatModel_AIMark(t *testing.T) {
 		},
 		{
 			name:           "no student answers to mark",
-			question:       testedQuestionDetails[0],
+			question:       TestedQuestionDetails[0],
 			studentAnswers: []*StudentAnswer{},
 			chatModel:      *defaultChatModel,
 			expectedErrStr: "no student answers to mark",
 		},
 		{
 			name:           "failed to marshal student answers",
-			question:       testedQuestionDetails[0],
-			studentAnswers: testedStudentAnswers[0],
+			question:       TestedQuestionDetails[0],
+			studentAnswers: TestedStudentAnswers[0],
 			chatModel:      *defaultChatModel,
 			forceErr:       "AIMark-json.Marshal",
 			expectedErrStr: "failed to marshal student answers",
 		},
 		{
 			name:           "SendChatCompletions error",
-			question:       testedQuestionDetails[0],
-			studentAnswers: testedStudentAnswers[0],
+			question:       TestedQuestionDetails[0],
+			studentAnswers: TestedStudentAnswers[0],
 			chatModel:      *defaultChatModel,
 			forceErr:       "SendChatCompletions-json.Marshal",
 			expectedErrStr: "构造请求体失败",
 		},
 		{
 			name:           "AIMark-大模型服务端出错",
-			question:       testedQuestionDetails[0],
-			studentAnswers: testedStudentAnswers[0],
+			question:       TestedQuestionDetails[0],
+			studentAnswers: TestedStudentAnswers[0],
 			chatModel:      *defaultChatModel,
 			forceErr:       "AIMark-大模型服务端出错",
 			expectedErrStr: "大模型服务端出错",
 		},
 		{
 			name:           "解析大模型返回消息的json结构失败",
-			question:       testedQuestionDetails[0],
-			studentAnswers: testedStudentAnswers[0],
+			question:       TestedQuestionDetails[0],
+			studentAnswers: TestedStudentAnswers[0],
 			chatModel:      *defaultChatModel,
 			expectedErrStr: "解析大模型返回消息的json结构失败",
 			setup: func() ChatModel {
@@ -391,6 +394,100 @@ func TestChatModel_AIMark(t *testing.T) {
 			chatResp, err := tt.chatModel.AIMark(ctx, tt.question, tt.studentAnswers)
 
 			z.Sugar().Infof("chatResp: %+v", chatResp)
+
+			if err != nil {
+				if tt.expectedErrStr == "" {
+					t.Errorf("expected success, but got error: %v", err.Error())
+				} else {
+					assert.Contains(t, err.Error(), tt.expectedErrStr)
+				}
+			} else if tt.expectedErrStr != "" {
+				t.Errorf("expected error: %s, but got success", tt.expectedErrStr)
+			}
+		})
+	}
+}
+
+func TestChatModel_Tokenizer(t *testing.T) {
+
+	tests := []struct {
+		name           string
+		texts          []string
+		chatModel      ChatModel
+		forceErr       string
+		expectedErrStr string
+		expectedTokens []int
+		setup          func() ChatModel
+	}{
+		{
+			name:     "success",
+			forceErr: "",
+			texts: []string{
+				"天空为什么这么蓝",
+				"花儿为什么这么香",
+			},
+			chatModel:      *defaultChatModel,
+			expectedErrStr: "",
+		},
+		{
+			name: "构造请求体JSON失败",
+			texts: []string{
+				"天空为什么这么蓝",
+				"花儿为什么这么香",
+			},
+			chatModel:      *defaultChatModel,
+			forceErr:       "Tokenizer-json.Marshal",
+			expectedErrStr: "构造请求体JSON失败",
+		},
+		{
+			name: "发送请求失败",
+			texts: []string{
+				"天空为什么这么蓝",
+				"花儿为什么这么香",
+			},
+			chatModel:      *defaultChatModel,
+			expectedErrStr: "发送请求失败",
+			setup: func() ChatModel {
+				model := *defaultChatModel
+				model.TokenizerEndPoint = ""
+				return model
+			},
+		},
+		{
+			name:     "server returned non-2xx status",
+			forceErr: "",
+			//texts: []string{
+			//	"天空为什么这么蓝",
+			//	"花儿为什么这么香",
+			//},
+			chatModel:      *defaultChatModel,
+			expectedErrStr: "server returned non-2xx status",
+		},
+		{
+			name: "解析返回的响应体失败",
+			texts: []string{
+				"天空为什么这么蓝",
+				"花儿为什么这么香",
+			},
+			chatModel:      *defaultChatModel,
+			forceErr:       "Tokenizer-json.Unmarshal",
+			expectedErrStr: "解析返回的响应体失败",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.setup != nil {
+				tt.chatModel = tt.setup()
+			}
+
+			ctx := context.Background()
+			if tt.forceErr != "" {
+				ctx = context.WithValue(context.Background(), ForceErrKey, tt.forceErr)
+			}
+			tokenResp, err := tt.chatModel.Tokenizer(ctx, tt.texts)
+
+			z.Sugar().Infof("tokenResp: %+v", tokenResp)
 
 			if err != nil {
 				if tt.expectedErrStr == "" {

@@ -7,13 +7,15 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/hibiken/asynq"
 	"github.com/jackc/pgx/v5"
-	"github.com/jmoiron/sqlx/types"
+	"github.com/redis/go-redis/v9"
 	"io"
 	"strconv"
 	"strings"
 	"time"
 	"w2w.io/null"
+	"w2w.io/serve/ai_mark"
 	"w2w.io/serve/examPaper"
 
 	"go.uber.org/zap"
@@ -23,6 +25,10 @@ import (
 var z *zap.Logger
 
 const ForceErrKey = "force-err"
+
+const (
+	TaskTypeAIMarkRequest = "ai_mark:grade"
+)
 
 func init() {
 	//Setup package scope variables, just like logger, db connector, configure parameters, etc.
@@ -49,25 +55,10 @@ type QueryMarkingListReq struct {
 	Status       string    `json:"status"`
 }
 
-type MarkingResult struct {
-	ExamineeID           int64  `json:"examinee_id"`
-	PracticeSubmissionID int64  `json:"practice_submission_id"`
-	Marks                []Mark `json:"marks"`
-}
-
-type Mark struct {
-	Details        []Details      `json:"details"`
-	DetailsJSON    types.JSONText `json:"details_json"`
-	Score          int            `json:"score"`
-	QuestionNumber int            `json:"question_number"`
-	QuestionID     int64          `json:"question_id"`
-	Marker         int64          `json:"marker"`
-}
-
-type Details struct {
-	Analyze string `json:"analyze"`
-	Index   int    `json:"index"`
-	Score   int    `json:"score"`
+type MarkDetails struct {
+	Analyze string  `json:"analyze"`
+	Index   int     `json:"index"`
+	Score   float64 `json:"score"`
 }
 
 type HandleMarkerInfoReq struct {
@@ -81,6 +72,17 @@ type HandleMarkerInfoReq struct {
 	Status         string                              `json:"status"`           // *00 插入批改配置 02 删除批改配置
 	ExamSessionIDs []int64                             `json:"exam_session_ids"` // 要删除的考试场次id数组
 	PracticeIDs    []int64                             `json:"practice_ids"`     // 要删除的练习id数组
+}
+
+type AIMarkRequest struct {
+	Question       *ai_mark.QuestionDetails
+	StudentAnswers []*ai_mark.StudentAnswer
+}
+
+type AIMarkTaskPayLoad struct {
+	AIMarkRequest      AIMarkRequest  `json:"ai_mark_request"`
+	QueryCondition     QueryCondition `json:"query_condition"`
+	UniqueTaskCountKey string         `json:"unique_task_count_key"`
 }
 
 func Enroll(author string) {
@@ -181,6 +183,7 @@ func Enroll(author string) {
 		DefaultDomain: int64(cmn.CDomainSys),
 	})
 
+	cmn.RegisterTaskHandler(TaskTypeAIMarkRequest, HandleAIMarkTask)
 }
 
 func HandleExamList(ctx context.Context) {
@@ -1118,11 +1121,11 @@ func MarkObjectiveQuestionAnswers(ctx context.Context, cond QueryCondition) (err
 			mark.Score = null.FloatFrom(studentAnswer.QuestionScore.Float64)
 		}
 
-		var markDetails []Details
+		var markDetails []MarkDetails
 
-		markDetails = append(markDetails, Details{
+		markDetails = append(markDetails, MarkDetails{
 			Index:   0,
-			Score:   int(mark.Score.Float64),
+			Score:   mark.Score.Float64,
 			Analyze: "",
 		})
 
@@ -1274,5 +1277,444 @@ func AutoMark(ctx context.Context, cond QueryCondition) (err error) {
 
 	//TODO 自动(AI)批改主观题
 
+	questionSets, err := QueryQuestionsByMarkMode(ctx, cond, markerInfo)
+	if err != nil {
+		return
+	}
+
+	var questions []*cmn.TExamPaperQuestion
+	for _, questionSet := range questionSets {
+		questions = append(questions, questionSet.Questions...)
+	}
+
+	if cond.IsWrongSubmission {
+		// 练习学生作答错题
+		markerInfo.MarkMode = "14"
+	}
+
+	studentAnswers, err := QueryStudentAnswersByMarkMode(ctx, "00", cond, markerInfo)
+	if err != nil {
+		return
+	}
+
+	err = GenerateAIMarkTask(ctx, cond, questions, studentAnswers)
+	if err != nil {
+		return
+	}
+
 	return
+}
+
+func GenerateAIMarkTask(ctx context.Context, cond QueryCondition, questions []*cmn.TExamPaperQuestion, studentAnswers []*cmn.TVStudentAnswerQuestion) (err error) {
+	if cond.TeacherID <= 0 {
+		err = fmt.Errorf("用户ID无效")
+		z.Error(err.Error())
+		return
+	}
+
+	if cond.ExamSessionID <= 0 && cond.PracticeID <= 0 {
+		err = fmt.Errorf("请求参数需包含场次id或者练习id")
+		z.Error(err.Error())
+		return
+	}
+
+	if cond.ExamSessionID > 0 && cond.PracticeID > 0 {
+		err = fmt.Errorf("请求参数不能同时包含练习ID和考试场次ID")
+		z.Error(err.Error())
+		return
+	}
+
+	//chatModel, err := ai_mark.GetChatModel()
+	//if err != nil {
+	//	return
+	//}
+
+	questionAnswersMap := make(map[int64][]*ai_mark.StudentAnswer)
+
+	for _, studentAnswer := range studentAnswers {
+		if studentAnswer.QuestionID.Int64 <= 0 {
+			err = fmt.Errorf("学生答案题目ID无效")
+			z.Error(err.Error())
+			return
+		}
+
+		if studentAnswer.ExamineeID.Int64 <= 0 && studentAnswer.PracticeSubmissionID.Int64 <= 0 {
+			err = fmt.Errorf("学生答案考生ID和提交ID不能同时为空")
+			z.Error(err.Error())
+			return
+		}
+
+		if cond.ExamSessionID > 0 && studentAnswer.ExamineeID.Int64 <= 0 {
+			err = fmt.Errorf("学生答案考生ID无效")
+			z.Error(err.Error())
+			return
+		}
+
+		if cond.PracticeID > 0 && studentAnswer.PracticeSubmissionID.Int64 <= 0 {
+			err = fmt.Errorf("学生答案提交ID无效")
+			z.Error(err.Error())
+			return
+		}
+
+		if questionAnswersMap[studentAnswer.QuestionID.Int64] == nil {
+			questionAnswersMap[studentAnswer.QuestionID.Int64] = []*ai_mark.StudentAnswer{}
+		}
+
+		var studentID int64
+		if cond.ExamSessionID > 0 {
+			studentID = studentAnswer.ExamineeID.Int64
+		} else {
+			studentID = studentAnswer.PracticeSubmissionID.Int64
+		}
+
+		var answers struct {
+			Answer []string `json:"answer"`
+		}
+		err = json.Unmarshal(studentAnswer.Answer, &answers)
+		if err != nil {
+			err = fmt.Errorf("failed to unmarshal student answer: %v", err)
+			z.Error(err.Error())
+			return
+		}
+
+		var studentAnswersBuilder strings.Builder
+		for i, answer := range answers.Answer {
+			indexStr := fmt.Sprintf("（%d）", i+1)
+			studentAnswersBuilder.WriteString(indexStr)
+			studentAnswersBuilder.WriteString(answer)
+			studentAnswersBuilder.WriteString("\n")
+		}
+
+		a := &ai_mark.StudentAnswer{
+			StudentID: studentID,
+			Answer:    studentAnswersBuilder.String(),
+		}
+
+		questionAnswersMap[studentAnswer.QuestionID.Int64] = append(questionAnswersMap[studentAnswer.QuestionID.Int64], a)
+
+	}
+
+	var aiMarkRequests []AIMarkRequest
+
+	var shouldSplit func(slice []*ai_mark.StudentAnswer) bool
+	shouldSplit = func(slice []*ai_mark.StudentAnswer) bool {
+		return len(slice) > 50
+	}
+
+	for _, q := range questions {
+		if q.ID.Int64 <= 0 {
+			err = fmt.Errorf("题目ID无效")
+			z.Error(err.Error())
+			return
+		}
+
+		var standardAnswers []*SubjectiveAnswer
+		err = json.Unmarshal(q.Answers, &standardAnswers)
+		if err != nil {
+			err = fmt.Errorf("unable to convert raw standard answer data: %v", err)
+			z.Error(err.Error())
+			return
+		}
+
+		if len(standardAnswers) == 0 {
+			err = fmt.Errorf("no standard answer found in question (%d)", q.ID.Int64)
+			z.Error(err.Error())
+			return
+		}
+
+		var answerBuilder strings.Builder
+		var ruleBuilder strings.Builder
+		for _, a := range standardAnswers {
+			indexStr := fmt.Sprintf("（%d）", a.Index)
+			answerBuilder.WriteString(indexStr)
+			answerBuilder.WriteString(a.Answer)
+			answerBuilder.WriteString("\n")
+			ruleBuilder.WriteString(indexStr)
+			ruleBuilder.WriteString(a.GradingRule)
+			ruleBuilder.WriteString("\n")
+		}
+
+		//var aiMarkRequest = AIMarkRequest{
+		//	Question: &ai_mark.QuestionDetails{
+		//		QuestionID: q.ID.Int64,
+		//		Answer:     answerBuilder.String(),
+		//		Rule:       ruleBuilder.String(),
+		//		Score:      q.Score.Float64,
+		//	},
+		//	StudentAnswers: []*ai_mark.StudentAnswer{},
+		//}
+
+		// 50个作答为一组
+		splitAnswers := splitSlice(questionAnswersMap[q.ID.Int64], shouldSplit)
+		for _, answers := range splitAnswers {
+			var aiMarkRequest = AIMarkRequest{
+				Question: &ai_mark.QuestionDetails{
+					QuestionID: q.ID.Int64,
+					Answer:     answerBuilder.String(),
+					Rule:       ruleBuilder.String(),
+					Score:      q.Score.Float64,
+				},
+				StudentAnswers: answers,
+			}
+
+			aiMarkRequests = append(aiMarkRequests, aiMarkRequest)
+		}
+	}
+
+	redisClient := cmn.GetRedisConn()
+
+	var uniqueKey = TaskTypeAIMarkRequest
+
+	if cond.ExamSessionID > 0 {
+		uniqueKey += ":exam_session:" + strconv.FormatInt(cond.ExamSessionID, 10)
+		if cond.ExamineeID > 0 {
+			uniqueKey += ":examinee:" + strconv.FormatInt(cond.ExamineeID, 10)
+		}
+	} else {
+		uniqueKey += ":practice:" + strconv.FormatInt(cond.PracticeID, 10)
+		if cond.PracticeSubmissionID > 0 {
+			uniqueKey += ":practice_submission:" + strconv.FormatInt(cond.PracticeSubmissionID, 10)
+		}
+	}
+
+	// 3. 定义 Lua 脚本
+	//luaScript := `
+	//	local key = KEYS[1]
+	//	local current = redis.call('DECR', key)
+	//	local after = tonumber(current)
+	//	if after == 0 then
+	//		return {after, 1}  -- [当前值, 是否触发]
+	//	else
+	//		return {after, 0}  -- [当前值, 不触发]
+	//	end
+	//`
+
+	uniqueTaskCountKey := uniqueKey + ":count"
+
+	err = redisClient.Set(ctx, uniqueTaskCountKey, len(aiMarkRequests), 0).Err()
+
+	// 设置唯一性约束：24小时内，不允许重复入队
+	opts := []asynq.Option{
+		asynq.MaxRetry(3),
+		asynq.Unique(24 * time.Hour),
+	}
+
+	for _, aiMarkRequest := range aiMarkRequests {
+		err = cmn.SendTask(TaskTypeAIMarkRequest, AIMarkTaskPayLoad{
+			AIMarkRequest:      aiMarkRequest,
+			QueryCondition:     cond,
+			UniqueTaskCountKey: uniqueTaskCountKey,
+		}, opts...)
+		if err != nil {
+			return
+		}
+	}
+
+	return
+
+}
+
+func HandleAIMarkTask(ctx context.Context, task *asynq.Task) error {
+	forceErr, _ := ctx.Value(ForceErrKey).(string)
+	var err error
+	var taskPayLoad cmn.TaskPayload
+
+	err = json.Unmarshal(task.Payload(), &taskPayLoad)
+	if err != nil {
+		err = fmt.Errorf("failed to unmarshal task payload: %v", err)
+		z.Error(err.Error())
+		return err
+	}
+
+	//z.Sugar().Infof("HandleAIMarkTask: %+v", taskPayLoad)
+
+	jsonData, err := json.Marshal(taskPayLoad.Data)
+	if err != nil || forceErr == "HandleAIMarkTask-json.Marshal-payload-data" {
+		err = fmt.Errorf("failed to marshal task payload data: %v", err)
+		z.Error(err.Error())
+		return err
+	}
+
+	var payloadData AIMarkTaskPayLoad
+	err = json.Unmarshal(jsonData, &payloadData)
+	if err != nil {
+		err = fmt.Errorf("failed to unmarshal task payload data: %v, raw data: %+v", err, string(jsonData))
+		z.Error(err.Error())
+		return err
+	}
+
+	if payloadData.UniqueTaskCountKey == "" {
+		err = fmt.Errorf("任务payload中的任务计数键为空")
+		z.Error(err.Error())
+		return err
+	}
+
+	if payloadData.QueryCondition.TeacherID <= 0 {
+		err = fmt.Errorf("任务payload中的教师ID无效")
+		z.Error(err.Error())
+		return err
+	}
+
+	if payloadData.QueryCondition.ExamSessionID <= 0 && payloadData.QueryCondition.PracticeID <= 0 {
+		err = fmt.Errorf("任务payload中的考试场次ID与练习ID都无效")
+		z.Error(err.Error())
+		return err
+	}
+
+	if payloadData.QueryCondition.ExamSessionID > 0 && payloadData.QueryCondition.PracticeID > 0 {
+		err = fmt.Errorf("任务payload中的考试场次ID与练习ID不能同时有效")
+		z.Error(err.Error())
+		return err
+	}
+
+	chatModel, err := ai_mark.GetChatModel()
+	if err != nil {
+		return err
+	}
+
+	respContent, err := chatModel.AIMark(ctx, payloadData.AIMarkRequest.Question, payloadData.AIMarkRequest.StudentAnswers)
+	if err != nil {
+		return err
+	}
+	//z.Sugar().Infof("chatResp: %+v", respContent)
+	//
+	//z.Sugar().Infof("HandleAIMarkTask data->: %+v", payloadData)
+
+	var marks []*cmn.TMark
+
+	for _, result := range respContent.MarkResult {
+		var markDetails = MarkDetails{
+			Index:   1,
+			Score:   result.Score,
+			Analyze: result.Analyze,
+		}
+
+		var markDetailsJSON []byte
+		markDetailsJSON, err = json.Marshal(markDetails)
+		if err != nil || forceErr == "HandleAIMarkTask-json.Marshal-mark-details" {
+			err = fmt.Errorf("failed to marshal mark details: %v", err)
+			z.Error(err.Error())
+			return err
+		}
+
+		var mark = cmn.TMark{
+			TeacherID:   null.IntFrom(payloadData.QueryCondition.TeacherID),
+			QuestionID:  null.IntFrom(payloadData.AIMarkRequest.Question.QuestionID),
+			Score:       null.FloatFrom(result.Score),
+			MarkDetails: markDetailsJSON,
+			Creator:     null.IntFrom(payloadData.QueryCondition.TeacherID),
+			CreateTime:  null.IntFrom(time.Now().UnixMilli()),
+		}
+
+		if payloadData.QueryCondition.ExamSessionID > 0 {
+			// 考试会话
+			mark.ExamSessionID = null.IntFrom(payloadData.QueryCondition.ExamSessionID)
+			mark.ExamineeID = null.IntFrom(result.StudentID)
+		} else {
+			// 练习会话
+			mark.PracticeID = null.IntFrom(payloadData.QueryCondition.PracticeID)
+			mark.PracticeSubmissionID = null.IntFrom(result.StudentID)
+		}
+
+		marks = append(marks, &mark)
+	}
+
+	_, err = InsertOrUpdateMarkingResults(ctx, marks)
+	if err != nil {
+		return err
+	}
+
+	_, err = updateStudentAnswerScore(ctx, marks, payloadData.QueryCondition)
+	if err != nil {
+		return err
+	}
+
+	redisClient := cmn.GetRedisConn()
+
+	// 定义 Lua 脚本
+	luaScript := `
+		local current = redis.call('GET', KEYS[1])
+		if not current then
+			return "04"
+		end
+		local num = tonumber(current)
+		if num == 1 then
+			return "02"
+		elseif num <= 0 then 
+			return "06"
+		else
+			redis.call('DECR', KEYS[1])
+			return "00"
+		end
+	`
+
+	scriptRunCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	script := redis.NewScript(luaScript)
+
+	result, err := script.Run(scriptRunCtx, redisClient, []string{payloadData.UniqueTaskCountKey}).Result()
+	if err != nil || forceErr == "HandleAIMarkTask-script.Run().Result" {
+		err = fmt.Errorf("lua脚本执行出错: %v", err)
+		z.Error(err.Error())
+		return err
+	}
+
+	status, ok := result.(string)
+	if !ok || forceErr == "HandleAIMarkTask-script-result.(string)" {
+		err = fmt.Errorf("lua脚本返回结果类型错误")
+		z.Error(err.Error())
+		return err
+	}
+
+	switch status {
+	case "00":
+		// 减库存成功
+		break
+	case "02":
+		// 任务已全部完成
+		z.Sugar().Infof("本批次批改任务已全部完成")
+		pgxConn := cmn.GetPgxConn()
+		if payloadData.QueryCondition.PracticeSubmissionID > 0 {
+			var tx pgx.Tx
+			tx, err = pgxConn.Begin(ctx)
+			if err != nil || forceErr == "HandleAIMarkTask-tx.Begin" {
+				err = fmt.Errorf("begin transaction error: %v", err)
+				z.Error(err.Error())
+				return err
+			}
+
+			defer func() {
+				if err != nil {
+					err_ := tx.Rollback(ctx)
+					if err_ != nil || forceErr == "HandleAIMarkTask-tx.Rollback" {
+						z.Sugar().Error(err_)
+					}
+				} else {
+					err_ := tx.Commit(ctx)
+					if err_ != nil || forceErr == "HandleAIMarkTask-tx.Commit" {
+						z.Sugar().Error(err_)
+					}
+				}
+			}()
+
+			_, err = updateExamSessionOrPracticeSubmissionState(ctx, &tx, payloadData.QueryCondition.TeacherID, nil, []int64{payloadData.QueryCondition.PracticeSubmissionID}, "08")
+			if err != nil {
+				return err
+			}
+		}
+
+		return nil
+	case "04":
+		// 找不到该计数键值
+		err = fmt.Errorf("找不到任务计数键值：%s", payloadData.UniqueTaskCountKey)
+		z.Error(err.Error())
+		return err
+	case "06":
+		// 超减计数键值
+		err = fmt.Errorf("超减任务计数键值：%s", payloadData.UniqueTaskCountKey)
+		z.Error(err.Error())
+		return err
+	}
+
+	return nil
 }

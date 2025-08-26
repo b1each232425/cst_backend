@@ -1,10 +1,10 @@
 package ai_mark
 
-var testedQuestionDetails = []*QuestionDetails{
+var TestedQuestionDetails = []*QuestionDetails{
 	{
-		QuestionID: 10001,
+		QuestionID: 406,
 		Index:      1,
-		Content: `
+		Answer: `
 					1. 独立式（Fat AP）组网：每个无线接入点单独配置和管理。
 					
 					   - 优点：部署简单，成本较低，适合小型网络。
@@ -32,10 +32,24 @@ var testedQuestionDetails = []*QuestionDetails{
 	},
 }
 
-var testedStudentAnswers = [][]*StudentAnswer{
+var TestedStudentAnswers = [][]*StudentAnswer{
 	{
 		{
-			StudentID: 101,
+			StudentID: 2205,
+			Index:     1,
+			Answer: `
+					1. 独立式组网：每个无线接入点单独配置和管理。
+					  - 优点：简单，成本低。
+					  - 缺点：管理复杂。
+					2. 控制器集中式（Fit AP + AC）组网：AP受控于无线控制器。
+					  - 优点：集中管理，适合小型网络。
+					  - 缺点：成本高。
+				`,
+		},
+	},
+	{
+		{
+			StudentID: 2405,
 			Index:     1,
 			Answer: `
 					1. 独立式组网：每个无线接入点单独配置和管理。
@@ -49,7 +63,7 @@ var testedStudentAnswers = [][]*StudentAnswer{
 	},
 }
 
-var testedRespResults = []*ResponseContent{
+var TestedRespResults = []*ResponseContent{
 	{
 		MarkResult: []struct {
 			StudentID int64   `json:"student_id"`
@@ -57,7 +71,7 @@ var testedRespResults = []*ResponseContent{
 			Analyze   string  `json:"analyze"`
 		}{
 			{
-				StudentID: 102,
+				StudentID: 2205,
 				Score:     7,
 				Analyze:   `答出“独立式组网”得1分.答出“控制器集中式（Fit AP + AC）组网”得1分.答出“成本低”得1分.答出“管理复杂”得1分.答出“集中管理”得1分.答出“成本高”得1分.`,
 			},
