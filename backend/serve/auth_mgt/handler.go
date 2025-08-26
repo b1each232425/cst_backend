@@ -139,7 +139,7 @@ func (h *handler) HandleDomain(ctx context.Context) {
 
 		var reqData DomainData
 		err = json.Unmarshal(body.Data, &reqData)
-		if err != nil || forceErr == "json.Unmarshal" {
+		if err != nil || forceErr == "json.UnmarshalDomainData" {
 			q.Err = fmt.Errorf("failed to unmarshal domain data: %w", err)
 			z.Error(q.Err.Error())
 			q.RespErr()
@@ -191,7 +191,7 @@ func (h *handler) HandleDomain(ctx context.Context) {
 
 		// 获取数据库连接
 		pgConn := cmn.GetPgxConn()
-		if pgConn == nil {
+		if pgConn == nil || forceErr == "GetPgxConn" {
 			q.Err = fmt.Errorf("database connection is not available")
 			z.Error(q.Err.Error())
 			q.RespErr()
@@ -200,27 +200,32 @@ func (h *handler) HandleDomain(ctx context.Context) {
 
 		// 开始事务
 		tx, err := pgConn.Begin(ctx)
-		if err != nil {
+		if err != nil || forceErr == "tx.Begin" {
 			q.Err = fmt.Errorf("failed to begin transaction: %w", err)
 			z.Error(q.Err.Error())
 			q.RespErr()
 			return
 		}
 		defer func() {
-			if err != nil {
+			if err != nil || q.Err != nil {
 				err = tx.Rollback(ctx)
 				if err != nil || forceErr == "tx.Rollback" {
 					z.Error("transaction rolled back due to error: " + err.Error())
 				}
 				return
 			}
+			err = tx.Commit(ctx)
+			if err != nil || forceErr == "tx.Commit" {
+				z.Error("failed to commit transaction: " + err.Error())
+			}
+			return
 		}()
 
 		// 向 t_domain 插入数据
 		var domainID int64
 		insertDomainSQL := `
-            INSERT INTO t_domain (name, domain, priority, domain_id, creator, create_time, updated_by, update_time, status)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+            INSERT INTO t_domain (name, domain, priority, domain_id, creator, create_time, updated_by, update_time, remark, status)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
             RETURNING id
         `
 		currentTime := time.Now().UnixMilli()
@@ -233,9 +238,10 @@ func (h *handler) HandleDomain(ctx context.Context) {
 			currentTime,
 			q.SysUser.ID.Int64,
 			currentTime,
+			reqData.Base.Remark,
 			"01", // 默认状态为有效
 		).Scan(&domainID)
-		if err != nil {
+		if err != nil || forceErr == "tx.QueryRow" {
 			q.Err = fmt.Errorf("failed to insert domain data: %w", err)
 			z.Error(q.Err.Error())
 			q.RespErr()
@@ -258,22 +264,13 @@ func (h *handler) HandleDomain(ctx context.Context) {
 					currentTime,
 					"01", // 默认状态为有效
 				)
-				if err != nil {
+				if err != nil || forceErr == "tx.Exec" {
 					q.Err = fmt.Errorf("failed to insert domain API association data: %w", err)
 					z.Error(q.Err.Error())
 					q.RespErr()
 					return
 				}
 			}
-		}
-
-		// 提交事务
-		err = tx.Commit(ctx)
-		if err != nil {
-			q.Err = fmt.Errorf("failed to commit transaction: %w", err)
-			z.Error(q.Err.Error())
-			q.RespErr()
-			return
 		}
 
 		// 返回成功结果
@@ -285,7 +282,7 @@ func (h *handler) HandleDomain(ctx context.Context) {
 		reqData.Base.Status = null.StringFrom("01")
 
 		q.Msg.Data, err = json.Marshal(reqData)
-		if err != nil {
+		if err != nil || forceErr == "json.MarshalResponse" {
 			q.Err = fmt.Errorf("failed to serialize response data: %w", err)
 			z.Error(q.Err.Error())
 			q.RespErr()
