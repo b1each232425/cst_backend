@@ -4,9 +4,9 @@ import "w2w.io/cmn"
 
 const (
 	CAPIAccessActionFull   = "full"   // API访问操作：完全访问
-	CAPIAccessActionQuery  = "query"  // API访问操作：查询数据
-	CAPIAccessActionAdd    = "add"    // API访问操作：添加数据
-	CAPIAccessActionEdit   = "edit"   // API访问操作：编辑数据
+	CAPIAccessActionCreate = "create" // API访问操作：添加数据
+	CAPIAccessActionRead   = "read"   // API访问操作：查询数据
+	CAPIAccessActionUpdate = "update" // API访问操作：更新数据
 	CAPIAccessActionDelete = "delete" // API访问操作：删除数据
 
 	CDomainRelationshipSelf   = "self"    // 域关系：自身域
@@ -19,9 +19,16 @@ const (
 	CDomainPriorityUser       int64 = 7 // 域优先级：普通用户
 )
 
+// Authority 用户权限信息
 type Authority struct {
 	Role              cmn.TDomain       // 用户角色
 	APIs              []cmn.TVDomainAPI // 用户的API列表
 	Domain            cmn.TDomain       // 用户所在域
 	AccessibleDomains []int64           // 用户可访问域列表
+}
+
+// DomainData 域数据
+type DomainData struct {
+	Base cmn.TDomain `json:"base"` // 域的基本信息
+	APIs []*cmn.TAPI `json:"apis"` // 域的API列表
 }

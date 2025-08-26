@@ -286,24 +286,24 @@ func CheckUserAPIAccessible(ctx context.Context, authority *Authority, apiPath s
 	}
 
 	switch accessAction {
-	case CAPIAccessActionAdd:
-		return checkUserAPIAccessible(ctx, a, apiPath, CAPIAccessActionAdd)
-	case CAPIAccessActionQuery:
-		return checkUserAPIAccessible(ctx, a, apiPath, CAPIAccessActionQuery)
-	case CAPIAccessActionEdit:
-		return checkUserAPIAccessible(ctx, a, apiPath, CAPIAccessActionEdit)
+	case CAPIAccessActionCreate:
+		return checkUserAPIAccessible(ctx, a, apiPath, CAPIAccessActionCreate)
+	case CAPIAccessActionRead:
+		return checkUserAPIAccessible(ctx, a, apiPath, CAPIAccessActionRead)
+	case CAPIAccessActionUpdate:
+		return checkUserAPIAccessible(ctx, a, apiPath, CAPIAccessActionUpdate)
 	case CAPIAccessActionDelete:
 		return checkUserAPIAccessible(ctx, a, apiPath, CAPIAccessActionDelete)
 	case CAPIAccessActionFull:
-		writable, err := checkUserAPIAccessible(ctx, a, apiPath, CAPIAccessActionAdd)
+		writable, err := checkUserAPIAccessible(ctx, a, apiPath, CAPIAccessActionCreate)
 		if err != nil {
 			return false, err
 		}
-		readable, err := checkUserAPIAccessible(ctx, a, apiPath, CAPIAccessActionQuery)
+		readable, err := checkUserAPIAccessible(ctx, a, apiPath, CAPIAccessActionRead)
 		if err != nil {
 			return false, err
 		}
-		editable, err := checkUserAPIAccessible(ctx, a, apiPath, CAPIAccessActionEdit)
+		editable, err := checkUserAPIAccessible(ctx, a, apiPath, CAPIAccessActionUpdate)
 		if err != nil {
 			return false, err
 		}
