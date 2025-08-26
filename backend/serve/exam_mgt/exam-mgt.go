@@ -1408,6 +1408,9 @@ func exam(ctx context.Context) {
 		for invigilator_rows.Next() {
 			var invigilatorID int64
 			q.Err = invigilator_rows.Scan(&invigilatorID)
+			if forceErr == "invigilator_rows.Scan" {
+				q.Err = fmt.Errorf("强制扫描监考员ID错误")
+			}
 			if q.Err != nil {
 				z.Error(q.Err.Error())
 				q.RespErr()
@@ -1419,10 +1422,13 @@ func exam(ctx context.Context) {
 		// 获取考场信息
 		var examRoomsConfigs []ExamRoomConfig
 		examRoomsConfigs = []ExamRoomConfig{}
-		z.Sugar().Infof("考场监考员配置: %v", ei.ExamRoomInvigilatorCount)
 		if ei.ExamRoomInvigilatorCount != nil {
-			if err := json.Unmarshal(ei.ExamRoomInvigilatorCount, &examRoomsConfigs); err != nil {
-				q.Err = fmt.Errorf("解析考场监考员配置失败: %s", err.Error())
+			q.Err = json.Unmarshal(ei.ExamRoomInvigilatorCount, &examRoomsConfigs)
+			if forceErr == "json.Unmarshal" {
+				q.Err = fmt.Errorf("强制解析考场监考员配置失败")
+			}
+			if q.Err != nil {
+				q.Err = fmt.Errorf("解析考场监考员配置失败: %s", q.Err.Error())
 				z.Error(q.Err.Error())
 				q.RespErr()
 				return
@@ -1437,6 +1443,9 @@ func exam(ctx context.Context) {
 		var examRooms []cmn.TExamRoom
 		if len(examRoomIDs) > 0 {
 			examRooms, q.Err = getExamRoomCapacity(ctx, examRoomIDs)
+			if forceErr == "getExamRoomCapacity" {
+				q.Err = fmt.Errorf("强制获取考场容量错误")
+			}
 			if q.Err != nil {
 				q.RespErr()
 				return
@@ -1889,8 +1898,10 @@ func exam(ctx context.Context) {
 		// 线下考试时，将考生分配到考场
 		if ExamData.ExamInfo.Mode.String == "02" && len(ExamData.ExamineeIDs) > 0 {
 			examinees, q.Err = allocateExamineesToRooms(examinees, examRooms)
+			if forceErr == "allocateExamineesToRooms" {
+				q.Err = fmt.Errorf("强制分配考生到考场错误")
+			}
 			if q.Err != nil {
-				z.Error(q.Err.Error())
 				q.RespErr()
 				return
 			}
@@ -1900,8 +1911,10 @@ func exam(ctx context.Context) {
 		var invigilations []cmn.TInvigilation
 		if len(ExamData.InvigilatorIDs) > 0 && ExamData.ExamInfo.Mode.String == "02" {
 			invigilations, q.Err = allocateInvigilatorsToRooms(newExamSessionIDs, ExamData.ExamRooms, ExamData.InvigilatorIDs)
+			if forceErr == "allocateInvigilatorsToRooms" {
+				q.Err = fmt.Errorf("强制分配监考员到考场错误")
+			}
 			if q.Err != nil {
-				z.Error(q.Err.Error())
 				q.RespErr()
 				return
 			}
@@ -1938,6 +1951,9 @@ func exam(ctx context.Context) {
 					) VALUES %s`, strings.Join(invValueStrings, ","))
 
 				_, q.Err = tx.Exec(ctx, invInsertQuery, invValueArgs...)
+				if forceErr == "tx.InsertInvigilations" {
+					q.Err = fmt.Errorf("强制执行批量插入监考员错误")
+				}
 				if q.Err != nil {
 					z.Error(q.Err.Error())
 					q.RespErr()
@@ -2033,6 +2049,9 @@ func exam(ctx context.Context) {
 			// 批量插入考场记录
 			sql := fmt.Sprintf(query, strings.Join(valueStrings, ","))
 			_, q.Err = tx.Exec(ctx, sql, valueArgs...)
+			if forceErr == "tx.InsertExamRecords" {
+				q.Err = fmt.Errorf("强制插入考场记录错误")
+			}
 			if q.Err != nil {
 				z.Error(q.Err.Error())
 				q.RespErr()
