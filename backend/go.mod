@@ -51,6 +51,7 @@ require (
 	github.com/valyala/fasthttp v1.64.0
 	github.com/vektah/gqlparser/v2 v2.5.30
 	github.com/vimeo/go-util v1.4.1
+	github.com/wneessen/go-mail v0.6.2
 	github.com/xuri/efp v0.0.1
 	go.etcd.io/bbolt v1.4.2
 	go.uber.org/zap v1.27.0

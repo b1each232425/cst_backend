@@ -7,10 +7,12 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/wneessen/go-mail"
 	"w2w.io/cmn"
 	"w2w.io/null"
 )
@@ -191,6 +193,445 @@ func Test_handler_HandleGetNewAccount(t *testing.T) {
 				}
 				if len(q.Msg.Data) == 0 {
 					t.Errorf("HandleGetNewAccount() 期望返回账号数据，但数据为空")
+				}
+			}
+		})
+	}
+}
+
+// Test_handler_HandleSendValidationCodeEmail 测试HandleSendValidationCodeEmail方法
+func Test_handler_HandleSendValidationCodeEmail(t *testing.T) {
+	type fields struct {
+		srv Service
+	}
+	type args struct {
+		ctx context.Context
+	}
+	tests := []struct {
+		name         string
+		fields       fields
+		args         args
+		wantErr      bool
+		desc         string
+		setupRedis   func() // 用于设置Redis验证码
+		cleanupRedis func() // 用于清理Redis数据
+	}{
+		{
+			name: "成功发送验证码邮件",
+			fields: fields{
+				srv: &MockService{
+					SendEmailFunc: func(ctx context.Context, recipient, subject, body string, contentType mail.ContentType) error {
+						return nil
+					},
+				},
+			},
+			args: args{
+				ctx: createMockContext("GET", "/api/user/send-validation-code", url.Values{
+					"recipient": []string{"test@example.com"},
+				}, ""),
+			},
+			setupRedis: func() {
+				rdb := cmn.GetRedisConn()
+				if rdb != nil {
+					rdb.Set(context.Background(), "verify:email:test@example.com", "123456", time.Minute*15)
+				}
+			},
+			cleanupRedis: func() {
+				rdb := cmn.GetRedisConn()
+				if rdb != nil {
+					rdb.Del(context.Background(), "verify:email:test@example.com")
+				}
+			},
+			wantErr: false,
+			desc:    "测试成功发送验证码邮件到有效邮箱地址",
+		},
+		{
+			name: "不支持的HTTP方法 - POST",
+			fields: fields{
+				srv: &MockService{},
+			},
+			args: args{
+				ctx: createMockContext("POST", "/api/user/send-validation-code", url.Values{
+					"recipient": []string{"test@example.com"},
+				}, ""),
+			},
+			wantErr: true,
+			desc:    "测试POST方法应该返回错误",
+		},
+		{
+			name: "不支持的HTTP方法 - PUT",
+			fields: fields{
+				srv: &MockService{},
+			},
+			args: args{
+				ctx: createMockContext("PUT", "/api/user/send-validation-code", url.Values{
+					"recipient": []string{"test@example.com"},
+				}, ""),
+			},
+			wantErr: true,
+			desc:    "测试PUT方法应该返回错误",
+		},
+		{
+			name: "不支持的HTTP方法 - DELETE",
+			fields: fields{
+				srv: &MockService{},
+			},
+			args: args{
+				ctx: createMockContext("DELETE", "/api/user/send-validation-code", url.Values{
+					"recipient": []string{"test@example.com"},
+				}, ""),
+			},
+			wantErr: true,
+			desc:    "测试DELETE方法应该返回错误",
+		},
+		{
+			name: "HTTP方法大小写不敏感 - get",
+			fields: fields{
+				srv: &MockService{
+					SendEmailFunc: func(ctx context.Context, recipient, subject, body string, contentType mail.ContentType) error {
+						return nil
+					},
+				},
+			},
+			args: args{
+				ctx: createMockContext("get", "/api/user/send-validation-code", url.Values{
+					"recipient": []string{"test@example.com"},
+				}, ""),
+			},
+			setupRedis: func() {
+				rdb := cmn.GetRedisConn()
+				if rdb != nil {
+					rdb.Set(context.Background(), "verify:email:test@example.com", "123456", time.Minute*15)
+				}
+			},
+			cleanupRedis: func() {
+				rdb := cmn.GetRedisConn()
+				if rdb != nil {
+					rdb.Del(context.Background(), "verify:email:test@example.com")
+				}
+			},
+			wantErr: false,
+			desc:    "测试小写get方法应该成功",
+		},
+		{
+			name: "HTTP方法大小写不敏感 - Get",
+			fields: fields{
+				srv: &MockService{
+					SendEmailFunc: func(ctx context.Context, recipient, subject, body string, contentType mail.ContentType) error {
+						return nil
+					},
+				},
+			},
+			args: args{
+				ctx: createMockContext("Get", "/api/user/send-validation-code", url.Values{
+					"recipient": []string{"test@example.com"},
+				}, ""),
+			},
+			setupRedis: func() {
+				rdb := cmn.GetRedisConn()
+				if rdb != nil {
+					rdb.Set(context.Background(), "verify:email:test@example.com", "123456", time.Minute*15)
+				}
+			},
+			cleanupRedis: func() {
+				rdb := cmn.GetRedisConn()
+				if rdb != nil {
+					rdb.Del(context.Background(), "verify:email:test@example.com")
+				}
+			},
+			wantErr: false,
+			desc:    "测试首字母大写Get方法应该成功",
+		},
+		{
+			name: "缺少邮箱地址参数",
+			fields: fields{
+				srv: &MockService{},
+			},
+			args: args{
+				ctx: createMockContext("GET", "/api/user/send-validation-code", url.Values{}, ""),
+			},
+			wantErr: true,
+			desc:    "测试缺少recipient参数应该返回错误",
+		},
+		{
+			name: "邮箱地址参数为空字符串",
+			fields: fields{
+				srv: &MockService{},
+			},
+			args: args{
+				ctx: createMockContext("GET", "/api/user/send-validation-code", url.Values{
+					"recipient": []string{""},
+				}, ""),
+			},
+			wantErr: true,
+			desc:    "测试空邮箱地址应该返回错误",
+		},
+		{
+			name: "强制rand.Int错误",
+			fields: fields{
+				srv: &MockService{},
+			},
+			args: args{
+				ctx: createMockContext("GET", "/api/user/send-validation-code", url.Values{
+					"recipient": []string{"test@example.com"},
+				}, "rand.Int"),
+			},
+			wantErr: true,
+			desc:    "测试强制rand.Int错误",
+		},
+		{
+			name: "SendEmail服务错误",
+			fields: fields{
+				srv: &MockService{
+					SendEmailFunc: func(ctx context.Context, recipient, subject, body string, contentType mail.ContentType) error {
+						return fmt.Errorf("邮件服务器连接失败")
+					},
+				},
+			},
+			args: args{
+				ctx: createMockContext("GET", "/api/user/send-validation-code", url.Values{
+					"recipient": []string{"test@example.com"},
+				}, ""),
+			},
+			wantErr: true,
+			desc:    "测试邮件发送失败应该返回错误",
+		},
+		{
+			name: "强制rdb.Set错误",
+			fields: fields{
+				srv: &MockService{
+					SendEmailFunc: func(ctx context.Context, recipient, subject, body string, contentType mail.ContentType) error {
+						return nil
+					},
+				},
+			},
+			args: args{
+				ctx: createMockContext("GET", "/api/user/send-validation-code", url.Values{
+					"recipient": []string{"test@example.com"},
+				}, "rdb.Set"),
+			},
+			wantErr: true,
+			desc:    "测试强制Redis Set错误",
+		},
+		{
+			name: "复杂邮箱地址测试",
+			fields: fields{
+				srv: &MockService{
+					SendEmailFunc: func(ctx context.Context, recipient, subject, body string, contentType mail.ContentType) error {
+						return nil
+					},
+				},
+			},
+			args: args{
+				ctx: createMockContext("GET", "/api/user/send-validation-code", url.Values{
+					"recipient": []string{"user.name+tag@example-domain.co.uk"},
+				}, ""),
+			},
+			setupRedis: func() {
+				rdb := cmn.GetRedisConn()
+				if rdb != nil {
+					rdb.Set(context.Background(), "verify:email:user.name+tag@example-domain.co.uk", "123456", time.Minute*15)
+				}
+			},
+			cleanupRedis: func() {
+				rdb := cmn.GetRedisConn()
+				if rdb != nil {
+					rdb.Del(context.Background(), "verify:email:user.name+tag@example-domain.co.uk")
+				}
+			},
+			wantErr: false,
+			desc:    "测试复杂格式的邮箱地址",
+		},
+		{
+			name: "包含特殊字符的邮箱地址",
+			fields: fields{
+				srv: &MockService{
+					SendEmailFunc: func(ctx context.Context, recipient, subject, body string, contentType mail.ContentType) error {
+						return nil
+					},
+				},
+			},
+			args: args{
+				ctx: createMockContext("GET", "/api/user/send-validation-code", url.Values{
+					"recipient": []string{"test+special@example.com"},
+				}, ""),
+			},
+			setupRedis: func() {
+				rdb := cmn.GetRedisConn()
+				if rdb != nil {
+					rdb.Set(context.Background(), "verify:email:test+special@example.com", "123456", time.Minute*15)
+				}
+			},
+			cleanupRedis: func() {
+				rdb := cmn.GetRedisConn()
+				if rdb != nil {
+					rdb.Del(context.Background(), "verify:email:test+special@example.com")
+				}
+			},
+			wantErr: false,
+			desc:    "测试包含特殊字符的邮箱地址",
+		},
+		{
+			name: "大写邮箱地址测试",
+			fields: fields{
+				srv: &MockService{
+					SendEmailFunc: func(ctx context.Context, recipient, subject, body string, contentType mail.ContentType) error {
+						return nil
+					},
+				},
+			},
+			args: args{
+				ctx: createMockContext("GET", "/api/user/send-validation-code", url.Values{
+					"recipient": []string{"TEST@EXAMPLE.COM"},
+				}, ""),
+			},
+			setupRedis: func() {
+				rdb := cmn.GetRedisConn()
+				if rdb != nil {
+					rdb.Set(context.Background(), "verify:email:test@example.com", "123456", time.Minute*15)
+				}
+			},
+			cleanupRedis: func() {
+				rdb := cmn.GetRedisConn()
+				if rdb != nil {
+					rdb.Del(context.Background(), "verify:email:test@example.com")
+				}
+			},
+			wantErr: false,
+			desc:    "测试大写邮箱地址",
+		},
+		{
+			name: "中文域名邮箱测试",
+			fields: fields{
+				srv: &MockService{
+					SendEmailFunc: func(ctx context.Context, recipient, subject, body string, contentType mail.ContentType) error {
+						return nil
+					},
+				},
+			},
+			args: args{
+				ctx: createMockContext("GET", "/api/user/send-validation-code", url.Values{
+					"recipient": []string{"test@测试.com"},
+				}, ""),
+			},
+			setupRedis: func() {
+				rdb := cmn.GetRedisConn()
+				if rdb != nil {
+					rdb.Set(context.Background(), "verify:email:test@测试.com", "123456", time.Minute*15)
+				}
+			},
+			cleanupRedis: func() {
+				rdb := cmn.GetRedisConn()
+				if rdb != nil {
+					rdb.Del(context.Background(), "verify:email:test@测试.com")
+				}
+			},
+			wantErr: false,
+			desc:    "测试中文域名邮箱地址",
+		},
+		{
+			name: "验证邮件内容和格式",
+			fields: fields{
+				srv: &MockService{
+					SendEmailFunc: func(ctx context.Context, recipient, subject, body string, contentType mail.ContentType) error {
+						// 验证邮件参数
+						if recipient != "verify@example.com" {
+							return fmt.Errorf("收件人不正确: %s", recipient)
+						}
+						if subject != "3min学习平台 - 验证您的电子邮件地址" {
+							return fmt.Errorf("邮件主题不正确: %s", subject)
+						}
+						if !strings.Contains(body, "3min学习平台") {
+							return fmt.Errorf("邮件内容缺少平台名称")
+						}
+						if !strings.Contains(body, "15") {
+							return fmt.Errorf("邮件内容缺少有效期信息")
+						}
+						if contentType != mail.TypeTextHTML {
+							return fmt.Errorf("邮件内容类型不正确: %s", contentType)
+						}
+						return nil
+					},
+				},
+			},
+			args: args{
+				ctx: createMockContext("GET", "/api/user/send-validation-code", url.Values{
+					"recipient": []string{"verify@example.com"},
+				}, ""),
+			},
+			setupRedis: func() {
+				rdb := cmn.GetRedisConn()
+				if rdb != nil {
+					rdb.Set(context.Background(), "verify:email:verify@example.com", "123456", time.Minute*15)
+				}
+			},
+			cleanupRedis: func() {
+				rdb := cmn.GetRedisConn()
+				if rdb != nil {
+					rdb.Del(context.Background(), "verify:email:verify@example.com")
+				}
+			},
+			wantErr: false,
+			desc:    "测试验证邮件内容和格式是否正确",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Logf("开始测试: %s", tt.desc)
+
+			h := &handler{
+				srv: tt.fields.srv,
+			}
+
+			// 设置Redis测试环境
+			if tt.setupRedis != nil {
+				tt.setupRedis()
+			}
+			if tt.cleanupRedis != nil {
+				defer tt.cleanupRedis()
+			}
+
+			h.HandleSendValidationCodeEmail(tt.args.ctx)
+
+			// 获取ServiceCtx以检查结果
+			q := cmn.GetCtxValue(tt.args.ctx)
+			if tt.wantErr {
+				if q.Err == nil {
+					t.Errorf("HandleSendValidationCodeEmail() 期望有错误，但没有错误")
+				} else {
+					t.Logf("预期错误已正确返回: %v", q.Err)
+				}
+			} else {
+				if q.Err != nil {
+					t.Errorf("HandleSendValidationCodeEmail() 不期望有错误，但出现错误: %v", q.Err)
+				} else {
+					// 检查成功响应
+					if q.Msg.Status != 0 {
+						t.Errorf("HandleSendValidationCodeEmail() 期望状态码为 0，实际为 %d", q.Msg.Status)
+					}
+					if q.Msg.Msg != "success" {
+						t.Errorf("HandleSendValidationCodeEmail() 期望消息为 'success'，实际为 '%s'", q.Msg.Msg)
+					}
+					t.Logf("验证码邮件发送成功")
+
+					// 验证Redis中是否保存了验证码
+					if tt.setupRedis != nil {
+						rdb := cmn.GetRedisConn()
+						q := cmn.GetCtxValue(tt.args.ctx)
+						query := q.R.URL.Query()
+						recipient := query.Get("recipient")
+						key := "verify:email:" + strings.ToLower(recipient)
+						code, err := rdb.Get(tt.args.ctx, key).Result()
+						if err != nil {
+							t.Errorf("验证码未保存到Redis: %v", err)
+						} else {
+							if len(code) != 6 {
+								t.Errorf("验证码长度不正确，期望6位，实际%d位: %s", len(code), code)
+							}
+							t.Logf("验证码已成功保存到Redis: %s", code)
+						}
+					}
 				}
 			}
 		})
@@ -2099,6 +2540,563 @@ func Test_handler_HandleLogout(t *testing.T) {
 				}
 				if q.Msg.Msg != "logout success" {
 					t.Errorf("HandleLogout() 期望消息为 'logout success'，实际为 '%s'", q.Msg.Msg)
+				}
+			}
+		})
+	}
+}
+
+// Test_handler_HandleRegisterByEmail 测试HandleRegisterByEmail方法
+func Test_handler_HandleRegisterByEmail(t *testing.T) {
+	type fields struct {
+		srv Service
+	}
+	type args struct {
+		ctx context.Context
+	}
+	tests := []struct {
+		name         string
+		fields       fields
+		args         args
+		wantErr      bool
+		setupRedis   func() // 用于设置Redis验证码
+		cleanupRedis func() // 用于清理Redis数据
+	}{
+		{
+			name: "成功注册用户",
+			fields: fields{
+				srv: &MockService{
+					ValidateUserFunc: func(ctx context.Context, tx pgx.Tx, users []User) ([]User, []User, []User, error) {
+						return users, []User{}, []User{}, nil
+					},
+				},
+			},
+			args: args{
+				ctx: createMockContextWithBodyAndQuery("POST", "/api/user/register", `{
+					"Email": "test@example.com",
+					"UserToken": "password123",
+					"OfficialName": "测试用户"
+				}`, url.Values{"verification-code": []string{"123456"}}, ""),
+			},
+			wantErr: false,
+			setupRedis: func() {
+				rdb := cmn.GetRedisConn()
+				if rdb != nil {
+					rdb.Set(context.Background(), "verify:email:test@example.com", "123456", time.Minute*5)
+				}
+			},
+			cleanupRedis: func() {
+				rdb := cmn.GetRedisConn()
+				if rdb != nil {
+					rdb.Del(context.Background(), "verify:email:test@example.com")
+				}
+			},
+		},
+		{
+			name: "不支持的HTTP方法 - GET",
+			fields: fields{
+				srv: &MockService{},
+			},
+			args: args{
+				ctx: createMockContext("GET", "/api/user/register", url.Values{}, ""),
+			},
+			wantErr: true,
+		},
+		{
+			name: "不支持的HTTP方法 - PUT",
+			fields: fields{
+				srv: &MockService{},
+			},
+			args: args{
+				ctx: createMockContext("PUT", "/api/user/register", url.Values{}, ""),
+			},
+			wantErr: true,
+		},
+		{
+			name: "不支持的HTTP方法 - DELETE",
+			fields: fields{
+				srv: &MockService{},
+			},
+			args: args{
+				ctx: createMockContext("DELETE", "/api/user/register", url.Values{}, ""),
+			},
+			wantErr: true,
+		},
+		{
+			name: "HTTP方法大小写不敏感 - post",
+			fields: fields{
+				srv: &MockService{
+					ValidateUserFunc: func(ctx context.Context, tx pgx.Tx, users []User) ([]User, []User, []User, error) {
+						return users, []User{}, []User{}, nil
+					},
+				},
+			},
+			args: args{
+				ctx: createMockContextWithBodyAndQuery("post", "/api/user/register", `{
+					"Email": "test2@example.com",
+					"UserToken": "password123",
+					"OfficialName": "测试用户2"
+				}`, url.Values{"verification-code": []string{"654321"}}, ""),
+			},
+			wantErr: false,
+			setupRedis: func() {
+				rdb := cmn.GetRedisConn()
+				if rdb != nil {
+					rdb.Set(context.Background(), "verify:email:test2@example.com", "654321", time.Minute*5)
+				}
+			},
+			cleanupRedis: func() {
+				rdb := cmn.GetRedisConn()
+				if rdb != nil {
+					rdb.Del(context.Background(), "verify:email:test2@example.com")
+				}
+			},
+		},
+		{
+			name: "io.ReadAll强制错误",
+			fields: fields{
+				srv: &MockService{},
+			},
+			args: args{
+				ctx: createMockContextWithBodyAndQuery("POST", "/api/user/register", `{"Email": "test@example.com"}`, url.Values{}, "io.ReadAll"),
+			},
+			wantErr: true,
+		},
+		{
+			name: "io.Close强制错误",
+			fields: fields{
+				srv: &MockService{},
+			},
+			args: args{
+				ctx: createMockContextWithBodyAndQuery("POST", "/api/user/register", `{"Email": "test@example.com"}`, url.Values{}, "io.Close"),
+			},
+			wantErr: true,
+		},
+		{
+			name: "请求体为空",
+			fields: fields{
+				srv: &MockService{},
+			},
+			args: args{
+				ctx: createMockContextWithBodyAndQuery("POST", "/api/user/register", "", url.Values{}, ""),
+			},
+			wantErr: true,
+		},
+		{
+			name: "json.Unmarshal强制错误 - 请求体解析",
+			fields: fields{
+				srv: &MockService{},
+			},
+			args: args{
+				ctx: createMockContextWithBodyAndQuery("POST", "/api/user/register", `{"Email": "test@example.com"}`, url.Values{}, "json.Unmarshal"),
+			},
+			wantErr: true,
+		},
+		{
+			name: "无效的JSON格式 - 用户数据",
+			fields: fields{
+				srv: &MockService{},
+			},
+			args: args{
+				ctx: createMockContextWithBodyAndQuery("POST", "/api/user/register", `invalid json`, url.Values{}, ""),
+			},
+			wantErr: true,
+		},
+		{
+			name: "缺少邮箱地址",
+			fields: fields{
+				srv: &MockService{},
+			},
+			args: args{
+				ctx: createMockContextWithBodyAndQuery("POST", "/api/user/register", `{
+					"UserToken": "password123",
+					"OfficialName": "测试用户"
+				}`, url.Values{}, ""),
+			},
+			wantErr: true,
+		},
+		{
+			name: "缺少密码",
+			fields: fields{
+				srv: &MockService{},
+			},
+			args: args{
+				ctx: createMockContextWithBodyAndQuery("POST", "/api/user/register", `{
+					"Email": "test@example.com",
+					"OfficialName": "测试用户"
+				}`, url.Values{}, ""),
+			},
+			wantErr: true,
+		},
+		{
+			name: "tx.Begin强制错误",
+			fields: fields{
+				srv: &MockService{},
+			},
+			args: args{
+				ctx: createMockContextWithBodyAndQuery("POST", "/api/user/register", `{
+					"Email": "test@example.com",
+					"UserToken": "password123",
+					"OfficialName": "测试用户"
+				}`, url.Values{}, "tx.Begin"),
+			},
+			wantErr: true,
+		},
+		{
+			name: "ValidateUserToBeInsert服务错误",
+			fields: fields{
+				srv: &MockService{
+					ValidateUserFunc: func(ctx context.Context, tx pgx.Tx, users []User) ([]User, []User, []User, error) {
+						return nil, nil, nil, fmt.Errorf("数据库连接失败")
+					},
+				},
+			},
+			args: args{
+				ctx: createMockContextWithBodyAndQuery("POST", "/api/user/register", `{
+					"Email": "test@example.com",
+					"UserToken": "password123",
+					"OfficialName": "测试用户"
+				}`, url.Values{}, ""),
+			},
+			wantErr: true,
+		},
+		{
+			name: "用户信息不合法",
+			fields: fields{
+				srv: &MockService{
+					ValidateUserFunc: func(ctx context.Context, tx pgx.Tx, users []User) ([]User, []User, []User, error) {
+						return []User{}, []User{
+							{
+								TUser: cmn.TUser{
+									Account:      "invalid_user",
+									OfficialName: null.NewString("无效用户", true),
+									Email:        null.NewString("test@example.com", true),
+								},
+								ErrorMsg: []null.String{
+									null.NewString("邮箱已存在", true),
+								},
+							},
+						}, []User{}, nil
+					},
+				},
+			},
+			args: args{
+				ctx: createMockContextWithBodyAndQuery("POST", "/api/user/register", `{
+					"Email": "test@example.com",
+					"UserToken": "password123",
+					"OfficialName": "测试用户"
+				}`, url.Values{}, ""),
+			},
+			wantErr: false,
+		},
+		{
+			name: "json.Marshal强制错误 - 无效用户序列化",
+			fields: fields{
+				srv: &MockService{
+					ValidateUserFunc: func(ctx context.Context, tx pgx.Tx, users []User) ([]User, []User, []User, error) {
+						return []User{}, []User{
+							{
+								TUser: cmn.TUser{
+									Account:      "invalid_user",
+									OfficialName: null.NewString("无效用户", true),
+									Email:        null.NewString("test@example.com", true),
+								},
+								ErrorMsg: []null.String{
+									null.NewString("邮箱已存在", true),
+								},
+							},
+						}, []User{}, nil
+					},
+				},
+			},
+			args: args{
+				ctx: createMockContextWithBodyAndQuery("POST", "/api/user/register", `{
+					"Email": "test@example.com",
+					"UserToken": "password123",
+					"OfficialName": "测试用户"
+				}`, url.Values{}, "json.Marshal"),
+			},
+			wantErr: true,
+		},
+		{
+			name: "用户已存在",
+			fields: fields{
+				srv: &MockService{
+					ValidateUserFunc: func(ctx context.Context, tx pgx.Tx, users []User) ([]User, []User, []User, error) {
+						return []User{}, []User{}, []User{
+							{
+								TUser: cmn.TUser{
+									Account:      "existing_user",
+									OfficialName: null.NewString("已存在用户", true),
+									Email:        null.NewString("test@example.com", true),
+								},
+							},
+						}, nil
+					},
+				},
+			},
+			args: args{
+				ctx: createMockContextWithBodyAndQuery("POST", "/api/user/register", `{
+					"Email": "test@example.com",
+					"UserToken": "password123",
+					"OfficialName": "测试用户"
+				}`, url.Values{}, ""),
+			},
+			wantErr: false,
+		},
+		{
+			name: "缺少验证码参数",
+			fields: fields{
+				srv: &MockService{
+					ValidateUserFunc: func(ctx context.Context, tx pgx.Tx, users []User) ([]User, []User, []User, error) {
+						return users, []User{}, []User{}, nil
+					},
+				},
+			},
+			args: args{
+				ctx: createMockContextWithBodyAndQuery("POST", "/api/user/register", `{
+					"Email": "test@example.com",
+					"UserToken": "password123",
+					"OfficialName": "测试用户"
+				}`, url.Values{}, ""),
+			},
+			wantErr: true,
+		},
+		{
+			name: "rdb.Get强制错误",
+			fields: fields{
+				srv: &MockService{
+					ValidateUserFunc: func(ctx context.Context, tx pgx.Tx, users []User) ([]User, []User, []User, error) {
+						return users, []User{}, []User{}, nil
+					},
+				},
+			},
+			args: args{
+				ctx: createMockContextWithBodyAndQuery("POST", "/api/user/register", `{
+					"Email": "test@example.com",
+					"UserToken": "password123",
+					"OfficialName": "测试用户"
+				}`, url.Values{"verification-code": []string{"123456"}}, "rdb.Get"),
+			},
+			wantErr: true,
+		},
+		{
+			name: "验证码已过期",
+			fields: fields{
+				srv: &MockService{
+					ValidateUserFunc: func(ctx context.Context, tx pgx.Tx, users []User) ([]User, []User, []User, error) {
+						return users, []User{}, []User{}, nil
+					},
+				},
+			},
+			args: args{
+				ctx: createMockContextWithBodyAndQuery("POST", "/api/user/register", `{
+					"Email": "expired@example.com",
+					"UserToken": "password123",
+					"OfficialName": "测试用户"
+				}`, url.Values{"verification-code": []string{"123456"}}, ""),
+			},
+			wantErr: true,
+		},
+		{
+			name: "验证码错误",
+			fields: fields{
+				srv: &MockService{
+					ValidateUserFunc: func(ctx context.Context, tx pgx.Tx, users []User) ([]User, []User, []User, error) {
+						return users, []User{}, []User{}, nil
+					},
+				},
+			},
+			args: args{
+				ctx: createMockContextWithBodyAndQuery("POST", "/api/user/register", `{
+					"Email": "wrong@example.com",
+					"UserToken": "password123",
+					"OfficialName": "测试用户"
+				}`, url.Values{"verification-code": []string{"wrong-code"}}, ""),
+			},
+			wantErr: true,
+			setupRedis: func() {
+				rdb := cmn.GetRedisConn()
+				if rdb != nil {
+					rdb.Set(context.Background(), "verify:email:wrong@example.com", "123456", time.Minute*5)
+				}
+			},
+			cleanupRedis: func() {
+				rdb := cmn.GetRedisConn()
+				if rdb != nil {
+					rdb.Del(context.Background(), "verify:email:wrong@example.com")
+				}
+			},
+		},
+		{
+			name: "InsertUsersWithAccount服务错误",
+			fields: fields{
+				srv: &MockService{
+					ValidateUserFunc: func(ctx context.Context, tx pgx.Tx, users []User) ([]User, []User, []User, error) {
+						return users, []User{}, []User{}, nil
+					},
+					err: fmt.Errorf("插入用户失败"),
+				},
+			},
+			args: args{
+				ctx: createMockContextWithBodyAndQuery("POST", "/api/user/register", `{
+					"Email": "insert-error@example.com",
+					"UserToken": "password123",
+					"OfficialName": "测试用户"
+				}`, url.Values{"verification-code": []string{"123456"}}, ""),
+			},
+			wantErr: true,
+			setupRedis: func() {
+				rdb := cmn.GetRedisConn()
+				if rdb != nil {
+					rdb.Set(context.Background(), "verify:email:insert-error@example.com", "123456", time.Minute*5)
+				}
+			},
+			cleanupRedis: func() {
+				rdb := cmn.GetRedisConn()
+				if rdb != nil {
+					rdb.Del(context.Background(), "verify:email:insert-error@example.com")
+				}
+			},
+		},
+		{
+			name: "json.Marshal强制错误 - 插入用户序列化",
+			fields: fields{
+				srv: &MockService{
+					ValidateUserFunc: func(ctx context.Context, tx pgx.Tx, users []User) ([]User, []User, []User, error) {
+						return users, []User{}, []User{}, nil
+					},
+				},
+			},
+			args: args{
+				ctx: createMockContextWithBodyAndQuery("POST", "/api/user/register", `{
+					"Email": "marshal-error@example.com",
+					"UserToken": "password123",
+					"OfficialName": "测试用户"
+				}`, url.Values{"verification-code": []string{"123456"}}, "json.Marshal"),
+			},
+			wantErr: true,
+			setupRedis: func() {
+				rdb := cmn.GetRedisConn()
+				if rdb != nil {
+					rdb.Set(context.Background(), "verify:email:marshal-error@example.com", "123456", time.Minute*5)
+				}
+			},
+			cleanupRedis: func() {
+				rdb := cmn.GetRedisConn()
+				if rdb != nil {
+					rdb.Del(context.Background(), "verify:email:marshal-error@example.com")
+				}
+			},
+		},
+		{
+			name: "json.UnmarshalUser强制错误",
+			fields: fields{
+				srv: &MockService{
+					ValidateUserFunc: func(ctx context.Context, tx pgx.Tx, users []User) ([]User, []User, []User, error) {
+						return users, []User{}, []User{}, nil
+					},
+				},
+			},
+			args: args{
+				ctx: createMockContextWithBodyAndQuery("POST", "/api/user/register", `{
+					"Email": "marshal-error@example.com",
+					"UserToken": "password123",
+					"OfficialName": "测试用户"
+				}`, url.Values{"verification-code": []string{"123456"}}, "json.UnmarshalUser"),
+			},
+			wantErr: true,
+			setupRedis: func() {
+				rdb := cmn.GetRedisConn()
+				if rdb != nil {
+					rdb.Set(context.Background(), "verify:email:marshal-error@example.com", "123456", time.Minute*5)
+				}
+			},
+			cleanupRedis: func() {
+				rdb := cmn.GetRedisConn()
+				if rdb != nil {
+					rdb.Del(context.Background(), "verify:email:marshal-error@example.com")
+				}
+			},
+		},
+		{
+			name: "复杂用户数据注册",
+			fields: fields{
+				srv: &MockService{
+					ValidateUserFunc: func(ctx context.Context, tx pgx.Tx, users []User) ([]User, []User, []User, error) {
+						return users, []User{}, []User{}, nil
+					},
+				},
+			},
+			args: args{
+				ctx: createMockContextWithBodyAndQuery("POST", "/api/user/register", `{
+					"Email": "complex@example.com",
+					"UserToken": "password123",
+					"OfficialName": "复杂用户",
+					"Gender": "M",
+					"MobilePhone": "13800138000",
+					"IDCardNo": "123456789012345678",
+					"IDCardType": "身份证",
+					"Nickname": "复杂昵称"
+				}`, url.Values{"verification-code": []string{"complex123"}}, ""),
+			},
+			wantErr: false,
+			setupRedis: func() {
+				rdb := cmn.GetRedisConn()
+				if rdb != nil {
+					rdb.Set(context.Background(), "verify:email:complex@example.com", "complex123", time.Minute*5)
+				}
+			},
+			cleanupRedis: func() {
+				rdb := cmn.GetRedisConn()
+				if rdb != nil {
+					rdb.Del(context.Background(), "verify:email:complex@example.com")
+				}
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// 设置Redis数据
+			if tt.setupRedis != nil {
+				tt.setupRedis()
+			}
+
+			// 清理Redis数据
+			if tt.cleanupRedis != nil {
+				defer tt.cleanupRedis()
+			}
+
+			h := &handler{
+				srv: tt.fields.srv,
+			}
+			h.HandleRegisterByEmail(tt.args.ctx)
+
+			// 获取ServiceCtx以检查结果
+			q := cmn.GetCtxValue(tt.args.ctx)
+			if tt.wantErr {
+				if q.Err == nil {
+					t.Errorf("HandleRegisterByEmail() 期望有错误，但没有错误")
+				}
+			} else {
+				if q.Err != nil {
+					t.Errorf("HandleRegisterByEmail() 不期望有错误，但出现错误: %v", q.Err)
+				}
+				// 检查成功响应
+				if q.Msg.Status == 0 {
+					if q.Msg.Msg != "注册成功" {
+						t.Errorf("HandleRegisterByEmail() 期望消息为 '注册成功'，实际为 '%s'", q.Msg.Msg)
+					}
+					if len(q.Msg.Data) == 0 {
+						t.Errorf("HandleRegisterByEmail() 期望返回用户数据，但数据为空")
+					}
+				} else if q.Msg.Status == -1 {
+					// 状态码-1表示注册失败（用户信息不合法或用户已存在）
+					if q.Msg.Msg != "注册失败，用户信息不合法" && q.Msg.Msg != "注册失败，用户已存在" {
+						t.Errorf("HandleRegisterByEmail() 期望消息为注册失败相关信息，实际为 '%s'", q.Msg.Msg)
+					}
+				} else {
+					t.Errorf("HandleRegisterByEmail() 期望状态码为 0 或 -1，实际为 %d", q.Msg.Status)
 				}
 			}
 		})
