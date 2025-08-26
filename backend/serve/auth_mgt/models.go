@@ -25,8 +25,3 @@ type Authority struct {
 	Domain            cmn.TDomain       // 用户所在域
 	AccessibleDomains []int64           // 用户可访问域列表
 }
-
-type SelectableAPI struct {
-	cmn.TAPI
-	Children []*SelectableAPI `json:"children,omitempty"` // 子API列表
-}

@@ -401,15 +401,97 @@ func GetDomainRelationship(ctx context.Context, authority *Authority, targetDoma
 }
 
 // querySelectableAPIs 查询可选API列表
-//func querySelectableAPIs(ctx context.Context, parentDomain string) (apis []*SelectableAPI, err error) {
-//	switch DomainLevel(parentDomain) {
-//	case 0: // 不存在父域，判断为机构，可选系统的所有API
-//		// TODO
-//		// 直接从t_api表中查询所有API
-//		break
-//	default: // 存在父域，判断为部门/组/角色，可选父域的API子集
-//		// TODO
-//		// 从v_domain_api视图中查询父域的API列表
-//		break
-//	}
-//}
+// 根据父域级别决定查询范围：机构级别查询所有API，部门/组/角色级别查询父域的API子集
+func querySelectableAPIs(ctx context.Context, parentDomain string) (apis []*cmn.TAPI, err error) {
+	forceErr, _ := ctx.Value("force-error").(string) // 用于强制执行错误处理代码
+
+	apis = make([]*cmn.TAPI, 0)
+
+	// 获取数据库连接
+	pgConn := cmn.GetPgxConn()
+	if pgConn == nil || forceErr == "querySelectableAPIs.pgConn.nil" {
+		e := fmt.Errorf("pgx connection is nil")
+		z.Error(e.Error())
+		return nil, e
+	}
+
+	switch DomainLevel(parentDomain) {
+	case 0: // 不存在父域，判断为机构，可选系统的所有API
+		// 直接从t_api表中查询所有有效的API
+		apiQuery := `SELECT id, name, expose_path, access_action, access_control_level
+					FROM t_api 
+					WHERE status = '01' AND (remark IS NULL OR remark != 'menu')
+					ORDER BY name`
+
+		rows, err := pgConn.Query(ctx, apiQuery)
+		if err != nil || forceErr == "querySelectableAPIs.QueryAllAPIs" {
+			e := fmt.Errorf("failed to query APIs: %w", err)
+			z.Error(e.Error())
+			return nil, e
+		}
+		defer rows.Close()
+
+		for rows.Next() {
+			var api cmn.TAPI
+			err = rows.Scan(
+				&api.ID,
+				&api.Name,
+				&api.ExposePath,
+				&api.AccessAction,
+				&api.AccessControlLevel,
+			)
+			if err != nil || forceErr == "querySelectableAPIs.ScanAllAPIs" {
+				e := fmt.Errorf("failed to scan rows: %w", err)
+				z.Error(e.Error())
+				return nil, e
+			}
+			apis = append(apis, &api)
+		}
+
+		if rows.Err() != nil || forceErr == "querySelectableAPIs.AllAPIsRowsErr" {
+			e := fmt.Errorf("error occured while scanning rows: %w", rows.Err())
+			z.Error(e.Error())
+			return nil, e
+		}
+
+	default: // 存在父域，判断为部门/组/角色，可选父域的API子集
+		// 从v_domain_api视图中查询父域的API列表
+		apiQuery := `SELECT DISTINCT api_id, api_name, expose_path, access_action, access_control_level
+					FROM v_domain_api 
+					WHERE domain = $1 AND status = '01' AND (remark IS NULL OR remark != 'menu')
+					ORDER BY api_name`
+
+		rows, err := pgConn.Query(ctx, apiQuery, parentDomain)
+		if err != nil || forceErr == "querySelectableAPIs.QueryDomainAPIs" {
+			e := fmt.Errorf("failed to query APIs: %w", err)
+			z.Error(e.Error())
+			return nil, e
+		}
+		defer rows.Close()
+
+		for rows.Next() {
+			var api cmn.TAPI
+			err = rows.Scan(
+				&api.ID,
+				&api.Name,
+				&api.ExposePath,
+				&api.AccessAction,
+				&api.AccessControlLevel,
+			)
+			if err != nil || forceErr == "querySelectableAPIs.ScanDomainAPIs" {
+				e := fmt.Errorf("failed to scan rows: %w", err)
+				z.Error(e.Error())
+				return nil, e
+			}
+			apis = append(apis, &api)
+		}
+
+		if rows.Err() != nil || forceErr == "querySelectableAPIs.DomainAPIsRowsErr" {
+			e := fmt.Errorf("error occured while scanning rows: %w", rows.Err())
+			z.Error(e.Error())
+			return nil, e
+		}
+	}
+
+	return apis, nil
+}
