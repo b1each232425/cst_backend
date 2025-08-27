@@ -91,6 +91,15 @@
     "apiHost": "app_model:6268",
     "ocrApiPath": "/api/idCardRecognition"
   },
+  "chatModel": {
+    "endPoint": "https://ark.cn-beijing.volces.com/api/v3/chat/completions",
+    "model": "doubao-seed-1-6-250615",
+    "apiKey": "a8982954-62d6-4dc1-9672-a46316c1e5bf",
+    "maxConcurrency": 50,
+    "tokenizer": {
+      "endPoint": "https://ark.cn-beijing.volces.com/api/v3/tokenization"
+    }
+  },
   "timeSync":{
     "timeSyncInterval":5000,
     "poolInitialSize":100

@@ -1,9 +1,9 @@
 /*
- * @Author: zdl <1311866870@qq.com>
- * @Description: 练习管理数据库层函数逻辑测试
- * @Date: 2025-07-24 14:51:50
- * @LastEditors: zdl <1311866870@qq.com>
- * @LastEditTime: 2025-08-25 10:58:35
+* @Author: zdl <1311866870@qq.com>
+* @Description: 练习管理数据库层函数逻辑测试
+* @Date: 2025-07-24 14:51:50
+* @LastEditors: zdl <1311866870@qq.com>
+* @LastEditTime: 2025-08-27 13:03:10
  */
 package practice_mgt
 
@@ -1932,7 +1932,7 @@ func TestListPracticeS(t *testing.T) {
 	// 先创建数据，不管到底是不是这个测试用例需要的 三种练习状态 然后还有状态不一的练习
 	// 删除 exam_paper_id 字段后，每组数据保留 8 个字段，调整占位符编号
 	s = `INSERT INTO t_practice (id,name,correct_mode,creator,allowed_attempts,type,paper_id,status)
-VALUES 
+VALUES
 ($1, $2, $3, $4, $5, $6, $7, $8),
 ($9, $10, $11, $12, $13, $14, $15, $16)`
 
@@ -1986,10 +1986,10 @@ VALUES
 		// 2. 插入考卷
 		var epID int64
 		insertPaperSQL := `
-        INSERT INTO assessuser.t_exam_paper 
-            (exam_session_id, practice_id, name, creator, create_time, update_time) 
-        VALUES ($1, $2, $3, $4, $5, $6) 
-        RETURNING id`
+       INSERT INTO assessuser.t_exam_paper
+           (exam_session_id, practice_id, name, creator, create_time, update_time)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       RETURNING id`
 		err = tx.QueryRow(ctx, insertPaperSQL, nil, id, p.Name, uid.Int64, now, now).Scan(&epID)
 		if err != nil {
 			t.Fatal(fmt.Errorf("插入考卷失败: %w", err))
@@ -2005,9 +2005,9 @@ VALUES
 			groupArgs = append(groupArgs, epID, g.Name, g.Order, uid.Int64, now, now)
 		}
 		groupSQL := fmt.Sprintf(
-			`INSERT INTO assessuser.t_exam_paper_group 
-            (exam_paper_id, name, "order", creator, create_time, update_time) 
-        VALUES %s RETURNING id, "order"`, strings.Join(groupPlaceholders, ","))
+			`INSERT INTO assessuser.t_exam_paper_group
+           (exam_paper_id, name, "order", creator, create_time, update_time)
+       VALUES %s RETURNING id, "order"`, strings.Join(groupPlaceholders, ","))
 		rows, err := tx.Query(ctx, groupSQL, groupArgs...)
 		if err != nil {
 			t.Fatal(fmt.Errorf("插入题组失败: %w", err))
@@ -2065,10 +2065,10 @@ VALUES
 		// 批量插入题目
 		_limit := 1000
 		questionSQL := `INSERT INTO assessuser.t_exam_paper_question (
-        score, type, content, options, answers, analysis, title, 
-        answer_file_path, test_file_path, input, output, example, repo, 
-        creator, create_time, update_time, addi, "order", group_id, question_attachments_path
-    ) VALUES %s RETURNING id`
+       score, type, content, options, answers, analysis, title,
+       answer_file_path, test_file_path, input, output, example, repo,
+       creator, create_time, update_time, addi, "order", group_id, question_attachments_path
+   ) VALUES %s RETURNING id`
 		for start := 0; start < len(tqs); start += _limit {
 			end := start + _limit
 			if end > len(tqs) {
@@ -3538,7 +3538,7 @@ func TestOperatePracticeStatusV2(t *testing.T) {
 	// 先创建数据，不管到底是不是这个测试用例需要的 三种练习状态 然后还有状态不一的练习
 	// 删除 exam_paper_id 字段后，每组数据保留 8 个字段，调整占位符编号
 	s = `INSERT INTO t_practice (id,name,correct_mode,creator,allowed_attempts,type,paper_id,status)
-VALUES 
+VALUES
 ($1, $2, $3, $4, $5, $6, $7, $8),
 ($9, $10, $11, $12, $13, $14, $15, $16),
 ($17, $18, $19, $20, $21, $22, $23, $24),
@@ -4338,7 +4338,7 @@ VALUES
 				// 先创建数据，不管到底是不是这个测试用例需要的 三种练习状态 然后还有状态不一的练习
 				// 删除 exam_paper_id 字段后，每组数据保留 8 个字段，调整占位符编号
 				s = `INSERT INTO t_practice (id,name,correct_mode,creator,allowed_attempts,type,paper_id,status)
-VALUES 
+VALUES
 ($1, $2, $3, $4, $5, $6, $7, $8),
 ($9, $10, $11, $12, $13, $14, $15, $16),
 ($17, $18, $19, $20, $21, $22, $23, $24),
@@ -5036,8 +5036,8 @@ func TestEnterPracticeGetPaperDetails(t *testing.T) {
 			if containsString(tt.name, "异常4") {
 				var ps cmn.TVPracticeSummary
 				s := `SELECT allowed_attempts,attempt_count,latest_unsubmitted_id, latest_submitted_id,pending_mark_id, exam_paper_id,paper_name,suggested_duration
-	 FROM assessuser.v_practice_summary 
-	 WHERE id = $1 AND student_id = $2 AND practice_status = $3 
+	 FROM assessuser.v_practice_summary
+	 WHERE id = $1 AND student_id = $2 AND practice_status = $3
 	 AND practice_student_status != $4`
 				tx.QueryRow(context.Background(), s, tt.pid, tt.uid, PracticeStatus.Released, PracticeStudentStatus.Deleted).Scan(&ps.AllowedAttempts, &ps.AttemptCount, &ps.LatestUnsubmittedID,
 					&ps.LatestSubmittedID, &ps.PendingMarkID, &ps.ExamPaperID,
@@ -5873,9 +5873,9 @@ func TestEnterPracticeWrongCollection(t *testing.T) {
 
 						// 执行更新操作，确保每个题目的answer_score等于其score字段值
 						for _, data := range fullScoreData {
-							updateSQL := `UPDATE assessuser.t_student_answers 
-                  SET answer = $1, answer_score = $2 
-                  WHERE "order" = $3` // 按题目顺序定位
+							updateSQL := `UPDATE assessuser.t_student_answers
+                 SET answer = $1, answer_score = $2
+                 WHERE "order" = $3` // 按题目顺序定位
 
 							_, err := conn.Exec(ctx, updateSQL, data.answer, data.fullScore, data.order)
 							if err != nil {
@@ -6763,6 +6763,216 @@ func TestLoadErrorCollectionDetailsById(t *testing.T) {
 	// 这里进行准备，然后还要查看具体的这个搜索的是否为确定的错题，仅此而已
 }
 
+func TestS2Map(t *testing.T) {
+	type TestStruct struct {
+		ID          int            `db:"id,true"` // 包含 "true" 的标签，应该被跳过
+		Name        string         `db:"name"`
+		Age         null.Int       `db:"age"`
+		Email       null.String    `db:"email"`
+		Preferences types.JSONText `db:"preferences"`
+		Ignored     string         // 没有 db 标签，应该被跳过
+		NullInt     null.Int       `db:"null_int"`
+		NullString  null.String    `db:"null_string"`
+		EmptyJSON   types.JSONText `db:"empty_json"`
+	}
+	// 添加一个包含嵌套结构体的测试结构体
+	type NestedStruct struct {
+		InnerField string `db:"inner_field"`
+	}
+
+	type StructWithNested struct {
+		BaseField string       `db:"base_field"`
+		Nested    NestedStruct `db:"nested"`
+	}
+	// 测试用例 1: 正常情况，包含各种有效字段
+	t.Run("normal case with valid fields", func(t *testing.T) {
+		testData := &TestStruct{
+			ID:          1, // 有 "true" 标签，应该被跳过
+			Name:        "John Doe",
+			Age:         null.IntFrom(30),
+			Email:       null.StringFrom("john@example.com"),
+			Preferences: types.JSONText(`{"theme": "dark"}`),
+			Ignored:     "This should be ignored", // 没有 db 标签，应该被跳过
+			NullInt:     null.Int{},               // 零值，应该被跳过
+			NullString:  null.String{},            // 零值，应该被跳过
+			EmptyJSON:   types.JSONText(""),       // 空 JSON，应该被跳过
+		}
+
+		result := S2Map(testData)
+
+		// 检查结果
+		if len(result) != 4 {
+			t.Errorf("Expected 4 fields in result, got %d: %v", len(result), result)
+		}
+
+		if result["name"] != "John Doe" {
+			t.Errorf("Expected name to be 'John Doe', got %v", result["name"])
+		}
+
+		if result["age"] != int64(30) {
+			t.Errorf("Expected age to be 30, got %v", result["age"])
+		}
+
+		if result["email"] != "john@example.com" {
+			t.Errorf("Expected email to be 'john@example.com', got %v", result["email"])
+		}
+
+		if string(result["preferences"].(types.JSONText)) != `{"theme": "dark"}` {
+			t.Errorf("Expected preferences to be '{\"theme\": \"dark\"}', got %v", result["preferences"])
+		}
+	})
+
+	// 测试用例 2: 所有字段都是零值
+	t.Run("all zero values", func(t *testing.T) {
+		testData := &TestStruct{} // 所有字段都是零值
+
+		result := S2Map(testData)
+
+		// 所有字段都是零值，应该返回空map
+		if len(result) != 0 {
+			t.Errorf("Expected empty map for all zero values, got %v", result)
+		}
+	})
+
+	// 测试用例 3: 包含部分零值的混合情况
+	t.Run("mixed zero and non-zero values", func(t *testing.T) {
+		testData := &TestStruct{
+			Name:  "Jane Doe",                          // 非零值
+			Age:   null.Int{},                          // 零值
+			Email: null.StringFrom("jane@example.com"), // 非零值
+		}
+
+		result := S2Map(testData)
+
+		// 只有非零值字段应该出现在结果中
+		if len(result) != 2 {
+			t.Errorf("Expected 2 fields in result, got %d: %v", len(result), result)
+		}
+
+		if result["name"] != "Jane Doe" {
+			t.Errorf("Expected name to be 'Jane Doe', got %v", result["name"])
+		}
+
+		if result["email"] != "jane@example.com" {
+			t.Errorf("Expected email to be 'jane@example.com', got %v", result["email"])
+		}
+	})
+
+	// 测试用例 4: 测试空JSONText
+	t.Run("empty JSONText", func(t *testing.T) {
+		testData := &TestStruct{
+			Preferences: types.JSONText(""), // 空JSON
+			Name:        "Test User",
+		}
+
+		result := S2Map(testData)
+
+		// 空JSON应该被跳过，只有name字段应该存在
+		if len(result) != 1 {
+			t.Errorf("Expected 1 field in result, got %d: %v", len(result), result)
+		}
+
+		if result["name"] != "Test User" {
+			t.Errorf("Expected name to be 'Test User', got %v", result["name"])
+		}
+	})
+
+	// 测试用例 5: 测试无效的db标签格式
+	t.Run("invalid db tag format", func(t *testing.T) {
+		type InvalidStruct struct {
+			Field1 string `db:""`             // 空标签
+			Field2 string `db:"field2,false"` // 包含"false"，应该被处理
+			Field3 string `db:"field3,true"`  // 包含"true"，应该被跳过
+		}
+
+		testData := &InvalidStruct{
+			Field1: "value1", // 空标签，应该被跳过
+			Field2: "value2", // 包含"false"，应该被处理
+			Field3: "value3", // 包含"true"，应该被跳过
+		}
+
+		result := S2Map(testData)
+
+		// 只有Field2应该出现在结果中
+		if len(result) != 1 {
+			t.Errorf("Expected 1 field in result, got %d: %v", len(result), result)
+		}
+
+		if result["field2"] != "value2" {
+			t.Errorf("Expected field2 to be 'value2', got %v", result["field2"])
+		}
+	})
+
+	// 测试用例 6: 测试嵌套结构体
+	t.Run("nested struct", func(t *testing.T) {
+		testData := &StructWithNested{
+			BaseField: "base value",
+			Nested:    NestedStruct{InnerField: "inner value"},
+		}
+
+		result := S2Map(testData)
+
+		// 嵌套结构体应该被正常处理
+		if len(result) != 2 {
+			t.Errorf("Expected 2 fields in result, got %d: %v", len(result), result)
+		}
+
+		if result["base_field"] != "base value" {
+			t.Errorf("Expected base_field to be 'base value', got %v", result["base_field"])
+		}
+
+		// 嵌套结构体的字段应该被展开
+		nested, ok := result["nested"].(NestedStruct)
+		if !ok {
+			t.Errorf("Expected nested field to be of type NestedStruct")
+		} else if nested.InnerField != "inner value" {
+			t.Errorf("Expected nested.inner_field to be 'inner value', got %v", nested.InnerField)
+		}
+	})
+
+	// 测试用例 7: 测试非指针输入
+	t.Run("non-pointer input", func(t *testing.T) {
+		testData := TestStruct{
+			Name: "Non-pointer",
+		}
+
+		// 这里应该会panic，因为函数期望接收指针
+		defer func() {
+			if r := recover(); r == nil {
+				t.Errorf("Expected panic with non-pointer input, but no panic occurred")
+			}
+		}()
+
+		S2Map(testData)
+	})
+
+	// 测试用例 8: 测试其他类型的零值
+	t.Run("other zero value types", func(t *testing.T) {
+		type OtherTypesStruct struct {
+			IntField   int               `db:"int_field"`
+			FloatField float64           `db:"float_field"`
+			BoolField  bool              `db:"bool_field"`
+			SliceField []int             `db:"slice_field"`
+			MapField   map[string]string `db:"map_field"`
+		}
+
+		testData := &OtherTypesStruct{
+			IntField:   0,     // 零值
+			FloatField: 0.0,   // 零值
+			BoolField:  false, // 零值
+			SliceField: nil,   // 零值
+			MapField:   nil,   // 零值
+		}
+
+		result := S2Map(testData)
+
+		// 所有字段都是零值，应该返回空map
+		if len(result) != 0 {
+			t.Errorf("Expected empty map for all zero values, got %v", result)
+		}
+	})
+}
+
 // 辅助函数：检查字符串是否包含子字符串
 func containsString(s, substr string) bool {
 	return strings.Contains(s, substr)
@@ -6780,21 +6990,21 @@ func initQuestion(t *testing.T, tx *pgxpool.Pool) {
 		{1, "00", "<p><span style=\"font-family: 等线; font-size: 12pt\">具有风险分析的软件生命周期模型是</span><span style=\"font-family: Aptos, sans-serif; font-size: 12pt\">()</span></p>",
 			`[
 				{
-            		"label": "A",
-            		"value": "<p><span style=\"font-family: 等线; font-size: 12pt\">瀑布模型</span></p>"
-        		},
-        		{
-            		"label": "B",
-            		"value": "<p><span style=\"font-family: 等线; font-size: 12pt\">喷泉模型</span></p>"
-        		},
-        		{
-            		"label": "C",
-            		"value": "<p><span style=\"font-family: 等线; font-size: 12pt\">螺旋模型</span></p>"
-        		},
-        		{
-            		"label": "D",
-            		"value": "<p><span style=\"font-family: 等线; font-size: 12pt\">增量模型</span></p>"
-        		}
+           		"label": "A",
+           		"value": "<p><span style=\"font-family: 等线; font-size: 12pt\">瀑布模型</span></p>"
+       		},
+       		{
+           		"label": "B",
+           		"value": "<p><span style=\"font-family: 等线; font-size: 12pt\">喷泉模型</span></p>"
+       		},
+       		{
+           		"label": "C",
+           		"value": "<p><span style=\"font-family: 等线; font-size: 12pt\">螺旋模型</span></p>"
+       		},
+       		{
+           		"label": "D",
+           		"value": "<p><span style=\"font-family: 等线; font-size: 12pt\">增量模型</span></p>"
+       		}
 			]`,
 			`["A", "D"]`, 2, "hello", nil, uid, "00", uid, 1,
 		},

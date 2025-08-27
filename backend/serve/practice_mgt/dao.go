@@ -66,7 +66,7 @@ func UpdatePractice(ctx context.Context, p *cmn.TPractice, ps []int64, uid int64
 	now := time.Now().UnixMilli()
 	p.UpdatedBy = null.IntFrom(uid)
 	p.UpdateTime = null.IntFrom(now)
-	update, _ := S2Map(p)
+	update := S2Map(p)
 	notUpdate := []string{
 		"id",
 		"creator",
@@ -416,8 +416,8 @@ func LoadPracticeById(ctx context.Context, pid int64) (*cmn.TPractice, string, i
 			COALESCE(tp.name, '') as paper_name,p.allowed_attempts,p.paper_id,p.exam_paper_id,
 			COALESCE((SELECT COUNT(*) FROM assessuser.t_practice_student tps WHERE tps.practice_id=p.id AND tps.status=$1),0) as student_cnt
 	from assessuser.t_practice p
-	left join assessuser.t_paper tp on tp.id = p.paper_id AND tp.status = $2
-	where p.id = $3 AND p.status != $4
+	left join assessuser.t_paper tp on tp.id = p.paper_id AND tp.status != $2 AND tp.status != $3
+	where p.id = $4 AND p.status != $5
 	limit 1`
 	sqlxDB := cmn.GetDbConn()
 	var stmt *sqlx.Stmt
@@ -427,8 +427,8 @@ func LoadPracticeById(ctx context.Context, pid int64) (*cmn.TPractice, string, i
 			COALESCE(tp.name, '') as paper_name,p.allowed_attempts,p.paper_id,p.exam_paper_id,
 			COALESCE((SELECT COUNT(*) FROM assessuser.t_practice_student tps WHERE tps.practice_id=p.id AND tps.status=$1),0) as student_cnt
 	from assessuser.t_practice p,
-	left join assessuser.t_paper tp on tp.id = p.paper_id AND tp.status = $2
-	where p.id = $3 AND `
+	left join assessuser.t_paper tp on tp.id = p.paper_id AND tp.status != $2 AND tp.status != $3
+	where p.id = $4 AND `
 	}
 	stmt, err := sqlxDB.Preparex(s)
 	if err != nil {
@@ -448,7 +448,7 @@ func LoadPracticeById(ctx context.Context, pid int64) (*cmn.TPractice, string, i
 	var p cmn.TPractice
 	var paperName string
 	var studentCount int
-	err = stmt.QueryRowxContext(ctx, PracticeStudentStatus.Normal, examPaper.PaperStatus.Normal, pid, PracticeStatus.Deleted).
+	err = stmt.QueryRowxContext(ctx, PracticeStudentStatus.Normal, examPaper.PaperStatus.Deleted, examPaper.PaperStatus.Disabled, pid, PracticeStatus.Deleted).
 		Scan(&p.ID, &p.Name, &p.CorrectMode,
 			&p.Addi, &p.Status, &p.Type, &paperName, &p.AllowedAttempts, &p.PaperID, &p.ExamPaperID, &studentCount)
 	if errors.Is(err, sql.ErrNoRows) {
