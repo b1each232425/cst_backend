@@ -10,6 +10,8 @@ import (
 	"github.com/hibiken/asynq"
 	"github.com/jackc/pgx/v5"
 	"github.com/redis/go-redis/v9"
+	"github.com/sony/gobreaker/v2"
+	"github.com/spf13/viper"
 	"io"
 	"strconv"
 	"strings"
@@ -23,6 +25,8 @@ import (
 )
 
 var z *zap.Logger
+var aiMarkTaskLimiter *cmn.RateLimiterTaskRunner
+var aiMarkTaskCB *gobreaker.CircuitBreaker[any]
 
 const ForceErrKey = "force-err"
 
@@ -183,7 +187,51 @@ func Enroll(author string) {
 		DefaultDomain: int64(cmn.CDomainSys),
 	})
 
-	cmn.RegisterTaskHandler(TaskTypeAIMarkRequest, HandleAIMarkTask)
+	InitAIMarkTaskLimiterAndBreaker()
+
+	cmn.RegisterTaskHandler(TaskTypeAIMarkRequest, TaskMiddleware(HandleAIMarkTask))
+}
+
+func InitAIMarkTaskLimiterAndBreaker() {
+	maxConcurrency := viper.GetInt("chatModel.maxConcurrency")
+	aiMarkTaskLimiter = cmn.NewRateLimiterTaskRunner(int64(maxConcurrency), 5, 10)
+
+	st := gobreaker.Settings{
+		Name:         "HTTP GET",
+		MaxRequests:  3,
+		Timeout:      60 * time.Second,
+		Interval:     24 * time.Hour,
+		BucketPeriod: 1 * time.Hour,
+		ReadyToTrip: func(counts gobreaker.Counts) bool {
+			failureRatio := float64(counts.TotalFailures) / float64(counts.Requests)
+			// 熔断条件：请求数 >= 3 && (失败率 >= 50% || 连续失败次数 >= 3)
+			return counts.Requests >= 3 && (failureRatio >= 0.5 || counts.ConsecutiveFailures >= 3)
+		},
+		// 监控熔断状态变化。
+		OnStateChange: func(name string, from gobreaker.State, to gobreaker.State) {
+			z.Sugar().Warnf("AI Mark Task Circuit Breaker %s changed from %s to %s\n", name, from, to)
+
+			if to == gobreaker.StateOpen {
+				z.Sugar().Warnf("AI Mark Task Circuit Breaker %s is open\n", name)
+			}
+		},
+	}
+
+	aiMarkTaskCB = gobreaker.NewCircuitBreaker[any](st)
+}
+
+func GetAIMarkTaskLimiter() *cmn.RateLimiterTaskRunner {
+	if aiMarkTaskLimiter == nil {
+		InitAIMarkTaskLimiterAndBreaker()
+	}
+	return aiMarkTaskLimiter
+}
+
+func GetAIMarkTaskCB() *gobreaker.CircuitBreaker[any] {
+	if aiMarkTaskCB == nil {
+		InitAIMarkTaskLimiterAndBreaker()
+	}
+	return aiMarkTaskCB
 }
 
 func HandleExamList(ctx context.Context) {
@@ -1434,16 +1482,6 @@ func GenerateAIMarkTask(ctx context.Context, cond QueryCondition, questions []*c
 			ruleBuilder.WriteString("\n")
 		}
 
-		//var aiMarkRequest = AIMarkRequest{
-		//	Question: &ai_mark.QuestionDetails{
-		//		QuestionID: q.ID.Int64,
-		//		Answer:     answerBuilder.String(),
-		//		Rule:       ruleBuilder.String(),
-		//		Score:      q.Score.Float64,
-		//	},
-		//	StudentAnswers: []*ai_mark.StudentAnswer{},
-		//}
-
 		// 50个作答为一组
 		splitAnswers := splitSlice(questionAnswersMap[q.ID.Int64], shouldSplit)
 		for _, answers := range splitAnswers {
@@ -1477,18 +1515,6 @@ func GenerateAIMarkTask(ctx context.Context, cond QueryCondition, questions []*c
 		}
 	}
 
-	// 3. 定义 Lua 脚本
-	//luaScript := `
-	//	local key = KEYS[1]
-	//	local current = redis.call('DECR', key)
-	//	local after = tonumber(current)
-	//	if after == 0 then
-	//		return {after, 1}  -- [当前值, 是否触发]
-	//	else
-	//		return {after, 0}  -- [当前值, 不触发]
-	//	end
-	//`
-
 	uniqueTaskCountKey := uniqueKey + ":count"
 
 	err = redisClient.Set(ctx, uniqueTaskCountKey, len(aiMarkRequests), 0).Err()
@@ -1512,6 +1538,32 @@ func GenerateAIMarkTask(ctx context.Context, cond QueryCondition, questions []*c
 
 	return
 
+}
+
+func TaskMiddleware(handler func(ctx context.Context, task *asynq.Task) error) func(ctx context.Context, task *asynq.Task) error {
+	return func(ctx context.Context, task *asynq.Task) error {
+		limiter := GetAIMarkTaskLimiter()
+
+		err, releaseFunc := limiter.Wait(ctx)
+		if err != nil {
+			// 获取信号量失败，直接返回错误
+			return err
+		}
+		// 释放信号量
+		defer releaseFunc()
+
+		cb := GetAIMarkTaskCB()
+
+		_, err = cb.Execute(func() (any, error) {
+			return nil, handler(ctx, task)
+		})
+
+		if err != nil {
+			return err
+		}
+
+		return handler(ctx, task)
+	}
 }
 
 func HandleAIMarkTask(ctx context.Context, task *asynq.Task) error {

@@ -25,8 +25,8 @@ type ChatModel struct {
 	ApiKey            string
 	Prompt            string
 	ReviewPrompt      string
+	MaxConcurrency    int
 	TokenizerEndPoint string
-	activeRequests    int32
 	MaxTokens         int            `json:"max_tokens"`
 	ResponseFormat    ResponseFormat `json:"response_format"`
 }
@@ -142,14 +142,14 @@ func init() {
 	})
 }
 
-func NewChatModel(model string, endpoint string, apiKey string, prompt string, reviewPrompt string, tokenizerEndPoint string) *ChatModel {
+func NewChatModel(model string, endpoint string, apiKey string, prompt string, reviewPrompt string, tokenizerEndPoint string, maxConcurrency int) *ChatModel {
 	return &ChatModel{
 		Model:             model,
 		Endpoint:          endpoint,
 		ApiKey:            apiKey,
 		TokenizerEndPoint: tokenizerEndPoint,
-		activeRequests:    0,
-		MaxTokens:         8192,
+		MaxConcurrency:    maxConcurrency,
+		MaxTokens:         16 * 1024,
 		ResponseFormat:    ResponseFormat{Type: "json_object"},
 		Prompt:            prompt,
 		ReviewPrompt:      reviewPrompt,
@@ -177,16 +177,21 @@ func Init() error {
 	model := viper.GetString("chatModel.model")
 	endPoint := viper.GetString("chatModel.endpoint")
 	tokenizerEndPoint := viper.GetString("chatModel.tokenizer.endpoint")
+	maxConcurrency := viper.GetInt("chatModel.maxConcurrency")
 
-	if apiKey == "" || model == "" || endPoint == "" || tokenizerEndPoint == "" {
-		err := fmt.Errorf("从配置文件获取chatModel.model, chatModel.apiKey, chatModel.endpoint, chatModel.tokenizer.endpoint 配置项失败")
+	if apiKey == "" || model == "" || endPoint == "" || tokenizerEndPoint == "" || maxConcurrency <= 0 {
+		err := fmt.Errorf("从配置文件获取chatModel.model, chatModel.apiKey, chatModel.endpoint, chatModel.tokenizer.endpoint, chatModel.maxConcurrency 配置项失败")
 		z.Error(err.Error())
 		return err
 	}
 
-	chatModel = NewChatModel(model, endPoint, apiKey, promptTmpl, reviewPrompt, tokenizerEndPoint)
+	chatModel = NewChatModel(model, endPoint, apiKey, promptTmpl, reviewPrompt, tokenizerEndPoint, maxConcurrency)
 	return nil
 
+}
+
+func (c *ChatModel) GetChatMaxConcurrency() int {
+	return c.MaxConcurrency
 }
 
 func (c *ChatModel) SendChatCompletions(ctx context.Context, messages []Message) (chatResp ChatResponse, err error) {

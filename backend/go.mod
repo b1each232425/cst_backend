@@ -136,6 +136,7 @@ require (
 	github.com/robfig/cron/v3 v3.0.1 // indirect
 	github.com/sagikazarmark/locafero v0.9.0 // indirect
 	github.com/sergi/go-diff v1.4.0 // indirect
+	github.com/sony/gobreaker/v2 v2.2.0 // indirect
 	github.com/sosodev/duration v1.3.1 // indirect
 	github.com/sourcegraph/conc v0.3.0 // indirect
 	github.com/spf13/afero v1.14.0 // indirect
