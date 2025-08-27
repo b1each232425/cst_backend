@@ -1482,16 +1482,6 @@ func GenerateAIMarkTask(ctx context.Context, cond QueryCondition, questions []*c
 			ruleBuilder.WriteString("\n")
 		}
 
-		//var aiMarkRequest = AIMarkRequest{
-		//	Question: &ai_mark.QuestionDetails{
-		//		QuestionID: q.ID.Int64,
-		//		Answer:     answerBuilder.String(),
-		//		Rule:       ruleBuilder.String(),
-		//		Score:      q.Score.Float64,
-		//	},
-		//	StudentAnswers: []*ai_mark.StudentAnswer{},
-		//}
-
 		// 50个作答为一组
 		splitAnswers := splitSlice(questionAnswersMap[q.ID.Int64], shouldSplit)
 		for _, answers := range splitAnswers {
@@ -1524,18 +1514,6 @@ func GenerateAIMarkTask(ctx context.Context, cond QueryCondition, questions []*c
 			uniqueKey += ":practice_submission:" + strconv.FormatInt(cond.PracticeSubmissionID, 10)
 		}
 	}
-
-	// 3. 定义 Lua 脚本
-	//luaScript := `
-	//	local key = KEYS[1]
-	//	local current = redis.call('DECR', key)
-	//	local after = tonumber(current)
-	//	if after == 0 then
-	//		return {after, 1}  -- [当前值, 是否触发]
-	//	else
-	//		return {after, 0}  -- [当前值, 不触发]
-	//	end
-	//`
 
 	uniqueTaskCountKey := uniqueKey + ":count"
 
