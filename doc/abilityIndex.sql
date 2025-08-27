@@ -1,6 +1,6 @@
 /*==============================================================*/
 /* DBMS name:      PostgreSQL 9.x                               */
-/* Created on:     2025/8/27 20:51:49                           */
+/* Created on:     2025/8/27 19:57:22                           */
 /*==============================================================*/
 
 
@@ -11,8 +11,6 @@ drop view if exists v_z_practice_summary;
 drop view if exists v_z_grade_practice_statistics;
 
 drop view if exists v_z_grade_exam_session_info;
-
-drop view if exists v_w_practice_summary;
 
 drop view if exists v_y_max_submitted_view;
 
@@ -27,6 +25,8 @@ drop view if exists v_xkb_user;
 drop view if exists v_xkb_school_layout;
 
 drop view if exists v_x_grade_list;
+
+drop view if exists v_w_practice_summary;
 
 drop view if exists v_w_latest_unsubmitted_practice;
 
@@ -14114,36 +14114,6 @@ comment on view v_w_latest_unsubmitted_practice is
 '根据错题提交记录 找出当前最新一次未提交的错题提交ID';
 
 /*==============================================================*/
-/* View: v_w_practice_summary                                   */
-/*==============================================================*/
-create or replace view v_w_practice_summary as
- SELECT DISTINCT ON (v.practice_id, v.student_id)
-        v.id AS practice_submission_id,
-        COALESCE(lup.wrong_practice_id, 0) AS latest_unsubmitted_id,
-        COALESCE(lsp.wrong_practice_id, 0) AS latest_submitted_id,
-        COALESCE(pws_max.max_attempt, 0) AS max_attempt,
-        v.student_id,
-        v.practice_id,
-        tps.exam_paper_id
-     FROM v_y_max_submitted_view v
-     JOIN t_practice_submissions tps ON v.id = tps.id
-     LEFT JOIN (
-    SELECT 
-        practice_submission_id,
-        MAX(attempt) AS max_attempt
-    FROM t_practice_wrong_submissions
-    WHERE status != '06' -- 排除状态为'02'的记录（根据您的业务需求调整）
-    GROUP BY practice_submission_id
-) pws_max ON v.id = pws_max.practice_submission_id
-     LEFT JOIN v_w_latest_unsubmitted_practice lup ON v.id = lup.practice_submission_id
-     LEFT JOIN v_w_latest_submitted_practice lsp ON v.id = lsp.practice_submission_id
-     WHERE tps.status = '08'
-     ORDER BY v.practice_id, v.student_id, v.id ,tps.attempt DESC;
-
-comment on view v_w_practice_summary is
-'错题视图 查看最新一次错题练习提交状态';
-
-/*==============================================================*/
 /* View: v_x_grade_list                                         */
 /*==============================================================*/
 create or replace view v_x_grade_list as
@@ -14186,6 +14156,36 @@ comment on view v_y_max_submitted_view is
 
  drop table if exists t_v_max_submitted_view;
 create table t_v_max_submitted_view as select * from v_y_max_submitted_view;
+
+/*==============================================================*/
+/* View: v_w_practice_summary                                   */
+/*==============================================================*/
+create or replace view v_w_practice_summary as
+ SELECT DISTINCT ON (v.practice_id, v.student_id)
+        v.id AS practice_submission_id,
+        COALESCE(lup.wrong_practice_id, 0) AS latest_unsubmitted_id,
+        COALESCE(lsp.wrong_practice_id, 0) AS latest_submitted_id,
+        COALESCE(pws_max.max_attempt, 0) AS max_attempt,
+        v.student_id,
+        v.practice_id,
+        tps.exam_paper_id
+     FROM v_y_max_submitted_view v
+     JOIN t_practice_submissions tps ON v.id = tps.id
+     LEFT JOIN (
+    SELECT 
+        practice_submission_id,
+        MAX(attempt) AS max_attempt
+    FROM t_practice_wrong_submissions
+    WHERE status != '06' -- 排除状态为'02'的记录（根据您的业务需求调整）
+    GROUP BY practice_submission_id
+) pws_max ON v.id = pws_max.practice_submission_id
+     LEFT JOIN v_w_latest_unsubmitted_practice lup ON v.id = lup.practice_submission_id
+     LEFT JOIN v_w_latest_submitted_practice lsp ON v.id = lsp.practice_submission_id
+     WHERE tps.status = '08'
+     ORDER BY v.practice_id, v.student_id, v.id ,tps.attempt DESC;
+
+comment on view v_w_practice_summary is
+'错题视图 查看最新一次错题练习提交状态';
 
 /*==============================================================*/
 /* View: v_z_grade_exam_session_info                            */
