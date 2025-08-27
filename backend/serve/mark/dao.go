@@ -51,12 +51,13 @@ type QueryCondition struct {
 	ExamineeID           int64 `json:"examinee_id" validate:"gte=0"`
 	PracticeID           int64 `json:"practice_id" validate:"gte=0"`
 	PracticeSubmissionID int64 `json:"practice_submission_id" validate:"gte=0"`
+	IsWrongSubmission    bool  `json:"is_wrong_submission"`
 }
 
 type MarkerInfo struct {
 	MarkerID           int64           `json:"marker_id"`
 	MarkInfos          []cmn.TMarkInfo `json:"mark_infos"`
-	MarkMode           string          `json:"mark_mode"` // 00：不需要手动批改  02：全卷多评 04：试卷分配 06：题组专评 08：题目分配 10：单人（人工）批改 12：批改单个练习学生
+	MarkMode           string          `json:"mark_mode"` // 00：不需要手动批改  02：全卷多评 04：试卷分配 06：题组专评 08：题目分配 10：单人（人工）批改 12：批改单个练习学生 14：批改练习错题
 	MarkMethod         string          `json:"mark_method"`
 	MarkedStudentNames []string        `json:"marked_student_names"`
 }
@@ -727,6 +728,18 @@ func QueryStudentAnswersByMarkMode(ctx context.Context, answerType string, cond 
 
 		args = append(args, cond.PracticeSubmissionID)
 		break
+	case "14": // 查询单个练习学生错题作答的数据
+		whereClause = append(whereClause, fmt.Sprintf(" AND practice_submission_id = $%d AND question_score > answer_score ", argIdx))
+		argIdx++
+
+		if cond.PracticeSubmissionID <= 0 {
+			err = fmt.Errorf("invalid practice_submission_id")
+			z.Error(err.Error())
+			return
+		}
+
+		args = append(args, cond.PracticeSubmissionID)
+		break
 	default:
 		break
 	}
@@ -884,7 +897,6 @@ func QueryQuestionsByMarkMode(ctx context.Context, cond QueryCondition, markerIn
 		}
 
 		var standardAnswers []*SubjectiveAnswer
-		//standardAnswers, _, err = ConvertRawStandardAnswerData(question.Answers, question.Type.String)
 		err = json.Unmarshal(question.Answers, &standardAnswers)
 		if err != nil {
 			err = fmt.Errorf("unable to convert raw standard answer data: %v", err)
@@ -1298,6 +1310,19 @@ func updateStudentAnswerScore(ctx context.Context, markingResults []*cmn.TMark, 
 	return
 }
 
+// updateExamSessionOrPracticeSubmissionState 更新考试场次或练习提交的状态
+//
+// 参数:
+//   - ctx: 上下文，用于控制请求生命周期和传递上下文信息
+//   - tx: 数据库事务对象，用于执行更新操作
+//   - teacherID: 教师ID，表示执行更新操作的教师
+//   - examSessionIDs: 考试场次ID列表，用于指定要更新的考试场次
+//   - practiceSubmissionIDs: 练习提交ID列表，用于指定要更新的练习提交
+//   - status: 目标状态值，将被设置为记录的新状态(10: 考试已提交 08: 练习已提交)
+//
+// 返回值:
+//   - targetIDs: 成功更新的记录ID列表
+//   - err: 操作过程中发生的错误信息
 func updateExamSessionOrPracticeSubmissionState(ctx context.Context, tx *pgx.Tx, teacherID int64, examSessionIDs []int64, practiceSubmissionIDs []int64, status string) (targetIDs []int64, err error) {
 	forceErr, _ := ctx.Value(ForceErrKey).(string)
 	if teacherID <= 0 {

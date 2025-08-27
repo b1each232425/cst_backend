@@ -75,3 +75,47 @@ func randomSplit[T any](slice []T, n int) [][]T {
 
 	return result
 }
+
+// splitSlice 泛型函数，非递归地分割切片，直到每个子切片都满足条件（shouldSplit 返回 false）
+// T: 任意类型
+// slice: 待分割的切片
+// shouldSplit: 判断函数，传入一个子切片，返回 true 表示需要继续分割（不满足条件），false 表示满足条件
+func splitSlice[T any](slice []T, shouldSplit func([]T) bool) [][]T {
+	if len(slice) == 0 {
+		return [][]T{}
+	}
+
+	// 使用 slice 模拟队列，存储待处理的切片
+	var queue [][]T = [][]T{slice}
+	var result [][]T
+
+	for len(queue) > 0 {
+		// 取出队首切片
+		current := queue[0]
+		queue = queue[1:]
+
+		// 判断当前切片是否需要继续分割
+		if !shouldSplit(current) {
+			// 满足条件，加入结果集
+			result = append(result, current)
+			continue
+		}
+
+		// 如果只有一个元素，但依然需要分割，也只好保留（无法再分割）
+		if len(current) == 1 {
+			result = append(result, current)
+			continue
+		}
+
+		// 对半分割
+		n := len(current)
+		mid := n / 2
+		left := current[:mid]
+		right := current[mid:]
+
+		// 将左右子切片加入队列继续处理
+		queue = append(queue, left, right)
+	}
+
+	return result
+}
