@@ -2,7 +2,7 @@
  * @Author: wusaber33
  * @Date: 2025-08-03 21:39:33
  * @LastEditors: wusaber33
- * @LastEditTime: 2025-08-24 15:17:10
+ * @LastEditTime: 2025-08-25 23:09:00
  * @FilePath: \assess\backend\serve\paper\paper.go
  * @Description:
  * Copyright (c) 2025 by wusaber33, All Rights Reserved.
@@ -36,14 +36,6 @@ import (
 	"go.uber.org/zap"
 	"w2w.io/cmn"
 )
-
-// 任务载荷结构体
-type PaperTaskPayload struct {
-	PaperID   int64  `json:"paper_id"`
-	PaperName string `json:"paper_name"`
-	UserID    int64  `json:"user_id"`
-	Action    string `json:"action"`
-}
 
 // 全局日志对象
 var z *zap.Logger
@@ -143,7 +135,8 @@ func ManualPaper(ctx context.Context) {
 	var authority *auth_mgt.Authority
 	authority, q.Err = auth_mgt.GetUserAuthority(ctx)
 	if q.Err != nil {
-		fmt.Printf("获取用户权限失败: %v\n", q.Err)
+		z.Error(q.Err.Error())
+		q.RespErr()
 		return
 	}
 
@@ -163,16 +156,16 @@ func ManualPaper(ctx context.Context) {
 		// 创建新试卷
 		// 获取用户是否有写权限
 		// 2. 检查API访问权限
-		var accessible bool
-		accessible, q.Err = auth_mgt.CheckUserAPIAccessible(ctx, authority, "/api/paper/manual", auth_mgt.CDataAccessModeWrite)
-		if q.Err != nil {
-			fmt.Printf("检查API访问权限失败: %v\n", q.Err)
-			return
-		}
-		if !accessible {
-			fmt.Println("用户没有访问权限")
-			return
-		}
+		//var accessible bool
+		//accessible, q.Err = auth_mgt.CheckUserAPIAccessible(ctx, authority, "/api/paper/manual", auth_mgt.CDataAccessModeWrite)
+		//if q.Err != nil {
+		//	fmt.Printf("检查API访问权限失败: %v\n", q.Err)
+		//	return
+		//}
+		//if !accessible {
+		//	fmt.Println("用户没有访问权限")
+		//	return
+		//}
 		// 开启事务，插入试卷和默认分组
 		var tx pgx.Tx
 		tx, q.Err = db.BeginTx(dmlCtx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead})
@@ -383,16 +376,16 @@ RETURNING id`
 	case "put":
 		// 更新试卷内容
 		// 2. 检查API访问权限
-		var accessible bool
-		accessible, q.Err = auth_mgt.CheckUserAPIAccessible(ctx, authority, "/api/paper/manual", auth_mgt.CDataAccessModeEdit)
-		if q.Err != nil {
-			fmt.Printf("检查API访问权限失败: %v\n", q.Err)
-			return
-		}
-		if !accessible {
-			fmt.Println("用户没有访问权限")
-			return
-		}
+		//var accessible bool
+		//accessible, q.Err = auth_mgt.CheckUserAPIAccessible(ctx, authority, "/api/paper/manual", auth_mgt.CDataAccessModeEdit)
+		//if q.Err != nil {
+		//	fmt.Printf("检查API访问权限失败: %v\n", q.Err)
+		//	return
+		//}
+		//if !accessible {
+		//	fmt.Println("用户没有访问权限")
+		//	return
+		//}
 		// 获取并验证试卷ID
 		paperIDStr := q.R.URL.Query().Get("paper_id")
 		var paperID int64
@@ -404,15 +397,8 @@ RETURNING id`
 		}
 
 		//尝试获取试卷锁REDIS_LOCK_PREFIX
-		var success bool
-		success, q.Err = cmn.TryLock(ctx, paperID, userID, REDIS_LOCK_PREFIX, REDIS_LOCK_EXPRIATION)
+		_, q.Err = cmn.TryLock(ctx, paperID, userID, REDIS_LOCK_PREFIX, REDIS_LOCK_EXPRIATION)
 		if q.Err != nil {
-			z.Error(q.Err.Error())
-			q.RespErr()
-			return
-		}
-		if !success {
-			q.Err = fmt.Errorf("当前试卷正在被其他用户编辑")
 			z.Error(q.Err.Error())
 			q.RespErr()
 			return
@@ -524,16 +510,16 @@ RETURNING id`
 	case "get":
 		// 获取试卷详情
 		// 2. 检查API访问权限
-		var accessible bool
-		accessible, q.Err = auth_mgt.CheckUserAPIAccessible(ctx, authority, "/api/paper/manual", auth_mgt.CDataAccessModeRead)
-		if q.Err != nil {
-			fmt.Printf("检查API访问权限失败: %v\n", q.Err)
-			return
-		}
-		if !accessible {
-			fmt.Println("用户没有访问权限")
-			return
-		}
+		//var accessible bool
+		//accessible, q.Err = auth_mgt.CheckUserAPIAccessible(ctx, authority, "/api/paper/manual", auth_mgt.CDataAccessModeRead)
+		//if q.Err != nil {
+		//	fmt.Printf("检查API访问权限失败: %v\n", q.Err)
+		//	return
+		//}
+		//if !accessible {
+		//	fmt.Println("用户没有访问权限")
+		//	return
+		//}
 		// 解析并验证试卷ID
 		paperIDStr := q.R.URL.Query().Get("paper_id")
 		var paperID int64
@@ -1403,7 +1389,8 @@ func PaperList(ctx context.Context) {
 	var authority *auth_mgt.Authority
 	authority, q.Err = auth_mgt.GetUserAuthority(ctx)
 	if q.Err != nil {
-		fmt.Printf("获取用户权限失败: %v\n", q.Err)
+		z.Error(q.Err.Error())
+		q.RespErr()
 		return
 	}
 
@@ -1416,16 +1403,16 @@ func PaperList(ctx context.Context) {
 	switch method {
 	case "get":
 		// 2. 检查API访问权限
-		var accessible bool
-		accessible, q.Err = auth_mgt.CheckUserAPIAccessible(ctx, authority, "/api/paper", auth_mgt.CDataAccessModeRead)
-		if q.Err != nil {
-			fmt.Printf("检查API访问权限失败: %v\n", q.Err)
-			return
-		}
-		if !accessible {
-			fmt.Println("用户没有访问权限")
-			return
-		}
+		//var accessible bool
+		//accessible, q.Err = auth_mgt.CheckUserAPIAccessible(ctx, authority, "/api/paper", auth_mgt.CDataAccessModeRead)
+		//if q.Err != nil {
+		//	fmt.Printf("检查API访问权限失败: %v\n", q.Err)
+		//	return
+		//}
+		//if !accessible {
+		//	fmt.Println("用户没有访问权限")
+		//	return
+		//}
 
 		//创建请求体并绑定参数
 		var req PaperListRequest
@@ -1508,6 +1495,10 @@ func PaperList(ctx context.Context) {
 			whereClauses = append(whereClauses, "p.status IN ('00', '06')")
 		}
 
+		if forceError == "EmptyDomain" {
+			authority.AccessibleDomains = []int64{}
+		}
+
 		// 拼接资源范围 - 用户可访问的所有 domain_id
 		if len(authority.AccessibleDomains) > 0 {
 			whereClauses = append(whereClauses, fmt.Sprintf("p.domain_id = ANY($%d)", paramCount))
@@ -1515,7 +1506,10 @@ func PaperList(ctx context.Context) {
 			paramCount++
 		} else {
 			// 如果用户没有可访问的域，则返回空结果
-			whereClauses = append(whereClauses, "1=0")
+			q.Err = errors.New("用户没有可访问的域")
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
 		}
 		//// 如果设置了self，则只查询当前用户创建的试卷
 		//if req.Self {
@@ -1652,16 +1646,16 @@ func PaperList(ctx context.Context) {
 		q.Resp()
 	case "delete":
 		// 2. 检查API访问权限
-		var accessible bool
-		accessible, q.Err = auth_mgt.CheckUserAPIAccessible(ctx, authority, "/api/paper", auth_mgt.CDataAccessModeEdit)
-		if q.Err != nil {
-			fmt.Printf("检查API访问权限失败: %v\n", q.Err)
-			return
-		}
-		if !accessible {
-			fmt.Println("用户没有访问权限")
-			return
-		}
+		//var accessible bool
+		//accessible, q.Err = auth_mgt.CheckUserAPIAccessible(ctx, authority, "/api/paper", auth_mgt.CDataAccessModeEdit)
+		//if q.Err != nil {
+		//	fmt.Printf("检查API访问权限失败: %v\n", q.Err)
+		//	return
+		//}
+		//if !accessible {
+		//	fmt.Println("用户没有访问权限")
+		//	return
+		//}
 		// 读取请求体
 		var buf []byte
 		buf, q.Err = io.ReadAll(q.R.Body)
@@ -1752,7 +1746,6 @@ func PaperList(ctx context.Context) {
 				}
 				if err != nil {
 					z.Error(err.Error())
-					return
 				}
 				return
 			}
@@ -1778,6 +1771,10 @@ func PaperList(ctx context.Context) {
 		}()
 		if forceError == "PaperList-delete-Rollback-panic" {
 			panic(errors.New(forceError))
+		}
+
+		if forceError == "EmptyDomain" {
+			authority.AccessibleDomains = []int64{}
 		}
 
 		// 检查每个试卷的权限
@@ -1905,34 +1902,21 @@ func PaperList(ctx context.Context) {
 			return
 		}
 
-		// // 删除前要检测已发布的试卷的exampaperID是否被考试或练习引用，若引用了考卷不用删除，若未引用则直接级联删除
-		// // TODO: 检测引用
-		// paperSQL := `DELETE FROM t_paper WHERE id = ANY($1)`
-		// _, q.Err = tx.Exec(dmlCtx, paperSQL, paperIDs)
-		// if val, ok := ctx.Value("force-error").(string); ok && val == "deletePapers-exec-err" {
-		// 	q.Err = errors.New(val)
-		// }
-		// if q.Err != nil {
-		// 	z.Error(q.Err.Error())
-		// 	q.RespErr()
-		// 	return
-		// }
-
 		q.Msg.Status = 0
 		q.Msg.Msg = "success"
 	case "post":
 		// 发布试卷
 		// 2. 检查API访问权限
-		var accessible bool
-		accessible, q.Err = auth_mgt.CheckUserAPIAccessible(ctx, authority, "/api/paper", auth_mgt.CDataAccessModeEdit)
-		if q.Err != nil {
-			fmt.Printf("检查API访问权限失败: %v\n", q.Err)
-			return
-		}
-		if !accessible {
-			fmt.Println("用户没有访问权限")
-			return
-		}
+		//var accessible bool
+		//accessible, q.Err = auth_mgt.CheckUserAPIAccessible(ctx, authority, "/api/paper", auth_mgt.CDataAccessModeEdit)
+		//if q.Err != nil {
+		//	fmt.Printf("检查API访问权限失败: %v\n", q.Err)
+		//	return
+		//}
+		//if !accessible {
+		//	fmt.Println("用户没有访问权限")
+		//	return
+		//}
 		// 解析并验证试卷ID
 		paperIDStr := q.R.URL.Query().Get("paper_id")
 		var paperID int64
@@ -1949,15 +1933,8 @@ func PaperList(ctx context.Context) {
 		}
 
 		//尝试获取试卷锁REDIS_LOCK_PREFIX
-		var success bool
-		success, q.Err = cmn.TryLock(ctx, paperID, userID, REDIS_LOCK_PREFIX, REDIS_LOCK_EXPRIATION)
+		_, q.Err = cmn.TryLock(ctx, paperID, userID, REDIS_LOCK_PREFIX, REDIS_LOCK_EXPRIATION)
 		if q.Err != nil {
-			z.Error(q.Err.Error())
-			q.RespErr()
-			return
-		}
-		if !success {
-			q.Err = fmt.Errorf("当前试卷正在被其他用户编辑")
 			z.Error(q.Err.Error())
 			q.RespErr()
 			return
@@ -1997,6 +1974,8 @@ func PaperList(ctx context.Context) {
 				err := tx.Rollback(ctx)
 				if forceError == "Rollback" {
 					err = errors.New(forceError)
+					q.Err = err
+					q.RespErr()
 				}
 				if err != nil && !errors.Is(err, pgx.ErrTxClosed) {
 					z.Error(err.Error())
@@ -2007,6 +1986,8 @@ func PaperList(ctx context.Context) {
 			err := tx.Commit(ctx)
 			if forceError == "Commit" {
 				err = errors.New(forceError)
+				q.Err = err
+				q.RespErr()
 			}
 			if err != nil {
 				z.Error(err.Error())
@@ -2016,9 +1997,19 @@ func PaperList(ctx context.Context) {
 		if forceError == "Rollback-panic" {
 			panic(errors.New(forceError))
 		}
+		if forceError == "Commit" {
+			return
+		}
+		if forceError == "Rollback" {
+			q.Err = errors.New(forceError)
+			return
+		}
 		// 检测试卷是否已发布
 		var paper cmn.TPaper
 		q.Err = tx.QueryRow(dmlCtx, `SELECT category,status FROM t_paper WHERE id = $1`, paperID).Scan(&paper.Category, &paper.Status)
+		if forceError == "tx.QueryRow" {
+			q.Err = errors.New(forceError)
+		}
 		if q.Err != nil {
 			z.Error(q.Err.Error())
 			q.RespErr()
@@ -2030,10 +2021,12 @@ func PaperList(ctx context.Context) {
 			q.RespErr()
 			return
 		}
-		// todo 检测试卷谁有发布权限
 		// 生成考卷并修改试卷状态为已发布
 		var examPaperID *int64
-		examPaperID, _, q.Err = examPaper.GenerateExamPaper(dmlCtx, tx, paper.Category.String, paperID, 0, 0, userID, false)
+		examPaperID, q.Err = examPaper.GenerateExamPaper(dmlCtx, tx, paperID, userID)
+		if forceError == "examPaper.GenerateExamPaper" {
+			q.Err = errors.New(forceError)
+		}
 		if q.Err != nil {
 			z.Error(q.Err.Error())
 			q.RespErr()
@@ -2042,6 +2035,9 @@ func PaperList(ctx context.Context) {
 		// 修改试卷状态为已发布并存储exampaperID到试卷表，便于练习或考试获取
 		now := cmn.GetNowInMS()
 		_, q.Err = tx.Exec(dmlCtx, `UPDATE t_paper SET status = $1, exampaper_id = $2, update_time = $3, updated_by = $4 WHERE id = $5`, StatusPublished, examPaperID, now, userID, paperID)
+		if forceError == "UPDATE-tx.Exec" {
+			q.Err = errors.New(forceError)
+		}
 		if q.Err != nil {
 			z.Error(q.Err.Error())
 			q.RespErr()
@@ -2049,6 +2045,9 @@ func PaperList(ctx context.Context) {
 		}
 		// 删除试卷题组和试卷题目，后续用不到了，直接级联删除题组即可,题目会跟着级联删除
 		_, q.Err = tx.Exec(dmlCtx, `DELETE FROM t_paper_group WHERE paper_id = $1`, paperID)
+		if forceError == "DELETE-tx.Exec" {
+			q.Err = errors.New(forceError)
+		}
 		if q.Err != nil {
 			z.Error(q.Err.Error())
 			q.RespErr()
@@ -2057,6 +2056,9 @@ func PaperList(ctx context.Context) {
 
 		//尝试获取试卷锁REDIS_LOCK_PREFIX
 		q.Err = cmn.ReleaseLock(ctx, paperID, userID, REDIS_LOCK_PREFIX)
+		if forceError == "cmn.ReleaseLock" {
+			q.Err = errors.New(forceError)
+		}
 		if q.Err != nil {
 			z.Error(q.Err.Error())
 			q.RespErr()
@@ -2094,27 +2096,27 @@ func PaperLock(ctx context.Context) {
 		q.RespErr()
 		return
 	}
-	var authority *auth_mgt.Authority
-	authority, q.Err = auth_mgt.GetUserAuthority(ctx)
-	if q.Err != nil {
-		fmt.Printf("获取用户权限失败: %v\n", q.Err)
-		return
-	}
+	//var authority *auth_mgt.Authority
+	//authority, q.Err = auth_mgt.GetUserAuthority(ctx)
+	//if q.Err != nil {
+	//	fmt.Printf("获取用户权限失败: %v\n", q.Err)
+	//	return
+	//}
 
 	method := strings.ToLower(q.R.Method)
 	switch method {
 	case "get":
 		// 2. 检查API访问权限
-		var accessible bool
-		accessible, q.Err = auth_mgt.CheckUserAPIAccessible(ctx, authority, "/api/paper/lock", auth_mgt.CDataAccessModeEdit)
-		if q.Err != nil {
-			fmt.Printf("检查API访问权限失败: %v\n", q.Err)
-			return
-		}
-		if !accessible {
-			fmt.Println("用户没有访问权限")
-			return
-		}
+		//var accessible bool
+		//accessible, q.Err = auth_mgt.CheckUserAPIAccessible(ctx, authority, "/api/paper/lock", auth_mgt.CDataAccessModeEdit)
+		//if q.Err != nil {
+		//	fmt.Printf("检查API访问权限失败: %v\n", q.Err)
+		//	return
+		//}
+		//if !accessible {
+		//	fmt.Println("用户没有访问权限")
+		//	return
+		//}
 		// 解析并验证试卷ID
 		paperIDStr := q.R.URL.Query().Get("paper_id")
 		var paperID int64
@@ -2131,15 +2133,8 @@ func PaperLock(ctx context.Context) {
 		}
 
 		//尝试获取试卷锁REDIS_LOCK_PREFIX
-		var success bool
-		success, q.Err = cmn.TryLock(ctx, paperID, userID, REDIS_LOCK_PREFIX, REDIS_LOCK_EXPRIATION)
+		_, q.Err = cmn.TryLock(ctx, paperID, userID, REDIS_LOCK_PREFIX, REDIS_LOCK_EXPRIATION)
 		if q.Err != nil {
-			z.Error(q.Err.Error())
-			q.RespErr()
-			return
-		}
-		if !success {
-			q.Err = fmt.Errorf("当前试卷正在被其他用户编辑")
 			z.Error(q.Err.Error())
 			q.RespErr()
 			return
@@ -2149,16 +2144,16 @@ func PaperLock(ctx context.Context) {
 	case "put":
 		// 解析并验证试卷ID
 		// 2. 检查API访问权限
-		var accessible bool
-		accessible, q.Err = auth_mgt.CheckUserAPIAccessible(ctx, authority, "/api/paper/lock", auth_mgt.CDataAccessModeEdit)
-		if q.Err != nil {
-			fmt.Printf("检查API访问权限失败: %v\n", q.Err)
-			return
-		}
-		if !accessible {
-			fmt.Println("用户没有访问权限")
-			return
-		}
+		//var accessible bool
+		//accessible, q.Err = auth_mgt.CheckUserAPIAccessible(ctx, authority, "/api/paper/lock", auth_mgt.CDataAccessModeEdit)
+		//if q.Err != nil {
+		//	fmt.Printf("检查API访问权限失败: %v\n", q.Err)
+		//	return
+		//}
+		//if !accessible {
+		//	fmt.Println("用户没有访问权限")
+		//	return
+		//}
 		paperIDStr := q.R.URL.Query().Get("paper_id")
 		var paperID int64
 		paperID, q.Err = strconv.ParseInt(paperIDStr, 10, 64)
@@ -2219,10 +2214,6 @@ func PaperLock(ctx context.Context) {
 
 // getPaperStatusAndCreator 获取试卷状态和创建者信息
 func getPaperStatusAndCreator(ctx context.Context, paperID int64) (string, int64, error) {
-	forceError := ""
-	if val, ok := ctx.Value("force-error").(string); ok {
-		forceError = val
-	}
 	// 获取数据库连接
 	db := cmn.GetPgxConn()
 	var status string
@@ -2231,9 +2222,6 @@ func getPaperStatusAndCreator(ctx context.Context, paperID int64) (string, int64
 	SELECT status, creator FROM t_paper 
 	WHERE id = $1
 	`, paperID).Scan(&status, &creatorID)
-	if forceError == "getPaperStatusAndCreator-QueryRow-err" {
-		err = errors.New(forceError)
-	}
 	if err != nil {
 		z.Error("failed to get paper status and creator: " + err.Error())
 		return "", 0, err

@@ -1207,7 +1207,7 @@ func gradeAnalysisByID(ctx context.Context, esid int64, pid int64) (Analysis, er
 	// 获取学生答案
 	studentAnswerSql := fmt.Sprintf(`
 	SELECT
-		type, answer, question_id
+		answer, question_id
 	FROM t_student_answers tsa
 	WHERE question_id IN (%s)
 	`, qidsSql)
@@ -1227,25 +1227,19 @@ func gradeAnalysisByID(ctx context.Context, esid int64, pid int64) (Analysis, er
 	questionAnswersStats := make(map[null.Int]map[string]int)
 	for rows.Next() {
 		var ans struct {
-			Type       string   `json:"type"`
 			AnsJson    JSONText `json:"answer"`
 			QuestionID null.Int `json:"question_id"`
 		}
 
-		err = rows.Scan(&ans.Type, &ans.AnsJson, &ans.QuestionID)
+		err = rows.Scan(&ans.AnsJson, &ans.QuestionID)
 		if err != nil || forceErr == "qas rows Scan fail" {
 			err = fmt.Errorf("查询学生答案失败: %w,(examSessionID=%v),(practiceID=%v),(examPaperID=%v),(qids=%s)", err, esid, pid, analysis.ExamPaperID, qidsStr)
 			z.Error(err.Error())
 			return analysis, err
 		}
 
-		// 不是单选、多选、判断题型
-		if ans.Type != "00" && ans.Type != "02" && ans.Type != "04" || forceErr == "ansType not match" {
-			continue
-		}
-
 		// 数据库存储学生答案为空
-		if ans.AnsJson == nil || forceErr == "ansJson nil" {
+		if ans.AnsJson == nil || ans.AnsJson.String() == "" || forceErr == "ansJson nil" {
 			continue
 		}
 
@@ -1263,7 +1257,6 @@ func gradeAnalysisByID(ctx context.Context, esid int64, pid int64) (Analysis, er
 		}
 
 		// 统计答案
-		// 说明:选择题答案是数组形式的选项
 		for _, answer := range answerData.Answer {
 			if _, ok := questionAnswersStats[ans.QuestionID][answer]; !ok {
 				questionAnswersStats[ans.QuestionID][answer] = 0
@@ -1301,7 +1294,7 @@ func gradeAnalysisByID(ctx context.Context, esid int64, pid int64) (Analysis, er
 			z.Error(err.Error())
 			return analysis, err
 		}
-		subjectiveScores[qid] = avgScore
+		subjectiveScores[qid] = math.Round(avgScore*100) / 100
 	}
 	analysis.SubjectiveScores = subjectiveScores
 
@@ -1672,7 +1665,6 @@ func getScorePractice(ctx context.Context, studentID int64, practiceID int64) (M
 		FROM t_practice p
 		JOIN t_practice_submissions ps ON p.id = ps.practice_id
 		LEFT JOIN t_paper tp ON tp.id = p.paper_id        
-		    -- WHERE ps.id=$1 AND p.status = $2 AND ps.status = $3 AND ps.student_id = $4 
 		WHERE ps.id=$1 AND p.status = $2 AND ps.student_id = $3`
 	var suggestDuration null.Int
 	err = tx.QueryRow(ctx, durationSql, psid, "02", studentID).Scan(&suggestDuration)
