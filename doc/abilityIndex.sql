@@ -14117,29 +14117,26 @@ comment on view v_w_latest_unsubmitted_practice is
 /* View: v_x_grade_list                                         */
 /*==============================================================*/
 create or replace view v_x_grade_list as
-SELECT ei.id AS exam_id,
-       ei.name AS exam_name,
-       ei.type AS exam_type,
-       ets.exam_session_id,
-       ets.total_score,
-       es.start_time,
-       es.end_time,
-       es.mark_mode,
-       ep.id AS exam_paper_id,
-       ep.name AS paper_name
-FROM t_exam_info ei
-         JOIN v_student_exam_total_score ets ON ei.id = ets.exam_id
-         LEFT JOIN t_exam_session es ON es.id = ets.exam_session_id
-         LEFT JOIN t_exam_paper ep ON ep.exam_session_id = ets.exam_session_id;
+ SELECT ei.id AS exam_id,
+     ei.name AS exam_name,
+     ei.type AS exam_type,
+     ets.exam_session_id,
+     ets.total_score,
+     es.start_time,
+     es.end_time,
+     es.mark_mode,
+     ep.id AS exam_paper_id,
+     ep.name AS paper_name
+    FROM t_exam_info ei
+      JOIN v_student_exam_total_score ets ON ei.id = ets.exam_id
+      LEFT JOIN t_exam_session es ON es.id = ets.exam_session_id
+      LEFT JOIN t_exam_paper ep ON ep.exam_session_id = ets.exam_session_id;
 
 comment on view v_x_grade_list is
 'v_x_grade_list';
 
 drop table if exists t_v_grade_list;
 create table t_v_grade_list as select * from v_x_grade_list;
-
-
-create table t_v_max_submitted_view as select * from v_y_max_submitted_view;
 
 /*==============================================================*/
 /* View: v_y_max_submitted_view                                 */
@@ -14189,7 +14186,6 @@ create or replace view v_w_practice_summary as
 
 comment on view v_w_practice_summary is
 '错题视图 查看最新一次错题练习提交状态';
-
 
 /*==============================================================*/
 /* View: v_z_grade_exam_session_info                            */
