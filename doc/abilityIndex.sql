@@ -14112,6 +14112,23 @@ SELECT DISTINCT ON (practice_submission_id , attempt)
 
 comment on view v_w_latest_unsubmitted_practice is
 '根据错题提交记录 找出当前最新一次未提交的错题提交ID';
+/*==============================================================*/
+/* View: v_y_max_submitted_view                                 */
+/*==============================================================*/
+create or replace view v_y_max_submitted_view as
+ SELECT DISTINCT ON (practice_id, student_id) id,
+    student_id,
+    attempt,
+    wrong_count,
+    total_score,
+    practice_id
+   FROM v_student_practice_total_score
+  ORDER BY practice_id, student_id, attempt DESC;
+
+comment on view v_y_max_submitted_view is
+'v_y_max_submitted_view';
+
+ drop table if exists t_v_max_submitted_view;
 
 /*==============================================================*/
 /* View: v_w_practice_summary                                   */
@@ -14168,23 +14185,7 @@ comment on view v_x_grade_list is
 drop table if exists t_v_grade_list;
 create table t_v_grade_list as select * from v_x_grade_list;
 
-/*==============================================================*/
-/* View: v_y_max_submitted_view                                 */
-/*==============================================================*/
-create or replace view v_y_max_submitted_view as
- SELECT DISTINCT ON (practice_id, student_id) id,
-    student_id,
-    attempt,
-    wrong_count,
-    total_score,
-    practice_id
-   FROM v_student_practice_total_score
-  ORDER BY practice_id, student_id, attempt DESC;
 
-comment on view v_y_max_submitted_view is
-'v_y_max_submitted_view';
-
- drop table if exists t_v_max_submitted_view;
 create table t_v_max_submitted_view as select * from v_y_max_submitted_view;
 
 /*==============================================================*/
