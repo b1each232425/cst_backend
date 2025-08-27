@@ -12,6 +12,7 @@ type QueryQuestionBankParams struct {
 // 查询题目参数结构体
 type QueryQuestionsParams struct {
 	BankID     int64    // 题库ID
+	QuestionID int64    // 题目ID
 	Content    string   // 题目内容
 	Tags       []string // 题目标签
 	Type       []string // 题目类型

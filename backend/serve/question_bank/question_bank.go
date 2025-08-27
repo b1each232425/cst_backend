@@ -21,6 +21,7 @@ import (
 	"go.uber.org/zap"
 	"w2w.io/cmn"
 	"w2w.io/null"
+	"w2w.io/serve/auth_mgt"
 )
 
 var z *zap.Logger
@@ -83,6 +84,23 @@ func Enroll(author string) {
 		//DefaultDomain 该API将默认授权给的用户
 		DefaultDomain: int64(cmn.CDomainSys),
 	})
+
+	_ = cmn.AddService(&cmn.ServeEndPoint{
+		Fn: QuestionLock,
+
+		Path: "/question/lock",
+		Name: "question_lock",
+
+		Developer: developer,
+		WhiteList: true,
+
+		//DomainID 创建该API的账号归属的domain
+		DomainID: int64(cmn.CDomainSys),
+
+		//DefaultDomain 该API将默认授权给的用户
+		DefaultDomain: int64(cmn.CDomainSys),
+	})
+
 }
 
 // 题库接口
@@ -103,25 +121,14 @@ func questionBanks(ctx context.Context) {
 		return
 	}
 
-	// 检查权限
-	userDomains := q.Domains     //用户权限域
-	role := q.SysUser.Role.Int64 //用户角色编号
-	var userDoamin string
-	for _, d := range userDomains {
-		if d.ID.Valid && d.ID.Int64 == role {
-			userDoamin = d.Domain
-			break
-		}
-	}
-	// 判断是否在允许范围内
-	isAllowed := isAllowedDomain(userDoamin)
-
-	if !isAllowed {
-		q.Err = fmt.Errorf("domain %s is not allowed", userDoamin)
+	var authority *auth_mgt.Authority
+	authority, q.Err = auth_mgt.GetUserAuthority(ctx)
+	if q.Err != nil {
 		z.Error(q.Err.Error())
 		q.RespErr()
 		return
 	}
+
 	conn := cmn.GetPgxConn()
 
 	z.Info("---->" + cmn.FncName())
@@ -129,6 +136,17 @@ func questionBanks(ctx context.Context) {
 	method := strings.ToLower(q.R.Method)
 	switch method {
 	case "get":
+		//// 2. 检查API访问权限
+		//var accessible bool
+		//accessible, q.Err = auth_mgt.CheckUserAPIAccessible(ctx, authority, "/api/question-banks", auth_mgt.CDataAccessModeRead)
+		//if q.Err != nil {
+		//	fmt.Printf("检查API访问权限失败: %v\n", q.Err)
+		//	return
+		//}
+		//if !accessible {
+		//	fmt.Println("用户没有访问权限")
+		//	return
+		//}
 		// 获取查询参数
 		keyword := q.R.URL.Query().Get("keyword")
 		pageStr := q.R.URL.Query().Get("page")
@@ -191,6 +209,22 @@ func questionBanks(ctx context.Context) {
 		conditions = append(conditions, fmt.Sprintf("status = $%d", argIndex))
 		args = append(args, "00")
 		argIndex++
+
+		if forceError == "EmptyDomain" {
+			authority.AccessibleDomains = []int64{}
+		}
+
+		// 拼接资源范围 - 用户可访问的所有 domain_id
+		if len(authority.AccessibleDomains) > 0 {
+			conditions = append(conditions, fmt.Sprintf("domain_id = ANY($%d)", argIndex))
+			args = append(args, authority.AccessibleDomains)
+			argIndex++
+		} else {
+			// 如果用户没有可访问的域，则返回空结果
+			q.Err = errors.New("用户没有可访问的域")
+			q.RespErr()
+			return
+		}
 
 		// 关键词过滤
 		if params.Keyword != "" {
@@ -324,6 +358,17 @@ func questionBanks(ctx context.Context) {
 		q.Msg.Msg = "success"
 		q.Msg.RowCount = rowCount
 	case "post":
+		// 2. 检查API访问权限
+		//var accessible bool
+		//accessible, q.Err = auth_mgt.CheckUserAPIAccessible(ctx, authority, "/api/question-banks", auth_mgt.CDataAccessModeWrite)
+		//if q.Err != nil {
+		//	fmt.Printf("检查API访问权限失败: %v\n", q.Err)
+		//	return
+		//}
+		//if !accessible {
+		//	fmt.Println("用户没有访问权限")
+		//	return
+		//}
 		var buf []byte
 		buf, q.Err = io.ReadAll(q.R.Body)
 		if forceError == "io-ReadAll" {
@@ -401,8 +446,7 @@ func questionBanks(ctx context.Context) {
 		bank.Creator = null.IntFrom(userID)
 
 		//设置所属域
-		bank.DomainID = null.IntFrom(1999)
-
+		bank.DomainID = authority.Domain.ID
 		// 写库
 		qry.Action = "insert"
 		q.Err = cmn.DML(&bank.Filter, &qry)
@@ -442,6 +486,17 @@ func questionBanks(ctx context.Context) {
 		q.Msg.Data = buf
 		q.Msg.Msg = "success"
 	case "put":
+		// 2. 检查API访问权限
+		//var accessible bool
+		//accessible, q.Err = auth_mgt.CheckUserAPIAccessible(ctx, authority, "/api/question-banks", auth_mgt.CDataAccessModeEdit)
+		//if q.Err != nil {
+		//	fmt.Printf("检查API访问权限失败: %v\n", q.Err)
+		//	return
+		//}
+		//if !accessible {
+		//	fmt.Println("用户没有访问权限")
+		//	return
+		//}
 		var buf []byte
 		buf, q.Err = io.ReadAll(q.R.Body)
 		if forceError == "io.ReadAll" {
@@ -583,6 +638,17 @@ func questionBanks(ctx context.Context) {
 		q.Resp()
 		return
 	case "delete":
+		// 2. 检查API访问权限
+		//var accessible bool
+		//accessible, q.Err = auth_mgt.CheckUserAPIAccessible(ctx, authority, "/api/question-banks", auth_mgt.CDataAccessModeEdit)
+		//if q.Err != nil {
+		//	fmt.Printf("检查API访问权限失败: %v\n", q.Err)
+		//	return
+		//}
+		//if !accessible {
+		//	fmt.Println("用户没有访问权限")
+		//	return
+		//}
 		var buf []byte
 		buf, q.Err = io.ReadAll(q.R.Body)
 		if forceError == "io.ReadAll" {
@@ -866,25 +932,12 @@ func questions(ctx context.Context) {
 		forceError = val
 	}
 
-	// 检查权限
-	userDomains := q.Domains     //用户权限域
-	role := q.SysUser.Role.Int64 //用户角色编号
-	var userDoamin string
-	for _, d := range userDomains {
-		if d.ID.Valid && d.ID.Int64 == role {
-			userDoamin = d.Domain
-			break
-		}
-	}
-	// 判断是否在允许范围内
-	isAllowed := isAllowedDomain(userDoamin)
-
-	if !isAllowed {
-		q.Err = fmt.Errorf("domain %s is not allowed", userDoamin)
-		z.Error(q.Err.Error())
-		q.RespErr()
-		return
-	}
+	//var authority *auth_mgt.Authority
+	//authority, q.Err = auth_mgt.GetUserAuthority(ctx)
+	//if q.Err != nil {
+	//	fmt.Printf("获取用户权限失败: %v\n", q.Err)
+	//	return
+	//}
 
 	userID := q.SysUser.ID.Int64
 	if userID <= 0 {
@@ -901,12 +954,24 @@ func questions(ctx context.Context) {
 	method := strings.ToLower(q.R.Method)
 	switch method {
 	case "get":
+		// 2. 检查API访问权限
+		//var accessible bool
+		//accessible, q.Err = auth_mgt.CheckUserAPIAccessible(ctx, authority, "/api/question", auth_mgt.CDataAccessModeRead)
+		//if q.Err != nil {
+		//	fmt.Printf("检查API访问权限失败: %v\n", q.Err)
+		//	return
+		//}
+		//if !accessible {
+		//	fmt.Println("用户没有访问权限")
+		//	return
+		//}
 		// 获取查询参数
 		pageStr := q.R.URL.Query().Get("page")
 		pageSizeStr := q.R.URL.Query().Get("pageSize")
 		bankIDStr := q.R.URL.Query().Get("bankID")
 		content := q.R.URL.Query().Get("content")
 		tagsParams := q.R.URL.Query()["tags"] // 允许获取多个tag参数
+		questionIDStr := q.R.URL.Query().Get("questionID")
 		var tags []string
 		for _, t := range tagsParams {
 			if t != "" {
@@ -953,6 +1018,17 @@ func questions(ctx context.Context) {
 			return
 		}
 
+		var questionID int64
+		if questionIDStr != "" {
+			questionID, err = strconv.ParseInt(questionIDStr, 10, 64)
+			if err != nil {
+				q.Err = fmt.Errorf("invalid questionID: %v", err)
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+		}
+
 		// 设置默认分页参数
 		if pageStr == "" {
 			pageStr = "1"
@@ -977,12 +1053,106 @@ func questions(ctx context.Context) {
 
 		params := QueryQuestionsParams{
 			BankID:     bankID,
+			QuestionID: questionID,
 			Content:    content,
 			Tags:       tags,
 			Type:       questionTypes,
 			Difficulty: difficultyList,
 			Page:       page,
 			PageSize:   pageSize,
+		}
+
+		// 如果传了questionID，直接查询单道题目
+		if params.QuestionID > 0 {
+			var question cmn.TQuestion
+			s := `
+				SELECT
+					id,
+					type,
+					content,
+					options,
+					answers,
+					score,
+					difficulty,
+					tags,
+					analysis,
+					title,
+					answer_file_path,
+					test_file_path,
+					input,
+					output,
+					example,
+					repo,
+					"order",
+					creator,
+					create_time,
+					updated_by,
+					update_time,
+					addi,
+					status,
+					question_attachments_path,
+					access_mode,
+					belong_to
+				FROM t_question
+				WHERE status = '00' AND belong_to = $1 AND id = $2`
+
+			q.Err = conn.QueryRow(ctx, s, params.BankID, params.QuestionID).Scan(
+				&question.ID,
+				&question.Type,
+				&question.Content,
+				&question.Options,
+				&question.Answers,
+				&question.Score,
+				&question.Difficulty,
+				&question.Tags,
+				&question.Analysis,
+				&question.Title,
+				&question.AnswerFilePath,
+				&question.TestFilePath,
+				&question.Input,
+				&question.Output,
+				&question.Example,
+				&question.Repo,
+				&question.Order,
+				&question.Creator,
+				&question.CreateTime,
+				&question.UpdatedBy,
+				&question.UpdateTime,
+				&question.Addi,
+				&question.Status,
+				&question.QuestionAttachmentsPath,
+				&question.AccessMode,
+				&question.BelongTo,
+			)
+			if forceError == "questions.single.QueryRow" {
+				q.Err = errors.New(forceError)
+			}
+			if q.Err != nil {
+				if q.Err == pgx.ErrNoRows {
+					q.Err = fmt.Errorf("题目不存在或已删除")
+				}
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+
+			var jsonData []byte
+			jsonData, q.Err = json.Marshal(question)
+			if forceError == "questions.single.json.Marshal" {
+				q.Err = errors.New(forceError)
+			}
+			if q.Err != nil {
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+
+			q.Msg.Status = 0
+			q.Msg.Data = jsonData
+			q.Msg.Msg = "success"
+			q.Msg.RowCount = 1
+			q.Resp()
+			return
 		}
 
 		var rowCount int64
@@ -1197,6 +1367,17 @@ func questions(ctx context.Context) {
 		q.Msg.RowCount = rowCount
 	case "post":
 		// 处理 POST 请求
+		// 2. 检查API访问权限
+		//var accessible bool
+		//accessible, q.Err = auth_mgt.CheckUserAPIAccessible(ctx, authority, "/api/question", auth_mgt.CDataAccessModeWrite)
+		//if q.Err != nil {
+		//	fmt.Printf("检查API访问权限失败: %v\n", q.Err)
+		//	return
+		//}
+		//if !accessible {
+		//	fmt.Println("用户没有访问权限")
+		//	return
+		//}
 		var buf []byte
 		buf, q.Err = io.ReadAll(q.R.Body)
 		if forceError == "io.ReadAll" {
@@ -1248,7 +1429,72 @@ func questions(ctx context.Context) {
 			return
 		}
 
-		var insertQuestions []cmn.TQuestion
+		// 开启事务
+		var tx pgx.Tx
+		tx, q.Err = conn.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead})
+		if forceError == "conn.BeginTx" {
+			q.Err = errors.New(forceError)
+		}
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		defer func() {
+			if p := recover(); p != nil {
+				panicErr := fmt.Errorf("panic occurred: %v", p)
+				z.Error(panicErr.Error())
+				err := tx.Rollback(ctx)
+				if forceError == "tx.Rollback.panic" {
+					err = errors.New(forceError)
+					q.Err = err
+					q.RespErr()
+				}
+				if err != nil {
+					z.Error(err.Error())
+				}
+				return
+			}
+			if q.Err != nil {
+				err := tx.Rollback(ctx)
+				if forceError == "tx.Rollback" {
+					err = errors.New(forceError)
+					q.Err = err
+					q.RespErr()
+				}
+				if err != nil && !errors.Is(err, pgx.ErrTxClosed) {
+					z.Error(err.Error())
+				}
+				return
+			}
+			err := tx.Commit(ctx)
+			if forceError == "tx.Commit" {
+				err = errors.New(forceError)
+				q.Err = err
+				q.RespErr()
+			}
+			if err != nil {
+				z.Error(err.Error())
+			}
+		}()
+
+		if forceError == "tx.Rollback.panic" {
+			panic(errors.New(forceError))
+		}
+		if forceError == "tx.Commit" {
+			return
+		}
+		if forceError == "tx.Rollback" {
+			q.Err = errors.New(forceError)
+			return
+		}
+
+		// 准备批量插入
+		batch := &pgx.Batch{}
+		var validQuestions []cmn.TQuestion
+		now := cmn.GetNowInMS()
+
 		for _, question := range questions {
 			valid, err := validateQuestion(&question)
 			if !valid && err != nil {
@@ -1256,8 +1502,12 @@ func questions(ctx context.Context) {
 				q.RespErr()
 				return
 			}
-			question.TableMap = &question
+
+			// 设置基础字段
 			question.Creator = null.IntFrom(userID)
+			question.CreateTime = null.IntFrom(now)
+			question.UpdateTime = null.IntFrom(now)
+			question.Status = StatusNormal
 
 			q.Err = cmn.InvalidEmptyNullValue(&question)
 			if forceError == "cmn.InvalidEmptyNullValue" {
@@ -1269,11 +1519,58 @@ func questions(ctx context.Context) {
 				return
 			}
 
-			// 写库
-			qry.Action = "insert"
-			qry.Data, _ = json.Marshal(question)
-			q.Err = cmn.DML(&question.Filter, &qry)
-			if forceError == "cmn.DML" {
+			// 准备插入SQL
+			insertSQL := `
+				INSERT INTO t_question (
+					type, content, options, answers, score, difficulty, tags, analysis,
+					title, answer_file_path, test_file_path, input, output, example,
+					repo, "order", creator, create_time, updated_by, update_time,
+					addi, status, question_attachments_path, access_mode, belong_to
+				) VALUES (
+					$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16,
+					$17, $18, $19, $20, $21, $22, $23, $24, $25
+				) RETURNING id`
+
+			batch.Queue(insertSQL,
+				question.Type,
+				question.Content,
+				question.Options,
+				question.Answers,
+				question.Score,
+				question.Difficulty,
+				question.Tags,
+				question.Analysis,
+				question.Title,
+				question.AnswerFilePath,
+				question.TestFilePath,
+				question.Input,
+				question.Output,
+				question.Example,
+				question.Repo,
+				question.Order,
+				question.Creator,
+				question.CreateTime,
+				question.UpdatedBy,
+				question.UpdateTime,
+				question.Addi,
+				question.Status,
+				question.QuestionAttachmentsPath,
+				question.AccessMode,
+				question.BelongTo,
+			)
+
+			validQuestions = append(validQuestions, question)
+		}
+
+		// 执行批量插入
+		var br pgx.BatchResults
+		br = tx.SendBatch(ctx, batch)
+
+		var insertQuestions []cmn.TQuestion
+		for i := range validQuestions {
+			var questionID int64
+			q.Err = br.QueryRow().Scan(&questionID)
+			if forceError == "br.QueryRow" {
 				q.Err = errors.New(forceError)
 			}
 			if q.Err != nil {
@@ -1282,19 +1579,18 @@ func questions(ctx context.Context) {
 				return
 			}
 
-			ID, ok := question.QryResult.(int64)
-			if forceError == "QryResult.(int64)" {
-				ok = false
-			}
-			if !ok {
-				q.Err = fmt.Errorf("qryResult should be int64")
-				z.Error(q.Err.Error())
-				q.RespErr()
-				return
-			}
-			question.ID = null.IntFrom(ID)
+			validQuestions[i].ID = null.IntFrom(questionID)
+			insertQuestions = append(insertQuestions, validQuestions[i])
+		}
 
-			insertQuestions = append(insertQuestions, question)
+		q.Err = br.Close()
+		if forceError == "br.Close" {
+			q.Err = errors.New(forceError)
+		}
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
 		}
 
 		var result []json.RawMessage
@@ -1325,8 +1621,22 @@ func questions(ctx context.Context) {
 		q.Msg.Msg = "success"
 	case "put":
 		// 处理 PUT 请求
+		// 2. 检查API访问权限
+		//var accessible bool
+		//accessible, q.Err = auth_mgt.CheckUserAPIAccessible(ctx, authority, "/api/question", auth_mgt.CDataAccessModeEdit)
+		//if q.Err != nil {
+		//	fmt.Printf("检查API访问权限失败: %v\n", q.Err)
+		//	return
+		//}
+		//if !accessible {
+		//	fmt.Println("用户没有访问权限")
+		//	return
+		//}
 		var buf []byte
 		buf, q.Err = io.ReadAll(q.R.Body)
+		if forceError == "io.ReadAll" {
+			q.Err = errors.New(forceError)
+		}
 		if q.Err != nil {
 			z.Error(q.Err.Error())
 			q.RespErr()
@@ -1334,12 +1644,18 @@ func questions(ctx context.Context) {
 		}
 		defer func() {
 			q.Err = q.R.Body.Close()
+			if forceError == "q.R.Body.Close()" {
+				q.Err = errors.New(forceError)
+			}
 			if q.Err != nil {
 				z.Error(q.Err.Error())
 				q.RespErr()
 				return
 			}
 		}()
+		if forceError == "q.R.Body.Close()" {
+			return
+		}
 
 		if len(buf) == 0 {
 			q.Err = fmt.Errorf("call /api/questions with empty body")
@@ -1349,6 +1665,9 @@ func questions(ctx context.Context) {
 		}
 		var req cmn.ReqProto
 		q.Err = json.Unmarshal(buf, &req)
+		if forceError == "reqproto-json.Unmarshal" {
+			q.Err = errors.New(forceError)
+		}
 		if q.Err != nil {
 			z.Error(q.Err.Error())
 			q.RespErr()
@@ -1356,6 +1675,16 @@ func questions(ctx context.Context) {
 		}
 		var question cmn.TQuestion
 		q.Err = json.Unmarshal(req.Data, &question)
+		if forceError == "cmn.TQuestion-json.Unmarshal" {
+			q.Err = errors.New(forceError)
+		}
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+		//尝试获取题目锁
+		_, q.Err = cmn.TryLock(ctx, question.ID.Int64, userID, QuestionLockPrefix, QuestionLockExpiration)
 		if q.Err != nil {
 			z.Error(q.Err.Error())
 			q.RespErr()
@@ -1384,6 +1713,9 @@ func questions(ctx context.Context) {
 		// 执行更新操作
 		var commandTag pgconn.CommandTag
 		commandTag, q.Err = conn.Exec(ctx, updateSQL, question.Content, question.Options, question.Answers, question.Score, question.Difficulty, question.Tags, question.Analysis, now, now, question.ID)
+		if forceError == "conn.Exec" {
+			q.Err = errors.New(forceError)
+		}
 		if q.Err != nil {
 			z.Error(q.Err.Error())
 			q.RespErr()
@@ -1394,21 +1726,36 @@ func questions(ctx context.Context) {
 			z.Error(q.Err.Error())
 			q.RespErr()
 			return
-		} //检测当前题目是否被试卷引用，如果被引用，则把引用试卷的版本号加一 TODO
-
-		q.Msg.Status = 0
-		q.Msg.Msg = "success"
-	case "delete":
-		// 设置创建者
-		userID := q.SysUser.ID.Int64
-		if userID <= 0 {
-			q.Err = fmt.Errorf("invalid userID: %d", userID)
+		}
+		//释放题目锁
+		if forceError == "cmn.ReleaseLock" {
+			_ = cmn.ReleaseLock(ctx, question.ID.Int64, userID, QuestionLockPrefix)
+		}
+		q.Err = cmn.ReleaseLock(ctx, question.ID.Int64, userID, QuestionLockPrefix)
+		if q.Err != nil {
 			z.Error(q.Err.Error())
 			q.RespErr()
 			return
 		}
+		q.Msg.Status = 0
+		q.Msg.Msg = "success"
+	case "delete":
+		// 2. 检查API访问权限
+		//var accessible bool
+		//accessible, q.Err = auth_mgt.CheckUserAPIAccessible(ctx, authority, "/api/question", auth_mgt.CDataAccessModeEdit)
+		//if q.Err != nil {
+		//	fmt.Printf("检查API访问权限失败: %v\n", q.Err)
+		//	return
+		//}
+		//if !accessible {
+		//	fmt.Println("用户没有访问权限")
+		//	return
+		//}
 		var buf []byte
 		buf, q.Err = io.ReadAll(q.R.Body)
+		if forceError == "io.ReadAll" {
+			q.Err = errors.New(forceError)
+		}
 		if q.Err != nil {
 			z.Error(q.Err.Error())
 			q.RespErr()
@@ -1416,12 +1763,18 @@ func questions(ctx context.Context) {
 		}
 		defer func() {
 			q.Err = q.R.Body.Close()
+			if forceError == "q.R.Body.Close()" {
+				q.Err = errors.New(forceError)
+			}
 			if q.Err != nil {
 				z.Error(q.Err.Error())
 				q.RespErr()
 				return
 			}
 		}()
+		if forceError == "q.R.Body.Close()" {
+			return
+		}
 
 		if len(buf) == 0 {
 			q.Err = fmt.Errorf("call /api/question-banks with empty body")
@@ -1439,6 +1792,9 @@ func questions(ctx context.Context) {
 		}
 		var deleteQuestionIDs []int64
 		q.Err = json.Unmarshal(qry.Data, &deleteQuestionIDs)
+		if forceError == "json.Unmarshal" {
+			q.Err = errors.New(forceError)
+		}
 		if q.Err != nil {
 			z.Error(q.Err.Error())
 			q.RespErr()
@@ -1457,6 +1813,9 @@ func questions(ctx context.Context) {
 		//如果其中任何一步失败，则整个事务回滚
 		var tx pgx.Tx
 		tx, q.Err = conn.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead})
+		if forceError == "conn.BeginTx" {
+			q.Err = errors.New(forceError)
+		}
 		if q.Err != nil {
 			z.Error(q.Err.Error())
 			q.RespErr()
@@ -1465,23 +1824,48 @@ func questions(ctx context.Context) {
 		defer func() {
 			if p := recover(); p != nil {
 				err := tx.Rollback(ctx)
+				if forceError == "recover" {
+					err = errors.New(forceError)
+					q.Err = err
+					q.RespErr()
+				}
 				if err != nil {
 					z.Error(err.Error())
 				}
-				q.Err = fmt.Errorf("panic occurred: %v", p)
-				z.Error(q.Err.Error())
+				err = fmt.Errorf("panic occurred: %v", p)
+				z.Error(err.Error())
 			}
 			if q.Err != nil {
 				err := tx.Rollback(ctx)
+				if forceError == "tx.Rollback" {
+					err = errors.New(forceError)
+					q.Err = err
+					q.RespErr()
+				}
 				if err != nil {
 					z.Error(err.Error())
 				}
 			}
 			err := tx.Commit(ctx)
+			if forceError == "tx.Commit" {
+				err = errors.New(forceError)
+				q.Err = err
+				q.RespErr()
+			}
 			if err != nil {
 				z.Error(err.Error())
 			}
 		}()
+		if forceError == "recover" {
+			panic(errors.New(forceError))
+		}
+		if forceError == "tx.Commit" {
+			return
+		}
+		if forceError == "tx.Rollback" {
+			q.Err = errors.New(forceError)
+			return
+		}
 		// 这里是执行具体的删除操作
 		var checkSQL string
 		var errorMessages []string
@@ -1500,6 +1884,9 @@ func questions(ctx context.Context) {
 			LEFT JOIN t_question tq ON tq.id = ids.id
 			WHERE tq.id IS NULL OR tq.creator != $2`
 		q.Err = tx.QueryRow(ctx, checkSQL, deleteQuestionIDs, userID).Scan(&errorMessages)
+		if forceError == "tx.QueryRow" {
+			q.Err = errors.New(forceError)
+		}
 		if q.Err != nil {
 			z.Error(q.Err.Error())
 			q.RespErr()
@@ -1531,6 +1918,9 @@ func questions(ctx context.Context) {
 			WHERE id = ANY($1::bigint[])
 		`
 		_, q.Err = tx.Exec(ctx, deleteSQL, deleteQuestionIDs)
+		if forceError == "tx.Exec" {
+			q.Err = errors.New(forceError)
+		}
 		if q.Err != nil {
 			z.Error(q.Err.Error())
 			q.RespErr()
@@ -1542,6 +1932,153 @@ func questions(ctx context.Context) {
 	default:
 		q.Err = fmt.Errorf("unsupported method: %s", method)
 		z.Warn(q.Err.Error())
+		q.RespErr()
+		return
+	}
+	q.Resp()
+}
+
+// 题目锁 获取锁\延长锁\释放锁
+// QuestionLock 处理题目编辑锁相关的HTTP请求
+func QuestionLock(ctx context.Context) {
+	q := cmn.GetCtxValue(ctx)
+	z.Info("---->" + cmn.FncName())
+
+	forceError := ""
+	if val, ok := ctx.Value("force-error").(string); ok {
+		forceError = val
+	}
+
+	//获取用户ID
+	userID := q.SysUser.ID.Int64
+	if userID <= 0 {
+		q.Err = fmt.Errorf("invalid userID: %d", userID)
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+	//var authority *auth_mgt.Authority
+	//authority, q.Err = auth_mgt.GetUserAuthority(ctx)
+	//if q.Err != nil {
+	//	fmt.Printf("获取用户权限失败: %v\n", q.Err)
+	//	return
+	//}
+
+	method := strings.ToLower(q.R.Method)
+	switch method {
+	case "get":
+		// 2. 检查API访问权限
+		//var accessible bool
+		//accessible, q.Err = auth_mgt.CheckUserAPIAccessible(ctx, authority, "/api/question/lock", auth_mgt.CDataAccessModeEdit)
+		//if q.Err != nil {
+		//	fmt.Printf("检查API访问权限失败: %v\n", q.Err)
+		//	return
+		//}
+		//if !accessible {
+		//	fmt.Println("用户没有访问权限")
+		//	return
+		//}
+		// 解析并验证题目ID
+		questionIDStr := q.R.URL.Query().Get("question_id")
+		var questionID int64
+		questionID, q.Err = strconv.ParseInt(questionIDStr, 10, 64)
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+		if questionID <= 0 {
+			q.Err = fmt.Errorf("invalid questionID: %d", questionID)
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		//尝试获取题目锁
+		_, q.Err = cmn.TryLock(ctx, questionID, userID, QuestionLockPrefix, QuestionLockExpiration)
+		if forceError == "cmn.TryLock" {
+			q.Err = errors.New(forceError)
+		}
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+		q.Msg.Msg = "success"
+		q.Msg.Status = 0
+	case "put":
+		// 解析并验证题目ID
+		// 2. 检查API访问权限
+		//var accessible bool
+		//accessible, q.Err = auth_mgt.CheckUserAPIAccessible(ctx, authority, "/api/question/lock", auth_mgt.CDataAccessModeEdit)
+		//if q.Err != nil {
+		//	fmt.Printf("检查API访问权限失败: %v\n", q.Err)
+		//	return
+		//}
+		//if !accessible {
+		//	fmt.Println("用户没有访问权限")
+		//	return
+		//}
+		questionIDStr := q.R.URL.Query().Get("question_id")
+		var questionID int64
+		questionID, q.Err = strconv.ParseInt(questionIDStr, 10, 64)
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+		if questionID <= 0 {
+			q.Err = fmt.Errorf("invalid questionID: %d", questionID)
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		//延长题目锁
+		q.Err = cmn.RefreshLock(ctx, questionID, userID, QuestionLockPrefix, QuestionLockExpiration)
+		if forceError == "cmn.RefreshLock" {
+			q.Err = errors.New(forceError)
+		}
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+		q.Msg.Msg = "success"
+		q.Msg.Status = 0
+	case "delete":
+		// 解析并验证题目ID
+		questionIDStr := q.R.URL.Query().Get("question_id")
+		var questionID int64
+		questionID, q.Err = strconv.ParseInt(questionIDStr, 10, 64)
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+		if questionID <= 0 {
+			q.Err = fmt.Errorf("invalid questionID: %d", questionID)
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		//释放题目锁
+		q.Err = cmn.ReleaseLock(ctx, questionID, userID, QuestionLockPrefix)
+		if forceError == "cmn.ReleaseLock" {
+			q.Err = errors.New(forceError)
+		}
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+		q.Msg.Msg = "success"
+		q.Msg.Status = 0
+	default:
+		// 处理其他方法
+		q.Err = fmt.Errorf("不支持该方法: %s", method)
+		z.Error(q.Err.Error())
 		q.RespErr()
 		return
 	}

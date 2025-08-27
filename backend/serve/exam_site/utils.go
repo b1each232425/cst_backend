@@ -48,10 +48,32 @@ func generateExportScript(sysUser int64, destDir string, fileName string, isSubS
 			Sql:   `SELECT t_domain_api.* FROM t_domain_api`,
 			Table: "t_domain_api",
 		},
-
 		//===================
 
-		//====账号数据查询====
+		// 考点系统账号数据
+		{
+			Sql: fmt.Sprintf(`SELECT t_user.* FROM t_user WHERE t_user.id = %d`, sysUser),
+			Table: "t_user",
+		},
+		{
+			Sql: fmt.Sprintf(`SELECT t_user_domain.* FROM t_user_domain WHERE t_user_domain.sys_user = %d
+			`, sysUser),
+			Table: "t_user_domain",
+		},
+
+		// 考点数据
+		{
+			Sql: fmt.Sprintf(`SELECT t_exam_site.* FROM t_exam_site WHERE sys_user=%d`, sysUser),
+			Table: "t_exam_site",
+		},
+
+		// 考场数据
+		{
+			Sql: fmt.Sprintf(`SELECT t_exam_room.* FROM t_exam_room
+JOIN t_exam_site ON t_exam_site.id = t_exam_room.exam_site
+WHERE t_exam_site.sys_user = %d`, sysUser),
+			Table: "t_exam_room",
+		},
 
 		// 考点负责人账号数据
 		{
@@ -181,8 +203,6 @@ GROUP BY
 			Table: "t_user_domain",
 		},
 
-		//===================
-
 		//======考生数据======
 		{
 			Sql: fmt.Sprintf(`WITH recent_exam AS (
@@ -306,7 +326,7 @@ func generateImportScript(tableFileList []string, destDir string, fileName strin
 	content := ""
 	end := "\n"
 	if !isSubServerSide {
-		content = "BEGIN\n"
+		content = "BEGIN;\n"
 		end  = "\nCOMMIT;"
 	}
 
