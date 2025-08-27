@@ -34,6 +34,7 @@ import (
 	"w2w.io/cmn"
 	"w2w.io/null"
 	"w2w.io/serve/auth_mgt"
+	"w2w.io/exam_service"
 )
 
 const (
@@ -422,7 +423,11 @@ func Pull(ctx context.Context, retryCount int) {
 			}
 
 			z.Error(q.Err.Error())
+			return
 		}
+
+		// 开启考试计时器
+		q.Err = exam_service.InitializeExamTimers(ctx)
 
 	}()
 
@@ -598,7 +603,7 @@ func Pull(ctx context.Context, retryCount int) {
 	}
 
 	// 执行导入脚本
-	cmd = fmt.Sprintf("PGPASSFILE=%s psql -h %s -p %d -U %s -d %s -f %s",
+	cmd = fmt.Sprintf("PGPASSFILE=%s psql -v ON_ERROR_STOP=1 -h %s -p %d -U %s -d %s -f %s",
 		pgpassFullPath,
 		dbAddr,
 		dbPort,
@@ -621,6 +626,7 @@ func Pull(ctx context.Context, retryCount int) {
 		return
 	}
 
+	z.Info(string(o))
 }
 
 // Push 将数据推送到中心服务器, 中间如果发生任何错误都会进行重试
@@ -817,7 +823,7 @@ func Push(ctx context.Context, retryCount int) {
 	pgpassFullPath := filepath.Join(os.Getenv("HOME"), ".pgpass")
 
 	// 执行导出脚本
-	cmd := fmt.Sprintf("PGPASSFILE=%s psql -h %s -p %d -U %s -d %s -f %s",
+	cmd := fmt.Sprintf("PGPASSFILE=%s psql -v ON_ERROR_STOP=1 -h %s -p %d -U %s -d %s -f %s",
 		pgpassFullPath,
 		dbAddr,
 		dbPort,
@@ -842,6 +848,9 @@ func Push(ctx context.Context, retryCount int) {
 
 	}
 
+	z.Info(string(o))
+
+	// 将数据同步回中心服务器
 	cmd = fmt.Sprintf(`rsync -avz -e "ssh -p %d" --delete %s/* %s`,
 		sshPort,
 		source, dest)
@@ -2103,7 +2112,7 @@ MethodSwitch:
 
 }
 
-/* 考点同步相关 */
+/* 考点同步服务 */
 //  .oooooo..o
 // d8P'    `Y8
 // Y88bo.      oooo    ooo ooo. .oo.    .ooooo.
@@ -2347,6 +2356,11 @@ func examSiteSyncInit(ctx context.Context) {
 		}
 	}()
 
+	// TODO: 开启一个定时任务
+	// go func() {
+		
+	// }()
+
 }
 
 // examSiteSync 处理考点同步相关请求
@@ -2546,7 +2560,8 @@ MethodSwitch:
 			break MethodSwitch
 		}
 
-		cmd = fmt.Sprintf("PGPASSFILE=%s psql -h %s -p %d -U %s -d %s -f %s",
+		// 执行导出脚本
+		cmd = fmt.Sprintf("PGPASSFILE=%s psql -v ON_ERROR_STOP=1 -h %s -p %d -U %s -d %s -f %s",
 			pgpassFullPath,
 			dbAddr,
 			dbPort,
@@ -2577,6 +2592,7 @@ MethodSwitch:
 
 		var data []byte
 
+		// 返回同步数据信息
 		data, q.Err = json.Marshal(info)
 		if q.Err != nil || (cmn.InDebugMode && q.Tag["jsonMarshalErr"] != nil) {
 
@@ -2624,7 +2640,8 @@ MethodSwitch:
 			break MethodSwitch
 		}
 
-		cmd := fmt.Sprintf(`PGPASSFILE=%s psql -h %s -p %d -U %s -d %s -f %s`,
+		// 执行导入脚本
+		cmd := fmt.Sprintf(`PGPASSFILE=%s psql -v ON_ERROR_STOP=1 -h %s -p %d -U %s -d %s -f %s`,
 			pgpassFullPath,
 			dbAddr,
 			dbPort,
@@ -2647,6 +2664,8 @@ MethodSwitch:
 			z.Error(q.Err.Error())
 			break MethodSwitch
 		}
+
+		z.Info(string(o))
 
 		// 清理已同步的数据
 		_, err := q.RedisClient.Del(ctx, syncInfoSnapshotKey).Result()
