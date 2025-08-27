@@ -1,6 +1,6 @@
 /*==============================================================*/
 /* DBMS name:      PostgreSQL 9.x                               */
-/* Created on:     8/25/2025 10:31:41 PM                        */
+/* Created on:     2025/8/27 15:08:21                           */
 /*==============================================================*/
 
 
@@ -9201,8 +9201,11 @@ ALTER SEQUENCE t_sys_ver_id_seq RESTART WITH 20000;
 
 insert into t_sys_ver(id,name,ver,create_time,update_time,remark)
   values(1000,'业务模型','3.1.12.0',
-  'Monday, December 5, 2016 9:52:53 AM','Monday, August 25, 2025 10:31:37 PM',
-  '3.1.12.0
+  '2016年12月5日 9:52:53','2025年8月27日 15:07:36',
+  '3.1.12.1
+修改v_exam_file视图对文件状态的判断条件，为v_invigilation_info视图增加exam_domain_id字段
+
+3.1.12.0
 在t_api新增access_action字段，并将索引idx_t_api_expose_path修改为expose_path字段与access_action字段的联合唯一索引idx_t_api_ep_aa，以实现功能配置需求；修改部分表的create_time与update_time为INT8类型
 
 3.1.11.4 
@@ -11015,7 +11018,7 @@ create or replace view v_exam_file as
    FROM t_exam_info ei
      CROSS JOIN LATERAL jsonb_array_elements_text(ei.files) file_id_text(value)
      JOIN t_file f ON f.id = file_id_text.value::bigint
-  WHERE ei.files IS NOT NULL AND jsonb_typeof(ei.files) = 'array'::text AND ei.status::text != '12'::text AND f.status::text != '02'::text;
+  WHERE ei.files IS NOT NULL AND jsonb_typeof(ei.files) = 'array'::text AND ei.status::text <> '12'::text AND f.status::text <> '2'::text;
 
 comment on view v_exam_file is
 'v_exam_file';
@@ -12100,6 +12103,7 @@ create or replace view v_invigilation_info as
     exam_infos.id AS exam_id,
     exam_infos.type AS exam_type,
     exam_infos.mode AS exam_mode,
+    exam_infos.domain_id AS exam_domain_id,
     exam_sessions.id AS exam_session_id,
     exam_sessions.start_time,
     exam_sessions.end_time,
