@@ -149,7 +149,7 @@ func NewChatModel(model string, endpoint string, apiKey string, prompt string, r
 		ApiKey:            apiKey,
 		TokenizerEndPoint: tokenizerEndPoint,
 		MaxConcurrency:    maxConcurrency,
-		MaxTokens:         8192,
+		MaxTokens:         16 * 1024,
 		ResponseFormat:    ResponseFormat{Type: "json_object"},
 		Prompt:            prompt,
 		ReviewPrompt:      reviewPrompt,
