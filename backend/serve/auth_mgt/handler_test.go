@@ -239,6 +239,7 @@ func TestHandleDomain(t *testing.T) {
 		forceError string
 		userID     int64
 		userRole   int64
+		params     map[string]string // 查询参数
 	}
 	tests := []struct {
 		name       string
@@ -246,6 +247,57 @@ func TestHandleDomain(t *testing.T) {
 		wantStatus int
 		wantErr    bool
 	}{
+		// 以下为通用测试用例
+		{
+			name: "失败｜用户未登录",
+			args: args{
+				method:     "POST",
+				body:       nil,
+				forceError: "",
+				userID:     0,
+				userRole:   2000,
+			},
+			wantStatus: -1,
+			wantErr:    true,
+		},
+		{
+			name: "失败｜非超级管理员权限",
+			args: args{
+				method:     "POST",
+				body:       nil,
+				forceError: "",
+				userID:     1,
+				userRole:   2000,
+			},
+			wantStatus: -1,
+			wantErr:    true,
+		},
+		{
+			name: "失败｜请求体为空",
+			args: args{
+				method:     "POST",
+				body:       "",
+				forceError: "",
+				userID:     1,
+				userRole:   2000,
+			},
+			wantStatus: -1,
+			wantErr:    true,
+		},
+		{
+			name: "失败｜不支持的请求方法",
+			args: args{
+				method:     "PATCH",
+				body:       "",
+				forceError: "",
+				userID:     1,
+				userRole:   2000,
+			},
+			wantStatus: -1,
+			wantErr:    true,
+		},
+
+		// 以下为POST方法的测试用例
 		{
 			name: "成功创建机构｜POST方法｜有效域数据",
 			args: args{
@@ -347,7 +399,7 @@ func TestHandleDomain(t *testing.T) {
 			wantErr:    false,
 		},
 		{
-			name: "创建机构失败｜英文代号不合法",
+			name: "创建机构失败｜POST方法｜英文代号不合法",
 			args: args{
 				method: "POST",
 				body: DomainData{
@@ -379,7 +431,7 @@ func TestHandleDomain(t *testing.T) {
 			wantErr:    true,
 		},
 		{
-			name: "创建部门失败｜所属机构不存在",
+			name: "创建部门失败｜POST方法｜所属机构不存在",
 			args: args{
 				method: "POST",
 				body: DomainData{
@@ -411,7 +463,7 @@ func TestHandleDomain(t *testing.T) {
 			wantErr:    true,
 		},
 		{
-			name: "创建机构失败｜创建者非超级管理员角色",
+			name: "创建机构失败｜POST方法｜创建者非超级管理员角色",
 			args: args{
 				method: "POST",
 				body: DomainData{
@@ -443,55 +495,7 @@ func TestHandleDomain(t *testing.T) {
 			wantErr:    true,
 		},
 		{
-			name: "失败｜无效HTTP方法",
-			args: args{
-				method:     "GET",
-				body:       nil,
-				forceError: "",
-				userID:     1,
-				userRole:   2000,
-			},
-			wantStatus: -1,
-			wantErr:    true,
-		},
-		{
-			name: "失败｜用户未登录",
-			args: args{
-				method:     "POST",
-				body:       nil,
-				forceError: "",
-				userID:     0,
-				userRole:   2000,
-			},
-			wantStatus: -1,
-			wantErr:    true,
-		},
-		{
-			name: "失败｜非超级管理员权限",
-			args: args{
-				method:     "POST",
-				body:       nil,
-				forceError: "",
-				userID:     1,
-				userRole:   2000,
-			},
-			wantStatus: -1,
-			wantErr:    true,
-		},
-		{
-			name: "失败｜请求体为空",
-			args: args{
-				method:     "POST",
-				body:       "",
-				forceError: "",
-				userID:     1,
-				userRole:   2000,
-			},
-			wantStatus: -1,
-			wantErr:    true,
-		},
-		{
-			name: "失败｜域英文代码为空",
+			name: "失败｜POST方法｜域英文代码为空",
 			args: args{
 				method: "POST",
 				body: DomainData{
@@ -509,7 +513,7 @@ func TestHandleDomain(t *testing.T) {
 			wantErr:    true,
 		},
 		{
-			name: "失败｜域名称为空",
+			name: "失败｜POST方法｜域名称为空",
 			args: args{
 				method: "POST",
 				body: DomainData{
@@ -527,7 +531,7 @@ func TestHandleDomain(t *testing.T) {
 			wantErr:    true,
 		},
 		{
-			name: "失败｜无效域格式",
+			name: "失败｜POST方法｜无效域格式",
 			args: args{
 				method: "POST",
 				body: DomainData{
@@ -545,7 +549,7 @@ func TestHandleDomain(t *testing.T) {
 			wantErr:    true,
 		},
 		{
-			name: "失败｜角色优先级无效",
+			name: "失败｜POST方法｜角色优先级无效",
 			args: args{
 				method: "POST",
 				body: DomainData{
@@ -564,7 +568,7 @@ func TestHandleDomain(t *testing.T) {
 			wantErr:    true,
 		},
 		{
-			name: "失败｜强制GetUserAuthority错误",
+			name: "失败｜POST方法｜强制GetUserAuthority错误",
 			args: args{
 				method:     "POST",
 				body:       nil,
@@ -576,7 +580,7 @@ func TestHandleDomain(t *testing.T) {
 			wantErr:    true,
 		},
 		{
-			name: "失败｜强制io.ReadAll错误",
+			name: "失败｜POST方法｜强制io.ReadAll错误",
 			args: args{
 				method:     "POST",
 				body:       "test",
@@ -588,7 +592,7 @@ func TestHandleDomain(t *testing.T) {
 			wantErr:    true,
 		},
 		{
-			name: "失败｜强制JSON反序列化错误",
+			name: "失败｜POST方法｜强制JSON反序列化错误",
 			args: args{
 				method:     "POST",
 				body:       DomainData{},
@@ -600,7 +604,7 @@ func TestHandleDomain(t *testing.T) {
 			wantErr:    true,
 		},
 		{
-			name: "失败｜强制JSON反序列化body.data错误",
+			name: "失败｜POST方法｜强制JSON反序列化body.data错误",
 			args: args{
 				method:     "POST",
 				body:       DomainData{},
@@ -612,7 +616,7 @@ func TestHandleDomain(t *testing.T) {
 			wantErr:    true,
 		},
 		{
-			name: "失败｜强制GetPgxConn错误",
+			name: "失败｜POST方法｜强制GetPgxConn错误",
 			args: args{
 				method: "POST",
 				body: DomainData{
@@ -647,7 +651,7 @@ func TestHandleDomain(t *testing.T) {
 			wantErr:    true,
 		},
 		{
-			name: "失败｜强制tx.Begin错误",
+			name: "失败｜POST方法｜强制tx.Begin错误",
 			args: args{
 				method: "POST",
 				body: DomainData{
@@ -682,7 +686,7 @@ func TestHandleDomain(t *testing.T) {
 			wantErr:    true,
 		},
 		{
-			name: "失败｜强制tx.QueryRow错误",
+			name: "失败｜POST方法｜强制tx.QueryRow错误",
 			args: args{
 				method: "POST",
 				body: DomainData{
@@ -717,7 +721,7 @@ func TestHandleDomain(t *testing.T) {
 			wantErr:    true,
 		},
 		{
-			name: "失败｜强制tx.Exec错误",
+			name: "失败｜POST方法｜强制tx.Exec错误",
 			args: args{
 				method: "POST",
 				body: DomainData{
@@ -752,7 +756,7 @@ func TestHandleDomain(t *testing.T) {
 			wantErr:    true,
 		},
 		{
-			name: "失败｜强制json.MarshalResponse错误",
+			name: "失败｜POST方法｜强制json.MarshalResponse错误",
 			args: args{
 				method: "POST",
 				body: DomainData{
@@ -787,7 +791,7 @@ func TestHandleDomain(t *testing.T) {
 			wantErr:    false,
 		},
 		{
-			name: "失败｜强制io.Close错误",
+			name: "失败｜POST方法｜强制io.Close错误",
 			args: args{
 				method: "POST",
 				body: DomainData{
@@ -818,6 +822,242 @@ func TestHandleDomain(t *testing.T) {
 				userID:     1,
 				userRole:   2000,
 			},
+			wantStatus: 0,
+			wantErr:    false,
+		},
+
+		// 以下为GET方法的测试用例
+		{
+			name: "成功查询域列表｜GET方法｜无筛选条件",
+			args: args{
+				method:     "GET",
+				body:       nil,
+				forceError: "",
+				userID:     1,
+				userRole:   2000,
+				params:     nil,
+			},
+			wantStatus: 0,
+			wantErr:    false,
+		},
+		{
+			name: "成功查询域列表｜GET方法｜带状态筛选",
+			args: args{
+				method:     "GET",
+				body:       nil,
+				forceError: "",
+				userID:     1,
+				userRole:   2000,
+				params:     map[string]string{"status": "01"},
+			},
+			wantStatus: 0,
+			wantErr:    false,
+		},
+		{
+			name: "成功查询域列表｜GET方法｜带域筛选",
+			args: args{
+				method:     "GET",
+				body:       nil,
+				forceError: "",
+				userID:     1,
+				userRole:   2000,
+				params:     map[string]string{"domain": "testSchool"},
+			},
+			wantStatus: 0,
+			wantErr:    false,
+		},
+		{
+			name: "成功查询域列表｜GET方法｜带模糊查询",
+			args: args{
+				method:     "GET",
+				body:       nil,
+				forceError: "",
+				userID:     1,
+				userRole:   2000,
+				params:     map[string]string{"fuzzyCondition": "测试"},
+			},
+			wantStatus: 0,
+			wantErr:    false,
+		},
+		{
+			name: "成功查询域列表｜GET方法｜带分页参数",
+			args: args{
+				method:     "GET",
+				body:       nil,
+				forceError: "",
+				userID:     1,
+				userRole:   2000,
+				params:     map[string]string{"page": "1", "pageSize": "5"},
+			},
+			wantStatus: 0,
+			wantErr:    false,
+		},
+		{
+			name: "成功查询域列表｜GET方法｜带分页参数｜页大小超过1000",
+			args: args{
+				method:     "GET",
+				body:       nil,
+				forceError: "",
+				userID:     1,
+				userRole:   2000,
+				params:     map[string]string{"page": "1", "pageSize": "10000"},
+			},
+			wantStatus: 0,
+			wantErr:    false,
+		},
+		{
+			name: "成功查询域列表｜GET方法｜带父域参数",
+			args: args{
+				method:     "GET",
+				body:       nil,
+				forceError: "",
+				userID:     1,
+				userRole:   2000,
+				params:     map[string]string{"page": "1", "pageSize": "10", "parentDomain": "testSchool"},
+			},
+			wantStatus: 0,
+			wantErr:    false,
+		},
+		{
+			name: "成功查询域列表｜GET方法｜只查询角色",
+			args: args{
+				method:     "GET",
+				body:       nil,
+				forceError: "",
+				userID:     1,
+				userRole:   2000,
+				params:     map[string]string{"page": "1", "pageSize": "10", "onlyRole": "true"},
+			},
+			wantStatus: 0,
+			wantErr:    false,
+		},
+		{
+			name: "失败｜GET方法｜无效域格式",
+			args: args{
+				method:     "GET",
+				body:       nil,
+				forceError: "",
+				userID:     1,
+				userRole:   2000,
+				params:     map[string]string{"domain": "invalid^domain^format"},
+			},
+			wantStatus: -1,
+			wantErr:    true,
+		},
+		{
+			name: "失败｜GET方法｜无效父域格式",
+			args: args{
+				method:     "GET",
+				body:       nil,
+				forceError: "",
+				userID:     1,
+				userRole:   2000,
+				params:     map[string]string{"parentDomain": "invalid^parent^format"},
+			},
+			wantStatus: -1,
+			wantErr:    true,
+		},
+		{
+			name: "失败｜GET方法｜强制GetPgxConn错误",
+			args: args{
+				method:     "GET",
+				body:       nil,
+				forceError: "GetPgxConn",
+				userID:     1,
+				userRole:   2000,
+				params:     nil,
+			},
+			wantStatus: -1,
+			wantErr:    true,
+		},
+		{
+			name: "失败｜GET方法｜强制QueryDomains错误",
+			args: args{
+				method:     "GET",
+				body:       nil,
+				forceError: "QueryDomains",
+				userID:     1,
+				userRole:   2000,
+				params:     nil,
+			},
+			wantStatus: -1,
+			wantErr:    true,
+		},
+		{
+			name: "失败｜GET方法｜强制ScanDomains错误",
+			args: args{
+				method:     "GET",
+				body:       nil,
+				forceError: "ScanDomains",
+				userID:     1,
+				userRole:   2000,
+				params:     nil,
+			},
+			wantStatus: -1,
+			wantErr:    true,
+		},
+		{
+			name: "失败｜GET方法｜强制QueryDomainAPIs错误",
+			args: args{
+				method:     "GET",
+				body:       nil,
+				forceError: "QueryDomainAPIs",
+				userID:     1,
+				userRole:   2000,
+				params:     nil,
+			},
+			wantStatus: -1,
+			wantErr:    true,
+		},
+		{
+			name: "失败｜GET方法｜强制ScanDomainAPIs错误",
+			args: args{
+				method:     "GET",
+				body:       nil,
+				forceError: "ScanDomainAPIs",
+				userID:     1,
+				userRole:   2000,
+				params:     nil,
+			},
+			wantStatus: -1,
+			wantErr:    true,
+		},
+		{
+			name: "失败｜GET方法｜强制json.MarshalDomainList错误",
+			args: args{
+				method:     "GET",
+				body:       nil,
+				forceError: "json.MarshalDomainList",
+				userID:     1,
+				userRole:   2000,
+				params:     nil,
+			},
+			wantStatus: -1,
+			wantErr:    false,
+		},
+		{
+			name: "失败｜GET方法｜强制apiRows.Err错误",
+			args: args{
+				method:     "GET",
+				body:       nil,
+				forceError: "apiRows.Err",
+				userID:     1,
+				userRole:   2000,
+				params:     map[string]string{"page": "1", "pageSize": "10", "onlyRole": "true"},
+			},
+			wantStatus: -1,
+			wantErr:    true,
+		},
+		{
+			name: "失败｜GET方法｜强制rows.Err错误",
+			args: args{
+				method:     "GET",
+				body:       nil,
+				forceError: "rows.Err",
+				userID:     1,
+				userRole:   2000,
+				params:     map[string]string{"page": "1", "pageSize": "10", "onlyRole": "true"},
+			},
 			wantStatus: -1,
 			wantErr:    true,
 		},
@@ -845,7 +1085,15 @@ func TestHandleDomain(t *testing.T) {
 			}
 
 			// 创建HTTP请求
-			req := httptest.NewRequest(tt.args.method, "/api/domain", reqBody)
+			reqURL := "/api/domain"
+			if tt.args.params != nil && len(tt.args.params) > 0 {
+				var queryParams []string
+				for key, value := range tt.args.params {
+					queryParams = append(queryParams, key+"="+value)
+				}
+				reqURL += "?" + strings.Join(queryParams, "&")
+			}
+			req := httptest.NewRequest(tt.args.method, reqURL, reqBody)
 
 			// 创建响应记录器
 			w := httptest.NewRecorder()
@@ -895,9 +1143,18 @@ func TestHandleDomain(t *testing.T) {
 
 				// 验证返回的数据是否为有效的JSON
 				if len(q.Msg.Data) > 0 {
-					var domainData DomainData
-					if err := json.Unmarshal(q.Msg.Data, &domainData); err != nil {
-						t.Errorf("HandleDomain() returned invalid JSON data: %v", err)
+					if tt.args.method == "GET" {
+						// GET方法返回域列表
+						var domainList []DomainData
+						if err := json.Unmarshal(q.Msg.Data, &domainList); err != nil {
+							t.Errorf("HandleDomain() GET returned invalid JSON data: %v", err)
+						}
+					} else {
+						// POST方法返回单个域数据
+						var domainData DomainData
+						if err := json.Unmarshal(q.Msg.Data, &domainData); err != nil {
+							t.Errorf("HandleDomain() POST returned invalid JSON data: %v", err)
+						}
 					}
 				}
 			}
