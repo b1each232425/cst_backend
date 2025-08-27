@@ -14127,10 +14127,10 @@ create or replace view v_x_grade_list as
     es.mark_mode,
     ep.id AS exam_paper_id,
     ep.name AS paper_name
-    FROM t_exam_info ei
-      JOIN v_student_exam_total_score ets ON ei.id = ets.exam_id
-      LEFT JOIN t_exam_session es ON es.id = ets.exam_session_id
-      LEFT JOIN t_exam_paper ep ON ep.exam_session_id = ets.exam_session_id;
+  FROM t_exam_info ei
+     JOIN v_student_exam_total_score ets ON ei.id = ets.exam_id
+     LEFT JOIN t_exam_session es ON es.id = ets.exam_session_id
+     LEFT JOIN t_exam_paper ep ON ep.exam_session_id = ets.exam_session_id;
 
 comment on view v_x_grade_list is
 'v_x_grade_list';
