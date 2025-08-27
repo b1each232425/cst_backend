@@ -1,6 +1,6 @@
 /*==============================================================*/
 /* DBMS name:      PostgreSQL 9.x                               */
-/* Created on:     2025/8/27 17:44:24                           */
+/* Created on:     2025/8/27 19:57:22                           */
 /*==============================================================*/
 
 
@@ -9384,9 +9384,9 @@ comment on column t_sys_ver.status is
 ALTER SEQUENCE t_sys_ver_id_seq RESTART WITH 20000;
 
 insert into t_sys_ver(id,name,ver,create_time,update_time,remark)
-  values(1000,'业务模型','3.1.12.2',
-  '2016年12月5日 9:52:53','2025年8月27日 17:07:52',
-  '3.1.12.2
+  values(1000,'业务模型','3.2.0.0',
+  '2016年12月5日 9:52:53','2025年8月27日 19:55:07',
+  '3.2.0.0
 新增报名管理t_register_plan报名计划表,t_register_practice报名计划练习表,t_exam_plan_student报名计划学生表
 
 3.1.12.1
@@ -14112,23 +14112,6 @@ SELECT DISTINCT ON (practice_submission_id , attempt)
 
 comment on view v_w_latest_unsubmitted_practice is
 '根据错题提交记录 找出当前最新一次未提交的错题提交ID';
-/*==============================================================*/
-/* View: v_y_max_submitted_view                                 */
-/*==============================================================*/
-create or replace view v_y_max_submitted_view as
- SELECT DISTINCT ON (practice_id, student_id) id,
-    student_id,
-    attempt,
-    wrong_count,
-    total_score,
-    practice_id
-   FROM v_student_practice_total_score
-  ORDER BY practice_id, student_id, attempt DESC;
-
-comment on view v_y_max_submitted_view is
-'v_y_max_submitted_view';
-
- drop table if exists t_v_max_submitted_view;
 
 /*==============================================================*/
 /* View: v_w_practice_summary                                   */
@@ -14185,7 +14168,23 @@ comment on view v_x_grade_list is
 drop table if exists t_v_grade_list;
 create table t_v_grade_list as select * from v_x_grade_list;
 
+/*==============================================================*/
+/* View: v_y_max_submitted_view                                 */
+/*==============================================================*/
+create or replace view v_y_max_submitted_view as
+ SELECT DISTINCT ON (practice_id, student_id) id,
+    student_id,
+    attempt,
+    wrong_count,
+    total_score,
+    practice_id
+   FROM v_student_practice_total_score
+  ORDER BY practice_id, student_id, attempt DESC;
 
+comment on view v_y_max_submitted_view is
+'v_y_max_submitted_view';
+
+ drop table if exists t_v_max_submitted_view;
 create table t_v_max_submitted_view as select * from v_y_max_submitted_view;
 
 /*==============================================================*/
