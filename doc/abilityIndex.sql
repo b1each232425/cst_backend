@@ -1,6 +1,6 @@
 /*==============================================================*/
 /* DBMS name:      PostgreSQL 9.x                               */
-/* Created on:     2025/8/27 15:08:21                           */
+/* Created on:     2025/8/27 19:57:22                           */
 /*==============================================================*/
 
 
@@ -154,6 +154,8 @@ drop table if exists t_exam_paper_group;
 
 drop table if exists t_exam_paper_question;
 
+drop table if exists t_exam_plan_student;
+
 drop table if exists t_exam_record;
 
 drop table if exists t_exam_room;
@@ -297,6 +299,10 @@ drop index if exists  idx_region_name;
 drop index if exists  Idx_region_id_pid;
 
 drop table if exists t_region;
+
+drop table if exists t_register_plan;
+
+drop table if exists t_register_practice;
 
 drop index if exists  idx_key_key_relation;
 
@@ -1956,6 +1962,68 @@ comment on column t_exam_paper_question.status is
 
 comment on column t_exam_paper_question.question_attachments_path is
 '题目附件url数组';
+
+/*==============================================================*/
+/* Table: t_exam_plan_student                                   */
+/*==============================================================*/
+create table if not exists  t_exam_plan_student (
+   id                   SERIAL not null,
+   student_id           INT8                 null,
+   register_id          INT8                 null,
+   type                 VARCHAR              null,
+   fail_reason          VARCHAR              null,
+   exam_type            VARCHAR              null,
+   register_time        INT8                 null default (extract(epoch from current_timestamp)*1000)::bigint,
+   addi                 JSONB                null,
+   creator              INT8                 not null,
+   updated_by           INT8                 null,
+   create_time          INT8                 not null default (extract(epoch from current_timestamp)*1000)::bigint,
+   update_time          INT8                 null default (extract(epoch from current_timestamp)*1000)::bigint,
+   status               VARCHAR              null,
+   constraint PK_T_EXAM_PLAN_STUDENT primary key (id)
+);
+
+comment on table t_exam_plan_student is
+'储存报名和学生的关系';
+
+comment on column t_exam_plan_student.id is
+'报名学生内部编号';
+
+comment on column t_exam_plan_student.student_id is
+'学生编号';
+
+comment on column t_exam_plan_student.register_id is
+'报名计划编号';
+
+comment on column t_exam_plan_student.type is
+'报名方式 00:自报名 02:人工导入';
+
+comment on column t_exam_plan_student.fail_reason is
+'审核不通过的原因';
+
+comment on column t_exam_plan_student.exam_type is
+'考试类型(默认为正考) 00: 正考 02: 补考';
+
+comment on column t_exam_plan_student.register_time is
+'报名时间，和创建时间不同';
+
+comment on column t_exam_plan_student.addi is
+'额外';
+
+comment on column t_exam_plan_student.creator is
+'创建者';
+
+comment on column t_exam_plan_student.updated_by is
+'更新者';
+
+comment on column t_exam_plan_student.create_time is
+'创建时间';
+
+comment on column t_exam_plan_student.update_time is
+'更新时间';
+
+comment on column t_exam_plan_student.status is
+'00：报名中 02: 待审核 04:通过 06:不通过';
 
 /*==============================================================*/
 /* Table: t_exam_record                                         */
@@ -7898,6 +7966,122 @@ region_name
 );
 
 /*==============================================================*/
+/* Table: t_register_plan                                       */
+/*==============================================================*/
+create table if not exists  t_register_plan (
+   id                   SERIAL not null,
+   name                 VARCHAR              null,
+   course               VARCHAR              null,
+   review_end_time      INT8                 null default (extract(epoch from current_timestamp)*1000)::bigint,
+   max_number           INT8                 null,
+   start_time           INT8                 null default (extract(epoch from current_timestamp)*1000)::bigint,
+   end_time             INT8                 null default (extract(epoch from current_timestamp)*1000)::bigint,
+   reviewer_ids         bigint[]             null,
+   exam_plan_location   VARCHAR              null,
+   addi                 JSONB                null,
+   creator              INT8                 not null,
+   updated_by           INT8                 null,
+   create_time          INT8                 not null default (extract(epoch from current_timestamp)*1000)::bigint,
+   update_time          INT8                 null default (extract(epoch from current_timestamp)*1000)::bigint,
+   status               VARCHAR              null,
+   constraint PK_T_REGISTER_PLAN primary key (id)
+);
+
+comment on table t_register_plan is
+'报名管理表';
+
+comment on column t_register_plan.id is
+'报名计划编号';
+
+comment on column t_register_plan.name is
+'报名计划名称';
+
+comment on column t_register_plan.course is
+'考试科目:00:理论、实操 02:理论 04:实操';
+
+comment on column t_register_plan.review_end_time is
+'审核截止时间';
+
+comment on column t_register_plan.max_number is
+'报名的最大人数 00:不限人数';
+
+comment on column t_register_plan.start_time is
+'报名开始时间';
+
+comment on column t_register_plan.end_time is
+'报名结束时间';
+
+comment on column t_register_plan.reviewer_ids is
+'审核人';
+
+comment on column t_register_plan.exam_plan_location is
+'考试预定的地点(省、市)';
+
+comment on column t_register_plan.addi is
+'额外';
+
+comment on column t_register_plan.creator is
+'创建者';
+
+comment on column t_register_plan.updated_by is
+'更新者';
+
+comment on column t_register_plan.create_time is
+'创建时间';
+
+comment on column t_register_plan.update_time is
+'更新时间';
+
+comment on column t_register_plan.status is
+'00：已发布 02：未发布 04:已结束 06:审核截止 08:已作废 10:已删除 12:已取消';
+
+/*==============================================================*/
+/* Table: t_register_practice                                   */
+/*==============================================================*/
+create table if not exists  t_register_practice (
+   id                   SERIAL not null,
+   register_id          INT8                 null,
+   practice_id          INT8                 null,
+   addi                 JSONB                null,
+   creator              INT8                 not null,
+   updated_by           INT8                 null,
+   create_time          INT8                 not null default (extract(epoch from current_timestamp)*1000)::bigint,
+   update_time          INT8                 null default (extract(epoch from current_timestamp)*1000)::bigint,
+   status               VARCHAR              null,
+   constraint PK_T_REGISTER_PRACTICE primary key (id)
+);
+
+comment on table t_register_practice is
+'用于储存报名计划和练习的关系';
+
+comment on column t_register_practice.id is
+'报名绑定练习内部编号';
+
+comment on column t_register_practice.register_id is
+'报名计划的编号';
+
+comment on column t_register_practice.practice_id is
+'练习的编号';
+
+comment on column t_register_practice.addi is
+'额外';
+
+comment on column t_register_practice.creator is
+'创建者';
+
+comment on column t_register_practice.updated_by is
+'更新者';
+
+comment on column t_register_practice.create_time is
+'创建时间';
+
+comment on column t_register_practice.update_time is
+'更新时间';
+
+comment on column t_register_practice.status is
+'00：正常 02：被删除';
+
+/*==============================================================*/
 /* Table: t_relation                                            */
 /*==============================================================*/
 create table if not exists  t_relation (
@@ -9200,9 +9384,12 @@ comment on column t_sys_ver.status is
 ALTER SEQUENCE t_sys_ver_id_seq RESTART WITH 20000;
 
 insert into t_sys_ver(id,name,ver,create_time,update_time,remark)
-  values(1000,'业务模型','3.1.12.0',
-  '2016年12月5日 9:52:53','2025年8月27日 15:07:36',
-  '3.1.12.1
+  values(1000,'业务模型','3.2.0.0',
+  '2016年12月5日 9:52:53','2025年8月27日 19:55:07',
+  '3.2.0.0
+新增报名管理t_register_plan报名计划表,t_register_practice报名计划练习表,t_exam_plan_student报名计划学生表
+
+3.1.12.1
 修改v_exam_file视图对文件状态的判断条件，为v_invigilation_info视图增加exam_domain_id字段
 
 3.1.12.0
