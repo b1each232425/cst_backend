@@ -54,6 +54,10 @@ type ServeEndPoint struct {
 	//Name required, the api name for debug only
 	Name string `json:"name,omitempty"`
 
+	// ApiEntries 该端点下的API列表
+	// t_api.expose_path + t_api.access_action 作为唯一键构成一个API
+	ApiEntries []*EndPointApiEntries `json:"api_entries,omitempty"`
+
 	MaintainerID int64 `json:"maintainer_id,omitempty"`
 
 	//该功能属于的域(业务域/子系统/客户)
@@ -69,4 +73,11 @@ type ServeEndPoint struct {
 	DefaultDomain int64 `json:"default_domain,omitempty"`
 
 	Manual types.JSONText `json:"manual,omitempty"`
+}
+
+// EndPointApiEntries 定义端点的API列表
+type EndPointApiEntries struct {
+	Name         string `json:"name"`                   // API名称
+	AccessAction string `json:"access_action"`          // 访问操作
+	Configurable bool   `json:"configurable,omitempty"` // 是否为允许被配置，不允许被配置的API不会出现在创建域/角色时的功能配置页面中
 }
