@@ -329,6 +329,7 @@ type TAPI struct {
 	Status       null.String    `json:"Status,omitempty" db:"status,false,character varying"`              /* status 状态，00：草稿，01：有效，02：作废 */
 	Author       types.JSONText `json:"Author,omitempty" db:"author,false,jsonb"`                          /* author 接口作者 */
 	AccessAction null.String    `json:"AccessAction,omitempty" db:"access_action,false,character varying"` /* access_action 访问操作 full:允许所有操作 query: 查询数据操作 add: 添加数据操作 edit: 编辑数据操作 delete: 删除数据操作 */
+	Configurable null.Bool      `json:"Configurable,omitempty" db:"configurable,false,boolean"`            /* configurable 是否允许在创建角色时被配置 */
 	Filter       `json:"-"`     // build DML where clause
 }
 
@@ -349,6 +350,7 @@ var TAPIFields = []string{
 	"Status",
 	"Author",
 	"AccessAction",
+	"Configurable",
 }
 
 // TAPIColumns full column list for default query
@@ -368,6 +370,7 @@ var TAPIColumns = []string{
 	"status",
 	"author",
 	"access_action",
+	"configurable",
 }
 
 // TAPIColumnsDataTypes full column data types for default query
@@ -387,6 +390,7 @@ var TAPIColumnsDataTypes = map[string]string{
 	"status":               "character varying",
 	"author":               "jsonb",
 	"access_action":        "character varying",
+	"configurable":         "boolean",
 }
 
 // GetFieldsMap returns a map of field names to their values.
@@ -407,6 +411,7 @@ func (r *TAPI) GetFieldsMap() map[string]any {
 		"Status":             r.Status,
 		"Author":             r.Author,
 		"AccessAction":       r.AccessAction,
+		"Configurable":       r.Configurable,
 	}
 }
 
@@ -428,6 +433,7 @@ func (r *TAPI) GetColumnsMap() map[string]any {
 		"status":               r.Status,
 		"author":               r.Author,
 		"access_action":        r.AccessAction,
+		"configurable":         r.Configurable,
 	}
 }
 
@@ -449,8 +455,8 @@ func (r *TAPI) GetTableName() string {
 // Create inserts the TAPI to the database.
 func (r *TAPI) Create(db Queryer) error {
 	err := db.QueryRow(
-		`INSERT INTO t_api (name, expose_path, maintainer, access_control_level, updated_by, update_time, creator, create_time, domain_id, addi, remark, status, author, access_action) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) RETURNING id`,
-		&r.Name, &r.ExposePath, &r.Maintainer, &r.AccessControlLevel, &r.UpdatedBy, &r.UpdateTime, &r.Creator, &r.CreateTime, &r.DomainID, &r.Addi, &r.Remark, &r.Status, &r.Author, &r.AccessAction).Scan(&r.ID)
+		`INSERT INTO t_api (name, expose_path, maintainer, access_control_level, updated_by, update_time, creator, create_time, domain_id, addi, remark, status, author, access_action, configurable) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15) RETURNING id`,
+		&r.Name, &r.ExposePath, &r.Maintainer, &r.AccessControlLevel, &r.UpdatedBy, &r.UpdateTime, &r.Creator, &r.CreateTime, &r.DomainID, &r.Addi, &r.Remark, &r.Status, &r.Author, &r.AccessAction, &r.Configurable).Scan(&r.ID)
 	if err != nil {
 		return errors.Wrap(err, "failed to insert t_api")
 	}
@@ -462,8 +468,8 @@ func GetTAPIByPk(db Queryer, pk0 null.Int) (*TAPI, error) {
 
 	var r TAPI
 	err := db.QueryRow(
-		`SELECT id, name, expose_path, maintainer, access_control_level, updated_by, update_time, creator, create_time, domain_id, addi, remark, status, author, access_action FROM t_api WHERE id = $1`,
-		pk0).Scan(&r.ID, &r.Name, &r.ExposePath, &r.Maintainer, &r.AccessControlLevel, &r.UpdatedBy, &r.UpdateTime, &r.Creator, &r.CreateTime, &r.DomainID, &r.Addi, &r.Remark, &r.Status, &r.Author, &r.AccessAction)
+		`SELECT id, name, expose_path, maintainer, access_control_level, updated_by, update_time, creator, create_time, domain_id, addi, remark, status, author, access_action, configurable FROM t_api WHERE id = $1`,
+		pk0).Scan(&r.ID, &r.Name, &r.ExposePath, &r.Maintainer, &r.AccessControlLevel, &r.UpdatedBy, &r.UpdateTime, &r.Creator, &r.CreateTime, &r.DomainID, &r.Addi, &r.Remark, &r.Status, &r.Author, &r.AccessAction, &r.Configurable)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to select t_api")
 	}
@@ -2240,6 +2246,152 @@ func GetTExamPaperQuestionByPk(db Queryer, pk0 null.Int) (*TExamPaperQuestion, e
 		pk0).Scan(&r.ID, &r.Score, &r.Type, &r.Content, &r.Options, &r.Answers, &r.Analysis, &r.Title, &r.AnswerFilePath, &r.TestFilePath, &r.Input, &r.Output, &r.Example, &r.Repo, &r.CommitID, &r.Creator, &r.CreateTime, &r.UpdatedBy, &r.UpdateTime, &r.Addi, &r.Status, &r.Order, &r.GroupID, &r.QuestionAttachmentsPath)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to select t_exam_paper_question")
+	}
+	return &r, nil
+}
+
+/*TExamPlanStudent 储存报名和学生的关系 represents assessuser.t_exam_plan_student */
+type TExamPlanStudent struct {
+	ID           null.Int       `json:"ID,omitempty" db:"id,true,integer"`                             /* id 报名学生内部编号 */
+	StudentID    null.Int       `json:"StudentID,omitempty" db:"student_id,false,bigint"`              /* student_id 学生编号 */
+	RegisterID   null.Int       `json:"RegisterID,omitempty" db:"register_id,false,bigint"`            /* register_id 报名计划编号 */
+	Type         null.String    `json:"Type,omitempty" db:"type,false,character varying"`              /* type 报名方式 00:自报名 02:人工导入 */
+	FailReason   null.String    `json:"FailReason,omitempty" db:"fail_reason,false,character varying"` /* fail_reason 审核不通过的原因 */
+	ExamType     null.String    `json:"ExamType,omitempty" db:"exam_type,false,character varying"`     /* exam_type 考试类型(默认为正考) 00: 正考 02: 补考 */
+	RegisterTime null.Int       `json:"RegisterTime,omitempty" db:"register_time,false,bigint"`        /* register_time 报名时间，和创建时间不同 */
+	Addi         types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                          /* addi 额外 */
+	Creator      null.Int       `json:"Creator,omitempty" db:"creator,false,bigint"`                   /* creator 创建者 */
+	UpdatedBy    null.Int       `json:"UpdatedBy,omitempty" db:"updated_by,false,bigint"`              /* updated_by 更新者 */
+	CreateTime   null.Int       `json:"CreateTime,omitempty" db:"create_time,false,bigint"`            /* create_time 创建时间 */
+	UpdateTime   null.Int       `json:"UpdateTime,omitempty" db:"update_time,false,bigint"`            /* update_time 更新时间 */
+	Status       null.String    `json:"Status,omitempty" db:"status,false,character varying"`          /* status 00：报名中 02: 待审核 04:通过 06:不通过 */
+	Filter       `json:"-"`     // build DML where clause
+}
+
+// TExamPlanStudentFields full field list for default query
+var TExamPlanStudentFields = []string{
+	"ID",
+	"StudentID",
+	"RegisterID",
+	"Type",
+	"FailReason",
+	"ExamType",
+	"RegisterTime",
+	"Addi",
+	"Creator",
+	"UpdatedBy",
+	"CreateTime",
+	"UpdateTime",
+	"Status",
+}
+
+// TExamPlanStudentColumns full column list for default query
+var TExamPlanStudentColumns = []string{
+	"id",
+	"student_id",
+	"register_id",
+	"type",
+	"fail_reason",
+	"exam_type",
+	"register_time",
+	"addi",
+	"creator",
+	"updated_by",
+	"create_time",
+	"update_time",
+	"status",
+}
+
+// TExamPlanStudentColumnsDataTypes full column data types for default query
+var TExamPlanStudentColumnsDataTypes = map[string]string{
+	"id":            "integer",
+	"student_id":    "bigint",
+	"register_id":   "bigint",
+	"type":          "character varying",
+	"fail_reason":   "character varying",
+	"exam_type":     "character varying",
+	"register_time": "bigint",
+	"addi":          "jsonb",
+	"creator":       "bigint",
+	"updated_by":    "bigint",
+	"create_time":   "bigint",
+	"update_time":   "bigint",
+	"status":        "character varying",
+}
+
+// GetFieldsMap returns a map of field names to their values.
+func (r *TExamPlanStudent) GetFieldsMap() map[string]any {
+	return map[string]any{
+		"ID":           r.ID,
+		"StudentID":    r.StudentID,
+		"RegisterID":   r.RegisterID,
+		"Type":         r.Type,
+		"FailReason":   r.FailReason,
+		"ExamType":     r.ExamType,
+		"RegisterTime": r.RegisterTime,
+		"Addi":         r.Addi,
+		"Creator":      r.Creator,
+		"UpdatedBy":    r.UpdatedBy,
+		"CreateTime":   r.CreateTime,
+		"UpdateTime":   r.UpdateTime,
+		"Status":       r.Status,
+	}
+}
+
+// GetColumnsMap returns a map of column names to their values.
+func (r *TExamPlanStudent) GetColumnsMap() map[string]any {
+	return map[string]any{
+		"id":            r.ID,
+		"student_id":    r.StudentID,
+		"register_id":   r.RegisterID,
+		"type":          r.Type,
+		"fail_reason":   r.FailReason,
+		"exam_type":     r.ExamType,
+		"register_time": r.RegisterTime,
+		"addi":          r.Addi,
+		"creator":       r.Creator,
+		"updated_by":    r.UpdatedBy,
+		"create_time":   r.CreateTime,
+		"update_time":   r.UpdateTime,
+		"status":        r.Status,
+	}
+}
+
+// Fields return all fields of struct.
+func (r *TExamPlanStudent) Fields() []string {
+	return TExamPlanStudentFields
+}
+
+// GetTableName return the associated db table name.
+func (r *TExamPlanStudent) GetTableName() string {
+	var viewNamePattern = regexp.MustCompile(`(?i)^t_v_[a-z0-9_]+$`)
+	tableName := "t_exam_plan_student"
+	if viewNamePattern.MatchString(tableName) {
+		return tableName[2:]
+	}
+	return tableName
+}
+
+// Create inserts the TExamPlanStudent to the database.
+func (r *TExamPlanStudent) Create(db Queryer) error {
+	err := db.QueryRow(
+		`INSERT INTO t_exam_plan_student (student_id, register_id, type, fail_reason, exam_type, register_time, addi, creator, updated_by, create_time, update_time, status) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING id`,
+		&r.StudentID, &r.RegisterID, &r.Type, &r.FailReason, &r.ExamType, &r.RegisterTime, &r.Addi, &r.Creator, &r.UpdatedBy, &r.CreateTime, &r.UpdateTime, &r.Status).Scan(&r.ID)
+	if err != nil {
+		return errors.Wrap(err, "failed to insert t_exam_plan_student")
+	}
+	return nil
+}
+
+// GetTExamPlanStudentByPk select the TExamPlanStudent from the database.
+func GetTExamPlanStudentByPk(db Queryer, pk0 null.Int) (*TExamPlanStudent, error) {
+
+	var r TExamPlanStudent
+	err := db.QueryRow(
+		`SELECT id, student_id, register_id, type, fail_reason, exam_type, register_time, addi, creator, updated_by, create_time, update_time, status FROM t_exam_plan_student WHERE id = $1`,
+		pk0).Scan(&r.ID, &r.StudentID, &r.RegisterID, &r.Type, &r.FailReason, &r.ExamType, &r.RegisterTime, &r.Addi, &r.Creator, &r.UpdatedBy, &r.CreateTime, &r.UpdateTime, &r.Status)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to select t_exam_plan_student")
 	}
 	return &r, nil
 }
@@ -9752,7 +9904,7 @@ type TPracticeWrongSubmissions struct {
 	CreateTime           null.Int       `json:"CreateTime,omitempty" db:"create_time,false,bigint"`                      /* create_time 创建时间 */
 	UpdatedBy            null.Int       `json:"UpdatedBy,omitempty" db:"updated_by,false,bigint"`                        /* updated_by 更新者 */
 	UpdateTime           null.Int       `json:"UpdateTime,omitempty" db:"update_time,false,bigint"`                      /* update_time 更新时间 */
-	Status               null.String    `json:"Status,omitempty" db:"status,false,character varying"`                    /* status 状态 00：允许作答 02 ：不允许作答 04：已批改 06 已作废 */
+	Status               null.String    `json:"Status,omitempty" db:"status,false,character varying"`                    /* status 状态 00：允许作答 02 ：不允许作答 04：删除  06：已提交 08：已批改 10 已作废 */
 	Addi                 types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                                    /* addi 附加信息 */
 	Filter               `json:"-"`     // build DML where clause
 }
@@ -11148,6 +11300,286 @@ func GetTRegionByPk(db Queryer, pk0 null.Int) (*TRegion, error) {
 		pk0).Scan(&r.ID, &r.RegionName, &r.Code, &r.RegionShortName, &r.ParentID, &r.Level, &r.UpdateTime, &r.Creator, &r.DomainID, &r.Addi, &r.Remark, &r.Status)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to select t_region")
+	}
+	return &r, nil
+}
+
+/*TRegisterPlan 报名管理表 represents assessuser.t_register_plan */
+type TRegisterPlan struct {
+	ID               null.Int       `json:"ID,omitempty" db:"id,true,integer"`                                          /* id 报名计划编号 */
+	Name             null.String    `json:"Name,omitempty" db:"name,false,character varying"`                           /* name 报名计划名称 */
+	Course           null.String    `json:"Course,omitempty" db:"course,false,character varying"`                       /* course 考试科目:00:理论、实操 02:理论 04:实操 */
+	ReviewEndTime    null.Int       `json:"ReviewEndTime,omitempty" db:"review_end_time,false,bigint"`                  /* review_end_time 审核截止时间 */
+	MaxNumber        null.Int       `json:"MaxNumber,omitempty" db:"max_number,false,bigint"`                           /* max_number 报名的最大人数 00:不限人数 */
+	StartTime        null.Int       `json:"StartTime,omitempty" db:"start_time,false,bigint"`                           /* start_time 报名开始时间 */
+	EndTime          null.Int       `json:"EndTime,omitempty" db:"end_time,false,bigint"`                               /* end_time 报名结束时间 */
+	ReviewerIds      interface{}    `json:"ReviewerIds,omitempty" db:"reviewer_ids,false,bigint[]"`                     /* reviewer_ids 审核人 */
+	ExamPlanLocation null.String    `json:"ExamPlanLocation,omitempty" db:"exam_plan_location,false,character varying"` /* exam_plan_location 考试预定的地点(省、市) */
+	Addi             types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                                       /* addi 额外 */
+	Creator          null.Int       `json:"Creator,omitempty" db:"creator,false,bigint"`                                /* creator 创建者 */
+	UpdatedBy        null.Int       `json:"UpdatedBy,omitempty" db:"updated_by,false,bigint"`                           /* updated_by 更新者 */
+	CreateTime       null.Int       `json:"CreateTime,omitempty" db:"create_time,false,bigint"`                         /* create_time 创建时间 */
+	UpdateTime       null.Int       `json:"UpdateTime,omitempty" db:"update_time,false,bigint"`                         /* update_time 更新时间 */
+	Status           null.String    `json:"Status,omitempty" db:"status,false,character varying"`                       /* status 00：已发布 02：未发布 04:已结束 06:审核截止 08:已作废 10:已删除 12:已取消 */
+	Filter           `json:"-"`     // build DML where clause
+}
+
+// TRegisterPlanFields full field list for default query
+var TRegisterPlanFields = []string{
+	"ID",
+	"Name",
+	"Course",
+	"ReviewEndTime",
+	"MaxNumber",
+	"StartTime",
+	"EndTime",
+	"ReviewerIds",
+	"ExamPlanLocation",
+	"Addi",
+	"Creator",
+	"UpdatedBy",
+	"CreateTime",
+	"UpdateTime",
+	"Status",
+}
+
+// TRegisterPlanColumns full column list for default query
+var TRegisterPlanColumns = []string{
+	"id",
+	"name",
+	"course",
+	"review_end_time",
+	"max_number",
+	"start_time",
+	"end_time",
+	"reviewer_ids",
+	"exam_plan_location",
+	"addi",
+	"creator",
+	"updated_by",
+	"create_time",
+	"update_time",
+	"status",
+}
+
+// TRegisterPlanColumnsDataTypes full column data types for default query
+var TRegisterPlanColumnsDataTypes = map[string]string{
+	"id":                 "integer",
+	"name":               "character varying",
+	"course":             "character varying",
+	"review_end_time":    "bigint",
+	"max_number":         "bigint",
+	"start_time":         "bigint",
+	"end_time":           "bigint",
+	"reviewer_ids":       "bigint[]",
+	"exam_plan_location": "character varying",
+	"addi":               "jsonb",
+	"creator":            "bigint",
+	"updated_by":         "bigint",
+	"create_time":        "bigint",
+	"update_time":        "bigint",
+	"status":             "character varying",
+}
+
+// GetFieldsMap returns a map of field names to their values.
+func (r *TRegisterPlan) GetFieldsMap() map[string]any {
+	return map[string]any{
+		"ID":               r.ID,
+		"Name":             r.Name,
+		"Course":           r.Course,
+		"ReviewEndTime":    r.ReviewEndTime,
+		"MaxNumber":        r.MaxNumber,
+		"StartTime":        r.StartTime,
+		"EndTime":          r.EndTime,
+		"ReviewerIds":      r.ReviewerIds,
+		"ExamPlanLocation": r.ExamPlanLocation,
+		"Addi":             r.Addi,
+		"Creator":          r.Creator,
+		"UpdatedBy":        r.UpdatedBy,
+		"CreateTime":       r.CreateTime,
+		"UpdateTime":       r.UpdateTime,
+		"Status":           r.Status,
+	}
+}
+
+// GetColumnsMap returns a map of column names to their values.
+func (r *TRegisterPlan) GetColumnsMap() map[string]any {
+	return map[string]any{
+		"id":                 r.ID,
+		"name":               r.Name,
+		"course":             r.Course,
+		"review_end_time":    r.ReviewEndTime,
+		"max_number":         r.MaxNumber,
+		"start_time":         r.StartTime,
+		"end_time":           r.EndTime,
+		"reviewer_ids":       r.ReviewerIds,
+		"exam_plan_location": r.ExamPlanLocation,
+		"addi":               r.Addi,
+		"creator":            r.Creator,
+		"updated_by":         r.UpdatedBy,
+		"create_time":        r.CreateTime,
+		"update_time":        r.UpdateTime,
+		"status":             r.Status,
+	}
+}
+
+// Fields return all fields of struct.
+func (r *TRegisterPlan) Fields() []string {
+	return TRegisterPlanFields
+}
+
+// GetTableName return the associated db table name.
+func (r *TRegisterPlan) GetTableName() string {
+	var viewNamePattern = regexp.MustCompile(`(?i)^t_v_[a-z0-9_]+$`)
+	tableName := "t_register_plan"
+	if viewNamePattern.MatchString(tableName) {
+		return tableName[2:]
+	}
+	return tableName
+}
+
+// Create inserts the TRegisterPlan to the database.
+func (r *TRegisterPlan) Create(db Queryer) error {
+	err := db.QueryRow(
+		`INSERT INTO t_register_plan (name, course, review_end_time, max_number, start_time, end_time, reviewer_ids, exam_plan_location, addi, creator, updated_by, create_time, update_time, status) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) RETURNING id`,
+		&r.Name, &r.Course, &r.ReviewEndTime, &r.MaxNumber, &r.StartTime, &r.EndTime, &r.ReviewerIds, &r.ExamPlanLocation, &r.Addi, &r.Creator, &r.UpdatedBy, &r.CreateTime, &r.UpdateTime, &r.Status).Scan(&r.ID)
+	if err != nil {
+		return errors.Wrap(err, "failed to insert t_register_plan")
+	}
+	return nil
+}
+
+// GetTRegisterPlanByPk select the TRegisterPlan from the database.
+func GetTRegisterPlanByPk(db Queryer, pk0 null.Int) (*TRegisterPlan, error) {
+
+	var r TRegisterPlan
+	err := db.QueryRow(
+		`SELECT id, name, course, review_end_time, max_number, start_time, end_time, reviewer_ids, exam_plan_location, addi, creator, updated_by, create_time, update_time, status FROM t_register_plan WHERE id = $1`,
+		pk0).Scan(&r.ID, &r.Name, &r.Course, &r.ReviewEndTime, &r.MaxNumber, &r.StartTime, &r.EndTime, &r.ReviewerIds, &r.ExamPlanLocation, &r.Addi, &r.Creator, &r.UpdatedBy, &r.CreateTime, &r.UpdateTime, &r.Status)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to select t_register_plan")
+	}
+	return &r, nil
+}
+
+/*TRegisterPractice 用于储存报名计划和练习的关系 represents assessuser.t_register_practice */
+type TRegisterPractice struct {
+	ID         null.Int       `json:"ID,omitempty" db:"id,true,integer"`                    /* id 报名绑定练习内部编号 */
+	RegisterID null.Int       `json:"RegisterID,omitempty" db:"register_id,false,bigint"`   /* register_id 报名计划的编号 */
+	PracticeID null.Int       `json:"PracticeID,omitempty" db:"practice_id,false,bigint"`   /* practice_id 练习的编号 */
+	Addi       types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                 /* addi 额外 */
+	Creator    null.Int       `json:"Creator,omitempty" db:"creator,false,bigint"`          /* creator 创建者 */
+	UpdatedBy  null.Int       `json:"UpdatedBy,omitempty" db:"updated_by,false,bigint"`     /* updated_by 更新者 */
+	CreateTime null.Int       `json:"CreateTime,omitempty" db:"create_time,false,bigint"`   /* create_time 创建时间 */
+	UpdateTime null.Int       `json:"UpdateTime,omitempty" db:"update_time,false,bigint"`   /* update_time 更新时间 */
+	Status     null.String    `json:"Status,omitempty" db:"status,false,character varying"` /* status 00：正常 02：被删除 */
+	Filter     `json:"-"`     // build DML where clause
+}
+
+// TRegisterPracticeFields full field list for default query
+var TRegisterPracticeFields = []string{
+	"ID",
+	"RegisterID",
+	"PracticeID",
+	"Addi",
+	"Creator",
+	"UpdatedBy",
+	"CreateTime",
+	"UpdateTime",
+	"Status",
+}
+
+// TRegisterPracticeColumns full column list for default query
+var TRegisterPracticeColumns = []string{
+	"id",
+	"register_id",
+	"practice_id",
+	"addi",
+	"creator",
+	"updated_by",
+	"create_time",
+	"update_time",
+	"status",
+}
+
+// TRegisterPracticeColumnsDataTypes full column data types for default query
+var TRegisterPracticeColumnsDataTypes = map[string]string{
+	"id":          "integer",
+	"register_id": "bigint",
+	"practice_id": "bigint",
+	"addi":        "jsonb",
+	"creator":     "bigint",
+	"updated_by":  "bigint",
+	"create_time": "bigint",
+	"update_time": "bigint",
+	"status":      "character varying",
+}
+
+// GetFieldsMap returns a map of field names to their values.
+func (r *TRegisterPractice) GetFieldsMap() map[string]any {
+	return map[string]any{
+		"ID":         r.ID,
+		"RegisterID": r.RegisterID,
+		"PracticeID": r.PracticeID,
+		"Addi":       r.Addi,
+		"Creator":    r.Creator,
+		"UpdatedBy":  r.UpdatedBy,
+		"CreateTime": r.CreateTime,
+		"UpdateTime": r.UpdateTime,
+		"Status":     r.Status,
+	}
+}
+
+// GetColumnsMap returns a map of column names to their values.
+func (r *TRegisterPractice) GetColumnsMap() map[string]any {
+	return map[string]any{
+		"id":          r.ID,
+		"register_id": r.RegisterID,
+		"practice_id": r.PracticeID,
+		"addi":        r.Addi,
+		"creator":     r.Creator,
+		"updated_by":  r.UpdatedBy,
+		"create_time": r.CreateTime,
+		"update_time": r.UpdateTime,
+		"status":      r.Status,
+	}
+}
+
+// Fields return all fields of struct.
+func (r *TRegisterPractice) Fields() []string {
+	return TRegisterPracticeFields
+}
+
+// GetTableName return the associated db table name.
+func (r *TRegisterPractice) GetTableName() string {
+	var viewNamePattern = regexp.MustCompile(`(?i)^t_v_[a-z0-9_]+$`)
+	tableName := "t_register_practice"
+	if viewNamePattern.MatchString(tableName) {
+		return tableName[2:]
+	}
+	return tableName
+}
+
+// Create inserts the TRegisterPractice to the database.
+func (r *TRegisterPractice) Create(db Queryer) error {
+	err := db.QueryRow(
+		`INSERT INTO t_register_practice (register_id, practice_id, addi, creator, updated_by, create_time, update_time, status) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
+		&r.RegisterID, &r.PracticeID, &r.Addi, &r.Creator, &r.UpdatedBy, &r.CreateTime, &r.UpdateTime, &r.Status).Scan(&r.ID)
+	if err != nil {
+		return errors.Wrap(err, "failed to insert t_register_practice")
+	}
+	return nil
+}
+
+// GetTRegisterPracticeByPk select the TRegisterPractice from the database.
+func GetTRegisterPracticeByPk(db Queryer, pk0 null.Int) (*TRegisterPractice, error) {
+
+	var r TRegisterPractice
+	err := db.QueryRow(
+		`SELECT id, register_id, practice_id, addi, creator, updated_by, create_time, update_time, status FROM t_register_practice WHERE id = $1`,
+		pk0).Scan(&r.ID, &r.RegisterID, &r.PracticeID, &r.Addi, &r.Creator, &r.UpdatedBy, &r.CreateTime, &r.UpdateTime, &r.Status)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to select t_register_practice")
 	}
 	return &r, nil
 }
@@ -15460,6 +15892,7 @@ type TVDomainAPI struct {
 	ExposePath         null.String    `json:"ExposePath,omitempty" db:"expose_path,false,character varying"`                  /* expose_path expose_path */
 	AccessAction       null.String    `json:"AccessAction,omitempty" db:"access_action,false,character varying"`              /* access_action access_action */
 	AccessControlLevel null.String    `json:"AccessControlLevel,omitempty" db:"access_control_level,false,character varying"` /* access_control_level access_control_level */
+	Configurable       null.Bool      `json:"Configurable,omitempty" db:"configurable,false,boolean"`                         /* configurable configurable */
 	DomainID           null.Int       `json:"DomainID,omitempty" db:"domain_id,false,bigint"`                                 /* domain_id domain_id */
 	GrantSource        null.String    `json:"GrantSource,omitempty" db:"grant_source,false,character varying"`                /* grant_source grant_source */
 	DataAccessMode     null.String    `json:"DataAccessMode,omitempty" db:"data_access_mode,false,character varying"`         /* data_access_mode data_access_mode */
@@ -15484,6 +15917,7 @@ var TVDomainAPIFields = []string{
 	"ExposePath",
 	"AccessAction",
 	"AccessControlLevel",
+	"Configurable",
 	"DomainID",
 	"GrantSource",
 	"DataAccessMode",
@@ -15507,6 +15941,7 @@ var TVDomainAPIColumns = []string{
 	"expose_path",
 	"access_action",
 	"access_control_level",
+	"configurable",
 	"domain_id",
 	"grant_source",
 	"data_access_mode",
@@ -15530,6 +15965,7 @@ var TVDomainAPIColumnsDataTypes = map[string]string{
 	"expose_path":          "character varying",
 	"access_action":        "character varying",
 	"access_control_level": "character varying",
+	"configurable":         "boolean",
 	"domain_id":            "bigint",
 	"grant_source":         "character varying",
 	"data_access_mode":     "character varying",
@@ -15554,6 +15990,7 @@ func (r *TVDomainAPI) GetFieldsMap() map[string]any {
 		"ExposePath":         r.ExposePath,
 		"AccessAction":       r.AccessAction,
 		"AccessControlLevel": r.AccessControlLevel,
+		"Configurable":       r.Configurable,
 		"DomainID":           r.DomainID,
 		"GrantSource":        r.GrantSource,
 		"DataAccessMode":     r.DataAccessMode,
@@ -15579,6 +16016,7 @@ func (r *TVDomainAPI) GetColumnsMap() map[string]any {
 		"expose_path":          r.ExposePath,
 		"access_action":        r.AccessAction,
 		"access_control_level": r.AccessControlLevel,
+		"configurable":         r.Configurable,
 		"domain_id":            r.DomainID,
 		"grant_source":         r.GrantSource,
 		"data_access_mode":     r.DataAccessMode,
@@ -15609,8 +16047,8 @@ func (r *TVDomainAPI) GetTableName() string {
 // Create inserts the TVDomainAPI to the database.
 func (r *TVDomainAPI) Create(db Queryer) error {
 	_, err := db.Exec(
-		`INSERT INTO t_v_domain_api (id, auth_domain_id, domain_name, domain, priority, api_id, api_name, expose_path, access_action, access_control_level, domain_id, grant_source, data_access_mode, data_scope, create_time, remark, addi, creator, status) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)`,
-		&r.ID, &r.AuthDomainID, &r.DomainName, &r.Domain, &r.Priority, &r.APIID, &r.APIName, &r.ExposePath, &r.AccessAction, &r.AccessControlLevel, &r.DomainID, &r.GrantSource, &r.DataAccessMode, &r.DataScope, &r.CreateTime, &r.Remark, &r.Addi, &r.Creator, &r.Status)
+		`INSERT INTO t_v_domain_api (id, auth_domain_id, domain_name, domain, priority, api_id, api_name, expose_path, access_action, access_control_level, configurable, domain_id, grant_source, data_access_mode, data_scope, create_time, remark, addi, creator, status) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)`,
+		&r.ID, &r.AuthDomainID, &r.DomainName, &r.Domain, &r.Priority, &r.APIID, &r.APIName, &r.ExposePath, &r.AccessAction, &r.AccessControlLevel, &r.Configurable, &r.DomainID, &r.GrantSource, &r.DataAccessMode, &r.DataScope, &r.CreateTime, &r.Remark, &r.Addi, &r.Creator, &r.Status)
 	if err != nil {
 		return errors.Wrap(err, "failed to insert t_v_domain_api")
 	}
@@ -15623,8 +16061,8 @@ func GetTVDomainAPIByPk(db Queryer) (*TVDomainAPI, error) {
 
 	var r TVDomainAPI
 	err := db.QueryRow(
-		`SELECT id, auth_domain_id, domain_name, domain, priority, api_id, api_name, expose_path, access_action, access_control_level, domain_id, grant_source, data_access_mode, data_scope, create_time, remark, addi, creator, status FROM t_v_domain_api`,
-	).Scan(&r.ID, &r.AuthDomainID, &r.DomainName, &r.Domain, &r.Priority, &r.APIID, &r.APIName, &r.ExposePath, &r.AccessAction, &r.AccessControlLevel, &r.DomainID, &r.GrantSource, &r.DataAccessMode, &r.DataScope, &r.CreateTime, &r.Remark, &r.Addi, &r.Creator, &r.Status)
+		`SELECT id, auth_domain_id, domain_name, domain, priority, api_id, api_name, expose_path, access_action, access_control_level, configurable, domain_id, grant_source, data_access_mode, data_scope, create_time, remark, addi, creator, status FROM t_v_domain_api`,
+	).Scan(&r.ID, &r.AuthDomainID, &r.DomainName, &r.Domain, &r.Priority, &r.APIID, &r.APIName, &r.ExposePath, &r.AccessAction, &r.AccessControlLevel, &r.Configurable, &r.DomainID, &r.GrantSource, &r.DataAccessMode, &r.DataScope, &r.CreateTime, &r.Remark, &r.Addi, &r.Creator, &r.Status)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to select t_v_domain_api")
 	}
@@ -18939,6 +19377,7 @@ type TVInvigilationInfo struct {
 	ExamID              null.Int    `json:"ExamID,omitempty" db:"exam_id,false,integer"`                                 /* exam_id exam_id */
 	ExamType            null.String `json:"ExamType,omitempty" db:"exam_type,false,character varying"`                   /* exam_type exam_type */
 	ExamMode            null.String `json:"ExamMode,omitempty" db:"exam_mode,false,character varying"`                   /* exam_mode exam_mode */
+	ExamDomainID        null.Int    `json:"ExamDomainID,omitempty" db:"exam_domain_id,false,bigint"`                     /* exam_domain_id exam_domain_id */
 	ExamSessionID       null.Int    `json:"ExamSessionID,omitempty" db:"exam_session_id,false,integer"`                  /* exam_session_id exam_session_id */
 	StartTime           null.Int    `json:"StartTime,omitempty" db:"start_time,false,bigint"`                            /* start_time start_time */
 	EndTime             null.Int    `json:"EndTime,omitempty" db:"end_time,false,bigint"`                                /* end_time end_time */
@@ -18967,6 +19406,7 @@ var TVInvigilationInfoFields = []string{
 	"ExamID",
 	"ExamType",
 	"ExamMode",
+	"ExamDomainID",
 	"ExamSessionID",
 	"StartTime",
 	"EndTime",
@@ -18994,6 +19434,7 @@ var TVInvigilationInfoColumns = []string{
 	"exam_id",
 	"exam_type",
 	"exam_mode",
+	"exam_domain_id",
 	"exam_session_id",
 	"start_time",
 	"end_time",
@@ -19021,6 +19462,7 @@ var TVInvigilationInfoColumnsDataTypes = map[string]string{
 	"exam_id":               "integer",
 	"exam_type":             "character varying",
 	"exam_mode":             "character varying",
+	"exam_domain_id":        "bigint",
 	"exam_session_id":       "integer",
 	"start_time":            "bigint",
 	"end_time":              "bigint",
@@ -19049,6 +19491,7 @@ func (r *TVInvigilationInfo) GetFieldsMap() map[string]any {
 		"ExamID":              r.ExamID,
 		"ExamType":            r.ExamType,
 		"ExamMode":            r.ExamMode,
+		"ExamDomainID":        r.ExamDomainID,
 		"ExamSessionID":       r.ExamSessionID,
 		"StartTime":           r.StartTime,
 		"EndTime":             r.EndTime,
@@ -19078,6 +19521,7 @@ func (r *TVInvigilationInfo) GetColumnsMap() map[string]any {
 		"exam_id":               r.ExamID,
 		"exam_type":             r.ExamType,
 		"exam_mode":             r.ExamMode,
+		"exam_domain_id":        r.ExamDomainID,
 		"exam_session_id":       r.ExamSessionID,
 		"start_time":            r.StartTime,
 		"end_time":              r.EndTime,
@@ -19116,8 +19560,8 @@ func (r *TVInvigilationInfo) GetTableName() string {
 // Create inserts the TVInvigilationInfo to the database.
 func (r *TVInvigilationInfo) Create(db Queryer) error {
 	_, err := db.Exec(
-		`INSERT INTO t_v_invigilation_info (invigilator_ids, invigilator_names, invigilator_num, exam_id, exam_type, exam_mode, exam_session_id, start_time, end_time, status, exam_site_id, exam_site_name, exam_room_id, exam_room_name, exam_room_capacity, exam_session_name, record, basic_eval, examinee_num, absentee_num, cheater_num, abnormal_examinee_num, extended_time_num) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23)`,
-		&r.InvigilatorIds, &r.InvigilatorNames, &r.InvigilatorNum, &r.ExamID, &r.ExamType, &r.ExamMode, &r.ExamSessionID, &r.StartTime, &r.EndTime, &r.Status, &r.ExamSiteID, &r.ExamSiteName, &r.ExamRoomID, &r.ExamRoomName, &r.ExamRoomCapacity, &r.ExamSessionName, &r.Record, &r.BasicEval, &r.ExamineeNum, &r.AbsenteeNum, &r.CheaterNum, &r.AbnormalExamineeNum, &r.ExtendedTimeNum)
+		`INSERT INTO t_v_invigilation_info (invigilator_ids, invigilator_names, invigilator_num, exam_id, exam_type, exam_mode, exam_domain_id, exam_session_id, start_time, end_time, status, exam_site_id, exam_site_name, exam_room_id, exam_room_name, exam_room_capacity, exam_session_name, record, basic_eval, examinee_num, absentee_num, cheater_num, abnormal_examinee_num, extended_time_num) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24)`,
+		&r.InvigilatorIds, &r.InvigilatorNames, &r.InvigilatorNum, &r.ExamID, &r.ExamType, &r.ExamMode, &r.ExamDomainID, &r.ExamSessionID, &r.StartTime, &r.EndTime, &r.Status, &r.ExamSiteID, &r.ExamSiteName, &r.ExamRoomID, &r.ExamRoomName, &r.ExamRoomCapacity, &r.ExamSessionName, &r.Record, &r.BasicEval, &r.ExamineeNum, &r.AbsenteeNum, &r.CheaterNum, &r.AbnormalExamineeNum, &r.ExtendedTimeNum)
 	if err != nil {
 		return errors.Wrap(err, "failed to insert t_v_invigilation_info")
 	}
@@ -19130,8 +19574,8 @@ func GetTVInvigilationInfoByPk(db Queryer) (*TVInvigilationInfo, error) {
 
 	var r TVInvigilationInfo
 	err := db.QueryRow(
-		`SELECT invigilator_ids, invigilator_names, invigilator_num, exam_id, exam_type, exam_mode, exam_session_id, start_time, end_time, status, exam_site_id, exam_site_name, exam_room_id, exam_room_name, exam_room_capacity, exam_session_name, record, basic_eval, examinee_num, absentee_num, cheater_num, abnormal_examinee_num, extended_time_num FROM t_v_invigilation_info`,
-	).Scan(&r.InvigilatorIds, &r.InvigilatorNames, &r.InvigilatorNum, &r.ExamID, &r.ExamType, &r.ExamMode, &r.ExamSessionID, &r.StartTime, &r.EndTime, &r.Status, &r.ExamSiteID, &r.ExamSiteName, &r.ExamRoomID, &r.ExamRoomName, &r.ExamRoomCapacity, &r.ExamSessionName, &r.Record, &r.BasicEval, &r.ExamineeNum, &r.AbsenteeNum, &r.CheaterNum, &r.AbnormalExamineeNum, &r.ExtendedTimeNum)
+		`SELECT invigilator_ids, invigilator_names, invigilator_num, exam_id, exam_type, exam_mode, exam_domain_id, exam_session_id, start_time, end_time, status, exam_site_id, exam_site_name, exam_room_id, exam_room_name, exam_room_capacity, exam_session_name, record, basic_eval, examinee_num, absentee_num, cheater_num, abnormal_examinee_num, extended_time_num FROM t_v_invigilation_info`,
+	).Scan(&r.InvigilatorIds, &r.InvigilatorNames, &r.InvigilatorNum, &r.ExamID, &r.ExamType, &r.ExamMode, &r.ExamDomainID, &r.ExamSessionID, &r.StartTime, &r.EndTime, &r.Status, &r.ExamSiteID, &r.ExamSiteName, &r.ExamRoomID, &r.ExamRoomName, &r.ExamRoomCapacity, &r.ExamSessionName, &r.Record, &r.BasicEval, &r.ExamineeNum, &r.AbsenteeNum, &r.CheaterNum, &r.AbnormalExamineeNum, &r.ExtendedTimeNum)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to select t_v_invigilation_info")
 	}

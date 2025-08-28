@@ -420,7 +420,7 @@ func querySelectableAPIs(ctx context.Context, parentDomain string) (apis []*cmn.
 		// 直接从t_api表中查询所有有效的API
 		apiQuery := `SELECT id, name, expose_path, access_action, access_control_level
 					FROM t_api 
-					WHERE status = '01'
+					WHERE status = '01' AND configurable = true
 					ORDER BY name`
 
 		rows, err := pgConn.Query(ctx, apiQuery)
@@ -458,7 +458,7 @@ func querySelectableAPIs(ctx context.Context, parentDomain string) (apis []*cmn.
 		// 从v_domain_api视图中查询父域的API列表
 		apiQuery := `SELECT DISTINCT api_id, api_name, expose_path, access_action, access_control_level
 					FROM v_domain_api 
-					WHERE domain = $1 AND status = '01'
+					WHERE domain = $1 AND status = '01' AND configurable = true
 					ORDER BY api_name`
 
 		rows, err := pgConn.Query(ctx, apiQuery, parentDomain)

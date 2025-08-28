@@ -39,7 +39,15 @@ func Enroll(author string) {
 		Fn: handler.HandleQuerySelectableAPIs,
 
 		Path: "/auth/selectable-apis",
-		Name: "权限管理.查询可选API",
+		Name: "查询可选API",
+
+		ApiEntries: []*cmn.EndPointApiEntries{
+			{
+				Name:         "权限管理.查询可选API",
+				AccessAction: CAPIAccessActionRead,
+				Configurable: false,
+			},
+		},
 
 		Developer: developer,
 		WhiteList: true,
@@ -55,7 +63,20 @@ func Enroll(author string) {
 		Fn: handler.HandleDomain,
 
 		Path: "/auth/domain",
-		Name: "权限管理.创建域",
+		Name: "域管理",
+
+		ApiEntries: []*cmn.EndPointApiEntries{
+			{
+				Name:         "权限管理.创建域",
+				AccessAction: CAPIAccessActionCreate,
+				Configurable: false,
+			},
+			{
+				Name:         "权限管理.查询域",
+				AccessAction: CAPIAccessActionRead,
+				Configurable: false,
+			},
+		},
 
 		Developer: developer,
 		WhiteList: true,

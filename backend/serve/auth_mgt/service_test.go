@@ -1954,7 +1954,7 @@ func Test_querySelectableAPIs(t *testing.T) {
 				if testing.Verbose() {
 					t.Logf("查询到的API数量: %d", len(got))
 					for i, api := range got {
-						t.Logf("  API[%d]: ID=%v, Name=%s, Path=%v, Action=%v, Level=%s",
+						t.Logf("  API[%d]: ID=%v, Name=%s, Path=%v, AccessAction=%v, Level=%s",
 							i, api.ID, api.Name, api.ExposePath, api.AccessAction, api.AccessControlLevel)
 					}
 				}
