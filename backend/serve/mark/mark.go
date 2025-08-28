@@ -10,6 +10,8 @@ import (
 	"github.com/hibiken/asynq"
 	"github.com/jackc/pgx/v5"
 	"github.com/redis/go-redis/v9"
+	"github.com/sony/gobreaker/v2"
+	"github.com/spf13/viper"
 	"io"
 	"strconv"
 	"strings"
@@ -23,6 +25,8 @@ import (
 )
 
 var z *zap.Logger
+var aiMarkTaskLimiter *cmn.RateLimiterTaskRunner
+var aiMarkTaskCB *gobreaker.CircuitBreaker[any]
 
 const ForceErrKey = "force-err"
 
@@ -63,7 +67,7 @@ type MarkDetails struct {
 
 type HandleMarkerInfoReq struct {
 	Markers        []int64                             `json:"markers"`          // *批改员id数组
-	QuestionGroups []examPaper.SubjectiveQuestionGroup `json:"question_groups"`  // *题组（配置时传入）
+	QuestionGroups []examPaper.SubjectiveQuestionGroup `json:"question_groups"`  // TODO 题组（已废弃，不再外部传入，而是内部自己查）
 	QuestionIDs    []int64                             `json:"question_ids"`     // 题目id数组
 	ExamineeIDs    []int64                             `json:"examinee_ids"`     // 考生id数组
 	MarkMode       string                              `json:"mark_mode"`        // *批卷模式 00：不需要手动批改  02：全卷多评 04：试卷分配 06：题组专评 08：题目分配 10：单人（人工）批改
@@ -183,7 +187,51 @@ func Enroll(author string) {
 		DefaultDomain: int64(cmn.CDomainSys),
 	})
 
-	cmn.RegisterTaskHandler(TaskTypeAIMarkRequest, HandleAIMarkTask)
+	InitAIMarkTaskLimiterAndBreaker()
+
+	cmn.RegisterTaskHandler(TaskTypeAIMarkRequest, TaskMiddleware(HandleAIMarkTask))
+}
+
+func InitAIMarkTaskLimiterAndBreaker() {
+	maxConcurrency := viper.GetInt("chatModel.maxConcurrency")
+	aiMarkTaskLimiter = cmn.NewRateLimiterTaskRunner(int64(maxConcurrency), 5, 10)
+
+	st := gobreaker.Settings{
+		Name:         "HTTP GET",
+		MaxRequests:  3,
+		Timeout:      60 * time.Second,
+		Interval:     24 * time.Hour,
+		BucketPeriod: 1 * time.Hour,
+		ReadyToTrip: func(counts gobreaker.Counts) bool {
+			failureRatio := float64(counts.TotalFailures) / float64(counts.Requests)
+			// 熔断条件：请求数 >= 3 && (失败率 >= 50% || 连续失败次数 >= 3)
+			return counts.Requests >= 3 && (failureRatio >= 0.5 || counts.ConsecutiveFailures >= 3)
+		},
+		// 监控熔断状态变化。
+		OnStateChange: func(name string, from gobreaker.State, to gobreaker.State) {
+			z.Sugar().Warnf("AI Mark Task Circuit Breaker %s changed from %s to %s\n", name, from, to)
+
+			if to == gobreaker.StateOpen {
+				z.Sugar().Warnf("AI Mark Task Circuit Breaker %s is open\n", name)
+			}
+		},
+	}
+
+	aiMarkTaskCB = gobreaker.NewCircuitBreaker[any](st)
+}
+
+func GetAIMarkTaskLimiter() *cmn.RateLimiterTaskRunner {
+	if aiMarkTaskLimiter == nil {
+		InitAIMarkTaskLimiterAndBreaker()
+	}
+	return aiMarkTaskLimiter
+}
+
+func GetAIMarkTaskCB() *gobreaker.CircuitBreaker[any] {
+	if aiMarkTaskCB == nil {
+		InitAIMarkTaskLimiterAndBreaker()
+	}
+	return aiMarkTaskCB
 }
 
 func HandleExamList(ctx context.Context) {
@@ -1068,6 +1116,11 @@ func MarkObjectiveQuestionAnswers(ctx context.Context, cond QueryCondition) (err
 		markerInfo.MarkMode = "12"
 	}
 
+	if cond.PracticeWrongSubmissionID > 0 {
+		// 批改错题集练习的提交
+		markerInfo.MarkMode = "14"
+	}
+
 	studentAnswers, err := QueryStudentAnswersByMarkMode(ctx, "02", cond, markerInfo)
 	if err != nil {
 		err = fmt.Errorf("failed to query student answers: %v", err)
@@ -1202,6 +1255,22 @@ func MarkObjectiveQuestionAnswers(ctx context.Context, cond QueryCondition) (err
 		}
 	}()
 
+	if cond.PracticeWrongSubmissionID > 0 {
+		// 更新批改错题集练习的提交状态
+		_, err = updatePracticeWrongSubmissionState(ctx, tx, cond.TeacherID, []int64{cond.PracticeWrongSubmissionID}, "08")
+		if err != nil {
+			return
+		}
+
+		err = tx.Commit(ctx)
+		if err != nil || forceErr == "MarkObjectiveQuestionAnswers-tx.Commit" {
+			err = fmt.Errorf("commit tx error: %v", err)
+			z.Error(err.Error())
+			return
+		}
+		return
+	}
+
 	var status string
 	var examSessionIDs []int64
 	var practiceSubmissionIDs []int64
@@ -1287,7 +1356,7 @@ func AutoMark(ctx context.Context, cond QueryCondition) (err error) {
 		questions = append(questions, questionSet.Questions...)
 	}
 
-	if cond.IsWrongSubmission {
+	if cond.PracticeWrongSubmissionID > 0 {
 		// 练习学生作答错题
 		markerInfo.MarkMode = "14"
 	}
@@ -1434,16 +1503,6 @@ func GenerateAIMarkTask(ctx context.Context, cond QueryCondition, questions []*c
 			ruleBuilder.WriteString("\n")
 		}
 
-		//var aiMarkRequest = AIMarkRequest{
-		//	Question: &ai_mark.QuestionDetails{
-		//		QuestionID: q.ID.Int64,
-		//		Answer:     answerBuilder.String(),
-		//		Rule:       ruleBuilder.String(),
-		//		Score:      q.Score.Float64,
-		//	},
-		//	StudentAnswers: []*ai_mark.StudentAnswer{},
-		//}
-
 		// 50个作答为一组
 		splitAnswers := splitSlice(questionAnswersMap[q.ID.Int64], shouldSplit)
 		for _, answers := range splitAnswers {
@@ -1477,18 +1536,6 @@ func GenerateAIMarkTask(ctx context.Context, cond QueryCondition, questions []*c
 		}
 	}
 
-	// 3. 定义 Lua 脚本
-	//luaScript := `
-	//	local key = KEYS[1]
-	//	local current = redis.call('DECR', key)
-	//	local after = tonumber(current)
-	//	if after == 0 then
-	//		return {after, 1}  -- [当前值, 是否触发]
-	//	else
-	//		return {after, 0}  -- [当前值, 不触发]
-	//	end
-	//`
-
 	uniqueTaskCountKey := uniqueKey + ":count"
 
 	err = redisClient.Set(ctx, uniqueTaskCountKey, len(aiMarkRequests), 0).Err()
@@ -1512,6 +1559,32 @@ func GenerateAIMarkTask(ctx context.Context, cond QueryCondition, questions []*c
 
 	return
 
+}
+
+func TaskMiddleware(handler func(ctx context.Context, task *asynq.Task) error) func(ctx context.Context, task *asynq.Task) error {
+	return func(ctx context.Context, task *asynq.Task) error {
+		limiter := GetAIMarkTaskLimiter()
+
+		err, releaseFunc := limiter.Wait(ctx)
+		if err != nil {
+			// 获取信号量失败，直接返回错误
+			return err
+		}
+		// 释放信号量
+		defer releaseFunc()
+
+		cb := GetAIMarkTaskCB()
+
+		_, err = cb.Execute(func() (any, error) {
+			return nil, handler(ctx, task)
+		})
+
+		if err != nil {
+			return err
+		}
+
+		return handler(ctx, task)
+	}
 }
 
 func HandleAIMarkTask(ctx context.Context, task *asynq.Task) error {
@@ -1674,33 +1747,42 @@ func HandleAIMarkTask(ctx context.Context, task *asynq.Task) error {
 		// 任务已全部完成
 		z.Sugar().Infof("本批次批改任务已全部完成")
 		pgxConn := cmn.GetPgxConn()
-		if payloadData.QueryCondition.PracticeSubmissionID > 0 {
-			var tx pgx.Tx
-			tx, err = pgxConn.Begin(ctx)
-			if err != nil || forceErr == "HandleAIMarkTask-tx.Begin" {
-				err = fmt.Errorf("begin transaction error: %v", err)
-				z.Error(err.Error())
-				return err
-			}
+		if payloadData.QueryCondition.PracticeSubmissionID < 0 {
+			return nil
+		}
 
-			defer func() {
-				if err != nil {
-					err_ := tx.Rollback(ctx)
-					if err_ != nil || forceErr == "HandleAIMarkTask-tx.Rollback" {
-						z.Sugar().Error(err_)
-					}
-				} else {
-					err_ := tx.Commit(ctx)
-					if err_ != nil || forceErr == "HandleAIMarkTask-tx.Commit" {
-						z.Sugar().Error(err_)
-					}
+		var tx pgx.Tx
+		tx, err = pgxConn.Begin(ctx)
+		if err != nil || forceErr == "HandleAIMarkTask-tx.Begin" {
+			err = fmt.Errorf("begin transaction error: %v", err)
+			z.Error(err.Error())
+			return err
+		}
+
+		defer func() {
+			if err != nil {
+				err_ := tx.Rollback(ctx)
+				if err_ != nil || forceErr == "HandleAIMarkTask-tx.Rollback" {
+					z.Sugar().Error(err_)
 				}
-			}()
+			} else {
+				err_ := tx.Commit(ctx)
+				if err_ != nil || forceErr == "HandleAIMarkTask-tx.Commit" {
+					z.Sugar().Error(err_)
+				}
+			}
+		}()
 
-			_, err = updateExamSessionOrPracticeSubmissionState(ctx, &tx, payloadData.QueryCondition.TeacherID, nil, []int64{payloadData.QueryCondition.PracticeSubmissionID}, "08")
+		if payloadData.QueryCondition.PracticeWrongSubmissionID > 0 {
+			_, err = updatePracticeWrongSubmissionState(ctx, tx, payloadData.QueryCondition.TeacherID, []int64{payloadData.QueryCondition.PracticeWrongSubmissionID}, "08")
 			if err != nil {
 				return err
 			}
+		}
+
+		_, err = updateExamSessionOrPracticeSubmissionState(ctx, &tx, payloadData.QueryCondition.TeacherID, nil, []int64{payloadData.QueryCondition.PracticeSubmissionID}, "08")
+		if err != nil {
+			return err
 		}
 
 		return nil
