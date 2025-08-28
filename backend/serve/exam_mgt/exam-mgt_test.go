@@ -1365,6 +1365,105 @@ func TestValidateExamData(t *testing.T) {
 			errorMsg:  "设定的最迟进入考试时长",
 		},
 		{
+			name: "尚未配置考场",
+			examData: ExamData{
+				ExamInfo: cmn.TExamInfo{
+					ID:   null.IntFrom(123),
+					Name: null.StringFrom("期中考试"),
+					Type: null.StringFrom("00"),
+					Mode: null.StringFrom("02"), // 线下考试
+				},
+				ExamSessions: []cmn.TExamSession{
+					{
+						PaperID:              null.IntFrom(2),
+						MarkMethod:           "02",
+						PeriodMode:           null.StringFrom("02"),
+						Duration:             null.IntFrom(90),
+						QuestionShuffledMode: null.StringFrom("02"),
+						MarkMode:             null.StringFrom("02"),
+						StartTime:            null.IntFrom(time.Now().Add(1 * time.Hour).UnixMilli()),
+						EndTime:              null.IntFrom(time.Now().Add(150 * time.Minute).UnixMilli()),
+						LateEntryTime:        null.IntFrom(0),
+					},
+				},
+				ExamineeIDs: []int64{1, 2, 3},
+			},
+			isUpdate:  true,
+			wantError: true,
+			errorMsg:  "尚未配置考场",
+		},
+		{
+			name: "尚未配置考场",
+			examData: ExamData{
+				ExamInfo: cmn.TExamInfo{
+					ID:   null.IntFrom(123),
+					Name: null.StringFrom("期中考试"),
+					Type: null.StringFrom("00"),
+					Mode: null.StringFrom("02"), // 线下考试
+				},
+				ExamSessions: []cmn.TExamSession{
+					{
+						PaperID:              null.IntFrom(2),
+						MarkMethod:           "02",
+						PeriodMode:           null.StringFrom("02"),
+						Duration:             null.IntFrom(90),
+						QuestionShuffledMode: null.StringFrom("02"),
+						MarkMode:             null.StringFrom("02"),
+						StartTime:            null.IntFrom(time.Now().Add(1 * time.Hour).UnixMilli()),
+						EndTime:              null.IntFrom(time.Now().Add(150 * time.Minute).UnixMilli()),
+						LateEntryTime:        null.IntFrom(0),
+					},
+				},
+				ExamineeIDs: []int64{1, 2, 3},
+				ExamRooms: []ExamRoomConfig{
+					ExamRoomConfig{
+						RoomID:           1,
+						Capacity:         30,
+						InvigilatorCount: -1,
+					},
+				},
+			},
+			isUpdate:  true,
+			wantError: true,
+			errorMsg:  "部分考场配置的监考员数量无效",
+		},
+		{
+			name: "监考教师人数不足",
+			examData: ExamData{
+				ExamInfo: cmn.TExamInfo{
+					ID:   null.IntFrom(123),
+					Name: null.StringFrom("期中考试"),
+					Type: null.StringFrom("00"),
+					Mode: null.StringFrom("02"), // 线下考试
+				},
+				ExamSessions: []cmn.TExamSession{
+					{
+						PaperID:              null.IntFrom(2),
+						MarkMethod:           "02",
+						PeriodMode:           null.StringFrom("02"),
+						Duration:             null.IntFrom(90),
+						QuestionShuffledMode: null.StringFrom("02"),
+						MarkMode:             null.StringFrom("02"),
+						StartTime:            null.IntFrom(time.Now().Add(1 * time.Hour).UnixMilli()),
+						EndTime:              null.IntFrom(time.Now().Add(150 * time.Minute).UnixMilli()),
+						LateEntryTime:        null.IntFrom(0),
+					},
+				},
+				ExamineeIDs: []int64{1, 2, 3},
+				ExamRooms: []ExamRoomConfig{
+					ExamRoomConfig{
+						RoomID:           1,
+						Capacity:         30,
+						InvigilatorCount: 2,
+					},
+				},
+				InvigilatorIDs: []int64{1},
+			},
+			isUpdate:  true,
+			wantError: true,
+			errorMsg:  "监考教师人数不足",
+		},
+		{
 			name: "学生ID无效",
 			examData: ExamData{
 				ExamInfo: cmn.TExamInfo{
@@ -8686,6 +8785,21 @@ func TestExamFile(t *testing.T) {
 			userRole:    2002,
 		},
 		{
+			name:   "DELETE-io关闭错误",
+			method: "DELETE",
+			examFile: ExamFile{
+				ExamID:   testNormalExamID,
+				CheckSum: testFile1CheckSum,
+				Name:     "新考试文件.txt",
+				Size:     int64(len(testFile1Content)),
+			},
+			forceError:  "io.Close",
+			expectError: false,
+			description: "io关闭错误",
+			userID:      testAcademicAffair,
+			userRole:    2002,
+		},
+		{
 			name:   "POST-强制查询考试文件错误",
 			method: "POST",
 			examFile: ExamFile{
@@ -8961,6 +9075,50 @@ func TestExamFile(t *testing.T) {
 			expectError:   true,
 			errorContains: "强制读取请求体错误",
 			description:   "强制读取请求体错误时的错误处理",
+		},
+		{
+			name:          "DELETE-强制错误-强制获取考试附件信息错误",
+			method:        "DELETE",
+			examFile:      ExamFile{ExamID: testNormalExamID, CheckSum: testFile3CheckSum, Name: testFile3Name},
+			forceError:    "scanExamFile",
+			userID:        testAcademicAffair,
+			userRole:      2002,
+			expectError:   true,
+			errorContains: "强制获取考试附件信息错误",
+			description:   "强制获取考试附件信息错误时的错误处理",
+		},
+		{
+			name:          "DELETE-强制错误-强制序列化考试附件ID数组错误",
+			method:        "DELETE",
+			examFile:      ExamFile{ExamID: testNormalExamID, CheckSum: testFile3CheckSum, Name: testFile3Name},
+			forceError:    "examFiles.json.Marshal.Delete",
+			userID:        testAcademicAffair,
+			userRole:      2002,
+			expectError:   true,
+			errorContains: "强制序列化考试附件ID数组错误",
+			description:   "强制序列化考试附件ID数组错误",
+		},
+		{
+			name:          "DELETE-强制错误-强制更新考试附件字段错误",
+			method:        "DELETE",
+			examFile:      ExamFile{ExamID: testNormalExamID, CheckSum: testFile3CheckSum, Name: testFile3Name},
+			forceError:    "examInfo.tx.UpdateFiles.Delete",
+			userID:        testAcademicAffair,
+			userRole:      2002,
+			expectError:   true,
+			errorContains: "强制更新考试附件字段错误",
+			description:   "强制更新考试附件字段错误",
+		},
+		{
+			name:          "DELETE-强制错误-强制序列化考试文件错误",
+			method:        "DELETE",
+			examFile:      ExamFile{ExamID: testNormalExamID, CheckSum: testFile3CheckSum, Name: testFile3Name},
+			forceError:    "examFiles.json.Marshal",
+			userID:        testAcademicAffair,
+			userRole:      2002,
+			expectError:   true,
+			errorContains: "强制序列化考试文件错误",
+			description:   "强制序列化考试文件错误",
 		},
 		{
 			name:          "DELETE-强制错误-json.Unmarshal",
