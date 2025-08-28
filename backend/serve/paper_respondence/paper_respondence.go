@@ -57,15 +57,17 @@ const (
 
 	practiceSubmitted = "06" //练习提交状态
 
-	ExamType     = "00" //考试类型
-	PracticeType = "02" //练习类型
+	ExamType          = "00" //考试类型
+	PracticeType      = "02" //练习类型
+	WrongPracticeType = "04" // 练习作答类型
 
 	ForceErr = "forceErr" //强制错误标记
 
 	StudentDomainId = 2008 //学生域
 	ExamInvigilator = 2004 //监考员域
 
-	PracticeSubmissionDeleteStatus = "04"
+	WrongPracticeSubmissionDeleteStatus   = "04"
+	WrongPracticeSubmissionDisabledStatus = "06"
 )
 
 var (
@@ -703,7 +705,90 @@ func InitRespondent(ctx context.Context) {
 			q.RespErr()
 			return
 		}
+	case WrongPracticeType:
+		if u.PracticeId <= 0 {
+			err := fmt.Errorf("practice id is smaller than 0")
+			z.Error(err.Error())
+			q.Err = err
+			q.RespErr()
+			return
+		}
+		//练习初始化并获取试卷数据
+		practiceInfo, groupInfo, questions, err := practice_mgt.EnterPracticeWrongCollection(ctx, tx, u.PracticeId, u.StudentId)
+		if err != nil {
+			q.Err = err
+			q.RespErr()
+			return
+		}
+		u.PracticeSubmissionID = practiceInfo.PracticeSubmissionID
+		u.WrongSubmissionID = practiceInfo.WrongSubmissionID
 
+		//查看是否已经保存过开始时间，有就直接返回不报错
+		checkSql := `select start_time from t_practice_wrong_submissions where id=$1 `
+		var startTime null.Int
+		q.Err = tx.QueryRow(ctx, checkSql, u.WrongSubmissionID).Scan(&startTime)
+		if q.Err != nil {
+			z.Error("checkPracticeWrongIfSaveBeginTime error", zap.Error(q.Err))
+			q.RespErr()
+			return
+		}
+		// 开始保存开始时间
+		updateSql := `UPDATE t_practice_wrong_submissions SET start_time =(EXTRACT(EPOCH FROM NOW()) * 1000)::bigint WHERE id = $1 AND status = $2`
+		_, err = tx.Exec(ctx, updateSql, u.WrongSubmissionID, NormalStatus)
+		if err != nil {
+			z.Error("updatePracticeWrongIfSaveBeginTime error", zap.Error(err))
+			q.RespErr()
+			return
+		}
+
+		//获取已经过去的时间
+		var t cmn.TPracticeWrongSubmissions
+		elapsedSecondsSql := `SELECT elapsed_seconds FROM assessuser.t_practice_wrong_submissions WHERE id=$1 AND status=$2`
+		q.Err = tx.QueryRow(dmlCtx, elapsedSecondsSql, u.WrongSubmissionID, NormalStatus).Scan(&t.ElapsedSeconds)
+		if forceErr == "select elapsed seconds" {
+			q.Err = errors.New("select elapsed seconds err")
+		}
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+		//更新最近一次进入练习的时间
+		Sql := `UPDATE t_practice_wrong_submissions SET last_start_time = EXTRACT(EPOCH FROM CURRENT_TIMESTAMP)::bigint * 1000 WHERE id = $1 AND status=$2 RETURNING id`
+
+		var updateId null.Int
+		q.Err = tx.QueryRow(ctx, Sql, u.WrongSubmissionID, NormalStatus).Scan(&updateId)
+		if forceErr == "update-last-start-time-err" {
+			q.Err = errors.New("update last start time err")
+		}
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+		//定义结构体用于整合数据发送给前端
+		type Msg struct {
+			Info              practice_mgt.EnterPracticeInfo
+			QuestionGroupInfo map[int64]*cmn.TExamPaperGroup
+			Questions         map[int64][]*examPaper.ExamQuestion
+			ElapsedSeconds    int64
+		}
+
+		msg := &Msg{
+			Info:              *practiceInfo, // 这里已经成功获取这个错题提交了的
+			Questions:         questions,
+			QuestionGroupInfo: groupInfo,
+			ElapsedSeconds:    t.ElapsedSeconds.Int64,
+		}
+		data, err = json.Marshal(&msg)
+		if forceErr == "marshal err" {
+			err = errors.New("marshal err")
+		}
+		if err != nil {
+			q.Err = err
+			q.RespErr()
+			return
+		}
 	default:
 		q.Err = fmt.Errorf("unknown respondence type: %s", u.Type)
 		z.Error(q.Err.Error())
@@ -1054,6 +1139,52 @@ func Submit(ctx context.Context) {
 				PracticeID:           u.PracticeId,
 			})
 		}()
+
+	case WrongPracticeType:
+		// 这里要弄错题的作答
+		if u.WrongSubmissionID <= 0 || u.PracticeId <= 0 {
+			q.Err = fmt.Errorf("当前是错题练习，请输入大于0的WrongSubmissionID以及大于0的PracticeId")
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+		if forceErr == "setAnswerCanNotUpdate error" {
+			tx.Rollback(dmlCtx)
+		}
+		// 需要检测这个错题集也是否被删除了
+		q.Err = checkWrongPracticeSubmission(ctx, tx, u.WrongSubmissionID)
+		if q.Err != nil {
+			q.RespErr()
+			return
+		}
+		//将学生的练习作答重新置为提交状态
+		q.Err = setAnswerCanNotUpdate(ctx, 0, u.PracticeSubmissionID, u.StudentId, tx)
+		if forceErr == "set answer can not update err" {
+			q.Err = errors.New("set answer can not update err")
+		}
+		if q.Err != nil {
+			q.RespErr()
+			return
+		}
+		if forceErr == "practice-submit-err" {
+			tx.Rollback(dmlCtx)
+		}
+		//只有状态为正常作答练习以及结束时间为空的，才能进行更新
+		submitSql := `update t_practice_wrong_submissions set end_time = (EXTRACT(EPOCH FROM NOW()) * 1000)::bigint,status=$1 where id = $2 AND status=$3 AND end_time IS NULL RETURNING id`
+		var updateId null.Int
+		q.Err = tx.QueryRow(ctx, submitSql, practice_mgt.WrongSubmissionStatus.Submitted, u.WrongSubmissionID, practice_mgt.WrongSubmissionStatus.Allow).Scan(&updateId)
+		if q.Err != nil {
+			z.Error("submitPractice error", zap.Error(q.Err))
+			q.RespErr()
+			return
+		}
+		// 异步批改
+		go func() {
+			mark.AutoMark(ctx, mark.QueryCondition{
+				PracticeWrongSubmissionID: u.WrongSubmissionID,
+				PracticeID:                u.PracticeId,
+			})
+		}()
 	default:
 		q.Err = fmt.Errorf("unknown student answer type: %s", u.Type)
 		z.Error(q.Err.Error())
@@ -1258,8 +1389,8 @@ func HandleExit(ctx context.Context, req ExitReq) (err error) {
 		}
 	}
 	// 参数检查
-	if req.ExamineeID <= 0 && req.PracticeSubmissionID <= 0 {
-		err := errors.New("examinee id and practice submission id both are smaller than 0 or equal to 0")
+	if req.ExamineeID <= 0 && req.PracticeSubmissionID <= 0 && req.WrongSubmissionID <= 0 {
+		err := errors.New("examinee id and practice submission id and wrong submission id  both are smaller than 0 or equal to 0")
 		z.Error(err.Error())
 		return err
 	}
@@ -1289,9 +1420,21 @@ SET
 WHERE id = $2 AND status = $3 RETURNING id`
 
 		params = append(params, req.StudentId, req.PracticeSubmissionID, NormalStatus)
-	} else {
+	} else if req.ExamineeID > 0 {
 		Sql = `UPDATE t_examinee SET  updated_by = $1, update_time = EXTRACT(EPOCH FROM CURRENT_TIMESTAMP)::bigint * 1000, exit_cnt = exit_cnt + 1 WHERE id = $2 AND (status = $3 OR status = $4) RETURNING id`
 		params = append(params, req.StudentId, req.ExamineeID, CanBeEnterStatus, NormalStatus)
+	} else {
+		// 这里是错题练习记录的
+		Sql = `UPDATE t_practice_wrong_submissions
+SET
+  last_end_time = EXTRACT(EPOCH FROM CURRENT_TIMESTAMP)::bigint * 1000,
+  elapsed_seconds = elapsed_seconds + (
+    ((EXTRACT(EPOCH FROM CURRENT_TIMESTAMP)::bigint * 1000) - last_start_time) / 1000.0
+),
+	updated_by=$1,
+    update_time=EXTRACT(EPOCH FROM CURRENT_TIMESTAMP)::bigint * 1000
+WHERE id = $2 AND status = $3 RETURNING id`
+		params = append(params, req.StudentId, req.WrongSubmissionID, practice_mgt.WrongSubmissionStatus.Allow)
 	}
 	err = db.QueryRow(ctx, Sql, params...).Scan(&updateReturnId)
 	if err != nil {
@@ -1601,10 +1744,10 @@ func checkPracticeSubmission(ctx context.Context, tx pgx.Tx, practiceSubmissionI
 	sql := `SELECT EXISTS(
     SELECT 1
     FROM t_practice_submissions
-    WHERE id = $1 AND status=$2 AND attempt=-1
+    WHERE id = $1 AND (status = $2 OR status = $3)
 ) AS result;`
 	var result null.Bool
-	err := tx.QueryRow(ctx, sql, practiceSubmissionId, PracticeSubmissionDeleteStatus).Scan(&result)
+	err := tx.QueryRow(ctx, sql, practiceSubmissionId, practice_mgt.PracticeSubmissionStatus.Disabled, practice_mgt.PracticeSubmissionStatus.Deleted).Scan(&result)
 	if err != nil {
 		z.Error("checkPracticeSubmission error", zap.Error(err))
 		return err
@@ -1613,7 +1756,28 @@ func checkPracticeSubmission(ctx context.Context, tx pgx.Tx, practiceSubmissionI
 	if !result.Bool {
 		return nil
 	}
-	err = fmt.Errorf("当前练习已经被删除")
+	err = fmt.Errorf("当前练习已经被删除或者是作废")
 	z.Info(err.Error(), zap.Int64("practiceSubmissionId", practiceSubmissionId))
+	return err
+}
+
+func checkWrongPracticeSubmission(ctx context.Context, tx pgx.Tx, wrongPracticeSubmissionId int64) error {
+	sql := `SELECT EXISTS(
+    SELECT 1
+    FROM t_practice_wrong_submissions
+    WHERE id = $1 AND (status = $2 OR status = $3)
+) AS result;`
+	var result null.Bool
+	err := tx.QueryRow(ctx, sql, wrongPracticeSubmissionId, practice_mgt.WrongSubmissionStatus.Deleted, practice_mgt.WrongSubmissionStatus.Disabled).Scan(&result)
+	if err != nil {
+		z.Error("checkPracticeSubmission error", zap.Error(err))
+		return err
+	}
+	z.Info("result", zap.Bool("result", result.Bool))
+	if !result.Bool {
+		return nil
+	}
+	err = fmt.Errorf("当前练习已经被删除或者是作废")
+	z.Info(err.Error(), zap.Int64("wrongPracticeSubmissionId", wrongPracticeSubmissionId))
 	return err
 }

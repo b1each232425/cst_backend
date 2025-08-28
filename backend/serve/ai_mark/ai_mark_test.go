@@ -501,3 +501,52 @@ func TestChatModel_Tokenizer(t *testing.T) {
 		})
 	}
 }
+
+// TestChatModel_GetChatMaxConcurrency 测试ChatModel的GetChatMaxConcurrency方法
+func TestChatModel_GetChatMaxConcurrency(t *testing.T) {
+	// 测试用例定义
+	tests := []struct {
+		name           string // 测试用例名称
+		maxConcurrency int    // 设置的并发数
+		expected       int    // 期望的返回值
+	}{
+		{
+			name:           "正常情况-返回正整数",
+			maxConcurrency: 10,
+			expected:       10,
+		},
+		{
+			name:           "边界情况-返回零值",
+			maxConcurrency: 0,
+			expected:       0,
+		},
+		{
+			name:           "边界情况-返回负数",
+			maxConcurrency: -5,
+			expected:       -5,
+		},
+		{
+			name:           "边界情况-返回大整数",
+			maxConcurrency: 1000000,
+			expected:       1000000,
+		},
+	}
+
+	// 执行测试用例
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Arrange: 准备测试数据
+			c := &ChatModel{
+				MaxConcurrency: tt.maxConcurrency,
+			}
+
+			// Act: 调用被测函数
+			got := c.GetChatMaxConcurrency()
+
+			// Assert: 验证结果
+			if got != tt.expected {
+				t.Errorf("GetChatMaxConcurrency() = %v, want %v", got, tt.expected)
+			}
+		})
+	}
+}

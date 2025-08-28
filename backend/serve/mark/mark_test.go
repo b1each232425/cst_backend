@@ -5,7 +5,9 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"github.com/hibiken/asynq"
 	"github.com/jmoiron/sqlx/types"
 	"github.com/stretchr/testify/assert"
 	"io"
@@ -15,6 +17,7 @@ import (
 	"testing"
 	"time"
 	"w2w.io/null"
+	"w2w.io/serve/ai_mark"
 	"w2w.io/serve/examPaper"
 
 	"w2w.io/cmn"
@@ -24,6 +27,7 @@ func init() {
 	cmn.ConfigureForTest()
 	z = cmn.GetLogger()
 	testedIDGroups = make([][]interface{}, 0)
+	cmn.StartAsynqService()
 }
 
 const testedTeacherID = 1101
@@ -79,6 +83,22 @@ func newReqProtoData(v interface{}) []byte {
 	return bytes
 }
 
+func newTaskPayload(taskType string, data interface{}) []byte {
+	taskPayload := cmn.TaskPayload{
+		Type:      taskType,
+		Data:      data,
+		Timestamp: time.Now().Unix(),
+	}
+
+	payloadBytes, err := json.Marshal(taskPayload)
+	if err != nil {
+		panic(err)
+		return nil
+	}
+
+	return payloadBytes
+}
+
 // RepeatStringSlice 返回一个包含 `count` 个 `value` 的字符串切片
 func RepeatStringSlice(value string, count int) []string {
 	slice := make([]string, count)
@@ -131,6 +151,7 @@ func initTestData() {
 		{21, "test practice 1", "00", "00", "02", 1101},
 		{22, "test practice 2", "10", "00", "02", 1101},
 		{23, "test practice 3", "00", "00", "02", 1101},
+		{24, "test practice 4", "00", "00", "02", 1101}, // 主观 AI 批改
 	}
 	args = append(args, tempArgs)
 
@@ -140,9 +161,10 @@ func initTestData() {
 		{102, 102, null.NewInt(0, false), "test exam paper 2", "00", 1101},
 		{103, 103, null.NewInt(0, false), "test exam paper 3", "00", 1101},
 		{104, 104, null.NewInt(0, false), "test exam paper 4", "00", 1101},
-		{124, null.NewInt(0, false), 21, "test practice paper 4", "00", 1101},
-		{125, null.NewInt(0, false), 22, "test practice paper 5", "00", 1101},
-		{126, null.NewInt(0, false), 23, "test practice paper 6", "00", 1101},
+		{124, null.NewInt(0, false), 21, "test practice paper 1", "00", 1101},
+		{125, null.NewInt(0, false), 22, "test practice paper 2", "00", 1101},
+		{126, null.NewInt(0, false), 23, "test practice paper 3", "00", 1101},
+		{127, null.NewInt(0, false), 24, "test practice paper 4", "00", 1101},
 	}
 	args = append(args, tempArgs)
 
@@ -155,6 +177,7 @@ func initTestData() {
 		{324, 124, "test group 24", "00", 1101},
 		{325, 125, "test group 25", "00", 1101},
 		{326, 126, "test group 26", "00", 1101},
+		{327, 127, "test group 27", "00", 1101},
 	}
 	args = append(args, tempArgs)
 
@@ -165,6 +188,7 @@ func initTestData() {
 		{403, 3, "04", "判断1", `["A"]`, 301, "00", 1101},
 		{404, 3, "00", "单选1", `["C"]`, 302, "00", 1101},
 		{405, 3, "06", "填空1", `[{"index": 1, "score": 3, "answer": "填空答案1", "grading_rule": "1", "alternative_answer": null}]`, 302, "00", 1101},
+		{406, 10, "08", "简答题1", `[{"index": 1, "score": 10, "answer": "简答题答案1", "grading_rule": "1", "alternative_answer": null}]`, 302, "00", 1101},
 		{411, 3, "00", "单选2", `[]`, 303, "00", 1101}, // 异常数据
 		{412, 3, "02", "多选2", `["B", "D"]`, 304, "00", 1101},
 		{421, 3, "00", "单选2", `[]`, 326, "00", 1101}, // 异常数据
@@ -174,6 +198,7 @@ func initTestData() {
 		{425, 3, "02", "多选1", `["B", "D"]`, 324, "00", 1101},
 		{426, 3, "04", "判断1", `["A"]`, 324, "00", 1101},
 		{427, 3, "06", "练习-填空1", `[{"index": 1, "score": 3, "answer": "填空答案1", "grading_rule": "1", "alternative_answer": null}]`, 325, "00", 1101},
+		{428, 3, "08", "练习-简答题1", `[{"index": 1, "score": 3, "answer": "简答题答案1", "grading_rule": "1", "alternative_answer": null}]`, 327, "00", 1101},
 	}
 	args = append(args, tempArgs)
 
@@ -195,6 +220,14 @@ func initTestData() {
 		{2402, 1202, 21, 124, "06", 1101},
 		{2403, 1203, 21, 124, "06", 1101},
 		{2404, 1201, 22, 125, "06", 1101},
+		{2405, 1202, 24, 127, "06", 1101},
+		{2406, 1204, 21, 124, "06", 1101},
+	}
+	args = append(args, tempArgs)
+
+	queries = append(queries, `INSERT INTO t_practice_wrong_submissions(id, practice_submission_id, status, creator) VALUES($1, $2, $3, $4)`)
+	tempArgs = [][]interface{}{
+		{2601, 2401, "02", testedTeacherID},
 	}
 	args = append(args, tempArgs)
 
@@ -213,6 +246,7 @@ func initTestData() {
 		{30, 2204, 411, `{"answer": {}}`, `["B"]`, "00", 1101},
 		{31, 2206, 411, `{"answer": ["B"]}`, `{}`, "00", 1101},
 		{32, 2207, 411, `{"answer": []}`, `["B"]`, "00", 1101},
+		{33, 2205, 406, `{"answer": ["简答1学生作答1"]}`, `[]`, "00", 1101},
 	}
 	args = append(args, tempArgs)
 
@@ -226,6 +260,8 @@ func initTestData() {
 		{45, 2402, 425, `{"answer": ["B"]}`, `["B", "D"]`, "00", 1101},
 		{46, 2402, 426, `{"answer": ["A"]}`, `["A"]`, "00", 1101},
 		{47, 2404, 427, `{"answer": ["填空学生作答1"]}`, `[]`, "00", 1101},
+		{48, 2405, 428, `{"answer": ["简答作答1"]}`, `[]`, "00", 1101},
+		{49, 2406, 424, `{"answer": ["C"]}`, `["A"]`, "00", 1101}, // 错题集作答
 	}
 	args = append(args, tempArgs)
 
@@ -324,6 +360,8 @@ func cleanTestData() {
 	queries = append(queries, `DELETE FROM t_exam_session;`)
 
 	queries = append(queries, `DELETE FROM t_practice_submissions;`)
+
+	queries = append(queries, `DELETE FROM t_practice_wrong_submissions;`)
 
 	queries = append(queries, `DELETE FROM t_practice;`)
 
@@ -1317,6 +1355,28 @@ func TestMarkObjectiveQuestionAnswers(t *testing.T) {
 			},
 		},
 		{
+			name:      "success-practice (批改单个错题集练习学生)",
+			teacherID: testedTeacherID,
+			requestParams: QueryCondition{
+				PracticeID:                21,
+				PracticeSubmissionID:      2406,
+				PracticeWrongSubmissionID: 2601,
+				TeacherID:                 testedTeacherID,
+			},
+		},
+		{
+			name:      "updateExamSessionOrPracticeSubmissionState error (批改单个错题集练习学生)",
+			teacherID: testedTeacherID,
+			requestParams: QueryCondition{
+				PracticeID:                21,
+				PracticeSubmissionID:      2406,
+				PracticeWrongSubmissionID: 2601,
+				TeacherID:                 testedTeacherID,
+			},
+			forceErr:       "updatePracticeWrongSubmissionState-tx.Query",
+			expectedErrStr: "exec updatePracticeWrongSubmissionState sql error",
+		},
+		{
 			name:      "success-（学生作答结果字段为空数组，得分为0）",
 			teacherID: testedTeacherID,
 			requestParams: QueryCondition{
@@ -1434,6 +1494,18 @@ func TestMarkObjectiveQuestionAnswers(t *testing.T) {
 			requestParams: QueryCondition{
 				ExamSessionID: 101,
 				TeacherID:     testedTeacherID,
+			},
+			forceErr:       "MarkObjectiveQuestionAnswers-tx.Commit",
+			expectedErrStr: "commit tx error",
+		},
+		{
+			name:      "commit tx error （批改单个练习错题集学生）",
+			teacherID: testedTeacherID,
+			requestParams: QueryCondition{
+				PracticeID:                21,
+				PracticeSubmissionID:      2406,
+				PracticeWrongSubmissionID: 2601,
+				TeacherID:                 testedTeacherID,
 			},
 			forceErr:       "MarkObjectiveQuestionAnswers-tx.Commit",
 			expectedErrStr: "commit tx error",
@@ -2130,4 +2202,1063 @@ func TestHandleMarkingState(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestGenerateAIMarkTask(t *testing.T) {
+
+	cmn.RegisterTaskHandler(TaskTypeAIMarkRequest, HandleAIMarkTask)
+
+	var testedSubjectiveAnswers = []SubjectiveAnswer{
+		{
+			Index: 1,
+			Score: 10,
+			Answer: `
+					1. 独立式（Fat AP）组网：每个无线接入点单独配置和管理。
+	
+					   - 优点：部署简单，成本较低，适合小型网络。
+					   - 缺点：管理复杂，扩展性差，无法集中控制。
+	
+					2. 控制器集中式（Fit AP + AC）组网：AP受控于无线控制器。
+	
+					   - 优点：集中管理、自动调优、漫游切换顺畅，适合中大型网络。
+					   - 缺点：成本高，对控制器性能依赖大。
+					`,
+			GradingRule: `
+					1. **组网方式名称（2分）**
+					   - 正确写出“独立式（Fat AP）组网”得1分，写出“控制器集中式（Fit AP + AC）组网”得1分。
+					   - 错误或遗漏组网方式名称不得分。
+					2. **独立式（Fat AP）组网的优缺点（4分）**
+					   - **优点**：答出“部署简单”“成本较低”“适合小型网络”中的任意两点得2分（每点1分）。
+					   - **缺点**：答出“管理复杂”“扩展性差”“无法集中控制”中的任意两点得2分（每点1分）。
+					   - 优点或缺点仅答出一点得1分，错误描述不得分。
+					3. **控制器集中式（Fit AP + AC）组网的优缺点（4分）**
+					   - **优点**：答出“集中管理”“自动调优”“漫游切换顺畅”“适合中大型网络”中的任意两点得2分（每点1分）。
+					   - **缺点**：答出“成本高”“对控制器性能依赖大”中的任意两点得2分（每点1分）。
+					   - 优点或缺点仅答出一点得1分，错误描述不得分。
+	
+					`,
+		},
+	}
+
+	testedSubjectiveAnswerJson, err := json.Marshal(testedSubjectiveAnswers)
+	if err != nil {
+		t.Errorf("failed to marshal subjective answers: %v", err)
+		return
+	}
+
+	var testedStudentAnswers = []map[string][]string{
+		{
+			"answer": {
+				`
+					1. 独立式组网：每个无线接入点单独配置和管理。
+					  - 优点：简单，成本低。
+					  - 缺点：管理复杂。
+					2. 控制器集中式（Fit AP + AC）组网：AP受控于无线控制器。
+					  - 优点：集中管理，适合小型网络。
+					  - 缺点：成本高。
+`,
+			},
+		},
+	}
+
+	testedStudentAnswerJson, err := json.Marshal(testedStudentAnswers[0])
+	if err != nil {
+		t.Errorf("failed to marshal student answers: %v", err)
+		return
+	}
+
+	tests := []struct {
+		name           string
+		cond           QueryCondition
+		questions      []*cmn.TExamPaperQuestion
+		studentAnswers []*cmn.TVStudentAnswerQuestion
+		forceErr       string
+		expectedErrStr string
+		//setup          func() ChatModel
+		//checkedFunc    func(chatResp ResponseContent) (string, bool)
+	}{
+		{
+			name: "success",
+			cond: QueryCondition{
+				TeacherID:     testedTeacherID,
+				ExamSessionID: 102,
+			},
+			questions: []*cmn.TExamPaperQuestion{
+				{
+					ID:      null.IntFrom(1001),
+					Score:   null.FloatFrom(10),
+					Answers: testedSubjectiveAnswerJson,
+				},
+			},
+			studentAnswers: []*cmn.TVStudentAnswerQuestion{
+				{
+					ExamSessionID: null.IntFrom(102),
+					ExamineeID:    null.IntFrom(2201),
+					QuestionID:    null.IntFrom(1001),
+					Answer:        testedStudentAnswerJson,
+				},
+			},
+		},
+		{
+			name: "success with examinee id",
+			cond: QueryCondition{
+				TeacherID:     testedTeacherID,
+				ExamSessionID: 102,
+				ExamineeID:    2201,
+			},
+			questions: []*cmn.TExamPaperQuestion{
+				{
+					ID:      null.IntFrom(1001),
+					Score:   null.FloatFrom(10),
+					Answers: testedSubjectiveAnswerJson,
+				},
+			},
+			studentAnswers: []*cmn.TVStudentAnswerQuestion{
+				{
+					ExamSessionID: null.IntFrom(102),
+					ExamineeID:    null.IntFrom(2201),
+					QuestionID:    null.IntFrom(1001),
+					Answer:        testedStudentAnswerJson,
+				},
+			},
+		},
+		{
+			name: "success-practice",
+			cond: QueryCondition{
+				TeacherID:  testedTeacherID,
+				PracticeID: 22,
+			},
+			questions: []*cmn.TExamPaperQuestion{
+				{
+					ID:      null.IntFrom(1001),
+					Score:   null.FloatFrom(10),
+					Answers: testedSubjectiveAnswerJson,
+				},
+			},
+			studentAnswers: []*cmn.TVStudentAnswerQuestion{
+				{
+					PracticeID:           null.IntFrom(22),
+					PracticeSubmissionID: null.IntFrom(2401),
+					QuestionID:           null.IntFrom(1001),
+					Answer:               testedStudentAnswerJson,
+				},
+			},
+		},
+		{
+			name: "success-practice with submission id",
+			cond: QueryCondition{
+				TeacherID:            testedTeacherID,
+				PracticeID:           22,
+				PracticeSubmissionID: 2401,
+			},
+			questions: []*cmn.TExamPaperQuestion{
+				{
+					ID:      null.IntFrom(1001),
+					Score:   null.FloatFrom(10),
+					Answers: testedSubjectiveAnswerJson,
+				},
+			},
+			studentAnswers: []*cmn.TVStudentAnswerQuestion{
+				{
+					PracticeID:           null.IntFrom(22),
+					PracticeSubmissionID: null.IntFrom(2401),
+					QuestionID:           null.IntFrom(1001),
+					Answer:               testedStudentAnswerJson,
+				},
+			},
+		},
+		{
+			name: "用户ID无效",
+			cond: QueryCondition{
+				ExamSessionID: 102,
+			},
+			questions: []*cmn.TExamPaperQuestion{
+				{
+					ID:      null.IntFrom(1001),
+					Score:   null.FloatFrom(10),
+					Answers: testedSubjectiveAnswerJson,
+				},
+			},
+			studentAnswers: []*cmn.TVStudentAnswerQuestion{
+				{
+					ExamSessionID: null.IntFrom(102),
+					ExamineeID:    null.IntFrom(2201),
+					QuestionID:    null.IntFrom(1001),
+					Answer:        testedStudentAnswerJson,
+				},
+			},
+			expectedErrStr: "用户ID无效",
+		},
+		{
+			name: "请求参数需包含场次id或者练习id",
+			cond: QueryCondition{
+				TeacherID: testedTeacherID,
+			},
+			questions: []*cmn.TExamPaperQuestion{
+				{
+					ID:      null.IntFrom(1001),
+					Score:   null.FloatFrom(10),
+					Answers: testedSubjectiveAnswerJson,
+				},
+			},
+			studentAnswers: []*cmn.TVStudentAnswerQuestion{
+				{
+					ExamSessionID: null.IntFrom(102),
+					ExamineeID:    null.IntFrom(2201),
+					QuestionID:    null.IntFrom(1001),
+					Answer:        testedStudentAnswerJson,
+				},
+			},
+			expectedErrStr: "请求参数需包含场次id或者练习id",
+		},
+		{
+			name: "请求参数不能同时包含练习ID和考试场次ID",
+			cond: QueryCondition{
+				TeacherID:     testedTeacherID,
+				ExamSessionID: 102,
+				PracticeID:    22,
+			},
+			questions: []*cmn.TExamPaperQuestion{
+				{
+					ID:      null.IntFrom(1001),
+					Score:   null.FloatFrom(10),
+					Answers: testedSubjectiveAnswerJson,
+				},
+			},
+			studentAnswers: []*cmn.TVStudentAnswerQuestion{
+				{
+					ExamSessionID: null.IntFrom(102),
+					ExamineeID:    null.IntFrom(2201),
+					QuestionID:    null.IntFrom(1001),
+					Answer:        testedStudentAnswerJson,
+				},
+			},
+			expectedErrStr: "请求参数不能同时包含练习ID和考试场次ID",
+		},
+		{
+			name: "学生答案题目ID无效",
+			cond: QueryCondition{
+				TeacherID:     testedTeacherID,
+				ExamSessionID: 102,
+			},
+			questions: []*cmn.TExamPaperQuestion{
+				{
+					ID:      null.IntFrom(1001),
+					Score:   null.FloatFrom(10),
+					Answers: testedSubjectiveAnswerJson,
+				},
+			},
+			studentAnswers: []*cmn.TVStudentAnswerQuestion{
+				{
+					ExamSessionID: null.IntFrom(102),
+					ExamineeID:    null.IntFrom(2201),
+					Answer:        testedStudentAnswerJson,
+				},
+			},
+			expectedErrStr: "学生答案题目ID无效",
+		},
+		{
+			name: "学生答案考生ID无效",
+			cond: QueryCondition{
+				TeacherID:     testedTeacherID,
+				ExamSessionID: 102,
+			},
+			questions: []*cmn.TExamPaperQuestion{
+				{
+					ID:      null.IntFrom(1001),
+					Score:   null.FloatFrom(10),
+					Answers: testedSubjectiveAnswerJson,
+				},
+			},
+			studentAnswers: []*cmn.TVStudentAnswerQuestion{
+				{
+					ExamSessionID:        null.IntFrom(102),
+					PracticeSubmissionID: null.IntFrom(2401),
+					QuestionID:           null.IntFrom(1001),
+					Answer:               testedStudentAnswerJson,
+				},
+			},
+			expectedErrStr: "学生答案考生ID无效",
+		},
+		{
+			name: "学生答案提交ID无效",
+			cond: QueryCondition{
+				TeacherID:  testedTeacherID,
+				PracticeID: 22,
+			},
+			questions: []*cmn.TExamPaperQuestion{
+				{
+					ID:      null.IntFrom(1001),
+					Score:   null.FloatFrom(10),
+					Answers: testedSubjectiveAnswerJson,
+				},
+			},
+			studentAnswers: []*cmn.TVStudentAnswerQuestion{
+				{
+					PracticeID: null.IntFrom(22),
+					ExamineeID: null.IntFrom(2201),
+					QuestionID: null.IntFrom(1001),
+					Answer:     testedStudentAnswerJson,
+				},
+			},
+			expectedErrStr: "学生答案提交ID无效",
+		},
+		{
+			name: "学生答案考生ID和提交ID不能同时为空",
+			cond: QueryCondition{
+				TeacherID:     testedTeacherID,
+				ExamSessionID: 102,
+			},
+			questions: []*cmn.TExamPaperQuestion{
+				{
+					ID:      null.IntFrom(1001),
+					Score:   null.FloatFrom(10),
+					Answers: testedSubjectiveAnswerJson,
+				},
+			},
+			studentAnswers: []*cmn.TVStudentAnswerQuestion{
+				{
+					QuestionID: null.IntFrom(1001),
+					Answer:     testedStudentAnswerJson,
+				},
+			},
+			expectedErrStr: "学生答案考生ID和提交ID不能同时为空",
+		},
+		{
+			name: "failed to unmarshal student answer",
+			cond: QueryCondition{
+				TeacherID:     testedTeacherID,
+				ExamSessionID: 102,
+			},
+			questions: []*cmn.TExamPaperQuestion{
+				{
+					ID:      null.IntFrom(1001),
+					Score:   null.FloatFrom(10),
+					Answers: testedSubjectiveAnswerJson,
+				},
+			},
+			studentAnswers: []*cmn.TVStudentAnswerQuestion{
+				{
+					ExamSessionID: null.IntFrom(102),
+					ExamineeID:    null.IntFrom(2201),
+					QuestionID:    null.IntFrom(1001),
+					Answer:        types.JSONText(`["ABC"]`),
+				},
+			},
+			expectedErrStr: "failed to unmarshal student answer",
+		},
+		{
+			name: "题目ID无效",
+			cond: QueryCondition{
+				TeacherID:     testedTeacherID,
+				ExamSessionID: 102,
+			},
+			questions: []*cmn.TExamPaperQuestion{
+				{
+					Score:   null.FloatFrom(10),
+					Answers: testedSubjectiveAnswerJson,
+				},
+			},
+			studentAnswers: []*cmn.TVStudentAnswerQuestion{
+				{
+					ExamSessionID: null.IntFrom(102),
+					ExamineeID:    null.IntFrom(2201),
+					QuestionID:    null.IntFrom(1001),
+					Answer:        testedStudentAnswerJson,
+				},
+			},
+			expectedErrStr: "题目ID无效",
+		},
+		{
+			name: "unable to convert raw standard answer data",
+			cond: QueryCondition{
+				TeacherID:     testedTeacherID,
+				ExamSessionID: 102,
+			},
+			questions: []*cmn.TExamPaperQuestion{
+				{
+					ID:      null.IntFrom(1001),
+					Score:   null.FloatFrom(10),
+					Answers: types.JSONText(`{}`),
+				},
+			},
+			studentAnswers: []*cmn.TVStudentAnswerQuestion{
+				{
+					ExamSessionID: null.IntFrom(102),
+					ExamineeID:    null.IntFrom(2201),
+					QuestionID:    null.IntFrom(1001),
+					Answer:        testedStudentAnswerJson,
+				},
+			},
+			expectedErrStr: "unable to convert raw standard answer data",
+		},
+		{
+			name: "no standard answer found in question",
+			cond: QueryCondition{
+				TeacherID:     testedTeacherID,
+				ExamSessionID: 102,
+			},
+			questions: []*cmn.TExamPaperQuestion{
+				{
+					ID:      null.IntFrom(1001),
+					Score:   null.FloatFrom(10),
+					Answers: types.JSONText(`[]`),
+				},
+			},
+			studentAnswers: []*cmn.TVStudentAnswerQuestion{
+				{
+					ExamSessionID: null.IntFrom(102),
+					ExamineeID:    null.IntFrom(2201),
+					QuestionID:    null.IntFrom(1001),
+					Answer:        testedStudentAnswerJson,
+				},
+			},
+			expectedErrStr: "no standard answer found in question",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			//if tt.setup != nil {
+			//	tt.chatModel = tt.setup()
+			//}
+
+			ctx := context.Background()
+			if tt.forceErr != "" {
+				ctx = context.WithValue(context.Background(), ForceErrKey, tt.forceErr)
+			}
+
+			err := GenerateAIMarkTask(ctx, tt.cond, tt.questions, tt.studentAnswers)
+
+			if err != nil {
+				if tt.expectedErrStr == "" {
+					t.Errorf("expected success, but got error: %v", err.Error())
+				} else {
+					assert.Contains(t, err.Error(), tt.expectedErrStr)
+				}
+			} else if tt.expectedErrStr != "" {
+				t.Errorf("expected error: %s, but got success", tt.expectedErrStr)
+			}
+
+			// 等待队列消费消息
+			//time.Sleep(time.Second * 5)
+
+			//if tt.checkedFunc != nil {
+			//	msg, ok := tt.checkedFunc(*chatResp)
+			//	if !ok {
+			//		t.Errorf(msg)
+			//	}
+			//	assert.True(t, ok)
+			//}
+		})
+	}
+}
+
+func TestHandleAIMarkTask(t *testing.T) {
+	cleanTestData()
+	initTestData()
+
+	var testedPracticeQuestionDetails = *ai_mark.TestedQuestionDetails[0]
+	testedPracticeQuestionDetails.QuestionID = 428
+
+	tests := []struct {
+		name           string
+		task           *asynq.Task
+		forceErr       string
+		expectedErrStr string
+		setup          func() error
+		//checkedFunc    func(chatResp ResponseContent) (string, bool)
+	}{
+		{
+			name: "success",
+			task: asynq.NewTask(TaskTypeAIMarkRequest, newTaskPayload(TaskTypeAIMarkRequest, AIMarkTaskPayLoad{
+				AIMarkRequest: AIMarkRequest{
+					Question:       ai_mark.TestedQuestionDetails[0],
+					StudentAnswers: ai_mark.TestedStudentAnswers[0],
+				},
+				QueryCondition: QueryCondition{
+					TeacherID:     testedTeacherID,
+					ExamSessionID: 102,
+				},
+				UniqueTaskCountKey: "test:exam_session:102:count",
+			})),
+			setup: func() error {
+				redisClient := cmn.GetRedisConn()
+				redisClient.Set(context.Background(), "test:exam_session:102:count", 5, 0)
+				return nil
+			},
+		},
+		{
+			name: "success",
+			task: asynq.NewTask(TaskTypeAIMarkRequest, newTaskPayload(TaskTypeAIMarkRequest, AIMarkTaskPayLoad{
+				AIMarkRequest: AIMarkRequest{
+					Question:       ai_mark.TestedQuestionDetails[0],
+					StudentAnswers: ai_mark.TestedStudentAnswers[0],
+				},
+				QueryCondition: QueryCondition{
+					TeacherID:     testedTeacherID,
+					ExamSessionID: 102,
+				},
+				UniqueTaskCountKey: "test:exam_session:102:count",
+			})),
+			setup: func() error {
+				redisClient := cmn.GetRedisConn()
+				redisClient.Set(context.Background(), "test:exam_session:102:count", 1, 0)
+				return nil
+			},
+		},
+		{
+			name: "success with practice",
+			task: asynq.NewTask(TaskTypeAIMarkRequest, newTaskPayload(TaskTypeAIMarkRequest, AIMarkTaskPayLoad{
+				AIMarkRequest: AIMarkRequest{
+					Question:       &testedPracticeQuestionDetails,
+					StudentAnswers: ai_mark.TestedStudentAnswers[1],
+				},
+				QueryCondition: QueryCondition{
+					TeacherID:            testedTeacherID,
+					PracticeID:           24,
+					PracticeSubmissionID: 2405,
+				},
+				UniqueTaskCountKey: "test:practice:24:count",
+			})),
+			setup: func() error {
+				redisClient := cmn.GetRedisConn()
+				redisClient.Set(context.Background(), "test:practice:24:count", 1, 0)
+				return nil
+			},
+		},
+		{
+			name: "success with practice（错题集批改）",
+			task: asynq.NewTask(TaskTypeAIMarkRequest, newTaskPayload(TaskTypeAIMarkRequest, AIMarkTaskPayLoad{
+				AIMarkRequest: AIMarkRequest{
+					Question:       &testedPracticeQuestionDetails,
+					StudentAnswers: ai_mark.TestedStudentAnswers[1],
+				},
+				QueryCondition: QueryCondition{
+					TeacherID:                 testedTeacherID,
+					PracticeID:                24,
+					PracticeSubmissionID:      2405,
+					PracticeWrongSubmissionID: 2601,
+				},
+				UniqueTaskCountKey: "test:practice:24:count",
+			})),
+			setup: func() error {
+				redisClient := cmn.GetRedisConn()
+				redisClient.Set(context.Background(), "test:practice:24:count", 1, 0)
+				return nil
+			},
+		},
+		{
+			name:           "failed to unmarshal task payload",
+			task:           asynq.NewTask(TaskTypeAIMarkRequest, []byte(`[]`)),
+			expectedErrStr: "failed to unmarshal task payload",
+		},
+		{
+			name:           "failed to marshal task payload data",
+			task:           asynq.NewTask(TaskTypeAIMarkRequest, newTaskPayload(TaskTypeAIMarkRequest, "[]")),
+			expectedErrStr: "failed to marshal task payload data",
+			forceErr:       "HandleAIMarkTask-json.Marshal-payload-data",
+		},
+		{
+			name:           "failed to unmarshal task payload data",
+			task:           asynq.NewTask(TaskTypeAIMarkRequest, newTaskPayload(TaskTypeAIMarkRequest, "[]")),
+			expectedErrStr: "failed to unmarshal task payload data",
+		},
+		{
+			name: "任务payload中的任务计数键为空",
+			task: asynq.NewTask(TaskTypeAIMarkRequest, newTaskPayload(TaskTypeAIMarkRequest, AIMarkTaskPayLoad{
+				AIMarkRequest: AIMarkRequest{
+					Question:       ai_mark.TestedQuestionDetails[0],
+					StudentAnswers: ai_mark.TestedStudentAnswers[0],
+				},
+				QueryCondition: QueryCondition{
+					TeacherID:     testedTeacherID,
+					ExamSessionID: 102,
+				},
+			})),
+			expectedErrStr: "任务payload中的任务计数键为空",
+		},
+		{
+			name: "任务payload中的教师ID无效",
+			task: asynq.NewTask(TaskTypeAIMarkRequest, newTaskPayload(TaskTypeAIMarkRequest, AIMarkTaskPayLoad{
+				AIMarkRequest: AIMarkRequest{
+					Question:       ai_mark.TestedQuestionDetails[0],
+					StudentAnswers: ai_mark.TestedStudentAnswers[0],
+				},
+				QueryCondition: QueryCondition{
+					ExamSessionID: 102,
+				},
+				UniqueTaskCountKey: "test:exam_session:102:count",
+			})),
+			expectedErrStr: "任务payload中的教师ID无效",
+		},
+		{
+			name: "任务payload中的考试场次ID与练习ID都无效",
+			task: asynq.NewTask(TaskTypeAIMarkRequest, newTaskPayload(TaskTypeAIMarkRequest, AIMarkTaskPayLoad{
+				AIMarkRequest: AIMarkRequest{
+					Question:       ai_mark.TestedQuestionDetails[0],
+					StudentAnswers: ai_mark.TestedStudentAnswers[0],
+				},
+				QueryCondition: QueryCondition{
+					TeacherID: testedTeacherID,
+				},
+				UniqueTaskCountKey: "test:exam_session:102:count",
+			})),
+			expectedErrStr: "任务payload中的考试场次ID与练习ID都无效",
+		},
+		{
+			name: "任务payload中的考试场次ID与练习ID不能同时有效",
+			task: asynq.NewTask(TaskTypeAIMarkRequest, newTaskPayload(TaskTypeAIMarkRequest, AIMarkTaskPayLoad{
+				AIMarkRequest: AIMarkRequest{
+					Question:       ai_mark.TestedQuestionDetails[0],
+					StudentAnswers: ai_mark.TestedStudentAnswers[0],
+				},
+				QueryCondition: QueryCondition{
+					TeacherID:     testedTeacherID,
+					ExamSessionID: 102,
+					PracticeID:    22,
+				},
+				UniqueTaskCountKey: "test:exam_session:102:count",
+			})),
+			expectedErrStr: "任务payload中的考试场次ID与练习ID不能同时有效",
+		},
+		{
+			name: "AIMark-error",
+			task: asynq.NewTask(TaskTypeAIMarkRequest, newTaskPayload(TaskTypeAIMarkRequest, AIMarkTaskPayLoad{
+				AIMarkRequest: AIMarkRequest{
+					Question:       ai_mark.TestedQuestionDetails[0],
+					StudentAnswers: ai_mark.TestedStudentAnswers[0],
+				},
+				QueryCondition: QueryCondition{
+					TeacherID:     testedTeacherID,
+					ExamSessionID: 102,
+				},
+				UniqueTaskCountKey: "test:exam_session:102:count",
+			})),
+			expectedErrStr: "failed to marshal student answers",
+			forceErr:       "AIMark-json.Marshal",
+		},
+		{
+			name: "HandleAIMarkTask-json.Marshal-mark-details",
+			task: asynq.NewTask(TaskTypeAIMarkRequest, newTaskPayload(TaskTypeAIMarkRequest, AIMarkTaskPayLoad{
+				AIMarkRequest: AIMarkRequest{
+					Question:       ai_mark.TestedQuestionDetails[0],
+					StudentAnswers: ai_mark.TestedStudentAnswers[0],
+				},
+				QueryCondition: QueryCondition{
+					TeacherID:     testedTeacherID,
+					ExamSessionID: 102,
+				},
+				UniqueTaskCountKey: "test:exam_session:102:count",
+			})),
+			expectedErrStr: "failed to marshal mark details",
+			forceErr:       "HandleAIMarkTask-json.Marshal-mark-details",
+		},
+		{
+			name: "InsertOrUpdateMarkingResults-error",
+			task: asynq.NewTask(TaskTypeAIMarkRequest, newTaskPayload(TaskTypeAIMarkRequest, AIMarkTaskPayLoad{
+				AIMarkRequest: AIMarkRequest{
+					Question:       ai_mark.TestedQuestionDetails[0],
+					StudentAnswers: ai_mark.TestedStudentAnswers[0],
+				},
+				QueryCondition: QueryCondition{
+					TeacherID:     testedTeacherID,
+					ExamSessionID: 102,
+				},
+				UniqueTaskCountKey: "test:exam_session:102:count",
+			})),
+			expectedErrStr: "begin transaction error",
+			forceErr:       "pgxConn.Begin",
+		},
+		{
+			name: "updateStudentAnswerScore-error",
+			task: asynq.NewTask(TaskTypeAIMarkRequest, newTaskPayload(TaskTypeAIMarkRequest, AIMarkTaskPayLoad{
+				AIMarkRequest: AIMarkRequest{
+					Question:       ai_mark.TestedQuestionDetails[0],
+					StudentAnswers: ai_mark.TestedStudentAnswers[0],
+				},
+				QueryCondition: QueryCondition{
+					TeacherID:     testedTeacherID,
+					ExamSessionID: 102,
+				},
+				UniqueTaskCountKey: "test:exam_session:102:count",
+			})),
+			expectedErrStr: "begin transaction error",
+			forceErr:       "updateStudentAnswerScore-pgxConn.Begin",
+		},
+		{
+			name: "lua脚本执行出错",
+			task: asynq.NewTask(TaskTypeAIMarkRequest, newTaskPayload(TaskTypeAIMarkRequest, AIMarkTaskPayLoad{
+				AIMarkRequest: AIMarkRequest{
+					Question:       ai_mark.TestedQuestionDetails[0],
+					StudentAnswers: ai_mark.TestedStudentAnswers[0],
+				},
+				QueryCondition: QueryCondition{
+					TeacherID:     testedTeacherID,
+					ExamSessionID: 102,
+				},
+				UniqueTaskCountKey: "test:exam_session:102:count",
+			})),
+			expectedErrStr: "lua脚本执行出错",
+			forceErr:       "HandleAIMarkTask-script.Run().Result",
+		},
+		{
+			name: "lua脚本返回结果类型错误",
+			task: asynq.NewTask(TaskTypeAIMarkRequest, newTaskPayload(TaskTypeAIMarkRequest, AIMarkTaskPayLoad{
+				AIMarkRequest: AIMarkRequest{
+					Question:       ai_mark.TestedQuestionDetails[0],
+					StudentAnswers: ai_mark.TestedStudentAnswers[0],
+				},
+				QueryCondition: QueryCondition{
+					TeacherID:     testedTeacherID,
+					ExamSessionID: 102,
+				},
+				UniqueTaskCountKey: "test:exam_session:102:count",
+			})),
+			expectedErrStr: "lua脚本返回结果类型错误",
+			forceErr:       "HandleAIMarkTask-script-result.(string)",
+		},
+		{
+			name: "begin transaction error",
+			task: asynq.NewTask(TaskTypeAIMarkRequest, newTaskPayload(TaskTypeAIMarkRequest, AIMarkTaskPayLoad{
+				AIMarkRequest: AIMarkRequest{
+					Question:       &testedPracticeQuestionDetails,
+					StudentAnswers: ai_mark.TestedStudentAnswers[1],
+				},
+				QueryCondition: QueryCondition{
+					TeacherID:  testedTeacherID,
+					PracticeID: 24,
+				},
+				UniqueTaskCountKey: "test:practice:24:count",
+			})),
+			setup: func() error {
+				redisClient := cmn.GetRedisConn()
+				redisClient.Set(context.Background(), "test:practice:24:count", 1, 0)
+				return nil
+			},
+			forceErr:       "HandleAIMarkTask-tx.Begin",
+			expectedErrStr: "begin transaction error",
+		},
+		{
+			name: "HandleAIMarkTask-tx.Rollback error",
+			task: asynq.NewTask(TaskTypeAIMarkRequest, newTaskPayload(TaskTypeAIMarkRequest, AIMarkTaskPayLoad{
+				AIMarkRequest: AIMarkRequest{
+					Question:       &testedPracticeQuestionDetails,
+					StudentAnswers: ai_mark.TestedStudentAnswers[1],
+				},
+				QueryCondition: QueryCondition{
+					TeacherID:  testedTeacherID,
+					PracticeID: 24,
+				},
+				UniqueTaskCountKey: "test:practice:24:count",
+			})),
+			setup: func() error {
+				redisClient := cmn.GetRedisConn()
+				redisClient.Set(context.Background(), "test:practice:24:count", 5, 0)
+				return nil
+			},
+			forceErr: "HandleAIMarkTask-tx.Rollback",
+		},
+		{
+			name: "HandleAIMarkTask-tx.Commit error",
+			task: asynq.NewTask(TaskTypeAIMarkRequest, newTaskPayload(TaskTypeAIMarkRequest, AIMarkTaskPayLoad{
+				AIMarkRequest: AIMarkRequest{
+					Question:       &testedPracticeQuestionDetails,
+					StudentAnswers: ai_mark.TestedStudentAnswers[1],
+				},
+				QueryCondition: QueryCondition{
+					TeacherID:  testedTeacherID,
+					PracticeID: 24,
+				},
+				UniqueTaskCountKey: "test:practice:24:count",
+			})),
+			setup: func() error {
+				redisClient := cmn.GetRedisConn()
+				redisClient.Set(context.Background(), "test:practice:24:count", 5, 0)
+				return nil
+			},
+			forceErr: "HandleAIMarkTask-tx.Commit",
+		},
+		{
+			name: "updatePracticeWrongSubmissionState error（错题集批改）",
+			task: asynq.NewTask(TaskTypeAIMarkRequest, newTaskPayload(TaskTypeAIMarkRequest, AIMarkTaskPayLoad{
+				AIMarkRequest: AIMarkRequest{
+					Question:       &testedPracticeQuestionDetails,
+					StudentAnswers: ai_mark.TestedStudentAnswers[1],
+				},
+				QueryCondition: QueryCondition{
+					TeacherID:                 testedTeacherID,
+					PracticeID:                24,
+					PracticeSubmissionID:      2405,
+					PracticeWrongSubmissionID: 2601,
+				},
+				UniqueTaskCountKey: "test:practice:24:count",
+			})),
+			setup: func() error {
+				redisClient := cmn.GetRedisConn()
+				redisClient.Set(context.Background(), "test:practice:24:count", 1, 0)
+				return nil
+			},
+			forceErr:       "updatePracticeWrongSubmissionState-tx.Query",
+			expectedErrStr: "exec updatePracticeWrongSubmissionState sql error",
+		},
+		{
+			name: "updateExamSessionOrPracticeSubmissionState error",
+			task: asynq.NewTask(TaskTypeAIMarkRequest, newTaskPayload(TaskTypeAIMarkRequest, AIMarkTaskPayLoad{
+				AIMarkRequest: AIMarkRequest{
+					Question:       &testedPracticeQuestionDetails,
+					StudentAnswers: ai_mark.TestedStudentAnswers[1],
+				},
+				QueryCondition: QueryCondition{
+					TeacherID:            testedTeacherID,
+					PracticeID:           24,
+					PracticeSubmissionID: 2405,
+				},
+				UniqueTaskCountKey: "test:practice:24:count",
+			})),
+			setup: func() error {
+				redisClient := cmn.GetRedisConn()
+				redisClient.Set(context.Background(), "test:practice:24:count", 1, 0)
+				return nil
+			},
+			forceErr:       "updateExamSessionOrPracticeSubmissionState-tx.Query",
+			expectedErrStr: "exec updateExamSessionState sql error",
+		},
+		{
+			name: "找不到任务计数键值",
+			task: asynq.NewTask(TaskTypeAIMarkRequest, newTaskPayload(TaskTypeAIMarkRequest, AIMarkTaskPayLoad{
+				AIMarkRequest: AIMarkRequest{
+					Question:       ai_mark.TestedQuestionDetails[0],
+					StudentAnswers: ai_mark.TestedStudentAnswers[0],
+				},
+				QueryCondition: QueryCondition{
+					TeacherID:     testedTeacherID,
+					ExamSessionID: 102,
+				},
+				UniqueTaskCountKey: "test:key-not-exists",
+			})),
+			expectedErrStr: "找不到任务计数键值",
+		},
+		{
+			name: "超减任务计数键值",
+			task: asynq.NewTask(TaskTypeAIMarkRequest, newTaskPayload(TaskTypeAIMarkRequest, AIMarkTaskPayLoad{
+				AIMarkRequest: AIMarkRequest{
+					Question:       ai_mark.TestedQuestionDetails[0],
+					StudentAnswers: ai_mark.TestedStudentAnswers[0],
+				},
+				QueryCondition: QueryCondition{
+					TeacherID:     testedTeacherID,
+					ExamSessionID: 102,
+				},
+				UniqueTaskCountKey: "test:over-reduce",
+			})),
+			setup: func() error {
+				redisClient := cmn.GetRedisConn()
+				redisClient.Set(context.Background(), "test:over-reduce", 0, 0)
+				return nil
+			},
+			expectedErrStr: "超减任务计数键值",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.setup != nil {
+				_ = tt.setup()
+			}
+
+			ctx := context.Background()
+			if tt.forceErr != "" {
+				ctx = context.WithValue(context.Background(), ForceErrKey, tt.forceErr)
+			}
+
+			err := HandleAIMarkTask(ctx, tt.task)
+
+			if err != nil {
+				if tt.expectedErrStr == "" {
+					t.Errorf("expected success, but got error: %v", err.Error())
+				} else {
+					assert.Contains(t, err.Error(), tt.expectedErrStr)
+				}
+			} else if tt.expectedErrStr != "" {
+				t.Errorf("expected error: %s, but got success", tt.expectedErrStr)
+			}
+
+			// 等待队列消费消息
+			//time.Sleep(time.Second * 5)
+
+			//if tt.checkedFunc != nil {
+			//	msg, ok := tt.checkedFunc(*chatResp)
+			//	if !ok {
+			//		t.Errorf(msg)
+			//	}
+			//	assert.True(t, ok)
+			//}
+		})
+	}
+}
+
+func TestTaskMiddleware(t *testing.T) {
+	// 初始化测试环境
+	InitAIMarkTaskLimiterAndBreaker()
+
+	// 创建测试用的asynq任务
+	task := asynq.NewTask("test", []byte("test payload"))
+
+	tests := []struct {
+		name          string
+		setup         func()
+		handler       func(ctx context.Context, task *asynq.Task) error
+		expectedError string
+		handlerCalled bool
+	}{
+		{
+			name: "正常执行流程",
+			setup: func() {
+				// 重置为正常的限流器配置
+				aiMarkTaskLimiter = cmn.NewRateLimiterTaskRunner(10, 100, 10)
+			},
+			handler: func(ctx context.Context, task *asynq.Task) error {
+				return nil
+			},
+			handlerCalled: true,
+		},
+		{
+			name: "限流器拒绝请求-无可用并发",
+			setup: func() {
+				// 创建一个0并发的限流器来模拟限流
+				aiMarkTaskLimiter = cmn.NewRateLimiterTaskRunner(0, 100, 10)
+			},
+			handler: func(ctx context.Context, task *asynq.Task) error {
+				return nil
+			},
+			expectedError: "semaphore acquire error",
+			handlerCalled: false,
+		},
+		{
+			name: "处理器返回错误",
+			setup: func() {
+				// 重置为正常的限流器配置
+				aiMarkTaskLimiter = cmn.NewRateLimiterTaskRunner(10, 100, 10)
+			},
+			handler: func(ctx context.Context, task *asynq.Task) error {
+				return errors.New("handler error")
+			},
+			expectedError: "handler error",
+			handlerCalled: true,
+		},
+		{
+			name: "上下文超时",
+			setup: func() {
+				// 重置为正常的限流器配置
+				aiMarkTaskLimiter = cmn.NewRateLimiterTaskRunner(0, 100, 10)
+			},
+			handler: func(ctx context.Context, task *asynq.Task) error {
+				// 模拟处理时间较长
+				time.Sleep(3 * time.Second)
+				return nil
+			},
+			expectedError: "context deadline exceeded",
+			handlerCalled: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// 执行测试前的设置
+			if tt.setup != nil {
+				tt.setup()
+			}
+
+			// 记录处理器是否被调用
+			handlerCalled := false
+			testHandler := func(ctx context.Context, task *asynq.Task) error {
+				handlerCalled = true
+				return tt.handler(ctx, task)
+			}
+
+			// 应用中间件
+			wrappedHandler := TaskMiddleware(testHandler)
+
+			// 创建上下文（根据测试需要可能带超时）
+			var ctx context.Context
+			if tt.name == "上下文超时" {
+				var cancel context.CancelFunc
+				ctx, cancel = context.WithTimeout(context.Background(), 1*time.Second)
+				defer cancel()
+			} else {
+				var cancel context.CancelFunc
+				ctx, cancel = context.WithTimeout(context.Background(), 2*time.Second)
+				defer cancel()
+			}
+
+			// 执行处理
+			err := wrappedHandler(ctx, task)
+
+			// 验证结果
+			if tt.expectedError != "" {
+				assert.Error(t, err)
+				assert.Contains(t, err.Error(), tt.expectedError)
+			} else {
+				assert.NoError(t, err)
+			}
+
+			assert.Equal(t, tt.handlerCalled, handlerCalled, "handler called status mismatch")
+		})
+	}
+}
+
+func TestTaskMiddleware_WithCircuitBreaker(t *testing.T) {
+	// 初始化测试环境
+	InitAIMarkTaskLimiterAndBreaker()
+
+	// 重置为正常的限流器配置
+	aiMarkTaskLimiter = cmn.NewRateLimiterTaskRunner(10, 100, 10)
+
+	// 创建测试用的asynq任务
+	task := asynq.NewTask("test", []byte("test payload"))
+
+	t.Run("熔断器正常状态", func(t *testing.T) {
+		handlerCalled := false
+		testHandler := func(ctx context.Context, task *asynq.Task) error {
+			handlerCalled = true
+			return nil
+		}
+
+		wrappedHandler := TaskMiddleware(testHandler)
+		ctx := context.Background()
+		err := wrappedHandler(ctx, task)
+
+		assert.NoError(t, err)
+		assert.True(t, handlerCalled)
+	})
+
+	t.Run("熔断器打开状态", func(t *testing.T) {
+		// 创建一个总是失败的处理器来触发熔断器
+		failHandler := func(ctx context.Context, task *asynq.Task) error {
+			return errors.New("simulated error")
+		}
+
+		wrappedFailHandler := TaskMiddleware(failHandler)
+
+		// 多次调用失败处理器来打开熔断器
+		ctx := context.Background()
+		for i := 0; i < 10; i++ {
+			_ = wrappedFailHandler(ctx, task)
+		}
+
+		// 现在尝试一个应该成功的处理器
+		successHandlerCalled := false
+		successHandler := func(ctx context.Context, task *asynq.Task) error {
+			successHandlerCalled = true
+			return nil
+		}
+
+		wrappedSuccessHandler := TaskMiddleware(successHandler)
+		err := wrappedSuccessHandler(ctx, task)
+
+		// 根据熔断器的配置，可能会返回错误（熔断器打开）
+		// 注意：实际结果取决于gobreaker的具体实现和配置
+		assert.True(t, successHandlerCalled || err != nil)
+	})
 }

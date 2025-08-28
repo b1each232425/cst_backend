@@ -3,7 +3,7 @@
  * @Description: 请在此填写文件描述
  * @Date: 2025-07-15 16:40:38
  * @LastEditors: zdl <1311866870@qq.com>
- * @LastEditTime: 2025-07-31 21:45:12
+ * @LastEditTime: 2025-08-27 13:46:06
  */
 package practice_mgt
 
@@ -20,7 +20,7 @@ import (
 type JSONText = types.JSONText
 type Map map[string]interface{}
 
-func S2Map(in interface{}) (Map, error) {
+func S2Map(in interface{}) Map {
 	data := make(Map)
 	v := reflect.ValueOf(in).Elem() // 获取结构体指针指向的值
 	t := v.Type()
@@ -59,7 +59,7 @@ func S2Map(in interface{}) (Map, error) {
 			data[columnName] = value.Interface()
 		}
 	}
-	return data, nil
+	return data
 }
 
 // RemoveFields 清除不需要更新的字段

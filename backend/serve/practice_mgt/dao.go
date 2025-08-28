@@ -66,7 +66,7 @@ func UpdatePractice(ctx context.Context, p *cmn.TPractice, ps []int64, uid int64
 	now := time.Now().UnixMilli()
 	p.UpdatedBy = null.IntFrom(uid)
 	p.UpdateTime = null.IntFrom(now)
-	update, _ := S2Map(p)
+	update := S2Map(p)
 	notUpdate := []string{
 		"id",
 		"creator",
@@ -416,8 +416,8 @@ func LoadPracticeById(ctx context.Context, pid int64) (*cmn.TPractice, string, i
 			COALESCE(tp.name, '') as paper_name,p.allowed_attempts,p.paper_id,p.exam_paper_id,
 			COALESCE((SELECT COUNT(*) FROM assessuser.t_practice_student tps WHERE tps.practice_id=p.id AND tps.status=$1),0) as student_cnt
 	from assessuser.t_practice p
-	left join assessuser.t_paper tp on tp.id = p.paper_id AND tp.status = $2
-	where p.id = $3 AND p.status != $4
+	left join assessuser.t_paper tp on tp.id = p.paper_id AND tp.status != $2 AND tp.status != $3
+	where p.id = $4 AND p.status != $5
 	limit 1`
 	sqlxDB := cmn.GetDbConn()
 	var stmt *sqlx.Stmt
@@ -427,8 +427,8 @@ func LoadPracticeById(ctx context.Context, pid int64) (*cmn.TPractice, string, i
 			COALESCE(tp.name, '') as paper_name,p.allowed_attempts,p.paper_id,p.exam_paper_id,
 			COALESCE((SELECT COUNT(*) FROM assessuser.t_practice_student tps WHERE tps.practice_id=p.id AND tps.status=$1),0) as student_cnt
 	from assessuser.t_practice p,
-	left join assessuser.t_paper tp on tp.id = p.paper_id AND tp.status = $2
-	where p.id = $3 AND `
+	left join assessuser.t_paper tp on tp.id = p.paper_id AND tp.status != $2 AND tp.status != $3
+	where p.id = $4 AND `
 	}
 	stmt, err := sqlxDB.Preparex(s)
 	if err != nil {
@@ -448,7 +448,7 @@ func LoadPracticeById(ctx context.Context, pid int64) (*cmn.TPractice, string, i
 	var p cmn.TPractice
 	var paperName string
 	var studentCount int
-	err = stmt.QueryRowxContext(ctx, PracticeStudentStatus.Normal, examPaper.PaperStatus.Normal, pid, PracticeStatus.Deleted).
+	err = stmt.QueryRowxContext(ctx, PracticeStudentStatus.Normal, examPaper.PaperStatus.Deleted, examPaper.PaperStatus.Disabled, pid, PracticeStatus.Deleted).
 		Scan(&p.ID, &p.Name, &p.CorrectMode,
 			&p.Addi, &p.Status, &p.Type, &paperName, &p.AllowedAttempts, &p.PaperID, &p.ExamPaperID, &studentCount)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -825,7 +825,6 @@ func OperatePracticeStatus(ctx context.Context, pid int64, status string, uid in
 			z.Error(err.Error())
 			return err
 		}
-
 		// 清除批改配置信息
 		req := mark.HandleMarkerInfoReq{
 			Status:      "02",
@@ -851,6 +850,21 @@ func OperatePracticeStatus(ctx context.Context, pid int64, status string, uid in
 		_, err = tx.Exec(ctx, s, PracticeSubmissionStatus.Disabled, now, uid, pid)
 		if err != nil || forceErr == "pQuery6" {
 			err = fmt.Errorf("重置学生练习提交记录信息失败：%v", err)
+			z.Error(err.Error())
+			return err
+		}
+		s = `UPDATE assessuser.t_practice_wrong_submissions w
+			SET 
+			  status = $1,        
+			  update_time = $2,  
+			  updated_by = $3    
+			FROM assessuser.t_practice_submissions ps
+			WHERE 
+			  w.practice_submission_id = ps.id 
+			  AND ps.practice_id = $4;`
+		_, err = tx.Exec(ctx, s, WrongSubmissionStatus.Disabled, now, uid, pid)
+		if err != nil || forceErr == "pQuery7" {
+			err = fmt.Errorf("批量作废学生错题练习提交记录信息失败：%v", err)
 			z.Error(err.Error())
 			return err
 		}
@@ -1006,14 +1020,6 @@ func OperatePracticeStatusV2(ctx context.Context, ids []int64, status string, ui
 			z.Error(err.Error())
 			return err
 		}
-		// 更改practice_submission练习学生的提交状态及其练习次数，将本次练习附带的所有次数均变为无效
-		s = `UPDATE assessuser.t_practice_submissions SET status = $1,update_time = $2,updated_by = $3  WHERE practice_id = ANY($4)`
-		_, err = tx.Exec(ctx, s, PracticeSubmissionStatus.Deleted, now, uid, ids)
-		if err != nil || forceErr == "pQuery4" {
-			err = fmt.Errorf("批量重置学生练习提交记录信息失败：%v", err)
-			z.Error(err.Error())
-			return err
-		}
 		// 清除批改配置信息
 		req := mark.HandleMarkerInfoReq{
 			Status:      "02",
@@ -1041,6 +1047,21 @@ func OperatePracticeStatusV2(ctx context.Context, ids []int64, status string, ui
 		_, err = tx.Exec(ctx, s, PracticeSubmissionStatus.Disabled, now, uid, ids)
 		if err != nil || forceErr == "pQuery6" {
 			err = fmt.Errorf("批量重置学生练习提交记录信息失败：%v", err)
+			z.Error(err.Error())
+			return err
+		}
+		s = `UPDATE assessuser.t_practice_wrong_submissions w
+			SET 
+			  status = $1,        
+			  update_time = $2,  
+			  updated_by = $3    
+			FROM assessuser.t_practice_submissions ps
+			WHERE 
+			  w.practice_submission_id = ps.id 
+			  AND ps.practice_id = ANY($4);`
+		_, err = tx.Exec(ctx, s, WrongSubmissionStatus.Disabled, now, uid, ids)
+		if err != nil || forceErr == "pQuery7" {
+			err = fmt.Errorf("批量作废学生错题练习提交记录信息失败：%v", err)
 			z.Error(err.Error())
 			return err
 		}
@@ -1549,6 +1570,22 @@ func EnterPracticeWrongCollection(ctx context.Context, tx pgx.Tx, pid, uid int64
 	epInfo.WrongSubmissionID = wpSubmissionID
 	epInfo.PaperName = ps.PaperName.String + "（错题）"
 	epInfo.PracticeSubmissionID = ps.LatestSubmittedID.Int64
+
+	// 更新错题为可作答状态 如果是需要重新组装错题，需要将原
+	if wrongSubmissionStatus != StudentSubmissionStatus.UnSubmitted {
+		s = `UPDATE t_student_answers sa  
+			SET status = $1 
+			FROM t_exam_paper_question epq 
+			WHERE epq.id = sa.question_id       
+  			AND sa.practice_submission_id = $2 
+			AND sa.answer_score < epq.score;`
+		_, err = tx.Exec(ctx, s, "00", ps.LatestSubmittedID)
+		if err != nil || forceErr == "cQuery6" {
+			err = fmt.Errorf("更新学生答卷为可作答状态失败：%v", err)
+			z.Error(err.Error())
+			return nil, nil, nil, err
+		}
+	}
 
 	if !withStudentAnswer {
 		return epInfo, groupMap, pq, nil
