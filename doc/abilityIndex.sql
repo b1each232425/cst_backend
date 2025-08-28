@@ -1,6 +1,6 @@
 /*==============================================================*/
 /* DBMS name:      PostgreSQL 9.x                               */
-/* Created on:     8/28/2025 3:26:57 PM                         */
+/* Created on:     2025/8/28 16:07:22                           */
 /*==============================================================*/
 
 
@@ -2038,6 +2038,7 @@ create table if not exists  t_exam_record (
    exam_session         int8                 not null,
    content              varchar(5000)        null,
    basic_eval           VARCHAR(150)         null,
+   files                jsonb                null,
    creator              INT8                 not null,
    create_time          INT8                 null default (extract(epoch from current_timestamp)*1000)::bigint,
    updated_by           INT8                 null,
@@ -2064,6 +2065,9 @@ comment on column t_exam_record.content is
 
 comment on column t_exam_record.basic_eval is
 '基本情况评估 00: 良好 02: 一般 04: 较差';
+
+comment on column t_exam_record.files is
+'上传的附件列表(t_file 表的 id 数组)';
 
 comment on column t_exam_record.creator is
 '创建者';
@@ -9388,9 +9392,12 @@ comment on column t_sys_ver.status is
 ALTER SEQUENCE t_sys_ver_id_seq RESTART WITH 20000;
 
 insert into t_sys_ver(id,name,ver,create_time,update_time,remark)
-  values(1000,'业务模型','3.2.1.0',
-  'Monday, December 5, 2016 9:52:53 AM','Thursday, August 28, 2025 3:26:53 PM',
-  '3.2.1.0
+  values(1000,'业务模型','3.2.2.0',
+  '2016年12月5日 9:52:53','2025年8月28日 16:07:18',
+  '3.2.2.0
+给考场记录表 t_exam_record 增加上传附件列表字段 files
+
+3.2.1.0
 给t_api添加boolean类型的configurable字段，用于表示该API是否允许被配置（即是否允许在创建域页面的功能配置部分展示出来）
 
 3.2.0.0
