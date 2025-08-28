@@ -67,7 +67,7 @@ type MarkDetails struct {
 
 type HandleMarkerInfoReq struct {
 	Markers        []int64                             `json:"markers"`          // *批改员id数组
-	QuestionGroups []examPaper.SubjectiveQuestionGroup `json:"question_groups"`  // *题组（配置时传入）
+	QuestionGroups []examPaper.SubjectiveQuestionGroup `json:"question_groups"`  // TODO 题组（已废弃，不再外部传入，而是内部自己查）
 	QuestionIDs    []int64                             `json:"question_ids"`     // 题目id数组
 	ExamineeIDs    []int64                             `json:"examinee_ids"`     // 考生id数组
 	MarkMode       string                              `json:"mark_mode"`        // *批卷模式 00：不需要手动批改  02：全卷多评 04：试卷分配 06：题组专评 08：题目分配 10：单人（人工）批改
