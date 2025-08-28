@@ -202,8 +202,8 @@ func (c *ChatModel) SendChatCompletions(ctx context.Context, messages []Message)
 		ResponseFormat: c.ResponseFormat,
 		MaxTokens:      c.MaxTokens,
 		Messages:       messages,
-		Temperature:    0.5,
-		TopP:           0.5,
+		Temperature:    0.1,
+		TopP:           0.1,
 		Thinking:       Think{Type: "disabled"},
 	}
 
@@ -322,6 +322,8 @@ func (c *ChatModel) AIMark(ctx context.Context, question *QuestionDetails, stude
 	}
 
 	respContent = &resp
+
+	z.Sugar().Infof("AIMark response: %+v", respContent.MarkResult)
 
 	return c.AIReview(ctx, respContent)
 }

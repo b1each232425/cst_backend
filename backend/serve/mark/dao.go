@@ -46,12 +46,12 @@ type Practice struct {
 }
 
 type QueryCondition struct {
-	TeacherID            int64 `json:"teacher_id" validate:"required,gt=0"`
-	ExamSessionID        int64 `json:"exam_session_id" validate:"gte=0"`
-	ExamineeID           int64 `json:"examinee_id" validate:"gte=0"`
-	PracticeID           int64 `json:"practice_id" validate:"gte=0"`
-	PracticeSubmissionID int64 `json:"practice_submission_id" validate:"gte=0"`
-	IsWrongSubmission    bool  `json:"is_wrong_submission"`
+	TeacherID                 int64 `json:"teacher_id" validate:"required,gt=0"`
+	ExamSessionID             int64 `json:"exam_session_id" validate:"gte=0"`
+	ExamineeID                int64 `json:"examinee_id" validate:"gte=0"`
+	PracticeID                int64 `json:"practice_id" validate:"gte=0"`
+	PracticeSubmissionID      int64 `json:"practice_submission_id" validate:"gte=0"`
+	PracticeWrongSubmissionID int64 `json:"practice_wrong_submission_id"`
 }
 
 type MarkerInfo struct {
@@ -729,7 +729,7 @@ func QueryStudentAnswersByMarkMode(ctx context.Context, answerType string, cond 
 		args = append(args, cond.PracticeSubmissionID)
 		break
 	case "14": // 查询单个练习学生错题作答的数据
-		whereClause = append(whereClause, fmt.Sprintf(" AND practice_submission_id = $%d AND question_score > answer_score ", argIdx))
+		whereClause = append(whereClause, fmt.Sprintf(" AND practice_submission_id = $%d AND question_score > COALESCE(answer_score, 0) ", argIdx))
 		argIdx++
 
 		if cond.PracticeSubmissionID <= 0 {
@@ -1367,13 +1367,12 @@ func updateExamSessionOrPracticeSubmissionState(ctx context.Context, tx *pgx.Tx,
 	}
 
 	rows, err := (*tx).Query(ctx, updateQuery, pq.Array(ids), status, teacherID, time.Now().UnixMilli())
+	defer rows.Close()
 	if err != nil || forceErr == "updateExamSessionOrPracticeSubmissionState-tx.Query" {
 		err = fmt.Errorf("exec updateExamSessionState sql error: %v", err)
 		z.Error(err.Error())
 		return
 	}
-
-	defer rows.Close()
 
 	for rows.Next() {
 		var id int64
@@ -1387,4 +1386,55 @@ func updateExamSessionOrPracticeSubmissionState(ctx context.Context, tx *pgx.Tx,
 	}
 
 	return
+}
+
+func updatePracticeWrongSubmissionState(ctx context.Context, tx pgx.Tx, teacherID int64, practiceWrongSubmissionIDs []int64, status string) (targetIDs []int64, err error) {
+	forceErr, _ := ctx.Value(ForceErrKey).(string)
+	if teacherID <= 0 {
+		err = fmt.Errorf("invalid params: teacher_id is required")
+		z.Error(err.Error())
+		return
+	}
+
+	if len(practiceWrongSubmissionIDs) <= 0 {
+		err = fmt.Errorf("invalid params: practice_wrong_submission_ids is required")
+		z.Error(err.Error())
+		return
+	}
+
+	if status == "" {
+		err = fmt.Errorf("invalid params: status is required")
+		z.Error(err.Error())
+		return
+	}
+
+	updateQuery := `UPDATE t_practice_wrong_submissions
+					SET
+						status = $2,
+						updated_by = $3, 
+						update_time = $4
+					WHERE id = ANY($1)
+					RETURNING id`
+
+	rows, err := tx.Query(ctx, updateQuery, pq.Array(practiceWrongSubmissionIDs), status, teacherID, time.Now().UnixMilli())
+	defer rows.Close()
+	if err != nil || forceErr == "updatePracticeWrongSubmissionState-tx.Query" {
+		err = fmt.Errorf("exec updatePracticeWrongSubmissionState sql error: %v", err)
+		z.Error(err.Error())
+		return
+	}
+
+	for rows.Next() {
+		var id int64
+		err = rows.Scan(&id)
+		if err != nil || forceErr == "updatePracticeWrongSubmissionState-rows.Scan" {
+			err = fmt.Errorf("unable to scan row data: %v", err)
+			z.Error(err.Error())
+			return
+		}
+		targetIDs = append(targetIDs, id)
+	}
+
+	return
+
 }
