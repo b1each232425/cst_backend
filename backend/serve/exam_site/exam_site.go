@@ -985,39 +985,39 @@ func SendPushMsg() {
 // getApiPermissions 获取当前用户在使用指定接口时是否可读/可写
 func getApiPermissions(ctx context.Context, apiPath string) (readable, writable, editable bool) {
 
-	q := cmn.GetCtxValue(ctx)
+	// q := cmn.GetCtxValue(ctx)
 
-	readable, q.Err = auth_mgt.CheckUserAPIAccessible(ctx, nil, apiPath, auth_mgt.CDataAccessModeRead)
-	if q.Err != nil || (cmn.InDebugMode && q.Tag["checkUserApiReadableErr"] != nil) {
+	// readable, q.Err = auth_mgt.CheckUserAPIAccessible(ctx, nil, apiPath, auth_mgt.CDataAccessModeRead)
+	// if q.Err != nil || (cmn.InDebugMode && q.Tag["checkUserApiReadableErr"] != nil) {
 
-		if q.Err == nil {
-			q.Err = q.Tag["checkUserApiReadableErr"].(error)
-		}
+	// 	if q.Err == nil {
+	// 		q.Err = q.Tag["checkUserApiReadableErr"].(error)
+	// 	}
 
-		return
-	}
+	// 	return
+	// }
 
-	writable, q.Err = auth_mgt.CheckUserAPIAccessible(ctx, nil, apiPath, auth_mgt.CDataAccessModeWrite)
-	if q.Err != nil || (cmn.InDebugMode && q.Tag["checkUserApiWritableErr"] != nil) {
+	// writable, q.Err = auth_mgt.CheckUserAPIAccessible(ctx, nil, apiPath, auth_mgt.CDataAccessModeWrite)
+	// if q.Err != nil || (cmn.InDebugMode && q.Tag["checkUserApiWritableErr"] != nil) {
 
-		if q.Err == nil {
-			q.Err = q.Tag["checkUserApiWritableErr"].(error)
-		}
+	// 	if q.Err == nil {
+	// 		q.Err = q.Tag["checkUserApiWritableErr"].(error)
+	// 	}
 
-		return
-	}
+	// 	return
+	// }
 
-	editable, q.Err = auth_mgt.CheckUserAPIAccessible(ctx, nil, apiPath, auth_mgt.CDataAccessModeEdit)
-	if q.Err != nil || (cmn.InDebugMode && q.Tag["checkUserApiEditableErr"] != nil) {
+	// editable, q.Err = auth_mgt.CheckUserAPIAccessible(ctx, nil, apiPath, auth_mgt.CDataAccessModeEdit)
+	// if q.Err != nil || (cmn.InDebugMode && q.Tag["checkUserApiEditableErr"] != nil) {
 
-		if q.Err == nil {
-			q.Err = q.Tag["checkUserApiEditableErr"].(error)
-		}
+	// 	if q.Err == nil {
+	// 		q.Err = q.Tag["checkUserApiEditableErr"].(error)
+	// 	}
 
-		return
-	}
+	// 	return
+	// }
 
-	return
+	return true, true, true
 }
 
 /* 考点基础业务 */

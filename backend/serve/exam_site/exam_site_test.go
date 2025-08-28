@@ -334,6 +334,8 @@ SELECT 1;
 		),
 	}
 
+	os.WriteFile("./data/mock-data.sql", []byte(strings.Join(sqls, "\n")), 0755)
+
 	for _, sql := range sqls {
 		_, err = tx.ExecContext(ctx, sql)
 		if err != nil {
