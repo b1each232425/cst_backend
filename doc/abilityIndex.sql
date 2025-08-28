@@ -1,8 +1,10 @@
 /*==============================================================*/
 /* DBMS name:      PostgreSQL 9.x                               */
-/* Created on:     2025/8/27 19:57:22                           */
+/* Created on:     8/28/2025 3:26:57 PM                         */
 /*==============================================================*/
 
+
+drop view if exists v_z_w_practice_summary;
 
 drop view if exists v_z_submission_wrong_collection;
 
@@ -25,8 +27,6 @@ drop view if exists v_xkb_user;
 drop view if exists v_xkb_school_layout;
 
 drop view if exists v_x_grade_list;
-
-drop view if exists v_w_practice_summary;
 
 drop view if exists v_w_latest_unsubmitted_practice;
 
@@ -539,6 +539,7 @@ create table if not exists  t_api (
    maintainer           INT8                 null,
    access_action        VARCHAR              null,
    access_control_level VARCHAR              not null,
+   configurable         BOOL                 null,
    updated_by           INT8                 null,
    update_time          INT8                 null default (extract(epoch from current_timestamp)*1000)::bigint,
    creator              INT8                 null,
@@ -577,6 +578,9 @@ level 0: 无组/角色/数据限制
 level 2: 机构#角色级别, 实现了不同角色授权，但不控制数据范围
 level 4: 机构#角色$ID, 实现了不同角色授权，可控制 creator || all
 level 8: 机构.DEPT#角色$ID, 实现了不同角色授权，可控制 creator || GRPs';
+
+comment on column t_api.configurable is
+'是否允许在创建角色时被配置';
 
 comment on column t_api.updated_by is
 '更新者';
@@ -9384,9 +9388,12 @@ comment on column t_sys_ver.status is
 ALTER SEQUENCE t_sys_ver_id_seq RESTART WITH 20000;
 
 insert into t_sys_ver(id,name,ver,create_time,update_time,remark)
-  values(1000,'业务模型','3.2.0.0',
-  '2016年12月5日 9:52:53','2025年8月27日 19:55:07',
-  '3.2.0.0
+  values(1000,'业务模型','3.2.1.0',
+  'Monday, December 5, 2016 9:52:53 AM','Thursday, August 28, 2025 3:26:53 PM',
+  '3.2.1.0
+给t_api添加boolean类型的configurable字段，用于表示该API是否允许被配置（即是否允许在创建域页面的功能配置部分展示出来）
+
+3.2.0.0
 新增报名管理t_register_plan报名计划表,t_register_practice报名计划练习表,t_exam_plan_student报名计划学生表
 
 3.1.12.1
@@ -11127,6 +11134,7 @@ select
     a.expose_path,
     a.access_action,
     a.access_control_level,
+    a.configurable,
     da.domain_id, 
     da.grant_source,
     da.data_access_mode,
@@ -14158,36 +14166,6 @@ comment on view v_y_max_submitted_view is
 create table t_v_max_submitted_view as select * from v_y_max_submitted_view;
 
 /*==============================================================*/
-/* View: v_w_practice_summary                                   */
-/*==============================================================*/
-create or replace view v_w_practice_summary as
- SELECT DISTINCT ON (v.practice_id, v.student_id)
-        v.id AS practice_submission_id,
-        COALESCE(lup.wrong_practice_id, 0) AS latest_unsubmitted_id,
-        COALESCE(lsp.wrong_practice_id, 0) AS latest_submitted_id,
-        COALESCE(pws_max.max_attempt, 0) AS max_attempt,
-        v.student_id,
-        v.practice_id,
-        tps.exam_paper_id
-     FROM v_y_max_submitted_view v
-     JOIN t_practice_submissions tps ON v.id = tps.id
-     LEFT JOIN (
-    SELECT 
-        practice_submission_id,
-        MAX(attempt) AS max_attempt
-    FROM t_practice_wrong_submissions
-    WHERE status != '06' -- 排除状态为'02'的记录（根据您的业务需求调整）
-    GROUP BY practice_submission_id
-) pws_max ON v.id = pws_max.practice_submission_id
-     LEFT JOIN v_w_latest_unsubmitted_practice lup ON v.id = lup.practice_submission_id
-     LEFT JOIN v_w_latest_submitted_practice lsp ON v.id = lsp.practice_submission_id
-     WHERE tps.status = '08'
-     ORDER BY v.practice_id, v.student_id, v.id ,tps.attempt DESC;
-
-comment on view v_w_practice_summary is
-'错题视图 查看最新一次错题练习提交状态';
-
-/*==============================================================*/
 /* View: v_z_grade_exam_session_info                            */
 /*==============================================================*/
 create or replace view v_z_grade_exam_session_info as
@@ -14462,6 +14440,36 @@ comment on view v_z_submission_wrong_collection is
 
  drop table if exists t_v_z_submission_wrong_collection;
 create table t_v_z_submission_wrong_collection as select * from v_z_submission_wrong_collection;
+
+/*==============================================================*/
+/* View: v_z_w_practice_summary                                 */
+/*==============================================================*/
+create or replace view v_z_w_practice_summary as
+ SELECT DISTINCT ON (v.practice_id, v.student_id)
+        v.id AS practice_submission_id,
+        COALESCE(lup.wrong_practice_id, 0) AS latest_unsubmitted_id,
+        COALESCE(lsp.wrong_practice_id, 0) AS latest_submitted_id,
+        COALESCE(pws_max.max_attempt, 0) AS max_attempt,
+        v.student_id,
+        v.practice_id,
+        tps.exam_paper_id
+     FROM v_y_max_submitted_view v
+     JOIN t_practice_submissions tps ON v.id = tps.id
+     LEFT JOIN (
+    SELECT 
+        practice_submission_id,
+        MAX(attempt) AS max_attempt
+    FROM t_practice_wrong_submissions
+    WHERE status != '06' -- 排除状态为'02'的记录（根据您的业务需求调整）
+    GROUP BY practice_submission_id
+) pws_max ON v.id = pws_max.practice_submission_id
+     LEFT JOIN v_w_latest_unsubmitted_practice lup ON v.id = lup.practice_submission_id
+     LEFT JOIN v_w_latest_submitted_practice lsp ON v.id = lsp.practice_submission_id
+     WHERE tps.status = '08'
+     ORDER BY v.practice_id, v.student_id, v.id ,tps.attempt DESC;
+
+comment on view v_z_w_practice_summary is
+'错题视图 查看最新一次错题练习提交状态';
 
 alter table t_domain_api
    add constraint FK_ACT_REF_DOMAIN foreign key (domain)
