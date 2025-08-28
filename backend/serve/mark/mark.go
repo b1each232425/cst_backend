@@ -1579,11 +1579,7 @@ func TaskMiddleware(handler func(ctx context.Context, task *asynq.Task) error) f
 			return nil, handler(ctx, task)
 		})
 
-		if err != nil {
-			return err
-		}
-
-		return handler(ctx, task)
+		return err
 	}
 }
 
