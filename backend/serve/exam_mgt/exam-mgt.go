@@ -2650,8 +2650,8 @@ func examList(ctx context.Context) {
 			return
 		}
 
-		if req.Page < 0 {
-			req.Page = 0
+		if req.Page <= 0 {
+			req.Page = 1
 		}
 		if req.PageSize <= 0 {
 			req.PageSize = 10
@@ -4310,6 +4310,10 @@ func examFile(ctx context.Context) {
 				z.Error(err.Error())
 			}
 		}()
+
+		if forceErr == "io.Close" {
+			return
+		}
 
 		if len(buf) == 0 {
 			q.Err = fmt.Errorf("请求体为空")

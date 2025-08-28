@@ -11,6 +11,7 @@ import (
 	"github.com/wneessen/go-mail"
 	"go.uber.org/zap"
 	"w2w.io/cmn"
+	"w2w.io/serve/auth_mgt"
 )
 
 var z *zap.Logger
@@ -74,7 +75,20 @@ func Enroll(author string) {
 		Fn: handler.HandleUser,
 
 		Path: "/user",
-		Name: "User Management Service",
+		Name: "用户管理",
+
+		ApiEntries: []*cmn.EndPointApiEntries{
+			{
+				Name:         "用户管理.查询用户",
+				AccessAction: auth_mgt.CAPIAccessActionRead,
+				Configurable: true,
+			},
+			{
+				Name:         "用户管理.创建用户",
+				AccessAction: auth_mgt.CAPIAccessActionCreate,
+				Configurable: true,
+			},
+		},
 
 		Developer: developer,
 		WhiteList: true,
@@ -90,7 +104,15 @@ func Enroll(author string) {
 		Fn: handler.HandleGetNewAccount,
 
 		Path: "/user/new-account",
-		Name: "Get New Account",
+		Name: "获取新账号",
+
+		ApiEntries: []*cmn.EndPointApiEntries{
+			{
+				Name:         "用户管理.获取新账号",
+				AccessAction: auth_mgt.CAPIAccessActionRead,
+				Configurable: true,
+			},
+		},
 
 		Developer: developer,
 		WhiteList: true,
@@ -106,7 +128,15 @@ func Enroll(author string) {
 		Fn: handler.HandleQueryMyInfo,
 
 		Path: "/user/me",
-		Name: "Query My Info",
+		Name: "查询个人信息",
+
+		ApiEntries: []*cmn.EndPointApiEntries{
+			{
+				Name:         "用户管理.查询个人信息",
+				AccessAction: auth_mgt.CAPIAccessActionRead,
+				Configurable: true,
+			},
+		},
 
 		Developer: developer,
 		WhiteList: true,
@@ -122,7 +152,15 @@ func Enroll(author string) {
 		Fn: handler.HandleSelectLoginDomain,
 
 		Path: "/user/login-domain",
-		Name: "Select Login Domain",
+		Name: "选择可登录域",
+
+		ApiEntries: []*cmn.EndPointApiEntries{
+			{
+				Name:         "用户管理.登录管理.选择可登录域",
+				AccessAction: auth_mgt.CAPIAccessActionRead,
+				Configurable: true,
+			},
+		},
 
 		Developer: developer,
 		WhiteList: true,
@@ -138,7 +176,15 @@ func Enroll(author string) {
 		Fn: handler.HandleValidateUserToBeInsert,
 
 		Path: "/user/validate",
-		Name: "Validate User Info To be Insert",
+		Name: "验证用户信息",
+
+		ApiEntries: []*cmn.EndPointApiEntries{
+			{
+				Name:         "用户管理.验证用户信息",
+				AccessAction: auth_mgt.CAPIAccessActionRead,
+				Configurable: true,
+			},
+		},
 
 		Developer: developer,
 		WhiteList: true,
@@ -154,7 +200,15 @@ func Enroll(author string) {
 		Fn: handler.HandleLogout,
 
 		Path: "/user/logout",
-		Name: "Logout",
+		Name: "用户登出",
+
+		ApiEntries: []*cmn.EndPointApiEntries{
+			{
+				Name:         "用户管理.登录管理.用户登出",
+				AccessAction: auth_mgt.CAPIAccessActionUpdate,
+				Configurable: true,
+			},
+		},
 
 		Developer: developer,
 		WhiteList: true,
@@ -170,7 +224,15 @@ func Enroll(author string) {
 		Fn: handler.HandleSendValidationCodeEmail,
 
 		Path: "/user/verification-code/email",
-		Name: "Get Email Verification Code",
+		Name: "发送邮箱验证码",
+
+		ApiEntries: []*cmn.EndPointApiEntries{
+			{
+				Name:         "用户管理.登录管理.发送邮箱验证码",
+				AccessAction: auth_mgt.CAPIAccessActionCreate,
+				Configurable: true,
+			},
+		},
 
 		Developer: developer,
 		WhiteList: true,
@@ -186,7 +248,15 @@ func Enroll(author string) {
 		Fn: handler.HandleRegisterByEmail,
 
 		Path: "/user/register/email",
-		Name: "Register By Email",
+		Name: "邮箱注册",
+
+		ApiEntries: []*cmn.EndPointApiEntries{
+			{
+				Name:         "用户管理.登录管理.邮箱注册",
+				AccessAction: auth_mgt.CAPIAccessActionCreate,
+				Configurable: true,
+			},
+		},
 
 		Developer: developer,
 		WhiteList: true,

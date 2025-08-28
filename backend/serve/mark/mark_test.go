@@ -221,6 +221,13 @@ func initTestData() {
 		{2403, 1203, 21, 124, "06", 1101},
 		{2404, 1201, 22, 125, "06", 1101},
 		{2405, 1202, 24, 127, "06", 1101},
+		{2406, 1204, 21, 124, "06", 1101},
+	}
+	args = append(args, tempArgs)
+
+	queries = append(queries, `INSERT INTO t_practice_wrong_submissions(id, practice_submission_id, status, creator) VALUES($1, $2, $3, $4)`)
+	tempArgs = [][]interface{}{
+		{2601, 2401, "02", testedTeacherID},
 	}
 	args = append(args, tempArgs)
 
@@ -254,6 +261,7 @@ func initTestData() {
 		{46, 2402, 426, `{"answer": ["A"]}`, `["A"]`, "00", 1101},
 		{47, 2404, 427, `{"answer": ["填空学生作答1"]}`, `[]`, "00", 1101},
 		{48, 2405, 428, `{"answer": ["简答作答1"]}`, `[]`, "00", 1101},
+		{49, 2406, 424, `{"answer": ["C"]}`, `["A"]`, "00", 1101}, // 错题集作答
 	}
 	args = append(args, tempArgs)
 
@@ -352,6 +360,8 @@ func cleanTestData() {
 	queries = append(queries, `DELETE FROM t_exam_session;`)
 
 	queries = append(queries, `DELETE FROM t_practice_submissions;`)
+
+	queries = append(queries, `DELETE FROM t_practice_wrong_submissions;`)
 
 	queries = append(queries, `DELETE FROM t_practice;`)
 
@@ -1345,6 +1355,28 @@ func TestMarkObjectiveQuestionAnswers(t *testing.T) {
 			},
 		},
 		{
+			name:      "success-practice (批改单个错题集练习学生)",
+			teacherID: testedTeacherID,
+			requestParams: QueryCondition{
+				PracticeID:                21,
+				PracticeSubmissionID:      2406,
+				PracticeWrongSubmissionID: 2601,
+				TeacherID:                 testedTeacherID,
+			},
+		},
+		{
+			name:      "updateExamSessionOrPracticeSubmissionState error (批改单个错题集练习学生)",
+			teacherID: testedTeacherID,
+			requestParams: QueryCondition{
+				PracticeID:                21,
+				PracticeSubmissionID:      2406,
+				PracticeWrongSubmissionID: 2601,
+				TeacherID:                 testedTeacherID,
+			},
+			forceErr:       "updatePracticeWrongSubmissionState-tx.Query",
+			expectedErrStr: "exec updatePracticeWrongSubmissionState sql error",
+		},
+		{
 			name:      "success-（学生作答结果字段为空数组，得分为0）",
 			teacherID: testedTeacherID,
 			requestParams: QueryCondition{
@@ -1462,6 +1494,18 @@ func TestMarkObjectiveQuestionAnswers(t *testing.T) {
 			requestParams: QueryCondition{
 				ExamSessionID: 101,
 				TeacherID:     testedTeacherID,
+			},
+			forceErr:       "MarkObjectiveQuestionAnswers-tx.Commit",
+			expectedErrStr: "commit tx error",
+		},
+		{
+			name:      "commit tx error （批改单个练习错题集学生）",
+			teacherID: testedTeacherID,
+			requestParams: QueryCondition{
+				PracticeID:                21,
+				PracticeSubmissionID:      2406,
+				PracticeWrongSubmissionID: 2601,
+				TeacherID:                 testedTeacherID,
 			},
 			forceErr:       "MarkObjectiveQuestionAnswers-tx.Commit",
 			expectedErrStr: "commit tx error",
@@ -2645,6 +2689,25 @@ func TestHandleAIMarkTask(t *testing.T) {
 			},
 		},
 		{
+			name: "success",
+			task: asynq.NewTask(TaskTypeAIMarkRequest, newTaskPayload(TaskTypeAIMarkRequest, AIMarkTaskPayLoad{
+				AIMarkRequest: AIMarkRequest{
+					Question:       ai_mark.TestedQuestionDetails[0],
+					StudentAnswers: ai_mark.TestedStudentAnswers[0],
+				},
+				QueryCondition: QueryCondition{
+					TeacherID:     testedTeacherID,
+					ExamSessionID: 102,
+				},
+				UniqueTaskCountKey: "test:exam_session:102:count",
+			})),
+			setup: func() error {
+				redisClient := cmn.GetRedisConn()
+				redisClient.Set(context.Background(), "test:exam_session:102:count", 1, 0)
+				return nil
+			},
+		},
+		{
 			name: "success with practice",
 			task: asynq.NewTask(TaskTypeAIMarkRequest, newTaskPayload(TaskTypeAIMarkRequest, AIMarkTaskPayLoad{
 				AIMarkRequest: AIMarkRequest{
@@ -2655,6 +2718,27 @@ func TestHandleAIMarkTask(t *testing.T) {
 					TeacherID:            testedTeacherID,
 					PracticeID:           24,
 					PracticeSubmissionID: 2405,
+				},
+				UniqueTaskCountKey: "test:practice:24:count",
+			})),
+			setup: func() error {
+				redisClient := cmn.GetRedisConn()
+				redisClient.Set(context.Background(), "test:practice:24:count", 1, 0)
+				return nil
+			},
+		},
+		{
+			name: "success with practice（错题集批改）",
+			task: asynq.NewTask(TaskTypeAIMarkRequest, newTaskPayload(TaskTypeAIMarkRequest, AIMarkTaskPayLoad{
+				AIMarkRequest: AIMarkRequest{
+					Question:       &testedPracticeQuestionDetails,
+					StudentAnswers: ai_mark.TestedStudentAnswers[1],
+				},
+				QueryCondition: QueryCondition{
+					TeacherID:                 testedTeacherID,
+					PracticeID:                24,
+					PracticeSubmissionID:      2405,
+					PracticeWrongSubmissionID: 2601,
 				},
 				UniqueTaskCountKey: "test:practice:24:count",
 			})),
@@ -2894,6 +2978,29 @@ func TestHandleAIMarkTask(t *testing.T) {
 				return nil
 			},
 			forceErr: "HandleAIMarkTask-tx.Commit",
+		},
+		{
+			name: "updatePracticeWrongSubmissionState error（错题集批改）",
+			task: asynq.NewTask(TaskTypeAIMarkRequest, newTaskPayload(TaskTypeAIMarkRequest, AIMarkTaskPayLoad{
+				AIMarkRequest: AIMarkRequest{
+					Question:       &testedPracticeQuestionDetails,
+					StudentAnswers: ai_mark.TestedStudentAnswers[1],
+				},
+				QueryCondition: QueryCondition{
+					TeacherID:                 testedTeacherID,
+					PracticeID:                24,
+					PracticeSubmissionID:      2405,
+					PracticeWrongSubmissionID: 2601,
+				},
+				UniqueTaskCountKey: "test:practice:24:count",
+			})),
+			setup: func() error {
+				redisClient := cmn.GetRedisConn()
+				redisClient.Set(context.Background(), "test:practice:24:count", 1, 0)
+				return nil
+			},
+			forceErr:       "updatePracticeWrongSubmissionState-tx.Query",
+			expectedErrStr: "exec updatePracticeWrongSubmissionState sql error",
 		},
 		{
 			name: "updateExamSessionOrPracticeSubmissionState error",
