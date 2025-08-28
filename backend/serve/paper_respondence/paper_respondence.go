@@ -732,7 +732,6 @@ func InitRespondent(ctx context.Context) {
 			q.RespErr()
 			return
 		}
-
 		// 开始保存开始时间
 		updateSql := `UPDATE t_practice_wrong_submissions SET start_time =(EXTRACT(EPOCH FROM NOW()) * 1000)::bigint WHERE id = $1 AND status = $2`
 		_, err = tx.Exec(ctx, updateSql, u.WrongSubmissionID, NormalStatus)
@@ -1182,9 +1181,8 @@ func Submit(ctx context.Context) {
 		// 异步批改
 		go func() {
 			mark.AutoMark(ctx, mark.QueryCondition{
-				PracticeSubmissionID: u.PracticeSubmissionID,
-				PracticeID:           u.PracticeId,
-				IsWrongSubmission:    true,
+				PracticeWrongSubmissionID: u.WrongSubmissionID,
+				PracticeID:                u.PracticeId,
 			})
 		}()
 	default:
@@ -1391,8 +1389,8 @@ func HandleExit(ctx context.Context, req ExitReq) (err error) {
 		}
 	}
 	// 参数检查
-	if req.ExamineeID <= 0 && req.PracticeSubmissionID <= 0 {
-		err := errors.New("examinee id and practice submission id both are smaller than 0 or equal to 0")
+	if req.ExamineeID <= 0 && req.PracticeSubmissionID <= 0 && req.WrongSubmissionID <= 0 {
+		err := errors.New("examinee id and practice submission id and wrong submission id  both are smaller than 0 or equal to 0")
 		z.Error(err.Error())
 		return err
 	}
@@ -1422,9 +1420,21 @@ SET
 WHERE id = $2 AND status = $3 RETURNING id`
 
 		params = append(params, req.StudentId, req.PracticeSubmissionID, NormalStatus)
-	} else {
+	} else if req.ExamineeID > 0 {
 		Sql = `UPDATE t_examinee SET  updated_by = $1, update_time = EXTRACT(EPOCH FROM CURRENT_TIMESTAMP)::bigint * 1000, exit_cnt = exit_cnt + 1 WHERE id = $2 AND (status = $3 OR status = $4) RETURNING id`
 		params = append(params, req.StudentId, req.ExamineeID, CanBeEnterStatus, NormalStatus)
+	} else {
+		// 这里是错题练习记录的
+		Sql = `UPDATE t_practice_wrong_submissions
+SET
+  last_end_time = EXTRACT(EPOCH FROM CURRENT_TIMESTAMP)::bigint * 1000,
+  elapsed_seconds = elapsed_seconds + (
+    ((EXTRACT(EPOCH FROM CURRENT_TIMESTAMP)::bigint * 1000) - last_start_time) / 1000.0
+),
+	updated_by=$1,
+    update_time=EXTRACT(EPOCH FROM CURRENT_TIMESTAMP)::bigint * 1000
+WHERE id = $2 AND status = $3 RETURNING id`
+		params = append(params, req.StudentId, req.WrongSubmissionID, practice_mgt.WrongSubmissionStatus.Allow)
 	}
 	err = db.QueryRow(ctx, Sql, params...).Scan(&updateReturnId)
 	if err != nil {
