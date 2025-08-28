@@ -37,86 +37,126 @@ func generateExportScript(sysUser int64, destDir string, fileName string, isSubS
 
 	dbConn := cmn.GetDbConn()
 
-	var recentExamID int64
-
-	s := `SELECT 
-	t_exam_info.id
-FROM t_exam_info
-	JOIN t_exam_session ON ((EXTRACT(epoch FROM CURRENT_TIMESTAMP) * (1000)::numeric))::bigint < t_exam_session.start_time AND t_exam_session.exam_id = t_exam_info.id 
-WHERE t_exam_info.mode = '02' 
-GROUP BY
-	t_exam_info.id
-ORDER BY MIN(t_exam_session.start_time) ASC`
-
-	err = dbConn.QueryRow(s).Scan(&recentExamID)
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		z.Error(err.Error())
-		return
-	}
-
+	// 考点服务器数据导出
 	exportInfo := []copyInfo{
 
-		//====系统基本数据====
+		//======考生数据======
 		{
-			Sql:   `SELECT t_domain.* FROM t_domain`,
-			Table: "t_domain",
-		},
-		{
-			Sql:   `SELECT t_api.* FROM t_api`,
-			Table: "t_api",
-		},
-		{
-			Sql:   `SELECT t_domain_api.* FROM t_domain_api`,
-			Table: "t_domain_api",
-		},
-		//===================
-
-		// 考点系统账号数据
-		{
-			Sql: fmt.Sprintf(`SELECT t_user.* FROM t_user WHERE t_user.id = %d`, sysUser),
-			Table: "t_user",
-		},
-		{
-			Sql: fmt.Sprintf(`SELECT t_user_domain.* FROM t_user_domain WHERE t_user_domain.sys_user = %d
-			`, sysUser),
-			Table: "t_user_domain",
-		},
-
-		// 考点数据
-		{
-			Sql: fmt.Sprintf(`SELECT t_exam_site.* FROM t_exam_site WHERE sys_user=%d`, sysUser),
-			Table: "t_exam_site",
-		},
-
-		// 考场数据
-		{
-			Sql: fmt.Sprintf(`SELECT t_exam_room.* FROM t_exam_room
+			Sql: fmt.Sprintf(`SELECT t_examinee.*
+FROM t_examinee
+JOIN t_exam_room ON t_exam_room.id = t_examinee.exam_room
 JOIN t_exam_site ON t_exam_site.id = t_exam_room.exam_site
 WHERE t_exam_site.sys_user = %d`, sysUser),
-			Table: "t_exam_room",
+			Table: "t_examinee",
 		},
 
-		// 考点负责人账号数据
+		//=====考生作答数据=====
 		{
-			Sql: fmt.Sprintf(`SELECT t_user.* 
+			Sql: fmt.Sprintf(`SELECT t_student_answers.*
+FROM t_student_answers
+JOIN t_examinee ON t_examinee.id = t_student_answers.examinee_id
+JOIN t_exam_room ON t_exam_room.id = t_examinee.exam_room
+JOIN t_exam_site ON t_exam_site.id = t_exam_room.exam_site
+WHERE t_exam_site.sys_user = %d`, sysUser),
+			Table: "t_student_answers",
+		},
+
+		//=======监考数据=======
+		// 考场记录
+		{
+			Sql: fmt.Sprintf(`SELECT t_exam_record.*
+FROM t_exam_record
+JOIN t_exam_room ON t_exam_room.id = t_exam_record.exam_room
+JOIN t_exam_site ON t_exam_site.id = t_exam_room.exam_site
+WHERE t_exam_site.sys_user = %d`, sysUser),
+			Table: "t_exam_record",
+		},
+	}
+
+	if !isSubServerSide {
+
+		// 中心服务器数据导出
+
+		var recentExamID int64
+
+		s := `SELECT 
+		t_exam_info.id
+	FROM t_exam_info
+		JOIN t_exam_session ON ((EXTRACT(epoch FROM CURRENT_TIMESTAMP) * (1000)::numeric))::bigint < t_exam_session.start_time AND t_exam_session.exam_id = t_exam_info.id 
+	WHERE t_exam_info.mode = '02' 
+	GROUP BY
+		t_exam_info.id
+	ORDER BY MIN(t_exam_session.start_time) ASC`
+
+		err = dbConn.QueryRow(s).Scan(&recentExamID)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			z.Error(err.Error())
+			return
+		}
+
+		exportInfo = []copyInfo{
+
+			//====系统基本数据====
+			{
+				Sql:   `SELECT t_domain.* FROM t_domain`,
+				Table: "t_domain",
+			},
+			{
+				Sql:   `SELECT t_api.* FROM t_api`,
+				Table: "t_api",
+			},
+			{
+				Sql:   `SELECT t_domain_api.* FROM t_domain_api`,
+				Table: "t_domain_api",
+			},
+			//===================
+
+			// 考点系统账号数据
+			{
+				Sql:   fmt.Sprintf(`SELECT t_user.* FROM t_user WHERE t_user.id = %d`, sysUser),
+				Table: "t_user",
+			},
+			{
+				Sql: fmt.Sprintf(`SELECT t_user_domain.* FROM t_user_domain WHERE t_user_domain.sys_user = %d
+				`, sysUser),
+				Table: "t_user_domain",
+			},
+
+			// 考点数据
+			{
+				Sql:   fmt.Sprintf(`SELECT t_exam_site.* FROM t_exam_site WHERE sys_user=%d`, sysUser),
+				Table: "t_exam_site",
+			},
+
+			// 考场数据
+			{
+				Sql: fmt.Sprintf(`SELECT t_exam_room.* FROM t_exam_room
+JOIN t_exam_site ON t_exam_site.id = t_exam_room.exam_site
+WHERE t_exam_site.sys_user = %d`, sysUser),
+				Table: "t_exam_room",
+			},
+
+			// 考点负责人账号数据
+			{
+				Sql: fmt.Sprintf(`SELECT t_user.* 
 FROM t_user 
 	JOIN t_exam_site ON t_exam_site.admin = t_user.id 
 WHERE t_exam_site.sys_user = %d`,
-				sysUser),
-			Table: "t_user",
-		},
-		{
-			Sql: fmt.Sprintf(`SELECT t_user_domain.*
+					sysUser),
+				Table: "t_user",
+			},
+			{
+				Sql: fmt.Sprintf(`SELECT t_user_domain.*
 FROM t_user_domain
 	JOIN t_exam_site ON t_exam_site.admin = t_user_domain.sys_user
 WHERE t_exam_site.sys_user = %d
-			`, sysUser),
-			Table: "t_user_domain",
-		},
+				`, sysUser),
+				Table: "t_user_domain",
+			},
 
-		// 最近一个未开始考试的监考员账号数据
-		{
-			Sql: fmt.Sprintf(`SELECT t_user.*
+			// 最近一个未开始考试的监考员账号数据
+			{
+				Sql: fmt.Sprintf(`SELECT t_user.*
 FROM t_invigilation
 	JOIN t_user ON t_user.id = t_invigilation.invigilator
 	JOIN t_exam_room ON t_exam_room.id = t_invigilation.exam_room
@@ -125,10 +165,10 @@ FROM t_invigilation
 WHERE t_exam_site.sys_user = %d
 GROUP BY
 	t_user.id`, recentExamID, sysUser),
-			Table: "t_user",
-		},
-		{
-			Sql: fmt.Sprintf(`SELECT t_user_domain.*
+				Table: "t_user",
+			},
+			{
+				Sql: fmt.Sprintf(`SELECT t_user_domain.*
 FROM t_invigilation
 	JOIN t_user_domain ON t_user_domain.sys_user = t_invigilation.invigilator
 	JOIN t_exam_room ON t_exam_room.id = t_invigilation.exam_room
@@ -137,12 +177,12 @@ FROM t_invigilation
 WHERE t_exam_site.sys_user = %d
 GROUP BY
 	t_user_domain.id`, recentExamID, sysUser),
-			Table: "t_user_domain",
-		},
+				Table: "t_user_domain",
+			},
 
-		// 最近一个未开始的考试的考生账号数据
-		{
-			Sql: fmt.Sprintf(`SELECT t_user.*
+			// 最近一个未开始的考试的考生账号数据
+			{
+				Sql: fmt.Sprintf(`SELECT t_user.*
 FROM t_examinee
 	JOIN t_user ON t_user.id = t_examinee.student_id
 	JOIN t_exam_room ON t_exam_room.id = t_examinee.exam_room
@@ -151,10 +191,10 @@ FROM t_examinee
 WHERE t_exam_site.sys_user = %d
 GROUP BY
 	t_user.id`, recentExamID, sysUser),
-			Table: "t_user",
-		},
-		{
-			Sql: fmt.Sprintf(`SELECT t_user_domain.*
+				Table: "t_user",
+			},
+			{
+				Sql: fmt.Sprintf(`SELECT t_user_domain.*
 FROM t_examinee
 	JOIN t_user_domain ON t_user_domain.sys_user = t_examinee.student_id
 	JOIN t_exam_room ON t_exam_room.id = t_examinee.exam_room
@@ -163,129 +203,100 @@ FROM t_examinee
 WHERE t_exam_site.sys_user = %d
 GROUP BY
 	t_user_domain.id`, recentExamID, sysUser),
-			Table: "t_user_domain",
-		},
+				Table: "t_user_domain",
+			},
 
-		//======考试数据======
-		// 考试信息
-		{
-			Sql: fmt.Sprintf(`SELECT t_exam_info.* FROM t_exam_info WHERE id = %d`, recentExamID),
-			Table: "t_exam_info",
-		},
-		
-		// 考试场次
-		{
-			Sql: fmt.Sprintf(`SELECT t_exam_session.* FROM t_exam_session WHERE exam_id = %d`, recentExamID),
-			Table: "t_exam_session",
-		},
+			//======考试数据======
+			// 考试信息
+			{
+				Sql:   fmt.Sprintf(`SELECT t_exam_info.* FROM t_exam_info WHERE id = %d`, recentExamID),
+				Table: "t_exam_info",
+			},
 
-		// 考卷数据
-		{
-			Sql: fmt.Sprintf(`SELECT t_exam_paper.* 
+			// 考试场次
+			{
+				Sql:   fmt.Sprintf(`SELECT t_exam_session.* FROM t_exam_session WHERE exam_id = %d`, recentExamID),
+				Table: "t_exam_session",
+			},
+
+			// 考卷数据
+			{
+				Sql: fmt.Sprintf(`SELECT t_exam_paper.* 
 FROM t_exam_paper 
 	JOIN t_exam_session ON t_exam_session.id = t_exam_paper.exam_session_id
 WHERE t_exam_session.exam_id = %d
-			`, recentExamID),
-			Table: "t_exam_paper",
-		},
-		{
-			Sql: fmt.Sprintf(`SELECT t_exam_paper_group.* 
+				`, recentExamID),
+				Table: "t_exam_paper",
+			},
+			{
+				Sql: fmt.Sprintf(`SELECT t_exam_paper_group.* 
 FROM t_exam_paper_group
 	JOIN t_exam_paper ON t_exam_paper.id = t_exam_paper_group.exam_paper_id
 	JOIN t_exam_session ON t_exam_session.id = t_exam_paper.exam_session_id
 WHERE t_exam_session.exam_id = %d
 			`, recentExamID),
-			Table: "t_exam_paper_group",
-		},
-		{
-			Sql: fmt.Sprintf(`SELECT t_exam_paper_question.* 
+				Table: "t_exam_paper_group",
+			},
+			{
+				Sql: fmt.Sprintf(`SELECT t_exam_paper_question.* 
 FROM t_exam_paper_question
 	JOIN t_exam_paper_group ON t_exam_paper_group.id = t_exam_paper_question.group_id
 	JOIN t_exam_paper ON t_exam_paper.id = t_exam_paper_group.exam_paper_id
 	JOIN t_exam_session ON t_exam_session.id = t_exam_paper.exam_session_id
 WHERE t_exam_session.exam_id = %d
 			`, recentExamID),
-			Table: "t_exam_paper_question",
-		},
+				Table: "t_exam_paper_question",
+			},
 
-		//======考生数据======
-		{
-			Sql: fmt.Sprintf(`SELECT t_examinee.*
+			//======考生数据======
+			{
+				Sql: fmt.Sprintf(`SELECT t_examinee.*
 FROM t_examinee
 	JOIN t_exam_room ON t_exam_room.id = t_examinee.exam_room
 	JOIN t_exam_site ON t_exam_site.id = t_exam_room.exam_site
 	JOIN t_exam_session ON t_exam_session.exam_id = %d AND t_exam_session.id = t_examinee.exam_session_id
 WHERE t_exam_site.sys_user = %d`, recentExamID, sysUser),
-			Table: "t_examinee",
-		},
+				Table: "t_examinee",
+			},
 
-		// 考生作答数据
-		{
-			Sql: fmt.Sprintf(`SELECT t_student_answers.*
+			// 考生作答数据
+			{
+				Sql: fmt.Sprintf(`SELECT t_student_answers.*
 FROM t_student_answers
 	JOIN t_examinee ON t_examinee.id = t_student_answers.examinee_id
 	JOIN t_exam_room ON t_exam_room.id = t_examinee.exam_room
 	JOIN t_exam_site ON t_exam_site.id = t_exam_room.exam_site
 	JOIN t_exam_session ON t_exam_session.exam_id = %d AND t_exam_session.id = t_examinee.exam_session_id
 WHERE t_exam_site.sys_user = %d
-			`, recentExamID, sysUser),
-			Table: "t_student_answers",
-		},
+				`, recentExamID, sysUser),
+				Table: "t_student_answers",
+			},
 
+			//===================
 
-		//===================
-
-		//监考数据
-		{
-			Sql: fmt.Sprintf(`SELECT t_invigilation.* 
+			//监考数据
+			{
+				Sql: fmt.Sprintf(`SELECT t_invigilation.* 
 FROM t_invigilation
 	JOIN t_exam_room ON t_exam_room.id = t_invigilation.exam_room
 	JOIN t_exam_site ON t_exam_site.id = t_exam_room.exam_site
 	JOIN t_exam_session ON t_exam_session.id = t_invigilation.exam_session_id
 	JOIN t_exam_info ON t_exam_info.id = %d AND t_exam_info.id = t_exam_session.exam_id
 WHERE t_exam_site.sys_user = %d`, recentExamID, sysUser),
-			Table: "t_invigilation",
-		},
+				Table: "t_invigilation",
+			},
 
-		// 考场记录数据
-		{
-			Sql: fmt.Sprintf(`SELECT t_exam_record.* 
+			// 考场记录数据
+			{
+				Sql: fmt.Sprintf(`SELECT t_exam_record.* 
 FROM t_exam_record
 	JOIN t_exam_room ON t_exam_room.id = t_exam_record.exam_room
 	JOIN t_exam_site ON t_exam_site.id = t_exam_room.exam_site
 	JOIN t_exam_session ON t_exam_session.id = t_exam_record.exam_session
 	JOIN t_exam_info ON t_exam_info.id = %d AND t_exam_info.id = t_exam_session.exam_id
-WHERE t_exam_site.sys_user = %d`,recentExamID, sysUser),
-			Table: "t_exam_record",
-		},
-
-
-
-	}
-
-	if isSubServerSide {
-		exportInfo = []copyInfo{
-
-			//======考生数据======
-			{
-				Sql: fmt.Sprintf(`SELECT t_examinee.*
-	FROM t_examinee
-		JOIN t_exam_room ON t_exam_room.id = t_examinee.exam_room
-		JOIN t_exam_site ON t_exam_site.id = t_exam_room.exam_site
-	WHERE t_exam_site.sys_user = %d`,
-				sysUser),
-				Table: "t_examinee",
+WHERE t_exam_site.sys_user = %d`, recentExamID, sysUser),
+				Table: "t_exam_record",
 			},
-
-			//====================
-
-			//=====考生作答数据=====
-
-			//=======监考数据=======
-			// 考场记录
-
-			//====================
-
 		}
 	}
 
@@ -405,16 +416,16 @@ INSERT INTO %s (%s)
 	ON CONFLICT(id) DO UPDATE SET %s;
 DROP TABLE IF EXISTS temp_%s;
 		`,
-		tableName,
-		tableName,
-		tableName,
-		filepath.Join(destDir, fName),
-		tableName,
-		strings.Join(cols, ", "),
-		strings.Join(cols, ", "),
-		tableName,
-		strings.Join(updateSets, ", "),
-		tableName)
+			tableName,
+			tableName,
+			tableName,
+			filepath.Join(destDir, fName),
+			tableName,
+			strings.Join(cols, ", "),
+			strings.Join(cols, ", "),
+			tableName,
+			strings.Join(updateSets, ", "),
+			tableName)
 
 	}
 

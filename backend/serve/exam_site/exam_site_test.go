@@ -135,7 +135,7 @@ func removeTestDomainApis(domain int64) (err error) {
 	return
 }
 
-func mockExamSiteSyncData(sysUser int64) (cleanup func() error, err error) {
+func mockExamSiteSyncData(sysUser int64, nowTime int64) (cleanup func() error, err error) {
 
 	dbConn := cmn.GetDbConn()
 
@@ -153,8 +153,6 @@ func mockExamSiteSyncData(sysUser int64) (cleanup func() error, err error) {
 		tx.Commit()
 
 	}()
-
-	nowTime := time.Now().Unix()
 
 	testID := nowTime / 100
 
@@ -295,7 +293,7 @@ SELECT 1;
 			testID, testID,
 
 			// ins_exam_paper_group (id, exam_paper_id)
-			testID+1, testID, 
+			testID+1, testID,
 			testID+2, testID,
 			testID+3, testID,
 
@@ -327,7 +325,7 @@ SELECT 1;
 			testID+3, testID+3,
 
 			// ins_exam_record (exam_room, exam_session)
-			testID+1, testID, 
+			testID+1, testID,
 			testID+2, testID,
 			testID+3, testID,
 
@@ -4265,6 +4263,8 @@ func TestExamSiteSyncInit(t *testing.T) {
 
 	nowTime := time.Now().Unix()
 
+	dbConn := cmn.GetDbConn()
+
 	var serverCtx *cmn.ServiceCtx
 
 	var cleanupTestData func() error
@@ -4287,7 +4287,7 @@ func TestExamSiteSyncInit(t *testing.T) {
 			return
 		}
 
-		cleanupTestData, err = mockExamSiteSyncData(testUserID)
+		cleanupTestData, err = mockExamSiteSyncData(testUserID, nowTime)
 		if err != nil {
 			t.Fatalf("failed to mock data: %v", err)
 			return
@@ -4528,7 +4528,7 @@ func TestExamSiteSyncInit(t *testing.T) {
 
 				_, err = cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
 				if err != nil {
-					t.Fatalf("failed to set sync status: %v", err)
+					t.Errorf("failed to set sync status: %v", err)
 					return
 				}
 
@@ -4536,9 +4536,70 @@ func TestExamSiteSyncInit(t *testing.T) {
 
 				<-q.Tag["pullDone"].(chan int)
 
+				testID := nowTime / 100
+
+				// 更新考场记录
+				_, err = dbConn.Exec(`UPDATE t_exam_record SET basic_eval = '02' WHERE exam_session = $1`, testID)
+				if err != nil {
+					t.Errorf("failed to update exam record: %v", err)
+					return
+				}
+
+				// 更新考生信息
+				_, err = dbConn.Exec(`UPDATE t_examinee SET status = '10' WHERE exam_session_id = $1`, testID)
+				if err != nil {
+					t.Errorf("failed to update examinee: %v", err)
+					return
+				}
+
+				// 更新考生作答数据
+				_, err = dbConn.Exec(`UPDATE t_student_answers SET answer = '["A"]' WHERE examinee_id = $1`, testID+1)
+				if err != nil {
+					t.Errorf("failed to update student answers: %v", err)
+					return
+				}
+
 				SendPushMsg()
 
 				<-q.Tag["endMsgListen"].(chan int)
+
+				// 检查是否有相应的更新
+				c := 0
+				err = dbConn.QueryRow(`SELECT COUNT(id) FROM t_exam_record WHERE basic_eval = '02' AND exam_session = $1`, testID).Scan(&c)
+				if err != nil {
+					t.Errorf("failed to query t_exam_record: %v", err)
+					return
+				}
+
+				if c != 3 {
+					err = fmt.Errorf("unexpected query, expect 3")
+					t.Error(err.Error())
+					return
+				}
+
+				err = dbConn.QueryRow(`SELECT COUNT(id) FROM t_examinee WHERE status = '10' AND exam_session_id = $1`, testID).Scan(&c)
+				if err != nil {
+					t.Errorf("failed to query t_examinee: %v", err)
+					return
+				}
+
+				if c != 3 {
+					err = fmt.Errorf("unexpected query, expect 3")
+					t.Error(err.Error())
+					return
+				}
+
+				err = dbConn.QueryRow(`SELECT COUNT(id) FROM t_student_answers WHERE answer = '["A"]' AND examinee_id = $1`, testID+1).Scan(&c)
+				if err != nil {
+					t.Errorf("failed to query t_student_answer: %v", err)
+					return
+				}
+
+				if c != 1 {
+					err = fmt.Errorf("unexpected query, expect 1")
+					t.Error(err.Error())
+					return
+				}
 
 				return
 			},
