@@ -67,7 +67,7 @@ type MarkDetails struct {
 
 type HandleMarkerInfoReq struct {
 	Markers        []int64                             `json:"markers"`          // *批改员id数组
-	QuestionGroups []examPaper.SubjectiveQuestionGroup `json:"question_groups"`  // *题组（配置时传入）
+	QuestionGroups []examPaper.SubjectiveQuestionGroup `json:"question_groups"`  // TODO 题组（已废弃，不再外部传入，而是内部自己查）
 	QuestionIDs    []int64                             `json:"question_ids"`     // 题目id数组
 	ExamineeIDs    []int64                             `json:"examinee_ids"`     // 考生id数组
 	MarkMode       string                              `json:"mark_mode"`        // *批卷模式 00：不需要手动批改  02：全卷多评 04：试卷分配 06：题组专评 08：题目分配 10：单人（人工）批改
@@ -1116,6 +1116,11 @@ func MarkObjectiveQuestionAnswers(ctx context.Context, cond QueryCondition) (err
 		markerInfo.MarkMode = "12"
 	}
 
+	if cond.PracticeWrongSubmissionID > 0 {
+		// 批改错题集练习的提交
+		markerInfo.MarkMode = "14"
+	}
+
 	studentAnswers, err := QueryStudentAnswersByMarkMode(ctx, "02", cond, markerInfo)
 	if err != nil {
 		err = fmt.Errorf("failed to query student answers: %v", err)
@@ -1250,6 +1255,22 @@ func MarkObjectiveQuestionAnswers(ctx context.Context, cond QueryCondition) (err
 		}
 	}()
 
+	if cond.PracticeWrongSubmissionID > 0 {
+		// 更新批改错题集练习的提交状态
+		_, err = updatePracticeWrongSubmissionState(ctx, tx, cond.TeacherID, []int64{cond.PracticeWrongSubmissionID}, "08")
+		if err != nil {
+			return
+		}
+
+		err = tx.Commit(ctx)
+		if err != nil || forceErr == "MarkObjectiveQuestionAnswers-tx.Commit" {
+			err = fmt.Errorf("commit tx error: %v", err)
+			z.Error(err.Error())
+			return
+		}
+		return
+	}
+
 	var status string
 	var examSessionIDs []int64
 	var practiceSubmissionIDs []int64
@@ -1335,7 +1356,7 @@ func AutoMark(ctx context.Context, cond QueryCondition) (err error) {
 		questions = append(questions, questionSet.Questions...)
 	}
 
-	if cond.IsWrongSubmission {
+	if cond.PracticeWrongSubmissionID > 0 {
 		// 练习学生作答错题
 		markerInfo.MarkMode = "14"
 	}
@@ -1558,11 +1579,7 @@ func TaskMiddleware(handler func(ctx context.Context, task *asynq.Task) error) f
 			return nil, handler(ctx, task)
 		})
 
-		if err != nil {
-			return err
-		}
-
-		return handler(ctx, task)
+		return err
 	}
 }
 
@@ -1726,33 +1743,42 @@ func HandleAIMarkTask(ctx context.Context, task *asynq.Task) error {
 		// 任务已全部完成
 		z.Sugar().Infof("本批次批改任务已全部完成")
 		pgxConn := cmn.GetPgxConn()
-		if payloadData.QueryCondition.PracticeSubmissionID > 0 {
-			var tx pgx.Tx
-			tx, err = pgxConn.Begin(ctx)
-			if err != nil || forceErr == "HandleAIMarkTask-tx.Begin" {
-				err = fmt.Errorf("begin transaction error: %v", err)
-				z.Error(err.Error())
-				return err
-			}
+		if payloadData.QueryCondition.PracticeSubmissionID < 0 {
+			return nil
+		}
 
-			defer func() {
-				if err != nil {
-					err_ := tx.Rollback(ctx)
-					if err_ != nil || forceErr == "HandleAIMarkTask-tx.Rollback" {
-						z.Sugar().Error(err_)
-					}
-				} else {
-					err_ := tx.Commit(ctx)
-					if err_ != nil || forceErr == "HandleAIMarkTask-tx.Commit" {
-						z.Sugar().Error(err_)
-					}
+		var tx pgx.Tx
+		tx, err = pgxConn.Begin(ctx)
+		if err != nil || forceErr == "HandleAIMarkTask-tx.Begin" {
+			err = fmt.Errorf("begin transaction error: %v", err)
+			z.Error(err.Error())
+			return err
+		}
+
+		defer func() {
+			if err != nil {
+				err_ := tx.Rollback(ctx)
+				if err_ != nil || forceErr == "HandleAIMarkTask-tx.Rollback" {
+					z.Sugar().Error(err_)
 				}
-			}()
+			} else {
+				err_ := tx.Commit(ctx)
+				if err_ != nil || forceErr == "HandleAIMarkTask-tx.Commit" {
+					z.Sugar().Error(err_)
+				}
+			}
+		}()
 
-			_, err = updateExamSessionOrPracticeSubmissionState(ctx, &tx, payloadData.QueryCondition.TeacherID, nil, []int64{payloadData.QueryCondition.PracticeSubmissionID}, "08")
+		if payloadData.QueryCondition.PracticeWrongSubmissionID > 0 {
+			_, err = updatePracticeWrongSubmissionState(ctx, tx, payloadData.QueryCondition.TeacherID, []int64{payloadData.QueryCondition.PracticeWrongSubmissionID}, "08")
 			if err != nil {
 				return err
 			}
+		}
+
+		_, err = updateExamSessionOrPracticeSubmissionState(ctx, &tx, payloadData.QueryCondition.TeacherID, nil, []int64{payloadData.QueryCondition.PracticeSubmissionID}, "08")
+		if err != nil {
+			return err
 		}
 
 		return nil

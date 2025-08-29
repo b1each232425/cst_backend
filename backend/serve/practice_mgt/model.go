@@ -3,7 +3,7 @@
  * @Description: 练习管理所需模型
  * @Date: 2025-07-15 19:59:25
  * @LastEditors: zdl <1311866870@qq.com>
- * @LastEditTime: 2025-08-23 09:49:10
+ * @LastEditTime: 2025-08-28 13:00:17
  */
 package practice_mgt
 
@@ -54,13 +54,17 @@ var PracticeSubmissionStatus = struct {
 var WrongSubmissionStatus = struct {
 	Allow     string // 允许作答 00
 	Forbid    string // 不允许作答 02
-	Submitted string // 已提交 04
-	Deleted   string // 已删除 06
+	Deleted   string // 已删除 04
+	Marked    string // 已提交 06
+	Submitted string // 已批改 08
+	Disabled  string // 已作废 10
 }{
 	Allow:     "00",
 	Forbid:    "02",
-	Submitted: "04",
-	Deleted:   "06",
+	Deleted:   "04",
+	Submitted: "06",
+	Marked:    "08",
+	Disabled:  "10",
 }
 
 var StudentSubmissionStatus = struct {

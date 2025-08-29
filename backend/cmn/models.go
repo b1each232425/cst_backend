@@ -329,6 +329,7 @@ type TAPI struct {
 	Status       null.String    `json:"Status,omitempty" db:"status,false,character varying"`              /* status 状态，00：草稿，01：有效，02：作废 */
 	Author       types.JSONText `json:"Author,omitempty" db:"author,false,jsonb"`                          /* author 接口作者 */
 	AccessAction null.String    `json:"AccessAction,omitempty" db:"access_action,false,character varying"` /* access_action 访问操作 full:允许所有操作 query: 查询数据操作 add: 添加数据操作 edit: 编辑数据操作 delete: 删除数据操作 */
+	Configurable null.Bool      `json:"Configurable,omitempty" db:"configurable,false,boolean"`            /* configurable 是否允许在创建角色时被配置 */
 	Filter       `json:"-"`     // build DML where clause
 }
 
@@ -349,6 +350,7 @@ var TAPIFields = []string{
 	"Status",
 	"Author",
 	"AccessAction",
+	"Configurable",
 }
 
 // TAPIColumns full column list for default query
@@ -368,6 +370,7 @@ var TAPIColumns = []string{
 	"status",
 	"author",
 	"access_action",
+	"configurable",
 }
 
 // TAPIColumnsDataTypes full column data types for default query
@@ -387,6 +390,7 @@ var TAPIColumnsDataTypes = map[string]string{
 	"status":               "character varying",
 	"author":               "jsonb",
 	"access_action":        "character varying",
+	"configurable":         "boolean",
 }
 
 // GetFieldsMap returns a map of field names to their values.
@@ -407,6 +411,7 @@ func (r *TAPI) GetFieldsMap() map[string]any {
 		"Status":             r.Status,
 		"Author":             r.Author,
 		"AccessAction":       r.AccessAction,
+		"Configurable":       r.Configurable,
 	}
 }
 
@@ -428,6 +433,7 @@ func (r *TAPI) GetColumnsMap() map[string]any {
 		"status":               r.Status,
 		"author":               r.Author,
 		"access_action":        r.AccessAction,
+		"configurable":         r.Configurable,
 	}
 }
 
@@ -449,8 +455,8 @@ func (r *TAPI) GetTableName() string {
 // Create inserts the TAPI to the database.
 func (r *TAPI) Create(db Queryer) error {
 	err := db.QueryRow(
-		`INSERT INTO t_api (name, expose_path, maintainer, access_control_level, updated_by, update_time, creator, create_time, domain_id, addi, remark, status, author, access_action) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) RETURNING id`,
-		&r.Name, &r.ExposePath, &r.Maintainer, &r.AccessControlLevel, &r.UpdatedBy, &r.UpdateTime, &r.Creator, &r.CreateTime, &r.DomainID, &r.Addi, &r.Remark, &r.Status, &r.Author, &r.AccessAction).Scan(&r.ID)
+		`INSERT INTO t_api (name, expose_path, maintainer, access_control_level, updated_by, update_time, creator, create_time, domain_id, addi, remark, status, author, access_action, configurable) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15) RETURNING id`,
+		&r.Name, &r.ExposePath, &r.Maintainer, &r.AccessControlLevel, &r.UpdatedBy, &r.UpdateTime, &r.Creator, &r.CreateTime, &r.DomainID, &r.Addi, &r.Remark, &r.Status, &r.Author, &r.AccessAction, &r.Configurable).Scan(&r.ID)
 	if err != nil {
 		return errors.Wrap(err, "failed to insert t_api")
 	}
@@ -462,8 +468,8 @@ func GetTAPIByPk(db Queryer, pk0 null.Int) (*TAPI, error) {
 
 	var r TAPI
 	err := db.QueryRow(
-		`SELECT id, name, expose_path, maintainer, access_control_level, updated_by, update_time, creator, create_time, domain_id, addi, remark, status, author, access_action FROM t_api WHERE id = $1`,
-		pk0).Scan(&r.ID, &r.Name, &r.ExposePath, &r.Maintainer, &r.AccessControlLevel, &r.UpdatedBy, &r.UpdateTime, &r.Creator, &r.CreateTime, &r.DomainID, &r.Addi, &r.Remark, &r.Status, &r.Author, &r.AccessAction)
+		`SELECT id, name, expose_path, maintainer, access_control_level, updated_by, update_time, creator, create_time, domain_id, addi, remark, status, author, access_action, configurable FROM t_api WHERE id = $1`,
+		pk0).Scan(&r.ID, &r.Name, &r.ExposePath, &r.Maintainer, &r.AccessControlLevel, &r.UpdatedBy, &r.UpdateTime, &r.Creator, &r.CreateTime, &r.DomainID, &r.Addi, &r.Remark, &r.Status, &r.Author, &r.AccessAction, &r.Configurable)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to select t_api")
 	}
@@ -15886,6 +15892,7 @@ type TVDomainAPI struct {
 	ExposePath         null.String    `json:"ExposePath,omitempty" db:"expose_path,false,character varying"`                  /* expose_path expose_path */
 	AccessAction       null.String    `json:"AccessAction,omitempty" db:"access_action,false,character varying"`              /* access_action access_action */
 	AccessControlLevel null.String    `json:"AccessControlLevel,omitempty" db:"access_control_level,false,character varying"` /* access_control_level access_control_level */
+	Configurable       null.Bool      `json:"Configurable,omitempty" db:"configurable,false,boolean"`                         /* configurable configurable */
 	DomainID           null.Int       `json:"DomainID,omitempty" db:"domain_id,false,bigint"`                                 /* domain_id domain_id */
 	GrantSource        null.String    `json:"GrantSource,omitempty" db:"grant_source,false,character varying"`                /* grant_source grant_source */
 	DataAccessMode     null.String    `json:"DataAccessMode,omitempty" db:"data_access_mode,false,character varying"`         /* data_access_mode data_access_mode */
@@ -15910,6 +15917,7 @@ var TVDomainAPIFields = []string{
 	"ExposePath",
 	"AccessAction",
 	"AccessControlLevel",
+	"Configurable",
 	"DomainID",
 	"GrantSource",
 	"DataAccessMode",
@@ -15933,6 +15941,7 @@ var TVDomainAPIColumns = []string{
 	"expose_path",
 	"access_action",
 	"access_control_level",
+	"configurable",
 	"domain_id",
 	"grant_source",
 	"data_access_mode",
@@ -15956,6 +15965,7 @@ var TVDomainAPIColumnsDataTypes = map[string]string{
 	"expose_path":          "character varying",
 	"access_action":        "character varying",
 	"access_control_level": "character varying",
+	"configurable":         "boolean",
 	"domain_id":            "bigint",
 	"grant_source":         "character varying",
 	"data_access_mode":     "character varying",
@@ -15980,6 +15990,7 @@ func (r *TVDomainAPI) GetFieldsMap() map[string]any {
 		"ExposePath":         r.ExposePath,
 		"AccessAction":       r.AccessAction,
 		"AccessControlLevel": r.AccessControlLevel,
+		"Configurable":       r.Configurable,
 		"DomainID":           r.DomainID,
 		"GrantSource":        r.GrantSource,
 		"DataAccessMode":     r.DataAccessMode,
@@ -16005,6 +16016,7 @@ func (r *TVDomainAPI) GetColumnsMap() map[string]any {
 		"expose_path":          r.ExposePath,
 		"access_action":        r.AccessAction,
 		"access_control_level": r.AccessControlLevel,
+		"configurable":         r.Configurable,
 		"domain_id":            r.DomainID,
 		"grant_source":         r.GrantSource,
 		"data_access_mode":     r.DataAccessMode,
@@ -16035,8 +16047,8 @@ func (r *TVDomainAPI) GetTableName() string {
 // Create inserts the TVDomainAPI to the database.
 func (r *TVDomainAPI) Create(db Queryer) error {
 	_, err := db.Exec(
-		`INSERT INTO t_v_domain_api (id, auth_domain_id, domain_name, domain, priority, api_id, api_name, expose_path, access_action, access_control_level, domain_id, grant_source, data_access_mode, data_scope, create_time, remark, addi, creator, status) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)`,
-		&r.ID, &r.AuthDomainID, &r.DomainName, &r.Domain, &r.Priority, &r.APIID, &r.APIName, &r.ExposePath, &r.AccessAction, &r.AccessControlLevel, &r.DomainID, &r.GrantSource, &r.DataAccessMode, &r.DataScope, &r.CreateTime, &r.Remark, &r.Addi, &r.Creator, &r.Status)
+		`INSERT INTO t_v_domain_api (id, auth_domain_id, domain_name, domain, priority, api_id, api_name, expose_path, access_action, access_control_level, configurable, domain_id, grant_source, data_access_mode, data_scope, create_time, remark, addi, creator, status) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)`,
+		&r.ID, &r.AuthDomainID, &r.DomainName, &r.Domain, &r.Priority, &r.APIID, &r.APIName, &r.ExposePath, &r.AccessAction, &r.AccessControlLevel, &r.Configurable, &r.DomainID, &r.GrantSource, &r.DataAccessMode, &r.DataScope, &r.CreateTime, &r.Remark, &r.Addi, &r.Creator, &r.Status)
 	if err != nil {
 		return errors.Wrap(err, "failed to insert t_v_domain_api")
 	}
@@ -16049,8 +16061,8 @@ func GetTVDomainAPIByPk(db Queryer) (*TVDomainAPI, error) {
 
 	var r TVDomainAPI
 	err := db.QueryRow(
-		`SELECT id, auth_domain_id, domain_name, domain, priority, api_id, api_name, expose_path, access_action, access_control_level, domain_id, grant_source, data_access_mode, data_scope, create_time, remark, addi, creator, status FROM t_v_domain_api`,
-	).Scan(&r.ID, &r.AuthDomainID, &r.DomainName, &r.Domain, &r.Priority, &r.APIID, &r.APIName, &r.ExposePath, &r.AccessAction, &r.AccessControlLevel, &r.DomainID, &r.GrantSource, &r.DataAccessMode, &r.DataScope, &r.CreateTime, &r.Remark, &r.Addi, &r.Creator, &r.Status)
+		`SELECT id, auth_domain_id, domain_name, domain, priority, api_id, api_name, expose_path, access_action, access_control_level, configurable, domain_id, grant_source, data_access_mode, data_scope, create_time, remark, addi, creator, status FROM t_v_domain_api`,
+	).Scan(&r.ID, &r.AuthDomainID, &r.DomainName, &r.Domain, &r.Priority, &r.APIID, &r.APIName, &r.ExposePath, &r.AccessAction, &r.AccessControlLevel, &r.Configurable, &r.DomainID, &r.GrantSource, &r.DataAccessMode, &r.DataScope, &r.CreateTime, &r.Remark, &r.Addi, &r.Creator, &r.Status)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to select t_v_domain_api")
 	}

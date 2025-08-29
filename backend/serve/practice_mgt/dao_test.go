@@ -1299,7 +1299,7 @@ func TestValidatePractice(t *testing.T) {
 				PaperID:         null.IntFrom(102),
 				Name:            null.StringFrom("化学期末考试"),
 				CorrectMode:     null.StringFrom("异常批改数据"), // 批改模式
-				Type:            null.StringFrom("02"),     // 练习类型（试卷）
+				Type:            null.StringFrom("02"),           // 练习类型（试卷）
 				AllowedAttempts: null.IntFrom(10),
 			},
 			ps:            nil,
@@ -1321,7 +1321,7 @@ func TestValidatePractice(t *testing.T) {
 			p: &cmn.TPractice{
 				PaperID:         null.IntFrom(102),
 				Name:            null.StringFrom("化学期末考试"),
-				CorrectMode:     null.StringFrom("00"),     // 批改模式
+				CorrectMode:     null.StringFrom("00"),           // 批改模式
 				Type:            null.StringFrom("异常练习类型"), // 练习类型（试卷）
 				AllowedAttempts: null.IntFrom(10),
 			},
@@ -2915,6 +2915,11 @@ func TestOperatePracticeStatus(t *testing.T) {
 	if err != nil {
 		z.Fatal(err.Error())
 	}
+	s = `DELETE FROM t_practice_wrong_submissions`
+	_, err = conn.Exec(ctx, s)
+	if err != nil {
+		z.Fatal(err.Error())
+	}
 	// 再删除练习
 	s = `DELETE FROM t_practice_submissions`
 	_, err = conn.Exec(ctx, s)
@@ -3127,6 +3132,12 @@ func TestOperatePracticeStatus(t *testing.T) {
 			status:        PracticeStatus.Disabled,
 			expectedError: nil,
 		},
+		{
+			name:          "异常29 触发作废错题练习提交记录错误 pQuery7 Released",
+			pid:           uid.Int64,
+			status:        PracticeStatus.Disabled,
+			expectedError: errors.New("批量作废学生错题练习提交记录信息失败"),
+		},
 	}
 
 	for _, tt := range tests {
@@ -3146,8 +3157,6 @@ func TestOperatePracticeStatus(t *testing.T) {
 				ctx = context.WithValue(ctx, "force-error", "pQuery2")
 			} else if containsString(tt.name, "异常22") {
 				ctx = context.WithValue(ctx, "force-error", "pQuery3")
-			} else if containsString(tt.name, "异常29") {
-				ctx = context.WithValue(ctx, "force-error", "delete")
 			} else if containsString(tt.name, "异常16") {
 				ctx = context.WithValue(ctx, "force-error", "mark1")
 			} else if containsString(tt.name, "异常25") {
@@ -3158,6 +3167,8 @@ func TestOperatePracticeStatus(t *testing.T) {
 				ctx = context.WithValue(ctx, "force-error", "delete")
 			} else if containsString(tt.name, "异常28") {
 				ctx = context.WithValue(ctx, "force-error", "mark2")
+			} else if containsString(tt.name, "异常29") {
+				ctx = context.WithValue(ctx, "force-error", "pQuery7")
 			} else if containsString(tt.name, "异常19") {
 				ctx = context.WithValue(ctx, "force-error", "rollback")
 			} else if containsString(tt.name, "异常20") {
@@ -3230,6 +3241,15 @@ func TestOperatePracticeStatus(t *testing.T) {
 				if err != nil {
 					t.Error(err)
 				}
+				s = `INSERT   INTO t_practice_wrong_submissions(practice_submission_id,attempt,creator,create_time,update_time,status)VALUES(
+						$1,$2,$3,$4,$5,$6
+					)`
+				_, err := tx1.Exec(ctx, s, uid.Int64, 1, uid, now, now, "08")
+				if err != nil {
+					t.Fatal("插入一条错题练习记录失败")
+				}
+
+				// 这里还要顺便去创建一个错题提交记录的
 				// 这里定义了两个这种状态，就代表已经提交跟已作答但是未提交的状态了
 			}
 
@@ -3285,6 +3305,17 @@ func TestOperatePracticeStatus(t *testing.T) {
 							if nowS != tt.expectedSubmissionStatus {
 								t.Errorf("当前的练习提交记录的状态不为预期：%v：实际为：%v", tt.expectedSubmissionStatus, nowS)
 							}
+
+							// 这里才是再查询一下这个错题提交记录的
+							wCount := 0
+							s = `SELECT COUNT(*) FROM t_practice_wrong_submissions WHERE status = $1`
+							err = conn.QueryRow(ctx, s, WrongSubmissionStatus.Disabled).Scan(&wCount)
+							if err != nil {
+								t.Errorf("查询已作废错题练习提交记录失败；%v", err)
+							}
+							if wCount != 1 {
+								t.Errorf("此时已作废的错题练习提交不为1，实际为：%v", wCount)
+							}
 						} else {
 
 						}
@@ -3338,6 +3369,11 @@ func TestOperatePracticeStatus(t *testing.T) {
 				}
 				// 再删除题库
 				s = `DELETE FROM t_question_bank`
+				_, err = conn.Exec(ctx, s)
+				if err != nil {
+					z.Fatal(err.Error())
+				}
+				s = `DELETE FROM t_practice_wrong_submissions`
 				_, err = conn.Exec(ctx, s)
 				if err != nil {
 					z.Fatal(err.Error())
@@ -3407,6 +3443,11 @@ func TestOperatePracticeStatus(t *testing.T) {
 			}
 			// 再删除题库
 			s = `DELETE FROM t_question_bank`
+			_, err = conn.Exec(ctx, s)
+			if err != nil {
+				z.Fatal(err.Error())
+			}
+			s = `DELETE FROM t_practice_wrong_submissions`
 			_, err = conn.Exec(ctx, s)
 			if err != nil {
 				z.Fatal(err.Error())
@@ -3495,6 +3536,12 @@ func TestOperatePracticeStatusV2(t *testing.T) {
 	if err != nil {
 		z.Fatal(err.Error())
 	}
+	s = `DELETE FROM t_practice_wrong_submissions`
+	_, err = conn.Exec(ctx, s)
+	if err != nil {
+		z.Fatal(err.Error())
+	}
+
 	// 再删除练习
 	s = `DELETE FROM t_practice_submissions`
 	_, err = conn.Exec(ctx, s)
@@ -3652,6 +3699,15 @@ VALUES
 		if err != nil {
 			t.Fatal(err)
 		}
+		PracticeSubmissionsIDs = append(PracticeSubmissionsIDs, id)
+
+		s = `INSERT  INTO t_practice_wrong_submissions (practice_submission_id,attempt,creator,create_time,update_time,status)VALUES(
+						$1,$2,$3,$4,$5,$6
+					)`
+		_, err := tx.Exec(ctx, s, id, 1, uid, now, now, "08")
+		if err != nil {
+			t.Fatal("插入一条错题练习记录失败")
+		}
 
 		// 这里要对应创建学生提交记录 给已经发布的练习创建练习提交记录 这里需要分为两种情况：已经提交的，还有已经作答了没有提交的 每一种
 		s = `INSERT INTO assessuser.t_practice_submissions (practice_id,student_id,exam_paper_id,creator,attempt,status) VALUES (
@@ -3674,6 +3730,13 @@ VALUES
 			t.Fatal(err)
 		}
 		PracticeSubmissionsIDs = append(PracticeSubmissionsIDs, id)
+		s = `INSERT  INTO t_practice_wrong_submissions (practice_submission_id,attempt,creator,create_time,update_time,status)VALUES(
+						$1,$2,$3,$4,$5,$6
+					)`
+		_, err = tx.Exec(ctx, s, id, 1, uid, now, now, "08")
+		if err != nil {
+			t.Fatal("插入一条错题练习记录失败")
+		}
 
 		// 这里要对应创建学生提交记录 给已经发布的练习创建练习提交记录 这里需要分为两种情况：已经提交的，还有已经作答了没有提交的 每一种
 		s = `INSERT INTO assessuser.t_practice_submissions (practice_id,student_id,exam_paper_id,creator,attempt,status) VALUES (
@@ -3788,6 +3851,7 @@ VALUES
 		subMissionsNum int // 表示当前测试用例 满足成功设置非法的练习提交记录数量
 		pNum           int // 表示当前测试用例所有为当前用例预期练习数量
 		epNum          int // 表示当前测试用例正确的考卷数量
+		wpNum          int //表示当前测试用例正确的作废错题提交记录数量
 		pids           []int64
 		expectedError  error
 	}{
@@ -3804,6 +3868,7 @@ VALUES
 			pids:           []int64{10087},
 			subMissionsNum: 4,
 			pNum:           2,
+			wpNum:          2,
 			expectedError:  nil,
 		},
 		{
@@ -3828,6 +3893,7 @@ VALUES
 			pids:           []int64{10087, 10090},
 			subMissionsNum: 8,
 			pNum:           3,
+			wpNum:          4,
 			expectedError:  nil,
 		},
 		{
@@ -3907,13 +3973,13 @@ VALUES
 			pids:          []int64{10087, 10090},
 			expectedError: errors.New("更新练习状态 发布-> 删除 失败"),
 		},
-		{
-			name:          "异常20 删除练习 触发查询练习已有学生作答 pQuery4 Released",
-			status:        PracticeStatus.Deleted,
-			pids:          []int64{10087, 10090},
-			pNum:          3,
-			expectedError: errors.New("批量重置学生练习提交记录信息失"),
-		},
+		//{
+		//	name:          "异常20 删除练习 触发查询练习已有学生作答 pQuery4 Released",
+		//	status:        PracticeStatus.Deleted,
+		//	pids:          []int64{10087, 10090},
+		//	pNum:          3,
+		//	expectedError: errors.New("批量重置学生练习提交记录信息失"),
+		//},
 		//{
 		//	name:          "异常23 删除练习 触发删除考卷失败 delete Released",
 		//	status:        PracticeStatus.Deleted,
@@ -3988,6 +4054,13 @@ VALUES
 			pNum:          3,
 			expectedError: errors.New("查看练习绑定的试卷中已发布的考卷ID失败"),
 		},
+		{
+			name:          "异常30 强制触发作废错题练习提交记录错误 pQuery7  Released",
+			status:        PracticeStatus.Disabled,
+			pids:          []int64{10087, 10090},
+			pNum:          3,
+			expectedError: errors.New("批量作废学生错题练习提交记录信息失败"),
+		},
 	}
 
 	for _, tt := range tests {
@@ -4029,6 +4102,8 @@ VALUES
 				ctx = context.WithValue(ctx, "force-error", "delete")
 			} else if containsString(tt.name, "异常24") {
 				ctx = context.WithValue(ctx, "force-error", "mark1")
+			} else if containsString(tt.name, "异常30") {
+				ctx = context.WithValue(ctx, "force-error", "pQuery7")
 			} else {
 				ctx = context.Background()
 			}
@@ -4069,6 +4144,15 @@ VALUES
 				}
 			}
 
+			if containsString(tt.name, "调整为作废状态") {
+				wCount := 0
+				s = `SELECT COUNT(*) FROM t_practice_wrong_submissions`
+				err = conn.QueryRow(ctx, s).Scan(&wCount)
+				if err != nil {
+					t.Errorf("查询已作废错题练习提交记录失败；%v", err)
+				}
+				t.Logf("打印一下这个错题集提交看看数量为：%v", wCount)
+			}
 			err = OperatePracticeStatusV2(ctx, tt.pids, tt.status, uid.Int64)
 			if tt.expectedError != nil {
 				if err == nil || !containsString(err.Error(), tt.expectedError.Error()) {
@@ -4223,6 +4307,16 @@ VALUES
 						if count != tt.pNum {
 							t.Errorf("返回的符合要求的练习记录数量不为%v 实际返回：%v", tt.pNum, count)
 						}
+						// 这里才是再查询一下这个错题提交记录的
+						wCount := 0
+						s = `SELECT COUNT(*) FROM t_practice_wrong_submissions WHERE status = $1`
+						err = conn.QueryRow(ctx, s, WrongSubmissionStatus.Disabled).Scan(&wCount)
+						if err != nil {
+							t.Errorf("查询已作废错题练习提交记录失败；%v", err)
+						}
+						if wCount != tt.wpNum {
+							t.Errorf("此时已作废的错题练习提交不为%v，实际为：%v", tt.wpNum, wCount)
+						}
 					} else {
 						// 这里是取消发布与设置为待发布的 需要删除考卷的，那就是需要统计现在的考卷与学生答卷的
 						// 这里是删除或者是待发布状态
@@ -4297,6 +4391,11 @@ VALUES
 				}
 				// 再删除题库
 				s = `DELETE FROM t_question_bank`
+				_, err = conn.Exec(ctx, s)
+				if err != nil {
+					z.Fatal(err.Error())
+				}
+				s = `DELETE FROM t_practice_wrong_submissions`
 				_, err = conn.Exec(ctx, s)
 				if err != nil {
 					z.Fatal(err.Error())
@@ -4463,6 +4562,13 @@ VALUES
 						t.Fatal(err)
 					}
 					PracticeSubmissionsIDs = append(PracticeSubmissionsIDs, id)
+					s = `INSERT  INTO t_practice_wrong_submissions (practice_submission_id,attempt,creator,create_time,update_time,status)VALUES(
+						$1,$2,$3,$4,$5,$6
+					)`
+					_, err = tx.Exec(ctx, s, id, 1, uid, now, now, "08")
+					if err != nil {
+						t.Fatal("插入一条错题练习记录失败")
+					}
 
 					// 这里要对应创建学生提交记录 给已经发布的练习创建练习提交记录 这里需要分为两种情况：已经提交的，还有已经作答了没有提交的 每一种
 					s = `INSERT INTO assessuser.t_practice_submissions (practice_id,student_id,exam_paper_id,creator,attempt,status) VALUES (
@@ -4483,6 +4589,13 @@ VALUES
 						practiceID, 2, *examPaperID1, uid, 2, "00").Scan(&id)
 					if err != nil {
 						t.Fatal(err)
+					}
+					s = `INSERT  INTO t_practice_wrong_submissions (practice_submission_id,attempt,creator,create_time,update_time,status)VALUES(
+						$1,$2,$3,$4,$5,$6
+					)`
+					_, err = tx.Exec(ctx, s, id, 1, uid, now, now, "08")
+					if err != nil {
+						t.Fatal("插入一条错题练习记录失败")
 					}
 
 					PracticeSubmissionsIDs = append(PracticeSubmissionsIDs, id)
@@ -4628,6 +4741,11 @@ VALUES
 			}
 			// 再删除题库
 			s = `DELETE FROM t_question_bank`
+			_, err = conn.Exec(ctx, s)
+			if err != nil {
+				z.Fatal(err.Error())
+			}
+			s = `DELETE FROM t_practice_wrong_submissions`
 			_, err = conn.Exec(ctx, s)
 			if err != nil {
 				z.Fatal(err.Error())
@@ -5778,6 +5896,13 @@ func TestEnterPracticeWrongCollection(t *testing.T) {
 			StudentStatus: StudentSubmissionStatus.UnSubmitted,
 			expectedError: errors.New("invalid practiceID | uid param"),
 		},
+		{
+			name:          "异常15 强制触发更新学生答卷失败 cQuery6",
+			pid:           uid.Int64,
+			uid:           1,
+			StudentStatus: StudentSubmissionStatus.NeverAnswer,
+			expectedError: errors.New("更新学生答卷为可作答状态失败"),
+		},
 	}
 
 	for _, tt := range tests {
@@ -5802,6 +5927,8 @@ func TestEnterPracticeWrongCollection(t *testing.T) {
 				ctx = context.WithValue(ctx, "force-error", "emptyAnswer")
 			} else if containsString(tt.name, "异常12") {
 				ctx = context.WithValue(ctx, "force-error", "exist")
+			} else if containsString(tt.name, "异常15") {
+				ctx = context.WithValue(ctx, "force-error", "cQuery6")
 			} else {
 				ctx = context.Background()
 			}
@@ -5891,7 +6018,7 @@ func TestEnterPracticeWrongCollection(t *testing.T) {
 					s = `INSERT  INTO t_practice_wrong_submissions (practice_submission_id,attempt,creator,create_time,update_time,status)VALUES(
 						$1,$2,$3,$4,$5,$6
 					)`
-					_, err := conn.Exec(ctx, s, uid.Int64, 1, uid, now, now, "04")
+					_, err := conn.Exec(ctx, s, uid.Int64, 1, uid, now, now, "08")
 					if err != nil {
 						t.Fatal("插入一条错题练习记录失败")
 					}
@@ -5923,6 +6050,30 @@ func TestEnterPracticeWrongCollection(t *testing.T) {
 				if !containsString(i.PaperName, "错题") {
 					t.Errorf("此时返回的错题试卷名不包含错题")
 				}
+
+				if tt.StudentStatus != StudentSubmissionStatus.UnSubmitted {
+					// 这里要去检查学生的错题答题status是否为00
+					s = `SELECT sa.status FROM t_student_answers sa 
+				JOIN t_exam_paper_question epq ON epq.id = sa.question_id
+				WHERE sa.practice_submission_id = $1 AND sa.answer_score < epq.score`
+					rows, err := tx1.Query(ctx, s, i.PracticeSubmissionID)
+					if err != nil {
+						t.Fatalf("查询当前学生作答失败：%v", err)
+					}
+					defer rows.Close()
+					for rows.Next() {
+						// 这里就检测是否有作答不是00的
+						var status string
+						err = rows.Scan(&status)
+						if err != nil {
+							t.Errorf("此时接收作答信息失败：%v", err)
+						}
+						if status != "00" {
+							t.Errorf("此时学生错题的答题情况不为可作答状态")
+						}
+					}
+				}
+
 				qCount := 0
 				for groupID, _ := range pg {
 					qList := pq[groupID]

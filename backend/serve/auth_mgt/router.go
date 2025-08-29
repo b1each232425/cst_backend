@@ -1,10 +1,9 @@
 package auth_mgt
 
-//annotation:template-service
-//author:{"name":"tom sawyer","tel":"13580452503", "email":"KManager@GMail.com"}
+//annotation:auth-mgt-service
+//author:{"name":"王皓","tel":"15819888226", "email":"xavier.wang.work@icloud.com"}
 
 import (
-	"context"
 	"encoding/json"
 
 	"go.uber.org/zap"
@@ -34,11 +33,21 @@ func Enroll(author string) {
 		developer = &d
 	}
 
-	_ = cmn.AddService(&cmn.ServeEndPoint{
-		Fn: template,
+	handler := NewHandler()
 
-		Path: "/template",
-		Name: "template",
+	_ = cmn.AddService(&cmn.ServeEndPoint{
+		Fn: handler.HandleQuerySelectableAPIs,
+
+		Path: "/auth/selectable-apis",
+		Name: "查询可选API",
+
+		ApiEntries: []*cmn.EndPointApiEntries{
+			{
+				Name:         "权限管理.查询可选API",
+				AccessAction: CAPIAccessActionRead,
+				Configurable: false,
+			},
+		},
 
 		Developer: developer,
 		WhiteList: true,
@@ -49,12 +58,33 @@ func Enroll(author string) {
 		//DefaultDomain 该API将默认授权给的用户
 		DefaultDomain: int64(cmn.CDomainSys),
 	})
-}
 
-// just a trial
-func template(ctx context.Context) {
-	q := cmn.GetCtxValue(ctx)
-	z.Info("---->" + cmn.FncName())
-	q.Msg.Msg = cmn.FncName()
-	q.Resp()
+	_ = cmn.AddService(&cmn.ServeEndPoint{
+		Fn: handler.HandleDomain,
+
+		Path: "/auth/domain",
+		Name: "域管理",
+
+		ApiEntries: []*cmn.EndPointApiEntries{
+			{
+				Name:         "权限管理.创建域",
+				AccessAction: CAPIAccessActionCreate,
+				Configurable: false,
+			},
+			{
+				Name:         "权限管理.查询域",
+				AccessAction: CAPIAccessActionRead,
+				Configurable: false,
+			},
+		},
+
+		Developer: developer,
+		WhiteList: true,
+
+		//DomainID 创建该API的账号归属的domain
+		DomainID: int64(cmn.CDomainSys),
+
+		//DefaultDomain 该API将默认授权给的用户
+		DefaultDomain: int64(cmn.CDomainSys),
+	})
 }
