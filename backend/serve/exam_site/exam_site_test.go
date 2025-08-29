@@ -23,11 +23,21 @@ import (
 
 	"w2w.io/cmn"
 	"w2w.io/null"
+	"w2w.io/serve/auth_mgt"
 )
 
 var (
 	store          = sessions.NewCookieStore([]byte("secret-key"))
-	testDomainApis = []string{}
+	testDomainApis = []struct{
+		ApiPath string
+		AccessAction string
+	}{}
+	permissions    = []string{
+		auth_mgt.CAPIAccessActionCreate,
+		auth_mgt.CAPIAccessActionRead,
+		auth_mgt.CAPIAccessActionUpdate,
+		auth_mgt.CAPIAccessActionDelete,
+	}
 )
 
 func TestMain(m *testing.M) {
@@ -67,7 +77,7 @@ func TestMain(m *testing.M) {
 	m.Run()
 }
 
-func addTestDomainApi(apiPath string, domain int64) (err error) {
+func addTestDomainApi(apiPath string, accessAction string, domain int64) (err error) {
 
 	dbConn := cmn.GetDbConn()
 
@@ -87,14 +97,11 @@ func addTestDomainApi(apiPath string, domain int64) (err error) {
 
 	}()
 
-	var apiID int64
-	err = tx.QueryRow(`SELECT id FROM t_api WHERE expose_path = $1`, apiPath).Scan(&apiID)
-	if err != nil {
-		return
-	}
+	s := `INSERT INTO t_domain_api (api, domain, data_access_mode)
+	SELECT id, $2, $3 FROM t_api WHERE expose_path = $1 AND access_action = $4
+	ON CONFLICT (api, domain) DO NOTHING`
 
-	s := `INSERT INTO t_domain_api (api, domain, data_access_mode) VALUES ($1, $2, $3)`
-	r, err := tx.Exec(s, apiID, domain, "full")
+	r, err := tx.Exec(s, apiPath, domain, "full", accessAction)
 	if err != nil {
 		return
 	}
@@ -109,7 +116,10 @@ func addTestDomainApi(apiPath string, domain int64) (err error) {
 	}
 
 	// record for cleanup
-	testDomainApis = append(testDomainApis, apiPath)
+	testDomainApis = append(testDomainApis, struct{
+		ApiPath      string
+		AccessAction string
+	}{ApiPath: apiPath, AccessAction: accessAction})
 
 	return
 }
@@ -124,9 +134,10 @@ func removeTestDomainApis(domain int64) (err error) {
 		USING t_api
 		WHERE t_api.id = t_domain_api.api
 		  AND t_domain_api.domain = $1
-		  AND t_api.expose_path = $2`
+		  AND t_api.expose_path = $2
+		  AND t_api.access_action = $3`
 
-		_, err := dbConn.Exec(s, domain, v)
+		_, err := dbConn.Exec(s, domain, v.ApiPath, v.AccessAction)
 		if err != nil {
 			return err
 		}
@@ -287,7 +298,7 @@ SELECT 1;
 			testID,
 
 			// ins_exam_session: (id, exam_id, paper_id, start_time, end_time)
-			testID, testID, testID, (nowTime+3*60*1000)*1000, (nowTime+13*60*1000)*1000,
+			testID, testID, testID, (nowTime+3*60)*1000, (nowTime+13*60)*1000,
 
 			// ins_exam_paper (id, exam_session_id)
 			testID, testID,
@@ -607,12 +618,14 @@ func TestExamSite(t *testing.T) {
 
 	testUserID := nowTime
 
-	defaultSetup := func() {
+	defaultSetup := func() (err error) {
 
-		err := addTestDomainApi("/api/exam-site", int64(cmn.CDomainAssessExamSiteAdmin))
-		if err != nil {
-			t.Errorf("failed to add domain api: %v", err)
-			return
+		for _, p := range permissions {
+			err = addTestDomainApi("/api/exam-site", p, int64(cmn.CDomainAssessExamSiteAdmin))
+			if err != nil {
+				t.Errorf("failed to add domain api: %v", err)
+				return
+			}
 		}
 
 		err = addTestUser(testUserID, int64(cmn.CDomainAssessExamSiteAdmin))
@@ -620,6 +633,8 @@ func TestExamSite(t *testing.T) {
 			t.Errorf("failed to add test user: %v", err)
 			return
 		}
+
+		return
 	}
 
 	defaultCheck := func(q *cmn.ServiceCtx, passExpected bool) {
@@ -674,7 +689,7 @@ func TestExamSite(t *testing.T) {
 		q            *cmn.ServiceCtx
 		passExpected bool
 		errWanted    string
-		setup        func()
+		setup        func() error
 		cleanup      func()
 		check        func(q *cmn.ServiceCtx, passExpected bool)
 	}{
@@ -1291,7 +1306,10 @@ func TestExamSite(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 
 			if tt.setup != nil {
-				tt.setup()
+				err := tt.setup()
+				if err != nil {
+					return
+				}
 			}
 
 			defer func() {
@@ -1341,10 +1359,12 @@ func TestExamSiteList(t *testing.T) {
 
 	defaultSetup := func() (err error) {
 
-		err = addTestDomainApi("/api/exam-site/list", int64(cmn.CDomainAssessExamSiteAdmin))
-		if err != nil {
-			t.Errorf("failed to add domain api: %v", err)
-			return
+		for _, p := range permissions {
+			err = addTestDomainApi("/api/exam-site/list", p, int64(cmn.CDomainAssessExamSiteAdmin))
+			if err != nil {
+				t.Errorf("failed to add domain api: %v", err)
+				return
+			}
 		}
 
 		err = addTestUser(testUserID, int64(cmn.CDomainAssessExamSiteAdmin))
@@ -2292,12 +2312,14 @@ func TestExamRoom(t *testing.T) {
 
 	testUserID := nowTime
 
-	defaultSetup := func() {
+	defaultSetup := func() (err error) {
 
-		err := addTestDomainApi("/api/exam-room", int64(cmn.CDomainAssessExamSiteAdmin))
-		if err != nil {
-			t.Errorf("failed to add domain api: %v", err)
-			return
+		for _, p := range permissions {
+			err = addTestDomainApi("/api/exam-room", p, int64(cmn.CDomainAssessExamSiteAdmin))
+			if err != nil {
+				t.Errorf("failed to add domain api: %v", err)
+				return
+			}
 		}
 
 		err = addTestUser(testUserID, int64(cmn.CDomainAssessExamSiteAdmin))
@@ -2308,9 +2330,11 @@ func TestExamRoom(t *testing.T) {
 
 		_, err = dbConn.Exec(fmt.Sprintf(`INSERT INTO t_exam_site (id, creator) VALUES (%d, %d)`, nowTime, testUserID))
 		if err != nil {
-			t.Fatalf("failed create exam sit: %v", err)
+			t.Errorf("failed create exam sit: %v", err)
 			return
 		}
+
+		return
 	}
 
 	// defaultCheck := func() {
@@ -2364,7 +2388,7 @@ func TestExamRoom(t *testing.T) {
 		q            *cmn.ServiceCtx
 		passExpected bool
 		errWanted    string
-		setup        func()
+		setup        func() error
 		cleanup      func()
 		check        func(q *cmn.ServiceCtx, passExpected bool) (err error)
 	}{
@@ -3032,7 +3056,10 @@ func TestExamRoom(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 
 			if tt.setup != nil {
-				tt.setup()
+				err := tt.setup()
+				if err != nil {
+					return
+				}
 			}
 
 			defer func() {
@@ -3082,12 +3109,14 @@ func TestExamRoomList(t *testing.T) {
 
 	testUserID := nowTime
 
-	defaultSetup := func() {
+	defaultSetup := func() (err error) {
 
-		err := addTestDomainApi("/api/exam-room/list", int64(cmn.CDomainAssessExamSiteAdmin))
-		if err != nil {
-			t.Errorf("failed to add domain api: %v", err)
-			return
+		for _, p := range permissions {
+			err = addTestDomainApi("/api/exam-room/list", p, int64(cmn.CDomainAssessExamSiteAdmin))
+			if err != nil {
+				t.Errorf("failed to add domain api: %v", err)
+				return
+			}
 		}
 
 		err = addTestUser(testUserID, int64(cmn.CDomainAssessExamSiteAdmin))
@@ -3108,6 +3137,7 @@ func TestExamRoomList(t *testing.T) {
 			return
 		}
 
+		return
 	}
 
 	// defaultCheck := func() {
@@ -3161,7 +3191,7 @@ func TestExamRoomList(t *testing.T) {
 		q            *cmn.ServiceCtx
 		passExpected bool
 		errWanted    string
-		setup        func()
+		setup        func() error
 		cleanup      func()
 		check        func(q *cmn.ServiceCtx, passExpected bool) (err error)
 	}{
@@ -4220,7 +4250,10 @@ func TestExamRoomList(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 
 			if tt.setup != nil {
-				tt.setup()
+				err := tt.setup()
+				if err != nil {
+					return
+				}
 			}
 
 			defer func() {
@@ -4273,27 +4306,29 @@ func TestExamSiteSyncInit(t *testing.T) {
 
 	testUserID := nowTime / 1000
 
-	defaultSetup := func() {
+	defaultSetup := func() (err error) {
 
 		viper.Set("examSiteServerSync.maxRetry", 0)
 
-		_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
+		_, err = cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
 		if err != nil {
-			t.Fatalf("failed to set sync status: %v", err)
+			t.Errorf("failed to set sync status: %v", err)
 			return
 		}
 
 		err = addTestUser(testUserID, int64(cmn.CDomainAssessExamSite))
 		if err != nil {
-			t.Fatalf("failed to add test user: %v", err)
+			t.Errorf("failed to add test user: %v", err)
 			return
 		}
 
 		cleanupTestData, err = mockExamSiteSyncData(testUserID, nowTime)
 		if err != nil {
-			t.Fatalf("failed to mock data: %v", err)
+			t.Errorf("failed to mock data: %v", err)
 			return
 		}
+
+		return
 
 	}
 
@@ -4445,7 +4480,7 @@ func TestExamSiteSyncInit(t *testing.T) {
 		q            *cmn.ServiceCtx
 		passExpected bool
 		errWanted    string
-		setup        func()
+		setup        func() error
 		check        func(q *cmn.ServiceCtx) (err error)
 		cleanup      func()
 	}{
@@ -4460,9 +4495,15 @@ func TestExamSiteSyncInit(t *testing.T) {
 			},
 			passExpected: true,
 			errWanted:    "",
-			setup: func() {
-				defaultSetup()
+			setup: func() (err error) {
+				err = defaultSetup()
+				if err != nil {
+					return
+				}
+
 				viper.Set("examSiteServerSync.centralServerUrl", "")
+
+				return
 			},
 			check: defaultCheck,
 			cleanup: func() {
@@ -4735,15 +4776,17 @@ func TestExamSiteSyncInit(t *testing.T) {
 			},
 			passExpected: true,
 			errWanted:    "",
-			setup: func() {
+			setup: func() (err error) {
 
 				viper.Set("examSiteServerSync.maxRetry", 0)
 
-				_, err := cmn.GetRedisConn().Set(context.Background(), SyncStatusKey, PULLING, 0).Result()
+				_, err = cmn.GetRedisConn().Set(context.Background(), SyncStatusKey, PULLING, 0).Result()
 				if err != nil {
 					t.Fatalf("failed to set sync status: %v", err)
 					return
 				}
+
+				return
 
 			},
 			check: func(q *cmn.ServiceCtx) (err error) {
@@ -4771,15 +4814,17 @@ func TestExamSiteSyncInit(t *testing.T) {
 			},
 			passExpected: false,
 			errWanted:    "当前数据尚未推送, 请先进行推送",
-			setup: func() {
+			setup: func() (err error) {
 
 				viper.Set("examSiteServerSync.maxRetry", 0)
 
-				_, err := cmn.GetRedisConn().Set(context.Background(), SyncStatusKey, PULLED, 0).Result()
+				_, err = cmn.GetRedisConn().Set(context.Background(), SyncStatusKey, PULLED, 0).Result()
 				if err != nil {
 					t.Fatalf("failed to set sync status: %v", err)
 					return
 				}
+
+				return
 
 			},
 			check: func(q *cmn.ServiceCtx) (err error) {
@@ -4807,15 +4852,17 @@ func TestExamSiteSyncInit(t *testing.T) {
 			},
 			passExpected: true,
 			errWanted:    "",
-			setup: func() {
+			setup: func() (err error) {
 
 				viper.Set("examSiteServerSync.maxRetry", 0)
 
-				_, err := cmn.GetRedisConn().Set(context.Background(), SyncStatusKey, PUSHING, 0).Result()
+				_, err = cmn.GetRedisConn().Set(context.Background(), SyncStatusKey, PUSHING, 0).Result()
 				if err != nil {
 					t.Fatalf("failed to set sync status: %v", err)
 					return
 				}
+
+				return
 
 			},
 			check: func(q *cmn.ServiceCtx) (err error) {
@@ -4845,16 +4892,17 @@ func TestExamSiteSyncInit(t *testing.T) {
 			},
 			passExpected: false,
 			errWanted:    "forced set pushed status err",
-			setup: func() {
+			setup: func() (err error) {
 
 				viper.Set("examSiteServerSync.maxRetry", 0)
 
-				_, err := cmn.GetRedisConn().Set(context.Background(), SyncStatusKey, PULLING, 0).Result()
+				_, err = cmn.GetRedisConn().Set(context.Background(), SyncStatusKey, PULLING, 0).Result()
 				if err != nil {
 					t.Fatalf("failed to set sync status: %v", err)
 					return
 				}
 
+				return
 			},
 			check:   defaultCheck,
 			cleanup: defaultCleanup,
@@ -4870,15 +4918,17 @@ func TestExamSiteSyncInit(t *testing.T) {
 			},
 			passExpected: false,
 			errWanted:    "forced set pulled status err",
-			setup: func() {
+			setup: func() (err error) {
 
 				viper.Set("examSiteServerSync.maxRetry", 0)
 
-				_, err := cmn.GetRedisConn().Set(context.Background(), SyncStatusKey, PUSHING, 0).Result()
+				_, err = cmn.GetRedisConn().Set(context.Background(), SyncStatusKey, PUSHING, 0).Result()
 				if err != nil {
 					t.Fatalf("failed to set sync status: %v", err)
 					return
 				}
+
+				return
 
 			},
 			check:   defaultCheck,
@@ -5993,7 +6043,10 @@ func TestExamSiteSyncInit(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 
 			if tt.setup != nil {
-				tt.setup()
+				err := tt.setup()
+				if err != nil {
+					return
+				}
 			}
 
 			defer func() {

@@ -149,8 +149,16 @@ func Enroll(author string) {
 		Path: "/exam-site",
 		Name: "exam-site",
 
+		ApiEntries: []*cmn.EndPointApiEntries{
+			{
+				Name:         "考点管理.创建考点",
+				AccessAction: auth_mgt.CAPIAccessActionCreate,
+				Configurable: true,
+			},
+		},
+
 		Developer: developer,
-		WhiteList: false,
+		WhiteList: true,
 
 		//DomainID 创建该API的账号归属的domain
 		DomainID: int64(cmn.CDomainAssessExamSite),
@@ -165,8 +173,16 @@ func Enroll(author string) {
 		Path: "/exam-site/list",
 		Name: "exam-site-list",
 
+		ApiEntries: []*cmn.EndPointApiEntries{
+			{
+				Name:         "考点管理.获取考点列表",
+				AccessAction: auth_mgt.CAPIAccessActionRead,
+				Configurable: true,
+			},
+		},
+
 		Developer: developer,
-		WhiteList: false,
+		WhiteList: true,
 
 		//DomainID 创建该API的账号归属的domain
 		DomainID: int64(cmn.CDomainAssessExamSite),
@@ -181,8 +197,16 @@ func Enroll(author string) {
 		Path: "/exam-room",
 		Name: "exam-room",
 
+		ApiEntries: []*cmn.EndPointApiEntries{
+			{
+				Name:         "考点管理.创建考场",
+				AccessAction: auth_mgt.CAPIAccessActionCreate,
+				Configurable: true,
+			},
+		},
+
 		Developer: developer,
-		WhiteList: false,
+		WhiteList: true,
 
 		//DomainID 创建该API的账号归属的domain
 		DomainID: int64(cmn.CDomainAssessExamSite),
@@ -197,8 +221,16 @@ func Enroll(author string) {
 		Path: "/exam-room/list",
 		Name: "exam-room-list",
 
+		ApiEntries: []*cmn.EndPointApiEntries{
+			{
+				Name:         "考点管理.获取考场列表",
+				AccessAction: auth_mgt.CAPIAccessActionRead,
+				Configurable: true,
+			},
+		},
+
 		Developer: developer,
-		WhiteList: false,
+		WhiteList: true,
 
 		//DomainID 创建该API的账号归属的domain
 		DomainID: int64(cmn.CDomainAssessExamSite),
@@ -213,8 +245,21 @@ func Enroll(author string) {
 		Path: "/exam-site/sync",
 		Name: "exam-site-sync",
 
+		ApiEntries: []*cmn.EndPointApiEntries{
+			{
+				Name:         "考点管理.同步拉取",
+				AccessAction: auth_mgt.CAPIAccessActionRead,
+				Configurable: false,
+			},
+			{
+				Name:         "考点管理.同步推送",
+				AccessAction: auth_mgt.CAPIAccessActionUpdate,
+				Configurable: false,
+			},
+		},
+
 		Developer: developer,
-		WhiteList: false,
+		WhiteList: true,
 
 		DomainID: int64(cmn.CDomainAssessExamSite),
 
@@ -983,41 +1028,51 @@ func SendPushMsg() {
 }
 
 // getApiPermissions 获取当前用户在使用指定接口时是否可读/可写
-func getApiPermissions(ctx context.Context, apiPath string) (readable, writable, editable bool) {
+func getApiPermissions(ctx context.Context, apiPath string) (readable, creatable, editable, deletable bool) {
 
-	// q := cmn.GetCtxValue(ctx)
+	q := cmn.GetCtxValue(ctx)
 
-	// readable, q.Err = auth_mgt.CheckUserAPIAccessible(ctx, nil, apiPath, auth_mgt.CDataAccessModeRead)
-	// if q.Err != nil || (cmn.InDebugMode && q.Tag["checkUserApiReadableErr"] != nil) {
+	readable, q.Err = auth_mgt.CheckUserAPIAccessible(ctx, nil, apiPath, auth_mgt.CAPIAccessActionRead)
+	if q.Err != nil || (cmn.InDebugMode && q.Tag["checkUserApiReadableErr"] != nil) {
 
-	// 	if q.Err == nil {
-	// 		q.Err = q.Tag["checkUserApiReadableErr"].(error)
-	// 	}
+		if q.Err == nil {
+			q.Err = q.Tag["checkUserApiReadableErr"].(error)
+		}
 
-	// 	return
-	// }
+		return
+	}
 
-	// writable, q.Err = auth_mgt.CheckUserAPIAccessible(ctx, nil, apiPath, auth_mgt.CDataAccessModeWrite)
-	// if q.Err != nil || (cmn.InDebugMode && q.Tag["checkUserApiWritableErr"] != nil) {
+	creatable, q.Err = auth_mgt.CheckUserAPIAccessible(ctx, nil, apiPath, auth_mgt.CAPIAccessActionCreate)
+	if q.Err != nil || (cmn.InDebugMode && q.Tag["checkUserApiCreatableErr"] != nil) {
 
-	// 	if q.Err == nil {
-	// 		q.Err = q.Tag["checkUserApiWritableErr"].(error)
-	// 	}
+		if q.Err == nil {
+			q.Err = q.Tag["checkUserApiCreatableErr"].(error)
+		}
 
-	// 	return
-	// }
+		return
+	}
 
-	// editable, q.Err = auth_mgt.CheckUserAPIAccessible(ctx, nil, apiPath, auth_mgt.CDataAccessModeEdit)
-	// if q.Err != nil || (cmn.InDebugMode && q.Tag["checkUserApiEditableErr"] != nil) {
+	editable, q.Err = auth_mgt.CheckUserAPIAccessible(ctx, nil, apiPath, auth_mgt.CAPIAccessActionUpdate)
+	if q.Err != nil || (cmn.InDebugMode && q.Tag["checkUserApiEditableErr"] != nil) {
 
-	// 	if q.Err == nil {
-	// 		q.Err = q.Tag["checkUserApiEditableErr"].(error)
-	// 	}
+		if q.Err == nil {
+			q.Err = q.Tag["checkUserApiEditableErr"].(error)
+		}
 
-	// 	return
-	// }
+		return
+	}
 
-	return true, true, true
+	deletable, q.Err = auth_mgt.CheckUserAPIAccessible(ctx, nil, apiPath, auth_mgt.CAPIAccessActionDelete)
+	if q.Err != nil || (cmn.InDebugMode && q.Tag["checkUserApiDeletableErr"] != nil) {
+
+		if q.Err == nil {
+			q.Err = q.Tag["checkUserApiDeletableErr"].(error)
+		}
+
+		return
+	}
+
+	return
 }
 
 /* 考点基础业务 */
@@ -1041,7 +1096,7 @@ func examSite(ctx context.Context) {
 
 	userID := q.SysUser.ID.Int64
 
-	readable, writable, editable := getApiPermissions(ctx, q.Ep.Path)
+	readable, creatable, editable, deletable := getApiPermissions(ctx, q.Ep.Path)
 
 	dbConn := cmn.GetDbConn()
 
@@ -1123,7 +1178,7 @@ func examSite(ctx context.Context) {
 
 	case "POST":
 
-		if !writable {
+		if !creatable {
 			q.Err = fmt.Errorf("当前用户没有权限创建该数据")
 			z.Error(q.Err.Error())
 			break
@@ -1247,7 +1302,7 @@ func examSite(ctx context.Context) {
 
 	case "DELETE":
 
-		if !writable {
+		if !deletable {
 			q.Err = fmt.Errorf("当前用户没有权限删除该数据")
 			z.Error(q.Err.Error())
 			break
@@ -1285,7 +1340,7 @@ func examSiteList(ctx context.Context) {
 		return
 	}
 
-	readable, _, _ := getApiPermissions(ctx, q.Ep.Path)
+	readable, _, _, _ := getApiPermissions(ctx, q.Ep.Path)
 
 	dbConn := cmn.GetDbConn()
 
@@ -1538,7 +1593,7 @@ func examRoom(ctx context.Context) {
 		return
 	}
 
-	readable, writable, editable := getApiPermissions(ctx, q.Ep.Path)
+	readable, creatable, editable, deletable := getApiPermissions(ctx, q.Ep.Path)
 
 	dbConn := cmn.GetDbConn()
 
@@ -1620,7 +1675,7 @@ func examRoom(ctx context.Context) {
 
 	case "POST":
 
-		if !writable {
+		if !creatable {
 			q.Err = fmt.Errorf("当前用户没有权限创建该数据")
 			z.Error(q.Err.Error())
 			break
@@ -1743,7 +1798,7 @@ func examRoom(ctx context.Context) {
 
 	case "DELETE":
 
-		if !writable {
+		if !deletable {
 			q.Err = fmt.Errorf("当前用户没有权限删除该数据")
 			z.Error(q.Err.Error())
 			break
@@ -1781,7 +1836,7 @@ func examRoomList(ctx context.Context) {
 		return
 	}
 
-	readable, _, _ := getApiPermissions(ctx, q.Ep.Path)
+	readable, _, _, _ := getApiPermissions(ctx, q.Ep.Path)
 
 	dbConn := cmn.GetDbConn()
 
