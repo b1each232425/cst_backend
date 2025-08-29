@@ -3771,7 +3771,7 @@ func TestExamPutMethod(t *testing.T) {
 				data.ExamInfo.ID = null.IntFrom(testExamToPublishID)
 				return data
 			},
-			forceError:    "tx.SoftDeleteExaminee",
+			forceError:    "tx.DeleteExaminee",
 			expectedError: true,
 			errorContains: "强制删除考生错误",
 			checkResult:   false,
@@ -3807,21 +3807,6 @@ func TestExamPutMethod(t *testing.T) {
 			checkResult:   false,
 		},
 		// 已发布考试的特殊错误测试
-		{
-			name:        "已发布考试-强制删除考卷错误",
-			description: "更新已发布考试时删除考卷失败",
-			userID:      testAcademicAffair,
-			userRole:    2002,
-			requestBodyGen: func() interface{} {
-				data := validExamData
-				data.ExamInfo.ID = null.IntFrom(testPublishedExamID)
-				return data
-			},
-			forceError:    "examPaper.DeleteExamPaperById",
-			expectedError: true,
-			errorContains: "强制删除考卷和答卷错误",
-			checkResult:   false,
-		},
 		{
 			name:        "强制查询考卷ID错误",
 			description: "强制查询考卷ID错误",
@@ -6197,17 +6182,6 @@ func TestExamStatus(t *testing.T) {
 			errorContains: "尝试发布不属于未发布状态的考试",
 		},
 		{
-			name:          "作废考试时删除考卷失败",
-			description:   "作废考试时删除考卷失败",
-			examID:        testPublishedExamID,
-			userID:        testAcademicAffair,
-			userRole:      2002,
-			queryParams:   fmt.Sprintf(`q={"data":{"IDs":[%d],"Status":"16"}}`, testPublishedExamID),
-			expectSuccess: false,
-			forceError:    "examPaper.DeleteExamPaperById",
-			errorContains: "强制删除考卷和答卷错误",
-		},
-		{
 			name:          "作废考试时更新考生状态失败",
 			description:   "作废考试时更新考生状态失败",
 			examID:        testPublishedExamID,
@@ -7401,6 +7375,7 @@ func TestExamDeleteMethod(t *testing.T) {
 	if z == nil {
 		cmn.ConfigureForTest()
 	}
+	go exam_service.ExamMaintainService()
 
 	// 准备测试数据
 	CleanTestExamData(t)
@@ -7583,7 +7558,7 @@ func TestExamDeleteMethod(t *testing.T) {
 			userID:        testAcademicAffair,
 			userRole:      2002,
 			requestBody:   []int64{testNormalExamID},
-			forceError:    "tx.SoftDeleteExaminee",
+			forceError:    "tx.DeleteExaminee",
 			expectedError: true,
 			errorContains: "强制删除考生错误",
 		},
@@ -7596,16 +7571,6 @@ func TestExamDeleteMethod(t *testing.T) {
 			forceError:    "tx.SoftDeleteExamSessions",
 			expectedError: true,
 			errorContains: "强制删除考试场次错误",
-		},
-		{
-			name:          "强制删除考卷错误",
-			description:   "模拟删除考卷失败",
-			userID:        testAcademicAffair,
-			userRole:      2002,
-			requestBody:   []int64{testNormalExamID},
-			forceError:    "examPaper.DeleteExamPaperById",
-			expectedError: true,
-			errorContains: "强制删除考卷和答卷错误",
 		},
 		{
 			name:          "强制删除考试定时器错误",
@@ -7650,11 +7615,11 @@ func TestExamDeleteMethod(t *testing.T) {
 				assert.Nil(t, err)
 				assert.Equal(t, "14", sessionStatus)
 
-				// 检查考生状态已更新为08（删除状态）
-				var examineeStatus string
-				err = conn.QueryRow(ctx, "SELECT status FROM t_examinee WHERE exam_session_id=$1", testExamSessionID1).Scan(&examineeStatus)
+				// 检查考生已删除
+				var count int64
+				err = conn.QueryRow(ctx, "SELECT COUNT(*) FROM t_examinee WHERE exam_session_id=$1", testExamSessionID1).Scan(&count)
 				assert.Nil(t, err)
-				assert.Equal(t, "08", examineeStatus)
+				assert.Equal(t, int64(0), count)
 			},
 		},
 		{
