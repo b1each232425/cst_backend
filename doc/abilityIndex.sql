@@ -1,6 +1,6 @@
 /*==============================================================*/
 /* DBMS name:      PostgreSQL 9.x                               */
-/* Created on:     2025/8/28 16:07:22                           */
+/* Created on:     2025/8/29 15:24:37                           */
 /*==============================================================*/
 
 
@@ -9393,8 +9393,11 @@ ALTER SEQUENCE t_sys_ver_id_seq RESTART WITH 20000;
 
 insert into t_sys_ver(id,name,ver,create_time,update_time,remark)
   values(1000,'业务模型','3.2.2.0',
-  '2016年12月5日 9:52:53','2025年8月28日 16:07:18',
-  '3.2.2.0
+  '2016年12月5日 9:52:53','2025年8月29日 15:24:34',
+  '3.2.2.1
+给学生作答表添加对考生表的外键依赖（级联删除），修改v_examinee_info中join考卷的条件
+
+3.2.2.0
 给考场记录表 t_exam_record 增加上传附件列表字段 files
 
 3.2.1.0
@@ -11412,11 +11415,10 @@ create or replace view v_examinee_info as
     COALESCE(next_sessions.start_time - (exam_sessions.end_time + examinees.extra_time), (24 * 60 * 60 * 1000)::bigint) AS extendable_time,
     exam_sessions.start_time,
     exam_sessions.end_time,
-    CASE 
-        WHEN exam_sessions.period_mode = '02' AND examinees.start_time IS NOT NULL 
-            THEN examinees.start_time + (exam_sessions.duration * 60 * 1000)
-        ELSE COALESCE(exam_sessions.end_time + examinees.extra_time, exam_sessions.end_time)
-    END AS actual_end_time,
+        CASE
+            WHEN exam_sessions.period_mode::text = '02'::text AND examinees.start_time IS NOT NULL THEN examinees.start_time + exam_sessions.duration * 60 * 1000
+            ELSE COALESCE(exam_sessions.end_time + examinees.extra_time, exam_sessions.end_time)
+        END AS actual_end_time,
     examinees.status AS examinee_status,
     examinees.remark,
     exam_sessions.period_mode,
@@ -11429,7 +11431,7 @@ create or replace view v_examinee_info as
    FROM t_examinee examinees
      JOIN t_exam_session exam_sessions ON exam_sessions.id = examinees.exam_session_id
      JOIN t_exam_info exam_infos ON exam_infos.id = exam_sessions.exam_id
-     JOIN t_exam_paper exam_papers ON exam_papers.exam_session_id = exam_sessions.id
+     JOIN t_exam_paper exam_papers ON exam_papers.id = examinees.exam_paper_id
      LEFT JOIN t_exam_room exam_rooms ON exam_rooms.id = examinees.exam_room
      JOIN t_user users ON users.id = examinees.student_id
      LEFT JOIN LATERAL ( SELECT exam_sessions_1.start_time
@@ -14536,6 +14538,11 @@ alter table t_question
 alter table t_student_answers
    add constraint FK_exam_answer_question foreign key (question_id)
       references t_exam_paper_question (id)
+      on delete cascade;
+
+alter table t_student_answers
+   add constraint FK_T_STUDEN_REFERENCE_T_EXAMIN foreign key (examinee_id)
+      references t_examinee (id)
       on delete cascade;
 
 alter table t_user_domain
