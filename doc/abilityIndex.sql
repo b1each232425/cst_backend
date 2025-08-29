@@ -1,6 +1,6 @@
 /*==============================================================*/
 /* DBMS name:      PostgreSQL 9.x                               */
-/* Created on:     2025/8/29 15:24:37                           */
+/* Created on:     2025/8/29 20:40:38                           */
 /*==============================================================*/
 
 
@@ -1978,6 +1978,7 @@ create table if not exists  t_exam_plan_student (
    fail_reason          VARCHAR              null,
    exam_type            VARCHAR              null,
    register_time        INT8                 null default (extract(epoch from current_timestamp)*1000)::bigint,
+   reviewer             INT8                 null,
    addi                 JSONB                null,
    creator              INT8                 not null,
    updated_by           INT8                 null,
@@ -2010,6 +2011,9 @@ comment on column t_exam_plan_student.exam_type is
 
 comment on column t_exam_plan_student.register_time is
 '报名时间，和创建时间不同';
+
+comment on column t_exam_plan_student.reviewer is
+'审核人，每个学生对应一个审核人';
 
 comment on column t_exam_plan_student.addi is
 '额外';
@@ -8011,7 +8015,7 @@ comment on column t_register_plan.review_end_time is
 '审核截止时间';
 
 comment on column t_register_plan.max_number is
-'报名的最大人数 00:不限人数';
+'报名的最大人数 0:不限人数';
 
 comment on column t_register_plan.start_time is
 '报名开始时间';
@@ -9392,9 +9396,11 @@ comment on column t_sys_ver.status is
 ALTER SEQUENCE t_sys_ver_id_seq RESTART WITH 20000;
 
 insert into t_sys_ver(id,name,ver,create_time,update_time,remark)
-  values(1000,'业务模型','3.2.2.0',
-  '2016年12月5日 9:52:53','2025年8月29日 15:24:34',
-  '3.2.2.1
+  values(1000,'业务模型','3.2.3.0',
+  '2016年12月5日 9:52:53','2025年8月29日 20:40:34',
+  '3.2.3.0
+给报名计划学生表增添一个审核人reviewer字段
+3.2.2.1
 给学生作答表添加对考生表的外键依赖（级联删除），修改v_examinee_info中join考卷的条件
 
 3.2.2.0
