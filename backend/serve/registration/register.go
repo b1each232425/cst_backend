@@ -7,11 +7,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"go.uber.org/zap"
 	"io"
 	"strconv"
 	"strings"
-
-	"go.uber.org/zap"
 	"w2w.io/cmn"
 )
 
@@ -208,7 +207,7 @@ func register(ctx context.Context) {
 						return
 					}
 
-					var rs registerStudent
+					var rs registerStudentOnce
 					q.Err = json.Unmarshal(qry.Data, &rs)
 					if forceErr == "readPJson" {
 						q.Err = fmt.Errorf("读取前端数据practice字段结构体失败")
@@ -224,13 +223,18 @@ func register(ctx context.Context) {
 						q.RespErr()
 						return
 					}
-					if len(rs.Student) == 0 {
-						q.Err = fmt.Errorf("传入的报名学生ID为空")
+					if rs.Status == "" {
+						q.Err = fmt.Errorf("无效的报名计划状态")
 						z.Error(q.Err.Error())
 						q.RespErr()
 						return
 					}
-					err := StudentRegister(ctx, rs.RegisterID, rs.Student, userID)
+					var student registerStudentType
+					var students []registerStudentType
+					student.StudentID = userID
+					student.ExamType = ExamType.Normal
+					students = append(students, student)
+					err := StudentRegister(ctx, rs.RegisterID, rs.Status, RegisterType.Once, students, userID)
 					if err != nil {
 						q.Err = err
 						q.RespErr()
@@ -292,7 +296,7 @@ func register(ctx context.Context) {
 					//如果有id则只查询单个报名计划
 					if idStr != "" {
 						message := q.R.URL.Query().Get("message")
-						register_type := q.R.URL.Query().Get("register_type")
+						registerType := q.R.URL.Query().Get("register_type")
 						var id int64
 						id, q.Err = strconv.ParseInt(idStr, 10, 64)
 						if forceErr == "idParseInt" {
@@ -306,7 +310,7 @@ func register(ctx context.Context) {
 						}
 						//设置排序字段
 						orderBy := []string{"create_time desc"}
-						s, total, err := GetRegisterStudentById(ctx, id, message, register_type, status, orderBy, page, pageSize, userID)
+						s, total, err := GetRegisterStudentById(ctx, id, message, registerType, status, orderBy, page, pageSize, userID)
 						if err != nil {
 							q.Err = err
 							q.RespErr()
@@ -415,7 +419,7 @@ func register(ctx context.Context) {
 						q.RespErr()
 						return
 					}
-					err := AddRegister(ctx, r.Registration, r.PracticeIds, userID)
+					err := UpsertRegister(ctx, r.Registration, r.PracticeIds, userID)
 					if err != nil {
 						q.Err = err
 						q.RespErr()
