@@ -1703,17 +1703,8 @@ func exam(ctx context.Context) {
 			return
 		}
 
-		// 如果当前考试已经发布（处于待开始状态），则需要先删除已经生成的考卷和答卷以及批改配置
+		// 如果当前考试已经发布（处于待开始状态），则需要先删除已经生成的批改配置
 		if nowStatus == "02" {
-			// 删除考卷、答卷
-			q.Err = examPaper.DeleteExamPaperById(ctx, tx, oldExamSessionIDs, nil)
-			if forceErr == "examPaper.DeleteExamPaperById" {
-				q.Err = fmt.Errorf("强制删除考卷和答卷错误")
-			}
-			if q.Err != nil {
-				q.RespErr()
-				return
-			}
 
 			// 删除批改配置
 			var handleMarkerInfoReq mark.HandleMarkerInfoReq
@@ -1800,14 +1791,12 @@ func exam(ctx context.Context) {
 			return
 		}
 
+		// 硬删除考生
 		deleteExamineeSQL := `
-		UPDATE t_examinee SET status = '08', updated_by = $1, update_time = $2
-		FROM t_exam_session es 
-		WHERE t_examinee.exam_session_id = es.id 
-		AND es.exam_id = $3 
-		AND t_examinee.status != '08'`
-		_, q.Err = tx.Exec(ctx, deleteExamineeSQL, userID, currentTime, ExamData.ExamInfo.ID.Int64)
-		if forceErr == "tx.SoftDeleteExaminee" {
+		DELETE FROM t_examinee
+		WHERE exam_session_id = ANY($1)`
+		_, q.Err = tx.Exec(ctx, deleteExamineeSQL, oldExamSessionIDs)
+		if forceErr == "tx.DeleteExaminee" {
 			q.Err = fmt.Errorf("强制删除考生错误")
 		}
 		if q.Err != nil {
@@ -2476,24 +2465,12 @@ func exam(ctx context.Context) {
 			return
 		}
 
-		// 删除考卷、答卷等相关信息
-		q.Err = examPaper.DeleteExamPaperById(ctx, tx, examSessionIDs, nil)
-		if forceErr == "examPaper.DeleteExamPaperById" {
-			q.Err = fmt.Errorf("强制删除考卷和答卷错误")
-		}
-		if q.Err != nil {
-			q.RespErr()
-			return
-		}
-
+		// 硬删除考生
 		deleteExamineeSQL := `
-		UPDATE t_examinee SET status = '08', updated_by = $1, update_time = $2
-		FROM t_exam_session es 
-		WHERE t_examinee.exam_session_id = es.id 
-		AND es.exam_id = ANY($3) 
-		AND t_examinee.status != '08'`
-		_, q.Err = tx.Exec(ctx, deleteExamineeSQL, userID, currentTime, examIDs)
-		if forceErr == "tx.SoftDeleteExaminee" {
+		DELETE FROM t_examinee
+		WHERE exam_session_id = ANY($1)`
+		_, q.Err = tx.Exec(ctx, deleteExamineeSQL, examSessionIDs)
+		if forceErr == "tx.DeleteExaminee" {
 			q.Err = fmt.Errorf("强制删除考生错误")
 		}
 		if q.Err != nil {
@@ -2502,7 +2479,7 @@ func exam(ctx context.Context) {
 			return
 		}
 
-		// 软删除之前创建的考试场次和考生
+		// 软删除之前创建的考试场次
 		deleteExamSessionsSQL := `
 		UPDATE t_exam_session SET status = '14', updated_by = $1, update_time = $2
 		WHERE exam_id = ANY($3) AND status != '14'`
@@ -3545,16 +3522,6 @@ func examStatus(ctx context.Context) {
 			q.Err = mark.HandleMarkerInfo(ctx, &tx, userID, handleMarkerInfoReq)
 			if forceErr == "mark.HandleMarkerInfo" {
 				q.Err = fmt.Errorf("强制处理批改信息错误")
-			}
-			if q.Err != nil {
-				q.RespErr()
-				return
-			}
-
-			// 删除考卷
-			q.Err = examPaper.DeleteExamPaperById(ctx, tx, examSessionIDs, nil)
-			if forceErr == "examPaper.DeleteExamPaperById" {
-				q.Err = fmt.Errorf("强制删除考卷和答卷错误")
 			}
 			if q.Err != nil {
 				q.RespErr()

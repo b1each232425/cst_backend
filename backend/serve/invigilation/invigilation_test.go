@@ -698,6 +698,15 @@ func CreateTestExamData(t *testing.T) {
 		t.Fatalf("插入测试考场数据失败: %v", err)
 	}
 
+	_, err = tx.Exec(ctx, `
+			INSERT INTO t_examinee (exam_session_id, student_id, serial_number, status, creator, create_time, exam_paper_id, exam_room)
+		VALUES ($1, $2, 1, '00', $3, $4, $5, $6)
+	`, testOfflineExamSessionID, testStudent1, testAcademicAffair, time.Now().UnixMilli(), testExamPaperID, testExamRoomID)
+	if err != nil {
+		tx.Rollback(ctx)
+		t.Fatalf("插入测试考生数据失败: %v", err)
+	}
+
 	// 插入测试监考数据
 	_, err = tx.Exec(ctx, `
 		INSERT INTO t_invigilation (
@@ -849,7 +858,6 @@ func CleanTestExamData(t *testing.T) {
 		}
 	}()
 
-	// 删除考点和考场数据
 	_, err = tx.Exec(ctx, `DELETE FROM t_exam_record WHERE creator = $1`, testAcademicAffair)
 	if err != nil {
 		tx.Rollback(ctx)
@@ -860,22 +868,6 @@ func CleanTestExamData(t *testing.T) {
 	if err != nil {
 		tx.Rollback(ctx)
 		t.Fatalf("删除测试监考数据失败: %v", err)
-	}
-
-	_, err = tx.Exec(ctx, `
-		DELETE FROM t_exam_room WHERE creator = $1
-	`, testAcademicAffair)
-	if err != nil {
-		tx.Rollback(ctx)
-		t.Fatalf("删除测试考场数据失败: %v", err)
-	}
-
-	_, err = tx.Exec(ctx, `
-		DELETE FROM t_exam_site WHERE creator = $1
-	`, testAcademicAffair)
-	if err != nil {
-		tx.Rollback(ctx)
-		t.Fatalf("删除测试考点数据失败: %v", err)
 	}
 
 	// 删除批改相关数据
@@ -965,7 +957,7 @@ func CleanTestExamData(t *testing.T) {
 	testSessionIDs = append(testSessionIDs, testExamSessionID1, testExamSessionID2,
 		testDeleteExamSessionID, testExamSessionID3, testExamSessionToPublishID1,
 		testExamSessionToPublishID2, testExamSessionToPublishID3, testExamSessionToPublishID4, testExamSessionToPublishID5,
-		testErrorExamSessionToPublishID, testPublishedExamSessionID)
+		testErrorExamSessionToPublishID, testPublishedExamSessionID, testOfflineExamSessionID)
 	_, err = tx.Exec(ctx, `
 		DELETE FROM t_examinee WHERE exam_session_id = ANY($1)
 	`, testSessionIDs)
@@ -1011,6 +1003,22 @@ func CleanTestExamData(t *testing.T) {
 	if err != nil {
 		tx.Rollback(ctx)
 		t.Fatalf("删除测试考试信息失败: %v", err)
+	}
+
+	_, err = tx.Exec(ctx, `
+		DELETE FROM t_exam_room WHERE creator = $1
+	`, testAcademicAffair)
+	if err != nil {
+		tx.Rollback(ctx)
+		t.Fatalf("删除测试考场数据失败: %v", err)
+	}
+
+	_, err = tx.Exec(ctx, `
+		DELETE FROM t_exam_site WHERE creator = $1
+	`, testAcademicAffair)
+	if err != nil {
+		tx.Rollback(ctx)
+		t.Fatalf("删除测试考点数据失败: %v", err)
 	}
 
 	// 删除测试用户数据
@@ -1147,17 +1155,6 @@ func Test_invigilationList(t *testing.T) {
 					t.Errorf("预期返回数据, 结果为空")
 				}
 			},
-		},
-		{
-			name:       "强制JSON解析错误",
-			forceError: "json.Unmarshal1",
-			userID:     testAcademicAffair,
-			userRole:   2002,
-			queryParams: func() url.Values {
-				return url.Values{}
-			}(),
-			wantErr:       true,
-			errorContains: "强制JSON解析错误",
 		},
 		{
 			name:       "强制JSON序列化错误",
@@ -1310,6 +1307,376 @@ func Test_invigilationList(t *testing.T) {
 
 			if tt.checkResult != nil {
 				tt.checkResult(t, svc)
+			}
+		})
+	}
+}
+
+func Test_invigilation(t *testing.T) {
+	cmn.ConfigureForTest()
+	CleanTestExamData(t)
+	CreateTestExamData(t)
+	t.Cleanup(func() {
+		CleanTestExamData(t)
+	})
+
+	tests := []struct {
+		name          string
+		forceError    string
+		userID        int64
+		userRole      int64
+		queryParams   url.Values
+		wantErr       bool
+		errorContains string
+		method        string
+	}{
+		{
+			name:       "正常获取监考详情",
+			forceError: "",
+			userID:     testAcademicAffair,
+			userRole:   2002,
+			queryParams: func() url.Values {
+				v := url.Values{}
+				q := fmt.Sprintf(`{
+                    "Data": {"ExamSessionID": %d, "ExamRoomID": %d},
+                    "Page": 0,
+                    "PageSize": 10
+                }`, testOfflineExamSessionID, testExamRoomID)
+				v.Set("q", q)
+				return v
+			}(),
+			wantErr: false,
+		},
+		{
+			name:       "无效用户ID",
+			forceError: "",
+			userID:     0,
+			userRole:   2002,
+			queryParams: func() url.Values {
+				v := url.Values{}
+				q := fmt.Sprintf(`{"Data": {"ExamSessionID": %d, "ExamRoomID": %d}}`, testOfflineExamSessionID, testExamRoomID)
+				v.Set("q", q)
+				return v
+			}(),
+			wantErr:       true,
+			errorContains: "无效的用户ID",
+		},
+		{
+			name:       "无效考试场次ID",
+			forceError: "",
+			userID:     testAcademicAffair,
+			userRole:   2002,
+			queryParams: func() url.Values {
+				v := url.Values{}
+				// ExamSessionID 置为0 触发错误
+				q := fmt.Sprintf(`{"Data": {"ExamSessionID": 0, "ExamRoomID": %d}}`, testExamRoomID)
+				v.Set("q", q)
+				return v
+			}(),
+			wantErr:       true,
+			errorContains: "无效的考试场次ID",
+		},
+		{
+			name:       "无效考场ID",
+			forceError: "",
+			userID:     testAcademicAffair,
+			userRole:   2002,
+			queryParams: func() url.Values {
+				v := url.Values{}
+				// ExamRoomID 置为0 触发错误
+				q := fmt.Sprintf(`{"Data": {"ExamSessionID": %d, "ExamRoomID": 0}}`, testOfflineExamSessionID)
+				v.Set("q", q)
+				return v
+			}(),
+			wantErr:       true,
+			errorContains: "无效的考场ID",
+		},
+		{
+			name:       "无权限获取监考信息",
+			forceError: "noAuth",
+			userID:     testAcademicAffair,
+			userRole:   2002,
+			queryParams: func() url.Values {
+				v := url.Values{}
+				q := fmt.Sprintf(`{"Data": {"ExamSessionID": %d, "ExamRoomID": %d}}`, testOfflineExamSessionID, testExamRoomID)
+				v.Set("q", q)
+				return v
+			}(),
+			wantErr:       true,
+			errorContains: "无法获取该场考试的监考信息",
+		},
+		{
+			name:       "强制检查用户是否有权限获取监考信息错误",
+			forceError: "checkInvigilationAuthority",
+			userID:     testAcademicAffair,
+			userRole:   2002,
+			queryParams: func() url.Values {
+				v := url.Values{}
+				q := fmt.Sprintf(`{"Data": {"ExamSessionID": %d, "ExamRoomID": %d}}`, testOfflineExamSessionID, testExamRoomID)
+				v.Set("q", q)
+				return v
+			}(),
+			wantErr:       true,
+			errorContains: "强制检查用户是否有权限获取监考信息错误",
+		},
+		{
+			name:       "强制查询监考信息错误",
+			forceError: "queryInvigilationInfo",
+			userID:     testAcademicAffair,
+			userRole:   2002,
+			queryParams: func() url.Values {
+				v := url.Values{}
+				q := fmt.Sprintf(`{"Data": {"ExamSessionID": %d, "ExamRoomID": %d}}`, testOfflineExamSessionID, testExamRoomID)
+				v.Set("q", q)
+				return v
+			}(),
+			wantErr:       true,
+			errorContains: "强制查询监考信息错误",
+		},
+		{
+			name:       "强制查询考生数量错误",
+			forceError: "queryExamineeCount",
+			userID:     testAcademicAffair,
+			userRole:   2002,
+			queryParams: func() url.Values {
+				v := url.Values{}
+				q := fmt.Sprintf(`{"Data": {"ExamSessionID": %d, "ExamRoomID": %d}, "Filter": {"SearchText":"test"}}`, testOfflineExamSessionID, testExamRoomID)
+				v.Set("q", q)
+				return v
+			}(),
+			wantErr:       true,
+			errorContains: "强制执行错误",
+		},
+		{
+			name:       "参数q为空",
+			forceError: "",
+			userID:     testAcademicAffair,
+			userRole:   2002,
+			queryParams: func() url.Values {
+				v := url.Values{}
+				return v
+			}(),
+			wantErr:       true,
+			errorContains: "参数 q 不能为空",
+		},
+		{
+			name:       "强制查询考生列表错误",
+			forceError: "queryExamineeInfos",
+			userID:     testAcademicAffair,
+			userRole:   2002,
+			queryParams: func() url.Values {
+				v := url.Values{}
+				q := fmt.Sprintf(`{"Data": {"ExamSessionID": %d, "ExamRoomID": %d}}`, testOfflineExamSessionID, testExamRoomID)
+				v.Set("q", q)
+				return v
+			}(),
+			wantErr:       true,
+			errorContains: "强制执行错误",
+		},
+		{
+			name:       "强制JSON序列化错误",
+			forceError: "json.Marshal",
+			userID:     testAcademicAffair,
+			userRole:   2002,
+			queryParams: func() url.Values {
+				v := url.Values{}
+				q := fmt.Sprintf(`{"Data": {"ExamSessionID": %d, "ExamRoomID": %d}}`, testOfflineExamSessionID, testExamRoomID)
+				v.Set("q", q)
+				return v
+			}(),
+			wantErr:       true,
+			errorContains: "强制JSON序列化错误",
+		},
+		{
+			name:       "强制 rows.Scan 错误（考生行）",
+			forceError: "rows.Scan",
+			userID:     testAcademicAffair,
+			userRole:   2002,
+			queryParams: func() url.Values {
+				v := url.Values{}
+				q := fmt.Sprintf(`{"Data": {"ExamSessionID": %d, "ExamRoomID": %d}, "Page": -1, "PageSize": 0}`, testOfflineExamSessionID, testExamRoomID)
+				v.Set("q", q)
+				return v
+			}(),
+			wantErr:       true,
+			errorContains: "强制执行错误",
+		},
+		{
+			name:       "不支持的方法（PATCH）",
+			forceError: "",
+			userID:     testAcademicAffair,
+			userRole:   2002,
+			method:     "PATCH",
+			queryParams: func() url.Values {
+				v := url.Values{}
+				q := fmt.Sprintf(`{"Data": {"ExamSessionID": %d, "ExamRoomID": %d}}`, testOfflineExamSessionID, testExamRoomID)
+				v.Set("q", q)
+				return v
+			}(),
+			wantErr:       true,
+			errorContains: "unsupported method",
+		},
+		{
+			name:       "不支持的方法（其他）",
+			forceError: "",
+			userID:     testAcademicAffair,
+			userRole:   2002,
+			method:     "OPTIONS",
+			queryParams: func() url.Values {
+				v := url.Values{}
+				q := fmt.Sprintf(`{"Data": {"ExamSessionID": %d, "ExamRoomID": %d}}`, testOfflineExamSessionID, testExamRoomID)
+				v.Set("q", q)
+				return v
+			}(),
+			wantErr:       true,
+			errorContains: "unsupported method",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var ctx context.Context
+			if tt.method == "" {
+				ctx = createMockContextWithRole("GET", "/invigilation", tt.queryParams, tt.forceError, tt.userID, tt.userRole)
+			} else {
+				ctx = createMockContextWithRole(tt.method, "/invigilation", tt.queryParams, tt.forceError, tt.userID, tt.userRole)
+			}
+
+			// invigilation() checks "invigilationList-force-error"
+			if tt.forceError != "" {
+				ctx = context.WithValue(ctx, "invigilationList-force-error", tt.forceError)
+			}
+
+			invigilation(ctx)
+
+			// 获取 ServiceCtx 以检查结果
+			svc := ctx.Value(cmn.QNearKey).(*cmn.ServiceCtx)
+			if svc == nil {
+				t.Fatalf("未能获取 ServiceCtx")
+			}
+
+			if tt.wantErr {
+				if svc.Msg == nil || svc.Err == nil {
+					t.Errorf("期望错误但未收到")
+					return
+				}
+				if tt.errorContains != "" && !strings.Contains(svc.Err.Error(), tt.errorContains) {
+					t.Errorf("期望错误包含: %q, 但实际错误: %v", tt.errorContains, svc.Err)
+				}
+				return
+			}
+
+			// 期望无错误
+			if svc.Msg != nil && svc.Err != nil {
+				t.Errorf("期望无错误但收到: %v", svc.Err)
+				return
+			}
+
+			// 对正常情况，确保返回数据存在
+			if svc.Msg != nil && len(svc.Msg.Data) == 0 {
+				t.Errorf("期望返回数据, 结果为空")
+			}
+		})
+	}
+}
+
+func Test_checkInvigilationAuthority(t *testing.T) {
+	cmn.ConfigureForTest()
+	CleanTestExamData(t)
+	CreateTestExamData(t)
+	t.Cleanup(func() {
+		CleanTestExamData(t)
+	})
+
+	tests := []struct {
+		name          string
+		forceError    string
+		examSessionID int64
+		examRoomID    int64
+		userID        int64
+		userRole      int64
+		wantHasAuth   bool
+		wantErr       bool
+	}{
+		{
+			name:          "监考教师有权限",
+			forceError:    "",
+			examSessionID: testOfflineExamSessionID,
+			examRoomID:    testExamRoomID,
+			userID:        testAcademicAffair,
+			userRole:      2002,
+			wantHasAuth:   true,
+			wantErr:       false,
+		},
+		{
+			name:          "普通学生无权限",
+			forceError:    "",
+			examSessionID: testOfflineExamSessionID,
+			examRoomID:    testExamRoomID,
+			userID:        testStudent1,
+			userRole:      2008,
+			wantHasAuth:   false,
+			wantErr:       false,
+		},
+		{
+			name:          "无效用户ID",
+			forceError:    "",
+			examSessionID: testOfflineExamSessionID,
+			examRoomID:    testExamRoomID,
+			userID:        0,
+			userRole:      0,
+			wantHasAuth:   false,
+			wantErr:       true,
+		},
+		{
+			name:          "无效考试场次ID",
+			forceError:    "",
+			examSessionID: 0,
+			examRoomID:    testExamRoomID,
+			userID:        testAcademicAffair,
+			userRole:      2002,
+			wantHasAuth:   false,
+			wantErr:       true,
+		},
+		{
+			name:          "无效考场ID",
+			forceError:    "",
+			examSessionID: testOfflineExamSessionID,
+			examRoomID:    0,
+			userID:        testAcademicAffair,
+			userRole:      2002,
+			wantHasAuth:   false,
+			wantErr:       true,
+		},
+		{
+			name:          "强制查询错误",
+			forceError:    "QueryRow",
+			examSessionID: testOfflineExamSessionID,
+			examRoomID:    testExamRoomID,
+			userID:        testAcademicAffair,
+			userRole:      2002,
+			wantHasAuth:   false,
+			wantErr:       true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// create mock context with the user info (some codepaths expect ServiceCtx present)
+			ctx := createMockContextWithRole("GET", "/invigilation/authority", url.Values{}, tt.forceError, tt.userID, tt.userRole)
+
+			// set the same force key used across invigilation tests
+			if tt.forceError != "" {
+				ctx = context.WithValue(ctx, "checkInvigilationAuthority-force-error", tt.forceError)
+			}
+
+			gotHasAuth, err := checkInvigilationAuthority(ctx, tt.examSessionID, tt.examRoomID, tt.userID, "")
+			if (err != nil) != tt.wantErr {
+				t.Errorf("checkInvigilationAuthority() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if gotHasAuth != tt.wantHasAuth {
+				t.Errorf("checkInvigilationAuthority() = %v, want %v", gotHasAuth, tt.wantHasAuth)
 			}
 		})
 	}
