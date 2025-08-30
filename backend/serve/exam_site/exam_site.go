@@ -32,21 +32,21 @@ import (
 	"go.uber.org/zap"
 
 	"w2w.io/cmn"
+	"w2w.io/exam_service"
 	"w2w.io/null"
 	"w2w.io/serve/auth_mgt"
-	"w2w.io/exam_service"
 )
 
 const (
-	IP_ADDR_REGEXP     = `^((25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])\.){3}(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])(:(\d{1,5}))?$`
-	ExamSitePrefix     = "examSite"
-	ExamSiteSyncPrefix = "examSiteSync"
-	SyncStatusKey      = "examSiteSync:SyncStatus"
-	PULLING            = "Pulling"
-	PULLED             = "Pulled"
-	PUSHING            = "Pushing"
-	PUSHED             = "Pushed"
-	QNearSessionsKey   = "qNearSessions"
+	IP_ADDR_REGEXP      = `^((25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])\.){3}(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])(:(\d{1,5}))?$`
+	ExamSitePrefix      = "examSite"
+	ExamSiteSyncPrefix  = "examSiteSync"
+	SyncStatusKey       = "examSiteSync:SyncStatus"
+	PULLING             = "Pulling"
+	PULLED              = "Pulled"
+	PUSHING             = "Pushing"
+	PUSHED              = "Pushed"
+	QNearSessionsKey    = "qNearSessions"
 )
 
 var (
@@ -1355,8 +1355,7 @@ MethodSwitch:
 			break
 		}
 
-		keys := []string{
-		}
+		keys := []string{}
 
 		values := []interface{}{
 			userID,
@@ -1370,7 +1369,7 @@ MethodSwitch:
 		l := len(values)
 
 		for i, d := range authority.AccessibleDomains {
-			dks = append(dks, fmt.Sprintf("t_exam_site.domain_id=$%d", i + l + 1))
+			dks = append(dks, fmt.Sprintf("t_exam_site.domain_id=$%d", i+l+1))
 			values = append(values, d)
 		}
 
@@ -1415,7 +1414,7 @@ MethodSwitch:
 		for _, o := range req.OrderBy {
 			for k, v := range o {
 
-				if k == "" ||  v == "" {
+				if k == "" || v == "" {
 					continue
 				}
 
@@ -1711,7 +1710,7 @@ func examRoom(ctx context.Context) {
 
 		l := len(v)
 		for i, d := range authority.AccessibleDomains {
-			ss = append(ss, fmt.Sprintf("domain_id = $%d", i + l + 1))
+			ss = append(ss, fmt.Sprintf("domain_id = $%d", i+l+1))
 			v = append(v, d)
 		}
 
@@ -1940,7 +1939,7 @@ MethodSwitch:
 
 		l := len(v)
 		for i, d := range authority.AccessibleDomains {
-			ss = append(ss, fmt.Sprintf("domain_id = $%d", i + l + 1))
+			ss = append(ss, fmt.Sprintf("domain_id = $%d", i+l+1))
 			v = append(v, d)
 		}
 
@@ -2025,7 +2024,7 @@ MethodSwitch:
 		for _, o := range req.OrderBy {
 			for k, v := range o {
 
-				if k == "" ||  v == "" {
+				if k == "" || v == "" {
 					continue
 				}
 
@@ -2305,9 +2304,6 @@ func examSiteSyncInit(ctx context.Context) {
 		}
 	}
 
-	if q.Tag == nil {
-		q.Tag = make(map[string]interface{})
-	}
 
 	switch v {
 
@@ -2356,6 +2352,20 @@ func examSiteSyncInit(ctx context.Context) {
 	pushChanOK := true
 
 	go func() {
+
+		interval := 3 * time.Minute
+		if viper.GetInt("examSiteServerSync.syncInterval") > 0 {
+			interval = time.Duration(viper.GetInt("examSiteServerSync.syncInterval")) * time.Second
+		}
+
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+
+		syncDelay := 5 * time.Minute
+		if viper.GetInt("examSiteServerSync.syncDelay") > 0 {
+			syncDelay = time.Duration(viper.GetInt("examSiteServerSync.syncDelay")) * time.Second
+		}
+
 		for {
 
 			select {
@@ -2392,6 +2402,78 @@ func examSiteSyncInit(ctx context.Context) {
 					continue
 				}
 
+			case <-ticker.C:
+
+				// 查询当前是否有尚未结束的考试
+				// 如果有，则不进行同步操作
+				// 如果没有，则进行同步
+				
+				dbConn := cmn.GetDbConn()
+
+				c := 0
+				q.Err = dbConn.QueryRow(`SELECT COUNT(id) FROM t_exam_info WHERE status = '04'`).Scan(&c)
+				if q.Err != nil || (cmn.InDebugMode && q.Tag["queryOngoingExamErr"] != nil) {
+					
+					if q.Err == nil {
+						q.Err = q.Tag["queryOngoingExamErr"].(error)
+					}
+					
+					z.Error(q.Err.Error())
+					break
+				}
+				
+				if c > 0 {
+
+					if cmn.InDebugMode && q.Tag["haveOngoingExam"] != nil {
+						q.Tag["haveOngoingExam"].(chan int) <- 1
+					}
+
+					break
+				}
+
+				redisConn := cmn.GetRedisConn()
+
+				// 获取当前同步状态
+				var syncStatus string
+				syncStatus, q.Err = redisConn.Get(ctx, SyncStatusKey).Result()
+				if q.Err != nil || (cmn.InDebugMode && q.Tag["getSyncStatusErrInTimer"] != nil) {
+
+					if q.Err == nil {
+						q.Err = q.Tag["getSyncStatusErrInTimer"].(error)
+					}
+
+					z.Error(q.Err.Error())
+					break
+				}
+
+				ticker.Stop()
+
+				switch syncStatus {
+
+				// 待推送
+				case PULLED :
+
+					z.Info(fmt.Sprintf("server will push data in %d seconds", syncDelay))
+
+					time.Sleep(syncDelay)
+
+					Push(ctx, maxRetry)
+
+					if cmn.InDebugMode && q.Tag["pushDone"] != nil {
+						q.Tag["pushDone"].(chan int) <- 1
+					}
+
+				// 待拉取
+				case PUSHED :
+					Pull(ctx, maxRetry)
+
+					if cmn.InDebugMode && q.Tag["pullDone"] != nil {
+						q.Tag["pullDone"].(chan int) <- 1
+					}
+
+				}
+
+				ticker.Reset(interval)
 			}
 
 			if !pullChanOK && !pushChanOK {
@@ -2410,11 +2492,6 @@ func examSiteSyncInit(ctx context.Context) {
 
 		}
 	}()
-
-	// TODO: 开启一个定时任务
-	// go func() {
-		
-	// }()
 
 }
 
