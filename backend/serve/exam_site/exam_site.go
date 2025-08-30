@@ -1387,8 +1387,8 @@ MethodSwitch:
 			break
 		}
 
-		if req.Page < 0 {
-			q.Err = fmt.Errorf("页码不能小于0")
+		if req.Page < 1 {
+			q.Err = fmt.Errorf("页码不能小于1")
 			z.Error(q.Err.Error())
 			break
 		}
@@ -1493,7 +1493,7 @@ MethodSwitch:
 		}
 
 		s = fmt.Sprintf(`%s
-		LIMIT %d OFFSET %d`, s, req.PageSize, req.Page*req.PageSize)
+		LIMIT %d OFFSET %d`, s, req.PageSize, (req.Page-1)*req.PageSize)
 
 		stmt, q.Err = dbConn.Prepare(s)
 		if q.Err != nil || (cmn.InDebugMode && q.Tag["prepareErr2"] != nil) {
@@ -1997,8 +1997,8 @@ MethodSwitch:
 			examSiteID,
 		}
 
-		if req.Page < 0 {
-			q.Err = fmt.Errorf("页码不能小于0")
+		if req.Page < 1 {
+			q.Err = fmt.Errorf("页码不能小于1")
 			z.Error(q.Err.Error())
 			break
 		}
@@ -2089,7 +2089,7 @@ MethodSwitch:
 		}
 
 		sqlStr = fmt.Sprintf(`%s
-		LIMIT %d OFFSET %d`, sqlStr, req.PageSize, req.Page*req.PageSize)
+		LIMIT %d OFFSET %d`, sqlStr, req.PageSize, (req.Page-1)*req.PageSize)
 
 		stmt1, q.Err = dbConn.Prepare(sqlStr)
 		if q.Err != nil || (cmn.InDebugMode && q.Tag["prepareErr2"] != nil) {
