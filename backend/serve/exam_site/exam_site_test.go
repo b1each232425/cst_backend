@@ -28,11 +28,11 @@ import (
 
 var (
 	store          = sessions.NewCookieStore([]byte("secret-key"))
-	testDomainApis = []struct{
-		ApiPath string
+	testDomainApis = []struct {
+		ApiPath      string
 		AccessAction string
 	}{}
-	permissions    = []string{
+	permissions = []string{
 		auth_mgt.CAPIAccessActionCreate,
 		auth_mgt.CAPIAccessActionRead,
 		auth_mgt.CAPIAccessActionUpdate,
@@ -73,6 +73,13 @@ func TestMain(m *testing.M) {
 	sshHost = viper.GetString("examSiteServerSync.centralServerSSH.host")
 
 	sshPort = viper.GetInt("examSiteServerSync.centralServerSSH.port")
+
+	o, err := exec.Command("bash", "-c", "service ssh restart").CombinedOutput()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to restart SSH service: %v\n", err)
+		return
+	}
+	fmt.Printf("SSH service restarted successfully: %s\n", o)
 
 	m.Run()
 }
@@ -116,7 +123,7 @@ func addTestDomainApi(apiPath string, accessAction string, domain int64) (err er
 	}
 
 	// record for cleanup
-	testDomainApis = append(testDomainApis, struct{
+	testDomainApis = append(testDomainApis, struct {
 		ApiPath      string
 		AccessAction string
 	}{ApiPath: apiPath, AccessAction: accessAction})
@@ -442,8 +449,8 @@ func addTestUser(userID int64, domain int64) (err error) {
 
 	sql = `WITH domain AS (
 		INSERT INTO t_domain (id, name, domain, priority, creator) VALUES
-		($2, '考试系统.考点测试', 'assess^testUsetr', 7, 1000)
-		ON CONFLICT(id) DO NOTHING
+		($2, '考试系统.考点测试', 'assess^testUser', 7, 1000)
+		ON CONFLICT DO NOTHING
 	)
 	INSERT INTO t_user_domain (sys_user, domain) VALUES ($1, $2) ON CONFLICT(sys_user, domain) DO NOTHING`
 	_, err = tx.Exec(sql, userID, domain)
@@ -1308,6 +1315,7 @@ func TestExamSite(t *testing.T) {
 			if tt.setup != nil {
 				err := tt.setup()
 				if err != nil {
+					t.Errorf("failed to setup test: %v", err)
 					return
 				}
 			}
@@ -2210,6 +2218,7 @@ func TestExamSiteList(t *testing.T) {
 			if tt.setup != nil {
 				err := tt.setup()
 				if err != nil {
+					t.Errorf("failed to setup test: %v", err)
 					return
 				}
 			}
@@ -2426,8 +2435,8 @@ func TestExamRoom(t *testing.T) {
 			},
 			passExpected: false,
 			errWanted:    "不支持的HTTP方法: Unknown255",
-			cleanup: func() {
-			},
+			setup:        defaultSetup,
+			cleanup:      defaultCleanup,
 		},
 		{
 			name: "强制开启事务失败",
@@ -2465,8 +2474,8 @@ func TestExamRoom(t *testing.T) {
 			},
 			passExpected: false,
 			errWanted:    "force begin tx err",
-			cleanup: func() {
-			},
+			setup:        defaultSetup,
+			cleanup:      defaultCleanup,
 		},
 		{
 			name: "强制提交事务失败",
@@ -2543,8 +2552,8 @@ func TestExamRoom(t *testing.T) {
 			},
 			passExpected: false,
 			errWanted:    "force unmarshal req body err",
-			cleanup: func() {
-			},
+			setup:        defaultSetup,
+			cleanup:      defaultCleanup,
 		},
 		{
 			name: "强制解析请求体失败并触发回滚事务失败",
@@ -2583,8 +2592,8 @@ func TestExamRoom(t *testing.T) {
 			},
 			passExpected: false,
 			errWanted:    "force rollback tx err",
-			cleanup: func() {
-			},
+			setup:        defaultSetup,
+			cleanup:      defaultCleanup,
 		},
 
 		// 添加考场测试
@@ -3051,6 +3060,13 @@ func TestExamRoom(t *testing.T) {
 		},
 	}
 
+	// ooooooooo.   ooooo     ooo ooooo      ooo
+	// `888   `Y88. `888'     `8' `888b.     `8'
+	//  888   .d88'  888       8   8 `88b.    8
+	//  888ooo88P'   888       8   8   `88b.  8
+	//  888`88b.     888       8   8     `88b.8
+	//  888  `88b.   `88.    .8'   8       `888
+	// o888o  o888o    `YbodP'    o8o        `8
 	for _, tt := range tests {
 
 		t.Run(tt.name, func(t *testing.T) {
@@ -3058,6 +3074,7 @@ func TestExamRoom(t *testing.T) {
 			if tt.setup != nil {
 				err := tt.setup()
 				if err != nil {
+					t.Errorf("failed to setup test: %v", err)
 					return
 				}
 			}
@@ -4310,6 +4327,10 @@ func TestExamSiteSyncInit(t *testing.T) {
 
 		viper.Set("examSiteServerSync.maxRetry", 0)
 
+		viper.Set("examSiteServerSync.syncInterval", 3*60)
+
+		viper.Set("examSiteServerSync.syncDelay", 5*60)
+
 		_, err = cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
 		if err != nil {
 			t.Errorf("failed to set sync status: %v", err)
@@ -4484,6 +4505,223 @@ func TestExamSiteSyncInit(t *testing.T) {
 		check        func(q *cmn.ServiceCtx) (err error)
 		cleanup      func()
 	}{
+
+		//     .    o8o
+		//   .o8    `"'
+		// .o888oo oooo  ooo. .oo.  .oo.    .ooooo.  oooo d8b
+		//   888   `888  `888P"Y88bP"Y88b  d88' `88b `888""8P
+		//   888    888   888   888   888  888ooo888  888
+		//   888 .  888   888   888   888  888    .o  888
+		//   "888" o888o o888o o888o o888o `Y8bod8P' d888b
+		//
+		//
+		//
+		{
+			name: "定时同步成功-执行推送成功",
+			q: &cmn.ServiceCtx{
+				RedisClient: cmn.GetRedisConn(),
+				Tag: map[string]interface{}{
+					"endMsgListen": make(chan int),
+					"pushDone":     make(chan int),
+				},
+				Msg: &cmn.ReplyProto{},
+			},
+			passExpected: true,
+			errWanted:    "",
+			setup: func() (err error) {
+				err = defaultSetup()
+				if err != nil {
+					return
+				}
+
+				viper.Set("examSiteServerSync.syncInterval", 1)
+
+				viper.Set("examSiteServerSync.syncDelay", 1)
+
+				return
+			},
+			check: func(q *cmn.ServiceCtx) (err error) {
+
+				_, err = dbConn.Exec(`UPDATE t_exam_info SET status = '06'`)
+				if err != nil {
+					t.Error(err.Error())
+					return
+				}
+
+				<-q.Tag["pushDone"].(chan int)
+
+				return
+			},
+			cleanup: defaultCleanup,
+		},
+		{
+			name: "定时同步成功-执行拉取成功",
+			q: &cmn.ServiceCtx{
+				RedisClient: cmn.GetRedisConn(),
+				Tag: map[string]interface{}{
+					"endMsgListen": make(chan int),
+					"pullDone":     make(chan int),
+				},
+				Msg: &cmn.ReplyProto{},
+			},
+			passExpected: true,
+			errWanted:    "",
+			setup: func() (err error) {
+				err = defaultSetup()
+				if err != nil {
+					return
+				}
+
+				viper.Set("examSiteServerSync.syncInterval", 1)
+
+				viper.Set("examSiteServerSync.syncDelay", 1)
+
+				return
+			},
+			check: func(q *cmn.ServiceCtx) (err error) {
+
+				_, err = cmn.GetRedisConn().Set(context.Background(), SyncStatusKey, PUSHED, 0).Result()
+				if err != nil {
+					return
+				}
+
+				_, err = dbConn.Exec(`UPDATE t_exam_info SET status = '06'`)
+				if err != nil {
+					t.Error(err.Error())
+					return
+				}
+
+				<-q.Tag["pullDone"].(chan int)
+
+				return
+			},
+			cleanup: defaultCleanup,
+		},
+		{
+			name: "定时同步-当前仍有考试未结束",
+			q: &cmn.ServiceCtx{
+				RedisClient: cmn.GetRedisConn(),
+				Tag: map[string]interface{}{
+					"endMsgListen":    make(chan int),
+					"haveOngoingExam": make(chan int),
+				},
+				Msg: &cmn.ReplyProto{},
+			},
+			passExpected: true,
+			errWanted:    "",
+			setup: func() (err error) {
+				err = defaultSetup()
+				if err != nil {
+					return
+				}
+
+				viper.Set("examSiteServerSync.syncInterval", 1)
+
+				viper.Set("examSiteServerSync.syncDelay", 1)
+
+				return
+			},
+			check: func(q *cmn.ServiceCtx) (err error) {
+
+				_, err = dbConn.Exec(`UPDATE t_exam_info SET status = '04'`)
+				if err != nil {
+					t.Error(err.Error())
+					return
+				}
+
+				<-q.Tag["haveOngoingExam"].(chan int)
+
+				return
+			},
+			cleanup: defaultCleanup,
+		},
+		{
+			name: "定时同步失败-强制获取尚未结束的考试失败",
+			q: &cmn.ServiceCtx{
+				RedisClient: cmn.GetRedisConn(),
+				Tag: map[string]interface{}{
+					"endMsgListen":        make(chan int),
+					"queryOngoingExamErr": fmt.Errorf("forced query ongoing exam err"),
+				},
+				Msg: &cmn.ReplyProto{},
+			},
+			passExpected: false,
+			errWanted:    "forced query ongoing exam err",
+			setup: func() (err error) {
+				err = defaultSetup()
+				if err != nil {
+					return
+				}
+
+				viper.Set("examSiteServerSync.syncInterval", 1)
+
+				viper.Set("examSiteServerSync.syncDelay", 1)
+
+				return
+			},
+			check: func(q *cmn.ServiceCtx) (err error) {
+
+				_, err = dbConn.Exec(`UPDATE t_exam_info SET status = '04'`)
+				if err != nil {
+					t.Error(err.Error())
+					return
+				}
+
+				<-q.Tag["endMsgListen"].(chan int)
+
+				return
+			},
+			cleanup: defaultCleanup,
+		},
+		{
+			name: "定时同步失败-强制获取当前同步状态失败",
+			q: &cmn.ServiceCtx{
+				RedisClient: cmn.GetRedisConn(),
+				Tag: map[string]interface{}{
+					"endMsgListen":            make(chan int),
+					"getSyncStatusErrInTimer": fmt.Errorf("forced get sync status err"),
+				},
+				Msg: &cmn.ReplyProto{},
+			},
+			passExpected: false,
+			errWanted:    "forced get sync status err",
+			setup: func() (err error) {
+				err = defaultSetup()
+				if err != nil {
+					return
+				}
+
+				viper.Set("examSiteServerSync.syncInterval", 1)
+
+				viper.Set("examSiteServerSync.syncDelay", 1)
+
+				return
+			},
+			check: func(q *cmn.ServiceCtx) (err error) {
+
+				_, err = dbConn.Exec(`UPDATE t_exam_info SET status = '06'`)
+				if err != nil {
+					t.Error(err.Error())
+					return
+				}
+
+				<-q.Tag["endMsgListen"].(chan int)
+
+				return
+			},
+			cleanup: defaultCleanup,
+		},
+
+		// ooooo              o8o      .
+		// `888'              `"'    .o8
+		//  888  ooo. .oo.   oooo  .o888oo
+		//  888  `888P"Y88b  `888    888
+		//  888   888   888   888    888
+		//  888   888   888   888    888 .
+		// o888o o888o o888o o888o   "888"
+		//
+		//
+		//
 		{
 			name: "同步初始化成功-中心服务器",
 			q: &cmn.ServiceCtx{
@@ -4966,6 +5204,17 @@ func TestExamSiteSyncInit(t *testing.T) {
 			},
 			cleanup: defaultCleanup,
 		},
+
+		// ooooooooo.               oooo  oooo
+		// `888   `Y88.             `888  `888
+		//  888   .d88' oooo  oooo   888   888
+		//  888ooo88P'  `888  `888   888   888
+		//  888          888   888   888   888
+		//  888          888   888   888   888
+		// o888o         `V88V"V8P' o888o o888o
+		//
+		//
+		//
 		{
 			name: "Pull拉取数据同步失败-当前处于 PULLING 状态",
 			q: &cmn.ServiceCtx{
@@ -5545,6 +5794,17 @@ func TestExamSiteSyncInit(t *testing.T) {
 			},
 			cleanup: defaultCleanup,
 		},
+
+		// ooooooooo.                        oooo
+		// `888   `Y88.                      `888
+		//  888   .d88' oooo  oooo   .oooo.o  888 .oo.
+		//  888ooo88P'  `888  `888  d88(  "8  888P"Y88b
+		//  888          888   888  `"Y88b.   888   888
+		//  888          888   888  o.  )88b  888   888
+		// o888o         `V88V"V8P' 8""888P' o888o o888o
+		//
+		//
+		//
 		{
 			name: "Push推送数据同步失败-强制获取同步状态失败",
 			q: &cmn.ServiceCtx{
@@ -6038,6 +6298,13 @@ func TestExamSiteSyncInit(t *testing.T) {
 		},
 	}
 
+	// ooooooooo.   ooooo     ooo ooooo      ooo
+	// `888   `Y88. `888'     `8' `888b.     `8'
+	//  888   .d88'  888       8   8 `88b.    8
+	//  888ooo88P'   888       8   8   `88b.  8
+	//  888`88b.     888       8   8     `88b.8
+	//  888  `88b.   `88.    .8'   8       `888
+	// o888o  o888o    `YbodP'    o8o        `8
 	for _, tt := range tests {
 
 		t.Run(tt.name, func(t *testing.T) {
@@ -6096,12 +6363,58 @@ func TestExamSiteSyncApi(t *testing.T) {
 
 	nowTime := time.Now().Unix()
 
+	dbConn := cmn.GetDbConn()
+
+	defaultSetup := func() (err error) {
+
+		_, err = dbConn.Exec(fmt.Sprintf(`INSERT INTO t_exam_site (id, name,creator,server_host,address,admin,sys_user) VALUES 
+			(%d,'test-site-%d', 1622, 'localhost','address','1622','2025')`, nowTime, nowTime))
+		if err != nil {
+			t.Fatalf("failed to insert test data: %v", err)
+			return
+		}
+
+		return
+	}
+
+	// defaultCheck := func(q *cmn.ServiceCtx) (err error) {
+
+	// 	return
+	// }
+
+	defaultCleanup := func() {
+
+		r, err := dbConn.Exec(fmt.Sprintf(`DELETE FROM t_exam_site WHERE name = 'test-site-%d'`, nowTime))
+		if err != nil {
+			t.Fatalf("failed to delete test data: %v", err)
+			return
+		}
+
+		c, err := r.RowsAffected()
+		if err != nil {
+			t.Fatalf("failed to get affected rows: %v", err)
+			return
+		}
+
+		t.Logf("Have already cleaned up %d rows from t_exam_site", c)
+
+		folderFullPath := path.Join(os.Getenv("PWD"), "/data/tmp/")
+
+		o, err := exec.Command("rm", "-rvf", folderFullPath).CombinedOutput()
+		if err != nil {
+			t.Fatalf("failed to remove folder: %v, output: %s", err, string(o))
+			return
+		}
+
+		t.Logf("Successfully cleaned up folder: %s output: %x", folderFullPath, o)
+	}
+
 	tests := []struct {
 		name         string
 		q            *cmn.ServiceCtx
 		passExpected bool
 		errWanted    string
-		setup        func()
+		setup        func() error
 		check        func(q *cmn.ServiceCtx) (err error)
 		cleanup      func()
 	}{
@@ -6129,7 +6442,8 @@ func TestExamSiteSyncApi(t *testing.T) {
 			},
 			passExpected: false,
 			errWanted:    "不支持的HTTP方法: Unknown255",
-			setup: func() {
+			setup: func() (err error) {
+				return
 			},
 			cleanup: func() {
 			},
@@ -6160,47 +6474,8 @@ func TestExamSiteSyncApi(t *testing.T) {
 			},
 			passExpected: false,
 			errWanted:    "forced read body err",
-			setup: func() {
-
-				dbConn := cmn.GetDbConn()
-
-				_, err := dbConn.Exec(fmt.Sprintf(`INSERT INTO t_exam_site (id, name,creator,server_host,address,admin,sys_user) VALUES 
-					(%d,'test-site-%d', 1622, 'localhost','address','1622','2025')`, nowTime, nowTime))
-				if err != nil {
-					t.Fatalf("failed to insert test data: %v", err)
-					return
-				}
-
-			},
-			cleanup: func() {
-
-				dbConn := cmn.GetDbConn()
-
-				r, err := dbConn.Exec(fmt.Sprintf(`DELETE FROM t_exam_site WHERE name = 'test-site-%d'`, nowTime))
-				if err != nil {
-					t.Fatalf("failed to delete test data: %v", err)
-					return
-				}
-
-				c, err := r.RowsAffected()
-				if err != nil {
-					t.Fatalf("failed to get affected rows: %v", err)
-					return
-				}
-
-				t.Logf("Have already cleaned up %d rows from t_exam_site", c)
-
-				folderFullPath := path.Join(os.Getenv("PWD"), "/data/tmp/")
-
-				o, err := exec.Command("rm", "-rvf", folderFullPath).CombinedOutput()
-				if err != nil {
-					t.Fatalf("failed to remove folder: %v, output: %s", err, string(o))
-					return
-				}
-
-				t.Logf("Successfully cleaned up folder: %s output: %x", folderFullPath, o)
-
-			},
+			setup:        defaultSetup,
+			cleanup:      defaultCleanup,
 		},
 
 		// ===========准备考点数据测试============
@@ -6234,47 +6509,8 @@ func TestExamSiteSyncApi(t *testing.T) {
 			},
 			passExpected: true,
 			errWanted:    "",
-			setup: func() {
-
-				dbConn := cmn.GetDbConn()
-
-				_, err := dbConn.Exec(fmt.Sprintf(`INSERT INTO t_exam_site (id, name,creator,server_host,address,admin,sys_user) VALUES 
-					(%d,'test-site-%d', 1622, 'localhost','address','1622','2025')`, nowTime, nowTime))
-				if err != nil {
-					t.Fatalf("failed to insert test data: %v", err)
-					return
-				}
-
-			},
-			cleanup: func() {
-
-				dbConn := cmn.GetDbConn()
-
-				r, err := dbConn.Exec(fmt.Sprintf(`DELETE FROM t_exam_site WHERE name = 'test-site-%d'`, nowTime))
-				if err != nil {
-					t.Fatalf("failed to delete test data: %v", err)
-					return
-				}
-
-				c, err := r.RowsAffected()
-				if err != nil {
-					t.Fatalf("failed to get affected rows: %v", err)
-					return
-				}
-
-				t.Logf("Have already cleaned up %d rows from t_exam_site", c)
-
-				folderFullPath := path.Join(os.Getenv("PWD"), "/data/tmp/")
-
-				o, err := exec.Command("rm", "-rvf", folderFullPath).CombinedOutput()
-				if err != nil {
-					t.Fatalf("failed to remove folder: %v, output: %s", err, string(o))
-					return
-				}
-
-				t.Logf("Successfully cleaned up folder: %s output: %x", folderFullPath, o)
-
-			},
+			setup:        defaultSetup,
+			cleanup:      defaultCleanup,
 		},
 		{
 			name: "准备数据失败-无效的账号ID",
@@ -6299,18 +6535,7 @@ func TestExamSiteSyncApi(t *testing.T) {
 			},
 			passExpected: false,
 			errWanted:    "invalid sysUser: -2025",
-			setup: func() {
-
-				dbConn := cmn.GetDbConn()
-
-				_, err := dbConn.Exec(fmt.Sprintf(`INSERT INTO t_exam_site (id, name,creator,server_host,address,admin,sys_user) VALUES 
-					(%d,'test-site-%d', 1622, 'localhost','address','1622','2025')`, nowTime, nowTime))
-				if err != nil {
-					t.Fatalf("failed to insert test data: %v", err)
-					return
-				}
-
-			},
+			setup:        defaultSetup,
 			check: func(q *cmn.ServiceCtx) (err error) {
 				d := syncInfo{
 					Path:          "",
@@ -6336,35 +6561,7 @@ func TestExamSiteSyncApi(t *testing.T) {
 
 				return
 			},
-			cleanup: func() {
-
-				dbConn := cmn.GetDbConn()
-
-				r, err := dbConn.Exec(fmt.Sprintf(`DELETE FROM t_exam_site WHERE name = 'test-site-%d'`, nowTime))
-				if err != nil {
-					t.Fatalf("failed to delete test data: %v", err)
-					return
-				}
-
-				c, err := r.RowsAffected()
-				if err != nil {
-					t.Fatalf("failed to get affected rows: %v", err)
-					return
-				}
-
-				t.Logf("Have already cleaned up %d rows from t_exam_site", c)
-
-				folderFullPath := path.Join(os.Getenv("PWD"), "/data/tmp/")
-
-				o, err := exec.Command("rm", "-rvf", folderFullPath).CombinedOutput()
-				if err != nil {
-					t.Fatalf("failed to remove folder: %v, output: %s", err, string(o))
-					return
-				}
-
-				t.Logf("Successfully cleaned up folder: %s output: %x", folderFullPath, o)
-
-			},
+			cleanup: defaultCleanup,
 		},
 		{
 			name: "准备数据失败-强制获取同步信息快照失败",
@@ -6392,18 +6589,7 @@ func TestExamSiteSyncApi(t *testing.T) {
 			},
 			passExpected: false,
 			errWanted:    "forced get sync info snapshot err",
-			setup: func() {
-
-				dbConn := cmn.GetDbConn()
-
-				_, err := dbConn.Exec(fmt.Sprintf(`INSERT INTO t_exam_site (id, name,creator,server_host,address,admin,sys_user) VALUES 
-					(%d,'test-site-%d', 1622, 'localhost','address','1622','2025')`, nowTime, nowTime))
-				if err != nil {
-					t.Fatalf("failed to insert test data: %v", err)
-					return
-				}
-
-			},
+			setup:        defaultSetup,
 			check: func(q *cmn.ServiceCtx) (err error) {
 				d := syncInfo{
 					Path:          "",
@@ -6429,35 +6615,7 @@ func TestExamSiteSyncApi(t *testing.T) {
 
 				return
 			},
-			cleanup: func() {
-
-				dbConn := cmn.GetDbConn()
-
-				r, err := dbConn.Exec(fmt.Sprintf(`DELETE FROM t_exam_site WHERE name = 'test-site-%d'`, nowTime))
-				if err != nil {
-					t.Fatalf("failed to delete test data: %v", err)
-					return
-				}
-
-				c, err := r.RowsAffected()
-				if err != nil {
-					t.Fatalf("failed to get affected rows: %v", err)
-					return
-				}
-
-				t.Logf("Have already cleaned up %d rows from t_exam_site", c)
-
-				folderFullPath := path.Join(os.Getenv("PWD"), "/data/tmp/")
-
-				o, err := exec.Command("rm", "-rvf", folderFullPath).CombinedOutput()
-				if err != nil {
-					t.Fatalf("failed to remove folder: %v, output: %s", err, string(o))
-					return
-				}
-
-				t.Logf("Successfully cleaned up folder: %s output: %x", folderFullPath, o)
-
-			},
+			cleanup: defaultCleanup,
 		},
 		{
 			name: "准备数据失败-强制创建临时目录失败",
@@ -6485,18 +6643,7 @@ func TestExamSiteSyncApi(t *testing.T) {
 			},
 			passExpected: false,
 			errWanted:    "forced mkdir all err",
-			setup: func() {
-
-				dbConn := cmn.GetDbConn()
-
-				_, err := dbConn.Exec(fmt.Sprintf(`INSERT INTO t_exam_site (id, name,creator,server_host,address,admin,sys_user) VALUES 
-					(%d,'test-site-%d', 1622, 'localhost','address','1622','2025')`, nowTime, nowTime))
-				if err != nil {
-					t.Fatalf("failed to insert test data: %v", err)
-					return
-				}
-
-			},
+			setup:        defaultSetup,
 			check: func(q *cmn.ServiceCtx) (err error) {
 				d := syncInfo{
 					Path:          "",
@@ -6522,35 +6669,7 @@ func TestExamSiteSyncApi(t *testing.T) {
 
 				return
 			},
-			cleanup: func() {
-
-				dbConn := cmn.GetDbConn()
-
-				r, err := dbConn.Exec(fmt.Sprintf(`DELETE FROM t_exam_site WHERE name = 'test-site-%d'`, nowTime))
-				if err != nil {
-					t.Fatalf("failed to delete test data: %v", err)
-					return
-				}
-
-				c, err := r.RowsAffected()
-				if err != nil {
-					t.Fatalf("failed to get affected rows: %v", err)
-					return
-				}
-
-				t.Logf("Have already cleaned up %d rows from t_exam_site", c)
-
-				folderFullPath := path.Join(os.Getenv("PWD"), "/data/tmp/")
-
-				o, err := exec.Command("rm", "-rvf", folderFullPath).CombinedOutput()
-				if err != nil {
-					t.Fatalf("failed to remove folder: %v, output: %s", err, string(o))
-					return
-				}
-
-				t.Logf("Successfully cleaned up folder: %s output: %x", folderFullPath, o)
-
-			},
+			cleanup: defaultCleanup,
 		},
 		{
 			name: "准备数据失败-强制执行 pg_dump 失败",
@@ -6578,18 +6697,7 @@ func TestExamSiteSyncApi(t *testing.T) {
 			},
 			passExpected: false,
 			errWanted:    fmt.Sprintf("COMMAND: %s\t ERR: %s\t DETAIL: %s", "", "forced pg_dump err", ""),
-			setup: func() {
-
-				dbConn := cmn.GetDbConn()
-
-				_, err := dbConn.Exec(fmt.Sprintf(`INSERT INTO t_exam_site (id, name,creator,server_host,address,admin,sys_user) VALUES 
-					(%d,'test-site-%d', 1622, 'localhost','address','1622','2025')`, nowTime, nowTime))
-				if err != nil {
-					t.Fatalf("failed to insert test data: %v", err)
-					return
-				}
-
-			},
+			setup:        defaultSetup,
 			check: func(q *cmn.ServiceCtx) (err error) {
 				d := syncInfo{
 					Path:          "",
@@ -6615,35 +6723,7 @@ func TestExamSiteSyncApi(t *testing.T) {
 
 				return
 			},
-			cleanup: func() {
-
-				dbConn := cmn.GetDbConn()
-
-				r, err := dbConn.Exec(fmt.Sprintf(`DELETE FROM t_exam_site WHERE name = 'test-site-%d'`, nowTime))
-				if err != nil {
-					t.Fatalf("failed to delete test data: %v", err)
-					return
-				}
-
-				c, err := r.RowsAffected()
-				if err != nil {
-					t.Fatalf("failed to get affected rows: %v", err)
-					return
-				}
-
-				t.Logf("Have already cleaned up %d rows from t_exam_site", c)
-
-				folderFullPath := path.Join(os.Getenv("PWD"), "/data/tmp/")
-
-				o, err := exec.Command("rm", "-rvf", folderFullPath).CombinedOutput()
-				if err != nil {
-					t.Fatalf("failed to remove folder: %v, output: %s", err, string(o))
-					return
-				}
-
-				t.Logf("Successfully cleaned up folder: %s output: %x", folderFullPath, o)
-
-			},
+			cleanup: defaultCleanup,
 		},
 		{
 			name: "准备数据失败-强制执行 psql 失败",
@@ -6671,18 +6751,7 @@ func TestExamSiteSyncApi(t *testing.T) {
 			},
 			passExpected: false,
 			errWanted:    fmt.Sprintf("COMMAND: %s\t ERR: %s\t DETAIL: %s", "", "forced psql err", ""),
-			setup: func() {
-
-				dbConn := cmn.GetDbConn()
-
-				_, err := dbConn.Exec(fmt.Sprintf(`INSERT INTO t_exam_site (id, name,creator,server_host,address,admin,sys_user) VALUES 
-					(%d,'test-site-%d', 1622, 'localhost','address','1622','2025')`, nowTime, nowTime))
-				if err != nil {
-					t.Fatalf("failed to insert test data: %v", err)
-					return
-				}
-
-			},
+			setup:        defaultSetup,
 			check: func(q *cmn.ServiceCtx) (err error) {
 				d := syncInfo{
 					Path:          "",
@@ -6708,35 +6777,7 @@ func TestExamSiteSyncApi(t *testing.T) {
 
 				return
 			},
-			cleanup: func() {
-
-				dbConn := cmn.GetDbConn()
-
-				r, err := dbConn.Exec(fmt.Sprintf(`DELETE FROM t_exam_site WHERE name = 'test-site-%d'`, nowTime))
-				if err != nil {
-					t.Fatalf("failed to delete test data: %v", err)
-					return
-				}
-
-				c, err := r.RowsAffected()
-				if err != nil {
-					t.Fatalf("failed to get affected rows: %v", err)
-					return
-				}
-
-				t.Logf("Have already cleaned up %d rows from t_exam_site", c)
-
-				folderFullPath := path.Join(os.Getenv("PWD"), "/data/tmp/")
-
-				o, err := exec.Command("rm", "-rvf", folderFullPath).CombinedOutput()
-				if err != nil {
-					t.Fatalf("failed to remove folder: %v, output: %s", err, string(o))
-					return
-				}
-
-				t.Logf("Successfully cleaned up folder: %s output: %x", folderFullPath, o)
-
-			},
+			cleanup: defaultCleanup,
 		},
 		{
 			name: "准备数据失败-强制json marshal 失败",
@@ -6764,18 +6805,7 @@ func TestExamSiteSyncApi(t *testing.T) {
 			},
 			passExpected: false,
 			errWanted:    "forced json marshal err",
-			setup: func() {
-
-				dbConn := cmn.GetDbConn()
-
-				_, err := dbConn.Exec(fmt.Sprintf(`INSERT INTO t_exam_site (id, name,creator,server_host,address,admin,sys_user) VALUES 
-					(%d,'test-site-%d', 1622, 'localhost','address','1622','2025')`, nowTime, nowTime))
-				if err != nil {
-					t.Fatalf("failed to insert test data: %v", err)
-					return
-				}
-
-			},
+			setup:        defaultSetup,
 			check: func(q *cmn.ServiceCtx) (err error) {
 				d := syncInfo{
 					Path:          "",
@@ -6801,35 +6831,7 @@ func TestExamSiteSyncApi(t *testing.T) {
 
 				return
 			},
-			cleanup: func() {
-
-				dbConn := cmn.GetDbConn()
-
-				r, err := dbConn.Exec(fmt.Sprintf(`DELETE FROM t_exam_site WHERE name = 'test-site-%d'`, nowTime))
-				if err != nil {
-					t.Fatalf("failed to delete test data: %v", err)
-					return
-				}
-
-				c, err := r.RowsAffected()
-				if err != nil {
-					t.Fatalf("failed to get affected rows: %v", err)
-					return
-				}
-
-				t.Logf("Have already cleaned up %d rows from t_exam_site", c)
-
-				folderFullPath := path.Join(os.Getenv("PWD"), "/data/tmp/")
-
-				o, err := exec.Command("rm", "-rvf", folderFullPath).CombinedOutput()
-				if err != nil {
-					t.Fatalf("failed to remove folder: %v, output: %s", err, string(o))
-					return
-				}
-
-				t.Logf("Successfully cleaned up folder: %s output: %x", folderFullPath, o)
-
-			},
+			cleanup: defaultCleanup,
 		},
 		{
 			name: "准备数据失败-强制清除临时目录失败",
@@ -6858,18 +6860,7 @@ func TestExamSiteSyncApi(t *testing.T) {
 			},
 			passExpected: false,
 			errWanted:    "forced remove tmp dir err",
-			setup: func() {
-
-				dbConn := cmn.GetDbConn()
-
-				_, err := dbConn.Exec(fmt.Sprintf(`INSERT INTO t_exam_site (id, name,creator,server_host,address,admin,sys_user) VALUES 
-					(%d,'test-site-%d', 1622, 'localhost','address','1622','2025')`, nowTime, nowTime))
-				if err != nil {
-					t.Fatalf("failed to insert test data: %v", err)
-					return
-				}
-
-			},
+			setup:        defaultSetup,
 			check: func(q *cmn.ServiceCtx) (err error) {
 				d := syncInfo{
 					Path:          "",
@@ -6895,35 +6886,7 @@ func TestExamSiteSyncApi(t *testing.T) {
 
 				return
 			},
-			cleanup: func() {
-
-				dbConn := cmn.GetDbConn()
-
-				r, err := dbConn.Exec(fmt.Sprintf(`DELETE FROM t_exam_site WHERE name = 'test-site-%d'`, nowTime))
-				if err != nil {
-					t.Fatalf("failed to delete test data: %v", err)
-					return
-				}
-
-				c, err := r.RowsAffected()
-				if err != nil {
-					t.Fatalf("failed to get affected rows: %v", err)
-					return
-				}
-
-				t.Logf("Have already cleaned up %d rows from t_exam_site", c)
-
-				folderFullPath := path.Join(os.Getenv("PWD"), "/data/tmp/")
-
-				o, err := exec.Command("rm", "-rvf", folderFullPath).CombinedOutput()
-				if err != nil {
-					t.Fatalf("failed to remove folder: %v, output: %s", err, string(o))
-					return
-				}
-
-				t.Logf("Successfully cleaned up folder: %s output: %x", folderFullPath, o)
-
-			},
+			cleanup: defaultCleanup,
 		},
 		{
 			name: "准备数据失败-强制创建导出脚本失败",
@@ -6951,18 +6914,7 @@ func TestExamSiteSyncApi(t *testing.T) {
 			},
 			passExpected: false,
 			errWanted:    "force-create-export-script-file-err-^a1^2*zc$32h@g4",
-			setup: func() {
-
-				dbConn := cmn.GetDbConn()
-
-				_, err := dbConn.Exec(fmt.Sprintf(`INSERT INTO t_exam_site (id, name,creator,server_host,address,admin,sys_user) VALUES 
-					(%d,'test-site-%d', 1622, 'localhost','address','1622','2025')`, nowTime, nowTime))
-				if err != nil {
-					t.Fatalf("failed to insert test data: %v", err)
-					return
-				}
-
-			},
+			setup:        defaultSetup,
 			check: func(q *cmn.ServiceCtx) (err error) {
 				d := syncInfo{
 					Path:          "",
@@ -6988,35 +6940,7 @@ func TestExamSiteSyncApi(t *testing.T) {
 
 				return
 			},
-			cleanup: func() {
-
-				dbConn := cmn.GetDbConn()
-
-				r, err := dbConn.Exec(fmt.Sprintf(`DELETE FROM t_exam_site WHERE name = 'test-site-%d'`, nowTime))
-				if err != nil {
-					t.Fatalf("failed to delete test data: %v", err)
-					return
-				}
-
-				c, err := r.RowsAffected()
-				if err != nil {
-					t.Fatalf("failed to get affected rows: %v", err)
-					return
-				}
-
-				t.Logf("Have already cleaned up %d rows from t_exam_site", c)
-
-				folderFullPath := path.Join(os.Getenv("PWD"), "/data/tmp/")
-
-				o, err := exec.Command("rm", "-rvf", folderFullPath).CombinedOutput()
-				if err != nil {
-					t.Fatalf("failed to remove folder: %v, output: %s", err, string(o))
-					return
-				}
-
-				t.Logf("Successfully cleaned up folder: %s output: %x", folderFullPath, o)
-
-			},
+			cleanup: defaultCleanup,
 		},
 		{
 			name: "准备数据失败-强制写入导出脚本失败",
@@ -7044,18 +6968,7 @@ func TestExamSiteSyncApi(t *testing.T) {
 			},
 			passExpected: false,
 			errWanted:    "force-write-export-script-file-err-^a1^2*zc$32h@g4",
-			setup: func() {
-
-				dbConn := cmn.GetDbConn()
-
-				_, err := dbConn.Exec(fmt.Sprintf(`INSERT INTO t_exam_site (id, name,creator,server_host,address,admin,sys_user) VALUES 
-					(%d,'test-site-%d', 1622, 'localhost','address','1622','2025')`, nowTime, nowTime))
-				if err != nil {
-					t.Fatalf("failed to insert test data: %v", err)
-					return
-				}
-
-			},
+			setup:        defaultSetup,
 			check: func(q *cmn.ServiceCtx) (err error) {
 				d := syncInfo{
 					Path:          "",
@@ -7081,35 +6994,7 @@ func TestExamSiteSyncApi(t *testing.T) {
 
 				return
 			},
-			cleanup: func() {
-
-				dbConn := cmn.GetDbConn()
-
-				r, err := dbConn.Exec(fmt.Sprintf(`DELETE FROM t_exam_site WHERE name = 'test-site-%d'`, nowTime))
-				if err != nil {
-					t.Fatalf("failed to delete test data: %v", err)
-					return
-				}
-
-				c, err := r.RowsAffected()
-				if err != nil {
-					t.Fatalf("failed to get affected rows: %v", err)
-					return
-				}
-
-				t.Logf("Have already cleaned up %d rows from t_exam_site", c)
-
-				folderFullPath := path.Join(os.Getenv("PWD"), "/data/tmp/")
-
-				o, err := exec.Command("rm", "-rvf", folderFullPath).CombinedOutput()
-				if err != nil {
-					t.Fatalf("failed to remove folder: %v, output: %s", err, string(o))
-					return
-				}
-
-				t.Logf("Successfully cleaned up folder: %s output: %x", folderFullPath, o)
-
-			},
+			cleanup: defaultCleanup,
 		},
 		{
 			name: "准备数据失败-强制保存同步信息快照失败",
@@ -7137,18 +7022,7 @@ func TestExamSiteSyncApi(t *testing.T) {
 			},
 			passExpected: false,
 			errWanted:    "forced save sync info snapshot err",
-			setup: func() {
-
-				dbConn := cmn.GetDbConn()
-
-				_, err := dbConn.Exec(fmt.Sprintf(`INSERT INTO t_exam_site (id, name,creator,server_host,address,admin,sys_user) VALUES 
-					(%d,'test-site-%d', 1622, 'localhost','address','1622','2025')`, nowTime, nowTime))
-				if err != nil {
-					t.Fatalf("failed to insert test data: %v", err)
-					return
-				}
-
-			},
+			setup:        defaultSetup,
 			check: func(q *cmn.ServiceCtx) (err error) {
 				d := syncInfo{
 					Path:          "",
@@ -7174,35 +7048,7 @@ func TestExamSiteSyncApi(t *testing.T) {
 
 				return
 			},
-			cleanup: func() {
-
-				dbConn := cmn.GetDbConn()
-
-				r, err := dbConn.Exec(fmt.Sprintf(`DELETE FROM t_exam_site WHERE name = 'test-site-%d'`, nowTime))
-				if err != nil {
-					t.Fatalf("failed to delete test data: %v", err)
-					return
-				}
-
-				c, err := r.RowsAffected()
-				if err != nil {
-					t.Fatalf("failed to get affected rows: %v", err)
-					return
-				}
-
-				t.Logf("Have already cleaned up %d rows from t_exam_site", c)
-
-				folderFullPath := path.Join(os.Getenv("PWD"), "/data/tmp/")
-
-				o, err := exec.Command("rm", "-rvf", folderFullPath).CombinedOutput()
-				if err != nil {
-					t.Fatalf("failed to remove folder: %v, output: %s", err, string(o))
-					return
-				}
-
-				t.Logf("Successfully cleaned up folder: %s output: %x", folderFullPath, o)
-
-			},
+			cleanup: defaultCleanup,
 		},
 		{
 			name: "准备数据失败-无效的同步信息快照",
@@ -7228,11 +7074,11 @@ func TestExamSiteSyncApi(t *testing.T) {
 			},
 			passExpected: false,
 			errWanted:    "unexpected end of JSON input",
-			setup: func() {
+			setup: func() (err error) {
 
 				redisConn := cmn.GetRedisConn()
 
-				_, err := redisConn.Set(context.Background(), fmt.Sprintf("%s:%d", ExamSiteSyncPrefix, 2025), "{", 0).Result()
+				_, err = redisConn.Set(context.Background(), fmt.Sprintf("%s:%d", ExamSiteSyncPrefix, 2025), "{", 0).Result()
 				if err != nil {
 					t.Fatalf("failed to set redis key: %v", err)
 					return
@@ -7247,6 +7093,7 @@ func TestExamSiteSyncApi(t *testing.T) {
 					return
 				}
 
+				return
 			},
 			check: func(q *cmn.ServiceCtx) (err error) {
 				d := syncInfo{
@@ -7351,11 +7198,9 @@ func TestExamSiteSyncApi(t *testing.T) {
 			},
 			passExpected: true,
 			errWanted:    "",
-			setup: func() {
+			setup: func() (err error) {
 
-				dbConn := cmn.GetDbConn()
-
-				_, err := dbConn.Exec(fmt.Sprintf(`INSERT INTO t_exam_site (id, name,creator,server_host,address,admin,sys_user) VALUES 
+				_, err = dbConn.Exec(fmt.Sprintf(`INSERT INTO t_exam_site (id, name,creator,server_host,address,admin,sys_user) VALUES 
 					(%d,'test-site-%d', 1622, 'localhost','address','1622','2025')`, nowTime, nowTime))
 				if err != nil {
 					t.Fatalf("failed to insert test data: %v", err)
@@ -7376,6 +7221,7 @@ func TestExamSiteSyncApi(t *testing.T) {
 					return
 				}
 
+				return
 			},
 			cleanup: func() {
 
@@ -7443,11 +7289,11 @@ func TestExamSiteSyncApi(t *testing.T) {
 			},
 			passExpected: false,
 			errWanted:    "json: cannot unmarshal number into Go struct field syncInfo.tableFileList of type []string",
-			setup: func() {
+			setup: func() (err error) {
 
 				dbConn := cmn.GetDbConn()
 
-				_, err := dbConn.Exec(fmt.Sprintf(`INSERT INTO t_exam_site (id, name,creator,server_host,address,admin,sys_user) VALUES 
+				_, err = dbConn.Exec(fmt.Sprintf(`INSERT INTO t_exam_site (id, name,creator,server_host,address,admin,sys_user) VALUES 
 					(%d,'test-site-%d', 1622, 'localhost','address','1622','2025')`, nowTime, nowTime))
 				if err != nil {
 					t.Fatalf("failed to insert test data: %v", err)
@@ -7468,6 +7314,7 @@ func TestExamSiteSyncApi(t *testing.T) {
 					return
 				}
 
+				return
 			},
 			cleanup: func() {
 
@@ -7534,11 +7381,9 @@ func TestExamSiteSyncApi(t *testing.T) {
 			},
 			passExpected: false,
 			errWanted:    "validation failed:Key: 'syncInfo.TableFileList' Error:Field validation for 'TableFileList' failed on the 'required' tag",
-			setup: func() {
+			setup: func() (err error) {
 
-				dbConn := cmn.GetDbConn()
-
-				_, err := dbConn.Exec(fmt.Sprintf(`INSERT INTO t_exam_site (id, name,creator,server_host,address,admin,sys_user) VALUES 
+				_, err = dbConn.Exec(fmt.Sprintf(`INSERT INTO t_exam_site (id, name,creator,server_host,address,admin,sys_user) VALUES 
 					(%d,'test-site-%d', 1622, 'localhost','address','1622','2025')`, nowTime, nowTime))
 				if err != nil {
 					t.Fatalf("failed to insert test data: %v", err)
@@ -7559,6 +7404,7 @@ func TestExamSiteSyncApi(t *testing.T) {
 					return
 				}
 
+				return
 			},
 			cleanup: func() {
 
@@ -7626,11 +7472,9 @@ func TestExamSiteSyncApi(t *testing.T) {
 			},
 			passExpected: false,
 			errWanted:    fmt.Sprintf("open %s: no such file or directory", filepath.Join(os.Getenv("PWD"), "data/tmp/123123/456456/import_script.sql")),
-			setup: func() {
+			setup: func() (err error) {
 
-				dbConn := cmn.GetDbConn()
-
-				_, err := dbConn.Exec(fmt.Sprintf(`INSERT INTO t_exam_site (id, name,creator,server_host,address,admin,sys_user) VALUES 
+				_, err = dbConn.Exec(fmt.Sprintf(`INSERT INTO t_exam_site (id, name,creator,server_host,address,admin,sys_user) VALUES 
 					(%d,'test-site-%d', 1622, 'localhost','address','1622','2025')`, nowTime, nowTime))
 				if err != nil {
 					t.Fatalf("failed to insert test data: %v", err)
@@ -7651,6 +7495,7 @@ func TestExamSiteSyncApi(t *testing.T) {
 					return
 				}
 
+				return
 			},
 			cleanup: func() {
 
@@ -7721,11 +7566,9 @@ func TestExamSiteSyncApi(t *testing.T) {
 			},
 			passExpected: false,
 			errWanted:    fmt.Sprintf("COMMAND: %s\t ERR: %s\t DETAIL: %s", "", "forced psql err", ""),
-			setup: func() {
+			setup: func() (err error) {
 
-				dbConn := cmn.GetDbConn()
-
-				_, err := dbConn.Exec(fmt.Sprintf(`INSERT INTO t_exam_site (id, name,creator,server_host,address,admin,sys_user) VALUES 
+				_, err = dbConn.Exec(fmt.Sprintf(`INSERT INTO t_exam_site (id, name,creator,server_host,address,admin,sys_user) VALUES 
 					(%d,'test-site-%d', 1622, 'localhost','address','1622','2025')`, nowTime, nowTime))
 				if err != nil {
 					t.Fatalf("failed to insert test data: %v", err)
@@ -7746,6 +7589,7 @@ func TestExamSiteSyncApi(t *testing.T) {
 					return
 				}
 
+				return
 			},
 			cleanup: func() {
 
@@ -7816,11 +7660,9 @@ func TestExamSiteSyncApi(t *testing.T) {
 			},
 			passExpected: false,
 			errWanted:    "forced delete key err",
-			setup: func() {
+			setup: func() (err error) {
 
-				dbConn := cmn.GetDbConn()
-
-				_, err := dbConn.Exec(fmt.Sprintf(`INSERT INTO t_exam_site (id, name,creator,server_host,address,admin,sys_user) VALUES 
+				_, err = dbConn.Exec(fmt.Sprintf(`INSERT INTO t_exam_site (id, name,creator,server_host,address,admin,sys_user) VALUES 
 					(%d,'test-site-%d', 1622, 'localhost','address','1622','2025')`, nowTime, nowTime))
 				if err != nil {
 					t.Fatalf("failed to insert test data: %v", err)
@@ -7841,6 +7683,7 @@ func TestExamSiteSyncApi(t *testing.T) {
 					return
 				}
 
+				return
 			},
 			cleanup: func() {
 
@@ -7911,11 +7754,9 @@ func TestExamSiteSyncApi(t *testing.T) {
 			},
 			passExpected: false,
 			errWanted:    "forced remove all err",
-			setup: func() {
+			setup: func() (err error) {
 
-				dbConn := cmn.GetDbConn()
-
-				_, err := dbConn.Exec(fmt.Sprintf(`INSERT INTO t_exam_site (id, name,creator,server_host,address,admin,sys_user) VALUES 
+				_, err = dbConn.Exec(fmt.Sprintf(`INSERT INTO t_exam_site (id, name,creator,server_host,address,admin,sys_user) VALUES 
 					(%d,'test-site-%d', 1622, 'localhost','address','1622','2025')`, nowTime, nowTime))
 				if err != nil {
 					t.Fatalf("failed to insert test data: %v", err)
@@ -7936,6 +7777,7 @@ func TestExamSiteSyncApi(t *testing.T) {
 					return
 				}
 
+				return
 			},
 			cleanup: func() {
 
@@ -7990,11 +7832,20 @@ func TestExamSiteSyncApi(t *testing.T) {
 
 		t.Run(tt.name, func(t *testing.T) {
 
+			oldCentralServerUrl := centralServerUrl
+
+			centralServerUrl = ""
+
 			if tt.setup != nil {
-				tt.setup()
+				err := tt.setup()
+				if err != nil {
+					t.Error(err)
+					return
+				}
 			}
 
 			defer func() {
+				centralServerUrl = oldCentralServerUrl
 				if tt.cleanup != nil {
 					tt.cleanup()
 				}
