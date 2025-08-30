@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"strings"
 
 	"github.com/jackc/pgx/v5"
@@ -44,6 +45,16 @@ type ExamineeInfo struct {
 type InvigilationDetails struct {
 	InvigilationInfo cmn.TVInvigilationInfo `json:"info"`
 	Examinees        []ExamineeInfo         `json:"examinees"`
+	Files            []InvigilationFile     `json:"files"`
+}
+
+type InvigilationFile struct {
+	FileID        int64  `json:"FileID"`
+	ExamSessionID int64  `json:"ExamSessionID"`
+	ExamRoomID    int64  `json:"ExamRoomID"`
+	CheckSum      string `json:"CheckSum"`
+	Name          string `json:"Name"`
+	Size          int64  `json:"Size"`
 }
 
 func Enroll(author string) {
@@ -407,7 +418,6 @@ func invigilation(ctx context.Context) {
 			q.Err = fmt.Errorf("强制检查用户是否有权限获取监考信息错误")
 		}
 		if q.Err != nil {
-			z.Error(q.Err.Error())
 			q.RespErr()
 			return
 		}
@@ -573,6 +583,45 @@ func invigilation(ctx context.Context) {
 		info.InvigilationInfo = invigilatorInfo
 		info.Examinees = examinees
 
+		// 获取监考附件信息
+		querySQL := `
+		SELECT er.exam_room, er.exam_session, f.id, f.digest, f.file_name
+		FROM t_exam_record er
+		CROSS JOIN LATERAL jsonb_array_elements_text(er.files) AS fid(file_id)
+		JOIN t_file f ON f.id = fid.file_id::bigint
+		WHERE er.exam_room = $1 AND er.exam_session = $2;
+		`
+		var existingFiles []InvigilationFile
+		var fileRows pgx.Rows
+		fileRows, q.Err = conn.Query(ctx, querySQL, examRoomID, examSessionID)
+		if fileRows != nil {
+			defer fileRows.Close()
+		}
+		if forceErr == "queryFiles" {
+			q.Err = fmt.Errorf("强制查询文件错误")
+		}
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		for fileRows.Next() {
+			var file InvigilationFile
+			q.Err = fileRows.Scan(&file.ExamRoomID, &file.ExamSessionID, &file.FileID, &file.CheckSum, &file.Name)
+			if forceErr == "scanFiles" {
+				q.Err = fmt.Errorf("强制获取文件信息错误")
+			}
+			if q.Err != nil {
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+			existingFiles = append(existingFiles, file)
+		}
+
+		info.Files = existingFiles
+
 		q.Msg.Data, q.Err = json.Marshal(info)
 		if forceErr == "json.Marshal" {
 			q.Err = fmt.Errorf("强制JSON序列化错误")
@@ -595,6 +644,454 @@ func invigilation(ctx context.Context) {
 		q.RespErr()
 		return
 	}
+	q.Resp()
+	return
+}
+
+func invigilationFile(ctx context.Context) {
+	q := cmn.GetCtxValue(ctx)
+	z.Info("---->" + cmn.FncName())
+	forceErr := ""
+	if val := ctx.Value("force-error"); val != nil {
+		forceErr = val.(string)
+	}
+
+	conn := cmn.GetPgxConn()
+	userID := q.SysUser.ID.Int64
+	if userID <= 0 {
+		q.Err = fmt.Errorf("无效的用户ID: %d", userID)
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+
+	// 当前用户登录选择的域
+	userRole := q.SysUser.Role.Int64
+
+	// 开启事务
+	var tx pgx.Tx
+	tx, q.Err = conn.Begin(ctx)
+	if forceErr == "tx.Begin" {
+		q.Err = fmt.Errorf("强制开始事务错误")
+	}
+	if q.Err != nil {
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+	defer func() {
+		if q.Err != nil || forceErr == "tx.Rollback" {
+			rollbackErr := tx.Rollback(context.Background())
+			if forceErr == "tx.Rollback" {
+				rollbackErr = fmt.Errorf("强制回滚事务错误")
+			}
+			if rollbackErr != nil {
+				z.Error(fmt.Sprintf("failed to rollback transaction: %s", rollbackErr.Error()))
+			}
+			return
+		}
+
+		commitErr := tx.Commit(context.Background())
+		if forceErr == "tx.Commit" {
+			commitErr = fmt.Errorf("强制提交事务错误")
+		}
+		if commitErr != nil {
+			z.Error(fmt.Sprintf("failed to commit transaction: %s", commitErr.Error()))
+		}
+	}()
+
+	if forceErr == "tx.Commit" || forceErr == "tx.Rollback" {
+		return
+	}
+
+	method := strings.ToLower(q.R.Method)
+	switch method {
+	case "post":
+		var buf []byte
+		buf, q.Err = io.ReadAll(q.R.Body)
+		if forceErr == "io.ReadAll" {
+			q.Err = fmt.Errorf("强制读取请求体错误")
+		}
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		defer func() {
+			err := q.R.Body.Close()
+			if forceErr == "io.Close" {
+				err = fmt.Errorf("强制关闭IO错误")
+			}
+			if err != nil {
+				z.Error(err.Error())
+			}
+		}()
+
+		if forceErr == "io.Close" {
+			return
+		}
+
+		if len(buf) == 0 {
+			q.Err = fmt.Errorf("请求体为空")
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		var qry cmn.ReqProto
+		q.Err = json.Unmarshal(buf, &qry)
+		if forceErr == "json.Unmarshal" {
+			q.Err = fmt.Errorf("强制JSON解析错误")
+		}
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		var invigilationFile InvigilationFile
+		q.Err = json.Unmarshal(qry.Data, &invigilationFile)
+		if forceErr == "json.Unmarshal2" {
+			q.Err = fmt.Errorf("强制第二次JSON解析错误")
+		}
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		if invigilationFile.ExamSessionID <= 0 {
+			q.Err = fmt.Errorf("无效的考试场次ID: %d", invigilationFile.ExamSessionID)
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		if invigilationFile.ExamRoomID <= 0 {
+			q.Err = fmt.Errorf("无效的考场ID: %d", invigilationFile.ExamRoomID)
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		var hasAuth bool
+		hasAuth, q.Err = checkInvigilationAuthority(ctx, invigilationFile.ExamSessionID, invigilationFile.ExamRoomID, userID, "")
+		if forceErr == "checkInvigilationAuthority" {
+			q.Err = fmt.Errorf("强制检查用户是否有权限获取监考信息错误")
+		}
+		if q.Err != nil {
+			q.RespErr()
+			return
+		}
+
+		if forceErr == "noAuth" {
+			hasAuth = false
+		}
+		if !hasAuth {
+			q.Err = fmt.Errorf("用户(%d)无法上传该场考试的监考附件: %d - %d", userID, invigilationFile.ExamSessionID, invigilationFile.ExamRoomID)
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		var newFileID int64
+		newFileID, q.Err = cmn.NewFileRecord(ctx, tx, invigilationFile.CheckSum, invigilationFile.Name, invigilationFile.Size, userRole, userID)
+		if forceErr == "NewFileRecord" {
+			q.Err = fmt.Errorf("强制创建文件记录错误")
+		}
+		if q.Err != nil {
+			q.RespErr()
+			return
+		}
+
+		// 获取监考附件信息
+		querySQL := `
+		SELECT er.exam_room, er.exam_session, f.id, f.digest, f.file_name
+		FROM t_exam_record er
+		CROSS JOIN LATERAL jsonb_array_elements_text(er.files) AS fid(file_id)
+		JOIN t_file f ON f.id = fid.file_id::bigint
+		WHERE er.exam_room = $1 AND er.exam_session = $2;
+		`
+		var existingFiles []InvigilationFile
+		var fileRows pgx.Rows
+		fileRows, q.Err = tx.Query(ctx, querySQL, invigilationFile.ExamRoomID, invigilationFile.ExamSessionID)
+		if fileRows != nil {
+			defer fileRows.Close()
+		}
+		if forceErr == "queryFiles" {
+			q.Err = fmt.Errorf("强制查询文件错误")
+		}
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		for fileRows.Next() {
+			var file InvigilationFile
+			q.Err = fileRows.Scan(&file.ExamRoomID, &file.ExamSessionID, &file.FileID, &file.CheckSum, &file.Name)
+			if forceErr == "scanFiles" {
+				q.Err = fmt.Errorf("强制获取文件信息错误")
+			}
+			if q.Err != nil {
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+			existingFiles = append(existingFiles, file)
+		}
+
+		invigilationFile.FileID = newFileID
+		existingFiles = append(existingFiles, invigilationFile)
+
+		// 组成新的文件ID数组
+		var fileIDs []int64
+		for _, file := range existingFiles {
+			fileIDs = append(fileIDs, file.FileID)
+		}
+
+		// 更新考试监考记录中的附件列表
+		var filesJSON []byte
+		filesJSON, q.Err = json.Marshal(fileIDs)
+		if forceErr == "json.Marshal" {
+			q.Err = fmt.Errorf("强制JSON序列化错误")
+		}
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		_, q.Err = tx.Exec(ctx, `UPDATE t_exam_record SET files = $1 WHERE exam_session = $2 AND exam_room = $3`, filesJSON, invigilationFile.ExamSessionID, invigilationFile.ExamRoomID)
+		if forceErr == "tx.Exec" {
+			q.Err = fmt.Errorf("强制更新监考记录错误")
+		}
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		q.Msg.Data, q.Err = json.Marshal(existingFiles)
+		if forceErr == "json.Marshal2" {
+			q.Err = fmt.Errorf("强制JSON序列化错误")
+			q.Msg.Data = nil
+		}
+		if q.Err != nil {
+			q.RespErr()
+			return
+		}
+
+		q.Resp()
+		return
+
+	case "delete":
+		var buf []byte
+		buf, q.Err = io.ReadAll(q.R.Body)
+		if forceErr == "io.ReadAll" {
+			q.Err = fmt.Errorf("强制读取请求体错误")
+		}
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		defer func() {
+			err := q.R.Body.Close()
+			if forceErr == "io.Close" {
+				err = fmt.Errorf("强制关闭IO错误")
+			}
+			if err != nil {
+				z.Error(err.Error())
+			}
+		}()
+
+		if forceErr == "io.Close" {
+			return
+		}
+
+		if len(buf) == 0 {
+			q.Err = fmt.Errorf("请求体为空")
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		var qry cmn.ReqProto
+		q.Err = json.Unmarshal(buf, &qry)
+		if forceErr == "json.Unmarshal" {
+			q.Err = fmt.Errorf("强制JSON解析错误")
+		}
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		var invigilationFile InvigilationFile
+		q.Err = json.Unmarshal(qry.Data, &invigilationFile)
+		if forceErr == "json.Unmarshal2" {
+			q.Err = fmt.Errorf("强制第二次JSON解析错误")
+		}
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		if invigilationFile.ExamSessionID <= 0 {
+			q.Err = fmt.Errorf("无效的考试场次ID: %d", invigilationFile.ExamSessionID)
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		if invigilationFile.ExamRoomID <= 0 {
+			q.Err = fmt.Errorf("无效的考场ID: %d", invigilationFile.ExamRoomID)
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		if invigilationFile.FileID <= 0 {
+			q.Err = fmt.Errorf("无效的文件ID: %d", invigilationFile.FileID)
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		var hasAuth bool
+		hasAuth, q.Err = checkInvigilationAuthority(ctx, invigilationFile.ExamSessionID, invigilationFile.ExamRoomID, userID, "")
+		if forceErr == "checkInvigilationAuthority" {
+			q.Err = fmt.Errorf("强制检查用户是否有权限获取监考信息错误")
+		}
+		if q.Err != nil {
+			q.RespErr()
+			return
+		}
+
+		if forceErr == "noAuth" {
+			hasAuth = false
+		}
+		if !hasAuth {
+			q.Err = fmt.Errorf("用户(%d)无法上传该场考试的监考附件: %d - %d", userID, invigilationFile.ExamSessionID, invigilationFile.ExamRoomID)
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		// 获取监考附件记录
+		// 获取监考附件信息
+		querySQL := `
+		SELECT er.exam_room, er.exam_session, f.id, f.digest, f.file_name
+		FROM t_exam_record er
+		CROSS JOIN LATERAL jsonb_array_elements_text(er.files) AS fid(file_id)
+		JOIN t_file f ON f.id = fid.file_id::bigint
+		WHERE er.exam_room = $1 AND er.exam_session = $2;
+		`
+		var existingFiles []InvigilationFile
+		var fileRows pgx.Rows
+		fileRows, q.Err = tx.Query(ctx, querySQL, invigilationFile.ExamRoomID, invigilationFile.ExamSessionID)
+		if fileRows != nil {
+			defer fileRows.Close()
+		}
+		if forceErr == "queryFiles" {
+			q.Err = fmt.Errorf("强制查询文件错误")
+		}
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		for fileRows.Next() {
+			var file InvigilationFile
+			q.Err = fileRows.Scan(&file.ExamRoomID, &file.ExamSessionID, &file.FileID, &file.CheckSum, &file.Name)
+			if forceErr == "scanFiles" {
+				q.Err = fmt.Errorf("强制获取文件信息错误: %w", q.Err)
+			}
+			if q.Err != nil {
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+			existingFiles = append(existingFiles, file)
+		}
+
+		if len(existingFiles) == 0 {
+			q.Err = fmt.Errorf("未找到监考附件记录: %d - %d", invigilationFile.ExamSessionID, invigilationFile.ExamRoomID)
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		// 删除对应的文件ID
+		for i, file := range existingFiles {
+			if file.FileID == invigilationFile.FileID {
+				existingFiles = append(existingFiles[:i], existingFiles[i+1:]...)
+				break
+			}
+		}
+
+		var fileIDs []int64
+		for _, file := range existingFiles {
+			fileIDs = append(fileIDs, file.FileID)
+		}
+
+		// 更新考试监考记录中的附件列表
+		var filesJSON []byte
+		filesJSON, q.Err = json.Marshal(fileIDs)
+		if forceErr == "json.Marshal" {
+			q.Err = fmt.Errorf("强制JSON序列化错误")
+		}
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		_, q.Err = tx.Exec(ctx, `UPDATE t_exam_record SET files = $1 WHERE exam_session = $2 AND exam_room = $3`, filesJSON, invigilationFile.ExamSessionID, invigilationFile.ExamRoomID)
+		if forceErr == "tx.Exec" {
+			q.Err = fmt.Errorf("强制更新监考记录错误")
+		}
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		// 序列化要返回给前端的数据
+		q.Msg.Data, q.Err = json.Marshal(existingFiles)
+		if forceErr == "json.Marshal2" {
+			q.Err = fmt.Errorf("强制序列化文件信息错误")
+			q.Msg.Data = nil
+		}
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		// 最后删除对应的文件记录
+		q.Err = cmn.DeleteFileRecord(ctx, tx, invigilationFile.FileID)
+		if forceErr == "DeleteFileRecord" {
+			q.Err = fmt.Errorf("强制删除文件记录错误")
+		}
+		if q.Err != nil {
+			q.Msg.Data = nil
+			q.RespErr()
+			return
+		}
+
+	default:
+		q.Err = fmt.Errorf("unsupported method: %s", method)
+		z.Warn(q.Err.Error())
+		q.RespErr()
+		return
+	}
+
 	q.Resp()
 	return
 }

@@ -9192,8 +9192,6 @@ func TestExamFile(t *testing.T) {
 			examFileData, err := json.Marshal(tt.examFile)
 			assert.Nil(t, err)
 
-			assert.Nil(t, err)
-
 			var testCtx context.Context
 
 			if tt.nilReq {

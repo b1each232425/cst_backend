@@ -17,6 +17,7 @@ import (
 
 	"github.com/cespare/xxhash/v2"
 	"github.com/jmoiron/sqlx/types"
+	"github.com/stretchr/testify/assert"
 	"w2w.io/cmn"
 	"w2w.io/null"
 	"w2w.io/serve/examPaper"
@@ -719,6 +720,18 @@ func CreateTestExamData(t *testing.T) {
 		t.Fatalf("插入测试监考数据失败: %v", err)
 	}
 
+	fileIDs := []int64{testFile1ID, testFile2ID}
+	fileIDsBytes, _ := json.Marshal(fileIDs)
+	_, err = tx.Exec(ctx, `
+		INSERT INTO t_exam_record (
+			exam_session, exam_room, creator, status, files
+		) VALUES ($1, $2, $3, $4, $5)
+	`, testOfflineExamSessionID, testExamRoomID, testAcademicAffair, "00", fileIDsBytes)
+	if err != nil {
+		tx.Rollback(ctx)
+		t.Fatalf("插入测试考试记录数据失败: %v", err)
+	}
+
 	// 创建文件
 	uploadDir := "./uploads"
 
@@ -1109,10 +1122,6 @@ func Test_invigilationList(t *testing.T) {
 		CleanTestExamData(t)
 	})
 
-	type args struct {
-		ctx context.Context
-	}
-
 	tests := []struct {
 		name          string
 		forceError    string
@@ -1488,6 +1497,34 @@ func Test_invigilation(t *testing.T) {
 			errorContains: "强制JSON序列化错误",
 		},
 		{
+			name:       "强制查询文件错误",
+			forceError: "queryFiles",
+			userID:     testAcademicAffair,
+			userRole:   2002,
+			queryParams: func() url.Values {
+				v := url.Values{}
+				q := fmt.Sprintf(`{"Data": {"ExamSessionID": %d, "ExamRoomID": %d}}`, testOfflineExamSessionID, testExamRoomID)
+				v.Set("q", q)
+				return v
+			}(),
+			wantErr:       true,
+			errorContains: "强制查询文件错误",
+		},
+		{
+			name:       "强制获取文件信息错误",
+			forceError: "scanFiles",
+			userID:     testAcademicAffair,
+			userRole:   2002,
+			queryParams: func() url.Values {
+				v := url.Values{}
+				q := fmt.Sprintf(`{"Data": {"ExamSessionID": %d, "ExamRoomID": %d}}`, testOfflineExamSessionID, testExamRoomID)
+				v.Set("q", q)
+				return v
+			}(),
+			wantErr:       true,
+			errorContains: "强制获取文件信息错误",
+		},
+		{
 			name:       "强制 rows.Scan 错误（考生行）",
 			forceError: "rows.Scan",
 			userID:     testAcademicAffair,
@@ -1655,7 +1692,7 @@ func Test_checkInvigilationAuthority(t *testing.T) {
 			examRoomID:    testExamRoomID,
 			userID:        testAcademicAffair,
 			userRole:      2002,
-			wantHasAuth:   false,
+			wantHasAuth:   true,
 			wantErr:       true,
 		},
 	}
@@ -1677,6 +1714,556 @@ func Test_checkInvigilationAuthority(t *testing.T) {
 			}
 			if gotHasAuth != tt.wantHasAuth {
 				t.Errorf("checkInvigilationAuthority() = %v, want %v", gotHasAuth, tt.wantHasAuth)
+			}
+		})
+	}
+}
+
+func Test_invigilationFile(t *testing.T) {
+	cmn.ConfigureForTest()
+	CleanTestExamData(t)
+	CreateTestExamData(t)
+	t.Cleanup(func() {
+		CleanTestExamData(t)
+	})
+
+	tests := []struct {
+		name          string
+		forceError    string
+		userID        int64
+		userRole      int64
+		queryParams   url.Values
+		wantErr       bool
+		checkResult   func(t *testing.T, responseData []byte)
+		errorContains string
+		method        string
+		file          InvigilationFile
+		nilReq        bool
+		description   string
+	}{
+		{
+			name:       "POST - 正常上传监考附件",
+			forceError: "",
+			userID:     testAcademicAffair,
+			userRole:   2002,
+			method:     "POST",
+			file: InvigilationFile{
+				ExamSessionID: testOfflineExamSessionID,
+				ExamRoomID:    testExamRoomID,
+				CheckSum:      testFile1CheckSum,
+				Name:          testFile1Name,
+				Size:          int64(len(testFile1Content)),
+			},
+			wantErr: false,
+			checkResult: func(t *testing.T, responseData []byte) {
+				if responseData == nil {
+					t.Fatalf("expected response data, got nil")
+				}
+				var files []InvigilationFile
+				if err := json.Unmarshal(responseData, &files); err != nil {
+					t.Fatalf("unmarshal response data failed: %v", err)
+				}
+				if len(files) == 0 {
+					t.Fatalf("expected at least one file in response")
+				}
+			},
+		},
+		{
+			name:       "POST - 强制读取请求体错误",
+			forceError: "io.ReadAll",
+			userID:     testAcademicAffair,
+			userRole:   2002,
+			method:     "POST",
+			file: InvigilationFile{
+				ExamSessionID: testOfflineExamSessionID,
+				ExamRoomID:    testExamRoomID,
+				CheckSum:      testFile1CheckSum,
+				Name:          testFile1Name,
+				Size:          int64(len(testFile1Content)),
+			},
+			wantErr:       true,
+			errorContains: "强制读取请求体错误",
+		},
+		{
+			name:       "POST - 强制关闭IO错误",
+			forceError: "io.Close",
+			userID:     testAcademicAffair,
+			userRole:   2002,
+			method:     "POST",
+			file: InvigilationFile{
+				ExamSessionID: testOfflineExamSessionID,
+				ExamRoomID:    testExamRoomID,
+				CheckSum:      testFile1CheckSum,
+				Name:          testFile1Name,
+				Size:          int64(len(testFile1Content)),
+			},
+			wantErr:       false,
+			errorContains: "",
+		},
+		{
+			name:       "POST - 强制JSON解析错误",
+			forceError: "json.Unmarshal",
+			userID:     testAcademicAffair,
+			userRole:   2002,
+			method:     "POST",
+			file: InvigilationFile{
+				ExamSessionID: testOfflineExamSessionID,
+				ExamRoomID:    testExamRoomID,
+				CheckSum:      testFile1CheckSum,
+				Name:          testFile1Name,
+				Size:          int64(len(testFile1Content)),
+			},
+			wantErr:       true,
+			errorContains: "强制JSON解析错误",
+		},
+		{
+			name:       "POST - 强制JSON解析错误2",
+			forceError: "json.Unmarshal2",
+			userID:     testAcademicAffair,
+			userRole:   2002,
+			method:     "POST",
+			file: InvigilationFile{
+				ExamSessionID: testOfflineExamSessionID,
+				ExamRoomID:    testExamRoomID,
+				CheckSum:      testFile1CheckSum,
+				Name:          testFile1Name,
+				Size:          int64(len(testFile1Content)),
+			},
+			wantErr:       true,
+			errorContains: "强制第二次JSON解析错误",
+		},
+		{
+			name:       "POST - 无效的考试场次ID",
+			forceError: "",
+			userID:     testAcademicAffair,
+			userRole:   2002,
+			method:     "POST",
+			file: InvigilationFile{
+				ExamSessionID: 0,
+				ExamRoomID:    testExamRoomID,
+				CheckSum:      testFile1CheckSum,
+				Name:          testFile1Name,
+				Size:          int64(len(testFile1Content)),
+			},
+			wantErr:       true,
+			errorContains: "无效的考试场次ID",
+		},
+		{
+			name:       "POST - 强制检查用户是否有权限获取监考信息错误",
+			forceError: "checkInvigilationAuthority",
+			userID:     testAcademicAffair,
+			userRole:   2002,
+			method:     "POST",
+			file: InvigilationFile{
+				ExamSessionID: testOfflineExamSessionID,
+				ExamRoomID:    testExamRoomID,
+				CheckSum:      testFile1CheckSum,
+				Name:          testFile1Name,
+				Size:          int64(len(testFile1Content)),
+			},
+			wantErr:       true,
+			errorContains: "强制检查用户是否有权限获取监考信息错误",
+		},
+		{
+			name:       "POST - 强制查询文件错误",
+			forceError: "queryFiles",
+			userID:     testAcademicAffair,
+			userRole:   2002,
+			method:     "POST",
+			file: InvigilationFile{
+				ExamSessionID: testOfflineExamSessionID,
+				ExamRoomID:    testExamRoomID,
+				CheckSum:      testFile1CheckSum,
+				Name:          testFile1Name,
+				Size:          int64(len(testFile1Content)),
+			},
+			wantErr:       true,
+			errorContains: "强制查询文件错误",
+		},
+		{
+			name:       "POST - 强制获取文件信息错误",
+			forceError: "scanFiles",
+			userID:     testAcademicAffair,
+			userRole:   2002,
+			method:     "POST",
+			file: InvigilationFile{
+				ExamSessionID: testOfflineExamSessionID,
+				ExamRoomID:    testExamRoomID,
+				CheckSum:      testFile1CheckSum,
+				Name:          testFile1Name,
+				Size:          int64(len(testFile1Content)),
+			},
+			wantErr:       true,
+			errorContains: "强制获取文件信息错误",
+		},
+		{
+			name:       "POST - 强制JSON序列化错误",
+			forceError: "json.Marshal",
+			userID:     testAcademicAffair,
+			userRole:   2002,
+			method:     "POST",
+			file: InvigilationFile{
+				ExamSessionID: testOfflineExamSessionID,
+				ExamRoomID:    testExamRoomID,
+				CheckSum:      testFile1CheckSum,
+				Name:          testFile1Name,
+				Size:          int64(len(testFile1Content)),
+			},
+			wantErr:       true,
+			errorContains: "强制JSON序列化错误",
+		},
+		{
+			name:       "POST - 强制更新监考记录错误",
+			forceError: "tx.Exec",
+			userID:     testAcademicAffair,
+			userRole:   2002,
+			method:     "POST",
+			file: InvigilationFile{
+				ExamSessionID: testOfflineExamSessionID,
+				ExamRoomID:    testExamRoomID,
+				CheckSum:      testFile1CheckSum,
+				Name:          testFile1Name,
+				Size:          int64(len(testFile1Content)),
+			},
+			wantErr:       true,
+			errorContains: "强制更新监考记录错误",
+		},
+		{
+			name:       "POST - 强制JSON序列化错误",
+			forceError: "json.Marshal2",
+			userID:     testAcademicAffair,
+			userRole:   2002,
+			method:     "POST",
+			file: InvigilationFile{
+				ExamSessionID: testOfflineExamSessionID,
+				ExamRoomID:    testExamRoomID,
+				CheckSum:      testFile1CheckSum,
+				Name:          testFile1Name,
+				Size:          int64(len(testFile1Content)),
+			},
+			wantErr:       true,
+			errorContains: "强制JSON序列化错误",
+		},
+		{
+			name:       "POST - 无效的考场ID",
+			forceError: "",
+			userID:     testAcademicAffair,
+			userRole:   2002,
+			method:     "POST",
+			file: InvigilationFile{
+				ExamSessionID: testOfflineExamSessionID,
+				ExamRoomID:    0,
+				CheckSum:      testFile1CheckSum,
+				Name:          testFile1Name,
+				Size:          int64(len(testFile1Content)),
+			},
+			wantErr:       true,
+			errorContains: "无效的考场ID",
+		},
+		{
+			name:          "POST - 强制开始事务错误",
+			forceError:    "tx.Begin",
+			userID:        testAcademicAffair,
+			userRole:      2002,
+			method:        "POST",
+			file:          InvigilationFile{},
+			nilReq:        true,
+			wantErr:       true,
+			errorContains: "强制开始事务错误",
+		},
+		{
+			name:          "POST - 强制开始事务错误",
+			forceError:    "tx.Rollback",
+			userID:        testAcademicAffair,
+			userRole:      2002,
+			method:        "POST",
+			file:          InvigilationFile{},
+			nilReq:        true,
+			wantErr:       false,
+			errorContains: "",
+		},
+		{
+			name:          "POST - 强制提交事务错误",
+			forceError:    "tx.Commit",
+			userID:        testAcademicAffair,
+			userRole:      2002,
+			method:        "POST",
+			file:          InvigilationFile{},
+			nilReq:        true,
+			wantErr:       false,
+			errorContains: "",
+		},
+		{
+			name:          "POST - 请求体为空",
+			forceError:    "",
+			userID:        testAcademicAffair,
+			userRole:      2002,
+			method:        "POST",
+			file:          InvigilationFile{},
+			nilReq:        true,
+			wantErr:       true,
+			errorContains: "请求体为空",
+		},
+		{
+			name:          "POST - 无效的用户ID",
+			forceError:    "",
+			userID:        0,
+			userRole:      0,
+			method:        "POST",
+			file:          InvigilationFile{},
+			nilReq:        true,
+			wantErr:       true,
+			errorContains: "无效的用户ID",
+		},
+		{
+			name:       "POST - 无权限上传",
+			forceError: "noAuth",
+			userID:     testAcademicAffair,
+			userRole:   2002,
+			method:     "POST",
+			file: InvigilationFile{
+				ExamSessionID: testOfflineExamSessionID,
+				ExamRoomID:    testExamRoomID,
+				CheckSum:      testFile1CheckSum,
+				Name:          testFile1Name,
+				Size:          int64(len(testFile1Content)),
+			},
+			wantErr:       true,
+			errorContains: "无法上传该场考试的监考附件",
+		},
+		{
+			name:       "POST - 强制创建文件记录错误",
+			forceError: "NewFileRecord",
+			userID:     testAcademicAffair,
+			userRole:   2002,
+			method:     "POST",
+			file: InvigilationFile{
+				ExamSessionID: testOfflineExamSessionID,
+				ExamRoomID:    testExamRoomID,
+				CheckSum:      testFile1CheckSum,
+				Name:          testFile1Name,
+				Size:          int64(len(testFile1Content)),
+			},
+			wantErr:       true,
+			errorContains: "强制创建文件记录错误",
+		},
+		{
+			name:          "DELETE - 无效文件ID",
+			forceError:    "",
+			userID:        testAcademicAffair,
+			userRole:      2002,
+			method:        "DELETE",
+			file:          InvigilationFile{ExamSessionID: testOfflineExamSessionID, ExamRoomID: testExamRoomID, FileID: 0},
+			wantErr:       true,
+			errorContains: "无效的文件ID",
+		},
+		{
+			name:          "DELETE - 强制读取请求体错误",
+			forceError:    "io.ReadAll",
+			userID:        testAcademicAffair,
+			userRole:      2002,
+			method:        "DELETE",
+			file:          InvigilationFile{ExamSessionID: testOfflineExamSessionID, ExamRoomID: testExamRoomID, FileID: testFile1ID},
+			wantErr:       true,
+			errorContains: "强制读取请求体错误",
+		},
+		{
+			name:          "DELETE - 强制关闭IO错误",
+			forceError:    "io.Close",
+			userID:        testAcademicAffair,
+			userRole:      2002,
+			method:        "DELETE",
+			file:          InvigilationFile{ExamSessionID: testOfflineExamSessionID, ExamRoomID: testExamRoomID, FileID: testFile1ID},
+			wantErr:       false,
+			errorContains: "",
+		},
+		{
+			name:          "DELETE - 请求体为空",
+			forceError:    "",
+			userID:        testAcademicAffair,
+			userRole:      2002,
+			method:        "DELETE",
+			file:          InvigilationFile{ExamSessionID: testOfflineExamSessionID, ExamRoomID: testExamRoomID, FileID: testFile1ID},
+			wantErr:       true,
+			errorContains: "请求体为空",
+			nilReq:        true,
+		},
+		{
+			name:          "DELETE - 强制JSON解析错误",
+			forceError:    "json.Unmarshal",
+			userID:        testAcademicAffair,
+			userRole:      2002,
+			method:        "DELETE",
+			file:          InvigilationFile{ExamSessionID: testOfflineExamSessionID, ExamRoomID: testExamRoomID, FileID: testFile1ID},
+			wantErr:       true,
+			errorContains: "强制JSON解析错误",
+		},
+		{
+			name:          "DELETE - 强制第二次JSON解析错误",
+			forceError:    "json.Unmarshal2",
+			userID:        testAcademicAffair,
+			userRole:      2002,
+			method:        "DELETE",
+			file:          InvigilationFile{ExamSessionID: testOfflineExamSessionID, ExamRoomID: testExamRoomID, FileID: testFile1ID},
+			wantErr:       true,
+			errorContains: "强制第二次JSON解析错误",
+		},
+		{
+			name:          "DELETE - 无效的考试场次ID",
+			forceError:    "",
+			userID:        testAcademicAffair,
+			userRole:      2002,
+			method:        "DELETE",
+			file:          InvigilationFile{ExamSessionID: 0, ExamRoomID: testExamRoomID, FileID: 0},
+			wantErr:       true,
+			errorContains: "无效的考试场次ID",
+		},
+		{
+			name:          "DELETE - 无效的考场ID",
+			forceError:    "",
+			userID:        testAcademicAffair,
+			userRole:      2002,
+			method:        "DELETE",
+			file:          InvigilationFile{ExamSessionID: testOfflineExamSessionID, ExamRoomID: 0, FileID: 0},
+			wantErr:       true,
+			errorContains: "无效的考场ID",
+		},
+		{
+			name:          "DELETE - 强制检查用户是否有权限获取监考信息错误",
+			forceError:    "checkInvigilationAuthority",
+			userID:        testAcademicAffair,
+			userRole:      2002,
+			method:        "DELETE",
+			file:          InvigilationFile{ExamSessionID: testOfflineExamSessionID, ExamRoomID: testExamRoomID, FileID: testFile1ID},
+			wantErr:       true,
+			errorContains: "强制检查用户是否有权限获取监考信息错误",
+		},
+		{
+			name:          "DELETE - 无法上传该场考试的监考附件",
+			forceError:    "noAuth",
+			userID:        testAcademicAffair,
+			userRole:      2002,
+			method:        "DELETE",
+			file:          InvigilationFile{ExamSessionID: testOfflineExamSessionID, ExamRoomID: testExamRoomID, FileID: testFile1ID},
+			wantErr:       true,
+			errorContains: "无法上传该场考试的监考附件",
+		},
+		{
+			name:          "DELETE - 强制查询文件错误",
+			forceError:    "queryFiles",
+			userID:        testAcademicAffair,
+			userRole:      2002,
+			method:        "DELETE",
+			file:          InvigilationFile{ExamSessionID: testOfflineExamSessionID, ExamRoomID: testExamRoomID, FileID: testFile1ID},
+			wantErr:       true,
+			errorContains: "强制查询文件错误",
+		},
+		{
+			name:          "DELETE - 强制获取文件信息错误",
+			forceError:    "scanFiles",
+			userID:        testAcademicAffair,
+			userRole:      2002,
+			method:        "DELETE",
+			file:          InvigilationFile{ExamSessionID: testOfflineExamSessionID, ExamRoomID: testExamRoomID, FileID: testFile1ID},
+			wantErr:       true,
+			errorContains: "强制获取文件信息错误",
+		},
+		{
+			name:          "DELETE - 强制JSON序列化错误",
+			forceError:    "json.Marshal",
+			userID:        testAcademicAffair,
+			userRole:      2002,
+			method:        "DELETE",
+			file:          InvigilationFile{ExamSessionID: testOfflineExamSessionID, ExamRoomID: testExamRoomID, FileID: testFile1ID},
+			wantErr:       true,
+			errorContains: "强制JSON序列化错误",
+		},
+		{
+			name:          "DELETE - 强制序列化文件信息错误",
+			forceError:    "json.Marshal2",
+			userID:        testAcademicAffair,
+			userRole:      2002,
+			method:        "DELETE",
+			file:          InvigilationFile{ExamSessionID: testOfflineExamSessionID, ExamRoomID: testExamRoomID, FileID: testFile1ID},
+			wantErr:       true,
+			errorContains: "强制序列化文件信息错误",
+		},
+		{
+			name:          "DELETE - 强制更新监考记录错误",
+			forceError:    "tx.Exec",
+			userID:        testAcademicAffair,
+			userRole:      2002,
+			method:        "DELETE",
+			file:          InvigilationFile{ExamSessionID: testOfflineExamSessionID, ExamRoomID: testExamRoomID, FileID: testFile1ID},
+			wantErr:       true,
+			errorContains: "强制更新监考记录错误",
+		},
+		{
+			name:          "DELETE - 强制删除文件记录错误",
+			forceError:    "DeleteFileRecord",
+			userID:        testAcademicAffair,
+			userRole:      2002,
+			method:        "DELETE",
+			file:          InvigilationFile{ExamSessionID: testOfflineExamSessionID, ExamRoomID: testExamRoomID, FileID: testFile1ID},
+			wantErr:       true,
+			errorContains: "强制删除文件记录错误",
+		},
+		{
+			name:       "DELETE - 正常删除监考附件",
+			forceError: "",
+			userID:     testAcademicAffair,
+			userRole:   2002,
+			method:     "DELETE",
+			file: InvigilationFile{
+				ExamSessionID: testOfflineExamSessionID,
+				ExamRoomID:    testExamRoomID,
+				FileID:        testFile1ID,
+			},
+			wantErr: false,
+		},
+		{
+			name:       "无效的请求方式",
+			forceError: "",
+			userID:     testAcademicAffair,
+			userRole:   2002,
+			method:     "OPTIONS",
+			file: InvigilationFile{
+				ExamSessionID: testOfflineExamSessionID,
+				ExamRoomID:    testExamRoomID,
+				FileID:        testFile1ID,
+			},
+			wantErr:       true,
+			errorContains: "unsupported method",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			CleanTestExamData(t)
+			CreateTestExamData(t)
+			invigilationFileData, err := json.Marshal(tt.file)
+			assert.Nil(t, err)
+			if tt.nilReq {
+				invigilationFileData = nil
+			}
+			ctx := createMockContextWithBody(tt.method, "/api/exam/file", string(invigilationFileData), tt.forceError, tt.userID, tt.userRole)
+			invigilationFile(ctx)
+
+			serviceCtx := ctx.Value(cmn.QNearKey).(*cmn.ServiceCtx)
+
+			// 验证结果
+			if tt.wantErr {
+				assert.NotNil(t, serviceCtx.Err, tt.description)
+				if tt.errorContains != "" && serviceCtx.Err != nil {
+					assert.Contains(t, serviceCtx.Err.Error(), tt.errorContains, tt.description)
+				}
+			} else {
+				if serviceCtx.Err != nil {
+					t.Logf("意外的错误: %v", serviceCtx.Err)
+				}
+				assert.Nil(t, serviceCtx.Err, tt.description)
+				if tt.checkResult != nil && serviceCtx.Msg != nil {
+					tt.checkResult(t, serviceCtx.Msg.Data)
+				}
 			}
 		})
 	}
