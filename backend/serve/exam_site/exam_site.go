@@ -32,20 +32,21 @@ import (
 	"go.uber.org/zap"
 
 	"w2w.io/cmn"
+	"w2w.io/exam_service"
 	"w2w.io/null"
 	"w2w.io/serve/auth_mgt"
 )
 
 const (
-	IP_ADDR_REGEXP     = `^((25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])\.){3}(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])(:(\d{1,5}))?$`
-	ExamSitePrefix     = "examSite"
-	ExamSiteSyncPrefix = "examSiteSync"
-	SyncStatusKey      = "examSiteSync:SyncStatus"
-	PULLING            = "Pulling"
-	PULLED             = "Pulled"
-	PUSHING            = "Pushing"
-	PUSHED             = "Pushed"
-	QNearSessionsKey   = "qNearSessions"
+	IP_ADDR_REGEXP      = `^((25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])\.){3}(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])(:(\d{1,5}))?$`
+	ExamSitePrefix      = "examSite"
+	ExamSiteSyncPrefix  = "examSiteSync"
+	SyncStatusKey       = "examSiteSync:SyncStatus"
+	PULLING             = "Pulling"
+	PULLED              = "Pulled"
+	PUSHING             = "Pushing"
+	PUSHED              = "Pushed"
+	QNearSessionsKey    = "qNearSessions"
 )
 
 var (
@@ -148,8 +149,16 @@ func Enroll(author string) {
 		Path: "/exam-site",
 		Name: "exam-site",
 
+		ApiEntries: []*cmn.EndPointApiEntries{
+			{
+				Name:         "考点管理.创建考点",
+				AccessAction: auth_mgt.CAPIAccessActionCreate,
+				Configurable: true,
+			},
+		},
+
 		Developer: developer,
-		WhiteList: false,
+		WhiteList: true,
 
 		//DomainID 创建该API的账号归属的domain
 		DomainID: int64(cmn.CDomainAssessExamSite),
@@ -164,8 +173,16 @@ func Enroll(author string) {
 		Path: "/exam-site/list",
 		Name: "exam-site-list",
 
+		ApiEntries: []*cmn.EndPointApiEntries{
+			{
+				Name:         "考点管理.获取考点列表",
+				AccessAction: auth_mgt.CAPIAccessActionRead,
+				Configurable: true,
+			},
+		},
+
 		Developer: developer,
-		WhiteList: false,
+		WhiteList: true,
 
 		//DomainID 创建该API的账号归属的domain
 		DomainID: int64(cmn.CDomainAssessExamSite),
@@ -180,8 +197,16 @@ func Enroll(author string) {
 		Path: "/exam-room",
 		Name: "exam-room",
 
+		ApiEntries: []*cmn.EndPointApiEntries{
+			{
+				Name:         "考点管理.创建考场",
+				AccessAction: auth_mgt.CAPIAccessActionCreate,
+				Configurable: true,
+			},
+		},
+
 		Developer: developer,
-		WhiteList: false,
+		WhiteList: true,
 
 		//DomainID 创建该API的账号归属的domain
 		DomainID: int64(cmn.CDomainAssessExamSite),
@@ -196,8 +221,16 @@ func Enroll(author string) {
 		Path: "/exam-room/list",
 		Name: "exam-room-list",
 
+		ApiEntries: []*cmn.EndPointApiEntries{
+			{
+				Name:         "考点管理.获取考场列表",
+				AccessAction: auth_mgt.CAPIAccessActionRead,
+				Configurable: true,
+			},
+		},
+
 		Developer: developer,
-		WhiteList: false,
+		WhiteList: true,
 
 		//DomainID 创建该API的账号归属的domain
 		DomainID: int64(cmn.CDomainAssessExamSite),
@@ -212,8 +245,21 @@ func Enroll(author string) {
 		Path: "/exam-site/sync",
 		Name: "exam-site-sync",
 
+		ApiEntries: []*cmn.EndPointApiEntries{
+			{
+				Name:         "考点管理.同步拉取",
+				AccessAction: auth_mgt.CAPIAccessActionRead,
+				Configurable: false,
+			},
+			{
+				Name:         "考点管理.同步推送",
+				AccessAction: auth_mgt.CAPIAccessActionUpdate,
+				Configurable: false,
+			},
+		},
+
 		Developer: developer,
-		WhiteList: false,
+		WhiteList: true,
 
 		DomainID: int64(cmn.CDomainAssessExamSite),
 
@@ -422,7 +468,11 @@ func Pull(ctx context.Context, retryCount int) {
 			}
 
 			z.Error(q.Err.Error())
+			return
 		}
+
+		// 开启考试计时器
+		q.Err = exam_service.InitializeExamTimers(ctx)
 
 	}()
 
@@ -598,7 +648,7 @@ func Pull(ctx context.Context, retryCount int) {
 	}
 
 	// 执行导入脚本
-	cmd = fmt.Sprintf("PGPASSFILE=%s psql -h %s -p %d -U %s -d %s -f %s",
+	cmd = fmt.Sprintf("PGPASSFILE=%s psql -v ON_ERROR_STOP=1 -h %s -p %d -U %s -d %s -f %s",
 		pgpassFullPath,
 		dbAddr,
 		dbPort,
@@ -621,6 +671,7 @@ func Pull(ctx context.Context, retryCount int) {
 		return
 	}
 
+	z.Info(string(o))
 }
 
 // Push 将数据推送到中心服务器, 中间如果发生任何错误都会进行重试
@@ -817,7 +868,7 @@ func Push(ctx context.Context, retryCount int) {
 	pgpassFullPath := filepath.Join(os.Getenv("HOME"), ".pgpass")
 
 	// 执行导出脚本
-	cmd := fmt.Sprintf("PGPASSFILE=%s psql -h %s -p %d -U %s -d %s -f %s",
+	cmd := fmt.Sprintf("PGPASSFILE=%s psql -v ON_ERROR_STOP=1 -h %s -p %d -U %s -d %s -f %s",
 		pgpassFullPath,
 		dbAddr,
 		dbPort,
@@ -842,6 +893,9 @@ func Push(ctx context.Context, retryCount int) {
 
 	}
 
+	z.Info(string(o))
+
+	// 将数据同步回中心服务器
 	cmd = fmt.Sprintf(`rsync -avz -e "ssh -p %d" --delete %s/* %s`,
 		sshPort,
 		source, dest)
@@ -974,11 +1028,11 @@ func SendPushMsg() {
 }
 
 // getApiPermissions 获取当前用户在使用指定接口时是否可读/可写
-func getApiPermissions(ctx context.Context, apiPath string) (readable, writable, editable bool) {
+func getApiPermissions(ctx context.Context, apiPath string) (readable, creatable, editable, deletable bool) {
 
 	q := cmn.GetCtxValue(ctx)
 
-	readable, q.Err = auth_mgt.CheckUserAPIAccessible(ctx, nil, apiPath, auth_mgt.CDataAccessModeRead)
+	readable, q.Err = auth_mgt.CheckUserAPIAccessible(ctx, nil, apiPath, auth_mgt.CAPIAccessActionRead)
 	if q.Err != nil || (cmn.InDebugMode && q.Tag["checkUserApiReadableErr"] != nil) {
 
 		if q.Err == nil {
@@ -988,21 +1042,31 @@ func getApiPermissions(ctx context.Context, apiPath string) (readable, writable,
 		return
 	}
 
-	writable, q.Err = auth_mgt.CheckUserAPIAccessible(ctx, nil, apiPath, auth_mgt.CDataAccessModeWrite)
-	if q.Err != nil || (cmn.InDebugMode && q.Tag["checkUserApiWritableErr"] != nil) {
+	creatable, q.Err = auth_mgt.CheckUserAPIAccessible(ctx, nil, apiPath, auth_mgt.CAPIAccessActionCreate)
+	if q.Err != nil || (cmn.InDebugMode && q.Tag["checkUserApiCreatableErr"] != nil) {
 
 		if q.Err == nil {
-			q.Err = q.Tag["checkUserApiWritableErr"].(error)
+			q.Err = q.Tag["checkUserApiCreatableErr"].(error)
 		}
 
 		return
 	}
 
-	editable, q.Err = auth_mgt.CheckUserAPIAccessible(ctx, nil, apiPath, auth_mgt.CDataAccessModeEdit)
+	editable, q.Err = auth_mgt.CheckUserAPIAccessible(ctx, nil, apiPath, auth_mgt.CAPIAccessActionUpdate)
 	if q.Err != nil || (cmn.InDebugMode && q.Tag["checkUserApiEditableErr"] != nil) {
 
 		if q.Err == nil {
 			q.Err = q.Tag["checkUserApiEditableErr"].(error)
+		}
+
+		return
+	}
+
+	deletable, q.Err = auth_mgt.CheckUserAPIAccessible(ctx, nil, apiPath, auth_mgt.CAPIAccessActionDelete)
+	if q.Err != nil || (cmn.InDebugMode && q.Tag["checkUserApiDeletableErr"] != nil) {
+
+		if q.Err == nil {
+			q.Err = q.Tag["checkUserApiDeletableErr"].(error)
 		}
 
 		return
@@ -1032,7 +1096,7 @@ func examSite(ctx context.Context) {
 
 	userID := q.SysUser.ID.Int64
 
-	readable, writable, editable := getApiPermissions(ctx, q.Ep.Path)
+	readable, creatable, editable, deletable := getApiPermissions(ctx, q.Ep.Path)
 
 	dbConn := cmn.GetDbConn()
 
@@ -1114,7 +1178,7 @@ func examSite(ctx context.Context) {
 
 	case "POST":
 
-		if !writable {
+		if !creatable {
 			q.Err = fmt.Errorf("当前用户没有权限创建该数据")
 			z.Error(q.Err.Error())
 			break
@@ -1238,7 +1302,7 @@ func examSite(ctx context.Context) {
 
 	case "DELETE":
 
-		if !writable {
+		if !deletable {
 			q.Err = fmt.Errorf("当前用户没有权限删除该数据")
 			z.Error(q.Err.Error())
 			break
@@ -1276,7 +1340,7 @@ func examSiteList(ctx context.Context) {
 		return
 	}
 
-	readable, _, _ := getApiPermissions(ctx, q.Ep.Path)
+	readable, _, _, _ := getApiPermissions(ctx, q.Ep.Path)
 
 	dbConn := cmn.GetDbConn()
 
@@ -1291,8 +1355,7 @@ MethodSwitch:
 			break
 		}
 
-		keys := []string{
-		}
+		keys := []string{}
 
 		values := []interface{}{
 			userID,
@@ -1306,7 +1369,7 @@ MethodSwitch:
 		l := len(values)
 
 		for i, d := range authority.AccessibleDomains {
-			dks = append(dks, fmt.Sprintf("t_exam_site.domain_id=$%d", i + l + 1))
+			dks = append(dks, fmt.Sprintf("t_exam_site.domain_id=$%d", i+l+1))
 			values = append(values, d)
 		}
 
@@ -1324,8 +1387,8 @@ MethodSwitch:
 			break
 		}
 
-		if req.Page < 0 {
-			q.Err = fmt.Errorf("页码不能小于0")
+		if req.Page < 1 {
+			q.Err = fmt.Errorf("页码不能小于1")
 			z.Error(q.Err.Error())
 			break
 		}
@@ -1351,7 +1414,7 @@ MethodSwitch:
 		for _, o := range req.OrderBy {
 			for k, v := range o {
 
-				if k == "" ||  v == "" {
+				if k == "" || v == "" {
 					continue
 				}
 
@@ -1430,7 +1493,7 @@ MethodSwitch:
 		}
 
 		s = fmt.Sprintf(`%s
-		LIMIT %d OFFSET %d`, s, req.PageSize, req.Page*req.PageSize)
+		LIMIT %d OFFSET %d`, s, req.PageSize, (req.Page-1)*req.PageSize)
 
 		stmt, q.Err = dbConn.Prepare(s)
 		if q.Err != nil || (cmn.InDebugMode && q.Tag["prepareErr2"] != nil) {
@@ -1529,7 +1592,7 @@ func examRoom(ctx context.Context) {
 		return
 	}
 
-	readable, writable, editable := getApiPermissions(ctx, q.Ep.Path)
+	readable, creatable, editable, deletable := getApiPermissions(ctx, q.Ep.Path)
 
 	dbConn := cmn.GetDbConn()
 
@@ -1611,7 +1674,7 @@ func examRoom(ctx context.Context) {
 
 	case "POST":
 
-		if !writable {
+		if !creatable {
 			q.Err = fmt.Errorf("当前用户没有权限创建该数据")
 			z.Error(q.Err.Error())
 			break
@@ -1647,13 +1710,18 @@ func examRoom(ctx context.Context) {
 
 		l := len(v)
 		for i, d := range authority.AccessibleDomains {
-			ss = append(ss, fmt.Sprintf("domain_id = $%d", i + l + 1))
+			ss = append(ss, fmt.Sprintf("domain_id = $%d", i+l+1))
 			v = append(v, d)
 		}
 
 		sqlStr := fmt.Sprintf(`SELECT id FROM t_exam_site WHERE id = $1 AND  (creator = $2 OR %s)`, strings.Join(ss, " OR "))
 		stmt1, q.Err = tx.Prepare(sqlStr)
-		if q.Err != nil {
+		if q.Err != nil || (cmn.InDebugMode && q.Tag["prepareCheckAccessSqlErr"] != nil) {
+
+			if q.Err == nil {
+				q.Err = q.Tag["prepareCheckAccessSqlErr"].(error)
+			}
+
 			z.Error(q.Err.Error())
 			break
 		}
@@ -1662,20 +1730,30 @@ func examRoom(ctx context.Context) {
 
 		var r sql.Result
 		r, q.Err = stmt1.ExecContext(ctx, v...)
-		if q.Err != nil {
+		if q.Err != nil || (cmn.InDebugMode && q.Tag["execCheckAccessSqlErr"] != nil) {
+
+			if q.Err == nil {
+				q.Err = q.Tag["execCheckAccessSqlErr"].(error)
+			}
+
 			z.Error(q.Err.Error())
 			break
 		}
 
 		var c int64
 		c, q.Err = r.RowsAffected()
-		if q.Err != nil {
+		if q.Err != nil || (cmn.InDebugMode && q.Tag["getCheckAccessResultErr"] != nil) {
+
+			if q.Err == nil {
+				q.Err = q.Tag["getCheckAccessResultErr"].(error)
+			}
+
 			z.Error(q.Err.Error())
 			break
 		}
 
 		if c == 0 {
-			q.Err = fmt.Errorf("当前用户无权编辑该考点")
+			q.Err = fmt.Errorf("当前用户无权获取该考点数据, id: %d", info.ExamSiteID)
 			z.Error(q.Err.Error())
 			break
 		}
@@ -1719,7 +1797,7 @@ func examRoom(ctx context.Context) {
 
 	case "DELETE":
 
-		if !writable {
+		if !deletable {
 			q.Err = fmt.Errorf("当前用户没有权限删除该数据")
 			z.Error(q.Err.Error())
 			break
@@ -1757,7 +1835,7 @@ func examRoomList(ctx context.Context) {
 		return
 	}
 
-	readable, _, _ := getApiPermissions(ctx, q.Ep.Path)
+	readable, _, _, _ := getApiPermissions(ctx, q.Ep.Path)
 
 	dbConn := cmn.GetDbConn()
 
@@ -1852,6 +1930,7 @@ MethodSwitch:
 
 		var stmt1 *sql.Stmt
 
+		// 检查当前是否有权限访问该考点
 		ss := []string{}
 		v := []interface{}{
 			examSiteID,
@@ -1860,7 +1939,7 @@ MethodSwitch:
 
 		l := len(v)
 		for i, d := range authority.AccessibleDomains {
-			ss = append(ss, fmt.Sprintf("domain_id = $%d", i + l + 1))
+			ss = append(ss, fmt.Sprintf("domain_id = $%d", i+l+1))
 			v = append(v, d)
 		}
 
@@ -1918,8 +1997,8 @@ MethodSwitch:
 			examSiteID,
 		}
 
-		if req.Page < 0 {
-			q.Err = fmt.Errorf("页码不能小于0")
+		if req.Page < 1 {
+			q.Err = fmt.Errorf("页码不能小于1")
 			z.Error(q.Err.Error())
 			break
 		}
@@ -1945,7 +2024,7 @@ MethodSwitch:
 		for _, o := range req.OrderBy {
 			for k, v := range o {
 
-				if k == "" ||  v == "" {
+				if k == "" || v == "" {
 					continue
 				}
 
@@ -2010,7 +2089,7 @@ MethodSwitch:
 		}
 
 		sqlStr = fmt.Sprintf(`%s
-		LIMIT %d OFFSET %d`, sqlStr, req.PageSize, req.Page*req.PageSize)
+		LIMIT %d OFFSET %d`, sqlStr, req.PageSize, (req.Page-1)*req.PageSize)
 
 		stmt1, q.Err = dbConn.Prepare(sqlStr)
 		if q.Err != nil || (cmn.InDebugMode && q.Tag["prepareErr2"] != nil) {
@@ -2087,7 +2166,7 @@ MethodSwitch:
 
 }
 
-/* 考点同步相关 */
+/* 考点同步服务 */
 //  .oooooo..o
 // d8P'    `Y8
 // Y88bo.      oooo    ooo ooo. .oo.    .ooooo.
@@ -2225,9 +2304,6 @@ func examSiteSyncInit(ctx context.Context) {
 		}
 	}
 
-	if q.Tag == nil {
-		q.Tag = make(map[string]interface{})
-	}
 
 	switch v {
 
@@ -2276,6 +2352,20 @@ func examSiteSyncInit(ctx context.Context) {
 	pushChanOK := true
 
 	go func() {
+
+		interval := 3 * time.Minute
+		if viper.GetInt("examSiteServerSync.syncInterval") > 0 {
+			interval = time.Duration(viper.GetInt("examSiteServerSync.syncInterval")) * time.Second
+		}
+
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+
+		syncDelay := 5 * time.Minute
+		if viper.GetInt("examSiteServerSync.syncDelay") > 0 {
+			syncDelay = time.Duration(viper.GetInt("examSiteServerSync.syncDelay")) * time.Second
+		}
+
 		for {
 
 			select {
@@ -2312,6 +2402,78 @@ func examSiteSyncInit(ctx context.Context) {
 					continue
 				}
 
+			case <-ticker.C:
+
+				// 查询当前是否有尚未结束的考试
+				// 如果有，则不进行同步操作
+				// 如果没有，则进行同步
+				
+				dbConn := cmn.GetDbConn()
+
+				c := 0
+				q.Err = dbConn.QueryRow(`SELECT COUNT(id) FROM t_exam_info WHERE status = '04'`).Scan(&c)
+				if q.Err != nil || (cmn.InDebugMode && q.Tag["queryOngoingExamErr"] != nil) {
+					
+					if q.Err == nil {
+						q.Err = q.Tag["queryOngoingExamErr"].(error)
+					}
+					
+					z.Error(q.Err.Error())
+					break
+				}
+				
+				if c > 0 {
+
+					if cmn.InDebugMode && q.Tag["haveOngoingExam"] != nil {
+						q.Tag["haveOngoingExam"].(chan int) <- 1
+					}
+
+					break
+				}
+
+				redisConn := cmn.GetRedisConn()
+
+				// 获取当前同步状态
+				var syncStatus string
+				syncStatus, q.Err = redisConn.Get(ctx, SyncStatusKey).Result()
+				if q.Err != nil || (cmn.InDebugMode && q.Tag["getSyncStatusErrInTimer"] != nil) {
+
+					if q.Err == nil {
+						q.Err = q.Tag["getSyncStatusErrInTimer"].(error)
+					}
+
+					z.Error(q.Err.Error())
+					break
+				}
+
+				ticker.Stop()
+
+				switch syncStatus {
+
+				// 待推送
+				case PULLED :
+
+					z.Info(fmt.Sprintf("server will push data in %d seconds", syncDelay))
+
+					time.Sleep(syncDelay)
+
+					Push(ctx, maxRetry)
+
+					if cmn.InDebugMode && q.Tag["pushDone"] != nil {
+						q.Tag["pushDone"].(chan int) <- 1
+					}
+
+				// 待拉取
+				case PUSHED :
+					Pull(ctx, maxRetry)
+
+					if cmn.InDebugMode && q.Tag["pullDone"] != nil {
+						q.Tag["pullDone"].(chan int) <- 1
+					}
+
+				}
+
+				ticker.Reset(interval)
 			}
 
 			if !pullChanOK && !pushChanOK {
@@ -2530,7 +2692,8 @@ MethodSwitch:
 			break MethodSwitch
 		}
 
-		cmd = fmt.Sprintf("PGPASSFILE=%s psql -h %s -p %d -U %s -d %s -f %s",
+		// 执行导出脚本
+		cmd = fmt.Sprintf("PGPASSFILE=%s psql -v ON_ERROR_STOP=1 -h %s -p %d -U %s -d %s -f %s",
 			pgpassFullPath,
 			dbAddr,
 			dbPort,
@@ -2561,6 +2724,7 @@ MethodSwitch:
 
 		var data []byte
 
+		// 返回同步数据信息
 		data, q.Err = json.Marshal(info)
 		if q.Err != nil || (cmn.InDebugMode && q.Tag["jsonMarshalErr"] != nil) {
 
@@ -2608,7 +2772,8 @@ MethodSwitch:
 			break MethodSwitch
 		}
 
-		cmd := fmt.Sprintf(`PGPASSFILE=%s psql -h %s -p %d -U %s -d %s -f %s`,
+		// 执行导入脚本
+		cmd := fmt.Sprintf(`PGPASSFILE=%s psql -v ON_ERROR_STOP=1 -h %s -p %d -U %s -d %s -f %s`,
 			pgpassFullPath,
 			dbAddr,
 			dbPort,
@@ -2631,6 +2796,8 @@ MethodSwitch:
 			z.Error(q.Err.Error())
 			break MethodSwitch
 		}
+
+		z.Info(string(o))
 
 		// 清理已同步的数据
 		_, err := q.RedisClient.Del(ctx, syncInfoSnapshotKey).Result()

@@ -54,12 +54,6 @@ func validateExamData(examData ExamData, isUpdate bool) error {
 		return err
 	}
 
-	if examData.ExamInfo.Mode.String != "00" && examData.ExamInfo.Mode.String != "02" {
-		err := fmt.Errorf("无效的考试方式")
-		z.Error(err.Error())
-		return err
-	}
-
 	for _, examSession := range examData.ExamSessions {
 		if examSession.PaperID.Int64 <= 0 {
 			err := fmt.Errorf("考试场次的试卷ID无效: %d", examSession.PaperID.Int64)

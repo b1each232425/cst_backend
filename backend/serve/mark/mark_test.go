@@ -3040,6 +3040,27 @@ func TestHandleAIMarkTask(t *testing.T) {
 			expectedErrStr: "找不到任务计数键值",
 		},
 		{
+			name: "删除key失败",
+			task: asynq.NewTask(TaskTypeAIMarkRequest, newTaskPayload(TaskTypeAIMarkRequest, AIMarkTaskPayLoad{
+				AIMarkRequest: AIMarkRequest{
+					Question:       ai_mark.TestedQuestionDetails[0],
+					StudentAnswers: ai_mark.TestedStudentAnswers[0],
+				},
+				QueryCondition: QueryCondition{
+					TeacherID:     testedTeacherID,
+					ExamSessionID: 102,
+				},
+				UniqueTaskCountKey: "test:exam_session:102:count",
+			})),
+			setup: func() error {
+				redisClient := cmn.GetRedisConn()
+				redisClient.Set(context.Background(), "test:exam_session:102:count", 1, 0)
+				return nil
+			},
+			forceErr:       "HandleAIMarkTask-redisClient.Del",
+			expectedErrStr: "删除key失败",
+		},
+		{
 			name: "超减任务计数键值",
 			task: asynq.NewTask(TaskTypeAIMarkRequest, newTaskPayload(TaskTypeAIMarkRequest, AIMarkTaskPayLoad{
 				AIMarkRequest: AIMarkRequest{
