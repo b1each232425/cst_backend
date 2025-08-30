@@ -890,7 +890,7 @@ func CacheSysUser(ctx context.Context, sysUser *TUser) {
 	}
 
 	key = fmt.Sprintf("%s:%d", SysUserByID, sysUser.ID.Int64)
-	_, q.Err = redisClient.Set(ctx, key, sysUser.Account, time.Second*3).Result()
+	_, q.Err = redisClient.Set(ctx, key, sysUser.Account, 0).Result()
 	if q.Err != nil {
 		z.Error(q.Err.Error())
 		return
@@ -898,7 +898,7 @@ func CacheSysUser(ctx context.Context, sysUser *TUser) {
 
 	if sysUser.MobilePhone.Valid && sysUser.MobilePhone.String != "" {
 		key = fmt.Sprintf("%s:%s", SysUserByTel, sysUser.MobilePhone.String)
-		_, q.Err = redisClient.Set(ctx, key, sysUser.Account, time.Second*3).Result()
+		_, q.Err = redisClient.Set(ctx, key, sysUser.Account, 0).Result()
 		if q.Err != nil {
 			z.Error(q.Err.Error())
 			return
@@ -908,7 +908,7 @@ func CacheSysUser(ctx context.Context, sysUser *TUser) {
 
 	if sysUser.Email.Valid && sysUser.Email.String != "" {
 		key = fmt.Sprintf("%s:%s", SysUserByEmail, sysUser.Email.String)
-		_, q.Err = redisClient.Set(ctx, key, sysUser.Account, time.Second).Result()
+		_, q.Err = redisClient.Set(ctx, key, sysUser.Account, 0).Result()
 		if q.Err != nil {
 			z.Error(q.Err.Error())
 			return
@@ -955,7 +955,7 @@ func CacheWxUser(ctx context.Context, wxUser *TWxUser) {
 
 	key = fmt.Sprintf("%s:%d", WxUserByID, wxUser.ID.Int64)
 
-	_, q.Err = redisClient.Set(ctx, key, wxUser.UnionID.String, time.Second).Result()
+	_, q.Err = redisClient.Set(ctx, key, wxUser.UnionID.String, 0).Result()
 	if q.Err != nil {
 		z.Error(q.Err.Error())
 	}
@@ -963,7 +963,7 @@ func CacheWxUser(ctx context.Context, wxUser *TWxUser) {
 	var haveValidOpenID bool
 	if wxUser.MpOpenID.Valid && wxUser.MpOpenID.String != "" {
 		key = fmt.Sprintf("%s:%s", WxUserByOpenID, wxUser.MpOpenID.String)
-		_, q.Err = redisClient.Set(ctx, key, wxUser.ID.Int64, time.Second).Result()
+		_, q.Err = redisClient.Set(ctx, key, wxUser.ID.Int64, 0).Result()
 		if q.Err != nil {
 			z.Error(q.Err.Error())
 		}
@@ -972,7 +972,7 @@ func CacheWxUser(ctx context.Context, wxUser *TWxUser) {
 
 	if wxUser.WxOpenID.Valid && wxUser.WxOpenID.String != "" {
 		key = fmt.Sprintf("%s:%s", WxUserByOpenID, wxUser.WxOpenID.String)
-		_, q.Err = redisClient.Set(ctx, key, wxUser.ID.Int64, time.Second).Result()
+		_, q.Err = redisClient.Set(ctx, key, wxUser.ID.Int64, 0).Result()
 		if q.Err != nil {
 			z.Error(q.Err.Error())
 		}

@@ -1,8 +1,10 @@
 /*==============================================================*/
 /* DBMS name:      PostgreSQL 9.x                               */
-/* Created on:     2025/8/23 14:26:28                           */
+/* Created on:     2025/8/29 15:24:37                           */
 /*==============================================================*/
 
+
+drop view if exists v_z_w_practice_summary;
 
 drop view if exists v_z_submission_wrong_collection;
 
@@ -25,8 +27,6 @@ drop view if exists v_xkb_user;
 drop view if exists v_xkb_school_layout;
 
 drop view if exists v_x_grade_list;
-
-drop view if exists v_w_practice_summary;
 
 drop view if exists v_w_latest_unsubmitted_practice;
 
@@ -116,7 +116,7 @@ drop table if exists t_age;
 
 drop index if exists  idx_t_api_name;
 
-drop index if exists  idx_t_api_expose_path;
+drop index if exists  idx_t_api_ep_aa;
 
 drop table if exists t_domain_api;
 
@@ -153,6 +153,8 @@ drop table if exists t_exam_paper;
 drop table if exists t_exam_paper_group;
 
 drop table if exists t_exam_paper_question;
+
+drop table if exists t_exam_plan_student;
 
 drop table if exists t_exam_record;
 
@@ -297,6 +299,10 @@ drop index if exists  idx_region_name;
 drop index if exists  Idx_region_id_pid;
 
 drop table if exists t_region;
+
+drop table if exists t_register_plan;
+
+drop table if exists t_register_practice;
 
 drop index if exists  idx_key_key_relation;
 
@@ -529,8 +535,11 @@ create table if not exists  t_api (
    id                   SERIAL not null,
    name                 VARCHAR              not null,
    expose_path          VARCHAR              null,
+   author               JSONB                not null,
    maintainer           INT8                 null,
+   access_action        VARCHAR              null,
    access_control_level VARCHAR              not null,
+   configurable         BOOL                 null,
    updated_by           INT8                 null,
    update_time          INT8                 null default (extract(epoch from current_timestamp)*1000)::bigint,
    creator              INT8                 null,
@@ -554,8 +563,14 @@ comment on column t_api.name is
 comment on column t_api.expose_path is
 '访问路径';
 
+comment on column t_api.author is
+'接口作者';
+
 comment on column t_api.maintainer is
 '维护者';
+
+comment on column t_api.access_action is
+'访问操作 full:允许所有操作 query: 查询数据操作 add: 添加数据操作 edit: 编辑数据操作 delete: 删除数据操作';
 
 comment on column t_api.access_control_level is
 '访问控制实现层级
@@ -563,6 +578,9 @@ level 0: 无组/角色/数据限制
 level 2: 机构#角色级别, 实现了不同角色授权，但不控制数据范围
 level 4: 机构#角色$ID, 实现了不同角色授权，可控制 creator || all
 level 8: 机构.DEPT#角色$ID, 实现了不同角色授权，可控制 creator || GRPs';
+
+comment on column t_api.configurable is
+'是否允许在创建角色时被配置';
 
 comment on column t_api.updated_by is
 '更新者';
@@ -590,53 +608,54 @@ comment on column t_api.status is
 
 ALTER SEQUENCE t_api_id_seq RESTART WITH 20000;
 /*
-insert into t_api(id,name, expose_path,domain_id, maintainer, access_control_level)
-values (100,'平台.登录','/api/login',177,1000,3),
-(110,'网站图标','/favicon.ico',177,1000,3),
-(200,'平台.登出','/api/logout',177,1000,3),
-(300,'平台.用户管理','/api/user',177,1000,3),
-(400,'校快保.参数','/api/param',10002,1000,3),
-(500,'校快保.学校','/api/school',10002,1000,3),
-(600,'校快保.开放学校列表','/api/openSchools',10002,1000,3),
-(700,'校快保.学校列表','/api/schoolList',10002,1000,3),
-(800,'校快保.用户','/api/xkbUser',10002,1000,3),
-(900,'校快保.我的被保险人','/api/myInsuredList',10002,1000,3),
-(1000,'校快保.订单','/api/order',10002,1000,3),
-(1100,'校快保.微信支付','/api/wxPay',10002,1000,3),
-(1200,'校快保.微信支付回调','/api/wxPaid',10002,1000,3),
-(1300,'平台.时间测试','/api/trialTime',177,1000,3),
-(1400,'校快保.投保规则','/api/purchaseRule',10002,1000,3),
-(1500,'校快保.微信支付参数','/api/wxAppID',10002,1000,3),
-(1600,'校快保.用户状态','/api/status',10002,1000,3),
-(1700,'平台.微信消息响应','/api/wxServe',177,1000,3),
-(1800,'平台.微信登录','/api/wxLogin',177,1000,3),
-(1900,'近邻科技.微信验证域名','/MP_verify_NoNLb44EuoLJ7ybT.txt',1077,1000,3),
-(2000,'校快保.微信验证域名','/MP_verify_87DVhsMdnS64dC0K.txt',10002,1000,3),
-(2100,'平台.基础测试','/trial',177,1000,3),
-(2200,'校快保.学校管理员','/api/schoolManager',10002,1000,3),
-(2300,'校快保.销售管理员','/api/saleManager',10002,1000,3),
-(2400,'校快保.学校相关管理员','/api/manager',10002,1000,3),
-(2500,'校快保.保单','/api/insurancePolicy',10002,1000,3),
-(2600,'校快保.保险单价','/api/insuranceUnitPrice',10002,1000,3),
-(2700,'校快保.保险文档','/api/insuranceDoc',10002,1000,3),
-(2800,'平台.发送短信验证码','/api/sendVerifyCodeBySMS',177,1000,3),
-(2900,'平台.确认短信验证码','/api/verifySMSCode',177,1000,3),
-(3000,'平台.手机是否已被验证','/api/isTelVerified',177,1000,3),
-(3100,'平台.日志','/api/log',177,1000,3),
-(3200,'平台.文件','/api/file',177,1000,3),
-(3300,'校快保.报案理赔','/api/reportClaims',10002,1000,3),
-(3400,'平台.默认页面','/',177,1000,3),
-(3500,'平台.接口测试','/t',177,1000,3),
-(3600,'平台.测试.登录页面','/t/login',177,1000,3),
-(3700,'校快保.前端','/xkb',10002,1000,3),
-(3800,'校快保.前端.登录','/xkb/login',10002,1000,3);
+insert into t_api(author,id,name, expose_path,domain_id, maintainer, access_control_level)
+values ('{"name":"user","tel":"18928776452","email":"XUnion@GMail.com"}',100,'平台.登录','/api/login',177,1000,3),
+('{"name":"user","tel":"18928776452","email":"XUnion@GMail.com"}',110,'网站图标','/favicon.ico',177,1000,3),
+('{"name":"user","tel":"18928776452","email":"XUnion@GMail.com"}',200,'平台.登出','/api/logout',177,1000,3),
+('{"name":"user","tel":"18928776452","email":"XUnion@GMail.com"}',300,'平台.用户管理','/api/user',177,1000,3),
+('{"name":"user","tel":"18928776452","email":"XUnion@GMail.com"}',400,'校快保.参数','/api/param',10002,1000,3),
+('{"name":"user","tel":"18928776452","email":"XUnion@GMail.com"}',500,'校快保.学校','/api/school',10002,1000,3),
+('{"name":"user","tel":"18928776452","email":"XUnion@GMail.com"}','{"name":"user","tel":"18928776452","email":"XUnion@GMail.com"}',600,'校快保.开放学校列表','/api/openSchools',10002,1000,3),
+('{"name":"user","tel":"18928776452","email":"XUnion@GMail.com"}',700,'校快保.学校列表','/api/schoolList',10002,1000,3),
+('{"name":"user","tel":"18928776452","email":"XUnion@GMail.com"}',800,'校快保.用户','/api/xkbUser',10002,1000,3),
+(('{"name":"user","tel":"18928776452","email":"XUnion@GMail.com"}',900,'校快保.我的被保险人','/api/myInsuredList',10002,1000,3),
+('{"name":"user","tel":"18928776452","email":"XUnion@GMail.com"}',1000,'校快保.订单','/api/order',10002,1000,3),
+('{"name":"user","tel":"18928776452","email":"XUnion@GMail.com"}',1100,'校快保.微信支付','/api/wxPay',10002,1000,3),
+('{"name":"user","tel":"18928776452","email":"XUnion@GMail.com"}',1200,'校快保.微信支付回调','/api/wxPaid',10002,1000,3),
+('{"name":"user","tel":"18928776452","email":"XUnion@GMail.com"}',1300,'平台.时间测试','/api/trialTime',177,1000,3),
+('{"name":"tom sawyer","tel":"13580452503", "email":"KManager@GMail.com"}',1400,'校快保.投保规则','/api/purchaseRule',10002,1000,3),
+('{"name":"tom sawyer","tel":"13580452503", "email":"KManager@GMail.com"}',1500,'校快保.微信支付参数','/api/wxAppID',10002,1000,3),
+('{"name":"tom sawyer","tel":"13580452503", "email":"KManager@GMail.com"}',1600,'校快保.用户状态','/api/status',10002,1000,3),
+('{"name":"tom sawyer","tel":"13580452503", "email":"KManager@GMail.com"}',1700,'平台.微信消息响应','/api/wxServe',177,1000,3),
+('{"name":"tom sawyer","tel":"13580452503", "email":"KManager@GMail.com"}',1800,'平台.微信登录','/api/wxLogin',177,1000,3),
+('{"name":"tom sawyer","tel":"13580452503", "email":"KManager@GMail.com"}',1900,'近邻科技.微信验证域名','/MP_verify_NoNLb44EuoLJ7ybT.txt',1077,1000,3),
+('{"name":"tom sawyer","tel":"13580452503", "email":"KManager@GMail.com"}',2000,'校快保.微信验证域名','/MP_verify_87DVhsMdnS64dC0K.txt',10002,1000,3),
+('{"name":"tom sawyer","tel":"13580452503", "email":"KManager@GMail.com"}',2100,'平台.基础测试','/trial',177,1000,3),
+('{"name":"tom sawyer","tel":"13580452503", "email":"KManager@GMail.com"}',2200,'校快保.学校管理员','/api/schoolManager',10002,1000,3),
+('{"name":"tom sawyer","tel":"13580452503", "email":"KManager@GMail.com"}',2300,'校快保.销售管理员','/api/saleManager',10002,1000,3),
+('{"name":"tom sawyer","tel":"13580452503", "email":"KManager@GMail.com"}',2400,'校快保.学校相关管理员','/api/manager',10002,1000,3),
+('{"name":"tom sawyer","tel":"13580452503", "email":"KManager@GMail.com"}',2500,'校快保.保单','/api/insurancePolicy',10002,1000,3),
+('{"name":"tom sawyer","tel":"13580452503", "email":"KManager@GMail.com"}',2600,'校快保.保险单价','/api/insuranceUnitPrice',10002,1000,3),
+('{"name":"tom sawyer","tel":"13580452503", "email":"KManager@GMail.com"}',2700,'校快保.保险文档','/api/insuranceDoc',10002,1000,3),
+('{"name":"tom sawyer","tel":"13580452503", "email":"KManager@GMail.com"}',2800,'平台.发送短信验证码','/api/sendVerifyCodeBySMS',177,1000,3),
+('{"name":"tom sawyer","tel":"13580452503", "email":"KManager@GMail.com"}',2900,'平台.确认短信验证码','/api/verifySMSCode',177,1000,3),
+('{"name":"tom sawyer","tel":"13580452503", "email":"KManager@GMail.com"}',3000,'平台.手机是否已被验证','/api/isTelVerified',177,1000,3),
+('{"name":"tom sawyer","tel":"13580452503", "email":"KManager@GMail.com"}',3100,'平台.日志','/api/log',177,1000,3),
+('{"name":"tom sawyer","tel":"13580452503", "email":"KManager@GMail.com"}',3200,'平台.文件','/api/file',177,1000,3),
+('{"name":"tom sawyer","tel":"13580452503", "email":"KManager@GMail.com"}',3300,'校快保.报案理赔','/api/reportClaims',10002,1000,3),
+('{"name":"tom sawyer","tel":"13580452503", "email":"KManager@GMail.com"}',3400,'平台.默认页面','/',177,1000,3),
+('{"name":"tom sawyer","tel":"13580452503", "email":"KManager@GMail.com"}',3500,'平台.接口测试','/t',177,1000,3),
+('{"name":"tom sawyer","tel":"13580452503", "email":"KManager@GMail.com"}',3600,'平台.测试.登录页面','/t/login',177,1000,3),
+('{"name":"tom sawyer","tel":"13580452503", "email":"KManager@GMail.com"}',3700,'校快保.前端','/xkb',10002,1000,3),
+('{"name":"tom sawyer","tel":"13580452503", "email":"KManager@GMail.com"}',3800,'校快保.前端.登录','/xkb/login',10002,1000,3);
 */
 
 /*==============================================================*/
-/* Index: idx_t_api_expose_path                                 */
+/* Index: idx_t_api_ep_aa                                       */
 /*==============================================================*/
-create unique index if not exists  idx_t_api_expose_path on t_api (
-expose_path
+create unique index if not exists  idx_t_api_ep_aa on t_api (
+expose_path,
+( access_action )
 );
 
 /*==============================================================*/
@@ -1949,18 +1968,81 @@ comment on column t_exam_paper_question.question_attachments_path is
 '题目附件url数组';
 
 /*==============================================================*/
+/* Table: t_exam_plan_student                                   */
+/*==============================================================*/
+create table if not exists  t_exam_plan_student (
+   id                   SERIAL not null,
+   student_id           INT8                 null,
+   register_id          INT8                 null,
+   type                 VARCHAR              null,
+   fail_reason          VARCHAR              null,
+   exam_type            VARCHAR              null,
+   register_time        INT8                 null default (extract(epoch from current_timestamp)*1000)::bigint,
+   addi                 JSONB                null,
+   creator              INT8                 not null,
+   updated_by           INT8                 null,
+   create_time          INT8                 not null default (extract(epoch from current_timestamp)*1000)::bigint,
+   update_time          INT8                 null default (extract(epoch from current_timestamp)*1000)::bigint,
+   status               VARCHAR              null,
+   constraint PK_T_EXAM_PLAN_STUDENT primary key (id)
+);
+
+comment on table t_exam_plan_student is
+'储存报名和学生的关系';
+
+comment on column t_exam_plan_student.id is
+'报名学生内部编号';
+
+comment on column t_exam_plan_student.student_id is
+'学生编号';
+
+comment on column t_exam_plan_student.register_id is
+'报名计划编号';
+
+comment on column t_exam_plan_student.type is
+'报名方式 00:自报名 02:人工导入';
+
+comment on column t_exam_plan_student.fail_reason is
+'审核不通过的原因';
+
+comment on column t_exam_plan_student.exam_type is
+'考试类型(默认为正考) 00: 正考 02: 补考';
+
+comment on column t_exam_plan_student.register_time is
+'报名时间，和创建时间不同';
+
+comment on column t_exam_plan_student.addi is
+'额外';
+
+comment on column t_exam_plan_student.creator is
+'创建者';
+
+comment on column t_exam_plan_student.updated_by is
+'更新者';
+
+comment on column t_exam_plan_student.create_time is
+'创建时间';
+
+comment on column t_exam_plan_student.update_time is
+'更新时间';
+
+comment on column t_exam_plan_student.status is
+'00：报名中 02: 待审核 04:通过 06:不通过';
+
+/*==============================================================*/
 /* Table: t_exam_record                                         */
 /*==============================================================*/
 create table if not exists  t_exam_record (
-   id                   INT4                 not null,
+   id                   SERIAL               not null,
    exam_room            int8                 not null,
    exam_session         int8                 not null,
    content              varchar(5000)        null,
    basic_eval           VARCHAR(150)         null,
+   files                jsonb                null,
    creator              INT8                 not null,
-   create_time          timestamp            null,
+   create_time          INT8                 null default (extract(epoch from current_timestamp)*1000)::bigint,
    updated_by           INT8                 null,
-   update_time          timestamp            null,
+   update_time          INT8                 null default (extract(epoch from current_timestamp)*1000)::bigint,
    addi                 jsonb                null,
    status               varchar(150)         null,
    constraint PK_T_EXAM_RECORD primary key (id)
@@ -1983,6 +2065,9 @@ comment on column t_exam_record.content is
 
 comment on column t_exam_record.basic_eval is
 '基本情况评估 00: 良好 02: 一般 04: 较差';
+
+comment on column t_exam_record.files is
+'上传的附件列表(t_file 表的 id 数组)';
 
 comment on column t_exam_record.creator is
 '创建者';
@@ -2012,9 +2097,9 @@ create table if not exists  t_exam_room (
    capacity             INT4                 null,
    domain_id            INT8                 null,
    creator              INT8                 not null,
-   create_time          TIMESTAMP            null,
+   create_time          INT8                 null default (extract(epoch from current_timestamp)*1000)::bigint,
    updated_by           INT8                 null,
-   update_time          TIMESTAMP            null,
+   update_time          INT8                 null default (extract(epoch from current_timestamp)*1000)::bigint,
    status               VARCHAR(150)         null default '0',
    addi                 JSONB                null,
    constraint PK_T_EXAM_ROOM primary key (id)
@@ -2167,9 +2252,9 @@ create table if not exists  t_exam_site (
    address              VARCHAR(100)         null,
    server_host          VARCHAR(100)         null,
    creator              INT8                 not null,
-   create_time          TIMESTAMP            null,
+   create_time          INT8                 null default (extract(epoch from current_timestamp)*1000)::bigint,
    updated_by           INT8                 null,
-   update_time          TIMESTAMP            null,
+   update_time          INT8                 null default (extract(epoch from current_timestamp)*1000)::bigint,
    status               VARCHAR(150)         null default '0',
    addi                 JSONB                null,
    admin                INT8                 null,
@@ -4009,14 +4094,14 @@ ALTER SEQUENCE t_insured_terms_id_seq RESTART WITH 20000;
 /* Table: t_invigilation                                        */
 /*==============================================================*/
 create table if not exists  t_invigilation (
-   id                   INT4                 not null,
+   id                   SERIAL               not null,
    exam_session_id      INT8                 null,
    invigilator          INT8                 null,
    exam_room            INT8                 null,
    creator              INT8                 not null,
-   create_time          TIMESTAMP            null,
+   create_time          INT8                 null default (extract(epoch from current_timestamp)*1000)::bigint,
    updated_by           INT8                 null,
-   update_time          TIMESTAMP            null,
+   update_time          INT8                 null default (extract(epoch from current_timestamp)*1000)::bigint,
    addi                 JSONB                null,
    constraint PK_T_INVIGILATION primary key (id)
 );
@@ -7889,6 +7974,122 @@ region_name
 );
 
 /*==============================================================*/
+/* Table: t_register_plan                                       */
+/*==============================================================*/
+create table if not exists  t_register_plan (
+   id                   SERIAL not null,
+   name                 VARCHAR              null,
+   course               VARCHAR              null,
+   review_end_time      INT8                 null default (extract(epoch from current_timestamp)*1000)::bigint,
+   max_number           INT8                 null,
+   start_time           INT8                 null default (extract(epoch from current_timestamp)*1000)::bigint,
+   end_time             INT8                 null default (extract(epoch from current_timestamp)*1000)::bigint,
+   reviewer_ids         bigint[]             null,
+   exam_plan_location   VARCHAR              null,
+   addi                 JSONB                null,
+   creator              INT8                 not null,
+   updated_by           INT8                 null,
+   create_time          INT8                 not null default (extract(epoch from current_timestamp)*1000)::bigint,
+   update_time          INT8                 null default (extract(epoch from current_timestamp)*1000)::bigint,
+   status               VARCHAR              null,
+   constraint PK_T_REGISTER_PLAN primary key (id)
+);
+
+comment on table t_register_plan is
+'报名管理表';
+
+comment on column t_register_plan.id is
+'报名计划编号';
+
+comment on column t_register_plan.name is
+'报名计划名称';
+
+comment on column t_register_plan.course is
+'考试科目:00:理论、实操 02:理论 04:实操';
+
+comment on column t_register_plan.review_end_time is
+'审核截止时间';
+
+comment on column t_register_plan.max_number is
+'报名的最大人数 00:不限人数';
+
+comment on column t_register_plan.start_time is
+'报名开始时间';
+
+comment on column t_register_plan.end_time is
+'报名结束时间';
+
+comment on column t_register_plan.reviewer_ids is
+'审核人';
+
+comment on column t_register_plan.exam_plan_location is
+'考试预定的地点(省、市)';
+
+comment on column t_register_plan.addi is
+'额外';
+
+comment on column t_register_plan.creator is
+'创建者';
+
+comment on column t_register_plan.updated_by is
+'更新者';
+
+comment on column t_register_plan.create_time is
+'创建时间';
+
+comment on column t_register_plan.update_time is
+'更新时间';
+
+comment on column t_register_plan.status is
+'00：已发布 02：未发布 04:已结束 06:审核截止 08:已作废 10:已删除 12:已取消';
+
+/*==============================================================*/
+/* Table: t_register_practice                                   */
+/*==============================================================*/
+create table if not exists  t_register_practice (
+   id                   SERIAL not null,
+   register_id          INT8                 null,
+   practice_id          INT8                 null,
+   addi                 JSONB                null,
+   creator              INT8                 not null,
+   updated_by           INT8                 null,
+   create_time          INT8                 not null default (extract(epoch from current_timestamp)*1000)::bigint,
+   update_time          INT8                 null default (extract(epoch from current_timestamp)*1000)::bigint,
+   status               VARCHAR              null,
+   constraint PK_T_REGISTER_PRACTICE primary key (id)
+);
+
+comment on table t_register_practice is
+'用于储存报名计划和练习的关系';
+
+comment on column t_register_practice.id is
+'报名绑定练习内部编号';
+
+comment on column t_register_practice.register_id is
+'报名计划的编号';
+
+comment on column t_register_practice.practice_id is
+'练习的编号';
+
+comment on column t_register_practice.addi is
+'额外';
+
+comment on column t_register_practice.creator is
+'创建者';
+
+comment on column t_register_practice.updated_by is
+'更新者';
+
+comment on column t_register_practice.create_time is
+'创建时间';
+
+comment on column t_register_practice.update_time is
+'更新时间';
+
+comment on column t_register_practice.status is
+'00：正常 02：被删除';
+
+/*==============================================================*/
 /* Table: t_relation                                            */
 /*==============================================================*/
 create table if not exists  t_relation (
@@ -9075,7 +9276,7 @@ create table if not exists  t_student_answers (
    update_time          INT8                 null,
    addi                 JSONB                null,
    status               VARCHAR(64)          null default '0',
-   constraint PK_T_STUDENT_ANSWERS primary key (id, answer)
+   constraint PK_T_STUDENT_ANSWERS primary key (id)
 );
 
 comment on table t_student_answers is
@@ -9191,9 +9392,27 @@ comment on column t_sys_ver.status is
 ALTER SEQUENCE t_sys_ver_id_seq RESTART WITH 20000;
 
 insert into t_sys_ver(id,name,ver,create_time,update_time,remark)
-  values(1000,'业务模型','3.1.11.4',
-  '2016年12月5日 9:52:53','2025年8月23日 14:26:22',
-  '3.1.11.4 
+  values(1000,'业务模型','3.2.2.0',
+  '2016年12月5日 9:52:53','2025年8月29日 15:24:34',
+  '3.2.2.1
+给学生作答表添加对考生表的外键依赖（级联删除），修改v_examinee_info中join考卷的条件
+
+3.2.2.0
+给考场记录表 t_exam_record 增加上传附件列表字段 files
+
+3.2.1.0
+给t_api添加boolean类型的configurable字段，用于表示该API是否允许被配置（即是否允许在创建域页面的功能配置部分展示出来）
+
+3.2.0.0
+新增报名管理t_register_plan报名计划表,t_register_practice报名计划练习表,t_exam_plan_student报名计划学生表
+
+3.1.12.1
+修改v_exam_file视图对文件状态的判断条件，为v_invigilation_info视图增加exam_domain_id字段
+
+3.1.12.0
+在t_api新增access_action字段，并将索引idx_t_api_expose_path修改为expose_path字段与access_action字段的联合唯一索引idx_t_api_ep_aa，以实现功能配置需求；修改部分表的create_time与update_time为INT8类型
+
+3.1.11.4 
 删除错题来源于错题集的视图 删除错题设计的wrong_practice_id字段 新增关于错题提交记录判断状态视图
 
 3.1.11.3
@@ -10923,7 +11142,9 @@ select
     a.id as api_id,
     a.name as api_name,
     a.expose_path,
+    a.access_action,
     a.access_control_level,
+    a.configurable,
     da.domain_id, 
     da.grant_source,
     da.data_access_mode,
@@ -11002,7 +11223,7 @@ create or replace view v_exam_file as
    FROM t_exam_info ei
      CROSS JOIN LATERAL jsonb_array_elements_text(ei.files) file_id_text(value)
      JOIN t_file f ON f.id = file_id_text.value::bigint
-  WHERE ei.files IS NOT NULL AND jsonb_typeof(ei.files) = 'array'::text AND ei.status::text != '12'::text AND f.status::text != '02'::text;
+  WHERE ei.files IS NOT NULL AND jsonb_typeof(ei.files) = 'array'::text AND ei.status::text <> '12'::text AND f.status::text <> '2'::text;
 
 comment on view v_exam_file is
 'v_exam_file';
@@ -11194,11 +11415,10 @@ create or replace view v_examinee_info as
     COALESCE(next_sessions.start_time - (exam_sessions.end_time + examinees.extra_time), (24 * 60 * 60 * 1000)::bigint) AS extendable_time,
     exam_sessions.start_time,
     exam_sessions.end_time,
-    CASE 
-        WHEN exam_sessions.period_mode = '02' AND examinees.start_time IS NOT NULL 
-            THEN examinees.start_time + (exam_sessions.duration * 60 * 1000)
-        ELSE COALESCE(exam_sessions.end_time + examinees.extra_time, exam_sessions.end_time)
-    END AS actual_end_time,
+        CASE
+            WHEN exam_sessions.period_mode::text = '02'::text AND examinees.start_time IS NOT NULL THEN examinees.start_time + exam_sessions.duration * 60 * 1000
+            ELSE COALESCE(exam_sessions.end_time + examinees.extra_time, exam_sessions.end_time)
+        END AS actual_end_time,
     examinees.status AS examinee_status,
     examinees.remark,
     exam_sessions.period_mode,
@@ -11211,7 +11431,7 @@ create or replace view v_examinee_info as
    FROM t_examinee examinees
      JOIN t_exam_session exam_sessions ON exam_sessions.id = examinees.exam_session_id
      JOIN t_exam_info exam_infos ON exam_infos.id = exam_sessions.exam_id
-     JOIN t_exam_paper exam_papers ON exam_papers.exam_session_id = exam_sessions.id
+     JOIN t_exam_paper exam_papers ON exam_papers.id = examinees.exam_paper_id
      LEFT JOIN t_exam_room exam_rooms ON exam_rooms.id = examinees.exam_room
      JOIN t_user users ON users.id = examinees.student_id
      LEFT JOIN LATERAL ( SELECT exam_sessions_1.start_time
@@ -12087,6 +12307,7 @@ create or replace view v_invigilation_info as
     exam_infos.id AS exam_id,
     exam_infos.type AS exam_type,
     exam_infos.mode AS exam_mode,
+    exam_infos.domain_id AS exam_domain_id,
     exam_sessions.id AS exam_session_id,
     exam_sessions.start_time,
     exam_sessions.end_time,
@@ -13954,36 +14175,6 @@ comment on view v_y_max_submitted_view is
 create table t_v_max_submitted_view as select * from v_y_max_submitted_view;
 
 /*==============================================================*/
-/* View: v_w_practice_summary                                   */
-/*==============================================================*/
-create or replace view v_w_practice_summary as
- SELECT DISTINCT ON (v.practice_id, v.student_id)
-        v.id AS practice_submission_id,
-        COALESCE(lup.wrong_practice_id, 0) AS latest_unsubmitted_id,
-        COALESCE(lsp.wrong_practice_id, 0) AS latest_submitted_id,
-        COALESCE(pws_max.max_attempt, 0) AS max_attempt,
-        v.student_id,
-        v.practice_id,
-        tps.exam_paper_id
-     FROM v_y_max_submitted_view v
-     JOIN t_practice_submissions tps ON v.id = tps.id
-     LEFT JOIN (
-    SELECT 
-        practice_submission_id,
-        MAX(attempt) AS max_attempt
-    FROM t_practice_wrong_submissions
-    WHERE status != '06' -- 排除状态为'02'的记录（根据您的业务需求调整）
-    GROUP BY practice_submission_id
-) pws_max ON v.id = pws_max.practice_submission_id
-     LEFT JOIN v_w_latest_unsubmitted_practice lup ON v.id = lup.practice_submission_id
-     LEFT JOIN v_w_latest_submitted_practice lsp ON v.id = lsp.practice_submission_id
-     WHERE tps.status = '08'
-     ORDER BY v.practice_id, v.student_id, v.id ,tps.attempt DESC;
-
-comment on view v_w_practice_summary is
-'错题视图 查看最新一次错题练习提交状态';
-
-/*==============================================================*/
 /* View: v_z_grade_exam_session_info                            */
 /*==============================================================*/
 create or replace view v_z_grade_exam_session_info as
@@ -14259,6 +14450,36 @@ comment on view v_z_submission_wrong_collection is
  drop table if exists t_v_z_submission_wrong_collection;
 create table t_v_z_submission_wrong_collection as select * from v_z_submission_wrong_collection;
 
+/*==============================================================*/
+/* View: v_z_w_practice_summary                                 */
+/*==============================================================*/
+create or replace view v_z_w_practice_summary as
+ SELECT DISTINCT ON (v.practice_id, v.student_id)
+        v.id AS practice_submission_id,
+        COALESCE(lup.wrong_practice_id, 0) AS latest_unsubmitted_id,
+        COALESCE(lsp.wrong_practice_id, 0) AS latest_submitted_id,
+        COALESCE(pws_max.max_attempt, 0) AS max_attempt,
+        v.student_id,
+        v.practice_id,
+        tps.exam_paper_id
+     FROM v_y_max_submitted_view v
+     JOIN t_practice_submissions tps ON v.id = tps.id
+     LEFT JOIN (
+    SELECT 
+        practice_submission_id,
+        MAX(attempt) AS max_attempt
+    FROM t_practice_wrong_submissions
+    WHERE status != '06' -- 排除状态为'02'的记录（根据您的业务需求调整）
+    GROUP BY practice_submission_id
+) pws_max ON v.id = pws_max.practice_submission_id
+     LEFT JOIN v_w_latest_unsubmitted_practice lup ON v.id = lup.practice_submission_id
+     LEFT JOIN v_w_latest_submitted_practice lsp ON v.id = lsp.practice_submission_id
+     WHERE tps.status = '08'
+     ORDER BY v.practice_id, v.student_id, v.id ,tps.attempt DESC;
+
+comment on view v_z_w_practice_summary is
+'错题视图 查看最新一次错题练习提交状态';
+
 alter table t_domain_api
    add constraint FK_ACT_REF_DOMAIN foreign key (domain)
       references t_domain (id)
@@ -14317,6 +14538,11 @@ alter table t_question
 alter table t_student_answers
    add constraint FK_exam_answer_question foreign key (question_id)
       references t_exam_paper_question (id)
+      on delete cascade;
+
+alter table t_student_answers
+   add constraint FK_T_STUDEN_REFERENCE_T_EXAMIN foreign key (examinee_id)
+      references t_examinee (id)
       on delete cascade;
 
 alter table t_user_domain

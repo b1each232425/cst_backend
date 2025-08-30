@@ -2259,6 +2259,7 @@ type TExamPlanStudent struct {
 	FailReason   null.String    `json:"FailReason,omitempty" db:"fail_reason,false,character varying"` /* fail_reason 审核不通过的原因 */
 	ExamType     null.String    `json:"ExamType,omitempty" db:"exam_type,false,character varying"`     /* exam_type 考试类型(默认为正考) 00: 正考 02: 补考 */
 	RegisterTime null.Int       `json:"RegisterTime,omitempty" db:"register_time,false,bigint"`        /* register_time 报名时间，和创建时间不同 */
+	Reviewer     null.Int       `json:"Reviewer,omitempty" db:"reviewer,false,bigint"`                 /* reviewer 审核人，每个学生对应一个审核人 */
 	Addi         types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                          /* addi 额外 */
 	Creator      null.Int       `json:"Creator,omitempty" db:"creator,false,bigint"`                   /* creator 创建者 */
 	UpdatedBy    null.Int       `json:"UpdatedBy,omitempty" db:"updated_by,false,bigint"`              /* updated_by 更新者 */
@@ -2277,6 +2278,7 @@ var TExamPlanStudentFields = []string{
 	"FailReason",
 	"ExamType",
 	"RegisterTime",
+	"Reviewer",
 	"Addi",
 	"Creator",
 	"UpdatedBy",
@@ -2294,6 +2296,7 @@ var TExamPlanStudentColumns = []string{
 	"fail_reason",
 	"exam_type",
 	"register_time",
+	"reviewer",
 	"addi",
 	"creator",
 	"updated_by",
@@ -2311,6 +2314,7 @@ var TExamPlanStudentColumnsDataTypes = map[string]string{
 	"fail_reason":   "character varying",
 	"exam_type":     "character varying",
 	"register_time": "bigint",
+	"reviewer":      "bigint",
 	"addi":          "jsonb",
 	"creator":       "bigint",
 	"updated_by":    "bigint",
@@ -2329,6 +2333,7 @@ func (r *TExamPlanStudent) GetFieldsMap() map[string]any {
 		"FailReason":   r.FailReason,
 		"ExamType":     r.ExamType,
 		"RegisterTime": r.RegisterTime,
+		"Reviewer":     r.Reviewer,
 		"Addi":         r.Addi,
 		"Creator":      r.Creator,
 		"UpdatedBy":    r.UpdatedBy,
@@ -2348,6 +2353,7 @@ func (r *TExamPlanStudent) GetColumnsMap() map[string]any {
 		"fail_reason":   r.FailReason,
 		"exam_type":     r.ExamType,
 		"register_time": r.RegisterTime,
+		"reviewer":      r.Reviewer,
 		"addi":          r.Addi,
 		"creator":       r.Creator,
 		"updated_by":    r.UpdatedBy,
@@ -2375,8 +2381,8 @@ func (r *TExamPlanStudent) GetTableName() string {
 // Create inserts the TExamPlanStudent to the database.
 func (r *TExamPlanStudent) Create(db Queryer) error {
 	err := db.QueryRow(
-		`INSERT INTO t_exam_plan_student (student_id, register_id, type, fail_reason, exam_type, register_time, addi, creator, updated_by, create_time, update_time, status) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING id`,
-		&r.StudentID, &r.RegisterID, &r.Type, &r.FailReason, &r.ExamType, &r.RegisterTime, &r.Addi, &r.Creator, &r.UpdatedBy, &r.CreateTime, &r.UpdateTime, &r.Status).Scan(&r.ID)
+		`INSERT INTO t_exam_plan_student (student_id, register_id, type, fail_reason, exam_type, register_time, reviewer, addi, creator, updated_by, create_time, update_time, status) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) RETURNING id`,
+		&r.StudentID, &r.RegisterID, &r.Type, &r.FailReason, &r.ExamType, &r.RegisterTime, &r.Reviewer, &r.Addi, &r.Creator, &r.UpdatedBy, &r.CreateTime, &r.UpdateTime, &r.Status).Scan(&r.ID)
 	if err != nil {
 		return errors.Wrap(err, "failed to insert t_exam_plan_student")
 	}
@@ -2388,8 +2394,8 @@ func GetTExamPlanStudentByPk(db Queryer, pk0 null.Int) (*TExamPlanStudent, error
 
 	var r TExamPlanStudent
 	err := db.QueryRow(
-		`SELECT id, student_id, register_id, type, fail_reason, exam_type, register_time, addi, creator, updated_by, create_time, update_time, status FROM t_exam_plan_student WHERE id = $1`,
-		pk0).Scan(&r.ID, &r.StudentID, &r.RegisterID, &r.Type, &r.FailReason, &r.ExamType, &r.RegisterTime, &r.Addi, &r.Creator, &r.UpdatedBy, &r.CreateTime, &r.UpdateTime, &r.Status)
+		`SELECT id, student_id, register_id, type, fail_reason, exam_type, register_time, reviewer, addi, creator, updated_by, create_time, update_time, status FROM t_exam_plan_student WHERE id = $1`,
+		pk0).Scan(&r.ID, &r.StudentID, &r.RegisterID, &r.Type, &r.FailReason, &r.ExamType, &r.RegisterTime, &r.Reviewer, &r.Addi, &r.Creator, &r.UpdatedBy, &r.CreateTime, &r.UpdateTime, &r.Status)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to select t_exam_plan_student")
 	}
@@ -2409,6 +2415,7 @@ type TExamRecord struct {
 	Status      null.String    `json:"Status,omitempty" db:"status,false,character varying"`        /* status 状态码 00:正常 02:失效(删除) */
 	CreateTime  null.Int       `json:"CreateTime,omitempty" db:"create_time,false,bigint"`          /* create_time create_time */
 	UpdateTime  null.Int       `json:"UpdateTime,omitempty" db:"update_time,false,bigint"`          /* update_time update_time */
+	Files       types.JSONText `json:"Files,omitempty" db:"files,false,jsonb"`                      /* files 上传的附件列表(t_file 表的 id 数组) */
 	Filter      `json:"-"`     // build DML where clause
 }
 
@@ -2425,6 +2432,7 @@ var TExamRecordFields = []string{
 	"Status",
 	"CreateTime",
 	"UpdateTime",
+	"Files",
 }
 
 // TExamRecordColumns full column list for default query
@@ -2440,6 +2448,7 @@ var TExamRecordColumns = []string{
 	"status",
 	"create_time",
 	"update_time",
+	"files",
 }
 
 // TExamRecordColumnsDataTypes full column data types for default query
@@ -2455,6 +2464,7 @@ var TExamRecordColumnsDataTypes = map[string]string{
 	"status":       "character varying",
 	"create_time":  "bigint",
 	"update_time":  "bigint",
+	"files":        "jsonb",
 }
 
 // GetFieldsMap returns a map of field names to their values.
@@ -2471,6 +2481,7 @@ func (r *TExamRecord) GetFieldsMap() map[string]any {
 		"Status":      r.Status,
 		"CreateTime":  r.CreateTime,
 		"UpdateTime":  r.UpdateTime,
+		"Files":       r.Files,
 	}
 }
 
@@ -2488,6 +2499,7 @@ func (r *TExamRecord) GetColumnsMap() map[string]any {
 		"status":       r.Status,
 		"create_time":  r.CreateTime,
 		"update_time":  r.UpdateTime,
+		"files":        r.Files,
 	}
 }
 
@@ -2509,8 +2521,8 @@ func (r *TExamRecord) GetTableName() string {
 // Create inserts the TExamRecord to the database.
 func (r *TExamRecord) Create(db Queryer) error {
 	err := db.QueryRow(
-		`INSERT INTO t_exam_record (exam_room, exam_session, content, basic_eval, creator, updated_by, addi, status, create_time, update_time) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id`,
-		&r.ExamRoom, &r.ExamSession, &r.Content, &r.BasicEval, &r.Creator, &r.UpdatedBy, &r.Addi, &r.Status, &r.CreateTime, &r.UpdateTime).Scan(&r.ID)
+		`INSERT INTO t_exam_record (exam_room, exam_session, content, basic_eval, creator, updated_by, addi, status, create_time, update_time, files) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING id`,
+		&r.ExamRoom, &r.ExamSession, &r.Content, &r.BasicEval, &r.Creator, &r.UpdatedBy, &r.Addi, &r.Status, &r.CreateTime, &r.UpdateTime, &r.Files).Scan(&r.ID)
 	if err != nil {
 		return errors.Wrap(err, "failed to insert t_exam_record")
 	}
@@ -2522,8 +2534,8 @@ func GetTExamRecordByPk(db Queryer, pk0 null.Int) (*TExamRecord, error) {
 
 	var r TExamRecord
 	err := db.QueryRow(
-		`SELECT id, exam_room, exam_session, content, basic_eval, creator, updated_by, addi, status, create_time, update_time FROM t_exam_record WHERE id = $1`,
-		pk0).Scan(&r.ID, &r.ExamRoom, &r.ExamSession, &r.Content, &r.BasicEval, &r.Creator, &r.UpdatedBy, &r.Addi, &r.Status, &r.CreateTime, &r.UpdateTime)
+		`SELECT id, exam_room, exam_session, content, basic_eval, creator, updated_by, addi, status, create_time, update_time, files FROM t_exam_record WHERE id = $1`,
+		pk0).Scan(&r.ID, &r.ExamRoom, &r.ExamSession, &r.Content, &r.BasicEval, &r.Creator, &r.UpdatedBy, &r.Addi, &r.Status, &r.CreateTime, &r.UpdateTime, &r.Files)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to select t_exam_record")
 	}
