@@ -1476,7 +1476,7 @@ func TestExamSiteList(t *testing.T) {
 					Path: "/api/exam-site/list",
 				},
 				R: httptest.NewRequest("Unknown255", fmt.Sprintf(`/api/exam-site/list?q=%s`, url.QueryEscape(`{
-						"page": 0,
+						"page": 1,
 						"pageSize": 10,
 						"orderBy": [
 							{
@@ -1530,7 +1530,7 @@ func TestExamSiteList(t *testing.T) {
 					Path: "/api/exam-site/list",
 				},
 				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-site/list?q=%s`, url.QueryEscape(`{
-						"page": 0,
+						"page": 1,
 						"pageSize": 10,
 						"orderBy": [
 							{
@@ -1572,7 +1572,7 @@ func TestExamSiteList(t *testing.T) {
 					Path: "/api/exam-site/list",
 				},
 				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-site/list?q=%s`, url.QueryEscape(`{
-						"page": 0,
+						"page": 1,
 						"pageSize": 10,
 						"orderBy": [
 							{
@@ -1611,7 +1611,7 @@ func TestExamSiteList(t *testing.T) {
 					Path: "/api/exam-site/list",
 				},
 				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-site/list?q=%s`, url.QueryEscape(`{
-						"page": 0,
+						"page": 1,
 						"pageSize": 10,
 						"orderBy": [
 							{
@@ -1653,7 +1653,7 @@ func TestExamSiteList(t *testing.T) {
 					Path: "/api/exam-site/list",
 				},
 				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-site/list?q=%s`, url.QueryEscape(`{
-						"page": 0,
+						"page": 1,
 						"pageSize": 10,
 						"orderBy": [
 							{
@@ -1692,7 +1692,7 @@ func TestExamSiteList(t *testing.T) {
 					Path: "/api/exam-site/list",
 				},
 				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-site/list?q=%s`, url.QueryEscape(`{
-						"page": 0,
+						"page": 1,
 						"pageSize": 10,
 						"orderBy": [
 							{
@@ -1734,7 +1734,7 @@ func TestExamSiteList(t *testing.T) {
 					Path: "/api/exam-site/list",
 				},
 				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-site/list?q=%s`, url.QueryEscape(`{
-						"page": 0,
+						"page": 1,
 						"pageSize": 10`,
 				)), nil),
 				W: httptest.NewRecorder(),
@@ -1761,7 +1761,7 @@ func TestExamSiteList(t *testing.T) {
 			cleanup:      defaultCleanup,
 		},
 		{
-			name: "获取考点列表失败-页码小于0",
+			name: "获取考点列表失败-页码小于1",
 			q: &cmn.ServiceCtx{
 				Ep: &cmn.ServeEndPoint{
 					Path: "/api/exam-site/list",
@@ -1798,7 +1798,7 @@ func TestExamSiteList(t *testing.T) {
 				RedisClient: cmn.GetRedisConn(),
 			},
 			passExpected: false,
-			errWanted:    "页码不能小于0",
+			errWanted:    "页码不能小于1",
 			setup:        defaultSetup,
 			cleanup:      defaultCleanup,
 		},
@@ -1809,7 +1809,7 @@ func TestExamSiteList(t *testing.T) {
 					Path: "/api/exam-site/list",
 				},
 				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-site/list?q=%s`, url.QueryEscape(`{
-						"page": 0,
+						"page": 1,
 						"pageSize": -1,
 						"orderBy": [
 							{
@@ -1893,7 +1893,7 @@ func TestExamSiteList(t *testing.T) {
 					Path: "/api/exam-site/list",
 				},
 				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-site/list?q=%s`, url.QueryEscape(`{
-						"page": 0,
+						"page": 1,
 						"pageSize": 10,
 						"orderBy": [
 							{
@@ -1938,7 +1938,7 @@ func TestExamSiteList(t *testing.T) {
 					Path: "/api/exam-site/list",
 				},
 				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-site/list?q=%s`, url.QueryEscape(`{
-						"page": 0,
+						"page": 1,
 						"pageSize": 10,
 						"orderBy": [
 							{
@@ -1983,7 +1983,7 @@ func TestExamSiteList(t *testing.T) {
 					Path: "/api/exam-site/list",
 				},
 				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-site/list?q=%s`, url.QueryEscape(`{
-						"page": 0,
+						"page": 1,
 						"pageSize": 10,
 						"orderBy": [
 							{
@@ -2028,7 +2028,7 @@ func TestExamSiteList(t *testing.T) {
 					Path: "/api/exam-site/list",
 				},
 				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-site/list?q=%s`, url.QueryEscape(`{
-						"page": 0,
+						"page": 1,
 						"pageSize": 10,
 						"orderBy": [
 							{
@@ -2073,7 +2073,7 @@ func TestExamSiteList(t *testing.T) {
 					Path: "/api/exam-site/list",
 				},
 				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-site/list?q=%s`, url.QueryEscape(`{
-						"page": 0,
+						"page": 1,
 						"pageSize": 10,
 						"orderBy": [
 							{
@@ -2118,7 +2118,7 @@ func TestExamSiteList(t *testing.T) {
 					Path: "/api/exam-site/list",
 				},
 				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-site/list?q=%s`, url.QueryEscape(`{
-						"page": 0,
+						"page": 1,
 						"pageSize": 10,
 						"orderBy": [
 							{
@@ -2163,7 +2163,7 @@ func TestExamSiteList(t *testing.T) {
 					Path: "/api/exam-site/list",
 				},
 				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-site/list?q=%s`, url.QueryEscape(`{
-						"page": 0,
+						"page": 1,
 						"pageSize": 10,
 						"orderBy": [
 							{
@@ -3219,7 +3219,7 @@ func TestExamRoomList(t *testing.T) {
 					Path: "/api/exam-room/list",
 				},
 				R: httptest.NewRequest("Unknown255", fmt.Sprintf(`/api/exam-room/list?q=%s`, url.QueryEscape(fmt.Sprintf(`{
-						"page": 0,
+						"page": 1,
 						"pageSize": 10,
 						"orderBy": [
 							{
@@ -3276,7 +3276,7 @@ func TestExamRoomList(t *testing.T) {
 					Path: "/api/exam-room/list",
 				},
 				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-room/list?q=%s`, url.QueryEscape(fmt.Sprintf(`{
-						"page": 0,
+						"page": 1,
 						"pageSize": 10,
 						"orderBy": [
 							{
@@ -3321,7 +3321,7 @@ func TestExamRoomList(t *testing.T) {
 					Path: "/api/exam-room/list",
 				},
 				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-room/list?q=%s`, url.QueryEscape(fmt.Sprintf(`{
-						"page": 0,
+						"page": 1,
 						"pageSize": 10,
 						"orderBy": [
 							{
@@ -3366,7 +3366,7 @@ func TestExamRoomList(t *testing.T) {
 					Path: "/api/exam-room/list",
 				},
 				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-room/list?q=%s`, url.QueryEscape(fmt.Sprintf(`{
-						"page": 0,
+						"page": 1,
 						"pageSize": 10,
 						"orderBy": [
 							{
@@ -3414,7 +3414,7 @@ func TestExamRoomList(t *testing.T) {
 					Path: "/api/exam-room/list",
 				},
 				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-room/list?q=%s`, url.QueryEscape(fmt.Sprintf(`{
-						"page": 0,
+						"page": 1,
 						"pageSize": 10,
 						"orderBy": [
 							{
@@ -3462,7 +3462,7 @@ func TestExamRoomList(t *testing.T) {
 					Path: "/api/exam-room/list",
 				},
 				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-room/list?q=%s`, url.QueryEscape(fmt.Sprintf(`{
-						"page": 0,
+						"page": 1,
 						"pageSize": 10,
 						"orderBy": [
 							{
@@ -3507,7 +3507,7 @@ func TestExamRoomList(t *testing.T) {
 					Path: "/api/exam-room/list",
 				},
 				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-room/list?q=%s`, url.QueryEscape(fmt.Sprintf(`{
-						"page": 0,
+						"page": 1,
 						"pageSize": 10,
 						"orderBy": [
 							{
@@ -3555,7 +3555,7 @@ func TestExamRoomList(t *testing.T) {
 					Path: "/api/exam-room/list",
 				},
 				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-room/list?q=%s`, url.QueryEscape(fmt.Sprintf(`{
-						"page": 0,
+						"page": 1,
 						"pageSize": 10,
 						"orderBy": [
 							{
@@ -3603,7 +3603,7 @@ func TestExamRoomList(t *testing.T) {
 					Path: "/api/exam-room/list",
 				},
 				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-room/list?q=%s`, url.QueryEscape(fmt.Sprintf(`{
-						"page": 0,
+						"page": 1,
 						"pageSize": 10,
 						"orderBy": [
 							{
@@ -3649,7 +3649,7 @@ func TestExamRoomList(t *testing.T) {
 					Path: "/api/exam-room/list",
 				},
 				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-room/list?q=%s`, url.QueryEscape(fmt.Sprintf(`{
-						"page": 0,
+						"page": 1,
 						"pageSize": 10,
 						"orderBy": [
 							{
@@ -3697,7 +3697,7 @@ func TestExamRoomList(t *testing.T) {
 					Path: "/api/exam-room/list",
 				},
 				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-room/list?q=%s`, url.QueryEscape(fmt.Sprintf(`{
-						"page": 0,
+						"page": 1,
 						"pageSize": 10,
 						"orderBy": [
 							{
@@ -3745,7 +3745,7 @@ func TestExamRoomList(t *testing.T) {
 					Path: "/api/exam-room/list",
 				},
 				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-room/list?q=%s`, url.QueryEscape(fmt.Sprintf(`{
-						"page": 0,
+						"page": 1,
 						"pageSize": 10,
 						"orderBy": [
 							{
@@ -3787,7 +3787,7 @@ func TestExamRoomList(t *testing.T) {
 			cleanup:      defaultCleanup,
 		},
 		{
-			name: "获取考场列表失败-页码小于0",
+			name: "获取考场列表失败-页码小于1",
 			q: &cmn.ServiceCtx{
 				Ep: &cmn.ServeEndPoint{
 					Path: "/api/exam-room/list",
@@ -3828,7 +3828,7 @@ func TestExamRoomList(t *testing.T) {
 				Tag:         map[string]interface{}{},
 			},
 			passExpected: false,
-			errWanted:    "页码不能小于0",
+			errWanted:    "页码不能小于1",
 			setup:        defaultSetup,
 			cleanup:      defaultCleanup,
 		},
@@ -3839,7 +3839,7 @@ func TestExamRoomList(t *testing.T) {
 					Path: "/api/exam-room/list",
 				},
 				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-room/list?q=%s`, url.QueryEscape(fmt.Sprintf(`{
-						"page": 0,
+						"page": 1,
 						"pageSize": -10,
 						"orderBy": [
 							{
@@ -3885,7 +3885,7 @@ func TestExamRoomList(t *testing.T) {
 					Path: "/api/exam-room/list",
 				},
 				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-room/list?q=%s`, url.QueryEscape(fmt.Sprintf(`{
-						"page": 0,
+						"page": 1,
 						"pageSize": 10,
 						"orderBy": [
 							{
@@ -3931,7 +3931,7 @@ func TestExamRoomList(t *testing.T) {
 					Path: "/api/exam-room/list",
 				},
 				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-room/list?q=%s`, url.QueryEscape(fmt.Sprintf(`{
-						"page": 0,
+						"page": 1,
 						"pageSize": 10,
 						"orderBy": [
 							{
@@ -3979,7 +3979,7 @@ func TestExamRoomList(t *testing.T) {
 					Path: "/api/exam-room/list",
 				},
 				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-room/list?q=%s`, url.QueryEscape(fmt.Sprintf(`{
-						"page": 0,
+						"page": 1,
 						"pageSize": 10,
 						"orderBy": [
 							{
@@ -4027,7 +4027,7 @@ func TestExamRoomList(t *testing.T) {
 					Path: "/api/exam-room/list",
 				},
 				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-room/list?q=%s`, url.QueryEscape(fmt.Sprintf(`{
-						"page": 0,
+						"page": 1,
 						"pageSize": 10,
 						"orderBy": [
 							{
@@ -4075,7 +4075,7 @@ func TestExamRoomList(t *testing.T) {
 					Path: "/api/exam-room/list",
 				},
 				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-room/list?q=%s`, url.QueryEscape(fmt.Sprintf(`{
-						"page": 0,
+						"page": 1,
 						"pageSize": 10,
 						"orderBy": [
 							{
@@ -4123,7 +4123,7 @@ func TestExamRoomList(t *testing.T) {
 					Path: "/api/exam-room/list",
 				},
 				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-room/list?q=%s`, url.QueryEscape(fmt.Sprintf(`{
-						"page": 0,
+						"page": 1,
 						"pageSize": 10,
 						"orderBy": [
 							{
@@ -4171,7 +4171,7 @@ func TestExamRoomList(t *testing.T) {
 					Path: "/api/exam-room/list",
 				},
 				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-room/list?q=%s`, url.QueryEscape(fmt.Sprintf(`{
-						"page": 0,
+						"page": 1,
 						"pageSize": 10,
 						"orderBy": [
 							{
@@ -4219,7 +4219,7 @@ func TestExamRoomList(t *testing.T) {
 					Path: "/api/exam-room/list",
 				},
 				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-room/list?q=%s`, url.QueryEscape(fmt.Sprintf(`{
-						"page": 0,
+						"page": 1,
 						"pageSize": 10,
 						"orderBy": [
 							{
