@@ -113,6 +113,8 @@
       "host": "localhost",
       "port": 22
     },
+    "syncInterval": 1800,
+    "syncDelay": 3000,
     "timeout":  1800,
     "maxRetry": 3
   },
