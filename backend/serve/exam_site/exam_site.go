@@ -34,6 +34,7 @@ import (
 	"w2w.io/cmn"
 	"w2w.io/null"
 	"w2w.io/serve/auth_mgt"
+	"w2w.io/exam_service"
 )
 
 const (
@@ -148,8 +149,16 @@ func Enroll(author string) {
 		Path: "/exam-site",
 		Name: "exam-site",
 
+		ApiEntries: []*cmn.EndPointApiEntries{
+			{
+				Name:         "考点管理.创建考点",
+				AccessAction: auth_mgt.CAPIAccessActionCreate,
+				Configurable: true,
+			},
+		},
+
 		Developer: developer,
-		WhiteList: false,
+		WhiteList: true,
 
 		//DomainID 创建该API的账号归属的domain
 		DomainID: int64(cmn.CDomainAssessExamSite),
@@ -164,8 +173,16 @@ func Enroll(author string) {
 		Path: "/exam-site/list",
 		Name: "exam-site-list",
 
+		ApiEntries: []*cmn.EndPointApiEntries{
+			{
+				Name:         "考点管理.获取考点列表",
+				AccessAction: auth_mgt.CAPIAccessActionRead,
+				Configurable: true,
+			},
+		},
+
 		Developer: developer,
-		WhiteList: false,
+		WhiteList: true,
 
 		//DomainID 创建该API的账号归属的domain
 		DomainID: int64(cmn.CDomainAssessExamSite),
@@ -180,8 +197,16 @@ func Enroll(author string) {
 		Path: "/exam-room",
 		Name: "exam-room",
 
+		ApiEntries: []*cmn.EndPointApiEntries{
+			{
+				Name:         "考点管理.创建考场",
+				AccessAction: auth_mgt.CAPIAccessActionCreate,
+				Configurable: true,
+			},
+		},
+
 		Developer: developer,
-		WhiteList: false,
+		WhiteList: true,
 
 		//DomainID 创建该API的账号归属的domain
 		DomainID: int64(cmn.CDomainAssessExamSite),
@@ -196,8 +221,16 @@ func Enroll(author string) {
 		Path: "/exam-room/list",
 		Name: "exam-room-list",
 
+		ApiEntries: []*cmn.EndPointApiEntries{
+			{
+				Name:         "考点管理.获取考场列表",
+				AccessAction: auth_mgt.CAPIAccessActionRead,
+				Configurable: true,
+			},
+		},
+
 		Developer: developer,
-		WhiteList: false,
+		WhiteList: true,
 
 		//DomainID 创建该API的账号归属的domain
 		DomainID: int64(cmn.CDomainAssessExamSite),
@@ -212,8 +245,21 @@ func Enroll(author string) {
 		Path: "/exam-site/sync",
 		Name: "exam-site-sync",
 
+		ApiEntries: []*cmn.EndPointApiEntries{
+			{
+				Name:         "考点管理.同步拉取",
+				AccessAction: auth_mgt.CAPIAccessActionRead,
+				Configurable: false,
+			},
+			{
+				Name:         "考点管理.同步推送",
+				AccessAction: auth_mgt.CAPIAccessActionUpdate,
+				Configurable: false,
+			},
+		},
+
 		Developer: developer,
-		WhiteList: false,
+		WhiteList: true,
 
 		DomainID: int64(cmn.CDomainAssessExamSite),
 
@@ -422,7 +468,11 @@ func Pull(ctx context.Context, retryCount int) {
 			}
 
 			z.Error(q.Err.Error())
+			return
 		}
+
+		// 开启考试计时器
+		q.Err = exam_service.InitializeExamTimers(ctx)
 
 	}()
 
@@ -598,7 +648,7 @@ func Pull(ctx context.Context, retryCount int) {
 	}
 
 	// 执行导入脚本
-	cmd = fmt.Sprintf("PGPASSFILE=%s psql -h %s -p %d -U %s -d %s -f %s",
+	cmd = fmt.Sprintf("PGPASSFILE=%s psql -v ON_ERROR_STOP=1 -h %s -p %d -U %s -d %s -f %s",
 		pgpassFullPath,
 		dbAddr,
 		dbPort,
@@ -621,6 +671,7 @@ func Pull(ctx context.Context, retryCount int) {
 		return
 	}
 
+	z.Info(string(o))
 }
 
 // Push 将数据推送到中心服务器, 中间如果发生任何错误都会进行重试
@@ -817,7 +868,7 @@ func Push(ctx context.Context, retryCount int) {
 	pgpassFullPath := filepath.Join(os.Getenv("HOME"), ".pgpass")
 
 	// 执行导出脚本
-	cmd := fmt.Sprintf("PGPASSFILE=%s psql -h %s -p %d -U %s -d %s -f %s",
+	cmd := fmt.Sprintf("PGPASSFILE=%s psql -v ON_ERROR_STOP=1 -h %s -p %d -U %s -d %s -f %s",
 		pgpassFullPath,
 		dbAddr,
 		dbPort,
@@ -842,6 +893,9 @@ func Push(ctx context.Context, retryCount int) {
 
 	}
 
+	z.Info(string(o))
+
+	// 将数据同步回中心服务器
 	cmd = fmt.Sprintf(`rsync -avz -e "ssh -p %d" --delete %s/* %s`,
 		sshPort,
 		source, dest)
@@ -974,11 +1028,11 @@ func SendPushMsg() {
 }
 
 // getApiPermissions 获取当前用户在使用指定接口时是否可读/可写
-func getApiPermissions(ctx context.Context, apiPath string) (readable, writable, editable bool) {
+func getApiPermissions(ctx context.Context, apiPath string) (readable, creatable, editable, deletable bool) {
 
 	q := cmn.GetCtxValue(ctx)
 
-	readable, q.Err = auth_mgt.CheckUserAPIAccessible(ctx, nil, apiPath, auth_mgt.CDataAccessModeRead)
+	readable, q.Err = auth_mgt.CheckUserAPIAccessible(ctx, nil, apiPath, auth_mgt.CAPIAccessActionRead)
 	if q.Err != nil || (cmn.InDebugMode && q.Tag["checkUserApiReadableErr"] != nil) {
 
 		if q.Err == nil {
@@ -988,21 +1042,31 @@ func getApiPermissions(ctx context.Context, apiPath string) (readable, writable,
 		return
 	}
 
-	writable, q.Err = auth_mgt.CheckUserAPIAccessible(ctx, nil, apiPath, auth_mgt.CDataAccessModeWrite)
-	if q.Err != nil || (cmn.InDebugMode && q.Tag["checkUserApiWritableErr"] != nil) {
+	creatable, q.Err = auth_mgt.CheckUserAPIAccessible(ctx, nil, apiPath, auth_mgt.CAPIAccessActionCreate)
+	if q.Err != nil || (cmn.InDebugMode && q.Tag["checkUserApiCreatableErr"] != nil) {
 
 		if q.Err == nil {
-			q.Err = q.Tag["checkUserApiWritableErr"].(error)
+			q.Err = q.Tag["checkUserApiCreatableErr"].(error)
 		}
 
 		return
 	}
 
-	editable, q.Err = auth_mgt.CheckUserAPIAccessible(ctx, nil, apiPath, auth_mgt.CDataAccessModeEdit)
+	editable, q.Err = auth_mgt.CheckUserAPIAccessible(ctx, nil, apiPath, auth_mgt.CAPIAccessActionUpdate)
 	if q.Err != nil || (cmn.InDebugMode && q.Tag["checkUserApiEditableErr"] != nil) {
 
 		if q.Err == nil {
 			q.Err = q.Tag["checkUserApiEditableErr"].(error)
+		}
+
+		return
+	}
+
+	deletable, q.Err = auth_mgt.CheckUserAPIAccessible(ctx, nil, apiPath, auth_mgt.CAPIAccessActionDelete)
+	if q.Err != nil || (cmn.InDebugMode && q.Tag["checkUserApiDeletableErr"] != nil) {
+
+		if q.Err == nil {
+			q.Err = q.Tag["checkUserApiDeletableErr"].(error)
 		}
 
 		return
@@ -1032,7 +1096,7 @@ func examSite(ctx context.Context) {
 
 	userID := q.SysUser.ID.Int64
 
-	readable, writable, editable := getApiPermissions(ctx, q.Ep.Path)
+	readable, creatable, editable, deletable := getApiPermissions(ctx, q.Ep.Path)
 
 	dbConn := cmn.GetDbConn()
 
@@ -1114,7 +1178,7 @@ func examSite(ctx context.Context) {
 
 	case "POST":
 
-		if !writable {
+		if !creatable {
 			q.Err = fmt.Errorf("当前用户没有权限创建该数据")
 			z.Error(q.Err.Error())
 			break
@@ -1238,7 +1302,7 @@ func examSite(ctx context.Context) {
 
 	case "DELETE":
 
-		if !writable {
+		if !deletable {
 			q.Err = fmt.Errorf("当前用户没有权限删除该数据")
 			z.Error(q.Err.Error())
 			break
@@ -1276,7 +1340,7 @@ func examSiteList(ctx context.Context) {
 		return
 	}
 
-	readable, _, _ := getApiPermissions(ctx, q.Ep.Path)
+	readable, _, _, _ := getApiPermissions(ctx, q.Ep.Path)
 
 	dbConn := cmn.GetDbConn()
 
@@ -1529,7 +1593,7 @@ func examRoom(ctx context.Context) {
 		return
 	}
 
-	readable, writable, editable := getApiPermissions(ctx, q.Ep.Path)
+	readable, creatable, editable, deletable := getApiPermissions(ctx, q.Ep.Path)
 
 	dbConn := cmn.GetDbConn()
 
@@ -1611,7 +1675,7 @@ func examRoom(ctx context.Context) {
 
 	case "POST":
 
-		if !writable {
+		if !creatable {
 			q.Err = fmt.Errorf("当前用户没有权限创建该数据")
 			z.Error(q.Err.Error())
 			break
@@ -1653,7 +1717,12 @@ func examRoom(ctx context.Context) {
 
 		sqlStr := fmt.Sprintf(`SELECT id FROM t_exam_site WHERE id = $1 AND  (creator = $2 OR %s)`, strings.Join(ss, " OR "))
 		stmt1, q.Err = tx.Prepare(sqlStr)
-		if q.Err != nil {
+		if q.Err != nil || (cmn.InDebugMode && q.Tag["prepareCheckAccessSqlErr"] != nil) {
+
+			if q.Err == nil {
+				q.Err = q.Tag["prepareCheckAccessSqlErr"].(error)
+			}
+
 			z.Error(q.Err.Error())
 			break
 		}
@@ -1662,20 +1731,30 @@ func examRoom(ctx context.Context) {
 
 		var r sql.Result
 		r, q.Err = stmt1.ExecContext(ctx, v...)
-		if q.Err != nil {
+		if q.Err != nil || (cmn.InDebugMode && q.Tag["execCheckAccessSqlErr"] != nil) {
+
+			if q.Err == nil {
+				q.Err = q.Tag["execCheckAccessSqlErr"].(error)
+			}
+
 			z.Error(q.Err.Error())
 			break
 		}
 
 		var c int64
 		c, q.Err = r.RowsAffected()
-		if q.Err != nil {
+		if q.Err != nil || (cmn.InDebugMode && q.Tag["getCheckAccessResultErr"] != nil) {
+
+			if q.Err == nil {
+				q.Err = q.Tag["getCheckAccessResultErr"].(error)
+			}
+
 			z.Error(q.Err.Error())
 			break
 		}
 
 		if c == 0 {
-			q.Err = fmt.Errorf("当前用户无权编辑该考点")
+			q.Err = fmt.Errorf("当前用户无权获取该考点数据, id: %d", info.ExamSiteID)
 			z.Error(q.Err.Error())
 			break
 		}
@@ -1719,7 +1798,7 @@ func examRoom(ctx context.Context) {
 
 	case "DELETE":
 
-		if !writable {
+		if !deletable {
 			q.Err = fmt.Errorf("当前用户没有权限删除该数据")
 			z.Error(q.Err.Error())
 			break
@@ -1757,7 +1836,7 @@ func examRoomList(ctx context.Context) {
 		return
 	}
 
-	readable, _, _ := getApiPermissions(ctx, q.Ep.Path)
+	readable, _, _, _ := getApiPermissions(ctx, q.Ep.Path)
 
 	dbConn := cmn.GetDbConn()
 
@@ -1852,6 +1931,7 @@ MethodSwitch:
 
 		var stmt1 *sql.Stmt
 
+		// 检查当前是否有权限访问该考点
 		ss := []string{}
 		v := []interface{}{
 			examSiteID,
@@ -2087,7 +2167,7 @@ MethodSwitch:
 
 }
 
-/* 考点同步相关 */
+/* 考点同步服务 */
 //  .oooooo..o
 // d8P'    `Y8
 // Y88bo.      oooo    ooo ooo. .oo.    .ooooo.
@@ -2331,6 +2411,11 @@ func examSiteSyncInit(ctx context.Context) {
 		}
 	}()
 
+	// TODO: 开启一个定时任务
+	// go func() {
+		
+	// }()
+
 }
 
 // examSiteSync 处理考点同步相关请求
@@ -2530,7 +2615,8 @@ MethodSwitch:
 			break MethodSwitch
 		}
 
-		cmd = fmt.Sprintf("PGPASSFILE=%s psql -h %s -p %d -U %s -d %s -f %s",
+		// 执行导出脚本
+		cmd = fmt.Sprintf("PGPASSFILE=%s psql -v ON_ERROR_STOP=1 -h %s -p %d -U %s -d %s -f %s",
 			pgpassFullPath,
 			dbAddr,
 			dbPort,
@@ -2561,6 +2647,7 @@ MethodSwitch:
 
 		var data []byte
 
+		// 返回同步数据信息
 		data, q.Err = json.Marshal(info)
 		if q.Err != nil || (cmn.InDebugMode && q.Tag["jsonMarshalErr"] != nil) {
 
@@ -2608,7 +2695,8 @@ MethodSwitch:
 			break MethodSwitch
 		}
 
-		cmd := fmt.Sprintf(`PGPASSFILE=%s psql -h %s -p %d -U %s -d %s -f %s`,
+		// 执行导入脚本
+		cmd := fmt.Sprintf(`PGPASSFILE=%s psql -v ON_ERROR_STOP=1 -h %s -p %d -U %s -d %s -f %s`,
 			pgpassFullPath,
 			dbAddr,
 			dbPort,
@@ -2631,6 +2719,8 @@ MethodSwitch:
 			z.Error(q.Err.Error())
 			break MethodSwitch
 		}
+
+		z.Info(string(o))
 
 		// 清理已同步的数据
 		_, err := q.RedisClient.Del(ctx, syncInfoSnapshotKey).Result()
