@@ -698,5 +698,4 @@ func practiceStudentListH(ctx context.Context) {
 			return
 		}
 	}
-
 }
