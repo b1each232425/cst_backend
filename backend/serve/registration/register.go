@@ -77,6 +77,7 @@ func register(ctx context.Context) {
 	if val := ctx.Value("force-error"); val != nil {
 		forceErr = val.(string)
 	}
+
 	userID := q.SysUser.ID.Int64
 	if userID <= 0 {
 		q.Err = fmt.Errorf("invalid UserID: %d", userID)
@@ -142,7 +143,7 @@ func register(ctx context.Context) {
 					}
 
 					//排序字段
-					orderBy := []string{"create_time desc"}
+					orderBy := []string{"r.create_time desc"}
 					r, total, err := ListRegisterS(ctx, name, course, status, orderBy, page, pageSize, userID)
 					if err != nil {
 						q.Err = err
@@ -309,7 +310,7 @@ func register(ctx context.Context) {
 							return
 						}
 						//设置排序字段
-						orderBy := []string{"create_time desc"}
+						orderBy := []string{"eps.create_time desc"}
 						s, total, err := GetRegisterStudentById(ctx, id, message, registerType, status, orderBy, page, pageSize, userID)
 						if err != nil {
 							q.Err = err
@@ -337,7 +338,7 @@ func register(ctx context.Context) {
 						return
 					}
 					//排序字段
-					orderBy := []string{"create_time desc"}
+					orderBy := []string{"r.create_time desc"}
 					r, total, err := ListRegisterT(ctx, name, course, status, orderBy, page, pageSize, userID)
 					if err != nil {
 						q.Err = err
@@ -524,6 +525,20 @@ func registerStudentH(ctx context.Context) {
 				{
 					idStr := q.R.URL.Query().Get("ids")
 					status := q.R.URL.Query().Get("status")
+					registerIDStr := q.R.URL.Query().Get("register_id")
+					if registerIDStr == "" {
+						q.Err = fmt.Errorf("缺失报名计划ID")
+						z.Error(q.Err.Error())
+						q.RespErr()
+						return
+					}
+					registerID, err := strconv.ParseInt(registerIDStr, 10, 64)
+					if err != nil {
+						q.Err = fmt.Errorf("报名计划ID转换失败")
+						z.Error(q.Err.Error())
+						q.RespErr()
+						return
+					}
 					if idStr == "" {
 						q.Err = fmt.Errorf("缺失报名计划学生ID")
 						z.Error(q.Err.Error())
@@ -556,7 +571,7 @@ func registerStudentH(ctx context.Context) {
 						q.RespErr()
 						return
 					}
-					q.Err = OperateRegisterStudentStatus(ctx, ids, status, userID)
+					q.Err = OperateRegisterStudentStatus(ctx, ids, status, userID, registerID)
 					if q.Err != nil {
 						q.RespErr()
 						return

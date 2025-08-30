@@ -74,11 +74,13 @@ var RegisterStudentStatus = struct {
 	Pending  string //待审核 02
 	Approved string //审核通过 04
 	Rejected string //审核未通过 06
+	Deleted  string //已删除 08
 }{
 	Apply:    "00",
 	Pending:  "02",
 	Approved: "04",
 	Rejected: "06",
+	Deleted:  "08",
 }
 
 type registerStudentType struct {
