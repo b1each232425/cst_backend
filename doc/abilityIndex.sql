@@ -1,6 +1,6 @@
 /*==============================================================*/
 /* DBMS name:      PostgreSQL 9.x                               */
-/* Created on:     8/30/2025 12:13:59 PM                        */
+/* Created on:     2025/8/30 22:59:55                           */
 /*==============================================================*/
 
 
@@ -1125,8 +1125,8 @@ insert into t_domain(id,name, domain, creator,priority) values
 (10116,'考试系统.监考员','assess^examSupervisor',1000,7),
 (10118,'考试系统.批阅员','assess^examGrader', 1000, 7),
 (10120,'考试系统.核分员','assess^scoreChecker', 1000, 7),
-(10122,'考试系统.考点','assess.examSite', 1000, 0),
-(10124,'考试系统.考点负责人','assess.examSite^Admin', 1000, 3),
+(10122,'考试系统.考点','assess^examSite', 1000, 0),
+(10124,'考试系统.考点负责人','assess^examSiteAdmin', 1000, 3),
 (10126,'考试系统.运维','assess^maintain',1000,3), -- 平台维护角色
 (10128,'考试系统.学生','assess^student',1000,7),
 
@@ -9409,9 +9409,18 @@ comment on column t_sys_ver.status is
 ALTER SEQUENCE t_sys_ver_id_seq RESTART WITH 20000;
 
 insert into t_sys_ver(id,name,ver,create_time,update_time,remark)
-  values(1000,'业务模型','3.2.2.0',
-  'Monday, December 5, 2016 9:52:53 AM','Saturday, August 30, 2025 11:59:29 AM',
-  '3.2.2.1
+  values(1000,'业务模型','3.2.3.2',
+  '2016年12月5日 9:52:53','2025年8月30日 22:59:51',
+  '3.2.3.2
+修改 t_domain 中的考点和考点负责人domain初始值
+
+3.2.3.1
+给t_api添加功能模块初始化数据；修改t_domain初始化数据的assess相关域的优先级
+
+3.2.3.0
+给报名计划学生表增添一个审核人reviewer字段
+
+3.2.2.1
 给学生作答表添加对考生表的外键依赖（级联删除），修改v_examinee_info中join考卷的条件
 
 3.2.2.0
