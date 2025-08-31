@@ -441,8 +441,8 @@ func addTestUser(userID int64, domain int64) (err error) {
 
 	}()
 
-	sql := `INSERT INTO t_user (id, category, account) VALUES ($1, $2, $3) ON CONFLICT(id) DO NOTHING`
-	_, err = tx.Exec(sql, userID, "sys^user", fmt.Sprintf("testuser%d", userID))
+	sql := `INSERT INTO t_user (id, category, account, official_name) VALUES ($1, $2, $3, $4) ON CONFLICT(id) DO NOTHING`
+	_, err = tx.Exec(sql, userID, "sys^user", fmt.Sprintf("testuser%d", userID), fmt.Sprintf("testuser%d", userID))
 	if err != nil {
 		return
 	}
@@ -2304,6 +2304,36 @@ func TestExamSiteList(t *testing.T) {
 				}
 
 				rc = int(item.RoomCount.Int64)
+
+				if !item.ID.Valid {
+					t.Errorf("expected exam site ID to be greater than 0, got %d", item.ID.Int64)
+					return
+				}
+
+				if item.Name == "" {
+					t.Errorf("expected exam site name to be not empty, got empty")
+					return
+				}
+
+				if item.Address == "" {
+					t.Errorf("expected exam site address to be not empty, got empty")
+					return
+				}
+
+				if !item.ServerHost.Valid {
+					t.Errorf("expected exam site server host to be not empty, got empty")
+					return
+				}
+
+				if item.Admin <= 0 {
+					t.Errorf("expected admin to be not empty, got empty")
+					return
+				}
+
+				if !item.AdminName.Valid {
+					t.Errorf("expected admin name to be not empty, got empty")
+					return
+				}
 
 			}
 

@@ -110,10 +110,11 @@ echo "start new devmentor container"
 d run --name=devmentor \
  -d --restart=always \
  -p 6610:6610 \
+ -p 6222:22 \
  -v data:/var/data \
  -v deploy:/var/deploy \
  -e KAPP_NAME="$deployDst/$appName" \
  --network qnear \
- ubuntu "$deployDst/run.sh"
+ ubuntu:ci "$deployDst/run.sh"
 
 echo "deploy done"
