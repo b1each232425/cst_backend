@@ -110,7 +110,7 @@ echo "start new devmentor container"
 d run --name=devmentor \
  -d --restart=always \
  -p 6610:6610 \
- -p 6612:22 \
+ -p 6222:22 \
  -v data:/var/data \
  -v deploy:/var/deploy \
  -e KAPP_NAME="$deployDst/$appName" \
