@@ -74,13 +74,22 @@ var RegisterStudentStatus = struct {
 	Pending  string //待审核 02
 	Approved string //审核通过 04
 	Rejected string //审核未通过 06
-	Deleted  string //已删除 08
+	Moved    string //已移出计划 08
+	Deleted  string //已删除 10
 }{
 	Apply:    "00",
 	Pending:  "02",
 	Approved: "04",
 	Rejected: "06",
-	Deleted:  "08",
+	Moved:    "08",
+	Deleted:  "10",
+}
+
+type moveStudent struct {
+	FromRegisterID int64                 `json:"from_register_id"`
+	ToRegisterID   int64                 `json:"to_register_id"`
+	Status         string                `json:"status"`
+	Student        []registerStudentType `json:"student"`
 }
 
 type registerStudentType struct {

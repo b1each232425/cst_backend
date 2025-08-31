@@ -572,7 +572,7 @@ func registerStudentH(ctx context.Context) {
 						q.RespErr()
 						return
 					}
-					q.Err = OperateRegisterStudentStatus(ctx, ids, status, userID, registerID, failReason)
+					q.Err = OperateRegisterStudentStatus(ctx, nil, ids, status, userID, registerID, failReason)
 					if q.Err != nil {
 						q.RespErr()
 						return
@@ -621,6 +621,42 @@ func registerStudentH(ctx context.Context) {
 						z.Error(q.Err.Error())
 						q.RespErr()
 						return
+					}
+					//当Action为“move的时候为迁移操作”
+					if qry.Action == "move" {
+						var ms moveStudent
+						q.Err = json.Unmarshal(qry.Data, &ms)
+						if forceErr == "readMoveStudentJson" {
+							q.Err = fmt.Errorf("读取前端数据MoveStudent字段结构体失败")
+						}
+						if q.Err != nil {
+							z.Error(q.Err.Error())
+							q.RespErr()
+							return
+						}
+						if ms.ToRegisterID <= 0 || ms.FromRegisterID <= 0 {
+							q.Err = fmt.Errorf("请传入有效的迁移的报名计划ID")
+							z.Error(q.Err.Error())
+							q.RespErr()
+							return
+						}
+						if len(ms.Student) == 0 {
+							q.Err = fmt.Errorf("请传入有效的迁移的报名计划学生ID")
+							z.Error(q.Err.Error())
+							q.RespErr()
+							return
+						}
+						q.Err = MoveStudent(ctx, ms.FromRegisterID, ms.ToRegisterID, ms.Student, ms.Status, userID)
+						if q.Err != nil {
+							q.RespErr()
+							return
+						}
+						z.Info("---->" + cmn.FncName())
+						q.Msg.Msg = "ok"
+						q.Msg.Status = 0
+						q.Resp()
+						return
+
 					}
 					var rs registerStudent
 					q.Err = json.Unmarshal(qry.Data, &rs)
