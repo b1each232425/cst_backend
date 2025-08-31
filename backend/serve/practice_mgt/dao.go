@@ -1818,7 +1818,6 @@ func LoadErrorCollectionDetailsById(ctx context.Context, tx pgx.Tx, pid, uid int
 			examQuestions[v.ID.Int64] = append(examQuestions[v.ID.Int64], &q)
 		}
 	}
-
 	return p, examGroups, examQuestions, nil
 }
 

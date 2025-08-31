@@ -3,7 +3,7 @@
  * @Description: 请在此填写文件描述
  * @Date: 2025-07-25 23:20:51
  * @LastEditors: zdl <1311866870@qq.com>
- * @LastEditTime: 2025-08-27 13:34:50
+ * @LastEditTime: 2025-08-31 12:45:37
  */
 package practice_mgt
 
@@ -4502,6 +4502,938 @@ func TestPracticeStudentListH(t *testing.T) {
 			})
 		})
 
+		t.Cleanup(func() {
+			// 这里要重新生成一下
+			s := `DELETE FROM assessuser.t_student_answers`
+			_, err := conn.Exec(ctx, s)
+			if err != nil {
+				t.Fatal(err)
+			}
+			// 这里需要清除所有考卷信息
+			s = `DELETE FROM assessuser.t_exam_paper_question`
+			_, err = conn.Exec(ctx, s)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			s = `DELETE FROM assessuser.t_exam_paper_group`
+			_, err = conn.Exec(ctx, s)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			s = `DELETE FROM assessuser.t_exam_paper`
+			_, err = conn.Exec(ctx, s)
+			if err != nil {
+				t.Fatal(err)
+			}
+			// 这里的话先插入准备好的题库、题目跟试卷
+			// 先删除
+			s = `DELETE FROM t_paper_question`
+			_, err = conn.Exec(ctx, s)
+			if err != nil {
+				z.Fatal(err.Error())
+			}
+
+			s = `DELETE FROM t_paper_group`
+			_, err = conn.Exec(ctx, s)
+			if err != nil {
+				z.Fatal(err.Error())
+			}
+
+			s = `DELETE FROM t_paper`
+			_, err = conn.Exec(ctx, s)
+			if err != nil {
+				z.Fatal(err.Error())
+			}
+			s = `DELETE FROM t_question`
+			_, err = conn.Exec(ctx, s)
+			if err != nil {
+				z.Fatal(err.Error())
+			}
+			// 再删除题库
+			s = `DELETE FROM t_question_bank`
+			_, err = conn.Exec(ctx, s)
+			if err != nil {
+				z.Fatal(err.Error())
+			}
+			// 再删除练习
+			s = `DELETE FROM t_practice_wrong_submissions`
+			_, err = conn.Exec(ctx, s)
+			if err != nil {
+				z.Fatal(err.Error())
+			}
+			s = `DELETE FROM t_practice_submissions`
+			_, err = conn.Exec(ctx, s)
+			if err != nil {
+				z.Fatal(err.Error())
+			}
+			// 再删除练习
+			s = `DELETE FROM t_practice_student`
+			_, err = conn.Exec(ctx, s)
+			if err != nil {
+				z.Fatal(err.Error())
+			}
+
+			// 再删除练习
+			s = `DELETE FROM t_practice`
+			_, err = conn.Exec(ctx, s)
+			if err != nil {
+				z.Fatal(err.Error())
+			}
+			// 然后考试
+			s = `DELETE FROM t_examinee`
+			_, err = conn.Exec(ctx, s)
+			if err != nil {
+				z.Fatal(err.Error())
+			}
+			// 然后考试
+			s = `DELETE FROM t_exam_session`
+			_, err = conn.Exec(ctx, s)
+			if err != nil {
+				z.Fatal(err.Error())
+			}
+			// 然后考试
+			s = `DELETE FROM t_exam_info`
+			_, err = conn.Exec(ctx, s)
+			if err != nil {
+				z.Fatal(err.Error())
+			}
+			s = `DELETE FROM t_user_domain`
+			_, err = conn.Exec(ctx, s)
+			if err != nil {
+				z.Fatal(err.Error())
+			}
+			// 这里还要删除user
+			s = `DELETE FROM t_user`
+			_, err = conn.Exec(ctx, s)
+			if err != nil {
+				z.Fatal(err.Error())
+			}
+		})
+	}
+}
+
+func TestRegisterPracticeH(t *testing.T) {
+	if z == nil {
+		cmn.ConfigureForTest()
+	}
+	// 要给这个上下文区分到底是学生还是教师权限
+
+	conn := cmn.GetPgxConn()
+
+	s := `DELETE FROM assessuser.t_student_answers`
+	_, err := conn.Exec(ctx, s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// 这里需要清除所有考卷信息
+	s = `DELETE FROM assessuser.t_exam_paper_question`
+	_, err = conn.Exec(ctx, s)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	s = `DELETE FROM assessuser.t_exam_paper_group`
+	_, err = conn.Exec(ctx, s)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	s = `DELETE FROM assessuser.t_exam_paper`
+	_, err = conn.Exec(ctx, s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// 这里的话先插入准备好的题库、题目跟试卷
+	// 先删除
+	s = `DELETE FROM t_paper_question`
+	_, err = conn.Exec(ctx, s)
+	if err != nil {
+		z.Fatal(err.Error())
+	}
+
+	s = `DELETE FROM t_paper_group`
+	_, err = conn.Exec(ctx, s)
+	if err != nil {
+		z.Fatal(err.Error())
+	}
+
+	s = `DELETE FROM t_paper`
+	_, err = conn.Exec(ctx, s)
+	if err != nil {
+		z.Fatal(err.Error())
+	}
+	s = `DELETE FROM t_question`
+	_, err = conn.Exec(ctx, s)
+	if err != nil {
+		z.Fatal(err.Error())
+	}
+	// 再删除题库
+	s = `DELETE FROM t_question_bank`
+	_, err = conn.Exec(ctx, s)
+	if err != nil {
+		z.Fatal(err.Error())
+	}
+	// 再删除练习
+	s = `DELETE FROM t_practice_wrong_submissions`
+	_, err = conn.Exec(ctx, s)
+	if err != nil {
+		z.Fatal(err.Error())
+	}
+	s = `DELETE FROM t_practice_submissions`
+	_, err = conn.Exec(ctx, s)
+	if err != nil {
+		z.Fatal(err.Error())
+	}
+	// 再删除练习
+	s = `DELETE FROM t_practice_student`
+	_, err = conn.Exec(ctx, s)
+	if err != nil {
+		z.Fatal(err.Error())
+	}
+
+	// 再删除练习
+	s = `DELETE FROM t_practice`
+	_, err = conn.Exec(ctx, s)
+	if err != nil {
+		z.Fatal(err.Error())
+	}
+	// 然后考试
+	s = `DELETE FROM t_examinee`
+	_, err = conn.Exec(ctx, s)
+	if err != nil {
+		z.Fatal(err.Error())
+	}
+	// 然后考试
+	s = `DELETE FROM t_exam_session`
+	_, err = conn.Exec(ctx, s)
+	if err != nil {
+		z.Fatal(err.Error())
+	}
+	// 然后考试
+	s = `DELETE FROM t_exam_info`
+	_, err = conn.Exec(ctx, s)
+	if err != nil {
+		z.Fatal(err.Error())
+	}
+
+	s = `DELETE FROM t_user_domain`
+	_, err = conn.Exec(ctx, s)
+	if err != nil {
+		z.Fatal(err.Error())
+	}
+	// 这里还要删除user
+	s = `DELETE FROM t_user`
+	_, err = conn.Exec(ctx, s)
+	if err != nil {
+		z.Fatal(err.Error())
+	}
+	// 这里直接先准备好这个试卷就好了
+	tx, _ := conn.Begin(ctx)
+
+	// 增加几个报名计划 练习
+	var practiceName1, practiceName2, practiceName3, practiceName4 string
+
+	practiceName1 = "单元测试发布练习1"
+	practiceName2 = "单元测试发布练习2"
+	practiceName3 = "单元测试发布练习3"
+	practiceName4 = "单元测试发布练习4"
+
+	// 先创建数据，不管到底是不是这个测试用例需要的 三种练习状态 然后还有状态不一的练习
+	// 删除 exam_paper_id 字段后，每组数据保留 8 个字段，调整占位符编号
+	s = `INSERT INTO t_practice (id,name,correct_mode,creator,allowed_attempts,type,paper_id,status)
+VALUES
+($1, $2, $3, $4, $5, $6, $7, $8),
+($9, $10, $11, $12, $13, $14, $15, $16),
+($17, $18, $19, $20, $21, $22, $23, $24),
+($25, $26, $27, $28, $29, $30, $31, $32)`
+
+	_, err = tx.Exec(ctx, s,
+		// 第 1 组数据
+		10086, practiceName1, "00", 10086, 10086, "00", 10086, PracticeStatus.Released,
+		// 第 2 组数据
+		10087, practiceName2, "00", 10087, 10086, "00", 10086, PracticeStatus.Released,
+		// 第 3 组数据
+		10088, practiceName3, "00", 10086, 10086, "00", 10086, PracticeStatus.Released,
+		// 第 4 组数据
+		10089, practiceName4, "00", 10087, 10086, "00", 10086, PracticeStatus.Released,
+	)
+	if err != nil {
+		t.Errorf("插入练习失败：%v", err)
+	}
+
+	s = `SELECT COUNT(*) FROM t_practice`
+	tCount := 0
+	err = tx.QueryRow(ctx, s).Scan(&tCount)
+	if err != nil {
+		t.Errorf("无法查询此时练习数量:%v", err)
+	}
+	if tCount != 4 {
+		t.Errorf("此时练习数量不为4，实际为：%v", tCount)
+	}
+
+	// 这里还是要插入姓名
+	// 这里插入几个学生，就代表是用户了
+	s = `INSERT INTO t_user (id,category,account,official_name,id_card_no,mobile_phone)VALUES($1,$2,$3,$4,$5,$6),($7,$8,$9,$10,$11,$12)ON CONFLICT (id) DO NOTHING`
+	_, err = tx.Exec(ctx, s, 10086, "sys^user", "38ieqiwutnfg", "邹德伦", "44018427781715606X", "15920440457", 10087, "sys^user", "ic053cwd0dw0", "邹德伦克隆体", "440184277817156060", "15920440907")
+	if err != nil {
+		t.Errorf("插入用户失败:%v", err)
+	}
+
+	s = `INSERT INTO t_user_domain (sys_user, domain)
+				VALUES ($1, (SELECT id FROM t_domain WHERE domain = $2)),($3,(SELECT id FROM t_domain WHERE domain = $4))`
+	_, err = tx.Exec(ctx, s, 10086, "sys^user", 10087, "sys^user")
+	if err != nil {
+		t.Errorf("插入用户失败:%v", err)
+	}
+
+	err = tx.Commit(ctx)
+	if err != nil {
+		t.Errorf("提交失败哦：%v", err)
+	}
+
+	// 这里成功插入多个练习了
+	testCases := []struct {
+		name     string
+		method   string
+		url      string
+		reqBody  *cmn.ReqProto
+		userId   int64
+		forceErr string
+		ctxKey   string
+		ctxValue string
+		// 预期结果
+		expectSuccess       bool            // 是否期望成功
+		expectedMessage     string          // 预期错误消息
+		expectFailedMessage string          // 预期成功消息
+		expectedData        json.RawMessage // 预期数据（可选）
+		setup               func() error
+		Domain              []cmn.TDomain
+	}{
+		{
+			name:            "正常获取列表",
+			method:          "GET",
+			url:             "/api/registerPractice?page=1&page_size=10",
+			userId:          10086,
+			Domain:          []cmn.TDomain{{ID: null.IntFrom(PracticeDomainID.Admin)}},
+			expectSuccess:   true,
+			expectedMessage: "",
+			expectedData: json.RawMessage(`
+			[
+				{
+					"ID":10086,
+					"Name":"单元测试发布练习1",
+					"CorrectMode":"00",
+					"Type":"00",
+					"AllowedAttempts":10086,
+					"Status":"00",
+					"TeacherName":"邹德伦"
+				},
+				{
+					"ID":10087,
+					"Name":"单元测试发布练习2",
+					"CorrectMode":"00",
+					"Type":"00",
+					"AllowedAttempts":10086,
+					"Status":"00",
+					"TeacherName":"邹德伦克隆体"
+				},
+				{
+					"ID":10088,
+					"Name":"单元测试发布练习3",
+					"CorrectMode":"00",
+					"Type":"00",
+					"AllowedAttempts":10086,
+					"Status":"00",
+					"TeacherName":"邹德伦"
+				},
+				{
+					"ID":10089,
+					"Name":"单元测试发布练习4",
+					"CorrectMode":"00",
+					"Type":"00",
+					"AllowedAttempts":10086,
+					"Status":"00",
+					"TeacherName":"邹德伦克隆体"
+				}
+			]`,
+			),
+		},
+		{
+			name:            "权限不足",
+			method:          "GET",
+			url:             "/api/registerPractice?page=1&page_size=10",
+			userId:          10086,
+			Domain:          []cmn.TDomain{{ID: null.IntFrom(PracticeDomainID.Student)}},
+			expectSuccess:   false,
+			expectedMessage: "当前权限无法操作获取可选择练习",
+			expectedData: json.RawMessage(`
+			[
+				{
+					"ID":10086,
+					"Name":"单元测试发布练习1",
+					"CorrectMode":"00",
+					"Type":"00",
+					"AllowedAttempts":10086,
+					"Status":"00",
+					"TeacherName":"邹德伦"
+				},
+				{
+					"ID":10087,
+					"Name":"单元测试发布练习2",
+					"CorrectMode":"00",
+					"Type":"00",
+					"AllowedAttempts":10086,
+					"Status":"00",
+					"TeacherName":"邹德伦克隆体"
+				},
+				{
+					"ID":10088,
+					"Name":"单元测试发布练习3",
+					"CorrectMode":"00",
+					"Type":"00",
+					"AllowedAttempts":10086,
+					"Status":"00",
+					"TeacherName":"邹德伦"
+				},
+				{
+					"ID":10089,
+					"Name":"单元测试发布练习4",
+					"CorrectMode":"00",
+					"Type":"00",
+					"AllowedAttempts":10086,
+					"Status":"00",
+					"TeacherName":"邹德伦克隆体"
+				}
+			]`,
+			),
+		},
+		{
+			name:            "携带非法用户id",
+			method:          "GET",
+			url:             "/api/registerPractice?page=1&page_size=10",
+			userId:          -10086,
+			Domain:          []cmn.TDomain{{ID: null.IntFrom(PracticeDomainID.SuperAdmin)}},
+			expectSuccess:   false,
+			expectedMessage: "invalid UserID",
+			expectedData: json.RawMessage(`
+			[
+				{
+					"ID":10086,
+					"Name":"单元测试发布练习1",
+					"CorrectMode":"00",
+					"Type":"00",
+					"AllowedAttempts":10086,
+					"Status":"00",
+					"TeacherName":"邹德伦"
+				},
+				{
+					"ID":10087,
+					"Name":"单元测试发布练习2",
+					"CorrectMode":"00",
+					"Type":"00",
+					"AllowedAttempts":10086,
+					"Status":"00",
+					"TeacherName":"邹德伦克隆体"
+				},
+				{
+					"ID":10088,
+					"Name":"单元测试发布练习3",
+					"CorrectMode":"00",
+					"Type":"00",
+					"AllowedAttempts":10086,
+					"Status":"00",
+					"TeacherName":"邹德伦"
+				},
+				{
+					"ID":10089,
+					"Name":"单元测试发布练习4",
+					"CorrectMode":"00",
+					"Type":"00",
+					"AllowedAttempts":10086,
+					"Status":"00",
+					"TeacherName":"邹德伦克隆体"
+				}
+			]`,
+			),
+		},
+		{
+			name:            "使用的不是GET方法",
+			method:          "POST",
+			url:             "/api/registerPractice?page=1&page_size=10",
+			userId:          10086,
+			Domain:          []cmn.TDomain{{ID: null.IntFrom(PracticeDomainID.SuperAdmin)}},
+			expectSuccess:   false,
+			expectedMessage: "请使用GET方法请求该路径",
+			expectedData: json.RawMessage(`
+			[
+				{
+					"ID":10086,
+					"Name":"单元测试发布练习1",
+					"CorrectMode":"00",
+					"Type":"00",
+					"AllowedAttempts":10086,
+					"Status":"00",
+					"TeacherName":"邹德伦"
+				},
+				{
+					"ID":10087,
+					"Name":"单元测试发布练习2",
+					"CorrectMode":"00",
+					"Type":"00",
+					"AllowedAttempts":10086,
+					"Status":"00",
+					"TeacherName":"邹德伦克隆体"
+				},
+				{
+					"ID":10088,
+					"Name":"单元测试发布练习3",
+					"CorrectMode":"00",
+					"Type":"00",
+					"AllowedAttempts":10086,
+					"Status":"00",
+					"TeacherName":"邹德伦"
+				},
+				{
+					"ID":10089,
+					"Name":"单元测试发布练习4",
+					"CorrectMode":"00",
+					"Type":"00",
+					"AllowedAttempts":10086,
+					"Status":"00",
+					"TeacherName":"邹德伦克隆体"
+				}
+			]`,
+			),
+		},
+		{
+			name:            "缺少分页号码",
+			method:          "GET",
+			url:             "/api/registerPractice?page_size=10",
+			userId:          10086,
+			Domain:          []cmn.TDomain{{ID: null.IntFrom(PracticeDomainID.SuperAdmin)}},
+			expectSuccess:   false,
+			expectedMessage: "缺失分页查询页号",
+			expectedData: json.RawMessage(`
+			[
+				{
+					"ID":10086,
+					"Name":"单元测试发布练习1",
+					"CorrectMode":"00",
+					"Type":"00",
+					"AllowedAttempts":10086,
+					"Status":"00",
+					"TeacherName":"邹德伦"
+				},
+				{
+					"ID":10087,
+					"Name":"单元测试发布练习2",
+					"CorrectMode":"00",
+					"Type":"00",
+					"AllowedAttempts":10086,
+					"Status":"00",
+					"TeacherName":"邹德伦克隆体"
+				},
+				{
+					"ID":10088,
+					"Name":"单元测试发布练习3",
+					"CorrectMode":"00",
+					"Type":"00",
+					"AllowedAttempts":10086,
+					"Status":"00",
+					"TeacherName":"邹德伦"
+				},
+				{
+					"ID":10089,
+					"Name":"单元测试发布练习4",
+					"CorrectMode":"00",
+					"Type":"00",
+					"AllowedAttempts":10086,
+					"Status":"00",
+					"TeacherName":"邹德伦克隆体"
+				}
+			]`,
+			),
+		},
+		{
+			name:            "强制解析前端发送的分页号大小失败",
+			method:          "GET",
+			url:             "/api/registerPractice?page=1&page_size=10",
+			userId:          10086,
+			Domain:          []cmn.TDomain{{ID: null.IntFrom(PracticeDomainID.SuperAdmin)}},
+			expectSuccess:   false,
+			forceErr:        "pageParseInt",
+			expectedMessage: "分页查询的页号解析失败",
+			expectedData: json.RawMessage(`
+			[
+				{
+					"ID":10086,
+					"Name":"单元测试发布练习1",
+					"CorrectMode":"00",
+					"Type":"00",
+					"AllowedAttempts":10086,
+					"Status":"00",
+					"TeacherName":"邹德伦"
+				},
+				{
+					"ID":10087,
+					"Name":"单元测试发布练习2",
+					"CorrectMode":"00",
+					"Type":"00",
+					"AllowedAttempts":10086,
+					"Status":"00",
+					"TeacherName":"邹德伦克隆体"
+				},
+				{
+					"ID":10088,
+					"Name":"单元测试发布练习3",
+					"CorrectMode":"00",
+					"Type":"00",
+					"AllowedAttempts":10086,
+					"Status":"00",
+					"TeacherName":"邹德伦"
+				},
+				{
+					"ID":10089,
+					"Name":"单元测试发布练习4",
+					"CorrectMode":"00",
+					"Type":"00",
+					"AllowedAttempts":10086,
+					"Status":"00",
+					"TeacherName":"邹德伦克隆体"
+				}
+			]`,
+			),
+		},
+		{
+			name:            "强制解析前端发送的分页大小失败",
+			method:          "GET",
+			url:             "/api/registerPractice?page=1&page_size=10",
+			userId:          10086,
+			Domain:          []cmn.TDomain{{ID: null.IntFrom(PracticeDomainID.SuperAdmin)}},
+			expectSuccess:   false,
+			forceErr:        "pageSizeParseInt",
+			expectedMessage: "分页页大小解析失败",
+			expectedData: json.RawMessage(`
+			[
+				{
+					"ID":10086,
+					"Name":"单元测试发布练习1",
+					"CorrectMode":"00",
+					"Type":"00",
+					"AllowedAttempts":10086,
+					"Status":"00",
+					"TeacherName":"邹德伦"
+				},
+				{
+					"ID":10087,
+					"Name":"单元测试发布练习2",
+					"CorrectMode":"00",
+					"Type":"00",
+					"AllowedAttempts":10086,
+					"Status":"00",
+					"TeacherName":"邹德伦克隆体"
+				},
+				{
+					"ID":10088,
+					"Name":"单元测试发布练习3",
+					"CorrectMode":"00",
+					"Type":"00",
+					"AllowedAttempts":10086,
+					"Status":"00",
+					"TeacherName":"邹德伦"
+				},
+				{
+					"ID":10089,
+					"Name":"单元测试发布练习4",
+					"CorrectMode":"00",
+					"Type":"00",
+					"AllowedAttempts":10086,
+					"Status":"00",
+					"TeacherName":"邹德伦克隆体"
+				}
+			]`,
+			),
+		},
+		{
+			name:            "缺少分页大小",
+			method:          "GET",
+			url:             "/api/registerPractice?page=1",
+			userId:          10086,
+			Domain:          []cmn.TDomain{{ID: null.IntFrom(PracticeDomainID.SuperAdmin)}},
+			expectSuccess:   false,
+			expectedMessage: "缺失分页查询页大小",
+			expectedData: json.RawMessage(`
+			[
+				{
+					"ID":10086,
+					"Name":"单元测试发布练习1",
+					"CorrectMode":"00",
+					"Type":"00",
+					"AllowedAttempts":10086,
+					"Status":"00",
+					"TeacherName":"邹德伦"
+				},
+				{
+					"ID":10087,
+					"Name":"单元测试发布练习2",
+					"CorrectMode":"00",
+					"Type":"00",
+					"AllowedAttempts":10086,
+					"Status":"00",
+					"TeacherName":"邹德伦克隆体"
+				},
+				{
+					"ID":10088,
+					"Name":"单元测试发布练习3",
+					"CorrectMode":"00",
+					"Type":"00",
+					"AllowedAttempts":10086,
+					"Status":"00",
+					"TeacherName":"邹德伦"
+				},
+				{
+					"ID":10089,
+					"Name":"单元测试发布练习4",
+					"CorrectMode":"00",
+					"Type":"00",
+					"AllowedAttempts":10086,
+					"Status":"00",
+					"TeacherName":"邹德伦克隆体"
+				}
+			]`,
+			),
+		},
+		{
+			name:            "分页大小过大",
+			method:          "GET",
+			url:             "/api/registerPractice?page=1&page_size=1000000",
+			userId:          10086,
+			Domain:          []cmn.TDomain{{ID: null.IntFrom(PracticeDomainID.SuperAdmin)}},
+			expectSuccess:   false,
+			expectedMessage: "页数量过大，不允许访问",
+			expectedData: json.RawMessage(`
+			[
+				{
+					"ID":10086,
+					"Name":"单元测试发布练习1",
+					"CorrectMode":"00",
+					"Type":"00",
+					"AllowedAttempts":10086,
+					"Status":"00",
+					"TeacherName":"邹德伦"
+				},
+				{
+					"ID":10087,
+					"Name":"单元测试发布练习2",
+					"CorrectMode":"00",
+					"Type":"00",
+					"AllowedAttempts":10086,
+					"Status":"00",
+					"TeacherName":"邹德伦克隆体"
+				},
+				{
+					"ID":10088,
+					"Name":"单元测试发布练习3",
+					"CorrectMode":"00",
+					"Type":"00",
+					"AllowedAttempts":10086,
+					"Status":"00",
+					"TeacherName":"邹德伦"
+				},
+				{
+					"ID":10089,
+					"Name":"单元测试发布练习4",
+					"CorrectMode":"00",
+					"Type":"00",
+					"AllowedAttempts":10086,
+					"Status":"00",
+					"TeacherName":"邹德伦克隆体"
+				}
+			]`,
+			),
+		},
+		{
+			name:            "强制调用函数失败",
+			method:          "GET",
+			url:             "/api/registerPractice?page=1&page_size=10",
+			userId:          10086,
+			Domain:          []cmn.TDomain{{ID: null.IntFrom(PracticeDomainID.SuperAdmin)}},
+			forceErr:        "query",
+			expectSuccess:   false,
+			expectedMessage: "查询可用于报名计划绑定的练习失败",
+			expectedData: json.RawMessage(`
+			[
+				{
+					"ID":10086,
+					"Name":"单元测试发布练习1",
+					"CorrectMode":"00",
+					"Type":"00",
+					"AllowedAttempts":10086,
+					"Status":"00",
+					"TeacherName":"邹德伦"
+				},
+				{
+					"ID":10087,
+					"Name":"单元测试发布练习2",
+					"CorrectMode":"00",
+					"Type":"00",
+					"AllowedAttempts":10086,
+					"Status":"00",
+					"TeacherName":"邹德伦克隆体"
+				},
+				{
+					"ID":10088,
+					"Name":"单元测试发布练习3",
+					"CorrectMode":"00",
+					"Type":"00",
+					"AllowedAttempts":10086,
+					"Status":"00",
+					"TeacherName":"邹德伦"
+				},
+				{
+					"ID":10089,
+					"Name":"单元测试发布练习4",
+					"CorrectMode":"00",
+					"Type":"00",
+					"AllowedAttempts":10086,
+					"Status":"00",
+					"TeacherName":"邹德伦克隆体"
+				}
+			]`,
+			),
+		},
+		{
+			name:            "强制将查询结果序列化失败 ",
+			method:          "GET",
+			url:             "/api/registerPractice?page=1&page_size=10",
+			userId:          10086,
+			Domain:          []cmn.TDomain{{ID: null.IntFrom(PracticeDomainID.SuperAdmin)}},
+			forceErr:        "json",
+			expectSuccess:   false,
+			expectedMessage: "返回数据反序列失败",
+			expectedData: json.RawMessage(`
+			[
+				{
+					"ID":10086,
+					"Name":"单元测试发布练习1",
+					"CorrectMode":"00",
+					"Type":"00",
+					"AllowedAttempts":10086,
+					"Status":"00",
+					"TeacherName":"邹德伦"
+				},
+				{
+					"ID":10087,
+					"Name":"单元测试发布练习2",
+					"CorrectMode":"00",
+					"Type":"00",
+					"AllowedAttempts":10086,
+					"Status":"00",
+					"TeacherName":"邹德伦克隆体"
+				},
+				{
+					"ID":10088,
+					"Name":"单元测试发布练习3",
+					"CorrectMode":"00",
+					"Type":"00",
+					"AllowedAttempts":10086,
+					"Status":"00",
+					"TeacherName":"邹德伦"
+				},
+				{
+					"ID":10089,
+					"Name":"单元测试发布练习4",
+					"CorrectMode":"00",
+					"Type":"00",
+					"AllowedAttempts":10086,
+					"Status":"00",
+					"TeacherName":"邹德伦克隆体"
+				}
+			]`,
+			),
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			if tc.setup != nil {
+				err := tc.setup()
+				if err != nil {
+					t.Fatalf("Failed to setup database: %v", err)
+				}
+
+			}
+
+			var req *http.Request
+			var err error
+
+			if tc.reqBody != nil {
+
+				// 对于 POST 请求，准备请求体
+				bodyBytes, err := json.Marshal(tc.reqBody)
+				if err != nil {
+					t.Fatalf("Failed to marshal request body: %v", err)
+				}
+				req, err = http.NewRequest(tc.method, tc.url, bytes.NewBuffer(bodyBytes))
+				if tc.name == "buf-zero" {
+					req, err = http.NewRequest(tc.method, tc.url, bytes.NewBuffer(nil))
+				} else if containsString(tc.name, "传入空参数") {
+					req, err = http.NewRequest(tc.method, tc.url, bytes.NewBuffer([]byte("")))
+				}
+			} else {
+				// 对于 GET 请求，没有请求体
+				req, err = http.NewRequest(tc.method, tc.url, nil)
+			}
+			if err != nil {
+				t.Fatalf("Failed to create request: %v", err)
+			}
+			// 创建模拟的上下文，应用自定义选项
+			ctx := createMockContext(req, tc.userId, tc.Domain)
+
+			//传入强制err
+			if tc.forceErr != "" {
+				ctx = context.WithValue(ctx, "force-error", tc.forceErr)
+			}
+
+			registerPracticeH(ctx)
+
+			q := cmn.GetCtxValue(ctx)
+			resp := q.Msg
+			t.Logf("resp:%v\n", resp)
+			if tc.expectSuccess {
+				if resp.Msg != "OK" {
+					t.Errorf("成功返回的信息不为OK")
+				}
+				// 如果有的话，那就需要获取后端返回数据
+				var testResp1, testResp2 []RegisterPractice
+				if err := json.Unmarshal(resp.Data, &testResp1); err != nil {
+					t.Errorf("JSON 解析失败:%v", err)
+					return
+				}
+				if err := json.Unmarshal(tc.expectedData, &testResp2); err != nil {
+					t.Errorf("JSON 解析失败:%v", err)
+					return
+				}
+				for idx, v := range testResp1 {
+					// 遍历检测是否相等
+					expectD := testResp2[idx]
+					if v.Name.String != expectD.Name.String {
+						t.Errorf("预期返回的练习名称：%v，实际返回的练习名称：%v", expectD.Name.String, v.Name.String)
+					}
+					if v.TeacherName != expectD.TeacherName {
+						t.Errorf("预期返回的练习教师名称：%v，实际返回的练习教师名称：%v", expectD.TeacherName, v.TeacherName)
+					}
+					if v.AllowedAttempts.Int64 != expectD.AllowedAttempts.Int64 {
+						t.Errorf("预期返回的练习最大尝试次数：%v，实际返回的练习最大尝试次数：%v", expectD.AllowedAttempts.Int64, v.AllowedAttempts.Int64)
+					}
+				}
+			} else {
+				if !containsString(resp.Msg, tc.expectedMessage) {
+					t.Errorf("此时返回的错误信息：%v,实际为：%v", resp.Msg, tc.expectedMessage)
+				}
+			}
+		})
 		t.Cleanup(func() {
 			// 这里要重新生成一下
 			s := `DELETE FROM assessuser.t_student_answers`

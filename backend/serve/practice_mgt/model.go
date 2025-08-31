@@ -3,7 +3,7 @@
  * @Description: 练习管理所需模型
  * @Date: 2025-07-15 19:59:25
  * @LastEditors: zdl <1311866870@qq.com>
- * @LastEditTime: 2025-08-30 13:55:10
+ * @LastEditTime: 2025-08-31 12:41:08
  */
 package practice_mgt
 
@@ -152,5 +152,5 @@ type StudentInfo struct {
 
 type RegisterPractice struct {
 	cmn.TPractice
-	TeacherName string `json:"teacher_name"`
+	TeacherName string `json:"TeacherName"`
 }
