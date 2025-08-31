@@ -38,14 +38,14 @@ func ListRegisterT(ctx context.Context, name string, course string, status strin
 	clauses = append(clauses, fmt.Sprintf("r.creator = $%d", len(args)+1))
 	args = append(args, userID)
 	s := `
-	SELECT r.id, r.name , r.course , COALESCE((SELECT COUNT(*) FROM assessuser.t_exam_plan_student eps WHERE eps.register_id=r.id AND eps.status!=$1),0) , r.max_number , r.review_end_time , r.start_time , r.end_time , COALESCE(STRING_AGG(p.name, '、'),'') , r.status 
+	SELECT r.id, r.name , r.course , COALESCE((SELECT COUNT(*) FROM assessuser.t_exam_plan_student eps WHERE eps.register_id=r.id AND eps.status!=$1),0) , r.max_number , r.review_end_time , r.start_time , r.end_time , COALESCE(STRING_AGG(p.name, '、'),'') , r.status ,r.exam_plan_location
 	FROM assessuser.t_register_plan r  LEFT JOIN assessuser.t_register_practice rp ON rp.register_id=r.id 
 	LEFT JOIN  assessuser.t_practice p ON p.id=rp.practice_id
 		`
 	if len(clauses) > 0 {
 		s += "WHERE " + strings.Join(clauses, " AND ")
 	}
-	s += " GROUP BY r.id  , r.name, r.course, r.max_number, r.review_end_time, r.start_time, r.end_time, r.status"
+	s += " GROUP BY r.id  , r.name, r.course, r.max_number, r.review_end_time, r.start_time, r.end_time, r.status , r.exam_plan_location"
 	//添加orderBy语句
 	if len(orderBy) > 0 {
 		s += " ORDER BY " + strings.Join(orderBy, ", ")
@@ -78,7 +78,7 @@ func ListRegisterT(ctx context.Context, name string, course string, status strin
 		var r cmn.TRegisterPlan
 		var practiceName string
 		var studentCount int64
-		err = rows.Scan(&r.ID, &r.Name, &r.Course, &studentCount, &r.MaxNumber, &r.ReviewEndTime, &r.StartTime, &r.EndTime, &practiceName, &r.Status)
+		err = rows.Scan(&r.ID, &r.Name, &r.Course, &studentCount, &r.MaxNumber, &r.ReviewEndTime, &r.StartTime, &r.EndTime, &practiceName, &r.Status, &r.ExamPlanLocation)
 		if err != nil || forceErr == "scan" {
 			err = fmt.Errorf("解析数据失败:%v", err)
 			z.Error(err.Error())
@@ -269,7 +269,7 @@ func GetRegisterStudentById(cxt context.Context, registerID int64, message strin
 	clauses = append(clauses, fmt.Sprintf("eps.status != $%d", len(args)+1))
 	args = append(args, RegisterStudentStatus.Apply)
 	s := `
-	SELECT u.id ,  u.official_name , u.mobile_phone , u.email , u.gender , u.id_card_no , u.id_card_type , eps.register_time , eps.type , eps.exam_type , eps.reviewer , eps.status
+	SELECT u.id ,  u.official_name , u.mobile_phone , u.email , u.gender , u.id_card_no , u.id_card_type , eps.register_time , eps.type , eps.exam_type , COALESCE((SELECT official_name FROM assessuser.t_user WHERE id =eps.reviewer),'') AS reviewer , eps.status
 	FROM assessuser.t_user u JOIN assessuser.t_exam_plan_student eps ON eps.student_id =u.id  
 `
 	if len(clauses) > 0 {
@@ -303,7 +303,8 @@ func GetRegisterStudentById(cxt context.Context, registerID int64, message strin
 		M := Map{}
 		var student cmn.TUser
 		var planStudent cmn.TExamPlanStudent
-		err = rows.Scan(&student.ID, &student.OfficialName, &student.MobilePhone, &student.Email, &student.Gender, &student.IDCardNo, &student.IDCardType, &planStudent.RegisterTime, &planStudent.Type, &planStudent.ExamType, &planStudent.Reviewer, &planStudent.Status)
+		var reviewer string
+		err = rows.Scan(&student.ID, &student.OfficialName, &student.MobilePhone, &student.Email, &student.Gender, &student.IDCardNo, &student.IDCardType, &planStudent.RegisterTime, &planStudent.Type, &planStudent.ExamType, &reviewer, &planStudent.Status)
 		if err != nil || forceErr == "scan" {
 			err = fmt.Errorf("解析数据失败:%v", err)
 			z.Error(err.Error())
@@ -311,6 +312,7 @@ func GetRegisterStudentById(cxt context.Context, registerID int64, message strin
 		}
 		M["student"] = student
 		M["detail"] = planStudent
+		M["reviewer"] = reviewer
 		result = append(result, M)
 	}
 	return result, len(result), nil
@@ -682,7 +684,7 @@ func LoadRegisterByIds(ctx context.Context, registerIDs []int64) (registers []*c
 }
 
 // 批量通过或不通过学生审核
-func OperateRegisterStudentStatus(ctx context.Context, ids []int64, status string, userID int64, RegisterID int64) error {
+func OperateRegisterStudentStatus(ctx context.Context, ids []int64, status string, userID int64, RegisterID int64, failReason string) error {
 	if status == "" {
 		return fmt.Errorf("请选择操作")
 	}
@@ -758,9 +760,9 @@ func OperateRegisterStudentStatus(ctx context.Context, ids []int64, status strin
 		}
 	}()
 	s := `
-	UPDATE assessuser.t_exam_plan_student SET status = $1,update_time = $2, updated_by = $3  WHERE student_id = ANY($4) AND register_id =$5
+	UPDATE assessuser.t_exam_plan_student SET status = $1,update_time = $2, updated_by = $3 , fail_reason =$4 ,reviewer=$5  WHERE student_id = ANY($6) AND register_id =$7
 `
-	_, err = tx.Exec(ctx, s, status, now, userID, ids, RegisterID)
+	_, err = tx.Exec(ctx, s, status, now, userID, failReason, userID, ids, RegisterID)
 	if err != nil || forceErr == "pQuery" {
 		err = fmt.Errorf("更新学生状态失败:%v", err)
 		z.Error(err.Error())
@@ -772,7 +774,7 @@ func LoadRegisterStudentStatusByIds(ctx context.Context, ids []int64) (students 
 	forceErr, _ := ctx.Value("force-error").(string)
 	s := `
 	SELECT  eps.id ,eps.student_id , eps.status
-	FROM t_exam_plan_student eps WHERE eps.id = ANY($1)
+	FROM t_exam_plan_student eps WHERE eps.student_id = ANY($1)
 `
 	sqlxDB := cmn.GetPgxConn()
 	rows, err := sqlxDB.Query(ctx, s, ids)
@@ -850,25 +852,30 @@ func UpsertRegisterStudent(ctx context.Context, registerID int64, studentIDs []r
 		}
 	}()
 	//upsert名单
-	addRStr := strings.Repeat("(? , ? ,? ,? ,? ,? ),", len(studentIDs)+1) + "(? , ? ,? ,? ,? , ?)"
-	addRArgs := make([]interface{}, 0, len(studentIDs)*6+1)
+	addRStr := strings.Repeat("(?,?,?,?,?,?,?,?,?),", len(studentIDs)-1) + "(?,?,?,?,?,?,?,?,?)"
+	addRArgs := make([]interface{}, 0, len(studentIDs)*9+1)
 
 	for _, student := range studentIDs {
 		addRArgs = append(addRArgs,
-			registerID, student.StudentID, now, userID, userID, now,
+			registerID, student.StudentID, "02", student.ExamType, now, userID, userID, now, RegisterStudentStatus.Pending,
 		)
 	}
 	addRArgs = append(addRArgs, RegisterStudentStatus.Approved)
 	s := `
-	 INSERT INTO assessuser.t_exam_plan_student(register_id, student_id, create_time, created_by, updated_by , update_time) VALUES ($1,$2,$3,$4)
+	 INSERT INTO assessuser.t_exam_plan_student(register_id, student_id,type,exam_type, create_time, creator, updated_by , update_time ,status) VALUES %s
 	 ON CONFLICT (register_id, student_id) DO UPDATE SET 
 	  status = EXCLUDED.status,
             updated_by = EXCLUDED.updated_by,
             update_time = EXCLUDED.update_time
         WHERE assessuser.t_exam_plan_student.status IS DISTINCT FROM ?
  `
-	s1 := fmt.Sprintf(s, addRArgs)
-	addRQuery, args, _ := sqlx.In(s1, addRStr)
+	s1 := fmt.Sprintf(s, addRStr)
+	addRQuery, args, err := sqlx.In(s1, addRArgs...)
+	if err != nil || forceErr == "sqlxIn" {
+		err = fmt.Errorf("批量导入学生参数处理失败:%v", err)
+		z.Error(err.Error())
+		return err
+	}
 	addRQuery = sqlx.Rebind(sqlx.DOLLAR, addRQuery)
 	z.Sugar().Debugf("打印输出一下增加SQL语句:%v", addRQuery)
 	z.Sugar().Debugf("打印输出一下增加SQL参数:%v", args...)
