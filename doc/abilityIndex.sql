@@ -1,6 +1,6 @@
 /*==============================================================*/
 /* DBMS name:      PostgreSQL 9.x                               */
-/* Created on:     8/31/2025 12:02:36 PM                        */
+/* Created on:     2025/8/31 12:44:28                           */
 /*==============================================================*/
 
 
@@ -1998,7 +1998,8 @@ create table if not exists  t_exam_plan_student (
    create_time          INT8                 not null default (extract(epoch from current_timestamp)*1000)::bigint,
    update_time          INT8                 null default (extract(epoch from current_timestamp)*1000)::bigint,
    status               VARCHAR              null,
-   constraint PK_T_EXAM_PLAN_STUDENT primary key (id)
+   constraint PK_T_EXAM_PLAN_STUDENT primary key (id),
+   constraint AK_KEY_2_T_EXAM_P unique (student_id, register_id)
 );
 
 comment on table t_exam_plan_student is
@@ -2044,7 +2045,7 @@ comment on column t_exam_plan_student.update_time is
 '更新时间';
 
 comment on column t_exam_plan_student.status is
-'00：报名中 02: 待审核 04:通过 06:不通过';
+'00：报名中 02: 待审核 04:通过 06:不通过 08:已迁移';
 
 /*==============================================================*/
 /* Table: t_exam_record                                         */
@@ -8073,7 +8074,8 @@ create table if not exists  t_register_practice (
    create_time          INT8                 not null default (extract(epoch from current_timestamp)*1000)::bigint,
    update_time          INT8                 null default (extract(epoch from current_timestamp)*1000)::bigint,
    status               VARCHAR              null,
-   constraint PK_T_REGISTER_PRACTICE primary key (id)
+   constraint PK_T_REGISTER_PRACTICE primary key (id),
+   constraint AK_KEY_2_T_REGIST unique (register_id, practice_id)
 );
 
 comment on table t_register_practice is
@@ -9409,9 +9411,14 @@ comment on column t_sys_ver.status is
 ALTER SEQUENCE t_sys_ver_id_seq RESTART WITH 20000;
 
 insert into t_sys_ver(id,name,ver,create_time,update_time,remark)
-  values(1000,'业务模型','3.2.3.2',
-  'Monday, December 5, 2016 9:52:53 AM','Saturday, August 30, 2025 10:58:59 PM',
-  '3.2.3.2
+  values(1000,'业务模型','3.2.4.0',
+  '2016年12月5日 9:52:53','2025年8月31日 12:37:09',
+  '3.2.4.0
+新增t_exam_plan_student表和t_register_practice表约束
+3.2.3.3
+修改t_api初始化数据的考点管理路径为exam-site
+
+3.2.3.2
 修改 t_domain 中的考点和考点负责人domain初始值
 
 3.2.3.1
