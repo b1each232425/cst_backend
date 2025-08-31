@@ -7427,7 +7427,7 @@ VALUES
 				ctx = context.Background()
 			}
 
-			pList, err := GetPracticeListByRegisterPlan(ctx, tt.pName, tt.tName, tt.page, tt.size, tt.orderBy)
+			pList, total, err := GetPracticeListByRegisterPlan(ctx, tt.pName, tt.tName, tt.page, tt.size, tt.orderBy)
 			if tt.expectedError != nil {
 				if err == nil || !containsString(err.Error(), tt.expectedError.Error()) {
 					t.Errorf("返回的错误不符合预期：%v，实际为：%v", tt.expectedError, err)
@@ -7435,6 +7435,9 @@ VALUES
 			} else {
 				if err != nil {
 					t.Fatalf("预期无错误，但返回错误：%v", err)
+				}
+				if total != 7 {
+					t.Errorf("此时总数不7个，实际为：%v", total)
 				}
 				if !containsString(tt.name, "异常") {
 					// 这里就去查询 看这个数量

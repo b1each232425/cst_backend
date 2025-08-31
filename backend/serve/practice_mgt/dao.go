@@ -272,7 +272,6 @@ func UpsertPracticeStudent(ctx context.Context, pid, uid int64, ps []int64) erro
 
 // UpsertPracticeStudentV2 手动批量导入学生 用于教师创建练习时，手动导入的学生
 func UpsertPracticeStudentV2(ctx context.Context, pid, uid int64, ps []int64) error {
-
 	if pid <= 0 {
 		err := fmt.Errorf("invalid practiceId param")
 		z.Error(err.Error())
@@ -719,7 +718,7 @@ func ListPracticeT(ctx context.Context, name, pType, status string, orderBy []st
 }
 
 // GetPracticeListByRegisterPlan 创建报名计划的账号 查看所有已发布的练习列表。要求是教师及以上
-func GetPracticeListByRegisterPlan(ctx context.Context, practiceName, teacherName string, page, pageSize int, orderBy []string) ([]RegisterPractice, error) {
+func GetPracticeListByRegisterPlan(ctx context.Context, practiceName, teacherName string, page, pageSize int, orderBy []string) ([]RegisterPractice, int, error) {
 	// 定义的实际上就是一个简单的练习结构体的列表就可以了
 	sqlxDB := cmn.GetDbConn()
 	var result []RegisterPractice
@@ -740,7 +739,15 @@ func GetPracticeListByRegisterPlan(ctx context.Context, practiceName, teacherNam
 		args = append(args, "%"+teacherName+"%")
 	}
 
-	s := `
+	total := 0
+	s := `SELECT COUNT(*) FROM assessuser.t_practice WHERE status = $1`
+	err := sqlxDB.QueryRowxContext(ctx, s, PracticeStatus.Released).Scan(&total)
+	if err != nil || forceErr == "query1" {
+		err = fmt.Errorf("查询此时以发布的练习总数失败：%v", err)
+		z.Error(err.Error())
+		return nil, 0, err
+	}
+	s = `
  	SELECT 
 		tp.id, tp.name,tp.correct_mode,
 		tp.type, tp.creator, tp.create_time, tp.updated_by, tp.update_time, tp.addi, tp.status ,tp.allowed_attempts,u.official_name
@@ -768,7 +775,7 @@ func GetPracticeListByRegisterPlan(ctx context.Context, practiceName, teacherNam
 	if err != nil || forceErr == "query" {
 		err = fmt.Errorf("查询可用于报名计划绑定的练习失败:%v", err)
 		z.Error(err.Error())
-		return nil, err
+		return nil, 0, err
 	}
 	defer func() {
 		err = rows.Close()
@@ -787,11 +794,11 @@ func GetPracticeListByRegisterPlan(ctx context.Context, practiceName, teacherNam
 		if err != nil || forceErr == "scan" {
 			err = fmt.Errorf("解析练习数据失败:%v", err)
 			z.Error(err.Error())
-			return nil, err
+			return nil, 0, err
 		}
 		result = append(result, p)
 	}
-	return result, nil
+	return result, total, nil
 }
 
 // OperatePracticeStatus 教师及以上权限操作练习发布状态 控制学生能否作答、能否在列表中查看到该练习 并配置批改信息
@@ -1869,11 +1876,14 @@ func BoundPracticeEnterRegisterPlan(ctx context.Context, tx pgx.Tx, uid, rpid in
 	}
 	s = `
     INSERT INTO assessuser.t_practice_student 
-        (student_id, practice_id, creator, create_time, status)
-    SELECT $1, UNNEST($2::bigint[]), $3, $4, $5
+        (student_id, practice_id, creator, create_time,updated_by.update_time,status)
+    SELECT $1, UNNEST($2::bigint[]), $3, $4, $5,$6,$7
     ON CONFLICT (student_id, practice_id) 
-    DO NOTHING`
-	_, err = tx.Exec(ctx, s, uid, pids, uid, now, PracticeStudentStatus.Normal)
+	DO UPDATE SET
+            status = EXCLUDED.status,
+            updated_by = EXCLUDED.updated_by,
+            update_time = EXCLUDED.update_time`
+	_, err = tx.Exec(ctx, s, uid, pids, uid, now, uid, now, PracticeStudentStatus.Normal)
 	if err != nil || forceErr == "query1" {
 		err = fmt.Errorf("执行插入学生练习名单数据库失败:%v", err)
 		z.Error(err.Error())

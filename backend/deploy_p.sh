@@ -111,10 +111,11 @@ echo "start new ${containerName} container"
 d run --name=${containerName} \
  -d --restart=always \
  -p 6611:6610 \
+ -p 6622:22 \
  -v data:/var/data \
  -v deploy:/var/deploy \
  -e KAPP_NAME="$deployDst/$appName" \
  --network qnear \
- ubuntu "$deployDst/run.sh"
+ ubuntu:ci "$deployDst/run.sh"
 
 echo "deploy done"
