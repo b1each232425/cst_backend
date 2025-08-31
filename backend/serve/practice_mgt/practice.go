@@ -70,12 +70,27 @@ func Enroll(author string) {
 		//DefaultDomain 该API将默认授权给的用户
 		DefaultDomain: int64(cmn.CDomainSys),
 	})
+
+	_ = cmn.AddService(&cmn.ServeEndPoint{
+		Fn: registerPracticeH,
+
+		Path: "/registerPractice",
+		Name: "registerPractice",
+
+		Developer: developer,
+		WhiteList: true,
+
+		//DomainID 创建该API的账号归属的domain
+		DomainID: int64(cmn.CDomainSys),
+
+		//DefaultDomain 该API将默认授权给的用户
+		DefaultDomain: int64(cmn.CDomainSys),
+	})
 }
 
 // 整合为一个接口
 func practiceH(ctx context.Context) {
 	q := cmn.GetCtxValue(ctx)
-
 	// 用于测试，强制执行某些错误分支
 	forceErr := ""
 	if val := ctx.Value("force-error"); val != nil {
@@ -460,7 +475,7 @@ func practiceStudentListH(ctx context.Context) {
 			break
 		}
 	}
-	if domainID != 0 && domainID == PracticeDomainID.Student {
+	if domainID == 0 || domainID == PracticeDomainID.Student {
 		warn := "当前权限无法操作学生名单"
 		q.Err = errors.New(warn)
 		z.Error(q.Err.Error())
@@ -698,5 +713,109 @@ func practiceStudentListH(ctx context.Context) {
 			return
 		}
 	}
+}
+
+// 获取用于创建报名时可供选择的练习列表
+func registerPracticeH(ctx context.Context) {
+	q := cmn.GetCtxValue(ctx)
+	forceErr := ""
+	if val := ctx.Value("force-error"); val != nil {
+		forceErr = val.(string)
+	}
+	var domainID int64
+	for _, domain := range q.Domains {
+		if domain.ID.Int64 == PracticeDomainID.Admin || domain.ID.Int64 == PracticeDomainID.SuperAdmin {
+			domainID = domain.ID.Int64
+			break
+		}
+	}
+	if domainID == 0 || domainID == PracticeDomainID.Student {
+		q.Err = errors.New("当前权限无法操作获取可选择练习")
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+	userID := q.SysUser.ID.Int64
+	// 这里要进行域的处理，就是这个学生能查看谁的
+	if userID <= 0 {
+		q.Err = fmt.Errorf("invalid UserID: %d", userID)
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+
+	method := strings.ToLower(q.R.Method)
+	if method != "get" {
+		q.Err = fmt.Errorf("请使用GET方法请求该路径")
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+	teacherName := q.R.URL.Query().Get("teacher_name")
+	practiceName := q.R.URL.Query().Get("practice_name")
+	pageStr := q.R.URL.Query().Get("page")
+	if pageStr == "" {
+		q.Err = fmt.Errorf("缺失分页查询页号")
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+	var page int
+	page, q.Err = strconv.Atoi(pageStr)
+	if forceErr == "pageParseInt" {
+		q.Err = fmt.Errorf("将字符串转化为整形失败")
+	}
+	if q.Err != nil {
+		q.Err = fmt.Errorf("分页查询的页号解析失败：%v", q.Err.Error())
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+	pageSizeStr := q.R.URL.Query().Get("page_size")
+	if pageSizeStr == "" {
+		q.Err = fmt.Errorf("缺失分页查询页大小")
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+	var pageSize int
+	pageSize, q.Err = strconv.Atoi(pageSizeStr)
+	if forceErr == "pageSizeParseInt" {
+		q.Err = fmt.Errorf("将字符串转化为整形失败")
+	}
+	if q.Err != nil {
+		q.Err = fmt.Errorf("分页页大小解析失败：%v", q.Err.Error())
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+	if pageSize >= 999 {
+		q.Err = fmt.Errorf("页数量过大，不允许访问")
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+	// 排序字段
+	orderBy := []string{"tp.create_time desc"}
+	result, err := GetPracticeListByRegisterPlan(ctx, practiceName, teacherName, page, pageSize, orderBy)
+	if err != nil {
+		q.Err = err
+		q.RespErr()
+		return
+	}
+	data, err := json.Marshal(result)
+	if forceErr == "json" {
+		err = fmt.Errorf("返回数据反序列失败")
+	}
+	if err != nil {
+		q.Err = err
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+	q.Msg.Data = data
+	z.Info("---->" + cmn.FncName())
+	q.Msg.Msg = "OK"
+	q.Resp()
 
 }
