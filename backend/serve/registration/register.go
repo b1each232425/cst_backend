@@ -230,6 +230,7 @@ func register(ctx context.Context) {
 						q.RespErr()
 						return
 					}
+
 					var student registerStudentType
 					var students []registerStudentType
 					student.StudentID = userID
@@ -259,12 +260,7 @@ func register(ctx context.Context) {
 					status := q.R.URL.Query().Get("status")
 					idStr := q.R.URL.Query().Get("id")
 					pageStr := q.R.URL.Query().Get("page")
-					if pageStr == "" {
-						q.Err = fmt.Errorf("缺失分页查询页号")
-						z.Error(q.Err.Error())
-						q.RespErr()
-						return
-					}
+
 					var page int
 					page, q.Err = strconv.Atoi(pageStr)
 					if forceErr == "pageParseInt" {
@@ -277,12 +273,6 @@ func register(ctx context.Context) {
 						return
 					}
 					pageSizeStr := q.R.URL.Query().Get("pageSize")
-					if pageSizeStr == "" {
-						q.Err = fmt.Errorf("缺失分页查询页大小")
-						z.Error(q.Err.Error())
-						q.RespErr()
-						return
-					}
 					var pageSize int
 					pageSize, q.Err = strconv.Atoi(pageSizeStr)
 					if forceErr == "pageSizeParseInt" {
@@ -295,7 +285,7 @@ func register(ctx context.Context) {
 						return
 					}
 					//如果有id则只查询单个报名计划
-					if idStr != "" {
+					if idStr != "" && pageStr != "" && pageSizeStr != "" {
 						message := q.R.URL.Query().Get("message")
 						registerType := q.R.URL.Query().Get("register_type")
 						var id int64
@@ -320,6 +310,43 @@ func register(ctx context.Context) {
 						result := Map{
 							"student": s,
 							"total":   total,
+						}
+						data, err := json.Marshal(result)
+						if forceErr == "json" {
+							err = fmt.Errorf("将要返回数据结构反序列化失败")
+						}
+						if err != nil {
+							z.Error(err.Error())
+							q.Err = err
+							q.RespErr()
+							return
+						}
+						q.Msg.Data = data
+						z.Info("---->" + cmn.FncName())
+						q.Msg.Msg = "OK"
+						q.Resp()
+						return
+					} else if idStr != "" && pageStr == "" && pageSizeStr == "" {
+						//查询单个报名计划详情
+						var id int64
+						id, q.Err = strconv.ParseInt(idStr, 10, 64)
+						if q.Err != nil {
+							q.Err = fmt.Errorf("报名计划ID解析失败：%v", q.Err.Error())
+							z.Error(q.Err.Error())
+							q.RespErr()
+							return
+						}
+
+						r, practiceIds, currentNumber, err := LoadRegisterById(ctx, id)
+						if err != nil {
+							q.Err = err
+							q.RespErr()
+							return
+						}
+						result := Map{
+							"register":       r,
+							"practice_ids":   practiceIds,
+							"current_number": currentNumber,
 						}
 						data, err := json.Marshal(result)
 						if forceErr == "json" {
@@ -403,6 +430,8 @@ func register(ctx context.Context) {
 						q.RespErr()
 						return
 					}
+					var action string
+					action = qry.Action
 					var r RegisterInfo
 					q.Err = json.Unmarshal(qry.Data, &r)
 					if forceErr == "readRJson" {
@@ -420,7 +449,7 @@ func register(ctx context.Context) {
 						q.RespErr()
 						return
 					}
-					err := UpsertRegister(ctx, r.Registration, r.PracticeIds, userID)
+					err := UpsertRegister(ctx, r.Registration, r.PracticeIds, userID, action)
 					if err != nil {
 						q.Err = err
 						q.RespErr()
@@ -572,7 +601,7 @@ func registerStudentH(ctx context.Context) {
 						q.RespErr()
 						return
 					}
-					q.Err = OperateRegisterStudentStatus(ctx, ids, status, userID, registerID, failReason)
+					q.Err = OperateRegisterStudentStatus(ctx, nil, ids, status, userID, registerID, failReason)
 					if q.Err != nil {
 						q.RespErr()
 						return
@@ -621,6 +650,42 @@ func registerStudentH(ctx context.Context) {
 						z.Error(q.Err.Error())
 						q.RespErr()
 						return
+					}
+					//当Action为“move的时候为迁移操作”
+					if qry.Action == "move" {
+						var ms moveStudent
+						q.Err = json.Unmarshal(qry.Data, &ms)
+						if forceErr == "readMoveStudentJson" {
+							q.Err = fmt.Errorf("读取前端数据MoveStudent字段结构体失败")
+						}
+						if q.Err != nil {
+							z.Error(q.Err.Error())
+							q.RespErr()
+							return
+						}
+						if ms.ToRegisterID <= 0 || ms.FromRegisterID <= 0 {
+							q.Err = fmt.Errorf("请传入有效的迁移的报名计划ID")
+							z.Error(q.Err.Error())
+							q.RespErr()
+							return
+						}
+						if len(ms.Student) == 0 {
+							q.Err = fmt.Errorf("请传入有效的迁移的报名计划学生ID")
+							z.Error(q.Err.Error())
+							q.RespErr()
+							return
+						}
+						q.Err = MoveStudent(ctx, ms.FromRegisterID, ms.ToRegisterID, ms.Student, ms.Status, userID)
+						if q.Err != nil {
+							q.RespErr()
+							return
+						}
+						z.Info("---->" + cmn.FncName())
+						q.Msg.Msg = "ok"
+						q.Msg.Status = 0
+						q.Resp()
+						return
+
 					}
 					var rs registerStudent
 					q.Err = json.Unmarshal(qry.Data, &rs)
