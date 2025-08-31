@@ -1299,7 +1299,7 @@ func TestValidatePractice(t *testing.T) {
 				PaperID:         null.IntFrom(102),
 				Name:            null.StringFrom("化学期末考试"),
 				CorrectMode:     null.StringFrom("异常批改数据"), // 批改模式
-				Type:            null.StringFrom("02"),           // 练习类型（试卷）
+				Type:            null.StringFrom("02"),     // 练习类型（试卷）
 				AllowedAttempts: null.IntFrom(10),
 			},
 			ps:            nil,
@@ -1321,7 +1321,7 @@ func TestValidatePractice(t *testing.T) {
 			p: &cmn.TPractice{
 				PaperID:         null.IntFrom(102),
 				Name:            null.StringFrom("化学期末考试"),
-				CorrectMode:     null.StringFrom("00"),           // 批改模式
+				CorrectMode:     null.StringFrom("00"),     // 批改模式
 				Type:            null.StringFrom("异常练习类型"), // 练习类型（试卷）
 				AllowedAttempts: null.IntFrom(10),
 			},
@@ -7122,6 +7122,982 @@ func TestS2Map(t *testing.T) {
 			t.Errorf("Expected empty map for all zero values, got %v", result)
 		}
 	})
+}
+
+func TestGetPracticeListByRegisterPlan(t *testing.T) {
+
+	if z == nil {
+		cmn.ConfigureForTest()
+	}
+	//这里还是要创建 这里就是真正需要创建practice_submissions的地方了
+	//触发LoadExamPaperDetailByUserId sacn
+	//触发GenerateAnswerQuestion query
+	//触发LoadPracticeById  不存在的practiceID
+	conn := cmn.GetPgxConn()
+
+	// 这里的话先删除之前创建的所有数据
+	// 这里需要清除所有考卷信息
+	s := `DELETE FROM assessuser.t_student_answers`
+	_, err := conn.Exec(ctx, s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s = `DELETE FROM assessuser.t_exam_paper_question`
+	_, err = conn.Exec(ctx, s)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	s = `DELETE FROM assessuser.t_exam_paper_group`
+	_, err = conn.Exec(ctx, s)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	s = `DELETE FROM assessuser.t_exam_paper`
+	_, err = conn.Exec(ctx, s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s = `DELETE FROM t_paper_question`
+	_, err = conn.Exec(ctx, s)
+	if err != nil {
+		z.Fatal(err.Error())
+	}
+
+	s = `DELETE FROM t_paper_group`
+	_, err = conn.Exec(ctx, s)
+	if err != nil {
+		z.Fatal(err.Error())
+	}
+
+	s = `DELETE FROM t_paper`
+	_, err = conn.Exec(ctx, s)
+	if err != nil {
+		z.Fatal(err.Error())
+	}
+	s = `DELETE FROM t_question`
+	_, err = conn.Exec(ctx, s)
+	if err != nil {
+		z.Fatal(err.Error())
+	}
+	// 再删除题库
+	s = `DELETE FROM t_question_bank`
+	_, err = conn.Exec(ctx, s)
+	if err != nil {
+		z.Fatal(err.Error())
+	}
+	// 再删除练习
+	s = `DELETE FROM t_practice_wrong_submissions`
+	_, err = conn.Exec(ctx, s)
+	if err != nil {
+		z.Fatal(err.Error())
+	}
+	// 再删除练习
+	s = `DELETE FROM t_practice_submissions`
+	_, err = conn.Exec(ctx, s)
+	if err != nil {
+		z.Fatal(err.Error())
+	}
+	// 再删除练习
+	s = `DELETE FROM t_practice_student`
+	_, err = conn.Exec(ctx, s)
+	if err != nil {
+		z.Fatal(err.Error())
+	}
+	// 再删除练习
+	s = `DELETE FROM t_practice`
+	_, err = conn.Exec(ctx, s)
+	if err != nil {
+		z.Fatal(err.Error())
+	}
+	s = `DELETE FROM t_user_domain`
+	_, err = conn.Exec(ctx, s)
+	if err != nil {
+		z.Fatal(err.Error())
+	}
+	// 这里还要删除user
+	s = `DELETE FROM t_user`
+	_, err = conn.Exec(ctx, s)
+	if err != nil {
+		z.Fatal(err.Error())
+	}
+
+	tx, _ := conn.Begin(ctx)
+
+	// 增加几个报名计划 练习
+	var practiceName1, practiceName2, practiceName3, practiceName4, practiceName5, practiceName6, practiceName7 string
+
+	practiceName1 = "单元测试发布练习1"
+	practiceName2 = "单元测试发布练习2"
+	practiceName3 = "单元测试发布练习3"
+	practiceName4 = "单元测试发布练习4"
+	practiceName5 = "单元测试发布练习5"
+	practiceName6 = "单元测试发布练习6"
+	practiceName7 = "单元测试发布练习7"
+
+	// 先创建数据，不管到底是不是这个测试用例需要的 三种练习状态 然后还有状态不一的练习
+	// 删除 exam_paper_id 字段后，每组数据保留 8 个字段，调整占位符编号
+	s = `INSERT INTO t_practice (id,name,correct_mode,creator,allowed_attempts,type,paper_id,status)
+VALUES
+($1, $2, $3, $4, $5, $6, $7, $8),
+($9, $10, $11, $12, $13, $14, $15, $16),
+($17, $18, $19, $20, $21, $22, $23, $24),
+($25, $26, $27, $28, $29, $30, $31, $32),
+($33, $34, $35, $36, $37, $38, $39, $40),
+($41, $42, $43, $44, $45, $46, $47, $48),
+($49 ,$50, $51, $52, $53, $54, $55, $56)`
+
+	_, err = tx.Exec(ctx, s,
+		// 第 1 组数据
+		10086, practiceName1, "00", 10086, 10086, "00", 10086, PracticeStatus.Released,
+		// 第 2 组数据
+		10087, practiceName2, "00", 10087, 10087, "00", 10086, PracticeStatus.Released,
+		// 第 3 组数据
+		10088, practiceName3, "00", 10086, 10086, "00", 10086, PracticeStatus.Released,
+		// 第 4 组数据
+		10089, practiceName4, "00", 10086, 10086, "00", 10086, PracticeStatus.Released,
+		// 第 5 组数据
+		10090, practiceName5, "00", 10087, 10087, "00", 10086, PracticeStatus.Released,
+		// 第 6 组数据
+		10091, practiceName6, "00", 10086, 10086, "00", 10086, PracticeStatus.Released,
+		// 第 7 组数据
+		10092, practiceName7, "00", 10087, 10087, "00", 10086, PracticeStatus.Released,
+	)
+	if err != nil {
+		t.Errorf("插入练习失败：%v", err)
+	}
+
+	s = `SELECT COUNT(*) FROM t_practice`
+	tCount := 0
+	err = tx.QueryRow(ctx, s).Scan(&tCount)
+	if err != nil {
+		t.Errorf("无法查询此时练习数量:%v", err)
+	}
+	if tCount != 7 {
+		t.Errorf("此时练习数量不为7，实际为：%v", tCount)
+	}
+
+	// 这里还是要插入姓名
+	// 这里插入几个学生，就代表是用户了
+	s = `INSERT INTO t_user (id,category,account,official_name,id_card_no,mobile_phone)VALUES($1,$2,$3,$4,$5,$6),($7,$8,$9,$10,$11,$12)ON CONFLICT (id) DO NOTHING`
+	_, err = tx.Exec(ctx, s, 10086, "sys^user", "38ieqiwutnfg", "邹德伦", "44018427781715606X", "15920440457", 10087, "sys^user", "ic053cwd0dw0", "邹德伦克隆体", "440184277817156060", "15920440907")
+	if err != nil {
+		t.Errorf("插入用户失败:%v", err)
+	}
+
+	s = `INSERT INTO t_user_domain (sys_user, domain)
+				VALUES ($1, (SELECT id FROM t_domain WHERE domain = $2)),($3,(SELECT id FROM t_domain WHERE domain = $4))`
+	_, err = tx.Exec(ctx, s, 10086, "sys^user", 10087, "sys^user")
+	if err != nil {
+		t.Errorf("插入用户失败:%v", err)
+	}
+
+	err = tx.Commit(ctx)
+	if err != nil {
+		t.Errorf("提交失败哦：%v", err)
+	}
+	tests := []struct {
+		name           string
+		pName          string
+		tName          string
+		page           int
+		size           int
+		orderBy        []string
+		expectedError  error
+		pNum           int
+		expectedString string
+	}{
+		{
+			name:    "正常不携带任何必要参数查询 查询数量为7",
+			pName:   "",
+			tName:   "",
+			page:    1,
+			size:    10,
+			orderBy: []string{},
+			pNum:    7,
+		},
+		{
+			name:    "正常只携带练习名称查询 查询数量为7",
+			pName:   "单元测试",
+			tName:   "",
+			page:    1,
+			size:    10,
+			orderBy: []string{},
+			pNum:    7,
+		},
+		{
+			name:    "正常只携带练习名称 精确到数字查询 查询数量为1",
+			pName:   "单元测试发布练习7",
+			tName:   "",
+			page:    1,
+			size:    10,
+			orderBy: []string{},
+			pNum:    1,
+		},
+		{
+			name:    "正常只携带教师名称 查询数量为7",
+			pName:   "",
+			tName:   "邹德伦",
+			page:    1,
+			size:    10,
+			orderBy: []string{},
+			pNum:    7,
+		},
+		{
+			name:    "正常只携带教师名称 查询数量为3",
+			pName:   "",
+			tName:   "克隆体",
+			page:    1,
+			size:    10,
+			orderBy: []string{},
+			pNum:    3,
+		},
+		{
+			name:    "正常只携带教师、练习名称 查询数量为1",
+			pName:   "单元测试发布练习7",
+			tName:   "克隆体",
+			page:    1,
+			size:    10,
+			orderBy: []string{},
+			pNum:    1,
+		},
+		{
+			name:    "正常只携带教师、练习名称 查询数量为0",
+			pName:   "单元测试发布练习3",
+			tName:   "克隆体",
+			page:    1,
+			size:    10,
+			orderBy: []string{},
+			pNum:    0,
+		},
+		{
+			name:    "正常只携带教师、练习名称 查询数量为3",
+			pName:   "",
+			tName:   "克隆体",
+			page:    1,
+			size:    10,
+			orderBy: []string{"id desc"},
+			pNum:    3,
+		},
+		{
+			name:          "异常1 强制触发错误 query",
+			pName:         "7",
+			tName:         "克隆体",
+			page:          1,
+			size:          10,
+			orderBy:       []string{},
+			pNum:          1,
+			expectedError: errors.New("查询可用于报名计划绑定的练习失败"),
+		},
+		{
+			name:          "异常2 强制触发错误 scan",
+			pName:         "7",
+			tName:         "克隆体",
+			page:          1,
+			size:          10,
+			orderBy:       []string{},
+			pNum:          1,
+			expectedError: errors.New("解析练习数据失败"),
+		},
+		{
+			name:    "异常3 强制触发错误 row close",
+			pName:   "7",
+			tName:   "克隆体",
+			page:    1,
+			size:    10,
+			orderBy: []string{},
+			pNum:    1,
+		},
+	}
+
+	for _, tt := range tests {
+		//获取这个
+		t.Run(tt.name, func(t *testing.T) {
+			// 这里进行测试
+			ctx = context.Background()
+
+			if containsString(tt.name, "异常1") {
+				ctx = context.WithValue(ctx, "force-error", "query")
+			} else if containsString(tt.name, "异常2") {
+				ctx = context.WithValue(ctx, "force-error", "scan")
+			} else if containsString(tt.name, "异常3") {
+				ctx = context.WithValue(ctx, "force-error", "Close")
+			} else {
+				ctx = context.Background()
+			}
+
+			pList, err := GetPracticeListByRegisterPlan(ctx, tt.pName, tt.tName, tt.page, tt.size, tt.orderBy)
+			if tt.expectedError != nil {
+				if err == nil || !containsString(err.Error(), tt.expectedError.Error()) {
+					t.Errorf("返回的错误不符合预期：%v，实际为：%v", tt.expectedError, err)
+				}
+			} else {
+				if err != nil {
+					t.Fatalf("预期无错误，但返回错误：%v", err)
+				}
+				if !containsString(tt.name, "异常") {
+					// 这里就去查询 看这个数量
+					if len(pList) != tt.pNum {
+						t.Errorf("此时能让计划绑定的练习数量不为%v，实际为：%v", tt.pNum, len(pList))
+					}
+
+					// 再去检测这些个名字等等
+					if tt.pNum == 1 {
+						// 如果是1的话，那就需要检测是否是哪个名字//
+						// 取出里面的名字
+						for _, v := range pList {
+							if v.Name.String != tt.pName {
+								t.Errorf("此时查询出来的练习名称不为%v，实际为：%v", tt.pName, v.Name.String)
+							}
+						}
+					}
+					// 这里是配合查看是否有名字
+					for _, v := range pList {
+						// 这里会有多种的，有可能也会查询出来的
+						if v.TeacherName != "邹德伦克隆体" && v.TeacherName != "邹德伦" {
+							t.Errorf("此时查询的教师名称不为%v,实际为：%v", "邹德伦克隆体", v.TeacherName)
+						}
+					}
+
+					if len(tt.orderBy) != 0 {
+						// 如果是出于排序状态 那就需要去看这个id的排序状态
+						for i, v := range pList {
+							if i == 0 {
+								if v.ID.Int64 != 10092 {
+									t.Errorf("此时查询出来的练习ID不为%v，实际为：%v", 10092, v.ID.Int64)
+								}
+							}
+							if i == 1 {
+								if v.ID.Int64 != 10090 {
+									t.Errorf("此时查询出来的练习ID不为%v，实际为：%v", 10090, v.ID.Int64)
+								}
+							}
+							if i == 2 {
+								if v.ID.Int64 != 10087 {
+									t.Errorf("此时查询出来的练习ID不为%v，实际为：%v", 10087, v.ID.Int64)
+								}
+							}
+						}
+					}
+				}
+			}
+
+		})
+
+		t.Cleanup(func() {
+			s := `DELETE FROM assessuser.t_student_answers`
+			_, err := conn.Exec(ctx, s)
+			if err != nil {
+				t.Fatal(err)
+			}
+			s = `DELETE FROM assessuser.t_exam_paper_question`
+			_, err = conn.Exec(ctx, s)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			s = `DELETE FROM assessuser.t_exam_paper_group`
+			_, err = conn.Exec(ctx, s)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			s = `DELETE FROM assessuser.t_exam_paper`
+			_, err = conn.Exec(ctx, s)
+			if err != nil {
+				t.Fatal(err)
+			}
+			s = `DELETE FROM t_paper_question`
+			_, err = conn.Exec(ctx, s)
+			if err != nil {
+				z.Fatal(err.Error())
+			}
+
+			s = `DELETE FROM t_paper_group`
+			_, err = conn.Exec(ctx, s)
+			if err != nil {
+				z.Fatal(err.Error())
+			}
+
+			s = `DELETE FROM t_paper`
+			_, err = conn.Exec(ctx, s)
+			if err != nil {
+				z.Fatal(err.Error())
+			}
+			s = `DELETE FROM t_question`
+			_, err = conn.Exec(ctx, s)
+			if err != nil {
+				z.Fatal(err.Error())
+			}
+			// 再删除题库
+			s = `DELETE FROM t_question_bank`
+			_, err = conn.Exec(ctx, s)
+			if err != nil {
+				z.Fatal(err.Error())
+			}
+			// 再删除练习
+			s = `DELETE FROM t_practice_wrong_submissions`
+			_, err = conn.Exec(ctx, s)
+			if err != nil {
+				z.Fatal(err.Error())
+			}
+			// 再删除练习
+			s = `DELETE FROM t_practice_submissions`
+			_, err = conn.Exec(ctx, s)
+			if err != nil {
+				z.Fatal(err.Error())
+			}
+			// 再删除练习
+			s = `DELETE FROM t_practice_student`
+			_, err = conn.Exec(ctx, s)
+			if err != nil {
+				z.Fatal(err.Error())
+			}
+			// 再删除练习
+			s = `DELETE FROM t_practice`
+			_, err = conn.Exec(ctx, s)
+			if err != nil {
+				z.Fatal(err.Error())
+			}
+			s = `DELETE FROM t_user_domain`
+			_, err = conn.Exec(ctx, s)
+			if err != nil {
+				z.Fatal(err.Error())
+			}
+			// 这里还要删除user
+			s = `DELETE FROM t_user`
+			_, err = conn.Exec(ctx, s)
+			if err != nil {
+				z.Fatal(err.Error())
+			}
+		})
+	}
+
+}
+
+func TestBoundPracticeEnterRegisterPlan(t *testing.T) {
+	if z == nil {
+		cmn.ConfigureForTest()
+	}
+
+	conn := cmn.GetPgxConn()
+	now := time.Now().UnixMilli()
+	s := `DELETE FROM assessuser.t_student_answers`
+	_, err := conn.Exec(ctx, s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s = `DELETE FROM assessuser.t_exam_paper_question`
+	_, err = conn.Exec(ctx, s)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	s = `DELETE FROM assessuser.t_exam_paper_group`
+	_, err = conn.Exec(ctx, s)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	s = `DELETE FROM assessuser.t_exam_paper`
+	_, err = conn.Exec(ctx, s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s = `DELETE FROM t_paper_question`
+	_, err = conn.Exec(ctx, s)
+	if err != nil {
+		z.Fatal(err.Error())
+	}
+
+	s = `DELETE FROM t_paper_group`
+	_, err = conn.Exec(ctx, s)
+	if err != nil {
+		z.Fatal(err.Error())
+	}
+
+	s = `DELETE FROM t_paper`
+	_, err = conn.Exec(ctx, s)
+	if err != nil {
+		z.Fatal(err.Error())
+	}
+	s = `DELETE FROM t_question`
+	_, err = conn.Exec(ctx, s)
+	if err != nil {
+		z.Fatal(err.Error())
+	}
+	// 再删除题库
+	s = `DELETE FROM t_question_bank`
+	_, err = conn.Exec(ctx, s)
+	if err != nil {
+		z.Fatal(err.Error())
+	}
+
+	s = `DELETE FROM t_register_practice`
+	_, err = conn.Exec(ctx, s)
+	if err != nil {
+		z.Fatal(err.Error())
+	}
+
+	s = `DELETE FROM t_register_plan`
+	_, err = conn.Exec(ctx, s)
+	if err != nil {
+		z.Fatal(err.Error())
+	}
+
+	// 再删除练习
+	s = `DELETE FROM t_practice_wrong_submissions`
+	_, err = conn.Exec(ctx, s)
+	if err != nil {
+		z.Fatal(err.Error())
+	}
+	// 再删除练习
+	s = `DELETE FROM t_practice_submissions`
+	_, err = conn.Exec(ctx, s)
+	if err != nil {
+		z.Fatal(err.Error())
+	}
+	// 再删除练习
+	s = `DELETE FROM t_practice_student`
+	_, err = conn.Exec(ctx, s)
+	if err != nil {
+		z.Fatal(err.Error())
+	}
+	// 再删除练习
+	s = `DELETE FROM t_practice`
+	_, err = conn.Exec(ctx, s)
+	if err != nil {
+		z.Fatal(err.Error())
+	}
+	s = `DELETE FROM t_user_domain`
+	_, err = conn.Exec(ctx, s)
+	if err != nil {
+		z.Fatal(err.Error())
+	}
+	// 这里还要删除user
+	s = `DELETE FROM t_user`
+	_, err = conn.Exec(ctx, s)
+	if err != nil {
+		z.Fatal(err.Error())
+	}
+
+	tx, _ := conn.Begin(ctx)
+
+	// 这里去对应的增加这个练习与报名计划
+	s = `INSERT INTO t_register_plan (id,name,course,creator,create_time,status) VALUES ($1, $2, $3, $4, $5, $6)`
+	_, err = tx.Exec(ctx, s, 1, "单元测试报名计划", "golang课程1", uid, now, "00")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var practiceName string
+	practiceName = "单元测试练习名"
+	// 这里也要创建练习register
+	// 先创建这个数据，最后测试完毕再删掉 用于更新用的
+	s = `INSERT INTO t_practice (id,name,correct_mode,creator,allowed_attempts,type,paper_id,status)
+	VALUES ($1, $2, $3, $4, $5, $6, $7,$8)`
+	_, err = tx.Exec(ctx, s, uid, practiceName, "00", uid, 5, "00", uid, PracticeStatus.Released)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	s = `INSERT INTO t_user (id,category,account,official_name,id_card_no,mobile_phone)VALUES($1,$2,$3,$4,$5,$6),($7,$8,$9,$10,$11,$12)ON CONFLICT (id) DO NOTHING`
+	_, err = tx.Exec(ctx, s, 10086, "sys^user", "38ieqiwutnfg", "邹德伦", "44018427781715606X", "15920440457", 10087, "sys^user", "ic053cwd0dw0", "邹德伦克隆体", "440184277817156060", "15920440907")
+	if err != nil {
+		t.Errorf("插入用户失败:%v", err)
+	}
+
+	s = `INSERT INTO t_user_domain (sys_user, domain)
+				VALUES ($1, (SELECT id FROM t_domain WHERE domain = $2)),($3,(SELECT id FROM t_domain WHERE domain = $4))`
+	_, err = tx.Exec(ctx, s, 10086, "sys^user", 10087, "sys^user")
+	if err != nil {
+		t.Errorf("插入用户失败:%v", err)
+	}
+
+	err = tx.Commit(ctx)
+	if err != nil {
+		t.Errorf("提交失败哦：%v", err)
+	}
+
+	tests := []struct {
+		name          string
+		uid           int64
+		rpid          int64
+		expectedError error
+	}{
+		{
+			name: "正常 成功插入到练习名单",
+			uid:  10086,
+			rpid: 1,
+		},
+		{
+			name: "正常 本身就在名单中",
+			uid:  10086,
+			rpid: 1,
+		},
+		{
+			name: "正常 报名计划没有绑定练习",
+			uid:  10086,
+			rpid: 1,
+		},
+		{
+			name:          "异常1 非法uid",
+			uid:           -1,
+			rpid:          1,
+			expectedError: errors.New("invalid uid or rpid param"),
+		},
+		{
+			name:          "异常2 非法rpid",
+			uid:           10086,
+			rpid:          -1,
+			expectedError: errors.New("invalid uid or rpid param"),
+		},
+		{
+			name:          "异常3 强制触发 query",
+			uid:           10086,
+			rpid:          1,
+			expectedError: errors.New("查询报名计划所绑定的练习失败"),
+		},
+		{
+			name:          "异常4 强制触发 scan",
+			uid:           10086,
+			rpid:          1,
+			expectedError: errors.New("扫描解析数据库数据失败"),
+		},
+		{
+			name:          "异常5 强制触发 query1",
+			uid:           10086,
+			rpid:          1,
+			expectedError: errors.New("执行插入学生练习名单数据库失败"),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// 这里进行测试
+			ctx = context.Background()
+
+			tx1, _ := conn.Begin(ctx)
+
+			defer tx1.Rollback(ctx)
+
+			if containsString(tt.name, "异常3") {
+				ctx = context.WithValue(ctx, "force-error", "query")
+			} else if containsString(tt.name, "异常4") {
+				ctx = context.WithValue(ctx, "force-error", "scan")
+			} else if containsString(tt.name, "异常5") {
+				ctx = context.WithValue(ctx, "force-error", "query1")
+			} else {
+				ctx = context.Background()
+			}
+
+			if containsString(tt.name, "本身就在名单中") {
+				// 如果是这样的话，那就直接插入一个学生名单到practice_student表中
+				// 这里也随便插入几个学生
+				s = `INSERT INTO t_practice_student (student_id , practice_id,creator,status)VALUES($1,$2,$3,$4)`
+				_, err = conn.Exec(ctx, s, 10086, 10086, uid, "00")
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+
+			if !containsString(tt.name, "报名计划没有绑定练习") {
+				s = `INSERT INTO t_register_practice (register_id,practice_id,creator,create_time,status) VALUES($1,$2,$3,$4,$5)`
+				_, err = conn.Exec(ctx, s, 1, uid, uid, now, "00")
+				if err != nil {
+					t.Errorf("插入用户失败:%v", err)
+				}
+			}
+			s := `SELECT practice_id FROM t_register_practice rp 
+			LEFT JOIN t_practice p ON p.id = rp.practice_id
+			WHERE rp.register_id = $1 AND p.status = $2	`
+			// 这是只能给这些练习增加名单
+			rows, err := conn.Query(ctx, s, 1, PracticeStatus.Released)
+			if err != nil {
+				t.Errorf("查询报名计划绑定的练习ID失败:%v", err)
+			}
+
+			defer rows.Close()
+
+			var pids []null.Int
+			for rows.Next() {
+				// 这里就是去遍历获取他了
+				var pid null.Int
+				err = rows.Scan(&pid)
+				if err != nil {
+					t.Errorf("解析报名计划绑定的练习ID失败:%v", err)
+				}
+				pids = append(pids, pid)
+			}
+
+			t.Logf("打印一下这个练习ID：%#v", pids)
+
+			err = BoundPracticeEnterRegisterPlan(ctx, tx1, tt.uid, tt.rpid)
+			if tt.expectedError != nil {
+				if err == nil || !containsString(err.Error(), tt.expectedError.Error()) {
+					t.Errorf("返回的错误不符合预期：%v，实际为：%v", tt.expectedError, err)
+				}
+			} else {
+				if err != nil {
+					t.Fatalf("预期无错误，但返回错误：%v", err)
+				}
+
+				if containsString(tt.name, "成功插入到练习名单") || containsString(tt.name, "本身就在名单中") {
+					// 就要看看是否真的存在
+					sCount := 0
+					s = `SELECT  COUNT(*) FROM t_practice_student`
+					err = tx1.QueryRow(ctx, s).Scan(&sCount)
+					if err != nil {
+						t.Errorf("查询此时练习学生名单失败：%v", err)
+					}
+					if sCount != 1 {
+						t.Errorf("查询此时练习学生名单预期数量为%v：实际%v", 1, sCount)
+					}
+				}
+
+			}
+
+			t.Cleanup(func() {
+				s := `DELETE FROM assessuser.t_student_answers`
+				_, err := conn.Exec(ctx, s)
+				if err != nil {
+					t.Fatal(err)
+				}
+				s = `DELETE FROM assessuser.t_exam_paper_question`
+				_, err = conn.Exec(ctx, s)
+				if err != nil {
+					t.Fatal(err)
+				}
+
+				s = `DELETE FROM assessuser.t_exam_paper_group`
+				_, err = conn.Exec(ctx, s)
+				if err != nil {
+					t.Fatal(err)
+				}
+
+				s = `DELETE FROM assessuser.t_exam_paper`
+				_, err = conn.Exec(ctx, s)
+				if err != nil {
+					t.Fatal(err)
+				}
+				s = `DELETE FROM t_paper_question`
+				_, err = conn.Exec(ctx, s)
+				if err != nil {
+					z.Fatal(err.Error())
+				}
+
+				s = `DELETE FROM t_paper_group`
+				_, err = conn.Exec(ctx, s)
+				if err != nil {
+					z.Fatal(err.Error())
+				}
+
+				s = `DELETE FROM t_paper`
+				_, err = conn.Exec(ctx, s)
+				if err != nil {
+					z.Fatal(err.Error())
+				}
+				s = `DELETE FROM t_question`
+				_, err = conn.Exec(ctx, s)
+				if err != nil {
+					z.Fatal(err.Error())
+				}
+				// 再删除题库
+				s = `DELETE FROM t_question_bank`
+				_, err = conn.Exec(ctx, s)
+				if err != nil {
+					z.Fatal(err.Error())
+				}
+
+				s = `DELETE FROM t_register_practice`
+				_, err = conn.Exec(ctx, s)
+				if err != nil {
+					z.Fatal(err.Error())
+				}
+
+				s = `DELETE FROM t_register_plan`
+				_, err = conn.Exec(ctx, s)
+				if err != nil {
+					z.Fatal(err.Error())
+				}
+
+				// 再删除练习
+				s = `DELETE FROM t_practice_wrong_submissions`
+				_, err = conn.Exec(ctx, s)
+				if err != nil {
+					z.Fatal(err.Error())
+				}
+				// 再删除练习
+				s = `DELETE FROM t_practice_submissions`
+				_, err = conn.Exec(ctx, s)
+				if err != nil {
+					z.Fatal(err.Error())
+				}
+				// 再删除练习
+				s = `DELETE FROM t_practice_student`
+				_, err = conn.Exec(ctx, s)
+				if err != nil {
+					z.Fatal(err.Error())
+				}
+				// 再删除练习
+				s = `DELETE FROM t_practice`
+				_, err = conn.Exec(ctx, s)
+				if err != nil {
+					z.Fatal(err.Error())
+				}
+				s = `DELETE FROM t_user_domain`
+				_, err = conn.Exec(ctx, s)
+				if err != nil {
+					z.Fatal(err.Error())
+				}
+				// 这里还要删除user
+				s = `DELETE FROM t_user`
+				_, err = conn.Exec(ctx, s)
+				if err != nil {
+					z.Fatal(err.Error())
+				}
+
+				tx1, _ := conn.Begin(ctx)
+
+				// 这里去对应的增加这个练习与报名计划
+				s = `INSERT INTO t_register_plan (id,name,course,creator,create_time,status) VALUES ($1, $2, $3, $4, $5, $6)`
+				_, err = tx1.Exec(ctx, s, 1, "单元测试报名计划", "golang课程1", uid, now, "00")
+				if err != nil {
+					t.Fatal(err)
+				}
+
+				var practiceName string
+				practiceName = "单元测试练习名"
+				// 这里也要创建练习register
+				// 先创建这个数据，最后测试完毕再删掉 用于更新用的
+				s = `INSERT INTO t_practice (id,name,correct_mode,creator,allowed_attempts,type,paper_id,status)
+	VALUES ($1, $2, $3, $4, $5, $6, $7,$8)`
+				_, err = tx1.Exec(ctx, s, uid, practiceName, "00", uid, 5, "00", uid, PracticeStatus.Released)
+				if err != nil {
+					t.Fatal(err)
+				}
+				s = `INSERT INTO t_user (id,category,account,official_name,id_card_no,mobile_phone)VALUES($1,$2,$3,$4,$5,$6),($7,$8,$9,$10,$11,$12)ON CONFLICT (id) DO NOTHING`
+				_, err = tx1.Exec(ctx, s, 10086, "sys^user", "38ieqiwutnfg", "邹德伦", "44018427781715606X", "15920440457", 10087, "sys^user", "ic053cwd0dw0", "邹德伦克隆体", "440184277817156060", "15920440907")
+				if err != nil {
+					t.Errorf("插入用户失败:%v", err)
+				}
+
+				s = `INSERT INTO t_user_domain (sys_user, domain)
+				VALUES ($1, (SELECT id FROM t_domain WHERE domain = $2)),($3,(SELECT id FROM t_domain WHERE domain = $4))`
+				_, err = tx1.Exec(ctx, s, 10086, "sys^user", 10087, "sys^user")
+				if err != nil {
+					t.Errorf("插入用户失败:%v", err)
+				}
+
+				err = tx1.Commit(ctx)
+				if err != nil {
+					t.Errorf("提交失败哦：%v", err)
+				}
+			})
+		})
+
+		t.Cleanup(func() {
+			s := `DELETE FROM assessuser.t_student_answers`
+			_, err := conn.Exec(ctx, s)
+			if err != nil {
+				t.Fatal(err)
+			}
+			s = `DELETE FROM assessuser.t_exam_paper_question`
+			_, err = conn.Exec(ctx, s)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			s = `DELETE FROM assessuser.t_exam_paper_group`
+			_, err = conn.Exec(ctx, s)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			s = `DELETE FROM assessuser.t_exam_paper`
+			_, err = conn.Exec(ctx, s)
+			if err != nil {
+				t.Fatal(err)
+			}
+			s = `DELETE FROM t_paper_question`
+			_, err = conn.Exec(ctx, s)
+			if err != nil {
+				z.Fatal(err.Error())
+			}
+
+			s = `DELETE FROM t_paper_group`
+			_, err = conn.Exec(ctx, s)
+			if err != nil {
+				z.Fatal(err.Error())
+			}
+
+			s = `DELETE FROM t_paper`
+			_, err = conn.Exec(ctx, s)
+			if err != nil {
+				z.Fatal(err.Error())
+			}
+			s = `DELETE FROM t_question`
+			_, err = conn.Exec(ctx, s)
+			if err != nil {
+				z.Fatal(err.Error())
+			}
+			// 再删除题库
+			s = `DELETE FROM t_question_bank`
+			_, err = conn.Exec(ctx, s)
+			if err != nil {
+				z.Fatal(err.Error())
+			}
+
+			s = `DELETE FROM t_register_practice`
+			_, err = conn.Exec(ctx, s)
+			if err != nil {
+				z.Fatal(err.Error())
+			}
+
+			s = `DELETE FROM t_register_plan`
+			_, err = conn.Exec(ctx, s)
+			if err != nil {
+				z.Fatal(err.Error())
+			}
+
+			// 再删除练习
+			s = `DELETE FROM t_practice_wrong_submissions`
+			_, err = conn.Exec(ctx, s)
+			if err != nil {
+				z.Fatal(err.Error())
+			}
+			// 再删除练习
+			s = `DELETE FROM t_practice_submissions`
+			_, err = conn.Exec(ctx, s)
+			if err != nil {
+				z.Fatal(err.Error())
+			}
+			// 再删除练习
+			s = `DELETE FROM t_practice_student`
+			_, err = conn.Exec(ctx, s)
+			if err != nil {
+				z.Fatal(err.Error())
+			}
+			// 再删除练习
+			s = `DELETE FROM t_practice`
+			_, err = conn.Exec(ctx, s)
+			if err != nil {
+				z.Fatal(err.Error())
+			}
+			s = `DELETE FROM t_user_domain`
+			_, err = conn.Exec(ctx, s)
+			if err != nil {
+				z.Fatal(err.Error())
+			}
+			// 这里还要删除user
+			s = `DELETE FROM t_user`
+			_, err = conn.Exec(ctx, s)
+			if err != nil {
+				z.Fatal(err.Error())
+			}
+		})
+	}
 }
 
 // 辅助函数：检查字符串是否包含子字符串

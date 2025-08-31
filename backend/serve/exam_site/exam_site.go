@@ -88,12 +88,12 @@ type examSiteInfo struct {
 	ID          null.Int    `json:"id"`
 	Name        string      `json:"name" validate:"required"`
 	Address     string      `json:"address" validate:"required"`
-	ServerHost  null.String `json:"server_host"`
+	ServerHost  null.String `json:"serverHost"`
 	Admin       int64       `json:"admin" validate:"required"`
-	AdminName   null.String `json:"admin_name"`
-	RoomCount   null.Int    `json:"room_count"`
+	AdminName   null.String `json:"adminName"`
+	RoomCount   null.Int    `json:"roomCount"`
 	Account     null.String `json:"account"`
-	AccessToken null.String `json:"access_token"`
+	AccessToken null.String `json:"accessToken"`
 }
 
 type examRoomInfo struct {
