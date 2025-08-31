@@ -2,7 +2,11 @@ package registration
 
 import (
 	"fmt"
+	"github.com/jmoiron/sqlx/types"
+	"reflect"
+	"strings"
 	"w2w.io/cmn"
+	"w2w.io/null"
 )
 
 type Map map[string]interface{}
@@ -46,4 +50,53 @@ func ValidateRegisterInfo(R *cmn.TRegisterPlan, Rs []int64) error {
 		}
 	}
 	return nil
+}
+func s2Map(in interface{}) Map {
+	data := make(Map)
+	v := reflect.ValueOf(in).Elem() // 获取结构体指针指向的值
+	t := v.Type()
+
+	for i := 0; i < v.NumField(); i++ {
+		field := t.Field(i)
+		value := v.Field(i)
+
+		// 跳过零值字段（如未设置的 null.Int）
+		if reflect.DeepEqual(value.Interface(), reflect.Zero(value.Type()).Interface()) {
+			continue
+		}
+
+		// 解析 db 标签获取列名（如 "name,false,character varying" -> "name"）
+		dbTag := field.Tag.Get("db")
+		if dbTag == "" || strings.Contains(dbTag, "true") { // 跳过主键或忽略字段
+			continue
+		}
+		columnName := strings.Split(dbTag, ",")[0]
+
+		// 处理特殊类型（如 null.Int, types.JSONText）
+		switch v := value.Interface().(type) {
+		case null.Int:
+			if v.Valid {
+				data[columnName] = v.Int64
+			}
+		case null.String:
+			if v.Valid {
+				data[columnName] = v.String
+			}
+		case types.JSONText:
+			if len(v) > 0 { // JSONText 非空
+				data[columnName] = v
+			}
+		default:
+			data[columnName] = value.Interface()
+		}
+	}
+	return data
+}
+
+// RemoveFields 清除不需要更新的字段
+func RemoveFields(m Map, fields ...string) Map {
+	for _, field := range fields {
+		delete(m, field)
+	}
+	return m
 }

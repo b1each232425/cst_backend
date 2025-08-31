@@ -259,12 +259,7 @@ func register(ctx context.Context) {
 					status := q.R.URL.Query().Get("status")
 					idStr := q.R.URL.Query().Get("id")
 					pageStr := q.R.URL.Query().Get("page")
-					if pageStr == "" {
-						q.Err = fmt.Errorf("缺失分页查询页号")
-						z.Error(q.Err.Error())
-						q.RespErr()
-						return
-					}
+
 					var page int
 					page, q.Err = strconv.Atoi(pageStr)
 					if forceErr == "pageParseInt" {
@@ -277,12 +272,6 @@ func register(ctx context.Context) {
 						return
 					}
 					pageSizeStr := q.R.URL.Query().Get("pageSize")
-					if pageSizeStr == "" {
-						q.Err = fmt.Errorf("缺失分页查询页大小")
-						z.Error(q.Err.Error())
-						q.RespErr()
-						return
-					}
 					var pageSize int
 					pageSize, q.Err = strconv.Atoi(pageSizeStr)
 					if forceErr == "pageSizeParseInt" {
@@ -295,7 +284,7 @@ func register(ctx context.Context) {
 						return
 					}
 					//如果有id则只查询单个报名计划
-					if idStr != "" {
+					if idStr != "" && pageStr != "" && pageSizeStr != "" {
 						message := q.R.URL.Query().Get("message")
 						registerType := q.R.URL.Query().Get("register_type")
 						var id int64
@@ -320,6 +309,43 @@ func register(ctx context.Context) {
 						result := Map{
 							"student": s,
 							"total":   total,
+						}
+						data, err := json.Marshal(result)
+						if forceErr == "json" {
+							err = fmt.Errorf("将要返回数据结构反序列化失败")
+						}
+						if err != nil {
+							z.Error(err.Error())
+							q.Err = err
+							q.RespErr()
+							return
+						}
+						q.Msg.Data = data
+						z.Info("---->" + cmn.FncName())
+						q.Msg.Msg = "OK"
+						q.Resp()
+						return
+					} else if idStr != "" && pageStr == "" && pageSizeStr == "" {
+						//查询单个报名计划详情
+						var id int64
+						id, q.Err = strconv.ParseInt(idStr, 10, 64)
+						if q.Err != nil {
+							q.Err = fmt.Errorf("报名计划ID解析失败：%v", q.Err.Error())
+							z.Error(q.Err.Error())
+							q.RespErr()
+							return
+						}
+
+						r, practiceIds, currentNumber, err := LoadRegisterById(ctx, id)
+						if err != nil {
+							q.Err = err
+							q.RespErr()
+							return
+						}
+						result := Map{
+							"register":       r,
+							"practice_ids":   practiceIds,
+							"current_number": currentNumber,
 						}
 						data, err := json.Marshal(result)
 						if forceErr == "json" {
@@ -403,6 +429,8 @@ func register(ctx context.Context) {
 						q.RespErr()
 						return
 					}
+					var action string
+					action = qry.Action
 					var r RegisterInfo
 					q.Err = json.Unmarshal(qry.Data, &r)
 					if forceErr == "readRJson" {
@@ -420,7 +448,7 @@ func register(ctx context.Context) {
 						q.RespErr()
 						return
 					}
-					err := UpsertRegister(ctx, r.Registration, r.PracticeIds, userID)
+					err := UpsertRegister(ctx, r.Registration, r.PracticeIds, userID, action)
 					if err != nil {
 						q.Err = err
 						q.RespErr()

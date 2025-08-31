@@ -105,6 +105,6 @@ type registerStudentOnce struct {
 	Status     string `json:"status"`
 }
 type RegisterInfo struct {
-	Registration *cmn.TRegisterPlan
-	PracticeIds  []int64
+	Registration *cmn.TRegisterPlan `json:"registration"`
+	PracticeIds  []int64            `json:"practice_ids"`
 }

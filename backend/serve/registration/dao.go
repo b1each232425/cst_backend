@@ -229,9 +229,9 @@ func StudentRegister(ctx context.Context, registerID int64, status string, Regis
 		z.Error(err.Error())
 		return err
 	}
-	if studentStatus == RegisterStudentStatus.Apply {
+	if studentStatus == RegisterStudentStatus.Apply && status == RegisterStudentStatus.Pending {
 		//检验当前的人数是否超过限制
-		registerInfo, current, err := LoadRegisterById(ctx, registerID)
+		registerInfo, _, current, err := LoadRegisterById(ctx, registerID)
 		if err != nil {
 			z.Error(err.Error())
 			return err
@@ -341,7 +341,7 @@ func GetRegisterStudentById(cxt context.Context, registerID int64, message strin
 	}
 	return result, len(result), nil
 }
-func UpsertRegister(ctx context.Context, registration *cmn.TRegisterPlan, practiceIds []int64, userID int64) error {
+func UpsertRegister(ctx context.Context, registration *cmn.TRegisterPlan, practiceIds []int64, userID int64, action string) error {
 	if userID <= 0 {
 		err := fmt.Errorf("用户ID不能小于等于0")
 		z.Error(err.Error())
@@ -351,19 +351,100 @@ func UpsertRegister(ctx context.Context, registration *cmn.TRegisterPlan, practi
 		return AddRegister(ctx, registration, practiceIds, userID)
 	}
 	//获取当前的报名计划详细内容
-	register, _, err := LoadRegisterById(ctx, registration.ID.Int64)
+	register, _, _, err := LoadRegisterById(ctx, registration.ID.Int64)
 	if err != nil {
 		return err
 	}
-	if register.Status == null.NewString(RegisterStatus.Released, true) {
-		err := fmt.Errorf("报名计划已发布，无法修改")
+	if register.Status == null.NewString(RegisterStatus.Deleted, true) || register.Status == null.NewString(RegisterStatus.Disabled, true) || register.Status == null.NewString(RegisterStatus.Cancel, true) || register.Status == null.NewString(RegisterStatus.Ending, true) || register.Status == null.NewString(RegisterStatus.ReviewEnding, true) {
+		err := fmt.Errorf("报名计划状态为%v，无法修改", register.Status)
 		z.Error(err.Error())
 		return err
 	}
-	return UpdateRegister(ctx, registration, practiceIds, userID)
+	return UpdateRegister(ctx, registration, practiceIds, userID, action)
 }
-func UpdateRegister(ctx context.Context, registration *cmn.TRegisterPlan, practiceIds []int64, userID int64) error {
+func UpdateRegister(ctx context.Context, registration *cmn.TRegisterPlan, practiceIds []int64, userID int64, action string) error {
 
+	if userID <= 0 {
+		err := fmt.Errorf("用户ID不能小于等于0")
+		z.Error(err.Error())
+		return err
+	}
+	if !registration.ID.Valid {
+		err := fmt.Errorf("报名计划ID不存在")
+		if err != nil {
+			z.Error(err.Error())
+			return err
+		}
+	}
+	forceErr, _ := ctx.Value("force-error").(string)
+	now := time.Now().UnixMilli()
+	registration.UpdatedBy = null.NewInt(userID, true)
+	registration.UpdateTime = null.NewInt(now, true)
+	action = strings.ToLower(action)
+	update := s2Map(registration)
+	notUpdate := []string{
+		"id",
+		"creator",
+		"create_time",
+		"status",
+		"reviewer_ids",
+	}
+	RemoveFields(update, notUpdate...)
+	var clauses []string
+	var args []interface{}
+	idx := 1
+	for field, value := range update {
+		clauses = append(clauses, fmt.Sprintf("%s = $%d", field, idx))
+		args = append(args, value)
+		idx++
+	}
+	args = append(args, registration.ID)
+	query := fmt.Sprintf("UPDATE %s SET %s WHERE id = $%d", "assessuser.t_register_practice", strings.Join(clauses, ", "), idx)
+	z.Sugar().Debugf("update sql:%v", query)
+	z.Sugar().Debugf("update args:%v", args)
+	sqlxDB := cmn.GetPgxConn()
+	tx, err := sqlxDB.Begin(ctx)
+	if err != nil || forceErr == "beginTx" {
+		err = fmt.Errorf("beginTx called failed:%v", err)
+		z.Error(err.Error())
+		return err
+	}
+	defer func() {
+		if forceErr == "rollback" {
+			err = fmt.Errorf("触发回滚")
+		}
+		if err != nil {
+			err = tx.Rollback(ctx)
+			if forceErr == "rollback" {
+				err = fmt.Errorf("触发回滚")
+			}
+			if err != nil {
+				z.Error(err.Error())
+				return
+			}
+		}
+		_ = tx.Commit(ctx)
+		if forceErr == "commit" {
+			err = fmt.Errorf("commit failed")
+		}
+		if err != nil {
+			z.Error(err.Error())
+		}
+	}()
+
+	_, err = tx.Exec(ctx, query, args...)
+	if err != nil || forceErr == "query" {
+		err = fmt.Errorf("updateRegister call failed:%v", err)
+		z.Error(err.Error())
+		return err
+	}
+	if action == "clear" && len(practiceIds) == 0 {
+		//清空与报名计划绑定的练习
+	}
+	err = UpsertRegisterPractice(ctx, tx, registration.ID.Int64, practiceIds, userID)
+	if err != nil {
+		return err
+	}
 	return nil
 }
 func AddRegister(ctx context.Context, registration *cmn.TRegisterPlan, practiceIds []int64, userID int64) error {
@@ -414,6 +495,7 @@ func AddRegister(ctx context.Context, registration *cmn.TRegisterPlan, practiceI
 	}
 	registration.ID = null.IntFrom(id)
 	if practiceIds == nil || len(practiceIds) == 0 {
+		z.Sugar().Debugf("打印输出一下增加SQL语句:%v", practiceIds)
 		return nil
 	}
 	err = UpsertRegisterPractice(ctx, tx, registration.ID.Int64, practiceIds, userID)
@@ -423,7 +505,7 @@ func AddRegister(ctx context.Context, registration *cmn.TRegisterPlan, practiceI
 	return nil
 }
 func UpsertRegisterPractice(ctx context.Context, tx pgx.Tx, registerID int64, practiceIds []int64, userID int64) error {
-	forceErr := ctx.Value("force-error").(string)
+	forceErr, _ := ctx.Value("force-error").(string)
 	if registerID <= 0 {
 		err := fmt.Errorf("registerID不能小于等于0")
 		z.Error(err.Error())
@@ -438,11 +520,12 @@ func UpsertRegisterPractice(ctx context.Context, tx pgx.Tx, registerID int64, pr
 	if practiceIds == nil || len(practiceIds) == 0 {
 		//删除当前报名列表下面的所有练习
 		delSQL := `
-		UPDATE assessuser.t_register_pracitce 
+		UPDATE assessuser.t_register_practice 
 		SET status =$1 , update_time= $2 , updated_by = $3
 		WHERE register_id =$4 AND status != $1
 `
 		_, err := tx.Exec(ctx, delSQL, RegisterPracticeStatus.Delete, now, userID, registerID)
+		z.Sugar().Debugf("打印输出一下增加SQL语句:%v", delSQL)
 		if err != nil || forceErr == "del" {
 			err = fmt.Errorf("删除报名计划下的所有练习失败:%v", err)
 			z.Error(err.Error())
@@ -451,7 +534,7 @@ func UpsertRegisterPractice(ctx context.Context, tx pgx.Tx, registerID int64, pr
 		return nil
 	}
 	//upsert名单
-	addRpStr := strings.Repeat("(?,?,?,?,?,?,?),", len(practiceIds)-1) + "((?,?,?,?,?,?,?)"
+	addRpStr := strings.Repeat("(?,?,?,?,?,?,?),", len(practiceIds)-1) + "(?,?,?,?,?,?,?)"
 	addRpArgs := make([]interface{}, 0, len(practiceIds)*7+1)
 	for _, practiceId := range practiceIds {
 		addRpArgs = append(addRpArgs,
@@ -461,7 +544,7 @@ func UpsertRegisterPractice(ctx context.Context, tx pgx.Tx, registerID int64, pr
 	addRpArgs = append(addRpArgs, RegisterPracticeStatus.Normal)
 	t := `
 		INSERT INTO assessuser.t_register_practice 
-			(reigster_id , practice_id , creator , updated_by , create_time , update_time , status)
+			(register_id , practice_id , creator , updated_by , create_time , update_time , status)
 		VALUES  %s
 		ON CONFLICT (register_id , practice_id)
 		DO UPDATE SET
@@ -473,11 +556,16 @@ func UpsertRegisterPractice(ctx context.Context, tx pgx.Tx, registerID int64, pr
 `
 	s1 := fmt.Sprintf(t, addRpStr)
 	//修正格式
-	addRQuery, args, _ := sqlx.In(s1, addRpArgs...)
+	addRQuery, args, err := sqlx.In(s1, addRpArgs...)
+	if err != nil {
+		err = fmt.Errorf("添加名单参数错误:%v", err)
+		z.Error(err.Error())
+		return err
+	}
 	addRQuery = sqlx.Rebind(sqlx.DOLLAR, addRQuery)
 	z.Sugar().Debugf("打印输出一下增加SQL语句:%v", addRQuery)
 	z.Sugar().Debugf("打印输出一下增加SQL参数:%v", args...)
-	_, err := tx.Exec(ctx, addRQuery, args...)
+	_, err = tx.Exec(ctx, addRQuery, args...)
 	if err != nil || forceErr == "query2" {
 		err = fmt.Errorf("添加名单失败:%v", err)
 		z.Error(err.Error())
@@ -512,7 +600,7 @@ func UpsertRegisterPractice(ctx context.Context, tx pgx.Tx, registerID int64, pr
 	}
 	return nil
 }
-func LoadRegisterById(ctx context.Context, registerID int64) (*cmn.TRegisterPlan, int64, error) {
+func LoadRegisterById(ctx context.Context, registerID int64) (*cmn.TRegisterPlan, []int64, int64, error) {
 	forceErr := ctx.Value("force-error")
 
 	s := `
@@ -527,9 +615,28 @@ func LoadRegisterById(ctx context.Context, registerID int64) (*cmn.TRegisterPlan
 	if err != nil || forceErr == "query" {
 		err = fmt.Errorf("查询报名计划失败:%v", err)
 		z.Error(err.Error())
-		return nil, -1, err
+		return nil, nil, -1, err
 	}
-	return &register, currentNumber, nil
+	//查询报名计划相关练习
+	s = `SELECT practice_id FROM assessuser.t_register_practice WHERE register_id =$1`
+	rows, err := sqlxDB.QueryxContext(ctx, s, registerID)
+	if err != nil || forceErr == "query2" {
+		err = fmt.Errorf("查询报名计划下的练习失败:%v", err)
+		z.Error(err.Error())
+		return nil, nil, -1, err
+	}
+	var practiceIds []int64
+	for rows.Next() {
+		var practiceId int64
+		err := rows.Scan(&practiceId)
+		if err != nil {
+			z.Error(err.Error())
+			return nil, nil, -1, err
+		}
+		practiceIds = append(practiceIds, practiceId)
+	}
+
+	return &register, practiceIds, currentNumber, nil
 
 }
 
@@ -594,7 +701,7 @@ func OperateRegisterStatus(ctx context.Context, registerIDs []int64, status stri
 			return err
 		}
 		if register.Status.String == RegisterStatus.Disabled {
-			err = fmt.Errorf("报名计划状态为删除，无法进行操作")
+			err = fmt.Errorf("报名计划状态为作废，无法进行操作")
 			z.Error(err.Error())
 			return err
 		}
@@ -650,7 +757,7 @@ func OperateRegisterStatus(ctx context.Context, registerIDs []int64, status stri
 		var invalidName []string
 		for _, register := range Rs {
 			s := `
-			SELECT EXIST(SELECT 1 FROM asessuser.t_exam_plan_student eps WHERE eps.register_id =$1 )
+			SELECT EXISTS(SELECT 1 FROM assessuser.t_exam_plan_student eps WHERE eps.register_id =$1 )
 `
 			err = tx.QueryRow(ctx, s, register.ID).Scan(&registerIsUsed)
 			if err != nil || forceErr == "query1" {
@@ -726,7 +833,7 @@ func OperateRegisterStudentStatus(ctx context.Context, tx pgx.Tx, ids []int64, s
 	now := time.Now().UnixMilli()
 	forceErr, _ := ctx.Value("force-error").(string)
 	//获取报名计划信息
-	register, _, err := LoadRegisterById(ctx, RegisterID)
+	register, _, _, err := LoadRegisterById(ctx, RegisterID)
 	if err != nil {
 		return err
 	}
@@ -850,7 +957,7 @@ func UpsertRegisterStudent(ctx context.Context, registerID int64, studentIDs []r
 	now := time.Now().UnixMilli()
 	forceErr, _ := ctx.Value("force-error").(string)
 	//要检验报名计划正在发布中才能导入
-	register, currentNumber, err := LoadRegisterById(ctx, registerID)
+	register, _, currentNumber, err := LoadRegisterById(ctx, registerID)
 	if err != nil {
 		z.Error(err.Error())
 		return err
@@ -948,7 +1055,7 @@ func MoveStudent(ctx context.Context, fromRegisterID int64, toRegisterID int64, 
 	now := time.Now().UnixMilli()
 	forceErr, _ := ctx.Value("force-error").(string)
 	//检验目标报名计划是否处于发布状态
-	register, currentNumber, err := LoadRegisterById(ctx, toRegisterID)
+	register, _, currentNumber, err := LoadRegisterById(ctx, toRegisterID)
 	if err != nil {
 		z.Error(err.Error())
 		return err
