@@ -526,6 +526,7 @@ func registerStudentH(ctx context.Context) {
 					idStr := q.R.URL.Query().Get("ids")
 					status := q.R.URL.Query().Get("status")
 					registerIDStr := q.R.URL.Query().Get("register_id")
+					failReason := q.R.URL.Query().Get("fail_reason")
 					if registerIDStr == "" {
 						q.Err = fmt.Errorf("缺失报名计划ID")
 						z.Error(q.Err.Error())
@@ -571,7 +572,7 @@ func registerStudentH(ctx context.Context) {
 						q.RespErr()
 						return
 					}
-					q.Err = OperateRegisterStudentStatus(ctx, ids, status, userID, registerID)
+					q.Err = OperateRegisterStudentStatus(ctx, ids, status, userID, registerID, failReason)
 					if q.Err != nil {
 						q.RespErr()
 						return
