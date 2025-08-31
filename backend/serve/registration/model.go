@@ -84,8 +84,8 @@ var RegisterStudentStatus = struct {
 }
 
 type registerStudentType struct {
-	StudentID int64
-	ExamType  string
+	StudentID int64  `json:"student_id" validate:"required,gt=0"`
+	ExamType  string `json:"exam_type" validate:"required"`
 }
 type registerStudent struct {
 	RegisterID int64                 `json:"register_id" validate:"required,gt=0"`
