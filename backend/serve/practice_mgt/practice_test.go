@@ -3,7 +3,7 @@
  * @Description: 请在此填写文件描述
  * @Date: 2025-07-25 23:20:51
  * @LastEditors: zdl <1311866870@qq.com>
- * @LastEditTime: 2025-08-31 12:45:37
+ * @LastEditTime: 2025-08-31 18:21:28
  */
 package practice_mgt
 
@@ -4819,45 +4819,47 @@ VALUES
 			Domain:          []cmn.TDomain{{ID: null.IntFrom(PracticeDomainID.Admin)}},
 			expectSuccess:   true,
 			expectedMessage: "",
-			expectedData: json.RawMessage(`
-			[
-				{
-					"ID":10086,
-					"Name":"单元测试发布练习1",
-					"CorrectMode":"00",
-					"Type":"00",
-					"AllowedAttempts":10086,
-					"Status":"00",
-					"TeacherName":"邹德伦"
-				},
-				{
-					"ID":10087,
-					"Name":"单元测试发布练习2",
-					"CorrectMode":"00",
-					"Type":"00",
-					"AllowedAttempts":10086,
-					"Status":"00",
-					"TeacherName":"邹德伦克隆体"
-				},
-				{
-					"ID":10088,
-					"Name":"单元测试发布练习3",
-					"CorrectMode":"00",
-					"Type":"00",
-					"AllowedAttempts":10086,
-					"Status":"00",
-					"TeacherName":"邹德伦"
-				},
-				{
-					"ID":10089,
-					"Name":"单元测试发布练习4",
-					"CorrectMode":"00",
-					"Type":"00",
-					"AllowedAttempts":10086,
-					"Status":"00",
-					"TeacherName":"邹德伦克隆体"
-				}
-			]`,
+			expectedData: json.RawMessage(`{
+				"practices":[
+					{
+						"ID":10086,
+						"Name":"单元测试发布练习1",
+						"CorrectMode":"00",
+						"Type":"00",
+						"AllowedAttempts":10086,
+						"Status":"00",
+						"TeacherName":"邹德伦"
+					},
+					{
+						"ID":10087,
+						"Name":"单元测试发布练习2",
+						"CorrectMode":"00",
+						"Type":"00",
+						"AllowedAttempts":10086,
+						"Status":"00",
+						"TeacherName":"邹德伦克隆体"
+					},
+					{
+						"ID":10088,
+						"Name":"单元测试发布练习3",
+						"CorrectMode":"00",
+						"Type":"00",
+						"AllowedAttempts":10086,
+						"Status":"00",
+						"TeacherName":"邹德伦"
+					},
+					{
+						"ID":10089,
+						"Name":"单元测试发布练习4",
+						"CorrectMode":"00",
+						"Type":"00",
+						"AllowedAttempts":10086,
+						"Status":"00",
+						"TeacherName":"邹德伦克隆体"
+					}
+				],
+			"total":4
+			}`,
 			),
 		},
 		{
@@ -4868,45 +4870,47 @@ VALUES
 			Domain:          []cmn.TDomain{{ID: null.IntFrom(PracticeDomainID.Student)}},
 			expectSuccess:   false,
 			expectedMessage: "当前权限无法操作获取可选择练习",
-			expectedData: json.RawMessage(`
-			[
-				{
-					"ID":10086,
-					"Name":"单元测试发布练习1",
-					"CorrectMode":"00",
-					"Type":"00",
-					"AllowedAttempts":10086,
-					"Status":"00",
-					"TeacherName":"邹德伦"
-				},
-				{
-					"ID":10087,
-					"Name":"单元测试发布练习2",
-					"CorrectMode":"00",
-					"Type":"00",
-					"AllowedAttempts":10086,
-					"Status":"00",
-					"TeacherName":"邹德伦克隆体"
-				},
-				{
-					"ID":10088,
-					"Name":"单元测试发布练习3",
-					"CorrectMode":"00",
-					"Type":"00",
-					"AllowedAttempts":10086,
-					"Status":"00",
-					"TeacherName":"邹德伦"
-				},
-				{
-					"ID":10089,
-					"Name":"单元测试发布练习4",
-					"CorrectMode":"00",
-					"Type":"00",
-					"AllowedAttempts":10086,
-					"Status":"00",
-					"TeacherName":"邹德伦克隆体"
-				}
-			]`,
+			expectedData: json.RawMessage(`{
+				"practices":[
+					{
+						"ID":10086,
+						"Name":"单元测试发布练习1",
+						"CorrectMode":"00",
+						"Type":"00",
+						"AllowedAttempts":10086,
+						"Status":"00",
+						"TeacherName":"邹德伦"
+					},
+					{
+						"ID":10087,
+						"Name":"单元测试发布练习2",
+						"CorrectMode":"00",
+						"Type":"00",
+						"AllowedAttempts":10086,
+						"Status":"00",
+						"TeacherName":"邹德伦克隆体"
+					},
+					{
+						"ID":10088,
+						"Name":"单元测试发布练习3",
+						"CorrectMode":"00",
+						"Type":"00",
+						"AllowedAttempts":10086,
+						"Status":"00",
+						"TeacherName":"邹德伦"
+					},
+					{
+						"ID":10089,
+						"Name":"单元测试发布练习4",
+						"CorrectMode":"00",
+						"Type":"00",
+						"AllowedAttempts":10086,
+						"Status":"00",
+						"TeacherName":"邹德伦克隆体"
+					}
+				],
+			"total":4
+			}`,
 			),
 		},
 		{
@@ -4917,45 +4921,47 @@ VALUES
 			Domain:          []cmn.TDomain{{ID: null.IntFrom(PracticeDomainID.SuperAdmin)}},
 			expectSuccess:   false,
 			expectedMessage: "invalid UserID",
-			expectedData: json.RawMessage(`
-			[
-				{
-					"ID":10086,
-					"Name":"单元测试发布练习1",
-					"CorrectMode":"00",
-					"Type":"00",
-					"AllowedAttempts":10086,
-					"Status":"00",
-					"TeacherName":"邹德伦"
-				},
-				{
-					"ID":10087,
-					"Name":"单元测试发布练习2",
-					"CorrectMode":"00",
-					"Type":"00",
-					"AllowedAttempts":10086,
-					"Status":"00",
-					"TeacherName":"邹德伦克隆体"
-				},
-				{
-					"ID":10088,
-					"Name":"单元测试发布练习3",
-					"CorrectMode":"00",
-					"Type":"00",
-					"AllowedAttempts":10086,
-					"Status":"00",
-					"TeacherName":"邹德伦"
-				},
-				{
-					"ID":10089,
-					"Name":"单元测试发布练习4",
-					"CorrectMode":"00",
-					"Type":"00",
-					"AllowedAttempts":10086,
-					"Status":"00",
-					"TeacherName":"邹德伦克隆体"
-				}
-			]`,
+			expectedData: json.RawMessage(`{
+				"practices":[
+					{
+						"ID":10086,
+						"Name":"单元测试发布练习1",
+						"CorrectMode":"00",
+						"Type":"00",
+						"AllowedAttempts":10086,
+						"Status":"00",
+						"TeacherName":"邹德伦"
+					},
+					{
+						"ID":10087,
+						"Name":"单元测试发布练习2",
+						"CorrectMode":"00",
+						"Type":"00",
+						"AllowedAttempts":10086,
+						"Status":"00",
+						"TeacherName":"邹德伦克隆体"
+					},
+					{
+						"ID":10088,
+						"Name":"单元测试发布练习3",
+						"CorrectMode":"00",
+						"Type":"00",
+						"AllowedAttempts":10086,
+						"Status":"00",
+						"TeacherName":"邹德伦"
+					},
+					{
+						"ID":10089,
+						"Name":"单元测试发布练习4",
+						"CorrectMode":"00",
+						"Type":"00",
+						"AllowedAttempts":10086,
+						"Status":"00",
+						"TeacherName":"邹德伦克隆体"
+					}
+				],
+			"total":4
+			}`,
 			),
 		},
 		{
@@ -4966,45 +4972,47 @@ VALUES
 			Domain:          []cmn.TDomain{{ID: null.IntFrom(PracticeDomainID.SuperAdmin)}},
 			expectSuccess:   false,
 			expectedMessage: "请使用GET方法请求该路径",
-			expectedData: json.RawMessage(`
-			[
-				{
-					"ID":10086,
-					"Name":"单元测试发布练习1",
-					"CorrectMode":"00",
-					"Type":"00",
-					"AllowedAttempts":10086,
-					"Status":"00",
-					"TeacherName":"邹德伦"
-				},
-				{
-					"ID":10087,
-					"Name":"单元测试发布练习2",
-					"CorrectMode":"00",
-					"Type":"00",
-					"AllowedAttempts":10086,
-					"Status":"00",
-					"TeacherName":"邹德伦克隆体"
-				},
-				{
-					"ID":10088,
-					"Name":"单元测试发布练习3",
-					"CorrectMode":"00",
-					"Type":"00",
-					"AllowedAttempts":10086,
-					"Status":"00",
-					"TeacherName":"邹德伦"
-				},
-				{
-					"ID":10089,
-					"Name":"单元测试发布练习4",
-					"CorrectMode":"00",
-					"Type":"00",
-					"AllowedAttempts":10086,
-					"Status":"00",
-					"TeacherName":"邹德伦克隆体"
-				}
-			]`,
+			expectedData: json.RawMessage(`{
+				"practices":[
+					{
+						"ID":10086,
+						"Name":"单元测试发布练习1",
+						"CorrectMode":"00",
+						"Type":"00",
+						"AllowedAttempts":10086,
+						"Status":"00",
+						"TeacherName":"邹德伦"
+					},
+					{
+						"ID":10087,
+						"Name":"单元测试发布练习2",
+						"CorrectMode":"00",
+						"Type":"00",
+						"AllowedAttempts":10086,
+						"Status":"00",
+						"TeacherName":"邹德伦克隆体"
+					},
+					{
+						"ID":10088,
+						"Name":"单元测试发布练习3",
+						"CorrectMode":"00",
+						"Type":"00",
+						"AllowedAttempts":10086,
+						"Status":"00",
+						"TeacherName":"邹德伦"
+					},
+					{
+						"ID":10089,
+						"Name":"单元测试发布练习4",
+						"CorrectMode":"00",
+						"Type":"00",
+						"AllowedAttempts":10086,
+						"Status":"00",
+						"TeacherName":"邹德伦克隆体"
+					}
+				],
+			"total":4
+			}`,
 			),
 		},
 		{
@@ -5015,45 +5023,47 @@ VALUES
 			Domain:          []cmn.TDomain{{ID: null.IntFrom(PracticeDomainID.SuperAdmin)}},
 			expectSuccess:   false,
 			expectedMessage: "缺失分页查询页号",
-			expectedData: json.RawMessage(`
-			[
-				{
-					"ID":10086,
-					"Name":"单元测试发布练习1",
-					"CorrectMode":"00",
-					"Type":"00",
-					"AllowedAttempts":10086,
-					"Status":"00",
-					"TeacherName":"邹德伦"
-				},
-				{
-					"ID":10087,
-					"Name":"单元测试发布练习2",
-					"CorrectMode":"00",
-					"Type":"00",
-					"AllowedAttempts":10086,
-					"Status":"00",
-					"TeacherName":"邹德伦克隆体"
-				},
-				{
-					"ID":10088,
-					"Name":"单元测试发布练习3",
-					"CorrectMode":"00",
-					"Type":"00",
-					"AllowedAttempts":10086,
-					"Status":"00",
-					"TeacherName":"邹德伦"
-				},
-				{
-					"ID":10089,
-					"Name":"单元测试发布练习4",
-					"CorrectMode":"00",
-					"Type":"00",
-					"AllowedAttempts":10086,
-					"Status":"00",
-					"TeacherName":"邹德伦克隆体"
-				}
-			]`,
+			expectedData: json.RawMessage(`{
+				"practices":[
+					{
+						"ID":10086,
+						"Name":"单元测试发布练习1",
+						"CorrectMode":"00",
+						"Type":"00",
+						"AllowedAttempts":10086,
+						"Status":"00",
+						"TeacherName":"邹德伦"
+					},
+					{
+						"ID":10087,
+						"Name":"单元测试发布练习2",
+						"CorrectMode":"00",
+						"Type":"00",
+						"AllowedAttempts":10086,
+						"Status":"00",
+						"TeacherName":"邹德伦克隆体"
+					},
+					{
+						"ID":10088,
+						"Name":"单元测试发布练习3",
+						"CorrectMode":"00",
+						"Type":"00",
+						"AllowedAttempts":10086,
+						"Status":"00",
+						"TeacherName":"邹德伦"
+					},
+					{
+						"ID":10089,
+						"Name":"单元测试发布练习4",
+						"CorrectMode":"00",
+						"Type":"00",
+						"AllowedAttempts":10086,
+						"Status":"00",
+						"TeacherName":"邹德伦克隆体"
+					}
+				],
+			"total":4
+			}`,
 			),
 		},
 		{
@@ -5065,45 +5075,47 @@ VALUES
 			expectSuccess:   false,
 			forceErr:        "pageParseInt",
 			expectedMessage: "分页查询的页号解析失败",
-			expectedData: json.RawMessage(`
-			[
-				{
-					"ID":10086,
-					"Name":"单元测试发布练习1",
-					"CorrectMode":"00",
-					"Type":"00",
-					"AllowedAttempts":10086,
-					"Status":"00",
-					"TeacherName":"邹德伦"
-				},
-				{
-					"ID":10087,
-					"Name":"单元测试发布练习2",
-					"CorrectMode":"00",
-					"Type":"00",
-					"AllowedAttempts":10086,
-					"Status":"00",
-					"TeacherName":"邹德伦克隆体"
-				},
-				{
-					"ID":10088,
-					"Name":"单元测试发布练习3",
-					"CorrectMode":"00",
-					"Type":"00",
-					"AllowedAttempts":10086,
-					"Status":"00",
-					"TeacherName":"邹德伦"
-				},
-				{
-					"ID":10089,
-					"Name":"单元测试发布练习4",
-					"CorrectMode":"00",
-					"Type":"00",
-					"AllowedAttempts":10086,
-					"Status":"00",
-					"TeacherName":"邹德伦克隆体"
-				}
-			]`,
+			expectedData: json.RawMessage(`{
+				"practices":[
+					{
+						"ID":10086,
+						"Name":"单元测试发布练习1",
+						"CorrectMode":"00",
+						"Type":"00",
+						"AllowedAttempts":10086,
+						"Status":"00",
+						"TeacherName":"邹德伦"
+					},
+					{
+						"ID":10087,
+						"Name":"单元测试发布练习2",
+						"CorrectMode":"00",
+						"Type":"00",
+						"AllowedAttempts":10086,
+						"Status":"00",
+						"TeacherName":"邹德伦克隆体"
+					},
+					{
+						"ID":10088,
+						"Name":"单元测试发布练习3",
+						"CorrectMode":"00",
+						"Type":"00",
+						"AllowedAttempts":10086,
+						"Status":"00",
+						"TeacherName":"邹德伦"
+					},
+					{
+						"ID":10089,
+						"Name":"单元测试发布练习4",
+						"CorrectMode":"00",
+						"Type":"00",
+						"AllowedAttempts":10086,
+						"Status":"00",
+						"TeacherName":"邹德伦克隆体"
+					}
+				],
+			"total":4
+			}`,
 			),
 		},
 		{
@@ -5115,45 +5127,47 @@ VALUES
 			expectSuccess:   false,
 			forceErr:        "pageSizeParseInt",
 			expectedMessage: "分页页大小解析失败",
-			expectedData: json.RawMessage(`
-			[
-				{
-					"ID":10086,
-					"Name":"单元测试发布练习1",
-					"CorrectMode":"00",
-					"Type":"00",
-					"AllowedAttempts":10086,
-					"Status":"00",
-					"TeacherName":"邹德伦"
-				},
-				{
-					"ID":10087,
-					"Name":"单元测试发布练习2",
-					"CorrectMode":"00",
-					"Type":"00",
-					"AllowedAttempts":10086,
-					"Status":"00",
-					"TeacherName":"邹德伦克隆体"
-				},
-				{
-					"ID":10088,
-					"Name":"单元测试发布练习3",
-					"CorrectMode":"00",
-					"Type":"00",
-					"AllowedAttempts":10086,
-					"Status":"00",
-					"TeacherName":"邹德伦"
-				},
-				{
-					"ID":10089,
-					"Name":"单元测试发布练习4",
-					"CorrectMode":"00",
-					"Type":"00",
-					"AllowedAttempts":10086,
-					"Status":"00",
-					"TeacherName":"邹德伦克隆体"
-				}
-			]`,
+			expectedData: json.RawMessage(`{
+				"practices":[
+					{
+						"ID":10086,
+						"Name":"单元测试发布练习1",
+						"CorrectMode":"00",
+						"Type":"00",
+						"AllowedAttempts":10086,
+						"Status":"00",
+						"TeacherName":"邹德伦"
+					},
+					{
+						"ID":10087,
+						"Name":"单元测试发布练习2",
+						"CorrectMode":"00",
+						"Type":"00",
+						"AllowedAttempts":10086,
+						"Status":"00",
+						"TeacherName":"邹德伦克隆体"
+					},
+					{
+						"ID":10088,
+						"Name":"单元测试发布练习3",
+						"CorrectMode":"00",
+						"Type":"00",
+						"AllowedAttempts":10086,
+						"Status":"00",
+						"TeacherName":"邹德伦"
+					},
+					{
+						"ID":10089,
+						"Name":"单元测试发布练习4",
+						"CorrectMode":"00",
+						"Type":"00",
+						"AllowedAttempts":10086,
+						"Status":"00",
+						"TeacherName":"邹德伦克隆体"
+					}
+				],
+			"total":4
+			}`,
 			),
 		},
 		{
@@ -5164,45 +5178,47 @@ VALUES
 			Domain:          []cmn.TDomain{{ID: null.IntFrom(PracticeDomainID.SuperAdmin)}},
 			expectSuccess:   false,
 			expectedMessage: "缺失分页查询页大小",
-			expectedData: json.RawMessage(`
-			[
-				{
-					"ID":10086,
-					"Name":"单元测试发布练习1",
-					"CorrectMode":"00",
-					"Type":"00",
-					"AllowedAttempts":10086,
-					"Status":"00",
-					"TeacherName":"邹德伦"
-				},
-				{
-					"ID":10087,
-					"Name":"单元测试发布练习2",
-					"CorrectMode":"00",
-					"Type":"00",
-					"AllowedAttempts":10086,
-					"Status":"00",
-					"TeacherName":"邹德伦克隆体"
-				},
-				{
-					"ID":10088,
-					"Name":"单元测试发布练习3",
-					"CorrectMode":"00",
-					"Type":"00",
-					"AllowedAttempts":10086,
-					"Status":"00",
-					"TeacherName":"邹德伦"
-				},
-				{
-					"ID":10089,
-					"Name":"单元测试发布练习4",
-					"CorrectMode":"00",
-					"Type":"00",
-					"AllowedAttempts":10086,
-					"Status":"00",
-					"TeacherName":"邹德伦克隆体"
-				}
-			]`,
+			expectedData: json.RawMessage(`{
+				"practices":[
+					{
+						"ID":10086,
+						"Name":"单元测试发布练习1",
+						"CorrectMode":"00",
+						"Type":"00",
+						"AllowedAttempts":10086,
+						"Status":"00",
+						"TeacherName":"邹德伦"
+					},
+					{
+						"ID":10087,
+						"Name":"单元测试发布练习2",
+						"CorrectMode":"00",
+						"Type":"00",
+						"AllowedAttempts":10086,
+						"Status":"00",
+						"TeacherName":"邹德伦克隆体"
+					},
+					{
+						"ID":10088,
+						"Name":"单元测试发布练习3",
+						"CorrectMode":"00",
+						"Type":"00",
+						"AllowedAttempts":10086,
+						"Status":"00",
+						"TeacherName":"邹德伦"
+					},
+					{
+						"ID":10089,
+						"Name":"单元测试发布练习4",
+						"CorrectMode":"00",
+						"Type":"00",
+						"AllowedAttempts":10086,
+						"Status":"00",
+						"TeacherName":"邹德伦克隆体"
+					}
+				],
+			"total":4
+			}`,
 			),
 		},
 		{
@@ -5213,45 +5229,47 @@ VALUES
 			Domain:          []cmn.TDomain{{ID: null.IntFrom(PracticeDomainID.SuperAdmin)}},
 			expectSuccess:   false,
 			expectedMessage: "页数量过大，不允许访问",
-			expectedData: json.RawMessage(`
-			[
-				{
-					"ID":10086,
-					"Name":"单元测试发布练习1",
-					"CorrectMode":"00",
-					"Type":"00",
-					"AllowedAttempts":10086,
-					"Status":"00",
-					"TeacherName":"邹德伦"
-				},
-				{
-					"ID":10087,
-					"Name":"单元测试发布练习2",
-					"CorrectMode":"00",
-					"Type":"00",
-					"AllowedAttempts":10086,
-					"Status":"00",
-					"TeacherName":"邹德伦克隆体"
-				},
-				{
-					"ID":10088,
-					"Name":"单元测试发布练习3",
-					"CorrectMode":"00",
-					"Type":"00",
-					"AllowedAttempts":10086,
-					"Status":"00",
-					"TeacherName":"邹德伦"
-				},
-				{
-					"ID":10089,
-					"Name":"单元测试发布练习4",
-					"CorrectMode":"00",
-					"Type":"00",
-					"AllowedAttempts":10086,
-					"Status":"00",
-					"TeacherName":"邹德伦克隆体"
-				}
-			]`,
+			expectedData: json.RawMessage(`{
+				"practices":[
+					{
+						"ID":10086,
+						"Name":"单元测试发布练习1",
+						"CorrectMode":"00",
+						"Type":"00",
+						"AllowedAttempts":10086,
+						"Status":"00",
+						"TeacherName":"邹德伦"
+					},
+					{
+						"ID":10087,
+						"Name":"单元测试发布练习2",
+						"CorrectMode":"00",
+						"Type":"00",
+						"AllowedAttempts":10086,
+						"Status":"00",
+						"TeacherName":"邹德伦克隆体"
+					},
+					{
+						"ID":10088,
+						"Name":"单元测试发布练习3",
+						"CorrectMode":"00",
+						"Type":"00",
+						"AllowedAttempts":10086,
+						"Status":"00",
+						"TeacherName":"邹德伦"
+					},
+					{
+						"ID":10089,
+						"Name":"单元测试发布练习4",
+						"CorrectMode":"00",
+						"Type":"00",
+						"AllowedAttempts":10086,
+						"Status":"00",
+						"TeacherName":"邹德伦克隆体"
+					}
+				],
+			"total":4
+			}`,
 			),
 		},
 		{
@@ -5263,45 +5281,47 @@ VALUES
 			forceErr:        "query",
 			expectSuccess:   false,
 			expectedMessage: "查询可用于报名计划绑定的练习失败",
-			expectedData: json.RawMessage(`
-			[
-				{
-					"ID":10086,
-					"Name":"单元测试发布练习1",
-					"CorrectMode":"00",
-					"Type":"00",
-					"AllowedAttempts":10086,
-					"Status":"00",
-					"TeacherName":"邹德伦"
-				},
-				{
-					"ID":10087,
-					"Name":"单元测试发布练习2",
-					"CorrectMode":"00",
-					"Type":"00",
-					"AllowedAttempts":10086,
-					"Status":"00",
-					"TeacherName":"邹德伦克隆体"
-				},
-				{
-					"ID":10088,
-					"Name":"单元测试发布练习3",
-					"CorrectMode":"00",
-					"Type":"00",
-					"AllowedAttempts":10086,
-					"Status":"00",
-					"TeacherName":"邹德伦"
-				},
-				{
-					"ID":10089,
-					"Name":"单元测试发布练习4",
-					"CorrectMode":"00",
-					"Type":"00",
-					"AllowedAttempts":10086,
-					"Status":"00",
-					"TeacherName":"邹德伦克隆体"
-				}
-			]`,
+			expectedData: json.RawMessage(`{
+				"practices":[
+					{
+						"ID":10086,
+						"Name":"单元测试发布练习1",
+						"CorrectMode":"00",
+						"Type":"00",
+						"AllowedAttempts":10086,
+						"Status":"00",
+						"TeacherName":"邹德伦"
+					},
+					{
+						"ID":10087,
+						"Name":"单元测试发布练习2",
+						"CorrectMode":"00",
+						"Type":"00",
+						"AllowedAttempts":10086,
+						"Status":"00",
+						"TeacherName":"邹德伦克隆体"
+					},
+					{
+						"ID":10088,
+						"Name":"单元测试发布练习3",
+						"CorrectMode":"00",
+						"Type":"00",
+						"AllowedAttempts":10086,
+						"Status":"00",
+						"TeacherName":"邹德伦"
+					},
+					{
+						"ID":10089,
+						"Name":"单元测试发布练习4",
+						"CorrectMode":"00",
+						"Type":"00",
+						"AllowedAttempts":10086,
+						"Status":"00",
+						"TeacherName":"邹德伦克隆体"
+					}
+				],
+			"total":4
+			}`,
 			),
 		},
 		{
@@ -5313,45 +5333,47 @@ VALUES
 			forceErr:        "json",
 			expectSuccess:   false,
 			expectedMessage: "返回数据反序列失败",
-			expectedData: json.RawMessage(`
-			[
-				{
-					"ID":10086,
-					"Name":"单元测试发布练习1",
-					"CorrectMode":"00",
-					"Type":"00",
-					"AllowedAttempts":10086,
-					"Status":"00",
-					"TeacherName":"邹德伦"
-				},
-				{
-					"ID":10087,
-					"Name":"单元测试发布练习2",
-					"CorrectMode":"00",
-					"Type":"00",
-					"AllowedAttempts":10086,
-					"Status":"00",
-					"TeacherName":"邹德伦克隆体"
-				},
-				{
-					"ID":10088,
-					"Name":"单元测试发布练习3",
-					"CorrectMode":"00",
-					"Type":"00",
-					"AllowedAttempts":10086,
-					"Status":"00",
-					"TeacherName":"邹德伦"
-				},
-				{
-					"ID":10089,
-					"Name":"单元测试发布练习4",
-					"CorrectMode":"00",
-					"Type":"00",
-					"AllowedAttempts":10086,
-					"Status":"00",
-					"TeacherName":"邹德伦克隆体"
-				}
-			]`,
+			expectedData: json.RawMessage(`{
+				"practices":[
+					{
+						"ID":10086,
+						"Name":"单元测试发布练习1",
+						"CorrectMode":"00",
+						"Type":"00",
+						"AllowedAttempts":10086,
+						"Status":"00",
+						"TeacherName":"邹德伦"
+					},
+					{
+						"ID":10087,
+						"Name":"单元测试发布练习2",
+						"CorrectMode":"00",
+						"Type":"00",
+						"AllowedAttempts":10086,
+						"Status":"00",
+						"TeacherName":"邹德伦克隆体"
+					},
+					{
+						"ID":10088,
+						"Name":"单元测试发布练习3",
+						"CorrectMode":"00",
+						"Type":"00",
+						"AllowedAttempts":10086,
+						"Status":"00",
+						"TeacherName":"邹德伦"
+					},
+					{
+						"ID":10089,
+						"Name":"单元测试发布练习4",
+						"CorrectMode":"00",
+						"Type":"00",
+						"AllowedAttempts":10086,
+						"Status":"00",
+						"TeacherName":"邹德伦克隆体"
+					}
+				],
+			"total":4
+			}`,
 			),
 		},
 	}
@@ -5405,8 +5427,12 @@ VALUES
 				if resp.Msg != "OK" {
 					t.Errorf("成功返回的信息不为OK")
 				}
+				type PracticeListResp struct {
+					Practices []RegisterPractice `json:"practices"` // 对应 JSON 的 "practices" 数组
+					Total     int                `json:"total"`     // 对应 JSON 的 "total" 字段
+				}
 				// 如果有的话，那就需要获取后端返回数据
-				var testResp1, testResp2 []RegisterPractice
+				var testResp1, testResp2 PracticeListResp
 				if err := json.Unmarshal(resp.Data, &testResp1); err != nil {
 					t.Errorf("JSON 解析失败:%v", err)
 					return
@@ -5415,9 +5441,12 @@ VALUES
 					t.Errorf("JSON 解析失败:%v", err)
 					return
 				}
-				for idx, v := range testResp1 {
+				if testResp2.Total != testResp1.Total {
+					t.Errorf("后端查询的总数不一，期望为：%v,实际：%v", testResp2.Total, testResp1.Total)
+				}
+				for idx, v := range testResp1.Practices {
 					// 遍历检测是否相等
-					expectD := testResp2[idx]
+					expectD := testResp2.Practices[idx]
 					if v.Name.String != expectD.Name.String {
 						t.Errorf("预期返回的练习名称：%v，实际返回的练习名称：%v", expectD.Name.String, v.Name.String)
 					}
