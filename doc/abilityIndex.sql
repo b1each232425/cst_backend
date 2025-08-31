@@ -1,6 +1,6 @@
 /*==============================================================*/
 /* DBMS name:      PostgreSQL 9.x                               */
-/* Created on:     2025/8/30 22:59:55                           */
+/* Created on:     8/31/2025 12:02:36 PM                        */
 /*==============================================================*/
 
 
@@ -660,7 +660,7 @@ values ('{"name":"user","tel":"18928776452","email":"XUnion@GMail.com"}',4000,'�
 ('{"name":"user","tel":"18928776452","email":"XUnion@GMail.com"}',4006,'成绩管理','/teacher/grade',1000,4, true),
 ('{"name":"user","tel":"18928776452","email":"XUnion@GMail.com"}',4007,'考试管理','/teacher/exam',1000,4, true),
 ('{"name":"user","tel":"18928776452","email":"XUnion@GMail.com"}',4008,'批改管理','/teacher/correct',1000,4, true),
-('{"name":"user","tel":"18928776452","email":"XUnion@GMail.com"}',4009,'考点管理','/teacher/exam-site-management',1000,4, true),
+('{"name":"user","tel":"18928776452","email":"XUnion@GMail.com"}',4009,'考点管理','/teacher/exam-site',1000,4, true),
 ('{"name":"user","tel":"18928776452","email":"XUnion@GMail.com"}',4010,'监考管理','/teacher/invigilate',1000,4, true);
 
 /*==============================================================*/
@@ -9410,7 +9410,7 @@ ALTER SEQUENCE t_sys_ver_id_seq RESTART WITH 20000;
 
 insert into t_sys_ver(id,name,ver,create_time,update_time,remark)
   values(1000,'业务模型','3.2.3.2',
-  '2016年12月5日 9:52:53','2025年8月30日 22:59:51',
+  'Monday, December 5, 2016 9:52:53 AM','Saturday, August 30, 2025 10:58:59 PM',
   '3.2.3.2
 修改 t_domain 中的考点和考点负责人domain初始值
 
