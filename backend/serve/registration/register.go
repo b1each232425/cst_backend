@@ -230,6 +230,7 @@ func register(ctx context.Context) {
 						q.RespErr()
 						return
 					}
+
 					var student registerStudentType
 					var students []registerStudentType
 					student.StudentID = userID

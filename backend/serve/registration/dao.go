@@ -9,6 +9,7 @@ import (
 	"time"
 	"w2w.io/cmn"
 	"w2w.io/null"
+	"w2w.io/serve/practice_mgt"
 )
 
 // 教师查看报名计划列表
@@ -252,12 +253,26 @@ func StudentRegister(ctx context.Context, registerID int64, status string, Regis
 	s = `
 	INSERT INTO assessuser.t_exam_plan_student (student_id , register_id , type  , exam_type , register_time  , creator , updated_by , create_time , update_time , status )
 	VALUES ($1 , $2 , $3 , $4 , $5 , $6 , $7 , $8 ,$9 , $10 )
+	ON CONFLICT (student_id,register_id) 
+	DO UPDATE  SET
+	    status = EXCLUDED.status,
+            updated_by = EXCLUDED.updated_by,
+            update_time = EXCLUDED.update_time
+	   WHERE  assessuser.t_exam_plan_student.status IS DISTINCT FROM $11
 `
 	z.Sugar().Debugf("打印输出一下这个操作语句：%v", s)
 	for _, student := range students {
-		_, err = tx.Exec(ctx, s, student.StudentID, registerID, RegisterType, student.ExamType, registerTime, userID, userID, now, now, status)
+		_, err = tx.Exec(ctx, s, student.StudentID, registerID, RegisterType, student.ExamType, registerTime, userID, userID, now, now, status, RegisterStudentStatus.Approved)
 		if err != nil || forceErr == "exec" {
 			err = fmt.Errorf("exec failed:%v", err)
+			z.Error(err.Error())
+			return err
+		}
+	}
+	//把学生关联到练习计划
+	if studentStatus == RegisterStudentStatus.Apply && status == RegisterStudentStatus.Pending {
+		err = practice_mgt.BoundPracticeEnterRegisterPlan(ctx, tx, userID, registerID)
+		if err != nil {
 			z.Error(err.Error())
 			return err
 		}
