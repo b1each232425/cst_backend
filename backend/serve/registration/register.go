@@ -260,32 +260,31 @@ func register(ctx context.Context) {
 					status := q.R.URL.Query().Get("status")
 					idStr := q.R.URL.Query().Get("id")
 					pageStr := q.R.URL.Query().Get("page")
-
-					var page int
-					page, q.Err = strconv.Atoi(pageStr)
-					if forceErr == "pageParseInt" {
-						q.Err = fmt.Errorf("将字符串转化为整形失败")
-					}
-					if q.Err != nil {
-						q.Err = fmt.Errorf("分页查询的页号解析失败：%v", q.Err.Error())
-						z.Error(q.Err.Error())
-						q.RespErr()
-						return
-					}
 					pageSizeStr := q.R.URL.Query().Get("pageSize")
-					var pageSize int
-					pageSize, q.Err = strconv.Atoi(pageSizeStr)
-					if forceErr == "pageSizeParseInt" {
-						q.Err = fmt.Errorf("将字符串转化为整形失败")
-					}
-					if q.Err != nil {
-						q.Err = fmt.Errorf("分页页大小解析失败：%v", q.Err.Error())
-						z.Error(q.Err.Error())
-						q.RespErr()
-						return
-					}
 					//如果有id则只查询单个报名计划
 					if idStr != "" && pageStr != "" && pageSizeStr != "" {
+						var page int
+						page, q.Err = strconv.Atoi(pageStr)
+						if forceErr == "pageParseInt" {
+							q.Err = fmt.Errorf("将字符串转化为整形失败")
+						}
+						if q.Err != nil {
+							q.Err = fmt.Errorf("分页查询的页号解析失败：%v", q.Err.Error())
+							z.Error(q.Err.Error())
+							q.RespErr()
+							return
+						}
+						var pageSize int
+						pageSize, q.Err = strconv.Atoi(pageSizeStr)
+						if forceErr == "pageSizeParseInt" {
+							q.Err = fmt.Errorf("将字符串转化为整形失败")
+						}
+						if q.Err != nil {
+							q.Err = fmt.Errorf("分页页大小解析失败：%v", q.Err.Error())
+							z.Error(q.Err.Error())
+							q.RespErr()
+							return
+						}
 						message := q.R.URL.Query().Get("message")
 						registerType := q.R.URL.Query().Get("register_type")
 						var id int64
@@ -362,6 +361,28 @@ func register(ctx context.Context) {
 						z.Info("---->" + cmn.FncName())
 						q.Msg.Msg = "OK"
 						q.Resp()
+						return
+					}
+					var page int
+					page, q.Err = strconv.Atoi(pageStr)
+					if forceErr == "pageParseInt" {
+						q.Err = fmt.Errorf("将字符串转化为整形失败")
+					}
+					if q.Err != nil {
+						q.Err = fmt.Errorf("分页查询的页号解析失败：%v", q.Err.Error())
+						z.Error(q.Err.Error())
+						q.RespErr()
+						return
+					}
+					var pageSize int
+					pageSize, q.Err = strconv.Atoi(pageSizeStr)
+					if forceErr == "pageSizeParseInt" {
+						q.Err = fmt.Errorf("将字符串转化为整形失败")
+					}
+					if q.Err != nil {
+						q.Err = fmt.Errorf("分页页大小解析失败：%v", q.Err.Error())
+						z.Error(q.Err.Error())
+						q.RespErr()
 						return
 					}
 					//排序字段
