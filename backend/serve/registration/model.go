@@ -108,3 +108,11 @@ type RegisterInfo struct {
 	Registration *cmn.TRegisterPlan `json:"registration"`
 	PracticeIds  []int64            `json:"practice_ids"`
 }
+type Reviewer struct {
+	ID           int64  `json:"id"`
+	OfficialName string `json:"official_name"`
+	Gender       string `json:"gender"`
+	MobilePhone  string `json:"mobile_phone"`
+	IDCardType   string `json:"id_card_type"`
+	IDCardNo     string `json:"id_card_no"`
+}

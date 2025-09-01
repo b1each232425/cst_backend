@@ -67,6 +67,21 @@ func Enroll(author string) {
 		//DefaultDomain 该API将默认授权给的用户
 		DefaultDomain: int64(cmn.CDomainSys),
 	})
+	_ = cmn.AddService(&cmn.ServeEndPoint{
+		Fn: registerReviewer,
+
+		Path: "/registrationReviewer",
+		Name: "registrationReviewer",
+
+		Developer: developer,
+		WhiteList: true,
+
+		//DomainID 创建该API的账号归属的domain
+		DomainID: int64(cmn.CDomainSys),
+
+		//DefaultDomain 该API将默认授权给的用户
+		DefaultDomain: int64(cmn.CDomainSys),
+	})
 }
 
 // just a trial
@@ -336,7 +351,7 @@ func register(ctx context.Context) {
 							return
 						}
 
-						r, practiceIds, currentNumber, err := LoadRegisterById(ctx, id)
+						r, practices, reviewers, currentNumber, err := LoadRegisterById(ctx, id)
 						if err != nil {
 							q.Err = err
 							q.RespErr()
@@ -344,7 +359,8 @@ func register(ctx context.Context) {
 						}
 						result := Map{
 							"register":       r,
-							"practice_ids":   practiceIds,
+							"practices":      practices,
+							"reviewers":      reviewers,
 							"current_number": currentNumber,
 						}
 						data, err := json.Marshal(result)
@@ -747,4 +763,116 @@ func registerStudentH(ctx context.Context) {
 	z.Info("---->" + cmn.FncName())
 	q.Msg.Msg = cmn.FncName()
 	q.Resp()
+}
+func registerReviewer(ctx context.Context) {
+	q := cmn.GetCtxValue(ctx)
+	//用于测试，强制执行某些错误分支
+	forceErr := ""
+	if val := ctx.Value("force-error"); val != nil {
+		forceErr = val.(string)
+	}
+
+	userID := q.SysUser.ID.Int64
+	if userID <= 0 {
+		q.Err = fmt.Errorf("invalid UserID: %d", userID)
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+	var DomainID int64
+	for _, domain := range q.Domains {
+		if domain.ID.Int64 == RegisterDomainID.Student || domain.ID.Int64 == RegisterDomainID.Teacher || domain.ID.Int64 == RegisterDomainID.Admin || domain.ID.Int64 == RegisterDomainID.SuperAdmin {
+			DomainID = domain.ID.Int64
+			break
+		}
+	}
+	if DomainID != 0 && DomainID < RegisterDomainID.Student {
+		DomainID = RegisterDomainID.Teacher
+	}
+	switch DomainID {
+	case RegisterDomainID.Teacher:
+		{
+			method := q.R.Method
+			method = strings.ToLower(method)
+			if method != "get" {
+				q.Err = fmt.Errorf("请使用get方法调用/api/registrationReviewer")
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+			idStr := q.R.URL.Query().Get("id")
+			if idStr == "" {
+				q.Err = fmt.Errorf("请传入有效的报名计划ID")
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+			var registerID int64
+			registerID, q.Err = strconv.ParseInt(idStr, 10, 64)
+			if q.Err != nil {
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+			name := q.R.URL.Query().Get("name")
+			pageStr := q.R.URL.Query().Get("page")
+			if pageStr == "" {
+				q.Err = fmt.Errorf("缺失分页查询页号")
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+			var page int
+			page, q.Err = strconv.Atoi(pageStr)
+			if q.Err != nil {
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+			pageSizeStr := q.R.URL.Query().Get("pageSize")
+			if pageSizeStr == "" {
+				q.Err = fmt.Errorf("缺失分页查询页大小")
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+			var pageSize int
+			pageSize, q.Err = strconv.Atoi(pageSizeStr)
+			if q.Err != nil {
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+			orderBy := []string{"u.create_time desc"}
+
+			reviewer, total, err := ListReviewers(ctx, userID, registerID, name, page, pageSize, orderBy)
+			if err != nil {
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+			var result Map
+			result = Map{
+				"total":     total,
+				"reviewers": reviewer,
+			}
+			data, err := json.Marshal(result)
+			if forceErr == "marshal" {
+				q.Err = fmt.Errorf("marshal json失败")
+			}
+			if err != nil {
+				z.Error(err.Error())
+				q.RespErr()
+				return
+			}
+			q.Msg.Data = data
+			q.Msg.Msg = "OK"
+			q.Msg.Status = 0
+			q.Resp()
+			return
+
+		}
+
+	}
+
 }
