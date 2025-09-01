@@ -414,7 +414,7 @@ func UpdateRegister(ctx context.Context, registration *cmn.TRegisterPlan, practi
 		idx++
 	}
 	args = append(args, registration.ID)
-	query := fmt.Sprintf("UPDATE %s SET %s WHERE id = $%d", "assessuser.t_register_practice", strings.Join(clauses, ", "), idx)
+	query := fmt.Sprintf("UPDATE %s SET %s WHERE id = $%d", "assessuser.t_register_plan", strings.Join(clauses, ", "), idx)
 	z.Sugar().Debugf("update sql:%v", query)
 	z.Sugar().Debugf("update args:%v", args)
 	sqlxDB := cmn.GetPgxConn()
@@ -798,9 +798,14 @@ func OperateRegisterStatus(ctx context.Context, registerIDs []int64, status stri
 			z.Error(err.Error())
 			return err
 		}
-		return nil
+		//删除与其关联的练习
+		s = `
+		UPDATE  assessuser.t_register_practice SET status = $1,update_time = $2, updated_by = $3  WHERE register_id = ANY($4)
+`
+		_, err = tx.Exec(ctx, s, RegisterPracticeStatus.Delete, now, userID, registerIDs)
 	}
 	return nil
+	//
 
 }
 func LoadRegisterByIds(ctx context.Context, registerIDs []int64) (registers []*cmn.TRegisterPlan, err error) {
