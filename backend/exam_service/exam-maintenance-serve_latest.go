@@ -655,7 +655,7 @@ func handleExamSessionEnd(ctx context.Context, event ExamEvent) error {
 			JOIN t_exam_info ei ON v.exam_id = ei.id
 			WHERE e.exam_session_id = $1
 				AND v.actual_end_time <= $2
-				AND e.status IN ('00', '16') -- 只更新处于正常考和监考员允许进入考试状态的考生
+				AND e.status IN ('00', '10','16') -- 只更新处于正常考和监考员允许进入考试状态的考生
 				AND ei.status IN ('02', '04', '06')
 		)
 		UPDATE t_examinee te
