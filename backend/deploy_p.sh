@@ -14,7 +14,7 @@ export PNPM_HOME=/var/data/pnpm
 
 mkdir -p $PNPM_HOME
 
-export PATH="$GOPATH/bin:$GOROOT/bin:$NODE_HOME/bin:$PNPM_HOME:$BIN_PATH/bin:$BIN_PATH/docker:$PATH"
+export PATH="$BIN_PATH/pgsql/bin:$GOPATH/bin:$GOROOT/bin:$NODE_HOME/bin:$PNPM_HOME:$BIN_PATH/bin:$BIN_PATH/docker:$PATH"
 
 if [ -z "$(which pnpm)" ];then
   npm install -g pnpm
@@ -115,6 +115,7 @@ d run --name=${containerName} \
  -v data:/var/data \
  -v deploy:/var/deploy \
  -e KAPP_NAME="$deployDst/$appName" \
+ -e PATH="$PATH" \
  --network qnear \
  ubuntu:ci "$deployDst/run.sh"
 
