@@ -99,10 +99,18 @@ func (h *handler) HandleUser(ctx context.Context) {
 
 		domain := query.Get("domain")
 		if domain != "" {
-			q.Err = fmt.Errorf("empty domain")
-			z.Error(q.Err.Error())
-			q.RespErr()
-			return
+			domainExist, _, err := IsDomainExist(ctx, nil, domain)
+			if err != nil || forceErr == "IsDomainExist" {
+				q.Err = fmt.Errorf("failed to check domain existence: %w", err)
+				q.RespErr()
+				return
+			}
+			if !domainExist {
+				q.Err = fmt.Errorf("filter domain does not exist")
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
 		}
 
 		// 构造过滤条件
