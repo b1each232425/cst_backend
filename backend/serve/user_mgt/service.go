@@ -154,6 +154,26 @@ func (r *service) QueryUsers(ctx context.Context, tx pgx.Tx, page, pageSize int6
            COALESCE((
                SELECT json_agg(
                    json_build_object(
+                       'ID', d.auth_domain_id,
+                       'Name', d.domain_name,
+                       'Domain', d.domain,
+                       'Priority', d.priority,
+                       'DomainID', d.domain_id,
+                       'UpdatedBy', null,
+                       'UpdateTime', null,
+                       'Creator', d.creator,
+                       'CreateTime', d.create_time,
+                       'Addi', d.addi,
+                       'Remark', d.remark,
+                       'Status', d.status
+                   )
+               )
+               FROM v_user_domain d
+               WHERE d.user_id = u.id
+           ), '[]') AS domain_objects,
+           COALESCE((
+               SELECT json_agg(
+                   json_build_object(
                    	   'Role', api.role,
                        'APIID', api.api_id,
                        'APIName', api.api_name,
@@ -188,6 +208,7 @@ func (r *service) QueryUsers(ctx context.Context, tx pgx.Tx, page, pageSize int6
 	var users = make([]User, 0, pageSize)
 	for rows.Next() {
 		var user User
+		var domainObjectsJSON []byte
 		var apisJSON []byte
 		err = rows.Scan(
 			&user.ID,
@@ -207,12 +228,24 @@ func (r *service) QueryUsers(ctx context.Context, tx pgx.Tx, page, pageSize int6
 			&user.UpdateTime,
 			&user.Creator,
 			&user.Domains,
+			&domainObjectsJSON,
 			&apisJSON,
 		)
 		if err != nil || forceErr == "scan" {
 			e := fmt.Errorf("failed to scan user row: %w", err)
 			z.Error(e.Error())
 			return []User{}, 0, e
+		}
+
+		// 解析DomainObjects JSON数据
+		if len(domainObjectsJSON) > 0 && string(domainObjectsJSON) != "[]" {
+			err = json.Unmarshal(domainObjectsJSON, &user.DomainObjects)
+			if err != nil || forceErr == "json.Unmarshal.DomainObjects" {
+				z.Warn(fmt.Sprintf("failed to unmarshal DomainObjects JSON for user %d: %v", user.ID.Int64, err))
+				user.DomainObjects = []cmn.TDomain{} // 设置为空数组
+			}
+		} else {
+			user.DomainObjects = []cmn.TDomain{} // 设置为空数组
 		}
 
 		// 解析APIs JSON数据

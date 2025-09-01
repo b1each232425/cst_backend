@@ -17,9 +17,10 @@ type QueryUsersFilter struct {
 
 type User struct {
 	cmn.TUser
-	Domains  []null.String         `json:"Domains"`
-	APIs     []cmn.TVUserDomainAPI `json:"APIs"`
-	ErrorMsg []null.String         `json:"ErrorMsg"` // 错误信息
+	Domains       []null.String         `json:"Domains"`
+	DomainObjects []cmn.TDomain         `json:"DomainObjects"`
+	APIs          []cmn.TVUserDomainAPI `json:"APIs"`
+	ErrorMsg      []null.String         `json:"ErrorMsg"` // 错误信息
 }
 
 type EmailServer struct {

@@ -270,6 +270,15 @@ func TestService_QueryUsers(t *testing.T) {
 			wantErr:        false,
 			desc:           "测试触发json.Unmarshal报错",
 		},
+		{
+			name:           "触发json.Unmarshal.DomainObjects错误",
+			ctx:            context.WithValue(context.Background(), "force-error", "json.Unmarshal.DomainObjects"),
+			page:           1,
+			pageSize:       10,
+			filter:         QueryUsersFilter{},
+			wantUsersCount: 10,
+			wantErr:        false,
+		},
 	}
 
 	for _, tt := range tests {
