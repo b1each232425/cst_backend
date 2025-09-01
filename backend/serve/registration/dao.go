@@ -9,6 +9,7 @@ import (
 	"time"
 	"w2w.io/cmn"
 	"w2w.io/null"
+	"w2w.io/serve/practice_mgt"
 )
 
 // 教师查看报名计划列表
@@ -218,6 +219,30 @@ func StudentRegister(ctx context.Context, registerID int64, status string, Regis
 		z.Error(err.Error())
 		return err
 	}
+	//获取当前学生的报名状态
+	s = `
+	SELECT status FROM assessuser.t_exam_plan_student WHERE register_id = $1 AND student_id = $2
+`
+	var studentStatus string
+	err = tx.QueryRow(ctx, s, registerID, userID).Scan(&studentStatus)
+	if err != nil || forceErr == "query" {
+		err = fmt.Errorf("query student failed:%v", err)
+		z.Error(err.Error())
+		return err
+	}
+	if studentStatus == RegisterStudentStatus.Apply && status == RegisterStudentStatus.Pending {
+		//检验当前的人数是否超过限制
+		registerInfo, _, current, err := LoadRegisterById(ctx, registerID)
+		if err != nil {
+			z.Error(err.Error())
+			return err
+		}
+		if registerInfo.MaxNumber.Int64 < current+1 {
+			err = fmt.Errorf("报名计划人数已满")
+			z.Error(err.Error())
+			return err
+		}
+	}
 	var registerTime int64
 	if status == RegisterStudentStatus.Apply {
 		registerTime = now
@@ -228,12 +253,26 @@ func StudentRegister(ctx context.Context, registerID int64, status string, Regis
 	s = `
 	INSERT INTO assessuser.t_exam_plan_student (student_id , register_id , type  , exam_type , register_time  , creator , updated_by , create_time , update_time , status )
 	VALUES ($1 , $2 , $3 , $4 , $5 , $6 , $7 , $8 ,$9 , $10 )
+	ON CONFLICT (student_id,register_id) 
+	DO UPDATE  SET
+	    status = EXCLUDED.status,
+            updated_by = EXCLUDED.updated_by,
+            update_time = EXCLUDED.update_time
+	   WHERE  assessuser.t_exam_plan_student.status IS DISTINCT FROM $11
 `
 	z.Sugar().Debugf("打印输出一下这个操作语句：%v", s)
 	for _, student := range students {
-		_, err = tx.Exec(ctx, s, student.StudentID, registerID, RegisterType, student.ExamType, registerTime, userID, userID, now, now, status)
+		_, err = tx.Exec(ctx, s, student.StudentID, registerID, RegisterType, student.ExamType, registerTime, userID, userID, now, now, status, RegisterStudentStatus.Approved)
 		if err != nil || forceErr == "exec" {
 			err = fmt.Errorf("exec failed:%v", err)
+			z.Error(err.Error())
+			return err
+		}
+	}
+	//把学生关联到练习计划
+	if studentStatus == RegisterStudentStatus.Apply && status == RegisterStudentStatus.Pending {
+		err = practice_mgt.BoundPracticeEnterRegisterPlan(ctx, tx, userID, registerID)
+		if err != nil {
 			z.Error(err.Error())
 			return err
 		}
@@ -317,7 +356,7 @@ func GetRegisterStudentById(cxt context.Context, registerID int64, message strin
 	}
 	return result, len(result), nil
 }
-func UpsertRegister(ctx context.Context, registration *cmn.TRegisterPlan, practiceIds []int64, userID int64) error {
+func UpsertRegister(ctx context.Context, registration *cmn.TRegisterPlan, practiceIds []int64, userID int64, action string) error {
 	if userID <= 0 {
 		err := fmt.Errorf("用户ID不能小于等于0")
 		z.Error(err.Error())
@@ -327,19 +366,100 @@ func UpsertRegister(ctx context.Context, registration *cmn.TRegisterPlan, practi
 		return AddRegister(ctx, registration, practiceIds, userID)
 	}
 	//获取当前的报名计划详细内容
-	register, err := LoadRegisterById(ctx, registration.ID.Int64)
+	register, _, _, err := LoadRegisterById(ctx, registration.ID.Int64)
 	if err != nil {
 		return err
 	}
-	if register.Status == null.NewString(RegisterStatus.Released, true) {
-		err := fmt.Errorf("报名计划已发布，无法修改")
+	if register.Status == null.NewString(RegisterStatus.Deleted, true) || register.Status == null.NewString(RegisterStatus.Disabled, true) || register.Status == null.NewString(RegisterStatus.Cancel, true) || register.Status == null.NewString(RegisterStatus.Ending, true) || register.Status == null.NewString(RegisterStatus.ReviewEnding, true) {
+		err := fmt.Errorf("报名计划状态为%v，无法修改", register.Status)
 		z.Error(err.Error())
 		return err
 	}
-	return UpdateRegister(ctx, registration, practiceIds, userID)
+	return UpdateRegister(ctx, registration, practiceIds, userID, action)
 }
-func UpdateRegister(ctx context.Context, registration *cmn.TRegisterPlan, practiceIds []int64, userID int64) error {
+func UpdateRegister(ctx context.Context, registration *cmn.TRegisterPlan, practiceIds []int64, userID int64, action string) error {
 
+	if userID <= 0 {
+		err := fmt.Errorf("用户ID不能小于等于0")
+		z.Error(err.Error())
+		return err
+	}
+	if !registration.ID.Valid {
+		err := fmt.Errorf("报名计划ID不存在")
+		if err != nil {
+			z.Error(err.Error())
+			return err
+		}
+	}
+	forceErr, _ := ctx.Value("force-error").(string)
+	now := time.Now().UnixMilli()
+	registration.UpdatedBy = null.NewInt(userID, true)
+	registration.UpdateTime = null.NewInt(now, true)
+	action = strings.ToLower(action)
+	update := s2Map(registration)
+	notUpdate := []string{
+		"id",
+		"creator",
+		"create_time",
+		"status",
+		"reviewer_ids",
+	}
+	RemoveFields(update, notUpdate...)
+	var clauses []string
+	var args []interface{}
+	idx := 1
+	for field, value := range update {
+		clauses = append(clauses, fmt.Sprintf("%s = $%d", field, idx))
+		args = append(args, value)
+		idx++
+	}
+	args = append(args, registration.ID)
+	query := fmt.Sprintf("UPDATE %s SET %s WHERE id = $%d", "assessuser.t_register_plan", strings.Join(clauses, ", "), idx)
+	z.Sugar().Debugf("update sql:%v", query)
+	z.Sugar().Debugf("update args:%v", args)
+	sqlxDB := cmn.GetPgxConn()
+	tx, err := sqlxDB.Begin(ctx)
+	if err != nil || forceErr == "beginTx" {
+		err = fmt.Errorf("beginTx called failed:%v", err)
+		z.Error(err.Error())
+		return err
+	}
+	defer func() {
+		if forceErr == "rollback" {
+			err = fmt.Errorf("触发回滚")
+		}
+		if err != nil {
+			err = tx.Rollback(ctx)
+			if forceErr == "rollback" {
+				err = fmt.Errorf("触发回滚")
+			}
+			if err != nil {
+				z.Error(err.Error())
+				return
+			}
+		}
+		_ = tx.Commit(ctx)
+		if forceErr == "commit" {
+			err = fmt.Errorf("commit failed")
+		}
+		if err != nil {
+			z.Error(err.Error())
+		}
+	}()
+
+	_, err = tx.Exec(ctx, query, args...)
+	if err != nil || forceErr == "query" {
+		err = fmt.Errorf("updateRegister call failed:%v", err)
+		z.Error(err.Error())
+		return err
+	}
+	if action == "clear" && len(practiceIds) == 0 {
+		//清空与报名计划绑定的练习
+	}
+	err = UpsertRegisterPractice(ctx, tx, registration.ID.Int64, practiceIds, userID)
+	if err != nil {
+		return err
+	}
 	return nil
 }
 func AddRegister(ctx context.Context, registration *cmn.TRegisterPlan, practiceIds []int64, userID int64) error {
@@ -390,6 +510,7 @@ func AddRegister(ctx context.Context, registration *cmn.TRegisterPlan, practiceI
 	}
 	registration.ID = null.IntFrom(id)
 	if practiceIds == nil || len(practiceIds) == 0 {
+		z.Sugar().Debugf("打印输出一下增加SQL语句:%v", practiceIds)
 		return nil
 	}
 	err = UpsertRegisterPractice(ctx, tx, registration.ID.Int64, practiceIds, userID)
@@ -399,7 +520,7 @@ func AddRegister(ctx context.Context, registration *cmn.TRegisterPlan, practiceI
 	return nil
 }
 func UpsertRegisterPractice(ctx context.Context, tx pgx.Tx, registerID int64, practiceIds []int64, userID int64) error {
-	forceErr := ctx.Value("force-error").(string)
+	forceErr, _ := ctx.Value("force-error").(string)
 	if registerID <= 0 {
 		err := fmt.Errorf("registerID不能小于等于0")
 		z.Error(err.Error())
@@ -414,11 +535,12 @@ func UpsertRegisterPractice(ctx context.Context, tx pgx.Tx, registerID int64, pr
 	if practiceIds == nil || len(practiceIds) == 0 {
 		//删除当前报名列表下面的所有练习
 		delSQL := `
-		UPDATE assessuser.t_register_pracitce 
+		UPDATE assessuser.t_register_practice 
 		SET status =$1 , update_time= $2 , updated_by = $3
 		WHERE register_id =$4 AND status != $1
 `
 		_, err := tx.Exec(ctx, delSQL, RegisterPracticeStatus.Delete, now, userID, registerID)
+		z.Sugar().Debugf("打印输出一下增加SQL语句:%v", delSQL)
 		if err != nil || forceErr == "del" {
 			err = fmt.Errorf("删除报名计划下的所有练习失败:%v", err)
 			z.Error(err.Error())
@@ -427,7 +549,7 @@ func UpsertRegisterPractice(ctx context.Context, tx pgx.Tx, registerID int64, pr
 		return nil
 	}
 	//upsert名单
-	addRpStr := strings.Repeat("(?,?,?,?,?,?,?),", len(practiceIds)-1) + "((?,?,?,?,?,?,?)"
+	addRpStr := strings.Repeat("(?,?,?,?,?,?,?),", len(practiceIds)-1) + "(?,?,?,?,?,?,?)"
 	addRpArgs := make([]interface{}, 0, len(practiceIds)*7+1)
 	for _, practiceId := range practiceIds {
 		addRpArgs = append(addRpArgs,
@@ -437,7 +559,7 @@ func UpsertRegisterPractice(ctx context.Context, tx pgx.Tx, registerID int64, pr
 	addRpArgs = append(addRpArgs, RegisterPracticeStatus.Normal)
 	t := `
 		INSERT INTO assessuser.t_register_practice 
-			(reigster_id , practice_id , creator , updated_by , create_time , update_time , status)
+			(register_id , practice_id , creator , updated_by , create_time , update_time , status)
 		VALUES  %s
 		ON CONFLICT (register_id , practice_id)
 		DO UPDATE SET
@@ -449,11 +571,16 @@ func UpsertRegisterPractice(ctx context.Context, tx pgx.Tx, registerID int64, pr
 `
 	s1 := fmt.Sprintf(t, addRpStr)
 	//修正格式
-	addRQuery, args, _ := sqlx.In(s1, addRpArgs...)
+	addRQuery, args, err := sqlx.In(s1, addRpArgs...)
+	if err != nil {
+		err = fmt.Errorf("添加名单参数错误:%v", err)
+		z.Error(err.Error())
+		return err
+	}
 	addRQuery = sqlx.Rebind(sqlx.DOLLAR, addRQuery)
 	z.Sugar().Debugf("打印输出一下增加SQL语句:%v", addRQuery)
 	z.Sugar().Debugf("打印输出一下增加SQL参数:%v", args...)
-	_, err := tx.Exec(ctx, addRQuery, args...)
+	_, err = tx.Exec(ctx, addRQuery, args...)
 	if err != nil || forceErr == "query2" {
 		err = fmt.Errorf("添加名单失败:%v", err)
 		z.Error(err.Error())
@@ -488,23 +615,43 @@ func UpsertRegisterPractice(ctx context.Context, tx pgx.Tx, registerID int64, pr
 	}
 	return nil
 }
-func LoadRegisterById(ctx context.Context, registerID int64) (*cmn.TRegisterPlan, error) {
+func LoadRegisterById(ctx context.Context, registerID int64) (*cmn.TRegisterPlan, []int64, int64, error) {
 	forceErr := ctx.Value("force-error")
 
 	s := `
-	SELECT r.id, r.name , r.course , r.review_end_time , r. max_number , r.start_time , r.end_time , r.reviewer_ids , r.exam_plan_location ,r.status
-	FROM assessuser.t_register_plan r WHERE r.id = $1
+	SELECT r.id, r.name , r.course , r.review_end_time , r. max_number , r.start_time , r.end_time , r.reviewer_ids , r.exam_plan_location ,r.status ,COALESCE((SELECT count(*) FROM assessuser.t_exam_plan_student WHERE register_id = r.id AND status NOT IN ($1 ,$2)),0)
+	FROM assessuser.t_register_plan r WHERE r.id = $3
 `
 	sqlxDB := cmn.GetDbConn()
-	row := sqlxDB.QueryRowContext(ctx, s, registerID)
+	row := sqlxDB.QueryRowContext(ctx, s, RegisterStudentStatus.Apply, RegisterStudentStatus.Moved, registerID)
 	var register cmn.TRegisterPlan
-	err := row.Scan(&register.ID, &register.Name, &register.Course, &register.ReviewEndTime, &register.MaxNumber, &register.StartTime, &register.EndTime, &register.ReviewerIds, &register.ExamPlanLocation, &register.Status)
+	var currentNumber int64
+	err := row.Scan(&register.ID, &register.Name, &register.Course, &register.ReviewEndTime, &register.MaxNumber, &register.StartTime, &register.EndTime, &register.ReviewerIds, &register.ExamPlanLocation, &register.Status, &currentNumber)
 	if err != nil || forceErr == "query" {
 		err = fmt.Errorf("查询报名计划失败:%v", err)
 		z.Error(err.Error())
-		return nil, err
+		return nil, nil, -1, err
 	}
-	return &register, nil
+	//查询报名计划相关练习
+	s = `SELECT practice_id FROM assessuser.t_register_practice WHERE register_id =$1`
+	rows, err := sqlxDB.QueryxContext(ctx, s, registerID)
+	if err != nil || forceErr == "query2" {
+		err = fmt.Errorf("查询报名计划下的练习失败:%v", err)
+		z.Error(err.Error())
+		return nil, nil, -1, err
+	}
+	var practiceIds []int64
+	for rows.Next() {
+		var practiceId int64
+		err := rows.Scan(&practiceId)
+		if err != nil {
+			z.Error(err.Error())
+			return nil, nil, -1, err
+		}
+		practiceIds = append(practiceIds, practiceId)
+	}
+
+	return &register, practiceIds, currentNumber, nil
 
 }
 
@@ -569,7 +716,7 @@ func OperateRegisterStatus(ctx context.Context, registerIDs []int64, status stri
 			return err
 		}
 		if register.Status.String == RegisterStatus.Disabled {
-			err = fmt.Errorf("报名计划状态为删除，无法进行操作")
+			err = fmt.Errorf("报名计划状态为作废，无法进行操作")
 			z.Error(err.Error())
 			return err
 		}
@@ -625,7 +772,7 @@ func OperateRegisterStatus(ctx context.Context, registerIDs []int64, status stri
 		var invalidName []string
 		for _, register := range Rs {
 			s := `
-			SELECT EXIST(SELECT 1 FROM asessuser.t_exam_plan_student eps WHERE eps.register_id =$1 )
+			SELECT EXISTS(SELECT 1 FROM assessuser.t_exam_plan_student eps WHERE eps.register_id =$1 )
 `
 			err = tx.QueryRow(ctx, s, register.ID).Scan(&registerIsUsed)
 			if err != nil || forceErr == "query1" {
@@ -651,9 +798,14 @@ func OperateRegisterStatus(ctx context.Context, registerIDs []int64, status stri
 			z.Error(err.Error())
 			return err
 		}
-		return nil
+		//删除与其关联的练习
+		s = `
+		UPDATE  assessuser.t_register_practice SET status = $1,update_time = $2, updated_by = $3  WHERE register_id = ANY($4)
+`
+		_, err = tx.Exec(ctx, s, RegisterPracticeStatus.Delete, now, userID, registerIDs)
 	}
 	return nil
+	//
 
 }
 func LoadRegisterByIds(ctx context.Context, registerIDs []int64) (registers []*cmn.TRegisterPlan, err error) {
@@ -684,7 +836,7 @@ func LoadRegisterByIds(ctx context.Context, registerIDs []int64) (registers []*c
 }
 
 // 批量通过或不通过学生审核
-func OperateRegisterStudentStatus(ctx context.Context, ids []int64, status string, userID int64, RegisterID int64, failReason string) error {
+func OperateRegisterStudentStatus(ctx context.Context, tx pgx.Tx, ids []int64, status string, userID int64, RegisterID int64, failReason string) error {
 	if status == "" {
 		return fmt.Errorf("请选择操作")
 	}
@@ -701,7 +853,7 @@ func OperateRegisterStudentStatus(ctx context.Context, ids []int64, status strin
 	now := time.Now().UnixMilli()
 	forceErr, _ := ctx.Value("force-error").(string)
 	//获取报名计划信息
-	register, err := LoadRegisterById(ctx, RegisterID)
+	register, _, _, err := LoadRegisterById(ctx, RegisterID)
 	if err != nil {
 		return err
 	}
@@ -729,44 +881,58 @@ func OperateRegisterStudentStatus(ctx context.Context, ids []int64, status strin
 		return err
 	}
 	//对学生状态进行操作
-	sqlxDB := cmn.GetPgxConn()
-	tx, err := sqlxDB.Begin(ctx)
-	if err != nil || forceErr == "begin" {
-		err = fmt.Errorf("开启事务失败:%v", err)
-		z.Error(err.Error())
-		return err
-	}
-	defer func() {
-		if forceErr == "rollback" {
-			err = fmt.Errorf("触发回滚")
+	var s string
+	if tx != nil {
+		//使用传进来的tx
+		s = `
+	UPDATE assessuser.t_exam_plan_student SET status = $1,update_time = $2, updated_by = $3   WHERE student_id = ANY($4) AND register_id =$5`
+		_, err = tx.Exec(ctx, s, status, now, userID, ids, RegisterID)
+		if err != nil || forceErr == "pQuery" {
+			err = fmt.Errorf("设置迁移学生状态失败:%v", err)
+			z.Error(err.Error())
+			return err
 		}
-		if err != nil {
-			_ = tx.Rollback(ctx)
+
+	} else {
+		//批量通过或不通过学生审核
+		sqlxDB := cmn.GetPgxConn()
+		tx, err = sqlxDB.Begin(ctx)
+		if err != nil || forceErr == "begin" {
+			err = fmt.Errorf("开启事务失败:%v", err)
+			z.Error(err.Error())
+			return err
+		}
+		defer func() {
 			if forceErr == "rollback" {
-				err = fmt.Errorf("回滚失败")
+				err = fmt.Errorf("触发回滚")
+			}
+			if err != nil {
+				_ = tx.Rollback(ctx)
+				if forceErr == "rollback" {
+					err = fmt.Errorf("回滚失败")
+				}
+				if err != nil {
+					z.Error(err.Error())
+					return
+				}
+			}
+			err = tx.Commit(ctx)
+			if forceErr == "commit" {
+				err = fmt.Errorf("触发commit")
 			}
 			if err != nil {
 				z.Error(err.Error())
 				return
 			}
-		}
-		err = tx.Commit(ctx)
-		if forceErr == "commit" {
-			err = fmt.Errorf("触发commit")
-		}
-		if err != nil {
+		}()
+		s = `
+	UPDATE assessuser.t_exam_plan_student SET status = $1,update_time = $2, updated_by = $3 , fail_reason =$4 ,reviewer=$5  WHERE student_id = ANY($6) AND register_id =$7`
+		_, err = tx.Exec(ctx, s, status, now, userID, failReason, userID, ids, RegisterID)
+		if err != nil || forceErr == "pQuery" {
+			err = fmt.Errorf("更新学生状态失败:%v", err)
 			z.Error(err.Error())
-			return
+			return err
 		}
-	}()
-	s := `
-	UPDATE assessuser.t_exam_plan_student SET status = $1,update_time = $2, updated_by = $3 , fail_reason =$4 ,reviewer=$5  WHERE student_id = ANY($6) AND register_id =$7
-`
-	_, err = tx.Exec(ctx, s, status, now, userID, failReason, userID, ids, RegisterID)
-	if err != nil || forceErr == "pQuery" {
-		err = fmt.Errorf("更新学生状态失败:%v", err)
-		z.Error(err.Error())
-		return err
 	}
 	return nil
 }
@@ -811,8 +977,13 @@ func UpsertRegisterStudent(ctx context.Context, registerID int64, studentIDs []r
 	now := time.Now().UnixMilli()
 	forceErr, _ := ctx.Value("force-error").(string)
 	//要检验报名计划正在发布中才能导入
-	register, err := LoadRegisterById(ctx, registerID)
+	register, _, currentNumber, err := LoadRegisterById(ctx, registerID)
 	if err != nil {
+		z.Error(err.Error())
+		return err
+	}
+	if currentNumber+int64(len(studentIDs)) > register.MaxNumber.Int64 {
+		err := fmt.Errorf("导入学生人数超出报名计划可容纳人数")
 		z.Error(err.Error())
 		return err
 	}
@@ -821,6 +992,7 @@ func UpsertRegisterStudent(ctx context.Context, registerID int64, studentIDs []r
 		z.Error(err.Error())
 		return err
 	}
+
 	sqlxDB := cmn.GetPgxConn()
 	tx, err := sqlxDB.Begin(ctx)
 	if err != nil || forceErr == "begin" {
@@ -857,7 +1029,7 @@ func UpsertRegisterStudent(ctx context.Context, registerID int64, studentIDs []r
 
 	for _, student := range studentIDs {
 		addRArgs = append(addRArgs,
-			registerID, student.StudentID, "02", student.ExamType, now, userID, userID, now, RegisterStudentStatus.Pending,
+			registerID, student.StudentID, RegisterType.Import, student.ExamType, now, userID, userID, now, RegisterStudentStatus.Approved,
 		)
 	}
 	addRArgs = append(addRArgs, RegisterStudentStatus.Approved)
@@ -885,5 +1057,152 @@ func UpsertRegisterStudent(ctx context.Context, registerID int64, studentIDs []r
 		z.Error(err.Error())
 		return err
 	}
+	return nil
+}
+
+// 移动学生
+func MoveStudent(ctx context.Context, fromRegisterID int64, toRegisterID int64, students []registerStudentType, status string, userID int64) error {
+	if fromRegisterID <= 0 || toRegisterID <= 0 {
+		err := fmt.Errorf("报名计划ID错误 ")
+		z.Error(err.Error())
+		return err
+	}
+	if userID <= 0 {
+		err := fmt.Errorf("用户ID错误:%v", userID)
+		z.Error(err.Error())
+		return err
+	}
+	now := time.Now().UnixMilli()
+	forceErr, _ := ctx.Value("force-error").(string)
+	//检验目标报名计划是否处于发布状态
+	register, _, currentNumber, err := LoadRegisterById(ctx, toRegisterID)
+	if err != nil {
+		z.Error(err.Error())
+		return err
+	}
+	var registerStatus string
+	registerStatus = register.Status.String
+	if registerStatus != RegisterStatus.Released {
+		err := fmt.Errorf("目标报名计划状态为：%v，不能移动学生", registerStatus)
+		z.Error(err.Error())
+		return err
+	}
+	if register.MaxNumber.Int64 < int64(len(students))+currentNumber {
+		err := fmt.Errorf("目标报名计划可容纳人数不足，无法进行移动")
+		z.Error(err.Error())
+		return err
+	}
+	sqlxDB := cmn.GetPgxConn()
+	tx, err := sqlxDB.Begin(ctx)
+	if err != nil || forceErr == "begin" {
+		err = fmt.Errorf("开启事务失败:%v", err)
+		z.Error(err.Error())
+		return err
+	}
+	defer func() {
+		if forceErr == "rollback" {
+			err = fmt.Errorf("触发回滚")
+		}
+		if err != nil {
+			_ = tx.Rollback(ctx)
+			if forceErr == "rollback" {
+				err = fmt.Errorf("回滚失败")
+			}
+			if err != nil {
+				z.Error(err.Error())
+				return
+			}
+		}
+		err = tx.Commit(ctx)
+		if forceErr == "commit" {
+			err = fmt.Errorf("触发commit")
+		}
+		if err != nil {
+			z.Error(err.Error())
+			return
+		}
+	}()
+	var planStudents []*cmn.TExamPlanStudent
+	//获取原本学生的状态
+	s := `SELECT * FROM  assessuser.t_exam_plan_student WHERE register_id =$1 AND student_id IN ANY ($2) `
+	rows, err := tx.Query(ctx, s, fromRegisterID, students)
+	if err != nil {
+		err = fmt.Errorf("获取学生状态失败:%v", err)
+		z.Error(err.Error())
+		return err
+	}
+	for rows.Next() {
+		var student *cmn.TExamPlanStudent
+		err = rows.Scan(
+			&student.ID,
+			&student.StudentID,
+			&student.RegisterID,
+			&student.Type,
+			&student.FailReason,
+			&student.ExamType,
+			&student.RegisterTime,
+			&student.Reviewer,
+			&student.Addi,
+			&student.Creator,
+			&student.UpdatedBy,
+			&student.CreateTime,
+			&student.UpdateTime,
+			&student.Status,
+		)
+		if err != nil {
+			err = fmt.Errorf("扫描学生状态失败 错误: %w", err)
+			z.Error(err.Error())
+			return err
+		}
+		planStudents = append(planStudents, student)
+	}
+	//导入新的计划当中
+
+	//upsert名单
+	addRStr := strings.Repeat("(?,?,?,?,?,?,?,?,?,?,?,?),", len(planStudents)-1) + "(?,?,?,?,?,?,?,?,?,?,?,?)"
+	addRArgs := make([]interface{}, 0, len(planStudents)*12+1)
+
+	for _, student := range planStudents {
+		addRArgs = append(addRArgs,
+			toRegisterID, student.StudentID, RegisterType.Import, student.ExamType, now, userID, userID, now, student.Status, student.FailReason, student.Reviewer, student.RegisterTime,
+		)
+	}
+	addRArgs = append(addRArgs, RegisterStudentStatus.Approved)
+	s = `
+	 INSERT INTO assessuser.t_exam_plan_student(register_id, student_id,type,exam_type, create_time, creator, updated_by , update_time ,status, fail_reason,reviewer,register_time) VALUES %s
+	 ON CONFLICT (register_id, student_id) DO UPDATE SET 
+	  status = EXCLUDED.status,
+            updated_by = EXCLUDED.updated_by,
+            update_time = EXCLUDED.update_time
+        WHERE assessuser.t_exam_plan_student.status IS DISTINCT FROM ?
+ `
+	s1 := fmt.Sprintf(s, addRStr)
+	addRQuery, args, err := sqlx.In(s1, addRArgs...)
+	if err != nil || forceErr == "sqlxIn" {
+		err = fmt.Errorf("批量移动学生参数处理失败:%v", err)
+		z.Error(err.Error())
+		return err
+	}
+	addRQuery = sqlx.Rebind(sqlx.DOLLAR, addRQuery)
+	z.Sugar().Debugf("打印输出一下增加SQL语句:%v", addRQuery)
+	z.Sugar().Debugf("打印输出一下增加SQL参数:%v", args...)
+	_, err = tx.Exec(ctx, addRQuery, args...)
+	if err != nil || forceErr == "pQuery" {
+		err = fmt.Errorf("批量移动学生失败:%v", err)
+		z.Error(err.Error())
+		return err
+	}
+	//修改原来的报名计划的学生状态为已迁移
+	var studentIDs []int64
+	for _, student := range students {
+		studentIDs = append(studentIDs, student.StudentID)
+	}
+	//调用更新原本学生状态方法
+	err = OperateRegisterStudentStatus(ctx, tx, studentIDs, status, userID, fromRegisterID, "")
+	if err != nil {
+		z.Error(err.Error())
+		return err
+	}
+
 	return nil
 }

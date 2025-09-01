@@ -1,6 +1,7 @@
 package user_mgt
 
 import (
+	"context"
 	"errors"
 	"regexp"
 	"strconv"
@@ -8,6 +9,9 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/jackc/pgx/v5"
+	"go.uber.org/zap"
+	"w2w.io/cmn"
 	"w2w.io/null"
 )
 
@@ -48,10 +52,31 @@ func IsValidEmail(email string) bool {
 	return emailRegex.MatchString(email)
 }
 
-// IsDomainExist 判断角色是否合法
-func IsDomainExist(domain string) bool {
-	_, ok := domainSet[domain]
-	return ok
+// IsDomainExist 判断 domain 是否存在于 t_domain 表，如果存在则返回对应记录
+func IsDomainExist(ctx context.Context, tx pgx.Tx, domain string) (bool, *cmn.TDomain, error) {
+	query := `SELECT id, name, domain, priority 
+	          FROM t_domain WHERE domain = $1 LIMIT 1`
+
+	var row pgx.Row
+	if tx != nil {
+		row = tx.QueryRow(ctx, query, domain)
+	} else {
+		pgConn := cmn.GetPgxConn()
+		row = pgConn.QueryRow(ctx, query, domain)
+	}
+
+	d := &cmn.TDomain{}
+	err := row.Scan(&d.ID, &d.Name, &d.Domain, &d.Priority)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			// 没查到，返回不存在
+			return false, nil, nil
+		}
+		z.Error("failed to query domain:", zap.Error(err))
+		return false, nil, err
+	}
+
+	return true, d, nil
 }
 
 // Contains 泛型函数，判断元素是否存在于切片中

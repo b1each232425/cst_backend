@@ -797,13 +797,16 @@ func registerPracticeH(ctx context.Context) {
 	}
 	// 排序字段
 	orderBy := []string{"tp.create_time desc"}
-	result, err := GetPracticeListByRegisterPlan(ctx, practiceName, teacherName, page, pageSize, orderBy)
+	result, total, err := GetPracticeListByRegisterPlan(ctx, practiceName, teacherName, page, pageSize, orderBy)
 	if err != nil {
 		q.Err = err
 		q.RespErr()
 		return
 	}
-	data, err := json.Marshal(result)
+	rData := Map{}
+	rData["practices"] = result
+	rData["total"] = total
+	data, err := json.Marshal(rData)
 	if forceErr == "json" {
 		err = fmt.Errorf("返回数据反序列失败")
 	}
