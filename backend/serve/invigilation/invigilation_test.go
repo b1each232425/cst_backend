@@ -48,6 +48,7 @@ var (
 	testExamPaperID                 = int64(99912) // 测试用的考试试卷
 	testOfflineExamID               = int64(99913) // 用于测试线下考试
 	testOfflineExamSessionID        = int64(99912)
+	testExamineeID                  = int64(99914)
 
 	testAcademicAffair                       = int64(99901)
 	testStudent1                             = int64(99902)
@@ -644,7 +645,7 @@ func CreateTestExamData(t *testing.T) {
 	_, err = tx.Exec(ctx, `
 		INSERT INTO t_exam_session (id, exam_id, paper_id, reviewer_ids, mark_mode, mark_method, session_num, status, creator, create_time, updated_by, update_time, start_time, end_time, period_mode, duration, question_shuffled_mode)
 		VALUES ($1, $2, $3, $4, '00', '00', 1, '02', $5, $6, $5, $6, $7, $8, '00', 10, '00')
-	`, testOfflineExamSessionID, testOfflineExamID, testPaperToPublishID, nilReviewerIDs, testAcademicAffair, time.Now().UnixMilli(), testExamSessionToPublishID1StartTime, testExamSessionToPublishID1EndTime)
+	`, testOfflineExamSessionID, testOfflineExamID, testPaperToPublishID, nilReviewerIDs, testAcademicAffair, time.Now().UnixMilli(), time.Now().Add(-10*time.Minute).UnixMilli(), time.Now().Add(10*time.Minute).UnixMilli())
 	if err != nil {
 		tx.Rollback(ctx)
 		t.Fatalf("插入测试离线考试场次数据失败: %v", err)
@@ -700,9 +701,9 @@ func CreateTestExamData(t *testing.T) {
 	}
 
 	_, err = tx.Exec(ctx, `
-			INSERT INTO t_examinee (exam_session_id, student_id, serial_number, status, creator, create_time, exam_paper_id, exam_room)
-		VALUES ($1, $2, 1, '00', $3, $4, $5, $6)
-	`, testOfflineExamSessionID, testStudent1, testAcademicAffair, time.Now().UnixMilli(), testExamPaperID, testExamRoomID)
+			INSERT INTO t_examinee (id,exam_session_id, student_id, serial_number, status, creator, create_time, exam_paper_id, exam_room)
+		VALUES ($1, $2, $3, 1, '00', $4, $5, $6, $7)
+	`, testExamineeID, testOfflineExamSessionID, testStudent1, testAcademicAffair, time.Now().UnixMilli(), testExamPaperID, testExamRoomID)
 	if err != nil {
 		tx.Rollback(ctx)
 		t.Fatalf("插入测试考生数据失败: %v", err)
@@ -1539,21 +1540,6 @@ func Test_invigilation(t *testing.T) {
 			errorContains: "强制执行错误",
 		},
 		{
-			name:       "不支持的方法（PATCH）",
-			forceError: "",
-			userID:     testAcademicAffair,
-			userRole:   2002,
-			method:     "PATCH",
-			queryParams: func() url.Values {
-				v := url.Values{}
-				q := fmt.Sprintf(`{"Data": {"ExamSessionID": %d, "ExamRoomID": %d}}`, testOfflineExamSessionID, testExamRoomID)
-				v.Set("q", q)
-				return v
-			}(),
-			wantErr:       true,
-			errorContains: "unsupported method",
-		},
-		{
 			name:       "不支持的方法（其他）",
 			forceError: "",
 			userID:     testAcademicAffair,
@@ -1567,6 +1553,469 @@ func Test_invigilation(t *testing.T) {
 			}(),
 			wantErr:       true,
 			errorContains: "unsupported method",
+		},
+		{
+			name:       "PATCH - 更新考场记录（00）正常",
+			forceError: "",
+			userID:     testAcademicAffair,
+			userRole:   2002,
+			queryParams: func() url.Values {
+				v := url.Values{}
+				q := fmt.Sprintf(`{
+					"Data": {
+						"ExamSessionID": %d,
+						"ExamRoomID": %d,
+						"UpdateType": "00",
+						"Record": "测试记录",
+						"BasicEval": "02"
+					}
+				}`, testOfflineExamSessionID, testExamRoomID)
+				v.Set("q", q)
+				return v
+			}(),
+			method:  "PATCH",
+			wantErr: false,
+		},
+		{
+			name:       "PATCH - 参数q为空",
+			forceError: "",
+			userID:     testAcademicAffair,
+			userRole:   2002,
+			queryParams: func() url.Values {
+				v := url.Values{}
+				q := fmt.Sprintf("")
+				v.Set("q", q)
+				return v
+			}(),
+			method:        "PATCH",
+			wantErr:       true,
+			errorContains: "参数 q 不能为空",
+		},
+		{
+			name:       "PATCH - 无效的考试场次ID",
+			forceError: "",
+			userID:     testAcademicAffair,
+			userRole:   2002,
+			queryParams: func() url.Values {
+				v := url.Values{}
+				q := fmt.Sprintf(`{
+					"Data": {
+						"ExamSessionID": 0,
+						"ExamRoomID": %d,
+						"UpdateType": "00",
+						"Record": "测试记录",
+						"BasicEval": "02"
+					}
+				}`, testExamRoomID)
+				v.Set("q", q)
+				return v
+			}(),
+			method:        "PATCH",
+			wantErr:       true,
+			errorContains: "无效的考试场次ID",
+		},
+		{
+			name:       "PATCH - 无效的考场ID",
+			forceError: "",
+			userID:     testAcademicAffair,
+			userRole:   2002,
+			queryParams: func() url.Values {
+				v := url.Values{}
+				q := fmt.Sprintf(`{
+					"Data": {
+						"ExamSessionID": %d,
+						"ExamRoomID": 0,
+						"UpdateType": "00",
+						"Record": "测试记录",
+						"BasicEval": "02"
+					}
+				}`, testOfflineExamSessionID)
+				v.Set("q", q)
+				return v
+			}(),
+			method:        "PATCH",
+			wantErr:       true,
+			errorContains: "无效的考场ID",
+		},
+		{
+			name:       "PATCH - 无效的考场情况",
+			forceError: "",
+			userID:     testAcademicAffair,
+			userRole:   2002,
+			queryParams: func() url.Values {
+				v := url.Values{}
+				q := fmt.Sprintf(`{
+					"Data": {
+						"ExamSessionID": %d,
+						"ExamRoomID": %d,
+						"UpdateType": "00",
+						"Record": "测试记录",
+						"BasicEval": "000"
+					}
+				}`, testOfflineExamSessionID, testExamRoomID)
+				v.Set("q", q)
+				return v
+			}(),
+			method:        "PATCH",
+			wantErr:       true,
+			errorContains: "无效的考场情况",
+		},
+		{
+			name:       "PATCH - 无效的更新类型",
+			forceError: "",
+			userID:     testAcademicAffair,
+			userRole:   2002,
+			queryParams: func() url.Values {
+				v := url.Values{}
+				q := fmt.Sprintf(`{
+					"Data": {
+						"ExamSessionID": %d,
+						"ExamRoomID": %d,
+						"UpdateType": "99"
+					}
+				}`, testOfflineExamSessionID, testExamRoomID)
+				v.Set("q", q)
+				return v
+			}(),
+			wantErr:       true,
+			method:        "PATCH",
+			errorContains: "无效的更新类型",
+		},
+		{
+			name:       "PATCH - 考试已结束，不能更新（canUpdate=false）",
+			forceError: "canUpdate",
+			userID:     testAcademicAffair,
+			userRole:   2002,
+
+			queryParams: func() url.Values {
+				v := url.Values{}
+				q := fmt.Sprintf(`{
+					"Data": {
+						"ExamSessionID": %d,
+						"ExamRoomID": %d,
+						"UpdateType": "00",
+						"BasicEval": "02",
+						"Record": "尝试更新"
+					}
+				}`, testOfflineExamSessionID, testExamRoomID)
+				v.Set("q", q)
+				return v
+			}(),
+			wantErr:       true,
+			method:        "PATCH",
+			errorContains: "当前考试已结束，无法更新监考信息",
+		},
+		{
+			name:       "PATCH - 无权限更新",
+			forceError: "noAuth",
+			userID:     testAcademicAffair,
+			userRole:   2002,
+			queryParams: func() url.Values {
+				v := url.Values{}
+				q := fmt.Sprintf(`{
+					"Data": {
+						"ExamSessionID": %d,
+						"ExamRoomID": %d,
+						"UpdateType": "00",
+						"Record": "尝试更新"
+					}
+				}`, testOfflineExamSessionID, testExamRoomID)
+				v.Set("q", q)
+				return v
+			}(),
+			wantErr:       true,
+			method:        "PATCH",
+			errorContains: "无法获取该场考试的监考信息",
+		},
+		{
+			name:       "PATCH - 强制检查权限错误",
+			forceError: "checkInvigilationAuthority",
+			userID:     testAcademicAffair,
+			userRole:   2002,
+			queryParams: func() url.Values {
+				v := url.Values{}
+				q := fmt.Sprintf(`{
+                    "Data": {
+                        "ExamSessionID": %d,
+                        "ExamRoomID": %d,
+                        "UpdateType": "00",
+                        "Record": "尝试更新"
+                    }
+                }`, testOfflineExamSessionID, testExamRoomID)
+				v.Set("q", q)
+				return v
+			}(),
+			wantErr:       true,
+			method:        "PATCH",
+			errorContains: "强制检查用户是否有权限获取监考信息错误",
+		},
+		{
+			name:       "PATCH - 强制检查当前是否还能更新监考信息错误",
+			forceError: "checkInvigilation",
+			userID:     testAcademicAffair,
+			userRole:   2002,
+			queryParams: func() url.Values {
+				v := url.Values{}
+				q := fmt.Sprintf(`{
+                    "Data": {
+                        "ExamSessionID": %d,
+                        "ExamRoomID": %d,
+                        "UpdateType": "00",
+						"BasicEval": "00",
+                        "Record": "尝试更新"
+                    }
+                }`, testOfflineExamSessionID, testExamRoomID)
+				v.Set("q", q)
+				return v
+			}(),
+			wantErr:       true,
+			method:        "PATCH",
+			errorContains: "强制检查当前是否还能更新监考信息错误",
+		},
+		{
+			name:       "PATCH - 更新考生状态（02）但未提供考生列表",
+			forceError: "",
+			userID:     testAcademicAffair,
+			userRole:   2002,
+			queryParams: func() url.Values {
+				v := url.Values{}
+				q := fmt.Sprintf(`{
+                    "Data": {
+                        "ExamSessionID": %d,
+                        "ExamRoomID": %d,
+                        "UpdateType": "02",
+                        "Examinees": []
+                    }
+                }`, testOfflineExamSessionID, testExamRoomID)
+				v.Set("q", q)
+				return v
+			}(),
+			wantErr:       true,
+			method:        "PATCH",
+			errorContains: "请指定要改变状态或备注的考生",
+		},
+		{
+			name:       "PATCH - 更新考生状态（02）提供非法考生ID",
+			forceError: "",
+			userID:     testAcademicAffair,
+			userRole:   2002,
+			queryParams: func() url.Values {
+				v := url.Values{}
+				q := fmt.Sprintf(`{
+                    "Data": {
+                        "ExamSessionID": %d,
+                        "ExamRoomID": %d,
+                        "UpdateType": "02",
+                        "Examinees": [0]
+                    }
+                }`, testOfflineExamSessionID, testExamRoomID)
+				v.Set("q", q)
+				return v
+			}(),
+			wantErr:       true,
+			method:        "PATCH",
+			errorContains: "无效的考生ID",
+		},
+		{
+			name:       "PATCH - 强制检查考生是否属于该考场错误",
+			forceError: "checkExaminees",
+			userID:     testAcademicAffair,
+			userRole:   2002,
+			queryParams: func() url.Values {
+				v := url.Values{}
+				q := fmt.Sprintf(`{
+                    "Data": {
+                        "ExamSessionID": %d,
+                        "ExamRoomID": %d,
+                        "UpdateType": "02",
+                        "Examinees": [1]
+                    }
+                }`, testOfflineExamSessionID, testExamRoomID)
+				v.Set("q", q)
+				return v
+			}(),
+			wantErr:       true,
+			method:        "PATCH",
+			errorContains: "强制检查考生是否是该考场的考生错误",
+		},
+		{
+			name:       "PATCH - 要更新的考生不在该考场考试",
+			forceError: "",
+			userID:     testAcademicAffair,
+			userRole:   2002,
+			queryParams: func() url.Values {
+				v := url.Values{}
+				q := fmt.Sprintf(`{
+                    "Data": {
+                        "ExamSessionID": %d,
+                        "ExamRoomID": %d,
+                        "UpdateType": "02",
+                        "Examinees": [1]
+                    }
+                }`, testOfflineExamSessionID, testExamRoomID)
+				v.Set("q", q)
+				return v
+			}(),
+			wantErr:       true,
+			method:        "PATCH",
+			errorContains: "要更新的考生不在该考场考试",
+		},
+		{
+			name:       "PATCH - 事务开启错误",
+			forceError: "tx.Begin",
+			userID:     testAcademicAffair,
+			userRole:   2002,
+			queryParams: func() url.Values {
+				v := url.Values{}
+				q := fmt.Sprintf(`{
+					"Data": {
+						"ExamSessionID": %d,
+						"ExamRoomID": %d,
+						"UpdateType": "00",
+						"Record": "测试记录",
+						"BasicEval": "02"
+					}
+				}`, testOfflineExamSessionID, testExamRoomID)
+				v.Set("q", q)
+				return v
+			}(),
+			method:        "PATCH",
+			wantErr:       true,
+			errorContains: "强制开始事务错误",
+		},
+		{
+			name:       "PATCH - 事务回滚错误",
+			forceError: "tx.Rollback",
+			userID:     testAcademicAffair,
+			userRole:   2002,
+			queryParams: func() url.Values {
+				v := url.Values{}
+				q := fmt.Sprintf(`{
+					"Data": {
+						"ExamSessionID": %d,
+						"ExamRoomID": %d,
+						"UpdateType": "00",
+						"Record": "测试记录",
+						"BasicEval": "02"
+					}
+				}`, testOfflineExamSessionID, testExamRoomID)
+				v.Set("q", q)
+				return v
+			}(),
+			method:  "PATCH",
+			wantErr: false,
+		},
+		{
+			name:       "PATCH - 事务提交错误",
+			forceError: "tx.Commit",
+			userID:     testAcademicAffair,
+			userRole:   2002,
+			queryParams: func() url.Values {
+				v := url.Values{}
+				q := fmt.Sprintf(`{
+					"Data": {
+						"ExamSessionID": %d,
+						"ExamRoomID": %d,
+						"UpdateType": "00",
+						"Record": "测试记录",
+						"BasicEval": "02"
+					}
+				}`, testOfflineExamSessionID, testExamRoomID)
+				v.Set("q", q)
+				return v
+			}(),
+			method:  "PATCH",
+			wantErr: false,
+		},
+		{
+			name:       "PATCH - 强制更新考场记录失败（tx.Exec）",
+			forceError: "updateExamRecord",
+			userID:     testAcademicAffair,
+			userRole:   2002,
+			queryParams: func() url.Values {
+				v := url.Values{}
+				q := fmt.Sprintf(`{
+                    "Data": {
+                        "ExamSessionID": %d,
+                        "ExamRoomID": %d,
+                        "UpdateType": "00",
+                        "Record": "尝试更新",
+                        "BasicEval": "02"
+                    }
+                }`, testOfflineExamSessionID, testExamRoomID)
+				v.Set("q", q)
+				return v
+			}(),
+			wantErr:       true,
+			method:        "PATCH",
+			errorContains: "强制更新考场记录错误",
+		},
+		{
+			name:       "PATCH - 强制更新考生状态失败",
+			forceError: "updateExamineeStatus",
+			userID:     testAcademicAffair,
+			userRole:   2002,
+			queryParams: func() url.Values {
+				v := url.Values{}
+				q := fmt.Sprintf(`{
+                    "Data": {
+                        "ExamSessionID": %d,
+                        "ExamRoomID": %d,
+                        "UpdateType": "02",
+                        "Examinees": [%d]
+                    }
+                }`, testOfflineExamSessionID, testExamRoomID, testExamineeID)
+				v.Set("q", q)
+				return v
+			}(),
+			wantErr:       true,
+			method:        "PATCH",
+			errorContains: "强制更新考生状态错误",
+		},
+		{
+			name:       "PATCH - 正常更新考生状态",
+			forceError: "",
+			userID:     testAcademicAffair,
+			userRole:   2002,
+			queryParams: func() url.Values {
+				v := url.Values{}
+				q := fmt.Sprintf(`{
+                    "Data": {
+                        "ExamSessionID": %d,
+                        "ExamRoomID": %d,
+                        "UpdateType": "02",
+                        "Examinees": [%d]
+                    }
+                }`, testOfflineExamSessionID, testExamRoomID, testExamineeID)
+				v.Set("q", q)
+				return v
+			}(),
+			wantErr:       false,
+			method:        "PATCH",
+			errorContains: "",
+		},
+		{
+			name:       "PATCH - 更新考生备注失败",
+			forceError: "updateExamineeRemark",
+			userID:     testAcademicAffair,
+			userRole:   2002,
+			queryParams: func() url.Values {
+				v := url.Values{}
+				q := fmt.Sprintf(`{
+                    "Data": {
+                        "ExamSessionID": %d,
+                        "ExamRoomID": %d,
+                        "UpdateType": "04",
+                        "Examinees": [%d],
+                        "Remark": "测试备注"
+                    }
+                }`, testOfflineExamSessionID, testExamRoomID, testExamineeID)
+				v.Set("q", q)
+				return v
+			}(),
+			wantErr:       true,
+			method:        "PATCH",
+			errorContains: "强制更新考生备注错误",
 		},
 	}
 
@@ -1610,7 +2059,7 @@ func Test_invigilation(t *testing.T) {
 			}
 
 			// 对正常情况，确保返回数据存在
-			if svc.Msg != nil && len(svc.Msg.Data) == 0 {
+			if svc.Msg != nil && len(svc.Msg.Data) == 0 && tt.method == "GET" {
 				t.Errorf("期望返回数据, 结果为空")
 			}
 		})

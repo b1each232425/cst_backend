@@ -11,6 +11,7 @@ import (
 
 	"w2w.io/cmn"
 	"w2w.io/null"
+	"w2w.io/serve/auth_mgt"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -153,6 +154,26 @@ func (r *service) QueryUsers(ctx context.Context, tx pgx.Tx, page, pageSize int6
            COALESCE((
                SELECT json_agg(
                    json_build_object(
+                       'ID', d.auth_domain_id,
+                       'Name', d.domain_name,
+                       'Domain', d.domain,
+                       'Priority', d.priority,
+                       'DomainID', d.domain_id,
+                       'UpdatedBy', null,
+                       'UpdateTime', null,
+                       'Creator', d.creator,
+                       'CreateTime', d.create_time,
+                       'Addi', d.addi,
+                       'Remark', d.remark,
+                       'Status', d.status
+                   )
+               )
+               FROM v_user_domain d
+               WHERE d.user_id = u.id
+           ), '[]') AS domain_objects,
+           COALESCE((
+               SELECT json_agg(
+                   json_build_object(
                    	   'Role', api.role,
                        'APIID', api.api_id,
                        'APIName', api.api_name,
@@ -187,6 +208,7 @@ func (r *service) QueryUsers(ctx context.Context, tx pgx.Tx, page, pageSize int6
 	var users = make([]User, 0, pageSize)
 	for rows.Next() {
 		var user User
+		var domainObjectsJSON []byte
 		var apisJSON []byte
 		err = rows.Scan(
 			&user.ID,
@@ -206,12 +228,24 @@ func (r *service) QueryUsers(ctx context.Context, tx pgx.Tx, page, pageSize int6
 			&user.UpdateTime,
 			&user.Creator,
 			&user.Domains,
+			&domainObjectsJSON,
 			&apisJSON,
 		)
 		if err != nil || forceErr == "scan" {
 			e := fmt.Errorf("failed to scan user row: %w", err)
 			z.Error(e.Error())
 			return []User{}, 0, e
+		}
+
+		// 解析DomainObjects JSON数据
+		if len(domainObjectsJSON) > 0 && string(domainObjectsJSON) != "[]" {
+			err = json.Unmarshal(domainObjectsJSON, &user.DomainObjects)
+			if err != nil || forceErr == "json.Unmarshal.DomainObjects" {
+				z.Warn(fmt.Sprintf("failed to unmarshal DomainObjects JSON for user %d: %v", user.ID.Int64, err))
+				user.DomainObjects = []cmn.TDomain{} // 设置为空数组
+			}
+		} else {
+			user.DomainObjects = []cmn.TDomain{} // 设置为空数组
 		}
 
 		// 解析APIs JSON数据
@@ -578,7 +612,9 @@ func (r *service) CheckTUserRowExists(ctx context.Context, tx pgx.Tx, fields map
 	}
 
 	if !userId.Valid || forceErr == "InvalidUserID" {
-		return false, nil, nil
+		e := fmt.Errorf("invalid user ID retrieved")
+		z.Error(e.Error())
+		return false, nil, e
 	}
 
 	// 查询该用户信息
@@ -818,12 +854,16 @@ func (r *service) ValidateUserToBeInsert(ctx context.Context, tx pgx.Tx, users [
 		if len(users[i].Domains) != 0 {
 			// 检查角色是否合法
 			for _, domain := range users[i].Domains {
-				if !IsDomainExist(domain.String) {
+				exist, existDomain, err := IsDomainExist(ctx, tx, domain.String)
+				if err != nil || forceErr == "IsDomainExist" {
+					return []User{}, []User{}, []User{}, fmt.Errorf("error checking domain existence: %w", err)
+				}
+				if !exist {
 					errorCount++
 					errorMessage = append(errorMessage, null.StringFrom(fmt.Sprintf("%s: %s", errorMessages["invalid_domain"], domain.String)))
 					break // 一旦发现一个角色不合法，就不需要继续检查其他角色
 				}
-				if domain.String == DomainSuperAdmin {
+				if existDomain.Priority.Int64 == auth_mgt.CDomainPrioritySuperAdmin {
 					// 如果角色是超级管理员，则不允许添加
 					errorCount++
 					errorMessage = append(errorMessage, null.StringFrom(errorMessages["can_not_be_superAdmin"]))
