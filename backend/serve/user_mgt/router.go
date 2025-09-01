@@ -110,7 +110,7 @@ func Enroll(author string) {
 			{
 				Name:         "用户管理.获取新账号",
 				AccessAction: auth_mgt.CAPIAccessActionRead,
-				Configurable: true,
+				Configurable: false,
 			},
 		},
 
@@ -134,7 +134,7 @@ func Enroll(author string) {
 			{
 				Name:         "用户管理.查询个人信息",
 				AccessAction: auth_mgt.CAPIAccessActionRead,
-				Configurable: true,
+				Configurable: false,
 			},
 		},
 
@@ -158,7 +158,7 @@ func Enroll(author string) {
 			{
 				Name:         "用户管理.登录管理.选择可登录域",
 				AccessAction: auth_mgt.CAPIAccessActionRead,
-				Configurable: true,
+				Configurable: false,
 			},
 		},
 
@@ -182,7 +182,7 @@ func Enroll(author string) {
 			{
 				Name:         "用户管理.验证用户信息",
 				AccessAction: auth_mgt.CAPIAccessActionRead,
-				Configurable: true,
+				Configurable: false,
 			},
 		},
 
@@ -206,7 +206,7 @@ func Enroll(author string) {
 			{
 				Name:         "用户管理.登录管理.用户登出",
 				AccessAction: auth_mgt.CAPIAccessActionUpdate,
-				Configurable: true,
+				Configurable: false,
 			},
 		},
 
@@ -230,7 +230,7 @@ func Enroll(author string) {
 			{
 				Name:         "用户管理.登录管理.发送邮箱验证码",
 				AccessAction: auth_mgt.CAPIAccessActionCreate,
-				Configurable: true,
+				Configurable: false,
 			},
 		},
 
@@ -254,7 +254,7 @@ func Enroll(author string) {
 			{
 				Name:         "用户管理.登录管理.邮箱注册",
 				AccessAction: auth_mgt.CAPIAccessActionCreate,
-				Configurable: true,
+				Configurable: false,
 			},
 		},
 

@@ -930,7 +930,7 @@ func Test_handler_HandleValidateUserToBeInsert(t *testing.T) {
 							"Category": "normal",
 							"Status": "active",
 							"Type": "user",
-							"Domains": ["cst.school^teacher"],
+							"Domains": ["assess^teacher"],
 							"APIs": []
 						}
 					]`, ""),
@@ -1103,7 +1103,7 @@ func Test_handler_HandleQueryMyInfo(t *testing.T) {
 								Creator:      null.NewInt(1000, true),
 							},
 							Domains: []null.String{
-								null.StringFrom("cst.school^teacher"),
+								null.StringFrom("assess^teacher"),
 								null.StringFrom("other.domain"),
 							},
 							APIs: []cmn.TVUserDomainAPI{
@@ -1211,7 +1211,7 @@ func Test_handler_HandleQueryMyInfo(t *testing.T) {
 								Category:     "normal",
 							},
 							Domains: []null.String{
-								null.StringFrom("cst.school^teacher"),
+								null.StringFrom("assess^teacher"),
 							},
 						},
 					},
@@ -1236,7 +1236,7 @@ func Test_handler_HandleQueryMyInfo(t *testing.T) {
 								Category:     "normal",
 							},
 							Domains: []null.String{
-								null.StringFrom("cst.school^teacher"),
+								null.StringFrom("assess^teacher"),
 							},
 						},
 					},
@@ -1261,7 +1261,7 @@ func Test_handler_HandleQueryMyInfo(t *testing.T) {
 								Category:     "normal",
 							},
 							Domains: []null.String{
-								null.StringFrom("cst.school^teacher"),
+								null.StringFrom("assess^teacher"),
 							},
 						},
 					},
@@ -1461,21 +1461,18 @@ func Test_handler_HandleUser(t *testing.T) {
 						},
 					},
 					totalRows: 1,
-					QueryUserCurrentRoleFunc: func(ctx context.Context, userId null.Int) (null.Int, null.String, error) {
-						return null.Int{}, null.NewString("cst.school^student", true), nil
-					},
 				},
 			},
 			args: args{
 				ctx: createMockContext("GET", "/api/user", url.Values{
 					"page":     {"1"},
 					"pageSize": {"10"},
-				}, ""),
+				}, "no-access"),
 			},
 			wantErr: true,
 		},
 		{
-			name: "查询当前用户角色失败",
+			name: "CheckUserAPIAccessible失败",
 			fields: fields{
 				srv: &MockService{
 					users: []User{
@@ -1499,7 +1496,36 @@ func Test_handler_HandleUser(t *testing.T) {
 				ctx: createMockContext("GET", "/api/user", url.Values{
 					"page":     {"1"},
 					"pageSize": {"10"},
-				}, ""),
+				}, "CheckUserAPIAccessible"),
+			},
+			wantErr: true,
+		},
+		{
+			name: "查询当前用户权限信息失败",
+			fields: fields{
+				srv: &MockService{
+					users: []User{
+						{
+							TUser: cmn.TUser{
+								ID:           null.NewInt(1, true),
+								Account:      "test_user_001",
+								OfficialName: null.NewString("测试用户001", true),
+								Gender:       null.NewString("M", true),
+								Status:       null.NewString("00", true),
+							},
+						},
+					},
+					totalRows: 1,
+					QueryUserCurrentRoleFunc: func(ctx context.Context, userId null.Int) (null.Int, null.String, error) {
+						return null.Int{}, null.String{}, fmt.Errorf("查询角色失败")
+					},
+				},
+			},
+			args: args{
+				ctx: createMockContext("GET", "/api/user", url.Values{
+					"page":     {"1"},
+					"pageSize": {"10"},
+				}, "GetUserAuthority"),
 			},
 			wantErr: true,
 		},
@@ -1683,6 +1709,41 @@ func Test_handler_HandleUser(t *testing.T) {
 					"status":      {"00"},
 					"createTime":  {strconv.FormatInt(time.Now().Unix()-86400, 10)},
 				}, "json.Marshal"),
+			},
+			wantErr: true,
+		},
+		{
+			name: "触发no-login错误",
+			fields: fields{
+				srv: &MockService{
+					users: []User{
+						{
+							TUser: cmn.TUser{
+								ID:           null.NewInt(3, true),
+								Account:      "test_female",
+								OfficialName: null.NewString("女性测试用户", true),
+								Gender:       null.NewString("F", true),
+								MobilePhone:  null.NewString("13800138000", true),
+								Email:        null.NewString("test@example.com", true),
+								Status:       null.NewString("00", true),
+							},
+						},
+					},
+					totalRows: 1,
+				},
+			},
+			args: args{
+				ctx: createMockContext("GET", "/api/user", url.Values{
+					"page":        {"1"},
+					"pageSize":    {"10"},
+					"account":     {"test"},
+					"name":        {"女性"},
+					"mobilePhone": {"138"},
+					"email":       {"test"},
+					"gender":      {"F"},
+					"status":      {"00"},
+					"createTime":  {strconv.FormatInt(time.Now().Unix()-86400, 10)},
+				}, "no-login"),
 			},
 			wantErr: true,
 		},
@@ -1978,6 +2039,32 @@ func Test_handler_HandleUser(t *testing.T) {
 			},
 			wantErr: true,
 		},
+		{
+			name: "触发CheckUserAPIAccessible错误",
+			fields: fields{
+				srv: &MockService{},
+			},
+			args: args{
+				ctx: createMockContextWithBody("POST", "/api/user", `[{
+					"Account": "new_user_001",
+					"OfficialName": "新用户001"
+				}]`, "CheckUserAPIAccessible"),
+			},
+			wantErr: true,
+		},
+		{
+			name: "触发no-access错误",
+			fields: fields{
+				srv: &MockService{},
+			},
+			args: args{
+				ctx: createMockContextWithBody("POST", "/api/user", `[{
+					"Account": "new_user_001",
+					"OfficialName": "新用户001"
+				}]`, "no-access"),
+			},
+			wantErr: true,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -2071,7 +2158,7 @@ func Test_handler_HandleSelectLoginDomain(t *testing.T) {
 								OfficialName: null.NewString("测试用户", true),
 							},
 							Domains: []null.String{
-								null.StringFrom("cst.school^superAdmin"),
+								null.StringFrom("assess^superAdmin"),
 								null.StringFrom("other.domain"),
 							},
 						},
@@ -2080,7 +2167,7 @@ func Test_handler_HandleSelectLoginDomain(t *testing.T) {
 				},
 			},
 			args: args{
-				ctx: createMockContextWithBody("PATCH", "/api/user/select-domain", `"cst.school^superAdmin"`, ""),
+				ctx: createMockContextWithBody("PATCH", "/api/user/select-domain", `"assess^superAdmin"`, ""),
 			},
 			wantErr: false,
 		},
@@ -2090,7 +2177,7 @@ func Test_handler_HandleSelectLoginDomain(t *testing.T) {
 				srv: &MockService{},
 			},
 			args: args{
-				ctx: createMockContextWithBody("GET", "/api/user/select-domain", `"cst.school^teacher"`, ""),
+				ctx: createMockContextWithBody("GET", "/api/user/select-domain", `"assess^teacher"`, ""),
 			},
 			wantErr: true,
 		},
@@ -2100,7 +2187,7 @@ func Test_handler_HandleSelectLoginDomain(t *testing.T) {
 				srv: &MockService{},
 			},
 			args: args{
-				ctx: createMockContextWithBody("POST", "/api/user/select-domain", `"cst.school^teacher"`, ""),
+				ctx: createMockContextWithBody("POST", "/api/user/select-domain", `"assess^teacher"`, ""),
 			},
 			wantErr: true,
 		},
@@ -2110,7 +2197,7 @@ func Test_handler_HandleSelectLoginDomain(t *testing.T) {
 				srv: &MockService{},
 			},
 			args: args{
-				ctx: createMockContextWithBody("PUT", "/api/user/select-domain", `"cst.school^teacher"`, ""),
+				ctx: createMockContextWithBody("PUT", "/api/user/select-domain", `"assess^teacher"`, ""),
 			},
 			wantErr: true,
 		},
@@ -2120,7 +2207,7 @@ func Test_handler_HandleSelectLoginDomain(t *testing.T) {
 				srv: &MockService{},
 			},
 			args: args{
-				ctx: createMockContextWithBody("DELETE", "/api/user/select-domain", `"cst.school^teacher"`, ""),
+				ctx: createMockContextWithBody("DELETE", "/api/user/select-domain", `"assess^teacher"`, ""),
 			},
 			wantErr: true,
 		},
@@ -2130,7 +2217,7 @@ func Test_handler_HandleSelectLoginDomain(t *testing.T) {
 				srv: &MockService{},
 			},
 			args: args{
-				ctx: createMockContextWithBody("PATCH", "/api/user/select-domain", `"cst.school^teacher"`, "io.ReadAll"),
+				ctx: createMockContextWithBody("PATCH", "/api/user/select-domain", `"assess^teacher"`, "io.ReadAll"),
 			},
 			wantErr: true,
 		},
@@ -2146,7 +2233,7 @@ func Test_handler_HandleSelectLoginDomain(t *testing.T) {
 								OfficialName: null.NewString("测试用户", true),
 							},
 							Domains: []null.String{
-								null.StringFrom("cst.school^teacher"),
+								null.StringFrom("assess^teacher"),
 							},
 						},
 					},
@@ -2154,7 +2241,7 @@ func Test_handler_HandleSelectLoginDomain(t *testing.T) {
 				},
 			},
 			args: args{
-				ctx: createMockContextWithBody("PATCH", "/api/user/select-domain", `"cst.school^teacher"`, "io.Close"),
+				ctx: createMockContextWithBody("PATCH", "/api/user/select-domain", `"assess^teacher"`, "io.Close"),
 			},
 			wantErr: false, // io.Close错误不会导致整个请求失败
 		},
@@ -2174,7 +2261,7 @@ func Test_handler_HandleSelectLoginDomain(t *testing.T) {
 				srv: &MockService{},
 			},
 			args: args{
-				ctx: createMockContextWithBody("PATCH", "/api/user/select-domain", `"cst.school^teacher"`, "json.Unmarshal"),
+				ctx: createMockContextWithBody("PATCH", "/api/user/select-domain", `"assess^teacher"`, "json.Unmarshal"),
 			},
 			wantErr: true,
 		},
@@ -2184,7 +2271,7 @@ func Test_handler_HandleSelectLoginDomain(t *testing.T) {
 				srv: &MockService{},
 			},
 			args: args{
-				ctx: createMockContextWithBody("PATCH", "/api/user/select-domain", `"cst.school^teacher"`, "json.UnmarshalDomain"),
+				ctx: createMockContextWithBody("PATCH", "/api/user/select-domain", `"assess^teacher"`, "json.UnmarshalDomain"),
 			},
 			wantErr: true,
 		},
@@ -2206,7 +2293,7 @@ func Test_handler_HandleSelectLoginDomain(t *testing.T) {
 				},
 			},
 			args: args{
-				ctx: createMockContextWithBody("PATCH", "/api/user/select-domain", `"cst.school^teacher"`, ""),
+				ctx: createMockContextWithBody("PATCH", "/api/user/select-domain", `"assess^teacher"`, ""),
 			},
 			wantErr: true,
 		},
@@ -2219,7 +2306,7 @@ func Test_handler_HandleSelectLoginDomain(t *testing.T) {
 				},
 			},
 			args: args{
-				ctx: createMockContextWithBody("PATCH", "/api/user/select-domain", `"cst.school^teacher"`, ""),
+				ctx: createMockContextWithBody("PATCH", "/api/user/select-domain", `"assess^teacher"`, ""),
 			},
 			wantErr: true,
 		},
@@ -2243,12 +2330,12 @@ func Test_handler_HandleSelectLoginDomain(t *testing.T) {
 				},
 			},
 			args: args{
-				ctx: createMockContextWithBody("PATCH", "/api/user/select-domain", `"cst.school^teacher"`, ""),
+				ctx: createMockContextWithBody("PATCH", "/api/user/select-domain", `"assess^teacher"`, ""),
 			},
 			wantErr: true,
 		},
 		{
-			name: "QueryDomainID强制错误",
+			name: "IsDomainExist强制错误",
 			fields: fields{
 				srv: &MockService{
 					users: []User{
@@ -2259,7 +2346,7 @@ func Test_handler_HandleSelectLoginDomain(t *testing.T) {
 								OfficialName: null.NewString("测试用户", true),
 							},
 							Domains: []null.String{
-								null.StringFrom("cst.school^teacher"),
+								null.StringFrom("assess^teacher"),
 							},
 						},
 					},
@@ -2267,7 +2354,31 @@ func Test_handler_HandleSelectLoginDomain(t *testing.T) {
 				},
 			},
 			args: args{
-				ctx: createMockContextWithBody("PATCH", "/api/user/select-domain", `"cst.school^teacher"`, "QueryDomainID"),
+				ctx: createMockContextWithBody("PATCH", "/api/user/select-domain", `"assess^teacher"`, "IsDomainExist"),
+			},
+			wantErr: true,
+		},
+		{
+			name: "domain-not-exist强制错误",
+			fields: fields{
+				srv: &MockService{
+					users: []User{
+						{
+							TUser: cmn.TUser{
+								ID:           null.NewInt(54242, true),
+								Account:      "test_user",
+								OfficialName: null.NewString("测试用户", true),
+							},
+							Domains: []null.String{
+								null.StringFrom("assess^teacher"),
+							},
+						},
+					},
+					totalRows: 1,
+				},
+			},
+			args: args{
+				ctx: createMockContextWithBody("PATCH", "/api/user/select-domain", `"assess^teacher"`, "domain-not-exist"),
 			},
 			wantErr: true,
 		},
@@ -2283,7 +2394,7 @@ func Test_handler_HandleSelectLoginDomain(t *testing.T) {
 								OfficialName: null.NewString("测试用户", true),
 							},
 							Domains: []null.String{
-								null.StringFrom("cst.school^teacher"),
+								null.StringFrom("assess^teacher"),
 							},
 						},
 					},
@@ -2291,7 +2402,7 @@ func Test_handler_HandleSelectLoginDomain(t *testing.T) {
 				},
 			},
 			args: args{
-				ctx: createMockContextWithBody("PATCH", "/api/user/select-domain", `"cst.school^teacher"`, "UpdateUserRole"),
+				ctx: createMockContextWithBody("PATCH", "/api/user/select-domain", `"assess^teacher"`, "UpdateUserRole"),
 			},
 			wantErr: true,
 		},
@@ -2307,7 +2418,7 @@ func Test_handler_HandleSelectLoginDomain(t *testing.T) {
 								OfficialName: null.NewString("测试用户", true),
 							},
 							Domains: []null.String{
-								null.StringFrom("cst.school^teacher"),
+								null.StringFrom("assess^teacher"),
 							},
 						},
 					},
@@ -2315,7 +2426,7 @@ func Test_handler_HandleSelectLoginDomain(t *testing.T) {
 				},
 			},
 			args: args{
-				ctx: createMockContextWithBody("patch", "/api/user/select-domain", `"cst.school^teacher"`, ""),
+				ctx: createMockContextWithBody("patch", "/api/user/select-domain", `"assess^teacher"`, ""),
 			},
 			wantErr: false,
 		},
@@ -2331,7 +2442,7 @@ func Test_handler_HandleSelectLoginDomain(t *testing.T) {
 								OfficialName: null.NewString("测试用户", true),
 							},
 							Domains: []null.String{
-								null.StringFrom("cst.school^teacher"),
+								null.StringFrom("assess^teacher"),
 							},
 						},
 					},
@@ -2339,7 +2450,7 @@ func Test_handler_HandleSelectLoginDomain(t *testing.T) {
 				},
 			},
 			args: args{
-				ctx: createMockContextWithBody("Patch", "/api/user/select-domain", `"cst.school^teacher"`, ""),
+				ctx: createMockContextWithBody("Patch", "/api/user/select-domain", `"assess^teacher"`, ""),
 			},
 			wantErr: false,
 		},
@@ -2355,7 +2466,7 @@ func Test_handler_HandleSelectLoginDomain(t *testing.T) {
 								OfficialName: null.NewString("测试用户", true),
 							},
 							Domains: []null.String{
-								null.StringFrom("cst.school^teacher"),
+								null.StringFrom("assess^teacher"),
 							},
 						},
 					},
@@ -2363,7 +2474,7 @@ func Test_handler_HandleSelectLoginDomain(t *testing.T) {
 				},
 			},
 			args: args{
-				ctx: createMockContextWithBody("PATCH", "/api/user/select-domain", `"cst.school^teacher"`, ""),
+				ctx: createMockContextWithBody("PATCH", "/api/user/select-domain", `"assess^teacher"`, ""),
 			},
 			wantErr: false,
 		},
