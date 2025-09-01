@@ -204,19 +204,21 @@ func createTestPool(t *testing.T, size int) *ants.Pool {
 // Test_serviceImpl_HandleInitTimeSyncConn 测试HandleInitTimeSyncConn方法
 func Test_serviceImpl_HandleInitTimeSyncConn(t *testing.T) {
 	tests := []struct {
-		name         string
-		examineeID   string
-		submissionID string
-		wantErr      bool
-		desc         string
-		mockRepoFunc func() Repo
+		name              string
+		examineeID        string
+		submissionID      string
+		wrongSubmissionID string
+		wantErr           bool
+		desc              string
+		mockRepoFunc      func() Repo
 	}{
 		{
-			name:         "缺少examinee_id和practice_submission_id参数",
-			examineeID:   "",
-			submissionID: "",
-			wantErr:      true,
-			desc:         "测试缺少必要参数时的错误处理",
+			name:              "缺少examinee_id、practice_submission_id、wrong_submission_id参数",
+			examineeID:        "",
+			submissionID:      "",
+			wrongSubmissionID: "",
+			wantErr:           true,
+			desc:              "测试缺少必要参数时的错误处理",
 			mockRepoFunc: func() Repo {
 				return &MockRepo{}
 			},
@@ -237,6 +239,17 @@ func Test_serviceImpl_HandleInitTimeSyncConn(t *testing.T) {
 			submissionID: "invalid",
 			wantErr:      true,
 			desc:         "测试无效的practice_submission_id格式时的错误处理",
+			mockRepoFunc: func() Repo {
+				return &MockRepo{}
+			},
+		},
+		{
+			name:              "无效的wrong_submission_id格式",
+			examineeID:        "12345",
+			submissionID:      "54321",
+			wrongSubmissionID: "abcd",
+			wantErr:           true,
+			desc:              "测试无效的wrong_submission_id格式时的错误处理",
 			mockRepoFunc: func() Repo {
 				return &MockRepo{}
 			},
@@ -287,6 +300,9 @@ func Test_serviceImpl_HandleInitTimeSyncConn(t *testing.T) {
 			}
 			if tt.submissionID != "" {
 				queryParams.Set("practice_submission_id", tt.submissionID)
+			}
+			if tt.wrongSubmissionID != "" {
+				queryParams.Set("wrong_submission_id", tt.wrongSubmissionID)
 			}
 
 			// 创建HTTP请求
@@ -369,7 +385,8 @@ func Test_serviceImpl_HandleInitTimeSyncConn_Websocket(t *testing.T) {
 		name                              string
 		sysUserID                         null.Int
 		examineeID                        string
-		submissionID                      string
+		practiceSubmissionID              string
+		wrongSubmissionID                 string
 		doResetEndTime                    bool
 		resetEndTimeExamineeID            int64
 		sleepDuration1                    time.Duration
@@ -386,7 +403,7 @@ func Test_serviceImpl_HandleInitTimeSyncConn_Websocket(t *testing.T) {
 		{
 			name:                             "只有examinee_id参数",
 			examineeID:                       "12345",
-			submissionID:                     "",
+			practiceSubmissionID:             "",
 			sysUserID:                        null.NewInt(12345, true),
 			sleepDuration1:                   0,
 			HandleInitTimeSyncConnForceError: "",
@@ -400,7 +417,7 @@ func Test_serviceImpl_HandleInitTimeSyncConn_Websocket(t *testing.T) {
 		{
 			name:                             "只有submission_id参数",
 			examineeID:                       "",
-			submissionID:                     "12345",
+			practiceSubmissionID:             "12345",
 			sysUserID:                        null.NewInt(12345, true),
 			sleepDuration1:                   0,
 			HandleInitTimeSyncConnForceError: "",
@@ -412,9 +429,24 @@ func Test_serviceImpl_HandleInitTimeSyncConn_Websocket(t *testing.T) {
 			},
 		},
 		{
+			name:                             "只有wrong_submission_id参数",
+			examineeID:                       "",
+			practiceSubmissionID:             "",
+			wrongSubmissionID:                "12345",
+			sysUserID:                        null.NewInt(12345, true),
+			sleepDuration1:                   0,
+			HandleInitTimeSyncConnForceError: "",
+			serveForceError:                  "",
+			wantErr:                          false,
+			desc:                             "测试只有wrong_submission_id参数",
+			mockRepoFunc: func() Repo {
+				return &MockRepo{}
+			},
+		},
+		{
 			name:                             "examinee_id和submission_id参数都没有",
 			examineeID:                       "",
-			submissionID:                     "",
+			practiceSubmissionID:             "",
 			sysUserID:                        null.NewInt(12345, true),
 			sleepDuration1:                   0,
 			HandleInitTimeSyncConnForceError: "",
@@ -428,7 +460,7 @@ func Test_serviceImpl_HandleInitTimeSyncConn_Websocket(t *testing.T) {
 		{
 			name:                             "pool.ReleaseTimeout错误",
 			examineeID:                       "",
-			submissionID:                     "12345",
+			practiceSubmissionID:             "12345",
 			sysUserID:                        null.NewInt(12345, true),
 			sleepDuration1:                   0,
 			HandleInitTimeSyncConnForceError: "",
@@ -442,7 +474,7 @@ func Test_serviceImpl_HandleInitTimeSyncConn_Websocket(t *testing.T) {
 		{
 			name:                             "websocket.Upgrade错误",
 			examineeID:                       "12345",
-			submissionID:                     "",
+			practiceSubmissionID:             "",
 			sysUserID:                        null.NewInt(12345, true),
 			sleepDuration1:                   0,
 			HandleInitTimeSyncConnForceError: "websocket.Upgrade",
@@ -456,7 +488,7 @@ func Test_serviceImpl_HandleInitTimeSyncConn_Websocket(t *testing.T) {
 		{
 			name:                             "测试广播时间同步消息",
 			examineeID:                       "12345",
-			submissionID:                     "67890",
+			practiceSubmissionID:             "67890",
 			sysUserID:                        null.NewInt(54242, true),
 			sleepDuration1:                   10 * time.Second,
 			HandleInitTimeSyncConnForceError: "",
@@ -473,7 +505,7 @@ func Test_serviceImpl_HandleInitTimeSyncConn_Websocket(t *testing.T) {
 		{
 			name:                             "注册客户端后发送时间同步消息错误",
 			examineeID:                       "12345",
-			submissionID:                     "",
+			practiceSubmissionID:             "",
 			sysUserID:                        null.NewInt(12345, true),
 			sleepDuration1:                   5 * time.Second,
 			HandleInitTimeSyncConnForceError: "sendMessage",
@@ -487,7 +519,7 @@ func Test_serviceImpl_HandleInitTimeSyncConn_Websocket(t *testing.T) {
 		{
 			name:                             "测试广播时间同步消息时发送消息错误",
 			examineeID:                       "12345",
-			submissionID:                     "67890",
+			practiceSubmissionID:             "67890",
 			sysUserID:                        null.NewInt(54242, true),
 			sleepDuration1:                   10 * time.Second,
 			HandleInitTimeSyncConnForceError: "",
@@ -505,7 +537,7 @@ func Test_serviceImpl_HandleInitTimeSyncConn_Websocket(t *testing.T) {
 		{
 			name:                             "测试广播时间同步消息时提交协程池错误",
 			examineeID:                       "12345",
-			submissionID:                     "67890",
+			practiceSubmissionID:             "67890",
 			sysUserID:                        null.NewInt(54242, true),
 			sleepDuration1:                   10 * time.Second,
 			HandleInitTimeSyncConnForceError: "",
@@ -523,7 +555,7 @@ func Test_serviceImpl_HandleInitTimeSyncConn_Websocket(t *testing.T) {
 		{
 			name:                             "客户端发送非json格式的消息",
 			examineeID:                       "12345",
-			submissionID:                     "67890",
+			practiceSubmissionID:             "67890",
 			sysUserID:                        null.NewInt(54242, true),
 			resetEndTimeExamineeID:           12345,
 			doResetEndTime:                   false,
@@ -546,7 +578,7 @@ func Test_serviceImpl_HandleInitTimeSyncConn_Websocket(t *testing.T) {
 		{
 			name:                             "测试重置考试结束时间｜重置成功",
 			examineeID:                       "12345",
-			submissionID:                     "67890",
+			practiceSubmissionID:             "67890",
 			sysUserID:                        null.NewInt(54242, true),
 			resetEndTimeExamineeID:           12345,
 			doResetEndTime:                   true,
@@ -567,7 +599,7 @@ func Test_serviceImpl_HandleInitTimeSyncConn_Websocket(t *testing.T) {
 		{
 			name:                              "测试重置考试结束时间｜发送消息错误",
 			examineeID:                        "12345",
-			submissionID:                      "67890",
+			practiceSubmissionID:              "67890",
 			sysUserID:                         null.NewInt(54242, true),
 			resetEndTimeExamineeID:            12345,
 			doResetEndTime:                    true,
@@ -590,7 +622,7 @@ func Test_serviceImpl_HandleInitTimeSyncConn_Websocket(t *testing.T) {
 		{
 			name:                             "测试重置考试结束时间｜目标考生ID不合法",
 			examineeID:                       "12345",
-			submissionID:                     "67890",
+			practiceSubmissionID:             "67890",
 			sysUserID:                        null.NewInt(54242, true),
 			resetEndTimeExamineeID:           -1,
 			doResetEndTime:                   true,
@@ -611,7 +643,7 @@ func Test_serviceImpl_HandleInitTimeSyncConn_Websocket(t *testing.T) {
 		{
 			name:                             "测试重置考试结束时间｜不存在的考生ID",
 			examineeID:                       "12345",
-			submissionID:                     "67890",
+			practiceSubmissionID:             "67890",
 			sysUserID:                        null.NewInt(54242, true),
 			resetEndTimeExamineeID:           45634,
 			doResetEndTime:                   true,
@@ -632,7 +664,7 @@ func Test_serviceImpl_HandleInitTimeSyncConn_Websocket(t *testing.T) {
 		{
 			name:                             "测试重置考试结束时间｜获取考生的实际考试结束时间错误",
 			examineeID:                       "12345",
-			submissionID:                     "67890",
+			practiceSubmissionID:             "67890",
 			sysUserID:                        null.NewInt(54242, true),
 			resetEndTimeExamineeID:           54242,
 			doResetEndTime:                   true,
@@ -653,7 +685,7 @@ func Test_serviceImpl_HandleInitTimeSyncConn_Websocket(t *testing.T) {
 		{
 			name:                             "测试重置考试结束时间｜考生的实际考试结束时间比当前时间小",
 			examineeID:                       "12345",
-			submissionID:                     "67890",
+			practiceSubmissionID:             "67890",
 			sysUserID:                        null.NewInt(54242, true),
 			resetEndTimeExamineeID:           54242,
 			doResetEndTime:                   true,
@@ -743,8 +775,11 @@ func Test_serviceImpl_HandleInitTimeSyncConn_Websocket(t *testing.T) {
 			if tt.examineeID != "" {
 				queryParams.Set("examinee_id", tt.examineeID)
 			}
-			if tt.submissionID != "" {
-				queryParams.Set("practice_submission_id", tt.submissionID)
+			if tt.practiceSubmissionID != "" {
+				queryParams.Set("practice_submission_id", tt.practiceSubmissionID)
+			}
+			if tt.wrongSubmissionID != "" {
+				queryParams.Set("wrong_submission_id", tt.wrongSubmissionID)
 			}
 
 			// 将HTTP URL转换为WebSocket URL
