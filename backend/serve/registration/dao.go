@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"github.com/jackc/pgx/v5"
 	"github.com/jmoiron/sqlx"
+	"go.uber.org/zap"
 	"strings"
 	"time"
 	"w2w.io/cmn"
@@ -92,7 +93,49 @@ func ListRegisterT(ctx context.Context, name string, course string, status strin
 		M["practiceName"] = practiceName
 		result = append(result, M)
 	}
-	return result, len(result), nil
+	clauses = []string{}
+	args = []interface{}{}
+	if name != "" {
+		clauses = append(clauses, fmt.Sprintf("%s LIKE $%d", "r.name", len(args)+1))
+		args = append(args, "%"+name+"%")
+	}
+	if course != "" {
+		clauses = append(clauses, fmt.Sprintf("%s  =$%d", "r.course", len(args)+1))
+		args = append(args, course)
+	}
+	if status != "" {
+		clauses = append(clauses, fmt.Sprintf("%s  =$%d", "r.status", len(args)+1))
+		args = append(args, status)
+	}
+	clauses = append(clauses, fmt.Sprintf("r.status != $%d", len(args)+1))
+	args = append(args, RegisterStatus.Deleted)
+	clauses = append(clauses, fmt.Sprintf("r.creator = $%d", len(args)+1))
+	args = append(args, userID)
+	//查询总数
+	s = ` SELECT COUNT(*) FROM assessuser.t_register_plan r `
+	if len(clauses) > 0 {
+		s += " WHERE " + strings.Join(clauses, " AND ")
+	}
+
+	z.Sugar().Debugf("打印输出一下这个操作语句：%v", s)
+	z.Sugar().Debugf("打印输出一下参数表：%v", args)
+	rows, err = sqlxDB.QueryxContext(ctx, s, args...)
+	if err != nil || forceErr == "queryx" {
+		err = fmt.Errorf("查询数据失败:%v", err)
+		z.Error(err.Error())
+		return nil, 0, err
+	}
+	defer rows.Close()
+	var total int
+	for rows.Next() {
+		err = rows.Scan(&total)
+		if err != nil || forceErr == "lScan" {
+			err = fmt.Errorf("解析数据失败:%v", err)
+			z.Error(err.Error())
+			return nil, 0, err
+		}
+	}
+	return result, total, nil
 }
 
 // 学生查看报名计划
@@ -169,7 +212,46 @@ func ListRegisterS(ctx context.Context, name string, course string, status strin
 		M["student"] = student
 		result = append(result, M)
 	}
-	return result, len(result), nil
+	clauses = []string{}
+	args = []interface{}{}
+	if name != "" {
+		clauses = append(clauses, fmt.Sprintf("%s LIKE $%d", "r.name", len(args)+1))
+		args = append(args, "%"+name+"%")
+	}
+	if course != "" {
+		clauses = append(clauses, fmt.Sprintf("%s  =$%d", "r.course", len(args)+1))
+		args = append(args, "%"+course+"%")
+	}
+	if status != "" {
+		clauses = append(clauses, fmt.Sprintf("%s  =$%d", "eps.status", len(args)+1))
+		args = append(args, status)
+	}
+	clauses = append(clauses, fmt.Sprintf("r.status = $%d ", len(args)+1))
+	args = append(args, RegisterStatus.Released)
+	clauses = append(clauses, fmt.Sprintf("r.start_time < $%d", len(args)+1))
+	args = append(args, time.Now().UnixMilli())
+	//查询总数
+	s = ` SELECT COUNT(*) FROM assessuser.t_register_plan r `
+	if len(clauses) > 0 {
+		s += " WHERE " + strings.Join(clauses, " AND ")
+	}
+	rows, err = sqlxDB.QueryxContext(ctx, s, args...)
+	if err != nil || forceErr == "queryx" {
+		err = fmt.Errorf("查询数据失败:%v", err)
+		z.Error(err.Error())
+		return nil, 0, err
+	}
+	defer rows.Close()
+	var total int
+	for rows.Next() {
+		err = rows.Scan(&total)
+		if err != nil || forceErr == "lScan" {
+			err = fmt.Errorf("解析数据失败:%v", err)
+			z.Error(err.Error())
+			return nil, 0, err
+		}
+	}
+	return result, total, nil
 }
 
 // 学生进行报名
@@ -285,9 +367,9 @@ func StudentRegister(ctx context.Context, registerID int64, status string, Regis
 }
 
 // 根据报名计划查询学生列表
-func GetRegisterStudentById(cxt context.Context, registerID int64, message string, registerType string, status string, orderBy []string, page int, pageSize int, userID int64) ([]Map, int, error) {
+func GetRegisterStudentById(ctx context.Context, registerID int64, message string, registerType string, status string, orderBy []string, page int, pageSize int, userID int64) ([]Map, int, error) {
 	result := make([]Map, 0)
-	forceErr, _ := cxt.Value("force-error").(string)
+	forceErr, _ := ctx.Value("force-error").(string)
 
 	//构建查询条件
 	var clauses []string
@@ -329,7 +411,7 @@ func GetRegisterStudentById(cxt context.Context, registerID int64, message strin
 	z.Sugar().Debugf("打印输出一下这个操作语句：%v", s)
 	z.Sugar().Debugf("打印输出一下参数表：%v", args)
 	sqlxDB := cmn.GetDbConn()
-	rows, err := sqlxDB.QueryxContext(cxt, s, args...)
+	rows, err := sqlxDB.QueryxContext(ctx, s, args...)
 	if err != nil || forceErr == "query" {
 		err = fmt.Errorf("query register failed:%v", err)
 		z.Error(err.Error())
@@ -358,7 +440,46 @@ func GetRegisterStudentById(cxt context.Context, registerID int64, message strin
 		M["reviewer"] = reviewer
 		result = append(result, M)
 	}
-	return result, len(result), nil
+	clauses = []string{}
+	args = []interface{}{}
+	if message != "" {
+		clauses = append(clauses, fmt.Sprintf("%s LIKE $%d OR %s LIKE $%d OR %s LIKE $%d OR %s LIKE $%d", "u.official_name", len(args)+1,
+			"u.email", len(args)+2, "u.id_card_no", len(args)+3, "u.mobile_phone", len(args)+4))
+		args = append(args, "%"+message+"%", "%"+message+"%", "%"+message+"%", "%"+message+"%")
+	}
+	if registerType != "" {
+		clauses = append(clauses, fmt.Sprintf("%s = $%d", "eps.type", len(args)+1))
+		args = append(args, registerType)
+	}
+	if status != "" {
+		clauses = append(clauses, fmt.Sprintf("%s = $%d", "eps.status", len(args)+1))
+		args = append(args, status)
+	}
+	clauses = append(clauses, fmt.Sprintf("eps.register_id = $%d", len(args)+1))
+	args = append(args, registerID)
+	clauses = append(clauses, fmt.Sprintf("eps.status != $%d", len(args)+1))
+	args = append(args, RegisterStudentStatus.Apply)
+	//获取总数
+	s = `SELECT COUNT(*) FROM assessuser.t_user u JOIN assessuser.t_exam_plan_student eps ON eps.student_id =u.id  `
+	if len(clauses) > 0 {
+		s += "WHERE " + strings.Join(clauses, " AND ")
+	}
+	rows, err = sqlxDB.QueryxContext(ctx, s, args...)
+	if err != nil || forceErr == "query" {
+		err = fmt.Errorf("查询总数失败:%v", err)
+		z.Error(err.Error())
+		return nil, 0, err
+	}
+	var total int
+	for rows.Next() {
+		err = rows.Scan(&total)
+		if err != nil {
+			err = fmt.Errorf("查询总数失败:%v", err)
+			z.Error(err.Error())
+			return nil, 0, err
+		}
+	}
+	return result, total, nil
 }
 func UpsertRegister(ctx context.Context, registration *cmn.TRegisterPlan, practiceIds []int64, userID int64, action string, reviewers []int64) error {
 	if userID <= 0 {
@@ -367,7 +488,18 @@ func UpsertRegister(ctx context.Context, registration *cmn.TRegisterPlan, practi
 		return err
 	}
 	if !registration.ID.Valid {
-		return AddRegister(ctx, registration, practiceIds, userID)
+		err := AddRegister(ctx, registration, practiceIds, userID)
+		if err != nil {
+			z.Error(err.Error())
+			return err
+		}
+		//设置新的报名计划定时器
+		err = SetRegisterTimers(ctx, registration.ID.Int64)
+		if err != nil {
+			z.Error(err.Error())
+			return err
+		}
+		return nil
 	}
 	//获取当前的报名计划详细内容
 	register, _, _, _, err := LoadRegisterById(ctx, registration.ID.Int64)
@@ -379,7 +511,18 @@ func UpsertRegister(ctx context.Context, registration *cmn.TRegisterPlan, practi
 		z.Error(err.Error())
 		return err
 	}
-	return UpdateRegister(ctx, registration, practiceIds, userID, action, reviewers)
+	err = UpdateRegister(ctx, registration, practiceIds, userID, action, reviewers)
+	if err != nil {
+		z.Error(err.Error())
+		return err
+	}
+	//设置新的报名计划定时器
+	err = SetRegisterTimers(ctx, registration.ID.Int64)
+	if err != nil {
+		z.Error(err.Error())
+		return err
+	}
+	return nil
 }
 func UpdateRegister(ctx context.Context, registration *cmn.TRegisterPlan, practiceIds []int64, userID int64, action string, reviewers []int64) error {
 
@@ -849,6 +992,15 @@ func OperateRegisterStatus(ctx context.Context, registerIDs []int64, status stri
 			}
 
 		}
+		//取消报名计划定时器
+		for _, registerId := range registerIDs {
+			err := CancelRegisterTimers(ctx, registerId)
+			if err != nil {
+				z.Error("取消报名计划定时器失败",
+					zap.Int64("register_id", registerId),
+					zap.Error(err))
+			}
+		}
 		return nil
 	} else if status == RegisterStatus.Deleted {
 		registerIsUsed := false
@@ -886,9 +1038,33 @@ func OperateRegisterStatus(ctx context.Context, registerIDs []int64, status stri
 		UPDATE  assessuser.t_register_practice SET status = $1,update_time = $2, updated_by = $3  WHERE register_id = ANY($4)
 `
 		_, err = tx.Exec(ctx, s, RegisterPracticeStatus.Delete, now, userID, registerIDs)
+		if err != nil || forceErr == "tx.UpdateRegisterPractice" {
+			err = fmt.Errorf("更新关联的练习失败:%v", err)
+			z.Error(err.Error())
+			return err
+		}
+		//取消报名计划定时器
+		for _, registerId := range registerIDs {
+			err := CancelRegisterTimers(ctx, registerId)
+			if err != nil {
+				z.Error("取消报名计划定时器失败",
+					zap.Int64("register_id", registerId),
+					zap.Error(err))
+			}
+		}
+		return nil
+	}
+
+	//设置新的报名计划定时器
+	for _, register := range registerIDs {
+		err := SetRegisterTimers(ctx, register)
+		if err != nil {
+			err = fmt.Errorf("设置报名计划定时器失败:%v", err)
+			z.Error(err.Error())
+			return err
+		}
 	}
 	return nil
-	//
 
 }
 func LoadRegisterByIds(ctx context.Context, registerIDs []int64) (registers []*cmn.TRegisterPlan, err error) {
@@ -1366,6 +1542,35 @@ func ListReviewers(ctx context.Context, userID int64, registerID int64, name str
 		M["reviewer"] = reviewer
 		result = append(result, M)
 	}
-	return result, len(result), nil
+	clauses = []string{}
+	args = []interface{}{}
+	if name != "" {
+		clauses = append(clauses, fmt.Sprintf("%s LIKE $%d", "u.official_name", len(args)+1))
+		args = append(args, "%"+name+"%")
+	}
+	clauses = append(clauses, fmt.Sprintf("%s =ANY ($%d)", "u.id", len(args)+1))
+	args = append(args, register.ReviewerIds)
+	//查询总数
+	s = ` SELECT COUNT(*) FROM assessuser.t_user u `
+	if len(clauses) > 0 {
+		s += " WHERE " + strings.Join(clauses, " AND ")
+	}
+	rows, err = sqlxDB.QueryxContext(ctx, s, args...)
+	if err != nil || forceErr == "queryx" {
+		err = fmt.Errorf("查询数据失败:%v", err)
+		z.Error(err.Error())
+		return nil, 0, err
+	}
+	defer rows.Close()
+	var total int
+	for rows.Next() {
+		err = rows.Scan(&total)
+		if err != nil || forceErr == "lScan" {
+			err = fmt.Errorf("解析数据失败:%v", err)
+			z.Error(err.Error())
+			return nil, 0, err
+		}
+	}
+	return result, total, nil
 
 }

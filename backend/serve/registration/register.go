@@ -36,6 +36,7 @@ func init() {
 	//Setup package scope variables, just like logger, db connector, configure parameters, etc.
 	cmn.PackageStarters = append(cmn.PackageStarters, func() {
 		z = cmn.GetLogger()
+		pgxConn = cmn.GetPgxConn()
 		z.Info("message zLogger settled")
 	})
 }
@@ -1026,7 +1027,7 @@ func SetRegisterTimers(ctx context.Context, registerID int64) error {
 		r.id,
 		r.start_time,
 		r.end_time,
-		r.reviewe_end_time
+		r.review_end_time
 	FROM assessuser.t_register_plan r
 	WHERE r.id = $1 AND r.status NOT IN ($2,$3,$4)
 `
