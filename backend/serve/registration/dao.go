@@ -1069,7 +1069,7 @@ func UpsertRegisterStudent(ctx context.Context, registerID int64, studentIDs []r
 		return err
 	}
 	if (currentNumber+int64(len(studentIDs)) > register.MaxNumber.Int64) && register.MaxNumber.Int64 > 0 {
-		err := fmt.Errorf("导入学生人数超出报名计划可容纳人数")
+		err := fmt.Errorf("导入学生人数超出报名计划可容纳人数, 剩余人数为: %v", register.MaxNumber.Int64-currentNumber)
 		z.Error(err.Error())
 		return err
 	}
@@ -1174,7 +1174,7 @@ func MoveStudent(ctx context.Context, fromRegisterID int64, toRegisterID int64, 
 		return err
 	}
 	if (register.MaxNumber.Int64 < int64(len(students))+currentNumber) && register.MaxNumber.Int64 != 0 {
-		err := fmt.Errorf("目标报名计划可容纳人数不足，无法进行移动")
+		err := fmt.Errorf("目标报名计划可容纳人数不足，无法进行移动 ,剩余人数为: %v", register.MaxNumber.Int64-currentNumber)
 		z.Error(err.Error())
 		return err
 	}
