@@ -1,6 +1,11 @@
 package registration
 
-import "w2w.io/cmn"
+import (
+	"context"
+	"sync"
+	"time"
+	"w2w.io/cmn"
+)
 
 var RegisterDomainID = struct {
 	Student    int64 // 学生 2008
@@ -107,4 +112,28 @@ type registerStudentOnce struct {
 type RegisterInfo struct {
 	Registration *cmn.TRegisterPlan `json:"registration"`
 	PracticeIds  []int64            `json:"practice_ids"`
+}
+type Reviewer struct {
+	ID           int64  `json:"id"`
+	OfficialName string `json:"official_name"`
+	Gender       string `json:"gender"`
+	MobilePhone  string `json:"mobile_phone"`
+	IDCardType   string `json:"id_card_type"`
+	IDCardNo     string `json:"id_card_no"`
+}
+
+// 事件数据结构
+type RegisterEvent struct {
+	Type       string `json:"type"`
+	RegisterID string `json:"register_id"`
+}
+
+// 定时器管理
+type RegistrationTimerManager struct {
+	timers     map[string]*time.Timer
+	mutex      sync.Mutex
+	ctx        context.Context
+	cancel     context.CancelFunc
+	eventQueue chan RegisterEvent
+	maxWorkers int //最大并发worker数量
 }
