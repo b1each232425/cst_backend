@@ -114,6 +114,7 @@ d run --name=devmentor \
  -v data:/var/data \
  -v deploy:/var/deploy \
  -v assess_ssh:/etc/ssh \
+ -w $deployDst \
  -e KAPP_NAME="$deployDst/$appName" \
  -e PATH="$PATH" \
  --network qnear \
