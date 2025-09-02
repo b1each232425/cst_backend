@@ -2001,6 +2001,8 @@ func exam(ctx context.Context) {
 				currentTime,                   // updated_time
 				"00",
 			)
+
+			paramCount += 8
 		}
 
 		if len(examStudentValueStrings) > 0 {
