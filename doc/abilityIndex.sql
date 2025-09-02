@@ -1,6 +1,6 @@
 /*==============================================================*/
 /* DBMS name:      PostgreSQL 9.x                               */
-/* Created on:     2025/8/31 12:44:28                           */
+/* Created on:     2025/9/2 10:32:58                            */
 /*==============================================================*/
 
 
@@ -163,6 +163,10 @@ drop table if exists t_exam_room;
 drop table if exists t_exam_session;
 
 drop table if exists t_exam_site;
+
+drop index if exists  Index_ex_stt_register_plan;
+
+drop table if exists t_exam_student;
 
 drop table if exists t_examinee;
 
@@ -2322,6 +2326,68 @@ comment on column t_exam_site.sys_user is
 
 comment on column t_exam_site.domain_id is
 '数据所属域';
+
+/*==============================================================*/
+/* Table: t_exam_student                                        */
+/*==============================================================*/
+create table if not exists  t_exam_student (
+   id                   SERIAL               not null,
+   student_id           INT8                 not null,
+   exam_id              INT8                 not null,
+   exam_plan_student_id INT8                 null,
+   creator              INT8                 not null,
+   create_time          INT8                 null,
+   updated_by           INT8                 null,
+   update_time          INT8                 null,
+   status               VARCHAR(150)         null,
+   addi                 JSONB                null,
+   remark               VARCHAR(150)         null,
+   constraint PK_T_EXAM_STUDENT primary key (id)
+);
+
+comment on table t_exam_student is
+'用于记录考试、学生与学生报名记录之间的关系，避免一个报名记录被多个考试使用';
+
+comment on column t_exam_student.id is
+'id';
+
+comment on column t_exam_student.student_id is
+'学生ID';
+
+comment on column t_exam_student.exam_id is
+'考试ID';
+
+comment on column t_exam_student.exam_plan_student_id is
+'学生与报名计划关联记录ID';
+
+comment on column t_exam_student.creator is
+'创建者';
+
+comment on column t_exam_student.create_time is
+'创建时间';
+
+comment on column t_exam_student.updated_by is
+'更新者';
+
+comment on column t_exam_student.update_time is
+'更新时间';
+
+comment on column t_exam_student.status is
+'状态 00：正常 02：已删除';
+
+comment on column t_exam_student.addi is
+'附加信息';
+
+comment on column t_exam_student.remark is
+'备注';
+
+/*==============================================================*/
+/* Index: Index_ex_stt_register_plan                            */
+/*==============================================================*/
+create unique index if not exists  Index_ex_stt_register_plan on t_exam_student (
+( student_id ),
+( exam_plan_student_id )
+);
 
 /*==============================================================*/
 /* Table: t_examinee                                            */
@@ -9411,9 +9477,12 @@ comment on column t_sys_ver.status is
 ALTER SEQUENCE t_sys_ver_id_seq RESTART WITH 20000;
 
 insert into t_sys_ver(id,name,ver,create_time,update_time,remark)
-  values(1000,'业务模型','3.2.4.0',
-  '2016年12月5日 9:52:53','2025年8月31日 12:37:09',
-  '3.2.4.0
+  values(1000,'业务模型','3.2.5.0',
+  '2016年12月5日 9:52:53','2025年9月2日 10:31:15',
+  '3.2.5.0
+新增t_exam_student表
+
+3.2.4.0
 新增t_exam_plan_student表和t_register_practice表约束
 3.2.3.3
 修改t_api初始化数据的考点管理路径为exam-site
@@ -14535,6 +14604,11 @@ alter table t_exam_paper_question
 
 alter table t_exam_session
    add constraint fk_t_exam_session_exam_info foreign key (exam_id)
+      references t_exam_info (id)
+      on delete cascade;
+
+alter table t_exam_student
+   add constraint FK_T_EXAM_S_REFERENCE_T_EXAM_I foreign key (exam_id)
       references t_exam_info (id)
       on delete cascade;
 
