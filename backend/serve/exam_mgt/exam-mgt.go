@@ -1986,11 +1986,10 @@ func exam(ctx context.Context) {
 		// 批量插入考试学生记录
 		examStudentValueStrings := make([]string, 0, len(ExamData.Examinees))
 		examStudentValueArgs := make([]interface{}, 0, len(ExamData.Examinees)*8)
+		paramCount := 1
 		for _, examStudent := range ExamData.Examinees {
 			examStudentValueStrings = append(examStudentValueStrings, fmt.Sprintf("($%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d)",
-				len(examStudentValueStrings)+1, len(examStudentValueStrings)+2, len(examStudentValueStrings)+3,
-				len(examStudentValueStrings)+4, len(examStudentValueStrings)+5, len(examStudentValueStrings)+6,
-				len(examStudentValueStrings)+7, len(examStudentValueStrings)+8))
+				paramCount, paramCount+1, paramCount+2, paramCount+3, paramCount+4, paramCount+5, paramCount+6, paramCount+7))
 
 			examStudentValueArgs = append(examStudentValueArgs,
 				examStudent.ID,                // student_id
@@ -2002,6 +2001,8 @@ func exam(ctx context.Context) {
 				currentTime,                   // updated_time
 				"00",
 			)
+
+			paramCount += 8
 		}
 
 		if len(examStudentValueStrings) > 0 {
@@ -2045,7 +2046,7 @@ func exam(ctx context.Context) {
 		// 批量插入考生
 		valueStrings := make([]string, 0, len(examinees)*len(ExamData.ExamSessions))
 		valueArgs := make([]interface{}, 0, len(examinees)*len(ExamData.ExamSessions)*14)
-		paramCount := 1
+		paramCount = 1
 		for _, examinee := range examinees {
 			for _, examSession := range ExamData.ExamSessions {
 				// 为每个学生在每个场次生成一条记录
