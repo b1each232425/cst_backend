@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"go.uber.org/zap"
 	"io"
 	"strconv"
@@ -17,16 +18,18 @@ import (
 
 const (
 	//事件类型
-	EVENT_TYPE_REGISTER_START       = "register_start"
-	EVENT_TYPE_REGISTER_END         = "register_end"
-	EVENT_TYPE_REGISTER_REVIEWE_END = "register_reviewer_end"
+	EVENT_TYPE_REGISTER_START      = "register_start"
+	EVENT_TYPE_REGISTER_END        = "register_end"
+	EVENT_TYPE_REGISTER_REVIEW_END = "register_reviewer_end"
 
 	//默认最大并发数
 	DEFAULT_MAX_WORKERS = 10
 )
 
 var (
-	z *zap.Logger
+	z                    *zap.Logger
+	pgxConn              *pgxpool.Pool
+	registerTimerManager *RegistrationTimerManager
 )
 
 func init() {
@@ -500,13 +503,15 @@ func register(ctx context.Context) {
 						return
 					}
 					//校验reviewer_ids字段
-					q.Err = CheckReviewerIDs(r.Registration.ReviewerIds)
+					var reviewers []int64
+
+					reviewers, q.Err = CheckReviewerIDs(r.Registration.ReviewerIds)
 					if q.Err != nil {
 						z.Error(q.Err.Error())
 						q.RespErr()
 						return
 					}
-					err := UpsertRegister(ctx, r.Registration, r.PracticeIds, userID, action)
+					err := UpsertRegister(ctx, r.Registration, r.PracticeIds, userID, action, reviewers)
 					if err != nil {
 						q.Err = err
 						q.RespErr()
@@ -998,4 +1003,110 @@ func (tm *RegistrationTimerManager) CancelTimer(eventType string, registerID int
 	tm.mutex.Lock()
 	defer tm.mutex.Unlock()
 
+	timerKey := fmt.Sprintf("%s_%d", eventType, registerID)
+	if timer, exists := tm.timers[timerKey]; exists {
+		timer.Stop()
+		delete(tm.timers, timerKey)
+		z.Info("取消定时器",
+			zap.String("event_type", eventType),
+			zap.Int64("register_id", registerID))
+	}
 }
+
+// 设置报名计划定时器
+func SetRegisterTimers(ctx context.Context, registerID int64) error {
+	z.Info("---->" + cmn.FncName())
+	forceErr := ""
+	if val := ctx.Value("SetRegisterTimers-force-error"); val != nil {
+		forceErr = val.(string)
+	}
+	//查询报名计划信息
+	s := `
+	SELECT 
+		r.id,
+		r.start_time,
+		r.end_time,
+		r.reviewe_end_time
+	FROM assessuser.t_register_plan r
+	WHERE r.id = $1 AND r.status NOT IN ($2,$3,$4)
+`
+	rows, err := pgxConn.Query(ctx, s, registerID, RegisterStatus.Cancel, RegisterStatus.Deleted, RegisterStatus.Disabled)
+	defer func() {
+		if rows != nil {
+			rows.Close()
+		}
+	}()
+	if forceErr == "queryRegisterPlan" {
+		err = fmt.Errorf("查询报名计划信息错误")
+	}
+	if err != nil {
+		z.Error("查询报名计划信息失败",
+			zap.Int64("register_id", registerID),
+			zap.Error(err))
+		return err
+	}
+
+	var registerPlanInfo []struct {
+		RegisterID    int64 `json:"register_id"`
+		StartTime     int64 `json:"start_time"`
+		ReviewEndTime int64 `json:"review_end_time"`
+		EndTime       int64 `json:"end_time"`
+	}
+	for rows.Next() {
+		var registerId, startTime, endTime, reviewEndTime int64
+		err := rows.Scan(&registerId, &startTime, &endTime, &reviewEndTime)
+		if forceErr == "scanRegisterPlanInfo" {
+			err = fmt.Errorf("获取报名计划信息错误")
+		}
+		if err != nil {
+			z.Error("获取报名计划信息失败", zap.Error(err))
+			return err
+		}
+		registerPlanInfo = append(registerPlanInfo, struct {
+			RegisterID    int64 `json:"register_id"`
+			StartTime     int64 `json:"start_time"`
+			ReviewEndTime int64 `json:"review_end_time"`
+			EndTime       int64 `json:"end_time"`
+		}{
+			RegisterID:    registerId,
+			StartTime:     startTime,
+			ReviewEndTime: reviewEndTime,
+			EndTime:       endTime,
+		})
+		z.Info("查询到报名计划信息",
+			zap.Int64("register_id", registerId),
+			zap.Int64("start_time", startTime),
+			zap.Int64("review_end_time", reviewEndTime),
+			zap.Int64("end_time", endTime))
+	}
+	for _, registerPlan := range registerPlanInfo {
+		//设置报名计划开始定时器
+		registerTimerManager.SetTimer(registerPlan.RegisterID, registerPlan.StartTime, RegisterEvent{
+			Type:       EVENT_TYPE_REGISTER_START,
+			RegisterID: registerPlan.RegisterID,
+		})
+		//设置报名计划结束
+		registerTimerManager.SetTimer(registerPlan.RegisterID, registerPlan.EndTime, RegisterEvent{
+			Type:       EVENT_TYPE_REGISTER_END,
+			RegisterID: registerPlan.RegisterID,
+		})
+		//设置报名计划审核结束
+		registerTimerManager.SetTimer(registerPlan.RegisterID, registerPlan.ReviewEndTime, RegisterEvent{
+			Type:       EVENT_TYPE_REGISTER_REVIEW_END,
+			RegisterID: registerPlan.RegisterID,
+		})
+	}
+	return nil
+}
+
+// 取消报名计划的所有的计时器
+//func CancelRegisterTimers(ctx context.Context, registerID int64) error {
+//	forceErr := ""
+//	if val := ctx.Value("CancelRegisterTimers-force-error"); val != nil {
+//		forceErr = val.(string)
+//	}
+//	s := `SELECT id FROM assessuser.t_register_plan WHERE id = $1 AND status NOT IN ($1 ,$2 ,$3 )`
+//
+//	//查询报名计划信息
+//	rows, err := pgxConn.Query(ctx, s, registerID, RegisterStatus.Cancel, RegisterStatus.Deleted, RegisterStatus.Disabled)
+//}
