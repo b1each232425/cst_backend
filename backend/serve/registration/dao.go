@@ -457,8 +457,40 @@ func UpdateRegister(ctx context.Context, registration *cmn.TRegisterPlan, practi
 		z.Error(err.Error())
 		return err
 	}
-	if action == "clear" && len(practiceIds) == 0 {
-		//清空与报名计划绑定的练习
+
+	if practiceIds == nil || len(practiceIds) == 0 || registration.ReviewerIds == nil || len(registration.ReviewerIds.([]int64)) == 0 {
+		switch action {
+		case "clearr":
+			err := UpsertReviewers(ctx, tx, registration.ID.Int64, userID, registration.ReviewerIds.([]int64))
+			if err != nil {
+				err = fmt.Errorf("更新审核人失败:%v", err)
+				return err
+			}
+		case "clearp":
+			{
+				err = UpsertRegisterPractice(ctx, tx, registration.ID.Int64, practiceIds, userID)
+				if err != nil {
+					return err
+				}
+			}
+		case "clear":
+			{
+				err := UpsertReviewers(ctx, tx, registration.ID.Int64, userID, registration.ReviewerIds.([]int64))
+				if err != nil {
+					return err
+				}
+				err = UpsertRegisterPractice(ctx, tx, registration.ID.Int64, practiceIds, userID)
+				if err != nil {
+					return err
+				}
+			}
+		default:
+			return nil
+		}
+	}
+	err = UpsertReviewers(ctx, tx, registration.ID.Int64, userID, registration.ReviewerIds.([]int64))
+	if err != nil {
+		return err
 	}
 	err = UpsertRegisterPractice(ctx, tx, registration.ID.Int64, practiceIds, userID)
 	if err != nil {
@@ -519,6 +551,34 @@ func AddRegister(ctx context.Context, registration *cmn.TRegisterPlan, practiceI
 	}
 	err = UpsertRegisterPractice(ctx, tx, registration.ID.Int64, practiceIds, userID)
 	if err != nil {
+		return err
+	}
+	return nil
+}
+func UpsertReviewers(ctx context.Context, tx pgx.Tx, registerID int64, userID int64, reviewerIds []int64) error {
+	forceErr, _ := ctx.Value("force-error").(string)
+	if registerID <= 0 {
+		err := fmt.Errorf("registerID不能小于等于0")
+		z.Error(err.Error())
+		return err
+	}
+	if userID <= 0 {
+		err := fmt.Errorf("userID不能小于等于0")
+		z.Error(err.Error())
+		return err
+	}
+	now := time.Now().UnixMilli()
+
+	//删除当前报名列表下的所有的审核人
+	delSQL := `
+		UPDATE assessuser.t_register_plan r SET r.reviewer_ids=$1 ,r.updated_by =$2 , r.update_time = $3
+		WHERE id =$4
+`
+	_, err := tx.Exec(ctx, delSQL, reviewerIds, userID, now, registerID)
+	z.Sugar().Debugf("打印输出一下增加SQL语句:%v", delSQL)
+	if err != nil || forceErr == "del" {
+		err = fmt.Errorf("删除报名计划下的所有审核人失败:%v", err)
+		z.Error(err.Error())
 		return err
 	}
 	return nil
