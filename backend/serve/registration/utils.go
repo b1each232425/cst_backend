@@ -100,3 +100,14 @@ func RemoveFields(m Map, fields ...string) Map {
 	}
 	return m
 }
+
+// 检测前端传过来的审查人员ids是不是切片
+func CheckReviewerIDs(i interface{}) error {
+	t := reflect.TypeOf(i)
+	switch t.Kind() {
+	case reflect.Slice:
+		return nil
+	default:
+		return fmt.Errorf("invalid reviewerIDs")
+	}
+}

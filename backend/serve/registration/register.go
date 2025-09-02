@@ -11,10 +11,23 @@ import (
 	"io"
 	"strconv"
 	"strings"
+	"time"
 	"w2w.io/cmn"
 )
 
-var z *zap.Logger
+const (
+	//事件类型
+	EVENT_TYPE_REGISTER_START       = "register_start"
+	EVENT_TYPE_REGISTER_END         = "register_end"
+	EVENT_TYPE_REGISTER_REVIEWE_END = "register_reviewer_end"
+
+	//默认最大并发数
+	DEFAULT_MAX_WORKERS = 10
+)
+
+var (
+	z *zap.Logger
+)
 
 func init() {
 	//Setup package scope variables, just like logger, db connector, configure parameters, etc.
@@ -486,6 +499,13 @@ func register(ctx context.Context) {
 						q.RespErr()
 						return
 					}
+					//校验reviewer_ids字段
+					q.Err = CheckReviewerIDs(r.Registration.ReviewerIds)
+					if q.Err != nil {
+						z.Error(q.Err.Error())
+						q.RespErr()
+						return
+					}
 					err := UpsertRegister(ctx, r.Registration, r.PracticeIds, userID, action)
 					if err != nil {
 						q.Err = err
@@ -874,5 +894,108 @@ func registerReviewer(ctx context.Context) {
 		}
 
 	}
+
+}
+
+// 创建定时器管理器
+func NewRegistrationTimerManager(ctx context.Context, cancel context.CancelFunc) *RegistrationTimerManager {
+	z.Info("---->" + cmn.FncName())
+	maxWorkers := DEFAULT_MAX_WORKERS
+
+	tm := &RegistrationTimerManager{
+		timers:     make(map[string]*time.Timer),
+		ctx:        ctx,
+		cancel:     cancel,
+		eventQueue: make(chan RegisterEvent, maxWorkers*15),
+		maxWorkers: maxWorkers,
+	}
+
+	//启动固定数量的worker协程
+	tm.startEventWorkers()
+	return tm
+}
+
+// 启动固定数量的事件处理协程
+func (tm *RegistrationTimerManager) startEventWorkers() {
+	z.Info("---->" + cmn.FncName())
+	for i := 0; i < tm.maxWorkers; i++ {
+		go func(workerID int) {
+			for {
+				select {
+				case <-tm.ctx.Done():
+					return
+				case event := <-tm.eventQueue:
+					tm.processEvent(event, workerID)
+				}
+			}
+		}(i)
+	}
+}
+func (tm *RegistrationTimerManager) processEvent(event RegisterEvent, workerID int) error {
+	z.Info("---->" + cmn.FncName())
+	switch event.Type {
+	case "register_start":
+		{
+			//handleRegisterStart(tm.ctx, event)
+		}
+	case "register_end":
+		{
+			//handleRegisterEnd(tm.ctx, event)
+		}
+	default:
+		err := fmt.Errorf("Invalid event type: %s", event.Type)
+		z.Error(err.Error())
+	}
+	return nil
+}
+
+// 设置定时器
+func (tm *RegistrationTimerManager) SetTimer(registerID int64, triggerTime int64, event RegisterEvent) {
+	z.Info("---->" + cmn.FncName())
+	tm.mutex.Lock()
+	defer tm.mutex.Unlock()
+	timerKey := fmt.Sprintf("%s_%d", event.Type, registerID)
+	//如果已存在同类型的定时器，先停止它
+	if existingTimer, exists := tm.timers[timerKey]; exists {
+		existingTimer.Stop()
+		delete(tm.timers, timerKey)
+	}
+
+	//计算延迟事件
+	delay := time.Duration(triggerTime-time.Now().UnixMilli()) * time.Millisecond
+	//如果时间已过，立即将时间添加到处理队列
+	if delay <= 0 {
+		select {
+		case tm.eventQueue <- event:
+		case <-tm.ctx.Done():
+			return
+		}
+		return
+	}
+	//创建新的定时器
+	timer := time.AfterFunc(delay, func() {
+		//将事件添加到队列
+		select {
+		case tm.eventQueue <- event:
+		case <-tm.ctx.Done():
+			return
+		}
+		//从map中移除定时器
+		tm.mutex.Lock()
+		delete(tm.timers, timerKey)
+		tm.mutex.Unlock()
+	})
+	tm.timers[timerKey] = timer
+	z.Info("设置定时器",
+		zap.String("event_type", event.Type),
+		zap.Int64("register_id", registerID),
+		zap.Duration("delay", delay))
+}
+
+// 取消定时器
+func (tm *RegistrationTimerManager) CancelTimer(eventType string, registerID int64) {
+	z.Info("---->" + cmn.FncName())
+	tm.mutex.Lock()
+	defer tm.mutex.Unlock()
 
 }
