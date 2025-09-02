@@ -3815,7 +3815,7 @@ func TestExamPutMethod(t *testing.T) {
 			},
 			forceError:    "tx.DeleteExamStudent",
 			expectedError: true,
-			errorContains: "强制删除考试学生错误",
+			errorContains: "强制删除考试学生记录错误",
 			checkResult:   false,
 		},
 		{
