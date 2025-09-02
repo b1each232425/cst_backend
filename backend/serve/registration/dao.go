@@ -30,7 +30,7 @@ func ListRegisterT(ctx context.Context, name string, course string, status strin
 	}
 	if course != "" {
 		clauses = append(clauses, fmt.Sprintf("%s  =$%d", "r.course", len(args)+1))
-		args = append(args, "%"+course+"%")
+		args = append(args, course)
 	}
 	if status != "" {
 		clauses = append(clauses, fmt.Sprintf("%s  =$%d", "r.status", len(args)+1))
@@ -295,9 +295,9 @@ func GetRegisterStudentById(cxt context.Context, registerID int64, message strin
 	var args []interface{}
 
 	if message != "" {
-		clauses = append(clauses, fmt.Sprintf("%s LIKE $%d OR %s LIKE $%d OR %s LIKE $%d OR %s LIKE $%d", "u.name", len(args)+1,
+		clauses = append(clauses, fmt.Sprintf("%s LIKE $%d OR %s LIKE $%d OR %s LIKE $%d OR %s LIKE $%d", "u.official_name", len(args)+1,
 			"u.email", len(args)+2, "u.id_card_no", len(args)+3, "u.mobile_phone", len(args)+4))
-		args = append(args, "%"+message+"%")
+		args = append(args, "%"+message+"%", "%"+message+"%", "%"+message+"%", "%"+message+"%")
 	}
 	if registerType != "" {
 		clauses = append(clauses, fmt.Sprintf("%s = $%d", "eps.type", len(args)+1))
@@ -360,7 +360,7 @@ func GetRegisterStudentById(cxt context.Context, registerID int64, message strin
 	}
 	return result, len(result), nil
 }
-func UpsertRegister(ctx context.Context, registration *cmn.TRegisterPlan, practiceIds []int64, userID int64, action string) error {
+func UpsertRegister(ctx context.Context, registration *cmn.TRegisterPlan, practiceIds []int64, userID int64, action string, reviewers []int64) error {
 	if userID <= 0 {
 		err := fmt.Errorf("用户ID不能小于等于0")
 		z.Error(err.Error())
@@ -379,9 +379,9 @@ func UpsertRegister(ctx context.Context, registration *cmn.TRegisterPlan, practi
 		z.Error(err.Error())
 		return err
 	}
-	return UpdateRegister(ctx, registration, practiceIds, userID, action)
+	return UpdateRegister(ctx, registration, practiceIds, userID, action, reviewers)
 }
-func UpdateRegister(ctx context.Context, registration *cmn.TRegisterPlan, practiceIds []int64, userID int64, action string) error {
+func UpdateRegister(ctx context.Context, registration *cmn.TRegisterPlan, practiceIds []int64, userID int64, action string, reviewers []int64) error {
 
 	if userID <= 0 {
 		err := fmt.Errorf("用户ID不能小于等于0")
@@ -458,10 +458,10 @@ func UpdateRegister(ctx context.Context, registration *cmn.TRegisterPlan, practi
 		return err
 	}
 
-	if practiceIds == nil || len(practiceIds) == 0 || registration.ReviewerIds == nil || len(registration.ReviewerIds.([]int64)) == 0 {
+	if practiceIds == nil || len(practiceIds) == 0 || reviewers == nil || len(reviewers) == 0 {
 		switch action {
 		case "clearr":
-			err := UpsertReviewers(ctx, tx, registration.ID.Int64, userID, registration.ReviewerIds.([]int64))
+			err := UpsertReviewers(ctx, tx, registration.ID.Int64, userID, reviewers)
 			if err != nil {
 				err = fmt.Errorf("更新审核人失败:%v", err)
 				return err
@@ -475,7 +475,7 @@ func UpdateRegister(ctx context.Context, registration *cmn.TRegisterPlan, practi
 			}
 		case "clear":
 			{
-				err := UpsertReviewers(ctx, tx, registration.ID.Int64, userID, registration.ReviewerIds.([]int64))
+				err := UpsertReviewers(ctx, tx, registration.ID.Int64, userID, reviewers)
 				if err != nil {
 					return err
 				}
@@ -488,7 +488,7 @@ func UpdateRegister(ctx context.Context, registration *cmn.TRegisterPlan, practi
 			return nil
 		}
 	}
-	err = UpsertReviewers(ctx, tx, registration.ID.Int64, userID, registration.ReviewerIds.([]int64))
+	err = UpsertReviewers(ctx, tx, registration.ID.Int64, userID, reviewers)
 	if err != nil {
 		return err
 	}
@@ -569,15 +569,15 @@ func UpsertReviewers(ctx context.Context, tx pgx.Tx, registerID int64, userID in
 	}
 	now := time.Now().UnixMilli()
 
-	//删除当前报名列表下的所有的审核人
+	//更新当前报名列表下的所有的审核人
 	delSQL := `
-		UPDATE assessuser.t_register_plan r SET r.reviewer_ids=$1 ,r.updated_by =$2 , r.update_time = $3
+		UPDATE assessuser.t_register_plan  SET reviewer_ids=$1 ,updated_by =$2 , update_time = $3
 		WHERE id =$4
 `
 	_, err := tx.Exec(ctx, delSQL, reviewerIds, userID, now, registerID)
 	z.Sugar().Debugf("打印输出一下增加SQL语句:%v", delSQL)
 	if err != nil || forceErr == "del" {
-		err = fmt.Errorf("删除报名计划下的所有审核人失败:%v", err)
+		err = fmt.Errorf("更新报名计划下的所有审核人失败:%v", err)
 		z.Error(err.Error())
 		return err
 	}
@@ -946,14 +946,17 @@ func OperateRegisterStudentStatus(ctx context.Context, tx pgx.Tx, ids []int64, s
 		return err
 	}
 	//获取学生状态
-	var studentStatus string
-	students, err := LoadRegisterStudentStatusByIds(ctx, ids)
+	var studentStatus = ""
+	students, err := LoadRegisterStudentStatusByIds(ctx, ids, RegisterID)
+	if err != nil {
+		return err
+	}
 	for _, student := range students {
 		if studentStatus == "" {
 			studentStatus = student.Status.String
 		}
 		if student.Status.String != studentStatus {
-			err := fmt.Errorf("此时要批量操作的学生状态不一，无法进行批量操作")
+			err := fmt.Errorf("此时要批量操作的学生状态不一，无法进行批量操作 %v", students)
 			z.Error(err.Error())
 			return err
 		}
@@ -1019,14 +1022,14 @@ func OperateRegisterStudentStatus(ctx context.Context, tx pgx.Tx, ids []int64, s
 	}
 	return nil
 }
-func LoadRegisterStudentStatusByIds(ctx context.Context, ids []int64) (students []cmn.TExamPlanStudent, err error) {
+func LoadRegisterStudentStatusByIds(ctx context.Context, ids []int64, registerID int64) (students []cmn.TExamPlanStudent, err error) {
 	forceErr, _ := ctx.Value("force-error").(string)
 	s := `
 	SELECT  eps.id ,eps.student_id , eps.status
-	FROM t_exam_plan_student eps WHERE eps.student_id = ANY($1)
+	FROM t_exam_plan_student eps WHERE eps.student_id = ANY($1) AND  eps.register_id = $2
 `
 	sqlxDB := cmn.GetPgxConn()
-	rows, err := sqlxDB.Query(ctx, s, ids)
+	rows, err := sqlxDB.Query(ctx, s, ids, registerID)
 	if err != nil || forceErr == "query" {
 		err = fmt.Errorf("查询学生状态失败:%v", err)
 		z.Error(err.Error())
@@ -1065,8 +1068,8 @@ func UpsertRegisterStudent(ctx context.Context, registerID int64, studentIDs []r
 		z.Error(err.Error())
 		return err
 	}
-	if currentNumber+int64(len(studentIDs)) > register.MaxNumber.Int64 {
-		err := fmt.Errorf("导入学生人数超出报名计划可容纳人数")
+	if (currentNumber+int64(len(studentIDs)) > register.MaxNumber.Int64) && register.MaxNumber.Int64 > 0 {
+		err := fmt.Errorf("导入学生人数超出报名计划可容纳人数, 剩余人数为: %v", register.MaxNumber.Int64-currentNumber)
 		z.Error(err.Error())
 		return err
 	}
@@ -1170,8 +1173,8 @@ func MoveStudent(ctx context.Context, fromRegisterID int64, toRegisterID int64, 
 		z.Error(err.Error())
 		return err
 	}
-	if register.MaxNumber.Int64 < int64(len(students))+currentNumber {
-		err := fmt.Errorf("目标报名计划可容纳人数不足，无法进行移动")
+	if (register.MaxNumber.Int64 < int64(len(students))+currentNumber) && register.MaxNumber.Int64 != 0 {
+		err := fmt.Errorf("目标报名计划可容纳人数不足，无法进行移动 ,剩余人数为: %v", register.MaxNumber.Int64-currentNumber)
 		z.Error(err.Error())
 		return err
 	}

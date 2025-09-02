@@ -101,13 +101,77 @@ func RemoveFields(m Map, fields ...string) Map {
 	return m
 }
 
-// 检测前端传过来的审查人员ids是不是切片
-func CheckReviewerIDs(i interface{}) error {
+// CheckReviewerIDs 检测前端传过来的审查人员ids是不是int64切片
+func CheckReviewerIDs(i interface{}) ([]int64, error) {
 	t := reflect.TypeOf(i)
+	v := reflect.ValueOf(i)
+
 	switch t.Kind() {
 	case reflect.Slice:
-		return nil
+		// 转换为[]int64
+		int64Slice := make([]int64, v.Len())
+		for i := 0; i < v.Len(); i++ {
+			elem := v.Index(i)
+			elemValue := elem.Interface()
+
+			// 处理不同的数值类型
+			switch val := elemValue.(type) {
+			case int64:
+				int64Slice[i] = val
+			case int:
+				int64Slice[i] = int64(val)
+			case float64:
+				int64Slice[i] = int64(val)
+			case float32:
+				int64Slice[i] = int64(val)
+			default:
+				// 尝试通过反射获取数值
+				if elem.Kind() >= reflect.Int && elem.Kind() <= reflect.Int64 {
+					int64Slice[i] = elem.Int()
+				} else if elem.Kind() >= reflect.Uint && elem.Kind() <= reflect.Uint64 {
+					int64Slice[i] = int64(elem.Uint())
+				} else if elem.Kind() == reflect.Float32 || elem.Kind() == reflect.Float64 {
+					int64Slice[i] = int64(elem.Float())
+				} else {
+					return nil, fmt.Errorf("invalid reviewerIDs element type at index %d: %T", i, elemValue)
+				}
+			}
+		}
+		return int64Slice, nil
+
+	case reflect.Array:
+		// 转换为[]int64
+		int64Slice := make([]int64, v.Len())
+		for i := 0; i < v.Len(); i++ {
+			elem := v.Index(i)
+			elemValue := elem.Interface()
+
+			// 处理不同的数值类型
+			switch val := elemValue.(type) {
+			case int64:
+				int64Slice[i] = val
+			case int:
+				int64Slice[i] = int64(val)
+			case float64:
+				int64Slice[i] = int64(val)
+			case float32:
+				int64Slice[i] = int64(val)
+			default:
+				// 尝试通过反射获取数值
+				if elem.Kind() >= reflect.Int && elem.Kind() <= reflect.Int64 {
+					int64Slice[i] = elem.Int()
+				} else if elem.Kind() >= reflect.Uint && elem.Kind() <= reflect.Uint64 {
+					int64Slice[i] = int64(elem.Uint())
+				} else if elem.Kind() == reflect.Float32 || elem.Kind() == reflect.Float64 {
+					int64Slice[i] = int64(elem.Float())
+				} else {
+					return nil, fmt.Errorf("invalid reviewerIDs element type at index %d: %T", i, elemValue)
+				}
+			}
+		}
+		return int64Slice, nil
+
 	default:
-		return fmt.Errorf("invalid reviewerIDs")
+		return nil, fmt.Errorf("invalid reviewerIDs: not a slice or array, got %s", t.Kind().String())
 	}
 }
