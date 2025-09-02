@@ -4065,6 +4065,9 @@ func examUser(ctx context.Context) {
 				q.RespErr()
 				return
 			}
+			if examinee.ExamPlanStudentID.Int64 <= 0 {
+				examinee.ExamPlanStudentID = null.NewInt(0, false)
+			}
 			examinees = append(examinees, examinee)
 		}
 
@@ -4076,11 +4079,7 @@ func examUser(ctx context.Context) {
 			for _, ex := range examinees {
 				vals = append(vals, fmt.Sprintf("($%d, $%d)", argIdx, argIdx+1))
 				args = append(args, ex.ID)
-				if ex.ExamPlanStudentID.Valid {
-					args = append(args, ex.ExamPlanStudentID.Int64)
-				} else {
-					args = append(args, nil)
-				}
+				args = append(args, ex.ExamPlanStudentID)
 				argIdx += 2
 			}
 			sql := fmt.Sprintf(`
@@ -4091,14 +4090,14 @@ func examUser(ctx context.Context) {
 				COALESCE(u.official_name, u.nickname, u.account) as name,
 				COALESCE(u.mobile_phone, '') as phone,
 				COALESCE(u.id_card_no, '') as id_card,
-				COALESCE(u.gender, '') as gender
+				COALESCE(u.gender, '') as gender,
 				i.exam_plan_student_id, 
-				eps.id, rp.name
+				rp.name
 				FROM input i
 				LEFT JOIN t_exam_plan_student eps ON i.exam_plan_student_id = eps.id
 				LEFT JOIN t_register_plan rp ON eps.register_id = rp.id
 				JOIN t_user u ON i.student_id = u.id
-
+				ORDER BY (i.exam_plan_student_id IS NULL) ASC
 			`, strings.Join(vals, ","))
 			var rows pgx.Rows
 			rows, q.Err = conn.Query(ctx, sql, args...)

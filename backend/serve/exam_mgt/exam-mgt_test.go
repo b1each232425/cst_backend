@@ -579,6 +579,13 @@ func CreateTestExamData(t *testing.T) {
 		t.Fatalf("插入测试考试数据失败: %v", err)
 	}
 
+	// testInt := null.IntFrom(1)
+	// testInt.Valid = true
+	// _, err = tx.Exec(ctx, `
+	// 	INSERT INTO t_exam_student(id, student_id, exam_plan_student_id,exam_id, creator)
+	// 	VALUES ($1, $2, $3, $4, $5)
+	// `, 99999, testStudent1, testInt, testNormalExamID, testAcademicAffair)
+
 	// 插入线下考试信息
 	testExamRoomInvigilatorCount := []ExamRoomConfig{
 		ExamRoomConfig{
@@ -9577,8 +9584,8 @@ func TestGetExamRoomCapacity(t *testing.T) {
 	}
 }
 
-// func TestCreateExamData(t *testing.T) {
-// 	cmn.ConfigureForTest()
-// 	CleanTestExamData(t)
-// 	CreateTestExamData(t)
-// }
+func TestCreateExamData(t *testing.T) {
+	cmn.ConfigureForTest()
+	CleanTestExamData(t)
+	// CreateTestExamData(t)
+}
