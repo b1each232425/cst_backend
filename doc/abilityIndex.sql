@@ -1,6 +1,6 @@
 /*==============================================================*/
 /* DBMS name:      PostgreSQL 9.x                               */
-/* Created on:     2025/9/2 10:32:58                            */
+/* Created on:     9/2/2025 1:45:57 PM                          */
 /*==============================================================*/
 
 
@@ -1258,6 +1258,7 @@ create table if not exists  t_user (
    official_name        VARCHAR              null,
    id_card_type         VARCHAR              null,
    id_card_no           VARCHAR              null,
+   id_card_file         JSONB                null,
    mobile_phone         VARCHAR              null,
    email                VARCHAR              null,
    account              VARCHAR              not null,
@@ -1346,6 +1347,9 @@ comment on column t_user.id_card_type is
 
 comment on column t_user.id_card_no is
 '身份证号码';
+
+comment on column t_user.id_card_file is
+'证件图片文件';
 
 comment on column t_user.mobile_phone is
 '手机号码';
@@ -9478,7 +9482,7 @@ ALTER SEQUENCE t_sys_ver_id_seq RESTART WITH 20000;
 
 insert into t_sys_ver(id,name,ver,create_time,update_time,remark)
   values(1000,'业务模型','3.2.5.0',
-  '2016年12月5日 9:52:53','2025年9月2日 10:31:15',
+  'Monday, December 5, 2016 9:52:53 AM','Tuesday, September 2, 2025 1:45:51 PM',
   '3.2.5.0
 新增t_exam_student表
 
