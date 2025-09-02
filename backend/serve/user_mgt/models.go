@@ -30,3 +30,9 @@ type EmailServer struct {
 	Pwd    string
 	Sender string
 }
+
+// IDCardFile 用户证件文件
+type IDCardFile struct {
+	FrontImgID string `json:"frontImgID"` // 正面图片
+	BackImgID  string `json:"backImgID"`  // 反面图片
+}
