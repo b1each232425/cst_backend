@@ -295,9 +295,9 @@ func GetRegisterStudentById(cxt context.Context, registerID int64, message strin
 	var args []interface{}
 
 	if message != "" {
-		clauses = append(clauses, fmt.Sprintf("%s LIKE $%d OR %s LIKE $%d OR %s LIKE $%d OR %s LIKE $%d", "u.name", len(args)+1,
+		clauses = append(clauses, fmt.Sprintf("%s LIKE $%d OR %s LIKE $%d OR %s LIKE $%d OR %s LIKE $%d", "u.official_name", len(args)+1,
 			"u.email", len(args)+2, "u.id_card_no", len(args)+3, "u.mobile_phone", len(args)+4))
-		args = append(args, "%"+message+"%")
+		args = append(args, "%"+message+"%", "%"+message+"%", "%"+message+"%", "%"+message+"%")
 	}
 	if registerType != "" {
 		clauses = append(clauses, fmt.Sprintf("%s = $%d", "eps.type", len(args)+1))
