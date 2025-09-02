@@ -30,7 +30,7 @@ func ListRegisterT(ctx context.Context, name string, course string, status strin
 	}
 	if course != "" {
 		clauses = append(clauses, fmt.Sprintf("%s  =$%d", "r.course", len(args)+1))
-		args = append(args, "%"+course+"%")
+		args = append(args, course)
 	}
 	if status != "" {
 		clauses = append(clauses, fmt.Sprintf("%s  =$%d", "r.status", len(args)+1))

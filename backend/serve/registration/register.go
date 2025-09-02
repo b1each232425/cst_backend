@@ -939,13 +939,13 @@ func (tm *RegistrationTimerManager) startEventWorkers() {
 func (tm *RegistrationTimerManager) processEvent(event RegisterEvent, workerID int) error {
 	z.Info("---->" + cmn.FncName())
 	switch event.Type {
-	case "register_start":
+	case "register_review_end":
 		{
-			//handleRegisterStart(tm.ctx, event)
+			handleRegisterReviewEndEvent(tm.ctx, event)
 		}
 	case "register_end":
 		{
-			//handleRegisterEnd(tm.ctx, event)
+			handleRegisterEndEvent(tm.ctx, event)
 		}
 	default:
 		err := fmt.Errorf("Invalid event type: %s", event.Type)
@@ -1100,13 +1100,335 @@ func SetRegisterTimers(ctx context.Context, registerID int64) error {
 }
 
 // 取消报名计划的所有的计时器
-//func CancelRegisterTimers(ctx context.Context, registerID int64) error {
+func CancelRegisterTimers(ctx context.Context, registerID int64) error {
+	forceErr := ""
+	if val := ctx.Value("CancelRegisterTimers-force-error"); val != nil {
+		forceErr = val.(string)
+	}
+	s := `SELECT id FROM assessuser.t_register_plan WHERE id = $1 AND status NOT IN ($1 ,$2 ,$3 )`
+
+	//查询报名计划信息
+	rows, err := pgxConn.Query(ctx, s, registerID, RegisterStatus.Cancel, RegisterStatus.Deleted, RegisterStatus.Disabled)
+	if forceErr == "queryRegisterPlan" {
+		err = fmt.Errorf("查询报名计划信息错误")
+	}
+	defer rows.Close()
+	if err != nil {
+		z.Error("查询报名计划信息失败",
+			zap.Int64("register_id", registerID),
+			zap.Error(err))
+		return err
+	}
+	//收集所有场次ID并取消对应的定时器
+	cancelCount := 0
+	for rows.Next() {
+		var registerID int64
+		if err := rows.Scan(&registerID); err == nil {
+			registerTimerManager.CancelTimer(EVENT_TYPE_REGISTER_START, registerID)
+			registerTimerManager.CancelTimer(EVENT_TYPE_REGISTER_END, registerID)
+			registerTimerManager.CancelTimer(EVENT_TYPE_REGISTER_REVIEW_END, registerID)
+			cancelCount++
+		}
+	}
+	z.Info("成功取消报名计划定时器",
+		zap.Int64("register_id", registerID),
+		zap.Int("cancelled_sessions", cancelCount))
+	return nil
+}
+
+// 停止所有定时器
+func (tm *RegistrationTimerManager) StopAll() {
+	tm.mutex.Lock()
+	defer tm.mutex.Unlock()
+	for key, timer := range tm.timers {
+		timer.Stop()
+		delete(tm.timers, key)
+	}
+	tm.cancel()
+}
+
+// 初始化现有的报名计划定时器
+func InitializeRegisterTimers(ctx context.Context) error {
+	z.Info("---->" + cmn.FncName())
+	forceErr := ""
+	val := ctx.Value("InitializeRegisterTimers-force-error")
+	if val != nil {
+		forceErr = val.(string)
+	}
+	defer func() {
+		r := recover()
+		if forceErr == "panic" {
+			r = fmt.Errorf("强制触动的panic错误")
+		}
+		if r != nil {
+			z.Error("Panic recovered in InitializeRegisterTimers",
+				zap.Any("panic", r),
+				zap.Stack("stack"))
+		}
+	}()
+
+	//查询报名计划信息
+	query := `
+	SELECT r.id ,
+	r.start_time,
+	r.end_time,
+	r.review_end_time,
+	FROM assessuser.t_register_plan r
+	WHERE r. status  IN ($1 , $2)
+	ORDER BY  r.id
+`
+	rows, err := pgxConn.Query(ctx, query)
+	defer func() {
+		if rows != nil {
+			rows.Close()
+		}
+	}()
+	if forceErr == "queryRegisterPlan" {
+		err = fmt.Errorf("查询报名计划信息错误")
+	}
+	if err != nil {
+		z.Error("查询报名计划信息失败",
+			zap.Error(err))
+		return err
+	}
+	//设置报名计划定时器
+	for rows.Next() {
+		var registerID, startTime, endTime, reviewEndTime int64
+		err := rows.Scan(&registerID, &startTime, &endTime, &reviewEndTime)
+		if forceErr == "scanRegisterPlan" {
+			err = fmt.Errorf("扫描报名计划信息错误")
+		}
+		if err != nil {
+			z.Error("扫描报名计划信息失败",
+				zap.Error(err))
+			return err
+		}
+		registerTimerManager.SetTimer(registerID, startTime, RegisterEvent{
+			RegisterID: registerID,
+			Type:       EVENT_TYPE_REGISTER_START,
+		})
+		registerTimerManager.SetTimer(registerID, endTime, RegisterEvent{
+			RegisterID: registerID,
+			Type:       EVENT_TYPE_REGISTER_END,
+		})
+		registerTimerManager.SetTimer(registerID, reviewEndTime, RegisterEvent{
+			RegisterID: registerID,
+			Type:       EVENT_TYPE_REGISTER_REVIEW_END,
+		})
+
+	}
+	return nil
+}
+
+//// 处理报名计划开始事件
+//func HandleRegisterStartEvent(ctx context.Context, event RegisterEvent) error {
+//	z.Info("---->" + cmn.FncName())
 //	forceErr := ""
-//	if val := ctx.Value("CancelRegisterTimers-force-error"); val != nil {
+//	if val := ctx.Value("handleRegisterStartEvent-force-error"); val != nil {
 //		forceErr = val.(string)
 //	}
-//	s := `SELECT id FROM assessuser.t_register_plan WHERE id = $1 AND status NOT IN ($1 ,$2 ,$3 )`
+//	tx, err := pgxConn.Begin(ctx)
+//	if forceErr == "beginTx" {
+//		err = fmt.Errorf("强制开启事务错误")
+//	}
+//	if err != nil {
+//		z.Error("开始事务失败", zap.Error(err))
+//		return err
+//	}
+//	defer func() {
+//		r := recover()
+//		if forceErr == "panic" {
+//			r = fmt.Errorf("强制panic触发")
+//		}
+//		if r != nil {
+//			z.Error("Panic recovered in handleExamSessionStart",
+//				zap.Any("panic", r),
+//				zap.Stack("stack"))
+//			return
+//		}
+//		if err != nil || forceErr == "rollback" {
+//			rbErr := tx.Rollback(ctx)
+//			if forceErr == "rollback" {
+//				rbErr = fmt.Errorf("强制回滚错误")
+//			}
+//			if rbErr != nil {
+//				z.Error("事务回滚失败", zap.Error(rbErr))
+//			}
+//			return
+//		}
+//		err = tx.Commit(ctx)
+//		if forceErr == "commit" {
+//			err = fmt.Errorf("强制提交错误")
+//		}
+//		if err != nil {
+//			z.Error("事务提交失败", zap.Error(err))
+//		}
+//	}()
+//	now := time.Now().UnixMilli()
+//	//到开始时间的报名计划正式开始
+//	var result pgconn.CommandTag
+//	result, err = tx.Exec(ctx, `
+//		UPDATE t_register_plan
+//		SET status = '01'
+//		WHERE id = $1 AND status = '02'
+//	`, registerID)
 //
-//	//查询报名计划信息
-//	rows, err := pgxConn.Query(ctx, s, registerID, RegisterStatus.Cancel, RegisterStatus.Deleted, RegisterStatus.Disabled)
 //}
+
+// 处理报名计划结束事件
+func handleRegisterEndEvent(ctx context.Context, event RegisterEvent) error {
+	z.Info("---->" + cmn.FncName())
+
+	forceErr := ""
+	if val := ctx.Value("handleRegisterReviewEnd-force-error"); val != nil {
+		forceErr = val.(string)
+	}
+
+	tx, err := pgxConn.Begin(ctx)
+	if forceErr == "beginTx" {
+		err = fmt.Errorf("强制开启事务错误")
+	}
+	if err != nil {
+		z.Error("开启事务失败", zap.Error(err))
+		return err
+	}
+
+	defer func() {
+		r := recover()
+		if forceErr == "panic" {
+			r = fmt.Errorf("强制触发的panic错误")
+		}
+		if r != nil {
+			z.Error("Panic recovered in handleRegisterReviewEnd",
+				zap.Any("panic", r),
+				zap.Stack("stack"))
+
+			if rbErr := tx.Rollback(ctx); rbErr != nil || forceErr == "panic" {
+				z.Error("panic后事务回滚失败", zap.Error(rbErr))
+			}
+			return
+		}
+
+		if err != nil || forceErr == "rollback" {
+			rbErr := tx.Rollback(ctx)
+			if forceErr == "rollback" {
+				rbErr = fmt.Errorf("强制回滚错误")
+			}
+			if rbErr != nil {
+				z.Error("事务回滚失败", zap.Error(rbErr))
+			}
+			return
+		}
+
+		cmErr := tx.Commit(ctx)
+		if forceErr == "commit" {
+			cmErr = fmt.Errorf("强制提交错误")
+		}
+		if cmErr != nil {
+			z.Error("事务提交失败", zap.Error(cmErr))
+		}
+	}()
+
+	now := time.Now().UnixMilli()
+	//更新报名计划状态为已结束
+	_, err = tx.Exec(
+		ctx,
+		`UPDATE t_register_plan SET status = $1,update_time= $2 WHERE id = $3 AND status IN ($4 ,$5) AND end_time <= $6`,
+		RegisterStatus.Ending,
+		now,
+		event.RegisterID,
+		RegisterStatus.Released,
+		RegisterStatus.PendingRelease,
+		now,
+	)
+	if err != nil || forceErr == "exec" {
+		err = fmt.Errorf("exec failed:%v", err)
+		z.Error(err.Error())
+		return err
+	}
+	z.Info("报名计划结束事件处理",
+		zap.Int64("register_id", event.RegisterID))
+	return nil
+}
+func handleRegisterReviewEndEvent(ctx context.Context, event RegisterEvent) error {
+	z.Info("---->" + cmn.FncName())
+
+	forceErr := ""
+	if val := ctx.Value("handleRegisterReviewEnd-force-error"); val != nil {
+		forceErr = val.(string)
+	}
+
+	tx, err := pgxConn.Begin(ctx)
+	if forceErr == "beginTx" {
+		err = fmt.Errorf("强制开启事务错误")
+	}
+	if err != nil {
+		z.Error("开启事务失败", zap.Error(err))
+		return err
+	}
+
+	defer func() {
+		r := recover()
+		if forceErr == "panic" {
+			r = fmt.Errorf("强制触发的panic错误")
+		}
+		if r != nil {
+			z.Error("Panic recovered in handleRegisterReviewEnd",
+				zap.Any("panic", r),
+				zap.Stack("stack"))
+
+			if rbErr := tx.Rollback(ctx); rbErr != nil || forceErr == "panic" {
+				z.Error("panic后事务回滚失败", zap.Error(rbErr))
+			}
+			return
+		}
+
+		if err != nil || forceErr == "rollback" {
+			rbErr := tx.Rollback(ctx)
+			if forceErr == "rollback" {
+				rbErr = fmt.Errorf("强制回滚错误")
+			}
+			if rbErr != nil {
+				z.Error("事务回滚失败", zap.Error(rbErr))
+			}
+			return
+		}
+
+		cmErr := tx.Commit(ctx)
+		if forceErr == "commit" {
+			cmErr = fmt.Errorf("强制提交错误")
+		}
+		if cmErr != nil {
+			z.Error("事务提交失败", zap.Error(cmErr))
+		}
+	}()
+
+	now := time.Now().UnixMilli()
+	//更新报名计划状态为审核截止
+	_, err = tx.Exec(
+		ctx,
+		`UPDATE t_register_plan SET status = $1,update_time= $2 WHERE id = $3 AND status IN ($4 ,$5) AND review_end_time <= $6`,
+		RegisterStatus.ReviewEnding,
+		now,
+		event.RegisterID,
+		RegisterStatus.Released,
+		RegisterStatus.Ending,
+		now,
+	)
+	if err != nil || forceErr == "exec" {
+		err = fmt.Errorf("exec failed:%v", err)
+		z.Error(err.Error())
+		return err
+	}
+	z.Info("报名计划审核结束事件处理",
+		zap.Int64("register_id", event.RegisterID))
+	return nil
+}
+func RegisterMaintainService() {
+	ctx, cancel := context.WithCancel(context.Background())
+
+	defer cancel()
+	registerTimerManager = NewRegistrationTimerManager(ctx, cancel)
+	//初始化定时器
+	InitializeRegisterTimers(ctx)
+}
