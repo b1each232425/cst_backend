@@ -45,10 +45,15 @@ type ExamRoomConfig struct {
 	InvigilatorCount int64 `json:"invigilator_count" validate:"required"`
 }
 
+type Examinee struct {
+	ID                int64    `json:"id" validate:"required"`
+	ExamPlanStudentID null.Int `json:"exam_plan_student_id" validate:"required"`
+}
+
 type ExamData struct {
 	ExamInfo       cmn.TExamInfo      `json:"examInfo" validate:"required"`
 	ExamSessions   []cmn.TExamSession `json:"examSessions" validate:"required"`
-	ExamineeIDs    []int64            `json:"examinee"`
+	Examinees      []Examinee         `json:"examinee"`
 	ExamRooms      []ExamRoomConfig   `json:"examRooms"`
 	InvigilatorIDs []int64            `json:"invigilators"`
 	TimeStamp      int64              `json:"timeStamp"` //时间戳
@@ -80,7 +85,7 @@ type ExamList struct {
 	NumOfExaminees int64         `json:"num_of_examinees"` //考生数量
 }
 
-type Examinee struct {
+type ExamineeInfo struct {
 	StudentID      int64       `json:"id"`
 	SerialNumber   int64       `json:"serial_number"`
 	ExamineeNumber null.String `json:"examinee_number"` // 准考证号
@@ -92,11 +97,13 @@ type Examinee struct {
 }
 
 type ExamUserInfo struct {
-	ID          int64       `json:"id"`
-	Name        string      `json:"name"`
-	IDCardNo    null.String `json:"id_card_no"`   // 身份证号
-	MobilePhone string      `json:"mobile_phone"` // 电话
-	Gender      string      `json:"gender"`
+	ID                int64       `json:"id"`
+	Name              string      `json:"name"`
+	IDCardNo          null.String `json:"id_card_no"`   // 身份证号
+	MobilePhone       string      `json:"mobile_phone"` // 电话
+	Gender            string      `json:"gender"`
+	ExamPlanStudentID null.Int    `json:"exam_plan_student_id"`
+	RegisterPlanName  null.String `json:"register_plan_name"`
 }
 
 type ExamFile struct {
@@ -1316,7 +1323,7 @@ func exam(ctx context.Context) {
 			examData := ExamData{
 				ExamInfo:       ei,
 				ExamSessions:   es_array,
-				ExamineeIDs:    nil,
+				Examinees:      nil,
 				InvigilatorIDs: nil,
 				ExamRooms:      nil,
 				TimeStamp:      currentTime,
@@ -1340,12 +1347,11 @@ func exam(ctx context.Context) {
 		}
 
 		// 获取考生对应的用户ID数组
-		var examineeIDs []int64
+		var examinees []Examinee
 		examinee_query := `
-			SELECT DISTINCT e.student_id 
-			FROM t_examinee e
-			INNER JOIN t_exam_session es ON e.exam_session_id = es.id
-			WHERE es.exam_id = $1 AND e.status != '08' AND es.status != '14'
+			SELECT DISTINCT es.student_id, es.exam_plan_student_id
+			FROM t_exam_student es
+			WHERE es.exam_id = $1 AND es.status != '02'
 		`
 		var examinee_rows pgx.Rows
 		examinee_rows, q.Err = conn.Query(context.Background(), examinee_query, examID)
@@ -1364,8 +1370,8 @@ func exam(ctx context.Context) {
 		}
 		defer examinee_rows.Close()
 		for examinee_rows.Next() {
-			var examineeID int64
-			q.Err = examinee_rows.Scan(&examineeID)
+			var examinee Examinee
+			q.Err = examinee_rows.Scan(&examinee.ID, &examinee.ExamPlanStudentID)
 			if forceErr == "examinee_rows.Scan" {
 				q.Err = fmt.Errorf("强制扫描考生ID错误")
 			}
@@ -1374,7 +1380,7 @@ func exam(ctx context.Context) {
 				q.RespErr()
 				return
 			}
-			examineeIDs = append(examineeIDs, examineeID)
+			examinees = append(examinees, examinee)
 		}
 
 		// 获取监考员信息
@@ -1469,7 +1475,7 @@ func exam(ctx context.Context) {
 		examData := ExamData{
 			ExamInfo:       ei,
 			ExamSessions:   es_array,
-			ExamineeIDs:    examineeIDs,
+			Examinees:      examinees,
 			InvigilatorIDs: nil,
 			ExamRooms:      examRoomsConfigs,
 			Files:          examFiles,
@@ -1554,7 +1560,7 @@ func exam(ctx context.Context) {
 			return
 		}
 
-		q.Err = validateExamData(ExamData, true)
+		q.Err = validateExamData(&ExamData, true)
 		if q.Err != nil {
 			q.RespErr()
 			return
@@ -1633,8 +1639,8 @@ func exam(ctx context.Context) {
 			examRoomCapacity += room.Capacity.Int64
 		}
 
-		if examRoomCapacity < int64(len(ExamData.ExamineeIDs)) && ExamData.ExamInfo.Mode.String == "02" {
-			q.Err = fmt.Errorf("考场容量不足: %d < %d", examRoomCapacity, len(ExamData.ExamineeIDs))
+		if examRoomCapacity < int64(len(ExamData.Examinees)) && ExamData.ExamInfo.Mode.String == "02" {
+			q.Err = fmt.Errorf("考场容量不足: %d < %d", examRoomCapacity, len(ExamData.Examinees))
 
 			// 返回正确的考场容量信息
 			var examErrorResp ExamErrorResp
@@ -1657,6 +1663,7 @@ func exam(ctx context.Context) {
 				return
 			}
 
+			q.Msg.Status = -2
 			q.RespErr()
 			return
 		}
@@ -1791,6 +1798,20 @@ func exam(ctx context.Context) {
 			return
 		}
 
+		// 硬删除考试学生记录
+		deleteExamStudentSQL := `
+		DELETE FROM t_exam_student
+		WHERE exam_id = $1`
+		_, q.Err = tx.Exec(ctx, deleteExamStudentSQL, ExamData.ExamInfo.ID.Int64)
+		if forceErr == "tx.DeleteExamStudent" {
+			q.Err = fmt.Errorf("强制删除考试学生记录错误")
+		}
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
 		// 硬删除考生
 		deleteExamineeSQL := `
 		DELETE FROM t_examinee
@@ -1862,10 +1883,10 @@ func exam(ctx context.Context) {
 		}
 
 		var examinees []cmn.TExaminee
-		for index, examineeID := range ExamData.ExamineeIDs {
+		for index, examinee := range ExamData.Examinees {
 
 			var studentID null.Int
-			studentID.Int64 = examineeID
+			studentID.Int64 = examinee.ID
 			studentID.Valid = true
 
 			var serialNumber null.Int
@@ -1885,7 +1906,7 @@ func exam(ctx context.Context) {
 		}
 
 		// 线下考试时，将考生分配到考场
-		if ExamData.ExamInfo.Mode.String == "02" && len(ExamData.ExamineeIDs) > 0 {
+		if ExamData.ExamInfo.Mode.String == "02" && len(ExamData.Examinees) > 0 {
 			examinees, q.Err = allocateExamineesToRooms(examinees, examRooms)
 			if forceErr == "allocateExamineesToRooms" {
 				q.Err = fmt.Errorf("强制分配考生到考场错误")
@@ -1948,6 +1969,76 @@ func exam(ctx context.Context) {
 					q.RespErr()
 					return
 				}
+			}
+		}
+
+		// 建立保存点方便回滚
+		_, q.Err = tx.Exec(ctx, "SAVEPOINT sp_insert_exam_student")
+		if forceErr == "tx.SavePoint" {
+			q.Err = fmt.Errorf("强制创建保存点错误")
+		}
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		// 批量插入考试学生记录
+		examStudentValueStrings := make([]string, 0, len(ExamData.Examinees))
+		examStudentValueArgs := make([]interface{}, 0, len(ExamData.Examinees)*8)
+		for _, examStudent := range ExamData.Examinees {
+			examStudentValueStrings = append(examStudentValueStrings, fmt.Sprintf("($%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d)",
+				len(examStudentValueStrings)+1, len(examStudentValueStrings)+2, len(examStudentValueStrings)+3,
+				len(examStudentValueStrings)+4, len(examStudentValueStrings)+5, len(examStudentValueStrings)+6,
+				len(examStudentValueStrings)+7, len(examStudentValueStrings)+8))
+
+			examStudentValueArgs = append(examStudentValueArgs,
+				examStudent.ID,                // student_id
+				ExamData.ExamInfo.ID,          // exam_id
+				examStudent.ExamPlanStudentID, // exam_plan_student_id
+				userID,                        // creator
+				currentTime,                   // create_time
+				userID,                        // updated_by
+				currentTime,                   // updated_time
+				"00",
+			)
+		}
+
+		if len(examStudentValueStrings) > 0 {
+			_, q.Err = tx.Exec(ctx, fmt.Sprintf(`
+				INSERT INTO t_exam_student (
+					student_id, exam_id, exam_plan_student_id, creator, create_time,
+					updated_by, update_time, status
+				) VALUES %s
+			`, strings.Join(examStudentValueStrings, ",")), examStudentValueArgs...)
+			if forceErr == "tx.InsertExamStudents" {
+				q.Err = fmt.Errorf("强制执行批量插入考试学生错误")
+			}
+			var pgErr *pgconn.PgError
+			if q.Err != nil && !(errors.As(q.Err, &pgErr) && pgErr.Code == "23505") {
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+
+			if pgErr != nil && pgErr.Code == "23505" {
+				z.Error(q.Err.Error())
+
+				// 如果出现了主键冲突，则回滚到保存点处
+				_, q.Err = tx.Exec(ctx, "ROLLBACK TO SAVEPOINT sp_insert_exam_student")
+				if q.Err != nil {
+					z.Error(q.Err.Error())
+					q.RespErr()
+					return
+				}
+
+				// 出现了冲突，说明从报名计划中选择的考生已经被其他考试选取了，此时需要查询返回并出现冲突的学生ID给前端
+
+				q.Msg.Status = -3
+				q.Err = fmt.Errorf("部分考生已被其他考试选取")
+				q.Msg.Msg = "部分考生已被其他考试选取"
+				q.RespErr()
+				return
 			}
 		}
 
@@ -3056,9 +3147,9 @@ func examinee(ctx context.Context) {
 			return
 		}
 
-		var examinees []Examinee
+		var examinees []ExamineeInfo
 		for rows.Next() {
-			var examinee Examinee
+			var examinee ExamineeInfo
 			q.Err = rows.Scan(&examinee.StudentID, &examinee.SerialNumber, &examinee.ExamineeNumber,
 				&examinee.OfficialName, &examinee.Account, &examinee.IdCardNo)
 			if forceErr == "conn.Scan" {
@@ -3858,23 +3949,93 @@ func examUser(ctx context.Context) {
 			return
 		}
 
-		userIDsResult := gjson.Get(qry, "data.IDs")
-		if !userIDsResult.IsArray() || forceErr == "notArray" {
-			q.Err = fmt.Errorf("data.IDs必须是数组格式")
-			z.Error(q.Err.Error())
-			q.RespErr()
-			return
+		qType := gjson.Get(qry, "data.Type").String()
+		if qType != "00" && qType != "02" {
+			qType = "00"
 		}
 
-		var userIDs []int64
-		for _, item := range userIDsResult.Array() {
-			userIDs = append(userIDs, item.Int())
-		}
+		// 返回普通的用户信息
+		if qType == "00" {
+			userIDsResult := gjson.Get(qry, "data.UserIDs")
+			if !userIDsResult.IsArray() || forceErr == "notArray" {
+				q.Err = fmt.Errorf("data.UserIDs必须是数组格式")
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
 
-		if len(userIDs) <= 0 {
-			q.Msg.Data, q.Err = json.Marshal([]ExamUserInfo{})
-			if forceErr == "json.Marshal1" {
-				q.Err = fmt.Errorf("强制JSON序列化错误1")
+			var userIDs []int64
+			for _, item := range userIDsResult.Array() {
+				userIDs = append(userIDs, item.Int())
+			}
+
+			if len(userIDs) <= 0 {
+				q.Msg.Data, q.Err = json.Marshal([]ExamUserInfo{})
+				if forceErr == "json.Marshal1" {
+					q.Err = fmt.Errorf("强制JSON序列化错误1")
+					q.Msg.Data = nil
+				}
+				if q.Err != nil {
+					z.Error(q.Err.Error())
+					q.RespErr()
+					return
+				}
+				q.Resp()
+				return
+			}
+
+			query := `
+			SELECT 
+				id,
+				COALESCE(official_name, nickname, account) as name,
+				COALESCE(mobile_phone, '') as phone,
+				COALESCE(id_card_no, '') as id_card,
+				COALESCE(gender, '') as gender
+			FROM t_user 
+			WHERE id = ANY($1) 
+			AND status = '00'
+			ORDER BY id`
+
+			var rows pgx.Rows
+			rows, q.Err = conn.Query(context.Background(), query, userIDs)
+			defer func() {
+				if rows != nil {
+					rows.Close()
+				}
+			}()
+			if forceErr == "conn.Query" {
+				q.Err = fmt.Errorf("强制查询用户信息错误")
+			}
+			if q.Err != nil {
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+
+			var userInfos []ExamUserInfo
+			for rows.Next() {
+				var userInfo ExamUserInfo
+				q.Err = rows.Scan(
+					&userInfo.ID,
+					&userInfo.Name,
+					&userInfo.MobilePhone,
+					&userInfo.IDCardNo,
+					&userInfo.Gender,
+				)
+				if forceErr == "rows.Scan" {
+					q.Err = fmt.Errorf("强制获取用户信息错误")
+				}
+				if q.Err != nil {
+					z.Error(q.Err.Error())
+					q.RespErr()
+					return
+				}
+				userInfos = append(userInfos, userInfo)
+			}
+
+			q.Msg.Data, q.Err = json.Marshal(userInfos)
+			if forceErr == "json.Marshal2" {
+				q.Err = fmt.Errorf("强制JSON序列化错误2")
 				q.Msg.Data = nil
 			}
 			if q.Err != nil {
@@ -3886,64 +4047,88 @@ func examUser(ctx context.Context) {
 			return
 		}
 
-		query := `
-		SELECT 
-			id,
-			COALESCE(official_name, nickname, account) as name,
-			COALESCE(mobile_phone, '') as phone,
-			COALESCE(id_card_no, '') as id_card,
-			COALESCE(gender, '') as gender
-		FROM t_user 
-		WHERE id = ANY($1) 
-		AND status = '00'
-		ORDER BY id`
-
-		var rows pgx.Rows
-		rows, q.Err = conn.Query(context.Background(), query, userIDs)
-		defer func() {
-			if rows != nil {
-				rows.Close()
-			}
-		}()
-		if forceErr == "conn.Query" {
-			q.Err = fmt.Errorf("强制查询用户信息错误")
-		}
-		if q.Err != nil {
+		// 返回带有报名计划信息的考生信息
+		examineeResult := gjson.Get(qry, "data.Examinees")
+		if !examineeResult.IsArray() || forceErr == "notArray2" {
+			q.Err = fmt.Errorf("data.Examinees必须是数组格式")
 			z.Error(q.Err.Error())
 			q.RespErr()
 			return
 		}
 
+		var examinees []Examinee
+		for _, item := range examineeResult.Array() {
+			var examinee Examinee
+			q.Err = json.Unmarshal([]byte(item.Raw), &examinee)
+			if q.Err != nil {
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+			examinees = append(examinees, examinee)
+		}
+
 		var userInfos []ExamUserInfo
-		for rows.Next() {
-			var userInfo ExamUserInfo
-			q.Err = rows.Scan(
-				&userInfo.ID,
-				&userInfo.Name,
-				&userInfo.MobilePhone,
-				&userInfo.IDCardNo,
-				&userInfo.Gender,
-			)
-			if forceErr == "rows.Scan" {
-				q.Err = fmt.Errorf("强制获取用户信息错误")
+		if len(examinees) > 0 {
+			vals := make([]string, 0, len(examinees))
+			args := make([]interface{}, 0, len(examinees)*2+1)
+			argIdx := 1
+			for _, ex := range examinees {
+				vals = append(vals, fmt.Sprintf("($%d, $%d)", argIdx, argIdx+1))
+				args = append(args, ex.ID)
+				if ex.ExamPlanStudentID.Valid {
+					args = append(args, ex.ExamPlanStudentID.Int64)
+				} else {
+					args = append(args, nil)
+				}
+				argIdx += 2
+			}
+			sql := fmt.Sprintf(`
+				WITH input(student_id, exam_plan_student_id) AS (
+					VALUES %s
+				)
+				SELECT i.student_id, 
+				COALESCE(u.official_name, u.nickname, u.account) as name,
+				COALESCE(u.mobile_phone, '') as phone,
+				COALESCE(u.id_card_no, '') as id_card,
+				COALESCE(u.gender, '') as gender
+				i.exam_plan_student_id, 
+				eps.id, rp.name
+				FROM input i
+				LEFT JOIN t_exam_plan_student eps ON i.exam_plan_student_id = eps.id
+				LEFT JOIN t_register_plan rp ON eps.register_id = rp.id
+				JOIN t_user u ON i.student_id = u.id
+
+			`, strings.Join(vals, ","))
+			var rows pgx.Rows
+			rows, q.Err = conn.Query(ctx, sql, args...)
+			if rows != nil {
+				defer rows.Close()
 			}
 			if q.Err != nil {
 				z.Error(q.Err.Error())
 				q.RespErr()
 				return
 			}
-			userInfos = append(userInfos, userInfo)
-		}
 
-		q.Msg.Data, q.Err = json.Marshal(userInfos)
-		if forceErr == "json.Marshal2" {
-			q.Err = fmt.Errorf("强制JSON序列化错误2")
-			q.Msg.Data = nil
-		}
-		if q.Err != nil {
-			z.Error(q.Err.Error())
-			q.RespErr()
-			return
+			for rows.Next() {
+				var userInfo ExamUserInfo
+				q.Err = rows.Scan(
+					&userInfo.ID,
+					&userInfo.Name,
+					&userInfo.MobilePhone,
+					&userInfo.IDCardNo,
+					&userInfo.Gender,
+					&userInfo.ExamPlanStudentID,
+					&userInfo.RegisterPlanName,
+				)
+				if q.Err != nil {
+					z.Error(q.Err.Error())
+					q.RespErr()
+					return
+				}
+				userInfos = append(userInfos, userInfo)
+			}
 		}
 
 		q.Resp()

@@ -161,22 +161,22 @@ func createMockContextWithRole(method, path string, queryParams url.Values, forc
 
 	domains = append(domains, cmn.TDomain{
 		ID:     null.IntFrom(2001),
-		Domain: "cst.school^admin",
+		Domain: "assess^admin",
 	})
 
 	domains = append(domains, cmn.TDomain{
 		ID:     null.IntFrom(2002),
-		Domain: "cst.school.academicAffair^admin",
+		Domain: "assess.academicAffair^admin",
 	})
 
 	domains = append(domains, cmn.TDomain{
 		ID:     null.IntFrom(2003),
-		Domain: "cst.school^teacher",
+		Domain: "assess^teacher",
 	})
 
 	domains = append(domains, cmn.TDomain{
 		ID:     null.IntFrom(2008),
-		Domain: "cst.school^student",
+		Domain: "assess^student",
 	})
 
 	// 创建ServiceCtx
@@ -1006,10 +1006,20 @@ func CleanTestExamData(t *testing.T) {
 		t.Fatalf("删除测试考试场次数据失败: %v", err)
 	}
 
-	// 删除测试考试信息
 	var testExamIDs []int64
 	testExamIDs = append(testExamIDs, testNormalExamID, testDeleteExamID,
 		testNormalExamID2, testExamToPublishID, testErrorExamToPublishID1, testEndExamID, testPublishedExamID, testOfflineExamID)
+
+	// 删除考试学生信息
+	_, err = tx.Exec(ctx, `
+		DELETE FROM t_exam_student WHERE exam_id = ANY($1)
+	`, testExamIDs)
+	if err != nil {
+		tx.Rollback(ctx)
+		t.Fatalf("删除测试考试学生信息失败: %v", err)
+	}
+
+	// 删除测试考试信息
 	_, err = tx.Exec(ctx, `
 		DELETE FROM t_exam_info WHERE id = ANY($1)
 	`, testExamIDs)
@@ -1386,7 +1396,11 @@ func TestValidateExamData(t *testing.T) {
 						LateEntryTime:        null.IntFrom(0),
 					},
 				},
-				ExamineeIDs: []int64{1, 2, 3},
+				Examinees: []Examinee{
+					{ID: 1, ExamPlanStudentID: null.IntFrom(0)},
+					{ID: 2, ExamPlanStudentID: null.IntFrom(0)},
+					{ID: 3, ExamPlanStudentID: null.IntFrom(0)},
+				},
 			},
 			isUpdate:  true,
 			wantError: true,
@@ -1414,7 +1428,11 @@ func TestValidateExamData(t *testing.T) {
 						LateEntryTime:        null.IntFrom(0),
 					},
 				},
-				ExamineeIDs: []int64{1, 2, 3},
+				Examinees: []Examinee{
+					{ID: 1, ExamPlanStudentID: null.IntFrom(0)},
+					{ID: 2, ExamPlanStudentID: null.IntFrom(0)},
+					{ID: 3, ExamPlanStudentID: null.IntFrom(0)},
+				},
 				ExamRooms: []ExamRoomConfig{
 					ExamRoomConfig{
 						RoomID:           1,
@@ -1449,7 +1467,11 @@ func TestValidateExamData(t *testing.T) {
 						LateEntryTime:        null.IntFrom(0),
 					},
 				},
-				ExamineeIDs: []int64{1, 2, 3},
+				Examinees: []Examinee{
+					{ID: 1, ExamPlanStudentID: null.IntFrom(0)},
+					{ID: 2, ExamPlanStudentID: null.IntFrom(0)},
+					{ID: 3, ExamPlanStudentID: null.IntFrom(0)},
+				},
 				ExamRooms: []ExamRoomConfig{
 					ExamRoomConfig{
 						RoomID:           1,
@@ -1484,7 +1506,11 @@ func TestValidateExamData(t *testing.T) {
 						EndTime:              null.IntFrom(time.Now().Add(150 * time.Minute).UnixMilli()),
 					},
 				},
-				ExamineeIDs: []int64{0, 2, 3},
+				Examinees: []Examinee{
+					{ID: 0, ExamPlanStudentID: null.IntFrom(0)},
+					{ID: 2, ExamPlanStudentID: null.IntFrom(0)},
+					{ID: 3, ExamPlanStudentID: null.IntFrom(0)},
+				},
 			},
 			isUpdate:  true,
 			wantError: true,
@@ -2339,7 +2365,7 @@ func TestValidateExamData(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := validateExamData(tt.examData, tt.isUpdate)
+			err := validateExamData(&tt.examData, tt.isUpdate)
 
 			if tt.wantError {
 				if err == nil {
@@ -3051,7 +3077,10 @@ func TestExamPutMethod(t *testing.T) {
 				ReviewerIds:          []int64{testGrader},
 			},
 		},
-		ExamineeIDs: []int64{testStudent1},
+		Examinees: []Examinee{{
+			ID:                testStudent1,
+			ExamPlanStudentID: null.IntFrom(0),
+		}},
 	}
 
 	tests := []struct {
@@ -3375,7 +3404,10 @@ func TestExamPutMethod(t *testing.T) {
 					},
 				}
 				data.InvigilatorIDs = []int64{testAcademicAffair}
-				data.ExamineeIDs = append(data.ExamineeIDs, testAcademicAffair)
+				data.Examinees = append(data.Examinees, Examinee{
+					ID:                testAcademicAffair,
+					ExamPlanStudentID: null.IntFrom(0),
+				})
 				return data
 			},
 			forceError:    "",
@@ -3401,7 +3433,10 @@ func TestExamPutMethod(t *testing.T) {
 					},
 				}
 				data.InvigilatorIDs = []int64{testAcademicAffair}
-				data.ExamineeIDs = append(data.ExamineeIDs, testAcademicAffair)
+				data.Examinees = append(data.Examinees, Examinee{
+					ID:                testAcademicAffair,
+					ExamPlanStudentID: null.IntFrom(0),
+				})
 				return data
 			},
 			forceError:    "json.Marshal1",
@@ -3498,7 +3533,7 @@ func TestExamPutMethod(t *testing.T) {
 				data := validExamData
 				data.ExamInfo.ID = null.IntFrom(testPublishedExamID)
 				data.ExamSessions[0].PaperID = null.IntFrom(testPaperToPublishID)
-				data.ExamineeIDs = []int64{}
+				data.Examinees = []Examinee{}
 				return data
 			},
 			expectedError: false,
@@ -3762,8 +3797,38 @@ func TestExamPutMethod(t *testing.T) {
 			checkResult:   false,
 		},
 		{
-			name:        "强制软删除考生错误",
-			description: "模拟软删除考生失败",
+			name:        "强制删除考试学生错误",
+			description: "模拟删除考试学生失败",
+			userID:      testAcademicAffair,
+			userRole:    2002,
+			requestBodyGen: func() interface{} {
+				data := validExamData
+				data.ExamInfo.ID = null.IntFrom(testExamToPublishID)
+				return data
+			},
+			forceError:    "tx.DeleteExamStudent",
+			expectedError: true,
+			errorContains: "强制删除考试学生错误",
+			checkResult:   false,
+		},
+		{
+			name:        "强制创建保存点错误",
+			description: "模拟创建保存点失败",
+			userID:      testAcademicAffair,
+			userRole:    2002,
+			requestBodyGen: func() interface{} {
+				data := validExamData
+				data.ExamInfo.ID = null.IntFrom(testExamToPublishID)
+				return data
+			},
+			forceError:    "tx.SavePoint",
+			expectedError: true,
+			errorContains: "强制创建保存点错误",
+			checkResult:   false,
+		},
+		{
+			name:        "强制删除考生错误",
+			description: "模拟删除考生失败",
 			userID:      testAcademicAffair,
 			userRole:    2002,
 			requestBodyGen: func() interface{} {
@@ -5815,7 +5880,7 @@ func TestExaminee(t *testing.T) {
 					return
 				}
 
-				var examinees []Examinee
+				var examinees []ExamineeInfo
 				err := json.Unmarshal(serviceCtx.Msg.Data, &examinees)
 				if err != nil {
 					t.Errorf("解析返回数据失败: %v", err)
@@ -8413,7 +8478,7 @@ func TestExamUser(t *testing.T) {
 		{
 			name:          "成功查询单个用户",
 			method:        "GET",
-			queryParams:   fmt.Sprintf(`q={"data":{"IDs":[%d]}}`, 99901),
+			queryParams:   fmt.Sprintf(`q={"data":{"UserIDs":[%d]}}`, 99901),
 			userID:        testAcademicAffair,
 			userRole:      2002,
 			expectedError: false,
@@ -8445,7 +8510,7 @@ func TestExamUser(t *testing.T) {
 		{
 			name:          "成功查询多个用户",
 			method:        "GET",
-			queryParams:   fmt.Sprintf(`q={"data":{"IDs":[%d,%d]}}`, 99901, 99902),
+			queryParams:   fmt.Sprintf(`q={"data":{"UserIDs":[%d,%d]}}`, 99901, 99902),
 			userID:        testAcademicAffair,
 			userRole:      2002,
 			expectedError: false,
@@ -8508,7 +8573,7 @@ func TestExamUser(t *testing.T) {
 		{
 			name:          "查询不存在的用户",
 			method:        "GET",
-			queryParams:   fmt.Sprintf(`q={"data":{"IDs":[%d]}}`, 99999),
+			queryParams:   fmt.Sprintf(`q={"data":{"UserIDs":[%d]}}`, 99999),
 			userID:        testAcademicAffair,
 			userRole:      2002,
 			expectedError: false,
@@ -8531,7 +8596,7 @@ func TestExamUser(t *testing.T) {
 		{
 			name:          "空的用户ID列表",
 			method:        "GET",
-			queryParams:   fmt.Sprintf(`q={"data":{"IDs":[]}}`),
+			queryParams:   fmt.Sprintf(`q={"data":{"UserIDs":[]}}`),
 			userID:        testAcademicAffair,
 			userRole:      2002,
 			expectedError: false,
@@ -8554,7 +8619,7 @@ func TestExamUser(t *testing.T) {
 		{
 			name:          "json.Marshal1",
 			method:        "GET",
-			queryParams:   fmt.Sprintf(`q={"data":{"IDs":[]}}`),
+			queryParams:   fmt.Sprintf(`q={"data":{"UserIDs":[]}}`),
 			userID:        testAcademicAffair,
 			userRole:      2002,
 			forceError:    "json.Marshal1",
@@ -8565,7 +8630,7 @@ func TestExamUser(t *testing.T) {
 		{
 			name:          "json.Marshal2",
 			method:        "GET",
-			queryParams:   fmt.Sprintf(`q={"data":{"IDs":[%d]}}`, 99901),
+			queryParams:   fmt.Sprintf(`q={"data":{"UserIDs":[%d]}}`, 99901),
 			userID:        testAcademicAffair,
 			userRole:      2002,
 			forceError:    "json.Marshal2",
@@ -8576,18 +8641,18 @@ func TestExamUser(t *testing.T) {
 		{
 			name:          "notArray",
 			method:        "GET",
-			queryParams:   fmt.Sprintf(`q={"data":{"IDs":[%d]}}`, 99901),
+			queryParams:   fmt.Sprintf(`q={"data":{"UserIDs":[%d]}}`, 99901),
 			userID:        testAcademicAffair,
 			userRole:      2002,
 			forceError:    "notArray",
 			expectedError: true,
-			errorContains: "data.IDs必须是数组格式",
-			description:   "data.IDs必须是数组格式",
+			errorContains: "data.UserIDs必须是数组格式",
+			description:   "data.UserIDs必须是数组格式",
 		},
 		{
 			name:          "模拟数据库查询错误",
 			method:        "GET",
-			queryParams:   fmt.Sprintf(`q={"data":{"IDs":[%d]}}`, 99901),
+			queryParams:   fmt.Sprintf(`q={"data":{"UserIDs":[%d]}}`, 99901),
 			userID:        testAcademicAffair,
 			userRole:      2002,
 			forceError:    "conn.Query",
@@ -8598,7 +8663,7 @@ func TestExamUser(t *testing.T) {
 		{
 			name:          "模拟数据库查询错误2",
 			method:        "GET",
-			queryParams:   fmt.Sprintf(`q={"data":{"IDs":[%d]}}`, 99901),
+			queryParams:   fmt.Sprintf(`q={"data":{"UserIDs":[%d]}}`, 99901),
 			userID:        testAcademicAffair,
 			userRole:      2002,
 			forceError:    "rows.Scan",
@@ -8609,7 +8674,7 @@ func TestExamUser(t *testing.T) {
 		{
 			name:          "获取用户域失败",
 			method:        "GET",
-			queryParams:   fmt.Sprintf(`q={"data":{"IDs":[%d]}}`, 99901),
+			queryParams:   fmt.Sprintf(`q={"data":{"UserIDs":[%d]}}`, 99901),
 			userID:        testAcademicAffair,
 			userRole:      9999,
 			expectedError: true,
@@ -8619,7 +8684,7 @@ func TestExamUser(t *testing.T) {
 		{
 			name:          "无权限访问",
 			method:        "GET",
-			queryParams:   fmt.Sprintf(`q={"data":{"IDs":[%d]}}`, 99901),
+			queryParams:   fmt.Sprintf(`q={"data":{"UserIDs":[%d]}}`, 99901),
 			userID:        testAcademicAffair,
 			userRole:      2008,
 			expectedError: true,
@@ -9511,3 +9576,9 @@ func TestGetExamRoomCapacity(t *testing.T) {
 		})
 	}
 }
+
+// func TestCreateExamData(t *testing.T) {
+// 	cmn.ConfigureForTest()
+// 	CleanTestExamData(t)
+// 	CreateTestExamData(t)
+// }
