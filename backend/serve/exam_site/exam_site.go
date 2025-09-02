@@ -585,7 +585,7 @@ func Pull(ctx context.Context, retryCount int) {
 		}
 	}()
 
-	cmd := fmt.Sprintf(`rsync -avz -e "ssh -p %d" --delete %s/* %s`,
+	cmd := fmt.Sprintf(`rsync -avz --mkpath -e "ssh -p %d" --delete %s/* %s`,
 		sshPort,
 		source, dest)
 
@@ -896,7 +896,7 @@ func Push(ctx context.Context, retryCount int) {
 	z.Info(string(o))
 
 	// 将数据同步回中心服务器
-	cmd = fmt.Sprintf(`rsync -avz -e "ssh -p %d" --delete %s/* %s`,
+	cmd = fmt.Sprintf(`rsync -avz --mkpath -e "ssh -p %d" --delete %s/* %s`,
 		sshPort,
 		source, dest)
 
@@ -2453,7 +2453,7 @@ func examSiteSyncInit(ctx context.Context) {
 				// 待推送
 				case PULLED :
 
-					z.Info(fmt.Sprintf("server will push data in %d seconds", syncDelay))
+					z.Info(fmt.Sprintf("server will push data in %d seconds", syncDelay / time.Second))
 
 					time.Sleep(syncDelay)
 
