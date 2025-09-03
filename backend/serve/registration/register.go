@@ -20,10 +20,10 @@ const (
 	//事件类型
 	EVENT_TYPE_REGISTER_START      = "register_start"
 	EVENT_TYPE_REGISTER_END        = "register_end"
-	EVENT_TYPE_REGISTER_REVIEW_END = "register_reviewer_end"
+	EVENT_TYPE_REGISTER_REVIEW_END = "register_review_end"
 
 	//默认最大并发数
-	DEFAULT_MAX_WORKERS = 10
+	DEFAULT_MAX_WORKERS = 5
 )
 
 var (
@@ -36,6 +36,7 @@ func init() {
 	//Setup package scope variables, just like logger, db connector, configure parameters, etc.
 	cmn.PackageStarters = append(cmn.PackageStarters, func() {
 		z = cmn.GetLogger()
+		pgxConn = cmn.GetPgxConn()
 		z.Info("message zLogger settled")
 	})
 }
@@ -931,6 +932,7 @@ func (tm *RegistrationTimerManager) startEventWorkers() {
 					return
 				case event := <-tm.eventQueue:
 					tm.processEvent(event, workerID)
+
 				}
 			}
 		}(i)
@@ -941,11 +943,22 @@ func (tm *RegistrationTimerManager) processEvent(event RegisterEvent, workerID i
 	switch event.Type {
 	case "register_review_end":
 		{
-			handleRegisterReviewEndEvent(tm.ctx, event)
+			err := handleRegisterReviewEndEvent(tm.ctx, event)
+			if err != nil {
+				z.Error("处理报名审核结束事件失败",
+					zap.Error(err),
+					zap.Int64("register_id", event.RegisterID))
+			}
 		}
 	case "register_end":
 		{
-			handleRegisterEndEvent(tm.ctx, event)
+			err := handleRegisterEndEvent(tm.ctx, event)
+			if err != nil {
+				z.Error("处理报名结束事件失败",
+					zap.Error(err),
+					zap.Int64("register_id", event.RegisterID))
+			}
+
 		}
 	default:
 		err := fmt.Errorf("Invalid event type: %s", event.Type)
@@ -1026,7 +1039,7 @@ func SetRegisterTimers(ctx context.Context, registerID int64) error {
 		r.id,
 		r.start_time,
 		r.end_time,
-		r.reviewe_end_time
+		r.review_end_time
 	FROM assessuser.t_register_plan r
 	WHERE r.id = $1 AND r.status NOT IN ($2,$3,$4)
 `
@@ -1080,11 +1093,6 @@ func SetRegisterTimers(ctx context.Context, registerID int64) error {
 			zap.Int64("end_time", endTime))
 	}
 	for _, registerPlan := range registerPlanInfo {
-		//设置报名计划开始定时器
-		registerTimerManager.SetTimer(registerPlan.RegisterID, registerPlan.StartTime, RegisterEvent{
-			Type:       EVENT_TYPE_REGISTER_START,
-			RegisterID: registerPlan.RegisterID,
-		})
 		//设置报名计划结束
 		registerTimerManager.SetTimer(registerPlan.RegisterID, registerPlan.EndTime, RegisterEvent{
 			Type:       EVENT_TYPE_REGISTER_END,
@@ -1124,7 +1132,6 @@ func CancelRegisterTimers(ctx context.Context, registerID int64) error {
 	for rows.Next() {
 		var registerID int64
 		if err := rows.Scan(&registerID); err == nil {
-			registerTimerManager.CancelTimer(EVENT_TYPE_REGISTER_START, registerID)
 			registerTimerManager.CancelTimer(EVENT_TYPE_REGISTER_END, registerID)
 			registerTimerManager.CancelTimer(EVENT_TYPE_REGISTER_REVIEW_END, registerID)
 			cancelCount++
@@ -1172,12 +1179,12 @@ func InitializeRegisterTimers(ctx context.Context) error {
 	SELECT r.id ,
 	r.start_time,
 	r.end_time,
-	r.review_end_time,
+	r.review_end_time
 	FROM assessuser.t_register_plan r
-	WHERE r. status  IN ($1 , $2)
+	WHERE r. status  IN ($1 , $2 , $3)
 	ORDER BY  r.id
 `
-	rows, err := pgxConn.Query(ctx, query)
+	rows, err := pgxConn.Query(ctx, query, RegisterStatus.PendingRelease, RegisterStatus.Released, RegisterStatus.Ending)
 	defer func() {
 		if rows != nil {
 			rows.Close()
@@ -1203,10 +1210,6 @@ func InitializeRegisterTimers(ctx context.Context) error {
 				zap.Error(err))
 			return err
 		}
-		registerTimerManager.SetTimer(registerID, startTime, RegisterEvent{
-			RegisterID: registerID,
-			Type:       EVENT_TYPE_REGISTER_START,
-		})
 		registerTimerManager.SetTimer(registerID, endTime, RegisterEvent{
 			RegisterID: registerID,
 			Type:       EVENT_TYPE_REGISTER_END,
@@ -1333,7 +1336,7 @@ func handleRegisterEndEvent(ctx context.Context, event RegisterEvent) error {
 	//更新报名计划状态为已结束
 	_, err = tx.Exec(
 		ctx,
-		`UPDATE t_register_plan SET status = $1,update_time= $2 WHERE id = $3 AND status IN ($4 ,$5) AND end_time <= $6`,
+		`UPDATE assessuser.t_register_plan SET status = $1,update_time= $2 WHERE id = $3 AND status IN ($4 ,$5) AND end_time <= $6`,
 		RegisterStatus.Ending,
 		now,
 		event.RegisterID,
@@ -1407,7 +1410,7 @@ func handleRegisterReviewEndEvent(ctx context.Context, event RegisterEvent) erro
 	//更新报名计划状态为审核截止
 	_, err = tx.Exec(
 		ctx,
-		`UPDATE t_register_plan SET status = $1,update_time= $2 WHERE id = $3 AND status IN ($4 ,$5) AND review_end_time <= $6`,
+		`UPDATE assessuser.t_register_plan SET status = $1,update_time= $2 WHERE id = $3 AND status IN ($4 ,$5) AND review_end_time <= $6`,
 		RegisterStatus.ReviewEnding,
 		now,
 		event.RegisterID,
@@ -1427,8 +1430,13 @@ func handleRegisterReviewEndEvent(ctx context.Context, event RegisterEvent) erro
 func RegisterMaintainService() {
 	ctx, cancel := context.WithCancel(context.Background())
 
-	defer cancel()
 	registerTimerManager = NewRegistrationTimerManager(ctx, cancel)
 	//初始化定时器
-	InitializeRegisterTimers(ctx)
+	err := InitializeRegisterTimers(ctx)
+	if err != nil {
+		z.Error("初始化定时器失败", zap.Error(err))
+		cancel()
+		return
+	}
+
 }
