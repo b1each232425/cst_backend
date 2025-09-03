@@ -10,10 +10,11 @@ import (
 
 // MockService 模拟 Service 接口
 type MockService struct {
-	GenerateUniqueAccountFunc func(ctx context.Context, tx pgx.Tx, length int, maxAttempts int) (string, error)
-	ValidateUserFunc          func(ctx context.Context, tx pgx.Tx, users []User) ([]User, []User, []User, error)
-	QueryUserCurrentRoleFunc  func(ctx context.Context, userId null.Int) (null.Int, null.String, error)
-	SendEmailFunc             func(ctx context.Context, recipient, subject, body string, contentType mail.ContentType) error
+	GenerateUniqueAccountFunc  func(ctx context.Context, tx pgx.Tx, length int, maxAttempts int) (string, error)
+	ValidateUserToBeInsertFunc func(ctx context.Context, tx pgx.Tx, users []User) ([]User, []User, []User, error)
+	ValidateUserToBeUpdateFunc func(ctx context.Context, tx pgx.Tx, users []User) ([]User, []User, error)
+	QueryUserCurrentRoleFunc   func(ctx context.Context, userId null.Int) (null.Int, null.String, error)
+	SendEmailFunc              func(ctx context.Context, recipient, subject, body string, contentType mail.ContentType) error
 
 	user      User
 	users     []User
@@ -78,10 +79,17 @@ func (m *MockService) GenerateUniqueAccount(ctx context.Context, tx pgx.Tx, leng
 }
 
 func (m *MockService) ValidateUserToBeInsert(ctx context.Context, tx pgx.Tx, users []User) ([]User, []User, []User, error) {
-	if m.ValidateUserFunc != nil {
-		return m.ValidateUserFunc(ctx, tx, users)
+	if m.ValidateUserToBeInsertFunc != nil {
+		return m.ValidateUserToBeInsertFunc(ctx, tx, users)
 	}
 	return nil, nil, nil, nil // 默认返回空切片和 nil 错误
+}
+
+func (m *MockService) ValidateUserToBeUpdate(ctx context.Context, tx pgx.Tx, users []User) ([]User, []User, error) {
+	if m.ValidateUserToBeUpdateFunc != nil {
+		return m.ValidateUserToBeUpdateFunc(ctx, tx, users)
+	}
+	return nil, nil, nil // 默认返回空切片和 nil 错误
 }
 
 func (m *MockService) QueryUserCurrentRole(ctx context.Context, userId null.Int) (null.Int, null.String, error) {

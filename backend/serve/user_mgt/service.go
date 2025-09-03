@@ -28,6 +28,7 @@ type Service interface {
 	CheckUserAlreadyExists(ctx context.Context, tx pgx.Tx, fields map[string]any) (bool, *User, error)
 	GenerateUniqueAccount(ctx context.Context, tx pgx.Tx, length int, maxAttempts int) (string, error)
 	ValidateUserToBeInsert(ctx context.Context, tx pgx.Tx, users []User) ([]User, []User, []User, error)
+	ValidateUserToBeUpdate(ctx context.Context, tx pgx.Tx, users []User) ([]User, []User, error)
 	QueryUserCurrentRole(ctx context.Context, userId null.Int) (null.Int, null.String, error)
 	SendEmail(ctx context.Context, recipient, subject, body string, contentType mail.ContentType) error
 }
@@ -936,6 +937,7 @@ func (r *service) ValidateUserToBeInsert(ctx context.Context, tx pgx.Tx, users [
 		"empty_id_card_type":    "证件类型不能为空",
 		"not_valid_id_card_no":  "非有效证件号",
 		"id_card_file_invalid":  "证件文件格式不合法，必须包含frontImgID和backImgID字段",
+		"invalid_status":        "状态不合法，必须是00、02、04之一",
 	}
 
 	for i := range users {
@@ -1112,6 +1114,15 @@ func (r *service) ValidateUserToBeInsert(ctx context.Context, tx pgx.Tx, users [
 			// 如果角色列表为空，则添加错误信息
 			errorCount++
 			errorMessage = append(errorMessage, null.StringFrom(errorMessages["empty_domain"]))
+		}
+
+		if users[i].Status.Valid {
+			if users[i].Status.String != CUserStatusValid &&
+				users[i].Status.String != CUserStatusProhibitLogin &&
+				users[i].Status.String != CUserStatusBlock {
+				errorCount++
+				errorMessage = append(errorMessage, null.StringFrom(errorMessages["invalid_status"]))
+			}
 		}
 
 		if errorCount > 0 {
@@ -1140,18 +1151,17 @@ func (r *service) ValidateUserToBeInsert(ctx context.Context, tx pgx.Tx, users [
 // ValidateUserToBeUpdate 验证即将被更新的用户信息
 // 返回 允许更新的有效用户列表 和 不允许更新的不合法用户列表
 // 会使用用户已有的信息（除了帐号）检索这个用户是否存在，已存在的用户会被跳过，既不会被归为有效用户，也不会被归为无效用户
-func (r *service) ValidateUserToBeUpdate(ctx context.Context, tx pgx.Tx, users []User) ([]User, []User, []User, error) {
+func (r *service) ValidateUserToBeUpdate(ctx context.Context, tx pgx.Tx, users []User) ([]User, []User, error) {
 	if len(users) == 0 {
 		e := fmt.Errorf("users cannot be empty")
 		z.Error(e.Error())
-		return []User{}, []User{}, []User{}, e
+		return []User{}, []User{}, e
 	}
 
 	forceErr, _ := ctx.Value("force-error").(string)
 
-	invalidUsers := make([]User, 0)  // 不允许被插入的无效用户列表
-	validUsers := make([]User, 0)    // 允许被插入的有效用户列表
-	existingUsers := make([]User, 0) // 已存在的用户列表
+	invalidUsers := make([]User, 0) // 不允许被更新的无效用户列表
+	validUsers := make([]User, 0)   // 允许被更新的有效用户列表
 
 	// 构造错误信息map
 	errorMessages := map[string]string{
@@ -1170,6 +1180,7 @@ func (r *service) ValidateUserToBeUpdate(ctx context.Context, tx pgx.Tx, users [
 		"empty_id_card_type":    "证件类型不能为空",
 		"not_valid_id_card_no":  "非有效证件号",
 		"id_card_file_invalid":  "证件文件格式不合法，必须包含frontImgID和backImgID字段",
+		"invalid_status":        "状态不合法，必须是00、02、04之一",
 	}
 
 	for i := range users {
@@ -1220,41 +1231,11 @@ func (r *service) ValidateUserToBeUpdate(ctx context.Context, tx pgx.Tx, users [
 			users[i].MobilePhone = null.StringFrom(phonenumbers.Format(num, phonenumbers.E164))
 		}
 
-		// 用当前用户有的信息（除了帐号）检索这个用户实例是否已存在
-		userExist, existUserInfo, err := r.CheckUserAlreadyExists(ctx, tx, map[string]any{
-			"official_name": users[i].OfficialName,
-			"mobile_phone":  users[i].MobilePhone,
-			"email":         users[i].Email,
-			"id_card_no":    users[i].IDCardNo,
-		})
-		if err != nil || forceErr == "CheckUserAlreadyExists" {
-			return []User{}, []User{}, []User{}, fmt.Errorf("error checking user existence: %w", err)
-		}
-		if userExist {
-			// 如果用户实例已存在，则跳过，不需要重复插入
-			existingUsers = append(existingUsers, *existUserInfo)
-			continue
-		}
-
-		// 若果用户实例不存在，则继续验证其信息是否与其他用户实例冲突
-
-		if users[i].Account != "" {
-			// 检查帐号是否已存在
-			exist, _, err := r.CheckTUserRowExists(ctx, tx, "account = $1", users[i].Account)
-			if err != nil || forceErr == "CheckTUserRowExists_account" {
-				return []User{}, []User{}, []User{}, fmt.Errorf("error checking account existence: %w", err)
-			}
-			if exist {
-				errorCount++
-				errorMessage = append(errorMessage, null.StringFrom(errorMessages["account_exists"]))
-			}
-		}
-
 		if users[i].MobilePhone.Valid {
 			// 检查手机号是否已存在
-			exist, _, err := r.CheckTUserRowExists(ctx, tx, "mobile_phone = $1", users[i].MobilePhone)
+			exist, _, err := r.CheckTUserRowExists(ctx, tx, "mobile_phone = $1 AND id != $2", users[i].MobilePhone, users[i].ID)
 			if err != nil || forceErr == "CheckTUserRowExists_mobile_phone" {
-				return []User{}, []User{}, []User{}, fmt.Errorf("error checking mobile phone existence: %w", err)
+				return []User{}, []User{}, fmt.Errorf("error checking mobile phone existence: %w", err)
 			}
 			if exist {
 				errorCount++
@@ -1269,9 +1250,9 @@ func (r *service) ValidateUserToBeUpdate(ctx context.Context, tx pgx.Tx, users [
 				errorMessage = append(errorMessage, null.StringFrom(errorMessages["invalid_email"]))
 			}
 			// 检查邮箱是否已存在
-			exist, _, err := r.CheckTUserRowExists(ctx, tx, "email = $1", users[i].Email)
+			exist, _, err := r.CheckTUserRowExists(ctx, tx, "email = $1 AND id != $2", users[i].Email, users[i].ID)
 			if err != nil || forceErr == "CheckTUserRowExists_email" {
-				return []User{}, []User{}, []User{}, fmt.Errorf("error checking email existence: %w", err)
+				return []User{}, []User{}, fmt.Errorf("error checking email existence: %w", err)
 			}
 			if exist {
 				errorCount++
@@ -1304,9 +1285,9 @@ func (r *service) ValidateUserToBeUpdate(ctx context.Context, tx pgx.Tx, users [
 			}
 
 			// 检查证件号是否已存在
-			exist, _, err := r.CheckTUserRowExists(ctx, tx, "id_card_no = $1", users[i].IDCardNo.String)
+			exist, _, err := r.CheckTUserRowExists(ctx, tx, "id_card_no = $1 AND id != $2", users[i].IDCardNo.String, users[i].ID)
 			if err != nil || forceErr == "CheckTUserRowExists_id_card_no" {
-				return []User{}, []User{}, []User{}, fmt.Errorf("error checking ID card number existence: %w", err)
+				return []User{}, []User{}, fmt.Errorf("error checking ID card number existence: %w", err)
 			}
 			if exist {
 				errorCount++
@@ -1328,7 +1309,7 @@ func (r *service) ValidateUserToBeUpdate(ctx context.Context, tx pgx.Tx, users [
 			for _, domain := range users[i].Domains {
 				exist, existDomain, err := IsDomainExist(ctx, tx, domain.String)
 				if err != nil || forceErr == "IsDomainExist" {
-					return []User{}, []User{}, []User{}, fmt.Errorf("error checking domain existence: %w", err)
+					return []User{}, []User{}, fmt.Errorf("error checking domain existence: %w", err)
 				}
 				if !exist {
 					errorCount++
@@ -1346,6 +1327,15 @@ func (r *service) ValidateUserToBeUpdate(ctx context.Context, tx pgx.Tx, users [
 			// 如果角色列表为空，则添加错误信息
 			errorCount++
 			errorMessage = append(errorMessage, null.StringFrom(errorMessages["empty_domain"]))
+		}
+
+		if users[i].Status.Valid {
+			if users[i].Status.String != CUserStatusValid &&
+				users[i].Status.String != CUserStatusProhibitLogin &&
+				users[i].Status.String != CUserStatusBlock {
+				errorCount++
+				errorMessage = append(errorMessage, null.StringFrom(errorMessages["invalid_status"]))
+			}
 		}
 
 		if errorCount > 0 {
@@ -1368,7 +1358,7 @@ func (r *service) ValidateUserToBeUpdate(ctx context.Context, tx pgx.Tx, users [
 		}
 	}
 
-	return validUsers, invalidUsers, existingUsers, nil
+	return validUsers, invalidUsers, nil
 }
 
 // QueryUserCurrentRole 查询用户当前角色

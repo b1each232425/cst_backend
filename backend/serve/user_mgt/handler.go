@@ -382,10 +382,9 @@ func (h *handler) HandleUser(ctx context.Context) {
 		}()
 
 		// 验证用户信息
-		// TODO: 不能用这个验证函数
 		var validUsers []User
 		var invalidUsers []User
-		validUsers, invalidUsers, _, err = h.srv.ValidateUserToBeInsert(ctx, tx, users)
+		validUsers, invalidUsers, err = h.srv.ValidateUserToBeUpdate(ctx, tx, users)
 		if err != nil {
 			q.Err = fmt.Errorf("failed to validate users: %w", err)
 			q.RespErr()

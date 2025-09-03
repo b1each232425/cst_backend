@@ -3681,6 +3681,7 @@ func Test_service_ValidateUser(t *testing.T) {
 							MobilePhone: null.NewString("13900139002", true),
 							IDCardNo:    null.NewString("310115198801011234", true),
 							IDCardFile:  types.JSONText(`{"frontImgIs":"qwqwdtrertxakbkcz", "backImgIs":"qqwefhgfjhjktywdqwd"}`),
+							Status:      null.StringFrom("03"),
 						},
 						Domains: []null.String{
 							null.NewString("assess^invalid", true),
@@ -3702,6 +3703,7 @@ func Test_service_ValidateUser(t *testing.T) {
 						null.NewString("证件类型不能为空", true),
 						null.NewString("角色不合法", true),
 						null.NewString("证件文件格式不合法，必须包含frontImgID和backImgID字段", true),
+						null.NewString("状态不合法，必须是00、02、04之一", true),
 					},
 				},
 			},
