@@ -1299,7 +1299,7 @@ func TestValidatePractice(t *testing.T) {
 				PaperID:         null.IntFrom(102),
 				Name:            null.StringFrom("化学期末考试"),
 				CorrectMode:     null.StringFrom("异常批改数据"), // 批改模式
-				Type:            null.StringFrom("02"),     // 练习类型（试卷）
+				Type:            null.StringFrom("02"),           // 练习类型（试卷）
 				AllowedAttempts: null.IntFrom(10),
 			},
 			ps:            nil,
@@ -1321,7 +1321,7 @@ func TestValidatePractice(t *testing.T) {
 			p: &cmn.TPractice{
 				PaperID:         null.IntFrom(102),
 				Name:            null.StringFrom("化学期末考试"),
-				CorrectMode:     null.StringFrom("00"),     // 批改模式
+				CorrectMode:     null.StringFrom("00"),           // 批改模式
 				Type:            null.StringFrom("异常练习类型"), // 练习类型（试卷）
 				AllowedAttempts: null.IntFrom(10),
 			},
@@ -2408,6 +2408,16 @@ VALUES
 			pageSize:      10,
 			expectedError: errors.New("解析练习数据失败"),
 		},
+		{
+			name:          "异常5 强制触发插叙总数失败 sQuery3",
+			pType:         PracticeType.Classical,
+			PName:         "",
+			difficulty:    "",
+			order:         nil,
+			page:          1,
+			pageSize:      10,
+			expectedError: errors.New("查询学生能参与练习总数失败"),
+		},
 	}
 
 	for _, tt := range tests {
@@ -2419,6 +2429,8 @@ VALUES
 				ctx = context.WithValue(ctx, "force-error", "row close")
 			} else if containsString(tt.name, "异常4") {
 				ctx = context.WithValue(ctx, "force-error", "sQuery2")
+			} else if containsString(tt.name, "异常5") {
+				ctx = context.WithValue(ctx, "force-error", "sQuery3")
 			} else {
 				ctx = context.Background()
 			}
@@ -2440,8 +2452,8 @@ VALUES
 					if len(psLists) != tt.expectedNum {
 						t.Errorf("返回的练习列表数量%v,与预期%v不一致", len(psLists), tt.expectedNum)
 					}
-					if total != tt.expectedNum {
-						t.Errorf("返回的练习列表数量%v,与预期%v不一致", total, tt.expectedNum)
+					if total != 2 {
+						t.Errorf("返回的练习列表数量%v,与预期%v不一致", total, 2)
 					}
 
 					for idx, ps := range psLists {
@@ -2501,8 +2513,8 @@ VALUES
 						if len(psLists) != tt.expectedNum {
 							t.Errorf("返回的练习列表数量%v,与预期%v不一致", len(psLists), tt.expectedNum)
 						}
-						if total != tt.expectedNum {
-							t.Errorf("返回的练习列表数量%v,与预期%v不一致", total, tt.expectedNum)
+						if total != 2 {
+							t.Errorf("返回的练习列表数量%v,与预期%v不一致", total, 2)
 						}
 
 						for _, ps := range psLists {
@@ -2785,6 +2797,16 @@ func TestListPracticeT(t *testing.T) {
 			expectedError: nil,
 			expectedNum:   0,
 		},
+		{
+			name:          "强制异常4 query1",
+			pName:         "",
+			Type:          PracticeType.Classical,
+			status:        PracticeStatus.PendingRelease,
+			page:          1,
+			pageSize:      10,
+			expectedError: errors.New("查询练习总数失败"),
+			expectedNum:   0,
+		},
 	}
 
 	for _, tt := range tests {
@@ -2795,6 +2817,8 @@ func TestListPracticeT(t *testing.T) {
 				ctx = context.WithValue(ctx, "force-error", "scan")
 			} else if containsString(tt.name, "强制异常3") {
 				ctx = context.WithValue(ctx, "force-error", "row close")
+			} else if containsString(tt.name, "强制异常4") {
+				ctx = context.WithValue(ctx, "force-error", "query1")
 			} else {
 				ctx = context.Background()
 			}
@@ -2810,8 +2834,8 @@ func TestListPracticeT(t *testing.T) {
 					return
 				}
 				if !containsString(tt.name, "强制异常3") {
-					if total != tt.expectedNum {
-						t.Errorf("预期练习列表数量不对 预期：%v 实际：%v", tt.expectedNum, total)
+					if total != 2 {
+						t.Errorf("预期练习列表数量不对 预期：%v 实际：%v", 2, total)
 					}
 					if len(r) != tt.expectedNum {
 						t.Errorf("预期练习列表数量不对 预期：%v 实际：%v", tt.expectedNum, total)
@@ -7409,6 +7433,16 @@ VALUES
 			orderBy: []string{},
 			pNum:    1,
 		},
+		{
+			name:          "异常4 强制触发错误 query1",
+			pName:         "7",
+			tName:         "克隆体",
+			page:          1,
+			size:          10,
+			orderBy:       []string{},
+			pNum:          1,
+			expectedError: errors.New("查询此时以发布的练习总数失败"),
+		},
 	}
 
 	for _, tt := range tests {
@@ -7423,6 +7457,8 @@ VALUES
 				ctx = context.WithValue(ctx, "force-error", "scan")
 			} else if containsString(tt.name, "异常3") {
 				ctx = context.WithValue(ctx, "force-error", "Close")
+			} else if containsString(tt.name, "异常4") {
+				ctx = context.WithValue(ctx, "force-error", "query1")
 			} else {
 				ctx = context.Background()
 			}
