@@ -639,22 +639,20 @@ func (r *service) OverwriteUpdateUsers(ctx context.Context, tx pgx.Tx, users []U
 		}
 
 		// 读取用户ID和更新后的数据
-		var userID int64
 		var createTime int64
 		var updateTime int64
 		if tx != nil {
-			err = tx.QueryRow(ctx, "SELECT id, create_time, update_time FROM t_user WHERE account = $1", users[i].Account).Scan(&userID, &createTime, &updateTime)
+			err = tx.QueryRow(ctx, "SELECT create_time, update_time FROM t_user WHERE id = $1", users[i].ID).Scan(&createTime, &updateTime)
 		} else {
-			err = r.pgxConn.QueryRow(ctx, "SELECT id, create_time, update_time FROM t_user WHERE account = $1", users[i].Account).Scan(&userID, &createTime, &updateTime)
+			err = r.pgxConn.QueryRow(ctx, "SELECT create_time, update_time FROM t_user WHERE id = $1", users[i].ID).Scan(&createTime, &updateTime)
 		}
 		if err != nil || forceErr == "QueryUserID" {
-			e := fmt.Errorf("failed to retrieve user ID for %s: %w", users[i].Account, err)
+			e := fmt.Errorf("failed to retrieve user info for %s: %w", users[i].Account, err)
 			z.Error(e.Error())
 			return []User{}, e
 		}
 
 		// 设置用户ID并添加到成功更新的用户列表
-		users[i].ID = null.IntFrom(userID)
 		users[i].CreateTime = null.IntFrom(createTime)
 		users[i].UpdateTime = null.IntFrom(updateTime)
 
@@ -663,9 +661,9 @@ func (r *service) OverwriteUpdateUsers(ctx context.Context, tx pgx.Tx, users []U
 			// 先删除该用户的所有旧角色
 			deleteDomainsSQL := `DELETE FROM t_user_domain WHERE sys_user = $1`
 			if tx != nil {
-				_, err = tx.Exec(ctx, deleteDomainsSQL, userID)
+				_, err = tx.Exec(ctx, deleteDomainsSQL, users[i].ID)
 			} else {
-				_, err = r.pgxConn.Exec(ctx, deleteDomainsSQL, userID)
+				_, err = r.pgxConn.Exec(ctx, deleteDomainsSQL, users[i].ID)
 			}
 			if err != nil || forceErr == "DeleteUserDomain" {
 				e := fmt.Errorf("failed to delete user domains for user %s: %w", users[i].Account, err)
@@ -679,9 +677,9 @@ func (r *service) OverwriteUpdateUsers(ctx context.Context, tx pgx.Tx, users []U
 			`
 			for _, domain := range users[i].Domains {
 				if tx != nil {
-					_, err = tx.Exec(ctx, insertDomainSQL, userID, domain.String)
+					_, err = tx.Exec(ctx, insertDomainSQL, users[i].ID, domain.String)
 				} else {
-					_, err = r.pgxConn.Exec(ctx, insertDomainSQL, userID, domain.String)
+					_, err = r.pgxConn.Exec(ctx, insertDomainSQL, users[i].ID, domain.String)
 				}
 				if err != nil || forceErr == "InsertUserDomain" {
 					e := fmt.Errorf("failed to insert user domain %s for user %s: %w", domain.String, users[i].Account, err)
