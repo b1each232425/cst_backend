@@ -945,7 +945,7 @@ func (tm *RegistrationTimerManager) processEvent(event RegisterEvent, workerID i
 		{
 			err := handleRegisterReviewEndEvent(tm.ctx, event)
 			if err != nil {
-				z.Error("处理注册审核结束事件失败",
+				z.Error("处理报名审核结束事件失败",
 					zap.Error(err),
 					zap.Int64("register_id", event.RegisterID))
 			}
@@ -954,7 +954,7 @@ func (tm *RegistrationTimerManager) processEvent(event RegisterEvent, workerID i
 		{
 			err := handleRegisterEndEvent(tm.ctx, event)
 			if err != nil {
-				z.Error("处理注册结束事件失败",
+				z.Error("处理报名结束事件失败",
 					zap.Error(err),
 					zap.Int64("register_id", event.RegisterID))
 			}
@@ -1430,9 +1430,13 @@ func handleRegisterReviewEndEvent(ctx context.Context, event RegisterEvent) erro
 func RegisterMaintainService() {
 	ctx, cancel := context.WithCancel(context.Background())
 
-	defer cancel()
 	registerTimerManager = NewRegistrationTimerManager(ctx, cancel)
 	//初始化定时器
-	InitializeRegisterTimers(ctx)
+	err := InitializeRegisterTimers(ctx)
+	if err != nil {
+		z.Error("初始化定时器失败", zap.Error(err))
+		cancel()
+		return
+	}
 
 }
