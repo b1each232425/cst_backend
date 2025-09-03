@@ -1,6 +1,6 @@
 /*==============================================================*/
 /* DBMS name:      PostgreSQL 9.x                               */
-/* Created on:     2025/9/3 18:10:21                            */
+/* Created on:     2025/9/4 2:00:16                             */
 /*==============================================================*/
 
 
@@ -9483,10 +9483,14 @@ comment on column t_sys_ver.status is
 ALTER SEQUENCE t_sys_ver_id_seq RESTART WITH 20000;
 
 insert into t_sys_ver(id,name,ver,create_time,update_time,remark)
-  values(1000,'业务模型','3.2.7.1',
-  '2016年12月5日 9:52:53','2025年9月3日 18:08:31',
-  '3.2.7.1
-优化错题集获取错题集v_wrong_submission_collection视图
+  values(1000,'业务模型','3.2.8.0',
+  '2016年12月5日 9:52:53','2025年9月4日 2:00:10',
+  '3.2.8.0
+优化试卷视图
+
+3.2.7.1
+优化 v_wrong_submission_collection 获取错题集错题集重复bug视图
+
 3.2.7.0
 新增 v_exam_room 视图
 
@@ -13516,216 +13520,59 @@ create table t_v_order_sum as select * from v_order_sum limit 1;
 /* View: v_paper                                                */
 /*==============================================================*/
 create or replace view v_paper as
-WITH paper_basic AS (
-         SELECT p.id AS paper_id,
-            p.domain_id,
-            p.exampaper_id,
-            p.name,
-            p.assembly_type,
-            p.category,
-            p.level,
-            p.suggested_duration,
-            p.description,
-            p.tags,
-            p.config,
-            p.creator,
-            jsonb_build_object('id', u.id, 'official_name', u.official_name, 'account', u.account, 'mobile_phone', u.mobile_phone, 'email', u.email) AS creator_info,
-            p.create_time,
-            p.updated_by,
-            p.update_time,
-            p.status AS paper_status
-           FROM t_paper p
-             LEFT JOIN t_user u ON p.creator = u.id
-        ),
-        -- 原试卷题组
-        paper_valid_groups AS (
-         SELECT pg.id,
-            pg.paper_id,
-            pg.name,
-            pg."order",
-            pg.creator,
-            pg.create_time,
-            pg.updated_by,
-            pg.update_time,
-            pg.status,
-            pg.addi
-           FROM t_paper_group pg
-          WHERE pg.status::text <> '02'::text
-        ),
-        -- 原题库题目（聚合时包含分数，供统计复用）
-        group_valid_questions AS (
+WITH paper_valid_groups AS NOT MATERIALIZED (
+         SELECT t_paper_group.id,
+            t_paper_group.paper_id,
+            t_paper_group.name,
+            t_paper_group."order",
+            t_paper_group.creator,
+            t_paper_group.create_time,
+            t_paper_group.updated_by,
+            t_paper_group.update_time,
+            t_paper_group.status,
+            t_paper_group.addi
+           FROM t_paper_group
+          WHERE t_paper_group.status::text <> '02'::text
+        ), group_valid_questions AS NOT MATERIALIZED (
          SELECT pq.group_id,
             sum(pq.score) AS group_total_score,
             count(pq.id) AS group_question_count,
-            jsonb_agg(
-                jsonb_build_object(
-                    'id', pq.id, 
-                    'bank_question_id', q.id, 
-                    'type', q.type, 
-                    'content', q.content, 
-                    'options', q.options, 
-                    'answers', q.answers, 
-                    'score', pq.score, 
-                    'sub_score', pq.sub_score, 
-                    'difficulty', q.difficulty, 
-                    'tags', q.tags, 
-                    'analysis', q.analysis, 
-                    'title', q.title, 
-                    'answer_file_path', q.answer_file_path, 
-                    'test_file_path', q.test_file_path, 
-                    'input', q.input, 
-                    'output', q.output, 
-                    'example', q.example, 
-                    'repo', q.repo, 
-                    'order', pq."order", 
-                    'group_id', pq.group_id, 
-                    'status', q.status, 
-                    'question_attachments_path', q.question_attachments_path,
-                    'belong_to',q.belong_to
-                ) ORDER BY pq."order"
-            ) AS questions
+            jsonb_agg(jsonb_build_object('id', pq.id, 'bank_question_id', q.id, 'type', q.type, 'content', q.content, 'options', q.options, 'answers', q.answers, 'score', pq.score, 'sub_score', pq.sub_score, 'difficulty', q.difficulty, 'tags', q.tags, 'analysis', q.analysis, 'title', q.title, 'answer_file_path', q.answer_file_path, 'test_file_path', q.test_file_path, 'input', q.input, 'output', q.output, 'example', q.example, 'repo', q.repo, 'order', pq."order", 'group_id', pq.group_id, 'status', q.status, 'question_attachments_path', q.question_attachments_path, 'belong_to', q.belong_to) ORDER BY pq."order") AS questions
            FROM t_paper_question pq
-             JOIN t_question q ON pq.bank_question_id = q.id AND q.status::text = '00'::text
+             JOIN t_question q ON q.id = pq.bank_question_id AND q.status::text = '00'::text
           WHERE pq.status::text <> '02'::text
           GROUP BY pq.group_id
-        ),
-        -- 考卷题组
-        exam_valid_groups AS (
-         SELECT eg.id,
-            eg.exam_paper_id,
-            eg.name,
-            eg."order",
-            eg.creator,
-            eg.create_time,
-            eg.updated_by,
-            eg.update_time,
-            eg.status,
-            eg.addi
-           FROM t_exam_paper_group eg
-          WHERE eg.status::text <> '02'::text
-        ),
-        -- 考卷题目（优化：仅按group_id分组）
-        exam_group_valid_questions AS (
+        ), exam_valid_groups AS NOT MATERIALIZED (
+         SELECT t_exam_paper_group.id,
+            t_exam_paper_group.exam_paper_id,
+            t_exam_paper_group.name,
+            t_exam_paper_group."order",
+            t_exam_paper_group.creator,
+            t_exam_paper_group.create_time,
+            t_exam_paper_group.updated_by,
+            t_exam_paper_group.update_time,
+            t_exam_paper_group.status,
+            t_exam_paper_group.addi
+           FROM t_exam_paper_group
+          WHERE t_exam_paper_group.status::text <> '02'::text
+        ), exam_group_valid_questions AS NOT MATERIALIZED (
          SELECT eq.group_id,
             sum(eq.score) AS group_total_score,
             count(eq.id) AS group_question_count,
-            jsonb_agg(
-                jsonb_build_object(
-                    'id', eq.id, 
-                    'type', eq.type, 
-                    'content', eq.content, 
-                    'options', eq.options, 
-                    'answers', eq.answers, 
-                    'score', eq.score, 
-                    'order', eq."order", 
-                    'group_id', eq.group_id, 
-                    'status', eq.status, 
-                    'analysis', eq.analysis, 
-                    'title', eq.title, 
-                    'answer_file_path', eq.answer_file_path, 
-                    'test_file_path', eq.test_file_path, 
-                    'input', eq.input, 
-                    'output', eq.output, 
-                    'example', eq.example, 
-                    'repo', eq.repo, 
-                    'commit_id', eq.commit_id,
-                    'question_attachments_path', eq.question_attachments_path
-                ) ORDER BY eq."order"
-            ) AS questions
+            jsonb_agg(jsonb_build_object('id', eq.id, 'type', eq.type, 'content', eq.content, 'options', eq.options, 'answers', eq.answers, 'score', eq.score, 'order', eq."order", 'group_id', eq.group_id, 'status', eq.status, 'analysis', eq.analysis, 'title', eq.title, 'answer_file_path', eq.answer_file_path, 'test_file_path', eq.test_file_path, 'input', eq.input, 'output', eq.output, 'example', eq.example, 'repo', eq.repo, 'commit_id', eq.commit_id, 'question_attachments_path', eq.question_attachments_path) ORDER BY eq."order") AS questions
            FROM t_exam_paper_question eq
           WHERE eq.status::text <> '02'::text
           GROUP BY eq.group_id
-        ),
-        -- 考卷统计数据（复用题组题目聚合结果）
-        exam_stats_agg AS (
-         SELECT 
-            eg.exam_paper_id,
-            COUNT(DISTINCT eg.id) AS group_count,
-            SUM(eq.group_question_count) AS question_count,
-            SUM(eq.group_total_score) AS total_score
-         FROM exam_valid_groups eg
-         LEFT JOIN exam_group_valid_questions eq ON eg.id = eq.group_id
-         GROUP BY eg.exam_paper_id
-        ),
-        -- 条件选择题组和题目数据源（优化：用LATERAL替代子查询）
-        group_with_questions AS (
-         SELECT pb.paper_id,
-            COALESCE(exam_groups_data, original_groups_data) AS groups_data
-         FROM paper_basic pb
-         -- 考卷场景数据
-         LEFT JOIN LATERAL (
-            SELECT jsonb_agg(
-                jsonb_build_object(
-                    'id', eg.id, 
-                    'name', eg.name, 
-                    'order', eg."order", 
-                    'creator', eg.creator, 
-                    'create_time', eg.create_time, 
-                    'updated_by', eg.updated_by, 
-                    'update_time', eg.update_time, 
-                    'status', eg.status, 
-                    'addi', eg.addi, 
-                    'questions', COALESCE(eq.questions, '[]'::jsonb)
-                ) ORDER BY eg."order"
-            ) AS exam_groups_data
-            FROM exam_valid_groups eg
-            LEFT JOIN exam_group_valid_questions eq ON eg.id = eq.group_id
-            WHERE eg.exam_paper_id = pb.exampaper_id
-              AND pb.paper_status <> '00'::text AND pb.exampaper_id IS NOT NULL
-         ) AS exam_data ON true
-         -- 原题库场景数据
-         LEFT JOIN LATERAL (
-            SELECT jsonb_agg(
-                jsonb_build_object(
-                    'id', pg.id, 
-                    'name', pg.name, 
-                    'order', pg."order", 
-                    'creator', pg.creator, 
-                    'create_time', pg.create_time, 
-                    'updated_by', pg.updated_by, 
-                    'update_time', pg.update_time, 
-                    'status', pg.status, 
-                    'addi', pg.addi, 
-                    'questions', COALESCE(q.questions, '[]'::jsonb)
-                ) ORDER BY pg."order"
-            ) AS original_groups_data
-            FROM paper_valid_groups pg
-            LEFT JOIN group_valid_questions q ON pg.id = q.group_id
-            WHERE pg.paper_id = pb.paper_id
-              AND (pb.paper_status = '00'::text OR pb.exampaper_id IS NULL)
-         ) AS original_data ON true
-        ),
-        -- 试卷统计数据（优化：复用题组聚合结果，减少JOIN）
-        paper_stats AS (
-         SELECT pb.paper_id,
-            CASE 
-                WHEN pb.paper_status <> '00'::text AND pb.exampaper_id IS NOT NULL THEN
-                    COALESCE(MAX(es.total_score), 0::double precision)
-                ELSE
-                    COALESCE(SUM(q.group_total_score), 0::double precision)
-            END AS total_score,
-            CASE 
-                WHEN pb.paper_status <> '00'::text AND pb.exampaper_id IS NOT NULL THEN
-                    COALESCE(MAX(es.question_count), 0)
-                ELSE
-                    COALESCE(SUM(q.group_question_count), 0)
-            END AS question_count,
-            CASE 
-                WHEN pb.paper_status <> '00'::text AND pb.exampaper_id IS NOT NULL THEN
-                    COALESCE(MAX(es.group_count), 0)
-                ELSE
-                    COUNT(DISTINCT pg.id)
-            END AS group_count
-           FROM paper_basic pb
-           -- 原题库场景：关联题组和已聚合的题目数据
-           LEFT JOIN paper_valid_groups pg ON pb.paper_id = pg.paper_id
-           LEFT JOIN group_valid_questions q ON pg.id = q.group_id
-           -- 考卷场景：关联预计算的统计结果
-           LEFT JOIN exam_stats_agg es ON pb.exampaper_id = es.exam_paper_id
-          GROUP BY pb.paper_id, pb.exampaper_id, pb.paper_status
+        ), exam_stats_agg AS NOT MATERIALIZED (
+         SELECT eg.exam_paper_id,
+            count(DISTINCT eg.id) AS group_count,
+            COALESCE(sum(eq.group_question_count), 0::numeric) AS question_count,
+            COALESCE(sum(eq.group_total_score), 0::double precision) AS total_score
+           FROM exam_valid_groups eg
+             LEFT JOIN exam_group_valid_questions eq ON eq.group_id = eg.id
+          GROUP BY eg.exam_paper_id
         )
- -- 最终查询
- SELECT p.paper_id AS id,
+ SELECT p.id,
     p.domain_id,
     p.exampaper_id,
     p.name,
@@ -13737,19 +13584,34 @@ WITH paper_basic AS (
     p.tags,
     p.config,
     p.creator,
-    p.creator_info,
     p.create_time,
     p.updated_by,
     p.update_time,
-    p.paper_status AS status,
-    s.total_score,
-    s.question_count,
-    s.group_count,
-    COALESCE(g.groups_data, '[]'::jsonb) AS groups_data
-   FROM paper_basic p
-     JOIN paper_stats s ON p.paper_id = s.paper_id
-     LEFT JOIN group_with_questions g ON p.paper_id = g.paper_id
-  ORDER BY p.domain_id, p.update_time;
+    p.status,
+    COALESCE(es.total_score, pv.total_score, 0::double precision) AS total_score,
+    COALESCE(es.question_count, pv.question_count, 0::numeric) AS question_count,
+    COALESCE(es.group_count, pv.group_count, 0::bigint) AS group_count,
+    COALESCE(egd.groups_data, pgd.groups_data, '[]'::jsonb) AS groups_data
+   FROM t_paper p
+     LEFT JOIN LATERAL ( SELECT es_1.total_score,
+            es_1.question_count,
+            es_1.group_count
+           FROM exam_stats_agg es_1
+          WHERE p.exampaper_id IS NOT NULL AND p.status::text <> '00'::text AND es_1.exam_paper_id = p.exampaper_id) es ON true
+     LEFT JOIN LATERAL ( SELECT COALESCE(sum(q.group_total_score), 0::double precision) AS total_score,
+            COALESCE(sum(q.group_question_count), 0::numeric) AS question_count,
+            COALESCE(count(DISTINCT pg.id), 0::bigint) AS group_count
+           FROM paper_valid_groups pg
+             LEFT JOIN group_valid_questions q ON q.group_id = pg.id
+          WHERE (p.exampaper_id IS NULL OR p.status::text = '00'::text) AND pg.paper_id = p.id) pv ON true
+     LEFT JOIN LATERAL ( SELECT jsonb_agg(jsonb_build_object('id', eg.id, 'name', eg.name, 'order', eg."order", 'creator', eg.creator, 'create_time', eg.create_time, 'updated_by', eg.updated_by, 'update_time', eg.update_time, 'status', eg.status, 'addi', eg.addi, 'questions', COALESCE(eq.questions, '[]'::jsonb)) ORDER BY eg."order") AS groups_data
+           FROM exam_valid_groups eg
+             LEFT JOIN exam_group_valid_questions eq ON eq.group_id = eg.id
+          WHERE p.exampaper_id IS NOT NULL AND p.status::text <> '00'::text AND eg.exam_paper_id = p.exampaper_id) egd ON true
+     LEFT JOIN LATERAL ( SELECT jsonb_agg(jsonb_build_object('id', pg.id, 'name', pg.name, 'order', pg."order", 'creator', pg.creator, 'create_time', pg.create_time, 'updated_by', pg.updated_by, 'update_time', pg.update_time, 'status', pg.status, 'addi', pg.addi, 'questions', COALESCE(q.questions, '[]'::jsonb)) ORDER BY pg."order") AS groups_data
+           FROM paper_valid_groups pg
+             LEFT JOIN group_valid_questions q ON q.group_id = pg.id
+          WHERE (p.exampaper_id IS NULL OR p.status::text = '00'::text) AND pg.paper_id = p.id) pgd ON true;
 
 comment on view v_paper is
 '试卷';
