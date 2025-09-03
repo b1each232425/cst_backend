@@ -21,6 +21,7 @@ const (
 	// 事件类型
 	EVENT_TYPE_EXAM_SESSION_START = "exam_session_start"
 	EVENT_TYPE_EXAM_SESSION_END   = "exam_session_end"
+	EVENT_TYPE_EXAM_SYNC          = "exam_sync"
 
 	// 默认最大并发数
 	DEFAULT_MAX_WORKERS = 10
@@ -113,7 +114,7 @@ func (tm *ExamTimerManager) processEvent(event ExamEvent, workerID int) error {
 }
 
 // 设置定时器
-func (tm *ExamTimerManager) SetTimer(examSessionID int64, triggerTime int64, event ExamEvent) {
+func (tm *ExamTimerManager) SetExamSessionTimer(examSessionID int64, triggerTime int64, event ExamEvent) {
 	z.Info("---->" + cmn.FncName())
 	tm.mutex.Lock()
 	defer tm.mutex.Unlock()
@@ -163,7 +164,7 @@ func (tm *ExamTimerManager) SetTimer(examSessionID int64, triggerTime int64, eve
 }
 
 // 取消定时器
-func (tm *ExamTimerManager) CancelTimer(eventType string, examSessionID int64) {
+func (tm *ExamTimerManager) CancelExamSessionTimer(eventType string, examSessionID int64) {
 	z.Info("---->" + cmn.FncName())
 	tm.mutex.Lock()
 	defer tm.mutex.Unlock()
@@ -173,8 +174,7 @@ func (tm *ExamTimerManager) CancelTimer(eventType string, examSessionID int64) {
 		timer.Stop()
 		delete(tm.timers, timerKey)
 		z.Info("取消定时器",
-			zap.String("event_type", eventType),
-			zap.Int64("exam_session_id", examSessionID))
+			zap.String("event_type", eventType))
 	}
 }
 
@@ -249,14 +249,14 @@ func SetExamTimers(ctx context.Context, examID int64) error {
 
 	for _, examSession := range examSessionInfo {
 		// 设置场次开始定时器
-		examTimerMgr.SetTimer(examSession.ExamSessionID, examSession.StartTime, ExamEvent{
+		examTimerMgr.SetExamSessionTimer(examSession.ExamSessionID, examSession.StartTime, ExamEvent{
 			Type:          EVENT_TYPE_EXAM_SESSION_START,
 			ExamSessionID: examSession.ExamSessionID,
 			ExamID:        examID,
 		})
 
 		// 设置场次结束定时器
-		examTimerMgr.SetTimer(examSession.ExamSessionID, examSession.EndTime, ExamEvent{
+		examTimerMgr.SetExamSessionTimer(examSession.ExamSessionID, examSession.EndTime, ExamEvent{
 			Type:          EVENT_TYPE_EXAM_SESSION_END,
 			ExamSessionID: examSession.ExamSessionID,
 			ExamID:        examID,
@@ -293,8 +293,8 @@ func CancelExamTimers(ctx context.Context, examID int64) error {
 	for examSessionRows.Next() {
 		var sessionID int64
 		if examSessionRows.Scan(&sessionID) == nil {
-			examTimerMgr.CancelTimer(EVENT_TYPE_EXAM_SESSION_START, sessionID)
-			examTimerMgr.CancelTimer(EVENT_TYPE_EXAM_SESSION_END, sessionID)
+			examTimerMgr.CancelExamSessionTimer(EVENT_TYPE_EXAM_SESSION_START, sessionID)
+			examTimerMgr.CancelExamSessionTimer(EVENT_TYPE_EXAM_SESSION_END, sessionID)
 			cancelCount++
 		}
 	}
@@ -381,14 +381,14 @@ func InitializeExamTimers(ctx context.Context) error {
 		}
 
 		// 场次开始定时器
-		examTimerMgr.SetTimer(examSessionID, startTime, ExamEvent{
+		examTimerMgr.SetExamSessionTimer(examSessionID, startTime, ExamEvent{
 			Type:          EVENT_TYPE_EXAM_SESSION_START,
 			ExamSessionID: examSessionID,
 			ExamID:        examID,
 		})
 
 		// 场次结束定时器
-		examTimerMgr.SetTimer(examSessionID, endTime, ExamEvent{
+		examTimerMgr.SetExamSessionTimer(examSessionID, endTime, ExamEvent{
 			Type:          EVENT_TYPE_EXAM_SESSION_END,
 			ExamSessionID: examSessionID,
 			ExamID:        examID,
@@ -655,7 +655,7 @@ func handleExamSessionEnd(ctx context.Context, event ExamEvent) error {
 			JOIN t_exam_info ei ON v.exam_id = ei.id
 			WHERE e.exam_session_id = $1
 				AND v.actual_end_time <= $2
-				AND e.status IN ('00', '16') -- 只更新处于正常考和监考员允许进入考试状态的考生
+				AND e.status IN ('00', '10','16') -- 只更新处于正常考和监考员允许进入考试状态的考生
 				AND ei.status IN ('02', '04', '06')
 		)
 		UPDATE t_examinee te
@@ -708,7 +708,7 @@ func handleExamSessionEnd(ctx context.Context, event ExamEvent) error {
 	if unfinishedCount > 0 {
 		// 还有考生未结束，延迟1分钟后重新处理
 		delayedEndTime := now + 60*1000
-		examTimerMgr.SetTimer(examSessionID, delayedEndTime, ExamEvent{
+		examTimerMgr.SetExamSessionTimer(examSessionID, delayedEndTime, ExamEvent{
 			Type:          EVENT_TYPE_EXAM_SESSION_END,
 			ExamSessionID: examSessionID,
 			ExamID:        examID,
@@ -853,6 +853,12 @@ func startTempExamCleanup(ctx context.Context) {
 			cleanupTempExams(ctx)
 		}
 	}
+}
+
+func handleExamSync(ctx context.Context, event ExamEvent) {
+	z.Info("---->" + cmn.FncName())
+
+	// 处理考试同步事件
 }
 
 func ExamMaintainService() {

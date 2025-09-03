@@ -1,6 +1,11 @@
 package registration
 
-import "w2w.io/cmn"
+import (
+	"context"
+	"sync"
+	"time"
+	"w2w.io/cmn"
+)
 
 var RegisterDomainID = struct {
 	Student    int64 // 学生 2008
@@ -74,13 +79,22 @@ var RegisterStudentStatus = struct {
 	Pending  string //待审核 02
 	Approved string //审核通过 04
 	Rejected string //审核未通过 06
-	Deleted  string //已删除 08
+	Moved    string //已移出计划 08
+	Deleted  string //已删除 10
 }{
 	Apply:    "00",
 	Pending:  "02",
 	Approved: "04",
 	Rejected: "06",
-	Deleted:  "08",
+	Moved:    "08",
+	Deleted:  "10",
+}
+
+type moveStudent struct {
+	FromRegisterID int64                 `json:"from_register_id"`
+	ToRegisterID   int64                 `json:"to_register_id"`
+	Status         string                `json:"status"`
+	Student        []registerStudentType `json:"student"`
 }
 
 type registerStudentType struct {
@@ -96,6 +110,30 @@ type registerStudentOnce struct {
 	Status     string `json:"status"`
 }
 type RegisterInfo struct {
-	Registration *cmn.TRegisterPlan
-	PracticeIds  []int64
+	Registration *cmn.TRegisterPlan `json:"registration"`
+	PracticeIds  []int64            `json:"practice_ids"`
+}
+type Reviewer struct {
+	ID           int64  `json:"id"`
+	OfficialName string `json:"official_name"`
+	Gender       string `json:"gender"`
+	MobilePhone  string `json:"mobile_phone"`
+	IDCardType   string `json:"id_card_type"`
+	IDCardNo     string `json:"id_card_no"`
+}
+
+// 事件数据结构
+type RegisterEvent struct {
+	Type       string `json:"type"`
+	RegisterID int64  `json:"register_id"`
+}
+
+// 定时器管理
+type RegistrationTimerManager struct {
+	timers     map[string]*time.Timer
+	mutex      sync.Mutex
+	ctx        context.Context
+	cancel     context.CancelFunc
+	eventQueue chan RegisterEvent
+	maxWorkers int //最大并发worker数量
 }

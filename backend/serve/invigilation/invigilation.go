@@ -6,8 +6,10 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/spf13/viper"
 	"github.com/tidwall/gjson"
 	"go.uber.org/zap"
 	"w2w.io/cmn"
@@ -55,6 +57,12 @@ type InvigilationFile struct {
 	CheckSum      string `json:"CheckSum"`
 	Name          string `json:"Name"`
 	Size          int64  `json:"Size"`
+}
+
+var needToUpdateExaminee map[string]bool = map[string]bool{
+	"00": false, // 考场记录
+	"02": true,  // 考生状态
+	"04": true,  // 考生备注
 }
 
 func Enroll(author string) {
@@ -189,8 +197,8 @@ func invigilationList(ctx context.Context) {
 		page := gjson.Get(qry, "Page").Int()
 		pageSize := gjson.Get(qry, "PageSize").Int()
 
-		if page < 0 {
-			page = 0
+		if page <= 0 {
+			page = 1
 		}
 		if pageSize <= 0 {
 			pageSize = 10
@@ -290,7 +298,7 @@ func invigilationList(ctx context.Context) {
 			FROM v_invigilation_info
 			WHERE 1=1
 		` + filterSQL + fmt.Sprintf(" LIMIT $%d OFFSET $%d", argIndex, argIndex+1)
-		args = append(args, pageSize, page*pageSize)
+		args = append(args, pageSize, (page-1)*pageSize)
 
 		var rows pgx.Rows
 		rows, q.Err = conn.Query(ctx, querySQL, args...)
@@ -469,8 +477,8 @@ func invigilation(ctx context.Context) {
 		}
 
 		page := gjson.Get(qry, "Page").Int()
-		if page < 0 {
-			page = 0
+		if page <= 0 {
+			page = 1
 		}
 		pageSize := gjson.Get(qry, "PageSize").Int()
 		if pageSize <= 0 {
@@ -535,7 +543,7 @@ func invigilation(ctx context.Context) {
 			FROM v_examinee_info
 			WHERE 1=1 AND examinee_status != '08'
 		` + filterSQL + fmt.Sprintf(" LIMIT $%d OFFSET $%d", argIndex, argIndex+1)
-		args = append(args, pageSize, page*pageSize)
+		args = append(args, pageSize, (page-1)*pageSize)
 		var rows pgx.Rows
 		rows, q.Err = conn.Query(ctx, examineeSQL, args...)
 		if rows != nil {
@@ -634,10 +642,269 @@ func invigilation(ctx context.Context) {
 		}
 
 	case "patch":
-		q.Err = fmt.Errorf("unsupported method: %s", method)
-		z.Warn(q.Err.Error())
-		q.RespErr()
-		return
+		qry := q.R.URL.Query().Get("q")
+		if qry == "" {
+			q.Err = fmt.Errorf("参数 q 不能为空")
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		examSessionID := gjson.Get(qry, "Data.ExamSessionID").Int()
+		if examSessionID <= 0 {
+			q.Err = fmt.Errorf("无效的考试场次ID: %d", examSessionID)
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		examRoomID := gjson.Get(qry, "Data.ExamRoomID").Int()
+		if examRoomID <= 0 {
+			q.Err = fmt.Errorf("无效的考场ID: %d", examRoomID)
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		// 检查用户是否有权限获取监考信息
+		var hasAuth bool
+		hasAuth, q.Err = checkInvigilationAuthority(ctx, examSessionID, examRoomID, userID, "")
+		if forceErr == "checkInvigilationAuthority" {
+			q.Err = fmt.Errorf("强制检查用户是否有权限获取监考信息错误")
+		}
+		if q.Err != nil {
+			q.RespErr()
+			return
+		}
+
+		if forceErr == "noAuth" {
+			hasAuth = false
+		}
+		if !hasAuth {
+			q.Err = fmt.Errorf("用户(%d)无法获取该场考试的监考信息: %d - %d", userID, examSessionID, examRoomID)
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		// 00：考场记录，02：考生状态， 04：考生备注
+		updateType := gjson.Get(qry, "Data.UpdateType").Str
+		if updateType != "00" && updateType != "02" && updateType != "04" {
+			q.Err = fmt.Errorf("无效的更新类型: %s", updateType)
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		record := gjson.Get(qry, "Data.Record").Str
+
+		basicEval := gjson.Get(qry, "Data.BasicEval").Str
+		if basicEval != "00" && basicEval != "02" && basicEval != "04" && !needToUpdateExaminee[updateType] {
+			q.Err = fmt.Errorf("无效的考场情况: %s", basicEval)
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		examineeStatus := gjson.Get(qry, "Data.ExamineeStatus").Str
+
+		examineeRemark := gjson.Get(qry, "Data.ExamineeRemark").Str
+
+		var examineeIDs []int64
+		examinees := gjson.Get(qry, "Data.Examinees").Array()
+		for _, v := range examinees {
+			id := v.Int()
+			if id <= 0 {
+				q.Err = fmt.Errorf("无效的考生ID: %d", id)
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+			examineeIDs = append(examineeIDs, id)
+		}
+
+		if len(examineeIDs) == 0 && needToUpdateExaminee[updateType] {
+			q.Err = fmt.Errorf("请指定要改变状态或备注的考生")
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		// 检查当前是否还能更新监考信息
+		syncTime := viper.GetInt64("examSiteServerSync.syncDelay")
+		syncTime = syncTime * 1000
+
+		now := time.Now().UnixMilli()
+
+		checkInvigilationSQL := `
+			SELECT EXISTS(
+				SELECT 1
+				FROM v_invigilation_info vi
+				WHERE vi.exam_session_id = $1 AND vi.exam_room_id = $2
+				AND vi.end_time + $3 > $4
+			)
+		`
+		var canUpdate bool
+		q.Err = conn.QueryRow(ctx, checkInvigilationSQL, examSessionID, examRoomID, syncTime, now).Scan(&canUpdate)
+		if forceErr == "checkInvigilation" {
+			q.Err = fmt.Errorf("强制检查当前是否还能更新监考信息错误")
+		}
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		if forceErr == "canUpdate" {
+			canUpdate = false
+		}
+		if !canUpdate {
+			q.Err = fmt.Errorf("当前考试已结束，无法更新监考信息")
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		// 检查考生是否是该考场的考生
+		if needToUpdateExaminee[updateType] {
+			checkSQL := `
+            SELECT (
+                SELECT COUNT(id) 
+                FROM v_examinee_info vei
+                WHERE vei.exam_session_id = $1
+                  AND vei.exam_room_id = $2
+                  AND vei.id = ANY($3)
+                  AND vei.examinee_status NOT IN ('08','16')
+            ) = COALESCE(array_length($3,1), 0)
+		`
+			var allValid bool
+			q.Err = conn.QueryRow(ctx, checkSQL, examSessionID, examRoomID, examineeIDs).Scan(&allValid)
+			if forceErr == "checkExaminees" {
+				q.Err = fmt.Errorf("强制检查考生是否是该考场的考生错误")
+			}
+			if q.Err != nil {
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+
+			if !allValid {
+				q.Err = fmt.Errorf("要更新的考生不在该考场考试")
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+		}
+
+		// 开启事务准备进行更新
+		var tx pgx.Tx
+		tx, q.Err = conn.Begin(ctx)
+		if forceErr == "tx.Begin" {
+			q.Err = fmt.Errorf("强制开始事务错误")
+		}
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+		defer func() {
+			if q.Err != nil || forceErr == "tx.Rollback" {
+				rollbackErr := tx.Rollback(context.Background())
+				if forceErr == "tx.Rollback" {
+					rollbackErr = fmt.Errorf("强制回滚事务错误")
+				}
+				if rollbackErr != nil {
+					z.Error(fmt.Sprintf("failed to rollback transaction: %s", rollbackErr.Error()))
+				}
+				return
+			}
+
+			commitErr := tx.Commit(context.Background())
+			if forceErr == "tx.Commit" {
+				commitErr = fmt.Errorf("强制提交事务错误")
+			}
+			if commitErr != nil {
+				z.Error(fmt.Sprintf("failed to commit transaction: %s", commitErr.Error()))
+			}
+		}()
+
+		if forceErr == "tx.Commit" || forceErr == "tx.Rollback" {
+			return
+		}
+
+		// 更新考场记录
+		if updateType == "00" {
+			updateSQL := `
+				UPDATE t_exam_record
+				SET content = $1,
+					basic_eval = COALESCE(NULLIF($2, ''), basic_eval),
+					updated_by = $3,
+					update_time = $4
+				WHERE exam_room = $5 AND exam_session = $6
+			`
+			_, q.Err = tx.Exec(ctx, updateSQL, record, basicEval, userID, now, examRoomID, examSessionID)
+			if forceErr == "updateExamRecord" {
+				q.Err = fmt.Errorf("强制更新考场记录错误")
+			}
+			if q.Err != nil {
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+		}
+
+		// 更新指定的考生状态
+		if updateType == "02" {
+			updateExamineeStatusSQL := `
+			UPDATE t_examinee
+				SET status = COALESCE(
+						NULLIF($1, ''),
+						CASE 
+							WHEN t_examinee.end_time IS NOT NULL THEN '10' -- 如果该考生有结束时间，则设置为已交卷
+							WHEN t_examinee.start_time IS NULL AND vei.actual_end_time <= $2 THEN '02' -- 如果该考生没有开始时间，并且该考生的考试时间结束了，则设置为缺考，此处设置的目的是为了处理exam_maintenance中可能出现的同时更新，确保最后覆盖的结果是正确的
+							ELSE '00'
+						END
+					),
+					updated_by = $3,
+					update_time = $4
+				FROM v_examinee_info vei
+				WHERE t_examinee.id = ANY($5)
+				AND vei.id = t_examinee.id
+			`
+			_, q.Err = tx.Exec(ctx, updateExamineeStatusSQL, examineeStatus, now, userID, now, examineeIDs)
+			if forceErr == "updateExamineeStatus" {
+				q.Err = fmt.Errorf("强制更新考生状态错误")
+			}
+			if q.Err != nil {
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+
+			q.Resp()
+			return
+		}
+
+		// 更新指定的考生备注
+		updateExamineeRemarkSQL := `
+			UPDATE t_examinee
+				SET remark = $1,
+					updated_by = $2,
+					update_time = $3
+				FROM v_examinee_info vei
+				WHERE t_examinee.id = ANY($4)
+				AND vei.id = t_examinee.id
+		`
+		_, q.Err = tx.Exec(ctx, updateExamineeRemarkSQL, examineeRemark, userID, now, examineeIDs)
+		if forceErr == "updateExamineeRemark" {
+			q.Err = fmt.Errorf("强制更新考生备注错误")
+		}
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
 	default:
 		q.Err = fmt.Errorf("unsupported method: %s", method)
 		z.Warn(q.Err.Error())
@@ -982,7 +1249,6 @@ func invigilationFile(ctx context.Context) {
 			return
 		}
 
-		// 获取监考附件记录
 		// 获取监考附件信息
 		querySQL := `
 		SELECT er.exam_room, er.exam_session, f.id, f.digest, f.file_name
@@ -1028,11 +1294,20 @@ func invigilationFile(ctx context.Context) {
 		}
 
 		// 删除对应的文件ID
+		var exists bool
 		for i, file := range existingFiles {
 			if file.FileID == invigilationFile.FileID {
 				existingFiles = append(existingFiles[:i], existingFiles[i+1:]...)
+				exists = true
 				break
 			}
+		}
+
+		if !exists {
+			q.Err = fmt.Errorf("未找到要删除的文件: %d", invigilationFile.FileID)
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
 		}
 
 		var fileIDs []int64

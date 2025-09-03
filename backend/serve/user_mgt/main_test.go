@@ -148,7 +148,8 @@ func createMockContext(method, path string, queryParams url.Values, forceError s
 		BeginTime: time.Now(),
 		Tag:       make(map[string]interface{}),
 		SysUser: &cmn.TUser{
-			ID: null.NewInt(54242, true), // 请求用户ID
+			ID:   null.NewInt(54242, true), // 请求用户ID
+			Role: null.NewInt(20000, true), // 超级管理员角色
 		},
 	}
 
@@ -228,7 +229,8 @@ func createMockContextWithBody(method, path string, data string, forceError stri
 		BeginTime: time.Now(),
 		Tag:       make(map[string]interface{}),
 		SysUser: &cmn.TUser{
-			ID: null.NewInt(54242, true), // 请求用户ID
+			ID:   null.NewInt(54242, true), // 请求用户ID
+			Role: null.NewInt(20000, true), // 超级管理员角色
 		},
 	}
 
