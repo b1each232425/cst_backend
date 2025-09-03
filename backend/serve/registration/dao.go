@@ -25,6 +25,7 @@ func ListRegisterT(ctx context.Context, name string, course string, status strin
 	//构建占位符
 	var args []interface{}
 	args = append(args, RegisterStudentStatus.Apply)
+	args = append(args, RegisterPracticeStatus.Normal)
 	if name != "" {
 		clauses = append(clauses, fmt.Sprintf("%s LIKE $%d", "r.name", len(args)+1))
 		args = append(args, "%"+name+"%")
@@ -43,7 +44,7 @@ func ListRegisterT(ctx context.Context, name string, course string, status strin
 	args = append(args, userID)
 	s := `
 	SELECT r.id, r.name , r.course , COALESCE((SELECT COUNT(*) FROM assessuser.t_exam_plan_student eps WHERE eps.register_id=r.id AND eps.status!=$1),0) , r.max_number , r.review_end_time , r.start_time , r.end_time , COALESCE(STRING_AGG(p.name, '、'),'') , r.status ,r.exam_plan_location
-	FROM assessuser.t_register_plan r  LEFT JOIN assessuser.t_register_practice rp ON rp.register_id=r.id 
+	FROM assessuser.t_register_plan r  LEFT JOIN assessuser.t_register_practice rp ON rp.register_id=r.id AND rp.status=$2
 	LEFT JOIN  assessuser.t_practice p ON p.id=rp.practice_id
 		`
 	if len(clauses) > 0 {
@@ -840,8 +841,8 @@ func LoadRegisterById(ctx context.Context, registerID int64) (*cmn.TRegisterPlan
 		return nil, nil, nil, -1, err
 	}
 	//查询报名计划相关练习
-	s = `SELECT r.practice_id ,p.name,p.type FROM assessuser.t_register_practice r JOIN assessuser.t_practice p ON p.id=r.practice_id WHERE r.register_id =$1`
-	rows, err := sqlxDB.QueryxContext(ctx, s, registerID)
+	s = `SELECT r.practice_id ,p.name,p.type FROM assessuser.t_register_practice r JOIN assessuser.t_practice p ON p.id=r.practice_id WHERE r.register_id =$1 AND r.status =$2`
+	rows, err := sqlxDB.QueryxContext(ctx, s, registerID, RegisterPracticeStatus.Normal)
 	if err != nil || forceErr == "query2" {
 		err = fmt.Errorf("查询报名计划下的练习失败:%v", err)
 		z.Error(err.Error())
