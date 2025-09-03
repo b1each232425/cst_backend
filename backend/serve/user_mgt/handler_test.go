@@ -1747,6 +1747,42 @@ func Test_handler_HandleUser(t *testing.T) {
 			},
 			wantErr: true,
 		},
+		{
+			name: "触发IsDomainExist错误",
+			fields: fields{
+				srv: &MockService{
+					users: []User{
+						{
+							TUser: cmn.TUser{
+								ID:           null.NewInt(3, true),
+								Account:      "test_female",
+								OfficialName: null.NewString("女性测试用户", true),
+								Gender:       null.NewString("F", true),
+								MobilePhone:  null.NewString("13800138000", true),
+								Email:        null.NewString("test@example.com", true),
+								Status:       null.NewString("00", true),
+							},
+						},
+					},
+					totalRows: 1,
+				},
+			},
+			args: args{
+				ctx: createMockContext("GET", "/api/user", url.Values{
+					"page":        {"1"},
+					"pageSize":    {"10"},
+					"account":     {"test"},
+					"name":        {"女性"},
+					"mobilePhone": {"138"},
+					"email":       {"test"},
+					"gender":      {"F"},
+					"status":      {"00"},
+					"domain":      {"nonexistent_domain"},
+					"createTime":  {strconv.FormatInt(time.Now().Unix()-86400, 10)},
+				}, "IsDomainExist"),
+			},
+			wantErr: true,
+		},
 
 		// POST方法测试用例
 		{
