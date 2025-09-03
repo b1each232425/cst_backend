@@ -15,7 +15,7 @@ type SaveOrUpdateStudentAnswerReq struct {
 }
 
 type InitRespondentReq struct {
-	Type                 string `json:"type" validate:"required,oneof=00 02"`
+	Type                 string `json:"type" validate:"required,oneof=00 02 04"`
 	ExamId               int64  `json:"exam_id" `
 	ExamSessionId        int64  `json:"exam_session_id" `
 	ExamineeID           int64  `json:"examinee_id" `
