@@ -1572,8 +1572,8 @@ func PaperList(ctx context.Context) {
 		}
 
 		// 查询总数
-		var countSQLBuilder strings.Builder
-		countSQLBuilder.WriteString("SELECT COUNT(*) FROM v_paper p ")
+	var countSQLBuilder strings.Builder
+	countSQLBuilder.WriteString("SELECT COUNT(*) FROM v_paper_list p ")
 		countSQLBuilder.WriteString(whereClause)
 		q.Err = db.QueryRow(ctx, countSQLBuilder.String(), params...).Scan(&totalCount)
 		if val, ok := ctx.Value("force-error").(string); ok && val == "getPaperList-QueryRowCount-err" {
@@ -1587,10 +1587,10 @@ func PaperList(ctx context.Context) {
 
 		// 查询分页数据
 		var listSQLBuilder strings.Builder
-		listSQLBuilder.WriteString(`
-		SELECT p.id,p.exampaper_id, p.name, p.assembly_type, p.category, p.level, p.suggested_duration, p.total_score, p.question_count, p.tags, p.create_time, p.update_time, p.status, p.creator, p.creator_info
-		FROM v_paper p
-		`)
+	listSQLBuilder.WriteString(`
+	SELECT p.id,p.exampaper_id, p.name, p.assembly_type, p.category, p.level, p.suggested_duration, p.total_score, p.question_count, p.tags, p.create_time, p.update_time, p.status, p.creator, p.creator_info
+	FROM v_paper_list p
+	`)
 		listSQLBuilder.WriteString(whereClause)
 		listSQLBuilder.WriteString(`
 		ORDER BY p.update_time DESC
