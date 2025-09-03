@@ -47,6 +47,15 @@ func (m *MockService) InsertUsersWithAccount(ctx context.Context, tx pgx.Tx, use
 	return []User{}, nil
 }
 
+func (m *MockService) OverwriteUpdateUsers(ctx context.Context, tx pgx.Tx, users []User) ([]User, error) {
+	if m.err != nil {
+		return []User{}, m.err
+	}
+	m.users = append(m.users, users...)
+	m.totalRows += int64(len(users))
+	return users, nil
+}
+
 func (m *MockService) CheckTUserFieldExists(ctx context.Context, tx pgx.Tx, field string, value any) (bool, error) {
 	if m.err != nil {
 		return false, m.err
