@@ -1,6 +1,6 @@
 /*==============================================================*/
 /* DBMS name:      PostgreSQL 9.x                               */
-/* Created on:     2025/9/3 15:47:16                            */
+/* Created on:     9/2/2025 1:45:57 PM                          */
 /*==============================================================*/
 
 
@@ -91,8 +91,6 @@ drop view if exists v_examinee_info;
 drop view if exists v_exam_unmarked_student_count;
 
 drop view if exists v_exam_teacher_marked_count;
-
-drop view if exists v_exam_room;
 
 drop view if exists v_exam_respondent_count;
 
@@ -9483,15 +9481,9 @@ comment on column t_sys_ver.status is
 ALTER SEQUENCE t_sys_ver_id_seq RESTART WITH 20000;
 
 insert into t_sys_ver(id,name,ver,create_time,update_time,remark)
-  values(1000,'业务模型','3.2.7.0',
-  '2016年12月5日 9:52:53','2025年9月3日 15:47:13',
-  '3.2.7.0
-新增 v_exam_room 视图
-
-3.2.6.0
-给t_user新增id_card_file字段，用于存储证件文件标识
-
-3.2.5.0
+  values(1000,'业务模型','3.2.5.0',
+  'Monday, December 5, 2016 9:52:53 AM','Tuesday, September 2, 2025 1:45:51 PM',
+  '3.2.5.0
 新增t_exam_student表
 
 3.2.4.0
@@ -11468,69 +11460,6 @@ comment on view v_exam_respondent_count is
 drop table if exists t_v_exam_respondent_count;
 
 create table t_v_exam_respondent_count as select * from v_exam_respondent_count;
-
-/*==============================================================*/
-/* View: v_exam_room                                            */
-/*==============================================================*/
-create or replace view v_exam_room as
-WITH related_exams AS (
-	SELECT
-		t_exam_room.id AS room_id,
-		t_exam_info.id AS exam_id,
-		t_exam_info.name AS exam_name,
-		t_exam_info.status AS exam_status,
-		t_exam_session.id AS session_id,
-		t_exam_session.start_time,
-		t_exam_session.end_time,
-		(t_exam_session.end_time < 0 OR t_exam_session.start_time > 0 ) AS available,
-		ROW_NUMBER() OVER (
-            PARTITION BY t_exam_room.id 
-            ORDER BY t_exam_session.start_time DESC
-        ) AS rn
-	FROM t_exam_room
-		JOIN t_examinee t_examinee ON t_examinee.exam_room = t_exam_room.id
-		JOIN t_exam_session ON t_exam_session.id = t_examinee.exam_session_id
-		JOIN t_exam_info t_exam_info ON t_exam_info.id = t_exam_session.exam_id
-	GROUP BY
-		t_exam_room.id,
-		t_exam_info.id,
-		t_exam_session.id
-)
-SELECT 
-    t_exam_room.id,
-	t_exam_room.exam_site,
-	t_exam_room.name,
-	t_exam_room.capacity,
-	t_exam_room.domain_id,
-	t_exam_room.creator,
-	t_exam_room.create_time,
-	t_exam_room.update_time,
-	t_exam_room.status,
-	t_exam_room.addi,
-    BOOL_AND(related_exams.available) AS available,
-    json_agg(
-		json_build_object(
-            'exam_id', exam_id,
-            'exam_name', exam_name,
-            'exam_status', exam_status,
-            'session_id', session_id,
-            'start_time', start_time,
-            'end_time', end_time
-        )
-	) FILTER (WHERE rn = 1) ::jsonb AS recent_exam
-FROM t_exam_room
-	JOIN related_exams ON related_exams.room_id = t_exam_room.id
-GROUP BY 
-	t_exam_room.id, 
-	t_exam_room.exam_site, 
-	t_exam_room.name;
-
-comment on view v_exam_room is
-'考场列表';
-
-drop table if exists t_v_exam_room;
-
-create table t_v_exam_room as select * from v_exam_room;
 
 /*==============================================================*/
 /* View: v_exam_teacher_marked_count                            */
