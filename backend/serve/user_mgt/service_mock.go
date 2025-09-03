@@ -56,14 +56,14 @@ func (m *MockService) OverwriteUpdateUsers(ctx context.Context, tx pgx.Tx, users
 	return users, nil
 }
 
-func (m *MockService) CheckTUserFieldExists(ctx context.Context, tx pgx.Tx, field string, value any) (bool, error) {
+func (m *MockService) CheckTUserRowExists(ctx context.Context, tx pgx.Tx, whereClause string, args ...any) (bool, *User, error) {
 	if m.err != nil {
-		return false, m.err
+		return false, nil, m.err
 	}
-	return m.Exist, nil
+	return m.Exist, &m.user, nil
 }
 
-func (m *MockService) CheckTUserRowExists(ctx context.Context, tx pgx.Tx, fields map[string]any) (bool, *User, error) {
+func (m *MockService) CheckUserAlreadyExists(ctx context.Context, tx pgx.Tx, fields map[string]any) (bool, *User, error) {
 	if m.err != nil {
 		return false, nil, m.err
 	}

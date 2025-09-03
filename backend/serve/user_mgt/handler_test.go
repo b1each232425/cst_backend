@@ -167,6 +167,10 @@ func Test_handler_HandleGetNewAccount(t *testing.T) {
 			wantErr: true,
 		},
 	}
+
+	initTestData()
+	defer clearTestData()
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			h := &handler{
@@ -575,6 +579,9 @@ func Test_handler_HandleSendValidationCodeEmail(t *testing.T) {
 			desc:    "测试验证邮件内容和格式是否正确",
 		},
 	}
+
+	initTestData()
+	defer clearTestData()
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -1025,6 +1032,10 @@ func Test_handler_HandleValidateUserToBeInsert(t *testing.T) {
 			wantErr: false,
 		},
 	}
+
+	initTestData()
+	defer clearTestData()
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			h := &handler{
@@ -1345,6 +1356,10 @@ func Test_handler_HandleQueryMyInfo(t *testing.T) {
 			wantErr: false,
 		},
 	}
+
+	initTestData()
+	defer clearTestData()
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			h := &handler{
@@ -2102,6 +2117,10 @@ func Test_handler_HandleUser(t *testing.T) {
 			wantErr: true,
 		},
 	}
+
+	initTestData()
+	defer clearTestData()
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			h := &handler{
@@ -2515,6 +2534,10 @@ func Test_handler_HandleSelectLoginDomain(t *testing.T) {
 			wantErr: false,
 		},
 	}
+
+	initTestData()
+	defer clearTestData()
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			h := &handler{
@@ -2664,6 +2687,10 @@ func Test_handler_HandleLogout(t *testing.T) {
 			wantErr: false,
 		},
 	}
+
+	initTestData()
+	defer clearTestData()
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			h := &handler{
@@ -3202,6 +3229,10 @@ func Test_handler_HandleRegisterByEmail(t *testing.T) {
 			},
 		},
 	}
+
+	initTestData()
+	defer clearTestData()
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// 设置Redis数据

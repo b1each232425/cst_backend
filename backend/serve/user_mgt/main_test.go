@@ -28,6 +28,13 @@ func TestMain(m *testing.M) {
 	cmn.Configure()
 	go w2wSrv.WebServe(nil, nil)
 
+	// 运行测试
+	code := m.Run()
+
+	os.Exit(code)
+}
+
+func initTestData() {
 	// 读取测试数据
 	testDataFile := "test-data.json"
 	data, err := os.ReadFile(testDataFile)
@@ -96,13 +103,14 @@ func TestMain(m *testing.M) {
 			}
 		}
 	}
+}
 
-	// 运行测试
-	code := m.Run()
+func clearTestData() {
+	pgxConn := cmn.GetPgxConn()
 
 	// 清理测试数据
 	clearSqlTUserDomain := "DELETE FROM t_user_domain"
-	_, err = pgxConn.Exec(context.Background(), clearSqlTUserDomain)
+	_, err := pgxConn.Exec(context.Background(), clearSqlTUserDomain)
 	if err != nil {
 		e := fmt.Sprintf("Failed to clear user domain data: %v", err)
 		z.Warn(e)
@@ -113,8 +121,6 @@ func TestMain(m *testing.M) {
 		e := fmt.Sprintf("Failed to clear test data: %v", err)
 		z.Warn(e)
 	}
-
-	os.Exit(code)
 }
 
 // Create inserts the TUser to the database.

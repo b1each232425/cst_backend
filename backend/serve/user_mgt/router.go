@@ -88,6 +88,11 @@ func Enroll(author string) {
 				AccessAction: auth_mgt.CAPIAccessActionCreate,
 				Configurable: true,
 			},
+			{
+				Name:         "用户管理.更新用户",
+				AccessAction: auth_mgt.CAPIAccessActionUpdate,
+				Configurable: true,
+			},
 		},
 
 		Developer: developer,
