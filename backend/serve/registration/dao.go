@@ -741,6 +741,7 @@ func UpsertRegisterPractice(ctx context.Context, tx pgx.Tx, registerID int64, pr
 	}
 	now := time.Now().UnixMilli()
 	if practiceIds == nil || len(practiceIds) == 0 {
+
 		//删除当前报名列表下面的所有练习
 		delSQL := `
 		UPDATE assessuser.t_register_practice 
@@ -752,6 +753,11 @@ func UpsertRegisterPractice(ctx context.Context, tx pgx.Tx, registerID int64, pr
 		if err != nil || forceErr == "del" {
 			err = fmt.Errorf("删除报名计划下的所有练习失败:%v", err)
 			z.Error(err.Error())
+			return err
+		}
+
+		err = DeleteRegisterPracticeStudent(ctx, tx, userID, []int64{registerID})
+		if err != nil {
 			return err
 		}
 		return nil
@@ -794,6 +800,34 @@ func UpsertRegisterPractice(ctx context.Context, tx pgx.Tx, registerID int64, pr
 		z.Error(err.Error())
 		return err
 	}
+	//将新增的练习与报名学生进行关联
+	//查询与报名计划相关联的学生
+	t = `SELECT rps.student_id FROM assessuser.t_exam_plan_student eps WHERE eps.register_id AND eps.status NOT IN ($1 ,$2)`
+	rows, err := tx.Query(ctx, t, RegisterStudentStatus.Apply, RegisterStudentStatus.Moved)
+	if err != nil || forceErr == "query1" {
+		err = fmt.Errorf("查询与报名计划相关联的学生失败:%v", err)
+		z.Error(err.Error())
+		return err
+	}
+	defer rows.Close()
+	var studentIDs []int64
+	for rows.Next() {
+		var studentID int64
+		err := rows.Scan(&studentID)
+		if err != nil {
+			err = fmt.Errorf("扫描与报名计划相关联的学生失败:%v", err)
+			z.Error(err.Error())
+			return err
+		}
+		studentIDs = append(studentIDs, studentID)
+	}
+	for _, practiceId := range practiceIds {
+		err = practice_mgt.UpsertPracticeStudentV2(ctx, practiceId, userID, studentIDs)
+		if err != nil {
+			z.Error(err.Error())
+			return err
+		}
+	}
 	//删除没选择的练习
 	var valueExpr []string
 	var delRArgs []interface{}
@@ -819,6 +853,10 @@ func UpsertRegisterPractice(ctx context.Context, tx pgx.Tx, registerID int64, pr
 	if err != nil || forceErr == "query3" {
 		err = fmt.Errorf("删除名单失败:%v", err)
 		z.Error(err.Error())
+		return err
+	}
+	err = DeleteRegisterPracticeStudent(ctx, tx, userID, []int64{registerID})
+	if err != nil {
 		return err
 	}
 	return nil
@@ -991,7 +1029,10 @@ func OperateRegisterStatus(ctx context.Context, registerIDs []int64, status stri
 				err = fmt.Errorf("更新报名计划状态失败:%v", err)
 				z.Error(err.Error())
 			}
-
+		}
+		err = DeleteRegisterPracticeStudent(ctx, tx, userID, registerIDs)
+		if err != nil {
+			return err
 		}
 		//取消报名计划定时器
 		for _, registerId := range registerIDs {
@@ -1044,6 +1085,10 @@ func OperateRegisterStatus(ctx context.Context, registerIDs []int64, status stri
 			z.Error(err.Error())
 			return err
 		}
+		err = DeleteRegisterPracticeStudent(ctx, tx, userID, registerIDs)
+		if err != nil {
+			return err
+		}
 		//取消报名计划定时器
 		for _, registerId := range registerIDs {
 			err := CancelRegisterTimers(ctx, registerId)
@@ -1067,6 +1112,44 @@ func OperateRegisterStatus(ctx context.Context, registerIDs []int64, status stri
 	}
 	return nil
 
+}
+
+// 删除报名计划相关联的练习下的学生
+func DeleteRegisterPracticeStudent(ctx context.Context, tx pgx.Tx, userID int64, registerIDs []int64) error {
+	forceErr := ""
+	val := ctx.Value("forceErr-DeleteRegisterPracticeStudent")
+	if val != nil {
+		forceErr = val.(string)
+	}
+	//获取已删除的练习ID
+	delSQL := `SELECT rp.practice_id FROM assessuser.t_register_practice rp WHERE rp.status =$1 AND rp.register_id = ANY ($2) `
+	rows, err := tx.Query(ctx, delSQL, RegisterPracticeStatus.Delete, registerIDs)
+	if err != nil || forceErr == "query" {
+		err = fmt.Errorf("查询已删除的练习ID失败:%v", err)
+		z.Error(err.Error())
+		return err
+	}
+	defer rows.Close()
+	var deletePracticeIDs []int64
+	for rows.Next() {
+		var practiceId int64
+		err := rows.Scan(&practiceId)
+		if err != nil {
+			err = fmt.Errorf("扫描已删除的练习ID失败:%v", err)
+			z.Error(err.Error())
+			return err
+		}
+		deletePracticeIDs = append(deletePracticeIDs, practiceId)
+	}
+	//删除与练习相关联的学生
+	for _, practiceID := range deletePracticeIDs {
+		err = practice_mgt.UpsertPracticeStudentV2(ctx, practiceID, userID, []int64{})
+		if err != nil {
+			z.Error(err.Error())
+			return err
+		}
+	}
+	return nil
 }
 func LoadRegisterByIds(ctx context.Context, registerIDs []int64) (registers []*cmn.TRegisterPlan, err error) {
 	forceErr := ctx.Value("force-error")
@@ -1320,6 +1403,24 @@ func UpsertRegisterStudent(ctx context.Context, registerID int64, studentIDs []r
 		z.Error(err.Error())
 		return err
 	}
+	//批量将报名学生和报名计划的练习进行绑定
+	studentIds := []int64{}
+	for _, student := range studentIDs {
+		studentIds = append(studentIds, student.StudentID)
+	}
+	//查询报名计划下的所有练习id
+	_, practices, _, _, err := LoadRegisterById(ctx, registerID)
+	if err != nil {
+		z.Error(err.Error())
+		return err
+	}
+	for _, practice := range practices {
+		err = practice_mgt.UpsertPracticeStudentV2(ctx, practice.ID.Int64, userID, studentIds)
+		if err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
 
@@ -1455,6 +1556,23 @@ func MoveStudent(ctx context.Context, fromRegisterID int64, toRegisterID int64, 
 		z.Error(err.Error())
 		return err
 	}
+	//批量将报名学生和报名计划的练习进行绑定
+	studentIds := []int64{}
+	for _, student := range students {
+		studentIds = append(studentIds, student.StudentID)
+	}
+	//查询报名计划下的所有练习id
+	_, practices, _, _, err := LoadRegisterById(ctx, toRegisterID)
+	if err != nil {
+		z.Error(err.Error())
+		return err
+	}
+	for _, practice := range practices {
+		err = practice_mgt.UpsertPracticeStudentV2(ctx, practice.ID.Int64, userID, studentIds)
+		if err != nil {
+			return err
+		}
+	}
 	//修改原来的报名计划的学生状态为已迁移
 	var studentIDs []int64
 	for _, student := range students {
@@ -1464,6 +1582,16 @@ func MoveStudent(ctx context.Context, fromRegisterID int64, toRegisterID int64, 
 	err = OperateRegisterStudentStatus(ctx, tx, studentIDs, status, userID, fromRegisterID, "")
 	if err != nil {
 		z.Error(err.Error())
+		return err
+	}
+	//删除原来的报名计划下绑定的练习
+	err = UpsertRegisterPractice(ctx, tx, fromRegisterID, nil, userID)
+	if err != nil {
+		return err
+	}
+	//删除原来报名计划的练习下的学生关系
+	err = DeleteRegisterPracticeStudent(ctx, tx, userID, []int64{fromRegisterID})
+	if err != nil {
 		return err
 	}
 
