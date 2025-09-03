@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jmoiron/sqlx/types"
 	"github.com/wneessen/go-mail"
 	"w2w.io/cmn"
 	"w2w.io/null"
@@ -852,6 +853,7 @@ func TestService_InsertUsers(t *testing.T) {
 						Gender:       null.NewString("M", true),
 						IDCardType:   null.NewString("港澳通行证", true),
 						IDCardNo:     null.NewString("110101199001011234", true),
+						IDCardFile:   types.JSONText(`{"frontImgID":"qwqwdtrertxakbkcz", "backImgID":"qqwefhgfjhjktywdqwd"}`),
 						Creator:      null.NewInt(1, true),
 						Remark:       null.NewString("test", true),
 					},
@@ -911,6 +913,26 @@ func TestService_InsertUsers(t *testing.T) {
 			},
 			wantErr: true,
 			desc:    "测试缺少Creator字段应该返回验证错误",
+		},
+		{
+			name: "IDCardFile格式错误",
+			ctx:  context.Background(),
+			users: []User{
+				{
+					TUser: cmn.TUser{
+						Account:    fmt.Sprintf("invalid_user_%d", time.Now().UnixNano()),
+						Category:   "sys^user",
+						IDCardFile: types.JSONText(`{"frontImgIs":"qwqwdtrertxakbkcz", "backImgIs":"qqwefhgfjhjktywdqwd"}`),
+						Creator:    null.NewInt(1, true),
+						Remark:     null.NewString("test", true),
+					},
+					Domains: []null.String{
+						null.NewString("assess^teacher", true),
+						null.NewString("assess^admin", true),
+					},
+				},
+			},
+			wantErr: true,
 		},
 		{
 			name: "匿名用户类型测试",
@@ -3036,6 +3058,7 @@ func Test_service_ValidateUser(t *testing.T) {
 							Email:       null.NewString("zhangsan@example.com", true),
 							MobilePhone: null.NewString("13900139002", true),
 							IDCardNo:    null.NewString("310115198801011234", true),
+							IDCardFile:  types.JSONText(`{"frontImgIs":"qwqwdtrertxakbkcz", "backImgIs":"qqwefhgfjhjktywdqwd"}`),
 						},
 						Domains: []null.String{
 							null.NewString("assess^invalid", true),
@@ -3056,6 +3079,7 @@ func Test_service_ValidateUser(t *testing.T) {
 						null.NewString("证件号已存在", true),
 						null.NewString("证件类型不能为空", true),
 						null.NewString("角色不合法", true),
+						null.NewString("证件文件格式不合法，必须包含frontImgID和backImgID字段", true),
 					},
 				},
 			},

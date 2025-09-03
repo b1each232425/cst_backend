@@ -352,6 +352,16 @@ func (r *service) InsertUsers(ctx context.Context, tx pgx.Tx, users []User) (ins
 			}
 		}
 
+		if len(users[i].IDCardFile) > 0 {
+			// 尝试解析证件文件 JSON，确保格式正确
+			_, err = ParseAndValidateIDCardFile(users[i].IDCardFile)
+			if err != nil {
+				e := fmt.Errorf("invalid id_card_file format for user %s: %w", users[i].Account, err)
+				z.Error(e.Error())
+				return []User{}, e
+			}
+		}
+
 		if !users[i].IDCardNo.Valid && !users[i].MobilePhone.Valid && !users[i].Email.Valid {
 			users[i].Type = null.StringFrom("00") // 匿名用户
 		} else {
@@ -370,6 +380,7 @@ func (r *service) InsertUsers(ctx context.Context, tx pgx.Tx, users []User) (ins
 			official_name,
 			id_card_type,
 			id_card_no,
+			id_card_file,
 			account,
 			mobile_phone,
 			email,
@@ -382,7 +393,7 @@ func (r *service) InsertUsers(ctx context.Context, tx pgx.Tx, users []User) (ins
 			create_time,
 			update_time
 		) VALUES (
-			$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, crypt($14, gen_salt('bf')), $15, $16
+			$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, crypt($15, gen_salt('bf')), $16, $17
 		)`
 
 		if tx != nil {
@@ -392,6 +403,7 @@ func (r *service) InsertUsers(ctx context.Context, tx pgx.Tx, users []User) (ins
 				users[i].OfficialName,
 				users[i].IDCardType,
 				users[i].IDCardNo,
+				users[i].IDCardFile,
 				users[i].Account,
 				users[i].MobilePhone,
 				users[i].Email,
@@ -411,6 +423,7 @@ func (r *service) InsertUsers(ctx context.Context, tx pgx.Tx, users []User) (ins
 				users[i].OfficialName,
 				users[i].IDCardType,
 				users[i].IDCardNo,
+				users[i].IDCardFile,
 				users[i].Account,
 				users[i].MobilePhone,
 				users[i].Email,
@@ -709,6 +722,7 @@ func (r *service) ValidateUserToBeInsert(ctx context.Context, tx pgx.Tx, users [
 		"id_card_type_invalid":  "证件类型不合法",
 		"empty_id_card_type":    "证件类型不能为空",
 		"not_valid_id_card_no":  "非有效证件号",
+		"id_card_file_invalid":  "证件文件格式不合法，必须包含frontImgID和backImgID字段",
 	}
 
 	for i := range users {
@@ -850,6 +864,15 @@ func (r *service) ValidateUserToBeInsert(ctx context.Context, tx pgx.Tx, users [
 			if exist {
 				errorCount++
 				errorMessage = append(errorMessage, null.StringFrom(errorMessages["id_card_no_exists"]))
+			}
+		}
+
+		if len(users[i].IDCardFile) > 0 {
+			// 尝试解析证件文件 JSON，确保格式正确
+			_, err = ParseAndValidateIDCardFile(users[i].IDCardFile)
+			if err != nil {
+				errorCount++
+				errorMessage = append(errorMessage, null.StringFrom(errorMessages["id_card_file_invalid"]))
 			}
 		}
 
