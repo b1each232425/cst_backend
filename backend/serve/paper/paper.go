@@ -2,7 +2,7 @@
  * @Author: wusaber33
  * @Date: 2025-08-03 21:39:33
  * @LastEditors: wusaber33
- * @LastEditTime: 2025-09-04 02:27:45
+ * @LastEditTime: 2025-09-04 02:41:22
  * @FilePath: \assess\backend\serve\paper\paper.go
  * @Description:
  * Copyright (c) 2025 by wusaber33, All Rights Reserved.
@@ -1573,7 +1573,7 @@ func PaperList(ctx context.Context) {
 
 		// 查询总数
 		var countSQLBuilder strings.Builder
-		countSQLBuilder.WriteString("SELECT COUNT(*) FROM v_paper_list p ")
+		countSQLBuilder.WriteString("SELECT COUNT(*) FROM t_paper p ")
 		countSQLBuilder.WriteString(whereClause)
 		q.Err = db.QueryRow(ctx, countSQLBuilder.String(), params...).Scan(&totalCount)
 		if val, ok := ctx.Value("force-error").(string); ok && val == "getPaperList-QueryRowCount-err" {
@@ -1649,8 +1649,7 @@ SELECT
 	p.create_time,
 	p.update_time,
 	p.status,
-	p.creator,
-	u.info AS creator_info
+	p.creator
 FROM top_ids ti
 JOIN t_paper p ON p.id = ti.id
 LEFT JOIN paper_stats ps ON ps.paper_id = p.id
@@ -1674,8 +1673,7 @@ ORDER BY p.update_time DESC, p.id DESC`)
 		var papers []cmn.TVPaper
 		for rows.Next() {
 			var paper cmn.TVPaper
-			// todo 补充试卷视图考卷ID和版本号
-			q.Err = rows.Scan(&paper.ID, &paper.ExampaperID, &paper.Name, &paper.AssemblyType, &paper.Category, &paper.Level, &paper.SuggestedDuration, &paper.TotalScore, &paper.QuestionCount, &paper.Tags, &paper.CreateTime, &paper.UpdateTime, &paper.Status, &paper.Creator, &paper.CreatorInfo)
+			q.Err = rows.Scan(&paper.ID, &paper.ExampaperID, &paper.Name, &paper.AssemblyType, &paper.Category, &paper.Level, &paper.SuggestedDuration, &paper.TotalScore, &paper.QuestionCount, &paper.Tags, &paper.CreateTime, &paper.UpdateTime, &paper.Status, &paper.Creator)
 			if val, ok := ctx.Value("force-error").(string); ok && val == "getPaperList-RowScan-err" {
 				q.Err = errors.New(val)
 			}
