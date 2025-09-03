@@ -5,4 +5,6 @@
 # cp -fvLT --remove-destination "/var/data/kUser/zoneinfo/Asia/Shanghai" "/etc/_localtime_"
 cp -fvLT --remove-destination "/var/data/kUser/zoneinfo/Asia/Shanghai" "/etc/localtime"
 
+service ssh restart
+
 "$KAPP_NAME" serve

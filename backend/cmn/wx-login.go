@@ -155,7 +155,7 @@ func wxLoginCached(ctx context.Context, u *wxUser) (bHit bool) {
 			z.Error(q.Err.Error())
 			return
 		}
-		_, q.Err = q.RedisClient.Set(ctx, key, wxUser.ID.Int64, time.Second).Result()
+		_, q.Err = q.RedisClient.Set(ctx, key, wxUser.ID.Int64, 0).Result()
 		if q.Err != nil {
 			z.Error(q.Err.Error())
 			return
@@ -883,7 +883,7 @@ func cacheWxUser(ctx context.Context, wxUser *TWxUser) {
 
 	key = fmt.Sprintf("%s:%d", CWxUserByID, wxUser.ID.Int64)
 
-	_, q.Err = q.RedisClient.Set(ctx, key, wxUser.UnionID.String, time.Second).Result()
+	_, q.Err = q.RedisClient.Set(ctx, key, wxUser.UnionID.String, 0).Result()
 	if q.Err != nil {
 		z.Error(q.Err.Error())
 	}
@@ -891,7 +891,7 @@ func cacheWxUser(ctx context.Context, wxUser *TWxUser) {
 	var haveValidOpenID bool
 	if wxUser.MpOpenID.Valid && wxUser.MpOpenID.String != "" {
 		key = fmt.Sprintf("%s:%s", CWxUserByOpenID, wxUser.MpOpenID.String)
-		_, q.Err = q.RedisClient.Set(ctx, key, wxUser.ID.Int64, time.Second).Result()
+		_, q.Err = q.RedisClient.Set(ctx, key, wxUser.ID.Int64, 0).Result()
 		if q.Err != nil {
 			z.Error(q.Err.Error())
 		}
@@ -900,7 +900,7 @@ func cacheWxUser(ctx context.Context, wxUser *TWxUser) {
 
 	if wxUser.WxOpenID.Valid && wxUser.WxOpenID.String != "" {
 		key = fmt.Sprintf("%s:%s", CWxUserByOpenID, wxUser.WxOpenID.String)
-		_, q.Err = q.RedisClient.Set(ctx, key, wxUser.ID.Int64, time.Second).Result()
+		_, q.Err = q.RedisClient.Set(ctx, key, wxUser.ID.Int64, 0).Result()
 		if q.Err != nil {
 			z.Error(q.Err.Error())
 		}
@@ -949,7 +949,7 @@ func cacheSysUser(ctx context.Context, sysUser *TUser) {
 	}
 
 	key = fmt.Sprintf("%s:%d", CSysUserByID, sysUser.ID.Int64)
-	_, q.Err = q.RedisClient.Set(ctx, key, sysUser.Account, time.Second).Result()
+	_, q.Err = q.RedisClient.Set(ctx, key, sysUser.Account, 0).Result()
 	if q.Err != nil {
 		z.Error(q.Err.Error())
 		return
@@ -957,7 +957,7 @@ func cacheSysUser(ctx context.Context, sysUser *TUser) {
 
 	if sysUser.MobilePhone.Valid && sysUser.MobilePhone.String != "" {
 		key = fmt.Sprintf("%s:%s", CSysUserByTel, sysUser.MobilePhone.String)
-		_, q.Err = q.RedisClient.Set(ctx, key, sysUser.Account, time.Second).Result()
+		_, q.Err = q.RedisClient.Set(ctx, key, sysUser.Account, 0).Result()
 		if q.Err != nil {
 			z.Error(q.Err.Error())
 			return
@@ -967,7 +967,7 @@ func cacheSysUser(ctx context.Context, sysUser *TUser) {
 
 	if sysUser.Email.Valid && sysUser.Email.String != "" {
 		key = fmt.Sprintf("%s:%s", CSysUserByEmail, sysUser.Email.String)
-		_, q.Err = q.RedisClient.Set(ctx, key, sysUser.Account, time.Second).Result()
+		_, q.Err = q.RedisClient.Set(ctx, key, sysUser.Account, 0).Result()
 		if q.Err != nil {
 			z.Error(q.Err.Error())
 			return

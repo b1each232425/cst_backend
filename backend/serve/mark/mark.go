@@ -1538,7 +1538,7 @@ func GenerateAIMarkTask(ctx context.Context, cond QueryCondition, questions []*c
 
 	uniqueTaskCountKey := uniqueKey + ":count"
 
-	err = redisClient.Set(ctx, uniqueTaskCountKey, len(aiMarkRequests), 0).Err()
+	err = redisClient.Set(ctx, uniqueTaskCountKey, len(aiMarkRequests), 7*24*time.Hour).Err()
 
 	// 设置唯一性约束：24小时内，不允许重复入队
 	opts := []asynq.Option{
@@ -1579,11 +1579,7 @@ func TaskMiddleware(handler func(ctx context.Context, task *asynq.Task) error) f
 			return nil, handler(ctx, task)
 		})
 
-		if err != nil {
-			return err
-		}
-
-		return handler(ctx, task)
+		return err
 	}
 }
 
@@ -1746,6 +1742,15 @@ func HandleAIMarkTask(ctx context.Context, task *asynq.Task) error {
 	case "02":
 		// 任务已全部完成
 		z.Sugar().Infof("本批次批改任务已全部完成")
+
+		// 删除该key
+		err = redisClient.Del(scriptRunCtx, payloadData.UniqueTaskCountKey).Err()
+		if err != nil || forceErr == "HandleAIMarkTask-redisClient.Del" {
+			err = fmt.Errorf("删除key失败: %w", err)
+			z.Error(err.Error())
+			return err
+		}
+
 		pgxConn := cmn.GetPgxConn()
 		if payloadData.QueryCondition.PracticeSubmissionID < 0 {
 			return nil

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jmoiron/sqlx/types"
 	"github.com/wneessen/go-mail"
 	"w2w.io/cmn"
 	"w2w.io/null"
@@ -163,7 +164,7 @@ func TestService_QueryUsers(t *testing.T) {
 			page:     1,
 			pageSize: 10,
 			filter: QueryUsersFilter{
-				Domain: null.NewString("cst.school^student", true),
+				Domain: null.NewString("assess^student", true),
 			},
 			wantUsersCount: 1,
 			wantErr:        false,
@@ -270,6 +271,15 @@ func TestService_QueryUsers(t *testing.T) {
 			wantErr:        false,
 			desc:           "测试触发json.Unmarshal报错",
 		},
+		{
+			name:           "触发json.Unmarshal.DomainObjects错误",
+			ctx:            context.WithValue(context.Background(), "force-error", "json.Unmarshal.DomainObjects"),
+			page:           1,
+			pageSize:       10,
+			filter:         QueryUsersFilter{},
+			wantUsersCount: 10,
+			wantErr:        false,
+		},
 	}
 
 	for _, tt := range tests {
@@ -373,6 +383,555 @@ func TestService_QueryUsers(t *testing.T) {
 	}
 }
 
+// TestService_OverwriteUpdateUsers 测试OverwriteUpdateUsers方法
+func TestService_OverwriteUpdateUsers(t *testing.T) {
+	// 创建真实的repo实例
+	repo := NewService()
+
+	tests := []struct {
+		name           string
+		ctx            context.Context
+		users          []User
+		wantUsersCount int
+		wantErr        bool
+		desc           string
+	}{
+		{
+			name:           "空用户列表测试",
+			ctx:            context.Background(),
+			users:          []User{},
+			wantUsersCount: 0,
+			wantErr:        true,
+			desc:           "测试空用户列表应该返回错误",
+		},
+		{
+			name: "用户ID无效测试",
+			ctx:  context.Background(),
+			users: []User{
+				{
+					TUser: cmn.TUser{
+						Account:      "test_user_1",
+						OfficialName: null.StringFrom("测试用户1"),
+						Status:       null.StringFrom("00"),
+					},
+				},
+			},
+			wantUsersCount: 0,
+			wantErr:        true,
+			desc:           "测试用户ID无效时应该返回错误",
+		},
+		{
+			name: "手机号为空测试",
+			ctx:  context.Background(),
+			users: []User{
+				{
+					TUser: cmn.TUser{
+						ID:           null.IntFrom(1),
+						Account:      "test_user_1",
+						OfficialName: null.StringFrom("测试用户1"),
+						MobilePhone:  null.StringFrom(""),
+						Status:       null.StringFrom("00"),
+					},
+				},
+			},
+			wantUsersCount: 0,
+			wantErr:        true,
+			desc:           "测试手机号为空时应该返回错误",
+		},
+		{
+			name: "手机号格式无效测试",
+			ctx:  context.Background(),
+			users: []User{
+				{
+					TUser: cmn.TUser{
+						ID:           null.IntFrom(1),
+						Account:      "test_user_1",
+						OfficialName: null.StringFrom("测试用户1"),
+						MobilePhone:  null.StringFrom("invalid_phone"),
+						Status:       null.StringFrom("00"),
+					},
+				},
+			},
+			wantUsersCount: 0,
+			wantErr:        true,
+			desc:           "测试手机号格式无效时应该返回错误",
+		},
+		{
+			name: "证件号无证件类型测试",
+			ctx:  context.Background(),
+			users: []User{
+				{
+					TUser: cmn.TUser{
+						ID:       null.IntFrom(1),
+						Account:  "test_user_1",
+						IDCardNo: null.StringFrom("123456789012345678"),
+						Status:   null.StringFrom("00"),
+					},
+				},
+			},
+			wantUsersCount: 0,
+			wantErr:        true,
+			desc:           "测试有证件号但无证件类型时应该返回错误",
+		},
+		{
+			name: "身份证号格式无效测试",
+			ctx:  context.Background(),
+			users: []User{
+				{
+					TUser: cmn.TUser{
+						ID:         null.IntFrom(1),
+						Account:    "test_user_1",
+						IDCardType: null.StringFrom(cmn.CIDCardTypeResidentIdentityCard),
+						IDCardNo:   null.StringFrom("invalid_id"),
+						Status:     null.StringFrom("00"),
+					},
+				},
+			},
+			wantUsersCount: 0,
+			wantErr:        true,
+			desc:           "测试身份证号格式无效时应该返回错误",
+		},
+		{
+			name: "证件文件格式无效测试",
+			ctx:  context.Background(),
+			users: []User{
+				{
+					TUser: cmn.TUser{
+						ID:         null.IntFrom(1),
+						Account:    "test_user_1",
+						IDCardFile: types.JSONText(`{"invalid": json}`),
+						Status:     null.StringFrom("00"),
+					},
+				},
+			},
+			wantUsersCount: 0,
+			wantErr:        true,
+			desc:           "测试证件文件格式无效时应该返回错误",
+		},
+		{
+			name: "正常更新用户测试",
+			ctx:  context.Background(),
+			users: []User{
+				{
+					TUser: cmn.TUser{
+						ID:           null.IntFrom(1),
+						Account:      "admin",
+						OfficialName: null.StringFrom("管理员更新"),
+						MobilePhone:  null.StringFrom("+8613800138000"),
+						Email:        null.StringFrom("admin_updated@example.com"),
+						Gender:       null.StringFrom("M"),
+						Status:       null.StringFrom("00"),
+					},
+				},
+			},
+			wantUsersCount: 1,
+			wantErr:        false,
+			desc:           "测试正常更新用户数据",
+		},
+		{
+			name: "批量更新用户测试",
+			ctx:  context.Background(),
+			users: []User{
+				{
+					TUser: cmn.TUser{
+						ID:           null.IntFrom(1),
+						Account:      "admin",
+						OfficialName: null.StringFrom("管理员批量更新1"),
+						IDCardType:   null.StringFrom(cmn.CIDCardTypeResidentIdentityCard),
+						IDCardNo:     null.StringFrom("310104199708156970"),
+						Status:       null.StringFrom("00"),
+					},
+				},
+				{
+					TUser: cmn.TUser{
+						ID:           null.IntFrom(2),
+						Account:      "superadmin",
+						OfficialName: null.StringFrom("超级管理员批量更新2"),
+						Status:       null.StringFrom("00"),
+					},
+				},
+			},
+			wantUsersCount: 2,
+			wantErr:        false,
+			desc:           "测试批量更新多个用户",
+		},
+		{
+			name: "更新用户角色测试",
+			ctx:  context.Background(),
+			users: []User{
+				{
+					TUser: cmn.TUser{
+						ID:      null.IntFrom(1),
+						Account: "admin",
+						Status:  null.StringFrom("00"),
+					},
+					Domains: []null.String{
+						null.StringFrom("assess^admin"),
+						null.StringFrom("assess^teacher"),
+					},
+				},
+			},
+			wantUsersCount: 1,
+			wantErr:        false,
+			desc:           "测试更新用户角色",
+		},
+		{
+			name: "匿名用户类型设置测试",
+			ctx:  context.Background(),
+			users: []User{
+				{
+					TUser: cmn.TUser{
+						ID:      null.IntFrom(1),
+						Account: "admin",
+						Status:  null.StringFrom("00"),
+						// 没有手机号、邮箱、证件号，应该设置为匿名用户
+					},
+				},
+			},
+			wantUsersCount: 1,
+			wantErr:        false,
+			desc:           "测试匿名用户类型自动设置",
+		},
+		{
+			name: "强制Exec错误测试",
+			ctx:  context.WithValue(context.Background(), "force-error", "Exec"),
+			users: []User{{
+				TUser: cmn.TUser{
+					ID:      null.IntFrom(1),
+					Account: "admin",
+					Status:  null.StringFrom("00"),
+				},
+			}},
+			wantUsersCount: 0,
+			wantErr:        true,
+			desc:           "测试强制Exec错误",
+		},
+		{
+			name: "强制QueryUserID错误测试",
+			ctx:  context.WithValue(context.Background(), "force-error", "QueryUserID"),
+			users: []User{{
+				TUser: cmn.TUser{
+					ID:      null.IntFrom(1),
+					Account: "admin",
+					Status:  null.StringFrom("00"),
+				},
+			}},
+			wantUsersCount: 0,
+			wantErr:        true,
+			desc:           "测试强制QueryUserID错误",
+		},
+		{
+			name: "强制DeleteUserDomain错误测试",
+			ctx:  context.WithValue(context.Background(), "force-error", "DeleteUserDomain"),
+			users: []User{{
+				TUser: cmn.TUser{
+					ID:      null.IntFrom(1),
+					Account: "admin",
+					Status:  null.StringFrom("00"),
+				},
+				Domains: []null.String{null.StringFrom("assess^admin")},
+			}},
+			wantUsersCount: 0,
+			wantErr:        true,
+			desc:           "测试强制DeleteUserDomain错误",
+		},
+		{
+			name: "强制InsertUserDomain错误测试",
+			ctx:  context.WithValue(context.Background(), "force-error", "InsertUserDomain"),
+			users: []User{{
+				TUser: cmn.TUser{
+					ID:      null.IntFrom(1),
+					Account: "admin",
+					Status:  null.StringFrom("00"),
+				},
+				Domains: []null.String{null.StringFrom("assess^admin")},
+			}},
+			wantUsersCount: 0,
+			wantErr:        true,
+			desc:           "测试强制InsertUserDomain错误",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Logf("开始测试: %s", tt.desc)
+
+			// 执行更新
+			updatedUsers, err := repo.OverwriteUpdateUsers(tt.ctx, nil, tt.users)
+
+			// 验证错误
+			if (err != nil) != tt.wantErr {
+				t.Errorf("OverwriteUpdateUsers() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+
+			// 如果期望有错误，则不需要进一步验证
+			if tt.wantErr {
+				t.Logf("预期错误已正确返回: %v", err)
+				return
+			}
+
+			// 验证返回结果
+			if updatedUsers == nil {
+				t.Error("OverwriteUpdateUsers() 返回的用户列表不应该为nil")
+				return
+			}
+
+			if len(updatedUsers) != tt.wantUsersCount {
+				t.Errorf("OverwriteUpdateUsers() 返回的用户数量 %d 不符合预期 %d", len(updatedUsers), tt.wantUsersCount)
+			}
+
+			// 验证更新后的用户数据结构
+			for i, user := range updatedUsers {
+				if !user.TUser.ID.Valid {
+					t.Errorf("更新后用户[%d]的ID字段无效", i)
+				}
+				if user.TUser.Account == "" {
+					t.Errorf("更新后用户[%d]的Account字段为空", i)
+				}
+				if !user.TUser.Status.Valid {
+					t.Errorf("更新后用户[%d]的Status字段无效", i)
+				}
+			}
+
+			t.Logf("更新结果: 用户数量=%d", len(updatedUsers))
+		})
+	}
+}
+
+// TestService_OverwriteUpdateUsers_WithTransaction 测试带事务的覆盖式更新
+func TestService_OverwriteUpdateUsers_WithTransaction(t *testing.T) {
+	ctx := context.Background()
+
+	// 获取数据库连接
+	pgxConn := cmn.GetPgxConn()
+	if pgxConn == nil {
+		t.Skip("数据库连接不可用，跳过事务测试")
+		return
+	}
+
+	// 开始事务
+	tx, err := pgxConn.Begin(ctx)
+	if err != nil {
+		t.Fatalf("开始事务失败: %v", err)
+	}
+	defer func() {
+		if err := tx.Rollback(ctx); err != nil && !errors.Is(err, pgx.ErrTxClosed) {
+			t.Logf("回滚事务失败: %v", err)
+		}
+	}()
+
+	repo := NewService()
+
+	tests := []struct {
+		name    string
+		users   []User
+		wantErr bool
+		desc    string
+	}{
+		{
+			name: "事务中的正常更新测试",
+			users: []User{
+				{
+					TUser: cmn.TUser{
+						ID:           null.IntFrom(1),
+						Account:      "admin",
+						OfficialName: null.StringFrom("事务测试管理员"),
+						Status:       null.StringFrom("00"),
+					},
+				},
+			},
+			wantErr: false,
+			desc:    "测试在事务中执行正常更新",
+		},
+		{
+			name: "事务中的批量更新测试",
+			users: []User{
+				{
+					TUser: cmn.TUser{
+						ID:      null.IntFrom(1),
+						Account: "admin",
+						Status:  null.StringFrom("00"),
+					},
+				},
+				{
+					TUser: cmn.TUser{
+						ID:      null.IntFrom(2),
+						Account: "superadmin",
+						Status:  null.StringFrom("00"),
+					},
+				},
+			},
+			wantErr: false,
+			desc:    "测试在事务中执行批量更新",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Logf("开始测试: %s", tt.desc)
+
+			// 执行更新
+			updatedUsers, err := repo.OverwriteUpdateUsers(ctx, tx, tt.users)
+
+			// 验证错误
+			if (err != nil) != tt.wantErr {
+				t.Errorf("OverwriteUpdateUsers() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+
+			if !tt.wantErr {
+				if updatedUsers == nil {
+					t.Error("OverwriteUpdateUsers() 返回的用户列表不应该为nil")
+				}
+				if len(updatedUsers) != len(tt.users) {
+					t.Errorf("OverwriteUpdateUsers() 返回的用户数量 %d 不符合预期 %d", len(updatedUsers), len(tt.users))
+				}
+				t.Logf("事务更新结果: 用户数量=%d", len(updatedUsers))
+			}
+		})
+	}
+}
+
+// TestService_OverwriteUpdateUsers_EdgeCases 边界情况测试
+func TestService_OverwriteUpdateUsers_EdgeCases(t *testing.T) {
+	repo := NewService()
+	ctx := context.Background()
+
+	tests := []struct {
+		name    string
+		users   []User
+		wantErr bool
+		desc    string
+	}{
+		{
+			name: "极大用户ID测试",
+			users: []User{
+				{
+					TUser: cmn.TUser{
+						ID:      null.IntFrom(9223372036854775807), // int64最大值
+						Account: "test_max_id",
+						Status:  null.StringFrom("00"),
+					},
+				},
+			},
+			wantErr: true, // 用户不存在，应该返回错误
+			desc:    "测试极大用户ID应该返回错误",
+		},
+		{
+			name: "负数用户ID测试",
+			users: []User{
+				{
+					TUser: cmn.TUser{
+						ID:      null.IntFrom(-1),
+						Account: "test_negative_id",
+						Status:  null.StringFrom("00"),
+					},
+				},
+			},
+			wantErr: true,
+			desc:    "测试负数用户ID应该返回错误",
+		},
+		{
+			name: "Unicode字符测试",
+			users: []User{
+				{
+					TUser: cmn.TUser{
+						ID:           null.IntFrom(1),
+						Account:      "admin",
+						OfficialName: null.StringFrom("测试用户🎉"),
+						Status:       null.StringFrom("00"),
+					},
+				},
+			},
+			wantErr: false,
+			desc:    "测试Unicode字符处理",
+		},
+		{
+			name: "国际手机号测试｜合法",
+			users: []User{
+				{
+					TUser: cmn.TUser{
+						ID:          null.IntFrom(1),
+						Account:     "admin",
+						MobilePhone: null.StringFrom("+853-6359-0215"), // 有效澳门手机号
+						Status:      null.StringFrom("00"),
+					},
+				},
+			},
+			wantErr: false,
+			desc:    "测试国际手机号格式化",
+		},
+		{
+			name: "国际手机号测试｜不合法",
+			users: []User{
+				{
+					TUser: cmn.TUser{
+						ID:          null.IntFrom(1),
+						Account:     "admin",
+						MobilePhone: null.StringFrom("+853-1234-5678"), // 不合法澳门手机号
+						Status:      null.StringFrom("00"),
+					},
+				},
+			},
+			wantErr: true,
+			desc:    "测试国际手机号格式化",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Logf("开始测试: %s", tt.desc)
+
+			updatedUsers, err := repo.OverwriteUpdateUsers(ctx, nil, tt.users)
+
+			if (err != nil) != tt.wantErr {
+				t.Errorf("OverwriteUpdateUsers() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+
+			if !tt.wantErr {
+				t.Logf("边界测试结果: 用户数量=%d", len(updatedUsers))
+				// 验证手机号格式化
+				for _, user := range updatedUsers {
+					if user.TUser.MobilePhone.Valid {
+						if !strings.HasPrefix(user.TUser.MobilePhone.String, "+") {
+							t.Errorf("手机号应该格式化为E.164格式: %s", user.TUser.MobilePhone.String)
+						}
+					}
+				}
+			} else {
+				t.Logf("预期错误已正确返回: %v", err)
+			}
+		})
+	}
+}
+
+// BenchmarkOverwriteUpdateUsers 基准测试
+func BenchmarkOverwriteUpdateUsers(b *testing.B) {
+	repo := NewService()
+	ctx := context.Background()
+	users := []User{
+		{
+			TUser: cmn.TUser{
+				ID:           null.IntFrom(1),
+				Account:      "admin",
+				OfficialName: null.StringFrom("基准测试管理员"),
+				Status:       null.StringFrom("00"),
+			},
+		},
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, err := repo.OverwriteUpdateUsers(ctx, nil, users)
+		if err != nil {
+			// 在基准测试中，如果用户不存在是正常的，不应该停止测试
+			// b.Errorf("OverwriteUpdateUsers() error = %v", err)
+		}
+	}
+}
+
 // TestService_QueryUserCurrentRole 测试QueryUserCurrentRole方法
 func TestService_QueryUserCurrentRole(t *testing.T) {
 	// 创建真实的repo实例
@@ -392,7 +951,7 @@ func TestService_QueryUserCurrentRole(t *testing.T) {
 			ctx:          context.Background(),
 			userId:       null.IntFrom(2), // 假设用户ID为1存在且有角色
 			wantRoleId:   null.NewInt(2000, true),
-			wantRoleName: null.NewString("cst.school^superAdmin", true),
+			wantRoleName: null.NewString("assess^superAdmin", true),
 			wantErr:      false,
 			desc:         "测试查询存在且有角色的用户",
 		},
@@ -401,7 +960,7 @@ func TestService_QueryUserCurrentRole(t *testing.T) {
 			ctx:          context.WithValue(context.Background(), "force-error", "InvalidRole"),
 			userId:       null.IntFrom(2), // 假设用户ID为1存在且有角色
 			wantRoleId:   null.NewInt(2000, true),
-			wantRoleName: null.NewString("cst.school^superAdmin", true),
+			wantRoleName: null.NewString("assess^superAdmin", true),
 			wantErr:      true,
 			desc:         "测试查询存在且有角色的用户",
 		},
@@ -809,8 +1368,8 @@ func TestService_InsertUsers(t *testing.T) {
 						Remark:       null.NewString("test", true),
 					},
 					Domains: []null.String{
-						null.NewString("cst.school^teacher", true),
-						null.NewString("cst.school^admin", true),
+						null.NewString("assess^teacher", true),
+						null.NewString("assess^admin", true),
 					},
 				},
 			},
@@ -831,8 +1390,8 @@ func TestService_InsertUsers(t *testing.T) {
 						Remark:       null.NewString("test", true),
 					},
 					Domains: []null.String{
-						null.NewString("cst.school^teacher", true),
-						null.NewString("cst.school^admin", true),
+						null.NewString("assess^teacher", true),
+						null.NewString("assess^admin", true),
 					},
 				},
 				{
@@ -843,6 +1402,7 @@ func TestService_InsertUsers(t *testing.T) {
 						Gender:       null.NewString("M", true),
 						IDCardType:   null.NewString("港澳通行证", true),
 						IDCardNo:     null.NewString("110101199001011234", true),
+						IDCardFile:   types.JSONText(`{"frontImgID":"qwqwdtrertxakbkcz", "backImgID":"qqwefhgfjhjktywdqwd"}`),
 						Creator:      null.NewInt(1, true),
 						Remark:       null.NewString("test", true),
 					},
@@ -902,6 +1462,26 @@ func TestService_InsertUsers(t *testing.T) {
 			},
 			wantErr: true,
 			desc:    "测试缺少Creator字段应该返回验证错误",
+		},
+		{
+			name: "IDCardFile格式错误",
+			ctx:  context.Background(),
+			users: []User{
+				{
+					TUser: cmn.TUser{
+						Account:    fmt.Sprintf("invalid_user_%d", time.Now().UnixNano()),
+						Category:   "sys^user",
+						IDCardFile: types.JSONText(`{"frontImgIs":"qwqwdtrertxakbkcz", "backImgIs":"qqwefhgfjhjktywdqwd"}`),
+						Creator:    null.NewInt(1, true),
+						Remark:     null.NewString("test", true),
+					},
+					Domains: []null.String{
+						null.NewString("assess^teacher", true),
+						null.NewString("assess^admin", true),
+					},
+				},
+			},
+			wantErr: true,
 		},
 		{
 			name: "匿名用户类型测试",
@@ -1024,8 +1604,8 @@ func TestService_InsertUsers(t *testing.T) {
 						Remark:       null.NewString("test", true),
 					},
 					Domains: []null.String{
-						null.NewString("cst.school^teacher", true),
-						null.NewString("cst.school^admin", true),
+						null.NewString("assess^teacher", true),
+						null.NewString("assess^admin", true),
 					},
 				},
 			},
@@ -1340,8 +1920,8 @@ func TestService_InsertUsers_WithTransaction(t *testing.T) {
 						Remark:       null.NewString("test", true),
 					},
 					Domains: []null.String{
-						null.NewString("cst.school^teacher", true),
-						null.NewString("cst.school^admin", true),
+						null.NewString("assess^teacher", true),
+						null.NewString("assess^admin", true),
 					},
 				},
 			},
@@ -2080,6 +2660,18 @@ func Test_service_CheckTUserRowExists(t *testing.T) {
 			want:    false,
 			wantErr: true,
 		},
+		{
+			name: "触发InvalidUserID错误",
+			args: args{
+				ctx: context.WithValue(context.Background(), "force-error", "InvalidUserID"),
+				fields: map[string]any{
+					"account":       "zhangsan",
+					"official_name": "张三",
+				},
+			},
+			want:    false,
+			wantErr: true,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -2442,7 +3034,7 @@ func Test_service_ValidateUser(t *testing.T) {
 							Email:        null.NewString("new001ValidateUser@example.com", true),
 						},
 						Domains: []null.String{
-							null.NewString("cst.school^teacher", true),
+							null.NewString("assess^teacher", true),
 						},
 					},
 					{
@@ -2452,7 +3044,7 @@ func Test_service_ValidateUser(t *testing.T) {
 							MobilePhone:  null.NewString("13900139111", true),
 						},
 						Domains: []null.String{
-							null.NewString("cst.school^teacher", true),
+							null.NewString("assess^teacher", true),
 						},
 					},
 				},
@@ -2514,7 +3106,7 @@ func Test_service_ValidateUser(t *testing.T) {
 							Account: "zhangsan000",
 						},
 						Domains: []null.String{
-							null.NewString("cst.school^superAdmin", true),
+							null.NewString("assess^superAdmin", true),
 						},
 					},
 				},
@@ -2544,7 +3136,7 @@ func Test_service_ValidateUser(t *testing.T) {
 							Email:   null.NewString("invalid-email", true),
 						},
 						Domains: []null.String{
-							null.NewString("cst.school^teacher", true),
+							null.NewString("assess^teacher", true),
 						},
 					},
 				},
@@ -2576,7 +3168,7 @@ func Test_service_ValidateUser(t *testing.T) {
 							IDCardType: null.NewString("高中毕业证", true),
 						},
 						Domains: []null.String{
-							null.NewString("cst.school^teacher", true),
+							null.NewString("assess^teacher", true),
 						},
 					},
 				},
@@ -2608,7 +3200,7 @@ func Test_service_ValidateUser(t *testing.T) {
 							MobilePhone: null.NewString("+113900139000", true),
 						},
 						Domains: []null.String{
-							null.NewString("cst.school^teacher", true),
+							null.NewString("assess^teacher", true),
 						},
 					},
 				},
@@ -2639,7 +3231,7 @@ func Test_service_ValidateUser(t *testing.T) {
 							MobilePhone: null.NewString("+85366123456", true),
 						},
 						Domains: []null.String{
-							null.NewString("cst.school^teacher", true),
+							null.NewString("assess^teacher", true),
 						},
 					},
 				},
@@ -2668,7 +3260,7 @@ func Test_service_ValidateUser(t *testing.T) {
 							MobilePhone: null.NewString("+853*&6612@3456", true),
 						},
 						Domains: []null.String{
-							null.NewString("cst.school^teacher", true),
+							null.NewString("assess^teacher", true),
 						},
 					},
 				},
@@ -2700,7 +3292,7 @@ func Test_service_ValidateUser(t *testing.T) {
 							MobilePhone: null.NewString("+853 661 234 56", true),
 						},
 						Domains: []null.String{
-							null.NewString("cst.school^teacher", true),
+							null.NewString("assess^teacher", true),
 						},
 					},
 				},
@@ -2729,7 +3321,7 @@ func Test_service_ValidateUser(t *testing.T) {
 							MobilePhone: null.NewString("+853-661-234-56", true),
 						},
 						Domains: []null.String{
-							null.NewString("cst.school^teacher", true),
+							null.NewString("assess^teacher", true),
 						},
 					},
 				},
@@ -2758,7 +3350,7 @@ func Test_service_ValidateUser(t *testing.T) {
 							MobilePhone: null.NewString("085366123456", true),
 						},
 						Domains: []null.String{
-							null.NewString("cst.school^teacher", true),
+							null.NewString("assess^teacher", true),
 						},
 					},
 				},
@@ -2789,7 +3381,7 @@ func Test_service_ValidateUser(t *testing.T) {
 							MobilePhone: null.NewString("08536¥%612*3456", true),
 						},
 						Domains: []null.String{
-							null.NewString("cst.school^teacher", true),
+							null.NewString("assess^teacher", true),
 						},
 					},
 				},
@@ -2821,7 +3413,7 @@ func Test_service_ValidateUser(t *testing.T) {
 							MobilePhone: null.NewString("13928163728", true),
 						},
 						Domains: []null.String{
-							null.NewString("cst.school^teacher", true),
+							null.NewString("assess^teacher", true),
 						},
 					},
 				},
@@ -2850,7 +3442,7 @@ func Test_service_ValidateUser(t *testing.T) {
 							MobilePhone: null.NewString("13 9281 637 28", true),
 						},
 						Domains: []null.String{
-							null.NewString("cst.school^teacher", true),
+							null.NewString("assess^teacher", true),
 						},
 					},
 				},
@@ -2879,7 +3471,7 @@ func Test_service_ValidateUser(t *testing.T) {
 							MobilePhone: null.NewString("139-2816-3728", true),
 						},
 						Domains: []null.String{
-							null.NewString("cst.school^teacher", true),
+							null.NewString("assess^teacher", true),
 						},
 					},
 				},
@@ -2908,7 +3500,7 @@ func Test_service_ValidateUser(t *testing.T) {
 							MobilePhone: null.NewString("", true),
 						},
 						Domains: []null.String{
-							null.NewString("cst.school^teacher", true),
+							null.NewString("assess^teacher", true),
 						},
 					},
 				},
@@ -2969,7 +3561,7 @@ func Test_service_ValidateUser(t *testing.T) {
 							OfficialName: null.NewString("有效用户", true),
 						},
 						Domains: []null.String{
-							null.NewString("cst.school^teacher", true),
+							null.NewString("assess^teacher", true),
 						},
 					},
 					{
@@ -2987,7 +3579,7 @@ func Test_service_ValidateUser(t *testing.T) {
 						OfficialName: null.NewString("有效用户", true),
 					},
 					Domains: []null.String{
-						null.NewString("cst.school^teacher", true),
+						null.NewString("assess^teacher", true),
 					},
 				},
 			},
@@ -3015,9 +3607,10 @@ func Test_service_ValidateUser(t *testing.T) {
 							Email:       null.NewString("zhangsan@example.com", true),
 							MobilePhone: null.NewString("13900139002", true),
 							IDCardNo:    null.NewString("310115198801011234", true),
+							IDCardFile:  types.JSONText(`{"frontImgIs":"qwqwdtrertxakbkcz", "backImgIs":"qqwefhgfjhjktywdqwd"}`),
 						},
 						Domains: []null.String{
-							null.NewString("cst.school^invalid", true),
+							null.NewString("assess^invalid", true),
 						},
 					},
 				},
@@ -3035,6 +3628,7 @@ func Test_service_ValidateUser(t *testing.T) {
 						null.NewString("证件号已存在", true),
 						null.NewString("证件类型不能为空", true),
 						null.NewString("角色不合法", true),
+						null.NewString("证件文件格式不合法，必须包含frontImgID和backImgID字段", true),
 					},
 				},
 			},
@@ -3185,7 +3779,7 @@ func Test_service_ValidateUser(t *testing.T) {
 							IDCardType: null.NewString("居民身份证", true),
 						},
 						Domains: []null.String{
-							null.NewString("cst.school^teacher", true),
+							null.NewString("assess^teacher", true),
 						},
 					},
 				},
@@ -3218,7 +3812,7 @@ func Test_service_ValidateUser(t *testing.T) {
 							IDCardType: null.NewString("居民身份证", true),
 						},
 						Domains: []null.String{
-							null.NewString("cst.school^teacher", true),
+							null.NewString("assess^teacher", true),
 						},
 					},
 				},
@@ -3238,6 +3832,38 @@ func Test_service_ValidateUser(t *testing.T) {
 			},
 			wantExisting: []User{},
 			wantErr:      false,
+		},
+		{
+			name: "触发IsDomainExist错误",
+			args: args{
+				ctx: context.WithValue(context.Background(), "force-error", "IsDomainExist"),
+				users: []User{
+					{
+						TUser: cmn.TUser{
+							Account:      "new_user_001",
+							OfficialName: null.NewString("新用户001_Test_service_ValidateUser", true),
+							Email:        null.NewString("new001ValidateUser@example.com", true),
+						},
+						Domains: []null.String{
+							null.NewString("assess^teacher", true),
+						},
+					},
+					{
+						TUser: cmn.TUser{
+							Account:      "new_user_002",
+							OfficialName: null.NewString("新用户002_Test_service_ValidateUser", true),
+							MobilePhone:  null.NewString("13900139111", true),
+						},
+						Domains: []null.String{
+							null.NewString("assess^teacher", true),
+						},
+					},
+				},
+			},
+			wantValid:    []User{},
+			wantInvalid:  nil,
+			wantExisting: nil,
+			wantErr:      true,
 		},
 	}
 	for _, tt := range tests {
@@ -3525,7 +4151,7 @@ func Test_service_ValidateUser_WithTransaction(t *testing.T) {
 							Email:        null.NewString("new001ValidateUser_WithTransaction@example.com", true),
 						},
 						Domains: []null.String{
-							null.NewString("cst.school^teacher", true),
+							null.NewString("assess^teacher", true),
 						},
 					},
 					{
@@ -3535,7 +4161,7 @@ func Test_service_ValidateUser_WithTransaction(t *testing.T) {
 							MobilePhone:  null.NewString("13900139222", true),
 						},
 						Domains: []null.String{
-							null.NewString("cst.school^teacher", true),
+							null.NewString("assess^teacher", true),
 						},
 					},
 				},
@@ -3629,7 +4255,7 @@ func Test_service_ValidateUser_WithTransaction(t *testing.T) {
 							OfficialName: null.NewString("有效用户", true),
 						},
 						Domains: []null.String{
-							null.NewString("cst.school^teacher", true),
+							null.NewString("assess^teacher", true),
 						},
 					},
 					{

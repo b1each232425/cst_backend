@@ -3,14 +3,14 @@ package time_sync
 import (
 	"context"
 	"fmt"
-	"github.com/gorilla/websocket"
-	"github.com/rs/xid"
 	"strconv"
 	"time"
-	"w2w.io/cmn"
 
+	"github.com/gorilla/websocket"
 	"github.com/panjf2000/ants/v2"
+	"github.com/rs/xid"
 	"go.uber.org/zap"
+	"w2w.io/cmn"
 )
 
 type Service interface {
@@ -106,9 +106,11 @@ func (srv *serviceImpl) handleInitTimeSyncConn(ctx context.Context) {
 
 	examineeId := q.R.URL.Query().Get("examinee_id")
 	practiceSubmissionId := q.R.URL.Query().Get("practice_submission_id")
+	wrongSubmissionId := q.R.URL.Query().Get("wrong_submission_id")
 
 	var examineeIdInt int
 	var practiceSubmissionIdInt int
+	var wrongSubmissionIdInt int
 	var err error
 
 	// 获取考生ID和练习提交ID
@@ -125,6 +127,15 @@ func (srv *serviceImpl) handleInitTimeSyncConn(ctx context.Context) {
 		practiceSubmissionIdInt, err = strconv.Atoi(practiceSubmissionId)
 		if err != nil {
 			q.Err = fmt.Errorf("error parsing practice_submission_id: %w", err)
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+	}
+	if wrongSubmissionId != "" {
+		wrongSubmissionIdInt, err = strconv.Atoi(wrongSubmissionId)
+		if err != nil {
+			q.Err = fmt.Errorf("error parsing wrong_submission_id: %w", err)
 			z.Error(q.Err.Error())
 			q.RespErr()
 			return
@@ -170,8 +181,11 @@ func (srv *serviceImpl) handleInitTimeSyncConn(ctx context.Context) {
 	if practiceSubmissionId != "" {
 		newClient.SetPracticeSubmissionID(int64(practiceSubmissionIdInt))
 	}
-	if practiceSubmissionId == "" && examineeId == "" {
-		q.Err = fmt.Errorf("examineeId and practiceSubmissionId are both empty")
+	if wrongSubmissionId != "" {
+		newClient.SetWrongSubmissionID(int64(wrongSubmissionIdInt))
+	}
+	if practiceSubmissionId == "" && examineeId == "" && wrongSubmissionId == "" {
+		q.Err = fmt.Errorf("examineeId and practiceSubmissionId and wrongSubmissionId are both empty")
 		z.Error(q.Err.Error())
 		_ = newClient.SendMessage("error: " + q.Err.Error())
 		newClient.Close()

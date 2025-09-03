@@ -3,7 +3,7 @@
  * @Description: 练习管理所需模型
  * @Date: 2025-07-15 19:59:25
  * @LastEditors: zdl <1311866870@qq.com>
- * @LastEditTime: 2025-08-28 13:00:17
+ * @LastEditTime: 2025-08-31 12:41:08
  */
 package practice_mgt
 
@@ -148,4 +148,9 @@ type StudentInfo struct {
 	Password     null.String `json:"password"`      // 学生密码
 	IdCardNo     null.String `json:"id_card_no" `   // 学生身份证号
 	Phone        null.String `json:"phone"`         // 学生电话
+}
+
+type RegisterPractice struct {
+	cmn.TPractice
+	TeacherName string `json:"TeacherName"`
 }

@@ -270,8 +270,8 @@ func UpsertPracticeStudent(ctx context.Context, pid, uid int64, ps []int64) erro
 	return nil
 }
 
+// UpsertPracticeStudentV2 手动批量导入学生 用于教师创建练习时，手动导入的学生
 func UpsertPracticeStudentV2(ctx context.Context, pid, uid int64, ps []int64) error {
-
 	if pid <= 0 {
 		err := fmt.Errorf("invalid practiceId param")
 		z.Error(err.Error())
@@ -560,7 +560,17 @@ func ListPracticeS(ctx context.Context, pType, name, difficulty string, orderBy 
 	clauses = append(clauses, fmt.Sprintf("student_id = $%d", len(args)+1))
 	args = append(args, uid)
 
-	s := `SELECT
+	sqlxDB := cmn.GetDbConn()
+	total := 0
+	s := `SELECT COUNT(*) FROM assessuser.v_practice_summary WHERE student_id = $4 AND practice_status != $1 AND  practice_status != $2 AND practice_student_status != $3`
+	err := sqlxDB.QueryRowxContext(ctx, s, PracticeStatus.Deleted, PracticeStatus.Disabled, PracticeStudentStatus.Deleted, uid).Scan(&total)
+	if err != nil || forceErr == "sQuery3" {
+		err = fmt.Errorf("查询学生能参与练习总数失败：%v", err)
+		z.Error(err.Error())
+		return nil, 0, err
+	}
+
+	s = `SELECT
 		id,name,type,attempt_count,difficulty,allowed_attempts,question_count,wrong_count,
 		total_score,highest_score,paper_total_score,paper_id,latest_unsubmitted_id,latest_submitted_id,pending_mark_id
 		FROM assessuser.v_practice_summary`
@@ -586,7 +596,6 @@ func ListPracticeS(ctx context.Context, pType, name, difficulty string, orderBy 
 
 	z.Sugar().Debugf("打印输出一下获取学生权限练习列表操作语句：%v", s)
 	z.Sugar().Debugf("打印输出一下学生权限获取练习列表参数表：%v", args)
-	sqlxDB := cmn.GetDbConn()
 	rows, err := sqlxDB.QueryxContext(ctx, s, args...)
 	if err != nil || forceErr == "sQuery1" {
 		err = fmt.Errorf("查询学生权限练习列表失败：%v", err)
@@ -616,7 +625,7 @@ func ListPracticeS(ctx context.Context, pType, name, difficulty string, orderBy 
 		}
 		result = append(result, &p)
 	}
-	return result, len(result), nil
+	return result, total, nil
 }
 
 // ListPracticeT 教师权限及以上获取练习列表
@@ -656,7 +665,17 @@ func ListPracticeT(ctx context.Context, name, pType, status string, orderBy []st
 	args = append(args, PracticeStatus.Deleted)
 	clauses = append(clauses, fmt.Sprintf("tp.creator = $%d", len(args)+1))
 	args = append(args, uid)
-	s := `
+	sqlxDB := cmn.GetDbConn()
+
+	total := 0
+	s := `SELECT COUNT(*) FROM assessuser.t_practice WHERE status != $1 `
+	err := sqlxDB.QueryRowxContext(ctx, s, PracticeStatus.Deleted).Scan(&total)
+	if err != nil || forceErr == "query1" {
+		err = fmt.Errorf("查询练习总数失败：%v", err)
+		z.Error(err.Error())
+		return nil, 0, err
+	}
+	s = `
  	SELECT 
 		tp.id, tp.name,tp.correct_mode,
 		tp.type, tp.creator, tp.create_time, tp.updated_by, tp.update_time, tp.addi, tp.status ,tp.allowed_attempts,
@@ -682,7 +701,6 @@ func ListPracticeT(ctx context.Context, name, pType, status string, orderBy []st
 	z.Sugar().Debugf("打印输出一下参数表：%v", args)
 
 	// 这些实体查询的每个函数之间作用都不一样，需要花时间去了解这个函数的具体用处了
-	sqlxDB := cmn.GetDbConn()
 	rows, err := sqlxDB.QueryxContext(ctx, s, args...)
 	if err != nil || forceErr == "query" {
 		err = fmt.Errorf("search practice failed:%v", err)
@@ -714,7 +732,91 @@ func ListPracticeT(ctx context.Context, name, pType, status string, orderBy []st
 		M["student_count"] = studentCount
 		result = append(result, M)
 	}
-	return result, len(result), nil
+	return result, total, nil
+}
+
+// GetPracticeListByRegisterPlan 创建报名计划的账号 查看所有已发布的练习列表。要求是教师及以上
+func GetPracticeListByRegisterPlan(ctx context.Context, practiceName, teacherName string, page, pageSize int, orderBy []string) ([]RegisterPractice, int, error) {
+	// 定义的实际上就是一个简单的练习结构体的列表就可以了
+	sqlxDB := cmn.GetDbConn()
+	var result []RegisterPractice
+	forceErr, _ := ctx.Value("force-error").(string)
+	// 查询条件
+	var clauses []string
+	// 占位符
+	var args []interface{}
+	clauses = append(clauses, fmt.Sprintf("tp.status = $%d", len(args)+1))
+	args = append(args, PracticeStatus.Released)
+	// 占位符数值
+	if practiceName != "" {
+		clauses = append(clauses, fmt.Sprintf("%s LIKE $%d", "tp.name", len(args)+1))
+		args = append(args, "%"+practiceName+"%")
+	}
+	if teacherName != "" {
+		clauses = append(clauses, fmt.Sprintf("%s LIKE $%d", "u.official_name", len(args)+1))
+		args = append(args, "%"+teacherName+"%")
+	}
+
+	total := 0
+	s := `SELECT COUNT(*) FROM assessuser.t_practice WHERE status = $1`
+	err := sqlxDB.QueryRowxContext(ctx, s, PracticeStatus.Released).Scan(&total)
+	if err != nil || forceErr == "query1" {
+		err = fmt.Errorf("查询此时以发布的练习总数失败：%v", err)
+		z.Error(err.Error())
+		return nil, 0, err
+	}
+	s = `
+ 	SELECT 
+		tp.id, tp.name,tp.correct_mode,
+		tp.type, tp.creator, tp.create_time, tp.updated_by, tp.update_time, tp.addi, tp.status ,tp.allowed_attempts,u.official_name
+		FROM assessuser.t_practice tp
+		LEFT JOIN assessuser.t_user u ON u.id = tp.creator
+	`
+	if len(clauses) > 0 {
+		s += " WHERE " + strings.Join(clauses, " AND ")
+	}
+	// 添加ORDER BY子句
+	if len(orderBy) > 0 {
+		s += " ORDER BY " + strings.Join(orderBy, ", ")
+	}
+	// 添加分页参数
+	s += fmt.Sprintf(" LIMIT $%d", len(args)+1)
+	args = append(args, pageSize)
+
+	offset := (page - 1) * pageSize
+	s += fmt.Sprintf(" OFFSET $%d", len(args)+1)
+	args = append(args, offset)
+
+	z.Sugar().Debugf("打印输出一下这个操作语句：%v", s)
+	z.Sugar().Debugf("打印输出一下参数表：%v", args)
+	rows, err := sqlxDB.QueryxContext(ctx, s, args...)
+	if err != nil || forceErr == "query" {
+		err = fmt.Errorf("查询可用于报名计划绑定的练习失败:%v", err)
+		z.Error(err.Error())
+		return nil, 0, err
+	}
+	defer func() {
+		err = rows.Close()
+		if err != nil || forceErr == "Close" {
+			err = fmt.Errorf("row failed to close:%v", err)
+			z.Error(err.Error())
+			return
+		}
+	}()
+	// 查询数据在这里
+	for rows.Next() {
+		var p RegisterPractice
+		err = rows.Scan(&p.ID, &p.Name, &p.CorrectMode, &p.Type, &p.Creator,
+			&p.CreateTime, &p.UpdatedBy, &p.UpdateTime, &p.Addi, &p.Status, &p.AllowedAttempts, &p.TeacherName,
+		)
+		if err != nil || forceErr == "scan" {
+			err = fmt.Errorf("解析练习数据失败:%v", err)
+			z.Error(err.Error())
+			return nil, 0, err
+		}
+		result = append(result, p)
+	}
+	return result, total, nil
 }
 
 // OperatePracticeStatus 教师及以上权限操作练习发布状态 控制学生能否作答、能否在列表中查看到该练习 并配置批改信息
@@ -1568,7 +1670,7 @@ func EnterPracticeWrongCollection(ctx context.Context, tx pgx.Tx, pid, uid int64
 		groupMap[g.ID.Int64] = g
 	}
 	epInfo.WrongSubmissionID = wpSubmissionID
-	epInfo.PaperName = ps.PaperName.String + "（错题）"
+	epInfo.PaperName = epInfo.PaperName + "（错题）"
 	epInfo.PracticeSubmissionID = ps.LatestSubmittedID.Int64
 
 	// 更新错题为可作答状态 如果是需要重新组装错题，需要将原
@@ -1741,6 +1843,69 @@ func LoadErrorCollectionDetailsById(ctx context.Context, tx pgx.Tx, pid, uid int
 			examQuestions[v.ID.Int64] = append(examQuestions[v.ID.Int64], &q)
 		}
 	}
-
 	return p, examGroups, examQuestions, nil
+}
+
+// BoundPracticeEnterRegisterPlan 学生成功报名一个报名计划后 绑定计划中携带的练习
+/*
+调用时机：
+	无论此时报名计划中有没有附带绑定配套练习 都调用这个函数
+传参：
+	学生ID
+	报名计划ID
+*/
+func BoundPracticeEnterRegisterPlan(ctx context.Context, tx pgx.Tx, uid, rpid int64) error {
+	var err error
+	if uid <= 0 || rpid <= 0 {
+		err = fmt.Errorf("invalid uid or rpid param")
+		z.Error(err.Error())
+		return err
+	}
+	//查看是否需要返回mock的数据
+	forceErr, _ := ctx.Value("force-error").(string)
+	now := time.Now().UnixMilli()
+	// 因此这需要查询上所有这些的练习id，并且查看这些练习是否已经作废了等等，这里仅仅只给已发布或者待发布的练习进行新增这个名额
+	s := `SELECT practice_id FROM t_register_practice rp 
+			LEFT JOIN t_practice p ON p.id = rp.practice_id
+			WHERE rp.register_id = $1 AND p.status = $2	`
+	rows, err := tx.Query(ctx, s, rpid, PracticeStatus.Released)
+	if err != nil || forceErr == "query" {
+		err = fmt.Errorf("查询报名计划所绑定的练习失败:%v", err)
+		z.Error(err.Error())
+		return err
+	}
+
+	defer rows.Close()
+
+	var pids []int64
+	for rows.Next() {
+		var pid int64
+		err = rows.Scan(&pid)
+		if err != nil || forceErr == "scan" {
+			err = fmt.Errorf("扫描解析数据库数据失败:%v", err)
+			z.Error(err.Error())
+			return err
+		}
+		pids = append(pids, pid)
+	}
+	if len(pids) == 0 {
+		// 此时查询不到当前这个报名计划中所拥有的练习 ，那就直接返回，表示成功
+		return nil
+	}
+	s = `
+    INSERT INTO assessuser.t_practice_student 
+        (student_id, practice_id, creator, create_time,updated_by,update_time,status)
+    SELECT $1, UNNEST($2::bigint[]), $3, $4, $5,$6,$7
+    ON CONFLICT (student_id, practice_id) 
+	DO UPDATE SET
+            status = EXCLUDED.status,
+            updated_by = EXCLUDED.updated_by,
+            update_time = EXCLUDED.update_time`
+	_, err = tx.Exec(ctx, s, uid, pids, uid, now, uid, now, PracticeStudentStatus.Normal)
+	if err != nil || forceErr == "query1" {
+		err = fmt.Errorf("执行插入学生练习名单数据库失败:%v", err)
+		z.Error(err.Error())
+		return err
+	}
+	return nil
 }

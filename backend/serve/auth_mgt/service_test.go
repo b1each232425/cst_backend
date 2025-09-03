@@ -881,14 +881,14 @@ func TestCheckUserAPIAccessible(t *testing.T) {
 							APIName:            null.StringFrom("题库管理模块"),
 							ExposePath:         null.StringFrom("/teacher/question-bank"),
 							AccessControlLevel: null.StringFrom("4"),
-							DataAccessMode:     null.StringFrom("full"),
+							AccessAction:       null.StringFrom("full"),
 							GrantSource:        null.StringFrom("api"),
 						},
 					},
 					AccessibleDomains: []int64{1999, 1998},
 				},
 				apiPath:    "/teacher/question-bank",
-				accessMode: CDataAccessModeRead,
+				accessMode: CAPIAccessActionRead,
 			},
 			want:    true,
 			wantErr: false,
@@ -920,14 +920,14 @@ func TestCheckUserAPIAccessible(t *testing.T) {
 							APIName:            null.StringFrom("题库管理模块"),
 							ExposePath:         null.StringFrom("/teacher/question-bank"),
 							AccessControlLevel: null.StringFrom("4"),
-							DataAccessMode:     null.StringFrom("full"),
+							AccessAction:       null.StringFrom("full"),
 							GrantSource:        null.StringFrom("api"),
 						},
 					},
 					AccessibleDomains: []int64{1999, 1998},
 				},
 				apiPath:    "/teacher/question-bank",
-				accessMode: CDataAccessModeWrite,
+				accessMode: CAPIAccessActionCreate,
 			},
 			want:    true,
 			wantErr: false,
@@ -959,20 +959,20 @@ func TestCheckUserAPIAccessible(t *testing.T) {
 							APIName:            null.StringFrom("题库管理模块"),
 							ExposePath:         null.StringFrom("/teacher/question-bank"),
 							AccessControlLevel: null.StringFrom("4"),
-							DataAccessMode:     null.StringFrom("full"),
+							AccessAction:       null.StringFrom("full"),
 							GrantSource:        null.StringFrom("api"),
 						},
 					},
 					AccessibleDomains: []int64{1999, 1998},
 				},
 				apiPath:    "/teacher/question-bank",
-				accessMode: CDataAccessModeFull,
+				accessMode: CAPIAccessActionFull,
 			},
 			want:    true,
 			wantErr: false,
 		},
 		{
-			name: "read权限｜API可读",
+			name: "query权限｜API可查询数据",
 			args: args{
 				ctx: context.Background(),
 				authority: &Authority{
@@ -998,20 +998,20 @@ func TestCheckUserAPIAccessible(t *testing.T) {
 							APIName:            null.StringFrom("题库管理模块"),
 							ExposePath:         null.StringFrom("/teacher/question-bank"),
 							AccessControlLevel: null.StringFrom("4"),
-							DataAccessMode:     null.StringFrom("read"),
+							AccessAction:       null.StringFrom("read"),
 							GrantSource:        null.StringFrom("api"),
 						},
 					},
 					AccessibleDomains: []int64{1999, 1998},
 				},
 				apiPath:    "/teacher/question-bank",
-				accessMode: CDataAccessModeRead,
+				accessMode: CAPIAccessActionRead,
 			},
 			want:    true,
 			wantErr: false,
 		},
 		{
-			name: "read权限｜API不可写",
+			name: "query权限｜API不可添加数据",
 			args: args{
 				ctx: context.Background(),
 				authority: &Authority{
@@ -1037,20 +1037,20 @@ func TestCheckUserAPIAccessible(t *testing.T) {
 							APIName:            null.StringFrom("题库管理模块"),
 							ExposePath:         null.StringFrom("/teacher/question-bank"),
 							AccessControlLevel: null.StringFrom("4"),
-							DataAccessMode:     null.StringFrom("read"),
+							AccessAction:       null.StringFrom("read"),
 							GrantSource:        null.StringFrom("api"),
 						},
 					},
 					AccessibleDomains: []int64{1999, 1998},
 				},
 				apiPath:    "/teacher/question-bank",
-				accessMode: CDataAccessModeWrite,
+				accessMode: CAPIAccessActionCreate,
 			},
 			want:    false,
 			wantErr: false,
 		},
 		{
-			name: "read权限｜API不可完全访问",
+			name: "query权限｜API不可完全访问",
 			args: args{
 				ctx: context.Background(),
 				authority: &Authority{
@@ -1076,20 +1076,20 @@ func TestCheckUserAPIAccessible(t *testing.T) {
 							APIName:            null.StringFrom("题库管理模块"),
 							ExposePath:         null.StringFrom("/teacher/question-bank"),
 							AccessControlLevel: null.StringFrom("4"),
-							DataAccessMode:     null.StringFrom("read"),
+							AccessAction:       null.StringFrom("read"),
 							GrantSource:        null.StringFrom("api"),
 						},
 					},
 					AccessibleDomains: []int64{1999, 1998},
 				},
 				apiPath:    "/teacher/question-bank",
-				accessMode: CDataAccessModeFull,
+				accessMode: CAPIAccessActionFull,
 			},
 			want:    false,
 			wantErr: false,
 		},
 		{
-			name: "write权限｜API不可读",
+			name: "add权限｜API不可查询数据",
 			args: args{
 				ctx: context.Background(),
 				authority: &Authority{
@@ -1115,14 +1115,14 @@ func TestCheckUserAPIAccessible(t *testing.T) {
 							APIName:            null.StringFrom("题库管理模块"),
 							ExposePath:         null.StringFrom("/teacher/question-bank"),
 							AccessControlLevel: null.StringFrom("4"),
-							DataAccessMode:     null.StringFrom("write"),
+							AccessAction:       null.StringFrom("create"),
 							GrantSource:        null.StringFrom("api"),
 						},
 					},
 					AccessibleDomains: []int64{1999, 1998},
 				},
 				apiPath:    "/teacher/question-bank",
-				accessMode: CDataAccessModeRead,
+				accessMode: CAPIAccessActionRead,
 			},
 			want:    false,
 			wantErr: false,
@@ -1154,14 +1154,53 @@ func TestCheckUserAPIAccessible(t *testing.T) {
 							APIName:            null.StringFrom("题库管理模块"),
 							ExposePath:         null.StringFrom("/teacher/question-bank"),
 							AccessControlLevel: null.StringFrom("4"),
-							DataAccessMode:     null.StringFrom("edit"),
+							AccessAction:       null.StringFrom("update"),
 							GrantSource:        null.StringFrom("api"),
 						},
 					},
 					AccessibleDomains: []int64{1999, 1998},
 				},
 				apiPath:    "/teacher/question-bank",
-				accessMode: CDataAccessModeEdit,
+				accessMode: CAPIAccessActionUpdate,
+			},
+			want:    true,
+			wantErr: false,
+		},
+		{
+			name: "delete权限｜API可删除数据",
+			args: args{
+				ctx: context.Background(),
+				authority: &Authority{
+					Role: cmn.TDomain{
+						ID:       null.NewInt(2003, true),
+						Name:     "教师",
+						Domain:   "cst.school^teacher",
+						Priority: null.IntFrom(7),
+					},
+					Domain: cmn.TDomain{
+						ID:       null.NewInt(1999, true),
+						Name:     "3min",
+						Domain:   "cst.school",
+						Priority: null.IntFrom(0),
+					},
+					APIs: []cmn.TVDomainAPI{
+						{
+							AuthDomainID:       null.IntFrom(2003),
+							DomainName:         null.StringFrom("教师"),
+							Domain:             null.StringFrom("cst.school^teacher"),
+							Priority:           null.IntFrom(7),
+							APIID:              null.IntFrom(20000),
+							APIName:            null.StringFrom("题库管理模块"),
+							ExposePath:         null.StringFrom("/teacher/question-bank"),
+							AccessControlLevel: null.StringFrom("4"),
+							AccessAction:       null.StringFrom("delete"),
+							GrantSource:        null.StringFrom("api"),
+						},
+					},
+					AccessibleDomains: []int64{1999, 1998},
+				},
+				apiPath:    "/teacher/question-bank",
+				accessMode: CAPIAccessActionDelete,
 			},
 			want:    true,
 			wantErr: false,
@@ -1217,9 +1256,9 @@ func TestCheckUserAPIAccessible(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name: "CheckUserAPIReadable.authority.nil错误",
+			name: "checkUserAPIAccessible.authority.nil错误",
 			args: args{
-				ctx: createMockContext(cmn.TUser{}, "CheckUserAPIReadable.authority.nil"),
+				ctx: createMockContext(cmn.TUser{}, "checkUserAPIAccessible.authority.nil"),
 				authority: &Authority{
 					Role: cmn.TDomain{
 						ID:       null.NewInt(2003, true),
@@ -1250,85 +1289,7 @@ func TestCheckUserAPIAccessible(t *testing.T) {
 					AccessibleDomains: []int64{1999, 1998},
 				},
 				apiPath:    "/teacher/question-bank",
-				accessMode: CDataAccessModeFull,
-			},
-			want:    false,
-			wantErr: true,
-		},
-		{
-			name: "CheckUserAPIWritable.authority.nil错误",
-			args: args{
-				ctx: createMockContext(cmn.TUser{}, "CheckUserAPIWritable.authority.nil"),
-				authority: &Authority{
-					Role: cmn.TDomain{
-						ID:       null.NewInt(2003, true),
-						Name:     "教师",
-						Domain:   "cst.school^teacher",
-						Priority: null.IntFrom(7),
-					},
-					Domain: cmn.TDomain{
-						ID:       null.NewInt(1999, true),
-						Name:     "3min",
-						Domain:   "cst.school",
-						Priority: null.IntFrom(0),
-					},
-					APIs: []cmn.TVDomainAPI{
-						{
-							AuthDomainID:       null.IntFrom(2003),
-							DomainName:         null.StringFrom("教师"),
-							Domain:             null.StringFrom("cst.school^teacher"),
-							Priority:           null.IntFrom(7),
-							APIID:              null.IntFrom(20000),
-							APIName:            null.StringFrom("题库管理模块"),
-							ExposePath:         null.StringFrom("/teacher/question-bank"),
-							AccessControlLevel: null.StringFrom("4"),
-							DataAccessMode:     null.StringFrom("full"),
-							GrantSource:        null.StringFrom("api"),
-						},
-					},
-					AccessibleDomains: []int64{1999, 1998},
-				},
-				apiPath:    "/teacher/question-bank",
-				accessMode: CDataAccessModeFull,
-			},
-			want:    false,
-			wantErr: true,
-		},
-		{
-			name: "CheckUserAPIEditable.authority.nil错误",
-			args: args{
-				ctx: createMockContext(cmn.TUser{}, "CheckUserAPIEditable.authority.nil"),
-				authority: &Authority{
-					Role: cmn.TDomain{
-						ID:       null.NewInt(2003, true),
-						Name:     "教师",
-						Domain:   "cst.school^teacher",
-						Priority: null.IntFrom(7),
-					},
-					Domain: cmn.TDomain{
-						ID:       null.NewInt(1999, true),
-						Name:     "3min",
-						Domain:   "cst.school",
-						Priority: null.IntFrom(0),
-					},
-					APIs: []cmn.TVDomainAPI{
-						{
-							AuthDomainID:       null.IntFrom(2003),
-							DomainName:         null.StringFrom("教师"),
-							Domain:             null.StringFrom("cst.school^teacher"),
-							Priority:           null.IntFrom(7),
-							APIID:              null.IntFrom(20000),
-							APIName:            null.StringFrom("题库管理模块"),
-							ExposePath:         null.StringFrom("/teacher/question-bank"),
-							AccessControlLevel: null.StringFrom("4"),
-							DataAccessMode:     null.StringFrom("full"),
-							GrantSource:        null.StringFrom("api"),
-						},
-					},
-					AccessibleDomains: []int64{1999, 1998},
-				},
-				apiPath:    "/teacher/question-bank",
-				accessMode: CDataAccessModeFull,
+				accessMode: CAPIAccessActionFull,
 			},
 			want:    false,
 			wantErr: true,
@@ -1874,6 +1835,129 @@ func TestGetDomainRelationship(t *testing.T) {
 			}
 			if got != tt.want {
 				t.Errorf("GetDomainRelationship() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func Test_querySelectableAPIs(t *testing.T) {
+	type args struct {
+		ctx          context.Context
+		parentDomain string
+	}
+	tests := []struct {
+		name    string
+		args    args
+		wantErr bool
+	}{
+		{
+			name: "机构级别查询所有API｜空字符串域",
+			args: args{
+				ctx:          context.Background(),
+				parentDomain: "",
+			},
+			wantErr: false,
+		},
+		{
+			name: "部门级别查询父域API子集",
+			args: args{
+				ctx:          context.Background(),
+				parentDomain: "cst.school",
+			},
+			wantErr: false,
+		},
+		{
+			name: "触发数据库连接为空错误",
+			args: args{
+				ctx:          context.WithValue(context.Background(), "force-error", "querySelectableAPIs.pgConn.nil"),
+				parentDomain: "",
+			},
+			wantErr: true,
+		},
+		{
+			name: "触发查询所有API错误",
+			args: args{
+				ctx:          context.WithValue(context.Background(), "force-error", "querySelectableAPIs.QueryAllAPIs"),
+				parentDomain: "",
+			},
+			wantErr: true,
+		},
+		{
+			name: "触发扫描所有API数据错误",
+			args: args{
+				ctx:          context.WithValue(context.Background(), "force-error", "querySelectableAPIs.ScanAllAPIs"),
+				parentDomain: "",
+			},
+			wantErr: true,
+		},
+		{
+			name: "触发所有API行遍历错误",
+			args: args{
+				ctx:          context.WithValue(context.Background(), "force-error", "querySelectableAPIs.AllAPIsRowsErr"),
+				parentDomain: "",
+			},
+			wantErr: true,
+		},
+		{
+			name: "触发查询域API错误",
+			args: args{
+				ctx:          context.WithValue(context.Background(), "force-error", "querySelectableAPIs.QueryDomainAPIs"),
+				parentDomain: "cst.school",
+			},
+			wantErr: true,
+		},
+		{
+			name: "触发扫描域API数据错误",
+			args: args{
+				ctx:          context.WithValue(context.Background(), "force-error", "querySelectableAPIs.ScanDomainAPIs"),
+				parentDomain: "cst.school",
+			},
+			wantErr: true,
+		},
+		{
+			name: "触发域API行遍历错误",
+			args: args{
+				ctx:          context.WithValue(context.Background(), "force-error", "querySelectableAPIs.DomainAPIsRowsErr"),
+				parentDomain: "cst.school",
+			},
+			wantErr: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := querySelectableAPIs(tt.args.ctx, tt.args.parentDomain)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("querySelectableAPIs() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if !tt.wantErr {
+				// 验证返回的API数量大于0
+				if len(got) == 0 {
+					t.Errorf("querySelectableAPIs() returned empty API list")
+					return
+				}
+
+				// 验证每个API的关键字段不为空
+				for i, api := range got {
+					if !api.ID.Valid {
+						t.Errorf("querySelectableAPIs() API[%d].ID is invalid", i)
+					}
+					if api.Name == "" {
+						t.Errorf("querySelectableAPIs() API[%d].Name is empty", i)
+					}
+					if api.AccessControlLevel == "" {
+						t.Errorf("querySelectableAPIs() API[%d].AccessControlLevel is empty", i)
+					}
+				}
+
+				// 输出调试信息
+				if testing.Verbose() {
+					t.Logf("查询到的API数量: %d", len(got))
+					for i, api := range got {
+						t.Logf("  API[%d]: ID=%v, Name=%s, Path=%v, AccessAction=%v, Level=%s",
+							i, api.ID, api.Name, api.ExposePath, api.AccessAction, api.AccessControlLevel)
+					}
+				}
 			}
 		})
 	}

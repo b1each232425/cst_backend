@@ -23,10 +23,21 @@ import (
 
 	"w2w.io/cmn"
 	"w2w.io/null"
+	"w2w.io/serve/auth_mgt"
 )
 
 var (
-	store = sessions.NewCookieStore([]byte("secret-key"))
+	store          = sessions.NewCookieStore([]byte("secret-key"))
+	testDomainApis = []struct {
+		ApiPath      string
+		AccessAction string
+	}{}
+	permissions = []string{
+		auth_mgt.CAPIAccessActionCreate,
+		auth_mgt.CAPIAccessActionRead,
+		auth_mgt.CAPIAccessActionUpdate,
+		auth_mgt.CAPIAccessActionDelete,
+	}
 )
 
 func TestMain(m *testing.M) {
@@ -63,7 +74,351 @@ func TestMain(m *testing.M) {
 
 	sshPort = viper.GetInt("examSiteServerSync.centralServerSSH.port")
 
+	o, err := exec.Command("bash", "-c", "service ssh restart").CombinedOutput()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to restart SSH service: %v\n", err)
+		return
+	}
+	fmt.Printf("SSH service restarted successfully: %s\n", o)
+
 	m.Run()
+}
+
+func addTestDomainApi(apiPath string, accessAction string, domain int64) (err error) {
+
+	dbConn := cmn.GetDbConn()
+
+	tx, err := dbConn.Begin()
+	if err != nil {
+		return
+	}
+
+	defer func() {
+
+		if err != nil {
+			tx.Rollback()
+			return
+		}
+
+		err = tx.Commit()
+
+	}()
+
+	s := `INSERT INTO t_domain_api (api, domain, data_access_mode)
+	SELECT id, $2, $3 FROM t_api WHERE expose_path = $1 AND access_action = $4
+	ON CONFLICT (api, domain) DO NOTHING`
+
+	r, err := tx.Exec(s, apiPath, domain, "full", accessAction)
+	if err != nil {
+		return
+	}
+
+	c, err := r.RowsAffected()
+	if err != nil {
+		return
+	}
+
+	if c == 0 {
+		return
+	}
+
+	// record for cleanup
+	testDomainApis = append(testDomainApis, struct {
+		ApiPath      string
+		AccessAction string
+	}{ApiPath: apiPath, AccessAction: accessAction})
+
+	return
+}
+
+func removeTestDomainApis(domain int64) (err error) {
+
+	dbConn := cmn.GetDbConn()
+
+	for _, v := range testDomainApis {
+
+		s := `DELETE FROM t_domain_api
+		USING t_api
+		WHERE t_api.id = t_domain_api.api
+		  AND t_domain_api.domain = $1
+		  AND t_api.expose_path = $2
+		  AND t_api.access_action = $3`
+
+		_, err := dbConn.Exec(s, domain, v.ApiPath, v.AccessAction)
+		if err != nil {
+			return err
+		}
+	}
+
+	return
+}
+
+func mockExamSiteSyncData(sysUser int64, nowTime int64) (cleanup func() error, err error) {
+
+	dbConn := cmn.GetDbConn()
+
+	ctx := context.Background()
+
+	tx, err := dbConn.BeginTx(ctx, nil)
+
+	defer func() {
+
+		if err != nil {
+			tx.Rollback()
+			return
+		}
+
+		tx.Commit()
+
+	}()
+
+	testID := nowTime / 100
+
+	sqls := []string{
+		fmt.Sprintf(`WITH ins_site AS (
+  	INSERT INTO t_exam_site (id, name, address, server_host, creator, admin, sys_user)
+  	VALUES (%d, 'test-site-%d', 'test,address', 'localhost', 1000, 1000, %d)
+  	ON CONFLICT(id) DO NOTHING
+  	RETURNING id
+),
+ins_rooms AS (
+  	INSERT INTO t_exam_room (id, exam_site, name, capacity, creator)
+  	VALUES
+		(%d, %d, 'test-room-1', 30, 1000),
+		(%d, %d, 'test-room-2', 30, 1000),
+		(%d, %d, 'test-room-3', 30, 1000),
+		(%d, %d, 'test-room-4', 30, 1000),
+		(%d, %d, 'test-room-5', 30, 1000)
+  	ON CONFLICT(id) DO NOTHING
+  	RETURNING id
+),
+ins_exam_info AS (
+  	INSERT INTO t_exam_info (id, name, type, mode, creator)
+  	VALUES (%d, 'test-exam', '04', '02', 1000)
+  	ON CONFLICT(id) DO NOTHING
+  	RETURNING id
+),
+ins_exam_session AS (
+  	INSERT INTO t_exam_session (id, exam_id, paper_id, mark_method, start_time, end_time, creator)
+  	VALUES (%d, %d, %d, '00', %d, %d, 1000)
+  	ON CONFLICT(id) DO NOTHING
+  	RETURNING id
+),
+ins_exam_paper AS (
+  	INSERT INTO t_exam_paper (id, exam_session_id, creator)
+  	VALUES (%d, %d, 1000)
+  	ON CONFLICT(id) DO NOTHING
+  	RETURNING id
+),
+ins_exam_paper_group AS (
+	INSERT INTO t_exam_paper_group (id, exam_paper_id, name, "order", creator) 
+	VALUES
+		(%d, %d, 'group-1', 1, 1000),
+		(%d, %d, 'group-2', 2, 1000),
+		(%d, %d, 'group-3', 3, 1000)
+	ON CONFLICT(id) DO NOTHING
+	RETURNING id
+),
+ins_exam_paper_question AS (
+	INSERT INTO t_exam_paper_question (id, group_id, creator, content, options, answers)
+	VALUES
+		(%d, %d, 1000, '<p><span style="font-size: 12pt">操作系统A</span></p>', '[{"label": "A","value": "对"},{ "label": "B","value": "错"}]', '["A"]'),
+		(%d, %d, 1000, '<p><span style="font-size: 12pt">A</span></p>', '[{"label": "A","value": "对"},{ "label": "B","value": "错"}]', '["B","D"]'),
+		(%d, %d, 1000, '<p><span style="font-size: 12pt">操作系统A</span></p>', '[{"label": "A","value": "对"},{ "label": "B","value": "错"}]', '["C"]')
+	ON CONFLICT(id) DO NOTHING
+	RETURNING id
+),
+ins_users AS (
+  	INSERT INTO t_user (id, category, account, domain_id) 
+	VALUES
+		(%d, 'sys^user', 'test-examinee-%d', %d),
+		(%d, 'sys^user', 'test-examinee-%d', %d),
+		(%d, 'sys^user', 'test-examinee-%d', %d),
+		(%d1, 'sys^user', 'test-invigilator-%d', %d)
+  	ON CONFLICT(id) DO NOTHING
+  	RETURNING id
+),
+ins_domain AS (
+	INSERT INTO t_domain (id, name, domain, priority, creator) 
+	VALUES
+		(10128, '考试系统.学生', 'assess^student', 7, 1000),
+		(10116, '考试系统.监考员', 'assess^examSupervisor', 7, 1000)
+	ON CONFLICT(id) DO NOTHING
+),
+ins_user_domains AS (
+  	INSERT INTO t_user_domain (sys_user, domain, data_access_mode, domain_id) 
+	VALUES
+		(%d, 10128, 'full', %d),
+		(%d, 10128, 'full', %d),
+		(%d, 10128, 'full', %d),
+		(%d1, 10116, 'full', %d)
+  	ON CONFLICT(sys_user, domain) DO NOTHING
+  	RETURNING sys_user
+),
+ins_examinees AS (
+  	INSERT INTO t_examinee (id, student_id, exam_room, exam_session_id, creator) 
+	VALUES
+		(%d, %d, %d, %d, 1000),
+		(%d, %d, %d, %d, 1000),
+		(%d, %d, %d, %d, 1000)
+	ON CONFLICT(id) DO NOTHING
+  	RETURNING student_id
+),
+ins_student_answers AS (
+	INSERT INTO t_student_answers (id, examinee_id, question_id, creator, answer)
+	VALUES
+		(1, %d, %d, 1000, '[]'),
+		(2, %d, %d, 1000, '[]'),
+		(3, %d, %d, 1000, '[]')
+	ON CONFLICT(id) DO NOTHING
+	RETURNING id
+),
+ins_exam_record AS (
+	INSERT INTO t_exam_record (exam_room, exam_session, creator)
+	VALUES
+		(%d, %d, 1000),
+		(%d, %d, 1000),
+		(%d, %d, 1000)
+	ON CONFLICT(id) DO NOTHING
+	RETURNING id
+),
+ins_invigilation AS (
+	INSERT INTO t_invigilation (exam_session_id, exam_room, invigilator, creator)
+	VALUES
+		(%d, %d, %d1, 1000)
+	ON CONFLICT(id) DO NOTHING
+	RETURNING id
+)
+SELECT 1;
+`,
+			// ins_site: (id, name, sys_user)
+			testID, nowTime, sysUser,
+
+			// ins_rooms: (id, exam_site) * 5
+			testID+1, testID,
+			testID+2, testID,
+			testID+3, testID,
+			testID+4, testID,
+			testID+5, testID,
+
+			// ins_exam_info: (id)
+			testID,
+
+			// ins_exam_session: (id, exam_id, paper_id, start_time, end_time)
+			testID, testID, testID, (nowTime+3*60)*1000, (nowTime+13*60)*1000,
+
+			// ins_exam_paper (id, exam_session_id)
+			testID, testID,
+
+			// ins_exam_paper_group (id, exam_paper_id)
+			testID+1, testID,
+			testID+2, testID,
+			testID+3, testID,
+
+			// ins_exam_paper_question (id, group_id)
+			testID+1, testID+1,
+			testID+2, testID+2,
+			testID+3, testID+3,
+
+			// ins_users: (id, account, domain_id)
+			testID+1, testID+1, testID,
+			testID+2, testID+2, testID,
+			testID+3, testID+3, testID,
+			testID, testID, testID,
+
+			// ins_user_domains: (sys_user, domain_id) *3
+			testID+1, testID,
+			testID+2, testID,
+			testID+3, testID,
+			testID, testID,
+
+			// ins_examinees: (id, student_id, exam_room, exam_session_id) *3
+			testID+1, testID+1, testID+1, testID,
+			testID+2, testID+2, testID+2, testID,
+			testID+3, testID+3, testID+3, testID,
+
+			// ins_student_answers (examinee_id, question_id)
+			testID+1, testID+1,
+			testID+2, testID+2,
+			testID+3, testID+3,
+
+			// ins_exam_record (exam_room, exam_session)
+			testID+1, testID,
+			testID+2, testID,
+			testID+3, testID,
+
+			// ins_invigilation (exam_session_id, exam_room, invigilator)
+			testID, testID+1, testID,
+		),
+	}
+
+	os.WriteFile("./data/mock-data.sql", []byte(strings.Join(sqls, "\n")), 0755)
+
+	for _, sql := range sqls {
+		_, err = tx.ExecContext(ctx, sql)
+		if err != nil {
+			break
+		}
+	}
+
+	cleanup = func() (err error) {
+		dbConn := cmn.GetDbConn()
+
+		tx, err := dbConn.Begin()
+
+		defer func() {
+
+			if err != nil {
+				tx.Rollback()
+				return
+			}
+
+			tx.Commit()
+
+		}()
+
+		sqls := []string{
+
+			// 清除考场记录
+			fmt.Sprintf(`DELETE FROM t_exam_record WHERE exam_session = %d`, testID),
+
+			// 清除监考记录
+			fmt.Sprintf(`DELETE FROM t_invigilation WHERE exam_session_id = %d`, testID),
+
+			// 清除考生
+			fmt.Sprintf(`DELETE FROM t_examinee WHERE exam_session_id = %d`, testID),
+
+			fmt.Sprintf(`DELETE FROM t_user_domain WHERE domain_id = %d`, testID),
+
+			fmt.Sprintf(`DELETE FROM t_user WHERE domain_id = %d`, testID),
+
+			// 清除考卷
+			fmt.Sprintf(`DELETE FROM t_exam_paper WHERE exam_session_id = %d`, testID),
+
+			// 清除考试场次
+			fmt.Sprintf(`DELETE FROM t_exam_session WHERE exam_id = %d`, testID),
+
+			// 清除考试
+			fmt.Sprintf(`DELETE FROM t_exam_info WHERE id = %d`, testID),
+
+			// 清除考场
+			fmt.Sprintf(`DELETE FROM t_exam_room WHERE exam_site = %d`, testID),
+
+			// 清除考点
+			fmt.Sprintf(`DELETE FROM t_exam_site WHERE id = %d`, testID),
+		}
+
+		for _, sql := range sqls {
+			_, err = tx.Exec(sql)
+			if err != nil {
+				break
+			}
+		}
+
+		return
+	}
+
+	return
 }
 
 func addTestUser(userID int64, domain int64) (err error) {
@@ -86,13 +441,18 @@ func addTestUser(userID int64, domain int64) (err error) {
 
 	}()
 
-	sql := `INSERT INTO t_user (id, category, account) VALUES ($1, $2, $3) ON CONFLICT (id) DO NOTHING`
-	_, err = tx.Exec(sql, userID, "sys^user", fmt.Sprintf("testuser%d", userID))
+	sql := `INSERT INTO t_user (id, category, account, official_name) VALUES ($1, $2, $3, $4) ON CONFLICT(id) DO NOTHING`
+	_, err = tx.Exec(sql, userID, "sys^user", fmt.Sprintf("testuser%d", userID), fmt.Sprintf("testuser%d", userID))
 	if err != nil {
 		return
 	}
 
-	sql = `INSERT INTO t_user_domain (sys_user, domain) VALUES ($1, $2)`
+	sql = `WITH domain AS (
+		INSERT INTO t_domain (id, name, domain, priority, creator) VALUES
+		($2, '考试系统.考点测试', 'assess^testUser', 7, 1000)
+		ON CONFLICT DO NOTHING
+	)
+	INSERT INTO t_user_domain (sys_user, domain) VALUES ($1, $2) ON CONFLICT(sys_user, domain) DO NOTHING`
 	_, err = tx.Exec(sql, userID, domain)
 	if err != nil {
 		return
@@ -265,12 +625,23 @@ func TestExamSite(t *testing.T) {
 
 	testUserID := nowTime
 
-	defaultSetup := func() {
-		err := addTestUser(testUserID, int64(cmn.CDomainAssessExamSiteAdmin))
+	defaultSetup := func() (err error) {
+
+		for _, p := range permissions {
+			err = addTestDomainApi("/api/exam-site", p, int64(cmn.CDomainAssessExamSiteAdmin))
+			if err != nil {
+				t.Errorf("failed to add domain api: %v", err)
+				return
+			}
+		}
+
+		err = addTestUser(testUserID, int64(cmn.CDomainAssessExamSiteAdmin))
 		if err != nil {
 			t.Errorf("failed to add test user: %v", err)
 			return
 		}
+
+		return
 	}
 
 	defaultCheck := func(q *cmn.ServiceCtx, passExpected bool) {
@@ -294,11 +665,6 @@ func TestExamSite(t *testing.T) {
 
 	defaultCleanup := func() {
 
-		err := removeTestUser(testUserID)
-		if err != nil {
-			t.Fatalf("failed to remove test user: %v", err)
-		}
-
 		dbConn := cmn.GetDbConn()
 
 		r, err := dbConn.Exec(fmt.Sprintf(`DELETE FROM t_exam_site WHERE name = 'test-site-%d'`, nowTime))
@@ -312,6 +678,17 @@ func TestExamSite(t *testing.T) {
 		}
 
 		t.Logf("Have already cleaned up %d rows from t_exam_site", c)
+
+		err = removeTestUser(testUserID)
+		if err != nil {
+			t.Fatalf("failed to remove test user: %v", err)
+		}
+
+		err = removeTestDomainApis(int64(cmn.CDomainAssessExamSiteAdmin))
+		if err != nil {
+			t.Fatalf("failed to remove test domain api: %v", err)
+		}
+
 	}
 
 	tests := []struct {
@@ -319,14 +696,13 @@ func TestExamSite(t *testing.T) {
 		q            *cmn.ServiceCtx
 		passExpected bool
 		errWanted    string
-		setup        func()
+		setup        func() error
 		cleanup      func()
 		check        func(q *cmn.ServiceCtx, passExpected bool)
 	}{
 
 		{
-			name:  "不支持的Http方法",
-			setup: func() {},
+			name: "不支持的Http方法",
 			q: &cmn.ServiceCtx{
 				Ep: &cmn.ServeEndPoint{
 					Path: "/api/exam-site",
@@ -358,6 +734,7 @@ func TestExamSite(t *testing.T) {
 			},
 			passExpected: false,
 			errWanted:    "不支持的HTTP方法: Unknown255",
+			setup:        defaultSetup,
 			cleanup:      defaultCleanup,
 		},
 
@@ -409,8 +786,7 @@ func TestExamSite(t *testing.T) {
 			check:        defaultCheck,
 		},
 		{
-			name:  "创建考点成功-缺少sever_host",
-			setup: func() {},
+			name: "创建考点成功-缺少sever_host",
 			q: &cmn.ServiceCtx{
 				Ep: &cmn.ServeEndPoint{
 					Path: "/api/exam-site",
@@ -442,12 +818,12 @@ func TestExamSite(t *testing.T) {
 			},
 			passExpected: true,
 			errWanted:    "",
+			setup:        defaultSetup,
 			cleanup:      defaultCleanup,
 			check:        defaultCheck,
 		},
 		{
-			name:  "创建考点失败-缺少name",
-			setup: func() {},
+			name: "创建考点失败-缺少name",
 			q: &cmn.ServiceCtx{
 				Ep: &cmn.ServeEndPoint{
 					Path: "/api/exam-site",
@@ -480,12 +856,12 @@ func TestExamSite(t *testing.T) {
 			},
 			passExpected: false,
 			errWanted:    "validation failed:Key: 'examSiteInfo.Name' Error:Field validation for 'Name' failed on the 'required' tag",
+			setup:        defaultSetup,
 			cleanup:      defaultCleanup,
 			check:        defaultCheck,
 		},
 		{
-			name:  "创建考点失败-name类型为非字符串",
-			setup: func() {},
+			name: "创建考点失败-name类型为非字符串",
 			q: &cmn.ServiceCtx{
 				Ep: &cmn.ServeEndPoint{
 					Path: "/api/exam-site",
@@ -518,12 +894,12 @@ func TestExamSite(t *testing.T) {
 			},
 			passExpected: false,
 			errWanted:    "json: cannot unmarshal number into Go struct field examSiteInfo.name of type string",
+			setup:        defaultSetup,
 			cleanup:      defaultCleanup,
 			check:        defaultCheck,
 		},
 		{
-			name:  "创建考点失败-admin为非数字类型",
-			setup: func() {},
+			name: "创建考点失败-admin为非数字类型",
 			q: &cmn.ServiceCtx{
 				Ep: &cmn.ServeEndPoint{
 					Path: "/api/exam-site",
@@ -556,12 +932,12 @@ func TestExamSite(t *testing.T) {
 			},
 			passExpected: false,
 			errWanted:    "json: cannot unmarshal string into Go struct field examSiteInfo.admin of type int64",
+			setup:        defaultSetup,
 			cleanup:      defaultCleanup,
 			check:        defaultCheck,
 		},
 		{
-			name:  "创建考点失败-强制开启事务失败",
-			setup: func() {},
+			name: "创建考点失败-强制开启事务失败",
 			q: &cmn.ServiceCtx{
 				Ep: &cmn.ServeEndPoint{
 					Path: "/api/exam-site",
@@ -596,12 +972,12 @@ func TestExamSite(t *testing.T) {
 			},
 			passExpected: false,
 			errWanted:    "force tx begin err",
+			setup:        defaultSetup,
 			cleanup:      defaultCleanup,
 			check:        defaultCheck,
 		},
 		{
-			name:  "创建考点失败-强制事务提交失败",
-			setup: func() {},
+			name: "创建考点失败-强制事务提交失败",
 			q: &cmn.ServiceCtx{
 				Ep: &cmn.ServeEndPoint{
 					Path: "/api/exam-site",
@@ -636,12 +1012,12 @@ func TestExamSite(t *testing.T) {
 			},
 			passExpected: false,
 			errWanted:    "force tx commit err",
+			setup:        defaultSetup,
 			cleanup:      defaultCleanup,
 			check:        defaultCheck,
 		},
 		{
-			name:  "创建考点失败-强制事务回滚失败",
-			setup: func() {},
+			name: "创建考点失败-强制事务回滚失败",
 			q: &cmn.ServiceCtx{
 				Ep: &cmn.ServeEndPoint{
 					Path: "/api/exam-site",
@@ -676,12 +1052,12 @@ func TestExamSite(t *testing.T) {
 			},
 			passExpected: false,
 			errWanted:    "force tx rollback err",
+			setup:        defaultSetup,
 			cleanup:      defaultCleanup,
 			check:        defaultCheck,
 		},
 		{
-			name:  "创建考点失败-强制读取Body失败",
-			setup: func() {},
+			name: "创建考点失败-强制读取Body失败",
 			q: &cmn.ServiceCtx{
 				Ep: &cmn.ServeEndPoint{
 					Path: "/api/exam-site",
@@ -716,12 +1092,12 @@ func TestExamSite(t *testing.T) {
 			},
 			passExpected: false,
 			errWanted:    "force read body err",
+			setup:        defaultSetup,
 			cleanup:      defaultCleanup,
 			check:        defaultCheck,
 		},
 		{
-			name:  "创建考点失败-强制添加系统账号SQL Prepare 失败",
-			setup: func() {},
+			name: "创建考点失败-强制添加系统账号SQL Prepare 失败",
 			q: &cmn.ServiceCtx{
 				Ep: &cmn.ServeEndPoint{
 					Path: "/api/exam-site",
@@ -756,12 +1132,12 @@ func TestExamSite(t *testing.T) {
 			},
 			passExpected: false,
 			errWanted:    "force add sys user sql prepare err",
+			setup:        defaultSetup,
 			cleanup:      defaultCleanup,
 			check:        defaultCheck,
 		},
 		{
-			name:  "创建考点失败-强制执行添加系统账号sql失败",
-			setup: func() {},
+			name: "创建考点失败-强制执行添加系统账号sql失败",
 			q: &cmn.ServiceCtx{
 				Ep: &cmn.ServeEndPoint{
 					Path: "/api/exam-site",
@@ -796,12 +1172,12 @@ func TestExamSite(t *testing.T) {
 			},
 			passExpected: false,
 			errWanted:    "force execute add sys user sql err",
+			setup:        defaultSetup,
 			cleanup:      defaultCleanup,
 			check:        defaultCheck,
 		},
 		{
-			name:  "创建考点失败-强制添加考点SQL Prepare 失败",
-			setup: func() {},
+			name: "创建考点失败-强制添加考点SQL Prepare 失败",
 			q: &cmn.ServiceCtx{
 				Ep: &cmn.ServeEndPoint{
 					Path: "/api/exam-site",
@@ -836,12 +1212,12 @@ func TestExamSite(t *testing.T) {
 			},
 			passExpected: false,
 			errWanted:    "force add exam site prepare err",
+			setup:        defaultSetup,
 			cleanup:      defaultCleanup,
 			check:        defaultCheck,
 		},
 		{
-			name:  "创建考点失败-强制执行添加考点sql失败",
-			setup: func() {},
+			name: "创建考点失败-强制执行添加考点sql失败",
 			q: &cmn.ServiceCtx{
 				Ep: &cmn.ServeEndPoint{
 					Path: "/api/exam-site",
@@ -876,12 +1252,12 @@ func TestExamSite(t *testing.T) {
 			},
 			passExpected: false,
 			errWanted:    "force execute add exam site sql err",
+			setup:        defaultSetup,
 			cleanup:      defaultCleanup,
 			check:        defaultCheck,
 		},
 		{
-			name:  "创建考点失败-强制返回json Marshal失败",
-			setup: func() {},
+			name: "创建考点失败-强制返回json Marshal失败",
 			q: &cmn.ServiceCtx{
 				Ep: &cmn.ServeEndPoint{
 					Path: "/api/exam-site",
@@ -916,6 +1292,7 @@ func TestExamSite(t *testing.T) {
 			},
 			passExpected: false,
 			errWanted:    "force marshal return data err",
+			setup:        defaultSetup,
 			cleanup:      defaultCleanup,
 			check:        defaultCheck,
 		},
@@ -936,7 +1313,11 @@ func TestExamSite(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 
 			if tt.setup != nil {
-				tt.setup()
+				err := tt.setup()
+				if err != nil {
+					t.Errorf("failed to setup test: %v", err)
+					return
+				}
 			}
 
 			defer func() {
@@ -984,9 +1365,17 @@ func TestExamSiteList(t *testing.T) {
 
 	testUserID := nowTime
 
-	defaultSetup := func() {
+	defaultSetup := func() (err error) {
 
-		err := addTestUser(testUserID, int64(cmn.CDomainAssessExamSiteAdmin))
+		for _, p := range permissions {
+			err = addTestDomainApi("/api/exam-site/list", p, int64(cmn.CDomainAssessExamSiteAdmin))
+			if err != nil {
+				t.Errorf("failed to add domain api: %v", err)
+				return
+			}
+		}
+
+		err = addTestUser(testUserID, int64(cmn.CDomainAssessExamSiteAdmin))
 		if err != nil {
 			t.Errorf("failed to add test user: %v", err)
 			return
@@ -1019,6 +1408,8 @@ func TestExamSiteList(t *testing.T) {
 			t.Fatalf("failed to insert test data: %v", err)
 			return
 		}
+
+		return
 	}
 
 	// defaultCheck := func() {
@@ -1026,11 +1417,6 @@ func TestExamSiteList(t *testing.T) {
 	// }
 
 	defaultCleanup := func() {
-
-		err := removeTestUser(testUserID)
-		if err != nil {
-			t.Fatalf("failed to remove test user: %v", err)
-		}
 
 		dbConn := cmn.GetDbConn()
 
@@ -1062,6 +1448,16 @@ func TestExamSiteList(t *testing.T) {
 
 		t.Logf("Have already cleaned up %d rows from t_exam_site", c)
 
+		err = removeTestUser(testUserID)
+		if err != nil {
+			t.Fatalf("failed to remove test user: %v", err)
+		}
+
+		err = removeTestDomainApis(int64(cmn.CDomainAssessExamSiteAdmin))
+		if err != nil {
+			t.Fatalf("failed to remove test domain api: %v", err)
+		}
+
 	}
 
 	tests := []struct {
@@ -1069,7 +1465,7 @@ func TestExamSiteList(t *testing.T) {
 		q            *cmn.ServiceCtx
 		passExpected bool
 		errWanted    string
-		setup        func()
+		setup        func() error
 		cleanup      func()
 	}{
 
@@ -1080,7 +1476,7 @@ func TestExamSiteList(t *testing.T) {
 					Path: "/api/exam-site/list",
 				},
 				R: httptest.NewRequest("Unknown255", fmt.Sprintf(`/api/exam-site/list?q=%s`, url.QueryEscape(`{
-						"page": 0,
+						"page": 1,
 						"pageSize": 10,
 						"orderBy": [
 							{
@@ -1134,7 +1530,7 @@ func TestExamSiteList(t *testing.T) {
 					Path: "/api/exam-site/list",
 				},
 				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-site/list?q=%s`, url.QueryEscape(`{
-						"page": 0,
+						"page": 1,
 						"pageSize": 10,
 						"orderBy": [
 							{
@@ -1176,7 +1572,7 @@ func TestExamSiteList(t *testing.T) {
 					Path: "/api/exam-site/list",
 				},
 				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-site/list?q=%s`, url.QueryEscape(`{
-						"page": 0,
+						"page": 1,
 						"pageSize": 10,
 						"orderBy": [
 							{
@@ -1215,11 +1611,11 @@ func TestExamSiteList(t *testing.T) {
 					Path: "/api/exam-site/list",
 				},
 				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-site/list?q=%s`, url.QueryEscape(`{
-						"page": 0,
+						"page": 1,
 						"pageSize": 10,
 						"orderBy": [
 							{
-								"roomCount": "DESC"
+								"": "DESC"
 							}
 						],
 						"filter": {
@@ -1257,7 +1653,7 @@ func TestExamSiteList(t *testing.T) {
 					Path: "/api/exam-site/list",
 				},
 				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-site/list?q=%s`, url.QueryEscape(`{
-						"page": 0,
+						"page": 1,
 						"pageSize": 10,
 						"orderBy": [
 							{
@@ -1286,7 +1682,7 @@ func TestExamSiteList(t *testing.T) {
 			},
 			passExpected: false,
 			errWanted:    "当前用户没有权限获取数据",
-			setup:        defaultCleanup,
+			setup:        defaultSetup,
 			cleanup:      defaultCleanup,
 		},
 		{
@@ -1296,7 +1692,7 @@ func TestExamSiteList(t *testing.T) {
 					Path: "/api/exam-site/list",
 				},
 				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-site/list?q=%s`, url.QueryEscape(`{
-						"page": 0,
+						"page": 1,
 						"pageSize": 10,
 						"orderBy": [
 							{
@@ -1338,7 +1734,7 @@ func TestExamSiteList(t *testing.T) {
 					Path: "/api/exam-site/list",
 				},
 				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-site/list?q=%s`, url.QueryEscape(`{
-						"page": 0,
+						"page": 1,
 						"pageSize": 10`,
 				)), nil),
 				W: httptest.NewRecorder(),
@@ -1365,7 +1761,7 @@ func TestExamSiteList(t *testing.T) {
 			cleanup:      defaultCleanup,
 		},
 		{
-			name: "获取考点列表失败-页码小于0",
+			name: "获取考点列表失败-页码小于1",
 			q: &cmn.ServiceCtx{
 				Ep: &cmn.ServeEndPoint{
 					Path: "/api/exam-site/list",
@@ -1402,7 +1798,7 @@ func TestExamSiteList(t *testing.T) {
 				RedisClient: cmn.GetRedisConn(),
 			},
 			passExpected: false,
-			errWanted:    "页码不能小于0",
+			errWanted:    "页码不能小于1",
 			setup:        defaultSetup,
 			cleanup:      defaultCleanup,
 		},
@@ -1413,7 +1809,7 @@ func TestExamSiteList(t *testing.T) {
 					Path: "/api/exam-site/list",
 				},
 				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-site/list?q=%s`, url.QueryEscape(`{
-						"page": 0,
+						"page": 1,
 						"pageSize": -1,
 						"orderBy": [
 							{
@@ -1497,7 +1893,7 @@ func TestExamSiteList(t *testing.T) {
 					Path: "/api/exam-site/list",
 				},
 				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-site/list?q=%s`, url.QueryEscape(`{
-						"page": 0,
+						"page": 1,
 						"pageSize": 10,
 						"orderBy": [
 							{
@@ -1542,7 +1938,7 @@ func TestExamSiteList(t *testing.T) {
 					Path: "/api/exam-site/list",
 				},
 				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-site/list?q=%s`, url.QueryEscape(`{
-						"page": 0,
+						"page": 1,
 						"pageSize": 10,
 						"orderBy": [
 							{
@@ -1587,7 +1983,7 @@ func TestExamSiteList(t *testing.T) {
 					Path: "/api/exam-site/list",
 				},
 				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-site/list?q=%s`, url.QueryEscape(`{
-						"page": 0,
+						"page": 1,
 						"pageSize": 10,
 						"orderBy": [
 							{
@@ -1632,7 +2028,7 @@ func TestExamSiteList(t *testing.T) {
 					Path: "/api/exam-site/list",
 				},
 				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-site/list?q=%s`, url.QueryEscape(`{
-						"page": 0,
+						"page": 1,
 						"pageSize": 10,
 						"orderBy": [
 							{
@@ -1677,7 +2073,7 @@ func TestExamSiteList(t *testing.T) {
 					Path: "/api/exam-site/list",
 				},
 				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-site/list?q=%s`, url.QueryEscape(`{
-						"page": 0,
+						"page": 1,
 						"pageSize": 10,
 						"orderBy": [
 							{
@@ -1722,7 +2118,7 @@ func TestExamSiteList(t *testing.T) {
 					Path: "/api/exam-site/list",
 				},
 				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-site/list?q=%s`, url.QueryEscape(`{
-						"page": 0,
+						"page": 1,
 						"pageSize": 10,
 						"orderBy": [
 							{
@@ -1767,7 +2163,7 @@ func TestExamSiteList(t *testing.T) {
 					Path: "/api/exam-site/list",
 				},
 				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-site/list?q=%s`, url.QueryEscape(`{
-						"page": 0,
+						"page": 1,
 						"pageSize": 10,
 						"orderBy": [
 							{
@@ -1820,7 +2216,11 @@ func TestExamSiteList(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 
 			if tt.setup != nil {
-				tt.setup()
+				err := tt.setup()
+				if err != nil {
+					t.Errorf("failed to setup test: %v", err)
+					return
+				}
 			}
 
 			defer func() {
@@ -1905,6 +2305,36 @@ func TestExamSiteList(t *testing.T) {
 
 				rc = int(item.RoomCount.Int64)
 
+				if !item.ID.Valid {
+					t.Errorf("expected exam site ID to be greater than 0, got %d", item.ID.Int64)
+					return
+				}
+
+				if item.Name == "" {
+					t.Errorf("expected exam site name to be not empty, got empty")
+					return
+				}
+
+				if item.Address == "" {
+					t.Errorf("expected exam site address to be not empty, got empty")
+					return
+				}
+
+				if !item.ServerHost.Valid {
+					t.Errorf("expected exam site server host to be not empty, got empty")
+					return
+				}
+
+				if item.Admin <= 0 {
+					t.Errorf("expected admin to be not empty, got empty")
+					return
+				}
+
+				if !item.AdminName.Valid {
+					t.Errorf("expected admin name to be not empty, got empty")
+					return
+				}
+
 			}
 
 		})
@@ -1921,8 +2351,17 @@ func TestExamRoom(t *testing.T) {
 
 	testUserID := nowTime
 
-	defaultSetup := func() {
-		err := addTestUser(testUserID, int64(cmn.CDomainAssessExamSiteAdmin))
+	defaultSetup := func() (err error) {
+
+		for _, p := range permissions {
+			err = addTestDomainApi("/api/exam-room", p, int64(cmn.CDomainAssessExamSiteAdmin))
+			if err != nil {
+				t.Errorf("failed to add domain api: %v", err)
+				return
+			}
+		}
+
+		err = addTestUser(testUserID, int64(cmn.CDomainAssessExamSiteAdmin))
 		if err != nil {
 			t.Errorf("failed to add test user: %v", err)
 			return
@@ -1930,9 +2369,11 @@ func TestExamRoom(t *testing.T) {
 
 		_, err = dbConn.Exec(fmt.Sprintf(`INSERT INTO t_exam_site (id, creator) VALUES (%d, %d)`, nowTime, testUserID))
 		if err != nil {
-			t.Fatalf("failed create exam sit: %v", err)
+			t.Errorf("failed create exam sit: %v", err)
 			return
 		}
+
+		return
 	}
 
 	// defaultCheck := func() {
@@ -1974,6 +2415,11 @@ func TestExamRoom(t *testing.T) {
 			t.Fatalf("failed to remove test user: %v", err)
 		}
 
+		err = removeTestDomainApis(int64(cmn.CDomainAssessExamSiteAdmin))
+		if err != nil {
+			t.Fatalf("failed to remove test domain api: %v", err)
+		}
+
 	}
 
 	tests := []struct {
@@ -1981,14 +2427,13 @@ func TestExamRoom(t *testing.T) {
 		q            *cmn.ServiceCtx
 		passExpected bool
 		errWanted    string
-		setup        func()
+		setup        func() error
 		cleanup      func()
 		check        func(q *cmn.ServiceCtx, passExpected bool) (err error)
 	}{
 
 		{
-			name:  "不支持的Http方法",
-			setup: func() {},
+			name: "不支持的Http方法",
 			q: &cmn.ServiceCtx{
 				Ep: &cmn.ServeEndPoint{
 					Path: "/api/exam-room",
@@ -2020,12 +2465,11 @@ func TestExamRoom(t *testing.T) {
 			},
 			passExpected: false,
 			errWanted:    "不支持的HTTP方法: Unknown255",
-			cleanup: func() {
-			},
+			setup:        defaultSetup,
+			cleanup:      defaultCleanup,
 		},
 		{
-			name:  "强制开启事务失败",
-			setup: func() {},
+			name: "强制开启事务失败",
 			q: &cmn.ServiceCtx{
 				Ep: &cmn.ServeEndPoint{
 					Path: "/api/exam-room",
@@ -2060,8 +2504,8 @@ func TestExamRoom(t *testing.T) {
 			},
 			passExpected: false,
 			errWanted:    "force begin tx err",
-			cleanup: func() {
-			},
+			setup:        defaultSetup,
+			cleanup:      defaultCleanup,
 		},
 		{
 			name: "强制提交事务失败",
@@ -2103,8 +2547,7 @@ func TestExamRoom(t *testing.T) {
 			cleanup:      defaultCleanup,
 		},
 		{
-			name:  "强制解析请求体失败",
-			setup: func() {},
+			name: "强制解析请求体失败",
 			q: &cmn.ServiceCtx{
 				Ep: &cmn.ServeEndPoint{
 					Path: "/api/exam-room",
@@ -2139,12 +2582,11 @@ func TestExamRoom(t *testing.T) {
 			},
 			passExpected: false,
 			errWanted:    "force unmarshal req body err",
-			cleanup: func() {
-			},
+			setup:        defaultSetup,
+			cleanup:      defaultCleanup,
 		},
 		{
-			name:  "强制解析请求体失败并触发回滚事务失败",
-			setup: func() {},
+			name: "强制解析请求体失败并触发回滚事务失败",
 			q: &cmn.ServiceCtx{
 				Ep: &cmn.ServeEndPoint{
 					Path: "/api/exam-room",
@@ -2180,8 +2622,8 @@ func TestExamRoom(t *testing.T) {
 			},
 			passExpected: false,
 			errWanted:    "force rollback tx err",
-			cleanup: func() {
-			},
+			setup:        defaultSetup,
+			cleanup:      defaultCleanup,
 		},
 
 		// 添加考场测试
@@ -2228,6 +2670,196 @@ func TestExamRoom(t *testing.T) {
 			},
 			passExpected: true,
 			errWanted:    "",
+			setup:        defaultSetup,
+			cleanup:      defaultCleanup,
+		},
+		{
+			name: "添加考场失败-没有权限",
+			q: &cmn.ServiceCtx{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-room",
+				},
+				R: httptest.NewRequest("POST", "/api/exam-site", strings.NewReader(fmt.Sprintf(`{
+					"data": {
+						"name": "test-room-%d",
+						"capacity": 30,
+						"examSiteID": %d
+					}
+				}`, nowTime, nowTime))),
+				W: httptest.NewRecorder(),
+				Msg: &cmn.ReplyProto{
+					API:    "/api/exam-site",
+					Method: "POST",
+				},
+				BeginTime: time.Now(),
+				SysUser: &cmn.TUser{
+					ID:   null.NewInt(testUserID, true),
+					Role: null.NewInt(int64(cmn.CDomainAssessStudent), true),
+				},
+				Domains: []cmn.TDomain{
+					{
+						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+					},
+				},
+				RedisClient: cmn.GetRedisConn(),
+			},
+			passExpected: false,
+			errWanted:    "当前用户没有权限创建该数据",
+			setup:        defaultSetup,
+			cleanup:      defaultCleanup,
+		},
+		{
+			name: "添加考场失败-强制准备检查访问权限 SQL 失败",
+			q: &cmn.ServiceCtx{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-room",
+				},
+				R: httptest.NewRequest("POST", "/api/exam-site", strings.NewReader(fmt.Sprintf(`{
+					"data": {
+						"name": "test-room-%d",
+						"capacity": 30,
+						"examSiteID": %d
+					}
+				}`, nowTime, nowTime))),
+				W: httptest.NewRecorder(),
+				Msg: &cmn.ReplyProto{
+					API:    "/api/exam-site",
+					Method: "POST",
+				},
+				BeginTime: time.Now(),
+				SysUser: &cmn.TUser{
+					ID:   null.NewInt(testUserID, true),
+					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+				},
+				Domains: []cmn.TDomain{
+					{
+						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+					},
+				},
+				RedisClient: cmn.GetRedisConn(),
+				Tag: map[string]interface{}{
+					"prepareCheckAccessSqlErr": fmt.Errorf("forced prepare check sql err"),
+				},
+			},
+			passExpected: false,
+			errWanted:    "forced prepare check sql err",
+			setup:        defaultSetup,
+			cleanup:      defaultCleanup,
+		},
+		{
+			name: "添加考场失败-强制执行检查访问权限 SQL 失败",
+			q: &cmn.ServiceCtx{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-room",
+				},
+				R: httptest.NewRequest("POST", "/api/exam-site", strings.NewReader(fmt.Sprintf(`{
+					"data": {
+						"name": "test-room-%d",
+						"capacity": 30,
+						"examSiteID": %d
+					}
+				}`, nowTime, nowTime))),
+				W: httptest.NewRecorder(),
+				Msg: &cmn.ReplyProto{
+					API:    "/api/exam-site",
+					Method: "POST",
+				},
+				BeginTime: time.Now(),
+				SysUser: &cmn.TUser{
+					ID:   null.NewInt(testUserID, true),
+					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+				},
+				Domains: []cmn.TDomain{
+					{
+						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+					},
+				},
+				RedisClient: cmn.GetRedisConn(),
+				Tag: map[string]interface{}{
+					"execCheckAccessSqlErr": fmt.Errorf("forced exec check sql err"),
+				},
+			},
+			passExpected: false,
+			errWanted:    "forced exec check sql err",
+			setup:        defaultSetup,
+			cleanup:      defaultCleanup,
+		},
+		{
+			name: "添加考场失败-强制获取执行检查访问权限 SQL 结果失败",
+			q: &cmn.ServiceCtx{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-room",
+				},
+				R: httptest.NewRequest("POST", "/api/exam-site", strings.NewReader(fmt.Sprintf(`{
+					"data": {
+						"name": "test-room-%d",
+						"capacity": 30,
+						"examSiteID": %d
+					}
+				}`, nowTime, nowTime))),
+				W: httptest.NewRecorder(),
+				Msg: &cmn.ReplyProto{
+					API:    "/api/exam-site",
+					Method: "POST",
+				},
+				BeginTime: time.Now(),
+				SysUser: &cmn.TUser{
+					ID:   null.NewInt(testUserID, true),
+					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+				},
+				Domains: []cmn.TDomain{
+					{
+						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+					},
+				},
+				RedisClient: cmn.GetRedisConn(),
+				Tag: map[string]interface{}{
+					"getCheckAccessResultErr": fmt.Errorf("forced get check sql result err"),
+				},
+			},
+			passExpected: false,
+			errWanted:    "forced get check sql result err",
+			setup:        defaultSetup,
+			cleanup:      defaultCleanup,
+		},
+		{
+			name: "添加考场失败-无权访问考点数据",
+			q: &cmn.ServiceCtx{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-room",
+				},
+				R: httptest.NewRequest("POST", "/api/exam-site", strings.NewReader(fmt.Sprintf(`{
+					"data": {
+						"name": "test-room-%d",
+						"capacity": 30,
+						"examSiteID": %d
+					}
+				}`, nowTime, nowTime))),
+				W: httptest.NewRecorder(),
+				Msg: &cmn.ReplyProto{
+					API:    "/api/exam-site",
+					Method: "POST",
+				},
+				BeginTime: time.Now(),
+				SysUser: &cmn.TUser{
+					ID:   null.NewInt(99999999, true),
+					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+				},
+				Domains: []cmn.TDomain{
+					{
+						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+					},
+				},
+				RedisClient: cmn.GetRedisConn(),
+				Tag:         map[string]interface{}{},
+			},
+			passExpected: false,
+			errWanted:    fmt.Sprintf("当前用户无权获取该考点数据, id: %d", nowTime),
 			setup:        defaultSetup,
 			cleanup:      defaultCleanup,
 		},
@@ -2458,12 +3090,23 @@ func TestExamRoom(t *testing.T) {
 		},
 	}
 
+	// ooooooooo.   ooooo     ooo ooooo      ooo
+	// `888   `Y88. `888'     `8' `888b.     `8'
+	//  888   .d88'  888       8   8 `88b.    8
+	//  888ooo88P'   888       8   8   `88b.  8
+	//  888`88b.     888       8   8     `88b.8
+	//  888  `88b.   `88.    .8'   8       `888
+	// o888o  o888o    `YbodP'    o8o        `8
 	for _, tt := range tests {
 
 		t.Run(tt.name, func(t *testing.T) {
 
 			if tt.setup != nil {
-				tt.setup()
+				err := tt.setup()
+				if err != nil {
+					t.Errorf("failed to setup test: %v", err)
+					return
+				}
 			}
 
 			defer func() {
@@ -2513,8 +3156,17 @@ func TestExamRoomList(t *testing.T) {
 
 	testUserID := nowTime
 
-	defaultSetup := func() {
-		err := addTestUser(testUserID, int64(cmn.CDomainAssessExamSiteAdmin))
+	defaultSetup := func() (err error) {
+
+		for _, p := range permissions {
+			err = addTestDomainApi("/api/exam-room/list", p, int64(cmn.CDomainAssessExamSiteAdmin))
+			if err != nil {
+				t.Errorf("failed to add domain api: %v", err)
+				return
+			}
+		}
+
+		err = addTestUser(testUserID, int64(cmn.CDomainAssessExamSiteAdmin))
 		if err != nil {
 			t.Errorf("failed to add test user: %v", err)
 			return
@@ -2532,6 +3184,7 @@ func TestExamRoomList(t *testing.T) {
 			return
 		}
 
+		return
 	}
 
 	// defaultCheck := func() {
@@ -2573,6 +3226,11 @@ func TestExamRoomList(t *testing.T) {
 			t.Fatalf("failed to remove test user: %v", err)
 		}
 
+		err = removeTestDomainApis(int64(cmn.CDomainAssessExamSiteAdmin))
+		if err != nil {
+			t.Fatalf("failed to remove test domain api: %v", err)
+		}
+
 	}
 
 	tests := []struct {
@@ -2580,18 +3238,18 @@ func TestExamRoomList(t *testing.T) {
 		q            *cmn.ServiceCtx
 		passExpected bool
 		errWanted    string
-		setup        func()
+		setup        func() error
 		cleanup      func()
 		check        func(q *cmn.ServiceCtx, passExpected bool) (err error)
 	}{
 		{
-			name: "获取考点列表失败-无效的HTTP方法",
+			name: "获取考场列表失败-无效的HTTP方法",
 			q: &cmn.ServiceCtx{
 				Ep: &cmn.ServeEndPoint{
 					Path: "/api/exam-room/list",
 				},
 				R: httptest.NewRequest("Unknown255", fmt.Sprintf(`/api/exam-room/list?q=%s`, url.QueryEscape(fmt.Sprintf(`{
-						"page": 0,
+						"page": 1,
 						"pageSize": 10,
 						"orderBy": [
 							{
@@ -2642,13 +3300,13 @@ func TestExamRoomList(t *testing.T) {
 		//
 		//
 		{
-			name: "获取考点列表成功",
+			name: "获取考场列表成功",
 			q: &cmn.ServiceCtx{
 				Ep: &cmn.ServeEndPoint{
 					Path: "/api/exam-room/list",
 				},
 				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-room/list?q=%s`, url.QueryEscape(fmt.Sprintf(`{
-						"page": 0,
+						"page": 1,
 						"pageSize": 10,
 						"orderBy": [
 							{
@@ -2687,13 +3345,13 @@ func TestExamRoomList(t *testing.T) {
 			cleanup:      defaultCleanup,
 		},
 		{
-			name: "获取考点列表失败-无权获取",
+			name: "获取考场列表失败-无权获取",
 			q: &cmn.ServiceCtx{
 				Ep: &cmn.ServeEndPoint{
 					Path: "/api/exam-room/list",
 				},
 				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-room/list?q=%s`, url.QueryEscape(fmt.Sprintf(`{
-						"page": 0,
+						"page": 1,
 						"pageSize": 10,
 						"orderBy": [
 							{
@@ -2732,13 +3390,13 @@ func TestExamRoomList(t *testing.T) {
 			cleanup:      defaultCleanup,
 		},
 		{
-			name: "获取考点列表失败-强制开启事务失败",
+			name: "获取考场列表失败-强制开启事务失败",
 			q: &cmn.ServiceCtx{
 				Ep: &cmn.ServeEndPoint{
 					Path: "/api/exam-room/list",
 				},
 				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-room/list?q=%s`, url.QueryEscape(fmt.Sprintf(`{
-						"page": 0,
+						"page": 1,
 						"pageSize": 10,
 						"orderBy": [
 							{
@@ -2780,13 +3438,13 @@ func TestExamRoomList(t *testing.T) {
 			cleanup:      defaultCleanup,
 		},
 		{
-			name: "获取考点列表失败-强制读取失败",
+			name: "获取考场列表失败-强制读取失败",
 			q: &cmn.ServiceCtx{
 				Ep: &cmn.ServeEndPoint{
 					Path: "/api/exam-room/list",
 				},
 				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-room/list?q=%s`, url.QueryEscape(fmt.Sprintf(`{
-						"page": 0,
+						"page": 1,
 						"pageSize": 10,
 						"orderBy": [
 							{
@@ -2828,13 +3486,13 @@ func TestExamRoomList(t *testing.T) {
 			cleanup:      defaultCleanup,
 		},
 		{
-			name: "获取考点列表失败-强制解析请求体失败",
+			name: "获取考场列表失败-强制解析请求体失败",
 			q: &cmn.ServiceCtx{
 				Ep: &cmn.ServeEndPoint{
 					Path: "/api/exam-room/list",
 				},
 				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-room/list?q=%s`, url.QueryEscape(fmt.Sprintf(`{
-						"page": 0,
+						"page": 1,
 						"pageSize": 10,
 						"orderBy": [
 							{
@@ -2873,13 +3531,13 @@ func TestExamRoomList(t *testing.T) {
 			cleanup:      defaultCleanup,
 		},
 		{
-			name: "获取考点列表失败-强制回滚失败",
+			name: "获取考场列表失败-强制回滚失败",
 			q: &cmn.ServiceCtx{
 				Ep: &cmn.ServeEndPoint{
 					Path: "/api/exam-room/list",
 				},
 				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-room/list?q=%s`, url.QueryEscape(fmt.Sprintf(`{
-						"page": 0,
+						"page": 1,
 						"pageSize": 10,
 						"orderBy": [
 							{
@@ -2921,13 +3579,13 @@ func TestExamRoomList(t *testing.T) {
 			cleanup:      defaultCleanup,
 		},
 		{
-			name: "获取考点列表失败-强制提交失败",
+			name: "获取考场列表失败-强制提交失败",
 			q: &cmn.ServiceCtx{
 				Ep: &cmn.ServeEndPoint{
 					Path: "/api/exam-room/list",
 				},
 				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-room/list?q=%s`, url.QueryEscape(fmt.Sprintf(`{
-						"page": 0,
+						"page": 1,
 						"pageSize": 10,
 						"orderBy": [
 							{
@@ -2969,13 +3627,13 @@ func TestExamRoomList(t *testing.T) {
 			cleanup:      defaultCleanup,
 		},
 		{
-			name: "获取考点列表失败-当前无权获取该考点数据",
+			name: "获取考场列表失败-当前无权获取该考点数据",
 			q: &cmn.ServiceCtx{
 				Ep: &cmn.ServeEndPoint{
 					Path: "/api/exam-room/list",
 				},
 				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-room/list?q=%s`, url.QueryEscape(fmt.Sprintf(`{
-						"page": 0,
+						"page": 1,
 						"pageSize": 10,
 						"orderBy": [
 							{
@@ -2997,7 +3655,7 @@ func TestExamRoomList(t *testing.T) {
 				},
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
-					ID:   null.NewInt(1000, true),
+					ID:   null.NewInt(99999999, true),
 					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
@@ -3015,13 +3673,13 @@ func TestExamRoomList(t *testing.T) {
 			cleanup:      defaultCleanup,
 		},
 		{
-			name: "获取考点列表失败-强制准备检查是否有权获取考点数据SQL失败",
+			name: "获取考场列表失败-强制准备检查是否有权获取考点数据SQL失败",
 			q: &cmn.ServiceCtx{
 				Ep: &cmn.ServeEndPoint{
 					Path: "/api/exam-room/list",
 				},
 				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-room/list?q=%s`, url.QueryEscape(fmt.Sprintf(`{
-						"page": 0,
+						"page": 1,
 						"pageSize": 10,
 						"orderBy": [
 							{
@@ -3063,13 +3721,13 @@ func TestExamRoomList(t *testing.T) {
 			cleanup:      defaultCleanup,
 		},
 		{
-			name: "获取考点列表失败-强制执行检查是否有权获取考点数据SQL失败",
+			name: "获取考场列表失败-强制执行检查是否有权获取考点数据SQL失败",
 			q: &cmn.ServiceCtx{
 				Ep: &cmn.ServeEndPoint{
 					Path: "/api/exam-room/list",
 				},
 				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-room/list?q=%s`, url.QueryEscape(fmt.Sprintf(`{
-						"page": 0,
+						"page": 1,
 						"pageSize": 10,
 						"orderBy": [
 							{
@@ -3111,13 +3769,13 @@ func TestExamRoomList(t *testing.T) {
 			cleanup:      defaultCleanup,
 		},
 		{
-			name: "获取考点列表失败-强制获取检查是否有权获取考点数据结果失败",
+			name: "获取考场列表失败-强制获取检查是否有权获取考点数据结果失败",
 			q: &cmn.ServiceCtx{
 				Ep: &cmn.ServeEndPoint{
 					Path: "/api/exam-room/list",
 				},
 				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-room/list?q=%s`, url.QueryEscape(fmt.Sprintf(`{
-						"page": 0,
+						"page": 1,
 						"pageSize": 10,
 						"orderBy": [
 							{
@@ -3159,7 +3817,7 @@ func TestExamRoomList(t *testing.T) {
 			cleanup:      defaultCleanup,
 		},
 		{
-			name: "获取考点列表失败-页码小于0",
+			name: "获取考场列表失败-页码小于1",
 			q: &cmn.ServiceCtx{
 				Ep: &cmn.ServeEndPoint{
 					Path: "/api/exam-room/list",
@@ -3200,18 +3858,18 @@ func TestExamRoomList(t *testing.T) {
 				Tag:         map[string]interface{}{},
 			},
 			passExpected: false,
-			errWanted:    "页码不能小于0",
+			errWanted:    "页码不能小于1",
 			setup:        defaultSetup,
 			cleanup:      defaultCleanup,
 		},
 		{
-			name: "获取考点列表失败-页大小小于1",
+			name: "获取考场列表失败-页大小小于1",
 			q: &cmn.ServiceCtx{
 				Ep: &cmn.ServeEndPoint{
 					Path: "/api/exam-room/list",
 				},
 				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-room/list?q=%s`, url.QueryEscape(fmt.Sprintf(`{
-						"page": 0,
+						"page": 1,
 						"pageSize": -10,
 						"orderBy": [
 							{
@@ -3251,13 +3909,13 @@ func TestExamRoomList(t *testing.T) {
 			cleanup:      defaultCleanup,
 		},
 		{
-			name: "获取考点列表失败-不支持的排序",
+			name: "获取考场列表失败-不支持的排序",
 			q: &cmn.ServiceCtx{
 				Ep: &cmn.ServeEndPoint{
 					Path: "/api/exam-room/list",
 				},
 				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-room/list?q=%s`, url.QueryEscape(fmt.Sprintf(`{
-						"page": 0,
+						"page": 1,
 						"pageSize": 10,
 						"orderBy": [
 							{
@@ -3297,13 +3955,13 @@ func TestExamRoomList(t *testing.T) {
 			cleanup:      defaultCleanup,
 		},
 		{
-			name: "获取考点列表失败-强制准备获取考场数据SQL失败",
+			name: "获取考场列表失败-强制准备获取考场数据SQL失败",
 			q: &cmn.ServiceCtx{
 				Ep: &cmn.ServeEndPoint{
 					Path: "/api/exam-room/list",
 				},
 				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-room/list?q=%s`, url.QueryEscape(fmt.Sprintf(`{
-						"page": 0,
+						"page": 1,
 						"pageSize": 10,
 						"orderBy": [
 							{
@@ -3345,13 +4003,13 @@ func TestExamRoomList(t *testing.T) {
 			cleanup:      defaultCleanup,
 		},
 		{
-			name: "获取考点列表失败-强制执行获取考场总行数 SQL 失败",
+			name: "获取考场列表失败-强制执行获取考场总行数 SQL 失败",
 			q: &cmn.ServiceCtx{
 				Ep: &cmn.ServeEndPoint{
 					Path: "/api/exam-room/list",
 				},
 				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-room/list?q=%s`, url.QueryEscape(fmt.Sprintf(`{
-						"page": 0,
+						"page": 1,
 						"pageSize": 10,
 						"orderBy": [
 							{
@@ -3393,13 +4051,13 @@ func TestExamRoomList(t *testing.T) {
 			cleanup:      defaultCleanup,
 		},
 		{
-			name: "获取考点列表失败-强制获取考场数据SQL Affected Rows 失败",
+			name: "获取考场列表失败-强制获取考场数据SQL Affected Rows 失败",
 			q: &cmn.ServiceCtx{
 				Ep: &cmn.ServeEndPoint{
 					Path: "/api/exam-room/list",
 				},
 				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-room/list?q=%s`, url.QueryEscape(fmt.Sprintf(`{
-						"page": 0,
+						"page": 1,
 						"pageSize": 10,
 						"orderBy": [
 							{
@@ -3441,13 +4099,13 @@ func TestExamRoomList(t *testing.T) {
 			cleanup:      defaultCleanup,
 		},
 		{
-			name: "获取考点列表失败-强制准备获取考场列表数据失败",
+			name: "获取考场列表失败-强制准备获取考场列表数据失败",
 			q: &cmn.ServiceCtx{
 				Ep: &cmn.ServeEndPoint{
 					Path: "/api/exam-room/list",
 				},
 				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-room/list?q=%s`, url.QueryEscape(fmt.Sprintf(`{
-						"page": 0,
+						"page": 1,
 						"pageSize": 10,
 						"orderBy": [
 							{
@@ -3489,13 +4147,13 @@ func TestExamRoomList(t *testing.T) {
 			cleanup:      defaultCleanup,
 		},
 		{
-			name: "获取考点列表失败-强制执行查询获取考场列表数据 SQL 失败",
+			name: "获取考场列表失败-强制执行查询获取考场列表数据 SQL 失败",
 			q: &cmn.ServiceCtx{
 				Ep: &cmn.ServeEndPoint{
 					Path: "/api/exam-room/list",
 				},
 				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-room/list?q=%s`, url.QueryEscape(fmt.Sprintf(`{
-						"page": 0,
+						"page": 1,
 						"pageSize": 10,
 						"orderBy": [
 							{
@@ -3537,13 +4195,13 @@ func TestExamRoomList(t *testing.T) {
 			cleanup:      defaultCleanup,
 		},
 		{
-			name: "获取考点列表失败-强制执行查询获取考场列表数据 SQL 取值失败",
+			name: "获取考场列表失败-强制执行查询获取考场列表数据 SQL 取值失败",
 			q: &cmn.ServiceCtx{
 				Ep: &cmn.ServeEndPoint{
 					Path: "/api/exam-room/list",
 				},
 				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-room/list?q=%s`, url.QueryEscape(fmt.Sprintf(`{
-						"page": 0,
+						"page": 1,
 						"pageSize": 10,
 						"orderBy": [
 							{
@@ -3585,13 +4243,13 @@ func TestExamRoomList(t *testing.T) {
 			cleanup:      defaultCleanup,
 		},
 		{
-			name: "获取考点列表失败-强制 Marshal 查询结果返回失败",
+			name: "获取考场列表失败-强制 Marshal 查询结果返回失败",
 			q: &cmn.ServiceCtx{
 				Ep: &cmn.ServeEndPoint{
 					Path: "/api/exam-room/list",
 				},
 				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-room/list?q=%s`, url.QueryEscape(fmt.Sprintf(`{
-						"page": 0,
+						"page": 1,
 						"pageSize": 10,
 						"orderBy": [
 							{
@@ -3639,7 +4297,10 @@ func TestExamRoomList(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 
 			if tt.setup != nil {
-				tt.setup()
+				err := tt.setup()
+				if err != nil {
+					return
+				}
 			}
 
 			defer func() {
@@ -3682,7 +4343,82 @@ func TestExamRoomList(t *testing.T) {
 
 func TestExamSiteSyncInit(t *testing.T) {
 
+	nowTime := time.Now().Unix()
+
+	dbConn := cmn.GetDbConn()
+
 	var serverCtx *cmn.ServiceCtx
+
+	var cleanupTestData func() error
+
+	testUserID := nowTime / 1000
+
+	defaultSetup := func() (err error) {
+
+		viper.Set("examSiteServerSync.maxRetry", 0)
+
+		viper.Set("examSiteServerSync.syncInterval", 3*60)
+
+		viper.Set("examSiteServerSync.syncDelay", 5*60)
+
+		_, err = cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
+		if err != nil {
+			t.Errorf("failed to set sync status: %v", err)
+			return
+		}
+
+		err = addTestUser(testUserID, int64(cmn.CDomainAssessExamSite))
+		if err != nil {
+			t.Errorf("failed to add test user: %v", err)
+			return
+		}
+
+		cleanupTestData, err = mockExamSiteSyncData(testUserID, nowTime)
+		if err != nil {
+			t.Errorf("failed to mock data: %v", err)
+			return
+		}
+
+		return
+
+	}
+
+	defaultCheck := func(q *cmn.ServiceCtx) (err error) {
+		return
+	}
+
+	defaultCleanup := func() {
+		if pullChan != nil {
+			close(pullChan)
+		}
+
+		if pushChan != nil {
+			close(pushChan)
+		}
+
+		pullChan = nil
+		pushChan = nil
+
+		_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
+		if err != nil {
+			t.Fatalf("failed to set sync status: %v", err)
+			return
+		}
+
+		if cleanupTestData != nil {
+			err = cleanupTestData()
+			if err != nil {
+				t.Fatalf("failed to clean up test data: %v", err)
+				return
+			}
+		}
+
+		err = removeTestUser(testUserID)
+		if err != nil {
+			t.Fatalf("failed to remove test user: %v", err)
+		}
+
+	}
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 
@@ -3696,7 +4432,7 @@ func TestExamSiteSyncInit(t *testing.T) {
 
 		q := &cmn.ServiceCtx{
 			SysUser: &cmn.TUser{
-				ID: null.IntFrom(2025),
+				ID: null.IntFrom(testUserID),
 			},
 			R:           r,
 			W:           w,
@@ -3734,7 +4470,7 @@ func TestExamSiteSyncInit(t *testing.T) {
 			respBody.Status = 0
 
 			respBody.Data, err = json.Marshal(cmn.TUser{
-				ID: null.IntFrom(2025),
+				ID: null.IntFrom(testUserID),
 			})
 			if err != nil {
 				respBody.Status = -1
@@ -3743,7 +4479,12 @@ func TestExamSiteSyncInit(t *testing.T) {
 
 		case "/api/exam-site/sync":
 
+			centralServerUrl = ""
+
 			examSiteSync(ctx)
+
+			centralServerUrl = viper.GetString("examSiteServerSync.centralServerUrl")
+
 			return
 
 		default:
@@ -3790,10 +4531,227 @@ func TestExamSiteSyncInit(t *testing.T) {
 		q            *cmn.ServiceCtx
 		passExpected bool
 		errWanted    string
-		setup        func()
+		setup        func() error
 		check        func(q *cmn.ServiceCtx) (err error)
 		cleanup      func()
 	}{
+
+		//     .    o8o
+		//   .o8    `"'
+		// .o888oo oooo  ooo. .oo.  .oo.    .ooooo.  oooo d8b
+		//   888   `888  `888P"Y88bP"Y88b  d88' `88b `888""8P
+		//   888    888   888   888   888  888ooo888  888
+		//   888 .  888   888   888   888  888    .o  888
+		//   "888" o888o o888o o888o o888o `Y8bod8P' d888b
+		//
+		//
+		//
+		{
+			name: "定时同步成功-执行推送成功",
+			q: &cmn.ServiceCtx{
+				RedisClient: cmn.GetRedisConn(),
+				Tag: map[string]interface{}{
+					"endMsgListen": make(chan int),
+					"pushDone":     make(chan int),
+				},
+				Msg: &cmn.ReplyProto{},
+			},
+			passExpected: true,
+			errWanted:    "",
+			setup: func() (err error) {
+				err = defaultSetup()
+				if err != nil {
+					return
+				}
+
+				viper.Set("examSiteServerSync.syncInterval", 1)
+
+				viper.Set("examSiteServerSync.syncDelay", 1)
+
+				return
+			},
+			check: func(q *cmn.ServiceCtx) (err error) {
+
+				_, err = dbConn.Exec(`UPDATE t_exam_info SET status = '06'`)
+				if err != nil {
+					t.Error(err.Error())
+					return
+				}
+
+				<-q.Tag["pushDone"].(chan int)
+
+				return
+			},
+			cleanup: defaultCleanup,
+		},
+		{
+			name: "定时同步成功-执行拉取成功",
+			q: &cmn.ServiceCtx{
+				RedisClient: cmn.GetRedisConn(),
+				Tag: map[string]interface{}{
+					"endMsgListen": make(chan int),
+					"pullDone":     make(chan int),
+				},
+				Msg: &cmn.ReplyProto{},
+			},
+			passExpected: true,
+			errWanted:    "",
+			setup: func() (err error) {
+				err = defaultSetup()
+				if err != nil {
+					return
+				}
+
+				viper.Set("examSiteServerSync.syncInterval", 1)
+
+				viper.Set("examSiteServerSync.syncDelay", 1)
+
+				return
+			},
+			check: func(q *cmn.ServiceCtx) (err error) {
+
+				_, err = cmn.GetRedisConn().Set(context.Background(), SyncStatusKey, PUSHED, 0).Result()
+				if err != nil {
+					return
+				}
+
+				_, err = dbConn.Exec(`UPDATE t_exam_info SET status = '06'`)
+				if err != nil {
+					t.Error(err.Error())
+					return
+				}
+
+				<-q.Tag["pullDone"].(chan int)
+
+				return
+			},
+			cleanup: defaultCleanup,
+		},
+		{
+			name: "定时同步-当前仍有考试未结束",
+			q: &cmn.ServiceCtx{
+				RedisClient: cmn.GetRedisConn(),
+				Tag: map[string]interface{}{
+					"endMsgListen":    make(chan int),
+					"haveOngoingExam": make(chan int),
+				},
+				Msg: &cmn.ReplyProto{},
+			},
+			passExpected: true,
+			errWanted:    "",
+			setup: func() (err error) {
+				err = defaultSetup()
+				if err != nil {
+					return
+				}
+
+				viper.Set("examSiteServerSync.syncInterval", 1)
+
+				viper.Set("examSiteServerSync.syncDelay", 1)
+
+				return
+			},
+			check: func(q *cmn.ServiceCtx) (err error) {
+
+				_, err = dbConn.Exec(`UPDATE t_exam_info SET status = '04'`)
+				if err != nil {
+					t.Error(err.Error())
+					return
+				}
+
+				<-q.Tag["haveOngoingExam"].(chan int)
+
+				return
+			},
+			cleanup: defaultCleanup,
+		},
+		{
+			name: "定时同步失败-强制获取尚未结束的考试失败",
+			q: &cmn.ServiceCtx{
+				RedisClient: cmn.GetRedisConn(),
+				Tag: map[string]interface{}{
+					"endMsgListen":        make(chan int),
+					"queryOngoingExamErr": fmt.Errorf("forced query ongoing exam err"),
+				},
+				Msg: &cmn.ReplyProto{},
+			},
+			passExpected: false,
+			errWanted:    "forced query ongoing exam err",
+			setup: func() (err error) {
+				err = defaultSetup()
+				if err != nil {
+					return
+				}
+
+				viper.Set("examSiteServerSync.syncInterval", 1)
+
+				viper.Set("examSiteServerSync.syncDelay", 1)
+
+				return
+			},
+			check: func(q *cmn.ServiceCtx) (err error) {
+
+				_, err = dbConn.Exec(`UPDATE t_exam_info SET status = '04'`)
+				if err != nil {
+					t.Error(err.Error())
+					return
+				}
+
+				<-q.Tag["endMsgListen"].(chan int)
+
+				return
+			},
+			cleanup: defaultCleanup,
+		},
+		{
+			name: "定时同步失败-强制获取当前同步状态失败",
+			q: &cmn.ServiceCtx{
+				RedisClient: cmn.GetRedisConn(),
+				Tag: map[string]interface{}{
+					"endMsgListen":            make(chan int),
+					"getSyncStatusErrInTimer": fmt.Errorf("forced get sync status err"),
+				},
+				Msg: &cmn.ReplyProto{},
+			},
+			passExpected: false,
+			errWanted:    "forced get sync status err",
+			setup: func() (err error) {
+				err = defaultSetup()
+				if err != nil {
+					return
+				}
+
+				viper.Set("examSiteServerSync.syncInterval", 1)
+
+				viper.Set("examSiteServerSync.syncDelay", 1)
+
+				return
+			},
+			check: func(q *cmn.ServiceCtx) (err error) {
+
+				_, err = dbConn.Exec(`UPDATE t_exam_info SET status = '06'`)
+				if err != nil {
+					t.Error(err.Error())
+					return
+				}
+
+				<-q.Tag["endMsgListen"].(chan int)
+
+				return
+			},
+			cleanup: defaultCleanup,
+		},
+
+		// ooooo              o8o      .
+		// `888'              `"'    .o8
+		//  888  ooo. .oo.   oooo  .o888oo
+		//  888  `888P"Y88b  `888    888
+		//  888   888   888   888    888
+		//  888   888   888   888    888 .
+		// o888o o888o o888o o888o   "888"
+		//
+		//
+		//
 		{
 			name: "同步初始化成功-中心服务器",
 			q: &cmn.ServiceCtx{
@@ -3805,23 +4763,19 @@ func TestExamSiteSyncInit(t *testing.T) {
 			},
 			passExpected: true,
 			errWanted:    "",
-			setup: func() {
-
-				viper.Set("examSiteServerSync.centralServerUrl", "")
-
-				viper.Set("examSiteServerSync.maxRetry", 1)
-
-				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
+			setup: func() (err error) {
+				err = defaultSetup()
 				if err != nil {
-					t.Fatalf("failed to set sync status: %v", err)
 					return
 				}
 
-			},
-			check: func(q *cmn.ServiceCtx) (err error) {
+				viper.Set("examSiteServerSync.centralServerUrl", "")
+
 				return
 			},
+			check: defaultCheck,
 			cleanup: func() {
+				defaultCleanup()
 				viper.Set("examSiteServerSync.centralServerUrl", server.URL)
 			},
 		},
@@ -3836,32 +4790,9 @@ func TestExamSiteSyncInit(t *testing.T) {
 			},
 			passExpected: true,
 			errWanted:    "",
-			setup: func() {
-
-				viper.Set("examSiteServerSync.maxRetry", 1)
-
-				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
-				if err != nil {
-					t.Fatalf("failed to set sync status: %v", err)
-					return
-				}
-
-			},
-			check: func(q *cmn.ServiceCtx) (err error) {
-				return
-			},
-			cleanup: func() {
-				if pullChan != nil {
-					close(pullChan)
-				}
-
-				if pushChan != nil {
-					close(pushChan)
-				}
-
-				pullChan = nil
-				pushChan = nil
-			},
+			setup:        defaultSetup,
+			check:        defaultCheck,
+			cleanup:      defaultCleanup,
 		},
 		{
 			name: "同步初始化成功后发送拉取通知成功",
@@ -3874,17 +4805,7 @@ func TestExamSiteSyncInit(t *testing.T) {
 			},
 			passExpected: true,
 			errWanted:    "",
-			setup: func() {
-
-				viper.Set("examSiteServerSync.maxRetry", 1)
-
-				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
-				if err != nil {
-					t.Fatalf("failed to set sync status: %v", err)
-					return
-				}
-
-			},
+			setup:        defaultSetup,
 			check: func(q *cmn.ServiceCtx) (err error) {
 
 				_, err = cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
@@ -3899,24 +4820,7 @@ func TestExamSiteSyncInit(t *testing.T) {
 
 				return
 			},
-			cleanup: func() {
-				if pullChan != nil {
-					close(pullChan)
-				}
-
-				if pushChan != nil {
-					close(pushChan)
-				}
-
-				pullChan = nil
-				pushChan = nil
-
-				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
-				if err != nil {
-					t.Fatalf("failed to set sync status: %v", err)
-					return
-				}
-			},
+			cleanup: defaultCleanup,
 		},
 		{
 			name: "同步初始化成功并完成一次完整的同步",
@@ -3930,22 +4834,12 @@ func TestExamSiteSyncInit(t *testing.T) {
 			},
 			passExpected: true,
 			errWanted:    "",
-			setup: func() {
-
-				viper.Set("examSiteServerSync.maxRetry", 1)
-
-				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
-				if err != nil {
-					t.Fatalf("failed to set sync status: %v", err)
-					return
-				}
-
-			},
+			setup:        defaultSetup,
 			check: func(q *cmn.ServiceCtx) (err error) {
 
 				_, err = cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
 				if err != nil {
-					t.Fatalf("failed to set sync status: %v", err)
+					t.Errorf("failed to set sync status: %v", err)
 					return
 				}
 
@@ -3953,31 +4847,74 @@ func TestExamSiteSyncInit(t *testing.T) {
 
 				<-q.Tag["pullDone"].(chan int)
 
+				testID := nowTime / 100
+
+				// 更新考场记录
+				_, err = dbConn.Exec(`UPDATE t_exam_record SET basic_eval = '02' WHERE exam_session = $1`, testID)
+				if err != nil {
+					t.Errorf("failed to update exam record: %v", err)
+					return
+				}
+
+				// 更新考生信息
+				_, err = dbConn.Exec(`UPDATE t_examinee SET status = '10' WHERE exam_session_id = $1`, testID)
+				if err != nil {
+					t.Errorf("failed to update examinee: %v", err)
+					return
+				}
+
+				// 更新考生作答数据
+				_, err = dbConn.Exec(`UPDATE t_student_answers SET answer = '["A"]' WHERE examinee_id = $1`, testID+1)
+				if err != nil {
+					t.Errorf("failed to update student answers: %v", err)
+					return
+				}
+
 				SendPushMsg()
 
 				<-q.Tag["endMsgListen"].(chan int)
 
-				return
-			},
-			cleanup: func() {
-
-				if pushChan != nil {
-					close(pushChan)
-				}
-
-				if pullChan != nil {
-					close(pullChan)
-				}
-
-				pullChan = nil
-				pushChan = nil
-
-				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
+				// 检查是否有相应的更新
+				c := 0
+				err = dbConn.QueryRow(`SELECT COUNT(id) FROM t_exam_record WHERE basic_eval = '02' AND exam_session = $1`, testID).Scan(&c)
 				if err != nil {
-					t.Fatalf("failed to set sync status: %v", err)
+					t.Errorf("failed to query t_exam_record: %v", err)
 					return
 				}
+
+				if c != 3 {
+					err = fmt.Errorf("unexpected query, expect 3")
+					t.Error(err.Error())
+					return
+				}
+
+				err = dbConn.QueryRow(`SELECT COUNT(id) FROM t_examinee WHERE status = '10' AND exam_session_id = $1`, testID).Scan(&c)
+				if err != nil {
+					t.Errorf("failed to query t_examinee: %v", err)
+					return
+				}
+
+				if c != 3 {
+					err = fmt.Errorf("unexpected query, expect 3")
+					t.Error(err.Error())
+					return
+				}
+
+				err = dbConn.QueryRow(`SELECT COUNT(id) FROM t_student_answers WHERE answer = '["A"]' AND examinee_id = $1`, testID+1).Scan(&c)
+				if err != nil {
+					t.Errorf("failed to query t_student_answer: %v", err)
+					return
+				}
+
+				if c != 1 {
+					err = fmt.Errorf("unexpected query, expect 1")
+					t.Error(err.Error())
+					return
+				}
+
+				return
 			},
+			cleanup: defaultCleanup,
 		},
 		{
 			name: "同步初始化失败-强制创建 .pgpass 文件失败",
@@ -3992,40 +4929,9 @@ func TestExamSiteSyncInit(t *testing.T) {
 			},
 			passExpected: false,
 			errWanted:    "forced create .pgpass file err",
-			setup: func() {
-
-				viper.Set("examSiteServerSync.maxRetry", 0)
-
-				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
-				if err != nil {
-					t.Fatalf("failed to set sync status: %v", err)
-					return
-				}
-
-			},
-			check: func(q *cmn.ServiceCtx) (err error) {
-				return
-			},
-			cleanup: func() {
-
-				if pullChan != nil {
-					close(pullChan)
-				}
-
-				if pushChan != nil {
-					close(pushChan)
-				}
-
-				pullChan = nil
-				pushChan = nil
-
-				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
-				if err != nil {
-					t.Fatalf("failed to set sync status: %v", err)
-					return
-				}
-
-			},
+			setup:        defaultSetup,
+			check:        defaultCheck,
+			cleanup:      defaultCleanup,
 		},
 		{
 			name: "同步初始化失败-强制写入 .pgpass 文件失败",
@@ -4040,39 +4946,9 @@ func TestExamSiteSyncInit(t *testing.T) {
 			},
 			passExpected: false,
 			errWanted:    "forced write .pgpass file err",
-			setup: func() {
-
-				viper.Set("examSiteServerSync.maxRetry", 0)
-
-				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
-				if err != nil {
-					t.Fatalf("failed to set sync status: %v", err)
-					return
-				}
-
-			},
-			check: func(q *cmn.ServiceCtx) (err error) {
-				return
-			},
-			cleanup: func() {
-
-				if pullChan != nil {
-					close(pullChan)
-				}
-
-				if pushChan != nil {
-					close(pushChan)
-				}
-
-				pullChan = nil
-				pushChan = nil
-
-				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
-				if err != nil {
-					t.Fatalf("failed to set sync status: %v", err)
-					return
-				}
-			},
+			setup:        defaultSetup,
+			check:        defaultCheck,
+			cleanup:      defaultCleanup,
 		},
 		{
 			name: "同步初始化失败-强制更改 .pgpass 文件权限失败",
@@ -4087,39 +4963,9 @@ func TestExamSiteSyncInit(t *testing.T) {
 			},
 			passExpected: false,
 			errWanted:    "forced chmod .pgpass file err",
-			setup: func() {
-
-				viper.Set("examSiteServerSync.maxRetry", 0)
-
-				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
-				if err != nil {
-					t.Fatalf("failed to set sync status: %v", err)
-					return
-				}
-
-			},
-			check: func(q *cmn.ServiceCtx) (err error) {
-				return
-			},
-			cleanup: func() {
-
-				if pullChan != nil {
-					close(pullChan)
-				}
-
-				if pushChan != nil {
-					close(pushChan)
-				}
-
-				pullChan = nil
-				pushChan = nil
-
-				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
-				if err != nil {
-					t.Fatalf("failed to set sync status: %v", err)
-					return
-				}
-			},
+			setup:        defaultSetup,
+			check:        defaultCheck,
+			cleanup:      defaultCleanup,
 		},
 		{
 			name: "同步初始化失败-强制关闭 .pgpass 文件失败",
@@ -4134,39 +4980,9 @@ func TestExamSiteSyncInit(t *testing.T) {
 			},
 			passExpected: false,
 			errWanted:    "forced close .pgpass file err",
-			setup: func() {
-
-				viper.Set("examSiteServerSync.maxRetry", 0)
-
-				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
-				if err != nil {
-					t.Fatalf("failed to set sync status: %v", err)
-					return
-				}
-
-			},
-			check: func(q *cmn.ServiceCtx) (err error) {
-				return
-			},
-			cleanup: func() {
-
-				if pullChan != nil {
-					close(pullChan)
-				}
-
-				if pushChan != nil {
-					close(pushChan)
-				}
-
-				pullChan = nil
-				pushChan = nil
-
-				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
-				if err != nil {
-					t.Fatalf("failed to set sync status: %v", err)
-					return
-				}
-			},
+			setup:        defaultSetup,
+			check:        defaultCheck,
+			cleanup:      defaultCleanup,
 		},
 		{
 			name: "同步初始化失败-强制获取同步状态失败",
@@ -4181,39 +4997,9 @@ func TestExamSiteSyncInit(t *testing.T) {
 			},
 			passExpected: false,
 			errWanted:    "forced get sync status err",
-			setup: func() {
-
-				viper.Set("examSiteServerSync.maxRetry", 0)
-
-				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
-				if err != nil {
-					t.Fatalf("failed to set sync status: %v", err)
-					return
-				}
-
-			},
-			check: func(q *cmn.ServiceCtx) (err error) {
-				return
-			},
-			cleanup: func() {
-
-				if pullChan != nil {
-					close(pullChan)
-				}
-
-				if pushChan != nil {
-					close(pushChan)
-				}
-
-				pullChan = nil
-				pushChan = nil
-
-				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
-				if err != nil {
-					t.Fatalf("failed to set sync status: %v", err)
-					return
-				}
-			},
+			setup:        defaultSetup,
+			check:        defaultCheck,
+			cleanup:      defaultCleanup,
 		},
 		{
 			name: "同步初始化失败-强制设置同步状态失败",
@@ -4228,39 +5014,9 @@ func TestExamSiteSyncInit(t *testing.T) {
 			},
 			passExpected: false,
 			errWanted:    "forced set sync status err",
-			setup: func() {
-
-				viper.Set("examSiteServerSync.maxRetry", 0)
-
-				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
-				if err != nil {
-					t.Fatalf("failed to set sync status: %v", err)
-					return
-				}
-
-			},
-			check: func(q *cmn.ServiceCtx) (err error) {
-				return
-			},
-			cleanup: func() {
-
-				if pullChan != nil {
-					close(pullChan)
-				}
-
-				if pushChan != nil {
-					close(pushChan)
-				}
-
-				pullChan = nil
-				pushChan = nil
-
-				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
-				if err != nil {
-					t.Fatalf("failed to set sync status: %v", err)
-					return
-				}
-			},
+			setup:        defaultSetup,
+			check:        defaultCheck,
+			cleanup:      defaultCleanup,
 		},
 		{
 			name: "同步初始化失败-在Pull中获取同步状态Key值失败",
@@ -4275,39 +5031,9 @@ func TestExamSiteSyncInit(t *testing.T) {
 			},
 			passExpected: false,
 			errWanted:    "forced get sync status err in pull",
-			setup: func() {
-
-				viper.Set("examSiteServerSync.maxRetry", 0)
-
-				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
-				if err != nil {
-					t.Fatalf("failed to set sync status: %v", err)
-					return
-				}
-
-			},
-			check: func(q *cmn.ServiceCtx) (err error) {
-				return
-			},
-			cleanup: func() {
-
-				if pullChan != nil {
-					close(pullChan)
-				}
-
-				if pushChan != nil {
-					close(pushChan)
-				}
-
-				pullChan = nil
-				pushChan = nil
-
-				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
-				if err != nil {
-					t.Fatalf("failed to set sync status: %v", err)
-					return
-				}
-			},
+			setup:        defaultSetup,
+			check:        defaultCheck,
+			cleanup:      defaultCleanup,
 		},
 		{
 			name: "同步初始化成功-初始化前处于 PULLING 状态",
@@ -4318,15 +5044,17 @@ func TestExamSiteSyncInit(t *testing.T) {
 			},
 			passExpected: true,
 			errWanted:    "",
-			setup: func() {
+			setup: func() (err error) {
 
 				viper.Set("examSiteServerSync.maxRetry", 0)
 
-				_, err := cmn.GetRedisConn().Set(context.Background(), SyncStatusKey, PULLING, 0).Result()
+				_, err = cmn.GetRedisConn().Set(context.Background(), SyncStatusKey, PULLING, 0).Result()
 				if err != nil {
 					t.Fatalf("failed to set sync status: %v", err)
 					return
 				}
+
+				return
 
 			},
 			check: func(q *cmn.ServiceCtx) (err error) {
@@ -4343,25 +5071,7 @@ func TestExamSiteSyncInit(t *testing.T) {
 
 				return
 			},
-			cleanup: func() {
-
-				if pullChan != nil {
-					close(pullChan)
-				}
-
-				if pushChan != nil {
-					close(pushChan)
-				}
-
-				pullChan = nil
-				pushChan = nil
-
-				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
-				if err != nil {
-					t.Fatalf("failed to set sync status: %v", err)
-					return
-				}
-			},
+			cleanup: defaultCleanup,
 		},
 		{
 			name: "同步初始化失败-初始化前处于 PULLED 状态",
@@ -4372,15 +5082,17 @@ func TestExamSiteSyncInit(t *testing.T) {
 			},
 			passExpected: false,
 			errWanted:    "当前数据尚未推送, 请先进行推送",
-			setup: func() {
+			setup: func() (err error) {
 
 				viper.Set("examSiteServerSync.maxRetry", 0)
 
-				_, err := cmn.GetRedisConn().Set(context.Background(), SyncStatusKey, PULLED, 0).Result()
+				_, err = cmn.GetRedisConn().Set(context.Background(), SyncStatusKey, PULLED, 0).Result()
 				if err != nil {
 					t.Fatalf("failed to set sync status: %v", err)
 					return
 				}
+
+				return
 
 			},
 			check: func(q *cmn.ServiceCtx) (err error) {
@@ -4397,25 +5109,7 @@ func TestExamSiteSyncInit(t *testing.T) {
 
 				return
 			},
-			cleanup: func() {
-
-				if pullChan != nil {
-					close(pullChan)
-				}
-
-				if pushChan != nil {
-					close(pushChan)
-				}
-
-				pullChan = nil
-				pushChan = nil
-
-				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
-				if err != nil {
-					t.Fatalf("failed to set sync status: %v", err)
-					return
-				}
-			},
+			cleanup: defaultCleanup,
 		},
 		{
 			name: "同步初始化成功-初始化前处于 PUSHING 状态",
@@ -4426,15 +5120,17 @@ func TestExamSiteSyncInit(t *testing.T) {
 			},
 			passExpected: true,
 			errWanted:    "",
-			setup: func() {
+			setup: func() (err error) {
 
 				viper.Set("examSiteServerSync.maxRetry", 0)
 
-				_, err := cmn.GetRedisConn().Set(context.Background(), SyncStatusKey, PUSHING, 0).Result()
+				_, err = cmn.GetRedisConn().Set(context.Background(), SyncStatusKey, PUSHING, 0).Result()
 				if err != nil {
 					t.Fatalf("failed to set sync status: %v", err)
 					return
 				}
+
+				return
 
 			},
 			check: func(q *cmn.ServiceCtx) (err error) {
@@ -4451,25 +5147,7 @@ func TestExamSiteSyncInit(t *testing.T) {
 
 				return
 			},
-			cleanup: func() {
-
-				if pullChan != nil {
-					close(pullChan)
-				}
-
-				if pushChan != nil {
-					close(pushChan)
-				}
-
-				pullChan = nil
-				pushChan = nil
-
-				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
-				if err != nil {
-					t.Fatalf("failed to set sync status: %v", err)
-					return
-				}
-			},
+			cleanup: defaultCleanup,
 		},
 		{
 			name: "同步初始化失败-初始化前处于 PULLING 状态但设置为 PUSHED 状态失败",
@@ -4482,39 +5160,20 @@ func TestExamSiteSyncInit(t *testing.T) {
 			},
 			passExpected: false,
 			errWanted:    "forced set pushed status err",
-			setup: func() {
+			setup: func() (err error) {
 
 				viper.Set("examSiteServerSync.maxRetry", 0)
 
-				_, err := cmn.GetRedisConn().Set(context.Background(), SyncStatusKey, PULLING, 0).Result()
+				_, err = cmn.GetRedisConn().Set(context.Background(), SyncStatusKey, PULLING, 0).Result()
 				if err != nil {
 					t.Fatalf("failed to set sync status: %v", err)
 					return
 				}
 
-			},
-			check: func(q *cmn.ServiceCtx) (err error) {
 				return
 			},
-			cleanup: func() {
-
-				if pullChan != nil {
-					close(pullChan)
-				}
-
-				if pushChan != nil {
-					close(pushChan)
-				}
-
-				pullChan = nil
-				pushChan = nil
-
-				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
-				if err != nil {
-					t.Fatalf("failed to set sync status: %v", err)
-					return
-				}
-			},
+			check:   defaultCheck,
+			cleanup: defaultCleanup,
 		},
 		{
 			name: "同步初始化失败-初始化前处于 PUSHING 状态但设置为 PULLED 状态失败",
@@ -4527,40 +5186,21 @@ func TestExamSiteSyncInit(t *testing.T) {
 			},
 			passExpected: false,
 			errWanted:    "forced set pulled status err",
-			setup: func() {
+			setup: func() (err error) {
 
 				viper.Set("examSiteServerSync.maxRetry", 0)
 
-				_, err := cmn.GetRedisConn().Set(context.Background(), SyncStatusKey, PUSHING, 0).Result()
+				_, err = cmn.GetRedisConn().Set(context.Background(), SyncStatusKey, PUSHING, 0).Result()
 				if err != nil {
 					t.Fatalf("failed to set sync status: %v", err)
 					return
 				}
 
-			},
-			check: func(q *cmn.ServiceCtx) (err error) {
 				return
-			},
-			cleanup: func() {
-
-				if pushChan != nil {
-					close(pushChan)
-				}
-
-				if pullChan != nil {
-					close(pullChan)
-				}
-
-				pullChan = nil
-				pushChan = nil
-
-				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
-				if err != nil {
-					t.Fatalf("failed to set sync status: %v", err)
-					return
-				}
 
 			},
+			check:   defaultCheck,
+			cleanup: defaultCleanup,
 		},
 		{
 			name: "强制关闭Pull管道和Push管道",
@@ -4573,17 +5213,7 @@ func TestExamSiteSyncInit(t *testing.T) {
 			},
 			passExpected: true,
 			errWanted:    "",
-			setup: func() {
-
-				viper.Set("examSiteServerSync.maxRetry", 0)
-
-				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
-				if err != nil {
-					t.Fatalf("failed to set sync status: %v", err)
-					return
-				}
-
-			},
+			setup:        defaultSetup,
 			check: func(q *cmn.ServiceCtx) (err error) {
 
 				_, err = cmn.GetRedisConn().Set(context.Background(), SyncStatusKey, PUSHED, 0).Result()
@@ -4602,27 +5232,19 @@ func TestExamSiteSyncInit(t *testing.T) {
 
 				return
 			},
-			cleanup: func() {
-
-				if pushChan != nil {
-					close(pushChan)
-				}
-
-				if pullChan != nil {
-					close(pullChan)
-				}
-
-				pullChan = nil
-				pushChan = nil
-
-				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
-				if err != nil {
-					t.Fatalf("failed to set sync status: %v", err)
-					return
-				}
-
-			},
+			cleanup: defaultCleanup,
 		},
+
+		// ooooooooo.               oooo  oooo
+		// `888   `Y88.             `888  `888
+		//  888   .d88' oooo  oooo   888   888
+		//  888ooo88P'  `888  `888   888   888
+		//  888          888   888   888   888
+		//  888          888   888   888   888
+		// o888o         `V88V"V8P' o888o o888o
+		//
+		//
+		//
 		{
 			name: "Pull拉取数据同步失败-当前处于 PULLING 状态",
 			q: &cmn.ServiceCtx{
@@ -4634,17 +5256,7 @@ func TestExamSiteSyncInit(t *testing.T) {
 			},
 			passExpected: false,
 			errWanted:    "当前正在拉取数据中, 不允许重复拉取",
-			setup: func() {
-
-				viper.Set("examSiteServerSync.maxRetry", 0)
-
-				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
-				if err != nil {
-					t.Fatalf("failed to set sync status: %v", err)
-					return
-				}
-
-			},
+			setup:        defaultSetup,
 			check: func(q *cmn.ServiceCtx) (err error) {
 
 				_, err = cmn.GetRedisConn().Set(context.Background(), SyncStatusKey, PULLING, 0).Result()
@@ -4659,26 +5271,7 @@ func TestExamSiteSyncInit(t *testing.T) {
 
 				return
 			},
-			cleanup: func() {
-
-				if pushChan != nil {
-					close(pushChan)
-				}
-
-				if pullChan != nil {
-					close(pullChan)
-				}
-
-				pullChan = nil
-				pushChan = nil
-
-				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
-				if err != nil {
-					t.Fatalf("failed to set sync status: %v", err)
-					return
-				}
-
-			},
+			cleanup: defaultCleanup,
 		},
 		{
 			name: "Pull拉取数据同步失败-当前处于 PULLED 状态",
@@ -4691,17 +5284,7 @@ func TestExamSiteSyncInit(t *testing.T) {
 			},
 			passExpected: false,
 			errWanted:    "当前数据尚未推送, 请先进行推送",
-			setup: func() {
-
-				viper.Set("examSiteServerSync.maxRetry", 0)
-
-				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
-				if err != nil {
-					t.Fatalf("failed to set sync status: %v", err)
-					return
-				}
-
-			},
+			setup:        defaultSetup,
 			check: func(q *cmn.ServiceCtx) (err error) {
 
 				_, err = cmn.GetRedisConn().Set(context.Background(), SyncStatusKey, PULLED, 0).Result()
@@ -4716,26 +5299,7 @@ func TestExamSiteSyncInit(t *testing.T) {
 
 				return
 			},
-			cleanup: func() {
-
-				if pushChan != nil {
-					close(pushChan)
-				}
-
-				if pullChan != nil {
-					close(pullChan)
-				}
-
-				pullChan = nil
-				pushChan = nil
-
-				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
-				if err != nil {
-					t.Fatalf("failed to set sync status: %v", err)
-					return
-				}
-
-			},
+			cleanup: defaultCleanup,
 		},
 		{
 			name: "Pull拉取数据同步失败-当前处于 PUSHING 状态",
@@ -4748,17 +5312,7 @@ func TestExamSiteSyncInit(t *testing.T) {
 			},
 			passExpected: false,
 			errWanted:    "当前正在推送数据中, 不允许进行拉取",
-			setup: func() {
-
-				viper.Set("examSiteServerSync.maxRetry", 0)
-
-				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
-				if err != nil {
-					t.Fatalf("failed to set sync status: %v", err)
-					return
-				}
-
-			},
+			setup:        defaultSetup,
 			check: func(q *cmn.ServiceCtx) (err error) {
 
 				_, err = cmn.GetRedisConn().Set(context.Background(), SyncStatusKey, PUSHING, 0).Result()
@@ -4773,26 +5327,7 @@ func TestExamSiteSyncInit(t *testing.T) {
 
 				return
 			},
-			cleanup: func() {
-
-				if pushChan != nil {
-					close(pushChan)
-				}
-
-				if pullChan != nil {
-					close(pullChan)
-				}
-
-				pullChan = nil
-				pushChan = nil
-
-				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
-				if err != nil {
-					t.Fatalf("failed to set sync status: %v", err)
-					return
-				}
-
-			},
+			cleanup: defaultCleanup,
 		},
 		{
 			name: "Pull拉取数据同步失败-强制 PULLING 状态设置失败",
@@ -4806,17 +5341,7 @@ func TestExamSiteSyncInit(t *testing.T) {
 			},
 			passExpected: false,
 			errWanted:    "forced set pulling status err",
-			setup: func() {
-
-				viper.Set("examSiteServerSync.maxRetry", 0)
-
-				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
-				if err != nil {
-					t.Fatalf("failed to set sync status: %v", err)
-					return
-				}
-
-			},
+			setup:        defaultSetup,
 			check: func(q *cmn.ServiceCtx) (err error) {
 
 				_, err = cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
@@ -4831,26 +5356,7 @@ func TestExamSiteSyncInit(t *testing.T) {
 
 				return
 			},
-			cleanup: func() {
-
-				if pushChan != nil {
-					close(pushChan)
-				}
-
-				if pullChan != nil {
-					close(pullChan)
-				}
-
-				pullChan = nil
-				pushChan = nil
-
-				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
-				if err != nil {
-					t.Fatalf("failed to set sync status: %v", err)
-					return
-				}
-
-			},
+			cleanup: defaultCleanup,
 		},
 		{
 			name: "Pull拉取数据同步失败-强制 PULLED 状态设置失败",
@@ -4864,17 +5370,7 @@ func TestExamSiteSyncInit(t *testing.T) {
 			},
 			passExpected: false,
 			errWanted:    "forced set pulled status err",
-			setup: func() {
-
-				viper.Set("examSiteServerSync.maxRetry", 0)
-
-				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
-				if err != nil {
-					t.Fatalf("failed to set sync status: %v", err)
-					return
-				}
-
-			},
+			setup:        defaultSetup,
 			check: func(q *cmn.ServiceCtx) (err error) {
 
 				_, err = cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
@@ -4889,26 +5385,7 @@ func TestExamSiteSyncInit(t *testing.T) {
 
 				return
 			},
-			cleanup: func() {
-
-				if pushChan != nil {
-					close(pushChan)
-				}
-
-				if pullChan != nil {
-					close(pullChan)
-				}
-
-				pullChan = nil
-				pushChan = nil
-
-				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
-				if err != nil {
-					t.Fatalf("failed to set sync status: %v", err)
-					return
-				}
-
-			},
+			cleanup: defaultCleanup,
 		},
 		{
 			name: "Pull拉取数据同步失败-强制 rsync 失败",
@@ -4922,17 +5399,7 @@ func TestExamSiteSyncInit(t *testing.T) {
 			},
 			passExpected: false,
 			errWanted:    fmt.Sprintf("COMMAND: %s\t ERR: %s\t DETAIL: %s", "", "forced rsync err", ""),
-			setup: func() {
-
-				viper.Set("examSiteServerSync.maxRetry", 0)
-
-				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
-				if err != nil {
-					t.Fatalf("failed to set sync status: %v", err)
-					return
-				}
-
-			},
+			setup:        defaultSetup,
 			check: func(q *cmn.ServiceCtx) (err error) {
 
 				_, err = cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
@@ -4947,26 +5414,7 @@ func TestExamSiteSyncInit(t *testing.T) {
 
 				return
 			},
-			cleanup: func() {
-
-				if pushChan != nil {
-					close(pushChan)
-				}
-
-				if pullChan != nil {
-					close(pullChan)
-				}
-
-				pullChan = nil
-				pushChan = nil
-
-				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
-				if err != nil {
-					t.Fatalf("failed to set sync status: %v", err)
-					return
-				}
-
-			},
+			cleanup: defaultCleanup,
 		},
 		{
 			name: "Pull拉取数据同步失败-强制 PUSHED 状态设置失败",
@@ -4981,17 +5429,7 @@ func TestExamSiteSyncInit(t *testing.T) {
 			},
 			passExpected: false,
 			errWanted:    "forced set pushed status err",
-			setup: func() {
-
-				viper.Set("examSiteServerSync.maxRetry", 0)
-
-				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
-				if err != nil {
-					t.Fatalf("failed to set sync status: %v", err)
-					return
-				}
-
-			},
+			setup:        defaultSetup,
 			check: func(q *cmn.ServiceCtx) (err error) {
 
 				_, err = cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
@@ -5006,26 +5444,7 @@ func TestExamSiteSyncInit(t *testing.T) {
 
 				return
 			},
-			cleanup: func() {
-
-				if pushChan != nil {
-					close(pushChan)
-				}
-
-				if pullChan != nil {
-					close(pullChan)
-				}
-
-				pullChan = nil
-				pushChan = nil
-
-				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
-				if err != nil {
-					t.Fatalf("failed to set sync status: %v", err)
-					return
-				}
-
-			},
+			cleanup: defaultCleanup,
 		},
 		{
 			name: "Pull拉取数据同步失败-强制登录请求发送错误",
@@ -5039,17 +5458,7 @@ func TestExamSiteSyncInit(t *testing.T) {
 			},
 			passExpected: false,
 			errWanted:    "forced login req err",
-			setup: func() {
-
-				viper.Set("examSiteServerSync.maxRetry", 0)
-
-				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
-				if err != nil {
-					t.Fatalf("failed to set sync status: %v", err)
-					return
-				}
-
-			},
+			setup:        defaultSetup,
 			check: func(q *cmn.ServiceCtx) (err error) {
 
 				_, err = cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
@@ -5064,26 +5473,7 @@ func TestExamSiteSyncInit(t *testing.T) {
 
 				return
 			},
-			cleanup: func() {
-
-				if pushChan != nil {
-					close(pushChan)
-				}
-
-				if pullChan != nil {
-					close(pullChan)
-				}
-
-				pullChan = nil
-				pushChan = nil
-
-				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
-				if err != nil {
-					t.Fatalf("failed to set sync status: %v", err)
-					return
-				}
-
-			},
+			cleanup: defaultCleanup,
 		},
 		{
 			name: "Pull拉取数据同步失败-强制登录请求体解析错误",
@@ -5097,17 +5487,7 @@ func TestExamSiteSyncInit(t *testing.T) {
 			},
 			passExpected: false,
 			errWanted:    "forced login body unmarshal err",
-			setup: func() {
-
-				viper.Set("examSiteServerSync.maxRetry", 0)
-
-				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
-				if err != nil {
-					t.Fatalf("failed to set sync status: %v", err)
-					return
-				}
-
-			},
+			setup:        defaultSetup,
 			check: func(q *cmn.ServiceCtx) (err error) {
 
 				_, err = cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
@@ -5122,26 +5502,7 @@ func TestExamSiteSyncInit(t *testing.T) {
 
 				return
 			},
-			cleanup: func() {
-
-				if pushChan != nil {
-					close(pushChan)
-				}
-
-				if pullChan != nil {
-					close(pullChan)
-				}
-
-				pullChan = nil
-				pushChan = nil
-
-				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
-				if err != nil {
-					t.Fatalf("failed to set sync status: %v", err)
-					return
-				}
-
-			},
+			cleanup: defaultCleanup,
 		},
 		{
 			name: "Pull拉取数据同步失败-强制登录请求状态错误",
@@ -5155,17 +5516,7 @@ func TestExamSiteSyncInit(t *testing.T) {
 			},
 			passExpected: false,
 			errWanted:    "forced login status err",
-			setup: func() {
-
-				viper.Set("examSiteServerSync.maxRetry", 0)
-
-				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
-				if err != nil {
-					t.Fatalf("failed to set sync status: %v", err)
-					return
-				}
-
-			},
+			setup:        defaultSetup,
 			check: func(q *cmn.ServiceCtx) (err error) {
 
 				_, err = cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
@@ -5180,26 +5531,7 @@ func TestExamSiteSyncInit(t *testing.T) {
 
 				return
 			},
-			cleanup: func() {
-
-				if pushChan != nil {
-					close(pushChan)
-				}
-
-				if pullChan != nil {
-					close(pullChan)
-				}
-
-				pullChan = nil
-				pushChan = nil
-
-				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
-				if err != nil {
-					t.Fatalf("failed to set sync status: %v", err)
-					return
-				}
-
-			},
+			cleanup: defaultCleanup,
 		},
 		{
 			name: "Pull拉取数据同步失败-强制登录请求体Data解析错误",
@@ -5213,17 +5545,7 @@ func TestExamSiteSyncInit(t *testing.T) {
 			},
 			passExpected: false,
 			errWanted:    "forced login resp data unmarshal err",
-			setup: func() {
-
-				viper.Set("examSiteServerSync.maxRetry", 0)
-
-				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
-				if err != nil {
-					t.Fatalf("failed to set sync status: %v", err)
-					return
-				}
-
-			},
+			setup:        defaultSetup,
 			check: func(q *cmn.ServiceCtx) (err error) {
 
 				_, err = cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
@@ -5238,26 +5560,7 @@ func TestExamSiteSyncInit(t *testing.T) {
 
 				return
 			},
-			cleanup: func() {
-
-				if pushChan != nil {
-					close(pushChan)
-				}
-
-				if pullChan != nil {
-					close(pullChan)
-				}
-
-				pullChan = nil
-				pushChan = nil
-
-				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
-				if err != nil {
-					t.Fatalf("failed to set sync status: %v", err)
-					return
-				}
-
-			},
+			cleanup: defaultCleanup,
 		},
 		{
 			name: "Pull拉取数据同步失败-强制同步请求体解析错误",
@@ -5271,17 +5574,7 @@ func TestExamSiteSyncInit(t *testing.T) {
 			},
 			passExpected: false,
 			errWanted:    "forced sync resp body unmarshal err",
-			setup: func() {
-
-				viper.Set("examSiteServerSync.maxRetry", 0)
-
-				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
-				if err != nil {
-					t.Fatalf("failed to set sync status: %v", err)
-					return
-				}
-
-			},
+			setup:        defaultSetup,
 			check: func(q *cmn.ServiceCtx) (err error) {
 
 				_, err = cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
@@ -5296,26 +5589,7 @@ func TestExamSiteSyncInit(t *testing.T) {
 
 				return
 			},
-			cleanup: func() {
-
-				if pushChan != nil {
-					close(pushChan)
-				}
-
-				if pullChan != nil {
-					close(pullChan)
-				}
-
-				pullChan = nil
-				pushChan = nil
-
-				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
-				if err != nil {
-					t.Fatalf("failed to set sync status: %v", err)
-					return
-				}
-
-			},
+			cleanup: defaultCleanup,
 		},
 		{
 			name: "Pull拉取数据同步失败-强制同步请求状态错误",
@@ -5329,17 +5603,7 @@ func TestExamSiteSyncInit(t *testing.T) {
 			},
 			passExpected: false,
 			errWanted:    "forced sync resp status err",
-			setup: func() {
-
-				viper.Set("examSiteServerSync.maxRetry", 0)
-
-				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
-				if err != nil {
-					t.Fatalf("failed to set sync status: %v", err)
-					return
-				}
-
-			},
+			setup:        defaultSetup,
 			check: func(q *cmn.ServiceCtx) (err error) {
 
 				_, err = cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
@@ -5354,26 +5618,7 @@ func TestExamSiteSyncInit(t *testing.T) {
 
 				return
 			},
-			cleanup: func() {
-
-				if pushChan != nil {
-					close(pushChan)
-				}
-
-				if pullChan != nil {
-					close(pullChan)
-				}
-
-				pullChan = nil
-				pushChan = nil
-
-				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
-				if err != nil {
-					t.Fatalf("failed to set sync status: %v", err)
-					return
-				}
-
-			},
+			cleanup: defaultCleanup,
 		},
 		{
 			name: "Pull拉取数据同步失败-强制同步请求体 data 解析错误",
@@ -5387,17 +5632,7 @@ func TestExamSiteSyncInit(t *testing.T) {
 			},
 			passExpected: false,
 			errWanted:    "forced sync resp data unmarshal err",
-			setup: func() {
-
-				viper.Set("examSiteServerSync.maxRetry", 0)
-
-				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
-				if err != nil {
-					t.Fatalf("failed to set sync status: %v", err)
-					return
-				}
-
-			},
+			setup:        defaultSetup,
 			check: func(q *cmn.ServiceCtx) (err error) {
 
 				_, err = cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
@@ -5412,26 +5647,7 @@ func TestExamSiteSyncInit(t *testing.T) {
 
 				return
 			},
-			cleanup: func() {
-
-				if pushChan != nil {
-					close(pushChan)
-				}
-
-				if pullChan != nil {
-					close(pullChan)
-				}
-
-				pullChan = nil
-				pushChan = nil
-
-				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
-				if err != nil {
-					t.Fatalf("failed to set sync status: %v", err)
-					return
-				}
-
-			},
+			cleanup: defaultCleanup,
 		},
 		{
 			name: "Pull拉取数据同步失败-强制设置同步信息快照失败",
@@ -5445,17 +5661,7 @@ func TestExamSiteSyncInit(t *testing.T) {
 			},
 			passExpected: false,
 			errWanted:    "forced set sync info snapshot err",
-			setup: func() {
-
-				viper.Set("examSiteServerSync.maxRetry", 0)
-
-				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
-				if err != nil {
-					t.Fatalf("failed to set sync status: %v", err)
-					return
-				}
-
-			},
+			setup:        defaultSetup,
 			check: func(q *cmn.ServiceCtx) (err error) {
 
 				_, err = cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
@@ -5470,26 +5676,7 @@ func TestExamSiteSyncInit(t *testing.T) {
 
 				return
 			},
-			cleanup: func() {
-
-				if pushChan != nil {
-					close(pushChan)
-				}
-
-				if pullChan != nil {
-					close(pullChan)
-				}
-
-				pullChan = nil
-				pushChan = nil
-
-				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
-				if err != nil {
-					t.Fatalf("failed to set sync status: %v", err)
-					return
-				}
-
-			},
+			cleanup: defaultCleanup,
 		},
 		{
 			name: "Pull拉取数据同步失败-强制创建同步数据报错目录失败",
@@ -5503,17 +5690,7 @@ func TestExamSiteSyncInit(t *testing.T) {
 			},
 			passExpected: false,
 			errWanted:    "forced create sync data error dir err",
-			setup: func() {
-
-				viper.Set("examSiteServerSync.maxRetry", 0)
-
-				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
-				if err != nil {
-					t.Fatalf("failed to set sync status: %v", err)
-					return
-				}
-
-			},
+			setup:        defaultSetup,
 			check: func(q *cmn.ServiceCtx) (err error) {
 
 				_, err = cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
@@ -5528,26 +5705,7 @@ func TestExamSiteSyncInit(t *testing.T) {
 
 				return
 			},
-			cleanup: func() {
-
-				if pushChan != nil {
-					close(pushChan)
-				}
-
-				if pullChan != nil {
-					close(pullChan)
-				}
-
-				pullChan = nil
-				pushChan = nil
-
-				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
-				if err != nil {
-					t.Fatalf("failed to set sync status: %v", err)
-					return
-				}
-
-			},
+			cleanup: defaultCleanup,
 		},
 		{
 			name: "Pull拉取数据同步失败-强制清除已同步的数据目录失败",
@@ -5561,17 +5719,7 @@ func TestExamSiteSyncInit(t *testing.T) {
 			},
 			passExpected: false,
 			errWanted:    "forced remove all destination dir err",
-			setup: func() {
-
-				viper.Set("examSiteServerSync.maxRetry", 0)
-
-				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
-				if err != nil {
-					t.Fatalf("failed to set sync status: %v", err)
-					return
-				}
-
-			},
+			setup:        defaultSetup,
 			check: func(q *cmn.ServiceCtx) (err error) {
 
 				_, err = cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
@@ -5586,26 +5734,7 @@ func TestExamSiteSyncInit(t *testing.T) {
 
 				return
 			},
-			cleanup: func() {
-
-				if pushChan != nil {
-					close(pushChan)
-				}
-
-				if pullChan != nil {
-					close(pullChan)
-				}
-
-				pullChan = nil
-				pushChan = nil
-
-				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
-				if err != nil {
-					t.Fatalf("failed to set sync status: %v", err)
-					return
-				}
-
-			},
+			cleanup: defaultCleanup,
 		},
 		{
 			name: "Pull拉取数据同步失败-强制创建模式失败",
@@ -5619,17 +5748,7 @@ func TestExamSiteSyncInit(t *testing.T) {
 			},
 			passExpected: false,
 			errWanted:    "forced create schema err",
-			setup: func() {
-
-				viper.Set("examSiteServerSync.maxRetry", 0)
-
-				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
-				if err != nil {
-					t.Fatalf("failed to set sync status: %v", err)
-					return
-				}
-
-			},
+			setup:        defaultSetup,
 			check: func(q *cmn.ServiceCtx) (err error) {
 
 				_, err = cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
@@ -5644,26 +5763,7 @@ func TestExamSiteSyncInit(t *testing.T) {
 
 				return
 			},
-			cleanup: func() {
-
-				if pushChan != nil {
-					close(pushChan)
-				}
-
-				if pullChan != nil {
-					close(pullChan)
-				}
-
-				pullChan = nil
-				pushChan = nil
-
-				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
-				if err != nil {
-					t.Fatalf("failed to set sync status: %v", err)
-					return
-				}
-
-			},
+			cleanup: defaultCleanup,
 		},
 
 		{
@@ -5678,17 +5778,7 @@ func TestExamSiteSyncInit(t *testing.T) {
 			},
 			passExpected: false,
 			errWanted:    fmt.Sprintf("COMMAND: %s\t ERR: %s\t DETAIL: %s", "", "forced pg_restore err", ""),
-			setup: func() {
-
-				viper.Set("examSiteServerSync.maxRetry", 0)
-
-				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
-				if err != nil {
-					t.Fatalf("failed to set sync status: %v", err)
-					return
-				}
-
-			},
+			setup:        defaultSetup,
 			check: func(q *cmn.ServiceCtx) (err error) {
 
 				_, err = cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
@@ -5703,26 +5793,7 @@ func TestExamSiteSyncInit(t *testing.T) {
 
 				return
 			},
-			cleanup: func() {
-
-				if pushChan != nil {
-					close(pushChan)
-				}
-
-				if pullChan != nil {
-					close(pullChan)
-				}
-
-				pullChan = nil
-				pushChan = nil
-
-				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
-				if err != nil {
-					t.Fatalf("failed to set sync status: %v", err)
-					return
-				}
-
-			},
+			cleanup: defaultCleanup,
 		},
 		{
 			name: "Pull拉取数据同步失败-强制执行 psql 导入脚本失败",
@@ -5736,17 +5807,7 @@ func TestExamSiteSyncInit(t *testing.T) {
 			},
 			passExpected: false,
 			errWanted:    fmt.Sprintf("COMMAND: %s\t ERR: %s\t DETAIL: %s", "", "forced psql import script err", ""),
-			setup: func() {
-
-				viper.Set("examSiteServerSync.maxRetry", 0)
-
-				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
-				if err != nil {
-					t.Fatalf("failed to set sync status: %v", err)
-					return
-				}
-
-			},
+			setup:        defaultSetup,
 			check: func(q *cmn.ServiceCtx) (err error) {
 
 				_, err = cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
@@ -5761,27 +5822,19 @@ func TestExamSiteSyncInit(t *testing.T) {
 
 				return
 			},
-			cleanup: func() {
-
-				if pushChan != nil {
-					close(pushChan)
-				}
-
-				if pullChan != nil {
-					close(pullChan)
-				}
-
-				pullChan = nil
-				pushChan = nil
-
-				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
-				if err != nil {
-					t.Fatalf("failed to set sync status: %v", err)
-					return
-				}
-
-			},
+			cleanup: defaultCleanup,
 		},
+
+		// ooooooooo.                        oooo
+		// `888   `Y88.                      `888
+		//  888   .d88' oooo  oooo   .oooo.o  888 .oo.
+		//  888ooo88P'  `888  `888  d88(  "8  888P"Y88b
+		//  888          888   888  `"Y88b.   888   888
+		//  888          888   888  o.  )88b  888   888
+		// o888o         `V88V"V8P' 8""888P' o888o o888o
+		//
+		//
+		//
 		{
 			name: "Push推送数据同步失败-强制获取同步状态失败",
 			q: &cmn.ServiceCtx{
@@ -5794,17 +5847,7 @@ func TestExamSiteSyncInit(t *testing.T) {
 			},
 			passExpected: false,
 			errWanted:    "forced get sync status err",
-			setup: func() {
-
-				viper.Set("examSiteServerSync.maxRetry", 1)
-
-				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
-				if err != nil {
-					t.Fatalf("failed to set sync status: %v", err)
-					return
-				}
-
-			},
+			setup:        defaultSetup,
 			check: func(q *cmn.ServiceCtx) (err error) {
 
 				_, err = cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
@@ -5819,26 +5862,7 @@ func TestExamSiteSyncInit(t *testing.T) {
 
 				return
 			},
-			cleanup: func() {
-
-				if pushChan != nil {
-					close(pushChan)
-				}
-
-				if pullChan != nil {
-					close(pullChan)
-				}
-
-				pullChan = nil
-				pushChan = nil
-
-				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
-				if err != nil {
-					t.Fatalf("failed to set sync status: %v", err)
-					return
-				}
-
-			},
+			cleanup: defaultCleanup,
 		},
 		{
 			name: "Push推送数据同步失败-当前处于 PULLING 状态",
@@ -5851,17 +5875,7 @@ func TestExamSiteSyncInit(t *testing.T) {
 			},
 			passExpected: false,
 			errWanted:    "当前正在拉取数据中, 不允许进行推送",
-			setup: func() {
-
-				viper.Set("examSiteServerSync.maxRetry", 0)
-
-				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
-				if err != nil {
-					t.Fatalf("failed to set sync status: %v", err)
-					return
-				}
-
-			},
+			setup:        defaultSetup,
 			check: func(q *cmn.ServiceCtx) (err error) {
 
 				_, err = cmn.GetRedisConn().Set(context.Background(), SyncStatusKey, PULLING, 0).Result()
@@ -5876,26 +5890,7 @@ func TestExamSiteSyncInit(t *testing.T) {
 
 				return
 			},
-			cleanup: func() {
-
-				if pushChan != nil {
-					close(pushChan)
-				}
-
-				if pullChan != nil {
-					close(pullChan)
-				}
-
-				pullChan = nil
-				pushChan = nil
-
-				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
-				if err != nil {
-					t.Fatalf("failed to set sync status: %v", err)
-					return
-				}
-
-			},
+			cleanup: defaultCleanup,
 		},
 		{
 			name: "Push推送数据同步失败-当前处于 PUSHING 状态",
@@ -5908,17 +5903,7 @@ func TestExamSiteSyncInit(t *testing.T) {
 			},
 			passExpected: false,
 			errWanted:    "当前正在推送数据中，不允许重复推送",
-			setup: func() {
-
-				viper.Set("examSiteServerSync.maxRetry", 0)
-
-				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
-				if err != nil {
-					t.Fatalf("failed to set sync status: %v", err)
-					return
-				}
-
-			},
+			setup:        defaultSetup,
 			check: func(q *cmn.ServiceCtx) (err error) {
 
 				_, err = cmn.GetRedisConn().Set(context.Background(), SyncStatusKey, PUSHING, 0).Result()
@@ -5933,26 +5918,7 @@ func TestExamSiteSyncInit(t *testing.T) {
 
 				return
 			},
-			cleanup: func() {
-
-				if pushChan != nil {
-					close(pushChan)
-				}
-
-				if pullChan != nil {
-					close(pullChan)
-				}
-
-				pullChan = nil
-				pushChan = nil
-
-				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
-				if err != nil {
-					t.Fatalf("failed to set sync status: %v", err)
-					return
-				}
-
-			},
+			cleanup: defaultCleanup,
 		},
 		{
 			name: "Push推送数据同步失败-当前处于 PUSHED 状态",
@@ -5965,17 +5931,7 @@ func TestExamSiteSyncInit(t *testing.T) {
 			},
 			passExpected: false,
 			errWanted:    "当前不允许推送数据,请先进行拉取同步数据",
-			setup: func() {
-
-				viper.Set("examSiteServerSync.maxRetry", 0)
-
-				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
-				if err != nil {
-					t.Fatalf("failed to set sync status: %v", err)
-					return
-				}
-
-			},
+			setup:        defaultSetup,
 			check: func(q *cmn.ServiceCtx) (err error) {
 
 				_, err = cmn.GetRedisConn().Set(context.Background(), SyncStatusKey, PUSHED, 0).Result()
@@ -5990,26 +5946,7 @@ func TestExamSiteSyncInit(t *testing.T) {
 
 				return
 			},
-			cleanup: func() {
-
-				if pushChan != nil {
-					close(pushChan)
-				}
-
-				if pullChan != nil {
-					close(pullChan)
-				}
-
-				pullChan = nil
-				pushChan = nil
-
-				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
-				if err != nil {
-					t.Fatalf("failed to set sync status: %v", err)
-					return
-				}
-
-			},
+			cleanup: defaultCleanup,
 		},
 		{
 			name: "Push推送数据同步失败-强制设置 PUSHING 失败",
@@ -6023,17 +5960,7 @@ func TestExamSiteSyncInit(t *testing.T) {
 			},
 			passExpected: false,
 			errWanted:    "forced set pushing status err",
-			setup: func() {
-
-				viper.Set("examSiteServerSync.maxRetry", 0)
-
-				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
-				if err != nil {
-					t.Fatalf("failed to set sync status: %v", err)
-					return
-				}
-
-			},
+			setup:        defaultSetup,
 			check: func(q *cmn.ServiceCtx) (err error) {
 
 				_, err = cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
@@ -6048,26 +5975,7 @@ func TestExamSiteSyncInit(t *testing.T) {
 
 				return
 			},
-			cleanup: func() {
-
-				if pushChan != nil {
-					close(pushChan)
-				}
-
-				if pullChan != nil {
-					close(pullChan)
-				}
-
-				pullChan = nil
-				pushChan = nil
-
-				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
-				if err != nil {
-					t.Fatalf("failed to set sync status: %v", err)
-					return
-				}
-
-			},
+			cleanup: defaultCleanup,
 		},
 		{
 			name: "Push推送数据同步失败-强制登录失败",
@@ -6081,17 +5989,7 @@ func TestExamSiteSyncInit(t *testing.T) {
 			},
 			passExpected: false,
 			errWanted:    "forced login resp data unmarshal err",
-			setup: func() {
-
-				viper.Set("examSiteServerSync.maxRetry", 0)
-
-				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
-				if err != nil {
-					t.Fatalf("failed to set sync status: %v", err)
-					return
-				}
-
-			},
+			setup:        defaultSetup,
 			check: func(q *cmn.ServiceCtx) (err error) {
 
 				_, err = cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
@@ -6106,26 +6004,7 @@ func TestExamSiteSyncInit(t *testing.T) {
 
 				return
 			},
-			cleanup: func() {
-
-				if pushChan != nil {
-					close(pushChan)
-				}
-
-				if pullChan != nil {
-					close(pullChan)
-				}
-
-				pullChan = nil
-				pushChan = nil
-
-				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
-				if err != nil {
-					t.Fatalf("failed to set sync status: %v", err)
-					return
-				}
-
-			},
+			cleanup: defaultCleanup,
 		},
 		{
 			name: "Push推送数据同步失败-强制设置 PULLED 状态失败",
@@ -6140,17 +6019,7 @@ func TestExamSiteSyncInit(t *testing.T) {
 			},
 			passExpected: false,
 			errWanted:    "forced set pulled status err",
-			setup: func() {
-
-				viper.Set("examSiteServerSync.maxRetry", 0)
-
-				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
-				if err != nil {
-					t.Fatalf("failed to set sync status: %v", err)
-					return
-				}
-
-			},
+			setup:        defaultSetup,
 			check: func(q *cmn.ServiceCtx) (err error) {
 
 				_, err = cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
@@ -6165,26 +6034,7 @@ func TestExamSiteSyncInit(t *testing.T) {
 
 				return
 			},
-			cleanup: func() {
-
-				if pushChan != nil {
-					close(pushChan)
-				}
-
-				if pullChan != nil {
-					close(pullChan)
-				}
-
-				pullChan = nil
-				pushChan = nil
-
-				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
-				if err != nil {
-					t.Fatalf("failed to set sync status: %v", err)
-					return
-				}
-
-			},
+			cleanup: defaultCleanup,
 		},
 		{
 			name: "Push推送数据同步失败-强制设置 PUSHED 状态失败",
@@ -6198,17 +6048,7 @@ func TestExamSiteSyncInit(t *testing.T) {
 			},
 			passExpected: false,
 			errWanted:    "forced set pushed status err",
-			setup: func() {
-
-				viper.Set("examSiteServerSync.maxRetry", 0)
-
-				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
-				if err != nil {
-					t.Fatalf("failed to set sync status: %v", err)
-					return
-				}
-
-			},
+			setup:        defaultSetup,
 			check: func(q *cmn.ServiceCtx) (err error) {
 
 				_, err = cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
@@ -6223,26 +6063,7 @@ func TestExamSiteSyncInit(t *testing.T) {
 
 				return
 			},
-			cleanup: func() {
-
-				if pushChan != nil {
-					close(pushChan)
-				}
-
-				if pullChan != nil {
-					close(pullChan)
-				}
-
-				pullChan = nil
-				pushChan = nil
-
-				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
-				if err != nil {
-					t.Fatalf("failed to set sync status: %v", err)
-					return
-				}
-
-			},
+			cleanup: defaultCleanup,
 		},
 		{
 			name: "Push推送数据同步失败-强制获取同步信息快照失败",
@@ -6256,17 +6077,7 @@ func TestExamSiteSyncInit(t *testing.T) {
 			},
 			passExpected: false,
 			errWanted:    fmt.Sprintf("没有找到同步信息, 请先进行拉取操作, err: %s", fmt.Errorf("forced get sync info err: %w", redis.Nil).Error()),
-			setup: func() {
-
-				viper.Set("examSiteServerSync.maxRetry", 0)
-
-				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
-				if err != nil {
-					t.Fatalf("failed to set sync status: %v", err)
-					return
-				}
-
-			},
+			setup:        defaultSetup,
 			check: func(q *cmn.ServiceCtx) (err error) {
 
 				_, err = cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
@@ -6281,26 +6092,7 @@ func TestExamSiteSyncInit(t *testing.T) {
 
 				return
 			},
-			cleanup: func() {
-
-				if pushChan != nil {
-					close(pushChan)
-				}
-
-				if pullChan != nil {
-					close(pullChan)
-				}
-
-				pullChan = nil
-				pushChan = nil
-
-				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
-				if err != nil {
-					t.Fatalf("failed to set sync status: %v", err)
-					return
-				}
-
-			},
+			cleanup: defaultCleanup,
 		},
 		{
 			name: "Push推送数据同步失败-强制解析同步信息快照失败",
@@ -6314,17 +6106,7 @@ func TestExamSiteSyncInit(t *testing.T) {
 			},
 			passExpected: false,
 			errWanted:    "forced unmarshal sync info err",
-			setup: func() {
-
-				viper.Set("examSiteServerSync.maxRetry", 0)
-
-				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
-				if err != nil {
-					t.Fatalf("failed to set sync status: %v", err)
-					return
-				}
-
-			},
+			setup:        defaultSetup,
 			check: func(q *cmn.ServiceCtx) (err error) {
 
 				_, err = cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
@@ -6339,26 +6121,7 @@ func TestExamSiteSyncInit(t *testing.T) {
 
 				return
 			},
-			cleanup: func() {
-
-				if pushChan != nil {
-					close(pushChan)
-				}
-
-				if pullChan != nil {
-					close(pullChan)
-				}
-
-				pullChan = nil
-				pushChan = nil
-
-				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
-				if err != nil {
-					t.Fatalf("failed to set sync status: %v", err)
-					return
-				}
-
-			},
+			cleanup: defaultCleanup,
 		},
 		{
 			name: "Push推送数据同步失败-强制创建源目录失败",
@@ -6372,17 +6135,7 @@ func TestExamSiteSyncInit(t *testing.T) {
 			},
 			passExpected: false,
 			errWanted:    "forced mkdirAll source dir err",
-			setup: func() {
-
-				viper.Set("examSiteServerSync.maxRetry", 0)
-
-				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
-				if err != nil {
-					t.Fatalf("failed to set sync status: %v", err)
-					return
-				}
-
-			},
+			setup:        defaultSetup,
 			check: func(q *cmn.ServiceCtx) (err error) {
 
 				_, err = cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
@@ -6397,26 +6150,7 @@ func TestExamSiteSyncInit(t *testing.T) {
 
 				return
 			},
-			cleanup: func() {
-
-				if pushChan != nil {
-					close(pushChan)
-				}
-
-				if pullChan != nil {
-					close(pullChan)
-				}
-
-				pullChan = nil
-				pushChan = nil
-
-				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
-				if err != nil {
-					t.Fatalf("failed to set sync status: %v", err)
-					return
-				}
-
-			},
+			cleanup: defaultCleanup,
 		},
 		{
 			name: "Push推送数据同步失败-强制移除源目录失败",
@@ -6430,17 +6164,7 @@ func TestExamSiteSyncInit(t *testing.T) {
 			},
 			passExpected: false,
 			errWanted:    "forced removeAll source dir err",
-			setup: func() {
-
-				viper.Set("examSiteServerSync.maxRetry", 0)
-
-				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
-				if err != nil {
-					t.Fatalf("failed to set sync status: %v", err)
-					return
-				}
-
-			},
+			setup:        defaultSetup,
 			check: func(q *cmn.ServiceCtx) (err error) {
 
 				_, err = cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
@@ -6455,26 +6179,7 @@ func TestExamSiteSyncInit(t *testing.T) {
 
 				return
 			},
-			cleanup: func() {
-
-				if pushChan != nil {
-					close(pushChan)
-				}
-
-				if pullChan != nil {
-					close(pullChan)
-				}
-
-				pullChan = nil
-				pushChan = nil
-
-				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
-				if err != nil {
-					t.Fatalf("failed to set sync status: %v", err)
-					return
-				}
-
-			},
+			cleanup: defaultCleanup,
 		},
 		{
 			name: "Push推送数据同步失败-强制执行 psql 导出脚本失败 ",
@@ -6488,17 +6193,7 @@ func TestExamSiteSyncInit(t *testing.T) {
 			},
 			passExpected: false,
 			errWanted:    fmt.Sprintf("COMMAND: %s\t ERR: %s\t DETAIL: %s", "", "forced psql export script err", ""),
-			setup: func() {
-
-				viper.Set("examSiteServerSync.maxRetry", 0)
-
-				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
-				if err != nil {
-					t.Fatalf("failed to set sync status: %v", err)
-					return
-				}
-
-			},
+			setup:        defaultSetup,
 			check: func(q *cmn.ServiceCtx) (err error) {
 
 				_, err = cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
@@ -6513,26 +6208,7 @@ func TestExamSiteSyncInit(t *testing.T) {
 
 				return
 			},
-			cleanup: func() {
-
-				if pushChan != nil {
-					close(pushChan)
-				}
-
-				if pullChan != nil {
-					close(pullChan)
-				}
-
-				pullChan = nil
-				pushChan = nil
-
-				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
-				if err != nil {
-					t.Fatalf("failed to set sync status: %v", err)
-					return
-				}
-
-			},
+			cleanup: defaultCleanup,
 		},
 		{
 			name: "Push推送数据同步失败-强制发送同步请求失败",
@@ -6546,17 +6222,7 @@ func TestExamSiteSyncInit(t *testing.T) {
 			},
 			passExpected: false,
 			errWanted:    "forced send sync req err",
-			setup: func() {
-
-				viper.Set("examSiteServerSync.maxRetry", 0)
-
-				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
-				if err != nil {
-					t.Fatalf("failed to set sync status: %v", err)
-					return
-				}
-
-			},
+			setup:        defaultSetup,
 			check: func(q *cmn.ServiceCtx) (err error) {
 
 				_, err = cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
@@ -6571,26 +6237,7 @@ func TestExamSiteSyncInit(t *testing.T) {
 
 				return
 			},
-			cleanup: func() {
-
-				if pushChan != nil {
-					close(pushChan)
-				}
-
-				if pullChan != nil {
-					close(pullChan)
-				}
-
-				pullChan = nil
-				pushChan = nil
-
-				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
-				if err != nil {
-					t.Fatalf("failed to set sync status: %v", err)
-					return
-				}
-
-			},
+			cleanup: defaultCleanup,
 		},
 		{
 			name: "Push推送数据同步失败-强制解析同步响应体失败",
@@ -6604,17 +6251,7 @@ func TestExamSiteSyncInit(t *testing.T) {
 			},
 			passExpected: false,
 			errWanted:    "forced unmarshal sync resp err",
-			setup: func() {
-
-				viper.Set("examSiteServerSync.maxRetry", 0)
-
-				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
-				if err != nil {
-					t.Fatalf("failed to set sync status: %v", err)
-					return
-				}
-
-			},
+			setup:        defaultSetup,
 			check: func(q *cmn.ServiceCtx) (err error) {
 
 				_, err = cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
@@ -6629,26 +6266,7 @@ func TestExamSiteSyncInit(t *testing.T) {
 
 				return
 			},
-			cleanup: func() {
-
-				if pushChan != nil {
-					close(pushChan)
-				}
-
-				if pullChan != nil {
-					close(pullChan)
-				}
-
-				pullChan = nil
-				pushChan = nil
-
-				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
-				if err != nil {
-					t.Fatalf("failed to set sync status: %v", err)
-					return
-				}
-
-			},
+			cleanup: defaultCleanup,
 		},
 		{
 			name: "Push推送数据同步失败-强制同步响应状态失败",
@@ -6662,17 +6280,7 @@ func TestExamSiteSyncInit(t *testing.T) {
 			},
 			passExpected: false,
 			errWanted:    "forced sync resp status err",
-			setup: func() {
-
-				viper.Set("examSiteServerSync.maxRetry", 0)
-
-				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
-				if err != nil {
-					t.Fatalf("failed to set sync status: %v", err)
-					return
-				}
-
-			},
+			setup:        defaultSetup,
 			check: func(q *cmn.ServiceCtx) (err error) {
 
 				_, err = cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
@@ -6687,26 +6295,7 @@ func TestExamSiteSyncInit(t *testing.T) {
 
 				return
 			},
-			cleanup: func() {
-
-				if pushChan != nil {
-					close(pushChan)
-				}
-
-				if pullChan != nil {
-					close(pullChan)
-				}
-
-				pullChan = nil
-				pushChan = nil
-
-				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
-				if err != nil {
-					t.Fatalf("failed to set sync status: %v", err)
-					return
-				}
-
-			},
+			cleanup: defaultCleanup,
 		},
 		{
 			name: "Push推送数据同步失败-强制删除同步信息快照失败",
@@ -6720,17 +6309,7 @@ func TestExamSiteSyncInit(t *testing.T) {
 			},
 			passExpected: false,
 			errWanted:    "forced delete sync info snapshot err",
-			setup: func() {
-
-				viper.Set("examSiteServerSync.maxRetry", 0)
-
-				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
-				if err != nil {
-					t.Fatalf("failed to set sync status: %v", err)
-					return
-				}
-
-			},
+			setup:        defaultSetup,
 			check: func(q *cmn.ServiceCtx) (err error) {
 
 				_, err = cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
@@ -6745,35 +6324,26 @@ func TestExamSiteSyncInit(t *testing.T) {
 
 				return
 			},
-			cleanup: func() {
-
-				if pushChan != nil {
-					close(pushChan)
-				}
-
-				if pullChan != nil {
-					close(pullChan)
-				}
-
-				pullChan = nil
-				pushChan = nil
-
-				_, err := cmn.GetRedisConn().Del(context.Background(), SyncStatusKey).Result()
-				if err != nil {
-					t.Fatalf("failed to set sync status: %v", err)
-					return
-				}
-
-			},
+			cleanup: defaultCleanup,
 		},
 	}
 
+	// ooooooooo.   ooooo     ooo ooooo      ooo
+	// `888   `Y88. `888'     `8' `888b.     `8'
+	//  888   .d88'  888       8   8 `88b.    8
+	//  888ooo88P'   888       8   8   `88b.  8
+	//  888`88b.     888       8   8     `88b.8
+	//  888  `88b.   `88.    .8'   8       `888
+	// o888o  o888o    `YbodP'    o8o        `8
 	for _, tt := range tests {
 
 		t.Run(tt.name, func(t *testing.T) {
 
 			if tt.setup != nil {
-				tt.setup()
+				err := tt.setup()
+				if err != nil {
+					return
+				}
 			}
 
 			defer func() {
@@ -6823,12 +6393,58 @@ func TestExamSiteSyncApi(t *testing.T) {
 
 	nowTime := time.Now().Unix()
 
+	dbConn := cmn.GetDbConn()
+
+	defaultSetup := func() (err error) {
+
+		_, err = dbConn.Exec(fmt.Sprintf(`INSERT INTO t_exam_site (id, name,creator,server_host,address,admin,sys_user) VALUES 
+			(%d,'test-site-%d', 1622, 'localhost','address','1622','2025')`, nowTime, nowTime))
+		if err != nil {
+			t.Fatalf("failed to insert test data: %v", err)
+			return
+		}
+
+		return
+	}
+
+	// defaultCheck := func(q *cmn.ServiceCtx) (err error) {
+
+	// 	return
+	// }
+
+	defaultCleanup := func() {
+
+		r, err := dbConn.Exec(fmt.Sprintf(`DELETE FROM t_exam_site WHERE name = 'test-site-%d'`, nowTime))
+		if err != nil {
+			t.Fatalf("failed to delete test data: %v", err)
+			return
+		}
+
+		c, err := r.RowsAffected()
+		if err != nil {
+			t.Fatalf("failed to get affected rows: %v", err)
+			return
+		}
+
+		t.Logf("Have already cleaned up %d rows from t_exam_site", c)
+
+		folderFullPath := path.Join(os.Getenv("PWD"), "/data/tmp/")
+
+		o, err := exec.Command("rm", "-rvf", folderFullPath).CombinedOutput()
+		if err != nil {
+			t.Fatalf("failed to remove folder: %v, output: %s", err, string(o))
+			return
+		}
+
+		t.Logf("Successfully cleaned up folder: %s output: %x", folderFullPath, o)
+	}
+
 	tests := []struct {
 		name         string
 		q            *cmn.ServiceCtx
 		passExpected bool
 		errWanted    string
-		setup        func()
+		setup        func() error
 		check        func(q *cmn.ServiceCtx) (err error)
 		cleanup      func()
 	}{
@@ -6856,7 +6472,8 @@ func TestExamSiteSyncApi(t *testing.T) {
 			},
 			passExpected: false,
 			errWanted:    "不支持的HTTP方法: Unknown255",
-			setup: func() {
+			setup: func() (err error) {
+				return
 			},
 			cleanup: func() {
 			},
@@ -6887,47 +6504,8 @@ func TestExamSiteSyncApi(t *testing.T) {
 			},
 			passExpected: false,
 			errWanted:    "forced read body err",
-			setup: func() {
-
-				dbConn := cmn.GetDbConn()
-
-				_, err := dbConn.Exec(fmt.Sprintf(`INSERT INTO t_exam_site (id, name,creator,server_host,address,admin,sys_user) VALUES 
-					(%d,'test-site-%d', 1622, 'localhost','address','1622','2025')`, nowTime, nowTime))
-				if err != nil {
-					t.Fatalf("failed to insert test data: %v", err)
-					return
-				}
-
-			},
-			cleanup: func() {
-
-				dbConn := cmn.GetDbConn()
-
-				r, err := dbConn.Exec(fmt.Sprintf(`DELETE FROM t_exam_site WHERE name = 'test-site-%d'`, nowTime))
-				if err != nil {
-					t.Fatalf("failed to delete test data: %v", err)
-					return
-				}
-
-				c, err := r.RowsAffected()
-				if err != nil {
-					t.Fatalf("failed to get affected rows: %v", err)
-					return
-				}
-
-				t.Logf("Have already cleaned up %d rows from t_exam_site", c)
-
-				folderFullPath := path.Join(os.Getenv("PWD"), "/data/tmp/")
-
-				o, err := exec.Command("rm", "-rvf", folderFullPath).CombinedOutput()
-				if err != nil {
-					t.Fatalf("failed to remove folder: %v, output: %s", err, string(o))
-					return
-				}
-
-				t.Logf("Successfully cleaned up folder: %s output: %x", folderFullPath, o)
-
-			},
+			setup:        defaultSetup,
+			cleanup:      defaultCleanup,
 		},
 
 		// ===========准备考点数据测试============
@@ -6961,47 +6539,8 @@ func TestExamSiteSyncApi(t *testing.T) {
 			},
 			passExpected: true,
 			errWanted:    "",
-			setup: func() {
-
-				dbConn := cmn.GetDbConn()
-
-				_, err := dbConn.Exec(fmt.Sprintf(`INSERT INTO t_exam_site (id, name,creator,server_host,address,admin,sys_user) VALUES 
-					(%d,'test-site-%d', 1622, 'localhost','address','1622','2025')`, nowTime, nowTime))
-				if err != nil {
-					t.Fatalf("failed to insert test data: %v", err)
-					return
-				}
-
-			},
-			cleanup: func() {
-
-				dbConn := cmn.GetDbConn()
-
-				r, err := dbConn.Exec(fmt.Sprintf(`DELETE FROM t_exam_site WHERE name = 'test-site-%d'`, nowTime))
-				if err != nil {
-					t.Fatalf("failed to delete test data: %v", err)
-					return
-				}
-
-				c, err := r.RowsAffected()
-				if err != nil {
-					t.Fatalf("failed to get affected rows: %v", err)
-					return
-				}
-
-				t.Logf("Have already cleaned up %d rows from t_exam_site", c)
-
-				folderFullPath := path.Join(os.Getenv("PWD"), "/data/tmp/")
-
-				o, err := exec.Command("rm", "-rvf", folderFullPath).CombinedOutput()
-				if err != nil {
-					t.Fatalf("failed to remove folder: %v, output: %s", err, string(o))
-					return
-				}
-
-				t.Logf("Successfully cleaned up folder: %s output: %x", folderFullPath, o)
-
-			},
+			setup:        defaultSetup,
+			cleanup:      defaultCleanup,
 		},
 		{
 			name: "准备数据失败-无效的账号ID",
@@ -7026,18 +6565,7 @@ func TestExamSiteSyncApi(t *testing.T) {
 			},
 			passExpected: false,
 			errWanted:    "invalid sysUser: -2025",
-			setup: func() {
-
-				dbConn := cmn.GetDbConn()
-
-				_, err := dbConn.Exec(fmt.Sprintf(`INSERT INTO t_exam_site (id, name,creator,server_host,address,admin,sys_user) VALUES 
-					(%d,'test-site-%d', 1622, 'localhost','address','1622','2025')`, nowTime, nowTime))
-				if err != nil {
-					t.Fatalf("failed to insert test data: %v", err)
-					return
-				}
-
-			},
+			setup:        defaultSetup,
 			check: func(q *cmn.ServiceCtx) (err error) {
 				d := syncInfo{
 					Path:          "",
@@ -7063,35 +6591,7 @@ func TestExamSiteSyncApi(t *testing.T) {
 
 				return
 			},
-			cleanup: func() {
-
-				dbConn := cmn.GetDbConn()
-
-				r, err := dbConn.Exec(fmt.Sprintf(`DELETE FROM t_exam_site WHERE name = 'test-site-%d'`, nowTime))
-				if err != nil {
-					t.Fatalf("failed to delete test data: %v", err)
-					return
-				}
-
-				c, err := r.RowsAffected()
-				if err != nil {
-					t.Fatalf("failed to get affected rows: %v", err)
-					return
-				}
-
-				t.Logf("Have already cleaned up %d rows from t_exam_site", c)
-
-				folderFullPath := path.Join(os.Getenv("PWD"), "/data/tmp/")
-
-				o, err := exec.Command("rm", "-rvf", folderFullPath).CombinedOutput()
-				if err != nil {
-					t.Fatalf("failed to remove folder: %v, output: %s", err, string(o))
-					return
-				}
-
-				t.Logf("Successfully cleaned up folder: %s output: %x", folderFullPath, o)
-
-			},
+			cleanup: defaultCleanup,
 		},
 		{
 			name: "准备数据失败-强制获取同步信息快照失败",
@@ -7119,18 +6619,7 @@ func TestExamSiteSyncApi(t *testing.T) {
 			},
 			passExpected: false,
 			errWanted:    "forced get sync info snapshot err",
-			setup: func() {
-
-				dbConn := cmn.GetDbConn()
-
-				_, err := dbConn.Exec(fmt.Sprintf(`INSERT INTO t_exam_site (id, name,creator,server_host,address,admin,sys_user) VALUES 
-					(%d,'test-site-%d', 1622, 'localhost','address','1622','2025')`, nowTime, nowTime))
-				if err != nil {
-					t.Fatalf("failed to insert test data: %v", err)
-					return
-				}
-
-			},
+			setup:        defaultSetup,
 			check: func(q *cmn.ServiceCtx) (err error) {
 				d := syncInfo{
 					Path:          "",
@@ -7156,35 +6645,7 @@ func TestExamSiteSyncApi(t *testing.T) {
 
 				return
 			},
-			cleanup: func() {
-
-				dbConn := cmn.GetDbConn()
-
-				r, err := dbConn.Exec(fmt.Sprintf(`DELETE FROM t_exam_site WHERE name = 'test-site-%d'`, nowTime))
-				if err != nil {
-					t.Fatalf("failed to delete test data: %v", err)
-					return
-				}
-
-				c, err := r.RowsAffected()
-				if err != nil {
-					t.Fatalf("failed to get affected rows: %v", err)
-					return
-				}
-
-				t.Logf("Have already cleaned up %d rows from t_exam_site", c)
-
-				folderFullPath := path.Join(os.Getenv("PWD"), "/data/tmp/")
-
-				o, err := exec.Command("rm", "-rvf", folderFullPath).CombinedOutput()
-				if err != nil {
-					t.Fatalf("failed to remove folder: %v, output: %s", err, string(o))
-					return
-				}
-
-				t.Logf("Successfully cleaned up folder: %s output: %x", folderFullPath, o)
-
-			},
+			cleanup: defaultCleanup,
 		},
 		{
 			name: "准备数据失败-强制创建临时目录失败",
@@ -7212,18 +6673,7 @@ func TestExamSiteSyncApi(t *testing.T) {
 			},
 			passExpected: false,
 			errWanted:    "forced mkdir all err",
-			setup: func() {
-
-				dbConn := cmn.GetDbConn()
-
-				_, err := dbConn.Exec(fmt.Sprintf(`INSERT INTO t_exam_site (id, name,creator,server_host,address,admin,sys_user) VALUES 
-					(%d,'test-site-%d', 1622, 'localhost','address','1622','2025')`, nowTime, nowTime))
-				if err != nil {
-					t.Fatalf("failed to insert test data: %v", err)
-					return
-				}
-
-			},
+			setup:        defaultSetup,
 			check: func(q *cmn.ServiceCtx) (err error) {
 				d := syncInfo{
 					Path:          "",
@@ -7249,35 +6699,7 @@ func TestExamSiteSyncApi(t *testing.T) {
 
 				return
 			},
-			cleanup: func() {
-
-				dbConn := cmn.GetDbConn()
-
-				r, err := dbConn.Exec(fmt.Sprintf(`DELETE FROM t_exam_site WHERE name = 'test-site-%d'`, nowTime))
-				if err != nil {
-					t.Fatalf("failed to delete test data: %v", err)
-					return
-				}
-
-				c, err := r.RowsAffected()
-				if err != nil {
-					t.Fatalf("failed to get affected rows: %v", err)
-					return
-				}
-
-				t.Logf("Have already cleaned up %d rows from t_exam_site", c)
-
-				folderFullPath := path.Join(os.Getenv("PWD"), "/data/tmp/")
-
-				o, err := exec.Command("rm", "-rvf", folderFullPath).CombinedOutput()
-				if err != nil {
-					t.Fatalf("failed to remove folder: %v, output: %s", err, string(o))
-					return
-				}
-
-				t.Logf("Successfully cleaned up folder: %s output: %x", folderFullPath, o)
-
-			},
+			cleanup: defaultCleanup,
 		},
 		{
 			name: "准备数据失败-强制执行 pg_dump 失败",
@@ -7305,18 +6727,7 @@ func TestExamSiteSyncApi(t *testing.T) {
 			},
 			passExpected: false,
 			errWanted:    fmt.Sprintf("COMMAND: %s\t ERR: %s\t DETAIL: %s", "", "forced pg_dump err", ""),
-			setup: func() {
-
-				dbConn := cmn.GetDbConn()
-
-				_, err := dbConn.Exec(fmt.Sprintf(`INSERT INTO t_exam_site (id, name,creator,server_host,address,admin,sys_user) VALUES 
-					(%d,'test-site-%d', 1622, 'localhost','address','1622','2025')`, nowTime, nowTime))
-				if err != nil {
-					t.Fatalf("failed to insert test data: %v", err)
-					return
-				}
-
-			},
+			setup:        defaultSetup,
 			check: func(q *cmn.ServiceCtx) (err error) {
 				d := syncInfo{
 					Path:          "",
@@ -7342,35 +6753,7 @@ func TestExamSiteSyncApi(t *testing.T) {
 
 				return
 			},
-			cleanup: func() {
-
-				dbConn := cmn.GetDbConn()
-
-				r, err := dbConn.Exec(fmt.Sprintf(`DELETE FROM t_exam_site WHERE name = 'test-site-%d'`, nowTime))
-				if err != nil {
-					t.Fatalf("failed to delete test data: %v", err)
-					return
-				}
-
-				c, err := r.RowsAffected()
-				if err != nil {
-					t.Fatalf("failed to get affected rows: %v", err)
-					return
-				}
-
-				t.Logf("Have already cleaned up %d rows from t_exam_site", c)
-
-				folderFullPath := path.Join(os.Getenv("PWD"), "/data/tmp/")
-
-				o, err := exec.Command("rm", "-rvf", folderFullPath).CombinedOutput()
-				if err != nil {
-					t.Fatalf("failed to remove folder: %v, output: %s", err, string(o))
-					return
-				}
-
-				t.Logf("Successfully cleaned up folder: %s output: %x", folderFullPath, o)
-
-			},
+			cleanup: defaultCleanup,
 		},
 		{
 			name: "准备数据失败-强制执行 psql 失败",
@@ -7398,18 +6781,7 @@ func TestExamSiteSyncApi(t *testing.T) {
 			},
 			passExpected: false,
 			errWanted:    fmt.Sprintf("COMMAND: %s\t ERR: %s\t DETAIL: %s", "", "forced psql err", ""),
-			setup: func() {
-
-				dbConn := cmn.GetDbConn()
-
-				_, err := dbConn.Exec(fmt.Sprintf(`INSERT INTO t_exam_site (id, name,creator,server_host,address,admin,sys_user) VALUES 
-					(%d,'test-site-%d', 1622, 'localhost','address','1622','2025')`, nowTime, nowTime))
-				if err != nil {
-					t.Fatalf("failed to insert test data: %v", err)
-					return
-				}
-
-			},
+			setup:        defaultSetup,
 			check: func(q *cmn.ServiceCtx) (err error) {
 				d := syncInfo{
 					Path:          "",
@@ -7435,35 +6807,7 @@ func TestExamSiteSyncApi(t *testing.T) {
 
 				return
 			},
-			cleanup: func() {
-
-				dbConn := cmn.GetDbConn()
-
-				r, err := dbConn.Exec(fmt.Sprintf(`DELETE FROM t_exam_site WHERE name = 'test-site-%d'`, nowTime))
-				if err != nil {
-					t.Fatalf("failed to delete test data: %v", err)
-					return
-				}
-
-				c, err := r.RowsAffected()
-				if err != nil {
-					t.Fatalf("failed to get affected rows: %v", err)
-					return
-				}
-
-				t.Logf("Have already cleaned up %d rows from t_exam_site", c)
-
-				folderFullPath := path.Join(os.Getenv("PWD"), "/data/tmp/")
-
-				o, err := exec.Command("rm", "-rvf", folderFullPath).CombinedOutput()
-				if err != nil {
-					t.Fatalf("failed to remove folder: %v, output: %s", err, string(o))
-					return
-				}
-
-				t.Logf("Successfully cleaned up folder: %s output: %x", folderFullPath, o)
-
-			},
+			cleanup: defaultCleanup,
 		},
 		{
 			name: "准备数据失败-强制json marshal 失败",
@@ -7491,18 +6835,7 @@ func TestExamSiteSyncApi(t *testing.T) {
 			},
 			passExpected: false,
 			errWanted:    "forced json marshal err",
-			setup: func() {
-
-				dbConn := cmn.GetDbConn()
-
-				_, err := dbConn.Exec(fmt.Sprintf(`INSERT INTO t_exam_site (id, name,creator,server_host,address,admin,sys_user) VALUES 
-					(%d,'test-site-%d', 1622, 'localhost','address','1622','2025')`, nowTime, nowTime))
-				if err != nil {
-					t.Fatalf("failed to insert test data: %v", err)
-					return
-				}
-
-			},
+			setup:        defaultSetup,
 			check: func(q *cmn.ServiceCtx) (err error) {
 				d := syncInfo{
 					Path:          "",
@@ -7528,35 +6861,7 @@ func TestExamSiteSyncApi(t *testing.T) {
 
 				return
 			},
-			cleanup: func() {
-
-				dbConn := cmn.GetDbConn()
-
-				r, err := dbConn.Exec(fmt.Sprintf(`DELETE FROM t_exam_site WHERE name = 'test-site-%d'`, nowTime))
-				if err != nil {
-					t.Fatalf("failed to delete test data: %v", err)
-					return
-				}
-
-				c, err := r.RowsAffected()
-				if err != nil {
-					t.Fatalf("failed to get affected rows: %v", err)
-					return
-				}
-
-				t.Logf("Have already cleaned up %d rows from t_exam_site", c)
-
-				folderFullPath := path.Join(os.Getenv("PWD"), "/data/tmp/")
-
-				o, err := exec.Command("rm", "-rvf", folderFullPath).CombinedOutput()
-				if err != nil {
-					t.Fatalf("failed to remove folder: %v, output: %s", err, string(o))
-					return
-				}
-
-				t.Logf("Successfully cleaned up folder: %s output: %x", folderFullPath, o)
-
-			},
+			cleanup: defaultCleanup,
 		},
 		{
 			name: "准备数据失败-强制清除临时目录失败",
@@ -7585,18 +6890,7 @@ func TestExamSiteSyncApi(t *testing.T) {
 			},
 			passExpected: false,
 			errWanted:    "forced remove tmp dir err",
-			setup: func() {
-
-				dbConn := cmn.GetDbConn()
-
-				_, err := dbConn.Exec(fmt.Sprintf(`INSERT INTO t_exam_site (id, name,creator,server_host,address,admin,sys_user) VALUES 
-					(%d,'test-site-%d', 1622, 'localhost','address','1622','2025')`, nowTime, nowTime))
-				if err != nil {
-					t.Fatalf("failed to insert test data: %v", err)
-					return
-				}
-
-			},
+			setup:        defaultSetup,
 			check: func(q *cmn.ServiceCtx) (err error) {
 				d := syncInfo{
 					Path:          "",
@@ -7622,35 +6916,7 @@ func TestExamSiteSyncApi(t *testing.T) {
 
 				return
 			},
-			cleanup: func() {
-
-				dbConn := cmn.GetDbConn()
-
-				r, err := dbConn.Exec(fmt.Sprintf(`DELETE FROM t_exam_site WHERE name = 'test-site-%d'`, nowTime))
-				if err != nil {
-					t.Fatalf("failed to delete test data: %v", err)
-					return
-				}
-
-				c, err := r.RowsAffected()
-				if err != nil {
-					t.Fatalf("failed to get affected rows: %v", err)
-					return
-				}
-
-				t.Logf("Have already cleaned up %d rows from t_exam_site", c)
-
-				folderFullPath := path.Join(os.Getenv("PWD"), "/data/tmp/")
-
-				o, err := exec.Command("rm", "-rvf", folderFullPath).CombinedOutput()
-				if err != nil {
-					t.Fatalf("failed to remove folder: %v, output: %s", err, string(o))
-					return
-				}
-
-				t.Logf("Successfully cleaned up folder: %s output: %x", folderFullPath, o)
-
-			},
+			cleanup: defaultCleanup,
 		},
 		{
 			name: "准备数据失败-强制创建导出脚本失败",
@@ -7678,18 +6944,7 @@ func TestExamSiteSyncApi(t *testing.T) {
 			},
 			passExpected: false,
 			errWanted:    "force-create-export-script-file-err-^a1^2*zc$32h@g4",
-			setup: func() {
-
-				dbConn := cmn.GetDbConn()
-
-				_, err := dbConn.Exec(fmt.Sprintf(`INSERT INTO t_exam_site (id, name,creator,server_host,address,admin,sys_user) VALUES 
-					(%d,'test-site-%d', 1622, 'localhost','address','1622','2025')`, nowTime, nowTime))
-				if err != nil {
-					t.Fatalf("failed to insert test data: %v", err)
-					return
-				}
-
-			},
+			setup:        defaultSetup,
 			check: func(q *cmn.ServiceCtx) (err error) {
 				d := syncInfo{
 					Path:          "",
@@ -7715,35 +6970,7 @@ func TestExamSiteSyncApi(t *testing.T) {
 
 				return
 			},
-			cleanup: func() {
-
-				dbConn := cmn.GetDbConn()
-
-				r, err := dbConn.Exec(fmt.Sprintf(`DELETE FROM t_exam_site WHERE name = 'test-site-%d'`, nowTime))
-				if err != nil {
-					t.Fatalf("failed to delete test data: %v", err)
-					return
-				}
-
-				c, err := r.RowsAffected()
-				if err != nil {
-					t.Fatalf("failed to get affected rows: %v", err)
-					return
-				}
-
-				t.Logf("Have already cleaned up %d rows from t_exam_site", c)
-
-				folderFullPath := path.Join(os.Getenv("PWD"), "/data/tmp/")
-
-				o, err := exec.Command("rm", "-rvf", folderFullPath).CombinedOutput()
-				if err != nil {
-					t.Fatalf("failed to remove folder: %v, output: %s", err, string(o))
-					return
-				}
-
-				t.Logf("Successfully cleaned up folder: %s output: %x", folderFullPath, o)
-
-			},
+			cleanup: defaultCleanup,
 		},
 		{
 			name: "准备数据失败-强制写入导出脚本失败",
@@ -7771,18 +6998,7 @@ func TestExamSiteSyncApi(t *testing.T) {
 			},
 			passExpected: false,
 			errWanted:    "force-write-export-script-file-err-^a1^2*zc$32h@g4",
-			setup: func() {
-
-				dbConn := cmn.GetDbConn()
-
-				_, err := dbConn.Exec(fmt.Sprintf(`INSERT INTO t_exam_site (id, name,creator,server_host,address,admin,sys_user) VALUES 
-					(%d,'test-site-%d', 1622, 'localhost','address','1622','2025')`, nowTime, nowTime))
-				if err != nil {
-					t.Fatalf("failed to insert test data: %v", err)
-					return
-				}
-
-			},
+			setup:        defaultSetup,
 			check: func(q *cmn.ServiceCtx) (err error) {
 				d := syncInfo{
 					Path:          "",
@@ -7808,35 +7024,7 @@ func TestExamSiteSyncApi(t *testing.T) {
 
 				return
 			},
-			cleanup: func() {
-
-				dbConn := cmn.GetDbConn()
-
-				r, err := dbConn.Exec(fmt.Sprintf(`DELETE FROM t_exam_site WHERE name = 'test-site-%d'`, nowTime))
-				if err != nil {
-					t.Fatalf("failed to delete test data: %v", err)
-					return
-				}
-
-				c, err := r.RowsAffected()
-				if err != nil {
-					t.Fatalf("failed to get affected rows: %v", err)
-					return
-				}
-
-				t.Logf("Have already cleaned up %d rows from t_exam_site", c)
-
-				folderFullPath := path.Join(os.Getenv("PWD"), "/data/tmp/")
-
-				o, err := exec.Command("rm", "-rvf", folderFullPath).CombinedOutput()
-				if err != nil {
-					t.Fatalf("failed to remove folder: %v, output: %s", err, string(o))
-					return
-				}
-
-				t.Logf("Successfully cleaned up folder: %s output: %x", folderFullPath, o)
-
-			},
+			cleanup: defaultCleanup,
 		},
 		{
 			name: "准备数据失败-强制保存同步信息快照失败",
@@ -7864,18 +7052,7 @@ func TestExamSiteSyncApi(t *testing.T) {
 			},
 			passExpected: false,
 			errWanted:    "forced save sync info snapshot err",
-			setup: func() {
-
-				dbConn := cmn.GetDbConn()
-
-				_, err := dbConn.Exec(fmt.Sprintf(`INSERT INTO t_exam_site (id, name,creator,server_host,address,admin,sys_user) VALUES 
-					(%d,'test-site-%d', 1622, 'localhost','address','1622','2025')`, nowTime, nowTime))
-				if err != nil {
-					t.Fatalf("failed to insert test data: %v", err)
-					return
-				}
-
-			},
+			setup:        defaultSetup,
 			check: func(q *cmn.ServiceCtx) (err error) {
 				d := syncInfo{
 					Path:          "",
@@ -7901,35 +7078,7 @@ func TestExamSiteSyncApi(t *testing.T) {
 
 				return
 			},
-			cleanup: func() {
-
-				dbConn := cmn.GetDbConn()
-
-				r, err := dbConn.Exec(fmt.Sprintf(`DELETE FROM t_exam_site WHERE name = 'test-site-%d'`, nowTime))
-				if err != nil {
-					t.Fatalf("failed to delete test data: %v", err)
-					return
-				}
-
-				c, err := r.RowsAffected()
-				if err != nil {
-					t.Fatalf("failed to get affected rows: %v", err)
-					return
-				}
-
-				t.Logf("Have already cleaned up %d rows from t_exam_site", c)
-
-				folderFullPath := path.Join(os.Getenv("PWD"), "/data/tmp/")
-
-				o, err := exec.Command("rm", "-rvf", folderFullPath).CombinedOutput()
-				if err != nil {
-					t.Fatalf("failed to remove folder: %v, output: %s", err, string(o))
-					return
-				}
-
-				t.Logf("Successfully cleaned up folder: %s output: %x", folderFullPath, o)
-
-			},
+			cleanup: defaultCleanup,
 		},
 		{
 			name: "准备数据失败-无效的同步信息快照",
@@ -7955,11 +7104,11 @@ func TestExamSiteSyncApi(t *testing.T) {
 			},
 			passExpected: false,
 			errWanted:    "unexpected end of JSON input",
-			setup: func() {
+			setup: func() (err error) {
 
 				redisConn := cmn.GetRedisConn()
 
-				_, err := redisConn.Set(context.Background(), fmt.Sprintf("%s:%d", ExamSiteSyncPrefix, 2025), "{", 0).Result()
+				_, err = redisConn.Set(context.Background(), fmt.Sprintf("%s:%d", ExamSiteSyncPrefix, 2025), "{", 0).Result()
 				if err != nil {
 					t.Fatalf("failed to set redis key: %v", err)
 					return
@@ -7974,6 +7123,7 @@ func TestExamSiteSyncApi(t *testing.T) {
 					return
 				}
 
+				return
 			},
 			check: func(q *cmn.ServiceCtx) (err error) {
 				d := syncInfo{
@@ -8078,11 +7228,9 @@ func TestExamSiteSyncApi(t *testing.T) {
 			},
 			passExpected: true,
 			errWanted:    "",
-			setup: func() {
+			setup: func() (err error) {
 
-				dbConn := cmn.GetDbConn()
-
-				_, err := dbConn.Exec(fmt.Sprintf(`INSERT INTO t_exam_site (id, name,creator,server_host,address,admin,sys_user) VALUES 
+				_, err = dbConn.Exec(fmt.Sprintf(`INSERT INTO t_exam_site (id, name,creator,server_host,address,admin,sys_user) VALUES 
 					(%d,'test-site-%d', 1622, 'localhost','address','1622','2025')`, nowTime, nowTime))
 				if err != nil {
 					t.Fatalf("failed to insert test data: %v", err)
@@ -8103,6 +7251,7 @@ func TestExamSiteSyncApi(t *testing.T) {
 					return
 				}
 
+				return
 			},
 			cleanup: func() {
 
@@ -8170,11 +7319,11 @@ func TestExamSiteSyncApi(t *testing.T) {
 			},
 			passExpected: false,
 			errWanted:    "json: cannot unmarshal number into Go struct field syncInfo.tableFileList of type []string",
-			setup: func() {
+			setup: func() (err error) {
 
 				dbConn := cmn.GetDbConn()
 
-				_, err := dbConn.Exec(fmt.Sprintf(`INSERT INTO t_exam_site (id, name,creator,server_host,address,admin,sys_user) VALUES 
+				_, err = dbConn.Exec(fmt.Sprintf(`INSERT INTO t_exam_site (id, name,creator,server_host,address,admin,sys_user) VALUES 
 					(%d,'test-site-%d', 1622, 'localhost','address','1622','2025')`, nowTime, nowTime))
 				if err != nil {
 					t.Fatalf("failed to insert test data: %v", err)
@@ -8195,6 +7344,7 @@ func TestExamSiteSyncApi(t *testing.T) {
 					return
 				}
 
+				return
 			},
 			cleanup: func() {
 
@@ -8261,11 +7411,9 @@ func TestExamSiteSyncApi(t *testing.T) {
 			},
 			passExpected: false,
 			errWanted:    "validation failed:Key: 'syncInfo.TableFileList' Error:Field validation for 'TableFileList' failed on the 'required' tag",
-			setup: func() {
+			setup: func() (err error) {
 
-				dbConn := cmn.GetDbConn()
-
-				_, err := dbConn.Exec(fmt.Sprintf(`INSERT INTO t_exam_site (id, name,creator,server_host,address,admin,sys_user) VALUES 
+				_, err = dbConn.Exec(fmt.Sprintf(`INSERT INTO t_exam_site (id, name,creator,server_host,address,admin,sys_user) VALUES 
 					(%d,'test-site-%d', 1622, 'localhost','address','1622','2025')`, nowTime, nowTime))
 				if err != nil {
 					t.Fatalf("failed to insert test data: %v", err)
@@ -8286,6 +7434,7 @@ func TestExamSiteSyncApi(t *testing.T) {
 					return
 				}
 
+				return
 			},
 			cleanup: func() {
 
@@ -8353,11 +7502,9 @@ func TestExamSiteSyncApi(t *testing.T) {
 			},
 			passExpected: false,
 			errWanted:    fmt.Sprintf("open %s: no such file or directory", filepath.Join(os.Getenv("PWD"), "data/tmp/123123/456456/import_script.sql")),
-			setup: func() {
+			setup: func() (err error) {
 
-				dbConn := cmn.GetDbConn()
-
-				_, err := dbConn.Exec(fmt.Sprintf(`INSERT INTO t_exam_site (id, name,creator,server_host,address,admin,sys_user) VALUES 
+				_, err = dbConn.Exec(fmt.Sprintf(`INSERT INTO t_exam_site (id, name,creator,server_host,address,admin,sys_user) VALUES 
 					(%d,'test-site-%d', 1622, 'localhost','address','1622','2025')`, nowTime, nowTime))
 				if err != nil {
 					t.Fatalf("failed to insert test data: %v", err)
@@ -8378,6 +7525,7 @@ func TestExamSiteSyncApi(t *testing.T) {
 					return
 				}
 
+				return
 			},
 			cleanup: func() {
 
@@ -8448,11 +7596,9 @@ func TestExamSiteSyncApi(t *testing.T) {
 			},
 			passExpected: false,
 			errWanted:    fmt.Sprintf("COMMAND: %s\t ERR: %s\t DETAIL: %s", "", "forced psql err", ""),
-			setup: func() {
+			setup: func() (err error) {
 
-				dbConn := cmn.GetDbConn()
-
-				_, err := dbConn.Exec(fmt.Sprintf(`INSERT INTO t_exam_site (id, name,creator,server_host,address,admin,sys_user) VALUES 
+				_, err = dbConn.Exec(fmt.Sprintf(`INSERT INTO t_exam_site (id, name,creator,server_host,address,admin,sys_user) VALUES 
 					(%d,'test-site-%d', 1622, 'localhost','address','1622','2025')`, nowTime, nowTime))
 				if err != nil {
 					t.Fatalf("failed to insert test data: %v", err)
@@ -8473,6 +7619,7 @@ func TestExamSiteSyncApi(t *testing.T) {
 					return
 				}
 
+				return
 			},
 			cleanup: func() {
 
@@ -8543,11 +7690,9 @@ func TestExamSiteSyncApi(t *testing.T) {
 			},
 			passExpected: false,
 			errWanted:    "forced delete key err",
-			setup: func() {
+			setup: func() (err error) {
 
-				dbConn := cmn.GetDbConn()
-
-				_, err := dbConn.Exec(fmt.Sprintf(`INSERT INTO t_exam_site (id, name,creator,server_host,address,admin,sys_user) VALUES 
+				_, err = dbConn.Exec(fmt.Sprintf(`INSERT INTO t_exam_site (id, name,creator,server_host,address,admin,sys_user) VALUES 
 					(%d,'test-site-%d', 1622, 'localhost','address','1622','2025')`, nowTime, nowTime))
 				if err != nil {
 					t.Fatalf("failed to insert test data: %v", err)
@@ -8568,6 +7713,7 @@ func TestExamSiteSyncApi(t *testing.T) {
 					return
 				}
 
+				return
 			},
 			cleanup: func() {
 
@@ -8638,11 +7784,9 @@ func TestExamSiteSyncApi(t *testing.T) {
 			},
 			passExpected: false,
 			errWanted:    "forced remove all err",
-			setup: func() {
+			setup: func() (err error) {
 
-				dbConn := cmn.GetDbConn()
-
-				_, err := dbConn.Exec(fmt.Sprintf(`INSERT INTO t_exam_site (id, name,creator,server_host,address,admin,sys_user) VALUES 
+				_, err = dbConn.Exec(fmt.Sprintf(`INSERT INTO t_exam_site (id, name,creator,server_host,address,admin,sys_user) VALUES 
 					(%d,'test-site-%d', 1622, 'localhost','address','1622','2025')`, nowTime, nowTime))
 				if err != nil {
 					t.Fatalf("failed to insert test data: %v", err)
@@ -8663,6 +7807,7 @@ func TestExamSiteSyncApi(t *testing.T) {
 					return
 				}
 
+				return
 			},
 			cleanup: func() {
 
@@ -8717,11 +7862,20 @@ func TestExamSiteSyncApi(t *testing.T) {
 
 		t.Run(tt.name, func(t *testing.T) {
 
+			oldCentralServerUrl := centralServerUrl
+
+			centralServerUrl = ""
+
 			if tt.setup != nil {
-				tt.setup()
+				err := tt.setup()
+				if err != nil {
+					t.Error(err)
+					return
+				}
 			}
 
 			defer func() {
+				centralServerUrl = oldCentralServerUrl
 				if tt.cleanup != nil {
 					tt.cleanup()
 				}
