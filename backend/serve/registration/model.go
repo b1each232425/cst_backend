@@ -125,7 +125,7 @@ type Reviewer struct {
 // 事件数据结构
 type RegisterEvent struct {
 	Type       string `json:"type"`
-	RegisterID string `json:"register_id"`
+	RegisterID int64  `json:"register_id"`
 }
 
 // 定时器管理
