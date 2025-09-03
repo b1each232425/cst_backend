@@ -23,7 +23,7 @@ const (
 	EVENT_TYPE_REGISTER_REVIEW_END = "register_review_end"
 
 	//默认最大并发数
-	DEFAULT_MAX_WORKERS = 10
+	DEFAULT_MAX_WORKERS = 5
 )
 
 var (
@@ -931,10 +931,8 @@ func (tm *RegistrationTimerManager) startEventWorkers() {
 				case <-tm.ctx.Done():
 					return
 				case event := <-tm.eventQueue:
-					err := tm.processEvent(event, workerID)
-					if err != nil {
-						z.Error(err.Error())
-					}
+					tm.processEvent(event, workerID)
+
 				}
 			}
 		}(i)
@@ -1435,9 +1433,6 @@ func RegisterMaintainService() {
 	defer cancel()
 	registerTimerManager = NewRegistrationTimerManager(ctx, cancel)
 	//初始化定时器
-	err := InitializeRegisterTimers(ctx)
-	if err != nil {
-		z.Error(err.Error())
-		return
-	}
+	InitializeRegisterTimers(ctx)
+
 }
