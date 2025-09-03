@@ -3034,6 +3034,140 @@ func GetTExamSiteByPk(db Queryer, pk0 null.Int) (*TExamSite, error) {
 	return &r, nil
 }
 
+/*TExamStudent 用于记录考试、学生与学生报名记录之间的关系，避免一个报名记录被多个考试使用 represents assessuser.t_exam_student */
+type TExamStudent struct {
+	ID                null.Int       `json:"ID,omitempty" db:"id,true,integer"`                                  /* id id */
+	StudentID         null.Int       `json:"StudentID,omitempty" db:"student_id,false,bigint"`                   /* student_id 学生ID */
+	ExamID            null.Int       `json:"ExamID,omitempty" db:"exam_id,false,bigint"`                         /* exam_id 考试ID */
+	ExamPlanStudentID null.Int       `json:"ExamPlanStudentID,omitempty" db:"exam_plan_student_id,false,bigint"` /* exam_plan_student_id 学生与报名计划关联记录ID */
+	Creator           null.Int       `json:"Creator,omitempty" db:"creator,false,bigint"`                        /* creator 创建者 */
+	CreateTime        null.Int       `json:"CreateTime,omitempty" db:"create_time,false,bigint"`                 /* create_time 创建时间 */
+	UpdatedBy         null.Int       `json:"UpdatedBy,omitempty" db:"updated_by,false,bigint"`                   /* updated_by 更新者 */
+	UpdateTime        null.Int       `json:"UpdateTime,omitempty" db:"update_time,false,bigint"`                 /* update_time 更新时间 */
+	Status            null.String    `json:"Status,omitempty" db:"status,false,character varying"`               /* status 状态 00：正常 02：已删除 */
+	Addi              types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                               /* addi 附加信息 */
+	Remark            null.String    `json:"Remark,omitempty" db:"remark,false,character varying"`               /* remark 备注 */
+	Filter            `json:"-"`     // build DML where clause
+}
+
+// TExamStudentFields full field list for default query
+var TExamStudentFields = []string{
+	"ID",
+	"StudentID",
+	"ExamID",
+	"ExamPlanStudentID",
+	"Creator",
+	"CreateTime",
+	"UpdatedBy",
+	"UpdateTime",
+	"Status",
+	"Addi",
+	"Remark",
+}
+
+// TExamStudentColumns full column list for default query
+var TExamStudentColumns = []string{
+	"id",
+	"student_id",
+	"exam_id",
+	"exam_plan_student_id",
+	"creator",
+	"create_time",
+	"updated_by",
+	"update_time",
+	"status",
+	"addi",
+	"remark",
+}
+
+// TExamStudentColumnsDataTypes full column data types for default query
+var TExamStudentColumnsDataTypes = map[string]string{
+	"id":                   "integer",
+	"student_id":           "bigint",
+	"exam_id":              "bigint",
+	"exam_plan_student_id": "bigint",
+	"creator":              "bigint",
+	"create_time":          "bigint",
+	"updated_by":           "bigint",
+	"update_time":          "bigint",
+	"status":               "character varying",
+	"addi":                 "jsonb",
+	"remark":               "character varying",
+}
+
+// GetFieldsMap returns a map of field names to their values.
+func (r *TExamStudent) GetFieldsMap() map[string]any {
+	return map[string]any{
+		"ID":                r.ID,
+		"StudentID":         r.StudentID,
+		"ExamID":            r.ExamID,
+		"ExamPlanStudentID": r.ExamPlanStudentID,
+		"Creator":           r.Creator,
+		"CreateTime":        r.CreateTime,
+		"UpdatedBy":         r.UpdatedBy,
+		"UpdateTime":        r.UpdateTime,
+		"Status":            r.Status,
+		"Addi":              r.Addi,
+		"Remark":            r.Remark,
+	}
+}
+
+// GetColumnsMap returns a map of column names to their values.
+func (r *TExamStudent) GetColumnsMap() map[string]any {
+	return map[string]any{
+		"id":                   r.ID,
+		"student_id":           r.StudentID,
+		"exam_id":              r.ExamID,
+		"exam_plan_student_id": r.ExamPlanStudentID,
+		"creator":              r.Creator,
+		"create_time":          r.CreateTime,
+		"updated_by":           r.UpdatedBy,
+		"update_time":          r.UpdateTime,
+		"status":               r.Status,
+		"addi":                 r.Addi,
+		"remark":               r.Remark,
+	}
+}
+
+// Fields return all fields of struct.
+func (r *TExamStudent) Fields() []string {
+	return TExamStudentFields
+}
+
+// GetTableName return the associated db table name.
+func (r *TExamStudent) GetTableName() string {
+	var viewNamePattern = regexp.MustCompile(`(?i)^t_v_[a-z0-9_]+$`)
+	tableName := "t_exam_student"
+	if viewNamePattern.MatchString(tableName) {
+		return tableName[2:]
+	}
+	return tableName
+}
+
+// Create inserts the TExamStudent to the database.
+func (r *TExamStudent) Create(db Queryer) error {
+	err := db.QueryRow(
+		`INSERT INTO t_exam_student (student_id, exam_id, exam_plan_student_id, creator, create_time, updated_by, update_time, status, addi, remark) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id`,
+		&r.StudentID, &r.ExamID, &r.ExamPlanStudentID, &r.Creator, &r.CreateTime, &r.UpdatedBy, &r.UpdateTime, &r.Status, &r.Addi, &r.Remark).Scan(&r.ID)
+	if err != nil {
+		return errors.Wrap(err, "failed to insert t_exam_student")
+	}
+	return nil
+}
+
+// GetTExamStudentByPk select the TExamStudent from the database.
+func GetTExamStudentByPk(db Queryer, pk0 null.Int) (*TExamStudent, error) {
+
+	var r TExamStudent
+	err := db.QueryRow(
+		`SELECT id, student_id, exam_id, exam_plan_student_id, creator, create_time, updated_by, update_time, status, addi, remark FROM t_exam_student WHERE id = $1`,
+		pk0).Scan(&r.ID, &r.StudentID, &r.ExamID, &r.ExamPlanStudentID, &r.Creator, &r.CreateTime, &r.UpdatedBy, &r.UpdateTime, &r.Status, &r.Addi, &r.Remark)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to select t_exam_student")
+	}
+	return &r, nil
+}
+
 /*TExaminee t_examinee represents assessuser.t_examinee */
 type TExaminee struct {
 	ID             null.Int       `json:"ID,omitempty" db:"id,true,integer"`                                     /* id id */
@@ -14351,6 +14485,7 @@ type TUser struct {
 	Addi            types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                              /* addi 用户定制数据 */
 	Remark          null.String    `json:"Remark,omitempty" db:"remark,false,character varying"`              /* remark 备注 */
 	Status          null.String    `json:"Status,omitempty" db:"status,false,character varying"`              /* status 状态,00: 有效, 02: 禁止登录, 04: 锁定, 06: 攻击者, 08: 过期 */
+	IDCardFile      types.JSONText `json:"IDCardFile,omitempty" db:"id_card_file,false,jsonb"`                /* id_card_file 证件图片文件 */
 	Filter          `json:"-"`     // build DML where clause
 }
 
@@ -14403,6 +14538,7 @@ var TUserFields = []string{
 	"Addi",
 	"Remark",
 	"Status",
+	"IDCardFile",
 }
 
 // TUserColumns full column list for default query
@@ -14454,6 +14590,7 @@ var TUserColumns = []string{
 	"addi",
 	"remark",
 	"status",
+	"id_card_file",
 }
 
 // TUserColumnsDataTypes full column data types for default query
@@ -14505,6 +14642,7 @@ var TUserColumnsDataTypes = map[string]string{
 	"addi":              "jsonb",
 	"remark":            "character varying",
 	"status":            "character varying",
+	"id_card_file":      "jsonb",
 }
 
 // GetFieldsMap returns a map of field names to their values.
@@ -14557,6 +14695,7 @@ func (r *TUser) GetFieldsMap() map[string]any {
 		"Addi":            r.Addi,
 		"Remark":          r.Remark,
 		"Status":          r.Status,
+		"IDCardFile":      r.IDCardFile,
 	}
 }
 
@@ -14610,6 +14749,7 @@ func (r *TUser) GetColumnsMap() map[string]any {
 		"addi":              r.Addi,
 		"remark":            r.Remark,
 		"status":            r.Status,
+		"id_card_file":      r.IDCardFile,
 	}
 }
 
@@ -14631,8 +14771,8 @@ func (r *TUser) GetTableName() string {
 // Create inserts the TUser to the database.
 func (r *TUser) Create(db Queryer) error {
 	err := db.QueryRow(
-		`INSERT INTO t_user (external_id_type, external_id, category, type, language, country, province, city, addr, fuse_name, official_name, id_card_type, id_card_no, mobile_phone, email, account, gender, birthday, nickname, avatar, avatar_type, dev_id, dev_user_id, dev_account, cert, user_token, role, grp, ip, port, auth_failed_count, lock_duration, visit_count, attack_count, lock_reason, logon_time, begin_lock_time, creator, create_time, updated_by, update_time, domain_id, dynamic_attr, addi, remark, status) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45, $46) RETURNING id`,
-		&r.ExternalIDType, &r.ExternalID, &r.Category, &r.Type, &r.Language, &r.Country, &r.Province, &r.City, &r.Addr, &r.FuseName, &r.OfficialName, &r.IDCardType, &r.IDCardNo, &r.MobilePhone, &r.Email, &r.Account, &r.Gender, &r.Birthday, &r.Nickname, &r.Avatar, &r.AvatarType, &r.DevID, &r.DevUserID, &r.DevAccount, &r.Cert, &r.UserToken, &r.Role, &r.Grp, &r.IP, &r.Port, &r.AuthFailedCount, &r.LockDuration, &r.VisitCount, &r.AttackCount, &r.LockReason, &r.LogonTime, &r.BeginLockTime, &r.Creator, &r.CreateTime, &r.UpdatedBy, &r.UpdateTime, &r.DomainID, &r.DynamicAttr, &r.Addi, &r.Remark, &r.Status).Scan(&r.ID)
+		`INSERT INTO t_user (external_id_type, external_id, category, type, language, country, province, city, addr, fuse_name, official_name, id_card_type, id_card_no, mobile_phone, email, account, gender, birthday, nickname, avatar, avatar_type, dev_id, dev_user_id, dev_account, cert, user_token, role, grp, ip, port, auth_failed_count, lock_duration, visit_count, attack_count, lock_reason, logon_time, begin_lock_time, creator, create_time, updated_by, update_time, domain_id, dynamic_attr, addi, remark, status, id_card_file) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45, $46, $47) RETURNING id`,
+		&r.ExternalIDType, &r.ExternalID, &r.Category, &r.Type, &r.Language, &r.Country, &r.Province, &r.City, &r.Addr, &r.FuseName, &r.OfficialName, &r.IDCardType, &r.IDCardNo, &r.MobilePhone, &r.Email, &r.Account, &r.Gender, &r.Birthday, &r.Nickname, &r.Avatar, &r.AvatarType, &r.DevID, &r.DevUserID, &r.DevAccount, &r.Cert, &r.UserToken, &r.Role, &r.Grp, &r.IP, &r.Port, &r.AuthFailedCount, &r.LockDuration, &r.VisitCount, &r.AttackCount, &r.LockReason, &r.LogonTime, &r.BeginLockTime, &r.Creator, &r.CreateTime, &r.UpdatedBy, &r.UpdateTime, &r.DomainID, &r.DynamicAttr, &r.Addi, &r.Remark, &r.Status, &r.IDCardFile).Scan(&r.ID)
 	if err != nil {
 		return errors.Wrap(err, "failed to insert t_user")
 	}
@@ -14644,8 +14784,8 @@ func GetTUserByPk(db Queryer, pk0 null.Int) (*TUser, error) {
 
 	var r TUser
 	err := db.QueryRow(
-		`SELECT id, external_id_type, external_id, category, type, language, country, province, city, addr, fuse_name, official_name, id_card_type, id_card_no, mobile_phone, email, account, gender, birthday, nickname, avatar, avatar_type, dev_id, dev_user_id, dev_account, cert, user_token, role, grp, ip, port, auth_failed_count, lock_duration, visit_count, attack_count, lock_reason, logon_time, begin_lock_time, creator, create_time, updated_by, update_time, domain_id, dynamic_attr, addi, remark, status FROM t_user WHERE id = $1`,
-		pk0).Scan(&r.ID, &r.ExternalIDType, &r.ExternalID, &r.Category, &r.Type, &r.Language, &r.Country, &r.Province, &r.City, &r.Addr, &r.FuseName, &r.OfficialName, &r.IDCardType, &r.IDCardNo, &r.MobilePhone, &r.Email, &r.Account, &r.Gender, &r.Birthday, &r.Nickname, &r.Avatar, &r.AvatarType, &r.DevID, &r.DevUserID, &r.DevAccount, &r.Cert, &r.UserToken, &r.Role, &r.Grp, &r.IP, &r.Port, &r.AuthFailedCount, &r.LockDuration, &r.VisitCount, &r.AttackCount, &r.LockReason, &r.LogonTime, &r.BeginLockTime, &r.Creator, &r.CreateTime, &r.UpdatedBy, &r.UpdateTime, &r.DomainID, &r.DynamicAttr, &r.Addi, &r.Remark, &r.Status)
+		`SELECT id, external_id_type, external_id, category, type, language, country, province, city, addr, fuse_name, official_name, id_card_type, id_card_no, mobile_phone, email, account, gender, birthday, nickname, avatar, avatar_type, dev_id, dev_user_id, dev_account, cert, user_token, role, grp, ip, port, auth_failed_count, lock_duration, visit_count, attack_count, lock_reason, logon_time, begin_lock_time, creator, create_time, updated_by, update_time, domain_id, dynamic_attr, addi, remark, status, id_card_file FROM t_user WHERE id = $1`,
+		pk0).Scan(&r.ID, &r.ExternalIDType, &r.ExternalID, &r.Category, &r.Type, &r.Language, &r.Country, &r.Province, &r.City, &r.Addr, &r.FuseName, &r.OfficialName, &r.IDCardType, &r.IDCardNo, &r.MobilePhone, &r.Email, &r.Account, &r.Gender, &r.Birthday, &r.Nickname, &r.Avatar, &r.AvatarType, &r.DevID, &r.DevUserID, &r.DevAccount, &r.Cert, &r.UserToken, &r.Role, &r.Grp, &r.IP, &r.Port, &r.AuthFailedCount, &r.LockDuration, &r.VisitCount, &r.AttackCount, &r.LockReason, &r.LogonTime, &r.BeginLockTime, &r.Creator, &r.CreateTime, &r.UpdatedBy, &r.UpdateTime, &r.DomainID, &r.DynamicAttr, &r.Addi, &r.Remark, &r.Status, &r.IDCardFile)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to select t_user")
 	}

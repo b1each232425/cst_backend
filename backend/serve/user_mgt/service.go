@@ -23,6 +23,7 @@ type Service interface {
 	QueryUsers(ctx context.Context, tx pgx.Tx, page, pageSize int64, filter QueryUsersFilter) ([]User, int64, error)
 	InsertUsers(ctx context.Context, tx pgx.Tx, users []User) ([]User, error)
 	InsertUsersWithAccount(ctx context.Context, tx pgx.Tx, users []User) ([]User, error)
+	OverwriteUpdateUsers(ctx context.Context, tx pgx.Tx, users []User) (updatedUsers []User, err error)
 	CheckTUserFieldExists(ctx context.Context, tx pgx.Tx, field string, value any) (bool, error)
 	CheckTUserRowExists(ctx context.Context, tx pgx.Tx, fields map[string]any) (bool, *User, error)
 	GenerateUniqueAccount(ctx context.Context, tx pgx.Tx, length int, maxAttempts int) (string, error)
@@ -136,11 +137,13 @@ func (r *service) QueryUsers(ctx context.Context, tx pgx.Tx, page, pageSize int6
            u.gender, 
            u.mobile_phone, 
            u.email,
+           u.birthday,
            u.category,
            u.status,
            u.type,
            u.id_card_no,
            u.id_card_type,
+           u.id_card_file,
            u.role,
            u.logon_time,
            u.create_time,
@@ -217,11 +220,13 @@ func (r *service) QueryUsers(ctx context.Context, tx pgx.Tx, page, pageSize int6
 			&user.Gender,
 			&user.MobilePhone,
 			&user.Email,
+			&user.Birthday,
 			&user.Category,
 			&user.Status,
 			&user.Type,
 			&user.IDCardNo,
 			&user.IDCardType,
+			&user.IDCardFile,
 			&user.Role,
 			&user.LogonTime,
 			&user.CreateTime,
@@ -350,6 +355,16 @@ func (r *service) InsertUsers(ctx context.Context, tx pgx.Tx, users []User) (ins
 			}
 		}
 
+		if len(users[i].IDCardFile) > 0 {
+			// 尝试解析证件文件 JSON，确保格式正确
+			_, err = ParseAndValidateIDCardFile(users[i].IDCardFile)
+			if err != nil {
+				e := fmt.Errorf("invalid id_card_file format for user %s: %w", users[i].Account, err)
+				z.Error(e.Error())
+				return []User{}, e
+			}
+		}
+
 		if !users[i].IDCardNo.Valid && !users[i].MobilePhone.Valid && !users[i].Email.Valid {
 			users[i].Type = null.StringFrom("00") // 匿名用户
 		} else {
@@ -368,6 +383,7 @@ func (r *service) InsertUsers(ctx context.Context, tx pgx.Tx, users []User) (ins
 			official_name,
 			id_card_type,
 			id_card_no,
+			id_card_file,
 			account,
 			mobile_phone,
 			email,
@@ -380,7 +396,7 @@ func (r *service) InsertUsers(ctx context.Context, tx pgx.Tx, users []User) (ins
 			create_time,
 			update_time
 		) VALUES (
-			$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, crypt($14, gen_salt('bf')), $15, $16
+			$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, crypt($15, gen_salt('bf')), $16, $17
 		)`
 
 		if tx != nil {
@@ -390,6 +406,7 @@ func (r *service) InsertUsers(ctx context.Context, tx pgx.Tx, users []User) (ins
 				users[i].OfficialName,
 				users[i].IDCardType,
 				users[i].IDCardNo,
+				users[i].IDCardFile,
 				users[i].Account,
 				users[i].MobilePhone,
 				users[i].Email,
@@ -409,6 +426,7 @@ func (r *service) InsertUsers(ctx context.Context, tx pgx.Tx, users []User) (ins
 				users[i].OfficialName,
 				users[i].IDCardType,
 				users[i].IDCardNo,
+				users[i].IDCardFile,
 				users[i].Account,
 				users[i].MobilePhone,
 				users[i].Email,
@@ -431,10 +449,12 @@ func (r *service) InsertUsers(ctx context.Context, tx pgx.Tx, users []User) (ins
 
 		// 读取用户ID
 		var userID int64
+		var createTime int64
+		var updateTime int64
 		if tx != nil {
-			err = tx.QueryRow(ctx, "SELECT id FROM t_user WHERE account = $1", users[i].Account).Scan(&userID)
+			err = tx.QueryRow(ctx, "SELECT id, create_time, update_time FROM t_user WHERE account = $1", users[i].Account).Scan(&userID, &createTime, &updateTime)
 		} else {
-			err = r.pgxConn.QueryRow(ctx, "SELECT id FROM t_user WHERE account = $1", users[i].Account).Scan(&userID)
+			err = r.pgxConn.QueryRow(ctx, "SELECT id, create_time, update_time FROM t_user WHERE account = $1", users[i].Account).Scan(&userID, &createTime, &updateTime)
 		}
 		if err != nil || forceErr == "QueryUserID" {
 			e := fmt.Errorf("failed to retrieve user ID for %s: %w", users[i].Account, err)
@@ -444,8 +464,8 @@ func (r *service) InsertUsers(ctx context.Context, tx pgx.Tx, users []User) (ins
 
 		// 设置用户ID并添加到成功插入的用户列表
 		users[i].ID = null.IntFrom(userID)
-		users[i].CreateTime = null.IntFrom(time.Now().UnixMilli())
-		users[i].UpdateTime = null.IntFrom(time.Now().UnixMilli())
+		users[i].CreateTime = null.IntFrom(createTime)
+		users[i].UpdateTime = null.IntFrom(updateTime)
 
 		// 插入用户角色到 t_user_domain
 		if len(users[i].Domains) > 0 {
@@ -472,6 +492,208 @@ func (r *service) InsertUsers(ctx context.Context, tx pgx.Tx, users []User) (ins
 	}
 
 	return insertedUsers, nil
+}
+
+// OverwriteUpdateUsers 批量覆盖式更新用户数据
+// 返回值: 成功更新的用户列表、错误
+func (r *service) OverwriteUpdateUsers(ctx context.Context, tx pgx.Tx, users []User) (updatedUsers []User, err error) {
+	z.Info("---->" + cmn.FncName())
+
+	forceErr, _ := ctx.Value("force-error").(string)
+
+	if len(users) == 0 {
+		e := fmt.Errorf("no users to update")
+		z.Error(e.Error())
+		return []User{}, e
+	}
+
+	for i := range users {
+		if !users[i].ID.Valid {
+			e := fmt.Errorf("user ID is required for update")
+			z.Error(e.Error())
+			return []User{}, e
+		}
+
+		if users[i].MobilePhone.Valid {
+			// 将手机号格式化为无空格无特殊字符的E.164标准格式
+			number := strings.TrimSpace(users[i].MobilePhone.String)
+			if number == "" {
+				e := fmt.Errorf("mobile phone cannot be empty")
+				z.Error(e.Error())
+				return []User{}, e
+			}
+
+			region := strings.ToUpper(strings.TrimSpace(DefaultRegion))
+			parseRegion := region
+			if strings.HasPrefix(number, "+") {
+				parseRegion = "" // 已含国家码
+			}
+
+			num, err := phonenumbers.Parse(number, parseRegion)
+			if err != nil {
+				e := fmt.Errorf("failed to parse mobile phone %s: %w", number, err)
+				z.Error(e.Error())
+				return []User{}, e
+			}
+			if !phonenumbers.IsPossibleNumber(num) || !phonenumbers.IsValidNumber(num) {
+				e := fmt.Errorf("mobile phone %s is not a valid number", number)
+				z.Error(e.Error())
+				return []User{}, e
+			}
+
+			users[i].MobilePhone = null.StringFrom(phonenumbers.Format(num, phonenumbers.E164))
+		}
+
+		if users[i].IDCardNo.Valid {
+			// 如果有证件号，则必须有证件号类型
+			if !users[i].IDCardType.Valid {
+				e := fmt.Errorf("id_card_type is required when id_card_no is provided")
+				z.Error(e.Error())
+				return []User{}, e
+			}
+
+			// 检查证件号格式是否有效
+			switch users[i].IDCardType.String {
+			case cmn.CIDCardTypeResidentIdentityCard:
+				formattedIDNo, err := NormalizeAndValidateCNID(users[i].IDCardNo.String)
+				if err != nil {
+					e := fmt.Errorf("invalid id_card_no %s: %w", users[i].IDCardNo.String, err)
+					z.Error(e.Error())
+					return []User{}, e
+				}
+				users[i].IDCardNo = null.StringFrom(formattedIDNo)
+				break
+			}
+		}
+
+		if len(users[i].IDCardFile) > 0 {
+			// 尝试解析证件文件 JSON，确保格式正确
+			_, err = ParseAndValidateIDCardFile(users[i].IDCardFile)
+			if err != nil {
+				e := fmt.Errorf("invalid id_card_file format for user %s: %w", users[i].Account, err)
+				z.Error(e.Error())
+				return []User{}, e
+			}
+		}
+
+		if !users[i].IDCardNo.Valid && !users[i].MobilePhone.Valid && !users[i].Email.Valid {
+			users[i].Type = null.StringFrom("00") // 匿名用户
+		} else {
+			users[i].Type = null.StringFrom("02") // 注册用户
+		}
+
+		// 覆盖式更新用户数据
+		updateSQL := `UPDATE t_user SET 
+			category = $1,
+			official_name = $2,
+			id_card_type = $3,
+			id_card_no = $4,
+			id_card_file = $5,
+			mobile_phone = $6,
+			email = $7,
+			gender = $8,
+			birthday = $9,
+			status = $10,
+			remark = $11,
+			update_time = $12
+		WHERE id = $13`
+
+		if tx != nil {
+			_, err = tx.Exec(ctx, updateSQL,
+				users[i].Category,
+				users[i].OfficialName,
+				users[i].IDCardType,
+				users[i].IDCardNo,
+				users[i].IDCardFile,
+				users[i].MobilePhone,
+				users[i].Email,
+				users[i].Gender,
+				users[i].Birthday,
+				r.orDefault(users[i].Status, "00"),
+				users[i].Remark,
+				time.Now().UnixMilli(),
+				users[i].ID,
+			)
+		} else {
+			_, err = r.pgxConn.Exec(ctx, updateSQL,
+				users[i].Category,
+				users[i].OfficialName,
+				users[i].IDCardType,
+				users[i].IDCardNo,
+				users[i].IDCardFile,
+				users[i].MobilePhone,
+				users[i].Email,
+				users[i].Gender,
+				users[i].Birthday,
+				r.orDefault(users[i].Status, "00"),
+				users[i].Remark,
+				time.Now().UnixMilli(),
+				users[i].ID,
+			)
+		}
+
+		if err != nil || forceErr == "Exec" {
+			e := fmt.Errorf("failed to update user %s: %w", users[i].Account, err)
+			z.Error(e.Error())
+			return []User{}, e
+		}
+
+		// 读取用户ID和更新后的数据
+		var createTime int64
+		var updateTime int64
+		if tx != nil {
+			err = tx.QueryRow(ctx, "SELECT create_time, update_time FROM t_user WHERE id = $1", users[i].ID).Scan(&createTime, &updateTime)
+		} else {
+			err = r.pgxConn.QueryRow(ctx, "SELECT create_time, update_time FROM t_user WHERE id = $1", users[i].ID).Scan(&createTime, &updateTime)
+		}
+		if err != nil || forceErr == "QueryUserID" {
+			e := fmt.Errorf("failed to retrieve user info for %s: %w", users[i].Account, err)
+			z.Error(e.Error())
+			return []User{}, e
+		}
+
+		// 设置用户ID并添加到成功更新的用户列表
+		users[i].CreateTime = null.IntFrom(createTime)
+		users[i].UpdateTime = null.IntFrom(updateTime)
+
+		// 覆盖式更新用户角色到 t_user_domain
+		if len(users[i].Domains) > 0 {
+			// 先删除该用户的所有旧角色
+			deleteDomainsSQL := `DELETE FROM t_user_domain WHERE sys_user = $1`
+			if tx != nil {
+				_, err = tx.Exec(ctx, deleteDomainsSQL, users[i].ID)
+			} else {
+				_, err = r.pgxConn.Exec(ctx, deleteDomainsSQL, users[i].ID)
+			}
+			if err != nil || forceErr == "DeleteUserDomain" {
+				e := fmt.Errorf("failed to delete user domains for user %s: %w", users[i].Account, err)
+				z.Error(e.Error())
+				return []User{}, e
+			}
+
+			insertDomainSQL := `
+				INSERT INTO t_user_domain (sys_user, domain)
+				VALUES ($1, (SELECT id FROM t_domain WHERE domain = $2))
+			`
+			for _, domain := range users[i].Domains {
+				if tx != nil {
+					_, err = tx.Exec(ctx, insertDomainSQL, users[i].ID, domain.String)
+				} else {
+					_, err = r.pgxConn.Exec(ctx, insertDomainSQL, users[i].ID, domain.String)
+				}
+				if err != nil || forceErr == "InsertUserDomain" {
+					e := fmt.Errorf("failed to insert user domain %s for user %s: %w", domain.String, users[i].Account, err)
+					z.Error(e.Error())
+					return []User{}, e
+				}
+			}
+		}
+
+		// 将成功插入的用户添加到结果列表
+		updatedUsers = append(updatedUsers, users[i])
+	}
+
+	return updatedUsers, nil
 }
 
 // InsertUsersWithAccount 批量插入用户数据，并为每个用户生成唯一账号
@@ -707,6 +929,7 @@ func (r *service) ValidateUserToBeInsert(ctx context.Context, tx pgx.Tx, users [
 		"id_card_type_invalid":  "证件类型不合法",
 		"empty_id_card_type":    "证件类型不能为空",
 		"not_valid_id_card_no":  "非有效证件号",
+		"id_card_file_invalid":  "证件文件格式不合法，必须包含frontImgID和backImgID字段",
 	}
 
 	for i := range users {
@@ -848,6 +1071,15 @@ func (r *service) ValidateUserToBeInsert(ctx context.Context, tx pgx.Tx, users [
 			if exist {
 				errorCount++
 				errorMessage = append(errorMessage, null.StringFrom(errorMessages["id_card_no_exists"]))
+			}
+		}
+
+		if len(users[i].IDCardFile) > 0 {
+			// 尝试解析证件文件 JSON，确保格式正确
+			_, err = ParseAndValidateIDCardFile(users[i].IDCardFile)
+			if err != nil {
+				errorCount++
+				errorMessage = append(errorMessage, null.StringFrom(errorMessages["id_card_file_invalid"]))
 			}
 		}
 

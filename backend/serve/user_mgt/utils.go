@@ -1,8 +1,11 @@
 package user_mgt
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"regexp"
 	"strconv"
 	"strings"
@@ -10,6 +13,7 @@ import (
 	"unicode"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jmoiron/sqlx/types"
 	"go.uber.org/zap"
 	"w2w.io/cmn"
 	"w2w.io/null"
@@ -184,4 +188,32 @@ func NormalizeAndValidateCNID(id string) (string, error) {
 	default:
 		return "", errors.New("id length must be 15 or 18")
 	}
+}
+
+// ParseAndValidateIDCardFile 解析并校验 IDCardFile JSON 字段
+func ParseAndValidateIDCardFile(raw types.JSONText) (IDCardFile, error) {
+	var v IDCardFile
+	s := strings.TrimSpace(string(raw))
+	if s == "" || s == "null" || s == "{}" || s == "[]" {
+		return v, fmt.Errorf("id_card_file is empty")
+	}
+
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.DisallowUnknownFields() // 发现未知字段名直接报错
+	if err := dec.Decode(&v); err != nil {
+		return v, fmt.Errorf("invalid id_card_file json: %w", err)
+	}
+	// 额外防御：确保没有多余数据
+	if dec.More() {
+		return v, fmt.Errorf("invalid id_card_file: trailing data")
+	}
+
+	// 必填校验（根据你的业务改）
+	if v.FrontImgID == "" {
+		return v, fmt.Errorf("missing frontImgID")
+	}
+	if v.BackImgID == "" {
+		return v, fmt.Errorf("missing backImgID")
+	}
+	return v, nil
 }
