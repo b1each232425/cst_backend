@@ -560,7 +560,17 @@ func ListPracticeS(ctx context.Context, pType, name, difficulty string, orderBy 
 	clauses = append(clauses, fmt.Sprintf("student_id = $%d", len(args)+1))
 	args = append(args, uid)
 
-	s := `SELECT
+	sqlxDB := cmn.GetDbConn()
+	total := 0
+	s := `SELECT COUNT(*) FROM assessuser.v_practice_summary WHERE student_id = $4 AND practice_status != $1 AND  practice_status != $2 AND practice_student_status != $3`
+	err := sqlxDB.QueryRowxContext(ctx, s, PracticeStatus.Deleted, PracticeStatus.Disabled, PracticeStudentStatus.Deleted, uid).Scan(&total)
+	if err != nil || forceErr == "sQuery3" {
+		err = fmt.Errorf("查询学生能参与练习总数失败：%v", err)
+		z.Error(err.Error())
+		return nil, 0, err
+	}
+
+	s = `SELECT
 		id,name,type,attempt_count,difficulty,allowed_attempts,question_count,wrong_count,
 		total_score,highest_score,paper_total_score,paper_id,latest_unsubmitted_id,latest_submitted_id,pending_mark_id
 		FROM assessuser.v_practice_summary`
@@ -586,7 +596,6 @@ func ListPracticeS(ctx context.Context, pType, name, difficulty string, orderBy 
 
 	z.Sugar().Debugf("打印输出一下获取学生权限练习列表操作语句：%v", s)
 	z.Sugar().Debugf("打印输出一下学生权限获取练习列表参数表：%v", args)
-	sqlxDB := cmn.GetDbConn()
 	rows, err := sqlxDB.QueryxContext(ctx, s, args...)
 	if err != nil || forceErr == "sQuery1" {
 		err = fmt.Errorf("查询学生权限练习列表失败：%v", err)
@@ -616,7 +625,7 @@ func ListPracticeS(ctx context.Context, pType, name, difficulty string, orderBy 
 		}
 		result = append(result, &p)
 	}
-	return result, len(result), nil
+	return result, total, nil
 }
 
 // ListPracticeT 教师权限及以上获取练习列表
@@ -656,7 +665,17 @@ func ListPracticeT(ctx context.Context, name, pType, status string, orderBy []st
 	args = append(args, PracticeStatus.Deleted)
 	clauses = append(clauses, fmt.Sprintf("tp.creator = $%d", len(args)+1))
 	args = append(args, uid)
-	s := `
+	sqlxDB := cmn.GetDbConn()
+
+	total := 0
+	s := `SELECT COUNT(*) FROM assessuser.t_practice WHERE status != $1 `
+	err := sqlxDB.QueryRowxContext(ctx, s, PracticeStatus.Deleted).Scan(&total)
+	if err != nil || forceErr == "query1" {
+		err = fmt.Errorf("查询练习总数失败：%v", err)
+		z.Error(err.Error())
+		return nil, 0, err
+	}
+	s = `
  	SELECT 
 		tp.id, tp.name,tp.correct_mode,
 		tp.type, tp.creator, tp.create_time, tp.updated_by, tp.update_time, tp.addi, tp.status ,tp.allowed_attempts,
@@ -682,7 +701,6 @@ func ListPracticeT(ctx context.Context, name, pType, status string, orderBy []st
 	z.Sugar().Debugf("打印输出一下参数表：%v", args)
 
 	// 这些实体查询的每个函数之间作用都不一样，需要花时间去了解这个函数的具体用处了
-	sqlxDB := cmn.GetDbConn()
 	rows, err := sqlxDB.QueryxContext(ctx, s, args...)
 	if err != nil || forceErr == "query" {
 		err = fmt.Errorf("search practice failed:%v", err)
@@ -714,7 +732,7 @@ func ListPracticeT(ctx context.Context, name, pType, status string, orderBy []st
 		M["student_count"] = studentCount
 		result = append(result, M)
 	}
-	return result, len(result), nil
+	return result, total, nil
 }
 
 // GetPracticeListByRegisterPlan 创建报名计划的账号 查看所有已发布的练习列表。要求是教师及以上
@@ -1876,7 +1894,7 @@ func BoundPracticeEnterRegisterPlan(ctx context.Context, tx pgx.Tx, uid, rpid in
 	}
 	s = `
     INSERT INTO assessuser.t_practice_student 
-        (student_id, practice_id, creator, create_time,updated_by.update_time,status)
+        (student_id, practice_id, creator, create_time,updated_by,update_time,status)
     SELECT $1, UNNEST($2::bigint[]), $3, $4, $5,$6,$7
     ON CONFLICT (student_id, practice_id) 
 	DO UPDATE SET
