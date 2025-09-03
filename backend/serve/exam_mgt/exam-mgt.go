@@ -1129,6 +1129,71 @@ func deleteInvigilationAndExamRecordInfo(ctx context.Context, tx pgx.Tx, examSes
 	return nil
 }
 
+func findConflictingExamStudents(ctx context.Context, tx pgx.Tx, examinees []Examinee, currentExamID int64) ([]Examinee, error) {
+	if len(examinees) == 0 {
+		return nil, nil
+	}
+
+	var forceErr string
+	if val := ctx.Value("findConflictingExamStudents-force-error"); val != nil {
+		forceErr = val.(string)
+	}
+
+	vals := make([]string, 0, len(examinees))
+	args := make([]interface{}, 0, len(examinees)*2+1)
+	argIdx := 1
+
+	for _, ex := range examinees {
+		vals = append(vals, fmt.Sprintf("($%d::bigint, $%d::bigint)", argIdx, argIdx+1))
+		args = append(args, ex.ID)
+		args = append(args, ex.ExamPlanStudentID)
+		argIdx += 2
+	}
+
+	args = append(args, currentExamID)
+
+	sql := fmt.Sprintf(`
+        WITH input(student_id, exam_plan_student_id) AS (
+            VALUES %s
+        )
+        SELECT i.student_id, i.exam_plan_student_id
+        FROM input i
+        JOIN t_exam_student s
+          ON s.exam_plan_student_id = i.exam_plan_student_id
+		  AND i.exam_plan_student_id IS NOT NULL
+		  AND s.exam_id != $%d
+          AND s.status != '02'
+    `, strings.Join(vals, ","), argIdx)
+
+	rows, err := tx.Query(ctx, sql, args...)
+	if rows != nil {
+		defer rows.Close()
+	}
+	if forceErr == "tx.Query" {
+		err = fmt.Errorf("强制查询错误")
+	}
+	if err != nil {
+		z.Error(err.Error())
+		return nil, err
+	}
+
+	var conflicts []Examinee
+	for rows.Next() {
+		var d Examinee
+		err := rows.Scan(&d.ID, &d.ExamPlanStudentID)
+		if forceErr == "rows.Scan" {
+			err = fmt.Errorf("强制获取学生信息错误")
+		}
+		if err != nil {
+			z.Error(err.Error())
+			return nil, err
+		}
+		conflicts = append(conflicts, d)
+	}
+
+	return conflicts, nil
+}
+
 // 创建/更新/获取考试信息
 func exam(ctx context.Context) {
 	q := cmn.GetCtxValue(ctx)
@@ -2711,6 +2776,8 @@ func examList(ctx context.Context) {
 		// 当前用户登录选择的域
 		userRole := q.SysUser.Role.Int64
 
+		z.Sugar().Debugf("用户角色: %d, 用户拥有的域: %v", userRole, userDomains)
+
 		var userDomain string
 		userDomain, q.Err = getDomainByUserRole(userRole, userDomains)
 		if q.Err != nil {
@@ -2718,6 +2785,8 @@ func examList(ctx context.Context) {
 			q.RespErr()
 			return
 		}
+
+		z.Sugar().Debugf("用户当前域: %s", userDomain)
 
 		if req.Page <= 0 {
 			req.Page = 1
@@ -2956,6 +3025,8 @@ func examList(ctx context.Context) {
 				ei.id DESC, 
 				es.session_num 
 			LIMIT $` + strconv.Itoa(argIdx) + ` OFFSET $` + strconv.Itoa(argIdx+1)
+			z.Sugar().Debugf("SQL: %s", searchSQL)
+			z.Sugar().Debugf("参数: %v", append(args, req.PageSize, offset))
 
 			var rows pgx.Rows
 			rows, q.Err = conn.Query(ctx, searchSQL, append(args, req.PageSize, offset)...)
@@ -4061,6 +4132,9 @@ func examUser(ctx context.Context) {
 		for _, item := range examineeResult.Array() {
 			var examinee Examinee
 			q.Err = json.Unmarshal([]byte(item.Raw), &examinee)
+			if forceErr == "json.Unmarshal" {
+				q.Err = fmt.Errorf("强制JSON解析错误")
+			}
 			if q.Err != nil {
 				z.Error(q.Err.Error())
 				q.RespErr()
@@ -4078,7 +4152,7 @@ func examUser(ctx context.Context) {
 			args := make([]interface{}, 0, len(examinees)*2+1)
 			argIdx := 1
 			for _, ex := range examinees {
-				vals = append(vals, fmt.Sprintf("($%d, $%d)", argIdx, argIdx+1))
+				vals = append(vals, fmt.Sprintf("($%d::bigint, $%d::bigint)", argIdx, argIdx+1))
 				args = append(args, ex.ID)
 				args = append(args, ex.ExamPlanStudentID)
 				argIdx += 2
@@ -4105,6 +4179,9 @@ func examUser(ctx context.Context) {
 			if rows != nil {
 				defer rows.Close()
 			}
+			if forceErr == "conn.Query2" {
+				q.Err = fmt.Errorf("强制查询用户信息错误")
+			}
 			if q.Err != nil {
 				z.Error(q.Err.Error())
 				q.RespErr()
@@ -4122,6 +4199,9 @@ func examUser(ctx context.Context) {
 					&userInfo.ExamPlanStudentID,
 					&userInfo.RegisterPlanName,
 				)
+				if forceErr == "rows.Scan2" {
+					q.Err = fmt.Errorf("强制获取用户信息错误")
+				}
 				if q.Err != nil {
 					z.Error(q.Err.Error())
 					q.RespErr()
@@ -4129,6 +4209,17 @@ func examUser(ctx context.Context) {
 				}
 				userInfos = append(userInfos, userInfo)
 			}
+		}
+
+		q.Msg.Data, q.Err = json.Marshal(userInfos)
+		if forceErr == "json.Marshal" {
+			q.Err = fmt.Errorf("强制JSON序列化错误")
+			q.Msg.Data = nil
+		}
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
 		}
 
 		q.Resp()
