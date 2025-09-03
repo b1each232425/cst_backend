@@ -25,6 +25,7 @@ import (
 	"w2w.io/cmn"
 	"w2w.io/exam_service"
 	"w2w.io/null"
+	"w2w.io/serve/auth_mgt"
 	"w2w.io/serve/examPaper"
 	"w2w.io/serve/mark"
 )
@@ -1215,19 +1216,17 @@ func exam(ctx context.Context) {
 		return
 	}
 
-	// 用户拥有的域
-	userDomains := q.Domains
-
-	// 当前用户登录选择的域
-	userRole := q.SysUser.Role.Int64
-
-	var userDomain string
-	userDomain, q.Err = getDomainByUserRole(userRole, userDomains)
+	var authority *auth_mgt.Authority
+	authority, q.Err = auth_mgt.GetUserAuthority(ctx)
 	if q.Err != nil {
 		z.Error(q.Err.Error())
 		q.RespErr()
 		return
 	}
+
+	// 当前用户登录选择的域
+	userRole := authority.Role.ID.Int64
+	userDomain := authority.Role.Domain
 
 	currentTime := time.Now().UnixMilli()
 
@@ -2087,7 +2086,7 @@ func exam(ctx context.Context) {
 				return
 			}
 
-			if pgErr != nil && pgErr.Code == "23505" {
+			if pgErr != nil && pgErr.Code == "23505" || strings.Contains(forceErr, "conflict") {
 				z.Error(q.Err.Error())
 
 				// 如果出现了主键冲突，则回滚到保存点处
@@ -2099,10 +2098,30 @@ func exam(ctx context.Context) {
 				}
 
 				// 出现了冲突，说明从报名计划中选择的考生已经被其他考试选取了，此时需要查询返回并出现冲突的学生ID给前端
+				var conflictExaminees []Examinee
+				conflictExaminees, q.Err = findConflictingExamStudents(ctx, tx, ExamData.Examinees, ExamData.ExamInfo.ID.Int64)
+				if forceErr == "conflict-findConflictingExamStudents" {
+					q.Err = fmt.Errorf("强制查询冲突考生错误")
+				}
+				if q.Err != nil {
+					q.RespErr()
+					return
+				}
+
+				var jsonData []byte
+				jsonData, q.Err = json.Marshal(conflictExaminees)
+				if forceErr == "conflict-json.Marshal" {
+					q.Err = fmt.Errorf("强制序列化冲突考生错误")
+				}
+				if q.Err != nil {
+					q.RespErr()
+					return
+				}
+
+				q.Msg.Data = jsonData
 
 				q.Msg.Status = -3
 				q.Err = fmt.Errorf("部分考生已被其他考试选取")
-				q.Msg.Msg = "部分考生已被其他考试选取"
 				q.RespErr()
 				return
 			}
@@ -2770,23 +2789,18 @@ func examList(ctx context.Context) {
 			return
 		}
 
-		// 用户拥有的域
-		userDomains := q.Domains
-
-		// 当前用户登录选择的域
-		userRole := q.SysUser.Role.Int64
-
-		z.Sugar().Debugf("用户角色: %d, 用户拥有的域: %v", userRole, userDomains)
-
-		var userDomain string
-		userDomain, q.Err = getDomainByUserRole(userRole, userDomains)
+		var authority *auth_mgt.Authority
+		authority, q.Err = auth_mgt.GetUserAuthority(ctx)
 		if q.Err != nil {
-			z.Error(q.Err.Error())
 			q.RespErr()
 			return
 		}
 
-		z.Sugar().Debugf("用户当前域: %s", userDomain)
+		// 当前用户登录选择的域
+		userRole := authority.Role.DomainID.Int64
+		_ = userRole
+		userDomain := authority.Role.Domain
+		z.Sugar().Debugf("当前用户域: %s", userDomain)
 
 		if req.Page <= 0 {
 			req.Page = 1
@@ -3025,8 +3039,6 @@ func examList(ctx context.Context) {
 				ei.id DESC, 
 				es.session_num 
 			LIMIT $` + strconv.Itoa(argIdx) + ` OFFSET $` + strconv.Itoa(argIdx+1)
-			z.Sugar().Debugf("SQL: %s", searchSQL)
-			z.Sugar().Debugf("参数: %v", append(args, req.PageSize, offset))
 
 			var rows pgx.Rows
 			rows, q.Err = conn.Query(ctx, searchSQL, append(args, req.PageSize, offset)...)
@@ -3163,20 +3175,15 @@ func examinee(ctx context.Context) {
 			return
 		}
 
-		// 用户拥有的域
-		userDomains := q.Domains
-
-		// 当前用户登录选择的域
-		userRole := q.SysUser.Role.Int64
-
-		// 从用户域列表中查找当前角色对应的域
-		var userDomain string
-		userDomain, q.Err = getDomainByUserRole(userRole, userDomains)
+		var authority *auth_mgt.Authority
+		authority, q.Err = auth_mgt.GetUserAuthority(ctx)
 		if q.Err != nil {
-			z.Error(q.Err.Error())
 			q.RespErr()
 			return
 		}
+
+		// 当前用户登录选择的域
+		userDomain := authority.Role.Domain
 
 		// 验证用户对考试的访问权限
 		var hasPermission bool
@@ -3287,19 +3294,15 @@ func examLock(ctx context.Context) {
 		return
 	}
 
-	// 用户拥有的域
-	userDomains := q.Domains
-
-	// 当前用户登录选择的域
-	userRole := q.SysUser.Role.Int64
-
-	var userDomain string
-	userDomain, q.Err = getDomainByUserRole(userRole, userDomains)
+	var authority *auth_mgt.Authority
+	authority, q.Err = auth_mgt.GetUserAuthority(ctx)
 	if q.Err != nil {
-		z.Error(q.Err.Error())
 		q.RespErr()
 		return
 	}
+
+	// 当前用户登录选择的域
+	userDomain := authority.Role.Domain
 
 	examID, err := strconv.ParseInt(q.R.URL.Query().Get("exam_id"), 10, 64)
 	if err != nil || examID <= 0 {
@@ -3436,20 +3439,15 @@ func examStatus(ctx context.Context) {
 			return
 		}
 
-		// 用户拥有的域
-		userDomains := q.Domains
-
-		// 当前用户登录选择的域
-		userRole := q.SysUser.Role.Int64
-
-		// 从用户域列表中查找当前角色对应的域
-		var userDomain string
-		userDomain, q.Err = getDomainByUserRole(userRole, userDomains)
+		var authority *auth_mgt.Authority
+		authority, q.Err = auth_mgt.GetUserAuthority(ctx)
 		if q.Err != nil {
-			z.Error(q.Err.Error())
 			q.RespErr()
 			return
 		}
+
+		// 当前用户登录选择的域
+		userDomain := authority.Role.Domain
 
 		if strings.Contains(userDomain, "^student") {
 			q.Err = fmt.Errorf("无权限访问")
@@ -3999,20 +3997,15 @@ func examUser(ctx context.Context) {
 			return
 		}
 
-		// 用户拥有的域
-		userDomains := q.Domains
-
-		// 当前用户登录选择的域
-		userRole := q.SysUser.Role.Int64
-
-		// 从用户域列表中查找当前角色对应的域
-		var userDomain string
-		userDomain, q.Err = getDomainByUserRole(userRole, userDomains)
+		var authority *auth_mgt.Authority
+		authority, q.Err = auth_mgt.GetUserAuthority(ctx)
 		if q.Err != nil {
-			z.Error(q.Err.Error())
 			q.RespErr()
 			return
 		}
+
+		// 当前用户登录选择的域
+		userDomain := authority.Role.Domain
 
 		if strings.Contains(userDomain, "^student") {
 			q.Err = fmt.Errorf("无权限访问")
@@ -4252,19 +4245,16 @@ func examFile(ctx context.Context) {
 		return
 	}
 
-	// 用户拥有的域
-	userDomains := q.Domains
-
-	// 当前用户登录选择的域
-	userRole := q.SysUser.Role.Int64
-
-	var userDomain string
-	userDomain, q.Err = getDomainByUserRole(userRole, userDomains)
+	var authority *auth_mgt.Authority
+	authority, q.Err = auth_mgt.GetUserAuthority(ctx)
 	if q.Err != nil {
-		z.Error(q.Err.Error())
 		q.RespErr()
 		return
 	}
+
+	// 当前用户登录选择的域
+	userRole := authority.Role.ID.Int64
+	userDomain := authority.Role.Domain
 
 	// 检查是否具备更新考试的权限
 	var result bool

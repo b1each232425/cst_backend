@@ -1670,7 +1670,7 @@ func EnterPracticeWrongCollection(ctx context.Context, tx pgx.Tx, pid, uid int64
 		groupMap[g.ID.Int64] = g
 	}
 	epInfo.WrongSubmissionID = wpSubmissionID
-	epInfo.PaperName = ps.PaperName.String + "（错题）"
+	epInfo.PaperName = epInfo.PaperName + "（错题）"
 	epInfo.PracticeSubmissionID = ps.LatestSubmittedID.Int64
 
 	// 更新错题为可作答状态 如果是需要重新组装错题，需要将原
