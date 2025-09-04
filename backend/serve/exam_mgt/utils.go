@@ -10,7 +10,7 @@ import (
 )
 
 // 检查考试数据的有效性
-func validateExamData(examData ExamData, isUpdate bool) error {
+func validateExamData(examData *ExamData, isUpdate bool) error {
 	z.Info("---->" + cmn.FncName())
 	if isUpdate && examData.ExamInfo.ID.Int64 <= 0 {
 		err := fmt.Errorf("无效的考试ID: %d", examData.ExamInfo.ID.Int64)
@@ -142,15 +142,49 @@ func validateExamData(examData ExamData, isUpdate bool) error {
 		}
 	}
 
-	for _, examinee := range examData.ExamineeIDs {
-		if examinee <= 0 {
-			err := fmt.Errorf("部分学生ID无效: %d", examinee)
+	for i := range examData.Examinees {
+		if examData.Examinees[i].ID <= 0 {
+			err := fmt.Errorf("部分学生ID无效: %d", examData.Examinees[i].ID)
 			z.Error(err.Error())
 			return err
 		}
+
+		// 将不是从报名计划中选取的学生的 ExamPlanStudentID 置为 null
+		if examData.Examinees[i].ExamPlanStudentID.Int64 <= 0 {
+			examData.Examinees[i].ExamPlanStudentID.Valid = false
+		}
 	}
 
-	if examData.ExamInfo.Mode.String == "02" && len(examData.ExamRooms) == 0 && len(examData.ExamineeIDs) > 0 {
+	// 去重学生ID
+	examineeMap := make(map[int64]Examinee, len(examData.Examinees))
+	order := make([]int64, 0, len(examData.Examinees))
+	for _, ex := range examData.Examinees {
+
+		// 如果student_id没有记录，则添加进Map里面
+		cur, ok := examineeMap[ex.ID]
+		if !ok {
+			examineeMap[ex.ID] = ex
+			order = append(order, ex.ID)
+			continue
+		}
+
+		// 已存在同 student_id，优先保留 ExamPlanStudentID != 0 的那条
+		// 如果已有的为0而当前不为0，则替换；否则保持原有
+		if cur.ExamPlanStudentID.Int64 <= 0 && ex.ExamPlanStudentID.Int64 != 0 {
+			examineeMap[ex.ID] = ex
+		}
+	}
+
+	// 重建切片
+	uniq := make([]Examinee, 0, len(order))
+	for _, id := range order {
+		if v, ok := examineeMap[id]; ok {
+			uniq = append(uniq, v)
+		}
+	}
+	examData.Examinees = uniq
+
+	if examData.ExamInfo.Mode.String == "02" && len(examData.ExamRooms) == 0 && len(examData.Examinees) > 0 {
 		err := fmt.Errorf("尚未配置考场")
 		z.Error(err.Error())
 		return err

@@ -3,7 +3,7 @@
  * @Description: 考卷数据库层单元测试
  * @Date: 2025-07-28 19:55:28
  * @LastEditors: zdl <1311866870@qq.com>
- * @LastEditTime: 2025-08-27 13:03:57
+ * @LastEditTime: 2025-09-04 13:38:27
  */
 package examPaper
 
@@ -1025,8 +1025,8 @@ func TestLoadExamPaperDetailsById(t *testing.T) {
 				if p.TotalScore.Float64 != 48 {
 					t.Errorf("查询的考卷信息总分错误，实际：%v", p.TotalScore.Float64)
 				}
-				if p.QuestionCount.Int64 != 13 {
-					t.Errorf("查询的考卷信息题目数量错误，实际：%v", p.QuestionCount.Int64)
+				if p.QuestionCount.Float64 != 13 {
+					t.Errorf("查询的考卷信息题目数量错误，实际：%v", p.QuestionCount.Float64)
 				}
 				if p.GroupCount.Int64 != 5 {
 					t.Errorf("查询的考卷信息题组数量错误，实际：%v", p.GroupCount.Int64)

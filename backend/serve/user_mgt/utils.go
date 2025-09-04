@@ -1,13 +1,21 @@
 package user_mgt
 
 import (
+	"bytes"
+	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"regexp"
 	"strconv"
 	"strings"
 	"time"
 	"unicode"
 
+	"github.com/jackc/pgx/v5"
+	"github.com/jmoiron/sqlx/types"
+	"go.uber.org/zap"
+	"w2w.io/cmn"
 	"w2w.io/null"
 )
 
@@ -48,10 +56,31 @@ func IsValidEmail(email string) bool {
 	return emailRegex.MatchString(email)
 }
 
-// IsDomainExist 判断角色是否合法
-func IsDomainExist(domain string) bool {
-	_, ok := domainSet[domain]
-	return ok
+// IsDomainExist 判断 domain 是否存在于 t_domain 表，如果存在则返回对应记录
+func IsDomainExist(ctx context.Context, tx pgx.Tx, domain string) (bool, *cmn.TDomain, error) {
+	query := `SELECT id, name, domain, priority 
+	          FROM t_domain WHERE domain = $1 LIMIT 1`
+
+	var row pgx.Row
+	if tx != nil {
+		row = tx.QueryRow(ctx, query, domain)
+	} else {
+		pgConn := cmn.GetPgxConn()
+		row = pgConn.QueryRow(ctx, query, domain)
+	}
+
+	d := &cmn.TDomain{}
+	err := row.Scan(&d.ID, &d.Name, &d.Domain, &d.Priority)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			// 没查到，返回不存在
+			return false, nil, nil
+		}
+		z.Error("failed to query domain:", zap.Error(err))
+		return false, nil, err
+	}
+
+	return true, d, nil
 }
 
 // Contains 泛型函数，判断元素是否存在于切片中
@@ -159,4 +188,32 @@ func NormalizeAndValidateCNID(id string) (string, error) {
 	default:
 		return "", errors.New("id length must be 15 or 18")
 	}
+}
+
+// ParseAndValidateIDCardFile 解析并校验 IDCardFile JSON 字段
+func ParseAndValidateIDCardFile(raw types.JSONText) (IDCardFile, error) {
+	var v IDCardFile
+	s := strings.TrimSpace(string(raw))
+	if s == "" || s == "null" || s == "{}" || s == "[]" {
+		return v, fmt.Errorf("id_card_file is empty")
+	}
+
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.DisallowUnknownFields() // 发现未知字段名直接报错
+	if err := dec.Decode(&v); err != nil {
+		return v, fmt.Errorf("invalid id_card_file json: %w", err)
+	}
+	// 额外防御：确保没有多余数据
+	if dec.More() {
+		return v, fmt.Errorf("invalid id_card_file: trailing data")
+	}
+
+	// 必填校验（根据你的业务改）
+	if v.FrontImgID == "" {
+		return v, fmt.Errorf("missing frontImgID")
+	}
+	if v.BackImgID == "" {
+		return v, fmt.Errorf("missing backImgID")
+	}
+	return v, nil
 }

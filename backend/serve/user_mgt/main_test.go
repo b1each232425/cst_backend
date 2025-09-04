@@ -1,6 +1,7 @@
 package user_mgt
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -28,6 +29,13 @@ func TestMain(m *testing.M) {
 	cmn.Configure()
 	go w2wSrv.WebServe(nil, nil)
 
+	// 运行测试
+	code := m.Run()
+
+	os.Exit(code)
+}
+
+func initTestData() {
 	// 读取测试数据
 	testDataFile := "test-data.json"
 	data, err := os.ReadFile(testDataFile)
@@ -96,13 +104,14 @@ func TestMain(m *testing.M) {
 			}
 		}
 	}
+}
 
-	// 运行测试
-	code := m.Run()
+func clearTestData() {
+	pgxConn := cmn.GetPgxConn()
 
 	// 清理测试数据
 	clearSqlTUserDomain := "DELETE FROM t_user_domain"
-	_, err = pgxConn.Exec(context.Background(), clearSqlTUserDomain)
+	_, err := pgxConn.Exec(context.Background(), clearSqlTUserDomain)
 	if err != nil {
 		e := fmt.Sprintf("Failed to clear user domain data: %v", err)
 		z.Warn(e)
@@ -113,8 +122,6 @@ func TestMain(m *testing.M) {
 		e := fmt.Sprintf("Failed to clear test data: %v", err)
 		z.Warn(e)
 	}
-
-	os.Exit(code)
 }
 
 // Create inserts the TUser to the database.
@@ -148,7 +155,8 @@ func createMockContext(method, path string, queryParams url.Values, forceError s
 		BeginTime: time.Now(),
 		Tag:       make(map[string]interface{}),
 		SysUser: &cmn.TUser{
-			ID: null.NewInt(54242, true), // 请求用户ID
+			ID:   null.NewInt(54242, true), // 请求用户ID
+			Role: null.NewInt(20000, true), // 超级管理员角色
 		},
 	}
 
@@ -188,53 +196,71 @@ func createMockContextWithoutUser(method, path string, queryParams string, force
 	return context.WithValue(ctx, "force-error", forceError)
 }
 
-// createMockContextWithBody 创建带有请求体数据的mock上下文
-// 参数data应该是有效的JSON字符串，将作为ReqProto的Data字段
-func createMockContextWithBody(method, path string, data string, forceError string) context.Context {
+// 把任意输入安全地转成“原始 JSON 字节”
+func toRawJSON(v any) ([]byte, error) {
+	switch x := v.(type) {
+	case nil:
+		return nil, nil
+	case []byte:
+		b := bytes.TrimSpace(x)
+		if len(b) == 0 || json.Valid(b) {
+			return b, nil
+		}
+		return nil, fmt.Errorf("invalid JSON bytes")
+	case json.RawMessage:
+		b := bytes.TrimSpace([]byte(x))
+		if len(b) == 0 || json.Valid(b) {
+			return b, nil
+		}
+		return nil, fmt.Errorf("invalid JSON raw message")
+	case string:
+		// 若本身就是合法 JSON（对象/数组/数值/字符串/true/false/null），原样使用
+		b := []byte(strings.TrimSpace(x))
+		if len(b) > 0 && json.Valid(b) {
+			return b, nil
+		}
+		// 否则把它当成普通字符串值再编码，得到 "your-string"
+		return json.Marshal(x)
+	default:
+		// 其他 Go 值（int/struct/map/slice/…）直接编码成合法 JSON
+		return json.Marshal(v)
+	}
+}
+
+// 推荐：支持任意类型 v，兼容老用例也能传 JSON 字符串
+func createMockContextWithBody(method, path string, v any, forceError string) context.Context {
 	var req *http.Request
 
-	if data != "" {
-		// 创建ReqProto结构体，Data字段使用json.RawMessage类型
-		body := &cmn.ReqProto{
-			Data: json.RawMessage(data),
+	if v != nil {
+		raw, err := toRawJSON(v)
+		if err != nil {
+			z.Fatal(fmt.Sprintf("invalid body: %v", err))
 		}
+		body := &cmn.ReqProto{Data: json.RawMessage(raw)}
 
-		// 将请求体转换为JSON字符串
 		bodyBytes, err := json.Marshal(body)
 		if err != nil {
-			e := fmt.Sprintf("Failed to marshal request data: %v", err)
-			z.Fatal(e)
+			z.Fatal(fmt.Sprintf("marshal req proto failed: %v", err))
 		}
-
-		// 创建mock HTTP请求
-		req = httptest.NewRequest(method, path, strings.NewReader(string(bodyBytes)))
+		req = httptest.NewRequest(method, path, bytes.NewReader(bodyBytes))
 	} else {
 		req = httptest.NewRequest(method, path, nil)
 	}
 
 	req.Header.Set("Content-Type", "application/json")
-
-	// 创建mock HTTP响应
 	w := httptest.NewRecorder()
 
-	// 创建ServiceCtx
 	serviceCtx := &cmn.ServiceCtx{
-		R: req,
-		W: w,
-		Msg: &cmn.ReplyProto{
-			API:    path,
-			Method: method,
-		},
+		R: req, W: w,
+		Msg:       &cmn.ReplyProto{API: path, Method: method},
 		BeginTime: time.Now(),
 		Tag:       make(map[string]interface{}),
 		SysUser: &cmn.TUser{
-			ID: null.NewInt(54242, true), // 请求用户ID
+			ID:   null.NewInt(54242, true),
+			Role: null.NewInt(20000, true),
 		},
 	}
-
 	ctx := context.WithValue(context.Background(), cmn.QNearKey, serviceCtx)
-
-	// 使用QNearKey将ServiceCtx设置到context中
 	return context.WithValue(ctx, "force-error", forceError)
 }
 

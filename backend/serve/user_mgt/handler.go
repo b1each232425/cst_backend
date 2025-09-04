@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"math/big"
@@ -16,6 +15,7 @@ import (
 	"github.com/wneessen/go-mail"
 	"w2w.io/cmn"
 	"w2w.io/null"
+	"w2w.io/serve/auth_mgt"
 )
 
 type Handler interface {
@@ -49,30 +49,36 @@ func (h *handler) HandleUser(ctx context.Context) {
 
 	method := strings.ToLower(q.R.Method)
 
-	if q.SysUser == nil || !q.SysUser.ID.Valid {
+	if q.SysUser == nil || !q.SysUser.ID.Valid || forceErr == "no-login" {
 		q.Err = fmt.Errorf("user not logged in or invalid user ID")
 		z.Error(q.Err.Error())
 		q.RespErr()
 		return
 	}
 
-	_, roleName, err := h.srv.QueryUserCurrentRole(ctx, q.SysUser.ID)
-	if err != nil {
-		q.Err = fmt.Errorf("failed to query user current role: %w", err)
-		z.Error(q.Err.Error())
-		q.RespErr()
-		return
-	}
-	// 角色不合法不能访问、学生不能访问
-	if !IsDomainExist(roleName.String) || roleName.String == DomainStudent || !roleName.Valid {
-		q.Err = fmt.Errorf("user does not have permission to access this resource")
-		z.Error(q.Err.Error())
+	authority, err := auth_mgt.GetUserAuthority(ctx)
+	if err != nil || forceErr == "GetUserAuthority" {
+		q.Err = fmt.Errorf("failed to get user authority: %w", err)
 		q.RespErr()
 		return
 	}
 
 	switch method {
 	case "get": // 获取用户列表
+		// 检查用户是否有权限访问该API
+		accessible, err := auth_mgt.CheckUserAPIAccessible(ctx, authority, "/api/user", auth_mgt.CAPIAccessActionRead)
+		if err != nil || forceErr == "CheckUserAPIAccessible" {
+			q.Err = fmt.Errorf("failed to check user API access: %w", err)
+			q.RespErr()
+			return
+		}
+		if !accessible || forceErr == "no-access" {
+			q.Err = fmt.Errorf("user does not have permission to access this API")
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
 		query := q.R.URL.Query()
 
 		page, err := strconv.ParseInt(query.Get("page"), 10, 64)
@@ -92,11 +98,19 @@ func (h *handler) HandleUser(ctx context.Context) {
 		}
 
 		domain := query.Get("domain")
-		if domain != "" && !IsDomainExist(domain) {
-			q.Err = fmt.Errorf("invalid filter domain: %s", query.Get("domain"))
-			z.Error(q.Err.Error())
-			q.RespErr()
-			return
+		if domain != "" {
+			domainExist, _, err := IsDomainExist(ctx, nil, domain)
+			if err != nil || forceErr == "IsDomainExist" {
+				q.Err = fmt.Errorf("failed to check domain existence: %w", err)
+				q.RespErr()
+				return
+			}
+			if !domainExist {
+				q.Err = fmt.Errorf("filter domain does not exist")
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
 		}
 
 		// 构造过滤条件
@@ -131,6 +145,20 @@ func (h *handler) HandleUser(ctx context.Context) {
 		return
 
 	case "post": // 创建新用户
+		// 检查用户是否有权限访问该API
+		accessible, err := auth_mgt.CheckUserAPIAccessible(ctx, authority, "/api/user", auth_mgt.CAPIAccessActionCreate)
+		if err != nil || forceErr == "CheckUserAPIAccessible" {
+			q.Err = fmt.Errorf("failed to check user API access: %w", err)
+			q.RespErr()
+			return
+		}
+		if !accessible || forceErr == "no-access" {
+			q.Err = fmt.Errorf("user does not have permission to access this API")
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
 		var buf []byte
 		buf, err = io.ReadAll(q.R.Body)
 		if err != nil || forceErr == "io.ReadAll" {
@@ -264,6 +292,146 @@ func (h *handler) HandleUser(ctx context.Context) {
 		q.Resp()
 		return
 
+	case "put": // 覆盖式更新已有用户
+		// 检查用户是否有权限访问该API
+		accessible, err := auth_mgt.CheckUserAPIAccessible(ctx, authority, "/api/user", auth_mgt.CAPIAccessActionUpdate)
+		if err != nil || forceErr == "CheckUserAPIAccessible" {
+			q.Err = fmt.Errorf("failed to check user API access: %w", err)
+			q.RespErr()
+			return
+		}
+		if !accessible || forceErr == "no-access" {
+			q.Err = fmt.Errorf("user does not have permission to access this API")
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		var buf []byte
+		buf, err = io.ReadAll(q.R.Body)
+		if err != nil || forceErr == "io.ReadAll" {
+			q.Err = fmt.Errorf("failed to read body: %w", err)
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+		defer func() {
+			err = q.R.Body.Close()
+			if err != nil || forceErr == "io.Close" {
+				e := fmt.Errorf("failed to close request body: %w", err)
+				z.Error(e.Error())
+				return
+			}
+		}()
+
+		if len(buf) == 0 {
+			q.Err = fmt.Errorf("request body cannot be empty")
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		var body cmn.ReqProto
+		err = json.Unmarshal(buf, &body)
+		if err != nil || forceErr == "json.Unmarshal" {
+			q.Err = fmt.Errorf("failed to unmarshal request body: %w", err)
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		var users []User
+		err = json.Unmarshal(body.Data, &users)
+		if err != nil {
+			q.Err = fmt.Errorf("failed to unmarshal request json data: %w", err)
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		if len(users) == 0 {
+			q.Err = fmt.Errorf("no users provided in request json data")
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		// 创建事务
+		var tx pgx.Tx
+		pgxConn := cmn.GetPgxConn()
+		tx, err = pgxConn.Begin(ctx)
+		if err != nil || forceErr == "tx.Begin" {
+			q.Err = fmt.Errorf("failed to begin transaction: %w", err)
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+		defer func() {
+			if err != nil {
+				err = tx.Rollback(ctx)
+				if err != nil || forceErr == "tx.Rollback" {
+					z.Error("transaction rolled back due to error: " + err.Error())
+				}
+				return
+			}
+			err = tx.Commit(ctx)
+			if err != nil || forceErr == "tx.Commit" {
+				z.Error("failed to commit transaction: " + err.Error())
+			}
+			return
+		}()
+
+		// 验证用户信息
+		var validUsers []User
+		var invalidUsers []User
+		validUsers, invalidUsers, err = h.srv.ValidateUserToBeUpdate(ctx, tx, users)
+		if err != nil {
+			q.Err = fmt.Errorf("failed to validate users: %w", err)
+			q.RespErr()
+			return
+		}
+
+		// 若存在不合法用户，则直接返回，不执行更新操作
+		if len(invalidUsers) != 0 {
+			invalidUsersBytes, err := json.Marshal(invalidUsers)
+			if err != nil || forceErr == "json.Marshal" {
+				q.Err = fmt.Errorf("failed to marshal invalid users: %w", err)
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+
+			q.Msg.Status = 405
+			q.Msg.Msg = "some users are invalid and cannot be updated"
+			q.Msg.Data = invalidUsersBytes
+			q.Resp()
+			return
+		}
+
+		var updatedUsers []User
+		if len(validUsers) > 0 {
+			updatedUsers, err = h.srv.OverwriteUpdateUsers(ctx, tx, validUsers)
+			if err != nil {
+				q.Err = fmt.Errorf("failed to update users: %w", err)
+				q.RespErr()
+				return
+			}
+		}
+
+		insertedUsersJson, err := json.Marshal(updatedUsers)
+		if err != nil || forceErr == "json.Marshal" {
+			q.Err = fmt.Errorf("failed to marshal valid users: %w", err)
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		q.Msg.Status = 0
+		q.Msg.Msg = "success"
+		q.Msg.Data = insertedUsersJson
+		q.Resp()
+		return
+
 	default:
 		q.Err = fmt.Errorf("unsupported method: %s", method)
 		z.Error(q.Err.Error())
@@ -367,13 +535,6 @@ func (h *handler) HandleSelectLoginDomain(ctx context.Context) {
 		return
 	}
 
-	if !IsDomainExist(domain) {
-		q.Err = fmt.Errorf("invalid domain: %s", domain)
-		z.Error(q.Err.Error())
-		q.RespErr()
-		return
-	}
-
 	users, _, err := h.srv.QueryUsers(ctx, nil, 1, 1, QueryUsersFilter{
 		ID: q.SysUser.ID,
 	})
@@ -390,6 +551,19 @@ func (h *handler) HandleSelectLoginDomain(ctx context.Context) {
 	}
 	user := users[0]
 
+	exist, existDomain, err := IsDomainExist(ctx, nil, domain)
+	if err != nil || forceErr == "IsDomainExist" {
+		q.Err = fmt.Errorf("failed to check domain existence: %w", err)
+		q.RespErr()
+		return
+	}
+	if !exist || forceErr == "domain-not-exist" {
+		q.Err = fmt.Errorf("domain does not exist: %s", domain)
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+
 	if !Contains(null.StringFrom(domain), user.Domains) {
 		q.Err = fmt.Errorf("user does not have permission to access this domain: %s", domain)
 		z.Error(q.Err.Error())
@@ -399,22 +573,8 @@ func (h *handler) HandleSelectLoginDomain(ctx context.Context) {
 
 	pgxConn := cmn.GetPgxConn()
 
-	const queryDomainID = "SELECT id FROM t_domain WHERE domain = $1"
-	var domainID int64
-	err = pgxConn.QueryRow(ctx, queryDomainID, domain).Scan(&domainID)
-	if err != nil || forceErr == "QueryDomainID" {
-		if errors.Is(err, pgx.ErrNoRows) {
-			q.Err = fmt.Errorf("domain not found: %s", domain)
-		} else {
-			q.Err = fmt.Errorf("failed to query domain ID: %w", err)
-		}
-		z.Error(q.Err.Error())
-		q.RespErr()
-		return
-	}
-
 	const updateUserRole = "UPDATE t_user SET role = $1 WHERE id = $2"
-	_, err = pgxConn.Exec(ctx, updateUserRole, domainID, user.ID)
+	_, err = pgxConn.Exec(ctx, updateUserRole, existDomain.ID, user.ID)
 	if err != nil || forceErr == "UpdateUserRole" {
 		q.Err = fmt.Errorf("failed to update user role: %w", err)
 		z.Error(q.Err.Error())
@@ -756,7 +916,7 @@ func (h *handler) HandleRegisterByEmail(ctx context.Context) {
 
 	user.Category = "sys^user"
 	user.Status = null.NewString("00", true)
-	user.Domains = []null.String{null.StringFrom(DomainStudent)}
+	user.Domains = []null.String{null.StringFrom(cmn.RoleName(cmn.CDomainAssessStudent))}
 
 	pgxConn := cmn.GetPgxConn()
 
