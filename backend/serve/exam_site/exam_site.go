@@ -1216,10 +1216,10 @@ func examSite(ctx context.Context) {
 		userToken = fmt.Sprintf("%x", b2)
 
 		// 注册考点服务器系统账号，用于给考点服务器与中心服务器进行http通信验证
-		sqlStr := `INSERT INTO t_user (category, type, official_name, account, user_token, creator)
-		VALUES ('sys^admin', '08', $1, $2, crypt($3,gen_salt('bf')), 1000)
+		sqlStr := fmt.Sprintf(`INSERT INTO t_user (category, type, official_name, account, user_token, creator, role)
+		VALUES ('sys^admin', '08', $1, $2, crypt($3,gen_salt('bf')), 1000, %d)
 		RETURNING 
-			id`
+			id`, cmn.CDomainAssessExamSite)
 
 		var stmt1 *sql.Stmt
 		stmt1, q.Err = tx.Prepare(sqlStr)
