@@ -20,8 +20,45 @@ var (
 )
 
 func TestAddRegister(t *testing.T) {
+	if z == nil {
+		cmn.ConfigureForTest()
+	}
+	db := cmn.GetPgxConn()
+	reigsterName := "单元测试报名计划名"
+	var uid int64
+	uid = 10086
+	s := `DELETE FROM assessuser.t_register_plan `
+	_, err := db.Exec(ctx, s)
+	if err != nil {
+		t.Fatal(err.Error())
+		return
+	}
+	s = `DELETE FROM assessuser.t_register_practice`
+	_, err = db.Exec(ctx, s)
+	if err != nil {
+		t.Fatal(err.Error())
+		return
+	}
+	s = `DELETE FROM assessuser.t_exam_plan_student`
+	_, err = db.Exec(ctx, s)
+	if err != nil {
+		t.Fatal(err.Error())
+		return
+	}
+	s = `DELETE FROM assessuser.t_practice_student`
+	_, err = db.Exec(ctx, s)
+	if err != nil {
+		t.Fatal(err.Error())
+		return
+	}
+	s = `DELETE FROM assessuser.t_practice`
+	_, err = db.Exec(ctx, s)
+	if err != nil {
+		t.Fatal(err.Error())
+		return
+	}
+
 	type args struct {
-		ctx          context.Context
 		registration *cmn.TRegisterPlan
 		practiceIds  []int64
 		userID       int64
@@ -31,7 +68,9 @@ func TestAddRegister(t *testing.T) {
 		args    args
 		wantErr bool
 	}{
-		// TODO: Add test cases.
+		{
+			name: "正确传入",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -40,6 +79,24 @@ func TestAddRegister(t *testing.T) {
 			}
 		})
 	}
+	t.Cleanup(func() {
+		//去除之前创建的所有数据
+		s := `DELETE FROM assessuser.t_register_plan`
+		_, err := db.Exec(ctx, s)
+		if err != nil {
+			t.Fatal(err.Error())
+		}
+		s = `DELETE FROM assessuser.t_register_practice`
+		_, err = db.Exec(ctx, s)
+		if err != nil {
+			t.Fatal(err.Error())
+		}
+		s = `DELETE FROM assessuser.t_exam_plan_student`
+		_, err = db.Exec(ctx, s)
+		if err != nil {
+			t.Fatal(err.Error())
+		}
+	})
 }
 
 func TestDeleteRegisterPracticeStudent(t *testing.T) {

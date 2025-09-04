@@ -16,7 +16,7 @@ import (
 )
 
 // 教师查看报名计划列表
-func ListRegisterT(ctx context.Context, name string, course string, status string, orderBy []string, page int, pageSize int, userID int64) ([]Map, int, error) {
+func ListRegisterT(ctx context.Context, name string, course string, status string, orderBy []string, page int, pageSize int, userID int64, searchType string) ([]Map, int, error) {
 	result := make([]Map, 0)
 	// 用于测试，强制执行某些错误分支
 	forceErr, _ := ctx.Value("force-error").(string)
@@ -34,14 +34,21 @@ func ListRegisterT(ctx context.Context, name string, course string, status strin
 		clauses = append(clauses, fmt.Sprintf("%s  =$%d", "r.course", len(args)+1))
 		args = append(args, course)
 	}
-	if status != "" {
-		clauses = append(clauses, fmt.Sprintf("%s  =$%d", "r.status", len(args)+1))
-		args = append(args, status)
+
+	if searchType == "02" {
+		clauses = append(clauses, fmt.Sprintf("r.status = $%d", len(args)+1))
+		args = append(args, RegisterStatus.ReviewEnding)
+	} else {
+		if status != "" {
+			clauses = append(clauses, fmt.Sprintf("%s  =$%d", "r.status", len(args)+1))
+			args = append(args, status)
+		}
+		clauses = append(clauses, fmt.Sprintf("r.status != $%d", len(args)+1))
+		args = append(args, RegisterStatus.Deleted)
 	}
-	clauses = append(clauses, fmt.Sprintf("r.status != $%d", len(args)+1))
-	args = append(args, RegisterStatus.Deleted)
 	clauses = append(clauses, fmt.Sprintf("r.creator = $%d", len(args)+1))
 	args = append(args, userID)
+
 	s := `
 	SELECT r.id, r.name , r.course , COALESCE((SELECT COUNT(*) FROM assessuser.t_exam_plan_student eps WHERE eps.register_id=r.id AND eps.status!=$1),0) , r.max_number , r.review_end_time , r.start_time , r.end_time , COALESCE(STRING_AGG(p.name, '、'),'') , r.status ,r.exam_plan_location
 	FROM assessuser.t_register_plan r  LEFT JOIN assessuser.t_register_practice rp ON rp.register_id=r.id AND rp.status=$2
@@ -326,7 +333,7 @@ func StudentRegister(ctx context.Context, registerID int64, status string, Regis
 			z.Error(err.Error())
 			return err
 		}
-		if registerInfo.MaxNumber.Int64 < current+1 {
+		if (registerInfo.MaxNumber.Int64 < current+1) && registerInfo.MaxNumber.Int64 != 0 {
 			err = fmt.Errorf("报名计划人数已满")
 			z.Error(err.Error())
 			return err
@@ -368,7 +375,7 @@ func StudentRegister(ctx context.Context, registerID int64, status string, Regis
 }
 
 // 根据报名计划查询学生列表
-func GetRegisterStudentById(ctx context.Context, registerID int64, message string, registerType string, status string, orderBy []string, page int, pageSize int, userID int64) ([]Map, int, error) {
+func GetRegisterStudentById(ctx context.Context, registerID int64, message string, registerType string, status string, orderBy []string, page int, pageSize int, userID int64, searchType string) ([]Map, int, error) {
 	result := make([]Map, 0)
 	forceErr, _ := ctx.Value("force-error").(string)
 
@@ -376,28 +383,48 @@ func GetRegisterStudentById(ctx context.Context, registerID int64, message strin
 	var clauses []string
 	//构建占位符
 	var args []interface{}
+	var s string
 
-	if message != "" {
-		clauses = append(clauses, fmt.Sprintf("%s LIKE $%d OR %s LIKE $%d OR %s LIKE $%d OR %s LIKE $%d", "u.official_name", len(args)+1,
-			"u.email", len(args)+2, "u.id_card_no", len(args)+3, "u.mobile_phone", len(args)+4))
-		args = append(args, "%"+message+"%", "%"+message+"%", "%"+message+"%", "%"+message+"%")
-	}
-	if registerType != "" {
-		clauses = append(clauses, fmt.Sprintf("%s = $%d", "eps.type", len(args)+1))
-		args = append(args, registerType)
-	}
-	if status != "" {
-		clauses = append(clauses, fmt.Sprintf("%s = $%d", "eps.status", len(args)+1))
-		args = append(args, status)
-	}
-	clauses = append(clauses, fmt.Sprintf("eps.register_id = $%d", len(args)+1))
-	args = append(args, registerID)
-	clauses = append(clauses, fmt.Sprintf("eps.status != $%d", len(args)+1))
-	args = append(args, RegisterStudentStatus.Apply)
-	s := `
-	SELECT u.id ,  u.official_name , u.mobile_phone , u.email , u.gender , u.id_card_no , u.id_card_type , eps.register_time , eps.type , eps.exam_type , COALESCE((SELECT official_name FROM assessuser.t_user WHERE id =eps.reviewer),'') AS reviewer , eps.status
+	if searchType == "00" {
+		if message != "" {
+			clauses = append(clauses, fmt.Sprintf("%s LIKE $%d OR %s LIKE $%d OR %s LIKE $%d OR %s LIKE $%d", "u.official_name", len(args)+1,
+				"u.email", len(args)+2, "u.id_card_no", len(args)+3, "u.mobile_phone", len(args)+4))
+			args = append(args, "%"+message+"%", "%"+message+"%", "%"+message+"%", "%"+message+"%")
+		}
+		if registerType != "" {
+			clauses = append(clauses, fmt.Sprintf("%s = $%d", "eps.type", len(args)+1))
+			args = append(args, registerType)
+		}
+		if status != "" {
+			clauses = append(clauses, fmt.Sprintf("%s = $%d", "eps.status", len(args)+1))
+			args = append(args, status)
+		}
+		clauses = append(clauses, fmt.Sprintf("eps.register_id = $%d", len(args)+1))
+		args = append(args, registerID)
+		clauses = append(clauses, fmt.Sprintf("eps.status != $%d", len(args)+1))
+		args = append(args, RegisterStudentStatus.Apply)
+		s = `
+	SELECT u.id ,  u.official_name , u.mobile_phone , u.email , u.gender , u.id_card_no , u.id_card_type , eps.register_time , eps.type , eps.exam_type , COALESCE((SELECT official_name FROM assessuser.t_user WHERE id =eps.reviewer),'') AS reviewer , eps.status, eps.register_id
 	FROM assessuser.t_user u JOIN assessuser.t_exam_plan_student eps ON eps.student_id =u.id  
 `
+	} else if searchType == "02" {
+		if message != "" {
+			clauses = append(clauses, fmt.Sprintf("%s LIKE $%d OR %s LIKE $%d OR %s LIKE $%d OR %s LIKE $%d", "u.official_name", len(args)+1,
+				"u.email", len(args)+2, "u.id_card_no", len(args)+3, "u.mobile_phone", len(args)+4))
+			args = append(args, "%"+message+"%", "%"+message+"%", "%"+message+"%", "%"+message+"%")
+		}
+		if registerType != "" {
+			clauses = append(clauses, fmt.Sprintf("%s = $%d", "eps.type", len(args)+1))
+			args = append(args, registerType)
+		}
+		clauses = append(clauses, fmt.Sprintf("%s = $%d", "eps.status  ", len(args)+1))
+		args = append(args, RegisterStudentStatus.Approved)
+		clauses = append(clauses, fmt.Sprintf("eps.register_id = $%d", len(args)+1))
+		args = append(args, registerID)
+		clauses = append(clauses, fmt.Sprintf("NOT EXISTS (SELECT 1 FROM assessuser.t_exam_student es WHERE es.exam_plan_student_id = eps.id)"))
+		s = `SELECT u.id ,  u.official_name , u.mobile_phone , u.email , u.gender , u.id_card_no , u.id_card_type , eps.register_time , eps.type , eps.exam_type , COALESCE((SELECT official_name FROM assessuser.t_user WHERE id =eps.reviewer),'') AS reviewer , eps.status ,eps.register_id
+	FROM assessuser.t_user u JOIN assessuser.t_exam_plan_student eps ON eps.student_id =u.id  `
+	}
 	if len(clauses) > 0 {
 		s += "WHERE " + strings.Join(clauses, " AND ")
 	}
@@ -430,7 +457,7 @@ func GetRegisterStudentById(ctx context.Context, registerID int64, message strin
 		var student cmn.TUser
 		var planStudent cmn.TExamPlanStudent
 		var reviewer string
-		err = rows.Scan(&student.ID, &student.OfficialName, &student.MobilePhone, &student.Email, &student.Gender, &student.IDCardNo, &student.IDCardType, &planStudent.RegisterTime, &planStudent.Type, &planStudent.ExamType, &reviewer, &planStudent.Status)
+		err = rows.Scan(&student.ID, &student.OfficialName, &student.MobilePhone, &student.Email, &student.Gender, &student.IDCardNo, &student.IDCardType, &planStudent.RegisterTime, &planStudent.Type, &planStudent.ExamType, &reviewer, &planStudent.Status, &planStudent.RegisterID)
 		if err != nil || forceErr == "scan" {
 			err = fmt.Errorf("解析数据失败:%v", err)
 			z.Error(err.Error())
