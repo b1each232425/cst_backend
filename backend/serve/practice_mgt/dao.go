@@ -1231,7 +1231,7 @@ func EnterPracticeGetPaperDetails(ctx context.Context, tx pgx.Tx, pid int64, uid
 				p.UpdateTime = null.IntFrom(now)
 				p.Status = null.StringFrom("00")
 				p.TotalScore = null.FloatFrom(6)
-				p.QuestionCount = null.IntFrom(2)
+				p.QuestionCount = null.FloatFrom(2)
 
 				groupMap := make(map[int64]*cmn.TExamPaperGroup)
 				groupMap[int64(200)] = &cmn.TExamPaperGroup{
@@ -1333,7 +1333,7 @@ func EnterPracticeGetPaperDetails(ctx context.Context, tx pgx.Tx, pid int64, uid
 				p.UpdateTime = null.IntFrom(now)
 				p.Status = null.StringFrom("00")
 				p.TotalScore = null.FloatFrom(6)
-				p.QuestionCount = null.IntFrom(2)
+				p.QuestionCount = null.FloatFrom(2)
 
 				groupMap := make(map[int64]*cmn.TExamPaperGroup)
 				groupMap[int64(200)] = &cmn.TExamPaperGroup{
@@ -1532,7 +1532,7 @@ func EnterPracticeGetPaperDetails(ctx context.Context, tx pgx.Tx, pid int64, uid
 	}
 	epInfo.PracticeSubmissionID = pSubmissionID
 	epInfo.PaperName = ps.PaperName.String
-	epInfo.QuestionCount = p.QuestionCount.Int64
+	epInfo.QuestionCount = int64(p.QuestionCount.Float64)
 	epInfo.TotalScore = p.TotalScore.Float64
 	epInfo.GroupCount = p.GroupCount.Int64
 	epInfo.Duration = ps.SuggestedDuration.Int64
