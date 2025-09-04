@@ -14,6 +14,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"runtime/debug"
 	"strconv"
 	"strings"
 	"testing"
@@ -2554,6 +2555,16 @@ func TestExamPostMethod(t *testing.T) {
 			checkResult:   false,
 		},
 		{
+			name:          "强制获取用户权限错误",
+			forceError:    "auth_mgt.GetUserAuthority",
+			expectedError: true,
+			errorContains: "强制获取用户权限错误",
+			description:   "强制获取用户权限错误",
+			userID:        userID,
+			userRole:      2002,
+			checkResult:   false,
+		},
+		{
 			name:          "无效用户ID-零值",
 			forceError:    "",
 			expectedError: true,
@@ -3159,6 +3170,144 @@ func TestExamPutMethod(t *testing.T) {
 			forceError:    "getExamSessionIDs",
 			expectedError: true,
 			errorContains: "强制获取旧考试场次ID错误",
+			checkResult:   false,
+		},
+		{
+			name:        "强制执行批量插入考试学生错误",
+			description: "强制执行批量插入考试学生错误",
+			userID:      testAcademicAffair,
+			userRole:    2002,
+			requestBodyGen: func() interface{} {
+				data := validExamData
+				data.ExamInfo.ID = null.IntFrom(testExamToPublishID)
+				return data
+			},
+			forceError:    "tx.InsertExamStudents",
+			expectedError: true,
+			errorContains: "强制执行批量插入考试学生错误",
+			checkResult:   false,
+		},
+		{
+			name:        "强制回滚到保存点错误",
+			description: "强制回滚到保存点错误",
+			userID:      testAcademicAffair,
+			userRole:    2002,
+			requestBodyGen: func() interface{} {
+				data := validExamData
+				data.ExamInfo.ID = null.IntFrom(testExamToPublishID)
+				return data
+			},
+			forceError:    "conflict-tx.RollbackToSavePoint",
+			expectedError: true,
+			errorContains: "强制回滚到保存点错误",
+			checkResult:   false,
+		},
+		{
+			name:        "强制查询冲突考生错误",
+			description: "强制查询冲突考生错误",
+			userID:      testAcademicAffair,
+			userRole:    2002,
+			requestBodyGen: func() interface{} {
+				data := validExamData
+				data.ExamInfo.ID = null.IntFrom(testExamToPublishID)
+				return data
+			},
+			forceError:    "conflict-findConflictingExamStudents",
+			expectedError: true,
+			errorContains: "强制查询冲突考生错误",
+			checkResult:   false,
+		},
+		{
+			name:        "强制序列化冲突考生错误",
+			description: "强制序列化冲突考生错误",
+			userID:      testAcademicAffair,
+			userRole:    2002,
+			requestBodyGen: func() interface{} {
+				data := validExamData
+				data.ExamInfo.ID = null.IntFrom(testExamToPublishID)
+				return data
+			},
+			forceError:    "conflict-json.Marshal",
+			expectedError: true,
+			errorContains: "强制序列化冲突考生错误",
+			checkResult:   false,
+		},
+		{
+			name:        "强制查询冲突考生错误",
+			description: "强制查询冲突考生错误",
+			userID:      testAcademicAffair,
+			userRole:    2002,
+			requestBodyGen: func() interface{} {
+				data := validExamData
+				data.ExamInfo.ID = null.IntFrom(testExamToPublishID)
+				data.Examinees = []Examinee{
+					{
+						ID:                testStudent1,
+						ExamPlanStudentID: null.IntFrom(testExamPlanStudentID),
+					},
+				}
+				return data
+			},
+			forceError:    "findConflictingExamStudents",
+			expectedError: true,
+			errorContains: "强制查询冲突考生错误",
+			checkResult:   false,
+		},
+		{
+			name:        "部分考生已被其他考试选取1",
+			description: "部分考生已被其他考试选取",
+			userID:      testAcademicAffair,
+			userRole:    2002,
+			requestBodyGen: func() interface{} {
+				data := validExamData
+				data.ExamInfo.ID = null.IntFrom(testExamToPublishID)
+				data.Examinees = []Examinee{
+					{
+						ID:                testStudent1,
+						ExamPlanStudentID: null.IntFrom(testExamPlanStudentID),
+					},
+				}
+				return data
+			},
+			forceError:    "conflict",
+			expectedError: true,
+			errorContains: "部分考生已被其他考试选取",
+			checkResult:   false,
+		},
+		{
+			name:        "部分考生已被其他考试选取2",
+			description: "部分考生已被其他考试选取",
+			userID:      testAcademicAffair,
+			userRole:    2002,
+			requestBodyGen: func() interface{} {
+				data := validExamData
+				data.ExamInfo.ID = null.IntFrom(testExamToPublishID)
+				return data
+			},
+			forceError:    "conflict",
+			expectedError: true,
+			errorContains: "部分考生已被其他考试选取",
+			checkResult:   false,
+		},
+		{
+			name:        "查询到已冲突的考生-强制序列化冲突考生错误",
+			description: "查询到已冲突的考生-强制序列化冲突考生错误",
+			userID:      testAcademicAffair,
+			userRole:    2002,
+			requestBodyGen: func() interface{} {
+				data := validExamData
+				data.ExamInfo.ID = null.IntFrom(testExamToPublishID)
+				data.Examinees = []Examinee{
+					{
+						ID:                testStudent1,
+						ExamPlanStudentID: null.IntFrom(testExamPlanStudentID),
+					},
+				}
+				return data
+			},
+			forceError:    "json.Marshal-examinees",
+			expectedError: true,
+			errorContains: "强制序列化冲突考生错误",
 			checkResult:   false,
 		},
 		{
@@ -4053,7 +4202,9 @@ func TestExamPutMethod(t *testing.T) {
 			func() {
 				defer func() {
 					if r := recover(); r != nil {
+
 						t.Errorf("exam() 意外panic: %v", r)
+						debug.PrintStack()
 					}
 				}()
 
@@ -5486,6 +5637,16 @@ func TestExamList(t *testing.T) {
 			description:   "教务员角色-默认查询 Query错误",
 		},
 		{
+			name:          "强制获取用户权限错误",
+			method:        "GET",
+			queryParams:   "",
+			userID:        testAcademicAffair,
+			userRole:      2002, // 教务员角色
+			expectedError: true,
+			forceError:    "auth_mgt.GetUserAuthority",
+			description:   "强制获取用户权限错误",
+		},
+		{
 			name:          "教师角色-默认查询 Scan错误",
 			method:        "GET",
 			queryParams:   "",
@@ -5905,6 +6066,19 @@ func TestExaminee(t *testing.T) {
 			description: "教师角色成功获取考生列表",
 		},
 		{
+			name:   "GET方法-强制获取用户权限错误",
+			method: "GET",
+			queryParams: map[string]string{
+				"exam_id": fmt.Sprintf("%d", testNormalExamID),
+			},
+			userID:        testAcademicAffair,
+			userRole:      2003, // 教师角色
+			forceError:    "auth_mgt.GetUserAuthority",
+			expectedError: true,
+			mockValues:    map[string]string{"test": "validateUserExamPermission-error"},
+			description:   "强制获取用户权限错误",
+		},
+		{
 			name:   "GET方法-获取权限失败",
 			method: "GET",
 			queryParams: map[string]string{
@@ -6231,6 +6405,17 @@ func TestExamStatus(t *testing.T) {
 			queryParams:   fmt.Sprintf(`q={"data":{"IDs":[%d],"Status":"02"}}`, testPublishedExamID),
 			expectSuccess: false,
 			errorContains: "尝试发布不属于未发布状态的考试",
+		},
+		{
+			name:          "强制获取用户权限错误",
+			description:   "强制获取用户权限错误",
+			examID:        testPublishedExamID,
+			userID:        testAcademicAffair,
+			forceError:    "auth_mgt.GetUserAuthority",
+			userRole:      2002,
+			queryParams:   fmt.Sprintf(`q={"data":{"IDs":[%d],"Status":"02"}}`, testPublishedExamID),
+			expectSuccess: false,
+			errorContains: "强制获取用户权限错误",
 		},
 		{
 			name:          "作废考试时更新考生状态失败",
@@ -7878,6 +8063,17 @@ func TestExamLock(t *testing.T) {
 			userRole:      2002,
 		},
 		{
+			name:          "GET-强制获取用户权限错误",
+			method:        "GET",
+			queryParams:   fmt.Sprintf("exam_id=%d", testNormalExamID),
+			forceError:    "auth_mgt.GetUserAuthority",
+			expectedError: true,
+			errorContains: "强制获取用户权限错误",
+			description:   "强制获取用户权限错误",
+			userID:        testAcademicAffair,
+			userRole:      2002,
+		},
+		{
 			name:          "GET-用户权限验证失败",
 			method:        "GET",
 			queryParams:   fmt.Sprintf("exam_id=%d", testNormalExamID),
@@ -8613,6 +8809,17 @@ func TestExamUser(t *testing.T) {
 			description:   "缺少查询参数q应返回错误",
 		},
 		{
+			name:          "强制获取用户权限错误",
+			method:        "GET",
+			forceError:    "auth_mgt.GetUserAuthority",
+			queryParams:   fmt.Sprintf(`q={"data":{"UserIDs":[%d]}}`, 99999),
+			userID:        testAcademicAffair,
+			userRole:      2002,
+			expectedError: true,
+			errorContains: "强制获取用户权限错误",
+			description:   "强制获取用户权限错误",
+		},
+		{
 			name:          "不支持的HTTP方法-POST",
 			method:        "POST",
 			queryParams:   "",
@@ -8868,6 +9075,21 @@ func TestExamFile(t *testing.T) {
 			forceError:  "io.Close",
 			expectError: false,
 			description: "io关闭错误",
+			userID:      testAcademicAffair,
+			userRole:    2002,
+		},
+		{
+			name:   "POST-强制获取用户权限错误",
+			method: "POST",
+			examFile: ExamFile{
+				ExamID:   testNormalExamID,
+				CheckSum: testFile1CheckSum,
+				Name:     "新考试文件.txt",
+				Size:     int64(len(testFile1Content)),
+			},
+			forceError:  "auth_mgt.GetUserAuthority",
+			expectError: true,
+			description: "强制获取用户权限错误",
 			userID:      testAcademicAffair,
 			userRole:    2002,
 		},
