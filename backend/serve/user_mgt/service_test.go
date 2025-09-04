@@ -3079,8 +3079,8 @@ func Test_service_GenerateUniqueAccount_WithTransaction(t *testing.T) {
 	}
 }
 
-// Test_service_ValidateUser 测试ValidateUserToBeInsert方法
-func Test_service_ValidateUser(t *testing.T) {
+// Test_service_ValidateUserToBeInsert 测试ValidateUserToBeInsert方法
+func Test_service_ValidateUserToBeInsert(t *testing.T) {
 	srv := NewService()
 
 	type args struct {
@@ -3996,8 +3996,8 @@ func Test_service_ValidateUser(t *testing.T) {
 	}
 }
 
-// Test_service_ValidateUser_WithTransaction 测试ValidateUserToBeInsert方法（启用事务）
-func Test_service_ValidateUser_WithTransaction(t *testing.T) {
+// Test_service_ValidateUserToBeInsert_WithTransaction 测试ValidateUserToBeInsert方法（启用事务）
+func Test_service_ValidateUserToBeInsert_WithTransaction(t *testing.T) {
 	srv := NewService()
 
 	ctx := context.Background()
@@ -4040,7 +4040,7 @@ func Test_service_ValidateUser_WithTransaction(t *testing.T) {
 					{
 						TUser: cmn.TUser{
 							Account:      "new_user_001",
-							OfficialName: null.NewString("新用户001_Test_service_ValidateUser_WithTransaction", true),
+							OfficialName: null.NewString("新用户001_Test_service_ValidateUserToBeInsert_WithTransaction", true),
 							Email:        null.NewString("new001ValidateUser_WithTransaction@example.com", true),
 						},
 						Domains: []null.String{
@@ -4050,7 +4050,7 @@ func Test_service_ValidateUser_WithTransaction(t *testing.T) {
 					{
 						TUser: cmn.TUser{
 							Account:      "new_user_002",
-							OfficialName: null.NewString("新用户002_Test_service_ValidateUser_WithTransaction", true),
+							OfficialName: null.NewString("新用户002_Test_service_ValidateUserToBeInsert_WithTransaction", true),
 							MobilePhone:  null.NewString("13900139222", true),
 						},
 						Domains: []null.String{
@@ -4258,6 +4258,1003 @@ func Test_service_ValidateUser_WithTransaction(t *testing.T) {
 			for i, user := range gotExisting {
 				if user.Account != tt.wantExisting[i].Account {
 					t.Errorf("ValidateUserToBeInsert() gotExisting[%d].Account = %v, want %v", i, user.Account, tt.wantExisting[i].Account)
+				}
+			}
+		})
+	}
+}
+
+// ValidateUserToBeUpdate 函数的测试
+func Test_service_ValidateUserToBeUpdate(t *testing.T) {
+	srv := NewService()
+
+	type args struct {
+		ctx   context.Context
+		tx    pgx.Tx
+		users []User
+	}
+	tests := []struct {
+		name        string
+		args        args
+		wantValid   []User
+		wantInvalid []User
+		wantErr     bool
+	}{
+		{
+			name: "空用户列表",
+			args: args{
+				ctx:   context.Background(),
+				tx:    nil,
+				users: []User{},
+			},
+			wantValid:   []User{},
+			wantInvalid: []User{},
+			wantErr:     true,
+		},
+		{
+			name: "所有用户都有效",
+			args: args{
+				ctx: context.Background(),
+				tx:  nil,
+				users: []User{
+					{
+						TUser: cmn.TUser{
+							ID:           null.NewInt(1001, true),
+							Account:      "update_user_001",
+							OfficialName: null.NewString("更新用户001", true),
+							Email:        null.NewString("update001@example.com", true),
+						},
+						Domains: []null.String{
+							null.NewString("assess^teacher", true),
+						},
+					},
+					{
+						TUser: cmn.TUser{
+							ID:           null.NewInt(1002, true),
+							Account:      "update_user_002",
+							OfficialName: null.NewString("更新用户002", true),
+							MobilePhone:  null.NewString("13900139222", true),
+						},
+						Domains: []null.String{
+							null.NewString("assess^teacher", true),
+						},
+					},
+				},
+			},
+			wantValid: []User{
+				{
+					TUser: cmn.TUser{
+						ID:           null.NewInt(1001, true),
+						Account:      "update_user_001",
+						OfficialName: null.NewString("更新用户001", true),
+						Email:        null.NewString("update001@example.com", true),
+					},
+					Domains: []null.String{
+						null.NewString("assess^teacher", true),
+					},
+				},
+				{
+					TUser: cmn.TUser{
+						ID:           null.NewInt(1002, true),
+						Account:      "update_user_002",
+						OfficialName: null.NewString("更新用户002", true),
+						MobilePhone:  null.NewString("13900139222", true),
+					},
+					Domains: []null.String{
+						null.NewString("assess^teacher", true),
+					},
+				},
+			},
+			wantInvalid: []User{},
+			wantErr:     false,
+		},
+		{
+			name: "缺少用户ID",
+			args: args{
+				ctx: context.Background(),
+				tx:  nil,
+				users: []User{
+					{
+						TUser: cmn.TUser{
+							Account:      "update_user_001",
+							OfficialName: null.NewString("更新用户001", true),
+							Email:        null.NewString("update001@example.com", true),
+						},
+						Domains: []null.String{
+							null.NewString("assess^teacher", true),
+						},
+					},
+				},
+			},
+			wantValid: nil,
+			wantInvalid: []User{
+				{
+					TUser: cmn.TUser{
+						Account:      "update_user_001",
+						OfficialName: null.NewString("更新用户001", true),
+						Email:        null.NewString("update001@example.com", true),
+					},
+					Domains: []null.String{
+						null.NewString("assess^teacher", true),
+					},
+					ErrorMsg: []null.String{
+						null.NewString("用户ID不能为空", true),
+					},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "手机号不符合E.164标准",
+			args: args{
+				ctx: context.Background(),
+				users: []User{
+					{
+						TUser: cmn.TUser{
+							ID:          null.IntFrom(1),
+							Account:     "zhangsanyes",
+							MobilePhone: null.NewString("+113900139000", true),
+						},
+						Domains: []null.String{
+							null.NewString("assess^teacher", true),
+						},
+					},
+				},
+			},
+			wantValid: nil,
+			wantInvalid: []User{
+				{
+					TUser: cmn.TUser{
+						ID:          null.IntFrom(1),
+						Account:     "zhangsanyes",
+						MobilePhone: null.NewString("+113900139000", true),
+					},
+					ErrorMsg: []null.String{
+						null.NewString("手机号不符合地区规则", true),
+					},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "E.164标准的澳门手机号",
+			args: args{
+				ctx: context.Background(),
+				users: []User{
+					{
+						TUser: cmn.TUser{
+							ID:          null.IntFrom(1),
+							Account:     "zhangsanyes",
+							MobilePhone: null.NewString("+85366123456", true),
+						},
+						Domains: []null.String{
+							null.NewString("assess^teacher", true),
+						},
+					},
+				},
+			},
+			wantValid: []User{
+				{
+					TUser: cmn.TUser{
+						ID:          null.IntFrom(1),
+						Account:     "zhangsanyes",
+						MobilePhone: null.NewString("+85366123456", true),
+					},
+					ErrorMsg: []null.String{},
+				},
+			},
+			wantInvalid: nil,
+			wantErr:     false,
+		},
+		{
+			name: "E.164标准的澳门手机号｜带特殊符号",
+			args: args{
+				ctx: context.Background(),
+				users: []User{
+					{
+						TUser: cmn.TUser{
+							ID:          null.IntFrom(1),
+							Account:     "zhangsanyes",
+							MobilePhone: null.NewString("+853*&6612@3456", true),
+						},
+						Domains: []null.String{
+							null.NewString("assess^teacher", true),
+						},
+					},
+				},
+			},
+			wantValid: nil,
+			wantInvalid: []User{
+				{
+					TUser: cmn.TUser{
+						ID:          null.IntFrom(1),
+						Account:     "zhangsanyes",
+						MobilePhone: null.NewString("+85366123456", true),
+					},
+					ErrorMsg: []null.String{
+						null.NewString("手机号格式非法", true),
+						null.NewString("手机号不符合地区规则", true),
+					},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "E.164标准的澳门手机号｜带空格",
+			args: args{
+				ctx: context.Background(),
+				users: []User{
+					{
+						TUser: cmn.TUser{
+							ID:          null.IntFrom(1),
+							Account:     "zhangsanyes",
+							MobilePhone: null.NewString("+853 661 234 56", true),
+						},
+						Domains: []null.String{
+							null.NewString("assess^teacher", true),
+						},
+					},
+				},
+			},
+			wantValid: []User{
+				{
+					TUser: cmn.TUser{
+						ID:          null.IntFrom(1),
+						Account:     "zhangsanyes",
+						MobilePhone: null.NewString("+853 661 234 56", true),
+					},
+					ErrorMsg: []null.String{},
+				},
+			},
+			wantInvalid: nil,
+			wantErr:     false,
+		},
+		{
+			name: "E.164标准的澳门手机号｜带短横线",
+			args: args{
+				ctx: context.Background(),
+				users: []User{
+					{
+						TUser: cmn.TUser{
+							ID:          null.IntFrom(1),
+							Account:     "zhangsanyes",
+							MobilePhone: null.NewString("+853-661-234-56", true),
+						},
+						Domains: []null.String{
+							null.NewString("assess^teacher", true),
+						},
+					},
+				},
+			},
+			wantValid: []User{
+				{
+					TUser: cmn.TUser{
+						ID:          null.IntFrom(1),
+						Account:     "zhangsanyes",
+						MobilePhone: null.NewString("+853-661-234-56", true),
+					},
+					ErrorMsg: []null.String{},
+				},
+			},
+			wantInvalid: nil,
+			wantErr:     false,
+		},
+		{
+			name: "不带+的默认地区手机号｜不符合E.164标准",
+			args: args{
+				ctx: context.Background(),
+				users: []User{
+					{
+						TUser: cmn.TUser{
+							ID:          null.IntFrom(1),
+							Account:     "zhangsanyes",
+							MobilePhone: null.NewString("000000001", true),
+						},
+						Domains: []null.String{
+							null.NewString("assess^teacher", true),
+						},
+					},
+				},
+			},
+			wantValid: nil,
+			wantInvalid: []User{
+				{
+					TUser: cmn.TUser{
+						ID:          null.IntFrom(1),
+						Account:     "zhangsanyes",
+						MobilePhone: null.NewString("000000001", true),
+					},
+					ErrorMsg: []null.String{
+						null.NewString("手机号不符合地区规则", true),
+					},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "不带+的默认地区手机号｜不符合E.164标准|带特殊符号",
+			args: args{
+				ctx: context.Background(),
+				users: []User{
+					{
+						TUser: cmn.TUser{
+							ID:          null.IntFrom(1),
+							Account:     "zhangsanyes",
+							MobilePhone: null.NewString("08536¥%612*3456", true),
+						},
+						Domains: []null.String{
+							null.NewString("assess^teacher", true),
+						},
+					},
+				},
+			},
+			wantValid: nil,
+			wantInvalid: []User{
+				{
+					TUser: cmn.TUser{
+						ID:          null.IntFrom(1),
+						Account:     "zhangsanyes",
+						MobilePhone: null.NewString("08536¥%612*3456", true),
+					},
+					ErrorMsg: []null.String{
+						null.NewString("手机号格式非法", true),
+						null.NewString("手机号不符合地区规则", true),
+					},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "不带+的默认地区手机号｜符合E.164标准",
+			args: args{
+				ctx: context.Background(),
+				users: []User{
+					{
+						TUser: cmn.TUser{
+							ID:          null.IntFrom(1),
+							Account:     "zhangsanyes",
+							MobilePhone: null.NewString("13928163728", true),
+						},
+						Domains: []null.String{
+							null.NewString("assess^teacher", true),
+						},
+					},
+				},
+			},
+			wantValid: []User{
+				{
+					TUser: cmn.TUser{
+						ID:          null.IntFrom(1),
+						Account:     "zhangsanyes",
+						MobilePhone: null.NewString("13928163728", true),
+					},
+					ErrorMsg: []null.String{},
+				},
+			},
+			wantInvalid: nil,
+			wantErr:     false,
+		},
+		{
+			name: "不带+的默认地区手机号｜符合E.164标准｜带空格",
+			args: args{
+				ctx: context.Background(),
+				users: []User{
+					{
+						TUser: cmn.TUser{
+							ID:          null.IntFrom(1),
+							Account:     "zhangsanyes",
+							MobilePhone: null.NewString("13 9281 637 28", true),
+						},
+						Domains: []null.String{
+							null.NewString("assess^teacher", true),
+						},
+					},
+				},
+			},
+			wantValid: []User{
+				{
+					TUser: cmn.TUser{
+						ID:          null.IntFrom(1),
+						Account:     "zhangsanyes",
+						MobilePhone: null.NewString("13 9281 637 28", true),
+					},
+					ErrorMsg: []null.String{},
+				},
+			},
+			wantInvalid: nil,
+			wantErr:     false,
+		},
+		{
+			name: "不带+的默认地区手机号｜符合E.164标准｜带短横线",
+			args: args{
+				ctx: context.Background(),
+				users: []User{
+					{
+						TUser: cmn.TUser{
+							ID:          null.IntFrom(1),
+							Account:     "zhangsanyes",
+							MobilePhone: null.NewString("139-2816-3728", true),
+						},
+						Domains: []null.String{
+							null.NewString("assess^teacher", true),
+						},
+					},
+				},
+			},
+			wantValid: []User{
+				{
+					TUser: cmn.TUser{
+						ID:          null.IntFrom(1),
+						Account:     "zhangsanyes",
+						MobilePhone: null.NewString("139-2816-3728", true),
+					},
+					ErrorMsg: []null.String{},
+				},
+			},
+			wantInvalid: nil,
+			wantErr:     false,
+		},
+		{
+			name: "手机号valid=true但为空字符串",
+			args: args{
+				ctx: context.Background(),
+				users: []User{
+					{
+						TUser: cmn.TUser{
+							ID:          null.IntFrom(1),
+							Account:     "zhangsanyes",
+							MobilePhone: null.NewString("", true),
+						},
+						Domains: []null.String{
+							null.NewString("assess^teacher", true),
+						},
+					},
+				},
+			},
+			wantValid: nil,
+			wantInvalid: []User{
+				{
+					TUser: cmn.TUser{
+						ID:          null.IntFrom(1),
+						Account:     "zhangsanyes",
+						MobilePhone: null.NewString("", true),
+					},
+					ErrorMsg: []null.String{
+						null.NewString("无法检测到手机号", true),
+						null.NewString("手机号格式非法", true),
+						null.NewString("手机号不符合地区规则", true),
+					},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "手机号已存在",
+			args: args{
+				ctx: context.Background(),
+				users: []User{
+					{
+						TUser: cmn.TUser{
+							ID:          null.IntFrom(1),
+							Account:     "zhangsanyes",
+							MobilePhone: null.NewString("+8613700137003", true),
+						},
+						Domains: []null.String{
+							null.NewString("assess^teacher", true),
+						},
+					},
+				},
+			},
+			wantValid: nil,
+			wantInvalid: []User{
+				{
+					TUser: cmn.TUser{
+						ID:          null.IntFrom(1),
+						Account:     "zhangsanyes",
+						MobilePhone: null.NewString("+8613700137003", true),
+					},
+					ErrorMsg: []null.String{
+						null.NewString("手机号已存在", true),
+					},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "邮箱格式不合法",
+			args: args{
+				ctx: context.Background(),
+				tx:  nil,
+				users: []User{
+					{
+						TUser: cmn.TUser{
+							ID:      null.NewInt(1004, true),
+							Account: "update_user_004",
+							Email:   null.NewString("invalid-email", true),
+						},
+						Domains: []null.String{
+							null.NewString("assess^teacher", true),
+						},
+					},
+				},
+			},
+			wantValid: nil,
+			wantInvalid: []User{
+				{
+					TUser: cmn.TUser{
+						Account: "update_user_004",
+						Email:   null.NewString("invalid-email", true),
+					},
+					ErrorMsg: []null.String{
+						null.NewString("邮箱格式不正确", true),
+					},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "邮箱已存在",
+			args: args{
+				ctx: context.Background(),
+				tx:  nil,
+				users: []User{
+					{
+						TUser: cmn.TUser{
+							ID:      null.NewInt(1004, true),
+							Account: "update_user_004",
+							Email:   null.NewString("zhangsan@example.com", true),
+						},
+						Domains: []null.String{
+							null.NewString("assess^teacher", true),
+						},
+					},
+				},
+			},
+			wantValid: nil,
+			wantInvalid: []User{
+				{
+					TUser: cmn.TUser{
+						ID:      null.NewInt(1004, true),
+						Account: "update_user_004",
+						Email:   null.NewString("zhangsan@example.com", true),
+					},
+					ErrorMsg: []null.String{
+						null.NewString("邮箱已存在", true),
+					},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "CheckTUserRowExists_email错误",
+			args: args{
+				ctx: context.WithValue(context.Background(), "force-error", "CheckTUserRowExists_email"),
+				tx:  nil,
+				users: []User{
+					{
+						TUser: cmn.TUser{
+							ID:           null.NewInt(1001, true),
+							Account:      "update_user_001",
+							OfficialName: null.NewString("更新用户001", true),
+							Email:        null.NewString("update001@example.com", true),
+						},
+						Domains: []null.String{
+							null.NewString("assess^teacher", true),
+						},
+					},
+				},
+			},
+			wantValid:   nil,
+			wantInvalid: nil,
+			wantErr:     true,
+		},
+		{
+			name: "证件类型不合法",
+			args: args{
+				ctx: context.Background(),
+				tx:  nil,
+				users: []User{
+					{
+						TUser: cmn.TUser{
+							ID:         null.NewInt(1005, true),
+							Account:    "update_user_005",
+							IDCardNo:   null.NewString("2324332423412", true),
+							IDCardType: null.NewString("高中毕业证", true),
+						},
+						Domains: []null.String{
+							null.NewString("assess^teacher", true),
+						},
+					},
+				},
+			},
+			wantValid: nil,
+			wantInvalid: []User{
+				{
+					TUser: cmn.TUser{
+						Account:    "update_user_005",
+						IDCardNo:   null.NewString("2324332423412", true),
+						IDCardType: null.NewString("高中毕业证", true),
+					},
+					ErrorMsg: []null.String{
+						null.NewString("证件类型不合法", true),
+					},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "证件号已存在",
+			args: args{
+				ctx: context.Background(),
+				tx:  nil,
+				users: []User{
+					{
+						TUser: cmn.TUser{
+							ID:         null.NewInt(1005, true),
+							Account:    "update_user_005",
+							IDCardNo:   null.NewString("440106199001011234", true),
+							IDCardType: null.NewString("高中毕业证", true),
+						},
+						Domains: []null.String{
+							null.NewString("assess^teacher", true),
+						},
+					},
+				},
+			},
+			wantValid: nil,
+			wantInvalid: []User{
+				{
+					TUser: cmn.TUser{
+						Account:    "update_user_005",
+						IDCardNo:   null.NewString("440106199001011234", true),
+						IDCardType: null.NewString("高中毕业证", true),
+					},
+					ErrorMsg: []null.String{
+						null.NewString("证件类型不合法", true),
+						null.NewString("证件号已存在", true),
+					},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "证件号无证件类型",
+			args: args{
+				ctx: context.Background(),
+				tx:  nil,
+				users: []User{
+					{
+						TUser: cmn.TUser{
+							ID:       null.NewInt(1006, true),
+							Account:  "update_user_006",
+							IDCardNo: null.NewString("110101199003070953", true),
+						},
+						Domains: []null.String{
+							null.NewString("assess^teacher", true),
+						},
+					},
+				},
+			},
+			wantValid: nil,
+			wantInvalid: []User{
+				{
+					TUser: cmn.TUser{
+						Account:  "update_user_006",
+						IDCardNo: null.NewString("110101199003070953", true),
+					},
+					ErrorMsg: []null.String{
+						null.NewString("证件类型不能为空", true),
+					},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "身份证号格式不合法",
+			args: args{
+				ctx: context.Background(),
+				tx:  nil,
+				users: []User{
+					{
+						TUser: cmn.TUser{
+							ID:         null.NewInt(1007, true),
+							Account:    "update_user_007",
+							IDCardNo:   null.NewString("invalid-id-card", true),
+							IDCardType: null.NewString(cmn.CIDCardTypeResidentIdentityCard, true),
+						},
+						Domains: []null.String{
+							null.NewString("assess^teacher", true),
+						},
+					},
+				},
+			},
+			wantValid: nil,
+			wantInvalid: []User{
+				{
+					TUser: cmn.TUser{
+						Account:    "update_user_007",
+						IDCardNo:   null.NewString("invalid-id-card", true),
+						IDCardType: null.NewString(cmn.CIDCardTypeResidentIdentityCard, true),
+					},
+					ErrorMsg: []null.String{
+						null.NewString("非有效证件号", true),
+					},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "证件文件格式不合法",
+			args: args{
+				ctx: context.Background(),
+				tx:  nil,
+				users: []User{
+					{
+						TUser: cmn.TUser{
+							ID:         null.NewInt(1008, true),
+							Account:    "update_user_008",
+							IDCardFile: types.JSONText(`{"invalid":"format"}`),
+						},
+						Domains: []null.String{
+							null.NewString("assess^teacher", true),
+						},
+					},
+				},
+			},
+			wantValid: nil,
+			wantInvalid: []User{
+				{
+					TUser: cmn.TUser{
+						Account:    "update_user_008",
+						IDCardFile: types.JSONText(`{"invalid":"format"}`),
+					},
+					ErrorMsg: []null.String{
+						null.NewString("证件文件格式不合法，必须包含frontImgID和backImgID字段", true),
+					},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "CheckTUserRowExists_id_card_no错误",
+			args: args{
+				ctx: context.WithValue(context.Background(), "force-error", "CheckTUserRowExists_id_card_no"),
+				tx:  nil,
+				users: []User{
+					{
+						TUser: cmn.TUser{
+							ID:       null.NewInt(1001, true),
+							IDCardNo: null.NewString("110101199003070953", true),
+						},
+						Domains: []null.String{
+							null.NewString("assess^teacher", true),
+						},
+					},
+				},
+			},
+			wantValid:   nil,
+			wantInvalid: nil,
+			wantErr:     true,
+		},
+		{
+			name: "角色为空",
+			args: args{
+				ctx: context.Background(),
+				tx:  nil,
+				users: []User{
+					{
+						TUser: cmn.TUser{
+							ID:      null.NewInt(1009, true),
+							Account: "update_user_009",
+						},
+						Domains: []null.String{},
+					},
+				},
+			},
+			wantValid: nil,
+			wantInvalid: []User{
+				{
+					TUser: cmn.TUser{
+						Account: "update_user_009",
+					},
+					ErrorMsg: []null.String{
+						null.NewString("角色不能为空", true),
+					},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "角色为超级管理员",
+			args: args{
+				ctx: context.Background(),
+				tx:  nil,
+				users: []User{
+					{
+						TUser: cmn.TUser{
+							ID:      null.NewInt(1010, true),
+							Account: "update_user_010",
+						},
+						Domains: []null.String{
+							null.NewString("assess^superAdmin", true),
+						},
+					},
+				},
+			},
+			wantValid: nil,
+			wantInvalid: []User{
+				{
+					TUser: cmn.TUser{
+						Account: "update_user_010",
+					},
+					ErrorMsg: []null.String{
+						null.NewString("不允许为超级管理员角色", true),
+					},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "角色不合法",
+			args: args{
+				ctx: context.Background(),
+				tx:  nil,
+				users: []User{
+					{
+						TUser: cmn.TUser{
+							ID:      null.NewInt(1010, true),
+							Account: "update_user_010",
+						},
+						Domains: []null.String{
+							null.NewString("assess^superMan", true),
+						},
+					},
+				},
+			},
+			wantValid: nil,
+			wantInvalid: []User{
+				{
+					TUser: cmn.TUser{
+						Account: "update_user_010",
+					},
+					ErrorMsg: []null.String{
+						null.NewString("角色不合法: assess^superMan", true),
+					},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "IsDomainExist错误",
+			args: args{
+				ctx: context.WithValue(context.Background(), "force-error", "IsDomainExist"),
+				tx:  nil,
+				users: []User{
+					{
+						TUser: cmn.TUser{
+							ID:       null.NewInt(1001, true),
+							IDCardNo: null.NewString("110101199003070953", true),
+						},
+						Domains: []null.String{
+							null.NewString("assess^teacher", true),
+						},
+					},
+				},
+			},
+			wantValid:   nil,
+			wantInvalid: nil,
+			wantErr:     true,
+		},
+		{
+			name: "状态不合法",
+			args: args{
+				ctx: context.Background(),
+				tx:  nil,
+				users: []User{
+					{
+						TUser: cmn.TUser{
+							ID:      null.NewInt(1011, true),
+							Account: "update_user_011",
+							Status:  null.NewString("99", true),
+						},
+						Domains: []null.String{
+							null.NewString("assess^teacher", true),
+						},
+					},
+				},
+			},
+			wantValid: nil,
+			wantInvalid: []User{
+				{
+					TUser: cmn.TUser{
+						Account: "update_user_011",
+						Status:  null.NewString("99", true),
+					},
+					ErrorMsg: []null.String{
+						null.NewString("状态不合法，必须是00、02、04之一", true),
+					},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "强制错误注入",
+			args: args{
+				ctx: context.WithValue(context.Background(), "force-error", "CheckTUserRowExists_mobile_phone"),
+				tx:  nil,
+				users: []User{
+					{
+						TUser: cmn.TUser{
+							ID:          null.NewInt(1012, true),
+							Account:     "update_user_012",
+							MobilePhone: null.NewString("13900139333", true),
+						},
+						Domains: []null.String{
+							null.NewString("assess^teacher", true),
+						},
+					},
+				},
+			},
+			wantValid:   nil,
+			wantInvalid: nil,
+			wantErr:     true,
+		},
+	}
+
+	initTestData()
+	defer clearTestData()
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gotValid, gotInvalid, err := srv.ValidateUserToBeUpdate(tt.args.ctx, tt.args.tx, tt.args.users)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("service.ValidateUserToBeUpdate() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+
+			// 如果期望有错误，则不需要检查返回值
+			if tt.wantErr {
+				return
+			}
+
+			// 检查有效用户列表长度
+			if len(gotValid) != len(tt.wantValid) {
+				t.Errorf("service.ValidateUserToBeUpdate() gotValid length = %v, want %v", len(gotValid), len(tt.wantValid))
+				return
+			}
+
+			// 检查无效用户列表长度
+			if len(gotInvalid) != len(tt.wantInvalid) {
+				t.Errorf("service.ValidateUserToBeUpdate() gotInvalid length = %v, want %v", len(gotInvalid), len(tt.wantInvalid))
+				return
+			}
+
+			// 对于无效用户，检查错误消息
+			for i, invalidUser := range gotInvalid {
+				if i >= len(tt.wantInvalid) {
+					break
+				}
+				expectedUser := tt.wantInvalid[i]
+
+				// 检查账号
+				if invalidUser.Account != expectedUser.Account {
+					t.Errorf("Invalid user account mismatch at index %d: got %v, want %v", i, invalidUser.Account, expectedUser.Account)
+				}
+
+				// 检查错误消息数量
+				if len(invalidUser.ErrorMsg) != len(expectedUser.ErrorMsg) {
+					t.Errorf("Invalid user error message count mismatch at index %d: got %v, want %v", i, len(invalidUser.ErrorMsg), len(expectedUser.ErrorMsg))
+					continue
+				}
+
+				// 检查错误消息内容
+				for j, errMsg := range invalidUser.ErrorMsg {
+					if j >= len(expectedUser.ErrorMsg) {
+						break
+					}
+					if errMsg.String != expectedUser.ErrorMsg[j].String {
+						t.Errorf("Invalid user error message mismatch at index %d,%d: got %v, want %v", i, j, errMsg.String, expectedUser.ErrorMsg[j].String)
+					}
 				}
 			}
 		})

@@ -1181,6 +1181,7 @@ func (r *service) ValidateUserToBeUpdate(ctx context.Context, tx pgx.Tx, users [
 		"not_valid_id_card_no":  "非有效证件号",
 		"id_card_file_invalid":  "证件文件格式不合法，必须包含frontImgID和backImgID字段",
 		"invalid_status":        "状态不合法，必须是00、02、04之一",
+		"miss_user_id":          "用户ID不能为空",
 	}
 
 	for i := range users {
@@ -1188,6 +1189,23 @@ func (r *service) ValidateUserToBeUpdate(ctx context.Context, tx pgx.Tx, users [
 		errorMessage := make([]null.String, 0)
 		errorCount := 0
 		var err error
+
+		// 首先必须有用户ID
+		if !users[i].ID.Valid {
+			errorCount++
+			errorMessage = append(errorMessage, null.StringFrom(errorMessages["miss_user_id"]))
+			invalidUsers = append(invalidUsers, User{
+				TUser: cmn.TUser{
+					Account:      users[i].Account,
+					OfficialName: users[i].OfficialName,
+					MobilePhone:  users[i].MobilePhone,
+					Email:        users[i].Email,
+					IDCardNo:     users[i].IDCardNo,
+				},
+				ErrorMsg: errorMessage,
+			})
+			continue
+		}
 
 		// 如果有传入手机号，先检测并格式化手机号格式
 		if users[i].MobilePhone.Valid {
