@@ -3,7 +3,7 @@
  * @Description: 考卷-答卷数据库层
  * @Date: 2025-07-21 13:14:34
  * @LastEditors: zdl <1311866870@qq.com>
- * @LastEditTime: 2025-08-25 10:52:51
+ * @LastEditTime: 2025-09-04 13:38:04
  */
 package examPaper
 
@@ -656,7 +656,7 @@ func LoadExamPaperDetailByUserId(ctx context.Context, tx pgx.Tx, examPaperId, pS
 				p.UpdateTime = null.IntFrom(now)
 				p.Status = null.StringFrom("00")
 				p.TotalScore = null.FloatFrom(6)
-				p.QuestionCount = null.IntFrom(2)
+				p.QuestionCount = null.FloatFrom(2)
 
 				groupMap := make(map[int64]*cmn.TExamPaperGroup)
 				groupMap[int64(200)] = &cmn.TExamPaperGroup{
