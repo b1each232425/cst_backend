@@ -335,9 +335,7 @@ func gradeSubmissionH(ctx context.Context) {
 	method := strings.ToLower(q.R.Method)
 	switch method {
 	case "patch":
-
 		var err error
-
 		var buf []byte
 		buf, err = io.ReadAll(q.R.Body)
 		if forceErr == "io.ReadAll fail" {

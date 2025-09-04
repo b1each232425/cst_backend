@@ -802,8 +802,8 @@ func UpsertRegisterPractice(ctx context.Context, tx pgx.Tx, registerID int64, pr
 	}
 	//将新增的练习与报名学生进行关联
 	//查询与报名计划相关联的学生
-	t = `SELECT rps.student_id FROM assessuser.t_exam_plan_student eps WHERE eps.register_id AND eps.status NOT IN ($1 ,$2)`
-	rows, err := tx.Query(ctx, t, RegisterStudentStatus.Apply, RegisterStudentStatus.Moved)
+	t = `SELECT eps.student_id FROM assessuser.t_exam_plan_student eps WHERE eps.register_id=$1 AND eps.status NOT IN ($2 ,$3)`
+	rows, err := tx.Query(ctx, t, registerID, RegisterStudentStatus.Apply, RegisterStudentStatus.Moved)
 	if err != nil || forceErr == "query1" {
 		err = fmt.Errorf("查询与报名计划相关联的学生失败:%v", err)
 		z.Error(err.Error())
