@@ -3156,6 +3156,8 @@ func TestExamRoomList(t *testing.T) {
 
 	testUserID := nowTime
 
+	var cleanupTestData func() error
+
 	defaultSetup := func() (err error) {
 
 		for _, p := range permissions {
@@ -3174,13 +3176,19 @@ func TestExamRoomList(t *testing.T) {
 
 		_, err = dbConn.Exec(fmt.Sprintf(`INSERT INTO t_exam_site (id, creator) VALUES (%d, %d)`, nowTime, testUserID))
 		if err != nil {
-			t.Fatalf("failed create exam sit: %v", err)
+			t.Errorf("failed create exam sit: %v", err)
 			return
 		}
 
 		_, err = dbConn.Exec(fmt.Sprintf(`INSERT INTO t_exam_room (name, exam_site, creator, capacity) VALUES ('test-room-%d', %d, %d, %d)`, nowTime, nowTime, testUserID, 30))
 		if err != nil {
-			t.Fatalf("failed create exam room: %v", err)
+			t.Errorf("failed create exam room: %v", err)
+			return
+		}
+
+		cleanupTestData, err = mockExamSiteSyncData(testUserID, nowTime)
+		if err != nil {
+			t.Errorf("failed to mock exam site sync data: %v", err)
 			return
 		}
 
@@ -3231,6 +3239,13 @@ func TestExamRoomList(t *testing.T) {
 			t.Fatalf("failed to remove test domain api: %v", err)
 		}
 
+		if cleanupTestData != nil {
+			err = cleanupTestData()
+			if err != nil {
+				t.Fatalf("failed to clean up test data: %v", err)
+			}
+		}
+
 	}
 
 	tests := []struct {
@@ -3239,8 +3254,8 @@ func TestExamRoomList(t *testing.T) {
 		passExpected bool
 		errWanted    string
 		setup        func() error
+		check        func(q *cmn.ServiceCtx) (err error)
 		cleanup      func()
-		check        func(q *cmn.ServiceCtx, passExpected bool) (err error)
 	}{
 		{
 			name: "获取考场列表失败-无效的HTTP方法",
@@ -3343,6 +3358,201 @@ func TestExamRoomList(t *testing.T) {
 			errWanted:    "",
 			setup:        defaultSetup,
 			cleanup:      defaultCleanup,
+		},
+		{
+			name: "获取考场列表成功-获取指定时间范围内可用的考场",
+			q: &cmn.ServiceCtx{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-room/list",
+				},
+				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-room/list?q=%s`, url.QueryEscape(fmt.Sprintf(`{
+						"page": 1,
+						"pageSize": 10,
+						"orderBy": [
+							{
+								"capacity": "DESC"
+							}
+						],
+						"data": {
+							"examSiteID": 0
+						},
+						"filter": {
+							"name": "",
+							"available": true,
+							"startTime": %d,
+							"endTime":%d
+						}
+					}`, (nowTime+2*60)*1000, (nowTime+14*60)*1000),
+				)), nil),
+				W: httptest.NewRecorder(),
+				Msg: &cmn.ReplyProto{
+					API:    "/api/exam-site/list",
+					Method: "GET",
+				},
+				BeginTime: time.Now(),
+				SysUser: &cmn.TUser{
+					ID:   null.NewInt(1000, true),
+					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+				},
+				Domains: []cmn.TDomain{
+					{
+						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+					},
+				},
+				RedisClient: cmn.GetRedisConn(),
+			},
+			passExpected: true,
+			errWanted:    "",
+			setup:        defaultSetup,
+			check: func(q *cmn.ServiceCtx) (err error) {
+
+				var d []examRoomInfo
+				err = json.Unmarshal(q.Msg.Data, &d)
+				if err != nil {
+					t.Errorf("failed to unmarshal response data: %v", err)
+					return
+				}
+
+				if len(d) < 2 {
+					err = fmt.Errorf("expected get 2 rooms data, got %d", len(d))
+					t.Error(err.Error())
+					return
+				}
+
+				return
+			},
+			cleanup: defaultCleanup,
+		},
+		{
+			name: "获取考场列表失败-传入的开始时间大于结束时间",
+			q: &cmn.ServiceCtx{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-room/list",
+				},
+				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-room/list?q=%s`, url.QueryEscape(fmt.Sprintf(`{
+						"page": 1,
+						"pageSize": 10,
+						"orderBy": [
+							{
+								"capacity": "DESC"
+							}
+						],
+						"data": {
+							"examSiteID": 0
+						},
+						"filter": {
+							"name": "",
+							"available": true,
+							"startTime": %d,
+							"endTime":%d
+						}
+					}`, (nowTime+14*60)*1000, (nowTime+2*60)*1000),
+				)), nil),
+				W: httptest.NewRecorder(),
+				Msg: &cmn.ReplyProto{
+					API:    "/api/exam-site/list",
+					Method: "GET",
+				},
+				BeginTime: time.Now(),
+				SysUser: &cmn.TUser{
+					ID:   null.NewInt(1000, true),
+					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+				},
+				Domains: []cmn.TDomain{
+					{
+						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+					},
+				},
+				RedisClient: cmn.GetRedisConn(),
+			},
+			passExpected: false,
+			errWanted:    fmt.Sprintf(`开始时间不能大于结束时间, 当前开始时间: %d, 结束时间: %d`, (nowTime+14*60)*1000, (nowTime+2*60)*1000),
+			setup:        defaultSetup,
+			check: func(q *cmn.ServiceCtx) (err error) {
+
+				var d []examRoomInfo
+				err = json.Unmarshal(q.Msg.Data, &d)
+				if err != nil {
+					t.Errorf("failed to unmarshal response data: %v", err)
+					return
+				}
+
+				if len(d) < 2 {
+					err = fmt.Errorf("expected get 2 rooms data, got %d", len(d))
+					t.Error(err.Error())
+					return
+				}
+
+				return
+			},
+			cleanup: defaultCleanup,
+		},
+		{
+			name: "获取考场列表失败-未指定开始时间和结束时间",
+			q: &cmn.ServiceCtx{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-room/list",
+				},
+				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-room/list?q=%s`, url.QueryEscape(fmt.Sprintf(`{
+						"page": 1,
+						"pageSize": 10,
+						"orderBy": [
+							{
+								"capacity": "DESC"
+							}
+						],
+						"data": {
+							"examSiteID": 0
+						},
+						"filter": {
+							"name": "",
+							"available": true,
+							"startTime": %d,
+							"endTime":%d
+						}
+					}`, 0, 0),
+				)), nil),
+				W: httptest.NewRecorder(),
+				Msg: &cmn.ReplyProto{
+					API:    "/api/exam-site/list",
+					Method: "GET",
+				},
+				BeginTime: time.Now(),
+				SysUser: &cmn.TUser{
+					ID:   null.NewInt(1000, true),
+					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+				},
+				Domains: []cmn.TDomain{
+					{
+						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+					},
+				},
+				RedisClient: cmn.GetRedisConn(),
+			},
+			passExpected: false,
+			errWanted:    fmt.Sprintf(`当按可用状态获取时, 必须指定开始时间与结束时间, 当前开始时间: %d, 结束时间: %d`, 0, 0),
+			setup:        defaultSetup,
+			check: func(q *cmn.ServiceCtx) (err error) {
+
+				var d []examRoomInfo
+				err = json.Unmarshal(q.Msg.Data, &d)
+				if err != nil {
+					t.Errorf("failed to unmarshal response data: %v", err)
+					return
+				}
+
+				if len(d) < 2 {
+					err = fmt.Errorf("expected get 2 rooms data, got %d", len(d))
+					t.Error(err.Error())
+					return
+				}
+
+				return
+			},
+			cleanup: defaultCleanup,
 		},
 		{
 			name: "获取考场列表失败-无权获取",
@@ -4333,7 +4543,10 @@ func TestExamRoomList(t *testing.T) {
 			}
 
 			if tt.check != nil {
-				tt.check(tt.q, tt.passExpected)
+				err := tt.check(tt.q)
+				if err != nil {
+					t.Error("check did not passed")
+				}
 			}
 
 		})
