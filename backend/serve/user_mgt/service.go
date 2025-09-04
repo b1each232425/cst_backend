@@ -639,24 +639,6 @@ func (r *service) OverwriteUpdateUsers(ctx context.Context, tx pgx.Tx, users []U
 			return []User{}, e
 		}
 
-		// 读取用户ID和更新后的数据
-		var createTime int64
-		var updateTime int64
-		if tx != nil {
-			err = tx.QueryRow(ctx, "SELECT create_time, update_time FROM t_user WHERE id = $1", users[i].ID).Scan(&createTime, &updateTime)
-		} else {
-			err = r.pgxConn.QueryRow(ctx, "SELECT create_time, update_time FROM t_user WHERE id = $1", users[i].ID).Scan(&createTime, &updateTime)
-		}
-		if err != nil || forceErr == "QueryUserID" {
-			e := fmt.Errorf("failed to retrieve user info for %s: %w", users[i].Account, err)
-			z.Error(e.Error())
-			return []User{}, e
-		}
-
-		// 设置用户ID并添加到成功更新的用户列表
-		users[i].CreateTime = null.IntFrom(createTime)
-		users[i].UpdateTime = null.IntFrom(updateTime)
-
 		// 覆盖式更新用户角色到 t_user_domain
 		if len(users[i].Domains) > 0 {
 			// 先删除该用户的所有旧角色
@@ -690,8 +672,20 @@ func (r *service) OverwriteUpdateUsers(ctx context.Context, tx pgx.Tx, users []U
 			}
 		}
 
+		// 读取更新后的用户数据
+		var queryUsers []User
+		queryUsers, _, err := r.QueryUsers(ctx, tx, 1, 1, QueryUsersFilter{ID: users[i].ID})
+		if err != nil || forceErr == "QueryUsers" {
+			e := fmt.Errorf("failed to retrieve updated user %s: %w", users[i].Account, err)
+			return []User{}, e
+		}
+		if len(queryUsers) < 1 || forceErr == "NoUpdatedUser" {
+			e := fmt.Errorf("updated user %s not found", users[i].Account)
+			return []User{}, e
+		}
+
 		// 将成功插入的用户添加到结果列表
-		updatedUsers = append(updatedUsers, users[i])
+		updatedUsers = append(updatedUsers, queryUsers[0])
 	}
 
 	return updatedUsers, nil

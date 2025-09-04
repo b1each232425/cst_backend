@@ -620,8 +620,8 @@ func TestService_OverwriteUpdateUsers(t *testing.T) {
 			desc:           "测试强制Exec错误",
 		},
 		{
-			name: "强制QueryUserID错误测试",
-			ctx:  context.WithValue(context.Background(), "force-error", "QueryUserID"),
+			name: "强制QueryUsers错误测试",
+			ctx:  context.WithValue(context.Background(), "force-error", "QueryUsers"),
 			users: []User{{
 				TUser: cmn.TUser{
 					ID:      null.IntFrom(1),
@@ -632,7 +632,22 @@ func TestService_OverwriteUpdateUsers(t *testing.T) {
 			}},
 			wantUsersCount: 0,
 			wantErr:        true,
-			desc:           "测试强制QueryUserID错误",
+			desc:           "测试强制QueryUsers错误",
+		},
+		{
+			name: "强制NoUpdatedUser错误测试",
+			ctx:  context.WithValue(context.Background(), "force-error", "NoUpdatedUser"),
+			users: []User{{
+				TUser: cmn.TUser{
+					ID:      null.IntFrom(1),
+					Account: "admin",
+					Status:  null.StringFrom("00"),
+					Remark:  null.StringFrom("test"),
+				},
+			}},
+			wantUsersCount: 0,
+			wantErr:        true,
+			desc:           "测试强制NoUpdatedUser错误",
 		},
 		{
 			name: "强制DeleteUserDomain错误测试",
