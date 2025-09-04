@@ -292,6 +292,146 @@ func (h *handler) HandleUser(ctx context.Context) {
 		q.Resp()
 		return
 
+	case "put": // 覆盖式更新已有用户
+		// 检查用户是否有权限访问该API
+		accessible, err := auth_mgt.CheckUserAPIAccessible(ctx, authority, "/api/user", auth_mgt.CAPIAccessActionUpdate)
+		if err != nil || forceErr == "CheckUserAPIAccessible" {
+			q.Err = fmt.Errorf("failed to check user API access: %w", err)
+			q.RespErr()
+			return
+		}
+		if !accessible || forceErr == "no-access" {
+			q.Err = fmt.Errorf("user does not have permission to access this API")
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		var buf []byte
+		buf, err = io.ReadAll(q.R.Body)
+		if err != nil || forceErr == "io.ReadAll" {
+			q.Err = fmt.Errorf("failed to read body: %w", err)
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+		defer func() {
+			err = q.R.Body.Close()
+			if err != nil || forceErr == "io.Close" {
+				e := fmt.Errorf("failed to close request body: %w", err)
+				z.Error(e.Error())
+				return
+			}
+		}()
+
+		if len(buf) == 0 {
+			q.Err = fmt.Errorf("request body cannot be empty")
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		var body cmn.ReqProto
+		err = json.Unmarshal(buf, &body)
+		if err != nil || forceErr == "json.Unmarshal" {
+			q.Err = fmt.Errorf("failed to unmarshal request body: %w", err)
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		var users []User
+		err = json.Unmarshal(body.Data, &users)
+		if err != nil {
+			q.Err = fmt.Errorf("failed to unmarshal request json data: %w", err)
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		if len(users) == 0 {
+			q.Err = fmt.Errorf("no users provided in request json data")
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		// 创建事务
+		var tx pgx.Tx
+		pgxConn := cmn.GetPgxConn()
+		tx, err = pgxConn.Begin(ctx)
+		if err != nil || forceErr == "tx.Begin" {
+			q.Err = fmt.Errorf("failed to begin transaction: %w", err)
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+		defer func() {
+			if err != nil {
+				err = tx.Rollback(ctx)
+				if err != nil || forceErr == "tx.Rollback" {
+					z.Error("transaction rolled back due to error: " + err.Error())
+				}
+				return
+			}
+			err = tx.Commit(ctx)
+			if err != nil || forceErr == "tx.Commit" {
+				z.Error("failed to commit transaction: " + err.Error())
+			}
+			return
+		}()
+
+		// 验证用户信息
+		var validUsers []User
+		var invalidUsers []User
+		validUsers, invalidUsers, err = h.srv.ValidateUserToBeUpdate(ctx, tx, users)
+		if err != nil {
+			q.Err = fmt.Errorf("failed to validate users: %w", err)
+			q.RespErr()
+			return
+		}
+
+		// 若存在不合法用户，则直接返回，不执行更新操作
+		if len(invalidUsers) != 0 {
+			invalidUsersBytes, err := json.Marshal(invalidUsers)
+			if err != nil || forceErr == "json.Marshal" {
+				q.Err = fmt.Errorf("failed to marshal invalid users: %w", err)
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+
+			q.Msg.Status = 405
+			q.Msg.Msg = "some users are invalid and cannot be updated"
+			q.Msg.Data = invalidUsersBytes
+			q.Resp()
+			return
+		}
+
+		var updatedUsers []User
+		if len(validUsers) > 0 {
+			updatedUsers, err = h.srv.OverwriteUpdateUsers(ctx, tx, validUsers)
+			if err != nil {
+				q.Err = fmt.Errorf("failed to update users: %w", err)
+				q.RespErr()
+				return
+			}
+		}
+
+		insertedUsersJson, err := json.Marshal(updatedUsers)
+		if err != nil || forceErr == "json.Marshal" {
+			q.Err = fmt.Errorf("failed to marshal valid users: %w", err)
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		q.Msg.Status = 0
+		q.Msg.Msg = "success"
+		q.Msg.Data = insertedUsersJson
+		q.Resp()
+		return
+
 	default:
 		q.Err = fmt.Errorf("unsupported method: %s", method)
 		z.Error(q.Err.Error())
