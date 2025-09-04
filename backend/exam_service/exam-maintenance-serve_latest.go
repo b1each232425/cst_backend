@@ -103,9 +103,8 @@ func (tm *ExamTimerManager) processEvent(event ExamEvent, workerID int) error {
 		handleExamSessionEnd(tm.ctx, event)
 	default:
 		err := fmt.Errorf("未知事件类型: %s", event.Type)
-		z.Error("未知事件类型",
-			zap.String("event_type", event.Type),
-			zap.Int64("session_id", event.ExamSessionID))
+		z.Sugar().Errorf("Worker %d 处理事件失败: %v", workerID, err)
+
 		return err
 	}
 
@@ -156,10 +155,7 @@ func (tm *ExamTimerManager) SetExamSessionTimer(examSessionID int64, triggerTime
 
 	tm.timers[timerKey] = timer
 
-	z.Info("设置定时器",
-		zap.String("event_type", event.Type),
-		zap.Int64("exam_session_id", examSessionID),
-		zap.Duration("delay", delay))
+	z.Sugar().Infof("设置定时器: event_type-%s, session_id-%d, trigger_time-%d", event.Type, examSessionID, triggerTime)
 }
 
 // 取消定时器
@@ -172,8 +168,7 @@ func (tm *ExamTimerManager) CancelExamSessionTimer(eventType string, examSession
 	if timer, exists := tm.timers[timerKey]; exists {
 		timer.Stop()
 		delete(tm.timers, timerKey)
-		z.Info("取消定时器",
-			zap.String("event_type", eventType))
+		z.Sugar().Infof("取消定时器: event_type-%s, session_id-%d", eventType, examSessionID)
 	}
 }
 
@@ -206,9 +201,7 @@ func SetExamTimers(ctx context.Context, examID int64) error {
 		err = fmt.Errorf("强制查询考试场次信息错误")
 	}
 	if err != nil {
-		z.Error("查询考试场次信息失败",
-			zap.Int64("exam_id", examID),
-			zap.Error(err))
+		z.Sugar().Errorf("查询考试场次信息失败: exam_id-%d, error-%v", examID, err)
 		return err
 	}
 
@@ -239,11 +232,7 @@ func SetExamTimers(ctx context.Context, examID int64) error {
 			EndTime:       endTime,
 		})
 
-		z.Info("查询到考试场次信息",
-			zap.Int64("exam_id", examID),
-			zap.Int64("exam_session_id", sessionID),
-			zap.Int64("start_time", startTime),
-			zap.Int64("end_time", endTime))
+		z.Sugar().Infof("查询到考试场次信息: exam_id-%d, exam_session_id-%d, start_time-%d, end_time-%d", examID, sessionID, startTime, endTime)
 	}
 
 	for _, examSession := range examSessionInfo {
@@ -654,7 +643,7 @@ func handleExamSessionEnd(ctx context.Context, event ExamEvent) error {
 			JOIN t_exam_info ei ON v.exam_id = ei.id
 			WHERE e.exam_session_id = $1
 				AND v.actual_end_time <= $2
-				AND e.status IN ('00', '10','16') -- 只更新处于正常考和监考员允许进入考试状态的考生
+				AND e.status IN ('00', '10', '16') -- 只更新处于正常考和监考员允许进入考试状态的考生
 				AND ei.status IN ('02', '04', '06')
 		)
 		UPDATE t_examinee te
@@ -686,7 +675,7 @@ func handleExamSessionEnd(ctx context.Context, event ExamEvent) error {
 		LEFT JOIN (
 			SELECT exam_session_id, COUNT(*) as count
 			FROM t_examinee 
-			WHERE status NOT IN ('02', '06', '08', '10', '12') 
+			WHERE status NOT IN ('02', '06', '08', '10', '12', '14') 
 				AND exam_session_id = $1
 			GROUP BY exam_session_id
 		) unfinished ON es.id = unfinished.exam_session_id
