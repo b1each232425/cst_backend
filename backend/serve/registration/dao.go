@@ -119,6 +119,10 @@ func ListRegisterT(ctx context.Context, name string, course string, status strin
 	args = append(args, RegisterStatus.Deleted)
 	clauses = append(clauses, fmt.Sprintf("r.creator = $%d", len(args)+1))
 	args = append(args, userID)
+	if searchType == "02" {
+		clauses = append(clauses, fmt.Sprintf("r.status = $%d", len(args)+1))
+		args = append(args, RegisterStatus.ReviewEnding)
+	}
 	//查询总数
 	s = ` SELECT COUNT(*) FROM assessuser.t_register_plan r `
 	if len(clauses) > 0 {
@@ -487,6 +491,11 @@ func GetRegisterStudentById(ctx context.Context, registerID int64, message strin
 	args = append(args, registerID)
 	clauses = append(clauses, fmt.Sprintf("eps.status != $%d", len(args)+1))
 	args = append(args, RegisterStudentStatus.Apply)
+	if searchType == "02" {
+		clauses = append(clauses, fmt.Sprintf("%s = $%d", "eps.status  ", len(args)+1))
+		args = append(args, RegisterStudentStatus.Approved)
+		clauses = append(clauses, fmt.Sprintf("NOT EXISTS (SELECT 1 FROM assessuser.t_exam_student es WHERE es.exam_plan_student_id = eps.id)"))
+	}
 	//获取总数
 	s = `SELECT COUNT(*) FROM assessuser.t_user u JOIN assessuser.t_exam_plan_student eps ON eps.student_id =u.id  `
 	if len(clauses) > 0 {
