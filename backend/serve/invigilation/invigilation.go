@@ -443,7 +443,7 @@ func invigilation(ctx context.Context) {
 		// 先获取考场监考的基本信息
 		var invigilatorInfo cmn.TVInvigilationInfo
 		q.Err = conn.QueryRow(ctx, `
-			SELECT invigilator_ids, invigilator_names, invigilator_num, exam_session_id, start_time, end_time, status, exam_site_id, exam_site_name, exam_room_id, exam_room_name, exam_room_capacity, exam_session_name, record, basic_eval, examinee_num, absentee_num, cheater_num, abnormal_examinee_num, exam_mode
+			SELECT invigilator_ids, invigilator_names, invigilator_num, exam_session_id, start_time, end_time, status, exam_site_id, exam_site_name, exam_room_id, exam_room_name, exam_room_capacity, exam_session_name, record, basic_eval, examinee_num, absentee_num, cheater_num, abnormal_examinee_num, exam_mode, exam_type
 			FROM v_invigilation_info
 			WHERE exam_session_id = $1 AND exam_room_id = $2
 		`, examSessionID, examRoomID).Scan(
@@ -467,6 +467,7 @@ func invigilation(ctx context.Context) {
 			&invigilatorInfo.CheaterNum,
 			&invigilatorInfo.AbnormalExamineeNum,
 			&invigilatorInfo.ExamMode,
+			&invigilatorInfo.ExamType,
 		)
 		if forceErr == "queryInvigilationInfo" {
 			q.Err = fmt.Errorf("强制查询监考信息错误")
