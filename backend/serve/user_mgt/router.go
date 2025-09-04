@@ -14,16 +14,6 @@ import (
 	"w2w.io/serve/auth_mgt"
 )
 
-var z *zap.Logger
-var mailServer *EmailServer
-var mailClient *mail.Client
-
-const (
-	AccountLength = 12          // 账号长度
-	InitialPwd    = "abc123456" // 初始密码
-	DefaultRegion = "CN"        // 默认地区
-)
-
 func init() {
 	//Setup package scope variables, just like logger, db connector, configure parameters, etc.
 	cmn.PackageStarters = append(cmn.PackageStarters, func() {
@@ -86,6 +76,11 @@ func Enroll(author string) {
 			{
 				Name:         "用户管理.创建用户",
 				AccessAction: auth_mgt.CAPIAccessActionCreate,
+				Configurable: true,
+			},
+			{
+				Name:         "用户管理.更新用户",
+				AccessAction: auth_mgt.CAPIAccessActionUpdate,
 				Configurable: true,
 			},
 		},

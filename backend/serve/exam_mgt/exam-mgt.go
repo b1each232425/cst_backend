@@ -1218,8 +1218,10 @@ func exam(ctx context.Context) {
 
 	var authority *auth_mgt.Authority
 	authority, q.Err = auth_mgt.GetUserAuthority(ctx)
+	if forceErr == "auth_mgt.GetUserAuthority" {
+		q.Err = fmt.Errorf("强制获取用户权限错误")
+	}
 	if q.Err != nil {
-		z.Error(q.Err.Error())
 		q.RespErr()
 		return
 	}
@@ -1540,7 +1542,7 @@ func exam(ctx context.Context) {
 			ExamInfo:       ei,
 			ExamSessions:   es_array,
 			Examinees:      examinees,
-			InvigilatorIDs: nil,
+			InvigilatorIDs: invigilatorIDs,
 			ExamRooms:      examRoomsConfigs,
 			Files:          examFiles,
 		}
@@ -1743,8 +1745,10 @@ func exam(ctx context.Context) {
 			q.RespErr()
 			return
 		}
+		var rollback bool
+		rollback = false
 		defer func() {
-			if q.Err != nil || forceErr == "tx.Rollback" {
+			if q.Err != nil || forceErr == "tx.Rollback" || rollback {
 				err := tx.Rollback(ctx)
 				if forceErr == "tx.Rollback" {
 					err = fmt.Errorf("强制回滚事务错误")
@@ -1752,7 +1756,7 @@ func exam(ctx context.Context) {
 				if err != nil {
 					z.Error(err.Error())
 				}
-
+				return
 			}
 			err := tx.Commit(ctx)
 			if forceErr == "tx.Commit" {
@@ -1762,6 +1766,40 @@ func exam(ctx context.Context) {
 				z.Error(err.Error())
 			}
 		}()
+
+		// 检查是否有学生报名已经被其他的考试选取了
+		var conflictExaminees []Examinee
+		conflictExaminees, q.Err = findConflictingExamStudents(ctx, tx, ExamData.Examinees, ExamData.ExamInfo.ID.Int64)
+		if forceErr == "findConflictingExamStudents" {
+			q.Err = fmt.Errorf("强制查询冲突考生错误")
+		}
+		if q.Err != nil {
+			q.RespErr()
+			return
+		}
+
+		if len(conflictExaminees) > 0 {
+			var jsonData []byte
+			jsonData, q.Err = json.Marshal(conflictExaminees)
+			if forceErr == "json.Marshal-examinees" {
+				q.Err = fmt.Errorf("强制序列化冲突考生错误")
+			}
+			if q.Err != nil {
+				q.RespErr()
+				return
+			}
+
+			q.Msg.Data = jsonData
+			if forceErr == "conflict" {
+				q.Msg.Data = nil
+			}
+
+			q.Msg.Status = -3
+			q.Err = fmt.Errorf("部分考生已被其他考试选取")
+			rollback = true
+			q.RespErr()
+			return
+		}
 
 		var currentUpdateTime int64
 		q.Err = tx.QueryRow(ctx, `SELECT update_time FROM t_exam_info WHERE id = $1`, ExamData.ExamInfo.ID).Scan(&currentUpdateTime)
@@ -2087,15 +2125,23 @@ func exam(ctx context.Context) {
 			}
 
 			if pgErr != nil && pgErr.Code == "23505" || strings.Contains(forceErr, "conflict") {
+				if strings.Contains(forceErr, "conflict") {
+					q.Err = fmt.Errorf("冲突错误")
+				}
 				z.Error(q.Err.Error())
 
 				// 如果出现了主键冲突，则回滚到保存点处
 				_, q.Err = tx.Exec(ctx, "ROLLBACK TO SAVEPOINT sp_insert_exam_student")
+				if forceErr == "conflict-tx.RollbackToSavePoint" {
+					q.Err = fmt.Errorf("强制回滚到保存点错误")
+				}
 				if q.Err != nil {
 					z.Error(q.Err.Error())
 					q.RespErr()
 					return
 				}
+
+				z.Info(forceErr)
 
 				// 出现了冲突，说明从报名计划中选择的考生已经被其他考试选取了，此时需要查询返回并出现冲突的学生ID给前端
 				var conflictExaminees []Examinee
@@ -2119,9 +2165,13 @@ func exam(ctx context.Context) {
 				}
 
 				q.Msg.Data = jsonData
+				if forceErr == "conflict" {
+					q.Msg.Data = nil
+				}
 
 				q.Msg.Status = -3
 				q.Err = fmt.Errorf("部分考生已被其他考试选取")
+				rollback = true
 				q.RespErr()
 				return
 			}
@@ -2791,6 +2841,9 @@ func examList(ctx context.Context) {
 
 		var authority *auth_mgt.Authority
 		authority, q.Err = auth_mgt.GetUserAuthority(ctx)
+		if forceErr == "auth_mgt.GetUserAuthority" {
+			q.Err = fmt.Errorf("强制获取用户权限错误")
+		}
 		if q.Err != nil {
 			q.RespErr()
 			return
@@ -3177,6 +3230,9 @@ func examinee(ctx context.Context) {
 
 		var authority *auth_mgt.Authority
 		authority, q.Err = auth_mgt.GetUserAuthority(ctx)
+		if forceErr == "auth_mgt.GetUserAuthority" {
+			q.Err = fmt.Errorf("强制获取用户权限错误")
+		}
 		if q.Err != nil {
 			q.RespErr()
 			return
@@ -3296,6 +3352,9 @@ func examLock(ctx context.Context) {
 
 	var authority *auth_mgt.Authority
 	authority, q.Err = auth_mgt.GetUserAuthority(ctx)
+	if forceErr == "auth_mgt.GetUserAuthority" {
+		q.Err = fmt.Errorf("强制获取用户权限错误")
+	}
 	if q.Err != nil {
 		q.RespErr()
 		return
@@ -3441,6 +3500,9 @@ func examStatus(ctx context.Context) {
 
 		var authority *auth_mgt.Authority
 		authority, q.Err = auth_mgt.GetUserAuthority(ctx)
+		if forceErr == "auth_mgt.GetUserAuthority" {
+			q.Err = fmt.Errorf("强制获取用户权限错误")
+		}
 		if q.Err != nil {
 			q.RespErr()
 			return
@@ -3999,6 +4061,9 @@ func examUser(ctx context.Context) {
 
 		var authority *auth_mgt.Authority
 		authority, q.Err = auth_mgt.GetUserAuthority(ctx)
+		if forceErr == "auth_mgt.GetUserAuthority" {
+			q.Err = fmt.Errorf("强制获取用户权限错误")
+		}
 		if q.Err != nil {
 			q.RespErr()
 			return
@@ -4247,6 +4312,9 @@ func examFile(ctx context.Context) {
 
 	var authority *auth_mgt.Authority
 	authority, q.Err = auth_mgt.GetUserAuthority(ctx)
+	if forceErr == "auth_mgt.GetUserAuthority" {
+		q.Err = fmt.Errorf("强制获取用户权限错误")
+	}
 	if q.Err != nil {
 		q.RespErr()
 		return

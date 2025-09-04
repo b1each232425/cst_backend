@@ -1216,10 +1216,10 @@ func examSite(ctx context.Context) {
 		userToken = fmt.Sprintf("%x", b2)
 
 		// 注册考点服务器系统账号，用于给考点服务器与中心服务器进行http通信验证
-		sqlStr := `INSERT INTO t_user (category, type, official_name, account, user_token, creator)
-		VALUES ('sys^admin', '08', $1, $2, crypt($3,gen_salt('bf')), 1000)
+		sqlStr := fmt.Sprintf(`INSERT INTO t_user (category, type, official_name, account, user_token, creator, role)
+		VALUES ('sys^admin', '08', $1, $2, crypt($3,gen_salt('bf')), 1000, %d)
 		RETURNING 
-			id`
+			id`, cmn.CDomainAssessExamSite)
 
 		var stmt1 *sql.Stmt
 		stmt1, q.Err = tx.Prepare(sqlStr)
@@ -1981,7 +1981,7 @@ MethodSwitch:
 			break
 		}
 
-		if c == 0 {
+		if examSiteID != 0 && c == 0 {
 			q.Err = fmt.Errorf("当前用户无权获取该考点数据, id: %d", examSiteID)
 			z.Error(q.Err.Error())
 			break
@@ -1997,6 +1997,11 @@ MethodSwitch:
 			examSiteID,
 		}
 
+		if examSiteID == 0 {
+			keys = []string{}
+			values = []interface{}{}
+		}
+
 		if req.Page < 1 {
 			q.Err = fmt.Errorf("页码不能小于1")
 			z.Error(q.Err.Error())
@@ -2009,12 +2014,45 @@ MethodSwitch:
 			break
 		}
 
+		ss = []string{}
+		ss = append(ss, fmt.Sprintf("creator = $%d", len(values)+1))
+		values = append(values, userID)
+		l = len(values)
+		for i, d := range authority.AccessibleDomains {
+			ss = append(ss, fmt.Sprintf("domain_id = $%d", i+l+1))
+			values = append(values, d)
+		}
+
+		keys = append(keys, fmt.Sprintf("(%s)", strings.Join(ss, " OR ")))
+
 		nameFilter := gjson.Get(param, "filter.name").Str
 
 		if nameFilter != "" {
-			i := len(keys) + 1
+			i := len(values) + 1
 			keys = append(keys, fmt.Sprintf(`t_exam_room.name ILIKE $%d`, i))
 			values = append(values, fmt.Sprintf("%%%s%%", nameFilter))
+		}
+
+		startTime := gjson.Get(param, "filter.startTime").Int()
+		endTime := gjson.Get(param, "filter.endTime").Int()
+
+		if startTime > endTime {
+			q.Err = fmt.Errorf(`开始时间不能大于结束时间, 当前开始时间: %d, 结束时间: %d`, startTime, endTime)
+			z.Error(q.Err.Error())
+			break
+		}
+
+		if gjson.Get(param, "filter.available").IsBool() {
+			i := len(values) + 1
+			v := gjson.Get(param, "filter.available").Bool()
+			keys = append(keys, fmt.Sprintf(`available = $%d`, i))
+			values = append(values, v)
+
+			if startTime == 0 || endTime == 0 {
+				q.Err = fmt.Errorf(`当按可用状态获取时, 必须指定开始时间与结束时间, 当前开始时间: %d, 结束时间: %d`, startTime, endTime)
+				z.Error(q.Err.Error())
+				break
+			}
 		}
 
 		orderBy := "t_exam_room.id"
@@ -2044,16 +2082,57 @@ MethodSwitch:
 			orderBy = strings.Join(orderByList, ", ")
 		}
 
-		sqlStr = fmt.Sprintf(`SELECT 
+		// 考场下不一定会安排考生考试，自然也就不一定会有相应的数据，
+		// 所以采用"左外连接"的方式去获取考场下的考试数据，确保考场数据可以正常获取
+		sqlStr = fmt.Sprintf(`WITH related_exams AS (
+			SELECT
+				t_exam_room.id AS room_id,
+				t_exam_info.id AS exam_id,
+				t_exam_info.name AS exam_name,
+				t_exam_info.status AS exam_status,
+				t_exam_session.id AS session_id,
+				t_exam_session.start_time,
+				t_exam_session.end_time,
+				COALESCE((t_exam_session.end_time < %d OR t_exam_session.start_time > %d ), true) AS available,
+				ROW_NUMBER() OVER (
+					PARTITION BY t_exam_room.id 
+					ORDER BY t_exam_session.start_time DESC
+				) AS rn
+			FROM t_exam_room
+				LEFT JOIN t_examinee t_examinee ON t_examinee.exam_room = t_exam_room.id
+				LEFT JOIN t_exam_session ON t_exam_session.id = t_examinee.exam_session_id
+				LEFT JOIN t_exam_info t_exam_info ON t_exam_info.id = t_exam_session.exam_id
+			GROUP BY
+				t_exam_room.id,
+				t_exam_info.id,
+				t_exam_session.id
+		)
+		SELECT 
 			t_exam_room.id,
-			t_exam_room.exam_site AS exam_site_id,
-			t_exam_room.name AS exam_room_name,
-			t_exam_room.capacity
+			t_exam_room.exam_site,
+			t_exam_room.name,
+			t_exam_room.capacity,
+			BOOL_AND(related_exams.available) AS available,
+			json_agg(
+				json_build_object(
+					'exam_id', exam_id,
+					'exam_name', exam_name,
+					'exam_status', exam_status,
+					'session_id', session_id,
+					'start_time', start_time,
+					'end_time', end_time
+				)
+			) FILTER (WHERE rn = 1) ::jsonb AS recent_exam
 		FROM t_exam_room
+			JOIN related_exams ON related_exams.room_id = t_exam_room.id
 		WHERE %s
+		GROUP BY 
+			t_exam_room.id, 
+			t_exam_room.exam_site, 
+			t_exam_room.name
 		ORDER BY
 			%s
-			`, strings.Join(keys, " AND "), orderBy)
+			`, startTime, endTime, strings.Join(keys, " AND "), orderBy)
 
 		stmt1, q.Err = dbConn.Prepare(sqlStr)
 		if q.Err != nil || (cmn.InDebugMode && q.Tag["prepareSqlErr1"] != nil) {
@@ -2127,6 +2206,8 @@ MethodSwitch:
 				&item.ExamSiteID,
 				&item.Name,
 				&item.Capacity,
+				&item.Available,
+				&item.RecentExam,
 			)
 			if q.Err != nil || (cmn.InDebugMode && q.Tag["scanErr"] != nil) {
 

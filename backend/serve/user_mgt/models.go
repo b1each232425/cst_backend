@@ -1,8 +1,26 @@
 package user_mgt
 
 import (
+	"github.com/wneessen/go-mail"
+	"go.uber.org/zap"
 	"w2w.io/cmn"
 	"w2w.io/null"
+)
+
+var z *zap.Logger
+var mailServer *EmailServer
+var mailClient *mail.Client
+
+const (
+	AccountLength = 12          // 账号长度
+	InitialPwd    = "abc123456" // 初始密码
+	DefaultRegion = "CN"        // 默认地区
+)
+
+const (
+	CUserStatusValid         = "00" // 有效
+	CUserStatusProhibitLogin = "02" // 禁止登录
+	CUserStatusBlock         = "04" // 封禁
 )
 
 // QueryUsersFilter 查询用户列表的过滤条件
