@@ -443,7 +443,7 @@ func invigilation(ctx context.Context) {
 		// 先获取考场监考的基本信息
 		var invigilatorInfo cmn.TVInvigilationInfo
 		q.Err = conn.QueryRow(ctx, `
-			SELECT invigilator_ids, invigilator_names, invigilator_num, exam_session_id, start_time, end_time, status, exam_site_id, exam_site_name, exam_room_id, exam_room_name, exam_room_capacity, exam_session_name, record, basic_eval, examinee_num, absentee_num, cheater_num, abnormal_examinee_num
+			SELECT invigilator_ids, invigilator_names, invigilator_num, exam_session_id, start_time, end_time, status, exam_site_id, exam_site_name, exam_room_id, exam_room_name, exam_room_capacity, exam_session_name, record, basic_eval, examinee_num, absentee_num, cheater_num, abnormal_examinee_num, exam_mode
 			FROM v_invigilation_info
 			WHERE exam_session_id = $1 AND exam_room_id = $2
 		`, examSessionID, examRoomID).Scan(
@@ -466,6 +466,7 @@ func invigilation(ctx context.Context) {
 			&invigilatorInfo.AbsenteeNum,
 			&invigilatorInfo.CheaterNum,
 			&invigilatorInfo.AbnormalExamineeNum,
+			&invigilatorInfo.ExamMode,
 		)
 		if forceErr == "queryInvigilationInfo" {
 			q.Err = fmt.Errorf("强制查询监考信息错误")
@@ -731,38 +732,71 @@ func invigilation(ctx context.Context) {
 		}
 
 		// 检查当前是否还能更新监考信息
-		syncTime := viper.GetInt64("examSiteServerSync.syncDelay")
-		syncTime = syncTime * 1000
-
+		centralServerUrl := viper.GetString("examSiteServerSync.centralServerUrl")
 		now := time.Now().UnixMilli()
 
-		checkInvigilationSQL := `
+		if centralServerUrl != "" {
+			syncTime := viper.GetInt64("examSiteServerSync.syncDelay")
+			syncTime = syncTime * 1000
+			checkInvigilationSQL := `
 			SELECT EXISTS(
-				SELECT 1
-				FROM v_invigilation_info vi
-				WHERE vi.exam_session_id = $1 AND vi.exam_room_id = $2
-				AND vi.end_time + $3 > $4
-			)
-		`
-		var canUpdate bool
-		q.Err = conn.QueryRow(ctx, checkInvigilationSQL, examSessionID, examRoomID, syncTime, now).Scan(&canUpdate)
-		if forceErr == "checkInvigilation" {
-			q.Err = fmt.Errorf("强制检查当前是否还能更新监考信息错误")
-		}
-		if q.Err != nil {
-			z.Error(q.Err.Error())
-			q.RespErr()
-			return
-		}
+					SELECT 1
+					FROM v_invigilation_info vi
+					WHERE vi.exam_session_id = $1 AND vi.exam_room_id = $2
+					AND vi.end_time + $3 > $4
+				)
+			`
+			var canUpdate bool
+			q.Err = conn.QueryRow(ctx, checkInvigilationSQL, examSessionID, examRoomID, syncTime, now).Scan(&canUpdate)
+			if forceErr == "checkInvigilation" {
+				q.Err = fmt.Errorf("强制检查当前是否还能更新监考信息错误")
+			}
+			if q.Err != nil {
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
 
-		if forceErr == "canUpdate" {
-			canUpdate = false
-		}
-		if !canUpdate {
-			q.Err = fmt.Errorf("当前考试已结束，无法更新监考信息")
-			z.Error(q.Err.Error())
-			q.RespErr()
-			return
+			if forceErr == "canUpdate" {
+				canUpdate = false
+			}
+			if !canUpdate {
+				q.Err = fmt.Errorf("当前考试已结束，无法更新监考信息")
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+		} else {
+
+			// 如果是中心服务器，则检查该考试是否为线下考试，如果是线下则不允许更新
+			checkInvigilationSQL := `
+			SELECT EXISTS(
+					SELECT 1
+					FROM v_invigilation_info vi
+					WHERE vi.exam_session_id = $1 AND vi.exam_room_id = $2
+					AND vi.exam_mode != '02'
+				)
+			`
+			var canUpdate bool
+			q.Err = conn.QueryRow(ctx, checkInvigilationSQL, examSessionID, examRoomID).Scan(&canUpdate)
+			if forceErr == "checkInvigilation" {
+				q.Err = fmt.Errorf("强制检查当前是否还能更新监考信息错误")
+			}
+			if q.Err != nil {
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+
+			if forceErr == "canUpdate" {
+				canUpdate = false
+			}
+			if !canUpdate {
+				q.Err = fmt.Errorf("当前考试为线下考试，无法在中心服务器更新监考信息")
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
 		}
 
 		// 检查考生是否是该考场的考生
