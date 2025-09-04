@@ -1542,7 +1542,7 @@ func exam(ctx context.Context) {
 			ExamInfo:       ei,
 			ExamSessions:   es_array,
 			Examinees:      examinees,
-			InvigilatorIDs: nil,
+			InvigilatorIDs: invigilatorIDs,
 			ExamRooms:      examRoomsConfigs,
 			Files:          examFiles,
 		}
