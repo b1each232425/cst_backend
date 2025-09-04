@@ -2,7 +2,7 @@
  * @Author: wusaber33
  * @Date: 2025-08-03 21:39:33
  * @LastEditors: wusaber33
- * @LastEditTime: 2025-08-25 23:09:00
+ * @LastEditTime: 2025-09-04 02:41:22
  * @FilePath: \assess\backend\serve\paper\paper.go
  * @Description:
  * Copyright (c) 2025 by wusaber33, All Rights Reserved.
@@ -1573,7 +1573,7 @@ func PaperList(ctx context.Context) {
 
 		// 查询总数
 		var countSQLBuilder strings.Builder
-		countSQLBuilder.WriteString("SELECT COUNT(*) FROM v_paper p ")
+		countSQLBuilder.WriteString("SELECT COUNT(*) FROM t_paper p ")
 		countSQLBuilder.WriteString(whereClause)
 		q.Err = db.QueryRow(ctx, countSQLBuilder.String(), params...).Scan(&totalCount)
 		if val, ok := ctx.Value("force-error").(string); ok && val == "getPaperList-QueryRowCount-err" {
@@ -1585,19 +1585,78 @@ func PaperList(ctx context.Context) {
 			return
 		}
 
-		// 查询分页数据
+		// 查询分页数据：先 top 取 id，再统计并拼装列表
 		var listSQLBuilder strings.Builder
 		listSQLBuilder.WriteString(`
-		SELECT p.id,p.exampaper_id, p.name, p.assembly_type, p.category, p.level, p.suggested_duration, p.total_score, p.question_count, p.tags, p.create_time, p.update_time, p.status, p.creator, p.creator_info
-		FROM v_paper p
-		`)
+WITH top_ids AS (
+	SELECT p.id, p.exampaper_id, p.update_time
+	FROM t_paper p
+	`)
+		// 将动态 where 条件拼入 filtered CTE
 		listSQLBuilder.WriteString(whereClause)
 		listSQLBuilder.WriteString(`
-		ORDER BY p.update_time DESC
-		LIMIT $`)
+	ORDER BY p.update_time DESC, p.id DESC
+	LIMIT $`)
+		// LIMIT / OFFSET 使用动态参数位
 		listSQLBuilder.WriteString(strconv.Itoa(paramCount))
 		listSQLBuilder.WriteString(" OFFSET $")
 		listSQLBuilder.WriteString(strconv.Itoa(paramCount + 1))
+		listSQLBuilder.WriteString(`
+),
+paper_stats AS (
+	SELECT pg.paper_id,
+				 COALESCE(SUM(pq.score), 0)::float8 AS total_score,
+				 COALESCE(COUNT(pq.id), 0)::numeric AS question_count
+	FROM t_paper_group pg
+	LEFT JOIN t_paper_question pq
+		ON pq.group_id = pg.id AND pq.status <> '02'
+	WHERE pg.status <> '02'
+		AND pg.paper_id IN (SELECT id FROM top_ids)
+	GROUP BY pg.paper_id
+),
+exam_stats AS (
+	SELECT eg.exam_paper_id,
+				 COALESCE(SUM(eq.score), 0)::float8 AS total_score,
+				 COALESCE(COUNT(eq.id), 0)::numeric AS question_count
+	FROM t_exam_paper_group eg
+	LEFT JOIN t_exam_paper_question eq
+		ON eq.group_id = eg.id AND eq.status <> '02'
+	WHERE eg.status <> '02'
+		AND eg.exam_paper_id IN (
+			SELECT exampaper_id FROM top_ids WHERE exampaper_id IS NOT NULL
+		)
+	GROUP BY eg.exam_paper_id
+)
+SELECT 
+	p.id,
+	p.exampaper_id,
+	p.name,
+	p.assembly_type,
+	p.category,
+	p.level,
+	p.suggested_duration,
+	COALESCE(
+		CASE WHEN p.exampaper_id IS NOT NULL AND p.status <> '00' THEN es.total_score END,
+		CASE WHEN p.exampaper_id IS NULL OR p.status = '00' THEN ps.total_score END,
+		0
+	)::float8 AS total_score,
+	COALESCE(
+		CASE WHEN p.exampaper_id IS NOT NULL AND p.status <> '00' THEN es.question_count END,
+		CASE WHEN p.exampaper_id IS NULL OR p.status = '00' THEN ps.question_count END,
+		0
+	)::numeric AS question_count,
+	p.tags,
+	p.create_time,
+	p.update_time,
+	p.status,
+	p.creator
+FROM top_ids ti
+JOIN t_paper p ON p.id = ti.id
+LEFT JOIN paper_stats ps ON ps.paper_id = p.id
+LEFT JOIN exam_stats es  ON es.exam_paper_id = p.exampaper_id
+LEFT JOIN t_user u       ON u.id = p.creator
+ORDER BY p.update_time DESC, p.id DESC`)
+
 		dataParams := append(params, req.PageSize, offset)
 		var rows pgx.Rows
 
@@ -1614,8 +1673,7 @@ func PaperList(ctx context.Context) {
 		var papers []cmn.TVPaper
 		for rows.Next() {
 			var paper cmn.TVPaper
-			// todo 补充试卷视图考卷ID和版本号
-			q.Err = rows.Scan(&paper.ID, &paper.ExampaperID, &paper.Name, &paper.AssemblyType, &paper.Category, &paper.Level, &paper.SuggestedDuration, &paper.TotalScore, &paper.QuestionCount, &paper.Tags, &paper.CreateTime, &paper.UpdateTime, &paper.Status, &paper.Creator, &paper.CreatorInfo)
+			q.Err = rows.Scan(&paper.ID, &paper.ExampaperID, &paper.Name, &paper.AssemblyType, &paper.Category, &paper.Level, &paper.SuggestedDuration, &paper.TotalScore, &paper.QuestionCount, &paper.Tags, &paper.CreateTime, &paper.UpdateTime, &paper.Status, &paper.Creator)
 			if val, ok := ctx.Value("force-error").(string); ok && val == "getPaperList-RowScan-err" {
 				q.Err = errors.New(val)
 			}

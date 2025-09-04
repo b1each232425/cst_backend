@@ -586,6 +586,275 @@ RETURNING id`
 	return paperID, groups
 }
 
+// TestBulkInsertPapers 批量插入试卷数据测试
+func TestBulkInsertPapers(t *testing.T) {
+	cmn.ConfigureForTest()
+	db := cmn.GetPgxConn()
+	ctx := context.Background()
+	userID := TestUserIDs[0] // 使用测试用户ID
+	
+	// 配置
+	paperCount := 5000        // 插入1000份试卷
+	questionsPerPaper := 20   // 每份试卷20道题
+	
+	t.Logf("开始批量插入测试：%d 份试卷，每份 %d 道题", paperCount, questionsPerPaper)
+	
+	start := time.Now()
+	
+	// 随机试卷名称和描述库
+	paperNamePrefixes := []string{
+		"2024年", "2025年", "期末", "期中", "模拟", "综合", "专业", "基础", "高级", "实战",
+		"入门", "进阶", "精通", "资格", "认证", "技能", "能力", "素质", "竞赛", "选拔",
+		"月考", "周测", "日练", "强化", "突破", "冲刺", "备考", "复习", "预习", "自测",
+	}
+	paperNameSuffixes := []string{
+		"考试", "测试", "练习", "评估", "检测", "竞赛", "模拟题", "真题", "习题集", "题库",
+		"挑战", "闯关", "PK赛", "大赛", "联考", "统考", "校考", "省考", "国考", "抽查",
+		"验收", "考核", "鉴定", "筛选", "面试", "笔试", "机试", "口试", "实操", "演练",
+	}
+	paperNameBases := []string{
+		// 计算机基础类
+		"计算机基础", "数据结构", "算法设计", "操作系统", "数据库系统", "计算机网络", 
+		"软件工程", "编程语言", "编译原理", "计算机组成", "微机原理", "汇编语言",
+		
+		// 编程语言类
+		"Java编程", "Python开发", "C++程序设计", "JavaScript基础", "Go语言", "Rust编程",
+		"TypeScript", "Kotlin开发", "Swift编程", "PHP开发", "Ruby编程", "Scala语言",
+		
+		// Web开发类
+		"前端开发", "后端开发", "全栈开发", "React框架", "Vue.js", "Angular", 
+		"Node.js", "Express.js", "Spring Boot", "Django", "Flask", "Laravel",
+		
+		// 移动开发类
+		"Android开发", "iOS开发", "React Native", "Flutter", "微信小程序", "uni-app",
+		"Cordova", "Ionic", "Xamarin", "移动应用设计", "跨平台开发", "原生开发",
+		
+		// 数据科学类
+		"数据分析", "机器学习", "深度学习", "人工智能", "大数据", "数据挖掘",
+		"统计学", "数据可视化", "商业智能", "预测分析", "自然语言处理", "计算机视觉",
+		
+		// 运维DevOps类
+		"Docker容器", "Kubernetes", "云计算", "AWS认证", "Azure", "Linux运维",
+		"DevOps", "CI/CD", "自动化部署", "监控告警", "性能优化", "安全运维",
+		
+		// 信息安全类
+		"网络安全", "信息安全", "渗透测试", "安全审计", "密码学", "区块链",
+		"Web安全", "移动安全", "云安全", "数据安全", "隐私保护", "风险评估",
+		
+		// 其他技术类
+		"微服务架构", "分布式系统", "高并发", "缓存技术", "消息队列", "搜索引擎",
+		"图形学", "游戏开发", "嵌入式", "物联网", "5G通信", "边缘计算",
+	}
+	descriptions := []string{
+		"这是一份综合性的技术能力测试试卷，涵盖了相关领域的核心知识点。",
+		"本试卷用于评估学习者对专业知识的掌握程度和实际应用能力。",
+		"通过本次测试，可以全面了解考生的理论基础和实践技能水平。",
+		"本试卷包含多种题型，旨在全方位考查考生的综合能力。",
+		"精心设计的试题，帮助考生检验学习成果，发现知识薄弱环节。",
+		"结合理论与实践，考查学习者的综合应用能力和解决问题的能力。",
+		"涵盖基础概念、核心技术和前沿发展，全面评估专业素养。",
+		"通过多维度考核，客观反映学习者的知识掌握程度和技能水平。",
+		"注重实际应用场景，考查理论知识在实践中的运用能力。",
+		"系统性评估学习效果，为后续学习和职业发展提供参考依据。",
+	}
+	
+	// 丰富的试卷标签库
+	allTags := []string{
+		// 技术栈标签
+		"java", "python", "javascript", "golang", "rust", "cpp", "csharp", "php", "ruby", "kotlin",
+		"swift", "typescript", "scala", "dart", "erlang", "elixir", "haskell", "clojure",
+		
+		// 框架标签
+		"react", "vue", "angular", "nodejs", "express", "spring", "springboot", "django", 
+		"flask", "laravel", "rails", "gin", "echo", "fiber", "nestjs", "nextjs", "nuxtjs",
+		
+		// 数据库标签
+		"mysql", "postgresql", "mongodb", "redis", "elasticsearch", "sqlite", "oracle",
+		"cassandra", "dynamodb", "firebase", "neo4j", "clickhouse", "influxdb",
+		
+		// 云服务标签
+		"aws", "azure", "gcp", "aliyun", "docker", "kubernetes", "terraform", "ansible",
+		"jenkins", "gitlab", "github", "bitbucket", "helm", "istio", "prometheus", "grafana",
+		
+		// 领域标签
+		"frontend", "backend", "fullstack", "mobile", "desktop", "web", "api", "microservice",
+		"devops", "ml", "ai", "blockchain", "iot", "gaming", "fintech", "ecommerce",
+		
+		// 技术概念标签
+		"algorithm", "datastructure", "design-pattern", "architecture", "performance", 
+		"security", "testing", "debugging", "optimization", "refactoring", "clean-code",
+		
+		// 难度标签
+		"beginner", "intermediate", "advanced", "expert", "entry-level", "senior",
+		
+		// 类型标签
+		"tutorial", "practice", "interview", "certification", "bootcamp", "workshop",
+		"project", "case-study", "hands-on", "theoretical", "practical", "real-world",
+		
+		// 行业标签
+		"startup", "enterprise", "saas", "b2b", "b2c", "open-source", "commercial",
+		"healthcare", "education", "finance", "retail", "logistics", "manufacturing",
+	}
+	
+	categories := []string{PaperCategoryExam, PaperCategoryPractice}
+	difficulties := []string{Simple, Medium, Hard}
+	durations := []int{60, 90, 120, 150, 180, 210, 240}
+	
+	// 批量插入试卷
+	for i := 0; i < paperCount; i++ {
+		tx, err := db.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead})
+		require.NoError(t, err)
+		
+		// 生成随机试卷信息
+		paperName := fmt.Sprintf("%s%s%s%d", 
+			paperNamePrefixes[i%len(paperNamePrefixes)],
+			paperNameBases[i%len(paperNameBases)],
+			paperNameSuffixes[i%len(paperNameSuffixes)],
+			i+1)
+		
+		description := descriptions[i%len(descriptions)]
+		category := categories[i%len(categories)]
+		difficulty := difficulties[i%len(difficulties)]
+		duration := durations[i%len(durations)]
+		
+		// 为每份试卷生成3-6个随机标签
+		tagCount := 3 + (i % 4) // 3-6个标签
+		paperTags := make([]string, 0, tagCount)
+		usedTagIndices := make(map[int]bool)
+		
+		for j := 0; j < tagCount; j++ {
+			// 确保不重复选择标签
+			tagIndex := (i*7 + j*13) % len(allTags) // 使用不同的步长避免重复
+			for usedTagIndices[tagIndex] {
+				tagIndex = (tagIndex + 1) % len(allTags)
+			}
+			usedTagIndices[tagIndex] = true
+			paperTags = append(paperTags, allTags[tagIndex])
+		}
+		
+		// 将标签转换为JSON格式
+		tagsJSON := `["` + strings.Join(paperTags, `","`) + `"]`
+		
+		now := time.Now().UnixMilli() + int64(i) // 错开时间戳
+		
+		// 插入试卷
+		var paperID int64
+		err = tx.QueryRow(ctx, `
+			INSERT INTO t_paper (
+				name, description, category, level, suggested_duration, tags,
+				creator, create_time, updated_by, update_time, status, domain_id
+			) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $7, $8, $9, $10) 
+			RETURNING id`,
+			paperName, description, category, difficulty, duration, tagsJSON,
+			userID, now, StatusNormal, resourceDomainID).Scan(&paperID)
+		require.NoError(t, err)
+		
+		// 插入默认题型分组
+		groupNames := []string{
+			DefaultGroup1Name, // 单选题分组
+			DefaultGroup2Name, // 多选题分组
+			DefaultGroup3Name, // 判断题分组
+			DefaultGroup4Name, // 填空题分组
+			DefaultGroup5Name, // 简答题分组
+		}
+		
+		groupSql := `INSERT INTO t_paper_group 
+			(paper_id, name, "order", creator, create_time, updated_by, update_time, status)
+		VALUES
+			($1, $2, 1, $3, $4, $3, $4, $5),
+			($1, $6, 2, $3, $4, $3, $4, $5),
+			($1, $7, 3, $3, $4, $3, $4, $5),
+			($1, $8, 4, $3, $4, $3, $4, $5),
+			($1, $9, 5, $3, $4, $3, $4, $5)
+		RETURNING id`
+		
+		args := []any{
+			paperID, groupNames[0], userID, now, StatusNormal,
+			groupNames[1], groupNames[2], groupNames[3], groupNames[4],
+		}
+		
+		rows, err := tx.Query(ctx, groupSql, args...)
+		require.NoError(t, err)
+		
+		// 收集分组ID
+		var groupIDs []int64
+		for rows.Next() {
+			var groupID int64
+			err = rows.Scan(&groupID)
+			require.NoError(t, err)
+			groupIDs = append(groupIDs, groupID)
+		}
+		rows.Close()
+		require.Len(t, groupIDs, 5)
+		
+		// 为每个分组添加题目
+		questionsPerGroup := questionsPerPaper / 5
+		if questionsPerGroup == 0 {
+			questionsPerGroup = 1
+		}
+		
+		for groupIdx, groupID := range groupIDs {
+			for questionIdx := 0; questionIdx < questionsPerGroup; questionIdx++ {
+				// 从测试题库中随机选择题目
+				bankQuestionID := BankQuestionIDs[questionIdx%len(BankQuestionIDs)]
+				
+				// 随机生成题目信息
+				scores := []float64{1.0, 2.0, 3.0, 4.0, 5.0, 8.0, 10.0}
+				score := scores[(i+groupIdx+questionIdx)%len(scores)]
+				order := questionIdx + 1
+				
+				// 插入题目
+				_, err = tx.Exec(ctx, `
+					INSERT INTO t_paper_question (
+						bank_question_id, group_id, "order", score,
+						creator, create_time, updated_by, update_time, status
+					) VALUES ($1, $2, $3, $4, $5, $6, $5, $6, $7)`,
+					bankQuestionID, groupID, order, score,
+					userID, now, StatusNormal)
+				require.NoError(t, err)
+			}
+		}
+		
+		err = tx.Commit(ctx)
+		require.NoError(t, err)
+		
+		// 每100份试卷输出一次进度
+		if (i+1)%100 == 0 {
+			elapsed := time.Since(start)
+			rate := float64(i+1) / elapsed.Seconds()
+			t.Logf("已插入 %d/%d 份试卷 (%.1f%%), 速度: %.2f 试卷/秒", 
+				i+1, paperCount, float64(i+1)/float64(paperCount)*100, rate)
+		}
+	}
+	
+	duration := time.Since(start)
+	
+	// 统计结果
+	totalQuestions := paperCount * questionsPerPaper
+	totalGroups := paperCount * 5
+	totalRecords := paperCount + totalGroups + totalQuestions
+	
+	t.Logf("🎉 批量插入完成！")
+	t.Logf("⏱️  总耗时: %v", duration)
+	t.Logf("📊 插入统计:")
+	t.Logf("  - 试卷数量: %d", paperCount)
+	t.Logf("  - 分组数量: %d", totalGroups)
+	t.Logf("  - 题目数量: %d", totalQuestions)
+	t.Logf("  - 总记录数: %d", totalRecords)
+	t.Logf("📈 性能指标:")
+	t.Logf("  - 试卷插入速度: %.2f 试卷/秒", float64(paperCount)/duration.Seconds())
+	t.Logf("  - 数据库写入速度: %.2f 记录/秒", float64(totalRecords)/duration.Seconds())
+	
+	// 验证插入结果
+	var count int64
+	err := db.QueryRow(ctx, "SELECT COUNT(*) FROM t_paper WHERE creator = $1", userID).Scan(&count)
+	require.NoError(t, err)
+	t.Logf("📋 验证: 数据库中实际插入了 %d 份试卷", count)
+	
+	// 不清理测试数据，保留在数据库中供后续使用
+	t.Log("✅ 数据插入完成，试卷数据已保留在数据库中")
+}
+
 func TestPaperListGetMethod(t *testing.T) {
 	cmn.ConfigureForTest()
 	db := cmn.GetPgxConn()
