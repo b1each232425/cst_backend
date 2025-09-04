@@ -173,7 +173,6 @@ func register(ctx context.Context) {
 						q.RespErr()
 						return
 					}
-
 					//排序字段
 					orderBy := []string{"r.create_time desc"}
 					r, total, err := ListRegisterS(ctx, name, course, status, orderBy, page, pageSize, userID)
@@ -295,6 +294,13 @@ func register(ctx context.Context) {
 					pageSizeStr := q.R.URL.Query().Get("pageSize")
 					//如果有id则只查询单个报名计划
 					if idStr != "" && pageStr != "" && pageSizeStr != "" {
+						searchType := q.R.URL.Query().Get("search_type")
+						if searchType != "00" && searchType != "02" {
+							q.Err = fmt.Errorf("搜索类型错误")
+							z.Error(q.Err.Error())
+							q.RespErr()
+							return
+						}
 						var page int
 						page, q.Err = strconv.Atoi(pageStr)
 						if forceErr == "pageParseInt" {
@@ -332,7 +338,7 @@ func register(ctx context.Context) {
 						}
 						//设置排序字段
 						orderBy := []string{"eps.create_time desc"}
-						s, total, err := GetRegisterStudentById(ctx, id, message, registerType, status, orderBy, page, pageSize, userID)
+						s, total, err := GetRegisterStudentById(ctx, id, message, registerType, status, orderBy, page, pageSize, userID, searchType)
 						if err != nil {
 							q.Err = err
 							q.RespErr()
@@ -396,6 +402,13 @@ func register(ctx context.Context) {
 						q.Resp()
 						return
 					}
+					searchType := q.R.URL.Query().Get("search_type")
+					if searchType != "00" && searchType != "02" {
+						q.Err = fmt.Errorf("搜索类型错误")
+						z.Error(q.Err.Error())
+						q.RespErr()
+						return
+					}
 					var page int
 					page, q.Err = strconv.Atoi(pageStr)
 					if forceErr == "pageParseInt" {
@@ -420,7 +433,7 @@ func register(ctx context.Context) {
 					}
 					//排序字段
 					orderBy := []string{"r.create_time desc"}
-					r, total, err := ListRegisterT(ctx, name, course, status, orderBy, page, pageSize, userID)
+					r, total, err := ListRegisterT(ctx, name, course, status, orderBy, page, pageSize, userID, searchType)
 					if err != nil {
 						q.Err = err
 						q.RespErr()
