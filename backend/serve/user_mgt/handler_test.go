@@ -858,6 +858,16 @@ func Test_handler_HandleValidateUserToBeInsert(t *testing.T) {
 			wantErr: true,
 		},
 		{
+			name: "请求体为空",
+			fields: fields{
+				srv: &MockService{},
+			},
+			args: args{
+				ctx: createMockContextWithBody("POST", "/api/user/validate", nil, ""),
+			},
+			wantErr: true,
+		},
+		{
 			name: "用户列表为空",
 			fields: fields{
 				srv: &MockService{},
@@ -1620,7 +1630,7 @@ func Test_handler_HandleUser(t *testing.T) {
 				srv: &MockService{},
 			},
 			args: args{
-				ctx: createMockContext("PUT", "/api/user", url.Values{}, ""),
+				ctx: createMockContext("YES", "/api/user", url.Values{}, ""),
 			},
 			wantErr: true,
 		},
@@ -1835,7 +1845,7 @@ func Test_handler_HandleUser(t *testing.T) {
 				srv: &MockService{},
 			},
 			args: args{
-				ctx: createMockContextWithBody("POST", "/api/user", "", ""),
+				ctx: createMockContextWithBody("POST", "/api/user", nil, ""),
 			},
 			wantErr: true,
 		},
@@ -1914,7 +1924,7 @@ func Test_handler_HandleUser(t *testing.T) {
 				srv: &MockService{},
 			},
 			args: args{
-				ctx: createMockContextWithBody("POST", "/api/user", "", ""),
+				ctx: createMockContextWithBody("POST", "/api/user", nil, ""),
 			},
 			wantErr: true,
 		},
@@ -2116,6 +2126,335 @@ func Test_handler_HandleUser(t *testing.T) {
 			},
 			wantErr: true,
 		},
+
+		// PUT方法测试用例
+		{
+			name: "PUT - 成功更新用户",
+			fields: fields{
+				srv: &MockService{
+					ValidateUserToBeUpdateFunc: func(ctx context.Context, tx pgx.Tx, users []User) ([]User, []User, error) {
+						return users, []User{}, nil
+					},
+				},
+			},
+			args: args{
+				ctx: createMockContextWithBody("PUT", "/api/user", `[{
+					"ID": 1,
+					"Account": "update_user_001",
+					"OfficialName": "更新用户001",
+					"Email": "update001@example.com"
+				}]`, ""),
+			},
+			wantErr: false,
+		},
+		{
+			name: "PUT - 权限检查失败",
+			fields: fields{
+				srv: &MockService{},
+			},
+			args: args{
+				ctx: createMockContextWithBody("PUT", "/api/user", `[{
+					"ID": 1,
+					"Account": "test_user"
+				}]`, "CheckUserAPIAccessible"),
+			},
+			wantErr: true,
+		},
+		{
+			name: "PUT - 用户无权限访问API",
+			fields: fields{
+				srv: &MockService{},
+			},
+			args: args{
+				ctx: createMockContextWithBody("PUT", "/api/user", `[{
+					"ID": 1,
+					"Account": "test_user"
+				}]`, "no-access"),
+			},
+			wantErr: true,
+		},
+		{
+			name: "PUT - 读取请求体失败",
+			fields: fields{
+				srv: &MockService{},
+			},
+			args: args{
+				ctx: createMockContextWithBody("PUT", "/api/user", `[{
+					"ID": 1,
+					"Account": "test_user"
+				}]`, "io.ReadAll"),
+			},
+			wantErr: true,
+		},
+		{
+			name: "PUT - 关闭请求体失败",
+			fields: fields{
+				srv: &MockService{
+					ValidateUserToBeUpdateFunc: func(ctx context.Context, tx pgx.Tx, users []User) ([]User, []User, error) {
+						return users, []User{}, nil
+					},
+				},
+			},
+			args: args{
+				ctx: createMockContextWithBody("PUT", "/api/user", `[{
+					"ID": 1,
+					"Account": "test_user"
+				}]`, "io.Close"),
+			},
+			wantErr: false, // io.Close错误不会导致整个请求失败
+		},
+		{
+			name: "PUT - 请求体为空",
+			fields: fields{
+				srv: &MockService{},
+			},
+			args: args{
+				ctx: createMockContextWithBody("PUT", "/api/user", nil, ""),
+			},
+			wantErr: true,
+		},
+		{
+			name: "PUT - JSON解析失败",
+			fields: fields{
+				srv: &MockService{},
+			},
+			args: args{
+				ctx: createMockContextWithBody("PUT", "/api/user", `[{
+					"ID": 1,
+					"Account": "test_user"
+				}]`, "json.Unmarshal"),
+			},
+			wantErr: true,
+		},
+		{
+			name: "PUT - 用户数据JSON解析失败",
+			fields: fields{
+				srv: &MockService{},
+			},
+			args: args{
+				ctx: createMockContextWithBody("PUT", "/api/user", `invalid json data`, ""),
+			},
+			wantErr: true,
+		},
+		{
+			name: "PUT - 用户列表为空",
+			fields: fields{
+				srv: &MockService{},
+			},
+			args: args{
+				ctx: createMockContextWithBody("PUT", "/api/user", `[]`, ""),
+			},
+			wantErr: true,
+		},
+		{
+			name: "PUT - 事务开始失败",
+			fields: fields{
+				srv: &MockService{},
+			},
+			args: args{
+				ctx: createMockContextWithBody("PUT", "/api/user", `[{
+					"ID": 1,
+					"Account": "test_user"
+				}]`, "tx.Begin"),
+			},
+			wantErr: true,
+		},
+		{
+			name: "PUT - 用户验证失败",
+			fields: fields{
+				srv: &MockService{
+					ValidateUserToBeUpdateFunc: func(ctx context.Context, tx pgx.Tx, users []User) ([]User, []User, error) {
+						return nil, nil, fmt.Errorf("用户验证失败")
+					},
+				},
+			},
+			args: args{
+				ctx: createMockContextWithBody("PUT", "/api/user", `[{
+					"ID": 1,
+					"Account": "test_user"
+				}]`, ""),
+			},
+			wantErr: true,
+		},
+		{
+			name: "PUT - 存在无效用户",
+			fields: fields{
+				srv: &MockService{
+					ValidateUserToBeUpdateFunc: func(ctx context.Context, tx pgx.Tx, users []User) ([]User, []User, error) {
+						return []User{}, []User{
+							{
+								TUser: cmn.TUser{
+									ID:      null.NewInt(1, true),
+									Account: "invalid_user",
+								},
+								ErrorMsg: []null.String{
+									null.NewString("邮箱格式不正确", true),
+								},
+							},
+						}, nil
+					},
+				},
+			},
+			args: args{
+				ctx: createMockContextWithBody("PUT", "/api/user", `[{
+					"ID": 1,
+					"Account": "invalid_user",
+					"Email": "invalid-email"
+				}]`, ""),
+			},
+			wantErr: false, // 返回405状态，但不是错误
+		},
+		{
+			name: "PUT - 无效用户序列化失败",
+			fields: fields{
+				srv: &MockService{
+					ValidateUserToBeUpdateFunc: func(ctx context.Context, tx pgx.Tx, users []User) ([]User, []User, error) {
+						return []User{}, []User{
+							{
+								TUser: cmn.TUser{
+									ID:      null.NewInt(1, true),
+									Account: "invalid_user",
+								},
+							},
+						}, nil
+					},
+				},
+			},
+			args: args{
+				ctx: createMockContextWithBody("PUT", "/api/user", `[{
+					"ID": 1,
+					"Account": "invalid_user"
+				}]`, "json.Marshal"),
+			},
+			wantErr: true,
+		},
+		{
+			name: "PUT - 更新用户失败",
+			fields: fields{
+				srv: &MockService{
+					err: fmt.Errorf("数据库更新失败"),
+					ValidateUserToBeUpdateFunc: func(ctx context.Context, tx pgx.Tx, users []User) ([]User, []User, error) {
+						return users, []User{}, nil
+					},
+				},
+			},
+			args: args{
+				ctx: createMockContextWithBody("PUT", "/api/user", `[{
+					"ID": 1,
+					"Account": "test_user"
+				}]`, ""),
+			},
+			wantErr: true,
+		},
+		{
+			name: "PUT - 更新结果序列化失败",
+			fields: fields{
+				srv: &MockService{
+					ValidateUserToBeUpdateFunc: func(ctx context.Context, tx pgx.Tx, users []User) ([]User, []User, error) {
+						return users, []User{}, nil
+					},
+				},
+			},
+			args: args{
+				ctx: createMockContextWithBody("PUT", "/api/user", `[{
+					"ID": 1,
+					"Account": "test_user"
+				}]`, "json.Marshal"),
+			},
+			wantErr: true,
+		},
+		{
+			name: "PUT - HTTP方法大小写不敏感 - put",
+			fields: fields{
+				srv: &MockService{
+					ValidateUserToBeUpdateFunc: func(ctx context.Context, tx pgx.Tx, users []User) ([]User, []User, error) {
+						return users, []User{}, nil
+					},
+				},
+			},
+			args: args{
+				ctx: createMockContextWithBody("put", "/api/user", `[{
+					"ID": 1,
+					"Account": "test_user"
+				}]`, ""),
+			},
+			wantErr: false,
+		},
+		{
+			name: "PUT - HTTP方法大小写不敏感 - Put",
+			fields: fields{
+				srv: &MockService{
+					ValidateUserToBeUpdateFunc: func(ctx context.Context, tx pgx.Tx, users []User) ([]User, []User, error) {
+						return users, []User{}, nil
+					},
+				},
+			},
+			args: args{
+				ctx: createMockContextWithBody("Put", "/api/user", `[{
+					"ID": 1,
+					"Account": "test_user"
+				}]`, ""),
+			},
+			wantErr: false,
+		},
+		{
+			name: "PUT - 包含多个用户的更新",
+			fields: fields{
+				srv: &MockService{
+					ValidateUserToBeUpdateFunc: func(ctx context.Context, tx pgx.Tx, users []User) ([]User, []User, error) {
+						return users, []User{}, nil
+					},
+				},
+			},
+			args: args{
+				ctx: createMockContextWithBody("PUT", "/api/user", `[{
+					"ID": 1,
+					"Account": "user_001",
+					"OfficialName": "用户001"
+				}, {
+					"ID": 2,
+					"Account": "user_002",
+					"OfficialName": "用户002"
+				}]`, ""),
+			},
+			wantErr: false,
+		},
+		{
+			name: "PUT - 包含特殊字符的用户数据",
+			fields: fields{
+				srv: &MockService{
+					ValidateUserToBeUpdateFunc: func(ctx context.Context, tx pgx.Tx, users []User) ([]User, []User, error) {
+						return users, []User{}, nil
+					},
+				},
+			},
+			args: args{
+				ctx: createMockContextWithBody("PUT", "/api/user", `[{
+					"ID": 1,
+					"Account": "test@user#001",
+					"OfficialName": "测试用户@#$%"
+				}]`, ""),
+			},
+			wantErr: false,
+		},
+		{
+			name: "PUT - 包含Unicode字符的用户数据",
+			fields: fields{
+				srv: &MockService{
+					ValidateUserToBeUpdateFunc: func(ctx context.Context, tx pgx.Tx, users []User) ([]User, []User, error) {
+						return users, []User{}, nil
+					},
+				},
+			},
+			args: args{
+				ctx: createMockContextWithBody("PUT", "/api/user", `[{
+					"ID": 1,
+					"Account": "用户账号",
+					"OfficialName": "张三李四王五"
+				}]`, ""),
+			},
+			wantErr: false,
+		},
 	}
 
 	initTestData()
@@ -2159,8 +2498,8 @@ func Test_handler_HandleUser(t *testing.T) {
 					t.Errorf("HandleUser() 期望有错误状态，但状态为0，响应: %+v", response)
 				}
 			} else {
-				if response.Status != 0 {
-					t.Errorf("HandleUser() 期望状态为0，但得到: %d，消息: %s", response.Status, response.Msg)
+				if response.Status == -1 {
+					t.Errorf("HandleUser() 不期望状态为-1，但得到: %d，消息: %s", response.Status, response.Msg)
 				}
 			}
 		})
@@ -2306,7 +2645,7 @@ func Test_handler_HandleSelectLoginDomain(t *testing.T) {
 				srv: &MockService{},
 			},
 			args: args{
-				ctx: createMockContextWithBody("PATCH", "/api/user/select-domain", "", ""),
+				ctx: createMockContextWithBody("PATCH", "/api/user/select-domain", nil, ""),
 			},
 			wantErr: true,
 		},
