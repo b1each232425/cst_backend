@@ -21,7 +21,6 @@ const (
 	// 事件类型
 	EVENT_TYPE_EXAM_SESSION_START = "exam_session_start"
 	EVENT_TYPE_EXAM_SESSION_END   = "exam_session_end"
-	EVENT_TYPE_EXAM_SYNC          = "exam_sync"
 
 	// 默认最大并发数
 	DEFAULT_MAX_WORKERS = 10
@@ -853,12 +852,6 @@ func startTempExamCleanup(ctx context.Context) {
 			cleanupTempExams(ctx)
 		}
 	}
-}
-
-func handleExamSync(ctx context.Context, event ExamEvent) {
-	z.Info("---->" + cmn.FncName())
-
-	// 处理考试同步事件
 }
 
 func ExamMaintainService() {
