@@ -495,9 +495,9 @@ func invigilation(ctx context.Context) {
 		searchTextFilter := gjson.Get(qry, "Filter.SearchText").Str
 		if searchTextFilter != "" {
 			filterStr = append(filterStr, fmt.Sprintf(`
-			examinee_number ILIKE '%%' || $%d || '%%' OR
+			(examinee_number ILIKE '%%' || $%d || '%%' OR
 			id_card_no ILIKE '%%' || $%d || '%%' OR
-			official_name ILIKE '%%' || $%d || '%%' 
+			official_name ILIKE '%%' || $%d || '%%')
 			`, argIndex, argIndex, argIndex))
 			args = append(args, searchTextFilter)
 			argIndex++
