@@ -145,6 +145,10 @@ func (r *service) QueryUsers(ctx context.Context, tx pgx.Tx, page, pageSize int6
            u.id_card_no,
            u.id_card_type,
            u.id_card_file,
+           u.country,
+           u.province,
+           u.city,
+           u.addr,
            u.role,
            u.logon_time,
            u.create_time,
@@ -228,6 +232,10 @@ func (r *service) QueryUsers(ctx context.Context, tx pgx.Tx, page, pageSize int6
 			&user.IDCardNo,
 			&user.IDCardType,
 			&user.IDCardFile,
+			&user.Country,
+			&user.Province,
+			&user.City,
+			&user.Addr,
 			&user.Role,
 			&user.LogonTime,
 			&user.CreateTime,
@@ -385,6 +393,10 @@ func (r *service) InsertUsers(ctx context.Context, tx pgx.Tx, users []User) (ins
 			id_card_type,
 			id_card_no,
 			id_card_file,
+			country,
+			province,
+			city,
+			addr,
 			account,
 			mobile_phone,
 			email,
@@ -397,7 +409,7 @@ func (r *service) InsertUsers(ctx context.Context, tx pgx.Tx, users []User) (ins
 			create_time,
 			update_time
 		) VALUES (
-			$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, crypt($15, gen_salt('bf')), $16, $17
+			$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, crypt($19, gen_salt('bf')), $20, $21
 		)`
 
 		if tx != nil {
@@ -408,6 +420,10 @@ func (r *service) InsertUsers(ctx context.Context, tx pgx.Tx, users []User) (ins
 				users[i].IDCardType,
 				users[i].IDCardNo,
 				users[i].IDCardFile,
+				users[i].Country,
+				users[i].Province,
+				users[i].City,
+				users[i].Addr,
 				users[i].Account,
 				users[i].MobilePhone,
 				users[i].Email,
@@ -428,6 +444,10 @@ func (r *service) InsertUsers(ctx context.Context, tx pgx.Tx, users []User) (ins
 				users[i].IDCardType,
 				users[i].IDCardNo,
 				users[i].IDCardFile,
+				users[i].Country,
+				users[i].Province,
+				users[i].City,
+				users[i].Addr,
 				users[i].Account,
 				users[i].MobilePhone,
 				users[i].Email,
@@ -450,23 +470,16 @@ func (r *service) InsertUsers(ctx context.Context, tx pgx.Tx, users []User) (ins
 
 		// 读取用户ID
 		var userID int64
-		var createTime int64
-		var updateTime int64
 		if tx != nil {
-			err = tx.QueryRow(ctx, "SELECT id, create_time, update_time FROM t_user WHERE account = $1", users[i].Account).Scan(&userID, &createTime, &updateTime)
+			err = tx.QueryRow(ctx, "SELECT id FROM t_user WHERE account = $1", users[i].Account).Scan(&userID)
 		} else {
-			err = r.pgxConn.QueryRow(ctx, "SELECT id, create_time, update_time FROM t_user WHERE account = $1", users[i].Account).Scan(&userID, &createTime, &updateTime)
+			err = r.pgxConn.QueryRow(ctx, "SELECT id FROM t_user WHERE account = $1", users[i].Account).Scan(&userID)
 		}
 		if err != nil || forceErr == "QueryUserID" {
 			e := fmt.Errorf("failed to retrieve user ID for %s: %w", users[i].Account, err)
 			z.Error(e.Error())
 			return []User{}, e
 		}
-
-		// 设置用户ID并添加到成功插入的用户列表
-		users[i].ID = null.IntFrom(userID)
-		users[i].CreateTime = null.IntFrom(createTime)
-		users[i].UpdateTime = null.IntFrom(updateTime)
 
 		// 插入用户角色到 t_user_domain
 		if len(users[i].Domains) > 0 {
@@ -488,8 +501,20 @@ func (r *service) InsertUsers(ctx context.Context, tx pgx.Tx, users []User) (ins
 			}
 		}
 
+		// 读取更新后的用户数据
+		var queryUsers []User
+		queryUsers, _, err := r.QueryUsers(ctx, tx, 1, 1, QueryUsersFilter{ID: null.IntFrom(userID)})
+		if err != nil || forceErr == "QueryUsers" {
+			e := fmt.Errorf("failed to retrieve updated user %s: %w", users[i].Account, err)
+			return []User{}, e
+		}
+		if len(queryUsers) < 1 || forceErr == "NoUpdatedUser" {
+			e := fmt.Errorf("updated user %s not found", users[i].Account)
+			return []User{}, e
+		}
+
 		// 将成功插入的用户添加到结果列表
-		insertedUsers = append(insertedUsers, users[i])
+		insertedUsers = append(insertedUsers, queryUsers[0])
 	}
 
 	return insertedUsers, nil
@@ -596,8 +621,12 @@ func (r *service) OverwriteUpdateUsers(ctx context.Context, tx pgx.Tx, users []U
 			birthday = $9,
 			status = $10,
 			remark = $11,
-			update_time = $12
-		WHERE id = $13`
+			update_time = $12,
+			country = $13,
+			province = $14,
+			city = $15,
+			addr = $16
+		WHERE id = $17`
 
 		if tx != nil {
 			_, err = tx.Exec(ctx, updateSQL,
@@ -613,6 +642,10 @@ func (r *service) OverwriteUpdateUsers(ctx context.Context, tx pgx.Tx, users []U
 				r.orDefault(users[i].Status, "00"),
 				users[i].Remark,
 				time.Now().UnixMilli(),
+				users[i].Country,
+				users[i].Province,
+				users[i].City,
+				users[i].Addr,
 				users[i].ID,
 			)
 		} else {
@@ -629,6 +662,10 @@ func (r *service) OverwriteUpdateUsers(ctx context.Context, tx pgx.Tx, users []U
 				r.orDefault(users[i].Status, "00"),
 				users[i].Remark,
 				time.Now().UnixMilli(),
+				users[i].Country,
+				users[i].Province,
+				users[i].City,
+				users[i].Addr,
 				users[i].ID,
 			)
 		}
