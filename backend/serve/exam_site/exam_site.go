@@ -2493,14 +2493,14 @@ func examSiteSyncInit(ctx context.Context) {
 
 			case <-ticker.C:
 
-				// 查询当前是否有尚未结束的考试
+				// 查询当前是否有尚未结束的考试(待开始+进行中)
 				// 如果有，则不进行同步操作
 				// 如果没有，则进行同步
 				
 				dbConn := cmn.GetDbConn()
 
 				c := 0
-				q.Err = dbConn.QueryRow(`SELECT COUNT(id) FROM t_exam_info WHERE status = '04'`).Scan(&c)
+				q.Err = dbConn.QueryRow(`SELECT COUNT(id) FROM t_exam_info WHERE status = '02' OR status = '04'`).Scan(&c)
 				if q.Err != nil || (cmn.InDebugMode && q.Tag["queryOngoingExamErr"] != nil) {
 					
 					if q.Err == nil {
