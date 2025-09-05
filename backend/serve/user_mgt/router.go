@@ -120,15 +120,20 @@ func Enroll(author string) {
 	})
 
 	_ = cmn.AddService(&cmn.ServeEndPoint{
-		Fn: handler.HandleQueryMyInfo,
+		Fn: handler.HandleCurrentUser,
 
 		Path: "/user/me",
-		Name: "查询个人信息",
+		Name: "当前用户管理",
 
 		ApiEntries: []*cmn.EndPointApiEntries{
 			{
 				Name:         "用户管理.查询个人信息",
 				AccessAction: auth_mgt.CAPIAccessActionRead,
+				Configurable: false,
+			},
+			{
+				Name:         "用户管理.更新个人信息",
+				AccessAction: auth_mgt.CAPIAccessActionUpdate,
 				Configurable: false,
 			},
 		},

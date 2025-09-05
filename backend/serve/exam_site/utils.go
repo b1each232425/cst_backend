@@ -77,16 +77,18 @@ WHERE t_exam_site.sys_user = %d`, sysUser),
 
 		// 中心服务器数据导出
 
+		// 获取最近一个未开始的考试ID
 		var recentExamID int64
 
 		s := `SELECT 
 		t_exam_info.id
 	FROM t_exam_info
 		JOIN t_exam_session ON ((EXTRACT(epoch FROM CURRENT_TIMESTAMP) * (1000)::numeric))::bigint < t_exam_session.start_time AND t_exam_session.exam_id = t_exam_info.id 
-	WHERE t_exam_info.mode = '02' 
+	WHERE t_exam_info.mode = '02' AND t_exam_info.status = '02'
 	GROUP BY
 		t_exam_info.id
-	ORDER BY MIN(t_exam_session.start_time) ASC`
+	ORDER BY MIN(t_exam_session.start_time) ASC
+	LIMIT 1`
 
 		err = dbConn.QueryRow(s).Scan(&recentExamID)
 		if err != nil && !errors.Is(err, sql.ErrNoRows) {
@@ -222,27 +224,30 @@ GROUP BY
 			// 考卷数据
 			{
 				Sql: fmt.Sprintf(`SELECT t_exam_paper.* 
-FROM t_exam_paper 
-	JOIN t_exam_session ON t_exam_session.id = t_exam_paper.exam_session_id
+FROM t_exam_session
+	JOIN t_paper ON t_paper.id = t_exam_session.paper_id
+	JOIN t_exam_paper ON t_exam_paper.id = t_paper.exampaper_id
 WHERE t_exam_session.exam_id = %d
 				`, recentExamID),
 				Table: "t_exam_paper",
 			},
 			{
 				Sql: fmt.Sprintf(`SELECT t_exam_paper_group.* 
-FROM t_exam_paper_group
-	JOIN t_exam_paper ON t_exam_paper.id = t_exam_paper_group.exam_paper_id
-	JOIN t_exam_session ON t_exam_session.id = t_exam_paper.exam_session_id
+FROM t_exam_session
+	JOIN t_paper ON t_paper.id = t_exam_session.paper_id
+	JOIN t_exam_paper ON t_exam_paper.id = t_paper.exampaper_id
+	JOIN t_exam_paper_group ON t_exam_paper_group.exam_paper_id = t_exam_paper.id
 WHERE t_exam_session.exam_id = %d
 			`, recentExamID),
 				Table: "t_exam_paper_group",
 			},
 			{
 				Sql: fmt.Sprintf(`SELECT t_exam_paper_question.* 
-FROM t_exam_paper_question
-	JOIN t_exam_paper_group ON t_exam_paper_group.id = t_exam_paper_question.group_id
-	JOIN t_exam_paper ON t_exam_paper.id = t_exam_paper_group.exam_paper_id
-	JOIN t_exam_session ON t_exam_session.id = t_exam_paper.exam_session_id
+FROM t_exam_session
+	JOIN t_paper ON t_paper.id = t_exam_session.paper_id
+	JOIN t_exam_paper ON t_exam_paper.id = t_paper.exampaper_id
+	JOIN t_exam_paper_group ON t_exam_paper_group.exam_paper_id = t_exam_paper.id
+	JOIN t_exam_paper_question ON t_exam_paper_question.group_id = t_exam_paper_group.id
 WHERE t_exam_session.exam_id = %d
 			`, recentExamID),
 				Table: "t_exam_paper_question",

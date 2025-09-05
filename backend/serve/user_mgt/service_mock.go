@@ -52,9 +52,7 @@ func (m *MockService) OverwriteUpdateUsers(ctx context.Context, tx pgx.Tx, users
 	if m.err != nil {
 		return []User{}, m.err
 	}
-	m.users = append(m.users, users...)
-	m.totalRows += int64(len(users))
-	return users, nil
+	return m.users, nil
 }
 
 func (m *MockService) CheckTUserRowExists(ctx context.Context, tx pgx.Tx, whereClause string, args ...any) (bool, *User, error) {

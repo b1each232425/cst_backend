@@ -1096,6 +1096,14 @@ func examSite(ctx context.Context) {
 
 	userID := q.SysUser.ID.Int64
 
+	var authority *auth_mgt.Authority
+	authority, q.Err = auth_mgt.GetUserAuthority(ctx)
+	if q.Err != nil {
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+
 	readable, creatable, editable, deletable := getApiPermissions(ctx, q.Ep.Path)
 
 	dbConn := cmn.GetDbConn()
@@ -1248,9 +1256,9 @@ func examSite(ctx context.Context) {
 			break
 		}
 
-		// 添加考点服务器信息
-		sqlStr = `INSERT INTO t_exam_site (name, address, server_host, admin, sys_user, creator)
-		VALUES ($1, $2, $3, $4, $5, $6)
+		// 添加考点信息
+		sqlStr = `INSERT INTO t_exam_site (name, address, server_host, admin, sys_user, creator, domain_id)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
 		`
 
 		var stmt2 *sql.Stmt
@@ -1267,7 +1275,7 @@ func examSite(ctx context.Context) {
 
 		defer stmt2.Close()
 
-		_, q.Err = stmt2.ExecContext(ctx, info.Name, info.Address, info.ServerHost, info.Admin, sysUserID, userID)
+		_, q.Err = stmt2.ExecContext(ctx, info.Name, info.Address, info.ServerHost, info.Admin, sysUserID, userID, authority.Domain.ID.Int64)
 		if q.Err != nil || (cmn.InDebugMode && q.Tag["sqlExecErr2"] != nil) {
 
 			if q.Err == nil {
@@ -1760,8 +1768,8 @@ func examRoom(ctx context.Context) {
 
 		// 添加考场
 
-		sqlStr = `INSERT INTO t_exam_room (exam_site, name, capacity, creator, updated_by)
-		VALUES ($1, $2, $3, $4, $5)`
+		sqlStr = `INSERT INTO t_exam_room (exam_site, name, capacity, creator, updated_by, domain_id)
+		VALUES ($1, $2, $3, $4, $5, $6)`
 
 		stmt1, q.Err = tx.Prepare(sqlStr)
 		if q.Err != nil || (cmn.InDebugMode && q.Tag["prepareStmtErr"] != nil) {
@@ -1776,7 +1784,7 @@ func examRoom(ctx context.Context) {
 
 		defer stmt1.Close()
 
-		_, q.Err = stmt1.ExecContext(ctx, info.ExamSiteID, info.Name, info.Capacity, userID, userID)
+		_, q.Err = stmt1.ExecContext(ctx, info.ExamSiteID, info.Name, info.Capacity, userID, userID, authority.Domain.ID.Int64)
 		if q.Err != nil || (cmn.InDebugMode && q.Tag["execSQLErr"] != nil) {
 
 			if q.Err == nil {
