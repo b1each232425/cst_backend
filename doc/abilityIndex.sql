@@ -1,6 +1,6 @@
 /*==============================================================*/
 /* DBMS name:      PostgreSQL 9.x                               */
-/* Created on:     2025/9/4 2:00:16                             */
+/* Created on:     9/5/2025 10:14:28 PM                         */
 /*==============================================================*/
 
 
@@ -1255,6 +1255,7 @@ create table if not exists  t_user (
    country              VARCHAR              null,
    province             VARCHAR              null,
    city                 VARCHAR              null,
+   district             VARCHAR              null,
    addr                 VARCHAR              null,
    fuse_name            VARCHAR              null,
    official_name        VARCHAR              null,
@@ -1334,6 +1335,9 @@ comment on column t_user.province is
 
 comment on column t_user.city is
 '城市';
+
+comment on column t_user.district is
+'市辖区';
 
 comment on column t_user.addr is
 '详细地址';
@@ -9483,9 +9487,12 @@ comment on column t_sys_ver.status is
 ALTER SEQUENCE t_sys_ver_id_seq RESTART WITH 20000;
 
 insert into t_sys_ver(id,name,ver,create_time,update_time,remark)
-  values(1000,'业务模型','3.2.8.0',
-  '2016年12月5日 9:52:53','2025年9月4日 2:00:10',
-  '3.2.8.0
+  values(1000,'业务模型','3.2.9.0',
+  'Monday, December 5, 2016 9:52:53 AM','Friday, September 5, 2025 10:14:25 PM',
+  '3.2.9.0
+给t_user表增加district市辖区字段
+
+3.2.8.0
 优化试卷视图
 
 3.2.7.1
