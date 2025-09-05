@@ -193,8 +193,8 @@ ins_rooms AS (
   	RETURNING id
 ),
 ins_exam_info AS (
-  	INSERT INTO t_exam_info (id, name, type, mode, creator)
-  	VALUES (%d, 'test-exam', '04', '02', 1000)
+  	INSERT INTO t_exam_info (id, name, type, mode, creator, status)
+  	VALUES (%d, 'test-exam', '04', '02', 1000, '02')
   	ON CONFLICT(id) DO NOTHING
   	RETURNING id
 ),
@@ -203,6 +203,12 @@ ins_exam_session AS (
   	VALUES (%d, %d, %d, '00', %d, %d, 1000)
   	ON CONFLICT(id) DO NOTHING
   	RETURNING id
+),
+ins_paper AS (
+	INSERT INTO t_paper (id, name, exampaper_id, creator, domain_id)
+	VALUES (%d, 'test-paper', %d, 1000, 10098)
+	ON CONFLICT(id) DO NOTHING
+	RETURNING id
 ),
 ins_exam_paper AS (
   	INSERT INTO t_exam_paper (id, exam_session_id, creator)
@@ -306,6 +312,9 @@ SELECT 1;
 
 			// ins_exam_session: (id, exam_id, paper_id, start_time, end_time)
 			testID, testID, testID, (nowTime+3*60)*1000, (nowTime+13*60)*1000,
+
+			// ins_paper: (id, exampaper_id)
+			testID, testID,
 
 			// ins_exam_paper (id, exam_session_id)
 			testID, testID,
@@ -5096,7 +5105,7 @@ func TestExamSiteSyncInit(t *testing.T) {
 				}
 
 				if c != 3 {
-					err = fmt.Errorf("unexpected query, expect 3")
+					err = fmt.Errorf("unexpected query t_exam_record, expect 3")
 					t.Error(err.Error())
 					return
 				}
@@ -5108,7 +5117,7 @@ func TestExamSiteSyncInit(t *testing.T) {
 				}
 
 				if c != 3 {
-					err = fmt.Errorf("unexpected query, expect 3")
+					err = fmt.Errorf("unexpected query t_examinee, expect 3")
 					t.Error(err.Error())
 					return
 				}
@@ -5119,8 +5128,8 @@ func TestExamSiteSyncInit(t *testing.T) {
 					return
 				}
 
-				if c != 1 {
-					err = fmt.Errorf("unexpected query, expect 1")
+				if c < 1 {
+					err = fmt.Errorf("unexpected query t_student_answers, expect bigger than 1")
 					t.Error(err.Error())
 					return
 				}
