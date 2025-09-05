@@ -22,7 +22,7 @@ type Handler interface {
 	HandleUser(ctx context.Context)
 	HandleGetNewAccount(ctx context.Context)
 	HandleSelectLoginDomain(ctx context.Context)
-	HandleQueryMyInfo(ctx context.Context)
+	HandleCurrentUser(ctx context.Context)
 	HandleValidateUserToBeInsert(ctx context.Context)
 	HandleLogout(ctx context.Context)
 	HandleSendValidationCodeEmail(ctx context.Context)
@@ -440,6 +440,194 @@ func (h *handler) HandleUser(ctx context.Context) {
 	}
 }
 
+// HandleCurrentUser 处理查询我的信息请求
+func (h *handler) HandleCurrentUser(ctx context.Context) {
+	q := cmn.GetCtxValue(ctx)
+	z.Info("---->" + cmn.FncName())
+
+	forceErr, _ := ctx.Value("force-error").(string) // 用于强制执行错误处理代码
+	var err error
+
+	if q.SysUser == nil || !q.SysUser.ID.Valid {
+		q.Err = fmt.Errorf("user not logged in or invalid user ID")
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+
+	method := strings.ToLower(q.R.Method)
+
+	switch method {
+	case "get": // 查询当前用户信息
+		var users []User
+		users, _, err = h.srv.QueryUsers(ctx, nil, 1, 1, QueryUsersFilter{
+			ID: q.SysUser.ID,
+		})
+		if err != nil {
+			q.Err = fmt.Errorf("failed to query user: %w", err)
+			q.RespErr()
+			return
+		}
+		if len(users) == 0 {
+			q.Err = fmt.Errorf("user not found")
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+		user := users[0]
+
+		userJson, err := json.Marshal(user)
+		if err != nil || forceErr == "json.Marshal" {
+			q.Err = fmt.Errorf("failed to marshal users: %w", err)
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		q.Msg.Status = 0
+		q.Msg.Msg = "success"
+		q.Msg.Data = userJson
+		q.Resp()
+		return
+
+	case "put": // 更新当前用户信息
+		var buf []byte
+		buf, err = io.ReadAll(q.R.Body)
+		if err != nil || forceErr == "io.ReadAll" {
+			q.Err = fmt.Errorf("failed to read body: %w", err)
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+		defer func() {
+			err = q.R.Body.Close()
+			if err != nil || forceErr == "io.Close" {
+				e := fmt.Errorf("failed to close request body: %w", err)
+				z.Error(e.Error())
+				return
+			}
+		}()
+
+		if len(buf) == 0 {
+			q.Err = fmt.Errorf("request body cannot be empty")
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		var body cmn.ReqProto
+		err = json.Unmarshal(buf, &body)
+		if err != nil || forceErr == "json.Unmarshal" {
+			q.Err = fmt.Errorf("failed to unmarshal request body: %w", err)
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		var user User
+		err = json.Unmarshal(body.Data, &user)
+		if err != nil || forceErr == "json.Unmarshal_user" {
+			q.Err = fmt.Errorf("failed to unmarshal request json data: %w", err)
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		user.ID = q.SysUser.ID
+
+		// 创建事务
+		var tx pgx.Tx
+		pgxConn := cmn.GetPgxConn()
+		tx, err = pgxConn.Begin(ctx)
+		if err != nil || forceErr == "tx.Begin" {
+			q.Err = fmt.Errorf("failed to begin transaction: %w", err)
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+		defer func() {
+			if err != nil {
+				err = tx.Rollback(ctx)
+				if err != nil || forceErr == "tx.Rollback" {
+					z.Error("transaction rolled back due to error: " + err.Error())
+				}
+				return
+			}
+			err = tx.Commit(ctx)
+			if err != nil || forceErr == "tx.Commit" {
+				z.Error("failed to commit transaction: " + err.Error())
+			}
+			return
+		}()
+
+		users := []User{user}
+
+		// 验证用户信息
+		var validUsers []User
+		var invalidUsers []User
+		validUsers, invalidUsers, err = h.srv.ValidateUserToBeUpdate(ctx, tx, users)
+		if err != nil {
+			q.Err = fmt.Errorf("failed to validate users: %w", err)
+			q.RespErr()
+			return
+		}
+
+		// 若用户信息不合法，则直接返回，不执行更新操作
+		if len(invalidUsers) != 0 {
+			invalidUserBytes, err := json.Marshal(invalidUsers[0])
+			if err != nil || forceErr == "json.Marshal" {
+				q.Err = fmt.Errorf("failed to marshal invalid users: %w", err)
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+
+			q.Msg.Status = 405
+			q.Msg.Msg = "some users are invalid and cannot be updated"
+			q.Msg.Data = invalidUserBytes
+			q.Resp()
+			return
+		}
+
+		var updatedUsers []User
+		if len(validUsers) > 0 {
+			updatedUsers, err = h.srv.OverwriteUpdateUsers(ctx, tx, validUsers)
+			if err != nil {
+				q.Err = fmt.Errorf("failed to update users: %w", err)
+				q.RespErr()
+				return
+			}
+		}
+
+		if len(updatedUsers) == 0 {
+			q.Err = fmt.Errorf("user not updated")
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		insertedUserJson, err := json.Marshal(updatedUsers[0])
+		if err != nil || forceErr == "json.Marshal" {
+			q.Err = fmt.Errorf("failed to marshal valid users: %w", err)
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		q.Msg.Status = 0
+		q.Msg.Msg = "success"
+		q.Msg.Data = insertedUserJson
+		q.Resp()
+		return
+
+	default:
+		q.Err = fmt.Errorf("unsupported method: %s", method)
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+}
+
 // HandleGetNewAccount 处理获取新账户的请求
 func (h *handler) HandleGetNewAccount(ctx context.Context) {
 	q := cmn.GetCtxValue(ctx)
@@ -584,60 +772,6 @@ func (h *handler) HandleSelectLoginDomain(ctx context.Context) {
 
 	q.Msg.Status = 0
 	q.Msg.Msg = "success"
-	q.Resp()
-	return
-}
-
-// HandleQueryMyInfo 处理查询我的信息请求
-func (h *handler) HandleQueryMyInfo(ctx context.Context) {
-	q := cmn.GetCtxValue(ctx)
-	z.Info("---->" + cmn.FncName())
-
-	forceErr, _ := ctx.Value("force-error").(string) // 用于强制执行错误处理代码
-	var err error
-
-	method := strings.ToLower(q.R.Method)
-	if method != "get" {
-		q.Err = fmt.Errorf("unsupported method: %s", method)
-		z.Error(q.Err.Error())
-		q.RespErr()
-		return
-	}
-
-	if q.SysUser == nil || !q.SysUser.ID.Valid {
-		q.Err = fmt.Errorf("user not logged in or invalid user ID")
-		z.Error(q.Err.Error())
-		q.RespErr()
-		return
-	}
-
-	users, _, err := h.srv.QueryUsers(ctx, nil, 1, 1, QueryUsersFilter{
-		ID: q.SysUser.ID,
-	})
-	if err != nil {
-		q.Err = fmt.Errorf("failed to query user: %w", err)
-		q.RespErr()
-		return
-	}
-	if len(users) == 0 {
-		q.Err = fmt.Errorf("user not found")
-		z.Error(q.Err.Error())
-		q.RespErr()
-		return
-	}
-	user := users[0]
-
-	userJson, err := json.Marshal(user)
-	if err != nil || forceErr == "json.Marshal" {
-		q.Err = fmt.Errorf("failed to marshal users: %w", err)
-		z.Error(q.Err.Error())
-		q.RespErr()
-		return
-	}
-
-	q.Msg.Status = 0
-	q.Msg.Msg = "success"
-	q.Msg.Data = userJson
 	q.Resp()
 	return
 }
