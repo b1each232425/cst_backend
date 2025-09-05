@@ -24,21 +24,39 @@ func ListRegisterT(ctx context.Context, name string, course string, status strin
 	var clauses []string
 	//构建占位符
 	var args []interface{}
-	args = append(args, RegisterStudentStatus.Apply)
-	args = append(args, RegisterPracticeStatus.Normal)
-	if name != "" {
-		clauses = append(clauses, fmt.Sprintf("%s LIKE $%d", "r.name", len(args)+1))
-		args = append(args, "%"+name+"%")
-	}
-	if course != "" {
-		clauses = append(clauses, fmt.Sprintf("%s  =$%d", "r.course", len(args)+1))
-		args = append(args, course)
-	}
 
 	if searchType == "02" {
+		args = append(args, RegisterStudentStatus.Apply)
+		args = append(args, RegisterStudentStatus.Rejected)
+		args = append(args, RegisterStudentStatus.Pending)
+		args = append(args, RegisterStudentStatus.Moved)
+		args = append(args, RegisterPracticeStatus.Normal)
+		if name != "" {
+			clauses = append(clauses, fmt.Sprintf("%s LIKE $%d", "r.name", len(args)+1))
+			args = append(args, "%"+name+"%")
+		}
+		if course != "" {
+			clauses = append(clauses, fmt.Sprintf("%s  =$%d", "r.course", len(args)+1))
+			args = append(args, course)
+		}
+
 		clauses = append(clauses, fmt.Sprintf("r.status = $%d", len(args)+1))
 		args = append(args, RegisterStatus.ReviewEnding)
 	} else {
+		args = append(args, RegisterStudentStatus.Apply)
+		args = append(args, RegisterStudentStatus.Apply)
+		args = append(args, RegisterStudentStatus.Apply)
+		args = append(args, RegisterStudentStatus.Apply)
+		args = append(args, RegisterPracticeStatus.Normal)
+		if name != "" {
+			clauses = append(clauses, fmt.Sprintf("%s LIKE $%d", "r.name", len(args)+1))
+			args = append(args, "%"+name+"%")
+		}
+		if course != "" {
+			clauses = append(clauses, fmt.Sprintf("%s  =$%d", "r.course", len(args)+1))
+			args = append(args, course)
+		}
+
 		if status != "" {
 			clauses = append(clauses, fmt.Sprintf("%s  =$%d", "r.status", len(args)+1))
 			args = append(args, status)
@@ -50,8 +68,8 @@ func ListRegisterT(ctx context.Context, name string, course string, status strin
 	args = append(args, userID)
 
 	s := `
-	SELECT r.id, r.name , r.course , COALESCE((SELECT COUNT(*) FROM assessuser.t_exam_plan_student eps WHERE eps.register_id=r.id AND eps.status!=$1),0) , r.max_number , r.review_end_time , r.start_time , r.end_time , COALESCE(STRING_AGG(p.name, '、'),'') , r.status ,r.exam_plan_location
-	FROM assessuser.t_register_plan r  LEFT JOIN assessuser.t_register_practice rp ON rp.register_id=r.id AND rp.status=$2
+	SELECT r.id, r.name , r.course , COALESCE((SELECT COUNT(*) FROM assessuser.t_exam_plan_student eps WHERE eps.register_id=r.id AND eps.status NOT IN ($1 ,$2 ,$3 ,$4)),0) , r.max_number , r.review_end_time , r.start_time , r.end_time , COALESCE(STRING_AGG(p.name, '、'),'') , r.status ,r.exam_plan_location
+	FROM assessuser.t_register_plan r  LEFT JOIN assessuser.t_register_practice rp ON rp.register_id=r.id AND rp.status=$5
 	LEFT JOIN  assessuser.t_practice p ON p.id=rp.practice_id
 		`
 	if len(clauses) > 0 {
@@ -391,7 +409,7 @@ func GetRegisterStudentById(ctx context.Context, registerID int64, message strin
 
 	if searchType == "00" {
 		if message != "" {
-			clauses = append(clauses, fmt.Sprintf("%s LIKE $%d OR %s LIKE $%d OR %s LIKE $%d OR %s LIKE $%d", "u.official_name", len(args)+1,
+			clauses = append(clauses, fmt.Sprintf("(%s LIKE $%d OR %s LIKE $%d OR %s LIKE $%d OR %s LIKE $%d )", "u.official_name", len(args)+1,
 				"u.email", len(args)+2, "u.id_card_no", len(args)+3, "u.mobile_phone", len(args)+4))
 			args = append(args, "%"+message+"%", "%"+message+"%", "%"+message+"%", "%"+message+"%")
 		}
@@ -408,12 +426,12 @@ func GetRegisterStudentById(ctx context.Context, registerID int64, message strin
 		clauses = append(clauses, fmt.Sprintf("eps.status != $%d", len(args)+1))
 		args = append(args, RegisterStudentStatus.Apply)
 		s = `
-	SELECT u.id ,  u.official_name , u.mobile_phone , u.email , u.gender , u.id_card_no , u.id_card_type , eps.register_time , eps.type , eps.exam_type , COALESCE((SELECT official_name FROM assessuser.t_user WHERE id =eps.reviewer),'') AS reviewer , eps.status, eps.register_id
+	SELECT u.id ,  u.official_name , u.mobile_phone , u.email , u.gender , u.id_card_no , u.id_card_type , eps.register_time , eps.type , eps.exam_type , COALESCE((SELECT official_name FROM assessuser.t_user WHERE id =eps.reviewer),'') AS reviewer , eps.status, eps.register_id, eps.id
 	FROM assessuser.t_user u JOIN assessuser.t_exam_plan_student eps ON eps.student_id =u.id  
 `
 	} else if searchType == "02" {
 		if message != "" {
-			clauses = append(clauses, fmt.Sprintf("%s LIKE $%d OR %s LIKE $%d OR %s LIKE $%d OR %s LIKE $%d", "u.official_name", len(args)+1,
+			clauses = append(clauses, fmt.Sprintf("(%s LIKE $%d OR %s LIKE $%d OR %s LIKE $%d OR %s LIKE $%d )", "u.official_name", len(args)+1,
 				"u.email", len(args)+2, "u.id_card_no", len(args)+3, "u.mobile_phone", len(args)+4))
 			args = append(args, "%"+message+"%", "%"+message+"%", "%"+message+"%", "%"+message+"%")
 		}
@@ -426,7 +444,7 @@ func GetRegisterStudentById(ctx context.Context, registerID int64, message strin
 		clauses = append(clauses, fmt.Sprintf("eps.register_id = $%d", len(args)+1))
 		args = append(args, registerID)
 		clauses = append(clauses, fmt.Sprintf("NOT EXISTS (SELECT 1 FROM assessuser.t_exam_student es WHERE es.exam_plan_student_id = eps.id)"))
-		s = `SELECT u.id ,  u.official_name , u.mobile_phone , u.email , u.gender , u.id_card_no , u.id_card_type , eps.register_time , eps.type , eps.exam_type , COALESCE((SELECT official_name FROM assessuser.t_user WHERE id =eps.reviewer),'') AS reviewer , eps.status ,eps.register_id
+		s = `SELECT u.id ,  u.official_name , u.mobile_phone , u.email , u.gender , u.id_card_no , u.id_card_type , eps.register_time , eps.type , eps.exam_type , COALESCE((SELECT official_name FROM assessuser.t_user WHERE id =eps.reviewer),'') AS reviewer , eps.status ,eps.register_id, eps.id
 	FROM assessuser.t_user u JOIN assessuser.t_exam_plan_student eps ON eps.student_id =u.id  `
 	}
 	if len(clauses) > 0 {
@@ -461,7 +479,7 @@ func GetRegisterStudentById(ctx context.Context, registerID int64, message strin
 		var student cmn.TUser
 		var planStudent cmn.TExamPlanStudent
 		var reviewer string
-		err = rows.Scan(&student.ID, &student.OfficialName, &student.MobilePhone, &student.Email, &student.Gender, &student.IDCardNo, &student.IDCardType, &planStudent.RegisterTime, &planStudent.Type, &planStudent.ExamType, &reviewer, &planStudent.Status, &planStudent.RegisterID)
+		err = rows.Scan(&student.ID, &student.OfficialName, &student.MobilePhone, &student.Email, &student.Gender, &student.IDCardNo, &student.IDCardType, &planStudent.RegisterTime, &planStudent.Type, &planStudent.ExamType, &reviewer, &planStudent.Status, &planStudent.RegisterID, &planStudent.ID)
 		if err != nil || forceErr == "scan" {
 			err = fmt.Errorf("解析数据失败:%v", err)
 			z.Error(err.Error())
@@ -697,8 +715,12 @@ func AddRegister(ctx context.Context, registration *cmn.TRegisterPlan, practiceI
 		if err != nil {
 			// 操作失败回滚
 			err = tx.Rollback(ctx)
+			if forceErr == "rollback" {
+				err = fmt.Errorf("rollback failed:%v", err)
+			}
 			if err != nil {
 				z.Error(err.Error())
+				return
 			}
 		} else {
 			// 无错误则提交
@@ -716,8 +738,8 @@ func AddRegister(ctx context.Context, registration *cmn.TRegisterPlan, practiceI
 	VALUES ($1,$2 ,$3 ,$4 , $5 ,$6 ,$7 ,$8 ,$9 ,$10 ,$11 ,$12 ,$13) RETURNING id
 `
 	err = tx.QueryRow(ctx, s, registration.Name, registration.StartTime, registration.EndTime, registration.ReviewEndTime, registration.ReviewerIds, registration.MaxNumber, registration.Course, registration.ExamPlanLocation, userID, userID, now, now, RegisterStatus.PendingRelease).Scan(&id)
-	if forceErr == "QueryRow" {
-		err = fmt.Errorf("QueryRow failed")
+	if forceErr == "query" {
+		err = fmt.Errorf("query failed")
 	}
 	if err != nil {
 		err = fmt.Errorf("添加报名计划失败:%v", err)
@@ -1153,7 +1175,7 @@ func OperateRegisterStatus(ctx context.Context, registerIDs []int64, status stri
 // 删除报名计划相关联的练习下的学生
 func DeleteRegisterPracticeStudent(ctx context.Context, tx pgx.Tx, userID int64, registerIDs []int64) error {
 	forceErr := ""
-	val := ctx.Value("forceErr-DeleteRegisterPracticeStudent")
+	val := ctx.Value("force-error")
 	if val != nil {
 		forceErr = val.(string)
 	}
@@ -1169,8 +1191,8 @@ func DeleteRegisterPracticeStudent(ctx context.Context, tx pgx.Tx, userID int64,
 	var deletePracticeIDs []int64
 	for rows.Next() {
 		var practiceId int64
-		err := rows.Scan(&practiceId)
-		if err != nil {
+		err = rows.Scan(&practiceId)
+		if err != nil || forceErr == "scan" {
 			err = fmt.Errorf("扫描已删除的练习ID失败:%v", err)
 			z.Error(err.Error())
 			return err
