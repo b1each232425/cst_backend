@@ -24,21 +24,39 @@ func ListRegisterT(ctx context.Context, name string, course string, status strin
 	var clauses []string
 	//构建占位符
 	var args []interface{}
-	args = append(args, RegisterStudentStatus.Apply)
-	args = append(args, RegisterPracticeStatus.Normal)
-	if name != "" {
-		clauses = append(clauses, fmt.Sprintf("%s LIKE $%d", "r.name", len(args)+1))
-		args = append(args, "%"+name+"%")
-	}
-	if course != "" {
-		clauses = append(clauses, fmt.Sprintf("%s  =$%d", "r.course", len(args)+1))
-		args = append(args, course)
-	}
 
 	if searchType == "02" {
+		args = append(args, RegisterStudentStatus.Apply)
+		args = append(args, RegisterStudentStatus.Rejected)
+		args = append(args, RegisterStudentStatus.Pending)
+		args = append(args, RegisterStudentStatus.Moved)
+		args = append(args, RegisterPracticeStatus.Normal)
+		if name != "" {
+			clauses = append(clauses, fmt.Sprintf("%s LIKE $%d", "r.name", len(args)+1))
+			args = append(args, "%"+name+"%")
+		}
+		if course != "" {
+			clauses = append(clauses, fmt.Sprintf("%s  =$%d", "r.course", len(args)+1))
+			args = append(args, course)
+		}
+
 		clauses = append(clauses, fmt.Sprintf("r.status = $%d", len(args)+1))
 		args = append(args, RegisterStatus.ReviewEnding)
 	} else {
+		args = append(args, RegisterStudentStatus.Apply)
+		args = append(args, RegisterStudentStatus.Apply)
+		args = append(args, RegisterStudentStatus.Apply)
+		args = append(args, RegisterStudentStatus.Apply)
+		args = append(args, RegisterPracticeStatus.Normal)
+		if name != "" {
+			clauses = append(clauses, fmt.Sprintf("%s LIKE $%d", "r.name", len(args)+1))
+			args = append(args, "%"+name+"%")
+		}
+		if course != "" {
+			clauses = append(clauses, fmt.Sprintf("%s  =$%d", "r.course", len(args)+1))
+			args = append(args, course)
+		}
+
 		if status != "" {
 			clauses = append(clauses, fmt.Sprintf("%s  =$%d", "r.status", len(args)+1))
 			args = append(args, status)
@@ -50,8 +68,8 @@ func ListRegisterT(ctx context.Context, name string, course string, status strin
 	args = append(args, userID)
 
 	s := `
-	SELECT r.id, r.name , r.course , COALESCE((SELECT COUNT(*) FROM assessuser.t_exam_plan_student eps WHERE eps.register_id=r.id AND eps.status!=$1),0) , r.max_number , r.review_end_time , r.start_time , r.end_time , COALESCE(STRING_AGG(p.name, '、'),'') , r.status ,r.exam_plan_location
-	FROM assessuser.t_register_plan r  LEFT JOIN assessuser.t_register_practice rp ON rp.register_id=r.id AND rp.status=$2
+	SELECT r.id, r.name , r.course , COALESCE((SELECT COUNT(*) FROM assessuser.t_exam_plan_student eps WHERE eps.register_id=r.id AND eps.status NOT IN ($1 ,$2 ,$3 ,$4)),0) , r.max_number , r.review_end_time , r.start_time , r.end_time , COALESCE(STRING_AGG(p.name, '、'),'') , r.status ,r.exam_plan_location
+	FROM assessuser.t_register_plan r  LEFT JOIN assessuser.t_register_practice rp ON rp.register_id=r.id AND rp.status=$5
 	LEFT JOIN  assessuser.t_practice p ON p.id=rp.practice_id
 		`
 	if len(clauses) > 0 {

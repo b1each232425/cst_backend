@@ -4,6 +4,7 @@ import (
 	"context"
 	"github.com/jackc/pgx/v5"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 	"w2w.io/cmn"
@@ -24,11 +25,17 @@ func TestAddRegister(t *testing.T) {
 		cmn.ConfigureForTest()
 	}
 	db := cmn.GetPgxConn()
-	reigsterName := "单元测试报名计划名"
+	registerName := ""
 	var uid int64
 	uid = 10086
 	s := `DELETE FROM assessuser.t_register_plan `
 	_, err := db.Exec(ctx, s)
+	if err != nil {
+		t.Fatal(err.Error())
+		return
+	}
+	s = `DELETE FROM assessuser.t_register_plan WHERE name =$1 `
+	_, err = db.Exec(ctx, s, registerName)
 	if err != nil {
 		t.Fatal(err.Error())
 		return
@@ -62,6 +69,7 @@ func TestAddRegister(t *testing.T) {
 		registration *cmn.TRegisterPlan
 		practiceIds  []int64
 		userID       int64
+		expectErr    error
 	}
 	tests := []struct {
 		name    string
@@ -69,34 +77,113 @@ func TestAddRegister(t *testing.T) {
 		wantErr bool
 	}{
 		{
-			name: "正确传入",
+			name: "正确传入.完整报名计划信息 + 练习数组",
+			args: args{
+				registration: &cmn.TRegisterPlan{
+					ID:         null.IntFrom(1),
+					Name:       null.StringFrom(registerName),
+					Course:     null.StringFrom("00"),
+					Status:     null.StringFrom("02"),
+					StartTime:  null.IntFrom(time.Now().UnixMilli()),
+					EndTime:    null.IntFrom(time.Now().UnixMilli()),
+					CreateTime: null.IntFrom(time.Now().UnixMilli()),
+					UpdateTime: null.IntFrom(time.Now().UnixMilli()),
+				},
+				practiceIds: []int64{
+					1,
+					2,
+					3,
+				},
+				userID:    uid,
+				expectErr: nil,
+			},
+		},
+		{
+			name: "正常测试2 完整的报名计划信息 但无练习数据",
+			args: args{
+				registration: &cmn.TRegisterPlan{
+					ID:         null.IntFrom(1),
+					Name:       null.StringFrom(registerName),
+					Course:     null.StringFrom("00"),
+					Status:     null.StringFrom("02"),
+					StartTime:  null.IntFrom(time.Now().UnixMilli()),
+					EndTime:    null.IntFrom(time.Now().UnixMilli()),
+					CreateTime: null.IntFrom(time.Now().UnixMilli()),
+					UpdateTime: null.IntFrom(time.Now().UnixMilli()),
+				},
+				userID:    uid,
+				expectErr: nil,
+			},
+			wantErr: false,
+		},
+		{
+			name: "异常1 ,触发",
+			args: args{
+				registration: &cmn.TRegisterPlan{
+					Name:       null.StringFrom(registerName),
+					Creator:    null.IntFrom(uid),
+					Course:     null.StringFrom("00"),
+					Status:     null.StringFrom("02"),
+					StartTime:  null.IntFrom(time.Now().UnixMilli()),
+					EndTime:    null.IntFrom(time.Now().Add(time.Hour * 24).UnixMilli()),
+					CreateTime: null.IntFrom(time.Now().UnixMilli()),
+					UpdateTime: null.IntFrom(time.Now().UnixMilli()),
+				},
+			},
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if err := AddRegister(tt.args.ctx, tt.args.registration, tt.args.practiceIds, tt.args.userID); (err != nil) != tt.wantErr {
-				t.Errorf("AddRegister() error = %v, wantErr %v", err, tt.wantErr)
+			if tt.args.expectErr != nil {
+				//传入绑定的练习id
+				if err := AddRegister(ctx, tt.args.registration, tt.args.practiceIds, tt.args.userID); (err != nil) != tt.wantErr {
+					if !strings.Contains(err.Error(), tt.args.expectErr.Error()) {
+						t.Errorf("%v报错与预期：%v", err, tt.args.expectErr)
+					}
+					t.Errorf("AddRegister() error = %v, wantErr %v", err, tt.wantErr)
+				}
+			} else {
+				if err != nil {
+					t.Errorf("AddRegister() error = %v, wantErr %v", err, tt.wantErr)
+				}
+				//执行一下查询
+				s = `SELECT COUNT(*) FROM assessuser.t_register_plan WHERE name = $1`
+				var count int
+				_ = db.QueryRow(ctx, s, tt.args.registration.Name).Scan(&count)
+				if count != 1 {
+					t.Errorf("AddRegister() count = %v, want %v", count, 1)
+				}
+				if strings.Contains(tt.name, "期望正常1") {
+					//如果包含这个的话就去查询练习数量
+					s = `SELECT COUNT(*) FROM  assessuser.t_register_practice `
+					_ = db.QueryRow(ctx, s, tt.args.registration.Name).Scan(&count)
+					if count != 1 {
+						t.Errorf("AddRegister() count = %v, want %v", count, 1)
+					}
+				}
+
 			}
+			t.Cleanup(func() {
+				//去除之前创建的所有数据
+				s := `DELETE FROM assessuser.t_register_plan`
+				_, err := db.Exec(ctx, s)
+				if err != nil {
+					t.Fatal(err.Error())
+				}
+				s = `DELETE FROM assessuser.t_register_practice`
+				_, err = db.Exec(ctx, s)
+				if err != nil {
+					t.Fatal(err.Error())
+				}
+				s = `DELETE FROM assessuser.t_exam_plan_student`
+				_, err = db.Exec(ctx, s)
+				if err != nil {
+					t.Fatal(err.Error())
+				}
+			})
 		})
 	}
-	t.Cleanup(func() {
-		//去除之前创建的所有数据
-		s := `DELETE FROM assessuser.t_register_plan`
-		_, err := db.Exec(ctx, s)
-		if err != nil {
-			t.Fatal(err.Error())
-		}
-		s = `DELETE FROM assessuser.t_register_practice`
-		_, err = db.Exec(ctx, s)
-		if err != nil {
-			t.Fatal(err.Error())
-		}
-		s = `DELETE FROM assessuser.t_exam_plan_student`
-		_, err = db.Exec(ctx, s)
-		if err != nil {
-			t.Fatal(err.Error())
-		}
-	})
+
 }
 
 func TestDeleteRegisterPracticeStudent(t *testing.T) {
@@ -133,6 +220,7 @@ func TestGetRegisterStudentById(t *testing.T) {
 		page         int
 		pageSize     int
 		userID       int64
+		searchType   string
 	}
 	tests := []struct {
 		name    string
@@ -145,7 +233,7 @@ func TestGetRegisterStudentById(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, got1, err := GetRegisterStudentById(tt.args.ctx, tt.args.registerID, tt.args.message, tt.args.registerType, tt.args.status, tt.args.orderBy, tt.args.page, tt.args.pageSize, tt.args.userID)
+			got, got1, err := GetRegisterStudentById(tt.args.ctx, tt.args.registerID, tt.args.message, tt.args.registerType, tt.args.status, tt.args.orderBy, tt.args.page, tt.args.pageSize, tt.args.userID, tt.args.searchType)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("GetRegisterStudentById() error = %v, wantErr %v", err, tt.wantErr)
 				return
@@ -199,14 +287,15 @@ func TestListRegisterS(t *testing.T) {
 
 func TestListRegisterT(t *testing.T) {
 	type args struct {
-		ctx      context.Context
-		name     string
-		course   string
-		status   string
-		orderBy  []string
-		page     int
-		pageSize int
-		userID   int64
+		ctx        context.Context
+		name       string
+		course     string
+		status     string
+		orderBy    []string
+		page       int
+		pageSize   int
+		userID     int64
+		searchType string
 	}
 	tests := []struct {
 		name    string
@@ -219,7 +308,7 @@ func TestListRegisterT(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, got1, err := ListRegisterT(tt.args.ctx, tt.args.name, tt.args.course, tt.args.status, tt.args.orderBy, tt.args.page, tt.args.pageSize, tt.args.userID)
+			got, got1, err := ListRegisterT(tt.args.ctx, tt.args.name, tt.args.course, tt.args.status, tt.args.orderBy, tt.args.page, tt.args.pageSize, tt.args.userID, tt.args.searchType)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("ListRegisterT() error = %v, wantErr %v", err, tt.wantErr)
 				return
