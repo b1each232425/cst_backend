@@ -2493,7 +2493,7 @@ func examSiteSyncInit(ctx context.Context) {
 
 			case <-ticker.C:
 
-				// 查询当前是否有尚未结束的考试(待开始+进行中)
+				// 查询当前是否有尚未结束的考试
 				// 如果有，则不进行同步操作
 				// 如果没有，则进行同步
 				
