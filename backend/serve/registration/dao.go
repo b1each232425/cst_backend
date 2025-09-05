@@ -409,7 +409,7 @@ func GetRegisterStudentById(ctx context.Context, registerID int64, message strin
 
 	if searchType == "00" {
 		if message != "" {
-			clauses = append(clauses, fmt.Sprintf("%s LIKE $%d OR %s LIKE $%d OR %s LIKE $%d OR %s LIKE $%d", "u.official_name", len(args)+1,
+			clauses = append(clauses, fmt.Sprintf("(%s LIKE $%d OR %s LIKE $%d OR %s LIKE $%d OR %s LIKE $%d )", "u.official_name", len(args)+1,
 				"u.email", len(args)+2, "u.id_card_no", len(args)+3, "u.mobile_phone", len(args)+4))
 			args = append(args, "%"+message+"%", "%"+message+"%", "%"+message+"%", "%"+message+"%")
 		}
@@ -431,7 +431,7 @@ func GetRegisterStudentById(ctx context.Context, registerID int64, message strin
 `
 	} else if searchType == "02" {
 		if message != "" {
-			clauses = append(clauses, fmt.Sprintf("%s LIKE $%d OR %s LIKE $%d OR %s LIKE $%d OR %s LIKE $%d", "u.official_name", len(args)+1,
+			clauses = append(clauses, fmt.Sprintf("(%s LIKE $%d OR %s LIKE $%d OR %s LIKE $%d OR %s LIKE $%d )", "u.official_name", len(args)+1,
 				"u.email", len(args)+2, "u.id_card_no", len(args)+3, "u.mobile_phone", len(args)+4))
 			args = append(args, "%"+message+"%", "%"+message+"%", "%"+message+"%", "%"+message+"%")
 		}
