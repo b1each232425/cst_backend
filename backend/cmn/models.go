@@ -14453,11 +14453,13 @@ type TUser struct {
 	Country         null.String    `json:"Country,omitempty" db:"country,false,character varying"`            /* country 国家 */
 	Province        null.String    `json:"Province,omitempty" db:"province,false,character varying"`          /* province 省份 */
 	City            null.String    `json:"City,omitempty" db:"city,false,character varying"`                  /* city 城市 */
+	District        null.String    `json:"District,omitempty" db:"district,false,character varying"`          /* district 市辖区 */
 	Addr            null.String    `json:"Addr,omitempty" db:"addr,false,character varying"`                  /* addr 详细地址 */
 	FuseName        null.String    `json:"FuseName,omitempty" db:"fuse_name,false,character varying"`         /* fuse_name 融合用户名称: coalesce( official_name,nickname,mobile_phone,email,account,u.id) */
 	OfficialName    null.String    `json:"OfficialName,omitempty" db:"official_name,false,character varying"` /* official_name 姓名 */
 	IDCardType      null.String    `json:"IDCardType,omitempty" db:"id_card_type,false,character varying"`    /* id_card_type 证件类型 */
 	IDCardNo        null.String    `json:"IDCardNo,omitempty" db:"id_card_no,false,character varying"`        /* id_card_no 身份证号码 */
+	IDCardFile      types.JSONText `json:"IDCardFile,omitempty" db:"id_card_file,false,jsonb"`                /* id_card_file 证件图片文件 */
 	MobilePhone     null.String    `json:"MobilePhone,omitempty" db:"mobile_phone,false,character varying"`   /* mobile_phone 手机号码 */
 	Email           null.String    `json:"Email,omitempty" db:"email,false,character varying"`                /* email 电子邮件 */
 	Account         string         `json:"Account,omitempty" db:"account,false,character varying"`            /* account 登录账号 */
@@ -14491,7 +14493,6 @@ type TUser struct {
 	Addi            types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                              /* addi 用户定制数据 */
 	Remark          null.String    `json:"Remark,omitempty" db:"remark,false,character varying"`              /* remark 备注 */
 	Status          null.String    `json:"Status,omitempty" db:"status,false,character varying"`              /* status 状态,00: 有效, 02: 禁止登录, 04: 锁定, 06: 攻击者, 08: 过期 */
-	IDCardFile      types.JSONText `json:"IDCardFile,omitempty" db:"id_card_file,false,jsonb"`                /* id_card_file 证件图片文件 */
 	Filter          `json:"-"`     // build DML where clause
 }
 
@@ -14545,6 +14546,7 @@ var TUserFields = []string{
 	"Remark",
 	"Status",
 	"IDCardFile",
+	"District",
 }
 
 // TUserColumns full column list for default query
@@ -14597,6 +14599,7 @@ var TUserColumns = []string{
 	"remark",
 	"status",
 	"id_card_file",
+	"district",
 }
 
 // TUserColumnsDataTypes full column data types for default query
@@ -14649,6 +14652,7 @@ var TUserColumnsDataTypes = map[string]string{
 	"remark":            "character varying",
 	"status":            "character varying",
 	"id_card_file":      "jsonb",
+	"district":          "character varying",
 }
 
 // GetFieldsMap returns a map of field names to their values.
@@ -14702,6 +14706,7 @@ func (r *TUser) GetFieldsMap() map[string]any {
 		"Remark":          r.Remark,
 		"Status":          r.Status,
 		"IDCardFile":      r.IDCardFile,
+		"District":        r.District,
 	}
 }
 
@@ -14756,6 +14761,7 @@ func (r *TUser) GetColumnsMap() map[string]any {
 		"remark":            r.Remark,
 		"status":            r.Status,
 		"id_card_file":      r.IDCardFile,
+		"district":          r.District,
 	}
 }
 
@@ -14777,8 +14783,8 @@ func (r *TUser) GetTableName() string {
 // Create inserts the TUser to the database.
 func (r *TUser) Create(db Queryer) error {
 	err := db.QueryRow(
-		`INSERT INTO t_user (external_id_type, external_id, category, type, language, country, province, city, addr, fuse_name, official_name, id_card_type, id_card_no, mobile_phone, email, account, gender, birthday, nickname, avatar, avatar_type, dev_id, dev_user_id, dev_account, cert, user_token, role, grp, ip, port, auth_failed_count, lock_duration, visit_count, attack_count, lock_reason, logon_time, begin_lock_time, creator, create_time, updated_by, update_time, domain_id, dynamic_attr, addi, remark, status, id_card_file) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45, $46, $47) RETURNING id`,
-		&r.ExternalIDType, &r.ExternalID, &r.Category, &r.Type, &r.Language, &r.Country, &r.Province, &r.City, &r.Addr, &r.FuseName, &r.OfficialName, &r.IDCardType, &r.IDCardNo, &r.MobilePhone, &r.Email, &r.Account, &r.Gender, &r.Birthday, &r.Nickname, &r.Avatar, &r.AvatarType, &r.DevID, &r.DevUserID, &r.DevAccount, &r.Cert, &r.UserToken, &r.Role, &r.Grp, &r.IP, &r.Port, &r.AuthFailedCount, &r.LockDuration, &r.VisitCount, &r.AttackCount, &r.LockReason, &r.LogonTime, &r.BeginLockTime, &r.Creator, &r.CreateTime, &r.UpdatedBy, &r.UpdateTime, &r.DomainID, &r.DynamicAttr, &r.Addi, &r.Remark, &r.Status, &r.IDCardFile).Scan(&r.ID)
+		`INSERT INTO t_user (external_id_type, external_id, category, type, language, country, province, city, addr, fuse_name, official_name, id_card_type, id_card_no, mobile_phone, email, account, gender, birthday, nickname, avatar, avatar_type, dev_id, dev_user_id, dev_account, cert, user_token, role, grp, ip, port, auth_failed_count, lock_duration, visit_count, attack_count, lock_reason, logon_time, begin_lock_time, creator, create_time, updated_by, update_time, domain_id, dynamic_attr, addi, remark, status, id_card_file, district) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45, $46, $47, $48) RETURNING id`,
+		&r.ExternalIDType, &r.ExternalID, &r.Category, &r.Type, &r.Language, &r.Country, &r.Province, &r.City, &r.Addr, &r.FuseName, &r.OfficialName, &r.IDCardType, &r.IDCardNo, &r.MobilePhone, &r.Email, &r.Account, &r.Gender, &r.Birthday, &r.Nickname, &r.Avatar, &r.AvatarType, &r.DevID, &r.DevUserID, &r.DevAccount, &r.Cert, &r.UserToken, &r.Role, &r.Grp, &r.IP, &r.Port, &r.AuthFailedCount, &r.LockDuration, &r.VisitCount, &r.AttackCount, &r.LockReason, &r.LogonTime, &r.BeginLockTime, &r.Creator, &r.CreateTime, &r.UpdatedBy, &r.UpdateTime, &r.DomainID, &r.DynamicAttr, &r.Addi, &r.Remark, &r.Status, &r.IDCardFile, &r.District).Scan(&r.ID)
 	if err != nil {
 		return errors.Wrap(err, "failed to insert t_user")
 	}
@@ -14790,8 +14796,8 @@ func GetTUserByPk(db Queryer, pk0 null.Int) (*TUser, error) {
 
 	var r TUser
 	err := db.QueryRow(
-		`SELECT id, external_id_type, external_id, category, type, language, country, province, city, addr, fuse_name, official_name, id_card_type, id_card_no, mobile_phone, email, account, gender, birthday, nickname, avatar, avatar_type, dev_id, dev_user_id, dev_account, cert, user_token, role, grp, ip, port, auth_failed_count, lock_duration, visit_count, attack_count, lock_reason, logon_time, begin_lock_time, creator, create_time, updated_by, update_time, domain_id, dynamic_attr, addi, remark, status, id_card_file FROM t_user WHERE id = $1`,
-		pk0).Scan(&r.ID, &r.ExternalIDType, &r.ExternalID, &r.Category, &r.Type, &r.Language, &r.Country, &r.Province, &r.City, &r.Addr, &r.FuseName, &r.OfficialName, &r.IDCardType, &r.IDCardNo, &r.MobilePhone, &r.Email, &r.Account, &r.Gender, &r.Birthday, &r.Nickname, &r.Avatar, &r.AvatarType, &r.DevID, &r.DevUserID, &r.DevAccount, &r.Cert, &r.UserToken, &r.Role, &r.Grp, &r.IP, &r.Port, &r.AuthFailedCount, &r.LockDuration, &r.VisitCount, &r.AttackCount, &r.LockReason, &r.LogonTime, &r.BeginLockTime, &r.Creator, &r.CreateTime, &r.UpdatedBy, &r.UpdateTime, &r.DomainID, &r.DynamicAttr, &r.Addi, &r.Remark, &r.Status, &r.IDCardFile)
+		`SELECT id, external_id_type, external_id, category, type, language, country, province, city, addr, fuse_name, official_name, id_card_type, id_card_no, mobile_phone, email, account, gender, birthday, nickname, avatar, avatar_type, dev_id, dev_user_id, dev_account, cert, user_token, role, grp, ip, port, auth_failed_count, lock_duration, visit_count, attack_count, lock_reason, logon_time, begin_lock_time, creator, create_time, updated_by, update_time, domain_id, dynamic_attr, addi, remark, status, id_card_file, district FROM t_user WHERE id = $1`,
+		pk0).Scan(&r.ID, &r.ExternalIDType, &r.ExternalID, &r.Category, &r.Type, &r.Language, &r.Country, &r.Province, &r.City, &r.Addr, &r.FuseName, &r.OfficialName, &r.IDCardType, &r.IDCardNo, &r.MobilePhone, &r.Email, &r.Account, &r.Gender, &r.Birthday, &r.Nickname, &r.Avatar, &r.AvatarType, &r.DevID, &r.DevUserID, &r.DevAccount, &r.Cert, &r.UserToken, &r.Role, &r.Grp, &r.IP, &r.Port, &r.AuthFailedCount, &r.LockDuration, &r.VisitCount, &r.AttackCount, &r.LockReason, &r.LogonTime, &r.BeginLockTime, &r.Creator, &r.CreateTime, &r.UpdatedBy, &r.UpdateTime, &r.DomainID, &r.DynamicAttr, &r.Addi, &r.Remark, &r.Status, &r.IDCardFile, &r.District)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to select t_user")
 	}

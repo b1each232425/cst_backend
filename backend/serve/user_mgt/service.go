@@ -148,6 +148,7 @@ func (r *service) QueryUsers(ctx context.Context, tx pgx.Tx, page, pageSize int6
            u.country,
            u.province,
            u.city,
+           u.district,
            u.addr,
            u.role,
            u.logon_time,
@@ -235,6 +236,7 @@ func (r *service) QueryUsers(ctx context.Context, tx pgx.Tx, page, pageSize int6
 			&user.Country,
 			&user.Province,
 			&user.City,
+			&user.District,
 			&user.Addr,
 			&user.Role,
 			&user.LogonTime,
@@ -396,6 +398,7 @@ func (r *service) InsertUsers(ctx context.Context, tx pgx.Tx, users []User) (ins
 			country,
 			province,
 			city,
+			district,
 			addr,
 			account,
 			mobile_phone,
@@ -409,7 +412,7 @@ func (r *service) InsertUsers(ctx context.Context, tx pgx.Tx, users []User) (ins
 			create_time,
 			update_time
 		) VALUES (
-			$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, crypt($19, gen_salt('bf')), $20, $21
+			$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, crypt($20, gen_salt('bf')), $21, $22
 		)`
 
 		if tx != nil {
@@ -423,6 +426,7 @@ func (r *service) InsertUsers(ctx context.Context, tx pgx.Tx, users []User) (ins
 				users[i].Country,
 				users[i].Province,
 				users[i].City,
+				users[i].District,
 				users[i].Addr,
 				users[i].Account,
 				users[i].MobilePhone,
@@ -447,6 +451,7 @@ func (r *service) InsertUsers(ctx context.Context, tx pgx.Tx, users []User) (ins
 				users[i].Country,
 				users[i].Province,
 				users[i].City,
+				users[i].District,
 				users[i].Addr,
 				users[i].Account,
 				users[i].MobilePhone,
@@ -625,8 +630,9 @@ func (r *service) OverwriteUpdateUsers(ctx context.Context, tx pgx.Tx, users []U
 			country = $13,
 			province = $14,
 			city = $15,
-			addr = $16
-		WHERE id = $17`
+			district = $16,
+			addr = $17
+		WHERE id = $18`
 
 		if tx != nil {
 			_, err = tx.Exec(ctx, updateSQL,
@@ -645,6 +651,7 @@ func (r *service) OverwriteUpdateUsers(ctx context.Context, tx pgx.Tx, users []U
 				users[i].Country,
 				users[i].Province,
 				users[i].City,
+				users[i].District,
 				users[i].Addr,
 				users[i].ID,
 			)
@@ -665,6 +672,7 @@ func (r *service) OverwriteUpdateUsers(ctx context.Context, tx pgx.Tx, users []U
 				users[i].Country,
 				users[i].Province,
 				users[i].City,
+				users[i].District,
 				users[i].Addr,
 				users[i].ID,
 			)

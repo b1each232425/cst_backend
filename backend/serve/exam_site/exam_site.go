@@ -2554,12 +2554,15 @@ func examSiteSyncInit(ctx context.Context) {
 
 				// 待拉取
 				case PUSHED :
-					Pull(ctx, maxRetry)
+				}
 
-					if cmn.InDebugMode && q.Tag["pullDone"] != nil {
-						q.Tag["pullDone"].(chan int) <- 1
-					}
+				// 待拉取或推送成功后，立即进行拉取操作
+				// 之所以要在推送后立即拉取，是为了避免在考试如果在一次拉取后等待进入待推送状态时开始进行，
+				// 导致考试期间的数据会因为下一次的拉取操作而被覆盖，同时，也为了确保考点服务器上的考试是最近一次的数据
+				Pull(ctx, maxRetry)
 
+				if cmn.InDebugMode && q.Tag["pullDone"] != nil {
+					q.Tag["pullDone"].(chan int) <- 1
 				}
 
 				ticker.Reset(interval)
