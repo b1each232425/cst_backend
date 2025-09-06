@@ -2978,6 +2978,7 @@ MethodSwitch:
 		}
 
 		for _, m := range marks {
+			z.Info(fmt.Sprintf("执行自动批改, 考试场次ID: %d", m.ExamSessionID))
 			mark.AutoMark(ctx, m)
 		}
 		
