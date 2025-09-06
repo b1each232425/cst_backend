@@ -4875,7 +4875,45 @@ func TestExamSiteSyncInit(t *testing.T) {
 			},
 			check: func(q *cmn.ServiceCtx) (err error) {
 
-				_, err = dbConn.Exec(`UPDATE t_exam_info SET status = '04'`)
+				_, err = dbConn.Exec(`UPDATE t_exam_session SET status = '04'`)
+				if err != nil {
+					t.Error(err.Error())
+					return
+				}
+
+				<-q.Tag["haveOngoingExam"].(chan int)
+
+				return
+			},
+			cleanup: defaultCleanup,
+		},
+		{
+			name: "定时同步-当前有临近开始的考试",
+			q: &cmn.ServiceCtx{
+				RedisClient: cmn.GetRedisConn(),
+				Tag: map[string]interface{}{
+					"endMsgListen":    make(chan int),
+					"haveOngoingExam": make(chan int),
+				},
+				Msg: &cmn.ReplyProto{},
+			},
+			passExpected: true,
+			errWanted:    "",
+			setup: func() (err error) {
+				err = defaultSetup()
+				if err != nil {
+					return
+				}
+
+				viper.Set("examSiteServerSync.syncInterval", 1)
+
+				viper.Set("examSiteServerSync.syncDelay", 1)
+
+				return
+			},
+			check: func(q *cmn.ServiceCtx) (err error) {
+
+				_, err = dbConn.Exec(`UPDATE t_exam_session SET start_time = $1, status = '02'`, time.Now().Add(5*time.Minute).Unix()*1000)
 				if err != nil {
 					t.Error(err.Error())
 					return
