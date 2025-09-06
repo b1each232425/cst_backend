@@ -3248,7 +3248,7 @@ func TestOperatePracticeStatus(t *testing.T) {
 
 			if !containsString(tt.name, "异常10") {
 				// 这里要插入这个需要更新到那个paper的字段
-				s = `UPDATE t_paper SET exam_paper_id = $1 , status = $2 WHERE id = $3`
+				s = `UPDATE t_paper SET exampaper_id = $1 , status = $2 WHERE id = $3`
 				_, err = tx1.Exec(ctx, s, examPaperID1, examPaperService.PaperStatus.Published, uid.Int64)
 				if err != nil {
 					t.Errorf("更新试卷的考卷ID与状态失败:%v", err)
@@ -3702,7 +3702,7 @@ VALUES
 	}
 
 	// 这里要插入这个需要更新到那个paper的字段
-	s = `UPDATE t_paper SET exam_paper_id = $1 , status = $2 WHERE id = $3`
+	s = `UPDATE t_paper SET exampaper_id = $1 , status = $2 WHERE id = $3`
 	_, err = tx.Exec(ctx, s, *examPaperID1, examPaperService.PaperStatus.Published, uid.Int64)
 	if err != nil {
 		t.Errorf("更新试卷的考卷ID与状态失败:%v", err)
@@ -4554,7 +4554,7 @@ VALUES
 				}
 
 				// 这里要插入这个需要更新到那个paper的字段
-				s = `UPDATE t_paper SET exam_paper_id = $1 , status = $2 WHERE id = $3`
+				s = `UPDATE t_paper SET exampaper_id = $1 , status = $2 WHERE id = $3`
 				_, err = tx.Exec(ctx, s, *examPaperID1, examPaperService.PaperStatus.Published, uid.Int64)
 				if err != nil {
 					t.Errorf("更新试卷的考卷ID与状态失败:%v", err)
@@ -4913,7 +4913,7 @@ func TestEnterPracticeGetPaperDetails(t *testing.T) {
 		t.Fatal("生成考卷逻辑出错,返回考卷ID为空")
 	}
 	// 这里要插入这个需要更新到那个paper的字段
-	s = `UPDATE t_paper SET exam_paper_id = $1 , status = $2 WHERE id = $3`
+	s = `UPDATE t_paper SET exampaper_id = $1 , status = $2 WHERE id = $3`
 	_, err = tx1.Exec(ctx, s, *examPaperID1, examPaperService.PaperStatus.Published, uid.Int64)
 	if err != nil {
 		t.Errorf("更新试卷的考卷ID与状态失败:%v", err)
@@ -5341,7 +5341,7 @@ func TestEnterPracticeGetPaperDetails(t *testing.T) {
 					t.Fatal("生成考卷逻辑出错,返回考卷ID为空")
 				}
 				// 这里要插入这个需要更新到那个paper的字段
-				s = `UPDATE t_paper SET exam_paper_id = $1 , status = $2 WHERE id = $3`
+				s = `UPDATE t_paper SET exampaper_id = $1 , status = $2 WHERE id = $3`
 				_, err = tx1.Exec(ctx, s, *examPaperID1, examPaperService.PaperStatus.Published, uid.Int64)
 				if err != nil {
 					t.Errorf("更新试卷的考卷ID与状态失败:%v", err)
@@ -5670,7 +5670,7 @@ func TestEnterPracticeWrongCollection(t *testing.T) {
 		t.Fatal("生成考卷逻辑出错,返回考卷ID为空")
 	}
 	// 这里要插入这个需要更新到那个paper的字段
-	s = `UPDATE t_paper SET exam_paper_id = $1 , status = $2 WHERE id = $3`
+	s = `UPDATE t_paper SET exampaper_id = $1 , status = $2 WHERE id = $3`
 	_, err = tx1.Exec(ctx, s, *examPaperID1, examPaperService.PaperStatus.Published, uid.Int64)
 	if err != nil {
 		t.Errorf("更新试卷的考卷ID与状态失败:%v", err)
@@ -6563,7 +6563,7 @@ func TestLoadErrorCollectionDetailsById(t *testing.T) {
 	}
 
 	// 这里要插入这个需要更新到那个paper的字段
-	s = `UPDATE t_paper SET exam_paper_id = $1 , status = $2 WHERE id = $3`
+	s = `UPDATE t_paper SET exampaper_id = $1 , status = $2 WHERE id = $3`
 	_, err = tx1.Exec(ctx, s, *examPaperID1, examPaperService.PaperStatus.Published, uid.Int64)
 	if err != nil {
 		t.Errorf("更新试卷的考卷ID与状态失败:%v", err)

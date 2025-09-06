@@ -1371,6 +1371,8 @@ func AutoMark(ctx context.Context, cond QueryCondition) (err error) {
 		return
 	}
 
+	//z.Sugar().Infof("---------->student answers: %v", len(studentAnswers))
+
 	err = GenerateAIMarkTask(ctx, cond, questions, studentAnswers)
 	if err != nil {
 		return
@@ -1441,12 +1443,16 @@ func GenerateAIMarkTask(ctx context.Context, cond QueryCondition, questions []*c
 			studentID = studentAnswer.PracticeSubmissionID.Int64
 		}
 
+		if studentAnswer.Answer == nil || len(studentAnswer.Answer) == 0 {
+			studentAnswer.Answer = []byte(`{"answer": []}`)
+		}
+
 		var answers struct {
 			Answer []string `json:"answer"`
 		}
 		err = json.Unmarshal(studentAnswer.Answer, &answers)
 		if err != nil {
-			err = fmt.Errorf("failed to unmarshal student answer: %v", err)
+			err = fmt.Errorf("解析学生答案失败: %v 原始输入: %v", err, string(studentAnswer.Answer))
 			z.Error(err.Error())
 			return
 		}
