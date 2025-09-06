@@ -1128,6 +1128,10 @@ func MarkObjectiveQuestionAnswers(ctx context.Context, cond QueryCondition) (err
 		return err
 	}
 
+	if len(studentAnswers) <= 0 {
+		return
+	}
+
 	marks := make([]*cmn.TMark, len(studentAnswers))
 	for i, studentAnswer := range studentAnswers {
 		mark := cmn.TMark{
@@ -1206,8 +1210,9 @@ func MarkObjectiveQuestionAnswers(ctx context.Context, cond QueryCondition) (err
 	querySubjectiveQuestionCounts := `
 	SELECT COALESCE(count(q.id), 0)
 	FROM t_exam_paper p
-			 LEFT JOIN t_exam_session es ON p.exam_session_id = es.id
-			 LEFT JOIN t_practice pra ON p.practice_id = pra.id
+			 JOIN t_paper tp ON tp.exampaper_id = p.id
+			 LEFT JOIN t_exam_session es ON es.paper_id = p.id 
+			 LEFT JOIN t_practice pra ON pra.paper_id = p.id 
 			 JOIN t_exam_paper_group pg ON pg.exam_paper_id = p.id 
 			 LEFT JOIN t_exam_paper_question q ON q.group_id = pg.id AND q.type IN ('06', '08') 
 	WHERE q.status != '04' %s --动态拼接where条件
@@ -1544,6 +1549,7 @@ func GenerateAIMarkTask(ctx context.Context, cond QueryCondition, questions []*c
 	opts := []asynq.Option{
 		asynq.MaxRetry(3),
 		asynq.Unique(24 * time.Hour),
+		asynq.Timeout(3 * 24 * time.Hour),
 	}
 
 	for _, aiMarkRequest := range aiMarkRequests {
