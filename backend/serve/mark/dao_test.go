@@ -21,7 +21,7 @@ func init() {
 func TestQueryStudentAnswersByMarkMode(t *testing.T) {
 	cleanTestData()
 	initTestData()
-	defer cleanTestData()
+	//defer cleanTestData()
 
 	tests := []struct {
 		name           string
@@ -59,7 +59,7 @@ func TestQueryStudentAnswersByMarkMode(t *testing.T) {
 			name:       "success with 主观题",
 			answerType: "00",
 			cond: QueryCondition{
-				ExamSessionID: 101,
+				ExamSessionID: 102,
 				TeacherID:     testedTeacherID,
 			},
 			markerInfo: MarkerInfo{
@@ -266,7 +266,10 @@ func TestQueryStudentAnswersByMarkMode(t *testing.T) {
 				ctx = context.WithValue(ctx, ForceErrKey, tt.forceErr)
 			}
 
-			_, err := QueryStudentAnswersByMarkMode(ctx, tt.answerType, tt.cond, tt.markerInfo)
+			results, err := QueryStudentAnswersByMarkMode(ctx, tt.answerType, tt.cond, tt.markerInfo)
+
+			z.Sugar().Infof("results: %v, len: %v", results, len(results))
+
 			if err != nil {
 				if tt.expectedErrStr == "" {
 					t.Errorf("expected success, but got error: %v", err.Error())
@@ -740,6 +743,13 @@ func TestQueryMarkerInfo(t *testing.T) {
 			},
 		},
 		{
+			name: "success",
+			cond: QueryCondition{
+				TeacherID:     testedTeacherID,
+				ExamSessionID: 102,
+			},
+		},
+		{
 			name: "success with practice",
 			cond: QueryCondition{
 				TeacherID:  testedTeacherID,
@@ -781,7 +791,7 @@ func TestQueryMarkerInfo(t *testing.T) {
 			}
 
 			result, err := QueryMarkerInfo(ctx, tt.cond)
-			z.Sugar().Infof("result: %+v", result.MarkInfos)
+			z.Sugar().Infof("result: %+v", result)
 
 			if err != nil {
 				if tt.expectedErrStr == "" {

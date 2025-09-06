@@ -876,7 +876,7 @@ func OperatePracticeStatus(ctx context.Context, pid int64, status string, uid in
 	if status == PracticeStatus.Released {
 		// 这里需要重构一下这个东西
 		var examPaperId int64
-		s := `SELECT pa.exam_paper_id FROM t_practice p JOIN t_paper pa ON pa.id = p.paper_id WHERE p.id = $1 AND pa.status = $2`
+		s := `SELECT pa.exampaper_id FROM t_practice p JOIN t_paper pa ON pa.id = p.paper_id WHERE p.id = $1 AND pa.status = $2`
 		err = tx.QueryRow(ctx, s, pid, examPaper.PaperStatus.Published).Scan(&examPaperId)
 		if err != nil {
 			err = fmt.Errorf("查看练习绑定的试卷中已发布的考卷ID失败:%v", err)
@@ -1059,7 +1059,7 @@ func OperatePracticeStatusV2(ctx context.Context, ids []int64, status string, ui
 		for pid, p := range ps {
 			// 这里都需要进行查询，需要找到这个practice对应的试卷里面的考卷ID
 			var examPaperId int64
-			s := `SELECT pa.exam_paper_id FROM t_practice p JOIN t_paper pa ON pa.id = p.paper_id WHERE p.id = $1 AND pa.status = $2`
+			s := `SELECT pa.exampaper_id FROM t_practice p JOIN t_paper pa ON pa.id = p.paper_id WHERE p.id = $1 AND pa.status = $2`
 			err = tx.QueryRow(ctx, s, pid, examPaper.PaperStatus.Published).Scan(&examPaperId)
 			if err != nil {
 				err = fmt.Errorf("查看练习绑定的试卷中已发布的考卷ID失败:%v", err)
