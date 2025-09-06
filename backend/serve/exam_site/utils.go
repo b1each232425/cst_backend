@@ -27,7 +27,7 @@ type copyInfo struct {
 // destDir 为数据保存目录
 // fileName 为脚本文件名
 // isSubServerSide 为服务器端类型
-func generateExportScript(sysUser int64, destDir string, fileName string, isSubServerSide bool) (tableFileList []string, err error) {
+func generateExportScript(sysUser int64, destDir string, fileName string, isSubServerSide bool) (recentExamID int64, tableFileList []string, err error) {
 
 	if sysUser <= 0 {
 		err = fmt.Errorf("invalid sysUser: %d", sysUser)
@@ -78,7 +78,6 @@ WHERE t_exam_site.sys_user = %d`, sysUser),
 		// 中心服务器数据导出
 
 		// 获取最近一个未开始的考试ID
-		var recentExamID int64
 
 		s := `SELECT 
 		t_exam_info.id
