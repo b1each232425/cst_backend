@@ -244,6 +244,7 @@ func ListRegisterS(ctx context.Context, name string, course string, status strin
 	}
 	clauses = []string{}
 	args = []interface{}{}
+	args = append(args, userID)
 	if name != "" {
 		clauses = append(clauses, fmt.Sprintf("%s LIKE $%d", "r.name", len(args)+1))
 		args = append(args, "%"+name+"%")
@@ -261,7 +262,7 @@ func ListRegisterS(ctx context.Context, name string, course string, status strin
 	clauses = append(clauses, fmt.Sprintf("r.start_time < $%d", len(args)+1))
 	args = append(args, time.Now().UnixMilli())
 	//查询总数
-	s = ` SELECT COUNT(*) FROM assessuser.t_register_plan r `
+	s = ` SELECT COUNT(*) FROM assessuser.t_register_plan r LEFT JOIN assessuser.t_exam_plan_student eps ON eps.register_id = r.id AND eps.student_id =$1`
 	if len(clauses) > 0 {
 		s += " WHERE " + strings.Join(clauses, " AND ")
 	}
