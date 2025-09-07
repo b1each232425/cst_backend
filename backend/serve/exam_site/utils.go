@@ -222,6 +222,13 @@ GROUP BY
 
 			// 考卷数据
 			{
+				Sql: fmt.Sprintf(`SELECT t_paper.* 
+FROM t_exam_session
+	JOIN t_paper ON t_paper.id = t_exam_session.paper_id
+WHERE t_exam_session.exam_id = %d`, recentExamID),
+				Table: "t_paper",
+			},
+			{
 				Sql: fmt.Sprintf(`SELECT t_exam_paper.* 
 FROM t_exam_session
 	JOIN t_paper ON t_paper.id = t_exam_session.paper_id
