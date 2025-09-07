@@ -3,6 +3,7 @@ package registration
 import (
 	"context"
 	"errors"
+	"fmt"
 	"github.com/jackc/pgx/v5"
 	"reflect"
 	"strings"
@@ -536,8 +537,8 @@ func TestGetRegisterStudentById(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	s = `INSERT INTO  t_register_plan (name, status,creator ,create_time) VALUES  ($1 ,$2 ,$3,$4)`
-	_, err = db.Exec(ctx, s, "报名计划", "00", uid, time.Now().UnixMilli())
+	s = `INSERT INTO  t_register_plan (id,name, status,creator ,create_time) VALUES  ($1 ,$2 ,$3,$4,$5)`
+	_, err = db.Exec(ctx, s, 1, "报名计划", "00", uid, time.Now().UnixMilli())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -546,17 +547,11 @@ func TestGetRegisterStudentById(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	s = `INSERT INTO t_exam_plan_student (student_id , register_id,creator,status)VALUES($1,$2,$3,$4),($5,$6,$7,$8)`
-	_, err = db.Exec(ctx, s, 1, 1, uid, "00", 2, 1, uid, "02")
+	s = `INSERT INTO t_exam_plan_student (student_id , register_id,creator,status,type)VALUES($1,$2,$3,$4,$5),($6,$7,$8,$9,$10)`
+	_, err = db.Exec(ctx, s, 20022, 1, uid, "02", "00", 20023, 1, uid, "02", "00")
 	if err != nil {
 		t.Fatal(err)
 	}
-	s = `INSERT INTO t_user (officia_name , mobile_phone , email , gender , id_card_no , id_card_type ) VALUES  ($1 ,$2 ,$3, $4,$5,$6) `
-	_, err = db.Exec(ctx, s, "1", "1", "1", "00", "1", "1")
-	if err != nil {
-		t.Fatal(err)
-	}
-
 	type args struct {
 		registerID   int64
 		message      string
@@ -566,16 +561,155 @@ func TestGetRegisterStudentById(t *testing.T) {
 		page         int
 		pageSize     int
 		searchType   string
+		expectErr    error
 	}
 	tests := []struct {
 		name string
 		args args
 	}{
-		{},
+		{
+			name: "正常测试报名计划",
+			args: args{
+				registerID:   1,
+				message:      "1",
+				registerType: "00",
+				status:       "02",
+				orderBy: []string{
+					"eps.create_time",
+				},
+				page:       1,
+				pageSize:   10,
+				searchType: "00",
+				expectErr:  nil,
+			},
+		},
+		{
+			name: "正常测试考试",
+			args: args{
+				registerID:   1,
+				message:      "1",
+				registerType: "00",
+				status:       "02",
+				orderBy: []string{
+					"eps.create_time",
+				},
+				page:       1,
+				pageSize:   10,
+				searchType: "02",
+				expectErr:  nil,
+			},
+		},
+		{
+			name: "异常1",
+			args: args{
+				registerID:   1,
+				message:      "1",
+				registerType: "00",
+				status:       "02",
+				orderBy: []string{
+					"eps.create_time",
+				},
+				page:       1,
+				pageSize:   10,
+				searchType: "02",
+				expectErr:  errors.New("query register failed:"),
+			},
+		},
+		{
+			name: "异常2",
+			args: args{
+				registerID:   1,
+				message:      "1",
+				registerType: "00",
+				status:       "02",
+				orderBy: []string{
+					"eps.create_time",
+				},
+				page:       1,
+				pageSize:   10,
+				searchType: "02",
+				expectErr:  errors.New("查询总数失败:"),
+			},
+		},
+		{
+			name: "异常3",
+			args: args{
+				registerID:   1,
+				message:      "1",
+				registerType: "00",
+				status:       "02",
+				orderBy: []string{
+					"eps.create_time",
+				},
+				page:       1,
+				pageSize:   10,
+				searchType: "02",
+				expectErr:  errors.New("查询总数失败:"),
+			},
+		},
+		{
+			name: "异常4",
+			args: args{
+				registerID:   1,
+				message:      "1",
+				registerType: "00",
+				status:       "02",
+				orderBy: []string{
+					"eps.create_time",
+				},
+				page:       1,
+				pageSize:   10,
+				searchType: "02",
+				expectErr:  errors.New("row close failed:"),
+			},
+		},
+		{
+			name: "异常5",
+			args: args{
+				registerID:   1,
+				message:      "1",
+				registerType: "00",
+				status:       "02",
+				orderBy: []string{
+					"eps.create_time",
+				},
+				page:       1,
+				pageSize:   10,
+				searchType: "02",
+				expectErr:  errors.New("解析数据失败:"),
+			},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			if strings.Contains(tt.name, "异常1") {
+				ctx = context.WithValue(ctx, "force-error", "query")
+			} else if strings.Contains(tt.name, "异常2") {
+				ctx = context.WithValue(ctx, "force-error", "query2")
+			} else if strings.Contains(tt.name, "异常3") {
+				ctx = context.WithValue(ctx, "force-error", "scan2")
+			} else if strings.Contains(tt.name, "异常4") {
+				ctx = context.WithValue(ctx, "force-error", "close")
+			} else if strings.Contains(tt.name, "异常5") {
+				ctx = context.WithValue(ctx, "force-error", "scan")
+			} else {
+				ctx = context.Background()
+			}
 
+			_, total, err := GetRegisterStudentById(ctx, tt.args.registerID, tt.args.message, tt.args.registerType, tt.args.status, tt.args.orderBy, tt.args.page, tt.args.pageSize, uid, tt.args.searchType)
+			if tt.args.expectErr != nil {
+				if !strings.Contains(err.Error(), tt.args.expectErr.Error()) {
+					t.Error(fmt.Sprintf("%s 报错与预期：  %s", err.Error(), tt.args.expectErr.Error()))
+				}
+			} else {
+				if err != nil {
+					z.Fatal("预期没有错误但是返回错误")
+				}
+				if total != 2 {
+					z.Fatal(fmt.Sprintf("返回的total为 %d", total))
+				}
+
+			}
 		})
 		t.Cleanup(func() {
 			// 这里再删除这个练习，随后再重新创建
@@ -615,11 +749,7 @@ func TestGetRegisterStudentById(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			s = `DELETE FROM assessuser.t_user`
-			_, err = db.Exec(ctx, s)
-			if err != nil {
-				t.Fatal(err)
-			}
+
 		})
 	}
 }
