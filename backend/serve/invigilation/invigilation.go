@@ -48,6 +48,7 @@ type InvigilationDetails struct {
 	InvigilationInfo cmn.TVInvigilationInfo `json:"info"`
 	Examinees        []ExamineeInfo         `json:"examinees"`
 	Files            []InvigilationFile     `json:"files"`
+	CanUpdate        bool                   `json:"canUpdate"`
 }
 
 type InvigilationFile struct {
@@ -632,6 +633,17 @@ func invigilation(ctx context.Context) {
 
 		info.Files = existingFiles
 
+		// 如果是考点服务器，则允许考试结束后继续更新监考信息
+		centralServerUrl := viper.GetString("examSiteServerSync.centralServerUrl")
+		var canUpdateWhenExamEnded bool = false
+		if centralServerUrl != "" {
+			canUpdateWhenExamEnded = true
+		} else {
+			canUpdateWhenExamEnded = false
+		}
+
+		info.CanUpdate = canUpdateWhenExamEnded
+
 		q.Msg.Data, q.Err = json.Marshal(info)
 		if forceErr == "json.Marshal" {
 			q.Err = fmt.Errorf("强制JSON序列化错误")
@@ -763,6 +775,7 @@ func invigilation(ctx context.Context) {
 			}
 			if !canUpdate {
 				q.Err = fmt.Errorf("当前考试已结束，无法更新监考信息")
+				z.Error("syncTime" + fmt.Sprintf("%d", syncTime) + " now:" + fmt.Sprintf("%d", now))
 				z.Error(q.Err.Error())
 				q.RespErr()
 				return
