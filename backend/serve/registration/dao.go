@@ -440,7 +440,7 @@ func GetRegisterStudentById(ctx context.Context, registerID int64, message strin
 			clauses = append(clauses, fmt.Sprintf("%s = $%d", "eps.type", len(args)+1))
 			args = append(args, registerType)
 		}
-		clauses = append(clauses, fmt.Sprintf("%s = $%d", "eps.status  ", len(args)+1))
+		clauses = append(clauses, fmt.Sprintf("%s = $%d", "eps.status", len(args)+1))
 		args = append(args, RegisterStudentStatus.Approved)
 		clauses = append(clauses, fmt.Sprintf("eps.register_id = $%d", len(args)+1))
 		args = append(args, registerID)
@@ -461,6 +461,8 @@ func GetRegisterStudentById(ctx context.Context, registerID int64, message strin
 	args = append(args, pageSize, offset)
 	z.Sugar().Debugf("打印输出一下这个操作语句：%v", s)
 	z.Sugar().Debugf("打印输出一下参数表：%v", args)
+
+	var rows *sqlx.Rows
 	sqlxDB := cmn.GetDbConn()
 	rows, err := sqlxDB.QueryxContext(ctx, s, args...)
 	if err != nil || forceErr == "query" {
@@ -470,7 +472,8 @@ func GetRegisterStudentById(ctx context.Context, registerID int64, message strin
 	}
 	defer func() {
 		err = rows.Close()
-		if err != nil || forceErr == "row close" {
+		if err != nil || forceErr == "close" {
+			err := fmt.Errorf("row close failed:%v", err)
 			z.Error(err.Error())
 			return
 		}
@@ -521,15 +524,23 @@ func GetRegisterStudentById(ctx context.Context, registerID int64, message strin
 		s += "WHERE " + strings.Join(clauses, " AND ")
 	}
 	rows, err = sqlxDB.QueryxContext(ctx, s, args...)
-	if err != nil || forceErr == "query" {
+	if err != nil || forceErr == "query2" {
 		err = fmt.Errorf("查询总数失败:%v", err)
 		z.Error(err.Error())
 		return nil, 0, err
 	}
+	defer func() {
+		err = rows.Close()
+		if err != nil || forceErr == "close" {
+			err := fmt.Errorf("row close failed:%v", err)
+			z.Error(err.Error())
+			return
+		}
+	}()
 	var total int
 	for rows.Next() {
 		err = rows.Scan(&total)
-		if err != nil {
+		if err != nil || forceErr == "scan2" {
 			err = fmt.Errorf("查询总数失败:%v", err)
 			z.Error(err.Error())
 			return nil, 0, err
@@ -1259,7 +1270,7 @@ func OperateRegisterStudentStatus(ctx context.Context, tx pgx.Tx, ids []int64, s
 	if err != nil {
 		return err
 	}
-	if register.Status.String != RegisterStatus.Released {
+	if register.Status.String != RegisterStatus.Released && register.Status.String != RegisterStatus.Ending {
 		err := fmt.Errorf("当前报名计划状态为：%v，不能进行操作", register.Status.String)
 		z.Error(err.Error())
 		return err
