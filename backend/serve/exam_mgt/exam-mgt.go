@@ -95,6 +95,10 @@ type ExamineeInfo struct {
 	Passwd         string      `json:"passwd"`       // 学生密码
 	IdCardNo       null.String `json:"id_card_no"`   // 学生身份证号
 	MobilePhone    string      `json:"mobile_phone"` // 学生电话
+	ExamSiteID     null.Int    `json:"exam_site_id"`
+	ExamSiteName   null.String `json:"exam_site_name"`
+	ExamRoomID     null.Int    `json:"exam_room_id"`
+	ExamRoomName   null.String `json:"exam_room_name"`
 }
 
 type ExamUserInfo struct {
@@ -3256,9 +3260,11 @@ func examinee(ctx context.Context) {
 		}
 
 		query := `
-			SELECT DISTINCT e.student_id, e.serial_number, e.examinee_number, u.official_name, u.account, u.id_card_no
+			SELECT DISTINCT e.student_id, e.serial_number, e.examinee_number, u.official_name, u.account, u.id_card_no, esite.id, esite.name, er.id, er.name
 			FROM t_examinee e
 			JOIN t_exam_session es ON e.exam_session_id = es.id
+			LEFT JOIN t_exam_room er ON e.exam_room = er.id
+			LEFT JOIN t_exam_site esite ON er.exam_site = esite.id
 			INNER JOIN t_user u ON e.student_id = u.id
 			WHERE es.exam_id = $1
 			AND e.status != '08'
@@ -3286,7 +3292,8 @@ func examinee(ctx context.Context) {
 		for rows.Next() {
 			var examinee ExamineeInfo
 			q.Err = rows.Scan(&examinee.StudentID, &examinee.SerialNumber, &examinee.ExamineeNumber,
-				&examinee.OfficialName, &examinee.Account, &examinee.IdCardNo)
+				&examinee.OfficialName, &examinee.Account, &examinee.IdCardNo, &examinee.ExamSiteID,
+				&examinee.ExamSiteName, &examinee.ExamRoomID, &examinee.ExamRoomName)
 			if forceErr == "conn.Scan" {
 				q.Err = fmt.Errorf("force error: %s", forceErr)
 			}
