@@ -4,10 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/spf13/viper"
+	"sync"
 	"time"
 
 	"github.com/hibiken/asynq"
-	"github.com/spf13/viper"
 	"go.uber.org/zap"
 )
 
@@ -21,13 +22,15 @@ type TaskPayload struct {
 
 // AsynqManager asynq 管理器
 type AsynqManager struct {
-	client *asynq.Client
-	server *asynq.Server
-	mux    *asynq.ServeMux
-	logger *zap.Logger
+	client  *asynq.Client
+	server  *asynq.Server
+	inspect *asynq.Inspector // 创建一个 inspector 实例
+	mux     *asynq.ServeMux
+	logger  *zap.Logger
 }
 
 var asynqManager *AsynqManager
+var once sync.Once
 
 // InitAsynq 初始化 asynq
 func InitAsynq(redisAddr, redisPassword string, redisDB int) error {
@@ -50,14 +53,18 @@ func InitAsynq(redisAddr, redisPassword string, redisDB int) error {
 		},
 	})
 
+	// 提供 API 接口查询归档任务
+	inspect := asynq.NewInspector(redisOpt)
+
 	// 创建多路复用器
 	mux := asynq.NewServeMux()
 
 	asynqManager = &AsynqManager{
-		client: client,
-		server: server,
-		mux:    mux,
-		logger: z,
+		client:  client,
+		server:  server,
+		inspect: inspect,
+		mux:     mux,
+		logger:  z,
 	}
 
 	return nil
@@ -139,9 +146,18 @@ func ParseTaskPayload(task *asynq.Task) (*TaskPayload, error) {
 // RegisterTaskHandler 注册任务处理器的便利函数
 // 供各模块在Enroll函数中调用
 func RegisterTaskHandler(taskType string, handler func(context.Context, *asynq.Task) error) {
-	if asynqManager != nil {
-		asynqManager.RegisterHandler(taskType, handler)
+	if asynqManager == nil {
+		StartAsynqService()
 	}
+
+	if asynqManager == nil {
+		z.Sugar().Error("初始化任务队列失败")
+		return
+	}
+
+	z.Info("Registering task handler", zap.String("task_type", taskType))
+	asynqManager.RegisterHandler(taskType, handler)
+
 }
 
 // SendTask 发送任务的便利函数
@@ -156,39 +172,42 @@ func SendTask(taskType string, payload interface{}, opts ...asynq.Option) error 
 // StartAsynqService 启动 asynq 服务并设置优雅关闭
 // 该函数会自动处理启动、监听终止信号和优雅关闭
 func StartAsynqService() {
-	redisAddr := "localhost:6379" // 默认值
-	redisPassword := "x2Jc5K^5"
-	redisDB := 0
-	host := "cst.gzhu.edu.cn"
-	port := 16910
-	var s string
-	s = "dbms.redis.addr"
-	if viper.IsSet(s) {
-		host = viper.GetString(s)
-	}
-	s = "dbms.redis.port"
-	if viper.IsSet(s) {
-		port = viper.GetInt(s)
-	}
-	redisAddr = fmt.Sprintf("%s:%d", host, port)
-	if viper.IsSet("dbms.redis.cert") {
-		redisPassword = viper.GetString("dbms.redis.cert")
-	}
-	// 初始化 asynq
-	z.Info(fmt.Sprintf("connecting redis to %s", redisAddr))
-	if err := InitAsynq(redisAddr, redisPassword, redisDB); err != nil {
-		z.Error("Failed to initialize asynq", zap.Error(err))
-		return
-	}
-
-	z.Info("Asynq initialized successfully")
-
-	// 启动 asynq 服务器
-	go func() {
-		if err := asynqManager.StartServer(); err != nil {
-			z.Error("Asynq server failed", zap.Error(err))
+	once.Do(func() {
+		redisAddr := "localhost:6379" // 默认值
+		redisPassword := "x2Jc5K^5"
+		redisDB := 0
+		host := "cst.gzhu.edu.cn"
+		port := 16910
+		var s string
+		s = "dbms.redis.addr"
+		if viper.IsSet(s) {
+			host = viper.GetString(s)
 		}
-	}()
+		s = "dbms.redis.port"
+		if viper.IsSet(s) {
+			port = viper.GetInt(s)
+		}
+		redisAddr = fmt.Sprintf("%s:%d", host, port)
+		if viper.IsSet("dbms.redis.cert") {
+			redisPassword = viper.GetString("dbms.redis.cert")
+		}
+		// 初始化 asynq
+		z.Info(fmt.Sprintf("connecting redis to %s", redisAddr))
+		if err := InitAsynq(redisAddr, redisPassword, redisDB); err != nil {
+			z.Error("Failed to initialize asynq", zap.Error(err))
+			return
+		}
+
+		z.Info("Asynq initialized successfully")
+
+		// 启动 asynq 服务器
+		go func() {
+			if err := asynqManager.StartServer(); err != nil {
+				z.Error("Asynq server failed", zap.Error(err))
+			}
+		}()
+
+	})
 }
 
 // StopAsynqService 停止 asynq 服务

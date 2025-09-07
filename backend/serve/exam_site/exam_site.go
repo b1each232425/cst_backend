@@ -35,18 +35,19 @@ import (
 	"w2w.io/exam_service"
 	"w2w.io/null"
 	"w2w.io/serve/auth_mgt"
+	"w2w.io/serve/mark"
 )
 
 const (
-	IP_ADDR_REGEXP      = `^((25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])\.){3}(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])(:(\d{1,5}))?$`
-	ExamSitePrefix      = "examSite"
-	ExamSiteSyncPrefix  = "examSiteSync"
-	SyncStatusKey       = "examSiteSync:SyncStatus"
-	PULLING             = "Pulling"
-	PULLED              = "Pulled"
-	PUSHING             = "Pushing"
-	PUSHED              = "Pushed"
-	QNearSessionsKey    = "qNearSessions"
+	IP_ADDR_REGEXP     = `^((25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])\.){3}(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])(:(\d{1,5}))?$`
+	ExamSitePrefix     = "examSite"
+	ExamSiteSyncPrefix = "examSiteSync"
+	SyncStatusKey      = "examSiteSync:SyncStatus"
+	PULLING            = "Pulling"
+	PULLED             = "Pulled"
+	PUSHING            = "Pushing"
+	PUSHED             = "Pushed"
+	QNearSessionsKey   = "qNearSessions"
 )
 
 var (
@@ -106,6 +107,7 @@ type examRoomInfo struct {
 }
 
 type syncInfo struct {
+	RecentExamID  int64    `json:"recentExamID"`
 	Path          string   `json:"path" validate:"required"`
 	TableFileList []string `json:"tableFileList" validate:"required"`
 }
@@ -369,7 +371,7 @@ func login(ctx context.Context) (info sysUserInfo) {
 // ctx 中必须包含 QNearKey 上下文
 //
 // retryCount 重试次数, 若值小于或等于0, 则不进行重试
-func Pull(ctx context.Context, retryCount int) {
+func Pull(ctx context.Context, retryCount int, forceRenew bool) {
 
 	q := cmn.GetCtxValue(ctx)
 
@@ -390,7 +392,7 @@ func Pull(ctx context.Context, retryCount int) {
 		z.Sugar().Warnf("Pull operation failed, remaining retry times: %d", n)
 
 		// retry when occurred err
-		Pull(ctx, retryCount)
+		Pull(ctx, retryCount, forceRenew)
 	}()
 
 	z.Info("try lock")
@@ -493,7 +495,7 @@ func Pull(ctx context.Context, retryCount int) {
 
 	req.Header.SetCookie(QNearSessionsKey, info.Session)
 
-	req.SetRequestURI(fmt.Sprintf("%s/api/exam-site/sync", centralServerUrl))
+	req.SetRequestURI(fmt.Sprintf("%s/api/exam-site/sync?forceRenew=%v", centralServerUrl, forceRenew))
 	req.Header.SetMethod("GET")
 
 	q.Err = cli.DoTimeout(req, resp, 30*time.Minute)
@@ -665,6 +667,9 @@ func Pull(ctx context.Context, retryCount int) {
 			cmd = ""
 			o = []byte("")
 		}
+
+		// 如果执行导入脚本失败, 那么很大可能是中心服务器上缓存数据有问题, 那么就需要强制下次重新拉取
+		forceRenew = true
 
 		q.Err = fmt.Errorf("COMMAND: %s\t ERR: %w\t DETAIL: %s", cmd, q.Err, string(o))
 		z.Error(q.Err.Error())
@@ -859,7 +864,7 @@ func Push(ctx context.Context, retryCount int) {
 		}
 	}()
 
-	sInfo.TableFileList, q.Err = generateExportScript(uInfo.ID, source, "export_script.sql", true)
+	sInfo.RecentExamID, sInfo.TableFileList, q.Err = generateExportScript(uInfo.ID, source, "export_script.sql", true)
 	if q.Err != nil {
 		z.Error(q.Err.Error())
 		return
@@ -2393,7 +2398,6 @@ func examSiteSyncInit(ctx context.Context) {
 		}
 	}
 
-
 	switch v {
 
 	case PULLING:
@@ -2428,7 +2432,7 @@ func examSiteSyncInit(ctx context.Context) {
 		return
 	}
 
-	Pull(ctx, maxRetry)
+	Pull(ctx, maxRetry, false)
 	if q.Err != nil {
 		z.Error("初始化拉取同步数据失败")
 	}
@@ -2468,7 +2472,7 @@ func examSiteSyncInit(ctx context.Context) {
 					break
 				}
 
-				Pull(ctx, maxRetry)
+				Pull(ctx, maxRetry, false)
 
 				if cmn.InDebugMode && q.Tag["pullDone"] != nil {
 					q.Tag["pullDone"].(chan int) <- 1
@@ -2493,24 +2497,27 @@ func examSiteSyncInit(ctx context.Context) {
 
 			case <-ticker.C:
 
-				// 查询当前是否有尚未结束的考试
+				// 查询当前是否有尚未结束的考试或者临近开始的考试
 				// 如果有，则不进行同步操作
 				// 如果没有，则进行同步
-				
+
 				dbConn := cmn.GetDbConn()
 
+				// 时间计算方式: 当前时间 + 延迟执行Push的时间 + 同步间隔时间 + 30分钟的缓冲时间
+				dontSyncBefore := time.Now().Add(syncDelay).Add(interval).Add(30 * time.Minute).Unix() * 1000
+
 				c := 0
-				q.Err = dbConn.QueryRow(`SELECT COUNT(id) FROM t_exam_info WHERE status = '04'`).Scan(&c)
+				q.Err = dbConn.QueryRow(`SELECT COUNT(id) FROM t_exam_session WHERE status = '04' OR (status = '02' AND start_time < $1)`, dontSyncBefore).Scan(&c)
 				if q.Err != nil || (cmn.InDebugMode && q.Tag["queryOngoingExamErr"] != nil) {
-					
+
 					if q.Err == nil {
 						q.Err = q.Tag["queryOngoingExamErr"].(error)
 					}
-					
+
 					z.Error(q.Err.Error())
 					break
 				}
-				
+
 				if c > 0 {
 
 					if cmn.InDebugMode && q.Tag["haveOngoingExam"] != nil {
@@ -2540,9 +2547,9 @@ func examSiteSyncInit(ctx context.Context) {
 				switch syncStatus {
 
 				// 待推送
-				case PULLED :
+				case PULLED:
 
-					z.Info(fmt.Sprintf("server will push data in %d seconds", syncDelay / time.Second))
+					z.Info(fmt.Sprintf("server will push data in %d seconds", syncDelay/time.Second))
 
 					time.Sleep(syncDelay)
 
@@ -2553,13 +2560,13 @@ func examSiteSyncInit(ctx context.Context) {
 					}
 
 				// 待拉取
-				case PUSHED :
+				case PUSHED:
 				}
 
 				// 待拉取或推送成功后，立即进行拉取操作
 				// 之所以要在推送后立即拉取，是为了避免在考试如果在一次拉取后等待进入待推送状态时开始进行，
 				// 导致考试期间的数据会因为下一次的拉取操作而被覆盖，同时，也为了确保考点服务器上的考试是最近一次的数据
-				Pull(ctx, maxRetry)
+				Pull(ctx, maxRetry, false)
 
 				if cmn.InDebugMode && q.Tag["pullDone"] != nil {
 					q.Tag["pullDone"].(chan int) <- 1
@@ -2600,6 +2607,8 @@ func examSiteSync(ctx context.Context) {
 
 	q.Msg.Msg = cmn.FncName()
 
+	dbConn := cmn.GetDbConn()
+
 	// 考点服务器系统账号ID
 	userID := q.SysUser.ID.Int64
 
@@ -2632,6 +2641,8 @@ MethodSwitch:
 
 	case "GET":
 
+		forceRenew := q.R.URL.Query().Get("forceRenew") == "true"
+
 		if centralServerUrl != "" {
 
 			action := q.R.URL.Query().Get("action")
@@ -2639,7 +2650,7 @@ MethodSwitch:
 			switch action {
 
 			case "pull":
-				Pull(ctx, maxRetry)
+				Pull(ctx, maxRetry, forceRenew)
 			case "push":
 				Push(ctx, maxRetry)
 			default:
@@ -2651,7 +2662,6 @@ MethodSwitch:
 		}
 
 		// 返回考点数据
-
 		var s string
 		var info syncInfo
 
@@ -2667,7 +2677,9 @@ MethodSwitch:
 			return
 		}
 
-		if s != "" {
+		
+
+		for s != "" {
 
 			// 如果同步数据信息快照存在，则直接返回
 
@@ -2676,6 +2688,19 @@ MethodSwitch:
 			if q.Err != nil {
 				z.Error(q.Err.Error())
 				break MethodSwitch
+			}
+			
+			if forceRenew {
+
+				z.Info("强制重新准备考点数据")
+
+				// 直接删除已有缓存目录
+				err := os.RemoveAll(info.Path)
+				if err != nil || (cmn.InDebugMode && q.Tag["removeOldCacheDirErr"] != nil) {
+					z.Error(err.Error())
+				}
+				
+				break
 			}
 
 			for _, f := range info.TableFileList {
@@ -2696,6 +2721,8 @@ MethodSwitch:
 			q.Err = fmt.Errorf("过往已准备的数据已失效, Path: %s, TabelFileList: %s", info.Path, strings.Join(info.TableFileList, ", "))
 
 			z.Warn(q.Err.Error())
+
+			break
 		}
 
 		// 准备考点数据
@@ -2768,6 +2795,7 @@ MethodSwitch:
 			break MethodSwitch
 		}
 
+		var recentExamID int64
 		var tableFileList []string
 		fileName := "export_script.sql"
 
@@ -2779,7 +2807,7 @@ MethodSwitch:
 			fileName = q.Tag["writeExportScriptFileErr"].(error).Error()
 		}
 
-		tableFileList, q.Err = generateExportScript(userID, folderFullPath, fileName, false)
+		recentExamID, tableFileList, q.Err = generateExportScript(userID, folderFullPath, fileName, false)
 		if q.Err != nil {
 			break MethodSwitch
 		}
@@ -2810,6 +2838,7 @@ MethodSwitch:
 		z.Info(string(o))
 
 		info = syncInfo{
+			RecentExamID:  recentExamID,
 			Path:          folderFullPath,
 			TableFileList: tableFileList,
 		}
@@ -2891,28 +2920,89 @@ MethodSwitch:
 
 		z.Info(string(o))
 
-		// 清理已同步的数据
-		_, err := q.RedisClient.Del(ctx, syncInfoSnapshotKey).Result()
-		if err != nil || (cmn.InDebugMode && q.Tag["deleteKeyErr"] != nil) {
+		defer func() {
 
-			if err == nil {
-				err = q.Tag["deleteKeyErr"].(error)
-				q.Msg.Msg = err.Error()
+			// 清理已同步的数据
+			_, err := q.RedisClient.Del(ctx, syncInfoSnapshotKey).Result()
+			if err != nil || (cmn.InDebugMode && q.Tag["deleteKeyErr"] != nil) {
+
+				if err == nil {
+					err = q.Tag["deleteKeyErr"].(error)
+					q.Msg.Msg = err.Error()
+				}
+
+				z.Error(err.Error())
+			}
+
+			err = os.RemoveAll(sInfo.Path)
+			if err != nil || (cmn.InDebugMode && q.Tag["removeAllErr"] != nil) {
+
+				if err == nil {
+					err = q.Tag["removeAllErr"].(error)
+					q.Msg.Msg = err.Error()
+				}
+
+				z.Error(err.Error())
+			}
+		}()
+
+		var s string
+		var err error
+		s, err = q.RedisClient.Get(ctx, syncInfoSnapshotKey).Result()
+		if (err != nil && !errors.Is(err, redis.Nil)) || (cmn.InDebugMode && q.Tag["getSyncInfoSnapshotErr"] != nil) {
+			if q.Err == nil {
+				q.Err = q.Tag["getSyncInfoSnapshotErr"].(error)
 			}
 
 			z.Error(err.Error())
+			break MethodSwitch
 		}
 
-		err = os.RemoveAll(sInfo.Path)
-		if err != nil || (cmn.InDebugMode && q.Tag["removeAllErr"] != nil) {
+		err = json.Unmarshal([]byte(s), &sInfo)
+		if err != nil {
+			z.Error(err.Error())
+			break MethodSwitch
+		}
 
+		// 触发自动批改
+		var marks []mark.QueryCondition
+		var rows *sql.Rows
+		rows, err = dbConn.Query(`SELECT id FROM t_exam_session WHERE exam_id = $1`, sInfo.RecentExamID)
+		if err != nil || (cmn.InDebugMode && q.Tag["queryExamSessionsErr"] != nil) {
 			if err == nil {
-				err = q.Tag["removeAllErr"].(error)
-				q.Msg.Msg = err.Error()
+				err = q.Tag["queryExamSessionsErr"].(error)
 			}
 
 			z.Error(err.Error())
+
+			break MethodSwitch
 		}
+
+		defer rows.Close()
+
+		for rows.Next() {
+			var id int64
+			err = rows.Scan(&id)
+			if err != nil || (cmn.InDebugMode && q.Tag["scanErr"] != nil) {
+				if err == nil {
+					err = q.Tag["scanErr"].(error)
+				}
+
+				z.Error(err.Error())
+				
+				break MethodSwitch
+			}
+
+			marks = append(marks, mark.QueryCondition{
+				ExamSessionID: id,
+			})
+		}
+
+		for _, m := range marks {
+			z.Info(fmt.Sprintf("执行自动批改, 考试场次ID: %d", m.ExamSessionID))
+			mark.AutoMark(ctx, m)
+		}
+		
 
 	default:
 		q.Err = fmt.Errorf("不支持的HTTP方法: %s", q.R.Method)

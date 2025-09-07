@@ -138,7 +138,7 @@ func initTestData() {
 	now := time.Now()
 	tempArgs = [][]interface{}{
 		{101, 11, 101, "02", "00", now.Add(-25 * time.Hour).UnixMilli(), now.Add(-24 * time.Hour).UnixMilli(), 1, "00", 1101}, // 纯理论
-		{102, 11, 102, "00", "10", now.Add(-23 * time.Hour).UnixMilli(), now.Add(-22 * time.Hour).UnixMilli(), 2, "00", 1101}, // 理论+主观
+		{102, 11, 102, "00", "00", now.Add(-23 * time.Hour).UnixMilli(), now.Add(-22 * time.Hour).UnixMilli(), 2, "00", 1101}, // 理论+主观
 		{103, 11, 103, "00", "10", now.Add(-21 * time.Hour).UnixMilli(), now.Add(-20 * time.Hour).UnixMilli(), 3, "00", 1101}, // 题目答案缺失
 		{104, 11, 104, "00", "10", now.Add(-21 * time.Hour).UnixMilli(), now.Add(-20 * time.Hour).UnixMilli(), 3, "00", 1101},
 		{105, 11, 105, "00", "", now.Add(-21 * time.Hour).UnixMilli(), now.Add(-20 * time.Hour).UnixMilli(), 3, "00", 1101}, // 批改模式缺失
@@ -152,6 +152,19 @@ func initTestData() {
 		{22, "test practice 2", "10", "00", "02", 1101},
 		{23, "test practice 3", "00", "00", "02", 1101},
 		{24, "test practice 4", "00", "00", "02", 1101}, // 主观 AI 批改
+	}
+	args = append(args, tempArgs)
+
+	queries = append(queries, `INSERT INTO t_paper(id, exampaper_id, domain_id, creator) VALUES($1, $2, $3, $4)`)
+	tempArgs = [][]interface{}{
+		{101, 101, 1999, 1101},
+		{102, 102, 1999, 1101},
+		{103, 103, 1999, 1101},
+		{104, 104, 1999, 1101},
+		{124, 124, 1999, 1101},
+		{125, 125, 1999, 1101},
+		{126, 126, 1999, 1101},
+		{127, 127, 1999, 1101},
 	}
 	args = append(args, tempArgs)
 
@@ -249,6 +262,13 @@ func initTestData() {
 		{33, 2205, 406, `{"answer": ["简答1学生作答1"]}`, `[]`, "00", 1101},
 	}
 	args = append(args, tempArgs)
+
+	//// 考试作答
+	//queries = append(queries, `INSERT INTO t_student_answers(id, examinee_id, question_id, actual_answers, status, creator) VALUES($1, $2, $3, $4, $5, $6)`)
+	//tempArgs = [][]interface{}{
+	//	{33, 2205, 406, `[]`, "00", 1101},
+	//}
+	//args = append(args, tempArgs)
 
 	// 练习作答
 	queries = append(queries, `INSERT INTO t_student_answers(id, practice_submission_id, question_id, answer, actual_answers, status, creator) VALUES($1, $2, $3, $4, $5, $6, $7)`)
@@ -354,6 +374,10 @@ func cleanTestData() {
 	queries = append(queries, `DELETE FROM t_user WHERE id < 1600;`)
 
 	queries = append(queries, `DELETE FROM t_mark_info;`)
+
+	queries = append(queries, `DELETE FROM t_paper_group;`)
+
+	queries = append(queries, `DELETE FROM t_paper;`)
 
 	queries = append(queries, `DELETE FROM t_exam_paper;`)
 
@@ -1851,7 +1875,9 @@ func TestSaveMarkingResults(t *testing.T) {
 func TestAutoMark(t *testing.T) {
 	cleanTestData()
 	initTestData()
-	defer cleanTestData()
+	//defer cleanTestData()
+
+	cmn.RegisterTaskHandler(TaskTypeAIMarkRequest, TaskMiddleware(HandleAIMarkTask))
 
 	tests := []struct {
 		name           string
@@ -1864,6 +1890,13 @@ func TestAutoMark(t *testing.T) {
 			cond: QueryCondition{
 				ExamSessionID: 101,
 				ExamineeID:    2201,
+			},
+		},
+		{
+			name: "success",
+			cond: QueryCondition{
+				TeacherID:     testedTeacherID,
+				ExamSessionID: 102,
 			},
 		},
 		{
@@ -1934,6 +1967,9 @@ func TestAutoMark(t *testing.T) {
 				ctx = context.WithValue(context.Background(), ForceErrKey, tt.forceErr)
 			}
 			err := AutoMark(ctx, tt.cond)
+
+			time.Sleep(10 * time.Second)
+
 			if err != nil {
 				if tt.expectedErrStr == "" {
 					t.Errorf("expected success, but got error: %v", err.Error())

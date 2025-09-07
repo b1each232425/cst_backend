@@ -140,8 +140,9 @@ func QueryExamList(ctx context.Context, req QueryMarkingListReq) (examList []Exa
 						 t_exam_session es 
 					JOIN t_exam_info e ON e.id = es.exam_id AND e.status !='12' AND e.status != '14' AND e.status != '16' 
 					JOIN target_exam_infos tei ON tei.id = e.id
+					JOIN t_paper tp ON tp.id = es.paper_id 
 					JOIN t_exam_paper ep 
-						ON ep.exam_session_id = es.id 
+						ON ep.id = tp.exampaper_id 
 						AND ep.status IS NOT NULL 
 						AND ep.status != '04' 
 					LEFT JOIN v_exam_respondent_count rc ON rc.exam_session_id = es.id 
@@ -156,7 +157,8 @@ func QueryExamList(ctx context.Context, req QueryMarkingListReq) (examList []Exa
 	getExamCountQuery := `	SELECT COUNT(DISTINCT es.exam_id) AS total_exams
 							FROM t_exam_session es
 							JOIN t_exam_info ei ON es.exam_id = ei.id AND ei.status != '12' AND ei.status != '14' AND ei.status != '16' 
-							JOIN t_exam_paper ep ON es.id = ep.exam_session_id AND ep.status != '04'
+							JOIN t_paper tp ON tp.id = es.paper_id 							
+							JOIN t_exam_paper ep ON ep.id = tp.exampaper_id AND ep.status != '04'
 							LEFT JOIN t_mark_info mi ON es.id = mi.exam_session_id AND mi.status != '04'
 							WHERE es.status IS NOT NULL
 							  AND es.status != '14' %s -- 动态关联where条件`
@@ -824,6 +826,9 @@ func QueryQuestionsByMarkMode(ctx context.Context, cond QueryCondition, markerIn
 							FROM t_exam_paper p
 							JOIN t_exam_paper_group pg ON pg.exam_paper_id = p.id 
 							JOIN t_exam_paper_question q ON q.group_id = pg.id
+							JOIN t_paper tp ON tp.exampaper_id = p.id 
+							LEFT JOIN t_exam_session es ON es.paper_id = tp.id 
+							LEFT JOIN t_practice pra ON pra.paper_id = tp.id
 							WHERE p.status != '04' AND p.status IS NOT NULL 
 							  AND q.status != '04' AND q.status IS NOT NULL 
 							  AND q.type IN ('06', '08', '10') 
@@ -834,10 +839,10 @@ func QueryQuestionsByMarkMode(ctx context.Context, cond QueryCondition, markerIn
 	var argIndex = 1
 
 	if cond.ExamSessionID > 0 {
-		whereClause = append(whereClause, fmt.Sprintf(" AND p.exam_session_id = $%d ", argIndex))
+		whereClause = append(whereClause, fmt.Sprintf(" AND es.id = $%d ", argIndex))
 		args = append(args, cond.ExamSessionID)
 	} else {
-		whereClause = append(whereClause, fmt.Sprintf(" AND p.practice_id = $%d ", argIndex))
+		whereClause = append(whereClause, fmt.Sprintf(" AND pra.id = $%d ", argIndex))
 		args = append(args, cond.PracticeID)
 	}
 	argIndex++
