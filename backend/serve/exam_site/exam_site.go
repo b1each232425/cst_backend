@@ -371,7 +371,7 @@ func login(ctx context.Context) (info sysUserInfo) {
 // ctx 中必须包含 QNearKey 上下文
 //
 // retryCount 重试次数, 若值小于或等于0, 则不进行重试
-func Pull(ctx context.Context, retryCount int) {
+func Pull(ctx context.Context, retryCount int, forceRenew bool) {
 
 	q := cmn.GetCtxValue(ctx)
 
@@ -392,7 +392,7 @@ func Pull(ctx context.Context, retryCount int) {
 		z.Sugar().Warnf("Pull operation failed, remaining retry times: %d", n)
 
 		// retry when occurred err
-		Pull(ctx, retryCount)
+		Pull(ctx, retryCount, forceRenew)
 	}()
 
 	z.Info("try lock")
@@ -495,7 +495,7 @@ func Pull(ctx context.Context, retryCount int) {
 
 	req.Header.SetCookie(QNearSessionsKey, info.Session)
 
-	req.SetRequestURI(fmt.Sprintf("%s/api/exam-site/sync", centralServerUrl))
+	req.SetRequestURI(fmt.Sprintf("%s/api/exam-site/sync?forceRenew=%v", centralServerUrl, forceRenew))
 	req.Header.SetMethod("GET")
 
 	q.Err = cli.DoTimeout(req, resp, 30*time.Minute)
@@ -667,6 +667,9 @@ func Pull(ctx context.Context, retryCount int) {
 			cmd = ""
 			o = []byte("")
 		}
+
+		// 如果执行导入脚本失败, 那么很大可能是中心服务器上缓存数据有问题, 那么就需要强制下次重新拉取
+		forceRenew = true
 
 		q.Err = fmt.Errorf("COMMAND: %s\t ERR: %w\t DETAIL: %s", cmd, q.Err, string(o))
 		z.Error(q.Err.Error())
@@ -2429,7 +2432,7 @@ func examSiteSyncInit(ctx context.Context) {
 		return
 	}
 
-	Pull(ctx, maxRetry)
+	Pull(ctx, maxRetry, false)
 	if q.Err != nil {
 		z.Error("初始化拉取同步数据失败")
 	}
@@ -2469,7 +2472,7 @@ func examSiteSyncInit(ctx context.Context) {
 					break
 				}
 
-				Pull(ctx, maxRetry)
+				Pull(ctx, maxRetry, false)
 
 				if cmn.InDebugMode && q.Tag["pullDone"] != nil {
 					q.Tag["pullDone"].(chan int) <- 1
@@ -2563,7 +2566,7 @@ func examSiteSyncInit(ctx context.Context) {
 				// 待拉取或推送成功后，立即进行拉取操作
 				// 之所以要在推送后立即拉取，是为了避免在考试如果在一次拉取后等待进入待推送状态时开始进行，
 				// 导致考试期间的数据会因为下一次的拉取操作而被覆盖，同时，也为了确保考点服务器上的考试是最近一次的数据
-				Pull(ctx, maxRetry)
+				Pull(ctx, maxRetry, false)
 
 				if cmn.InDebugMode && q.Tag["pullDone"] != nil {
 					q.Tag["pullDone"].(chan int) <- 1
@@ -2638,6 +2641,8 @@ MethodSwitch:
 
 	case "GET":
 
+		forceRenew := q.R.URL.Query().Get("forceRenew") == "true"
+
 		if centralServerUrl != "" {
 
 			action := q.R.URL.Query().Get("action")
@@ -2645,7 +2650,7 @@ MethodSwitch:
 			switch action {
 
 			case "pull":
-				Pull(ctx, maxRetry)
+				Pull(ctx, maxRetry, forceRenew)
 			case "push":
 				Push(ctx, maxRetry)
 			default:
@@ -2657,7 +2662,6 @@ MethodSwitch:
 		}
 
 		// 返回考点数据
-
 		var s string
 		var info syncInfo
 
@@ -2673,7 +2677,9 @@ MethodSwitch:
 			return
 		}
 
-		if s != "" {
+		
+
+		for s != "" {
 
 			// 如果同步数据信息快照存在，则直接返回
 
@@ -2682,6 +2688,19 @@ MethodSwitch:
 			if q.Err != nil {
 				z.Error(q.Err.Error())
 				break MethodSwitch
+			}
+			
+			if forceRenew {
+
+				z.Info("强制重新准备考点数据")
+
+				// 直接删除已有缓存目录
+				err := os.RemoveAll(info.Path)
+				if err != nil || (cmn.InDebugMode && q.Tag["removeOldCacheDirErr"] != nil) {
+					z.Error(err.Error())
+				}
+				
+				break
 			}
 
 			for _, f := range info.TableFileList {
@@ -2702,6 +2721,8 @@ MethodSwitch:
 			q.Err = fmt.Errorf("过往已准备的数据已失效, Path: %s, TabelFileList: %s", info.Path, strings.Join(info.TableFileList, ", "))
 
 			z.Warn(q.Err.Error())
+
+			break
 		}
 
 		// 准备考点数据
