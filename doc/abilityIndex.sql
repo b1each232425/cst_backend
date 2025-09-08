@@ -1,6 +1,6 @@
 /*==============================================================*/
 /* DBMS name:      PostgreSQL 9.x                               */
-/* Created on:     9/5/2025 10:14:28 PM                         */
+/* Created on:     2025/9/8 18:27:23                            */
 /*==============================================================*/
 
 
@@ -1916,6 +1916,7 @@ create table if not exists  t_exam_paper_question (
    addi                 JSONB                null,
    status               VARCHAR(10)          null default '00',
    question_attachments_path JSONB                null,
+   files                JSONB                null,
    constraint PK_T_EXAM_PAPER_QUESTION primary key (id)
 );
 
@@ -1992,7 +1993,10 @@ comment on column t_exam_paper_question.status is
 '状态 ：00：使用中，02：归档，04：废弃';
 
 comment on column t_exam_paper_question.question_attachments_path is
-'题目附件url数组';
+'(弃用)题目附件url数组';
+
+comment on column t_exam_paper_question.files is
+'题目附件列表, t_file 表 id 数组';
 
 /*==============================================================*/
 /* Table: t_exam_plan_student                                   */
@@ -7814,6 +7818,7 @@ create table if not exists  t_question (
    question_attachments_path JSONB                null,
    access_mode          VARCHAR(4)           not null default '00',
    belong_to            INT8                 null,
+   files                JSONB                null,
    constraint PK_T_QUESTION primary key (id)
 );
 
@@ -7890,13 +7895,16 @@ comment on column t_question.status is
 '状态，00:正常 02:作废 04:异常';
 
 comment on column t_question.question_attachments_path is
-'题目附件url数组';
+'(弃用)题目附件url数组';
 
 comment on column t_question.access_mode is
 '题目访问权限，00私有 02共享 04公开';
 
 comment on column t_question.belong_to is
 '归属于某个题库';
+
+comment on column t_question.files is
+'题目附件列表, t_file 表 id 数组';
 
 /*==============================================================*/
 /* Index: idx_question_id                                       */
@@ -9487,9 +9495,12 @@ comment on column t_sys_ver.status is
 ALTER SEQUENCE t_sys_ver_id_seq RESTART WITH 20000;
 
 insert into t_sys_ver(id,name,ver,create_time,update_time,remark)
-  values(1000,'业务模型','3.2.9.0',
-  'Monday, December 5, 2016 9:52:53 AM','Friday, September 5, 2025 10:14:25 PM',
-  '3.2.9.0
+  values(1000,'业务模型','3.2.10.0',
+  '2016年12月5日 9:52:53','2025年9月8日 18:27:18',
+  '3.2.10.0
+为 t_question 和 t_exam_paper_question 新增 files 附件列表字段，同时弃用 question_attachments_path 字段
+
+3.2.9.0
 给t_user表增加district市辖区字段
 
 3.2.8.0
