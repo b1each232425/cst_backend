@@ -16,6 +16,7 @@ import (
 type Handler interface {
 	HandleQuerySelectableAPIs(ctx context.Context)
 	HandleDomain(ctx context.Context)
+	HandleGetCurrentUserAuthority(ctx context.Context)
 }
 
 type handler struct {
@@ -527,5 +528,50 @@ func (h *handler) HandleDomain(ctx context.Context) {
 	q.Err = fmt.Errorf("invalid method: %s", q.R.Method)
 	z.Error(q.Err.Error())
 	q.RespErr()
+	return
+}
+
+// HandleGetCurrentUserAuthority 处理获取当前用户权限信息的请求
+func (h *handler) HandleGetCurrentUserAuthority(ctx context.Context) {
+	q := cmn.GetCtxValue(ctx)
+	z.Info("---->" + cmn.FncName())
+
+	forceErr, _ := ctx.Value("force-error").(string) // 用于强制执行错误处理代码
+	var err error
+
+	method := strings.ToLower(q.R.Method)
+	if method != "get" {
+		q.Err = fmt.Errorf("invalid method: %s", q.R.Method)
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+
+	if q.SysUser == nil || !q.SysUser.ID.Valid {
+		q.Err = fmt.Errorf("user not logged in or invalid user ID")
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+
+	authority, err := GetUserAuthority(ctx)
+	if err != nil || forceErr == "GetUserAuthority" {
+		q.Err = fmt.Errorf("failed to get user authority: %v", err)
+		q.RespErr()
+		return
+	}
+
+	authorityBytes, err := json.Marshal(authority)
+	if err != nil || forceErr == "json.Marshal" {
+		q.Err = fmt.Errorf("failed to marshal authority: %v", err)
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+
+	q.Msg.Status = 0
+	q.Msg.Msg = "success"
+	q.Msg.Data = authorityBytes
+	q.Resp()
 	return
 }
