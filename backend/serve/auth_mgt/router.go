@@ -87,4 +87,28 @@ func Enroll(author string) {
 		//DefaultDomain 该API将默认授权给的用户
 		DefaultDomain: int64(cmn.CDomainSys),
 	})
+
+	_ = cmn.AddService(&cmn.ServeEndPoint{
+		Fn: handler.HandleGetCurrentUserAuthority,
+
+		Path: "/auth/authority/me",
+		Name: "查询当前用户权限信息",
+
+		ApiEntries: []*cmn.EndPointApiEntries{
+			{
+				Name:         "权限管理.查询当前用户权限信息",
+				AccessAction: CAPIAccessActionRead,
+				Configurable: false,
+			},
+		},
+
+		Developer: developer,
+		WhiteList: true,
+
+		//DomainID 创建该API的账号归属的domain
+		DomainID: int64(cmn.CDomainSys),
+
+		//DefaultDomain 该API将默认授权给的用户
+		DefaultDomain: int64(cmn.CDomainSys),
+	})
 }
