@@ -118,7 +118,9 @@ func (r *RateLimiterTaskRunner) Wait(ctx context.Context) (error, func()) {
 
 	// 1. 先等待速率限制器
 	if err := r.limiter.Wait(ctx); err != nil {
-		return fmt.Errorf("rate limit acquire timeout or cancelled: %w", err), releaseFunc
+		err = fmt.Errorf("rate limit acquire timeout or cancelled: %w", err)
+		z.Sugar().Error(err)
+		return err, nil
 	}
 
 	// --- 2. 内容大小限流（每分钟 40万Token为例）---
@@ -126,13 +128,17 @@ func (r *RateLimiterTaskRunner) Wait(ctx context.Context) (error, func()) {
 		contentSize := r.contentSizeGetter()
 		// 使用 WaitN 等待对应字节数的令牌
 		if err := r.contentLimiter.WaitN(ctx, contentSize); err != nil {
-			return fmt.Errorf("content size limit acquire timeout or cancelled: %w", err), releaseFunc
+			err = fmt.Errorf("content size limit acquire timeout or cancelled: %w", err)
+			z.Sugar().Error(err)
+			return err, nil
 		}
 	}
 
 	// 2. 再等待并发信号量
 	if err := r.sem.Acquire(ctx, 1); err != nil {
-		return fmt.Errorf("semaphore acquire error: %w", err), releaseFunc
+		err = fmt.Errorf("semaphore acquire error: %w", err)
+		z.Sugar().Error(err)
+		return err, nil
 	}
 
 	return nil, releaseFunc

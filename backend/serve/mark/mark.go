@@ -194,6 +194,10 @@ func Enroll(author string) {
 
 func InitAIMarkTaskLimiterAndBreaker() {
 	maxConcurrency := viper.GetInt("chatModel.maxConcurrency")
+	if maxConcurrency <= 0 {
+		z.Error("从配置文件获取chatModel.maxConcurrency失败")
+		maxConcurrency = 50
+	}
 	aiMarkTaskLimiter = cmn.NewRateLimiterTaskRunner(int64(maxConcurrency), 20, 40)
 
 	st := gobreaker.Settings{
@@ -1609,13 +1613,15 @@ func TaskMiddleware(handler func(ctx context.Context, task *asynq.Task) error) f
 		z.Info("waiting limiter")
 
 		err, releaseFunc := limiter.Wait(ctx)
+		if releaseFunc != nil {
+			defer releaseFunc()
+		}
 		if err != nil {
 			// 获取信号量失败，直接返回错误
 			return err
 		}
 		z.Info("limiter waiting over")
 		// 释放信号量
-		defer releaseFunc()
 
 		cb := GetAIMarkTaskCB()
 
