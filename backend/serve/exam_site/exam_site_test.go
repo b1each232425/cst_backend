@@ -193,8 +193,8 @@ ins_rooms AS (
   	RETURNING id
 ),
 ins_exam_info AS (
-  	INSERT INTO t_exam_info (id, name, type, mode, creator, status)
-  	VALUES (%d, 'test-exam', '04', '02', 1000, '02')
+  	INSERT INTO t_exam_info (id, name, type, mode, creator, status, files)
+  	VALUES (%d, 'test-exam', '04', '02', 1000, '02', '[%d,%d]')
   	ON CONFLICT(id) DO NOTHING
   	RETURNING id
 ),
@@ -294,6 +294,14 @@ ins_invigilation AS (
 		(%d, %d, %d1, 1000)
 	ON CONFLICT(id) DO NOTHING
 	RETURNING id
+),
+t_file AS (
+	INSERT INTO t_file (id, file_name, path, belongto_path, digest, creator, domain_id)
+	VALUES
+		(%d, 'test-file-1', '/uploads/test-file-1', '/uploads/test-file-1', '%d', 1000, %d),
+		(%d, 'test-file-2', '/uploads/test-file-2', '/uploads/test-file-2', '%d', 1000, %d)
+	ON CONFLICT(id) DO NOTHING
+	RETURNING id
 )
 SELECT 1;
 `,
@@ -307,8 +315,8 @@ SELECT 1;
 			testID+4, testID,
 			testID+5, testID,
 
-			// ins_exam_info: (id)
-			testID,
+			// ins_exam_info: (id, files)
+			testID, testID+1, testID+2,
 
 			// ins_exam_session: (id, exam_id, paper_id, start_time, end_time)
 			testID, testID, testID, (nowTime+3*60)*1000, (nowTime+13*60)*1000,
@@ -358,6 +366,10 @@ SELECT 1;
 
 			// ins_invigilation (exam_session_id, exam_room, invigilator)
 			testID, testID+1, testID,
+
+			// ins_file (id, digest, domain_id)
+			testID+1, testID+1, testID,
+			testID+2, testID+2, testID,
 		),
 	}
 
@@ -365,6 +377,22 @@ SELECT 1;
 
 	for _, sql := range sqls {
 		_, err = tx.ExecContext(ctx, sql)
+		if err != nil {
+			break
+		}
+	}
+
+	totalFileNum := 2
+
+	err = os.MkdirAll("./uploads", 0755)
+
+	for i := 1; i <= totalFileNum; i++ {
+		err = os.WriteFile(fmt.Sprintf("./uploads/%d",testID+int64(i)), []byte("test file content"), 0644)
+		if err != nil {
+			break
+		}
+		
+		os.WriteFile(fmt.Sprintf("./uploads/%d.info",testID+int64(i)), []byte("test file info"), 0644)
 		if err != nil {
 			break
 		}
@@ -387,6 +415,9 @@ SELECT 1;
 		}()
 
 		sqls := []string{
+
+			// 清除文件上传记录
+			fmt.Sprintf(`DELETE FROM t_file WHERE domain_id = %d`, testID),
 
 			// 清除考场记录
 			fmt.Sprintf(`DELETE FROM t_exam_record WHERE exam_session = %d`, testID),
@@ -423,6 +454,8 @@ SELECT 1;
 				break
 			}
 		}
+
+		os.RemoveAll("./uploads/*")
 
 		return
 	}

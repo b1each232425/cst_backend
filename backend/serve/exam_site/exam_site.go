@@ -71,6 +71,7 @@ var (
 	dbUser           = "assessuser"
 	dbPwd            = "postgres"
 	maxRetry         = 3
+	uploadDir        = "./uploads" // tusd upload dir
 )
 
 type sysUserInfo struct {
@@ -107,9 +108,10 @@ type examRoomInfo struct {
 }
 
 type syncInfo struct {
-	RecentExamID  int64    `json:"recentExamID"`
-	Path          string   `json:"path" validate:"required"`
-	TableFileList []string `json:"tableFileList" validate:"required"`
+	RecentExamID    int64    `json:"recentExamID"`                      // 最近一场考试的ID
+	Path            string   `json:"path" validate:"required"`          // 数据存放路径
+	TableFileList   []string `json:"tableFileList" validate:"required"` // 表格数据文件列表
+	UploadFilesPath string   `json:"uploadFilesPath"`                   // 上传的文件存放路径
 }
 
 const (
@@ -375,11 +377,11 @@ func Pull(ctx context.Context, retryCount int, forceRenew bool) {
 
 	q := cmn.GetCtxValue(ctx)
 
-	dbConn := cmn.GetPgxConn()
+	dbConn := cmn.GetDbConn()
 
 	defer func() {
 
-		if q.Err == nil || retryCount <= 0 {
+		if (q.Err == nil || retryCount <= 0) && !forceRenew {
 			return
 		}
 
@@ -526,8 +528,8 @@ func Pull(ctx context.Context, retryCount int, forceRenew bool) {
 		return
 	}
 
-	var i syncInfo
-	q.Err = json.Unmarshal(q.Msg.Data, &i)
+	var sInfo syncInfo
+	q.Err = json.Unmarshal(q.Msg.Data, &sInfo)
 	if q.Err != nil || (cmn.InDebugMode && q.Tag["pullRespDataUnmarshalErr"] != nil) {
 
 		if q.Err == nil {
@@ -555,7 +557,7 @@ func Pull(ctx context.Context, retryCount int, forceRenew bool) {
 	source := fmt.Sprintf("%s@%s:%s",
 		sshUser,
 		sshHost,
-		i.Path,
+		sInfo.Path,
 	)
 
 	b := make([]byte, 16)
@@ -607,14 +609,14 @@ func Pull(ctx context.Context, retryCount int, forceRenew bool) {
 		return
 	}
 
-	q.Err = generateImportScript(i.TableFileList, dest, "import_script.sql", true)
+	q.Err = generateImportScript(sInfo.TableFileList, dest, "import_script.sql", true)
 	if q.Err != nil {
 		return
 	}
 
 	pgpassFullPath := filepath.Join(os.Getenv("HOME"), ".pgpass")
 
-	_, q.Err = dbConn.Exec(ctx, fmt.Sprintf(`CREATE SCHEMA IF NOT EXISTS %s`, dbUser))
+	_, q.Err = dbConn.Exec(fmt.Sprintf(`CREATE SCHEMA IF NOT EXISTS %s`, dbUser))
 	if q.Err != nil || (cmn.InDebugMode && q.Tag["pullCreateSchemaErr"] != nil) {
 
 		if q.Err == nil {
@@ -677,6 +679,72 @@ func Pull(ctx context.Context, retryCount int, forceRenew bool) {
 	}
 
 	z.Info(string(o))
+
+	// 同步附件
+
+	var fileList []string
+	var rows *sql.Rows
+	rows, q.Err = dbConn.Query(`SELECT digest FROM t_file`)
+	if q.Err != nil {
+		z.Error(q.Err.Error())
+		return
+	}
+	
+	defer rows.Close()
+
+	for rows.Next() {
+
+		var digest string
+		q.Err = rows.Scan(&digest)
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			continue
+		}
+
+		fileList = append(fileList, digest)
+		fileList = append(fileList, digest+".info")
+
+	}
+
+	fileListPath := filepath.Join(dest, "file_list.txt")
+	q.Err = os.WriteFile(fileListPath, []byte(strings.Join(fileList, "\n")), 0644)
+	if q.Err != nil || (cmn.InDebugMode && q.Tag["pullWriteFileListErr"] != nil) {
+		if q.Err == nil {
+			q.Err = q.Tag["pullWriteFileListErr"].(error)
+		}
+
+		z.Error(q.Err.Error())
+		return
+	}
+
+	source = fmt.Sprintf("%s@%s:%s",
+		sshUser,
+		sshHost,
+		sInfo.UploadFilesPath,
+	)
+
+	cmd = fmt.Sprintf(`rsync -avz --mkpath -e "ssh -p %d" --files-from=%s %s %s/`,
+		sshPort,
+		fileListPath,
+		source,
+		uploadDir,
+	)
+
+	o, q.Err = exec.CommandContext(ctx, "bash", "-c", cmd).CombinedOutput()
+	if q.Err != nil || (cmn.InDebugMode && q.Tag["rsyncUploadFilesErrInPull"] != nil) {
+
+		if q.Err == nil {
+			q.Err = q.Tag["rsyncUploadFilesErrInPull"].(error)
+			cmd = ""
+			o = []byte("")
+		}
+
+		q.Err = fmt.Errorf("COMMAND: %s\t ERR: %w\t DETAIL: %s", cmd, q.Err, string(o))
+		z.Error(q.Err.Error())
+		return
+	}
+
+	
 }
 
 // Push 将数据推送到中心服务器, 中间如果发生任何错误都会进行重试
@@ -2279,16 +2347,33 @@ func examSiteSyncInit(ctx context.Context) {
 
 	q := cmn.GetCtxValue(ctx)
 
-	if viper.IsSet("examSiteServerSync.centralServerSSH.user") {
-		sshUser = viper.GetString("examSiteServerSync.centralServerSSH.user")
+	sshUserKey := "examSiteServerSync.centralServerSSH.user"
+	sshHostKey := "examSiteServerSync.centralServerSSH.host"
+	sshPortKey := "examSiteServerSync.centralServerSSH.port"
+	if viper.IsSet(sshUserKey) {
+		sshUser = viper.GetString(sshUserKey)
 	}
 
-	if viper.IsSet("examSiteServerSync.centralServerSSH.host") {
-		sshHost = viper.GetString("examSiteServerSync.centralServerSSH.host")
+	if viper.IsSet(sshHostKey) {
+		sshHost = viper.GetString(sshHostKey)
 	}
 
-	if viper.IsSet("examSiteServerSync.centralServerSSH.port") {
-		sshPort = viper.GetInt("examSiteServerSync.centralServerSSH.port")
+	if viper.IsSet(sshPortKey) {
+		sshPort = viper.GetInt(sshPortKey)
+	}
+
+	uploadDirKey := "tusd.uploadDir"
+	if viper.IsSet(uploadDirKey) {
+		uploadDir = viper.GetString(uploadDirKey)
+	}
+
+	uploadDir, q.Err = filepath.Abs(uploadDir)
+	if q.Err != nil || (cmn.InDebugMode && q.Tag["absUploadDirErr"] != nil) {
+		if q.Err == nil {
+			q.Err = q.Tag["absUploadDirErr"].(error)
+		}
+		z.Error(q.Err.Error())
+		return
 	}
 
 	dbConn := cmn.GetPgxConn()
@@ -2504,7 +2589,7 @@ func examSiteSyncInit(ctx context.Context) {
 				dbConn := cmn.GetDbConn()
 
 				// 时间计算方式: 当前时间 + 延迟执行Push的时间 + 同步间隔时间 + 30分钟的缓冲时间
-				dontSyncBefore := time.Now().Add(syncDelay).Add(interval).Add(30 * time.Minute).Unix() * 1000
+				dontSyncBefore := time.Now().Add(syncDelay).Add(interval).Add(30*time.Minute).Unix() * 1000
 
 				c := 0
 				q.Err = dbConn.QueryRow(`SELECT COUNT(id) FROM t_exam_session WHERE status = '04' OR (status = '02' AND start_time < $1)`, dontSyncBefore).Scan(&c)
@@ -2677,8 +2762,6 @@ MethodSwitch:
 			return
 		}
 
-		
-
 		for s != "" {
 
 			// 如果同步数据信息快照存在，则直接返回
@@ -2689,7 +2772,7 @@ MethodSwitch:
 				z.Error(q.Err.Error())
 				break MethodSwitch
 			}
-			
+
 			if forceRenew {
 
 				z.Info("强制重新准备考点数据")
@@ -2699,7 +2782,7 @@ MethodSwitch:
 				if err != nil || (cmn.InDebugMode && q.Tag["removeOldCacheDirErr"] != nil) {
 					z.Error(err.Error())
 				}
-				
+
 				break
 			}
 
@@ -2837,10 +2920,22 @@ MethodSwitch:
 
 		z.Info(string(o))
 
+		var dir string
+		dir, q.Err = filepath.Abs(uploadDir)
+		if q.Err != nil || (cmn.InDebugMode && q.Tag["getAbsUploadDirErr"] != nil) {
+			if q.Err == nil {
+				q.Err = q.Tag["getAbsUploadDirErr"].(error)
+			}
+
+			z.Error(q.Err.Error())
+			break MethodSwitch
+		}
+
 		info = syncInfo{
-			RecentExamID:  recentExamID,
-			Path:          folderFullPath,
-			TableFileList: tableFileList,
+			RecentExamID:    recentExamID,
+			Path:            folderFullPath,
+			TableFileList:   tableFileList,
+			UploadFilesPath: dir,
 		}
 
 		var data []byte
@@ -2989,7 +3084,7 @@ MethodSwitch:
 				}
 
 				z.Error(err.Error())
-				
+
 				break MethodSwitch
 			}
 
@@ -3002,7 +3097,6 @@ MethodSwitch:
 			z.Info(fmt.Sprintf("执行自动批改, 考试场次ID: %d", m.ExamSessionID))
 			mark.AutoMark(ctx, m)
 		}
-		
 
 	default:
 		q.Err = fmt.Errorf("不支持的HTTP方法: %s", q.R.Method)

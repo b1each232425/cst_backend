@@ -71,11 +71,11 @@ JOIN t_exam_site ON t_exam_site.id = t_exam_room.exam_site
 WHERE t_exam_site.sys_user = %d`, sysUser),
 			Table: "t_exam_record",
 		},
+
 	}
 
+	// 中心服务器数据导出
 	if !isSubServerSide {
-
-		// 中心服务器数据导出
 
 		// 获取最近一个未开始的考试ID
 
@@ -220,7 +220,17 @@ GROUP BY
 				Table: "t_exam_session",
 			},
 
-			// 考卷数据
+			// 考试附件数据
+			{
+				Sql: fmt.Sprintf(`SELECT t_file.*
+FROM t_exam_info
+	CROSS JOIN LATERAL jsonb_array_elements(t_exam_info.files) AS file
+	JOIN t_file ON t_file.id = file.value::int
+WHERE t_exam_info.id = %d`, recentExamID),
+				Table: "t_file",
+			},
+
+			// 试卷数据
 			{
 				Sql: fmt.Sprintf(`SELECT t_paper.* 
 FROM t_exam_session
@@ -228,6 +238,8 @@ FROM t_exam_session
 WHERE t_exam_session.exam_id = %d`, recentExamID),
 				Table: "t_paper",
 			},
+
+			// 考卷数据
 			{
 				Sql: fmt.Sprintf(`SELECT t_exam_paper.* 
 FROM t_exam_session
@@ -237,6 +249,8 @@ WHERE t_exam_session.exam_id = %d
 				`, recentExamID),
 				Table: "t_exam_paper",
 			},
+
+			// 考卷题组数据
 			{
 				Sql: fmt.Sprintf(`SELECT t_exam_paper_group.* 
 FROM t_exam_session
@@ -247,6 +261,8 @@ WHERE t_exam_session.exam_id = %d
 			`, recentExamID),
 				Table: "t_exam_paper_group",
 			},
+
+			// 考卷题目数据
 			{
 				Sql: fmt.Sprintf(`SELECT t_exam_paper_question.* 
 FROM t_exam_session
@@ -257,6 +273,20 @@ FROM t_exam_session
 WHERE t_exam_session.exam_id = %d
 			`, recentExamID),
 				Table: "t_exam_paper_question",
+			},
+
+			// 考卷题目附件数据
+			{
+				Sql: fmt.Sprintf(`SELECT t_file.*
+FROM t_exam_paper_question
+	JOIN t_exam_paper_group ON t_exam_paper_group.id = t_exam_paper_question.group_id
+	JOIN t_exam_paper ON t_exam_paper.id = t_exam_paper_group.exam_paper_id
+	JOIN t_paper ON t_paper.exampaper_id = t_exam_paper.id
+	JOIN t_exam_session ON t_exam_session.paper_id = t_paper.id
+	CROSS JOIN LATERAL jsonb_array_elements(t_exam_paper_question.files) AS file
+	JOIN t_file ON t_file.id = file.value::int
+WHERE t_exam_session.exam_id = %d`, recentExamID),
+				Table: "t_file",
 			},
 
 			//======考生数据======
@@ -308,6 +338,8 @@ FROM t_exam_record
 WHERE t_exam_site.sys_user = %d`, recentExamID, sysUser),
 				Table: "t_exam_record",
 			},
+
+			
 		}
 	}
 
