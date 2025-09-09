@@ -66,12 +66,19 @@ type RequestBody struct {
 	Messages       []Message      `json:"messages"`
 	Temperature    float32        `json:"temperature"`
 	TopP           float32        `json:"top_p"`
-	Thinking       Think          `json:"thinking"`
+	//Thinking       Think          `json:"thinking"`
 }
 
 type Message struct {
-	Role    string `json:"role"`
-	Content string `json:"content"`
+	Role     string           `json:"role"`
+	Content  string           `json:"content1"`
+	Type     string           `json:"type"`
+	MContent []MessageContent `json:"content"`
+}
+
+type MessageContent struct {
+	Content string `json:"text"`
+	Type    string `json:"type"`
 }
 
 type Think struct {
@@ -202,9 +209,9 @@ func (c *ChatModel) SendChatCompletions(ctx context.Context, messages []Message)
 		ResponseFormat: c.ResponseFormat,
 		MaxTokens:      c.MaxTokens,
 		Messages:       messages,
-		Temperature:    0.1,
-		TopP:           0.1,
-		Thinking:       Think{Type: "disabled"},
+		Temperature:    0.5,
+		TopP:           0.5,
+		//Thinking:       Think{Type: "disabled"},
 	}
 
 	jsonData, err := json.Marshal(requestBody)
@@ -287,17 +294,40 @@ func (c *ChatModel) AIMark(ctx context.Context, question *QuestionDetails, stude
 
 	content := builder.String()
 
+	//var messages = []Message{
+	//	{
+	//		Role:    "system",
+	//		Content: sysPrompt + "\n",
+	//	},
+	//	{
+	//		Role:    "user",
+	//		Content: content,
+	//	},
+	//}
+
 	var messages = []Message{
 		{
-			Role:    "system",
-			Content: sysPrompt + "\n",
+
+			Role: "system",
+			MContent: []MessageContent{
+				{Content: sysPrompt + "\n",
+					Type: "text"},
+			},
+			//Content: sysPrompt + "\n",
 		},
 		{
-			Role:    "user",
-			Content: content,
+			Role: "user",
+			MContent: []MessageContent{
+				{Content: content,
+					Type: "text"},
+			},
+			//Content: content,
 		},
 	}
+
 	start := time.Now()
+
+	z.Sugar().Infof("sending AIMark request, question_id:(%d), content: %s", question.QuestionID, content)
 
 	chatResp, err := c.SendChatCompletions(ctx, messages)
 	if err != nil {
@@ -316,14 +346,14 @@ func (c *ChatModel) AIMark(ctx context.Context, question *QuestionDetails, stude
 	var resp ResponseContent
 	err = json.Unmarshal([]byte(chatResp.Choices[0].Message.Content), &resp)
 	if err != nil {
-		err = fmt.Errorf("解析大模型返回消息的json结构失败: %v", err)
+		err = fmt.Errorf("解析大模型返回消息的json结构失败: %v, 内容：%v", err, chatResp.Choices[0].Message.Content)
 		z.Error(err.Error())
 		return
 	}
 
 	respContent = &resp
 
-	z.Sugar().Infof("AIMark response: %+v", respContent.MarkResult)
+	z.Sugar().Infof("AIMark response: %+v, question: (%d)", respContent.MarkResult, question.QuestionID)
 
 	return c.AIReview(ctx, respContent)
 }
@@ -338,16 +368,39 @@ func (c *ChatModel) AIReview(ctx context.Context, rawContent *ResponseContent) (
 
 	//z.Sugar().Infof("AIReview request content: %s", string(respJson))
 
-	messages := []Message{
+	//messages := []Message{
+	//	{
+	//		Role:    "system",
+	//		Content: c.ReviewPrompt,
+	//	},
+	//	{
+	//		Role:    "user",
+	//		Content: string(respJson),
+	//	},
+	//}
+
+	var messages = []Message{
 		{
-			Role:    "system",
-			Content: c.ReviewPrompt,
+
+			Role: "system",
+			MContent: []MessageContent{
+				{
+					Content: c.ReviewPrompt,
+					Type:    "text",
+				},
+			},
+			//Content: sysPrompt + "\n",
 		},
 		{
-			Role:    "user",
-			Content: string(respJson),
+			Role: "user",
+			MContent: []MessageContent{
+				{Content: string(respJson),
+					Type: "text"},
+			},
+			//Content: content,
 		},
 	}
+
 	start := time.Now()
 
 	chatResp, err := c.SendChatCompletions(ctx, messages)
@@ -366,7 +419,7 @@ func (c *ChatModel) AIReview(ctx context.Context, rawContent *ResponseContent) (
 	var resp ResponseContent
 	err = json.Unmarshal([]byte(chatResp.Choices[0].Message.Content), &resp)
 	if err != nil {
-		err = fmt.Errorf("解析大模型返回消息的json结构失败: %v", err)
+		err = fmt.Errorf("解析大模型返回消息的json结构失败: %v, 返回结构：%+v", err, chatResp)
 		z.Error(err.Error())
 		return
 	}
