@@ -3,6 +3,7 @@ package cmn
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -325,4 +326,34 @@ func TestRateLimiterTaskRunner_Wait_releaseFuncReleasesSemaphore(t *testing.T) {
 
 	// 清理资源
 	releaseFunc3()
+}
+
+func TestRateLimiterTaskRunner_Wait(t *testing.T) {
+	limiter := NewRateLimiterTaskRunner(int64(50), 20, 40)
+	var wg sync.WaitGroup
+
+	now := time.Now()
+	fmt.Printf("start at %v", now)
+	for i := 0; i < 200; i++ {
+		go func() {
+			wg.Add(1)
+
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			fmt.Printf("start waiting (%d)\n", i)
+			err, release := limiter.Wait(ctx)
+			if release != nil {
+				defer release()
+			}
+			if err != nil {
+				panic(err)
+			}
+
+			fmt.Printf("waiting done (%d)\n", i)
+			defer wg.Done()
+		}()
+	}
+
+	wg.Wait()
+	fmt.Printf("end at %v", time.Now())
 }
