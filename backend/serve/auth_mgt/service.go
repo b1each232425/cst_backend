@@ -104,7 +104,7 @@ func GetUserAuthority(ctx context.Context) (a *Authority, err error) {
 	a = &Authority{
 		Role:              role,
 		Domain:            domain,
-		APIs:              apis,
+		AccessibleAPIs:    apis,
 		AccessibleDomains: accessibleDomains,
 	}
 
@@ -331,7 +331,7 @@ func checkUserAPIAccessible(ctx context.Context, authority *Authority, apiPath s
 		return false, e
 	}
 
-	for _, api := range authority.APIs {
+	for _, api := range authority.AccessibleAPIs {
 		if strings.EqualFold(api.ExposePath.String, apiPath) && (api.AccessAction.String == CAPIAccessActionFull || api.AccessAction.String == accessAction) {
 			return true, nil
 		}

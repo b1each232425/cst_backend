@@ -95,14 +95,6 @@ func ListRegisterT(ctx context.Context, name string, course string, status strin
 		z.Error(err.Error())
 		return nil, 0, err
 	}
-	defer func() {
-		err = rows.Close()
-		if err != nil || forceErr == "row close" {
-			err = fmt.Errorf("row failed to close:%v", err)
-			z.Error(err.Error())
-			return
-		}
-	}()
 	for rows.Next() {
 		M := Map{}
 		var r cmn.TRegisterPlan
@@ -165,6 +157,12 @@ func ListRegisterT(ctx context.Context, name string, course string, status strin
 			return nil, 0, err
 		}
 	}
+	err = rows.Close()
+	if err != nil || forceErr == "row close" {
+		err = fmt.Errorf("row failed to close:%v", err)
+		z.Error(err.Error())
+		return nil, 0, err
+	}
 	return result, total, nil
 }
 
@@ -220,14 +218,7 @@ func ListRegisterS(ctx context.Context, name string, course string, status strin
 		z.Error(err.Error())
 		return nil, 0, err
 	}
-	defer func() {
-		err = rows.Close()
-		if err != nil || forceErr == "row close" {
-			err = fmt.Errorf("row failed to close:%v", err)
-			z.Error(err.Error())
-			return
-		}
-	}()
+
 	for rows.Next() {
 		M := Map{}
 		var r cmn.TRegisterPlan
@@ -281,6 +272,12 @@ func ListRegisterS(ctx context.Context, name string, course string, status strin
 			z.Error(err.Error())
 			return nil, 0, err
 		}
+	}
+	err = rows.Close()
+	if err != nil || forceErr == "row close" {
+		err = fmt.Errorf("row failed to close:%v", err)
+		z.Error(err.Error())
+		return nil, 0, err
 	}
 	return result, total, nil
 }
@@ -387,11 +384,18 @@ func StudentRegister(ctx context.Context, registerID int64, status string, Regis
 		}
 	}
 	//把学生关联到练习计划
-	if studentStatus == RegisterStudentStatus.Apply && status == RegisterStudentStatus.Pending {
-		err = practice_mgt.BoundPracticeEnterRegisterPlan(ctx, tx, userID, registerID)
+	if (studentStatus == RegisterStudentStatus.Apply && status == RegisterStudentStatus.Pending) || (status == RegisterStudentStatus.Pending && noExist) {
+		//查询报名计划下的所有练习id
+		_, practices, _, _, err := LoadRegisterById(ctx, registerID)
 		if err != nil {
 			z.Error(err.Error())
 			return err
+		}
+		for _, practice := range practices {
+			err = practice_mgt.UpsertPracticeStudentV2(ctx, practice.ID.Int64, userID, []int64{userID})
+			if err != nil {
+				return err
+			}
 		}
 	}
 	return nil
@@ -440,7 +444,7 @@ func GetRegisterStudentById(ctx context.Context, registerID int64, message strin
 			clauses = append(clauses, fmt.Sprintf("%s = $%d", "eps.type", len(args)+1))
 			args = append(args, registerType)
 		}
-		clauses = append(clauses, fmt.Sprintf("%s = $%d", "eps.status  ", len(args)+1))
+		clauses = append(clauses, fmt.Sprintf("%s = $%d", "eps.status", len(args)+1))
 		args = append(args, RegisterStudentStatus.Approved)
 		clauses = append(clauses, fmt.Sprintf("eps.register_id = $%d", len(args)+1))
 		args = append(args, registerID)
@@ -461,6 +465,8 @@ func GetRegisterStudentById(ctx context.Context, registerID int64, message strin
 	args = append(args, pageSize, offset)
 	z.Sugar().Debugf("打印输出一下这个操作语句：%v", s)
 	z.Sugar().Debugf("打印输出一下参数表：%v", args)
+
+	var rows *sqlx.Rows
 	sqlxDB := cmn.GetDbConn()
 	rows, err := sqlxDB.QueryxContext(ctx, s, args...)
 	if err != nil || forceErr == "query" {
@@ -468,13 +474,7 @@ func GetRegisterStudentById(ctx context.Context, registerID int64, message strin
 		z.Error(err.Error())
 		return nil, 0, err
 	}
-	defer func() {
-		err = rows.Close()
-		if err != nil || forceErr == "row close" {
-			z.Error(err.Error())
-			return
-		}
-	}()
+
 	for rows.Next() {
 		M := Map{}
 		var student cmn.TUser
@@ -521,19 +521,26 @@ func GetRegisterStudentById(ctx context.Context, registerID int64, message strin
 		s += "WHERE " + strings.Join(clauses, " AND ")
 	}
 	rows, err = sqlxDB.QueryxContext(ctx, s, args...)
-	if err != nil || forceErr == "query" {
+	if err != nil || forceErr == "query2" {
 		err = fmt.Errorf("查询总数失败:%v", err)
 		z.Error(err.Error())
 		return nil, 0, err
 	}
+
 	var total int
 	for rows.Next() {
 		err = rows.Scan(&total)
-		if err != nil {
+		if err != nil || forceErr == "scan2" {
 			err = fmt.Errorf("查询总数失败:%v", err)
 			z.Error(err.Error())
 			return nil, 0, err
 		}
+	}
+	err = rows.Close()
+	if err != nil || forceErr == "close" {
+		err = fmt.Errorf("row close failed:%v", err)
+		z.Error(err.Error())
+		return nil, 0, err
 	}
 	return result, total, nil
 }
@@ -949,7 +956,8 @@ func LoadRegisterById(ctx context.Context, registerID int64) (*cmn.TRegisterPlan
 	for rows.Next() {
 		var practice cmn.TPractice
 		err := rows.Scan(&practice.ID, &practice.Name, &practice.Type)
-		if err != nil {
+		if err != nil || forceErr == "scann" {
+			err = fmt.Errorf("扫描报名计划下的练习失败:%v", err)
 			z.Error(err.Error())
 			return nil, nil, nil, -1, err
 		}
@@ -968,7 +976,8 @@ func LoadRegisterById(ctx context.Context, registerID int64) (*cmn.TRegisterPlan
 	for rows.Next() {
 		var reviewer Reviewer
 		err := rows.Scan(&reviewer.ID, &reviewer.OfficialName)
-		if err != nil {
+		if err != nil || forceErr == "scanl" {
+			err = fmt.Errorf("扫描报名计划下的审查人失败:%v", err)
 			z.Error(err.Error())
 			return nil, nil, nil, -1, err
 		}
@@ -1259,7 +1268,7 @@ func OperateRegisterStudentStatus(ctx context.Context, tx pgx.Tx, ids []int64, s
 	if err != nil {
 		return err
 	}
-	if register.Status.String != RegisterStatus.Released {
+	if register.Status.String != RegisterStatus.Released && register.Status.String != RegisterStatus.Ending {
 		err := fmt.Errorf("当前报名计划状态为：%v，不能进行操作", register.Status.String)
 		z.Error(err.Error())
 		return err
@@ -1703,19 +1712,11 @@ func ListReviewers(ctx context.Context, userID int64, registerID int64, name str
 	// 这些实体查询的每个函数之间作用都不一样，需要花时间去了解这个函数的具体用处了
 	sqlxDB := cmn.GetDbConn()
 	rows, err := sqlxDB.QueryxContext(ctx, s, args...)
-	if err != nil || forceErr == "query" {
+	if err != nil || forceErr == "queryr" {
 		err = fmt.Errorf("search register failed:%v", err)
 		z.Error(err.Error())
 		return nil, 0, err
 	}
-	defer func() {
-		err = rows.Close()
-		if err != nil || forceErr == "row close" {
-			err = fmt.Errorf("row failed to close:%v", err)
-			z.Error(err.Error())
-			return
-		}
-	}()
 
 	for rows.Next() {
 		M := Map{}
@@ -1759,6 +1760,14 @@ func ListReviewers(ctx context.Context, userID int64, registerID int64, name str
 			return nil, 0, err
 		}
 	}
+
+	err = rows.Close()
+	if err != nil || forceErr == "row close" {
+		err = fmt.Errorf("row failed to close:%v", err)
+		z.Error(err.Error())
+		return nil, 0, err
+	}
+
 	return result, total, nil
 
 }

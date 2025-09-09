@@ -21,10 +21,10 @@ const (
 
 // Authority 用户权限信息
 type Authority struct {
-	Role              cmn.TDomain       // 用户角色
-	APIs              []cmn.TVDomainAPI // 用户的API列表
-	Domain            cmn.TDomain       // 用户所在域
-	AccessibleDomains []int64           // 用户可访问域列表
+	Role              cmn.TDomain       `json:"role"`              // 用户角色
+	Domain            cmn.TDomain       `json:"domain"`            // 用户所在域
+	AccessibleAPIs    []cmn.TVDomainAPI `json:"accessibleAPIs"`    // 用户的可访问API列表
+	AccessibleDomains []int64           `json:"accessibleDomains"` // 用户可访问域ID列表
 }
 
 // DomainData 域数据

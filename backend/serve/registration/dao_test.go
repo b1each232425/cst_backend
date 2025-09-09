@@ -3,6 +3,7 @@ package registration
 import (
 	"context"
 	"errors"
+	"fmt"
 	"github.com/jackc/pgx/v5"
 	"reflect"
 	"strings"
@@ -536,8 +537,8 @@ func TestGetRegisterStudentById(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	s = `INSERT INTO  t_register_plan (name, status,creator ,create_time) VALUES  ($1 ,$2 ,$3,$4)`
-	_, err = db.Exec(ctx, s, "报名计划", "00", uid, time.Now().UnixMilli())
+	s = `INSERT INTO  t_register_plan (id,name, status,creator ,create_time) VALUES  ($1 ,$2 ,$3,$4,$5)`
+	_, err = db.Exec(ctx, s, 1, "报名计划", "00", uid, time.Now().UnixMilli())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -546,17 +547,11 @@ func TestGetRegisterStudentById(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	s = `INSERT INTO t_exam_plan_student (student_id , register_id,creator,status)VALUES($1,$2,$3,$4),($5,$6,$7,$8)`
-	_, err = db.Exec(ctx, s, 1, 1, uid, "00", 2, 1, uid, "02")
+	s = `INSERT INTO t_exam_plan_student (student_id , register_id,creator,status,type)VALUES($1,$2,$3,$4,$5),($6,$7,$8,$9,$10)`
+	_, err = db.Exec(ctx, s, 20022, 1, uid, "02", "00", 20023, 1, uid, "02", "00")
 	if err != nil {
 		t.Fatal(err)
 	}
-	s = `INSERT INTO t_user (officia_name , mobile_phone , email , gender , id_card_no , id_card_type ) VALUES  ($1 ,$2 ,$3, $4,$5,$6) `
-	_, err = db.Exec(ctx, s, "1", "1", "1", "00", "1", "1")
-	if err != nil {
-		t.Fatal(err)
-	}
-
 	type args struct {
 		registerID   int64
 		message      string
@@ -566,16 +561,159 @@ func TestGetRegisterStudentById(t *testing.T) {
 		page         int
 		pageSize     int
 		searchType   string
+		expectErr    error
 	}
 	tests := []struct {
 		name string
 		args args
 	}{
-		{},
+		{
+			name: "正常测试报名计划",
+			args: args{
+				registerID:   1,
+				message:      "1",
+				registerType: "00",
+				status:       "02",
+				orderBy: []string{
+					"eps.create_time",
+				},
+				page:       1,
+				pageSize:   10,
+				searchType: "00",
+				expectErr:  nil,
+			},
+		},
+		{
+			name: "正常测试考试",
+			args: args{
+				registerID:   1,
+				message:      "1",
+				registerType: "00",
+				status:       "02",
+				orderBy: []string{
+					"eps.create_time",
+				},
+				page:       1,
+				pageSize:   10,
+				searchType: "02",
+				expectErr:  nil,
+			},
+		},
+		{
+			name: "异常1",
+			args: args{
+				registerID:   1,
+				message:      "1",
+				registerType: "00",
+				status:       "02",
+				orderBy: []string{
+					"eps.create_time",
+				},
+				page:       1,
+				pageSize:   10,
+				searchType: "02",
+				expectErr:  errors.New("query register failed:"),
+			},
+		},
+		{
+			name: "异常2",
+			args: args{
+				registerID:   1,
+				message:      "1",
+				registerType: "00",
+				status:       "02",
+				orderBy: []string{
+					"eps.create_time",
+				},
+				page:       1,
+				pageSize:   10,
+				searchType: "02",
+				expectErr:  errors.New("查询总数失败:"),
+			},
+		},
+		{
+			name: "异常3",
+			args: args{
+				registerID:   1,
+				message:      "1",
+				registerType: "00",
+				status:       "02",
+				orderBy: []string{
+					"eps.create_time",
+				},
+				page:       1,
+				pageSize:   10,
+				searchType: "02",
+				expectErr:  errors.New("查询总数失败:"),
+			},
+		},
+		{
+			name: "异常4",
+			args: args{
+				registerID:   1,
+				message:      "",
+				registerType: "",
+				status:       "",
+				orderBy: []string{
+					"eps.create_time",
+				},
+				page:       1,
+				pageSize:   10,
+				searchType: "02",
+				expectErr:  errors.New("row close failed:"),
+			},
+		},
+		{
+			name: "异常5",
+			args: args{
+				registerID:   1,
+				message:      "",
+				registerType: "",
+				status:       "",
+				orderBy: []string{
+					"eps.create_time",
+				},
+				page:       1,
+				pageSize:   10,
+				searchType: "00",
+				expectErr:  errors.New("解析数据失败:"),
+			},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			if strings.Contains(tt.name, "异常1") {
+				ctx = context.WithValue(ctx, "force-error", "query")
+			} else if strings.Contains(tt.name, "异常2") {
+				ctx = context.WithValue(ctx, "force-error", "query2")
+			} else if strings.Contains(tt.name, "异常3") {
+				ctx = context.WithValue(ctx, "force-error", "scan2")
+			} else if strings.Contains(tt.name, "异常4") {
+				ctx = context.WithValue(ctx, "force-error", "close")
+			} else if strings.Contains(tt.name, "异常5") {
+				ctx = context.WithValue(ctx, "force-error", "scan")
+			} else {
+				ctx = context.Background()
+			}
 
+			_, total, err := GetRegisterStudentById(ctx, tt.args.registerID, tt.args.message, tt.args.registerType, tt.args.status, tt.args.orderBy, tt.args.page, tt.args.pageSize, uid, tt.args.searchType)
+			if tt.args.expectErr != nil {
+				if err == nil {
+					t.Error("期望有错误但没有返回错误")
+					return
+				}
+				if !strings.Contains(err.Error(), tt.args.expectErr.Error()) {
+					t.Error(fmt.Sprintf("%s 报错与预期：  %s", err.Error(), tt.args.expectErr.Error()))
+				}
+			} else {
+				if err != nil {
+					z.Fatal("预期没有错误但是返回错误")
+				}
+				if total != 2 {
+					z.Fatal(fmt.Sprintf("返回的total为 %d", total))
+				}
+
+			}
 		})
 		t.Cleanup(func() {
 			// 这里再删除这个练习，随后再重新创建
@@ -615,162 +753,751 @@ func TestGetRegisterStudentById(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			s = `DELETE FROM assessuser.t_user`
-			_, err = db.Exec(ctx, s)
-			if err != nil {
-				t.Fatal(err)
-			}
+
 		})
 	}
 }
 
 func TestListRegisterS(t *testing.T) {
+	if z == nil {
+		cmn.ConfigureForTest()
+	}
+	db := cmn.GetPgxConn()
+	registerName := ""
+	var uid int64
+	uid = 10086
+	s := `DELETE FROM assessuser.t_register_plan `
+	_, err := db.Exec(ctx, s)
+	if err != nil {
+		t.Fatal(err.Error())
+		return
+	}
+	s = `DELETE FROM assessuser.t_register_plan WHERE name =$1 `
+	_, err = db.Exec(ctx, s, registerName)
+	if err != nil {
+		t.Fatal(err.Error())
+		return
+	}
+	s = `DELETE FROM assessuser.t_register_practice`
+	_, err = db.Exec(ctx, s)
+	if err != nil {
+		t.Fatal(err.Error())
+		return
+	}
+	s = `DELETE FROM assessuser.t_exam_plan_student`
+	_, err = db.Exec(ctx, s)
+	if err != nil {
+		t.Fatal(err.Error())
+		return
+	}
+	s = `DELETE FROM assessuser.t_practice_student`
+	_, err = db.Exec(ctx, s)
+	if err != nil {
+		t.Fatal(err.Error())
+		return
+	}
+	s = `DELETE FROM assessuser.t_practice`
+	_, err = db.Exec(ctx, s)
+	if err != nil {
+		t.Fatal(err.Error())
+		return
+	}
+	//插入报名计划数据
+	//插入练习数据
+
+	s = `INSERT INTO  t_register_plan (id,name, status,creator ,create_time,course) VALUES  ($1 ,$2 ,$3,$4,$5,$6)`
+	_, err = db.Exec(ctx, s, 1, "报名计划", "00", uid, time.Now().UnixMilli(), "00")
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	type args struct {
-		ctx      context.Context
-		name     string
-		course   string
-		status   string
-		orderBy  []string
-		page     int
-		pageSize int
-		userID   int64
+		name      string
+		course    string
+		status    string
+		orderBy   []string
+		page      int
+		pageSize  int
+		userID    int64
+		expectErr error
 	}
 	tests := []struct {
-		name    string
-		args    args
-		want    []Map
-		want1   int
-		wantErr bool
+		name string
+		args args
 	}{
-		// TODO: Add test cases.
+		{
+			name: "正常测试",
+			args: args{
+				name:      "报名计划",
+				course:    "00",
+				status:    "00",
+				orderBy:   []string{"r.create_time"},
+				page:      1,
+				pageSize:  10,
+				userID:    uid,
+				expectErr: nil,
+			},
+		},
+		{
+			name: "正常测试2",
+			args: args{
+				name:      "",
+				course:    "",
+				status:    "",
+				orderBy:   []string{"r.create_time"},
+				page:      1,
+				pageSize:  10,
+				userID:    uid,
+				expectErr: nil,
+			},
+		},
+		{
+			name: "异常1",
+			args: args{
+				name:      "报名计划",
+				course:    "00",
+				status:    "00",
+				orderBy:   []string{"r.create_time"},
+				page:      1,
+				pageSize:  10,
+				userID:    uid,
+				expectErr: errors.New("search register failed:"),
+			},
+		},
+		{
+			name: "异常2",
+			args: args{
+				name:      "报名计划",
+				course:    "00",
+				status:    "00",
+				orderBy:   []string{"r.create_time"},
+				page:      1,
+				pageSize:  10,
+				userID:    uid,
+				expectErr: errors.New("查询数据失败:"),
+			},
+		},
+		{
+			name: "异常3",
+			args: args{
+				name:      "",
+				course:    "",
+				status:    "",
+				orderBy:   []string{"r.create_time"},
+				page:      1,
+				pageSize:  10,
+				userID:    uid,
+				expectErr: errors.New("解析数据失败:"),
+			},
+		},
+		{
+			name: "异常4",
+			args: args{
+				name:      "报名计划",
+				course:    "00",
+				status:    "00",
+				orderBy:   []string{"r.create_time"},
+				page:      1,
+				pageSize:  10,
+				userID:    uid,
+				expectErr: errors.New("解析数据失败:"),
+			},
+		},
+		{
+			name: "异常5",
+			args: args{
+				name:      "报名计划",
+				course:    "00",
+				status:    "00",
+				orderBy:   []string{"r.create_time"},
+				page:      1,
+				pageSize:  10,
+				userID:    uid,
+				expectErr: errors.New("row failed to close:"),
+			},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, got1, err := ListRegisterS(tt.args.ctx, tt.args.name, tt.args.course, tt.args.status, tt.args.orderBy, tt.args.page, tt.args.pageSize, tt.args.userID)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("ListRegisterS() error = %v, wantErr %v", err, tt.wantErr)
-				return
+			if strings.Contains(tt.name, "异常1") {
+				ctx = context.WithValue(ctx, "force-error", "query")
+			} else if strings.Contains(tt.name, "异常2") {
+				ctx = context.WithValue(ctx, "force-error", "queryx")
+			} else if strings.Contains(tt.name, "异常3") {
+				ctx = context.WithValue(ctx, "force-error", "scan")
+			} else if strings.Contains(tt.name, "异常4") {
+				ctx = context.WithValue(ctx, "force-error", "lScan")
+			} else if strings.Contains(tt.name, "异常5") {
+				ctx = context.WithValue(ctx, "force-error", "row close")
+			} else {
+				ctx = context.Background()
 			}
-			if !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("ListRegisterS() got = %v, want %v", got, tt.want)
+			_, total, err := ListRegisterS(ctx, tt.args.name, tt.args.course, tt.args.status, []string{"r.create_time"}, tt.args.page, tt.args.pageSize, tt.args.userID)
+			if tt.args.expectErr != nil {
+				if !strings.Contains(err.Error(), tt.args.expectErr.Error()) {
+					z.Error(fmt.Sprintf("%s 错误与预期：  %s", err.Error(), tt.args.expectErr.Error()))
+				}
+			} else {
+				if err != nil {
+					z.Error(fmt.Sprintf("预期没有错误但是实际上有错误 %v", err))
+				}
+				if total != 1 {
+					z.Error(fmt.Sprintf("返回的total为 %d", total))
+				}
+
 			}
-			if got1 != tt.want1 {
-				t.Errorf("ListRegisterS() got1 = %v, want %v", got1, tt.want1)
+
+		})
+		t.Cleanup(func() {
+
+			//删除报名计划
+			s = `DELETE FROM assessuser.t_register_plan`
+			_, err = db.Exec(ctx, s)
+			if err != nil {
+				t.Fatal(err)
 			}
+			//删除报名计划练习
+			s = `DELETE FROM assessuser.t_register_practice`
+			_, err = db.Exec(ctx, s)
+			if err != nil {
+				t.Fatal(err)
+			}
+
 		})
 	}
 }
 
 func TestListRegisterT(t *testing.T) {
+	if z == nil {
+		cmn.ConfigureForTest()
+	}
+	db := cmn.GetPgxConn()
+	registerName := ""
+	var uid int64
+	uid = 10086
+	s := `DELETE FROM assessuser.t_register_plan `
+	_, err := db.Exec(ctx, s)
+	if err != nil {
+		t.Fatal(err.Error())
+		return
+	}
+	s = `DELETE FROM assessuser.t_register_plan WHERE name =$1 `
+	_, err = db.Exec(ctx, s, registerName)
+	if err != nil {
+		t.Fatal(err.Error())
+		return
+	}
+	s = `DELETE FROM assessuser.t_register_practice`
+	_, err = db.Exec(ctx, s)
+	if err != nil {
+		t.Fatal(err.Error())
+		return
+	}
+	s = `DELETE FROM assessuser.t_exam_plan_student`
+	_, err = db.Exec(ctx, s)
+	if err != nil {
+		t.Fatal(err.Error())
+		return
+	}
+	s = `DELETE FROM assessuser.t_practice_student`
+	_, err = db.Exec(ctx, s)
+	if err != nil {
+		t.Fatal(err.Error())
+		return
+	}
+	s = `DELETE FROM assessuser.t_practice`
+	_, err = db.Exec(ctx, s)
+	if err != nil {
+		t.Fatal(err.Error())
+		return
+	}
+	//插入报名计划数据
+	//插入练习数据
+
+	s = `INSERT INTO  t_register_plan (id,name, status,creator ,create_time,course) VALUES  ($1 ,$2 ,$3,$4,$5,$6)`
+	_, err = db.Exec(ctx, s, 1, "报名计划", "06", uid, time.Now().UnixMilli(), "00")
+	if err != nil {
+		t.Fatal(err)
+	}
 	type args struct {
-		ctx        context.Context
 		name       string
 		course     string
 		status     string
 		orderBy    []string
 		page       int
 		pageSize   int
-		userID     int64
 		searchType string
+		expectErr  error
 	}
 	tests := []struct {
-		name    string
-		args    args
-		want    []Map
-		want1   int
-		wantErr bool
+		name string
+		args args
 	}{
-		// TODO: Add test cases.
+		{
+			name: "正常测试1",
+			args: args{
+				name:       "报名计划",
+				course:     "00",
+				status:     "06",
+				orderBy:    []string{"r.create_time"},
+				page:       1,
+				pageSize:   10,
+				searchType: "00",
+				expectErr:  nil,
+			},
+		},
+		{
+			name: "正常测试2",
+			args: args{
+				name:       "报名计划",
+				course:     "00",
+				status:     "",
+				orderBy:    []string{"r.create_time"},
+				page:       1,
+				pageSize:   10,
+				searchType: "02",
+				expectErr:  nil,
+			},
+		},
+		{
+			name: "异常1",
+			args: args{
+				name:     "报名计划",
+				course:   "00",
+				status:   "06",
+				orderBy:  []string{"r.create_time"},
+				page:     1,
+				pageSize: 10,
+
+				expectErr: errors.New("search register failed:"),
+			},
+		},
+		{
+			name: "异常2",
+			args: args{
+				name:     "报名计划",
+				course:   "00",
+				status:   "06",
+				orderBy:  []string{"r.create_time"},
+				page:     1,
+				pageSize: 10,
+
+				expectErr: errors.New("查询数据失败:"),
+			},
+		},
+		{
+			name: "异常3",
+			args: args{
+				name:     "",
+				course:   "",
+				status:   "",
+				orderBy:  []string{"r.create_time"},
+				page:     1,
+				pageSize: 10,
+
+				expectErr: errors.New("解析数据失败:"),
+			},
+		},
+		{
+			name: "异常4",
+			args: args{
+				name:     "报名计划",
+				course:   "00",
+				status:   "06",
+				orderBy:  []string{"r.create_time"},
+				page:     1,
+				pageSize: 10,
+
+				expectErr: errors.New("解析数据失败:"),
+			},
+		},
+		{
+			name: "异常5",
+			args: args{
+				name:      "报名计划",
+				course:    "00",
+				status:    "00",
+				orderBy:   []string{"r.create_time"},
+				page:      1,
+				pageSize:  10,
+				expectErr: errors.New("row failed to close:"),
+			},
+		},
 	}
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, got1, err := ListRegisterT(tt.args.ctx, tt.args.name, tt.args.course, tt.args.status, tt.args.orderBy, tt.args.page, tt.args.pageSize, tt.args.userID, tt.args.searchType)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("ListRegisterT() error = %v, wantErr %v", err, tt.wantErr)
-				return
+			if strings.Contains(tt.name, "异常1") {
+				ctx = context.WithValue(ctx, "force-error", "query")
+			} else if strings.Contains(tt.name, "异常2") {
+				ctx = context.WithValue(ctx, "force-error", "queryx")
+			} else if strings.Contains(tt.name, "异常3") {
+				ctx = context.WithValue(ctx, "force-error", "scan")
+			} else if strings.Contains(tt.name, "异常4") {
+				ctx = context.WithValue(ctx, "force-error", "lScan")
+			} else if strings.Contains(tt.name, "异常5") {
+				ctx = context.WithValue(ctx, "force-error", "row close")
+			} else {
+				ctx = context.Background()
 			}
-			if !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("ListRegisterT() got = %v, want %v", got, tt.want)
+			_, total, err := ListRegisterT(ctx, tt.args.name, tt.args.course, tt.args.status, tt.args.orderBy, tt.args.page, tt.args.pageSize, uid, tt.args.searchType)
+			if tt.args.expectErr != nil {
+				if !strings.Contains(err.Error(), tt.args.expectErr.Error()) {
+					z.Error(fmt.Sprintf("%s 错误与预期：  %s", err.Error(), tt.args.expectErr.Error()))
+				}
+			} else {
+				if err != nil {
+					z.Error(fmt.Sprintf("预期没有错误但是实际上有错误 %v", err))
+				}
+				if total != 1 {
+					z.Error(fmt.Sprintf("返回的total为 %d", total))
+				}
 			}
-			if got1 != tt.want1 {
-				t.Errorf("ListRegisterT() got1 = %v, want %v", got1, tt.want1)
+
+		})
+		t.Cleanup(func() {
+			//删除报名计划
+			s = `DELETE FROM assessuser.t_register_plan`
+			_, err = db.Exec(ctx, s)
+			if err != nil {
+				t.Fatal(err)
 			}
+			//删除报名计划练习
+			s = `DELETE FROM assessuser.t_register_practice`
+			_, err = db.Exec(ctx, s)
+			if err != nil {
+				t.Fatal(err)
+			}
+
 		})
 	}
 }
 
 func TestListReviewers(t *testing.T) {
+	if z == nil {
+		cmn.ConfigureForTest()
+	}
+	db := cmn.GetPgxConn()
+	registerName := "报名计划"
+	var uid int64
+	uid = 10086
+	s := `DELETE FROM assessuser.t_register_plan `
+	_, err := db.Exec(ctx, s)
+	if err != nil {
+		t.Fatal(err.Error())
+	}
+
+	s = `INSERT INTO  t_register_plan (id,name, status,creator ,create_time,course,reviewer_ids) VALUES  ($1 ,$2 ,$3,$4,$5,$6,$7)`
+	_, err = db.Exec(ctx, s, 1, registerName, "06", uid, time.Now().UnixMilli(), "00", []int64{10100})
+	if err != nil {
+		t.Fatal(err)
+	}
 	type args struct {
-		ctx        context.Context
-		userID     int64
 		registerID int64
 		name       string
 		page       int
 		pageSize   int
 		orderBy    []string
+		userId     int64
+		expectErr  error
 	}
 	tests := []struct {
-		name    string
-		args    args
-		want    []Map
-		want1   int
-		wantErr bool
+		name string
+		args args
 	}{
-		// TODO: Add test cases.
+		{
+			name: "正常测试",
+			args: args{
+				registerID: 1,
+				name:       "李玟筱",
+				page:       1,
+				pageSize:   10,
+				orderBy:    []string{"u.create_time"},
+				userId:     uid,
+				expectErr:  nil,
+			},
+		},
+		{
+			name: "正常测试2",
+			args: args{
+				registerID: 1,
+				name:       "",
+				page:       1,
+				pageSize:   10,
+				orderBy:    []string{"u.create_time"},
+				userId:     uid,
+				expectErr:  nil,
+			},
+		},
+		{
+			name: "异常0",
+			args: args{
+				registerID: 1,
+				name:       "李玟筱",
+				page:       1,
+				pageSize:   10,
+				orderBy:    []string{"u.create_time"},
+				userId:     0,
+				expectErr:  errors.New("查询报名计划下的审查人失败:"),
+			},
+		},
+		{
+			name: "异常registerID",
+			args: args{
+				registerID: 0,
+				name:       "李玟筱",
+				page:       1,
+				pageSize:   10,
+				orderBy:    []string{"u.create_time"},
+				userId:     uid,
+				expectErr:  errors.New("查询报名计划下的审查人失败:"),
+			},
+		},
+		{
+			name: "异常1",
+			args: args{
+				registerID: 1,
+				name:       "李玟筱",
+				page:       1,
+				pageSize:   10,
+				orderBy:    []string{"u.create_time"},
+				userId:     uid,
+				expectErr:  errors.New("查询报名计划下的审查人失败:"),
+			},
+		},
+
+		{
+			name: "异常2",
+			args: args{
+				registerID: 1,
+				name:       "李玟筱",
+				page:       1,
+				pageSize:   10,
+				orderBy:    []string{"u.create_time"},
+				userId:     uid,
+				expectErr:  errors.New("search register failed:"),
+			},
+		},
+		{
+			name: "异常3",
+			args: args{
+				registerID: 1,
+				name:       "李玟筱",
+				page:       1,
+				pageSize:   10,
+				expectErr:  errors.New("row scan failed:"),
+				userId:     uid,
+				orderBy:    []string{"u.create_time"},
+			},
+		},
+		{
+			name: "异常4",
+			args: args{
+				registerID: 1,
+				name:       "李玟筱",
+				page:       1,
+				pageSize:   10,
+				orderBy:    []string{"u.create_time"},
+				userId:     uid,
+				expectErr:  errors.New("查询数据失败:"),
+			},
+		},
+		{
+			name: "异常5",
+			args: args{
+				registerID: 1,
+				name:       "李玟筱",
+				page:       1,
+				pageSize:   10,
+				orderBy:    []string{"u.create_time"},
+				userId:     uid,
+				expectErr:  errors.New("解析数据失败:"),
+			},
+		},
+		{
+			name: "异常6",
+			args: args{
+				registerID: 1,
+				name:       "李玟筱",
+				page:       1,
+				pageSize:   10,
+				orderBy:    []string{"u.create_time"},
+				userId:     uid,
+				expectErr:  errors.New("row failed to close:"),
+			},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, got1, err := ListReviewers(tt.args.ctx, tt.args.userID, tt.args.registerID, tt.args.name, tt.args.page, tt.args.pageSize, tt.args.orderBy)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("ListReviewers() error = %v, wantErr %v", err, tt.wantErr)
-				return
+			if strings.Contains(tt.name, "异常1") {
+				ctx = context.WithValue(ctx, "force-error", "query2")
+			} else if strings.Contains(tt.name, "异常2") {
+				ctx = context.WithValue(ctx, "force-error", "queryr")
+			} else if strings.Contains(tt.name, "异常3") {
+				ctx = context.WithValue(ctx, "force-error", "row scan")
+			} else if strings.Contains(tt.name, "异常4") {
+				ctx = context.WithValue(ctx, "force-error", "queryx")
+			} else if strings.Contains(tt.name, "异常5") {
+				ctx = context.WithValue(ctx, "force-error", "lScan")
+			} else if strings.Contains(tt.name, "异常6") {
+				ctx = context.WithValue(ctx, "force-error", "row close")
+			} else {
+				ctx = context.Background()
 			}
-			if !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("ListReviewers() got = %v, want %v", got, tt.want)
-			}
-			if got1 != tt.want1 {
-				t.Errorf("ListReviewers() got1 = %v, want %v", got1, tt.want1)
+
+			_, total, err := ListReviewers(ctx, tt.args.userId, tt.args.registerID, tt.args.name, tt.args.page, tt.args.pageSize, tt.args.orderBy)
+			if tt.args.expectErr != nil {
+				if !strings.Contains(err.Error(), tt.args.expectErr.Error()) {
+					z.Error(fmt.Sprintf("%s 错误与预期：  %s", err.Error(), tt.args.expectErr.Error()))
+				}
+			} else {
+				if err != nil {
+					z.Error(fmt.Sprintf("预期没有错误但是实际上有错误 %v", err))
+				}
+				if total != 1 {
+					z.Error(fmt.Sprintf("返回的total为 %d", total))
+				}
 			}
 		})
+		t.Cleanup(func() {
+			//删除报名计划
+			s = `DELETE FROM assessuser.t_register_plan`
+			_, err = db.Exec(ctx, s)
+			if err != nil {
+				t.Fatal(err)
+			}
+			//删除报名计划练习
+			s = `DELETE FROM assessuser.t_register_practice`
+			_, err = db.Exec(ctx, s)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+		})
+
 	}
 }
 
 func TestLoadRegisterById(t *testing.T) {
+	if z == nil {
+		cmn.ConfigureForTest()
+	}
+	db := cmn.GetPgxConn()
+	registerName := "报名计划"
+	var uid int64
+	uid = 10086
+	s := `DELETE FROM assessuser.t_register_plan `
+	_, err := db.Exec(ctx, s)
+	if err != nil {
+		t.Fatal(err.Error())
+	}
+
+	s = `INSERT INTO  t_register_plan (id,name, status,creator ,create_time,course,reviewer_ids) VALUES  ($1 ,$2 ,$3,$4,$5,$6,$7)`
+	_, err = db.Exec(ctx, s, 1, registerName, "06", uid, time.Now().UnixMilli(), "00", []int64{10100})
+	if err != nil {
+		t.Fatal(err)
+	}
 	type args struct {
-		ctx        context.Context
 		registerID int64
+		expectErr  error
 	}
 	tests := []struct {
-		name    string
-		args    args
-		want    *cmn.TRegisterPlan
-		want1   []cmn.TPractice
-		want2   []Reviewer
-		want3   int64
-		wantErr bool
+		name string
+		args args
 	}{
-		// TODO: Add test cases.
+		{
+			name: "正常测试",
+			args: args{
+				registerID: 1,
+				expectErr:  nil,
+			},
+		},
+		{
+			name: "异常1",
+
+			args: args{
+				registerID: 1,
+				expectErr:  errors.New("查询报名计划失败:"),
+			},
+		},
+		{
+			name: "异常2",
+
+			args: args{
+				registerID: 0,
+				expectErr:  errors.New("查询报名计划下的练习失败:"),
+			},
+		},
+		{
+			name: "异常3",
+
+			args: args{
+				registerID: 1,
+				expectErr:  errors.New("扫描报名计划下的练习失败:"),
+			},
+		},
+		{
+			name: "异常4",
+
+			args: args{
+				registerID: 1,
+				expectErr:  errors.New("查询报名计划下的审查人失败:"),
+			},
+		},
+		{
+			name: "异常5",
+
+			args: args{
+				registerID: 1,
+				expectErr:  errors.New("扫描报名计划下的审查人失败:"),
+			},
+		},
 	}
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, got1, got2, got3, err := LoadRegisterById(tt.args.ctx, tt.args.registerID)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("LoadRegisterById() error = %v, wantErr %v", err, tt.wantErr)
-				return
+			if strings.Contains(tt.name, "异常1") {
+				ctx = context.WithValue(ctx, "force-error", "query")
+			} else if strings.Contains(tt.name, "异常2") {
+				ctx = context.WithValue(ctx, "force-error", "query2")
+			} else if strings.Contains(tt.name, "异常3") {
+				ctx = context.WithValue(ctx, "force-error", "scann")
+			} else if strings.Contains(tt.name, "异常4") {
+				ctx = context.WithValue(ctx, "force-error", "query3")
+			} else if strings.Contains(tt.name, "异常5") {
+				ctx = context.WithValue(ctx, "force-error", "scanl")
+			} else {
+				ctx = context.Background()
 			}
-			if !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("LoadRegisterById() got = %v, want %v", got, tt.want)
+			_, _, _, _, err := LoadRegisterById(ctx, tt.args.registerID)
+			if tt.args.expectErr != nil {
+				if !strings.Contains(err.Error(), tt.args.expectErr.Error()) {
+					z.Error(fmt.Sprintf("%s 错误与预期：  %s", err.Error(), tt.args.expectErr.Error()))
+				}
+			} else {
+				if err != nil {
+					z.Error(fmt.Sprintf("预期没有错误但是实际上有错误 %v", err))
+				}
+
 			}
-			if !reflect.DeepEqual(got1, tt.want1) {
-				t.Errorf("LoadRegisterById() got1 = %v, want %v", got1, tt.want1)
-			}
-			if !reflect.DeepEqual(got2, tt.want2) {
-				t.Errorf("LoadRegisterById() got2 = %v, want %v", got2, tt.want2)
-			}
-			if got3 != tt.want3 {
-				t.Errorf("LoadRegisterById() got3 = %v, want %v", got3, tt.want3)
-			}
+
 		})
+		t.Cleanup(func() {
+			//删除报名计划
+			s = `DELETE FROM assessuser.t_register_plan`
+			_, err = db.Exec(ctx, s)
+			if err != nil {
+				t.Fatal(err)
+			}
+			//删除报名计划练习
+			s = `DELETE FROM assessuser.t_register_practice`
+			_, err = db.Exec(ctx, s)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+		})
+
 	}
 }
 
