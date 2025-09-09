@@ -546,8 +546,8 @@ func gradeDistributionExam(ctx context.Context, examID int, columnNum int) (Exam
 	// 构造最后一列的分布统计SQL
 	initDistribution := fmt.Sprintf(
 		`SUM ( CASE
-					WHEN (ets.total_score >= %f * ep.total_score
-						AND ets.total_score <= ep.total_score)
+					WHEN (ets.total_score >= %f * paper_total_score
+						AND ets.total_score <= paper_total_score)
 						%s
 						THEN 1
 					ELSE 0
@@ -564,8 +564,8 @@ func gradeDistributionExam(ctx context.Context, examID int, columnNum int) (Exam
 
 		distribution := fmt.Sprintf(
 			`SUM ( CASE
-					WHEN (ets.total_score >= %f * ep.total_score
-						AND ets.total_score < %f * ep.total_score)
+					WHEN (ets.total_score >= %f * paper_total_score
+						AND ets.total_score < %f * paper_total_score)
 						%s
 						THEN 1
 					ELSE 0
@@ -581,11 +581,19 @@ func gradeDistributionExam(ctx context.Context, examID int, columnNum int) (Exam
 									jsonb_agg(session_grades)
 								FROM t_exam_info ei
 									JOIN (SELECT
-										ets.exam_id AS exam_id, ets.exam_session_id, ep.id AS exam_paper_id, ep.name AS exam_paper_name, ep.total_score AS total_score, 
+										ets.exam_id AS exam_id, ets.exam_session_id, ep.id AS exam_paper_id, ep.name AS exam_paper_name, paper_total_score AS total_score, 
 										COUNT(DISTINCT ets.student_id) AS total, ARRAY[ %s ] AS score_distribution
 										FROM v_student_exam_total_score ets
-											JOIN v_exam_paper ep ON ep.exam_session_id =  ets.exam_session_id
-										GROUP BY ets.exam_id, ets.exam_session_id, ep.id, ep.name, ep.total_score ) session_grades ON session_grades.exam_id = ei.id
+											JOIN t_exam_session es ON es.id = ets.exam_session_id
+											JOIN t_paper tp ON tp.id = es.paper_id
+											JOIN t_exam_paper ep ON ep.id = tp.exampaper_id
+											JOIN (
+												SELECT epg.exam_paper_id, COALESCE(SUM(epq.score), 0) AS paper_total_score
+												FROM t_exam_paper_group epg
+												LEFT JOIN t_exam_paper_question epq ON epq.group_id = epg.id
+												GROUP BY epg.exam_paper_id
+											) pts ON pts.exam_paper_id = ep.id
+										GROUP BY ets.exam_id, ets.exam_session_id, ep.id, ep.name, paper_total_score ) session_grades ON session_grades.exam_id = ei.id
 								WHERE ei.id = $1 %s
 								GROUP BY ei.id
 										`, strings.Join(distributionsSql, ", "), whereClause)
@@ -677,8 +685,8 @@ func gradeDistributionPractice(ctx context.Context, practiceID int, columnNum in
 	// 构造最后一列的分布统计SQL
 	initDistribution := fmt.Sprintf(
 		`SUM ( CASE
-					WHEN (sp.avg_score >= %f * ep.total_score
-						AND sp.avg_score <= %d * ep.total_score)
+					WHEN (sp.avg_score >= %f * paper_total_score
+						AND sp.avg_score <= %d * paper_total_score)
 						%s
 						THEN 1
 					ELSE 0
@@ -696,8 +704,8 @@ func gradeDistributionPractice(ctx context.Context, practiceID int, columnNum in
 
 		distribution := fmt.Sprintf(
 			`SUM ( CASE
-					WHEN (sp.avg_score >= %f * ep.total_score
-						AND sp.avg_score < %f * ep.total_score)
+					WHEN (sp.avg_score >= %f * paper_total_score
+						AND sp.avg_score < %f * paper_total_score)
 						%s
 						THEN 1
 					ELSE 0
@@ -712,16 +720,23 @@ func gradeDistributionPractice(ctx context.Context, practiceID int, columnNum in
 									p.id, 
 									p.name, 
 									COUNT(sp.student_id), 
-									ep.total_score, 
+									paper_total_score AS total_score, 
 									ARRAY[ %s ]
 								FROM t_practice p
 									JOIN (SELECT student_id, practice_id, name, exam_paper_id, COUNT(1) AS attempt, 
 										         AVG(total_score) AS avg_score, AVG(wrong_count)::integer AS avg_wrong_count, AVG(used_time) AS avg_used_time
 										  FROM v_student_practice_total_score
 										  GROUP BY student_id, practice_id, name, exam_paper_id ) sp ON sp.practice_id = p.id
-									JOIN v_exam_paper ep ON ep.id = sp.exam_paper_id
+									JOIN t_paper tp ON tp.id = p.paper_id
+									JOIN t_exam_paper ep ON ep.id = tp.exampaper_id
+									JOIN (
+										SELECT epg.exam_paper_id, COALESCE(SUM(epq.score), 0) AS paper_total_score
+										FROM t_exam_paper_group epg
+										LEFT JOIN t_exam_paper_question epq ON epq.group_id = epg.id
+										GROUP BY epg.exam_paper_id
+									) pts ON pts.exam_paper_id = ep.id
 								WHERE p.id = $1 %s
-								GROUP BY p.id, ep.total_score
+								GROUP BY p.id, paper_total_score
 								`, strings.Join(distributionsSql, ", "), whereClause)
 
 	// 执行SQL查询并扫描结果
@@ -1169,11 +1184,11 @@ func gradeAnalysisByID(ctx context.Context, esid int64, pid int64) (Analysis, er
 	var id int64
 	var epSql string
 	if pid > 0 {
-		epSql = `SELECT id AS exam_paper_id FROM t_exam_paper WHERE practice_id = $1`
+		epSql = `SELECT tp.exampaper_id AS exam_paper_id FROM t_practice p JOIN t_paper tp ON tp.id = p.paper_id WHERE p.id = $1`
 		id = pid
 	}
 	if esid > 0 {
-		epSql = `SELECT id AS exam_paper_id FROM t_exam_paper WHERE exam_session_id = $1`
+		epSql = `SELECT tp.exampaper_id AS exam_paper_id FROM t_exam_session es JOIN t_paper tp ON tp.id = es.paper_id WHERE es.id = $1`
 		id = esid
 	}
 	err = tx.QueryRow(ctx, epSql, id).Scan(&analysis.ExamPaperID)
