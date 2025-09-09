@@ -1111,7 +1111,7 @@ func MarkObjectiveQuestionAnswers(ctx context.Context, cond QueryCondition) (err
 		markerInfo.MarkMode = "04"
 	}
 
-	if cond.PracticeSubmissionID > 0 {
+	if cond.PracticeSubmissionID > 0 && cond.PracticeWrongSubmissionID <= 0 {
 		// 查询单个练习学生
 		markerInfo.MarkMode = "12"
 	}

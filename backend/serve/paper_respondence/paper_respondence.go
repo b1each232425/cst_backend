@@ -1183,6 +1183,7 @@ func Submit(ctx context.Context) {
 			mark.AutoMark(ctx, mark.QueryCondition{
 				PracticeWrongSubmissionID: u.WrongSubmissionID,
 				PracticeID:                u.PracticeId,
+				PracticeSubmissionID:      u.PracticeSubmissionID,
 			})
 		}()
 	default:
