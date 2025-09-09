@@ -46,17 +46,18 @@ type Practice struct {
 }
 
 type QueryCondition struct {
-	TeacherID            int64 `json:"teacher_id" validate:"required,gt=0"`
-	ExamSessionID        int64 `json:"exam_session_id" validate:"gte=0"`
-	ExamineeID           int64 `json:"examinee_id" validate:"gte=0"`
-	PracticeID           int64 `json:"practice_id" validate:"gte=0"`
-	PracticeSubmissionID int64 `json:"practice_submission_id" validate:"gte=0"`
+	TeacherID                 int64 `json:"teacher_id" validate:"required,gt=0"`
+	ExamSessionID             int64 `json:"exam_session_id" validate:"gte=0"`
+	ExamineeID                int64 `json:"examinee_id" validate:"gte=0"`
+	PracticeID                int64 `json:"practice_id" validate:"gte=0"`
+	PracticeSubmissionID      int64 `json:"practice_submission_id" validate:"gte=0"`
+	PracticeWrongSubmissionID int64 `json:"practice_wrong_submission_id"`
 }
 
 type MarkerInfo struct {
 	MarkerID           int64           `json:"marker_id"`
 	MarkInfos          []cmn.TMarkInfo `json:"mark_infos"`
-	MarkMode           string          `json:"mark_mode"` // 00：不需要手动批改  02：全卷多评 04：试卷分配 06：题组专评 08：题目分配 10：单人（人工）批改 12：批改单个练习学生
+	MarkMode           string          `json:"mark_mode"` // 00：不需要手动批改  02：全卷多评 04：试卷分配 06：题组专评 08：题目分配 10：单人（人工）批改 12：批改单个练习学生 14：批改练习错题
 	MarkMethod         string          `json:"mark_method"`
 	MarkedStudentNames []string        `json:"marked_student_names"`
 }
@@ -139,8 +140,9 @@ func QueryExamList(ctx context.Context, req QueryMarkingListReq) (examList []Exa
 						 t_exam_session es 
 					JOIN t_exam_info e ON e.id = es.exam_id AND e.status !='12' AND e.status != '14' AND e.status != '16' 
 					JOIN target_exam_infos tei ON tei.id = e.id
+					JOIN t_paper tp ON tp.id = es.paper_id 
 					JOIN t_exam_paper ep 
-						ON ep.exam_session_id = es.id 
+						ON ep.id = tp.exampaper_id 
 						AND ep.status IS NOT NULL 
 						AND ep.status != '04' 
 					LEFT JOIN v_exam_respondent_count rc ON rc.exam_session_id = es.id 
@@ -155,7 +157,8 @@ func QueryExamList(ctx context.Context, req QueryMarkingListReq) (examList []Exa
 	getExamCountQuery := `	SELECT COUNT(DISTINCT es.exam_id) AS total_exams
 							FROM t_exam_session es
 							JOIN t_exam_info ei ON es.exam_id = ei.id AND ei.status != '12' AND ei.status != '14' AND ei.status != '16' 
-							JOIN t_exam_paper ep ON es.id = ep.exam_session_id AND ep.status != '04'
+							JOIN t_paper tp ON tp.id = es.paper_id 							
+							JOIN t_exam_paper ep ON ep.id = tp.exampaper_id AND ep.status != '04'
 							LEFT JOIN t_mark_info mi ON es.id = mi.exam_session_id AND mi.status != '04'
 							WHERE es.status IS NOT NULL
 							  AND es.status != '14' %s -- 动态关联where条件`
@@ -727,6 +730,18 @@ func QueryStudentAnswersByMarkMode(ctx context.Context, answerType string, cond 
 
 		args = append(args, cond.PracticeSubmissionID)
 		break
+	case "14": // 查询单个练习学生错题作答的数据
+		whereClause = append(whereClause, fmt.Sprintf(" AND practice_submission_id = $%d AND question_score > COALESCE(answer_score, 0) ", argIdx))
+		argIdx++
+
+		if cond.PracticeSubmissionID <= 0 {
+			err = fmt.Errorf("invalid practice_submission_id")
+			z.Error(err.Error())
+			return
+		}
+
+		args = append(args, cond.PracticeSubmissionID)
+		break
 	default:
 		break
 	}
@@ -811,6 +826,9 @@ func QueryQuestionsByMarkMode(ctx context.Context, cond QueryCondition, markerIn
 							FROM t_exam_paper p
 							JOIN t_exam_paper_group pg ON pg.exam_paper_id = p.id 
 							JOIN t_exam_paper_question q ON q.group_id = pg.id
+							JOIN t_paper tp ON tp.exampaper_id = p.id 
+							LEFT JOIN t_exam_session es ON es.paper_id = tp.id 
+							LEFT JOIN t_practice pra ON pra.paper_id = tp.id
 							WHERE p.status != '04' AND p.status IS NOT NULL 
 							  AND q.status != '04' AND q.status IS NOT NULL 
 							  AND q.type IN ('06', '08', '10') 
@@ -821,10 +839,10 @@ func QueryQuestionsByMarkMode(ctx context.Context, cond QueryCondition, markerIn
 	var argIndex = 1
 
 	if cond.ExamSessionID > 0 {
-		whereClause = append(whereClause, fmt.Sprintf(" AND p.exam_session_id = $%d ", argIndex))
+		whereClause = append(whereClause, fmt.Sprintf(" AND es.id = $%d ", argIndex))
 		args = append(args, cond.ExamSessionID)
 	} else {
-		whereClause = append(whereClause, fmt.Sprintf(" AND p.practice_id = $%d ", argIndex))
+		whereClause = append(whereClause, fmt.Sprintf(" AND pra.id = $%d ", argIndex))
 		args = append(args, cond.PracticeID)
 	}
 	argIndex++
@@ -884,7 +902,6 @@ func QueryQuestionsByMarkMode(ctx context.Context, cond QueryCondition, markerIn
 		}
 
 		var standardAnswers []*SubjectiveAnswer
-		//standardAnswers, _, err = ConvertRawStandardAnswerData(question.Answers, question.Type.String)
 		err = json.Unmarshal(question.Answers, &standardAnswers)
 		if err != nil {
 			err = fmt.Errorf("unable to convert raw standard answer data: %v", err)
@@ -1298,6 +1315,19 @@ func updateStudentAnswerScore(ctx context.Context, markingResults []*cmn.TMark, 
 	return
 }
 
+// updateExamSessionOrPracticeSubmissionState 更新考试场次或练习提交的状态
+//
+// 参数:
+//   - ctx: 上下文，用于控制请求生命周期和传递上下文信息
+//   - tx: 数据库事务对象，用于执行更新操作
+//   - teacherID: 教师ID，表示执行更新操作的教师
+//   - examSessionIDs: 考试场次ID列表，用于指定要更新的考试场次
+//   - practiceSubmissionIDs: 练习提交ID列表，用于指定要更新的练习提交
+//   - status: 目标状态值，将被设置为记录的新状态(10: 考试已提交 08: 练习已提交)
+//
+// 返回值:
+//   - targetIDs: 成功更新的记录ID列表
+//   - err: 操作过程中发生的错误信息
 func updateExamSessionOrPracticeSubmissionState(ctx context.Context, tx *pgx.Tx, teacherID int64, examSessionIDs []int64, practiceSubmissionIDs []int64, status string) (targetIDs []int64, err error) {
 	forceErr, _ := ctx.Value(ForceErrKey).(string)
 	if teacherID <= 0 {
@@ -1342,13 +1372,12 @@ func updateExamSessionOrPracticeSubmissionState(ctx context.Context, tx *pgx.Tx,
 	}
 
 	rows, err := (*tx).Query(ctx, updateQuery, pq.Array(ids), status, teacherID, time.Now().UnixMilli())
+	defer rows.Close()
 	if err != nil || forceErr == "updateExamSessionOrPracticeSubmissionState-tx.Query" {
 		err = fmt.Errorf("exec updateExamSessionState sql error: %v", err)
 		z.Error(err.Error())
 		return
 	}
-
-	defer rows.Close()
 
 	for rows.Next() {
 		var id int64
@@ -1362,4 +1391,55 @@ func updateExamSessionOrPracticeSubmissionState(ctx context.Context, tx *pgx.Tx,
 	}
 
 	return
+}
+
+func updatePracticeWrongSubmissionState(ctx context.Context, tx pgx.Tx, teacherID int64, practiceWrongSubmissionIDs []int64, status string) (targetIDs []int64, err error) {
+	forceErr, _ := ctx.Value(ForceErrKey).(string)
+	if teacherID <= 0 {
+		err = fmt.Errorf("invalid params: teacher_id is required")
+		z.Error(err.Error())
+		return
+	}
+
+	if len(practiceWrongSubmissionIDs) <= 0 {
+		err = fmt.Errorf("invalid params: practice_wrong_submission_ids is required")
+		z.Error(err.Error())
+		return
+	}
+
+	if status == "" {
+		err = fmt.Errorf("invalid params: status is required")
+		z.Error(err.Error())
+		return
+	}
+
+	updateQuery := `UPDATE t_practice_wrong_submissions
+					SET
+						status = $2,
+						updated_by = $3, 
+						update_time = $4
+					WHERE id = ANY($1)
+					RETURNING id`
+
+	rows, err := tx.Query(ctx, updateQuery, pq.Array(practiceWrongSubmissionIDs), status, teacherID, time.Now().UnixMilli())
+	defer rows.Close()
+	if err != nil || forceErr == "updatePracticeWrongSubmissionState-tx.Query" {
+		err = fmt.Errorf("exec updatePracticeWrongSubmissionState sql error: %v", err)
+		z.Error(err.Error())
+		return
+	}
+
+	for rows.Next() {
+		var id int64
+		err = rows.Scan(&id)
+		if err != nil || forceErr == "updatePracticeWrongSubmissionState-rows.Scan" {
+			err = fmt.Errorf("unable to scan row data: %v", err)
+			z.Error(err.Error())
+			return
+		}
+		targetIDs = append(targetIDs, id)
+	}
+
+	return
+
 }

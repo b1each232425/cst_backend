@@ -1,43 +1,27 @@
 package user_mgt
 
 import (
+	"github.com/wneessen/go-mail"
+	"go.uber.org/zap"
 	"w2w.io/cmn"
 	"w2w.io/null"
 )
 
+var z *zap.Logger
+var mailServer *EmailServer
+var mailClient *mail.Client
+
 const (
-	DomainSuperAdmin          = "cst.school^superAdmin"
-	DomainAdmin               = "cst.school^admin"
-	DomainAcademicAffairAdmin = "cst.school.academicAffair^admin"
-	DomainTeacher             = "cst.school^teacher"
-	DomainExamSupervisor      = "cst.school^examSupervisor"
-	DomainExamGrader          = "cst.school^examGrader"
-	DomainExamSiteAdmin       = "cst.school.examSite^admin"
-	DomainScoreChecker        = "cst.school^scoreChecker"
-	DomainStudent             = "cst.school^student"
+	AccountLength = 12          // 账号长度
+	InitialPwd    = "abc123456" // 初始密码
+	DefaultRegion = "CN"        // 默认地区
 )
 
-var (
-	Domains = []string{
-		DomainSuperAdmin,
-		DomainAdmin,
-		DomainAcademicAffairAdmin,
-		DomainTeacher,
-		DomainExamSupervisor,
-		DomainExamGrader,
-		DomainExamSiteAdmin,
-		DomainScoreChecker,
-		DomainStudent,
-	}
+const (
+	CUserStatusValid         = "00" // 有效
+	CUserStatusProhibitLogin = "02" // 禁止登录
+	CUserStatusBlock         = "04" // 封禁
 )
-
-var domainSet = func() map[string]struct{} {
-	m := make(map[string]struct{}, len(Domains))
-	for _, d := range Domains {
-		m[d] = struct{}{}
-	}
-	return m
-}()
 
 // QueryUsersFilter 查询用户列表的过滤条件
 type QueryUsersFilter struct {
@@ -51,7 +35,22 @@ type QueryUsersFilter struct {
 
 type User struct {
 	cmn.TUser
-	Domains  []null.String         `json:"Domains"`
-	APIs     []cmn.TVUserDomainAPI `json:"APIs"`
-	ErrorMsg []null.String         `json:"ErrorMsg"` // 错误信息
+	Domains       []null.String         `json:"Domains"`
+	DomainObjects []cmn.TDomain         `json:"DomainObjects"`
+	APIs          []cmn.TVUserDomainAPI `json:"APIs"`
+	ErrorMsg      []null.String         `json:"ErrorMsg"` // 错误信息
+}
+
+type EmailServer struct {
+	Host   string
+	Port   int
+	User   string
+	Pwd    string
+	Sender string
+}
+
+// IDCardFile 用户证件文件
+type IDCardFile struct {
+	FrontImgID string `json:"frontImgID"` // 正面图片
+	BackImgID  string `json:"backImgID"`  // 反面图片
 }

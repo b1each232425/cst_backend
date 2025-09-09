@@ -499,20 +499,20 @@
     {
       "Account": "zhangsan",
       "Domains": [
-        "cst.school^teacher",
-        "cst.school^admin"
+        "assess^teacher",
+        "assess^admin"
       ]
     },
     {
       "Account": "lisi",
       "Domains": [
-        "cst.school^superAdmin"
+        "assess^superAdmin"
       ]
     },
     {
       "Account": "anonymous_4",
       "Domains": [
-        "cst.school^student"
+        "assess^student"
       ]
     }
   ],

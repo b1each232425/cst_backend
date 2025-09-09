@@ -14,7 +14,7 @@ export PNPM_HOME=/var/data/pnpm
 
 mkdir -p $PNPM_HOME
 
-export PATH="$GOPATH/bin:$GOROOT/bin:$NODE_HOME/bin:$PNPM_HOME:$BIN_PATH/bin:$BIN_PATH/docker:$PATH"
+export PATH="$BIN_PATH/pgsql/bin:$GOPATH/bin:$GOROOT/bin:$NODE_HOME/bin:$PNPM_HOME:$BIN_PATH/bin:$BIN_PATH/docker:$PATH"
 
 if [ -z "$(which pnpm)" ];then
   npm install -g pnpm
@@ -110,10 +110,14 @@ echo "start new devmentor container"
 d run --name=devmentor \
  -d --restart=always \
  -p 6610:6610 \
+ -p 6222:22 \
  -v data:/var/data \
  -v deploy:/var/deploy \
+ -v assess_ssh:/etc/ssh \
+ -w $deployDst \
  -e KAPP_NAME="$deployDst/$appName" \
+ -e PATH="$PATH" \
  --network qnear \
- ubuntu "$deployDst/run.sh"
+ ubuntu:ci "$deployDst/run.sh"
 
 echo "deploy done"

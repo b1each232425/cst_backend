@@ -3,10 +3,10 @@ package exam_service
 import (
 	"context"
 	"fmt"
-	"os"
 	"sync"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"go.uber.org/zap"
 	"w2w.io/cmn"
@@ -103,9 +103,8 @@ func (tm *ExamTimerManager) processEvent(event ExamEvent, workerID int) error {
 		handleExamSessionEnd(tm.ctx, event)
 	default:
 		err := fmt.Errorf("未知事件类型: %s", event.Type)
-		z.Error("未知事件类型",
-			zap.String("event_type", event.Type),
-			zap.Int64("session_id", event.ExamSessionID))
+		z.Sugar().Errorf("Worker %d 处理事件失败: %v", workerID, err)
+
 		return err
 	}
 
@@ -113,7 +112,7 @@ func (tm *ExamTimerManager) processEvent(event ExamEvent, workerID int) error {
 }
 
 // 设置定时器
-func (tm *ExamTimerManager) SetTimer(examSessionID int64, triggerTime int64, event ExamEvent) {
+func (tm *ExamTimerManager) SetExamSessionTimer(examSessionID int64, triggerTime int64, event ExamEvent) {
 	z.Info("---->" + cmn.FncName())
 	tm.mutex.Lock()
 	defer tm.mutex.Unlock()
@@ -156,14 +155,11 @@ func (tm *ExamTimerManager) SetTimer(examSessionID int64, triggerTime int64, eve
 
 	tm.timers[timerKey] = timer
 
-	z.Info("设置定时器",
-		zap.String("event_type", event.Type),
-		zap.Int64("exam_session_id", examSessionID),
-		zap.Duration("delay", delay))
+	z.Sugar().Infof("设置定时器: event_type-%s, session_id-%d, trigger_time-%d", event.Type, examSessionID, triggerTime)
 }
 
 // 取消定时器
-func (tm *ExamTimerManager) CancelTimer(eventType string, examSessionID int64) {
+func (tm *ExamTimerManager) CancelExamSessionTimer(eventType string, examSessionID int64) {
 	z.Info("---->" + cmn.FncName())
 	tm.mutex.Lock()
 	defer tm.mutex.Unlock()
@@ -172,9 +168,7 @@ func (tm *ExamTimerManager) CancelTimer(eventType string, examSessionID int64) {
 	if timer, exists := tm.timers[timerKey]; exists {
 		timer.Stop()
 		delete(tm.timers, timerKey)
-		z.Info("取消定时器",
-			zap.String("event_type", eventType),
-			zap.Int64("exam_session_id", examSessionID))
+		z.Sugar().Infof("取消定时器: event_type-%s, session_id-%d", eventType, examSessionID)
 	}
 }
 
@@ -207,9 +201,7 @@ func SetExamTimers(ctx context.Context, examID int64) error {
 		err = fmt.Errorf("强制查询考试场次信息错误")
 	}
 	if err != nil {
-		z.Error("查询考试场次信息失败",
-			zap.Int64("exam_id", examID),
-			zap.Error(err))
+		z.Sugar().Errorf("查询考试场次信息失败: exam_id-%d, error-%v", examID, err)
 		return err
 	}
 
@@ -240,23 +232,19 @@ func SetExamTimers(ctx context.Context, examID int64) error {
 			EndTime:       endTime,
 		})
 
-		z.Info("查询到考试场次信息",
-			zap.Int64("exam_id", examID),
-			zap.Int64("exam_session_id", sessionID),
-			zap.Int64("start_time", startTime),
-			zap.Int64("end_time", endTime))
+		z.Sugar().Infof("查询到考试场次信息: exam_id-%d, exam_session_id-%d, start_time-%d, end_time-%d", examID, sessionID, startTime, endTime)
 	}
 
 	for _, examSession := range examSessionInfo {
 		// 设置场次开始定时器
-		examTimerMgr.SetTimer(examSession.ExamSessionID, examSession.StartTime, ExamEvent{
+		examTimerMgr.SetExamSessionTimer(examSession.ExamSessionID, examSession.StartTime, ExamEvent{
 			Type:          EVENT_TYPE_EXAM_SESSION_START,
 			ExamSessionID: examSession.ExamSessionID,
 			ExamID:        examID,
 		})
 
 		// 设置场次结束定时器
-		examTimerMgr.SetTimer(examSession.ExamSessionID, examSession.EndTime, ExamEvent{
+		examTimerMgr.SetExamSessionTimer(examSession.ExamSessionID, examSession.EndTime, ExamEvent{
 			Type:          EVENT_TYPE_EXAM_SESSION_END,
 			ExamSessionID: examSession.ExamSessionID,
 			ExamID:        examID,
@@ -293,8 +281,8 @@ func CancelExamTimers(ctx context.Context, examID int64) error {
 	for examSessionRows.Next() {
 		var sessionID int64
 		if examSessionRows.Scan(&sessionID) == nil {
-			examTimerMgr.CancelTimer(EVENT_TYPE_EXAM_SESSION_START, sessionID)
-			examTimerMgr.CancelTimer(EVENT_TYPE_EXAM_SESSION_END, sessionID)
+			examTimerMgr.CancelExamSessionTimer(EVENT_TYPE_EXAM_SESSION_START, sessionID)
+			examTimerMgr.CancelExamSessionTimer(EVENT_TYPE_EXAM_SESSION_END, sessionID)
 			cancelCount++
 		}
 	}
@@ -381,14 +369,14 @@ func InitializeExamTimers(ctx context.Context) error {
 		}
 
 		// 场次开始定时器
-		examTimerMgr.SetTimer(examSessionID, startTime, ExamEvent{
+		examTimerMgr.SetExamSessionTimer(examSessionID, startTime, ExamEvent{
 			Type:          EVENT_TYPE_EXAM_SESSION_START,
 			ExamSessionID: examSessionID,
 			ExamID:        examID,
 		})
 
 		// 场次结束定时器
-		examTimerMgr.SetTimer(examSessionID, endTime, ExamEvent{
+		examTimerMgr.SetExamSessionTimer(examSessionID, endTime, ExamEvent{
 			Type:          EVENT_TYPE_EXAM_SESSION_END,
 			ExamSessionID: examSessionID,
 			ExamID:        examID,
@@ -452,6 +440,10 @@ func handleExamSessionStart(ctx context.Context, event ExamEvent) error {
 		}
 	}()
 
+	if forceErr == "commit" {
+		return nil
+	}
+
 	now := time.Now().UnixMilli()
 
 	// 查询场次信息和考生数量
@@ -485,12 +477,17 @@ func handleExamSessionStart(ctx context.Context, event ExamEvent) error {
 
 	if examineeCount == 0 {
 		// 没有考生的考试需要设为异常状态
-		_, err := tx.Exec(ctx, `
+		var result pgconn.CommandTag
+		result, err = tx.Exec(ctx, `
 			UPDATE t_exam_info
 			SET status = '10', -- 考试异常
 				update_time = $1
-			WHERE id = $2
-		`, now, examID)
+			FROM t_exam_session es
+			WHERE t_exam_info.id = $2
+			AND t_exam_info.status = '02'
+			AND es.id = $3
+			AND es.start_time <= $4
+		`, now, examID, examSessionID, time.Now().UnixMilli())
 		if forceErr == "updateAbnormalExam" {
 			err = fmt.Errorf("强制更新考试为异常状态错误")
 		}
@@ -499,6 +496,12 @@ func handleExamSessionStart(ctx context.Context, event ExamEvent) error {
 				zap.Int64("exam_id", examID),
 				zap.Int64("exam_session_id", examSessionID))
 
+			return err
+		}
+
+		if result.RowsAffected() == 0 || forceErr == "updateAbnormalExam.RowsAffected" {
+			err = fmt.Errorf("无法更新考试为异常状态，可能存在并发修改，场次id：%d", examSessionID)
+			z.Warn(err.Error())
 			return err
 		}
 
@@ -519,12 +522,13 @@ func handleExamSessionStart(ctx context.Context, event ExamEvent) error {
 	}
 
 	// 有考生的场次正常开始
-	_, err = tx.Exec(ctx, `
+	var result pgconn.CommandTag
+	result, err = tx.Exec(ctx, `
 			UPDATE t_exam_session 
 			SET status = '04', -- 进行中
 				update_time = $1
-			WHERE id = $2 AND status = '02'
-		`, now, examSessionID)
+			WHERE id = $2 AND status = '02' AND start_time <= $3
+		`, now, examSessionID, time.Now().UnixMilli())
 	if forceErr == "updateExamSession" {
 		err = fmt.Errorf("强制更新场次状态错误")
 	}
@@ -535,8 +539,14 @@ func handleExamSessionStart(ctx context.Context, event ExamEvent) error {
 		return err
 	}
 
+	if result.RowsAffected() == 0 || forceErr == "updateExamSession.RowsAffected" {
+		err = fmt.Errorf("无法更新考试场次为进行中状态，可能存在并发修改，或者考试已在进行中，场次id：%d", examSessionID)
+		z.Warn(err.Error())
+		return err
+	}
+
 	// 更新考试状态
-	_, err = tx.Exec(ctx, `
+	result, err = tx.Exec(ctx, `
 			UPDATE t_exam_info 
 			SET status = '04', -- 进行中
 				update_time = $1
@@ -633,7 +643,7 @@ func handleExamSessionEnd(ctx context.Context, event ExamEvent) error {
 			JOIN t_exam_info ei ON v.exam_id = ei.id
 			WHERE e.exam_session_id = $1
 				AND v.actual_end_time <= $2
-				AND e.status IN ('00', '16') -- 只更新处于正常考和监考员允许进入考试状态的考生
+				AND e.status IN ('00', '10', '16') -- 只更新处于正常考和监考员允许进入考试状态的考生
 				AND ei.status IN ('02', '04', '06')
 		)
 		UPDATE t_examinee te
@@ -665,7 +675,7 @@ func handleExamSessionEnd(ctx context.Context, event ExamEvent) error {
 		LEFT JOIN (
 			SELECT exam_session_id, COUNT(*) as count
 			FROM t_examinee 
-			WHERE status NOT IN ('02', '06', '08', '10', '12') 
+			WHERE status NOT IN ('02', '06', '08', '10', '12', '14') 
 				AND exam_session_id = $1
 			GROUP BY exam_session_id
 		) unfinished ON es.id = unfinished.exam_session_id
@@ -686,7 +696,7 @@ func handleExamSessionEnd(ctx context.Context, event ExamEvent) error {
 	if unfinishedCount > 0 {
 		// 还有考生未结束，延迟1分钟后重新处理
 		delayedEndTime := now + 60*1000
-		examTimerMgr.SetTimer(examSessionID, delayedEndTime, ExamEvent{
+		examTimerMgr.SetExamSessionTimer(examSessionID, delayedEndTime, ExamEvent{
 			Type:          EVENT_TYPE_EXAM_SESSION_END,
 			ExamSessionID: examSessionID,
 			ExamID:        examID,
@@ -699,8 +709,8 @@ func handleExamSessionEnd(ctx context.Context, event ExamEvent) error {
 		UPDATE t_exam_session 
 		SET status = '06', -- 已结束
 			update_time = $1
-		WHERE id = $2 AND status IN ('02','04')
-	`, now, examSessionID)
+		WHERE id = $2 AND status IN ('02','04') AND end_time <= $3
+	`, now, examSessionID, now)
 	if forceErr == "updateSessionEndStatus" {
 		err = fmt.Errorf("强制更新场次状态为已结束错误")
 	}
@@ -740,100 +750,6 @@ func handleExamSessionEnd(ctx context.Context, event ExamEvent) error {
 	return nil
 }
 
-func handleDeleteExamFile(ctx context.Context, fileID int64, fileCount int64) error {
-	z.Info("---->" + cmn.FncName())
-
-	forceErr := ""
-	if val := ctx.Value("force-error"); val != nil {
-		forceErr = val.(string)
-	}
-
-	conn := cmn.GetPgxConn()
-
-	// 查看数据库中记录的该文件ID的信息
-	var count int64
-	var digest, filePath string
-	err := conn.QueryRow(ctx, "SELECT count, digest, path FROM t_file WHERE id = $1", fileID).Scan(
-		&count, &digest, &filePath)
-	if forceErr == "handleDeleteExamFile.tx.QueryRow" {
-		err = fmt.Errorf("强制查询文件信息错误")
-	}
-	if err != nil {
-		z.Error(err.Error())
-		return err
-	}
-
-	if count > fileCount {
-		// 减少引用计数
-		_, err = conn.Exec(ctx, "UPDATE t_file SET count = count - $1 WHERE id = $2", fileCount, fileID)
-		if forceErr == "handleDeleteExamFile.tx.UpdateCount" {
-			err = fmt.Errorf("强制更新文件引用计数错误")
-		}
-		if err != nil {
-			z.Error(err.Error())
-			return err
-		}
-		return nil
-	}
-
-	// count <= fileCount，删除该行
-	_, err = conn.Exec(ctx, "DELETE FROM t_file WHERE id = $1", fileID)
-	if forceErr == "handleDeleteExamFile.tx.DeleteFile" {
-		err = fmt.Errorf("强制删除文件记录错误")
-	}
-	if err != nil {
-		z.Error(err.Error())
-		return err
-	}
-
-	// 检查是否还有其他相同digest的文件
-	var digestCount int
-	err = conn.QueryRow(ctx, "SELECT COUNT(*) FROM t_file WHERE digest = $1", digest).Scan(&digestCount)
-	if forceErr == "handleDeleteExamFile.tx.CountDigest" {
-		err = fmt.Errorf("强制统计相同digest文件错误")
-	}
-	if err != nil {
-		z.Error(err.Error())
-		return err
-	}
-
-	// 如果没有其他相同digest的文件记录，从文件系统删除该文件
-	if digestCount == 0 {
-		var infoFilePath string
-		infoFilePath = filePath + ".info"
-
-		err := os.Remove(filePath)
-		if forceErr == "handleDeleteExamFile.deleteFileFromFilesystem" {
-			err = fmt.Errorf("强制从文件系统删除文件错误")
-		}
-		if err != nil {
-			if os.IsNotExist(err) {
-				z.Info(fmt.Sprintf("要删除的文件不存在: %s, digest: %s", filePath, digest))
-			} else {
-				z.Error(fmt.Sprintf("从文件系统删除文件失败: %s, digest: %s, error: %v",
-					filePath, digest, err))
-				return err
-			}
-		}
-
-		err = os.Remove(infoFilePath)
-		if forceErr == "handleDeleteExamFile.deleteInfoFileFromFilesystem" {
-			err = fmt.Errorf("强制从文件系统删除.info文件错误")
-		}
-		if err != nil {
-			if os.IsNotExist(err) {
-				z.Warn(fmt.Sprintf("要删除的.info文件不存在: %s, digest: %s", infoFilePath, digest))
-			} else {
-				z.Error(fmt.Sprintf("从文件系统删除.info文件失败: %s, digest: %s, error: %v",
-					infoFilePath, digest, err))
-				return err
-			}
-		}
-	}
-
-	return nil
-}
-
 func cleanupTempExams(ctx context.Context) error {
 	z.Info("---->" + cmn.FncName())
 
@@ -867,7 +783,7 @@ func cleanupTempExams(ctx context.Context) error {
 	}
 
 	// 统计文件ID出现次数
-	fileCountMap := make(map[int64]int64)
+	var allFileIDs []int64
 	var examsDeleted int64 = 0
 
 	for rows.Next() {
@@ -885,14 +801,12 @@ func cleanupTempExams(ctx context.Context) error {
 		examsDeleted++
 
 		// 统计每个文件ID的出现次数
-		for _, fileID := range files {
-			fileCountMap[fileID]++
-		}
+		allFileIDs = append(allFileIDs, files...)
 	}
 
 	// 处理文件删除
-	for fileID, count := range fileCountMap {
-		err := handleDeleteExamFile(ctx, fileID, count)
+	for _, fileID := range allFileIDs {
+		err := cmn.DeleteFileRecord(ctx, nil, fileID)
 		if forceErr == "handleDeleteExamFile" {
 			err = fmt.Errorf("强制处理删除考试文件错误")
 		}

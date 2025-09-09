@@ -3,16 +3,14 @@ package exam_mgt
 import (
 	"context"
 	"fmt"
-	"os"
 	"strings"
 	"time"
 
-	"github.com/jackc/pgx/v5"
 	"w2w.io/cmn"
 )
 
 // 检查考试数据的有效性
-func validateExamData(examData ExamData, isUpdate bool) error {
+func validateExamData(examData *ExamData, isUpdate bool) error {
 	z.Info("---->" + cmn.FncName())
 	if isUpdate && examData.ExamInfo.ID.Int64 <= 0 {
 		err := fmt.Errorf("无效的考试ID: %d", examData.ExamInfo.ID.Int64)
@@ -144,12 +142,69 @@ func validateExamData(examData ExamData, isUpdate bool) error {
 		}
 	}
 
-	for _, examinee := range examData.ExamineeIDs {
-		if examinee <= 0 {
-			err := fmt.Errorf("部分学生ID无效: %d", examinee)
+	for i := range examData.Examinees {
+		if examData.Examinees[i].ID <= 0 {
+			err := fmt.Errorf("部分学生ID无效: %d", examData.Examinees[i].ID)
 			z.Error(err.Error())
 			return err
 		}
+
+		// 将不是从报名计划中选取的学生的 ExamPlanStudentID 置为 null
+		if examData.Examinees[i].ExamPlanStudentID.Int64 <= 0 {
+			examData.Examinees[i].ExamPlanStudentID.Valid = false
+		}
+	}
+
+	// 去重学生ID
+	examineeMap := make(map[int64]Examinee, len(examData.Examinees))
+	order := make([]int64, 0, len(examData.Examinees))
+	for _, ex := range examData.Examinees {
+
+		// 如果student_id没有记录，则添加进Map里面
+		cur, ok := examineeMap[ex.ID]
+		if !ok {
+			examineeMap[ex.ID] = ex
+			order = append(order, ex.ID)
+			continue
+		}
+
+		// 已存在同 student_id，优先保留 ExamPlanStudentID != 0 的那条
+		// 如果已有的为0而当前不为0，则替换；否则保持原有
+		if cur.ExamPlanStudentID.Int64 <= 0 && ex.ExamPlanStudentID.Int64 != 0 {
+			examineeMap[ex.ID] = ex
+		}
+	}
+
+	// 重建切片
+	uniq := make([]Examinee, 0, len(order))
+	for _, id := range order {
+		if v, ok := examineeMap[id]; ok {
+			uniq = append(uniq, v)
+		}
+	}
+	examData.Examinees = uniq
+
+	if examData.ExamInfo.Mode.String == "02" && len(examData.ExamRooms) == 0 && len(examData.Examinees) > 0 {
+		err := fmt.Errorf("尚未配置考场")
+		z.Error(err.Error())
+		return err
+	}
+
+	// 获取配置所需的监考员数量
+	var needInvigilatorCount int64
+	for _, examRoom := range examData.ExamRooms {
+		if examRoom.InvigilatorCount <= 0 {
+			err := fmt.Errorf("部分考场配置的监考员数量无效")
+			z.Error(err.Error())
+			return err
+		}
+		needInvigilatorCount += examRoom.InvigilatorCount
+	}
+
+	if len(examData.InvigilatorIDs) != int(needInvigilatorCount) {
+		err := fmt.Errorf("监考教师人数不足: 需要 %d, 实际 %d", needInvigilatorCount, len(examData.InvigilatorIDs))
+		z.Error(err.Error())
+		return err
 	}
 
 	return nil
@@ -249,96 +304,4 @@ func convertToInt64Array(ctx context.Context, data interface{}) ([]int64, error)
 	}
 
 	return nil, fmt.Errorf("unsupported data type: %T", data)
-}
-
-func handleDeleteExamFile(ctx context.Context, tx pgx.Tx, fileID int64, fileCount int64) error {
-	z.Info("---->" + cmn.FncName())
-
-	forceErr := ""
-	if val := ctx.Value("force-error"); val != nil {
-		forceErr = val.(string)
-	}
-
-	// 查看数据库中记录的该文件ID的信息
-	var count int64
-	var digest, filePath string
-	err := tx.QueryRow(ctx, "SELECT count, digest, path FROM t_file WHERE id = $1", fileID).Scan(
-		&count, &digest, &filePath)
-	if forceErr == "handleDeleteExamFile.tx.QueryRow" {
-		err = fmt.Errorf("强制查询文件信息错误")
-	}
-	if err != nil {
-		z.Error(err.Error())
-		return err
-	}
-
-	if count > fileCount {
-		// 减少引用计数
-		_, err = tx.Exec(ctx, "UPDATE t_file SET count = count - $1 WHERE id = $2", fileCount, fileID)
-		if forceErr == "handleDeleteExamFile.tx.UpdateCount" {
-			err = fmt.Errorf("强制更新文件引用计数错误")
-		}
-		if err != nil {
-			z.Error(err.Error())
-			return err
-		}
-		return nil
-	}
-
-	// count <= fileCount，删除该行
-	_, err = tx.Exec(ctx, "DELETE FROM t_file WHERE id = $1", fileID)
-	if forceErr == "handleDeleteExamFile.tx.DeleteFile" {
-		err = fmt.Errorf("强制删除文件记录错误")
-	}
-	if err != nil {
-		z.Error(err.Error())
-		return err
-	}
-
-	// 检查是否还有其他相同digest的文件
-	var digestCount int
-	err = tx.QueryRow(ctx, "SELECT COUNT(*) FROM t_file WHERE digest = $1", digest).Scan(&digestCount)
-	if forceErr == "handleDeleteExamFile.tx.CountDigest" {
-		err = fmt.Errorf("强制统计相同digest文件错误")
-	}
-	if err != nil {
-		z.Error(err.Error())
-		return err
-	}
-
-	// 如果没有其他相同digest的文件记录，从文件系统删除该文件
-	if digestCount == 0 {
-		var infoFilePath string
-		infoFilePath = filePath + ".info"
-
-		err := os.Remove(filePath)
-		if forceErr == "handleDeleteExamFile.deleteFileFromFilesystem" {
-			err = fmt.Errorf("强制从文件系统删除文件错误")
-		}
-		if err != nil {
-			if os.IsNotExist(err) {
-				z.Info(fmt.Sprintf("要删除的文件不存在: %s, digest: %s", filePath, digest))
-			} else {
-				z.Error(fmt.Sprintf("从文件系统删除文件失败: %s, digest: %s, error: %v",
-					filePath, digest, err))
-				return err
-			}
-		}
-
-		err = os.Remove(infoFilePath)
-		if forceErr == "handleDeleteExamFile.deleteInfoFileFromFilesystem" {
-			err = fmt.Errorf("强制从文件系统删除.info文件错误")
-		}
-		if err != nil {
-			if os.IsNotExist(err) {
-				z.Warn(fmt.Sprintf("要删除的.info文件不存在: %s, digest: %s", infoFilePath, digest))
-			} else {
-				z.Error(fmt.Sprintf("从文件系统删除.info文件失败: %s, digest: %s, error: %v",
-					infoFilePath, digest, err))
-				return err
-			}
-		}
-	}
-
-	return nil
 }

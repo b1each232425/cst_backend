@@ -21,7 +21,7 @@ func init() {
 func TestQueryStudentAnswersByMarkMode(t *testing.T) {
 	cleanTestData()
 	initTestData()
-	defer cleanTestData()
+	//defer cleanTestData()
 
 	tests := []struct {
 		name           string
@@ -59,7 +59,7 @@ func TestQueryStudentAnswersByMarkMode(t *testing.T) {
 			name:       "success with 主观题",
 			answerType: "00",
 			cond: QueryCondition{
-				ExamSessionID: 101,
+				ExamSessionID: 102,
 				TeacherID:     testedTeacherID,
 			},
 			markerInfo: MarkerInfo{
@@ -127,6 +127,21 @@ func TestQueryStudentAnswersByMarkMode(t *testing.T) {
 			},
 			markerInfo: MarkerInfo{
 				MarkMode: "12",
+				MarkerID: testedTeacherID,
+			},
+			expectedErrStr: "",
+		},
+		{
+			name:       "success with markMode:12（查询单个练习错题集学生）",
+			answerType: "02",
+			cond: QueryCondition{
+				PracticeID:                21,
+				TeacherID:                 testedTeacherID,
+				PracticeSubmissionID:      2401,
+				PracticeWrongSubmissionID: 2601,
+			},
+			markerInfo: MarkerInfo{
+				MarkMode: "14",
 				MarkerID: testedTeacherID,
 			},
 			expectedErrStr: "",
@@ -204,6 +219,19 @@ func TestQueryStudentAnswersByMarkMode(t *testing.T) {
 			expectedErrStr: "invalid practice_submission_id",
 		},
 		{
+			name:       "invalid practice_submission_id with markMode:14（查询单个练习错题集学生）",
+			answerType: "02",
+			cond: QueryCondition{
+				PracticeID: 21,
+				TeacherID:  testedTeacherID,
+			},
+			markerInfo: MarkerInfo{
+				MarkMode: "14",
+				MarkerID: testedTeacherID,
+			},
+			expectedErrStr: "invalid practice_submission_id",
+		},
+		{
 			name:       "exec getStudentAnswersByMarkMode SQL error",
 			answerType: "02",
 			cond: QueryCondition{
@@ -238,7 +266,10 @@ func TestQueryStudentAnswersByMarkMode(t *testing.T) {
 				ctx = context.WithValue(ctx, ForceErrKey, tt.forceErr)
 			}
 
-			_, err := QueryStudentAnswersByMarkMode(ctx, tt.answerType, tt.cond, tt.markerInfo)
+			results, err := QueryStudentAnswersByMarkMode(ctx, tt.answerType, tt.cond, tt.markerInfo)
+
+			z.Sugar().Infof("results: %v, len: %v", results, len(results))
+
 			if err != nil {
 				if tt.expectedErrStr == "" {
 					t.Errorf("expected success, but got error: %v", err.Error())
@@ -712,6 +743,13 @@ func TestQueryMarkerInfo(t *testing.T) {
 			},
 		},
 		{
+			name: "success",
+			cond: QueryCondition{
+				TeacherID:     testedTeacherID,
+				ExamSessionID: 102,
+			},
+		},
+		{
 			name: "success with practice",
 			cond: QueryCondition{
 				TeacherID:  testedTeacherID,
@@ -753,7 +791,7 @@ func TestQueryMarkerInfo(t *testing.T) {
 			}
 
 			result, err := QueryMarkerInfo(ctx, tt.cond)
-			z.Sugar().Infof("result: %+v", result.MarkInfos)
+			z.Sugar().Infof("result: %+v", result)
 
 			if err != nil {
 				if tt.expectedErrStr == "" {
@@ -1621,6 +1659,110 @@ func TestQueryStudentsInfo(t *testing.T) {
 
 			z.Sugar().Infof("-->(%d)list: %+v", len(list), string(data))
 
+			if err != nil {
+				if tt.expectedErrStr == "" {
+					t.Errorf("expected success, but got error: %v", err.Error())
+				} else {
+					assert.Contains(t, err.Error(), tt.expectedErrStr)
+				}
+			} else if tt.expectedErrStr != "" {
+				t.Errorf("expected error: %s, but got success", tt.expectedErrStr)
+			}
+		})
+	}
+}
+
+func TestUpdatePracticeWrongSubmissionsState(t *testing.T) {
+	cleanTestData()
+	initTestData()
+	//defer cleanTestData()
+
+	tests := []struct {
+		name                       string
+		teacherID                  int64
+		practiceWrongSubmissionIDs []int64
+		status                     string
+		forceErr                   string
+		expectedErrStr             string
+	}{
+		{
+			name:                       "success",
+			teacherID:                  testedTeacherID,
+			practiceWrongSubmissionIDs: []int64{2601},
+			status:                     "10",
+			expectedErrStr:             "",
+		},
+		{
+			name:           "invalid params: practice_wrong_submission_ids is required",
+			teacherID:      testedTeacherID,
+			status:         "06",
+			expectedErrStr: "invalid params: practice_wrong_submission_ids is required",
+		},
+		{
+			name:                       "invalid params: status is required",
+			teacherID:                  testedTeacherID,
+			practiceWrongSubmissionIDs: []int64{2601},
+			status:                     "",
+			expectedErrStr:             "invalid params: status is required",
+		},
+		{
+			name:                       "invalid params: teacher_id is required",
+			teacherID:                  -3,
+			practiceWrongSubmissionIDs: []int64{2601},
+			status:                     "06",
+			expectedErrStr:             "invalid params: teacher_id is required",
+		},
+		{
+			name:                       "exec updateExamSessionState sql error",
+			teacherID:                  testedTeacherID,
+			practiceWrongSubmissionIDs: []int64{2601},
+			status:                     "06",
+			forceErr:                   "updatePracticeWrongSubmissionState-tx.Query",
+			expectedErrStr:             "exec updatePracticeWrongSubmissionState sql error",
+		},
+		{
+			name:                       "unable to scan row data",
+			teacherID:                  testedTeacherID,
+			practiceWrongSubmissionIDs: []int64{2601},
+			status:                     "06",
+			forceErr:                   "updatePracticeWrongSubmissionState-rows.Scan",
+			expectedErrStr:             "unable to scan row data",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := context.Background()
+			if tt.forceErr != "" {
+				ctx = context.WithValue(context.Background(), ForceErrKey, tt.forceErr)
+			}
+
+			pgxConn := cmn.GetPgxConn()
+			var tx pgx.Tx
+			var err error
+			tx, err = pgxConn.Begin(ctx)
+			if err != nil {
+				err = fmt.Errorf("begin transaction error: %v", err)
+				panic(err)
+			}
+
+			defer func() {
+				if err != nil {
+					err_ := tx.Rollback(ctx)
+					if err_ != nil {
+						z.Error(err_.Error())
+						return
+					}
+				} else {
+					err_ := tx.Commit(ctx)
+					if err_ != nil {
+						z.Error(err_.Error())
+						return
+					}
+				}
+			}()
+
+			_, err = updatePracticeWrongSubmissionState(ctx, tx, tt.teacherID, tt.practiceWrongSubmissionIDs, tt.status)
 			if err != nil {
 				if tt.expectedErrStr == "" {
 					t.Errorf("expected success, but got error: %v", err.Error())

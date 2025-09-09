@@ -28,28 +28,28 @@ func equalAuthority(a1, a2 *Authority) bool {
 	}
 
 	// 比较APIs数组长度
-	if len(a1.APIs) != len(a2.APIs) {
+	if len(a1.AccessibleAPIs) != len(a2.AccessibleAPIs) {
 		return false
 	}
 
 	// 逐个比较API，忽略Filter字段
-	for i := range a1.APIs {
-		if !equalTVDomainAPI(a1.APIs[i], a2.APIs[i]) {
+	for i := range a1.AccessibleAPIs {
+		if !equalTVDomainAPI(a1.AccessibleAPIs[i], a2.AccessibleAPIs[i]) {
 			return false
 		}
 	}
 
 	// 比较ReadableDomains字段（不关注元素顺序）
-	if len(a1.ReadableDomains) != len(a2.ReadableDomains) {
+	if len(a1.AccessibleDomains) != len(a2.AccessibleDomains) {
 		return false
 	}
 	// 将a2的ReadableDomains转换为map以便快速查找
 	a2DomainsMap := make(map[int64]bool)
-	for _, domain := range a2.ReadableDomains {
+	for _, domain := range a2.AccessibleDomains {
 		a2DomainsMap[domain] = true
 	}
 	// 检查a1中的每个域是否都存在于a2中
-	for _, domain := range a1.ReadableDomains {
+	for _, domain := range a1.AccessibleDomains {
 		if !a2DomainsMap[domain] {
 			return false
 		}
@@ -119,20 +119,20 @@ func TestGetUserAuthority(t *testing.T) {
 				Role: cmn.TDomain{
 					ID:       null.NewInt(2003, true),
 					Name:     "教师",
-					Domain:   "cst.school^teacher",
+					Domain:   "assess^teacher",
 					Priority: null.IntFrom(7),
 				},
 				Domain: cmn.TDomain{
 					ID:       null.NewInt(1999, true),
 					Name:     "3min",
-					Domain:   "cst.school",
+					Domain:   "assess",
 					Priority: null.IntFrom(0),
 				},
-				APIs: []cmn.TVDomainAPI{
+				AccessibleAPIs: []cmn.TVDomainAPI{
 					{
 						AuthDomainID:       null.IntFrom(2003),
 						DomainName:         null.StringFrom("教师"),
-						Domain:             null.StringFrom("cst.school^teacher"),
+						Domain:             null.StringFrom("assess^teacher"),
 						Priority:           null.IntFrom(7),
 						APIID:              null.IntFrom(20000),
 						APIName:            null.StringFrom("题库管理模块"),
@@ -144,7 +144,7 @@ func TestGetUserAuthority(t *testing.T) {
 					{
 						AuthDomainID:       null.IntFrom(2003),
 						DomainName:         null.StringFrom("教师"),
-						Domain:             null.StringFrom("cst.school^teacher"),
+						Domain:             null.StringFrom("assess^teacher"),
 						Priority:           null.IntFrom(7),
 						APIID:              null.IntFrom(20003),
 						APIName:            null.StringFrom("试卷管理模块"),
@@ -156,7 +156,7 @@ func TestGetUserAuthority(t *testing.T) {
 					{
 						AuthDomainID:       null.IntFrom(2003),
 						DomainName:         null.StringFrom("教师"),
-						Domain:             null.StringFrom("cst.school^teacher"),
+						Domain:             null.StringFrom("assess^teacher"),
 						Priority:           null.IntFrom(7),
 						APIID:              null.IntFrom(20004),
 						APIName:            null.StringFrom("练习管理模块"),
@@ -168,7 +168,7 @@ func TestGetUserAuthority(t *testing.T) {
 					{
 						AuthDomainID:       null.IntFrom(2003),
 						DomainName:         null.StringFrom("教师"),
-						Domain:             null.StringFrom("cst.school^teacher"),
+						Domain:             null.StringFrom("assess^teacher"),
 						Priority:           null.IntFrom(7),
 						APIID:              null.IntFrom(20005),
 						APIName:            null.StringFrom("考试管理模块"),
@@ -180,7 +180,7 @@ func TestGetUserAuthority(t *testing.T) {
 					{
 						AuthDomainID:       null.IntFrom(2003),
 						DomainName:         null.StringFrom("教师"),
-						Domain:             null.StringFrom("cst.school^teacher"),
+						Domain:             null.StringFrom("assess^teacher"),
 						Priority:           null.IntFrom(7),
 						APIID:              null.IntFrom(20006),
 						APIName:            null.StringFrom("成绩管理模块"),
@@ -192,7 +192,7 @@ func TestGetUserAuthority(t *testing.T) {
 					{
 						AuthDomainID:       null.IntFrom(2003),
 						DomainName:         null.StringFrom("教师"),
-						Domain:             null.StringFrom("cst.school^teacher"),
+						Domain:             null.StringFrom("assess^teacher"),
 						Priority:           null.IntFrom(7),
 						APIID:              null.IntFrom(20007),
 						APIName:            null.StringFrom("学生管理模块"),
@@ -202,7 +202,7 @@ func TestGetUserAuthority(t *testing.T) {
 						GrantSource:        null.StringFrom("api"),
 					},
 				},
-				ReadableDomains: []int64{1999, 1998},
+				AccessibleDomains: []int64{1999, 1998},
 			},
 			wantErr: false,
 		},
@@ -219,20 +219,20 @@ func TestGetUserAuthority(t *testing.T) {
 				Role: cmn.TDomain{
 					ID:       null.NewInt(2000, true),
 					Name:     "超级管理员",
-					Domain:   "cst.school^superAdmin",
+					Domain:   "assess^superAdmin",
 					Priority: null.IntFrom(0),
 				},
 				Domain: cmn.TDomain{
 					ID:       null.NewInt(1999, true),
 					Name:     "3min",
-					Domain:   "cst.school",
+					Domain:   "assess",
 					Priority: null.IntFrom(0),
 				},
-				APIs: []cmn.TVDomainAPI{
+				AccessibleAPIs: []cmn.TVDomainAPI{
 					{
 						AuthDomainID:       null.IntFrom(2000),
 						DomainName:         null.StringFrom("超级管理员"),
-						Domain:             null.StringFrom("cst.school^superAdmin"),
+						Domain:             null.StringFrom("assess^superAdmin"),
 						Priority:           null.IntFrom(0),
 						APIID:              null.IntFrom(20000),
 						APIName:            null.StringFrom("题库管理模块"),
@@ -244,7 +244,7 @@ func TestGetUserAuthority(t *testing.T) {
 					{
 						AuthDomainID:       null.IntFrom(2000),
 						DomainName:         null.StringFrom("超级管理员"),
-						Domain:             null.StringFrom("cst.school^superAdmin"),
+						Domain:             null.StringFrom("assess^superAdmin"),
 						Priority:           null.IntFrom(0),
 						APIID:              null.IntFrom(20003),
 						APIName:            null.StringFrom("试卷管理模块"),
@@ -256,7 +256,7 @@ func TestGetUserAuthority(t *testing.T) {
 					{
 						AuthDomainID:       null.IntFrom(2000),
 						DomainName:         null.StringFrom("超级管理员"),
-						Domain:             null.StringFrom("cst.school^superAdmin"),
+						Domain:             null.StringFrom("assess^superAdmin"),
 						Priority:           null.IntFrom(0),
 						APIID:              null.IntFrom(20004),
 						APIName:            null.StringFrom("练习管理模块"),
@@ -268,7 +268,7 @@ func TestGetUserAuthority(t *testing.T) {
 					{
 						AuthDomainID:       null.IntFrom(2000),
 						DomainName:         null.StringFrom("超级管理员"),
-						Domain:             null.StringFrom("cst.school^superAdmin"),
+						Domain:             null.StringFrom("assess^superAdmin"),
 						Priority:           null.IntFrom(0),
 						APIID:              null.IntFrom(20005),
 						APIName:            null.StringFrom("考试管理模块"),
@@ -280,7 +280,7 @@ func TestGetUserAuthority(t *testing.T) {
 					{
 						AuthDomainID:       null.IntFrom(2000),
 						DomainName:         null.StringFrom("超级管理员"),
-						Domain:             null.StringFrom("cst.school^superAdmin"),
+						Domain:             null.StringFrom("assess^superAdmin"),
 						Priority:           null.IntFrom(0),
 						APIID:              null.IntFrom(20006),
 						APIName:            null.StringFrom("成绩管理模块"),
@@ -292,7 +292,7 @@ func TestGetUserAuthority(t *testing.T) {
 					{
 						AuthDomainID:       null.IntFrom(2000),
 						DomainName:         null.StringFrom("超级管理员"),
-						Domain:             null.StringFrom("cst.school^superAdmin"),
+						Domain:             null.StringFrom("assess^superAdmin"),
 						Priority:           null.IntFrom(0),
 						APIID:              null.IntFrom(20007),
 						APIName:            null.StringFrom("学生管理模块"),
@@ -304,7 +304,7 @@ func TestGetUserAuthority(t *testing.T) {
 					{
 						AuthDomainID:       null.IntFrom(2000),
 						DomainName:         null.StringFrom("超级管理员"),
-						Domain:             null.StringFrom("cst.school^superAdmin"),
+						Domain:             null.StringFrom("assess^superAdmin"),
 						Priority:           null.IntFrom(0),
 						APIID:              null.IntFrom(20008),
 						APIName:            null.StringFrom("用户管理模块"),
@@ -314,7 +314,7 @@ func TestGetUserAuthority(t *testing.T) {
 						GrantSource:        null.StringFrom("api"),
 					},
 				},
-				ReadableDomains: []int64{1998, 1999, 2009, 2011, 2013},
+				AccessibleDomains: []int64{1998, 1999, 2009, 2011, 2013},
 			},
 			wantErr: false,
 		},
@@ -331,17 +331,17 @@ func TestGetUserAuthority(t *testing.T) {
 				Role: cmn.TDomain{
 					ID:       null.NewInt(2006, true),
 					Name:     "考点负责人",
-					Domain:   "cst.school.examSite^admin",
+					Domain:   "assess.examSite^admin",
 					Priority: null.IntFrom(3),
 				},
 				Domain: cmn.TDomain{
 					ID:       null.NewInt(2009, true),
 					Name:     "考点",
-					Domain:   "cst.school.examSite",
+					Domain:   "assess.examSite",
 					Priority: null.IntFrom(0),
 				},
-				APIs:            []cmn.TVDomainAPI{},
-				ReadableDomains: []int64{1998, 1999, 2009, 2013},
+				AccessibleAPIs:    []cmn.TVDomainAPI{},
+				AccessibleDomains: []int64{1998, 1999, 2009, 2013},
 			},
 			wantErr: false,
 		},
@@ -499,20 +499,20 @@ func TestGetUserAuthority(t *testing.T) {
 				Role: cmn.TDomain{
 					ID:       null.NewInt(2003, true),
 					Name:     "教师",
-					Domain:   "cst.school^teacher",
+					Domain:   "assess^teacher",
 					Priority: null.IntFrom(7),
 				},
 				Domain: cmn.TDomain{
 					ID:       null.NewInt(1999, true),
 					Name:     "3min",
-					Domain:   "cst.school",
+					Domain:   "assess",
 					Priority: null.IntFrom(0),
 				},
-				APIs: []cmn.TVDomainAPI{
+				AccessibleAPIs: []cmn.TVDomainAPI{
 					{
 						AuthDomainID:       null.IntFrom(2003),
 						DomainName:         null.StringFrom("教师"),
-						Domain:             null.StringFrom("cst.school^teacher"),
+						Domain:             null.StringFrom("assess^teacher"),
 						Priority:           null.IntFrom(7),
 						APIID:              null.IntFrom(20000),
 						APIName:            null.StringFrom("题库管理模块"),
@@ -524,7 +524,7 @@ func TestGetUserAuthority(t *testing.T) {
 					{
 						AuthDomainID:       null.IntFrom(2003),
 						DomainName:         null.StringFrom("教师"),
-						Domain:             null.StringFrom("cst.school^teacher"),
+						Domain:             null.StringFrom("assess^teacher"),
 						Priority:           null.IntFrom(7),
 						APIID:              null.IntFrom(20003),
 						APIName:            null.StringFrom("试卷管理模块"),
@@ -536,7 +536,7 @@ func TestGetUserAuthority(t *testing.T) {
 					{
 						AuthDomainID:       null.IntFrom(2003),
 						DomainName:         null.StringFrom("教师"),
-						Domain:             null.StringFrom("cst.school^teacher"),
+						Domain:             null.StringFrom("assess^teacher"),
 						Priority:           null.IntFrom(7),
 						APIID:              null.IntFrom(20004),
 						APIName:            null.StringFrom("练习管理模块"),
@@ -548,7 +548,7 @@ func TestGetUserAuthority(t *testing.T) {
 					{
 						AuthDomainID:       null.IntFrom(2003),
 						DomainName:         null.StringFrom("教师"),
-						Domain:             null.StringFrom("cst.school^teacher"),
+						Domain:             null.StringFrom("assess^teacher"),
 						Priority:           null.IntFrom(7),
 						APIID:              null.IntFrom(20005),
 						APIName:            null.StringFrom("考试管理模块"),
@@ -560,7 +560,7 @@ func TestGetUserAuthority(t *testing.T) {
 					{
 						AuthDomainID:       null.IntFrom(2003),
 						DomainName:         null.StringFrom("教师"),
-						Domain:             null.StringFrom("cst.school^teacher"),
+						Domain:             null.StringFrom("assess^teacher"),
 						Priority:           null.IntFrom(7),
 						APIID:              null.IntFrom(20006),
 						APIName:            null.StringFrom("成绩管理模块"),
@@ -572,7 +572,7 @@ func TestGetUserAuthority(t *testing.T) {
 					{
 						AuthDomainID:       null.IntFrom(2003),
 						DomainName:         null.StringFrom("教师"),
-						Domain:             null.StringFrom("cst.school^teacher"),
+						Domain:             null.StringFrom("assess^teacher"),
 						Priority:           null.IntFrom(7),
 						APIID:              null.IntFrom(20007),
 						APIName:            null.StringFrom("学生管理模块"),
@@ -582,7 +582,7 @@ func TestGetUserAuthority(t *testing.T) {
 						GrantSource:        null.StringFrom("api"),
 					},
 				},
-				ReadableDomains: []int64{1999},
+				AccessibleDomains: []int64{1999},
 			},
 			wantErr: false,
 		},
@@ -736,14 +736,14 @@ func TestGetUserAuthority(t *testing.T) {
 
 					// API列表详细比对
 					t.Logf("\n=== API列表比对 ===")
-					if len(gotA.APIs) != len(tt.wantA.APIs) {
-						t.Errorf("❌ API数量不匹配: 实际=%d, 期望=%d", len(gotA.APIs), len(tt.wantA.APIs))
+					if len(gotA.AccessibleAPIs) != len(tt.wantA.AccessibleAPIs) {
+						t.Errorf("❌ API数量不匹配: 实际=%d, 期望=%d", len(gotA.AccessibleAPIs), len(tt.wantA.AccessibleAPIs))
 					} else {
-						t.Logf("✅ API数量匹配: %d", len(gotA.APIs))
+						t.Logf("✅ API数量匹配: %d", len(gotA.AccessibleAPIs))
 
 						// 逐个比对API
-						for i, gotAPI := range gotA.APIs {
-							wantAPI := tt.wantA.APIs[i]
+						for i, gotAPI := range gotA.AccessibleAPIs {
+							wantAPI := tt.wantA.AccessibleAPIs[i]
 							t.Logf("\n--- API[%d] 详细比对 ---", i)
 
 							if gotAPI.AuthDomainID != wantAPI.AuthDomainID {
@@ -790,14 +790,14 @@ func TestGetUserAuthority(t *testing.T) {
 
 					// ReadableDomains详细比对
 					t.Logf("\n=== 可读域列表比对 ===")
-					if len(gotA.ReadableDomains) != len(tt.wantA.ReadableDomains) {
-						t.Errorf("❌ 可读域数量不匹配: 实际=%d, 期望=%d", len(gotA.ReadableDomains), len(tt.wantA.ReadableDomains))
+					if len(gotA.AccessibleDomains) != len(tt.wantA.AccessibleDomains) {
+						t.Errorf("❌ 可读域数量不匹配: 实际=%d, 期望=%d", len(gotA.AccessibleDomains), len(tt.wantA.AccessibleDomains))
 					} else {
-						t.Logf("✅ 可读域数量匹配: %d", len(gotA.ReadableDomains))
+						t.Logf("✅ 可读域数量匹配: %d", len(gotA.AccessibleDomains))
 
 						// 逐个比对可读域ID
-						for i, gotDomainID := range gotA.ReadableDomains {
-							wantDomainID := tt.wantA.ReadableDomains[i]
+						for i, gotDomainID := range gotA.AccessibleDomains {
+							wantDomainID := tt.wantA.AccessibleDomains[i]
 							if gotDomainID != wantDomainID {
 								t.Errorf("❌ 可读域[%d] ID不匹配: 实际=%d, 期望=%d", i, gotDomainID, wantDomainID)
 							} else {
@@ -805,8 +805,8 @@ func TestGetUserAuthority(t *testing.T) {
 							}
 						}
 					}
-					t.Logf("实际可读域列表: %v", gotA.ReadableDomains)
-					t.Logf("期望可读域列表: %v", tt.wantA.ReadableDomains)
+					t.Logf("实际可读域列表: %v", gotA.AccessibleDomains)
+					t.Logf("期望可读域列表: %v", tt.wantA.AccessibleDomains)
 
 					// 测试结果汇总
 					t.Logf("\n=== 测试结果汇总 ===")
@@ -814,10 +814,10 @@ func TestGetUserAuthority(t *testing.T) {
 					t.Logf("角色ID: %v", tt.args.sysUser.ID)
 					t.Logf("期望角色: %v", tt.wantA.Role.Name)
 					t.Logf("期望域: %v", tt.wantA.Domain.Name)
-					t.Logf("期望API数量: %d", len(tt.wantA.APIs))
-					t.Logf("实际API数量: %d", len(gotA.APIs))
-					t.Logf("期望可读域数量: %d", len(tt.wantA.ReadableDomains))
-					t.Logf("实际可读域数量: %d", len(gotA.ReadableDomains))
+					t.Logf("期望API数量: %d", len(tt.wantA.AccessibleAPIs))
+					t.Logf("实际API数量: %d", len(gotA.AccessibleAPIs))
+					t.Logf("期望可读域数量: %d", len(tt.wantA.AccessibleDomains))
+					t.Logf("实际可读域数量: %d", len(gotA.AccessibleDomains))
 					t.Logf("===================")
 
 				} else {
@@ -829,12 +829,12 @@ func TestGetUserAuthority(t *testing.T) {
 				if gotA != nil {
 					t.Logf("角色: %v (ID: %v)", gotA.Role.Name, gotA.Role.ID)
 					t.Logf("域: %v (ID: %v)", gotA.Domain.Name, gotA.Domain.ID)
-					t.Logf("API权限数量: %d", len(gotA.APIs))
-					for i, api := range gotA.APIs {
+					t.Logf("API权限数量: %d", len(gotA.AccessibleAPIs))
+					for i, api := range gotA.AccessibleAPIs {
 						t.Logf("  API[%d]: %v -> %v", i, api.APIName, api.ExposePath)
 					}
-					t.Logf("可读域数量: %d", len(gotA.ReadableDomains))
-					t.Logf("可读域列表: %v", gotA.ReadableDomains)
+					t.Logf("可读域数量: %d", len(gotA.AccessibleDomains))
+					t.Logf("可读域列表: %v", gotA.AccessibleDomains)
 				}
 			}
 		})
@@ -862,33 +862,33 @@ func TestCheckUserAPIAccessible(t *testing.T) {
 					Role: cmn.TDomain{
 						ID:       null.NewInt(2003, true),
 						Name:     "教师",
-						Domain:   "cst.school^teacher",
+						Domain:   "assess^teacher",
 						Priority: null.IntFrom(7),
 					},
 					Domain: cmn.TDomain{
 						ID:       null.NewInt(1999, true),
 						Name:     "3min",
-						Domain:   "cst.school",
+						Domain:   "assess",
 						Priority: null.IntFrom(0),
 					},
-					APIs: []cmn.TVDomainAPI{
+					AccessibleAPIs: []cmn.TVDomainAPI{
 						{
 							AuthDomainID:       null.IntFrom(2003),
 							DomainName:         null.StringFrom("教师"),
-							Domain:             null.StringFrom("cst.school^teacher"),
+							Domain:             null.StringFrom("assess^teacher"),
 							Priority:           null.IntFrom(7),
 							APIID:              null.IntFrom(20000),
 							APIName:            null.StringFrom("题库管理模块"),
 							ExposePath:         null.StringFrom("/teacher/question-bank"),
 							AccessControlLevel: null.StringFrom("4"),
-							DataAccessMode:     null.StringFrom("full"),
+							AccessAction:       null.StringFrom("full"),
 							GrantSource:        null.StringFrom("api"),
 						},
 					},
-					ReadableDomains: []int64{1999, 1998},
+					AccessibleDomains: []int64{1999, 1998},
 				},
 				apiPath:    "/teacher/question-bank",
-				accessMode: CDataAccessModeRead,
+				accessMode: CAPIAccessActionRead,
 			},
 			want:    true,
 			wantErr: false,
@@ -901,33 +901,33 @@ func TestCheckUserAPIAccessible(t *testing.T) {
 					Role: cmn.TDomain{
 						ID:       null.NewInt(2003, true),
 						Name:     "教师",
-						Domain:   "cst.school^teacher",
+						Domain:   "assess^teacher",
 						Priority: null.IntFrom(7),
 					},
 					Domain: cmn.TDomain{
 						ID:       null.NewInt(1999, true),
 						Name:     "3min",
-						Domain:   "cst.school",
+						Domain:   "assess",
 						Priority: null.IntFrom(0),
 					},
-					APIs: []cmn.TVDomainAPI{
+					AccessibleAPIs: []cmn.TVDomainAPI{
 						{
 							AuthDomainID:       null.IntFrom(2003),
 							DomainName:         null.StringFrom("教师"),
-							Domain:             null.StringFrom("cst.school^teacher"),
+							Domain:             null.StringFrom("assess^teacher"),
 							Priority:           null.IntFrom(7),
 							APIID:              null.IntFrom(20000),
 							APIName:            null.StringFrom("题库管理模块"),
 							ExposePath:         null.StringFrom("/teacher/question-bank"),
 							AccessControlLevel: null.StringFrom("4"),
-							DataAccessMode:     null.StringFrom("full"),
+							AccessAction:       null.StringFrom("full"),
 							GrantSource:        null.StringFrom("api"),
 						},
 					},
-					ReadableDomains: []int64{1999, 1998},
+					AccessibleDomains: []int64{1999, 1998},
 				},
 				apiPath:    "/teacher/question-bank",
-				accessMode: CDataAccessModeWrite,
+				accessMode: CAPIAccessActionCreate,
 			},
 			want:    true,
 			wantErr: false,
@@ -940,191 +940,269 @@ func TestCheckUserAPIAccessible(t *testing.T) {
 					Role: cmn.TDomain{
 						ID:       null.NewInt(2003, true),
 						Name:     "教师",
-						Domain:   "cst.school^teacher",
+						Domain:   "assess^teacher",
 						Priority: null.IntFrom(7),
 					},
 					Domain: cmn.TDomain{
 						ID:       null.NewInt(1999, true),
 						Name:     "3min",
-						Domain:   "cst.school",
+						Domain:   "assess",
 						Priority: null.IntFrom(0),
 					},
-					APIs: []cmn.TVDomainAPI{
+					AccessibleAPIs: []cmn.TVDomainAPI{
 						{
 							AuthDomainID:       null.IntFrom(2003),
 							DomainName:         null.StringFrom("教师"),
-							Domain:             null.StringFrom("cst.school^teacher"),
+							Domain:             null.StringFrom("assess^teacher"),
 							Priority:           null.IntFrom(7),
 							APIID:              null.IntFrom(20000),
 							APIName:            null.StringFrom("题库管理模块"),
 							ExposePath:         null.StringFrom("/teacher/question-bank"),
 							AccessControlLevel: null.StringFrom("4"),
-							DataAccessMode:     null.StringFrom("full"),
+							AccessAction:       null.StringFrom("full"),
 							GrantSource:        null.StringFrom("api"),
 						},
 					},
-					ReadableDomains: []int64{1999, 1998},
+					AccessibleDomains: []int64{1999, 1998},
 				},
 				apiPath:    "/teacher/question-bank",
-				accessMode: CDataAccessModeFull,
+				accessMode: CAPIAccessActionFull,
 			},
 			want:    true,
 			wantErr: false,
 		},
 		{
-			name: "read权限｜API可读",
+			name: "query权限｜API可查询数据",
 			args: args{
 				ctx: context.Background(),
 				authority: &Authority{
 					Role: cmn.TDomain{
 						ID:       null.NewInt(2003, true),
 						Name:     "教师",
-						Domain:   "cst.school^teacher",
+						Domain:   "assess^teacher",
 						Priority: null.IntFrom(7),
 					},
 					Domain: cmn.TDomain{
 						ID:       null.NewInt(1999, true),
 						Name:     "3min",
-						Domain:   "cst.school",
+						Domain:   "assess",
 						Priority: null.IntFrom(0),
 					},
-					APIs: []cmn.TVDomainAPI{
+					AccessibleAPIs: []cmn.TVDomainAPI{
 						{
 							AuthDomainID:       null.IntFrom(2003),
 							DomainName:         null.StringFrom("教师"),
-							Domain:             null.StringFrom("cst.school^teacher"),
+							Domain:             null.StringFrom("assess^teacher"),
 							Priority:           null.IntFrom(7),
 							APIID:              null.IntFrom(20000),
 							APIName:            null.StringFrom("题库管理模块"),
 							ExposePath:         null.StringFrom("/teacher/question-bank"),
 							AccessControlLevel: null.StringFrom("4"),
-							DataAccessMode:     null.StringFrom("read"),
+							AccessAction:       null.StringFrom("read"),
 							GrantSource:        null.StringFrom("api"),
 						},
 					},
-					ReadableDomains: []int64{1999, 1998},
+					AccessibleDomains: []int64{1999, 1998},
 				},
 				apiPath:    "/teacher/question-bank",
-				accessMode: CDataAccessModeRead,
+				accessMode: CAPIAccessActionRead,
 			},
 			want:    true,
 			wantErr: false,
 		},
 		{
-			name: "read权限｜API不可写",
+			name: "query权限｜API不可添加数据",
 			args: args{
 				ctx: context.Background(),
 				authority: &Authority{
 					Role: cmn.TDomain{
 						ID:       null.NewInt(2003, true),
 						Name:     "教师",
-						Domain:   "cst.school^teacher",
+						Domain:   "assess^teacher",
 						Priority: null.IntFrom(7),
 					},
 					Domain: cmn.TDomain{
 						ID:       null.NewInt(1999, true),
 						Name:     "3min",
-						Domain:   "cst.school",
+						Domain:   "assess",
 						Priority: null.IntFrom(0),
 					},
-					APIs: []cmn.TVDomainAPI{
+					AccessibleAPIs: []cmn.TVDomainAPI{
 						{
 							AuthDomainID:       null.IntFrom(2003),
 							DomainName:         null.StringFrom("教师"),
-							Domain:             null.StringFrom("cst.school^teacher"),
+							Domain:             null.StringFrom("assess^teacher"),
 							Priority:           null.IntFrom(7),
 							APIID:              null.IntFrom(20000),
 							APIName:            null.StringFrom("题库管理模块"),
 							ExposePath:         null.StringFrom("/teacher/question-bank"),
 							AccessControlLevel: null.StringFrom("4"),
-							DataAccessMode:     null.StringFrom("read"),
+							AccessAction:       null.StringFrom("read"),
 							GrantSource:        null.StringFrom("api"),
 						},
 					},
-					ReadableDomains: []int64{1999, 1998},
+					AccessibleDomains: []int64{1999, 1998},
 				},
 				apiPath:    "/teacher/question-bank",
-				accessMode: CDataAccessModeWrite,
+				accessMode: CAPIAccessActionCreate,
 			},
 			want:    false,
 			wantErr: false,
 		},
 		{
-			name: "read权限｜API不可完全访问",
+			name: "query权限｜API不可完全访问",
 			args: args{
 				ctx: context.Background(),
 				authority: &Authority{
 					Role: cmn.TDomain{
 						ID:       null.NewInt(2003, true),
 						Name:     "教师",
-						Domain:   "cst.school^teacher",
+						Domain:   "assess^teacher",
 						Priority: null.IntFrom(7),
 					},
 					Domain: cmn.TDomain{
 						ID:       null.NewInt(1999, true),
 						Name:     "3min",
-						Domain:   "cst.school",
+						Domain:   "assess",
 						Priority: null.IntFrom(0),
 					},
-					APIs: []cmn.TVDomainAPI{
+					AccessibleAPIs: []cmn.TVDomainAPI{
 						{
 							AuthDomainID:       null.IntFrom(2003),
 							DomainName:         null.StringFrom("教师"),
-							Domain:             null.StringFrom("cst.school^teacher"),
+							Domain:             null.StringFrom("assess^teacher"),
 							Priority:           null.IntFrom(7),
 							APIID:              null.IntFrom(20000),
 							APIName:            null.StringFrom("题库管理模块"),
 							ExposePath:         null.StringFrom("/teacher/question-bank"),
 							AccessControlLevel: null.StringFrom("4"),
-							DataAccessMode:     null.StringFrom("read"),
+							AccessAction:       null.StringFrom("read"),
 							GrantSource:        null.StringFrom("api"),
 						},
 					},
-					ReadableDomains: []int64{1999, 1998},
+					AccessibleDomains: []int64{1999, 1998},
 				},
 				apiPath:    "/teacher/question-bank",
-				accessMode: CDataAccessModeFull,
+				accessMode: CAPIAccessActionFull,
 			},
 			want:    false,
 			wantErr: false,
 		},
 		{
-			name: "write权限｜API不可读",
+			name: "add权限｜API不可查询数据",
 			args: args{
 				ctx: context.Background(),
 				authority: &Authority{
 					Role: cmn.TDomain{
 						ID:       null.NewInt(2003, true),
 						Name:     "教师",
-						Domain:   "cst.school^teacher",
+						Domain:   "assess^teacher",
 						Priority: null.IntFrom(7),
 					},
 					Domain: cmn.TDomain{
 						ID:       null.NewInt(1999, true),
 						Name:     "3min",
-						Domain:   "cst.school",
+						Domain:   "assess",
 						Priority: null.IntFrom(0),
 					},
-					APIs: []cmn.TVDomainAPI{
+					AccessibleAPIs: []cmn.TVDomainAPI{
 						{
 							AuthDomainID:       null.IntFrom(2003),
 							DomainName:         null.StringFrom("教师"),
-							Domain:             null.StringFrom("cst.school^teacher"),
+							Domain:             null.StringFrom("assess^teacher"),
 							Priority:           null.IntFrom(7),
 							APIID:              null.IntFrom(20000),
 							APIName:            null.StringFrom("题库管理模块"),
 							ExposePath:         null.StringFrom("/teacher/question-bank"),
 							AccessControlLevel: null.StringFrom("4"),
-							DataAccessMode:     null.StringFrom("write"),
+							AccessAction:       null.StringFrom("create"),
 							GrantSource:        null.StringFrom("api"),
 						},
 					},
-					ReadableDomains: []int64{1999, 1998},
+					AccessibleDomains: []int64{1999, 1998},
 				},
 				apiPath:    "/teacher/question-bank",
-				accessMode: CDataAccessModeRead,
+				accessMode: CAPIAccessActionRead,
 			},
 			want:    false,
+			wantErr: false,
+		},
+		{
+			name: "edit权限｜API可编辑",
+			args: args{
+				ctx: context.Background(),
+				authority: &Authority{
+					Role: cmn.TDomain{
+						ID:       null.NewInt(2003, true),
+						Name:     "教师",
+						Domain:   "assess^teacher",
+						Priority: null.IntFrom(7),
+					},
+					Domain: cmn.TDomain{
+						ID:       null.NewInt(1999, true),
+						Name:     "3min",
+						Domain:   "assess",
+						Priority: null.IntFrom(0),
+					},
+					AccessibleAPIs: []cmn.TVDomainAPI{
+						{
+							AuthDomainID:       null.IntFrom(2003),
+							DomainName:         null.StringFrom("教师"),
+							Domain:             null.StringFrom("assess^teacher"),
+							Priority:           null.IntFrom(7),
+							APIID:              null.IntFrom(20000),
+							APIName:            null.StringFrom("题库管理模块"),
+							ExposePath:         null.StringFrom("/teacher/question-bank"),
+							AccessControlLevel: null.StringFrom("4"),
+							AccessAction:       null.StringFrom("update"),
+							GrantSource:        null.StringFrom("api"),
+						},
+					},
+					AccessibleDomains: []int64{1999, 1998},
+				},
+				apiPath:    "/teacher/question-bank",
+				accessMode: CAPIAccessActionUpdate,
+			},
+			want:    true,
+			wantErr: false,
+		},
+		{
+			name: "delete权限｜API可删除数据",
+			args: args{
+				ctx: context.Background(),
+				authority: &Authority{
+					Role: cmn.TDomain{
+						ID:       null.NewInt(2003, true),
+						Name:     "教师",
+						Domain:   "assess^teacher",
+						Priority: null.IntFrom(7),
+					},
+					Domain: cmn.TDomain{
+						ID:       null.NewInt(1999, true),
+						Name:     "3min",
+						Domain:   "assess",
+						Priority: null.IntFrom(0),
+					},
+					AccessibleAPIs: []cmn.TVDomainAPI{
+						{
+							AuthDomainID:       null.IntFrom(2003),
+							DomainName:         null.StringFrom("教师"),
+							Domain:             null.StringFrom("assess^teacher"),
+							Priority:           null.IntFrom(7),
+							APIID:              null.IntFrom(20000),
+							APIName:            null.StringFrom("题库管理模块"),
+							ExposePath:         null.StringFrom("/teacher/question-bank"),
+							AccessControlLevel: null.StringFrom("4"),
+							AccessAction:       null.StringFrom("delete"),
+							GrantSource:        null.StringFrom("api"),
+						},
+					},
+					AccessibleDomains: []int64{1999, 1998},
+				},
+				apiPath:    "/teacher/question-bank",
+				accessMode: CAPIAccessActionDelete,
+			},
+			want:    true,
 			wantErr: false,
 		},
 		{
@@ -1135,20 +1213,20 @@ func TestCheckUserAPIAccessible(t *testing.T) {
 					Role: cmn.TDomain{
 						ID:       null.NewInt(2003, true),
 						Name:     "教师",
-						Domain:   "cst.school^teacher",
+						Domain:   "assess^teacher",
 						Priority: null.IntFrom(7),
 					},
 					Domain: cmn.TDomain{
 						ID:       null.NewInt(1999, true),
 						Name:     "3min",
-						Domain:   "cst.school",
+						Domain:   "assess",
 						Priority: null.IntFrom(0),
 					},
-					APIs: []cmn.TVDomainAPI{
+					AccessibleAPIs: []cmn.TVDomainAPI{
 						{
 							AuthDomainID:       null.IntFrom(2003),
 							DomainName:         null.StringFrom("教师"),
-							Domain:             null.StringFrom("cst.school^teacher"),
+							Domain:             null.StringFrom("assess^teacher"),
 							Priority:           null.IntFrom(7),
 							APIID:              null.IntFrom(20000),
 							APIName:            null.StringFrom("题库管理模块"),
@@ -1158,7 +1236,7 @@ func TestCheckUserAPIAccessible(t *testing.T) {
 							GrantSource:        null.StringFrom("api"),
 						},
 					},
-					ReadableDomains: []int64{1999, 1998},
+					AccessibleDomains: []int64{1999, 1998},
 				},
 				apiPath:    "/teacher/question-bank",
 				accessMode: "invalid_mode",
@@ -1178,27 +1256,27 @@ func TestCheckUserAPIAccessible(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name: "CheckUserAPIReadable.authority.nil错误",
+			name: "checkUserAPIAccessible.authority.nil错误",
 			args: args{
-				ctx: createMockContext(cmn.TUser{}, "CheckUserAPIReadable.authority.nil"),
+				ctx: createMockContext(cmn.TUser{}, "checkUserAPIAccessible.authority.nil"),
 				authority: &Authority{
 					Role: cmn.TDomain{
 						ID:       null.NewInt(2003, true),
 						Name:     "教师",
-						Domain:   "cst.school^teacher",
+						Domain:   "assess^teacher",
 						Priority: null.IntFrom(7),
 					},
 					Domain: cmn.TDomain{
 						ID:       null.NewInt(1999, true),
 						Name:     "3min",
-						Domain:   "cst.school",
+						Domain:   "assess",
 						Priority: null.IntFrom(0),
 					},
-					APIs: []cmn.TVDomainAPI{
+					AccessibleAPIs: []cmn.TVDomainAPI{
 						{
 							AuthDomainID:       null.IntFrom(2003),
 							DomainName:         null.StringFrom("教师"),
-							Domain:             null.StringFrom("cst.school^teacher"),
+							Domain:             null.StringFrom("assess^teacher"),
 							Priority:           null.IntFrom(7),
 							APIID:              null.IntFrom(20000),
 							APIName:            null.StringFrom("题库管理模块"),
@@ -1208,49 +1286,10 @@ func TestCheckUserAPIAccessible(t *testing.T) {
 							GrantSource:        null.StringFrom("api"),
 						},
 					},
-					ReadableDomains: []int64{1999, 1998},
+					AccessibleDomains: []int64{1999, 1998},
 				},
 				apiPath:    "/teacher/question-bank",
-				accessMode: CDataAccessModeFull,
-			},
-			want:    false,
-			wantErr: true,
-		},
-		{
-			name: "CheckUserAPIWritable.authority.nil错误",
-			args: args{
-				ctx: createMockContext(cmn.TUser{}, "CheckUserAPIWritable.authority.nil"),
-				authority: &Authority{
-					Role: cmn.TDomain{
-						ID:       null.NewInt(2003, true),
-						Name:     "教师",
-						Domain:   "cst.school^teacher",
-						Priority: null.IntFrom(7),
-					},
-					Domain: cmn.TDomain{
-						ID:       null.NewInt(1999, true),
-						Name:     "3min",
-						Domain:   "cst.school",
-						Priority: null.IntFrom(0),
-					},
-					APIs: []cmn.TVDomainAPI{
-						{
-							AuthDomainID:       null.IntFrom(2003),
-							DomainName:         null.StringFrom("教师"),
-							Domain:             null.StringFrom("cst.school^teacher"),
-							Priority:           null.IntFrom(7),
-							APIID:              null.IntFrom(20000),
-							APIName:            null.StringFrom("题库管理模块"),
-							ExposePath:         null.StringFrom("/teacher/question-bank"),
-							AccessControlLevel: null.StringFrom("4"),
-							DataAccessMode:     null.StringFrom("full"),
-							GrantSource:        null.StringFrom("api"),
-						},
-					},
-					ReadableDomains: []int64{1999, 1998},
-				},
-				apiPath:    "/teacher/question-bank",
-				accessMode: CDataAccessModeFull,
+				accessMode: CAPIAccessActionFull,
 			},
 			want:    false,
 			wantErr: true,
@@ -1290,20 +1329,20 @@ func TestGetDomainRelationship(t *testing.T) {
 					Role: cmn.TDomain{
 						ID:       null.NewInt(2003, true),
 						Name:     "教师",
-						Domain:   "cst.school^teacher",
+						Domain:   "assess^teacher",
 						Priority: null.IntFrom(7),
 					},
 					Domain: cmn.TDomain{
 						ID:       null.NewInt(1999, true),
 						Name:     "3min",
-						Domain:   "cst.school",
+						Domain:   "assess",
 						Priority: null.IntFrom(0),
 					},
-					APIs: []cmn.TVDomainAPI{
+					AccessibleAPIs: []cmn.TVDomainAPI{
 						{
 							AuthDomainID:       null.IntFrom(2003),
 							DomainName:         null.StringFrom("教师"),
-							Domain:             null.StringFrom("cst.school^teacher"),
+							Domain:             null.StringFrom("assess^teacher"),
 							Priority:           null.IntFrom(7),
 							APIID:              null.IntFrom(20000),
 							APIName:            null.StringFrom("题库管理模块"),
@@ -1313,9 +1352,9 @@ func TestGetDomainRelationship(t *testing.T) {
 							GrantSource:        null.StringFrom("api"),
 						},
 					},
-					ReadableDomains: []int64{1999, 1998},
+					AccessibleDomains: []int64{1999, 1998},
 				},
-				targetDomain: "cst.school",
+				targetDomain: "assess",
 			},
 			want:    CDomainRelationshipSelf,
 			wantErr: false,
@@ -1328,20 +1367,20 @@ func TestGetDomainRelationship(t *testing.T) {
 					Role: cmn.TDomain{
 						ID:       null.NewInt(2003, true),
 						Name:     "教师",
-						Domain:   "cst.school^teacher",
+						Domain:   "assess^teacher",
 						Priority: null.IntFrom(7),
 					},
 					Domain: cmn.TDomain{
 						ID:       null.NewInt(1999, true),
 						Name:     "3min",
-						Domain:   "cst.school",
+						Domain:   "assess",
 						Priority: null.IntFrom(0),
 					},
-					APIs: []cmn.TVDomainAPI{
+					AccessibleAPIs: []cmn.TVDomainAPI{
 						{
 							AuthDomainID:       null.IntFrom(2003),
 							DomainName:         null.StringFrom("教师"),
-							Domain:             null.StringFrom("cst.school^teacher"),
+							Domain:             null.StringFrom("assess^teacher"),
 							Priority:           null.IntFrom(7),
 							APIID:              null.IntFrom(20000),
 							APIName:            null.StringFrom("题库管理模块"),
@@ -1351,7 +1390,7 @@ func TestGetDomainRelationship(t *testing.T) {
 							GrantSource:        null.StringFrom("api"),
 						},
 					},
-					ReadableDomains: []int64{1999, 1998},
+					AccessibleDomains: []int64{1999, 1998},
 				},
 				targetDomain: "cst",
 			},
@@ -1366,20 +1405,20 @@ func TestGetDomainRelationship(t *testing.T) {
 					Role: cmn.TDomain{
 						ID:       null.NewInt(2003, true),
 						Name:     "教师",
-						Domain:   "cst.school.class^teacher",
+						Domain:   "assess.class^teacher",
 						Priority: null.IntFrom(7),
 					},
 					Domain: cmn.TDomain{
 						ID:       null.NewInt(1999, true),
 						Name:     "3min",
-						Domain:   "cst.school.class",
+						Domain:   "assess.class",
 						Priority: null.IntFrom(0),
 					},
-					APIs: []cmn.TVDomainAPI{
+					AccessibleAPIs: []cmn.TVDomainAPI{
 						{
 							AuthDomainID:       null.IntFrom(2003),
 							DomainName:         null.StringFrom("教师"),
-							Domain:             null.StringFrom("cst.school^teacher"),
+							Domain:             null.StringFrom("assess^teacher"),
 							Priority:           null.IntFrom(7),
 							APIID:              null.IntFrom(20000),
 							APIName:            null.StringFrom("题库管理模块"),
@@ -1389,7 +1428,7 @@ func TestGetDomainRelationship(t *testing.T) {
 							GrantSource:        null.StringFrom("api"),
 						},
 					},
-					ReadableDomains: []int64{1999, 1998},
+					AccessibleDomains: []int64{1999, 1998},
 				},
 				targetDomain: "cst",
 			},
@@ -1404,20 +1443,20 @@ func TestGetDomainRelationship(t *testing.T) {
 					Role: cmn.TDomain{
 						ID:       null.NewInt(2003, true),
 						Name:     "教师",
-						Domain:   "cst.school^teacher",
+						Domain:   "assess^teacher",
 						Priority: null.IntFrom(7),
 					},
 					Domain: cmn.TDomain{
 						ID:       null.NewInt(1999, true),
 						Name:     "3min",
-						Domain:   "cst.school",
+						Domain:   "assess",
 						Priority: null.IntFrom(0),
 					},
-					APIs: []cmn.TVDomainAPI{
+					AccessibleAPIs: []cmn.TVDomainAPI{
 						{
 							AuthDomainID:       null.IntFrom(2003),
 							DomainName:         null.StringFrom("教师"),
-							Domain:             null.StringFrom("cst.school^teacher"),
+							Domain:             null.StringFrom("assess^teacher"),
 							Priority:           null.IntFrom(7),
 							APIID:              null.IntFrom(20000),
 							APIName:            null.StringFrom("题库管理模块"),
@@ -1427,9 +1466,9 @@ func TestGetDomainRelationship(t *testing.T) {
 							GrantSource:        null.StringFrom("api"),
 						},
 					},
-					ReadableDomains: []int64{1999, 1998},
+					AccessibleDomains: []int64{1999, 1998},
 				},
-				targetDomain: "cst.school.class",
+				targetDomain: "assess.class",
 			},
 			want:    CDomainRelationshipChild,
 			wantErr: false,
@@ -1442,20 +1481,20 @@ func TestGetDomainRelationship(t *testing.T) {
 					Role: cmn.TDomain{
 						ID:       null.NewInt(2003, true),
 						Name:     "教师",
-						Domain:   "cst.school^teacher",
+						Domain:   "assess^teacher",
 						Priority: null.IntFrom(7),
 					},
 					Domain: cmn.TDomain{
 						ID:       null.NewInt(1999, true),
 						Name:     "3min",
-						Domain:   "cst.school",
+						Domain:   "assess",
 						Priority: null.IntFrom(0),
 					},
-					APIs: []cmn.TVDomainAPI{
+					AccessibleAPIs: []cmn.TVDomainAPI{
 						{
 							AuthDomainID:       null.IntFrom(2003),
 							DomainName:         null.StringFrom("教师"),
-							Domain:             null.StringFrom("cst.school^teacher"),
+							Domain:             null.StringFrom("assess^teacher"),
 							Priority:           null.IntFrom(7),
 							APIID:              null.IntFrom(20000),
 							APIName:            null.StringFrom("题库管理模块"),
@@ -1465,9 +1504,9 @@ func TestGetDomainRelationship(t *testing.T) {
 							GrantSource:        null.StringFrom("api"),
 						},
 					},
-					ReadableDomains: []int64{1999, 1998},
+					AccessibleDomains: []int64{1999, 1998},
 				},
-				targetDomain: "cst.school.class.room",
+				targetDomain: "assess.class.room",
 			},
 			want:    CDomainRelationshipChild,
 			wantErr: false,
@@ -1480,20 +1519,20 @@ func TestGetDomainRelationship(t *testing.T) {
 					Role: cmn.TDomain{
 						ID:       null.NewInt(2003, true),
 						Name:     "教师",
-						Domain:   "cst.school^teacher",
+						Domain:   "assess^teacher",
 						Priority: null.IntFrom(7),
 					},
 					Domain: cmn.TDomain{
 						ID:       null.NewInt(1999, true),
 						Name:     "3min",
-						Domain:   "cst.school",
+						Domain:   "assess",
 						Priority: null.IntFrom(0),
 					},
-					APIs: []cmn.TVDomainAPI{
+					AccessibleAPIs: []cmn.TVDomainAPI{
 						{
 							AuthDomainID:       null.IntFrom(2003),
 							DomainName:         null.StringFrom("教师"),
-							Domain:             null.StringFrom("cst.school^teacher"),
+							Domain:             null.StringFrom("assess^teacher"),
 							Priority:           null.IntFrom(7),
 							APIID:              null.IntFrom(20000),
 							APIName:            null.StringFrom("题库管理模块"),
@@ -1503,9 +1542,9 @@ func TestGetDomainRelationship(t *testing.T) {
 							GrantSource:        null.StringFrom("api"),
 						},
 					},
-					ReadableDomains: []int64{1999, 1998},
+					AccessibleDomains: []int64{1999, 1998},
 				},
-				targetDomain: "cst.school2",
+				targetDomain: "assess2",
 			},
 			want:    CDomainRelationshipPeer,
 			wantErr: false,
@@ -1518,20 +1557,20 @@ func TestGetDomainRelationship(t *testing.T) {
 					Role: cmn.TDomain{
 						ID:       null.NewInt(2003, true),
 						Name:     "教师",
-						Domain:   "cst.school^teacher",
+						Domain:   "assess^teacher",
 						Priority: null.IntFrom(7),
 					},
 					Domain: cmn.TDomain{
 						ID:       null.NewInt(1999, true),
 						Name:     "3min",
-						Domain:   "cst.school",
+						Domain:   "assess",
 						Priority: null.IntFrom(0),
 					},
-					APIs: []cmn.TVDomainAPI{
+					AccessibleAPIs: []cmn.TVDomainAPI{
 						{
 							AuthDomainID:       null.IntFrom(2003),
 							DomainName:         null.StringFrom("教师"),
-							Domain:             null.StringFrom("cst.school^teacher"),
+							Domain:             null.StringFrom("assess^teacher"),
 							Priority:           null.IntFrom(7),
 							APIID:              null.IntFrom(20000),
 							APIName:            null.StringFrom("题库管理模块"),
@@ -1541,9 +1580,9 @@ func TestGetDomainRelationship(t *testing.T) {
 							GrantSource:        null.StringFrom("api"),
 						},
 					},
-					ReadableDomains: []int64{1999, 1998},
+					AccessibleDomains: []int64{1999, 1998},
 				},
-				targetDomain: "cst.school2.class",
+				targetDomain: "assess2.class",
 			},
 			want:    CDomainRelationshipPeer,
 			wantErr: false,
@@ -1556,20 +1595,20 @@ func TestGetDomainRelationship(t *testing.T) {
 					Role: cmn.TDomain{
 						ID:       null.NewInt(2003, true),
 						Name:     "教师",
-						Domain:   "cst.school^teacher",
+						Domain:   "assess^teacher",
 						Priority: null.IntFrom(7),
 					},
 					Domain: cmn.TDomain{
 						ID:       null.NewInt(1999, true),
 						Name:     "3min",
-						Domain:   "cst.school",
+						Domain:   "assess",
 						Priority: null.IntFrom(0),
 					},
-					APIs: []cmn.TVDomainAPI{
+					AccessibleAPIs: []cmn.TVDomainAPI{
 						{
 							AuthDomainID:       null.IntFrom(2003),
 							DomainName:         null.StringFrom("教师"),
-							Domain:             null.StringFrom("cst.school^teacher"),
+							Domain:             null.StringFrom("assess^teacher"),
 							Priority:           null.IntFrom(7),
 							APIID:              null.IntFrom(20000),
 							APIName:            null.StringFrom("题库管理模块"),
@@ -1579,9 +1618,9 @@ func TestGetDomainRelationship(t *testing.T) {
 							GrantSource:        null.StringFrom("api"),
 						},
 					},
-					ReadableDomains: []int64{1999, 1998},
+					AccessibleDomains: []int64{1999, 1998},
 				},
-				targetDomain: "cst.school2.class^member",
+				targetDomain: "assess2.class^member",
 			},
 			want:    "",
 			wantErr: true,
@@ -1594,20 +1633,20 @@ func TestGetDomainRelationship(t *testing.T) {
 					Role: cmn.TDomain{
 						ID:       null.NewInt(2003, true),
 						Name:     "教师",
-						Domain:   "cst.school^teacher",
+						Domain:   "assess^teacher",
 						Priority: null.IntFrom(7),
 					},
 					Domain: cmn.TDomain{
 						ID:       null.NewInt(1999, true),
 						Name:     "3min",
-						Domain:   "cst.school",
+						Domain:   "assess",
 						Priority: null.IntFrom(0),
 					},
-					APIs: []cmn.TVDomainAPI{
+					AccessibleAPIs: []cmn.TVDomainAPI{
 						{
 							AuthDomainID:       null.IntFrom(2003),
 							DomainName:         null.StringFrom("教师"),
-							Domain:             null.StringFrom("cst.school^teacher"),
+							Domain:             null.StringFrom("assess^teacher"),
 							Priority:           null.IntFrom(7),
 							APIID:              null.IntFrom(20000),
 							APIName:            null.StringFrom("题库管理模块"),
@@ -1617,9 +1656,9 @@ func TestGetDomainRelationship(t *testing.T) {
 							GrantSource:        null.StringFrom("api"),
 						},
 					},
-					ReadableDomains: []int64{1999, 1998},
+					AccessibleDomains: []int64{1999, 1998},
 				},
-				targetDomain: "cst.school2*class",
+				targetDomain: "assess2*class",
 			},
 			want:    "",
 			wantErr: true,
@@ -1632,20 +1671,20 @@ func TestGetDomainRelationship(t *testing.T) {
 					Role: cmn.TDomain{
 						ID:       null.NewInt(2003, true),
 						Name:     "教师",
-						Domain:   "cst.school^teacher",
+						Domain:   "assess^teacher",
 						Priority: null.IntFrom(7),
 					},
 					Domain: cmn.TDomain{
 						ID:       null.NewInt(1999, true),
 						Name:     "3min",
-						Domain:   "cst.school",
+						Domain:   "assess",
 						Priority: null.IntFrom(0),
 					},
-					APIs: []cmn.TVDomainAPI{
+					AccessibleAPIs: []cmn.TVDomainAPI{
 						{
 							AuthDomainID:       null.IntFrom(2003),
 							DomainName:         null.StringFrom("教师"),
-							Domain:             null.StringFrom("cst.school^teacher"),
+							Domain:             null.StringFrom("assess^teacher"),
 							Priority:           null.IntFrom(7),
 							APIID:              null.IntFrom(20000),
 							APIName:            null.StringFrom("题库管理模块"),
@@ -1655,7 +1694,7 @@ func TestGetDomainRelationship(t *testing.T) {
 							GrantSource:        null.StringFrom("api"),
 						},
 					},
-					ReadableDomains: []int64{1999, 1998},
+					AccessibleDomains: []int64{1999, 1998},
 				},
 				targetDomain: "",
 			},
@@ -1667,7 +1706,7 @@ func TestGetDomainRelationship(t *testing.T) {
 			args: args{
 				ctx:          context.Background(),
 				authority:    nil,
-				targetDomain: "cst.school",
+				targetDomain: "assess",
 			},
 			want:    "",
 			wantErr: true,
@@ -1680,7 +1719,7 @@ func TestGetDomainRelationship(t *testing.T) {
 					Role: cmn.TDomain{
 						ID:       null.NewInt(2003, true),
 						Name:     "教师",
-						Domain:   "cst.school^teacher",
+						Domain:   "assess^teacher",
 						Priority: null.IntFrom(7),
 					},
 					Domain: cmn.TDomain{
@@ -1689,11 +1728,11 @@ func TestGetDomainRelationship(t *testing.T) {
 						Domain:   "",
 						Priority: null.IntFrom(0),
 					},
-					APIs: []cmn.TVDomainAPI{
+					AccessibleAPIs: []cmn.TVDomainAPI{
 						{
 							AuthDomainID:       null.IntFrom(2003),
 							DomainName:         null.StringFrom("教师"),
-							Domain:             null.StringFrom("cst.school^teacher"),
+							Domain:             null.StringFrom("assess^teacher"),
 							Priority:           null.IntFrom(7),
 							APIID:              null.IntFrom(20000),
 							APIName:            null.StringFrom("题库管理模块"),
@@ -1703,9 +1742,9 @@ func TestGetDomainRelationship(t *testing.T) {
 							GrantSource:        null.StringFrom("api"),
 						},
 					},
-					ReadableDomains: []int64{1999, 1998},
+					AccessibleDomains: []int64{1999, 1998},
 				},
-				targetDomain: "cst.school",
+				targetDomain: "assess",
 			},
 			want:    "",
 			wantErr: true,
@@ -1718,20 +1757,20 @@ func TestGetDomainRelationship(t *testing.T) {
 					Role: cmn.TDomain{
 						ID:       null.NewInt(2003, true),
 						Name:     "教师",
-						Domain:   "cst.school^teacher",
+						Domain:   "assess^teacher",
 						Priority: null.IntFrom(7),
 					},
 					Domain: cmn.TDomain{
 						ID:       null.NewInt(1999, true),
 						Name:     "3min",
-						Domain:   "cst.school",
+						Domain:   "assess",
 						Priority: null.IntFrom(0),
 					},
-					APIs: []cmn.TVDomainAPI{
+					AccessibleAPIs: []cmn.TVDomainAPI{
 						{
 							AuthDomainID:       null.IntFrom(2003),
 							DomainName:         null.StringFrom("教师"),
-							Domain:             null.StringFrom("cst.school^teacher"),
+							Domain:             null.StringFrom("assess^teacher"),
 							Priority:           null.IntFrom(7),
 							APIID:              null.IntFrom(20000),
 							APIName:            null.StringFrom("题库管理模块"),
@@ -1741,9 +1780,9 @@ func TestGetDomainRelationship(t *testing.T) {
 							GrantSource:        null.StringFrom("api"),
 						},
 					},
-					ReadableDomains: []int64{1999, 1998},
+					AccessibleDomains: []int64{1999, 1998},
 				},
-				targetDomain: "cst.school.class",
+				targetDomain: "assess.class",
 			},
 			want:    CDomainRelationshipPeer,
 			wantErr: false,
@@ -1756,20 +1795,20 @@ func TestGetDomainRelationship(t *testing.T) {
 					Role: cmn.TDomain{
 						ID:       null.NewInt(2003, true),
 						Name:     "教师",
-						Domain:   "cst.school^teacher",
+						Domain:   "assess^teacher",
 						Priority: null.IntFrom(7),
 					},
 					Domain: cmn.TDomain{
 						ID:       null.NewInt(1999, true),
 						Name:     "3min",
-						Domain:   "cst.school^user",
+						Domain:   "assess^user",
 						Priority: null.IntFrom(0),
 					},
-					APIs: []cmn.TVDomainAPI{
+					AccessibleAPIs: []cmn.TVDomainAPI{
 						{
 							AuthDomainID:       null.IntFrom(2003),
 							DomainName:         null.StringFrom("教师"),
-							Domain:             null.StringFrom("cst.school^teacher"),
+							Domain:             null.StringFrom("assess^teacher"),
 							Priority:           null.IntFrom(7),
 							APIID:              null.IntFrom(20000),
 							APIName:            null.StringFrom("题库管理模块"),
@@ -1779,9 +1818,9 @@ func TestGetDomainRelationship(t *testing.T) {
 							GrantSource:        null.StringFrom("api"),
 						},
 					},
-					ReadableDomains: []int64{1999, 1998},
+					AccessibleDomains: []int64{1999, 1998},
 				},
-				targetDomain: "cst.school",
+				targetDomain: "assess",
 			},
 			want:    CDomainRelationshipSelf,
 			wantErr: false,
@@ -1796,6 +1835,129 @@ func TestGetDomainRelationship(t *testing.T) {
 			}
 			if got != tt.want {
 				t.Errorf("GetDomainRelationship() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func Test_querySelectableAPIs(t *testing.T) {
+	type args struct {
+		ctx          context.Context
+		parentDomain string
+	}
+	tests := []struct {
+		name    string
+		args    args
+		wantErr bool
+	}{
+		{
+			name: "机构级别查询所有API｜空字符串域",
+			args: args{
+				ctx:          context.Background(),
+				parentDomain: "",
+			},
+			wantErr: false,
+		},
+		{
+			name: "部门级别查询父域API子集",
+			args: args{
+				ctx:          context.Background(),
+				parentDomain: "assess",
+			},
+			wantErr: false,
+		},
+		{
+			name: "触发数据库连接为空错误",
+			args: args{
+				ctx:          context.WithValue(context.Background(), "force-error", "querySelectableAPIs.pgConn.nil"),
+				parentDomain: "",
+			},
+			wantErr: true,
+		},
+		{
+			name: "触发查询所有API错误",
+			args: args{
+				ctx:          context.WithValue(context.Background(), "force-error", "querySelectableAPIs.QueryAllAPIs"),
+				parentDomain: "",
+			},
+			wantErr: true,
+		},
+		{
+			name: "触发扫描所有API数据错误",
+			args: args{
+				ctx:          context.WithValue(context.Background(), "force-error", "querySelectableAPIs.ScanAllAPIs"),
+				parentDomain: "",
+			},
+			wantErr: true,
+		},
+		{
+			name: "触发所有API行遍历错误",
+			args: args{
+				ctx:          context.WithValue(context.Background(), "force-error", "querySelectableAPIs.AllAPIsRowsErr"),
+				parentDomain: "",
+			},
+			wantErr: true,
+		},
+		{
+			name: "触发查询域API错误",
+			args: args{
+				ctx:          context.WithValue(context.Background(), "force-error", "querySelectableAPIs.QueryDomainAPIs"),
+				parentDomain: "assess",
+			},
+			wantErr: true,
+		},
+		{
+			name: "触发扫描域API数据错误",
+			args: args{
+				ctx:          context.WithValue(context.Background(), "force-error", "querySelectableAPIs.ScanDomainAPIs"),
+				parentDomain: "assess",
+			},
+			wantErr: true,
+		},
+		{
+			name: "触发域API行遍历错误",
+			args: args{
+				ctx:          context.WithValue(context.Background(), "force-error", "querySelectableAPIs.DomainAPIsRowsErr"),
+				parentDomain: "assess",
+			},
+			wantErr: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := querySelectableAPIs(tt.args.ctx, tt.args.parentDomain)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("querySelectableAPIs() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if !tt.wantErr {
+				// 验证返回的API数量大于0
+				if len(got) == 0 {
+					t.Errorf("querySelectableAPIs() returned empty API list")
+					return
+				}
+
+				// 验证每个API的关键字段不为空
+				for i, api := range got {
+					if !api.ID.Valid {
+						t.Errorf("querySelectableAPIs() API[%d].ID is invalid", i)
+					}
+					if api.Name == "" {
+						t.Errorf("querySelectableAPIs() API[%d].Name is empty", i)
+					}
+					if api.AccessControlLevel == "" {
+						t.Errorf("querySelectableAPIs() API[%d].AccessControlLevel is empty", i)
+					}
+				}
+
+				// 输出调试信息
+				if testing.Verbose() {
+					t.Logf("查询到的API数量: %d", len(got))
+					for i, api := range got {
+						t.Logf("  API[%d]: ID=%v, Name=%s, Path=%v, AccessAction=%v, Level=%s",
+							i, api.ID, api.Name, api.ExposePath, api.AccessAction, api.AccessControlLevel)
+					}
+				}
 			}
 		})
 	}

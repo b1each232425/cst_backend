@@ -3,7 +3,7 @@
  * @Description: 练习管理所需模型
  * @Date: 2025-07-15 19:59:25
  * @LastEditors: zdl <1311866870@qq.com>
- * @LastEditTime: 2025-08-20 10:29:20
+ * @LastEditTime: 2025-08-31 12:41:08
  */
 package practice_mgt
 
@@ -54,13 +54,17 @@ var PracticeSubmissionStatus = struct {
 var WrongSubmissionStatus = struct {
 	Allow     string // 允许作答 00
 	Forbid    string // 不允许作答 02
-	Submitted string // 已提交 04
-	Deleted   string // 已删除 06
+	Deleted   string // 已删除 04
+	Marked    string // 已提交 06
+	Submitted string // 已批改 08
+	Disabled  string // 已作废 10
 }{
 	Allow:     "00",
 	Forbid:    "02",
-	Submitted: "04",
-	Deleted:   "06",
+	Deleted:   "04",
+	Submitted: "06",
+	Marked:    "08",
+	Disabled:  "10",
 }
 
 var StudentSubmissionStatus = struct {
@@ -129,6 +133,7 @@ type practiceStudent struct {
 
 type EnterPracticeInfo struct {
 	PracticeSubmissionID int64   `json:"PracticeSubmissionID"`
+	WrongSubmissionID    int64   `json:"WrongSubmissionID"`
 	PaperName            string  `json:"PaperName,omitempty"`
 	Duration             int64   `json:"Duration,omitempty"`
 	TotalScore           float64 `json:"TotalScore,omitempty"`
@@ -143,4 +148,9 @@ type StudentInfo struct {
 	Password     null.String `json:"password"`      // 学生密码
 	IdCardNo     null.String `json:"id_card_no" `   // 学生身份证号
 	Phone        null.String `json:"phone"`         // 学生电话
+}
+
+type RegisterPractice struct {
+	cmn.TPractice
+	TeacherName string `json:"TeacherName"`
 }

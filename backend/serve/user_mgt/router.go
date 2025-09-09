@@ -4,18 +4,14 @@ package user_mgt
 //author:{"name":"王皓","tel":"15819888226", "email":"xavier.wang.work@icloud.com"}
 
 import (
+	"crypto/tls"
 	"encoding/json"
 
+	"github.com/spf13/viper"
+	"github.com/wneessen/go-mail"
 	"go.uber.org/zap"
 	"w2w.io/cmn"
-)
-
-var z *zap.Logger
-
-const (
-	AccountLength = 12          // 账号长度
-	InitialPwd    = "abc123456" // 初始密码
-	DefaultRegion = "CN"        // 默认地区
+	"w2w.io/serve/auth_mgt"
 )
 
 func init() {
@@ -23,6 +19,30 @@ func init() {
 	cmn.PackageStarters = append(cmn.PackageStarters, func() {
 		z = cmn.GetLogger()
 		z.Info("message zLogger settled")
+	})
+
+	cmn.PackageStarters = append(cmn.PackageStarters, func() {
+		var err error
+
+		mailServer = &EmailServer{}
+		mailServer.Host = viper.GetString("email.host")
+		mailServer.Port = viper.GetInt("email.port")
+		mailServer.User = viper.GetString("email.user")
+		mailServer.Pwd = viper.GetString("email.pwd")
+		mailServer.Sender = viper.GetString("email.sender")
+		if mailServer.Host == "" || mailServer.Port == 0 || mailServer.User == "" || mailServer.Pwd == "" || mailServer.Sender == "" {
+			z.Error("email server configuration is incomplete, please check your config file")
+		}
+
+		tlsConfig := &tls.Config{
+			InsecureSkipVerify: true,
+		}
+
+		mailClient, err = mail.NewClient(mailServer.Host, mail.WithPort(mailServer.Port), mail.WithSMTPAuth(mail.SMTPAuthPlain),
+			mail.WithUsername(mailServer.User), mail.WithPassword(mailServer.Pwd), mail.WithTLSConfig(tlsConfig))
+		if err != nil {
+			z.Error("failed to create email client", zap.Error(err))
+		}
 	})
 }
 
@@ -45,7 +65,25 @@ func Enroll(author string) {
 		Fn: handler.HandleUser,
 
 		Path: "/user",
-		Name: "User Management Service",
+		Name: "用户管理",
+
+		ApiEntries: []*cmn.EndPointApiEntries{
+			{
+				Name:         "用户管理.查询用户",
+				AccessAction: auth_mgt.CAPIAccessActionRead,
+				Configurable: true,
+			},
+			{
+				Name:         "用户管理.创建用户",
+				AccessAction: auth_mgt.CAPIAccessActionCreate,
+				Configurable: true,
+			},
+			{
+				Name:         "用户管理.更新用户",
+				AccessAction: auth_mgt.CAPIAccessActionUpdate,
+				Configurable: true,
+			},
+		},
 
 		Developer: developer,
 		WhiteList: true,
@@ -61,7 +99,15 @@ func Enroll(author string) {
 		Fn: handler.HandleGetNewAccount,
 
 		Path: "/user/new-account",
-		Name: "Get New Account",
+		Name: "获取新账号",
+
+		ApiEntries: []*cmn.EndPointApiEntries{
+			{
+				Name:         "用户管理.获取新账号",
+				AccessAction: auth_mgt.CAPIAccessActionRead,
+				Configurable: false,
+			},
+		},
 
 		Developer: developer,
 		WhiteList: true,
@@ -74,10 +120,23 @@ func Enroll(author string) {
 	})
 
 	_ = cmn.AddService(&cmn.ServeEndPoint{
-		Fn: handler.HandleQueryMyInfo,
+		Fn: handler.HandleCurrentUser,
 
 		Path: "/user/me",
-		Name: "Query My Info",
+		Name: "当前用户管理",
+
+		ApiEntries: []*cmn.EndPointApiEntries{
+			{
+				Name:         "用户管理.查询个人信息",
+				AccessAction: auth_mgt.CAPIAccessActionRead,
+				Configurable: false,
+			},
+			{
+				Name:         "用户管理.更新个人信息",
+				AccessAction: auth_mgt.CAPIAccessActionUpdate,
+				Configurable: false,
+			},
+		},
 
 		Developer: developer,
 		WhiteList: true,
@@ -93,7 +152,15 @@ func Enroll(author string) {
 		Fn: handler.HandleSelectLoginDomain,
 
 		Path: "/user/login-domain",
-		Name: "Select Login Domain",
+		Name: "选择可登录域",
+
+		ApiEntries: []*cmn.EndPointApiEntries{
+			{
+				Name:         "用户管理.登录管理.选择可登录域",
+				AccessAction: auth_mgt.CAPIAccessActionRead,
+				Configurable: false,
+			},
+		},
 
 		Developer: developer,
 		WhiteList: true,
@@ -109,7 +176,87 @@ func Enroll(author string) {
 		Fn: handler.HandleValidateUserToBeInsert,
 
 		Path: "/user/validate",
-		Name: "Validate User Info To be Insert",
+		Name: "验证用户信息",
+
+		ApiEntries: []*cmn.EndPointApiEntries{
+			{
+				Name:         "用户管理.验证用户信息",
+				AccessAction: auth_mgt.CAPIAccessActionRead,
+				Configurable: false,
+			},
+		},
+
+		Developer: developer,
+		WhiteList: true,
+
+		//DomainID 创建该API的账号归属的domain
+		DomainID: int64(cmn.CDomainSys),
+
+		//DefaultDomain 该API将默认授权给的用户
+		DefaultDomain: int64(cmn.CDomainSys),
+	})
+
+	_ = cmn.AddService(&cmn.ServeEndPoint{
+		Fn: handler.HandleLogout,
+
+		Path: "/user/logout",
+		Name: "用户登出",
+
+		ApiEntries: []*cmn.EndPointApiEntries{
+			{
+				Name:         "用户管理.登录管理.用户登出",
+				AccessAction: auth_mgt.CAPIAccessActionUpdate,
+				Configurable: false,
+			},
+		},
+
+		Developer: developer,
+		WhiteList: true,
+
+		//DomainID 创建该API的账号归属的domain
+		DomainID: int64(cmn.CDomainSys),
+
+		//DefaultDomain 该API将默认授权给的用户
+		DefaultDomain: int64(cmn.CDomainSys),
+	})
+
+	_ = cmn.AddService(&cmn.ServeEndPoint{
+		Fn: handler.HandleSendValidationCodeEmail,
+
+		Path: "/user/verification-code/email",
+		Name: "发送邮箱验证码",
+
+		ApiEntries: []*cmn.EndPointApiEntries{
+			{
+				Name:         "用户管理.登录管理.发送邮箱验证码",
+				AccessAction: auth_mgt.CAPIAccessActionCreate,
+				Configurable: false,
+			},
+		},
+
+		Developer: developer,
+		WhiteList: true,
+
+		//DomainID 创建该API的账号归属的domain
+		DomainID: int64(cmn.CDomainSys),
+
+		//DefaultDomain 该API将默认授权给的用户
+		DefaultDomain: int64(cmn.CDomainSys),
+	})
+
+	_ = cmn.AddService(&cmn.ServeEndPoint{
+		Fn: handler.HandleRegisterByEmail,
+
+		Path: "/user/register/email",
+		Name: "邮箱注册",
+
+		ApiEntries: []*cmn.EndPointApiEntries{
+			{
+				Name:         "用户管理.登录管理.邮箱注册",
+				AccessAction: auth_mgt.CAPIAccessActionCreate,
+				Configurable: false,
+			},
+		},
 
 		Developer: developer,
 		WhiteList: true,

@@ -27,6 +27,7 @@ require (
 	github.com/grpc-ecosystem/go-grpc-middleware v1.4.0
 	github.com/hashicorp/go-hclog v1.6.3
 	github.com/hashicorp/go-plugin v1.6.3
+	github.com/hibiken/asynq v0.25.1
 	github.com/jackc/pgx/v5 v5.7.5
 	github.com/jmoiron/sqlx v1.4.0
 	github.com/klauspost/compress v1.18.0
@@ -50,6 +51,7 @@ require (
 	github.com/valyala/fasthttp v1.64.0
 	github.com/vektah/gqlparser/v2 v2.5.30
 	github.com/vimeo/go-util v1.4.1
+	github.com/wneessen/go-mail v0.6.2
 	github.com/xuri/efp v0.0.1
 	go.etcd.io/bbolt v1.4.2
 	go.uber.org/zap v1.27.0
@@ -131,8 +133,10 @@ require (
 	github.com/prometheus/common v0.65.0 // indirect
 	github.com/prometheus/procfs v0.17.0 // indirect
 	github.com/richardlehane/msoleps v1.0.4 // indirect
+	github.com/robfig/cron/v3 v3.0.1 // indirect
 	github.com/sagikazarmark/locafero v0.9.0 // indirect
 	github.com/sergi/go-diff v1.4.0 // indirect
+	github.com/sony/gobreaker/v2 v2.2.0 // indirect
 	github.com/sosodev/duration v1.3.1 // indirect
 	github.com/sourcegraph/conc v0.3.0 // indirect
 	github.com/spf13/afero v1.14.0 // indirect

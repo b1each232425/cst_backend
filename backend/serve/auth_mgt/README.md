@@ -54,14 +54,14 @@ func main() {
 
 **函数签名：**
 ```go
-func CheckUserAPIAccessible(ctx context.Context, authority *Authority, apiPath string, accessMode string) (bool, error)
+func CheckUserAPIAccessible(ctx context.Context, authority *Authority, apiPath string, accessAction string) (bool, error)
 ```
 
 **参数说明：**
 - `ctx`: 上下文对象
 - `authority`: 用户权限信息，可以为 nil（会自动获取）
 - `apiPath`: API路径
-- `accessMode`: 访问模式（"read", "write", "full"）
+- `accessAction`: 访问操作（"full", "create", "read", "update", "delete"）
 
 **返回值：**
 
@@ -83,116 +83,24 @@ func main() {
     
     // 方式1：传入已获取的权限信息
     authority, _ := auth_mgt.GetUserAuthority(ctx)
-    accessible, err := auth_mgt.CheckUserAPIAccessible(ctx, authority, "/api/users", "read")
+    accessible, err := auth_mgt.CheckUserAPIAccessible(ctx, authority, "/api/users", auth_mgt.CAPIAccessActionRead)
     if err != nil {
         fmt.Printf("检查API访问权限失败: %v\n", err)
         return
     }
-    fmt.Printf("用户是否可访问 /api/users (读): %t\n", accessible)
+    fmt.Printf("用户是否可访问 /api/users (读取数据): %t\n", accessible)
     
     // 方式2：传入 nil，自动获取权限信息
-    accessible, err = auth_mgt.CheckUserAPIAccessible(ctx, nil, "/api/users", "write")
+    accessible, err = auth_mgt.CheckUserAPIAccessible(ctx, nil, "/api/users", auth_mgt.CAPIAccessActionCreate)
     if err != nil {
         fmt.Printf("检查API访问权限失败: %v\n", err)
         return
     }
-    fmt.Printf("用户是否可访问 /api/users (写): %t\n", accessible)
+    fmt.Printf("用户是否可访问 /api/users (添加数据): %t\n", accessible)
 }
 ```
 
-### 3. CheckUserAPIWritable
-
-**功能描述：** 检查用户对特定API是否有写权限。
-
-**函数签名：**
-```go
-func CheckUserAPIWritable(ctx context.Context, authority *Authority, apiPath string) (bool, error)
-```
-
-**参数说明：**
-- `ctx`: 上下文对象
-- `authority`: 用户权限信息
-- `apiPath`: API路径
-
-**返回值：**
-- `bool`: 是否有写权限
-- `error`: 错误信息
-
-**调用示例：**
-```go
-package main
-
-import (
-    "context"
-    "fmt"
-    "w2w.io/serve/auth_mgt"
-)
-
-func main() {
-    ctx := context.Background()
-    authority, _ := auth_mgt.GetUserAuthority(ctx)
-    
-    writable, err := auth_mgt.CheckUserAPIWritable(ctx, authority, "/api/users")
-    if err != nil {
-        fmt.Printf("检查API写权限失败: %v\n", err)
-        return
-    }
-    
-    if writable {
-        fmt.Println("用户对 /api/users 有写权限")
-    } else {
-        fmt.Println("用户对 /api/users 没有写权限")
-    }
-}
-```
-
-### 4. CheckUserAPIReadable
-
-**功能描述：** 检查用户对特定API是否有读权限。
-
-**函数签名：**
-```go
-func CheckUserAPIReadable(ctx context.Context, authority *Authority, apiPath string) (bool, error)
-```
-
-**参数说明：**
-- `ctx`: 上下文对象
-- `authority`: 用户权限信息
-- `apiPath`: API路径
-
-**返回值：**
-- `bool`: 是否有读权限
-- `error`: 错误信息
-
-**调用示例：**
-```go
-package main
-
-import (
-    "context"
-    "fmt"
-    "w2w.io/serve/auth_mgt"
-)
-
-func main() {
-    ctx := context.Background()
-    authority, _ := auth_mgt.GetUserAuthority(ctx)
-    
-    readable, err := auth_mgt.CheckUserAPIReadable(ctx, authority, "/api/users")
-    if err != nil {
-        fmt.Printf("检查API读权限失败: %v\n", err)
-        return
-    }
-    
-    if readable {
-        fmt.Println("用户对 /api/users 有读权限")
-    } else {
-        fmt.Println("用户对 /api/users 没有读权限")
-    }
-}
-```
-
-### 5. GetDomainRelationship
+### 3. GetDomainRelationship
 
 **功能描述：** 获得用户所在域与目标域的关系，判断目标域是用户所在域的什么关系域。
 
@@ -251,19 +159,21 @@ func main() {
 
 ```go
 type Authority struct {
-    Role            cmn.TDomain      // 用户角色信息
-    Domain          cmn.TDomain      // 用户所在域信息
-    APIs            []cmn.TVDomainAPI // 用户可访问的API列表
-    ReadableDomains []int64          // 用户可读域ID列表，可直接拼接到数据查询SQL
+    Role                cmn.TDomain         // 用户角色信息
+    Domain              cmn.TDomain         // 用户所在域信息
+    APIs                []cmn.TVDomainAPI   // 用户的API列表
+    AccessibleDomains   []int64             // 用户可访问域ID数组（可访问代表既可读也可编辑，查询数据时可以直接将该ID数组拼接到查询SQL，用户要编辑已有数据时需要先检查目标数据的域是否在这之中）
 }
 ```
 
 ## 常量定义
 
-### 访问模式常量
-- `CDataAccessModeRead`: 读权限
-- `CDataAccessModeWrite`: 写权限
-- `CDataAccessModeFull`: 完全权限
+### 访问操作常量
+- `CAPIAccessActionFull`: 完全访问
+- `CAPIAccessActionCreate`: 添加数据
+- `CAPIAccessActionRead`: 查询数据
+- `CAPIAccessActionUpdate`: 更新数据
+- `CAPIAccessActionDelete`: 删除数据
 
 ### 域关系常量
 - `CDomainRelationshipSelf`: 同一域
@@ -302,7 +212,7 @@ func handleUserRequest(ctx context.Context, apiPath string) {
     }
     
     // 2. 检查API访问权限
-    accessible, err := auth_mgt.CheckUserAPIAccessible(ctx, authority, apiPath, "read")
+    accessible, err := auth_mgt.CheckUserAPIAccessible(ctx, authority, apiPath, auth_mgt.CAPIAccessActionRead)
     if err != nil {
         fmt.Printf("检查API访问权限失败: %v\n", err)
         return
