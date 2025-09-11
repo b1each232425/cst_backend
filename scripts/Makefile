@@ -7,5 +7,4 @@ install-hooks:
 .PHONY: clean
 clean:
 	@echo "Cleaning up..."
-	rm -f .bin/check_commit_message
-	rm -f .git/hooks/commit-msg
+	rm -f .././.git/hooks/commit-msg
