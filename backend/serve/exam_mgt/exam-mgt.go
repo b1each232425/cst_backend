@@ -163,11 +163,29 @@ func Enroll(author string) {
 		Developer: developer,
 		WhiteList: true,
 
+		ApiEntries: []*cmn.EndPointApiEntries{
+			{
+				Name:         "考试管理.创建考试",
+				AccessAction: auth_mgt.CAPIAccessActionCreate,
+				Configurable: true,
+			},
+			{
+				Name:         "考试管理.编辑考试",
+				AccessAction: auth_mgt.CAPIAccessActionUpdate,
+				Configurable: true,
+			},
+			{
+				Name:         "考试管理.删除考试",
+				AccessAction: auth_mgt.CAPIAccessActionDelete,
+				Configurable: true,
+			},
+		},
+
 		//DomainID 创建该API的账号归属的domain
-		DomainID: int64(cmn.CDomainSys),
+		DomainID: int64(cmn.CDomainAssess),
 
 		//DefaultDomain 该API将默认授权给的用户
-		DefaultDomain: int64(cmn.CDomainSys),
+		DefaultDomain: int64(cmn.CDomainAssessAcademicAffairAdmin),
 	})
 
 	_ = cmn.AddService(&cmn.ServeEndPoint{
@@ -178,6 +196,14 @@ func Enroll(author string) {
 
 		Developer: developer,
 		WhiteList: true,
+
+		ApiEntries: []*cmn.EndPointApiEntries{
+			{
+				Name:         "考试管理.获取考试列表",
+				AccessAction: auth_mgt.CAPIAccessActionRead,
+				Configurable: true,
+			},
+		},
 
 		//DomainID 创建该API的账号归属的domain
 		DomainID: int64(cmn.CDomainSys),
@@ -207,6 +233,14 @@ func Enroll(author string) {
 
 		Path: "/exam/status",
 		Name: "examStatus",
+
+		ApiEntries: []*cmn.EndPointApiEntries{
+			{
+				Name:         "考试管理.更改考试状态",
+				AccessAction: auth_mgt.CAPIAccessActionUpdate,
+				Configurable: true,
+			},
+		},
 
 		Developer: developer,
 		WhiteList: true,
@@ -255,6 +289,19 @@ func Enroll(author string) {
 
 		Path: "/exam/file",
 		Name: "examFile",
+
+		ApiEntries: []*cmn.EndPointApiEntries{
+			{
+				Name:         "考试管理.上传考试附件",
+				AccessAction: auth_mgt.CAPIAccessActionCreate,
+				Configurable: true,
+			},
+			{
+				Name:         "考试管理.删除考试附件",
+				AccessAction: auth_mgt.CAPIAccessActionDelete,
+				Configurable: true,
+			},
+		},
 
 		Developer: developer,
 		WhiteList: true,
@@ -649,7 +696,7 @@ func getExamSessionIDs(ctx context.Context, examIDs ...int64) ([]int64, error) {
 }
 
 // 验证用户对考试的访问权限
-func validateUserExamPermission(ctx context.Context, userID, examID int64, domain string) (bool, error) {
+func validateUserExamPermission(ctx context.Context, userID, examID int64, domain string, assessibleDomains []int64) (bool, error) {
 	z.Info("---->" + cmn.FncName())
 
 	forceErr := ""
@@ -679,6 +726,8 @@ func validateUserExamPermission(ctx context.Context, userID, examID int64, domai
 	var exists bool
 	exists = false
 
+	z.Sugar().Infof("Validating access for user %d to exam %d in domain %s with assessible domains %v", userID, examID, domain, assessibleDomains)
+
 	// 根据角色查询是否能访问该考试
 	if strings.Contains(domain, "^student") {
 		err := conn.QueryRow(context.Background(), `
@@ -700,21 +749,15 @@ func validateUserExamPermission(ctx context.Context, userID, examID int64, domai
 			return false, err
 		}
 	} else if strings.Contains(domain, "^admin") || strings.Contains(domain, "^superAdmin") || strings.Contains(domain, "^teacher") {
-		domainPrefix := getDomainPrefix(domain)
 
 		err := conn.QueryRow(context.Background(), `
 		SELECT EXISTS(
-		SELECT 1
-		FROM t_exam_info ei
-		JOIN t_domain d ON ei.domain_id = d.id
-		WHERE ei.id = $1
-			AND (
-				d.domain LIKE $2 || '^%'       
-				OR 
-				d.domain LIKE $2 || '.%^%'     
-			)
+			SELECT 1
+			FROM t_exam_info ei
+			WHERE ei.id = $1
+			AND ei.domain_id = ANY($2)
 		)
-		`, examID, domainPrefix).Scan(&exists)
+		`, examID, assessibleDomains).Scan(&exists)
 		if forceErr == "conn.QueryRow" {
 			err = fmt.Errorf("force error: %s", forceErr)
 		}
@@ -1221,6 +1264,7 @@ func exam(ctx context.Context) {
 	}
 
 	var authority *auth_mgt.Authority
+	z.Info("获取用户权限")
 	authority, q.Err = auth_mgt.GetUserAuthority(ctx)
 	if forceErr == "auth_mgt.GetUserAuthority" {
 		q.Err = fmt.Errorf("强制获取用户权限错误")
@@ -1230,11 +1274,15 @@ func exam(ctx context.Context) {
 		return
 	}
 
-	// 当前用户登录选择的域
-	userRole := authority.Role.ID.Int64
 	userDomain := authority.Role.Domain
-
 	currentTime := time.Now().UnixMilli()
+
+	_, creatable, editable, deletable, err := getApiPermissions(ctx, q.Ep.Path, authority)
+	if err != nil {
+		q.Err = err
+		q.RespErr()
+		return
+	}
 
 	method := strings.ToLower(q.R.Method)
 	switch method {
@@ -1242,10 +1290,8 @@ func exam(ctx context.Context) {
 		// 创建考试
 
 		// 检查是否具备创建考试的权限
-		var result bool
-		result = validateUserForExamCreateOrUpdate(userDomain)
-		if !result {
-			q.Err = fmt.Errorf("用户没有创建考试的权限")
+		if !creatable {
+			q.Err = fmt.Errorf("无权限创建考试")
 			z.Error(q.Err.Error())
 			q.RespErr()
 			return
@@ -1261,7 +1307,7 @@ func exam(ctx context.Context) {
 				$1, $2, $3, $4, $5, $6
 			) RETURNING id
 		`,
-			userID, currentTime, userID, currentTime, "14", userRole,
+			userID, currentTime, userID, currentTime, "14", authority.Domain.ID,
 		).Scan(&newExamID)
 		if forceErr == "tx.QueryRow1" {
 			q.Err = fmt.Errorf("强制查询错误")
@@ -1326,7 +1372,7 @@ func exam(ctx context.Context) {
 
 		// 验证用户对考试的访问权限
 		var hasPermission bool
-		hasPermission, q.Err = validateUserExamPermission(ctx, userID, examID, userDomain)
+		hasPermission, q.Err = validateUserExamPermission(ctx, userID, examID, userDomain, authority.AccessibleDomains)
 		if q.Err != nil {
 			q.RespErr()
 			return
@@ -1597,17 +1643,6 @@ func exam(ctx context.Context) {
 			return
 		}
 
-		// 检查是否具备更新考试的权限
-		var result bool
-		result = validateUserForExamCreateOrUpdate(userDomain)
-
-		if !result {
-			q.Err = fmt.Errorf("用户没有考试相关的权限")
-			z.Error(q.Err.Error())
-			q.RespErr()
-			return
-		}
-
 		var qry cmn.ReqProto
 		q.Err = json.Unmarshal(buf, &qry)
 		if forceErr == "json.Unmarshal" {
@@ -1670,6 +1705,21 @@ func exam(ctx context.Context) {
 		// 检查考试状态是否允许更新(只有处于未发布、待开始和临时状态的才允许更新)
 		if nowStatus != "00" && nowStatus != "02" && nowStatus != "14" {
 			q.Err = fmt.Errorf("考试状态异常: %s", nowStatus)
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		// 检查是否具备创建/更新考试的权限
+		if nowStatus == "14" && !creatable {
+			q.Err = fmt.Errorf("无权限创建考试")
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		if nowStatus != "14" && !editable {
+			q.Err = fmt.Errorf("无权限更新考试")
 			z.Error(q.Err.Error())
 			q.RespErr()
 			return
@@ -2478,6 +2528,13 @@ func exam(ctx context.Context) {
 		return
 
 	case "delete":
+		if !deletable {
+			q.Err = fmt.Errorf("当前用户无权删除考试")
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
 		// 读取请求体
 		var buf []byte
 		buf, q.Err = io.ReadAll(q.R.Body)
@@ -2911,25 +2968,20 @@ func examList(ctx context.Context) {
 			args = append(args, userID)
 			argIdx++
 		} else {
-			// 其他角色只能查看本人所在域的考试
-			domainPrefix := getDomainPrefix(userDomain)
 
+			// 其他角色只能查看本人能访问到的域的考试
 			conditionBuilder.WriteString(fmt.Sprintf(`
-			AND (
-				d.domain LIKE $%d || '^%%'       
-				OR 
-				d.domain LIKE $%d || '.%%^%%'     
-			)`, argIdx, argIdx+1))
-			args = append(args, domainPrefix, domainPrefix)
-			argIdx += 2
+			AND domain_id = ANY($%d)`, argIdx))
+			args = append(args, authority.AccessibleDomains)
+			argIdx += 1
 		}
 
 		var countSQL string
 
 		if strings.Contains(userDomain, "^student") {
-			countSQL = "SELECT COUNT(ei.id) FROM t_exam_info ei LEFT JOIN t_domain d ON ei.domain_id = d.id WHERE ei.status NOT IN ('12', '14', '16')" + conditionBuilder.String()
+			countSQL = "SELECT COUNT(ei.id) FROM t_exam_info ei WHERE ei.status NOT IN ('12', '14', '16')" + conditionBuilder.String()
 		} else {
-			countSQL = "SELECT COUNT(ei.id) FROM t_exam_info ei LEFT JOIN t_domain d ON ei.domain_id = d.id WHERE ei.status NOT IN ('12', '14')" + conditionBuilder.String()
+			countSQL = "SELECT COUNT(ei.id) FROM t_exam_info ei WHERE ei.status NOT IN ('12', '14')" + conditionBuilder.String()
 		}
 
 		var rowCount int64
@@ -3087,8 +3139,6 @@ func examList(ctx context.Context) {
 			LEFT JOIN t_exam_session es ON 
 				ei.id = es.exam_id AND 
 				es.status != '14' 
-			LEFT JOIN t_domain d ON
-				ei.domain_id = d.id
 			WHERE 
 				ei.status NOT IN ('12','14') ` + conditionBuilder.String() + ` 
 			ORDER BY 
@@ -3247,7 +3297,7 @@ func examinee(ctx context.Context) {
 
 		// 验证用户对考试的访问权限
 		var hasPermission bool
-		hasPermission, q.Err = validateUserExamPermission(ctx, userID, examID, userDomain)
+		hasPermission, q.Err = validateUserExamPermission(ctx, userID, examID, userDomain, authority.AccessibleDomains)
 		if q.Err != nil {
 			q.RespErr()
 			return
@@ -3379,7 +3429,7 @@ func examLock(ctx context.Context) {
 	}
 
 	var hasPermission bool
-	hasPermission, q.Err = validateUserExamPermission(ctx, userID, examID, userDomain)
+	hasPermission, q.Err = validateUserExamPermission(ctx, userID, examID, userDomain, authority.AccessibleDomains)
 	if forceErr == "validateUserExamPermission" {
 		q.Err = fmt.Errorf("强制验证用户考试权限错误")
 	}
@@ -3518,8 +3568,15 @@ func examStatus(ctx context.Context) {
 		// 当前用户登录选择的域
 		userDomain := authority.Role.Domain
 
-		if strings.Contains(userDomain, "^student") {
-			q.Err = fmt.Errorf("无权限访问")
+		var editable bool
+		editable, q.Err = auth_mgt.CheckUserAPIAccessible(ctx, authority, q.Ep.Path, auth_mgt.CAPIAccessActionUpdate)
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			return
+		}
+
+		if !editable {
+			q.Err = fmt.Errorf("用户无权修改考试状态")
 			z.Error(q.Err.Error())
 			q.RespErr()
 			return
@@ -4329,18 +4386,9 @@ func examFile(ctx context.Context) {
 
 	// 当前用户登录选择的域
 	userRole := authority.Role.ID.Int64
-	userDomain := authority.Role.Domain
-
-	// 检查是否具备更新考试的权限
-	var result bool
-	result = validateUserForExamCreateOrUpdate(userDomain)
-
-	if forceErr == "examFile.NoPermission" {
-		result = false
-	}
-	if !result {
-		q.Err = fmt.Errorf("用户没有考试相关的权限")
-		z.Error(q.Err.Error())
+	_, creatable, _, deletable, err := getApiPermissions(ctx, q.Ep.Path, authority)
+	if err != nil {
+		q.Err = err
 		q.RespErr()
 		return
 	}
@@ -4380,6 +4428,13 @@ func examFile(ctx context.Context) {
 	method := strings.ToLower(q.R.Method)
 	switch method {
 	case "post":
+		if !creatable {
+			q.Err = fmt.Errorf("无权限上传考试附件")
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
 		// 更新考试附件
 		var buf []byte
 		buf, q.Err = io.ReadAll(q.R.Body)
@@ -4597,6 +4652,12 @@ func examFile(ctx context.Context) {
 		return
 
 	case "delete":
+		if !deletable {
+			q.Err = fmt.Errorf("无权限删除考试附件")
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
 
 		var buf []byte
 		buf, q.Err = io.ReadAll(q.R.Body)
