@@ -40,6 +40,13 @@ func main() {
 		os.Exit(1)
 	}
 
+	// 检查是否为合并分支格式
+    mergeRe := regexp.MustCompile(`^Merge branch .* into .*$`)
+    if mergeRe.MatchString(commitMsg) {
+        fmt.Println("Commit message is valid (merge branch detected)!")
+        os.Exit(0)
+    }
+
 	// 验证提交信息格式
 	// 格式：<type>(<scope>): <description>
 	re := regexp.MustCompile(`^(\w+)(\(.*\))?: (.*)$`)
