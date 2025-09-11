@@ -194,18 +194,22 @@ func Enroll(author string) {
 
 func InitAIMarkTaskLimiterAndBreaker() {
 	maxConcurrency := viper.GetInt("chatModel.maxConcurrency")
-	aiMarkTaskLimiter = cmn.NewRateLimiterTaskRunner(int64(maxConcurrency), 5, 10)
+	if maxConcurrency <= 0 {
+		z.Error("从配置文件获取chatModel.maxConcurrency失败")
+		maxConcurrency = 50
+	}
+	aiMarkTaskLimiter = cmn.NewRateLimiterTaskRunner(int64(maxConcurrency), 20, 40)
 
 	st := gobreaker.Settings{
-		Name:         "HTTP GET",
-		MaxRequests:  3,
-		Timeout:      60 * time.Second,
+		Name:         "AI Mark breaker",
+		MaxRequests:  10,
+		Timeout:      15 * time.Second,
 		Interval:     24 * time.Hour,
 		BucketPeriod: 1 * time.Hour,
 		ReadyToTrip: func(counts gobreaker.Counts) bool {
 			failureRatio := float64(counts.TotalFailures) / float64(counts.Requests)
 			// 熔断条件：请求数 >= 3 && (失败率 >= 50% || 连续失败次数 >= 3)
-			return counts.Requests >= 3 && (failureRatio >= 0.5 || counts.ConsecutiveFailures >= 3)
+			return counts.Requests >= 5 && (failureRatio >= 0.5 || counts.ConsecutiveFailures >= 3)
 		},
 		// 监控熔断状态变化。
 		OnStateChange: func(name string, from gobreaker.State, to gobreaker.State) {
@@ -1111,7 +1115,7 @@ func MarkObjectiveQuestionAnswers(ctx context.Context, cond QueryCondition) (err
 		markerInfo.MarkMode = "04"
 	}
 
-	if cond.PracticeSubmissionID > 0 {
+	if cond.PracticeSubmissionID > 0 && cond.PracticeWrongSubmissionID <= 0 {
 		// 查询单个练习学生
 		markerInfo.MarkMode = "12"
 	}
@@ -1553,12 +1557,41 @@ func GenerateAIMarkTask(ctx context.Context, cond QueryCondition, questions []*c
 
 	// 设置唯一性约束：24小时内，不允许重复入队
 	opts := []asynq.Option{
-		asynq.MaxRetry(3),
+		asynq.MaxRetry(5),
 		asynq.Unique(24 * time.Hour),
-		asynq.Timeout(3 * 24 * time.Hour),
+		asynq.Timeout(5 * time.Minute),
 	}
 
 	for _, aiMarkRequest := range aiMarkRequests {
+		//	taskPayload := cmn.TaskPayload{
+		//		Type: TaskTypeAIMarkRequest,
+		//		Data: AIMarkTaskPayLoad{
+		//			AIMarkRequest:      aiMarkRequest,
+		//			QueryCondition:     cond,
+		//			UniqueTaskCountKey: uniqueTaskCountKey,
+		//		},
+		//		Timestamp: time.Now().Unix(),
+		//	}
+		//
+		//	var payloadBytes []byte
+		//	payloadBytes, err = json.Marshal(taskPayload)
+		//	if err != nil {
+		//		err = fmt.Errorf("Failed to marshal task payload: %v", err)
+		//		z.Sugar().Error(err.Error())
+		//		return err
+		//	}
+		//
+		//	task := asynq.NewTask(string(TaskTypeAIMarkRequest), payloadBytes, opts...)
+		//
+		//	h := TaskMiddleware(HandleAIMarkTask)
+		//	err = h(ctx, task)
+		//	if err != nil {
+		//		err = fmt.Errorf("failed to handle ai mark task: %v", err)
+		//		z.Sugar().Error(err.Error())
+		//		return
+		//	}
+
+		// TODO 原实现，不够完善
 		err = cmn.SendTask(TaskTypeAIMarkRequest, AIMarkTaskPayLoad{
 			AIMarkRequest:      aiMarkRequest,
 			QueryCondition:     cond,
@@ -1577,13 +1610,18 @@ func TaskMiddleware(handler func(ctx context.Context, task *asynq.Task) error) f
 	return func(ctx context.Context, task *asynq.Task) error {
 		limiter := GetAIMarkTaskLimiter()
 
+		z.Info("waiting limiter")
+
 		err, releaseFunc := limiter.Wait(ctx)
+		if releaseFunc != nil {
+			defer releaseFunc()
+		}
 		if err != nil {
 			// 获取信号量失败，直接返回错误
 			return err
 		}
+		z.Info("limiter waiting over")
 		// 释放信号量
-		defer releaseFunc()
 
 		cb := GetAIMarkTaskCB()
 
@@ -1623,6 +1661,8 @@ func HandleAIMarkTask(ctx context.Context, task *asynq.Task) error {
 		z.Error(err.Error())
 		return err
 	}
+
+	z.Sugar().Infof("HandleAIMarkTask: %+v", payloadData.UniqueTaskCountKey)
 
 	if payloadData.UniqueTaskCountKey == "" {
 		err = fmt.Errorf("任务payload中的任务计数键为空")

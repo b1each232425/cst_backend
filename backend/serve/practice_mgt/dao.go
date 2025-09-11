@@ -1472,7 +1472,7 @@ func EnterPracticeGetPaperDetails(ctx context.Context, tx pgx.Tx, pid int64, uid
 				ExamPaperID:          ps.ExamPaperID.Int64,
 				Category:             examPaper.PaperCategory.Practice,
 				PracticeSubmissionID: []int64{pSubmissionID},
-				IsOptionRandom:       true,
+				IsOptionRandom:       false,
 				IsQuestionRandom:     true,
 				Attempt:              newAttempt,
 			}
@@ -1507,7 +1507,7 @@ func EnterPracticeGetPaperDetails(ctx context.Context, tx pgx.Tx, pid int64, uid
 				ExamPaperID:          p.ExamPaperID.Int64,
 				Category:             examPaper.PaperCategory.Practice,
 				PracticeSubmissionID: []int64{pSubmissionID},
-				IsOptionRandom:       true,
+				IsOptionRandom:       false,
 				IsQuestionRandom:     true,
 				Attempt:              1,
 			}

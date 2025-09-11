@@ -38,7 +38,7 @@ var TestedStudentAnswers = [][]*StudentAnswer{
 			StudentID: 2205,
 			Index:     1,
 			Answer: `
-					1. 独立式组网：每个无线接入点单独配置和管理。
+					1. 独立式（Fat AP）组网：每个无线接入点单独配置和管理。
 					  - 优点：简单，成本低。
 					  - 缺点：管理复杂。
 					2. 控制器集中式（Fit AP + AC）组网：AP受控于无线控制器。
