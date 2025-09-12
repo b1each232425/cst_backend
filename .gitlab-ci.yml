@@ -107,7 +107,7 @@ deploy-devmentor-be:
   stage: deploy
   only:
     refs:
-      - /^v\d+\.\d+\.\d+$/
+      - develop
 
   when: manual
 
@@ -124,7 +124,7 @@ deploy-3min-pre-release-be:
   stage: deploy
   only:
     refs:
-      - /^v\d+\.\d+\.\d+$/
+      - /^release/v\d+\.\d+\.\d+.*$/
 
   when: manual
 
