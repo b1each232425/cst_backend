@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"w2w.io/cmn"
@@ -20,6 +21,31 @@ const (
 type copyInfo struct {
 	Sql   string
 	Table string
+}
+
+// generateAccessToken 生成访问令牌
+func generateAccessToken(userID int64, userToken string) (accessToken string) {
+	return fmt.Sprintf("%d-%s", userID, userToken)
+}
+
+// parseAccessToken 解析访问令牌
+func parseAccessToken(accessToken string) (userID int64, userToken string, err error) {
+
+	parts := strings.SplitN(accessToken, "-", 2)
+	if len(parts) != 2 {
+		err = fmt.Errorf("invalid access token")
+		z.Error(err.Error())
+		return
+	}
+
+	userID, err = strconv.ParseInt(parts[0], 10, 64)
+	if err != nil {
+		z.Error(err.Error())
+		return
+	}
+
+	userToken = parts[1]
+	return
 }
 
 // generateExportScript 生成导出脚本文件

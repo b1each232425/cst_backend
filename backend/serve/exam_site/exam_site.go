@@ -75,10 +75,10 @@ var (
 )
 
 type sysUserInfo struct {
-	Name        string
-	ID          int64
-	Session     string
-	AccessToken string
+	Name      string
+	ID        int64
+	Session   string
+	UserToken string
 }
 
 type (
@@ -94,7 +94,6 @@ type examSiteInfo struct {
 	Admin       int64       `json:"admin" validate:"required"`
 	AdminName   null.String `json:"adminName"`
 	RoomCount   null.Int    `json:"roomCount"`
-	Account     null.String `json:"account"`
 	AccessToken null.String `json:"accessToken"`
 }
 
@@ -155,8 +154,23 @@ func Enroll(author string) {
 
 		ApiEntries: []*cmn.EndPointApiEntries{
 			{
+				Name:         "考点管理.获取考点信息",
+				AccessAction: auth_mgt.CAPIAccessActionRead,
+				Configurable: true,
+			},
+			{
 				Name:         "考点管理.创建考点",
 				AccessAction: auth_mgt.CAPIAccessActionCreate,
+				Configurable: true,
+			},
+			{
+				Name:         "考点管理.编辑考点",
+				AccessAction: auth_mgt.CAPIAccessActionUpdate,
+				Configurable: true,
+			},
+			{
+				Name:         "考点管理.删除考点",
+				AccessAction: auth_mgt.CAPIAccessActionDelete,
 				Configurable: true,
 			},
 		},
@@ -284,15 +298,13 @@ func login(ctx context.Context) (info sysUserInfo) {
 		accessToken = viper.GetString("examSiteServerSync.accessToken")
 	}
 
-	info.Name = sysUser
-
-	info.AccessToken = accessToken
+	info.ID, info.UserToken, q.Err = parseAccessToken(accessToken)
 
 	cli := fasthttp.Client{}
 
-	reqBody := []byte(fmt.Sprintf(`{ "name": "%s", "cert": "%s" }`,
-		info.Name,
-		info.AccessToken,
+	reqBody := []byte(fmt.Sprintf(`{ "name": "%d", "cert": "%s" }`,
+		info.ID,
+		info.UserToken,
 	))
 
 	req := fasthttp.AcquireRequest()
@@ -381,7 +393,7 @@ func Pull(ctx context.Context, retryCount int, forceRenew bool) {
 
 	defer func() {
 
-		if (q.Err == nil || retryCount <= 0) && !forceRenew {
+		if (q.Err == nil || retryCount <= 0) {
 			return
 		}
 
@@ -1148,6 +1160,64 @@ func getApiPermissions(ctx context.Context, apiPath string) (readable, creatable
 	return
 }
 
+// createSysUser 创建考点服务器系统账号
+func createSysUser(ctx context.Context, tx *sql.Tx, siteID int64) (sysUserID int64, accessToken string, err error) {
+
+	q := cmn.GetCtxValue(ctx)
+
+	officialName := fmt.Sprintf("考点%d", siteID)
+
+	var account, userToken string
+
+	b1 := make([]byte, 4)
+
+	b2 := make([]byte, 32)
+
+	// 该Read从不返回错误，并且始终填充 b, 一旦发生错误就直接Panic， 所以这里就不需要接收err
+	rand.Read(b1)
+
+	rand.Read(b2)
+
+	account = fmt.Sprintf("exam-site-%x", b1)
+
+	userToken = fmt.Sprintf("%x", b2)
+
+	// 注册考点服务器系统账号，用于给考点服务器与中心服务器进行http通信验证
+	sqlStr := fmt.Sprintf(`INSERT INTO t_user (category, type, official_name, account, user_token, creator, role)
+	VALUES ('sys^admin', '08', $1, $2, crypt($3,gen_salt('bf')), 1000, %d)
+	RETURNING 
+		id`, cmn.CDomainAssessExamSite)
+
+	var stmt1 *sql.Stmt
+	stmt1, err = tx.Prepare(sqlStr)
+	if err != nil || (cmn.InDebugMode && q.Tag["prepareCreateSysUserErr"] != nil) {
+
+		if err == nil {
+			err = q.Tag["prepareCreateSysUserErr"].(error)
+		}
+
+		z.Error(err.Error())
+		return
+	}
+
+	defer stmt1.Close()
+
+	err = stmt1.QueryRowContext(ctx, officialName, account, userToken).Scan(&sysUserID)
+	if err != nil || (cmn.InDebugMode && q.Tag["sqlExecCreateSysUserErr"] != nil) {
+
+		if err == nil {
+			err = q.Tag["sqlExecCreateSysUserErr"].(error)
+		}
+
+		z.Error(err.Error())
+		return
+	}
+
+	accessToken = generateAccessToken(sysUserID, userToken)
+
+	return
+}
+
 /* 考点基础业务 */
 // oooooooooo.
 // `888'   `Y8b
@@ -1247,6 +1317,7 @@ func examSite(ctx context.Context) {
 		z.Warn(q.Err.Error())
 	}
 
+MethodSwitch:
 	switch q.R.Method {
 
 	case "GET":
@@ -1279,67 +1350,24 @@ func examSite(ctx context.Context) {
 			break
 		}
 
-		officialName := fmt.Sprintf("%s考点", info.Name)
-
-		var account, userToken string
-
-		b1 := make([]byte, 4)
-
-		b2 := make([]byte, 32)
-
-		// 该Read从不返回错误，并且始终填充 b, 一旦发生错误就直接Panic， 所以这里就不需要接收err
-		rand.Read(b1)
-
-		rand.Read(b2)
-
-		account = fmt.Sprintf("exam-site-%x", b1)
-
-		userToken = fmt.Sprintf("%x", b2)
-
-		// 注册考点服务器系统账号，用于给考点服务器与中心服务器进行http通信验证
-		sqlStr := fmt.Sprintf(`INSERT INTO t_user (category, type, official_name, account, user_token, creator, role)
-		VALUES ('sys^admin', '08', $1, $2, crypt($3,gen_salt('bf')), 1000, %d)
-		RETURNING 
-			id`, cmn.CDomainAssessExamSite)
-
-		var stmt1 *sql.Stmt
-		stmt1, q.Err = tx.Prepare(sqlStr)
-		if q.Err != nil || (cmn.InDebugMode && q.Tag["prepareErr1"] != nil) {
-
-			if q.Err == nil {
-				q.Err = q.Tag["prepareErr1"].(error)
-			}
-
-			z.Error(q.Err.Error())
-			break
-		}
-
-		defer stmt1.Close()
-
 		var sysUserID int64
-
-		q.Err = stmt1.QueryRowContext(ctx, officialName, account, userToken).Scan(&sysUserID)
-		if q.Err != nil || (cmn.InDebugMode && q.Tag["sqlExecErr1"] != nil) {
-
-			if q.Err == nil {
-				q.Err = q.Tag["sqlExecErr1"].(error)
-			}
-
-			z.Error(q.Err.Error())
+		var accessToken string
+		sysUserID, accessToken, q.Err = createSysUser(ctx, tx, info.ID.Int64)
+		if q.Err != nil {
 			break
 		}
 
 		// 添加考点信息
-		sqlStr = `INSERT INTO t_exam_site (name, address, server_host, admin, sys_user, creator, domain_id)
+		sqlStr := `INSERT INTO t_exam_site (name, address, server_host, admin, sys_user, creator, domain_id)
 		VALUES ($1, $2, $3, $4, $5, $6, $7)
 		`
 
 		var stmt2 *sql.Stmt
 		stmt2, q.Err = tx.Prepare(sqlStr)
-		if q.Err != nil || (cmn.InDebugMode && q.Tag["prepareErr2"] != nil) {
+		if q.Err != nil || (cmn.InDebugMode && q.Tag["prepareErr"] != nil) {
 
 			if q.Err == nil {
-				q.Err = q.Tag["prepareErr2"].(error)
+				q.Err = q.Tag["prepareErr"].(error)
 			}
 
 			z.Error(q.Err.Error())
@@ -1349,18 +1377,17 @@ func examSite(ctx context.Context) {
 		defer stmt2.Close()
 
 		_, q.Err = stmt2.ExecContext(ctx, info.Name, info.Address, info.ServerHost, info.Admin, sysUserID, userID, authority.Domain.ID.Int64)
-		if q.Err != nil || (cmn.InDebugMode && q.Tag["sqlExecErr2"] != nil) {
+		if q.Err != nil || (cmn.InDebugMode && q.Tag["sqlExecErr"] != nil) {
 
 			if q.Err == nil {
-				q.Err = q.Tag["sqlExecErr2"].(error)
+				q.Err = q.Tag["sqlExecErr"].(error)
 			}
 
 			z.Error(q.Err.Error())
 			break
 		}
 
-		info.Account = null.StringFrom(account)
-		info.AccessToken = null.StringFrom(userToken)
+		info.AccessToken = null.StringFrom(accessToken)
 
 		q.Msg.Data, q.Err = json.Marshal(info)
 		if q.Err != nil || (cmn.InDebugMode && q.Tag["jsonMarshalErr"] != nil) {
@@ -1377,6 +1404,216 @@ func examSite(ctx context.Context) {
 
 		if !editable {
 			q.Err = fmt.Errorf("当前用户没有权限修改该数据")
+			z.Error(q.Err.Error())
+			break
+		}
+
+		var editInfo struct {
+			examSiteInfo
+			ResetAccessToken bool `json:"resetAccessToken"`
+		}
+
+		q.Err = json.Unmarshal(req.Data, &editInfo)
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			break
+		}
+
+		if editInfo.ID.Int64 <= 0 {
+			q.Err = fmt.Errorf("考点ID必须大于0, 当前传入: %d", editInfo.ID.Int64)
+			z.Error(q.Err.Error())
+			break
+		}
+
+		values := []interface{}{
+			userID,
+			editInfo.ID.Int64,
+		}
+
+		sets := []string{
+			"updated_by=$1",
+		}
+
+		filters := []string{
+			"id=$2",
+		}
+
+		domains := []string{
+			"creator=$1",
+		}
+		for _, d := range authority.AccessibleDomains {
+			domains = append(domains, fmt.Sprintf("domain_id=%d", d))
+		}
+
+		filters = append(filters, fmt.Sprintf("(%s)", strings.Join(domains, " OR ")))
+
+		fieldMap := map[string]interface{}{
+			"name":        editInfo.Name,
+			"address":     editInfo.Address,
+			"server_host": editInfo.ServerHost.String,
+			"admin":       editInfo.Admin,
+		}
+
+		for field, value := range fieldMap {
+			if v, ok := value.(string); ok && v == "" {
+				continue
+			}
+
+			if v, ok := value.(int64); ok && v <= 0 {
+				continue
+			}
+
+			sets = append(sets, fmt.Sprintf("%s=$%d", field, len(values)+1))
+			values = append(values, value)
+		}
+
+		sqlStr := fmt.Sprintf(`UPDATE t_exam_site SET %s WHERE %s`, strings.Join(sets, ", "), strings.Join(filters, " AND "))
+
+		var stmt *sql.Stmt
+		stmt, q.Err = tx.Prepare(sqlStr)
+		if q.Err != nil || (cmn.InDebugMode && q.Tag["prepareErr"] != nil) {
+
+			if q.Err == nil {
+				q.Err = q.Tag["prepareErr"].(error)
+			}
+
+			z.Error(q.Err.Error())
+			break
+		}
+
+		defer stmt.Close()
+
+		var r sql.Result
+		r, q.Err = stmt.ExecContext(ctx, values...)
+		if q.Err != nil || (cmn.InDebugMode && q.Tag["sqlExecErr"] != nil) {
+
+			if q.Err == nil {
+				q.Err = q.Tag["sqlExecErr"].(error)
+			}
+
+			z.Error(q.Err.Error())
+			break
+		}
+
+		var ra int64
+		ra, q.Err = r.RowsAffected()
+		if q.Err != nil || (cmn.InDebugMode && q.Tag["rowsAffectedErr"] != nil) {
+
+			if q.Err == nil {
+				q.Err = q.Tag["rowsAffectedErr"].(error)
+			}
+
+			z.Error(q.Err.Error())
+			break
+		}
+
+		if ra == 0 {
+			q.Err = fmt.Errorf(`无权编辑该考点或该考点不存在(id: %d)`, editInfo.ID.Int64)
+			z.Error(q.Err.Error())
+			break
+		}
+
+		newToken := ""
+
+		for editInfo.ResetAccessToken {
+			b1 := make([]byte, 32)
+			rand.Read(b1)
+			newToken = fmt.Sprintf("%x", b1)
+
+			sqlStr = `UPDATE t_user SET user_token=crypt($1,gen_salt('bf')), updated_by=$2 WHERE id=(SELECT sys_user FROM t_exam_site WHERE id=$3)`
+
+			var stmt *sql.Stmt
+			stmt, q.Err = tx.Prepare(sqlStr)
+			if q.Err != nil || (cmn.InDebugMode && q.Tag["prepareErr2"] != nil) {
+				if q.Err == nil {
+					q.Err = q.Tag["prepareErr2"].(error)
+				}
+
+				z.Error(q.Err.Error())
+				break MethodSwitch
+			}
+
+			defer stmt.Close()
+
+			r, q.Err = stmt.ExecContext(ctx, newToken, userID, editInfo.ID.Int64)
+			if q.Err != nil || (cmn.InDebugMode && q.Tag["sqlExecErr2"] != nil) {
+				if q.Err == nil {
+					q.Err = q.Tag["sqlExecErr2"].(error)
+				}
+
+				z.Error(q.Err.Error())
+				break MethodSwitch
+			}
+
+			ra, q.Err = r.RowsAffected()
+			if q.Err != nil || (cmn.InDebugMode && q.Tag["rowsAffectedErr2"] != nil) {
+				if q.Err == nil {
+					q.Err = q.Tag["rowsAffectedErr2"].(error)
+				}
+
+				z.Error(q.Err.Error())
+				break MethodSwitch
+			}
+
+			newToken = generateAccessToken(editInfo.ID.Int64, newToken)
+
+			if ra != 0 {
+				break
+			}
+
+			// 考点原有的系统账号被删除, 重新创建一个
+			var sysUserID int64
+			sysUserID, newToken, q.Err = createSysUser(ctx, tx, editInfo.ID.Int64)
+			if q.Err != nil {
+				break MethodSwitch
+			}
+
+			sqlStr = `UPDATE t_exam_site SET sys_user=$1, updated_by=$2 WHERE id=$3`
+
+			stmt, q.Err = tx.Prepare(sqlStr)
+			if q.Err != nil || (cmn.InDebugMode && q.Tag["prepareErr3"] != nil) {
+				if q.Err == nil {
+					q.Err = q.Tag["prepareErr3"].(error)
+				}
+
+				z.Error(q.Err.Error())
+				break MethodSwitch
+			}
+
+			defer stmt.Close()
+
+			r, q.Err = stmt.ExecContext(ctx, sysUserID, userID, editInfo.ID.Int64)
+			if q.Err != nil || (cmn.InDebugMode && q.Tag["sqlExecErr3"] != nil) {
+				if q.Err == nil {
+					q.Err = q.Tag["sqlExecErr3"].(error)
+				}
+
+				z.Error(q.Err.Error())
+				break MethodSwitch
+			}
+
+			ra, q.Err = r.RowsAffected()
+			if q.Err != nil || (cmn.InDebugMode && q.Tag["rowsAffectedErr3"] != nil) {
+				if q.Err == nil {
+					q.Err = q.Tag["rowsAffectedErr3"].(error)
+				}
+
+				z.Error(q.Err.Error())
+				break MethodSwitch
+			}
+
+			break
+		}
+
+		editInfo.AccessToken = null.StringFrom(newToken)
+
+		q.Msg.Data, q.Err = json.Marshal(editInfo)
+		if q.Err != nil || (cmn.InDebugMode && q.Tag["jsonMarshalErr"] != nil) {
+
+			if q.Err == nil {
+				q.Err = q.Tag["jsonMarshalErr"].(error)
+			}
+
 			z.Error(q.Err.Error())
 			break
 		}
