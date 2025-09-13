@@ -4,11 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
+	"time"
+
 	"github.com/jackc/pgx/v5"
 	"github.com/jmoiron/sqlx/types"
 	"github.com/lib/pq"
-	"strings"
-	"time"
 	"w2w.io/cmn"
 	"w2w.io/null"
 )
@@ -117,7 +118,7 @@ func QueryExamList(ctx context.Context, req QueryMarkingListReq) (examList []Exa
 						FROM t_exam_info 
 						WHERE status != '12' AND status != '14' AND status != '16' %s -- 拼接对exam_info的where条件
 						ORDER BY create_time DESC, id DESC
-						LIMIT $1 OFFSET $2  
+						  
 					) 
 					SELECT 
 						e.id AS exam_id, 
@@ -152,6 +153,7 @@ func QueryExamList(ctx context.Context, req QueryMarkingListReq) (examList []Exa
 					WHERE es.status IS NOT NULL AND es.status != '14' %s -- 动态插入where条件
 					ORDER BY
 						e.create_time DESC, e.id DESC, es.start_time ASC 
+						LIMIT $1 OFFSET $2
 					`
 
 	getExamCountQuery := `	SELECT COUNT(DISTINCT es.exam_id) AS total_exams
@@ -206,7 +208,7 @@ func QueryExamList(ctx context.Context, req QueryMarkingListReq) (examList []Exa
 		argIdx          = 1
 	)
 	args = append(args, req.Limit, req.Offset)
-	argIdx = 3
+	argIdx += 2
 
 	if req.ExamName != "" {
 		examWhereClause = fmt.Sprintf(" AND name ILIKE $%d ", argIdx)
@@ -225,7 +227,7 @@ func QueryExamList(ctx context.Context, req QueryMarkingListReq) (examList []Exa
 		// 普通批阅员，非管理员
 		whereClause = append(whereClause, fmt.Sprintf(" AND mi.mark_teacher_id = $%d ", argIdx))
 		args = append(args, teacherID)
-		argIdx++
+		argIdx+=2
 	}
 
 	examListQuery = fmt.Sprintf(examListQuery, examWhereClause, strings.Join(whereClause, " "))

@@ -7,15 +7,16 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
+	"strconv"
+	"strings"
+	"time"
+
 	"github.com/hibiken/asynq"
 	"github.com/jackc/pgx/v5"
 	"github.com/redis/go-redis/v9"
 	"github.com/sony/gobreaker/v2"
 	"github.com/spf13/viper"
-	"io"
-	"strconv"
-	"strings"
-	"time"
 	"w2w.io/null"
 	"w2w.io/serve/ai_mark"
 	"w2w.io/serve/examPaper"
@@ -1212,14 +1213,14 @@ func MarkObjectiveQuestionAnswers(ctx context.Context, cond QueryCondition) (err
 
 	// 查询该考试/练习的主观题数量
 	querySubjectiveQuestionCounts := `
-	SELECT COALESCE(count(q.id), 0)
-	FROM t_exam_paper p
-			 JOIN t_paper tp ON tp.exampaper_id = p.id
+	SELECT COALESCE(count(epq.id), 0)
+	FROM t_exam_paper ep
+			 JOIN t_paper p ON p.exampaper_id = ep.id
 			 LEFT JOIN t_exam_session es ON es.paper_id = p.id 
 			 LEFT JOIN t_practice pra ON pra.paper_id = p.id 
-			 JOIN t_exam_paper_group pg ON pg.exam_paper_id = p.id 
-			 LEFT JOIN t_exam_paper_question q ON q.group_id = pg.id AND q.type IN ('06', '08') 
-	WHERE q.status != '04' %s --动态拼接where条件
+			 JOIN t_exam_paper_group epg ON epg.exam_paper_id = ep.id 
+			 LEFT JOIN t_exam_paper_question epq ON epq.group_id = epg.id AND epq.type IN ('06', '08') AND epq.status != '04'
+	WHERE %s --动态拼接where条件
 	`
 
 	if cond.ExamSessionID > 0 {
