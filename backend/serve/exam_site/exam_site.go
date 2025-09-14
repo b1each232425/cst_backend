@@ -1381,6 +1381,72 @@ MethodSwitch:
 			break
 		}
 
+		param := q.R.URL.Query().Get("q")
+
+		var req cmn.ReqProto
+
+		q.Err = json.Unmarshal([]byte(param), &req)
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			break
+		}
+
+		examSiteID := gjson.Get(param, "data.examSiteID").Int()
+
+		if examSiteID <= 0 {
+			q.Err = fmt.Errorf("无效的考点ID: %d, 请传入一个大于0的值", examSiteID)
+			z.Error(q.Err.Error())
+			break
+		}
+
+		sqlStr := `SELECT 
+			t_exam_site.id,
+			t_exam_site.name,
+			t_exam_site.address,
+			t_exam_site.server_host,
+			t_exam_site.admin,
+			t_user.official_name AS admin_name,
+			COUNT(t_exam_room.id) AS room_count
+		FROM t_exam_site
+			JOIN t_user ON t_user.id = t_exam_site.admin
+			JOIN t_exam_room ON t_exam_room.exam_site = t_exam_site.id
+		WHERE t_exam_site.status != '04' AND t_exam_site.id = $1 AND (t_exam_site.creator = $2 OR t_exam_site.domain_id = ANY($3))
+		GROUP BY
+			t_exam_site.id,
+			t_user.id
+		`
+
+		var stmt *sql.Stmt
+		stmt, q.Err = tx.Prepare(sqlStr)
+		if q.Err != nil || (cmn.InDebugMode && q.Tag["prepareGetExamSiteSqlErr"] != nil) {
+			if q.Err == nil {
+				q.Err = q.Tag["prepareGetExamSiteSqlErr"].(error)
+			}
+
+			z.Error(q.Err.Error())
+			break
+		}
+
+		defer stmt.Close()
+
+		var info examSiteInfo
+
+		q.Err = stmt.QueryRowContext(ctx, examSiteID, userID, authority.AccessibleDomains).Scan(
+			&info.ID,
+			&info.Name,
+			&info.Address,
+			&info.ServerHost,
+			&info.Admin,
+			&info.AdminName,
+			&info.RoomCount,
+		)
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			break
+		}
+
+		msgData = info
+
 	case "POST":
 
 		if !creatable {
