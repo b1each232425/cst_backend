@@ -591,6 +591,7 @@ func HandleMarkingDetails(ctx context.Context) {
 
 }
 
+// 处理批改员信息
 func HandleMarkerInfo(ctx context.Context, tx *pgx.Tx, teacherID int64, req HandleMarkerInfoReq) (err error) {
 	forceErr, _ := ctx.Value(ForceErrKey).(string)
 	if teacherID <= 0 {
@@ -641,6 +642,7 @@ func HandleMarkerInfo(ctx context.Context, tx *pgx.Tx, teacherID int64, req Hand
 	var markInfos []cmn.TMarkInfo
 
 	switch req.MarkMode {
+	// 自动批改
 	case "00":
 		markInfo := cmn.TMarkInfo{
 			MarkTeacherID:      null.IntFrom(teacherID),
@@ -659,8 +661,9 @@ func HandleMarkerInfo(ctx context.Context, tx *pgx.Tx, teacherID int64, req Hand
 			markInfo.ExamSessionID = null.IntFrom(req.ExamSessionID)
 		}
 		markInfos = append(markInfos, markInfo)
-		break
-	case "02": // 全卷多评，多位批阅员
+
+	// 全卷多评，多位批阅员，分数取平均
+	case "02":
 		if req.Markers == nil || len(req.Markers) == 0 {
 			err = fmt.Errorf("markers is empty")
 			z.Error(err.Error())
@@ -681,8 +684,8 @@ func HandleMarkerInfo(ctx context.Context, tx *pgx.Tx, teacherID int64, req Hand
 			})
 		}
 
-		break
-	case "04": // 试卷分配
+	// 试卷分配
+	case "04":
 		if req.ExamineeIDs == nil || len(req.ExamineeIDs) == 0 {
 			err = fmt.Errorf("examinee_ids is empty")
 			z.Error(err.Error())
@@ -712,8 +715,9 @@ func HandleMarkerInfo(ctx context.Context, tx *pgx.Tx, teacherID int64, req Hand
 				Status:             null.StringFrom("00"),
 			})
 		}
-		break
-	case "06": // 分题组
+
+	// 题组专评
+	case "06":
 		if req.QuestionGroups == nil || len(req.QuestionGroups) == 0 {
 			err = fmt.Errorf("invalid question groups")
 			z.Error(err.Error())
@@ -747,8 +751,9 @@ func HandleMarkerInfo(ctx context.Context, tx *pgx.Tx, teacherID int64, req Hand
 				Status:          null.StringFrom("00"),
 			})
 		}
-		break
-	case "10": // 单人批改
+
+	// 单人批改
+	case "10":
 		if req.Markers == nil || len(req.Markers) == 0 || len(req.Markers) > 1 {
 			err = fmt.Errorf("invalid markers")
 			z.Error(err.Error())
@@ -772,7 +777,6 @@ func HandleMarkerInfo(ctx context.Context, tx *pgx.Tx, teacherID int64, req Hand
 			markInfo.ExamSessionID = null.IntFrom(req.ExamSessionID)
 		}
 		markInfos = append(markInfos, markInfo)
-		break
 	}
 
 	//z.Sugar().Infof("markInfos: %+v", markInfos)
@@ -1172,15 +1176,20 @@ func MarkObjectiveQuestionAnswers(ctx context.Context, cond QueryCondition) (err
 		var answers struct {
 			Answer []string `json:"answer"`
 		}
-		err = json.Unmarshal(studentAnswer.Answer, &answers)
-		if err != nil {
-			err = fmt.Errorf("failed to unmarshal answer: %v", err)
-			z.Error(err.Error())
-			return
-		}
 
-		if CompareSlices(answers.Answer, standardAnswers) {
-			mark.Score = null.FloatFrom(studentAnswer.QuestionScore.Float64)
+		if len(studentAnswer.Answer) != 0 {
+			err = json.Unmarshal(studentAnswer.Answer, &answers)
+			if err != nil {
+				err = fmt.Errorf("failed to unmarshal answer: %v", err)
+				z.Error(err.Error())
+				return
+			}
+
+			if CompareSlices(answers.Answer, standardAnswers) {
+				mark.Score = null.FloatFrom(studentAnswer.QuestionScore.Float64)
+			}
+		} else {
+			mark.Score = null.FloatFrom(0) // 应对空值
 		}
 
 		var markDetails []MarkDetails
@@ -1208,7 +1217,7 @@ func MarkObjectiveQuestionAnswers(ctx context.Context, cond QueryCondition) (err
 		return
 	}
 
-	var subjectiveQustionCounts int
+	var subjectiveQuestionCounts int
 	var whereClause []string
 
 	// 查询该考试/练习的主观题数量
@@ -1233,14 +1242,14 @@ func MarkObjectiveQuestionAnswers(ctx context.Context, cond QueryCondition) (err
 
 	pgxConn := cmn.GetPgxConn()
 
-	err = pgxConn.QueryRow(ctx, querySubjectiveQuestionCounts).Scan(&subjectiveQustionCounts)
+	err = pgxConn.QueryRow(ctx, querySubjectiveQuestionCounts).Scan(&subjectiveQuestionCounts)
 	if err != nil || forceErr == "MarkObjectiveQuestionAnswers-pgxConn.QueryRow" {
 		err = fmt.Errorf("failed to query subjective question counts: %v", err)
 		z.Error(err.Error())
 		return
 	}
 
-	if subjectiveQustionCounts != 0 {
+	if subjectiveQuestionCounts != 0 {
 		// 主观题数量大于0，直接结束
 		return
 	}

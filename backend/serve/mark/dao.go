@@ -111,14 +111,12 @@ func QueryExamList(ctx context.Context, req QueryMarkingListReq) (examList []Exa
 	teacherID := req.User.ID
 	//z.Sugar().Infof("teacherID: %d", teacherID)
 
-	examListQuery := `	
-					-- 第一步：先选出你想要的 exam_info（比如最新的 10 个考试）
+	examListQuery := `
 					WITH target_exam_infos AS ( 
 						SELECT id 
 						FROM t_exam_info 
 						WHERE status != '12' AND status != '14' AND status != '16' %s -- 拼接对exam_info的where条件
 						ORDER BY create_time DESC, id DESC
-						  
 					) 
 					SELECT 
 						e.id AS exam_id, 
@@ -153,7 +151,7 @@ func QueryExamList(ctx context.Context, req QueryMarkingListReq) (examList []Exa
 					WHERE es.status IS NOT NULL AND es.status != '14' %s -- 动态插入where条件
 					ORDER BY
 						e.create_time DESC, e.id DESC, es.start_time ASC 
-						LIMIT $1 OFFSET $2
+					LIMIT $1 OFFSET $2
 					`
 
 	getExamCountQuery := `	SELECT COUNT(DISTINCT es.exam_id) AS total_exams
@@ -227,19 +225,20 @@ func QueryExamList(ctx context.Context, req QueryMarkingListReq) (examList []Exa
 		// 普通批阅员，非管理员
 		whereClause = append(whereClause, fmt.Sprintf(" AND mi.mark_teacher_id = $%d ", argIdx))
 		args = append(args, teacherID)
-		argIdx+=2
+		argIdx += 2
 	}
 
 	examListQuery = fmt.Sprintf(examListQuery, examWhereClause, strings.Join(whereClause, " "))
 
 	rows, err := pgxConn.Query(ctx, examListQuery, args...)
-	defer rows.Close()
 	if err != nil || forceErr == "QueryExamList-pgxConn.Query" {
 		err = fmt.Errorf("getExamList SQL error: %v", err)
 		z.Error(err.Error())
 		return nil, -1, err
 	}
+	defer rows.Close()
 
+	// key 是 exam_id
 	examsMap := make(map[int64]*Exam)
 	examsMapKeys := make([]int64, 0)
 
@@ -296,6 +295,7 @@ func QueryExamList(ctx context.Context, req QueryMarkingListReq) (examList []Exa
 			// 说明无主观题目需要批改
 			unMarkedStudentCount = 0
 		} else {
+			// 计算所得
 			unMarkedStudentCount = int(respondentCount.Int64 - markedStudentCount.Int64)
 		}
 		//if !req.User.IsAdmin && session.MarkMode.String == "04" {
@@ -334,7 +334,6 @@ func QueryExamList(ctx context.Context, req QueryMarkingListReq) (examList []Exa
 		}
 
 		//examList = append(examList, exam)
-
 	}
 
 	for _, key := range examsMapKeys {
@@ -752,12 +751,12 @@ func QueryStudentAnswersByMarkMode(ctx context.Context, answerType string, cond 
 
 	pgxConn := cmn.GetPgxConn()
 	rows, err := pgxConn.Query(ctx, query, args...)
-	defer rows.Close()
 	if err != nil || forceErr == "QueryStudentAnswersByMarkMode-pgxConn.Query" {
 		err = fmt.Errorf("exec getStudentAnswersByMarkMode SQL error: %v", err)
 		z.Error(err.Error())
 		return
 	}
+	defer rows.Close()
 
 	for rows.Next() {
 		row := new(cmn.TVStudentAnswerQuestion)
