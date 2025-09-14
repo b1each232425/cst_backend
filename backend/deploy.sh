@@ -38,14 +38,31 @@ if [ -z "$(which mockgen)" ]; then
   echo "mockgen installed"
 fi
 
-export backEndFileName=devmentor
-export deployDst=$DEPLOY_PATH/devmentor
+export backEndFileName=$1
+if [ -z "$backEndFileName" ] ;then
+  export backEndFileName=devmentor
+fi
+export app_port=$2
+if [ -z "$app_port" ] ;then
+  export app_port=6610
+fi
+export ssh_port=$3
+if [ -z "$ssh_port" ] ;then
+  export ssh_port=6222
+fi
+export deployDst=$DEPLOY_PATH/$backEndFileName
 export workspace=$PWD
 # correct go build syntax
 # go build -o kzz.io -ldflags \
 #  "-X main.buildVer=r0.b_nonCI(2018-02-21_09:46:15) '-extldflags=-v -static'"
 
-echo "build from source"
+echo "====== build from source ======"
+echo "       workspace: $workspace"
+echo "       deployDst: $deployDst"
+echo " backEndFileName: $backEndFileName"
+echo "        app_port: $app_port"
+echo "        ssh_port: $ssh_port"
+echo "==============================="
 
 # export GO111MODULE=off
 # ./b.sh
@@ -73,9 +90,9 @@ go build \
 
 echo "  build complete"
 
-echo "stop devmentor container"
-d stop devmentor > /dev/null 2> /dev/null || :
-echo "  devmentor stoped"
+echo "stop $backEndFileName container"
+d stop $backEndFileName > /dev/null 2> /dev/null || :
+echo "  $backEndFileName stopped"
 
 echo "publishing artifact for remote"
 
@@ -101,16 +118,16 @@ rsync -cruzEL run.sh \
 
 echo "  artifact published"
 
-echo "drop old devmentor container"
-d container rm devmentor > /dev/null 2> /dev/null || :
+echo "drop old $backEndFileName container"
+d container rm $backEndFileName > /dev/null 2> /dev/null || :
 
 appName="$backEndFileName"_r
-echo "start new devmentor container"
+echo "start new $backEndFileName container"
 
-d run --name=devmentor \
+d run --name=$backEndFileName \
  -d --restart=always \
- -p 6610:6610 \
- -p 6222:22 \
+ -p $app_port:6610 \
+ -p $ssh_port:22 \
  -v data:/var/data \
  -v deploy:/var/deploy \
  -v assess_ssh:/etc/ssh \
