@@ -1212,62 +1212,6 @@ func createSysUser(ctx context.Context, tx *sql.Tx, siteID int64) (sysUserID int
 	return
 }
 
-// CheckExamSiteIsAccessible 检查当前用户是否有权限访问指定考点, 若无权限则返回错误
-func CheckExamSiteIsAccessible(ctx context.Context, userID int64, authority *auth_mgt.Authority, siteID int64) (err error) {
-
-	q := cmn.GetCtxValue(ctx)
-
-	dbConn := cmn.GetDbConn()
-
-	sqlStr := `SELECT id FROM t_exam_site WHERE id = $1 AND  (creator = $2 OR domain_id = ANY($3))`
-
-	var stmt *sql.Stmt
-	stmt, err = dbConn.Prepare(sqlStr)
-	if err != nil || (cmn.InDebugMode && q.Tag["prepareCheckAccessSqlErr"] != nil) {
-
-		if err == nil {
-			err = q.Tag["prepareCheckAccessSqlErr"].(error)
-		}
-
-		z.Error(err.Error())
-		return
-	}
-
-	defer stmt.Close()
-
-	var r sql.Result
-	r, err = stmt.ExecContext(ctx, siteID, userID, authority.AccessibleDomains)
-	if err != nil || (cmn.InDebugMode && q.Tag["execCheckAccessSqlErr"] != nil) {
-
-		if err == nil {
-			err = q.Tag["execCheckAccessSqlErr"].(error)
-		}
-
-		z.Error(err.Error())
-		return
-	}
-
-	var c int64
-	c, err = r.RowsAffected()
-	if err != nil || (cmn.InDebugMode && q.Tag["getCheckAccessResultErr"] != nil) {
-
-		if err == nil {
-			err = q.Tag["getCheckAccessResultErr"].(error)
-		}
-
-		z.Error(err.Error())
-		return
-	}
-
-	if c > 0 {
-		return
-	}
-
-	err = fmt.Errorf("当前用户无权获取该考点数据或考点不存在, id: %d", siteID)
-	z.Error(err.Error())
-	return
-}
-
 /* 考点基础业务 */
 // oooooooooo.
 // `888'   `Y8b
@@ -1410,7 +1354,7 @@ MethodSwitch:
 		FROM t_exam_site
 			JOIN t_user ON t_user.id = t_exam_site.admin
 			JOIN t_exam_room ON t_exam_room.exam_site = t_exam_site.id
-		WHERE t_exam_site.status != '04' AND t_exam_site.id = $1 AND (t_exam_site.creator = $2 OR t_exam_site.domain_id = ANY($3))
+		WHERE t_exam_site.status != '04' AND t_exam_site.id = $1 AND (t_exam_site.creator = $2 OR t_exam_site.admin = $2 OR t_exam_site.domain_id = ANY($3))
 		GROUP BY
 			t_exam_site.id,
 			t_user.id
@@ -1565,7 +1509,7 @@ MethodSwitch:
 			values = append(values, value)
 		}
 
-		sqlStr := fmt.Sprintf(`UPDATE t_exam_site SET %s WHERE id=$2 AND (creator=$1 OR domain_id=ANY($3))`, strings.Join(sets, ", "))
+		sqlStr := fmt.Sprintf(`UPDATE t_exam_site SET %s WHERE id=$2 AND (creator=$1 OR admin=$1 OR domain_id=ANY($3))`, strings.Join(sets, ", "))
 
 		var stmt *sql.Stmt
 		stmt, q.Err = tx.Prepare(sqlStr)
@@ -1720,7 +1664,7 @@ MethodSwitch:
 			break
 		}
 
-		sqlStr := `UPDATE t_exam_site SET status = '04', updated_by=$2 WHERE id=ANY($1) AND (creator = $2 OR domain_id=ANY($3))`
+		sqlStr := `UPDATE t_exam_site SET status = '04', updated_by=$2 WHERE id=ANY($1) AND (creator = $2 OR admin = $2 OR domain_id=ANY($3))`
 
 		var stmt *sql.Stmt
 		stmt, q.Err = tx.Prepare(sqlStr)
@@ -1830,7 +1774,7 @@ MethodSwitch:
 
 		keys := []string{
 			"t_exam_site.status != '04'",
-			"(t_exam_site.creator=$1 OR t_exam_site.domain_id=ANY($2))",
+			"(t_exam_site.creator=$1 OR t_exam_site.admin=$1 OR t_exam_site.domain_id=ANY($2))",
 		}
 
 		values := []interface{}{
@@ -2160,14 +2104,18 @@ func examRoom(ctx context.Context) {
 			break
 		}
 
-		if q.Err = CheckExamSiteIsAccessible(ctx, userID, authority, int64(info.ExamSiteID)); q.Err != nil {
-			break
-		}
-
 		// 添加考场
+		// 所选考点必须存在且未被删除, 且当前用户必须有权限访问该考点
 
 		sqlStr := `INSERT INTO t_exam_room (exam_site, name, capacity, creator, updated_by, domain_id)
-		VALUES ($1, $2, $3, $4, $5, $6)`
+		SELECT $1::bigint, $2::text, $3::integer, $4::bigint, $4::bigint, $5::bigint
+		WHERE EXISTS (
+			SELECT 1 
+			FROM t_exam_site 
+			WHERE t_exam_site.id = $1::bigint 
+				AND t_exam_site.status != '04' -- 未被删除的数据
+				AND (t_exam_site.creator = $4::bigint OR t_exam_site.admin = $4::bigint OR t_exam_site.domain_id = ANY($6::bigint[])) -- 获取拥有访问权限的数据
+		)`
 
 		var stmt1 *sql.Stmt
 		stmt1, q.Err = tx.Prepare(sqlStr)
@@ -2183,7 +2131,8 @@ func examRoom(ctx context.Context) {
 
 		defer stmt1.Close()
 
-		_, q.Err = stmt1.ExecContext(ctx, info.ExamSiteID, info.Name, info.Capacity, userID, userID, authority.Domain.ID.Int64)
+		var r sql.Result
+		r, q.Err = stmt1.ExecContext(ctx, info.ExamSiteID, info.Name, info.Capacity, userID, authority.Domain.ID.Int64, authority.AccessibleDomains)
 		if q.Err != nil || (cmn.InDebugMode && q.Tag["execSQLErr"] != nil) {
 
 			if q.Err == nil {
@@ -2194,6 +2143,22 @@ func examRoom(ctx context.Context) {
 			break
 		}
 
+		var rc int64
+		rc, q.Err = r.RowsAffected()
+		if q.Err != nil || (cmn.InDebugMode && q.Tag["rowsAffectedErr"] != nil) {
+
+			z.Error(q.Err.Error())
+			break
+		}
+
+		if rc == 1 {
+			break
+		}
+
+		q.Err = fmt.Errorf("无权在所选考点创建考场或所选考点不存在, id: %d", info.ExamSiteID)
+		z.Error(q.Err.Error())
+
+
 	case "PATCH":
 
 		if !editable {
@@ -2201,6 +2166,8 @@ func examRoom(ctx context.Context) {
 			z.Error(q.Err.Error())
 			break
 		}
+
+		
 
 	case "DELETE":
 
@@ -2337,24 +2304,18 @@ MethodSwitch:
 
 		var stmt1 *sql.Stmt
 
-		// 检查当前是否有权限访问该考点
-		if q.Err = CheckExamSiteIsAccessible(ctx, userID, authority, examSiteID); examSiteID != 0 && q.Err != nil {
-			break
-		}
-
 		// 获取考场列表数据
 
-		keys := []string{
-			"t_exam_room.exam_site=$1",
-		}
+		keys := []string{}
 
 		values := []interface{}{
-			examSiteID,
+			userID,
+			authority.AccessibleDomains,
 		}
 
-		if examSiteID == 0 {
-			keys = []string{}
-			values = []interface{}{}
+		if examSiteID > 0 {
+			keys = append(keys, fmt.Sprintf("t_exam_room.exam_site=$%d", len(values)+1))
+			values = append(values, examSiteID)
 		}
 
 		if req.Page < 1 {
@@ -2368,17 +2329,6 @@ MethodSwitch:
 			z.Error(q.Err.Error())
 			break
 		}
-
-		ss := []string{}
-		ss = append(ss, fmt.Sprintf("creator = $%d", len(values)+1))
-		values = append(values, userID)
-		l := len(values)
-		for i, d := range authority.AccessibleDomains {
-			ss = append(ss, fmt.Sprintf("domain_id = $%d", i+l+1))
-			values = append(values, d)
-		}
-
-		keys = append(keys, fmt.Sprintf("(%s)", strings.Join(ss, " OR ")))
 
 		nameFilter := gjson.Get(param, "filter.name").Str
 
@@ -2480,6 +2430,9 @@ MethodSwitch:
 			) FILTER (WHERE rn = 1) ::jsonb AS recent_exam
 		FROM t_exam_room
 			JOIN related_exams ON related_exams.room_id = t_exam_room.id
+			JOIN t_exam_site ON t_exam_site.id = t_exam_room.exam_site 
+				AND t_exam_site.status != '04' -- 未被删除的数据
+				AND (t_exam_site.creator = $1 OR t_exam_site.admin = $1 OR t_exam_site.domain_id = ANY($2)) -- 获取拥有访问权限的数据
 		WHERE %s
 		GROUP BY 
 			t_exam_room.id, 
