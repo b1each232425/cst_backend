@@ -7,15 +7,16 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
+	"strconv"
+	"strings"
+	"time"
+
 	"github.com/hibiken/asynq"
 	"github.com/jackc/pgx/v5"
 	"github.com/redis/go-redis/v9"
 	"github.com/sony/gobreaker/v2"
 	"github.com/spf13/viper"
-	"io"
-	"strconv"
-	"strings"
-	"time"
 	"w2w.io/null"
 	"w2w.io/serve/ai_mark"
 	"w2w.io/serve/examPaper"
@@ -194,18 +195,22 @@ func Enroll(author string) {
 
 func InitAIMarkTaskLimiterAndBreaker() {
 	maxConcurrency := viper.GetInt("chatModel.maxConcurrency")
-	aiMarkTaskLimiter = cmn.NewRateLimiterTaskRunner(int64(maxConcurrency), 5, 10)
+	if maxConcurrency <= 0 {
+		z.Error("从配置文件获取chatModel.maxConcurrency失败")
+		maxConcurrency = 50
+	}
+	aiMarkTaskLimiter = cmn.NewRateLimiterTaskRunner(int64(maxConcurrency), 20, 40)
 
 	st := gobreaker.Settings{
-		Name:         "HTTP GET",
-		MaxRequests:  3,
-		Timeout:      60 * time.Second,
+		Name:         "AI Mark breaker",
+		MaxRequests:  10,
+		Timeout:      15 * time.Second,
 		Interval:     24 * time.Hour,
 		BucketPeriod: 1 * time.Hour,
 		ReadyToTrip: func(counts gobreaker.Counts) bool {
 			failureRatio := float64(counts.TotalFailures) / float64(counts.Requests)
 			// 熔断条件：请求数 >= 3 && (失败率 >= 50% || 连续失败次数 >= 3)
-			return counts.Requests >= 3 && (failureRatio >= 0.5 || counts.ConsecutiveFailures >= 3)
+			return counts.Requests >= 5 && (failureRatio >= 0.5 || counts.ConsecutiveFailures >= 3)
 		},
 		// 监控熔断状态变化。
 		OnStateChange: func(name string, from gobreaker.State, to gobreaker.State) {
@@ -586,6 +591,7 @@ func HandleMarkingDetails(ctx context.Context) {
 
 }
 
+// 处理批改员信息
 func HandleMarkerInfo(ctx context.Context, tx *pgx.Tx, teacherID int64, req HandleMarkerInfoReq) (err error) {
 	forceErr, _ := ctx.Value(ForceErrKey).(string)
 	if teacherID <= 0 {
@@ -636,6 +642,7 @@ func HandleMarkerInfo(ctx context.Context, tx *pgx.Tx, teacherID int64, req Hand
 	var markInfos []cmn.TMarkInfo
 
 	switch req.MarkMode {
+	// 自动批改
 	case "00":
 		markInfo := cmn.TMarkInfo{
 			MarkTeacherID:      null.IntFrom(teacherID),
@@ -654,8 +661,9 @@ func HandleMarkerInfo(ctx context.Context, tx *pgx.Tx, teacherID int64, req Hand
 			markInfo.ExamSessionID = null.IntFrom(req.ExamSessionID)
 		}
 		markInfos = append(markInfos, markInfo)
-		break
-	case "02": // 全卷多评，多位批阅员
+
+	// 全卷多评，多位批阅员，分数取平均
+	case "02":
 		if req.Markers == nil || len(req.Markers) == 0 {
 			err = fmt.Errorf("markers is empty")
 			z.Error(err.Error())
@@ -676,8 +684,8 @@ func HandleMarkerInfo(ctx context.Context, tx *pgx.Tx, teacherID int64, req Hand
 			})
 		}
 
-		break
-	case "04": // 试卷分配
+	// 试卷分配
+	case "04":
 		if req.ExamineeIDs == nil || len(req.ExamineeIDs) == 0 {
 			err = fmt.Errorf("examinee_ids is empty")
 			z.Error(err.Error())
@@ -707,8 +715,9 @@ func HandleMarkerInfo(ctx context.Context, tx *pgx.Tx, teacherID int64, req Hand
 				Status:             null.StringFrom("00"),
 			})
 		}
-		break
-	case "06": // 分题组
+
+	// 题组专评
+	case "06":
 		if req.QuestionGroups == nil || len(req.QuestionGroups) == 0 {
 			err = fmt.Errorf("invalid question groups")
 			z.Error(err.Error())
@@ -742,8 +751,9 @@ func HandleMarkerInfo(ctx context.Context, tx *pgx.Tx, teacherID int64, req Hand
 				Status:          null.StringFrom("00"),
 			})
 		}
-		break
-	case "10": // 单人批改
+
+	// 单人批改
+	case "10":
 		if req.Markers == nil || len(req.Markers) == 0 || len(req.Markers) > 1 {
 			err = fmt.Errorf("invalid markers")
 			z.Error(err.Error())
@@ -767,7 +777,6 @@ func HandleMarkerInfo(ctx context.Context, tx *pgx.Tx, teacherID int64, req Hand
 			markInfo.ExamSessionID = null.IntFrom(req.ExamSessionID)
 		}
 		markInfos = append(markInfos, markInfo)
-		break
 	}
 
 	//z.Sugar().Infof("markInfos: %+v", markInfos)
@@ -1111,7 +1120,7 @@ func MarkObjectiveQuestionAnswers(ctx context.Context, cond QueryCondition) (err
 		markerInfo.MarkMode = "04"
 	}
 
-	if cond.PracticeSubmissionID > 0 {
+	if cond.PracticeSubmissionID > 0 && cond.PracticeWrongSubmissionID <= 0 {
 		// 查询单个练习学生
 		markerInfo.MarkMode = "12"
 	}
@@ -1167,15 +1176,20 @@ func MarkObjectiveQuestionAnswers(ctx context.Context, cond QueryCondition) (err
 		var answers struct {
 			Answer []string `json:"answer"`
 		}
-		err = json.Unmarshal(studentAnswer.Answer, &answers)
-		if err != nil {
-			err = fmt.Errorf("failed to unmarshal answer: %v", err)
-			z.Error(err.Error())
-			return
-		}
 
-		if CompareSlices(answers.Answer, standardAnswers) {
-			mark.Score = null.FloatFrom(studentAnswer.QuestionScore.Float64)
+		if len(studentAnswer.Answer) != 0 {
+			err = json.Unmarshal(studentAnswer.Answer, &answers)
+			if err != nil {
+				err = fmt.Errorf("failed to unmarshal answer: %v", err)
+				z.Error(err.Error())
+				return
+			}
+
+			if CompareSlices(answers.Answer, standardAnswers) {
+				mark.Score = null.FloatFrom(studentAnswer.QuestionScore.Float64)
+			}
+		} else {
+			mark.Score = null.FloatFrom(0) // 应对空值
 		}
 
 		var markDetails []MarkDetails
@@ -1203,19 +1217,19 @@ func MarkObjectiveQuestionAnswers(ctx context.Context, cond QueryCondition) (err
 		return
 	}
 
-	var subjectiveQustionCounts int
+	var subjectiveQuestionCounts int
 	var whereClause []string
 
 	// 查询该考试/练习的主观题数量
 	querySubjectiveQuestionCounts := `
-	SELECT COALESCE(count(q.id), 0)
-	FROM t_exam_paper p
-			 JOIN t_paper tp ON tp.exampaper_id = p.id
+	SELECT COALESCE(count(epq.id), 0)
+	FROM t_exam_paper ep
+			 JOIN t_paper p ON p.exampaper_id = ep.id
 			 LEFT JOIN t_exam_session es ON es.paper_id = p.id 
 			 LEFT JOIN t_practice pra ON pra.paper_id = p.id 
-			 JOIN t_exam_paper_group pg ON pg.exam_paper_id = p.id 
-			 LEFT JOIN t_exam_paper_question q ON q.group_id = pg.id AND q.type IN ('06', '08') 
-	WHERE q.status != '04' %s --动态拼接where条件
+			 JOIN t_exam_paper_group epg ON epg.exam_paper_id = ep.id 
+			 LEFT JOIN t_exam_paper_question epq ON epq.group_id = epg.id AND epq.type IN ('06', '08') AND epq.status != '04'
+	WHERE %s --动态拼接where条件
 	`
 
 	if cond.ExamSessionID > 0 {
@@ -1228,14 +1242,14 @@ func MarkObjectiveQuestionAnswers(ctx context.Context, cond QueryCondition) (err
 
 	pgxConn := cmn.GetPgxConn()
 
-	err = pgxConn.QueryRow(ctx, querySubjectiveQuestionCounts).Scan(&subjectiveQustionCounts)
+	err = pgxConn.QueryRow(ctx, querySubjectiveQuestionCounts).Scan(&subjectiveQuestionCounts)
 	if err != nil || forceErr == "MarkObjectiveQuestionAnswers-pgxConn.QueryRow" {
 		err = fmt.Errorf("failed to query subjective question counts: %v", err)
 		z.Error(err.Error())
 		return
 	}
 
-	if subjectiveQustionCounts != 0 {
+	if subjectiveQuestionCounts != 0 {
 		// 主观题数量大于0，直接结束
 		return
 	}
@@ -1553,12 +1567,41 @@ func GenerateAIMarkTask(ctx context.Context, cond QueryCondition, questions []*c
 
 	// 设置唯一性约束：24小时内，不允许重复入队
 	opts := []asynq.Option{
-		asynq.MaxRetry(3),
+		asynq.MaxRetry(5),
 		asynq.Unique(24 * time.Hour),
-		asynq.Timeout(3 * 24 * time.Hour),
+		asynq.Timeout(5 * time.Minute),
 	}
 
 	for _, aiMarkRequest := range aiMarkRequests {
+		//	taskPayload := cmn.TaskPayload{
+		//		Type: TaskTypeAIMarkRequest,
+		//		Data: AIMarkTaskPayLoad{
+		//			AIMarkRequest:      aiMarkRequest,
+		//			QueryCondition:     cond,
+		//			UniqueTaskCountKey: uniqueTaskCountKey,
+		//		},
+		//		Timestamp: time.Now().Unix(),
+		//	}
+		//
+		//	var payloadBytes []byte
+		//	payloadBytes, err = json.Marshal(taskPayload)
+		//	if err != nil {
+		//		err = fmt.Errorf("Failed to marshal task payload: %v", err)
+		//		z.Sugar().Error(err.Error())
+		//		return err
+		//	}
+		//
+		//	task := asynq.NewTask(string(TaskTypeAIMarkRequest), payloadBytes, opts...)
+		//
+		//	h := TaskMiddleware(HandleAIMarkTask)
+		//	err = h(ctx, task)
+		//	if err != nil {
+		//		err = fmt.Errorf("failed to handle ai mark task: %v", err)
+		//		z.Sugar().Error(err.Error())
+		//		return
+		//	}
+
+		// TODO 原实现，不够完善
 		err = cmn.SendTask(TaskTypeAIMarkRequest, AIMarkTaskPayLoad{
 			AIMarkRequest:      aiMarkRequest,
 			QueryCondition:     cond,
@@ -1577,13 +1620,18 @@ func TaskMiddleware(handler func(ctx context.Context, task *asynq.Task) error) f
 	return func(ctx context.Context, task *asynq.Task) error {
 		limiter := GetAIMarkTaskLimiter()
 
+		z.Info("waiting limiter")
+
 		err, releaseFunc := limiter.Wait(ctx)
+		if releaseFunc != nil {
+			defer releaseFunc()
+		}
 		if err != nil {
 			// 获取信号量失败，直接返回错误
 			return err
 		}
+		z.Info("limiter waiting over")
 		// 释放信号量
-		defer releaseFunc()
 
 		cb := GetAIMarkTaskCB()
 
@@ -1623,6 +1671,8 @@ func HandleAIMarkTask(ctx context.Context, task *asynq.Task) error {
 		z.Error(err.Error())
 		return err
 	}
+
+	z.Sugar().Infof("HandleAIMarkTask: %+v", payloadData.UniqueTaskCountKey)
 
 	if payloadData.UniqueTaskCountKey == "" {
 		err = fmt.Errorf("任务payload中的任务计数键为空")

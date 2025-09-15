@@ -2,6 +2,7 @@ package exam_site
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -59,8 +60,6 @@ func TestMain(m *testing.M) {
 	dbUser = config.User
 
 	dbPwd = config.Password
-
-	sysUser = viper.GetString("examSiteServerSync.sysUser")
 
 	accessToken = viper.GetString("examSiteServerSync.accessToken")
 
@@ -176,9 +175,12 @@ func mockExamSiteSyncData(sysUser int64, nowTime int64) (cleanup func() error, e
 
 	sqls := []string{
 		fmt.Sprintf(`WITH ins_site AS (
-  	INSERT INTO t_exam_site (id, name, address, server_host, creator, admin, sys_user)
-  	VALUES (%d, 'test-site-%d', 'test,address', 'localhost', 1000, 1000, %d)
-  	ON CONFLICT(id) DO NOTHING
+  	INSERT INTO t_exam_site (id, name, address, server_host, creator, admin, sys_user, domain_id)
+  	VALUES 
+		(%d, 'test-site-%d', 'test,address', 'localhost', 1000, %d, %d, 1999),
+		(%d, 'test-site-%d', 'test,address', 'localhost', 1000, %d, %d, 1999),
+		(%d, 'test-site-%d', 'test,address', 'localhost', 1000, %d, %d, 1999)
+  	ON CONFLICT DO NOTHING
   	RETURNING id
 ),
 ins_rooms AS (
@@ -189,31 +191,31 @@ ins_rooms AS (
 		(%d, %d, 'test-room-3', 30, 1000),
 		(%d, %d, 'test-room-4', 30, 1000),
 		(%d, %d, 'test-room-5', 30, 1000)
-  	ON CONFLICT(id) DO NOTHING
+  	ON CONFLICT DO NOTHING
   	RETURNING id
 ),
 ins_exam_info AS (
-  	INSERT INTO t_exam_info (id, name, type, mode, creator, status)
-  	VALUES (%d, 'test-exam', '04', '02', 1000, '02')
+  	INSERT INTO t_exam_info (id, name, type, mode, creator, status, files)
+  	VALUES (%d, 'test-exam', '04', '02', 1000, '02', '[%d,%d]')
   	ON CONFLICT(id) DO NOTHING
   	RETURNING id
 ),
 ins_exam_session AS (
   	INSERT INTO t_exam_session (id, exam_id, paper_id, mark_method, start_time, end_time, creator)
   	VALUES (%d, %d, %d, '00', %d, %d, 1000)
-  	ON CONFLICT(id) DO NOTHING
+  	ON CONFLICT DO NOTHING
   	RETURNING id
 ),
 ins_paper AS (
 	INSERT INTO t_paper (id, name, exampaper_id, creator, domain_id)
 	VALUES (%d, 'test-paper', %d, 1000, 10098)
-	ON CONFLICT(id) DO NOTHING
+	ON CONFLICT DO NOTHING
 	RETURNING id
 ),
 ins_exam_paper AS (
   	INSERT INTO t_exam_paper (id, exam_session_id, creator)
   	VALUES (%d, %d, 1000)
-  	ON CONFLICT(id) DO NOTHING
+  	ON CONFLICT DO NOTHING
   	RETURNING id
 ),
 ins_exam_paper_group AS (
@@ -222,7 +224,7 @@ ins_exam_paper_group AS (
 		(%d, %d, 'group-1', 1, 1000),
 		(%d, %d, 'group-2', 2, 1000),
 		(%d, %d, 'group-3', 3, 1000)
-	ON CONFLICT(id) DO NOTHING
+	ON CONFLICT DO NOTHING
 	RETURNING id
 ),
 ins_exam_paper_question AS (
@@ -231,7 +233,7 @@ ins_exam_paper_question AS (
 		(%d, %d, 1000, '<p><span style="font-size: 12pt">操作系统A</span></p>', '[{"label": "A","value": "对"},{ "label": "B","value": "错"}]', '["A"]'),
 		(%d, %d, 1000, '<p><span style="font-size: 12pt">A</span></p>', '[{"label": "A","value": "对"},{ "label": "B","value": "错"}]', '["B","D"]'),
 		(%d, %d, 1000, '<p><span style="font-size: 12pt">操作系统A</span></p>', '[{"label": "A","value": "对"},{ "label": "B","value": "错"}]', '["C"]')
-	ON CONFLICT(id) DO NOTHING
+	ON CONFLICT DO NOTHING
 	RETURNING id
 ),
 ins_users AS (
@@ -241,15 +243,16 @@ ins_users AS (
 		(%d, 'sys^user', 'test-examinee-%d', %d),
 		(%d, 'sys^user', 'test-examinee-%d', %d),
 		(%d1, 'sys^user', 'test-invigilator-%d', %d)
-  	ON CONFLICT(id) DO NOTHING
+  	ON CONFLICT DO NOTHING
   	RETURNING id
 ),
 ins_domain AS (
 	INSERT INTO t_domain (id, name, domain, priority, creator) 
 	VALUES
+		(1999, '考试系统', 'assess', 0, 1000),
 		(10128, '考试系统.学生', 'assess^student', 7, 1000),
 		(10116, '考试系统.监考员', 'assess^examSupervisor', 7, 1000)
-	ON CONFLICT(id) DO NOTHING
+	ON CONFLICT DO NOTHING
 ),
 ins_user_domains AS (
   	INSERT INTO t_user_domain (sys_user, domain, data_access_mode, domain_id) 
@@ -267,7 +270,7 @@ ins_examinees AS (
 		(%d, %d, %d, %d, 1000),
 		(%d, %d, %d, %d, 1000),
 		(%d, %d, %d, %d, 1000)
-	ON CONFLICT(id) DO NOTHING
+	ON CONFLICT DO NOTHING
   	RETURNING student_id
 ),
 ins_student_answers AS (
@@ -276,7 +279,7 @@ ins_student_answers AS (
 		(1, %d, %d, 1000, '[]'),
 		(2, %d, %d, 1000, '[]'),
 		(3, %d, %d, 1000, '[]')
-	ON CONFLICT(id) DO NOTHING
+	ON CONFLICT DO NOTHING
 	RETURNING id
 ),
 ins_exam_record AS (
@@ -285,20 +288,30 @@ ins_exam_record AS (
 		(%d, %d, 1000),
 		(%d, %d, 1000),
 		(%d, %d, 1000)
-	ON CONFLICT(id) DO NOTHING
+	ON CONFLICT DO NOTHING
 	RETURNING id
 ),
 ins_invigilation AS (
 	INSERT INTO t_invigilation (exam_session_id, exam_room, invigilator, creator)
 	VALUES
 		(%d, %d, %d1, 1000)
+	ON CONFLICT DO NOTHING
+	RETURNING id
+),
+ins_file AS (
+	INSERT INTO t_file (id, file_name, path, belongto_path, digest, creator, domain_id)
+	VALUES
+		(%d, 'test-file-1', '/uploads/test-file-1', '/uploads/test-file-1', '%d', 1000, %d),
+		(%d, 'test-file-2', '/uploads/test-file-2', '/uploads/test-file-2', '%d', 1000, %d)
 	ON CONFLICT(id) DO NOTHING
 	RETURNING id
 )
 SELECT 1;
 `,
-			// ins_site: (id, name, sys_user)
-			testID, nowTime, sysUser,
+			// ins_site: (id, name, admin, sys_user)
+			testID, testID, testID, sysUser,
+			testID+1, testID+1, testID, sysUser+1,
+			testID+2, testID+2, testID, sysUser+2,
 
 			// ins_rooms: (id, exam_site) * 5
 			testID+1, testID,
@@ -307,8 +320,8 @@ SELECT 1;
 			testID+4, testID,
 			testID+5, testID,
 
-			// ins_exam_info: (id)
-			testID,
+			// ins_exam_info: (id, files)
+			testID, testID+1, testID+2,
 
 			// ins_exam_session: (id, exam_id, paper_id, start_time, end_time)
 			testID, testID, testID, (nowTime+3*60)*1000, (nowTime+13*60)*1000,
@@ -358,6 +371,10 @@ SELECT 1;
 
 			// ins_invigilation (exam_session_id, exam_room, invigilator)
 			testID, testID+1, testID,
+
+			// ins_file (id, digest, domain_id)
+			testID+1, testID+1, testID,
+			testID+2, testID+2, testID,
 		),
 	}
 
@@ -365,6 +382,22 @@ SELECT 1;
 
 	for _, sql := range sqls {
 		_, err = tx.ExecContext(ctx, sql)
+		if err != nil {
+			break
+		}
+	}
+
+	totalFileNum := 2
+
+	err = os.MkdirAll("./uploads", 0755)
+
+	for i := 1; i <= totalFileNum; i++ {
+		err = os.WriteFile(fmt.Sprintf("./uploads/%d", testID+int64(i)), []byte("test file content"), 0644)
+		if err != nil {
+			break
+		}
+
+		os.WriteFile(fmt.Sprintf("./uploads/%d.info", testID+int64(i)), []byte("test file info"), 0644)
 		if err != nil {
 			break
 		}
@@ -387,6 +420,9 @@ SELECT 1;
 		}()
 
 		sqls := []string{
+
+			// 清除文件上传记录
+			fmt.Sprintf(`DELETE FROM t_file WHERE domain_id = %d`, testID),
 
 			// 清除考场记录
 			fmt.Sprintf(`DELETE FROM t_exam_record WHERE exam_session = %d`, testID),
@@ -414,7 +450,7 @@ SELECT 1;
 			fmt.Sprintf(`DELETE FROM t_exam_room WHERE exam_site = %d`, testID),
 
 			// 清除考点
-			fmt.Sprintf(`DELETE FROM t_exam_site WHERE id = %d`, testID),
+			fmt.Sprintf(`DELETE FROM t_exam_site WHERE admin = %d`, testID),
 		}
 
 		for _, sql := range sqls {
@@ -423,6 +459,8 @@ SELECT 1;
 				break
 			}
 		}
+
+		os.RemoveAll("./uploads/*")
 
 		return
 	}
@@ -450,18 +488,19 @@ func addTestUser(userID int64, domain int64) (err error) {
 
 	}()
 
-	sql := `INSERT INTO t_user (id, category, account, official_name) VALUES ($1, $2, $3, $4) ON CONFLICT(id) DO NOTHING`
+	sql := `INSERT INTO t_user (id, category, account, official_name) VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING`
 	_, err = tx.Exec(sql, userID, "sys^user", fmt.Sprintf("testuser%d", userID), fmt.Sprintf("testuser%d", userID))
 	if err != nil {
 		return
 	}
 
-	sql = `WITH domain AS (
+	sql = fmt.Sprintf(`WITH temp_domain AS (
 		INSERT INTO t_domain (id, name, domain, priority, creator) VALUES
-		($2, '考试系统.考点测试', 'assess^testUser', 7, 1000)
+		($2, '考试系统.考点测试-%d', 'assess^testUser-%d', 7, 1000)
 		ON CONFLICT DO NOTHING
 	)
-	INSERT INTO t_user_domain (sys_user, domain) VALUES ($1, $2) ON CONFLICT(sys_user, domain) DO NOTHING`
+	INSERT INTO t_user_domain (sys_user, domain) VALUES ($1, $2) ON CONFLICT(sys_user, domain) DO NOTHING`,
+		userID, userID)
 	_, err = tx.Exec(sql, userID, domain)
 	if err != nil {
 		return
@@ -632,7 +671,11 @@ func TestExamSite(t *testing.T) {
 
 	nowTime := time.Now().Unix()
 
-	testUserID := nowTime
+	dbConn := cmn.GetDbConn()
+
+	var cleanupTestData func() error
+
+	testID := nowTime / 100
 
 	defaultSetup := func() (err error) {
 
@@ -644,32 +687,172 @@ func TestExamSite(t *testing.T) {
 			}
 		}
 
-		err = addTestUser(testUserID, int64(cmn.CDomainAssessExamSiteAdmin))
+		err = addTestUser(testID, int64(cmn.CDomainAssessExamSiteAdmin))
 		if err != nil {
 			t.Errorf("failed to add test user: %v", err)
+			return
+		}
+
+		cleanupTestData, err = mockExamSiteSyncData(testID, nowTime)
+		if err != nil {
+			t.Errorf("failed to mock exam site sync data: %v", err)
 			return
 		}
 
 		return
 	}
 
-	defaultCheck := func(q *cmn.ServiceCtx, passExpected bool) {
+	defaultAddCheck := func(q *cmn.ServiceCtx, passExpected bool) (err error) {
 		var data examSiteInfo
-		err := json.Unmarshal(q.Msg.Data, &data)
+		err = json.Unmarshal(q.Msg.Data, &data)
 		if err != nil {
 			t.Errorf("failed to unmarshal response data: %v", err)
 			return
 		}
 
 		if data.AccessToken.String == "" && passExpected {
-			t.Errorf("expected non-empty access token, got empty")
+			err = fmt.Errorf("got empty, but not empty")
+			t.Error(err.Error())
 			return
 		}
 
-		if len(data.AccessToken.String) != 64 && passExpected {
-			t.Errorf("expected access token length of 64, got %d", len(data.AccessToken.String))
+		if data.AccessToken.String == "" && passExpected {
+			err = fmt.Errorf("got empty, but not empty")
+			t.Error(err.Error())
 			return
 		}
+
+		return
+	}
+
+	defaultGetCheck := func(q *cmn.ServiceCtx, passExpected bool) (err error) {
+
+		var info examSiteInfo
+
+		err = json.Unmarshal(q.Msg.Data, &info)
+		if err != nil {
+			t.Error(err.Error())
+			return
+		}
+
+		var actualInfo struct {
+			ID        int64 `json:"id"`
+			RoomCount int64 `json:"roomCount"`
+		}
+
+		err = dbConn.QueryRow(`SELECT 
+	t_exam_site.id,
+	COUNT(t_exam_room.id) AS room_count
+FROM t_exam_site
+	JOIN t_user ON t_user.id = t_exam_site.admin
+	JOIN t_exam_room ON t_exam_room.exam_site = t_exam_site.id
+WHERE 
+	t_exam_site.id = $1 AND 
+	t_exam_site.name = $2 AND
+	t_exam_site.address = $3 AND
+	t_user.id = $4 AND
+	t_user.official_name = $5
+GROUP BY
+	t_exam_site.id,
+	t_user.id`, info.ID, info.Name, info.Address, info.Admin, info.AdminName,
+		).Scan(
+			&actualInfo.ID,
+			&actualInfo.RoomCount,
+		)
+		if err != nil {
+			t.Error(err.Error())
+			return
+		}
+
+		if info.RoomCount.Int64 != actualInfo.RoomCount && passExpected {
+			err = fmt.Errorf("roomCount got %d, but %d", info.RoomCount.Int64, actualInfo.RoomCount)
+			t.Error(err.Error())
+			return
+		}
+
+		return
+
+	}
+
+	defaultEditCheck := func(q *cmn.ServiceCtx, passExpected bool) (err error) {
+
+		var editInfo struct {
+			examSiteInfo
+			ResetAccessToken bool `json:"resetAccessToken"`
+		}
+
+		err = json.Unmarshal(q.Msg.Data, &editInfo)
+		if err != nil {
+			t.Error(err.Error())
+			return
+		}
+
+		var data examSiteInfo
+
+		err = dbConn.QueryRow(`SELECT name,address,server_host,admin FROM t_exam_site WHERE id = $1`,
+			editInfo.ID.Int64).Scan(&data.Name, &data.Address, &data.ServerHost, &data.Admin)
+		if err != nil {
+			t.Error(err.Error())
+			return
+		}
+
+		if editInfo.Name != "" && editInfo.Name != data.Name && passExpected {
+			err = fmt.Errorf("got %s, but %s", data.Name, editInfo.Name)
+			t.Error(err.Error())
+			return
+		}
+
+		if editInfo.Address != "" && editInfo.Address != data.Address && passExpected {
+			err = fmt.Errorf("got %s, but %s", data.Address, editInfo.Address)
+			t.Error(err.Error())
+			return
+		}
+
+		if editInfo.ServerHost.Valid && editInfo.ServerHost != data.ServerHost && passExpected {
+			err = fmt.Errorf("got %s, but %s", data.ServerHost.String, editInfo.ServerHost.String)
+			t.Error(err.Error())
+			return
+		}
+
+		if editInfo.Admin > 0 && editInfo.Admin != data.Admin && passExpected {
+			err = fmt.Errorf("got %d, but %d", data.Admin, editInfo.Admin)
+			t.Error(err.Error())
+			return
+		}
+
+		if editInfo.ResetAccessToken && editInfo.AccessToken.String == "" && passExpected {
+			err = fmt.Errorf("got empty, but not empty")
+			t.Error(err.Error())
+			return
+		}
+
+		return
+	}
+
+	defaultDeleteCheck := func(q *cmn.ServiceCtx, passExpected bool) (err error) {
+
+		var delInfo struct {
+			IDs []int64 `json:"ids"`
+		}
+
+		err = json.Unmarshal(q.Msg.Data, &delInfo)
+		if err != nil {
+			t.Error(err.Error())
+			return
+		}
+
+		var rc int
+		err = dbConn.QueryRow(`SELECT COUNT(id) FROM t_exam_site WHERE status = '04' AND id = ANY($1)`, delInfo.IDs).Scan(&rc)
+		if err != nil {
+			t.Error(err.Error())
+			return
+		}
+
+		if rc != len(delInfo.IDs) && passExpected {
+			err = fmt.Errorf("delete got %d, but %d", rc, len(delInfo.IDs))
+		}
+
+		return
 	}
 
 	defaultCleanup := func() {
@@ -688,7 +871,7 @@ func TestExamSite(t *testing.T) {
 
 		t.Logf("Have already cleaned up %d rows from t_exam_site", c)
 
-		err = removeTestUser(testUserID)
+		err = removeTestUser(testID)
 		if err != nil {
 			t.Fatalf("failed to remove test user: %v", err)
 		}
@@ -696,6 +879,13 @@ func TestExamSite(t *testing.T) {
 		err = removeTestDomainApis(int64(cmn.CDomainAssessExamSiteAdmin))
 		if err != nil {
 			t.Fatalf("failed to remove test domain api: %v", err)
+		}
+
+		if cleanupTestData != nil {
+			err = cleanupTestData()
+			if err != nil {
+				t.Fatalf("failed to cleanup test data: %v", err)
+			}
 		}
 
 	}
@@ -707,7 +897,7 @@ func TestExamSite(t *testing.T) {
 		errWanted    string
 		setup        func() error
 		cleanup      func()
-		check        func(q *cmn.ServiceCtx, passExpected bool)
+		check        func(q *cmn.ServiceCtx, passExpected bool) error
 	}{
 
 		{
@@ -722,7 +912,7 @@ func TestExamSite(t *testing.T) {
 						"address": "test-site-addr",
 						"admin": %d
 					}
-				}`, nowTime, testUserID))),
+				}`, nowTime, testID))),
 				W: httptest.NewRecorder(),
 				Msg: &cmn.ReplyProto{
 					API:    "/api/exam-site",
@@ -730,7 +920,7 @@ func TestExamSite(t *testing.T) {
 				},
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
-					ID:   null.NewInt(testUserID, true),
+					ID:   null.NewInt(testID, true),
 					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
@@ -748,14 +938,16 @@ func TestExamSite(t *testing.T) {
 		},
 
 		// ==============创建考点测试============= coverage: 100%
-		//       .o.       oooooooooo.   oooooooooo.            .oooooo..o ooooo ooooooooooooo oooooooooooo
-		//      .888.      `888'   `Y8b  `888'   `Y8b          d8P'    `Y8 `888' 8'   888   `8 `888'     `8
-		//     .8"888.      888      888  888      888         Y88bo.       888       888       888
-		//    .8' `888.     888      888  888      888          `"Y8888o.   888       888       888oooo8
-		//   .88ooo8888.    888      888  888      888 8888888      `"Y88b  888       888       888    "
-		//  .8'     `888.   888     d88'  888     d88'         oo     .d8P  888       888       888       o
-		// o88o     o8888o o888bood8P'   o888bood8P'           8""88888P'  o888o     o888o     o888ooooood8
-
+		//       .o.       oooooooooo.   oooooooooo.
+		//      .888.      `888'   `Y8b  `888'   `Y8b
+		//     .8"888.      888      888  888      888
+		//    .8' `888.     888      888  888      888
+		//   .88ooo8888.    888      888  888      888
+		//  .8'     `888.   888     d88'  888     d88'
+		// o88o     o8888o o888bood8P'   o888bood8P'
+		//
+		//
+		//
 		{
 			name: "创建考点成功",
 			q: &cmn.ServiceCtx{
@@ -766,10 +958,10 @@ func TestExamSite(t *testing.T) {
 					"data": {
 						"name": "test-site-%d",
 						"address": "test-site-addr",
-						"server_host": "t.test.top:6443",
+						"serverHost": "t.test.top:6443",
 						"admin": %d
 					}
-				}`, nowTime, testUserID))),
+				}`, nowTime, testID))),
 				W: httptest.NewRecorder(),
 				Msg: &cmn.ReplyProto{
 					API:    "/api/exam-site",
@@ -777,7 +969,7 @@ func TestExamSite(t *testing.T) {
 				},
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
-					ID:   null.NewInt(testUserID, true),
+					ID:   null.NewInt(testID, true),
 					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
@@ -792,7 +984,7 @@ func TestExamSite(t *testing.T) {
 			errWanted:    "",
 			setup:        defaultSetup,
 			cleanup:      defaultCleanup,
-			check:        defaultCheck,
+			check:        defaultAddCheck,
 		},
 		{
 			name: "创建考点成功-缺少sever_host",
@@ -806,7 +998,7 @@ func TestExamSite(t *testing.T) {
 						"address": "test-site-addr",
 						"admin": %d
 					}
-				}`, nowTime, testUserID))),
+				}`, nowTime, testID))),
 				W: httptest.NewRecorder(),
 				Msg: &cmn.ReplyProto{
 					API:    "/api/exam-site",
@@ -814,7 +1006,7 @@ func TestExamSite(t *testing.T) {
 				},
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
-					ID:   null.NewInt(testUserID, true),
+					ID:   null.NewInt(testID, true),
 					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
@@ -829,7 +1021,7 @@ func TestExamSite(t *testing.T) {
 			errWanted:    "",
 			setup:        defaultSetup,
 			cleanup:      defaultCleanup,
-			check:        defaultCheck,
+			check:        defaultAddCheck,
 		},
 		{
 			name: "创建考点失败-缺少name",
@@ -841,10 +1033,10 @@ func TestExamSite(t *testing.T) {
 					"data": {
 						"name": "",
 						"address": "test-site-addr",
-						"server_host": "t.test.top:6443",
+						"serverHost": "t.test.top:6443",
 						"admin": %d
 					}
-				}`, testUserID))),
+				}`, testID))),
 				W: httptest.NewRecorder(),
 				Msg: &cmn.ReplyProto{
 					API:    "/api/exam-site",
@@ -852,7 +1044,7 @@ func TestExamSite(t *testing.T) {
 				},
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
-					ID:   null.NewInt(testUserID, true),
+					ID:   null.NewInt(testID, true),
 					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
@@ -867,7 +1059,7 @@ func TestExamSite(t *testing.T) {
 			errWanted:    "validation failed:Key: 'examSiteInfo.Name' Error:Field validation for 'Name' failed on the 'required' tag",
 			setup:        defaultSetup,
 			cleanup:      defaultCleanup,
-			check:        defaultCheck,
+			check:        defaultAddCheck,
 		},
 		{
 			name: "创建考点失败-name类型为非字符串",
@@ -879,10 +1071,10 @@ func TestExamSite(t *testing.T) {
 					"data": {
 						"name": 123,
 						"address": "test-site-addr",
-						"server_host": "t.test.top:6443",
+						"serverHost": "t.test.top:6443",
 						"admin": %d
 					}
-				}`, testUserID))),
+				}`, testID))),
 				W: httptest.NewRecorder(),
 				Msg: &cmn.ReplyProto{
 					API:    "/api/exam-site",
@@ -890,7 +1082,7 @@ func TestExamSite(t *testing.T) {
 				},
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
-					ID:   null.NewInt(testUserID, true),
+					ID:   null.NewInt(testID, true),
 					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
@@ -905,7 +1097,7 @@ func TestExamSite(t *testing.T) {
 			errWanted:    "json: cannot unmarshal number into Go struct field examSiteInfo.name of type string",
 			setup:        defaultSetup,
 			cleanup:      defaultCleanup,
-			check:        defaultCheck,
+			check:        defaultAddCheck,
 		},
 		{
 			name: "创建考点失败-admin为非数字类型",
@@ -917,8 +1109,8 @@ func TestExamSite(t *testing.T) {
 					"data": {
 						"name": "test-site",
 						"address": "test-site-addr",
-						"server_host": "t.test.top:6443",
-						"admin": "testUserID"
+						"serverHost": "t.test.top:6443",
+						"admin": "testID"
 					}
 				}`)),
 				W: httptest.NewRecorder(),
@@ -928,7 +1120,7 @@ func TestExamSite(t *testing.T) {
 				},
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
-					ID:   null.NewInt(testUserID, true),
+					ID:   null.NewInt(testID, true),
 					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
@@ -943,7 +1135,7 @@ func TestExamSite(t *testing.T) {
 			errWanted:    "json: cannot unmarshal string into Go struct field examSiteInfo.admin of type int64",
 			setup:        defaultSetup,
 			cleanup:      defaultCleanup,
-			check:        defaultCheck,
+			check:        defaultAddCheck,
 		},
 		{
 			name: "创建考点失败-强制开启事务失败",
@@ -957,7 +1149,7 @@ func TestExamSite(t *testing.T) {
 						"address": "test-site-addr",
 						"admin": %d
 					}
-				}`, nowTime, testUserID))),
+				}`, nowTime, testID))),
 				W: httptest.NewRecorder(),
 				Msg: &cmn.ReplyProto{
 					API:    "/api/exam-site",
@@ -965,7 +1157,7 @@ func TestExamSite(t *testing.T) {
 				},
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
-					ID:   null.NewInt(testUserID, true),
+					ID:   null.NewInt(testID, true),
 					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
@@ -983,7 +1175,7 @@ func TestExamSite(t *testing.T) {
 			errWanted:    "force tx begin err",
 			setup:        defaultSetup,
 			cleanup:      defaultCleanup,
-			check:        defaultCheck,
+			check:        defaultAddCheck,
 		},
 		{
 			name: "创建考点失败-强制事务提交失败",
@@ -997,7 +1189,7 @@ func TestExamSite(t *testing.T) {
 						"address": "test-site-addr",
 						"admin": %d
 					}
-				}`, nowTime, testUserID))),
+				}`, nowTime, testID))),
 				W: httptest.NewRecorder(),
 				Msg: &cmn.ReplyProto{
 					API:    "/api/exam-site",
@@ -1005,7 +1197,7 @@ func TestExamSite(t *testing.T) {
 				},
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
-					ID:   null.NewInt(testUserID, true),
+					ID:   null.NewInt(testID, true),
 					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
@@ -1023,7 +1215,7 @@ func TestExamSite(t *testing.T) {
 			errWanted:    "force tx commit err",
 			setup:        defaultSetup,
 			cleanup:      defaultCleanup,
-			check:        defaultCheck,
+			check:        defaultAddCheck,
 		},
 		{
 			name: "创建考点失败-强制事务回滚失败",
@@ -1037,7 +1229,7 @@ func TestExamSite(t *testing.T) {
 						"address": "test-site-addr",
 						"admin": %d
 					}
-				}`, nowTime, testUserID))),
+				}`, nowTime, testID))),
 				W: httptest.NewRecorder(),
 				Msg: &cmn.ReplyProto{
 					API:    "/api/exam-site",
@@ -1045,7 +1237,7 @@ func TestExamSite(t *testing.T) {
 				},
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
-					ID:   null.NewInt(testUserID, true),
+					ID:   null.NewInt(testID, true),
 					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
@@ -1063,7 +1255,7 @@ func TestExamSite(t *testing.T) {
 			errWanted:    "force tx rollback err",
 			setup:        defaultSetup,
 			cleanup:      defaultCleanup,
-			check:        defaultCheck,
+			check:        defaultAddCheck,
 		},
 		{
 			name: "创建考点失败-强制读取Body失败",
@@ -1077,7 +1269,7 @@ func TestExamSite(t *testing.T) {
 						"address": "test-site-addr",
 						"admin": %d
 					}
-				}`, nowTime, testUserID))),
+				}`, nowTime, testID))),
 				W: httptest.NewRecorder(),
 				Msg: &cmn.ReplyProto{
 					API:    "/api/exam-site",
@@ -1085,7 +1277,7 @@ func TestExamSite(t *testing.T) {
 				},
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
-					ID:   null.NewInt(testUserID, true),
+					ID:   null.NewInt(testID, true),
 					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
@@ -1103,7 +1295,7 @@ func TestExamSite(t *testing.T) {
 			errWanted:    "force read body err",
 			setup:        defaultSetup,
 			cleanup:      defaultCleanup,
-			check:        defaultCheck,
+			check:        defaultAddCheck,
 		},
 		{
 			name: "创建考点失败-强制添加系统账号SQL Prepare 失败",
@@ -1117,7 +1309,7 @@ func TestExamSite(t *testing.T) {
 						"address": "test-site-addr",
 						"admin": %d
 					}
-				}`, nowTime, testUserID))),
+				}`, nowTime, testID))),
 				W: httptest.NewRecorder(),
 				Msg: &cmn.ReplyProto{
 					API:    "/api/exam-site",
@@ -1125,7 +1317,7 @@ func TestExamSite(t *testing.T) {
 				},
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
-					ID:   null.NewInt(testUserID, true),
+					ID:   null.NewInt(testID, true),
 					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
@@ -1136,14 +1328,14 @@ func TestExamSite(t *testing.T) {
 				},
 				RedisClient: cmn.GetRedisConn(),
 				Tag: map[string]interface{}{
-					"prepareErr1": fmt.Errorf("force add sys user sql prepare err"),
+					"prepareCreateSysUserErr": fmt.Errorf("force add sys user sql prepare err"),
 				},
 			},
 			passExpected: false,
 			errWanted:    "force add sys user sql prepare err",
 			setup:        defaultSetup,
 			cleanup:      defaultCleanup,
-			check:        defaultCheck,
+			check:        defaultAddCheck,
 		},
 		{
 			name: "创建考点失败-强制执行添加系统账号sql失败",
@@ -1157,7 +1349,7 @@ func TestExamSite(t *testing.T) {
 						"address": "test-site-addr",
 						"admin": %d
 					}
-				}`, nowTime, testUserID))),
+				}`, nowTime, testID))),
 				W: httptest.NewRecorder(),
 				Msg: &cmn.ReplyProto{
 					API:    "/api/exam-site",
@@ -1165,7 +1357,7 @@ func TestExamSite(t *testing.T) {
 				},
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
-					ID:   null.NewInt(testUserID, true),
+					ID:   null.NewInt(testID, true),
 					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
@@ -1176,14 +1368,14 @@ func TestExamSite(t *testing.T) {
 				},
 				RedisClient: cmn.GetRedisConn(),
 				Tag: map[string]interface{}{
-					"sqlExecErr1": fmt.Errorf("force execute add sys user sql err"),
+					"sqlExecCreateSysUserErr": fmt.Errorf("force execute add sys user sql err"),
 				},
 			},
 			passExpected: false,
 			errWanted:    "force execute add sys user sql err",
 			setup:        defaultSetup,
 			cleanup:      defaultCleanup,
-			check:        defaultCheck,
+			check:        defaultAddCheck,
 		},
 		{
 			name: "创建考点失败-强制添加考点SQL Prepare 失败",
@@ -1197,7 +1389,7 @@ func TestExamSite(t *testing.T) {
 						"address": "test-site-addr",
 						"admin": %d
 					}
-				}`, nowTime, testUserID))),
+				}`, nowTime, testID))),
 				W: httptest.NewRecorder(),
 				Msg: &cmn.ReplyProto{
 					API:    "/api/exam-site",
@@ -1205,7 +1397,7 @@ func TestExamSite(t *testing.T) {
 				},
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
-					ID:   null.NewInt(testUserID, true),
+					ID:   null.NewInt(testID, true),
 					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
@@ -1216,14 +1408,14 @@ func TestExamSite(t *testing.T) {
 				},
 				RedisClient: cmn.GetRedisConn(),
 				Tag: map[string]interface{}{
-					"prepareErr2": fmt.Errorf("force add exam site prepare err"),
+					"prepareErr": fmt.Errorf("force add exam site prepare err"),
 				},
 			},
 			passExpected: false,
 			errWanted:    "force add exam site prepare err",
 			setup:        defaultSetup,
 			cleanup:      defaultCleanup,
-			check:        defaultCheck,
+			check:        defaultAddCheck,
 		},
 		{
 			name: "创建考点失败-强制执行添加考点sql失败",
@@ -1237,7 +1429,7 @@ func TestExamSite(t *testing.T) {
 						"address": "test-site-addr",
 						"admin": %d
 					}
-				}`, nowTime, testUserID))),
+				}`, nowTime, testID))),
 				W: httptest.NewRecorder(),
 				Msg: &cmn.ReplyProto{
 					API:    "/api/exam-site",
@@ -1245,7 +1437,7 @@ func TestExamSite(t *testing.T) {
 				},
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
-					ID:   null.NewInt(testUserID, true),
+					ID:   null.NewInt(testID, true),
 					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
@@ -1256,14 +1448,14 @@ func TestExamSite(t *testing.T) {
 				},
 				RedisClient: cmn.GetRedisConn(),
 				Tag: map[string]interface{}{
-					"sqlExecErr2": fmt.Errorf("force execute add exam site sql err"),
+					"sqlExecErr": fmt.Errorf("force execute add exam site sql err"),
 				},
 			},
 			passExpected: false,
 			errWanted:    "force execute add exam site sql err",
 			setup:        defaultSetup,
 			cleanup:      defaultCleanup,
-			check:        defaultCheck,
+			check:        defaultAddCheck,
 		},
 		{
 			name: "创建考点失败-强制返回json Marshal失败",
@@ -1277,7 +1469,7 @@ func TestExamSite(t *testing.T) {
 						"address": "test-site-addr",
 						"admin": %d
 					}
-				}`, nowTime, testUserID))),
+				}`, nowTime, testID))),
 				W: httptest.NewRecorder(),
 				Msg: &cmn.ReplyProto{
 					API:    "/api/exam-site",
@@ -1285,7 +1477,7 @@ func TestExamSite(t *testing.T) {
 				},
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
-					ID:   null.NewInt(testUserID, true),
+					ID:   null.NewInt(testID, true),
 					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
@@ -1303,7 +1495,1397 @@ func TestExamSite(t *testing.T) {
 			errWanted:    "force marshal return data err",
 			setup:        defaultSetup,
 			cleanup:      defaultCleanup,
-			check:        defaultCheck,
+			check:        defaultAddCheck,
+		},
+		{
+			name: "创建考点失败-没有创建权限",
+			q: &cmn.ServiceCtx{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-site",
+				},
+				R: httptest.NewRequest("POST", "/api/exam-site", strings.NewReader(fmt.Sprintf(`{
+					"data": {
+						"name": "test-site-%d",
+						"address": "test-site-addr",
+						"serverHost": "t.test.top:6443",
+						"admin": %d
+					}
+				}`, nowTime, testID))),
+				W: httptest.NewRecorder(),
+				Msg: &cmn.ReplyProto{
+					API:    "/api/exam-site",
+					Method: "POST",
+				},
+				BeginTime: time.Now(),
+				SysUser: &cmn.TUser{
+					ID:   null.NewInt(testID, true),
+					Role: null.NewInt(int64(cmn.CDomainAssessStudent), true),
+				},
+				Domains: []cmn.TDomain{
+					{
+						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+					},
+				},
+				RedisClient: cmn.GetRedisConn(),
+				Tag:         map[string]interface{}{},
+			},
+			passExpected: false,
+			errWanted:    "当前用户没有权限创建该数据",
+			setup:        defaultSetup,
+			cleanup:      defaultCleanup,
+			check:        defaultAddCheck,
+		},
+
+		// ======================================
+
+		//   .oooooo.    oooooooooooo ooooooooooooo
+		//  d8P'  `Y8b   `888'     `8 8'   888   `8
+		// 888            888              888
+		// 888            888oooo8         888
+		// 888     ooooo  888    "         888
+		// `88.    .88'   888       o      888
+		//  `Y8bood8P'   o888ooooood8     o888o
+		//
+		//
+		//
+		{
+			name: "获取考点成功",
+			q: &cmn.ServiceCtx{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-site",
+				},
+				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-site/list?q=%s`, url.QueryEscape(fmt.Sprintf(`{
+						"data": {
+							"examSiteID": %d
+						}
+					}`, testID))), nil),
+				W: httptest.NewRecorder(),
+				Msg: &cmn.ReplyProto{
+					API:    "/api/exam-site/list",
+					Method: "GET",
+				},
+				BeginTime: time.Now(),
+				SysUser: &cmn.TUser{
+					ID:   null.NewInt(testID, true),
+					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+				},
+				Domains: []cmn.TDomain{
+					{
+						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+					},
+				},
+				RedisClient: cmn.GetRedisConn(),
+			},
+			passExpected: true,
+			errWanted:    "",
+			setup:        defaultSetup,
+			check:        defaultGetCheck,
+			cleanup:      defaultCleanup,
+		},
+		{
+			name: "获取考点失败-没有权限获取",
+			q: &cmn.ServiceCtx{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-site",
+				},
+				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-site/list?q=%s`, url.QueryEscape(fmt.Sprintf(`{
+						"data": {
+							"examSiteID": %d
+						}
+					}`, testID))), nil),
+				W: httptest.NewRecorder(),
+				Msg: &cmn.ReplyProto{
+					API:    "/api/exam-site/list",
+					Method: "GET",
+				},
+				BeginTime: time.Now(),
+				SysUser: &cmn.TUser{
+					ID:   null.NewInt(testID, true),
+					Role: null.NewInt(int64(cmn.CDomainAssessStudent), true),
+				},
+				Domains: []cmn.TDomain{
+					{
+						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+					},
+				},
+				RedisClient: cmn.GetRedisConn(),
+			},
+			passExpected: false,
+			errWanted:    "当前用户没有权限获取该数据",
+			setup:        defaultSetup,
+			check:        defaultGetCheck,
+			cleanup:      defaultCleanup,
+		},
+		{
+			name: "获取考点失败-解析请求体数据失败",
+			q: &cmn.ServiceCtx{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-site",
+				},
+				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-site/list?q=%s`, url.QueryEscape(fmt.Sprintf(`{
+						"data": {
+							"examSiteID": %d
+						
+					}`, testID))), nil),
+				W: httptest.NewRecorder(),
+				Msg: &cmn.ReplyProto{
+					API:    "/api/exam-site/list",
+					Method: "GET",
+				},
+				BeginTime: time.Now(),
+				SysUser: &cmn.TUser{
+					ID:   null.NewInt(testID, true),
+					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+				},
+				Domains: []cmn.TDomain{
+					{
+						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+					},
+				},
+				RedisClient: cmn.GetRedisConn(),
+			},
+			passExpected: false,
+			errWanted:    "unexpected end of JSON input",
+			setup:        defaultSetup,
+			check:        defaultGetCheck,
+			cleanup:      defaultCleanup,
+		},
+		{
+			name: "获取考点失败-无效的考点ID",
+			q: &cmn.ServiceCtx{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-site",
+				},
+				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-site/list?q=%s`, url.QueryEscape(fmt.Sprintf(`{
+						"data": {
+							"examSiteID": %d
+						}
+					}`, -123))), nil),
+				W: httptest.NewRecorder(),
+				Msg: &cmn.ReplyProto{
+					API:    "/api/exam-site/list",
+					Method: "GET",
+				},
+				BeginTime: time.Now(),
+				SysUser: &cmn.TUser{
+					ID:   null.NewInt(testID, true),
+					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+				},
+				Domains: []cmn.TDomain{
+					{
+						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+					},
+				},
+				RedisClient: cmn.GetRedisConn(),
+			},
+			passExpected: false,
+			errWanted:    "无效的考点ID: -123, 请传入一个大于0的值",
+			setup:        defaultSetup,
+			check:        defaultGetCheck,
+			cleanup:      defaultCleanup,
+		},
+		{
+			name: "获取考点失败-强制准备查询SQL失败",
+			q: &cmn.ServiceCtx{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-site",
+				},
+				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-site/list?q=%s`, url.QueryEscape(fmt.Sprintf(`{
+						"data": {
+							"examSiteID": %d
+						}
+					}`, testID))), nil),
+				W: httptest.NewRecorder(),
+				Msg: &cmn.ReplyProto{
+					API:    "/api/exam-site/list",
+					Method: "GET",
+				},
+				BeginTime: time.Now(),
+				SysUser: &cmn.TUser{
+					ID:   null.NewInt(testID, true),
+					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+				},
+				Domains: []cmn.TDomain{
+					{
+						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+					},
+				},
+				RedisClient: cmn.GetRedisConn(),
+				Tag: map[string]interface{}{
+					"prepareGetExamSiteSqlErr": fmt.Errorf("forced prepare query sql err"),
+				},
+			},
+			passExpected: false,
+			errWanted:    "forced prepare query sql err",
+			setup:        defaultSetup,
+			check:        defaultGetCheck,
+			cleanup:      defaultCleanup,
+		},
+		{
+			name: "获取考点失败-不存在的考点",
+			q: &cmn.ServiceCtx{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-site",
+				},
+				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-site/list?q=%s`, url.QueryEscape(fmt.Sprintf(`{
+						"data": {
+							"examSiteID": %d
+						}
+					}`, testID+123))), nil),
+				W: httptest.NewRecorder(),
+				Msg: &cmn.ReplyProto{
+					API:    "/api/exam-site/list",
+					Method: "GET",
+				},
+				BeginTime: time.Now(),
+				SysUser: &cmn.TUser{
+					ID:   null.NewInt(testID, true),
+					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+				},
+				Domains: []cmn.TDomain{
+					{
+						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+					},
+				},
+				RedisClient: cmn.GetRedisConn(),
+				Tag:         map[string]interface{}{},
+			},
+			passExpected: false,
+			errWanted:    sql.ErrNoRows.Error(),
+			setup:        defaultSetup,
+			check:        defaultGetCheck,
+			cleanup:      defaultCleanup,
+		},
+
+		// ======================================
+
+		// oooooooooooo oooooooooo.   ooooo ooooooooooooo
+		// `888'     `8 `888'   `Y8b  `888' 8'   888   `8
+		//  888          888      888  888       888
+		//  888oooo8     888      888  888       888
+		//  888    "     888      888  888       888
+		//  888       o  888     d88'  888       888
+		// o888ooooood8 o888bood8P'   o888o     o888o
+		//
+		//
+		//
+		{
+			name: "编辑考点成功",
+			q: &cmn.ServiceCtx{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-site",
+				},
+				R: httptest.NewRequest("PATCH", "/api/exam-site", strings.NewReader(fmt.Sprintf(`{
+					"data": {
+						"id": %d,
+						"name": "test-site-%d",
+						"address": "test-site-addr",
+						"serverHost": "t.test.top:6443",
+						"admin": %d
+					}
+				}`, testID, nowTime, testID))),
+				W: httptest.NewRecorder(),
+				Msg: &cmn.ReplyProto{
+					API:    "/api/exam-site",
+					Method: "PATCH",
+				},
+				BeginTime: time.Now(),
+				SysUser: &cmn.TUser{
+					ID:   null.NewInt(testID, true),
+					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+				},
+				Domains: []cmn.TDomain{
+					{
+						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+					},
+				},
+				RedisClient: cmn.GetRedisConn(),
+			},
+			passExpected: true,
+			errWanted:    "",
+			setup:        defaultSetup,
+			cleanup:      defaultCleanup,
+			check:        defaultEditCheck,
+		},
+		{
+			name: "重置考点访问密钥成功",
+			q: &cmn.ServiceCtx{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-site",
+				},
+				R: httptest.NewRequest("PATCH", "/api/exam-site", strings.NewReader(fmt.Sprintf(`{
+					"data": {
+						"id": %d,
+						"resetAccessToken":true
+					}
+				}`, testID))),
+				W: httptest.NewRecorder(),
+				Msg: &cmn.ReplyProto{
+					API:    "/api/exam-site",
+					Method: "PATCH",
+				},
+				BeginTime: time.Now(),
+				SysUser: &cmn.TUser{
+					ID:   null.NewInt(testID, true),
+					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+				},
+				Domains: []cmn.TDomain{
+					{
+						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+					},
+				},
+				RedisClient: cmn.GetRedisConn(),
+			},
+			passExpected: true,
+			errWanted:    "",
+			setup:        defaultSetup,
+			cleanup:      defaultCleanup,
+			check:        defaultEditCheck,
+		},
+		{
+			name: "编辑考点失败-没有权限编辑",
+			q: &cmn.ServiceCtx{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-site",
+				},
+				R: httptest.NewRequest("PATCH", "/api/exam-site", strings.NewReader(fmt.Sprintf(`{
+					"data": {
+						"id": %d,
+						"name": "test-site-%d",
+						"address": "test-site-addr",
+						"serverHost": "t.test.top:6443",
+						"admin": %d
+					}
+				}`, testID, nowTime, testID))),
+				W: httptest.NewRecorder(),
+				Msg: &cmn.ReplyProto{
+					API:    "/api/exam-site",
+					Method: "PATCH",
+				},
+				BeginTime: time.Now(),
+				SysUser: &cmn.TUser{
+					ID:   null.NewInt(testID, true),
+					Role: null.NewInt(int64(cmn.CDomainAssessStudent), true),
+				},
+				Domains: []cmn.TDomain{
+					{
+						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+					},
+				},
+				RedisClient: cmn.GetRedisConn(),
+			},
+			passExpected: false,
+			errWanted:    "当前用户没有权限修改该数据",
+			setup:        defaultSetup,
+			cleanup:      defaultCleanup,
+			check:        defaultEditCheck,
+		},
+		{
+			name: "编辑考点失败-解析请求体中的编辑信息失败",
+			q: &cmn.ServiceCtx{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-site",
+				},
+				R: httptest.NewRequest("PATCH", "/api/exam-site", strings.NewReader(fmt.Sprintf(`{
+					"data": {
+						"id": %d,
+						"name": "test-site-%d",
+						"address": "test-site-addr",
+						"serverHost": "t.test.top:6443",
+						"admin": %d
+					
+				}`, testID, nowTime, testID))),
+				W: httptest.NewRecorder(),
+				Msg: &cmn.ReplyProto{
+					API:    "/api/exam-site",
+					Method: "PATCH",
+				},
+				BeginTime: time.Now(),
+				SysUser: &cmn.TUser{
+					ID:   null.NewInt(testID, true),
+					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+				},
+				Domains: []cmn.TDomain{
+					{
+						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+					},
+				},
+				RedisClient: cmn.GetRedisConn(),
+			},
+			passExpected: false,
+			errWanted:    "unexpected end of JSON input",
+			setup:        defaultSetup,
+			cleanup:      defaultCleanup,
+			check:        defaultEditCheck,
+		},
+		{
+			name: "编辑考点失败-无效的考点ID",
+			q: &cmn.ServiceCtx{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-site",
+				},
+				R: httptest.NewRequest("PATCH", "/api/exam-site", strings.NewReader(fmt.Sprintf(`{
+					"data": {
+						"id": %d,
+						"name": "test-site-%d",
+						"address": "test-site-addr",
+						"serverHost": "t.test.top:6443",
+						"admin": %d
+					}
+				}`, -123, nowTime, testID))),
+				W: httptest.NewRecorder(),
+				Msg: &cmn.ReplyProto{
+					API:    "/api/exam-site",
+					Method: "PATCH",
+				},
+				BeginTime: time.Now(),
+				SysUser: &cmn.TUser{
+					ID:   null.NewInt(testID, true),
+					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+				},
+				Domains: []cmn.TDomain{
+					{
+						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+					},
+				},
+				RedisClient: cmn.GetRedisConn(),
+			},
+			passExpected: false,
+			errWanted:    "考点ID必须大于0, 当前传入: -123",
+			setup:        defaultSetup,
+			cleanup:      defaultCleanup,
+			check:        defaultEditCheck,
+		},
+		{
+			name: "编辑考点失败-强制准备更新考点信息SQL语句失败",
+			q: &cmn.ServiceCtx{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-site",
+				},
+				R: httptest.NewRequest("PATCH", "/api/exam-site", strings.NewReader(fmt.Sprintf(`{
+					"data": {
+						"id": %d,
+						"name": "test-site-%d",
+						"address": "test-site-addr",
+						"serverHost": "t.test.top:6443",
+						"admin": %d
+					}
+				}`, testID, nowTime, testID))),
+				W: httptest.NewRecorder(),
+				Msg: &cmn.ReplyProto{
+					API:    "/api/exam-site",
+					Method: "PATCH",
+				},
+				BeginTime: time.Now(),
+				SysUser: &cmn.TUser{
+					ID:   null.NewInt(testID, true),
+					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+				},
+				Domains: []cmn.TDomain{
+					{
+						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+					},
+				},
+				RedisClient: cmn.GetRedisConn(),
+				Tag: map[string]interface{}{
+					"prepareErr": fmt.Errorf("forced prepare update exam site info err"),
+				},
+			},
+			passExpected: false,
+			errWanted:    "forced prepare update exam site info err",
+			setup:        defaultSetup,
+			cleanup:      defaultCleanup,
+			check:        defaultEditCheck,
+		},
+		{
+			name: "编辑考点失败-强制执行更新考点信息SQL语句失败",
+			q: &cmn.ServiceCtx{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-site",
+				},
+				R: httptest.NewRequest("PATCH", "/api/exam-site", strings.NewReader(fmt.Sprintf(`{
+					"data": {
+						"id": %d,
+						"name": "test-site-%d",
+						"address": "test-site-addr",
+						"serverHost": "t.test.top:6443",
+						"admin": %d
+					}
+				}`, testID, nowTime, testID))),
+				W: httptest.NewRecorder(),
+				Msg: &cmn.ReplyProto{
+					API:    "/api/exam-site",
+					Method: "PATCH",
+				},
+				BeginTime: time.Now(),
+				SysUser: &cmn.TUser{
+					ID:   null.NewInt(testID, true),
+					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+				},
+				Domains: []cmn.TDomain{
+					{
+						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+					},
+				},
+				RedisClient: cmn.GetRedisConn(),
+				Tag: map[string]interface{}{
+					"sqlExecErr": fmt.Errorf("forced exec update exam site info err"),
+				},
+			},
+			passExpected: false,
+			errWanted:    "forced exec update exam site info err",
+			setup:        defaultSetup,
+			cleanup:      defaultCleanup,
+			check:        defaultEditCheck,
+		},
+		{
+			name: "编辑考点失败-强制获取更新后的变化行数失败",
+			q: &cmn.ServiceCtx{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-site",
+				},
+				R: httptest.NewRequest("PATCH", "/api/exam-site", strings.NewReader(fmt.Sprintf(`{
+					"data": {
+						"id": %d,
+						"name": "test-site-%d",
+						"address": "test-site-addr",
+						"serverHost": "t.test.top:6443",
+						"admin": %d
+					}
+				}`, testID, nowTime, testID))),
+				W: httptest.NewRecorder(),
+				Msg: &cmn.ReplyProto{
+					API:    "/api/exam-site",
+					Method: "PATCH",
+				},
+				BeginTime: time.Now(),
+				SysUser: &cmn.TUser{
+					ID:   null.NewInt(testID, true),
+					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+				},
+				Domains: []cmn.TDomain{
+					{
+						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+					},
+				},
+				RedisClient: cmn.GetRedisConn(),
+				Tag: map[string]interface{}{
+					"rowsAffectedErr": fmt.Errorf("forced get affected rows after updated exam site info err"),
+				},
+			},
+			passExpected: false,
+			errWanted:    "forced get affected rows after updated exam site info err",
+			setup:        defaultSetup,
+			cleanup:      defaultCleanup,
+			check:        defaultEditCheck,
+		},
+		{
+			name: "编辑考点失败-不存在的考点",
+			q: &cmn.ServiceCtx{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-site",
+				},
+				R: httptest.NewRequest("PATCH", "/api/exam-site", strings.NewReader(fmt.Sprintf(`{
+					"data": {
+						"id": %d,
+						"name": "test-site-%d",
+						"address": "test-site-addr",
+						"serverHost": "t.test.top:6443",
+						"admin": %d
+					}
+				}`, testID+123, nowTime, testID))),
+				W: httptest.NewRecorder(),
+				Msg: &cmn.ReplyProto{
+					API:    "/api/exam-site",
+					Method: "PATCH",
+				},
+				BeginTime: time.Now(),
+				SysUser: &cmn.TUser{
+					ID:   null.NewInt(testID, true),
+					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+				},
+				Domains: []cmn.TDomain{
+					{
+						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+					},
+				},
+				RedisClient: cmn.GetRedisConn(),
+				Tag:         map[string]interface{}{},
+			},
+			passExpected: false,
+			errWanted:    fmt.Sprintf("无权编辑该考点或该考点不存在(id: %d)", testID+123),
+			setup:        defaultSetup,
+			cleanup:      defaultCleanup,
+			check:        defaultEditCheck,
+		},
+		{
+			name: "编辑考点失败-准备更新系统账号的user_token SQL失败",
+			q: &cmn.ServiceCtx{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-site",
+				},
+				R: httptest.NewRequest("PATCH", "/api/exam-site", strings.NewReader(fmt.Sprintf(`{
+					"data": {
+						"id": %d,
+						"resetAccessToken":true
+					}
+				}`, testID))),
+				W: httptest.NewRecorder(),
+				Msg: &cmn.ReplyProto{
+					API:    "/api/exam-site",
+					Method: "PATCH",
+				},
+				BeginTime: time.Now(),
+				SysUser: &cmn.TUser{
+					ID:   null.NewInt(testID, true),
+					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+				},
+				Domains: []cmn.TDomain{
+					{
+						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+					},
+				},
+				RedisClient: cmn.GetRedisConn(),
+				Tag: map[string]interface{}{
+					"prepareErr2": fmt.Errorf("forced prepare update sys user token err"),
+				},
+			},
+			passExpected: false,
+			errWanted:    "forced prepare update sys user token err",
+			setup:        defaultSetup,
+			cleanup:      defaultCleanup,
+			check:        defaultEditCheck,
+		},
+		{
+			name: "编辑考点失败-执行更新系统账号的user_token SQL失败",
+			q: &cmn.ServiceCtx{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-site",
+				},
+				R: httptest.NewRequest("PATCH", "/api/exam-site", strings.NewReader(fmt.Sprintf(`{
+					"data": {
+						"id": %d,
+						"resetAccessToken":true
+					}
+				}`, testID))),
+				W: httptest.NewRecorder(),
+				Msg: &cmn.ReplyProto{
+					API:    "/api/exam-site",
+					Method: "PATCH",
+				},
+				BeginTime: time.Now(),
+				SysUser: &cmn.TUser{
+					ID:   null.NewInt(testID, true),
+					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+				},
+				Domains: []cmn.TDomain{
+					{
+						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+					},
+				},
+				RedisClient: cmn.GetRedisConn(),
+				Tag: map[string]interface{}{
+					"sqlExecErr2": fmt.Errorf("forced exec update sys user token err"),
+				},
+			},
+			passExpected: false,
+			errWanted:    "forced exec update sys user token err",
+			setup:        defaultSetup,
+			cleanup:      defaultCleanup,
+			check:        defaultEditCheck,
+		},
+		{
+			name: "编辑考点失败-获取更新系统账号的user_token的变化行数失败",
+			q: &cmn.ServiceCtx{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-site",
+				},
+				R: httptest.NewRequest("PATCH", "/api/exam-site", strings.NewReader(fmt.Sprintf(`{
+					"data": {
+						"id": %d,
+						"resetAccessToken":true
+					}
+				}`, testID))),
+				W: httptest.NewRecorder(),
+				Msg: &cmn.ReplyProto{
+					API:    "/api/exam-site",
+					Method: "PATCH",
+				},
+				BeginTime: time.Now(),
+				SysUser: &cmn.TUser{
+					ID:   null.NewInt(testID, true),
+					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+				},
+				Domains: []cmn.TDomain{
+					{
+						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+					},
+				},
+				RedisClient: cmn.GetRedisConn(),
+				Tag: map[string]interface{}{
+					"rowsAffectedErr2": fmt.Errorf("forced get update sys user affected row err"),
+				},
+			},
+			passExpected: false,
+			errWanted:    "forced get update sys user affected row err",
+			setup:        defaultSetup,
+			cleanup:      defaultCleanup,
+			check:        defaultEditCheck,
+		},
+		{
+			name: "编辑考点失败-系统账号不存在",
+			q: &cmn.ServiceCtx{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-site",
+				},
+				R: httptest.NewRequest("PATCH", "/api/exam-site", strings.NewReader(fmt.Sprintf(`{
+					"data": {
+						"id": %d,
+						"resetAccessToken":true
+					}
+				}`, testID))),
+				W: httptest.NewRecorder(),
+				Msg: &cmn.ReplyProto{
+					API:    "/api/exam-site",
+					Method: "PATCH",
+				},
+				BeginTime: time.Now(),
+				SysUser: &cmn.TUser{
+					ID:   null.NewInt(testID, true),
+					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+				},
+				Domains: []cmn.TDomain{
+					{
+						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+					},
+				},
+				RedisClient: cmn.GetRedisConn(),
+				Tag:         map[string]interface{}{},
+			},
+			passExpected: true,
+			errWanted:    "",
+			setup: func() (err error) {
+
+				err = defaultSetup()
+				if err != nil {
+					return
+				}
+
+				_, err = dbConn.Exec(fmt.Sprintf(`WITH d_user_domain AS (
+					DELETE FROM t_user_domain WHERE sys_user = %d
+				)
+				DELETE FROM t_user WHERE id = %d`, testID, testID))
+				if err != nil {
+					t.Error(err.Error())
+					return
+				}
+
+				return
+			},
+			cleanup: defaultCleanup,
+			check:   defaultEditCheck,
+		},
+		{
+			name: "编辑考点失败-系统账号不存在并强制创建新账号失败",
+			q: &cmn.ServiceCtx{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-site",
+				},
+				R: httptest.NewRequest("PATCH", "/api/exam-site", strings.NewReader(fmt.Sprintf(`{
+					"data": {
+						"id": %d,
+						"resetAccessToken":true
+					}
+				}`, testID))),
+				W: httptest.NewRecorder(),
+				Msg: &cmn.ReplyProto{
+					API:    "/api/exam-site",
+					Method: "PATCH",
+				},
+				BeginTime: time.Now(),
+				SysUser: &cmn.TUser{
+					ID:   null.NewInt(testID, true),
+					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+				},
+				Domains: []cmn.TDomain{
+					{
+						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+					},
+				},
+				RedisClient: cmn.GetRedisConn(),
+				Tag: map[string]interface{}{
+					"sqlExecCreateSysUserErr": fmt.Errorf("forced create new sys user error"),
+				},
+			},
+			passExpected: false,
+			errWanted:    "forced create new sys user error",
+			setup: func() (err error) {
+
+				err = defaultSetup()
+				if err != nil {
+					return
+				}
+
+				_, err = dbConn.Exec(fmt.Sprintf(`WITH d_user_domain AS (
+					DELETE FROM t_user_domain WHERE sys_user = %d
+				)
+				DELETE FROM t_user WHERE id = %d`, testID, testID))
+				if err != nil {
+					t.Error(err.Error())
+					return
+				}
+
+				return
+			},
+			cleanup: defaultCleanup,
+			check:   defaultEditCheck,
+		},
+		{
+			name: "编辑考点失败-系统账号不存在并强制准备更新考点系统账号SQL失败",
+			q: &cmn.ServiceCtx{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-site",
+				},
+				R: httptest.NewRequest("PATCH", "/api/exam-site", strings.NewReader(fmt.Sprintf(`{
+					"data": {
+						"id": %d,
+						"resetAccessToken":true
+					}
+				}`, testID))),
+				W: httptest.NewRecorder(),
+				Msg: &cmn.ReplyProto{
+					API:    "/api/exam-site",
+					Method: "PATCH",
+				},
+				BeginTime: time.Now(),
+				SysUser: &cmn.TUser{
+					ID:   null.NewInt(testID, true),
+					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+				},
+				Domains: []cmn.TDomain{
+					{
+						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+					},
+				},
+				RedisClient: cmn.GetRedisConn(),
+				Tag: map[string]interface{}{
+					"prepareErr3": fmt.Errorf("forced prepare update exam site new sys user sql error"),
+				},
+			},
+			passExpected: false,
+			errWanted:    "forced prepare update exam site new sys user sql error",
+			setup: func() (err error) {
+
+				err = defaultSetup()
+				if err != nil {
+					return
+				}
+
+				_, err = dbConn.Exec(fmt.Sprintf(`WITH d_user_domain AS (
+					DELETE FROM t_user_domain WHERE sys_user = %d
+				)
+				DELETE FROM t_user WHERE id = %d`, testID, testID))
+				if err != nil {
+					t.Error(err.Error())
+					return
+				}
+
+				return
+			},
+			cleanup: defaultCleanup,
+			check:   defaultEditCheck,
+		},
+		{
+			name: "编辑考点失败-系统账号不存在并强制执行更新考点系统账号SQL失败",
+			q: &cmn.ServiceCtx{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-site",
+				},
+				R: httptest.NewRequest("PATCH", "/api/exam-site", strings.NewReader(fmt.Sprintf(`{
+					"data": {
+						"id": %d,
+						"resetAccessToken":true
+					}
+				}`, testID))),
+				W: httptest.NewRecorder(),
+				Msg: &cmn.ReplyProto{
+					API:    "/api/exam-site",
+					Method: "PATCH",
+				},
+				BeginTime: time.Now(),
+				SysUser: &cmn.TUser{
+					ID:   null.NewInt(testID, true),
+					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+				},
+				Domains: []cmn.TDomain{
+					{
+						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+					},
+				},
+				RedisClient: cmn.GetRedisConn(),
+				Tag: map[string]interface{}{
+					"sqlExecErr3": fmt.Errorf("forced exec update exam site new sys user sql error"),
+				},
+			},
+			passExpected: false,
+			errWanted:    "forced exec update exam site new sys user sql error",
+			setup: func() (err error) {
+
+				err = defaultSetup()
+				if err != nil {
+					return
+				}
+
+				_, err = dbConn.Exec(fmt.Sprintf(`WITH d_user_domain AS (
+					DELETE FROM t_user_domain WHERE sys_user = %d
+				)
+				DELETE FROM t_user WHERE id = %d`, testID, testID))
+				if err != nil {
+					t.Error(err.Error())
+					return
+				}
+
+				return
+			},
+			cleanup: defaultCleanup,
+			check:   defaultEditCheck,
+		},
+		{
+			name: "编辑考点失败-强制Marshal返回数据失败",
+			q: &cmn.ServiceCtx{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-site",
+				},
+				R: httptest.NewRequest("PATCH", "/api/exam-site", strings.NewReader(fmt.Sprintf(`{
+					"data": {
+						"id": %d,
+						"resetAccessToken":true
+					}
+				}`, testID))),
+				W: httptest.NewRecorder(),
+				Msg: &cmn.ReplyProto{
+					API:    "/api/exam-site",
+					Method: "PATCH",
+				},
+				BeginTime: time.Now(),
+				SysUser: &cmn.TUser{
+					ID:   null.NewInt(testID, true),
+					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+				},
+				Domains: []cmn.TDomain{
+					{
+						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+					},
+				},
+				RedisClient: cmn.GetRedisConn(),
+				Tag: map[string]interface{}{
+					"jsonMarshalErr": fmt.Errorf("forced json marshal err"),
+				},
+			},
+			passExpected: false,
+			errWanted:    "forced json marshal err",
+			setup:        defaultSetup,
+			cleanup:      defaultCleanup,
+			check:        defaultEditCheck,
+		},
+
+		// ======================================
+
+		// oooooooooo.   oooooooooooo ooooo        oooooooooooo ooooooooooooo oooooooooooo
+		// `888'   `Y8b  `888'     `8 `888'        `888'     `8 8'   888   `8 `888'     `8
+		//  888      888  888          888          888              888       888
+		//  888      888  888oooo8     888          888oooo8         888       888oooo8
+		//  888      888  888    "     888          888    "         888       888    "
+		//  888     d88'  888       o  888       o  888       o      888       888       o
+		// o888bood8P'   o888ooooood8 o888ooooood8 o888ooooood8     o888o     o888ooooood8
+		//
+		//
+		{
+			name: "删除考点成功-单个考点",
+			q: &cmn.ServiceCtx{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-site",
+				},
+				R: httptest.NewRequest("DELETE", "/api/exam-site", strings.NewReader(fmt.Sprintf(`{
+					"data": {
+						"ids": [%d]
+					}
+				}`, testID))),
+				W: httptest.NewRecorder(),
+				Msg: &cmn.ReplyProto{
+					API:    "/api/exam-site",
+					Method: "DELETE",
+				},
+				BeginTime: time.Now(),
+				SysUser: &cmn.TUser{
+					ID:   null.NewInt(testID, true),
+					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+				},
+				Domains: []cmn.TDomain{
+					{
+						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+					},
+				},
+				RedisClient: cmn.GetRedisConn(),
+			},
+			passExpected: true,
+			errWanted:    "",
+			setup:        defaultSetup,
+			cleanup:      defaultCleanup,
+			check:        defaultDeleteCheck,
+		},
+		{
+			name: "删除考点成功-多个考点",
+			q: &cmn.ServiceCtx{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-site",
+				},
+				R: httptest.NewRequest("DELETE", "/api/exam-site", strings.NewReader(fmt.Sprintf(`{
+					"data": {
+						"ids": [%d, %d]
+					}
+				}`, testID, testID+1))),
+				W: httptest.NewRecorder(),
+				Msg: &cmn.ReplyProto{
+					API:    "/api/exam-site",
+					Method: "DELETE",
+				},
+				BeginTime: time.Now(),
+				SysUser: &cmn.TUser{
+					ID:   null.NewInt(testID, true),
+					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+				},
+				Domains: []cmn.TDomain{
+					{
+						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+					},
+				},
+				RedisClient: cmn.GetRedisConn(),
+			},
+			passExpected: true,
+			errWanted:    "",
+			setup:        defaultSetup,
+			cleanup:      defaultCleanup,
+			check:        defaultDeleteCheck,
+		},
+		{
+			name: "删除考点失败-没有删除权限",
+			q: &cmn.ServiceCtx{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-site",
+				},
+				R: httptest.NewRequest("DELETE", "/api/exam-site", strings.NewReader(fmt.Sprintf(`{
+					"data": {
+						"ids": [%d, %d]
+					}
+				}`, testID, testID+1))),
+				W: httptest.NewRecorder(),
+				Msg: &cmn.ReplyProto{
+					API:    "/api/exam-site",
+					Method: "DELETE",
+				},
+				BeginTime: time.Now(),
+				SysUser: &cmn.TUser{
+					ID:   null.NewInt(testID, true),
+					Role: null.NewInt(int64(cmn.CDomainAssessStudent), true),
+				},
+				Domains: []cmn.TDomain{
+					{
+						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+					},
+				},
+				RedisClient: cmn.GetRedisConn(),
+			},
+			passExpected: false,
+			errWanted:    "当前用户没有权限删除该数据",
+			setup:        defaultSetup,
+			cleanup:      defaultCleanup,
+			check:        defaultDeleteCheck,
+		},
+		{
+			name: "删除考点失败-解析请求体失败",
+			q: &cmn.ServiceCtx{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-site",
+				},
+				R: httptest.NewRequest("DELETE", "/api/exam-site", strings.NewReader(fmt.Sprintf(`{
+					"data": {
+						"ids": [%d, %d]
+					
+				}`, testID, testID+1))),
+				W: httptest.NewRecorder(),
+				Msg: &cmn.ReplyProto{
+					API:    "/api/exam-site",
+					Method: "DELETE",
+				},
+				BeginTime: time.Now(),
+				SysUser: &cmn.TUser{
+					ID:   null.NewInt(testID, true),
+					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+				},
+				Domains: []cmn.TDomain{
+					{
+						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+					},
+				},
+				RedisClient: cmn.GetRedisConn(),
+			},
+			passExpected: false,
+			errWanted:    "unexpected end of JSON input",
+			setup:        defaultSetup,
+			cleanup:      defaultCleanup,
+			check:        defaultDeleteCheck,
+		},
+		{
+			name: "删除考点失败-缺少考点id",
+			q: &cmn.ServiceCtx{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-site",
+				},
+				R: httptest.NewRequest("DELETE", "/api/exam-site", strings.NewReader(`{
+					"data": {
+						"ids": []
+					}
+				}`)),
+				W: httptest.NewRecorder(),
+				Msg: &cmn.ReplyProto{
+					API:    "/api/exam-site",
+					Method: "DELETE",
+				},
+				BeginTime: time.Now(),
+				SysUser: &cmn.TUser{
+					ID:   null.NewInt(testID, true),
+					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+				},
+				Domains: []cmn.TDomain{
+					{
+						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+					},
+				},
+				RedisClient: cmn.GetRedisConn(),
+			},
+			passExpected: false,
+			errWanted:    "validation failed:Key: 'IDs' Error:Field validation for 'IDs' failed on the 'gt' tag",
+			setup:        defaultSetup,
+			cleanup:      defaultCleanup,
+			check:        defaultDeleteCheck,
+		},
+		{
+			name: "删除考点失败-强制准备删除SQL失败",
+			q: &cmn.ServiceCtx{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-site",
+				},
+				R: httptest.NewRequest("DELETE", "/api/exam-site", strings.NewReader(fmt.Sprintf(`{
+					"data": {
+						"ids": [%d]
+					}
+				}`, testID))),
+				W: httptest.NewRecorder(),
+				Msg: &cmn.ReplyProto{
+					API:    "/api/exam-site",
+					Method: "DELETE",
+				},
+				BeginTime: time.Now(),
+				SysUser: &cmn.TUser{
+					ID:   null.NewInt(testID, true),
+					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+				},
+				Domains: []cmn.TDomain{
+					{
+						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+					},
+				},
+				RedisClient: cmn.GetRedisConn(),
+				Tag: map[string]interface{}{
+					"prepareErr1": fmt.Errorf("forced prepare delete exam site sql err"),
+				},
+			},
+			passExpected: false,
+			errWanted:    "forced prepare delete exam site sql err",
+			setup:        defaultSetup,
+			cleanup:      defaultCleanup,
+			check:        defaultDeleteCheck,
+		},
+		{
+			name: "删除考点失败-强制执行删除SQL失败",
+			q: &cmn.ServiceCtx{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-site",
+				},
+				R: httptest.NewRequest("DELETE", "/api/exam-site", strings.NewReader(fmt.Sprintf(`{
+					"data": {
+						"ids": [%d]
+					}
+				}`, testID))),
+				W: httptest.NewRecorder(),
+				Msg: &cmn.ReplyProto{
+					API:    "/api/exam-site",
+					Method: "DELETE",
+				},
+				BeginTime: time.Now(),
+				SysUser: &cmn.TUser{
+					ID:   null.NewInt(testID, true),
+					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+				},
+				Domains: []cmn.TDomain{
+					{
+						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+					},
+				},
+				RedisClient: cmn.GetRedisConn(),
+				Tag: map[string]interface{}{
+					"sqlExecErr1": fmt.Errorf("forced exec delete exam site sql err"),
+				},
+			},
+			passExpected: false,
+			errWanted:    "forced exec delete exam site sql err",
+			setup:        defaultSetup,
+			cleanup:      defaultCleanup,
+			check:        defaultDeleteCheck,
+		},
+		{
+			name: "删除考点失败-强制执行删除SQL失败",
+			q: &cmn.ServiceCtx{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-site",
+				},
+				R: httptest.NewRequest("DELETE", "/api/exam-site", strings.NewReader(fmt.Sprintf(`{
+					"data": {
+						"ids": [%d]
+					}
+				}`, testID))),
+				W: httptest.NewRecorder(),
+				Msg: &cmn.ReplyProto{
+					API:    "/api/exam-site",
+					Method: "DELETE",
+				},
+				BeginTime: time.Now(),
+				SysUser: &cmn.TUser{
+					ID:   null.NewInt(testID, true),
+					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+				},
+				Domains: []cmn.TDomain{
+					{
+						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+					},
+				},
+				RedisClient: cmn.GetRedisConn(),
+				Tag: map[string]interface{}{
+					"sqlExecErr1": fmt.Errorf("forced exec delete exam site sql err"),
+				},
+			},
+			passExpected: false,
+			errWanted:    "forced exec delete exam site sql err",
+			setup:        defaultSetup,
+			cleanup:      defaultCleanup,
+			check:        defaultDeleteCheck,
+		},
+		{
+			name: "删除考点失败-强制获取删除后变化行数失败",
+			q: &cmn.ServiceCtx{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-site",
+				},
+				R: httptest.NewRequest("DELETE", "/api/exam-site", strings.NewReader(fmt.Sprintf(`{
+					"data": {
+						"ids": [%d]
+					}
+				}`, testID))),
+				W: httptest.NewRecorder(),
+				Msg: &cmn.ReplyProto{
+					API:    "/api/exam-site",
+					Method: "DELETE",
+				},
+				BeginTime: time.Now(),
+				SysUser: &cmn.TUser{
+					ID:   null.NewInt(testID, true),
+					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+				},
+				Domains: []cmn.TDomain{
+					{
+						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+					},
+				},
+				RedisClient: cmn.GetRedisConn(),
+				Tag: map[string]interface{}{
+					"rowsAffectedErr1": fmt.Errorf("forced get delete exam site affected rows err"),
+				},
+			},
+			passExpected: false,
+			errWanted:    "forced get delete exam site affected rows err",
+			setup:        defaultSetup,
+			cleanup:      defaultCleanup,
+			check:        defaultDeleteCheck,
+		},
+		{
+			name: "删除考点失败-考点不存在",
+			q: &cmn.ServiceCtx{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-site",
+				},
+				R: httptest.NewRequest("DELETE", "/api/exam-site", strings.NewReader(fmt.Sprintf(`{
+					"data": {
+						"ids": [%d]
+					}
+				}`, testID+123))),
+				W: httptest.NewRecorder(),
+				Msg: &cmn.ReplyProto{
+					API:    "/api/exam-site",
+					Method: "DELETE",
+				},
+				BeginTime: time.Now(),
+				SysUser: &cmn.TUser{
+					ID:   null.NewInt(testID, true),
+					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+				},
+				Domains: []cmn.TDomain{
+					{
+						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+					},
+				},
+				RedisClient: cmn.GetRedisConn(),
+				Tag:         map[string]interface{}{},
+			},
+			passExpected: false,
+			errWanted:    "无权删除所选的部分/全部考点或不存在所选的部分/全部考点",
+			setup:        defaultSetup,
+			cleanup:      defaultCleanup,
+			check:        defaultDeleteCheck,
 		},
 
 		// ======================================
@@ -1359,7 +2941,11 @@ func TestExamSite(t *testing.T) {
 			}
 
 			if tt.check != nil {
-				tt.check(tt.q, tt.passExpected)
+				err := tt.check(tt.q, tt.passExpected)
+				if err != nil {
+					t.Errorf("check failed")
+					return
+				}
 			}
 
 		})
@@ -2719,123 +4305,6 @@ func TestExamRoom(t *testing.T) {
 			cleanup:      defaultCleanup,
 		},
 		{
-			name: "添加考场失败-强制准备检查访问权限 SQL 失败",
-			q: &cmn.ServiceCtx{
-				Ep: &cmn.ServeEndPoint{
-					Path: "/api/exam-room",
-				},
-				R: httptest.NewRequest("POST", "/api/exam-site", strings.NewReader(fmt.Sprintf(`{
-					"data": {
-						"name": "test-room-%d",
-						"capacity": 30,
-						"examSiteID": %d
-					}
-				}`, nowTime, nowTime))),
-				W: httptest.NewRecorder(),
-				Msg: &cmn.ReplyProto{
-					API:    "/api/exam-site",
-					Method: "POST",
-				},
-				BeginTime: time.Now(),
-				SysUser: &cmn.TUser{
-					ID:   null.NewInt(testUserID, true),
-					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
-				},
-				Domains: []cmn.TDomain{
-					{
-						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
-						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
-					},
-				},
-				RedisClient: cmn.GetRedisConn(),
-				Tag: map[string]interface{}{
-					"prepareCheckAccessSqlErr": fmt.Errorf("forced prepare check sql err"),
-				},
-			},
-			passExpected: false,
-			errWanted:    "forced prepare check sql err",
-			setup:        defaultSetup,
-			cleanup:      defaultCleanup,
-		},
-		{
-			name: "添加考场失败-强制执行检查访问权限 SQL 失败",
-			q: &cmn.ServiceCtx{
-				Ep: &cmn.ServeEndPoint{
-					Path: "/api/exam-room",
-				},
-				R: httptest.NewRequest("POST", "/api/exam-site", strings.NewReader(fmt.Sprintf(`{
-					"data": {
-						"name": "test-room-%d",
-						"capacity": 30,
-						"examSiteID": %d
-					}
-				}`, nowTime, nowTime))),
-				W: httptest.NewRecorder(),
-				Msg: &cmn.ReplyProto{
-					API:    "/api/exam-site",
-					Method: "POST",
-				},
-				BeginTime: time.Now(),
-				SysUser: &cmn.TUser{
-					ID:   null.NewInt(testUserID, true),
-					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
-				},
-				Domains: []cmn.TDomain{
-					{
-						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
-						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
-					},
-				},
-				RedisClient: cmn.GetRedisConn(),
-				Tag: map[string]interface{}{
-					"execCheckAccessSqlErr": fmt.Errorf("forced exec check sql err"),
-				},
-			},
-			passExpected: false,
-			errWanted:    "forced exec check sql err",
-			setup:        defaultSetup,
-			cleanup:      defaultCleanup,
-		},
-		{
-			name: "添加考场失败-强制获取执行检查访问权限 SQL 结果失败",
-			q: &cmn.ServiceCtx{
-				Ep: &cmn.ServeEndPoint{
-					Path: "/api/exam-room",
-				},
-				R: httptest.NewRequest("POST", "/api/exam-site", strings.NewReader(fmt.Sprintf(`{
-					"data": {
-						"name": "test-room-%d",
-						"capacity": 30,
-						"examSiteID": %d
-					}
-				}`, nowTime, nowTime))),
-				W: httptest.NewRecorder(),
-				Msg: &cmn.ReplyProto{
-					API:    "/api/exam-site",
-					Method: "POST",
-				},
-				BeginTime: time.Now(),
-				SysUser: &cmn.TUser{
-					ID:   null.NewInt(testUserID, true),
-					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
-				},
-				Domains: []cmn.TDomain{
-					{
-						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
-						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
-					},
-				},
-				RedisClient: cmn.GetRedisConn(),
-				Tag: map[string]interface{}{
-					"getCheckAccessResultErr": fmt.Errorf("forced get check sql result err"),
-				},
-			},
-			passExpected: false,
-			errWanted:    "forced get check sql result err",
-			setup:        defaultSetup,
-			cleanup:      defaultCleanup,
-		},
-		{
 			name: "添加考场失败-无权访问考点数据",
 			q: &cmn.ServiceCtx{
 				Ep: &cmn.ServeEndPoint{
@@ -2868,7 +4337,7 @@ func TestExamRoom(t *testing.T) {
 				Tag:         map[string]interface{}{},
 			},
 			passExpected: false,
-			errWanted:    fmt.Sprintf("当前用户无权获取该考点数据, id: %d", nowTime),
+			errWanted:    fmt.Sprintf("无权在所选考点创建考场或所选考点不存在, id: %d", nowTime),
 			setup:        defaultSetup,
 			cleanup:      defaultCleanup,
 		},
@@ -3424,7 +4893,7 @@ func TestExamRoomList(t *testing.T) {
 				}
 
 				if len(d) < 2 {
-					err = fmt.Errorf("expected get 2 rooms data, got %d", len(d))
+					err = fmt.Errorf("got %d, but greater than or equal to 2", len(d))
 					t.Error(err.Error())
 					return
 				}
@@ -3886,154 +5355,28 @@ func TestExamRoomList(t *testing.T) {
 				RedisClient: cmn.GetRedisConn(),
 				Tag:         map[string]interface{}{},
 			},
-			passExpected: false,
-			errWanted:    fmt.Sprintf("当前用户无权获取该考点数据, id: %d", nowTime),
+			passExpected: true,
+			errWanted:    "",
 			setup:        defaultSetup,
-			cleanup:      defaultCleanup,
-		},
-		{
-			name: "获取考场列表失败-强制准备检查是否有权获取考点数据SQL失败",
-			q: &cmn.ServiceCtx{
-				Ep: &cmn.ServeEndPoint{
-					Path: "/api/exam-room/list",
-				},
-				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-room/list?q=%s`, url.QueryEscape(fmt.Sprintf(`{
-						"page": 1,
-						"pageSize": 10,
-						"orderBy": [
-							{
-								"capacity": "DESC"
-							}
-						],
-						"data": {
-							"examSiteID": %d
-						},
-						"filter": {
-							"name": "test"
-						}
-					}`, nowTime),
-				)), nil),
-				W: httptest.NewRecorder(),
-				Msg: &cmn.ReplyProto{
-					API:    "/api/exam-site/list",
-					Method: "GET",
-				},
-				BeginTime: time.Now(),
-				SysUser: &cmn.TUser{
-					ID:   null.NewInt(testUserID, true),
-					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
-				},
-				Domains: []cmn.TDomain{
-					{
-						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
-						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
-					},
-				},
-				RedisClient: cmn.GetRedisConn(),
-				Tag: map[string]interface{}{
-					"prepareCheckAccessSqlErr": fmt.Errorf("forced prepare check sql err"),
-				},
+			check: func(q *cmn.ServiceCtx) (err error) {
+
+				var roomList []examRoomInfo
+
+				err = json.Unmarshal(q.Msg.Data, &roomList)
+				if err != nil {
+					t.Error(err.Error())
+					return
+				}
+
+				if len(roomList) != 0 {
+					err = fmt.Errorf("room list got not empty, but empty")
+					t.Error(err.Error())
+					return
+				}
+
+				return
 			},
-			passExpected: false,
-			errWanted:    "forced prepare check sql err",
-			setup:        defaultSetup,
-			cleanup:      defaultCleanup,
-		},
-		{
-			name: "获取考场列表失败-强制执行检查是否有权获取考点数据SQL失败",
-			q: &cmn.ServiceCtx{
-				Ep: &cmn.ServeEndPoint{
-					Path: "/api/exam-room/list",
-				},
-				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-room/list?q=%s`, url.QueryEscape(fmt.Sprintf(`{
-						"page": 1,
-						"pageSize": 10,
-						"orderBy": [
-							{
-								"capacity": "DESC"
-							}
-						],
-						"data": {
-							"examSiteID": %d
-						},
-						"filter": {
-							"name": "test"
-						}
-					}`, nowTime),
-				)), nil),
-				W: httptest.NewRecorder(),
-				Msg: &cmn.ReplyProto{
-					API:    "/api/exam-site/list",
-					Method: "GET",
-				},
-				BeginTime: time.Now(),
-				SysUser: &cmn.TUser{
-					ID:   null.NewInt(testUserID, true),
-					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
-				},
-				Domains: []cmn.TDomain{
-					{
-						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
-						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
-					},
-				},
-				RedisClient: cmn.GetRedisConn(),
-				Tag: map[string]interface{}{
-					"execCheckAccessSqlErr": fmt.Errorf("forced exec check sql err"),
-				},
-			},
-			passExpected: false,
-			errWanted:    "forced exec check sql err",
-			setup:        defaultSetup,
-			cleanup:      defaultCleanup,
-		},
-		{
-			name: "获取考场列表失败-强制获取检查是否有权获取考点数据结果失败",
-			q: &cmn.ServiceCtx{
-				Ep: &cmn.ServeEndPoint{
-					Path: "/api/exam-room/list",
-				},
-				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-room/list?q=%s`, url.QueryEscape(fmt.Sprintf(`{
-						"page": 1,
-						"pageSize": 10,
-						"orderBy": [
-							{
-								"capacity": "DESC"
-							}
-						],
-						"data": {
-							"examSiteID": %d
-						},
-						"filter": {
-							"name": "test"
-						}
-					}`, nowTime),
-				)), nil),
-				W: httptest.NewRecorder(),
-				Msg: &cmn.ReplyProto{
-					API:    "/api/exam-site/list",
-					Method: "GET",
-				},
-				BeginTime: time.Now(),
-				SysUser: &cmn.TUser{
-					ID:   null.NewInt(testUserID, true),
-					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
-				},
-				Domains: []cmn.TDomain{
-					{
-						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
-						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
-					},
-				},
-				RedisClient: cmn.GetRedisConn(),
-				Tag: map[string]interface{}{
-					"getCheckAccessResultErr": fmt.Errorf("forced get check result err"),
-				},
-			},
-			passExpected: false,
-			errWanted:    "forced get check result err",
-			setup:        defaultSetup,
-			cleanup:      defaultCleanup,
+			cleanup: defaultCleanup,
 		},
 		{
 			name: "获取考场列表失败-页码小于1",

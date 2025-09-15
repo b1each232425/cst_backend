@@ -45,7 +45,7 @@ func InitAsynq(redisAddr, redisPassword string, redisDB int) error {
 
 	// 创建服务器
 	server := asynq.NewServer(redisOpt, asynq.Config{
-		Concurrency: 10,
+		Concurrency: 100,
 		Queues: map[string]int{
 			"critical": 6,
 			"default":  3,
@@ -197,6 +197,8 @@ func StartAsynqService() {
 			z.Error("Failed to initialize asynq", zap.Error(err))
 			return
 		}
+
+		time.Sleep(3 * time.Second)
 
 		z.Info("Asynq initialized successfully")
 

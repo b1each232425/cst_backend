@@ -60,7 +60,6 @@ var (
 	pushChan chan int
 
 	centralServerUrl = ""
-	sysUser          = "" // 登录账号/邮箱/手机号等唯一身份标识
 	accessToken      = ""
 	sshUser          = "root"
 	sshHost          = "localhost"
@@ -71,13 +70,14 @@ var (
 	dbUser           = "assessuser"
 	dbPwd            = "postgres"
 	maxRetry         = 3
+	uploadDir        = "./uploads" // tusd upload dir
 )
 
 type sysUserInfo struct {
-	Name        string
-	ID          int64
-	Session     string
-	AccessToken string
+	Name      string
+	ID        int64
+	Session   string
+	UserToken string
 }
 
 type (
@@ -93,7 +93,6 @@ type examSiteInfo struct {
 	Admin       int64       `json:"admin" validate:"required"`
 	AdminName   null.String `json:"adminName"`
 	RoomCount   null.Int    `json:"roomCount"`
-	Account     null.String `json:"account"`
 	AccessToken null.String `json:"accessToken"`
 }
 
@@ -107,9 +106,10 @@ type examRoomInfo struct {
 }
 
 type syncInfo struct {
-	RecentExamID  int64    `json:"recentExamID"`
-	Path          string   `json:"path" validate:"required"`
-	TableFileList []string `json:"tableFileList" validate:"required"`
+	RecentExamID    int64    `json:"recentExamID"`                      // 最近一场考试的ID
+	Path            string   `json:"path" validate:"required"`          // 数据存放路径
+	TableFileList   []string `json:"tableFileList" validate:"required"` // 表格数据文件列表
+	UploadFilesPath string   `json:"uploadFilesPath"`                   // 上传的文件存放路径
 }
 
 const (
@@ -153,8 +153,23 @@ func Enroll(author string) {
 
 		ApiEntries: []*cmn.EndPointApiEntries{
 			{
+				Name:         "考点管理.获取考点信息",
+				AccessAction: auth_mgt.CAPIAccessActionRead,
+				Configurable: true,
+			},
+			{
 				Name:         "考点管理.创建考点",
 				AccessAction: auth_mgt.CAPIAccessActionCreate,
+				Configurable: true,
+			},
+			{
+				Name:         "考点管理.编辑考点",
+				AccessAction: auth_mgt.CAPIAccessActionUpdate,
+				Configurable: true,
+			},
+			{
+				Name:         "考点管理.删除考点",
+				AccessAction: auth_mgt.CAPIAccessActionDelete,
 				Configurable: true,
 			},
 		},
@@ -273,24 +288,18 @@ func Enroll(author string) {
 func login(ctx context.Context) (info sysUserInfo) {
 
 	q := cmn.GetCtxValue(ctx)
-
-	if viper.IsSet("examSiteServerSync.sysUser") {
-		sysUser = viper.GetString("examSiteServerSync.sysUser")
-	}
-
+	
 	if viper.IsSet("examSiteServerSync.accessToken") {
 		accessToken = viper.GetString("examSiteServerSync.accessToken")
 	}
 
-	info.Name = sysUser
-
-	info.AccessToken = accessToken
+	info.ID, info.UserToken, q.Err = parseAccessToken(accessToken)
 
 	cli := fasthttp.Client{}
 
-	reqBody := []byte(fmt.Sprintf(`{ "name": "%s", "cert": "%s" }`,
-		info.Name,
-		info.AccessToken,
+	reqBody := []byte(fmt.Sprintf(`{ "name": "%d", "cert": "%s" }`,
+		info.ID,
+		info.UserToken,
 	))
 
 	req := fasthttp.AcquireRequest()
@@ -375,7 +384,7 @@ func Pull(ctx context.Context, retryCount int, forceRenew bool) {
 
 	q := cmn.GetCtxValue(ctx)
 
-	dbConn := cmn.GetPgxConn()
+	dbConn := cmn.GetDbConn()
 
 	defer func() {
 
@@ -526,8 +535,8 @@ func Pull(ctx context.Context, retryCount int, forceRenew bool) {
 		return
 	}
 
-	var i syncInfo
-	q.Err = json.Unmarshal(q.Msg.Data, &i)
+	var sInfo syncInfo
+	q.Err = json.Unmarshal(q.Msg.Data, &sInfo)
 	if q.Err != nil || (cmn.InDebugMode && q.Tag["pullRespDataUnmarshalErr"] != nil) {
 
 		if q.Err == nil {
@@ -555,7 +564,7 @@ func Pull(ctx context.Context, retryCount int, forceRenew bool) {
 	source := fmt.Sprintf("%s@%s:%s",
 		sshUser,
 		sshHost,
-		i.Path,
+		sInfo.Path,
 	)
 
 	b := make([]byte, 16)
@@ -607,14 +616,14 @@ func Pull(ctx context.Context, retryCount int, forceRenew bool) {
 		return
 	}
 
-	q.Err = generateImportScript(i.TableFileList, dest, "import_script.sql", true)
+	q.Err = generateImportScript(sInfo.TableFileList, dest, "import_script.sql", true)
 	if q.Err != nil {
 		return
 	}
 
 	pgpassFullPath := filepath.Join(os.Getenv("HOME"), ".pgpass")
 
-	_, q.Err = dbConn.Exec(ctx, fmt.Sprintf(`CREATE SCHEMA IF NOT EXISTS %s`, dbUser))
+	_, q.Err = dbConn.Exec(fmt.Sprintf(`CREATE SCHEMA IF NOT EXISTS %s`, dbUser))
 	if q.Err != nil || (cmn.InDebugMode && q.Tag["pullCreateSchemaErr"] != nil) {
 
 		if q.Err == nil {
@@ -677,6 +686,71 @@ func Pull(ctx context.Context, retryCount int, forceRenew bool) {
 	}
 
 	z.Info(string(o))
+
+	// 同步附件
+
+	var fileList []string
+	var rows *sql.Rows
+	rows, q.Err = dbConn.Query(`SELECT digest FROM t_file`)
+	if q.Err != nil {
+		z.Error(q.Err.Error())
+		return
+	}
+
+	defer rows.Close()
+
+	for rows.Next() {
+
+		var digest string
+		q.Err = rows.Scan(&digest)
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			continue
+		}
+
+		fileList = append(fileList, digest)
+		fileList = append(fileList, digest+".info")
+
+	}
+
+	fileListPath := filepath.Join(dest, "file_list.txt")
+	q.Err = os.WriteFile(fileListPath, []byte(strings.Join(fileList, "\n")), 0644)
+	if q.Err != nil || (cmn.InDebugMode && q.Tag["pullWriteFileListErr"] != nil) {
+		if q.Err == nil {
+			q.Err = q.Tag["pullWriteFileListErr"].(error)
+		}
+
+		z.Error(q.Err.Error())
+		return
+	}
+
+	source = fmt.Sprintf("%s@%s:%s",
+		sshUser,
+		sshHost,
+		sInfo.UploadFilesPath,
+	)
+
+	cmd = fmt.Sprintf(`rsync -avz --mkpath -e "ssh -p %d" --files-from=%s %s %s/`,
+		sshPort,
+		fileListPath,
+		source,
+		uploadDir,
+	)
+
+	o, q.Err = exec.CommandContext(ctx, "bash", "-c", cmd).CombinedOutput()
+	if q.Err != nil || (cmn.InDebugMode && q.Tag["rsyncUploadFilesErrInPull"] != nil) {
+
+		if q.Err == nil {
+			q.Err = q.Tag["rsyncUploadFilesErrInPull"].(error)
+			cmd = ""
+			o = []byte("")
+		}
+
+		q.Err = fmt.Errorf("COMMAND: %s\t ERR: %w\t DETAIL: %s", cmd, q.Err, string(o))
+		z.Error(q.Err.Error())
+		return
+	}
+
 }
 
 // Push 将数据推送到中心服务器, 中间如果发生任何错误都会进行重试
@@ -1080,6 +1154,64 @@ func getApiPermissions(ctx context.Context, apiPath string) (readable, creatable
 	return
 }
 
+// createSysUser 创建考点服务器系统账号
+func createSysUser(ctx context.Context, tx *sql.Tx, siteID int64) (sysUserID int64, accessToken string, err error) {
+
+	q := cmn.GetCtxValue(ctx)
+
+	officialName := fmt.Sprintf("考点%d", siteID)
+
+	var account, userToken string
+
+	b1 := make([]byte, 4)
+
+	b2 := make([]byte, 32)
+
+	// 该Read从不返回错误，并且始终填充 b, 一旦发生错误就直接Panic， 所以这里就不需要接收err
+	rand.Read(b1)
+
+	rand.Read(b2)
+
+	account = fmt.Sprintf("exam-site-%x", b1)
+
+	userToken = fmt.Sprintf("%x", b2)
+
+	// 注册考点服务器系统账号，用于给考点服务器与中心服务器进行http通信验证
+	sqlStr := fmt.Sprintf(`INSERT INTO t_user (category, type, official_name, account, user_token, creator, role)
+	VALUES ('sys^admin', '08', $1, $2, crypt($3,gen_salt('bf')), 1000, %d)
+	RETURNING 
+		id`, cmn.CDomainAssessExamSite)
+
+	var stmt1 *sql.Stmt
+	stmt1, err = tx.Prepare(sqlStr)
+	if err != nil || (cmn.InDebugMode && q.Tag["prepareCreateSysUserErr"] != nil) {
+
+		if err == nil {
+			err = q.Tag["prepareCreateSysUserErr"].(error)
+		}
+
+		z.Error(err.Error())
+		return
+	}
+
+	defer stmt1.Close()
+
+	err = stmt1.QueryRowContext(ctx, officialName, account, userToken).Scan(&sysUserID)
+	if err != nil || (cmn.InDebugMode && q.Tag["sqlExecCreateSysUserErr"] != nil) {
+
+		if err == nil {
+			err = q.Tag["sqlExecCreateSysUserErr"].(error)
+		}
+
+		z.Error(err.Error())
+		return
+	}
+
+	accessToken = generateAccessToken(sysUserID, userToken)
+
+	return
+}
+
 /* 考点基础业务 */
 // oooooooooo.
 // `888'   `Y8b
@@ -1133,11 +1265,12 @@ func examSite(ctx context.Context) {
 			if err != nil || (cmn.InDebugMode && q.Tag["rollbackErr"] != nil) {
 
 				if err == nil {
-					q.Err = q.Tag["rollbackErr"].(error)
-					err = q.Err
+					err = q.Tag["rollbackErr"].(error)
+					
 				}
 
 				z.Error(err.Error())
+				q.Err = err
 			}
 			return
 		}
@@ -1179,6 +1312,9 @@ func examSite(ctx context.Context) {
 		z.Warn(q.Err.Error())
 	}
 
+	var msgData interface{}
+
+MethodSwitch:
 	switch q.R.Method {
 
 	case "GET":
@@ -1188,6 +1324,72 @@ func examSite(ctx context.Context) {
 			z.Error(q.Err.Error())
 			break
 		}
+
+		param := q.R.URL.Query().Get("q")
+
+		var req cmn.ReqProto
+
+		q.Err = json.Unmarshal([]byte(param), &req)
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			break
+		}
+
+		examSiteID := gjson.Get(param, "data.examSiteID").Int()
+
+		if examSiteID <= 0 {
+			q.Err = fmt.Errorf("无效的考点ID: %d, 请传入一个大于0的值", examSiteID)
+			z.Error(q.Err.Error())
+			break
+		}
+
+		sqlStr := `SELECT 
+			t_exam_site.id,
+			t_exam_site.name,
+			t_exam_site.address,
+			t_exam_site.server_host,
+			t_exam_site.admin,
+			t_user.official_name AS admin_name,
+			COUNT(t_exam_room.id) AS room_count
+		FROM t_exam_site
+			JOIN t_user ON t_user.id = t_exam_site.admin
+			JOIN t_exam_room ON t_exam_room.exam_site = t_exam_site.id
+		WHERE t_exam_site.status != '04' AND t_exam_site.id = $1 AND (t_exam_site.creator = $2 OR t_exam_site.admin = $2 OR t_exam_site.domain_id = ANY($3))
+		GROUP BY
+			t_exam_site.id,
+			t_user.id
+		`
+
+		var stmt *sql.Stmt
+		stmt, q.Err = tx.Prepare(sqlStr)
+		if q.Err != nil || (cmn.InDebugMode && q.Tag["prepareGetExamSiteSqlErr"] != nil) {
+			if q.Err == nil {
+				q.Err = q.Tag["prepareGetExamSiteSqlErr"].(error)
+			}
+
+			z.Error(q.Err.Error())
+			break
+		}
+
+		defer stmt.Close()
+
+		var info examSiteInfo
+
+		q.Err = stmt.QueryRowContext(ctx, examSiteID, userID, authority.AccessibleDomains).Scan(
+			&info.ID,
+			&info.Name,
+			&info.Address,
+			&info.ServerHost,
+			&info.Admin,
+			&info.AdminName,
+			&info.RoomCount,
+		)
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			break
+		}
+
+		msgData = info
 
 	case "POST":
 
@@ -1211,67 +1413,24 @@ func examSite(ctx context.Context) {
 			break
 		}
 
-		officialName := fmt.Sprintf("%s考点", info.Name)
-
-		var account, userToken string
-
-		b1 := make([]byte, 4)
-
-		b2 := make([]byte, 32)
-
-		// 该Read从不返回错误，并且始终填充 b, 一旦发生错误就直接Panic， 所以这里就不需要接收err
-		rand.Read(b1)
-
-		rand.Read(b2)
-
-		account = fmt.Sprintf("exam-site-%x", b1)
-
-		userToken = fmt.Sprintf("%x", b2)
-
-		// 注册考点服务器系统账号，用于给考点服务器与中心服务器进行http通信验证
-		sqlStr := fmt.Sprintf(`INSERT INTO t_user (category, type, official_name, account, user_token, creator, role)
-		VALUES ('sys^admin', '08', $1, $2, crypt($3,gen_salt('bf')), 1000, %d)
-		RETURNING 
-			id`, cmn.CDomainAssessExamSite)
-
-		var stmt1 *sql.Stmt
-		stmt1, q.Err = tx.Prepare(sqlStr)
-		if q.Err != nil || (cmn.InDebugMode && q.Tag["prepareErr1"] != nil) {
-
-			if q.Err == nil {
-				q.Err = q.Tag["prepareErr1"].(error)
-			}
-
-			z.Error(q.Err.Error())
-			break
-		}
-
-		defer stmt1.Close()
-
 		var sysUserID int64
-
-		q.Err = stmt1.QueryRowContext(ctx, officialName, account, userToken).Scan(&sysUserID)
-		if q.Err != nil || (cmn.InDebugMode && q.Tag["sqlExecErr1"] != nil) {
-
-			if q.Err == nil {
-				q.Err = q.Tag["sqlExecErr1"].(error)
-			}
-
-			z.Error(q.Err.Error())
+		var accessToken string
+		sysUserID, accessToken, q.Err = createSysUser(ctx, tx, info.ID.Int64)
+		if q.Err != nil {
 			break
 		}
 
 		// 添加考点信息
-		sqlStr = `INSERT INTO t_exam_site (name, address, server_host, admin, sys_user, creator, domain_id)
+		sqlStr := `INSERT INTO t_exam_site (name, address, server_host, admin, sys_user, creator, domain_id)
 		VALUES ($1, $2, $3, $4, $5, $6, $7)
 		`
 
 		var stmt2 *sql.Stmt
 		stmt2, q.Err = tx.Prepare(sqlStr)
-		if q.Err != nil || (cmn.InDebugMode && q.Tag["prepareErr2"] != nil) {
+		if q.Err != nil || (cmn.InDebugMode && q.Tag["prepareErr"] != nil) {
 
 			if q.Err == nil {
-				q.Err = q.Tag["prepareErr2"].(error)
+				q.Err = q.Tag["prepareErr"].(error)
 			}
 
 			z.Error(q.Err.Error())
@@ -1281,29 +1440,19 @@ func examSite(ctx context.Context) {
 		defer stmt2.Close()
 
 		_, q.Err = stmt2.ExecContext(ctx, info.Name, info.Address, info.ServerHost, info.Admin, sysUserID, userID, authority.Domain.ID.Int64)
-		if q.Err != nil || (cmn.InDebugMode && q.Tag["sqlExecErr2"] != nil) {
+		if q.Err != nil || (cmn.InDebugMode && q.Tag["sqlExecErr"] != nil) {
 
 			if q.Err == nil {
-				q.Err = q.Tag["sqlExecErr2"].(error)
+				q.Err = q.Tag["sqlExecErr"].(error)
 			}
 
 			z.Error(q.Err.Error())
 			break
 		}
 
-		info.Account = null.StringFrom(account)
-		info.AccessToken = null.StringFrom(userToken)
+		info.AccessToken = null.StringFrom(accessToken)
 
-		q.Msg.Data, q.Err = json.Marshal(info)
-		if q.Err != nil || (cmn.InDebugMode && q.Tag["jsonMarshalErr"] != nil) {
-
-			if q.Err == nil {
-				q.Err = q.Tag["jsonMarshalErr"].(error)
-			}
-
-			z.Error(q.Err.Error())
-			break
-		}
+		msgData = info
 
 	case "PATCH":
 
@@ -1313,6 +1462,185 @@ func examSite(ctx context.Context) {
 			break
 		}
 
+		var editInfo struct {
+			examSiteInfo
+			ResetAccessToken bool `json:"resetAccessToken"`
+		}
+
+		q.Err = json.Unmarshal(req.Data, &editInfo)
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			break
+		}
+
+		if editInfo.ID.Int64 <= 0 {
+			q.Err = fmt.Errorf("考点ID必须大于0, 当前传入: %d", editInfo.ID.Int64)
+			z.Error(q.Err.Error())
+			break
+		}
+
+		values := []interface{}{
+			userID,
+			editInfo.ID.Int64,
+			authority.AccessibleDomains,
+		}
+
+		sets := []string{
+			"updated_by=$1",
+		}
+
+		fieldMap := map[string]interface{}{
+			"name":        editInfo.Name,
+			"address":     editInfo.Address,
+			"server_host": editInfo.ServerHost.String,
+			"admin":       editInfo.Admin,
+		}
+
+		for field, value := range fieldMap {
+			if v, ok := value.(string); ok && v == "" {
+				continue
+			}
+
+			if v, ok := value.(int64); ok && v <= 0 {
+				continue
+			}
+
+			sets = append(sets, fmt.Sprintf("%s=$%d", field, len(values)+1))
+			values = append(values, value)
+		}
+
+		sqlStr := fmt.Sprintf(`UPDATE t_exam_site SET %s WHERE id=$2 AND (creator=$1 OR admin=$1 OR domain_id=ANY($3))`, strings.Join(sets, ", "))
+
+		var stmt *sql.Stmt
+		stmt, q.Err = tx.Prepare(sqlStr)
+		if q.Err != nil || (cmn.InDebugMode && q.Tag["prepareErr"] != nil) {
+
+			if q.Err == nil {
+				q.Err = q.Tag["prepareErr"].(error)
+			}
+
+			z.Error(q.Err.Error())
+			break
+		}
+
+		defer stmt.Close()
+
+		var r sql.Result
+		r, q.Err = stmt.ExecContext(ctx, values...)
+		if q.Err != nil || (cmn.InDebugMode && q.Tag["sqlExecErr"] != nil) {
+
+			if q.Err == nil {
+				q.Err = q.Tag["sqlExecErr"].(error)
+			}
+
+			z.Error(q.Err.Error())
+			break
+		}
+
+		var ra int64
+		ra, q.Err = r.RowsAffected()
+		if q.Err != nil || (cmn.InDebugMode && q.Tag["rowsAffectedErr"] != nil) {
+
+			if q.Err == nil {
+				q.Err = q.Tag["rowsAffectedErr"].(error)
+			}
+
+			z.Error(q.Err.Error())
+			break
+		}
+
+		if ra == 0 {
+			q.Err = fmt.Errorf(`无权编辑该考点或该考点不存在(id: %d)`, editInfo.ID.Int64)
+			z.Error(q.Err.Error())
+			break
+		}
+
+		newToken := ""
+
+		for editInfo.ResetAccessToken {
+			b1 := make([]byte, 32)
+			rand.Read(b1)
+			newToken = fmt.Sprintf("%x", b1)
+
+			sqlStr = `UPDATE t_user SET user_token=crypt($1,gen_salt('bf')), updated_by=$2 WHERE id=(SELECT sys_user FROM t_exam_site WHERE id=$3)`
+
+			var stmt *sql.Stmt
+			stmt, q.Err = tx.Prepare(sqlStr)
+			if q.Err != nil || (cmn.InDebugMode && q.Tag["prepareErr2"] != nil) {
+				if q.Err == nil {
+					q.Err = q.Tag["prepareErr2"].(error)
+				}
+
+				z.Error(q.Err.Error())
+				break MethodSwitch
+			}
+
+			defer stmt.Close()
+
+			r, q.Err = stmt.ExecContext(ctx, newToken, userID, editInfo.ID.Int64)
+			if q.Err != nil || (cmn.InDebugMode && q.Tag["sqlExecErr2"] != nil) {
+				if q.Err == nil {
+					q.Err = q.Tag["sqlExecErr2"].(error)
+				}
+
+				z.Error(q.Err.Error())
+				break MethodSwitch
+			}
+
+			ra, q.Err = r.RowsAffected()
+			if q.Err != nil || (cmn.InDebugMode && q.Tag["rowsAffectedErr2"] != nil) {
+				if q.Err == nil {
+					q.Err = q.Tag["rowsAffectedErr2"].(error)
+				}
+
+				z.Error(q.Err.Error())
+				break MethodSwitch
+			}
+
+			newToken = generateAccessToken(editInfo.ID.Int64, newToken)
+
+			if ra != 0 {
+				break
+			}
+
+			// 考点原有的系统账号被删除, 重新创建一个
+			var sysUserID int64
+			sysUserID, newToken, q.Err = createSysUser(ctx, tx, editInfo.ID.Int64)
+			if q.Err != nil {
+				break MethodSwitch
+			}
+
+			sqlStr = `UPDATE t_exam_site SET sys_user=$1, updated_by=$2 WHERE id=$3`
+
+			stmt, q.Err = tx.Prepare(sqlStr)
+			if q.Err != nil || (cmn.InDebugMode && q.Tag["prepareErr3"] != nil) {
+				if q.Err == nil {
+					q.Err = q.Tag["prepareErr3"].(error)
+				}
+
+				z.Error(q.Err.Error())
+				break MethodSwitch
+			}
+
+			defer stmt.Close()
+
+			_, q.Err = stmt.ExecContext(ctx, sysUserID, userID, editInfo.ID.Int64)
+			if q.Err != nil || (cmn.InDebugMode && q.Tag["sqlExecErr3"] != nil) {
+				if q.Err == nil {
+					q.Err = q.Tag["sqlExecErr3"].(error)
+				}
+
+				z.Error(q.Err.Error())
+				break MethodSwitch
+			}
+
+			break
+		}
+
+		editInfo.AccessToken = null.StringFrom(newToken)
+
+		msgData = editInfo
+
 	case "DELETE":
 
 		if !deletable {
@@ -1321,9 +1649,85 @@ func examSite(ctx context.Context) {
 			break
 		}
 
+		var delInfo struct {
+			IDs []int64 `json:"ids" validate:"required,gt=0,dive,gt=0"` // 此项必须有元素并且每个元素都必须大于0
+		}
+
+		q.Err = json.Unmarshal(req.Data, &delInfo)
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			break
+		}
+
+		q.Err = cmn.Validate(&delInfo)
+		if q.Err != nil {
+			break
+		}
+
+		sqlStr := `UPDATE t_exam_site SET status = '04', updated_by=$2 WHERE id=ANY($1) AND (creator = $2 OR admin = $2 OR domain_id=ANY($3))`
+
+		var stmt *sql.Stmt
+		stmt, q.Err = tx.Prepare(sqlStr)
+		if q.Err != nil || (cmn.InDebugMode && q.Tag["prepareErr1"] != nil) {
+			if q.Err == nil {
+				q.Err = q.Tag["prepareErr1"].(error)
+			}
+
+			z.Error(q.Err.Error())
+			break
+		}
+
+		defer stmt.Close()
+
+		var r sql.Result
+
+		r, q.Err = stmt.Exec(delInfo.IDs, userID, authority.AccessibleDomains)
+		if q.Err != nil || (cmn.InDebugMode && q.Tag["sqlExecErr1"] != nil) {
+			if q.Err == nil {
+				q.Err = q.Tag["sqlExecErr1"].(error)
+			}
+
+			z.Error(q.Err.Error())
+			break
+		}
+
+		var rc int64
+		rc, q.Err = r.RowsAffected()
+		if q.Err != nil || (cmn.InDebugMode && q.Tag["rowsAffectedErr1"] != nil) {
+
+			if q.Err == nil {
+				q.Err = q.Tag["rowsAffectedErr1"].(error)
+			}
+
+			z.Error(q.Err.Error())
+			break
+		}
+
+		if rc != int64(len(delInfo.IDs)) {
+			q.Err = fmt.Errorf("无权删除所选的部分/全部考点或不存在所选的部分/全部考点")
+			z.Error(q.Err.Error())
+			break
+		}
+
+		msgData = delInfo
+
 	default:
 		q.Err = fmt.Errorf("不支持的HTTP方法: %s", q.R.Method)
 		z.Error(q.Err.Error())
+	}
+
+	if msgData != nil {
+		var err error
+		q.Msg.Data, err = json.Marshal(msgData)
+		if err != nil || (cmn.InDebugMode && q.Tag["jsonMarshalErr"] != nil) {
+
+			if err == nil {
+				err = q.Tag["jsonMarshalErr"].(error)
+			}
+
+			z.Error(err.Error())
+			q.Err = err
+		}
 	}
 
 	if q.Err != nil {
@@ -1368,26 +1772,14 @@ MethodSwitch:
 			break
 		}
 
-		keys := []string{}
+		keys := []string{
+			"t_exam_site.status != '04'",
+			"(t_exam_site.creator=$1 OR t_exam_site.admin=$1 OR t_exam_site.domain_id=ANY($2))",
+		}
 
 		values := []interface{}{
 			userID,
-		}
-
-		// 获取拥有访问权限的域上的数据
-		dks := []string{
-			"t_exam_site.creator=$1",
-		}
-
-		l := len(values)
-
-		for i, d := range authority.AccessibleDomains {
-			dks = append(dks, fmt.Sprintf("t_exam_site.domain_id=$%d", i+l+1))
-			values = append(values, d)
-		}
-
-		if len(dks) > 0 {
-			keys = append(keys, fmt.Sprintf("(%s)", strings.Join(dks, " OR ")))
+			authority.AccessibleDomains,
 		}
 
 		param := q.R.URL.Query().Get("q")
@@ -1447,7 +1839,7 @@ MethodSwitch:
 			orderBy = strings.Join(orderByList, ", ")
 		}
 
-		s := fmt.Sprintf(`SELECT 
+		sqlStr := fmt.Sprintf(`SELECT 
 			t_exam_site.id,
 			t_exam_site.name,
 			t_exam_site.address,
@@ -1468,7 +1860,7 @@ MethodSwitch:
 
 		var stmt *sql.Stmt
 
-		stmt, q.Err = dbConn.Prepare(s)
+		stmt, q.Err = dbConn.Prepare(sqlStr)
 		if q.Err != nil || (cmn.InDebugMode && q.Tag["prepareErr1"] != nil) {
 
 			if q.Err == nil {
@@ -1505,10 +1897,10 @@ MethodSwitch:
 			break
 		}
 
-		s = fmt.Sprintf(`%s
-		LIMIT %d OFFSET %d`, s, req.PageSize, (req.Page-1)*req.PageSize)
+		sqlStr = fmt.Sprintf(`%s
+		LIMIT %d OFFSET %d`, sqlStr, req.PageSize, (req.Page-1)*req.PageSize)
 
-		stmt, q.Err = dbConn.Prepare(s)
+		stmt, q.Err = dbConn.Prepare(sqlStr)
 		if q.Err != nil || (cmn.InDebugMode && q.Tag["prepareErr2"] != nil) {
 
 			if q.Err == nil {
@@ -1712,70 +2104,20 @@ func examRoom(ctx context.Context) {
 			break
 		}
 
-		var stmt1 *sql.Stmt
-
-		// 检查当前是否有权限访问该考点
-		ss := []string{}
-		v := []interface{}{
-			info.ExamSiteID,
-			userID,
-		}
-
-		l := len(v)
-		for i, d := range authority.AccessibleDomains {
-			ss = append(ss, fmt.Sprintf("domain_id = $%d", i+l+1))
-			v = append(v, d)
-		}
-
-		sqlStr := fmt.Sprintf(`SELECT id FROM t_exam_site WHERE id = $1 AND  (creator = $2 OR %s)`, strings.Join(ss, " OR "))
-		stmt1, q.Err = tx.Prepare(sqlStr)
-		if q.Err != nil || (cmn.InDebugMode && q.Tag["prepareCheckAccessSqlErr"] != nil) {
-
-			if q.Err == nil {
-				q.Err = q.Tag["prepareCheckAccessSqlErr"].(error)
-			}
-
-			z.Error(q.Err.Error())
-			break
-		}
-
-		defer stmt1.Close()
-
-		var r sql.Result
-		r, q.Err = stmt1.ExecContext(ctx, v...)
-		if q.Err != nil || (cmn.InDebugMode && q.Tag["execCheckAccessSqlErr"] != nil) {
-
-			if q.Err == nil {
-				q.Err = q.Tag["execCheckAccessSqlErr"].(error)
-			}
-
-			z.Error(q.Err.Error())
-			break
-		}
-
-		var c int64
-		c, q.Err = r.RowsAffected()
-		if q.Err != nil || (cmn.InDebugMode && q.Tag["getCheckAccessResultErr"] != nil) {
-
-			if q.Err == nil {
-				q.Err = q.Tag["getCheckAccessResultErr"].(error)
-			}
-
-			z.Error(q.Err.Error())
-			break
-		}
-
-		if c == 0 {
-			q.Err = fmt.Errorf("当前用户无权获取该考点数据, id: %d", info.ExamSiteID)
-			z.Error(q.Err.Error())
-			break
-		}
-
 		// 添加考场
+		// 所选考点必须存在且未被删除, 且当前用户必须有权限访问该考点
 
-		sqlStr = `INSERT INTO t_exam_room (exam_site, name, capacity, creator, updated_by, domain_id)
-		VALUES ($1, $2, $3, $4, $5, $6)`
+		sqlStr := `INSERT INTO t_exam_room (exam_site, name, capacity, creator, updated_by, domain_id)
+		SELECT $1::bigint, $2::text, $3::integer, $4::bigint, $4::bigint, $5::bigint
+		WHERE EXISTS (
+			SELECT 1 
+			FROM t_exam_site 
+			WHERE t_exam_site.id = $1::bigint 
+				AND t_exam_site.status != '04' -- 未被删除的数据
+				AND (t_exam_site.creator = $4::bigint OR t_exam_site.admin = $4::bigint OR t_exam_site.domain_id = ANY($6::bigint[])) -- 获取拥有访问权限的数据
+		)`
 
+		var stmt1 *sql.Stmt
 		stmt1, q.Err = tx.Prepare(sqlStr)
 		if q.Err != nil || (cmn.InDebugMode && q.Tag["prepareStmtErr"] != nil) {
 
@@ -1789,7 +2131,8 @@ func examRoom(ctx context.Context) {
 
 		defer stmt1.Close()
 
-		_, q.Err = stmt1.ExecContext(ctx, info.ExamSiteID, info.Name, info.Capacity, userID, userID, authority.Domain.ID.Int64)
+		var r sql.Result
+		r, q.Err = stmt1.ExecContext(ctx, info.ExamSiteID, info.Name, info.Capacity, userID, authority.Domain.ID.Int64, authority.AccessibleDomains)
 		if q.Err != nil || (cmn.InDebugMode && q.Tag["execSQLErr"] != nil) {
 
 			if q.Err == nil {
@@ -1800,6 +2143,22 @@ func examRoom(ctx context.Context) {
 			break
 		}
 
+		var rc int64
+		rc, q.Err = r.RowsAffected()
+		if q.Err != nil || (cmn.InDebugMode && q.Tag["rowsAffectedErr"] != nil) {
+
+			z.Error(q.Err.Error())
+			break
+		}
+
+		if rc == 1 {
+			break
+		}
+
+		q.Err = fmt.Errorf("无权在所选考点创建考场或所选考点不存在, id: %d", info.ExamSiteID)
+		z.Error(q.Err.Error())
+
+
 	case "PATCH":
 
 		if !editable {
@@ -1807,6 +2166,8 @@ func examRoom(ctx context.Context) {
 			z.Error(q.Err.Error())
 			break
 		}
+
+		
 
 	case "DELETE":
 
@@ -1943,76 +2304,18 @@ MethodSwitch:
 
 		var stmt1 *sql.Stmt
 
-		// 检查当前是否有权限访问该考点
-		ss := []string{}
-		v := []interface{}{
-			examSiteID,
-			userID,
-		}
-
-		l := len(v)
-		for i, d := range authority.AccessibleDomains {
-			ss = append(ss, fmt.Sprintf("domain_id = $%d", i+l+1))
-			v = append(v, d)
-		}
-
-		sqlStr := fmt.Sprintf(`SELECT id FROM t_exam_site WHERE id = $1 AND  (creator = $2 OR %s)`, strings.Join(ss, " OR "))
-		stmt1, q.Err = tx.Prepare(sqlStr)
-		if q.Err != nil || (cmn.InDebugMode && q.Tag["prepareCheckAccessSqlErr"] != nil) {
-
-			if q.Err == nil {
-				q.Err = q.Tag["prepareCheckAccessSqlErr"].(error)
-			}
-
-			z.Error(q.Err.Error())
-			break
-		}
-
-		defer stmt1.Close()
-
-		var r sql.Result
-		r, q.Err = stmt1.ExecContext(ctx, v...)
-		if q.Err != nil || (cmn.InDebugMode && q.Tag["execCheckAccessSqlErr"] != nil) {
-
-			if q.Err == nil {
-				q.Err = q.Tag["execCheckAccessSqlErr"].(error)
-			}
-
-			z.Error(q.Err.Error())
-			break
-		}
-
-		var c int64
-		c, q.Err = r.RowsAffected()
-		if q.Err != nil || (cmn.InDebugMode && q.Tag["getCheckAccessResultErr"] != nil) {
-
-			if q.Err == nil {
-				q.Err = q.Tag["getCheckAccessResultErr"].(error)
-			}
-
-			z.Error(q.Err.Error())
-			break
-		}
-
-		if examSiteID != 0 && c == 0 {
-			q.Err = fmt.Errorf("当前用户无权获取该考点数据, id: %d", examSiteID)
-			z.Error(q.Err.Error())
-			break
-		}
-
 		// 获取考场列表数据
 
-		keys := []string{
-			"t_exam_room.exam_site=$1",
-		}
+		keys := []string{}
 
 		values := []interface{}{
-			examSiteID,
+			userID,
+			authority.AccessibleDomains,
 		}
 
-		if examSiteID == 0 {
-			keys = []string{}
-			values = []interface{}{}
+		if examSiteID > 0 {
+			keys = append(keys, fmt.Sprintf("t_exam_room.exam_site=$%d", len(values)+1))
+			values = append(values, examSiteID)
 		}
 
 		if req.Page < 1 {
@@ -2026,17 +2329,6 @@ MethodSwitch:
 			z.Error(q.Err.Error())
 			break
 		}
-
-		ss = []string{}
-		ss = append(ss, fmt.Sprintf("creator = $%d", len(values)+1))
-		values = append(values, userID)
-		l = len(values)
-		for i, d := range authority.AccessibleDomains {
-			ss = append(ss, fmt.Sprintf("domain_id = $%d", i+l+1))
-			values = append(values, d)
-		}
-
-		keys = append(keys, fmt.Sprintf("(%s)", strings.Join(ss, " OR ")))
 
 		nameFilter := gjson.Get(param, "filter.name").Str
 
@@ -2097,7 +2389,7 @@ MethodSwitch:
 
 		// 考场下不一定会安排考生考试，自然也就不一定会有相应的数据，
 		// 所以采用"左外连接"的方式去获取考场下的考试数据，确保考场数据可以正常获取
-		sqlStr = fmt.Sprintf(`WITH related_exams AS (
+		sqlStr := fmt.Sprintf(`WITH related_exams AS (
 			SELECT
 				t_exam_room.id AS room_id,
 				t_exam_info.id AS exam_id,
@@ -2138,6 +2430,9 @@ MethodSwitch:
 			) FILTER (WHERE rn = 1) ::jsonb AS recent_exam
 		FROM t_exam_room
 			JOIN related_exams ON related_exams.room_id = t_exam_room.id
+			JOIN t_exam_site ON t_exam_site.id = t_exam_room.exam_site 
+				AND t_exam_site.status != '04' -- 未被删除的数据
+				AND (t_exam_site.creator = $1 OR t_exam_site.admin = $1 OR t_exam_site.domain_id = ANY($2)) -- 获取拥有访问权限的数据
 		WHERE %s
 		GROUP BY 
 			t_exam_room.id, 
@@ -2158,6 +2453,7 @@ MethodSwitch:
 			break
 		}
 
+		var r sql.Result
 		r, q.Err = stmt1.ExecContext(ctx, values...)
 		if q.Err != nil || (cmn.InDebugMode && q.Tag["sqlExecErr1"] != nil) {
 
@@ -2279,16 +2575,33 @@ func examSiteSyncInit(ctx context.Context) {
 
 	q := cmn.GetCtxValue(ctx)
 
-	if viper.IsSet("examSiteServerSync.centralServerSSH.user") {
-		sshUser = viper.GetString("examSiteServerSync.centralServerSSH.user")
+	sshUserKey := "examSiteServerSync.centralServerSSH.user"
+	sshHostKey := "examSiteServerSync.centralServerSSH.host"
+	sshPortKey := "examSiteServerSync.centralServerSSH.port"
+	if viper.IsSet(sshUserKey) {
+		sshUser = viper.GetString(sshUserKey)
 	}
 
-	if viper.IsSet("examSiteServerSync.centralServerSSH.host") {
-		sshHost = viper.GetString("examSiteServerSync.centralServerSSH.host")
+	if viper.IsSet(sshHostKey) {
+		sshHost = viper.GetString(sshHostKey)
 	}
 
-	if viper.IsSet("examSiteServerSync.centralServerSSH.port") {
-		sshPort = viper.GetInt("examSiteServerSync.centralServerSSH.port")
+	if viper.IsSet(sshPortKey) {
+		sshPort = viper.GetInt(sshPortKey)
+	}
+
+	uploadDirKey := "tusd.uploadDir"
+	if viper.IsSet(uploadDirKey) {
+		uploadDir = viper.GetString(uploadDirKey)
+	}
+
+	uploadDir, q.Err = filepath.Abs(uploadDir)
+	if q.Err != nil || (cmn.InDebugMode && q.Tag["absUploadDirErr"] != nil) {
+		if q.Err == nil {
+			q.Err = q.Tag["absUploadDirErr"].(error)
+		}
+		z.Error(q.Err.Error())
+		return
 	}
 
 	dbConn := cmn.GetPgxConn()
@@ -2504,7 +2817,7 @@ func examSiteSyncInit(ctx context.Context) {
 				dbConn := cmn.GetDbConn()
 
 				// 时间计算方式: 当前时间 + 延迟执行Push的时间 + 同步间隔时间 + 30分钟的缓冲时间
-				dontSyncBefore := time.Now().Add(syncDelay).Add(interval).Add(30 * time.Minute).Unix() * 1000
+				dontSyncBefore := time.Now().Add(syncDelay).Add(interval).Add(30*time.Minute).Unix() * 1000
 
 				c := 0
 				q.Err = dbConn.QueryRow(`SELECT COUNT(id) FROM t_exam_session WHERE status = '04' OR (status = '02' AND start_time < $1)`, dontSyncBefore).Scan(&c)
@@ -2677,8 +2990,6 @@ MethodSwitch:
 			return
 		}
 
-		
-
 		for s != "" {
 
 			// 如果同步数据信息快照存在，则直接返回
@@ -2689,7 +3000,7 @@ MethodSwitch:
 				z.Error(q.Err.Error())
 				break MethodSwitch
 			}
-			
+
 			if forceRenew {
 
 				z.Info("强制重新准备考点数据")
@@ -2699,7 +3010,7 @@ MethodSwitch:
 				if err != nil || (cmn.InDebugMode && q.Tag["removeOldCacheDirErr"] != nil) {
 					z.Error(err.Error())
 				}
-				
+
 				break
 			}
 
@@ -2837,10 +3148,22 @@ MethodSwitch:
 
 		z.Info(string(o))
 
+		var dir string
+		dir, q.Err = filepath.Abs(uploadDir)
+		if q.Err != nil || (cmn.InDebugMode && q.Tag["getAbsUploadDirErr"] != nil) {
+			if q.Err == nil {
+				q.Err = q.Tag["getAbsUploadDirErr"].(error)
+			}
+
+			z.Error(q.Err.Error())
+			break MethodSwitch
+		}
+
 		info = syncInfo{
-			RecentExamID:  recentExamID,
-			Path:          folderFullPath,
-			TableFileList: tableFileList,
+			RecentExamID:    recentExamID,
+			Path:            folderFullPath,
+			TableFileList:   tableFileList,
+			UploadFilesPath: dir,
 		}
 
 		var data []byte
@@ -2989,7 +3312,7 @@ MethodSwitch:
 				}
 
 				z.Error(err.Error())
-				
+
 				break MethodSwitch
 			}
 
@@ -3002,7 +3325,6 @@ MethodSwitch:
 			z.Info(fmt.Sprintf("执行自动批改, 考试场次ID: %d", m.ExamSessionID))
 			mark.AutoMark(ctx, m)
 		}
-		
 
 	default:
 		q.Err = fmt.Errorf("不支持的HTTP方法: %s", q.R.Method)

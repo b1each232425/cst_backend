@@ -14,10 +14,16 @@ type TaskFunc func() error
 // SkipFunc 是当任务被跳过时触发的回调（比如超时未能获取资源）
 type SkipFunc func(reason string)
 
+// ContentSizeFunc 是用于获取当前任务的内容大小的函数，单位：字节
+type ContentSizeFunc func() int
+
 // RateLimiterTaskRunner 封装了并发数和速率的双重限流逻辑
 type RateLimiterTaskRunner struct {
-	sem     *semaphore.Weighted // 控制并发
-	limiter *rate.Limiter       // 控制速率
+	sem               *semaphore.Weighted // 控制并发
+	limiter           *rate.Limiter       // 控制速率
+	contentLimiter    *rate.Limiter       // 控制每分钟内容大小（比如 20万字节/分钟）
+	contentSizeGetter ContentSizeFunc     // 获取当前任务的内容大小（字节）
+	maxContentSize    int                 // 最大允许的内容大小，比如 400_000 字节/分钟
 }
 
 // NewRateLimiterTaskRunner 创建一个新的限流任务执行器
@@ -25,10 +31,23 @@ type RateLimiterTaskRunner struct {
 // qps: 每秒允许的请求数
 // burst: 令牌桶突发容量
 func NewRateLimiterTaskRunner(maxConcurrency int64, qps float64, burst int) *RateLimiterTaskRunner {
+	contentLimiter := rate.NewLimiter(
+		rate.Limit(float64(40_000)/60.0), // 每秒允许的令牌数 = 总大小 / 60秒
+		400_000,                          // burst 最好 >= contentMaxBytesPerMinute，允许短时间突发
+	)
 	return &RateLimiterTaskRunner{
-		sem:     semaphore.NewWeighted(maxConcurrency),
-		limiter: rate.NewLimiter(rate.Limit(qps), burst),
+		sem:               semaphore.NewWeighted(maxConcurrency),
+		limiter:           rate.NewLimiter(rate.Limit(qps), burst),
+		contentLimiter:    contentLimiter,
+		contentSizeGetter: nil,
+		maxContentSize:    400_000,
 	}
+}
+
+// SetContentSizeGetter 设置一个方法，用于在运行时获取任务的内容大小（字节）
+func (r *RateLimiterTaskRunner) SetContentSizeGetter(getter ContentSizeFunc) *RateLimiterTaskRunner {
+	r.contentSizeGetter = getter
+	return r
 }
 
 // TryRun 尝试运行一个任务，受并发数和速率限制，并可设置超时
@@ -99,12 +118,27 @@ func (r *RateLimiterTaskRunner) Wait(ctx context.Context) (error, func()) {
 
 	// 1. 先等待速率限制器
 	if err := r.limiter.Wait(ctx); err != nil {
-		return fmt.Errorf("rate limit acquire timeout or cancelled: %w", err), releaseFunc
+		err = fmt.Errorf("rate limit acquire timeout or cancelled: %w", err)
+		z.Sugar().Error(err)
+		return err, nil
+	}
+
+	// --- 2. 内容大小限流（每分钟 40万Token为例）---
+	if r.contentSizeGetter != nil {
+		contentSize := r.contentSizeGetter()
+		// 使用 WaitN 等待对应字节数的令牌
+		if err := r.contentLimiter.WaitN(ctx, contentSize); err != nil {
+			err = fmt.Errorf("content size limit acquire timeout or cancelled: %w", err)
+			z.Sugar().Error(err)
+			return err, nil
+		}
 	}
 
 	// 2. 再等待并发信号量
 	if err := r.sem.Acquire(ctx, 1); err != nil {
-		return fmt.Errorf("semaphore acquire error: %w", err), releaseFunc
+		err = fmt.Errorf("semaphore acquire error: %w", err)
+		z.Sugar().Error(err)
+		return err, nil
 	}
 
 	return nil, releaseFunc
