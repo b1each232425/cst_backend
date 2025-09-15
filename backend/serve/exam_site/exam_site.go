@@ -2306,7 +2306,9 @@ MethodSwitch:
 
 		// 获取考场列表数据
 
-		keys := []string{}
+		keys := []string{
+			"1=1",
+		}
 
 		values := []interface{}{
 			userID,
