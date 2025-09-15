@@ -23,6 +23,20 @@ type copyInfo struct {
 	Table string
 }
 
+// generateAuthorityFilters 生成权限过滤条件
+func generateAuthorityFilters(userID int64, accessibleDomains []int64) ( filters string) {
+
+	domains := []string{
+		fmt.Sprintf("creator=%d", userID),
+	}
+
+	for _, d := range accessibleDomains {
+		domains = append(domains, fmt.Sprintf("domain_id=%d", d))
+	}
+
+	return fmt.Sprintf("(%s)", strings.Join(domains, " OR "))
+}
+
 // generateAccessToken 生成访问令牌
 func generateAccessToken(userID int64, userToken string) (accessToken string) {
 	return fmt.Sprintf("%d-%s", userID, userToken)
