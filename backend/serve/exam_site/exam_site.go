@@ -2398,6 +2398,8 @@ MethodSwitch:
 				t_exam_session.id AS session_id,
 				t_exam_session.start_time,
 				t_exam_session.end_time,
+				t_exam_paper.name AS paper_name,
+				COUNT(t_examinee.id) AS examinee_num,
 				COALESCE((t_exam_session.end_time < %d OR t_exam_session.start_time > %d ), true) AS available,
 				ROW_NUMBER() OVER (
 					PARTITION BY t_exam_room.id 
@@ -2407,10 +2409,13 @@ MethodSwitch:
 				LEFT JOIN t_examinee t_examinee ON t_examinee.exam_room = t_exam_room.id
 				LEFT JOIN t_exam_session ON t_exam_session.id = t_examinee.exam_session_id
 				LEFT JOIN t_exam_info t_exam_info ON t_exam_info.id = t_exam_session.exam_id
+				LEFT JOIN t_paper ON t_paper.id = t_exam_session.paper_id
+				LEFT JOIN t_exam_paper ON t_exam_paper.id = t_paper.exampaper_id
 			GROUP BY
 				t_exam_room.id,
 				t_exam_info.id,
-				t_exam_session.id
+				t_exam_session.id,
+				t_exam_paper.id
 		)
 		SELECT 
 			t_exam_room.id,
@@ -2418,7 +2423,7 @@ MethodSwitch:
 			COALESCE(t_exam_site.name, '') AS examSiteName,
 			t_exam_room.name,
 			t_exam_room.capacity,
-			BOOL_AND(related_exams.available) AS available,
+			COALESCE(BOOL_AND(related_exams.available), true) AS available,
 			json_agg(
 				json_build_object(
 					'exam_id', exam_id,
@@ -2426,7 +2431,9 @@ MethodSwitch:
 					'exam_status', exam_status,
 					'session_id', session_id,
 					'start_time', start_time,
-					'end_time', end_time
+					'end_time', end_time,
+					'paper_name', paper_name,
+					'examinee_num', examinee_num
 				)
 			) FILTER (WHERE rn = 1) ::jsonb AS recent_exam
 		FROM t_exam_room
