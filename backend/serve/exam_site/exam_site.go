@@ -97,12 +97,13 @@ type examSiteInfo struct {
 }
 
 type examRoomInfo struct {
-	ID         null.Int       `json:"id"`
-	ExamSiteID int            `json:"examSiteID" validate:"required"`
-	Name       string         `json:"name" validate:"required"`
-	Capacity   int            `json:"capacity" validate:"required"`
-	Available  null.Bool      `json:"available"`
-	RecentExam types.JSONText `json:"recentExam"`
+	ID           null.Int       `json:"id"`
+	ExamSiteID   int            `json:"examSiteID" validate:"required"`
+	ExamSiteName string         `json:"examSiteName"`
+	Name         string         `json:"name" validate:"required"`
+	Capacity     int            `json:"capacity" validate:"required"`
+	Available    null.Bool      `json:"available"`
+	RecentExam   types.JSONText `json:"recentExam"`
 }
 
 type syncInfo struct {
@@ -288,7 +289,7 @@ func Enroll(author string) {
 func login(ctx context.Context) (info sysUserInfo) {
 
 	q := cmn.GetCtxValue(ctx)
-	
+
 	if viper.IsSet("examSiteServerSync.accessToken") {
 		accessToken = viper.GetString("examSiteServerSync.accessToken")
 	}
@@ -1266,7 +1267,7 @@ func examSite(ctx context.Context) {
 
 				if err == nil {
 					err = q.Tag["rollbackErr"].(error)
-					
+
 				}
 
 				z.Error(err.Error())
@@ -2158,7 +2159,6 @@ func examRoom(ctx context.Context) {
 		q.Err = fmt.Errorf("无权在所选考点创建考场或所选考点不存在, id: %d", info.ExamSiteID)
 		z.Error(q.Err.Error())
 
-
 	case "PATCH":
 
 		if !editable {
@@ -2166,8 +2166,6 @@ func examRoom(ctx context.Context) {
 			z.Error(q.Err.Error())
 			break
 		}
-
-		
 
 	case "DELETE":
 
@@ -2417,6 +2415,7 @@ MethodSwitch:
 		SELECT 
 			t_exam_room.id,
 			t_exam_room.exam_site,
+			COALESCE(t_exam_site.name, '') AS examSiteName,
 			t_exam_room.name,
 			t_exam_room.capacity,
 			BOOL_AND(related_exams.available) AS available,
@@ -2437,8 +2436,8 @@ MethodSwitch:
 				AND (t_exam_site.creator = $1 OR t_exam_site.admin = $1 OR t_exam_site.domain_id = ANY($2)) -- 获取拥有访问权限的数据
 		WHERE %s
 		GROUP BY 
+			t_exam_site.id,
 			t_exam_room.id, 
-			t_exam_room.exam_site, 
 			t_exam_room.name
 		ORDER BY
 			%s
@@ -2515,6 +2514,7 @@ MethodSwitch:
 			q.Err = rows.Scan(
 				&item.ID,
 				&item.ExamSiteID,
+				&item.ExamSiteName,
 				&item.Name,
 				&item.Capacity,
 				&item.Available,

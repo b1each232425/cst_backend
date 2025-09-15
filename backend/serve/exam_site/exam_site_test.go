@@ -4652,7 +4652,7 @@ func TestExamRoomList(t *testing.T) {
 			return
 		}
 
-		_, err = dbConn.Exec(fmt.Sprintf(`INSERT INTO t_exam_site (id, creator) VALUES (%d, %d)`, nowTime, testUserID))
+		_, err = dbConn.Exec(fmt.Sprintf(`INSERT INTO t_exam_site (id, name, creator) VALUES (%d, 'test-site-%d', %d)`, nowTime, nowTime, testUserID))
 		if err != nil {
 			t.Errorf("failed create exam sit: %v", err)
 			return
