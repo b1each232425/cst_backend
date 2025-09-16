@@ -1122,7 +1122,7 @@ func SendPushMsg() {
 	pushChan <- 1
 }
 
-// getApiPermissions 获取当前用户在使用指定接口时是否可读/可写
+// getApiPermissions 获取当前用户在使用指定接口时是否可读/可创建/可编辑/可删除
 func getApiPermissions(ctx context.Context, apiPath string) (readable, creatable, editable, deletable bool) {
 
 	q := cmn.GetCtxValue(ctx)
@@ -1525,7 +1525,10 @@ MethodSwitch:
 			values = append(values, value)
 		}
 
-		sqlStr := fmt.Sprintf(`UPDATE t_exam_site SET %s WHERE id=$2 AND (creator=$1 OR admin=$1 OR domain_id=ANY($3))`, strings.Join(sets, ", "))
+		sqlStr := fmt.Sprintf(`WITH update_result AS (
+			UPDATE t_exam_site SET %s WHERE id=$2 AND (creator=$1 OR admin=$1 OR domain_id=ANY($3)) RETURNING id
+		)
+		SELECT COUNT(id) FROM update_result`, strings.Join(sets, ", "))
 
 		var stmt *sql.Stmt
 		stmt, q.Err = tx.Prepare(sqlStr)
@@ -1541,24 +1544,12 @@ MethodSwitch:
 
 		defer stmt.Close()
 
-		var r sql.Result
-		r, q.Err = stmt.ExecContext(ctx, values...)
+		var rc int64
+		q.Err = stmt.QueryRowContext(ctx, values...).Scan(&rc)
 		if q.Err != nil || (cmn.InDebugMode && q.Tag["sqlExecErr"] != nil) {
 
 			if q.Err == nil {
 				q.Err = q.Tag["sqlExecErr"].(error)
-			}
-
-			z.Error(q.Err.Error())
-			break
-		}
-
-		var rc int64
-		rc, q.Err = r.RowsAffected()
-		if q.Err != nil || (cmn.InDebugMode && q.Tag["rowsAffectedErr"] != nil) {
-
-			if q.Err == nil {
-				q.Err = q.Tag["rowsAffectedErr"].(error)
 			}
 
 			z.Error(q.Err.Error())
@@ -1578,7 +1569,11 @@ MethodSwitch:
 			rand.Read(b1)
 			newToken = fmt.Sprintf("%x", b1)
 
-			sqlStr = `UPDATE t_user SET user_token=crypt($1,gen_salt('bf')), updated_by=$2 WHERE id=(SELECT sys_user FROM t_exam_site WHERE id=$3)`
+			sqlStr = `WITH update_result AS (
+				UPDATE t_user SET user_token=crypt($1,gen_salt('bf')), updated_by=$2 WHERE id=(SELECT sys_user FROM t_exam_site WHERE id=$3)
+				RETURNING id
+			)
+			SELECT COUNT(id) FROM update_result`
 
 			var stmt *sql.Stmt
 			stmt, q.Err = tx.Prepare(sqlStr)
@@ -1593,20 +1588,10 @@ MethodSwitch:
 
 			defer stmt.Close()
 
-			r, q.Err = stmt.ExecContext(ctx, newToken, userID, editInfo.ID.Int64)
+			q.Err = stmt.QueryRowContext(ctx, newToken, userID, editInfo.ID.Int64).Scan(&rc)
 			if q.Err != nil || (cmn.InDebugMode && q.Tag["sqlExecErr2"] != nil) {
 				if q.Err == nil {
 					q.Err = q.Tag["sqlExecErr2"].(error)
-				}
-
-				z.Error(q.Err.Error())
-				break MethodSwitch
-			}
-
-			rc, q.Err = r.RowsAffected()
-			if q.Err != nil || (cmn.InDebugMode && q.Tag["rowsAffectedErr2"] != nil) {
-				if q.Err == nil {
-					q.Err = q.Tag["rowsAffectedErr2"].(error)
 				}
 
 				z.Error(q.Err.Error())
@@ -1680,7 +1665,11 @@ MethodSwitch:
 			break
 		}
 
-		sqlStr := `UPDATE t_exam_site SET status = '04', updated_by=$2 WHERE id=ANY($1) AND (creator = $2 OR admin = $2 OR domain_id=ANY($3))`
+		sqlStr := `WITH update_result AS(
+			UPDATE t_exam_site SET status = '04', updated_by=$2 WHERE id=ANY($1) AND (creator = $2 OR admin = $2 OR domain_id=ANY($3))
+			RETURNING id
+		)
+		SELECT COUNT(id) FROM update_result`
 
 		var stmt *sql.Stmt
 		stmt, q.Err = tx.Prepare(sqlStr)
@@ -1695,24 +1684,11 @@ MethodSwitch:
 
 		defer stmt.Close()
 
-		var r sql.Result
-
-		r, q.Err = stmt.Exec(delInfo.IDs, userID, authority.AccessibleDomains)
+		var rc int64
+		q.Err = stmt.QueryRowContext(ctx, delInfo.IDs, userID, authority.AccessibleDomains).Scan(&rc)
 		if q.Err != nil || (cmn.InDebugMode && q.Tag["sqlExecErr1"] != nil) {
 			if q.Err == nil {
 				q.Err = q.Tag["sqlExecErr1"].(error)
-			}
-
-			z.Error(q.Err.Error())
-			break
-		}
-
-		var rc int64
-		rc, q.Err = r.RowsAffected()
-		if q.Err != nil || (cmn.InDebugMode && q.Tag["rowsAffectedErr1"] != nil) {
-
-			if q.Err == nil {
-				q.Err = q.Tag["rowsAffectedErr1"].(error)
 			}
 
 			z.Error(q.Err.Error())
@@ -2125,15 +2101,18 @@ func examRoom(ctx context.Context) {
 		// 添加考场
 		// 所选考点必须存在且未被删除, 且当前用户必须有权限访问该考点
 
-		sqlStr := `INSERT INTO t_exam_room (exam_site, name, capacity, creator, updated_by, domain_id)
-		SELECT $1::bigint, $2::text, $3::integer, $4::bigint, $4::bigint, $5::bigint
-		WHERE EXISTS (
-			SELECT 1 
-			FROM t_exam_site 
-			WHERE t_exam_site.id = $1::bigint 
-				AND t_exam_site.status != '04' -- 未被删除的数据
-				AND (t_exam_site.creator = $4::bigint OR t_exam_site.admin = $4::bigint OR t_exam_site.domain_id = ANY($6::bigint[])) -- 获取拥有访问权限的数据
-		)`
+		sqlStr := `WITH insert_result AS (
+			INSERT INTO t_exam_room (exam_site, name, capacity, creator, updated_by, domain_id)
+			SELECT $1::bigint, $2::text, $3::integer, $4::bigint, $4::bigint, $5::bigint
+			WHERE EXISTS (
+				SELECT 1 
+				FROM t_exam_site 
+				WHERE t_exam_site.id = $1::bigint 
+					AND t_exam_site.status != '04' -- 未被删除的数据
+					AND (t_exam_site.creator = $4::bigint OR t_exam_site.admin = $4::bigint OR t_exam_site.domain_id = ANY($6::bigint[])) -- 获取拥有访问权限的数据
+			) RETURNING id
+		)
+		SELECT COUNT(id) FROM insert_result`
 
 		var stmt1 *sql.Stmt
 		stmt1, q.Err = tx.Prepare(sqlStr)
@@ -2149,24 +2128,12 @@ func examRoom(ctx context.Context) {
 
 		defer stmt1.Close()
 
-		var r sql.Result
-		r, q.Err = stmt1.ExecContext(ctx, info.ExamSiteID, info.Name, info.Capacity, userID, authority.Domain.ID.Int64, authority.AccessibleDomains)
+		var rc int64
+		q.Err = stmt1.QueryRowContext(ctx, info.ExamSiteID, info.Name, info.Capacity, userID, authority.Domain.ID.Int64, authority.AccessibleDomains).Scan(&rc)
 		if q.Err != nil || (cmn.InDebugMode && q.Tag["execSQLErr"] != nil) {
 
 			if q.Err == nil {
 				q.Err = q.Tag["execSQLErr"].(error)
-			}
-
-			z.Error(q.Err.Error())
-			break
-		}
-
-		var rc int64
-		rc, q.Err = r.RowsAffected()
-		if q.Err != nil || (cmn.InDebugMode && q.Tag["rowsAffectedErr"] != nil) {
-
-			if q.Err == nil {
-				q.Err = q.Tag["rowsAffectedErr"].(error)
 			}
 
 			z.Error(q.Err.Error())
@@ -2226,18 +2193,21 @@ func examRoom(ctx context.Context) {
 			values = append(values, editInfo.Capacity)
 		}
 
-		sqlStr := fmt.Sprintf(`UPDATE t_exam_room SET %s WHERE status != '06' AND id=ANY($3) AND EXISTS (
-			SELECT 1
-			FROM t_exam_site
-			WHERE t_exam_site.id = t_exam_room.exam_site
-				AND t_exam_site.status != '04' -- 未被删除的数据
-				AND (t_exam_site.creator = $1 OR t_exam_site.admin = $1 OR t_exam_site.domain_id=ANY($2)) -- 获取拥有访问权限的数据
-		)`, strings.Join(sets, ", "))
+		sqlStr := fmt.Sprintf(`WITH update_result AS (
+			UPDATE t_exam_room SET %s WHERE status != '06' AND id=ANY($3) AND EXISTS (
+				SELECT 1
+				FROM t_exam_site
+				WHERE t_exam_site.id = t_exam_room.exam_site
+					AND t_exam_site.status != '04' -- 未被删除的数据
+					AND (t_exam_site.creator = $1 OR t_exam_site.admin = $1 OR t_exam_site.domain_id=ANY($2)) -- 获取拥有访问权限的数据
+			) RETURNING id
+		)
+		SELECT COUNT(id) FROM update_result`, strings.Join(sets, ", "))
 
 		var stmt *sql.Stmt
 		stmt, q.Err = tx.Prepare(sqlStr)
 		if q.Err != nil || (cmn.InDebugMode && q.Tag["prepareSqlErr"] != nil) {
-			
+
 			if q.Err == nil {
 				q.Err = q.Tag["prepareSqlErr"].(error)
 			}
@@ -2248,24 +2218,12 @@ func examRoom(ctx context.Context) {
 
 		defer stmt.Close()
 
-		var r sql.Result
-		r, q.Err = stmt.ExecContext(ctx, values...)
+		var rc int64
+		q.Err = stmt.QueryRowContext(ctx, values...).Scan(&rc)
 		if q.Err != nil || (cmn.InDebugMode && q.Tag["sqlExecErr"] != nil) {
 
 			if q.Err == nil {
 				q.Err = q.Tag["sqlExecErr"].(error)
-			}
-
-			z.Error(q.Err.Error())
-			break
-		}
-
-		var rc int64
-		rc, q.Err = r.RowsAffected()
-		if q.Err != nil || (cmn.InDebugMode && q.Tag["rowsAffectedErr"] != nil) {
-
-			if q.Err == nil {
-				q.Err = q.Tag["rowsAffectedErr"].(error)
 			}
 
 			z.Error(q.Err.Error())
@@ -2280,7 +2238,6 @@ func examRoom(ctx context.Context) {
 		q.Err = fmt.Errorf("无权编辑所选的部分/全部考场或所选的部分/全部考场不存在")
 		z.Error(q.Err.Error())
 
-
 	case "DELETE":
 
 		if !deletable {
@@ -2288,6 +2245,66 @@ func examRoom(ctx context.Context) {
 			z.Error(q.Err.Error())
 			break
 		}
+
+		var delInfo struct {
+			IDs []int64 `json:"ids" validate:"required,gt=0,dive,gt=0"` // 此项必须有元素并且每个元素都必须大于0
+		}
+
+		q.Err = json.Unmarshal(req.Data, &delInfo)
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			break
+		}
+
+		q.Err = cmn.Validate(&delInfo)
+		if q.Err != nil {
+			break
+		}
+
+		sqlStr := `WITH update_result AS (
+			UPDATE t_exam_room SET status = '06', updated_by = $2 WHERE id = ANY($1) AND EXISTS (
+				SELECT 1
+				FROM t_exam_site
+				WHERE t_exam_site.id = t_exam_room.exam_site
+					AND t_exam_site.status != '04' -- 未被删除的数据
+					AND (t_exam_site.creator = $2 OR t_exam_site.admin = $2 OR t_exam_site.domain_id=ANY($3)) -- 获取拥有访问权限的数据
+			) RETURNING id
+		) 
+		SELECT COUNT(id) FROM update_result`
+
+		var stmt *sql.Stmt
+		stmt, q.Err = tx.Prepare(sqlStr)
+		if q.Err != nil || (cmn.InDebugMode && q.Tag["prepareSqlErr"] != nil) {
+
+			if q.Err == nil {
+				q.Err = q.Tag["prepareSqlErr"].(error)
+			}
+
+			z.Error(q.Err.Error())
+			break
+		}
+
+		defer stmt.Close()
+
+		var rc int64
+		q.Err = stmt.QueryRowContext(ctx, delInfo.IDs, userID, authority.AccessibleDomains).Scan(&rc)
+		if q.Err != nil || (cmn.InDebugMode && q.Tag["sqlExecErr"] != nil) {
+
+			if q.Err == nil {
+				q.Err = q.Tag["sqlExecErr"].(error)
+			}
+
+			z.Error(q.Err.Error())
+			break
+		}
+
+		if rc == int64(len(delInfo.IDs)) {
+			msgData = delInfo
+			break
+		}
+
+		q.Err = fmt.Errorf("无权删除所选的部分/全部考场或不存在所选的部分/全部考场")
+		z.Error(q.Err.Error())
 
 	default:
 		q.Err = fmt.Errorf("不支持的HTTP方法: %s", q.R.Method)
@@ -2433,7 +2450,7 @@ MethodSwitch:
 		// 获取考场列表数据
 
 		keys := []string{
-			"1=1",
+			"t_exam_room.status != '06'",
 		}
 
 		values := []interface{}{

@@ -860,39 +860,48 @@ GROUP BY
 		return
 	}
 
-	defaultCleanup := func() {
+	defaultCleanup := func() (err error) {
 
 		dbConn := cmn.GetDbConn()
 
-		r, err := dbConn.Exec(fmt.Sprintf(`DELETE FROM t_exam_site WHERE name = 'test-site-%d'`, nowTime))
+		r, err := dbConn.Exec(fmt.Sprintf(`WITH d_exam_room AS (
+			DELETE FROM t_exam_room WHERE exam_site IN (SELECT id FROM t_exam_site WHERE name = 'test-site-%d')
+		)
+		DELETE FROM t_exam_site WHERE name = 'test-site-%d'`, testID, testID))
 		if err != nil {
-			t.Fatalf("failed to clean up test data: %v", err)
+			t.Error(err.Error())
+			return
 		}
 
 		c, err := r.RowsAffected()
 		if err != nil {
-			t.Fatalf("failed to get affected rows: %v", err)
+			t.Error(err.Error())
+			return
 		}
 
 		t.Logf("Have already cleaned up %d rows from t_exam_site", c)
 
 		err = removeTestUser(testID)
 		if err != nil {
-			t.Fatalf("failed to remove test user: %v", err)
+			t.Error(err.Error())
+			return
 		}
 
 		err = removeTestDomainApis(int64(cDomainAssessExamSiteAdmin))
 		if err != nil {
-			t.Fatalf("failed to remove test domain api: %v", err)
+			t.Error(err.Error())
+			return
 		}
 
 		if cleanupTestData != nil {
 			err = cleanupTestData()
 			if err != nil {
-				t.Fatalf("failed to cleanup test data: %v", err)
+				t.Error(err.Error())
+				return
 			}
 		}
 
+		return
 	}
 
 	tests := []struct {
@@ -901,7 +910,7 @@ GROUP BY
 		passExpected bool
 		errWanted    string
 		setup        func() error
-		cleanup      func()
+		cleanup      func() error
 		check        func(q *cmn.ServiceCtx, passExpected bool) error
 	}{
 
@@ -2058,48 +2067,6 @@ GROUP BY
 			check:        defaultEditCheck,
 		},
 		{
-			name: "编辑考点失败-强制获取更新后的变化行数失败",
-			q: &cmn.ServiceCtx{
-				Ep: &cmn.ServeEndPoint{
-					Path: "/api/exam-site",
-				},
-				R: httptest.NewRequest("PATCH", "/api/exam-site", strings.NewReader(fmt.Sprintf(`{
-					"data": {
-						"id": %d,
-						"name": "test-site-%d",
-						"address": "test-site-addr",
-						"serverHost": "t.test.top:6443",
-						"admin": %d
-					}
-				}`, testID, nowTime, testID))),
-				W: httptest.NewRecorder(),
-				Msg: &cmn.ReplyProto{
-					API:    "/api/exam-site",
-					Method: "PATCH",
-				},
-				BeginTime: time.Now(),
-				SysUser: &cmn.TUser{
-					ID:   null.NewInt(testID, true),
-					Role: null.NewInt(int64(cDomainAssessExamSiteAdmin), true),
-				},
-				Domains: []cmn.TDomain{
-					{
-						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
-						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
-					},
-				},
-				RedisClient: cmn.GetRedisConn(),
-				Tag: map[string]interface{}{
-					"rowsAffectedErr": fmt.Errorf("forced get affected rows after updated exam site info err"),
-				},
-			},
-			passExpected: false,
-			errWanted:    "forced get affected rows after updated exam site info err",
-			setup:        defaultSetup,
-			cleanup:      defaultCleanup,
-			check:        defaultEditCheck,
-		},
-		{
 			name: "编辑考点失败-不存在的考点",
 			q: &cmn.ServiceCtx{
 				Ep: &cmn.ServeEndPoint{
@@ -2218,46 +2185,7 @@ GROUP BY
 			check:        defaultEditCheck,
 		},
 		{
-			name: "编辑考点失败-获取更新系统账号的user_token的变化行数失败",
-			q: &cmn.ServiceCtx{
-				Ep: &cmn.ServeEndPoint{
-					Path: "/api/exam-site",
-				},
-				R: httptest.NewRequest("PATCH", "/api/exam-site", strings.NewReader(fmt.Sprintf(`{
-					"data": {
-						"id": %d,
-						"resetAccessToken":true
-					}
-				}`, testID))),
-				W: httptest.NewRecorder(),
-				Msg: &cmn.ReplyProto{
-					API:    "/api/exam-site",
-					Method: "PATCH",
-				},
-				BeginTime: time.Now(),
-				SysUser: &cmn.TUser{
-					ID:   null.NewInt(testID, true),
-					Role: null.NewInt(int64(cDomainAssessExamSiteAdmin), true),
-				},
-				Domains: []cmn.TDomain{
-					{
-						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
-						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
-					},
-				},
-				RedisClient: cmn.GetRedisConn(),
-				Tag: map[string]interface{}{
-					"rowsAffectedErr2": fmt.Errorf("forced get update sys user affected row err"),
-				},
-			},
-			passExpected: false,
-			errWanted:    "forced get update sys user affected row err",
-			setup:        defaultSetup,
-			cleanup:      defaultCleanup,
-			check:        defaultEditCheck,
-		},
-		{
-			name: "编辑考点失败-系统账号不存在",
+			name: "编辑考点成功-系统账号不存在重新创建账号成功",
 			q: &cmn.ServiceCtx{
 				Ep: &cmn.ServeEndPoint{
 					Path: "/api/exam-site",
@@ -2289,62 +2217,6 @@ GROUP BY
 			},
 			passExpected: true,
 			errWanted:    "",
-			setup: func() (err error) {
-
-				err = defaultSetup()
-				if err != nil {
-					return
-				}
-
-				_, err = dbConn.Exec(fmt.Sprintf(`WITH d_user_domain AS (
-					DELETE FROM t_user_domain WHERE sys_user = %d
-				)
-				DELETE FROM t_user WHERE id = %d`, testID, testID))
-				if err != nil {
-					t.Error(err.Error())
-					return
-				}
-
-				return
-			},
-			cleanup: defaultCleanup,
-			check:   defaultEditCheck,
-		},
-		{
-			name: "编辑考点失败-系统账号不存在并强制创建新账号失败",
-			q: &cmn.ServiceCtx{
-				Ep: &cmn.ServeEndPoint{
-					Path: "/api/exam-site",
-				},
-				R: httptest.NewRequest("PATCH", "/api/exam-site", strings.NewReader(fmt.Sprintf(`{
-					"data": {
-						"id": %d,
-						"resetAccessToken":true
-					}
-				}`, testID))),
-				W: httptest.NewRecorder(),
-				Msg: &cmn.ReplyProto{
-					API:    "/api/exam-site",
-					Method: "PATCH",
-				},
-				BeginTime: time.Now(),
-				SysUser: &cmn.TUser{
-					ID:   null.NewInt(testID, true),
-					Role: null.NewInt(int64(cDomainAssessExamSiteAdmin), true),
-				},
-				Domains: []cmn.TDomain{
-					{
-						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
-						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
-					},
-				},
-				RedisClient: cmn.GetRedisConn(),
-				Tag: map[string]interface{}{
-					"sqlExecCreateSysUserErr": fmt.Errorf("forced create new sys user error"),
-				},
-			},
-			passExpected: false,
-			errWanted:    "forced create new sys user error",
 			setup: func() (err error) {
 
 				err = defaultSetup()
@@ -2408,10 +2280,13 @@ GROUP BY
 					return
 				}
 
-				_, err = dbConn.Exec(fmt.Sprintf(`WITH d_user_domain AS (
+				_, err = dbConn.Exec(fmt.Sprintf(`WITH temp_exam_site AS (
+					UPDATE t_exam_site SET sys_user=%d WHERE id=%d
+				),
+				d_user_domain AS (
 					DELETE FROM t_user_domain WHERE sys_user = %d
 				)
-				DELETE FROM t_user WHERE id = %d`, testID, testID))
+				DELETE FROM t_user WHERE id = %d`, testID, testID, testID, testID))
 				if err != nil {
 					t.Error(err.Error())
 					return
@@ -2464,10 +2339,13 @@ GROUP BY
 					return
 				}
 
-				_, err = dbConn.Exec(fmt.Sprintf(`WITH d_user_domain AS (
+				_, err = dbConn.Exec(fmt.Sprintf(`WITH temp_exam_site AS (
+					UPDATE t_exam_site SET sys_user=%d WHERE id=%d
+				),
+				d_user_domain AS (
 					DELETE FROM t_user_domain WHERE sys_user = %d
 				)
-				DELETE FROM t_user WHERE id = %d`, testID, testID))
+				DELETE FROM t_user WHERE id = %d`, testID, testID, testID, testID))
 				if err != nil {
 					t.Error(err.Error())
 					return
@@ -2814,44 +2692,6 @@ GROUP BY
 			},
 			passExpected: false,
 			errWanted:    "forced exec delete exam site sql err",
-			setup:        defaultSetup,
-			cleanup:      defaultCleanup,
-			check:        defaultDeleteCheck,
-		},
-		{
-			name: "删除考点失败-强制获取删除后变化行数失败",
-			q: &cmn.ServiceCtx{
-				Ep: &cmn.ServeEndPoint{
-					Path: "/api/exam-site",
-				},
-				R: httptest.NewRequest("DELETE", "/api/exam-site", strings.NewReader(fmt.Sprintf(`{
-					"data": {
-						"ids": [%d]
-					}
-				}`, testID))),
-				W: httptest.NewRecorder(),
-				Msg: &cmn.ReplyProto{
-					API:    "/api/exam-site",
-					Method: "DELETE",
-				},
-				BeginTime: time.Now(),
-				SysUser: &cmn.TUser{
-					ID:   null.NewInt(testID, true),
-					Role: null.NewInt(int64(cDomainAssessExamSiteAdmin), true),
-				},
-				Domains: []cmn.TDomain{
-					{
-						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
-						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
-					},
-				},
-				RedisClient: cmn.GetRedisConn(),
-				Tag: map[string]interface{}{
-					"rowsAffectedErr1": fmt.Errorf("forced get delete exam site affected rows err"),
-				},
-			},
-			passExpected: false,
-			errWanted:    "forced get delete exam site affected rows err",
 			setup:        defaultSetup,
 			cleanup:      defaultCleanup,
 			check:        defaultDeleteCheck,
@@ -4031,6 +3871,34 @@ func TestExamRoom(t *testing.T) {
 		return
 	}
 
+	checkDeleteCheck := func(q *cmn.ServiceCtx, passExpected bool) (err error) {
+
+		var delInfo struct {
+			IDs []int64 `json:"ids" validate:"required,gt=0,dive,gt=0"`
+		}
+
+		err = json.Unmarshal(q.Msg.Data, &delInfo)
+		if err != nil {
+			t.Error(err.Error())
+			return
+		}
+
+		var c int
+		err = dbConn.QueryRow(`SELECT COUNT(id) FROM t_exam_room WHERE id=ANY($1) AND status='06'`, delInfo.IDs).Scan(&c)
+		if err != nil {
+			t.Error(err.Error())
+			return
+		}
+
+		if c != len(delInfo.IDs) && passExpected {
+			err = fmt.Errorf("deleted room got %d, but %d", len(delInfo.IDs), c)
+			t.Error(err.Error())
+			return
+		}
+
+		return
+	}
+
 	defaultCleanup := func() (err error) {
 
 		var r sql.Result
@@ -4672,45 +4540,6 @@ func TestExamRoom(t *testing.T) {
 			setup:        defaultSetup,
 			cleanup:      defaultCleanup,
 		},
-		{
-			name: "添加考场失败-强制获取变化行数失败",
-			q: &cmn.ServiceCtx{
-				Ep: &cmn.ServeEndPoint{
-					Path: "/api/exam-room",
-				},
-				R: httptest.NewRequest("POST", "/api/exam-room", strings.NewReader(fmt.Sprintf(`{
-					"data": {
-						"name": "test-room-%d",
-						"capacity": 30,
-						"examSiteID": %d
-					}
-				}`, nowTime, nowTime))),
-				W: httptest.NewRecorder(),
-				Msg: &cmn.ReplyProto{
-					API:    "/api/exam-room",
-					Method: "POST",
-				},
-				BeginTime: time.Now(),
-				SysUser: &cmn.TUser{
-					ID:   null.NewInt(testID, true),
-					Role: null.NewInt(int64(cDomainAssessExamSiteAdmin), true),
-				},
-				Domains: []cmn.TDomain{
-					{
-						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
-						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
-					},
-				},
-				RedisClient: cmn.GetRedisConn(),
-				Tag: map[string]interface{}{
-					"rowsAffectedErr": fmt.Errorf("force rows affected err"),
-				},
-			},
-			passExpected: false,
-			errWanted:    "force rows affected err",
-			setup:        defaultSetup,
-			cleanup:      defaultCleanup,
-		},
 
 		// ======================================
 
@@ -5005,49 +4834,6 @@ func TestExamRoom(t *testing.T) {
 			cleanup:      defaultCleanup,
 		},
 		{
-			name: "编辑考场失败-强制获取变化行数失败",
-			q: &cmn.ServiceCtx{
-				Ep: &cmn.ServeEndPoint{
-					Path: "/api/exam-room",
-				},
-				R: httptest.NewRequest("PATCH", "/api/exam-room", strings.NewReader(fmt.Sprintf(`{
-					"data": {
-						"ids": [
-							%d,
-							%d,
-							%d
-						],
-						"capacity": 60
-					}
-				}`, testID+1, testID+2, testID+3))),
-				W: httptest.NewRecorder(),
-				Msg: &cmn.ReplyProto{
-					API:    "/api/exam-room",
-					Method: "PATCH",
-				},
-				BeginTime: time.Now(),
-				SysUser: &cmn.TUser{
-					ID:   null.NewInt(testID, true),
-					Role: null.NewInt(int64(cDomainAssessExamSiteAdmin), true),
-				},
-				Domains: []cmn.TDomain{
-					{
-						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
-						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
-					},
-				},
-				RedisClient: cmn.GetRedisConn(),
-				Tag: map[string]interface{}{
-					"rowsAffectedErr": fmt.Errorf("force get affected rows err"),
-				},
-			},
-			passExpected: false,
-			errWanted:    "force get affected rows err",
-			setup:        defaultSetup,
-			check:        defaultEditCheck,
-			cleanup:      defaultCleanup,
-		},
-		{
 			name: "编辑考场失败-没权限修改数据",
 			q: &cmn.ServiceCtx{
 				Ep: &cmn.ServeEndPoint{
@@ -5080,13 +4866,313 @@ func TestExamRoom(t *testing.T) {
 					},
 				},
 				RedisClient: cmn.GetRedisConn(),
-				Tag: map[string]interface{}{},
+				Tag:         map[string]interface{}{},
 			},
 			passExpected: false,
 			errWanted:    "无权编辑所选的部分/全部考场或所选的部分/全部考场不存在",
 			setup:        defaultSetup,
 			check:        defaultEditCheck,
 			cleanup:      defaultCleanup,
+		},
+
+		// ======================================
+
+		// oooooooooo.   oooooooooooo ooooo        oooooooooooo ooooooooooooo oooooooooooo
+		// `888'   `Y8b  `888'     `8 `888'        `888'     `8 8'   888   `8 `888'     `8
+		//  888      888  888          888          888              888       888
+		//  888      888  888oooo8     888          888oooo8         888       888oooo8
+		//  888      888  888    "     888          888    "         888       888    "
+		//  888     d88'  888       o  888       o  888       o      888       888       o
+		// o888bood8P'   o888ooooood8 o888ooooood8 o888ooooood8     o888o     o888ooooood8
+		//
+		//
+		//
+		{
+			name: "删除考场成功-单个考场",
+			q: &cmn.ServiceCtx{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-room",
+				},
+				R: httptest.NewRequest("DELETE", "/api/exam-room", strings.NewReader(fmt.Sprintf(`{
+					"data": {
+						"ids": [%d]
+					}
+				}`, testID+1))),
+				W: httptest.NewRecorder(),
+				Msg: &cmn.ReplyProto{
+					API:    "/api/exam-room",
+					Method: "DELETE",
+				},
+				BeginTime: time.Now(),
+				SysUser: &cmn.TUser{
+					ID:   null.NewInt(testID, true),
+					Role: null.NewInt(int64(cDomainAssessExamSiteAdmin), true),
+				},
+				Domains: []cmn.TDomain{
+					{
+						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
+					},
+				},
+				RedisClient: cmn.GetRedisConn(),
+			},
+			passExpected: true,
+			errWanted:    "",
+			setup:        defaultSetup,
+			cleanup:      defaultCleanup,
+			check:        checkDeleteCheck,
+		},
+		{
+			name: "删除考场成功-多个考场",
+			q: &cmn.ServiceCtx{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-room",
+				},
+				R: httptest.NewRequest("DELETE", "/api/exam-room", strings.NewReader(fmt.Sprintf(`{
+					"data": {
+						"ids": [%d, %d, %d]
+					}
+				}`, testID+1, testID+2, testID+3))),
+				W: httptest.NewRecorder(),
+				Msg: &cmn.ReplyProto{
+					API:    "/api/exam-room",
+					Method: "DELETE",
+				},
+				BeginTime: time.Now(),
+				SysUser: &cmn.TUser{
+					ID:   null.NewInt(testID, true),
+					Role: null.NewInt(int64(cDomainAssessExamSiteAdmin), true),
+				},
+				Domains: []cmn.TDomain{
+					{
+						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
+					},
+				},
+				RedisClient: cmn.GetRedisConn(),
+			},
+			passExpected: true,
+			errWanted:    "",
+			setup:        defaultSetup,
+			cleanup:      defaultCleanup,
+			check:        checkDeleteCheck,
+		},
+		{
+			name: "删除考场失败-无权删除",
+			q: &cmn.ServiceCtx{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-room",
+				},
+				R: httptest.NewRequest("DELETE", "/api/exam-room", strings.NewReader(fmt.Sprintf(`{
+					"data": {
+						"ids": [%d, %d, %d]
+					}
+				}`, testID+1, testID+2, testID+3))),
+				W: httptest.NewRecorder(),
+				Msg: &cmn.ReplyProto{
+					API:    "/api/exam-room",
+					Method: "DELETE",
+				},
+				BeginTime: time.Now(),
+				SysUser: &cmn.TUser{
+					ID:   null.NewInt(testID, true),
+					Role: null.NewInt(int64(cDomainAssessStudent), true),
+				},
+				Domains: []cmn.TDomain{
+					{
+						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
+					},
+				},
+				RedisClient: cmn.GetRedisConn(),
+			},
+			passExpected: false,
+			errWanted:    "当前用户没有权限删除该数据",
+			setup:        defaultSetup,
+			cleanup:      defaultCleanup,
+			check:        checkDeleteCheck,
+		},
+		{
+			name: "删除考场失败-解析请求体失败",
+			q: &cmn.ServiceCtx{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-room",
+				},
+				R: httptest.NewRequest("DELETE", "/api/exam-room", strings.NewReader(fmt.Sprintf(`{
+					"data": {
+						"ids": [%d, %d, %d]
+					
+				}`, testID+1, testID+2, testID+3))),
+				W: httptest.NewRecorder(),
+				Msg: &cmn.ReplyProto{
+					API:    "/api/exam-room",
+					Method: "DELETE",
+				},
+				BeginTime: time.Now(),
+				SysUser: &cmn.TUser{
+					ID:   null.NewInt(testID, true),
+					Role: null.NewInt(int64(cDomainAssessExamSiteAdmin), true),
+				},
+				Domains: []cmn.TDomain{
+					{
+						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
+					},
+				},
+				RedisClient: cmn.GetRedisConn(),
+			},
+			passExpected: false,
+			errWanted:    "unexpected end of JSON input",
+			setup:        defaultSetup,
+			cleanup:      defaultCleanup,
+			check:        checkDeleteCheck,
+		},
+		{
+			name: "删除考场失败-无效的考点ID",
+			q: &cmn.ServiceCtx{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-room",
+				},
+				R: httptest.NewRequest("DELETE", "/api/exam-room", strings.NewReader(fmt.Sprintf(`{
+					"data": {
+						"ids": [%d]
+					}
+				}`, -testID))),
+				W: httptest.NewRecorder(),
+				Msg: &cmn.ReplyProto{
+					API:    "/api/exam-room",
+					Method: "DELETE",
+				},
+				BeginTime: time.Now(),
+				SysUser: &cmn.TUser{
+					ID:   null.NewInt(testID, true),
+					Role: null.NewInt(int64(cDomainAssessExamSiteAdmin), true),
+				},
+				Domains: []cmn.TDomain{
+					{
+						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
+					},
+				},
+				RedisClient: cmn.GetRedisConn(),
+			},
+			passExpected: false,
+			errWanted:    "validation failed:Key: 'IDs[0]' Error:Field validation for 'IDs[0]' failed on the 'gt' tag",
+			setup:        defaultSetup,
+			cleanup:      defaultCleanup,
+			check:        checkDeleteCheck,
+		},
+		{
+			name: "删除考场失败-准备删除SQL失败",
+			q: &cmn.ServiceCtx{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-room",
+				},
+				R: httptest.NewRequest("DELETE", "/api/exam-room", strings.NewReader(fmt.Sprintf(`{
+					"data": {
+						"ids": [%d, %d, %d]
+					}
+				}`, testID+1, testID+2, testID+3))),
+				W: httptest.NewRecorder(),
+				Msg: &cmn.ReplyProto{
+					API:    "/api/exam-room",
+					Method: "DELETE",
+				},
+				BeginTime: time.Now(),
+				SysUser: &cmn.TUser{
+					ID:   null.NewInt(testID, true),
+					Role: null.NewInt(int64(cDomainAssessExamSiteAdmin), true),
+				},
+				Domains: []cmn.TDomain{
+					{
+						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
+					},
+				},
+				RedisClient: cmn.GetRedisConn(),
+				Tag: map[string]interface{}{
+					"prepareSqlErr": fmt.Errorf("forced prepare sql err"),
+				},
+			},
+			passExpected: false,
+			errWanted:    "forced prepare sql err",
+			setup:        defaultSetup,
+			cleanup:      defaultCleanup,
+			check:        checkDeleteCheck,
+		},
+		{
+			name: "删除考场失败-执行删除SQL失败",
+			q: &cmn.ServiceCtx{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-room",
+				},
+				R: httptest.NewRequest("DELETE", "/api/exam-room", strings.NewReader(fmt.Sprintf(`{
+					"data": {
+						"ids": [%d, %d, %d]
+					}
+				}`, testID+1, testID+2, testID+3))),
+				W: httptest.NewRecorder(),
+				Msg: &cmn.ReplyProto{
+					API:    "/api/exam-room",
+					Method: "DELETE",
+				},
+				BeginTime: time.Now(),
+				SysUser: &cmn.TUser{
+					ID:   null.NewInt(testID, true),
+					Role: null.NewInt(int64(cDomainAssessExamSiteAdmin), true),
+				},
+				Domains: []cmn.TDomain{
+					{
+						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
+					},
+				},
+				RedisClient: cmn.GetRedisConn(),
+				Tag: map[string]interface{}{
+					"sqlExecErr": fmt.Errorf("forced exec sql err"),
+				},
+			},
+			passExpected: false,
+			errWanted:    "forced exec sql err",
+			setup:        defaultSetup,
+			cleanup:      defaultCleanup,
+			check:        checkDeleteCheck,
+		},
+		{
+			name: "删除考场失败-不存在的考场",
+			q: &cmn.ServiceCtx{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-room",
+				},
+				R: httptest.NewRequest("DELETE", "/api/exam-room", strings.NewReader(fmt.Sprintf(`{
+					"data": {
+						"ids": [%d, %d, %d]
+					}
+				}`, testID+123, testID+2, testID+3))),
+				W: httptest.NewRecorder(),
+				Msg: &cmn.ReplyProto{
+					API:    "/api/exam-room",
+					Method: "DELETE",
+				},
+				BeginTime: time.Now(),
+				SysUser: &cmn.TUser{
+					ID:   null.NewInt(testID, true),
+					Role: null.NewInt(int64(cDomainAssessExamSiteAdmin), true),
+				},
+				Domains: []cmn.TDomain{
+					{
+						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
+					},
+				},
+				RedisClient: cmn.GetRedisConn(),
+				Tag:         map[string]interface{}{},
+			},
+			passExpected: false,
+			errWanted:    "无权删除所选的部分/全部考场或不存在所选的部分/全部考场",
+			setup:        defaultSetup,
+			cleanup:      defaultCleanup,
+			check:        checkDeleteCheck,
 		},
 
 		// ======================================
