@@ -221,6 +221,21 @@ func Enroll(author string) {
 				AccessAction: auth_mgt.CAPIAccessActionCreate,
 				Configurable: true,
 			},
+			{
+				Name:         "考点管理.编辑考场",
+				AccessAction: auth_mgt.CAPIAccessActionUpdate,
+				Configurable: true,
+			},
+			{
+				Name:         "考点管理.删除考场",
+				AccessAction: auth_mgt.CAPIAccessActionDelete,
+				Configurable: true,
+			},
+			{
+				Name:         "考点管理.获取考场信息",
+				AccessAction: auth_mgt.CAPIAccessActionRead,
+				Configurable: true,
+			},
 		},
 
 		Developer: developer,
@@ -1538,8 +1553,8 @@ MethodSwitch:
 			break
 		}
 
-		var ra int64
-		ra, q.Err = r.RowsAffected()
+		var rc int64
+		rc, q.Err = r.RowsAffected()
 		if q.Err != nil || (cmn.InDebugMode && q.Tag["rowsAffectedErr"] != nil) {
 
 			if q.Err == nil {
@@ -1550,7 +1565,7 @@ MethodSwitch:
 			break
 		}
 
-		if ra == 0 {
+		if rc == 0 {
 			q.Err = fmt.Errorf(`无权编辑该考点或该考点不存在(id: %d)`, editInfo.ID.Int64)
 			z.Error(q.Err.Error())
 			break
@@ -1588,7 +1603,7 @@ MethodSwitch:
 				break MethodSwitch
 			}
 
-			ra, q.Err = r.RowsAffected()
+			rc, q.Err = r.RowsAffected()
 			if q.Err != nil || (cmn.InDebugMode && q.Tag["rowsAffectedErr2"] != nil) {
 				if q.Err == nil {
 					q.Err = q.Tag["rowsAffectedErr2"].(error)
@@ -1600,7 +1615,7 @@ MethodSwitch:
 
 			newToken = generateAccessToken(editInfo.ID.Int64, newToken)
 
-			if ra != 0 {
+			if rc != 0 {
 				break
 			}
 
@@ -2068,6 +2083,8 @@ func examRoom(ctx context.Context) {
 		z.Warn(q.Err.Error())
 	}
 
+	var msgData interface{}
+
 	switch q.R.Method {
 
 	case "GET":
@@ -2148,11 +2165,16 @@ func examRoom(ctx context.Context) {
 		rc, q.Err = r.RowsAffected()
 		if q.Err != nil || (cmn.InDebugMode && q.Tag["rowsAffectedErr"] != nil) {
 
+			if q.Err == nil {
+				q.Err = q.Tag["rowsAffectedErr"].(error)
+			}
+
 			z.Error(q.Err.Error())
 			break
 		}
 
 		if rc == 1 {
+			msgData = info
 			break
 		}
 
@@ -2167,6 +2189,98 @@ func examRoom(ctx context.Context) {
 			break
 		}
 
+		var editInfo struct {
+			IDs      []int64 `json:"ids" validate:"required,gt=0,dive,gt=0"` // 此项必须有元素并且每个元素都必须大于0
+			Name     string  `json:"name"`
+			Capacity int     `json:"capacity"` // 必须大于0
+		}
+
+		q.Err = json.Unmarshal(req.Data, &editInfo)
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			break
+		}
+
+		q.Err = cmn.Validate(&editInfo)
+		if q.Err != nil {
+			break
+		}
+
+		values := []interface{}{
+			userID,
+			authority.AccessibleDomains,
+			editInfo.IDs,
+		}
+
+		sets := []string{
+			"updated_by=$1",
+		}
+
+		if editInfo.Name != "" {
+			sets = append(sets, fmt.Sprintf("name=$%d", len(values)+1))
+			values = append(values, editInfo.Name)
+		}
+
+		if editInfo.Capacity > 0 {
+			sets = append(sets, fmt.Sprintf("capacity=$%d", len(values)+1))
+			values = append(values, editInfo.Capacity)
+		}
+
+		sqlStr := fmt.Sprintf(`UPDATE t_exam_room SET %s WHERE status != '06' AND id=ANY($3) AND EXISTS (
+			SELECT 1
+			FROM t_exam_site
+			WHERE t_exam_site.id = t_exam_room.exam_site
+				AND t_exam_site.status != '04' -- 未被删除的数据
+				AND (t_exam_site.creator = $1 OR t_exam_site.admin = $1 OR t_exam_site.domain_id=ANY($2)) -- 获取拥有访问权限的数据
+		)`, strings.Join(sets, ", "))
+
+		var stmt *sql.Stmt
+		stmt, q.Err = tx.Prepare(sqlStr)
+		if q.Err != nil || (cmn.InDebugMode && q.Tag["prepareSqlErr"] != nil) {
+			
+			if q.Err == nil {
+				q.Err = q.Tag["prepareSqlErr"].(error)
+			}
+
+			z.Error(q.Err.Error())
+			break
+		}
+
+		defer stmt.Close()
+
+		var r sql.Result
+		r, q.Err = stmt.ExecContext(ctx, values...)
+		if q.Err != nil || (cmn.InDebugMode && q.Tag["sqlExecErr"] != nil) {
+
+			if q.Err == nil {
+				q.Err = q.Tag["sqlExecErr"].(error)
+			}
+
+			z.Error(q.Err.Error())
+			break
+		}
+
+		var rc int64
+		rc, q.Err = r.RowsAffected()
+		if q.Err != nil || (cmn.InDebugMode && q.Tag["rowsAffectedErr"] != nil) {
+
+			if q.Err == nil {
+				q.Err = q.Tag["rowsAffectedErr"].(error)
+			}
+
+			z.Error(q.Err.Error())
+			break
+		}
+
+		if rc == int64(len(editInfo.IDs)) {
+			msgData = editInfo
+			break
+		}
+
+		q.Err = fmt.Errorf("无权编辑所选的部分/全部考场或所选的部分/全部考场不存在")
+		z.Error(q.Err.Error())
+
+
 	case "DELETE":
 
 		if !deletable {
@@ -2178,6 +2292,20 @@ func examRoom(ctx context.Context) {
 	default:
 		q.Err = fmt.Errorf("不支持的HTTP方法: %s", q.R.Method)
 		z.Error(q.Err.Error())
+	}
+
+	if msgData != nil {
+		var err error
+		q.Msg.Data, err = json.Marshal(msgData)
+		if err != nil || (cmn.InDebugMode && q.Tag["jsonMarshalErr"] != nil) {
+
+			if err == nil {
+				err = q.Tag["jsonMarshalErr"].(error)
+			}
+
+			z.Error(err.Error())
+			q.Err = err
+		}
 	}
 
 	if q.Err != nil {
@@ -2398,6 +2526,8 @@ MethodSwitch:
 				t_exam_session.id AS session_id,
 				t_exam_session.start_time,
 				t_exam_session.end_time,
+				t_exam_paper.name AS paper_name,
+				COUNT(t_examinee.id) AS examinee_num,
 				COALESCE((t_exam_session.end_time < %d OR t_exam_session.start_time > %d ), true) AS available,
 				ROW_NUMBER() OVER (
 					PARTITION BY t_exam_room.id 
@@ -2407,10 +2537,13 @@ MethodSwitch:
 				LEFT JOIN t_examinee t_examinee ON t_examinee.exam_room = t_exam_room.id
 				LEFT JOIN t_exam_session ON t_exam_session.id = t_examinee.exam_session_id
 				LEFT JOIN t_exam_info t_exam_info ON t_exam_info.id = t_exam_session.exam_id
+				LEFT JOIN t_paper ON t_paper.id = t_exam_session.paper_id
+				LEFT JOIN t_exam_paper ON t_exam_paper.id = t_paper.exampaper_id
 			GROUP BY
 				t_exam_room.id,
 				t_exam_info.id,
-				t_exam_session.id
+				t_exam_session.id,
+				t_exam_paper.id
 		)
 		SELECT 
 			t_exam_room.id,
@@ -2418,7 +2551,7 @@ MethodSwitch:
 			COALESCE(t_exam_site.name, '') AS examSiteName,
 			t_exam_room.name,
 			t_exam_room.capacity,
-			BOOL_AND(related_exams.available) AS available,
+			COALESCE(BOOL_AND(related_exams.available), true) AS available,
 			json_agg(
 				json_build_object(
 					'exam_id', exam_id,
@@ -2426,7 +2559,9 @@ MethodSwitch:
 					'exam_status', exam_status,
 					'session_id', session_id,
 					'start_time', start_time,
-					'end_time', end_time
+					'end_time', end_time,
+					'paper_name', paper_name,
+					'examinee_num', examinee_num
 				)
 			) FILTER (WHERE rn = 1) ::jsonb AS recent_exam
 		FROM t_exam_room

@@ -41,6 +41,11 @@ var (
 	}
 )
 
+const (
+	cDomainAssessExamSiteAdmin = 2006
+	cDomainAssessStudent       = 2008
+)
+
 func TestMain(m *testing.M) {
 
 	cmn.ConfigureForTest()
@@ -105,7 +110,7 @@ func addTestDomainApi(apiPath string, accessAction string, domain int64) (err er
 
 	s := `INSERT INTO t_domain_api (api, domain, data_access_mode)
 	SELECT id, $2, $3 FROM t_api WHERE expose_path = $1 AND access_action = $4
-	ON CONFLICT (api, domain) DO NOTHING`
+	ON CONFLICT DO NOTHING`
 
 	r, err := tx.Exec(s, apiPath, domain, "full", accessAction)
 	if err != nil {
@@ -250,17 +255,17 @@ ins_domain AS (
 	INSERT INTO t_domain (id, name, domain, priority, creator) 
 	VALUES
 		(1999, '考试系统', 'assess', 0, 1000),
-		(10128, '考试系统.学生', 'assess^student', 7, 1000),
-		(10116, '考试系统.监考员', 'assess^examSupervisor', 7, 1000)
+		(2008, '考试系统.学生', 'assess^student', 7, 1000),
+		(2004, '考试系统.监考员', 'assess^examSupervisor', 7, 1000)
 	ON CONFLICT DO NOTHING
 ),
 ins_user_domains AS (
   	INSERT INTO t_user_domain (sys_user, domain, data_access_mode, domain_id) 
 	VALUES
-		(%d, 10128, 'full', %d),
-		(%d, 10128, 'full', %d),
-		(%d, 10128, 'full', %d),
-		(%d1, 10116, 'full', %d)
+		(%d, 2008, 'full', %d),
+		(%d, 2008, 'full', %d),
+		(%d, 2008, 'full', %d),
+		(%d1, 2004, 'full', %d)
   	ON CONFLICT(sys_user, domain) DO NOTHING
   	RETURNING sys_user
 ),
@@ -383,7 +388,7 @@ SELECT 1;
 	for _, sql := range sqls {
 		_, err = tx.ExecContext(ctx, sql)
 		if err != nil {
-			break
+			return
 		}
 	}
 
@@ -680,14 +685,14 @@ func TestExamSite(t *testing.T) {
 	defaultSetup := func() (err error) {
 
 		for _, p := range permissions {
-			err = addTestDomainApi("/api/exam-site", p, int64(cmn.CDomainAssessExamSiteAdmin))
+			err = addTestDomainApi("/api/exam-site", p, int64(cDomainAssessExamSiteAdmin))
 			if err != nil {
 				t.Errorf("failed to add domain api: %v", err)
 				return
 			}
 		}
 
-		err = addTestUser(testID, int64(cmn.CDomainAssessExamSiteAdmin))
+		err = addTestUser(testID, int64(cDomainAssessExamSiteAdmin))
 		if err != nil {
 			t.Errorf("failed to add test user: %v", err)
 			return
@@ -876,7 +881,7 @@ GROUP BY
 			t.Fatalf("failed to remove test user: %v", err)
 		}
 
-		err = removeTestDomainApis(int64(cmn.CDomainAssessExamSiteAdmin))
+		err = removeTestDomainApis(int64(cDomainAssessExamSiteAdmin))
 		if err != nil {
 			t.Fatalf("failed to remove test domain api: %v", err)
 		}
@@ -921,12 +926,12 @@ GROUP BY
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
 					ID:   null.NewInt(testID, true),
-					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+					Role: null.NewInt(int64(cDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
 					{
-						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
-						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
 					},
 				},
 				RedisClient: cmn.GetRedisConn(),
@@ -970,12 +975,12 @@ GROUP BY
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
 					ID:   null.NewInt(testID, true),
-					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+					Role: null.NewInt(int64(cDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
 					{
-						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
-						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
 					},
 				},
 				RedisClient: cmn.GetRedisConn(),
@@ -1007,12 +1012,12 @@ GROUP BY
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
 					ID:   null.NewInt(testID, true),
-					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+					Role: null.NewInt(int64(cDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
 					{
-						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
-						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
 					},
 				},
 				RedisClient: cmn.GetRedisConn(),
@@ -1045,12 +1050,12 @@ GROUP BY
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
 					ID:   null.NewInt(testID, true),
-					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+					Role: null.NewInt(int64(cDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
 					{
-						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
-						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
 					},
 				},
 				RedisClient: cmn.GetRedisConn(),
@@ -1083,12 +1088,12 @@ GROUP BY
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
 					ID:   null.NewInt(testID, true),
-					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+					Role: null.NewInt(int64(cDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
 					{
-						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
-						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
 					},
 				},
 				RedisClient: cmn.GetRedisConn(),
@@ -1121,12 +1126,12 @@ GROUP BY
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
 					ID:   null.NewInt(testID, true),
-					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+					Role: null.NewInt(int64(cDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
 					{
-						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
-						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
 					},
 				},
 				RedisClient: cmn.GetRedisConn(),
@@ -1158,12 +1163,12 @@ GROUP BY
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
 					ID:   null.NewInt(testID, true),
-					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+					Role: null.NewInt(int64(cDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
 					{
-						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
-						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
 					},
 				},
 				RedisClient: cmn.GetRedisConn(),
@@ -1198,12 +1203,12 @@ GROUP BY
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
 					ID:   null.NewInt(testID, true),
-					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+					Role: null.NewInt(int64(cDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
 					{
-						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
-						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
 					},
 				},
 				RedisClient: cmn.GetRedisConn(),
@@ -1238,12 +1243,12 @@ GROUP BY
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
 					ID:   null.NewInt(testID, true),
-					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+					Role: null.NewInt(int64(cDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
 					{
-						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
-						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
 					},
 				},
 				RedisClient: cmn.GetRedisConn(),
@@ -1278,12 +1283,12 @@ GROUP BY
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
 					ID:   null.NewInt(testID, true),
-					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+					Role: null.NewInt(int64(cDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
 					{
-						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
-						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
 					},
 				},
 				RedisClient: cmn.GetRedisConn(),
@@ -1318,12 +1323,12 @@ GROUP BY
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
 					ID:   null.NewInt(testID, true),
-					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+					Role: null.NewInt(int64(cDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
 					{
-						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
-						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
 					},
 				},
 				RedisClient: cmn.GetRedisConn(),
@@ -1358,12 +1363,12 @@ GROUP BY
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
 					ID:   null.NewInt(testID, true),
-					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+					Role: null.NewInt(int64(cDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
 					{
-						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
-						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
 					},
 				},
 				RedisClient: cmn.GetRedisConn(),
@@ -1398,12 +1403,12 @@ GROUP BY
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
 					ID:   null.NewInt(testID, true),
-					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+					Role: null.NewInt(int64(cDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
 					{
-						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
-						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
 					},
 				},
 				RedisClient: cmn.GetRedisConn(),
@@ -1438,12 +1443,12 @@ GROUP BY
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
 					ID:   null.NewInt(testID, true),
-					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+					Role: null.NewInt(int64(cDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
 					{
-						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
-						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
 					},
 				},
 				RedisClient: cmn.GetRedisConn(),
@@ -1478,12 +1483,12 @@ GROUP BY
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
 					ID:   null.NewInt(testID, true),
-					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+					Role: null.NewInt(int64(cDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
 					{
-						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
-						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
 					},
 				},
 				RedisClient: cmn.GetRedisConn(),
@@ -1519,12 +1524,12 @@ GROUP BY
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
 					ID:   null.NewInt(testID, true),
-					Role: null.NewInt(int64(cmn.CDomainAssessStudent), true),
+					Role: null.NewInt(int64(cDomainAssessStudent), true),
 				},
 				Domains: []cmn.TDomain{
 					{
-						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
-						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
 					},
 				},
 				RedisClient: cmn.GetRedisConn(),
@@ -1568,12 +1573,12 @@ GROUP BY
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
 					ID:   null.NewInt(testID, true),
-					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+					Role: null.NewInt(int64(cDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
 					{
-						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
-						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
 					},
 				},
 				RedisClient: cmn.GetRedisConn(),
@@ -1603,12 +1608,12 @@ GROUP BY
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
 					ID:   null.NewInt(testID, true),
-					Role: null.NewInt(int64(cmn.CDomainAssessStudent), true),
+					Role: null.NewInt(int64(cDomainAssessStudent), true),
 				},
 				Domains: []cmn.TDomain{
 					{
-						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
-						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
 					},
 				},
 				RedisClient: cmn.GetRedisConn(),
@@ -1638,12 +1643,12 @@ GROUP BY
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
 					ID:   null.NewInt(testID, true),
-					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+					Role: null.NewInt(int64(cDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
 					{
-						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
-						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
 					},
 				},
 				RedisClient: cmn.GetRedisConn(),
@@ -1673,12 +1678,12 @@ GROUP BY
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
 					ID:   null.NewInt(testID, true),
-					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+					Role: null.NewInt(int64(cDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
 					{
-						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
-						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
 					},
 				},
 				RedisClient: cmn.GetRedisConn(),
@@ -1708,12 +1713,12 @@ GROUP BY
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
 					ID:   null.NewInt(testID, true),
-					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+					Role: null.NewInt(int64(cDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
 					{
-						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
-						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
 					},
 				},
 				RedisClient: cmn.GetRedisConn(),
@@ -1746,12 +1751,12 @@ GROUP BY
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
 					ID:   null.NewInt(testID, true),
-					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+					Role: null.NewInt(int64(cDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
 					{
-						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
-						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
 					},
 				},
 				RedisClient: cmn.GetRedisConn(),
@@ -1799,12 +1804,12 @@ GROUP BY
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
 					ID:   null.NewInt(testID, true),
-					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+					Role: null.NewInt(int64(cDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
 					{
-						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
-						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
 					},
 				},
 				RedisClient: cmn.GetRedisConn(),
@@ -1835,12 +1840,12 @@ GROUP BY
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
 					ID:   null.NewInt(testID, true),
-					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+					Role: null.NewInt(int64(cDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
 					{
-						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
-						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
 					},
 				},
 				RedisClient: cmn.GetRedisConn(),
@@ -1874,12 +1879,12 @@ GROUP BY
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
 					ID:   null.NewInt(testID, true),
-					Role: null.NewInt(int64(cmn.CDomainAssessStudent), true),
+					Role: null.NewInt(int64(cDomainAssessStudent), true),
 				},
 				Domains: []cmn.TDomain{
 					{
-						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
-						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
 					},
 				},
 				RedisClient: cmn.GetRedisConn(),
@@ -1913,12 +1918,12 @@ GROUP BY
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
 					ID:   null.NewInt(testID, true),
-					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+					Role: null.NewInt(int64(cDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
 					{
-						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
-						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
 					},
 				},
 				RedisClient: cmn.GetRedisConn(),
@@ -1952,12 +1957,12 @@ GROUP BY
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
 					ID:   null.NewInt(testID, true),
-					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+					Role: null.NewInt(int64(cDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
 					{
-						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
-						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
 					},
 				},
 				RedisClient: cmn.GetRedisConn(),
@@ -1991,12 +1996,12 @@ GROUP BY
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
 					ID:   null.NewInt(testID, true),
-					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+					Role: null.NewInt(int64(cDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
 					{
-						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
-						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
 					},
 				},
 				RedisClient: cmn.GetRedisConn(),
@@ -2033,12 +2038,12 @@ GROUP BY
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
 					ID:   null.NewInt(testID, true),
-					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+					Role: null.NewInt(int64(cDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
 					{
-						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
-						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
 					},
 				},
 				RedisClient: cmn.GetRedisConn(),
@@ -2075,12 +2080,12 @@ GROUP BY
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
 					ID:   null.NewInt(testID, true),
-					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+					Role: null.NewInt(int64(cDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
 					{
-						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
-						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
 					},
 				},
 				RedisClient: cmn.GetRedisConn(),
@@ -2117,12 +2122,12 @@ GROUP BY
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
 					ID:   null.NewInt(testID, true),
-					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+					Role: null.NewInt(int64(cDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
 					{
-						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
-						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
 					},
 				},
 				RedisClient: cmn.GetRedisConn(),
@@ -2154,12 +2159,12 @@ GROUP BY
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
 					ID:   null.NewInt(testID, true),
-					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+					Role: null.NewInt(int64(cDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
 					{
-						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
-						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
 					},
 				},
 				RedisClient: cmn.GetRedisConn(),
@@ -2193,12 +2198,12 @@ GROUP BY
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
 					ID:   null.NewInt(testID, true),
-					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+					Role: null.NewInt(int64(cDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
 					{
-						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
-						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
 					},
 				},
 				RedisClient: cmn.GetRedisConn(),
@@ -2232,12 +2237,12 @@ GROUP BY
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
 					ID:   null.NewInt(testID, true),
-					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+					Role: null.NewInt(int64(cDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
 					{
-						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
-						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
 					},
 				},
 				RedisClient: cmn.GetRedisConn(),
@@ -2271,12 +2276,12 @@ GROUP BY
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
 					ID:   null.NewInt(testID, true),
-					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+					Role: null.NewInt(int64(cDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
 					{
-						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
-						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
 					},
 				},
 				RedisClient: cmn.GetRedisConn(),
@@ -2325,12 +2330,12 @@ GROUP BY
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
 					ID:   null.NewInt(testID, true),
-					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+					Role: null.NewInt(int64(cDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
 					{
-						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
-						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
 					},
 				},
 				RedisClient: cmn.GetRedisConn(),
@@ -2381,12 +2386,12 @@ GROUP BY
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
 					ID:   null.NewInt(testID, true),
-					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+					Role: null.NewInt(int64(cDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
 					{
-						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
-						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
 					},
 				},
 				RedisClient: cmn.GetRedisConn(),
@@ -2437,12 +2442,12 @@ GROUP BY
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
 					ID:   null.NewInt(testID, true),
-					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+					Role: null.NewInt(int64(cDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
 					{
-						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
-						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
 					},
 				},
 				RedisClient: cmn.GetRedisConn(),
@@ -2493,12 +2498,12 @@ GROUP BY
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
 					ID:   null.NewInt(testID, true),
-					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+					Role: null.NewInt(int64(cDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
 					{
-						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
-						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
 					},
 				},
 				RedisClient: cmn.GetRedisConn(),
@@ -2543,12 +2548,12 @@ GROUP BY
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
 					ID:   null.NewInt(testID, true),
-					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+					Role: null.NewInt(int64(cDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
 					{
-						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
-						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
 					},
 				},
 				RedisClient: cmn.GetRedisConn(),
@@ -2578,12 +2583,12 @@ GROUP BY
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
 					ID:   null.NewInt(testID, true),
-					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+					Role: null.NewInt(int64(cDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
 					{
-						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
-						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
 					},
 				},
 				RedisClient: cmn.GetRedisConn(),
@@ -2613,12 +2618,12 @@ GROUP BY
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
 					ID:   null.NewInt(testID, true),
-					Role: null.NewInt(int64(cmn.CDomainAssessStudent), true),
+					Role: null.NewInt(int64(cDomainAssessStudent), true),
 				},
 				Domains: []cmn.TDomain{
 					{
-						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
-						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
 					},
 				},
 				RedisClient: cmn.GetRedisConn(),
@@ -2648,12 +2653,12 @@ GROUP BY
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
 					ID:   null.NewInt(testID, true),
-					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+					Role: null.NewInt(int64(cDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
 					{
-						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
-						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
 					},
 				},
 				RedisClient: cmn.GetRedisConn(),
@@ -2683,12 +2688,12 @@ GROUP BY
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
 					ID:   null.NewInt(testID, true),
-					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+					Role: null.NewInt(int64(cDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
 					{
-						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
-						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
 					},
 				},
 				RedisClient: cmn.GetRedisConn(),
@@ -2718,12 +2723,12 @@ GROUP BY
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
 					ID:   null.NewInt(testID, true),
-					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+					Role: null.NewInt(int64(cDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
 					{
-						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
-						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
 					},
 				},
 				RedisClient: cmn.GetRedisConn(),
@@ -2756,12 +2761,12 @@ GROUP BY
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
 					ID:   null.NewInt(testID, true),
-					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+					Role: null.NewInt(int64(cDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
 					{
-						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
-						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
 					},
 				},
 				RedisClient: cmn.GetRedisConn(),
@@ -2794,12 +2799,12 @@ GROUP BY
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
 					ID:   null.NewInt(testID, true),
-					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+					Role: null.NewInt(int64(cDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
 					{
-						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
-						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
 					},
 				},
 				RedisClient: cmn.GetRedisConn(),
@@ -2832,12 +2837,12 @@ GROUP BY
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
 					ID:   null.NewInt(testID, true),
-					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+					Role: null.NewInt(int64(cDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
 					{
-						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
-						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
 					},
 				},
 				RedisClient: cmn.GetRedisConn(),
@@ -2870,12 +2875,12 @@ GROUP BY
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
 					ID:   null.NewInt(testID, true),
-					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+					Role: null.NewInt(int64(cDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
 					{
-						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
-						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
 					},
 				},
 				RedisClient: cmn.GetRedisConn(),
@@ -2963,14 +2968,14 @@ func TestExamSiteList(t *testing.T) {
 	defaultSetup := func() (err error) {
 
 		for _, p := range permissions {
-			err = addTestDomainApi("/api/exam-site/list", p, int64(cmn.CDomainAssessExamSiteAdmin))
+			err = addTestDomainApi("/api/exam-site/list", p, int64(cDomainAssessExamSiteAdmin))
 			if err != nil {
 				t.Errorf("failed to add domain api: %v", err)
 				return
 			}
 		}
 
-		err = addTestUser(testUserID, int64(cmn.CDomainAssessExamSiteAdmin))
+		err = addTestUser(testUserID, int64(cDomainAssessExamSiteAdmin))
 		if err != nil {
 			t.Errorf("failed to add test user: %v", err)
 			return
@@ -3048,7 +3053,7 @@ func TestExamSiteList(t *testing.T) {
 			t.Fatalf("failed to remove test user: %v", err)
 		}
 
-		err = removeTestDomainApis(int64(cmn.CDomainAssessExamSiteAdmin))
+		err = removeTestDomainApis(int64(cDomainAssessExamSiteAdmin))
 		if err != nil {
 			t.Fatalf("failed to remove test domain api: %v", err)
 		}
@@ -3091,12 +3096,12 @@ func TestExamSiteList(t *testing.T) {
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
 					ID:   null.NewInt(testUserID, true),
-					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+					Role: null.NewInt(int64(cDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
 					{
-						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
-						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
 					},
 				},
 				RedisClient: cmn.GetRedisConn(),
@@ -3145,12 +3150,12 @@ func TestExamSiteList(t *testing.T) {
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
 					ID:   null.NewInt(testUserID, true),
-					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+					Role: null.NewInt(int64(cDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
 					{
-						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
-						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
 					},
 				},
 				RedisClient: cmn.GetRedisConn(),
@@ -3184,12 +3189,12 @@ func TestExamSiteList(t *testing.T) {
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
 					ID:   null.NewInt(testUserID, true),
-					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+					Role: null.NewInt(int64(cDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
 					{
-						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
-						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
 					},
 				},
 				RedisClient: cmn.GetRedisConn(),
@@ -3226,12 +3231,12 @@ func TestExamSiteList(t *testing.T) {
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
 					ID:   null.NewInt(testUserID, true),
-					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+					Role: null.NewInt(int64(cDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
 					{
-						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
-						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
 					},
 				},
 				RedisClient: cmn.GetRedisConn(),
@@ -3265,12 +3270,12 @@ func TestExamSiteList(t *testing.T) {
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
 					ID:   null.NewInt(testUserID, true),
-					Role: null.NewInt(int64(cmn.CDomainAssessStudent), true),
+					Role: null.NewInt(int64(cDomainAssessStudent), true),
 				},
 				Domains: []cmn.TDomain{
 					{
-						ID:     null.IntFrom(int64(cmn.CDomainAssessStudent)),
-						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessStudent)),
+						ID:     null.IntFrom(int64(cDomainAssessStudent)),
+						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessStudent)),
 					},
 				},
 				RedisClient: cmn.GetRedisConn(),
@@ -3307,12 +3312,12 @@ func TestExamSiteList(t *testing.T) {
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
 					ID:   null.NewInt(testUserID, true),
-					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+					Role: null.NewInt(int64(cDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
 					{
-						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
-						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
 					},
 				},
 				RedisClient: cmn.GetRedisConn(),
@@ -3340,12 +3345,12 @@ func TestExamSiteList(t *testing.T) {
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
 					ID:   null.NewInt(testUserID, true),
-					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+					Role: null.NewInt(int64(cDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
 					{
-						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
-						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
 					},
 				},
 				RedisClient: cmn.GetRedisConn(),
@@ -3382,12 +3387,12 @@ func TestExamSiteList(t *testing.T) {
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
 					ID:   null.NewInt(testUserID, true),
-					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+					Role: null.NewInt(int64(cDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
 					{
-						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
-						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
 					},
 				},
 				RedisClient: cmn.GetRedisConn(),
@@ -3424,12 +3429,12 @@ func TestExamSiteList(t *testing.T) {
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
 					ID:   null.NewInt(testUserID, true),
-					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+					Role: null.NewInt(int64(cDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
 					{
-						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
-						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
 					},
 				},
 				RedisClient: cmn.GetRedisConn(),
@@ -3466,12 +3471,12 @@ func TestExamSiteList(t *testing.T) {
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
 					ID:   null.NewInt(testUserID, true),
-					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+					Role: null.NewInt(int64(cDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
 					{
-						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
-						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
 					},
 				},
 				RedisClient: cmn.GetRedisConn(),
@@ -3508,12 +3513,12 @@ func TestExamSiteList(t *testing.T) {
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
 					ID:   null.NewInt(testUserID, true),
-					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+					Role: null.NewInt(int64(cDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
 					{
-						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
-						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
 					},
 				},
 				RedisClient: cmn.GetRedisConn(),
@@ -3553,12 +3558,12 @@ func TestExamSiteList(t *testing.T) {
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
 					ID:   null.NewInt(testUserID, true),
-					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+					Role: null.NewInt(int64(cDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
 					{
-						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
-						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
 					},
 				},
 				RedisClient: cmn.GetRedisConn(),
@@ -3598,12 +3603,12 @@ func TestExamSiteList(t *testing.T) {
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
 					ID:   null.NewInt(testUserID, true),
-					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+					Role: null.NewInt(int64(cDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
 					{
-						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
-						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
 					},
 				},
 				RedisClient: cmn.GetRedisConn(),
@@ -3643,12 +3648,12 @@ func TestExamSiteList(t *testing.T) {
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
 					ID:   null.NewInt(testUserID, true),
-					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+					Role: null.NewInt(int64(cDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
 					{
-						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
-						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
 					},
 				},
 				RedisClient: cmn.GetRedisConn(),
@@ -3688,12 +3693,12 @@ func TestExamSiteList(t *testing.T) {
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
 					ID:   null.NewInt(testUserID, true),
-					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+					Role: null.NewInt(int64(cDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
 					{
-						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
-						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
 					},
 				},
 				RedisClient: cmn.GetRedisConn(),
@@ -3733,12 +3738,12 @@ func TestExamSiteList(t *testing.T) {
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
 					ID:   null.NewInt(testUserID, true),
-					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+					Role: null.NewInt(int64(cDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
 					{
-						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
-						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
 					},
 				},
 				RedisClient: cmn.GetRedisConn(),
@@ -3778,12 +3783,12 @@ func TestExamSiteList(t *testing.T) {
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
 					ID:   null.NewInt(testUserID, true),
-					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+					Role: null.NewInt(int64(cDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
 					{
-						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
-						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
 					},
 				},
 				RedisClient: cmn.GetRedisConn(),
@@ -3944,48 +3949,100 @@ func TestExamRoom(t *testing.T) {
 
 	dbConn := cmn.GetDbConn()
 
-	testUserID := nowTime
+	testID := nowTime / 100
+
+	var cleanupTestData func() error
 
 	defaultSetup := func() (err error) {
 
 		for _, p := range permissions {
-			err = addTestDomainApi("/api/exam-room", p, int64(cmn.CDomainAssessExamSiteAdmin))
+			err = addTestDomainApi("/api/exam-room", p, int64(cDomainAssessExamSiteAdmin))
 			if err != nil {
 				t.Errorf("failed to add domain api: %v", err)
 				return
 			}
 		}
 
-		err = addTestUser(testUserID, int64(cmn.CDomainAssessExamSiteAdmin))
+		err = addTestUser(testID, int64(cDomainAssessExamSiteAdmin))
 		if err != nil {
 			t.Errorf("failed to add test user: %v", err)
 			return
 		}
 
-		_, err = dbConn.Exec(fmt.Sprintf(`INSERT INTO t_exam_site (id, creator) VALUES (%d, %d)`, nowTime, testUserID))
+		_, err = dbConn.Exec(fmt.Sprintf(`INSERT INTO t_exam_site (id, creator) VALUES (%d, %d)`, nowTime, testID))
 		if err != nil {
 			t.Errorf("failed create exam sit: %v", err)
+			return
+		}
+
+		cleanupTestData, err = mockExamSiteSyncData(testID, nowTime)
+		if err != nil {
+			t.Error(err.Error())
 			return
 		}
 
 		return
 	}
 
-	// defaultCheck := func() {
+	defaultEditCheck := func(q *cmn.ServiceCtx, passExpected bool) (err error) {
 
-	// }
+		var editInfo struct {
+			IDs      []int64 `json:"ids" validate:"required,gt=0,dive,gt=0"`
+			Name     string  `json:"name"`
+			Capacity int     `json:"capacity"`
+		}
 
-	defaultCleanup := func() {
-
-		r, err := dbConn.Exec(fmt.Sprintf(`DELETE FROM t_exam_room WHERE name='test-room-%d'`, nowTime))
+		err = json.Unmarshal(q.Msg.Data, &editInfo)
 		if err != nil {
-			t.Fatalf("failed delete exam sit: %v", err)
+			t.Error(err.Error())
+			return
+		}
+
+		values := []interface{}{
+			editInfo.IDs,
+		}
+
+		keys := []string{
+			"id=ANY($1)",
+		}
+
+		if editInfo.Name != "" {
+			values = append(values, editInfo.Name)
+			keys = append(keys, fmt.Sprintf("name=$%d", len(values)))
+		}
+
+		if editInfo.Capacity > 0 {
+			values = append(values, editInfo.Capacity)
+			keys = append(keys, fmt.Sprintf("capacity=$%d", len(values)))
+		}
+
+		var c int
+		err = dbConn.QueryRow(fmt.Sprintf(`SELECT COUNT(id) FROM t_exam_room WHERE %s`, strings.Join(keys, " AND ")),
+			values...).Scan(&c)
+		if err != nil {
+			t.Error(err.Error())
+			return
+		}
+
+		if c != len(editInfo.IDs) {
+			err = fmt.Errorf("room updated got %d, but %d", len(editInfo.IDs), c)
+		}
+
+		return
+	}
+
+	defaultCleanup := func() (err error) {
+
+		var r sql.Result
+		r, err = dbConn.Exec(fmt.Sprintf(`DELETE FROM t_exam_room WHERE name='test-room-%d'`, nowTime))
+		if err != nil {
+			t.Errorf("failed delete exam sit: %v", err)
 			return
 		}
 
 		c, err := r.RowsAffected()
 		if err != nil {
-			t.Fatalf("failed get affected rows: %v", err)
+			t.Errorf("failed get affected rows: %v", err)
 			return
 		}
 
@@ -3993,27 +4050,37 @@ func TestExamRoom(t *testing.T) {
 
 		r, err = dbConn.Exec(fmt.Sprintf(`DELETE FROM t_exam_site WHERE id=%d`, nowTime))
 		if err != nil {
-			t.Fatalf("failed delete exam sit: %v", err)
+			t.Errorf("failed delete exam sit: %v", err)
 			return
 		}
 
 		c, err = r.RowsAffected()
 		if err != nil {
-			t.Fatalf("failed get affected rows: %v", err)
+			t.Errorf("failed get affected rows: %v", err)
 			return
 		}
 
 		t.Logf("Have already cleaned up %d row from t_exam_site", c)
 
-		err = removeTestUser(testUserID)
+		err = removeTestUser(testID)
 		if err != nil {
-			t.Fatalf("failed to remove test user: %v", err)
+			t.Errorf("failed to remove test user: %v", err)
 		}
 
-		err = removeTestDomainApis(int64(cmn.CDomainAssessExamSiteAdmin))
+		err = removeTestDomainApis(int64(cDomainAssessExamSiteAdmin))
 		if err != nil {
-			t.Fatalf("failed to remove test domain api: %v", err)
+			t.Errorf("failed to remove test domain api: %v", err)
 		}
+
+		if cleanupTestData != nil {
+			err = cleanupTestData()
+			if err != nil {
+				t.Error("clean up failed")
+				return
+			}
+		}
+
+		return
 
 	}
 
@@ -4023,7 +4090,7 @@ func TestExamRoom(t *testing.T) {
 		passExpected bool
 		errWanted    string
 		setup        func() error
-		cleanup      func()
+		cleanup      func() error
 		check        func(q *cmn.ServiceCtx, passExpected bool) (err error)
 	}{
 
@@ -4047,13 +4114,13 @@ func TestExamRoom(t *testing.T) {
 				},
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
-					ID:   null.NewInt(testUserID, true),
-					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+					ID:   null.NewInt(testID, true),
+					Role: null.NewInt(int64(cDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
 					{
-						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
-						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
 					},
 				},
 				RedisClient: cmn.GetRedisConn(),
@@ -4083,13 +4150,13 @@ func TestExamRoom(t *testing.T) {
 				},
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
-					ID:   null.NewInt(testUserID, true),
-					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+					ID:   null.NewInt(testID, true),
+					Role: null.NewInt(int64(cDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
 					{
-						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
-						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
 					},
 				},
 				RedisClient: cmn.GetRedisConn(),
@@ -4108,7 +4175,7 @@ func TestExamRoom(t *testing.T) {
 				Ep: &cmn.ServeEndPoint{
 					Path: "/api/exam-room",
 				},
-				R: httptest.NewRequest("POST", "/api/exam-site", strings.NewReader(fmt.Sprintf(`{
+				R: httptest.NewRequest("POST", "/api/exam-room", strings.NewReader(fmt.Sprintf(`{
 					"data": {
 						"name": "test-room-%d",
 						"capacity": 30,
@@ -4117,18 +4184,18 @@ func TestExamRoom(t *testing.T) {
 				}`, nowTime, nowTime))),
 				W: httptest.NewRecorder(),
 				Msg: &cmn.ReplyProto{
-					API:    "/api/exam-site",
+					API:    "/api/exam-room",
 					Method: "POST",
 				},
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
-					ID:   null.NewInt(testUserID, true),
-					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+					ID:   null.NewInt(testID, true),
+					Role: null.NewInt(int64(cDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
 					{
-						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
-						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
 					},
 				},
 				RedisClient: cmn.GetRedisConn(),
@@ -4161,13 +4228,13 @@ func TestExamRoom(t *testing.T) {
 				},
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
-					ID:   null.NewInt(testUserID, true),
-					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+					ID:   null.NewInt(testID, true),
+					Role: null.NewInt(int64(cDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
 					{
-						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
-						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
 					},
 				},
 				RedisClient: cmn.GetRedisConn(),
@@ -4200,13 +4267,13 @@ func TestExamRoom(t *testing.T) {
 				},
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
-					ID:   null.NewInt(testUserID, true),
-					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+					ID:   null.NewInt(testID, true),
+					Role: null.NewInt(int64(cDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
 					{
-						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
-						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
 					},
 				},
 				RedisClient: cmn.GetRedisConn(),
@@ -4217,6 +4284,45 @@ func TestExamRoom(t *testing.T) {
 			},
 			passExpected: false,
 			errWanted:    "force rollback tx err",
+			setup:        defaultSetup,
+			cleanup:      defaultCleanup,
+		},
+		{
+			name: "强制Marhsal返回数据失败",
+			q: &cmn.ServiceCtx{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-room",
+				},
+				R: httptest.NewRequest("POST", "/api/exam-room", strings.NewReader(fmt.Sprintf(`{
+					"data": {
+						"name": "test-room-%d",
+						"capacity": 10,
+						"examSiteID": %d
+					}
+				}`, nowTime, nowTime))),
+				W: httptest.NewRecorder(),
+				Msg: &cmn.ReplyProto{
+					API:    "/api/exam-room",
+					Method: "POST",
+				},
+				BeginTime: time.Now(),
+				SysUser: &cmn.TUser{
+					ID:   null.NewInt(testID, true),
+					Role: null.NewInt(int64(cDomainAssessExamSiteAdmin), true),
+				},
+				Domains: []cmn.TDomain{
+					{
+						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
+					},
+				},
+				RedisClient: cmn.GetRedisConn(),
+				Tag: map[string]interface{}{
+					"jsonMarshalErr": fmt.Errorf("force marshal resp body err"),
+				},
+			},
+			passExpected: false,
+			errWanted:    "force marshal resp body err",
 			setup:        defaultSetup,
 			cleanup:      defaultCleanup,
 		},
@@ -4238,7 +4344,7 @@ func TestExamRoom(t *testing.T) {
 				Ep: &cmn.ServeEndPoint{
 					Path: "/api/exam-room",
 				},
-				R: httptest.NewRequest("POST", "/api/exam-site", strings.NewReader(fmt.Sprintf(`{
+				R: httptest.NewRequest("POST", "/api/exam-room", strings.NewReader(fmt.Sprintf(`{
 					"data": {
 						"name": "test-room-%d",
 						"capacity": 30,
@@ -4247,18 +4353,18 @@ func TestExamRoom(t *testing.T) {
 				}`, nowTime, nowTime))),
 				W: httptest.NewRecorder(),
 				Msg: &cmn.ReplyProto{
-					API:    "/api/exam-site",
+					API:    "/api/exam-room",
 					Method: "POST",
 				},
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
-					ID:   null.NewInt(testUserID, true),
-					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+					ID:   null.NewInt(testID, true),
+					Role: null.NewInt(int64(cDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
 					{
-						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
-						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
 					},
 				},
 				RedisClient: cmn.GetRedisConn(),
@@ -4274,7 +4380,7 @@ func TestExamRoom(t *testing.T) {
 				Ep: &cmn.ServeEndPoint{
 					Path: "/api/exam-room",
 				},
-				R: httptest.NewRequest("POST", "/api/exam-site", strings.NewReader(fmt.Sprintf(`{
+				R: httptest.NewRequest("POST", "/api/exam-room", strings.NewReader(fmt.Sprintf(`{
 					"data": {
 						"name": "test-room-%d",
 						"capacity": 30,
@@ -4283,18 +4389,18 @@ func TestExamRoom(t *testing.T) {
 				}`, nowTime, nowTime))),
 				W: httptest.NewRecorder(),
 				Msg: &cmn.ReplyProto{
-					API:    "/api/exam-site",
+					API:    "/api/exam-room",
 					Method: "POST",
 				},
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
-					ID:   null.NewInt(testUserID, true),
-					Role: null.NewInt(int64(cmn.CDomainAssessStudent), true),
+					ID:   null.NewInt(testID, true),
+					Role: null.NewInt(int64(cDomainAssessStudent), true),
 				},
 				Domains: []cmn.TDomain{
 					{
-						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
-						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
 					},
 				},
 				RedisClient: cmn.GetRedisConn(),
@@ -4310,7 +4416,7 @@ func TestExamRoom(t *testing.T) {
 				Ep: &cmn.ServeEndPoint{
 					Path: "/api/exam-room",
 				},
-				R: httptest.NewRequest("POST", "/api/exam-site", strings.NewReader(fmt.Sprintf(`{
+				R: httptest.NewRequest("POST", "/api/exam-room", strings.NewReader(fmt.Sprintf(`{
 					"data": {
 						"name": "test-room-%d",
 						"capacity": 30,
@@ -4319,18 +4425,18 @@ func TestExamRoom(t *testing.T) {
 				}`, nowTime, nowTime))),
 				W: httptest.NewRecorder(),
 				Msg: &cmn.ReplyProto{
-					API:    "/api/exam-site",
+					API:    "/api/exam-room",
 					Method: "POST",
 				},
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
 					ID:   null.NewInt(99999999, true),
-					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+					Role: null.NewInt(int64(cDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
 					{
-						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
-						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
 					},
 				},
 				RedisClient: cmn.GetRedisConn(),
@@ -4347,7 +4453,7 @@ func TestExamRoom(t *testing.T) {
 				Ep: &cmn.ServeEndPoint{
 					Path: "/api/exam-room",
 				},
-				R: httptest.NewRequest("POST", "/api/exam-site", strings.NewReader(fmt.Sprintf(`{
+				R: httptest.NewRequest("POST", "/api/exam-room", strings.NewReader(fmt.Sprintf(`{
 					"data": {
 						"name": "test-room-%d",
 						"capacity": 30,
@@ -4356,18 +4462,18 @@ func TestExamRoom(t *testing.T) {
 				}`, nowTime, nowTime))),
 				W: httptest.NewRecorder(),
 				Msg: &cmn.ReplyProto{
-					API:    "/api/exam-site",
+					API:    "/api/exam-room",
 					Method: "POST",
 				},
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
-					ID:   null.NewInt(testUserID, true),
-					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+					ID:   null.NewInt(testID, true),
+					Role: null.NewInt(int64(cDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
 					{
-						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
-						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
 					},
 				},
 				RedisClient: cmn.GetRedisConn(),
@@ -4384,7 +4490,7 @@ func TestExamRoom(t *testing.T) {
 				Ep: &cmn.ServeEndPoint{
 					Path: "/api/exam-room",
 				},
-				R: httptest.NewRequest("POST", "/api/exam-site", strings.NewReader(fmt.Sprintf(`{
+				R: httptest.NewRequest("POST", "/api/exam-room", strings.NewReader(fmt.Sprintf(`{
 					"data": {
 						"name": "test-room-%d",
 						"capacity": 30
@@ -4392,18 +4498,18 @@ func TestExamRoom(t *testing.T) {
 				}`, nowTime))),
 				W: httptest.NewRecorder(),
 				Msg: &cmn.ReplyProto{
-					API:    "/api/exam-site",
+					API:    "/api/exam-room",
 					Method: "POST",
 				},
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
-					ID:   null.NewInt(testUserID, true),
-					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+					ID:   null.NewInt(testID, true),
+					Role: null.NewInt(int64(cDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
 					{
-						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
-						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
 					},
 				},
 				RedisClient: cmn.GetRedisConn(),
@@ -4420,7 +4526,7 @@ func TestExamRoom(t *testing.T) {
 				Ep: &cmn.ServeEndPoint{
 					Path: "/api/exam-room",
 				},
-				R: httptest.NewRequest("POST", "/api/exam-site", strings.NewReader(fmt.Sprintf(`{
+				R: httptest.NewRequest("POST", "/api/exam-room", strings.NewReader(fmt.Sprintf(`{
 					"data": {
 						"name": "test-room-%d",
 						"capacity": -30,
@@ -4429,18 +4535,18 @@ func TestExamRoom(t *testing.T) {
 				}`, nowTime, nowTime))),
 				W: httptest.NewRecorder(),
 				Msg: &cmn.ReplyProto{
-					API:    "/api/exam-site",
+					API:    "/api/exam-room",
 					Method: "POST",
 				},
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
-					ID:   null.NewInt(testUserID, true),
-					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+					ID:   null.NewInt(testID, true),
+					Role: null.NewInt(int64(cDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
 					{
-						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
-						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
 					},
 				},
 				RedisClient: cmn.GetRedisConn(),
@@ -4457,7 +4563,7 @@ func TestExamRoom(t *testing.T) {
 				Ep: &cmn.ServeEndPoint{
 					Path: "/api/exam-room",
 				},
-				R: httptest.NewRequest("POST", "/api/exam-site", strings.NewReader(fmt.Sprintf(`{
+				R: httptest.NewRequest("POST", "/api/exam-room", strings.NewReader(fmt.Sprintf(`{
 					"data": {
 						"name": "test-room-%d",
 						"capacity": 30,
@@ -4466,18 +4572,18 @@ func TestExamRoom(t *testing.T) {
 				}`, nowTime))),
 				W: httptest.NewRecorder(),
 				Msg: &cmn.ReplyProto{
-					API:    "/api/exam-site",
+					API:    "/api/exam-room",
 					Method: "POST",
 				},
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
-					ID:   null.NewInt(testUserID, true),
-					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+					ID:   null.NewInt(testID, true),
+					Role: null.NewInt(int64(cDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
 					{
-						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
-						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
 					},
 				},
 				RedisClient: cmn.GetRedisConn(),
@@ -4494,7 +4600,7 @@ func TestExamRoom(t *testing.T) {
 				Ep: &cmn.ServeEndPoint{
 					Path: "/api/exam-room",
 				},
-				R: httptest.NewRequest("POST", "/api/exam-site", strings.NewReader(fmt.Sprintf(`{
+				R: httptest.NewRequest("POST", "/api/exam-room", strings.NewReader(fmt.Sprintf(`{
 					"data": {
 						"name": "test-room-%d",
 						"capacity": 30,
@@ -4503,18 +4609,18 @@ func TestExamRoom(t *testing.T) {
 				}`, nowTime, nowTime))),
 				W: httptest.NewRecorder(),
 				Msg: &cmn.ReplyProto{
-					API:    "/api/exam-site",
+					API:    "/api/exam-room",
 					Method: "POST",
 				},
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
-					ID:   null.NewInt(testUserID, true),
-					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+					ID:   null.NewInt(testID, true),
+					Role: null.NewInt(int64(cDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
 					{
-						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
-						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
 					},
 				},
 				RedisClient: cmn.GetRedisConn(),
@@ -4533,7 +4639,7 @@ func TestExamRoom(t *testing.T) {
 				Ep: &cmn.ServeEndPoint{
 					Path: "/api/exam-room",
 				},
-				R: httptest.NewRequest("POST", "/api/exam-site", strings.NewReader(fmt.Sprintf(`{
+				R: httptest.NewRequest("POST", "/api/exam-room", strings.NewReader(fmt.Sprintf(`{
 					"data": {
 						"name": "test-room-%d",
 						"capacity": 30,
@@ -4542,18 +4648,18 @@ func TestExamRoom(t *testing.T) {
 				}`, nowTime, nowTime))),
 				W: httptest.NewRecorder(),
 				Msg: &cmn.ReplyProto{
-					API:    "/api/exam-site",
+					API:    "/api/exam-room",
 					Method: "POST",
 				},
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
-					ID:   null.NewInt(testUserID, true),
-					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+					ID:   null.NewInt(testID, true),
+					Role: null.NewInt(int64(cDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
 					{
-						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
-						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
 					},
 				},
 				RedisClient: cmn.GetRedisConn(),
@@ -4566,6 +4672,425 @@ func TestExamRoom(t *testing.T) {
 			setup:        defaultSetup,
 			cleanup:      defaultCleanup,
 		},
+		{
+			name: "添加考场失败-强制获取变化行数失败",
+			q: &cmn.ServiceCtx{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-room",
+				},
+				R: httptest.NewRequest("POST", "/api/exam-room", strings.NewReader(fmt.Sprintf(`{
+					"data": {
+						"name": "test-room-%d",
+						"capacity": 30,
+						"examSiteID": %d
+					}
+				}`, nowTime, nowTime))),
+				W: httptest.NewRecorder(),
+				Msg: &cmn.ReplyProto{
+					API:    "/api/exam-room",
+					Method: "POST",
+				},
+				BeginTime: time.Now(),
+				SysUser: &cmn.TUser{
+					ID:   null.NewInt(testID, true),
+					Role: null.NewInt(int64(cDomainAssessExamSiteAdmin), true),
+				},
+				Domains: []cmn.TDomain{
+					{
+						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
+					},
+				},
+				RedisClient: cmn.GetRedisConn(),
+				Tag: map[string]interface{}{
+					"rowsAffectedErr": fmt.Errorf("force rows affected err"),
+				},
+			},
+			passExpected: false,
+			errWanted:    "force rows affected err",
+			setup:        defaultSetup,
+			cleanup:      defaultCleanup,
+		},
+
+		// ======================================
+
+		// oooooooooooo oooooooooo.   ooooo ooooooooooooo
+		// `888'     `8 `888'   `Y8b  `888' 8'   888   `8
+		//  888          888      888  888       888
+		//  888oooo8     888      888  888       888
+		//  888    "     888      888  888       888
+		//  888       o  888     d88'  888       888
+		// o888ooooood8 o888bood8P'   o888o     o888o
+		//
+		//
+		//
+		{
+			name: "编辑考场成功-单个考场",
+			q: &cmn.ServiceCtx{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-room",
+				},
+				R: httptest.NewRequest("PATCH", "/api/exam-room", strings.NewReader(fmt.Sprintf(`{
+					"data": {
+						"ids": [
+							%d
+						],
+						"name": "test-room-%d-edited",
+						"capacity": 60
+					}
+				}`, testID+1, nowTime))),
+				W: httptest.NewRecorder(),
+				Msg: &cmn.ReplyProto{
+					API:    "/api/exam-room",
+					Method: "PATCH",
+				},
+				BeginTime: time.Now(),
+				SysUser: &cmn.TUser{
+					ID:   null.NewInt(testID, true),
+					Role: null.NewInt(int64(cDomainAssessExamSiteAdmin), true),
+				},
+				Domains: []cmn.TDomain{
+					{
+						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
+					},
+				},
+				RedisClient: cmn.GetRedisConn(),
+			},
+			passExpected: true,
+			errWanted:    "",
+			setup:        defaultSetup,
+			check:        defaultEditCheck,
+			cleanup:      defaultCleanup,
+		},
+		{
+			name: "编辑考场成功-多个考场",
+			q: &cmn.ServiceCtx{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-room",
+				},
+				R: httptest.NewRequest("PATCH", "/api/exam-room", strings.NewReader(fmt.Sprintf(`{
+					"data": {
+						"ids": [
+							%d,
+							%d,
+							%d
+						],
+						"capacity": 60
+					}
+				}`, testID+1, testID+2, testID+3))),
+				W: httptest.NewRecorder(),
+				Msg: &cmn.ReplyProto{
+					API:    "/api/exam-room",
+					Method: "PATCH",
+				},
+				BeginTime: time.Now(),
+				SysUser: &cmn.TUser{
+					ID:   null.NewInt(testID, true),
+					Role: null.NewInt(int64(cDomainAssessExamSiteAdmin), true),
+				},
+				Domains: []cmn.TDomain{
+					{
+						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
+					},
+				},
+				RedisClient: cmn.GetRedisConn(),
+			},
+			passExpected: true,
+			errWanted:    "",
+			setup:        defaultSetup,
+			check:        defaultEditCheck,
+			cleanup:      defaultCleanup,
+		},
+		{
+			name: "编辑考场失败-传入的考场ID列表为空",
+			q: &cmn.ServiceCtx{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-room",
+				},
+				R: httptest.NewRequest("PATCH", "/api/exam-room", strings.NewReader(fmt.Sprintf(`{
+					"data": {
+						"capacity": %d
+					}
+				}`, testID+1))),
+				W: httptest.NewRecorder(),
+				Msg: &cmn.ReplyProto{
+					API:    "/api/exam-room",
+					Method: "PATCH",
+				},
+				BeginTime: time.Now(),
+				SysUser: &cmn.TUser{
+					ID:   null.NewInt(testID, true),
+					Role: null.NewInt(int64(cDomainAssessExamSiteAdmin), true),
+				},
+				Domains: []cmn.TDomain{
+					{
+						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
+					},
+				},
+				RedisClient: cmn.GetRedisConn(),
+			},
+			passExpected: false,
+			errWanted:    "validation failed:Key: 'IDs' Error:Field validation for 'IDs' failed on the 'required' tag",
+			setup:        defaultSetup,
+			check:        defaultEditCheck,
+			cleanup:      defaultCleanup,
+		},
+		{
+			name: "编辑考场失败-解析请求体失败",
+			q: &cmn.ServiceCtx{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-room",
+				},
+				R: httptest.NewRequest("PATCH", "/api/exam-room", strings.NewReader(fmt.Sprintf(`{
+					"data": {
+						"ids": [
+							%d,
+							%d,
+							%d
+						],
+						"capacity": 60
+					
+				}`, testID+1, testID+2, testID+3))),
+				W: httptest.NewRecorder(),
+				Msg: &cmn.ReplyProto{
+					API:    "/api/exam-room",
+					Method: "PATCH",
+				},
+				BeginTime: time.Now(),
+				SysUser: &cmn.TUser{
+					ID:   null.NewInt(testID, true),
+					Role: null.NewInt(int64(cDomainAssessExamSiteAdmin), true),
+				},
+				Domains: []cmn.TDomain{
+					{
+						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
+					},
+				},
+				RedisClient: cmn.GetRedisConn(),
+			},
+			passExpected: false,
+			errWanted:    "unexpected end of JSON input",
+			setup:        defaultSetup,
+			check:        defaultEditCheck,
+			cleanup:      defaultCleanup,
+		},
+		{
+			name: "编辑考场失败-没有编辑权限",
+			q: &cmn.ServiceCtx{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-room",
+				},
+				R: httptest.NewRequest("PATCH", "/api/exam-room", strings.NewReader(fmt.Sprintf(`{
+					"data": {
+						"ids": [
+							%d,
+							%d,
+							%d
+						],
+						"capacity": 60
+					}
+				}`, testID+1, testID+2, testID+3))),
+				W: httptest.NewRecorder(),
+				Msg: &cmn.ReplyProto{
+					API:    "/api/exam-room",
+					Method: "PATCH",
+				},
+				BeginTime: time.Now(),
+				SysUser: &cmn.TUser{
+					ID:   null.NewInt(testID, true),
+					Role: null.NewInt(int64(cDomainAssessStudent), true),
+				},
+				Domains: []cmn.TDomain{
+					{
+						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
+					},
+				},
+				RedisClient: cmn.GetRedisConn(),
+			},
+			passExpected: false,
+			errWanted:    "当前用户没有权限修改该数据",
+			setup:        defaultSetup,
+			check:        defaultEditCheck,
+			cleanup:      defaultCleanup,
+		},
+		{
+			name: "编辑考场失败-强制准备更新SQL失败",
+			q: &cmn.ServiceCtx{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-room",
+				},
+				R: httptest.NewRequest("PATCH", "/api/exam-room", strings.NewReader(fmt.Sprintf(`{
+					"data": {
+						"ids": [
+							%d,
+							%d,
+							%d
+						],
+						"capacity": 60
+					}
+				}`, testID+1, testID+2, testID+3))),
+				W: httptest.NewRecorder(),
+				Msg: &cmn.ReplyProto{
+					API:    "/api/exam-room",
+					Method: "PATCH",
+				},
+				BeginTime: time.Now(),
+				SysUser: &cmn.TUser{
+					ID:   null.NewInt(testID, true),
+					Role: null.NewInt(int64(cDomainAssessExamSiteAdmin), true),
+				},
+				Domains: []cmn.TDomain{
+					{
+						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
+					},
+				},
+				RedisClient: cmn.GetRedisConn(),
+				Tag: map[string]interface{}{
+					"prepareSqlErr": fmt.Errorf("force prepare sql err"),
+				},
+			},
+			passExpected: false,
+			errWanted:    "force prepare sql err",
+			setup:        defaultSetup,
+			check:        defaultEditCheck,
+			cleanup:      defaultCleanup,
+		},
+		{
+			name: "编辑考场失败-强制执行更新SQL失败",
+			q: &cmn.ServiceCtx{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-room",
+				},
+				R: httptest.NewRequest("PATCH", "/api/exam-room", strings.NewReader(fmt.Sprintf(`{
+					"data": {
+						"ids": [
+							%d,
+							%d,
+							%d
+						],
+						"capacity": 60
+					}
+				}`, testID+1, testID+2, testID+3))),
+				W: httptest.NewRecorder(),
+				Msg: &cmn.ReplyProto{
+					API:    "/api/exam-room",
+					Method: "PATCH",
+				},
+				BeginTime: time.Now(),
+				SysUser: &cmn.TUser{
+					ID:   null.NewInt(testID, true),
+					Role: null.NewInt(int64(cDomainAssessExamSiteAdmin), true),
+				},
+				Domains: []cmn.TDomain{
+					{
+						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
+					},
+				},
+				RedisClient: cmn.GetRedisConn(),
+				Tag: map[string]interface{}{
+					"sqlExecErr": fmt.Errorf("force exec sql err"),
+				},
+			},
+			passExpected: false,
+			errWanted:    "force exec sql err",
+			setup:        defaultSetup,
+			check:        defaultEditCheck,
+			cleanup:      defaultCleanup,
+		},
+		{
+			name: "编辑考场失败-强制获取变化行数失败",
+			q: &cmn.ServiceCtx{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-room",
+				},
+				R: httptest.NewRequest("PATCH", "/api/exam-room", strings.NewReader(fmt.Sprintf(`{
+					"data": {
+						"ids": [
+							%d,
+							%d,
+							%d
+						],
+						"capacity": 60
+					}
+				}`, testID+1, testID+2, testID+3))),
+				W: httptest.NewRecorder(),
+				Msg: &cmn.ReplyProto{
+					API:    "/api/exam-room",
+					Method: "PATCH",
+				},
+				BeginTime: time.Now(),
+				SysUser: &cmn.TUser{
+					ID:   null.NewInt(testID, true),
+					Role: null.NewInt(int64(cDomainAssessExamSiteAdmin), true),
+				},
+				Domains: []cmn.TDomain{
+					{
+						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
+					},
+				},
+				RedisClient: cmn.GetRedisConn(),
+				Tag: map[string]interface{}{
+					"rowsAffectedErr": fmt.Errorf("force get affected rows err"),
+				},
+			},
+			passExpected: false,
+			errWanted:    "force get affected rows err",
+			setup:        defaultSetup,
+			check:        defaultEditCheck,
+			cleanup:      defaultCleanup,
+		},
+		{
+			name: "编辑考场失败-没权限修改数据",
+			q: &cmn.ServiceCtx{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-room",
+				},
+				R: httptest.NewRequest("PATCH", "/api/exam-room", strings.NewReader(fmt.Sprintf(`{
+					"data": {
+						"ids": [
+							%d,
+							%d,
+							%d
+						],
+						"capacity": 60
+					}
+				}`, testID+123, testID+231, testID+3))),
+				W: httptest.NewRecorder(),
+				Msg: &cmn.ReplyProto{
+					API:    "/api/exam-room",
+					Method: "PATCH",
+				},
+				BeginTime: time.Now(),
+				SysUser: &cmn.TUser{
+					ID:   null.NewInt(testID, true),
+					Role: null.NewInt(int64(cDomainAssessExamSiteAdmin), true),
+				},
+				Domains: []cmn.TDomain{
+					{
+						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
+					},
+				},
+				RedisClient: cmn.GetRedisConn(),
+				Tag: map[string]interface{}{},
+			},
+			passExpected: false,
+			errWanted:    "无权编辑所选的部分/全部考场或所选的部分/全部考场不存在",
+			setup:        defaultSetup,
+			check:        defaultEditCheck,
+			cleanup:      defaultCleanup,
+		},
+
+		// ======================================
+
 	}
 
 	// ooooooooo.   ooooo     ooo ooooo      ooo
@@ -4639,14 +5164,14 @@ func TestExamRoomList(t *testing.T) {
 	defaultSetup := func() (err error) {
 
 		for _, p := range permissions {
-			err = addTestDomainApi("/api/exam-room/list", p, int64(cmn.CDomainAssessExamSiteAdmin))
+			err = addTestDomainApi("/api/exam-room/list", p, int64(cDomainAssessExamSiteAdmin))
 			if err != nil {
 				t.Errorf("failed to add domain api: %v", err)
 				return
 			}
 		}
 
-		err = addTestUser(testUserID, int64(cmn.CDomainAssessExamSiteAdmin))
+		err = addTestUser(testUserID, int64(cDomainAssessExamSiteAdmin))
 		if err != nil {
 			t.Errorf("failed to add test user: %v", err)
 			return
@@ -4712,7 +5237,7 @@ func TestExamRoomList(t *testing.T) {
 			t.Fatalf("failed to remove test user: %v", err)
 		}
 
-		err = removeTestDomainApis(int64(cmn.CDomainAssessExamSiteAdmin))
+		err = removeTestDomainApis(int64(cDomainAssessExamSiteAdmin))
 		if err != nil {
 			t.Fatalf("failed to remove test domain api: %v", err)
 		}
@@ -4765,12 +5290,12 @@ func TestExamRoomList(t *testing.T) {
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
 					ID:   null.NewInt(testUserID, true),
-					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+					Role: null.NewInt(int64(cDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
 					{
-						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
-						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
 					},
 				},
 				RedisClient: cmn.GetRedisConn(),
@@ -4822,12 +5347,12 @@ func TestExamRoomList(t *testing.T) {
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
 					ID:   null.NewInt(testUserID, true),
-					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+					Role: null.NewInt(int64(cDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
 					{
-						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
-						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
 					},
 				},
 				RedisClient: cmn.GetRedisConn(),
@@ -4870,12 +5395,12 @@ func TestExamRoomList(t *testing.T) {
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
 					ID:   null.NewInt(1000, true),
-					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+					Role: null.NewInt(int64(cDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
 					{
-						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
-						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
 					},
 				},
 				RedisClient: cmn.GetRedisConn(),
@@ -4925,12 +5450,12 @@ func TestExamRoomList(t *testing.T) {
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
 					ID:   null.NewInt(1000, true),
-					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+					Role: null.NewInt(int64(cDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
 					{
-						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
-						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
 					},
 				},
 				RedisClient: cmn.GetRedisConn(),
@@ -4990,12 +5515,12 @@ func TestExamRoomList(t *testing.T) {
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
 					ID:   null.NewInt(1000, true),
-					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+					Role: null.NewInt(int64(cDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
 					{
-						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
-						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
 					},
 				},
 				RedisClient: cmn.GetRedisConn(),
@@ -5055,12 +5580,12 @@ func TestExamRoomList(t *testing.T) {
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
 					ID:   null.NewInt(1000, true),
-					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+					Role: null.NewInt(int64(cDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
 					{
-						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
-						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
 					},
 				},
 				RedisClient: cmn.GetRedisConn(),
@@ -5117,12 +5642,12 @@ func TestExamRoomList(t *testing.T) {
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
 					ID:   null.NewInt(testUserID, true),
-					Role: null.NewInt(int64(cmn.CDomainAssessStudent), true),
+					Role: null.NewInt(int64(cDomainAssessStudent), true),
 				},
 				Domains: []cmn.TDomain{
 					{
-						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
-						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
 					},
 				},
 				RedisClient: cmn.GetRedisConn(),
@@ -5162,12 +5687,12 @@ func TestExamRoomList(t *testing.T) {
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
 					ID:   null.NewInt(testUserID, true),
-					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+					Role: null.NewInt(int64(cDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
 					{
-						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
-						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
 					},
 				},
 				RedisClient: cmn.GetRedisConn(),
@@ -5210,12 +5735,12 @@ func TestExamRoomList(t *testing.T) {
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
 					ID:   null.NewInt(testUserID, true),
-					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+					Role: null.NewInt(int64(cDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
 					{
-						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
-						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
 					},
 				},
 				RedisClient: cmn.GetRedisConn(),
@@ -5258,12 +5783,12 @@ func TestExamRoomList(t *testing.T) {
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
 					ID:   null.NewInt(testUserID, true),
-					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+					Role: null.NewInt(int64(cDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
 					{
-						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
-						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
 					},
 				},
 				RedisClient: cmn.GetRedisConn(),
@@ -5303,12 +5828,12 @@ func TestExamRoomList(t *testing.T) {
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
 					ID:   null.NewInt(testUserID, true),
-					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+					Role: null.NewInt(int64(cDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
 					{
-						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
-						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
 					},
 				},
 				RedisClient: cmn.GetRedisConn(),
@@ -5351,12 +5876,12 @@ func TestExamRoomList(t *testing.T) {
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
 					ID:   null.NewInt(testUserID, true),
-					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+					Role: null.NewInt(int64(cDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
 					{
-						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
-						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
 					},
 				},
 				RedisClient: cmn.GetRedisConn(),
@@ -5399,12 +5924,12 @@ func TestExamRoomList(t *testing.T) {
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
 					ID:   null.NewInt(99999999, true),
-					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+					Role: null.NewInt(int64(cDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
 					{
-						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
-						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
 					},
 				},
 				RedisClient: cmn.GetRedisConn(),
@@ -5463,12 +5988,12 @@ func TestExamRoomList(t *testing.T) {
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
 					ID:   null.NewInt(testUserID, true),
-					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+					Role: null.NewInt(int64(cDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
 					{
-						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
-						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
 					},
 				},
 				RedisClient: cmn.GetRedisConn(),
@@ -5509,12 +6034,12 @@ func TestExamRoomList(t *testing.T) {
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
 					ID:   null.NewInt(testUserID, true),
-					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+					Role: null.NewInt(int64(cDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
 					{
-						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
-						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
 					},
 				},
 				RedisClient: cmn.GetRedisConn(),
@@ -5555,12 +6080,12 @@ func TestExamRoomList(t *testing.T) {
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
 					ID:   null.NewInt(testUserID, true),
-					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+					Role: null.NewInt(int64(cDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
 					{
-						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
-						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
 					},
 				},
 				RedisClient: cmn.GetRedisConn(),
@@ -5601,12 +6126,12 @@ func TestExamRoomList(t *testing.T) {
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
 					ID:   null.NewInt(testUserID, true),
-					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+					Role: null.NewInt(int64(cDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
 					{
-						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
-						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
 					},
 				},
 				RedisClient: cmn.GetRedisConn(),
@@ -5649,12 +6174,12 @@ func TestExamRoomList(t *testing.T) {
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
 					ID:   null.NewInt(testUserID, true),
-					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+					Role: null.NewInt(int64(cDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
 					{
-						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
-						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
 					},
 				},
 				RedisClient: cmn.GetRedisConn(),
@@ -5697,12 +6222,12 @@ func TestExamRoomList(t *testing.T) {
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
 					ID:   null.NewInt(testUserID, true),
-					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+					Role: null.NewInt(int64(cDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
 					{
-						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
-						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
 					},
 				},
 				RedisClient: cmn.GetRedisConn(),
@@ -5745,12 +6270,12 @@ func TestExamRoomList(t *testing.T) {
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
 					ID:   null.NewInt(testUserID, true),
-					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+					Role: null.NewInt(int64(cDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
 					{
-						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
-						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
 					},
 				},
 				RedisClient: cmn.GetRedisConn(),
@@ -5793,12 +6318,12 @@ func TestExamRoomList(t *testing.T) {
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
 					ID:   null.NewInt(testUserID, true),
-					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+					Role: null.NewInt(int64(cDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
 					{
-						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
-						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
 					},
 				},
 				RedisClient: cmn.GetRedisConn(),
@@ -5841,12 +6366,12 @@ func TestExamRoomList(t *testing.T) {
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
 					ID:   null.NewInt(testUserID, true),
-					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+					Role: null.NewInt(int64(cDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
 					{
-						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
-						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
 					},
 				},
 				RedisClient: cmn.GetRedisConn(),
@@ -5889,12 +6414,12 @@ func TestExamRoomList(t *testing.T) {
 				BeginTime: time.Now(),
 				SysUser: &cmn.TUser{
 					ID:   null.NewInt(testUserID, true),
-					Role: null.NewInt(int64(cmn.CDomainAssessExamSiteAdmin), true),
+					Role: null.NewInt(int64(cDomainAssessExamSiteAdmin), true),
 				},
 				Domains: []cmn.TDomain{
 					{
-						ID:     null.IntFrom(int64(cmn.CDomainAssessExamSiteAdmin)),
-						Domain: cmn.RoleName(cmn.CDomain(cmn.CDomainAssessExamSiteAdmin)),
+						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
 					},
 				},
 				RedisClient: cmn.GetRedisConn(),
