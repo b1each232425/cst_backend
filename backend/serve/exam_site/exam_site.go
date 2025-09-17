@@ -1122,111 +1122,7 @@ func SendPushMsg() {
 	pushChan <- 1
 }
 
-// getApiPermissions 获取当前用户在使用指定接口时是否可读/可创建/可编辑/可删除
-func getApiPermissions(ctx context.Context, apiPath string) (readable, creatable, editable, deletable bool) {
 
-	q := cmn.GetCtxValue(ctx)
-
-	readable, q.Err = auth_mgt.CheckUserAPIAccessible(ctx, nil, apiPath, auth_mgt.CAPIAccessActionRead)
-	if q.Err != nil || (cmn.InDebugMode && q.Tag["checkUserApiReadableErr"] != nil) {
-
-		if q.Err == nil {
-			q.Err = q.Tag["checkUserApiReadableErr"].(error)
-		}
-
-		return
-	}
-
-	creatable, q.Err = auth_mgt.CheckUserAPIAccessible(ctx, nil, apiPath, auth_mgt.CAPIAccessActionCreate)
-	if q.Err != nil || (cmn.InDebugMode && q.Tag["checkUserApiCreatableErr"] != nil) {
-
-		if q.Err == nil {
-			q.Err = q.Tag["checkUserApiCreatableErr"].(error)
-		}
-
-		return
-	}
-
-	editable, q.Err = auth_mgt.CheckUserAPIAccessible(ctx, nil, apiPath, auth_mgt.CAPIAccessActionUpdate)
-	if q.Err != nil || (cmn.InDebugMode && q.Tag["checkUserApiEditableErr"] != nil) {
-
-		if q.Err == nil {
-			q.Err = q.Tag["checkUserApiEditableErr"].(error)
-		}
-
-		return
-	}
-
-	deletable, q.Err = auth_mgt.CheckUserAPIAccessible(ctx, nil, apiPath, auth_mgt.CAPIAccessActionDelete)
-	if q.Err != nil || (cmn.InDebugMode && q.Tag["checkUserApiDeletableErr"] != nil) {
-
-		if q.Err == nil {
-			q.Err = q.Tag["checkUserApiDeletableErr"].(error)
-		}
-
-		return
-	}
-
-	return
-}
-
-// createSysUser 创建考点服务器系统账号
-func createSysUser(ctx context.Context, tx *sql.Tx, siteID int64) (sysUserID int64, accessToken string, err error) {
-
-	q := cmn.GetCtxValue(ctx)
-
-	officialName := fmt.Sprintf("考点%d", siteID)
-
-	var account, userToken string
-
-	b1 := make([]byte, 4)
-
-	b2 := make([]byte, 32)
-
-	// 该Read从不返回错误，并且始终填充 b, 一旦发生错误就直接Panic， 所以这里就不需要接收err
-	rand.Read(b1)
-
-	rand.Read(b2)
-
-	account = fmt.Sprintf("exam-site-%x", b1)
-
-	userToken = fmt.Sprintf("%x", b2)
-
-	// 注册考点服务器系统账号，用于给考点服务器与中心服务器进行http通信验证
-	sqlStr := fmt.Sprintf(`INSERT INTO t_user (category, type, official_name, account, user_token, creator, role)
-	VALUES ('sys^admin', '08', $1, $2, crypt($3,gen_salt('bf')), 1000, %d)
-	RETURNING 
-		id`, cmn.CDomainAssessExamSite)
-
-	var stmt1 *sql.Stmt
-	stmt1, err = tx.Prepare(sqlStr)
-	if err != nil || (cmn.InDebugMode && q.Tag["prepareCreateSysUserErr"] != nil) {
-
-		if err == nil {
-			err = q.Tag["prepareCreateSysUserErr"].(error)
-		}
-
-		z.Error(err.Error())
-		return
-	}
-
-	defer stmt1.Close()
-
-	err = stmt1.QueryRowContext(ctx, officialName, account, userToken).Scan(&sysUserID)
-	if err != nil || (cmn.InDebugMode && q.Tag["sqlExecCreateSysUserErr"] != nil) {
-
-		if err == nil {
-			err = q.Tag["sqlExecCreateSysUserErr"].(error)
-		}
-
-		z.Error(err.Error())
-		return
-	}
-
-	accessToken = generateAccessToken(sysUserID, userToken)
-
-	return
-}
 
 /* 考点基础业务 */
 // oooooooooo.
@@ -1806,29 +1702,9 @@ MethodSwitch:
 
 		orderBy := "t_exam_site.id"
 
-		orderByList := []string{}
-
-		for _, o := range req.OrderBy {
-			for k, v := range o {
-
-				if k == "" || v == "" {
-					continue
-				}
-
-				v = strings.ToUpper(v)
-
-				if v != "ASC" && v != "DESC" {
-					q.Err = fmt.Errorf("不支持的排序方式: %s key: %s", v, k)
-					z.Error(q.Err.Error())
-					break MethodSwitch
-				}
-
-				orderByList = append(orderByList, fmt.Sprintf("%s %s", k, v))
-			}
-		}
-
-		if len(orderByList) > 0 {
-			orderBy = strings.Join(orderByList, ", ")
+		orderBy, q.Err = OrderByJoin(orderBy, req.OrderBy)
+		if q.Err != nil {
+			break
 		}
 
 		sqlStr := fmt.Sprintf(`SELECT 
@@ -2061,6 +1937,7 @@ func examRoom(ctx context.Context) {
 
 	var msgData interface{}
 
+MethodSwitch:
 	switch q.R.Method {
 
 	case "GET":
@@ -2070,6 +1947,207 @@ func examRoom(ctx context.Context) {
 			z.Error(q.Err.Error())
 			break
 		}
+
+		param := q.R.URL.Query().Get("q")
+
+		var req cmn.ReqProto
+
+		q.Err = json.Unmarshal([]byte(param), &req)
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			break
+		}
+
+		examRoomID := gjson.Get(param, "data.id").Int()
+
+		if examRoomID <= 0 {
+			q.Err = fmt.Errorf("无效的考场ID: %d, 请传入一个大于0的值", examRoomID)
+			z.Error(q.Err.Error())
+			break
+		}
+
+		var examData struct {
+			RoomID        null.Int    `json:"roomID"`
+			ExamID        null.Int    `json:"examID"`
+			ExamName      null.String `json:"examName"`
+			ExamSessionID null.Int    `json:"examSessionID"`
+			StartTime     null.Int `json:"startTime"`
+			EndTime       null.Int `json:"endTime"`
+			Status        null.String `json:"status"`
+			ExamPaperName null.String `json:"examPaperName"`
+			ExamineeNum   null.Int    `json:"examineeNum"`
+		}
+
+		values := []interface{}{
+			examRoomID,
+			userID,
+			authority.AccessibleDomains,
+		}
+
+		keys := []string{
+			"t_exam_room.status != '06' AND t_exam_room.id = $1",
+		}
+
+		nameFilter := gjson.Get(param, "filter.name").Str
+		if nameFilter != "" {
+			i := len(values) + 1
+			keys = append(keys, fmt.Sprintf(`(t_exam_info.name ILIKE $%d OR t_exam_paper.name ILIKE $%d)`, i, i))
+			values = append(values, fmt.Sprintf("%%%s%%", nameFilter))
+		}
+
+		startTime := gjson.Get(param, "filter.startTime").Int()
+		endTime := gjson.Get(param, "filter.endTime").Int()
+		if startTime > endTime {
+			q.Err = fmt.Errorf(`开始时间不能大于结束时间, 当前开始时间: %d, 结束时间: %d`, startTime, endTime)
+			z.Error(q.Err.Error())
+			break
+		}
+
+		if startTime > 0 {
+			i := len(values) + 1
+			keys = append(keys, fmt.Sprintf(`t_exam_session.start_time >= $%d`, i))
+			values = append(values, startTime)
+		}
+
+		if endTime > 0 {
+			i := len(values) + 1
+			keys = append(keys, fmt.Sprintf(`t_exam_session.end_time <= $%d`, i))
+			values = append(values, endTime)
+		}
+
+		statusFilter := gjson.Get(param, "filter.status").Str
+		if statusFilter != "" {
+			i := len(values) + 1
+			keys = append(keys, fmt.Sprintf(`t_exam_session.status=$%d`, i))
+			values = append(values, statusFilter)
+		}
+
+		sqlStr := fmt.Sprintf(`SELECT 
+			t_exam_room.id AS room_id,
+			t_exam_info.id AS exam_id,
+			t_exam_info.name AS exam_name,
+			t_exam_session.id AS exam_session_id,
+			t_exam_session.start_time,
+			t_exam_session.end_time,
+			t_exam_session.status AS session_status,
+			t_exam_paper.name AS exam_paper_name,
+			COUNT(t_examinee.id) AS examinee_num
+		FROM t_exam_room
+			JOIN t_exam_site ON t_exam_site.id = t_exam_room.exam_site
+				AND t_exam_site.status != '04' -- 未被删除的数据
+				AND (t_exam_site.creator = $2 OR t_exam_site.admin = $2 OR t_exam_site.domain_id=ANY($3)) -- 获取拥有访问权限的数据
+			LEFT JOIN t_examinee ON t_examinee.exam_room = t_exam_room.id
+			JOIN t_exam_session ON t_exam_session.id = t_examinee.exam_session_id
+			JOIN t_paper ON t_paper.id = t_exam_session.paper_id
+			JOIN t_exam_paper ON t_exam_paper.id = t_paper.exampaper_id
+			JOIN t_exam_info ON t_exam_info.id = t_exam_session.exam_id
+		WHERE %s
+		GROUP BY
+			t_exam_room.id,
+			t_exam_info.id,
+			t_exam_session.id,
+			t_exam_paper.id`, strings.Join(keys, " AND "))
+
+		var stmt *sql.Stmt
+		stmt, q.Err = tx.Prepare(fmt.Sprintf(`SELECT COUNT(1) FROM (%s) AS count_table`, sqlStr))
+		if q.Err != nil || (cmn.InDebugMode && q.Tag["prepareGetExamRoomCountSqlErr"] != nil) {
+			if q.Err == nil {
+				q.Err = q.Tag["prepareGetExamRoomCountSqlErr"].(error)
+			}
+
+			z.Error(q.Err.Error())
+			break
+		}
+
+		defer stmt.Close()
+
+		q.Err = stmt.QueryRowContext(ctx, values...).Scan(&q.Msg.RowCount)
+		if q.Err != nil || (cmn.InDebugMode && q.Tag["execGetExamRoomCountSqlErr"] != nil) {
+
+			if q.Err == nil {
+				q.Err = q.Tag["execGetExamRoomCountSqlErr"].(error)
+			}
+
+			z.Error(q.Err.Error())
+			break
+		}
+
+		if req.Page < 1 {
+			q.Err = fmt.Errorf("页码不能小于1")
+			z.Error(q.Err.Error())
+			break
+		}
+
+		if req.PageSize < 1 {
+			q.Err = fmt.Errorf("每页条数不能小于1")
+			z.Error(q.Err.Error())
+			break
+		}
+
+		orderBy := "t_exam_session.start_time DESC"
+		orderBy, q.Err = OrderByJoin(orderBy, req.OrderBy)
+		if q.Err != nil {
+			break
+		}
+
+		sqlStr = fmt.Sprintf(`%s
+		ORDER BY
+			%s
+		LIMIT %d OFFSET %d
+		`, sqlStr, orderBy, req.PageSize, (req.Page-1)*req.PageSize)
+
+		stmt, q.Err = tx.Prepare(sqlStr)
+		if q.Err != nil || (cmn.InDebugMode && q.Tag["prepareGetExamRoomSqlErr"] != nil) {
+			if q.Err == nil {
+				q.Err = q.Tag["prepareGetExamRoomSqlErr"].(error)
+			}
+
+			z.Error(q.Err.Error())
+			break
+		}
+
+		defer stmt.Close()
+
+		var rows *sql.Rows
+		rows, q.Err = stmt.QueryContext(ctx, values...)
+		if q.Err != nil || (cmn.InDebugMode && q.Tag["execGetExamRoomSqlErr"] != nil) {
+
+			if q.Err == nil {
+				q.Err = q.Tag["execGetExamRoomSqlErr"].(error)
+			}
+
+			z.Error(q.Err.Error())
+			break
+		}
+
+		var result []interface{}
+
+		for rows.Next() {
+			q.Err = rows.Scan(
+				&examData.RoomID,
+				&examData.ExamID,
+				&examData.ExamName,
+				&examData.ExamSessionID,
+				&examData.StartTime,
+				&examData.EndTime,
+				&examData.Status,
+				&examData.ExamPaperName,
+				&examData.ExamineeNum,
+			)
+			if q.Err != nil || (cmn.InDebugMode && q.Tag["scanErr"] != nil) {
+
+				if q.Err == nil {
+					q.Err = q.Tag["scanErr"].(error)
+				}
+
+				z.Error(q.Err.Error())
+				break MethodSwitch
+			}
+
+			result = append(result, examData)
+		}
+
+		msgData = result
 
 	case "POST":
 
@@ -2507,29 +2585,9 @@ MethodSwitch:
 
 		orderBy := "t_exam_room.id"
 
-		orderByList := []string{}
-
-		for _, o := range req.OrderBy {
-			for k, v := range o {
-
-				if k == "" || v == "" {
-					continue
-				}
-
-				v = strings.ToUpper(v)
-
-				if v != "ASC" && v != "DESC" {
-					q.Err = fmt.Errorf("不支持的排序方式: %s key: %s", v, k)
-					z.Error(q.Err.Error())
-					break MethodSwitch
-				}
-
-				orderByList = append(orderByList, fmt.Sprintf("%s %s", k, v))
-			}
-		}
-
-		if len(orderByList) > 0 {
-			orderBy = strings.Join(orderByList, ", ")
+		orderBy, q.Err = OrderByJoin(orderBy, req.OrderBy)
+		if q.Err != nil {
+			break
 		}
 
 		// 考场下不一定会安排考生考试，自然也就不一定会有相应的数据，

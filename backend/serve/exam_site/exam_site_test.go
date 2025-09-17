@@ -206,8 +206,8 @@ ins_exam_info AS (
   	RETURNING id
 ),
 ins_exam_session AS (
-  	INSERT INTO t_exam_session (id, exam_id, paper_id, mark_method, start_time, end_time, creator)
-  	VALUES (%d, %d, %d, '00', %d, %d, 1000)
+  	INSERT INTO t_exam_session (id, exam_id, paper_id, mark_method, start_time, end_time, creator, status)
+  	VALUES (%d, %d, %d, '00', %d, %d, 1000, '02')
   	ON CONFLICT DO NOTHING
   	RETURNING id
 ),
@@ -218,8 +218,8 @@ ins_paper AS (
 	RETURNING id
 ),
 ins_exam_paper AS (
-  	INSERT INTO t_exam_paper (id, exam_session_id, creator)
-  	VALUES (%d, %d, 1000)
+  	INSERT INTO t_exam_paper (id, name, exam_session_id, creator)
+  	VALUES (%d, 'test-paper', %d, 1000)
   	ON CONFLICT DO NOTHING
   	RETURNING id
 ),
@@ -861,25 +861,6 @@ GROUP BY
 	}
 
 	defaultCleanup := func() (err error) {
-
-		dbConn := cmn.GetDbConn()
-
-		r, err := dbConn.Exec(fmt.Sprintf(`WITH d_exam_room AS (
-			DELETE FROM t_exam_room WHERE exam_site IN (SELECT id FROM t_exam_site WHERE name = 'test-site-%d')
-		)
-		DELETE FROM t_exam_site WHERE name = 'test-site-%d'`, testID, testID))
-		if err != nil {
-			t.Error(err.Error())
-			return
-		}
-
-		c, err := r.RowsAffected()
-		if err != nil {
-			t.Error(err.Error())
-			return
-		}
-
-		t.Logf("Have already cleaned up %d rows from t_exam_site", c)
 
 		err = removeTestUser(testID)
 		if err != nil {
@@ -3770,11 +3751,6 @@ func TestExamSiteList(t *testing.T) {
 					return
 				}
 
-				if !item.AdminName.Valid {
-					t.Errorf("expected admin name to be not empty, got empty")
-					return
-				}
-
 			}
 
 		})
@@ -3894,6 +3870,23 @@ func TestExamRoom(t *testing.T) {
 			err = fmt.Errorf("deleted room got %d, but %d", len(delInfo.IDs), c)
 			t.Error(err.Error())
 			return
+		}
+
+		return
+	}
+
+	defaultGetCheck := func(q *cmn.ServiceCtx, passExpected bool) (err error) {
+
+		var r []interface{}
+
+		err = json.Unmarshal(q.Msg.Data, &r)
+		if err != nil {
+			t.Error(err.Error())
+			return
+		}
+
+		if len(r) < 1 && passExpected {
+			err = fmt.Errorf("got %d, but greater than or equal to 1", len(r))
 		}
 
 		return
@@ -5173,6 +5166,924 @@ func TestExamRoom(t *testing.T) {
 			setup:        defaultSetup,
 			cleanup:      defaultCleanup,
 			check:        checkDeleteCheck,
+		},
+
+		// ======================================
+
+		//   .oooooo.    oooooooooooo ooooooooooooo
+		//  d8P'  `Y8b   `888'     `8 8'   888   `8
+		// 888            888              888
+		// 888            888oooo8         888
+		// 888     ooooo  888    "         888
+		// `88.    .88'   888       o      888
+		//  `Y8bood8P'   o888ooooood8     o888o
+		//
+		//
+		//
+		{
+			name: "获取考场考试列表成功",
+			q: &cmn.ServiceCtx{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-room/list",
+				},
+				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-room/list?q=%s`, url.QueryEscape(fmt.Sprintf(`{
+					"orderBy": [
+						{
+							"start_time": "DESC"
+						}
+					],
+					"page": 1,
+					"pageSize": 10,
+					"data": {
+						"id": %d
+					},
+					"filter": {
+						"name": "",
+						"startTime": 0,
+						"endTime": 0,
+						"status": ""
+					}
+				}`, testID+1),
+				)), nil),
+				W: httptest.NewRecorder(),
+				Msg: &cmn.ReplyProto{
+					API:    "/api/exam-site/list",
+					Method: "GET",
+				},
+				BeginTime: time.Now(),
+				SysUser: &cmn.TUser{
+					ID:   null.NewInt(testID, true),
+					Role: null.NewInt(int64(cDomainAssessExamSiteAdmin), true),
+				},
+				Domains: []cmn.TDomain{
+					{
+						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
+					},
+				},
+				RedisClient: cmn.GetRedisConn(),
+			},
+			passExpected: true,
+			errWanted:    "",
+			setup:        defaultSetup,
+			check:        defaultGetCheck,
+			cleanup:      defaultCleanup,
+		},
+		{
+			name: "获取考场考试列表成功-带名称筛选",
+			q: &cmn.ServiceCtx{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-room/list",
+				},
+				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-room/list?q=%s`, url.QueryEscape(fmt.Sprintf(`{
+					"orderBy": [
+						{
+							"start_time": "DESC"
+						}
+					],
+					"page": 1,
+					"pageSize": 10,
+					"data": {
+						"id": %d
+					},
+					"filter": {
+						"name": "test"
+					}
+				}`, testID+1),
+				)), nil),
+				W: httptest.NewRecorder(),
+				Msg: &cmn.ReplyProto{
+					API:    "/api/exam-site/list",
+					Method: "GET",
+				},
+				BeginTime: time.Now(),
+				SysUser: &cmn.TUser{
+					ID:   null.NewInt(testID, true),
+					Role: null.NewInt(int64(cDomainAssessExamSiteAdmin), true),
+				},
+				Domains: []cmn.TDomain{
+					{
+						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
+					},
+				},
+				RedisClient: cmn.GetRedisConn(),
+			},
+			passExpected: true,
+			errWanted:    "",
+			setup:        defaultSetup,
+			check:        defaultGetCheck,
+			cleanup:      defaultCleanup,
+		},
+		{
+			name: "获取考场考试列表成功-带名称和时间筛选",
+			q: &cmn.ServiceCtx{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-room/list",
+				},
+				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-room/list?q=%s`, url.QueryEscape(fmt.Sprintf(`{
+					"orderBy": [
+						{
+							"start_time": "DESC"
+						}
+					],
+					"page": 1,
+					"pageSize": 10,
+					"data": {
+						"id": %d
+					},
+					"filter": {
+						"name": "test",
+						"startTime": %d,
+						"endTime": %d
+					}
+				}`, testID+1, (nowTime-3*60)*1000, (nowTime+60*60)*1000),
+				)), nil),
+				W: httptest.NewRecorder(),
+				Msg: &cmn.ReplyProto{
+					API:    "/api/exam-site/list",
+					Method: "GET",
+				},
+				BeginTime: time.Now(),
+				SysUser: &cmn.TUser{
+					ID:   null.NewInt(testID, true),
+					Role: null.NewInt(int64(cDomainAssessExamSiteAdmin), true),
+				},
+				Domains: []cmn.TDomain{
+					{
+						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
+					},
+				},
+				RedisClient: cmn.GetRedisConn(),
+			},
+			passExpected: true,
+			errWanted:    "",
+			setup:        defaultSetup,
+			check:        defaultGetCheck,
+			cleanup:      defaultCleanup,
+		},
+		{
+			name: "获取考场考试列表成功-带名称,时间和状态筛选",
+			q: &cmn.ServiceCtx{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-room/list",
+				},
+				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-room/list?q=%s`, url.QueryEscape(fmt.Sprintf(`{
+					"orderBy": [
+						{
+							"start_time": "DESC"
+						}
+					],
+					"page": 1,
+					"pageSize": 10,
+					"data": {
+						"id": %d
+					},
+					"filter": {
+						"name": "test",
+						"startTime": %d,
+						"endTime": %d,
+						"status": "02"
+					}
+				}`, testID+1, (nowTime-3*60)*1000, (nowTime+60*60)*1000),
+				)), nil),
+				W: httptest.NewRecorder(),
+				Msg: &cmn.ReplyProto{
+					API:    "/api/exam-site/list",
+					Method: "GET",
+				},
+				BeginTime: time.Now(),
+				SysUser: &cmn.TUser{
+					ID:   null.NewInt(testID, true),
+					Role: null.NewInt(int64(cDomainAssessExamSiteAdmin), true),
+				},
+				Domains: []cmn.TDomain{
+					{
+						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
+					},
+				},
+				RedisClient: cmn.GetRedisConn(),
+			},
+			passExpected: true,
+			errWanted:    "",
+			setup:        defaultSetup,
+			check:        defaultGetCheck,
+			cleanup:      defaultCleanup,
+		},
+		{
+			name: "获取考场考试列表成功-带名称,时间和状态筛选无排序",
+			q: &cmn.ServiceCtx{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-room/list",
+				},
+				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-room/list?q=%s`, url.QueryEscape(fmt.Sprintf(`{
+					"orderBy": [
+					],
+					"page": 1,
+					"pageSize": 10,
+					"data": {
+						"id": %d
+					},
+					"filter": {
+						"name": "test",
+						"startTime": %d,
+						"endTime": %d,
+						"status": "02"
+					}
+				}`, testID+1, (nowTime-3*60)*1000, (nowTime+60*60)*1000),
+				)), nil),
+				W: httptest.NewRecorder(),
+				Msg: &cmn.ReplyProto{
+					API:    "/api/exam-site/list",
+					Method: "GET",
+				},
+				BeginTime: time.Now(),
+				SysUser: &cmn.TUser{
+					ID:   null.NewInt(testID, true),
+					Role: null.NewInt(int64(cDomainAssessExamSiteAdmin), true),
+				},
+				Domains: []cmn.TDomain{
+					{
+						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
+					},
+				},
+				RedisClient: cmn.GetRedisConn(),
+			},
+			passExpected: true,
+			errWanted:    "",
+			setup:        defaultSetup,
+			check:        defaultGetCheck,
+			cleanup:      defaultCleanup,
+		},
+		{
+			name: "获取考场考试列表失败-无权获取",
+			q: &cmn.ServiceCtx{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-room/list",
+				},
+				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-room/list?q=%s`, url.QueryEscape(fmt.Sprintf(`{
+					"orderBy": [
+					],
+					"page": 1,
+					"pageSize": 10,
+					"data": {
+						"id": %d
+					},
+					"filter": {
+						"name": "test",
+						"startTime": %d,
+						"endTime": %d,
+						"status": "02"
+					}
+				}`, testID+1, (nowTime-3*60)*1000, (nowTime+60*60)*1000),
+				)), nil),
+				W: httptest.NewRecorder(),
+				Msg: &cmn.ReplyProto{
+					API:    "/api/exam-site/list",
+					Method: "GET",
+				},
+				BeginTime: time.Now(),
+				SysUser: &cmn.TUser{
+					ID:   null.NewInt(testID, true),
+					Role: null.NewInt(int64(cDomainAssessStudent), true),
+				},
+				Domains: []cmn.TDomain{
+					{
+						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
+					},
+				},
+				RedisClient: cmn.GetRedisConn(),
+			},
+			passExpected: false,
+			errWanted:    "当前用户没有权限获取该数据",
+			setup:        defaultSetup,
+			check:        defaultGetCheck,
+			cleanup:      defaultCleanup,
+		},
+		{
+			name: "获取考场考试列表失败-解析请求体失败",
+			q: &cmn.ServiceCtx{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-room/list",
+				},
+				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-room/list?q=%s`, url.QueryEscape(fmt.Sprintf(`{
+					"orderBy": [
+					],
+					"page": 1,
+					"pageSize": 10,
+					"data": {
+						"id": %d
+					},
+					"filter": {
+						"name": "test",
+						"startTime": %d,
+						"endTime": %d,
+						"status": "02"
+					
+				}`, testID+1, (nowTime-3*60)*1000, (nowTime+60*60)*1000),
+				)), nil),
+				W: httptest.NewRecorder(),
+				Msg: &cmn.ReplyProto{
+					API:    "/api/exam-site/list",
+					Method: "GET",
+				},
+				BeginTime: time.Now(),
+				SysUser: &cmn.TUser{
+					ID:   null.NewInt(testID, true),
+					Role: null.NewInt(int64(cDomainAssessExamSiteAdmin), true),
+				},
+				Domains: []cmn.TDomain{
+					{
+						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
+					},
+				},
+				RedisClient: cmn.GetRedisConn(),
+			},
+			passExpected: false,
+			errWanted:    "unexpected end of JSON input",
+			setup:        defaultSetup,
+			check:        defaultGetCheck,
+			cleanup:      defaultCleanup,
+		},
+		{
+			name: "获取考场考试列表失败-无效的考场",
+			q: &cmn.ServiceCtx{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-room/list",
+				},
+				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-room/list?q=%s`, url.QueryEscape(fmt.Sprintf(`{
+					"orderBy": [
+					],
+					"page": 1,
+					"pageSize": 10,
+					"data": {
+						"id": %d
+					},
+					"filter": {
+						"name": "test",
+						"startTime": %d,
+						"endTime": %d,
+						"status": "02"
+					}
+				}`, -testID, (nowTime-3*60)*1000, (nowTime+60*60)*1000),
+				)), nil),
+				W: httptest.NewRecorder(),
+				Msg: &cmn.ReplyProto{
+					API:    "/api/exam-site/list",
+					Method: "GET",
+				},
+				BeginTime: time.Now(),
+				SysUser: &cmn.TUser{
+					ID:   null.NewInt(testID, true),
+					Role: null.NewInt(int64(cDomainAssessExamSiteAdmin), true),
+				},
+				Domains: []cmn.TDomain{
+					{
+						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
+					},
+				},
+				RedisClient: cmn.GetRedisConn(),
+			},
+			passExpected: false,
+			errWanted:    fmt.Sprintf("无效的考场ID: %d, 请传入一个大于0的值", -testID),
+			setup:        defaultSetup,
+			check:        defaultGetCheck,
+			cleanup:      defaultCleanup,
+		},
+		{
+			name: "获取考场考试列表失败-开始时间大于结束时间",
+			q: &cmn.ServiceCtx{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-room/list",
+				},
+				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-room/list?q=%s`, url.QueryEscape(fmt.Sprintf(`{
+					"orderBy": [
+					],
+					"page": 1,
+					"pageSize": 10,
+					"data": {
+						"id": %d
+					},
+					"filter": {
+						"name": "test",
+						"startTime": %d,
+						"endTime": %d,
+						"status": "02"
+					}
+				}`, testID+1, (nowTime-3*60)*1000, 0),
+				)), nil),
+				W: httptest.NewRecorder(),
+				Msg: &cmn.ReplyProto{
+					API:    "/api/exam-site/list",
+					Method: "GET",
+				},
+				BeginTime: time.Now(),
+				SysUser: &cmn.TUser{
+					ID:   null.NewInt(testID, true),
+					Role: null.NewInt(int64(cDomainAssessExamSiteAdmin), true),
+				},
+				Domains: []cmn.TDomain{
+					{
+						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
+					},
+				},
+				RedisClient: cmn.GetRedisConn(),
+			},
+			passExpected: false,
+			errWanted:    fmt.Sprintf("开始时间不能大于结束时间, 当前开始时间: %d, 结束时间: %d", (nowTime-3*60)*1000, 0),
+			setup:        defaultSetup,
+			check:        defaultGetCheck,
+			cleanup:      defaultCleanup,
+		},
+		{
+			name: "获取考场考试列表失败-强制准备获取数据总行数SQL失败",
+			q: &cmn.ServiceCtx{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-room/list",
+				},
+				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-room/list?q=%s`, url.QueryEscape(fmt.Sprintf(`{
+					"orderBy": [
+					],
+					"page": 1,
+					"pageSize": 10,
+					"data": {
+						"id": %d
+					},
+					"filter": {
+						"name": "test",
+						"startTime": %d,
+						"endTime": %d,
+						"status": "02"
+					}
+				}`, testID+1, (nowTime-3*60)*1000, (nowTime+60*60)*1000),
+				)), nil),
+				W: httptest.NewRecorder(),
+				Msg: &cmn.ReplyProto{
+					API:    "/api/exam-site/list",
+					Method: "GET",
+				},
+				BeginTime: time.Now(),
+				SysUser: &cmn.TUser{
+					ID:   null.NewInt(testID, true),
+					Role: null.NewInt(int64(cDomainAssessExamSiteAdmin), true),
+				},
+				Domains: []cmn.TDomain{
+					{
+						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
+					},
+				},
+				RedisClient: cmn.GetRedisConn(),
+				Tag: map[string]interface{}{
+					"prepareGetExamRoomCountSqlErr": fmt.Errorf("forced prepare get count err"),
+				},
+			},
+			passExpected: false,
+			errWanted:    "forced prepare get count err",
+			setup:        defaultSetup,
+			check:        defaultGetCheck,
+			cleanup:      defaultCleanup,
+		},
+		{
+			name: "获取考场考试列表失败-强制执行获取数据总行数SQL失败",
+			q: &cmn.ServiceCtx{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-room/list",
+				},
+				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-room/list?q=%s`, url.QueryEscape(fmt.Sprintf(`{
+					"orderBy": [
+					],
+					"page": 1,
+					"pageSize": 10,
+					"data": {
+						"id": %d
+					},
+					"filter": {
+						"name": "test",
+						"startTime": %d,
+						"endTime": %d,
+						"status": "02"
+					}
+				}`, testID+1, (nowTime-3*60)*1000, (nowTime+60*60)*1000),
+				)), nil),
+				W: httptest.NewRecorder(),
+				Msg: &cmn.ReplyProto{
+					API:    "/api/exam-site/list",
+					Method: "GET",
+				},
+				BeginTime: time.Now(),
+				SysUser: &cmn.TUser{
+					ID:   null.NewInt(testID, true),
+					Role: null.NewInt(int64(cDomainAssessExamSiteAdmin), true),
+				},
+				Domains: []cmn.TDomain{
+					{
+						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
+					},
+				},
+				RedisClient: cmn.GetRedisConn(),
+				Tag: map[string]interface{}{
+					"execGetExamRoomCountSqlErr": fmt.Errorf("forced exec get count err"),
+				},
+			},
+			passExpected: false,
+			errWanted:    "forced exec get count err",
+			setup:        defaultSetup,
+			check:        defaultGetCheck,
+			cleanup:      defaultCleanup,
+		},
+		{
+			name: "获取考场考试列表失败-页码无效",
+			q: &cmn.ServiceCtx{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-room/list",
+				},
+				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-room/list?q=%s`, url.QueryEscape(fmt.Sprintf(`{
+					"orderBy": [
+					],
+					"page": -1,
+					"pageSize": 10,
+					"data": {
+						"id": %d
+					},
+					"filter": {
+						"name": "test",
+						"startTime": %d,
+						"endTime": %d,
+						"status": "02"
+					}
+				}`, testID+1, (nowTime-3*60)*1000, (nowTime+60*60)*1000),
+				)), nil),
+				W: httptest.NewRecorder(),
+				Msg: &cmn.ReplyProto{
+					API:    "/api/exam-site/list",
+					Method: "GET",
+				},
+				BeginTime: time.Now(),
+				SysUser: &cmn.TUser{
+					ID:   null.NewInt(testID, true),
+					Role: null.NewInt(int64(cDomainAssessExamSiteAdmin), true),
+				},
+				Domains: []cmn.TDomain{
+					{
+						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
+					},
+				},
+				RedisClient: cmn.GetRedisConn(),
+				Tag:         map[string]interface{}{},
+			},
+			passExpected: false,
+			errWanted:    "页码不能小于1",
+			setup:        defaultSetup,
+			check:        defaultGetCheck,
+			cleanup:      defaultCleanup,
+		},
+		{
+			name: "获取考场考试列表失败-页大小无效",
+			q: &cmn.ServiceCtx{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-room/list",
+				},
+				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-room/list?q=%s`, url.QueryEscape(fmt.Sprintf(`{
+					"orderBy": [
+					],
+					"page": 1,
+					"pageSize": -10,
+					"data": {
+						"id": %d
+					},
+					"filter": {
+						"name": "test",
+						"startTime": %d,
+						"endTime": %d,
+						"status": "02"
+					}
+				}`, testID+1, (nowTime-3*60)*1000, (nowTime+60*60)*1000),
+				)), nil),
+				W: httptest.NewRecorder(),
+				Msg: &cmn.ReplyProto{
+					API:    "/api/exam-site/list",
+					Method: "GET",
+				},
+				BeginTime: time.Now(),
+				SysUser: &cmn.TUser{
+					ID:   null.NewInt(testID, true),
+					Role: null.NewInt(int64(cDomainAssessExamSiteAdmin), true),
+				},
+				Domains: []cmn.TDomain{
+					{
+						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
+					},
+				},
+				RedisClient: cmn.GetRedisConn(),
+				Tag:         map[string]interface{}{},
+			},
+			passExpected: false,
+			errWanted:    "每页条数不能小于1",
+			setup:        defaultSetup,
+			check:        defaultGetCheck,
+			cleanup:      defaultCleanup,
+		},
+		{
+			name: "获取考场考试列表失败-无效的排序字段",
+			q: &cmn.ServiceCtx{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-room/list",
+				},
+				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-room/list?q=%s`, url.QueryEscape(fmt.Sprintf(`{
+					"orderBy": [
+						{
+							"undefined": "DESC"
+						}
+					],
+					"page": 1,
+					"pageSize": 10,
+					"data": {
+						"id": %d
+					},
+					"filter": {
+						"name": "test",
+						"startTime": %d,
+						"endTime": %d,
+						"status": "02"
+					}
+				}`, testID+1, (nowTime-3*60)*1000, (nowTime+60*60)*1000),
+				)), nil),
+				W: httptest.NewRecorder(),
+				Msg: &cmn.ReplyProto{
+					API:    "/api/exam-site/list",
+					Method: "GET",
+				},
+				BeginTime: time.Now(),
+				SysUser: &cmn.TUser{
+					ID:   null.NewInt(testID, true),
+					Role: null.NewInt(int64(cDomainAssessExamSiteAdmin), true),
+				},
+				Domains: []cmn.TDomain{
+					{
+						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
+					},
+				},
+				RedisClient: cmn.GetRedisConn(),
+				Tag:         map[string]interface{}{},
+			},
+			passExpected: false,
+			errWanted:    `ERROR: column "undefined" does not exist (SQLSTATE 42703)`,
+			setup:        defaultSetup,
+			check:        defaultGetCheck,
+			cleanup:      defaultCleanup,
+		},
+		{
+			name: "获取考场考试列表失败-无效的排序方式",
+			q: &cmn.ServiceCtx{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-room/list",
+				},
+				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-room/list?q=%s`, url.QueryEscape(fmt.Sprintf(`{
+					"orderBy": [
+						{
+							"start_time": "undefined"
+						}
+					],
+					"page": 1,
+					"pageSize": 10,
+					"data": {
+						"id": %d
+					},
+					"filter": {
+						"name": "test",
+						"startTime": %d,
+						"endTime": %d,
+						"status": "02"
+					}
+				}`, testID, (nowTime-3*60)*1000, (nowTime+60*60)*1000),
+				)), nil),
+				W: httptest.NewRecorder(),
+				Msg: &cmn.ReplyProto{
+					API:    "/api/exam-site/list",
+					Method: "GET",
+				},
+				BeginTime: time.Now(),
+				SysUser: &cmn.TUser{
+					ID:   null.NewInt(testID, true),
+					Role: null.NewInt(int64(cDomainAssessExamSiteAdmin), true),
+				},
+				Domains: []cmn.TDomain{
+					{
+						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
+					},
+				},
+				RedisClient: cmn.GetRedisConn(),
+				Tag:         map[string]interface{}{},
+			},
+			passExpected: false,
+			errWanted:    fmt.Sprintf("不支持的排序方式: %s key: %s", "UNDEFINED", "start_time"),
+			setup:        defaultSetup,
+			check:        defaultGetCheck,
+			cleanup:      defaultCleanup,
+		},
+		{
+			name: "获取考场考试列表成功-空的排序字段",
+			q: &cmn.ServiceCtx{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-room/list",
+				},
+				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-room/list?q=%s`, url.QueryEscape(fmt.Sprintf(`{
+					"orderBy": [
+						{
+							"": ""
+						}
+					],
+					"page": 1,
+					"pageSize": 10,
+					"data": {
+						"id": %d
+					},
+					"filter": {
+						"name": "test",
+						"startTime": %d,
+						"endTime": %d,
+						"status": "02"
+					}
+				}`, testID+1, (nowTime-3*60)*1000, (nowTime+60*60)*1000),
+				)), nil),
+				W: httptest.NewRecorder(),
+				Msg: &cmn.ReplyProto{
+					API:    "/api/exam-site/list",
+					Method: "GET",
+				},
+				BeginTime: time.Now(),
+				SysUser: &cmn.TUser{
+					ID:   null.NewInt(testID, true),
+					Role: null.NewInt(int64(cDomainAssessExamSiteAdmin), true),
+				},
+				Domains: []cmn.TDomain{
+					{
+						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
+					},
+				},
+				RedisClient: cmn.GetRedisConn(),
+				Tag:         map[string]interface{}{},
+			},
+			passExpected: true,
+			errWanted:    "",
+			setup:        defaultSetup,
+			check:        defaultGetCheck,
+			cleanup:      defaultCleanup,
+		},
+		{
+			name: "获取考场考试列表失败-强制准备获取数据SQL失败",
+			q: &cmn.ServiceCtx{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-room/list",
+				},
+				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-room/list?q=%s`, url.QueryEscape(fmt.Sprintf(`{
+					"page": 1,
+					"pageSize": 10,
+					"data": {
+						"id": %d
+					},
+					"filter": {
+						"name": "test",
+						"startTime": %d,
+						"endTime": %d,
+						"status": "02"
+					}
+				}`, testID+1, (nowTime-3*60)*1000, (nowTime+60*60)*1000),
+				)), nil),
+				W: httptest.NewRecorder(),
+				Msg: &cmn.ReplyProto{
+					API:    "/api/exam-site/list",
+					Method: "GET",
+				},
+				BeginTime: time.Now(),
+				SysUser: &cmn.TUser{
+					ID:   null.NewInt(testID, true),
+					Role: null.NewInt(int64(cDomainAssessExamSiteAdmin), true),
+				},
+				Domains: []cmn.TDomain{
+					{
+						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
+					},
+				},
+				RedisClient: cmn.GetRedisConn(),
+				Tag: map[string]interface{}{
+					"prepareGetExamRoomSqlErr": fmt.Errorf("forced prepare get data err"),
+				},
+			},
+			passExpected: false,
+			errWanted:    "forced prepare get data err",
+			setup:        defaultSetup,
+			check:        defaultGetCheck,
+			cleanup:      defaultCleanup,
+		},
+		{
+			name: "获取考场考试列表失败-强制执行获取数据SQL失败",
+			q: &cmn.ServiceCtx{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-room/list",
+				},
+				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-room/list?q=%s`, url.QueryEscape(fmt.Sprintf(`{
+					"page": 1,
+					"pageSize": 10,
+					"data": {
+						"id": %d
+					},
+					"filter": {
+						"name": "test",
+						"startTime": %d,
+						"endTime": %d,
+						"status": "02"
+					}
+				}`, testID+1, (nowTime-3*60)*1000, (nowTime+60*60)*1000),
+				)), nil),
+				W: httptest.NewRecorder(),
+				Msg: &cmn.ReplyProto{
+					API:    "/api/exam-site/list",
+					Method: "GET",
+				},
+				BeginTime: time.Now(),
+				SysUser: &cmn.TUser{
+					ID:   null.NewInt(testID, true),
+					Role: null.NewInt(int64(cDomainAssessExamSiteAdmin), true),
+				},
+				Domains: []cmn.TDomain{
+					{
+						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
+					},
+				},
+				RedisClient: cmn.GetRedisConn(),
+				Tag: map[string]interface{}{
+					"execGetExamRoomSqlErr": fmt.Errorf("forced exec get data err"),
+				},
+			},
+			passExpected: false,
+			errWanted:    "forced exec get data err",
+			setup:        defaultSetup,
+			check:        defaultGetCheck,
+			cleanup:      defaultCleanup,
+		},
+		{
+			name: "获取考场考试列表失败-强制Scan获取数据失败",
+			q: &cmn.ServiceCtx{
+				Ep: &cmn.ServeEndPoint{
+					Path: "/api/exam-room/list",
+				},
+				R: httptest.NewRequest("GET", fmt.Sprintf(`/api/exam-room/list?q=%s`, url.QueryEscape(fmt.Sprintf(`{
+					"page": 1,
+					"pageSize": 10,
+					"data": {
+						"id": %d
+					},
+					"filter": {
+						"name": "test",
+						"startTime": %d,
+						"endTime": %d,
+						"status": "02"
+					}
+				}`, testID+1, (nowTime-3*60)*1000, (nowTime+60*60)*1000),
+				)), nil),
+				W: httptest.NewRecorder(),
+				Msg: &cmn.ReplyProto{
+					API:    "/api/exam-site/list",
+					Method: "GET",
+				},
+				BeginTime: time.Now(),
+				SysUser: &cmn.TUser{
+					ID:   null.NewInt(testID, true),
+					Role: null.NewInt(int64(cDomainAssessExamSiteAdmin), true),
+				},
+				Domains: []cmn.TDomain{
+					{
+						ID:     null.IntFrom(int64(cDomainAssessExamSiteAdmin)),
+						Domain: cmn.RoleName(cmn.CDomain(cDomainAssessExamSiteAdmin)),
+					},
+				},
+				RedisClient: cmn.GetRedisConn(),
+				Tag: map[string]interface{}{
+					"scanErr": fmt.Errorf("forced scan get data err"),
+				},
+			},
+			passExpected: false,
+			errWanted:    "forced scan get data err",
+			setup:        defaultSetup,
+			check:        defaultGetCheck,
+			cleanup:      defaultCleanup,
 		},
 
 		// ======================================
