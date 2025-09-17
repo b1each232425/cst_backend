@@ -1,6 +1,7 @@
 package exam_site
 
 import (
+	"context"
 	"database/sql"
 	"encoding/csv"
 	"errors"
@@ -10,7 +11,10 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"crypto/rand"
 
+
+	"w2w.io/serve/auth_mgt"
 	"w2w.io/cmn"
 )
 
@@ -23,18 +27,142 @@ type copyInfo struct {
 	Table string
 }
 
-// generateAuthorityFilters 生成权限过滤条件
-func generateAuthorityFilters(userID int64, accessibleDomains []int64) ( filters string) {
+// OrderByJoin 将返回拼接好的 Order By 语句, 如果传入的 map 为空, 则返回默认值 defaultOrderBy
+func OrderByJoin(defaultOrderBy string, orderByMap []map[string]string) (r string, err error) {
 
-	domains := []string{
-		fmt.Sprintf("creator=%d", userID),
+	orderByList := []string{}
+
+	for _, o := range orderByMap {
+		for k, v := range o {
+
+			if k == "" || v == "" {
+				continue
+			}
+
+			v = strings.ToUpper(v)
+
+			if v != "ASC" && v != "DESC" {
+				err = fmt.Errorf("不支持的排序方式: %s key: %s", v, k)
+				z.Error(err.Error())
+				return
+			}
+
+			orderByList = append(orderByList, fmt.Sprintf("%s %s", k, v))
+		}
 	}
 
-	for _, d := range accessibleDomains {
-		domains = append(domains, fmt.Sprintf("domain_id=%d", d))
+	r = strings.Join(orderByList, ", ")
+	if r == "" {
+		r = defaultOrderBy
 	}
 
-	return fmt.Sprintf("(%s)", strings.Join(domains, " OR "))
+	return
+}
+
+// getApiPermissions 获取当前用户在使用指定接口时是否可读/可创建/可编辑/可删除
+func getApiPermissions(ctx context.Context, apiPath string) (readable, creatable, editable, deletable bool) {
+
+	q := cmn.GetCtxValue(ctx)
+
+	readable, q.Err = auth_mgt.CheckUserAPIAccessible(ctx, nil, apiPath, auth_mgt.CAPIAccessActionRead)
+	if q.Err != nil || (cmn.InDebugMode && q.Tag["checkUserApiReadableErr"] != nil) {
+
+		if q.Err == nil {
+			q.Err = q.Tag["checkUserApiReadableErr"].(error)
+		}
+
+		return
+	}
+
+	creatable, q.Err = auth_mgt.CheckUserAPIAccessible(ctx, nil, apiPath, auth_mgt.CAPIAccessActionCreate)
+	if q.Err != nil || (cmn.InDebugMode && q.Tag["checkUserApiCreatableErr"] != nil) {
+
+		if q.Err == nil {
+			q.Err = q.Tag["checkUserApiCreatableErr"].(error)
+		}
+
+		return
+	}
+
+	editable, q.Err = auth_mgt.CheckUserAPIAccessible(ctx, nil, apiPath, auth_mgt.CAPIAccessActionUpdate)
+	if q.Err != nil || (cmn.InDebugMode && q.Tag["checkUserApiEditableErr"] != nil) {
+
+		if q.Err == nil {
+			q.Err = q.Tag["checkUserApiEditableErr"].(error)
+		}
+
+		return
+	}
+
+	deletable, q.Err = auth_mgt.CheckUserAPIAccessible(ctx, nil, apiPath, auth_mgt.CAPIAccessActionDelete)
+	if q.Err != nil || (cmn.InDebugMode && q.Tag["checkUserApiDeletableErr"] != nil) {
+
+		if q.Err == nil {
+			q.Err = q.Tag["checkUserApiDeletableErr"].(error)
+		}
+
+		return
+	}
+
+	return
+}
+
+// createSysUser 创建考点服务器系统账号
+func createSysUser(ctx context.Context, tx *sql.Tx, siteID int64) (sysUserID int64, accessToken string, err error) {
+
+	q := cmn.GetCtxValue(ctx)
+
+	officialName := fmt.Sprintf("考点%d", siteID)
+
+	var account, userToken string
+
+	b1 := make([]byte, 4)
+
+	b2 := make([]byte, 32)
+
+	// 该Read从不返回错误，并且始终填充 b, 一旦发生错误就直接Panic， 所以这里就不需要接收err
+	rand.Read(b1)
+
+	rand.Read(b2)
+
+	account = fmt.Sprintf("exam-site-%x", b1)
+
+	userToken = fmt.Sprintf("%x", b2)
+
+	// 注册考点服务器系统账号，用于给考点服务器与中心服务器进行http通信验证
+	sqlStr := fmt.Sprintf(`INSERT INTO t_user (category, type, official_name, account, user_token, creator, role)
+	VALUES ('sys^admin', '08', $1, $2, crypt($3,gen_salt('bf')), 1000, %d)
+	RETURNING 
+		id`, cmn.CDomainAssessExamSite)
+
+	var stmt1 *sql.Stmt
+	stmt1, err = tx.Prepare(sqlStr)
+	if err != nil || (cmn.InDebugMode && q.Tag["prepareCreateSysUserErr"] != nil) {
+
+		if err == nil {
+			err = q.Tag["prepareCreateSysUserErr"].(error)
+		}
+
+		z.Error(err.Error())
+		return
+	}
+
+	defer stmt1.Close()
+
+	err = stmt1.QueryRowContext(ctx, officialName, account, userToken).Scan(&sysUserID)
+	if err != nil || (cmn.InDebugMode && q.Tag["sqlExecCreateSysUserErr"] != nil) {
+
+		if err == nil {
+			err = q.Tag["sqlExecCreateSysUserErr"].(error)
+		}
+
+		z.Error(err.Error())
+		return
+	}
+
+	accessToken = generateAccessToken(sysUserID, userToken)
+
+	return
 }
 
 // generateAccessToken 生成访问令牌
