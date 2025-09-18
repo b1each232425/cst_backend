@@ -408,6 +408,22 @@ func (h *handler) HandleDomain(ctx context.Context) {
 			whereClause = "WHERE " + strings.Join(conditions, " AND ")
 		}
 
+		// 查询总行数
+		countSQL := `
+			SELECT COUNT(*)
+			FROM t_domain
+			` + whereClause + `
+		`
+
+		var totalCount int64
+		err := pgConn.QueryRow(ctx, countSQL, args...).Scan(&totalCount)
+		if err != nil || forceErr == "QueryDomainCount" {
+			q.Err = fmt.Errorf("failed to query domain count: %w", err)
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
 		// 从 t_domain 查询域基本信息（带分页）
 		queryDomainSQL := `
 			SELECT id, name, domain, priority, updated_by, update_time, creator, create_time, status
@@ -518,6 +534,9 @@ func (h *handler) HandleDomain(ctx context.Context) {
 			q.RespErr()
 			return
 		}
+
+		// 设置总行数
+		q.Msg.RowCount = totalCount
 
 		q.Msg.Status = 0
 		q.Msg.Msg = "success"

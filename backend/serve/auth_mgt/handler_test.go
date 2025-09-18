@@ -1061,6 +1061,19 @@ func TestHandleDomain(t *testing.T) {
 			wantStatus: -1,
 			wantErr:    true,
 		},
+		{
+			name: "失败｜GET方法｜强制QueryDomainCount错误",
+			args: args{
+				method:     "GET",
+				body:       nil,
+				forceError: "QueryDomainCount",
+				userID:     1,
+				userRole:   20000,
+				params:     map[string]string{"page": "1", "pageSize": "10", "onlyRole": "true"},
+			},
+			wantStatus: -1,
+			wantErr:    true,
+		},
 	}
 
 	for _, tt := range tests {
