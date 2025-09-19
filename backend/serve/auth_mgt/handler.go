@@ -514,6 +514,39 @@ func (h *handler) HandleDomain(ctx context.Context) {
 				return
 			}
 
+			// 查询域的创建者信息
+			if domainData.Base.Creator.Valid && domainData.Base.Creator.Int64 != CDefaultDomainCreatorID {
+				var creator cmn.TUser
+				creatorSQL := `
+					SELECT id, account, official_name, mobile_phone, email
+					FROM t_user
+					WHERE id = $1
+				`
+				err = pgConn.QueryRow(ctx, creatorSQL, domainData.Base.Creator.Int64).Scan(
+					&creator.ID,
+					&creator.Account,
+					&creator.OfficialName,
+					&creator.MobilePhone,
+					&creator.Email,
+				)
+				if err != nil || forceErr == "QueryCreator" {
+					// 如果查询创建者失败，记录警告但不中断流程
+					z.Warn(fmt.Sprintf("failed to query creator for domain %s: %v", domainData.Base.Domain, err))
+				} else {
+					// 将创建者信息赋值到域的详细信息
+					domainData.Detail.Creator = creator
+				}
+			} else if domainData.Base.Creator.Int64 == CDefaultDomainCreatorID {
+				// 填充默认创建者信息
+				domainData.Detail.Creator = cmn.TUser{
+					ID:           null.IntFrom(CDefaultDomainCreatorID),
+					Account:      "system",
+					OfficialName: null.StringFrom("系统"),
+					MobilePhone:  null.StringFrom(""),
+					Email:        null.StringFrom(""),
+				}
+			}
+
 			result = append(result, domainData)
 		}
 
