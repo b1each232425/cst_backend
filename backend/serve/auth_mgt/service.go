@@ -118,7 +118,7 @@ func getAccessibleDomains(ctx context.Context, pgConn *pgxpool.Pool, role cmn.TD
 
 	forceErr, _ := ctx.Value("force-error").(string) // 用于强制执行错误处理代码
 
-	// 检查角色优先级（Priority是null.Int类型）
+	// 检查角色优先级
 	if !role.Priority.Valid {
 		e := fmt.Errorf("role priority is not valid")
 		z.Error(e.Error())

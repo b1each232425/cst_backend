@@ -17,6 +17,8 @@ const (
 	CDomainPrioritySuperAdmin int64 = 0 // 域优先级：超级管理员
 	CDomainPriorityAdmin      int64 = 3 // 域优先级：普通管理员
 	CDomainPriorityUser       int64 = 7 // 域优先级：普通用户
+
+	CDefaultDomainCreatorID = 1000 // 默认域创建者ID
 )
 
 // Authority 用户权限信息
@@ -29,6 +31,12 @@ type Authority struct {
 
 // DomainData 域数据
 type DomainData struct {
-	Base cmn.TDomain `json:"base"` // 域的基本信息
-	APIs []*cmn.TAPI `json:"apis"` // 域的API列表
+	Base   cmn.TDomain  `json:"base"`   // 域的基本信息
+	Detail DomainDetail `json:"detail"` // 域的详细信息
+	APIs   []*cmn.TAPI  `json:"apis"`   // 域的API列表
+}
+
+// DomainDetail 域的详细信息
+type DomainDetail struct {
+	Creator cmn.TUser `json:"creator"` // 域的创建者
 }
