@@ -101,6 +101,38 @@ func Enroll(author string) {
 		DefaultDomain: int64(cmn.CDomainSys),
 	})
 
+	/* 题目附件相关接口
+	 */
+
+	_ = cmn.AddService(&cmn.ServeEndPoint{
+		Fn: questionFiles,
+
+		Path: "/question-files",
+		Name: "题目附件管理",
+
+		ApiEntries: []*cmn.EndPointApiEntries{
+			{
+				Name:         "题库管理.题目附件.上传附件",
+				AccessAction: auth_mgt.CAPIAccessActionCreate,
+				Configurable: true,
+			},
+			{
+				Name:         "题库管理.题目附件.删除附件",
+				AccessAction: auth_mgt.CAPIAccessActionDelete,
+				Configurable: true,
+			},
+		},
+
+		Developer: developer,
+		WhiteList: true,
+
+		//DomainID 创建该API的账号归属的domain
+		DomainID: int64(cmn.CDomainSys),
+
+		//DefaultDomain 该API将默认授权给的用户
+		DefaultDomain: int64(cmn.CDomainSys),
+	})
+
 }
 
 // 题库接口
@@ -776,15 +808,15 @@ func questionBanks(ctx context.Context) {
 		var errorMessages []string
 		checkSQL = `
 			SELECT COALESCE(array_agg(
-				CASE 
+				CASE
 					WHEN tqb.id IS NULL THEN '题库(' || ids.id || ')不存在'
 					WHEN tqb.creator != $2 THEN '题库(' || COALESCE(tqb.name, '未知') || ')非题库创建者，无删除权限'
-					ELSE NULL 
+					ELSE NULL
 				END
-			) FILTER (WHERE CASE 
+			) FILTER (WHERE CASE
 					WHEN tqb.id IS NULL THEN '题库(' || ids.id || ')不存在'
 					WHEN tqb.creator != $2 THEN '题库(' || COALESCE(tqb.name, '未知') || ')非题库创建者，无删除权限'
-					ELSE NULL 
+					ELSE NULL
 				END IS NOT NULL), ARRAY[]::text[]) as error_messages
 			FROM unnest($1::bigint[]) AS ids(id)
 			LEFT JOIN t_question_bank tqb ON tqb.id = ids.id
@@ -1090,7 +1122,7 @@ func questions(ctx context.Context) {
 					update_time,
 					addi,
 					status,
-					question_attachments_path,
+					files,
 					access_mode,
 					belong_to
 				FROM t_question
@@ -1276,7 +1308,7 @@ func questions(ctx context.Context) {
 			update_time,
 			addi,
 			status,
-			question_attachments_path,
+			files,
 			access_mode,
 			belong_to
 		FROM t_question
@@ -1525,7 +1557,7 @@ func questions(ctx context.Context) {
 					type, content, options, answers, score, difficulty, tags, analysis,
 					title, answer_file_path, test_file_path, input, output, example,
 					repo, "order", creator, create_time, updated_by, update_time,
-					addi, status, question_attachments_path, access_mode, belong_to
+					addi, status, files, access_mode, belong_to
 				) VALUES (
 					$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16,
 					$17, $18, $19, $20, $21, $22, $23, $24, $25
@@ -1872,13 +1904,13 @@ func questions(ctx context.Context) {
 		//检查题目是否存在且是否有权限删除
 		checkSQL = `
 			SELECT COALESCE(array_agg(
-				CASE 
+				CASE
 					WHEN tq.id IS NULL THEN '题目(' || ids.id || ')不存在'
-					ELSE NULL 
+					ELSE NULL
 				END
-			) FILTER (WHERE CASE 
+			) FILTER (WHERE CASE
 					WHEN tq.id IS NULL THEN '题目(' || ids.id || ')不存在'
-					ELSE NULL 
+					ELSE NULL
 				END IS NOT NULL), ARRAY[]::text[]) as error_messages
 			FROM unnest($1::bigint[]) AS ids(id)
 			LEFT JOIN t_question tq ON tq.id = ids.id
@@ -1914,7 +1946,7 @@ func questions(ctx context.Context) {
 
 		// 2. 然后删除标记为硬删除的题目
 		deleteSQL := `
-			DELETE FROM t_question 
+			DELETE FROM t_question
 			WHERE id = ANY($1::bigint[])
 		`
 		_, q.Err = tx.Exec(ctx, deleteSQL, deleteQuestionIDs)
@@ -2083,4 +2115,538 @@ func QuestionLock(ctx context.Context) {
 		return
 	}
 	q.Resp()
+}
+
+// 处理题目相关的附件上传逻辑
+func questionFiles(ctx context.Context) {
+	q := cmn.GetCtxValue(ctx)
+	z.Info("---->" + cmn.FncName())
+	forceErr := ""
+	if val := ctx.Value("force-error"); val != nil {
+		forceErr = val.(string)
+	}
+
+	conn := cmn.GetPgxConn()
+
+	userID := q.SysUser.ID.Int64
+	if userID <= 0 {
+		q.Err = fmt.Errorf("无效的用户ID: %d", userID)
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+
+	var authority *auth_mgt.Authority
+	authority, q.Err = auth_mgt.GetUserAuthority(ctx)
+	if forceErr == "auth_mgt.GetUserAuthority" {
+		q.Err = fmt.Errorf("强制获取用户权限错误")
+	}
+	if q.Err != nil {
+		q.RespErr()
+		return
+	}
+
+	// 当前用户登录选择的域
+	userRole := authority.Role.ID.Int64
+	// userDomain := authority.Role.Domain
+
+	// 开启事务
+	var tx pgx.Tx
+	tx, q.Err = conn.Begin(ctx)
+	if forceErr == "tx.Begin" {
+		q.Err = fmt.Errorf("强制开始事务错误")
+	}
+	if q.Err != nil {
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+	defer func() {
+		if q.Err != nil || forceErr == "tx.Rollback" {
+			rollbackErr := tx.Rollback(context.Background())
+			if forceErr == "tx.Rollback" {
+				rollbackErr = fmt.Errorf("强制回滚事务错误")
+			}
+			if rollbackErr != nil {
+				z.Error(fmt.Sprintf("failed to rollback transaction: %s", rollbackErr.Error()))
+			}
+			return
+		}
+
+		commitErr := tx.Commit(context.Background())
+		if forceErr == "tx.Commit" {
+			commitErr = fmt.Errorf("强制提交事务错误")
+		}
+		if commitErr != nil {
+			z.Error(fmt.Sprintf("failed to commit transaction: %s", commitErr.Error()))
+		}
+	}()
+
+	method := strings.ToLower(q.R.Method)
+	switch method {
+	case "post":
+		// 检查用户是否有权限上传题目附件
+		accessible, err := auth_mgt.CheckUserAPIAccessible(ctx, authority, "/api/question-files", auth_mgt.CAPIAccessActionCreate)
+		if err != nil || forceErr == "CheckUserAPIAccessible" {
+			q.Err = fmt.Errorf("failed to check user API access: %w", err)
+			q.RespErr()
+			return
+		}
+		if !accessible || forceErr == "no-access" {
+			q.Err = fmt.Errorf("用户没有权限上传题目附件")
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		// 更新题目附件
+		var buf []byte
+		buf, q.Err = io.ReadAll(q.R.Body)
+		if forceErr == "io.ReadAll" {
+			q.Err = fmt.Errorf("强制读取请求体错误")
+		}
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		defer func() {
+			err := q.R.Body.Close()
+			if forceErr == "io.Close" {
+				err = fmt.Errorf("强制关闭IO错误")
+			}
+			if err != nil {
+				z.Error(err.Error())
+			}
+		}()
+
+		if len(buf) == 0 {
+			q.Err = fmt.Errorf("请求体为空")
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		var qry cmn.ReqProto
+		q.Err = json.Unmarshal(buf, &qry)
+		if forceErr == "json.Unmarshal" {
+			q.Err = fmt.Errorf("强制JSON解析错误")
+		}
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		var questionFile QuestionFile
+		q.Err = json.Unmarshal(qry.Data, &questionFile)
+		if forceErr == "json.Unmarshal2" {
+			q.Err = fmt.Errorf("强制第二次JSON解析错误")
+		}
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		// 检查题目是否存在
+		checkExistsSQL := `
+			SELECT EXISTS (
+				SELECT 1
+				FROM t_question
+				WHERE id = $1 AND status != '02'
+			)
+		`
+		var questionExist bool
+		q.Err = conn.QueryRow(ctx, checkExistsSQL, questionFile.QuestionID).Scan(&questionExist)
+		if forceErr == "checkQuestionExists" {
+			q.Err = fmt.Errorf("强制检查题目存在错误")
+		}
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		if !questionExist {
+			q.Err = fmt.Errorf("题目不存在")
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		var fileID int64
+
+		// 获取该题目的所有附件，并检查是否有digest相同的文件
+		var questionFiles []cmn.TFile
+		getQuestionFilesSQL := `
+			SELECT f.id, f.digest, f.file_name, f.size, f.domain_id, f.creator
+			FROM t_question q
+			CROSS JOIN LATERAL jsonb_array_elements_text(q.files) file_id_text(value)
+			JOIN t_file f ON f.id = file_id_text.value::bigint
+			WHERE q.id = $1
+			  AND q.files IS NOT NULL
+			  AND jsonb_typeof(q.files) = 'array'
+			  AND q.status != '02'
+			  AND f.status != '2'
+		`
+		var questionFileRows pgx.Rows
+		questionFileRows, q.Err = tx.Query(ctx, getQuestionFilesSQL, questionFile.QuestionID)
+		defer questionFileRows.Close()
+		if forceErr == "questionFiles.tx.Query" {
+			q.Err = fmt.Errorf("强制查询题目文件错误")
+		}
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		for questionFileRows.Next() {
+			var tFile cmn.TFile
+			q.Err = questionFileRows.Scan(&tFile.ID, &tFile.Digest, &tFile.FileName, &tFile.Size, &tFile.DomainID, &tFile.Creator)
+			if forceErr == "questionFiles.rows.Scan" {
+				q.Err = fmt.Errorf("强制扫描题目文件行错误")
+			}
+			if q.Err != nil {
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+			questionFiles = append(questionFiles, tFile)
+		}
+
+		var needUpdate bool = true
+		var replacedFileID int64 = -1
+
+		// 如果现有的题目附件存在相同digest，则查看文件ID，文件名是否一致
+		for i := 0; i < len(questionFiles); i++ {
+
+			// 如果digest和文件名不同，则算作新增文件
+			if questionFiles[i].Digest != questionFile.CheckSum || questionFiles[i].FileName != questionFile.Name {
+				continue
+			}
+
+			// 文件名、创建者、domainID都一致，则不用做任何处理
+			if questionFiles[i].Creator.Int64 == userID && questionFiles[i].DomainID.Int64 == userRole {
+				needUpdate = false
+				break
+			}
+
+			// 如果创建者、domainID有一个不一致，则替换该ID，删除原来的文件记录，并更新files字段
+			replacedFileID = questionFiles[i].ID.Int64
+			break
+		}
+
+		// 如果附件有更新，则创建新文件记录，并更新题目附件列表
+		if needUpdate {
+			fileID, q.Err = cmn.NewFileRecord(ctx, tx, questionFile.CheckSum, questionFile.Name, questionFile.Size, userRole, userID)
+			if q.Err != nil {
+				q.RespErr()
+				return
+			}
+
+			// 如果是替换，删除旧文件
+			if replacedFileID != -1 {
+				q.Err = cmn.DeleteFileRecord(ctx, tx, replacedFileID)
+				if q.Err != nil {
+					q.RespErr()
+					return
+				}
+				// 更新questionFiles数组中对应的fileID
+				for i := range questionFiles {
+					if questionFiles[i].ID.Int64 == replacedFileID {
+						questionFiles[i].ID = null.IntFrom(fileID)
+						break
+					}
+				}
+			} else {
+				// 新增文件，添加到数组
+				newFile := cmn.TFile{
+					ID:       null.IntFrom(fileID),
+					Digest:   questionFile.CheckSum,
+					FileName: questionFile.Name,
+				}
+				questionFiles = append(questionFiles, newFile)
+			}
+
+			// 更新题目的files字段
+			var questionFileIDs []int64
+			for _, qf := range questionFiles {
+				questionFileIDs = append(questionFileIDs, qf.ID.Int64)
+			}
+
+			var filesJSON []byte
+			filesJSON, q.Err = json.Marshal(questionFileIDs)
+			if forceErr == "json.Marshal" {
+				q.Err = fmt.Errorf("强制JSON序列化错误")
+			}
+			if q.Err != nil {
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+
+			_, q.Err = tx.Exec(ctx, `UPDATE t_question SET files = $1 WHERE id = $2`, filesJSON, questionFile.QuestionID)
+			if forceErr == "tx.Exec" {
+				q.Err = fmt.Errorf("强制更新题目信息错误")
+			}
+			if q.Err != nil {
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+		}
+
+		// 构造返回数据
+		var questionFileReply []QuestionFile
+		for _, qf := range questionFiles {
+			questionFileReply = append(questionFileReply, QuestionFile{
+				QuestionID: questionFile.QuestionID,
+				CheckSum:   qf.Digest,
+				Name:       qf.FileName,
+				Size:       qf.Size.Int64,
+			})
+		}
+
+		q.Msg.Data, q.Err = json.Marshal(questionFileReply)
+		if forceErr == "json.Marshal2" {
+			q.Err = fmt.Errorf("强制JSON序列化错误")
+			q.Msg.Data = nil
+		}
+		if q.Err != nil {
+			q.RespErr()
+			return
+		}
+
+		q.Resp()
+		return
+
+	case "delete":
+		// 检查用户是否有权限删除题目附件
+		accessible, err := auth_mgt.CheckUserAPIAccessible(ctx, authority, "/api/question-files", auth_mgt.CAPIAccessActionDelete)
+		if err != nil || forceErr == "CheckUserAPIAccessible" {
+			q.Err = fmt.Errorf("failed to check user API access: %w", err)
+			q.RespErr()
+			return
+		}
+		if !accessible || forceErr == "no-access" {
+			q.Err = fmt.Errorf("用户没有权限删除题目附件")
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		var buf []byte
+		buf, q.Err = io.ReadAll(q.R.Body)
+		if forceErr == "io.ReadAll" {
+			q.Err = fmt.Errorf("强制读取请求体错误")
+		}
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		defer func() {
+			err := q.R.Body.Close()
+			if forceErr == "io.Close" {
+				err = fmt.Errorf("强制关闭IO错误")
+			}
+			if err != nil {
+				z.Error(err.Error())
+			}
+		}()
+
+		if forceErr == "io.Close" {
+			return
+		}
+
+		if len(buf) == 0 {
+			q.Err = fmt.Errorf("请求体为空")
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		var qry cmn.ReqProto
+		q.Err = json.Unmarshal(buf, &qry)
+		if forceErr == "json.Unmarshal" {
+			q.Err = fmt.Errorf("强制JSON解析错误")
+		}
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		var questionFile QuestionFile
+		q.Err = json.Unmarshal(qry.Data, &questionFile)
+		if forceErr == "json.Unmarshal2" {
+			q.Err = fmt.Errorf("强制第二次JSON解析错误")
+		}
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		// 检查题目是否存在
+		checkExistsSQL := `
+			SELECT EXISTS (
+				SELECT 1
+				FROM t_question
+				WHERE id = $1 AND status != '02'
+			)
+		`
+		var questionExist bool
+		q.Err = tx.QueryRow(ctx, checkExistsSQL, questionFile.QuestionID).Scan(&questionExist)
+		if forceErr == "checkQuestionExists" {
+			q.Err = fmt.Errorf("强制检查题目存在错误")
+		}
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		if !questionExist {
+			q.Err = fmt.Errorf("题目不存在")
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		// 获取题目附件信息
+		getQuestionFilesSQL := `
+			SELECT f.id, f.digest, f.file_name, f.size
+			FROM t_question q
+			CROSS JOIN LATERAL jsonb_array_elements_text(q.files) file_id_text(value)
+			JOIN t_file f ON f.id = file_id_text.value::bigint
+			WHERE q.id = $1
+			  AND q.files IS NOT NULL
+			  AND jsonb_typeof(q.files) = 'array'
+			  AND q.status != '02'
+			  AND f.status != '2'
+		`
+		var questionFiles []cmn.TFile
+		var questionFileRows pgx.Rows
+		questionFileRows, q.Err = tx.Query(ctx, getQuestionFilesSQL, questionFile.QuestionID)
+		defer questionFileRows.Close()
+		if forceErr == "getQuestionFiles" {
+			q.Err = fmt.Errorf("强制获取题目附件信息错误")
+		}
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		for questionFileRows.Next() {
+			var tFile cmn.TFile
+			q.Err = questionFileRows.Scan(&tFile.ID, &tFile.Digest, &tFile.FileName, &tFile.Size)
+			if forceErr == "scanQuestionFile" {
+				q.Err = fmt.Errorf("强制获取题目附件信息错误")
+			}
+			if q.Err != nil {
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+			questionFiles = append(questionFiles, tFile)
+		}
+
+		// 检查该题目附件是否存在于题目中
+		var deleteFileID int64
+		deleteFileID = -1
+		deleteIndex := -1
+		for i, questionFileInfo := range questionFiles {
+			if questionFileInfo.Digest != questionFile.CheckSum || questionFileInfo.FileName != questionFile.Name {
+				continue
+			}
+
+			// 找到匹配的题目附件
+			deleteFileID = questionFileInfo.ID.Int64
+			deleteIndex = i
+		}
+
+		if deleteIndex != -1 {
+			// 删除题目附件
+			questionFiles = append(questionFiles[:deleteIndex], questionFiles[deleteIndex+1:]...)
+		}
+
+		// 组装返回给前端的文件信息
+		var questionFileReply []QuestionFile
+		for i := 0; i < len(questionFiles); i++ {
+			var fileInfo QuestionFile
+			fileInfo.QuestionID = questionFile.QuestionID
+			fileInfo.CheckSum = questionFiles[i].Digest
+			fileInfo.Name = questionFiles[i].FileName
+			fileInfo.Size = questionFiles[i].Size.Int64
+			questionFileReply = append(questionFileReply, fileInfo)
+		}
+
+		if deleteFileID != -1 {
+			q.Err = cmn.DeleteFileRecord(ctx, tx, deleteFileID)
+			if forceErr == "handleDeleteQuestionFile" {
+				q.Err = fmt.Errorf("强制删除题目附件错误")
+			}
+			if q.Err != nil {
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+
+			var questionFileIDs []int64
+			for i := 0; i < len(questionFiles); i++ {
+				questionFileIDs = append(questionFileIDs, questionFiles[i].ID.Int64)
+			}
+
+			var filesJSON []byte
+			filesJSON, q.Err = json.Marshal(questionFileIDs)
+			if forceErr == "questionFiles.json.Marshal.Delete" {
+				q.Err = fmt.Errorf("强制序列化题目附件ID数组错误")
+			}
+			if q.Err != nil {
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+
+			_, q.Err = tx.Exec(ctx, `
+				UPDATE t_question
+				SET files = $1
+				WHERE id = $2
+			`, filesJSON, questionFile.QuestionID)
+			if forceErr == "questionInfo.tx.UpdateFiles.Delete" {
+				q.Err = fmt.Errorf("强制更新题目附件字段错误")
+			}
+			if q.Err != nil {
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+		}
+
+		q.Msg.Data, q.Err = json.Marshal(questionFileReply)
+		if forceErr == "questionFiles.json.Marshal" {
+			q.Err = fmt.Errorf("强制序列化题目文件错误")
+			q.Msg.Data = nil
+		}
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		q.Resp()
+		return
+
+	default:
+		q.Err = fmt.Errorf("unsupported method: %s", method)
+		z.Warn(q.Err.Error())
+		q.RespErr()
+		return
+	}
 }
