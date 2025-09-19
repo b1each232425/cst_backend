@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 	"w2w.io/cmn"
+	"w2w.io/serve/auth_mgt"
 )
 
 const (
@@ -59,6 +60,28 @@ func Enroll(author string) {
 
 		Path: "/registration",
 		Name: "registration",
+		ApiEntries: []*cmn.EndPointApiEntries{
+			{
+				Name:         "报名管理.查询报名计划",
+				AccessAction: auth_mgt.CAPIAccessActionRead,
+				Configurable: true,
+			},
+			{
+				Name:         "报名管理.创建报名计划",
+				AccessAction: auth_mgt.CAPIAccessActionCreate,
+				Configurable: true,
+			},
+			{
+				Name:         "报名管理.编辑报名计划",
+				AccessAction: auth_mgt.CAPIAccessActionUpdate,
+				Configurable: true,
+			},
+			{
+				Name:         "报名管理.删除报名计划",
+				AccessAction: auth_mgt.CAPIAccessActionDelete,
+				Configurable: true,
+			},
+		},
 
 		Developer: developer,
 		WhiteList: true,
@@ -74,6 +97,23 @@ func Enroll(author string) {
 
 		Path: "/registrationStudent",
 		Name: "registrationStudent",
+		ApiEntries: []*cmn.EndPointApiEntries{
+			{
+				Name:         "报名管理.查询报名学生",
+				AccessAction: auth_mgt.CAPIAccessActionRead,
+				Configurable: true,
+			},
+			{
+				Name:         "报名管理.导入报名学生",
+				AccessAction: auth_mgt.CAPIAccessActionCreate,
+				Configurable: true,
+			},
+			{
+				Name:         "报名管理.通过或不通过报名学生",
+				AccessAction: auth_mgt.CAPIAccessActionUpdate,
+				Configurable: true,
+			},
+		},
 
 		Developer: developer,
 		WhiteList: true,
@@ -90,6 +130,102 @@ func Enroll(author string) {
 		Path: "/registrationReviewer",
 		Name: "registrationReviewer",
 
+		ApiEntries: []*cmn.EndPointApiEntries{
+			{
+				Name:         "报名管理.查询报名审核人",
+				AccessAction: auth_mgt.CAPIAccessActionRead,
+				Configurable: true,
+			},
+		},
+
+		Developer: developer,
+		WhiteList: true,
+
+		//DomainID 创建该API的账号归属的domain
+		DomainID: int64(cmn.CDomainSys),
+
+		//DefaultDomain 该API将默认授权给的用户
+		DefaultDomain: int64(cmn.CDomainSys),
+	})
+	_ = cmn.AddService(&cmn.ServeEndPoint{
+		Fn:   registerStatus,
+		Path: "/register/Status",
+		Name: "registrationStatus",
+		ApiEntries: []*cmn.EndPointApiEntries{
+			{
+				Name:         "报名管理.更新报名状态",
+				AccessAction: auth_mgt.CAPIAccessActionUpdate,
+				Configurable: true,
+			},
+		},
+		Developer: developer,
+		WhiteList: true,
+
+		//DomainID 创建该API的账号归属的domain
+		DomainID: int64(cmn.CDomainSys),
+
+		//DefaultDomain 该API将默认授权给的用户
+		DefaultDomain: int64(cmn.CDomainSys),
+	})
+	_ = cmn.AddService(&cmn.ServeEndPoint{
+		Fn:   registerStudentL,
+		Path: "/register/student",
+		Name: "registrationStudentL",
+
+		ApiEntries: []*cmn.EndPointApiEntries{
+			{
+				Name:         "报名管理.查询报名列表",
+				AccessAction: auth_mgt.CAPIAccessActionRead,
+				Configurable: true,
+			},
+			{
+				Name:         "报名管理.学生报名",
+				AccessAction: auth_mgt.CAPIAccessActionCreate,
+				Configurable: true,
+			},
+		},
+		Developer: developer,
+		WhiteList: true,
+
+		//DomainID 创建该API的账号归属的domain
+		DomainID: int64(cmn.CDomainSys),
+
+		//DefaultDomain 该API将默认授权给的用户
+		DefaultDomain: int64(cmn.CDomainSys),
+	})
+	_ = cmn.AddService(&cmn.ServeEndPoint{
+		Fn: registerDetail,
+
+		Path: "/registration/detail",
+		Name: "registrationDetail",
+		ApiEntries: []*cmn.EndPointApiEntries{
+			{
+				Name:         "报名管理.查询报名计划详情",
+				AccessAction: auth_mgt.CAPIAccessActionRead,
+				Configurable: true,
+			},
+		},
+		Developer: developer,
+		WhiteList: true,
+
+		//DomainID 创建该API的账号归属的domain
+		DomainID: int64(cmn.CDomainSys),
+
+		//DefaultDomain 该API将默认授权给的用户
+		DefaultDomain: int64(cmn.CDomainSys),
+	})
+	_ = cmn.AddService(&cmn.ServeEndPoint{
+		Fn: registerStudentMove,
+
+		Path: "/registerStudent/move",
+		Name: "registrationStudentMove",
+		ApiEntries: []*cmn.EndPointApiEntries{
+			{
+				Name:         "报名管理.移动学生",
+				AccessAction: auth_mgt.CAPIAccessActionRead,
+				Configurable: true,
+			},
+		},
 		Developer: developer,
 		WhiteList: true,
 
@@ -117,484 +253,252 @@ func register(ctx context.Context) {
 		q.RespErr()
 		return
 	}
-	var DomainID int64
-	for _, domain := range q.Domains {
-		if domain.ID.Int64 == RegisterDomainID.Student || domain.ID.Int64 == RegisterDomainID.Teacher || domain.ID.Int64 == RegisterDomainID.Admin || domain.ID.Int64 == RegisterDomainID.SuperAdmin {
-			DomainID = domain.ID.Int64
-			break
-		}
+	var authority *auth_mgt.Authority
+	authority, q.Err = auth_mgt.GetUserAuthority(ctx)
+	if q.Err != nil {
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
 	}
-	if DomainID != 0 && DomainID < RegisterDomainID.Student {
-		DomainID = RegisterDomainID.Teacher
+
+	read, create, update, deleteble, err := GetAuthAPIAccessible(ctx, authority, "/api/registration")
+	z.Error(fmt.Sprintf("获取用户的可执行权限的路径: %v", q.Ep.Path))
+	if err != nil {
+		q.Err = fmt.Errorf("获取用户的可执行权限失败: %v", err)
+		q.RespErr()
+		return
 	}
-	switch DomainID {
-	case RegisterDomainID.Student:
+	ctx = context.WithValue(ctx, "authority", authority)
+	method := strings.ToLower(q.R.Method)
+	switch method {
+	case "get":
 		{
-			method := strings.ToLower(q.R.Method)
-			switch method {
-			case "get":
-				{
-					name := q.R.URL.Query().Get("name")
-					course := q.R.URL.Query().Get("course")
-					status := q.R.URL.Query().Get("status")
-					pageStr := q.R.URL.Query().Get("page")
-					if pageStr == "" {
-						q.Err = fmt.Errorf("缺失分页查询页号")
-						z.Error(q.Err.Error())
-						q.RespErr()
-						return
-					}
-					var page int
-					page, q.Err = strconv.Atoi(pageStr)
-					if forceErr == "pageParseInt" {
-						q.Err = fmt.Errorf("将字符串转化为整形失败")
-					}
-					if q.Err != nil {
-						q.Err = fmt.Errorf("分页查询的页号解析失败：%v", q.Err.Error())
-						z.Error(q.Err.Error())
-						q.RespErr()
-						return
-					}
-					pageSizeStr := q.R.URL.Query().Get("pageSize")
-					if pageSizeStr == "" {
-						q.Err = fmt.Errorf("缺失分页查询页大小")
-						z.Error(q.Err.Error())
-						q.RespErr()
-						return
-					}
-					var pageSize int
-					pageSize, q.Err = strconv.Atoi(pageSizeStr)
-					if forceErr == "pageSizeParseInt" {
-						q.Err = fmt.Errorf("将字符串转化为整形失败")
-					}
-					if q.Err != nil {
-						q.Err = fmt.Errorf("分页页大小解析失败：%v", q.Err.Error())
-						z.Error(q.Err.Error())
-						q.RespErr()
-						return
-					}
-					//排序字段
-					orderBy := []string{"r.create_time desc"}
-					r, total, err := ListRegisterS(ctx, name, course, status, orderBy, page, pageSize, userID)
-					if err != nil {
-						q.Err = err
-						q.RespErr()
-						return
-					}
-					result := Map{
-						"total":     total,
-						"registers": r,
-					}
-					data, err := json.Marshal(result)
-					if forceErr == "json" {
-						err = fmt.Errorf("将要返回数据结构反序列化失败")
-					}
-					if err != nil {
-						z.Error(err.Error())
-						q.Err = err
-						q.RespErr()
-						return
-					}
-					q.Msg.Data = data
-					z.Info("---->" + cmn.FncName())
-					q.Msg.Msg = "OK"
-					q.Resp()
-				}
-			case "post":
-				{
-					var buf []byte
-					buf, q.Err = io.ReadAll(q.R.Body)
-					if forceErr == "ioReadAll" {
-						q.Err = fmt.Errorf("尝试打开前端数据流失败")
-					}
-					if q.Err != nil {
-						z.Error(q.Err.Error())
-						q.RespErr()
-						return
-					}
-					defer func() {
-						q.Err = q.R.Body.Close()
-						if forceErr == "Close" {
-							q.Err = fmt.Errorf("关闭打开的二进制数据流失败")
-						}
-						if q.Err != nil {
-							z.Error(q.Err.Error())
-						}
-					}()
-					if len(buf) == 0 {
-						q.Err = fmt.Errorf("Call /api/registration with  empty body")
-						z.Error(q.Err.Error())
-						q.RespErr()
-						return
-					}
-					//获取请求的结构体
-					var qry cmn.ReqProto
-					q.Err = json.Unmarshal(buf, &qry)
-					if forceErr == "readReqProtoJson" {
-						q.Err = fmt.Errorf("读取前端数据结构体失败")
-					}
-					if q.Err != nil {
-						z.Error(q.Err.Error())
-						q.RespErr()
-						return
-					}
-
-					var rs registerStudentOnce
-					q.Err = json.Unmarshal(qry.Data, &rs)
-					if forceErr == "readPJson" {
-						q.Err = fmt.Errorf("读取前端数据practice字段结构体失败")
-					}
-					if q.Err != nil {
-						z.Error(q.Err.Error())
-						q.RespErr()
-						return
-					}
-					if rs.RegisterID <= 0 {
-						q.Err = fmt.Errorf("无效的报名计划ID")
-						z.Error(q.Err.Error())
-						q.RespErr()
-						return
-					}
-					if rs.Status == "" {
-						q.Err = fmt.Errorf("无效的报名计划状态")
-						z.Error(q.Err.Error())
-						q.RespErr()
-						return
-					}
-
-					var student registerStudentType
-					var students []registerStudentType
-					student.StudentID = userID
-					student.ExamType = ExamType.Normal
-					students = append(students, student)
-					err := StudentRegister(ctx, rs.RegisterID, rs.Status, RegisterType.Once, students, userID)
-					if err != nil {
-						q.Err = err
-						q.RespErr()
-						return
-					}
-					z.Info("---->" + cmn.FncName())
-					q.Msg.Msg = "OK"
-					q.Resp()
-					return
-				}
-			}
-		}
-	case RegisterDomainID.Teacher:
-		{
-			method := strings.ToLower(q.R.Method)
-			switch method {
-			case "get":
-				{
-					name := q.R.URL.Query().Get("name")
-					course := q.R.URL.Query().Get("course")
-					status := q.R.URL.Query().Get("status")
-					idStr := q.R.URL.Query().Get("id")
-					pageStr := q.R.URL.Query().Get("page")
-					pageSizeStr := q.R.URL.Query().Get("pageSize")
-					//如果有id则只查询单个报名计划
-					if idStr != "" && pageStr != "" && pageSizeStr != "" {
-						searchType := q.R.URL.Query().Get("search_type")
-						if searchType != "00" && searchType != "02" {
-							q.Err = fmt.Errorf("搜索类型错误")
-							z.Error(q.Err.Error())
-							q.RespErr()
-							return
-						}
-						var page int
-						page, q.Err = strconv.Atoi(pageStr)
-						if forceErr == "pageParseInt" {
-							q.Err = fmt.Errorf("将字符串转化为整形失败")
-						}
-						if q.Err != nil {
-							q.Err = fmt.Errorf("分页查询的页号解析失败：%v", q.Err.Error())
-							z.Error(q.Err.Error())
-							q.RespErr()
-							return
-						}
-						var pageSize int
-						pageSize, q.Err = strconv.Atoi(pageSizeStr)
-						if forceErr == "pageSizeParseInt" {
-							q.Err = fmt.Errorf("将字符串转化为整形失败")
-						}
-						if q.Err != nil {
-							q.Err = fmt.Errorf("分页页大小解析失败：%v", q.Err.Error())
-							z.Error(q.Err.Error())
-							q.RespErr()
-							return
-						}
-						message := q.R.URL.Query().Get("message")
-						registerType := q.R.URL.Query().Get("register_type")
-						var id int64
-						id, q.Err = strconv.ParseInt(idStr, 10, 64)
-						if forceErr == "idParseInt" {
-							q.Err = fmt.Errorf("将字符串转化为整形失败")
-						}
-						if q.Err != nil {
-							q.Err = fmt.Errorf("报名计划ID解析失败：%v", q.Err.Error())
-							z.Error(q.Err.Error())
-							q.RespErr()
-							return
-						}
-						//设置排序字段
-						orderBy := []string{"eps.create_time desc"}
-						s, total, err := GetRegisterStudentById(ctx, id, message, registerType, status, orderBy, page, pageSize, userID, searchType)
-						if err != nil {
-							q.Err = err
-							q.RespErr()
-							return
-						}
-						result := Map{
-							"student": s,
-							"total":   total,
-						}
-						data, err := json.Marshal(result)
-						if forceErr == "json" {
-							err = fmt.Errorf("将要返回数据结构反序列化失败")
-						}
-						if err != nil {
-							z.Error(err.Error())
-							q.Err = err
-							q.RespErr()
-							return
-						}
-						q.Msg.Data = data
-						z.Info("---->" + cmn.FncName())
-						q.Msg.Msg = "OK"
-						q.Resp()
-						return
-					} else if idStr != "" && pageStr == "" && pageSizeStr == "" {
-						//查询单个报名计划详情
-						var id int64
-						id, q.Err = strconv.ParseInt(idStr, 10, 64)
-						if q.Err != nil {
-							q.Err = fmt.Errorf("报名计划ID解析失败：%v", q.Err.Error())
-							z.Error(q.Err.Error())
-							q.RespErr()
-							return
-						}
-
-						r, practices, reviewers, currentNumber, err := LoadRegisterById(ctx, id)
-						if err != nil {
-							q.Err = err
-							q.RespErr()
-							return
-						}
-						result := Map{
-							"register":       r,
-							"practices":      practices,
-							"reviewers":      reviewers,
-							"current_number": currentNumber,
-						}
-						data, err := json.Marshal(result)
-						if forceErr == "json" {
-							err = fmt.Errorf("将要返回数据结构反序列化失败")
-						}
-						if err != nil {
-							z.Error(err.Error())
-							q.Err = err
-							q.RespErr()
-							return
-						}
-						q.Msg.Data = data
-						z.Info("---->" + cmn.FncName())
-						q.Msg.Msg = "OK"
-						q.Resp()
-						return
-					}
-					searchType := q.R.URL.Query().Get("search_type")
-					if searchType != "00" && searchType != "02" {
-						q.Err = fmt.Errorf("搜索类型错误")
-						z.Error(q.Err.Error())
-						q.RespErr()
-						return
-					}
-					var page int
-					page, q.Err = strconv.Atoi(pageStr)
-					if forceErr == "pageParseInt" {
-						q.Err = fmt.Errorf("将字符串转化为整形失败")
-					}
-					if q.Err != nil {
-						q.Err = fmt.Errorf("分页查询的页号解析失败：%v", q.Err.Error())
-						z.Error(q.Err.Error())
-						q.RespErr()
-						return
-					}
-					var pageSize int
-					pageSize, q.Err = strconv.Atoi(pageSizeStr)
-					if forceErr == "pageSizeParseInt" {
-						q.Err = fmt.Errorf("将字符串转化为整形失败")
-					}
-					if q.Err != nil {
-						q.Err = fmt.Errorf("分页页大小解析失败：%v", q.Err.Error())
-						z.Error(q.Err.Error())
-						q.RespErr()
-						return
-					}
-					//排序字段
-					orderBy := []string{"r.create_time desc"}
-					r, total, err := ListRegisterT(ctx, name, course, status, orderBy, page, pageSize, userID, searchType)
-					if err != nil {
-						q.Err = err
-						q.RespErr()
-						return
-					}
-					result := Map{
-						"total":     total,
-						"registers": r,
-					}
-					data, err := json.Marshal(result)
-					if forceErr == "json" {
-						err = fmt.Errorf("将要返回数据结构反序列化失败")
-					}
-					if err != nil {
-						z.Error(err.Error())
-						q.Err = err
-						q.RespErr()
-						return
-					}
-					q.Msg.Data = data
-					z.Info("---->" + cmn.FncName())
-					q.Msg.Msg = "OK"
-					q.Resp()
-					return
-				}
-			case "post":
-				{
-					var buf []byte
-					buf, q.Err = io.ReadAll(q.R.Body)
-					if forceErr == "ioReadAll" {
-						q.Err = fmt.Errorf("尝试打开前端数据流失败")
-					}
-					if q.Err != nil {
-						z.Error(q.Err.Error())
-						q.RespErr()
-						return
-					}
-					defer func() {
-						q.Err = q.R.Body.Close()
-						if forceErr == "Close" {
-							q.Err = fmt.Errorf("关闭打开的二进制数据流失败")
-						}
-						if q.Err != nil {
-							z.Error(q.Err.Error())
-						}
-					}()
-					if len(buf) == 0 {
-						q.Err = fmt.Errorf("Call /api/registration with  empty body")
-						z.Error(q.Err.Error())
-						q.RespErr()
-						return
-					}
-					//获取请求的结构体
-					var qry cmn.ReqProto
-					q.Err = json.Unmarshal(buf, &qry)
-					if forceErr == "readReqProtoJson" {
-						q.Err = fmt.Errorf("读取前端数据结构体失败")
-					}
-					if q.Err != nil {
-						z.Error(q.Err.Error())
-						q.RespErr()
-						return
-					}
-					var action string
-					action = qry.Action
-					var r RegisterInfo
-					q.Err = json.Unmarshal(qry.Data, &r)
-					if forceErr == "readRJson" {
-						q.Err = fmt.Errorf("读取前端数据Register字段结构体失败")
-					}
-					if q.Err != nil {
-						z.Error(q.Err.Error())
-						q.RespErr()
-						return
-					}
-					//校验Register字段
-					q.Err = ValidateRegisterInfo(r.Registration, r.PracticeIds)
-					if q.Err != nil {
-						z.Error(q.Err.Error())
-						q.RespErr()
-						return
-					}
-					//校验reviewer_ids字段
-					var reviewers []int64
-
-					reviewers, q.Err = CheckReviewerIDs(r.Registration.ReviewerIds)
-					if q.Err != nil {
-						z.Error(q.Err.Error())
-						q.RespErr()
-						return
-					}
-					err := UpsertRegister(ctx, r.Registration, r.PracticeIds, userID, action, reviewers)
-					if err != nil {
-						q.Err = err
-						q.RespErr()
-						return
-					}
-					z.Info("---->" + cmn.FncName())
-					q.Msg.Msg = "OK"
-					q.Resp()
-					return
-				}
-			case "patch":
-				{
-					idStr := q.R.URL.Query().Get("ids")
-					status := q.R.URL.Query().Get("status")
-					if idStr == "" {
-						q.Err = fmt.Errorf("缺失报名计划ID")
-						z.Error(q.Err.Error())
-						q.RespErr()
-						return
-					}
-					idArray := strings.Split(idStr, ",")
-
-					var ids []int64
-					var invalidValues []string
-					for _, s := range idArray {
-						c := strings.TrimSpace(s)
-						if c == "" {
-							continue
-						}
-						id, err := strconv.ParseInt(c, 10, 64)
-						if err != nil {
-							invalidValues = append(invalidValues, s)
-							continue
-						}
-						ids = append(ids, id)
-					}
-					if len(ids) == 0 {
-						q.Err = fmt.Errorf("请传入有效的需要操作的报名计划ID")
-						z.Error(q.Err.Error())
-						q.RespErr()
-						return
-					}
-					if len(invalidValues) > 0 {
-						// 这里就要返回了
-						q.Err = fmt.Errorf("传入的报名计划ID中存在非法值：%v", invalidValues)
-						z.Error(q.Err.Error())
-						q.RespErr()
-						return
-					}
-					//批量操作报名状态
-					q.Err = OperateRegisterStatus(ctx, ids, status, userID)
-					if q.Err != nil {
-						q.RespErr()
-						return
-					}
-					z.Info("---->" + cmn.FncName())
-					q.Msg.Msg = "ok"
-					q.Msg.Status = 0
-					q.Resp()
-					return
-				}
-			default:
-				q.Err = fmt.Errorf("please call /api/Practice with  http POST/GET/PATCH method")
+			if !read {
+				q.Err = fmt.Errorf("该用户没有读数据权限")
+				z.Error(q.Err.Error())
 				q.RespErr()
 				return
+			}
+			name := q.R.URL.Query().Get("name")
+			course := q.R.URL.Query().Get("course")
+			status := q.R.URL.Query().Get("status")
+			pageStr := q.R.URL.Query().Get("page")
+			pageSizeStr := q.R.URL.Query().Get("pageSize")
+
+			searchType := q.R.URL.Query().Get("search_type")
+			if searchType != "00" && searchType != "02" {
+				q.Err = fmt.Errorf("搜索类型错误")
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+			var page int
+			page, q.Err = strconv.Atoi(pageStr)
+			if forceErr == "pageParseInt" {
+				q.Err = fmt.Errorf("将字符串转化为整形失败")
+			}
+			if q.Err != nil {
+				q.Err = fmt.Errorf("分页查询的页号解析失败：%v", q.Err.Error())
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+			var pageSize int
+			pageSize, q.Err = strconv.Atoi(pageSizeStr)
+			if forceErr == "pageSizeParseInt" {
+				q.Err = fmt.Errorf("将字符串转化为整形失败")
+			}
+			if q.Err != nil {
+				q.Err = fmt.Errorf("分页页大小解析失败：%v", q.Err.Error())
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+			//排序字段
+			orderBy := []string{"r.create_time desc"}
+			r, total, err := ListRegisterT(ctx, name, course, status, orderBy, page, pageSize, userID, searchType)
+			if err != nil {
+				q.Err = err
+				q.RespErr()
+				return
+			}
+			result := Map{
+				"total":     total,
+				"registers": r,
+			}
+			data, err := json.Marshal(result)
+			if forceErr == "json" {
+				err = fmt.Errorf("将要返回数据结构反序列化失败")
+			}
+			if err != nil {
+				z.Error(err.Error())
+				q.Err = err
+				q.RespErr()
+				return
+			}
+			q.Msg.Data = data
+			z.Info("---->" + cmn.FncName())
+			q.Msg.Msg = "OK"
+			q.Resp()
+			return
+		}
+	case "post":
+		{
+			var buf []byte
+			buf, q.Err = io.ReadAll(q.R.Body)
+			if forceErr == "ioReadAll" {
+				q.Err = fmt.Errorf("尝试打开前端数据流失败")
+			}
+			if q.Err != nil {
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+			defer func() {
+				q.Err = q.R.Body.Close()
+				if forceErr == "Close" {
+					q.Err = fmt.Errorf("关闭打开的二进制数据流失败")
+				}
+				if q.Err != nil {
+					z.Error(q.Err.Error())
+				}
+			}()
+			if len(buf) == 0 {
+				q.Err = fmt.Errorf("Call /api/registration with  empty body")
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+			//获取请求的结构体
+			var qry cmn.ReqProto
+			q.Err = json.Unmarshal(buf, &qry)
+			if forceErr == "readReqProtoJson" {
+				q.Err = fmt.Errorf("读取前端数据结构体失败")
+			}
+			if q.Err != nil {
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+			var action string
+			action = qry.Action
+			var r RegisterInfo
+			q.Err = json.Unmarshal(qry.Data, &r)
+			if forceErr == "readRJson" {
+				q.Err = fmt.Errorf("读取前端数据Register字段结构体失败")
+			}
+			if q.Err != nil {
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+			//校验Register字段
+			q.Err = ValidateRegisterInfo(r.Registration, r.PracticeIds)
+			if q.Err != nil {
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+			if !r.Registration.ID.Valid {
+				if !create {
+					q.Err = fmt.Errorf("该用户没有创建数据权限")
+					z.Error(q.Err.Error())
+					q.RespErr()
+					return
+				}
+			} else {
+				if !update {
+					q.Err = fmt.Errorf("该用户没有更新数据权限")
+					z.Error(q.Err.Error())
+					q.RespErr()
+					return
+				}
 
 			}
+			//校验reviewer_ids字段
+			var reviewers []int64
+
+			reviewers, q.Err = CheckReviewerIDs(r.Registration.ReviewerIds)
+			if q.Err != nil {
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+			err := UpsertRegister(ctx, r.Registration, r.PracticeIds, userID, action, reviewers)
+			if err != nil {
+				q.Err = err
+				q.RespErr()
+				return
+			}
+			z.Info("---->" + cmn.FncName())
+			q.Msg.Msg = "OK"
+			q.Resp()
+			return
 		}
+	case "patch":
+		{
+			if !deleteble {
+				q.Err = fmt.Errorf("该用户没有删除数据权限")
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+			idStr := q.R.URL.Query().Get("ids")
+			status := q.R.URL.Query().Get("status")
+			if idStr == "" {
+				q.Err = fmt.Errorf("缺失报名计划ID")
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+			idArray := strings.Split(idStr, ",")
+
+			var ids []int64
+			var invalidValues []string
+			for _, s := range idArray {
+				c := strings.TrimSpace(s)
+				if c == "" {
+					continue
+				}
+				id, err := strconv.ParseInt(c, 10, 64)
+				if err != nil {
+					invalidValues = append(invalidValues, s)
+					continue
+				}
+				ids = append(ids, id)
+			}
+			if len(ids) == 0 {
+				q.Err = fmt.Errorf("请传入有效的需要操作的报名计划ID")
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+			if len(invalidValues) > 0 {
+				// 这里就要返回了
+				q.Err = fmt.Errorf("传入的报名计划ID中存在非法值：%v", invalidValues)
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+			//批量操作报名状态
+			q.Err = OperateRegisterStatus(ctx, ids, status, userID)
+			if q.Err != nil {
+				q.RespErr()
+				return
+			}
+			z.Info("---->" + cmn.FncName())
+			q.Msg.Msg = "ok"
+			q.Msg.Status = 0
+			q.Resp()
+			return
+		}
+	default:
+		q.Err = fmt.Errorf("please call /api/Practice with  http POST/GET/PATCH method")
+		q.RespErr()
+		return
+
 	}
+
 }
 func registerStudentH(ctx context.Context) {
 	q := cmn.GetCtxValue(ctx)
@@ -610,193 +514,253 @@ func registerStudentH(ctx context.Context) {
 		q.RespErr()
 		return
 	}
-	var DomainID int64
-	for _, domain := range q.Domains {
-		if domain.ID.Int64 == RegisterDomainID.Student || domain.ID.Int64 == RegisterDomainID.Teacher || domain.ID.Int64 == RegisterDomainID.Admin || domain.ID.Int64 == RegisterDomainID.SuperAdmin {
-			DomainID = domain.ID.Int64
-			break
-		}
+	var authority *auth_mgt.Authority
+	authority, q.Err = auth_mgt.GetUserAuthority(ctx)
+	if q.Err != nil {
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
 	}
-	//把不是学生权限的都转为教师权限
-	if DomainID != 0 && DomainID < RegisterDomainID.Student {
-		DomainID = RegisterDomainID.Teacher
+	ctx = context.WithValue(ctx, "authority", authority)
+	read, create, update, _, err := GetAuthAPIAccessible(ctx, authority, "/api/registrationStudent")
+	if err != nil {
+		q.Err = fmt.Errorf("获取用户的可执行权限失败: %v", err)
+		q.RespErr()
+		return
 	}
-	switch DomainID {
-	case RegisterDomainID.Teacher:
+	method := strings.ToLower(q.R.Method)
+	switch method {
+	case "get":
 		{
-			method := strings.ToLower(q.R.Method)
-			switch method {
-			case "patch":
-				{
-					idStr := q.R.URL.Query().Get("ids")
-					status := q.R.URL.Query().Get("status")
-					registerIDStr := q.R.URL.Query().Get("register_id")
-					failReason := q.R.URL.Query().Get("fail_reason")
-					if registerIDStr == "" {
-						q.Err = fmt.Errorf("缺失报名计划ID")
-						z.Error(q.Err.Error())
-						q.RespErr()
-						return
-					}
-					registerID, err := strconv.ParseInt(registerIDStr, 10, 64)
-					if err != nil {
-						q.Err = fmt.Errorf("报名计划ID转换失败")
-						z.Error(q.Err.Error())
-						q.RespErr()
-						return
-					}
-					if idStr == "" {
-						q.Err = fmt.Errorf("缺失报名计划学生ID")
-						z.Error(q.Err.Error())
-						q.RespErr()
-						return
-					}
-					idArray := strings.Split(idStr, ",")
-					var ids []int64
-					var invalidValues []string
-					for _, s := range idArray {
-						if s == "" {
-							continue
-						}
-						id, err := strconv.ParseInt(s, 10, 64)
-						if err != nil {
-							invalidValues = append(invalidValues, s)
-							continue
-						}
-						ids = append(ids, id)
-					}
-					if len(ids) == 0 {
-						q.Err = fmt.Errorf("报名计划学生ID为空")
-						z.Error(q.Err.Error())
-						q.RespErr()
-						return
-					}
-					if len(invalidValues) > 0 {
-						q.Err = fmt.Errorf("传入的报名计划学生ID中存在非法值：%v", invalidValues)
-						z.Error(q.Err.Error())
-						q.RespErr()
-						return
-					}
-					q.Err = OperateRegisterStudentStatus(ctx, nil, ids, status, userID, registerID, failReason)
-					if q.Err != nil {
-						q.RespErr()
-						return
-					}
-					z.Info("---->" + cmn.FncName())
-					q.Msg.Msg = "ok"
-					q.Msg.Status = 0
-					q.Resp()
-					return
-				}
-			case "post":
-				{
-					var buf []byte
-					buf, q.Err = io.ReadAll(q.R.Body)
-					if forceErr == "ioReadAll" {
-						q.Err = fmt.Errorf("尝试打开前端数据流失败")
-					}
-					if q.Err != nil {
-						z.Error(q.Err.Error())
-						q.RespErr()
-						return
-					}
-					defer func() {
-						q.Err = q.R.Body.Close()
-						if forceErr == "Close" {
-							q.Err = fmt.Errorf("关闭打开的二进制数据流失败")
-						}
-						if q.Err != nil {
-							z.Error(q.Err.Error())
-							q.RespErr()
-							return
-						}
-					}()
-					if len(buf) == 0 {
-						q.Err = fmt.Errorf("Call /api/register with  empty body")
-						z.Error(q.Err.Error())
-						q.RespErr()
-						return
-					}
-					var qry cmn.ReqProto
-					q.Err = json.Unmarshal(buf, &qry)
-					if forceErr == "readReqProtoJson" {
-						q.Err = fmt.Errorf("读取前端数据结构体失败")
-					}
-					if q.Err != nil {
-						z.Error(q.Err.Error())
-						q.RespErr()
-						return
-					}
-					//当Action为“move的时候为迁移操作”
-					if qry.Action == "move" {
-						var ms moveStudent
-						q.Err = json.Unmarshal(qry.Data, &ms)
-						if forceErr == "readMoveStudentJson" {
-							q.Err = fmt.Errorf("读取前端数据MoveStudent字段结构体失败")
-						}
-						if q.Err != nil {
-							z.Error(q.Err.Error())
-							q.RespErr()
-							return
-						}
-						if ms.ToRegisterID <= 0 || ms.FromRegisterID <= 0 {
-							q.Err = fmt.Errorf("请传入有效的迁移的报名计划ID")
-							z.Error(q.Err.Error())
-							q.RespErr()
-							return
-						}
-						if len(ms.Student) == 0 {
-							q.Err = fmt.Errorf("请传入有效的迁移的报名计划学生ID")
-							z.Error(q.Err.Error())
-							q.RespErr()
-							return
-						}
-						q.Err = MoveStudent(ctx, ms.FromRegisterID, ms.ToRegisterID, ms.Student, ms.Status, userID)
-						if q.Err != nil {
-							q.RespErr()
-							return
-						}
-						z.Info("---->" + cmn.FncName())
-						q.Msg.Msg = "ok"
-						q.Msg.Status = 0
-						q.Resp()
-						return
-
-					}
-					var rs registerStudent
-					q.Err = json.Unmarshal(qry.Data, &rs)
-					if forceErr == "readPJson" {
-						q.Err = fmt.Errorf("读取前端数据Register字段结构体失败")
-					}
-					if q.Err != nil {
-						z.Error(q.Err.Error())
-						q.RespErr()
-						return
-					}
-					if rs.RegisterID <= 0 {
-						q.Err = fmt.Errorf("请传入有效的报名计划ID")
-						z.Error(q.Err.Error())
-						q.RespErr()
-						return
-					}
-					if len(rs.Student) == 0 {
-						q.Err = fmt.Errorf("请传入有效的报名计划学生ID")
-						z.Error(q.Err.Error())
-						q.RespErr()
-						return
-					}
-					q.Err = UpsertRegisterStudent(ctx, rs.RegisterID, rs.Student, userID)
-					if q.Err != nil {
-						q.RespErr()
-						return
-					}
-					z.Info("---->" + cmn.FncName())
-					q.Msg.Msg = "ok"
-					q.Msg.Status = 0
-					q.Resp()
-					return
-				}
+			if !read {
+				q.Err = fmt.Errorf("该用户没有读数据的权限")
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
 			}
+			idStr := q.R.URL.Query().Get("id")
+			pageStr := q.R.URL.Query().Get("page")
+			pageSizeStr := q.R.URL.Query().Get("pageSize")
+			status := q.R.URL.Query().Get("status")
+			//如果有id则只查询单个报名计划
+			if idStr != "" && pageStr != "" && pageSizeStr != "" {
+				searchType := q.R.URL.Query().Get("search_type")
+				if searchType != "00" && searchType != "02" {
+					q.Err = fmt.Errorf("搜索类型错误")
+					z.Error(q.Err.Error())
+					q.RespErr()
+					return
+				}
+				var page int
+				page, q.Err = strconv.Atoi(pageStr)
+				if forceErr == "pageParseInt" {
+					q.Err = fmt.Errorf("将字符串转化为整形失败")
+				}
+				if q.Err != nil {
+					q.Err = fmt.Errorf("分页查询的页号解析失败：%v", q.Err.Error())
+					z.Error(q.Err.Error())
+					q.RespErr()
+					return
+				}
+				var pageSize int
+				pageSize, q.Err = strconv.Atoi(pageSizeStr)
+				if forceErr == "pageSizeParseInt" {
+					q.Err = fmt.Errorf("将字符串转化为整形失败")
+				}
+				if q.Err != nil {
+					q.Err = fmt.Errorf("分页页大小解析失败：%v", q.Err.Error())
+					z.Error(q.Err.Error())
+					q.RespErr()
+					return
+				}
+				message := q.R.URL.Query().Get("message")
+				registerType := q.R.URL.Query().Get("register_type")
+				var id int64
+				id, q.Err = strconv.ParseInt(idStr, 10, 64)
+				if forceErr == "idParseInt" {
+					q.Err = fmt.Errorf("将字符串转化为整形失败")
+				}
+				if q.Err != nil {
+					q.Err = fmt.Errorf("报名计划ID解析失败：%v", q.Err.Error())
+					z.Error(q.Err.Error())
+					q.RespErr()
+					return
+				}
+				//设置排序字段
+				orderBy := []string{"eps.create_time desc"}
+				s, total, err := GetRegisterStudentById(ctx, id, message, registerType, status, orderBy, page, pageSize, userID, searchType)
+				if err != nil {
+					q.Err = err
+					q.RespErr()
+					return
+				}
+				result := Map{
+					"student": s,
+					"total":   total,
+				}
+				data, err := json.Marshal(result)
+				if forceErr == "json" {
+					err = fmt.Errorf("将要返回数据结构反序列化失败")
+				}
+				if err != nil {
+					z.Error(err.Error())
+					q.Err = err
+					q.RespErr()
+					return
+				}
+				q.Msg.Data = data
+				z.Info("---->" + cmn.FncName())
+				q.Msg.Msg = "OK"
+				q.Resp()
+				return
+			}
+		}
+	case "patch":
+		{
+			if !update {
+				q.Err = fmt.Errorf("该用户没有更新数据权限")
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+			idStr := q.R.URL.Query().Get("ids")
+			status := q.R.URL.Query().Get("status")
+			registerIDStr := q.R.URL.Query().Get("register_id")
+			failReason := q.R.URL.Query().Get("fail_reason")
+			if registerIDStr == "" {
+				q.Err = fmt.Errorf("缺失报名计划ID")
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+			registerID, err := strconv.ParseInt(registerIDStr, 10, 64)
+			if err != nil {
+				q.Err = fmt.Errorf("报名计划ID转换失败")
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+			if idStr == "" {
+				q.Err = fmt.Errorf("缺失报名计划学生ID")
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+			idArray := strings.Split(idStr, ",")
+			var ids []int64
+			var invalidValues []string
+			for _, s := range idArray {
+				if s == "" {
+					continue
+				}
+				id, err := strconv.ParseInt(s, 10, 64)
+				if err != nil {
+					invalidValues = append(invalidValues, s)
+					continue
+				}
+				ids = append(ids, id)
+			}
+			if len(ids) == 0 {
+				q.Err = fmt.Errorf("报名计划学生ID为空")
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+			if len(invalidValues) > 0 {
+				q.Err = fmt.Errorf("传入的报名计划学生ID中存在非法值：%v", invalidValues)
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+			q.Err = OperateRegisterStudentStatus(ctx, nil, ids, status, userID, registerID, failReason)
+			if q.Err != nil {
+				q.RespErr()
+				return
+			}
+			z.Info("---->" + cmn.FncName())
+			q.Msg.Msg = "ok"
+			q.Msg.Status = 0
+			q.Resp()
+			return
+		}
+	case "post":
+		{
+			if !create {
+				q.Err = fmt.Errorf("该用户没有创建数据权限")
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+			var buf []byte
+			buf, q.Err = io.ReadAll(q.R.Body)
+			if forceErr == "ioReadAll" {
+				q.Err = fmt.Errorf("尝试打开前端数据流失败")
+			}
+			if q.Err != nil {
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+			defer func() {
+				q.Err = q.R.Body.Close()
+				if forceErr == "Close" {
+					q.Err = fmt.Errorf("关闭打开的二进制数据流失败")
+				}
+				if q.Err != nil {
+					z.Error(q.Err.Error())
+					q.RespErr()
+					return
+				}
+			}()
+			if len(buf) == 0 {
+				q.Err = fmt.Errorf("Call /api/register with  empty body")
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+			var qry cmn.ReqProto
+			q.Err = json.Unmarshal(buf, &qry)
+			if forceErr == "readReqProtoJson" {
+				q.Err = fmt.Errorf("读取前端数据结构体失败")
+			}
+			if q.Err != nil {
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+
+			var rs registerStudent
+			q.Err = json.Unmarshal(qry.Data, &rs)
+			if forceErr == "readPJson" {
+				q.Err = fmt.Errorf("读取前端数据Register字段结构体失败")
+			}
+			if q.Err != nil {
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+			if rs.RegisterID <= 0 {
+				q.Err = fmt.Errorf("请传入有效的报名计划ID")
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+			if len(rs.Student) == 0 {
+				q.Err = fmt.Errorf("请传入有效的报名计划学生ID")
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+			q.Err = UpsertRegisterStudent(ctx, rs.RegisterID, rs.Student, userID)
+			if q.Err != nil {
+				q.RespErr()
+				return
+			}
+			z.Info("---->" + cmn.FncName())
+			q.Msg.Msg = "ok"
+			q.Msg.Status = 0
+			q.Resp()
+			return
 		}
 	}
 	z.Info("---->" + cmn.FncName())
@@ -818,42 +782,422 @@ func registerReviewer(ctx context.Context) {
 		q.RespErr()
 		return
 	}
-	var DomainID int64
-	for _, domain := range q.Domains {
-		if domain.ID.Int64 == RegisterDomainID.Student || domain.ID.Int64 == RegisterDomainID.Teacher || domain.ID.Int64 == RegisterDomainID.Admin || domain.ID.Int64 == RegisterDomainID.SuperAdmin {
-			DomainID = domain.ID.Int64
-			break
+	var authority *auth_mgt.Authority
+	authority, q.Err = auth_mgt.GetUserAuthority(ctx)
+	if q.Err != nil {
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+	ctx = context.WithValue(ctx, "authority", authority)
+	read, _, _, _, err := GetAuthAPIAccessible(ctx, authority, "/api/registrationReviewer")
+	if err != nil {
+		q.Err = fmt.Errorf("获取用户的可执行权限失败: %v", err)
+		q.RespErr()
+		return
+	}
+	method := q.R.Method
+	method = strings.ToLower(method)
+	if method != "get" {
+		q.Err = fmt.Errorf("请使用get方法调用/api/registrationReviewer")
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+	if !read {
+		q.Err = fmt.Errorf("该用户没有读数据权限")
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+	idStr := q.R.URL.Query().Get("id")
+	if idStr == "" {
+		q.Err = fmt.Errorf("请传入有效的报名计划ID")
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+	var registerID int64
+	registerID, q.Err = strconv.ParseInt(idStr, 10, 64)
+	if q.Err != nil {
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+	name := q.R.URL.Query().Get("name")
+	pageStr := q.R.URL.Query().Get("page")
+	if pageStr == "" {
+		q.Err = fmt.Errorf("缺失分页查询页号")
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+	var page int
+	page, q.Err = strconv.Atoi(pageStr)
+	if q.Err != nil {
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+	pageSizeStr := q.R.URL.Query().Get("pageSize")
+	if pageSizeStr == "" {
+		q.Err = fmt.Errorf("缺失分页查询页大小")
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+	var pageSize int
+	pageSize, q.Err = strconv.Atoi(pageSizeStr)
+	if q.Err != nil {
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+	orderBy := []string{"u.create_time desc"}
+
+	reviewer, total, err := ListReviewers(ctx, userID, registerID, name, page, pageSize, orderBy)
+	if err != nil {
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+	var result Map
+	result = Map{
+		"total":     total,
+		"reviewers": reviewer,
+	}
+	data, err := json.Marshal(result)
+	if forceErr == "marshal" {
+		q.Err = fmt.Errorf("marshal json失败")
+	}
+	if err != nil {
+		z.Error(err.Error())
+		q.RespErr()
+		return
+	}
+	q.Msg.Data = data
+	q.Msg.Msg = "OK"
+	q.Msg.Status = 0
+	q.Resp()
+	return
+}
+func registerStatus(ctx context.Context) {
+	q := cmn.GetCtxValue(ctx)
+	userID := q.SysUser.ID.Int64
+	if userID <= 0 {
+		q.Err = fmt.Errorf("invalid UserID: %d", userID)
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+	var authority *auth_mgt.Authority
+	authority, q.Err = auth_mgt.GetUserAuthority(ctx)
+	if q.Err != nil {
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+	ctx = context.WithValue(ctx, "authority", authority)
+	_, _, update, _, err := GetAuthAPIAccessible(ctx, authority, "/api/register/Status")
+	if err != nil {
+		q.Err = fmt.Errorf("获取用户的可执行权限失败: %v", err)
+		q.RespErr()
+		return
+	}
+
+	method := q.R.Method
+	method = strings.ToLower(method)
+	switch method {
+	case "patch":
+		{
+			if !update {
+				q.Err = fmt.Errorf("该用户没有更新数据权限")
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+			idStr := q.R.URL.Query().Get("ids")
+			status := q.R.URL.Query().Get("status")
+			if idStr == "" {
+				q.Err = fmt.Errorf("缺失报名计划ID")
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+			idArray := strings.Split(idStr, ",")
+
+			var ids []int64
+			var invalidValues []string
+			for _, s := range idArray {
+				c := strings.TrimSpace(s)
+				if c == "" {
+					continue
+				}
+				id, err := strconv.ParseInt(c, 10, 64)
+				if err != nil {
+					invalidValues = append(invalidValues, s)
+					continue
+				}
+				ids = append(ids, id)
+			}
+			if len(ids) == 0 {
+				q.Err = fmt.Errorf("请传入有效的需要操作的报名计划ID")
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+			if len(invalidValues) > 0 {
+				// 这里就要返回了
+				q.Err = fmt.Errorf("传入的报名计划ID中存在非法值：%v", invalidValues)
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+			//批量操作报名状态
+			q.Err = OperateRegisterStatus(ctx, ids, status, userID)
+			if q.Err != nil {
+				q.RespErr()
+				return
+			}
+			z.Info("---->" + cmn.FncName())
+			q.Msg.Msg = "ok"
+			q.Msg.Status = 0
+			q.Resp()
+			return
 		}
 	}
-	if DomainID != 0 && DomainID < RegisterDomainID.Student {
-		DomainID = RegisterDomainID.Teacher
+
+}
+func registerDetail(ctx context.Context) {
+	q := cmn.GetCtxValue(ctx)
+	forceErr := ""
+	if val := ctx.Value("force-error"); val != nil {
+		forceErr = val.(string)
 	}
-	switch DomainID {
-	case RegisterDomainID.Teacher:
+	userID := q.SysUser.ID.Int64
+	if userID <= 0 {
+		q.Err = fmt.Errorf("invalid UserID: %d", userID)
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+	var authority *auth_mgt.Authority
+	authority, q.Err = auth_mgt.GetUserAuthority(ctx)
+	if q.Err != nil {
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+	read, _, _, _, err := GetAuthAPIAccessible(ctx, authority, "/api/registration/detail")
+	if err != nil {
+		q.Err = fmt.Errorf("获取用户的可执行权限失败: %v", err)
+		q.RespErr()
+		return
+	}
+	method := q.R.Method
+	method = strings.ToLower(method)
+	switch method {
+	case "get":
 		{
-			method := q.R.Method
-			method = strings.ToLower(method)
-			if method != "get" {
-				q.Err = fmt.Errorf("请使用get方法调用/api/registrationReviewer")
+			if !read {
+				q.Err = fmt.Errorf("该用户没有读数据权限")
 				z.Error(q.Err.Error())
 				q.RespErr()
 				return
 			}
 			idStr := q.R.URL.Query().Get("id")
-			if idStr == "" {
-				q.Err = fmt.Errorf("请传入有效的报名计划ID")
+			//查询单个报名计划详情
+			var id int64
+			id, q.Err = strconv.ParseInt(idStr, 10, 64)
+			if q.Err != nil {
+				q.Err = fmt.Errorf("报名计划ID解析失败：%v", q.Err.Error())
 				z.Error(q.Err.Error())
 				q.RespErr()
 				return
 			}
-			var registerID int64
-			registerID, q.Err = strconv.ParseInt(idStr, 10, 64)
-			if q.Err != nil {
+
+			r, practices, reviewers, currentNumber, err := LoadRegisterById(ctx, id)
+			if err != nil {
+				q.Err = err
+				q.RespErr()
+				return
+			}
+			result := Map{
+				"register":       r,
+				"practices":      practices,
+				"reviewers":      reviewers,
+				"current_number": currentNumber,
+			}
+			data, err := json.Marshal(result)
+			if forceErr == "json" {
+				err = fmt.Errorf("将要返回数据结构反序列化失败")
+			}
+			if err != nil {
+				z.Error(err.Error())
+				q.Err = err
+				q.RespErr()
+				return
+			}
+			q.Msg.Data = data
+			z.Info("---->" + cmn.FncName())
+			q.Msg.Msg = "OK"
+			q.Resp()
+			return
+		}
+
+	}
+
+}
+func registerStudentMove(ctx context.Context) {
+	q := cmn.GetCtxValue(ctx)
+	forceErr := ""
+	if val := ctx.Value("force-error"); val != nil {
+		forceErr = val.(string)
+	}
+	userID := q.SysUser.ID.Int64
+	if userID <= 0 {
+		q.Err = fmt.Errorf("invalid UserID: %d", userID)
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+	var authority *auth_mgt.Authority
+	authority, q.Err = auth_mgt.GetUserAuthority(ctx)
+	if q.Err != nil {
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+	ctx = context.WithValue(ctx, "authority", authority)
+	_, create, _, _, err := GetAuthAPIAccessible(ctx, authority, "/api/registerStudent/move")
+	if err != nil {
+		q.Err = fmt.Errorf("获取用户的可执行权限失败: %v", err)
+		q.RespErr()
+		return
+	}
+	method := q.R.Method
+	method = strings.ToLower(method)
+	switch method {
+	case "post":
+		{
+			if !create {
+				q.Err = fmt.Errorf("该用户没有创建数据权限")
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+			var buf []byte
+			buf, q.Err = io.ReadAll(q.R.Body)
+			if q.Err != nil || forceErr == "ioRead" {
+				q.Err = fmt.Errorf("获取前端数据流失败,%v", q.Err)
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+			defer func() {
+				q.Err = q.R.Body.Close()
+				if forceErr == "Close" {
+					q.Err = fmt.Errorf("关闭打开的二进制数据流失败")
+				}
+				if q.Err != nil {
+					z.Error(q.Err.Error())
+					q.RespErr()
+					return
+				}
+			}()
+			if len(buf) == 0 {
+				q.Err = fmt.Errorf("数据流为空")
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+			var qry cmn.ReqProto
+			q.Err = json.Unmarshal(buf, &qry)
+			if q.Err != nil || forceErr == "Unmarshal" {
+				q.Err = fmt.Errorf("读取前端数据结构体失败")
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+			//当Action为“move的时候为迁移操作”
+			if qry.Action == "move" {
+				var ms moveStudent
+				q.Err = json.Unmarshal(qry.Data, &ms)
+				if forceErr == "readMoveStudentJson" {
+					q.Err = fmt.Errorf("读取前端数据MoveStudent字段结构体失败")
+				}
+				if q.Err != nil {
+					z.Error(q.Err.Error())
+					q.RespErr()
+					return
+				}
+				if ms.ToRegisterID <= 0 || ms.FromRegisterID <= 0 {
+					q.Err = fmt.Errorf("请传入有效的迁移的报名计划ID")
+					z.Error(q.Err.Error())
+					q.RespErr()
+					return
+				}
+				if len(ms.Student) == 0 {
+					q.Err = fmt.Errorf("请传入有效的迁移的报名计划学生ID")
+					z.Error(q.Err.Error())
+					q.RespErr()
+					return
+				}
+				q.Err = MoveStudent(ctx, ms.FromRegisterID, ms.ToRegisterID, ms.Student, ms.Status, userID)
+				if q.Err != nil {
+					q.RespErr()
+					return
+				}
+				z.Info("---->" + cmn.FncName())
+				q.Msg.Msg = "ok"
+				q.Msg.Status = 0
+				q.Resp()
+				return
+
+			}
+		}
+	}
+}
+
+func registerStudentL(ctx context.Context) {
+	q := cmn.GetCtxValue(ctx)
+	forceErr := ""
+	if val := ctx.Value("force-error"); val != nil {
+		forceErr = val.(string)
+	}
+	userID := q.SysUser.ID.Int64
+	if userID <= 0 {
+		q.Err = fmt.Errorf("invalid UserID: %d", userID)
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+	var authority *auth_mgt.Authority
+	authority, q.Err = auth_mgt.GetUserAuthority(ctx)
+	if q.Err != nil {
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+	read, create, _, _, err := GetAuthAPIAccessible(ctx, authority, "/api/register/student")
+	if err != nil {
+		q.Err = fmt.Errorf("获取用户的可执行权限失败: %v", err)
+		q.RespErr()
+		return
+	}
+	method := strings.ToLower(q.R.Method)
+	switch method {
+	case "get":
+		{
+			if !read {
+				q.Err = fmt.Errorf("该用户没有读数据权限")
 				z.Error(q.Err.Error())
 				q.RespErr()
 				return
 			}
 			name := q.R.URL.Query().Get("name")
+			course := q.R.URL.Query().Get("course")
+			status := q.R.URL.Query().Get("status")
 			pageStr := q.R.URL.Query().Get("page")
 			if pageStr == "" {
 				q.Err = fmt.Errorf("缺失分页查询页号")
@@ -863,7 +1207,11 @@ func registerReviewer(ctx context.Context) {
 			}
 			var page int
 			page, q.Err = strconv.Atoi(pageStr)
+			if forceErr == "pageParseInt" {
+				q.Err = fmt.Errorf("将字符串转化为整形失败")
+			}
 			if q.Err != nil {
+				q.Err = fmt.Errorf("分页查询的页号解析失败：%v", q.Err.Error())
 				z.Error(q.Err.Error())
 				q.RespErr()
 				return
@@ -877,43 +1225,127 @@ func registerReviewer(ctx context.Context) {
 			}
 			var pageSize int
 			pageSize, q.Err = strconv.Atoi(pageSizeStr)
+			if forceErr == "pageSizeParseInt" {
+				q.Err = fmt.Errorf("将字符串转化为整形失败")
+			}
+			if q.Err != nil {
+				q.Err = fmt.Errorf("分页页大小解析失败：%v", q.Err.Error())
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+			//排序字段
+			orderBy := []string{"r.create_time desc"}
+			r, total, err := ListRegisterS(ctx, name, course, status, orderBy, page, pageSize, userID)
+			if err != nil {
+				q.Err = err
+				q.RespErr()
+				return
+			}
+			result := Map{
+				"total":     total,
+				"registers": r,
+			}
+			data, err := json.Marshal(result)
+			if forceErr == "json" {
+				err = fmt.Errorf("将要返回数据结构反序列化失败")
+			}
+			if err != nil {
+				z.Error(err.Error())
+				q.Err = err
+				q.RespErr()
+				return
+			}
+			q.Msg.Data = data
+			z.Info("---->" + cmn.FncName())
+			q.Msg.Msg = "OK"
+			q.Resp()
+		}
+	case "post":
+		{
+			if !create {
+				q.Err = fmt.Errorf("该用户没有创建数据权限")
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+			var buf []byte
+			buf, q.Err = io.ReadAll(q.R.Body)
+			if forceErr == "ioReadAll" {
+				q.Err = fmt.Errorf("尝试打开前端数据流失败")
+			}
 			if q.Err != nil {
 				z.Error(q.Err.Error())
 				q.RespErr()
 				return
 			}
-			orderBy := []string{"u.create_time desc"}
-
-			reviewer, total, err := ListReviewers(ctx, userID, registerID, name, page, pageSize, orderBy)
-			if err != nil {
+			defer func() {
+				q.Err = q.R.Body.Close()
+				if forceErr == "Close" {
+					q.Err = fmt.Errorf("关闭打开的二进制数据流失败")
+				}
+				if q.Err != nil {
+					z.Error(q.Err.Error())
+				}
+			}()
+			if len(buf) == 0 {
+				q.Err = fmt.Errorf("Call /api/registration with  empty body")
 				z.Error(q.Err.Error())
 				q.RespErr()
 				return
 			}
-			var result Map
-			result = Map{
-				"total":     total,
-				"reviewers": reviewer,
+			//获取请求的结构体
+			var qry cmn.ReqProto
+			q.Err = json.Unmarshal(buf, &qry)
+			if forceErr == "readReqProtoJson" {
+				q.Err = fmt.Errorf("读取前端数据结构体失败")
 			}
-			data, err := json.Marshal(result)
-			if forceErr == "marshal" {
-				q.Err = fmt.Errorf("marshal json失败")
-			}
-			if err != nil {
-				z.Error(err.Error())
+			if q.Err != nil {
+				z.Error(q.Err.Error())
 				q.RespErr()
 				return
 			}
-			q.Msg.Data = data
+
+			var rs registerStudentOnce
+			q.Err = json.Unmarshal(qry.Data, &rs)
+			if forceErr == "readPJson" {
+				q.Err = fmt.Errorf("读取前端数据practice字段结构体失败")
+			}
+			if q.Err != nil {
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+			if rs.RegisterID <= 0 {
+				q.Err = fmt.Errorf("无效的报名计划ID")
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+			if rs.Status == "" {
+				q.Err = fmt.Errorf("无效的报名计划状态")
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+
+			var student registerStudentType
+			var students []registerStudentType
+			student.StudentID = userID
+			student.ExamType = ExamType.Normal
+			students = append(students, student)
+			err := StudentRegister(ctx, rs.RegisterID, rs.Status, RegisterType.Once, students, userID)
+			if err != nil {
+				q.Err = err
+				q.RespErr()
+				return
+			}
+			z.Info("---->" + cmn.FncName())
 			q.Msg.Msg = "OK"
-			q.Msg.Status = 0
 			q.Resp()
 			return
-
 		}
-
 	}
-
 }
 
 // 创建定时器管理器
@@ -1043,7 +1475,7 @@ func (tm *RegistrationTimerManager) CancelTimer(eventType string, registerID int
 func SetRegisterTimers(ctx context.Context, registerID int64) error {
 	z.Info("---->" + cmn.FncName())
 	forceErr := ""
-	if val := ctx.Value("SetRegisterTimers-force-error"); val != nil {
+	if val := ctx.Value("force-error"); val != nil {
 		forceErr = val.(string)
 	}
 	//查询报名计划信息
@@ -1057,11 +1489,7 @@ func SetRegisterTimers(ctx context.Context, registerID int64) error {
 	WHERE r.id = $1 AND r.status NOT IN ($2,$3,$4)
 `
 	rows, err := pgxConn.Query(ctx, s, registerID, RegisterStatus.Cancel, RegisterStatus.Deleted, RegisterStatus.Disabled)
-	defer func() {
-		if rows != nil {
-			rows.Close()
-		}
-	}()
+	defer rows.Close()
 	if forceErr == "queryRegisterPlan" {
 		err = fmt.Errorf("查询报名计划信息错误")
 	}
@@ -1071,7 +1499,6 @@ func SetRegisterTimers(ctx context.Context, registerID int64) error {
 			zap.Error(err))
 		return err
 	}
-
 	var registerPlanInfo []struct {
 		RegisterID    int64 `json:"register_id"`
 		StartTime     int64 `json:"start_time"`
@@ -1080,7 +1507,7 @@ func SetRegisterTimers(ctx context.Context, registerID int64) error {
 	}
 	for rows.Next() {
 		var registerId, startTime, endTime, reviewEndTime int64
-		err := rows.Scan(&registerId, &startTime, &endTime, &reviewEndTime)
+		err = rows.Scan(&registerId, &startTime, &endTime, &reviewEndTime)
 		if forceErr == "scanRegisterPlanInfo" {
 			err = fmt.Errorf("获取报名计划信息错误")
 		}
@@ -1123,18 +1550,16 @@ func SetRegisterTimers(ctx context.Context, registerID int64) error {
 // 取消报名计划的所有的计时器
 func CancelRegisterTimers(ctx context.Context, registerID int64) error {
 	forceErr := ""
-	if val := ctx.Value("CancelRegisterTimers-force-error"); val != nil {
+	if val := ctx.Value("force-error"); val != nil {
 		forceErr = val.(string)
 	}
-	s := `SELECT id FROM assessuser.t_register_plan WHERE id = $1 AND status NOT IN ($1 ,$2 ,$3 )`
+	s := `SELECT id FROM assessuser.t_register_plan WHERE id = $1 AND status NOT IN ($2 ,$3 ,$4 )`
 
 	//查询报名计划信息
 	rows, err := pgxConn.Query(ctx, s, registerID, RegisterStatus.Cancel, RegisterStatus.Deleted, RegisterStatus.Disabled)
-	if forceErr == "queryRegisterPlan" {
-		err = fmt.Errorf("查询报名计划信息错误")
-	}
 	defer rows.Close()
-	if err != nil {
+	if err != nil || forceErr == "queryRegisterPlan" {
+		err = fmt.Errorf("查询报名计划信息错误")
 		z.Error("查询报名计划信息失败",
 			zap.Int64("register_id", registerID),
 			zap.Error(err))
@@ -1451,5 +1876,4 @@ func RegisterMaintainService() {
 		cancel()
 		return
 	}
-
 }
