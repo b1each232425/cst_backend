@@ -309,7 +309,7 @@ func (h *handler) HandleDomain(ctx context.Context) {
 		// 解析筛选条件
 		domain := q.R.URL.Query().Get("domain")
 		parentDomain := q.R.URL.Query().Get("parentDomain")
-		target := q.R.URL.Query().Get("target")
+		targetType := q.R.URL.Query().Get("targetType")
 		status := q.R.URL.Query().Get("status")
 		fuzzyCondition := q.R.URL.Query().Get("fuzzyCondition")
 		childLevel := q.R.URL.Query().Get("childLevel")
@@ -385,15 +385,15 @@ func (h *handler) HandleDomain(ctx context.Context) {
 			argIndex++
 		}
 
-		if target != "" {
+		if targetType != "" {
 			// 00只筛选domain字段不含^的数据，02只筛选domain字段含^的数据
-			switch target {
+			switch targetType {
 			case "00":
 				conditions = append(conditions, "domain NOT LIKE '%^%'")
 			case "02":
 				conditions = append(conditions, "domain LIKE '%^%'")
 			default:
-				q.Err = fmt.Errorf("筛选目标的格式不正确: %s", target)
+				q.Err = fmt.Errorf("筛选目标的格式不正确: %s", targetType)
 				z.Error(q.Err.Error())
 				q.RespErr()
 				return
