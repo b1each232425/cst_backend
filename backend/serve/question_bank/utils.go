@@ -372,6 +372,142 @@ func validateEssayQuestion(question *cmn.TQuestion) (bool, error) {
 	return true, nil
 }
 
+// 验证综合应用题
+func validateComprehensiveQuestion(question *cmn.TQuestion) (bool, error) {
+	var answers []SubjectiveAnswer
+	err := json.Unmarshal(question.Answers, &answers)
+	if err != nil {
+		err = fmt.Errorf("comprehensive question answers format invalid: %v", err)
+		z.Error(err.Error())
+		return false, err
+	}
+
+	if len(answers) == 0 {
+		err = fmt.Errorf("comprehensive question must have at least one answer")
+		z.Error(err.Error())
+		return false, err
+	}
+
+	// 验证每个小问的答案
+	indexSet := make(map[int]bool)
+	totalScore := 0.0
+	for _, answer := range answers {
+		if answer.Index < 1 {
+			err = fmt.Errorf("comprehensive question answer index must be greater than 0, got: %d", answer.Index)
+			z.Error(err.Error())
+			return false, err
+		}
+		if answer.Index > len(answers) {
+			err = fmt.Errorf("comprehensive question answer index (%d) exceeds answer count (%d)", answer.Index, len(answers))
+			z.Error(err.Error())
+			return false, err
+		}
+		if indexSet[answer.Index] {
+			err = fmt.Errorf("comprehensive question has duplicate answer index: %d", answer.Index)
+			z.Error(err.Error())
+			return false, err
+		}
+		indexSet[answer.Index] = true
+
+		if answer.Score <= 0 {
+			err = fmt.Errorf("comprehensive question answer score must be greater than 0, got: %f", answer.Score)
+			z.Error(err.Error())
+			return false, err
+		}
+
+		if strings.TrimSpace(answer.Answer) == "" {
+			err = fmt.Errorf("comprehensive question must have answer template for index %d", answer.Index)
+			z.Error(err.Error())
+			return false, err
+		}
+
+		if strings.TrimSpace(answer.GradingRule) == "" {
+			err = fmt.Errorf("comprehensive question must have grading rule for index %d", answer.Index)
+			z.Error(err.Error())
+			return false, err
+		}
+
+		totalScore += answer.Score
+	}
+
+	// 验证总分数是否匹配
+	if totalScore != question.Score.Float64 {
+		err = fmt.Errorf("comprehensive question total answer score (%f) must match question score (%f)", totalScore, question.Score.Float64)
+		z.Error(err.Error())
+		return false, err
+	}
+
+	return true, nil
+}
+
+// 验证综合演练题
+func validateExerciseQuestion(question *cmn.TQuestion) (bool, error) {
+	var answers []SubjectiveAnswer
+	err := json.Unmarshal(question.Answers, &answers)
+	if err != nil {
+		err = fmt.Errorf("exercise question answers format invalid: %v", err)
+		z.Error(err.Error())
+		return false, err
+	}
+
+	if len(answers) == 0 {
+		err = fmt.Errorf("exercise question must have at least one answer")
+		z.Error(err.Error())
+		return false, err
+	}
+
+	// 验证每个小问的答案
+	indexSet := make(map[int]bool)
+	totalScore := 0.0
+	for _, answer := range answers {
+		if answer.Index < 1 {
+			err = fmt.Errorf("exercise question answer index must be greater than 0, got: %d", answer.Index)
+			z.Error(err.Error())
+			return false, err
+		}
+		if answer.Index > len(answers) {
+			err = fmt.Errorf("exercise question answer index (%d) exceeds answer count (%d)", answer.Index, len(answers))
+			z.Error(err.Error())
+			return false, err
+		}
+		if indexSet[answer.Index] {
+			err = fmt.Errorf("exercise question has duplicate answer index: %d", answer.Index)
+			z.Error(err.Error())
+			return false, err
+		}
+		indexSet[answer.Index] = true
+
+		if answer.Score <= 0 {
+			err = fmt.Errorf("exercise question answer score must be greater than 0, got: %f", answer.Score)
+			z.Error(err.Error())
+			return false, err
+		}
+
+		if strings.TrimSpace(answer.Answer) == "" {
+			err = fmt.Errorf("exercise question must have answer template for index %d", answer.Index)
+			z.Error(err.Error())
+			return false, err
+		}
+
+		if strings.TrimSpace(answer.GradingRule) == "" {
+			err = fmt.Errorf("exercise question must have grading rule for index %d", answer.Index)
+			z.Error(err.Error())
+			return false, err
+		}
+
+		totalScore += answer.Score
+	}
+
+	// 验证总分数是否匹配
+	if totalScore != question.Score.Float64 {
+		err = fmt.Errorf("exercise question total answer score (%f) must match question score (%f)", totalScore, question.Score.Float64)
+		z.Error(err.Error())
+		return false, err
+	}
+
+	return true, nil
+}
+
 // countFillInBlanks 计算HTML内容中填空项的数量
 // 通过匹配带有特定class的span标签来识别填空项
 func countFillInBlanks(content string) int {
