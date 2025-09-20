@@ -1336,6 +1336,7 @@ func invigilationFile(ctx context.Context) {
 		if !canUpdate {
 			q.Err = fmt.Errorf("当前无法更新该考试场次的监考信息")
 			z.Error(q.Err.Error())
+			q.RespErr()
 			return
 		}
 

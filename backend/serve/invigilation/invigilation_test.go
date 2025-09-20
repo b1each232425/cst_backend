@@ -182,7 +182,7 @@ func createMockContextWithRole(method, path string, queryParams url.Values, forc
 		R: req,
 		W: w,
 		Msg: &cmn.ReplyProto{
-			API:    path,
+			API:    "/api" + path,
 			Method: method,
 		},
 		BeginTime: time.Now(),
@@ -193,7 +193,7 @@ func createMockContextWithRole(method, path string, queryParams url.Values, forc
 		},
 		Domains:     domains,
 		RedisClient: cmn.GetRedisConn(),
-		Ep:          &cmn.ServeEndPoint{Path: path},
+		Ep:          &cmn.ServeEndPoint{Path: "/api" + path},
 	}
 
 	ctx := context.WithValue(context.Background(), cmn.QNearKey, serviceCtx)
@@ -261,7 +261,7 @@ func createMockContextWithBody(method, path string, data string, forceError stri
 		R: req,
 		W: w,
 		Msg: &cmn.ReplyProto{
-			API:    path,
+			API:    "/api" + path,
 			Method: method,
 		},
 		BeginTime: time.Now(),
@@ -272,7 +272,7 @@ func createMockContextWithBody(method, path string, data string, forceError stri
 		},
 		Domains:     domains,
 		RedisClient: cmn.GetRedisConn(),
-		Ep:          &cmn.ServeEndPoint{Path: path},
+		Ep:          &cmn.ServeEndPoint{Path: "/api" + path},
 	}
 
 	ctx := context.WithValue(context.Background(), cmn.QNearKey, serviceCtx)
