@@ -51,3 +51,11 @@ type QuestionBankDetail struct {
 	QuestionTags         []string `json:"question_tags"`         // 题目涉及所有标签(去重)
 	QuestionDifficulties []int64  `json:"question_difficulties"` // 题目涉及所有难度(去重),0-简单,1-一般,2-困难
 }
+
+// QuestionFile 题目附件结构体
+type QuestionFile struct {
+	QuestionID int64  `json:"question_id" validate:"required"` // 题目ID
+	CheckSum   string `json:"checksum" validate:"required"`    // 文件摘要
+	Name       string `json:"name" validate:"required"`        // 文件名
+	Size       int64  `json:"size" validate:"required"`        // 文件大小
+}
