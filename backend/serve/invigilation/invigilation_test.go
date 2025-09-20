@@ -193,6 +193,7 @@ func createMockContextWithRole(method, path string, queryParams url.Values, forc
 		},
 		Domains:     domains,
 		RedisClient: cmn.GetRedisConn(),
+		Ep:          &cmn.ServeEndPoint{Path: path},
 	}
 
 	ctx := context.WithValue(context.Background(), cmn.QNearKey, serviceCtx)
@@ -271,6 +272,7 @@ func createMockContextWithBody(method, path string, data string, forceError stri
 		},
 		Domains:     domains,
 		RedisClient: cmn.GetRedisConn(),
+		Ep:          &cmn.ServeEndPoint{Path: path},
 	}
 
 	ctx := context.WithValue(context.Background(), cmn.QNearKey, serviceCtx)

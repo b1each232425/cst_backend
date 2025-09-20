@@ -15,6 +15,7 @@ import (
 	"go.uber.org/zap"
 	"w2w.io/cmn"
 	"w2w.io/null"
+	"w2w.io/serve/auth_mgt"
 )
 
 //annotation:invigilation-service
@@ -91,6 +92,14 @@ func Enroll(author string) {
 		Developer: developer,
 		WhiteList: true,
 
+		ApiEntries: []*cmn.EndPointApiEntries{
+			{
+				Name:         "监考管理.获取监考列表",
+				AccessAction: auth_mgt.CAPIAccessActionRead,
+				Configurable: true,
+			},
+		},
+
 		DomainID: int64(cmn.CDomainSys),
 
 		DefaultDomain: int64(cmn.CDomainSys),
@@ -101,6 +110,33 @@ func Enroll(author string) {
 
 		Path: "/invigilation",
 		Name: "invigilation",
+
+		Developer: developer,
+		WhiteList: true,
+
+		ApiEntries: []*cmn.EndPointApiEntries{
+			{
+				Name:         "监考管理.获取监考详情",
+				AccessAction: auth_mgt.CAPIAccessActionRead,
+				Configurable: true,
+			},
+			{
+				Name:         "监考管理.更新监考信息",
+				AccessAction: auth_mgt.CAPIAccessActionUpdate,
+				Configurable: true,
+			},
+		},
+
+		DomainID: int64(cmn.CDomainSys),
+
+		DefaultDomain: int64(cmn.CDomainSys),
+	})
+
+	_ = cmn.AddService(&cmn.ServeEndPoint{
+		Fn: invigilationFile,
+
+		Path: "/invigilation/file",
+		Name: "invigilationFile",
 
 		Developer: developer,
 		WhiteList: true,
@@ -245,10 +281,24 @@ func invigilationList(ctx context.Context) {
 		return
 	}
 
+	var readable bool
+	readable, q.Err = auth_mgt.CheckUserAPIAccessible(ctx, nil, q.Ep.Path, auth_mgt.CAPIAccessActionRead)
+	if q.Err != nil {
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+
 	conn := cmn.GetPgxConn()
 	method := strings.ToLower(q.R.Method)
 	switch method {
 	case "get":
+		if !readable {
+			q.Err = fmt.Errorf("用户无权访问监考列表，请联系管理员获取权限")
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
 		qry := q.R.URL.Query().Get("q")
 		if qry == "" {
 			qry = `{
@@ -462,10 +512,33 @@ func invigilation(ctx context.Context) {
 		return
 	}
 
+	var readable bool
+	readable, q.Err = auth_mgt.CheckUserAPIAccessible(ctx, nil, q.Ep.Path, auth_mgt.CAPIAccessActionRead)
+	if q.Err != nil {
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+
+	var editable bool
+	editable, q.Err = auth_mgt.CheckUserAPIAccessible(ctx, nil, q.Ep.Path, auth_mgt.CAPIAccessActionUpdate)
+	if q.Err != nil {
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+
 	conn := cmn.GetPgxConn()
 	method := strings.ToLower(q.R.Method)
 	switch method {
 	case "get":
+		if !readable {
+			q.Err = fmt.Errorf("用户无权访问监考详情，请联系管理员获取权限，请联系管理员获取权限")
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
 		// 获取考试详情
 		qry := q.R.URL.Query().Get("q")
 		if qry == "" {
@@ -727,6 +800,12 @@ func invigilation(ctx context.Context) {
 		}
 
 	case "patch":
+		if !editable {
+			q.Err = fmt.Errorf("用户无权更新监考信息")
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
 		qry := q.R.URL.Query().Get("q")
 		if qry == "" {
 			q.Err = fmt.Errorf("参数 q 不能为空")
@@ -834,6 +913,7 @@ func invigilation(ctx context.Context) {
 		if !canUpdate {
 			q.Err = fmt.Errorf("当前无法更新该考试场次的监考信息")
 			z.Error(q.Err.Error())
+			q.RespErr()
 			return
 		}
 
