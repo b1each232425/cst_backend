@@ -1607,7 +1607,6 @@ func EnterPracticeWrongCollection(ctx context.Context, tx pgx.Tx, pid, uid int64
 		z.Error(err.Error())
 		return nil, nil, nil, err
 	}
-
 	s = `SELECT latest_unsubmitted_id,latest_submitted_id,max_attempt
 	 FROM assessuser.v_w_practice_summary 
 	 WHERE practice_id = $1 AND student_id = $2`
