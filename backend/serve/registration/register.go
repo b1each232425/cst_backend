@@ -594,6 +594,7 @@ func registerStudentH(ctx context.Context) {
 					q.RespErr()
 					return
 				}
+
 				result := Map{
 					"student": s,
 					"total":   total,
