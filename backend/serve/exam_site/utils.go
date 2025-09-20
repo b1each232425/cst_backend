@@ -408,7 +408,9 @@ GROUP BY
 FROM t_exam_info
 	CROSS JOIN LATERAL jsonb_array_elements(t_exam_info.files) AS file
 	JOIN t_file ON t_file.id = file.value::int
-WHERE t_exam_info.id = %d`, recentExamID),
+WHERE t_exam_info.id = %d
+GROUP BY
+	t_file.id`, recentExamID),
 				Table: "t_file",
 			},
 
