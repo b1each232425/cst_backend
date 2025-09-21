@@ -1030,6 +1030,7 @@ func Push(ctx context.Context, retryCount int) {
 			fileList = append(fileList, digest+".info")
 		}
 
+		
 	}
 
 	fileListPath := filepath.Join(source, "file_list.txt")
@@ -1049,7 +1050,7 @@ func Push(ctx context.Context, retryCount int) {
 		sInfo.UploadFilesPath,
 	)
 
-	cmd = fmt.Sprintf(`rsync -avz --mkpath -e "ssh -p %d" --files-from=%s %s %s`,
+	cmd = fmt.Sprintf(`rsync -avz --mkpath -e "ssh -p %d" --files-from=%s %s %s`, 
 		sshPort,
 		fileListPath,
 		uploadDir,
@@ -1181,6 +1182,8 @@ func SendPushMsg() {
 
 	pushChan <- 1
 }
+
+
 
 /* 考点基础业务 */
 // oooooooooo.
@@ -2029,8 +2032,8 @@ MethodSwitch:
 			ExamID        null.Int    `json:"examID"`
 			ExamName      null.String `json:"examName"`
 			ExamSessionID null.Int    `json:"examSessionID"`
-			StartTime     null.Int    `json:"startTime"`
-			EndTime       null.Int    `json:"endTime"`
+			StartTime     null.Int `json:"startTime"`
+			EndTime       null.Int `json:"endTime"`
 			Status        null.String `json:"status"`
 			ExamPaperName null.String `json:"examPaperName"`
 			ExamineeNum   null.Int    `json:"examineeNum"`

@@ -2,7 +2,6 @@ package exam_site
 
 import (
 	"context"
-	"crypto/rand"
 	"database/sql"
 	"encoding/csv"
 	"errors"
@@ -12,9 +11,11 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"crypto/rand"
 
-	"w2w.io/cmn"
+
 	"w2w.io/serve/auth_mgt"
+	"w2w.io/cmn"
 )
 
 const (
@@ -252,6 +253,7 @@ GROUP BY
 	t_file.id`, sysUser),
 			Table: "t_file",
 		},
+
 	}
 
 	// 中心服务器数据导出
@@ -520,6 +522,8 @@ FROM t_exam_record
 WHERE t_exam_site.sys_user = %d`, recentExamID, sysUser),
 				Table: "t_exam_record",
 			},
+
+			
 		}
 	}
 
@@ -670,37 +674,37 @@ DROP TABLE IF EXISTS temp_%s;
 
 // ReadColumnFromCSV 从CSV文件中读取指定列的数据
 func ReadColumnFromCSV(filePath string, columnName string) ([]string, error) {
-	f, err := os.Open(filePath)
-	if err != nil {
-		return nil, err
-	}
-	defer f.Close()
+    f, err := os.Open(filePath)
+    if err != nil {
+        return nil, err
+    }
+    defer f.Close()
 
-	reader := csv.NewReader(f)
-	header, err := reader.Read()
-	if err != nil {
-		return nil, err
-	}
+    reader := csv.NewReader(f)
+    header, err := reader.Read()
+    if err != nil {
+        return nil, err
+    }
 
-	// 找到目标列索引
-	colIdx := -1
-	for i, name := range header {
-		if name == columnName {
-			colIdx = i
-			break
-		}
-	}
-	if colIdx == -1 {
-		return nil, fmt.Errorf("列名不存在: %s", columnName)
-	}
+    // 找到目标列索引
+    colIdx := -1
+    for i, name := range header {
+        if name == columnName {
+            colIdx = i
+            break
+        }
+    }
+    if colIdx == -1 {
+        return nil, fmt.Errorf("列名不存在: %s", columnName)
+    }
 
-	var result []string
-	for {
-		record, err := reader.Read()
-		if err != nil {
-			break // EOF
-		}
-		result = append(result, record[colIdx])
-	}
-	return result, nil
+    var result []string
+    for {
+        record, err := reader.Read()
+        if err != nil {
+            break // EOF
+        }
+        result = append(result, record[colIdx])
+    }
+    return result, nil
 }
