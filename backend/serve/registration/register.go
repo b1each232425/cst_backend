@@ -193,7 +193,6 @@ func Enroll(author string) {
 		//DefaultDomain 该API将默认授权给的用户
 		DefaultDomain: int64(cmn.CDomainSys),
 	})
-
 	_ = cmn.AddService(&cmn.ServeEndPoint{
 		Fn: registerDetail,
 
