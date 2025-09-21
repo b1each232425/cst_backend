@@ -957,8 +957,8 @@ func studentPractice(ctx context.Context) {
 		return
 	}
 	forceErr := ""
-	if val := ctx.Value("force-error").(string); val != "" {
-		forceErr = val
+	if val := ctx.Value("force-error"); val != nil {
+		forceErr = val.(string)
 	}
 	authority, err := auth_mgt.GetUserAuthority(ctx)
 	if err != nil {

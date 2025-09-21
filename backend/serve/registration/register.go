@@ -169,7 +169,7 @@ func Enroll(author string) {
 	})
 	_ = cmn.AddService(&cmn.ServeEndPoint{
 		Fn:   registerStudentL,
-		Path: "/register/student",
+		Path: "/registration/student",
 		Name: "registrationStudentL",
 
 		ApiEntries: []*cmn.EndPointApiEntries{
