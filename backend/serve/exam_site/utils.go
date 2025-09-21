@@ -2,6 +2,7 @@ package exam_site
 
 import (
 	"context"
+	"crypto/rand"
 	"database/sql"
 	"encoding/csv"
 	"errors"
@@ -11,11 +12,9 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
-	"crypto/rand"
 
-
-	"w2w.io/serve/auth_mgt"
 	"w2w.io/cmn"
+	"w2w.io/serve/auth_mgt"
 )
 
 const (
@@ -212,8 +211,8 @@ func generateExportScript(sysUser int64, destDir string, fileName string, isSubS
 		{
 			Sql: fmt.Sprintf(`SELECT t_examinee.*
 FROM t_examinee
-JOIN t_exam_room ON t_exam_room.id = t_examinee.exam_room
-JOIN t_exam_site ON t_exam_site.id = t_exam_room.exam_site
+	JOIN t_exam_room ON t_exam_room.id = t_examinee.exam_room
+	JOIN t_exam_site ON t_exam_site.id = t_exam_room.exam_site
 WHERE t_exam_site.sys_user = %d`, sysUser),
 			Table: "t_examinee",
 		},
@@ -222,9 +221,9 @@ WHERE t_exam_site.sys_user = %d`, sysUser),
 		{
 			Sql: fmt.Sprintf(`SELECT t_student_answers.*
 FROM t_student_answers
-JOIN t_examinee ON t_examinee.id = t_student_answers.examinee_id
-JOIN t_exam_room ON t_exam_room.id = t_examinee.exam_room
-JOIN t_exam_site ON t_exam_site.id = t_exam_room.exam_site
+	JOIN t_examinee ON t_examinee.id = t_student_answers.examinee_id
+	JOIN t_exam_room ON t_exam_room.id = t_examinee.exam_room
+	JOIN t_exam_site ON t_exam_site.id = t_exam_room.exam_site
 WHERE t_exam_site.sys_user = %d`, sysUser),
 			Table: "t_student_answers",
 		},
@@ -234,12 +233,25 @@ WHERE t_exam_site.sys_user = %d`, sysUser),
 		{
 			Sql: fmt.Sprintf(`SELECT t_exam_record.*
 FROM t_exam_record
-JOIN t_exam_room ON t_exam_room.id = t_exam_record.exam_room
-JOIN t_exam_site ON t_exam_site.id = t_exam_room.exam_site
+	JOIN t_exam_room ON t_exam_room.id = t_exam_record.exam_room
+	JOIN t_exam_site ON t_exam_site.id = t_exam_room.exam_site
 WHERE t_exam_site.sys_user = %d`, sysUser),
 			Table: "t_exam_record",
 		},
 
+		// 考场附件
+		{
+			Sql: fmt.Sprintf(`SELECT t_file.* 
+FROM t_exam_record
+	JOIN t_exam_room ON t_exam_room.id = t_exam_record.exam_room
+	JOIN t_exam_site ON t_exam_site.id = t_exam_room.exam_site
+  	CROSS JOIN LATERAL jsonb_array_elements(t_exam_record.files) AS file
+	JOIN t_file ON t_file.id = file.value::int
+WHERE jsonb_typeof(files) = 'array' AND t_exam_site.sys_user = %d
+GROUP BY
+	t_file.id`, sysUser),
+			Table: "t_file",
+		},
 	}
 
 	// 中心服务器数据导出
@@ -394,7 +406,9 @@ GROUP BY
 FROM t_exam_info
 	CROSS JOIN LATERAL jsonb_array_elements(t_exam_info.files) AS file
 	JOIN t_file ON t_file.id = file.value::int
-WHERE t_exam_info.id = %d`, recentExamID),
+WHERE t_exam_info.id = %d
+GROUP BY
+	t_file.id`, recentExamID),
 				Table: "t_file",
 			},
 
@@ -506,8 +520,6 @@ FROM t_exam_record
 WHERE t_exam_site.sys_user = %d`, recentExamID, sysUser),
 				Table: "t_exam_record",
 			},
-
-			
 		}
 	}
 
@@ -654,4 +666,41 @@ DROP TABLE IF EXISTS temp_%s;
 	}
 
 	return
+}
+
+// ReadColumnFromCSV 从CSV文件中读取指定列的数据
+func ReadColumnFromCSV(filePath string, columnName string) ([]string, error) {
+	f, err := os.Open(filePath)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+
+	reader := csv.NewReader(f)
+	header, err := reader.Read()
+	if err != nil {
+		return nil, err
+	}
+
+	// 找到目标列索引
+	colIdx := -1
+	for i, name := range header {
+		if name == columnName {
+			colIdx = i
+			break
+		}
+	}
+	if colIdx == -1 {
+		return nil, fmt.Errorf("列名不存在: %s", columnName)
+	}
+
+	var result []string
+	for {
+		record, err := reader.Read()
+		if err != nil {
+			break // EOF
+		}
+		result = append(result, record[colIdx])
+	}
+	return result, nil
 }
