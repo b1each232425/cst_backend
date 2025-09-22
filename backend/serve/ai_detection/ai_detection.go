@@ -11,6 +11,7 @@ import (
 	"github.com/spf13/viper"
 	"github.com/valyala/fasthttp"
 	"go.uber.org/zap"
+	"golang.org/x/text/language"
 	"golang.org/x/time/rate"
 	"w2w.io/cmn"
 	"w2w.io/serve/auth_mgt"
@@ -24,6 +25,17 @@ var (
 	AIModelInstance *AIModel
 )
 
+type HTTPClient interface {
+	DoTimeout(req *fasthttp.Request, resp *fasthttp.Response, timeout time.Duration) error
+}
+
+type Mission struct {
+	MissionType string `json:"mission_type"` // 00:检测  02:翻译
+	SourceLang  string `json:"source_lang"`  // 源语言
+	TargetLang  string `json:"target_lang"`  // 目标语言
+	Question    string `json:"question"`     // 题目内容
+}
+
 type ResponseFormat struct {
 	Type string `json:"type"`
 }
@@ -32,13 +44,12 @@ type AIModel struct {
 	Model             string
 	Endpoint          string
 	ApiKey            string
-	DetectionPrompt   string
-	ReviewPrompt      string
 	Limiter           *rate.Limiter
 	TokenizerEndPoint string
 	MaxTokens         int            `json:"max_tokens"`
 	ResponseFormat    ResponseFormat `json:"response_format"`
 	TimeOut           time.Duration
+	Client            HTTPClient
 }
 
 type Message struct {
@@ -116,7 +127,7 @@ func Enroll(author string) {
 	})
 }
 
-func NewAIModel(model string, endpoint string, apiKey string, detectionPrompt string, tokenizerEndPoint string, maxConcurrency int, timeout time.Duration) *AIModel {
+func NewAIModel(model string, endpoint string, apiKey string, tokenizerEndPoint string, maxConcurrency int, timeout time.Duration) *AIModel {
 	return &AIModel{
 		Model:             model,
 		Endpoint:          endpoint,
@@ -125,8 +136,8 @@ func NewAIModel(model string, endpoint string, apiKey string, detectionPrompt st
 		Limiter:           rate.NewLimiter(rate.Limit(maxConcurrency), maxConcurrency),
 		MaxTokens:         16 * 1024,
 		ResponseFormat:    ResponseFormat{Type: "json_object"},
-		DetectionPrompt:   detectionPrompt,
 		TimeOut:           timeout,
+		Client:            &fasthttp.Client{},
 	}
 }
 
@@ -147,7 +158,7 @@ func InitAIModel() error {
 		return err
 	}
 
-	AIModelInstance = NewAIModel(model, endPoint, apiKey, detectionPrompt, tokenizerEndPoint, maxConcurrency, 30*time.Second)
+	AIModelInstance = NewAIModel(model, endPoint, apiKey, tokenizerEndPoint, maxConcurrency, 30*time.Second)
 	return nil
 
 }
@@ -176,9 +187,12 @@ func (a *AIModel) SendDetectionRequest(ctx context.Context, messages []Message) 
 	ctx, cancel := context.WithTimeout(ctx, a.TimeOut)
 	defer cancel()
 	err = a.Limiter.Wait(ctx)
-	if err != nil || forceErr == "Limiter.Wait" {
+	if forceErr == "Limiter.Wait" {
+		err = fmt.Errorf("强制限流错误")
+	}
+	if err != nil {
 		reqErr := fmt.Errorf("当前使用人数过多，请稍后再试")
-		z.Error(reqErr.Error() + ", " + err.Error())
+		z.Error(reqErr.Error() + "： " + err.Error())
 		return
 	}
 
@@ -217,7 +231,7 @@ func (a *AIModel) SendDetectionRequest(ctx context.Context, messages []Message) 
 	req.SetBody(jsonData)
 
 	// 创建客户端并发送请求
-	client := &fasthttp.Client{}
+	client := a.Client
 
 	// 超时控制
 	timeoutDuration := 1 * 60 * time.Second
@@ -266,6 +280,15 @@ func (a *AIModel) SendDetectionRequest(ctx context.Context, messages []Message) 
 	}
 
 	return
+}
+
+// 校验是否为合法的 BCP‑47 标签
+func IsValidBCP47(tag string) bool {
+	if tag == "auto" {
+		return true
+	}
+	_, err := language.Parse(tag)
+	return err == nil
 }
 
 func aiDetection(ctx context.Context) {
@@ -336,8 +359,8 @@ func aiDetection(ctx context.Context) {
 			return
 		}
 
-		var question cmn.TQuestion
-		q.Err = json.Unmarshal(qry.Data, &question)
+		var mission Mission
+		q.Err = json.Unmarshal(qry.Data, &mission)
 		if forceErr == "json.Unmarshal2" {
 			q.Err = fmt.Errorf("强制第二次JSON解析错误")
 		}
@@ -345,6 +368,28 @@ func aiDetection(ctx context.Context) {
 			z.Error(q.Err.Error())
 			q.RespErr()
 			return
+		}
+
+		if mission.MissionType != "00" && mission.MissionType != "02" {
+			q.Err = fmt.Errorf("不支持的任务类型: %s", mission.MissionType)
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		if mission.MissionType == "02" {
+			if !IsValidBCP47(mission.SourceLang) {
+				q.Err = fmt.Errorf("源语言不合法: %s", mission.SourceLang)
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+			if !IsValidBCP47(mission.TargetLang) {
+				q.Err = fmt.Errorf("目标语言不合法: %s", mission.TargetLang)
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
 		}
 
 		if AIModelInstance == nil {
@@ -361,7 +406,7 @@ func aiDetection(ctx context.Context) {
 
 		// 准备prompt
 		var questionData []byte
-		questionData, q.Err = json.Marshal(question)
+		questionData, q.Err = json.Marshal(mission.Question)
 		if forceErr == "json.Marshal" {
 			q.Err = fmt.Errorf("强制JSON序列化错误")
 		}
@@ -372,14 +417,28 @@ func aiDetection(ctx context.Context) {
 		}
 
 		var messages []Message
-		messages = append(messages, Message{
-			Role:     "system",
-			MContent: []MessageContent{{Content: AIModelInstance.DetectionPrompt, Type: "text"}},
-		})
-		messages = append(messages, Message{
-			Role:     "user",
-			MContent: []MessageContent{{Content: "请根据以下内容进行检测并返回结果: " + string(questionData), Type: "text"}},
-		})
+		if mission.MissionType == "00" {
+			messages = append(messages, Message{
+				Role:     "system",
+				MContent: []MessageContent{{Content: detectionPrompt, Type: "text"}},
+			})
+			messages = append(messages, Message{
+				Role:     "user",
+				MContent: []MessageContent{{Content: "请根据以下内容进行检测并返回结果: " + string(questionData), Type: "text"}},
+			})
+		} else if mission.MissionType == "02" {
+			translationPromptMod := strings.ReplaceAll(translationPrompt, "$SOURCE_LANG$", mission.SourceLang)
+			translationPromptMod = strings.ReplaceAll(translationPromptMod, "$TARGET_LANG$", mission.TargetLang)
+
+			messages = append(messages, Message{
+				Role:     "system",
+				MContent: []MessageContent{{Content: translationPrompt, Type: "text"}},
+			})
+			messages = append(messages, Message{
+				Role:     "user",
+				MContent: []MessageContent{{Content: "请根据以下内容进行翻译并返回结果: " + string(questionData), Type: "text"}},
+			})
+		}
 
 		var respQuestion cmn.TQuestion
 		respQuestion, q.Err = AIModelInstance.SendDetectionRequest(ctx, messages)

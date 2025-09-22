@@ -11,6 +11,8 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/valyala/fasthttp"
+	"golang.org/x/time/rate"
 	"w2w.io/cmn"
 	"w2w.io/null"
 )
@@ -27,11 +29,33 @@ const sampleQuestion = `{
 	"answers": "A"
 }`
 
+type mockClient struct {
+	status int
+	body   []byte
+	err    error
+}
+
+func (m *mockClient) DoTimeout(req *fasthttp.Request, resp *fasthttp.Response, timeout time.Duration) error {
+	if m.err != nil {
+		return m.err
+	}
+	resp.SetStatusCode(m.status)
+	resp.SetBody(m.body)
+	return nil
+}
+
 func TestAIModel_SendDetectionRequest(t *testing.T) {
 	cmn.ConfigureForTest()
-	AIModelInstance, err := GetAIModel()
-	if err != nil {
-		t.Fatalf("GetAIModel failed: %v", err)
+	AIModelInstance = &AIModel{
+		Model:    "m",
+		Endpoint: "http://mock",
+		ApiKey:   "k",
+		TimeOut:  2 * time.Second,
+		Limiter:  rate.NewLimiter(rate.Limit(1000), 1000),
+		Client: &mockClient{
+			status: 200,
+			body:   []byte(`{"choices":[{"message":{"content":"{\"type\":\"00\",\"content\":\"ok\"}"}}]}`),
+		},
 	}
 	tests := []struct {
 		name          string
@@ -46,7 +70,7 @@ func TestAIModel_SendDetectionRequest(t *testing.T) {
 			name: "正常请求",
 			messages: []Message{
 				{
-					Role: "system", MContent: []MessageContent{{Content: AIModelInstance.DetectionPrompt, Type: "text"}},
+					Role: "system", MContent: []MessageContent{{Content: detectionPrompt, Type: "text"}},
 				},
 				{
 					Role: "user", MContent: []MessageContent{{Content: "请根据以下内容进行检测并返回结果: " + sampleQuestion, Type: "text"}},
@@ -60,7 +84,7 @@ func TestAIModel_SendDetectionRequest(t *testing.T) {
 			name: "构造请求体失败",
 			messages: []Message{
 				{
-					Role: "system", MContent: []MessageContent{{Content: AIModelInstance.DetectionPrompt, Type: "text"}},
+					Role: "system", MContent: []MessageContent{{Content: detectionPrompt, Type: "text"}},
 				},
 				{
 					Role: "user", MContent: []MessageContent{{Content: "请根据以下内容进行检测并返回结果: " + sampleQuestion, Type: "text"}},
@@ -71,10 +95,24 @@ func TestAIModel_SendDetectionRequest(t *testing.T) {
 			errorContains: "构造请求体失败",
 		},
 		{
+			name: "当前使用人数过多",
+			messages: []Message{
+				{
+					Role: "system", MContent: []MessageContent{{Content: detectionPrompt, Type: "text"}},
+				},
+				{
+					Role: "user", MContent: []MessageContent{{Content: "请根据以下内容进行检测并返回结果: " + sampleQuestion, Type: "text"}},
+				},
+			},
+			forceErr:      "Limiter.Wait",
+			wantErr:       true,
+			errorContains: "强制限流错误",
+		},
+		{
 			name: "发送请求失败",
 			messages: []Message{
 				{
-					Role: "system", MContent: []MessageContent{{Content: AIModelInstance.DetectionPrompt, Type: "text"}},
+					Role: "system", MContent: []MessageContent{{Content: detectionPrompt, Type: "text"}},
 				},
 				{
 					Role: "user", MContent: []MessageContent{{Content: "请根据以下内容进行检测并返回结果: " + sampleQuestion, Type: "text"}},
@@ -88,7 +126,7 @@ func TestAIModel_SendDetectionRequest(t *testing.T) {
 			name: "无法正常响应",
 			messages: []Message{
 				{
-					Role: "system", MContent: []MessageContent{{Content: AIModelInstance.DetectionPrompt, Type: "text"}},
+					Role: "system", MContent: []MessageContent{{Content: detectionPrompt, Type: "text"}},
 				},
 				{
 					Role: "user", MContent: []MessageContent{{Content: "请根据以下内容进行检测并返回结果: " + sampleQuestion, Type: "text"}},
@@ -102,7 +140,7 @@ func TestAIModel_SendDetectionRequest(t *testing.T) {
 			name: "解析返回的响应体失败",
 			messages: []Message{
 				{
-					Role: "system", MContent: []MessageContent{{Content: AIModelInstance.DetectionPrompt, Type: "text"}},
+					Role: "system", MContent: []MessageContent{{Content: detectionPrompt, Type: "text"}},
 				},
 				{
 					Role: "user", MContent: []MessageContent{{Content: "请根据以下内容进行检测并返回结果: " + sampleQuestion, Type: "text"}},
@@ -116,7 +154,7 @@ func TestAIModel_SendDetectionRequest(t *testing.T) {
 			name: "解析大模型返回消息的json结构失败",
 			messages: []Message{
 				{
-					Role: "system", MContent: []MessageContent{{Content: AIModelInstance.DetectionPrompt, Type: "text"}},
+					Role: "system", MContent: []MessageContent{{Content: detectionPrompt, Type: "text"}},
 				},
 				{
 					Role: "user", MContent: []MessageContent{{Content: "请根据以下内容进行检测并返回结果: " + sampleQuestion, Type: "text"}},
@@ -227,49 +265,142 @@ func Test_aiDetection(t *testing.T) {
 		wantErr       bool
 		forceErr      string
 		errorContains string
-		qusetion      cmn.TQuestion
+		mission       Mission
 		isBadResp     bool
 		method        string
 	}{
 		{
-			name:          "强制获取AIModel错误",
-			forceErr:      "GetAIModel",
-			qusetion:      cmn.TQuestion{},
+			name:     "强制获取AIModel错误",
+			forceErr: "GetAIModel",
+			mission: Mission{
+				MissionType: "00",
+			},
 			isBadResp:     false,
 			wantErr:       true,
 			errorContains: "强制获取AIModel错误",
 			method:        "POST",
 		},
 		{
-			name:          "正常流程",
-			forceErr:      "",
-			qusetion:      cmn.TQuestion{},
+			name:     "正常流程-AI智能错题检测",
+			forceErr: "",
+			mission: Mission{
+				MissionType: "00",
+			},
 			isBadResp:     false,
 			wantErr:       false,
 			errorContains: "",
 			method:        "POST",
 		},
 		{
-			name:          "解析请求体错误",
-			forceErr:      "json.Unmarshal",
-			qusetion:      cmn.TQuestion{},
+			name:     "正常流程-AI智能翻译",
+			forceErr: "",
+			mission: Mission{
+				MissionType: "02",
+				SourceLang:  "auto",
+				TargetLang:  "en",
+			},
+			isBadResp:     false,
+			wantErr:       false,
+			errorContains: "",
+			method:        "POST",
+		},
+		{
+			name:     "不支持的任务类型",
+			forceErr: "",
+			mission: Mission{
+				MissionType: "01",
+			},
+			isBadResp:     false,
+			wantErr:       true,
+			errorContains: "不支持的任务类型",
+			method:        "POST",
+		},
+		{
+			name:     "源语言不合法",
+			forceErr: "",
+			mission: Mission{
+				MissionType: "02",
+				SourceLang:  "invalid-lang",
+				TargetLang:  "en",
+			},
+			isBadResp:     false,
+			wantErr:       true,
+			errorContains: "源语言不合法",
+			method:        "POST",
+		},
+		{
+			name:     "目标语言不合法",
+			forceErr: "",
+			mission: Mission{
+				MissionType: "02",
+				SourceLang:  "en",
+				TargetLang:  "invalid-lang",
+			},
+			isBadResp:     false,
+			wantErr:       true,
+			errorContains: "目标语言不合法",
+			method:        "POST",
+		},
+		{
+			name:     "解析请求体错误",
+			forceErr: "json.Unmarshal",
+			mission: Mission{
+				MissionType: "00",
+			},
 			isBadResp:     false,
 			wantErr:       true,
 			errorContains: "强制JSON解析错误",
 			method:        "POST",
 		},
 		{
-			name:          "解析请求体错误2",
-			forceErr:      "json.Unmarshal2",
-			qusetion:      cmn.TQuestion{},
+			name:     "解析请求体错误2",
+			forceErr: "json.Unmarshal2",
+			mission: Mission{
+				MissionType: "00",
+			},
 			isBadResp:     false,
 			wantErr:       true,
 			errorContains: "强制第二次JSON解析错误",
 			method:        "POST",
 		},
 		{
-			name:          "SendDetectionRequest 返回错误",
-			qusetion:      cmn.TQuestion{},
+			name:     "强制获取用户权限错误",
+			forceErr: "auth_mgt.GetUserAuthority",
+			mission: Mission{
+				MissionType: "00",
+			},
+			isBadResp:     false,
+			wantErr:       true,
+			errorContains: "强制获取用户权限错误",
+			method:        "POST",
+		},
+		{
+			name:     "强制读取请求体错误",
+			forceErr: "io.ReadAll",
+			mission: Mission{
+				MissionType: "00",
+			},
+			isBadResp:     false,
+			wantErr:       true,
+			errorContains: "强制读取请求体错误",
+			method:        "POST",
+		},
+		{
+			name:     "强制关闭IO错误",
+			forceErr: "io.Close",
+			mission: Mission{
+				MissionType: "00",
+			},
+			isBadResp:     false,
+			wantErr:       false,
+			errorContains: "",
+			method:        "POST",
+		},
+		{
+			name: "SendDetectionRequest 返回错误",
+			mission: Mission{
+				MissionType: "00",
+			},
 			forceErr:      "",
 			isBadResp:     true,
 			wantErr:       true,
@@ -277,8 +408,10 @@ func Test_aiDetection(t *testing.T) {
 			method:        "POST",
 		},
 		{
-			name:          "强制JSON序列化错误",
-			qusetion:      cmn.TQuestion{},
+			name: "强制JSON序列化错误",
+			mission: Mission{
+				MissionType: "00",
+			},
 			forceErr:      "json.Marshal",
 			isBadResp:     false,
 			wantErr:       true,
@@ -286,8 +419,10 @@ func Test_aiDetection(t *testing.T) {
 			method:        "POST",
 		},
 		{
-			name:          "强制JSON序列化错误2",
-			qusetion:      cmn.TQuestion{},
+			name: "强制JSON序列化错误2",
+			mission: Mission{
+				MissionType: "00",
+			},
 			forceErr:      "json.Marshal2",
 			isBadResp:     false,
 			wantErr:       true,
@@ -296,7 +431,7 @@ func Test_aiDetection(t *testing.T) {
 		},
 		{
 			name:          "请求体为空",
-			qusetion:      cmn.TQuestion{},
+			mission:       Mission{},
 			forceErr:      "",
 			isBadResp:     false,
 			wantErr:       true,
@@ -304,8 +439,10 @@ func Test_aiDetection(t *testing.T) {
 			method:        "POST",
 		},
 		{
-			name:          "不支持的请求方法",
-			qusetion:      cmn.TQuestion{},
+			name: "不支持的请求方法",
+			mission: Mission{
+				MissionType: "00",
+			},
 			forceErr:      "",
 			isBadResp:     false,
 			wantErr:       true,
@@ -315,7 +452,11 @@ func Test_aiDetection(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			reqBody, err := json.Marshal(tt.qusetion)
+			if tt.name == "强制获取AIModel错误" {
+				// 清空单例以强制触发错误
+				AIModelInstance = nil
+			}
+			reqBody, err := json.Marshal(tt.mission)
 			if tt.name == "请求体为空" {
 				reqBody = []byte{}
 			}
