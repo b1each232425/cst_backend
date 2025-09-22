@@ -284,9 +284,8 @@ func register(ctx context.Context) {
 			status := q.R.URL.Query().Get("status")
 			pageStr := q.R.URL.Query().Get("page")
 			pageSizeStr := q.R.URL.Query().Get("pageSize")
-
 			searchType := q.R.URL.Query().Get("search_type")
-			if searchType != "00" && searchType != "02" {
+			if searchType != "00" && searchType != "02" && searchType != "04" {
 				q.Err = fmt.Errorf("搜索类型错误")
 				z.Error(q.Err.Error())
 				q.RespErr()
