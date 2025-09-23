@@ -40,3 +40,12 @@ type DomainData struct {
 type DomainDetail struct {
 	Creator cmn.TUser `json:"creator"` // 域的创建者
 }
+
+type QueryDomainsFilter struct {
+	Domain         string
+	ParentDomain   string
+	TargetType     string
+	Status         string
+	FuzzyCondition string
+	ChildLevel     string
+}
