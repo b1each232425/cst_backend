@@ -110,7 +110,7 @@ type syncInfo struct {
 	RecentExamID    int64    `json:"recentExamID"`                      // 最近一场考试的ID
 	Path            string   `json:"path" validate:"required"`          // 数据存放路径
 	TableFileList   []string `json:"tableFileList" validate:"required"` // 表格数据文件列表
-	UploadFilesPath string   `json:"uploadFilesPath"`                   // 上传的文件存放路径
+	UploadFilesPath string   `json:"uploadFilesPath"`                   // 中心服务器上传的文件存放路径
 }
 
 const (
@@ -1009,6 +1009,68 @@ func Push(ctx context.Context, retryCount int) {
 		return
 	}
 
+	// 上传附件
+	// 读取 t_file_*.csv 文件, 取出其中的 digest 字段, 然后将对应的文件上传
+	var fileList []string
+
+	for _, tableFile := range sInfo.TableFileList {
+		if !strings.HasPrefix(tableFile, "t_file_") || !strings.HasSuffix(tableFile, ".csv") {
+			continue
+		}
+
+		var fl []string
+		fl, q.Err = ReadColumnFromCSV(filepath.Join(source, tableFile), "digest")
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			return
+		}
+
+		for _, digest := range fl {
+			fileList = append(fileList, digest)
+			fileList = append(fileList, digest+".info")
+		}
+
+		
+	}
+
+	fileListPath := filepath.Join(source, "file_list.txt")
+	q.Err = os.WriteFile(fileListPath, []byte(strings.Join(fileList, "\n")), 0644)
+	if q.Err != nil || (cmn.InDebugMode && q.Tag["pushWriteFileListErr"] != nil) {
+		if q.Err == nil {
+			q.Err = q.Tag["pushWriteFileListErr"].(error)
+		}
+
+		z.Error(q.Err.Error())
+		return
+	}
+
+	dest = fmt.Sprintf("%s@%s:%s",
+		sshUser,
+		sshHost,
+		sInfo.UploadFilesPath,
+	)
+
+	cmd = fmt.Sprintf(`rsync -avz --mkpath -e "ssh -p %d" --files-from=%s %s %s`, 
+		sshPort,
+		fileListPath,
+		uploadDir,
+		dest,
+	)
+
+	o, q.Err = exec.CommandContext(ctx, "bash", "-c", cmd).CombinedOutput()
+	if q.Err != nil || (cmn.InDebugMode && q.Tag["uploadFileErrInPush"] != nil) {
+
+		if q.Err == nil {
+			q.Err = q.Tag["uploadFileErrInPush"].(error)
+			cmd = ""
+			o = []byte("")
+		}
+
+		q.Err = fmt.Errorf("COMMAND: %s\t ERR: %w\t DETAIL: %s", cmd, q.Err, string(o))
+		z.Error(q.Err.Error())
+		return
+	}
+
 	// 发送反向同步通知
 
 	cli := fasthttp.Client{}
@@ -1089,7 +1151,6 @@ func Push(ctx context.Context, retryCount int) {
 
 		z.Error(err.Error())
 	}
-
 }
 
 // GetMaxRetry 获取同步重试最大次数

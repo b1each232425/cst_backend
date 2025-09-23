@@ -23,6 +23,7 @@ import (
 	"github.com/tidwall/gjson"
 
 	"w2w.io/cmn"
+	"w2w.io/exam_service"
 	"w2w.io/null"
 	"w2w.io/serve/auth_mgt"
 )
@@ -49,6 +50,8 @@ const (
 func TestMain(m *testing.M) {
 
 	cmn.ConfigureForTest()
+
+	go exam_service.ExamMaintainService()
 
 	z = cmn.GetLogger()
 
@@ -266,7 +269,7 @@ ins_user_domains AS (
 		(%d, 2008, 'full', %d),
 		(%d, 2008, 'full', %d),
 		(%d1, 2004, 'full', %d)
-  	ON CONFLICT(sys_user, domain) DO NOTHING
+  	ON CONFLICT DO NOTHING
   	RETURNING sys_user
 ),
 ins_examinees AS (
@@ -308,7 +311,7 @@ ins_file AS (
 	VALUES
 		(%d, 'test-file-1', '/uploads/test-file-1', '/uploads/test-file-1', '%d', 1000, %d),
 		(%d, 'test-file-2', '/uploads/test-file-2', '/uploads/test-file-2', '%d', 1000, %d)
-	ON CONFLICT(id) DO NOTHING
+	ON CONFLICT DO NOTHING
 	RETURNING id
 )
 SELECT 1;
@@ -465,7 +468,7 @@ SELECT 1;
 			}
 		}
 
-		os.RemoveAll("./uploads/*")
+		os.RemoveAll("./uploads")
 
 		return
 	}
@@ -7714,7 +7717,7 @@ func TestExamSiteSyncInit(t *testing.T) {
 			},
 			check: func(q *cmn.ServiceCtx) (err error) {
 
-				_, err = dbConn.Exec(`UPDATE t_exam_info SET status = '06'`)
+				_, err = dbConn.Exec(`UPDATE t_exam_session SET status = '06'`)
 				if err != nil {
 					t.Error(err.Error())
 					return
@@ -7757,7 +7760,7 @@ func TestExamSiteSyncInit(t *testing.T) {
 					return
 				}
 
-				_, err = dbConn.Exec(`UPDATE t_exam_info SET status = '06'`)
+				_, err = dbConn.Exec(`UPDATE t_exam_session SET status = '06'`)
 				if err != nil {
 					t.Error(err.Error())
 					return
@@ -7871,7 +7874,7 @@ func TestExamSiteSyncInit(t *testing.T) {
 			},
 			check: func(q *cmn.ServiceCtx) (err error) {
 
-				_, err = dbConn.Exec(`UPDATE t_exam_info SET status = '04'`)
+				_, err = dbConn.Exec(`UPDATE t_exam_session SET status = '04'`)
 				if err != nil {
 					t.Error(err.Error())
 					return
@@ -7909,7 +7912,7 @@ func TestExamSiteSyncInit(t *testing.T) {
 			},
 			check: func(q *cmn.ServiceCtx) (err error) {
 
-				_, err = dbConn.Exec(`UPDATE t_exam_info SET status = '06'`)
+				_, err = dbConn.Exec(`UPDATE t_exam_session SET status = '06'`)
 				if err != nil {
 					t.Error(err.Error())
 					return
@@ -8029,8 +8032,13 @@ func TestExamSiteSyncInit(t *testing.T) {
 
 				testID := nowTime / 100
 
+				fileList := []int64{
+					testID + 1,
+					testID + 2,
+				}
+
 				// 更新考场记录
-				_, err = dbConn.Exec(`UPDATE t_exam_record SET basic_eval = '02' WHERE exam_session = $1`, testID)
+				_, err = dbConn.Exec(`UPDATE t_exam_record SET basic_eval = '02', files = $2::jsonb WHERE exam_session = $1`, testID, fileList)
 				if err != nil {
 					t.Errorf("failed to update exam record: %v", err)
 					return
@@ -8090,6 +8098,22 @@ func TestExamSiteSyncInit(t *testing.T) {
 					err = fmt.Errorf("unexpected query t_student_answers, expect bigger than 1")
 					t.Error(err.Error())
 					return
+				}
+
+				// 检测附件上传目录下是否有相应的文件
+				for _, f := range fileList {
+					if _, err = os.Stat(fmt.Sprintf("./uploads/%d", f)); os.IsNotExist(err) {
+						err = fmt.Errorf("got file not exists, but exists")
+						t.Error(err.Error())
+						return
+					}
+
+					if _, err = os.Stat(fmt.Sprintf("./uploads/%d.info", f)); os.IsNotExist(err) {
+						err = fmt.Errorf("got file.info not exists, but exists")
+						t.Error(err.Error())
+						return
+					}
+
 				}
 
 				return

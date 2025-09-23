@@ -15,6 +15,7 @@ import (
 	"time"
 	"w2w.io/cmn"
 	"w2w.io/null"
+	"w2w.io/serve/auth_mgt"
 	"w2w.io/serve/examPaper"
 	"w2w.io/serve/mark"
 )
@@ -63,6 +64,7 @@ func UpdatePractice(ctx context.Context, p *cmn.TPractice, ps []int64, uid int64
 	}
 	// 用于测试，强制执行某些错误分支
 	forceErr, _ := ctx.Value("force-error").(string)
+	authority := ctx.Value("authority").(*auth_mgt.Authority)
 	now := time.Now().UnixMilli()
 	p.UpdatedBy = null.IntFrom(uid)
 	p.UpdateTime = null.IntFrom(now)
@@ -89,8 +91,10 @@ func UpdatePractice(ctx context.Context, p *cmn.TPractice, ps []int64, uid int64
 		idx++
 	}
 	args = append(args, p.ID)
+	args = append(args, uid)
+	args = append(args, authority.AccessibleDomains)
 	// 更新练习本身与更新练习学生是两个事情，可以不同步进行
-	query := fmt.Sprintf("UPDATE %s SET %s WHERE id = $%d", tableName, strings.Join(clauses, ", "), idx)
+	query := fmt.Sprintf("UPDATE %s SET %s WHERE id = $%d AND (creator = $%d OR domain_id = ANY( $%d))", tableName, strings.Join(clauses, ", "), idx, idx+1, idx+2)
 	z.Sugar().Debugf("update sql:%v", query)
 	z.Sugar().Debugf("update args:%v", args)
 	sqlxDB := cmn.GetDbConn()
@@ -124,10 +128,11 @@ func AddPractice(ctx context.Context, p *cmn.TPractice, ps []int64, uid int64) e
 	sqlxDB := cmn.GetDbConn()
 	// 用于测试，强制执行某些错误分支
 	forceErr, _ := ctx.Value("force-error").(string)
+	authority := ctx.Value("authority").(*auth_mgt.Authority)
 	s := `
-	INSERT INTO assessuser.t_practice (name,correct_mode,creator,create_time, update_time, addi,allowed_attempts,type,paper_id)
-	VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`
-	err := sqlxDB.QueryRowxContext(ctx, s, p.Name, p.CorrectMode, uid, now, now, p.Addi, p.AllowedAttempts, p.Type, p.PaperID).Scan(&id)
+	INSERT INTO assessuser.t_practice (name,correct_mode,creator,create_time, update_time, addi,allowed_attempts,type,paper_id,domain_id)
+	VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9,$10) RETURNING id`
+	err := sqlxDB.QueryRowxContext(ctx, s, p.Name, p.CorrectMode, uid, now, now, p.Addi, p.AllowedAttempts, p.Type, p.PaperID, authority.Domain.ID.Int64).Scan(&id)
 	if err != nil || forceErr == "query" {
 		err = fmt.Errorf("addPractice call failed:%v", err)
 		z.Error(err.Error())
@@ -643,6 +648,7 @@ func ListPracticeT(ctx context.Context, name, pType, status string, orderBy []st
 	result := make([]Map, 0)
 	// 用于测试，强制执行某些错误分支
 	forceErr, _ := ctx.Value("force-error").(string)
+	authority := ctx.Value("authority").(*auth_mgt.Authority)
 	// 查询条件
 	var clauses []string
 	// 占位符
@@ -663,8 +669,8 @@ func ListPracticeT(ctx context.Context, name, pType, status string, orderBy []st
 	}
 	clauses = append(clauses, fmt.Sprintf("tp.status != $%d", len(args)+1))
 	args = append(args, PracticeStatus.Deleted)
-	clauses = append(clauses, fmt.Sprintf("tp.creator = $%d", len(args)+1))
-	args = append(args, uid)
+	clauses = append(clauses, fmt.Sprintf("(tp.creator = $%d OR tp.domain_id = ANY($%d))", len(args)+1, len(args)+2))
+	args = append(args, uid, authority.AccessibleDomains)
 	sqlxDB := cmn.GetDbConn()
 
 	total := 0
@@ -1001,6 +1007,7 @@ func OperatePracticeStatusV2(ctx context.Context, ids []int64, status string, ui
 	var err error
 	// 用于测试，强制执行某些错误分支
 	forceErr, _ := ctx.Value("force-error").(string)
+	authority := ctx.Value("authority").(*auth_mgt.Authority)
 	conn := cmn.GetPgxConn()
 	now := time.Now().UnixMilli()
 	ps, err := LoadPracticeByIDs(ctx, ids)
@@ -1059,16 +1066,16 @@ func OperatePracticeStatusV2(ctx context.Context, ids []int64, status string, ui
 		for pid, p := range ps {
 			// 这里都需要进行查询，需要找到这个practice对应的试卷里面的考卷ID
 			var examPaperId int64
-			s := `SELECT pa.exampaper_id FROM t_practice p JOIN t_paper pa ON pa.id = p.paper_id WHERE p.id = $1 AND pa.status = $2`
-			err = tx.QueryRow(ctx, s, pid, examPaper.PaperStatus.Published).Scan(&examPaperId)
+			s := `SELECT pa.exampaper_id FROM t_practice p JOIN t_paper pa ON pa.id = p.paper_id WHERE p.id = $1 AND pa.status = $2 AND (p.creator = $3 OR p.domain_id =$4)`
+			err = tx.QueryRow(ctx, s, pid, examPaper.PaperStatus.Published, uid, authority.AccessibleDomains).Scan(&examPaperId)
 			if err != nil {
 				err = fmt.Errorf("查看练习绑定的试卷中已发布的考卷ID失败:%v", err)
 				z.Error(err.Error())
 				return err
 			}
 
-			s = `UPDATE assessuser.t_practice SET status = $1,update_time = $2, updated_by = $3 ,exam_paper_id = $4 WHERE id = $5`
-			_, err = tx.Exec(ctx, s, status, now, uid, examPaperId, pid)
+			s = `UPDATE assessuser.t_practice SET status = $1,update_time = $2, updated_by = $3 ,exam_paper_id = $4 WHERE id = $5 AND (p.creator = $6 OR p.domain_id =$7)`
+			_, err = tx.Exec(ctx, s, status, now, uid, examPaperId, pid, uid, authority.AccessibleDomains)
 			if err != nil || forceErr == "pQuery1" {
 				err = fmt.Errorf("更新练习状态 未发布->发布 失败:%v", err)
 				z.Error(err.Error())
@@ -1115,8 +1122,8 @@ func OperatePracticeStatusV2(ctx context.Context, ids []int64, status string, ui
 			return err
 		}
 
-		s := `UPDATE assessuser.t_practice SET status = $1,update_time = $2, updated_by = $3  WHERE id = ANY($4)`
-		_, err = tx.Exec(ctx, s, status, now, uid, ids)
+		s := `UPDATE assessuser.t_practice SET status = $1,update_time = $2, updated_by = $3  WHERE id = ANY($4) AND (creator = $5 OR domain_id =$6)`
+		_, err = tx.Exec(ctx, s, status, now, uid, ids, uid, authority.AccessibleDomains)
 		if err != nil || forceErr == "pQuery3" {
 			err = fmt.Errorf("更新练习状态 发布-> 删除 失败:%v", err)
 			z.Error(err.Error())
@@ -1137,8 +1144,8 @@ func OperatePracticeStatusV2(ctx context.Context, ids []int64, status string, ui
 		}
 		return nil
 	} else if status == PracticeStatus.Disabled {
-		s := `UPDATE assessuser.t_practice SET status = $1,update_time = $2, updated_by = $3  WHERE id = ANY($4)`
-		_, err = tx.Exec(ctx, s, status, now, uid, ids)
+		s := `UPDATE assessuser.t_practice SET status = $1,update_time = $2, updated_by = $3  WHERE id = ANY($4) AND (creator = $5 OR domain_id =$6)`
+		_, err = tx.Exec(ctx, s, status, now, uid, ids, uid, authority.AccessibleDomains)
 		if err != nil || forceErr == "pQuery5" {
 			err = fmt.Errorf("更新练习状态 发布->作废 失败:%v", err)
 			z.Error(err.Error())
@@ -1600,7 +1607,6 @@ func EnterPracticeWrongCollection(ctx context.Context, tx pgx.Tx, pid, uid int64
 		z.Error(err.Error())
 		return nil, nil, nil, err
 	}
-
 	s = `SELECT latest_unsubmitted_id,latest_submitted_id,max_attempt
 	 FROM assessuser.v_w_practice_summary 
 	 WHERE practice_id = $1 AND student_id = $2`

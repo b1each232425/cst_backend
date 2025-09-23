@@ -169,7 +169,7 @@ func Enroll(author string) {
 	})
 	_ = cmn.AddService(&cmn.ServeEndPoint{
 		Fn:   registerStudentL,
-		Path: "/register/student",
+		Path: "/registration/student",
 		Name: "registrationStudentL",
 
 		ApiEntries: []*cmn.EndPointApiEntries{
@@ -284,9 +284,8 @@ func register(ctx context.Context) {
 			status := q.R.URL.Query().Get("status")
 			pageStr := q.R.URL.Query().Get("page")
 			pageSizeStr := q.R.URL.Query().Get("pageSize")
-
 			searchType := q.R.URL.Query().Get("search_type")
-			if searchType != "00" && searchType != "02" {
+			if searchType != "00" && searchType != "02" && searchType != "04" {
 				q.Err = fmt.Errorf("搜索类型错误")
 				z.Error(q.Err.Error())
 				q.RespErr()
@@ -522,7 +521,7 @@ func registerStudentH(ctx context.Context) {
 		return
 	}
 	ctx = context.WithValue(ctx, "authority", authority)
-	read, create, update, _, err := GetAuthAPIAccessible(ctx, authority, "/api/registrationStudent")
+	read, create, update, _, err := GetAuthAPIAccessible(ctx, authority, q.Ep.Path)
 	if err != nil {
 		q.Err = fmt.Errorf("获取用户的可执行权限失败: %v", err)
 		q.RespErr()
@@ -594,6 +593,7 @@ func registerStudentH(ctx context.Context) {
 					q.RespErr()
 					return
 				}
+
 				result := Map{
 					"student": s,
 					"total":   total,

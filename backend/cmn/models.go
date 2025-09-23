@@ -9637,6 +9637,7 @@ type TPractice struct {
 	ExamPaperID null.Int   `json:"ExamPaperID,omitempty" db:"exam_paper_id,false,integer"` /* exam_paper_id 生成的考卷快照的id，避免重复生成考卷快照 */
 	CreateTime  null.Int   `json:"CreateTime,omitempty" db:"create_time,false,bigint"`     /* create_time 记录创建时间 */
 	UpdateTime  null.Int   `json:"UpdateTime,omitempty" db:"update_time,false,bigint"`     /* update_time 记录更新时间 */
+	DomainID    null.Int   `json:"DomainID,omitempty" db:"domain_id,false,bigint"`         /* domain_id 数据隶属 */
 	Filter      `json:"-"` // build DML where clause
 }
 
@@ -9655,6 +9656,7 @@ var TPracticeFields = []string{
 	"ExamPaperID",
 	"CreateTime",
 	"UpdateTime",
+	"DomainID",
 }
 
 // TPracticeColumns full column list for default query
@@ -9672,6 +9674,7 @@ var TPracticeColumns = []string{
 	"exam_paper_id",
 	"create_time",
 	"update_time",
+	"domain_id",
 }
 
 // TPracticeColumnsDataTypes full column data types for default query
@@ -9689,6 +9692,7 @@ var TPracticeColumnsDataTypes = map[string]string{
 	"exam_paper_id":    "integer",
 	"create_time":      "bigint",
 	"update_time":      "bigint",
+	"domain_id":        "bigint",
 }
 
 // GetFieldsMap returns a map of field names to their values.
@@ -9707,6 +9711,7 @@ func (r *TPractice) GetFieldsMap() map[string]any {
 		"ExamPaperID":     r.ExamPaperID,
 		"CreateTime":      r.CreateTime,
 		"UpdateTime":      r.UpdateTime,
+		"DomainID":        r.DomainID,
 	}
 }
 
@@ -9726,6 +9731,7 @@ func (r *TPractice) GetColumnsMap() map[string]any {
 		"exam_paper_id":    r.ExamPaperID,
 		"create_time":      r.CreateTime,
 		"update_time":      r.UpdateTime,
+		"domain_id":        r.DomainID,
 	}
 }
 
@@ -9747,8 +9753,8 @@ func (r *TPractice) GetTableName() string {
 // Create inserts the TPractice to the database.
 func (r *TPractice) Create(db Queryer) error {
 	err := db.QueryRow(
-		`INSERT INTO t_practice (name, correct_mode, type, creator, updated_by, addi, status, allowed_attempts, paper_id, exam_paper_id, create_time, update_time) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING id`,
-		&r.Name, &r.CorrectMode, &r.Type, &r.Creator, &r.UpdatedBy, &r.Addi, &r.Status, &r.AllowedAttempts, &r.PaperID, &r.ExamPaperID, &r.CreateTime, &r.UpdateTime).Scan(&r.ID)
+		`INSERT INTO t_practice (name, correct_mode, type, creator, updated_by, addi, status, allowed_attempts, paper_id, exam_paper_id, create_time, update_time, domain_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) RETURNING id`,
+		&r.Name, &r.CorrectMode, &r.Type, &r.Creator, &r.UpdatedBy, &r.Addi, &r.Status, &r.AllowedAttempts, &r.PaperID, &r.ExamPaperID, &r.CreateTime, &r.UpdateTime, &r.DomainID).Scan(&r.ID)
 	if err != nil {
 		return errors.Wrap(err, "failed to insert t_practice")
 	}
@@ -9760,8 +9766,8 @@ func GetTPracticeByPk(db Queryer, pk0 null.Int) (*TPractice, error) {
 
 	var r TPractice
 	err := db.QueryRow(
-		`SELECT id, name, correct_mode, type, creator, updated_by, addi, status, allowed_attempts, paper_id, exam_paper_id, create_time, update_time FROM t_practice WHERE id = $1`,
-		pk0).Scan(&r.ID, &r.Name, &r.CorrectMode, &r.Type, &r.Creator, &r.UpdatedBy, &r.Addi, &r.Status, &r.AllowedAttempts, &r.PaperID, &r.ExamPaperID, &r.CreateTime, &r.UpdateTime)
+		`SELECT id, name, correct_mode, type, creator, updated_by, addi, status, allowed_attempts, paper_id, exam_paper_id, create_time, update_time, domain_id FROM t_practice WHERE id = $1`,
+		pk0).Scan(&r.ID, &r.Name, &r.CorrectMode, &r.Type, &r.Creator, &r.UpdatedBy, &r.Addi, &r.Status, &r.AllowedAttempts, &r.PaperID, &r.ExamPaperID, &r.CreateTime, &r.UpdateTime, &r.DomainID)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to select t_practice")
 	}
@@ -9779,6 +9785,7 @@ type TPracticeStudent struct {
 	Status     null.String    `json:"Status,omitempty" db:"status,false,character varying"` /* status 00:正常 02:被删除 */
 	CreateTime null.Int       `json:"CreateTime,omitempty" db:"create_time,false,bigint"`   /* create_time 创建时间 */
 	UpdateTime null.Int       `json:"UpdateTime,omitempty" db:"update_time,false,bigint"`   /* update_time 更新时间 */
+	DomainID   null.Int       `json:"DomainID,omitempty" db:"domain_id,false,bigint"`       /* domain_id 数据隶属 */
 	Filter     `json:"-"`     // build DML where clause
 }
 
@@ -9793,6 +9800,7 @@ var TPracticeStudentFields = []string{
 	"Status",
 	"CreateTime",
 	"UpdateTime",
+	"DomainID",
 }
 
 // TPracticeStudentColumns full column list for default query
@@ -9806,6 +9814,7 @@ var TPracticeStudentColumns = []string{
 	"status",
 	"create_time",
 	"update_time",
+	"domain_id",
 }
 
 // TPracticeStudentColumnsDataTypes full column data types for default query
@@ -9819,6 +9828,7 @@ var TPracticeStudentColumnsDataTypes = map[string]string{
 	"status":      "character varying",
 	"create_time": "bigint",
 	"update_time": "bigint",
+	"domain_id":   "bigint",
 }
 
 // GetFieldsMap returns a map of field names to their values.
@@ -9833,6 +9843,7 @@ func (r *TPracticeStudent) GetFieldsMap() map[string]any {
 		"Status":     r.Status,
 		"CreateTime": r.CreateTime,
 		"UpdateTime": r.UpdateTime,
+		"DomainID":   r.DomainID,
 	}
 }
 
@@ -9848,6 +9859,7 @@ func (r *TPracticeStudent) GetColumnsMap() map[string]any {
 		"status":      r.Status,
 		"create_time": r.CreateTime,
 		"update_time": r.UpdateTime,
+		"domain_id":   r.DomainID,
 	}
 }
 
@@ -9869,8 +9881,8 @@ func (r *TPracticeStudent) GetTableName() string {
 // Create inserts the TPracticeStudent to the database.
 func (r *TPracticeStudent) Create(db Queryer) error {
 	err := db.QueryRow(
-		`INSERT INTO t_practice_student (practice_id, student_id, addi, creator, updated_by, status, create_time, update_time) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
-		&r.PracticeID, &r.StudentID, &r.Addi, &r.Creator, &r.UpdatedBy, &r.Status, &r.CreateTime, &r.UpdateTime).Scan(&r.ID)
+		`INSERT INTO t_practice_student (practice_id, student_id, addi, creator, updated_by, status, create_time, update_time, domain_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
+		&r.PracticeID, &r.StudentID, &r.Addi, &r.Creator, &r.UpdatedBy, &r.Status, &r.CreateTime, &r.UpdateTime, &r.DomainID).Scan(&r.ID)
 	if err != nil {
 		return errors.Wrap(err, "failed to insert t_practice_student")
 	}
@@ -9882,8 +9894,8 @@ func GetTPracticeStudentByPk(db Queryer, pk0 null.Int) (*TPracticeStudent, error
 
 	var r TPracticeStudent
 	err := db.QueryRow(
-		`SELECT id, practice_id, student_id, addi, creator, updated_by, status, create_time, update_time FROM t_practice_student WHERE id = $1`,
-		pk0).Scan(&r.ID, &r.PracticeID, &r.StudentID, &r.Addi, &r.Creator, &r.UpdatedBy, &r.Status, &r.CreateTime, &r.UpdateTime)
+		`SELECT id, practice_id, student_id, addi, creator, updated_by, status, create_time, update_time, domain_id FROM t_practice_student WHERE id = $1`,
+		pk0).Scan(&r.ID, &r.PracticeID, &r.StudentID, &r.Addi, &r.Creator, &r.UpdatedBy, &r.Status, &r.CreateTime, &r.UpdateTime, &r.DomainID)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to select t_practice_student")
 	}
@@ -9909,6 +9921,7 @@ type TPracticeSubmissions struct {
 	UpdateTime     null.Int       `json:"UpdateTime,omitempty" db:"update_time,false,bigint"`         /* update_time 当前记录更新的时间 */
 	StartTime      null.Int       `json:"StartTime,omitempty" db:"start_time,false,bigint"`           /* start_time 此次练习第一次进入作答的时间 */
 	EndTime        null.Int       `json:"EndTime,omitempty" db:"end_time,false,bigint"`               /* end_time 此次练习提交作答的时间 */
+	DomainID       null.Int       `json:"DomainID,omitempty" db:"domain_id,false,bigint"`             /* domain_id 数据隶属 */
 	Filter         `json:"-"`     // build DML where clause
 }
 
@@ -9931,6 +9944,7 @@ var TPracticeSubmissionsFields = []string{
 	"UpdateTime",
 	"StartTime",
 	"EndTime",
+	"DomainID",
 }
 
 // TPracticeSubmissionsColumns full column list for default query
@@ -9952,6 +9966,7 @@ var TPracticeSubmissionsColumns = []string{
 	"update_time",
 	"start_time",
 	"end_time",
+	"domain_id",
 }
 
 // TPracticeSubmissionsColumnsDataTypes full column data types for default query
@@ -9973,6 +9988,7 @@ var TPracticeSubmissionsColumnsDataTypes = map[string]string{
 	"update_time":     "bigint",
 	"start_time":      "bigint",
 	"end_time":        "bigint",
+	"domain_id":       "bigint",
 }
 
 // GetFieldsMap returns a map of field names to their values.
@@ -9995,6 +10011,7 @@ func (r *TPracticeSubmissions) GetFieldsMap() map[string]any {
 		"UpdateTime":     r.UpdateTime,
 		"StartTime":      r.StartTime,
 		"EndTime":        r.EndTime,
+		"DomainID":       r.DomainID,
 	}
 }
 
@@ -10018,6 +10035,7 @@ func (r *TPracticeSubmissions) GetColumnsMap() map[string]any {
 		"update_time":     r.UpdateTime,
 		"start_time":      r.StartTime,
 		"end_time":        r.EndTime,
+		"domain_id":       r.DomainID,
 	}
 }
 
@@ -10039,8 +10057,8 @@ func (r *TPracticeSubmissions) GetTableName() string {
 // Create inserts the TPracticeSubmissions to the database.
 func (r *TPracticeSubmissions) Create(db Queryer) error {
 	err := db.QueryRow(
-		`INSERT INTO t_practice_submissions (practice_id, student_id, exam_paper_id, remark, creator, updated_by, status, addi, attempt, last_start_time, last_end_time, elapsed_seconds, create_time, update_time, start_time, end_time) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16) RETURNING id`,
-		&r.PracticeID, &r.StudentID, &r.ExamPaperID, &r.Remark, &r.Creator, &r.UpdatedBy, &r.Status, &r.Addi, &r.Attempt, &r.LastStartTime, &r.LastEndTime, &r.ElapsedSeconds, &r.CreateTime, &r.UpdateTime, &r.StartTime, &r.EndTime).Scan(&r.ID)
+		`INSERT INTO t_practice_submissions (practice_id, student_id, exam_paper_id, remark, creator, updated_by, status, addi, attempt, last_start_time, last_end_time, elapsed_seconds, create_time, update_time, start_time, end_time, domain_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17) RETURNING id`,
+		&r.PracticeID, &r.StudentID, &r.ExamPaperID, &r.Remark, &r.Creator, &r.UpdatedBy, &r.Status, &r.Addi, &r.Attempt, &r.LastStartTime, &r.LastEndTime, &r.ElapsedSeconds, &r.CreateTime, &r.UpdateTime, &r.StartTime, &r.EndTime, &r.DomainID).Scan(&r.ID)
 	if err != nil {
 		return errors.Wrap(err, "failed to insert t_practice_submissions")
 	}
@@ -10052,8 +10070,8 @@ func GetTPracticeSubmissionsByPk(db Queryer, pk0 null.Int) (*TPracticeSubmission
 
 	var r TPracticeSubmissions
 	err := db.QueryRow(
-		`SELECT id, practice_id, student_id, exam_paper_id, remark, creator, updated_by, status, addi, attempt, last_start_time, last_end_time, elapsed_seconds, create_time, update_time, start_time, end_time FROM t_practice_submissions WHERE id = $1`,
-		pk0).Scan(&r.ID, &r.PracticeID, &r.StudentID, &r.ExamPaperID, &r.Remark, &r.Creator, &r.UpdatedBy, &r.Status, &r.Addi, &r.Attempt, &r.LastStartTime, &r.LastEndTime, &r.ElapsedSeconds, &r.CreateTime, &r.UpdateTime, &r.StartTime, &r.EndTime)
+		`SELECT id, practice_id, student_id, exam_paper_id, remark, creator, updated_by, status, addi, attempt, last_start_time, last_end_time, elapsed_seconds, create_time, update_time, start_time, end_time, domain_id FROM t_practice_submissions WHERE id = $1`,
+		pk0).Scan(&r.ID, &r.PracticeID, &r.StudentID, &r.ExamPaperID, &r.Remark, &r.Creator, &r.UpdatedBy, &r.Status, &r.Addi, &r.Attempt, &r.LastStartTime, &r.LastEndTime, &r.ElapsedSeconds, &r.CreateTime, &r.UpdateTime, &r.StartTime, &r.EndTime, &r.DomainID)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to select t_practice_submissions")
 	}
@@ -10076,6 +10094,7 @@ type TPracticeWrongSubmissions struct {
 	UpdateTime           null.Int       `json:"UpdateTime,omitempty" db:"update_time,false,bigint"`                      /* update_time 更新时间 */
 	Status               null.String    `json:"Status,omitempty" db:"status,false,character varying"`                    /* status 状态 00：允许作答 02 ：不允许作答 04：删除  06：已提交 08：已批改 10 已作废 */
 	Addi                 types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                                    /* addi 附加信息 */
+	DomainID             null.Int       `json:"DomainID,omitempty" db:"domain_id,false,bigint"`                          /* domain_id 数据隶属 */
 	Filter               `json:"-"`     // build DML where clause
 }
 
@@ -10095,6 +10114,7 @@ var TPracticeWrongSubmissionsFields = []string{
 	"UpdateTime",
 	"Status",
 	"Addi",
+	"DomainID",
 }
 
 // TPracticeWrongSubmissionsColumns full column list for default query
@@ -10113,6 +10133,7 @@ var TPracticeWrongSubmissionsColumns = []string{
 	"update_time",
 	"status",
 	"addi",
+	"domain_id",
 }
 
 // TPracticeWrongSubmissionsColumnsDataTypes full column data types for default query
@@ -10131,6 +10152,7 @@ var TPracticeWrongSubmissionsColumnsDataTypes = map[string]string{
 	"update_time":            "bigint",
 	"status":                 "character varying",
 	"addi":                   "jsonb",
+	"domain_id":              "bigint",
 }
 
 // GetFieldsMap returns a map of field names to their values.
@@ -10150,6 +10172,7 @@ func (r *TPracticeWrongSubmissions) GetFieldsMap() map[string]any {
 		"UpdateTime":           r.UpdateTime,
 		"Status":               r.Status,
 		"Addi":                 r.Addi,
+		"DomainID":             r.DomainID,
 	}
 }
 
@@ -10170,6 +10193,7 @@ func (r *TPracticeWrongSubmissions) GetColumnsMap() map[string]any {
 		"update_time":            r.UpdateTime,
 		"status":                 r.Status,
 		"addi":                   r.Addi,
+		"domain_id":              r.DomainID,
 	}
 }
 
@@ -10191,8 +10215,8 @@ func (r *TPracticeWrongSubmissions) GetTableName() string {
 // Create inserts the TPracticeWrongSubmissions to the database.
 func (r *TPracticeWrongSubmissions) Create(db Queryer) error {
 	_, err := db.Exec(
-		`INSERT INTO t_practice_wrong_submissions (id, practice_submission_id, attempt, start_time, end_time, last_start_time, last_end_time, elapsed_seconds, creator, create_time, updated_by, update_time, status, addi) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
-		&r.ID, &r.PracticeSubmissionID, &r.Attempt, &r.StartTime, &r.EndTime, &r.LastStartTime, &r.LastEndTime, &r.ElapsedSeconds, &r.Creator, &r.CreateTime, &r.UpdatedBy, &r.UpdateTime, &r.Status, &r.Addi)
+		`INSERT INTO t_practice_wrong_submissions (id, practice_submission_id, attempt, start_time, end_time, last_start_time, last_end_time, elapsed_seconds, creator, create_time, updated_by, update_time, status, addi, domain_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
+		&r.ID, &r.PracticeSubmissionID, &r.Attempt, &r.StartTime, &r.EndTime, &r.LastStartTime, &r.LastEndTime, &r.ElapsedSeconds, &r.Creator, &r.CreateTime, &r.UpdatedBy, &r.UpdateTime, &r.Status, &r.Addi, &r.DomainID)
 	if err != nil {
 		return errors.Wrap(err, "failed to insert t_practice_wrong_submissions")
 	}
@@ -10204,8 +10228,8 @@ func GetTPracticeWrongSubmissionsByPk(db Queryer) (*TPracticeWrongSubmissions, e
 
 	var r TPracticeWrongSubmissions
 	err := db.QueryRow(
-		`SELECT id, practice_submission_id, attempt, start_time, end_time, last_start_time, last_end_time, elapsed_seconds, creator, create_time, updated_by, update_time, status, addi FROM t_practice_wrong_submissions WHERE `,
-	).Scan(&r.ID, &r.PracticeSubmissionID, &r.Attempt, &r.StartTime, &r.EndTime, &r.LastStartTime, &r.LastEndTime, &r.ElapsedSeconds, &r.Creator, &r.CreateTime, &r.UpdatedBy, &r.UpdateTime, &r.Status, &r.Addi)
+		`SELECT id, practice_submission_id, attempt, start_time, end_time, last_start_time, last_end_time, elapsed_seconds, creator, create_time, updated_by, update_time, status, addi, domain_id FROM t_practice_wrong_submissions WHERE `,
+	).Scan(&r.ID, &r.PracticeSubmissionID, &r.Attempt, &r.StartTime, &r.EndTime, &r.LastStartTime, &r.LastEndTime, &r.ElapsedSeconds, &r.Creator, &r.CreateTime, &r.UpdatedBy, &r.UpdateTime, &r.Status, &r.Addi, &r.DomainID)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to select t_practice_wrong_submissions")
 	}
@@ -13784,6 +13808,7 @@ type TStudentAnswers struct {
 	ActualAnswers        types.JSONText `json:"ActualAnswers,omitempty" db:"actual_answers,false,jsonb"`                 /* actual_answers 实际题目客观题答案 */
 	CreateTime           null.Int       `json:"CreateTime,omitempty" db:"create_time,false,bigint"`                      /* create_time 记录创建时间 */
 	UpdateTime           null.Int       `json:"UpdateTime,omitempty" db:"update_time,false,bigint"`                      /* update_time 记录更新记录时间 */
+	Files                types.JSONText `json:"Files,omitempty" db:"files,false,jsonb"`                                  /* files t_file id 数组， 用于记录上传的附件 */
 	Filter               `json:"-"`     // build DML where clause
 }
 
@@ -13807,6 +13832,7 @@ var TStudentAnswersFields = []string{
 	"ActualAnswers",
 	"CreateTime",
 	"UpdateTime",
+	"Files",
 }
 
 // TStudentAnswersColumns full column list for default query
@@ -13829,6 +13855,7 @@ var TStudentAnswersColumns = []string{
 	"actual_answers",
 	"create_time",
 	"update_time",
+	"files",
 }
 
 // TStudentAnswersColumnsDataTypes full column data types for default query
@@ -13851,6 +13878,7 @@ var TStudentAnswersColumnsDataTypes = map[string]string{
 	"actual_answers":         "jsonb",
 	"create_time":            "bigint",
 	"update_time":            "bigint",
+	"files":                  "jsonb",
 }
 
 // GetFieldsMap returns a map of field names to their values.
@@ -13874,6 +13902,7 @@ func (r *TStudentAnswers) GetFieldsMap() map[string]any {
 		"ActualAnswers":        r.ActualAnswers,
 		"CreateTime":           r.CreateTime,
 		"UpdateTime":           r.UpdateTime,
+		"Files":                r.Files,
 	}
 }
 
@@ -13898,6 +13927,7 @@ func (r *TStudentAnswers) GetColumnsMap() map[string]any {
 		"actual_answers":         r.ActualAnswers,
 		"create_time":            r.CreateTime,
 		"update_time":            r.UpdateTime,
+		"files":                  r.Files,
 	}
 }
 
@@ -13919,8 +13949,8 @@ func (r *TStudentAnswers) GetTableName() string {
 // Create inserts the TStudentAnswers to the database.
 func (r *TStudentAnswers) Create(db Queryer) error {
 	err := db.QueryRow(
-		`INSERT INTO t_student_answers (type, examinee_id, practice_submission_id, question_id, answer, answer_score, marker, creator, updated_by, addi, status, order, group_id, actual_options, actual_answers, create_time, update_time) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17) RETURNING id`,
-		&r.Type, &r.ExamineeID, &r.PracticeSubmissionID, &r.QuestionID, &r.Answer, &r.AnswerScore, &r.Marker, &r.Creator, &r.UpdatedBy, &r.Addi, &r.Status, &r.Order, &r.GroupID, &r.ActualOptions, &r.ActualAnswers, &r.CreateTime, &r.UpdateTime).Scan(&r.ID)
+		`INSERT INTO t_student_answers (type, examinee_id, practice_submission_id, question_id, answer, answer_score, marker, creator, updated_by, addi, status, order, group_id, actual_options, actual_answers, create_time, update_time, files) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18) RETURNING id`,
+		&r.Type, &r.ExamineeID, &r.PracticeSubmissionID, &r.QuestionID, &r.Answer, &r.AnswerScore, &r.Marker, &r.Creator, &r.UpdatedBy, &r.Addi, &r.Status, &r.Order, &r.GroupID, &r.ActualOptions, &r.ActualAnswers, &r.CreateTime, &r.UpdateTime, &r.Files).Scan(&r.ID)
 	if err != nil {
 		return errors.Wrap(err, "failed to insert t_student_answers")
 	}
@@ -13932,8 +13962,8 @@ func GetTStudentAnswersByPk(db Queryer, pk0 null.Int) (*TStudentAnswers, error) 
 
 	var r TStudentAnswers
 	err := db.QueryRow(
-		`SELECT id, type, examinee_id, practice_submission_id, question_id, answer, answer_score, marker, creator, updated_by, addi, status, order, group_id, actual_options, actual_answers, create_time, update_time FROM t_student_answers WHERE id = $1`,
-		pk0).Scan(&r.ID, &r.Type, &r.ExamineeID, &r.PracticeSubmissionID, &r.QuestionID, &r.Answer, &r.AnswerScore, &r.Marker, &r.Creator, &r.UpdatedBy, &r.Addi, &r.Status, &r.Order, &r.GroupID, &r.ActualOptions, &r.ActualAnswers, &r.CreateTime, &r.UpdateTime)
+		`SELECT id, type, examinee_id, practice_submission_id, question_id, answer, answer_score, marker, creator, updated_by, addi, status, order, group_id, actual_options, actual_answers, create_time, update_time, files FROM t_student_answers WHERE id = $1`,
+		pk0).Scan(&r.ID, &r.Type, &r.ExamineeID, &r.PracticeSubmissionID, &r.QuestionID, &r.Answer, &r.AnswerScore, &r.Marker, &r.Creator, &r.UpdatedBy, &r.Addi, &r.Status, &r.Order, &r.GroupID, &r.ActualOptions, &r.ActualAnswers, &r.CreateTime, &r.UpdateTime, &r.Files)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to select t_student_answers")
 	}

@@ -22,13 +22,12 @@ func ListRegisterT(ctx context.Context, name string, course string, status strin
 	// 用于测试，强制执行某些错误分支
 	forceErr, _ := ctx.Value("force-error").(string)
 	//从上下文中获取权限信息
-	authority, _ := ctx.Value("authority").(auth_mgt.Authority)
+	authority, _ := ctx.Value("authority").(*auth_mgt.Authority)
 
 	//构建查询条件
 	var clauses []string
 	//构建占位符
 	var args []interface{}
-
 	if searchType == "02" {
 		args = append(args, RegisterStudentStatus.Apply)
 		args = append(args, RegisterStudentStatus.Rejected)
@@ -46,6 +45,23 @@ func ListRegisterT(ctx context.Context, name string, course string, status strin
 
 		clauses = append(clauses, fmt.Sprintf("r.status = $%d", len(args)+1))
 		args = append(args, RegisterStatus.ReviewEnding)
+	} else if searchType == "04" {
+		args = append(args, RegisterStudentStatus.Apply)
+		args = append(args, RegisterStudentStatus.Apply)
+		args = append(args, RegisterStudentStatus.Apply)
+		args = append(args, RegisterStudentStatus.Apply)
+		args = append(args, RegisterPracticeStatus.Normal)
+		if name != "" {
+			clauses = append(clauses, fmt.Sprintf("%s LIKE $%d", "r.name", len(args)+1))
+			args = append(args, "%"+name+"%")
+		}
+		if course != "" {
+			clauses = append(clauses, fmt.Sprintf("%s  =$%d", "r.course", len(args)+1))
+			args = append(args, course)
+		}
+
+		clauses = append(clauses, fmt.Sprintf("r.status NOT IN($%d , $%d , $%d , $%d)", len(args)+1, len(args)+2, len(args)+3, len(args)+4))
+		args = append(args, RegisterStatus.ReviewEnding, RegisterStatus.Deleted, RegisterStatus.Disabled, RegisterStatus.Cancel)
 	} else {
 		args = append(args, RegisterStudentStatus.Apply)
 		args = append(args, RegisterStudentStatus.Apply)
@@ -68,7 +84,7 @@ func ListRegisterT(ctx context.Context, name string, course string, status strin
 		clauses = append(clauses, fmt.Sprintf("r.status != $%d", len(args)+1))
 		args = append(args, RegisterStatus.Deleted)
 	}
-	clauses = append(clauses, fmt.Sprintf("r.creator = $%d OR r.domain_id = ANY($%d)", len(args)+1, len(args)+2))
+	clauses = append(clauses, fmt.Sprintf("(r.creator = $%d OR r.domain_id = ANY($%d))", len(args)+1, len(args)+2))
 	args = append(args, userID, authority.AccessibleDomains)
 
 	s := `
@@ -133,17 +149,21 @@ func ListRegisterT(ctx context.Context, name string, course string, status strin
 	}
 	clauses = append(clauses, fmt.Sprintf("r.status != $%d", len(args)+1))
 	args = append(args, RegisterStatus.Deleted)
-	clauses = append(clauses, fmt.Sprintf("r.creator = $%d OR r.domain_id = ANY($%d)", len(args)+1, len(args)+2))
+	clauses = append(clauses, fmt.Sprintf("(r.creator = $%d OR r.domain_id = ANY($%d))", len(args)+1, len(args)+2))
 	args = append(args, userID, authority.AccessibleDomains)
 	if searchType == "02" {
 		clauses = append(clauses, fmt.Sprintf("r.status = $%d", len(args)+1))
 		args = append(args, RegisterStatus.ReviewEnding)
+	} else if searchType == "04" {
+		clauses = append(clauses, fmt.Sprintf("r.status NOT IN($%d , $%d , $%d , $%d)", len(args)+1, len(args)+2, len(args)+3, len(args)+4))
+		args = append(args, RegisterStatus.ReviewEnding, RegisterStatus.Deleted, RegisterStatus.Disabled, RegisterStatus.Cancel)
 	}
 	//查询总数
 	s = ` SELECT COUNT(*) FROM assessuser.t_register_plan r `
 	if len(clauses) > 0 {
 		s += " WHERE " + strings.Join(clauses, " AND ")
 	}
+
 	z.Sugar().Debugf("打印输出一下这个操作语句：%v", s)
 	z.Sugar().Debugf("打印输出一下参数表：%v", args)
 	rows2, err := sqlxDB.Query(ctx, s, args...)
@@ -575,7 +595,7 @@ func UpdateRegister(ctx context.Context, registration *cmn.TRegisterPlan, practi
 		}
 	}
 	forceErr, _ := ctx.Value("force-error").(string)
-	authority, _ := ctx.Value("authority").(auth_mgt.Authority)
+	authority, _ := ctx.Value("authority").(*auth_mgt.Authority)
 	now := time.Now().UnixMilli()
 	registration.UpdatedBy = null.NewInt(userID, true)
 	registration.UpdateTime = null.NewInt(now, true)
@@ -720,7 +740,7 @@ func AddRegister(ctx context.Context, registration *cmn.TRegisterPlan, practiceI
 	now := time.Now().UnixMilli()
 	//用于测试，强制执行某些错误分支
 	forceErr, _ := ctx.Value("force-error").(string)
-	authority, _ := ctx.Value("authority").(auth_mgt.Authority)
+	authority, _ := ctx.Value("authority").(*auth_mgt.Authority)
 	sqlxDB := cmn.GetPgxConn()
 	tx, err := sqlxDB.Begin(ctx)
 	if err != nil || forceErr == "beginTx" {
@@ -779,7 +799,7 @@ func AddRegister(ctx context.Context, registration *cmn.TRegisterPlan, practiceI
 }
 func UpsertReviewers(ctx context.Context, tx pgx.Tx, registerID int64, userID int64, reviewerIds []int64) error {
 	forceErr, _ := ctx.Value("force-error").(string)
-	authority, _ := ctx.Value("authority").(auth_mgt.Authority)
+	authority, _ := ctx.Value("authority").(*auth_mgt.Authority)
 	if registerID <= 0 {
 		err := fmt.Errorf("registerID不能小于等于0")
 		z.Error(err.Error())
@@ -808,7 +828,7 @@ func UpsertReviewers(ctx context.Context, tx pgx.Tx, registerID int64, userID in
 }
 func UpsertRegisterPractice(ctx context.Context, tx pgx.Tx, registerID int64, practiceIds []int64, userID int64) error {
 	forceErr, _ := ctx.Value("force-error").(string)
-	authority, _ := ctx.Value("authority").(auth_mgt.Authority)
+	authority, _ := ctx.Value("authority").(*auth_mgt.Authority)
 	if registerID <= 0 {
 		err := fmt.Errorf("registerID不能小于等于0")
 		z.Error(err.Error())

@@ -8,12 +8,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/jmoiron/sqlx"
-	"github.com/pkg/errors"
 	"go.uber.org/zap"
 	"io"
 	"strconv"
 	"strings"
 	"w2w.io/cmn"
+	"w2w.io/serve/auth_mgt"
 )
 
 var z *zap.Logger
@@ -47,6 +47,23 @@ func Enroll(author string) {
 
 		Developer: developer,
 		WhiteList: true,
+		ApiEntries: []*cmn.EndPointApiEntries{
+			{
+				Name:         "练习管理.获取练习列表",
+				AccessAction: auth_mgt.CAPIAccessActionRead,
+				Configurable: true,
+			},
+			{
+				Name:         "练习管理.新增练习",
+				AccessAction: auth_mgt.CAPIAccessActionCreate,
+				Configurable: true,
+			},
+			{
+				Name:         "练习管理.修改练习",
+				AccessAction: auth_mgt.CAPIAccessActionUpdate,
+				Configurable: true,
+			},
+		},
 
 		//DomainID 创建该API的账号归属的domain
 		DomainID: int64(cmn.CDomainSys),
@@ -60,6 +77,18 @@ func Enroll(author string) {
 
 		Path: "/practiceStudentList",
 		Name: "practiceStudentList",
+		ApiEntries: []*cmn.EndPointApiEntries{
+			{
+				Name:         "练习管理.获取参与练习的学生列表",
+				AccessAction: auth_mgt.CAPIAccessActionRead,
+				Configurable: true,
+			},
+			{
+				Name:         "练习管理.发布练习之后更新学生名单",
+				AccessAction: auth_mgt.CAPIAccessActionUpdate,
+				Configurable: true,
+			},
+		},
 
 		Developer: developer,
 		WhiteList: true,
@@ -76,6 +105,79 @@ func Enroll(author string) {
 
 		Path: "/registerPractice",
 		Name: "registerPractice",
+		ApiEntries: []*cmn.EndPointApiEntries{
+			{
+				Name:         "练习管理.获取报名计划选择练习列表",
+				AccessAction: auth_mgt.CAPIAccessActionRead,
+				Configurable: true,
+			},
+		},
+
+		Developer: developer,
+		WhiteList: true,
+
+		//DomainID 创建该API的账号归属的domain
+		DomainID: int64(cmn.CDomainSys),
+
+		//DefaultDomain 该API将默认授权给的用户
+		DefaultDomain: int64(cmn.CDomainSys),
+	})
+	_ = cmn.AddService(&cmn.ServeEndPoint{
+		Fn: updatePracticeStatus,
+
+		Path: "/practice/status",
+		Name: "updatePracticeStatus",
+		ApiEntries: []*cmn.EndPointApiEntries{
+			{
+				Name:         "练习管理.修改练习的状态",
+				AccessAction: auth_mgt.CAPIAccessActionUpdate,
+				Configurable: true,
+			},
+		},
+
+		Developer: developer,
+		WhiteList: true,
+
+		//DomainID 创建该API的账号归属的domain
+		DomainID: int64(cmn.CDomainSys),
+
+		//DefaultDomain 该API将默认授权给的用户
+		DefaultDomain: int64(cmn.CDomainSys),
+	})
+	_ = cmn.AddService(&cmn.ServeEndPoint{
+		Fn: practiceDetail,
+
+		Path: "/practice/id",
+		Name: "practiceDetail",
+		ApiEntries: []*cmn.EndPointApiEntries{
+			{
+				Name:         "练习管理.获取练习详情",
+				AccessAction: auth_mgt.CAPIAccessActionRead,
+				Configurable: true,
+			},
+		},
+
+		Developer: developer,
+		WhiteList: true,
+
+		//DomainID 创建该API的账号归属的domain
+		DomainID: int64(cmn.CDomainSys),
+
+		//DefaultDomain 该API将默认授权给的用户
+		DefaultDomain: int64(cmn.CDomainSys),
+	})
+	_ = cmn.AddService(&cmn.ServeEndPoint{
+		Fn: studentPractice,
+
+		Path: "/practice/student",
+		Name: "studentPractice",
+		ApiEntries: []*cmn.EndPointApiEntries{
+			{
+				Name:         "练习管理.学生权限获取练习列表",
+				AccessAction: auth_mgt.CAPIAccessActionRead,
+				Configurable: true,
+			},
+		},
 
 		Developer: developer,
 		WhiteList: true,
@@ -103,36 +205,120 @@ func practiceH(ctx context.Context) {
 		q.RespErr()
 		return
 	}
-	var domainID int64
-	for _, domain := range q.Domains {
-		if domain.ID.Int64 == PracticeDomainID.Student || domain.ID.Int64 == PracticeDomainID.Teacher || domain.ID.Int64 == PracticeDomainID.Admin || domain.ID.Int64 == PracticeDomainID.SuperAdmin {
-			domainID = domain.ID.Int64
-			break
-		}
+	authority, err := auth_mgt.GetUserAuthority(ctx)
+	if err != nil {
+		q.Err = fmt.Errorf("获取用户的可执行权限失败: %v", err)
+		q.RespErr()
+		return
+
 	}
-	// 将所有非学生权限，都转换为教师权限
-	if domainID != 0 && domainID < PracticeDomainID.Student {
-		domainID = PracticeDomainID.Teacher
+	read, create, update, _, err := GetAuthAPIAccessible(ctx, authority, "/api/practice")
+	if err != nil {
+		q.Err = fmt.Errorf("获取用户的可执行权限失败: %v", err)
+		q.RespErr()
+		return
 	}
-	switch domainID {
-	case PracticeDomainID.Student:
+	ctx = context.WithValue(ctx, "authority", authority)
+	method := strings.ToLower(q.R.Method)
+
+	switch method {
+	case "post":
 		{
-			method := strings.ToLower(q.R.Method)
-			if method != "get" {
-				q.Err = fmt.Errorf("please call /api/practice with  http GET method")
+			var buf []byte
+			buf, q.Err = io.ReadAll(q.R.Body)
+			if forceErr == "io.ReadAll" {
+				q.Err = fmt.Errorf("尝试打开前端数据流失败")
+			}
+			if q.Err != nil {
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+			defer func() {
+				q.Err = q.R.Body.Close()
+				if forceErr == "Close" {
+					q.Err = fmt.Errorf("关闭打开的二进制数据流失败")
+				}
+				if q.Err != nil {
+					z.Error(q.Err.Error())
+				}
+			}()
+			if len(buf) == 0 {
+				q.Err = fmt.Errorf("Call /api/practice with  empty body")
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+			//获取请求的结构体
+			var qry cmn.ReqProto
+			q.Err = json.Unmarshal(buf, &qry)
+			if forceErr == "readReqProtoJson" {
+				q.Err = fmt.Errorf("读取前端数据结构体失败")
+			}
+			if q.Err != nil {
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+			var isClear bool
+			if qry.Action == "clear" {
+				isClear = true
+			}
+
+			var p practiceInfo
+			q.Err = json.Unmarshal(qry.Data, &p)
+			if forceErr == "readPJson" {
+				q.Err = fmt.Errorf("读取前端数据practice字段结构体失败")
+			}
+			if q.Err != nil {
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+			q.Err = ValidatePractice(&p.Practice, p.Student)
+			if q.Err != nil {
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+			if !p.Practice.ID.Valid {
+				if !create {
+					q.Err = fmt.Errorf("该用户没有新增数据权限")
+					z.Error(q.Err.Error())
+					q.RespErr()
+					return
+				}
+			} else {
+				if !update {
+					q.Err = fmt.Errorf("该用户没有更新数据权限")
+					z.Error(q.Err.Error())
+					q.RespErr()
+					return
+				}
+			}
+
+			err := UpsertPractice(ctx, &p.Practice, p.Student, userID, isClear)
+			if err != nil {
+				q.Err = err
+				q.RespErr()
+				return
+			}
+			z.Info("---->" + cmn.FncName())
+			q.Msg.Msg = "OK"
+			q.Resp()
+			return
+		}
+	case "get":
+		{
+			if !read {
+				q.Err = fmt.Errorf("该用户没有查询数据权限")
 				z.Error(q.Err.Error())
 				q.RespErr()
 				return
 			}
 			name := q.R.URL.Query().Get("name")
-			d := q.R.URL.Query().Get("difficulty")
-			t := q.R.URL.Query().Get("type")
-			if t == "" {
-				q.Err = fmt.Errorf("缺失练习类型")
-				z.Error(q.Err.Error())
-				q.RespErr()
-				return
-			}
+			pType := q.R.URL.Query().Get("type")
+			status := q.R.URL.Query().Get("status")
 			pageStr := q.R.URL.Query().Get("page")
 			if pageStr == "" {
 				q.Err = fmt.Errorf("缺失分页查询页号")
@@ -140,11 +326,10 @@ func practiceH(ctx context.Context) {
 				q.RespErr()
 				return
 			}
-
 			var page int
 			page, q.Err = strconv.Atoi(pageStr)
 			if forceErr == "pageParseInt" {
-				q.Err = fmt.Errorf("将页面大小转化为整形失败")
+				q.Err = fmt.Errorf("将字符串转化为整形失败")
 			}
 			if q.Err != nil {
 				q.Err = fmt.Errorf("分页查询的页号解析失败：%v", q.Err.Error())
@@ -162,7 +347,7 @@ func practiceH(ctx context.Context) {
 			var pageSize int
 			pageSize, q.Err = strconv.Atoi(pageSizeStr)
 			if forceErr == "pageSizeParseInt" {
-				q.Err = fmt.Errorf("将分页大小转化为整形失败")
+				q.Err = fmt.Errorf("将字符串转化为整形失败")
 			}
 			if q.Err != nil {
 				q.Err = fmt.Errorf("分页页大小解析失败：%v", q.Err.Error())
@@ -170,10 +355,15 @@ func practiceH(ctx context.Context) {
 				q.RespErr()
 				return
 			}
-
+			if pageSize >= 999 {
+				q.Err = fmt.Errorf("页数量过大，不允许访问")
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
 			// 排序字段
 			orderBy := []string{"create_time desc"}
-			p, total, err := ListPracticeS(ctx, t, name, d, orderBy, page, pageSize, userID)
+			p, total, err := ListPracticeT(ctx, name, pType, status, orderBy, page, pageSize, userID)
 			if err != nil {
 				q.Err = err
 				q.RespErr()
@@ -185,7 +375,7 @@ func practiceH(ctx context.Context) {
 			}
 			data, err := json.Marshal(result)
 			if forceErr == "json" {
-				err = fmt.Errorf("构建前端返回数据反序列化失败")
+				err = fmt.Errorf("将要返回数据结构反序列化失败")
 			}
 			if err != nil {
 				z.Error(err.Error())
@@ -197,269 +387,14 @@ func practiceH(ctx context.Context) {
 			z.Info("---->" + cmn.FncName())
 			q.Msg.Msg = "OK"
 			q.Resp()
+			return
 		}
-
-	case PracticeDomainID.Teacher:
-		{
-			method := strings.ToLower(q.R.Method)
-
-			switch method {
-			case "post":
-				{
-					var buf []byte
-					buf, q.Err = io.ReadAll(q.R.Body)
-					if forceErr == "io.ReadAll" {
-						q.Err = fmt.Errorf("尝试打开前端数据流失败")
-					}
-					if q.Err != nil {
-						z.Error(q.Err.Error())
-						q.RespErr()
-						return
-					}
-					defer func() {
-						q.Err = q.R.Body.Close()
-						if forceErr == "Close" {
-							q.Err = fmt.Errorf("关闭打开的二进制数据流失败")
-						}
-						if q.Err != nil {
-							z.Error(q.Err.Error())
-						}
-					}()
-					if len(buf) == 0 {
-						q.Err = fmt.Errorf("Call /api/practice with  empty body")
-						z.Error(q.Err.Error())
-						q.RespErr()
-						return
-					}
-					//获取请求的结构体
-					var qry cmn.ReqProto
-					q.Err = json.Unmarshal(buf, &qry)
-					if forceErr == "readReqProtoJson" {
-						q.Err = fmt.Errorf("读取前端数据结构体失败")
-					}
-					if q.Err != nil {
-						z.Error(q.Err.Error())
-						q.RespErr()
-						return
-					}
-					var isClear bool
-					if qry.Action == "clear" {
-						isClear = true
-					}
-
-					var p practiceInfo
-					q.Err = json.Unmarshal(qry.Data, &p)
-					if forceErr == "readPJson" {
-						q.Err = fmt.Errorf("读取前端数据practice字段结构体失败")
-					}
-					if q.Err != nil {
-						z.Error(q.Err.Error())
-						q.RespErr()
-						return
-					}
-					q.Err = ValidatePractice(&p.Practice, p.Student)
-					if q.Err != nil {
-						z.Error(q.Err.Error())
-						q.RespErr()
-						return
-					}
-					err := UpsertPractice(ctx, &p.Practice, p.Student, userID, isClear)
-					if err != nil {
-						q.Err = err
-						q.RespErr()
-						return
-					}
-					z.Info("---->" + cmn.FncName())
-					q.Msg.Msg = "OK"
-					q.Resp()
-					return
-				}
-			case "get":
-				{
-					name := q.R.URL.Query().Get("name")
-					pType := q.R.URL.Query().Get("type")
-					status := q.R.URL.Query().Get("status")
-					id := q.R.URL.Query().Get("id")
-					// 此时需要获取练习具体信息
-					if id != "" {
-						var pid int64
-						pid, q.Err = strconv.ParseInt(id, 10, 64)
-						if forceErr == "idParseInt" {
-							q.Err = fmt.Errorf("将字符串转化为整形失败")
-						}
-						if q.Err != nil {
-							q.Err = fmt.Errorf("练习ID获取失败：%v", q.Err.Error())
-							z.Error(q.Err.Error())
-							q.RespErr()
-							return
-						}
-						p, pName, sCount, err := LoadPracticeById(ctx, pid)
-						if err != nil {
-							q.Err = err
-							q.RespErr()
-							return
-						}
-						result := Map{
-							"practice":      &p,
-							"student_count": sCount,
-							"paper_name":    pName,
-						}
-						data, err := json.Marshal(result)
-						if forceErr == "json" {
-							err = fmt.Errorf("将返回数据结构反序列化失败")
-						}
-						if err != nil {
-							z.Error(err.Error())
-							q.Err = err
-							q.RespErr()
-							return
-						}
-						q.Msg.Data = data
-						z.Info("---->" + cmn.FncName())
-						q.Msg.Msg = "OK"
-						q.Resp()
-						return
-					}
-					pageStr := q.R.URL.Query().Get("page")
-					if pageStr == "" {
-						q.Err = fmt.Errorf("缺失分页查询页号")
-						z.Error(q.Err.Error())
-						q.RespErr()
-						return
-					}
-					var page int
-					page, q.Err = strconv.Atoi(pageStr)
-					if forceErr == "pageParseInt" {
-						q.Err = fmt.Errorf("将字符串转化为整形失败")
-					}
-					if q.Err != nil {
-						q.Err = fmt.Errorf("分页查询的页号解析失败：%v", q.Err.Error())
-						z.Error(q.Err.Error())
-						q.RespErr()
-						return
-					}
-					pageSizeStr := q.R.URL.Query().Get("page_size")
-					if pageSizeStr == "" {
-						q.Err = fmt.Errorf("缺失分页查询页大小")
-						z.Error(q.Err.Error())
-						q.RespErr()
-						return
-					}
-					var pageSize int
-					pageSize, q.Err = strconv.Atoi(pageSizeStr)
-					if forceErr == "pageSizeParseInt" {
-						q.Err = fmt.Errorf("将字符串转化为整形失败")
-					}
-					if q.Err != nil {
-						q.Err = fmt.Errorf("分页页大小解析失败：%v", q.Err.Error())
-						z.Error(q.Err.Error())
-						q.RespErr()
-						return
-					}
-					if pageSize >= 999 {
-						q.Err = fmt.Errorf("页数量过大，不允许访问")
-						z.Error(q.Err.Error())
-						q.RespErr()
-						return
-					}
-					// 排序字段
-					orderBy := []string{"create_time desc"}
-					p, total, err := ListPracticeT(ctx, name, pType, status, orderBy, page, pageSize, userID)
-					if err != nil {
-						q.Err = err
-						q.RespErr()
-						return
-					}
-					result := Map{
-						"total":     total,
-						"practices": p,
-					}
-					data, err := json.Marshal(result)
-					if forceErr == "json" {
-						err = fmt.Errorf("将要返回数据结构反序列化失败")
-					}
-					if err != nil {
-						z.Error(err.Error())
-						q.Err = err
-						q.RespErr()
-						return
-					}
-					q.Msg.Data = data
-					z.Info("---->" + cmn.FncName())
-					q.Msg.Msg = "OK"
-					q.Resp()
-					return
-				}
-			case "patch":
-				{
-					// 更新练习状态，对练习进行发布、取消、删除操作
-					idStr := q.R.URL.Query().Get("id")
-					status := q.R.URL.Query().Get("status")
-
-					// 这里去获取ID数组
-					if idStr == "" {
-						q.Err = fmt.Errorf("请传入要操作的练习ID")
-						z.Error(q.Err.Error())
-						q.RespErr()
-						return
-					}
-
-					// 以逗号分隔
-					idArray := strings.Split(idStr, ",")
-
-					var ids []int64
-					var invalidValues []string
-
-					for _, s := range idArray {
-						// 这里就取出每一个以逗号分隔的个体
-						c := strings.TrimSpace(s)
-						if c == "" {
-							continue
-						}
-
-						id, err := strconv.ParseInt(c, 10, 64)
-						if err != nil {
-							invalidValues = append(invalidValues, s)
-							continue
-						}
-						ids = append(ids, id)
-					}
-
-					if len(invalidValues) > 0 {
-						// 这里就要返回了
-						q.Err = fmt.Errorf("传入的练习ID中存在非法值：%v", invalidValues)
-						z.Error(q.Err.Error())
-						q.RespErr()
-						return
-					}
-
-					if len(ids) == 0 {
-						q.Err = fmt.Errorf("请传入有效的需要操作的练习ID")
-						z.Error(q.Err.Error())
-						q.RespErr()
-						return
-					}
-
-					// 批量操作练习状态V2
-					q.Err = OperatePracticeStatusV2(ctx, ids, status, userID)
-					if q.Err != nil {
-						q.RespErr()
-						return
-					}
-					z.Info("---->" + cmn.FncName())
-					q.Msg.Status = 0
-					q.Msg.Msg = "OK"
-					q.Resp()
-					return
-				}
-
-			default:
-				q.Err = fmt.Errorf("please call /api/Practice with  http POST/GET/PATCH method")
-				q.RespErr()
-				return
-			}
-		}
+	default:
+		q.Err = fmt.Errorf("please call /api/Practice with  http POST/GET/PATCH method")
+		q.RespErr()
+		return
 	}
+
 }
 
 func practiceStudentListH(ctx context.Context) {
@@ -467,20 +402,6 @@ func practiceStudentListH(ctx context.Context) {
 	forceErr := ""
 	if val := ctx.Value("force-error"); val != nil {
 		forceErr = val.(string)
-	}
-	var domainID int64
-	for _, domain := range q.Domains {
-		if domain.ID.Int64 == PracticeDomainID.Student || domain.ID.Int64 == PracticeDomainID.Teacher || domain.ID.Int64 == PracticeDomainID.Admin || domain.ID.Int64 == PracticeDomainID.SuperAdmin {
-			domainID = domain.ID.Int64
-			break
-		}
-	}
-	if domainID == 0 || domainID == PracticeDomainID.Student {
-		warn := "当前权限无法操作学生名单"
-		q.Err = errors.New(warn)
-		z.Error(q.Err.Error())
-		q.RespErr()
-		return
 	}
 	userID := q.SysUser.ID.Int64
 	// 这里要进行域的处理，就是这个学生能查看谁的
@@ -490,11 +411,29 @@ func practiceStudentListH(ctx context.Context) {
 		q.RespErr()
 		return
 	}
-
+	authority, err := auth_mgt.GetUserAuthority(ctx)
+	if err != nil {
+		q.Err = fmt.Errorf("获取用户的可执行权限失败: %v", err)
+		q.RespErr()
+		return
+	}
+	ctx = context.WithValue(ctx, "authority", authority)
+	read, _, update, _, err := GetAuthAPIAccessible(ctx, authority, q.Ep.Path)
+	if err != nil {
+		q.Err = fmt.Errorf("获取用户的可执行权限失败: %v", err)
+		q.RespErr()
+		return
+	}
 	method := strings.ToLower(q.R.Method)
 	switch method {
 	case "get":
 		{
+			if !read {
+				q.Err = fmt.Errorf("该用户没有查询数据权限")
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
 			id := q.R.URL.Query().Get("id")
 			if id == "" {
 				q.Err = fmt.Errorf("缺失练习ID")
@@ -557,8 +496,8 @@ func practiceStudentListH(ctx context.Context) {
 				q.Resp()
 				return
 			}
-			s1 := `SELECT id, account,official_name,id_card_no,mobile_phone FROM t_user WHERE id IN (?)`
-			query, args, err := sqlx.In(s1, tResult)
+			s1 := `SELECT id, account,official_name,id_card_no,mobile_phone FROM t_user WHERE id IN (?) AND (creator= ? OR domain_id = ANY(?) )`
+			query, args, err := sqlx.In(s1, tResult, userID, authority.AccessibleDomains)
 			if forceErr == "sqlx-error" {
 				err = fmt.Errorf("准备数据库语句失败")
 			}
@@ -625,6 +564,12 @@ func practiceStudentListH(ctx context.Context) {
 
 	case "post":
 		{
+			if !update {
+				q.Err = fmt.Errorf("该用户没有更新数据权限")
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
 			var buf []byte
 			buf, q.Err = io.ReadAll(q.R.Body)
 			if forceErr == "io.ReadAll" {
@@ -722,23 +667,29 @@ func registerPracticeH(ctx context.Context) {
 	if val := ctx.Value("force-error"); val != nil {
 		forceErr = val.(string)
 	}
-	var domainID int64
-	for _, domain := range q.Domains {
-		if domain.ID.Int64 == PracticeDomainID.Admin || domain.ID.Int64 == PracticeDomainID.SuperAdmin {
-			domainID = domain.ID.Int64
-			break
-		}
-	}
-	if domainID == 0 || domainID == PracticeDomainID.Student {
-		q.Err = errors.New("当前权限无法操作获取可选择练习")
-		z.Error(q.Err.Error())
-		q.RespErr()
-		return
-	}
 	userID := q.SysUser.ID.Int64
 	// 这里要进行域的处理，就是这个学生能查看谁的
 	if userID <= 0 {
 		q.Err = fmt.Errorf("invalid UserID: %d", userID)
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+	authority, err := auth_mgt.GetUserAuthority(ctx)
+	if err != nil {
+		q.Err = fmt.Errorf("获取用户权限失败: %v", err)
+		q.RespErr()
+		return
+	}
+	ctx = context.WithValue(ctx, "authority", authority)
+	read, _, _, _, err := GetAuthAPIAccessible(ctx, authority, q.Ep.Path)
+	if err != nil {
+		q.Err = fmt.Errorf("获取用户的可执行权限失败: %v", err)
+		q.RespErr()
+		return
+	}
+	if !read {
+		q.Err = fmt.Errorf("该用户没有读取权限")
 		z.Error(q.Err.Error())
 		q.RespErr()
 		return
@@ -821,4 +772,291 @@ func registerPracticeH(ctx context.Context) {
 	q.Msg.Msg = "OK"
 	q.Resp()
 
+}
+func updatePracticeStatus(ctx context.Context) {
+	q := cmn.GetCtxValue(ctx)
+	userID := q.SysUser.ID.Int64
+	if userID <= 0 {
+		q.Err = fmt.Errorf("invalid UserID: %d", userID)
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+	authority, err := auth_mgt.GetUserAuthority(ctx)
+	if err != nil {
+		q.Err = fmt.Errorf("获取用户权限失败: %v", err.Error())
+		q.RespErr()
+		return
+	}
+	ctx = context.WithValue(ctx, "authority", authority)
+	_, _, update, _, err := GetAuthAPIAccessible(ctx, authority, "/api/practice/status")
+	if err != nil {
+		q.Err = fmt.Errorf("获取用户的可执行权限失败: %v", err)
+		q.RespErr()
+		return
+	}
+	method := q.R.Method
+	method = strings.ToLower(method)
+	switch method {
+	case "patch":
+		{
+			if !update {
+				q.Err = fmt.Errorf("该用户没有修改数据权限")
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+			// 更新练习状态，对练习进行发布、取消、删除操作
+			idStr := q.R.URL.Query().Get("id")
+			status := q.R.URL.Query().Get("status")
+
+			// 这里去获取ID数组
+			if idStr == "" {
+				q.Err = fmt.Errorf("请传入要操作的练习ID")
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+
+			// 以逗号分隔
+			idArray := strings.Split(idStr, ",")
+
+			var ids []int64
+			var invalidValues []string
+
+			for _, s := range idArray {
+				// 这里就取出每一个以逗号分隔的个体
+				c := strings.TrimSpace(s)
+				if c == "" {
+					continue
+				}
+
+				id, err := strconv.ParseInt(c, 10, 64)
+				if err != nil {
+					invalidValues = append(invalidValues, s)
+					continue
+				}
+				ids = append(ids, id)
+			}
+
+			if len(invalidValues) > 0 {
+				// 这里就要返回了
+				q.Err = fmt.Errorf("传入的练习ID中存在非法值：%v", invalidValues)
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+
+			if len(ids) == 0 {
+				q.Err = fmt.Errorf("请传入有效的需要操作的练习ID")
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+
+			// 批量操作练习状态V2
+			q.Err = OperatePracticeStatusV2(ctx, ids, status, userID)
+			if q.Err != nil {
+				q.RespErr()
+				return
+			}
+			z.Info("---->" + cmn.FncName())
+			q.Msg.Status = 0
+			q.Msg.Msg = "OK"
+			q.Resp()
+			return
+
+		}
+	}
+
+}
+func practiceDetail(ctx context.Context) {
+	q := cmn.GetCtxValue(ctx)
+	userID := q.SysUser.ID.Int64
+	if userID <= 0 {
+		q.Err = fmt.Errorf("invalid UserID: %d", userID)
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+	forceErr := ""
+	if val := ctx.Value("force-error"); val != nil {
+		forceErr = val.(string)
+	}
+	authority, err := auth_mgt.GetUserAuthority(ctx)
+	if err != nil {
+		q.Err = fmt.Errorf("获取用户权限失败: %v", err.Error())
+		q.RespErr()
+		return
+	}
+	ctx = context.WithValue(ctx, "authority", authority)
+	read, _, _, _, err := GetAuthAPIAccessible(ctx, authority, q.Ep.Path)
+	method := q.R.Method
+	method = strings.ToLower(method)
+	switch method {
+	case "get":
+		{
+			if !read {
+				q.Err = fmt.Errorf("该用户没有读取权限")
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+			id := q.R.URL.Query().Get("id")
+			// 此时需要获取练习具体信息
+			if id != "" {
+				var pid int64
+				pid, q.Err = strconv.ParseInt(id, 10, 64)
+				if forceErr == "idParseInt" {
+					q.Err = fmt.Errorf("将字符串转化为整形失败")
+				}
+				if q.Err != nil {
+					q.Err = fmt.Errorf("练习ID获取失败：%v", q.Err.Error())
+					z.Error(q.Err.Error())
+					q.RespErr()
+					return
+				}
+				p, pName, sCount, err := LoadPracticeById(ctx, pid)
+				if err != nil {
+					q.Err = err
+					q.RespErr()
+					return
+				}
+				result := Map{
+					"practice":      &p,
+					"student_count": sCount,
+					"paper_name":    pName,
+				}
+				data, err := json.Marshal(result)
+				if forceErr == "json" {
+					err = fmt.Errorf("将返回数据结构反序列化失败")
+				}
+				if err != nil {
+					z.Error(err.Error())
+					q.Err = err
+					q.RespErr()
+					return
+				}
+				q.Msg.Data = data
+				z.Info("---->" + cmn.FncName())
+				q.Msg.Msg = "OK"
+				q.Resp()
+				return
+			}
+
+		}
+	}
+}
+func studentPractice(ctx context.Context) {
+	q := cmn.GetCtxValue(ctx)
+	userID := q.SysUser.ID.Int64
+	if userID <= 0 {
+		q.Err = fmt.Errorf("invalid UserID: %d", userID)
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+	forceErr := ""
+	if val := ctx.Value("force-error"); val != nil {
+		forceErr = val.(string)
+	}
+	authority, err := auth_mgt.GetUserAuthority(ctx)
+	if err != nil {
+		q.Err = fmt.Errorf("获取用户权限失败: %v", err.Error())
+		q.RespErr()
+		return
+	}
+	ctx = context.WithValue(ctx, "authority", authority)
+	read, _, _, _, err := GetAuthAPIAccessible(ctx, authority, q.Ep.Path)
+	if err != nil {
+		q.Err = fmt.Errorf("获取用户的可执行权限失败: %v", err)
+		q.RespErr()
+		return
+	}
+	method := q.R.Method
+	method = strings.ToLower(method)
+	switch method {
+	case "get":
+		{
+			if !read {
+				q.Err = fmt.Errorf("该用户没有读取权限")
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+			name := q.R.URL.Query().Get("name")
+			d := q.R.URL.Query().Get("difficulty")
+			t := q.R.URL.Query().Get("type")
+			if t == "" {
+				q.Err = fmt.Errorf("缺失练习类型")
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+			pageStr := q.R.URL.Query().Get("page")
+			if pageStr == "" {
+				q.Err = fmt.Errorf("缺失分页查询页号")
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+
+			var page int
+			page, q.Err = strconv.Atoi(pageStr)
+			if forceErr == "pageParseInt" {
+				q.Err = fmt.Errorf("将页面大小转化为整形失败")
+			}
+			if q.Err != nil {
+				q.Err = fmt.Errorf("分页查询的页号解析失败：%v", q.Err.Error())
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+			pageSizeStr := q.R.URL.Query().Get("page_size")
+			if pageSizeStr == "" {
+				q.Err = fmt.Errorf("缺失分页查询页大小")
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+			var pageSize int
+			pageSize, q.Err = strconv.Atoi(pageSizeStr)
+			if forceErr == "pageSizeParseInt" {
+				q.Err = fmt.Errorf("将分页大小转化为整形失败")
+			}
+			if q.Err != nil {
+				q.Err = fmt.Errorf("分页页大小解析失败：%v", q.Err.Error())
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+
+			// 排序字段
+			orderBy := []string{"create_time desc"}
+			p, total, err := ListPracticeS(ctx, t, name, d, orderBy, page, pageSize, userID)
+			if err != nil {
+				q.Err = err
+				q.RespErr()
+				return
+			}
+			result := Map{
+				"total":     total,
+				"practices": p,
+			}
+			data, err := json.Marshal(result)
+			if forceErr == "json" {
+				err = fmt.Errorf("构建前端返回数据反序列化失败")
+			}
+			if err != nil {
+				z.Error(err.Error())
+				q.Err = err
+				q.RespErr()
+				return
+			}
+			q.Msg.Data = data
+			z.Info("---->" + cmn.FncName())
+			q.Msg.Msg = "OK"
+			q.Resp()
+		}
+	}
 }
