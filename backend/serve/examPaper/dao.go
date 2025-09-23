@@ -441,7 +441,7 @@ func GenerateExamPaper(ctx context.Context, tx pgx.Tx, paperId, uid int64) (*int
 	questionSQL := `INSERT INTO assessuser.t_exam_paper_question (
 		score, type, content, options, answers, analysis, title, 
 		answer_file_path, test_file_path, input, output, example, repo, 
-		creator, create_time, update_time, addi, "order", group_id, question_attachments_path
+		creator, create_time, update_time, addi, "order", group_id, files
 	) VALUES %s RETURNING id`
 
 	// 那这里就需要构建这个插入数据的数组
@@ -515,7 +515,7 @@ func GenerateExamPaper(ctx context.Context, tx pgx.Tx, paperId, uid int64) (*int
 			tq.UpdateTime = null.IntFrom(now)
 			tq.Addi = q.Addi
 			tq.GroupID = null.IntFrom(newGroupID)
-			tq.QuestionAttachmentsPath = q.QuestionAttachmentsPath
+			tq.Files = q.Files
 
 			tqs = append(tqs, tq)
 		}
@@ -564,7 +564,7 @@ func GenerateExamPaper(ctx context.Context, tx pgx.Tx, paperId, uid int64) (*int
 				s.Addi,
 				s.Order,
 				s.GroupID,
-				s.QuestionAttachmentsPath,
+				s.Files,
 			)
 		}
 		fullQuestionSQL := fmt.Sprintf(questionSQL, strings.Join(placeholders, ","))
