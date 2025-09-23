@@ -202,7 +202,7 @@ func validateExamData(examData *ExamData, isUpdate bool) error {
 		needInvigilatorCount += examRoom.InvigilatorCount
 	}
 
-	if len(examData.InvigilatorIDs) != int(needInvigilatorCount) {
+	if examData.ExamInfo.Mode.String == "02" && len(examData.InvigilatorIDs) != int(needInvigilatorCount) {
 		err := fmt.Errorf("监考教师人数不足: 需要 %d, 实际 %d", needInvigilatorCount, len(examData.InvigilatorIDs))
 		z.Error(err.Error())
 		return err

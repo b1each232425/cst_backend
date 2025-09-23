@@ -9674,6 +9674,33 @@ func TestAllocateInvigilatorsToRooms(t *testing.T) {
 	}
 }
 
+func TestAllocateInvigilatorsOnline(t *testing.T) {
+	cmn.ConfigureForTest()
+	// 构造场次和考场
+	examSessionIDs := []int64{1001, 1002}
+	invigilatorIDs := []int64{201, 202, 203}
+
+	// 正常分配
+	result, err := allocateInvigilatorsOnline(examSessionIDs, invigilatorIDs)
+	if err != nil {
+		t.Fatalf("分配监考员失败: %v", err)
+	}
+	// 应分配 2场次*每场3人=6条记录
+	if len(result) != 6 {
+		t.Errorf("分配监考员数量不正确: got %d, want 6", len(result))
+	}
+
+	// 测试空数据
+	_, err = allocateInvigilatorsOnline(nil, invigilatorIDs)
+	if err == nil {
+		t.Errorf("场次为空应报错")
+	}
+	_, err = allocateInvigilatorsOnline(examSessionIDs, nil)
+	if err == nil {
+		t.Errorf("监考员为空应报错")
+	}
+}
+
 func TestGetExamRoomCapacity(t *testing.T) {
 	cmn.ConfigureForTest()
 	CleanTestExamData(t)

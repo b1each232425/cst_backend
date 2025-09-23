@@ -844,6 +844,32 @@ func allocateExamineesToRooms(examinees []cmn.TExaminee, examRooms []cmn.TExamRo
 }
 
 // 将监考员分配到考场和场次
+func allocateInvigilatorsOnline(examSessionIDs []int64, invigilatorIDs []int64) ([]cmn.TInvigilation, error) {
+	z.Info("---->" + cmn.FncName())
+
+	if len(examSessionIDs) == 0 || len(invigilatorIDs) == 0 {
+		return nil, fmt.Errorf("考试场次或监考员ID不能为空")
+	}
+
+	var invigilations []cmn.TInvigilation
+
+	// 将监考员分配到所有考试场次
+	for _, id := range invigilatorIDs {
+		for _, examSessionID := range examSessionIDs {
+			invigilation := cmn.TInvigilation{
+				Invigilator: null.IntFrom(id),
+			}
+			invigilation.ExamSessionID.Int64 = examSessionID
+			invigilation.ExamSessionID.Valid = true
+			invigilation.ExamRoom.Valid = false
+			invigilations = append(invigilations, invigilation)
+		}
+	}
+
+	return invigilations, nil
+}
+
+// 将监考员分配到考场和场次
 func allocateInvigilatorsToRooms(examSessionIDs []int64, examRooms []ExamRoomConfig, invigilatorIDs []int64) ([]cmn.TInvigilation, error) {
 	z.Info("---->" + cmn.FncName())
 
@@ -2075,14 +2101,25 @@ func exam(ctx context.Context) {
 
 		// 如果配置了监考员，分配监考员到考场
 		var invigilations []cmn.TInvigilation
-		if len(ExamData.InvigilatorIDs) > 0 && ExamData.ExamInfo.Mode.String == "02" {
-			invigilations, q.Err = allocateInvigilatorsToRooms(newExamSessionIDs, ExamData.ExamRooms, ExamData.InvigilatorIDs)
-			if forceErr == "allocateInvigilatorsToRooms" {
-				q.Err = fmt.Errorf("强制分配监考员到考场错误")
-			}
-			if q.Err != nil {
-				q.RespErr()
-				return
+		if len(ExamData.InvigilatorIDs) > 0 {
+			if ExamData.ExamInfo.Mode.String == "02" {
+				invigilations, q.Err = allocateInvigilatorsToRooms(newExamSessionIDs, ExamData.ExamRooms, ExamData.InvigilatorIDs)
+				if forceErr == "allocateInvigilatorsToRooms" {
+					q.Err = fmt.Errorf("强制分配监考员到考场错误")
+				}
+				if q.Err != nil {
+					q.RespErr()
+					return
+				}
+			} else {
+				invigilations, q.Err = allocateInvigilatorsOnline(newExamSessionIDs, ExamData.InvigilatorIDs)
+				if forceErr == "allocateInvigilatorsOnline" {
+					q.Err = fmt.Errorf("强制分配监考员到考场错误")
+				}
+				if q.Err != nil {
+					q.RespErr()
+					return
+				}
 			}
 
 			// 批量插入监考员记录
