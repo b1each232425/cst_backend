@@ -45,7 +45,7 @@ func Enroll(author string) {
 		Name: "paperTemplate",
 		ApiEntries: []*cmn.EndPointApiEntries{
 			{
-				Name:         "试卷管理.查询试卷模板",
+				Name:         "考卷管理.查询试卷模板",
 				AccessAction: auth_mgt.CAPIAccessActionRead,
 				Configurable: true,
 			},
