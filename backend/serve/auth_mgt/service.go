@@ -3,9 +3,11 @@ package auth_mgt
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"w2w.io/null"
 
 	"w2w.io/cmn"
 )
@@ -494,4 +496,290 @@ func querySelectableAPIs(ctx context.Context, parentDomain string) (apis []*cmn.
 	}
 
 	return apis, nil
+}
+
+// QueryDomains 分页查询域列表
+func QueryDomains(ctx context.Context, page, pageSize int64, filter *QueryDomainsFilter) (result []DomainData, rowCount int64, err error) {
+	forceErr, _ := ctx.Value("force-error").(string) // 用于强制执行错误处理代码
+
+	result = make([]DomainData, 0)
+	rowCount = 0
+
+	// 获取数据库连接
+	pgConn := cmn.GetPgxConn()
+	if pgConn == nil || forceErr == "GetPgxConn" {
+		err = fmt.Errorf("database connection is not available")
+		z.Error(err.Error())
+		return []DomainData{}, 0, err
+	}
+
+	// 计算偏移量
+	offset := (page - 1) * pageSize
+
+	// 构建查询条件
+	var conditions []string
+	var args []interface{}
+	argIndex := 1
+
+	// 添加状态筛选条件
+	if filter.Status != "" {
+		conditions = append(conditions, "status = $"+fmt.Sprintf("%d", argIndex))
+		args = append(args, filter.Status)
+		argIndex++
+	}
+
+	// 添加域筛选条件
+	if filter.Domain != "" {
+		isDomain, isRole := IsValidDomainOrRole(filter.Domain)
+		if !isDomain && !isRole {
+			err = fmt.Errorf("筛选域的格式不正确: %s", filter.Domain)
+			z.Error(err.Error())
+			return []DomainData{}, 0, err
+		}
+		conditions = append(conditions, "domain = $"+fmt.Sprintf("%d", argIndex))
+		args = append(args, filter.Domain)
+		argIndex++
+	}
+
+	if filter.ParentDomain != "" {
+		isDomain, _ := IsValidDomainOrRole(filter.ParentDomain)
+		if !isDomain {
+			err = fmt.Errorf("筛选父域的格式不正确: %s", filter.ParentDomain)
+			z.Error(err.Error())
+			return []DomainData{}, 0, err
+		}
+		likePattern := filter.ParentDomain + "%"
+		conditions = append(conditions, "domain LIKE $"+fmt.Sprintf("%d", argIndex))
+		args = append(args, likePattern)
+		argIndex++
+	}
+
+	if filter.TargetType != "" {
+		// 00只筛选domain字段不含^的数据，02只筛选domain字段含^的数据
+		switch filter.TargetType {
+		case "00":
+			conditions = append(conditions, "domain NOT LIKE '%^%'")
+		case "02":
+			conditions = append(conditions, "domain LIKE '%^%'")
+		default:
+			err = fmt.Errorf("筛选目标的格式不正确: %s", filter.TargetType)
+			z.Error(err.Error())
+			return []DomainData{}, 0, err
+		}
+	}
+
+	// 处理层级筛选参数
+	childLevelInt := -1 // 默认值为-1，表示不进行层级筛选
+	if filter.ChildLevel != "" {
+		childLevelInt, err = strconv.Atoi(filter.ChildLevel)
+		if err != nil || childLevelInt < 0 {
+			childLevelInt = -1 // 解析失败时设为-1，不进行层级筛选
+		}
+	}
+
+	// 根据层级参数进行筛选
+	if childLevelInt >= 0 {
+		// 构建层级筛选条件
+		var levelConditions []string
+
+		if childLevelInt == 0 {
+			// level=0时，只查询直接隶属于当前父域的角色（A^xx格式）
+			// 匹配格式：parentDomain^任意字符
+			pattern := "^" + strings.ReplaceAll(filter.ParentDomain, ".", "\\.") + "\\^.+$"
+			levelConditions = append(levelConditions, "domain ~ $"+fmt.Sprintf("%d", argIndex))
+			args = append(args, pattern)
+			argIndex++
+		} else {
+			// level>0时，按原有逻辑处理层级筛选
+			if filter.ParentDomain != "" {
+				// 如果存在父域筛选，基于父域构建层级条件
+				for i := 1; i <= childLevelInt; i++ {
+					// 构建正则表达式模式
+					// 例如：父域为A.B，level为2时
+					// 匹配 A.B.XX 和 A.B.XX.XX
+					pattern := "^" + strings.ReplaceAll(filter.ParentDomain, ".", "\\.") + "(\\.[^.^]+){" + fmt.Sprintf("%d", i) + "}(\\^.*)?$"
+					levelConditions = append(levelConditions, "domain ~ $"+fmt.Sprintf("%d", argIndex))
+					args = append(args, pattern)
+					argIndex++
+				}
+			} else {
+				// 如果不存在父域筛选，直接基于层级数构建条件
+				for i := 1; i <= childLevelInt; i++ {
+					// 构建正则表达式模式
+					// 例如：level为2时，匹配 XX 和 XX.XX
+					pattern := "^([^.^]+)(\\.[^.^]+){" + fmt.Sprintf("%d", i-1) + "}(\\^.*)?$"
+					levelConditions = append(levelConditions, "domain ~ $"+fmt.Sprintf("%d", argIndex))
+					args = append(args, pattern)
+					argIndex++
+				}
+			}
+		}
+
+		if len(levelConditions) > 0 {
+			conditions = append(conditions, "("+strings.Join(levelConditions, " OR ")+")")
+		}
+	}
+
+	// 添加模糊查询条件
+	if filter.FuzzyCondition != "" {
+		textPattern := "%" + filter.FuzzyCondition + "%"
+		conditions = append(conditions, fmt.Sprintf(`(
+				name ILIKE $%d OR
+				domain ILIKE $%d OR
+				remark ILIKE $%d
+			)`, argIndex, argIndex, argIndex))
+		args = append(args, textPattern)
+		argIndex++
+	}
+
+	// 构建WHERE子句
+	whereClause := ""
+	if len(conditions) > 0 {
+		whereClause = "WHERE " + strings.Join(conditions, " AND ")
+	}
+
+	// 查询总行数
+	countSQL := `
+			SELECT COUNT(*)
+			FROM t_domain
+			` + whereClause + `
+		`
+
+	err = pgConn.QueryRow(ctx, countSQL, args...).Scan(&rowCount)
+	if err != nil || forceErr == "QueryDomainCount" {
+		err = fmt.Errorf("failed to query domain count: %w", err)
+		z.Error(err.Error())
+		return []DomainData{}, 0, err
+	}
+
+	// 从 t_domain 查询域基本信息（带分页）
+	queryDomainSQL := `
+			SELECT id, name, domain, priority, updated_by, update_time, creator, create_time, status
+			FROM t_domain
+			` + whereClause + `
+			ORDER BY create_time DESC
+			LIMIT $` + fmt.Sprintf("%d", argIndex) + ` OFFSET $` + fmt.Sprintf("%d", argIndex+1) + `
+		`
+
+	// 添加分页参数到查询参数列表
+	args = append(args, pageSize, offset)
+
+	rows, err := pgConn.Query(ctx, queryDomainSQL, args...)
+	if err != nil || forceErr == "QueryDomains" {
+		err = fmt.Errorf("failed to query domains: %w", err)
+		z.Error(err.Error())
+		return []DomainData{}, 0, err
+	}
+	defer rows.Close()
+
+	// 扫描域数据
+	for rows.Next() {
+		var domainData DomainData
+		err = rows.Scan(
+			&domainData.Base.ID,
+			&domainData.Base.Name,
+			&domainData.Base.Domain,
+			&domainData.Base.Priority,
+			&domainData.Base.UpdatedBy,
+			&domainData.Base.UpdateTime,
+			&domainData.Base.Creator,
+			&domainData.Base.CreateTime,
+			&domainData.Base.Status,
+		)
+		if err != nil || forceErr == "ScanDomains" {
+			err = fmt.Errorf("failed to scan domain data: %w", err)
+			z.Error(err.Error())
+			return []DomainData{}, 0, err
+		}
+
+		// 从 v_domain_api 查询该域的API列表
+		queryAPISQL := `
+				SELECT api_id, api_name, expose_path, access_action, creator, create_time, status
+				FROM v_domain_api
+				WHERE domain = $1 AND status = '01'
+				ORDER BY api_id
+			`
+		apiRows, err := pgConn.Query(ctx, queryAPISQL, domainData.Base.Domain)
+		if err != nil || forceErr == "QueryDomainAPIs" {
+			err = fmt.Errorf("failed to query domain APIs for %s: %w", domainData.Base.Domain, err)
+			z.Error(err.Error())
+			return []DomainData{}, 0, err
+		}
+
+		// 扫描API数据
+		domainData.APIs = make([]*cmn.TAPI, 0)
+		for apiRows.Next() {
+			var api cmn.TAPI
+			err = apiRows.Scan(
+				&api.ID,
+				&api.Name,
+				&api.ExposePath,
+				&api.AccessAction,
+				&api.Creator,
+				&api.CreateTime,
+				&api.Status,
+			)
+			if err != nil || forceErr == "ScanDomainAPIs" {
+				err = fmt.Errorf("failed to scan API data for domain %s: %w", domainData.Base.Domain, err)
+				apiRows.Close()
+				z.Error(err.Error())
+				return []DomainData{}, 0, err
+			}
+			domainData.APIs = append(domainData.APIs, &api)
+		}
+		apiRows.Close()
+
+		// 检查API扫描过程中是否有错误
+		err = apiRows.Err()
+		if err != nil || forceErr == "apiRows.Err" {
+			err = fmt.Errorf("error occurred during API scanning for domain %s: %w", domainData.Base.Domain, err)
+			z.Error(err.Error())
+			return []DomainData{}, 0, err
+		}
+
+		// 查询域的创建者信息
+		if domainData.Base.Creator.Valid && domainData.Base.Creator.Int64 != CDefaultDomainCreatorID {
+			var creator cmn.TUser
+			creatorSQL := `
+					SELECT id, account, official_name, mobile_phone, email
+					FROM t_user
+					WHERE id = $1
+				`
+			err = pgConn.QueryRow(ctx, creatorSQL, domainData.Base.Creator.Int64).Scan(
+				&creator.ID,
+				&creator.Account,
+				&creator.OfficialName,
+				&creator.MobilePhone,
+				&creator.Email,
+			)
+			if err != nil || forceErr == "QueryCreator" {
+				// 如果查询创建者失败，记录警告但不中断流程
+				z.Warn(fmt.Sprintf("failed to query creator for domain %s: %v", domainData.Base.Domain, err))
+			} else {
+				// 将创建者信息赋值到域的详细信息
+				domainData.Detail.Creator = creator
+			}
+		} else if domainData.Base.Creator.Int64 == CDefaultDomainCreatorID {
+			// 填充默认创建者信息
+			domainData.Detail.Creator = cmn.TUser{
+				ID:           null.IntFrom(CDefaultDomainCreatorID),
+				Account:      "system",
+				OfficialName: null.StringFrom("系统"),
+				MobilePhone:  null.StringFrom(""),
+				Email:        null.StringFrom(""),
+			}
+		}
+
+		result = append(result, domainData)
+	}
+
+	// 检查域扫描过程中是否有错误
+	err = rows.Err()
+	if err != nil || forceErr == "rows.Err" {
+		err = fmt.Errorf("error occurred during domain scanning: %w", err)
+		z.Error(err.Error())
+		return []DomainData{}, 0, err
+	}
+
+	return result, rowCount, nil
 }
