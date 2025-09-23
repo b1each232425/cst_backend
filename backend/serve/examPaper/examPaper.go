@@ -12,7 +12,6 @@ import (
 	"strings"
 	"w2w.io/cmn"
 	"w2w.io/serve/auth_mgt"
-	"w2w.io/serve/registration"
 )
 
 var z *zap.Logger
@@ -80,7 +79,7 @@ func paperTemplateH(ctx context.Context) {
 		return
 	}
 	ctx = context.WithValue(ctx, "authority", authority)
-	read, _, _, _, err := registration.GetAuthAPIAccessible(ctx, authority, q.Ep.Path)
+	read, _, _, _, err := GetAuthAPIAccessible(ctx, authority, q.Ep.Path)
 
 	// 这里只需要测试每一个接口，返回是否正常数据就可以了
 
