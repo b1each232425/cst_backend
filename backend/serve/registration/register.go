@@ -521,7 +521,7 @@ func registerStudentH(ctx context.Context) {
 		return
 	}
 	ctx = context.WithValue(ctx, "authority", authority)
-	read, create, update, _, err := GetAuthAPIAccessible(ctx, authority, "/api/registrationStudent")
+	read, create, update, _, err := GetAuthAPIAccessible(ctx, authority, q.Ep.Path)
 	if err != nil {
 		q.Err = fmt.Errorf("获取用户的可执行权限失败: %v", err)
 		q.RespErr()

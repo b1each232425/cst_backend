@@ -22,7 +22,7 @@ func ListRegisterT(ctx context.Context, name string, course string, status strin
 	// 用于测试，强制执行某些错误分支
 	forceErr, _ := ctx.Value("force-error").(string)
 	//从上下文中获取权限信息
-	authority, _ := ctx.Value("authority").(auth_mgt.Authority)
+	authority, _ := ctx.Value("authority").(*auth_mgt.Authority)
 
 	//构建查询条件
 	var clauses []string
@@ -595,7 +595,7 @@ func UpdateRegister(ctx context.Context, registration *cmn.TRegisterPlan, practi
 		}
 	}
 	forceErr, _ := ctx.Value("force-error").(string)
-	authority, _ := ctx.Value("authority").(auth_mgt.Authority)
+	authority, _ := ctx.Value("authority").(*auth_mgt.Authority)
 	now := time.Now().UnixMilli()
 	registration.UpdatedBy = null.NewInt(userID, true)
 	registration.UpdateTime = null.NewInt(now, true)
@@ -740,7 +740,7 @@ func AddRegister(ctx context.Context, registration *cmn.TRegisterPlan, practiceI
 	now := time.Now().UnixMilli()
 	//用于测试，强制执行某些错误分支
 	forceErr, _ := ctx.Value("force-error").(string)
-	authority, _ := ctx.Value("authority").(auth_mgt.Authority)
+	authority, _ := ctx.Value("authority").(*auth_mgt.Authority)
 	sqlxDB := cmn.GetPgxConn()
 	tx, err := sqlxDB.Begin(ctx)
 	if err != nil || forceErr == "beginTx" {
@@ -799,7 +799,7 @@ func AddRegister(ctx context.Context, registration *cmn.TRegisterPlan, practiceI
 }
 func UpsertReviewers(ctx context.Context, tx pgx.Tx, registerID int64, userID int64, reviewerIds []int64) error {
 	forceErr, _ := ctx.Value("force-error").(string)
-	authority, _ := ctx.Value("authority").(auth_mgt.Authority)
+	authority, _ := ctx.Value("authority").(*auth_mgt.Authority)
 	if registerID <= 0 {
 		err := fmt.Errorf("registerID不能小于等于0")
 		z.Error(err.Error())
@@ -828,7 +828,7 @@ func UpsertReviewers(ctx context.Context, tx pgx.Tx, registerID int64, userID in
 }
 func UpsertRegisterPractice(ctx context.Context, tx pgx.Tx, registerID int64, practiceIds []int64, userID int64) error {
 	forceErr, _ := ctx.Value("force-error").(string)
-	authority, _ := ctx.Value("authority").(auth_mgt.Authority)
+	authority, _ := ctx.Value("authority").(*auth_mgt.Authority)
 	if registerID <= 0 {
 		err := fmt.Errorf("registerID不能小于等于0")
 		z.Error(err.Error())

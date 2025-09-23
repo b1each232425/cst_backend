@@ -13808,6 +13808,7 @@ type TStudentAnswers struct {
 	ActualAnswers        types.JSONText `json:"ActualAnswers,omitempty" db:"actual_answers,false,jsonb"`                 /* actual_answers 实际题目客观题答案 */
 	CreateTime           null.Int       `json:"CreateTime,omitempty" db:"create_time,false,bigint"`                      /* create_time 记录创建时间 */
 	UpdateTime           null.Int       `json:"UpdateTime,omitempty" db:"update_time,false,bigint"`                      /* update_time 记录更新记录时间 */
+	Files                types.JSONText `json:"Files,omitempty" db:"files,false,jsonb"`                                  /* files t_file id 数组， 用于记录上传的附件 */
 	Filter               `json:"-"`     // build DML where clause
 }
 
@@ -13831,6 +13832,7 @@ var TStudentAnswersFields = []string{
 	"ActualAnswers",
 	"CreateTime",
 	"UpdateTime",
+	"Files",
 }
 
 // TStudentAnswersColumns full column list for default query
@@ -13853,6 +13855,7 @@ var TStudentAnswersColumns = []string{
 	"actual_answers",
 	"create_time",
 	"update_time",
+	"files",
 }
 
 // TStudentAnswersColumnsDataTypes full column data types for default query
@@ -13875,6 +13878,7 @@ var TStudentAnswersColumnsDataTypes = map[string]string{
 	"actual_answers":         "jsonb",
 	"create_time":            "bigint",
 	"update_time":            "bigint",
+	"files":                  "jsonb",
 }
 
 // GetFieldsMap returns a map of field names to their values.
@@ -13898,6 +13902,7 @@ func (r *TStudentAnswers) GetFieldsMap() map[string]any {
 		"ActualAnswers":        r.ActualAnswers,
 		"CreateTime":           r.CreateTime,
 		"UpdateTime":           r.UpdateTime,
+		"Files":                r.Files,
 	}
 }
 
@@ -13922,6 +13927,7 @@ func (r *TStudentAnswers) GetColumnsMap() map[string]any {
 		"actual_answers":         r.ActualAnswers,
 		"create_time":            r.CreateTime,
 		"update_time":            r.UpdateTime,
+		"files":                  r.Files,
 	}
 }
 
@@ -13943,8 +13949,8 @@ func (r *TStudentAnswers) GetTableName() string {
 // Create inserts the TStudentAnswers to the database.
 func (r *TStudentAnswers) Create(db Queryer) error {
 	err := db.QueryRow(
-		`INSERT INTO t_student_answers (type, examinee_id, practice_submission_id, question_id, answer, answer_score, marker, creator, updated_by, addi, status, order, group_id, actual_options, actual_answers, create_time, update_time) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17) RETURNING id`,
-		&r.Type, &r.ExamineeID, &r.PracticeSubmissionID, &r.QuestionID, &r.Answer, &r.AnswerScore, &r.Marker, &r.Creator, &r.UpdatedBy, &r.Addi, &r.Status, &r.Order, &r.GroupID, &r.ActualOptions, &r.ActualAnswers, &r.CreateTime, &r.UpdateTime).Scan(&r.ID)
+		`INSERT INTO t_student_answers (type, examinee_id, practice_submission_id, question_id, answer, answer_score, marker, creator, updated_by, addi, status, order, group_id, actual_options, actual_answers, create_time, update_time, files) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18) RETURNING id`,
+		&r.Type, &r.ExamineeID, &r.PracticeSubmissionID, &r.QuestionID, &r.Answer, &r.AnswerScore, &r.Marker, &r.Creator, &r.UpdatedBy, &r.Addi, &r.Status, &r.Order, &r.GroupID, &r.ActualOptions, &r.ActualAnswers, &r.CreateTime, &r.UpdateTime, &r.Files).Scan(&r.ID)
 	if err != nil {
 		return errors.Wrap(err, "failed to insert t_student_answers")
 	}
@@ -13956,8 +13962,8 @@ func GetTStudentAnswersByPk(db Queryer, pk0 null.Int) (*TStudentAnswers, error) 
 
 	var r TStudentAnswers
 	err := db.QueryRow(
-		`SELECT id, type, examinee_id, practice_submission_id, question_id, answer, answer_score, marker, creator, updated_by, addi, status, order, group_id, actual_options, actual_answers, create_time, update_time FROM t_student_answers WHERE id = $1`,
-		pk0).Scan(&r.ID, &r.Type, &r.ExamineeID, &r.PracticeSubmissionID, &r.QuestionID, &r.Answer, &r.AnswerScore, &r.Marker, &r.Creator, &r.UpdatedBy, &r.Addi, &r.Status, &r.Order, &r.GroupID, &r.ActualOptions, &r.ActualAnswers, &r.CreateTime, &r.UpdateTime)
+		`SELECT id, type, examinee_id, practice_submission_id, question_id, answer, answer_score, marker, creator, updated_by, addi, status, order, group_id, actual_options, actual_answers, create_time, update_time, files FROM t_student_answers WHERE id = $1`,
+		pk0).Scan(&r.ID, &r.Type, &r.ExamineeID, &r.PracticeSubmissionID, &r.QuestionID, &r.Answer, &r.AnswerScore, &r.Marker, &r.Creator, &r.UpdatedBy, &r.Addi, &r.Status, &r.Order, &r.GroupID, &r.ActualOptions, &r.ActualAnswers, &r.CreateTime, &r.UpdateTime, &r.Files)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to select t_student_answers")
 	}
