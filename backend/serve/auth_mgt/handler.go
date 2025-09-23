@@ -309,9 +309,10 @@ func (h *handler) HandleDomain(ctx context.Context) {
 		// 解析筛选条件
 		domain := q.R.URL.Query().Get("domain")
 		parentDomain := q.R.URL.Query().Get("parentDomain")
-		onlyRole := q.R.URL.Query().Get("onlyRole")
+		targetType := q.R.URL.Query().Get("targetType")
 		status := q.R.URL.Query().Get("status")
 		fuzzyCondition := q.R.URL.Query().Get("fuzzyCondition")
+		childLevel := q.R.URL.Query().Get("childLevel")
 
 		// 解析分页参数
 		pageStr := q.R.URL.Query().Get("page")
@@ -384,10 +385,71 @@ func (h *handler) HandleDomain(ctx context.Context) {
 			argIndex++
 		}
 
-		if onlyRole == "true" {
-			conditions = append(conditions, "domain LIKE $"+fmt.Sprintf("%d", argIndex))
-			args = append(args, "%^%")
-			argIndex++
+		if targetType != "" {
+			// 00只筛选domain字段不含^的数据，02只筛选domain字段含^的数据
+			switch targetType {
+			case "00":
+				conditions = append(conditions, "domain NOT LIKE '%^%'")
+			case "02":
+				conditions = append(conditions, "domain LIKE '%^%'")
+			default:
+				q.Err = fmt.Errorf("筛选目标的格式不正确: %s", targetType)
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+		}
+
+		// 处理层级筛选参数
+		childLevelInt := -1 // 默认值为-1，表示不进行层级筛选
+		if childLevel != "" {
+			childLevelInt, err = strconv.Atoi(childLevel)
+			if err != nil || childLevelInt < 0 {
+				childLevelInt = -1 // 解析失败时设为-1，不进行层级筛选
+			}
+		}
+
+		// 根据层级参数进行筛选
+		if childLevelInt >= 0 {
+			// 构建层级筛选条件
+			var levelConditions []string
+
+			if childLevelInt == 0 {
+				// level=0时，只查询直接隶属于当前父域的角色（A^xx格式）
+				// 匹配格式：parentDomain^任意字符
+				pattern := "^" + strings.ReplaceAll(parentDomain, ".", "\\.") + "\\^.+$"
+				levelConditions = append(levelConditions, "domain ~ $"+fmt.Sprintf("%d", argIndex))
+				args = append(args, pattern)
+				argIndex++
+			} else {
+				// level>0时，按原有逻辑处理层级筛选
+				if parentDomain != "" {
+					// 如果存在父域筛选，基于父域构建层级条件
+					for i := 1; i <= childLevelInt; i++ {
+						// 构建正则表达式模式
+						// 例如：父域为A.B，level为2时
+						// 匹配 A.B.XX 和 A.B.XX.XX
+						pattern := "^" + strings.ReplaceAll(parentDomain, ".", "\\.") + "(\\.[^.^]+){" + fmt.Sprintf("%d", i) + "}(\\^.*)?$"
+						levelConditions = append(levelConditions, "domain ~ $"+fmt.Sprintf("%d", argIndex))
+						args = append(args, pattern)
+						argIndex++
+					}
+				} else {
+					// 如果不存在父域筛选，直接基于层级数构建条件
+					for i := 1; i <= childLevelInt; i++ {
+						// 构建正则表达式模式
+						// 例如：level为2时，匹配 XX 和 XX.XX
+						pattern := "^([^.^]+)(\\.[^.^]+){" + fmt.Sprintf("%d", i-1) + "}(\\^.*)?$"
+						levelConditions = append(levelConditions, "domain ~ $"+fmt.Sprintf("%d", argIndex))
+						args = append(args, pattern)
+						argIndex++
+					}
+				}
+			}
+
+			if len(levelConditions) > 0 {
+				conditions = append(conditions, "("+strings.Join(levelConditions, " OR ")+")")
+			}
 		}
 
 		// 添加模糊查询条件
@@ -406,6 +468,22 @@ func (h *handler) HandleDomain(ctx context.Context) {
 		whereClause := ""
 		if len(conditions) > 0 {
 			whereClause = "WHERE " + strings.Join(conditions, " AND ")
+		}
+
+		// 查询总行数
+		countSQL := `
+			SELECT COUNT(*)
+			FROM t_domain
+			` + whereClause + `
+		`
+
+		var totalCount int64
+		err = pgConn.QueryRow(ctx, countSQL, args...).Scan(&totalCount)
+		if err != nil || forceErr == "QueryDomainCount" {
+			q.Err = fmt.Errorf("failed to query domain count: %w", err)
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
 		}
 
 		// 从 t_domain 查询域基本信息（带分页）
@@ -498,6 +576,39 @@ func (h *handler) HandleDomain(ctx context.Context) {
 				return
 			}
 
+			// 查询域的创建者信息
+			if domainData.Base.Creator.Valid && domainData.Base.Creator.Int64 != CDefaultDomainCreatorID {
+				var creator cmn.TUser
+				creatorSQL := `
+					SELECT id, account, official_name, mobile_phone, email
+					FROM t_user
+					WHERE id = $1
+				`
+				err = pgConn.QueryRow(ctx, creatorSQL, domainData.Base.Creator.Int64).Scan(
+					&creator.ID,
+					&creator.Account,
+					&creator.OfficialName,
+					&creator.MobilePhone,
+					&creator.Email,
+				)
+				if err != nil || forceErr == "QueryCreator" {
+					// 如果查询创建者失败，记录警告但不中断流程
+					z.Warn(fmt.Sprintf("failed to query creator for domain %s: %v", domainData.Base.Domain, err))
+				} else {
+					// 将创建者信息赋值到域的详细信息
+					domainData.Detail.Creator = creator
+				}
+			} else if domainData.Base.Creator.Int64 == CDefaultDomainCreatorID {
+				// 填充默认创建者信息
+				domainData.Detail.Creator = cmn.TUser{
+					ID:           null.IntFrom(CDefaultDomainCreatorID),
+					Account:      "system",
+					OfficialName: null.StringFrom("系统"),
+					MobilePhone:  null.StringFrom(""),
+					Email:        null.StringFrom(""),
+				}
+			}
+
 			result = append(result, domainData)
 		}
 
@@ -518,6 +629,9 @@ func (h *handler) HandleDomain(ctx context.Context) {
 			q.RespErr()
 			return
 		}
+
+		// 设置总行数
+		q.Msg.RowCount = totalCount
 
 		q.Msg.Status = 0
 		q.Msg.Msg = "success"

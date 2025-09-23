@@ -20,9 +20,9 @@ import (
 
 type Handler interface {
 	HandleUser(ctx context.Context)
+	HandleCurrentUser(ctx context.Context)
 	HandleGetNewAccount(ctx context.Context)
 	HandleSelectLoginDomain(ctx context.Context)
-	HandleCurrentUser(ctx context.Context)
 	HandleValidateUserToBeInsert(ctx context.Context)
 	HandleLogout(ctx context.Context)
 	HandleSendValidationCodeEmail(ctx context.Context)

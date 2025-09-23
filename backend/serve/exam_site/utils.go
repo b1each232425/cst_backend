@@ -1,6 +1,7 @@
 package exam_site
 
 import (
+	"context"
 	"database/sql"
 	"encoding/csv"
 	"errors"
@@ -8,8 +9,12 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
+	"crypto/rand"
 
+
+	"w2w.io/serve/auth_mgt"
 	"w2w.io/cmn"
 )
 
@@ -20,6 +25,169 @@ const (
 type copyInfo struct {
 	Sql   string
 	Table string
+}
+
+// OrderByJoin 将返回拼接好的 Order By 语句, 如果传入的 map 为空, 则返回默认值 defaultOrderBy
+func OrderByJoin(defaultOrderBy string, orderByMap []map[string]string) (r string, err error) {
+
+	orderByList := []string{}
+
+	for _, o := range orderByMap {
+		for k, v := range o {
+
+			if k == "" || v == "" {
+				continue
+			}
+
+			v = strings.ToUpper(v)
+
+			if v != "ASC" && v != "DESC" {
+				err = fmt.Errorf("不支持的排序方式: %s key: %s", v, k)
+				z.Error(err.Error())
+				return
+			}
+
+			orderByList = append(orderByList, fmt.Sprintf("%s %s", k, v))
+		}
+	}
+
+	r = strings.Join(orderByList, ", ")
+	if r == "" {
+		r = defaultOrderBy
+	}
+
+	return
+}
+
+// getApiPermissions 获取当前用户在使用指定接口时是否可读/可创建/可编辑/可删除
+func getApiPermissions(ctx context.Context, apiPath string) (readable, creatable, editable, deletable bool) {
+
+	q := cmn.GetCtxValue(ctx)
+
+	readable, q.Err = auth_mgt.CheckUserAPIAccessible(ctx, nil, apiPath, auth_mgt.CAPIAccessActionRead)
+	if q.Err != nil || (cmn.InDebugMode && q.Tag["checkUserApiReadableErr"] != nil) {
+
+		if q.Err == nil {
+			q.Err = q.Tag["checkUserApiReadableErr"].(error)
+		}
+
+		return
+	}
+
+	creatable, q.Err = auth_mgt.CheckUserAPIAccessible(ctx, nil, apiPath, auth_mgt.CAPIAccessActionCreate)
+	if q.Err != nil || (cmn.InDebugMode && q.Tag["checkUserApiCreatableErr"] != nil) {
+
+		if q.Err == nil {
+			q.Err = q.Tag["checkUserApiCreatableErr"].(error)
+		}
+
+		return
+	}
+
+	editable, q.Err = auth_mgt.CheckUserAPIAccessible(ctx, nil, apiPath, auth_mgt.CAPIAccessActionUpdate)
+	if q.Err != nil || (cmn.InDebugMode && q.Tag["checkUserApiEditableErr"] != nil) {
+
+		if q.Err == nil {
+			q.Err = q.Tag["checkUserApiEditableErr"].(error)
+		}
+
+		return
+	}
+
+	deletable, q.Err = auth_mgt.CheckUserAPIAccessible(ctx, nil, apiPath, auth_mgt.CAPIAccessActionDelete)
+	if q.Err != nil || (cmn.InDebugMode && q.Tag["checkUserApiDeletableErr"] != nil) {
+
+		if q.Err == nil {
+			q.Err = q.Tag["checkUserApiDeletableErr"].(error)
+		}
+
+		return
+	}
+
+	return
+}
+
+// createSysUser 创建考点服务器系统账号
+func createSysUser(ctx context.Context, tx *sql.Tx, siteID int64) (sysUserID int64, accessToken string, err error) {
+
+	q := cmn.GetCtxValue(ctx)
+
+	officialName := fmt.Sprintf("考点%d", siteID)
+
+	var account, userToken string
+
+	b1 := make([]byte, 4)
+
+	b2 := make([]byte, 32)
+
+	// 该Read从不返回错误，并且始终填充 b, 一旦发生错误就直接Panic， 所以这里就不需要接收err
+	rand.Read(b1)
+
+	rand.Read(b2)
+
+	account = fmt.Sprintf("exam-site-%x", b1)
+
+	userToken = fmt.Sprintf("%x", b2)
+
+	// 注册考点服务器系统账号，用于给考点服务器与中心服务器进行http通信验证
+	sqlStr := fmt.Sprintf(`INSERT INTO t_user (category, type, official_name, account, user_token, creator, role)
+	VALUES ('sys^admin', '08', $1, $2, crypt($3,gen_salt('bf')), 1000, %d)
+	RETURNING 
+		id`, cmn.CDomainAssessExamSite)
+
+	var stmt1 *sql.Stmt
+	stmt1, err = tx.Prepare(sqlStr)
+	if err != nil || (cmn.InDebugMode && q.Tag["prepareCreateSysUserErr"] != nil) {
+
+		if err == nil {
+			err = q.Tag["prepareCreateSysUserErr"].(error)
+		}
+
+		z.Error(err.Error())
+		return
+	}
+
+	defer stmt1.Close()
+
+	err = stmt1.QueryRowContext(ctx, officialName, account, userToken).Scan(&sysUserID)
+	if err != nil || (cmn.InDebugMode && q.Tag["sqlExecCreateSysUserErr"] != nil) {
+
+		if err == nil {
+			err = q.Tag["sqlExecCreateSysUserErr"].(error)
+		}
+
+		z.Error(err.Error())
+		return
+	}
+
+	accessToken = generateAccessToken(sysUserID, userToken)
+
+	return
+}
+
+// generateAccessToken 生成访问令牌
+func generateAccessToken(userID int64, userToken string) (accessToken string) {
+	return fmt.Sprintf("%d-%s", userID, userToken)
+}
+
+// parseAccessToken 解析访问令牌
+func parseAccessToken(accessToken string) (userID int64, userToken string, err error) {
+
+	parts := strings.SplitN(accessToken, "-", 2)
+	if len(parts) != 2 {
+		err = fmt.Errorf("invalid access token")
+		z.Error(err.Error())
+		return
+	}
+
+	userID, err = strconv.ParseInt(parts[0], 10, 64)
+	if err != nil {
+		z.Error(err.Error())
+		return
+	}
+
+	userToken = parts[1]
+	return
 }
 
 // generateExportScript 生成导出脚本文件
@@ -44,8 +212,8 @@ func generateExportScript(sysUser int64, destDir string, fileName string, isSubS
 		{
 			Sql: fmt.Sprintf(`SELECT t_examinee.*
 FROM t_examinee
-JOIN t_exam_room ON t_exam_room.id = t_examinee.exam_room
-JOIN t_exam_site ON t_exam_site.id = t_exam_room.exam_site
+	JOIN t_exam_room ON t_exam_room.id = t_examinee.exam_room
+	JOIN t_exam_site ON t_exam_site.id = t_exam_room.exam_site
 WHERE t_exam_site.sys_user = %d`, sysUser),
 			Table: "t_examinee",
 		},
@@ -54,9 +222,9 @@ WHERE t_exam_site.sys_user = %d`, sysUser),
 		{
 			Sql: fmt.Sprintf(`SELECT t_student_answers.*
 FROM t_student_answers
-JOIN t_examinee ON t_examinee.id = t_student_answers.examinee_id
-JOIN t_exam_room ON t_exam_room.id = t_examinee.exam_room
-JOIN t_exam_site ON t_exam_site.id = t_exam_room.exam_site
+	JOIN t_examinee ON t_examinee.id = t_student_answers.examinee_id
+	JOIN t_exam_room ON t_exam_room.id = t_examinee.exam_room
+	JOIN t_exam_site ON t_exam_site.id = t_exam_room.exam_site
 WHERE t_exam_site.sys_user = %d`, sysUser),
 			Table: "t_student_answers",
 		},
@@ -66,16 +234,30 @@ WHERE t_exam_site.sys_user = %d`, sysUser),
 		{
 			Sql: fmt.Sprintf(`SELECT t_exam_record.*
 FROM t_exam_record
-JOIN t_exam_room ON t_exam_room.id = t_exam_record.exam_room
-JOIN t_exam_site ON t_exam_site.id = t_exam_room.exam_site
+	JOIN t_exam_room ON t_exam_room.id = t_exam_record.exam_room
+	JOIN t_exam_site ON t_exam_site.id = t_exam_room.exam_site
 WHERE t_exam_site.sys_user = %d`, sysUser),
 			Table: "t_exam_record",
 		},
+
+		// 考场附件
+		{
+			Sql: fmt.Sprintf(`SELECT t_file.* 
+FROM t_exam_record
+	JOIN t_exam_room ON t_exam_room.id = t_exam_record.exam_room
+	JOIN t_exam_site ON t_exam_site.id = t_exam_room.exam_site
+  	CROSS JOIN LATERAL jsonb_array_elements(t_exam_record.files) AS file
+	JOIN t_file ON t_file.id = file.value::int
+WHERE jsonb_typeof(files) = 'array' AND t_exam_site.sys_user = %d
+GROUP BY
+	t_file.id`, sysUser),
+			Table: "t_file",
+		},
+
 	}
 
+	// 中心服务器数据导出
 	if !isSubServerSide {
-
-		// 中心服务器数据导出
 
 		// 获取最近一个未开始的考试ID
 
@@ -220,7 +402,19 @@ GROUP BY
 				Table: "t_exam_session",
 			},
 
-			// 考卷数据
+			// 考试附件数据
+			{
+				Sql: fmt.Sprintf(`SELECT t_file.*
+FROM t_exam_info
+	CROSS JOIN LATERAL jsonb_array_elements(t_exam_info.files) AS file
+	JOIN t_file ON t_file.id = file.value::int
+WHERE t_exam_info.id = %d
+GROUP BY
+	t_file.id`, recentExamID),
+				Table: "t_file",
+			},
+
+			// 试卷数据
 			{
 				Sql: fmt.Sprintf(`SELECT t_paper.* 
 FROM t_exam_session
@@ -228,6 +422,8 @@ FROM t_exam_session
 WHERE t_exam_session.exam_id = %d`, recentExamID),
 				Table: "t_paper",
 			},
+
+			// 考卷数据
 			{
 				Sql: fmt.Sprintf(`SELECT t_exam_paper.* 
 FROM t_exam_session
@@ -237,6 +433,8 @@ WHERE t_exam_session.exam_id = %d
 				`, recentExamID),
 				Table: "t_exam_paper",
 			},
+
+			// 考卷题组数据
 			{
 				Sql: fmt.Sprintf(`SELECT t_exam_paper_group.* 
 FROM t_exam_session
@@ -247,6 +445,8 @@ WHERE t_exam_session.exam_id = %d
 			`, recentExamID),
 				Table: "t_exam_paper_group",
 			},
+
+			// 考卷题目数据
 			{
 				Sql: fmt.Sprintf(`SELECT t_exam_paper_question.* 
 FROM t_exam_session
@@ -257,6 +457,20 @@ FROM t_exam_session
 WHERE t_exam_session.exam_id = %d
 			`, recentExamID),
 				Table: "t_exam_paper_question",
+			},
+
+			// 考卷题目附件数据
+			{
+				Sql: fmt.Sprintf(`SELECT t_file.*
+FROM t_exam_paper_question
+	JOIN t_exam_paper_group ON t_exam_paper_group.id = t_exam_paper_question.group_id
+	JOIN t_exam_paper ON t_exam_paper.id = t_exam_paper_group.exam_paper_id
+	JOIN t_paper ON t_paper.exampaper_id = t_exam_paper.id
+	JOIN t_exam_session ON t_exam_session.paper_id = t_paper.id
+	CROSS JOIN LATERAL jsonb_array_elements(t_exam_paper_question.files) AS file
+	JOIN t_file ON t_file.id = file.value::int
+WHERE t_exam_session.exam_id = %d`, recentExamID),
+				Table: "t_file",
 			},
 
 			//======考生数据======
@@ -308,6 +522,8 @@ FROM t_exam_record
 WHERE t_exam_site.sys_user = %d`, recentExamID, sysUser),
 				Table: "t_exam_record",
 			},
+
+			
 		}
 	}
 
@@ -454,4 +670,41 @@ DROP TABLE IF EXISTS temp_%s;
 	}
 
 	return
+}
+
+// ReadColumnFromCSV 从CSV文件中读取指定列的数据
+func ReadColumnFromCSV(filePath string, columnName string) ([]string, error) {
+    f, err := os.Open(filePath)
+    if err != nil {
+        return nil, err
+    }
+    defer f.Close()
+
+    reader := csv.NewReader(f)
+    header, err := reader.Read()
+    if err != nil {
+        return nil, err
+    }
+
+    // 找到目标列索引
+    colIdx := -1
+    for i, name := range header {
+        if name == columnName {
+            colIdx = i
+            break
+        }
+    }
+    if colIdx == -1 {
+        return nil, fmt.Errorf("列名不存在: %s", columnName)
+    }
+
+    var result []string
+    for {
+        record, err := reader.Read()
+        if err != nil {
+            break // EOF
+        }
+        result = append(result, record[colIdx])
+    }
+    return result, nil
 }

@@ -625,6 +625,19 @@ func handleExamSessionEnd(ctx context.Context, event ExamEvent) error {
 
 	now := time.Now().UnixMilli()
 
+	// 锁定场次记录，防止并发修改
+	lockSQL := `
+		SELECT 1 FROM t_exam_session WHERE id = $1 FOR UPDATE
+	`
+	_, err = tx.Exec(ctx, lockSQL, event.ExamSessionID)
+	if forceErr == "lockExamSession" {
+		err = fmt.Errorf("强制锁定考试场次错误")
+	}
+	if err != nil {
+		z.Error(err.Error())
+		return err
+	}
+
 	// 更新考生状态
 	updateExamineesQuery := `
 		WITH examinee_to_update AS (
@@ -659,9 +672,7 @@ func handleExamSessionEnd(ctx context.Context, event ExamEvent) error {
 		err = fmt.Errorf("强制更新考生状态错误")
 	}
 	if err != nil {
-		z.Error("更新考生状态失败", zap.Error(err),
-			zap.Int64("exam_id", event.ExamID),
-			zap.Int64("exam_session_id", event.ExamSessionID))
+		z.Error("更新考生状态失败" + " exam_id: " + fmt.Sprintf("%d", event.ExamID) + " exam_session_id: " + fmt.Sprintf("%d", event.ExamSessionID))
 		return err
 	}
 
@@ -708,9 +719,10 @@ func handleExamSessionEnd(ctx context.Context, event ExamEvent) error {
 	_, err = tx.Exec(ctx, `
 		UPDATE t_exam_session 
 		SET status = '06', -- 已结束
-			update_time = $1
-		WHERE id = $2 AND status IN ('02','04') AND end_time <= $3
-	`, now, examSessionID, now)
+			update_time = $1,
+			actual_end_time = $2
+		WHERE id = $3 AND status IN ('02','04') AND end_time <= $4
+	`, now, now, examSessionID, now)
 	if forceErr == "updateSessionEndStatus" {
 		err = fmt.Errorf("强制更新场次状态为已结束错误")
 	}

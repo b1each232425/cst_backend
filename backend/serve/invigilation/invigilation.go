@@ -9,11 +9,13 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/spf13/viper"
 	"github.com/tidwall/gjson"
 	"go.uber.org/zap"
 	"w2w.io/cmn"
 	"w2w.io/null"
+	"w2w.io/serve/auth_mgt"
 )
 
 //annotation:invigilation-service
@@ -64,6 +66,7 @@ var needToUpdateExaminee map[string]bool = map[string]bool{
 	"00": false, // 考场记录
 	"02": true,  // 考生状态
 	"04": true,  // 考生备注
+	"06": true,  // 考生延时
 }
 
 func Enroll(author string) {
@@ -89,6 +92,14 @@ func Enroll(author string) {
 		Developer: developer,
 		WhiteList: true,
 
+		ApiEntries: []*cmn.EndPointApiEntries{
+			{
+				Name:         "监考管理.获取监考列表",
+				AccessAction: auth_mgt.CAPIAccessActionRead,
+				Configurable: true,
+			},
+		},
+
 		DomainID: int64(cmn.CDomainSys),
 
 		DefaultDomain: int64(cmn.CDomainSys),
@@ -99,6 +110,33 @@ func Enroll(author string) {
 
 		Path: "/invigilation",
 		Name: "invigilation",
+
+		Developer: developer,
+		WhiteList: true,
+
+		ApiEntries: []*cmn.EndPointApiEntries{
+			{
+				Name:         "监考管理.获取监考详情",
+				AccessAction: auth_mgt.CAPIAccessActionRead,
+				Configurable: true,
+			},
+			{
+				Name:         "监考管理.更新监考信息",
+				AccessAction: auth_mgt.CAPIAccessActionUpdate,
+				Configurable: true,
+			},
+		},
+
+		DomainID: int64(cmn.CDomainSys),
+
+		DefaultDomain: int64(cmn.CDomainSys),
+	})
+
+	_ = cmn.AddService(&cmn.ServeEndPoint{
+		Fn: invigilationFile,
+
+		Path: "/invigilation/file",
+		Name: "invigilationFile",
 
 		Developer: developer,
 		WhiteList: true,
@@ -156,6 +194,75 @@ func checkInvigilationAuthority(ctx context.Context, examSessionID, examRoomID, 
 	return
 }
 
+func canUpdateInvigilationInfo(ctx context.Context, examSessionID, examRoomID int64) (canUpdate bool, err error) {
+	z.Info("---->" + cmn.FncName())
+
+	var forceErr string
+	if val := ctx.Value("canUpdateInvigilationInfo-force-error"); val != nil {
+		forceErr = val.(string)
+	}
+
+	if examSessionID <= 0 {
+		err = fmt.Errorf("无效的考试场次ID: %d", examSessionID)
+		z.Error(err.Error())
+		return
+	}
+	if examRoomID <= 0 {
+		err = fmt.Errorf("无效的考场ID: %d", examRoomID)
+		z.Error(err.Error())
+		return
+	}
+
+	conn := cmn.GetPgxConn()
+
+	// 检查当前是否还能更新监考信息
+	centralServerUrl := viper.GetString("examSiteServerSync.centralServerUrl")
+	now := time.Now().UnixMilli()
+
+	if centralServerUrl != "" {
+		syncTime := viper.GetInt64("examSiteServerSync.syncDelay")
+		syncTime = syncTime * 1000
+		checkInvigilationSQL := `
+		SELECT EXISTS(
+				SELECT 1
+				FROM v_invigilation_info vi
+				WHERE vi.exam_session_id = $1 AND vi.exam_room_id = $2
+				AND (vi.es_actual_end_time IS NULL OR vi.es_actual_end_time + $3 > $4)
+			)
+		`
+		err = conn.QueryRow(ctx, checkInvigilationSQL, examSessionID, examRoomID, syncTime, now).Scan(&canUpdate)
+		if forceErr == "checkInvigilation" {
+			err = fmt.Errorf("强制检查当前是否还能更新监考信息错误")
+		}
+		if err != nil {
+			z.Error(err.Error())
+			return
+		}
+
+		return
+	}
+
+	// 如果是中心服务器，则检查该考试是否为线下考试，如果是线下则不允许更新
+	checkInvigilationSQL := `
+	SELECT EXISTS(
+			SELECT 1
+			FROM v_invigilation_info vi
+			WHERE vi.exam_session_id = $1 AND vi.exam_room_id = $2
+			AND vi.exam_mode != '02'
+		)
+	`
+	err = conn.QueryRow(ctx, checkInvigilationSQL, examSessionID, examRoomID).Scan(&canUpdate)
+	if forceErr == "checkInvigilation" {
+		err = fmt.Errorf("强制检查当前是否还能更新监考信息错误")
+	}
+	if err != nil {
+		z.Error(err.Error())
+		return
+	}
+
+	return
+}
+
 func invigilationList(ctx context.Context) {
 	z.Info("---->" + cmn.FncName())
 	q := cmn.GetCtxValue(ctx)
@@ -174,10 +281,24 @@ func invigilationList(ctx context.Context) {
 		return
 	}
 
+	var readable bool
+	readable, q.Err = auth_mgt.CheckUserAPIAccessible(ctx, nil, q.Ep.Path, auth_mgt.CAPIAccessActionRead)
+	if q.Err != nil {
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+
 	conn := cmn.GetPgxConn()
 	method := strings.ToLower(q.R.Method)
 	switch method {
 	case "get":
+		if !readable {
+			q.Err = fmt.Errorf("用户无权访问监考列表，请联系管理员获取权限")
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
 		qry := q.R.URL.Query().Get("q")
 		if qry == "" {
 			qry = `{
@@ -391,10 +512,33 @@ func invigilation(ctx context.Context) {
 		return
 	}
 
+	var readable bool
+	readable, q.Err = auth_mgt.CheckUserAPIAccessible(ctx, nil, q.Ep.Path, auth_mgt.CAPIAccessActionRead)
+	if q.Err != nil {
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+
+	var editable bool
+	editable, q.Err = auth_mgt.CheckUserAPIAccessible(ctx, nil, q.Ep.Path, auth_mgt.CAPIAccessActionUpdate)
+	if q.Err != nil {
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+
 	conn := cmn.GetPgxConn()
 	method := strings.ToLower(q.R.Method)
 	switch method {
 	case "get":
+		if !readable {
+			q.Err = fmt.Errorf("用户无权访问监考详情，请联系管理员获取权限，请联系管理员获取权限")
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
 		// 获取考试详情
 		qry := q.R.URL.Query().Get("q")
 		if qry == "" {
@@ -636,7 +780,7 @@ func invigilation(ctx context.Context) {
 		// 如果是考点服务器，则允许考试结束后继续更新监考信息
 		centralServerUrl := viper.GetString("examSiteServerSync.centralServerUrl")
 		var canUpdateWhenExamEnded bool = false
-		if centralServerUrl != "" {
+		if centralServerUrl != "" && forceErr != "centralServer" {
 			canUpdateWhenExamEnded = true
 		} else {
 			canUpdateWhenExamEnded = false
@@ -656,6 +800,12 @@ func invigilation(ctx context.Context) {
 		}
 
 	case "patch":
+		if !editable {
+			q.Err = fmt.Errorf("用户无权更新监考信息")
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
 		qry := q.R.URL.Query().Get("q")
 		if qry == "" {
 			q.Err = fmt.Errorf("参数 q 不能为空")
@@ -701,9 +851,9 @@ func invigilation(ctx context.Context) {
 			return
 		}
 
-		// 00：考场记录，02：考生状态， 04：考生备注
+		// 00：考场记录，02：考生状态， 04：考生备注， 06：考生延时
 		updateType := gjson.Get(qry, "Data.UpdateType").Str
-		if updateType != "00" && updateType != "02" && updateType != "04" {
+		if updateType != "00" && updateType != "02" && updateType != "04" && updateType != "06" {
 			q.Err = fmt.Errorf("无效的更新类型: %s", updateType)
 			z.Error(q.Err.Error())
 			q.RespErr()
@@ -724,6 +874,8 @@ func invigilation(ctx context.Context) {
 
 		examineeRemark := gjson.Get(qry, "Data.ExamineeRemark").Str
 
+		extraTime := gjson.Get(qry, "Data.ExtraTime").Int()
+
 		var examineeIDs []int64
 		examinees := gjson.Get(qry, "Data.Examinees").Array()
 		for _, v := range examinees {
@@ -738,79 +890,31 @@ func invigilation(ctx context.Context) {
 		}
 
 		if len(examineeIDs) == 0 && needToUpdateExaminee[updateType] {
-			q.Err = fmt.Errorf("请指定要改变状态或备注的考生")
+			q.Err = fmt.Errorf("请指定考生")
 			z.Error(q.Err.Error())
 			q.RespErr()
 			return
 		}
 
-		// 检查当前是否还能更新监考信息
-		centralServerUrl := viper.GetString("examSiteServerSync.centralServerUrl")
+		var canUpdate bool
 		now := time.Now().UnixMilli()
+		canUpdate, q.Err = canUpdateInvigilationInfo(ctx, examSessionID, examRoomID)
+		if forceErr == "canUpdateInvigilationInfo" {
+			q.Err = fmt.Errorf("强制检查是否还能更新监考信息错误")
+		}
+		if q.Err != nil {
+			q.RespErr()
+			return
+		}
 
-		if centralServerUrl != "" {
-			syncTime := viper.GetInt64("examSiteServerSync.syncDelay")
-			syncTime = syncTime * 1000
-			checkInvigilationSQL := `
-			SELECT EXISTS(
-					SELECT 1
-					FROM v_invigilation_info vi
-					WHERE vi.exam_session_id = $1 AND vi.exam_room_id = $2
-					AND vi.end_time + $3 > $4
-				)
-			`
-			var canUpdate bool
-			q.Err = conn.QueryRow(ctx, checkInvigilationSQL, examSessionID, examRoomID, syncTime, now).Scan(&canUpdate)
-			if forceErr == "checkInvigilation" {
-				q.Err = fmt.Errorf("强制检查当前是否还能更新监考信息错误")
-			}
-			if q.Err != nil {
-				z.Error(q.Err.Error())
-				q.RespErr()
-				return
-			}
-
-			if forceErr == "canUpdate" {
-				canUpdate = false
-			}
-			if !canUpdate {
-				q.Err = fmt.Errorf("当前考试已结束，无法更新监考信息")
-				z.Error("syncTime" + fmt.Sprintf("%d", syncTime) + " now:" + fmt.Sprintf("%d", now))
-				z.Error(q.Err.Error())
-				q.RespErr()
-				return
-			}
-		} else {
-
-			// 如果是中心服务器，则检查该考试是否为线下考试，如果是线下则不允许更新
-			checkInvigilationSQL := `
-			SELECT EXISTS(
-					SELECT 1
-					FROM v_invigilation_info vi
-					WHERE vi.exam_session_id = $1 AND vi.exam_room_id = $2
-					AND vi.exam_mode != '02'
-				)
-			`
-			var canUpdate bool
-			q.Err = conn.QueryRow(ctx, checkInvigilationSQL, examSessionID, examRoomID).Scan(&canUpdate)
-			if forceErr == "checkInvigilation" {
-				q.Err = fmt.Errorf("强制检查当前是否还能更新监考信息错误")
-			}
-			if q.Err != nil {
-				z.Error(q.Err.Error())
-				q.RespErr()
-				return
-			}
-
-			if forceErr == "canUpdate" {
-				canUpdate = false
-			}
-			if !canUpdate {
-				q.Err = fmt.Errorf("当前考试为线下考试，无法在中心服务器更新监考信息")
-				z.Error(q.Err.Error())
-				q.RespErr()
-				return
-			}
+		if forceErr == "canUpdate" {
+			canUpdate = false
+		}
+		if !canUpdate {
+			q.Err = fmt.Errorf("当前无法更新该考试场次的监考信息")
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
 		}
 
 		// 检查考生是否是该考场的考生
@@ -899,6 +1003,9 @@ func invigilation(ctx context.Context) {
 				q.RespErr()
 				return
 			}
+
+			q.Resp()
+			return
 		}
 
 		// 更新指定的考生状态
@@ -934,20 +1041,123 @@ func invigilation(ctx context.Context) {
 		}
 
 		// 更新指定的考生备注
-		updateExamineeRemarkSQL := `
+		if updateType == "04" {
+			updateExamineeRemarkSQL := `
 			UPDATE t_examinee
 				SET remark = $1,
 					updated_by = $2,
-					update_time = $3
+					update_time = $3,
+					status = '00'
 				FROM v_examinee_info vei
 				WHERE t_examinee.id = ANY($4)
 				AND vei.id = t_examinee.id
+			`
+			_, q.Err = tx.Exec(ctx, updateExamineeRemarkSQL, examineeRemark, userID, now, examineeIDs)
+			if forceErr == "updateExamineeRemark" {
+				q.Err = fmt.Errorf("强制更新考生备注错误")
+			}
+			if q.Err != nil {
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+
+			q.Resp()
+			return
+		}
+
+		// 先检查延长的时间是否符合要求
+		if extraTime <= 0 {
+			q.Err = fmt.Errorf("无效的延长时间: %d", extraTime)
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		// 锁定场次记录，防止并发修改
+		lockSQL := `
+			SELECT 1 FROM t_exam_session WHERE id = $1 FOR UPDATE
 		`
-		_, q.Err = tx.Exec(ctx, updateExamineeRemarkSQL, examineeRemark, userID, now, examineeIDs)
-		if forceErr == "updateExamineeRemark" {
-			q.Err = fmt.Errorf("强制更新考生备注错误")
+		_, q.Err = tx.Exec(ctx, lockSQL, examSessionID)
+		if forceErr == "lockExamSession" {
+			q.Err = fmt.Errorf("强制锁定考试场次错误")
 		}
 		if q.Err != nil {
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		checkExamSessionSQL := `
+			SELECT status FROM t_exam_session WHERE id = $1
+		`
+		var examSessionStatus string
+		q.Err = tx.QueryRow(ctx, checkExamSessionSQL, examSessionID).Scan(&examSessionStatus)
+		if forceErr == "checkExamSession" {
+			q.Err = fmt.Errorf("强制检查考试场次状态错误")
+		}
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		if examSessionStatus != "04" || forceErr == "examSessionNotOngoing" {
+			q.Err = fmt.Errorf("只能在考试进行时延长考生时间")
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		checkExamineeSQL := `
+		SELECT EXISTS(
+			SELECT 1
+			FROM v_examinee_info vei
+			WHERE vei.id = ANY($1)
+			AND vei.extendable_time < $2
+		)`
+		var invalid bool
+		q.Err = conn.QueryRow(ctx, checkExamineeSQL, examineeIDs, extraTime).Scan(&invalid)
+		if forceErr == "checkExtendableTime" {
+			q.Err = fmt.Errorf("强制检查考生是否允许延长时间错误")
+		}
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		if invalid || forceErr == "invalidExtendableTime" {
+			q.Err = fmt.Errorf("部分考生不允许延长 %d 分钟时间", extraTime)
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		// 更新延长时间
+		updateExamineeExtraTimeSQL := `
+			UPDATE t_examinee
+			SET extra_time = t_examinee.extra_time + $1,
+				updated_by = $2,
+				update_time = $3
+			FROM v_examinee_info vei
+			WHERE t_examinee.id = vei.id
+			AND t_examinee.id = ANY($4)
+			AND t_examinee.extra_time + $1 <= vei.extendable_time
+		`
+		var commandTag pgconn.CommandTag
+		commandTag, q.Err = tx.Exec(ctx, updateExamineeExtraTimeSQL, extraTime, userID, now, examineeIDs)
+		if forceErr == "updateExamineeExtraTime" {
+			q.Err = fmt.Errorf("强制更新考生延长时间错误")
+		}
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		if commandTag.RowsAffected() != int64(len(examineeIDs)) || forceErr == "notAllExtended" {
+			q.Err = fmt.Errorf("部分考生延长时间失败：超过允许的最大延长时间")
 			z.Error(q.Err.Error())
 			q.RespErr()
 			return
@@ -1105,6 +1315,26 @@ func invigilationFile(ctx context.Context) {
 		}
 		if !hasAuth {
 			q.Err = fmt.Errorf("用户(%d)无法上传该场考试的监考附件: %d - %d", userID, invigilationFile.ExamSessionID, invigilationFile.ExamRoomID)
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		var canUpdate bool
+		canUpdate, q.Err = canUpdateInvigilationInfo(ctx, invigilationFile.ExamSessionID, invigilationFile.ExamRoomID)
+		if forceErr == "canUpdateInvigilationInfo" {
+			q.Err = fmt.Errorf("强制检查是否还能更新监考信息错误")
+		}
+		if q.Err != nil {
+			q.RespErr()
+			return
+		}
+
+		if forceErr == "canUpdate" {
+			canUpdate = false
+		}
+		if !canUpdate {
+			q.Err = fmt.Errorf("当前无法更新该考试场次的监考信息")
 			z.Error(q.Err.Error())
 			q.RespErr()
 			return
@@ -1291,9 +1521,28 @@ func invigilationFile(ctx context.Context) {
 			hasAuth = false
 		}
 		if !hasAuth {
-			q.Err = fmt.Errorf("用户(%d)无法上传该场考试的监考附件: %d - %d", userID, invigilationFile.ExamSessionID, invigilationFile.ExamRoomID)
+			q.Err = fmt.Errorf("用户(%d)无法删除该场考试的监考附件: %d - %d", userID, invigilationFile.ExamSessionID, invigilationFile.ExamRoomID)
 			z.Error(q.Err.Error())
 			q.RespErr()
+			return
+		}
+
+		var canUpdate bool
+		canUpdate, q.Err = canUpdateInvigilationInfo(ctx, invigilationFile.ExamSessionID, invigilationFile.ExamRoomID)
+		if forceErr == "canUpdateInvigilationInfo" {
+			q.Err = fmt.Errorf("强制检查是否还能更新监考信息错误")
+		}
+		if q.Err != nil {
+			q.RespErr()
+			return
+		}
+
+		if forceErr == "canUpdate" {
+			canUpdate = false
+		}
+		if !canUpdate {
+			q.Err = fmt.Errorf("当前无法更新该考试场次的监考信息")
+			z.Error(q.Err.Error())
 			return
 		}
 
@@ -1334,7 +1583,7 @@ func invigilationFile(ctx context.Context) {
 			existingFiles = append(existingFiles, file)
 		}
 
-		if len(existingFiles) == 0 {
+		if len(existingFiles) == 0 || forceErr == "noFiles" {
 			q.Err = fmt.Errorf("未找到监考附件记录: %d - %d", invigilationFile.ExamSessionID, invigilationFile.ExamRoomID)
 			z.Error(q.Err.Error())
 			q.RespErr()
@@ -1351,7 +1600,7 @@ func invigilationFile(ctx context.Context) {
 			}
 		}
 
-		if !exists {
+		if !exists || forceErr == "fileNotFound" {
 			q.Err = fmt.Errorf("未找到要删除的文件: %d", invigilationFile.FileID)
 			z.Error(q.Err.Error())
 			q.RespErr()

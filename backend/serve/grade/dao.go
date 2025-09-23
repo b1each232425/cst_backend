@@ -153,6 +153,7 @@ func gradeListExam(ctx context.Context, userID int64, req *GradeListReq) ([]Grad
 				es.start_time AS start_time,
 				es.end_time AS end_time,
 				es.mark_mode AS mark_mode,
+				es.status AS status,
 				vep.id AS exam_paper_id,
 				vep.name AS paper_name,
 				vep.total_score AS total_score,
@@ -169,6 +170,7 @@ func gradeListExam(ctx context.Context, userID int64, req *GradeListReq) ([]Grad
 				ets.exam_id,
 				ets.exam_session_id,
 				es.id,
+				es.status,
 				vep.id,
 				vep.name,
 				vep.total_score,
@@ -315,23 +317,55 @@ func gradeListPractice(ctx context.Context, userID int64, req *GradeListReq) ([]
 	}
 
 	if practiceID > 0 {
-		whereClause += fmt.Sprintf(" AND p.practice_id=$%d ", len(params)+1)
+		whereClause += fmt.Sprintf(" AND p.id=$%d ", len(params)+1)
 		params = append(params, practiceID)
 	}
 
 	filter := req.Filter
 
 	if filter.Name != "" {
-		whereClause += fmt.Sprintf(" AND p.practice_name::text ILIKE $%d ", len(params)+1)
+		whereClause += fmt.Sprintf(" AND p.name::text ILIKE $%d ", len(params)+1)
 		params = append(params, fmt.Sprintf("%%%s%%", filter.Name))
 	}
 
-	// 视图查询SQL
+	// 修改后的SQL，通过 practice_id -> paper_id -> exampaper_id 路径获取正确的考卷信息
 	sql := fmt.Sprintf(`
-	SELECT practice_id, practice_name, total_score, averge_score, actual_completer, pass_student, correct_mode
-	FROM v_z_grade_practice_statistics p 
-	WHERE p.status != '04' %s
-	GROUP BY p.practice_id, p.practice_name, p.total_score, p.averge_score, p.actual_completer, p.pass_student, p.status, p.correct_mode
+		WITH pass_student AS (
+			SELECT
+				pts.practice_id,
+				COUNT(DISTINCT pts.student_id) AS pass_students,
+				vep.total_score
+			FROM v_student_practice_total_score pts
+				JOIN t_practice tp ON tp.id = pts.practice_id
+				JOIN t_paper tpa ON tpa.id = tp.paper_id
+				JOIN v_exam_paper vep ON vep.id = tpa.exampaper_id
+			WHERE pts.total_score >= 0.6 * vep.total_score
+			GROUP BY
+				pts.practice_id,
+				vep.id,
+				vep.total_score
+		), completed_student AS (
+			SELECT
+				practice_id,
+				COUNT(DISTINCT student_id) AS completed_students,
+				AVG(total_score) AS average_score
+			FROM v_student_practice_total_score
+			GROUP BY practice_id
+		)
+		SELECT 
+			p.id AS practice_id,
+			p.name AS practice_name,
+			vep.total_score,
+			COALESCE(cs.average_score, 0) AS average_score,
+			COALESCE(cs.completed_students, 0) AS actual_completer,
+			COALESCE(ps.pass_students, 0) AS pass_student,
+			p.correct_mode
+		FROM t_practice p
+			LEFT JOIN t_paper tpa ON tpa.id = p.paper_id
+			LEFT JOIN v_exam_paper vep ON vep.id = tpa.exampaper_id
+			LEFT JOIN pass_student ps ON ps.practice_id = p.id
+			LEFT JOIN completed_student cs ON cs.practice_id = p.id
+		WHERE p.status != '04' %s
 		`, whereClause)
 
 	conn := cmn.GetPgxConn()
@@ -355,7 +389,7 @@ func gradeListPractice(ctx context.Context, userID int64, req *GradeListReq) ([]
 
 	// 分页SQL
 	listSQL := fmt.Sprintf(`%s
-	ORDER BY p.practice_id DESC
+	ORDER BY practice_id DESC
 	LIMIT $%d OFFSET $%d`,
 		sql, len(params)+1, len(params)+2)
 	listParams := append(params, pageSize, (page-1)*pageSize)
@@ -1277,12 +1311,26 @@ func gradeAnalysisByID(ctx context.Context, esid int64, pid int64) (Analysis, er
 	qidsSql := strings.Join(qidsStr, ", ")
 
 	// 获取学生答案
-	studentAnswerSql := fmt.Sprintf(`
-	SELECT
-		answer, question_id
-	FROM t_student_answers tsa
-	WHERE question_id IN (%s)
-	`, qidsSql)
+	var studentAnswerSql string
+	if esid > 0 {
+		// 考试场次：通过exam_session_id筛选
+		studentAnswerSql = fmt.Sprintf(`
+		SELECT
+			tsa.answer, tsa.question_id
+		FROM t_student_answers tsa
+		JOIN v_examinee_info vei ON vei.id = tsa.examinee_id
+		WHERE tsa.question_id IN (%s) AND vei.exam_session_id = %d
+		`, qidsSql, esid)
+	} else {
+		// 练习：通过practice_submission_id关联
+		studentAnswerSql = fmt.Sprintf(`
+		SELECT
+			tsa.answer, tsa.question_id
+		FROM t_student_answers tsa
+		JOIN t_practice_submissions tps ON tps.id = tsa.practice_submission_id
+		WHERE tsa.question_id IN (%s) AND tps.practice_id = %d
+		`, qidsSql, pid)
+	}
 
 	rows, err := tx.Query(ctx, studentAnswerSql)
 	if err != nil || forceErr == "sa conn Query fail" {
@@ -1339,13 +1387,26 @@ func gradeAnalysisByID(ctx context.Context, esid int64, pid int64) (Analysis, er
 	analysis.QuestionAnswersStats = questionAnswersStats
 
 	// 获取考生得分统计
-	getSubjectiveScoreSql := fmt.Sprintf(`
-	SELECT
-		tm.question_id, AVG(tm.score) AS total_score
-	FROM t_mark tm
-	WHERE tm.question_id IN (%s)
-	GROUP BY tm.question_id
-	`, qidsSql)
+	var getSubjectiveScoreSql string
+	if esid > 0 {
+		// 考试场次：通过exam_session_id筛选
+		getSubjectiveScoreSql = fmt.Sprintf(`
+		SELECT
+			tm.question_id, AVG(tm.score) AS total_score
+		FROM t_mark tm
+		WHERE tm.question_id IN (%s) AND tm.exam_session_id = %d
+		GROUP BY tm.question_id
+		`, qidsSql, esid)
+	} else {
+		// 练习：通过practice_id筛选
+		getSubjectiveScoreSql = fmt.Sprintf(`
+		SELECT
+			tm.question_id, AVG(tm.score) AS total_score
+		FROM t_mark tm
+		WHERE tm.question_id IN (%s) AND tm.practice_id = %d
+		GROUP BY tm.question_id
+		`, qidsSql, pid)
+	}
 
 	rows, err = tx.Query(ctx, getSubjectiveScoreSql)
 	if err != nil || forceErr == "sjs conn Query fail" {

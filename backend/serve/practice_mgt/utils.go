@@ -8,6 +8,7 @@
 package practice_mgt
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"github.com/jmoiron/sqlx/types"
@@ -15,6 +16,7 @@ import (
 	"strings"
 	"w2w.io/cmn"
 	"w2w.io/null"
+	"w2w.io/serve/auth_mgt"
 )
 
 type JSONText = types.JSONText
@@ -108,4 +110,35 @@ func ValidatePractice(p *cmn.TPractice, ps []int64) error {
 	}
 	return nil
 
+}
+func GetAuthAPIAccessible(ctx context.Context, authority *auth_mgt.Authority, apiPath string) (bool, bool, bool, bool, error) {
+	full, err := auth_mgt.CheckUserAPIAccessible(ctx, authority, apiPath, "full")
+	if err != nil {
+		z.Error(err.Error())
+		return false, false, false, false, err
+	}
+	if full {
+		return true, true, true, true, nil
+	}
+	read, err := auth_mgt.CheckUserAPIAccessible(ctx, authority, apiPath, "read")
+	if err != nil {
+		z.Error(err.Error())
+		return false, false, false, false, err
+	}
+	create, err := auth_mgt.CheckUserAPIAccessible(ctx, authority, apiPath, "create")
+	if err != nil {
+		z.Error(err.Error())
+		return false, false, false, false, err
+	}
+	update, err := auth_mgt.CheckUserAPIAccessible(ctx, authority, apiPath, "update")
+	if err != nil {
+		z.Error(err.Error())
+		return false, false, false, false, err
+	}
+	deleteble, err := auth_mgt.CheckUserAPIAccessible(ctx, authority, apiPath, "delete")
+	if err != nil {
+		z.Error(err.Error())
+		return false, false, false, false, err
+	}
+	return read, create, update, deleteble, nil
 }

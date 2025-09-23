@@ -107,7 +107,7 @@ deploy-devmentor-be:
   stage: deploy
   only:
     refs:
-      - /^v\d+\.\d+\.\d+$/
+      - develop
 
   when: manual
 
@@ -118,10 +118,27 @@ deploy-devmentor-be:
     - 'echo "deploy backend: devmentor serve"'
     - cd backend
     - chmod +x ./deploy.sh
-    - ./deploy.sh
+    - ./deploy.sh devmentor 6610 6222
+
+deploy-3min-pre-release-be:
+  stage: deploy
+  only:
+    refs:
+      - /^release/v\d+\.\d+\.\d+.*$/
+
+  when: manual
+
+  tags:
+    - nodejs-build
+  environment: production
+  script:
+    - 'echo "deploy backend: 3min_p serve"'
+    - cd backend
+    - chmod +x ./deploy.sh
+    - ./deploy.sh 3min_p 6620 6212
 
 
-deploy-3min-be:
+deploy-3min-release-be:
   stage: deploy
   only:
     refs:
@@ -136,5 +153,5 @@ deploy-3min-be:
   script:
     - 'echo "deploy backend: 3min serve"'
     - cd backend
-    - chmod +x ./deploy_p.sh
-    - ./deploy_p.sh
+    - chmod +x ./deploy.sh
+    - ./deploy.sh 3min 6611 6622

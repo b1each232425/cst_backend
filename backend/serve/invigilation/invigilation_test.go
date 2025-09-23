@@ -17,6 +17,7 @@ import (
 
 	"github.com/cespare/xxhash/v2"
 	"github.com/jmoiron/sqlx/types"
+	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 	"w2w.io/cmn"
 	"w2w.io/null"
@@ -181,7 +182,7 @@ func createMockContextWithRole(method, path string, queryParams url.Values, forc
 		R: req,
 		W: w,
 		Msg: &cmn.ReplyProto{
-			API:    path,
+			API:    "/api" + path,
 			Method: method,
 		},
 		BeginTime: time.Now(),
@@ -192,6 +193,7 @@ func createMockContextWithRole(method, path string, queryParams url.Values, forc
 		},
 		Domains:     domains,
 		RedisClient: cmn.GetRedisConn(),
+		Ep:          &cmn.ServeEndPoint{Path: "/api" + path},
 	}
 
 	ctx := context.WithValue(context.Background(), cmn.QNearKey, serviceCtx)
@@ -259,7 +261,7 @@ func createMockContextWithBody(method, path string, data string, forceError stri
 		R: req,
 		W: w,
 		Msg: &cmn.ReplyProto{
-			API:    path,
+			API:    "/api" + path,
 			Method: method,
 		},
 		BeginTime: time.Now(),
@@ -270,6 +272,7 @@ func createMockContextWithBody(method, path string, data string, forceError stri
 		},
 		Domains:     domains,
 		RedisClient: cmn.GetRedisConn(),
+		Ep:          &cmn.ServeEndPoint{Path: "/api" + path},
 	}
 
 	ctx := context.WithValue(context.Background(), cmn.QNearKey, serviceCtx)
@@ -644,7 +647,7 @@ func CreateTestExamData(t *testing.T) {
 
 	_, err = tx.Exec(ctx, `
 		INSERT INTO t_exam_session (id, exam_id, paper_id, reviewer_ids, mark_mode, mark_method, session_num, status, creator, create_time, updated_by, update_time, start_time, end_time, period_mode, duration, question_shuffled_mode)
-		VALUES ($1, $2, $3, $4, '00', '00', 1, '02', $5, $6, $5, $6, $7, $8, '00', 10, '00')
+		VALUES ($1, $2, $3, $4, '00', '00', 1, '04', $5, $6, $5, $6, $7, $8, '00', 10, '00')
 	`, testOfflineExamSessionID, testOfflineExamID, testPaperToPublishID, nilReviewerIDs, testAcademicAffair, time.Now().UnixMilli(), time.Now().Add(-10*time.Minute).UnixMilli(), time.Now().Add(10*time.Minute).UnixMilli())
 	if err != nil {
 		tx.Rollback(ctx)
@@ -1322,6 +1325,121 @@ func Test_invigilationList(t *testing.T) {
 	}
 }
 
+func Test_canUpdateInvigilationInfo(t *testing.T) {
+	cmn.ConfigureForTest()
+	CleanTestExamData(t)
+	CreateTestExamData(t)
+	t.Cleanup(func() {
+		CleanTestExamData(t)
+	})
+
+	tests := []struct {
+		name          string
+		examSessionID int64
+		examRoomID    int64
+		forceErr      string
+		centralServer bool
+		wantCanUpdate bool
+		wantErr       bool
+		errorContains string
+	}{
+		{
+			name:          "正常-中心服务器-不可更新",
+			examSessionID: testOfflineExamSessionID,
+			examRoomID:    testExamRoomID,
+			forceErr:      "",
+			centralServer: true,
+			wantCanUpdate: false,
+			wantErr:       false,
+		},
+		{
+			name:          "正常-非中心服务器-可更新",
+			examSessionID: testOfflineExamSessionID,
+			examRoomID:    testExamRoomID,
+			forceErr:      "",
+			centralServer: false,
+			wantCanUpdate: true,
+			wantErr:       false,
+		},
+		{
+			name:          "无效考试场次ID",
+			examSessionID: 0,
+			examRoomID:    testExamRoomID,
+			forceErr:      "",
+			centralServer: true,
+			wantCanUpdate: false,
+			wantErr:       true,
+			errorContains: "无效的考试场次ID",
+		},
+		{
+			name:          "无效考场ID",
+			examSessionID: testOfflineExamSessionID,
+			examRoomID:    0,
+			forceErr:      "",
+			centralServer: true,
+			wantCanUpdate: false,
+			wantErr:       true,
+			errorContains: "无效的考场ID",
+		},
+		{
+			name:          "强制检查错误-中心服务器",
+			examSessionID: testOfflineExamSessionID,
+			examRoomID:    testExamRoomID,
+			forceErr:      "checkInvigilation",
+			centralServer: true,
+			wantCanUpdate: false,
+			wantErr:       true,
+			errorContains: "强制检查当前是否还能更新监考信息错误",
+		},
+		{
+			name:          "强制检查错误-非中心服务器",
+			examSessionID: testOfflineExamSessionID,
+			examRoomID:    testExamRoomID,
+			forceErr:      "checkInvigilation",
+			centralServer: false,
+			wantCanUpdate: false,
+			wantErr:       true,
+			errorContains: "强制检查当前是否还能更新监考信息错误",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// 配置中心服务器开关
+			if !tt.centralServer {
+				viper.Set("examSiteServerSync.centralServerUrl", "http://central-server")
+			} else {
+				viper.Set("examSiteServerSync.centralServerUrl", "")
+			}
+			viper.Set("examSiteServerSync.syncDelay", 1) // 1秒缓冲，保证可更新
+
+			ctx := context.Background()
+			if tt.forceErr != "" {
+				ctx = context.WithValue(ctx, "canUpdateInvigilationInfo-force-error", tt.forceErr)
+			}
+
+			canUpdate, err := canUpdateInvigilationInfo(ctx, tt.examSessionID, tt.examRoomID)
+			t.Logf("canUpdate: %v, err: %v", canUpdate, err)
+			if tt.wantErr {
+				if err == nil {
+					t.Errorf("期望错误但实际为nil")
+				}
+				if tt.errorContains != "" && err != nil && !strings.Contains(err.Error(), tt.errorContains) {
+					t.Errorf("错误信息不包含预期子串，got=%v want contains=%s", err, tt.errorContains)
+				}
+				return
+			}
+			if err != nil {
+				t.Errorf("期望无错误但收到: %v", err)
+				return
+			}
+			if canUpdate != tt.wantCanUpdate {
+				t.Errorf("canUpdate = %v, want %v", canUpdate, tt.wantCanUpdate)
+			}
+		})
+	}
+}
+
 func Test_invigilation(t *testing.T) {
 	cmn.ConfigureForTest()
 	CleanTestExamData(t)
@@ -1343,6 +1461,23 @@ func Test_invigilation(t *testing.T) {
 		{
 			name:       "正常获取监考详情",
 			forceError: "",
+			userID:     testAcademicAffair,
+			userRole:   2002,
+			queryParams: func() url.Values {
+				v := url.Values{}
+				q := fmt.Sprintf(`{
+                    "Data": {"ExamSessionID": %d, "ExamRoomID": %d},
+                    "Page": 0,
+                    "PageSize": 10
+                }`, testOfflineExamSessionID, testExamRoomID)
+				v.Set("q", q)
+				return v
+			}(),
+			wantErr: false,
+		},
+		{
+			name:       "正常获取监考详情2",
+			forceError: "centralServer",
 			userID:     testAcademicAffair,
 			userRole:   2002,
 			queryParams: func() url.Values {
@@ -1703,7 +1838,7 @@ func Test_invigilation(t *testing.T) {
 			}(),
 			wantErr:       true,
 			method:        "PATCH",
-			errorContains: "当前考试已结束，无法更新监考信息",
+			errorContains: "当前无法更新该考试场次的监考信息",
 		},
 		{
 			name:       "PATCH - 无权限更新",
@@ -1750,29 +1885,6 @@ func Test_invigilation(t *testing.T) {
 			errorContains: "强制检查用户是否有权限获取监考信息错误",
 		},
 		{
-			name:       "PATCH - 强制检查当前是否还能更新监考信息错误",
-			forceError: "checkInvigilation",
-			userID:     testAcademicAffair,
-			userRole:   2002,
-			queryParams: func() url.Values {
-				v := url.Values{}
-				q := fmt.Sprintf(`{
-                    "Data": {
-                        "ExamSessionID": %d,
-                        "ExamRoomID": %d,
-                        "UpdateType": "00",
-						"BasicEval": "00",
-                        "Record": "尝试更新"
-                    }
-                }`, testOfflineExamSessionID, testExamRoomID)
-				v.Set("q", q)
-				return v
-			}(),
-			wantErr:       true,
-			method:        "PATCH",
-			errorContains: "强制检查当前是否还能更新监考信息错误",
-		},
-		{
 			name:       "PATCH - 更新考生状态（02）但未提供考生列表",
 			forceError: "",
 			userID:     testAcademicAffair,
@@ -1792,7 +1904,30 @@ func Test_invigilation(t *testing.T) {
 			}(),
 			wantErr:       true,
 			method:        "PATCH",
-			errorContains: "请指定要改变状态或备注的考生",
+			errorContains: "请指定考生",
+		},
+		{
+			name:       "PATCH - 强制检查当前是否还能更新监考信息错误",
+			forceError: "canUpdateInvigilationInfo",
+			userID:     testAcademicAffair,
+			userRole:   2002,
+			queryParams: func() url.Values {
+				v := url.Values{}
+				q := fmt.Sprintf(`{
+                    "Data": {
+                        "ExamSessionID": %d,
+                        "ExamRoomID": %d,
+                        "UpdateType": "00",
+						"BasicEval": "00",
+                        "Record": "尝试更新"
+                    }
+                }`, testOfflineExamSessionID, testExamRoomID)
+				v.Set("q", q)
+				return v
+			}(),
+			wantErr:       true,
+			method:        "PATCH",
+			errorContains: "强制检查是否还能更新监考信息错误",
 		},
 		{
 			name:       "PATCH - 更新考生状态（02）提供非法考生ID",
@@ -2016,6 +2151,245 @@ func Test_invigilation(t *testing.T) {
 			wantErr:       true,
 			method:        "PATCH",
 			errorContains: "强制更新考生备注错误",
+		},
+		{
+			name:       "PATCH - 更新考生备注",
+			forceError: "",
+			userID:     testAcademicAffair,
+			userRole:   2002,
+			queryParams: func() url.Values {
+				v := url.Values{}
+				q := fmt.Sprintf(`{
+                    "Data": {
+                        "ExamSessionID": %d,
+                        "ExamRoomID": %d,
+                        "UpdateType": "04",
+                        "Examinees": [%d],
+                        "Remark": "测试备注"
+                    }
+                }`, testOfflineExamSessionID, testExamRoomID, testExamineeID)
+				v.Set("q", q)
+				return v
+			}(),
+			wantErr:       false,
+			method:        "PATCH",
+			errorContains: "",
+		},
+		{
+			name:       "PATCH - 延长考生时间",
+			forceError: "",
+			userID:     testAcademicAffair,
+			userRole:   2002,
+			queryParams: func() url.Values {
+				v := url.Values{}
+				q := fmt.Sprintf(`{
+                    "Data": {
+                        "ExamSessionID": %d,
+                        "ExamRoomID": %d,
+                        "UpdateType": "06",
+                        "Examinees": [%d],
+                        "Remark": "",
+						"ExtraTime": 10
+                    }
+                }`, testOfflineExamSessionID, testExamRoomID, testExamineeID)
+				v.Set("q", q)
+				return v
+			}(),
+			wantErr:       false,
+			method:        "PATCH",
+			errorContains: "",
+		},
+		{
+			name:       "PATCH - 延长考生时间 - 无效的延长时间",
+			forceError: "",
+			userID:     testAcademicAffair,
+			userRole:   2002,
+			queryParams: func() url.Values {
+				v := url.Values{}
+				q := fmt.Sprintf(`{
+                    "Data": {
+                        "ExamSessionID": %d,
+                        "ExamRoomID": %d,
+                        "UpdateType": "06",
+                        "Examinees": [%d],
+                        "Remark": "",
+						"ExtraTime": 0
+                    }
+                }`, testOfflineExamSessionID, testExamRoomID, testExamineeID)
+				v.Set("q", q)
+				return v
+			}(),
+			wantErr:       true,
+			method:        "PATCH",
+			errorContains: "无效的延长时间",
+		},
+		{
+			name:       "PATCH - 延长考生时间 - 强制锁定考试场次错误",
+			forceError: "lockExamSession",
+			userID:     testAcademicAffair,
+			userRole:   2002,
+			queryParams: func() url.Values {
+				v := url.Values{}
+				q := fmt.Sprintf(`{
+                    "Data": {
+                        "ExamSessionID": %d,
+                        "ExamRoomID": %d,
+                        "UpdateType": "06",
+                        "Examinees": [%d],
+                        "Remark": "",
+						"ExtraTime": 1
+                    }
+                }`, testOfflineExamSessionID, testExamRoomID, testExamineeID)
+				v.Set("q", q)
+				return v
+			}(),
+			wantErr:       true,
+			method:        "PATCH",
+			errorContains: "强制锁定考试场次错误",
+		},
+		{
+			name:       "PATCH - 延长考生时间 - 强制检查考试场次状态错误",
+			forceError: "checkExamSession",
+			userID:     testAcademicAffair,
+			userRole:   2002,
+			queryParams: func() url.Values {
+				v := url.Values{}
+				q := fmt.Sprintf(`{
+                    "Data": {
+                        "ExamSessionID": %d,
+                        "ExamRoomID": %d,
+                        "UpdateType": "06",
+                        "Examinees": [%d],
+                        "Remark": "",
+						"ExtraTime": 1
+                    }
+                }`, testOfflineExamSessionID, testExamRoomID, testExamineeID)
+				v.Set("q", q)
+				return v
+			}(),
+			wantErr:       true,
+			method:        "PATCH",
+			errorContains: "强制检查考试场次状态错误",
+		},
+		{
+			name:       "PATCH - 延长考生时间 - 只能在考试进行时延长考生时间",
+			forceError: "examSessionNotOngoing",
+			userID:     testAcademicAffair,
+			userRole:   2002,
+			queryParams: func() url.Values {
+				v := url.Values{}
+				q := fmt.Sprintf(`{
+                    "Data": {
+                        "ExamSessionID": %d,
+                        "ExamRoomID": %d,
+                        "UpdateType": "06",
+                        "Examinees": [%d],
+                        "Remark": "",
+						"ExtraTime": 1
+                    }
+                }`, testOfflineExamSessionID, testExamRoomID, testExamineeID)
+				v.Set("q", q)
+				return v
+			}(),
+			wantErr:       true,
+			method:        "PATCH",
+			errorContains: "只能在考试进行时延长考生时间",
+		},
+		{
+			name:       "PATCH - 延长考生时间 - 强制检查考生是否允许延长时间错误",
+			forceError: "checkExtendableTime",
+			userID:     testAcademicAffair,
+			userRole:   2002,
+			queryParams: func() url.Values {
+				v := url.Values{}
+				q := fmt.Sprintf(`{
+                    "Data": {
+                        "ExamSessionID": %d,
+                        "ExamRoomID": %d,
+                        "UpdateType": "06",
+                        "Examinees": [%d],
+                        "Remark": "",
+						"ExtraTime": 1
+                    }
+                }`, testOfflineExamSessionID, testExamRoomID, testExamineeID)
+				v.Set("q", q)
+				return v
+			}(),
+			wantErr:       true,
+			method:        "PATCH",
+			errorContains: "强制检查考生是否允许延长时间错误",
+		},
+		{
+			name:       "PATCH - 延长考生时间 - 部分考生不允许延长",
+			forceError: "invalidExtendableTime",
+			userID:     testAcademicAffair,
+			userRole:   2002,
+			queryParams: func() url.Values {
+				v := url.Values{}
+				q := fmt.Sprintf(`{
+                    "Data": {
+                        "ExamSessionID": %d,
+                        "ExamRoomID": %d,
+                        "UpdateType": "06",
+                        "Examinees": [%d],
+                        "Remark": "",
+						"ExtraTime": 1
+                    }
+                }`, testOfflineExamSessionID, testExamRoomID, testExamineeID)
+				v.Set("q", q)
+				return v
+			}(),
+			wantErr:       true,
+			method:        "PATCH",
+			errorContains: "部分考生不允许延长",
+		},
+		{
+			name:       "PATCH - 延长考生时间 - 强制更新考生延长时间错误",
+			forceError: "updateExamineeExtraTime",
+			userID:     testAcademicAffair,
+			userRole:   2002,
+			queryParams: func() url.Values {
+				v := url.Values{}
+				q := fmt.Sprintf(`{
+                    "Data": {
+                        "ExamSessionID": %d,
+                        "ExamRoomID": %d,
+                        "UpdateType": "06",
+                        "Examinees": [%d],
+                        "Remark": "",
+						"ExtraTime": 1
+                    }
+                }`, testOfflineExamSessionID, testExamRoomID, testExamineeID)
+				v.Set("q", q)
+				return v
+			}(),
+			wantErr:       true,
+			method:        "PATCH",
+			errorContains: "强制更新考生延长时间错误",
+		},
+		{
+			name:       "PATCH - 延长考生时间 - 部分考生延长时间失败",
+			forceError: "notAllExtended",
+			userID:     testAcademicAffair,
+			userRole:   2002,
+			queryParams: func() url.Values {
+				v := url.Values{}
+				q := fmt.Sprintf(`{
+                    "Data": {
+                        "ExamSessionID": %d,
+                        "ExamRoomID": %d,
+                        "UpdateType": "06",
+                        "Examinees": [%d],
+                        "Remark": "",
+						"ExtraTime": 1
+                    }
+                }`, testOfflineExamSessionID, testExamRoomID, testExamineeID)
+				v.Set("q", q)
+				return v
+			}(),
+			wantErr:       true,
+			method:        "PATCH",
+			errorContains: "部分考生延长时间失败",
 		},
 	}
 
@@ -2378,6 +2752,38 @@ func Test_invigilationFile(t *testing.T) {
 			errorContains: "强制更新监考记录错误",
 		},
 		{
+			name:       "POST - 强制检查是否还能更新监考信息错误",
+			forceError: "canUpdateInvigilationInfo",
+			userID:     testAcademicAffair,
+			userRole:   2002,
+			method:     "POST",
+			file: InvigilationFile{
+				ExamSessionID: testOfflineExamSessionID,
+				ExamRoomID:    testExamRoomID,
+				CheckSum:      testFile1CheckSum,
+				Name:          testFile1Name,
+				Size:          int64(len(testFile1Content)),
+			},
+			wantErr:       true,
+			errorContains: "强制检查是否还能更新监考信息错误",
+		},
+		{
+			name:       "POST - 当前无法更新该考试场次的监考信息",
+			forceError: "canUpdate",
+			userID:     testAcademicAffair,
+			userRole:   2002,
+			method:     "POST",
+			file: InvigilationFile{
+				ExamSessionID: testOfflineExamSessionID,
+				ExamRoomID:    testExamRoomID,
+				CheckSum:      testFile1CheckSum,
+				Name:          testFile1Name,
+				Size:          int64(len(testFile1Content)),
+			},
+			wantErr:       true,
+			errorContains: "当前无法更新该考试场次的监考信息",
+		},
+		{
 			name:       "POST - 强制JSON序列化错误",
 			forceError: "json.Marshal2",
 			userID:     testAcademicAffair,
@@ -2588,14 +2994,34 @@ func Test_invigilationFile(t *testing.T) {
 			errorContains: "强制检查用户是否有权限获取监考信息错误",
 		},
 		{
-			name:          "DELETE - 无法上传该场考试的监考附件",
+			name:          "DELETE - 强制检查是否还能更新监考信息错误",
+			forceError:    "canUpdateInvigilationInfo",
+			userID:        testAcademicAffair,
+			userRole:      2002,
+			method:        "DELETE",
+			file:          InvigilationFile{ExamSessionID: testOfflineExamSessionID, ExamRoomID: testExamRoomID, FileID: testFile1ID},
+			wantErr:       true,
+			errorContains: "强制检查是否还能更新监考信息错误",
+		},
+		{
+			name:          "DELETE - 强制检查是否还能更新监考信息错误",
+			forceError:    "canUpdate",
+			userID:        testAcademicAffair,
+			userRole:      2002,
+			method:        "DELETE",
+			file:          InvigilationFile{ExamSessionID: testOfflineExamSessionID, ExamRoomID: testExamRoomID, FileID: testFile1ID},
+			wantErr:       true,
+			errorContains: "当前无法更新该考试场次的监考信息",
+		},
+		{
+			name:          "DELETE - 无法删除该场考试的监考附件",
 			forceError:    "noAuth",
 			userID:        testAcademicAffair,
 			userRole:      2002,
 			method:        "DELETE",
 			file:          InvigilationFile{ExamSessionID: testOfflineExamSessionID, ExamRoomID: testExamRoomID, FileID: testFile1ID},
 			wantErr:       true,
-			errorContains: "无法上传该场考试的监考附件",
+			errorContains: "无法删除该场考试的监考附件",
 		},
 		{
 			name:          "DELETE - 强制查询文件错误",
@@ -2606,6 +3032,26 @@ func Test_invigilationFile(t *testing.T) {
 			file:          InvigilationFile{ExamSessionID: testOfflineExamSessionID, ExamRoomID: testExamRoomID, FileID: testFile1ID},
 			wantErr:       true,
 			errorContains: "强制查询文件错误",
+		},
+		{
+			name:          "DELETE - 未找到监考附件记录",
+			forceError:    "noFiles",
+			userID:        testAcademicAffair,
+			userRole:      2002,
+			method:        "DELETE",
+			file:          InvigilationFile{ExamSessionID: testOfflineExamSessionID, ExamRoomID: testExamRoomID, FileID: testFile1ID},
+			wantErr:       true,
+			errorContains: "未找到监考附件记录",
+		},
+		{
+			name:          "DELETE - 未找到监考附件记录",
+			forceError:    "fileNotFound",
+			userID:        testAcademicAffair,
+			userRole:      2002,
+			method:        "DELETE",
+			file:          InvigilationFile{ExamSessionID: testOfflineExamSessionID, ExamRoomID: testExamRoomID, FileID: testFile1ID},
+			wantErr:       true,
+			errorContains: "未找到要删除的文件",
 		},
 		{
 			name:          "DELETE - 强制获取文件信息错误",

@@ -10,13 +10,12 @@ import (
 	"github.com/pkg/errors"
 	"w2w.io/cmn"
 	"w2w.io/null"
-	w2wSrv "w2w.io/service"
 )
 
 // TestMain 在测试开始前插入测试数据
 func TestMain(m *testing.M) {
 	cmn.Configure()
-	go w2wSrv.WebServe(nil, nil)
+	// 移除w2wSrv.WebServe调用以避免导入循环
 
 	// 读取测试数据
 	testDataFile := "test-data.json"

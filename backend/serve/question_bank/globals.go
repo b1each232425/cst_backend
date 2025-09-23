@@ -16,6 +16,8 @@ const (
 	QuestionTypeTrueFalse      = "04" // 判断题
 	QuestionTypeFillInBlank    = "06" // 填空题
 	QuestionTypeEssay          = "08" // 简答题
+	QuestionTypeComprehensive  = "10" // 综合应用题
+	QuestionTypeExercise       = "12" // 综合演练题
 )
 
 const (
@@ -40,6 +42,8 @@ var QuestionTypes = map[string]string{
 	QuestionTypeTrueFalse:      "判断题",
 	QuestionTypeFillInBlank:    "填空题",
 	QuestionTypeEssay:          "简答题",
+	QuestionTypeComprehensive:  "综合应用题",
+	QuestionTypeExercise:       "综合演练题",
 	"test":                     "测试所用",
 }
 
