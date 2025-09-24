@@ -1,8 +1,8 @@
 /*
  * @Author: wusaber33
  * @Date: 2025-08-16 16:30:00
- * @LastEditors: wusaber33
- * @LastEditTime: 2025-08-18 23:46:22
+ * @LastEditors: WangKaidun 1597225095@qq.com
+ * @LastEditTime: 2025-09-23 16:10:10
  * @FilePath: \assess\backend\serve\paper\global.go
  * @Description: Paper module global constants and variables
  * Copyright (c) 2025 by wusaber33, All Rights Reserved.
@@ -45,16 +45,20 @@ const (
 	PaperCategoryPractice = "02" // 练习试卷
 
 	// 题目类型定义
-	QuestionTypeMultiChoice  = "00" // 多选题
-	QuestionTypeSingleChoice = "02" // 单选题
-	QuestionTypeJudgement    = "04" // 判断题
-	QuestionTypeFillBlank    = "06" // 填空题
-	QuestionTypeShortAnswer  = "08" // 简答题
+	QuestionTypeSingleChoice   = "00" // 单选题
+	QuestionTypeMultipleChoice = "02" // 多选题
+	QuestionTypeTrueFalse      = "04" // 判断题
+	QuestionTypeFillInBlank    = "06" // 填空题
+	QuestionTypeEssay          = "08" // 简答题
+	QuestionTypeComprehensive  = "10" // 综合应用题
+	QuestionTypeExercise       = "12" // 综合演练题
 
 	// 试卷难度等级
-	Simple = "00" // 简单
-	Medium = "02" // 中等
-	Hard   = "04" // 困难
+	Easy       = "00" // 易
+	FairlyEasy = "02" // 较易
+	Medium     = "04" // 中
+	FairlyHard = "06" // 较难
+	Hard       = "08" // 难
 
 	// 默认配置项
 	DefaultSuggestedDuration                                                = 120    // 默认答题时长(分钟)
