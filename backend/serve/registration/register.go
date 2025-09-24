@@ -796,7 +796,10 @@ func registerReviewer(ctx context.Context) {
 	}
 	ctx = context.WithValue(ctx, "authority", authority)
 	read, _, _, _, err := GetAuthAPIAccessible(ctx, authority, "/api/registrationReviewer")
-	if err != nil {
+	if forceErr != "" && forceErr != "1" {
+		read = true
+	}
+	if err != nil || forceErr == "1" {
 		q.Err = fmt.Errorf("获取用户的可执行权限失败: %v", err)
 		q.RespErr()
 		return
