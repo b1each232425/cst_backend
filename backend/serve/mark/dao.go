@@ -959,6 +959,32 @@ func QueryExamineeInfo(ctx context.Context, cond QueryCondition) ([]cmn.TVExamin
 	return examineeInfos, nil
 }
 
+func QueryExamSessionStatus(ctx context.Context, tx pgx.Tx, examSessionID int64) (string, error) {
+	queryExamSessionSql := `SELECT status FROM t_exam_session WHERE id = $1`
+
+	var (
+		examSessionStatus string
+		err               error
+	)
+
+	if tx == nil {
+		pgxConn := cmn.GetPgxConn()
+		err = pgxConn.QueryRow(ctx, queryExamSessionSql, examSessionID).Scan(&examSessionStatus)
+	} else {
+		err = tx.QueryRow(ctx, queryExamSessionSql, examSessionID).Scan(&examSessionStatus)
+	}
+
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return "", fmt.Errorf("查询不到考试场次 %d : %v", examSessionID, err)
+		} else {
+			return "", fmt.Errorf("执行 queryExamSessionSql 失败: %v", err)
+		}
+	}
+
+	return examSessionStatus, nil
+}
+
 func QueryStudentInfos(ctx context.Context, cond QueryCondition, markerInfo MarkerInfo) ([]StudentInfo, error) {
 	forceErr, _ := ctx.Value(ForceErrKey).(string)
 	if cond.TeacherID <= 0 {
@@ -1189,7 +1215,7 @@ func UpsertMarkingResults(ctx context.Context, tx pgx.Tx, markingResults []cmn.T
 
 // 查询当前老师需要批改的考试的已批改人数和已批改总题数
 // 没必要开启只读事务
-func QueryMarkedPersonAndQuestionCount(ctx context.Context, cond QueryCondition) (int64, int64, error) {
+func QueryMarkedPersonAndQuestionCount(ctx context.Context, tx pgx.Tx, cond QueryCondition) (int64, int64, error) {
 	var queryMarkedPerson string
 	var queryQuestionCount string
 	var args []interface{}
@@ -1218,15 +1244,29 @@ func QueryMarkedPersonAndQuestionCount(ctx context.Context, cond QueryCondition)
 		args = append(args, cond.PracticeID)
 	}
 
-	var markedPerson, markedQuestionCount int64
+	var (
+		markedPerson, markedQuestionCount int64
+		err                               error
+	)
 
-	pgxConn := cmn.GetPgxConn()
-	err := pgxConn.QueryRow(ctx, queryMarkedPerson, args...).Scan(&markedPerson)
+	if tx == nil {
+		pgxConn := cmn.GetPgxConn()
+		err = pgxConn.QueryRow(ctx, queryMarkedPerson, args...).Scan(&markedPerson)
+	} else {
+		err = tx.QueryRow(ctx, queryMarkedPerson, args...).Scan(&markedPerson)
+	}
+
 	if err != nil {
 		return 0, 0, fmt.Errorf("获取已批改人数 sql 失败: %v", err)
 	}
 
-	err = pgxConn.QueryRow(ctx, queryQuestionCount, args...).Scan(&markedQuestionCount)
+	if tx == nil {
+		pgxConn := cmn.GetPgxConn()
+		err = pgxConn.QueryRow(ctx, queryQuestionCount, args...).Scan(&markedQuestionCount)
+	} else {
+		err = tx.QueryRow(ctx, queryQuestionCount, args...).Scan(&markedQuestionCount)
+	}
+
 	if err != nil {
 		return 0, 0, fmt.Errorf("获取已批改问题数 sql 失败: %v", err)
 	}
