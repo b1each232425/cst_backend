@@ -718,7 +718,7 @@ func handleExamSessionEnd(ctx context.Context, event ExamEvent) error {
 	// 更新场次状态为已结束
 	_, err = tx.Exec(ctx, `
 		UPDATE t_exam_session 
-		SET status = '06', -- 已结束
+		SET status = CASE WHEN mark_method = '02' THEN '08' ELSE '06' END,
 			update_time = $1,
 			actual_end_time = $2
 		WHERE id = $3 AND status IN ('02','04') AND end_time <= $4
