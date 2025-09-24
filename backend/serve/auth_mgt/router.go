@@ -76,6 +76,11 @@ func Enroll(author string) {
 				AccessAction: CAPIAccessActionRead,
 				Configurable: false,
 			},
+			{
+				Name:         "权限管理.更新域",
+				AccessAction: CAPIAccessActionUpdate,
+				Configurable: false,
+			},
 		},
 
 		Developer: developer,

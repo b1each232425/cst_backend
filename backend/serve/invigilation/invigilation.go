@@ -54,12 +54,12 @@ type InvigilationDetails struct {
 }
 
 type InvigilationFile struct {
-	FileID        int64  `json:"FileID"`
-	ExamSessionID int64  `json:"ExamSessionID"`
-	ExamRoomID    int64  `json:"ExamRoomID"`
-	CheckSum      string `json:"CheckSum"`
-	Name          string `json:"Name"`
-	Size          int64  `json:"Size"`
+	FileID        int64    `json:"FileID"`
+	ExamSessionID int64    `json:"ExamSessionID"`
+	ExamRoomID    null.Int `json:"ExamRoomID"`
+	CheckSum      string   `json:"CheckSum"`
+	Name          string   `json:"Name"`
+	Size          int64    `json:"Size"`
 }
 
 var needToUpdateExaminee map[string]bool = map[string]bool{
@@ -147,7 +147,7 @@ func Enroll(author string) {
 	})
 }
 
-func checkInvigilationAuthority(ctx context.Context, examSessionID, examRoomID, userID int64, domain string) (hasAuth bool, err error) {
+func checkInvigilationAuthority(ctx context.Context, examSessionID int64, examRoomID null.Int, userID int64, domain string) (hasAuth bool, err error) {
 	z.Info("---->" + cmn.FncName())
 
 	var forceErr string
@@ -157,12 +157,6 @@ func checkInvigilationAuthority(ctx context.Context, examSessionID, examRoomID, 
 
 	if examSessionID <= 0 {
 		err = fmt.Errorf("无效的考试场次ID: %d", examSessionID)
-		z.Error(err.Error())
-		return
-	}
-
-	if examRoomID <= 0 {
-		err = fmt.Errorf("无效的考场ID: %d", examRoomID)
 		z.Error(err.Error())
 		return
 	}
@@ -194,7 +188,7 @@ func checkInvigilationAuthority(ctx context.Context, examSessionID, examRoomID, 
 	return
 }
 
-func canUpdateInvigilationInfo(ctx context.Context, examSessionID, examRoomID int64) (canUpdate bool, err error) {
+func canUpdateInvigilationInfo(ctx context.Context, examSessionID int64, examRoomID null.Int) (canUpdate bool, err error) {
 	z.Info("---->" + cmn.FncName())
 
 	var forceErr string
@@ -204,11 +198,6 @@ func canUpdateInvigilationInfo(ctx context.Context, examSessionID, examRoomID in
 
 	if examSessionID <= 0 {
 		err = fmt.Errorf("无效的考试场次ID: %d", examSessionID)
-		z.Error(err.Error())
-		return
-	}
-	if examRoomID <= 0 {
-		err = fmt.Errorf("无效的考场ID: %d", examRoomID)
 		z.Error(err.Error())
 		return
 	}
@@ -242,16 +231,17 @@ func canUpdateInvigilationInfo(ctx context.Context, examSessionID, examRoomID in
 		return
 	}
 
-	// 如果是中心服务器，则检查该考试是否为线下考试，如果是线下则不允许更新
+	// 如果是中心服务器，则需检查该考试是否为线下考试，如果是线下则不允许更新
 	checkInvigilationSQL := `
 	SELECT EXISTS(
 			SELECT 1
 			FROM v_invigilation_info vi
 			WHERE vi.exam_session_id = $1 AND vi.exam_room_id = $2
 			AND vi.exam_mode != '02'
+			AND (vi.es_actual_end_time IS NULL OR vi.es_actual_end_time > $3)
 		)
 	`
-	err = conn.QueryRow(ctx, checkInvigilationSQL, examSessionID, examRoomID).Scan(&canUpdate)
+	err = conn.QueryRow(ctx, checkInvigilationSQL, examSessionID, examRoomID, now).Scan(&canUpdate)
 	if forceErr == "checkInvigilation" {
 		err = fmt.Errorf("强制检查当前是否还能更新监考信息错误")
 	}
@@ -416,7 +406,8 @@ func invigilationList(ctx context.Context) {
 				examinee_num,
 				absentee_num,
 				cheater_num,
-				abnormal_examinee_num
+				abnormal_examinee_num,
+				exam_mode
 			FROM v_invigilation_info
 			WHERE 1=1
 		` + filterSQL + fmt.Sprintf(" LIMIT $%d OFFSET $%d", argIndex, argIndex+1)
@@ -459,6 +450,7 @@ func invigilationList(ctx context.Context) {
 				&inv.AbsenteeNum,
 				&inv.CheaterNum,
 				&inv.AbnormalExamineeNum,
+				&inv.ExamMode,
 			)
 			if forceErr == "rows.Scan" {
 				q.Err = fmt.Errorf("强制执行错误")
@@ -556,12 +548,14 @@ func invigilation(ctx context.Context) {
 			return
 		}
 
-		examRoomID := gjson.Get(qry, "Data.ExamRoomID").Int()
-		if examRoomID <= 0 {
-			q.Err = fmt.Errorf("无效的考场ID: %d", examRoomID)
-			z.Error(q.Err.Error())
-			q.RespErr()
-			return
+		var examRoomID null.Int
+		roomID := gjson.Get(qry, "Data.ExamRoomID").Int()
+		if roomID <= 0 {
+			examRoomID.Int64 = 0
+			examRoomID.Valid = false
+		} else {
+			examRoomID.Int64 = roomID
+			examRoomID.Valid = true
 		}
 
 		// 检查用户是否有权限获取监考信息
@@ -579,7 +573,7 @@ func invigilation(ctx context.Context) {
 			hasAuth = false
 		}
 		if !hasAuth {
-			q.Err = fmt.Errorf("用户(%d)无法获取该场考试的监考信息: %d - %d", userID, examSessionID, examRoomID)
+			q.Err = fmt.Errorf("用户(%d)无法获取该场考试的监考信息: %d - %d", userID, examSessionID, examRoomID.Int64)
 			z.Error(q.Err.Error())
 			q.RespErr()
 			return
@@ -822,12 +816,14 @@ func invigilation(ctx context.Context) {
 			return
 		}
 
-		examRoomID := gjson.Get(qry, "Data.ExamRoomID").Int()
-		if examRoomID <= 0 {
-			q.Err = fmt.Errorf("无效的考场ID: %d", examRoomID)
-			z.Error(q.Err.Error())
-			q.RespErr()
-			return
+		var examRoomID null.Int
+		roomID := gjson.Get(qry, "Data.ExamRoomID").Int()
+		if roomID <= 0 {
+			examRoomID.Int64 = 0
+			examRoomID.Valid = false
+		} else {
+			examRoomID.Int64 = roomID
+			examRoomID.Valid = true
 		}
 
 		// 检查用户是否有权限获取监考信息
@@ -845,7 +841,7 @@ func invigilation(ctx context.Context) {
 			hasAuth = false
 		}
 		if !hasAuth {
-			q.Err = fmt.Errorf("用户(%d)无法获取该场考试的监考信息: %d - %d", userID, examSessionID, examRoomID)
+			q.Err = fmt.Errorf("用户(%d)无法获取该场考试的监考信息: %d - %d", userID, examSessionID, examRoomID.Int64)
 			z.Error(q.Err.Error())
 			q.RespErr()
 			return
@@ -1293,11 +1289,8 @@ func invigilationFile(ctx context.Context) {
 			return
 		}
 
-		if invigilationFile.ExamRoomID <= 0 {
-			q.Err = fmt.Errorf("无效的考场ID: %d", invigilationFile.ExamRoomID)
-			z.Error(q.Err.Error())
-			q.RespErr()
-			return
+		if invigilationFile.ExamRoomID.Int64 <= 0 {
+			invigilationFile.ExamRoomID.Valid = false
 		}
 
 		var hasAuth bool
@@ -1314,7 +1307,7 @@ func invigilationFile(ctx context.Context) {
 			hasAuth = false
 		}
 		if !hasAuth {
-			q.Err = fmt.Errorf("用户(%d)无法上传该场考试的监考附件: %d - %d", userID, invigilationFile.ExamSessionID, invigilationFile.ExamRoomID)
+			q.Err = fmt.Errorf("用户(%d)无法上传该场考试的监考附件: %d - %d", userID, invigilationFile.ExamSessionID, invigilationFile.ExamRoomID.Int64)
 			z.Error(q.Err.Error())
 			q.RespErr()
 			return
@@ -1493,11 +1486,8 @@ func invigilationFile(ctx context.Context) {
 			return
 		}
 
-		if invigilationFile.ExamRoomID <= 0 {
-			q.Err = fmt.Errorf("无效的考场ID: %d", invigilationFile.ExamRoomID)
-			z.Error(q.Err.Error())
-			q.RespErr()
-			return
+		if invigilationFile.ExamRoomID.Int64 <= 0 {
+			invigilationFile.ExamRoomID.Valid = false
 		}
 
 		if invigilationFile.FileID <= 0 {
@@ -1521,7 +1511,7 @@ func invigilationFile(ctx context.Context) {
 			hasAuth = false
 		}
 		if !hasAuth {
-			q.Err = fmt.Errorf("用户(%d)无法删除该场考试的监考附件: %d - %d", userID, invigilationFile.ExamSessionID, invigilationFile.ExamRoomID)
+			q.Err = fmt.Errorf("用户(%d)无法删除该场考试的监考附件: %d - %d", userID, invigilationFile.ExamSessionID, invigilationFile.ExamRoomID.Int64)
 			z.Error(q.Err.Error())
 			q.RespErr()
 			return
@@ -1584,7 +1574,7 @@ func invigilationFile(ctx context.Context) {
 		}
 
 		if len(existingFiles) == 0 || forceErr == "noFiles" {
-			q.Err = fmt.Errorf("未找到监考附件记录: %d - %d", invigilationFile.ExamSessionID, invigilationFile.ExamRoomID)
+			q.Err = fmt.Errorf("未找到监考附件记录: %d - %d", invigilationFile.ExamSessionID, invigilationFile.ExamRoomID.Int64)
 			z.Error(q.Err.Error())
 			q.RespErr()
 			return

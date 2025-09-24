@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"w2w.io/cmn"
+	"w2w.io/serve/auth_mgt"
 )
 
 // 检查考试数据的有效性
@@ -201,31 +202,13 @@ func validateExamData(examData *ExamData, isUpdate bool) error {
 		needInvigilatorCount += examRoom.InvigilatorCount
 	}
 
-	if len(examData.InvigilatorIDs) != int(needInvigilatorCount) {
+	if examData.ExamInfo.Mode.String == "02" && len(examData.InvigilatorIDs) != int(needInvigilatorCount) {
 		err := fmt.Errorf("监考教师人数不足: 需要 %d, 实际 %d", needInvigilatorCount, len(examData.InvigilatorIDs))
 		z.Error(err.Error())
 		return err
 	}
 
 	return nil
-}
-
-func validateUserForExamCreateOrUpdate(domain string) bool {
-	z.Info("---->" + cmn.FncName())
-
-	// 检查域名是否包含 academicAffair 前缀和 ^admin 权限标识
-	// if !strings.HasPrefix(domain, "academicAffair") {
-	// 	return false
-	// }
-	if strings.Contains(domain, "^student") {
-		return false
-	}
-
-	if !strings.Contains(domain, "^admin") && !strings.Contains(domain, "^superAdmin") && !strings.Contains(domain, "^teacher") {
-		return false
-	}
-
-	return true
 }
 
 // getDomainByUserRole 根据用户角色ID从用户域列表中查找对应的域字符串
@@ -304,4 +287,34 @@ func convertToInt64Array(ctx context.Context, data interface{}) ([]int64, error)
 	}
 
 	return nil, fmt.Errorf("unsupported data type: %T", data)
+}
+
+// getApiPermissions 获取当前用户在使用指定接口时是否可读/可写
+func getApiPermissions(ctx context.Context, apiPath string, authority *auth_mgt.Authority) (readable, creatable, editable, deletable bool, err error) {
+
+	readable, err = auth_mgt.CheckUserAPIAccessible(ctx, authority, apiPath, auth_mgt.CAPIAccessActionRead)
+	if err != nil {
+		z.Error(err.Error())
+		return
+	}
+
+	creatable, err = auth_mgt.CheckUserAPIAccessible(ctx, authority, apiPath, auth_mgt.CAPIAccessActionCreate)
+	if err != nil {
+		z.Error(err.Error())
+		return
+	}
+
+	editable, err = auth_mgt.CheckUserAPIAccessible(ctx, authority, apiPath, auth_mgt.CAPIAccessActionUpdate)
+	if err != nil {
+		z.Error(err.Error())
+		return
+	}
+
+	deletable, err = auth_mgt.CheckUserAPIAccessible(ctx, authority, apiPath, auth_mgt.CAPIAccessActionDelete)
+	if err != nil {
+		z.Error(err.Error())
+		return
+	}
+
+	return
 }

@@ -3,12 +3,14 @@ package auth_mgt
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"w2w.io/cmn"
 	"w2w.io/null"
 )
@@ -168,6 +170,12 @@ func (h *handler) HandleDomain(ctx context.Context) {
 			reqData.Base.Priority = null.NewInt(CDomainPrioritySuperAdmin, true)
 		} else if isRole {
 			// 如果要创建的目标是角色，就校验优先级
+			if !reqData.Base.Priority.Valid {
+				q.Err = fmt.Errorf("priority is required for role")
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
 			if reqData.Base.Priority.Int64 != CDomainPriorityUser && reqData.Base.Priority.Int64 != CDomainPriorityAdmin {
 				q.Err = fmt.Errorf("invalid priority for role")
 				z.Error(q.Err.Error())
@@ -297,14 +305,6 @@ func (h *handler) HandleDomain(ctx context.Context) {
 		return
 
 	case "get": // 查询域列表
-		// 获取数据库连接
-		pgConn := cmn.GetPgxConn()
-		if pgConn == nil || forceErr == "GetPgxConn" {
-			q.Err = fmt.Errorf("database connection is not available")
-			z.Error(q.Err.Error())
-			q.RespErr()
-			return
-		}
 
 		// 解析筛选条件
 		domain := q.R.URL.Query().Get("domain")
@@ -319,19 +319,19 @@ func (h *handler) HandleDomain(ctx context.Context) {
 		pageSizeStr := q.R.URL.Query().Get("pageSize")
 
 		// 设置默认分页参数
-		page := 1
-		pageSize := 10
+		var page int64 = 1
+		var pageSize int64 = 10
 
 		// 解析页码
 		if pageStr != "" {
-			if p, err := strconv.Atoi(pageStr); err == nil && p > 0 {
+			if p, err := strconv.ParseInt(pageStr, 10, 64); err == nil && p > 0 {
 				page = p
 			}
 		}
 
 		// 解析页大小，限制上限为100
 		if pageSizeStr != "" {
-			if ps, err := strconv.Atoi(pageSizeStr); err == nil && ps > 0 {
+			if ps, err := strconv.ParseInt(pageSizeStr, 10, 64); err == nil && ps > 0 {
 				if ps > 100 {
 					pageSize = 100
 				} else {
@@ -340,283 +340,18 @@ func (h *handler) HandleDomain(ctx context.Context) {
 			}
 		}
 
-		// 计算偏移量
-		offset := (page - 1) * pageSize
-
-		result := make([]DomainData, 0)
-
-		// 构建查询条件
-		var conditions []string
-		var args []interface{}
-		argIndex := 1
-
-		// 添加状态筛选条件
-		if status != "" {
-			conditions = append(conditions, "status = $"+fmt.Sprintf("%d", argIndex))
-			args = append(args, status)
-			argIndex++
+		filter := QueryDomainsFilter{
+			Domain:         domain,
+			ParentDomain:   parentDomain,
+			TargetType:     targetType,
+			Status:         status,
+			FuzzyCondition: fuzzyCondition,
+			ChildLevel:     childLevel,
 		}
 
-		// 添加域筛选条件
-		if domain != "" {
-			isDomain, isRole := IsValidDomainOrRole(domain)
-			if !isDomain && !isRole {
-				q.Err = fmt.Errorf("筛选域的格式不正确: %s", domain)
-				z.Error(q.Err.Error())
-				q.RespErr()
-				return
-			}
-			conditions = append(conditions, "domain = $"+fmt.Sprintf("%d", argIndex))
-			args = append(args, domain)
-			argIndex++
-		}
-
-		if parentDomain != "" {
-			isDomain, _ := IsValidDomainOrRole(parentDomain)
-			if !isDomain {
-				q.Err = fmt.Errorf("筛选父域的格式不正确: %s", parentDomain)
-				z.Error(q.Err.Error())
-				q.RespErr()
-				return
-			}
-			likePattern := parentDomain + "%"
-			conditions = append(conditions, "domain LIKE $"+fmt.Sprintf("%d", argIndex))
-			args = append(args, likePattern)
-			argIndex++
-		}
-
-		if targetType != "" {
-			// 00只筛选domain字段不含^的数据，02只筛选domain字段含^的数据
-			switch targetType {
-			case "00":
-				conditions = append(conditions, "domain NOT LIKE '%^%'")
-			case "02":
-				conditions = append(conditions, "domain LIKE '%^%'")
-			default:
-				q.Err = fmt.Errorf("筛选目标的格式不正确: %s", targetType)
-				z.Error(q.Err.Error())
-				q.RespErr()
-				return
-			}
-		}
-
-		// 处理层级筛选参数
-		childLevelInt := -1 // 默认值为-1，表示不进行层级筛选
-		if childLevel != "" {
-			childLevelInt, err = strconv.Atoi(childLevel)
-			if err != nil || childLevelInt < 0 {
-				childLevelInt = -1 // 解析失败时设为-1，不进行层级筛选
-			}
-		}
-
-		// 根据层级参数进行筛选
-		if childLevelInt >= 0 {
-			// 构建层级筛选条件
-			var levelConditions []string
-
-			if childLevelInt == 0 {
-				// level=0时，只查询直接隶属于当前父域的角色（A^xx格式）
-				// 匹配格式：parentDomain^任意字符
-				pattern := "^" + strings.ReplaceAll(parentDomain, ".", "\\.") + "\\^.+$"
-				levelConditions = append(levelConditions, "domain ~ $"+fmt.Sprintf("%d", argIndex))
-				args = append(args, pattern)
-				argIndex++
-			} else {
-				// level>0时，按原有逻辑处理层级筛选
-				if parentDomain != "" {
-					// 如果存在父域筛选，基于父域构建层级条件
-					for i := 1; i <= childLevelInt; i++ {
-						// 构建正则表达式模式
-						// 例如：父域为A.B，level为2时
-						// 匹配 A.B.XX 和 A.B.XX.XX
-						pattern := "^" + strings.ReplaceAll(parentDomain, ".", "\\.") + "(\\.[^.^]+){" + fmt.Sprintf("%d", i) + "}(\\^.*)?$"
-						levelConditions = append(levelConditions, "domain ~ $"+fmt.Sprintf("%d", argIndex))
-						args = append(args, pattern)
-						argIndex++
-					}
-				} else {
-					// 如果不存在父域筛选，直接基于层级数构建条件
-					for i := 1; i <= childLevelInt; i++ {
-						// 构建正则表达式模式
-						// 例如：level为2时，匹配 XX 和 XX.XX
-						pattern := "^([^.^]+)(\\.[^.^]+){" + fmt.Sprintf("%d", i-1) + "}(\\^.*)?$"
-						levelConditions = append(levelConditions, "domain ~ $"+fmt.Sprintf("%d", argIndex))
-						args = append(args, pattern)
-						argIndex++
-					}
-				}
-			}
-
-			if len(levelConditions) > 0 {
-				conditions = append(conditions, "("+strings.Join(levelConditions, " OR ")+")")
-			}
-		}
-
-		// 添加模糊查询条件
-		if fuzzyCondition != "" {
-			textPattern := "%" + fuzzyCondition + "%"
-			conditions = append(conditions, fmt.Sprintf(`(
-				name ILIKE $%d OR
-				domain ILIKE $%d OR
-				remark ILIKE $%d
-			)`, argIndex, argIndex, argIndex))
-			args = append(args, textPattern)
-			argIndex++
-		}
-
-		// 构建WHERE子句
-		whereClause := ""
-		if len(conditions) > 0 {
-			whereClause = "WHERE " + strings.Join(conditions, " AND ")
-		}
-
-		// 查询总行数
-		countSQL := `
-			SELECT COUNT(*)
-			FROM t_domain
-			` + whereClause + `
-		`
-
-		var totalCount int64
-		err = pgConn.QueryRow(ctx, countSQL, args...).Scan(&totalCount)
-		if err != nil || forceErr == "QueryDomainCount" {
-			q.Err = fmt.Errorf("failed to query domain count: %w", err)
-			z.Error(q.Err.Error())
-			q.RespErr()
-			return
-		}
-
-		// 从 t_domain 查询域基本信息（带分页）
-		queryDomainSQL := `
-			SELECT id, name, domain, priority, updated_by, update_time, creator, create_time, status
-			FROM t_domain
-			` + whereClause + `
-			ORDER BY create_time DESC
-			LIMIT $` + fmt.Sprintf("%d", argIndex) + ` OFFSET $` + fmt.Sprintf("%d", argIndex+1) + `
-		`
-
-		// 添加分页参数到查询参数列表
-		args = append(args, pageSize, offset)
-
-		rows, err := pgConn.Query(ctx, queryDomainSQL, args...)
-		if err != nil || forceErr == "QueryDomains" {
-			q.Err = fmt.Errorf("failed to query domains: %w", err)
-			z.Error(q.Err.Error())
-			q.RespErr()
-			return
-		}
-		defer rows.Close()
-
-		// 扫描域数据
-		for rows.Next() {
-			var domainData DomainData
-			err = rows.Scan(
-				&domainData.Base.ID,
-				&domainData.Base.Name,
-				&domainData.Base.Domain,
-				&domainData.Base.Priority,
-				&domainData.Base.UpdatedBy,
-				&domainData.Base.UpdateTime,
-				&domainData.Base.Creator,
-				&domainData.Base.CreateTime,
-				&domainData.Base.Status,
-			)
-			if err != nil || forceErr == "ScanDomains" {
-				q.Err = fmt.Errorf("failed to scan domain data: %w", err)
-				z.Error(q.Err.Error())
-				q.RespErr()
-				return
-			}
-
-			// 从 v_domain_api 查询该域的API列表
-			queryAPISQL := `
-				SELECT api_id, api_name, expose_path, access_action, creator, create_time, status
-				FROM v_domain_api
-				WHERE domain = $1 AND status = '01'
-				ORDER BY api_id
-			`
-			apiRows, err := pgConn.Query(ctx, queryAPISQL, domainData.Base.Domain)
-			if err != nil || forceErr == "QueryDomainAPIs" {
-				q.Err = fmt.Errorf("failed to query domain APIs for %s: %w", domainData.Base.Domain, err)
-				z.Error(q.Err.Error())
-				q.RespErr()
-				return
-			}
-
-			// 扫描API数据
-			domainData.APIs = make([]*cmn.TAPI, 0)
-			for apiRows.Next() {
-				var api cmn.TAPI
-				err = apiRows.Scan(
-					&api.ID,
-					&api.Name,
-					&api.ExposePath,
-					&api.AccessAction,
-					&api.Creator,
-					&api.CreateTime,
-					&api.Status,
-				)
-				if err != nil || forceErr == "ScanDomainAPIs" {
-					q.Err = fmt.Errorf("failed to scan API data for domain %s: %w", domainData.Base.Domain, err)
-					z.Error(q.Err.Error())
-					q.RespErr()
-					apiRows.Close()
-					return
-				}
-				domainData.APIs = append(domainData.APIs, &api)
-			}
-			apiRows.Close()
-
-			// 检查API扫描过程中是否有错误
-			err = apiRows.Err()
-			if err != nil || forceErr == "apiRows.Err" {
-				q.Err = fmt.Errorf("error occurred during API scanning for domain %s: %w", domainData.Base.Domain, err)
-				z.Error(q.Err.Error())
-				q.RespErr()
-				return
-			}
-
-			// 查询域的创建者信息
-			if domainData.Base.Creator.Valid && domainData.Base.Creator.Int64 != CDefaultDomainCreatorID {
-				var creator cmn.TUser
-				creatorSQL := `
-					SELECT id, account, official_name, mobile_phone, email
-					FROM t_user
-					WHERE id = $1
-				`
-				err = pgConn.QueryRow(ctx, creatorSQL, domainData.Base.Creator.Int64).Scan(
-					&creator.ID,
-					&creator.Account,
-					&creator.OfficialName,
-					&creator.MobilePhone,
-					&creator.Email,
-				)
-				if err != nil || forceErr == "QueryCreator" {
-					// 如果查询创建者失败，记录警告但不中断流程
-					z.Warn(fmt.Sprintf("failed to query creator for domain %s: %v", domainData.Base.Domain, err))
-				} else {
-					// 将创建者信息赋值到域的详细信息
-					domainData.Detail.Creator = creator
-				}
-			} else if domainData.Base.Creator.Int64 == CDefaultDomainCreatorID {
-				// 填充默认创建者信息
-				domainData.Detail.Creator = cmn.TUser{
-					ID:           null.IntFrom(CDefaultDomainCreatorID),
-					Account:      "system",
-					OfficialName: null.StringFrom("系统"),
-					MobilePhone:  null.StringFrom(""),
-					Email:        null.StringFrom(""),
-				}
-			}
-
-			result = append(result, domainData)
-		}
-
-		// 检查域扫描过程中是否有错误
-		err = rows.Err()
-		if err != nil || forceErr == "rows.Err" {
-			q.Err = fmt.Errorf("error occurred during domain scanning: %w", err)
-			z.Error(q.Err.Error())
+		result, totalCount, err := QueryDomains(ctx, page, pageSize, &filter)
+		if err != nil {
+			q.Err = fmt.Errorf("failed to query domain list: %w", err)
 			q.RespErr()
 			return
 		}
@@ -632,6 +367,256 @@ func (h *handler) HandleDomain(ctx context.Context) {
 
 		// 设置总行数
 		q.Msg.RowCount = totalCount
+
+		q.Msg.Status = 0
+		q.Msg.Msg = "success"
+		q.Resp()
+		return
+
+	case "put": // 覆盖式更新域
+		var buf []byte
+		buf, err = io.ReadAll(q.R.Body)
+		if err != nil || forceErr == "io.ReadAll" {
+			q.Err = fmt.Errorf("failed to read body: %w", err)
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+		defer func() {
+			err = q.R.Body.Close()
+			if err != nil || forceErr == "io.Close" {
+				e := fmt.Errorf("failed to close request body: %w", err)
+				z.Error(e.Error())
+				return
+			}
+		}()
+
+		if len(buf) == 0 {
+			q.Err = fmt.Errorf("request body cannot be empty")
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		var body cmn.ReqProto
+		err = json.Unmarshal(buf, &body)
+		if err != nil || forceErr == "json.Unmarshal" {
+			q.Err = fmt.Errorf("failed to unmarshal request body: %w", err)
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		// 支持批量更新，解析为域数据数组
+		var reqDataList []DomainData
+		err = json.Unmarshal(body.Data, &reqDataList)
+		if err != nil || forceErr == "json.UnmarshalDomainDataList" {
+			q.Err = fmt.Errorf("failed to unmarshal domain data list: %w", err)
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		if len(reqDataList) == 0 {
+			q.Err = fmt.Errorf("domain data list cannot be empty")
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		// 获取数据库连接
+		pgConn := cmn.GetPgxConn()
+		if pgConn == nil || forceErr == "GetPgxConn" {
+			q.Err = fmt.Errorf("database connection is not available")
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		// 开始事务
+		tx, err := pgConn.Begin(ctx)
+		if err != nil || forceErr == "tx.Begin" {
+			q.Err = fmt.Errorf("failed to begin transaction: %w", err)
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+		defer func() {
+			if err != nil || q.Err != nil {
+				err = tx.Rollback(ctx)
+				if err != nil || forceErr == "tx.Rollback" {
+					z.Error("transaction rolled back due to error: " + err.Error())
+				}
+				return
+			}
+			err = tx.Commit(ctx)
+			if err != nil || forceErr == "tx.Commit" {
+				z.Error("failed to commit transaction: " + err.Error())
+			}
+			return
+		}()
+
+		var updatedDomains []DomainData
+
+		// 批量处理每个域的更新
+		for _, reqData := range reqDataList {
+			// 验证必要字段
+			if !reqData.Base.ID.Valid || reqData.Base.ID.Int64 <= 0 {
+				q.Err = fmt.Errorf("domain ID is required and must be valid")
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+
+			if reqData.Base.Name == "" {
+				q.Err = fmt.Errorf("domain name cannot be empty")
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+
+			// 验证域的状态
+			if reqData.Base.Status.Valid && (reqData.Base.Status.String != "00" && reqData.Base.Status.String != "01" && reqData.Base.Status.String != "02") {
+				q.Err = fmt.Errorf("invalid domain status, must be one of '00', '01', '02'")
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+
+			// 检查域是否存在
+			var existingDomain string
+			checkSQL := `SELECT domain FROM t_domain WHERE id = $1`
+			err = tx.QueryRow(ctx, checkSQL, reqData.Base.ID.Int64).Scan(&existingDomain)
+			if err != nil || forceErr == "CheckDomainExists" {
+				if errors.Is(err, pgx.ErrNoRows) {
+					q.Err = fmt.Errorf("domain with ID %d does not exist", reqData.Base.ID.Int64)
+				} else {
+					q.Err = fmt.Errorf("failed to check domain existence: %w", err)
+				}
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+
+			// 校验域优先级字段
+			isDomain, isRole := IsValidDomainOrRole(existingDomain)
+			if isDomain {
+				// 如果要创建的目标是域，就自动设置优先级
+				reqData.Base.Priority = null.NewInt(CDomainPrioritySuperAdmin, true)
+			} else if isRole {
+				// 如果要创建的目标是角色，就校验优先级
+				if !reqData.Base.Priority.Valid {
+					q.Err = fmt.Errorf("priority is required for role")
+					z.Error(q.Err.Error())
+					q.RespErr()
+					return
+				}
+				if reqData.Base.Priority.Int64 != CDomainPriorityUser && reqData.Base.Priority.Int64 != CDomainPriorityAdmin {
+					q.Err = fmt.Errorf("invalid priority for role")
+					z.Error(q.Err.Error())
+					q.RespErr()
+					return
+				}
+			} else {
+				q.Err = fmt.Errorf("invalid domain EN code format")
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+
+			parentDomain := ParseFirstDomain(existingDomain)
+
+			// 校验选择的合法API
+			if err = validateSelectedAPIs(ctx, reqData.APIs, parentDomain); err != nil {
+				q.Err = fmt.Errorf("selected APIs are invalid: %w", err)
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+
+			// 更新 t_domain 表
+			updateDomainSQL := `
+				UPDATE t_domain 
+				SET name = $1, priority = $2, updated_by = $3, update_time = $4, remark = $5, status = $6
+				WHERE id = $7
+			`
+			currentTime := time.Now().UnixMilli()
+			_, err = tx.Exec(ctx, updateDomainSQL,
+				reqData.Base.Name,
+				reqData.Base.Priority,
+				q.SysUser.ID.Int64,
+				currentTime,
+				reqData.Base.Remark,
+				reqData.Base.Status.String,
+				reqData.Base.ID.Int64,
+			)
+			if err != nil || forceErr == "UpdateDomain" {
+				q.Err = fmt.Errorf("failed to update domain data: %w", err)
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+
+			// 删除现有的 API 关联
+			deleteAPISQL := `DELETE FROM t_domain_api WHERE domain = $1`
+			_, err = tx.Exec(ctx, deleteAPISQL, reqData.Base.ID.Int64)
+			if err != nil || forceErr == "DeleteDomainAPIs" {
+				q.Err = fmt.Errorf("failed to delete existing domain API associations: %w", err)
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+
+			// 重新插入 API 关联
+			if len(reqData.APIs) > 0 {
+				insertDomainAPISQL := `
+					INSERT INTO t_domain_api (domain, api, creator, create_time, updated_by, update_time, status)
+					VALUES ($1, $2, $3, $4, $5, $6, $7)
+				`
+				for _, api := range reqData.APIs {
+					_, err = tx.Exec(ctx, insertDomainAPISQL,
+						reqData.Base.ID.Int64,
+						api.ID,
+						q.SysUser.ID.Int64,
+						currentTime,
+						q.SysUser.ID.Int64,
+						currentTime,
+						"01", // 默认状态为有效
+					)
+					if err != nil || forceErr == "InsertDomainAPI" {
+						q.Err = fmt.Errorf("failed to insert domain API association data: %w", err)
+						z.Error(q.Err.Error())
+						q.RespErr()
+						return
+					}
+				}
+			}
+
+			// 使用domain进行筛选查询更新后的域数据
+			updatedDomain, _, err := QueryDomains(ctx, 1, 1, &QueryDomainsFilter{Domain: existingDomain})
+			if err != nil || len(updatedDomain) == 0 || forceErr == "QueryUpdatedDomain" {
+				q.Err = fmt.Errorf("failed to query updated domain data: %w", err)
+				q.RespErr()
+				return
+			}
+			if len(updatedDomain) < 1 || forceErr == "QueryUpdatedDomain.NoRows" {
+				q.Err = fmt.Errorf("updated domain not found")
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+
+			updatedDomains = append(updatedDomains, updatedDomain[0])
+		}
+
+		// 返回成功结果
+		q.Msg.Data, err = json.Marshal(updatedDomains)
+		if err != nil || forceErr == "json.MarshalResponse" {
+			q.Err = fmt.Errorf("failed to serialize response data: %w", err)
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
 
 		q.Msg.Status = 0
 		q.Msg.Msg = "success"

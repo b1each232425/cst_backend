@@ -64,7 +64,7 @@ func UpdatePractice(ctx context.Context, p *cmn.TPractice, ps []int64, uid int64
 	}
 	// 用于测试，强制执行某些错误分支
 	forceErr, _ := ctx.Value("force-error").(string)
-	authority := ctx.Value("authority").(auth_mgt.Authority)
+	authority := ctx.Value("authority").(*auth_mgt.Authority)
 	now := time.Now().UnixMilli()
 	p.UpdatedBy = null.IntFrom(uid)
 	p.UpdateTime = null.IntFrom(now)
@@ -128,7 +128,7 @@ func AddPractice(ctx context.Context, p *cmn.TPractice, ps []int64, uid int64) e
 	sqlxDB := cmn.GetDbConn()
 	// 用于测试，强制执行某些错误分支
 	forceErr, _ := ctx.Value("force-error").(string)
-	authority := ctx.Value("authority").(auth_mgt.Authority)
+	authority := ctx.Value("authority").(*auth_mgt.Authority)
 	s := `
 	INSERT INTO assessuser.t_practice (name,correct_mode,creator,create_time, update_time, addi,allowed_attempts,type,paper_id,domain_id)
 	VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9,$10) RETURNING id`
@@ -648,7 +648,7 @@ func ListPracticeT(ctx context.Context, name, pType, status string, orderBy []st
 	result := make([]Map, 0)
 	// 用于测试，强制执行某些错误分支
 	forceErr, _ := ctx.Value("force-error").(string)
-	authority := ctx.Value("authority").(auth_mgt.Authority)
+	authority := ctx.Value("authority").(*auth_mgt.Authority)
 	// 查询条件
 	var clauses []string
 	// 占位符
@@ -1007,7 +1007,7 @@ func OperatePracticeStatusV2(ctx context.Context, ids []int64, status string, ui
 	var err error
 	// 用于测试，强制执行某些错误分支
 	forceErr, _ := ctx.Value("force-error").(string)
-	authority := ctx.Value("authority").(auth_mgt.Authority)
+	authority := ctx.Value("authority").(*auth_mgt.Authority)
 	conn := cmn.GetPgxConn()
 	now := time.Now().UnixMilli()
 	ps, err := LoadPracticeByIDs(ctx, ids)

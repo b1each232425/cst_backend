@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"w2w.io/cmn"
+	"w2w.io/serve/auth_mgt"
 )
 
 var z *zap.Logger
@@ -41,6 +42,13 @@ func Enroll(author string) {
 
 		Path: "/paperTemplate",
 		Name: "paperTemplate",
+		ApiEntries: []*cmn.EndPointApiEntries{
+			{
+				Name:         "考卷管理.查询试卷模板",
+				AccessAction: auth_mgt.CAPIAccessActionRead,
+				Configurable: true,
+			},
+		},
 
 		Developer: developer,
 		WhiteList: true,
@@ -57,11 +65,33 @@ func Enroll(author string) {
 func paperTemplateH(ctx context.Context) {
 	q := cmn.GetCtxValue(ctx)
 
+	userID := q.SysUser.ID.Int64
+	if userID <= 0 {
+		q.Err = fmt.Errorf("用户ID不合法")
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+	authority, err := auth_mgt.GetUserAuthority(ctx)
+	if err != nil {
+		q.Err = fmt.Errorf("获取用户权限失败: %v", err.Error())
+		q.RespErr()
+		return
+	}
+	ctx = context.WithValue(ctx, "authority", authority)
+	read, _, _, _, err := GetAuthAPIAccessible(ctx, authority, q.Ep.Path)
+
 	// 这里只需要测试每一个接口，返回是否正常数据就可以了
 
 	method := strings.ToLower(q.R.Method)
 	if method != "get" {
 		q.Err = fmt.Errorf("please call /api/practiceS with  http GET method")
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+	if !read {
+		q.Err = fmt.Errorf("该用户没有读数据的权限")
 		z.Error(q.Err.Error())
 		q.RespErr()
 		return

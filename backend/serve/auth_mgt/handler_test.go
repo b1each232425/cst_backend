@@ -858,10 +858,88 @@ func TestHandleDomain(t *testing.T) {
 				forceError: "",
 				userID:     1,
 				userRole:   2000,
-				params:     map[string]string{"page": "1", "pageSize": "10", "onlyRole": "true"},
+				params:     map[string]string{"page": "1", "pageSize": "10", "targetType": "02"},
 			},
 			wantStatus: 0,
 			wantErr:    false,
+		},
+		{
+			name: "成功查询域列表｜GET方法｜只查询域",
+			args: args{
+				method:     "GET",
+				body:       nil,
+				forceError: "",
+				userID:     1,
+				userRole:   2000,
+				params:     map[string]string{"page": "1", "pageSize": "10", "targetType": "00"},
+			},
+			wantStatus: 0,
+			wantErr:    false,
+		},
+		{
+			name: "成功查询域列表｜GET方法｜查询结果只包含1层子域｜有父域",
+			args: args{
+				method:     "GET",
+				body:       nil,
+				forceError: "",
+				userID:     1,
+				userRole:   2000,
+				params:     map[string]string{"page": "1", "pageSize": "10", "parentDomain": "assess", "targetType": "00", "childLevel": "1"},
+			},
+			wantStatus: 0,
+			wantErr:    false,
+		},
+		{
+			name: "成功查询域列表｜GET方法｜查询结果只包含1层子域｜没有父域",
+			args: args{
+				method:     "GET",
+				body:       nil,
+				forceError: "",
+				userID:     1,
+				userRole:   2000,
+				params:     map[string]string{"page": "1", "pageSize": "10", "targetType": "00", "childLevel": "1"},
+			},
+			wantStatus: 0,
+			wantErr:    false,
+		},
+		{
+			name: "成功查询域列表｜GET方法｜查询结果只包含0层子域｜有父域",
+			args: args{
+				method:     "GET",
+				body:       nil,
+				forceError: "",
+				userID:     1,
+				userRole:   2000,
+				params:     map[string]string{"page": "1", "pageSize": "10", "parentDomain": "assess", "targetType": "02", "childLevel": "0"},
+			},
+			wantStatus: 0,
+			wantErr:    false,
+		},
+		{
+			name: "成功查询域列表｜GET方法｜childLevel不合法，但可以视为0",
+			args: args{
+				method:     "GET",
+				body:       nil,
+				forceError: "",
+				userID:     1,
+				userRole:   2000,
+				params:     map[string]string{"page": "1", "pageSize": "10", "parentDomain": "assess", "targetType": "00", "childLevel": "-1"},
+			},
+			wantStatus: 0,
+			wantErr:    false,
+		},
+		{
+			name: "失败｜GET方法｜targetType值不合法",
+			args: args{
+				method:     "GET",
+				body:       nil,
+				forceError: "",
+				userID:     1,
+				userRole:   2000,
+				params:     map[string]string{"page": "1", "pageSize": "10", "parentDomain": "assess", "targetType": "04", "childLevel": "1"},
+			},
+			wantStatus: -1,
+			wantErr:    true,
 		},
 		{
 			name: "失败｜GET方法｜无效域格式",
@@ -1006,6 +1084,574 @@ func TestHandleDomain(t *testing.T) {
 			wantStatus: -1,
 			wantErr:    true,
 		},
+
+		// 以下是PUT方法的测试用例
+		{
+			name: "成功｜PUT方法｜单个角色更新",
+			args: args{
+				method: "PUT",
+				body: []DomainData{
+					{
+						Base: cmn.TDomain{
+							ID:       null.IntFrom(20109),
+							Name:     "测试.核分员.已更新",
+							Priority: null.NewInt(CDomainPriorityAdmin, true),
+							Remark:   null.StringFrom("test domain"),
+							Status:   null.StringFrom("01"),
+						},
+						APIs: []*cmn.TAPI{
+							{
+								ID: null.IntFrom(20091),
+							},
+							{
+								ID: null.IntFrom(20092),
+							},
+						},
+					},
+				},
+				forceError: "",
+				userID:     1,
+				userRole:   2000,
+			},
+			wantStatus: 0,
+			wantErr:    false,
+		},
+		{
+			name: "成功｜PUT方法｜单个域更新",
+			args: args{
+				method: "PUT",
+				body: []DomainData{
+					{
+						Base: cmn.TDomain{
+							ID:     null.IntFrom(20154),
+							Name:   "测试.教务.已更新",
+							Remark: null.StringFrom("test domain"),
+							Status: null.StringFrom("01"),
+						},
+						APIs: []*cmn.TAPI{},
+					},
+				},
+				forceError: "",
+				userID:     1,
+				userRole:   2000,
+			},
+			wantStatus: 0,
+			wantErr:    false,
+		},
+		{
+			name: "成功｜PUT方法｜批量角色更新",
+			args: args{
+				method: "PUT",
+				body: []DomainData{
+					{
+						Base: cmn.TDomain{
+							ID:       null.IntFrom(20110),
+							Name:     "测试.披阅员.已更新",
+							Priority: null.NewInt(CDomainPriorityUser, true),
+							Remark:   null.StringFrom("test domain"),
+							Status:   null.StringFrom("01"),
+						},
+						APIs: []*cmn.TAPI{},
+					},
+					{
+						Base: cmn.TDomain{
+							ID:       null.IntFrom(20111),
+							Name:     "测试.考点负责人.已更新",
+							Priority: null.NewInt(CDomainPriorityUser, true),
+							Remark:   null.StringFrom("test domain"),
+							Status:   null.StringFrom("01"),
+						},
+						APIs: []*cmn.TAPI{},
+					},
+				},
+				forceError: "",
+				userID:     1,
+				userRole:   2000,
+			},
+			wantStatus: 0,
+			wantErr:    false,
+		},
+		{
+			name: "失败｜PUT方法｜域ID无效",
+			args: args{
+				method: "PUT",
+				body: []DomainData{
+					{
+						Base: cmn.TDomain{
+							ID:     null.IntFrom(0), // 无效ID
+							Name:   "测试学校",
+							Domain: "testSchool",
+							Remark: null.StringFrom("test domain"),
+							Status: null.StringFrom("01"),
+						},
+						APIs: []*cmn.TAPI{},
+					},
+				},
+				forceError: "",
+				userID:     1,
+				userRole:   2000,
+			},
+			wantStatus: -1,
+			wantErr:    true,
+		},
+		{
+			name: "失败｜PUT方法｜域名为空",
+			args: args{
+				method: "PUT",
+				body: []DomainData{
+					{
+						Base: cmn.TDomain{
+							ID:     null.IntFrom(1),
+							Name:   "", // 域名为空
+							Domain: "testSchool",
+							Remark: null.StringFrom("test"),
+							Status: null.StringFrom("01"),
+						},
+						APIs: []*cmn.TAPI{},
+					},
+				},
+				forceError: "",
+				userID:     1,
+				userRole:   2000,
+			},
+			wantStatus: -1,
+			wantErr:    true,
+		},
+		{
+			name: "失败｜PUT方法｜域状态无效",
+			args: args{
+				method: "PUT",
+				body: []DomainData{
+					{
+						Base: cmn.TDomain{
+							ID:       null.IntFrom(20109),
+							Name:     "测试.核分员.已更新",
+							Priority: null.NewInt(CDomainPriorityAdmin, true),
+							Remark:   null.StringFrom("test domain"),
+							Status:   null.StringFrom("100"),
+						},
+						APIs: []*cmn.TAPI{},
+					},
+				},
+				forceError: "",
+				userID:     1,
+				userRole:   2000,
+			},
+			wantStatus: -1,
+			wantErr:    true,
+		},
+		{
+			name: "失败｜PUT方法｜域不存在",
+			args: args{
+				method: "PUT",
+				body: []DomainData{
+					{
+						Base: cmn.TDomain{
+							ID:     null.IntFrom(99999), // 不存在的ID
+							Name:   "测试学校",
+							Domain: "testSchool",
+							Remark: null.StringFrom("test"),
+							Status: null.StringFrom("01"),
+						},
+						APIs: []*cmn.TAPI{},
+					},
+				},
+				forceError: "",
+				userID:     1,
+				userRole:   2000,
+			},
+			wantStatus: -1,
+			wantErr:    true,
+		},
+		{
+			name: "失败｜PUT方法｜角色优先级为空",
+			args: args{
+				method: "PUT",
+				body: []DomainData{
+					{
+						Base: cmn.TDomain{
+							ID:       null.IntFrom(20109),
+							Name:     "测试.核分员.已更新",
+							Priority: null.NewInt(CDomainPriorityAdmin, false),
+							Remark:   null.StringFrom("test domain"),
+							Status:   null.StringFrom("01"),
+						},
+						APIs: []*cmn.TAPI{},
+					},
+				},
+				forceError: "",
+				userID:     1,
+				userRole:   2000,
+			},
+			wantStatus: -1,
+			wantErr:    true,
+		},
+		{
+			name: "失败｜PUT方法｜角色优先级不合法",
+			args: args{
+				method: "PUT",
+				body: []DomainData{
+					{
+						Base: cmn.TDomain{
+							ID:       null.IntFrom(20109),
+							Name:     "测试.核分员.已更新",
+							Priority: null.NewInt(100, true),
+							Remark:   null.StringFrom("test domain"),
+							Status:   null.StringFrom("01"),
+						},
+						APIs: []*cmn.TAPI{},
+					},
+				},
+				forceError: "",
+				userID:     1,
+				userRole:   2000,
+			},
+			wantStatus: -1,
+			wantErr:    true,
+		},
+		{
+			name: "失败｜PUT方法｜数据库中的非法域",
+			args: args{
+				method: "PUT",
+				body: []DomainData{
+					{
+						Base: cmn.TDomain{
+							ID:       null.IntFrom(20155),
+							Name:     "测试.非法域.已更新",
+							Priority: null.NewInt(CDomainPriorityUser, true),
+							Remark:   null.StringFrom("test domain"),
+							Status:   null.StringFrom("01"),
+						},
+						APIs: []*cmn.TAPI{},
+					},
+				},
+				forceError: "",
+				userID:     1,
+				userRole:   2000,
+			},
+			wantStatus: -1,
+			wantErr:    true,
+		},
+		{
+			name: "失败｜PUT方法｜要更新非可选API",
+			args: args{
+				method: "PUT",
+				body: []DomainData{
+					{
+						Base: cmn.TDomain{
+							ID:       null.IntFrom(20109),
+							Name:     "测试.核分员.已更新",
+							Priority: null.NewInt(100, true),
+							Remark:   null.StringFrom("test domain"),
+							Status:   null.StringFrom("01"),
+						},
+						APIs: []*cmn.TAPI{
+							{
+								ID: null.NewInt(20103, true), // 非可选API
+							},
+						},
+					},
+				},
+				forceError: "",
+				userID:     1,
+				userRole:   2000,
+			},
+			wantStatus: -1,
+			wantErr:    true,
+		},
+		{
+			name: "失败｜PUT方法｜数据列表为空",
+			args: args{
+				method:     "PUT",
+				body:       []DomainData{}, // 空数组
+				forceError: "",
+				userID:     1,
+				userRole:   2000,
+			},
+			wantStatus: -1,
+			wantErr:    true,
+		},
+		{
+			name: "失败｜PUT方法｜强制io.ReadAll错误",
+			args: args{
+				method: "PUT",
+				body: []DomainData{
+					{
+						Base: cmn.TDomain{
+							ID:       null.IntFrom(20109),
+							Name:     "测试.核分员.已更新",
+							Priority: null.NewInt(CDomainPriorityAdmin, true),
+							Remark:   null.StringFrom("test domain"),
+							Status:   null.StringFrom("01"),
+						},
+						APIs: []*cmn.TAPI{},
+					},
+				},
+				forceError: "io.ReadAll",
+				userID:     1,
+				userRole:   2000,
+			},
+			wantStatus: -1,
+			wantErr:    true,
+		},
+		{
+			name: "失败｜PUT方法｜强制json.Unmarshal错误",
+			args: args{
+				method: "PUT",
+				body: []DomainData{
+					{
+						Base: cmn.TDomain{
+							ID:       null.IntFrom(20109),
+							Name:     "测试.核分员.已更新",
+							Priority: null.NewInt(CDomainPriorityAdmin, true),
+							Remark:   null.StringFrom("test domain"),
+							Status:   null.StringFrom("01"),
+						},
+						APIs: []*cmn.TAPI{},
+					},
+				},
+				forceError: "json.Unmarshal",
+				userID:     1,
+				userRole:   2000,
+			},
+			wantStatus: -1,
+			wantErr:    true,
+		},
+		{
+			name: "失败｜PUT方法｜强制json.UnmarshalDomainDataList错误",
+			args: args{
+				method: "PUT",
+				body: []DomainData{
+					{
+						Base: cmn.TDomain{
+							ID:       null.IntFrom(20109),
+							Name:     "测试.核分员.已更新",
+							Priority: null.NewInt(CDomainPriorityAdmin, true),
+							Remark:   null.StringFrom("test domain"),
+							Status:   null.StringFrom("01"),
+						},
+						APIs: []*cmn.TAPI{},
+					},
+				},
+				forceError: "json.UnmarshalDomainDataList",
+				userID:     1,
+				userRole:   2000,
+			},
+			wantStatus: -1,
+			wantErr:    true,
+		},
+		{
+			name: "失败｜PUT方法｜强制GetPgxConn错误",
+			args: args{
+				method: "PUT",
+				body: []DomainData{
+					{
+						Base: cmn.TDomain{
+							ID:       null.IntFrom(20109),
+							Name:     "测试.核分员.已更新",
+							Priority: null.NewInt(CDomainPriorityAdmin, true),
+							Remark:   null.StringFrom("test domain"),
+							Status:   null.StringFrom("01"),
+						},
+						APIs: []*cmn.TAPI{},
+					},
+				},
+				forceError: "GetPgxConn",
+				userID:     1,
+				userRole:   2000,
+			},
+			wantStatus: -1,
+			wantErr:    true,
+		},
+		{
+			name: "失败｜PUT方法｜强制CheckDomainExists错误",
+			args: args{
+				method: "PUT",
+				body: []DomainData{
+					{
+						Base: cmn.TDomain{
+							ID:       null.IntFrom(20109),
+							Name:     "测试.核分员.已更新",
+							Priority: null.NewInt(CDomainPriorityAdmin, true),
+							Remark:   null.StringFrom("test domain"),
+							Status:   null.StringFrom("01"),
+						},
+						APIs: []*cmn.TAPI{},
+					},
+				},
+				forceError: "CheckDomainExists",
+				userID:     1,
+				userRole:   2000,
+			},
+			wantStatus: -1,
+			wantErr:    true,
+		},
+		{
+			name: "失败｜PUT方法｜强制UpdateDomain错误",
+			args: args{
+				method: "PUT",
+				body: []DomainData{
+					{
+						Base: cmn.TDomain{
+							ID:       null.IntFrom(20109),
+							Name:     "测试.核分员.已更新",
+							Priority: null.NewInt(CDomainPriorityAdmin, true),
+							Remark:   null.StringFrom("test domain"),
+							Status:   null.StringFrom("01"),
+						},
+						APIs: []*cmn.TAPI{},
+					},
+				},
+				forceError: "UpdateDomain",
+				userID:     1,
+				userRole:   2000,
+			},
+			wantStatus: -1,
+			wantErr:    true,
+		},
+		{
+			name: "失败｜PUT方法｜强制DeleteDomainAPIs错误",
+			args: args{
+				method: "PUT",
+				body: []DomainData{
+					{
+						Base: cmn.TDomain{
+							ID:       null.IntFrom(20109),
+							Name:     "测试.核分员.已更新",
+							Priority: null.NewInt(CDomainPriorityAdmin, true),
+							Remark:   null.StringFrom("test domain"),
+							Status:   null.StringFrom("01"),
+						},
+						APIs: []*cmn.TAPI{
+							{
+								ID: null.IntFrom(20091),
+							},
+							{
+								ID: null.IntFrom(20092),
+							},
+						},
+					},
+				},
+				forceError: "DeleteDomainAPIs",
+				userID:     1,
+				userRole:   2000,
+			},
+			wantStatus: -1,
+			wantErr:    true,
+		},
+		{
+			name: "失败｜PUT方法｜强制InsertDomainAPI错误",
+			args: args{
+				method: "PUT",
+				body: []DomainData{
+					{
+						Base: cmn.TDomain{
+							ID:       null.IntFrom(20109),
+							Name:     "测试.核分员.已更新",
+							Priority: null.NewInt(CDomainPriorityAdmin, true),
+							Remark:   null.StringFrom("test domain"),
+							Status:   null.StringFrom("01"),
+						},
+						APIs: []*cmn.TAPI{
+							{
+								ID: null.IntFrom(20091),
+							},
+							{
+								ID: null.IntFrom(20092),
+							},
+						},
+					},
+				},
+				forceError: "InsertDomainAPI",
+				userID:     1,
+				userRole:   2000,
+			},
+			wantStatus: -1,
+			wantErr:    true,
+		},
+		{
+			name: "失败｜PUT方法｜强制json.MarshalResponse错误",
+			args: args{
+				method: "PUT",
+				body: []DomainData{
+					{
+						Base: cmn.TDomain{
+							ID:       null.IntFrom(20109),
+							Name:     "测试.核分员.已更新",
+							Priority: null.NewInt(CDomainPriorityAdmin, true),
+							Remark:   null.StringFrom("test domain"),
+							Status:   null.StringFrom("01"),
+						},
+						APIs: []*cmn.TAPI{},
+					},
+				},
+				forceError: "json.MarshalResponse",
+				userID:     1,
+				userRole:   2000,
+			},
+			wantStatus: -1,
+			wantErr:    false,
+		},
+		{
+			name: "成功｜PUT方法｜强制QueryUpdatedDomain错误",
+			args: args{
+				method: "PUT",
+				body: []DomainData{
+					{
+						Base: cmn.TDomain{
+							ID:       null.IntFrom(20109),
+							Name:     "测试.核分员.已更新",
+							Priority: null.NewInt(CDomainPriorityAdmin, true),
+							Remark:   null.StringFrom("test domain"),
+							Status:   null.StringFrom("01"),
+						},
+						APIs: []*cmn.TAPI{
+							{
+								ID: null.IntFrom(20091),
+							},
+							{
+								ID: null.IntFrom(20092),
+							},
+						},
+					},
+				},
+				forceError: "QueryUpdatedDomain",
+				userID:     1,
+				userRole:   2000,
+			},
+			wantStatus: -1,
+			wantErr:    true,
+		},
+		{
+			name: "成功｜PUT方法｜强制QueryUpdatedDomain.NoRows错误",
+			args: args{
+				method: "PUT",
+				body: []DomainData{
+					{
+						Base: cmn.TDomain{
+							ID:       null.IntFrom(20109),
+							Name:     "测试.核分员.已更新",
+							Priority: null.NewInt(CDomainPriorityAdmin, true),
+							Remark:   null.StringFrom("test domain"),
+							Status:   null.StringFrom("01"),
+						},
+						APIs: []*cmn.TAPI{
+							{
+								ID: null.IntFrom(20091),
+							},
+							{
+								ID: null.IntFrom(20092),
+							},
+						},
+					},
+				},
+				forceError: "QueryUpdatedDomain.NoRows",
+				userID:     1,
+				userRole:   2000,
+			},
+			wantStatus: -1,
+			wantErr:    true,
+		},
 	}
 
 	for _, tt := range tests {
@@ -1088,18 +1734,27 @@ func TestHandleDomain(t *testing.T) {
 
 				// 验证返回的数据是否为有效的JSON
 				if len(q.Msg.Data) > 0 {
-					if tt.args.method == "GET" {
+					switch tt.args.method {
+					case "GET":
 						// GET方法返回域列表
 						var domainList []DomainData
 						if err := json.Unmarshal(q.Msg.Data, &domainList); err != nil {
 							t.Errorf("HandleDomain() GET returned invalid JSON data: %v", err)
 						}
-					} else {
+					case "POST":
 						// POST方法返回单个域数据
 						var domainData DomainData
 						if err := json.Unmarshal(q.Msg.Data, &domainData); err != nil {
 							t.Errorf("HandleDomain() POST returned invalid JSON data: %v", err)
 						}
+					case "PUT":
+						// PUT方法返回更新的域列表
+						var domainList []DomainData
+						if err := json.Unmarshal(q.Msg.Data, &domainList); err != nil {
+							t.Errorf("HandleDomain() PUT returned invalid JSON data: %v", err)
+						}
+					default:
+						t.Errorf("HandleDomain() unknown method %s", tt.args.method)
 					}
 				}
 			}
