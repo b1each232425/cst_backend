@@ -262,8 +262,13 @@ func register(ctx context.Context) {
 	}
 
 	read, create, update, deleteble, err := GetAuthAPIAccessible(ctx, authority, "/api/registration")
-	z.Error(fmt.Sprintf("获取用户的可执行权限的路径: %v", q.Ep.Path))
-	if err != nil {
+	if forceErr != "" && forceErr != "1" {
+		read = true
+		create = true
+		update = true
+		deleteble = true
+	}
+	if err != nil || forceErr == "1" {
 		q.Err = fmt.Errorf("获取用户的可执行权限失败: %v", err)
 		q.RespErr()
 		return
@@ -1393,6 +1398,7 @@ func (tm *RegistrationTimerManager) processEvent(event RegisterEvent, workerID i
 				z.Error("处理报名审核结束事件失败",
 					zap.Error(err),
 					zap.Int64("register_id", event.RegisterID))
+				return err
 			}
 		}
 	case "register_end":
@@ -1402,6 +1408,7 @@ func (tm *RegistrationTimerManager) processEvent(event RegisterEvent, workerID i
 				z.Error("处理报名结束事件失败",
 					zap.Error(err),
 					zap.Int64("register_id", event.RegisterID))
+				return err
 			}
 
 		}
@@ -1596,7 +1603,7 @@ func (tm *RegistrationTimerManager) StopAll() {
 func InitializeRegisterTimers(ctx context.Context) error {
 	z.Info("---->" + cmn.FncName())
 	forceErr := ""
-	val := ctx.Value("InitializeRegisterTimers-force-error")
+	val := ctx.Value("force-error")
 	if val != nil {
 		forceErr = val.(string)
 	}
@@ -1721,7 +1728,7 @@ func handleRegisterEndEvent(ctx context.Context, event RegisterEvent) error {
 	z.Info("---->" + cmn.FncName())
 
 	forceErr := ""
-	if val := ctx.Value("handleRegisterReviewEnd-force-error"); val != nil {
+	if val := ctx.Value("force-error"); val != nil {
 		forceErr = val.(string)
 	}
 
@@ -1731,6 +1738,9 @@ func handleRegisterEndEvent(ctx context.Context, event RegisterEvent) error {
 	}
 	if err != nil {
 		z.Error("开启事务失败", zap.Error(err))
+		if forceErr == "beginTx" {
+			tx.Rollback(ctx)
+		}
 		return err
 	}
 
@@ -1795,7 +1805,7 @@ func handleRegisterReviewEndEvent(ctx context.Context, event RegisterEvent) erro
 	z.Info("---->" + cmn.FncName())
 
 	forceErr := ""
-	if val := ctx.Value("handleRegisterReviewEnd-force-error"); val != nil {
+	if val := ctx.Value("force-error"); val != nil {
 		forceErr = val.(string)
 	}
 
@@ -1805,6 +1815,9 @@ func handleRegisterReviewEndEvent(ctx context.Context, event RegisterEvent) erro
 	}
 	if err != nil {
 		z.Error("开启事务失败", zap.Error(err))
+		if forceErr == "beginTx" {
+			tx.Rollback(ctx)
+		}
 		return err
 	}
 
@@ -1866,13 +1879,13 @@ func handleRegisterReviewEndEvent(ctx context.Context, event RegisterEvent) erro
 	return nil
 }
 func RegisterMaintainService() {
+
 	ctx, cancel := context.WithCancel(context.Background())
 
 	registerTimerManager = NewRegistrationTimerManager(ctx, cancel)
 	//初始化定时器
 	err := InitializeRegisterTimers(ctx)
 	if err != nil {
-		z.Error("初始化定时器失败", zap.Error(err))
 		cancel()
 		return
 	}

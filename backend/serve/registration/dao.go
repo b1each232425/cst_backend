@@ -1047,7 +1047,7 @@ func OperateRegisterStatus(ctx context.Context, registerIDs []int64, status stri
 		return err
 	}
 	forceErr := ctx.Value("force-error")
-	authority := ctx.Value("authority").(auth_mgt.Authority)
+	authority := ctx.Value("authority").(*auth_mgt.Authority)
 	now := time.Now().UnixMilli()
 	//获取每个报名计划的信息
 	Rs, err := LoadRegisterByIds(ctx, registerIDs)
@@ -1337,13 +1337,29 @@ func OperateRegisterStudentStatus(ctx context.Context, tx pgx.Tx, ids []int64, s
 	}
 	now := time.Now().UnixMilli()
 	forceErr, _ := ctx.Value("force-error").(string)
+	authority := ctx.Value("authority").(*auth_mgt.Authority)
 	//获取报名计划信息
-	register, practices, _, _, err := LoadRegisterById(ctx, RegisterID)
+	register, practices, reviewers, _, err := LoadRegisterById(ctx, RegisterID)
 	if err != nil {
 		return err
 	}
 	if register.Status.String != RegisterStatus.Released && register.Status.String != RegisterStatus.Ending {
 		err := fmt.Errorf("当前报名计划状态为：%v，不能进行操作", register.Status.String)
+		z.Error(err.Error())
+		return err
+	}
+	var isReviewer bool
+	isReviewer = false
+	for i := range reviewers {
+		if reviewers[i].ID == userID {
+			isReviewer = true
+		}
+	}
+	if authority.Domain.ID.Int64 == 1999 {
+		isReviewer = true
+	}
+	if !isReviewer {
+		err := fmt.Errorf("当前用户不是审核人，不能进行操作")
 		z.Error(err.Error())
 		return err
 	}
@@ -1824,7 +1840,7 @@ func ListReviewers(ctx context.Context, userID int64, registerID int64, name str
 		return nil, 0, err
 	}
 	forceErr, _ := ctx.Value("force-error").(string)
-	authority := ctx.Value("authority").(auth_mgt.Authority)
+	authority := ctx.Value("authority").(*auth_mgt.Authority)
 	//获取报名计划的审查者id
 	register, _, _, _, err := LoadRegisterById(ctx, registerID)
 	if err != nil {
