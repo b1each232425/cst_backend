@@ -60,7 +60,7 @@ type UpdatePaperQuestionRequest struct {
 type UpdatePaperBasicInfoRequest struct {
 	Name        string   `json:"name,omitempty" validate:"omitempty,min=2,max=50"`
 	Category    string   `json:"category,omitempty" validate:"omitempty,oneof=00 02"`
-	Level       string   `json:"level,omitempty" validate:"omitempty,oneof=00 02 04"`
+	Level       string   `json:"level,omitempty" validate:"omitempty,oneof=00 02 04 06 08"`
 	Duration    *int     `json:"duration,omitempty" validate:"omitempty,min=0"`
 	Description *string  `json:"description,omitempty" validate:"omitempty,max=500"`
 	Tags        []string `json:"tags,omitempty" validate:"omitempty,min=1,dive,min=1,max=20"`
