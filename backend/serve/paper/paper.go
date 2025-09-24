@@ -69,6 +69,23 @@ func Enroll(author string) {
 
 		Developer: developer,
 		WhiteList: true,
+		ApiEntries: []*cmn.EndPointApiEntries{
+			{
+				Name:         "试卷管理.获得试卷详情",
+				AccessAction: auth_mgt.CAPIAccessActionRead,
+				Configurable: true,
+			},
+			{
+				Name:         "试卷管理.自定义组卷",
+				AccessAction: auth_mgt.CAPIAccessActionCreate,
+				Configurable: true,
+			},
+			{
+				Name:         "试卷管理.保存试卷",
+				AccessAction: auth_mgt.CAPIAccessActionUpdate,
+				Configurable: true,
+			},
+		},
 
 		//DomainID 创建该API的账号归属的domain
 		DomainID: int64(cmn.CDomainSys),
@@ -85,6 +102,23 @@ func Enroll(author string) {
 
 		Developer: developer,
 		WhiteList: true,
+		ApiEntries: []*cmn.EndPointApiEntries{
+			{
+				Name:         "试卷管理.获取试卷列表",
+				AccessAction: auth_mgt.CAPIAccessActionRead,
+				Configurable: true,
+			},
+			{
+				Name:         "试卷管理.发布试卷",
+				AccessAction: auth_mgt.CAPIAccessActionCreate,
+				Configurable: true,
+			},
+			{
+				Name:         "试卷管理.删除试卷",
+				AccessAction: auth_mgt.CAPIAccessActionDelete,
+				Configurable: true,
+			},
+		},
 
 		//DomainID 创建该API的账号归属的domain
 		DomainID: int64(cmn.CDomainSys),
@@ -156,16 +190,16 @@ func ManualPaper(ctx context.Context) {
 		// 创建新试卷
 		// 获取用户是否有写权限
 		// 2. 检查API访问权限
-		//var accessible bool
-		//accessible, q.Err = auth_mgt.CheckUserAPIAccessible(ctx, authority, "/api/paper/manual", auth_mgt.CDataAccessModeWrite)
-		//if q.Err != nil {
-		//	fmt.Printf("检查API访问权限失败: %v\n", q.Err)
-		//	return
-		//}
-		//if !accessible {
-		//	fmt.Println("用户没有访问权限")
-		//	return
-		//}
+		var accessible bool
+		accessible, q.Err = auth_mgt.CheckUserAPIAccessible(ctx, authority, "/api/paper/manual", auth_mgt.CAPIAccessActionCreate)
+		if q.Err != nil {
+			fmt.Printf("检查API访问权限失败: %v\n", q.Err)
+			return
+		}
+		if !accessible {
+			fmt.Println("用户没有访问权限")
+			return
+		}
 		// 开启事务，插入试卷和默认分组
 		var tx pgx.Tx
 		tx, q.Err = db.BeginTx(dmlCtx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead})
@@ -251,7 +285,7 @@ RETURNING id`
 			Name:              null.NewString(DefaultPaperName, true),
 			AssemblyType:      null.NewString(ManualAssemblyType, true),
 			Category:          null.NewString(PaperCategoryExam, true),
-			Level:             null.NewString(Simple, true),
+			Level:             null.NewString(Easy, true),
 			SuggestedDuration: null.NewInt(DefaultSuggestedDuration, true),
 			Tags:              types.JSONText("[]"),
 			Creator:           null.IntFrom(userID),
@@ -376,16 +410,16 @@ RETURNING id`
 	case "put":
 		// 更新试卷内容
 		// 2. 检查API访问权限
-		//var accessible bool
-		//accessible, q.Err = auth_mgt.CheckUserAPIAccessible(ctx, authority, "/api/paper/manual", auth_mgt.CDataAccessModeEdit)
-		//if q.Err != nil {
-		//	fmt.Printf("检查API访问权限失败: %v\n", q.Err)
-		//	return
-		//}
-		//if !accessible {
-		//	fmt.Println("用户没有访问权限")
-		//	return
-		//}
+		var accessible bool
+		accessible, q.Err = auth_mgt.CheckUserAPIAccessible(ctx, authority, "/api/paper/manual", auth_mgt.CAPIAccessActionUpdate)
+		if q.Err != nil {
+			fmt.Printf("检查API访问权限失败: %v\n", q.Err)
+			return
+		}
+		if !accessible {
+			fmt.Println("用户没有访问权限")
+			return
+		}
 		// 获取并验证试卷ID
 		paperIDStr := q.R.URL.Query().Get("paper_id")
 		var paperID int64
@@ -510,16 +544,16 @@ RETURNING id`
 	case "get":
 		// 获取试卷详情
 		// 2. 检查API访问权限
-		//var accessible bool
-		//accessible, q.Err = auth_mgt.CheckUserAPIAccessible(ctx, authority, "/api/paper/manual", auth_mgt.CDataAccessModeRead)
-		//if q.Err != nil {
-		//	fmt.Printf("检查API访问权限失败: %v\n", q.Err)
-		//	return
-		//}
-		//if !accessible {
-		//	fmt.Println("用户没有访问权限")
-		//	return
-		//}
+		var accessible bool
+		accessible, q.Err = auth_mgt.CheckUserAPIAccessible(ctx, authority, "/api/paper/manual", auth_mgt.CAPIAccessActionRead)
+		if q.Err != nil {
+			fmt.Printf("检查API访问权限失败: %v\n", q.Err)
+			return
+		}
+		if !accessible {
+			fmt.Println("用户没有访问权限")
+			return
+		}
 		// 解析并验证试卷ID
 		paperIDStr := q.R.URL.Query().Get("paper_id")
 		var paperID int64
@@ -756,7 +790,7 @@ func updateManualPaper(ctx context.Context, paperID, userID int64, req UpdateMan
 				z.Error(err.Error())
 				return
 			}
-			if basicInfo.Level != "" && basicInfo.Level != Simple && basicInfo.Level != Medium && basicInfo.Level != Hard {
+			if basicInfo.Level != "" && basicInfo.Level != Easy && basicInfo.Level != Medium && basicInfo.Level != Hard && basicInfo.Level != FairlyEasy && basicInfo.Level != FairlyHard {
 				err = fmt.Errorf("试卷难度不合法: %s", basicInfo.Level)
 				z.Error(err.Error())
 				return
@@ -972,12 +1006,12 @@ VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id`
 					z.Error(err.Error())
 					return
 				}
-				if len(q.SubScore) > 0 && q.Type != QuestionTypeShortAnswer && q.Type != QuestionTypeFillBlank {
-					err = fmt.Errorf("题目小题分数只能在简答题和填空题中使用: %s", q.Type)
+				if len(q.SubScore) > 0 && q.Type != QuestionTypeFillInBlank && q.Type != QuestionTypeComprehensive && q.Type != QuestionTypeExercise {
+					err = fmt.Errorf("题目小题分数只能在填空题、综合应用题或综合演练题中使用: %s", q.Type)
 					z.Error(err.Error())
 					return
 				}
-				if len(q.SubScore) > 0 && (q.Type == QuestionTypeShortAnswer || q.Type == QuestionTypeFillBlank) {
+				if len(q.SubScore) > 0 && (q.Type == QuestionTypeFillInBlank || q.Type == QuestionTypeComprehensive || q.Type == QuestionTypeExercise) {
 					for _, sub := range q.SubScore {
 						if sub <= 0 {
 							err = fmt.Errorf("题目小题分数不能小于等于0: %f", sub)
@@ -1105,6 +1139,7 @@ DELETE FROM t_paper_question tpq
 					args = append(args, update.GroupID)
 					argIndex++
 				}
+				
 				// 题目分数
 				if update.Score > 0 {
 					setClauses = append(setClauses, "score = $"+strconv.Itoa(argIndex))
@@ -1403,16 +1438,16 @@ func PaperList(ctx context.Context) {
 	switch method {
 	case "get":
 		// 2. 检查API访问权限
-		//var accessible bool
-		//accessible, q.Err = auth_mgt.CheckUserAPIAccessible(ctx, authority, "/api/paper", auth_mgt.CDataAccessModeRead)
-		//if q.Err != nil {
-		//	fmt.Printf("检查API访问权限失败: %v\n", q.Err)
-		//	return
-		//}
-		//if !accessible {
-		//	fmt.Println("用户没有访问权限")
-		//	return
-		//}
+		var accessible bool
+		accessible, q.Err = auth_mgt.CheckUserAPIAccessible(ctx, authority, "/api/paper", auth_mgt.CAPIAccessActionRead)
+		if q.Err != nil {
+			fmt.Printf("检查API访问权限失败: %v\n", q.Err)
+			return
+		}
+		if !accessible {
+			fmt.Println("用户没有访问权限")
+			return
+		}
 
 		//创建请求体并绑定参数
 		var req PaperListRequest
@@ -1704,16 +1739,16 @@ ORDER BY p.update_time DESC, p.id DESC`)
 		q.Resp()
 	case "delete":
 		// 2. 检查API访问权限
-		//var accessible bool
-		//accessible, q.Err = auth_mgt.CheckUserAPIAccessible(ctx, authority, "/api/paper", auth_mgt.CDataAccessModeEdit)
-		//if q.Err != nil {
-		//	fmt.Printf("检查API访问权限失败: %v\n", q.Err)
-		//	return
-		//}
-		//if !accessible {
-		//	fmt.Println("用户没有访问权限")
-		//	return
-		//}
+		var accessible bool
+		accessible, q.Err = auth_mgt.CheckUserAPIAccessible(ctx, authority, "/api/paper", auth_mgt.CAPIAccessActionDelete)
+		if q.Err != nil {
+			fmt.Printf("检查API访问权限失败: %v\n", q.Err)
+			return
+		}
+		if !accessible {
+			fmt.Println("用户没有访问权限")
+			return
+		}
 		// 读取请求体
 		var buf []byte
 		buf, q.Err = io.ReadAll(q.R.Body)
@@ -1838,8 +1873,8 @@ ORDER BY p.update_time DESC, p.id DESC`)
 		// 检查每个试卷的权限
 		var checkSQL string
 		var errorMessages []string
+		// 超级管理员或管理员检查试卷存在性和域权限
 		if authority.Role.Priority.Int64 == auth_mgt.CDomainPriorityAdmin || authority.Role.Priority.Int64 == auth_mgt.CDomainPrioritySuperAdmin {
-			// 管理员检查试卷存在性和域权限
 			if len(authority.AccessibleDomains) > 0 {
 				checkSQL = `
 					SELECT COALESCE(array_agg(
@@ -1923,6 +1958,7 @@ ORDER BY p.update_time DESC, p.id DESC`)
 			q.RespErr()
 			return
 		}
+
 		now := cmn.GetNowInMS()
 		//1. 软删除 t_paper
 		paperSQL := `UPDATE t_paper SET status = $2, updated_by = $3, update_time = $4 WHERE id = ANY($1)`
@@ -1965,16 +2001,16 @@ ORDER BY p.update_time DESC, p.id DESC`)
 	case "post":
 		// 发布试卷
 		// 2. 检查API访问权限
-		//var accessible bool
-		//accessible, q.Err = auth_mgt.CheckUserAPIAccessible(ctx, authority, "/api/paper", auth_mgt.CDataAccessModeEdit)
-		//if q.Err != nil {
-		//	fmt.Printf("检查API访问权限失败: %v\n", q.Err)
-		//	return
-		//}
-		//if !accessible {
-		//	fmt.Println("用户没有访问权限")
-		//	return
-		//}
+		var accessible bool
+		accessible, q.Err = auth_mgt.CheckUserAPIAccessible(ctx, authority, "/api/paper", auth_mgt.CAPIAccessActionCreate)
+		if q.Err != nil {
+			fmt.Printf("检查API访问权限失败: %v\n", q.Err)
+			return
+		}
+		if !accessible {
+			fmt.Println("用户没有访问权限")
+			return
+		}
 		// 解析并验证试卷ID
 		paperIDStr := q.R.URL.Query().Get("paper_id")
 		var paperID int64
@@ -2062,6 +2098,7 @@ ORDER BY p.update_time DESC, p.id DESC`)
 			q.Err = errors.New(forceError)
 			return
 		}
+
 		// 检测试卷是否已发布
 		var paper cmn.TPaper
 		q.Err = tx.QueryRow(dmlCtx, `SELECT category,status FROM t_paper WHERE id = $1`, paperID).Scan(&paper.Category, &paper.Status)
@@ -2079,6 +2116,96 @@ ORDER BY p.update_time DESC, p.id DESC`)
 			q.RespErr()
 			return
 		}
+
+		// 检查每个试卷的权限
+		var checkSQL string
+		var errorMessages []string
+		// 超级管理员或管理员检查试卷存在性和域权限
+		if authority.Role.Priority.Int64 == auth_mgt.CDomainPriorityAdmin || authority.Role.Priority.Int64 == auth_mgt.CDomainPrioritySuperAdmin {
+			if len(authority.AccessibleDomains) > 0 {
+				checkSQL = `
+					SELECT COALESCE(array_agg(
+						CASE 
+							WHEN p.id IS NULL THEN '试卷（' || ids.id || '）不存在'
+							WHEN NOT (p.domain_id = ANY($2)) THEN '试卷（' || COALESCE(p.name, '未知') || '）不在当前域范围内'
+							ELSE NULL 
+						END
+					) FILTER (WHERE CASE 
+							WHEN p.id IS NULL THEN '试卷（' || ids.id || '）不存在'
+							WHEN NOT (p.domain_id = ANY($2)) THEN '试卷（' || COALESCE(p.name, '未知') || '）不在当前域范围内'
+							ELSE NULL 
+						END IS NOT NULL), ARRAY[]::text[]) as error_messages
+					FROM unnest($1::bigint[]) AS ids(id)
+					LEFT JOIN t_paper p ON p.id = ids.id
+					WHERE p.id IS NULL OR NOT (p.domain_id = ANY($2))`
+				q.Err = tx.QueryRow(ctx, checkSQL, []int64{paperID}, authority.AccessibleDomains).Scan(&errorMessages)
+			} else {
+				// 如果没有可访问的域，直接返回错误
+				errorMessages = []string{"用户没有可访问的域权限"}
+			}
+			if forceError == "superAdmin-tx.QueryRow-err" {
+				q.Err = errors.New(forceError)
+			}
+			if q.Err != nil {
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+		} else {
+			// 普通用户检查试卷存在性、域和创建者
+			if len(authority.AccessibleDomains) > 0 {
+				checkSQL = `
+					SELECT COALESCE(array_agg(
+						CASE 
+							WHEN p.id IS NULL THEN '试卷（' || ids.id || '）不存在'
+							WHEN NOT (p.domain_id = ANY($2)) THEN '试卷（' || COALESCE(p.name, '未知') || '）不在当前域范围内'
+							WHEN p.creator != $3 THEN '试卷（' || COALESCE(p.name, '未知') || '）非试卷创建者，无发布权限'
+							ELSE NULL 
+						END
+					) FILTER (WHERE CASE 
+							WHEN p.id IS NULL THEN '试卷（' || ids.id || '）不存在'
+							WHEN NOT (p.domain_id = ANY($2)) THEN '试卷（' || COALESCE(p.name, '未知') || '）不在当前域范围内'
+							WHEN p.creator != $3 THEN '试卷（' || COALESCE(p.name, '未知') || '）非试卷创建者，无发布权限'
+							ELSE NULL 
+						END IS NOT NULL), ARRAY[]::text[]) as error_messages
+					FROM unnest($1::bigint[]) AS ids(id)
+					LEFT JOIN t_paper p ON p.id = ids.id
+					WHERE p.id IS NULL OR NOT (p.domain_id = ANY($2)) OR p.creator != $3`
+				q.Err = tx.QueryRow(ctx, checkSQL, []int64{paperID}, authority.AccessibleDomains, userID).Scan(&errorMessages)
+			} else {
+				// 如果没有可访问的域，直接返回错误
+				errorMessages = []string{"用户没有可访问的域权限"}
+			}
+			if forceError == "normaluser-tx.QueryRow-err" {
+				q.Err = errors.New(forceError)
+			}
+			if q.Err != nil {
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+		}
+
+		// 移除空错误消息并在每个错误前添加换行符
+		var validErrors strings.Builder
+		for i, msg := range errorMessages {
+			if msg != "" {
+				// 不是第一个错误时，先添加换行符
+				if i > 0 {
+					validErrors.WriteString("\n")
+				}
+				validErrors.WriteString(msg)
+			}
+		}
+
+		// 如果有任何不能删除的试卷，返回错误
+		if validErrors.Len() > 0 {
+			q.Msg.Status = -1
+			q.Err = errors.New(validErrors.String())
+			q.RespErr()
+			return
+		}
+
 		// 生成考卷并修改试卷状态为已发布
 		var examPaperID *int64
 		examPaperID, q.Err = examPaper.GenerateExamPaper(dmlCtx, tx, paperID, userID)

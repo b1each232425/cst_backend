@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
+	"os"
 	"runtime"
 	"testing"
 	"w2w.io/cmn"
@@ -17,18 +18,16 @@ func init() {
 	InitViper()
 	z = cmn.GetLogger()
 	var err error
-	err = Init()
+	err = initChatModel()
 	if err != nil {
 		panic(err)
 	}
 
 	defaultChatModel = chatModel
-
 }
 
 func InitViper() {
-
-	appLaunchPath, err := cmn.GetProjectRoot()
+	appLaunchPath, err := os.Getwd()
 	if err != nil {
 		panic(err)
 	}
@@ -44,11 +43,9 @@ func InitViper() {
 		fmt.Println(err.Error())
 		panic(err)
 	}
-
 }
 
 func TestChatModel_SendChatCompletions(t *testing.T) {
-
 	tests := []struct {
 		name           string
 		messages       []Message
@@ -64,7 +61,7 @@ func TestChatModel_SendChatCompletions(t *testing.T) {
 			messages: []Message{
 				{
 					Role:    "system",
-					Content: defaultChatModel.GenerateChatPrompt(TestedQuestionDetails[0]),
+					Content: defaultChatModel.generateChatPrompt(TestedQuestionDetails[0]),
 				},
 				{
 					Role: "user",
@@ -82,7 +79,7 @@ func TestChatModel_SendChatCompletions(t *testing.T) {
 			messages: []Message{
 				{
 					Role:    "system",
-					Content: defaultChatModel.GenerateChatPrompt(TestedQuestionDetails[0]),
+					Content: defaultChatModel.generateChatPrompt(TestedQuestionDetails[0]),
 				},
 				{
 					Role: "user",
@@ -104,7 +101,7 @@ func TestChatModel_SendChatCompletions(t *testing.T) {
 			messages: []Message{
 				{
 					Role:    "system",
-					Content: defaultChatModel.GenerateChatPrompt(TestedQuestionDetails[0]),
+					Content: defaultChatModel.generateChatPrompt(TestedQuestionDetails[0]),
 				},
 				{
 					Role: "user",
@@ -114,7 +111,7 @@ func TestChatModel_SendChatCompletions(t *testing.T) {
 				},
 			},
 			chatModel:      *defaultChatModel,
-			forceErr:       "SendChatCompletions-json.Marshal",
+			forceErr:       "sendChatCompletions-json.Marshal",
 			expectedErrStr: "构造请求体失败",
 		},
 		{
@@ -122,7 +119,7 @@ func TestChatModel_SendChatCompletions(t *testing.T) {
 			messages: []Message{
 				{
 					Role:    "system",
-					Content: defaultChatModel.GenerateChatPrompt(TestedQuestionDetails[0]),
+					Content: defaultChatModel.generateChatPrompt(TestedQuestionDetails[0]),
 				},
 				{
 					Role: "user",
@@ -162,7 +159,7 @@ func TestChatModel_SendChatCompletions(t *testing.T) {
 			messages: []Message{
 				{
 					Role:    "system",
-					Content: defaultChatModel.GenerateChatPrompt(TestedQuestionDetails[0]),
+					Content: defaultChatModel.generateChatPrompt(TestedQuestionDetails[0]),
 				},
 				{
 					Role: "user",
@@ -172,7 +169,7 @@ func TestChatModel_SendChatCompletions(t *testing.T) {
 				},
 			},
 			chatModel:      *defaultChatModel,
-			forceErr:       "SendChatCompletions-json.Unmarshal",
+			forceErr:       "sendChatCompletions-json.Unmarshal",
 			expectedErrStr: "解析返回的响应体失败",
 		},
 	}
@@ -187,7 +184,7 @@ func TestChatModel_SendChatCompletions(t *testing.T) {
 			if tt.forceErr != "" {
 				ctx = context.WithValue(context.Background(), ForceErrKey, tt.forceErr)
 			}
-			chatResp, err := tt.chatModel.SendChatCompletions(ctx, tt.messages)
+			chatResp, err := tt.chatModel.sendChatCompletions(ctx, tt.messages)
 
 			z.Sugar().Infof("chatResp: %+v", chatResp)
 
@@ -221,18 +218,18 @@ func TestChatModel_AIReview(t *testing.T) {
 			chatModel:  *defaultChatModel,
 			checkedFunc: func(chatResp ResponseContent) (string, bool) {
 				var msg string
-				if len(chatResp.MarkResult) != 1 {
-					msg = fmt.Sprintf("长度不匹配，期望1，实际%d", len(chatResp.MarkResult))
+				if len(chatResp.MarkResults) != 1 {
+					msg = fmt.Sprintf("长度不匹配，期望1，实际%d", len(chatResp.MarkResults))
 					return msg, false
 				}
 
-				if chatResp.MarkResult[0].StudentID != 102 {
-					msg = fmt.Sprintf("学生ID不匹配，期望102，实际%d", chatResp.MarkResult[0].StudentID)
+				if chatResp.MarkResults[0].StudentID != 102 {
+					msg = fmt.Sprintf("学生ID不匹配，期望102，实际%d", chatResp.MarkResults[0].StudentID)
 					return msg, false
 				}
 
-				if chatResp.MarkResult[0].Score != 6 {
-					msg = fmt.Sprintf("得分不匹配，期望6，实际%f", chatResp.MarkResult[0].Score)
+				if chatResp.MarkResults[0].Score != 6 {
+					msg = fmt.Sprintf("得分不匹配，期望6，实际%f", chatResp.MarkResults[0].Score)
 					return msg, false
 				}
 
@@ -247,10 +244,10 @@ func TestChatModel_AIReview(t *testing.T) {
 			expectedErrStr: "marshal response content error",
 		},
 		{
-			name:           "SendChatCompletions error",
+			name:           "sendChatCompletions error",
 			rawContent:     TestedRespResults[0],
 			chatModel:      *defaultChatModel,
-			forceErr:       "SendChatCompletions-json.Marshal",
+			forceErr:       "sendChatCompletions-json.Marshal",
 			expectedErrStr: "构造请求体失败",
 		},
 		{
@@ -298,7 +295,7 @@ func TestChatModel_AIReview(t *testing.T) {
 			}
 
 			if tt.checkedFunc != nil {
-				msg, ok := tt.checkedFunc(*chatResp)
+				msg, ok := tt.checkedFunc(chatResp)
 				if !ok {
 					t.Errorf(msg)
 				}
@@ -311,7 +308,7 @@ func TestChatModel_AIReview(t *testing.T) {
 func TestChatModel_AIMark(t *testing.T) {
 	tests := []struct {
 		name           string
-		question       *QuestionDetails
+		question       *QuestionDetail
 		studentAnswers []*StudentAnswer
 		chatModel      ChatModel
 		forceErr       string
@@ -352,11 +349,11 @@ func TestChatModel_AIMark(t *testing.T) {
 			expectedErrStr: "failed to marshal student answers",
 		},
 		{
-			name:           "SendChatCompletions error",
+			name:           "sendChatCompletions error",
 			question:       TestedQuestionDetails[0],
 			studentAnswers: TestedStudentAnswers[0],
 			chatModel:      *defaultChatModel,
-			forceErr:       "SendChatCompletions-json.Marshal",
+			forceErr:       "sendChatCompletions-json.Marshal",
 			expectedErrStr: "构造请求体失败",
 		},
 		{
@@ -409,7 +406,6 @@ func TestChatModel_AIMark(t *testing.T) {
 }
 
 func TestChatModel_Tokenizer(t *testing.T) {
-
 	tests := []struct {
 		name           string
 		texts          []string
