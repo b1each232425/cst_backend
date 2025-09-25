@@ -485,11 +485,18 @@ func GenerateExamPaper(ctx context.Context, tx pgx.Tx, paperId, uid int64) (*int
 				if err := json.Unmarshal(q.Answers, &answers); err != nil {
 					return nil, fmt.Errorf("解析答案失败: %w", err)
 				}
-				if len(answers) != len(q.SubScore) {
-					return nil, fmt.Errorf("题目ID：%v中的答案数量(%d)与分数数量(%d)不匹配", q.ID, len(answers), len(q.SubScore))
+				if q.Type == QuestionCategory.FillInBlank {
+					if len(answers) != len(q.SubScore) {
+						return nil, fmt.Errorf("题目ID：%v中的答案数量(%d)与分数数量(%d)不匹配", q.ID, len(answers), len(q.SubScore))
+					}
+					for i := range answers {
+						answers[i].Score = q.SubScore[i]
+					}
+					jsonData, _ := json.Marshal(answers)
+					q.Answers = jsonData
 				}
 				for i := range answers {
-					answers[i].Score = q.SubScore[i]
+					answers[i].Score = q.Score.Float64
 				}
 				jsonData, _ := json.Marshal(answers)
 				q.Answers = jsonData

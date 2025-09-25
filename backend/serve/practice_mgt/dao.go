@@ -673,15 +673,7 @@ func ListPracticeT(ctx context.Context, name, pType, status string, orderBy []st
 	args = append(args, uid, authority.AccessibleDomains)
 	sqlxDB := cmn.GetDbConn()
 
-	total := 0
-	s := `SELECT COUNT(*) FROM assessuser.t_practice WHERE status != $1 AND (creator = $2 OR domain_id = ANY($3))`
-	err := sqlxDB.QueryRowxContext(ctx, s, PracticeStatus.Deleted, uid, authority.AccessibleDomains).Scan(&total)
-	if err != nil || forceErr == "query1" {
-		err = fmt.Errorf("查询练习总数失败：%v", err)
-		z.Error(err.Error())
-		return nil, 0, err
-	}
-	s = `
+	s := `
  	SELECT 
 		tp.id, tp.name,tp.correct_mode,
 		tp.type, tp.creator, tp.create_time, tp.updated_by, tp.update_time, tp.addi, tp.status ,tp.allowed_attempts,
@@ -738,6 +730,36 @@ func ListPracticeT(ctx context.Context, name, pType, status string, orderBy []st
 		M["student_count"] = studentCount
 		result = append(result, M)
 	}
+	args = []interface{}{}
+	clauses = []string{}
+	// 占位符数值
+	if name != "" {
+		clauses = append(clauses, fmt.Sprintf("%s LIKE $%d", "name", len(args)+1))
+		args = append(args, "%"+name+"%")
+	}
+	if status != "" {
+		clauses = append(clauses, fmt.Sprintf("%s = $%d", "status", len(args)+1))
+		args = append(args, status)
+	}
+	if pType != "" {
+		clauses = append(clauses, fmt.Sprintf("%s = $%d", "type", len(args)+1))
+		args = append(args, pType)
+	}
+	clauses = append(clauses, fmt.Sprintf("status != $%d", len(args)+1))
+	args = append(args, PracticeStatus.Deleted)
+	clauses = append(clauses, fmt.Sprintf("(creator = $%d OR domain_id = ANY($%d))", len(args)+1, len(args)+2))
+	args = append(args, uid, authority.AccessibleDomains)
+	total := 0
+	s = `SELECT COUNT(*) FROM assessuser.t_practice  `
+	if len(clauses) > 0 {
+		s += " WHERE " + strings.Join(clauses, " AND ")
+	}
+	err = sqlxDB.QueryRowxContext(ctx, s, args...).Scan(&total)
+	if err != nil || forceErr == "query1" {
+		err = fmt.Errorf("查询练习总数失败：%v", err)
+		z.Error(err.Error())
+		return nil, 0, err
+	}
 	return result, total, nil
 }
 
@@ -763,15 +785,7 @@ func GetPracticeListByRegisterPlan(ctx context.Context, practiceName, teacherNam
 		args = append(args, "%"+teacherName+"%")
 	}
 
-	total := 0
-	s := `SELECT COUNT(*) FROM assessuser.t_practice WHERE status = $1`
-	err := sqlxDB.QueryRowxContext(ctx, s, PracticeStatus.Released).Scan(&total)
-	if err != nil || forceErr == "query1" {
-		err = fmt.Errorf("查询此时以发布的练习总数失败：%v", err)
-		z.Error(err.Error())
-		return nil, 0, err
-	}
-	s = `
+	s := `
  	SELECT 
 		tp.id, tp.name,tp.correct_mode,
 		tp.type, tp.creator, tp.create_time, tp.updated_by, tp.update_time, tp.addi, tp.status ,tp.allowed_attempts,u.official_name
@@ -821,6 +835,27 @@ func GetPracticeListByRegisterPlan(ctx context.Context, practiceName, teacherNam
 			return nil, 0, err
 		}
 		result = append(result, p)
+	}
+	args = []interface{}{}
+	clauses = []string{}
+
+	clauses = append(clauses, fmt.Sprintf("status = $%d", len(args)+1))
+	args = append(args, PracticeStatus.Released)
+	// 占位符数值
+	if practiceName != "" {
+		clauses = append(clauses, fmt.Sprintf("%s LIKE $%d", "name", len(args)+1))
+		args = append(args, "%"+practiceName+"%")
+	}
+	total := 0
+	s = `SELECT COUNT(*) FROM assessuser.t_practice `
+	if len(clauses) > 0 {
+		s += " WHERE " + strings.Join(clauses, " AND ")
+	}
+	err = sqlxDB.QueryRowxContext(ctx, s, args...).Scan(&total)
+	if err != nil || forceErr == "query1" {
+		err = fmt.Errorf("查询此时以发布的练习总数失败：%v", err)
+		z.Error(err.Error())
+		return nil, 0, err
 	}
 	return result, total, nil
 }
