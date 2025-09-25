@@ -1066,7 +1066,7 @@ func OperatePracticeStatusV2(ctx context.Context, ids []int64, status string, ui
 		for pid, p := range ps {
 			// 这里都需要进行查询，需要找到这个practice对应的试卷里面的考卷ID
 			var examPaperId int64
-			s := `SELECT pa.exampaper_id FROM t_practice p JOIN t_paper pa ON pa.id = p.paper_id WHERE p.id = $1 AND pa.status = $2 AND (p.creator = $3 OR p.domain_id =$4)`
+			s := `SELECT pa.exampaper_id FROM t_practice p JOIN t_paper pa ON pa.id = p.paper_id WHERE p.id = $1 AND pa.status = $2 AND (p.creator = $3 OR p.domain_id =ANY($4))`
 			err = tx.QueryRow(ctx, s, pid, examPaper.PaperStatus.Published, uid, authority.AccessibleDomains).Scan(&examPaperId)
 			if err != nil {
 				err = fmt.Errorf("查看练习绑定的试卷中已发布的考卷ID失败:%v", err)
@@ -1074,7 +1074,7 @@ func OperatePracticeStatusV2(ctx context.Context, ids []int64, status string, ui
 				return err
 			}
 
-			s = `UPDATE assessuser.t_practice SET status = $1,update_time = $2, updated_by = $3 ,exam_paper_id = $4 WHERE id = $5 AND (p.creator = $6 OR p.domain_id =$7)`
+			s = `UPDATE assessuser.t_practice SET status = $1,update_time = $2, updated_by = $3 ,exam_paper_id = $4 WHERE id = $5 AND (p.creator = $6 OR p.domain_id =ANY($7))`
 			_, err = tx.Exec(ctx, s, status, now, uid, examPaperId, pid, uid, authority.AccessibleDomains)
 			if err != nil || forceErr == "pQuery1" {
 				err = fmt.Errorf("更新练习状态 未发布->发布 失败:%v", err)
@@ -1122,7 +1122,7 @@ func OperatePracticeStatusV2(ctx context.Context, ids []int64, status string, ui
 			return err
 		}
 
-		s := `UPDATE assessuser.t_practice SET status = $1,update_time = $2, updated_by = $3  WHERE id = ANY($4) AND (creator = $5 OR domain_id =$6)`
+		s := `UPDATE assessuser.t_practice SET status = $1,update_time = $2, updated_by = $3  WHERE id = ANY($4) AND (creator = $5 OR domain_id =ANY($6))`
 		_, err = tx.Exec(ctx, s, status, now, uid, ids, uid, authority.AccessibleDomains)
 		if err != nil || forceErr == "pQuery3" {
 			err = fmt.Errorf("更新练习状态 发布-> 删除 失败:%v", err)
@@ -1144,7 +1144,7 @@ func OperatePracticeStatusV2(ctx context.Context, ids []int64, status string, ui
 		}
 		return nil
 	} else if status == PracticeStatus.Disabled {
-		s := `UPDATE assessuser.t_practice SET status = $1,update_time = $2, updated_by = $3  WHERE id = ANY($4) AND (creator = $5 OR domain_id =$6)`
+		s := `UPDATE assessuser.t_practice SET status = $1,update_time = $2, updated_by = $3  WHERE id = ANY($4) AND (creator = $5 OR domain_id =ANY($6))`
 		_, err = tx.Exec(ctx, s, status, now, uid, ids, uid, authority.AccessibleDomains)
 		if err != nil || forceErr == "pQuery5" {
 			err = fmt.Errorf("更新练习状态 发布->作废 失败:%v", err)
