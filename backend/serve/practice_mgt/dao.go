@@ -674,8 +674,8 @@ func ListPracticeT(ctx context.Context, name, pType, status string, orderBy []st
 	sqlxDB := cmn.GetDbConn()
 
 	total := 0
-	s := `SELECT COUNT(*) FROM assessuser.t_practice WHERE status != $1 `
-	err := sqlxDB.QueryRowxContext(ctx, s, PracticeStatus.Deleted).Scan(&total)
+	s := `SELECT COUNT(*) FROM assessuser.t_practice WHERE status != $1 AND (creator = $2 OR domain_id = ANY($3))`
+	err := sqlxDB.QueryRowxContext(ctx, s, PracticeStatus.Deleted, uid, authority.AccessibleDomains).Scan(&total)
 	if err != nil || forceErr == "query1" {
 		err = fmt.Errorf("查询练习总数失败：%v", err)
 		z.Error(err.Error())
