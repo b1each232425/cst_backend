@@ -431,12 +431,12 @@ RETURNING id`
 		}
 
 		//尝试获取试卷锁REDIS_LOCK_PREFIX
-		_, q.Err = cmn.TryLock(ctx, paperID, userID, REDIS_LOCK_PREFIX, REDIS_LOCK_EXPRIATION)
-		if q.Err != nil {
-			z.Error(q.Err.Error())
-			q.RespErr()
-			return
-		}
+		// _, q.Err = cmn.TryLock(ctx, paperID, userID, REDIS_LOCK_PREFIX, REDIS_LOCK_EXPRIATION)
+		// if q.Err != nil {
+		// 	z.Error(q.Err.Error())
+		// 	q.RespErr()
+		// 	return
+		// }
 
 		// 获取试卷状态和创建者信息
 		var status string
@@ -2033,12 +2033,12 @@ ORDER BY p.update_time DESC, p.id DESC`)
 		}
 
 		//尝试获取试卷锁REDIS_LOCK_PREFIX
-		_, q.Err = cmn.TryLock(ctx, paperID, userID, REDIS_LOCK_PREFIX, REDIS_LOCK_EXPRIATION)
-		if q.Err != nil {
-			z.Error(q.Err.Error())
-			q.RespErr()
-			return
-		}
+		// _, q.Err = cmn.TryLock(ctx, paperID, userID, REDIS_LOCK_PREFIX, REDIS_LOCK_EXPRIATION)
+		// if q.Err != nil {
+		// 	z.Error(q.Err.Error())
+		// 	q.RespErr()
+		// 	return
+		// }
 
 		// 开启事务
 		var tx pgx.Tx
@@ -2246,15 +2246,15 @@ ORDER BY p.update_time DESC, p.id DESC`)
 		}
 
 		//尝试获取试卷锁REDIS_LOCK_PREFIX
-		q.Err = cmn.ReleaseLock(ctx, paperID, userID, REDIS_LOCK_PREFIX)
-		if forceError == "cmn.ReleaseLock" {
-			q.Err = errors.New(forceError)
-		}
-		if q.Err != nil {
-			z.Error(q.Err.Error())
-			q.RespErr()
-			return
-		}
+		// q.Err = cmn.ReleaseLock(ctx, paperID, userID, REDIS_LOCK_PREFIX)
+		// if forceError == "cmn.ReleaseLock" {
+		// 	q.Err = errors.New(forceError)
+		// }
+		// if q.Err != nil {
+		// 	z.Error(q.Err.Error())
+		// 	q.RespErr()
+		// 	return
+		// }
 
 		q.Msg.Status = 0
 		q.Msg.Msg = "success"
