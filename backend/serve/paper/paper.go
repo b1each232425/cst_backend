@@ -575,25 +575,31 @@ RETURNING id`
 			mode = "edit"
 		}
 
-		//var hasPermission bool
-		//// 如果是超级管理员，则直接拥有权限
-		//if role == "superAdmin" {
-		//	hasPermission = true
-		//} else {
-		//	hasPermission, q.Err = isPaperCreator(ctx, paperID, userID)
-		//	if q.Err != nil {
-		//		z.Error(q.Err.Error())
-		//		q.RespErr()
-		//		return
-		//	}
-		//}
-		//
-		//if !hasPermission {
-		//	q.Err = ErrWithoutPermission
-		//	z.Error(q.Err.Error())
-		//	q.RespErr()
-		//	return
-		//}
+		// 获取试卷状态和创建者信息
+		var creatorID int64
+		_, creatorID, q.Err = getPaperStatusAndCreator(ctx, paperID)
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+		
+		var hasPermission bool
+		// 如果是超级管理员，则直接拥有权限
+		if authority.Role.Priority.Int64 == 0 {
+			hasPermission = true
+		} else {
+			hasPermission = creatorID == userID
+		}
+
+		// 如果不是创建者，则返回无权限错误
+		if !hasPermission {
+			q.Err = fmt.Errorf("无权预览试卷[ID:%d], 当前用户[ID:%d]不是试卷创建者", paperID, userID)
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
 		switch mode {
 		case "edit":
 			// 获取数据库连接
