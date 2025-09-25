@@ -1074,7 +1074,7 @@ func OperatePracticeStatusV2(ctx context.Context, ids []int64, status string, ui
 				return err
 			}
 
-			s = `UPDATE assessuser.t_practice SET status = $1,update_time = $2, updated_by = $3 ,exam_paper_id = $4 WHERE id = $5 AND (p.creator = $6 OR p.domain_id =ANY($7))`
+			s = `UPDATE assessuser.t_practice SET status = $1,update_time = $2, updated_by = $3 ,exam_paper_id = $4 WHERE id = $5 AND (creator = $6 OR domain_id =ANY($7))`
 			_, err = tx.Exec(ctx, s, status, now, uid, examPaperId, pid, uid, authority.AccessibleDomains)
 			if err != nil || forceErr == "pQuery1" {
 				err = fmt.Errorf("更新练习状态 未发布->发布 失败:%v", err)
