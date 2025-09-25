@@ -594,7 +594,7 @@ RETURNING id`
 
 		// 如果不是创建者，则返回无权限错误
 		if !hasPermission {
-			q.Err = fmt.Errorf("无权预览试卷[ID:%d], 当前用户[ID:%d]不是试卷创建者", paperID, userID)
+			q.Err = fmt.Errorf("无权访问试卷[ID:%d], 当前用户[ID:%d]不是试卷创建者", paperID, userID)
 			z.Error(q.Err.Error())
 			q.RespErr()
 			return
