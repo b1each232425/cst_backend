@@ -1335,7 +1335,7 @@ MethodSwitch:
 			COUNT(t_exam_room.id) AS room_count
 		FROM t_exam_site
 			JOIN t_user ON t_user.id = t_exam_site.admin
-			JOIN t_exam_room ON t_exam_room.exam_site = t_exam_site.id
+			LEFT JOIN t_exam_room ON t_exam_room.exam_site = t_exam_site.id
 		WHERE t_exam_site.status != '04' AND t_exam_site.id = $1 AND (t_exam_site.creator = $2 OR t_exam_site.admin = $2 OR t_exam_site.domain_id = ANY($3))
 		GROUP BY
 			t_exam_site.id,
