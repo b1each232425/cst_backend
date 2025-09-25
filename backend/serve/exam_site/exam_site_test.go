@@ -8033,12 +8033,53 @@ func TestExamSiteSyncInit(t *testing.T) {
 				testID := nowTime / 100
 
 				fileList := []int64{
-					testID + 1,
-					testID + 2,
+					testID + 3,
+					testID + 4,
+					testID + 5,
+				}
+
+				oldUploadDir := uploadDir
+
+				uploadDir = "./data/tmp/uploads"
+
+				defer func() {
+					uploadDir = oldUploadDir
+				}()
+
+				err = os.MkdirAll(uploadDir, 0644)
+				if err != nil {
+					t.Error(err.Error())
+					return
+				}
+
+				for _, f := range fileList {
+
+					err = os.WriteFile(filepath.Join(uploadDir, fmt.Sprintf("%d", f)), []byte("test file content"), 0644)
+					if err != nil {
+						t.Error(err.Error())
+						return
+					}
+
+					err = os.WriteFile(filepath.Join(uploadDir, fmt.Sprintf("%d.info", f)), []byte("test file info content"), 0644)
+					if err != nil {
+						t.Error(err.Error())
+						return
+					}
+
+					_, err = dbConn.Exec(fmt.Sprintf(`INSERT INTO t_file (id, file_name, path, belongto_path, digest, creator, domain_id)
+					VALUES
+						(%d, 'test-file-%d', '/uploads/test-file-%d', '/uploads/test-file-1', '%d', 1000, %d)
+					ON CONFLICT DO NOTHING
+					RETURNING id`, f, f, f, f, testID))
+					if err != nil {
+						t.Error(err.Error())
+						return
+					}
+
 				}
 
 				// 更新考场记录
-				_, err = dbConn.Exec(`UPDATE t_exam_record SET basic_eval = '02', files = $2::jsonb WHERE exam_session = $1`, testID, fileList)
+				_, err = dbConn.Exec(`UPDATE t_exam_record SET basic_eval = '02', files = $2::jsonb WHERE exam_session = $1`, testID, fileList[:2])
 				if err != nil {
 					t.Errorf("failed to update exam record: %v", err)
 					return
@@ -8052,7 +8093,7 @@ func TestExamSiteSyncInit(t *testing.T) {
 				}
 
 				// 更新考生作答数据
-				_, err = dbConn.Exec(`UPDATE t_student_answers SET answer = '["A"]' WHERE examinee_id = $1`, testID+1)
+				_, err = dbConn.Exec(`UPDATE t_student_answers SET answer = '["A"]', files = $2::jsonb WHERE examinee_id = $1`, testID+1, fileList[1:])
 				if err != nil {
 					t.Errorf("failed to update student answers: %v", err)
 					return
@@ -8250,11 +8291,16 @@ func TestExamSiteSyncInit(t *testing.T) {
 			errWanted:    "",
 			setup: func() (err error) {
 
+				err = defaultSetup()
+				if err != nil {
+					return
+				}
+
 				viper.Set("examSiteServerSync.maxRetry", 0)
 
 				_, err = cmn.GetRedisConn().Set(context.Background(), SyncStatusKey, PULLING, 0).Result()
 				if err != nil {
-					t.Fatalf("failed to set sync status: %v", err)
+					t.Error(err.Error())
 					return
 				}
 
@@ -8288,11 +8334,16 @@ func TestExamSiteSyncInit(t *testing.T) {
 			errWanted:    "当前数据尚未推送, 请先进行推送",
 			setup: func() (err error) {
 
+				err = defaultSetup()
+				if err != nil {
+					return
+				}
+
 				viper.Set("examSiteServerSync.maxRetry", 0)
 
 				_, err = cmn.GetRedisConn().Set(context.Background(), SyncStatusKey, PULLED, 0).Result()
 				if err != nil {
-					t.Fatalf("failed to set sync status: %v", err)
+					t.Error(err.Error())
 					return
 				}
 
@@ -8303,7 +8354,7 @@ func TestExamSiteSyncInit(t *testing.T) {
 
 				r, err := cmn.GetRedisConn().Get(context.Background(), SyncStatusKey).Result()
 				if err != nil {
-					t.Fatalf("failed to set sync status: %v", err)
+					t.Error(err.Error())
 					return
 				}
 
@@ -8326,11 +8377,15 @@ func TestExamSiteSyncInit(t *testing.T) {
 			errWanted:    "",
 			setup: func() (err error) {
 
+				err = defaultSetup()
+				if err != nil {
+					return
+				}
+
 				viper.Set("examSiteServerSync.maxRetry", 0)
 
 				_, err = cmn.GetRedisConn().Set(context.Background(), SyncStatusKey, PUSHING, 0).Result()
 				if err != nil {
-					t.Fatalf("failed to set sync status: %v", err)
 					return
 				}
 
@@ -8341,7 +8396,7 @@ func TestExamSiteSyncInit(t *testing.T) {
 
 				r, err := cmn.GetRedisConn().Get(context.Background(), SyncStatusKey).Result()
 				if err != nil {
-					t.Fatalf("failed to set sync status: %v", err)
+					t.Error(err.Error())
 					return
 				}
 
@@ -8366,11 +8421,16 @@ func TestExamSiteSyncInit(t *testing.T) {
 			errWanted:    "forced set pushed status err",
 			setup: func() (err error) {
 
+				err = defaultSetup()
+				if err != nil {
+					return
+				}
+
 				viper.Set("examSiteServerSync.maxRetry", 0)
 
 				_, err = cmn.GetRedisConn().Set(context.Background(), SyncStatusKey, PULLING, 0).Result()
 				if err != nil {
-					t.Fatalf("failed to set sync status: %v", err)
+					t.Error(err.Error())
 					return
 				}
 
@@ -8392,11 +8452,16 @@ func TestExamSiteSyncInit(t *testing.T) {
 			errWanted:    "forced set pulled status err",
 			setup: func() (err error) {
 
+				err = defaultSetup()
+				if err != nil {
+					return
+				}
+
 				viper.Set("examSiteServerSync.maxRetry", 0)
 
 				_, err = cmn.GetRedisConn().Set(context.Background(), SyncStatusKey, PUSHING, 0).Result()
 				if err != nil {
-					t.Fatalf("failed to set sync status: %v", err)
+					t.Error(err.Error())
 					return
 				}
 
@@ -9548,6 +9613,7 @@ func TestExamSiteSyncInit(t *testing.T) {
 			if tt.setup != nil {
 				err := tt.setup()
 				if err != nil {
+					t.Error("failed to setup test")
 					return
 				}
 			}
@@ -9565,7 +9631,7 @@ func TestExamSiteSyncInit(t *testing.T) {
 			if tt.check != nil {
 				err := tt.check(tt.q)
 				if err != nil {
-					t.Errorf("execute after fun failed: %s", err.Error())
+					t.Errorf("check failed: %s", err.Error())
 					return
 				}
 			}

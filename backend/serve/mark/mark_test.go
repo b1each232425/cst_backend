@@ -6,7 +6,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"github.com/jmoiron/sqlx/types"
 	"github.com/stretchr/testify/assert"
 	"io"
 	"net/http"
@@ -1057,410 +1056,410 @@ func TestGetStudentAnswersAndMarkResults(t *testing.T) {}
 //	}
 //}
 
-func TestSaveMarkingResults(t *testing.T) {
-	cleanTestData()
+//func TestSaveMarkingResults(t *testing.T) {
+//	cleanTestData()
+//
+//	tests := []struct {
+//		name              string
+//		params            map[string]string
+//		requestMethod     string
+//		requestData       interface{}
+//		isInvalidReqProto bool
+//		bodyStr           string
+//		forceErr          string
+//		expectedErrStr    string
+//		expectedMsg       *cmn.ReplyProto
+//	}{
+//		{
+//			name:          "success-insert",
+//			requestMethod: "POST",
+//			requestData: cmn.TMark{
+//				TeacherID:     null.IntFrom(testedTeacherID),
+//				ExamSessionID: null.IntFrom(103),
+//				ExamineeID:    null.IntFrom(2203),
+//				QuestionID:    null.IntFrom(10001),
+//				Score:         null.FloatFrom(3),
+//				MarkDetails:   make(types.JSONText, 0),
+//				Creator:       null.IntFrom(testedTeacherID),
+//			},
+//		},
+//		{
+//			name:          "success-insert-practice",
+//			requestMethod: "POST",
+//			requestData: cmn.TMark{
+//				TeacherID:            null.IntFrom(testedTeacherID),
+//				PracticeID:           null.IntFrom(22),
+//				PracticeSubmissionID: null.IntFrom(2404),
+//				QuestionID:           null.IntFrom(427),
+//				Score:                null.FloatFrom(3),
+//				MarkDetails:          make(types.JSONText, 0),
+//				Creator:              null.IntFrom(testedTeacherID),
+//			},
+//		},
+//		{
+//			name:          "success-insert with auto creator",
+//			requestMethod: "POST",
+//			requestData: cmn.TMark{
+//				TeacherID:     null.IntFrom(testedTeacherID),
+//				ExamSessionID: null.IntFrom(103),
+//				ExamineeID:    null.IntFrom(2203),
+//				QuestionID:    null.IntFrom(10001),
+//				Score:         null.FloatFrom(3),
+//				MarkDetails:   make(types.JSONText, 0),
+//			},
+//		},
+//		{
+//			name:          "success-insert with teacher id in ctx",
+//			requestMethod: "POST",
+//			requestData: cmn.TMark{
+//				ExamSessionID: null.IntFrom(103),
+//				ExamineeID:    null.IntFrom(2203),
+//				QuestionID:    null.IntFrom(10001),
+//				Score:         null.FloatFrom(3),
+//				MarkDetails:   make(types.JSONText, 0),
+//			},
+//		},
+//		{
+//			name:           "method not post",
+//			requestMethod:  "GET",
+//			expectedErrStr: "please call /api/mark/marking-results with http post method",
+//		},
+//		{
+//			name:           "no requestBody",
+//			requestMethod:  "POST",
+//			expectedErrStr: "failed to decode request body",
+//		},
+//		{
+//			name:              "invalid request proto data struct",
+//			requestMethod:     "POST",
+//			requestData:       "{",
+//			isInvalidReqProto: true,
+//			bodyStr:           "{",
+//			expectedErrStr:    "failed to decode request body",
+//		},
+//		{
+//			name:           "invalid request data data struct",
+//			requestMethod:  "POST",
+//			requestData:    "{",
+//			expectedErrStr: "failed to unmarshal marking results",
+//		},
+//		//{
+//		//	name:          "exec upsertMark query error",
+//		//	requestMethod: "POST",
+//		//	requestData: cmn.TMark{
+//		//		TeacherID:     null.IntFrom(testedTeacherID),
+//		//		ExamSessionID: null.IntFrom(103),
+//		//		ExamineeID:    null.IntFrom(2203),
+//		//		QuestionID:    null.IntFrom(10001),
+//		//		Score:         null.FloatFrom(3),
+//		//		MarkDetail:   make(types.JSONText, 0),
+//		//		Creator:       null.IntFrom(testedTeacherID),
+//		//	},
+//		//	forceErr:       "insertOrUpdateMarkingResults",
+//		//	expectedErrStr: "exec upsertMark query error",
+//		//},
+//	}
+//
+//	initTestData()
+//	defer cleanTestData()
+//
+//	for _, tt := range tests {
+//		t.Run(tt.name, func(t *testing.T) {
+//			var ctxVal []byte
+//			if tt.isInvalidReqProto {
+//				ctxVal = json.RawMessage(tt.bodyStr)
+//			} else {
+//				ctxVal = newReqProtoData(tt.requestData)
+//			}
+//
+//			ctx := context.Background()
+//
+//			if tt.forceErr != "" {
+//				ctx = context.WithValue(context.Background(), ForceErrKey, tt.forceErr)
+//			}
+//
+//			ctx = context.WithValue(ctx, cmn.QNearKey, newMockServiceCtx(tt.requestMethod, tt.params, ctxVal))
+//
+//			saveMarkingResults(ctx)
+//
+//			q := cmn.GetCtxValue(ctx)
+//
+//			if tt.expectedErrStr != "" {
+//				assert.Error(t, q.Err, "expected response err, but got nil")
+//				assert.Contains(t, q.Err.Error(), tt.expectedErrStr)
+//			} else {
+//				assert.NoErrorf(t, q.Err, "expected response no err, but got error: %v", q.Err)
+//			}
+//		})
+//	}
+//}
+//
+//func TestSubmitResult(t *testing.T) {
+//	cleanTestData()
+//
+//	tests := []struct {
+//		name             string
+//		params           map[string]string
+//		requestMethod    string
+//		forceErr         string
+//		expectedErrStr   string
+//		expectedMsg      *cmn.ReplyProto
+//		expectedRowCount int
+//	}{
+//		{
+//			name: "success",
+//			params: map[string]string{
+//				"exam_session_id": "102",
+//			},
+//		},
+//		{
+//			name: "success-practice with practice_submission_id",
+//			params: map[string]string{
+//				"practice_id":            "22",
+//				"practice_submission_id": "2404",
+//			},
+//		},
+//		{
+//			name: "method not patch",
+//			params: map[string]string{
+//				"exam_session_id": "101",
+//			},
+//			requestMethod:  "POST",
+//			expectedErrStr: "please call /api/mark/results-submission with http patch method",
+//		},
+//		{
+//			name:           "请求参数必须包含练习ID或者考试场次ID中的一个",
+//			params:         map[string]string{},
+//			expectedErrStr: "请求参数必须包含练习ID或者考试场次ID中的一个",
+//		},
+//		{
+//			name: "请求参数不能同时包含练习ID和考试场次ID",
+//			params: map[string]string{
+//				"exam_session_id": "102",
+//				"practice_id":     "22",
+//			},
+//			expectedErrStr: "请求参数不能同时包含练习ID和考试场次ID",
+//		},
+//		{
+//			name: "error parsing exam_session_id",
+//			params: map[string]string{
+//				"exam_session_id": "abc",
+//			},
+//			expectedErrStr: "error parsing exam_session_id",
+//		},
+//		{
+//			name: "error parsing practice_id",
+//			params: map[string]string{
+//				"practice_id": "abc",
+//			},
+//			expectedErrStr: "error parsing practice_id",
+//		},
+//		{
+//			name: "error parsing practice_submission_id",
+//			params: map[string]string{
+//				"practice_id":            "22",
+//				"practice_submission_id": "abc",
+//			},
+//			expectedErrStr: "error parsing practice_submission_id",
+//		},
+//		{
+//			name: "QueryMarkingResults-error",
+//			params: map[string]string{
+//				"exam_session_id": "102",
+//			},
+//			forceErr:       "QueryMarkingResults-pgxConn.Query",
+//			expectedErrStr: "exec getMarkingResults SQL error",
+//		},
+//		{
+//			name: "UpdateStudentAnswerScore-error",
+//			params: map[string]string{
+//				"exam_session_id": "101",
+//			},
+//			expectedErrStr: "no marking results for update",
+//		},
+//		{
+//			name: "UpdateExamSessionOrPracticeSubmissionState-error",
+//			params: map[string]string{
+//				"exam_session_id": "102",
+//			},
+//			forceErr:       "UpdateExamSessionOrPracticeSubmissionState",
+//			expectedErrStr: "exec updateExamSessionState sql error",
+//		},
+//		{
+//			name: "pgxConn.Begin error",
+//			params: map[string]string{
+//				"exam_session_id": "102",
+//			},
+//			forceErr:       "pgxConn.Begin",
+//			expectedErrStr: "begin transaction error",
+//		},
+//		{
+//			name: "tx.Rollback error",
+//			params: map[string]string{
+//				"exam_session_id": "102",
+//			},
+//			forceErr: "tx.Rollback",
+//		},
+//		{
+//			name: "queryMarkingResults error",
+//			params: map[string]string{
+//				"exam_session_id": "102",
+//			},
+//			forceErr: "queryMarkingResults",
+//		},
+//		{
+//			name: "UpdateStudentAnswerScore error",
+//			params: map[string]string{
+//				"exam_session_id": "102",
+//			},
+//			forceErr: "UpdateStudentAnswerScore",
+//		},
+//		{
+//			name: "tx.Commit error",
+//			params: map[string]string{
+//				"exam_session_id": "102",
+//			},
+//			forceErr: "tx.Commit",
+//		},
+//	}
+//
+//	initTestData()
+//	defer cleanTestData()
+//
+//	for _, tt := range tests {
+//		t.Run(tt.name, func(t *testing.T) {
+//			var method string
+//			if tt.requestMethod != "" {
+//				method = tt.requestMethod
+//			} else {
+//				method = "PATCH"
+//			}
+//
+//			ctx := context.Background()
+//			if tt.forceErr != "" {
+//				ctx = context.WithValue(ctx, ForceErrKey, tt.forceErr)
+//			}
+//
+//			ctx = context.WithValue(ctx, cmn.QNearKey, newMockServiceCtx(method, tt.params, nil))
+//
+//			submitResult(ctx)
+//
+//			q := cmn.GetCtxValue(ctx)
+//			if tt.expectedErrStr != "" {
+//				assert.Error(t, q.Err, "expected response err, but got nil")
+//				assert.Contains(t, q.Err.Error(), tt.expectedErrStr)
+//			} else {
+//				assert.NoErrorf(t, q.Err, "expected response no err, but got error: %v", q.Err)
+//			}
+//		})
+//	}
+//}
 
-	tests := []struct {
-		name              string
-		params            map[string]string
-		requestMethod     string
-		requestData       interface{}
-		isInvalidReqProto bool
-		bodyStr           string
-		forceErr          string
-		expectedErrStr    string
-		expectedMsg       *cmn.ReplyProto
-	}{
-		{
-			name:          "success-insert",
-			requestMethod: "POST",
-			requestData: cmn.TMark{
-				TeacherID:     null.IntFrom(testedTeacherID),
-				ExamSessionID: null.IntFrom(103),
-				ExamineeID:    null.IntFrom(2203),
-				QuestionID:    null.IntFrom(10001),
-				Score:         null.FloatFrom(3),
-				MarkDetails:   make(types.JSONText, 0),
-				Creator:       null.IntFrom(testedTeacherID),
-			},
-		},
-		{
-			name:          "success-insert-practice",
-			requestMethod: "POST",
-			requestData: cmn.TMark{
-				TeacherID:            null.IntFrom(testedTeacherID),
-				PracticeID:           null.IntFrom(22),
-				PracticeSubmissionID: null.IntFrom(2404),
-				QuestionID:           null.IntFrom(427),
-				Score:                null.FloatFrom(3),
-				MarkDetails:          make(types.JSONText, 0),
-				Creator:              null.IntFrom(testedTeacherID),
-			},
-		},
-		{
-			name:          "success-insert with auto creator",
-			requestMethod: "POST",
-			requestData: cmn.TMark{
-				TeacherID:     null.IntFrom(testedTeacherID),
-				ExamSessionID: null.IntFrom(103),
-				ExamineeID:    null.IntFrom(2203),
-				QuestionID:    null.IntFrom(10001),
-				Score:         null.FloatFrom(3),
-				MarkDetails:   make(types.JSONText, 0),
-			},
-		},
-		{
-			name:          "success-insert with teacher id in ctx",
-			requestMethod: "POST",
-			requestData: cmn.TMark{
-				ExamSessionID: null.IntFrom(103),
-				ExamineeID:    null.IntFrom(2203),
-				QuestionID:    null.IntFrom(10001),
-				Score:         null.FloatFrom(3),
-				MarkDetails:   make(types.JSONText, 0),
-			},
-		},
-		{
-			name:           "method not post",
-			requestMethod:  "GET",
-			expectedErrStr: "please call /api/mark/marking-results with http post method",
-		},
-		{
-			name:           "no requestBody",
-			requestMethod:  "POST",
-			expectedErrStr: "failed to decode request body",
-		},
-		{
-			name:              "invalid request proto data struct",
-			requestMethod:     "POST",
-			requestData:       "{",
-			isInvalidReqProto: true,
-			bodyStr:           "{",
-			expectedErrStr:    "failed to decode request body",
-		},
-		{
-			name:           "invalid request data data struct",
-			requestMethod:  "POST",
-			requestData:    "{",
-			expectedErrStr: "failed to unmarshal marking results",
-		},
-		//{
-		//	name:          "exec upsertMark query error",
-		//	requestMethod: "POST",
-		//	requestData: cmn.TMark{
-		//		TeacherID:     null.IntFrom(testedTeacherID),
-		//		ExamSessionID: null.IntFrom(103),
-		//		ExamineeID:    null.IntFrom(2203),
-		//		QuestionID:    null.IntFrom(10001),
-		//		Score:         null.FloatFrom(3),
-		//		MarkDetail:   make(types.JSONText, 0),
-		//		Creator:       null.IntFrom(testedTeacherID),
-		//	},
-		//	forceErr:       "insertOrUpdateMarkingResults",
-		//	expectedErrStr: "exec upsertMark query error",
-		//},
-	}
-
-	initTestData()
-	defer cleanTestData()
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			var ctxVal []byte
-			if tt.isInvalidReqProto {
-				ctxVal = json.RawMessage(tt.bodyStr)
-			} else {
-				ctxVal = newReqProtoData(tt.requestData)
-			}
-
-			ctx := context.Background()
-
-			if tt.forceErr != "" {
-				ctx = context.WithValue(context.Background(), ForceErrKey, tt.forceErr)
-			}
-
-			ctx = context.WithValue(ctx, cmn.QNearKey, newMockServiceCtx(tt.requestMethod, tt.params, ctxVal))
-
-			saveMarkingResults(ctx)
-
-			q := cmn.GetCtxValue(ctx)
-
-			if tt.expectedErrStr != "" {
-				assert.Error(t, q.Err, "expected response err, but got nil")
-				assert.Contains(t, q.Err.Error(), tt.expectedErrStr)
-			} else {
-				assert.NoErrorf(t, q.Err, "expected response no err, but got error: %v", q.Err)
-			}
-		})
-	}
-}
-
-func TestSubmitResult(t *testing.T) {
-	cleanTestData()
-
-	tests := []struct {
-		name             string
-		params           map[string]string
-		requestMethod    string
-		forceErr         string
-		expectedErrStr   string
-		expectedMsg      *cmn.ReplyProto
-		expectedRowCount int
-	}{
-		{
-			name: "success",
-			params: map[string]string{
-				"exam_session_id": "102",
-			},
-		},
-		{
-			name: "success-practice with practice_submission_id",
-			params: map[string]string{
-				"practice_id":            "22",
-				"practice_submission_id": "2404",
-			},
-		},
-		{
-			name: "method not patch",
-			params: map[string]string{
-				"exam_session_id": "101",
-			},
-			requestMethod:  "POST",
-			expectedErrStr: "please call /api/mark/results-submission with http patch method",
-		},
-		{
-			name:           "请求参数必须包含练习ID或者考试场次ID中的一个",
-			params:         map[string]string{},
-			expectedErrStr: "请求参数必须包含练习ID或者考试场次ID中的一个",
-		},
-		{
-			name: "请求参数不能同时包含练习ID和考试场次ID",
-			params: map[string]string{
-				"exam_session_id": "102",
-				"practice_id":     "22",
-			},
-			expectedErrStr: "请求参数不能同时包含练习ID和考试场次ID",
-		},
-		{
-			name: "error parsing exam_session_id",
-			params: map[string]string{
-				"exam_session_id": "abc",
-			},
-			expectedErrStr: "error parsing exam_session_id",
-		},
-		{
-			name: "error parsing practice_id",
-			params: map[string]string{
-				"practice_id": "abc",
-			},
-			expectedErrStr: "error parsing practice_id",
-		},
-		{
-			name: "error parsing practice_submission_id",
-			params: map[string]string{
-				"practice_id":            "22",
-				"practice_submission_id": "abc",
-			},
-			expectedErrStr: "error parsing practice_submission_id",
-		},
-		{
-			name: "QueryMarkingResults-error",
-			params: map[string]string{
-				"exam_session_id": "102",
-			},
-			forceErr:       "QueryMarkingResults-pgxConn.Query",
-			expectedErrStr: "exec getMarkingResults SQL error",
-		},
-		{
-			name: "UpdateStudentAnswerScore-error",
-			params: map[string]string{
-				"exam_session_id": "101",
-			},
-			expectedErrStr: "no marking results for update",
-		},
-		{
-			name: "UpdateExamSessionOrPracticeSubmissionState-error",
-			params: map[string]string{
-				"exam_session_id": "102",
-			},
-			forceErr:       "UpdateExamSessionOrPracticeSubmissionState",
-			expectedErrStr: "exec updateExamSessionState sql error",
-		},
-		{
-			name: "pgxConn.Begin error",
-			params: map[string]string{
-				"exam_session_id": "102",
-			},
-			forceErr:       "pgxConn.Begin",
-			expectedErrStr: "begin transaction error",
-		},
-		{
-			name: "tx.Rollback error",
-			params: map[string]string{
-				"exam_session_id": "102",
-			},
-			forceErr: "tx.Rollback",
-		},
-		{
-			name: "queryMarkingResults error",
-			params: map[string]string{
-				"exam_session_id": "102",
-			},
-			forceErr: "queryMarkingResults",
-		},
-		{
-			name: "UpdateStudentAnswerScore error",
-			params: map[string]string{
-				"exam_session_id": "102",
-			},
-			forceErr: "UpdateStudentAnswerScore",
-		},
-		{
-			name: "tx.Commit error",
-			params: map[string]string{
-				"exam_session_id": "102",
-			},
-			forceErr: "tx.Commit",
-		},
-	}
-
-	initTestData()
-	defer cleanTestData()
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			var method string
-			if tt.requestMethod != "" {
-				method = tt.requestMethod
-			} else {
-				method = "PATCH"
-			}
-
-			ctx := context.Background()
-			if tt.forceErr != "" {
-				ctx = context.WithValue(ctx, ForceErrKey, tt.forceErr)
-			}
-
-			ctx = context.WithValue(ctx, cmn.QNearKey, newMockServiceCtx(method, tt.params, nil))
-
-			submitResult(ctx)
-
-			q := cmn.GetCtxValue(ctx)
-			if tt.expectedErrStr != "" {
-				assert.Error(t, q.Err, "expected response err, but got nil")
-				assert.Contains(t, q.Err.Error(), tt.expectedErrStr)
-			} else {
-				assert.NoErrorf(t, q.Err, "expected response no err, but got error: %v", q.Err)
-			}
-		})
-	}
-}
-
-func TestUpdateMarkingState(t *testing.T) {
-	cleanTestData()
-	initTestData()
-	//defer cleanTestData()
-
-	tests := []struct {
-		name             string
-		params           map[string]string
-		requestMethod    string
-		forceErr         string
-		expectedErrStr   string
-		expectedMsg      *cmn.ReplyProto
-		expectedRowCount int
-	}{
-		{
-			name: "success",
-			params: map[string]string{
-				"exam_session_id": "102",
-			},
-		},
-		{
-			name: "method not patch",
-			params: map[string]string{
-				"exam_session_id": "101",
-			},
-			requestMethod:  "POST",
-			expectedErrStr: "please call /api/mark/state with http patch method",
-		},
-		{
-			name:           "exam_session_id is required",
-			params:         map[string]string{},
-			expectedErrStr: "exam_session_id is required",
-		},
-		{
-			name: "error parsing exam_session_id",
-			params: map[string]string{
-				"exam_session_id": "abc",
-			},
-			expectedErrStr: "error parsing exam_session_id",
-		},
-		{
-			name: "UpdateExamSessionOrPracticeSubmissionState-error",
-			params: map[string]string{
-				"exam_session_id": "102",
-			},
-			forceErr:       "UpdateExamSessionOrPracticeSubmissionState-tx.Query",
-			expectedErrStr: "exec updateExamSessionState sql error",
-		},
-		{
-			name: "updateMarkingState-pgxConn.Begin",
-			params: map[string]string{
-				"exam_session_id": "102",
-			},
-			forceErr:       "updateMarkingState-pgxConn.Begin",
-			expectedErrStr: "begin transaction error",
-		},
-		{
-			name: "updateMarkingState-tx.Rollback",
-			params: map[string]string{
-				"exam_session_id": "102",
-			},
-			forceErr: "updateMarkingState-tx.Rollback",
-		},
-		{
-			name: "updateMarkingState-tx.Commit",
-			params: map[string]string{
-				"exam_session_id": "102",
-			},
-			forceErr: "updateMarkingState-tx.Commit",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			var method string
-			if tt.requestMethod != "" {
-				method = tt.requestMethod
-			} else {
-				method = "PATCH"
-			}
-
-			ctx := context.Background()
-			if tt.forceErr != "" {
-				ctx = context.WithValue(ctx, ForceErrKey, tt.forceErr)
-			}
-
-			ctx = context.WithValue(ctx, cmn.QNearKey, newMockServiceCtx(method, tt.params, nil))
-			updateMarkingState(ctx)
-			q := cmn.GetCtxValue(ctx)
-			if q.Err != nil {
-				if tt.expectedErrStr == "" {
-					t.Errorf("expected success, but got error: %v", q.Err.Error())
-				} else {
-					assert.Contains(t, q.Err.Error(), tt.expectedErrStr)
-				}
-			} else if tt.expectedErrStr != "" {
-				t.Errorf("expected error: %s, but got success", tt.expectedErrStr)
-			}
-
-			if q.Msg.Status != 0 {
-				t.Logf("unexpected status: %d", q.Msg.Status)
-			}
-		})
-	}
-}
+//func TestUpdateMarkingState(t *testing.T) {
+//	cleanTestData()
+//	initTestData()
+//	//defer cleanTestData()
+//
+//	tests := []struct {
+//		name             string
+//		params           map[string]string
+//		requestMethod    string
+//		forceErr         string
+//		expectedErrStr   string
+//		expectedMsg      *cmn.ReplyProto
+//		expectedRowCount int
+//	}{
+//		{
+//			name: "success",
+//			params: map[string]string{
+//				"exam_session_id": "102",
+//			},
+//		},
+//		{
+//			name: "method not patch",
+//			params: map[string]string{
+//				"exam_session_id": "101",
+//			},
+//			requestMethod:  "POST",
+//			expectedErrStr: "please call /api/mark/state with http patch method",
+//		},
+//		{
+//			name:           "exam_session_id is required",
+//			params:         map[string]string{},
+//			expectedErrStr: "exam_session_id is required",
+//		},
+//		{
+//			name: "error parsing exam_session_id",
+//			params: map[string]string{
+//				"exam_session_id": "abc",
+//			},
+//			expectedErrStr: "error parsing exam_session_id",
+//		},
+//		{
+//			name: "UpdateExamSessionOrPracticeSubmissionState-error",
+//			params: map[string]string{
+//				"exam_session_id": "102",
+//			},
+//			forceErr:       "UpdateExamSessionOrPracticeSubmissionState-tx.Query",
+//			expectedErrStr: "exec updateExamSessionState sql error",
+//		},
+//		{
+//			name: "updateMarkingState-pgxConn.Begin",
+//			params: map[string]string{
+//				"exam_session_id": "102",
+//			},
+//			forceErr:       "updateMarkingState-pgxConn.Begin",
+//			expectedErrStr: "begin transaction error",
+//		},
+//		{
+//			name: "updateMarkingState-tx.Rollback",
+//			params: map[string]string{
+//				"exam_session_id": "102",
+//			},
+//			forceErr: "updateMarkingState-tx.Rollback",
+//		},
+//		{
+//			name: "updateMarkingState-tx.Commit",
+//			params: map[string]string{
+//				"exam_session_id": "102",
+//			},
+//			forceErr: "updateMarkingState-tx.Commit",
+//		},
+//	}
+//
+//	for _, tt := range tests {
+//		t.Run(tt.name, func(t *testing.T) {
+//			var method string
+//			if tt.requestMethod != "" {
+//				method = tt.requestMethod
+//			} else {
+//				method = "PATCH"
+//			}
+//
+//			ctx := context.Background()
+//			if tt.forceErr != "" {
+//				ctx = context.WithValue(ctx, ForceErrKey, tt.forceErr)
+//			}
+//
+//			ctx = context.WithValue(ctx, cmn.QNearKey, newMockServiceCtx(method, tt.params, nil))
+//			updateMarkingState(ctx)
+//			q := cmn.GetCtxValue(ctx)
+//			if q.Err != nil {
+//				if tt.expectedErrStr == "" {
+//					t.Errorf("expected success, but got error: %v", q.Err.Error())
+//				} else {
+//					assert.Contains(t, q.Err.Error(), tt.expectedErrStr)
+//				}
+//			} else if tt.expectedErrStr != "" {
+//				t.Errorf("expected error: %s, but got success", tt.expectedErrStr)
+//			}
+//
+//			if q.Msg.Status != 0 {
+//				t.Logf("unexpected status: %d", q.Msg.Status)
+//			}
+//		})
+//	}
+//}
 
 //func TestAutoMark(t *testing.T) {
 //	cleanTestData()

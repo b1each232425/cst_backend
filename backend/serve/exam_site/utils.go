@@ -229,6 +229,21 @@ WHERE t_exam_site.sys_user = %d`, sysUser),
 			Table: "t_student_answers",
 		},
 
+		// 作答上传的附件
+		{
+			Sql: fmt.Sprintf(`SELECT t_file.*
+FROM t_student_answers
+	JOIN t_examinee ON t_examinee.id = t_student_answers.examinee_id
+	JOIN t_exam_room ON t_exam_room.id = t_examinee.exam_room
+	JOIN t_exam_site ON t_exam_site.id = t_exam_room.exam_site
+	CROSS JOIN LATERAL jsonb_array_elements(t_student_answers.files) AS file
+	JOIN t_file ON t_file.id = file.value::int
+WHERE jsonb_typeof(files) = 'array' AND t_exam_site.sys_user = %d
+GROUP BY
+	t_file.id`, sysUser),
+			Table: "t_file",
+		},
+
 		//=======监考数据=======
 		// 考场记录
 		{
