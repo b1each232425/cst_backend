@@ -468,8 +468,8 @@ func GenerateExamPaper(ctx context.Context, tx pgx.Tx, paperId, uid int64) (*int
 		}
 		//这里构建这个数组
 		for _, q := range qs {
-			// 处理填空题和简答题
-			if q.Type == QuestionCategory.FillInBlank || q.Type == QuestionCategory.ShortAnswer {
+			// 处理填空题和简答题还有综合演练题和综合应用题
+			if q.Type == QuestionCategory.FillInBlank || q.Type == QuestionCategory.ShortAnswer || q.Type == QuestionCategory.QuestionTypeComprehensive || q.Type == QuestionCategory.QuestionTypeExercise {
 				var answers []NonSelectQuestionAnswer
 				if forceErr == "jsonA" {
 					q.Answers = types.JSONText(`invalid json: missing closing brace`)
