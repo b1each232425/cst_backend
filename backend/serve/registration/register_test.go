@@ -3376,6 +3376,95 @@ func Test_register(t *testing.T) {
 			authority:       auth_mgt.Authority{},
 			accessAction:    "full",
 		},
+		{
+			name:            "测试请求体为空",
+			method:          "POST",
+			url:             "/api/registration",
+			reqBody:         &cmn.ReqProto{},
+			userId:          1,
+			forceErr:        "",
+			expectedMessage: "OK",
+			create:          false,
+			authority:       auth_mgt.Authority{},
+			accessAction:    "full",
+		},
+		{
+			name:            "PATCH 更改报名计划的状态",
+			method:          "PATCH",
+			url:             "/api/register/Status?ids=134&status=00",
+			userId:          1,
+			forceErr:        "patch",
+			expectedMessage: "OK",
+			create:          false,
+			authority:       auth_mgt.Authority{},
+			accessAction:    "full",
+		},
+		{
+			name:            "测试没有修改报名计划的权限",
+			method:          "PATCH",
+			url:             "/api/register/Status?ids=134&status=08",
+			userId:          1,
+			forceErr:        "",
+			expectedMessage: "OK",
+			create:          false,
+			authority:       auth_mgt.Authority{},
+			accessAction:    "full",
+		},
+		{
+			name:            "测试缺失报名计划ID",
+			method:          "PATCH",
+			url:             "/api/register/Status?status=08",
+			userId:          1,
+			forceErr:        "patch",
+			expectedMessage: "OK",
+			create:          false,
+			authority:       auth_mgt.Authority{},
+			accessAction:    "full",
+		},
+		{
+			name:            "测试报名ID异常",
+			method:          "PATCH",
+			url:             "/api/register/Status?ids=134,,s&status=08",
+			userId:          1,
+			forceErr:        "patch",
+			expectedMessage: "OK",
+			create:          false,
+			authority:       auth_mgt.Authority{},
+			accessAction:    "full",
+		},
+		{
+			name:            "测试学生ID缺少",
+			method:          "PATCH",
+			url:             "/api/register/Status?ids=,&status=08",
+			userId:          1,
+			forceErr:        "patch",
+			expectedMessage: "OK",
+			create:          false,
+			authority:       auth_mgt.Authority{},
+			accessAction:    "full",
+		},
+		{
+			name:            "测试dao层出错",
+			method:          "PATCH",
+			url:             "/api/register/Status?ids=134&status=08",
+			userId:          1,
+			forceErr:        "beginTx",
+			expectedMessage: "OK",
+			create:          false,
+			authority:       auth_mgt.Authority{},
+			accessAction:    "full",
+		},
+		{
+			name:            "测试其他请求方法",
+			method:          "PUT",
+			url:             "/api/register/Status?ids=134&status=08",
+			userId:          1,
+			forceErr:        "operate",
+			expectedMessage: "OK",
+			create:          false,
+			authority:       auth_mgt.Authority{},
+			accessAction:    "full",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -3390,7 +3479,7 @@ func Test_register(t *testing.T) {
 				}
 			}
 			var req *http.Request
-			if tt.reqBody != nil {
+			if tt.reqBody != nil || strings.Contains(tt.method, "POST") {
 				buf, err := json.Marshal(tt.reqBody)
 				if err != nil {
 					t.Fatal(err.Error())
@@ -3460,18 +3549,724 @@ func Test_register(t *testing.T) {
 }
 
 func Test_registerReviewer(t *testing.T) {
-	type args struct {
-		ctx context.Context
+	if z == nil {
+		cmn.ConfigureForTest()
+	}
+	db := cmn.GetPgxConn()
+
+	registerName := ""
+	var uid int64
+	uid = 10086
+	s := `DELETE FROM assessuser.t_register_plan `
+	_, err := db.Exec(ctx, s)
+	if err != nil {
+		t.Fatal(err.Error())
+		return
+	}
+	s = `DELETE FROM assessuser.t_register_plan WHERE name =$1 `
+	_, err = db.Exec(ctx, s, registerName)
+	if err != nil {
+		t.Fatal(err.Error())
+		return
+	}
+	s = `DELETE FROM assessuser.t_register_practice`
+	_, err = db.Exec(ctx, s)
+	if err != nil {
+		t.Fatal(err.Error())
+		return
+	}
+	s = `DELETE FROM assessuser.t_exam_plan_student`
+	_, err = db.Exec(ctx, s)
+	if err != nil {
+		t.Fatal(err.Error())
+		return
+	}
+	s = `DELETE FROM assessuser.t_practice_student`
+	_, err = db.Exec(ctx, s)
+	if err != nil {
+		t.Fatal(err.Error())
+		return
+	}
+	s = `DELETE FROM assessuser.t_practice`
+	_, err = db.Exec(ctx, s)
+	if err != nil {
+		t.Fatal(err.Error())
+		return
 	}
 	tests := []struct {
-		name string
-		args args
+		name     string
+		method   string
+		url      string
+		reqBody  *cmn.ReqProto
+		userId   int64
+		forceErr string
+		ctxKey   string
+		ctxValue string
+		// 预期结果
+		expectSuccess       bool            // 是否期望成功
+		expectedMessage     string          // 预期错误消息
+		expectFailedMessage string          // 预期成功消息
+		expectedData        json.RawMessage // 预期数据（可选）
+		setup               func() error
+		authority           auth_mgt.Authority
+		accessAction        string
+		create              bool //是否是创建的练习
 	}{
-		// TODO: Add test cases.
+		{
+			name:            "缺少用户id",
+			method:          "GET",
+			url:             "/api/registration?page=1&pageSize=10&name=&status=&course=&search_type=00",
+			reqBody:         &cmn.ReqProto{},
+			userId:          0,
+			forceErr:        "full",
+			expectedMessage: "OK",
+			expectedData: json.RawMessage(`{"code":0,"message":"OK","data":[
+{
+  "practiceName": "",
+                "register": {
+                    "ID": 44,
+                    "Name": "软件工程考试报名33",
+                    "Course": "00",
+                    "ReviewEndTime": 1745109693215,
+                    "MaxNumber": 9,
+                    "StartTime": 1745109693215,
+                    "EndTime": 1745109693215,
+                    "ExamPlanLocation": "广东省湛江市",
+                    "Creator": null,
+                    "UpdatedBy": null,
+                    "CreateTime": null,
+                    "UpdateTime": null,
+                    "Status": "08"
+                },
+                "studentCount": 0
+}
+]}`),
+
+			create:    false,
+			authority: auth_mgt.Authority{},
+			setup: func() error {
+				s := `DELETE FROM assessuser.t_register_plan `
+				_, err := db.Exec(ctx, s)
+				if err != nil {
+					t.Fatal(err.Error())
+					return err
+				}
+				s = `DELETE FROM assessuser.t_register_plan WHERE name =$1 `
+				_, err = db.Exec(ctx, s, registerName)
+				if err != nil {
+					t.Fatal(err.Error())
+					return err
+				}
+				s = `DELETE FROM assessuser.t_register_practice`
+				_, err = db.Exec(ctx, s)
+				if err != nil {
+					t.Fatal(err.Error())
+					return err
+				}
+				s = `DELETE FROM assessuser.t_exam_plan_student`
+				_, err = db.Exec(ctx, s)
+				if err != nil {
+					t.Fatal(err.Error())
+					return err
+				}
+				s = `DELETE FROM assessuser.t_practice_student`
+				_, err = db.Exec(ctx, s)
+				if err != nil {
+					t.Fatal(err.Error())
+					return err
+				}
+				s = `DELETE FROM assessuser.t_practice`
+				_, err = db.Exec(ctx, s)
+				if err != nil {
+					t.Fatal(err.Error())
+					return err
+				}
+				// 先创建这个数据，最后测试完毕再删掉
+				s = `INSERT INTO t_practice (id,name,correct_mode,creator,allowed_attempts,type,paper_id)
+	VALUES ($1, $2, $3, $4, $5, $6, $7)`
+				_, err = db.Exec(ctx, s, uid, "练习", "00", uid, 5, "00", uid)
+				if err != nil {
+					t.Fatal(err)
+					return err
+				}
+				// 这里也随便插入几个学生
+				s = `INSERT INTO t_practice_student (id,student_id , practice_id,creator,status)VALUES($1,$2,$3,$4,$5),($6,$7,$8,$9,$10)`
+				_, err = db.Exec(ctx, s, 1, 20022, uid, uid, "00", 2, 20023, uid, uid, "00")
+				if err != nil {
+					t.Fatal(err)
+					return err
+				}
+				s = `INSERT INTO  t_register_plan (id,name, status,creator ,create_time,max_number) VALUES  ($1 ,$2 ,$3,$4,$5,$6)`
+				_, err = db.Exec(ctx, s, 1, "报名计划", "00", uid, time.Now().UnixMilli(), 0)
+				if err != nil {
+					t.Fatal(err)
+					return err
+				}
+				s = `INSERT INTO  t_register_plan (id,name, status,creator ,create_time,max_number) VALUES  ($1 ,$2 ,$3,$4,$5,$6)`
+				_, err = db.Exec(ctx, s, 2, "报名计划2", "00", uid, time.Now().UnixMilli(), 1)
+				if err != nil {
+					t.Fatal(err)
+					return err
+				}
+				s = `INSERT INTO  t_register_plan (id,name, status,creator ,create_time,max_number) VALUES  ($1 ,$2 ,$3,$4,$5,$6)`
+				_, err = db.Exec(ctx, s, 3, "报名计划3", "04", uid, time.Now().UnixMilli(), 1)
+				if err != nil {
+					t.Fatal(err)
+					return err
+				}
+				s = `INSERT INTO  t_register_plan (id,name, status,creator ,create_time,max_number) VALUES  ($1 ,$2 ,$3,$4,$5,$6)`
+				_, err = db.Exec(ctx, s, 4, "报名计划4", "08", uid, time.Now().UnixMilli(), 1)
+				if err != nil {
+					t.Fatal(err)
+					return err
+				}
+				s = `INSERT INTO  t_register_plan (id,name, status,creator ,create_time,max_number) VALUES  ($1 ,$2 ,$3,$4,$5,$6)`
+				_, err = db.Exec(ctx, s, 5, "报名计划5", "04", uid, time.Now().UnixMilli(), 1)
+				if err != nil {
+					t.Fatal(err)
+					return err
+				}
+				s = `INSERT INTO  t_register_plan (id,name, status,creator ,create_time,max_number) VALUES  ($1 ,$2 ,$3,$4,$5,$6)`
+				_, err = db.Exec(ctx, s, 6, "报名计划6", "04", uid, time.Now().UnixMilli(), 1)
+				s = `INSERT INTO  t_register_plan (id,name, status,creator ,create_time,max_number) VALUES  ($1 ,$2 ,$3,$4,$5,$6)`
+				_, err = db.Exec(ctx, s, 7, "报名计划7", "04", uid, time.Now().UnixMilli(), 1)
+				if err != nil {
+					t.Fatal(err)
+					return err
+				}
+				s = `INSERT INTO t_register_practice (register_id, practice_id,creator,create_time,status) VALUES ( $1,$2,$3,$4,$5)`
+				_, err = db.Exec(ctx, s, 1, uid, uid, time.Now().UnixMilli(), RegisterPracticeStatus.Normal)
+				if err != nil {
+					t.Fatal(err)
+					return err
+				}
+				s = `INSERT INTO t_register_practice (register_id, practice_id,creator,create_time,status) VALUES ( $1,$2,$3,$4,$5)`
+				_, err = db.Exec(ctx, s, 2, uid, uid, time.Now().UnixMilli(), RegisterPracticeStatus.Normal)
+				if err != nil {
+					t.Fatal(err)
+					return err
+				}
+				s = `INSERT INTO t_register_practice (register_id, practice_id,creator,create_time,status) VALUES ( $1,$2,$3,$4,$5)`
+				_, err = db.Exec(ctx, s, 6, uid, uid, time.Now().UnixMilli(), RegisterPracticeStatus.Normal)
+				if err != nil {
+					t.Fatal(err)
+					return err
+				}
+				return nil
+			},
+			accessAction: "full",
+		},
+		{
+			name:            "测试获取权限失败",
+			method:          "GET",
+			url:             "/api/registration?page=1&pageSize=10&name=&status=&course=&search_type=00",
+			reqBody:         &cmn.ReqProto{},
+			userId:          20086,
+			forceErr:        "QueryRole",
+			expectedMessage: "OK",
+			expectedData: json.RawMessage(`{"code":0,"message":"OK","data":[
+{
+  "practiceName": "",
+                "register": {
+                    "ID": 44,
+                    "Name": "软件工程考试报名33",
+                    "Course": "00",
+                    "ReviewEndTime": 1745109693215,
+                    "MaxNumber": 9,
+                    "StartTime": 1745109693215,
+                    "EndTime": 1745109693215,
+                    "ExamPlanLocation": "广东省湛江市",
+                    "Creator": null,
+                    "UpdatedBy": null,
+                    "CreateTime": null,
+                    "UpdateTime": null,
+                    "Status": "08"
+                },
+                "studentCount": 0
+}
+]}`),
+
+			create:    false,
+			authority: auth_mgt.Authority{},
+			setup: func() error {
+				s := `DELETE FROM assessuser.t_register_plan `
+				_, err := db.Exec(ctx, s)
+				if err != nil {
+					t.Fatal(err.Error())
+					return err
+				}
+				s = `DELETE FROM assessuser.t_register_plan WHERE name =$1 `
+				_, err = db.Exec(ctx, s, registerName)
+				if err != nil {
+					t.Fatal(err.Error())
+					return err
+				}
+				s = `DELETE FROM assessuser.t_register_practice`
+				_, err = db.Exec(ctx, s)
+				if err != nil {
+					t.Fatal(err.Error())
+					return err
+				}
+				s = `DELETE FROM assessuser.t_exam_plan_student`
+				_, err = db.Exec(ctx, s)
+				if err != nil {
+					t.Fatal(err.Error())
+					return err
+				}
+				s = `DELETE FROM assessuser.t_practice_student`
+				_, err = db.Exec(ctx, s)
+				if err != nil {
+					t.Fatal(err.Error())
+					return err
+				}
+				s = `DELETE FROM assessuser.t_practice`
+				_, err = db.Exec(ctx, s)
+				if err != nil {
+					t.Fatal(err.Error())
+					return err
+				}
+				// 先创建这个数据，最后测试完毕再删掉
+				s = `INSERT INTO t_practice (id,name,correct_mode,creator,allowed_attempts,type,paper_id)
+	VALUES ($1, $2, $3, $4, $5, $6, $7)`
+				_, err = db.Exec(ctx, s, uid, "练习", "00", uid, 5, "00", uid)
+				if err != nil {
+					t.Fatal(err)
+					return err
+				}
+				// 这里也随便插入几个学生
+				s = `INSERT INTO t_practice_student (id,student_id , practice_id,creator,status)VALUES($1,$2,$3,$4,$5),($6,$7,$8,$9,$10)`
+				_, err = db.Exec(ctx, s, 1, 20022, uid, uid, "00", 2, 20023, uid, uid, "00")
+				if err != nil {
+					t.Fatal(err)
+					return err
+				}
+				s = `INSERT INTO  t_register_plan (id,name, status,creator ,create_time,max_number) VALUES  ($1 ,$2 ,$3,$4,$5,$6)`
+				_, err = db.Exec(ctx, s, 1, "报名计划", "00", uid, time.Now().UnixMilli(), 0)
+				if err != nil {
+					t.Fatal(err)
+					return err
+				}
+				s = `INSERT INTO  t_register_plan (id,name, status,creator ,create_time,max_number) VALUES  ($1 ,$2 ,$3,$4,$5,$6)`
+				_, err = db.Exec(ctx, s, 2, "报名计划2", "00", uid, time.Now().UnixMilli(), 1)
+				if err != nil {
+					t.Fatal(err)
+					return err
+				}
+				s = `INSERT INTO  t_register_plan (id,name, status,creator ,create_time,max_number) VALUES  ($1 ,$2 ,$3,$4,$5,$6)`
+				_, err = db.Exec(ctx, s, 3, "报名计划3", "04", uid, time.Now().UnixMilli(), 1)
+				if err != nil {
+					t.Fatal(err)
+					return err
+				}
+				s = `INSERT INTO  t_register_plan (id,name, status,creator ,create_time,max_number) VALUES  ($1 ,$2 ,$3,$4,$5,$6)`
+				_, err = db.Exec(ctx, s, 4, "报名计划4", "08", uid, time.Now().UnixMilli(), 1)
+				if err != nil {
+					t.Fatal(err)
+					return err
+				}
+				s = `INSERT INTO  t_register_plan (id,name, status,creator ,create_time,max_number) VALUES  ($1 ,$2 ,$3,$4,$5,$6)`
+				_, err = db.Exec(ctx, s, 5, "报名计划5", "04", uid, time.Now().UnixMilli(), 1)
+				if err != nil {
+					t.Fatal(err)
+					return err
+				}
+				s = `INSERT INTO  t_register_plan (id,name, status,creator ,create_time,max_number) VALUES  ($1 ,$2 ,$3,$4,$5,$6)`
+				_, err = db.Exec(ctx, s, 6, "报名计划6", "04", uid, time.Now().UnixMilli(), 1)
+				s = `INSERT INTO  t_register_plan (id,name, status,creator ,create_time,max_number) VALUES  ($1 ,$2 ,$3,$4,$5,$6)`
+				_, err = db.Exec(ctx, s, 7, "报名计划7", "04", uid, time.Now().UnixMilli(), 1)
+				if err != nil {
+					t.Fatal(err)
+					return err
+				}
+				s = `INSERT INTO t_register_practice (register_id, practice_id,creator,create_time,status) VALUES ( $1,$2,$3,$4,$5)`
+				_, err = db.Exec(ctx, s, 1, uid, uid, time.Now().UnixMilli(), RegisterPracticeStatus.Normal)
+				if err != nil {
+					t.Fatal(err)
+					return err
+				}
+				s = `INSERT INTO t_register_practice (register_id, practice_id,creator,create_time,status) VALUES ( $1,$2,$3,$4,$5)`
+				_, err = db.Exec(ctx, s, 2, uid, uid, time.Now().UnixMilli(), RegisterPracticeStatus.Normal)
+				if err != nil {
+					t.Fatal(err)
+					return err
+				}
+				s = `INSERT INTO t_register_practice (register_id, practice_id,creator,create_time,status) VALUES ( $1,$2,$3,$4,$5)`
+				_, err = db.Exec(ctx, s, 6, uid, uid, time.Now().UnixMilli(), RegisterPracticeStatus.Normal)
+				if err != nil {
+					t.Fatal(err)
+					return err
+				}
+				return nil
+			},
+			accessAction: "full",
+		},
+		{
+			name:            "测试获取可执行权限失败",
+			method:          "GET",
+			url:             "/api/registration?page=1&pageSize=10&name=&status=&course=&search_type=00",
+			reqBody:         &cmn.ReqProto{},
+			userId:          1,
+			forceErr:        "1",
+			expectedMessage: "OK",
+			expectedData: json.RawMessage(`{"code":0,"message":"OK","data":[
+{
+  "practiceName": "",
+                "register": {
+                    "ID": 44,
+                    "Name": "软件工程考试报名33",
+                    "Course": "00",
+                    "ReviewEndTime": 1745109693215,
+                    "MaxNumber": 9,
+                    "StartTime": 1745109693215,
+                    "EndTime": 1745109693215,
+                    "ExamPlanLocation": "广东省湛江市",
+                    "Creator": null,
+                    "UpdatedBy": null,
+                    "CreateTime": null,
+                    "UpdateTime": null,
+                    "Status": "08"
+                },
+                "studentCount": 0
+}
+]}`),
+
+			create:    false,
+			authority: auth_mgt.Authority{},
+			setup: func() error {
+				s := `DELETE FROM assessuser.t_register_plan `
+				_, err := db.Exec(ctx, s)
+				if err != nil {
+					t.Fatal(err.Error())
+					return err
+				}
+				s = `DELETE FROM assessuser.t_register_plan WHERE name =$1 `
+				_, err = db.Exec(ctx, s, registerName)
+				if err != nil {
+					t.Fatal(err.Error())
+					return err
+				}
+				s = `DELETE FROM assessuser.t_register_practice`
+				_, err = db.Exec(ctx, s)
+				if err != nil {
+					t.Fatal(err.Error())
+					return err
+				}
+				s = `DELETE FROM assessuser.t_exam_plan_student`
+				_, err = db.Exec(ctx, s)
+				if err != nil {
+					t.Fatal(err.Error())
+					return err
+				}
+				s = `DELETE FROM assessuser.t_practice_student`
+				_, err = db.Exec(ctx, s)
+				if err != nil {
+					t.Fatal(err.Error())
+					return err
+				}
+				s = `DELETE FROM assessuser.t_practice`
+				_, err = db.Exec(ctx, s)
+				if err != nil {
+					t.Fatal(err.Error())
+					return err
+				}
+				// 先创建这个数据，最后测试完毕再删掉
+				s = `INSERT INTO t_practice (id,name,correct_mode,creator,allowed_attempts,type,paper_id)
+	VALUES ($1, $2, $3, $4, $5, $6, $7)`
+				_, err = db.Exec(ctx, s, uid, "练习", "00", uid, 5, "00", uid)
+				if err != nil {
+					t.Fatal(err)
+					return err
+				}
+				// 这里也随便插入几个学生
+				s = `INSERT INTO t_practice_student (id,student_id , practice_id,creator,status)VALUES($1,$2,$3,$4,$5),($6,$7,$8,$9,$10)`
+				_, err = db.Exec(ctx, s, 1, 20022, uid, uid, "00", 2, 20023, uid, uid, "00")
+				if err != nil {
+					t.Fatal(err)
+					return err
+				}
+				s = `INSERT INTO  t_register_plan (id,name, status,creator ,create_time,max_number) VALUES  ($1 ,$2 ,$3,$4,$5,$6)`
+				_, err = db.Exec(ctx, s, 1, "报名计划", "00", uid, time.Now().UnixMilli(), 0)
+				if err != nil {
+					t.Fatal(err)
+					return err
+				}
+				s = `INSERT INTO  t_register_plan (id,name, status,creator ,create_time,max_number) VALUES  ($1 ,$2 ,$3,$4,$5,$6)`
+				_, err = db.Exec(ctx, s, 2, "报名计划2", "00", uid, time.Now().UnixMilli(), 1)
+				if err != nil {
+					t.Fatal(err)
+					return err
+				}
+				s = `INSERT INTO  t_register_plan (id,name, status,creator ,create_time,max_number) VALUES  ($1 ,$2 ,$3,$4,$5,$6)`
+				_, err = db.Exec(ctx, s, 3, "报名计划3", "04", uid, time.Now().UnixMilli(), 1)
+				if err != nil {
+					t.Fatal(err)
+					return err
+				}
+				s = `INSERT INTO  t_register_plan (id,name, status,creator ,create_time,max_number) VALUES  ($1 ,$2 ,$3,$4,$5,$6)`
+				_, err = db.Exec(ctx, s, 4, "报名计划4", "08", uid, time.Now().UnixMilli(), 1)
+				if err != nil {
+					t.Fatal(err)
+					return err
+				}
+				s = `INSERT INTO  t_register_plan (id,name, status,creator ,create_time,max_number) VALUES  ($1 ,$2 ,$3,$4,$5,$6)`
+				_, err = db.Exec(ctx, s, 5, "报名计划5", "04", uid, time.Now().UnixMilli(), 1)
+				if err != nil {
+					t.Fatal(err)
+					return err
+				}
+				s = `INSERT INTO  t_register_plan (id,name, status,creator ,create_time,max_number) VALUES  ($1 ,$2 ,$3,$4,$5,$6)`
+				_, err = db.Exec(ctx, s, 6, "报名计划6", "04", uid, time.Now().UnixMilli(), 1)
+				s = `INSERT INTO  t_register_plan (id,name, status,creator ,create_time,max_number) VALUES  ($1 ,$2 ,$3,$4,$5,$6)`
+				_, err = db.Exec(ctx, s, 7, "报名计划7", "04", uid, time.Now().UnixMilli(), 1)
+				if err != nil {
+					t.Fatal(err)
+					return err
+				}
+				s = `INSERT INTO t_register_practice (register_id, practice_id,creator,create_time,status) VALUES ( $1,$2,$3,$4,$5)`
+				_, err = db.Exec(ctx, s, 1, uid, uid, time.Now().UnixMilli(), RegisterPracticeStatus.Normal)
+				if err != nil {
+					t.Fatal(err)
+					return err
+				}
+				s = `INSERT INTO t_register_practice (register_id, practice_id,creator,create_time,status) VALUES ( $1,$2,$3,$4,$5)`
+				_, err = db.Exec(ctx, s, 2, uid, uid, time.Now().UnixMilli(), RegisterPracticeStatus.Normal)
+				if err != nil {
+					t.Fatal(err)
+					return err
+				}
+				s = `INSERT INTO t_register_practice (register_id, practice_id,creator,create_time,status) VALUES ( $1,$2,$3,$4,$5)`
+				_, err = db.Exec(ctx, s, 6, uid, uid, time.Now().UnixMilli(), RegisterPracticeStatus.Normal)
+				if err != nil {
+					t.Fatal(err)
+					return err
+				}
+				return nil
+			},
+			accessAction: "full",
+		},
+		{
+			name:            "GET 正常测试",
+			method:          "GET",
+			url:             "/api/registration?page=1&pageSize=10&name=&status=&course=&search_type=00",
+			reqBody:         &cmn.ReqProto{},
+			userId:          1,
+			forceErr:        "1",
+			expectedMessage: "OK",
+			expectedData: json.RawMessage(`{"code":0,"message":"OK","data":[
+{
+  "practiceName": "",
+                "register": {
+                    "ID": 44,
+                    "Name": "软件工程考试报名33",
+                    "Course": "00",
+                    "ReviewEndTime": 1745109693215,
+                    "MaxNumber": 9,
+                    "StartTime": 1745109693215,
+                    "EndTime": 1745109693215,
+                    "ExamPlanLocation": "广东省湛江市",
+                    "Creator": null,
+                    "UpdatedBy": null,
+                    "CreateTime": null,
+                    "UpdateTime": null,
+                    "Status": "08"
+                },
+                "studentCount": 0
+}
+]}`),
+
+			create:    false,
+			authority: auth_mgt.Authority{},
+			setup: func() error {
+				s := `DELETE FROM assessuser.t_register_plan `
+				_, err := db.Exec(ctx, s)
+				if err != nil {
+					t.Fatal(err.Error())
+					return err
+				}
+				s = `DELETE FROM assessuser.t_register_plan WHERE name =$1 `
+				_, err = db.Exec(ctx, s, registerName)
+				if err != nil {
+					t.Fatal(err.Error())
+					return err
+				}
+				s = `DELETE FROM assessuser.t_register_practice`
+				_, err = db.Exec(ctx, s)
+				if err != nil {
+					t.Fatal(err.Error())
+					return err
+				}
+				s = `DELETE FROM assessuser.t_exam_plan_student`
+				_, err = db.Exec(ctx, s)
+				if err != nil {
+					t.Fatal(err.Error())
+					return err
+				}
+				s = `DELETE FROM assessuser.t_practice_student`
+				_, err = db.Exec(ctx, s)
+				if err != nil {
+					t.Fatal(err.Error())
+					return err
+				}
+				s = `DELETE FROM assessuser.t_practice`
+				_, err = db.Exec(ctx, s)
+				if err != nil {
+					t.Fatal(err.Error())
+					return err
+				}
+				// 先创建这个数据，最后测试完毕再删掉
+				s = `INSERT INTO t_practice (id,name,correct_mode,creator,allowed_attempts,type,paper_id)
+	VALUES ($1, $2, $3, $4, $5, $6, $7)`
+				_, err = db.Exec(ctx, s, uid, "练习", "00", uid, 5, "00", uid)
+				if err != nil {
+					t.Fatal(err)
+					return err
+				}
+				// 这里也随便插入几个学生
+				s = `INSERT INTO t_practice_student (id,student_id , practice_id,creator,status)VALUES($1,$2,$3,$4,$5),($6,$7,$8,$9,$10)`
+				_, err = db.Exec(ctx, s, 1, 20022, uid, uid, "00", 2, 20023, uid, uid, "00")
+				if err != nil {
+					t.Fatal(err)
+					return err
+				}
+				s = `INSERT INTO  t_register_plan (id,name, status,creator ,create_time,max_number) VALUES  ($1 ,$2 ,$3,$4,$5,$6)`
+				_, err = db.Exec(ctx, s, 1, "报名计划", "00", uid, time.Now().UnixMilli(), 0)
+				if err != nil {
+					t.Fatal(err)
+					return err
+				}
+				s = `INSERT INTO  t_register_plan (id,name, status,creator ,create_time,max_number) VALUES  ($1 ,$2 ,$3,$4,$5,$6)`
+				_, err = db.Exec(ctx, s, 2, "报名计划2", "00", uid, time.Now().UnixMilli(), 1)
+				if err != nil {
+					t.Fatal(err)
+					return err
+				}
+				s = `INSERT INTO  t_register_plan (id,name, status,creator ,create_time,max_number) VALUES  ($1 ,$2 ,$3,$4,$5,$6)`
+				_, err = db.Exec(ctx, s, 3, "报名计划3", "04", uid, time.Now().UnixMilli(), 1)
+				if err != nil {
+					t.Fatal(err)
+					return err
+				}
+				s = `INSERT INTO  t_register_plan (id,name, status,creator ,create_time,max_number) VALUES  ($1 ,$2 ,$3,$4,$5,$6)`
+				_, err = db.Exec(ctx, s, 4, "报名计划4", "08", uid, time.Now().UnixMilli(), 1)
+				if err != nil {
+					t.Fatal(err)
+					return err
+				}
+				s = `INSERT INTO  t_register_plan (id,name, status,creator ,create_time,max_number) VALUES  ($1 ,$2 ,$3,$4,$5,$6)`
+				_, err = db.Exec(ctx, s, 5, "报名计划5", "04", uid, time.Now().UnixMilli(), 1)
+				if err != nil {
+					t.Fatal(err)
+					return err
+				}
+				s = `INSERT INTO  t_register_plan (id,name, status,creator ,create_time,max_number) VALUES  ($1 ,$2 ,$3,$4,$5,$6)`
+				_, err = db.Exec(ctx, s, 6, "报名计划6", "04", uid, time.Now().UnixMilli(), 1)
+				s = `INSERT INTO  t_register_plan (id,name, status,creator ,create_time,max_number) VALUES  ($1 ,$2 ,$3,$4,$5,$6)`
+				_, err = db.Exec(ctx, s, 7, "报名计划7", "04", uid, time.Now().UnixMilli(), 1)
+				if err != nil {
+					t.Fatal(err)
+					return err
+				}
+				s = `INSERT INTO t_register_practice (register_id, practice_id,creator,create_time,status) VALUES ( $1,$2,$3,$4,$5)`
+				_, err = db.Exec(ctx, s, 1, uid, uid, time.Now().UnixMilli(), RegisterPracticeStatus.Normal)
+				if err != nil {
+					t.Fatal(err)
+					return err
+				}
+				s = `INSERT INTO t_register_practice (register_id, practice_id,creator,create_time,status) VALUES ( $1,$2,$3,$4,$5)`
+				_, err = db.Exec(ctx, s, 2, uid, uid, time.Now().UnixMilli(), RegisterPracticeStatus.Normal)
+				if err != nil {
+					t.Fatal(err)
+					return err
+				}
+				s = `INSERT INTO t_register_practice (register_id, practice_id,creator,create_time,status) VALUES ( $1,$2,$3,$4,$5)`
+				_, err = db.Exec(ctx, s, 6, uid, uid, time.Now().UnixMilli(), RegisterPracticeStatus.Normal)
+				if err != nil {
+					t.Fatal(err)
+					return err
+				}
+				return nil
+			},
+			accessAction: "full",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			registerReviewer(tt.args.ctx)
+			err := addTestDomainApi(tt.url, tt.accessAction, 20086)
+			if err != nil {
+				return
+			}
+			if tt.setup != nil {
+				err := tt.setup()
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+			var req *http.Request
+			if tt.reqBody != nil || strings.Contains(tt.method, "POST") {
+				buf, err := json.Marshal(tt.reqBody)
+				if err != nil {
+					t.Fatal(err.Error())
+				}
+				req = httptest.NewRequest(tt.method, tt.url, bytes.NewReader(buf))
+			} else {
+				req = httptest.NewRequest(tt.method, tt.url, nil)
+			}
+
+			// 创建响应记录器
+			ctx := createMockContext(req, tt.userId)
+
+			//传入强制err
+			if tt.forceErr != "" {
+				ctx = context.WithValue(ctx, "force-error", tt.forceErr)
+			}
+			registerReviewer(ctx)
+			q := cmn.GetCtxValue(ctx)
+			resp := q.Msg
+			t.Logf("resp:%v\n", resp)
+		})
+		t.Cleanup(func() {
+			// 这里再删除这个练习，随后再重新创建
+			s = `DELETE FROM assessuser.t_practice`
+			_, err := db.Exec(ctx, s)
+			if err != nil {
+				t.Fatal(err)
+			}
+			s = `DELETE FROM assessuser.t_domain_api`
+			_, err = db.Exec(ctx, s)
+			if err != nil {
+				t.Fatal(err)
+			}
+			// 这里再删除这个练习，随后再重新创建
+			s = `DELETE FROM assessuser.t_practice_student `
+			_, err = db.Exec(ctx, s)
+			if err != nil {
+				t.Fatal(err)
+			}
+			// 这里再删除这个练习，随后再重新创建
+			s = `DELETE FROM assessuser.t_paper`
+			_, err = db.Exec(ctx, s)
+			if err != nil {
+				t.Fatal(err)
+			}
+			//删除报名计划
+			s = `DELETE FROM assessuser.t_register_plan`
+			_, err = db.Exec(ctx, s)
+			if err != nil {
+				t.Fatal(err)
+			}
+			//删除报名计划练习
+			s = `DELETE FROM assessuser.t_register_practice`
+			_, err = db.Exec(ctx, s)
+			if err != nil {
+				t.Fatal(err)
+			}
+			//删除报名计划学生
+			s = `DELETE FROM assessuser.t_exam_plan_student`
+			_, err = db.Exec(ctx, s)
+			if err != nil {
+				t.Fatal(err)
+			}
+
 		})
 	}
 }

@@ -1151,7 +1151,7 @@ func OperateRegisterStatus(ctx context.Context, registerIDs []int64, status stri
 			s = `
 			UPDATE assessuser.t_register_practice  SET status = $1,update_time = $2, updated_by = $3  WHERE register_id = $4 AND (creator = $5 AND domain_id = ANY($6))
 `
-			_, err = tx.Exec(ctx, s, RegisterPracticeStatus.Delete, now, userID, register.ID, authority.AccessibleDomains)
+			_, err = tx.Exec(ctx, s, RegisterPracticeStatus.Delete, now, userID, register.ID, userID, authority.AccessibleDomains)
 			if err != nil || forceErr == "operate2" {
 				err = fmt.Errorf("更新报名计划状态失败:%v", err)
 				z.Error(err.Error())
