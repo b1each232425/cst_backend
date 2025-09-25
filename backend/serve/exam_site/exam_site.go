@@ -729,6 +729,10 @@ func Pull(ctx context.Context, retryCount int, forceRenew bool) {
 
 	}
 
+	if len(fileList) == 0 {
+		return
+	}
+
 	fileListPath := filepath.Join(dest, "file_list.txt")
 	q.Err = os.WriteFile(fileListPath, []byte(strings.Join(fileList, "\n")), 0644)
 	if q.Err != nil || (cmn.InDebugMode && q.Tag["pullWriteFileListErr"] != nil) {
@@ -1013,8 +1017,10 @@ func Push(ctx context.Context, retryCount int) {
 	// 读取 t_file_*.csv 文件, 取出其中的 digest 字段, 然后将对应的文件上传
 	var fileList []string
 
+	fileRegex := regexp.MustCompile(`^t_file_\d+\.csv$`)
+
 	for _, tableFile := range sInfo.TableFileList {
-		if !strings.HasPrefix(tableFile, "t_file_") || !strings.HasSuffix(tableFile, ".csv") {
+		if !fileRegex.MatchString(tableFile) {
 			continue
 		}
 
@@ -1030,45 +1036,48 @@ func Push(ctx context.Context, retryCount int) {
 			fileList = append(fileList, digest+".info")
 		}
 
-		
 	}
 
-	fileListPath := filepath.Join(source, "file_list.txt")
-	q.Err = os.WriteFile(fileListPath, []byte(strings.Join(fileList, "\n")), 0644)
-	if q.Err != nil || (cmn.InDebugMode && q.Tag["pushWriteFileListErr"] != nil) {
-		if q.Err == nil {
-			q.Err = q.Tag["pushWriteFileListErr"].(error)
+	if len(fileList) > 0 {
+
+		fileListPath := filepath.Join(source, "file_list.txt")
+		q.Err = os.WriteFile(fileListPath, []byte(strings.Join(fileList, "\n")), 0644)
+		if q.Err != nil || (cmn.InDebugMode && q.Tag["pushWriteFileListErr"] != nil) {
+			if q.Err == nil {
+				q.Err = q.Tag["pushWriteFileListErr"].(error)
+			}
+
+			z.Error(q.Err.Error())
+			return
 		}
 
-		z.Error(q.Err.Error())
-		return
-	}
+		dest = fmt.Sprintf("%s@%s:%s",
+			sshUser,
+			sshHost,
+			sInfo.UploadFilesPath,
+		)
 
-	dest = fmt.Sprintf("%s@%s:%s",
-		sshUser,
-		sshHost,
-		sInfo.UploadFilesPath,
-	)
+		cmd = fmt.Sprintf(`rsync -avz --mkpath -e "ssh -p %d" --files-from=%s %s %s`, 
+			sshPort,
+			fileListPath,
+			uploadDir,
+			dest,
+		)
 
-	cmd = fmt.Sprintf(`rsync -avz --mkpath -e "ssh -p %d" --files-from=%s %s %s`, 
-		sshPort,
-		fileListPath,
-		uploadDir,
-		dest,
-	)
+		o, q.Err = exec.CommandContext(ctx, "bash", "-c", cmd).CombinedOutput()
+		if q.Err != nil || (cmn.InDebugMode && q.Tag["uploadFileErrInPush"] != nil) {
 
-	o, q.Err = exec.CommandContext(ctx, "bash", "-c", cmd).CombinedOutput()
-	if q.Err != nil || (cmn.InDebugMode && q.Tag["uploadFileErrInPush"] != nil) {
+			if q.Err == nil {
+				q.Err = q.Tag["uploadFileErrInPush"].(error)
+				cmd = ""
+				o = []byte("")
+			}
 
-		if q.Err == nil {
-			q.Err = q.Tag["uploadFileErrInPush"].(error)
-			cmd = ""
-			o = []byte("")
+			q.Err = fmt.Errorf("COMMAND: %s\t ERR: %w\t DETAIL: %s", cmd, q.Err, string(o))
+			z.Error(q.Err.Error())
+			return
 		}
 
-		q.Err = fmt.Errorf("COMMAND: %s\t ERR: %w\t DETAIL: %s", cmd, q.Err, string(o))
-		z.Error(q.Err.Error())
-		return
 	}
 
 	// 发送反向同步通知
@@ -1326,7 +1335,7 @@ MethodSwitch:
 			COUNT(t_exam_room.id) AS room_count
 		FROM t_exam_site
 			JOIN t_user ON t_user.id = t_exam_site.admin
-			JOIN t_exam_room ON t_exam_room.exam_site = t_exam_site.id
+			LEFT JOIN t_exam_room ON t_exam_room.exam_site = t_exam_site.id
 		WHERE t_exam_site.status != '04' AND t_exam_site.id = $1 AND (t_exam_site.creator = $2 OR t_exam_site.admin = $2 OR t_exam_site.domain_id = ANY($3))
 		GROUP BY
 			t_exam_site.id,
