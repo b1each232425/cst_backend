@@ -274,12 +274,19 @@ func questionBanks(ctx context.Context) {
 			}
 		}
 
+		// 根据用户角色决定是否添加创建者过滤条件
+		var creatorFilter int64 = 0
+		if authority.Role.Priority.Valid && authority.Role.Priority.Int64 == auth_mgt.CDomainPriorityUser {
+			// 只有普通用户才需要按创建者过滤，管理员和超级管理员可以看到域内所有题库
+			creatorFilter = userID
+		}
+
 		params := QueryQuestionBankParams{
 			BankID:   bankID,
 			Keyword:  keyword,
 			Page:     page,
 			PageSize: pageSize,
-			Creator:  userID,
+			Creator:  creatorFilter,
 		}
 
 		var rowCount int64
