@@ -36,18 +36,21 @@ type NonSelectQuestionAnswer struct {
 }
 
 var QuestionCategory = struct {
-	SingleChoice string // 单选 00
-	MultiChoice  string // 多选 02
-	TrueFalse    string // 判断 04
-	FillInBlank  string //填空 06
-	ShortAnswer  string // 简答 08
-
+	SingleChoice              string // 单选 00
+	MultiChoice               string // 多选 02
+	TrueFalse                 string // 判断 04
+	FillInBlank               string //填空 06
+	ShortAnswer               string // 简答 08
+	QuestionTypeComprehensive string // 综合应用题
+	QuestionTypeExercise      string // 综合演练题
 }{
-	SingleChoice: "00",
-	MultiChoice:  "02",
-	TrueFalse:    "04",
-	FillInBlank:  "06",
-	ShortAnswer:  "08",
+	SingleChoice:              "00",
+	MultiChoice:               "02",
+	TrueFalse:                 "04",
+	FillInBlank:               "06",
+	ShortAnswer:               "08",
+	QuestionTypeComprehensive: "10",
+	QuestionTypeExercise:      "12",
 }
 
 var PaperCategory = struct {

@@ -1856,8 +1856,6 @@ func ListReviewers(ctx context.Context, userID int64, registerID int64, name str
 	}
 	clauses = append(clauses, fmt.Sprintf("%s =ANY ($%d)", "u.id", len(args)+1))
 	args = append(args, register.ReviewerIds)
-	clauses = append(clauses, fmt.Sprintf("(%s = $%d OR %s = ANY($%d))", "u.creator", len(args)+1, "u.domain_id", len(args)+2))
-	args = append(args, userID, authority.AccessibleDomains)
 	s := `SELECT u.id , COALESCE( u.official_name,'') ,COALESCE(u.gender,''), COALESCE(u.mobile_phone,''), COALESCE(u.id_card_no,'') , COALESCE(u.id_card_type,'') FROM t_user u `
 	//构建查询顺序
 	//构建查询条件
