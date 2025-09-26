@@ -253,6 +253,14 @@ func canUpdateInvigilationInfo(ctx context.Context, examSessionID int64, examRoo
 	return
 }
 
+func afterCaret(s string) string {
+	parts := strings.SplitN(s, "^", 2)
+	if len(parts) < 2 {
+		return ""
+	}
+	return parts[1]
+}
+
 func invigilationList(ctx context.Context) {
 	z.Info("---->" + cmn.FncName())
 	q := cmn.GetCtxValue(ctx)
@@ -278,6 +286,17 @@ func invigilationList(ctx context.Context) {
 		q.RespErr()
 		return
 	}
+	var authority *auth_mgt.Authority
+	authority, q.Err = auth_mgt.GetUserAuthority(ctx)
+	if forceErr == "auth_mgt.GetUserAuthority" {
+		q.Err = fmt.Errorf("强制获取用户权限错误")
+	}
+	if q.Err != nil {
+		q.RespErr()
+		return
+	}
+
+	userRole := afterCaret(authority.Role.Domain)
 
 	conn := cmn.GetPgxConn()
 	method := strings.ToLower(q.R.Method)
@@ -356,7 +375,7 @@ func invigilationList(ctx context.Context) {
 		}
 
 		// 只查询自己要监考的考试
-		if userID > 0 {
+		if userID > 0 && userRole != "examSiteAdmin" {
 			filterStr = append(filterStr, fmt.Sprintf("$%d = ANY(invigilator_ids)", argIndex))
 			args = append(args, userID)
 			argIndex++
@@ -520,6 +539,19 @@ func invigilation(ctx context.Context) {
 		return
 	}
 
+	var authority *auth_mgt.Authority
+	z.Info("获取用户权限")
+	authority, q.Err = auth_mgt.GetUserAuthority(ctx)
+	if forceErr == "auth_mgt.GetUserAuthority" {
+		q.Err = fmt.Errorf("强制获取用户权限错误")
+	}
+	if q.Err != nil {
+		q.RespErr()
+		return
+	}
+
+	userRole := afterCaret(authority.Role.Domain)
+
 	conn := cmn.GetPgxConn()
 	method := strings.ToLower(q.R.Method)
 	switch method {
@@ -559,24 +591,26 @@ func invigilation(ctx context.Context) {
 		}
 
 		// 检查用户是否有权限获取监考信息
-		var hasAuth bool
-		hasAuth, q.Err = checkInvigilationAuthority(ctx, examSessionID, examRoomID, userID, "")
-		if forceErr == "checkInvigilationAuthority" {
-			q.Err = fmt.Errorf("强制检查用户是否有权限获取监考信息错误")
-		}
-		if q.Err != nil {
-			q.RespErr()
-			return
-		}
+		if userRole != "examSiteAdmin" {
+			var hasAuth bool
+			hasAuth, q.Err = checkInvigilationAuthority(ctx, examSessionID, examRoomID, userID, "")
+			if forceErr == "checkInvigilationAuthority" {
+				q.Err = fmt.Errorf("强制检查用户是否有权限获取监考信息错误")
+			}
+			if q.Err != nil {
+				q.RespErr()
+				return
+			}
 
-		if forceErr == "noAuth" {
-			hasAuth = false
-		}
-		if !hasAuth {
-			q.Err = fmt.Errorf("用户(%d)无法获取该场考试的监考信息: %d - %d", userID, examSessionID, examRoomID.Int64)
-			z.Error(q.Err.Error())
-			q.RespErr()
-			return
+			if forceErr == "noAuth" {
+				hasAuth = false
+			}
+			if !hasAuth {
+				q.Err = fmt.Errorf("用户(%d)无法获取该场考试的监考信息: %d - %d", userID, examSessionID, examRoomID.Int64)
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
 		}
 
 		// 先获取考场监考的基本信息
@@ -827,24 +861,26 @@ func invigilation(ctx context.Context) {
 		}
 
 		// 检查用户是否有权限获取监考信息
-		var hasAuth bool
-		hasAuth, q.Err = checkInvigilationAuthority(ctx, examSessionID, examRoomID, userID, "")
-		if forceErr == "checkInvigilationAuthority" {
-			q.Err = fmt.Errorf("强制检查用户是否有权限获取监考信息错误")
-		}
-		if q.Err != nil {
-			q.RespErr()
-			return
-		}
+		if userRole != "examSiteAdmin" {
+			var hasAuth bool
+			hasAuth, q.Err = checkInvigilationAuthority(ctx, examSessionID, examRoomID, userID, "")
+			if forceErr == "checkInvigilationAuthority" {
+				q.Err = fmt.Errorf("强制检查用户是否有权限获取监考信息错误")
+			}
+			if q.Err != nil {
+				q.RespErr()
+				return
+			}
 
-		if forceErr == "noAuth" {
-			hasAuth = false
-		}
-		if !hasAuth {
-			q.Err = fmt.Errorf("用户(%d)无法获取该场考试的监考信息: %d - %d", userID, examSessionID, examRoomID.Int64)
-			z.Error(q.Err.Error())
-			q.RespErr()
-			return
+			if forceErr == "noAuth" {
+				hasAuth = false
+			}
+			if !hasAuth {
+				q.Err = fmt.Errorf("用户(%d)无法获取该场考试的监考信息: %d - %d", userID, examSessionID, examRoomID.Int64)
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
 		}
 
 		// 00：考场记录，02：考生状态， 04：考生备注， 06：考生延时
