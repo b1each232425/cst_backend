@@ -431,12 +431,12 @@ RETURNING id`
 		}
 
 		//尝试获取试卷锁REDIS_LOCK_PREFIX
-		_, q.Err = cmn.TryLock(ctx, paperID, userID, REDIS_LOCK_PREFIX, REDIS_LOCK_EXPRIATION)
-		if q.Err != nil {
-			z.Error(q.Err.Error())
-			q.RespErr()
-			return
-		}
+		// _, q.Err = cmn.TryLock(ctx, paperID, userID, REDIS_LOCK_PREFIX, REDIS_LOCK_EXPRIATION)
+		// if q.Err != nil {
+		// 	z.Error(q.Err.Error())
+		// 	q.RespErr()
+		// 	return
+		// }
 
 		// 获取试卷状态和创建者信息
 		var status string
@@ -575,25 +575,31 @@ RETURNING id`
 			mode = "edit"
 		}
 
-		//var hasPermission bool
-		//// 如果是超级管理员，则直接拥有权限
-		//if role == "superAdmin" {
-		//	hasPermission = true
-		//} else {
-		//	hasPermission, q.Err = isPaperCreator(ctx, paperID, userID)
-		//	if q.Err != nil {
-		//		z.Error(q.Err.Error())
-		//		q.RespErr()
-		//		return
-		//	}
-		//}
-		//
-		//if !hasPermission {
-		//	q.Err = ErrWithoutPermission
-		//	z.Error(q.Err.Error())
-		//	q.RespErr()
-		//	return
-		//}
+		// 获取试卷状态和创建者信息
+		var creatorID int64
+		_, creatorID, q.Err = getPaperStatusAndCreator(ctx, paperID)
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+		
+		var hasPermission bool
+		// 如果是超级管理员，则直接拥有权限
+		if authority.Role.Priority.Int64 == 0 {
+			hasPermission = true
+		} else {
+			hasPermission = creatorID == userID
+		}
+
+		// 如果不是创建者，则返回无权限错误
+		if !hasPermission {
+			q.Err = fmt.Errorf("无权访问试卷[ID:%d], 当前用户[ID:%d]不是试卷创建者", paperID, userID)
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
 		switch mode {
 		case "edit":
 			// 获取数据库连接
@@ -2027,12 +2033,12 @@ ORDER BY p.update_time DESC, p.id DESC`)
 		}
 
 		//尝试获取试卷锁REDIS_LOCK_PREFIX
-		_, q.Err = cmn.TryLock(ctx, paperID, userID, REDIS_LOCK_PREFIX, REDIS_LOCK_EXPRIATION)
-		if q.Err != nil {
-			z.Error(q.Err.Error())
-			q.RespErr()
-			return
-		}
+		// _, q.Err = cmn.TryLock(ctx, paperID, userID, REDIS_LOCK_PREFIX, REDIS_LOCK_EXPRIATION)
+		// if q.Err != nil {
+		// 	z.Error(q.Err.Error())
+		// 	q.RespErr()
+		// 	return
+		// }
 
 		// 开启事务
 		var tx pgx.Tx
@@ -2240,15 +2246,15 @@ ORDER BY p.update_time DESC, p.id DESC`)
 		}
 
 		//尝试获取试卷锁REDIS_LOCK_PREFIX
-		q.Err = cmn.ReleaseLock(ctx, paperID, userID, REDIS_LOCK_PREFIX)
-		if forceError == "cmn.ReleaseLock" {
-			q.Err = errors.New(forceError)
-		}
-		if q.Err != nil {
-			z.Error(q.Err.Error())
-			q.RespErr()
-			return
-		}
+		// q.Err = cmn.ReleaseLock(ctx, paperID, userID, REDIS_LOCK_PREFIX)
+		// if forceError == "cmn.ReleaseLock" {
+		// 	q.Err = errors.New(forceError)
+		// }
+		// if q.Err != nil {
+		// 	z.Error(q.Err.Error())
+		// 	q.RespErr()
+		// 	return
+		// }
 
 		q.Msg.Status = 0
 		q.Msg.Msg = "success"

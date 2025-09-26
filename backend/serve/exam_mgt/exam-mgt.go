@@ -535,6 +535,7 @@ func GetExamSessions(ctx context.Context, domain string, examIDs ...int64) ([]cm
 					MarkMode:             null.NewString("01", true),
 					NameVisibilityIn:     null.NewBool(false, true),
 					ReviewerIds:          null.NewString("1,2", true),
+					CheckerIds:           null.NewString("1", true),
 				},
 			}, nil
 		case "bad-resp":
@@ -605,7 +606,7 @@ func GetExamSessions(ctx context.Context, domain string, examIDs ...int64) ([]cm
 				es.id, es.exam_id, es.paper_id, es.mark_method, es.period_mode,
 				es.start_time, es.end_time, es.duration, es.question_shuffled_mode,
 				es.mark_mode, es.name_visibility_in, es.session_num, es.late_entry_time,
-				es.early_submission_time, es.reviewer_ids,
+				es.early_submission_time, es.reviewer_ids,es.checker_ids,
 				p.name as paper_name, p.category as paper_category
 			FROM t_exam_session es
 			LEFT JOIN t_paper p ON es.paper_id = p.id
@@ -640,6 +641,7 @@ func GetExamSessions(ctx context.Context, domain string, examIDs ...int64) ([]cm
 				&es.LateEntryTime,
 				&es.EarlySubmissionTime,
 				&es.ReviewerIds,
+				&es.CheckerIds,
 				&es.PaperName,
 				&es.PaperCategory,
 			)
@@ -2027,9 +2029,9 @@ func exam(ctx context.Context) {
 					exam_id, session_num, paper_id, start_time, end_time, duration,
 					question_shuffled_mode, name_visibility_in, mark_method, mark_mode,
 					period_mode, status, creator, create_time, updated_by, update_time,
-					late_entry_time, early_submission_time, reviewer_ids
+					late_entry_time, early_submission_time, reviewer_ids,checker_ids
 				) VALUES (
-					$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19
+					$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19,$20
 				) RETURNING id
 			`,
 				ExamData.ExamInfo.ID.Int64,
@@ -2051,6 +2053,7 @@ func exam(ctx context.Context) {
 				examSession.LateEntryTime.Int64,
 				examSession.EarlySubmissionTime.Int64,
 				examSession.ReviewerIds,
+				examSession.CheckerIds,
 			).Scan(&sessionID)
 			if forceErr == "tx.QueryExamSession" {
 				q.Err = fmt.Errorf("强制查询错误")
@@ -2527,6 +2530,19 @@ func exam(ctx context.Context) {
 				q.RespErr()
 				return
 			}
+
+			//配置核分员
+			// var checkerIDs []int64
+			// checkerIDs, q.Err = convertToInt64Array(ctx, examSession.CheckerIds)
+			// if forceErr == "convertToInt64Array" {
+			// 	q.Err = fmt.Errorf("强制转换核分员信息错误")
+			// }
+			// if q.Err != nil {
+			// 	q.Err = fmt.Errorf("转换核分员ID失败：%v", q.Err)
+			// 	z.Error(q.Err.Error())
+			// 	q.RespErr()
+			// 	return
+			// }
 		}
 
 		var commandTag pgconn.CommandTag
@@ -3852,6 +3868,8 @@ func examStatus(ctx context.Context) {
 				return
 			}
 
+			//占位
+
 			q.Err = updateExamSessionStatus(ctx, tx, "16", userID, examIDs...)
 			if forceErr == "updateExamSessionStatus" {
 				q.Err = fmt.Errorf("强制更新考试场次状态错误")
@@ -4089,6 +4107,61 @@ func examStatus(ctx context.Context) {
 					q.RespErr()
 					return
 				}
+
+				// ===== 配置核分员 =====
+				// var checkerIDs []int64
+				// checkerIDs, q.Err = convertToInt64Array(ctx, examSession.CheckerIds)
+				// if forceErr == "convertToInt64Array" {
+				// 	q.Err = fmt.Errorf("强制转换核分员ID失败")
+				// }
+				// if q.Err != nil {
+				// 	q.Err = fmt.Errorf("转换核分员ID失败: %v", q.Err)
+				// 	q.RespErr()
+				// 	return
+				// }
+
+				// // 清旧数据
+				// _, q.Err = tx.Exec(ctx,
+				// 	`DELETE FROM t_exam_checker WHERE exam_session_id = $1`,
+				// 	examSession.ID.Int64)
+				// if q.Err != nil {
+				// 	z.Error("清旧核分员失败", zap.Error(q.Err))
+				// 	q.RespErr()
+				// 	return
+				// }
+
+				// // 批量插入新数据
+				// if len(checkerIDs) > 0 {
+				// 	valueStrings := make([]string, 0, len(checkerIDs))
+				// 	valueArgs := make([]interface{}, 0, len(checkerIDs)*4)
+				// 	argIdx := 1
+				// 	nowMilli := time.Now().UnixMilli()
+
+				// 	for _, id := range checkerIDs {
+				// 		valueStrings = append(valueStrings,
+				// 			fmt.Sprintf("($%d,$%d,$%d,$%d)", argIdx, argIdx+1, argIdx+2, argIdx+3))
+				// 		valueArgs = append(valueArgs,
+				// 			examSession.ID.Int64, // exam_session_id
+				// 			id,                   // checker_id
+				// 			userID,               // creator
+				// 			nowMilli,             // create_time
+				// 		)
+				// 		argIdx += 4
+				// 	}
+
+				// 	insertSQL := fmt.Sprintf(`
+				// 		INSERT INTO t_exam_session (exam_session_id, checker_id, creator, create_time)
+				// 		VALUES %s
+				// 		ON CONFLICT (exam_session_id, checker_id) DO NOTHING`,
+				// 		strings.Join(valueStrings, ","))
+
+				// 	_, q.Err = tx.Exec(ctx, insertSQL, valueArgs...)
+				// 	if q.Err != nil {
+				// 		z.Error("写入核分员失败", zap.Error(q.Err))
+				// 		q.RespErr()
+				// 		return
+				// 	}
+				// }
 			}
 
 			q.Err = updateExamSessionStatus(ctx, tx, "02", userID, examIDs...)
