@@ -7,49 +7,58 @@ import (
 	"w2w.io/null"
 )
 
+// 自定义组卷
 type InitialManualPaperResponse struct {
 	Paper  cmn.TPaper        `json:"paper"`
 	Groups []cmn.TPaperGroup `json:"paper_groups"`
 }
 
+// 删除试卷
 type DeletePapersRequest struct {
 	PaperIDs []int64 `json:"paper_ids" validate:"required,min=1,dive,gt=0"`
 }
 
+// 更新试卷
 type UpdateManualPaperRequest struct {
 	Actions []UpdateManualPaperAction `json:"actions" validate:"required,min=1"`
 }
 
+// 更新试卷的Action
 type UpdateManualPaperAction struct {
 	Action  string          `json:"action"`  // 如：add_group、delete_question、update_info等
 	Payload json.RawMessage `json:"payload"` // 动态解析，根据action而变
 }
 
+// 更新试卷的Action结果
 type ActionResult struct {
 	Action string `json:"action"`
 	Result any    `json:"result,omitempty"`
 }
 
+// 更新试卷的Response
 type UpdateManualPaperResponse struct {
 	QuestionIDMap map[string]int64 `json:"question_id_map"`
 	GroupIDMap    map[string]int64 `json:"group_id_map"`
 }
 
+// 添加题目
 type AddQuestionsRequest struct {
 	TempID         int64     `json:"temp_id" validate:"required"` // 客户端生成的唯一标识(如UUID)
 	GroupID        int64     `json:"group_id" validate:"omitempty"`
 	Order          int64     `json:"order" validate:"required,gt=0"`
-	Type           string    `json:"type" validate:"required,oneof=00 02 04 06 08"`
+	Type           string    `json:"type" validate:"required,oneof=00 02 04 06 08 10 12"`
 	BankQuestionID int64     `json:"bank_question_id" validate:"required,min=1"`
 	Score          float64   `json:"score" validate:"required,min=1"`
 	SubScore       []float64 `json:"sub_score" validate:"omitempty,dive,min=1"`
 }
 
+// 添加题组
 type AddQuestionGroupRequest struct {
 	Name  string `json:"name" validate:"required,min=1"`
 	Order int    `json:"order" validate:"required,min=1"`
 }
 
+// 更新题目
 type UpdatePaperQuestionRequest struct {
 	ID       int64     `json:"id" validate:"required,min=1"`
 	GroupID  int64     `json:"group_id" validate:"omitempty,min=1"`
@@ -57,6 +66,7 @@ type UpdatePaperQuestionRequest struct {
 	SubScore []float64 `json:"sub_score,omitempty" validate:"omitempty,dive,min=0.5"`
 }
 
+// 更新试卷基本信息
 type UpdatePaperBasicInfoRequest struct {
 	Name        string   `json:"name,omitempty" validate:"omitempty,min=2,max=50"`
 	Category    string   `json:"category,omitempty" validate:"omitempty,oneof=00 02"`
@@ -66,6 +76,7 @@ type UpdatePaperBasicInfoRequest struct {
 	Tags        []string `json:"tags,omitempty" validate:"omitempty,min=1,dive,min=1,max=20"`
 }
 
+// 更新题组
 type UpdateQuestionsGroupRequest struct {
 	ID   int64  `json:"id" validate:"min=1,required"`
 	Name string `json:"name" validate:"required"`
