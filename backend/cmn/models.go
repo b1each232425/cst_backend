@@ -2707,15 +2707,16 @@ type TExamSession struct {
 	LateEntryTime        null.Int       `json:"LateEntryTime,omitempty" db:"late_entry_time,false,bigint"`                          /* late_entry_time 考试开始后最晚能进入考场的时间，如考试开始后30分钟内可进入考场 */
 	EarlySubmissionTime  null.Int       `json:"EarlySubmissionTime,omitempty" db:"early_submission_time,false,bigint"`              /* early_submission_time 考试结束前x分钟可交卷 */
 	ReviewerIds          interface{}    `json:"ReviewerIds,omitempty" db:"reviewer_ids,false,bigint[]"`                             /* reviewer_ids 批阅员ID数组 */
-	BasicEval            null.String    `json:"BasicEval,omitempty" db:"basic_eval,false,character varying"`                        /* basic_eval 基本情况评估 00: 良好 02: 一般 04: 较差 */
-	Record               null.String    `json:"Record,omitempty" db:"record,false,character varying"`                               /* record 考试场次记录，可用于保存本考试场次中的异常情况记录 */
-	PaperName            null.String    `json:"PaperName,omitempty" db:"paper_name,false,character varying"`                        /* paper_name 试卷名，实际不做存储 */
-	PaperCategory        null.String    `json:"PaperCategory,omitempty" db:"paper_category,false,character varying"`                /* paper_category 试卷类型，实际不做存储 */
-	CreateTime           null.Int       `json:"CreateTime,omitempty" db:"create_time,false,bigint"`                                 /* create_time 创建时间 */
-	UpdateTime           null.Int       `json:"UpdateTime,omitempty" db:"update_time,false,bigint"`                                 /* update_time 更新时间 */
-	StartTime            null.Int       `json:"StartTime,omitempty" db:"start_time,false,bigint"`                                   /* start_time 考试开始时间 */
-	EndTime              null.Int       `json:"EndTime,omitempty" db:"end_time,false,bigint"`                                       /* end_time 考试结束时间 */
-	ActualEndTime        null.Int       `json:"ActualEndTime,omitempty" db:"actual_end_time,false,bigint"`                          /* actual_end_time 该场次的实际结束时间（因为有可能出现考生延长考试作答时间的情况） */
+	CheckerIds           interface{}    `json:"CheckerIds,omitempty" db:"checker_ids,false,bigint[]"`
+	BasicEval            null.String    `json:"BasicEval,omitempty" db:"basic_eval,false,character varying"`         /* basic_eval 基本情况评估 00: 良好 02: 一般 04: 较差 */
+	Record               null.String    `json:"Record,omitempty" db:"record,false,character varying"`                /* record 考试场次记录，可用于保存本考试场次中的异常情况记录 */
+	PaperName            null.String    `json:"PaperName,omitempty" db:"paper_name,false,character varying"`         /* paper_name 试卷名，实际不做存储 */
+	PaperCategory        null.String    `json:"PaperCategory,omitempty" db:"paper_category,false,character varying"` /* paper_category 试卷类型，实际不做存储 */
+	CreateTime           null.Int       `json:"CreateTime,omitempty" db:"create_time,false,bigint"`                  /* create_time 创建时间 */
+	UpdateTime           null.Int       `json:"UpdateTime,omitempty" db:"update_time,false,bigint"`                  /* update_time 更新时间 */
+	StartTime            null.Int       `json:"StartTime,omitempty" db:"start_time,false,bigint"`                    /* start_time 考试开始时间 */
+	EndTime              null.Int       `json:"EndTime,omitempty" db:"end_time,false,bigint"`                        /* end_time 考试结束时间 */
+	ActualEndTime        null.Int       `json:"ActualEndTime,omitempty" db:"actual_end_time,false,bigint"`           /* actual_end_time 该场次的实际结束时间（因为有可能出现考生延长考试作答时间的情况） */
 	Filter               `json:"-"`     // build DML where clause
 }
 
