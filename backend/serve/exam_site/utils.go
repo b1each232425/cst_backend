@@ -423,7 +423,7 @@ GROUP BY
 FROM t_exam_info
 	CROSS JOIN LATERAL jsonb_array_elements(t_exam_info.files) AS file
 	JOIN t_file ON t_file.id = file.value::int
-WHERE t_exam_info.id = %d
+WHERE jsonb_typeof(files) = 'array' AND  t_exam_info.id = %d
 GROUP BY
 	t_file.id`, recentExamID),
 				Table: "t_file",
@@ -469,8 +469,7 @@ FROM t_exam_session
 	JOIN t_exam_paper ON t_exam_paper.id = t_paper.exampaper_id
 	JOIN t_exam_paper_group ON t_exam_paper_group.exam_paper_id = t_exam_paper.id
 	JOIN t_exam_paper_question ON t_exam_paper_question.group_id = t_exam_paper_group.id
-WHERE t_exam_session.exam_id = %d
-			`, recentExamID),
+WHERE t_exam_session.exam_id = %d`, recentExamID),
 				Table: "t_exam_paper_question",
 			},
 
@@ -484,7 +483,9 @@ FROM t_exam_paper_question
 	JOIN t_exam_session ON t_exam_session.paper_id = t_paper.id
 	CROSS JOIN LATERAL jsonb_array_elements(t_exam_paper_question.files) AS file
 	JOIN t_file ON t_file.id = file.value::int
-WHERE t_exam_session.exam_id = %d`, recentExamID),
+WHERE jsonb_typeof(files) = 'array' AND  t_exam_session.exam_id = %d
+GROUP BY
+	t_file.id`, recentExamID),
 				Table: "t_file",
 			},
 
