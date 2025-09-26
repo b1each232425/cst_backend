@@ -88,7 +88,7 @@ func ListRegisterT(ctx context.Context, name string, course string, status strin
 	args = append(args, userID, authority.AccessibleDomains)
 
 	s := `
-	SELECT r.id, r.name , r.course , COALESCE((SELECT COUNT(*) FROM assessuser.t_exam_plan_student eps WHERE eps.register_id=r.id AND eps.status NOT IN ($1 ,$2 ,$3 ,$4)),0) , r.max_number , r.review_end_time , r.start_time , r.end_time , COALESCE(STRING_AGG(p.name, '、'),'') , r.status ,r.exam_plan_location
+	SELECT r.id, r.name , r.course , COALESCE((SELECT COUNT(*) FROM assessuser.t_exam_plan_student eps WHERE eps.register_id=r.id AND eps.status NOT IN ($1 ,$2 ,$3 ,$4) AND NOT EXISTS (SELECT 1 FROM assessuser.t_exam_student es WHERE es.exam_plan_student_id = eps.id)),0) , r.max_number , r.review_end_time , r.start_time , r.end_time , COALESCE(STRING_AGG(p.name, '、'),'') , r.status ,r.exam_plan_location
 	FROM assessuser.t_register_plan r  LEFT JOIN assessuser.t_register_practice rp ON rp.register_id=r.id AND rp.status=$5
 	LEFT JOIN  assessuser.t_practice p ON p.id=rp.practice_id
 		`
