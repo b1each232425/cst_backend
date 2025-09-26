@@ -3092,6 +3092,11 @@ func examSiteSyncInit(ctx context.Context) {
 
 			case <-ticker.C:
 
+				// 当触发了ticker后，先停止ticker，等本次操作完成后再重置ticker
+				// 这样做的目的是为了避免在本次操作还没有完成时，又触发了ticker，导致多次操作同时进行
+				// 从而引发不可预知的问题
+				ticker.Stop()
+
 				// 查询当前是否有尚未结束的考试或者临近开始的考试
 				// 如果有，则不进行同步操作
 				// 如果没有，则进行同步
@@ -3137,8 +3142,6 @@ func examSiteSyncInit(ctx context.Context) {
 					break
 				}
 
-				ticker.Stop()
-
 				switch syncStatus {
 
 				// 待推送
@@ -3166,9 +3169,9 @@ func examSiteSyncInit(ctx context.Context) {
 				if cmn.InDebugMode && q.Tag["pullDone"] != nil {
 					q.Tag["pullDone"].(chan int) <- 1
 				}
-
-				ticker.Reset(interval)
 			}
+
+			ticker.Reset(interval)
 
 			if !pullChanOK && !pushChanOK {
 
