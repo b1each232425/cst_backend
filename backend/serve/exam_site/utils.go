@@ -328,9 +328,12 @@ GROUP BY
 
 			// 考场数据
 			{
-				Sql: fmt.Sprintf(`SELECT t_exam_room.* FROM t_exam_room
-JOIN t_exam_site ON t_exam_site.id = t_exam_room.exam_site
-WHERE t_exam_site.sys_user = %d`, sysUser),
+				Sql: fmt.Sprintf(`SELECT t_exam_room.* 
+FROM t_exam_room
+	JOIN t_exam_site ON t_exam_site.id = t_exam_room.exam_site
+WHERE t_exam_site.sys_user = %d
+GROUP BY
+	t_exam_room.id`, sysUser),
 				Table: "t_exam_room",
 			},
 
@@ -339,8 +342,9 @@ WHERE t_exam_site.sys_user = %d`, sysUser),
 				Sql: fmt.Sprintf(`SELECT t_user.* 
 FROM t_user 
 	JOIN t_exam_site ON t_exam_site.admin = t_user.id 
-WHERE t_exam_site.sys_user = %d`,
-					sysUser),
+WHERE t_exam_site.sys_user = %d
+GROUP BY
+	t_user.id`, sysUser),
 				Table: "t_user",
 			},
 			{
@@ -348,7 +352,8 @@ WHERE t_exam_site.sys_user = %d`,
 FROM t_user_domain
 	JOIN t_exam_site ON t_exam_site.admin = t_user_domain.sys_user
 WHERE t_exam_site.sys_user = %d
-				`, sysUser),
+GROUP BY
+	t_user_domain.id`, sysUser),
 				Table: "t_user_domain",
 			},
 
@@ -434,7 +439,9 @@ GROUP BY
 				Sql: fmt.Sprintf(`SELECT t_paper.* 
 FROM t_exam_session
 	JOIN t_paper ON t_paper.id = t_exam_session.paper_id
-WHERE t_exam_session.exam_id = %d`, recentExamID),
+WHERE t_exam_session.exam_id = %d
+GROUP BY
+	t_paper.id`, recentExamID),
 				Table: "t_paper",
 			},
 
@@ -445,7 +452,8 @@ FROM t_exam_session
 	JOIN t_paper ON t_paper.id = t_exam_session.paper_id
 	JOIN t_exam_paper ON t_exam_paper.id = t_paper.exampaper_id
 WHERE t_exam_session.exam_id = %d
-				`, recentExamID),
+GROUP BY
+	t_exam_paper.id`, recentExamID),
 				Table: "t_exam_paper",
 			},
 
@@ -457,7 +465,8 @@ FROM t_exam_session
 	JOIN t_exam_paper ON t_exam_paper.id = t_paper.exampaper_id
 	JOIN t_exam_paper_group ON t_exam_paper_group.exam_paper_id = t_exam_paper.id
 WHERE t_exam_session.exam_id = %d
-			`, recentExamID),
+GROUP BY
+	t_exam_paper_group.id`, recentExamID),
 				Table: "t_exam_paper_group",
 			},
 
@@ -469,7 +478,9 @@ FROM t_exam_session
 	JOIN t_exam_paper ON t_exam_paper.id = t_paper.exampaper_id
 	JOIN t_exam_paper_group ON t_exam_paper_group.exam_paper_id = t_exam_paper.id
 	JOIN t_exam_paper_question ON t_exam_paper_question.group_id = t_exam_paper_group.id
-WHERE t_exam_session.exam_id = %d`, recentExamID),
+WHERE t_exam_session.exam_id = %d
+GROUP BY 
+	t_exam_paper_question.id`, recentExamID),
 				Table: "t_exam_paper_question",
 			},
 
@@ -496,7 +507,9 @@ FROM t_examinee
 	JOIN t_exam_room ON t_exam_room.id = t_examinee.exam_room
 	JOIN t_exam_site ON t_exam_site.id = t_exam_room.exam_site
 	JOIN t_exam_session ON t_exam_session.exam_id = %d AND t_exam_session.id = t_examinee.exam_session_id
-WHERE t_exam_site.sys_user = %d`, recentExamID, sysUser),
+WHERE t_exam_site.sys_user = %d
+GROUP BY
+	t_examinee.id`, recentExamID, sysUser),
 				Table: "t_examinee",
 			},
 
@@ -509,7 +522,8 @@ FROM t_student_answers
 	JOIN t_exam_site ON t_exam_site.id = t_exam_room.exam_site
 	JOIN t_exam_session ON t_exam_session.exam_id = %d AND t_exam_session.id = t_examinee.exam_session_id
 WHERE t_exam_site.sys_user = %d
-				`, recentExamID, sysUser),
+GROUP BY
+	t_student_answers.id`, recentExamID, sysUser),
 				Table: "t_student_answers",
 			},
 
@@ -523,7 +537,9 @@ FROM t_invigilation
 	JOIN t_exam_site ON t_exam_site.id = t_exam_room.exam_site
 	JOIN t_exam_session ON t_exam_session.id = t_invigilation.exam_session_id
 	JOIN t_exam_info ON t_exam_info.id = %d AND t_exam_info.id = t_exam_session.exam_id
-WHERE t_exam_site.sys_user = %d`, recentExamID, sysUser),
+WHERE t_exam_site.sys_user = %d
+GROUP BY
+	t_invigilation.id`, recentExamID, sysUser),
 				Table: "t_invigilation",
 			},
 
@@ -535,7 +551,9 @@ FROM t_exam_record
 	JOIN t_exam_site ON t_exam_site.id = t_exam_room.exam_site
 	JOIN t_exam_session ON t_exam_session.id = t_exam_record.exam_session
 	JOIN t_exam_info ON t_exam_info.id = %d AND t_exam_info.id = t_exam_session.exam_id
-WHERE t_exam_site.sys_user = %d`, recentExamID, sysUser),
+WHERE t_exam_site.sys_user = %d
+GROUP BY
+	t_exam_record.id`, recentExamID, sysUser),
 				Table: "t_exam_record",
 			},
 
