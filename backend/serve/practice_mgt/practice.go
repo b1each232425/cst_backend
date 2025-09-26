@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/jmoiron/sqlx"
+	"github.com/lib/pq"
 	"go.uber.org/zap"
 	"io"
 	"strconv"
@@ -497,7 +498,7 @@ func practiceStudentListH(ctx context.Context) {
 				return
 			}
 			s1 := `SELECT id, account,official_name,id_card_no,mobile_phone FROM t_user WHERE id IN (?) AND (creator= ? OR domain_id = ANY(?) )`
-			query, args, err := sqlx.In(s1, tResult, userID, authority.AccessibleDomains)
+			query, args, err := sqlx.In(s1, tResult, userID, pq.Array(authority.AccessibleDomains))
 			if forceErr == "sqlx-error" {
 				err = fmt.Errorf("准备数据库语句失败")
 			}
