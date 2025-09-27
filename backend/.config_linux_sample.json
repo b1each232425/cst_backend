@@ -94,7 +94,7 @@
   "chatModel": {
     "endPoint": "https://ark.cn-beijing.volces.com/api/v3/chat/completions",
     "model": "doubao-seed-1-6-thinking-250715",
-    "apiKey": "135aaf7e-00fa-4306-8d2a-0f6f4d14ce52",
+    "apiKey": "4b6552da-8667-45dd-85e6-18d3b19b75c4",
     "maxConcurrency": 50,
     "maxTokens": 16,
     "tokenizer": {
