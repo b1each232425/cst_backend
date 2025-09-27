@@ -15,94 +15,13 @@ import (
 	"w2w.io/null"
 )
 
-type Exam struct {
-	Id           int64         `json:"id"`
-	Name         string        `json:"name"`
-	Type         string        `json:"type"`
-	Class        string        `json:"class"`
-	ExamSessions []ExamSession `json:"exam_sessions"`
-}
-
-type ExamSession struct {
-	Id                   int64  `json:"id"`
-	Name                 string `json:"name"`
-	PaperName            string `json:"paper_name"`
-	ExamSessionType      string `json:"session_type"`
-	MarkMethod           string `json:"mark_method"`
-	MarkMode             string `json:"mark_mode"`
-	RespondentCount      int    `json:"respondent_count"`
-	UnMarkedStudentCount int    `json:"unmarked_student_count"`
-	StartTime            int64  `json:"start_time"`
-	EndTime              int64  `json:"end_time"`
-	Status               string `json:"status"`
-	MarkStatus           string `json:"mark_status"`
-}
-
-type Practice struct {
-	ID                   int64  `json:"id"`                     //练习id
-	Name                 string `json:"name"`                   // 练习名称
-	MarkMode             string `json:"mark_mode"`              // 批阅方式
-	Type                 string `json:"type"`                   // 练习类型
-	RespondentCount      int    `json:"respondent_count"`       // 作答人数
-	UnMarkedStudentCount int    `json:"unmarked_student_count"` // 未批阅人数
-}
-
-type QueryCondition struct {
-	TeacherID                 int64 `json:"teacher_id" validate:"required,gt=0"`
-	ExamSessionID             int64 `json:"exam_session_id" validate:"gte=0"`
-	ExamineeID                int64 `json:"examinee_id" validate:"gte=0"`
-	PracticeID                int64 `json:"practice_id" validate:"gte=0"`
-	PracticeSubmissionID      int64 `json:"practice_submission_id" validate:"gte=0"`
-	PracticeWrongSubmissionID int64 `json:"practice_wrong_submission_id"`
-	QuestionID                int64 `json:"question_id"`
-}
-
-type MarkerInfo struct {
-	MarkerID           int64           `json:"marker_id"`
-	MarkInfos          []cmn.TMarkInfo `json:"mark_infos"`
-	MarkMode           string          `json:"mark_mode"` // 00：不需要手动批改  02：全卷多评 04：试卷分配 06：题组专评 08：题目分配 10：单人（人工）批改 12：批改单个练习学生 14：批改练习错题
-	MarkMethod         string          `json:"mark_method"`
-	MarkedStudentNames []string        `json:"marked_student_names"`
-}
-
-type QuestionSet struct {
-	cmn.TExamPaperGroup
-	Score     float64                   `json:"Score"`     // 题组分数
-	Questions []*cmn.TExamPaperQuestion `json:"Questions"` // 题目
-}
-
-// QuestionDetails 题目
-//type QuestionDetails struct {
-//	ID               int64              `json:"id"`
-//	Analyze          string             `json:"analyze"`
-//	MarkRole         string             `json:"mark_role"`
-//	StandardAnswers  []*StandardAnswer  `json:"standard_answers"`
-//	ObjectiveAnswers []string           `json:"objective_answers"`
-//	Details          []*QuestionDetails `json:"details"`
-//	OrderNum         int                `json:"order_num"`
-//	Type             string             `json:"type"` // 00:单选题  02:多选题 04:判断题 06:填空题 08:简答题 10:编程题
-//	Score            float64            `json:"score"`
-//}
-
-// SubjectiveAnswer 主观题答案结构
-type SubjectiveAnswer struct {
-	Index             int      `json:"index"`              // 答案索引
-	Answer            string   `json:"answer"`             // 答案
-	AlternativeAnswer []string `json:"alternative_answer"` // 备选答案
-	Score             float64  `json:"score"`              // 分数
-	GradingRule       string   `json:"grading_rule"`       // 评分规则
-}
-
-type StudentInfo struct {
-	OfficialName         null.String `json:"OfficialName"`
-	SerialNumber         null.Int    `json:"SerialNumber"`
-	ExamineeID           null.Int    `json:"ExamineeID"`
-	PracticeSubmissionID null.Int    `json:"PracticeSubmissionID"`
-}
-
 // 获取考试列表 管理员查询全部列表，教师查询与其有关的考试列表
 func QueryExamList(ctx context.Context, req QueryMarkingListReq) ([]Exam, int, error) {
 	forceErr, _ := ctx.Value(ForceErrKey).(string)
+	if forceErr == "QueryExamList" {
+		return nil, -1, ForceErr
+	}
+
 	if err := cmn.Validate(req); err != nil {
 		return nil, -1, fmt.Errorf("无效的 query cond: %v", err)
 	}
@@ -148,7 +67,10 @@ func QueryExamList(ctx context.Context, req QueryMarkingListReq) ([]Exam, int, e
 
 	pgxConn := cmn.GetPgxConn()
 	err := pgxConn.QueryRow(ctx, getExamCountQuery, countArgs...).Scan(&rowCount)
-	if err != nil || forceErr == "QueryExamList-pgxConn.QueryRow" {
+	if forceErr == "getExamCountQuery" {
+		err = ForceErr
+	}
+	if err != nil {
 		return nil, -1, fmt.Errorf("获取考试列表总数失败: %v", err)
 	}
 
@@ -200,7 +122,6 @@ func QueryExamList(ctx context.Context, req QueryMarkingListReq) ([]Exam, int, e
 
 	if req.ExamName != "" {
 		examWhereClause = fmt.Sprintf(" AND ei.name ILIKE $%d ", argIdx)
-		//whereClause = append(whereClause, fmt.Sprintf(" AND e.name ILIKE $%d ", argIdx))
 		args = append(args, "%"+req.ExamName+"%")
 		argIdx++
 	}
@@ -222,7 +143,10 @@ func QueryExamList(ctx context.Context, req QueryMarkingListReq) ([]Exam, int, e
 	examListQuery = fmt.Sprintf(examListQuery, examWhereClause, strings.Join(whereClause, " "))
 
 	rows, err := pgxConn.Query(ctx, examListQuery, args...)
-	if err != nil || forceErr == "QueryExamList-pgxConn.Query" {
+	if forceErr == "examListQuery" {
+		err = ForceErr
+	}
+	if err != nil {
 		return nil, -1, fmt.Errorf("获取考试列表 sql 失败: %v", err)
 	}
 	defer rows.Close()
@@ -264,7 +188,10 @@ func QueryExamList(ctx context.Context, req QueryMarkingListReq) ([]Exam, int, e
 			//&totalUnmarkedStudentCount,
 			&markedStudentCount,
 		)
-		if err != nil || forceErr == "QueryExamList-rows.Scan" {
+		if forceErr == "rows.Scan" {
+			err = ForceErr
+		}
+		if err != nil {
 			return nil, -1, fmt.Errorf("从 row 中获取值失败: %v", err)
 		}
 
@@ -282,7 +209,6 @@ func QueryExamList(ctx context.Context, req QueryMarkingListReq) ([]Exam, int, e
 		}
 
 		// 待批改数的计算
-		// TODO
 		unMarkedStudentCount := 0
 
 		if markedStudentCount.Int64 == -1 { // TODO???
@@ -314,25 +240,9 @@ func QueryExamList(ctx context.Context, req QueryMarkingListReq) ([]Exam, int, e
 				}
 			}
 
-			// 需要相减的原因: v_exam_teacher_marked_count 是根据 t_mark 的, 符合实际
+			// 需要相减得到未批改人数的原因: v_exam_teacher_marked_count 是根据 t_mark 的, 符合实际
 			unMarkedStudentCount = int(math.Max(float64(totalCount-markedStudentCount.Int64), 0))
 		}
-
-		//if !req.User.IsAdmin && session.MarkMode.String == "04" {
-		//	// 非管理员下的试卷分配模式
-		//	var examineeIDs []int64
-		//	if err = json.Unmarshal(markExamineeIdsJson, &examineeIDs); err != nil {
-		//		return nil, -1, fmt.Errorf("解析 markExamineeIdsJson 失败: %v", err)
-		//	}
-		//
-		//	unMarkedStudentCount = len(examineeIDs) - int(markedStudentCount.Int64)
-		//} else if req.User.IsAdmin {
-		//	unMarkedStudentCount = int(totalUnmarkedStudentCount.Int64)
-		//} else {
-		//	unMarkedStudentCount = int(respondentCount.Int64 - markedStudentCount.Int64)
-		//}
-
-		//m.l.Info("----------->..", session.ID.Int64, respondentCount.Int64, markedStudentCount.Int64, unMarkedStudentCount)
 
 		if session.ID.Valid {
 			s := &ExamSession{
@@ -350,10 +260,12 @@ func QueryExamList(ctx context.Context, req QueryMarkingListReq) ([]Exam, int, e
 			}
 			e.ExamSessions = append(e.ExamSessions, *s)
 		}
-
-		//examList = append(examList, exam)
 	}
-	if err = rows.Err(); err != nil {
+	err = rows.Err()
+	if forceErr == "rows.Err" {
+		err = ForceErr
+	}
+	if err != nil {
 		return nil, -1, fmt.Errorf("行遍历失败: %v", err)
 	}
 
@@ -369,8 +281,12 @@ func QueryExamList(ctx context.Context, req QueryMarkingListReq) ([]Exam, int, e
 // 获取练习列表 管理员查询全部列表，教师查询与其有关的练习列表
 func QueryPracticeList(ctx context.Context, req QueryMarkingListReq) ([]Practice, int, error) {
 	forceErr, _ := ctx.Value(ForceErrKey).(string)
+	if forceErr == "QueryPracticeList" {
+		return nil, -1, ForceErr
+	}
+
 	if err := cmn.Validate(req); err != nil {
-		return nil, -1, fmt.Errorf("无效的 query condition: %v", err)
+		return nil, -1, fmt.Errorf("无效的 query cond: %v", err)
 	}
 
 	teacherID := req.User.ID
@@ -404,7 +320,10 @@ func QueryPracticeList(ctx context.Context, req QueryMarkingListReq) ([]Practice
 
 	pgxConn := cmn.GetPgxConn()
 	err := pgxConn.QueryRow(ctx, rowCountQuery, countArgs...).Scan(&rowCount)
-	if err != nil || forceErr == "QueryPracticeList-pgxConn.QueryRow" {
+	if forceErr == "rowCountQuery" {
+		err = ForceErr
+	}
+	if err != nil {
 		return nil, -1, fmt.Errorf("查询练习列表失败: %v", err)
 	}
 
@@ -451,7 +370,10 @@ func QueryPracticeList(ctx context.Context, req QueryMarkingListReq) ([]Practice
 	listQuery = fmt.Sprintf(listQuery, strings.Join(whereClause, " "))
 
 	rows, err := pgxConn.Query(ctx, listQuery, args...)
-	if err != nil || forceErr == "QueryPracticeList-pgxConn.Query" {
+	if forceErr == "listQuery" {
+		err = ForceErr
+	}
+	if err != nil {
 		return nil, -1, fmt.Errorf("获取所有练习数目 sql 失败: %v", err)
 	}
 	defer rows.Close()
@@ -459,10 +381,15 @@ func QueryPracticeList(ctx context.Context, req QueryMarkingListReq) ([]Practice
 	practices := make([]Practice, 0, req.Limit)
 
 	for rows.Next() {
-		var p Practice
-		var row cmn.TPractice
+		var (
+			p   Practice
+			row cmn.TPractice
+		)
 		err = rows.Scan(&row.ID, &row.Name, &row.CorrectMode, &row.Type, &p.RespondentCount, &p.UnMarkedStudentCount)
-		if err != nil || forceErr == "QueryPracticeList-rows.Scan" {
+		if forceErr == "rows.Scan" {
+			err = ForceErr
+		}
+		if err != nil {
 			return nil, -1, fmt.Errorf("扫描解析练习数据失败: %v", err)
 		}
 
@@ -473,7 +400,11 @@ func QueryPracticeList(ctx context.Context, req QueryMarkingListReq) ([]Practice
 
 		practices = append(practices, p)
 	}
-	if err = rows.Err(); err != nil {
+	err = rows.Err()
+	if forceErr == "rows.Err" {
+		err = ForceErr
+	}
+	if err != nil {
 		return nil, -1, fmt.Errorf("行遍历错误: %v", err)
 	}
 
@@ -481,10 +412,10 @@ func QueryPracticeList(ctx context.Context, req QueryMarkingListReq) ([]Practice
 }
 
 // 获取所有批改员的阅卷结果
-func QueryMarkingResults(ctx context.Context, cond QueryCondition) ([]cmn.TMark, error) {
+func QuerySubjectiveQuestionsMarkingResults(ctx context.Context, cond QueryCondition) ([]cmn.TMark, error) {
 	forceErr, _ := ctx.Value(ForceErrKey).(string)
-	if cond.TeacherID <= 0 {
-		return nil, errors.New("无效的请求参数，必须包含 教师ID")
+	if forceErr == "QuerySubjectiveQuestionsMarkingResults" {
+		return nil, ForceErr
 	}
 
 	if cond.ExamSessionID <= 0 && cond.PracticeID <= 0 {
@@ -499,11 +430,7 @@ func QueryMarkingResults(ctx context.Context, cond QueryCondition) ([]cmn.TMark,
 		whereClause []string
 		args        []interface{}
 	)
-	//var argIndex = 2
-	var argIndex = 1
-
-	// 获取当前教师批阅的所有阅卷结果
-	//args = append(args, cond.TeacherID)
+	argIndex := 1
 
 	if cond.ExamSessionID > 0 {
 		// 获取考试场次下的阅卷结果
@@ -548,7 +475,10 @@ func QueryMarkingResults(ctx context.Context, cond QueryCondition) ([]cmn.TMark,
 	getMarkingResultQuery = fmt.Sprintf(getMarkingResultQuery, strings.Join(whereClause, " "))
 
 	rows, err := pgxConn.Query(ctx, getMarkingResultQuery, args...)
-	if err != nil || forceErr == "QueryMarkingResults-pgxConn.Query" {
+	if forceErr == "getMarkingResultQuery" {
+		err = ForceErr
+	}
+	if err != nil {
 		return nil, fmt.Errorf("获取批改结果 sql 失败: %v", err)
 	}
 	defer rows.Close()
@@ -558,7 +488,10 @@ func QueryMarkingResults(ctx context.Context, cond QueryCondition) ([]cmn.TMark,
 	for rows.Next() {
 		var mr cmn.TMark
 		err = rows.Scan(&mr.TeacherID, &mr.ExamineeID, &mr.PracticeSubmissionID, &mr.QuestionID, &mr.MarkDetails, &mr.Score)
-		if err != nil || forceErr == "QueryMarkingResults-rows.Scan" {
+		if forceErr == "rows.Scan" {
+			err = ForceErr
+		}
+		if err != nil {
 			return nil, fmt.Errorf("从 row 读取结果失败: %v", err)
 		}
 
@@ -570,7 +503,11 @@ func QueryMarkingResults(ctx context.Context, cond QueryCondition) ([]cmn.TMark,
 
 		markingResults = append(markingResults, mr)
 	}
-	if err = rows.Err(); err != nil {
+	err = rows.Err()
+	if forceErr == "rows.Err" {
+		err = ForceErr
+	}
+	if err != nil {
 		return nil, fmt.Errorf("行遍历错误: %v", err)
 	}
 
@@ -580,6 +517,9 @@ func QueryMarkingResults(ctx context.Context, cond QueryCondition) ([]cmn.TMark,
 // 查询阅卷配置信息
 func QueryMarkerInfo(ctx context.Context, cond QueryCondition) (MarkerInfo, error) {
 	forceErr, _ := ctx.Value(ForceErrKey).(string)
+	if forceErr == "QueryMarkerInfo" {
+		return MarkerInfo{}, ForceErr
+	}
 
 	// 参数校验
 	if cond.ExamSessionID <= 0 && cond.PracticeID <= 0 {
@@ -645,7 +585,10 @@ func QueryMarkerInfo(ctx context.Context, cond QueryCondition) (MarkerInfo, erro
 		}
 
 		err = rows.Scan(scanVars...)
-		if err != nil || forceErr == "QueryMarkerInfo-rows.Scan" {
+		if forceErr == "rows.Scan" {
+			err = ForceErr
+		}
+		if err != nil {
 			return MarkerInfo{}, fmt.Errorf("从 row 读取结果失败: %v", err)
 		}
 
@@ -654,13 +597,16 @@ func QueryMarkerInfo(ctx context.Context, cond QueryCondition) (MarkerInfo, erro
 			markerInfo.MarkedStudentNames = append(markerInfo.MarkedStudentNames, name.String) // TODO 错误？学生的名字不是老师的名字
 		}
 	}
-	if err = rows.Err(); err != nil {
+	err = rows.Err()
+	if forceErr == "rows.Err" {
+		err = ForceErr
+	}
+	if err != nil {
 		return MarkerInfo{}, fmt.Errorf("行遍历失败: %v", err)
 	}
 
 	markerInfo.MarkMode = markMode.String
 	markerInfo.MarkMethod = markMethod.String
-	// TODO  MarkerID
 
 	return markerInfo, nil
 }
@@ -668,6 +614,9 @@ func QueryMarkerInfo(ctx context.Context, cond QueryCondition) (MarkerInfo, erro
 // 查询学生的答案  questionType: "00": 客观题， "02"：主观题
 func QueryStudentAnswers(ctx context.Context, tx pgx.Tx, questionType string, cond QueryCondition, markerInfo MarkerInfo) ([]cmn.TVStudentAnswerQuestion, error) {
 	forceErr, _ := ctx.Value(ForceErrKey).(string)
+	if forceErr == "QueryStudentAnswers" {
+		return nil, ForceErr
+	}
 
 	if questionType != "00" && questionType != "02" {
 		return nil, fmt.Errorf("无效的题目类型: %v", questionType)
@@ -761,7 +710,10 @@ func QueryStudentAnswers(ctx context.Context, tx pgx.Tx, questionType string, co
 		rows, err = pgxConn.Query(ctx, query, args...)
 	}
 
-	if err != nil || forceErr == "QueryStudentAnswers-pgxConn.Query" {
+	if forceErr == "query" {
+		err = ForceErr
+	}
+	if err != nil {
 		return nil, fmt.Errorf("获取学生答案 sql 错误: %v", err)
 	}
 	defer rows.Close()
@@ -784,13 +736,20 @@ func QueryStudentAnswers(ctx context.Context, tx pgx.Tx, questionType string, co
 			&sa.ExamineeID,
 			&sa.PracticeSubmissionID,
 		)
-		if err != nil || forceErr == "rows.Scan" {
+		if forceErr == "rows.Scan" {
+			err = ForceErr
+		}
+		if err != nil {
 			return nil, fmt.Errorf("从 row 中读取结果失败: %v", err)
 		}
 
 		studentAnswers = append(studentAnswers, sa)
 	}
-	if err = rows.Err(); err != nil {
+	err = rows.Err()
+	if forceErr == "rows.Err" {
+		err = ForceErr
+	}
+	if err != nil {
 		return nil, fmt.Errorf("行遍历失败: %v", err)
 	}
 
@@ -865,7 +824,10 @@ func QuerySubjectiveQuestions(ctx context.Context, tx pgx.Tx, cond QueryConditio
 		rows, err = pgxConn.Query(ctx, getQuestionsQuery, args...)
 	}
 
-	if err != nil || forceErr == "QuerySubjectiveQuestions-pgxConn.Query" {
+	if forceErr == "getQuestionsQuery" {
+		err = ForceErr
+	}
+	if err != nil {
 		return nil, fmt.Errorf("获取主观题 sql 失败: %v", err)
 	}
 	defer rows.Close()
@@ -901,7 +863,11 @@ func QuerySubjectiveQuestions(ctx context.Context, tx pgx.Tx, cond QueryConditio
 		set.Score += q.Score.Float64
 		set.Questions = append(set.Questions, &q)
 	}
-	if err = rows.Err(); err != nil {
+	err = rows.Err()
+	if forceErr == "rows.Err" {
+		err = ForceErr
+	}
+	if err != nil {
 		return nil, fmt.Errorf("行遍历: %v", err)
 	}
 
@@ -914,52 +880,58 @@ func QuerySubjectiveQuestions(ctx context.Context, tx pgx.Tx, cond QueryConditio
 	return questionSets, nil
 }
 
-func QueryExamineeInfo(ctx context.Context, cond QueryCondition) ([]cmn.TVExamineeInfo, error) {
-	forceErr, _ := ctx.Value(ForceErrKey).(string)
-	if err := cmn.Validate(cond); err != nil {
-		return nil, fmt.Errorf("无效的 query condition: %v", err)
-	}
+//func QueryExamineeInfo(ctx context.Context, cond QueryCondition) ([]cmn.TVExamineeInfo, error) {
+//	forceErr, _ := ctx.Value(ForceErrKey).(string)
+//	if err := cmn.Validate(cond); err != nil {
+//		return nil, fmt.Errorf("无效的 query condition: %v", err)
+//	}
+//
+//	query := `	SELECT official_name, id, serial_number
+//				FROM v_examinee_info
+//				WHERE exam_session_id = $1 AND examinee_status = '10' %s -- 动态拼接where条件
+//				ORDER BY serial_number`
+//
+//	var args []interface{}
+//	args = append(args, cond.ExamSessionID)
+//
+//	if cond.ExamineeID > 0 {
+//		query = fmt.Sprintf(query, " AND id = $2 ")
+//		args = append(args, cond.ExamineeID)
+//	} else {
+//		query = fmt.Sprintf(query, "")
+//	}
+//
+//	pgxConn := cmn.GetPgxConn()
+//	rows, err := pgxConn.Query(ctx, query, args...)
+//	if err != nil || forceErr == "QueryExamineeInfo-pgxConn.Query" {
+//		return nil, fmt.Errorf("查询考生信息 sql 失败: %v", err)
+//	}
+//	defer rows.Close()
+//
+//	examineeInfos := make([]cmn.TVExamineeInfo, 0, 10)
+//
+//	for rows.Next() {
+//		var ei cmn.TVExamineeInfo
+//		err = rows.Scan(&ei.OfficialName, &ei.ID, &ei.SerialNumber)
+//		if err != nil || forceErr == "QueryExamineeInfo-rows.Scan" {
+//			return nil, fmt.Errorf("从 row 中读取结果失败: %v", err)
+//		}
+//		examineeInfos = append(examineeInfos, ei)
+//	}
+//	if err = rows.Err(); err != nil {
+//		return nil, fmt.Errorf("行迭代错误: %v", err)
+//	}
+//
+//	return examineeInfos, nil
+//}
 
-	query := `	SELECT official_name, id, serial_number
-				FROM v_examinee_info
-				WHERE exam_session_id = $1 AND examinee_status = '10' %s -- 动态拼接where条件
-				ORDER BY serial_number`
-
-	var args []interface{}
-	args = append(args, cond.ExamSessionID)
-
-	if cond.ExamineeID > 0 {
-		query = fmt.Sprintf(query, " AND id = $2 ")
-		args = append(args, cond.ExamineeID)
-	} else {
-		query = fmt.Sprintf(query, "")
-	}
-
-	pgxConn := cmn.GetPgxConn()
-	rows, err := pgxConn.Query(ctx, query, args...)
-	if err != nil || forceErr == "QueryExamineeInfo-pgxConn.Query" {
-		return nil, fmt.Errorf("查询考生信息 sql 失败: %v", err)
-	}
-	defer rows.Close()
-
-	examineeInfos := make([]cmn.TVExamineeInfo, 0, 10)
-
-	for rows.Next() {
-		var ei cmn.TVExamineeInfo
-		err = rows.Scan(&ei.OfficialName, &ei.ID, &ei.SerialNumber)
-		if err != nil || forceErr == "QueryExamineeInfo-rows.Scan" {
-			return nil, fmt.Errorf("从 row 中读取结果失败: %v", err)
-		}
-		examineeInfos = append(examineeInfos, ei)
-	}
-	if err = rows.Err(); err != nil {
-		return nil, fmt.Errorf("行迭代错误: %v", err)
-	}
-
-	return examineeInfos, nil
-}
-
+// 查询考试场次的状态
 func QueryExamSessionStatus(ctx context.Context, tx pgx.Tx, examSessionID int64) (string, error) {
+	forceErr, _ := ctx.Value(ForceErrKey).(string)
+	if forceErr == "QueryExamSessionStatus" {
+		return "", ForceErr
+	}
+
 	queryExamSessionSql := `SELECT status FROM t_exam_session WHERE id = $1`
 
 	var (
@@ -974,6 +946,9 @@ func QueryExamSessionStatus(ctx context.Context, tx pgx.Tx, examSessionID int64)
 		err = tx.QueryRow(ctx, queryExamSessionSql, examSessionID).Scan(&examSessionStatus)
 	}
 
+	if forceErr == "queryExamSessionSql" {
+		err = ForceErr
+	}
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return "", fmt.Errorf("查询不到考试场次 %d : %v", examSessionID, err)
@@ -985,12 +960,11 @@ func QueryExamSessionStatus(ctx context.Context, tx pgx.Tx, examSessionID int64)
 	return examSessionStatus, nil
 }
 
+// 查询考生信息
 func QueryStudentInfos(ctx context.Context, cond QueryCondition, markerInfo MarkerInfo) ([]StudentInfo, error) {
 	forceErr, _ := ctx.Value(ForceErrKey).(string)
-	if cond.TeacherID <= 0 {
-		err := errors.New("无效的请求参数，必须包含 教师ID")
-		z.Error(err.Error())
-		return nil, err
+	if forceErr == "QueryStudentInfos" {
+		return nil, ForceErr
 	}
 
 	if cond.PracticeID <= 0 && cond.ExamSessionID <= 0 {
@@ -1001,10 +975,13 @@ func QueryStudentInfos(ctx context.Context, cond QueryCondition, markerInfo Mark
 		return nil, errors.New("无效的请求参数，不能同时包含 练习ID 和 考试场次ID")
 	}
 
-	var query string
-	var args []interface{}
-	var whereClause []string
+	var (
+		query       string
+		args        []interface{}
+		whereClause []string
+	)
 	argIdx := 2
+
 	if cond.ExamSessionID > 0 {
 		query = `	SELECT official_name, id, serial_number
 					FROM v_examinee_info
@@ -1048,7 +1025,10 @@ func QueryStudentInfos(ctx context.Context, cond QueryCondition, markerInfo Mark
 
 	pgxConn := cmn.GetPgxConn()
 	rows, err := pgxConn.Query(ctx, query, args...)
-	if err != nil || forceErr == "QueryStudentInfo-pgxConn.Query" {
+	if forceErr == "query" {
+		err = ForceErr
+	}
+	if err != nil {
 		return nil, fmt.Errorf("查询学生信息 sql 失败: %v", err)
 	}
 	defer rows.Close()
@@ -1066,26 +1046,42 @@ func QueryStudentInfos(ctx context.Context, cond QueryCondition, markerInfo Mark
 		}
 
 		err = rows.Scan(scanVars...)
-		if err != nil || forceErr == "QueryStudentInfos-rows.Scan" {
+		if forceErr == "rows.Scan" {
+			err = ForceErr
+		}
+		if err != nil {
 			return nil, fmt.Errorf("从 row 中读取结果失败: %v", err)
 		}
 		studentInfos = append(studentInfos, si)
 	}
-	if err = rows.Err(); err != nil {
+	err = rows.Err()
+	if forceErr == "rows.Err" {
+		err = ForceErr
+	}
+	if err != nil {
 		return nil, fmt.Errorf("行遍历错误: %v", err)
 	}
 
 	return studentInfos, nil
 }
 
-func UpdateMarkerInfoState(ctx context.Context, tx *pgx.Tx, teacherID int64, ids []int64, mode string) ([]int64, error) {
+// 更新批改配置状态
+func UpdateMarkerInfoStatus(ctx context.Context, tx pgx.Tx, teacherID int64, ids []int64, mode, status string) ([]int64, error) {
 	forceErr, _ := ctx.Value(ForceErrKey).(string)
+	if forceErr == "UpdateMarkerInfoStatus" {
+		return nil, ForceErr
+	}
+
 	if teacherID <= 0 {
 		return nil, errors.New("无效的 teacher ID")
 	}
 
 	if ids == nil || len(ids) == 0 {
 		return nil, errors.New("没有 exam_session_ids 或者 practice_ids 可以用于更新")
+	}
+
+	if status == "00" || status == "02" || status == "04" {
+		return nil, errors.New("status 错误")
 	}
 
 	var whereClause []string
@@ -1104,13 +1100,16 @@ func UpdateMarkerInfoState(ctx context.Context, tx *pgx.Tx, teacherID int64, ids
 	case "02":
 		whereClause = append(whereClause, "practice_id = ANY($1)")
 	default:
-		return nil, fmt.Errorf("无效的更新模式: %s", mode)
+		return nil, fmt.Errorf("无效的模式: %s，不是练习也不是考试", mode)
 	}
 
 	updateQuery = fmt.Sprintf(updateQuery, strings.Join(whereClause, " "))
 
-	rows, err := (*tx).Query(ctx, updateQuery, pq.Array(ids), "04", teacherID, time.Now().UnixMilli())
-	if err != nil || forceErr == "tx.Query" {
+	rows, err := tx.Query(ctx, updateQuery, pq.Array(ids), status, teacherID, time.Now().UnixMilli())
+	if forceErr == "updateQuery" {
+		err = ForceErr
+	}
+	if err != nil {
 		return nil, fmt.Errorf("更新批改配置信息 sql 失败: %v", err)
 	}
 	defer rows.Close()
@@ -1120,20 +1119,31 @@ func UpdateMarkerInfoState(ctx context.Context, tx *pgx.Tx, teacherID int64, ids
 	for rows.Next() {
 		var id null.Int
 		err = rows.Scan(&id)
-		if err != nil || forceErr == "rows.Scan" {
+		if forceErr == "rows.Scan" {
+			err = ForceErr
+		}
+		if err != nil {
 			return nil, fmt.Errorf("从 row 中读取结果失败: %v", err)
 		}
 		targetIDs = append(targetIDs, id.Int64)
 	}
-	if err = rows.Err(); err != nil {
+	err = rows.Err()
+	if forceErr == "rows.Err" {
+		err = ForceErr
+	}
+	if err != nil {
 		return nil, fmt.Errorf("行遍历错误: %v", err)
 	}
 
 	return targetIDs, nil
 }
 
+// 更新对学生的批改结果
 func UpsertMarkingResults(ctx context.Context, tx pgx.Tx, markingResults []cmn.TMark) ([]int64, error) {
 	forceErr, _ := ctx.Value(ForceErrKey).(string) // 用于强制执行错误处理代码
+	if forceErr == "UpsertMarkingResults" {
+		return nil, ForceErr
+	}
 
 	// 不存在则插入，否则更新，需要索引
 	upsertMarkQuery := `
@@ -1204,7 +1214,10 @@ func UpsertMarkingResults(ctx context.Context, tx pgx.Tx, markingResults []cmn.T
 			err = pgConn.QueryRow(ctx, query, args...).Scan(&id)
 		}
 
-		if err != nil || forceErr == "tx.QueryRow" {
+		if forceErr == "query" {
+			err = ForceErr
+		}
+		if err != nil {
 			return nil, fmt.Errorf("记录批改过程 sql 失败: %v", err)
 		}
 		targetIDs = append(targetIDs, id.Int64)
@@ -1216,9 +1229,16 @@ func UpsertMarkingResults(ctx context.Context, tx pgx.Tx, markingResults []cmn.T
 // 查询当前老师需要批改的考试的已批改人数和已批改总题数
 // 没必要开启只读事务
 func QueryMarkedPersonAndQuestionCount(ctx context.Context, tx pgx.Tx, cond QueryCondition) (int64, int64, error) {
-	var queryMarkedPerson string
-	var queryQuestionCount string
-	var args []interface{}
+	forceErr, _ := ctx.Value(ForceErrKey).(string) // 用于强制执行错误处理代码
+	if forceErr == "QueryMarkedPersonAndQuestionCount" {
+		return -1, -1, ForceErr
+	}
+
+	var (
+		queryMarkedPerson  string
+		queryQuestionCount string
+		args               []interface{}
+	)
 
 	if cond.ExamSessionID > 0 {
 		queryMarkedPerson = `SELECT etmc.marked_count 
@@ -1256,8 +1276,11 @@ func QueryMarkedPersonAndQuestionCount(ctx context.Context, tx pgx.Tx, cond Quer
 		err = tx.QueryRow(ctx, queryMarkedPerson, args...).Scan(&markedPerson)
 	}
 
+	if forceErr == "queryMarkedPerson" {
+		err = ForceErr
+	}
 	if err != nil {
-		return 0, 0, fmt.Errorf("获取已批改人数 sql 失败: %v", err)
+		return -1, -1, fmt.Errorf("获取已批改人数 sql 失败: %v", err)
 	}
 
 	if tx == nil {
@@ -1267,8 +1290,11 @@ func QueryMarkedPersonAndQuestionCount(ctx context.Context, tx pgx.Tx, cond Quer
 		err = tx.QueryRow(ctx, queryQuestionCount, args...).Scan(&markedQuestionCount)
 	}
 
+	if forceErr == "queryQuestionCount" {
+		err = ForceErr
+	}
 	if err != nil {
-		return 0, 0, fmt.Errorf("获取已批改问题数 sql 失败: %v", err)
+		return -1, -1, fmt.Errorf("获取已批改问题数 sql 失败: %v", err)
 	}
 
 	return markedPerson, markedQuestionCount, nil
@@ -1277,9 +1303,12 @@ func QueryMarkedPersonAndQuestionCount(ctx context.Context, tx pgx.Tx, cond Quer
 // 用于主观题保存，客观题保存，ai批改分数保存
 func UpdateStudentAnswerScore(ctx context.Context, tx pgx.Tx, markingResults []cmn.TMark, cond QueryCondition) ([]int64, error) {
 	forceErr, _ := ctx.Value(ForceErrKey).(string)
+	if forceErr == "UpdateStudentAnswerScore" {
+		return nil, ForceErr
+	}
 
 	if len(markingResults) == 0 {
-		return nil, fmt.Errorf("没有批改结果可用于更新")
+		return nil, errors.New("没有批改结果可用于更新")
 	}
 
 	updateQuery := `UPDATE t_student_answers
@@ -1345,6 +1374,7 @@ func UpdateStudentAnswerScore(ctx context.Context, tx pgx.Tx, markingResults []c
 		err       error
 	)
 
+	// 计算平均分，写入 t_student_answer
 	for studentID, questionScores := range studentQuestionScoresMap {
 		for questionID, scores := range questionScores {
 			var avgScore float64
@@ -1368,7 +1398,10 @@ func UpdateStudentAnswerScore(ctx context.Context, tx pgx.Tx, markingResults []c
 			}
 
 			err = tx.QueryRow(ctx, updateQuery, args...).Scan(&targetID)
-			if err != nil || forceErr == "tx.QueryRow" {
+			if forceErr == "updateQuery" {
+				err = ForceErr
+			}
+			if err != nil {
 				return nil, fmt.Errorf("更新 学生答案分数 sql 失败: %v", err)
 			}
 
@@ -1379,7 +1412,7 @@ func UpdateStudentAnswerScore(ctx context.Context, tx pgx.Tx, markingResults []c
 	return targetIDs, nil
 }
 
-// UpdateExamSessionOrPracticeSubmissionState 更新考试场次或练习提交的状态
+// UpdateExamSessionOrPracticeSubmissionStatus 更新考试场次或练习提交的状态
 //
 // 参数:
 //   - ctx: 上下文，用于控制请求生命周期和传递上下文信息
@@ -1392,22 +1425,26 @@ func UpdateStudentAnswerScore(ctx context.Context, tx pgx.Tx, markingResults []c
 // 返回值:
 //   - targetIDs: 成功更新的记录ID列表
 //   - err: 操作过程中发生的错误信息
-func UpdateExamSessionOrPracticeSubmissionState(ctx context.Context, tx pgx.Tx, teacherID int64, examSessionIDs []int64, practiceSubmissionIDs []int64, status string) ([]int64, error) {
+func UpdateExamSessionOrPracticeSubmissionStatus(ctx context.Context, tx pgx.Tx, teacherID int64, examSessionIDs []int64, practiceSubmissionIDs []int64, status string) ([]int64, error) {
 	forceErr, _ := ctx.Value(ForceErrKey).(string)
+	if forceErr == "UpdateExamSessionOrPracticeSubmissionStatus" {
+		return nil, ForceErr
+	}
+
 	if teacherID <= 0 {
-		return nil, fmt.Errorf("无效的 teacher_id")
+		return nil, errors.New("无效的 teacher_id")
 	}
 
 	if len(examSessionIDs) == 0 && len(practiceSubmissionIDs) == 0 {
-		return nil, fmt.Errorf("无效的 exam_session_ids 和 practice_submission_ids")
+		return nil, errors.New("无效的 exam_session_ids 和 practice_submission_ids")
 	}
 
 	if len(examSessionIDs) > 0 && len(practiceSubmissionIDs) > 0 {
-		return nil, fmt.Errorf("exam_session_ids 和 practice_submission_ids 不能同时存在")
+		return nil, errors.New("exam_session_ids 和 practice_submission_ids 不能同时存在")
 	}
 
 	if status == "" {
-		return nil, fmt.Errorf("无效的 考试/练习 状态")
+		return nil, errors.New("无效的 考试/练习 状态")
 	}
 
 	updateQuery := `UPDATE %s -- 拼接表名 
@@ -1439,7 +1476,10 @@ func UpdateExamSessionOrPracticeSubmissionState(ctx context.Context, tx pgx.Tx, 
 		rows, err = tx.Query(ctx, updateQuery, pq.Array(ids), status, teacherID, time.Now().UnixMilli())
 	}
 
-	if err != nil || forceErr == "UpdateExamSessionOrPracticeSubmissionState-tx.Query" {
+	if forceErr == "updateQuery" {
+		err = ForceErr
+	}
+	if err != nil {
 		return nil, fmt.Errorf("更新 考试/练习 状态 sql 失败: %v", err)
 	}
 	defer rows.Close()
@@ -1449,20 +1489,32 @@ func UpdateExamSessionOrPracticeSubmissionState(ctx context.Context, tx pgx.Tx, 
 	for rows.Next() {
 		var id int64
 		err = rows.Scan(&id)
-		if err != nil || forceErr == "rows.Scan" {
+		if forceErr == "rows.Scan" {
+			err = ForceErr
+		}
+		if err != nil {
 			return nil, fmt.Errorf("从 row 中读取结果失败: %v", err)
 		}
 		targetIDs = append(targetIDs, id)
 	}
-	if err = rows.Err(); err != nil {
+	err = rows.Err()
+	if forceErr == "rows.Err" {
+		err = ForceErr
+	}
+	if err != nil {
 		return nil, fmt.Errorf("行遍历错误: %v", err)
 	}
 
 	return targetIDs, nil
 }
 
-func UpdatePracticeWrongSubmissionState(ctx context.Context, tx pgx.Tx, teacherID int64, practiceWrongSubmissionIDs []int64, status string) ([]int64, error) {
+// 更新练习的错题状态
+func UpdatePracticeWrongSubmissionStatus(ctx context.Context, tx pgx.Tx, teacherID int64, practiceWrongSubmissionIDs []int64, status string) ([]int64, error) {
 	forceErr, _ := ctx.Value(ForceErrKey).(string)
+	if forceErr == "UpdatePracticeWrongSubmissionStatus" {
+		return nil, ForceErr
+	}
+
 	if teacherID <= 0 {
 		return nil, fmt.Errorf("无效的 teacher_id")
 	}
@@ -1484,7 +1536,10 @@ func UpdatePracticeWrongSubmissionState(ctx context.Context, tx pgx.Tx, teacherI
 					RETURNING id`
 
 	rows, err := tx.Query(ctx, updateQuery, pq.Array(practiceWrongSubmissionIDs), status, teacherID, time.Now().UnixMilli())
-	if err != nil || forceErr == "UpdatePracticeWrongSubmissionState-tx.Query" {
+	if forceErr == "UpdatePracticeWrongSubmissionStatus-tx.Query" {
+		err = ForceErr
+	}
+	if err != nil {
 		return nil, fmt.Errorf("更新错题练习 sql 失败: %v", err)
 	}
 	defer rows.Close()
@@ -1494,12 +1549,19 @@ func UpdatePracticeWrongSubmissionState(ctx context.Context, tx pgx.Tx, teacherI
 	for rows.Next() {
 		var id int64
 		err = rows.Scan(&id)
-		if err != nil || forceErr == "UpdatePracticeWrongSubmissionState-rows.Scan" {
+		if forceErr == "rows.Scan" {
+			err = ForceErr
+		}
+		if err != nil {
 			return nil, fmt.Errorf("从 row 中读取结果失败: %v", err)
 		}
 		targetIDs = append(targetIDs, id)
 	}
-	if err = rows.Err(); err != nil {
+	err = rows.Err()
+	if forceErr == "rows.Err" {
+		err = ForceErr
+	}
+	if err != nil {
 		return nil, fmt.Errorf("行遍历失败: %v", err)
 	}
 

@@ -1,411 +1,253 @@
 package ai_mark
 
-//
-//import (
-//	"context"
-//	"fmt"
-//	"github.com/spf13/viper"
-//	"github.com/stretchr/testify/assert"
-//	"os"
-//	"runtime"
-//	"testing"
-//	"w2w.io/cmn"
-//)
-//
-//var defaultChatModel *ChatModel
-//
-//func init() {
-//	//cmn.ConfigureForTest()
-//	InitViper()
-//	z = cmn.GetLogger()
-//	var err error
-//	err = initChatModel()
-//	if err != nil {
-//		panic(err)
-//	}
-//
-//	defaultChatModel = chatModel
-//}
-//
-//func InitViper() {
-//	appLaunchPath, err := os.Getwd()
-//	if err != nil {
-//		panic(err)
-//	}
-//
-//	viper.AddConfigPath(appLaunchPath)
-//	viper.SetConfigType("json")
-//
-//	cfgFileName := ".config_" + runtime.GOOS
-//	viper.SetConfigName(cfgFileName)
-//
-//	err = viper.ReadInConfig()
-//	if err != nil {
-//		fmt.Println(err.Error())
-//		panic(err)
-//	}
-//}
-//
-//func TestChatModel_SendChatCompletions(t *testing.T) {
-//	tests := []struct {
-//		name           string
-//		messages       []Message
-//		chatModel      ChatModel
-//		forceErr       string
-//		expectedErrStr string
-//		expectedResp   ChatResponse
-//		setup          func() ChatModel
-//	}{
-//		{
-//			name:     "success",
-//			forceErr: "",
-//			messages: []Message{
-//				{
-//					Role:    "system",
-//					Content: defaultChatModel.generateChatPrompt(TestedQuestionDetails[0]),
-//				},
-//				{
-//					Role: "user",
-//					Content: `
-//						[{"student_id":"101","answer":"1. 独立式（Fat AP）组网。 - 优点：部署简单。 - 缺点：管理复杂。"},{"student_id":"102","answer":"1. 独立式组网：每个无线接入点单独配置和管理。 - 优点：简单，成本低。 - 缺点：管理复杂。 2. 控制器集中式（Fit AP + AC）组网：AP受控于无线控制器。 - 优点：集中管理，适合小型网络。 - 缺点：成本高。"}]
-//						`,
-//				},
-//			},
-//			chatModel:      *defaultChatModel,
-//			expectedErrStr: "",
-//		},
-//		{
-//			name:     "success with default prompt",
-//			forceErr: "",
-//			messages: []Message{
-//				{
-//					Role:    "system",
-//					Content: defaultChatModel.generateChatPrompt(TestedQuestionDetails[0]),
-//				},
-//				{
-//					Role: "user",
-//					Content: `
-//						[{"student_id":"101","answer":"1. 独立式（Fat AP）组网。 - 优点：部署简单。 - 缺点：管理复杂。"},{"student_id":"102","answer":"1. 独立式组网：每个无线接入点单独配置和管理。 - 优点：简单，成本低。 - 缺点：管理复杂。 2. 控制器集中式（Fit AP + AC）组网：AP受控于无线控制器。 - 优点：集中管理，适合小型网络。 - 缺点：成本高。"}]
-//						`,
-//				},
-//			},
-//			chatModel:      *defaultChatModel,
-//			expectedErrStr: "",
-//			setup: func() ChatModel {
-//				model := *defaultChatModel
-//				model.Prompt = ""
-//				return model
-//			},
-//		},
-//		{
-//			name: "构造请求体失败",
-//			messages: []Message{
-//				{
-//					Role:    "system",
-//					Content: defaultChatModel.generateChatPrompt(TestedQuestionDetails[0]),
-//				},
-//				{
-//					Role: "user",
-//					Content: `
-//						[{"student_id":"101","answer":"1. 独立式（Fat AP）组网。 - 优点：部署简单。 - 缺点：管理复杂。"},{"student_id":"102","answer":"1. 独立式组网：每个无线接入点单独配置和管理。 - 优点：简单，成本低。 - 缺点：管理复杂。 2. 控制器集中式（Fit AP + AC）组网：AP受控于无线控制器。 - 优点：集中管理，适合小型网络。 - 缺点：成本高。"}]
-//						`,
-//				},
-//			},
-//			chatModel:      *defaultChatModel,
-//			forceErr:       "sendChatCompletions-json.Marshal",
-//			expectedErrStr: "构造请求体失败",
-//		},
-//		{
-//			name: "发送请求失败",
-//			messages: []Message{
-//				{
-//					Role:    "system",
-//					Content: defaultChatModel.generateChatPrompt(TestedQuestionDetails[0]),
-//				},
-//				{
-//					Role: "user",
-//					Content: `
-//						[{"student_id":"101","answer":"1. 独立式（Fat AP）组网。 - 优点：部署简单。 - 缺点：管理复杂。"},{"student_id":"102","answer":"1. 独立式组网：每个无线接入点单独配置和管理。 - 优点：简单，成本低。 - 缺点：管理复杂。 2. 控制器集中式（Fit AP + AC）组网：AP受控于无线控制器。 - 优点：集中管理，适合小型网络。 - 缺点：成本高。"}]
-//						`,
-//				},
-//			},
-//			chatModel:      *defaultChatModel,
-//			expectedErrStr: "发送请求失败",
-//			setup: func() ChatModel {
-//				model := *defaultChatModel
-//				model.Endpoint = ""
-//				return model
-//			},
-//		},
-//		{
-//			name:     "server returned non-2xx status",
-//			forceErr: "",
-//			messages: []Message{
-//				{
-//					Role:    "system",
-//					Content: "假设你是一个负责考试评卷的专家，你需要根据学生回答和标准答案，生成一个仅包含得分点说明的解析。",
-//				},
-//				{
-//					Role: "user",
-//					Content: `
-//						[{"student_id":"101","answer":"1. 独立式（Fat AP）组网。 - 优点：部署简单。 - 缺点：管理复杂。"},{"student_id":"102","answer":"1. 独立式组网：每个无线接入点单独配置和管理。 - 优点：简单，成本低。 - 缺点：管理复杂。 2. 控制器集中式（Fit AP + AC）组网：AP受控于无线控制器。 - 优点：集中管理，适合小型网络。 - 缺点：成本高。"}]
-//						`,
-//				},
-//			},
-//			chatModel:      *defaultChatModel,
-//			expectedErrStr: "server returned non-2xx status",
-//		},
-//		{
-//			name: "解析返回的响应体失败",
-//			messages: []Message{
-//				{
-//					Role:    "system",
-//					Content: defaultChatModel.generateChatPrompt(TestedQuestionDetails[0]),
-//				},
-//				{
-//					Role: "user",
-//					Content: `
-//						[{"student_id":"101","answer":"1. 独立式（Fat AP）组网。 - 优点：部署简单。 - 缺点：管理复杂。"},{"student_id":"102","answer":"1. 独立式组网：每个无线接入点单独配置和管理。 - 优点：简单，成本低。 - 缺点：管理复杂。 2. 控制器集中式（Fit AP + AC）组网：AP受控于无线控制器。 - 优点：集中管理，适合小型网络。 - 缺点：成本高。"}]
-//						`,
-//				},
-//			},
-//			chatModel:      *defaultChatModel,
-//			forceErr:       "sendChatCompletions-json.Unmarshal",
-//			expectedErrStr: "解析返回的响应体失败",
-//		},
-//	}
-//
-//	for _, tt := range tests {
-//		t.Run(tt.name, func(t *testing.T) {
-//			if tt.setup != nil {
-//				tt.chatModel = tt.setup()
-//			}
-//
-//			ctx := context.Background()
-//			if tt.forceErr != "" {
-//				ctx = context.WithValue(context.Background(), ForceErrKey, tt.forceErr)
-//			}
-//			chatResp, err := tt.chatModel.sendChatCompletions(ctx, tt.messages)
-//
-//			z.Sugar().Infof("chatResp: %+v", chatResp)
-//
-//			if err != nil {
-//				if tt.expectedErrStr == "" {
-//					t.Errorf("expected success, but got error: %v", err.Error())
-//				} else {
-//					assert.Contains(t, err.Error(), tt.expectedErrStr)
-//				}
-//			} else if tt.expectedErrStr != "" {
-//				t.Errorf("expected error: %s, but got success", tt.expectedErrStr)
-//			}
-//		})
-//	}
-//}
-//
-//func TestChatModel_AIReview(t *testing.T) {
-//	tests := []struct {
-//		name           string
-//		rawContent     *ResponseContent
-//		chatModel      ChatModel
-//		forceErr       string
-//		expectedErrStr string
-//		expectedResp   ChatResponse
-//		setup          func() ChatModel
-//		checkedFunc    func(chatResp ResponseContent) (string, bool)
-//	}{
-//		{
-//			name:       "success",
-//			rawContent: TestedRespResults[0],
-//			chatModel:  *defaultChatModel,
-//			checkedFunc: func(chatResp ResponseContent) (string, bool) {
-//				var msg string
-//				if len(chatResp.MarkResults) != 1 {
-//					msg = fmt.Sprintf("长度不匹配，期望1，实际%d", len(chatResp.MarkResults))
-//					return msg, false
-//				}
-//
-//				if chatResp.MarkResults[0].StudentID != 102 {
-//					msg = fmt.Sprintf("学生ID不匹配，期望102，实际%d", chatResp.MarkResults[0].StudentID)
-//					return msg, false
-//				}
-//
-//				if chatResp.MarkResults[0].Score != 6 {
-//					msg = fmt.Sprintf("得分不匹配，期望6，实际%f", chatResp.MarkResults[0].Score)
-//					return msg, false
-//				}
-//
-//				return "", true
-//			},
-//		},
-//		{
-//			name:           "marshal response content error",
-//			rawContent:     TestedRespResults[0],
-//			chatModel:      *defaultChatModel,
-//			forceErr:       "AIReview-json.Marshal",
-//			expectedErrStr: "marshal response content error",
-//		},
-//		{
-//			name:           "sendChatCompletions error",
-//			rawContent:     TestedRespResults[0],
-//			chatModel:      *defaultChatModel,
-//			forceErr:       "sendChatCompletions-json.Marshal",
-//			expectedErrStr: "构造请求体失败",
-//		},
-//		{
-//			name:           "AIReview-大模型服务端出错",
-//			rawContent:     TestedRespResults[0],
-//			chatModel:      *defaultChatModel,
-//			forceErr:       "AIReview-大模型服务端出错",
-//			expectedErrStr: "大模型服务端出错",
-//		},
-//		{
-//			name:           "解析大模型返回消息的json结构失败",
-//			rawContent:     TestedRespResults[0],
-//			chatModel:      *defaultChatModel,
-//			expectedErrStr: "解析大模型返回消息的json结构失败",
-//			setup: func() ChatModel {
-//				model := *defaultChatModel
-//				model.ReviewPrompt = "无论输入什么，请你返回一个空数组json结构"
-//				return model
-//			},
-//		},
-//	}
-//
-//	for _, tt := range tests {
-//		t.Run(tt.name, func(t *testing.T) {
-//			if tt.setup != nil {
-//				tt.chatModel = tt.setup()
-//			}
-//
-//			ctx := context.Background()
-//			if tt.forceErr != "" {
-//				ctx = context.WithValue(context.Background(), ForceErrKey, tt.forceErr)
-//			}
-//			chatResp, err := tt.chatModel.AIReview(ctx, tt.rawContent)
-//
-//			z.Sugar().Infof("chatResp: %+v", chatResp)
-//
-//			if err != nil {
-//				if tt.expectedErrStr == "" {
-//					t.Errorf("expected success, but got error: %v", err.Error())
-//				} else {
-//					assert.Contains(t, err.Error(), tt.expectedErrStr)
-//				}
-//			} else if tt.expectedErrStr != "" {
-//				t.Errorf("expected error: %s, but got success", tt.expectedErrStr)
-//			}
-//
-//			if tt.checkedFunc != nil {
-//				msg, ok := tt.checkedFunc(chatResp)
-//				if !ok {
-//					t.Errorf(msg)
-//				}
-//				assert.True(t, ok)
-//			}
-//		})
-//	}
-//}
-//
-//func TestChatModel_AIMark(t *testing.T) {
-//	tests := []struct {
-//		name           string
-//		question       *QuestionDetail
-//		studentAnswers []*StudentAnswer
-//		chatModel      ChatModel
-//		forceErr       string
-//		expectedErrStr string
-//		expectedResp   ChatResponse
-//		setup          func() ChatModel
-//	}{
-//		{
-//			name:           "success",
-//			question:       TestedQuestionDetails[0],
-//			studentAnswers: TestedStudentAnswers[0],
-//			chatModel:      *defaultChatModel,
-//		},
-//		{
-//			name:           "success with default prompt",
-//			question:       TestedQuestionDetails[0],
-//			studentAnswers: TestedStudentAnswers[0],
-//			chatModel:      *defaultChatModel,
-//			setup: func() ChatModel {
-//				model := *defaultChatModel
-//				model.Prompt = ""
-//				return model
-//			},
-//		},
-//		{
-//			name:           "no student answers to mark",
-//			question:       TestedQuestionDetails[0],
-//			studentAnswers: []*StudentAnswer{},
-//			chatModel:      *defaultChatModel,
-//			expectedErrStr: "no student answers to mark",
-//		},
-//		{
-//			name:           "failed to marshal student answers",
-//			question:       TestedQuestionDetails[0],
-//			studentAnswers: TestedStudentAnswers[0],
-//			chatModel:      *defaultChatModel,
-//			forceErr:       "AIMark-json.Marshal",
-//			expectedErrStr: "failed to marshal student answers",
-//		},
-//		{
-//			name:           "sendChatCompletions error",
-//			question:       TestedQuestionDetails[0],
-//			studentAnswers: TestedStudentAnswers[0],
-//			chatModel:      *defaultChatModel,
-//			forceErr:       "sendChatCompletions-json.Marshal",
-//			expectedErrStr: "构造请求体失败",
-//		},
-//		{
-//			name:           "AIMark-大模型服务端出错",
-//			question:       TestedQuestionDetails[0],
-//			studentAnswers: TestedStudentAnswers[0],
-//			chatModel:      *defaultChatModel,
-//			forceErr:       "AIMark-大模型服务端出错",
-//			expectedErrStr: "大模型服务端出错",
-//		},
-//		{
-//			name:           "解析大模型返回消息的json结构失败",
-//			question:       TestedQuestionDetails[0],
-//			studentAnswers: TestedStudentAnswers[0],
-//			chatModel:      *defaultChatModel,
-//			expectedErrStr: "解析大模型返回消息的json结构失败",
-//			setup: func() ChatModel {
-//				model := *defaultChatModel
-//				model.Prompt = "无论输入什么，请你返回一个空数组json结构"
-//				return model
-//			},
-//		},
-//	}
-//
-//	for _, tt := range tests {
-//		t.Run(tt.name, func(t *testing.T) {
-//			if tt.setup != nil {
-//				tt.chatModel = tt.setup()
-//			}
-//
-//			ctx := context.Background()
-//			if tt.forceErr != "" {
-//				ctx = context.WithValue(context.Background(), ForceErrKey, tt.forceErr)
-//			}
-//			chatResp, err := tt.chatModel.AIMark(ctx, tt.question, tt.studentAnswers)
-//
-//			z.Sugar().Infof("chatResp: %+v", chatResp)
-//
-//			if err != nil {
-//				if tt.expectedErrStr == "" {
-//					t.Errorf("expected success, but got error: %v", err.Error())
-//				} else {
-//					assert.Contains(t, err.Error(), tt.expectedErrStr)
-//				}
-//			} else if tt.expectedErrStr != "" {
-//				t.Errorf("expected error: %s, but got success", tt.expectedErrStr)
-//			}
-//		})
-//	}
-//}
-//
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"github.com/stretchr/testify/assert"
+	"testing"
+	"w2w.io/cmn"
+)
+
+var defaultChatModel ChatModel
+var defaultMessages []Message
+
+func init() {
+	cmn.ConfigureForTest()
+	z = cmn.GetLogger()
+
+	err := initChatModel()
+	if err != nil {
+		panic(err)
+	}
+
+	defaultChatModel = *chatModel
+
+	defaultMessages = []Message{
+		{
+			Role: "system",
+			MContent: []MessageContent{
+				{Content: "你是一个作词家，你可以根据所给的关键词作词，并以 JSON 格式返回结果，例如 {\"lyrics\": \"xxx\"}", Type: "text"},
+			},
+		},
+		{
+			Role: "user",
+			MContent: []MessageContent{
+				{Content: "请根据关键词 '鸟儿，晴天' 作词，并以 JSON 格式返回：{\"lyrics\": \"...\"}", Type: "text"},
+			},
+		},
+	}
+
+}
+
+func TestChatModel_SendChatCompletions(t *testing.T) {
+	tests := []struct {
+		name           string
+		messages       []Message
+		forceErr       string
+		expectedErrStr string
+	}{
+		{
+			name:     "success",
+			messages: defaultMessages,
+		},
+		{
+			name:           "error: 构造请求体失败",
+			forceErr:       "json.Marshal-requestBody",
+			expectedErrStr: "构造请求体失败",
+		},
+		{
+			name:           "error: 发送请求失败",
+			messages:       defaultMessages,
+			forceErr:       "client.DoTimeout",
+			expectedErrStr: "发送请求失败",
+		},
+		{
+			name:           "error: ai 服务端出错",
+			messages:       defaultMessages,
+			forceErr:       "resp.StatusCode()",
+			expectedErrStr: "大模型服务端返回 非2xx 响应码",
+		},
+		{
+			name:           "error: 解析返回的响应体失败",
+			messages:       defaultMessages,
+			forceErr:       "json.Unmarshal-bodyText",
+			expectedErrStr: "解析返回的响应体失败",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := context.WithValue(context.Background(), ForceErrKey, tt.forceErr)
+
+			chatResp, err := defaultChatModel.SendChatCompletions(ctx, tt.messages)
+			z.Sugar().Infof("chatResp: %+v", chatResp)
+
+			if tt.expectedErrStr != "" {
+				assert.Emptyf(t, chatResp, "期待获取空结构体，但获得：%v", chatResp)
+				assert.Error(t, err, "期待错误，但是没有")
+				assert.Contains(t, err.Error(), tt.expectedErrStr)
+			} else {
+				assert.NotEmpty(t, chatResp, "期待获取非空结构体，但获得空结构体")
+				assert.NoErrorf(t, err, "期待没错，但是获得错误: %v", err)
+			}
+		})
+	}
+}
+
+func TestChatModel_AIMark(t *testing.T) {
+	var tests = []struct {
+		name                string
+		questions           []*QuestionDetail
+		studentAnswers      []*StudentAnswer
+		sendChatCompletions func(context.Context, []Message) (ChatResponse, error)
+		forceErr            string
+		expectResp          ResponseContent
+		expectedErrStr      string
+	}{
+		{
+			name:           "success",
+			questions:      TestedQuestionDetails[0],
+			studentAnswers: TestedStudentAnswers[0],
+			sendChatCompletions: func(ctx context.Context, messages []Message) (ChatResponse, error) {
+				return ChatResponse{
+					Choices: []struct {
+						Message struct {
+							Content string `json:"content"`
+						} `json:"message"`
+						FinishReason string `json:"finish_reason"`
+					}{
+						{
+							Message: struct {
+								Content string `json:"content"`
+							}{
+								Content: string(mustMarshal(TestedRespResults[0])),
+							},
+						},
+					},
+				}, nil
+			},
+			expectResp: TestedRespResults[0],
+		},
+		{
+			name:           "success: 没有问题",
+			questions:      []*QuestionDetail{},
+			studentAnswers: TestedStudentAnswers[0],
+			expectResp:     ResponseContent{},
+		},
+		{
+			name:           "success: 没有学生",
+			questions:      TestedQuestionDetails[0],
+			studentAnswers: []*StudentAnswer{},
+			expectResp:     ResponseContent{},
+		},
+		{
+			name:           "error: 构造 questions json 失败",
+			questions:      TestedQuestionDetails[0],
+			studentAnswers: TestedStudentAnswers[0],
+			forceErr:       "json.Marshal-questions",
+			expectedErrStr: "构造 questions json 失败",
+		},
+		{
+			name:           "error: 构造 student answers json 失败",
+			questions:      TestedQuestionDetails[0],
+			studentAnswers: TestedStudentAnswers[0],
+			forceErr:       "json.Marshal-studentAnswers",
+			expectedErrStr: "构造 student answers json 失败",
+		},
+		{
+			name:           "error: 发送 http 请求失败",
+			questions:      TestedQuestionDetails[0],
+			studentAnswers: TestedStudentAnswers[0],
+			sendChatCompletions: func(ctx context.Context, messages []Message) (ChatResponse, error) {
+				return ChatResponse{}, errors.New("mock http error")
+			},
+			expectedErrStr: "发送 http 请求失败",
+		},
+		{
+			name:           "error: 大模型服务端出错-错误码存在",
+			questions:      TestedQuestionDetails[0],
+			studentAnswers: TestedStudentAnswers[0],
+			sendChatCompletions: func(ctx context.Context, messages []Message) (ChatResponse, error) {
+				return ChatResponse{
+					Error: struct {
+						Code    string `json:"code"`
+						Message string `json:"message"`
+					}{
+						Code: "500",
+					},
+				}, nil
+			},
+			expectedErrStr: "大模型服务端出错",
+		},
+		{
+			name:           "error: 大模型服务端出错-错误消息存在",
+			questions:      TestedQuestionDetails[0],
+			studentAnswers: TestedStudentAnswers[0],
+			sendChatCompletions: func(ctx context.Context, messages []Message) (ChatResponse, error) {
+				return ChatResponse{
+					Error: struct {
+						Code    string `json:"code"`
+						Message string `json:"message"`
+					}{
+						Message: "mock server error",
+					},
+				}, nil
+			},
+			expectedErrStr: "大模型服务端出错",
+		},
+		{
+			name:           "error: 大模型没有回复任何结果",
+			questions:      TestedQuestionDetails[0],
+			studentAnswers: TestedStudentAnswers[0],
+			sendChatCompletions: func(ctx context.Context, messages []Message) (ChatResponse, error) {
+				return ChatResponse{}, nil
+			},
+			expectedErrStr: "大模型没有回复任何结果",
+		},
+		{
+			name:           "error: 解析大模型返回消息的 json 结构 失败",
+			questions:      TestedQuestionDetails[0],
+			studentAnswers: TestedStudentAnswers[0],
+			sendChatCompletions: func(ctx context.Context, messages []Message) (ChatResponse, error) {
+				return ChatResponse{
+					Choices: []struct {
+						Message struct {
+							Content string `json:"content"`
+						} `json:"message"`
+						FinishReason string `json:"finish_reason"`
+					}{
+						{
+							Message: struct {
+								Content string `json:"content"`
+							}{
+								Content: "{",
+							},
+						},
+					},
+				}, nil
+			},
+			expectedErrStr: "解析大模型返回消息的 json 结构 失败",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := context.WithValue(context.Background(), ForceErrKey, tt.forceErr)
+
+			resp, err := defaultChatModel.AIMark(ctx, tt.questions, tt.studentAnswers, tt.sendChatCompletions)
+
+			if tt.expectedErrStr != "" {
+				assert.Error(t, err, "期待得到错误，但是没有")
+				assert.Contains(t, err.Error(), tt.expectedErrStr)
+			} else {
+				assert.NoErrorf(t, err, "期待没有错误，但是获得错误: %v", err)
+				assert.Equal(t, tt.expectResp, resp)
+			}
+		})
+	}
+}
+
 //func TestChatModel_Tokenizer(t *testing.T) {
 //	tests := []struct {
 //		name           string
@@ -446,7 +288,7 @@ package ai_mark
 //			expectedErrStr: "发送请求失败",
 //			setup: func() ChatModel {
 //				model := *defaultChatModel
-//				model.TokenizerEndPoint = ""
+//				model.tokenizerEndPoint = ""
 //				return model
 //			},
 //		},
@@ -498,52 +340,9 @@ package ai_mark
 //		})
 //	}
 //}
-//
-//// TestChatModel_GetChatMaxConcurrency 测试ChatModel的GetChatMaxConcurrency方法
-//func TestChatModel_GetChatMaxConcurrency(t *testing.T) {
-//	// 测试用例定义
-//	tests := []struct {
-//		name           string // 测试用例名称
-//		maxConcurrency int    // 设置的并发数
-//		expected       int    // 期望的返回值
-//	}{
-//		{
-//			name:           "正常情况-返回正整数",
-//			maxConcurrency: 10,
-//			expected:       10,
-//		},
-//		{
-//			name:           "边界情况-返回零值",
-//			maxConcurrency: 0,
-//			expected:       0,
-//		},
-//		{
-//			name:           "边界情况-返回负数",
-//			maxConcurrency: -5,
-//			expected:       -5,
-//		},
-//		{
-//			name:           "边界情况-返回大整数",
-//			maxConcurrency: 1000000,
-//			expected:       1000000,
-//		},
-//	}
-//
-//	// 执行测试用例
-//	for _, tt := range tests {
-//		t.Run(tt.name, func(t *testing.T) {
-//			// Arrange: 准备测试数据
-//			c := &ChatModel{
-//				MaxConcurrency: tt.maxConcurrency,
-//			}
-//
-//			// Act: 调用被测函数
-//			got := c.GetChatMaxConcurrency()
-//
-//			// Assert: 验证结果
-//			if got != tt.expected {
-//				t.Errorf("GetChatMaxConcurrency() = %v, want %v", got, tt.expected)
-//			}
-//		})
-//	}
-//}
+
+// 辅助函数，快速生成 JSON []byte
+func mustMarshal(v interface{}) []byte {
+	data, _ := json.Marshal(v)
+	return data
+}
