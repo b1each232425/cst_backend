@@ -1705,7 +1705,9 @@ func taskMiddleware(handler func(ctx context.Context, task *asynq.Task) error) f
 			return nil, handler(ctx, task) // 这里执行 handler，处理任务。返回结果时会记录在熔断器中，用于更改熔断器的状态
 		})
 		if err != nil {
-			return fmt.Errorf("执行任务失败: %v", err)
+			err = fmt.Errorf("执行任务失败: %v", err)
+			z.Error(err.Error())
+			return err
 		}
 
 		return nil
