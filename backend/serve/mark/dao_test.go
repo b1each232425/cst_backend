@@ -211,8 +211,11 @@ func initTestData() {
 		return
 	}
 
-	var tx *sql.Tx
-	var err error
+	var (
+		tx  *sql.Tx
+		err error
+	)
+
 	sqlxDB := cmn.GetDbConn()
 	tx, err = sqlxDB.BeginTx(context.Background(), &sql.TxOptions{Isolation: sql.LevelRepeatableRead})
 	if err != nil {
@@ -229,8 +232,10 @@ func initTestData() {
 
 	for i, query := range sqls {
 		var ids []interface{}
+
 		for _, arg := range args[i] {
 			ids = append(ids, arg[0])
+
 			_, err = tx.Exec(query, arg...)
 			if err != nil {
 				err = fmt.Errorf("insert test data SQL error: %v", err)
@@ -238,15 +243,15 @@ func initTestData() {
 				return
 			}
 		}
-		testedIDGroups = append(testedIDGroups, ids)
 
+		testedIDGroups = append(testedIDGroups, ids)
 	}
+
 	err = tx.Commit()
 	if err != nil {
 		_ = tx.Rollback()
 		panic(err)
 	}
-
 }
 
 func cleanTestData() {
@@ -343,8 +348,8 @@ func TestQueryExamList(t *testing.T) {
 				Limit:  10,
 				Offset: 0,
 			},
-			//expectedList:
-			//expectedRowCount:
+			expectedList:     []Exam{},
+			expectedRowCount: 3,
 		},
 		{
 			name: "success: 根据 exam name 查询",
@@ -357,6 +362,56 @@ func TestQueryExamList(t *testing.T) {
 				Offset:   0,
 				ExamName: "exam 1",
 			},
+			expectedList: []Exam{{
+				Id:    11,
+				Name:  "test exam 1",
+				Type:  "00",
+				Class: "",
+				ExamSessions: []ExamSession{{
+					Id:                   101,
+					Name:                 "1",
+					PaperName:            "test exam paper 1",
+					ExamSessionType:      "",
+					MarkMethod:           "02",
+					MarkMode:             "00",
+					RespondentCount:      2,
+					UnMarkedStudentCount: 0,
+					StartTime:            1758896281126,
+					EndTime:              1758899881126,
+					Status:               "00",
+					MarkStatus:           "00",
+				},
+					{
+						Id:                   102,
+						Name:                 "2",
+						PaperName:            "test exam paper 2",
+						ExamSessionType:      "",
+						MarkMethod:           "00",
+						MarkMode:             "00",
+						RespondentCount:      1,
+						UnMarkedStudentCount: 1,
+						StartTime:            1758903481126,
+						EndTime:              1758907081126,
+						Status:               "00",
+						MarkStatus:           "00",
+					},
+					{
+						Id:                   103,
+						Name:                 "3",
+						PaperName:            "test exam paper 3",
+						ExamSessionType:      "",
+						MarkMethod:           "00",
+						MarkMode:             "10",
+						RespondentCount:      4,
+						UnMarkedStudentCount: 0,
+						StartTime:            1758910681126,
+						EndTime:              1758914281126,
+						Status:               "00",
+						MarkStatus:           "00",
+					},
+				},
+			}},
+			expectedRowCount: 3,
 		},
 		{
 			name: "success: 根据 时间 查询",
@@ -370,6 +425,16 @@ func TestQueryExamList(t *testing.T) {
 				StartTime: time.Now().Add(-22 * time.Hour),
 				EndTime:   time.Now().Add(-20 * time.Hour),
 			},
+			expectedList:     []Exam{},
+			expectedRowCount: 3,
+		},
+		{
+			name: "error: 缺少 user",
+			req: QueryMarkingListReq{
+				Limit:  10,
+				Offset: 0,
+			},
+			expectedErrStr: "无效的 query cond",
 		},
 		{
 			name: "error: limit == 0",
@@ -499,8 +564,12 @@ func TestQueryExamList(t *testing.T) {
 			if tt.expectedErrStr != "" {
 				assert.Error(t, err, "期待获取到错误，但却没有错误")
 				assert.Contains(t, err.Error(), tt.expectedErrStr)
+				assert.Nilf(t, list, "期待获取 nil， 实际却获取 %v", list)
+				assert.Equalf(t, rowCount, -1, "期待得到 -1， 实际却是 %v", rowCount)
 			} else {
 				assert.NoErrorf(t, err, "期待没有错误，但却获取到错误: %v", err)
+				//assert.Equalf(t, list, tt.expectedList, "期待获取 %v, 实际获取 %v", tt.expectedList, list)
+				assert.Equalf(t, rowCount, tt.expectedRowCount, "期待获取 %v, 实际获取 %v", tt.expectedRowCount, rowCount)
 			}
 		})
 	}

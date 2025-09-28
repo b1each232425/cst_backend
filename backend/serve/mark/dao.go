@@ -8,6 +8,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jmoiron/sqlx/types"
 	"github.com/lib/pq"
+	"go.uber.org/zap"
 	"math"
 	"strings"
 	"time"
@@ -92,7 +93,7 @@ func QueryExamList(ctx context.Context, req QueryMarkingListReq) ([]Exam, int, e
 						mi.status, 
 						COALESCE(erc.respondent_count, 0) AS respondent_count, 
 					--	COALESCE(eumc.unmarked_student_count, 0) AS unmarked_student_count, 
-						COALESCE(mc.marked_count, -1) AS marked_student_count 
+						COALESCE(mc.marked_count, -1) AS marked_student_count  -- 只有学生作答才能被批改并记录在视图m c
 					FROM
 						 t_exam_session es 
 					JOIN t_exam_info ei ON ei.id = es.exam_id AND ei.status !='12' AND ei.status != '14' AND ei.status != '16' %s
@@ -135,7 +136,7 @@ func QueryExamList(ctx context.Context, req QueryMarkingListReq) ([]Exam, int, e
 	// TODO 需要处理，传进来的？
 	if !req.User.IsAdmin {
 		// 普通批阅员，非管理员
-		whereClause = append(whereClause, fmt.Sprintf(" AND mi.mark_teacher_id = $%d AND mc.teacher_id = $%d ", argIdx, argIdx))
+		whereClause = append(whereClause, fmt.Sprintf(" AND mi.mark_teacher_id = $%d AND ( mc.teacher_id = $%d OR mc.teacher_id IS NULL )", argIdx, argIdx)) // 因为考试参与人数为0的也需要计算进去
 		args = append(args, teacherID)
 		argIdx += 2
 	}
@@ -211,10 +212,8 @@ func QueryExamList(ctx context.Context, req QueryMarkingListReq) ([]Exam, int, e
 		// 待批改数的计算
 		unMarkedStudentCount := 0
 
-		if markedStudentCount.Int64 == -1 { // TODO???
-			// 说明无主观题目需要批改
-			unMarkedStudentCount = 0
-		} else {
+		// 如果存在一个同学作答
+		if markedStudentCount.Int64 != -1 {
 			totalCount := respondentCount.Int64
 
 			switch session.MarkMode.String {
@@ -611,7 +610,7 @@ func QueryMarkerInfo(ctx context.Context, cond QueryCondition) (MarkerInfo, erro
 	return markerInfo, nil
 }
 
-// 查询学生的答案  questionType: "00": 客观题， "02"：主观题
+// 查询一个学生的答案  questionType: "00": 客观题， "02"：主观题
 func QueryStudentAnswers(ctx context.Context, tx pgx.Tx, questionType string, cond QueryCondition, markerInfo MarkerInfo) ([]cmn.TVStudentAnswerQuestion, error) {
 	forceErr, _ := ctx.Value(ForceErrKey).(string)
 	if forceErr == "QueryStudentAnswers" {
@@ -654,34 +653,11 @@ func QueryStudentAnswers(ctx context.Context, tx pgx.Tx, questionType string, co
 		whereClause = append(whereClause, " AND type IN ('06', '08') ")
 	}
 
-	switch markerInfo.MarkMode {
-	case "00", "04", "10": // 自动批改 试卷分配 单人批改 // 查询单个考试考生的数据 // 重构，一次只获取一个考生的答案
-		var markExamineeIDs []int64
+	z.Info("markerInfo", zap.Any("markerInfo", markerInfo))
 
-		if cond.ExamineeID > 0 { // 获取单个考生的数据
-			markExamineeIDs = append(markExamineeIDs, cond.ExamineeID)
-		} else {
-			// 第一位老师是否总是自己？
-			if err := json.Unmarshal(markerInfo.MarkInfos[0].MarkExamineeIds, &markExamineeIDs); err != nil {
-				return nil, fmt.Errorf("解析 markerInfo.MarkInfos[0].MarkExamineeIds 失败: %v", err)
-			}
-		}
-
-		whereClause = append(whereClause, fmt.Sprintf(" AND examinee_id = ANY($%d) ", argIdx))
-		argIdx++
-		args = append(args, pq.Array(markExamineeIDs))
-
-	case "06": // 题组专评 // TODO 题目专评 “08”
-		var questionIDs []int64
-		if err := json.Unmarshal(markerInfo.MarkInfos[0].QuestionIds, &questionIDs); err != nil {
-			return nil, fmt.Errorf("解析 markerInfo.MarkInfos[0].QuestionIds 失败: %v", err)
-		}
-
-		whereClause = append(whereClause, fmt.Sprintf(" AND question_id = ANY($%d) ", argIdx))
-		argIdx++
-		args = append(args, pq.Array(questionIDs))
-
-	case "12": // 查询单个练习学生的数据，包括错题
+	markMode := markerInfo.MarkMode
+	// 练习
+	if markMode == "12" {
 		if cond.PracticeSubmissionID <= 0 {
 			return nil, errors.New("无效的 practice_submission_id")
 		}
@@ -694,6 +670,26 @@ func QueryStudentAnswers(ctx context.Context, tx pgx.Tx, questionType string, co
 		if cond.PracticeWrongSubmissionID > 0 {
 			whereClause = append(whereClause, " AND question_score != answer_score ")
 		}
+	} else { // 考试
+		if cond.ExamineeID <= 0 {
+			return nil, errors.New("缺少 考生ID")
+		}
+
+		whereClause = append(whereClause, fmt.Sprintf(" AND examinee_id = $%d ", argIdx))
+		argIdx++
+		args = append(args, cond.ExamineeID)
+	}
+
+	// 题组专评、题目专评
+	if markMode == "06" || markMode == "08" {
+		var questionIDs []int64
+		if err := json.Unmarshal(markerInfo.MarkInfos[0].QuestionIds, &questionIDs); err != nil {
+			return nil, fmt.Errorf("解析 markerInfo.MarkInfos[0].QuestionIds 失败: %v", err)
+		}
+
+		whereClause = append(whereClause, fmt.Sprintf(" AND question_id = ANY($%d) ", argIdx))
+		argIdx++
+		args = append(args, pq.Array(questionIDs))
 	}
 
 	query = fmt.Sprintf(query, strings.Join(whereClause, " "))
