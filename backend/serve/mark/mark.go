@@ -998,7 +998,7 @@ func getStudentAnswersAndMarkResults(ctx context.Context) {
 // --------------------- AI批改 -----------------------
 
 // 自动批改处理函数，学生点击提交就会触发，导致有的学生的考卷会立即得到分数，这时候体现出“考试成绩管理‘提交’”的作用（考试必须全部批改之后才能看到成绩，练习是无所谓的） // TODO 错误需要接收然后将批改状态变为“异常”
-func AutoMark(ctx context.Context, cond QueryCondition) (err error) {
+func AutoMark(ctx context.Context, cond QueryCondition) (err error) { // TODO 缺考的人直接批阅为0
 	forceErr, _ := ctx.Value(ForceErrKey).(string)
 
 	if cond.ExamSessionID <= 0 && cond.PracticeID <= 0 {
@@ -1056,12 +1056,14 @@ func AutoMark(ctx context.Context, cond QueryCondition) (err error) {
 	// 不准备 批改教师id
 	err = markObjectiveQuestionAnswers(ctx, tx, cond, questionStrKey)
 	if err != nil {
+		err = fmt.Errorf("自动批改客观题失败: %v", err)
 		z.Error(err.Error())
 		return
 	}
 
 	markerInfo, err := QueryMarkerInfo(ctx, cond)
 	if err != nil {
+		err = fmt.Errorf("查询批改配置失败: %v", err)
 		z.Error(err.Error())
 		return
 	}
