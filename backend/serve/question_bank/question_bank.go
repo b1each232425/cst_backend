@@ -377,6 +377,7 @@ func questionBanks(ctx context.Context) {
 		ORDER BY id DESC
 		LIMIT $%d OFFSET $%d
 	`, whereClause, argIndex, argIndex+1)
+
 		offset := (params.Page - 1) * params.PageSize
 		args = append(args, params.PageSize, offset)
 		var rows pgx.Rows
@@ -871,7 +872,7 @@ func questionBanks(ctx context.Context) {
 			return
 		}
 		// 这里是执行具体的删除操作
-		// 1. 检查题库是否存在
+		// 1. 检查题库是否存在且未被删除
 		// 检查每个题库的权限
 		var checkSQL string
 		var errorMessages []string
@@ -879,17 +880,19 @@ func questionBanks(ctx context.Context) {
 			SELECT COALESCE(array_agg(
 				CASE
 					WHEN tqb.id IS NULL THEN '题库(' || ids.id || ')不存在'
+					WHEN tqb.status = '02' THEN '题库(' || COALESCE(tqb.name, '未知') || ')已被删除'
 					WHEN tqb.creator != $2 THEN '题库(' || COALESCE(tqb.name, '未知') || ')非题库创建者，无删除权限'
 					ELSE NULL
 				END
 			) FILTER (WHERE CASE
 					WHEN tqb.id IS NULL THEN '题库(' || ids.id || ')不存在'
+					WHEN tqb.status = '02' THEN '题库(' || COALESCE(tqb.name, '未知') || ')已被删除'
 					WHEN tqb.creator != $2 THEN '题库(' || COALESCE(tqb.name, '未知') || ')非题库创建者，无删除权限'
 					ELSE NULL
 				END IS NOT NULL), ARRAY[]::text[]) as error_messages
 			FROM unnest($1::bigint[]) AS ids(id)
 			LEFT JOIN t_question_bank tqb ON tqb.id = ids.id
-			WHERE tqb.id IS NULL OR tqb.creator != $2`
+			WHERE tqb.id IS NULL OR tqb.status = '02' OR tqb.creator != $2`
 		q.Err = tx.QueryRow(ctx, checkSQL, deleteBankIDs, userID).Scan(&errorMessages)
 		if forceError == "tx.QueryRow" {
 			q.Err = errors.New(forceError)
@@ -918,13 +921,13 @@ func questionBanks(ctx context.Context) {
 			q.RespErr()
 			return
 		}
-		// 3. 删除题库
-		//直接硬删除题库，关联的题库题目以及关联题库题目的试卷题目会被级联删除
-		deleteBankSQL := `
-			DELETE FROM t_question_bank
-			WHERE id = ANY($1::bigint[])
+		// 3. 软删除题库 - 更新status为02
+		softDeleteBankSQL := `
+			UPDATE t_question_bank
+			SET status = '02', update_time = $2, updated_by = $3
+			WHERE id = ANY($1::bigint[]) AND status = '00'
 		`
-		_, q.Err = tx.Exec(ctx, deleteBankSQL, deleteBankIDs)
+		_, q.Err = tx.Exec(ctx, softDeleteBankSQL, deleteBankIDs, cmn.GetNowInMS(), userID)
 		if forceError == "tx.Exec" {
 			q.Err = errors.New(forceError)
 		}
@@ -959,7 +962,7 @@ func validateQuestion(question *cmn.TQuestion) (valid bool, err error) {
 		return false, err
 	}
 
-	_, ok = QuestionDifficulty[question.Difficulty.Int64]
+	_, ok = QuestionDifficulty[question.Difficulty]
 	if !ok {
 		err = fmt.Errorf("unsupported question difficulty: %v", question.Difficulty)
 		z.Error(err.Error())
@@ -1098,18 +1101,18 @@ func questions(ctx context.Context) {
 		}
 		difficultyStrs := q.R.URL.Query()["difficulty"] // 允许获取多个difficulty参数
 
-		var difficultyList []int64
+		var difficultyList []string
 		// 只有当传入difficulty参数时才进行解析
 		if len(difficultyStrs) > 0 {
 			for _, d := range difficultyStrs {
 				if d != "" { // 跳过空值
-					val, err := strconv.ParseInt(d, 10, 64)
-					if err != nil {
+					// 验证难度值是否有效
+					if _, ok := QuestionDifficulty[d]; !ok {
 						q.Err = fmt.Errorf("invalid difficulty: %v", d)
 						q.RespErr()
 						return
 					}
-					difficultyList = append(difficultyList, val)
+					difficultyList = append(difficultyList, d)
 				}
 			}
 		}
@@ -1321,7 +1324,7 @@ func questions(ctx context.Context) {
 
 		// 难度过滤
 		if len(params.Difficulty) > 0 {
-			validDifficulties := make([]int64, 0)
+			validDifficulties := make([]string, 0)
 			// 校验合法性并只添加有效的难度值
 			for _, d := range params.Difficulty {
 				if _, ok := QuestionDifficulty[d]; ok {
@@ -1996,15 +1999,19 @@ func questions(ctx context.Context) {
 			SELECT COALESCE(array_agg(
 				CASE
 					WHEN tq.id IS NULL THEN '题目(' || ids.id || ')不存在'
+					WHEN tq.status = '02' THEN '题目(' || ids.id || ')已被删除'
+					WHEN tq.creator != $2 THEN '题目(' || ids.id || ')非题目创建者，无删除权限'
 					ELSE NULL
 				END
 			) FILTER (WHERE CASE
 					WHEN tq.id IS NULL THEN '题目(' || ids.id || ')不存在'
+					WHEN tq.status = '02' THEN '题目(' || ids.id || ')已被删除'
+					WHEN tq.creator != $2 THEN '题目(' || ids.id || ')非题目创建者，无删除权限'
 					ELSE NULL
 				END IS NOT NULL), ARRAY[]::text[]) as error_messages
 			FROM unnest($1::bigint[]) AS ids(id)
 			LEFT JOIN t_question tq ON tq.id = ids.id
-			WHERE tq.id IS NULL OR tq.creator != $2`
+			WHERE tq.id IS NULL OR tq.status = '02' OR tq.creator != $2`
 		q.Err = tx.QueryRow(ctx, checkSQL, deleteQuestionIDs, userID).Scan(&errorMessages)
 		if forceError == "tx.QueryRow" {
 			q.Err = errors.New(forceError)
@@ -2034,12 +2041,13 @@ func questions(ctx context.Context) {
 			return
 		}
 
-		// 2. 然后删除标记为硬删除的题目
-		deleteSQL := `
-			DELETE FROM t_question
-			WHERE id = ANY($1::bigint[])
+		// 2. 软删除题目 - 更新status为02
+		softDeleteSQL := `
+			UPDATE t_question
+			SET status = '02', update_time = $2, updated_by = $3
+			WHERE id = ANY($1::bigint[]) AND status = '00'
 		`
-		_, q.Err = tx.Exec(ctx, deleteSQL, deleteQuestionIDs)
+		_, q.Err = tx.Exec(ctx, softDeleteSQL, deleteQuestionIDs, cmn.GetNowInMS(), userID)
 		if forceError == "tx.Exec" {
 			q.Err = errors.New(forceError)
 		}

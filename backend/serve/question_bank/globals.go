@@ -47,10 +47,12 @@ var QuestionTypes = map[string]string{
 	"test":                     "测试所用",
 }
 
-var QuestionDifficulty = map[int64]string{
-	1: "简单",
-	2: "中等",
-	3: "困难",
+var QuestionDifficulty = map[string]string{
+	"00": "易",
+	"02": "较易",
+	"04": "中",
+	"06": "较难",
+	"08": "难",
 }
 
 const (
