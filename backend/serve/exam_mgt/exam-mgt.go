@@ -84,6 +84,7 @@ type ExamList struct {
 	Duration       int64         `json:"duration"`         //考试时长
 	Status         string        `json:"status"`           //考试状态  00：未发布 02：待开始  04：进行中 08：已结束 10：已归档 12：考试异常 14：已删除
 	NumOfExaminees int64         `json:"num_of_examinees"` //考生数量
+	UpdateTime     int64         `json:"update_time"`
 }
 
 type ExamineeInfo struct {
@@ -1572,7 +1573,7 @@ func exam(ctx context.Context) {
 		// 获取考场信息
 		var examRoomsConfigs []ExamRoomConfig
 		examRoomsConfigs = []ExamRoomConfig{}
-		if ei.ExamRoomInvigilatorCount != nil {
+		if ei.ExamRoomInvigilatorCount != nil && ei.Mode.String == "02" {
 			q.Err = json.Unmarshal(ei.ExamRoomInvigilatorCount, &examRoomsConfigs)
 			if forceErr == "json.Unmarshal" {
 				q.Err = fmt.Errorf("强制解析考场监考员配置失败")
@@ -3162,7 +3163,7 @@ func examList(ctx context.Context) {
 			}
 		} else {
 			searchSQL = `
-			SELECT 
+SELECT 
 				ei.id, 
 				ei.name, 
 				ei.type, 
@@ -3256,6 +3257,7 @@ func examList(ctx context.Context) {
 						ExamSession:    []ExamSession{},
 						Duration:       0,
 						NumOfExaminees: numOfExaminees,
+						UpdateTime:     updateTime, // 添加这一行
 					}
 					examMap[id] = item
 				}
@@ -3275,6 +3277,32 @@ func examList(ctx context.Context) {
 			examList = append(examList, *item)
 		}
 
+		// 按照 update_time DESC, id DESC 排序，保持与数据库查询一致的排序逻辑
+		sort.Slice(examList, func(i, j int) bool {
+			if examList[i].UpdateTime != examList[j].UpdateTime {
+				return examList[i].UpdateTime > examList[j].UpdateTime // DESC
+			}
+			return examList[i].ID > examList[j].ID // DESC
+		})
+		// type logItem struct {
+		// 	ExamID     int64  `json:"exam_id"`
+		// 	ExamName   string `json:"exam_name"`
+		// 	SessionNum int64  `json:"session_num"`
+		// }
+		// var logList []logItem
+		// for _, e := range examList {
+		// 	for _, s := range e.ExamSession {
+		// 		logList = append(logList, logItem{
+		// 			ExamID:     e.ID,
+		// 			ExamName:   e.ExamName,
+		// 			SessionNum: s.SessionNum,
+		// 		})
+		// 	}
+		// }
+		// z.Sugar().Infow("考试列表最终顺序（全局）",
+		// 	"userDomain", userDomain,
+		// 	"exam_list", examList,
+		// )
 		q.Msg.RowCount = rowCount
 		q.Msg.Data, q.Err = json.Marshal(examList)
 		if forceErr == "json.Marshal2" {
@@ -4923,6 +4951,7 @@ func examFile(ctx context.Context) {
 
 			var examFileIDs []int64
 			for i := 0; i < len(examFiles); i++ {
+
 				examFileIDs = append(examFileIDs, examFiles[i].FileID.Int64)
 			}
 
