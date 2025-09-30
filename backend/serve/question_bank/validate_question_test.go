@@ -29,7 +29,7 @@ func TestValidateQuestion(t *testing.T) {
 			name: "不支持的题目类型",
 			question: &cmn.TQuestion{
 				Type:       "99",
-				Difficulty: null.IntFrom(1),
+				Difficulty: "00",
 				Score:      null.FloatFrom(2.0),
 				BelongTo:   null.IntFrom(1001),
 				Content:    null.StringFrom("测试题目"),
@@ -42,7 +42,7 @@ func TestValidateQuestion(t *testing.T) {
 			name: "没有校验方法的题目类型",
 			question: &cmn.TQuestion{
 				Type:       "test",
-				Difficulty: null.IntFrom(1),
+				Difficulty: "00",
 				Score:      null.FloatFrom(2.0),
 				BelongTo:   null.IntFrom(1001),
 				Content:    null.StringFrom("测试题目"),
@@ -55,7 +55,7 @@ func TestValidateQuestion(t *testing.T) {
 			name: "不支持的难度值",
 			question: &cmn.TQuestion{
 				Type:       "00",
-				Difficulty: null.IntFrom(99),
+				Difficulty: "99",
 				Score:      null.FloatFrom(2.0),
 				BelongTo:   null.IntFrom(1001),
 				Content:    null.StringFrom("测试题目"),
@@ -68,7 +68,7 @@ func TestValidateQuestion(t *testing.T) {
 			name: "分数小于等于0",
 			question: &cmn.TQuestion{
 				Type:       "00",
-				Difficulty: null.IntFrom(1),
+				Difficulty: "00",
 				Score:      null.FloatFrom(0),
 				BelongTo:   null.IntFrom(1001),
 				Content:    null.StringFrom("测试题目"),
@@ -81,7 +81,7 @@ func TestValidateQuestion(t *testing.T) {
 			name: "BelongTo小于等于0",
 			question: &cmn.TQuestion{
 				Type:       "00",
-				Difficulty: null.IntFrom(1),
+				Difficulty: "00",
 				Score:      null.FloatFrom(2.0),
 				BelongTo:   null.IntFrom(0),
 				Content:    null.StringFrom("测试题目"),
@@ -94,7 +94,7 @@ func TestValidateQuestion(t *testing.T) {
 			name: "题目内容为空",
 			question: &cmn.TQuestion{
 				Type:       "00",
-				Difficulty: null.IntFrom(1),
+				Difficulty: "00",
 				Score:      null.FloatFrom(2.0),
 				BelongTo:   null.IntFrom(1001),
 				Content:    null.StringFrom(""),
@@ -107,7 +107,7 @@ func TestValidateQuestion(t *testing.T) {
 			name: "题目内容只有空白字符",
 			question: &cmn.TQuestion{
 				Type:       "00",
-				Difficulty: null.IntFrom(1),
+				Difficulty: "00",
 				Score:      null.FloatFrom(2.0),
 				BelongTo:   null.IntFrom(1001),
 				Content:    null.StringFrom("   \n\t  "),
@@ -120,7 +120,7 @@ func TestValidateQuestion(t *testing.T) {
 			name: "标签包含空值",
 			question: &cmn.TQuestion{
 				Type:       "00",
-				Difficulty: null.IntFrom(1),
+				Difficulty: "00",
 				Score:      null.FloatFrom(2.0),
 				BelongTo:   null.IntFrom(1001),
 				Content:    null.StringFrom("测试题目"),
@@ -133,7 +133,7 @@ func TestValidateQuestion(t *testing.T) {
 			name: "标签格式无效",
 			question: &cmn.TQuestion{
 				Type:       "00",
-				Difficulty: null.IntFrom(1),
+				Difficulty: "00",
 				Score:      null.FloatFrom(2.0),
 				BelongTo:   null.IntFrom(1001),
 				Content:    null.StringFrom("测试题目"),
@@ -365,7 +365,7 @@ func TestValidateSingleChoiceQuestion(t *testing.T) {
 			name: "有效的单选题",
 			question: &cmn.TQuestion{
 				Type:       "00",
-				Difficulty: null.IntFrom(1),
+				Difficulty: "00",
 				Score:      null.FloatFrom(2.0),
 				BelongTo:   null.IntFrom(1001),
 				Content:    null.StringFrom("这是一个单选题"),
@@ -380,7 +380,7 @@ func TestValidateSingleChoiceQuestion(t *testing.T) {
 			name: "选项少于2个",
 			question: &cmn.TQuestion{
 				Type:       "00",
-				Difficulty: null.IntFrom(1),
+				Difficulty: "00",
 				Score:      null.FloatFrom(2.0),
 				BelongTo:   null.IntFrom(1001),
 				Content:    null.StringFrom("这是一个单选题"),
@@ -395,7 +395,7 @@ func TestValidateSingleChoiceQuestion(t *testing.T) {
 			name: "选项标签重复",
 			question: &cmn.TQuestion{
 				Type:       "00",
-				Difficulty: null.IntFrom(1),
+				Difficulty: "00",
 				Score:      null.FloatFrom(2.0),
 				BelongTo:   null.IntFrom(1001),
 				Content:    null.StringFrom("这是一个单选题"),
@@ -417,7 +417,7 @@ func TestValidateSingleChoiceQuestion(t *testing.T) {
 			name: "选项标签为空",
 			question: &cmn.TQuestion{
 				Type:       "00",
-				Difficulty: null.IntFrom(1),
+				Difficulty: "00",
 				Score:      null.FloatFrom(2.0),
 				BelongTo:   null.IntFrom(1001),
 				Content:    null.StringFrom("这是一个单选题"),
@@ -438,7 +438,7 @@ func TestValidateSingleChoiceQuestion(t *testing.T) {
 			name: "答案不在选项中",
 			question: &cmn.TQuestion{
 				Type:       "00",
-				Difficulty: null.IntFrom(1),
+				Difficulty: "00",
 				Score:      null.FloatFrom(2.0),
 				BelongTo:   null.IntFrom(1001),
 				Content:    null.StringFrom("这是一个单选题"),
@@ -453,7 +453,7 @@ func TestValidateSingleChoiceQuestion(t *testing.T) {
 			name: "答案数量不为1",
 			question: &cmn.TQuestion{
 				Type:       "00",
-				Difficulty: null.IntFrom(1),
+				Difficulty: "00",
 				Score:      null.FloatFrom(2.0),
 				BelongTo:   null.IntFrom(1001),
 				Content:    null.StringFrom("这是一个单选题"),
@@ -503,7 +503,7 @@ func TestValidateMultipleChoiceQuestion(t *testing.T) {
 			name: "有效的多选题",
 			question: &cmn.TQuestion{
 				Type:       "02",
-				Difficulty: null.IntFrom(2),
+				Difficulty: "02",
 				Score:      null.FloatFrom(3.0),
 				BelongTo:   null.IntFrom(1001),
 				Content:    null.StringFrom("这是一个多选题"),
@@ -518,7 +518,7 @@ func TestValidateMultipleChoiceQuestion(t *testing.T) {
 			name: "选项少于3个",
 			question: &cmn.TQuestion{
 				Type:       "02",
-				Difficulty: null.IntFrom(2),
+				Difficulty: "02",
 				Score:      null.FloatFrom(3.0),
 				BelongTo:   null.IntFrom(1001),
 				Content:    null.StringFrom("这是一个多选题"),
@@ -539,7 +539,7 @@ func TestValidateMultipleChoiceQuestion(t *testing.T) {
 			name: "所有选项都是正确答案",
 			question: &cmn.TQuestion{
 				Type:       "02",
-				Difficulty: null.IntFrom(2),
+				Difficulty: "02",
 				Score:      null.FloatFrom(3.0),
 				BelongTo:   null.IntFrom(1001),
 				Content:    null.StringFrom("这是一个多选题"),
@@ -554,7 +554,7 @@ func TestValidateMultipleChoiceQuestion(t *testing.T) {
 			name: "答案有重复",
 			question: &cmn.TQuestion{
 				Type:       "02",
-				Difficulty: null.IntFrom(2),
+				Difficulty: "02",
 				Score:      null.FloatFrom(3.0),
 				BelongTo:   null.IntFrom(1001),
 				Content:    null.StringFrom("这是一个多选题"),
@@ -569,7 +569,7 @@ func TestValidateMultipleChoiceQuestion(t *testing.T) {
 			name: "多选题-选项标签为空",
 			question: &cmn.TQuestion{
 				Type:       "02",
-				Difficulty: null.IntFrom(2),
+				Difficulty: "02",
 				Score:      null.FloatFrom(3.0),
 				BelongTo:   null.IntFrom(1001),
 				Content:    null.StringFrom("这是一个多选题"),
@@ -591,7 +591,7 @@ func TestValidateMultipleChoiceQuestion(t *testing.T) {
 			name: "多选题-选项值为空",
 			question: &cmn.TQuestion{
 				Type:       "02",
-				Difficulty: null.IntFrom(2),
+				Difficulty: "02",
 				Score:      null.FloatFrom(3.0),
 				BelongTo:   null.IntFrom(1001),
 				Content:    null.StringFrom("这是一个多选题"),
@@ -613,7 +613,7 @@ func TestValidateMultipleChoiceQuestion(t *testing.T) {
 			name: "多选题-选项标签重复",
 			question: &cmn.TQuestion{
 				Type:       "02",
-				Difficulty: null.IntFrom(2),
+				Difficulty: "02",
 				Score:      null.FloatFrom(3.0),
 				BelongTo:   null.IntFrom(1001),
 				Content:    null.StringFrom("这是一个多选题"),
@@ -635,7 +635,7 @@ func TestValidateMultipleChoiceQuestion(t *testing.T) {
 			name: "多选题-答案不在选项中",
 			question: &cmn.TQuestion{
 				Type:       "02",
-				Difficulty: null.IntFrom(2),
+				Difficulty: "02",
 				Score:      null.FloatFrom(3.0),
 				BelongTo:   null.IntFrom(1001),
 				Content:    null.StringFrom("这是一个多选题"),
@@ -650,7 +650,7 @@ func TestValidateMultipleChoiceQuestion(t *testing.T) {
 			name: "多选题-选项JSON格式错误",
 			question: &cmn.TQuestion{
 				Type:       "02",
-				Difficulty: null.IntFrom(2),
+				Difficulty: "02",
 				Score:      null.FloatFrom(3.0),
 				BelongTo:   null.IntFrom(1001),
 				Content:    null.StringFrom("这是一个多选题"),
@@ -698,7 +698,7 @@ func TestValidateTrueFalseQuestion(t *testing.T) {
 			name: "有效的判断题",
 			question: &cmn.TQuestion{
 				Type:       "04",
-				Difficulty: null.IntFrom(1),
+				Difficulty: "00",
 				Score:      null.FloatFrom(1.0),
 				BelongTo:   null.IntFrom(1001),
 				Content:    null.StringFrom("这是一个判断题"),
@@ -713,7 +713,7 @@ func TestValidateTrueFalseQuestion(t *testing.T) {
 			name: "选项数量不为2",
 			question: &cmn.TQuestion{
 				Type:       "04",
-				Difficulty: null.IntFrom(1),
+				Difficulty: "00",
 				Score:      null.FloatFrom(1.0),
 				BelongTo:   null.IntFrom(1001),
 				Content:    null.StringFrom("这是一个判断题"),
@@ -735,7 +735,7 @@ func TestValidateTrueFalseQuestion(t *testing.T) {
 			name: "选项标签不是A和B",
 			question: &cmn.TQuestion{
 				Type:       "04",
-				Difficulty: null.IntFrom(1),
+				Difficulty: "00",
 				Score:      null.FloatFrom(1.0),
 				BelongTo:   null.IntFrom(1001),
 				Content:    null.StringFrom("这是一个判断题"),
@@ -756,7 +756,7 @@ func TestValidateTrueFalseQuestion(t *testing.T) {
 			name: "答案不是A或B",
 			question: &cmn.TQuestion{
 				Type:       "04",
-				Difficulty: null.IntFrom(1),
+				Difficulty: "00",
 				Score:      null.FloatFrom(1.0),
 				BelongTo:   null.IntFrom(1001),
 				Content:    null.StringFrom("这是一个判断题"),
@@ -771,7 +771,7 @@ func TestValidateTrueFalseQuestion(t *testing.T) {
 			name: "答案数量不为1",
 			question: &cmn.TQuestion{
 				Type:       "04",
-				Difficulty: null.IntFrom(1),
+				Difficulty: "00",
 				Score:      null.FloatFrom(1.0),
 				BelongTo:   null.IntFrom(1001),
 				Content:    null.StringFrom("这是一个判断题"),
@@ -786,7 +786,7 @@ func TestValidateTrueFalseQuestion(t *testing.T) {
 			name: "判断题-选项标签为空",
 			question: &cmn.TQuestion{
 				Type:       "04",
-				Difficulty: null.IntFrom(1),
+				Difficulty: "00",
 				Score:      null.FloatFrom(1.0),
 				BelongTo:   null.IntFrom(1001),
 				Content:    null.StringFrom("这是一个判断题"),
@@ -807,7 +807,7 @@ func TestValidateTrueFalseQuestion(t *testing.T) {
 			name: "判断题-选项值为空",
 			question: &cmn.TQuestion{
 				Type:       "04",
-				Difficulty: null.IntFrom(1),
+				Difficulty: "00",
 				Score:      null.FloatFrom(1.0),
 				BelongTo:   null.IntFrom(1001),
 				Content:    null.StringFrom("这是一个判断题"),
@@ -860,7 +860,7 @@ func TestValidateFillInBlankQuestion(t *testing.T) {
 			name: "有效的填空题-使用span标签",
 			question: &cmn.TQuestion{
 				Type:       "06",
-				Difficulty: null.IntFrom(2),
+				Difficulty: "02",
 				Score:      null.FloatFrom(4.0),
 				BelongTo:   null.IntFrom(1001),
 				Content:    null.StringFrom(`<p><span class="blank-item">____</span>是传输层协议，<span class="blank-item">____</span>是应用层协议</p>`),
@@ -874,7 +874,7 @@ func TestValidateFillInBlankQuestion(t *testing.T) {
 			name: "无效的填空题-使用其他class命名",
 			question: &cmn.TQuestion{
 				Type:       "06",
-				Difficulty: null.IntFrom(2),
+				Difficulty: "02",
 				Score:      null.FloatFrom(4.0),
 				BelongTo:   null.IntFrom(1001),
 				Content:    null.StringFrom(`<p><span class="input-blank-item">____</span>是传输层协议，<span class="other-blank">____</span>是应用层协议</p>`),
@@ -888,7 +888,7 @@ func TestValidateFillInBlankQuestion(t *testing.T) {
 			name: "题目内容没有填空标记",
 			question: &cmn.TQuestion{
 				Type:       "06",
-				Difficulty: null.IntFrom(2),
+				Difficulty: "02",
 				Score:      null.FloatFrom(4.0),
 				BelongTo:   null.IntFrom(1001),
 				Content:    null.StringFrom("这是传输层协议，这是应用层协议"),
@@ -902,7 +902,7 @@ func TestValidateFillInBlankQuestion(t *testing.T) {
 			name: "填空数量与答案数量不匹配",
 			question: &cmn.TQuestion{
 				Type:       "06",
-				Difficulty: null.IntFrom(2),
+				Difficulty: "02",
 				Score:      null.FloatFrom(4.0),
 				BelongTo:   null.IntFrom(1001),
 				Content:    null.StringFrom(`<p><span class="blank-item">____</span>是传输层协议，<span class="blank-item">____</span>是应用层协议，<span class="blank-item">____</span>是网络层协议</p>`),
@@ -916,7 +916,7 @@ func TestValidateFillInBlankQuestion(t *testing.T) {
 			name: "答案索引重复",
 			question: &cmn.TQuestion{
 				Type:       "06",
-				Difficulty: null.IntFrom(2),
+				Difficulty: "02",
 				Score:      null.FloatFrom(4.0),
 				BelongTo:   null.IntFrom(1001),
 				Content:    null.StringFrom(`<p><span class="blank-item">____</span>是传输层协议，<span class="blank-item">____</span>是应用层协议</p>`),
@@ -936,7 +936,7 @@ func TestValidateFillInBlankQuestion(t *testing.T) {
 			name: "答案索引超出范围",
 			question: &cmn.TQuestion{
 				Type:       "06",
-				Difficulty: null.IntFrom(2),
+				Difficulty: "02",
 				Score:      null.FloatFrom(4.0),
 				BelongTo:   null.IntFrom(1001),
 				Content:    null.StringFrom(`<p><span class="blank-item">____</span>是传输层协议，<span class="blank-item">____</span>是应用层协议</p>`),
@@ -956,7 +956,7 @@ func TestValidateFillInBlankQuestion(t *testing.T) {
 			name: "答案分数小于等于0",
 			question: &cmn.TQuestion{
 				Type:       "06",
-				Difficulty: null.IntFrom(2),
+				Difficulty: "02",
 				Score:      null.FloatFrom(4.0),
 				BelongTo:   null.IntFrom(1001),
 				Content:    null.StringFrom(`<p><span class="blank-item">____</span>是传输层协议，<span class="blank-item">____</span>是应用层协议</p>`),
@@ -976,7 +976,7 @@ func TestValidateFillInBlankQuestion(t *testing.T) {
 			name: "答案内容为空",
 			question: &cmn.TQuestion{
 				Type:       "06",
-				Difficulty: null.IntFrom(2),
+				Difficulty: "02",
 				Score:      null.FloatFrom(4.0),
 				BelongTo:   null.IntFrom(1001),
 				Content:    null.StringFrom(`<p><span class="blank-item">____</span>是传输层协议，<span class="blank-item">____</span>是应用层协议</p>`),
@@ -996,7 +996,7 @@ func TestValidateFillInBlankQuestion(t *testing.T) {
 			name: "评分规则为空",
 			question: &cmn.TQuestion{
 				Type:       "06",
-				Difficulty: null.IntFrom(2),
+				Difficulty: "02",
 				Score:      null.FloatFrom(4.0),
 				BelongTo:   null.IntFrom(1001),
 				Content:    null.StringFrom(`<p><span class="blank-item">____</span>是传输层协议，<span class="blank-item">____</span>是应用层协议</p>`),
@@ -1016,7 +1016,7 @@ func TestValidateFillInBlankQuestion(t *testing.T) {
 			name: "答案JSON格式错误",
 			question: &cmn.TQuestion{
 				Type:       "06",
-				Difficulty: null.IntFrom(2),
+				Difficulty: "02",
 				Score:      null.FloatFrom(4.0),
 				BelongTo:   null.IntFrom(1001),
 				Content:    null.StringFrom(`<p><span class="blank-item">____</span>是传输层协议</p>`),
@@ -1030,7 +1030,7 @@ func TestValidateFillInBlankQuestion(t *testing.T) {
 			name: "填空题-答案索引小于1",
 			question: &cmn.TQuestion{
 				Type:       "06",
-				Difficulty: null.IntFrom(2),
+				Difficulty: "02",
 				Score:      null.FloatFrom(4.0),
 				BelongTo:   null.IntFrom(1001),
 				Content:    null.StringFrom(`<p><span class="blank-item">____</span>是传输层协议，<span class="blank-item">____</span>是应用层协议</p>`),
@@ -1050,7 +1050,7 @@ func TestValidateFillInBlankQuestion(t *testing.T) {
 			name: "填空题-答案为空但没有其他答案",
 			question: &cmn.TQuestion{
 				Type:       "06",
-				Difficulty: null.IntFrom(2),
+				Difficulty: "02",
 				Score:      null.FloatFrom(2.0),
 				BelongTo:   null.IntFrom(1001),
 				Content:    null.StringFrom(`<p><span class="blank-item">____</span>是传输层协议</p>`),
@@ -1095,7 +1095,7 @@ func TestValidateQuestionEdgeCases(t *testing.T) {
 			name: "Content.Valid为false",
 			question: &cmn.TQuestion{
 				Type:       "00",
-				Difficulty: null.IntFrom(1),
+				Difficulty: "00",
 				Score:      null.FloatFrom(2.0),
 				BelongTo:   null.IntFrom(1001),
 				Content:    null.String{}, // Valid为false
@@ -1108,7 +1108,7 @@ func TestValidateQuestionEdgeCases(t *testing.T) {
 			name: "空的Tags数组",
 			question: &cmn.TQuestion{
 				Type:       "00",
-				Difficulty: null.IntFrom(1),
+				Difficulty: "00",
 				Score:      null.FloatFrom(2.0),
 				BelongTo:   null.IntFrom(1001),
 				Content:    null.StringFrom("测试题目"),
@@ -1129,7 +1129,7 @@ func TestValidateQuestionEdgeCases(t *testing.T) {
 			name: "Tags为nil",
 			question: &cmn.TQuestion{
 				Type:       "00",
-				Difficulty: null.IntFrom(1),
+				Difficulty: "00",
 				Score:      null.FloatFrom(2.0),
 				BelongTo:   null.IntFrom(1001),
 				Content:    null.StringFrom("测试题目"),
@@ -1150,7 +1150,7 @@ func TestValidateQuestionEdgeCases(t *testing.T) {
 			name: "包含只有空格的标签",
 			question: &cmn.TQuestion{
 				Type:       "00",
-				Difficulty: null.IntFrom(1),
+				Difficulty: "00",
 				Score:      null.FloatFrom(2.0),
 				BelongTo:   null.IntFrom(1001),
 				Content:    null.StringFrom("测试题目"),
@@ -1163,7 +1163,7 @@ func TestValidateQuestionEdgeCases(t *testing.T) {
 			name: "包含制表符和换行符的标签",
 			question: &cmn.TQuestion{
 				Type:       "00",
-				Difficulty: null.IntFrom(1),
+				Difficulty: "00",
 				Score:      null.FloatFrom(2.0),
 				BelongTo:   null.IntFrom(1001),
 				Content:    null.StringFrom("测试题目"),
@@ -1204,7 +1204,7 @@ func TestValidateOptionFormats(t *testing.T) {
 			name: "单选题-选项值为空",
 			question: &cmn.TQuestion{
 				Type:       "00",
-				Difficulty: null.IntFrom(1),
+				Difficulty: "00",
 				Score:      null.FloatFrom(2.0),
 				BelongTo:   null.IntFrom(1001),
 				Content:    null.StringFrom("测试单选题"),
@@ -1226,7 +1226,7 @@ func TestValidateOptionFormats(t *testing.T) {
 			name: "单选题-选项值只有空格",
 			question: &cmn.TQuestion{
 				Type:       "00",
-				Difficulty: null.IntFrom(1),
+				Difficulty: "00",
 				Score:      null.FloatFrom(2.0),
 				BelongTo:   null.IntFrom(1001),
 				Content:    null.StringFrom("测试单选题"),
@@ -1248,7 +1248,7 @@ func TestValidateOptionFormats(t *testing.T) {
 			name: "单选题-选项JSON格式错误",
 			question: &cmn.TQuestion{
 				Type:       "00",
-				Difficulty: null.IntFrom(1),
+				Difficulty: "00",
 				Score:      null.FloatFrom(2.0),
 				BelongTo:   null.IntFrom(1001),
 				Content:    null.StringFrom("测试单选题"),
@@ -1263,7 +1263,7 @@ func TestValidateOptionFormats(t *testing.T) {
 			name: "单选题-答案JSON格式错误",
 			question: &cmn.TQuestion{
 				Type:       "00",
-				Difficulty: null.IntFrom(1),
+				Difficulty: "00",
 				Score:      null.FloatFrom(2.0),
 				BelongTo:   null.IntFrom(1001),
 				Content:    null.StringFrom("测试单选题"),
@@ -1284,7 +1284,7 @@ func TestValidateOptionFormats(t *testing.T) {
 			name: "多选题-答案JSON格式错误",
 			question: &cmn.TQuestion{
 				Type:       "02",
-				Difficulty: null.IntFrom(2),
+				Difficulty: "02",
 				Score:      null.FloatFrom(3.0),
 				BelongTo:   null.IntFrom(1001),
 				Content:    null.StringFrom("测试多选题"),
@@ -1306,7 +1306,7 @@ func TestValidateOptionFormats(t *testing.T) {
 			name: "判断题-选项JSON格式错误",
 			question: &cmn.TQuestion{
 				Type:       "04",
-				Difficulty: null.IntFrom(1),
+				Difficulty: "00",
 				Score:      null.FloatFrom(1.0),
 				BelongTo:   null.IntFrom(1001),
 				Content:    null.StringFrom("测试判断题"),
@@ -1321,7 +1321,7 @@ func TestValidateOptionFormats(t *testing.T) {
 			name: "判断题-答案JSON格式错误",
 			question: &cmn.TQuestion{
 				Type:       "04",
-				Difficulty: null.IntFrom(1),
+				Difficulty: "00",
 				Score:      null.FloatFrom(1.0),
 				BelongTo:   null.IntFrom(1001),
 				Content:    null.StringFrom("测试判断题"),
@@ -1381,7 +1381,7 @@ func TestValidateEssayQuestion(t *testing.T) {
 			name: "有效的简答题-单个小问",
 			question: &cmn.TQuestion{
 				Type:       "08",
-				Difficulty: null.IntFrom(2),
+				Difficulty: "02",
 				Score:      null.FloatFrom(5.0),
 				BelongTo:   null.IntFrom(1001),
 				Content:    null.StringFrom("简述计算机病毒的传播途径"),
@@ -1396,7 +1396,7 @@ func TestValidateEssayQuestion(t *testing.T) {
 			name: "有效的简答题-多个小问",
 			question: &cmn.TQuestion{
 				Type:       "08",
-				Difficulty: null.IntFrom(3),
+				Difficulty: "04",
 				Score:      null.FloatFrom(10.0),
 				BelongTo:   null.IntFrom(1001),
 				Content:    null.StringFrom("关于计算机病毒：(1)请阐述计算机病毒的定义和特点；(2)说明病毒的传播途径；(3)提出预防措施"),
@@ -1411,7 +1411,7 @@ func TestValidateEssayQuestion(t *testing.T) {
 			name: "简答题没有答案",
 			question: &cmn.TQuestion{
 				Type:       "08",
-				Difficulty: null.IntFrom(2),
+				Difficulty: "02",
 				Score:      null.FloatFrom(5.0),
 				BelongTo:   null.IntFrom(1001),
 				Content:    null.StringFrom("简述计算机病毒的传播途径"),
@@ -1429,7 +1429,7 @@ func TestValidateEssayQuestion(t *testing.T) {
 			name: "答案索引重复",
 			question: &cmn.TQuestion{
 				Type:       "08",
-				Difficulty: null.IntFrom(2),
+				Difficulty: "02",
 				Score:      null.FloatFrom(10.0),
 				BelongTo:   null.IntFrom(1001),
 				Content:    null.StringFrom("多小问简答题"),
@@ -1451,7 +1451,7 @@ func TestValidateEssayQuestion(t *testing.T) {
 			name: "答案索引超出范围",
 			question: &cmn.TQuestion{
 				Type:       "08",
-				Difficulty: null.IntFrom(2),
+				Difficulty: "02",
 				Score:      null.FloatFrom(10.0),
 				BelongTo:   null.IntFrom(1001),
 				Content:    null.StringFrom("多小问简答题"),
@@ -1473,7 +1473,7 @@ func TestValidateEssayQuestion(t *testing.T) {
 			name: "总分数与题目分数不匹配",
 			question: &cmn.TQuestion{
 				Type:       "08",
-				Difficulty: null.IntFrom(2),
+				Difficulty: "02",
 				Score:      null.FloatFrom(15.0), // 题目总分15分
 				BelongTo:   null.IntFrom(1001),
 				Content:    null.StringFrom("多小问简答题"),
@@ -1495,7 +1495,7 @@ func TestValidateEssayQuestion(t *testing.T) {
 			name: "某个小问的答案模板为空",
 			question: &cmn.TQuestion{
 				Type:       "08",
-				Difficulty: null.IntFrom(2),
+				Difficulty: "02",
 				Score:      null.FloatFrom(10.0),
 				BelongTo:   null.IntFrom(1001),
 				Content:    null.StringFrom("多小问简答题"),
@@ -1517,7 +1517,7 @@ func TestValidateEssayQuestion(t *testing.T) {
 			name: "某个小问的评分规则为空",
 			question: &cmn.TQuestion{
 				Type:       "08",
-				Difficulty: null.IntFrom(2),
+				Difficulty: "02",
 				Score:      null.FloatFrom(10.0),
 				BelongTo:   null.IntFrom(1001),
 				Content:    null.StringFrom("多小问简答题"),
@@ -1539,7 +1539,7 @@ func TestValidateEssayQuestion(t *testing.T) {
 			name: "某个小问的分数为0",
 			question: &cmn.TQuestion{
 				Type:       "08",
-				Difficulty: null.IntFrom(2),
+				Difficulty: "02",
 				Score:      null.FloatFrom(7.0),
 				BelongTo:   null.IntFrom(1001),
 				Content:    null.StringFrom("多小问简答题"),
@@ -1561,7 +1561,7 @@ func TestValidateEssayQuestion(t *testing.T) {
 			name: "答案索引小于1",
 			question: &cmn.TQuestion{
 				Type:       "08",
-				Difficulty: null.IntFrom(2),
+				Difficulty: "02",
 				Score:      null.FloatFrom(7.0),
 				BelongTo:   null.IntFrom(1001),
 				Content:    null.StringFrom("多小问简答题"),
@@ -1582,7 +1582,7 @@ func TestValidateEssayQuestion(t *testing.T) {
 			name: "答案JSON格式无效",
 			question: &cmn.TQuestion{
 				Type:       "08",
-				Difficulty: null.IntFrom(2),
+				Difficulty: "02",
 				Score:      null.FloatFrom(5.0),
 				BelongTo:   null.IntFrom(1001),
 				Content:    null.StringFrom("简述计算机病毒的传播途径"),

@@ -312,11 +312,11 @@ func initTestQuestionBankAndQuestion(t *testing.T, userID int64, withoutQuestion
 		err = db.QueryRowx(`
 			INSERT INTO t_question (
 				type, content, options, answers, score, difficulty, tags, analysis,
-				title, answer_file_path, test_file_path, input, output, example, 
+				title, answer_file_path, test_file_path, input, output, example,
 				repo, "order", creator, create_time, status, access_mode, belong_to
 			) VALUES (
 				$1, $2, $3, $4, $5, $6, $7, $8,
-				$9, $10, $11, $12, $13, $14, 
+				$9, $10, $11, $12, $13, $14,
 				$15, $16, $17, $18, $19, $20, $21
 			) RETURNING id`,
 			question.Type, question.Content, question.Options, question.Answers,
@@ -722,8 +722,8 @@ func TestQuestoinBankPutMethod(t *testing.T) {
 				var updatedBy int64
 
 				err := db.QueryRow(ctx, `
-					SELECT name, tags, update_time,updated_by 
-					FROM t_question_bank 
+					SELECT name, tags, update_time,updated_by
+					FROM t_question_bank
 					WHERE id = $1
 				`, bankID).Scan(&name, &tagsBytes, &updateTime, &updatedBy)
 
@@ -766,8 +766,8 @@ func TestQuestoinBankPutMethod(t *testing.T) {
 				var updatedBy int64
 
 				err := db.QueryRow(ctx, `
-					SELECT name, tags, update_time,updated_by 
-					FROM t_question_bank 
+					SELECT name, tags, update_time,updated_by
+					FROM t_question_bank
 					WHERE id = $1
 				`, bankID).Scan(&name, &tagsBytes, &updateTime, &updatedBy)
 
@@ -810,8 +810,8 @@ func TestQuestoinBankPutMethod(t *testing.T) {
 				var updatedBy int64
 
 				err := db.QueryRow(ctx, `
-					SELECT name, tags, update_time,updated_by 
-					FROM t_question_bank 
+					SELECT name, tags, update_time,updated_by
+					FROM t_question_bank
 					WHERE id = $1
 				`, bankID).Scan(&name, &tagsBytes, &updateTime, &updatedBy)
 
@@ -875,8 +875,8 @@ func TestQuestoinBankPutMethod(t *testing.T) {
 				var updatedBy int64
 
 				err := db.QueryRow(ctx, `
-					SELECT name, tags, update_time,updated_by 
-					FROM t_question_bank 
+					SELECT name, tags, update_time,updated_by
+					FROM t_question_bank
 					WHERE id = $1
 				`, bankID).Scan(&name, &tagsBytes, &updateTime, &updatedBy)
 
@@ -940,8 +940,8 @@ func TestQuestoinBankPutMethod(t *testing.T) {
 				var updatedBy int64
 
 				err := db.QueryRow(ctx, `
-					SELECT name, tags, update_time,updated_by 
-					FROM t_question_bank 
+					SELECT name, tags, update_time,updated_by
+					FROM t_question_bank
 					WHERE id = $1
 				`, bankID).Scan(&name, &tagsBytes, &updateTime, &updatedBy)
 
@@ -985,8 +985,8 @@ func TestQuestoinBankPutMethod(t *testing.T) {
 				var updatedBy int64
 
 				err := db.QueryRow(ctx, `
-					SELECT name, tags, update_time,updated_by 
-					FROM t_question_bank 
+					SELECT name, tags, update_time,updated_by
+					FROM t_question_bank
 					WHERE id = $1
 				`, bankID).Scan(&name, &tagsBytes, &updateTime, &updatedBy)
 
@@ -1030,8 +1030,8 @@ func TestQuestoinBankPutMethod(t *testing.T) {
 				var updatedBy int64
 
 				err := db.QueryRow(ctx, `
-					SELECT name, tags, update_time,updated_by 
-					FROM t_question_bank 
+					SELECT name, tags, update_time,updated_by
+					FROM t_question_bank
 					WHERE id = $1
 				`, bankID).Scan(&name, &tagsBytes, &updateTime, &updatedBy)
 
@@ -1075,8 +1075,8 @@ func TestQuestoinBankPutMethod(t *testing.T) {
 				var updatedBy int64
 
 				err := db.QueryRow(ctx, `
-					SELECT name, tags, update_time,updated_by 
-					FROM t_question_bank 
+					SELECT name, tags, update_time,updated_by
+					FROM t_question_bank
 					WHERE id = $1
 				`, bankID).Scan(&name, &tagsBytes, &updateTime, &updatedBy)
 
@@ -1183,9 +1183,9 @@ func TestQuestionBankGetMethod(t *testing.T) {
 			now := time.Now().UnixMilli()
 			var bankID int64
 			err = tx.QueryRow(ctx, `
-				INSERT INTO t_question_bank 
+				INSERT INTO t_question_bank
 				(name, type, tags, creator, create_time, updated_by, update_time, status, domain_id)
-				VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) 
+				VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 				RETURNING id
 			`, fmt.Sprintf("测试题库-%d", i+1), "00", tagsJSON, creatorID, now, creatorID, now, "00", resourceDomainID).Scan(&bankID)
 			require.NoError(t, err)
@@ -2282,7 +2282,7 @@ func TestQuestionGetMethod(t *testing.T) {
 
 				// 验证所有返回的题目都是指定难度
 				for _, question := range questions {
-					require.Equal(t, int64(2), question.Difficulty.Int64, "题目难度应匹配")
+					require.Equal(t, "02", question.Difficulty, "题目难度应匹配")
 				}
 			},
 		},
@@ -2427,8 +2427,8 @@ func TestQuestionGetMethod(t *testing.T) {
 
 				// 验证所有返回的题目都是指定难度之一
 				for _, question := range questions {
-					require.True(t, question.Difficulty.Int64 == 1 || question.Difficulty.Int64 == 3,
-						"题目难度应为简单(1)或困难(3)")
+					require.True(t, question.Difficulty == "00" || question.Difficulty == "04",
+						"题目难度应为易(00)或中(04)")
 				}
 			},
 		},
@@ -2448,7 +2448,7 @@ func TestQuestionGetMethod(t *testing.T) {
 				// 验证所有返回的题目都满足组合条件
 				for _, question := range questions {
 					require.Equal(t, "00", question.Type, "题目类型应为单选题")
-					require.Equal(t, int64(2), question.Difficulty.Int64, "题目难度应为中等")
+					require.Equal(t, "02", question.Difficulty, "题目难度应为较易")
 				}
 			},
 		},
@@ -2468,8 +2468,8 @@ func TestQuestionGetMethod(t *testing.T) {
 				// 验证所有返回的题目都满足组合条件
 				for _, question := range questions {
 					require.Equal(t, "00", question.Type, "题目类型应为单选题")
-					require.True(t, question.Difficulty.Int64 == 1 || question.Difficulty.Int64 == 2,
-						"题目难度应为简单或中等")
+					require.True(t, question.Difficulty == "00" || question.Difficulty == "02",
+						"题目难度应为易或较易")
 
 					var tags []string
 					err := json.Unmarshal(question.Tags, &tags)
@@ -2543,9 +2543,9 @@ func TestQuestionGetMethod(t *testing.T) {
 				err := json.Unmarshal(q.Msg.Data, &questions)
 				require.NoError(t, err, "应能正确解析题目列表")
 
-				// 验证所有返回的题目难度都为1（无效难度值被忽略）
+				// 验证所有返回的题目难度都为00（无效难度值被忽略）
 				for _, question := range questions {
-					require.Equal(t, int64(1), question.Difficulty.Int64, "题目难度应为简单(1)")
+					require.Equal(t, "00", question.Difficulty, "题目难度应为易(00)")
 				}
 			},
 		},
@@ -2581,7 +2581,7 @@ func TestQuestionGetMethod(t *testing.T) {
 				for _, question := range questions {
 					require.Contains(t, question.Content.String, "网络", "题目内容应包含'网络'")
 					require.Equal(t, "00", question.Type, "题目类型应为单选题")
-					require.Equal(t, int64(2), question.Difficulty.Int64, "题目难度应为中等")
+					require.Equal(t, "02", question.Difficulty, "题目难度应为较易")
 
 					var tags []string
 					err := json.Unmarshal(question.Tags, &tags)
@@ -2838,7 +2838,7 @@ func TestQuestionPostMethod(t *testing.T) {
 			reqBody: []cmn.TQuestion{
 				{
 					Type:       "00",
-					Difficulty: null.IntFrom(1),
+					Difficulty: "00",
 					Content:    null.StringFrom("<p><span style=\"font-size: 12pt\">这是一道单选题测试</span></p>"),
 					Tags:       types.JSONText(`["测试"]`),
 					Options: types.JSONText(`[
@@ -2877,7 +2877,7 @@ func TestQuestionPostMethod(t *testing.T) {
 			reqBody: []cmn.TQuestion{
 				{
 					Type:       "00",
-					Difficulty: null.IntFrom(1),
+					Difficulty: "00",
 					Content:    null.StringFrom("<p><span style=\"font-size: 12pt\">这是一道单选题测试</span></p>"),
 					Tags:       types.JSONText(`["测试"]`),
 					Options: types.JSONText(`[
@@ -2906,7 +2906,7 @@ func TestQuestionPostMethod(t *testing.T) {
 			reqBody: []cmn.TQuestion{
 				{
 					Type:       "00",
-					Difficulty: null.IntFrom(1),
+					Difficulty: "00",
 					Content:    null.StringFrom("<p><span style=\"font-size: 12pt\">这是一道单选题测试</span></p>"),
 					Tags:       types.JSONText(`["测试"]`),
 					Options: types.JSONText(`[
@@ -2935,7 +2935,7 @@ func TestQuestionPostMethod(t *testing.T) {
 			reqBody: []cmn.TQuestion{
 				{
 					Type:       "00",
-					Difficulty: null.IntFrom(1),
+					Difficulty: "00",
 					Content:    null.StringFrom("<p><span style=\"font-size: 12pt\">这是一道单选题测试</span></p>"),
 					Tags:       types.JSONText(`["测试"]`),
 					Options: types.JSONText(`[
@@ -2964,7 +2964,7 @@ func TestQuestionPostMethod(t *testing.T) {
 			reqBody: []cmn.TQuestion{
 				{
 					Type:       "00",
-					Difficulty: null.IntFrom(1),
+					Difficulty: "00",
 					Content:    null.StringFrom("<p><span style=\"font-size: 12pt\">这是一道单选题测试</span></p>"),
 					Tags:       types.JSONText(`["测试"]`),
 					Options: types.JSONText(`[
@@ -2993,7 +2993,7 @@ func TestQuestionPostMethod(t *testing.T) {
 			reqBody: []cmn.TQuestion{
 				{
 					Type:       "00",
-					Difficulty: null.IntFrom(1),
+					Difficulty: "00",
 					Content:    null.StringFrom("<p><span style=\"font-size: 12pt\">这是一道单选题测试</span></p>"),
 					Tags:       types.JSONText(`["测试"]`),
 					Options: types.JSONText(`[
@@ -3022,7 +3022,7 @@ func TestQuestionPostMethod(t *testing.T) {
 			reqBody: []cmn.TQuestion{
 				{
 					Type:       "00",
-					Difficulty: null.IntFrom(1),
+					Difficulty: "00",
 					Content:    null.StringFrom("<p><span style=\"font-size: 12pt\">这是一道单选题测试</span></p>"),
 					Tags:       types.JSONText(`["测试"]`),
 					Options: types.JSONText(`[
@@ -3051,7 +3051,7 @@ func TestQuestionPostMethod(t *testing.T) {
 			reqBody: []cmn.TQuestion{
 				{
 					Type:       "02",
-					Difficulty: null.IntFrom(2),
+					Difficulty: "02",
 					Content:    null.StringFrom("<p><span style=\"font-size: 12pt\">这是一道多选题测试</span></p>"),
 					Tags:       types.JSONText(`["测试", "多选"]`),
 					Options: types.JSONText(`[
@@ -3084,7 +3084,7 @@ func TestQuestionPostMethod(t *testing.T) {
 			reqBody: []cmn.TQuestion{
 				{
 					Type:       "04",
-					Difficulty: null.IntFrom(1),
+					Difficulty: "00",
 					Content:    null.StringFrom("<p>这是一道判断题</p>"),
 					Tags:       types.JSONText(`["判断"]`),
 					Options: types.JSONText(`[
@@ -3115,7 +3115,7 @@ func TestQuestionPostMethod(t *testing.T) {
 			reqBody: []cmn.TQuestion{
 				{
 					Type:       "00",
-					Difficulty: null.IntFrom(1),
+					Difficulty: "00",
 					Content:    null.StringFrom("<p>批量题目1</p>"),
 					Tags:       types.JSONText(`["批量"]`),
 					Options: types.JSONText(`[
@@ -3130,7 +3130,7 @@ func TestQuestionPostMethod(t *testing.T) {
 				},
 				{
 					Type:       "00",
-					Difficulty: null.IntFrom(2),
+					Difficulty: "02",
 					Content:    null.StringFrom("<p>批量题目2</p>"),
 					Tags:       types.JSONText(`["批量"]`),
 					Options: types.JSONText(`[
@@ -3166,7 +3166,7 @@ func TestQuestionPostMethod(t *testing.T) {
 			reqBody: []cmn.TQuestion{
 				{
 					Type:       "99", // 无效类型
-					Difficulty: null.IntFrom(1),
+					Difficulty: "00",
 					Content:    null.StringFrom("<p>无效类型题目</p>"),
 					Tags:       types.JSONText(`["测试"]`),
 					Options:    types.JSONText(`[]`),
@@ -3189,7 +3189,7 @@ func TestQuestionPostMethod(t *testing.T) {
 			reqBody: []cmn.TQuestion{
 				{
 					Type:       "00",
-					Difficulty: null.IntFrom(1),
+					Difficulty: "00",
 					Content:    null.StringFrom("<p>分数无效题目</p>"),
 					Tags:       types.JSONText(`["测试"]`),
 					Options: types.JSONText(`[
@@ -3215,7 +3215,7 @@ func TestQuestionPostMethod(t *testing.T) {
 			reqBody: []cmn.TQuestion{
 				{
 					Type:       "00",
-					Difficulty: null.IntFrom(1),
+					Difficulty: "00",
 					Content:    null.StringFrom("<p>选项不足题目</p>"),
 					Tags:       types.JSONText(`["测试"]`),
 					Options: types.JSONText(`[
@@ -3240,7 +3240,7 @@ func TestQuestionPostMethod(t *testing.T) {
 			reqBody: []cmn.TQuestion{
 				{
 					Type:       "06",
-					Difficulty: null.IntFrom(1),
+					Difficulty: "00",
 					Content:    null.StringFrom(`<p>这是一道填空题，<span class="blank-item">____</span>是答案</p>`),
 					Tags:       types.JSONText(`["测试"]`),
 					Answers: types.JSONText(`[
@@ -3269,7 +3269,7 @@ func TestQuestionPostMethod(t *testing.T) {
 			reqBody: []cmn.TQuestion{
 				{
 					Type:       "08",
-					Difficulty: null.IntFrom(1),
+					Difficulty: "00",
 					Content:    null.StringFrom("<p>这是一道简答题</p>"),
 					Tags:       types.JSONText(`["测试"]`),
 					Answers: types.JSONText(`[
@@ -3298,7 +3298,7 @@ func TestQuestionPostMethod(t *testing.T) {
 			reqBody: []cmn.TQuestion{
 				{
 					Type:       "06",
-					Difficulty: null.IntFrom(1),
+					Difficulty: "00",
 					Content:    null.StringFrom(""), // 空内容
 					Tags:       types.JSONText(`["测试"]`),
 					Options: types.JSONText(`[
@@ -3328,7 +3328,7 @@ func TestQuestionPostMethod(t *testing.T) {
 			reqBody: []cmn.TQuestion{
 				{
 					Type:       "08",
-					Difficulty: null.IntFrom(1),
+					Difficulty: "00",
 					Content:    null.StringFrom("   "), // 只有空格
 					Tags:       types.JSONText(`["测试"]`),
 					Options: types.JSONText(`[
@@ -3358,7 +3358,7 @@ func TestQuestionPostMethod(t *testing.T) {
 			reqBody: []cmn.TQuestion{
 				{
 					Type:       "06",
-					Difficulty: null.IntFrom(2),
+					Difficulty: "02",
 					Content:    null.StringFrom(`<p>请填写Go语言的关键字：<span class="blank-item">____</span>是用来声明变量的关键字，<span class="blank-item">____</span>是用来声明常量的关键字。</p>`),
 					Tags:       types.JSONText(`["填空", "Go语言"]`),
 					Answers: types.JSONText(`[
@@ -3408,7 +3408,7 @@ func TestQuestionPostMethod(t *testing.T) {
 			reqBody: []cmn.TQuestion{
 				{
 					Type:       "08",
-					Difficulty: null.IntFrom(3),
+					Difficulty: "04",
 					Content:    null.StringFrom("<p>请简述Go语言中goroutine的工作原理以及它与传统线程的区别。</p>"),
 					Tags:       types.JSONText(`["简答", "Go语言", "并发"]`),
 					Answers: types.JSONText(`[
@@ -3436,7 +3436,7 @@ func TestQuestionPostMethod(t *testing.T) {
 				err := json.Unmarshal(q.Msg.Data, &questions)
 				require.NoError(t, err, "应能正确解析返回的题目")
 				require.Equal(t, "08", questions[0].Type, "题目类型应为简答题")
-				require.Equal(t, int64(3), questions[0].Difficulty.Int64, "简答题难度应为困难")
+				require.Equal(t, "04", questions[0].Difficulty, "简答题难度应为中")
 				require.Equal(t, float64(10), questions[0].Score.Float64, "简答题分数应为10分")
 			},
 		},
@@ -3445,7 +3445,7 @@ func TestQuestionPostMethod(t *testing.T) {
 			reqBody: []cmn.TQuestion{
 				{
 					Type:       "06", // 填空题
-					Difficulty: null.IntFrom(1),
+					Difficulty: "00",
 					Content:    null.StringFrom(`<p>Go语言的包管理工具是<span class="blank-item">____</span></p>`),
 					Tags:       types.JSONText(`["填空", "基础"]`),
 					Answers: types.JSONText(`[
@@ -3464,7 +3464,7 @@ func TestQuestionPostMethod(t *testing.T) {
 				},
 				{
 					Type:       "08", // 简答题
-					Difficulty: null.IntFrom(2),
+					Difficulty: "02",
 					Content:    null.StringFrom("<p>请解释Go语言中interface{}的作用</p>"),
 					Tags:       types.JSONText(`["简答", "接口"]`),
 					Answers: types.JSONText(`[
@@ -3535,7 +3535,7 @@ func TestQuestionPostMethod(t *testing.T) {
 			reqBody: []cmn.TQuestion{
 				{
 					Type:       "00",
-					Difficulty: null.IntFrom(1),
+					Difficulty: "00",
 					Content:    null.StringFrom("<p><span style=\"font-size: 12pt\">这是一道单选题测试</span></p>"),
 					Tags:       types.JSONText(`["测试"]`),
 					Options: types.JSONText(`[
@@ -3564,7 +3564,7 @@ func TestQuestionPostMethod(t *testing.T) {
 			reqBody: []cmn.TQuestion{
 				{
 					Type:       "00",
-					Difficulty: null.IntFrom(1),
+					Difficulty: "00",
 					Content:    null.StringFrom("<p><span style=\"font-size: 12pt\">这是一道单选题测试</span></p>"),
 					Tags:       types.JSONText(`["测试"]`),
 					Options: types.JSONText(`[
@@ -3593,7 +3593,7 @@ func TestQuestionPostMethod(t *testing.T) {
 			reqBody: []cmn.TQuestion{
 				{
 					Type:       "00",
-					Difficulty: null.IntFrom(1),
+					Difficulty: "00",
 					Content:    null.StringFrom("<p><span style=\"font-size: 12pt\">这是一道单选题测试</span></p>"),
 					Tags:       types.JSONText(`["测试"]`),
 					Options: types.JSONText(`[
@@ -3622,7 +3622,7 @@ func TestQuestionPostMethod(t *testing.T) {
 			reqBody: []cmn.TQuestion{
 				{
 					Type:       "00",
-					Difficulty: null.IntFrom(1),
+					Difficulty: "00",
 					Content:    null.StringFrom("<p><span style=\"font-size: 12pt\">这是一道单选题测试</span></p>"),
 					Tags:       types.JSONText(`["测试"]`),
 					Options: types.JSONText(`[
@@ -3651,7 +3651,7 @@ func TestQuestionPostMethod(t *testing.T) {
 			reqBody: []cmn.TQuestion{
 				{
 					Type:       "00",
-					Difficulty: null.IntFrom(1),
+					Difficulty: "00",
 					Content:    null.StringFrom("<p><span style=\"font-size: 12pt\">这是一道单选题测试</span></p>"),
 					Tags:       types.JSONText(`["测试"]`),
 					Options: types.JSONText(`[
@@ -3680,7 +3680,7 @@ func TestQuestionPostMethod(t *testing.T) {
 			reqBody: []cmn.TQuestion{
 				{
 					Type:       "00",
-					Difficulty: null.IntFrom(1),
+					Difficulty: "00",
 					Content:    null.StringFrom("<p><span style=\"font-size: 12pt\">这是一道单选题测试</span></p>"),
 					Tags:       types.JSONText(`["测试"]`),
 					Options: types.JSONText(`[
@@ -3709,7 +3709,7 @@ func TestQuestionPostMethod(t *testing.T) {
 			reqBody: []cmn.TQuestion{
 				{
 					Type:       "00",
-					Difficulty: null.IntFrom(1),
+					Difficulty: "00",
 					Content:    null.StringFrom("<p><span style=\"font-size: 12pt\">这是一道单选题测试</span></p>"),
 					Tags:       types.JSONText(`["测试"]`),
 					Options: types.JSONText(`[
@@ -3738,7 +3738,7 @@ func TestQuestionPostMethod(t *testing.T) {
 			reqBody: []cmn.TQuestion{
 				{
 					Type:       "00",
-					Difficulty: null.IntFrom(1),
+					Difficulty: "00",
 					Content:    null.StringFrom("<p><span style=\"font-size: 12pt\">这是一道单选题测试</span></p>"),
 					Tags:       types.JSONText(`["测试"]`),
 					Options: types.JSONText(`[
@@ -3839,7 +3839,7 @@ func TestQuestionPutMethod(t *testing.T) {
 			reqBody: cmn.TQuestion{
 				ID:         null.IntFrom(testQuestionID),
 				Type:       "00", // 单选题
-				Difficulty: null.IntFrom(2),
+				Difficulty: "02",
 				Content:    null.StringFrom("<p><span style=\"font-size: 12pt\">这是更新后的单选题</span></p>"),
 				Tags:       types.JSONText(`["更新测试", "单选题"]`),
 				Options: types.JSONText(`[
@@ -3869,7 +3869,7 @@ func TestQuestionPutMethod(t *testing.T) {
 
 				err := db.QueryRow(ctx, `
 					SELECT content, options, answers, score, difficulty, tags, analysis
-					FROM t_question 
+					FROM t_question
 					WHERE id = $1
 				`, testQuestionID).Scan(&content, &options, &answers, &score, &difficulty, &tags, &analysis)
 
@@ -3892,7 +3892,7 @@ func TestQuestionPutMethod(t *testing.T) {
 			reqBody: cmn.TQuestion{
 				ID:         null.IntFrom(testQuestionID),
 				Type:       "00", // 单选题
-				Difficulty: null.IntFrom(2),
+				Difficulty: "02",
 				Content:    null.StringFrom("<p><span style=\"font-size: 12pt\">这是更新后的单选题</span></p>"),
 				Tags:       types.JSONText(`["更新测试", "单选题"]`),
 				Options: types.JSONText(`[
@@ -3920,7 +3920,7 @@ func TestQuestionPutMethod(t *testing.T) {
 			reqBody: cmn.TQuestion{
 				ID:         null.IntFrom(999999), // 不存在的题目ID
 				Type:       "00",
-				Difficulty: null.IntFrom(1),
+				Difficulty: "00",
 				Content:    null.StringFrom("<p>不存在的题目</p>"),
 				Tags:       types.JSONText(`["测试"]`),
 				Options: types.JSONText(`[
@@ -3945,7 +3945,7 @@ func TestQuestionPutMethod(t *testing.T) {
 			reqBody: cmn.TQuestion{
 				ID:         null.IntFrom(testQuestionID),
 				Type:       "00",
-				Difficulty: null.IntFrom(1),
+				Difficulty: "00",
 				Content:    null.StringFrom(""), // 空内容
 				Tags:       types.JSONText(`["测试"]`),
 				Options: types.JSONText(`[
@@ -3970,7 +3970,7 @@ func TestQuestionPutMethod(t *testing.T) {
 			reqBody: cmn.TQuestion{
 				ID:         null.IntFrom(testQuestionID),
 				Type:       "99", // 无效类型
-				Difficulty: null.IntFrom(1),
+				Difficulty: "00",
 				Content:    null.StringFrom("<p>测试题目</p>"),
 				Tags:       types.JSONText(`["测试"]`),
 				Options: types.JSONText(`[
@@ -3995,7 +3995,7 @@ func TestQuestionPutMethod(t *testing.T) {
 			reqBody: cmn.TQuestion{
 				ID:         null.IntFrom(testQuestionID),
 				Type:       "00",
-				Difficulty: null.IntFrom(99), // 无效难度
+				Difficulty: "99", // 无效难度
 				Content:    null.StringFrom("<p>测试题目</p>"),
 				Tags:       types.JSONText(`["测试"]`),
 				Options: types.JSONText(`[
@@ -4020,7 +4020,7 @@ func TestQuestionPutMethod(t *testing.T) {
 			reqBody: cmn.TQuestion{
 				ID:         null.IntFrom(testQuestionID),
 				Type:       "00",
-				Difficulty: null.IntFrom(1),
+				Difficulty: "00",
 				Content:    null.StringFrom("<p>测试题目</p>"),
 				Tags:       types.JSONText(`["测试"]`),
 				Options: types.JSONText(`[
@@ -4045,7 +4045,7 @@ func TestQuestionPutMethod(t *testing.T) {
 			reqBody: cmn.TQuestion{
 				ID:         null.IntFrom(testQuestionID),
 				Type:       "00",
-				Difficulty: null.IntFrom(1),
+				Difficulty: "00",
 				Content:    null.StringFrom("<p>测试题目</p>"),
 				Tags:       types.JSONText(`["测试"]`),
 				Options: types.JSONText(`[
@@ -4070,7 +4070,7 @@ func TestQuestionPutMethod(t *testing.T) {
 			reqBody: cmn.TQuestion{
 				ID:         null.IntFrom(testQuestionID),
 				Type:       "00",
-				Difficulty: null.IntFrom(1),
+				Difficulty: "00",
 				Content:    null.StringFrom("<p>测试题目</p>"),
 				Tags:       types.JSONText(`["测试"]`),
 				Options: types.JSONText(`[
@@ -4095,7 +4095,7 @@ func TestQuestionPutMethod(t *testing.T) {
 			reqBody: cmn.TQuestion{
 				ID:         null.IntFrom(testQuestionID),
 				Type:       "00",
-				Difficulty: null.IntFrom(1),
+				Difficulty: "00",
 				Content:    null.StringFrom("<p>测试题目</p>"),
 				Tags:       types.JSONText(`["测试"]`),
 				Options: types.JSONText(`[
@@ -4120,7 +4120,7 @@ func TestQuestionPutMethod(t *testing.T) {
 			reqBody: cmn.TQuestion{
 				ID:         null.IntFrom(testQuestionID),
 				Type:       "00",
-				Difficulty: null.IntFrom(1),
+				Difficulty: "00",
 				Content:    null.StringFrom("<p>测试题目</p>"),
 				Tags:       types.JSONText(`["测试"]`),
 				Options: types.JSONText(`[
@@ -4145,7 +4145,7 @@ func TestQuestionPutMethod(t *testing.T) {
 			reqBody: cmn.TQuestion{
 				ID:         null.IntFrom(testQuestionID),
 				Type:       "00",
-				Difficulty: null.IntFrom(1),
+				Difficulty: "00",
 				Content:    null.StringFrom("<p>测试题目</p>"),
 				Tags:       types.JSONText(`["测试"]`),
 				Options: types.JSONText(`[
@@ -4170,7 +4170,7 @@ func TestQuestionPutMethod(t *testing.T) {
 			reqBody: cmn.TQuestion{
 				ID:         null.IntFrom(testQuestionID),
 				Type:       "00",
-				Difficulty: null.IntFrom(1),
+				Difficulty: "00",
 				Content:    null.StringFrom("<p>测试题目</p>"),
 				Tags:       types.JSONText(`["测试"]`),
 				Options: types.JSONText(`[
@@ -4204,7 +4204,7 @@ func TestQuestionPutMethod(t *testing.T) {
 		reqBody := cmn.TQuestion{
 			ID:         null.IntFrom(testQuestionID),
 			Type:       "00", // 单选题
-			Difficulty: null.IntFrom(2),
+			Difficulty: "02",
 			Content:    null.StringFrom("<p><span style=\"font-size: 12pt\">这是更新后的单选题</span></p>"),
 			Tags:       types.JSONText(`["更新测试", "单选题"]`),
 			Options: types.JSONText(`[
@@ -4618,12 +4618,12 @@ func getQuestionsByIDs(ctx context.Context, questionIDs []int64) ([]cmn.TQuestio
 
 	db := cmn.GetPgxConn()
 	query := `
-		SELECT id, type, content, options, answers, score, difficulty, tags, 
-		       analysis, title, answer_file_path, test_file_path, input, output, 
-		       example, repo, "order", creator, create_time, updated_by, 
-		       update_time, addi, status, question_attachments_path, 
+		SELECT id, type, content, options, answers, score, difficulty, tags,
+		       analysis, title, answer_file_path, test_file_path, input, output,
+		       example, repo, "order", creator, create_time, updated_by,
+		       update_time, addi, status, question_attachments_path,
 		       access_mode, belong_to
-		FROM t_question 
+		FROM t_question
 		WHERE id = ANY($1) AND status = '00'
 	`
 

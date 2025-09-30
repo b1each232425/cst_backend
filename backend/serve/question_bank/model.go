@@ -16,7 +16,7 @@ type QueryQuestionsParams struct {
 	Content    string   // 题目内容
 	Tags       []string // 题目标签
 	Type       []string // 题目类型
-	Difficulty []int64  // 题目难度
+	Difficulty []string // 题目难度
 	Page       int64    // 分页页码
 	PageSize   int64    // 分页大小
 }
@@ -49,7 +49,7 @@ type QuestionBankDetail struct {
 	QuestionCount        int64    `json:"question_count"`        // 题目数量
 	QuestionTypes        []string `json:"question_types"`        // 题目涉及所有类型(去重),00-单选,02-多选,04-判断,06-填空,08-简答
 	QuestionTags         []string `json:"question_tags"`         // 题目涉及所有标签(去重)
-	QuestionDifficulties []int64  `json:"question_difficulties"` // 题目涉及所有难度(去重),0-简单,1-一般,2-困难
+	QuestionDifficulties []string `json:"question_difficulties"` // 题目涉及所有难度(去重),00-易,02-较易,04-中,06-较难,08-难
 }
 
 // QuestionFile 题目附件结构体
