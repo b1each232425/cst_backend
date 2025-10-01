@@ -13,9 +13,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
-	"github.com/jmoiron/sqlx/types"
 	"github.com/pkg/errors"
-	"github.com/tidwall/gjson"
 	"go.uber.org/zap"
 	"w2w.io/cmn"
 	"w2w.io/null"
@@ -138,7 +136,7 @@ func knowledgeBanks(ctx context.Context) {
 	case "get":
 		// 检查API访问权限
 		var accessible bool
-		accessible, q.Err = auth_mgt.CheckUserAPIAccessible(ctx, authority, "/api/knowledge-banks", auth_mgt.CAPIAccessActionRead)
+		accessible, q.Err = auth_mgt.CheckUserAPIAccessible(ctx, authority, "/api/knowledge-bank", auth_mgt.CAPIAccessActionRead)
 		if q.Err != nil {
 			z.Error("检查API访问权限失败: " + q.Err.Error())
 			q.RespErr()
@@ -278,9 +276,11 @@ func knowledgeBanks(ctx context.Context) {
 			return
 		}
 
-		// 数据查询
-		s2 := fmt.Sprintf(`
-		SELECT
+		// 根据是否提供bankID决定查询字段
+		var selectFields string
+		if params.BankID > 0 {
+			// 当提供bankID时，查询完整信息包括knowledges
+			selectFields = `
 			id,
 			domain_id,
 			name,
@@ -290,12 +290,30 @@ func knowledgeBanks(ctx context.Context) {
 			update_time,
 			knowledges,
 			addi,
-			status
+			status`
+		} else {
+			// 当没有提供bankID时，不查询knowledges字段
+			selectFields = `
+			id,
+			domain_id,
+			name,
+			tags,
+			creator,
+			create_time,
+			update_time,
+			addi,
+			status`
+		}
+
+		// 数据查询
+		s2 := fmt.Sprintf(`
+		SELECT
+			%s
 		FROM t_knowledge_bank
 		%s
 		ORDER BY id DESC
 		LIMIT $%d OFFSET $%d
-	`, whereClause, argIndex, argIndex+1)
+	`, selectFields, whereClause, argIndex, argIndex+1)
 
 		offset := (params.Page - 1) * params.PageSize
 		args = append(args, params.PageSize, offset)
@@ -314,18 +332,36 @@ func knowledgeBanks(ctx context.Context) {
 		var list []cmn.TKnowledgeBank
 		for rows.Next() {
 			var bank cmn.TKnowledgeBank
-			err = rows.Scan(
-				&bank.ID,
-				&bank.DomainID,
-				&bank.Name,
-				&bank.Tags,
-				&bank.Creator,
-				&bank.CreateTime,
-				&bank.UpdateTime,
-				&bank.Knowledges,
-				&bank.Addi,
-				&bank.Status,
-			)
+			if params.BankID > 0 {
+				// 当提供bankID时，扫描所有字段包括knowledges
+				err = rows.Scan(
+					&bank.ID,
+					&bank.DomainID,
+					&bank.Name,
+					&bank.Tags,
+					&bank.Creator,
+					&bank.CreateTime,
+					&bank.UpdateTime,
+					&bank.Knowledges,
+					&bank.Addi,
+					&bank.Status,
+				)
+			} else {
+				// 当没有提供bankID时，不扫描knowledges字段，将其设为nil
+				err = rows.Scan(
+					&bank.ID,
+					&bank.DomainID,
+					&bank.Name,
+					&bank.Tags,
+					&bank.Creator,
+					&bank.CreateTime,
+					&bank.UpdateTime,
+					&bank.Addi,
+					&bank.Status,
+				)
+				// 确保Knowledges字段为nil
+				bank.Knowledges = nil
+			}
 			if forceError == "rows.Scan" {
 				err = errors.New(forceError)
 			}
@@ -366,7 +402,7 @@ func knowledgeBanks(ctx context.Context) {
 	case "post":
 		// 检查API访问权限
 		var accessible bool
-		accessible, q.Err = auth_mgt.CheckUserAPIAccessible(ctx, authority, "/api/knowledge-banks", auth_mgt.CAPIAccessActionCreate)
+		accessible, q.Err = auth_mgt.CheckUserAPIAccessible(ctx, authority, "/api/knowledge-bank", auth_mgt.CAPIAccessActionCreate)
 		if q.Err != nil {
 			z.Error("检查API访问权限失败: " + q.Err.Error())
 			q.RespErr()
@@ -405,7 +441,7 @@ func knowledgeBanks(ctx context.Context) {
 		}
 
 		if len(buf) == 0 {
-			q.Err = fmt.Errorf("call /api/knowledge-banks with empty body")
+			q.Err = fmt.Errorf("call /api/knowledge-bank with empty body")
 			z.Error(q.Err.Error())
 			q.RespErr()
 			return
@@ -419,17 +455,9 @@ func knowledgeBanks(ctx context.Context) {
 			return
 		}
 
-		knowledgeBankName := gjson.GetBytes(qry.Data, "name").String()
-		if knowledgeBankName == "" {
-			q.Err = fmt.Errorf("call /api/knowledge-banks with empty knowledge bank name")
-			z.Error(q.Err.Error())
-			q.RespErr()
-			return
-		}
-
-		var bank cmn.TKnowledgeBank
-		bank.TableMap = &bank
-		q.Err = json.Unmarshal(qry.Data, &bank)
+		// 解析批量创建的数据
+		var banksData []cmn.TKnowledgeBank
+		q.Err = json.Unmarshal(qry.Data, &banksData)
 		if forceError == "json.Unmarshal" {
 			q.Err = errors.New(forceError)
 		}
@@ -439,39 +467,74 @@ func knowledgeBanks(ctx context.Context) {
 			return
 		}
 
-		bank.Creator = null.IntFrom(userID)
-		bank.Status = null.StringFrom(KnowledgeBankStatusCreated)
-
-		//设置所属域
-		bank.DomainID = authority.Domain.ID
-		// 写库
-		qry.Action = "insert"
-		q.Err = cmn.DML(&bank.Filter, &qry)
-		if forceError == "cmn.DML" {
-			q.Err = errors.New(forceError)
-		}
-		if q.Err != nil {
+		// 验证数据
+		if len(banksData) == 0 {
+			q.Err = fmt.Errorf("没有提供要创建的知识点库数据")
 			z.Error(q.Err.Error())
 			q.RespErr()
 			return
 		}
 
-		// 获取返回ID
-		bankID, ok := bank.QryResult.(int64)
-		if forceError == "bank.QryResult.bankID" {
-			ok = false
+		// 验证每个知识点库的名称
+		for i, bank := range banksData {
+			if bank.Name.String == "" {
+				q.Err = fmt.Errorf("第%d个知识点库名称为空", i+1)
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
 		}
-		if !ok {
-			q.Err = fmt.Errorf("s.qryResult should be int64, but it isn't")
-			z.Error(q.Err.Error())
-			q.RespErr()
-			return
+
+		// 批量创建知识点库
+		var createdBanks []cmn.TKnowledgeBank
+		now := cmn.GetNowInMS()
+
+		for i, bank := range banksData {
+			// 设置基础信息
+			bank.Creator = null.IntFrom(userID)
+			bank.Status = null.StringFrom(KnowledgeBankStatusCreated)
+			bank.DomainID = authority.Domain.ID
+			bank.CreateTime = null.IntFrom(now)
+			bank.UpdateTime = null.IntFrom(now)
+
+			// 执行SQL插入
+			insertSQL := `
+				INSERT INTO t_knowledge_bank (
+					domain_id, name, tags, knowledges, creator, create_time,
+					update_time, addi, status
+				) VALUES (
+					$1, $2, $3, $4, $5, $6, $7, $8, $9
+				) RETURNING id`
+
+			var bankID int64
+			q.Err = conn.QueryRow(ctx, insertSQL,
+				bank.DomainID,
+				bank.Name,
+				bank.Tags,
+				bank.Knowledges,
+				bank.Creator,
+				bank.CreateTime,
+				bank.UpdateTime,
+				bank.Addi,
+				bank.Status,
+			).Scan(&bankID)
+
+			if forceError == "conn.QueryRow" {
+				q.Err = errors.New(forceError)
+			}
+			if q.Err != nil {
+				z.Error(fmt.Sprintf("创建第%d个知识点库失败: %s", i+1, q.Err.Error()))
+				q.RespErr()
+				return
+			}
+
+			bank.ID = null.IntFrom(bankID)
+			createdBanks = append(createdBanks, bank)
 		}
-		bank.ID = null.IntFrom(bankID)
 
 		// 返回响应
-		buf, q.Err = cmn.MarshalJSON(&bank)
-		if forceError == "cmn.MarshalJSON" {
+		buf, q.Err = json.Marshal(createdBanks)
+		if forceError == "json.Marshal" {
 			q.Err = errors.New(forceError)
 		}
 		if q.Err != nil {
@@ -480,12 +543,13 @@ func knowledgeBanks(ctx context.Context) {
 			return
 		}
 
+		q.Msg.Status = 0
 		q.Msg.Data = buf
 		q.Msg.Msg = "success"
 	case "put":
 		// 检查API访问权限
 		var accessible bool
-		accessible, q.Err = auth_mgt.CheckUserAPIAccessible(ctx, authority, "/api/knowledge-banks", auth_mgt.CAPIAccessActionUpdate)
+		accessible, q.Err = auth_mgt.CheckUserAPIAccessible(ctx, authority, "/api/knowledge-bank", auth_mgt.CAPIAccessActionUpdate)
 		if q.Err != nil {
 			z.Error("检查API访问权限失败: " + q.Err.Error())
 			q.RespErr()
@@ -538,110 +602,106 @@ func knowledgeBanks(ctx context.Context) {
 			return
 		}
 
-		knowledgeBankID := gjson.GetBytes(buf, "data.id").Int()
-		if knowledgeBankID <= 0 {
-			q.Err = fmt.Errorf("call /api/knowledge-banks with invalid knowledge bank ID: %d", knowledgeBankID)
-			z.Error(q.Err.Error())
-			q.RespErr()
-			return
+		// 解析批量更新的数据
+		var banksData []cmn.TKnowledgeBank
+		q.Err = json.Unmarshal(qry.Data, &banksData)
+		if forceError == "json.Unmarshal" {
+			q.Err = errors.New(forceError)
 		}
-		knowledgeBankName := gjson.GetBytes(buf, "data.name").String()
-		knowledgeBankTagsJson := gjson.GetBytes(buf, "data.tags")
-		var knowledgeBankTags []gjson.Result
-		if knowledgeBankTagsJson.Exists() {
-			knowledgeBankTags = knowledgeBankTagsJson.Array()
-		}
-
-		if knowledgeBankName == "" && len(knowledgeBankTags) == 0 {
-			q.Err = fmt.Errorf("call /api/knowledge-banks with empty knowledge bank name and tags")
+		if q.Err != nil {
 			z.Error(q.Err.Error())
 			q.RespErr()
 			return
 		}
 
-		// 开始构建更新SQL语句
-		updateSQL := "UPDATE t_knowledge_bank SET "
-		var args []interface{}
-		var setClauses []string
-		argIndex := 1
-
-		// 添加更新时间
-		t := cmn.GetNowInMS()
-		setClauses = append(setClauses, fmt.Sprintf("update_time = $%d", argIndex))
-		args = append(args, t)
-		argIndex++
-
-		// 添加更新用户
-		setClauses = append(setClauses, fmt.Sprintf("updated_by = $%d", argIndex))
-		args = append(args, userID)
-		argIndex++
-
-		// 如果提供了知识点库名称，则更新
-		if knowledgeBankName != "" {
-			setClauses = append(setClauses, fmt.Sprintf("name = $%d", argIndex))
-			args = append(args, knowledgeBankName)
-			argIndex++
+		// 验证数据
+		if len(banksData) == 0 {
+			q.Err = fmt.Errorf("没有提供要更新的知识点库数据")
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
 		}
 
-		// 如果提供了知识点库标签，则更新
-		if len(knowledgeBankTags) > 0 {
-			// 将gjson.Result数组转换为字符串数组
-			var strTags []string
-			for _, tag := range knowledgeBankTags {
-				strTags = append(strTags, tag.String())
+		// 验证每个知识点库的ID和名称
+		for i, bank := range banksData {
+			if !bank.ID.Valid || bank.ID.Int64 <= 0 {
+				q.Err = fmt.Errorf("第%d个知识点库ID无效", i+1)
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+			if bank.Name.String == "" {
+				q.Err = fmt.Errorf("第%d个知识点库名称为空", i+1)
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+		}
+
+		// 批量更新知识点库
+		var updatedBanks []cmn.TKnowledgeBank
+		now := cmn.GetNowInMS()
+
+		for i, bank := range banksData {
+			// 设置基础信息
+			bank.UpdatedBy = null.IntFrom(userID)
+			bank.UpdateTime = null.IntFrom(now)
+
+			// 执行SQL更新
+			updateSQL := `
+				UPDATE t_knowledge_bank SET
+					name = $1, tags = $2, knowledges = $3, addi = $4,
+					updated_by = $5, update_time = $6
+				WHERE id = $7`
+
+			var commandTag pgconn.CommandTag
+			commandTag, q.Err = conn.Exec(ctx, updateSQL,
+				bank.Name,
+				bank.Tags,
+				bank.Knowledges,
+				bank.Addi,
+				bank.UpdatedBy,
+				bank.UpdateTime,
+				bank.ID,
+			)
+
+			if forceError == "conn.Exec" {
+				q.Err = errors.New(forceError)
+			}
+			if q.Err != nil {
+				z.Error(fmt.Sprintf("更新第%d个知识点库失败: %s", i+1, q.Err.Error()))
+				q.RespErr()
+				return
 			}
 
-			// 将标签数组序列化为JSON
-			tagsJSON, err := json.Marshal(strTags)
-			if forceError == "json.Marshal" {
-				err = errors.New(forceError)
-			}
-			if err != nil {
-				q.Err = fmt.Errorf("无法序列化标签: %v", err)
+			if commandTag.RowsAffected() == 0 {
+				q.Err = fmt.Errorf("更新第%d个知识点库失败：没有记录被更新", i+1)
 				z.Error(q.Err.Error())
 				q.RespErr()
 				return
 			}
 
-			setClauses = append(setClauses, fmt.Sprintf("tags = $%d", argIndex))
-			args = append(args, tagsJSON)
-			argIndex++
+			updatedBanks = append(updatedBanks, bank)
 		}
 
-		// 完成SQL语句
-		updateSQL += strings.Join(setClauses, ", ")
-		updateSQL += fmt.Sprintf(" WHERE id = $%d", argIndex)
-		args = append(args, knowledgeBankID)
-
-		// 执行更新操作
-		var commandTag pgconn.CommandTag
-		commandTag, q.Err = conn.Exec(ctx, updateSQL, args...)
-		if forceError == "conn.Exec" {
+		// 返回响应
+		buf, q.Err = json.Marshal(updatedBanks)
+		if forceError == "json.Marshal" {
 			q.Err = errors.New(forceError)
 		}
 		if q.Err != nil {
-			q.Err = fmt.Errorf("更新知识点库失败: %v", q.Err)
 			z.Error(q.Err.Error())
 			q.RespErr()
 			return
 		}
 
-		if commandTag.RowsAffected() == 0 {
-			q.Err = fmt.Errorf("更新知识点库失败：没有记录被更新")
-			z.Error(q.Err.Error())
-			q.RespErr()
-			return
-		}
-
-		q.Msg.Data = types.JSONText(fmt.Sprintf(`{"RowAffected":%d}`, commandTag.RowsAffected()))
 		q.Msg.Status = 0
+		q.Msg.Data = buf
 		q.Msg.Msg = "success"
-		q.Resp()
-		return
 	case "delete":
 		// 检查API访问权限
 		var accessible bool
-		accessible, q.Err = auth_mgt.CheckUserAPIAccessible(ctx, authority, "/api/knowledge-banks", auth_mgt.CAPIAccessActionDelete)
+		accessible, q.Err = auth_mgt.CheckUserAPIAccessible(ctx, authority, "/api/knowledge-bank", auth_mgt.CAPIAccessActionDelete)
 		if q.Err != nil {
 			z.Error("检查API访问权限失败: " + q.Err.Error())
 			q.RespErr()
@@ -693,8 +753,12 @@ func knowledgeBanks(ctx context.Context) {
 			q.RespErr()
 			return
 		}
-		var deleteBankIDs []int64
-		q.Err = json.Unmarshal(qry.Data, &deleteBankIDs)
+
+		// 解析新的数据格式：{"data": {"id": [1, 2, 3]}}
+		var deleteRequest struct {
+			ID []int64 `json:"id"`
+		}
+		q.Err = json.Unmarshal(qry.Data, &deleteRequest)
 		if forceError == "json.Unmarshal" {
 			q.Err = errors.New(forceError)
 		}
@@ -703,6 +767,16 @@ func knowledgeBanks(ctx context.Context) {
 			q.RespErr()
 			return
 		}
+
+		// 验证数据
+		if len(deleteRequest.ID) == 0 {
+			q.Err = fmt.Errorf("没有提供要删除的知识点库ID")
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		deleteBankIDs := deleteRequest.ID
 		//检测ID数组
 		q.Err = validateIDs(deleteBankIDs)
 		if q.Err != nil {
@@ -840,6 +914,7 @@ func knowledgeBanks(ctx context.Context) {
 			return
 		}
 		q.Msg.Status = 0
+		q.Msg.Data = []byte("{}")
 		q.Msg.Msg = "success"
 	default:
 		q.Err = fmt.Errorf("unsupported method: %s", method)
