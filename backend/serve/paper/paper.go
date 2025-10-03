@@ -1,10 +1,10 @@
 /*
  * @Author: wusaber33
  * @Date: 2025-08-03 21:39:33
- * @LastEditors: wusaber33
- * @LastEditTime: 2025-09-04 02:41:22
+ * @LastEditors: WangKaidun 1597225095@qq.com
+ * @LastEditTime: 2025-10-03 22:24:30
  * @FilePath: \assess\backend\serve\paper\paper.go
- * @Description:
+ * @Description: 试卷管理业务代码
  * Copyright (c) 2025 by wusaber33, All Rights Reserved.
  */
 package paper
@@ -143,6 +143,68 @@ func Enroll(author string) {
 		DefaultDomain: int64(cmn.CDomainSys),
 	})
 
+	// 智能组卷组卷计划
+	_ = cmn.AddService(&cmn.ServeEndPoint{
+		Fn: GenerationPlan,
+
+		Path: "/paper/plan",
+		Name: "paper_plan",
+
+		Developer: developer,
+		WhiteList: true,
+		ApiEntries: []*cmn.EndPointApiEntries{
+			{
+				Name:         "试卷管理.获取组卷计划",
+				AccessAction: auth_mgt.CAPIAccessActionRead,
+				Configurable: true,
+			},
+			{
+				Name:         "试卷管理.新建组卷计划",
+				AccessAction: auth_mgt.CAPIAccessActionCreate,
+				Configurable: true,
+			},
+			{
+				Name:         "试卷管理.删除组卷计划",
+				AccessAction: auth_mgt.CAPIAccessActionDelete,
+				Configurable: true,
+			},
+			{
+				Name:         "试卷管理.保存组卷计划",
+				AccessAction: auth_mgt.CAPIAccessActionUpdate,
+				Configurable: true,
+			},
+		},
+
+		//DomainID 创建该API的账号归属的domain
+		DomainID: int64(cmn.CDomainSys),
+
+		//DefaultDomain 该API将默认授权给的用户
+		DefaultDomain: int64(cmn.CDomainSys),
+	})
+
+	// 获取组卷计划列表
+	_ = cmn.AddService(&cmn.ServeEndPoint{
+		Fn: GenerationPlans,
+
+		Path: "/paper/plans",
+		Name: "paper_plans",
+
+		Developer: developer,
+		WhiteList: true,
+		ApiEntries: []*cmn.EndPointApiEntries{
+			{
+				Name:         "试卷管理.获取组卷计划列表",
+				AccessAction: auth_mgt.CAPIAccessActionRead,
+				Configurable: true,
+			},
+		},
+
+		//DomainID 创建该API的账号归属的domain
+		DomainID: int64(cmn.CDomainSys),
+
+		//DefaultDomain 该API将默认授权给的用户
+		DefaultDomain: int64(cmn.CDomainSys),
+	})
 }
 
 // 创建试卷\更新试卷\获取试卷详情
@@ -276,7 +338,7 @@ func ManualPaper(ctx context.Context) {
 		now := time.Now().UnixMilli()
 		initPaperSql := `
 INSERT INTO t_paper 
-    (name, assembly_type, category, level, suggested_duration, tags, creator, create_time, updated_by, update_time, status,domain_id) 
+    (name, assembly_type, category, level, suggested_duration, tags, creator, create_time, updated_by, update_time, status, domain_id) 
 VALUES 
     ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11,$12) 
 RETURNING id`
@@ -583,7 +645,7 @@ RETURNING id`
 			q.RespErr()
 			return
 		}
-		
+
 		var hasPermission bool
 		// 如果是超级管理员，则直接拥有权限
 		if authority.Role.Priority.Int64 == 0 {
@@ -1145,7 +1207,7 @@ DELETE FROM t_paper_question tpq
 					args = append(args, update.GroupID)
 					argIndex++
 				}
-				
+
 				// 题目分数
 				if update.Score > 0 {
 					setClauses = append(setClauses, "score = $"+strconv.Itoa(argIndex))
@@ -2418,4 +2480,679 @@ func getPaperStatusAndCreator(ctx context.Context, paperID int64) (string, int64
 		return "", 0, err
 	}
 	return status, creatorID, nil
+}
+
+// 智能组卷组卷计划
+// GenerationPlan 处理试卷列表相关的HTTP请求
+// 支持以下操作:
+// - POST: 新建组卷计划
+// - GET: 分页获取组卷计划,支持按名称、状态等条件筛选
+// - DELETE: 批量删除组卷计划
+// - PUT: 保存组卷计划
+func GenerationPlan(ctx context.Context) {
+	// 获取请求
+	q := cmn.GetCtxValue(ctx)
+
+	// 打印入口
+	z.Info("---->" + cmn.FncName())
+
+	// 获取HTTP方法
+	method := strings.ToLower(q.R.Method)
+
+	// 获取用户ID
+	userID := q.SysUser.ID.Int64
+	if userID <= 0 {
+		q.Err = ErrInvalidUserID
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+
+	// 获取用户权限
+	var authority *auth_mgt.Authority
+	authority, q.Err = auth_mgt.GetUserAuthority(ctx)
+	if q.Err != nil {
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+
+	// 根据方法处理请求
+	switch method {
+	// 新建/保存组卷计划
+	case "post":
+		// 创建结构体
+		var req PostPaperPlanRequest
+
+		// 先获取Query参数
+		queryParams := q.R.URL.Query()
+		if id := queryParams.Get("id"); id != "" {
+			req.ID, q.Err = strconv.ParseInt(id, 10, 64)
+			if q.Err != nil {
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+		}
+
+		// 获取Body请求体
+		var buf []byte
+		buf, q.Err = io.ReadAll(q.R.Body)
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+		defer func() {
+			q.Err = q.R.Body.Close()
+			if q.Err != nil {
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+		}()
+
+		// 读取数据到结构体
+		q.Err = json.Unmarshal(buf, &req)
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		// 数据规范性校验
+		if q.Err = cmn.Validate(&req); q.Err != nil {
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		// 将请求映射到数据库模型
+		paperGenerationPlan := ConvertToTPaperGenerationPlan(req)
+
+		// 判断是新建还是保存
+		if !(req.ID > 0) {
+			// 检查业务访问权限
+			var accessible bool
+			accessible, q.Err = auth_mgt.CheckUserAPIAccessible(ctx, authority, "/api/paper/plan", auth_mgt.CAPIAccessActionCreate)
+			if q.Err != nil {
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+			if !accessible {
+				q.Err = fmt.Errorf("用户没有访问权限")
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+
+			// 新建组卷计划
+			q.Err = InsertPaperGenerationPlan(paperGenerationPlan, userID, authority.Domain.ID.Int64, ctx)
+			if q.Err != nil {
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+
+			// 设置返回数据
+			q.Msg.Data = []byte(fmt.Sprintf(`{"ID":%d}`, paperGenerationPlan.ID.Int64))
+
+		} else {
+			// 检查业务访问权限
+			var accessible bool
+			accessible, q.Err = auth_mgt.CheckUserAPIAccessible(ctx, authority, "/api/paper/plan", auth_mgt.CAPIAccessActionUpdate)
+			if q.Err != nil {
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+			if !accessible {
+				q.Err = fmt.Errorf("用户没有访问权限")
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+
+			var creatorID int64
+			var status string
+			// 获取组卷计划创建者和状态
+			creatorID, status, q.Err = GetPaperGenerationPlanCreatorAndStatus(req.ID, ctx)
+			if q.Err != nil {
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+
+			// 如果组卷计划状态不是草稿状态，则不能更新
+			if status != "00" {
+				q.Err = fmt.Errorf("组卷计划[ID:%d]状态不是草稿状态，无法更新", req.ID)
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+
+			// 判断用户是否有权限更新该组卷计划
+			var hasPermission bool
+			// 用户是超级管理员或管理员或创建者才拥有权限
+			if authority.Role.Priority.Int64 == 0 {
+				hasPermission = true
+			} else if authority.Role.Priority.Int64 == 3 {
+				hasPermission = true
+			} else {
+				hasPermission = creatorID == userID
+			}
+			// 如果不是创建者，则返回无权限错误
+			if !hasPermission {
+				q.Err = fmt.Errorf("当前用户[ID:%d]无权更新该组卷计划[ID:%d]", userID, req.ID)
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+
+			// 更新组卷计划
+			q.Err = UpdatePaperGenerationPlan(paperGenerationPlan, userID, authority.Domain.ID.Int64, ctx)
+			if q.Err != nil {
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+		}
+
+	// 获取组卷计划
+	case "get":
+		// 检查业务访问权限
+		var accessible bool
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+		if !accessible {
+			q.Err = fmt.Errorf("用户没有访问权限")
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		// 获取Query参数
+		idStr := q.R.URL.Query().Get("id")
+		var id int64
+		id, q.Err = strconv.ParseInt(idStr, 10, 64)
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		var creatorID int64
+		// 获取组卷计划创建者和状态
+		creatorID, _, q.Err = GetPaperGenerationPlanCreatorAndStatus(id, ctx)
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		// 判断用户是否有权限获取该组卷计划
+		var hasPermission bool
+		// 用户是超级管理员或管理员或创建者才拥有权限
+		if authority.Role.Priority.Int64 == 0 {
+			hasPermission = true
+		} else if authority.Role.Priority.Int64 == 3 {
+			hasPermission = true
+		} else {
+			hasPermission = creatorID == userID
+		}
+		// 如果不是创建者，则返回无权限错误
+		if !hasPermission {
+			q.Err = fmt.Errorf("当前用户[ID:%d]无权获取该组卷计划[ID:%d]", userID, id)
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		// 获取组卷计划
+		var paperGenerationPlan *cmn.TPaperGenerationPlan
+		paperGenerationPlan, q.Err = GetPaperGenerationPlan(id, ctx)
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		// 设置返回数据
+		q.Msg.Data, q.Err = json.Marshal(paperGenerationPlan)
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+	// 删除组卷计划（批量）
+	case "delete":
+		// 检查业务访问权限
+		var accessible bool
+		accessible, q.Err = auth_mgt.CheckUserAPIAccessible(ctx, authority, "/api/paper/plan", auth_mgt.CAPIAccessActionDelete)
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+		if !accessible {
+			q.Err = fmt.Errorf("用户没有访问权限")
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		// 创建结构体
+		var req DeletePaperPlanRequest
+
+		// 获取Body请求体
+		var buf []byte
+		buf, q.Err = io.ReadAll(q.R.Body)
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+		defer func() {
+			q.Err = q.R.Body.Close()
+			if q.Err != nil {
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+		}()
+
+		// 读取数据到结构体
+		q.Err = json.Unmarshal(buf, &req)
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		// 数据规范性校验
+		if q.Err = cmn.Validate(&req); q.Err != nil {
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		// 获取数据库连接
+		conn := cmn.GetPgxConn()
+
+		// 开启事务
+		var tx pgx.Tx
+		tx, q.Err = conn.BeginTx(ctx, pgx.TxOptions{
+			IsoLevel: pgx.RepeatableRead,
+		})
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		// 确保事务结束时回滚
+		defer func() {
+			if p := recover(); p != nil {
+				panicErr := fmt.Errorf("panic occurred: %v", p)
+				z.Error(panicErr.Error())
+				err := tx.Rollback(ctx)
+				if err != nil {
+					z.Error(err.Error())
+				}
+				return
+			}
+			if q.Err != nil {
+				err := tx.Rollback(ctx)
+				if err != nil && !errors.Is(q.Err, pgx.ErrTxClosed) {
+					z.Error(err.Error())
+					return
+				}
+			}
+			// 提交事务
+			err := tx.Commit(ctx)
+			if err != nil {
+				z.Error(err.Error())
+				return
+			}
+		}()
+
+		// 检查每个组卷计划的权限
+		var checkSQL string
+		var errorMessages []string
+		// 超级管理员或管理员检查组卷计划存在性、域权限和状态
+		if authority.Role.Priority.Int64 == auth_mgt.CDomainPriorityAdmin || authority.Role.Priority.Int64 == auth_mgt.CDomainPrioritySuperAdmin {
+			if len(authority.AccessibleDomains) > 0 {
+				checkSQL = `
+					SELECT COALESCE(array_agg(
+						CASE 
+							WHEN p.id IS NULL THEN '组卷计划[ID:' || ids.id || ']不存在'
+							WHEN NOT (p.domain_id = ANY($2)) THEN '组卷计划[ID:' || ids.id || ']不在当前域范围内'
+							WHEN p.status != '00' THEN '组卷计划[ID:' || ids.id || ']不是草稿状态，无法删除'
+							ELSE NULL 
+						END
+					) FILTER (WHERE CASE 
+							WHEN p.id IS NULL THEN '组卷计划[ID:' || ids.id || ']不存在'
+							WHEN NOT (p.domain_id = ANY($2)) THEN '组卷计划[ID:' || ids.id || ']不在当前域范围内'
+							WHEN p.status != '00' THEN '组卷计划[ID:' || ids.id || ']不是草稿状态，无法删除'
+							ELSE NULL 
+						END IS NOT NULL), ARRAY[]::text[]) as error_messages
+					FROM unnest($1::bigint[]) AS ids(id)
+					LEFT JOIN t_paper_generation_plan p ON p.id = ids.id
+					WHERE p.id IS NULL OR NOT (p.domain_id = ANY($2)) OR p.status != '00'`
+				q.Err = tx.QueryRow(ctx, checkSQL, req.IDs, authority.AccessibleDomains).Scan(&errorMessages)
+			} else {
+				// 如果没有可访问的域，直接返回错误
+				errorMessages = []string{"用户没有可访问的域权限"}
+			}
+			if q.Err != nil {
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+		} else {
+			// 普通用户检查组卷计划存在性、域和创建者
+			if len(authority.AccessibleDomains) > 0 {
+				checkSQL = `
+					SELECT COALESCE(array_agg(
+						CASE 
+							WHEN p.id IS NULL THEN '组卷计划[ID:' || ids.id || ']不存在'
+							WHEN NOT (p.domain_id = ANY($2)) THEN '组卷计划[ID:' || ids.id || ']不在当前域范围内'
+							WHEN p.creator != $3 THEN '组卷计划[ID:' || ids.id || ']非组卷计划创建者，无删除权限'
+							WHEN p.status != '00' THEN '组卷计划[ID:' || ids.id || ']不是草稿状态，无法删除'
+							ELSE NULL 
+						END
+					) FILTER (WHERE CASE 
+							WHEN p.id IS NULL THEN '组卷计划[ID:' || ids.id || ']不存在'
+							WHEN NOT (p.domain_id = ANY($2)) THEN '组卷计划[ID:' || ids.id || ']不在当前域范围内'
+							WHEN p.creator != $3 THEN '组卷计划[ID:' || ids.id || ']非组卷计划创建者，无删除权限'
+							WHEN p.status != '00' THEN '组卷计划[ID:' || ids.id || ']不是草稿状态，无法删除'
+							ELSE NULL 
+						END IS NOT NULL), ARRAY[]::text[]) as error_messages
+					FROM unnest($1::bigint[]) AS ids(id)
+					LEFT JOIN t_paper_generation_plan p ON p.id = ids.id
+					WHERE p.id IS NULL OR NOT (p.domain_id = ANY($2)) OR p.creator != $3 OR p.status != '00'`
+				q.Err = tx.QueryRow(ctx, checkSQL, req.IDs, authority.AccessibleDomains, userID).Scan(&errorMessages)
+			} else {
+				// 如果没有可访问的域，直接返回错误
+				errorMessages = []string{"用户没有可访问的域权限"}
+			}
+			if q.Err != nil {
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+		}
+
+		// 移除空错误消息并在每个错误前添加换行符
+		var validErrors strings.Builder
+		for i, msg := range errorMessages {
+			if msg != "" {
+				// 不是第一个错误时，先添加换行符
+				if i > 0 {
+					validErrors.WriteString("\n")
+				}
+				validErrors.WriteString(msg)
+			}
+		}
+
+		// 如果有任何不能删除的组卷计划，返回错误
+		if validErrors.Len() > 0 {
+			q.Msg.Status = -1
+			q.Err = errors.New(validErrors.String())
+			q.RespErr()
+			return
+		}
+
+		// 删除组卷计划
+		q.Err = DeletePaperGenerationPlan(req.IDs, userID, tx, ctx)
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+	}
+
+	q.Msg.Msg = "success"
+	q.Msg.Status = 0
+	q.Resp()
+}
+
+func GenerationPlans(ctx context.Context) {
+	// 获取请求
+	q := cmn.GetCtxValue(ctx)
+
+	// 打印入口
+	z.Info("---->" + cmn.FncName())
+
+	// 获取HTTP方法
+	method := strings.ToLower(q.R.Method)
+
+	// 获取用户ID
+	userID := q.SysUser.ID.Int64
+	if userID <= 0 {
+		q.Err = ErrInvalidUserID
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+
+	// 获取用户权限
+	var authority *auth_mgt.Authority
+	authority, q.Err = auth_mgt.GetUserAuthority(ctx)
+	if q.Err != nil {
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+
+	switch method {
+	case "get":
+		// 检查业务访问权限
+		var accessible bool
+		accessible, q.Err = auth_mgt.CheckUserAPIAccessible(ctx, authority, "/api/paper/plans", auth_mgt.CAPIAccessActionRead)
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+		if !accessible {
+			q.Err = fmt.Errorf("用户没有访问权限")
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		// 创建请求体并绑定参数
+		var req GetPaperPlanListRequest
+		queryParams := q.R.URL.Query()
+
+		// 获取Query参数
+		if name := queryParams.Get("name"); name != "" {
+			req.Name = name
+		}
+
+		if tags := queryParams.Get("tags"); tags != "" {
+			req.Tags = tags
+		}
+
+		if page := queryParams.Get("page"); page != "" {
+			if p, err := strconv.Atoi(page); err == nil {
+				req.Page = p
+			}
+		}
+
+		if pageSize := queryParams.Get("page_size"); pageSize != "" {
+			if p, err := strconv.Atoi(pageSize); err == nil {
+				req.PageSize = p
+			}
+		}
+
+		// 参数校验
+		if req.Name != "" && len(req.Name) > MaxPaperGenerationPlanName {
+			q.Err = fmt.Errorf("查询组卷计划名称最大长度为: %d", MaxPaperGenerationPlanName)
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+		if req.Page <= 0 {
+			q.Err = fmt.Errorf("无效页码: %d", req.Page)
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+		if req.PageSize != 5 && req.PageSize != 10 && req.PageSize != 20 {
+			q.Err = fmt.Errorf("无效页大小: %d", req.PageSize)
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		// 构建查询条件
+		var totalCount int64                    // 总数
+		offset := (req.Page - 1) * req.PageSize // 偏移量
+		// 构建动态查询条件
+		var whereClauses []string // 查询条件
+		var params []interface{}  // 查询参数
+		paramCount := 1           // 参数计数
+
+		// 只能查看不是删除状态的组卷计划
+		whereClauses = append(whereClauses, "p.status != '04'")
+
+		// 拼接资源范围 - 用户可访问的所有 domain_id
+		if len(authority.AccessibleDomains) > 0 {
+			whereClauses = append(whereClauses, fmt.Sprintf("p.domain_id = ANY($%d)", paramCount))
+			params = append(params, authority.AccessibleDomains)
+			paramCount++
+		} else {
+			// 如果用户没有可访问的域，则返回空结果
+			q.Err = errors.New("用户没有可访问的域")
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		// 名称模糊查询
+		if req.Name != "" {
+			var nameClause strings.Builder
+			nameClause.WriteString("p.name ILIKE $")
+			nameClause.WriteString(strconv.Itoa(paramCount))
+			whereClauses = append(whereClauses, nameClause.String())
+			params = append(params, "%"+req.Name+"%")
+			paramCount++
+		}
+
+		// 标签过滤
+		var tags []string
+		if req.Tags != "" {
+			tags = strings.Split(req.Tags, ",")
+			var cleanedTags []string
+			for _, tag := range tags {
+				trimmedTag := strings.TrimSpace(tag)
+				if trimmedTag != "" {
+					cleanedTags = append(cleanedTags, trimmedTag)
+				}
+			}
+			tags = cleanedTags
+		}
+		// 如果tags不为空，则添加到查询条件
+		if len(tags) > 0 {
+			var tagsClause strings.Builder
+			tagsClause.WriteString("p.tags @> $")
+			tagsClause.WriteString(strconv.Itoa(paramCount))
+			whereClauses = append(whereClauses, tagsClause.String())
+			tagsJSON, _ := json.Marshal(tags)
+			params = append(params, tagsJSON)
+			paramCount++
+		}
+
+		// 构建WHERE子句
+		var whereClause string
+		if len(whereClauses) > 0 {
+			whereClause = "WHERE " + strings.Join(whereClauses, " AND ")
+		}
+
+		// 获取数据库连接
+		conn := cmn.GetPgxConn()
+
+		// 查询总数
+		var countSQLBuilder strings.Builder
+		countSQLBuilder.WriteString("SELECT COUNT(*) FROM t_paper_generation_plan p ")
+		countSQLBuilder.WriteString(whereClause)
+		q.Err = conn.QueryRow(ctx, countSQLBuilder.String(), params...).Scan(&totalCount)
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		// 构建查询SQL
+		var listSQLBuilder strings.Builder
+		listSQLBuilder.WriteString(`
+			SELECT 
+				p.id,
+				p.name,
+				COALESCE(kb.name, '') as knowledge_bank_name,
+				p.category,
+				COALESCE(
+					(SELECT SUM((config_item->>'count')::int) 
+					 FROM jsonb_array_elements(p.question_config) as config_item 
+					 WHERE config_item->>'count' IS NOT NULL), 
+					0
+				) as question_count,
+				p.suggested_duration,
+				p.tags,
+				p.level,
+				p.create_time,
+				p.update_time,
+				p.status
+			FROM t_paper_generation_plan p
+			LEFT JOIN t_knowledge_bank kb ON kb.id = p.knowledge_bank_id
+		`)
+		listSQLBuilder.WriteString(whereClause)
+		listSQLBuilder.WriteString(`
+			ORDER BY p.update_time DESC, p.id DESC
+			LIMIT $`)
+		listSQLBuilder.WriteString(strconv.Itoa(paramCount))
+		listSQLBuilder.WriteString(" OFFSET $")
+		listSQLBuilder.WriteString(strconv.Itoa(paramCount + 1))
+
+		dataParams := append(params, req.PageSize, offset)
+
+		// 查询分页数据
+		var rows pgx.Rows
+		rows, q.Err = conn.Query(ctx, listSQLBuilder.String(), dataParams...)
+		defer rows.Close()
+		if q.Err != nil {
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		// 用PlanListItem结构体接收数据
+		var plans []PlanListItem
+		for rows.Next() {
+			var plan PlanListItem
+			q.Err = rows.Scan(&plan.ID, &plan.Name, &plan.KnowledgeBankName, &plan.Category, &plan.QuestionCount, &plan.SuggestedDuration, &plan.Tags, &plan.Level, &plan.CreateTime, &plan.UpdateTime, &plan.Status)
+			if q.Err != nil {
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+			plans = append(plans, plan)
+		}
+
+		// 返回组卷计划列表
+		data, _ := json.Marshal(plans)
+		q.Msg.Data = data
+		q.Msg.RowCount = totalCount
+	}
+
+	q.Msg.Msg = "success"
+	q.Msg.Status = 0
+	q.Resp()
 }

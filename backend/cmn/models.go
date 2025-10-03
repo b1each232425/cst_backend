@@ -8881,24 +8881,25 @@ func GetTOrderByPk(db Queryer, pk0 null.Int) (*TOrder, error) {
 
 /*TPaper t_paper represents assessuser.t_paper */
 type TPaper struct {
-	ID                null.Int       `json:"ID,omitempty" db:"id,true,integer"`                                 /* id 试卷ID */
-	Name              null.String    `json:"Name,omitempty" db:"name,false,character varying"`                  /* name 试卷名称 */
-	AssemblyType      null.String    `json:"AssemblyType,omitempty" db:"assembly_type,false,character varying"` /* assembly_type 组卷方式 00：自定义组卷 02：随机组卷 04：智能刷题 */
-	Category          null.String    `json:"Category,omitempty" db:"category,false,character varying"`          /* category 试卷用途 00：考试 02：练习 */
-	Level             null.String    `json:"Level,omitempty" db:"level,false,character varying"`                /* level 试卷难度 00：简单 02：中等 04：困难 */
-	SuggestedDuration null.Int       `json:"SuggestedDuration,omitempty" db:"suggested_duration,false,integer"` /* suggested_duration 建议时长，单位为分钟 */
-	Description       null.String    `json:"Description,omitempty" db:"description,false,text"`                 /* description 试卷说明，介绍整张试卷 */
-	Tags              types.JSONText `json:"Tags,omitempty" db:"tags,false,jsonb"`                              /* tags 试卷标签 */
-	Config            types.JSONText `json:"Config,omitempty" db:"config,false,jsonb"`                          /* config 随机组卷或智能刷题配置 */
-	Creator           null.Int       `json:"Creator,omitempty" db:"creator,false,bigint"`                       /* creator 创建者 */
-	CreateTime        null.Int       `json:"CreateTime,omitempty" db:"create_time,false,bigint"`                /* create_time 创建时间 */
-	UpdatedBy         null.Int       `json:"UpdatedBy,omitempty" db:"updated_by,false,bigint"`                  /* updated_by 更新者 */
-	UpdateTime        null.Int       `json:"UpdateTime,omitempty" db:"update_time,false,bigint"`                /* update_time 更新时间 */
-	Addi              types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                              /* addi 附加信息 */
-	Status            null.String    `json:"Status,omitempty" db:"status,false,character varying"`              /* status 状态 00：未发布， 02：已发布 04：作废 06：异常 */
-	DomainID          null.Int       `json:"DomainID,omitempty" db:"domain_id,false,bigint"`                    /* domain_id 所属域ID */
-	ExampaperID       null.Int       `json:"ExampaperID,omitempty" db:"exampaper_id,false,bigint"`              /* exampaper_id 生成的考卷ID（当试卷已发布才会存在，存储试卷不可修改副本的ID值） */
-	Filter            `json:"-"`     // build DML where clause
+	ID                    null.Int       `json:"ID,omitempty" db:"id,true,integer"`                                          /* id 试卷ID */
+	Name                  null.String    `json:"Name,omitempty" db:"name,false,character varying"`                           /* name 试卷名称 */
+	AssemblyType          null.String    `json:"AssemblyType,omitempty" db:"assembly_type,false,character varying"`          /* assembly_type 组卷方式 00：自定义组卷 02：智能组卷 */
+	Category              null.String    `json:"Category,omitempty" db:"category,false,character varying"`                   /* category 试卷用途 00：考试 02：练习 */
+	Level                 null.String    `json:"Level,omitempty" db:"level,false,character varying"`                         /* level 试卷难度 00：易 02：较易 04：中 06：较难 08：难 */
+	SuggestedDuration     null.Int       `json:"SuggestedDuration,omitempty" db:"suggested_duration,false,integer"`          /* suggested_duration 建议时长，单位为分钟 */
+	Description           null.String    `json:"Description,omitempty" db:"description,false,text"`                          /* description 试卷说明，介绍整张试卷 */
+	Tags                  types.JSONText `json:"Tags,omitempty" db:"tags,false,jsonb"`                                       /* tags 试卷标签 */
+	Config                types.JSONText `json:"Config,omitempty" db:"config,false,jsonb"`                                   /* config 随机组卷或智能刷题配置（暂无用） */
+	Creator               null.Int       `json:"Creator,omitempty" db:"creator,false,bigint"`                                /* creator 创建者 */
+	CreateTime            null.Int       `json:"CreateTime,omitempty" db:"create_time,false,bigint"`                         /* create_time 创建时间 */
+	UpdatedBy             null.Int       `json:"UpdatedBy,omitempty" db:"updated_by,false,bigint"`                           /* updated_by 更新者 */
+	UpdateTime            null.Int       `json:"UpdateTime,omitempty" db:"update_time,false,bigint"`                         /* update_time 更新时间 */
+	Addi                  types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                                       /* addi 附加信息 */
+	Status                null.String    `json:"Status,omitempty" db:"status,false,character varying"`                       /* status 状态 00：未发布， 02：已删除 04：作废 06：已发布 08：临时 */
+	DomainID              null.Int       `json:"DomainID,omitempty" db:"domain_id,false,bigint"`                             /* domain_id 所属域ID */
+	ExampaperID           null.Int       `json:"ExampaperID,omitempty" db:"exampaper_id,false,bigint"`                       /* exampaper_id 生成的考卷ID（当试卷已发布才会存在，存储试卷不可修改副本的ID值） */
+	PaperGenerationPlanID null.Int       `json:"PaperGenerationPlanID,omitempty" db:"paper_generation_plan_id,false,bigint"` /* paper_generation_plan_id 所属组卷计划ID */
+	Filter                `json:"-"`     // build DML where clause
 }
 
 // TPaperFields full field list for default query
@@ -8920,6 +8921,7 @@ var TPaperFields = []string{
 	"Status",
 	"DomainID",
 	"ExampaperID",
+	"PaperGenerationPlanID",
 }
 
 // TPaperColumns full column list for default query
@@ -8941,72 +8943,76 @@ var TPaperColumns = []string{
 	"status",
 	"domain_id",
 	"exampaper_id",
+	"paper_generation_plan_id",
 }
 
 // TPaperColumnsDataTypes full column data types for default query
 var TPaperColumnsDataTypes = map[string]string{
-	"id":                 "integer",
-	"name":               "character varying",
-	"assembly_type":      "character varying",
-	"category":           "character varying",
-	"level":              "character varying",
-	"suggested_duration": "integer",
-	"description":        "text",
-	"tags":               "jsonb",
-	"config":             "jsonb",
-	"creator":            "bigint",
-	"create_time":        "bigint",
-	"updated_by":         "bigint",
-	"update_time":        "bigint",
-	"addi":               "jsonb",
-	"status":             "character varying",
-	"domain_id":          "bigint",
-	"exampaper_id":       "bigint",
+	"id":                       "integer",
+	"name":                     "character varying",
+	"assembly_type":            "character varying",
+	"category":                 "character varying",
+	"level":                    "character varying",
+	"suggested_duration":       "integer",
+	"description":              "text",
+	"tags":                     "jsonb",
+	"config":                   "jsonb",
+	"creator":                  "bigint",
+	"create_time":              "bigint",
+	"updated_by":               "bigint",
+	"update_time":              "bigint",
+	"addi":                     "jsonb",
+	"status":                   "character varying",
+	"domain_id":                "bigint",
+	"exampaper_id":             "bigint",
+	"paper_generation_plan_id": "bigint",
 }
 
 // GetFieldsMap returns a map of field names to their values.
 func (r *TPaper) GetFieldsMap() map[string]any {
 	return map[string]any{
-		"ID":                r.ID,
-		"Name":              r.Name,
-		"AssemblyType":      r.AssemblyType,
-		"Category":          r.Category,
-		"Level":             r.Level,
-		"SuggestedDuration": r.SuggestedDuration,
-		"Description":       r.Description,
-		"Tags":              r.Tags,
-		"Config":            r.Config,
-		"Creator":           r.Creator,
-		"CreateTime":        r.CreateTime,
-		"UpdatedBy":         r.UpdatedBy,
-		"UpdateTime":        r.UpdateTime,
-		"Addi":              r.Addi,
-		"Status":            r.Status,
-		"DomainID":          r.DomainID,
-		"ExampaperID":       r.ExampaperID,
+		"ID":                    r.ID,
+		"Name":                  r.Name,
+		"AssemblyType":          r.AssemblyType,
+		"Category":              r.Category,
+		"Level":                 r.Level,
+		"SuggestedDuration":     r.SuggestedDuration,
+		"Description":           r.Description,
+		"Tags":                  r.Tags,
+		"Config":                r.Config,
+		"Creator":               r.Creator,
+		"CreateTime":            r.CreateTime,
+		"UpdatedBy":             r.UpdatedBy,
+		"UpdateTime":            r.UpdateTime,
+		"Addi":                  r.Addi,
+		"Status":                r.Status,
+		"DomainID":              r.DomainID,
+		"ExampaperID":           r.ExampaperID,
+		"PaperGenerationPlanID": r.PaperGenerationPlanID,
 	}
 }
 
 // GetColumnsMap returns a map of column names to their values.
 func (r *TPaper) GetColumnsMap() map[string]any {
 	return map[string]any{
-		"id":                 r.ID,
-		"name":               r.Name,
-		"assembly_type":      r.AssemblyType,
-		"category":           r.Category,
-		"level":              r.Level,
-		"suggested_duration": r.SuggestedDuration,
-		"description":        r.Description,
-		"tags":               r.Tags,
-		"config":             r.Config,
-		"creator":            r.Creator,
-		"create_time":        r.CreateTime,
-		"updated_by":         r.UpdatedBy,
-		"update_time":        r.UpdateTime,
-		"addi":               r.Addi,
-		"status":             r.Status,
-		"domain_id":          r.DomainID,
-		"exampaper_id":       r.ExampaperID,
+		"id":                       r.ID,
+		"name":                     r.Name,
+		"assembly_type":            r.AssemblyType,
+		"category":                 r.Category,
+		"level":                    r.Level,
+		"suggested_duration":       r.SuggestedDuration,
+		"description":              r.Description,
+		"tags":                     r.Tags,
+		"config":                   r.Config,
+		"creator":                  r.Creator,
+		"create_time":              r.CreateTime,
+		"updated_by":               r.UpdatedBy,
+		"update_time":              r.UpdateTime,
+		"addi":                     r.Addi,
+		"status":                   r.Status,
+		"domain_id":                r.DomainID,
+		"exampaper_id":             r.ExampaperID,
+		"paper_generation_plan_id": r.PaperGenerationPlanID,
 	}
 }
 
@@ -9028,8 +9034,8 @@ func (r *TPaper) GetTableName() string {
 // Create inserts the TPaper to the database.
 func (r *TPaper) Create(db Queryer) error {
 	err := db.QueryRow(
-		`INSERT INTO t_paper (name, assembly_type, category, level, suggested_duration, description, tags, config, creator, create_time, updated_by, update_time, addi, status, domain_id, exampaper_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16) RETURNING id`,
-		&r.Name, &r.AssemblyType, &r.Category, &r.Level, &r.SuggestedDuration, &r.Description, &r.Tags, &r.Config, &r.Creator, &r.CreateTime, &r.UpdatedBy, &r.UpdateTime, &r.Addi, &r.Status, &r.DomainID, &r.ExampaperID).Scan(&r.ID)
+		`INSERT INTO t_paper (name, assembly_type, category, level, suggested_duration, description, tags, config, creator, create_time, updated_by, update_time, addi, status, domain_id, exampaper_id, paper_generation_plan_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17) RETURNING id`,
+		&r.Name, &r.AssemblyType, &r.Category, &r.Level, &r.SuggestedDuration, &r.Description, &r.Tags, &r.Config, &r.Creator, &r.CreateTime, &r.UpdatedBy, &r.UpdateTime, &r.Addi, &r.Status, &r.DomainID, &r.ExampaperID, &r.PaperGenerationPlanID).Scan(&r.ID)
 	if err != nil {
 		return errors.Wrap(err, "failed to insert t_paper")
 	}
@@ -9041,10 +9047,207 @@ func GetTPaperByPk(db Queryer, pk0 null.Int) (*TPaper, error) {
 
 	var r TPaper
 	err := db.QueryRow(
-		`SELECT id, name, assembly_type, category, level, suggested_duration, description, tags, config, creator, create_time, updated_by, update_time, addi, status, domain_id, exampaper_id FROM t_paper WHERE id = $1`,
-		pk0).Scan(&r.ID, &r.Name, &r.AssemblyType, &r.Category, &r.Level, &r.SuggestedDuration, &r.Description, &r.Tags, &r.Config, &r.Creator, &r.CreateTime, &r.UpdatedBy, &r.UpdateTime, &r.Addi, &r.Status, &r.DomainID, &r.ExampaperID)
+		`SELECT id, name, assembly_type, category, level, suggested_duration, description, tags, config, creator, create_time, updated_by, update_time, addi, status, domain_id, exampaper_id, paper_generation_plan_id FROM t_paper WHERE id = $1`,
+		pk0).Scan(&r.ID, &r.Name, &r.AssemblyType, &r.Category, &r.Level, &r.SuggestedDuration, &r.Description, &r.Tags, &r.Config, &r.Creator, &r.CreateTime, &r.UpdatedBy, &r.UpdateTime, &r.Addi, &r.Status, &r.DomainID, &r.ExampaperID, &r.PaperGenerationPlanID)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to select t_paper")
+	}
+	return &r, nil
+}
+
+/*TPaperGenerationPlan 组卷计划 represents assessuser.t_paper_generation_plan */
+type TPaperGenerationPlan struct {
+	ID                null.Int       `json:"ID,omitempty" db:"id,true,integer"`                                 /* id 组卷计划ID */
+	DomainID          null.Int       `json:"DomainID,omitempty" db:"domain_id,false,bigint"`                    /* domain_id 所属域ID */
+	KnowledgeBankID   null.Int       `json:"KnowledgeBankID,omitempty" db:"knowledge_bank_id,false,bigint"`     /* knowledge_bank_id 知识点库ID */
+	Name              null.String    `json:"Name,omitempty" db:"name,false,character varying"`                  /* name 组卷计划名称 */
+	Category          null.String    `json:"Category,omitempty" db:"category,false,character varying"`          /* category 试卷用途 */
+	Level             null.String    `json:"Level,omitempty" db:"level,false,character varying"`                /* level 试卷难度(00:易 02:较易 04:中 06:较难 08:难) */
+	SuggestedDuration null.Int       `json:"SuggestedDuration,omitempty" db:"suggested_duration,false,integer"` /* suggested_duration 建议时长(默认120分钟) */
+	Description       null.String    `json:"Description,omitempty" db:"description,false,text"`                 /* description 试卷说明 */
+	Tags              types.JSONText `json:"Tags,omitempty" db:"tags,false,jsonb"`                              /* tags 试卷标签 */
+	QuestionBankIds   types.JSONText `json:"QuestionBankIds,omitempty" db:"question_bank_ids,false,jsonb"`      /* question_bank_ids 知识点题库ID(示例：[1,2,3,4]) */
+	PaperCount        null.Int       `json:"PaperCount,omitempty" db:"paper_count,false,integer"`               /* paper_count 组卷数量 */
+	QuestionConfig    types.JSONText `json:"QuestionConfig,omitempty" db:"question_config,false,jsonb"`         /* question_config 配置试卷题目(例子如下)
+	[
+
+	​	{
+
+	​		"id": 1,	// 题组ID
+
+	​		"name": "测试题组",	// 题组名称
+
+	​		"type": "00",	// 单选题
+
+	​		"count": 100,	// 试题数量
+
+	​		"average_score": 0.5,	// 每题分值
+
+	​		"difficulty_distribution": {"00":10, "02":10, "04":60, "06":10, "08":10}	// 难易度占比
+
+	​	},
+
+	​	......
+
+	] */
+	Creator    null.Int       `json:"Creator,omitempty" db:"creator,false,bigint"`          /* creator 创建者 */
+	CreateTime null.Int       `json:"CreateTime,omitempty" db:"create_time,false,bigint"`   /* create_time 创建时间 */
+	UpdatedBy  null.Int       `json:"UpdatedBy,omitempty" db:"updated_by,false,bigint"`     /* updated_by 更新者 */
+	UpdateTime null.Int       `json:"UpdateTime,omitempty" db:"update_time,false,bigint"`   /* update_time 更新时间 */
+	Addi       types.JSONText `json:"Addi,omitempty" db:"addi,false,jsonb"`                 /* addi 附加信息 */
+	Status     null.String    `json:"Status,omitempty" db:"status,false,character varying"` /* status 状态(00:草稿 02:已组卷 04:已删除) */
+	Filter     `json:"-"`     // build DML where clause
+}
+
+// TPaperGenerationPlanFields full field list for default query
+var TPaperGenerationPlanFields = []string{
+	"ID",
+	"DomainID",
+	"KnowledgeBankID",
+	"Name",
+	"Category",
+	"Level",
+	"SuggestedDuration",
+	"Description",
+	"Tags",
+	"QuestionBankIds",
+	"PaperCount",
+	"QuestionConfig",
+	"Creator",
+	"CreateTime",
+	"UpdatedBy",
+	"UpdateTime",
+	"Addi",
+	"Status",
+}
+
+// TPaperGenerationPlanColumns full column list for default query
+var TPaperGenerationPlanColumns = []string{
+	"id",
+	"domain_id",
+	"knowledge_bank_id",
+	"name",
+	"category",
+	"level",
+	"suggested_duration",
+	"description",
+	"tags",
+	"question_bank_ids",
+	"paper_count",
+	"question_config",
+	"creator",
+	"create_time",
+	"updated_by",
+	"update_time",
+	"addi",
+	"status",
+}
+
+// TPaperGenerationPlanColumnsDataTypes full column data types for default query
+var TPaperGenerationPlanColumnsDataTypes = map[string]string{
+	"id":                 "integer",
+	"domain_id":          "bigint",
+	"knowledge_bank_id":  "bigint",
+	"name":               "character varying",
+	"category":           "character varying",
+	"level":              "character varying",
+	"suggested_duration": "integer",
+	"description":        "text",
+	"tags":               "jsonb",
+	"question_bank_ids":  "jsonb",
+	"paper_count":        "integer",
+	"question_config":    "jsonb",
+	"creator":            "bigint",
+	"create_time":        "bigint",
+	"updated_by":         "bigint",
+	"update_time":        "bigint",
+	"addi":               "jsonb",
+	"status":             "character varying",
+}
+
+// GetFieldsMap returns a map of field names to their values.
+func (r *TPaperGenerationPlan) GetFieldsMap() map[string]any {
+	return map[string]any{
+		"ID":                r.ID,
+		"DomainID":          r.DomainID,
+		"KnowledgeBankID":   r.KnowledgeBankID,
+		"Name":              r.Name,
+		"Category":          r.Category,
+		"Level":             r.Level,
+		"SuggestedDuration": r.SuggestedDuration,
+		"Description":       r.Description,
+		"Tags":              r.Tags,
+		"QuestionBankIds":   r.QuestionBankIds,
+		"PaperCount":        r.PaperCount,
+		"QuestionConfig":    r.QuestionConfig,
+		"Creator":           r.Creator,
+		"CreateTime":        r.CreateTime,
+		"UpdatedBy":         r.UpdatedBy,
+		"UpdateTime":        r.UpdateTime,
+		"Addi":              r.Addi,
+		"Status":            r.Status,
+	}
+}
+
+// GetColumnsMap returns a map of column names to their values.
+func (r *TPaperGenerationPlan) GetColumnsMap() map[string]any {
+	return map[string]any{
+		"id":                 r.ID,
+		"domain_id":          r.DomainID,
+		"knowledge_bank_id":  r.KnowledgeBankID,
+		"name":               r.Name,
+		"category":           r.Category,
+		"level":              r.Level,
+		"suggested_duration": r.SuggestedDuration,
+		"description":        r.Description,
+		"tags":               r.Tags,
+		"question_bank_ids":  r.QuestionBankIds,
+		"paper_count":        r.PaperCount,
+		"question_config":    r.QuestionConfig,
+		"creator":            r.Creator,
+		"create_time":        r.CreateTime,
+		"updated_by":         r.UpdatedBy,
+		"update_time":        r.UpdateTime,
+		"addi":               r.Addi,
+		"status":             r.Status,
+	}
+}
+
+// Fields return all fields of struct.
+func (r *TPaperGenerationPlan) Fields() []string {
+	return TPaperGenerationPlanFields
+}
+
+// GetTableName return the associated db table name.
+func (r *TPaperGenerationPlan) GetTableName() string {
+	var viewNamePattern = regexp.MustCompile(`(?i)^t_v_[a-z0-9_]+$`)
+	tableName := "t_paper_generation_plan"
+	if viewNamePattern.MatchString(tableName) {
+		return tableName[2:]
+	}
+	return tableName
+}
+
+// Create inserts the TPaperGenerationPlan to the database.
+func (r *TPaperGenerationPlan) Create(db Queryer) error {
+	err := db.QueryRow(
+		`INSERT INTO t_paper_generation_plan (domain_id, knowledge_bank_id, name, category, level, suggested_duration, description, tags, question_bank_ids, paper_count, question_config, creator, create_time, updated_by, update_time, addi, status) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17) RETURNING id`,
+		&r.DomainID, &r.KnowledgeBankID, &r.Name, &r.Category, &r.Level, &r.SuggestedDuration, &r.Description, &r.Tags, &r.QuestionBankIds, &r.PaperCount, &r.QuestionConfig, &r.Creator, &r.CreateTime, &r.UpdatedBy, &r.UpdateTime, &r.Addi, &r.Status).Scan(&r.ID)
+	if err != nil {
+		return errors.Wrap(err, "failed to insert t_paper_generation_plan")
+	}
+	return nil
+}
+
+// GetTPaperGenerationPlanByPk select the TPaperGenerationPlan from the database.
+func GetTPaperGenerationPlanByPk(db Queryer, pk0 null.Int) (*TPaperGenerationPlan, error) {
+
+	var r TPaperGenerationPlan
+	err := db.QueryRow(
+		`SELECT id, domain_id, knowledge_bank_id, name, category, level, suggested_duration, description, tags, question_bank_ids, paper_count, question_config, creator, create_time, updated_by, update_time, addi, status FROM t_paper_generation_plan WHERE id = $1`,
+		pk0).Scan(&r.ID, &r.DomainID, &r.KnowledgeBankID, &r.Name, &r.Category, &r.Level, &r.SuggestedDuration, &r.Description, &r.Tags, &r.QuestionBankIds, &r.PaperCount, &r.QuestionConfig, &r.Creator, &r.CreateTime, &r.UpdatedBy, &r.UpdateTime, &r.Addi, &r.Status)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to select t_paper_generation_plan")
 	}
 	return &r, nil
 }
