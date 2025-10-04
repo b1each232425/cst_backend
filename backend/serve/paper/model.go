@@ -2,7 +2,7 @@
  * @Author: WangKaidun 1597225095@qq.com
  * @Date: 2025-10-01 10:58:31
  * @LastEditors: WangKaidun 1597225095@qq.com
- * @LastEditTime: 2025-10-03 22:35:41
+ * @LastEditTime: 2025-10-04 16:42:30
  * @FilePath: \assess\backend\serve\paper\model.go
  * @Description: 组卷计划关于请求和响应的结构体
  * Copyright (c) 2025 by WangKaidun 1597225095@qq.com, All Rights Reserved.
@@ -148,7 +148,7 @@ type QuestionConfig struct {
 	Type                   string           `json:"type" validate:"required,oneof=00 02 04 06 08 10 12"`
 	Count                  int64            `json:"count" validate:"required,min=1"`
 	AverageScore           float64          `json:"average_score" validate:"required,min=0.5"`
-	DifficultyDistribution map[string]int64 `json:"difficulty_distribution"`
+	DifficultyDistribution map[string]int64 `json:"difficulty_distribution" validate:"validate_difficulty_distribution_keys"`
 }
 
 // 新建组卷计划
@@ -192,4 +192,24 @@ type PlanListItem struct {
 	CreateTime        null.Int       `json:"CreateTime,omitempty" db:"create_time,false,bigint"`                           /* create_time 创建时间 */
 	UpdateTime        null.Int       `json:"UpdateTime,omitempty" db:"update_time,false,bigint"`                           /* update_time 更新时间 */
 	Status            null.String    `json:"Status,omitempty" db:"status,false,character varying"`                         /* status 状态(00:草稿 02:已组卷 04:已删除) */
+}
+
+// 生成临时试卷请求
+type GenerateTemporaryPaperRequest struct {
+	Data GenerateTemporaryPaperPlan `json:"data" validate:"omitempty,dive"`
+}
+
+// 生成临时试卷请求数据结构体
+type GenerateTemporaryPaperPlan struct {
+	ID                int64            `form:"id"`
+	Name              string           `json:"name" validate:"required,min=1,max=200"`
+	Category          string           `json:"category" validate:"required,oneof=00 02"`
+	Level             string           `json:"level" validate:"required,oneof=00 02 04 06 08"`
+	SuggestedDuration int64            `json:"suggested_duration" validate:"required,min=1"`
+	Description       string           `json:"description" validate:"max=2000"`
+	Tags              []string         `json:"tags" validate:"omitempty,max=20,dive,min=1,max=50"`
+	KnowledgeBankID   int64            `json:"knowledge_bank_id" validate:"required,min=1"`
+	QuestionBankIDs   []int64          `json:"question_bank_ids" validate:"required,dive,min=1"`
+	PaperCount        int64            `json:"paper_count" validate:"required,min=1"`
+	QuestionConfig    []QuestionConfig `json:"question_config" validate:"required,dive"`
 }

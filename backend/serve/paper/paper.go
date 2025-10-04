@@ -2,7 +2,7 @@
  * @Author: wusaber33
  * @Date: 2025-08-03 21:39:33
  * @LastEditors: WangKaidun 1597225095@qq.com
- * @LastEditTime: 2025-10-03 22:24:30
+ * @LastEditTime: 2025-10-04 20:20:27
  * @FilePath: \assess\backend\serve\paper\paper.go
  * @Description: 试卷管理业务代码
  * Copyright (c) 2025 by wusaber33, All Rights Reserved.
@@ -205,6 +205,36 @@ func Enroll(author string) {
 		//DefaultDomain 该API将默认授权给的用户
 		DefaultDomain: int64(cmn.CDomainSys),
 	})
+
+	// 智能组卷相关业务
+	// _ = cmn.AddService(&cmn.ServeEndPoint{
+	// 	Fn: GeneratePaper,
+
+	// 	Path: "/paper/plan/generate",
+	// 	Name: "paper_plan_generate",
+
+	// 	Developer: developer,
+	// 	WhiteList: true,
+	// 	ApiEntries: []*cmn.EndPointApiEntries{
+	// 		{
+	// 			Name:         "试卷管理.生成临时试卷",
+	// 			AccessAction: auth_mgt.CAPIAccessActionCreate,
+	// 			Configurable: true,
+	// 		},
+	// 		{
+	// 			Name:         "试卷管理.确认组卷",
+	// 			AccessAction: auth_mgt.CAPIAccessActionUpdate,
+	// 			Configurable: true,
+	// 		},
+	// 	},
+
+	// 	//DomainID 创建该API的账号归属的domain
+	// 	DomainID: int64(cmn.CDomainSys),
+
+	// 	//DefaultDomain 该API将默认授权给的用户
+	// 	DefaultDomain: int64(cmn.CDomainSys),
+	// })
+
 }
 
 // 创建试卷\更新试卷\获取试卷详情
@@ -2923,6 +2953,7 @@ func GenerationPlan(ctx context.Context) {
 	q.Resp()
 }
 
+// 获取组卷计划列表
 func GenerationPlans(ctx context.Context) {
 	// 获取请求
 	q := cmn.GetCtxValue(ctx)
@@ -3157,3 +3188,180 @@ func GenerationPlans(ctx context.Context) {
 	q.Msg.Status = 0
 	q.Resp()
 }
+
+// 智能组卷相关业务
+// func GeneratePaper(ctx context.Context) {
+// 	// 获取请求
+// 	q := cmn.GetCtxValue(ctx)
+
+// 	// 打印入口
+// 	z.Info("---->" + cmn.FncName())
+
+// 	// 获取HTTP方法
+// 	method := strings.ToLower(q.R.Method)
+
+// 	// 获取用户ID
+// 	userID := q.SysUser.ID.Int64
+// 	if userID <= 0 {
+// 		q.Err = ErrInvalidUserID
+// 		z.Error(q.Err.Error())
+// 		q.RespErr()
+// 		return
+// 	}
+
+// 	// 获取用户权限
+// 	var authority *auth_mgt.Authority
+// 	authority, q.Err = auth_mgt.GetUserAuthority(ctx)
+// 	if q.Err != nil {
+// 		z.Error(q.Err.Error())
+// 		q.RespErr()
+// 		return
+// 	}
+
+// 	switch method {
+// 	// 生成临时试卷
+// 	case "post":
+// 		// 检查业务访问权限
+// 		var accessible bool
+// 		accessible, q.Err = auth_mgt.CheckUserAPIAccessible(ctx, authority, "/api/paper/plan/generate", auth_mgt.CAPIAccessActionCreate)
+// 		if q.Err != nil {
+// 			z.Error(q.Err.Error())
+// 			q.RespErr()
+// 			return
+// 		}
+// 		if !accessible {
+// 			q.Err = fmt.Errorf("用户没有访问权限")
+// 			z.Error(q.Err.Error())
+// 			q.RespErr()
+// 			return
+// 		}
+
+// 		// 创建结构体
+// 		var req GenerateTemporaryPaperRequest
+
+// 		// 先获取Query参数
+// 		queryParams := q.R.URL.Query()
+// 		if id := queryParams.Get("id"); id != "" {
+// 			req.Data.ID, q.Err = strconv.ParseInt(id, 10, 64)
+// 			if q.Err != nil {
+// 				z.Error(q.Err.Error())
+// 				q.RespErr()
+// 				return
+// 			}
+// 		}
+
+// 		// 根据是否传入ID进行判断
+// 		if req.Data.ID > 0 {
+// 			var creatorID int64
+// 			// 获取组卷计划创建者和状态
+// 			creatorID, _, q.Err = GetPaperGenerationPlanCreatorAndStatus(req.Data.ID, ctx)
+// 			if q.Err != nil {
+// 				z.Error(q.Err.Error())
+// 				q.RespErr()
+// 				return
+// 			}
+
+// 			// 判断用户是否有权限访问该组卷计划
+// 			var hasPermission bool
+// 			// 用户是超级管理员或管理员或创建者才拥有权限
+// 			if authority.Role.Priority.Int64 == 0 {
+// 				hasPermission = true
+// 			} else if authority.Role.Priority.Int64 == 3 {
+// 				hasPermission = true
+// 			} else {
+// 				hasPermission = creatorID == userID
+// 			}
+// 			// 如果不是创建者，则返回无权限错误
+// 			if !hasPermission {
+// 				q.Err = fmt.Errorf("当前用户[ID:%d]无权获取该组卷计划[ID:%d]", userID, req.Data.ID)
+// 				z.Error(q.Err.Error())
+// 				q.RespErr()
+// 				return
+// 			}
+
+// 			// 获取组卷计划
+// 			var paperGenerationPlan *cmn.TPaperGenerationPlan
+// 			paperGenerationPlan, q.Err = GetPaperGenerationPlan(req.Data.ID, ctx)
+// 			if q.Err != nil {
+// 				z.Error(q.Err.Error())
+// 				q.RespErr()
+// 				return
+// 			}
+
+// 		} else {
+// 			// 检查业务访问权限（新建组卷计划）
+// 			var accessible bool
+// 			accessible, q.Err = auth_mgt.CheckUserAPIAccessible(ctx, authority, "/api/paper/plan", auth_mgt.CAPIAccessActionCreate)
+// 			if q.Err != nil {
+// 				z.Error(q.Err.Error())
+// 				q.RespErr()
+// 				return
+// 			}
+// 			if !accessible {
+// 				q.Err = fmt.Errorf("用户没有访问权限")
+// 				z.Error(q.Err.Error())
+// 				q.RespErr()
+// 				return
+// 			}
+
+// 			// 获取Body请求体
+// 			var buf []byte
+// 			buf, q.Err = io.ReadAll(q.R.Body)
+// 			if q.Err != nil {
+// 				z.Error(q.Err.Error())
+// 				q.RespErr()
+// 				return
+// 			}
+
+// 			// 读取数据到结构体
+// 			q.Err = json.Unmarshal(buf, &req)
+// 			if q.Err != nil {
+// 				z.Error(q.Err.Error())
+// 				q.RespErr()
+// 				return
+// 			}
+
+// 			// 开启事务，新建组卷计划，而后转换为数据库模型，
+// 		}
+
+// 		// 后续生成临时试卷操作
+
+// 	// 确认组卷
+// 	case "put":
+// 		// 检查业务访问权限
+// 		var accessible bool
+// 		accessible, q.Err = auth_mgt.CheckUserAPIAccessible(ctx, authority, "/api/paper/plan/generate", auth_mgt.CAPIAccessActionUpdate)
+// 		if q.Err != nil {
+// 			z.Error(q.Err.Error())
+// 			q.RespErr()
+// 			return
+// 		}
+
+// 		// 获取Query参数
+// 		var generateID int64
+// 		queryParams := q.R.URL.Query()
+// 		if id := queryParams.Get("id"); id != "" {
+// 			generateID, q.Err = strconv.ParseInt(id, 10, 64)
+// 			if q.Err != nil {
+// 				z.Error(q.Err.Error())
+// 				q.RespErr()
+// 				return
+// 			}
+// 		}
+
+// 		var creatorID int64
+// 		var status string
+// 		// 获取组卷计划创建者和状态
+// 		creatorID, status, q.Err = GetPaperGenerationPlanCreatorAndStatus(req.ID, ctx)
+// 		if q.Err != nil {
+// 			z.Error(q.Err.Error())
+// 			q.RespErr()
+// 			return
+// 		}
+
+// 	}
+
+// 	q.Msg.Msg = "success"
+// 	q.Msg.Status = 0
+// 	q.Resp()
+// }
