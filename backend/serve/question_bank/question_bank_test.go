@@ -29,6 +29,47 @@ var (
 	TestUserIDs = []int64{} // 测试用户ID列表
 )
 
+// TestGetKnowledgeBankKnowledges 测试获取知识点库knowledges功能
+func TestGetKnowledgeBankKnowledges(t *testing.T) {
+	ctx := context.Background()
+
+	// 测试获取不存在的题库的知识点库
+	knowledges, err := getKnowledgeBankKnowledges(ctx, 99999)
+	require.NoError(t, err)
+	require.Equal(t, "[]", string(knowledges))
+
+	// 测试获取存在的题库但无关联知识点库的情况
+	// 这里需要先创建一个测试题库，然后测试
+	// 由于这是单元测试，我们主要测试函数逻辑
+}
+
+// TestEnrichQuestionsWithAllKnowledges 测试为题目添加allKnowledges字段功能
+func TestEnrichQuestionsWithAllKnowledges(t *testing.T) {
+	ctx := context.Background()
+
+	// 创建测试题目
+	testQuestion := cmn.TQuestion{
+		ID:         null.IntFrom(1),
+		Type:       "00",
+		Content:    null.StringFrom("测试题目"),
+		BelongTo:   null.IntFrom(1),
+		Knowledges: types.JSONText(`{"linkedKnowledges":[],"customKnowledges":["测试知识点"]}`),
+	}
+
+	questions := []cmn.TQuestion{testQuestion}
+
+	// 测试为题目添加allKnowledges字段
+	result, err := enrichQuestionsWithAllKnowledges(ctx, questions, 1)
+	require.NoError(t, err)
+	require.Len(t, result, 1)
+	require.NotNil(t, result[0].AllKnowledges)
+
+	// 验证返回的结构体包含原始题目信息
+	require.Equal(t, testQuestion.ID, result[0].TQuestion.ID)
+	require.Equal(t, testQuestion.Type, result[0].TQuestion.Type)
+	require.Equal(t, testQuestion.Content, result[0].TQuestion.Content)
+}
+
 func TestMain(m *testing.M) {
 	cmn.ConfigureForTest()
 	// 读取测试数据
@@ -355,7 +396,7 @@ func TestQuestoinBankPostMethod(t *testing.T) {
 			name: "正常创建题库",
 			reqBody: CreateBankReq{
 				Name: "正常创建题库",
-				Type: QuestionBankTypeTheory,
+				Type: QuestionBankTypeNormal,
 				Tags: []string{"go", "vue"},
 			},
 			wantError:     false,
@@ -366,7 +407,7 @@ func TestQuestoinBankPostMethod(t *testing.T) {
 			validate: func(t *testing.T, ctx context.Context, qPut *cmn.ServiceCtx, bank cmn.TQuestionBank) {
 				require.NotNil(t, qPut)
 				require.Equal(t, bank.Name.String, "正常创建题库")
-				require.Equal(t, bank.Type.String, QuestionBankTypeTheory)
+				require.Equal(t, bank.Type.String, QuestionBankTypeNormal)
 				var tags []string
 				err := json.Unmarshal(bank.Tags, &tags)
 				require.NoError(t, err)
@@ -378,7 +419,7 @@ func TestQuestoinBankPostMethod(t *testing.T) {
 			name: "无法获取用户权限",
 			reqBody: CreateBankReq{
 				Name: "failed to get user role: no rows in result set",
-				Type: QuestionBankTypeTheory,
+				Type: QuestionBankTypeNormal,
 				Tags: []string{"go", "vue"},
 			},
 			wantError:     true,
@@ -389,7 +430,7 @@ func TestQuestoinBankPostMethod(t *testing.T) {
 			validate: func(t *testing.T, ctx context.Context, qPut *cmn.ServiceCtx, bank cmn.TQuestionBank) {
 				require.NotNil(t, qPut)
 				require.Equal(t, bank.Name.String, "正常创建题库")
-				require.Equal(t, bank.Type.String, QuestionBankTypeTheory)
+				require.Equal(t, bank.Type.String, QuestionBankTypeNormal)
 				var tags []string
 				err := json.Unmarshal(bank.Tags, &tags)
 				require.NoError(t, err)
@@ -401,7 +442,7 @@ func TestQuestoinBankPostMethod(t *testing.T) {
 			name: "io-ReadAll",
 			reqBody: CreateBankReq{
 				Name: "正常创建题库",
-				Type: QuestionBankTypeTheory,
+				Type: QuestionBankTypeNormal,
 				Tags: []string{"go", "vue"},
 			},
 			wantError:     true,
@@ -412,7 +453,7 @@ func TestQuestoinBankPostMethod(t *testing.T) {
 			validate: func(t *testing.T, ctx context.Context, qPut *cmn.ServiceCtx, bank cmn.TQuestionBank) {
 				require.NotNil(t, qPut)
 				require.Equal(t, bank.Name.String, "正常创建题库")
-				require.Equal(t, bank.Type.String, QuestionBankTypeTheory)
+				require.Equal(t, bank.Type.String, QuestionBankTypeNormal)
 				var tags []string
 				err := json.Unmarshal(bank.Tags, &tags)
 				require.NoError(t, err)
@@ -424,7 +465,7 @@ func TestQuestoinBankPostMethod(t *testing.T) {
 			name: "q.R.Body.Close()",
 			reqBody: CreateBankReq{
 				Name: "正常创建题库",
-				Type: QuestionBankTypeTheory,
+				Type: QuestionBankTypeNormal,
 				Tags: []string{"go", "vue"},
 			},
 			wantError:     true,
@@ -435,7 +476,7 @@ func TestQuestoinBankPostMethod(t *testing.T) {
 			validate: func(t *testing.T, ctx context.Context, qPut *cmn.ServiceCtx, bank cmn.TQuestionBank) {
 				require.NotNil(t, qPut)
 				require.Equal(t, bank.Name.String, "正常创建题库")
-				require.Equal(t, bank.Type.String, QuestionBankTypeTheory)
+				require.Equal(t, bank.Type.String, QuestionBankTypeNormal)
 				var tags []string
 				err := json.Unmarshal(bank.Tags, &tags)
 				require.NoError(t, err)
@@ -447,7 +488,7 @@ func TestQuestoinBankPostMethod(t *testing.T) {
 			name: "题库名称为空",
 			reqBody: CreateBankReq{
 				Name: "",
-				Type: QuestionBankTypeTheory,
+				Type: QuestionBankTypeNormal,
 				Tags: []string{"go", "vue"},
 			},
 			wantError:     true,
@@ -458,7 +499,7 @@ func TestQuestoinBankPostMethod(t *testing.T) {
 			validate: func(t *testing.T, ctx context.Context, qPut *cmn.ServiceCtx, bank cmn.TQuestionBank) {
 				require.NotNil(t, qPut)
 				require.Equal(t, bank.Name.String, "正常创建题库")
-				require.Equal(t, bank.Type.String, QuestionBankTypeTheory)
+				require.Equal(t, bank.Type.String, QuestionBankTypeNormal)
 				var tags []string
 				err := json.Unmarshal(bank.Tags, &tags)
 				require.NoError(t, err)
@@ -481,7 +522,7 @@ func TestQuestoinBankPostMethod(t *testing.T) {
 			validate: func(t *testing.T, ctx context.Context, qPut *cmn.ServiceCtx, bank cmn.TQuestionBank) {
 				require.NotNil(t, qPut)
 				require.Equal(t, bank.Name.String, "正常创建题库")
-				require.Equal(t, bank.Type.String, QuestionBankTypeTheory)
+				require.Equal(t, bank.Type.String, QuestionBankTypeNormal)
 				var tags []string
 				err := json.Unmarshal(bank.Tags, &tags)
 				require.NoError(t, err)
@@ -504,7 +545,7 @@ func TestQuestoinBankPostMethod(t *testing.T) {
 			validate: func(t *testing.T, ctx context.Context, qPut *cmn.ServiceCtx, bank cmn.TQuestionBank) {
 				require.NotNil(t, qPut)
 				require.Equal(t, bank.Name.String, "正常创建题库")
-				require.Equal(t, bank.Type.String, QuestionBankTypeTheory)
+				require.Equal(t, bank.Type.String, QuestionBankTypeNormal)
 				var tags []string
 				err := json.Unmarshal(bank.Tags, &tags)
 				require.NoError(t, err)
@@ -527,7 +568,7 @@ func TestQuestoinBankPostMethod(t *testing.T) {
 			validate: func(t *testing.T, ctx context.Context, qPut *cmn.ServiceCtx, bank cmn.TQuestionBank) {
 				require.NotNil(t, qPut)
 				require.Equal(t, bank.Name.String, "正常创建题库")
-				require.Equal(t, bank.Type.String, QuestionBankTypeTheory)
+				require.Equal(t, bank.Type.String, QuestionBankTypeNormal)
 				var tags []string
 				err := json.Unmarshal(bank.Tags, &tags)
 				require.NoError(t, err)
@@ -550,7 +591,7 @@ func TestQuestoinBankPostMethod(t *testing.T) {
 			validate: func(t *testing.T, ctx context.Context, qPut *cmn.ServiceCtx, bank cmn.TQuestionBank) {
 				require.NotNil(t, qPut)
 				require.Equal(t, bank.Name.String, "正常创建题库")
-				require.Equal(t, bank.Type.String, QuestionBankTypeTheory)
+				require.Equal(t, bank.Type.String, QuestionBankTypeNormal)
 				var tags []string
 				err := json.Unmarshal(bank.Tags, &tags)
 				require.NoError(t, err)
@@ -573,7 +614,7 @@ func TestQuestoinBankPostMethod(t *testing.T) {
 			validate: func(t *testing.T, ctx context.Context, qPut *cmn.ServiceCtx, bank cmn.TQuestionBank) {
 				require.NotNil(t, qPut)
 				require.Equal(t, bank.Name.String, "正常创建题库")
-				require.Equal(t, bank.Type.String, QuestionBankTypeTheory)
+				require.Equal(t, bank.Type.String, QuestionBankTypeNormal)
 				var tags []string
 				err := json.Unmarshal(bank.Tags, &tags)
 				require.NoError(t, err)
@@ -596,7 +637,7 @@ func TestQuestoinBankPostMethod(t *testing.T) {
 			validate: func(t *testing.T, ctx context.Context, qPut *cmn.ServiceCtx, bank cmn.TQuestionBank) {
 				require.NotNil(t, qPut)
 				require.Equal(t, bank.Name.String, "正常创建题库")
-				require.Equal(t, bank.Type.String, QuestionBankTypeTheory)
+				require.Equal(t, bank.Type.String, QuestionBankTypeNormal)
 				var tags []string
 				err := json.Unmarshal(bank.Tags, &tags)
 				require.NoError(t, err)
@@ -619,7 +660,7 @@ func TestQuestoinBankPostMethod(t *testing.T) {
 			validate: func(t *testing.T, ctx context.Context, qPut *cmn.ServiceCtx, bank cmn.TQuestionBank) {
 				require.NotNil(t, qPut)
 				require.Equal(t, bank.Name.String, "正常创建题库")
-				require.Equal(t, bank.Type.String, QuestionBankTypeTheory)
+				require.Equal(t, bank.Type.String, QuestionBankTypeNormal)
 				var tags []string
 				err := json.Unmarshal(bank.Tags, &tags)
 				require.NoError(t, err)
