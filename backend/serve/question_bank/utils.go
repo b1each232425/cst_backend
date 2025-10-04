@@ -1,13 +1,16 @@
 package question_bank
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"regexp"
 	"strings"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/pkg/errors"
 	"w2w.io/cmn"
+	"w2w.io/null"
 )
 
 func validateIDs(ids []int64) error {
@@ -522,4 +525,76 @@ func countFillInBlanks(content string) int {
 	totalCount := len(matches)
 
 	return totalCount
+}
+
+// getKnowledgeBankKnowledges 根据题库ID获取关联的知识点库的knowledges
+func getKnowledgeBankKnowledges(ctx context.Context, bankID int64) ([]byte, error) {
+	conn := cmn.GetPgxConn()
+
+	// 查询题库关联的知识点库ID，使用null.Int来处理可能的NULL值
+	var knowledgeBankID null.Int
+	query := `
+		SELECT knowledge_bank_id
+		FROM t_question_bank
+		WHERE id = $1 AND status = '00'
+	`
+
+	err := conn.QueryRow(ctx, query, bankID).Scan(&knowledgeBankID)
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			// 题库不存在或已删除，返回空的知识点
+			return json.Marshal([]interface{}{})
+		}
+		return nil, fmt.Errorf("查询题库失败: %v", err)
+	}
+
+	// 如果没有关联的知识点库或knowledge_bank_id为NULL，返回空数组
+	if !knowledgeBankID.Valid || knowledgeBankID.Int64 == 0 {
+		return json.Marshal([]interface{}{})
+	}
+
+	// 查询知识点库的knowledges
+	var knowledges []byte
+	knowledgeQuery := `
+		SELECT knowledges
+		FROM t_knowledge_bank
+		WHERE id = $1 AND status = '00'
+	`
+
+	err = conn.QueryRow(ctx, knowledgeQuery, knowledgeBankID.Int64).Scan(&knowledges)
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			// 知识点库不存在或已删除，返回空的知识点
+			return json.Marshal([]interface{}{})
+		}
+		return nil, fmt.Errorf("查询知识点库失败: %v", err)
+	}
+
+	// 如果knowledges为空，返回空数组
+	if len(knowledges) == 0 || string(knowledges) == "null" {
+		return json.Marshal([]interface{}{})
+	}
+
+	return knowledges, nil
+}
+
+// enrichQuestionsWithAllKnowledges 为题目列表添加allKnowledges字段
+func enrichQuestionsWithAllKnowledges(ctx context.Context, questions []cmn.TQuestion, bankID int64) ([]QuestionWithAllKnowledges, error) {
+	// 获取知识点库的knowledges
+	allKnowledges, err := getKnowledgeBankKnowledges(ctx, bankID)
+	if err != nil {
+		return nil, fmt.Errorf("获取知识点库失败: %v", err)
+	}
+
+	// 构建结果列表
+	var result []QuestionWithAllKnowledges
+	for _, question := range questions {
+		questionWithKnowledges := QuestionWithAllKnowledges{
+			TQuestion:     question,
+			AllKnowledges: allKnowledges,
+		}
+		result = append(result, questionWithKnowledges)
+	}
+
+	return result, nil
 }

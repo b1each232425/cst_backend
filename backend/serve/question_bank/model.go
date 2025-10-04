@@ -1,5 +1,10 @@
 package question_bank
 
+import (
+	"github.com/jmoiron/sqlx/types"
+	"w2w.io/cmn"
+)
+
 // 查询题库参数结构体
 type QueryQuestionBankParams struct {
 	BankID   int64  // 题库ID
@@ -7,6 +12,7 @@ type QueryQuestionBankParams struct {
 	Page     int64  // 分页页码
 	PageSize int64  // 分页大小
 	Creator  int64  // 用户ID
+	Type     string // 题库类型
 }
 
 // 查询题目参数结构体
@@ -58,4 +64,10 @@ type QuestionFile struct {
 	CheckSum   string `json:"checksum" validate:"required"`    // 文件摘要
 	Name       string `json:"name" validate:"required"`        // 文件名
 	Size       int64  `json:"size" validate:"required"`        // 文件大小
+}
+
+// QuestionWithAllKnowledges 包含知识点库所有知识点的题目结构体
+type QuestionWithAllKnowledges struct {
+	cmn.TQuestion
+	AllKnowledges types.JSONText `json:"allKnowledges,omitempty"` // 知识点库的所有知识点
 }
