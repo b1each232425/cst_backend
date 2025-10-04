@@ -234,6 +234,7 @@ func questionBanks(ctx context.Context) {
 		pageStr := q.R.URL.Query().Get("page")
 		pageSizeStr := q.R.URL.Query().Get("pageSize")
 		bankIDStr := q.R.URL.Query().Get("bankID")
+		typeStr := q.R.URL.Query().Get("type")
 
 		// 设置默认分页参数
 		if pageStr == "" {
@@ -287,6 +288,7 @@ func questionBanks(ctx context.Context) {
 			Page:     page,
 			PageSize: pageSize,
 			Creator:  creatorFilter,
+			Type:     typeStr,
 		}
 
 		var rowCount int64
@@ -335,6 +337,25 @@ func questionBanks(ctx context.Context) {
 		if params.Creator > 0 {
 			conditions = append(conditions, fmt.Sprintf("creator = $%d", argIndex))
 			args = append(args, params.Creator)
+			argIndex++
+		}
+
+		// 题库类型过滤
+		if params.Type != "" {
+			// 验证类型参数
+			if params.Type != QuestionBankTypeNormal && params.Type != QuestionBankTypeKnowledge {
+				q.Err = fmt.Errorf("invalid type parameter: %s", params.Type)
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+			conditions = append(conditions, fmt.Sprintf("type = $%d", argIndex))
+			args = append(args, params.Type)
+			argIndex++
+		} else {
+			// 如果type为空，则只返回普通题库（type=00）
+			conditions = append(conditions, fmt.Sprintf("type = $%d", argIndex))
+			args = append(args, QuestionBankTypeNormal)
 			argIndex++
 		}
 
@@ -518,7 +539,7 @@ func questionBanks(ctx context.Context) {
 			q.RespErr()
 			return
 		}
-		if questionBankType != QuestionBankTypeTheory && questionBankType != QuestionBankTypeCoding {
+		if questionBankType != QuestionBankTypeNormal && questionBankType != QuestionBankTypeKnowledge {
 			q.Err = fmt.Errorf("call /api/question-banks with unsupported question bank type: %s", questionBankType)
 			z.Error(q.Err.Error())
 			q.RespErr()
@@ -644,13 +665,22 @@ func questionBanks(ctx context.Context) {
 		}
 		questionBankName := gjson.GetBytes(buf, "data.name").String()
 		questionBankTagsJson := gjson.GetBytes(buf, "data.tags")
+		questionBankType := gjson.GetBytes(buf, "data.type").String()
 		var questionBankTags []gjson.Result
 		if questionBankTagsJson.Exists() {
 			questionBankTags = questionBankTagsJson.Array()
 		}
 
-		if questionBankName == "" && len(questionBankTags) == 0 {
-			q.Err = fmt.Errorf("call /api/question-banks with empty question bank name and tags")
+		if questionBankName == "" && len(questionBankTags) == 0 && questionBankType == "" {
+			q.Err = fmt.Errorf("call /api/question-banks with empty question bank name, tags and type")
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		// 验证题库类型
+		if questionBankType != "" && questionBankType != QuestionBankTypeNormal && questionBankType != QuestionBankTypeKnowledge {
+			q.Err = fmt.Errorf("call /api/question-banks with unsupported question bank type: %s", questionBankType)
 			z.Error(q.Err.Error())
 			q.RespErr()
 			return
@@ -702,6 +732,13 @@ func questionBanks(ctx context.Context) {
 
 			setClauses = append(setClauses, fmt.Sprintf("tags = $%d", argIndex))
 			args = append(args, tagsJSON)
+			argIndex++
+		}
+
+		// 如果提供了题库类型，则更新
+		if questionBankType != "" {
+			setClauses = append(setClauses, fmt.Sprintf("type = $%d", argIndex))
+			args = append(args, questionBankType)
 			argIndex++
 		}
 
@@ -1205,7 +1242,8 @@ func questions(ctx context.Context) {
 					status,
 					files,
 					access_mode,
-					belong_to
+					belong_to,
+					knowledges
 				FROM t_question
 				WHERE status = '00' AND belong_to = $1 AND id = $2`
 
@@ -1236,6 +1274,7 @@ func questions(ctx context.Context) {
 				&question.QuestionAttachmentsPath,
 				&question.AccessMode,
 				&question.BelongTo,
+				&question.Knowledges,
 			)
 			if forceError == "questions.single.QueryRow" {
 				q.Err = errors.New(forceError)
@@ -1249,8 +1288,21 @@ func questions(ctx context.Context) {
 				return
 			}
 
+			// 为单道题目添加allKnowledges字段
+			questionsWithKnowledges, err := enrichQuestionsWithAllKnowledges(ctx, []cmn.TQuestion{question}, params.BankID)
+			if err != nil {
+				z.Error("获取知识点库失败: " + err.Error())
+				q.Err = err
+				q.RespErr()
+				return
+			}
+
 			var jsonData []byte
-			jsonData, q.Err = json.Marshal(question)
+			if len(questionsWithKnowledges) > 0 {
+				jsonData, q.Err = json.Marshal(questionsWithKnowledges[0])
+			} else {
+				jsonData, q.Err = json.Marshal(question)
+			}
 			if forceError == "questions.single.json.Marshal" {
 				q.Err = errors.New(forceError)
 			}
@@ -1391,7 +1443,8 @@ func questions(ctx context.Context) {
 			status,
 			files,
 			access_mode,
-			belong_to
+			belong_to,
+			knowledges
 		FROM t_question
 		%s
 		ORDER BY id DESC
@@ -1441,6 +1494,7 @@ func questions(ctx context.Context) {
 				&question.QuestionAttachmentsPath,
 				&question.AccessMode,
 				&question.BelongTo,
+				&question.Knowledges,
 			)
 			if forceError == "questions.rows.Scan" {
 				q.Err = errors.New(forceError)
@@ -1463,8 +1517,17 @@ func questions(ctx context.Context) {
 			return
 		}
 
+		// 为题目列表添加allKnowledges字段
+		questionsWithKnowledges, err := enrichQuestionsWithAllKnowledges(ctx, list, params.BankID)
+		if err != nil {
+			z.Error("获取知识点库失败: " + err.Error())
+			q.Err = err
+			q.RespErr()
+			return
+		}
+
 		var jsonData []byte
-		jsonData, q.Err = json.Marshal(list)
+		jsonData, q.Err = json.Marshal(questionsWithKnowledges)
 		if forceError == "questions.json.Marshal" {
 			q.Err = errors.New(forceError)
 		}

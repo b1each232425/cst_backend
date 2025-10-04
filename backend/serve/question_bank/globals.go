@@ -5,8 +5,8 @@ import "time"
 const (
 
 	// Question bank types
-	QuestionBankTypeTheory = "00" // 理论题库
-	QuestionBankTypeCoding = "02" // 编程题库
+	QuestionBankTypeNormal    = "00" // 普通题库
+	QuestionBankTypeKnowledge = "02" // 知识点题库
 )
 
 const (
