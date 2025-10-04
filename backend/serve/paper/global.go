@@ -2,7 +2,7 @@
  * @Author: wusaber33
  * @Date: 2025-08-16 16:30:00
  * @LastEditors: WangKaidun 1597225095@qq.com
- * @LastEditTime: 2025-09-23 16:10:10
+ * @LastEditTime: 2025-10-03 20:35:34
  * @FilePath: \assess\backend\serve\paper\global.go
  * @Description: Paper module global constants and variables
  * Copyright (c) 2025 by wusaber33, All Rights Reserved.
@@ -73,4 +73,13 @@ const (
 	//试卷编辑锁前缀
 	REDIS_LOCK_PREFIX     = "paper_lock:"
 	REDIS_LOCK_EXPRIATION = 5 * time.Minute
+
+	// 组卷计划状态
+	PaperGenerationPlanStatusDraft     = "00" // 草稿状态
+	PaperGenerationPlanStatusGenerated   = "02" // 已组卷状态
+	PaperGenerationPlanStatusDeleted  = "04" // 已删除状态
+
+	// 组卷计划名称最大长度
+	MaxPaperGenerationPlanName = 200
+	
 )
