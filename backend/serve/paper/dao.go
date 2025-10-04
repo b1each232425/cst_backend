@@ -22,6 +22,21 @@ func InsertPaperGenerationPlan(paperGenerationPlan *cmn.TPaperGenerationPlan, us
 	// 设置域ID
 	paperGenerationPlan.DomainID = null.IntFrom(domainID)
 
+	// 如果 QuestionConfig 为空或为 null，则初始化为空数组
+	if len(paperGenerationPlan.QuestionConfig) == 0 || string(paperGenerationPlan.QuestionConfig) == "null" {
+		paperGenerationPlan.QuestionConfig = []byte("[]")
+	}
+
+	// 如果 Tags 为空或为 null，则初始化为空数组
+	if len(paperGenerationPlan.Tags) == 0 || string(paperGenerationPlan.Tags) == "null" {
+		paperGenerationPlan.Tags = []byte("[]")
+	}
+
+	// 如果 QuestionBankIds 为空或为 null，则初始化为空数组
+	if len(paperGenerationPlan.QuestionBankIds) == 0 || string(paperGenerationPlan.QuestionBankIds) == "null" {
+		paperGenerationPlan.QuestionBankIds = []byte("[]")
+	}
+
 	// 设置创建者和创建时间
 	paperGenerationPlan.Creator = null.IntFrom(userID)
 	paperGenerationPlan.CreateTime = null.IntFrom(cmn.GetNowInMS())
@@ -102,6 +117,21 @@ func GetPaperGenerationPlanCreatorAndStatus(paperGenerationPlanID int64, ctx con
 func UpdatePaperGenerationPlan(paperGenerationPlan *cmn.TPaperGenerationPlan, userID, domainID int64, ctx context.Context) error {
 	// 获取数据库连接
 	conn := cmn.GetPgxConn()
+
+	// 如果 QuestionConfig 为空或为 null，则初始化为空数组
+	if len(paperGenerationPlan.QuestionConfig) == 0 || string(paperGenerationPlan.QuestionConfig) == "null" {
+		paperGenerationPlan.QuestionConfig = []byte("[]")
+	}
+
+	// 如果 Tags 为空或为 null，则初始化为空数组
+	if len(paperGenerationPlan.Tags) == 0 || string(paperGenerationPlan.Tags) == "null" {
+		paperGenerationPlan.Tags = []byte("[]")
+	}
+
+	// 如果 QuestionBankIds 为空或为 null，则初始化为空数组
+	if len(paperGenerationPlan.QuestionBankIds) == 0 || string(paperGenerationPlan.QuestionBankIds) == "null" {
+		paperGenerationPlan.QuestionBankIds = []byte("[]")
+	}
 
 	querySql := `UPDATE t_paper_generation_plan
 		SET knowledge_bank_id = $1,

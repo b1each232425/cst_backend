@@ -2663,6 +2663,7 @@ func GenerationPlan(ctx context.Context) {
 	case "get":
 		// 检查业务访问权限
 		var accessible bool
+		accessible, q.Err = auth_mgt.CheckUserAPIAccessible(ctx, authority, "/api/paper/plan", auth_mgt.CAPIAccessActionRead)
 		if q.Err != nil {
 			z.Error(q.Err.Error())
 			q.RespErr()
@@ -3023,7 +3024,7 @@ func GenerationPlans(ctx context.Context) {
 		// 只能查看不是删除状态的组卷计划
 		whereClauses = append(whereClauses, "p.status != '04'")
 
-		// 拼接资源范围 - 用户可访问的所有 domain_id
+		// 添加域权限
 		if len(authority.AccessibleDomains) > 0 {
 			whereClauses = append(whereClauses, fmt.Sprintf("p.domain_id = ANY($%d)", paramCount))
 			params = append(params, authority.AccessibleDomains)
