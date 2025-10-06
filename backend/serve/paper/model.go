@@ -1,8 +1,18 @@
+/*
+ * @Author: WangKaidun 1597225095@qq.com
+ * @Date: 2025-10-01 10:58:31
+ * @LastEditors: WangKaidun 1597225095@qq.com
+ * @LastEditTime: 2025-10-04 16:42:30
+ * @FilePath: \assess\backend\serve\paper\model.go
+ * @Description: 组卷计划关于请求和响应的结构体
+ * Copyright (c) 2025 by WangKaidun 1597225095@qq.com, All Rights Reserved.
+ */
 package paper
 
 import (
 	"encoding/json"
 
+	"github.com/jmoiron/sqlx/types"
 	"w2w.io/cmn"
 	"w2w.io/null"
 )
@@ -125,4 +135,81 @@ type Question struct {
 	BankQuestionID null.Int  `json:"bank_question_id"`
 	SubScore       []float64 `json:"sub_score"`
 	AnswerNum      int64     `json:"answer_num"`
+}
+
+// --------------------------------------------智能组卷--------------------------------------------
+
+// validate:"omitempty" 参数可传可不传
+// 带* 传了不能为空
+
+// 配置试卷题目
+type QuestionConfig struct {
+	Name                   string           `json:"name" validate:"required,min=1,max=50"`
+	Type                   string           `json:"type" validate:"required,oneof=00 02 04 06 08 10 12"`
+	Count                  int64            `json:"count" validate:"required,min=1"`
+	AverageScore           float64          `json:"average_score" validate:"required,min=0.5"`
+	DifficultyDistribution map[string]int64 `json:"difficulty_distribution" validate:"validate_difficulty_distribution_keys"`
+}
+
+// 新建组卷计划
+type PostPaperPlanRequest struct {
+	ID                int64            `form:"id"`
+	Name              string           `json:"name" validate:"required,min=1,max=200"`
+	Category          string           `json:"category" validate:"required,oneof=00 02"`
+	Level             string           `json:"level" validate:"required,oneof=00 02 04 06 08"`
+	SuggestedDuration int64            `json:"suggested_duration" validate:"required,min=1"`
+	Description       string           `json:"description" validate:"max=2000"`
+	Tags              []string         `json:"tags" validate:"omitempty,max=20,dive,min=1,max=50"`
+	KnowledgeBankID   int64            `json:"knowledge_bank_id" validate:"required,min=1"`
+	QuestionBankIDs   []int64          `json:"question_bank_ids" validate:"required,dive,min=1"`
+	PaperCount        int64            `json:"paper_count" validate:"required,min=1"`
+	QuestionConfig    []QuestionConfig `json:"question_config" validate:"omitempty,dive"`
+}
+
+// 删除组卷计划（批量）
+type DeletePaperPlanRequest struct {
+	IDs []int64 `json:"ids" validate:"required,min=1,dive,min=1"`
+}
+
+// 获取组卷计划列表
+type GetPaperPlanListRequest struct {
+	Name     string `form:"name" validate:"omitempty,max=200"`
+	Tags     string `form:"tags" validate:"omitempty,max=100"`
+	PageSize int    `form:"page_size" validate:"required,oneof=5 10 20"`
+	Page     int    `form:"page" validate:"required,min=1"`
+}
+
+// 用于接收数据库组卷计划列表项
+type PlanListItem struct {
+	ID                null.Int       `json:"ID,omitempty" db:"id,true,integer"`                                            /* id 组卷计划ID */
+	Name              null.String    `json:"Name,omitempty" db:"name,false,character varying"`                             /* name 组卷计划名称 */
+	KnowledgeBankName null.String    `json:"KnowledgeBankName,omitempty" db:"knowledge_bank_name,false,character varying"` /* knowledge_bank_name 知识点库名称 */
+	Category          null.String    `json:"Category,omitempty" db:"category,false,character varying"`                     /* category 试卷用途 */
+	QuestionCount     null.Int       `json:"QuestionCount,omitempty" db:"question_count,false,integer"`                    /* question_count 试题数量 */
+	SuggestedDuration null.Int       `json:"SuggestedDuration,omitempty" db:"suggested_duration,false,integer"`            /* suggested_duration 建议时长(默认120分钟) */
+	Tags              types.JSONText `json:"Tags,omitempty" db:"tags,false,jsonb"`                                         /* tags 试卷标签 */
+	Level             null.String    `json:"Level,omitempty" db:"level,false,character varying"`                           /* level 试卷难度(00:易 02:较易 04:中 06:较难 08:难) */
+	CreateTime        null.Int       `json:"CreateTime,omitempty" db:"create_time,false,bigint"`                           /* create_time 创建时间 */
+	UpdateTime        null.Int       `json:"UpdateTime,omitempty" db:"update_time,false,bigint"`                           /* update_time 更新时间 */
+	Status            null.String    `json:"Status,omitempty" db:"status,false,character varying"`                         /* status 状态(00:草稿 02:已组卷 04:已删除) */
+}
+
+// 生成临时试卷请求
+type GenerateTemporaryPaperRequest struct {
+	Data GenerateTemporaryPaperPlan `json:"data" validate:"omitempty,dive"`
+}
+
+// 生成临时试卷请求数据结构体
+type GenerateTemporaryPaperPlan struct {
+	ID                int64            `form:"id"`
+	Name              string           `json:"name" validate:"required,min=1,max=200"`
+	Category          string           `json:"category" validate:"required,oneof=00 02"`
+	Level             string           `json:"level" validate:"required,oneof=00 02 04 06 08"`
+	SuggestedDuration int64            `json:"suggested_duration" validate:"required,min=1"`
+	Description       string           `json:"description" validate:"max=2000"`
+	Tags              []string         `json:"tags" validate:"omitempty,max=20,dive,min=1,max=50"`
+	KnowledgeBankID   int64            `json:"knowledge_bank_id" validate:"required,min=1"`
+	QuestionBankIDs   []int64          `json:"question_bank_ids" validate:"required,dive,min=1"`
+	PaperCount        int64            `json:"paper_count" validate:"required,min=1"`
+	QuestionConfig    []QuestionConfig `json:"question_config" validate:"required,dive"`
 }
