@@ -15,6 +15,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/jmoiron/sqlx/types"
 	"github.com/pkg/errors"
 	"github.com/tidwall/gjson"
@@ -413,7 +414,7 @@ func questionBanks(ctx context.Context) {
 			return
 		}
 
-		var list []cmn.TVQuestionBank
+		var list []TVQuestionBankWithStats
 		for rows.Next() {
 			var bank cmn.TVQuestionBank
 			err = rows.Scan(
@@ -440,7 +441,21 @@ func questionBanks(ctx context.Context) {
 				q.RespErr()
 				return
 			}
-			list = append(list, bank)
+
+			// 获取题库统计信息
+			stats, err := getQuestionBankStats(ctx, conn, bank.ID.Int64)
+			if err != nil {
+				z.Error(fmt.Sprintf("获取题库统计信息失败: %v", err))
+				// 如果统计信息获取失败，使用空的统计信息
+				stats = QuestionBankStats{}
+			}
+
+			// 创建包含统计信息的题库结构体
+			bankWithStats := TVQuestionBankWithStats{
+				TVQuestionBank: bank,
+				Stats:          stats,
+			}
+			list = append(list, bankWithStats)
 		}
 
 		q.Err = rows.Err()
@@ -556,6 +571,12 @@ func questionBanks(ctx context.Context) {
 			z.Error(q.Err.Error())
 			q.RespErr()
 			return
+		}
+
+		// 处理知识点库ID
+		knowledgeBankId := gjson.GetBytes(qry.Data, "knowledgeBankId")
+		if knowledgeBankId.Exists() && knowledgeBankId.Int() > 0 {
+			bank.KnowledgeBankID = null.IntFrom(knowledgeBankId.Int())
 		}
 
 		bank.Creator = null.IntFrom(userID)
@@ -845,7 +866,7 @@ func questionBanks(ctx context.Context) {
 			return
 		}
 		//执行删除操作
-		//题库直接进行删除操作，题库题目级联删除，相关的试卷题目也级联删除,但要把关联试卷的版本号加1
+		//题库进行软删除操作（status: 00->02），题库题目级联软删除，相关的试卷题目也级联软删除,但要把关联试卷的版本号加1
 		//以上操作需要在数据库事务中进行且需要确保原子性
 		//如果其中任何一步失败，则整个事务回滚
 		//删除的时候需要判断是否是题库创建者
@@ -1996,7 +2017,7 @@ func questions(ctx context.Context) {
 			return
 		}
 		//执行删除操作
-		//直接硬删除需要删除的题目，关联的试卷题目会被级联删除，且把关联试卷的版本号加一 TODO
+		//直接软删除需要删除的题目（status: 00->02），关联的试卷题目会被级联软删除，且把关联试卷的版本号加一 TODO
 		//以上操作需要在数据库事务中进行且需要确保原子性
 		//如果其中任何一步失败，则整个事务回滚
 		var tx pgx.Tx
@@ -2902,4 +2923,85 @@ func questionFiles(ctx context.Context) {
 		q.RespErr()
 		return
 	}
+}
+
+// getQuestionBankStats 获取题库统计信息
+func getQuestionBankStats(ctx context.Context, conn *pgxpool.Pool, bankID int64) (QuestionBankStats, error) {
+	var stats QuestionBankStats
+
+	// 1. 获取题目总数
+	totalCountQuery := `
+		SELECT COUNT(*)
+		FROM t_question
+		WHERE belong_to = $1 AND status = '00'
+	`
+	err := conn.QueryRow(ctx, totalCountQuery, bankID).Scan(&stats.TotalCount)
+	if err != nil {
+		return stats, fmt.Errorf("获取题目总数失败: %v", err)
+	}
+
+	// 2. 获取各题型各难度统计
+	typeDifficultyStatsQuery := `
+		SELECT
+			type,
+			difficulty,
+			COUNT(*) as count
+		FROM t_question
+		WHERE belong_to = $1 AND status = '00'
+		GROUP BY type, difficulty
+		ORDER BY type, difficulty
+	`
+	rows, err := conn.Query(ctx, typeDifficultyStatsQuery, bankID)
+	if err != nil {
+		return stats, fmt.Errorf("获取题型难度统计失败: %v", err)
+	}
+	defer rows.Close()
+
+	// 按题型分组统计
+	typeDifficultyMap := make(map[string][]QuestionDifficultyCount)
+	typeCountMap := make(map[string]int64) // 记录每个题型的总数
+
+	for rows.Next() {
+		var typeCode, difficultyCode string
+		var count int64
+		err := rows.Scan(&typeCode, &difficultyCode, &count)
+		if err != nil {
+			return stats, fmt.Errorf("扫描题型难度统计失败: %v", err)
+		}
+
+		difficultyName, exists := QuestionDifficulty[difficultyCode]
+		if !exists {
+			difficultyName = "未知难度"
+		}
+
+		difficultyStats := QuestionDifficultyCount{
+			DifficultyName: difficultyName,
+			DifficultyCode: difficultyCode,
+			Count:          count,
+		}
+
+		// 添加到题型难度映射
+		typeDifficultyMap[typeCode] = append(typeDifficultyMap[typeCode], difficultyStats)
+		// 累加题型总数
+		typeCountMap[typeCode] += count
+	}
+
+	// 构建题型统计结果
+	var types []QuestionTypeCount
+	for typeCode, difficulties := range typeDifficultyMap {
+		typeName, exists := QuestionTypes[typeCode]
+		if !exists {
+			typeName = "未知题型"
+		}
+
+		types = append(types, QuestionTypeCount{
+			TypeName:     typeName,
+			TypeCode:     typeCode,
+			Count:        typeCountMap[typeCode],
+			Difficulties: difficulties,
+		})
+	}
+	stats.Types = types
+
+	return stats, nil
 }

@@ -71,3 +71,30 @@ type QuestionWithAllKnowledges struct {
 	cmn.TQuestion
 	AllKnowledges types.JSONText `json:"allKnowledges,omitempty"` // 知识点库的所有知识点
 }
+
+// QuestionDifficultyCount 题目难度统计
+type QuestionDifficultyCount struct {
+	DifficultyName string `json:"difficultyName"` // 难度名称
+	DifficultyCode string `json:"difficultyCode"` // 难度代码
+	Count          int64  `json:"count"`          // 该难度题目总数
+}
+
+// QuestionTypeCount 题型统计信息
+type QuestionTypeCount struct {
+	TypeName     string                    `json:"typeName"`     // 题型名称
+	TypeCode     string                    `json:"typeCode"`     // 题型代码
+	Count        int64                     `json:"count"`        // 该题型题目总数
+	Difficulties []QuestionDifficultyCount `json:"difficulties"` // 该题型下的各难度统计
+}
+
+// QuestionBankStats 题库统计信息（简化版）
+type QuestionBankStats struct {
+	TotalCount int64               `json:"totalCount"` // 题目总数
+	Types      []QuestionTypeCount `json:"types"`      // 各题型统计
+}
+
+// TVQuestionBankWithStats 包含统计信息的题库结构体
+type TVQuestionBankWithStats struct {
+	cmn.TVQuestionBank
+	Stats QuestionBankStats `json:"stats"` // 统计信息
+}

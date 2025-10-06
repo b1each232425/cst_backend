@@ -5177,3 +5177,25 @@ func TestQuestionLockLifecycle(t *testing.T) {
 		t.Fatalf("释放锁失败: %+v", qDelete.Msg)
 	}
 }
+
+// TestGetQuestionBankStats 测试获取题库统计信息功能
+func TestGetQuestionBankStats(t *testing.T) {
+	ctx := context.Background()
+
+	// 获取数据库连接
+	conn := cmn.GetPgxConn()
+	if conn == nil {
+		t.Skip("数据库连接不可用，跳过测试")
+		return
+	}
+
+	// 测试获取不存在的题库统计信息
+	stats, err := getQuestionBankStats(ctx, conn, 99999)
+	require.NoError(t, err)
+	require.Equal(t, int64(0), stats.TotalCount)
+	require.Empty(t, stats.Types)
+
+	// 测试获取存在的题库统计信息
+	// 这里需要先创建一个测试题库和题目，然后测试统计功能
+	// 由于这是单元测试，我们主要测试函数逻辑和错误处理
+}
