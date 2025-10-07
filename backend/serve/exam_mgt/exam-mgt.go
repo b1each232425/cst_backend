@@ -533,6 +533,7 @@ func GetExamSessions(ctx context.Context, domain string, examIDs ...int64) ([]cm
 					LateEntryTime:        null.NewInt(5, true),
 					EarlySubmissionTime:  null.NewInt(5, true),
 					QuestionShuffledMode: null.NewString("00", true),
+					AntiCheating:         null.NewString("00", true),
 					MarkMode:             null.NewString("01", true),
 					NameVisibilityIn:     null.NewBool(false, true),
 					ReviewerIds:          null.NewString("1,2", true),
@@ -635,7 +636,8 @@ func GetExamSessions(ctx context.Context, domain string, examIDs ...int64) ([]cm
 				&es.StartTime,
 				&es.EndTime,
 				&es.Duration,
-				&es.QuestionShuffledMode,
+				//&es.QuestionShuffledMode,
+				&es.AntiCheating,
 				&es.MarkMode,
 				&es.NameVisibilityIn,
 				&es.SessionNum,
@@ -2042,6 +2044,7 @@ func exam(ctx context.Context) {
 				examSession.EndTime.Int64,
 				examSession.Duration.Int64,
 				examSession.QuestionShuffledMode.String,
+				//占位anticheating
 				examSession.NameVisibilityIn.Bool,
 				examSession.MarkMethod,
 				examSession.MarkMode.String,
@@ -3216,7 +3219,7 @@ SELECT
 				q.RespErr()
 				return
 			}
-
+			//占位
 			examMap = make(map[int64]*ExamList)
 			for rows.Next() {
 				var (

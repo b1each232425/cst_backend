@@ -2697,6 +2697,7 @@ type TExamSession struct {
 	PeriodMode           null.String    `json:"PeriodMode,omitempty" db:"period_mode,false,character varying"`                      /* period_mode 考试时段模式 00：固定时段考试 02：灵活时段考试 */
 	Duration             null.Int       `json:"Duration,omitempty" db:"duration,false,integer"`                                     /* duration 考试时长 */
 	QuestionShuffledMode null.String    `json:"QuestionShuffledMode,omitempty" db:"question_shuffled_mode,false,character varying"` /* question_shuffled_mode 乱序方式 00：既有试题乱序也有选项乱序 02：选项乱序 04：试题乱序 06：都不选择 */
+	AntiCheating         null.String    `json:"AntiCheating,omitempty" db:"anti_cheating,false,character varying"`                  /* anti_cheating 防作弊配置 00：禁止复制粘贴和切屏 02：禁止复制粘贴 04:禁止切屏 06:不开启 */
 	MarkMode             null.String    `json:"MarkMode,omitempty" db:"mark_mode,false,character varying"`                          /* mark_mode 批改配置，包括批卷模式 00：不需要手动批改  02：全卷多评 04：试卷分配 06：题组专评 08：题目分配 10：单人批改 */
 	NameVisibilityIn     null.Bool      `json:"NameVisibilityIn,omitempty" db:"name_visibility_in,false,boolean"`                   /* name_visibility_in 当需要人工批卷时，是否需要在批改中显示学生姓名 */
 	Creator              null.Int       `json:"Creator,omitempty" db:"creator,false,bigint"`                                        /* creator 创建者 */
