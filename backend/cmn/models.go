@@ -6541,6 +6541,8 @@ type TMark struct {
 	Score                null.Float     `json:"Score,omitempty" db:"score,false,double precision"`                       /* score score */
 	PracticeSubmissionID null.Int       `json:"PracticeSubmissionID,omitempty" db:"practice_submission_id,false,bigint"` /* practice_submission_id 练习提交id */
 	PracticeID           null.Int       `json:"PracticeID,omitempty" db:"practice_id,false,bigint"`                      /* practice_id 练习id */
+	ReviewComment        null.String    `json:"ReviewComment,omitempty" db:"review_comment,false,character varying"`     /* review_comment 评阅意见 */
+	Remark               null.String    `json:"Remark,omitempty" db:"remark,false,character varying"`                    /* remark 备注 */
 	Filter               `json:"-"`     // build DML where clause
 }
 
@@ -6561,6 +6563,8 @@ var TMarkFields = []string{
 	"Score",
 	"PracticeSubmissionID",
 	"PracticeID",
+	"ReviewComment",
+	"Remark",
 }
 
 // TMarkColumns full column list for default query
@@ -6580,6 +6584,8 @@ var TMarkColumns = []string{
 	"score",
 	"practice_submission_id",
 	"practice_id",
+	"review_comment",
+	"remark",
 }
 
 // TMarkColumnsDataTypes full column data types for default query
@@ -6599,6 +6605,8 @@ var TMarkColumnsDataTypes = map[string]string{
 	"score":                  "double precision",
 	"practice_submission_id": "bigint",
 	"practice_id":            "bigint",
+	"review_comment":         "character varying",
+	"remark":                 "character varying",
 }
 
 // GetFieldsMap returns a map of field names to their values.
@@ -6619,6 +6627,8 @@ func (r *TMark) GetFieldsMap() map[string]any {
 		"Score":                r.Score,
 		"PracticeSubmissionID": r.PracticeSubmissionID,
 		"PracticeID":           r.PracticeID,
+		"ReviewComment":        r.ReviewComment,
+		"Remark":               r.Remark,
 	}
 }
 
@@ -6640,6 +6650,8 @@ func (r *TMark) GetColumnsMap() map[string]any {
 		"score":                  r.Score,
 		"practice_submission_id": r.PracticeSubmissionID,
 		"practice_id":            r.PracticeID,
+		"review_comment":         r.ReviewComment,
+		"remark":                 r.Remark,
 	}
 }
 
@@ -6661,8 +6673,8 @@ func (r *TMark) GetTableName() string {
 // Create inserts the TMark to the database.
 func (r *TMark) Create(db Queryer) error {
 	err := db.QueryRow(
-		`INSERT INTO t_mark (teacher_id, examinee_id, question_id, exam_session_id, mark_details, status, addi, creator, create_time, updated_by, update_time, score, practice_submission_id, practice_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) RETURNING id`,
-		&r.TeacherID, &r.ExamineeID, &r.QuestionID, &r.ExamSessionID, &r.MarkDetails, &r.Status, &r.Addi, &r.Creator, &r.CreateTime, &r.UpdatedBy, &r.UpdateTime, &r.Score, &r.PracticeSubmissionID, &r.PracticeID).Scan(&r.ID)
+		`INSERT INTO t_mark (teacher_id, examinee_id, question_id, exam_session_id, mark_details, status, addi, creator, create_time, updated_by, update_time, score, practice_submission_id, practice_id, review_comment, remark) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16) RETURNING id`,
+		&r.TeacherID, &r.ExamineeID, &r.QuestionID, &r.ExamSessionID, &r.MarkDetails, &r.Status, &r.Addi, &r.Creator, &r.CreateTime, &r.UpdatedBy, &r.UpdateTime, &r.Score, &r.PracticeSubmissionID, &r.PracticeID, &r.ReviewComment, &r.Remark).Scan(&r.ID)
 	if err != nil {
 		return errors.Wrap(err, "failed to insert t_mark")
 	}
@@ -6674,8 +6686,8 @@ func GetTMarkByPk(db Queryer, pk0 null.Int) (*TMark, error) {
 
 	var r TMark
 	err := db.QueryRow(
-		`SELECT id, teacher_id, examinee_id, question_id, exam_session_id, mark_details, status, addi, creator, create_time, updated_by, update_time, score, practice_submission_id, practice_id FROM t_mark WHERE id = $1`,
-		pk0).Scan(&r.ID, &r.TeacherID, &r.ExamineeID, &r.QuestionID, &r.ExamSessionID, &r.MarkDetails, &r.Status, &r.Addi, &r.Creator, &r.CreateTime, &r.UpdatedBy, &r.UpdateTime, &r.Score, &r.PracticeSubmissionID, &r.PracticeID)
+		`SELECT id, teacher_id, examinee_id, question_id, exam_session_id, mark_details, status, addi, creator, create_time, updated_by, update_time, score, practice_submission_id, practice_id, review_comment, remark FROM t_mark WHERE id = $1`,
+		pk0).Scan(&r.ID, &r.TeacherID, &r.ExamineeID, &r.QuestionID, &r.ExamSessionID, &r.MarkDetails, &r.Status, &r.Addi, &r.Creator, &r.CreateTime, &r.UpdatedBy, &r.UpdateTime, &r.Score, &r.PracticeSubmissionID, &r.PracticeID, &r.ReviewComment, &r.Remark)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to select t_mark")
 	}
@@ -9061,7 +9073,7 @@ type TPaperGenerationPlan struct {
 	DomainID          null.Int       `json:"DomainID,omitempty" db:"domain_id,false,bigint"`                    /* domain_id 所属域ID */
 	KnowledgeBankID   null.Int       `json:"KnowledgeBankID,omitempty" db:"knowledge_bank_id,false,bigint"`     /* knowledge_bank_id 知识点库ID */
 	Name              null.String    `json:"Name,omitempty" db:"name,false,character varying"`                  /* name 组卷计划名称 */
-	Category          null.String    `json:"Category,omitempty" db:"category,false,character varying"`          /* category 试卷用途 */
+	Category          null.String    `json:"Category,omitempty" db:"category,false,character varying"`          /* category 试卷用途(00:考试 02:练习) */
 	Level             null.String    `json:"Level,omitempty" db:"level,false,character varying"`                /* level 试卷难度(00:易 02:较易 04:中 06:较难 08:难) */
 	SuggestedDuration null.Int       `json:"SuggestedDuration,omitempty" db:"suggested_duration,false,integer"` /* suggested_duration 建议时长(默认120分钟) */
 	Description       null.String    `json:"Description,omitempty" db:"description,false,text"`                 /* description 试卷说明 */
@@ -9072,8 +9084,6 @@ type TPaperGenerationPlan struct {
 	[
 
 	​	{
-
-	​		"id": 1,	// 题组ID
 
 	​		"name": "测试题组",	// 题组名称
 
@@ -25224,6 +25234,7 @@ type TVQuestionBank struct {
 	QuestionDifficulties interface{}    `json:"QuestionDifficulties,omitempty" db:"question_difficulties,false,bigint[]"` /* question_difficulties question_difficulties */
 	QuestionTags         interface{}    `json:"QuestionTags,omitempty" db:"question_tags,false,text[]"`                   /* question_tags question_tags */
 	Status               null.String    `json:"Status,omitempty" db:"status,false,character varying"`                     /* status status */
+	KnowledgeBankID      null.Int       `json:"KnowledgeBankID,omitempty" db:"knowledge_bank_id,false,integer"`           /* knowledge_bank_id 知识点库id */
 	Filter               `json:"-"`     // build DML where clause
 }
 
@@ -25243,6 +25254,7 @@ var TVQuestionBankFields = []string{
 	"QuestionDifficulties",
 	"QuestionTags",
 	"Status",
+	"KnowledgeBankID",
 }
 
 // TVQuestionBankColumns full column list for default query
@@ -25261,6 +25273,7 @@ var TVQuestionBankColumns = []string{
 	"question_difficulties",
 	"question_tags",
 	"status",
+	"knowledge_bank_id",
 }
 
 // TVQuestionBankColumnsDataTypes full column data types for default query
@@ -25279,6 +25292,7 @@ var TVQuestionBankColumnsDataTypes = map[string]string{
 	"question_difficulties": "bigint[]",
 	"question_tags":         "text[]",
 	"status":                "character varying",
+	"knowledge_bank_id":     "integer",
 }
 
 // GetFieldsMap returns a map of field names to their values.
@@ -25298,6 +25312,7 @@ func (r *TVQuestionBank) GetFieldsMap() map[string]any {
 		"QuestionDifficulties": r.QuestionDifficulties,
 		"QuestionTags":         r.QuestionTags,
 		"Status":               r.Status,
+		"KnowledgeBankID":      r.KnowledgeBankID,
 	}
 }
 
@@ -25318,6 +25333,7 @@ func (r *TVQuestionBank) GetColumnsMap() map[string]any {
 		"question_difficulties": r.QuestionDifficulties,
 		"question_tags":         r.QuestionTags,
 		"status":                r.Status,
+		"knowledge_bank_id":     r.KnowledgeBankID,
 	}
 }
 
@@ -25339,8 +25355,8 @@ func (r *TVQuestionBank) GetTableName() string {
 // Create inserts the TVQuestionBank to the database.
 func (r *TVQuestionBank) Create(db Queryer) error {
 	_, err := db.Exec(
-		`INSERT INTO t_v_question_bank (id, domain_id, name, type, tags, creator, official_name, create_time, update_time, question_count, question_types, question_difficulties, question_tags, status) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
-		&r.ID, &r.DomainID, &r.Name, &r.Type, &r.Tags, &r.Creator, &r.OfficialName, &r.CreateTime, &r.UpdateTime, &r.QuestionCount, &r.QuestionTypes, &r.QuestionDifficulties, &r.QuestionTags, &r.Status)
+		`INSERT INTO t_v_question_bank (id, domain_id, name, type, tags, creator, official_name, create_time, update_time, question_count, question_types, question_difficulties, question_tags, status, knowledge_bank_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
+		&r.ID, &r.DomainID, &r.Name, &r.Type, &r.Tags, &r.Creator, &r.OfficialName, &r.CreateTime, &r.UpdateTime, &r.QuestionCount, &r.QuestionTypes, &r.QuestionDifficulties, &r.QuestionTags, &r.Status, &r.KnowledgeBankID)
 	if err != nil {
 		return errors.Wrap(err, "failed to insert t_v_question_bank")
 	}
@@ -25353,8 +25369,8 @@ func GetTVQuestionBankByPk(db Queryer) (*TVQuestionBank, error) {
 
 	var r TVQuestionBank
 	err := db.QueryRow(
-		`SELECT id, domain_id, name, type, tags, creator, official_name, create_time, update_time, question_count, question_types, question_difficulties, question_tags, status FROM t_v_question_bank`,
-	).Scan(&r.ID, &r.DomainID, &r.Name, &r.Type, &r.Tags, &r.Creator, &r.OfficialName, &r.CreateTime, &r.UpdateTime, &r.QuestionCount, &r.QuestionTypes, &r.QuestionDifficulties, &r.QuestionTags, &r.Status)
+		`SELECT id, domain_id, name, type, tags, creator, official_name, create_time, update_time, question_count, question_types, question_difficulties, question_tags, status, knowledge_bank_id FROM t_v_question_bank`,
+	).Scan(&r.ID, &r.DomainID, &r.Name, &r.Type, &r.Tags, &r.Creator, &r.OfficialName, &r.CreateTime, &r.UpdateTime, &r.QuestionCount, &r.QuestionTypes, &r.QuestionDifficulties, &r.QuestionTags, &r.Status, &r.KnowledgeBankID)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to select t_v_question_bank")
 	}
