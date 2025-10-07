@@ -393,7 +393,8 @@ func questionBanks(ctx context.Context) {
 			question_types,
 			question_difficulties,
 			question_tags,
-			status
+			status,
+			knowledge_bank_id
 		FROM v_question_bank
 		%s
 		ORDER BY id DESC
@@ -431,6 +432,7 @@ func questionBanks(ctx context.Context) {
 				&bank.QuestionDifficulties,
 				&bank.QuestionTags,
 				&bank.Status,
+				&bank.KnowledgeBankID,
 			)
 			if forceError == "rows.Scan" {
 				err = errors.New(forceError)
