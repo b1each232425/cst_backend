@@ -3,7 +3,6 @@ package mark
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"fmt"
 	"github.com/jackc/pgx/v5"
 	"github.com/jmoiron/sqlx/types"
@@ -16,6 +15,8 @@ import (
 
 const testedTeacherID = 1101
 
+var now = time.Now()
+
 func init() {
 	cmn.ConfigureForTest()
 	z = cmn.GetLogger()
@@ -25,26 +26,25 @@ func initTestData() {
 	var sqls []string
 	var args [][][]interface{}
 
-	sqls = append(sqls, `INSERT INTO t_user(id, account, category) VALUES($1, $2, $3)`)
+	sqls = append(sqls, `INSERT INTO t_user(id, account, official_name, category) VALUES($1, $2, $3, $4)`)
 	args = append(args, [][]interface{}{
-		{1101, "test account 1", "test user"},
-		{1102, "test account 2", "test user"},
-		{1103, "test account 3", "test user"},
-		{1201, "test account 4", "test student"},
-		{1202, "test account 5", "test student"},
-		{1203, "test account 6", "test student"},
-		{1204, "test account 7", "test student"},
+		{1101, "test account 1", "user1", "test user"},
+		{1102, "test account 2", "user2", "test user"},
+		{1103, "test account 3", "user3", "test user"},
+		{1201, "test account 4", "student1", "test student"},
+		{1202, "test account 5", "student2", "test student"},
+		{1203, "test account 6", "student3", "test student"},
+		{1204, "test account 7", "student4", "test student"},
 	})
 
 	sqls = append(sqls, `INSERT INTO t_exam_info(id, name, type, creator, create_time, status) VALUES($1, $2, $3, $4, $5, $6)`)
 	args = append(args, [][]interface{}{
-		{11, "test exam 1", "00", 1101, time.Now().Add(-24 * 7 * time.Hour).UnixMilli(), "00"},
-		{12, "test exam 2", "00", 1101, time.Now().Add(-24 * 7 * time.Hour).UnixMilli(), "00"},
-		{13, "test exam 3", "00", 1101, time.Now().Add(-24 * 7 * time.Hour).UnixMilli(), "00"},
+		{11, "test exam 1", "00", 1101, now.Add(-24 * 7 * time.Hour).UnixMilli(), "00"},
+		{12, "test exam 2", "00", 1101, now.Add(-24 * 7 * time.Hour).UnixMilli(), "00"},
+		{13, "test exam 3", "00", 1101, now.Add(-24 * 7 * time.Hour).UnixMilli(), "00"},
 	})
 
 	sqls = append(sqls, `INSERT INTO t_exam_session(id, exam_id, paper_id, mark_method, mark_mode, start_time, end_time, session_num, status, creator) VALUES($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`)
-	now := time.Now()
 	args = append(args, [][]interface{}{
 		{101, 11, 101, "02", "00", now.Add(-25 * time.Hour).UnixMilli(), now.Add(-24 * time.Hour).UnixMilli(), 1, "00", 1101}, // 纯理论
 		{102, 11, 102, "00", "00", now.Add(-23 * time.Hour).UnixMilli(), now.Add(-22 * time.Hour).UnixMilli(), 2, "00", 1101}, // 理论+主观
@@ -54,24 +54,24 @@ func initTestData() {
 		{106, 11, 106, "00", "10", now.Add(-21 * time.Hour).UnixMilli(), now.Add(-20 * time.Hour).UnixMilli(), 3, "00", 1101},
 	})
 
-	sqls = append(sqls, `INSERT INTO t_practice(id, name, correct_mode, type, status, creator) VALUES($1, $2, $3, $4, $5, $6)`)
+	sqls = append(sqls, `INSERT INTO t_practice(id, name, paper_id, correct_mode, type, status, creator, create_time) VALUES($1, $2, $3, $4, $5, $6, $7, $8)`)
 	args = append(args, [][]interface{}{
-		{21, "test practice 1", "00", "00", "02", 1101},
-		{22, "test practice 2", "10", "00", "02", 1101},
-		{23, "test practice 3", "00", "00", "02", 1101},
-		{24, "test practice 4", "00", "00", "02", 1101}, // 主观 AI 批改
+		{21, "test practice 1", 124, "00", "00", "02", 1101, now.Add(-25 * time.Hour).UnixMilli()},
+		{22, "test practice 2", 125, "10", "00", "02", 1101, now.Add(-24 * time.Hour).UnixMilli()},
+		{23, "test practice 3", 126, "00", "00", "02", 1101, now.Add(-23 * time.Hour).UnixMilli()},
+		{24, "test practice 4", 127, "00", "00", "02", 1101, now.Add(-22 * time.Hour).UnixMilli()}, // 主观 AI 批改
 	})
 
-	sqls = append(sqls, `INSERT INTO t_paper(id, exampaper_id, domain_id, creator) VALUES($1, $2, $3, $4)`)
+	sqls = append(sqls, `INSERT INTO t_paper(id, exampaper_id, name, domain_id, creator) VALUES($1, $2, $3, $4, $5)`)
 	args = append(args, [][]interface{}{
-		{101, 101, 1999, 1101},
-		{102, 102, 1999, 1101},
-		{103, 103, 1999, 1101},
-		{104, 104, 1999, 1101},
-		{124, 124, 1999, 1101},
-		{125, 125, 1999, 1101},
-		{126, 126, 1999, 1101},
-		{127, 127, 1999, 1101},
+		{101, 101, "paper 1", 1999, 1101},
+		{102, 102, "paper 2", 1999, 1101},
+		{103, 103, "paper 3", 1999, 1101},
+		{104, 104, "paper 4", 1999, 1101},
+		{124, 124, "paper 24", 1999, 1101},
+		{125, 125, "paper 25", 1999, 1101},
+		{126, 126, "paper 26", 1999, 1101},
+		{127, 127, "paper 27", 1999, 1101},
 	})
 
 	sqls = append(sqls, `INSERT INTO t_exam_paper(id, exam_session_id, practice_id, name, status, creator) VALUES($1, $2, $3, $4, $5, $6)`)
@@ -118,17 +118,18 @@ func initTestData() {
 		{428, 3, "08", "练习-简答题1", `[{"index": 1, "score": 3, "answer": "简答题答案1", "grading_rule": "1", "alternative_answer": null}]`, 327, "00", 1101},
 	})
 
-	sqls = append(sqls, `INSERT INTO t_examinee(id, student_id, exam_session_id, status, creator) VALUES($1, $2, $3, $4, $5)`)
+	sqls = append(sqls, `INSERT INTO t_examinee(id, student_id, exam_session_id, serial_number, status, creator) VALUES($1, $2, $3, $4, $5, $6)`)
 	args = append(args, [][]interface{}{
-		{2201, 1201, 101, "10", 1101},
-		{2202, 1202, 101, "10", 1101},
-		{2203, 1203, 103, "10", 1101},
-		{2204, 1204, 103, "10", 1101},
-		{2205, 1201, 102, "10", 1101},
-		{2206, 1201, 103, "10", 1101},
-		{2207, 1202, 103, "10", 1101},
+		{2201, 1201, 101, 1, "10", 1101},
+		{2202, 1202, 101, 2, "10", 1101},
+		{2203, 1203, 103, 3, "10", 1101},
+		{2204, 1204, 103, 4, "10", 1101},
+		{2205, 1201, 102, 1, "10", 1101},
+		{2206, 1201, 103, 1, "10", 1101},
+		{2207, 1202, 103, 2, "10", 1101},
 	})
 
+	// 21练习有4人，22一人，24一人
 	sqls = append(sqls, `INSERT INTO t_practice_submissions(id, student_id, practice_id, exam_paper_id, status, creator) VALUES($1, $2, $3, $4, $5, $6)`)
 	args = append(args, [][]interface{}{
 		{2401, 1201, 21, 124, "06", 1101},
@@ -161,12 +162,6 @@ func initTestData() {
 		{32, 2207, 411, `{"answer": []}`, `["B"]`, "00", 1101},
 		{33, 2205, 406, `{"answer": ["简答1学生作答1"]}`, `[]`, "00", 1101},
 	})
-
-	// 考试作答
-	//sqls = append(sqls, `INSERT INTO t_student_answers(id, examinee_id, question_id, actual_answers, status, creator) VALUES($1, $2, $3, $4, $5, $6)`)
-	//args = append(args, [][]interface{}{
-	//	{33, 2205, 406, `[]`, "00", 1101},
-	//})
 
 	// 练习作答
 	sqls = append(sqls, `INSERT INTO t_student_answers(id, practice_submission_id, question_id, answer, actual_answers, status, creator) VALUES($1, $2, $3, $4, $5, $6, $7)`)
@@ -230,15 +225,15 @@ func initTestData() {
 		}
 	}()
 
-	for i, query := range sqls {
+	for i, sql := range sqls {
 		var ids []interface{}
 
 		for _, arg := range args[i] {
 			ids = append(ids, arg[0])
 
-			_, err = tx.Exec(query, arg...)
+			_, err = tx.Exec(sql, arg...)
 			if err != nil {
-				err = fmt.Errorf("insert test data SQL error: %v", err)
+				err = fmt.Errorf("sql: %v, insert test data SQL error: %v", sql, err)
 				panic(err)
 				return
 			}
@@ -321,19 +316,62 @@ func cleanTestData() {
 	}
 }
 
-// 辅助函数，快速生成 JSON []byte
-func mustMarshal(v interface{}) []byte {
-	data, _ := json.Marshal(v)
-	return data
-}
-
-func TestQueryExamList(t *testing.T) {
+// TODO
+func TestQueryExams(t *testing.T) {
 	cleanTestData()
 
+	expectedExamSessions := []ExamSession{
+		{
+			Id:                   101,
+			Name:                 "1",
+			PaperName:            "test exam paper 1",
+			ExamSessionType:      "",
+			MarkMethod:           "02",
+			MarkMode:             "00",
+			RespondentCount:      2,
+			UnMarkedStudentCount: 0,
+			StartTime:            now.Add(-25 * time.Hour).UnixMilli(),
+			EndTime:              now.Add(-24 * time.Hour).UnixMilli(),
+			Status:               "00",
+			MarkStatus:           "00",
+		},
+		{
+			Id:                   102,
+			Name:                 "2",
+			PaperName:            "test exam paper 2",
+			ExamSessionType:      "",
+			MarkMethod:           "00",
+			MarkMode:             "00",
+			RespondentCount:      1,
+			UnMarkedStudentCount: 0,
+			StartTime:            now.Add(-23 * time.Hour).UnixMilli(),
+			EndTime:              now.Add(-22 * time.Hour).UnixMilli(),
+			Status:               "00",
+			MarkStatus:           "00",
+		},
+		{
+			Id:                   103,
+			Name:                 "3",
+			PaperName:            "test exam paper 3",
+			ExamSessionType:      "",
+			MarkMethod:           "00",
+			MarkMode:             "10",
+			RespondentCount:      4,
+			UnMarkedStudentCount: 0,
+			StartTime:            now.Add(-21 * time.Hour).UnixMilli(),
+			EndTime:              now.Add(-20 * time.Hour).UnixMilli(),
+			Status:               "00",
+			MarkStatus:           "00",
+		},
+	}
+
 	tests := []struct {
-		name             string
-		req              QueryMarkingListReq
-		forceErr         string
+		name string
+
+		req QueryMarkingListReq
+
+		forceErr string
+
 		expectedList     []Exam
 		expectedRowCount int
 		expectedErrStr   string
@@ -348,7 +386,32 @@ func TestQueryExamList(t *testing.T) {
 				Limit:  10,
 				Offset: 0,
 			},
-			expectedList:     []Exam{},
+			expectedList: []Exam{{
+				Id:           11,
+				Name:         "test exam 1",
+				Type:         "00",
+				Class:        "",
+				ExamSessions: expectedExamSessions,
+			}},
+			expectedRowCount: 3,
+		},
+		{
+			name: "success: 查询第二页",
+			req: QueryMarkingListReq{
+				User: &User{
+					ID:      testedTeacherID,
+					IsAdmin: false,
+				},
+				Limit:  2,
+				Offset: 2,
+			},
+			expectedList: []Exam{{
+				Id:           11,
+				Name:         "test exam 1",
+				Type:         "00",
+				Class:        "",
+				ExamSessions: []ExamSession{expectedExamSessions[2]},
+			}},
 			expectedRowCount: 3,
 		},
 		{
@@ -363,58 +426,16 @@ func TestQueryExamList(t *testing.T) {
 				ExamName: "exam 1",
 			},
 			expectedList: []Exam{{
-				Id:    11,
-				Name:  "test exam 1",
-				Type:  "00",
-				Class: "",
-				ExamSessions: []ExamSession{{
-					Id:                   101,
-					Name:                 "1",
-					PaperName:            "test exam paper 1",
-					ExamSessionType:      "",
-					MarkMethod:           "02",
-					MarkMode:             "00",
-					RespondentCount:      2,
-					UnMarkedStudentCount: 0,
-					StartTime:            1758896281126,
-					EndTime:              1758899881126,
-					Status:               "00",
-					MarkStatus:           "00",
-				},
-					{
-						Id:                   102,
-						Name:                 "2",
-						PaperName:            "test exam paper 2",
-						ExamSessionType:      "",
-						MarkMethod:           "00",
-						MarkMode:             "00",
-						RespondentCount:      1,
-						UnMarkedStudentCount: 1,
-						StartTime:            1758903481126,
-						EndTime:              1758907081126,
-						Status:               "00",
-						MarkStatus:           "00",
-					},
-					{
-						Id:                   103,
-						Name:                 "3",
-						PaperName:            "test exam paper 3",
-						ExamSessionType:      "",
-						MarkMethod:           "00",
-						MarkMode:             "10",
-						RespondentCount:      4,
-						UnMarkedStudentCount: 0,
-						StartTime:            1758910681126,
-						EndTime:              1758914281126,
-						Status:               "00",
-						MarkStatus:           "00",
-					},
-				},
+				Id:           11,
+				Name:         "test exam 1",
+				Type:         "00",
+				Class:        "",
+				ExamSessions: expectedExamSessions,
 			}},
 			expectedRowCount: 3,
 		},
 		{
-			name: "success: 根据 时间 查询",
+			name: "success: 根据 开始时间、结束时间 查询",
 			req: QueryMarkingListReq{
 				User: &User{
 					ID:      testedTeacherID,
@@ -422,11 +443,75 @@ func TestQueryExamList(t *testing.T) {
 				},
 				Limit:     10,
 				Offset:    0,
-				StartTime: time.Now().Add(-22 * time.Hour),
-				EndTime:   time.Now().Add(-20 * time.Hour),
+				StartTime: now.Add(-21 * time.Hour),
+				EndTime:   now.Add(-20 * time.Hour),
 			},
-			expectedList:     []Exam{},
-			expectedRowCount: 3,
+			expectedList: []Exam{{
+				Id:           11,
+				Name:         "test exam 1",
+				Type:         "00",
+				Class:        "",
+				ExamSessions: []ExamSession{expectedExamSessions[2]}},
+			},
+			expectedRowCount: 1,
+		},
+		{
+			name: "success: 根据 开始时间 查询",
+			req: QueryMarkingListReq{
+				User: &User{
+					ID:      testedTeacherID,
+					IsAdmin: false,
+				},
+				Limit:     10,
+				Offset:    0,
+				StartTime: now.Add(-23 * time.Hour),
+			},
+			expectedList: []Exam{{
+				Id:           11,
+				Name:         "test exam 1",
+				Type:         "00",
+				Class:        "",
+				ExamSessions: []ExamSession{expectedExamSessions[1], expectedExamSessions[2]},
+			}},
+			expectedRowCount: 2,
+		},
+		{
+			name: "success: 根据 结束时间 查询",
+			req: QueryMarkingListReq{
+				User: &User{
+					ID:      testedTeacherID,
+					IsAdmin: false,
+				},
+				Limit:   10,
+				Offset:  0,
+				EndTime: now.Add(-22 * time.Hour),
+			},
+			expectedList: []Exam{{
+				Id:           11,
+				Name:         "test exam 1",
+				Type:         "00",
+				Class:        "",
+				ExamSessions: []ExamSession{expectedExamSessions[0], expectedExamSessions[1]},
+			}},
+			expectedRowCount: 2,
+		},
+		{
+			name: "success: 根据 exam_session_id 查询",
+			req: QueryMarkingListReq{
+				User: &User{
+					ID:      testedTeacherID,
+					IsAdmin: false,
+				},
+				ExamSessionID: 101,
+			},
+			expectedList: []Exam{{
+				Id:           11,
+				Name:         "test exam 1",
+				Type:         "00",
+				Class:        "",
+				ExamSessions: []ExamSession{expectedExamSessions[0]},
+			}},
+			expectedRowCount: 1,
 		},
 		{
 			name: "error: 缺少 user",
@@ -434,19 +519,7 @@ func TestQueryExamList(t *testing.T) {
 				Limit:  10,
 				Offset: 0,
 			},
-			expectedErrStr: "无效的 query cond",
-		},
-		{
-			name: "error: limit == 0",
-			req: QueryMarkingListReq{
-				User: &User{
-					ID:      testedTeacherID,
-					IsAdmin: false,
-				},
-				Limit:  0,
-				Offset: 0,
-			},
-			expectedErrStr: "无效的 query cond",
+			expectedErrStr: "无效的 req",
 		},
 		{
 			name: "error: limit < 0",
@@ -458,7 +531,7 @@ func TestQueryExamList(t *testing.T) {
 				Limit:  -3,
 				Offset: 0,
 			},
-			expectedErrStr: "无效的 query cond",
+			expectedErrStr: "无效的 req",
 		},
 		{
 			name: "error: limit > 1000",
@@ -470,7 +543,7 @@ func TestQueryExamList(t *testing.T) {
 				Limit:  1001,
 				Offset: 0,
 			},
-			expectedErrStr: "无效的 query cond",
+			expectedErrStr: "无效的 req",
 		},
 		{
 			name: "error: offset < 0",
@@ -482,7 +555,7 @@ func TestQueryExamList(t *testing.T) {
 				Limit:  10,
 				Offset: -3,
 			},
-			expectedErrStr: "无效的 query cond",
+			expectedErrStr: "无效的 req",
 		},
 		{
 			name: "error: getExamCountQuery 执行失败",
@@ -524,19 +597,6 @@ func TestQueryExamList(t *testing.T) {
 			expectedErrStr: "从 row 中获取值失败",
 		},
 		{
-			name: "error: 行读取失败",
-			req: QueryMarkingListReq{
-				User: &User{
-					ID:      testedTeacherID,
-					IsAdmin: false,
-				},
-				Limit:  10,
-				Offset: 0,
-			},
-			forceErr:       "rows.Scan",
-			expectedErrStr: "从 row 中获取值失败",
-		},
-		{
 			name: "error: 行遍历失败",
 			req: QueryMarkingListReq{
 				User: &User{
@@ -558,30 +618,52 @@ func TestQueryExamList(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			ctx := context.WithValue(context.Background(), ForceErrKey, tt.forceErr)
 
-			list, rowCount, err := QueryExamList(ctx, tt.req)
+			list, rowCount, err := QueryExams(ctx, tt.req)
 			z.Sugar().Infof("-->(%d)list: %+v", rowCount, list)
 
 			if tt.expectedErrStr != "" {
 				assert.Error(t, err, "期待获取到错误，但却没有错误")
 				assert.Contains(t, err.Error(), tt.expectedErrStr)
-				assert.Nilf(t, list, "期待获取 nil， 实际却获取 %v", list)
-				assert.Equalf(t, rowCount, -1, "期待得到 -1， 实际却是 %v", rowCount)
+				assert.Nil(t, list)
+				assert.Equal(t, -1, rowCount)
 			} else {
 				assert.NoErrorf(t, err, "期待没有错误，但却获取到错误: %v", err)
-				//assert.Equalf(t, list, tt.expectedList, "期待获取 %v, 实际获取 %v", tt.expectedList, list)
-				assert.Equalf(t, rowCount, tt.expectedRowCount, "期待获取 %v, 实际获取 %v", tt.expectedRowCount, rowCount)
+				assert.Equal(t, tt.expectedList, list)
+				assert.Equal(t, tt.expectedRowCount, rowCount)
 			}
 		})
 	}
 }
 
-func TestQueryPracticeList(t *testing.T) {
+func TestQueryPractices(t *testing.T) {
 	cleanTestData()
 
+	practices := []Practice{
+		{
+			ID:                   22,
+			Name:                 "test practice 2",
+			MarkMode:             "10",
+			Type:                 "00",
+			RespondentCount:      1,
+			UnMarkedStudentCount: 1,
+		},
+		{
+			ID:                   21,
+			Name:                 "test practice 1",
+			MarkMode:             "00",
+			Type:                 "00",
+			RespondentCount:      4,
+			UnMarkedStudentCount: 4,
+		},
+	}
+
 	tests := []struct {
-		name             string
-		req              QueryMarkingListReq
-		forceErr         string
+		name string
+
+		req QueryMarkingListReq
+
+		forceErr string
+
 		expectedList     []Practice
 		expectedRowCount int
 		expectedErrStr   string
@@ -596,18 +678,37 @@ func TestQueryPracticeList(t *testing.T) {
 				Limit:  10,
 				Offset: 0,
 			},
+			expectedList:     practices,
+			expectedRowCount: 2,
 		},
-		{
-			name: "success: admin",
-			req: QueryMarkingListReq{
-				User: &User{
-					ID:      testedTeacherID,
-					IsAdmin: true,
-				},
-				Limit:  10,
-				Offset: 0,
-			},
-		},
+		//{
+		//	name: "success: admin",
+		//	req: QueryMarkingListReq{
+		//		User: &User{
+		//			ID:      testedTeacherID,
+		//			IsAdmin: true,
+		//		},
+		//		Limit:  10,
+		//		Offset: 0,
+		//	},
+		//	expectedList: []Practice{
+		//		{
+		//			ID:                   21,
+		//			Name:                 "test practice 1",
+		//			MarkMode:             "00",
+		//			Type:                 "00",
+		//			UnMarkedStudentCount: 1,
+		//		},
+		//		{
+		//			ID:                   22,
+		//			Name:                 "test practice 2",
+		//			MarkMode:             "00",
+		//			Type:                 "00",
+		//			UnMarkedStudentCount: 1,
+		//		},
+		//	},
+		//	expectedRowCount: 2,
+		//},
 		{
 			name: "success: 根据 practice name 查询",
 			req: QueryMarkingListReq{
@@ -619,18 +720,8 @@ func TestQueryPracticeList(t *testing.T) {
 				Offset:       0,
 				PracticeName: "practice 1",
 			},
-		},
-		{
-			name: "error: limit == 0",
-			req: QueryMarkingListReq{
-				User: &User{
-					ID:      testedTeacherID,
-					IsAdmin: false,
-				},
-				Limit:  0,
-				Offset: 0,
-			},
-			expectedErrStr: "无效的 query cond",
+			expectedList:     []Practice{practices[1]},
+			expectedRowCount: 1,
 		},
 		{
 			name: "error: limit < 0",
@@ -642,7 +733,7 @@ func TestQueryPracticeList(t *testing.T) {
 				Limit:  -3,
 				Offset: 0,
 			},
-			expectedErrStr: "无效的 query cond",
+			expectedErrStr: "无效的 req",
 		},
 		{
 			name: "error: limit > 1000",
@@ -654,7 +745,7 @@ func TestQueryPracticeList(t *testing.T) {
 				Limit:  1001,
 				Offset: 0,
 			},
-			expectedErrStr: "无效的 query cond",
+			expectedErrStr: "无效的 req",
 		},
 		{
 			name: "error: offset < 0",
@@ -666,7 +757,7 @@ func TestQueryPracticeList(t *testing.T) {
 				Limit:  10,
 				Offset: -3,
 			},
-			expectedErrStr: "无效的 query cond",
+			expectedErrStr: "无效的 req",
 		},
 		{
 			name: "error: listQuery 执行失败",
@@ -729,149 +820,217 @@ func TestQueryPracticeList(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			ctx := context.WithValue(context.Background(), ForceErrKey, tt.forceErr)
 
-			list, rowCount, err := QueryPracticeList(ctx, tt.req)
-			z.Sugar().Infof("-->(%d)list: %+v", rowCount, list)
+			list, rowCount, err := QueryPractices(ctx, tt.req)
 
 			if tt.expectedErrStr != "" {
 				assert.Error(t, err, "期待获取到错误，但却没有错误")
 				assert.Contains(t, err.Error(), tt.expectedErrStr)
+				assert.Nil(t, list)
+				assert.Equal(t, -1, rowCount)
 			} else {
 				assert.NoErrorf(t, err, "期待没有错误，但却获取到错误: %v", err)
+				assert.Equal(t, tt.expectedList, list)
+				assert.Equal(t, tt.expectedRowCount, rowCount)
 			}
 		})
 	}
 }
 
-func TestQuerySubjectiveQuestionsMarkingResults(t *testing.T) {
-	cleanTestData()
-
-	tests := []struct {
-		name           string
-		cond           QueryCondition
-		forceErr       string
-		expectedErrStr string
-	}{
-		{
-			name: "success: 考试场次下获取所有阅卷结果",
-			cond: QueryCondition{
-				ExamSessionID: 101,
-			},
-		},
-		{
-			name: "success: 考试场次下获取单个考生阅卷结果",
-			cond: QueryCondition{
-				ExamSessionID: 102,
-				ExamineeID:    2205,
-			},
-		},
-		{
-			name: "success: 练习下获取所有阅卷结果",
-			cond: QueryCondition{
-				PracticeID: 22,
-			},
-		},
-		{
-			name: "success: 练习下获取单个提交的阅卷结果",
-			cond: QueryCondition{
-				PracticeID:           22,
-				PracticeSubmissionID: 2404,
-			},
-		},
-		{
-			name:           "error: 请求参数必须包含考试场次ID或者练习ID中的一个",
-			cond:           QueryCondition{},
-			expectedErrStr: "无效的请求参数，必须包含 考试场次ID 或者 练习ID 中的一个",
-		},
-		{
-			name: "error: 请求参数不能同时包含练习ID和考试场次ID",
-			cond: QueryCondition{
-				ExamSessionID: 101,
-				PracticeID:    21,
-			},
-			expectedErrStr: "无效的请求参数，不能同时包含练习ID和考试场次ID",
-		},
-		{
-			name: "error: SQL 查询执行失败",
-			cond: QueryCondition{
-				ExamSessionID: 101,
-			},
-			forceErr:       "getMarkingResultQuery",
-			expectedErrStr: "获取批改结果 sql 失败",
-		},
-		{
-			name: "error: 行扫描失败",
-			cond: QueryCondition{
-				ExamSessionID: 102,
-			},
-			forceErr:       "rows.Scan",
-			expectedErrStr: "从 row 读取结果失败",
-		},
-		{
-			name: "error: 行遍历出错",
-			cond: QueryCondition{
-				ExamSessionID: 103,
-			},
-			forceErr:       "rows.Err",
-			expectedErrStr: "行遍历错误",
-		},
-	}
-
-	initTestData()
-	defer cleanTestData()
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			ctx := context.WithValue(context.Background(), ForceErrKey, tt.forceErr)
-
-			markingResults, err := QuerySubjectiveQuestionsMarkingResults(ctx, tt.cond)
-			z.Sugar().Infof("markingResults: %+v", markingResults)
-
-			if tt.expectedErrStr != "" {
-				assert.Error(t, err, "期待获取到错误，但却没有错误")
-				assert.Contains(t, err.Error(), tt.expectedErrStr)
-			} else {
-				assert.NoErrorf(t, err, "期待没有错误，但却获取到错误: %v", err)
-			}
-		})
-	}
-}
+//func TestQueryMarkingResults(t *testing.T) {
+//	cleanTestData()
+//
+//	expectedMarkingResults := []cmn.TMark{
+//		{
+//			TeacherID:     null.IntFrom(testedTeacherID),
+//			ExamSessionID: null.IntFrom(102),
+//			ExamineeID:    null.IntFrom(2205),
+//			QuestionID:    null.IntFrom(405),
+//			MarkDetails:   types.JSONText("{}"),
+//			Score:         null.FloatFrom(2),
+//		},
+//		{
+//			TeacherID:            null.IntFrom(testedTeacherID),
+//			PracticeID:           null.IntFrom(22),
+//			PracticeSubmissionID: null.IntFrom(2404),
+//			QuestionID:           null.IntFrom(427),
+//			MarkDetails:          types.JSONText("{}"),
+//			Score:                null.FloatFrom(2),
+//		},
+//	}
+//
+//	tests := []struct {
+//		name string
+//
+//		cond      QueryCondition
+//		teacherID int64
+//
+//		forceErr string
+//
+//		expectedMarkingResults []cmn.TMark
+//		expectedErrStr         string
+//	}{
+//		{
+//			name: "success: 考试场次下获取所有阅卷结果",
+//			cond: QueryCondition{
+//				ExamSessionID: 102,
+//			},
+//			expectedMarkingResults: []cmn.TMark{expectedMarkingResults[0]},
+//		},
+//		{
+//			name: "success: 考试场次下获取单个考生阅卷结果",
+//			cond: QueryCondition{
+//				ExamSessionID: 102,
+//				ExamineeID:    2205,
+//			},
+//			expectedMarkingResults: []cmn.TMark{expectedMarkingResults[0]},
+//		},
+//		{
+//			name: "success: 练习下获取所有阅卷结果",
+//			cond: QueryCondition{
+//				PracticeID: 22,
+//			},
+//			expectedMarkingResults: []cmn.TMark{expectedMarkingResults[1]},
+//		},
+//		{
+//			name: "success: 练习下获取单个提交的阅卷结果",
+//			cond: QueryCondition{
+//				PracticeID:           22,
+//				PracticeSubmissionID: 2404,
+//			},
+//			expectedMarkingResults: []cmn.TMark{expectedMarkingResults[1]},
+//		},
+//		{
+//			name: "error: SQL 查询执行失败",
+//			cond: QueryCondition{
+//				ExamSessionID: 101,
+//			},
+//			forceErr:       "getMarkingResultQuery",
+//			expectedErrStr: "获取批改结果 sql 失败",
+//		},
+//		{
+//			name: "error: 行扫描失败",
+//			cond: QueryCondition{
+//				ExamSessionID: 102,
+//			},
+//			forceErr:       "rows.Scan",
+//			expectedErrStr: "从 row 读取结果失败",
+//		},
+//		{
+//			name: "error: 行遍历出错",
+//			cond: QueryCondition{
+//				ExamSessionID: 103,
+//			},
+//			forceErr:       "rows.Err",
+//			expectedErrStr: "行遍历错误",
+//		},
+//	}
+//
+//	initTestData()
+//	defer cleanTestData()
+//
+//	for _, tt := range tests {
+//		t.Run(tt.name, func(t *testing.T) {
+//			ctx := context.WithValue(context.Background(), ForceErrKey, tt.forceErr)
+//
+//			markingResults, err := QueryMarkingResults(ctx, tt.cond, tt.teacherID)
+//			z.Sugar().Infof("expectedMarkingResults: %+v", markingResults)
+//
+//			if tt.expectedErrStr != "" {
+//				assert.Error(t, err, "期待获取到错误，但却没有错误")
+//				assert.Contains(t, err.Error(), tt.expectedErrStr)
+//				assert.Nil(t, markingResults)
+//			} else {
+//				assert.NoErrorf(t, err, "期待没有错误，但却获取到错误: %v", err)
+//				assert.Equal(t, tt.expectedMarkingResults, markingResults)
+//			}
+//		})
+//	}
+//}
 
 func TestQueryMarkerInfo(t *testing.T) {
 	cleanTestData()
 
 	tests := []struct {
-		name           string
-		cond           QueryCondition
-		forceErr       string
-		expectedErrStr string
+		name string
+
+		cond QueryCondition
+
+		forceErr string
+
+		expectedMarkInfo MarkerInfo
+		expectedErrStr   string
 	}{
 		{
-			name: "success: 考试场次下获取批改配置信息",
+			name: "success: 考试场次下获取所有批改配置信息",
 			cond: QueryCondition{
-				TeacherID:     testedTeacherID,
 				ExamSessionID: 101,
+			},
+			expectedMarkInfo: MarkerInfo{
+				MarkInfos: []cmn.TMarkInfo{
+					{
+						MarkTeacherID:      null.IntFrom(testedTeacherID),
+						MarkQuestionGroups: types.JSONText{},
+						MarkExamineeIds:    types.JSONText{},
+						QuestionIds:        types.JSONText{},
+					},
+				},
+				MarkMode:   "00",
+				MarkMethod: "02",
 			},
 		},
 		{
 			name: "success: 考试场次下获取指定教师批改配置信息",
 			cond: QueryCondition{
 				TeacherID:     testedTeacherID,
-				ExamSessionID: 102,
+				ExamSessionID: 101,
+			},
+			expectedMarkInfo: MarkerInfo{
+				MarkInfos: []cmn.TMarkInfo{
+					{
+						MarkTeacherID:      null.IntFrom(testedTeacherID),
+						MarkQuestionGroups: types.JSONText{},
+						MarkExamineeIds:    types.JSONText{},
+						QuestionIds:        types.JSONText{},
+					},
+				},
+				MarkMode:   "00",
+				MarkMethod: "02",
 			},
 		},
 		{
 			name: "success: 练习下获取批改配置信息",
 			cond: QueryCondition{
-				TeacherID:  testedTeacherID,
 				PracticeID: 22,
+			},
+			expectedMarkInfo: MarkerInfo{
+				MarkInfos: []cmn.TMarkInfo{
+					{
+						MarkTeacherID:      null.IntFrom(testedTeacherID),
+						MarkQuestionGroups: types.JSONText{},
+						MarkExamineeIds:    types.JSONText{},
+						QuestionIds:        types.JSONText{},
+					},
+				},
+				MarkMode: "10",
 			},
 		},
 		{
-			name: "error: 请求参数必须包含考试场次ID或者练习ID中的一个",
+			name: "success: 练习下获取指定教师批改配置信息",
 			cond: QueryCondition{
-				TeacherID: testedTeacherID,
+				TeacherID:  testedTeacherID,
+				PracticeID: 22,
 			},
-			expectedErrStr: "无效的请求参数，请求参数必须包含 考试场次ID 或者 练习ID 中的一个",
+			expectedMarkInfo: MarkerInfo{
+				MarkInfos: []cmn.TMarkInfo{
+					{
+						MarkTeacherID:      null.IntFrom(testedTeacherID),
+						MarkQuestionGroups: types.JSONText{},
+						MarkExamineeIds:    types.JSONText{},
+						QuestionIds:        types.JSONText{},
+					},
+				},
+				MarkMode: "10",
+			},
 		},
 		{
 			name: "error: SQL 查询执行失败",
@@ -879,7 +1038,7 @@ func TestQueryMarkerInfo(t *testing.T) {
 				TeacherID:     testedTeacherID,
 				ExamSessionID: 101,
 			},
-			forceErr:       "QueryMarkerInfo-pgxConn.Query",
+			forceErr:       "query",
 			expectedErrStr: "获取批改配置信息 sql 失败",
 		},
 		{
@@ -915,8 +1074,10 @@ func TestQueryMarkerInfo(t *testing.T) {
 			if tt.expectedErrStr != "" {
 				assert.Error(t, err, "期待获取到错误，但却没有错误")
 				assert.Contains(t, err.Error(), tt.expectedErrStr)
+				assert.Equal(t, MarkerInfo{}, markerInfo)
 			} else {
-				assert.NoErrorf(t, err, "期待没有错误，但却获取到错误: %v", err)
+				assert.NoErrorf(t, err, "期待没有错误，但却获取到错误: %+v", err)
+				assert.Equal(t, tt.expectedMarkInfo, markerInfo)
 			}
 		})
 	}
@@ -925,88 +1086,268 @@ func TestQueryMarkerInfo(t *testing.T) {
 func TestQueryStudentAnswers(t *testing.T) {
 	cleanTestData()
 
-	// 模拟 MarkerInfo
-	markerInfo := MarkerInfo{
+	// 公用 markerInfo
+	baseMarkerInfo := MarkerInfo{
 		MarkMode: "00",
-		MarkInfos: []cmn.TMarkInfo{
-			{
-				MarkExamineeIds: mustMarshal([]int64{2205, 2206}),
-				QuestionIds:     mustMarshal([]int64{301, 302}),
-			},
+	}
+
+	// 0到1：考试客观题 3到4：考试主观题 5到7：练习客观题
+	studentAnswers := []cmn.TVStudentAnswerQuestion{
+		{
+			ExamSessionID: null.IntFrom(101),
+			ExamineeID:    null.IntFrom(2201),
+			QuestionID:    null.IntFrom(401),
+			Type:          null.StringFrom("00"),
+			QuestionScore: null.FloatFrom(3),
+			Answer:        types.JSONText(`{"answer": ["C"]}`),
+			ActualAnswers: types.JSONText(`["C"]`),
+			ActualOptions: types.JSONText{},
+		},
+		{
+			ExamSessionID: null.IntFrom(101),
+			ExamineeID:    null.IntFrom(2201),
+			QuestionID:    null.IntFrom(402),
+			Type:          null.StringFrom("02"),
+			QuestionScore: null.FloatFrom(3),
+			Answer:        types.JSONText(`{"answer": ["B", "D"]}`),
+			ActualAnswers: types.JSONText(`["B", "D"]`),
+			ActualOptions: types.JSONText{},
+		},
+		{
+			ExamSessionID: null.IntFrom(101),
+			ExamineeID:    null.IntFrom(2201),
+			QuestionID:    null.IntFrom(403),
+			Type:          null.StringFrom("04"),
+			QuestionScore: null.FloatFrom(3),
+			Answer:        types.JSONText(`{"answer": ["A"]}`),
+			ActualAnswers: types.JSONText(`["A"]`),
+			ActualOptions: types.JSONText{},
+		},
+		{
+			ExamSessionID: null.IntFrom(102),
+			ExamineeID:    null.IntFrom(2205),
+			QuestionID:    null.IntFrom(405),
+			Type:          null.StringFrom("06"),
+			QuestionScore: null.FloatFrom(3),
+			Answer:        types.JSONText(`{"answer": ["填空学生作答1"]}`),
+			ActualAnswers: types.JSONText(`[]`),
+			ActualOptions: types.JSONText{},
+		},
+		{
+			ExamSessionID: null.IntFrom(102),
+			ExamineeID:    null.IntFrom(2205),
+			QuestionID:    null.IntFrom(406),
+			Type:          null.StringFrom("08"),
+			QuestionScore: null.FloatFrom(10),
+			Answer:        types.JSONText(`{"answer": ["简答1学生作答1"]}`),
+			ActualAnswers: types.JSONText(`[]`),
+			ActualOptions: types.JSONText{},
+		},
+		{
+			PracticeID:           null.IntFrom(21),
+			PracticeSubmissionID: null.IntFrom(2401),
+			QuestionID:           null.IntFrom(424),
+			Type:                 null.StringFrom("00"),
+			QuestionScore:        null.FloatFrom(3),
+			Answer:               types.JSONText(`{"answer": ["C"]}`),
+			ActualAnswers:        types.JSONText(`["C"]`),
+			ActualOptions:        types.JSONText{},
+		},
+		{
+			PracticeID:           null.IntFrom(21),
+			PracticeSubmissionID: null.IntFrom(2401),
+			QuestionID:           null.IntFrom(425),
+			Type:                 null.StringFrom("02"),
+			QuestionScore:        null.FloatFrom(3),
+			Answer:               types.JSONText(`{"answer": ["B", "D"]}`),
+			ActualAnswers:        types.JSONText(`["B", "D"]`),
+			ActualOptions:        types.JSONText{},
+		},
+		{
+			PracticeID:           null.IntFrom(21),
+			PracticeSubmissionID: null.IntFrom(2401),
+			QuestionID:           null.IntFrom(426),
+			Type:                 null.StringFrom("04"),
+			QuestionScore:        null.FloatFrom(3),
+			Answer:               types.JSONText(`{"answer": ["A"]}`),
+			ActualAnswers:        types.JSONText(`["A"]`),
+			ActualOptions:        types.JSONText{},
+		},
+		{
+			PracticeID:           null.IntFrom(22),
+			PracticeSubmissionID: null.IntFrom(2404),
+			QuestionID:           null.IntFrom(427),
+			Type:                 null.StringFrom("06"),
+			QuestionScore:        null.FloatFrom(3),
+			Answer:               types.JSONText(`{"answer": ["填空学生作答1"]}`),
+			ActualAnswers:        types.JSONText(`[]`),
+			ActualOptions:        types.JSONText{},
 		},
 	}
 
 	tests := []struct {
-		name           string
-		tx             pgx.Tx
-		questionType   string
-		cond           QueryCondition
-		markerInfo     MarkerInfo
-		forceErr       string
-		expectedErrStr string
+		name string
+
+		tx           pgx.Tx
+		questionType string
+		cond         QueryCondition
+		markerInfo   MarkerInfo
+
+		forceErr string
+
+		expectedStudentAnswers []cmn.TVStudentAnswerQuestion
+		expectedErrStr         string
 	}{
 		{
-			name:         "success: 考试-单人批改-选择题",
+			name:         "success: 考试-客观题",
 			questionType: "00",
 			cond: QueryCondition{
 				ExamSessionID: 101,
-				ExamineeID:    2205,
+				ExamineeID:    2201,
 			},
-			markerInfo: markerInfo,
+			expectedStudentAnswers: []cmn.TVStudentAnswerQuestion{
+				studentAnswers[0], studentAnswers[1], studentAnswers[2],
+			},
 		},
 		{
-			name:         "success: 考试-题组专评-简答题",
-			questionType: "06",
+			name:         "success: 考试-主观题",
+			questionType: "02",
 			cond: QueryCondition{
 				ExamSessionID: 102,
+				ExamineeID:    2205,
+			},
+			expectedStudentAnswers: []cmn.TVStudentAnswerQuestion{
+				studentAnswers[3], studentAnswers[4],
+			},
+		},
+		{
+			name:         "success: 考试-主观题-题组专评",
+			questionType: "02",
+			cond: QueryCondition{
+				ExamSessionID: 102,
+				ExamineeID:    2205,
 			},
 			markerInfo: MarkerInfo{
 				MarkMode: "06",
 				MarkInfos: []cmn.TMarkInfo{
 					{
-						QuestionIds: mustMarshal([]int64{301, 302}),
+						QuestionIds: types.JSONText("[405]"),
 					},
 				},
 			},
+			expectedStudentAnswers: []cmn.TVStudentAnswerQuestion{studentAnswers[3]},
 		},
 		{
-			name:         "success: 练习-查询练习学生答案",
-			questionType: "08",
+			name:         "success: 考试-主观题-题目专评",
+			questionType: "02",
+			cond: QueryCondition{
+				ExamSessionID: 102,
+				ExamineeID:    2205,
+			},
+			markerInfo: MarkerInfo{
+				MarkMode: "08",
+				MarkInfos: []cmn.TMarkInfo{
+					{
+						QuestionIds: types.JSONText("[405]"),
+					},
+				},
+			},
+			expectedStudentAnswers: []cmn.TVStudentAnswerQuestion{studentAnswers[3]},
+		},
+		{
+			name:         "success: 练习-客观题",
+			questionType: "00",
+			cond: QueryCondition{
+				PracticeID:           21,
+				PracticeSubmissionID: 2401,
+			},
+			expectedStudentAnswers: []cmn.TVStudentAnswerQuestion{
+				studentAnswers[5], studentAnswers[6], studentAnswers[7],
+			},
+		},
+		{
+			name:         "success: 练习-主观题",
+			questionType: "02",
 			cond: QueryCondition{
 				PracticeID:           22,
 				PracticeSubmissionID: 2404,
 			},
-			markerInfo: MarkerInfo{
-				MarkMode: "12",
-			},
+			expectedStudentAnswers: []cmn.TVStudentAnswerQuestion{studentAnswers[8]},
 		},
 		{
 			name:         "error: 无效的题目类型",
 			questionType: "99",
 			cond: QueryCondition{
 				ExamSessionID: 101,
+				ExamineeID:    2205,
 			},
-			markerInfo:     markerInfo,
+			markerInfo:     baseMarkerInfo,
 			expectedErrStr: "无效的题目类型",
 		},
 		{
-			name:         "error: 无效的 practice_submission_id",
-			questionType: "08",
+			name:         "error: 无效的 考生ID",
+			questionType: "00",
+			cond: QueryCondition{
+				ExamSessionID: 101,
+			},
+			markerInfo:     baseMarkerInfo,
+			expectedErrStr: "无效的 考生ID",
+		},
+		{
+			name:         "error: 无效的 练习提交ID",
+			questionType: "00",
 			cond: QueryCondition{
 				PracticeID: 22,
 			},
-			markerInfo: MarkerInfo{
-				MarkMode: "12",
-			},
-			expectedErrStr: "无效的 practice_submission_id",
+			markerInfo:     baseMarkerInfo,
+			expectedErrStr: "无效的 练习提交ID",
 		},
+		{
+			name:         "error: 题组专评-批改配置信息错误",
+			questionType: "00",
+			cond: QueryCondition{
+				ExamSessionID: 101,
+				ExamineeID:    2205,
+			},
+			markerInfo:     MarkerInfo{MarkMode: "06"},
+			expectedErrStr: "批改配置信息错误",
+		},
+		{
+			name:         "error: 题目专评-批改配置信息错误",
+			questionType: "00",
+			cond: QueryCondition{
+				ExamSessionID: 101,
+				ExamineeID:    2205,
+			},
+			markerInfo:     MarkerInfo{MarkMode: "08"},
+			expectedErrStr: "批改配置信息错误",
+		},
+		{
+			name:         "error: 题目专评-json 解析失败",
+			questionType: "00",
+			cond: QueryCondition{
+				ExamSessionID: 101,
+				ExamineeID:    2205,
+			},
+			markerInfo: MarkerInfo{
+				MarkMode: "08",
+				MarkInfos: []cmn.TMarkInfo{
+					{
+						QuestionIds: types.JSONText("invalid json"),
+					},
+				},
+			},
+			expectedErrStr: "解析 markerInfo.MarkInfos[0].QuestionIds 失败",
+		},
+		// TODO 练习错题
 		{
 			name:         "error: SQL 执行失败",
 			questionType: "00",
 			cond: QueryCondition{
 				ExamSessionID: 101,
+				ExamineeID:    2205,
 			},
-			markerInfo:     markerInfo,
+			markerInfo:     baseMarkerInfo,
 			forceErr:       "query",
 			expectedErrStr: "获取学生答案 sql 错误",
 		},
@@ -1015,8 +1356,9 @@ func TestQueryStudentAnswers(t *testing.T) {
 			questionType: "00",
 			cond: QueryCondition{
 				ExamSessionID: 101,
+				ExamineeID:    2205,
 			},
-			markerInfo:     markerInfo,
+			markerInfo:     baseMarkerInfo,
 			forceErr:       "rows.Scan",
 			expectedErrStr: "从 row 中读取结果失败",
 		},
@@ -1025,8 +1367,9 @@ func TestQueryStudentAnswers(t *testing.T) {
 			questionType: "00",
 			cond: QueryCondition{
 				ExamSessionID: 101,
+				ExamineeID:    2205,
 			},
-			markerInfo:     markerInfo,
+			markerInfo:     baseMarkerInfo,
 			forceErr:       "rows.Err",
 			expectedErrStr: "行遍历失败",
 		},
@@ -1045,8 +1388,10 @@ func TestQueryStudentAnswers(t *testing.T) {
 			if tt.expectedErrStr != "" {
 				assert.Error(t, err, "期待获取到错误，但却没有错误")
 				assert.Contains(t, err.Error(), tt.expectedErrStr)
+				assert.Nil(t, answers)
 			} else {
-				assert.NoErrorf(t, err, "期待没有错误，但却获取到错误: %v", err)
+				assert.NoErrorf(t, err, "期待没有错误，但却获取到错误: %+v", err)
+				assert.ElementsMatch(t, tt.expectedStudentAnswers, answers)
 			}
 		})
 	}
@@ -1055,50 +1400,169 @@ func TestQueryStudentAnswers(t *testing.T) {
 func TestQuerySubjectiveQuestions(t *testing.T) {
 	cleanTestData()
 
-	// 模拟 MarkerInfo
-	markerInfo := MarkerInfo{
-		MarkMode: "06", // 题组专评
-		MarkInfos: []cmn.TMarkInfo{
-			{
-				QuestionIds: mustMarshal([]int64{301, 302}),
+	expectedQuestionSets := []QuestionSet{
+		{
+			TExamPaperGroup: cmn.TExamPaperGroup{
+				ID:   null.IntFrom(302),
+				Name: null.StringFrom("test group 2"),
+			},
+			Score: float64(3 + 10 + 3), // 405 + 406 + 422
+			Questions: []*cmn.TExamPaperQuestion{
+				{ID: null.IntFrom(405), Score: null.FloatFrom(3), Type: null.StringFrom("06"), GroupID: null.IntFrom(302), Content: null.StringFrom("填空1"), Options: types.JSONText{}, Answers: types.JSONText(`[{"index": 1, "score": 3, "answer": "填空答案1", "grading_rule": "1", "alternative_answer": null}]`)},
+				{ID: null.IntFrom(406), Score: null.FloatFrom(10), Type: null.StringFrom("08"), GroupID: null.IntFrom(302), Content: null.StringFrom("简答题1"), Options: types.JSONText{}, Answers: types.JSONText(`[{"index": 1, "score": 10, "answer": "简答题答案1", "grading_rule": "1", "alternative_answer": null}]`)},
+				{ID: null.IntFrom(422), Score: null.FloatFrom(3), Type: null.StringFrom("06"), GroupID: null.IntFrom(302), Content: null.StringFrom("填空2"), Options: types.JSONText{}, Answers: types.JSONText(`[{"index": 1, "score": 1, "answer": "填空1第一空答案", "grading_rule": "1"}, {"index": 2, "score": 2, "answer": "填空2第二空答案", "grading_rule": "2"}]`)},
+			},
+		},
+		{
+			TExamPaperGroup: cmn.TExamPaperGroup{
+				ID:   null.IntFrom(302),
+				Name: null.StringFrom("test group 2"),
+			},
+			Score: float64(3),
+			Questions: []*cmn.TExamPaperQuestion{
+				{ID: null.IntFrom(405), Score: null.FloatFrom(3), Type: null.StringFrom("06"), GroupID: null.IntFrom(302), Content: null.StringFrom("填空1"), Options: types.JSONText{}, Answers: types.JSONText(`[{"index": 1, "score": 3, "answer": "填空答案1", "grading_rule": "1", "alternative_answer": null}]`)},
+			},
+		},
+		{
+			TExamPaperGroup: cmn.TExamPaperGroup{
+				ID:   null.IntFrom(325),
+				Name: null.StringFrom("test group 25"),
+			},
+			Score: float64(3),
+			Questions: []*cmn.TExamPaperQuestion{
+				{ID: null.IntFrom(427), Score: null.FloatFrom(3), Type: null.StringFrom("06"), GroupID: null.IntFrom(325), Content: null.StringFrom("练习-填空1"), Options: types.JSONText{}, Answers: types.JSONText(`[{"index": 1, "score": 3, "answer": "填空答案1", "grading_rule": "1", "alternative_answer": null}]`)},
 			},
 		},
 	}
 
 	tests := []struct {
-		name           string
-		tx             pgx.Tx
-		cond           QueryCondition
-		markerInfo     MarkerInfo
-		forceErr       string
-		expectedErrStr string
+		name string
+
+		tx         pgx.Tx
+		types      []string
+		cond       QueryCondition
+		markerInfo MarkerInfo
+
+		forceErr string
+
+		expectedQuestionSets []QuestionSet
+		expectedErrStr       string
 	}{
 		{
-			name: "success: 考试-获取主观题",
+			name:  "success: 考试",
+			types: []string{QuestionTypeFillBlank, QuestionTypeShortAnswer, QuestionTypeApplication},
 			cond: QueryCondition{
-				ExamSessionID: 101,
+				ExamSessionID: 102,
 			},
-			markerInfo: markerInfo,
+			expectedQuestionSets: []QuestionSet{expectedQuestionSets[0]},
 		},
 		{
-			name: "success: 练习-获取主观题",
+			name:  "success: 考试-题组专评",
+			types: []string{QuestionTypeFillBlank, QuestionTypeShortAnswer, QuestionTypeApplication},
+			cond: QueryCondition{
+				ExamSessionID: 102,
+			},
+			markerInfo: MarkerInfo{
+				MarkMode: "06", // 题组专评
+				MarkInfos: []cmn.TMarkInfo{
+					{
+						QuestionIds: types.JSONText(`[405]`),
+					},
+				},
+			},
+			expectedQuestionSets: []QuestionSet{expectedQuestionSets[1]},
+		},
+		{
+			name:  "success: 考试-题目专评",
+			types: []string{QuestionTypeFillBlank, QuestionTypeShortAnswer, QuestionTypeApplication},
+			cond: QueryCondition{
+				ExamSessionID: 102,
+			},
+			markerInfo: MarkerInfo{
+				MarkMode: "08", // 题目专评
+				MarkInfos: []cmn.TMarkInfo{
+					{
+						QuestionIds: types.JSONText(`[405]`),
+					},
+				},
+			},
+			expectedQuestionSets: []QuestionSet{expectedQuestionSets[1]},
+		},
+		{
+			name:  "success: 练习",
+			types: []string{QuestionTypeFillBlank, QuestionTypeShortAnswer, QuestionTypeApplication},
 			cond: QueryCondition{
 				PracticeID: 22,
 			},
-			markerInfo: markerInfo,
+			expectedQuestionSets: []QuestionSet{expectedQuestionSets[2]},
 		},
 		{
-			name: "success: 查询单道题目",
+			name:  "success: 练习-存在题目专评-但是仅根据PracticeID查询",
+			types: []string{QuestionTypeFillBlank, QuestionTypeShortAnswer, QuestionTypeApplication},
 			cond: QueryCondition{
-				ExamSessionID: 101,
-				QuestionID:    301,
+				PracticeID: 22,
 			},
-			markerInfo: markerInfo,
+			markerInfo: MarkerInfo{
+				MarkMode: "06", // 题组专评
+				MarkInfos: []cmn.TMarkInfo{
+					{
+						QuestionIds: types.JSONText(`[405]`),
+					},
+				},
+			},
+			expectedQuestionSets: []QuestionSet{expectedQuestionSets[2]},
 		},
 		{
-			name: "success: 无效的 markerInfo QuestionIds",
+			name:  "success: 查询单道题目",
+			types: []string{QuestionTypeFillBlank, QuestionTypeShortAnswer, QuestionTypeApplication},
 			cond: QueryCondition{
-				ExamSessionID: 101,
+				QuestionID: 405,
+			},
+			expectedQuestionSets: []QuestionSet{expectedQuestionSets[1]},
+		},
+		{
+			name:  "success: 查询单道题目-同时存在考试场次ID-仅根据QuestionID",
+			types: []string{QuestionTypeFillBlank, QuestionTypeShortAnswer, QuestionTypeApplication},
+			cond: QueryCondition{
+				ExamSessionID: 102,
+				QuestionID:    427,
+			},
+			expectedQuestionSets: []QuestionSet{expectedQuestionSets[2]},
+		},
+		{
+			name:  "success: 查询单道题目-同时存在练习ID-仅根据QuestionID",
+			types: []string{QuestionTypeFillBlank, QuestionTypeShortAnswer, QuestionTypeApplication},
+			cond: QueryCondition{
+				PracticeID: 22,
+				QuestionID: 405,
+			},
+			expectedQuestionSets: []QuestionSet{expectedQuestionSets[1]},
+		},
+		{
+			name:  "error: 缺少题目类型",
+			types: []string{},
+			cond: QueryCondition{
+				ExamSessionID: 102,
+			},
+			expectedErrStr: "缺少题目类型",
+		},
+		{
+			name:  "error: 批改配置信息错误",
+			types: []string{QuestionTypeFillBlank},
+			cond: QueryCondition{
+				ExamSessionID: 102,
+			},
+			markerInfo: MarkerInfo{
+				MarkMode:  "08", // 题目专评
+				MarkInfos: []cmn.TMarkInfo{},
+			},
+			expectedErrStr: "批改配置信息错误",
+		},
+		{
+			name:  "error: 无效的 markerInfo QuestionIds",
+			types: []string{QuestionTypeFillBlank},
+			cond: QueryCondition{
+				ExamSessionID: 102,
 			},
 			markerInfo: MarkerInfo{
 				MarkMode: "06",
@@ -1108,32 +1572,32 @@ func TestQuerySubjectiveQuestions(t *testing.T) {
 					},
 				},
 			},
-			expectedErrStr: "unable to unmarshal question ids",
+			expectedErrStr: "解析 markerInfo.MarkInfos[0].QuestionIds 失败",
 		},
 		{
-			name: "error: SQL 执行失败",
+			name:  "error: SQL 执行失败",
+			types: []string{QuestionTypeFillBlank},
 			cond: QueryCondition{
-				ExamSessionID: 101,
+				ExamSessionID: 102,
 			},
-			markerInfo:     markerInfo,
 			forceErr:       "getQuestionsQuery",
 			expectedErrStr: "获取主观题 sql 失败",
 		},
 		{
-			name: "error: 行扫描失败",
+			name:  "error: 行扫描失败",
+			types: []string{QuestionTypeFillBlank},
 			cond: QueryCondition{
-				ExamSessionID: 101,
+				ExamSessionID: 102,
 			},
-			markerInfo:     markerInfo,
 			forceErr:       "rows.Scan",
 			expectedErrStr: "从 row 中读取结果失败",
 		},
 		{
-			name: "error: 行遍历失败",
+			name:  "error: 行遍历失败",
+			types: []string{QuestionTypeFillBlank},
 			cond: QueryCondition{
-				ExamSessionID: 101,
+				ExamSessionID: 102,
 			},
-			markerInfo:     markerInfo,
 			forceErr:       "rows.Err",
 			expectedErrStr: "行遍历",
 		},
@@ -1146,14 +1610,16 @@ func TestQuerySubjectiveQuestions(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			ctx := context.WithValue(context.Background(), ForceErrKey, tt.forceErr)
 
-			questionSets, err := QuerySubjectiveQuestions(ctx, nil, tt.cond, tt.markerInfo)
+			questionSets, err := QuerySubjectiveQuestions(ctx, nil, tt.types, tt.cond, tt.markerInfo)
 			z.Sugar().Infof("questionSets: %+v", questionSets)
 
 			if tt.expectedErrStr != "" {
 				assert.Error(t, err, "期待获取到错误，但却没有错误")
 				assert.Contains(t, err.Error(), tt.expectedErrStr)
+				assert.Nil(t, questionSets)
 			} else {
 				assert.NoErrorf(t, err, "期待没有错误，但却获取到错误: %v", err)
+				assert.Equal(t, tt.expectedQuestionSets, questionSets)
 			}
 		})
 	}
@@ -1163,20 +1629,24 @@ func TestQueryExamSessionStatus(t *testing.T) {
 	cleanTestData()
 
 	tests := []struct {
-		name           string
-		tx             pgx.Tx
-		examSessionID  int64
-		forceErr       string
-		expectedErrStr string
+		name string
+
+		examSessionID int64
+
+		forceErr string
+
+		expectedExamSessionStatus string
+		expectedErrStr            string
 	}{
 		{
-			name:          "success: 成功获取考试状态",
-			examSessionID: 101,
+			name:                      "success: 成功获取考试状态",
+			examSessionID:             101,
+			expectedExamSessionStatus: "00",
 		},
 		{
-			name:          "success: 成功获取考试状态-带事务",
-			tx:            nil, // 如果你有事务 tx 可以替换
-			examSessionID: 102,
+			name:           "error: 无效的 考试场次ID",
+			examSessionID:  -1,
+			expectedErrStr: "无效的 考试场次ID",
 		},
 		{
 			name:           "error: 不存在的考试场次",
@@ -1191,8 +1661,7 @@ func TestQueryExamSessionStatus(t *testing.T) {
 		},
 		{
 			name:           "error: 强制错误 ForceErr",
-			examSessionID:  101,
-			forceErr:       "QueryExamSessionStatus",
+			forceErr:       "QueryExamSession",
 			expectedErrStr: ForceErr.Error(),
 		},
 	}
@@ -1201,162 +1670,225 @@ func TestQueryExamSessionStatus(t *testing.T) {
 	defer cleanTestData()
 
 	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			ctx := context.WithValue(context.Background(), ForceErrKey, tt.forceErr)
+		for _, useTx := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s: tx=%v", tt.name, useTx), func(t *testing.T) {
+				var tx pgx.Tx
+				if useTx {
+					var err error
+					pgConn := cmn.GetPgxConn()
 
-			status, err := QueryExamSessionStatus(ctx, tt.tx, tt.examSessionID)
-			z.Sugar().Infof("examSessionID=%d, status=%s", tt.examSessionID, status)
+					tx, err = pgConn.Begin(context.Background())
+					if err != nil {
+						t.Fatalf("开启事务失败: %v", err)
+					}
+					defer func() {
+						_ = tx.Rollback(context.Background())
+					}()
+				}
+				ctx := context.WithValue(context.Background(), ForceErrKey, tt.forceErr)
 
-			if tt.expectedErrStr != "" {
-				assert.Error(t, err, "期待获取到错误，但却没有错误")
-				assert.Contains(t, err.Error(), tt.expectedErrStr)
-			} else {
-				assert.NoErrorf(t, err, "期待没有错误，但却获取到错误: %v", err)
-			}
-		})
+				examSessionStatus, err := QueryExamSessionStatus(ctx, tx, tt.examSessionID)
+				z.Sugar().Infof("examSessionID=%d, examSessionStatus=%s", tt.examSessionID, examSessionStatus)
+
+				if tt.expectedErrStr != "" {
+					assert.Error(t, err, "期待获取到错误，但却没有错误")
+					assert.Contains(t, err.Error(), tt.expectedErrStr)
+					assert.Equal(t, ExamSession{}, examSessionStatus)
+				} else {
+					assert.NoErrorf(t, err, "期待没有错误，但却获取到错误: %v", err)
+					assert.Equal(t, tt.expectedExamSessionStatus, examSessionStatus)
+				}
+			})
+		}
 	}
 }
 
-func TestQueryStudentInfos(t *testing.T) {
-	cleanTestData()
-
-	tests := []struct {
-		name           string
-		cond           QueryCondition
-		markerInfo     MarkerInfo
-		forceErr       string
-		expectedErrStr string
-	}{
-		// success
-		{
-			name: "success: 考试场次，获取所有学生信息",
-			cond: QueryCondition{
-				ExamSessionID: 101,
-			},
-		},
-		{
-			name: "success: 考试场次，单个考生",
-			cond: QueryCondition{
-				ExamSessionID: 102,
-				ExamineeID:    2205,
-			},
-		},
-		{
-			name: "success: 练习，获取所有待批改学生",
-			cond: QueryCondition{
-				PracticeID: 22,
-			},
-		},
-		{
-			name: "success: 练习，单个提交",
-			cond: QueryCondition{
-				PracticeID:           22,
-				PracticeSubmissionID: 2404,
-			},
-		},
-		{
-			name: "success: 试卷分配，考试带 markerInfo",
-			cond: QueryCondition{
-				ExamSessionID: 103,
-			},
-			markerInfo: MarkerInfo{
-				MarkMode: "04",
-				MarkInfos: []cmn.TMarkInfo{
-					{
-						MarkExamineeIds: mustMarshal(`[2205,2206]`),
-					},
-				},
-			},
-		},
-
-		// error
-		{
-			name:           "error: 无效请求参数，没有考试场次ID或练习ID",
-			cond:           QueryCondition{},
-			expectedErrStr: "无效的请求参数，必须包含 考试场次ID 或者 练习ID 中的一个",
-		},
-		{
-			name: "error: 请求参数不能同时包含 练习ID 和 考试场次ID",
-			cond: QueryCondition{
-				ExamSessionID: 101,
-				PracticeID:    22,
-			},
-			expectedErrStr: "无效的请求参数，不能同时包含 练习ID 和 考试场次ID",
-		},
-		{
-			name: "error: 强制 SQL 错误",
-			cond: QueryCondition{
-				ExamSessionID: 101,
-			},
-			forceErr:       "query",
-			expectedErrStr: "查询学生信息 sql 失败",
-		},
-		{
-			name: "error: 行扫描失败",
-			cond: QueryCondition{
-				ExamSessionID: 102,
-			},
-			forceErr:       "rows.Scan",
-			expectedErrStr: "从 row 中读取结果失败",
-		},
-		{
-			name: "error: 行遍历失败",
-			cond: QueryCondition{
-				ExamSessionID: 103,
-			},
-			forceErr:       "rows.Err",
-			expectedErrStr: "行遍历错误",
-		},
-	}
-
-	initTestData()
-	defer cleanTestData()
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			ctx := context.WithValue(context.Background(), ForceErrKey, tt.forceErr)
-
-			studentInfos, err := QueryStudentInfos(ctx, tt.cond, tt.markerInfo)
-			z.Sugar().Infof("studentInfos: %+v", studentInfos)
-
-			if tt.expectedErrStr != "" {
-				assert.Error(t, err, "期待获取到错误，但却没有错误")
-				assert.Contains(t, err.Error(), tt.expectedErrStr)
-			} else {
-				assert.NoErrorf(t, err, "期待没有错误，但却获取到错误: %v", err)
-			}
-		})
-	}
-}
+//func TestQuerySubmittedStudents(t *testing.T) {
+//	cleanTestData()
+//
+//	// 0到1是考试，2到5是练习
+//	expectedStudentInfos := []StudentInfo{
+//		{
+//			OfficialName: null.StringFrom("student1"),
+//			ExamineeID:   null.IntFrom(2201),
+//			SerialNumber: null.IntFrom(1),
+//		},
+//		{
+//			OfficialName: null.StringFrom("student2"),
+//			ExamineeID:   null.IntFrom(2202),
+//			SerialNumber: null.IntFrom(2),
+//		},
+//		{
+//			OfficialName:         null.StringFrom("student1"),
+//			PracticeSubmissionID: null.IntFrom(2401),
+//		},
+//		{
+//			OfficialName:         null.StringFrom("student2"),
+//			PracticeSubmissionID: null.IntFrom(2402),
+//		},
+//		{
+//			OfficialName:         null.StringFrom("student3"),
+//			PracticeSubmissionID: null.IntFrom(2403),
+//		},
+//		{
+//			OfficialName:         null.StringFrom("student4"),
+//			PracticeSubmissionID: null.IntFrom(2406),
+//		},
+//	}
+//
+//	tests := []struct {
+//		name string
+//
+//		cond       QueryCondition
+//		markerInfo MarkerInfo
+//
+//		forceErr string
+//
+//		expectedStudentInfos []StudentInfo
+//		expectedErrStr       string
+//	}{
+//		{
+//			name: "success: 考试-获取所有学生信息",
+//			cond: QueryCondition{
+//				ExamSessionID: 101,
+//			},
+//			expectedStudentInfos: []StudentInfo{expectedStudentInfos[0], expectedStudentInfos[1]},
+//		},
+//		{
+//			name: "success: 考试-单个考生",
+//			cond: QueryCondition{
+//				ExamSessionID: 101,
+//				ExamineeID:    2201,
+//			},
+//			expectedStudentInfos: []StudentInfo{expectedStudentInfos[0]},
+//		},
+//		{
+//			name: "success: 考试-试卷分配",
+//			cond: QueryCondition{
+//				ExamSessionID: 101,
+//			},
+//			markerInfo: MarkerInfo{
+//				MarkMode: "04",
+//				MarkInfos: []cmn.TMarkInfo{
+//					{
+//						MarkExamineeIds: types.JSONText(`[2202]`),
+//					},
+//				},
+//			},
+//			expectedStudentInfos: []StudentInfo{expectedStudentInfos[1]},
+//		},
+//		{
+//			name: "success: 练习-获取所有待批改学生",
+//			cond: QueryCondition{
+//				PracticeID: 21,
+//			},
+//			expectedStudentInfos: []StudentInfo{expectedStudentInfos[2], expectedStudentInfos[3], expectedStudentInfos[4], expectedStudentInfos[5]},
+//		},
+//		{
+//			name: "success: 练习-单个提交",
+//			cond: QueryCondition{
+//				PracticeID:           21,
+//				PracticeSubmissionID: 2401,
+//			},
+//			expectedStudentInfos: []StudentInfo{expectedStudentInfos[2]},
+//		},
+//		{
+//			name: "error: 考生ID 和 试卷分配模式 不能同时存在",
+//			cond: QueryCondition{
+//				ExamSessionID: 101,
+//				ExamineeID:    2201,
+//			},
+//			markerInfo:     MarkerInfo{MarkMode: "04"},
+//			expectedErrStr: "考生ID 和 试卷分配模式 不能同时存在",
+//		},
+//		{
+//			name: "error: 试卷分配，批改配置信息错误",
+//			cond: QueryCondition{
+//				ExamSessionID: 101,
+//			},
+//			markerInfo:     MarkerInfo{MarkMode: "04"},
+//			expectedErrStr: "批改配置信息错误",
+//		},
+//		{
+//			name: "error: 强制 SQL 错误",
+//			cond: QueryCondition{
+//				ExamSessionID: 101,
+//			},
+//			forceErr:       "query",
+//			expectedErrStr: "查询学生信息 sql 失败",
+//		},
+//		{
+//			name: "error: 行扫描失败",
+//			cond: QueryCondition{
+//				ExamSessionID: 101,
+//			},
+//			forceErr:       "rows.Scan",
+//			expectedErrStr: "从 row 中读取结果失败",
+//		},
+//		{
+//			name: "error: 行遍历失败",
+//			cond: QueryCondition{
+//				ExamSessionID: 101,
+//			},
+//			forceErr:       "rows.Err",
+//			expectedErrStr: "行遍历错误",
+//		},
+//	}
+//
+//	initTestData()
+//	defer cleanTestData()
+//
+//	for _, tt := range tests {
+//		t.Run(tt.name, func(t *testing.T) {
+//			ctx := context.WithValue(context.Background(), ForceErrKey, tt.forceErr)
+//
+//			studentInfos, err := QueryStudents(ctx, tt.cond, tt.markerInfo)
+//			z.Sugar().Infof("expectedStudentInfos: %+v", studentInfos)
+//
+//			if tt.expectedErrStr != "" {
+//				assert.Error(t, err, "期待获取到错误，但却没有错误")
+//				assert.Contains(t, err.Error(), tt.expectedErrStr)
+//				assert.Equal(t, 0, len(studentInfos))
+//			} else {
+//				assert.NoErrorf(t, err, "期待没有错误，但却获取到错误: %v", err)
+//				assert.Equal(t, tt.expectedStudentInfos, studentInfos)
+//			}
+//		})
+//	}
+//}
 
 func TestUpdateMarkerInfoStatus(t *testing.T) {
 	cleanTestData()
 
 	tests := []struct {
-		name           string
-		teacherID      int64
-		ids            []int64
-		mode           string
-		status         string
-		forceErr       string
-		expectedErrStr string
+		name string
+
+		teacherID int64
+		ids       []int64
+		mode      string
+		status    string
+
+		forceErr string
+
+		expectedTargetIDs []int64
+		expectedErrStr    string
 	}{
 		{
-			name:      "success:考试",
+			name:      "success: 考试",
 			teacherID: testedTeacherID,
 			ids:       []int64{101},
 			mode:      "00",
 			status:    "00",
 		},
 		{
-			name:      "success:练习",
+			name:      "success: 练习",
 			teacherID: testedTeacherID,
 			ids:       []int64{201},
 			mode:      "02",
 			status:    "02",
 		},
 		{
-			name:           "error:teacherID无效",
+			name:           "error: teacherID无效",
 			teacherID:      0,
 			ids:            []int64{101},
 			mode:           "00",
@@ -1364,7 +1896,7 @@ func TestUpdateMarkerInfoStatus(t *testing.T) {
 			expectedErrStr: "无效的 teacher ID",
 		},
 		{
-			name:           "error:ids为空",
+			name:           "error: ids为空",
 			teacherID:      testedTeacherID,
 			ids:            nil,
 			mode:           "00",
@@ -1372,7 +1904,7 @@ func TestUpdateMarkerInfoStatus(t *testing.T) {
 			expectedErrStr: "没有 exam_session_ids",
 		},
 		{
-			name:           "error:status无效",
+			name:           "error: status无效",
 			teacherID:      testedTeacherID,
 			ids:            []int64{101},
 			mode:           "00",
@@ -1380,7 +1912,7 @@ func TestUpdateMarkerInfoStatus(t *testing.T) {
 			expectedErrStr: "status 错误",
 		},
 		{
-			name:           "error:mode无效",
+			name:           "error: mode无效",
 			teacherID:      testedTeacherID,
 			ids:            []int64{101},
 			mode:           "99",
@@ -1388,7 +1920,7 @@ func TestUpdateMarkerInfoStatus(t *testing.T) {
 			expectedErrStr: "无效的模式",
 		},
 		{
-			name:           "error:强制错误 updateQuery",
+			name:           "error: 强制错误 updateQuery",
 			teacherID:      testedTeacherID,
 			ids:            []int64{101},
 			mode:           "00",
@@ -1397,7 +1929,7 @@ func TestUpdateMarkerInfoStatus(t *testing.T) {
 			expectedErrStr: "更新批改配置信息 sql 失败",
 		},
 		{
-			name:           "error:强制错误 rows.Scan",
+			name:           "error: 强制错误 rows.Scan",
 			teacherID:      testedTeacherID,
 			ids:            []int64{101},
 			mode:           "00",
@@ -1406,7 +1938,7 @@ func TestUpdateMarkerInfoStatus(t *testing.T) {
 			expectedErrStr: "从 row 中读取结果失败",
 		},
 		{
-			name:           "error:强制错误 rows.Err",
+			name:           "error: 强制错误 rows.Err",
 			teacherID:      testedTeacherID,
 			ids:            []int64{101},
 			mode:           "00",
@@ -1420,24 +1952,40 @@ func TestUpdateMarkerInfoStatus(t *testing.T) {
 	defer cleanTestData()
 
 	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			ctx := context.WithValue(context.Background(), ForceErrKey, tt.forceErr)
+		for _, useTx := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s: tx=%v", tt.name, useTx), func(t *testing.T) {
+				var tx pgx.Tx
+				if useTx {
+					var err error
+					pgConn := cmn.GetPgxConn()
+					tx, err = pgConn.Begin(context.Background())
+					if err != nil {
+						t.Fatalf("开启事务失败: %v", err)
+					}
 
-			tx, err := cmn.GetPgxConn().Begin(ctx)
-			assert.NoError(t, err)
-			defer tx.Rollback(ctx)
+					// 测试，回滚即可
+					defer func() {
+						_ = tx.Rollback(context.Background())
+					}()
+				}
 
-			targetIDs, err := UpdateMarkerInfoStatus(ctx, tx, tt.teacherID, tt.ids, tt.mode, tt.status)
-			z.Sugar().Infof("targetIDs: %+v", targetIDs)
+				ctx := context.WithValue(context.Background(), ForceErrKey, tt.forceErr)
 
-			if tt.expectedErrStr != "" {
-				assert.Error(t, err)
-				assert.Contains(t, err.Error(), tt.expectedErrStr)
-			} else {
-				assert.NoError(t, err)
-				assert.Equal(t, len(tt.ids), len(targetIDs))
-			}
-		})
+				ids, err := UpdateMarkerInfoStatus(ctx, tx, tt.teacherID, tt.ids, tt.mode, tt.status)
+
+				if tt.expectedErrStr != "" {
+					assert.Error(t, err)
+					assert.Contains(t, err.Error(), tt.expectedErrStr)
+					assert.Equal(t, 0, len(tt.expectedTargetIDs))
+				} else {
+					assert.NoError(t, err)
+					assert.ElementsMatch(t, tt.expectedTargetIDs, ids) // 比较更新的行
+					for _, id := range ids {
+						assert.Greater(t, id, int64(0), "返回的 ID 应大于 0")
+					}
+				}
+			})
+		}
 	}
 }
 
@@ -1445,10 +1993,14 @@ func TestUpsertMarkingResults(t *testing.T) {
 	cleanTestData()
 
 	tests := []struct {
-		name           string
+		name string
+
 		markingResults []cmn.TMark
-		forceErr       string
-		expectedErrStr string
+
+		forceErr string
+
+		expectedTargetIDs []int64
+		expectedErrStr    string
 	}{
 		{
 			name: "success: 考试",
@@ -1528,25 +2080,38 @@ func TestUpsertMarkingResults(t *testing.T) {
 	defer cleanTestData()
 
 	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			ctx := context.WithValue(context.Background(), ForceErrKey, tt.forceErr)
-			tx, err := cmn.GetPgxConn().Begin(ctx)
-			assert.NoError(t, err)
-			defer tx.Rollback(ctx)
-
-			ids, err := UpsertMarkingResults(ctx, tx, tt.markingResults)
-
-			if tt.expectedErrStr != "" {
-				assert.Error(t, err)
-				assert.Contains(t, err.Error(), tt.expectedErrStr)
-			} else {
-				assert.NoError(t, err)
-				assert.Equal(t, len(tt.markingResults), len(ids), "返回的 ID 数量应与插入记录数量一致")
-				for _, id := range ids {
-					assert.Greater(t, id, int64(0), "返回的 ID 应大于 0")
+		for _, useTx := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s: tx=%v", tt.name, useTx), func(t *testing.T) {
+				var tx pgx.Tx
+				if useTx {
+					var err error
+					pgConn := cmn.GetPgxConn()
+					tx, err = pgConn.Begin(context.Background())
+					if err != nil {
+						t.Fatalf("开启事务失败: %v", err)
+					}
+					defer func() {
+						_ = tx.Rollback(context.Background())
+					}()
 				}
-			}
-		})
+
+				ctx := context.WithValue(context.Background(), ForceErrKey, tt.forceErr)
+
+				ids, err := UpsertMarkingResults(ctx, tx, tt.markingResults)
+
+				if tt.expectedErrStr != "" {
+					assert.Error(t, err)
+					assert.Contains(t, err.Error(), tt.expectedErrStr)
+					assert.Equal(t, 0, len(tt.expectedTargetIDs))
+				} else {
+					assert.NoError(t, err)
+					assert.ElementsMatch(t, tt.expectedTargetIDs, ids)
+					for _, id := range ids {
+						assert.Greater(t, id, int64(0), "返回的 ID 应大于 0")
+					}
+				}
+			})
+		}
 	}
 }
 
@@ -1554,42 +2119,39 @@ func TestQueryMarkedPersonAndQuestionCount(t *testing.T) {
 	cleanTestData()
 
 	tests := []struct {
-		name           string
-		cond           QueryCondition
-		forceErr       string
+		name string
+
+		cond QueryCondition
+
+		forceErr string
+
 		expectedPerson int64
 		expectedCount  int64
 		expectedErrStr string
 	}{
 		{
 			name:           "success:考试",
-			cond:           QueryCondition{TeacherID: 1, ExamSessionID: 101},
-			expectedPerson: 5,
-			expectedCount:  50,
+			cond:           QueryCondition{TeacherID: testedTeacherID, ExamSessionID: 102},
+			expectedPerson: 0,
+			expectedCount:  1,
 		},
 		{
 			name:           "success:练习",
-			cond:           QueryCondition{PracticeID: 201},
-			expectedPerson: 3,
-			expectedCount:  30,
+			cond:           QueryCondition{PracticeID: 22}, // 该练习只有一人一题，且已批改
+			expectedPerson: 0,                              // 但是练习需要提交，人数才会-1
+			expectedCount:  1,
 		},
 		{
-			name:           "forceErr: QueryMarkedPersonAndQuestionCount",
-			cond:           QueryCondition{TeacherID: 1, ExamSessionID: 101},
-			forceErr:       "QueryMarkedPersonAndQuestionCount",
-			expectedErrStr: ForceErr.Error(),
-		},
-		{
-			name:           "forceErr: queryMarkedPerson",
-			cond:           QueryCondition{TeacherID: 1, ExamSessionID: 101},
+			name:           "error: 获取已批改人数 sql 失败",
+			cond:           QueryCondition{TeacherID: testedTeacherID, ExamSessionID: 102},
 			forceErr:       "queryMarkedPerson",
-			expectedErrStr: "获取已批改人数 sql 失败: ",
+			expectedErrStr: "获取已批改人数 sql 失败",
 		},
 		{
-			name:           "forceErr: queryQuestionCount",
-			cond:           QueryCondition{TeacherID: 1, ExamSessionID: 101},
+			name:           "error: 获取已批改问题数 sql 失败",
+			cond:           QueryCondition{TeacherID: testedTeacherID, ExamSessionID: 102},
 			forceErr:       "queryQuestionCount",
-			expectedErrStr: "获取已批改问题数 sql 失败: ",
+			expectedErrStr: "获取已批改问题数 sql 失败",
 		},
 	}
 
@@ -1604,24 +2166,16 @@ func TestQueryMarkedPersonAndQuestionCount(t *testing.T) {
 			}
 
 			person, count, err := QueryMarkedPersonAndQuestionCount(ctx, nil, tt.cond)
-			if tt.expectedErrStr != "" {
-				if err == nil {
-					t.Fatalf("预期错误，但返回 nil")
-				}
-				if err.Error() != tt.expectedErrStr {
-					t.Fatalf("错误信息不匹配，got: %v, want: %v", err.Error(), tt.expectedErrStr)
-				}
-				return
-			}
 
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-			if person != tt.expectedPerson {
-				t.Errorf("已批改人数不匹配，got: %v, want: %v", person, tt.expectedPerson)
-			}
-			if count != tt.expectedCount {
-				t.Errorf("已批改问题数不匹配，got: %v, want: %v", count, tt.expectedCount)
+			if tt.expectedErrStr != "" {
+				assert.Error(t, err)
+				assert.Contains(t, err.Error(), tt.expectedErrStr)
+				assert.Equal(t, int64(-1), person)
+				assert.Equal(t, int64(-1), count)
+			} else {
+				assert.NoError(t, err)
+				assert.Equal(t, tt.expectedPerson, person, "期待已批改人数错误")
+				assert.Equal(t, tt.expectedCount, count, "期待已批改问题数错误")
 			}
 		})
 	}
@@ -1631,11 +2185,15 @@ func TestUpdateStudentAnswerScore(t *testing.T) {
 	cleanTestData()
 
 	tests := []struct {
-		name           string
+		name string
+
 		markingResults []cmn.TMark
 		cond           QueryCondition
-		forceErr       string
-		expectedErrStr string
+
+		forceErr string
+
+		expectedTargetIDs []int64
+		expectedErrStr    string
 	}{
 		{
 			name: "成功: 考试更新分数",
@@ -1688,200 +2246,98 @@ func TestUpdateStudentAnswerScore(t *testing.T) {
 	defer cleanTestData()
 
 	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			ctx := context.Background()
-			if tt.forceErr != "" {
-				ctx = context.WithValue(ctx, ForceErrKey, tt.forceErr)
-			}
-
-			ids, err := UpdateStudentAnswerScore(ctx, nil, tt.markingResults, tt.cond)
-			if tt.expectedErrStr != "" {
-				if err == nil {
-					t.Fatalf("预期错误，但返回 nil")
+		for _, useTx := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s: tx=%v", tt.name, useTx), func(t *testing.T) {
+				var tx pgx.Tx
+				if useTx {
+					var err error
+					pgConn := cmn.GetPgxConn()
+					tx, err = pgConn.Begin(context.Background())
+					if err != nil {
+						t.Fatalf("开启事务失败: %v", err)
+					}
+					defer func() {
+						_ = tx.Rollback(context.Background())
+					}()
 				}
-				if err.Error() != tt.expectedErrStr {
-					t.Fatalf("错误信息不匹配，got: %v, want: %v", err.Error(), tt.expectedErrStr)
+
+				ctx := context.WithValue(context.Background(), ForceErrKey, tt.forceErr)
+
+				ids, err := UpdateStudentAnswerScore(ctx, nil, tt.markingResults, tt.cond)
+
+				if tt.expectedErrStr != "" {
+					assert.Error(t, err)
+					assert.Contains(t, err.Error(), tt.expectedErrStr)
+					assert.Equal(t, 0, len(tt.expectedTargetIDs))
+				} else {
+					assert.NoError(t, err)
+					assert.ElementsMatch(t, tt.expectedTargetIDs, ids)
+					for _, id := range ids {
+						assert.Greater(t, id, int64(0), "返回的 ID 应大于 0")
+					}
 				}
-				return
-			}
-
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-
-			if len(ids) != len(tt.markingResults) {
-				t.Errorf("返回的更新ID数量不匹配, got: %d, want: %d", len(ids), len(tt.markingResults))
-			}
-		})
+			})
+		}
 	}
 }
 
 func TestUpdateExamSessionOrPracticeSubmissionStatus(t *testing.T) {
+	cleanTestData()
+
 	tests := []struct {
-		name                  string
-		teacherID             int64
-		examSessionIDs        []int64
-		practiceSubmissionIDs []int64
-		status                string
-		forceErr              string
-		expectedErrStr        string
+		name string
+
+		cond   QueryCondition
+		status string
+
+		forceErr string
+
+		expectedErrStr string
 	}{
 		{
-			name:           "成功: 更新考试状态",
-			teacherID:      1,
-			examSessionIDs: []int64{101},
-			status:         "04",
+			name:   "success: 更新考试状态",
+			cond:   QueryCondition{TeacherID: testedTeacherID, ExamSessionID: 101},
+			status: "04",
 		},
 		{
-			name:                  "成功: 更新练习状态",
-			teacherID:             1,
-			practiceSubmissionIDs: []int64{201},
-			status:                "04",
+			name:   "success: 更新练习状态",
+			cond:   QueryCondition{TeacherID: testedTeacherID, PracticeSubmissionID: 2401},
+			status: "04",
 		},
 		{
-			name:           "错误: teacherID 无效",
-			teacherID:      0,
-			examSessionIDs: []int64{101},
+			name:   "success: 更新练习错题状态",
+			cond:   QueryCondition{TeacherID: testedTeacherID, PracticeWrongSubmissionID: 2601},
+			status: "04",
+		},
+		{
+			name:           "error: teacherID 无效",
+			cond:           QueryCondition{TeacherID: 0, ExamSessionID: 101},
 			status:         "04",
 			expectedErrStr: "无效的 teacher_id",
 		},
 		{
-			name:           "错误: examSessionIDs 和 practiceSubmissionIDs 都为空",
-			teacherID:      1,
+			name:           "error: 缺少 必要ID",
+			cond:           QueryCondition{TeacherID: testedTeacherID},
 			status:         "04",
-			expectedErrStr: "无效的 exam_session_ids 和 practice_submission_ids",
+			expectedErrStr: "缺少 考试场次ID/练习提交ID/练习错题提交ID",
 		},
 		{
-			name:                  "错误: examSessionIDs 和 practiceSubmissionIDs 同时存在",
-			teacherID:             1,
-			examSessionIDs:        []int64{101},
-			practiceSubmissionIDs: []int64{201},
-			status:                "04",
-			expectedErrStr:        "exam_session_ids 和 practice_submission_ids 不能同时存在",
-		},
-		{
-			name:           "错误: status 为空",
-			teacherID:      1,
-			examSessionIDs: []int64{101},
+			name:           "error: status 为空",
+			cond:           QueryCondition{TeacherID: testedTeacherID, ExamSessionID: 101},
 			status:         "",
 			expectedErrStr: "无效的 考试/练习 状态",
 		},
 		{
-			name:           "forceErr: updateQuery",
-			teacherID:      1,
-			examSessionIDs: []int64{101},
+			name:           "error: SQL 执行失败",
+			cond:           QueryCondition{TeacherID: testedTeacherID, ExamSessionID: 101},
 			status:         "04",
 			forceErr:       "updateQuery",
-			expectedErrStr: ForceErr.Error(),
-		},
-		{
-			name:           "forceErr: rows.Scan",
-			teacherID:      1,
-			examSessionIDs: []int64{101},
-			status:         "04",
-			forceErr:       "rows.Scan",
-			expectedErrStr: ForceErr.Error(),
-		},
-		{
-			name:           "forceErr: rows.Err",
-			teacherID:      1,
-			examSessionIDs: []int64{101},
-			status:         "04",
-			forceErr:       "rows.Err",
-			expectedErrStr: ForceErr.Error(),
+			expectedErrStr: "更新 考试/练习 状态 sql 失败",
 		},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			ctx := context.WithValue(context.Background(), ForceErrKey, tt.forceErr)
-
-			ids, err := UpdateExamSessionOrPracticeSubmissionStatus(ctx, nil, tt.teacherID, tt.examSessionIDs, tt.practiceSubmissionIDs, tt.status)
-			if tt.expectedErrStr != "" {
-				if err == nil {
-					t.Fatalf("预期错误，但返回 nil")
-				}
-				if err.Error() != tt.expectedErrStr {
-					t.Fatalf("错误信息不匹配，got: %v, want: %v", err.Error(), tt.expectedErrStr)
-				}
-				return
-			}
-
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-
-			if len(ids) != len(tt.examSessionIDs)+len(tt.practiceSubmissionIDs) {
-				t.Errorf("返回的更新ID数量不匹配, got: %d, want: %d", len(ids), len(tt.examSessionIDs)+len(tt.practiceSubmissionIDs))
-			}
-		})
-	}
-}
-
-func TestUpdatePracticeWrongSubmissionStatus(t *testing.T) {
-	testedTeacherID := int64(1)
-	pgConn := cmn.GetPgxConn()
-
-	tests := []struct {
-		name                       string
-		teacherID                  int64
-		practiceWrongSubmissionIDs []int64
-		status                     string
-		forceErr                   string
-		expectedErrStr             string
-	}{
-		{
-			name:                       "success",
-			teacherID:                  testedTeacherID,
-			practiceWrongSubmissionIDs: []int64{301},
-			status:                     "04",
-		},
-		{
-			name:                       "error: teacherID",
-			teacherID:                  0,
-			practiceWrongSubmissionIDs: []int64{301},
-			status:                     "04",
-			expectedErrStr:             "无效的 teacher_id",
-		},
-		{
-			name:                       "error: empty ids",
-			teacherID:                  testedTeacherID,
-			practiceWrongSubmissionIDs: nil,
-			status:                     "04",
-			expectedErrStr:             "无效的 practice_wrong_submission_ids",
-		},
-		{
-			name:                       "error: empty status",
-			teacherID:                  testedTeacherID,
-			practiceWrongSubmissionIDs: []int64{301},
-			status:                     "",
-			expectedErrStr:             "无效的练习状态",
-		},
-		{
-			name:                       "force: tx.Query",
-			teacherID:                  testedTeacherID,
-			practiceWrongSubmissionIDs: []int64{301},
-			status:                     "04",
-			forceErr:                   "UpdatePracticeWrongSubmissionStatus-tx.Query",
-			expectedErrStr:             ForceErr.Error(),
-		},
-		{
-			name:                       "force: rows.Scan",
-			teacherID:                  testedTeacherID,
-			practiceWrongSubmissionIDs: []int64{301},
-			status:                     "04",
-			forceErr:                   "rows.Scan",
-			expectedErrStr:             ForceErr.Error(),
-		},
-		{
-			name:                       "force: rows.Err",
-			teacherID:                  testedTeacherID,
-			practiceWrongSubmissionIDs: []int64{301},
-			status:                     "04",
-			forceErr:                   "rows.Err",
-			expectedErrStr:             ForceErr.Error(),
-		},
-	}
+	initTestData()
+	defer cleanTestData()
 
 	for _, tt := range tests {
 		for _, useTx := range []bool{false, true} {
@@ -1889,23 +2345,27 @@ func TestUpdatePracticeWrongSubmissionStatus(t *testing.T) {
 				var tx pgx.Tx
 				if useTx {
 					var err error
+					pgConn := cmn.GetPgxConn()
 					tx, err = pgConn.Begin(context.Background())
 					if err != nil {
 						t.Fatalf("开启事务失败: %v", err)
 					}
-					defer tx.Rollback(context.Background())
+					defer func() {
+						_ = tx.Rollback(context.Background())
+					}()
 				}
 
 				ctx := context.WithValue(context.Background(), ForceErrKey, tt.forceErr)
-				list, err := UpdatePracticeWrongSubmissionStatus(ctx, tx, tt.teacherID, tt.practiceWrongSubmissionIDs, tt.status)
 
-				z.Sugar().Infof("--> 更新练习错题返回 IDs: %+v", list)
+				id, err := UpdateExamSessionOrPracticeSubmissionStatus(ctx, tx, tt.cond, tt.status)
 
 				if tt.expectedErrStr != "" {
-					assert.Error(t, err, "期待获取到错误，但却没有错误")
+					assert.Error(t, err)
 					assert.Contains(t, err.Error(), tt.expectedErrStr)
+					assert.Equal(t, int64(-1), id)
 				} else {
-					assert.NoErrorf(t, err, "期待没有错误，但却获取到错误: %v", err)
+					assert.NoError(t, err)
+					assert.Greater(t, id, int64(0), "返回的 ID 应大于 0")
 				}
 			})
 		}
