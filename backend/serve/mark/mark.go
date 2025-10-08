@@ -8,6 +8,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
+
 	"github.com/redis/go-redis/v9"
 	"io"
 	"strconv"
@@ -100,12 +102,12 @@ func Enroll(author string) {
 		DefaultDomain: int64(cmn.CDomainSys),
 	})
 
-	// 考试详情/批改
+	// 考试查看/批改
 	_ = cmn.AddService(&cmn.ServeEndPoint{
-		Fn: examSessionDetail,
+		Fn: examSessionMark,
 
-		Path: "/mark/exam-session/detail",
-		Name: "/mark/exam-session/detail",
+		Path: "/mark/exam-session/mark",
+		Name: "/mark/exam-session/mark",
 
 		ApiEntries: []*cmn.EndPointApiEntries{
 			{
@@ -128,12 +130,12 @@ func Enroll(author string) {
 		DefaultDomain: int64(cmn.CDomainSys),
 	})
 
-	// 练习详情/批改
+	// 练习查看/批改
 	_ = cmn.AddService(&cmn.ServeEndPoint{
-		Fn: practiceDetail,
+		Fn: practiceMark,
 
-		Path: "/mark/practice/detail",
-		Name: "/mark/practice/detail",
+		Path: "/mark/practice/mark",
+		Name: "/mark/practice/mark",
 
 		ApiEntries: []*cmn.EndPointApiEntries{
 			{
@@ -156,18 +158,41 @@ func Enroll(author string) {
 		DefaultDomain: int64(cmn.CDomainSys),
 	})
 
-	// 获取练习/考试学生的答案和批改结果
+	// 获取考试/练习问题
 	_ = cmn.AddService(&cmn.ServeEndPoint{
-		Fn: getStudentAnswersAndMarkResults,
+		Fn: getQuestions,
 
-		Path: "/mark/student-answers-and-mark-results",
-		Name: "/mark/student-answers-and-mark-results",
+		Path: "/mark/questions",
+		Name: "/mark/questions",
 
 		ApiEntries: []*cmn.EndPointApiEntries{
 			{
-				Name:         "试卷批改.获取学生答案与批改结果",
+				Name:         "试卷批改.获取所需批改的问题",
 				AccessAction: auth_mgt.CAPIAccessActionRead,
-				Configurable: false, // 不可配置
+				Configurable: true,
+			},
+		},
+
+		Developer: developer,
+		WhiteList: true,
+
+		DomainID: int64(cmn.CDomainSys),
+
+		DefaultDomain: int64(cmn.CDomainSys),
+	})
+
+	// 获取考试/练习学生列表
+	_ = cmn.AddService(&cmn.ServeEndPoint{
+		Fn: getStudents,
+
+		Path: "/mark/students",
+		Name: "/mark/students",
+
+		ApiEntries: []*cmn.EndPointApiEntries{
+			{
+				Name:         "试卷批改.获取学生列表",
+				AccessAction: auth_mgt.CAPIAccessActionRead,
+				Configurable: true,
 			},
 		},
 
@@ -225,6 +250,80 @@ func Enroll(author string) {
 		DefaultDomain: int64(cmn.CDomainSys),
 	})
 
+	// 获取单个考试场次的基本信息
+	_ = cmn.AddService(&cmn.ServeEndPoint{
+		Fn: getExamSessionInfo,
+
+		Path: "/mark/exam-session",
+		Name: "/mark/exam-session",
+
+		ApiEntries: []*cmn.EndPointApiEntries{
+			{
+				Name:         "试卷批改.考试批改.现场点评.获取考试场次的基本信息",
+				AccessAction: auth_mgt.CAPIAccessActionRead,
+				Configurable: true,
+			},
+		},
+
+		Developer: developer,
+		WhiteList: true,
+
+		DomainID: int64(cmn.CDomainSys),
+
+		DefaultDomain: int64(cmn.CDomainSys),
+	})
+
+	// 获取综合演练题目
+	_ = cmn.AddService(&cmn.ServeEndPoint{
+		Fn: getExerciseQuestions,
+
+		Path: "/mark/exam/on-site-review/questions",
+		Name: "/mark/exam/on-site-review/questions",
+
+		ApiEntries: []*cmn.EndPointApiEntries{
+			{
+				Name:         "试卷批改.考试批改.现场点评.获取综合演练题",
+				AccessAction: auth_mgt.CAPIAccessActionRead,
+				Configurable: true,
+			},
+		},
+
+		Developer: developer,
+		WhiteList: true,
+
+		DomainID: int64(cmn.CDomainSys),
+
+		DefaultDomain: int64(cmn.CDomainSys),
+	})
+
+	// 现场点评查看/点评
+	_ = cmn.AddService(&cmn.ServeEndPoint{
+		Fn: onSiteReviewBasicMark,
+
+		Path: "/mark/exam/on-site-review/mark",
+		Name: "/mark/exam/on-site-review/mark",
+
+		ApiEntries: []*cmn.EndPointApiEntries{
+			{
+				Name:         "试卷批改.考试批改.现场点评.获取考生列表",
+				AccessAction: auth_mgt.CAPIAccessActionRead,
+				Configurable: true,
+			},
+			{
+				Name:         "试卷批改.考试批改.现场点评.问题点评",
+				AccessAction: auth_mgt.CAPIAccessActionUpdate,
+				Configurable: true,
+			},
+		},
+
+		Developer: developer,
+		WhiteList: true,
+
+		DomainID: int64(cmn.CDomainSys),
+
+		DefaultDomain: int64(cmn.CDomainSys),
+	})
+
 	initAIMarkTaskLimiterAndBreaker()
 
 	cmn.RegisterTaskHandler(TaskTypeAIMarkRequest, taskMiddleware(handleAIMarkTask))
@@ -247,24 +346,25 @@ func getExamList(ctx context.Context) {
 		return
 	}
 
-	//var readable bool
-	//
-	//if readable, q.Err = auth_mgt.CheckUserAPIAccessible(ctx, nil, q.Ep.Path, auth_mgt.CAPIAccessActionRead); q.Err != nil {
-	//	q.Err = fmt.Errorf("获取访问权限失败: %v", q.Err)
-	//	z.Error(q.Err.Error())
-	//	q.RespErr()
-	//	return
-	//}
-	//
-	//if !readable {
-	//	q.Err = errors.New("无权访问")
-	//	z.Error(q.Err.Error())
-	//	q.RespErr()
-	//	return
-	//}
+	var readable bool
+
+	if readable, q.Err = auth_mgt.CheckUserAPIAccessible(ctx, nil, q.Ep.Path, auth_mgt.CAPIAccessActionRead); q.Err != nil {
+		q.Err = fmt.Errorf("获取访问权限失败: %v", q.Err)
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+
+	if !readable {
+		q.Err = errors.New("无权访问")
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
 
 	queryParams := q.R.URL.Query()
 
+	// 页码默认 1，页大小默认 10
 	pageIndexStr := queryParams.Get("page")
 	if pageIndexStr == "" {
 		pageIndexStr = "1"
@@ -282,7 +382,6 @@ func getExamList(ctx context.Context) {
 		q.RespErr()
 		return
 	}
-
 	pageSizeStr := queryParams.Get("page_size")
 	if pageSizeStr == "" {
 		pageSizeStr = "10"
@@ -340,7 +439,7 @@ func getExamList(ctx context.Context) {
 		Status:    examStatus,
 	}
 
-	exams, rowCount, err := QueryExamList(ctx, req)
+	exams, rowCount, err := QueryExams(ctx, req)
 	if err != nil {
 		q.Err = fmt.Errorf("查询考试列表失败: %v", err)
 		z.Error(q.Err.Error())
@@ -397,6 +496,7 @@ func getPracticeList(ctx context.Context) {
 
 	queryParams := q.R.URL.Query()
 
+	// 页码默认 1，页大小默认 10
 	pageIndexStr := queryParams.Get("page")
 	if pageIndexStr == "" {
 		pageIndexStr = "1"
@@ -408,14 +508,12 @@ func getPracticeList(ctx context.Context) {
 		q.RespErr()
 		return
 	}
-
 	if pageIndex < 1 {
 		q.Err = errors.New("page 必须大于 0")
 		z.Error(q.Err.Error())
 		q.RespErr()
 		return
 	}
-
 	pageSizeStr := queryParams.Get("page_size")
 	if pageSizeStr == "" {
 		pageSizeStr = "10"
@@ -427,7 +525,6 @@ func getPracticeList(ctx context.Context) {
 		q.RespErr()
 		return
 	}
-
 	if pageSize < 1 || pageSize > 1000 {
 		q.Err = errors.New("pageSize 必须在 1 和 1000 之间")
 		z.Error(q.Err.Error())
@@ -446,7 +543,7 @@ func getPracticeList(ctx context.Context) {
 		Offset:       pageSize * (pageIndex - 1),
 	}
 
-	practices, rowCount, err := QueryPracticeList(ctx, req)
+	practices, rowCount, err := QueryPractices(ctx, req)
 	if err != nil {
 		q.Err = fmt.Errorf("查询练习列表失败: %v", err)
 		z.Error(q.Err.Error())
@@ -471,8 +568,8 @@ func getPracticeList(ctx context.Context) {
 }
 
 // 考试查看/批改
-func examSessionDetail(ctx context.Context) {
-	forceErr, _ := ctx.Value(ForceErrKey).(string)
+func examSessionMark(ctx context.Context) {
+	//forceErr, _ := ctx.Value(ForceErrKey).(string)
 
 	q := cmn.GetCtxValue(ctx)
 	z.Info("---->" + cmn.FncName())
@@ -497,15 +594,15 @@ func examSessionDetail(ctx context.Context) {
 			return
 		}
 
-		examSessionIDStr := q.R.URL.Query().Get("exam_session_id")
+		queryParams := q.R.URL.Query()
 
+		examSessionIDStr := queryParams.Get("exam_session_id")
 		if examSessionIDStr == "" {
 			q.Err = errors.New("请求参数必须包含 考试场次ID")
 			z.Error(q.Err.Error())
 			q.RespErr()
 			return
 		}
-
 		examSessionID, err := strconv.ParseInt(examSessionIDStr, 10, 64)
 		if err != nil {
 			q.Err = fmt.Errorf("examSessionIDStr 类型转化失败: %v", err)
@@ -514,29 +611,36 @@ func examSessionDetail(ctx context.Context) {
 			return
 		}
 
-		detail, err := getQuestionsAndStudentInfos(ctx, QueryCondition{
+		examineeIDStr := queryParams.Get("examinee_id")
+		if examineeIDStr == "" {
+			q.Err = errors.New("缺少 考生ID")
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+		examineeID, err := strconv.ParseInt(examineeIDStr, 10, 64)
+		if err != nil {
+			q.Err = fmt.Errorf("examineeIDStr 类型转化失败: %v", err)
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		cond := QueryCondition{
 			TeacherID:     q.SysUser.ID.Int64,
 			ExamSessionID: examSessionID,
-		})
+			ExamineeID:    examineeID,
+		}
+
+		jsonData, err := getStudentAnswersAndMarkResults(ctx, cond)
 		if err != nil {
-			q.Err = fmt.Errorf("获取问题和学生信息失败: %v", err)
+			q.Err = fmt.Errorf("构造 jsonData 失败: %v", err)
 			z.Error(q.Err.Error())
 			q.RespErr()
 			return
 		}
 
-		detailJson, err := json.Marshal(detail)
-		if forceErr == "json.Marshal-detail" {
-			err = ForceErr
-		}
-		if err != nil {
-			q.Err = fmt.Errorf("构造 detailJson 失败 : %v", err)
-			z.Error(q.Err.Error())
-			q.RespErr()
-			return
-		}
-
-		q.Msg.Data = detailJson
+		q.Msg.Data = jsonData
 
 	case "post":
 		var editable bool
@@ -554,7 +658,7 @@ func examSessionDetail(ctx context.Context) {
 			return
 		}
 
-		markedInfoJson, err := saveMarkingResults(ctx, q.SysUser.ID.Int64, q.R.Body)
+		markedInfoJson, err := saveMarkingResults(ctx, q.R.Body)
 		if err != nil {
 			q.Err = fmt.Errorf("保存考试批改结果失败: %v", err)
 			z.Error(q.Err.Error())
@@ -575,8 +679,8 @@ func examSessionDetail(ctx context.Context) {
 }
 
 // 练习查看/批改
-func practiceDetail(ctx context.Context) {
-	forceErr, _ := ctx.Value(ForceErrKey).(string)
+func practiceMark(ctx context.Context) {
+	//forceErr, _ := ctx.Value(ForceErrKey).(string)
 
 	q := cmn.GetCtxValue(ctx)
 	z.Info("---->" + cmn.FncName())
@@ -601,15 +705,14 @@ func practiceDetail(ctx context.Context) {
 		}
 
 		queryParams := q.R.URL.Query()
-		practiceIDStr := queryParams.Get("practice_id")
 
+		practiceIDStr := queryParams.Get("practice_id")
 		if practiceIDStr == "" {
 			q.Err = errors.New("请求参数缺少 练习ID")
 			z.Error(q.Err.Error())
 			q.RespErr()
 			return
 		}
-
 		practiceID, err := strconv.ParseInt(practiceIDStr, 10, 64)
 		if err != nil {
 			q.Err = fmt.Errorf("practiceIDStr 类型转化失败: %v", err)
@@ -618,29 +721,36 @@ func practiceDetail(ctx context.Context) {
 			return
 		}
 
-		detail, err := getQuestionsAndStudentInfos(ctx, QueryCondition{
-			TeacherID:  q.SysUser.ID.Int64,
-			PracticeID: practiceID,
-		})
+		practiceSubmissionIDStr := queryParams.Get("practice_submission_id")
+		if practiceSubmissionIDStr == "" {
+			q.Err = errors.New("缺少 练习提交ID")
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+		practiceSubmissionID, err := strconv.ParseInt(practiceSubmissionIDStr, 10, 64)
 		if err != nil {
-			q.Err = fmt.Errorf("获取问题和学生信息失败: %v", err)
+			q.Err = fmt.Errorf("practiceSubmissionIDStr 类型转化失败: %v", err)
 			z.Error(q.Err.Error())
 			q.RespErr()
 			return
 		}
 
-		detailJson, err := json.Marshal(detail)
-		if forceErr == "json.Marshal-detail" {
-			err = ForceErr
+		cond := QueryCondition{
+			TeacherID:            q.SysUser.ID.Int64,
+			PracticeID:           practiceID,
+			PracticeSubmissionID: practiceSubmissionID,
 		}
+
+		jsonData, err := getStudentAnswersAndMarkResults(ctx, cond)
 		if err != nil {
-			q.Err = fmt.Errorf("构造 detailJson 失败: %v", err)
+			q.Err = fmt.Errorf("构造 jsonData 失败: %v", err)
 			z.Error(q.Err.Error())
 			q.RespErr()
 			return
 		}
 
-		q.Msg.Data = detailJson
+		q.Msg.Data = jsonData
 
 	case "post":
 		var editable bool
@@ -659,7 +769,7 @@ func practiceDetail(ctx context.Context) {
 			return
 		}
 
-		markedInfoJson, err := saveMarkingResults(ctx, q.SysUser.ID.Int64, q.R.Body)
+		markedInfoJson, err := saveMarkingResults(ctx, q.R.Body)
 		if err != nil {
 			q.Err = fmt.Errorf("保存练习批改结果失败: %v", err)
 			z.Error(q.Err.Error())
@@ -820,9 +930,106 @@ func practiceStudentSubmission(ctx context.Context) {
 	q.Resp()
 }
 
-// 根据场次/练习+考生id获取学生的答案和批改结果
-func getStudentAnswersAndMarkResults(ctx context.Context) {
-	forceErr, _ := ctx.Value(ForceErrKey).(string)
+// 考试/练习分页获取学生
+func getStudents(ctx context.Context) {
+	//forceErr, _ := ctx.Value(ForceErrKey).(string)
+
+	q := cmn.GetCtxValue(ctx)
+	z.Info("---->" + cmn.FncName())
+
+	method := strings.ToLower(q.R.Method)
+	if method != "get" {
+		q.Err = fmt.Errorf("不支持的 HTTP 方法: %s", method)
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+
+	var readable bool
+
+	if readable, q.Err = auth_mgt.CheckUserAPIAccessible(ctx, nil, q.Ep.Path, auth_mgt.CAPIAccessActionRead); q.Err != nil {
+		q.Err = fmt.Errorf("获取访问权限失败: %v", q.Err)
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+
+	if !readable {
+		q.Err = errors.New("无权访问")
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+
+	queryParams := q.R.URL.Query()
+
+	examSessionIDStr := queryParams.Get("exam_session_id")
+	practiceIDStr := queryParams.Get("practice_id")
+
+	var (
+		examSessionID, practiceID int64
+		err                       error
+	)
+
+	if examSessionIDStr != "" {
+		examSessionID, err = strconv.ParseInt(examSessionIDStr, 10, 64)
+		if err != nil {
+			q.Err = fmt.Errorf("examSessionIDStr 类型转化失败: %v", err)
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+	}
+
+	if practiceIDStr != "" {
+		practiceID, err = strconv.ParseInt(practiceIDStr, 10, 64)
+		if err != nil {
+			q.Err = fmt.Errorf("practiceIDStr 类型转化失败: %v", err)
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+	}
+
+	cond := QueryCondition{
+		TeacherID:     q.SysUser.ID.Int64,
+		ExamSessionID: examSessionID,
+		PracticeID:    practiceID,
+	}
+
+	err = validateExamSessionOrPractice(cond)
+	if err != nil {
+		q.Err = fmt.Errorf("cond 校验出错误: %v", err)
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+
+	// 分页获取学生
+	students, rowCount, err := getStudentsByPage(ctx, queryParams, cond, []string{ExamineeStatusSubmitted}, QueryStudentsReq{})
+	if err != nil {
+		q.Err = fmt.Errorf("分页查询学生失败: %v", err)
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+
+	studentsJson, err := json.Marshal(students)
+	if err != nil {
+		q.Err = fmt.Errorf("构造 studentsJson 失败: %v", err)
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+
+	q.Msg.Data = studentsJson
+	q.Msg.RowCount = int64(rowCount)
+	q.Resp()
+}
+
+// 考试/练习获取题目（TODO 核分员需要获取综合演练题目）
+func getQuestions(ctx context.Context) {
+	//forceErr, _ := ctx.Value(ForceErrKey).(string)
 
 	q := cmn.GetCtxValue(ctx)
 	z.Info("---->" + cmn.FncName())
@@ -855,45 +1062,15 @@ func getStudentAnswersAndMarkResults(ctx context.Context) {
 	examSessionIDStr := queryParams.Get("exam_session_id")
 	practiceIDStr := queryParams.Get("practice_id")
 
-	if examSessionIDStr == "" && practiceIDStr == "" {
-		q.Err = errors.New("请求参数必须包含 练习ID 或者 考试场次ID 中的一个")
-		z.Error(q.Err.Error())
-		q.RespErr()
-		return
-	}
-
-	if practiceIDStr != "" && examSessionIDStr != "" {
-		q.Err = errors.New("请求参数不能同时包含 练习ID 和 考试场次ID")
-		z.Error(q.Err.Error())
-		q.RespErr()
-		return
-	}
-
 	var (
-		examSessionID, examineeID, practiceID, practiceSubmissionID int64
-		err                                                         error
+		examSessionID, practiceID int64
+		err                       error
 	)
 
 	if examSessionIDStr != "" {
 		examSessionID, err = strconv.ParseInt(examSessionIDStr, 10, 64)
 		if err != nil {
 			q.Err = fmt.Errorf("examSessionIDStr 类型转化失败: %v", err)
-			z.Error(q.Err.Error())
-			q.RespErr()
-			return
-		}
-
-		examineeIDStr := queryParams.Get("examinee_id")
-		if examineeIDStr == "" {
-			q.Err = errors.New("缺少 考生ID")
-			z.Error(q.Err.Error())
-			q.RespErr()
-			return
-		}
-
-		examineeID, err = strconv.ParseInt(examineeIDStr, 10, 64)
-		if err != nil {
-			q.Err = fmt.Errorf("examineeIDStr 类型转化失败: %v", err)
 			z.Error(q.Err.Error())
 			q.RespErr()
 			return
@@ -908,82 +1085,62 @@ func getStudentAnswersAndMarkResults(ctx context.Context) {
 			q.RespErr()
 			return
 		}
-
-		practiceSubmissionIDStr := queryParams.Get("practice_submission_id")
-		if practiceSubmissionIDStr == "" {
-			q.Err = errors.New("缺少 练习提交ID")
-			z.Error(q.Err.Error())
-			q.RespErr()
-			return
-		}
-
-		practiceSubmissionID, err = strconv.ParseInt(practiceSubmissionIDStr, 10, 64)
-		if err != nil {
-			q.Err = fmt.Errorf("practiceSubmissionIDStr 类型转化失败: %v", err)
-			z.Error(q.Err.Error())
-			q.RespErr()
-			return
-		}
 	}
 
 	cond := QueryCondition{
-		TeacherID:            q.SysUser.ID.Int64,
-		ExamSessionID:        examSessionID,
-		ExamineeID:           examineeID,
-		PracticeID:           practiceID,
-		PracticeSubmissionID: practiceSubmissionID,
+		TeacherID:     q.SysUser.ID.Int64,
+		ExamSessionID: examSessionID,
+		PracticeID:    practiceID,
 	}
 
-	// 1. 获取批改信息，得到mark_mode，据此判断需要获取哪一部分数据
-	markerInfo, err := QueryMarkerInfo(ctx, cond)
+	err = validateExamSessionOrPractice(cond)
 	if err != nil {
-		q.Err = fmt.Errorf("查询批改信息失败: %v", err)
+		q.Err = fmt.Errorf("cond 校验出错误: %v", err)
 		z.Error(q.Err.Error())
 		q.RespErr()
 		return
 	}
 
-	markInfoLen := len(markerInfo.MarkInfos)
-	if markInfoLen != 1 {
-		q.Err = fmt.Errorf("批改配置信息错误, 正常情况应为一条配置信息, 实际为 %d", markInfoLen)
-		z.Error(q.Err.Error(), zap.Any("markerInfo.MarkInfos", markerInfo.MarkInfos))
-		q.RespErr()
-		return
-	}
-
-	// 自定义，用于区别考试（数据库表对应字段没有这个）
-	if cond.PracticeSubmissionID > 0 {
-		// 查询单个练习学生
-		markerInfo.MarkMode = "12" // 批改单个练习学生
-	}
-
-	// TODO 检查
-
-	// 2. 获取学生主观题答案
-	studentAnswers, err := QueryStudentAnswers(ctx, nil, "02", cond, markerInfo)
+	// 1. 获取批改信息，得到mark_mode，据此判断需要获取哪一部分题目
+	markerInfo, err := QueryMarkerInfo(ctx, cond) // 根据自己的 teacher_id 查询出来的，所以 len(markerInfo.MarkInfos) == 1
 	if err != nil {
-		q.Err = fmt.Errorf("获取学生主观题答案失败: %v", err)
+		q.Err = fmt.Errorf("获取批改信息失败: %v", err)
 		z.Error(q.Err.Error())
 		q.RespErr()
 		return
 	}
 
-	// 3. 获取老师对该学生的批改记录
-	markingResults, err := QuerySubjectiveQuestionsMarkingResults(ctx, cond)
+	// 查不到的情况（正常情况，必定会有批改配置）
+	if len(markerInfo.MarkInfos) != 1 {
+		q.Err = errors.New("批改配置信息错误")
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+
+	// 2. 获取该老师需要批改的问题（t_mark_info 一条记录）
+	questionSets, err := QuerySubjectiveQuestions(ctx, nil, []string{QuestionTypeFillBlank, QuestionTypeShortAnswer, QuestionTypeApplication}, cond, markerInfo)
 	if err != nil {
-		q.Err = fmt.Errorf("获取老师对该学生的批改记录失败: %v", err)
+		q.Err = fmt.Errorf("获取该老师需要批改的问题失败: %v", err)
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+
+	// 3. 获取已批改人数，已批改总问题数
+	markedPerson, markedQuestions, err := QueryMarkedPersonAndQuestionCount(ctx, nil, cond)
+	if err != nil {
+		q.Err = fmt.Errorf("获取已批改人数失败: %v", err)
 		z.Error(q.Err.Error())
 		q.RespErr()
 		return
 	}
 
 	jsonData, err := json.Marshal(map[string]interface{}{
-		"student_answers": studentAnswers,
-		"marking_results": markingResults,
+		"question_sets":    questionSets,
+		"marked_person":    markedPerson,
+		"marked_questions": markedQuestions,
 	})
-	if forceErr == "json.Marshal-map" {
-		err = ForceErr
-	}
 	if err != nil {
 		q.Err = fmt.Errorf("构造 jsonData 失败: %v", err)
 		z.Error(q.Err.Error())
@@ -995,20 +1152,424 @@ func getStudentAnswersAndMarkResults(ctx context.Context) {
 	q.Resp()
 }
 
+// 获取考试场次基本信息
+func getExamSessionInfo(ctx context.Context) {
+	//forceErr, _ := ctx.Value(ForceErrKey).(string)
+
+	q := cmn.GetCtxValue(ctx)
+	z.Info("---->" + cmn.FncName())
+
+	method := strings.ToLower(q.R.Method)
+	if method != "get" {
+		q.Err = fmt.Errorf("不支持的 HTTP 方法: %s", method)
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+
+	var readable bool
+
+	if readable, q.Err = auth_mgt.CheckUserAPIAccessible(ctx, nil, q.Ep.Path, auth_mgt.CAPIAccessActionRead); q.Err != nil {
+		q.Err = fmt.Errorf("获取权限失败: %v", q.Err)
+		q.RespErr()
+		return
+	}
+
+	if !readable {
+		q.Err = errors.New("无权访问")
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+
+	examSessionIDStr := q.R.URL.Query().Get("exam_session_id")
+	if examSessionIDStr == "" {
+		q.Err = errors.New("请求参数缺少 考试场次ID")
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+
+	examSessionID, err := strconv.ParseInt(examSessionIDStr, 10, 64)
+	if err != nil {
+		q.Err = fmt.Errorf("examSessionIDStr 类型转化失败: %v", err)
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+
+	exams, _, err := QueryExams(ctx, QueryMarkingListReq{User: &User{
+		ID: q.SysUser.ID.Int64,
+	}, ExamSessionID: examSessionID})
+	if err != nil {
+		q.Err = fmt.Errorf("查询考试场次信息失败: %v", err)
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+
+	if len(exams) == 0 || len(exams[0].ExamSessions) == 0 {
+		q.Err = errors.New("查询不到该考试场次的信息")
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+
+	examSession := exams[0].ExamSessions[0]
+
+	examSession.ExamSessionType = exams[0].Type
+
+	examSessionJson, err := json.Marshal(examSession)
+	if err != nil {
+		q.Err = fmt.Errorf("构造 examSessionJson 失败: %v", err)
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+
+	q.Msg.Data = examSessionJson
+	q.Resp()
+}
+
+// 现场点评，获取问题、以及问题的已批改人数
+func getExerciseQuestions(ctx context.Context) {
+	//forceErr, _ := ctx.Value(ForceErrKey).(string)
+
+	q := cmn.GetCtxValue(ctx)
+	z.Info("---->" + cmn.FncName())
+
+	method := strings.ToLower(q.R.Method)
+	if method != "get" {
+		q.Err = fmt.Errorf("不支持的 HTTP 方法: %s", method)
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+
+	var readable bool
+
+	if readable, q.Err = auth_mgt.CheckUserAPIAccessible(ctx, nil, q.Ep.Path, auth_mgt.CAPIAccessActionRead); q.Err != nil {
+		q.Err = fmt.Errorf("获取访问权限失败: %v", q.Err)
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+
+	if !readable {
+		q.Err = errors.New("无权访问")
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+
+	queryParams := q.R.URL.Query()
+
+	questionIDStr := queryParams.Get("question_id")
+	examSessionIDStr := queryParams.Get("exam_session_id")
+
+	if examSessionIDStr == "" {
+		q.Err = errors.New("缺少 考试场次ID")
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+
+	examSessionID, err := strconv.ParseInt(examSessionIDStr, 10, 64)
+	if err != nil {
+		q.Err = fmt.Errorf("examSessionIDStr 类型转化失败: %v", err)
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+
+	var questionID int64
+
+	if questionIDStr != "" {
+		questionID, err = strconv.ParseInt(questionIDStr, 10, 64)
+		if err != nil {
+			q.Err = fmt.Errorf("questionIDStr 类型转化失败: %v", err)
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+	}
+
+	cond := QueryCondition{QuestionID: questionID, ExamSessionID: examSessionID, TeacherID: q.SysUser.ID.Int64}
+
+	questionSets, err := QuerySubjectiveQuestions(ctx, nil, []string{QuestionTypeExercise}, cond, MarkerInfo{})
+	if err != nil {
+		q.Err = fmt.Errorf("查询综合演练题失败: %v", err)
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+
+	var markedPersons []int64
+
+	for _, questionSet := range questionSets {
+		for _, question := range questionSet.Questions {
+			cond.QuestionID = question.ID.Int64
+
+			count, err := QueryMarkedStudentCountForQuestion(ctx, cond)
+			if err != nil {
+				q.Err = fmt.Errorf("查询综合演练题的已批改人数失败失败: %v", err)
+				z.Error(q.Err.Error())
+				q.RespErr()
+				return
+			}
+
+			markedPersons = append(markedPersons, count)
+		}
+	}
+
+	jsonData, err := json.Marshal(map[string]interface{}{
+		"question_sets":  questionSets,
+		"marked_persons": markedPersons,
+	})
+	if err != nil {
+		q.Err = fmt.Errorf("构造 jsonData 失败: %v", err)
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+
+	q.Msg.Data = jsonData
+	q.Resp()
+}
+
+// 现场点评查看/点评
+func onSiteReviewBasicMark(ctx context.Context) {
+	//forceErr, _ := ctx.Value(ForceErrKey).(string)
+
+	q := cmn.GetCtxValue(ctx)
+	z.Info("---->" + cmn.FncName())
+
+	method := strings.ToLower(q.R.Method)
+	switch method {
+	// 获取考生列表
+	case "get":
+		var readable bool
+
+		if readable, q.Err = auth_mgt.CheckUserAPIAccessible(ctx, nil, q.Ep.Path, auth_mgt.CAPIAccessActionRead); q.Err != nil {
+			q.Err = fmt.Errorf("获取访问权限失败: %v", q.Err)
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		if !readable {
+			q.Err = errors.New("无权访问")
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		queryParams := q.R.URL.Query()
+
+		examSessionIDStr := queryParams.Get("exam_session_id")
+		if examSessionIDStr == "" {
+			q.Err = errors.New("请求参数缺少 考试场次ID")
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+		examSessionID, err := strconv.ParseInt(examSessionIDStr, 10, 64)
+		if err != nil {
+			q.Err = fmt.Errorf("examSessionIDStr 类型转化失败: %v", err)
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		questionIDStr := queryParams.Get("question_id")
+		if questionIDStr == "" {
+			q.Err = errors.New("请求参数缺少 问题ID")
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+		questionID, err := strconv.ParseInt(questionIDStr, 10, 64)
+		if err != nil {
+			q.Err = fmt.Errorf("questionIDStr 类型转化失败: %v", err)
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		keyWork := queryParams.Get("key_word") // 搜索词
+
+		commentStatus := queryParams.Get("comment_status")
+		if commentStatus != "" && commentStatus != "00" && commentStatus != "02" {
+			q.Err = errors.New("请求参数 comment_status 错误")
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		cond := QueryCondition{
+			TeacherID:     q.SysUser.ID.Int64,
+			ExamSessionID: examSessionID,
+			QuestionID:    questionID,
+		}
+
+		// 查询考生
+		examinees, rowCount, err := getStudentsByPage(ctx, queryParams, cond, []string{}, QueryStudentsReq{KeyWord: keyWork, CommentStatus: commentStatus})
+		if err != nil {
+			q.Err = fmt.Errorf("查询考生失败: %v", err)
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		markResults := make([]cmn.TMark, 0, len(examinees))
+
+		// 查询学生的批改结果
+		// 点评过的才需要查询
+		if commentStatus != "00" {
+			for _, examinee := range examinees {
+				mrs, err := QueryMarkingResults(ctx, []string{QuestionTypeExercise}, QueryCondition{TeacherID: q.SysUser.ID.Int64, ExamSessionID: examSessionID, QuestionID: questionID, ExamineeID: examinee.ExamineeID.Int64})
+				if err != nil {
+					q.Err = fmt.Errorf("查询教师对学生的批改结果失败: %v", err)
+					z.Error(q.Err.Error())
+					q.RespErr()
+					return
+				}
+
+				if len(mrs) != 0 {
+					markResults = append(markResults, mrs[0])
+				}
+			}
+		}
+
+		jsonData, err := json.Marshal(map[string]interface{}{
+			"examinees":    examinees,
+			"mark_results": markResults,
+		})
+		if err != nil {
+			q.Err = fmt.Errorf("构造 jsonData 失败: %v", err)
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		q.Msg.Data = jsonData
+		q.Msg.RowCount = int64(rowCount)
+
+	// 更新考生的批改信息
+	case "post":
+		var editable bool
+
+		if editable, q.Err = auth_mgt.CheckUserAPIAccessible(ctx, nil, q.Ep.Path, auth_mgt.CAPIAccessActionUpdate); q.Err != nil {
+			q.Err = fmt.Errorf("获取访问权限失败: %v", q.Err)
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		if !editable {
+			q.Err = errors.New("无权访问")
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+		// 直接从 Body 流中解码
+		var body cmn.ReqProto
+		err := json.NewDecoder(q.R.Body).Decode(&body)
+		if err != nil {
+			q.Err = fmt.Errorf("解析请求体失败: %v", err)
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		var markingResult cmn.TMark
+		err = json.Unmarshal(body.Data, &markingResult)
+		if err != nil {
+			q.Err = fmt.Errorf("解析 body.Data 失败: %v", err)
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		if markingResult.ExamSessionID.Int64 <= 0 {
+			q.Err = errors.New("缺少 必要的考试场次ID")
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		markingResult.TeacherID = q.SysUser.ID
+		markingResult.Creator = q.SysUser.ID
+
+		err = validateMarkingResult(markingResult)
+		if err != nil {
+			q.Err = fmt.Errorf("markingResult 校验出错误: %v", err)
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		// 1. 查询该场考试的状态是否为“进行中”
+		examSessionStatus, err := QueryExamSessionStatus(ctx, nil, markingResult.ExamSessionID.Int64)
+		if err != nil {
+			q.Err = fmt.Errorf("查询考试场次 %d 的状态失败: %v", markingResult.ExamSessionID.Int64, err)
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		if examSessionStatus != ExamSessionStatusOngoing {
+			q.Err = errors.New("该考试场次不在进行中，无法点评")
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		// 2. 查询是否已经有过批改记录
+		markResults, err := QueryMarkingResults(ctx, []string{QuestionTypeExercise}, QueryCondition{TeacherID: q.SysUser.ID.Int64})
+		if err != nil {
+			q.Err = fmt.Errorf("查询教师对学生的批改结果失败: %v", err)
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		// 3. 没有批改记录就可以批改
+		if len(markResults) != 0 {
+			q.Err = errors.New("教师已经点评过，无法继续点评")
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+		// 4. 分数校验，并进行批改结果的保存
+		err = checkAndSaveMarkingResult(ctx, nil, markingResult)
+		if err != nil {
+			q.Err = fmt.Errorf("分数校验，保存批改结果失败: %v", err)
+			z.Error(q.Err.Error())
+			q.RespErr()
+			return
+		}
+
+	default:
+		q.Err = fmt.Errorf("不支持的 HTTP 方法: %s", q.R.Method)
+		z.Error(q.Err.Error())
+		q.RespErr()
+		return
+	}
+
+	q.Resp()
+}
+
 // --------------------- AI批改 -----------------------
 
 // 自动批改处理函数，学生点击提交就会触发，导致有的学生的考卷会立即得到分数，这时候体现出“考试成绩管理‘提交’”的作用（考试必须全部批改之后才能看到成绩，练习是无所谓的） // TODO 错误需要接收然后将批改状态变为“异常”
 func AutoMark(ctx context.Context, cond QueryCondition) (err error) { // TODO 缺考的人直接批阅为0
 	forceErr, _ := ctx.Value(ForceErrKey).(string)
 
-	if cond.ExamSessionID <= 0 && cond.PracticeID <= 0 {
-		err = errors.New("exam session id / practice id 必须存在一个")
-		z.Error(err.Error())
-		return
-	}
-
-	if cond.ExamSessionID > 0 && cond.PracticeID > 0 {
-		err = errors.New("exam session id 和 practice id 不能同时存在")
+	err = validateExamSessionOrPractice(cond)
+	if err != nil {
+		err = fmt.Errorf("cond 校验出错误: %v", err)
 		z.Error(err.Error())
 		return
 	}
@@ -1053,7 +1614,6 @@ func AutoMark(ctx context.Context, cond QueryCondition) (err error) { // TODO �
 	questionStrKey := fmt.Sprintf("%s:%d", questionStrKeyPrefix, suffixId)
 
 	// 自动批改客观题，可以自己一个事务
-	// 不准备 批改教师id
 	err = markObjectiveQuestionAnswers(ctx, tx, cond, questionStrKey)
 	if err != nil {
 		err = fmt.Errorf("自动批改客观题失败: %v", err)
@@ -1108,11 +1668,6 @@ func AutoMark(ctx context.Context, cond QueryCondition) (err error) { // TODO �
 		questions = append(questions, questionSet.Questions...)
 	}
 
-	// 练习、练习错题都是使用这个 id，来查询学生的答案
-	if cond.PracticeSubmissionID > 0 {
-		markerInfo.MarkMode = "12"
-	}
-
 	// 3. 查出当前学生的所有答案（练习错题下，只需要获取错题）
 	studentAnswers, err := QueryStudentAnswers(ctx, nil, "02", cond, markerInfo)
 	if err != nil {
@@ -1139,22 +1694,12 @@ func AutoMark(ctx context.Context, cond QueryCondition) (err error) { // TODO �
 
 // 自动批改客观题 （不记录批改教师，因为存在多个教师的情况，多人批改）
 func markObjectiveQuestionAnswers(ctx context.Context, tx pgx.Tx, cond QueryCondition, questionStrKey string) error {
-	z.Info("开始进行客观题批改")
+	z.Info("开始进行客观题批改", zap.Any("cond", cond))
 
 	forceErr, _ := ctx.Value(ForceErrKey).(string)
 
 	markerInfo := MarkerInfo{
 		//MarkerID: cond.TeacherID,
-	}
-
-	if cond.ExamineeID > 0 {
-		// 查询单个考试考生
-		markerInfo.MarkMode = "04"
-	}
-
-	if cond.PracticeSubmissionID > 0 {
-		// 查询单个练习学生
-		markerInfo.MarkMode = "12" // 规定
 	}
 
 	studentAnswers, err := QueryStudentAnswers(ctx, tx, "00", cond, markerInfo)
@@ -1213,9 +1758,9 @@ func markObjectiveQuestionAnswers(ctx context.Context, tx pgx.Tx, cond QueryCond
 			mark.Score = null.FloatFrom(0) // 应对空值
 		}
 
-		markDetails := make([]MarkDetail, 0, 10)
-
 		// 客观题只有一小题，只需要赋值 score
+		markDetails := make([]MarkDetail, 0, 1)
+
 		markDetails = append(markDetails, MarkDetail{Score: mark.Score.Float64})
 
 		mark.MarkDetails, err = json.Marshal(markDetails)
@@ -1249,17 +1794,9 @@ func markObjectiveQuestionAnswers(ctx context.Context, tx pgx.Tx, cond QueryCond
 	// 没有主观题，可继续自动提交
 	z.Info("试卷没有主观题，开始执行提交操作")
 
-	if cond.PracticeWrongSubmissionID > 0 {
-		// 更新批改错题集练习的提交状态
-		_, err = UpdatePracticeWrongSubmissionStatus(ctx, tx, cond.TeacherID, []int64{cond.PracticeWrongSubmissionID}, PracticeWrongSubmissionStatusSubmitted)
-		if err != nil {
-			return fmt.Errorf("更新批改错题集练习的提交状态失败： %v", err)
-		}
-	} else {
-		err = updateToSubmissionStatus(ctx, tx, cond)
-		if err != nil {
-			return fmt.Errorf("更新 考试/练习 提交状态失败: %v", err)
-		}
+	err = updateToSubmissionStatus(ctx, tx, cond)
+	if err != nil {
+		return fmt.Errorf("更新 考试/练习 为提交状态失败: %v", err)
 	}
 
 	return nil
@@ -1273,7 +1810,7 @@ func getSubjectQuestionsFromRedis(ctx context.Context, tx pgx.Tx, cond QueryCond
 	if errors.Is(err, redis.Nil) {
 		z.Sugar().Infof("%s key 不存在，需要从数据库中查询", questionStrKey)
 
-		questions, err := QuerySubjectiveQuestions(ctx, tx, cond, MarkerInfo{})
+		questions, err := QuerySubjectiveQuestions(ctx, tx, []string{QuestionTypeFillBlank, QuestionTypeShortAnswer, QuestionTypeApplication}, cond, MarkerInfo{})
 		if err != nil {
 			return "", fmt.Errorf("查询试卷主观题失败: %v", err)
 		}
@@ -1290,7 +1827,6 @@ func getSubjectQuestionsFromRedis(ctx context.Context, tx pgx.Tx, cond QueryCond
 		if err != nil {
 			return "", fmt.Errorf("在 redis 中设置 %s key 失败: %v", questionStrKey, err)
 		}
-
 	} else if err != nil {
 		return "", fmt.Errorf("从 redis 中获取 %s key 失败: %v", questionStrKey, err)
 	} else {
@@ -1501,12 +2037,9 @@ func handleAIMarkTask(ctx context.Context, task *asynq.Task) (err error) {
 		return fmt.Errorf("任务 payload 中 的教师ID 无效")
 	}
 
-	if cond.ExamSessionID <= 0 && cond.PracticeID <= 0 {
-		return fmt.Errorf("任务 payload 中的 考试场次ID 与 练习ID 都无效")
-	}
-
-	if cond.ExamSessionID > 0 && cond.PracticeID > 0 {
-		return fmt.Errorf("任务 payload 中的 考试场次ID 与 练习ID 不能同时有效")
+	err = validateExamSessionOrPractice(cond)
+	if err != nil {
+		return fmt.Errorf("任务 payload 中的 cond 校验出错误: %v", err)
 	}
 
 	chatModel, err := ai_mark.GetChatModel()
@@ -1561,12 +2094,15 @@ func handleAIMarkTask(ctx context.Context, task *asynq.Task) (err error) {
 		questionScore := questionScoreMap[result.QuestionID]
 
 		// 分数校验
+		if aiMarkScore < 0 {
+			return fmt.Errorf("ai 所批分数小于0，ai所给分数: %f", aiMarkScore)
+		}
 		if aiMarkScore > questionScore {
 			return fmt.Errorf("ai 所批分数超出题目的分数，ai所给分数: %f，题目分数: %f", aiMarkScore, questionScore)
 		}
 
 		markDetail := MarkDetail{
-			Index:   1, // TODO 不管多少小问都是写在一个
+			Index:   1, // TODO 不管多少小问都是写在一个 // TODO 目前只有一小问
 			Score:   aiMarkScore,
 			Analyze: result.Analyze,
 		}
@@ -1611,24 +2147,13 @@ func handleAIMarkTask(ctx context.Context, task *asynq.Task) (err error) {
 		return fmt.Errorf("ai批改，保存批改后的分数失败: %v", err)
 	}
 
-	// 如果是最后一个任务, 更新为“已批改”
-
 	// 将计数器锁住
 	payloadData.CountMu.Lock()
 	defer payloadData.CountMu.Unlock()
 
+	// 如果是最后一个任务, 更新为“已批改”
 	if *payloadData.TaskTotalCount == 1 {
 		switch {
-		// 如果是错题
-		case cond.PracticeWrongSubmissionID > 0:
-			_, err = UpdatePracticeWrongSubmissionStatus(ctx, tx, payloadData.QueryCondition.TeacherID, []int64{payloadData.QueryCondition.PracticeWrongSubmissionID}, PracticeWrongSubmissionStatusSubmitted)
-			if err != nil {
-				err = fmt.Errorf("ai 批改完成之后，练习错题状态无法更改: %v", err)
-				z.Error(err.Error())
-				return
-			}
-			z.Info("更新练习错题状态成功 update state success")
-
 		// 如果是考试
 		case cond.ExamSessionID > 0:
 			redisClient := cmn.GetRedisConn()
@@ -1636,7 +2161,7 @@ func handleAIMarkTask(ctx context.Context, task *asynq.Task) (err error) {
 			examSessionMStatusUpdateKey := fmt.Sprintf("exam_session:%dstate_update", cond.ExamSessionID)
 			exists, rerr := redisClient.Exists(ctx, examSessionMStatusUpdateKey).Result()
 			if rerr != nil {
-				err = fmt.Errorf("检查定时任务状态失败: %v", err)
+				err = fmt.Errorf("检查定时任务状态失败: %v", rerr)
 				return
 			}
 
@@ -1669,19 +2194,20 @@ func handleAIMarkTask(ctx context.Context, task *asynq.Task) (err error) {
 				z.Info("定时任务已存在, 无需重复调度")
 			}
 
-		// 如果是练习
-		case cond.PracticeID > 0:
-			_, err = UpdateExamSessionOrPracticeSubmissionStatus(ctx, tx, cond.TeacherID, nil, []int64{cond.PracticeSubmissionID}, PracticeSubmissionStatusSubmitted)
+		// 如果是练习 / 错题
+		case cond.PracticeID > 0, cond.PracticeWrongSubmissionID > 0:
+			_, err = UpdateExamSessionOrPracticeSubmissionStatus(ctx, tx, cond, PracticeSubmissionStatusSubmitted)
 			if err != nil {
 				return fmt.Errorf("ai 批改完成之后，练习状态无法更改: %v", err)
 			}
-			z.Info("更新练习状态成功 update state success")
+			z.Info("更新 练习/错题 状态成功 update state success")
 		}
 
-	} else {
-		*payloadData.TaskTotalCount--
 		z.Info("有一位同学批改完毕")
+		return nil
 	}
+
+	*payloadData.TaskTotalCount--
 
 	return nil
 }
@@ -1694,7 +2220,9 @@ func taskMiddleware(handler func(ctx context.Context, task *asynq.Task) error) f
 		z.Info("等待从限流器中获取信号量")
 		err, releaseFunc := limiter.Wait(ctx)
 		if err != nil {
-			return fmt.Errorf("获取信号量失败: %v", err)
+			err = fmt.Errorf("获取信号量失败: %v", err)
+			z.Error(err.Error())
+			return err
 		}
 		defer releaseFunc() // 确保函数退出时释放信号量
 		z.Info("获取信号量成功，限流等待结束")
@@ -1765,7 +2293,7 @@ func getAIMarkTaskCB() *gobreaker.CircuitBreaker[any] {
 	return aiMarkTaskCB
 }
 
-// 定时任务用以更新考试状态"已批改"
+// 定时任务，AI批改完毕后用以更新考试状态"已批改"
 func startExamSessionStatusCheck(ctx context.Context, examSessionID, teacherID int64, initialDelay time.Duration) {
 	// 在 Goroutine 中运行定时任务，避免阻塞
 	go func() {
@@ -1812,7 +2340,7 @@ func startExamSessionStatusCheck(ctx context.Context, examSessionID, teacherID i
 
 				// 3. 所有人都已批改, 直接更新
 				if examSessionUnmarkedCount == 0 {
-					_, err = UpdateExamSessionOrPracticeSubmissionStatus(ctx, nil, teacherID, []int64{examSessionID}, nil, ExamSessionStatusSubmitted)
+					_, err = UpdateExamSessionOrPracticeSubmissionStatus(ctx, nil, QueryCondition{TeacherID: teacherID, ExamSessionID: examSessionID}, ExamSessionStatusSubmitted)
 					if err != nil {
 						z.Error(fmt.Errorf("ai 批改完成之后，考试状态无法更改: %v", err).Error())
 						return false
@@ -1833,7 +2361,7 @@ func startExamSessionStatusCheck(ctx context.Context, examSessionID, teacherID i
 
 			// “已批改"
 			case "10":
-				return true
+				return true // 结束任务
 
 			default:
 				z.Info("考试未结束, 无法更新为\"已批改\"")
@@ -1867,7 +2395,7 @@ func startExamSessionStatusCheck(ctx context.Context, examSessionID, teacherID i
 	}()
 }
 
-// --------------------- 抽象方法 -----------------------
+// --------------------- 接口公共方法 -----------------------
 
 // 提交考试（核分员）/练习
 func submitResult(ctx context.Context, cond QueryCondition) (err error) {
@@ -1876,10 +2404,17 @@ func submitResult(ctx context.Context, cond QueryCondition) (err error) {
 		return ForceErr
 	}
 
+	err = validateExamSessionOrPractice(cond)
+	if err != nil {
+		err = fmt.Errorf("cond 校验出错误: %v", err)
+		return
+	}
+
 	pgxConn := cmn.GetPgxConn()
 	tx, err := pgxConn.Begin(ctx)
 	if err != nil || forceErr == "pgxConn.Begin" {
-		return fmt.Errorf("事务开启失败: %v", err)
+		err = fmt.Errorf("事务开启失败: %v", err)
+		return
 	}
 
 	defer func() {
@@ -1900,7 +2435,7 @@ func submitResult(ctx context.Context, cond QueryCondition) (err error) {
 	}
 
 	// 1. 获取最终批改的结果
-	results, err := QuerySubjectiveQuestionsMarkingResults(ctx, cond)
+	results, err := QueryMarkingResults(ctx, []string{QuestionTypeFillBlank, QuestionTypeShortAnswer, QuestionTypeApplication, QuestionTypeExercise}, cond)
 	if err != nil || forceErr == "queryMarkingResults" {
 		err = fmt.Errorf("获取最终批改的结果: %v", err)
 		return
@@ -1913,62 +2448,112 @@ func submitResult(ctx context.Context, cond QueryCondition) (err error) {
 		return
 	}
 
-	// 3. 更新考试 / 练习的状态
+	// 3. 更新考试 / 练习的状态 为提交
 	err = updateToSubmissionStatus(ctx, tx, cond)
 	if err != nil {
-		return fmt.Errorf("更新 考试/练习 提交状态失败: %v", err)
+		return fmt.Errorf("更新 考试/练习 为提交状态失败: %v", err)
 	}
 
 	return nil
 }
 
-// 获取本次考试/练习的需要批改的题目和学生信息
-func getQuestionsAndStudentInfos(ctx context.Context, cond QueryCondition) (Detail, error) {
+// 根据场次/练习+考生id获取学生的答案和批改结果
+func getStudentAnswersAndMarkResults(ctx context.Context, cond QueryCondition) ([]byte, error) {
 	forceErr, _ := ctx.Value(ForceErrKey).(string)
-	if forceErr == "getQuestionsAndStudentInfos" {
-		return Detail{}, errors.New("")
-	}
 
 	// 1. 获取批改信息，得到mark_mode，据此判断需要获取哪一部分数据
-	markerInfo, err := QueryMarkerInfo(ctx, cond) // 根据自己的 teacher_id 查询出来的，所以 len(markerInfo.MarkInfos) == 1
+	markerInfo, err := QueryMarkerInfo(ctx, cond)
 	if err != nil {
-		return Detail{}, fmt.Errorf("获取批改信息失败: %v", err)
+		return nil, fmt.Errorf("查询批改信息失败: %v", err)
 	}
 
-	// 查不到的情况（正常情况，必定会有批改配置）
-	if len(markerInfo.MarkInfos) != 1 {
-		return Detail{}, fmt.Errorf("批改配置信息错误: %v", err)
+	markInfoLen := len(markerInfo.MarkInfos)
+	if markInfoLen != 1 {
+		return nil, fmt.Errorf("批改配置信息错误, 正常情况应为一条配置信息, 实际为 %d", markInfoLen)
 	}
 
-	// 2. 获取该老师需要批改的问题（t_mark_info 一条记录）
-	questionSets, err := QuerySubjectiveQuestions(ctx, nil, cond, markerInfo)
+	// TODO 检查
+
+	// 2. 获取学生主观题答案
+	studentAnswers, err := QueryStudentAnswers(ctx, nil, "02", cond, markerInfo)
 	if err != nil {
-		return Detail{}, fmt.Errorf("获取该老师需要批改的问题: %v", err)
+		return nil, fmt.Errorf("获取学生主观题答案失败: %v", err)
 	}
 
-	// 3. 获取需要批改的学生的信息
-	studentInfos, err := QueryStudentInfos(ctx, cond, markerInfo)
+	//authority, err := auth_mgt.GetUserAuthority(ctx)
+	//if err != nil {
+	//	return nil, fmt.Errorf("获取用户权限信息失败: %v", err)
+	//}
+	//
+	//var teacherID int64
+
+	// TODO 改
+	// 检查当前是否不是核分员的角色
+	//if authority.Role.Domain != "assess^scoreChecker" {
+	//	teacherID = q.SysUser.ID.Int64
+	//}
+
+	//cond.TeacherID = teacherID
+
+	// 3. 获取老师对该学生的批改记录
+	markingResults, err := QueryMarkingResults(ctx, []string{QuestionTypeFillBlank, QuestionTypeShortAnswer, QuestionTypeApplication}, cond)
 	if err != nil {
-		return Detail{}, fmt.Errorf("获取需要批改的学生的信息: %v", err)
+		return nil, fmt.Errorf("获取老师对该学生的批改记录失败: %v", err)
 	}
 
-	// 4. 获取已批改人数，已批改总问题数
-	markedPerson, markedQuestions, err := QueryMarkedPersonAndQuestionCount(ctx, nil, cond)
+	jsonData, err := json.Marshal(map[string]interface{}{
+		"student_answers": studentAnswers,
+		"marking_results": markingResults,
+	})
+	if forceErr == "json.Marshal-map" {
+		err = ForceErr
+	}
 	if err != nil {
-		return Detail{}, fmt.Errorf("获取已批改人数: %v", err)
+		return nil, fmt.Errorf("构造 jsonData 失败: %v", err)
 	}
 
-	return Detail{
-		TeacherID:       cond.TeacherID,
-		QuestionSets:    questionSets,
-		StudentInfos:    studentInfos,
-		MarkedPerson:    markedPerson,
-		MarkedQuestions: markedQuestions,
-	}, nil
+	return jsonData, nil
+}
+
+// 分页获取学生
+func getStudentsByPage(ctx context.Context, queryParams url.Values, cond QueryCondition, studentStatus []string, req QueryStudentsReq) ([]StudentInfo, int, error) {
+	// 页码默认 1，页大小默认 10
+	pageIndexStr := queryParams.Get("page")
+	if pageIndexStr == "" {
+		pageIndexStr = "1"
+	}
+	pageIndex, err := strconv.Atoi(pageIndexStr)
+	if err != nil {
+		return nil, -1, fmt.Errorf("pageIndexStr 类型转化失败: %v", err)
+	}
+	if pageIndex < 1 {
+		return nil, -1, errors.New("page 必须大于 0")
+	}
+	pageSizeStr := queryParams.Get("page_size")
+	if pageSizeStr == "" {
+		pageSizeStr = "10"
+	}
+	pageSize, err := strconv.Atoi(pageSizeStr)
+	if err != nil {
+		return nil, -1, fmt.Errorf("pageSizeStr 类型转化失败: %v", err)
+	}
+	if pageSize < 1 || pageSize > 1000 {
+		return nil, -1, errors.New("pageSize 必须在 1 和 1000 之间")
+	}
+
+	markerInfo, err := QueryMarkerInfo(ctx, cond)
+	if err != nil {
+		return nil, -1, fmt.Errorf("查询批改配置失败: %v", err)
+	}
+
+	req.Limit, req.Offset = pageSize, pageSize*(pageIndex-1)
+
+	// 查询考生
+	return QueryStudents(ctx, cond, markerInfo, studentStatus, req)
 }
 
 // 保存批改结果，并返回已批改数和总批改题目
-func saveMarkingResults(ctx context.Context, teacherID int64, reqBody io.Reader) (markedInfoJson []byte, err error) {
+func saveMarkingResults(ctx context.Context, reqBody io.Reader) (markedInfoJson []byte, err error) {
 	forceErr, _ := ctx.Value(ForceErrKey).(string)
 	if forceErr == "saveMarkingResults" {
 		return nil, ForceErr
@@ -1982,6 +2567,8 @@ func saveMarkingResults(ctx context.Context, teacherID int64, reqBody io.Reader)
 		return
 	}
 
+	// TODO 是否有权批改这道题目
+
 	var markingResult cmn.TMark
 	err = json.Unmarshal(body.Data, &markingResult)
 	if err != nil {
@@ -1989,29 +2576,35 @@ func saveMarkingResults(ctx context.Context, teacherID int64, reqBody io.Reader)
 		return
 	}
 
-	QuestionID := markingResult.QuestionID.Int64
+	userID := cmn.GetCtxValue(ctx).SysUser.ID
 
-	if QuestionID <= 0 {
-		err = errors.New("缺少 问题ID")
-		return
+	cond := QueryCondition{
+		TeacherID:     userID.Int64,
+		PracticeID:    markingResult.PracticeID.Int64,
+		ExamSessionID: markingResult.ExamSessionID.Int64,
+		QuestionID:    markingResult.QuestionID.Int64,
 	}
 
-	examSessionID := markingResult.ExamSessionID.Int64
-	practiceID := markingResult.PracticeID.Int64
-
-	if practiceID > 0 && examSessionID > 0 {
-		err = errors.New("practiceID 和 examSessionID 不能同时存在")
-		return
+	err = validateExamSessionOrPractice(cond)
+	if err != nil {
+		return nil, fmt.Errorf("cond 校验出错误: %v", err)
 	}
 
-	if practiceID <= 0 && examSessionID <= 0 {
-		err = errors.New("practiceID 和 examSessionID 必须存在一个")
-		return
+	markingResult.Creator = userID // 批改员/核分员
+
+	// 如果是核分员
+	if false {
+		if markingResult.TeacherID.Int64 <= 0 {
+			err = errors.New("缺少 老师ID error teacher")
+			return
+		}
+	} else {
+		markingResult.TeacherID = userID
 	}
 
-	if markingResult.ExamineeID.Int64 <= 0 {
-		err = errors.New("缺少 学生ID")
-		return
+	err = validateMarkingResult(markingResult)
+	if err != nil {
+		return nil, fmt.Errorf("markingResult 校验出错误: %v", err)
 	}
 
 	pgxConn := cmn.GetPgxConn()
@@ -2034,13 +2627,6 @@ func saveMarkingResults(ctx context.Context, teacherID int64, reqBody io.Reader)
 		}
 	}()
 
-	cond := QueryCondition{
-		TeacherID:     teacherID,
-		PracticeID:    practiceID,
-		ExamSessionID: examSessionID,
-		QuestionID:    QuestionID,
-	}
-
 	// 考试特判
 	if cond.ExamSessionID > 0 {
 		examSessionStatus, qerr := QueryExamSessionStatus(ctx, nil, cond.ExamSessionID)
@@ -2049,11 +2635,10 @@ func saveMarkingResults(ctx context.Context, teacherID int64, reqBody io.Reader)
 			return
 		}
 
-		z.Info("examSessionStatus", zap.Any("examSessionStatus", examSessionStatus))
 		// 1. 检查是否考试状态是"已结束"
 		if examSessionStatus == "06" {
 			// 更新为"批改中"
-			_, err = UpdateExamSessionOrPracticeSubmissionStatus(ctx, tx, teacherID, []int64{cond.ExamSessionID}, nil, PracticeSubmissionStatusSubmitted)
+			_, err = UpdateExamSessionOrPracticeSubmissionStatus(ctx, tx, cond, PracticeSubmissionStatusSubmitted)
 			if err != nil {
 				err = fmt.Errorf("更新考试状态失败: %v", err)
 				return
@@ -2061,87 +2646,14 @@ func saveMarkingResults(ctx context.Context, teacherID int64, reqBody io.Reader)
 		}
 	}
 
-	// 2. 分数校验
-	// 查询该问题
-	questionSets, err := QuerySubjectiveQuestions(ctx, tx, cond, MarkerInfo{})
+	// 2. 分数校验并保存批改
+	err = checkAndSaveMarkingResult(ctx, tx, markingResult)
 	if err != nil {
-		err = fmt.Errorf("查询问题失败: %v", err)
+		err = fmt.Errorf("分数校验，保存批改结果失败: %v", err)
 		return
 	}
 
-	if len(questionSets) != 1 {
-		err = fmt.Errorf("查询得到的题组数目应为 1，实际为 %d", len(questionSets))
-		return
-	}
-
-	if len(questionSets[0].Questions) != 1 {
-		err = fmt.Errorf("查询得到的题目数目应为 1，实际为 %d", len(questionSets[0].Questions))
-		return
-	}
-
-	// 得到该小题的分数
-	var givenScores []struct {
-		Index int64
-		Score float64
-	}
-	err = json.Unmarshal(questionSets[0].Questions[0].Answers, &givenScores)
-	if err != nil {
-		err = fmt.Errorf("解析 questionSets[0].Questions[0].Answers 失败：%v", err)
-		return
-	}
-
-	// 获取前端返回的批改结果
-	var markDetails []MarkDetail
-	err = json.Unmarshal(markingResult.MarkDetails, &markDetails)
-	if err != nil {
-		err = fmt.Errorf("解析 markingResult.MarkDetails 失败: %v", err)
-		return
-	}
-
-	questionLen := int64(len(givenScores))
-
-	// index -> score
-	givenScoresMap := make(map[int64]float64, questionLen)
-	for _, givenScore := range givenScores {
-		givenScoresMap[givenScore.Index] = givenScore.Score
-	}
-
-	// 批改时计算的小题批改后的总分
-	var markingTotalScore float64
-
-	for _, markDetail := range markDetails {
-		// 1. 校验题目序号
-		index := int64(markDetail.Index)
-		if index > questionLen {
-			err = fmt.Errorf("所批分数的题目小题的序号超出题目范围，超出的序号是 %d，实际最多为 %d", index, questionLen)
-			return
-		}
-
-		// 2. 检验小题分数大小
-		givenScore := givenScoresMap[index]
-		if markDetail.Score > givenScore {
-			err = fmt.Errorf("所批分数超出题目小题的分数，小题为 %d，超出的分数是 %f，实际最多为 %f", markDetail.Index, markDetail.Score, givenScore)
-			return
-		} else {
-			markingTotalScore += markDetail.Score
-		}
-	}
-
-	// 3. 验证所给总分大小（因为总分是单独一个字段）
-	givenTotalScore := questionSets[0].Score
-	if markingTotalScore > givenTotalScore {
-		err = fmt.Errorf("所批总分数超出题目总分数，超出的分数是 %f，实际最多为 %f", markingTotalScore, givenTotalScore)
-		return
-	}
-
-	// 4. 保存该批改记录
-	_, err = UpsertMarkingResults(ctx, tx, []cmn.TMark{markingResult})
-	if err != nil || forceErr == "insertOrUpdateMarkingResults" {
-		err = fmt.Errorf("保存批改记录失败: %v", err)
-		return
-	}
-
-	// 5. 查询已批改学生人数和问题数
+	// 3. 查询已批改学生人数和问题数
 	markedPerson, markedQuestions, err := QueryMarkedPersonAndQuestionCount(ctx, tx, cond)
 	if err != nil || forceErr == "queryMarkedPersonAndQuestionCount" {
 		err = fmt.Errorf("查询已批改学生人数和问题数失败: %v", err)
@@ -2273,7 +2785,7 @@ func HandleMarkerInfo(ctx context.Context, tx *pgx.Tx, teacherID int64, req Hand
 			markerInfo := MarkerInfo{}
 
 			// 查询这张试卷的所有主观题题组
-			questionSets, err := QuerySubjectiveQuestions(ctx, nil, cond, markerInfo)
+			questionSets, err := QuerySubjectiveQuestions(ctx, nil, []string{QuestionTypeFillBlank, QuestionTypeShortAnswer, QuestionTypeApplication}, cond, markerInfo)
 			if err != nil {
 				err = fmt.Errorf("查询试卷的主观题目失败: %v", err)
 				z.Error(err.Error())
@@ -2390,20 +2902,92 @@ func HandleMarkerInfo(ctx context.Context, tx *pgx.Tx, teacherID int64, req Hand
 // 根据 cond 判断更新考试 / 练习的状态
 func updateToSubmissionStatus(ctx context.Context, tx pgx.Tx, cond QueryCondition) error {
 	var status string
-	var examSessionIDs []int64
-	var practiceSubmissionIDs []int64
 
 	if cond.ExamSessionID > 0 {
 		status = ExamSessionStatusSubmitted
-		examSessionIDs = []int64{cond.ExamSessionID}
-	} else if cond.PracticeSubmissionID > 0 {
+	} else {
 		status = PracticeSubmissionStatusSubmitted
-		practiceSubmissionIDs = []int64{cond.PracticeSubmissionID}
 	}
 
-	_, err := UpdateExamSessionOrPracticeSubmissionStatus(ctx, tx, cond.TeacherID, examSessionIDs, practiceSubmissionIDs, status)
+	_, err := UpdateExamSessionOrPracticeSubmissionStatus(ctx, tx, cond, status)
 	if err != nil {
-		return err
+		return fmt.Errorf("更新 考试/练习提交 的状态失败: %v", err)
+	}
+
+	return nil
+}
+
+// 分数校验并保存批改结果
+func checkAndSaveMarkingResult(ctx context.Context, tx pgx.Tx, markingResult cmn.TMark) error {
+	// 1. 查询问题
+	questionSets, err := QuerySubjectiveQuestions(ctx, tx, []string{QuestionTypeFillBlank, QuestionTypeShortAnswer, QuestionTypeApplication, QuestionTypeExercise}, QueryCondition{QuestionID: markingResult.QuestionID.Int64}, MarkerInfo{})
+	if err != nil {
+		return fmt.Errorf("查询问题失败: %v", err)
+	}
+
+	if len(questionSets) != 1 {
+		return fmt.Errorf("查询得到的题组数目应为 1，实际为 %d", len(questionSets))
+	}
+
+	if len(questionSets[0].Questions) != 1 {
+		return fmt.Errorf("查询得到的题目数目应为 1，实际为 %d", len(questionSets[0].Questions))
+	}
+
+	// 2. 得到该小题的分数
+	var givenScores []struct {
+		Index int64
+		Score float64
+	}
+	err = json.Unmarshal(questionSets[0].Questions[0].Answers, &givenScores)
+	if err != nil {
+		return fmt.Errorf("解析 questionSets[0].Questions[0].Answers 失败：%v", err)
+	}
+
+	// 3. 获取前端返回的批改结果
+	var markDetails []MarkDetail
+	err = json.Unmarshal(markingResult.MarkDetails, &markDetails)
+	if err != nil {
+		return fmt.Errorf("解析 markingResult.MarkDetails 失败: %v", err)
+	}
+
+	questionLen := int64(len(givenScores))
+
+	// index -> score
+	givenScoresMap := make(map[int64]float64, questionLen)
+	for _, givenScore := range givenScores {
+		givenScoresMap[givenScore.Index] = givenScore.Score
+	}
+
+	// 批改时计算的小题批改后的总分
+	var markingTotalScore float64
+
+	for _, markDetail := range markDetails {
+		// 1. 校验题目序号
+		index := int64(markDetail.Index)
+		if index > questionLen {
+			return fmt.Errorf("所批分数的题目小题的序号超出题目范围，超出的序号是 %d，实际最多为 %d", index, questionLen)
+		}
+
+		// 2. 检验小题分数大小
+		givenScore := givenScoresMap[index]
+		markingScore := markDetail.Score
+		if markingScore < 0 {
+			return fmt.Errorf("所批分数不能为负数，小题为 %d，分数为 %f", markDetail.Index, markingScore)
+		}
+		if markingScore > givenScore {
+			return fmt.Errorf("所批分数超出题目小题的分数，小题为 %d，超出的分数是 %f，实际最多为 %f", markDetail.Index, markingScore, givenScore)
+		} else {
+			markingTotalScore += markingScore
+		}
+	}
+
+	// 赋值总分
+	markingResult.Score = null.FloatFrom(markingTotalScore)
+
+	// 3. 保存该批改记录
+	_, err = UpsertMarkingResults(ctx, tx, []cmn.TMark{markingResult})
+	if err != nil {
+		return fmt.Errorf("保存批改记录失败: %v", err)
 	}
 
 	return nil
