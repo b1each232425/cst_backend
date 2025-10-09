@@ -320,14 +320,14 @@ func TestGetExamList(t *testing.T) {
 			expectedErrStr: "构造 examsJson 失败",
 		},
 		{
-			name: "QueryExamList error",
+			name: "QueryExams error",
 			params: map[string]string{
 				"page":      "1",
 				"page_size": "10",
 				"exam_name": "",
 				"status":    "",
 			},
-			forceErr:       "QueryExamList",
+			forceErr:       "QueryExams",
 			expectedErrStr: "查询考试列表失败",
 		},
 	}
@@ -442,14 +442,14 @@ func TestGetPracticeList(t *testing.T) {
 			expectedErrStr: "构造 practicesJson 失败",
 		},
 		{
-			name: "QueryPracticeList Error",
+			name: "QueryPractices Error",
 			params: map[string]string{
 				"page":      "1",
 				"page_size": "10",
 				"exam_name": "",
 				"status":    "",
 			},
-			forceErr:       "QueryPracticeList",
+			forceErr:       "QueryPractices",
 			expectedErrStr: "查询练习列表失败",
 		},
 	}
@@ -575,7 +575,7 @@ func TestExamSessionDetail(t *testing.T) {
 
 			ctx = context.WithValue(ctx, cmn.QNearKey, newMockServiceCtx("/mark/exam-session/detail", tt.requestMethod, tt.params, tt.body))
 
-			examSessionDetail(ctx)
+			examSessionMark(ctx)
 
 			q := cmn.GetCtxValue(ctx)
 			z.Sugar().Infof("getPracticeList: %+v", q.Msg)
@@ -765,147 +765,147 @@ func TestPracticeStudentSubmission(t *testing.T) {
 	}
 }
 
-func TestGetStudentAnswersAndMarkResults(t *testing.T) {
-	tests := []struct {
-		name             string
-		params           map[string]string
-		requestMethod    string
-		forceErr         string
-		expectedErrStr   string
-		expectedRowCount int
-	}{
-		{
-			name: "success",
-			params: map[string]string{
-				"practice_id":            "22",
-				"practice_submission_id": "2404",
-			},
-		},
-		{
-			name:           "error: 请求方法错误",
-			requestMethod:  "POST",
-			expectedErrStr: "不支持的 HTTP 方法",
-		},
-		{
-			name:           "error: 考试ID、练习ID 都不包含",
-			expectedErrStr: "请求参数必须包含 练习ID 或者 考试场次ID 中的一个",
-		},
-		{
-			name: "error: 同时包含 考试ID、练习ID",
-			params: map[string]string{
-				"exam_session_id": "102",
-				"practice_id":     "22",
-			},
-			expectedErrStr: "请求参数不能同时包含 练习ID 和 考试场次ID",
-		},
-		{
-			name: "error: examSessionIDStr 无法转化为 int64",
-			params: map[string]string{
-				"exam_session_id": "102",
-			},
-			expectedErrStr: "examSessionIDStr 类型转化失败",
-		},
-		{
-			name: "error: 缺少考生 ID",
-			params: map[string]string{
-				"exam_session_id": "102",
-			},
-			expectedErrStr: "缺少 考生ID",
-		},
-		{
-			name: "error: examineeIDStr 无法转化为 int64",
-			params: map[string]string{
-				"exam_session_id": "102",
-				"examinee_id":     "abc",
-			},
-			expectedErrStr: "examineeIDStr 类型转化失败",
-		},
-		{
-			name: "error: 缺少练习提交 ID",
-			params: map[string]string{
-				"practice_id": "22",
-			},
-			expectedErrStr: "缺少 练习提交ID",
-		},
-		{
-			name: "error: practiceSubmissionIDStr 无法转化为 int64",
-			params: map[string]string{
-				"practice_id":            "22",
-				"practice_submission_id": "abc",
-			},
-			expectedErrStr: "practiceSubmissionIDStr 类型转化失败",
-		},
-		{
-			name: "error: QueryMarkerInfo 执行失败",
-			params: map[string]string{
-				"practice_id":            "22",
-				"practice_submission_id": "2404",
-			},
-			forceErr:       "QueryMarkerInfo",
-			expectedErrStr: "查询批改信息失败",
-		},
-		{
-			name: "error: QueryStudentAnswers 执行失败",
-			params: map[string]string{
-				"practice_id":            "22",
-				"practice_submission_id": "2404",
-			},
-			forceErr:       "QueryStudentAnswers",
-			expectedErrStr: "获取学生主观题答案失败",
-		},
-		{
-			name: "error: QuerySubjectiveQuestionsMarkingResults 执行失败",
-			params: map[string]string{
-				"practice_id":            "22",
-				"practice_submission_id": "2404",
-			},
-			forceErr:       "QuerySubjectiveQuestionsMarkingResults",
-			expectedErrStr: "获取老师对该学生的批改记录失败",
-		},
-		{
-			name: "error: 构造 jsonData 失败",
-			params: map[string]string{
-				"practice_id":            "22",
-				"practice_submission_id": "2404",
-			},
-			forceErr:       "json.Marshal-map",
-			expectedErrStr: "构造 jsonData 失败",
-		},
-	}
-
-	initTestData()
-	defer cleanTestData()
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			var method string
-			if tt.requestMethod != "" {
-				method = tt.requestMethod
-			} else {
-				method = "GET"
-			}
-
-			ctx := context.Background()
-			if tt.forceErr != "" {
-				ctx = context.WithValue(ctx, ForceErrKey, tt.forceErr)
-			}
-
-			ctx = context.WithValue(ctx, cmn.QNearKey, newMockServiceCtx("/mark/student-answers-and-mark-results", method, tt.params, nil))
-
-			getStudentAnswersAndMarkResults(ctx)
-
-			q := cmn.GetCtxValue(ctx)
-			z.Sugar().Infof("getStudentAnswersAndMarkResults: %+v", q.Msg)
-
-			if tt.expectedErrStr != "" {
-				assert.Error(t, q.Err, "期待获取到错误，但却没有错误")
-				assert.Contains(t, q.Err.Error(), tt.expectedErrStr)
-			} else {
-				assert.NoErrorf(t, q.Err, "期待没有错误，但却获取到错误: %v", q.Err)
-			}
-		})
-	}
-}
+//func TestGetStudentAnswersAndMarkResults(t *testing.T) {
+//	tests := []struct {
+//		name             string
+//		params           map[string]string
+//		requestMethod    string
+//		forceErr         string
+//		expectedErrStr   string
+//		expectedRowCount int
+//	}{
+//		{
+//			name: "success",
+//			params: map[string]string{
+//				"practice_id":            "22",
+//				"practice_submission_id": "2404",
+//			},
+//		},
+//		{
+//			name:           "error: 请求方法错误",
+//			requestMethod:  "POST",
+//			expectedErrStr: "不支持的 HTTP 方法",
+//		},
+//		{
+//			name:           "error: 考试ID、练习ID 都不包含",
+//			expectedErrStr: "请求参数必须包含 练习ID 或者 考试场次ID 中的一个",
+//		},
+//		{
+//			name: "error: 同时包含 考试ID、练习ID",
+//			params: map[string]string{
+//				"exam_session_id": "102",
+//				"practice_id":     "22",
+//			},
+//			expectedErrStr: "请求参数不能同时包含 练习ID 和 考试场次ID",
+//		},
+//		{
+//			name: "error: examSessionIDStr 无法转化为 int64",
+//			params: map[string]string{
+//				"exam_session_id": "102",
+//			},
+//			expectedErrStr: "examSessionIDStr 类型转化失败",
+//		},
+//		{
+//			name: "error: 缺少考生 ID",
+//			params: map[string]string{
+//				"exam_session_id": "102",
+//			},
+//			expectedErrStr: "缺少 考生ID",
+//		},
+//		{
+//			name: "error: examineeIDStr 无法转化为 int64",
+//			params: map[string]string{
+//				"exam_session_id": "102",
+//				"examinee_id":     "abc",
+//			},
+//			expectedErrStr: "examineeIDStr 类型转化失败",
+//		},
+//		{
+//			name: "error: 缺少练习提交 ID",
+//			params: map[string]string{
+//				"practice_id": "22",
+//			},
+//			expectedErrStr: "缺少 练习提交ID",
+//		},
+//		{
+//			name: "error: practiceSubmissionIDStr 无法转化为 int64",
+//			params: map[string]string{
+//				"practice_id":            "22",
+//				"practice_submission_id": "abc",
+//			},
+//			expectedErrStr: "practiceSubmissionIDStr 类型转化失败",
+//		},
+//		{
+//			name: "error: QueryMarkerInfo 执行失败",
+//			params: map[string]string{
+//				"practice_id":            "22",
+//				"practice_submission_id": "2404",
+//			},
+//			forceErr:       "QueryMarkerInfo",
+//			expectedErrStr: "查询批改信息失败",
+//		},
+//		{
+//			name: "error: QueryStudentAnswers 执行失败",
+//			params: map[string]string{
+//				"practice_id":            "22",
+//				"practice_submission_id": "2404",
+//			},
+//			forceErr:       "QueryStudentAnswers",
+//			expectedErrStr: "获取学生主观题答案失败",
+//		},
+//		{
+//			name: "error: QueryMarkingResults 执行失败",
+//			params: map[string]string{
+//				"practice_id":            "22",
+//				"practice_submission_id": "2404",
+//			},
+//			forceErr:       "QueryMarkingResults",
+//			expectedErrStr: "获取老师对该学生的批改记录失败",
+//		},
+//		{
+//			name: "error: 构造 jsonData 失败",
+//			params: map[string]string{
+//				"practice_id":            "22",
+//				"practice_submission_id": "2404",
+//			},
+//			forceErr:       "json.Marshal-map",
+//			expectedErrStr: "构造 jsonData 失败",
+//		},
+//	}
+//
+//	initTestData()
+//	defer cleanTestData()
+//
+//	for _, tt := range tests {
+//		t.Run(tt.name, func(t *testing.T) {
+//			var method string
+//			if tt.requestMethod != "" {
+//				method = tt.requestMethod
+//			} else {
+//				method = "GET"
+//			}
+//
+//			ctx := context.Background()
+//			if tt.forceErr != "" {
+//				ctx = context.WithValue(ctx, ForceErrKey, tt.forceErr)
+//			}
+//
+//			ctx = context.WithValue(ctx, cmn.QNearKey, newMockServiceCtx("/mark/student-answers-and-mark-results", method, tt.params, nil))
+//
+//			getStudentAnswersAndMarkResults(ctx)
+//
+//			q := cmn.GetCtxValue(ctx)
+//			z.Sugar().Infof("getStudentAnswersAndMarkResults: %+v", q.Msg)
+//
+//			if tt.expectedErrStr != "" {
+//				assert.Error(t, q.Err, "期待获取到错误，但却没有错误")
+//				assert.Contains(t, q.Err.Error(), tt.expectedErrStr)
+//			} else {
+//				assert.NoErrorf(t, q.Err, "期待没有错误，但却获取到错误: %v", q.Err)
+//			}
+//		})
+//	}
+//}
 
 //func TestMarkObjectiveQuestionAnswers(t *testing.T) {
 //	z := cmn.GetLogger()
@@ -1362,11 +1362,11 @@ func TestGetStudentAnswersAndMarkResults(t *testing.T) {
 //			expectedErrStr: "error parsing practice_submission_id",
 //		},
 //		{
-//			name: "QuerySubjectiveQuestionsMarkingResults-error",
+//			name: "QueryMarkingResults-error",
 //			params: map[string]string{
 //				"exam_session_id": "102",
 //			},
-//			forceErr:       "QuerySubjectiveQuestionsMarkingResults-pgxConn.Query",
+//			forceErr:       "QueryMarkingResults-pgxConn.Query",
 //			expectedErrStr: "exec getMarkingResults SQL error",
 //		},
 //		{

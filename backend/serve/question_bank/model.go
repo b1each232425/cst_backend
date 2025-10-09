@@ -1,5 +1,10 @@
 package question_bank
 
+import (
+	"github.com/jmoiron/sqlx/types"
+	"w2w.io/cmn"
+)
+
 // 查询题库参数结构体
 type QueryQuestionBankParams struct {
 	BankID   int64  // 题库ID
@@ -7,6 +12,7 @@ type QueryQuestionBankParams struct {
 	Page     int64  // 分页页码
 	PageSize int64  // 分页大小
 	Creator  int64  // 用户ID
+	Type     string // 题库类型
 }
 
 // 查询题目参数结构体
@@ -16,7 +22,7 @@ type QueryQuestionsParams struct {
 	Content    string   // 题目内容
 	Tags       []string // 题目标签
 	Type       []string // 题目类型
-	Difficulty []int64  // 题目难度
+	Difficulty []string // 题目难度
 	Page       int64    // 分页页码
 	PageSize   int64    // 分页大小
 }
@@ -49,7 +55,7 @@ type QuestionBankDetail struct {
 	QuestionCount        int64    `json:"question_count"`        // 题目数量
 	QuestionTypes        []string `json:"question_types"`        // 题目涉及所有类型(去重),00-单选,02-多选,04-判断,06-填空,08-简答
 	QuestionTags         []string `json:"question_tags"`         // 题目涉及所有标签(去重)
-	QuestionDifficulties []int64  `json:"question_difficulties"` // 题目涉及所有难度(去重),0-简单,1-一般,2-困难
+	QuestionDifficulties []string `json:"question_difficulties"` // 题目涉及所有难度(去重),00-易,02-较易,04-中,06-较难,08-难
 }
 
 // QuestionFile 题目附件结构体
@@ -58,4 +64,37 @@ type QuestionFile struct {
 	CheckSum   string `json:"checksum" validate:"required"`    // 文件摘要
 	Name       string `json:"name" validate:"required"`        // 文件名
 	Size       int64  `json:"size" validate:"required"`        // 文件大小
+}
+
+// QuestionWithAllKnowledges 包含知识点库所有知识点的题目结构体
+type QuestionWithAllKnowledges struct {
+	cmn.TQuestion
+	AllKnowledges types.JSONText `json:"allKnowledges,omitempty"` // 知识点库的所有知识点
+}
+
+// QuestionDifficultyCount 题目难度统计
+type QuestionDifficultyCount struct {
+	DifficultyName string `json:"difficultyName"` // 难度名称
+	DifficultyCode string `json:"difficultyCode"` // 难度代码
+	Count          int64  `json:"count"`          // 该难度题目总数
+}
+
+// QuestionTypeCount 题型统计信息
+type QuestionTypeCount struct {
+	TypeName     string                    `json:"typeName"`     // 题型名称
+	TypeCode     string                    `json:"typeCode"`     // 题型代码
+	Count        int64                     `json:"count"`        // 该题型题目总数
+	Difficulties []QuestionDifficultyCount `json:"difficulties"` // 该题型下的各难度统计
+}
+
+// QuestionBankStats 题库统计信息（简化版）
+type QuestionBankStats struct {
+	TotalCount int64               `json:"totalCount"` // 题目总数
+	Types      []QuestionTypeCount `json:"types"`      // 各题型统计
+}
+
+// TVQuestionBankWithStats 包含统计信息的题库结构体
+type TVQuestionBankWithStats struct {
+	cmn.TVQuestionBank
+	Stats QuestionBankStats `json:"stats"` // 统计信息
 }

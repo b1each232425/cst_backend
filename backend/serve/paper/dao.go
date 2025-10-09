@@ -1,7 +1,241 @@
+/*
+ * @Author: WangKaidun 1597225095@qq.com
+ * @Date: 2025-10-01 10:58:31
+ * @LastEditors: WangKaidun 1597225095@qq.com
+ * @LastEditTime: 2025-10-03 22:34:56
+ * @FilePath: \assess\backend\serve\paper\dao.go
+ * @Description: 组卷计划关于数据库操作的函数
+ * Copyright (c) 2025 by WangKaidun 1597225095@qq.com, All Rights Reserved.
+ */
 package paper
 
-//func ValidateExistingPapers(ctx context.Context, tx pgx.Tx, paperIDs []int64) ([]int64, error) {
-//	if len(paperIDs) == 0 {
+import (
+	"context"
+
+	"github.com/jackc/pgx/v5"
+	"w2w.io/cmn"
+	"w2w.io/null"
+)
+
+// 新建组卷计划
+func InsertPaperGenerationPlan(paperGenerationPlan *cmn.TPaperGenerationPlan, userID, domainID int64, ctx context.Context) error {
+	// 设置域ID
+	paperGenerationPlan.DomainID = null.IntFrom(domainID)
+
+	// 如果 QuestionConfig 为空或为 null，则初始化为空数组
+	if len(paperGenerationPlan.QuestionConfig) == 0 || string(paperGenerationPlan.QuestionConfig) == "null" {
+		paperGenerationPlan.QuestionConfig = []byte("[]")
+	}
+
+	// 如果 Tags 为空或为 null，则初始化为空数组
+	if len(paperGenerationPlan.Tags) == 0 || string(paperGenerationPlan.Tags) == "null" {
+		paperGenerationPlan.Tags = []byte("[]")
+	}
+
+	// 设置创建者和创建时间
+	paperGenerationPlan.Creator = null.IntFrom(userID)
+	paperGenerationPlan.CreateTime = null.IntFrom(cmn.GetNowInMS())
+
+	// 设置更新者和更新时间
+	paperGenerationPlan.UpdatedBy = null.IntFrom(userID)
+	paperGenerationPlan.UpdateTime = null.IntFrom(cmn.GetNowInMS())
+
+	// 设置状态
+	paperGenerationPlan.Status = null.StringFrom("00")
+
+	// 获取数据库连接
+	conn := cmn.GetPgxConn()
+
+	querySql := `INSERT INTO t_paper_generation_plan 
+		(domain_id,
+			knowledge_bank_id,
+			name,
+			category,
+			level,
+			suggested_duration,
+			description,
+			tags,
+			question_bank_ids,
+			paper_count,
+			question_config,
+			creator,
+			create_time,
+			updated_by,
+			update_time,
+			addi,
+			status)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+		RETURNING id`
+	err := conn.QueryRow(
+		ctx,
+		querySql,
+		paperGenerationPlan.DomainID.Int64,
+		paperGenerationPlan.KnowledgeBankID.Int64,
+		paperGenerationPlan.Name.String,
+		paperGenerationPlan.Category.String,
+		paperGenerationPlan.Level.String,
+		paperGenerationPlan.SuggestedDuration.Int64,
+		paperGenerationPlan.Description.String,
+		paperGenerationPlan.Tags,
+		paperGenerationPlan.QuestionBankIds,
+		paperGenerationPlan.PaperCount.Int64,
+		paperGenerationPlan.QuestionConfig,
+		paperGenerationPlan.Creator.Int64,
+		paperGenerationPlan.CreateTime.Int64,
+		paperGenerationPlan.UpdatedBy.Int64,
+		paperGenerationPlan.UpdateTime.Int64,
+		paperGenerationPlan.Addi,
+		paperGenerationPlan.Status.String,
+	).Scan(&paperGenerationPlan.ID)
+
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// 获取组卷计划创建者和状态
+func GetPaperGenerationPlanCreatorAndStatus(paperGenerationPlanID int64, ctx context.Context) (creatorID int64, status string, err error) {
+	// 获取数据库连接
+	conn := cmn.GetPgxConn()
+
+	err = conn.QueryRow(ctx, `SELECT creator, status FROM t_paper_generation_plan WHERE id = $1`, paperGenerationPlanID).Scan(&creatorID, &status)
+	if err != nil {
+		return 0, "", err
+	}
+
+	return creatorID, status, nil
+}
+
+// 保存组卷计划
+func UpdatePaperGenerationPlan(paperGenerationPlan *cmn.TPaperGenerationPlan, userID, domainID int64, ctx context.Context) error {
+	// 获取数据库连接
+	conn := cmn.GetPgxConn()
+
+	// 如果 QuestionConfig 为空或为 null，则初始化为空数组
+	if len(paperGenerationPlan.QuestionConfig) == 0 || string(paperGenerationPlan.QuestionConfig) == "null" {
+		paperGenerationPlan.QuestionConfig = []byte("[]")
+	}
+
+	// 如果 Tags 为空或为 null，则初始化为空数组
+	if len(paperGenerationPlan.Tags) == 0 || string(paperGenerationPlan.Tags) == "null" {
+		paperGenerationPlan.Tags = []byte("[]")
+	}
+
+	querySql := `UPDATE t_paper_generation_plan
+		SET knowledge_bank_id = $1,
+			name = $2,
+			category = $3,
+			level = $4,
+			suggested_duration = $5,
+			description = $6,
+			tags = $7,
+			question_bank_ids = $8,
+			paper_count = $9,
+			question_config = $10,
+			updated_by = $11,
+			update_time = $12
+		WHERE id = $13`
+	_, err := conn.Exec(
+		ctx,
+		querySql,
+		paperGenerationPlan.KnowledgeBankID.Int64,
+		paperGenerationPlan.Name.String,
+		paperGenerationPlan.Category.String,
+		paperGenerationPlan.Level.String,
+		paperGenerationPlan.SuggestedDuration.Int64,
+		paperGenerationPlan.Description.String,
+		paperGenerationPlan.Tags,
+		paperGenerationPlan.QuestionBankIds,
+		paperGenerationPlan.PaperCount.Int64,
+		paperGenerationPlan.QuestionConfig,
+		userID,
+		cmn.GetNowInMS(),
+		paperGenerationPlan.ID.Int64,
+	)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// 获取组卷计划
+func GetPaperGenerationPlan(id int64, ctx context.Context) (paperGenerationPlan *cmn.TPaperGenerationPlan, err error) {
+	// 获取数据库连接
+	conn := cmn.GetPgxConn()
+
+	querySql := `SELECT
+		id,
+		domain_id,
+		knowledge_bank_id,
+		name,
+		category,
+		level,
+		suggested_duration,
+		description,
+		tags,
+		question_bank_ids,
+		paper_count,
+		question_config,
+		creator,
+		create_time,
+		updated_by,
+		update_time,
+		addi,
+		status
+		FROM t_paper_generation_plan WHERE id = $1`
+
+	// 初始化结构体指针
+	paperGenerationPlan = &cmn.TPaperGenerationPlan{}
+
+	err = conn.QueryRow(ctx, querySql, id).Scan(
+		&paperGenerationPlan.ID,
+		&paperGenerationPlan.DomainID,
+		&paperGenerationPlan.KnowledgeBankID,
+		&paperGenerationPlan.Name,
+		&paperGenerationPlan.Category,
+		&paperGenerationPlan.Level,
+		&paperGenerationPlan.SuggestedDuration,
+		&paperGenerationPlan.Description,
+		&paperGenerationPlan.Tags,
+		&paperGenerationPlan.QuestionBankIds,
+		&paperGenerationPlan.PaperCount,
+		&paperGenerationPlan.QuestionConfig,
+		&paperGenerationPlan.Creator,
+		&paperGenerationPlan.CreateTime,
+		&paperGenerationPlan.UpdatedBy,
+		&paperGenerationPlan.UpdateTime,
+		&paperGenerationPlan.Addi,
+		&paperGenerationPlan.Status,
+	)
+	if err != nil {
+		return nil, err
+	}
+	return paperGenerationPlan, nil
+}
+
+// 删除组卷计划（批量）
+func DeletePaperGenerationPlan(ids []int64, userID int64, tx pgx.Tx, ctx context.Context) error {
+	_, err := tx.Exec(
+		ctx,
+		`UPDATE t_paper_generation_plan
+			SET status = $1,
+			updated_by = $2,
+			update_time = $3
+		WHERE id = ANY($4)`,
+		PaperGenerationPlanStatusDeleted,
+		userID,
+		cmn.GetNowInMS(),
+		ids,
+	)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
 //		z.Error(ErrEmptyPaperIDs.Error())
 //		return []int64{}, nil
 //	}

@@ -3,7 +3,9 @@ package mark
 import (
 	"errors"
 	"math/rand"
+	"strings"
 	"time"
+	"w2w.io/cmn"
 )
 
 // 比较切片内容（不限数据顺序）
@@ -71,6 +73,59 @@ func randomSplit[T any](slice []T, n int) ([][]T, error) {
 	}
 
 	return result, nil
+}
+
+// 校验 QueryCondition
+func validateExamSessionOrPractice(cond QueryCondition) error {
+	if cond.PracticeID <= 0 && cond.ExamSessionID <= 0 {
+		return errors.New("无效的 cond 参数，必须包含 考试场次ID 或者 练习ID 中的一个")
+	}
+
+	if cond.PracticeID > 0 && cond.ExamSessionID > 0 {
+		return errors.New("无效的 cond 参数，不能同时包含 考试场次ID 和 练习ID")
+	}
+
+	return nil
+}
+
+// 用于 sql 拼接
+func joinWhereClause(clauses []string) string {
+	if len(clauses) == 0 {
+		return ""
+	}
+	return " AND " + strings.Join(clauses, " AND ")
+}
+
+// 校验 markingResult 是否具有必要的 ID
+func validateMarkingResult(markingResult cmn.TMark) error {
+	if markingResult.QuestionID.Int64 <= 0 {
+		return errors.New("缺少 问题ID")
+	}
+
+	if markingResult.TeacherID.Int64 <= 0 {
+		return errors.New("缺少 老师ID")
+	}
+
+	if markingResult.Creator.Int64 <= 0 {
+		return errors.New("缺少 创建者ID")
+	}
+
+	switch {
+	case markingResult.ExamSessionID.Int64 > 0:
+		if markingResult.ExamineeID.Int64 <= 0 {
+			return errors.New("缺少 考生ID")
+		}
+
+	case markingResult.PracticeID.Int64 > 0:
+		if markingResult.PracticeSubmissionID.Int64 <= 0 {
+			return errors.New("缺少 练习提交ID")
+		}
+
+	default:
+		return errors.New("必须包含 考试场次ID 或者 练习ID 其中一个")
+	}
+
+	return nil
 }
 
 // splitSlice 泛型函数，非递归地分割切片，直到每个子切片都满足条件（shouldSplit 返回 false）

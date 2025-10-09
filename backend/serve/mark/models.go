@@ -2,6 +2,7 @@ package mark
 
 import (
 	"errors"
+	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"go.uber.org/zap"
 	"sync"
 	"time"
@@ -17,16 +18,31 @@ type forceErrKey string
 
 const ForceErrKey = forceErrKey("force-err")
 
-var ForceErr = errors.New("")
+var ForceErr = errors.New("forceErr")
 
 const (
 	TaskTypeAIMarkRequest = "ai_mark:grade"
 )
 
 const (
+	ExamSessionStatusOngoing               = "04"
 	ExamSessionStatusSubmitted             = "10" // 这里其实是“已批改”
 	PracticeSubmissionStatusSubmitted      = "08"
 	PracticeWrongSubmissionStatusSubmitted = "08"
+)
+
+const (
+	//QuestionTypeSingleChoice   = "00" // 单选题
+	//QuestionTypeMultipleChoice = "02" // 多选题
+	//QuestionTypeTrueFalse      = "04" // 判断题
+	QuestionTypeFillBlank   = "06" // 填空题
+	QuestionTypeShortAnswer = "08" // 简答题
+	QuestionTypeApplication = "10" // 综合应用题
+	QuestionTypeExercise    = "12" // 综合演练题
+)
+
+const (
+	ExamineeStatusSubmitted = "10"
 )
 
 type User struct {
@@ -36,14 +52,15 @@ type User struct {
 }
 
 type QueryMarkingListReq struct {
-	User         *User     `json:"user" validate:"required"`
-	ExamName     string    `json:"exam_name" validate:"max=999"`
-	PracticeName string    `json:"practice_name" validate:"max=999"`
-	Limit        int       `json:"limit" validate:"required,gt=0,lte=1000"`
-	Offset       int       `json:"offset" validate:"gte=0"`
-	StartTime    time.Time `json:"start_time"`
-	EndTime      time.Time `json:"end_time"`
-	Status       string    `json:"status"`
+	User          *User     `json:"user" validate:"required"`
+	ExamName      string    `json:"exam_name" validate:"max=999"`
+	PracticeName  string    `json:"practice_name" validate:"max=999"`
+	Limit         int       `json:"limit" validate:"gte=0,lte=1000"`
+	Offset        int       `json:"offset" validate:"gte=0"`
+	StartTime     time.Time `json:"start_time"`
+	EndTime       time.Time `json:"end_time"`
+	Status        string    `json:"status"`
+	ExamSessionID int64     `json:"exam_session_id"`
 }
 
 type MarkedInfo struct {
@@ -52,11 +69,10 @@ type MarkedInfo struct {
 }
 
 type Detail struct {
-	TeacherID       int64         `json:"teacher_id"`
-	QuestionSets    []QuestionSet `json:"question_sets"`
-	StudentInfos    []StudentInfo `json:"student_infos"`
-	MarkedPerson    int64         `json:"marked_person"`
-	MarkedQuestions int64         `json:"marked_questions"`
+	TeacherID    int64         `json:"teacher_id"`
+	QuestionSets []QuestionSet `json:"question_sets"`
+	StudentInfos []StudentInfo `json:"student_infos"`
+	MarkedInfo
 }
 
 type MarkDetail struct {
@@ -105,6 +121,7 @@ type ExamSession struct {
 	ExamSessionType      string `json:"session_type"`
 	MarkMethod           string `json:"mark_method"`
 	MarkMode             string `json:"mark_mode"`
+	ExamineeCount        int    `json:"examinee_count"`
 	RespondentCount      int    `json:"respondent_count"`
 	UnMarkedStudentCount int    `json:"unmarked_student_count"`
 	StartTime            int64  `json:"start_time"`
@@ -156,8 +173,20 @@ type SubjectiveAnswer struct {
 }
 
 type StudentInfo struct {
-	OfficialName         null.String `json:"OfficialName"`
-	SerialNumber         null.Int    `json:"SerialNumber"`
-	ExamineeID           null.Int    `json:"ExamineeID"`
-	PracticeSubmissionID null.Int    `json:"PracticeSubmissionID"`
+	OfficialName         null.String    `json:"OfficialName"`
+	SerialNumber         null.Int       `json:"SerialNumber"`
+	ExamineeNumber       null.String    `json:"ExamineeNumber"`
+	IDCardNo             null.String    `json:"IDCardNo"`
+	ExamineeID           null.Int       `json:"ExamineeID"`
+	PracticeSubmissionID null.Int       `json:"PracticeSubmissionID"`
+	MarkDetails          types.JSONType `json:"MarkDetails,omitempty"`
+	ReviewComment        null.String    `json:"ReviewComment,omitempty"`
+	Remark               null.String    `json:"remark,omitempty"`
+}
+
+type QueryStudentsReq struct {
+	KeyWord       string `json:"key_word"`
+	CommentStatus string `json:"comment_status"` // 点评状态 "00": 未点评 "02": 已点评
+	Limit         int    `json:"limit"`
+	Offset        int    `json:"offset"`
 }
