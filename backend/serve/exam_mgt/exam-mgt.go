@@ -315,6 +315,26 @@ func Enroll(author string) {
 	})
 }
 
+func detectComprehensiveQuestions(ctx context.Context, examSessionIDs []int64) (bool, error) {
+	if len(examSessionIDs) == 0 {
+		return false, nil
+	}
+
+	conn := cmn.GetPgxConn()
+	query := `
+		SELECT COUNT(*) > 0
+		FROM v_paper_comprehensive_type_cnt
+		WHERE exam_session_id = ANY($1) AND comprehensive_type_cnt > 0
+	`
+	var has bool
+	err := conn.QueryRow(ctx, query, examSessionIDs).Scan(&has)
+	if err != nil {
+		z.Error("检查综合演练题失败", zap.Error(err))
+		return false, err
+	}
+	return has, nil
+}
+
 // 检查考试是否存在
 func examExists(ctx context.Context, examID int64) (bool, error) {
 	z.Info("---->" + cmn.FncName())
@@ -358,9 +378,9 @@ func examExists(ctx context.Context, examID int64) (bool, error) {
 func generateExamineeNumber(serialNumber int64, examInfo cmn.TExamInfo, examSessions []cmn.TExamSession) string {
 
 	// 非线下考试不生成准考证号
-	if examInfo.Mode.String == "00" {
-		return ""
-	}
+	// if examInfo.Mode.String == "00" {
+	// 	return ""
+	// }
 
 	// 获取考试年份的后两位
 	var examYear string
@@ -1896,6 +1916,8 @@ func exam(ctx context.Context) {
 			q.RespErr()
 			return
 		}
+
+		//占位
 
 		// 如果当前考试已经发布（处于待开始状态），则需要先删除已经生成的批改配置
 		if nowStatus == "02" {
