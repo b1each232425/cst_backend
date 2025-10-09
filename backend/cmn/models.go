@@ -2697,7 +2697,6 @@ type TExamSession struct {
 	PeriodMode           null.String    `json:"PeriodMode,omitempty" db:"period_mode,false,character varying"`                      /* period_mode 考试时段模式 00：固定时段考试 02：灵活时段考试 */
 	Duration             null.Int       `json:"Duration,omitempty" db:"duration,false,integer"`                                     /* duration 考试时长 */
 	QuestionShuffledMode null.String    `json:"QuestionShuffledMode,omitempty" db:"question_shuffled_mode,false,character varying"` /* question_shuffled_mode 乱序方式 00：既有试题乱序也有选项乱序 02：选项乱序 04：试题乱序 06：都不选择 */
-	AntiCheating         null.String    `json:"AntiCheating,omitempty" db:"anti_cheating,false,character varying"`                  /* anti_cheating 防作弊配置 00：禁止复制粘贴和切屏 02：禁止复制粘贴 04:禁止切屏 06:不开启 */
 	MarkMode             null.String    `json:"MarkMode,omitempty" db:"mark_mode,false,character varying"`                          /* mark_mode 批改配置，包括批卷模式 00：不需要手动批改  02：全卷多评 04：试卷分配 06：题组专评 08：题目分配 10：单人批改 */
 	NameVisibilityIn     null.Bool      `json:"NameVisibilityIn,omitempty" db:"name_visibility_in,false,boolean"`                   /* name_visibility_in 当需要人工批卷时，是否需要在批改中显示学生姓名 */
 	Creator              null.Int       `json:"Creator,omitempty" db:"creator,false,bigint"`                                        /* creator 创建者 */
@@ -2718,7 +2717,9 @@ type TExamSession struct {
 	EndTime              null.Int       `json:"EndTime,omitempty" db:"end_time,false,bigint"`                                       /* end_time 考试结束时间 */
 	ActualEndTime        null.Int       `json:"ActualEndTime,omitempty" db:"actual_end_time,false,bigint"`                          /* actual_end_time 该场次的实际结束时间（因为有可能出现考生延长考试作答时间的情况） */
 	CheckerIds           interface{}    `json:"CheckerIds,omitempty" db:"checker_ids,false,bigint[]"`                               /* checker_ids checker_ids */
+	ExamPaperID          null.Int       `json:"ExamPaperID,omitempty" db:"exam_paper_id,false,bigint"`                              /* exam_paper_id 发布后的试卷编号 */
 	Filter               `json:"-"`     // build DML where clause
+	AntiCheating         null.String    `json:"AntiCheating,omitempty" db:"anti_cheating,false,character varying"` /* anti_cheating 防作弊配置 00：禁止复制粘贴和切屏 02：禁止复制粘贴 04:禁止切屏 06:不开启 */
 }
 
 // TExamSessionFields full field list for default query
@@ -2750,6 +2751,7 @@ var TExamSessionFields = []string{
 	"EndTime",
 	"ActualEndTime",
 	"CheckerIds",
+	"ExamPaperID",
 }
 
 // TExamSessionColumns full column list for default query
@@ -2781,6 +2783,7 @@ var TExamSessionColumns = []string{
 	"end_time",
 	"actual_end_time",
 	"checker_ids",
+	"exam_paper_id",
 }
 
 // TExamSessionColumnsDataTypes full column data types for default query
@@ -2812,6 +2815,7 @@ var TExamSessionColumnsDataTypes = map[string]string{
 	"end_time":               "bigint",
 	"actual_end_time":        "bigint",
 	"checker_ids":            "bigint[]",
+	"exam_paper_id":          "bigint",
 }
 
 // GetFieldsMap returns a map of field names to their values.
@@ -2844,6 +2848,7 @@ func (r *TExamSession) GetFieldsMap() map[string]any {
 		"EndTime":              r.EndTime,
 		"ActualEndTime":        r.ActualEndTime,
 		"CheckerIds":           r.CheckerIds,
+		"ExamPaperID":          r.ExamPaperID,
 	}
 }
 
@@ -2877,6 +2882,7 @@ func (r *TExamSession) GetColumnsMap() map[string]any {
 		"end_time":               r.EndTime,
 		"actual_end_time":        r.ActualEndTime,
 		"checker_ids":            r.CheckerIds,
+		"exam_paper_id":          r.ExamPaperID,
 	}
 }
 
@@ -2898,8 +2904,8 @@ func (r *TExamSession) GetTableName() string {
 // Create inserts the TExamSession to the database.
 func (r *TExamSession) Create(db Queryer) error {
 	err := db.QueryRow(
-		`INSERT INTO t_exam_session (exam_id, paper_id, mark_method, period_mode, duration, question_shuffled_mode, mark_mode, name_visibility_in, creator, updated_by, status, addi, session_num, late_entry_time, early_submission_time, reviewer_ids, basic_eval, record, paper_name, paper_category, create_time, update_time, start_time, end_time, actual_end_time, checker_ids) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26) RETURNING id`,
-		&r.ExamID, &r.PaperID, &r.MarkMethod, &r.PeriodMode, &r.Duration, &r.QuestionShuffledMode, &r.MarkMode, &r.NameVisibilityIn, &r.Creator, &r.UpdatedBy, &r.Status, &r.Addi, &r.SessionNum, &r.LateEntryTime, &r.EarlySubmissionTime, &r.ReviewerIds, &r.BasicEval, &r.Record, &r.PaperName, &r.PaperCategory, &r.CreateTime, &r.UpdateTime, &r.StartTime, &r.EndTime, &r.ActualEndTime, &r.CheckerIds).Scan(&r.ID)
+		`INSERT INTO t_exam_session (exam_id, paper_id, mark_method, period_mode, duration, question_shuffled_mode, mark_mode, name_visibility_in, creator, updated_by, status, addi, session_num, late_entry_time, early_submission_time, reviewer_ids, basic_eval, record, paper_name, paper_category, create_time, update_time, start_time, end_time, actual_end_time, checker_ids, exam_paper_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27) RETURNING id`,
+		&r.ExamID, &r.PaperID, &r.MarkMethod, &r.PeriodMode, &r.Duration, &r.QuestionShuffledMode, &r.MarkMode, &r.NameVisibilityIn, &r.Creator, &r.UpdatedBy, &r.Status, &r.Addi, &r.SessionNum, &r.LateEntryTime, &r.EarlySubmissionTime, &r.ReviewerIds, &r.BasicEval, &r.Record, &r.PaperName, &r.PaperCategory, &r.CreateTime, &r.UpdateTime, &r.StartTime, &r.EndTime, &r.ActualEndTime, &r.CheckerIds, &r.ExamPaperID).Scan(&r.ID)
 	if err != nil {
 		return errors.Wrap(err, "failed to insert t_exam_session")
 	}
@@ -2911,8 +2917,8 @@ func GetTExamSessionByPk(db Queryer, pk0 null.Int) (*TExamSession, error) {
 
 	var r TExamSession
 	err := db.QueryRow(
-		`SELECT id, exam_id, paper_id, mark_method, period_mode, duration, question_shuffled_mode, mark_mode, name_visibility_in, creator, updated_by, status, addi, session_num, late_entry_time, early_submission_time, reviewer_ids, basic_eval, record, paper_name, paper_category, create_time, update_time, start_time, end_time, actual_end_time, checker_ids FROM t_exam_session WHERE id = $1`,
-		pk0).Scan(&r.ID, &r.ExamID, &r.PaperID, &r.MarkMethod, &r.PeriodMode, &r.Duration, &r.QuestionShuffledMode, &r.MarkMode, &r.NameVisibilityIn, &r.Creator, &r.UpdatedBy, &r.Status, &r.Addi, &r.SessionNum, &r.LateEntryTime, &r.EarlySubmissionTime, &r.ReviewerIds, &r.BasicEval, &r.Record, &r.PaperName, &r.PaperCategory, &r.CreateTime, &r.UpdateTime, &r.StartTime, &r.EndTime, &r.ActualEndTime, &r.CheckerIds)
+		`SELECT id, exam_id, paper_id, mark_method, period_mode, duration, question_shuffled_mode, mark_mode, name_visibility_in, creator, updated_by, status, addi, session_num, late_entry_time, early_submission_time, reviewer_ids, basic_eval, record, paper_name, paper_category, create_time, update_time, start_time, end_time, actual_end_time, checker_ids, exam_paper_id FROM t_exam_session WHERE id = $1`,
+		pk0).Scan(&r.ID, &r.ExamID, &r.PaperID, &r.MarkMethod, &r.PeriodMode, &r.Duration, &r.QuestionShuffledMode, &r.MarkMode, &r.NameVisibilityIn, &r.Creator, &r.UpdatedBy, &r.Status, &r.Addi, &r.SessionNum, &r.LateEntryTime, &r.EarlySubmissionTime, &r.ReviewerIds, &r.BasicEval, &r.Record, &r.PaperName, &r.PaperCategory, &r.CreateTime, &r.UpdateTime, &r.StartTime, &r.EndTime, &r.ActualEndTime, &r.CheckerIds, &r.ExamPaperID)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to select t_exam_session")
 	}

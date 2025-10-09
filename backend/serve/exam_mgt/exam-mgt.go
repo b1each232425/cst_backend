@@ -68,6 +68,7 @@ type ExamSession struct {
 	EndTime        int64   `json:"end_time"`   //场次结束时间
 	SessionNum     int64   `json:"session_num"`
 	PaperID        int64   `json:"paper_id"`
+	ExamPaperID    int64   `json:"exam_paper_id"`
 	PaperName      string  `json:"paper_name"`
 	Status         string  `json:"status"`
 	ExamineeStatus string  `json:"examinee_status"`
@@ -315,8 +316,18 @@ func Enroll(author string) {
 	})
 }
 
-func detectComprehensiveQuestions(ctx context.Context, examSessionIDs []int64) (bool, error) {
-	if len(examSessionIDs) == 0 {
+func checkComprehensiveForAutoMark(ctx context.Context, examSessions []cmn.TExamSession) (bool, error) {
+	if len(examSessions) == 0 {
+		return false, nil
+	}
+	var ExamPaperIDs []int64
+	for _, session := range examSessions {
+		if session.MarkMode.String != "10" { // 非人工批改
+			ExamPaperIDs = append(ExamPaperIDs, session.ExamPaperID.Int64)
+		}
+	}
+
+	if len(ExamPaperIDs) == 0 {
 		return false, nil
 	}
 
@@ -327,7 +338,7 @@ func detectComprehensiveQuestions(ctx context.Context, examSessionIDs []int64) (
 		WHERE exam_session_id = ANY($1) AND comprehensive_type_cnt > 0
 	`
 	var has bool
-	err := conn.QueryRow(ctx, query, examSessionIDs).Scan(&has)
+	err := conn.QueryRow(ctx, query, examSessions).Scan(&has)
 	if err != nil {
 		z.Error("检查综合演练题失败", zap.Error(err))
 		return false, err
@@ -544,6 +555,7 @@ func GetExamSessions(ctx context.Context, domain string, examIDs ...int64) ([]cm
 					ID:                   null.NewInt(10001, true),
 					ExamID:               null.NewInt(10001, true),
 					PaperID:              null.NewInt(10001, true),
+					ExamPaperID:          null.NewInt(10001, true),
 					MarkMethod:           "00",
 					PeriodMode:           null.NewString("02", true),
 					StartTime:            null.NewInt(1700000000000, true),
@@ -581,7 +593,7 @@ func GetExamSessions(ctx context.Context, domain string, examIDs ...int64) ([]cm
 	if strings.Contains(domain, "^student") {
 		es_query := `
 			SELECT
-				id, exam_id, paper_id, mark_method, period_mode,
+				id, exam_id, paper_id, exam_paper_id, mark_method, period_mode,
 				start_time, end_time, duration, session_num, late_entry_time,
 				early_submission_time
 			FROM t_exam_session
@@ -604,6 +616,7 @@ func GetExamSessions(ctx context.Context, domain string, examIDs ...int64) ([]cm
 				&es.ID,
 				&es.ExamID,
 				&es.PaperID,
+				&es.ExamPaperID,
 				&es.MarkMethod,
 				&es.PeriodMode,
 				&es.StartTime,
@@ -625,7 +638,7 @@ func GetExamSessions(ctx context.Context, domain string, examIDs ...int64) ([]cm
 	} else {
 		es_query := `
 			SELECT
-				es.id, es.exam_id, es.paper_id, es.mark_method, es.period_mode,
+				es.id, es.exam_id, es.paper_id, es.exam_paper_id, es.mark_method, es.period_mode,
 				es.start_time, es.end_time, es.duration, es.question_shuffled_mode,
 				es.mark_mode, es.name_visibility_in, es.session_num, es.late_entry_time,
 				es.early_submission_time, es.reviewer_ids,es.checker_ids,
@@ -651,6 +664,7 @@ func GetExamSessions(ctx context.Context, domain string, examIDs ...int64) ([]cm
 				&es.ID,
 				&es.ExamID,
 				&es.PaperID,
+				&es.ExamPaperID,
 				&es.MarkMethod,
 				&es.PeriodMode,
 				&es.StartTime,
@@ -1839,6 +1853,14 @@ func exam(ctx context.Context) {
 			return
 		}
 
+		// 检查试卷是否含有综合演练题并开启自动批改
+		has, err := checkComprehensiveForAutoMark(ctx, ExamData.ExamSessions)
+		if err != nil || has {
+			q.Err = fmt.Errorf("存在含有综合演练题且设置为自动批改的场次，不允许发布")
+			q.RespErr()
+			return
+		}
+
 		// 开启事务
 		var tx pgx.Tx
 		tx, q.Err = conn.Begin(ctx)
@@ -2051,17 +2073,18 @@ func exam(ctx context.Context) {
 			var sessionID int64
 			q.Err = tx.QueryRow(ctx, `
 				INSERT INTO t_exam_session (
-					exam_id, session_num, paper_id, start_time, end_time, duration,
+					exam_id, session_num, paper_id, exam_paper_id, start_time, end_time, duration,
 					question_shuffled_mode, name_visibility_in, mark_method, mark_mode,
 					period_mode, status, creator, create_time, updated_by, update_time,
 					late_entry_time, early_submission_time, reviewer_ids,checker_ids
 				) VALUES (
-					$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19,$20
+					$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19,$20,$21
 				) RETURNING id
 			`,
 				ExamData.ExamInfo.ID.Int64,
 				examSession.SessionNum.Int64,
 				examSession.PaperID.Int64,
+				examSession.ExamPaperID.Int64,
 				examSession.StartTime.Int64,
 				examSession.EndTime.Int64,
 				examSession.Duration.Int64,
