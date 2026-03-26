@@ -2,7 +2,6 @@
 
 > 一个高性能、企业级的后端服务，采用 Go 语言编写，为 CST（Comprehensive Smart Testing）考试管理系统提供全面的 API 支持。
 
-![GitHub License](https://img.shields.io/badge/license-MIT-blue)
 ![Go Version](https://img.shields.io/badge/Go-1.23.8+-00ADD8?logo=go)
 ![Code Coverage](https://img.shields.io/badge/Code%20Coverage-High-green)
 ![Architecture](https://img.shields.io/badge/Architecture-Microservices-blue)
