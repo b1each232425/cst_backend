@@ -844,9 +844,6 @@ kubectl logs <pod-name>
 - `perf`: 性能优化
 - `test`: 测试
 
-## 📄 许可证
-
-本项目采用 MIT License - 详见 [LICENSE](LICENSE) 文件
 
 ## 👨‍💻 作者
 
@@ -857,20 +854,6 @@ kubectl logs <pod-name>
 - GitHub: [@b1each232425](https://github.com/b1each232425)
 - Issues: [项目问题](https://github.com/b1each232425/cst_backend/issues)
 
-## 📚 相关文档
-
-- [Go 官方文档](https://golang.org/doc)
-- [PostgreSQL 文档](https://www.postgresql.org/docs)
-- [Redis 文档](https://redis.io/docs)
-- [gRPC 文档](https://grpc.io/docs)
-- [GraphQL 文档](https://graphql.org/learn)
-- [Gorilla Toolkit](https://www.gorillatoolkit.org)
-
-## 🙏 致谢
-
-感谢所有为本项目做出贡献的开发者！
-
----
 
 **创建时间**: 2026 年 3 月 12 日  
 **最后更新**: 2026 年 3 月 26 日  
